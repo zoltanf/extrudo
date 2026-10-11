@@ -195,3 +195,13 @@ apart from the precache total and serves `.webm`.
 - The clips are 3 to 4 seconds, not the 2 the plan named, and sampled at 8 to 12
   screenshots a second, so a fast pointer move steps. A faster capture (CDP
   `Page.startScreencast`, which the screenshot loop avoids) would smooth them.
+
+## Amendment (2026-10-11): the empty-design hint is gone
+
+The owner's UI review 3 (R3-15, `docs/plans/ui-review-2026-10-11.md`): "It looks strange and
+it only appears sometimes … I really don't want that, for now." `ViewportHint.tsx` and its
+place in `AppShell` are removed, with its e2e checks (`e2e/onboarding.spec.ts` now checks
+that an empty design shows no hint, `e2e/tutorial.spec.ts` and `e2e/a11y.spec.ts` no longer
+expect it). §3 above describes what it was. The tutorial, the home card and the tooltip demos
+stay; a hint may come back as part of a later tutorial. The open item about "the hint's
+arrow" no longer applies.

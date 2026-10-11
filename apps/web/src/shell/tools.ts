@@ -962,8 +962,8 @@ export interface Tab {
  * whole (its files, versions, parameters and plugins: the old File menu and the
  * Insert tab); Solid makes geometry, Modify changes it, Construct and Inspect
  * have tabs of their own, and 3D Print prepares the model's export. `sketch`
- * shows only while a sketch is open, in place of Solid, Modify, Construct and
- * Inspect, whose tools don't apply there; Finish Sketch sits after its groups.
+ * shows only while a sketch is open, in place of every tab but Home, whose
+ * tools don't apply there; Finish Sketch sits after its groups.
  */
 export const TABS: Tab[] = [
   {
@@ -1119,15 +1119,19 @@ export const TABS: Tab[] = [
   },
 ];
 
-/** The tabs a sketch replaces with its own (ADR-0079 §2): their tools work on bodies. */
-const MODEL_ONLY: ReadonlySet<TabId> = new Set(['solid', 'modify', 'construct', 'inspect']);
+/**
+ * The tabs a sketch shows (ADR-0079 §2): Home and its own. The others' tools work
+ * on bodies; 3D Print went from sketch mode in the owner's UI review 3 (R3-11),
+ * since the Sketch tab's Export covers what a sketch exports.
+ */
+const SKETCH_TABS: ReadonlySet<TabId> = new Set(['home', 'sketch']);
 
 /**
  * The tabs shown in a mode, in order: Home, Solid, Modify, Construct, Inspect and
- * 3D Print in the model; Home, Sketch and 3D Print while a sketch is open.
+ * 3D Print in the model; Home and Sketch while a sketch is open.
  */
 export function visibleTabs(mode: 'model' | 'sketch'): Tab[] {
-  return TABS.filter((t) => (mode === 'sketch' ? !MODEL_ONLY.has(t.id) : t.id !== 'sketch'));
+  return TABS.filter((t) => (mode === 'sketch' ? SKETCH_TABS.has(t.id) : t.id !== 'sketch'));
 }
 
 /** The tab a mode opens on: Solid in the model, Sketch in a sketch. */

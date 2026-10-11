@@ -156,7 +156,7 @@ test('the timeline rolled back', async ({ page }) => {
   await page.waitForTimeout(1500);
   const file = out('features-and-timeline', 'timeline');
   await ensureDir(file);
-  await save(page, file, { x: 0, y: 850, width: 560, height: 50 });
+  await save(page, file, { x: 0, y: 850, width: 400, height: 50 });
 });
 
 test('the Parameters dialog', async ({ page }) => {

@@ -199,3 +199,21 @@ References opens, or the Redefine Plane prompt of a sketch — and (c) the
 chips picked in the timeline. `ghostsOf` (pure) turns those IDs, the document
 and the statuses into the ghosts; the Viewport region's `data-ghosts` lists
 them as `<featureId>:<type>:<x,y,z>` (rounded to 0.01; absent with none).
+
+## Amendment (2026-10-11): no playback buttons, no scroll bar from a drag
+
+The owner's UI review 3 (`docs/plans/ui-review-2026-10-11.md`):
+
+- **R3-01:** the four playback buttons (Roll back to start, Step back, Step forward, Roll
+  forward to end) that stood before the chips are removed, and the chips start at the row's
+  left padding. The marker's keys reach every place they did (←/→ step over a folded group
+  whole, Home and End), and FR-TL-02 says so. The e2e specs that clicked the buttons focus
+  the marker and press its keys (`rollMarker` in `e2e/helpers.ts`).
+- **R3-02:** the marker's ghost and a chip's drop line are absolutely placed inside the
+  scrolling list, and past the last chip they stuck out of its content by a pixel or two, so
+  a scroll bar showed under chips that fit while the marker was dragged to the end.
+  `insideContent` in `shell/Timeline.tsx` keeps either indicator within the list's own
+  content (its last item, that item's margin and the list's end padding), so the row scrolls
+  only when the chips themselves don't fit. `e2e/timeline.spec.ts` drags the marker past the
+  last of the PCB enclosure's nine chips at 1440 × 900 and checks `scrollWidth <=
+  clientWidth` during and after the drag.

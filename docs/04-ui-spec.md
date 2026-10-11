@@ -5,12 +5,11 @@ it to understand *behaviour* only. Never copy their icons, images, text or
 branding.
 
 **Changes decided, not built yet (2026-10-11):** the owner's UI review 3 changes
-the timeline (no playback buttons), the mouse controls (into the Settings menu;
-presets Spindle, Crank, Glide, Blender, Trackpad), command search (one dialog for
-Ctrl+K and S, ten pins), ghost bodies, the right-click menu (the ring alone when
-radial), the tabs (Home's Import and Export groups, Inspect inside Construct, no
-3D Print tab in a sketch, Plugins in the Settings menu), the new-design hint
-(removed), tooltip clips and long notifications. The items are in
+the mouse controls (into the Settings menu; presets Spindle, Crank, Glide,
+Blender, Trackpad), command search (one dialog for Ctrl+K and S, ten pins), ghost
+bodies, the right-click menu (the ring alone when radial), the tabs (Home's Import
+and Export groups, Inspect inside Construct, Plugins in the Settings menu),
+tooltip clips and long notifications. The items are in
 [`plans/ui-review-2026-10-11.md`](plans/ui-review-2026-10-11.md); this spec
 still describes the app as it is, and each slice updates the sections it
 changes.
@@ -59,7 +58,7 @@ brief, voice) is in **`05-brand.md`**. In short:
 │               │                                              │ └─────────┘ │  (right side)
 │               │   ↖ ⟳ ✋ 🔍 │ ⊡ │ ◧ style │ ▦ grid │ ◫ views    │             │  Nav bar (bottom
 ├───────────────┴──────────────────────────────────────────────┴─────────────┤  center, floating)
-│ ⏮ ◀ ▶ ⏭ │ [✎S1][▮E1][✎S2][▯E2][◠F1]▼[◡C1]                      │ status bar  │  Timeline
+│ [✎S1][▮E1][✎S2][▯E2][◠F1]▼[◡C1]                                │ status bar  │  Timeline
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -97,9 +96,12 @@ brief, voice) is in **`05-brand.md`**. In short:
   (Modify, Transform), `CONSTRUCT` (Planes, Axes, Points), `INSPECT` (Measure,
   Section Analysis) and `3D PRINT` (our addition: export, orientation,
   overhang, slicer hand-off, mass/filament). `SKETCH` shows only while editing
-  a sketch, replacing SOLID, MODIFY, CONSTRUCT and INSPECT (it keeps its own
-  Export Sketch); HOME and 3D PRINT stay, and Home's model-only tools (Import,
-  Canvas, Customizer) say "Finish the sketch to use …" there.
+  a sketch, replacing every tab but HOME: 3D PRINT goes too (the owner's UI
+  review 3, R3-11), since its tools work on bodies and SKETCH keeps its own
+  Export Sketch. A sketch selects SKETCH whichever tab was selected, and
+  finishing it brings the model's tabs back with SOLID selected. Home's
+  model-only tools (Import, Canvas, Customizer) say "Finish the sketch to use
+  …" in a sketch.
 - **Toolbars fit the window** (ADR-0079 §3): when the selected tab's groups
   are wider than the window, the group with the most visible tiles moves its
   last tile to the front of its ▾ menu, one at a time (equally full: the
@@ -265,8 +267,12 @@ brief, voice) is in **`05-brand.md`**. In short:
   "Profile · Sketch1", a body's name; faces, edges and vertices are counted)
   and counts several; while a field takes axes the origin axes are drawn
   even if the browser hides them (P3-17).
-- **Timeline (bottom):** playback buttons, feature chips with category colour
-  and icon, and a rollback marker (a draggable ▼ handle). The chip tooltip
+- **Timeline (bottom):** feature chips with category colour and icon, from
+  the row's left edge, and a rollback marker (a draggable ▼ handle). There are
+  no playback buttons (removed in the owner's UI review 3, R3-01): the marker's
+  keys (←/→, Home, End) reach every place they did. The row scrolls only when
+  the chips themselves don't fit: what a drag draws (the marker's ghost, a
+  chip's drop line) stays inside the chips' own width (R3-02). The chip tooltip
   shows the name, type and status message. The timeline and the status bar
   share the bottom row and are always shown: there is no Hide timeline
   button (removed 2026-10-08; it freed almost no space, the status bar
@@ -746,11 +752,10 @@ per-field Reset when they differ from the default.
 
 ## 7. Empty states and onboarding (P3-12, ADR-0052)
 
-- **New design hint:** while a design has no features, "Start with a sketch:
-  press **Create Sketch** and pick a plane" sits in the view with a dashed
-  arrow up at the Create Sketch tile. It takes no clicks, steps aside while
-  Create Sketch waits for a plane, a dialog is open or the tutorial runs, and
-  is gone with the first feature (undo brings it back).
+- **No new-design hint:** an empty design shows the empty view. The "Start
+  with a sketch" hint with its dashed arrow up at Create Sketch was removed in
+  the owner's UI review 3 (R3-15: it looked strange and came and went); the
+  tutorial below is the guided start, and a hint may come back as part of one.
 - **First run:** an optional tutorial of five steps that build a box: sketch
   on the XY plane, a rectangle, a dimension, extrude, fillet (or shell). It is
   offered by the home screen's "Take the tour" card (once), and started later

@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { kernelReady, openProject } from './helpers';
+import { kernelReady, openProject, rollMarker } from './helpers';
 
 // P4-09 (ADR-0065 §1 and §2): timeline groups. A run of neighbouring chips
 // picked with Shift groups from the chip menu or the marking menu; a folded
@@ -186,17 +186,18 @@ test('the marker passes a folded group whole, and rolling into one opens it', as
 
   // Stepping back from Fillet1: 4, 3, then over the group (not into it): the gap
   // between Extrude1 and Sketch2 is nowhere to stop.
-  const step = page.getByRole('button', { name: 'Step back' });
   for (const at of ['4', '3', '1']) {
-    await step.click();
+    await rollMarker(page, 'ArrowLeft');
     await expect(marker(page)).toHaveAttribute('aria-valuenow', at);
   }
   await expect(marker(page)).toHaveAttribute('aria-valuetext', 'After Sketch1');
-  await step.click();
+  await rollMarker(page, 'ArrowLeft');
   await expect(marker(page)).toHaveAttribute('aria-valuenow', '0');
-  await expect(step).toBeDisabled();
+  // At the start, another step back stays there.
+  await rollMarker(page, 'ArrowLeft');
+  await expect(marker(page)).toHaveAttribute('aria-valuenow', '0');
 
-  // The arrow keys step the same way.
+  // Forward steps pass the folded group the same way.
   await marker(page).focus();
   await page.keyboard.press('ArrowRight');
   await expect(marker(page)).toHaveAttribute('aria-valuenow', '1');
@@ -288,7 +289,7 @@ test('dragging a folded group moves its members together', async ({ page }) => {
   await menuItem(page, 'Group 2 features').click();
   // The group holds the last two features, so the marker has to leave the gap
   // inside it before the group can fold (a group the marker is in stays open).
-  await page.getByRole('button', { name: 'Step back' }).click();
+  await rollMarker(page, 'ArrowLeft');
   await expect(marker(page)).toHaveAttribute('aria-valuenow', '4');
   await features(page).locator('[data-group-label]').click();
   await expect(features(page).locator('[data-group-collapsed]')).toBeVisible();

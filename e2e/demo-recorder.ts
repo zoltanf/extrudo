@@ -74,7 +74,7 @@ export const CURSOR_SCRIPT = `
 
 /** Keeps what isn't part of a demo out of the frame: the onboarding hint and card. */
 export const DEMO_STYLE = `
-[data-viewport-hint], [aria-label="Tutorial"], [data-tutorial-ring] { display: none !important; }
+[aria-label="Tutorial"], [data-tutorial-ring] { display: none !important; }
 `;
 
 export interface Clip {

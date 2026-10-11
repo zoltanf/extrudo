@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { kernelReady, openProject, saveStatus } from './helpers';
+import { kernelReady, openProject, rollMarker, saveStatus } from './helpers';
 
 // P0-04: the app shell. Screenshots in both themes, and panels that resize,
 // collapse and remember their state.
@@ -113,14 +113,14 @@ test('the browser collapses and expands, and remembers it; the timeline is alway
   await expect(page.getByRole('slider', { name: 'Timeline marker' })).toBeVisible();
 });
 
-test('the timeline marker moves with playback, and Ctrl+Z undoes it', async ({ page }) => {
+test('the timeline marker moves with its keys, and Ctrl+Z undoes it', async ({ page }) => {
   await open(page);
   const rolledBack = page.getByRole('button', { name: /\(rolled back\)$/ });
   await expect(rolledBack).toHaveCount(1);
 
-  await page.getByRole('button', { name: 'Roll forward to end' }).click();
+  await rollMarker(page, 'End');
   await expect(rolledBack).toHaveCount(0);
-  await page.getByRole('button', { name: 'Roll back to start' }).click();
+  await rollMarker(page, 'Home');
   await expect(rolledBack).toHaveCount(6);
 
   await page.keyboard.press('Control+z');

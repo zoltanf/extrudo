@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { type FitGroup, fitToolbar } from '../apps/web/src/shell/toolbarFit';
-import { newSketchOnXY, openProject, saveStatus, sketchOnXY } from './helpers';
+import { newSketchOnXY, openProject, saveStatus } from './helpers';
 
 // The top bar (ADR-0079): one row with the logo, the tabs, undo/redo/search, the
 // design's name and the right-hand buttons; the selected tab's tools in the row below,
@@ -104,10 +104,31 @@ test('one top bar: the tabs in order, no File menu, undo, redo and search work',
   await expect(page.getByRole('dialog', { name: 'Versions' })).toBeVisible();
 });
 
-test('a sketch shows Home, Sketch and 3D Print', async ({ page }) => {
-  await sketchOnXY(page);
-  await expect(tabs(page)).toHaveText(['Home', 'Sketch', '3D Print']);
+test('a sketch shows Home and Sketch only (R3-11)', async ({ page }) => {
+  await openProject(page);
+  // Opened from the 3D Print tab, a sketch selects its own tab.
+  await tabs(page).filter({ hasText: '3D Print' }).click();
+  await expect(tabs(page).filter({ hasText: '3D Print' })).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('Create Sketch');
+  await page.keyboard.press('Enter');
+  await page
+    .getByRole('region', { name: 'Create Sketch' })
+    .getByRole('button', { name: 'XY' })
+    .click();
+  await expect(tabs(page)).toHaveText(['Home', 'Sketch']);
   await expect(tabs(page).filter({ hasText: 'Sketch' })).toHaveAttribute('aria-selected', 'true');
+  // Finishing it brings the model's tabs back.
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await expect(tabs(page)).toHaveText([
+    'Home',
+    'Solid',
+    'Modify',
+    'Construct',
+    'Inspect',
+    '3D Print',
+  ]);
+  await expect(tabs(page).filter({ hasText: 'Solid' })).toHaveAttribute('aria-selected', 'true');
 });
 
 /** What the fit rule needs, read from the toolbar the way the toolbar reads it. */

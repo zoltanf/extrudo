@@ -6,6 +6,7 @@ import {
   newSketchOnXY,
   openProject,
   pickTool,
+  rollMarker,
   sketchOnXY,
 } from './helpers';
 
@@ -297,7 +298,7 @@ test.describe(() => {
 
     // Rolled forward, Sketch2's face is split by the cut: the kernel takes the closest piece
     // and warns. Keep Closest Match stores it: no warning, one undo step.
-    await page.getByRole('button', { name: 'Roll forward to end' }).click();
+    await rollMarker(page, 'End');
     await kernelReady(page);
     await expect(chip(page, 'Sketch2')).toHaveAccessibleName('Sketch2 (warning)');
     await expect(chip(page, 'Sketch2')).toHaveAttribute('data-feature-status', 'warning');

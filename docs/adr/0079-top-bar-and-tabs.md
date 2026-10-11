@@ -255,3 +255,15 @@ at 32 px on the same 24 grid, tiles at a fixed 64 px, and today's stroke weight.
 Consequences: every screenshot baseline's top area changed; the docs demos and pictures are
 not re-recorded.
 
+
+## Round 4, 2026-10-11: the owner's UI review 3
+
+The owner's third review (`docs/plans/ui-review-2026-10-11.md`) changes the tabs again. Each
+item lands in its own slice; this section grows with them.
+
+- **No 3D Print tab in a sketch** (R3-11, slice A). `visibleTabs('sketch')` is **Home and
+  Sketch**: the 3D Print tools work on bodies, and the Sketch tab keeps its own Export
+  Sketch, so the tab only took room. A sketch still selects its own tab whichever tab was
+  selected (`useToolbarTab`'s effect), and finishing it brings the model's tabs back with
+  Solid selected. The 3D Print tools are therefore not in Ctrl+K while a sketch is open
+  either, since `buildCommands` lists the shown tabs' tools.

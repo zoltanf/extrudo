@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openProject, pickTool } from './helpers';
+import { timelineMarker as marker, openProject, pickTool, startFromTemplate } from './helpers';
 
 // P1-12: timeline chips and the browser tree. Right-click menus rename,
 // hide, suppress and delete; F2 renames in the browser; the pointer on a
@@ -186,6 +186,54 @@ test('two chips fit without a scrollbar, with the marker at either end', async (
   // the list scroll (a scrollbar under the chips where overlay scrollbars aren't used).
   const overflow = () => list.evaluate((el) => el.scrollWidth - el.clientWidth);
   expect(await overflow()).toBe(0);
-  await page.getByRole('button', { name: 'Roll back to start' }).click();
+  await marker(page).focus();
+  await page.keyboard.press('Home');
+  await expect(marker(page)).toHaveAttribute('aria-valuenow', '0');
   expect(await overflow()).toBe(0);
+});
+
+// R3-02 (the owner's UI review 3): nine chips fit at 1440 × 900, so dragging the marker past
+// the last one must not make the list scroll, while it is dragged or after.
+test('the marker dragged past the last chip leaves the list unscrolled', async ({ page }) => {
+  await page.goto('./');
+  await startFromTemplate(page, 'PCB enclosure');
+  await expect(page.getByRole('region', { name: 'Viewport' })).toHaveAttribute(
+    'data-ready',
+    'true',
+  );
+  const list = page.getByRole('list', { name: 'Features' });
+  const chips = list.locator('[data-timeline-item="chip"]');
+  await expect(chips).toHaveCount(9);
+  const overflow = () => list.evaluate((el) => el.scrollWidth - el.clientWidth);
+  await marker(page).focus();
+  await page.keyboard.press('Home');
+  await expect(marker(page)).toHaveAttribute('aria-valuenow', '0');
+  expect(await overflow()).toBe(0);
+
+  const from = await marker(page).boundingBox();
+  const last = await chips.last().boundingBox();
+  if (!from || !last) throw new Error('not visible');
+  const y = from.y + from.height / 2;
+  await page.mouse.move(from.x + from.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2 + 8, y, { steps: 2 });
+  // Past the last chip, then further still, where the list has room to spare.
+  for (const x of [last.x + last.width + 6, last.x + last.width + 40, last.x + last.width + 200]) {
+    await page.mouse.move(x, y, { steps: 6 });
+    await expect(list.locator('[data-marker-ghost]')).toHaveAttribute('data-marker-ghost', '9');
+    expect(await overflow()).toBe(0);
+  }
+  await page.mouse.up();
+  await expect(marker(page)).toHaveAttribute('aria-valuenow', '9');
+  expect(await overflow()).toBe(0);
+
+  // R3-01: no playback buttons; with the marker at the end the first chip starts at the
+  // row's padding (the row's 8 px and the list's 4 px).
+  const timeline = page.getByRole('region', { name: 'Timeline' });
+  for (const name of ['Roll back to start', 'Step back', 'Step forward', 'Roll forward to end'])
+    await expect(timeline.getByRole('button', { name, exact: true })).toHaveCount(0);
+  const row = await timeline.boundingBox();
+  const first = await chips.first().boundingBox();
+  if (!row || !first) throw new Error('not visible');
+  expect(first.x - row.x).toBeLessThanOrEqual(13);
 });
