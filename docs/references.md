@@ -48,7 +48,7 @@ different geometry model (triangle-mesh CSG, whereas we use exact B-rep).
 | [Ansatz](https://github.com/LAU-MARS/Ansatz) (`ansatz-wasm`) | New solver with structured, human-readable diagnostics (DOF, conflict groups, suggestions). Too new to depend on in P0-03 (published 2026-09); its diagnostics design is a reference for our conflict UI. | MIT |
 | CascadeStudio | Browser code-CAD over OCCT; scripting-UX reference for Phase 5 | MIT |
 | CADmium | Browser CAD in Rust/WASM; a comparable history-based web CAD | check |
-| Chili3D | Browser CAD on OCCT WASM with a Fusion-like UI | AGPL, ideas only, no code |
+| Chili3D | Browser CAD on OCCT WASM with a familiar CAD UI | AGPL, ideas only, no code |
 | FreeCAD (Sketcher, TNP work in 1.0) | Constraint UX and topological-naming approach | LGPL-2.1 |
 | OpenSCAD (its own WebAssembly snapshot, ADR-0071) | Phase 5 import (P5-04): `.scad` files compiled to mesh bodies | GPL-2.0-or-later (the WASM bundles CGAL: GPL-3.0-or-later) |
 | Manifold | Mesh booleans | Apache-2.0 |

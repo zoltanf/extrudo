@@ -265,7 +265,7 @@ of the floor and took every click over the pocket (profiles and faces are
 picked front to back; "Select other…" reached the one behind). Now OK on a
 new feature hides the shown sketches whose profiles it used
 (`usedSketches` in core's `sketch/feature.ts`), amended into the insert's
-undo step, as Fusion's "auto-hide sketch on feature creation" does. Edits
+undo step (the usual CAD "auto-hide sketch on feature creation"). Edits
 don't touch visibility, and a sketch line used only as an axis doesn't
 hide its sketch. A toast says which sketches were hidden, for 12 s, with
 a Show button that shows them again as their own undo step (toasts can

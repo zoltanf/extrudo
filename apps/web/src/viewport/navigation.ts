@@ -5,7 +5,7 @@
  */
 
 export type NavAction = 'orbit' | 'pan' | 'zoom';
-export type NavPreset = 'extrudo' | 'fusion' | 'blender' | 'onshape' | 'trackpad';
+export type NavPreset = 'extrudo' | 'shift-orbit' | 'blender' | 'onshape' | 'trackpad';
 
 /** The presets in menu order; the first is the default (`DEFAULT_SETTINGS.preset`). */
 export const NAV_PRESETS: readonly { value: NavPreset; label: string; summary: string }[] = [
@@ -19,7 +19,11 @@ export const NAV_PRESETS: readonly { value: NavPreset; label: string; summary: s
     label: 'Onshape / SolidWorks',
     summary: 'Right-drag orbits, middle-drag pans',
   },
-  { value: 'fusion', label: 'Fusion', summary: 'Middle-drag pans, Shift+middle-drag orbits' },
+  {
+    value: 'shift-orbit',
+    label: 'Shift orbit',
+    summary: 'Middle-drag pans, Shift+middle-drag orbits',
+  },
   { value: 'blender', label: 'Blender', summary: 'Middle-drag orbits, Shift+middle-drag pans' },
   {
     value: 'trackpad',
@@ -56,7 +60,7 @@ export function dragAction(
       if (button === 1) return ctrlKey || metaKey ? 'pan' : 'orbit';
       if (button === 2) return 'pan';
       return undefined;
-    case 'fusion':
+    case 'shift-orbit':
       if (button === 1) return shiftKey ? 'orbit' : 'pan';
       return undefined;
     case 'blender':
@@ -108,7 +112,7 @@ export function wheelAction(preset: NavPreset, input: WheelInput): WheelResult {
 /** Orbit speed: radians per pixel of drag. */
 export const ORBIT_RATE = Math.PI / 400;
 
-/** Zoom factor for a vertical drag of `dy` pixels (down zooms out, as in Fusion). */
+/** Zoom factor for a vertical drag of `dy` pixels (down zooms out). */
 export function dragZoomFactor(dy: number): number {
   return Math.exp(dy * 0.005);
 }

@@ -105,7 +105,7 @@ export function parseProfileRefId(id: string): { feature: FeatureId; profile: st
 
 /**
  * The shown sketches whose profiles `feature` uses: the ones a new feature
- * hides when it is created (as Fusion does), so a used sketch's profile
+ * hides when it is created, so a used sketch's profile
  * doesn't float in front of the faces made from it and take their clicks.
  */
 export function usedSketches(

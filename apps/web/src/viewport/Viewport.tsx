@@ -345,7 +345,7 @@ export function bodyAppearanceSummary(
   return drawn.length > 0 ? drawn.join(' ') : undefined;
 }
 
-/** A middle double-click within this many ms fits the view (Fusion). */
+/** A middle double-click within this many ms fits the view. */
 const DOUBLE_CLICK_MS = 400;
 
 /**

@@ -209,7 +209,7 @@ later, amended into the same step.
 
 ### 7. The Project tool
 
-`P` (Fusion's key; free until now), in the Sketch tab's Create menu after
+`P` (the usual CAD key; free until now), in the Sketch tab's Create menu after
 Spline; icon `project` (a face dropped onto a plane). It is a session tool
 (`PROJECT_TOOL`), not a tool-host tool: it picks in 3D with the model's
 picking (`useModelInput`), restricted to faces and edges by the field
@@ -287,9 +287,9 @@ joins; pushed in, it cuts.
 - Silhouettes of spheres, tori and free-form faces (only cylinders and
   cones now); a sphere's outline is a circle, the others need HLR.
 - ~~Projecting vertices (a point) and whole bodies (their outline); an
-  "include" mode that copies without the link (Fusion's "break link").~~
+  "include" mode that copies without the link (the usual "break link").~~
   Done in P4-12 (the amendment below).
-- ~~Intersection curves (Fusion's "Intersect"), and a sketch slice (the
+- ~~Intersection curves (the usual "Intersect"), and a sketch slice (the
   palette's Slice) through the bodies.~~ Done in P4-12 (the amendment
   below; the slice in §5).
 - When a projected face is split by a later edit, keys by edge name change

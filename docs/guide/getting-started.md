@@ -73,7 +73,8 @@ The default mouse controls are:
 | Fit what is selected | Ctrl+K, **Look at Selection**, or the right-click list |
 
 The **Mouse controls** button in the navigation bar switches to the layout of Onshape /
-SolidWorks, Fusion, Blender or a trackpad.
+SolidWorks, Shift orbit (middle-drag pans, Shift+middle-drag orbits), Blender or
+a trackpad.
 
 Seven keys jump to a named view: `Shift+1` is the home view, then `Shift+2` Top, `Shift+3`
 Bottom, `Shift+4` Front, `Shift+5` Back, `Shift+6` Left and `Shift+7` Right. Clicking a face of

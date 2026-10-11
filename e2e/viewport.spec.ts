@@ -124,12 +124,12 @@ test('Extrudo mouse: middle-drag orbits, right-drag pans, left-drag does neither
   await expect(viewport).toHaveAttribute('data-camera-target', target);
 });
 
-test('Fusion mouse: middle-drag pans, Shift+middle-drag orbits, the wheel zooms, F6 fits', async ({
+test('Shift-orbit mouse: middle-drag pans, Shift+middle-drag orbits, the wheel zooms, F6 fits', async ({
   page,
 }) => {
   const viewport = await open(page);
   await page.getByRole('button', { name: 'Mouse controls' }).click();
-  await page.getByRole('menuitemradio', { name: 'Fusion' }).click();
+  await page.getByRole('menuitemradio', { name: 'Shift orbit' }).click();
   await page.keyboard.press('Escape');
   const { x, y } = await centre(viewport);
   const direction = await attr(viewport, 'data-camera-direction');

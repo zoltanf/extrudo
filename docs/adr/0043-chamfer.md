@@ -112,7 +112,7 @@ native harness on the pinned image):
    Second distance (two distances), Angle (distance and angle) and Flip;
    set n + 1 shows once set n has edges. No on-canvas handles yet (as for
    fillet). The tool is the Modify group's Chamfer tile; **it has no
-   default key** (Fusion has none either, and F, C and H are taken); it is
+   default key** (mainstream CAD tools have none either, and F, C and H are taken); it is
    in Ctrl+K and the toolbox like every command.
 8. **Memory:** `memory.test.ts` runs 1000 rounds of all three modes, a
    failed chamfer with its probing diagnosis, a mixed-settings refusal and

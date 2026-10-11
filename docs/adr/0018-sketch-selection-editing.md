@@ -42,7 +42,7 @@ a properties panel. The solver could drag one point at a time.
    Left to right is a **window** (solid): what lies wholly inside;
    right to left is **crossing** (dashed): what it touches. `boxSelect`
    tests curve polylines against the quadrilateral. Points count, so a
-   window around a line takes its ends too (as Fusion does); Shift adds.
+   window around a line takes its ends too (as is usual in CAD); Shift adds.
 3. **Dragging moves the whole selection if the pressed entity is selected,
    else that entity alone,** as the points that make them up (a line by
    both ends, a circle by its center: moving, not resizing). The solver's
@@ -83,7 +83,7 @@ a properties panel. The solver could drag one point at a time.
   frame and keep one source of truth.
 - **Box tests in screen space.** The host has no projection; mapping four
   corners to the plane keeps `boxSelect` pure and testable in sketch mm.
-- **Dragging a circle's edge to resize it** (Fusion does). A drag on a
+- **Dragging a circle's edge to resize it** (other CAD tools do). A drag on a
   curve moves it, one rule for every curve; the radius is in the panel.
   *Reversed 2026-09-27, see the amendment:* a circle with a fixed centre
   couldn't be resized by dragging at all.
@@ -109,7 +109,7 @@ a properties panel. The solver could drag one point at a time.
 A user fixed a circle's centre, left its radius free ("1 DOF left") and
 couldn't drag it bigger: the rim drag tried to move the centre. Now a drag
 that starts on a circle's rim, with nothing else selected, **resizes** it
-when its radius can change, as in Fusion; a drag on the centre point moves
+when its radius can change, as is usual in CAD; a drag on the centre point moves
 it. `SketchSolver.beginRadiusDrag(circle)` adds a temporary
 `circle_radius` constraint on a drag parameter, and `dragRadius(r)` pulls
 toward `r` (the rest of the component follows). The host sets `r` to the

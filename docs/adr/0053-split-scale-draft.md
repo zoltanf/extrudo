@@ -180,14 +180,14 @@ fixing in the new features.
   edge is rounded is refused ("draft before rounding the edges"). Drafting the
   fillet with it would need a fillet rebuilt after the draft.
 - **Split by a curved face** (a cylinder's wall extended) isn't offered: only
-  planes and flat faces. Fusion also splits by bodies.
+  planes and flat faces. Other CAD tools also split by bodies.
 - **A cylinder scaled only along its axis** comes out as a B-spline; planes and
   lines are restored, cylinders and cones not (`ShapeAnalysis_CanonicalRecognition`
   could, with new p-curves).
 - **Volumes of B-spline bodies are about 0.8 % off** in Print Info and Measure:
   `properties()` uses OCCT's default integration. Passing a tolerance makes it
   exact at some cost; worth measuring.
-- **Draft per face**: one angle and one neutral plane for all faces; Fusion's
+- **Draft per face**: one angle and one neutral plane for all faces; the usual
   parting-line draft and two-sided draft aren't there.
 - **Scale with a handle** in the view: the factor has no manipulator (the
   framework's handles are lengths and angles).

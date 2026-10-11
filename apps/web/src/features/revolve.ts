@@ -203,7 +203,7 @@ function isSketchLine(doc: ExtrudoDocument, ref: GeomRef): boolean {
  * `operation.ts`, ADR-0051): profiles make a new body; faces of a body, and
  * profiles of a sketch on a body's face, join it when side 1 turns out of the
  * body, cut it when it turns into the body (a face turned about one of its
- * edges grows or carves the body, as Fusion does), and join when the turn
+ * edges grows or carves the body), and join when the turn
  * goes both ways or is a whole one. The framework applies it only while the
  * user hasn't picked an operation.
  */

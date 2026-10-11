@@ -53,7 +53,7 @@ distances from -30 to 30 mm, none of which trapped):
   under 4 degrees, OCCT's own tangent test): pulling the top of a block whose
   top edges are filleted moves the top, the four fillets and the four sides,
   by the same distance. Offsetting one face of a fully rounded box grows the
-  whole box. OCCT does this by itself; it is Fusion's "tangent chain".
+  whole box. OCCT does this by itself; it is the usual "tangent chain".
 - **OCCT "succeeds" with junk**, as for shells: a cylinder's wall pushed in by
   more than its radius gives a valid solid of radius -2, a sphere or torus
   pushed too far a solid of negative volume, and cones and tori go through
@@ -229,14 +229,14 @@ give it, but `replayFeatures` only knows tools, not faces). See the open items.
   keystroke of a preview (the recompute engine does survive a crash, and marks
   the feature, but that is the last line of defence, not a design).
 - **A different distance per face** (`SetOffsetOnFace` allows it). The
-  requirement and Fusion have one distance; a second field per face set would
+  requirement and other CAD tools have one distance; a second field per face set would
   need sets like fillet's. A later addition.
 - **Press Pull as a feature type of its own**, storing which feature it was.
   The document should say what was built: an Offset Face, a Fillet, an Extrude,
   each with its own editable dialog and timeline chip.
 - **Press Pull with nothing selected as a picking mode** (click a face or edge
   to start). It would need a second mode on top of the selection tools;
-  select-then-Q is the rule Fusion users know, and the toast tells.
+  select-then-Q is the rule CAD users know, and the toast tells.
 - **One rule per dialog for the proposal** (what there was). They had drifted: a
   revolved face always joined, a profile on a face only followed extrude.
 
@@ -250,7 +250,7 @@ give it, but `replayFeatures` only knows tools, not faces). See the open items.
   local offsets) is the next step if users meet it.
 - **Patterns of faces** (FR-FT-11): see 8. Replaying an offset at each instance
   needs faces mapped through the pattern's names.
-- **A distance per face or per set**, and Fusion's "offset face" options
+- **A distance per face or per set**, and the usual "offset face" options
   (a tangent chain switch, extend or keep the neighbours' shape: here every
   chain moves together and neighbours always extend).
 - **Solids with a sealed void** (a body hollowed closed) can't be offset:

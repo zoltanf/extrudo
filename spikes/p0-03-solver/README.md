@@ -24,8 +24,8 @@ screenshots in `results/browser-*.png`.
   - `chained`: each cell is dimensioned from the previous one, so the whole
     sketch is one coupled system (the worst case; a long closed outline such as
     a gear profile behaves like this too).
-  - `coincident` joins curves with coincident constraints (how FreeCAD and
-    Fusion store sketches); `shared` makes joined curves reference the same
+  - `coincident` joins curves with coincident constraints (how FreeCAD
+    stores sketches); `shared` makes joined curves reference the same
     point (what an adapter could do before solving).
 - Per configuration (`src/bench-core.ts`): build, first solve from a perturbed
   start, DOF, a re-solve with nothing changed, a driving-dimension change, drag

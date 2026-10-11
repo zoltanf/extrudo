@@ -14,7 +14,7 @@
 P1-05 made a fit-point spline `{ points }`, its curve the cubic B-spline through
 them (`fitSpline` in `packages/core/src/sketch/curves.ts`). FR-SK-03 also asks
 for control-point splines (the points are the B-spline's poles, the curve
-follows them without passing through them) and conics (Fusion-style: a start
+follows them without passing through them) and conics (as in mainstream CAD: a start
 point, an end point, a shoulder point where the end tangents meet, and a
 fullness `rho`). Every part of the pipeline handles fit splines through one
 shape: a `BSpline` (degree, poles, clamped knots) computed from the points.

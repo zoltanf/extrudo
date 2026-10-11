@@ -27,8 +27,8 @@ derived from their bounding curve IDs. Our sketch model makes this harder
 than a shared-vertex model: curves never share points, a coincident
 constraint joins them, so where ends meet is only known by position.
 Users also draw overlapping shapes (two rectangles, two circles) and
-expect every piece of the plane between the curves to be a region, as in
-Fusion.
+expect every piece of the plane between the curves to be a region, as is
+usual in CAD.
 
 ## Decision
 
@@ -49,7 +49,7 @@ Fusion.
    connected group of curves has one clockwise cycle, its outline, which
    becomes a hole of the smallest region of another group containing it.
    A region inside another is both a hole of the outer and a region of its
-   own (Fusion does the same; the extrude picks which).
+   own (other CAD tools do the same; the extrude picks which).
 4. **Exact areas, fine polygons.** Areas come from Green's theorem per
    piece (exact for lines and arcs). Loops also carry polygons, sampled so
    a chord is within 1 µm of its arc (at least 96 per circle, at most

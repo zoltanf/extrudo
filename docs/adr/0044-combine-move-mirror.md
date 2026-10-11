@@ -159,7 +159,7 @@ features for both.
   side does and tests better.
 - **Pivot for `free` turns at the world origin, or a stored pivot.** The
   origin makes a turn fling a distant body around; a stored pivot is three
-  more expressions nobody edits. The box centre is where Fusion's gizmo
+  more expressions nobody edits. The box centre is where the usual CAD gizmo
   starts and needs nothing stored.
 - **Three rings in `rotate` mode** (one per world axis, as in `free`): they
   would be the same three fields again. `rotate` is for an axis somewhere

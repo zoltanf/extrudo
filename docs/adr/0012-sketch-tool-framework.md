@@ -105,7 +105,7 @@ here, with one tool to prove them.
   arcs will be projected as polylines.
 - **Committing a chain as one command when it ends**: an undo inside the
   sketch would then remove the whole chain, and a crash or reload mid-chain
-  would lose it. One command per segment matches Fusion.
+  would lose it. One command per segment is usual in CAD.
 - **Committing every inferred constraint and letting P1-08 show conflicts**:
   inference would routinely over-constrain (closing loops, alignments with
   already-placed points) and turn sketches red for no reason the user

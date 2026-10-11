@@ -5,9 +5,10 @@ Product name: **Extrudo** (decided 2026-09-25). Files use the `.extrudo` extensi
 ## 1. Vision
 
 A fast, friendly, open-source **parametric CAD app in the browser**, built for the
-3D-printing community. It borrows the proven *workflow* of Fusion 360 (sketch →
-feature → timeline, parameters everywhere) and puts a playful, modern interface
-on it. It aims to be easier than FreeCAD and quicker than Fusion 360.
+3D-printing community. It borrows the proven *workflow* of mainstream parametric
+CAD (sketch → feature → timeline, parameters everywhere) and puts a playful,
+modern interface on it. It aims to be easier than FreeCAD and quicker than
+established desktop CAD.
 
 It is one codebase that runs as a website (installable PWA, works offline) and
 later as an Electron desktop app for Linux, Windows and macOS.
@@ -17,7 +18,7 @@ later as an Electron desktop app for Linux, Windows and macOS.
 | Persona | Needs |
 |---|---|
 | **Hobby maker** (primary) | Model brackets, boxes, clips, enclosures and replacement parts in minutes. Export an STL or 3MF and slice it. Has never used CAD, or gave up on FreeCAD. |
-| **Fusion 360 refugee** | Wants the same mental model and shortcuts without a license, cloud lock-in or slow startup. |
+| **Desktop CAD refugee** | Wants the same mental model and shortcuts without a license, cloud lock-in or slow startup. |
 | **Parametric designer** | Publishes customizable models (MakerWorld / Printables style), so needs parameters, variants and eventually scripting. |
 | **Tinkerer / programmer** (later) | Wants OpenSCAD-style code-driven parts, mixed with interactive modeling. |
 
@@ -35,9 +36,9 @@ later as an Electron desktop app for Linux, Windows and macOS.
    Recompute is incremental. Cold start under 3 s once cached.
 5. **Playful but precise.** Friendly icons, motion and colour, with exact B-rep
    geometry (true circles and fillets, not triangle soup) underneath.
-6. **Familiar.** Layout, terminology and default shortcuts follow Fusion 360 so
-   its users feel at home. We copy the concepts only: no Autodesk code, icons,
-   assets or trademarks.
+6. **Familiar.** Layout, terminology and default shortcuts follow mainstream
+   desktop CAD so its users feel at home. We copy the concepts only: no
+   third-party code, icons, assets or trademarks.
 7. **Local-first and open.** Projects live on the user's machine. A documented,
    open file format. STEP for interchange. No account required.
 
@@ -66,7 +67,7 @@ for the phase's release, **S** = should, **C** = could.
 |---|---|---|---|
 | FR-PRJ-01 | Home screen lists projects with thumbnail, name and modified date. Actions: new, open, rename, duplicate, delete (to an in-app trash). | M | 0 |
 | FR-PRJ-02 | Projects are stored locally in the browser (OPFS + IndexedDB) behind a storage interface that has a native-filesystem implementation for desktop. | M | 0 |
-| FR-PRJ-03 | Autosave with a visible save state. Explicit "Save version" with a description keeps a version history like Fusion. Restore any version. | M / S | 0 / 2 |
+| FR-PRJ-03 | Autosave with a visible save state. Explicit "Save version" with a description keeps a version history, as is usual in CAD. Restore any version. | M / S | 0 / 2 |
 | FR-PRJ-04 | Export and import a whole project as a single file (`.extrudo`, a zip) for backup and sharing. | M | 0 |
 | FR-PRJ-05 | Ask the browser for persistent storage and warn if it is denied. | S | 0 |
 | FR-PRJ-06 | Optionally link a real folder on disk (File System Access API, Chromium only). | C | 4 |
@@ -143,7 +144,7 @@ for the phase's release, **S** = should, **C** = could.
 
 | ID | Requirement | Pri | Phase |
 |---|---|---|---|
-| FR-VP-01 | Orbit, pan and zoom with the Extrudo mouse mapping by default (middle-drag orbits, right-drag pans: Onshape/SolidWorks with those buttons swapped; 2026-09-28, after Onshape's on 2026-09-27 and Fusion's before). Presets for Onshape/SolidWorks, Fusion, Blender and trackpad. | M | 0 |
+| FR-VP-01 | Orbit, pan and zoom with the Extrudo mouse mapping by default (middle-drag orbits, right-drag pans: Onshape/SolidWorks with those buttons swapped; 2026-09-28, after Onshape's on 2026-09-27 and Shift orbit's before). Presets for Onshape/SolidWorks, Shift orbit (middle-drag pans, Shift+middle-drag orbits), Blender and trackpad. | M | 0 |
 | FR-VP-02 | ViewCube with click-to-orient (faces, edges, corners), home, and rotate arrows. | M | 0 |
 | FR-VP-03 | Perspective and orthographic. Visual styles: shaded, shaded with edges, wireframe, hidden edges. | M | 0 |
 | FR-VP-04 | Infinite adaptive grid and origin planes/axes. | M | 0 |
@@ -189,9 +190,9 @@ for the phase's release, **S** = should, **C** = could.
 
 | ID | Requirement | Pri | Phase |
 |---|---|---|---|
-| FR-UX-01 | Fusion-like layout. See `04-ui-spec.md`. | M | 0 |
+| FR-UX-01 | Familiar CAD layout. See `04-ui-spec.md`. | M | 0 |
 | FR-UX-02 | Light and dark theme. A consistent custom icon set with a colour per tool category. | M | 0 |
-| FR-UX-03 | Command search ("S" toolbox and Ctrl+K palette), a right-click marking menu, and Fusion-compatible default shortcuts that the user can remap. | M | 1–2 |
+| FR-UX-03 | Command search ("S" toolbox and Ctrl+K palette), a right-click marking menu, and default shortcuts that follow mainstream CAD tools and that the user can remap. | M | 1–2 |
 | FR-UX-04 | Tooltips with a short description and a small animated demo per tool. | S | 3 |
 | FR-UX-05 | First-run guided tutorial ("make your first box") and a starter template gallery. | S | 3 |
 | FR-UX-06 | Friendly error messages. A failed fillet says "radius too large for edge X (max ≈ 2.4 mm)", not a kernel error code. | M | 3 |

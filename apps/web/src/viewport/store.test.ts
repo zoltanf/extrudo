@@ -178,6 +178,14 @@ describe('viewport store', () => {
     expect(store.getState().sketchConstraints).toBe(true);
     expect(store.getState().origin).toEqual({ ...DEFAULT_SETTINGS.origin, z: false });
   });
+
+  it('falls back to the default navigation preset when the stored one is unknown', () => {
+    const { store } = setup({ stored: { viewport: { preset: 'no-such-preset', grid: false } } });
+    expect(store.getState().preset).toBe(DEFAULT_SETTINGS.preset);
+    expect(store.getState().grid).toBe(false);
+    const kept = setup({ stored: { viewport: { preset: 'shift-orbit' } } });
+    expect(kept.store.getState().preset).toBe('shift-orbit');
+  });
 });
 
 describe('selection filter', () => {

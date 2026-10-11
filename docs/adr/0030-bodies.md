@@ -177,7 +177,7 @@ name:colour-or-`default`:opacity per drawn body) and `data-silhouettes`
 - Names are stable and part of the document; `doc.bodies` grows by one
   entry per body ever made (a few bytes each). A long-gone body's name
   stays taken, so a new body after Body1 was removed is Body2, not Body1
-  (Fusion reuses; we prefer never to show two different bodies under one
+  (other CAD tools reuse; we prefer never to show two different bodies under one
   name in one session's history).
 - Amending is a new, narrow history operation: only body naming uses it.
   A future automatic follow-up of the same kind (default appearance of an
@@ -218,7 +218,7 @@ name:colour-or-`default`:opacity per drawn body) and `data-silhouettes`
 - **Deleting a body by writing to the document** (a `hidden: true` or a
   deleted flag in `doc.bodies`). The body would still exist for later
   features (a through-all would still go through it); a Remove takes it
-  out of the model at a point in the timeline, like Fusion's.
+  out of the model at a point in the timeline, like other CAD tools'.
 - **Silhouettes from mesh edges** (edges between a front- and a
   back-facing triangle). Needs adjacency across duplicated seam nodes and
   zig-zags along a sphere's outline; the contour line needs neither.

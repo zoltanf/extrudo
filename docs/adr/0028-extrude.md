@@ -139,7 +139,7 @@ can even pass `BRepCheck`. `taperHolds` therefore also checks that every
 straight end-cap edge runs the same way as its profile edge and that no
 cone has its tip before the end; failing either is "The taper is too steep
 for this distance: the sides meet before the end." (Conservative: an edge
-that would merely vanish, which Fusion allows, counts as too steep.)
+that would merely vanish, which some CAD tools allow, counts as too steep.)
 
 A taper grows away from the sketch plane on both sides, so a tapered
 **symmetric or two-sided** extrude is two prisms from the plane, fused
@@ -334,7 +334,7 @@ kernel (one body, 40 × 80 × 60 mm, 10 faces).
   an edited press-pull joining a face pushed into its body (a join that
   changes nothing).
 - **Writing `doc.bodies` entries on OK** (a new body named at creation,
-  as Fusion does). The number of bodies is known only after the kernel
+  as other CAD tools do). The number of bodies is known only after the kernel
   runs (a new body per separate solid), and a join or a cut can remove
   them again; which body keeps which name through edits is P2-08's
   question. Derived names cost nothing and keep documents clean.
@@ -359,13 +359,13 @@ kernel (one body, 40 × 80 × 60 mm, 10 faces).
 
 ## Open
 
-- ~~To-object on curved faces and bodies (Fusion's "to object" on a body),
+- ~~To-object on curved faces and bodies (the usual "to object" on a body),
   and an offset from the object.~~ Done in P4-12 (the amendment at the end).
 - Taper on ellipse and spline sides.
 - ~~A cut that splits a body stays one body with several solids (P2-08
   decides whether it becomes several).~~ Done in P2-08: one body per solid
   (`splitSolids`, ADR-0030).
-- ~~Symmetric "half length" measurement (Fusion offers both); here
+- ~~Symmetric "half length" measurement (CAD tools usually offer both); here
   `distance` is the whole length.~~ Done 2026-10-06 as `symmetricMeasure`
   (the amendment at the end; `revolve`'s symmetric angle takes it too).
 - ~~Body metadata (`doc.bodies` names and colours) for new bodies: P2-08.
@@ -436,8 +436,7 @@ The Open list's first item. Decided before the code:
 Rejected: a **half-space solid** from the extended face
 (`BRepPrimAPI_MakeHalfSpace`): infinite solids in booleans are fragile, and
 the splitter needs none. **Keeping the old box trim for every face**: a box
-can only stand for a plane. **Fusion-style "extend the face only when
-asked"**: a curved face is always extended here, since the surface beyond
+can only stand for a plane. **"Extend the face only when asked", as other CAD tools do**: a curved face is always extended here, since the surface beyond
 the face is where most sweeps meet it (a profile wider than a fillet's
 round).
 
