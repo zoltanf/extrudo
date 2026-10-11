@@ -43,7 +43,7 @@ import type {
 } from './decode/sketch-geometry';
 import type { SketchText } from './decode/text';
 import { type EdgeShape, edgeShape } from './edge-shape';
-import { type CopyContext, mirror, rectangularPattern } from './map-more';
+import { type CopyContext, mirror, rectangularPattern, sweep } from './map-more';
 import type {
   F3dCircularPattern,
   F3dDesign,
@@ -273,7 +273,7 @@ export function f3dToDesign(
   // whatever the flag reading says.
   const profileCurves = new Map<number, Set<string>>();
   for (const f of f3d.features) {
-    if (f.type !== 'extrude') continue;
+    if (f.type !== 'extrude' && f.type !== 'sweep') continue;
     for (const operand of f.profiles) {
       const set = profileCurves.get(operand.sketch) ?? new Set<string>();
       for (const r of operand.regions ?? [])
@@ -427,6 +427,14 @@ export function f3dToDesign(
         const reason = circularPattern(d, feature, replayable, sketches, expressionOf, report);
         if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
         else report.imported.push(feature.name);
+      } else if (feature.type === 'sweep') {
+        const made = sweep(d, feature, sketches, expressionOf, participants, report);
+        if (typeof made === 'string')
+          report.skipped.push({ name: feature.name, kind: feature.kind, reason: made });
+        else {
+          replayable.set(feature.id, { id: made.id, name: feature.name });
+          report.imported.push(feature.name);
+        }
       } else if (feature.type === 'mirror' || feature.type === 'rectangular-pattern') {
         const context: CopyContext = {
           made: replayable,
@@ -1071,7 +1079,7 @@ function regionCurves(entry: SketchEntry, profiles: GeomRef[]): string[] {
 }
 
 /** The Extrudo profiles a feature's profile operands select, and the sketch they are in. */
-function selectProfiles(
+export function selectProfiles(
   operands: ProfileOperand[],
   sketchOf: (operand: ProfileOperand) => SketchEntry | string,
   note: (text: string) => void = () => {},

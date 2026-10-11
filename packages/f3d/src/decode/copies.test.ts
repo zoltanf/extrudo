@@ -1,7 +1,7 @@
 /**
  * Mirror and pattern operands on hand-built records: what a mirror or
  * pattern copies (features, bodies or faces), a mirror's plane, a pattern's
- * directions turned the way their group points, and its counts.
+ * directions turned the way their group points; a sweep's operation and path.
  */
 import { describe, expect, it } from 'vitest';
 import { Reader } from '../bytes';
@@ -9,10 +9,12 @@ import type { Segment } from '../segment';
 import { BODY } from './body';
 import { readCopied, readDirections, readMirrorPlane } from './copies';
 import { EDGE_OPERAND, OPERAND_GROUP } from './edges';
+import { SKETCH_PROFILE_OPERAND } from './extrude';
 import { HOLE_PLACEMENT, MODEL_PLANE } from './hole';
 import { BODY_LINK, BODY_OPERAND, RECORD_REF } from './pattern';
-import { GEOMETRY_OPERAND, MODEL_LINE } from './revolve';
+import { GEOMETRY_OPERAND, MODEL_LINE, SKETCH_CURVE_REF } from './revolve';
 import type { Scope } from './scope';
+import { readPaths, readSweepOperation } from './sweep';
 
 const u32 = (v: number) => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff];
 const u64 = (v: number) => [...u32(v), 0, 0, 0, 0];
@@ -96,5 +98,32 @@ describe('copying features', () => {
       [-0, -0, -2.075],
       [1, 0, 0],
     ]);
+  });
+
+  it("reads a sweep's operation and its path of sketch curves, apart from its profile", () => {
+    const { seg, inside, scope } = fixture({
+      1: { guid: OPERAND_GROUP, refs: [2] },
+      2: { guid: SKETCH_PROFILE_OPERAND },
+      3: { guid: OPERAND_GROUP, refs: [4, 5] },
+      4: { guid: GEOMETRY_OPERAND, refs: [6] },
+      5: { guid: GEOMETRY_OPERAND, refs: [7] },
+      6: { guid: SKETCH_CURVE_REF, bytes: [0, 0, ...u64(0), ...u64(1038), ...u64(229)] },
+      7: { guid: SKETCH_CURVE_REF, bytes: [0, 0, ...u64(0), ...u64(1038), ...u64(231)] },
+    });
+    expect(readPaths(seg, scope([1, 3]), inside)).toEqual({
+      paths: [
+        [
+          { sketch: 1038, tag: 229n },
+          { sketch: 1038, tag: 231n },
+        ],
+      ],
+      edges: false,
+    });
+    const head = [0, 1, ...u32(0), ...u32(4), 1, 0, 0, 1, 1, 1];
+    const bulk = new Uint8Array(head);
+    const record = { bulk } as unknown as Segment;
+    expect(readSweepOperation(record, { id: 1, start: 0, end: bulk.length } as Scope)).toBe(
+      'new-body',
+    );
   });
 });

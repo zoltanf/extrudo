@@ -78,6 +78,7 @@ import {
   sketchSpline,
   type Vec3,
 } from './decode/sketch-geometry';
+import { type CurveRef, readPaths, readSweepOperation } from './decode/sweep';
 import {
   boxSize,
   oldTextBoxes,
@@ -221,6 +222,18 @@ export interface F3dRectangularPattern extends FeatureBase, CopiedObjects {
   counts: ParameterValue[];
 }
 
+export interface F3dSweep extends FeatureBase {
+  type: 'sweep';
+  operation: BodyOperation;
+  profiles: ProfileOperand[];
+  /** Per path (a second one is a guide rail), the sketch curves it runs along. */
+  paths: CurveRef[][];
+  /** A path names a body edge (or the profile is a face). */
+  pathEdges: boolean;
+  /** The bodies it joins, cuts or intersects (body records); empty: none named. */
+  participants: number[];
+}
+
 export interface F3dOther extends FeatureBase {
   type: 'other';
 }
@@ -235,6 +248,7 @@ export type F3dFeature =
   | F3dOffsetFaces
   | F3dMirror
   | F3dRectangularPattern
+  | F3dSweep
   | F3dOther;
 
 /** A body of the design: its number, whether it is shown, the feature that made it. */
@@ -621,6 +635,34 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         ...readCopied(seg, scope, inside),
         directions: tryDecode(`directions #${id}`, () => readDirections(seg, scope, inside)) ?? [],
         counts: tryDecode(`counts #${id}`, () => readCounts(seg, scope, inside)) ?? [],
+      });
+    } else if (FEATURE_TYPES[type.guid] === 'Sweep') {
+      const operation = tryDecode(`sweep #${id}`, () => readSweepOperation(seg, scope));
+      if (!operation) {
+        features.push({ type: 'other', ...base });
+        continue;
+      }
+      const inside = (ref: number) => {
+        const f = seg.frame(ref);
+        return refsIn(seg, f.start, f.end);
+      };
+      const profiles: ProfileOperand[] = [];
+      for (const group of scope.refs)
+        if (seg.typeOf(group)?.guid === OPERAND_GROUP)
+          for (const ref of inside(group))
+            if (seg.typeOf(ref)?.guid === SKETCH_PROFILE_OPERAND) {
+              const p = tryDecode(`profile #${ref}`, () => readProfileOperand(seg, ref));
+              if (p) profiles.push(p);
+            }
+      const { paths, edges } = readPaths(seg, scope, inside);
+      features.push({
+        type: 'sweep',
+        ...base,
+        operation,
+        profiles,
+        paths,
+        pathEdges: edges,
+        participants: participantsOf(seg, scope),
       });
     } else if (FEATURE_TYPES[type.guid] === 'Fillet' || FEATURE_TYPES[type.guid] === 'Chamfer') {
       const kind = FEATURE_TYPES[type.guid] === 'Fillet' ? 'fillet' : 'chamfer';

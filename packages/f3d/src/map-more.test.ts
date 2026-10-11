@@ -241,4 +241,105 @@ describe('f3dToDesign: copying features', () => {
       reason: 'it copies faces (only features and bodies are imported)',
     });
   });
+
+  it('sweeps a profile along a line of another sketch', async () => {
+    const profile = circle(10, 101n, 0.1);
+    // A sketch on XZ: (u, v) → (u, 0, v); its line runs 1 cm up Z.
+    const frame = [1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1];
+    const f3d: F3dDesign = {
+      parameters: [],
+      userParameters: [],
+      features: [
+        sketch(1, 5, 'Sketch1', [profile]),
+        {
+          type: 'sketch',
+          id: 2,
+          kind: 'Sketch',
+          name: 'Sketch2',
+          suppressed: false,
+          parameters: [],
+          sketch: {
+            id: 6,
+            frame,
+            points: [
+              { id: 21, at: [0, 0, 0], incidence: 0 },
+              { id: 22, at: [0, 1, 0], incidence: 0 },
+            ],
+            lines: [
+              {
+                id: 20,
+                tag: 201n,
+                start: [0, 0, 0],
+                end: [0, 1, 0],
+                startPoint: 21,
+                endPoint: 22,
+                construction: false,
+              },
+            ],
+            circulars: [],
+            splines: [],
+            texts: [],
+          },
+        },
+        {
+          ...base,
+          type: 'sweep',
+          id: 3,
+          kind: 'Sweep',
+          name: 'Sweep1',
+          parameters: [
+            parameter({ name: 'd1', kind: 'AlongDistance', unit: '', value: 1 }),
+            parameter({ name: 'd2', kind: 'AgainstDistance', unit: '', value: 0 }),
+            parameter({ name: 'd3', kind: 'TaperAngle', unit: 'deg', value: 0 }),
+          ],
+          operation: 'new-body',
+          profiles: [
+            {
+              id: 30,
+              sketch: 5,
+              regions: [
+                { outer: [[101n]], inner: [], outerPieces: whole([[101n]]), innerPieces: [] },
+              ],
+            },
+          ],
+          paths: [[{ sketch: 6, tag: 201n }]],
+          pathEdges: false,
+          participants: [],
+        },
+      ],
+      bodies: [],
+      problems: [],
+    };
+    const { report } = f3dToDesign(f3d, 'Rod');
+    expect(report.imported).toContain('Sweep1');
+    expect(await volumes(f3d)).toEqual([expect.closeTo(Math.PI * 10, 2)]);
+  });
+
+  it('leaves out a sweep along part of its path, or with a taper', () => {
+    const f3d = washerWithHole();
+    const sweep = (name: string, along: number, taper: number): F3dFeature => ({
+      ...base,
+      type: 'sweep',
+      id: 9,
+      kind: 'Sweep',
+      name,
+      parameters: [
+        parameter({ name: 'd1', kind: 'AlongDistance', unit: '', value: along }),
+        parameter({ name: 'd3', kind: 'TaperAngle', unit: 'deg', value: taper }),
+      ],
+      operation: 'new-body',
+      profiles: [{ id: 30, sketch: 6, regions: [] }],
+      paths: [[{ sketch: 5, tag: 101n }]],
+      pathEdges: false,
+      participants: [],
+    });
+    f3d.features.push(sweep('Sweep1', 0.5, 0), sweep('Sweep2', 1, 0.1));
+    const { report } = f3dToDesign(f3d, 'Washer');
+    expect(report.skipped).toEqual(
+      expect.arrayContaining([
+        { name: 'Sweep1', kind: 'Sweep', reason: 'it follows only part of its path' },
+        { name: 'Sweep2', kind: 'Sweep', reason: 'it tapers (Extrudo sweeps scale instead)' },
+      ]),
+    );
+  });
 });

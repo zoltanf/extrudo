@@ -1,7 +1,7 @@
 /**
  * Mapping of the features added after the first import (ADR-0083's
- * amendment of 2026-10-11): mirror and rectangular pattern. Each returns why
- * it was left out, or nothing when it became an Extrudo feature.
+ * amendment of 2026-10-11): mirror, rectangular pattern and sweep. Each
+ * returns why it was left out, or what it made.
  */
 import type { Design, GeomRef } from '@extrudo/api';
 import type { CopiedObjects } from './decode/copies';
@@ -9,8 +9,8 @@ import type { ModelPlane } from './decode/hole';
 import type { ParameterValue } from './decode/parameters';
 import type { RevolveAxis } from './decode/revolve';
 import type { Vec3 } from './decode/sketch-geometry';
-import { axisRef, type ImportReport, placeSketch, type SketchEntry } from './map';
-import type { F3dMirror, F3dRectangularPattern } from './model';
+import { axisRef, type ImportReport, placeSketch, type SketchEntry, selectProfiles } from './map';
+import type { F3dMirror, F3dRectangularPattern, F3dSweep } from './model';
 
 /** What the copying features need from the import so far. */
 export interface CopyContext {
@@ -139,4 +139,56 @@ export function rectangularPattern(
   if (!inputs.direction1) return 'its count was not found';
   d.rectangularPattern(inputs as Parameters<Design['rectangularPattern']>[0], { name: f.name });
   return undefined;
+}
+
+/**
+ * A sweep of sketch profiles along a chain of sketch curves. Extrudo sweeps
+ * the whole path, from its end nearer the profile; the file's fractions of
+ * the path (`AlongDistance` from the profile, `AgainstDistance` back from
+ * it) must cover the whole path one way.
+ */
+export function sweep(
+  d: Design,
+  f: F3dSweep,
+  sketches: Map<number, SketchEntry>,
+  expressionOf: (p: ParameterValue, negate?: boolean) => string,
+  participants: (records: number[]) => GeomRef[] | undefined,
+  report: ImportReport,
+): string | { id: string } {
+  if (f.profiles.length === 0) return 'its profile is a face, not a sketch profile';
+  if (f.pathEdges) return 'its path runs along body edges (only sketch curves are imported)';
+  if (f.paths.length !== 1)
+    return f.paths.length ? 'it follows a guide rail' : 'its path was not found';
+  const param = (kind: string) => f.parameters.find((p) => p.kind === kind)?.value ?? 0;
+  const along = param('AlongDistance');
+  const against = param('AgainstDistance');
+  if (Math.abs(along - 1) > 1e-9 && Math.abs(against - 1) > 1e-9)
+    return 'it follows only part of its path';
+  if (Math.abs(param('TaperAngle')) > 1e-12) return 'it tapers (Extrudo sweeps scale instead)';
+  const selected = selectProfiles(
+    f.profiles,
+    (operand) => sketches.get(operand.sketch) ?? 'its sketch was not imported',
+    (text) => report.notes.push(`${f.name}: ${text}`),
+  );
+  if (typeof selected === 'string') return selected;
+  const path: GeomRef[] = [];
+  for (const curve of f.paths[0] ?? []) {
+    const entry = sketches.get(curve.sketch);
+    if (!entry) return "its path's sketch was not imported";
+    const tag = String(curve.tag);
+    const ids = [...entry.tags].filter(([, t]) => String(t) === tag).map(([id]) => id);
+    if (ids.length === 0) return 'a curve of its path was not found in its sketch';
+    for (const id of ids) path.push({ kind: 'sketchEntity', id: `${entry.handle.id}/${id}` });
+  }
+  if (path.length === 0) return 'its path was not found';
+  const inputs: Record<string, unknown> = {
+    profiles: selected.profiles,
+    path,
+    operation: f.operation,
+  };
+  const twist = f.parameters.find((p) => p.kind === 'TwistAngle');
+  if (twist && Math.abs(twist.value) > 1e-12) inputs.twist = expressionOf(twist);
+  const bodies = f.operation === 'new-body' ? undefined : participants(f.participants);
+  if (bodies) inputs.bodies = bodies;
+  return { id: d.sweep(inputs as Parameters<Design['sweep']>[0], { name: f.name }).id };
 }

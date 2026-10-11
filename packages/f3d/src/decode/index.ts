@@ -27,6 +27,7 @@ export const FEATURE_TYPES: Record<string, string> = {
   'D087EFE5-2D28-42E6-BB45-61739E7D0204': 'OffsetFaces',
   'D1728651-3640-4CCF-8083-AF7703013978': 'Mirror',
   'AE12AD3F-BB81-4B59-9D34-A599E58E4BF6': 'RectangularPattern',
+  'FCBB1707-4450-46B3-9E65-0F61682EA8CA': 'Sweep',
 };
 
 const scopeDecoder: RecordDecoder<unknown> = { name: 'feature scope', decode: readScope };
