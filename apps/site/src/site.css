@@ -69,7 +69,9 @@ a {
   color: var(--x-link);
 }
 
+/* A code chip: its raised background takes the lighter text, wherever it sits (AA). */
 code {
+  color: var(--x-glow-muted);
   font-family: ui-monospace, "JetBrains Mono", monospace;
   font-size: 0.9em;
   padding: 0.05em 0.3em;
@@ -153,19 +155,28 @@ main,
   background: var(--x-accent);
 }
 
-nav {
+/* The header's nav; the pages' own link rows (.jump) are navs too. */
+.top nav {
   display: flex;
   align-items: center;
   gap: 20px;
 }
 
-nav a:not(.button) {
+.top nav a:not(.button) {
   color: var(--x-glow-muted);
   text-decoration: none;
 }
 
-nav a:not(.button):hover {
+.top nav a:not(.button):hover,
+.top nav a[aria-current="page"] {
   color: var(--x-ink);
+}
+
+.top nav a[aria-current="page"] {
+  text-decoration: underline;
+  text-decoration-color: var(--x-accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
 }
 
 .button {
@@ -257,23 +268,37 @@ h1 {
     radial-gradient(circle 5px at calc(100% - 5px) 50%, var(--x-sketch) 96%, transparent) no-repeat;
 }
 
-/* The desktop app's announcement, under the headline. */
-.soon {
+/* The desktop app's announcement under the headline: a link to /download/. The
+   border is solid now the app is out (it was a dashed sketch line while it was coming). */
+.announce-line {
+  margin: 18px 0 0;
+}
+
+.announce {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  margin: 18px 0 0;
   padding: 5px 14px 5px 5px;
   border-radius: 999px;
-  border: 1px dashed rgb(90 169 255 / 55%);
+  border: 1px solid rgb(90 169 255 / 55%);
   background: rgb(90 169 255 / 9%);
   color: var(--x-glow-muted);
   font-size: 0.92rem;
   line-height: 1.35;
   text-align: left;
+  text-decoration: none;
+  transition:
+    border-color 160ms,
+    background-color 160ms;
 }
 
-.soon b {
+.announce:hover {
+  border-color: var(--x-sketch);
+  background: rgb(90 169 255 / 16%);
+  color: var(--x-ink);
+}
+
+.announce b {
   flex: none;
   padding: 2px 9px;
   border-radius: 999px;
@@ -498,7 +523,7 @@ h1 {
   fill-opacity: 0.22;
 }
 
-/* The app's category colours, for the cards' icons and the timeline's chips. */
+/* The app's category colours, for the section icons, the link rows and the timeline's chips. */
 .cat-sketch {
   --cat: #7c9bff;
 }
@@ -521,6 +546,10 @@ h1 {
 
 .cat-open {
   --cat: #ff7eb6;
+}
+
+.cat-files {
+  --cat: #a590ff;
 }
 
 .cat-neutral {
@@ -578,6 +607,7 @@ h1 {
 
 h2 {
   font-size: clamp(1.6rem, 3.5vw, 2.2rem);
+  line-height: 1.25;
   letter-spacing: -0.02em;
   font-weight: 600;
   margin: 0 0 24px;
@@ -773,7 +803,8 @@ h2 {
 }
 
 .chip svg,
-.card-icon svg {
+.card-icon svg,
+.jump svg {
   fill: none;
   stroke: currentColor;
   stroke-width: 1.75;
@@ -797,7 +828,7 @@ h2 {
   box-shadow: 0 0 10px var(--x-accent);
 }
 
-/* The cards' icons: the app's own two-tone icons in its category colours. */
+/* The section icons: the app's own two-tone icons in their category colours. */
 .card-icon {
   display: grid;
   place-items: center;
@@ -853,12 +884,10 @@ h2 {
     transition: transform 140ms;
   }
 
-  html.js .cards li:not(.in),
   html.js .templates:not(.in) {
     opacity: 0;
   }
 
-  html.js .cards li.in,
   html.js .templates.in {
     animation: reveal 0.6s calc(var(--i, 0) * 70ms) cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
   }
@@ -881,11 +910,11 @@ h2 {
       border-color 0.2s;
   }
 
-  .card-icon {
+  .jump svg {
     transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 
-  .cards li:hover .card-icon {
+  .jump a:hover svg {
     transform: rotate(-7deg) scale(1.1);
   }
 }
@@ -985,62 +1014,42 @@ h2 {
   padding: 72px 0 24px;
 }
 
-.cards {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
-  gap: 16px;
-}
-
-.cards li {
-  position: relative;
-  padding: 22px;
-  border-radius: 16px;
-  background: linear-gradient(
-    155deg,
-    color-mix(in srgb, var(--cat) 11%, var(--x-panel)),
-    var(--x-panel) 60%
-  );
-  border: 1px solid var(--x-line);
-  transition:
-    transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    border-color 200ms,
-    box-shadow 200ms;
-}
-
-.cards li:hover {
-  transform: translateY(-5px);
-  border-color: color-mix(in srgb, var(--cat) 60%, var(--x-line));
-  box-shadow: 0 22px 44px -26px var(--cat);
-}
-
-.cards li:nth-child(2) {
-  --i: 1;
-}
-.cards li:nth-child(3) {
-  --i: 2;
-}
-.cards li:nth-child(4) {
-  --i: 3;
-}
-.cards li:nth-child(5) {
-  --i: 4;
-}
-.cards li:nth-child(6) {
-  --i: 5;
-}
-
-.cards h3 {
-  margin: 0 0 8px;
-  font-size: 1.1rem;
-  font-weight: 600;
-}
-
-.cards p {
+.features-lead {
+  max-width: 40em;
   margin: 0;
   color: var(--x-muted);
+}
+
+/* A row of links to the features page's sections, in their category colours. */
+.jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 24px 0;
+}
+
+.jump a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px 7px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--x-line);
+  background: var(--x-panel);
+  color: var(--x-ink);
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: border-color 200ms;
+}
+
+.jump a:hover {
+  border-color: color-mix(in srgb, var(--cat) 60%, var(--x-line));
+}
+
+.jump svg {
+  width: 20px;
+  height: 20px;
+  color: var(--cat);
 }
 
 .templates {
@@ -1060,7 +1069,7 @@ h2 {
     grid-template-columns: 1fr;
   }
 
-  nav a:not(.button) {
+  .top nav a:not(.button) {
     display: none;
   }
 
@@ -1078,4 +1087,429 @@ h2 {
 
 .muted {
   color: var(--x-muted);
+}
+
+/* ---- The features page (ADR-0057's amendment of 2026-10-11) ---------------------
+   Text on the body's glow (the top 1100 px) takes --x-glow-muted and --x-glow-link;
+   text on a card's panel takes --x-muted and --x-link. */
+.page-intro {
+  text-align: center;
+  padding: 48px 0 16px;
+}
+
+.page-intro .jump {
+  justify-content: center;
+  margin: 28px auto 0;
+  max-width: 54em;
+}
+
+/* The eyebrow sits on the brightest part of the glow here: the lighter blue keeps AA. */
+.page-intro .eyebrow {
+  color: var(--x-glow-link);
+}
+
+.latest-note {
+  margin: 20px 0 0;
+  color: var(--x-glow-muted);
+  font-size: 0.95rem;
+}
+
+.latest-note a,
+.more a,
+.page-end .guide-link {
+  color: var(--x-glow-link);
+}
+
+/* "Latest build": in the edge build, not yet in a release. */
+.tag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid rgb(90 169 255 / 35%);
+  background: rgb(90 169 255 / 14%);
+  color: var(--x-glow-link);
+  font:
+    600 0.68rem / 1.7 ui-monospace,
+    "JetBrains Mono",
+    monospace;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  vertical-align: 2px;
+}
+
+.latest-note .tag {
+  margin: 0 2px 0 0;
+}
+
+.topic {
+  padding: 56px 0 8px;
+  scroll-margin-top: 16px;
+}
+
+.topic-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.topic-head .card-icon {
+  flex: none;
+  margin: 2px 0 0;
+}
+
+.topic .topic-head h2 {
+  margin: 0 0 6px;
+}
+
+.topic-head p {
+  max-width: 46em;
+  margin: 0;
+  color: var(--x-glow-muted);
+}
+
+.points {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));
+  gap: 12px;
+}
+
+.points li {
+  padding: 18px 20px;
+  border-radius: 14px;
+  border: 1px solid var(--x-line);
+  background: linear-gradient(
+    155deg,
+    color-mix(in srgb, var(--cat) 6%, var(--x-panel)),
+    var(--x-panel) 60%
+  );
+}
+
+.points h3 {
+  margin: 0 0 6px;
+  font-size: 1.02rem;
+  font-weight: 600;
+}
+
+.points p {
+  margin: 0;
+  color: var(--x-muted);
+  font-size: 0.97rem;
+}
+
+.more {
+  margin: 16px 0 0;
+}
+
+/* The format matrix: a table that scrolls sideways inside its frame on a phone. */
+.matrix-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--x-line);
+  border-radius: 14px;
+  background: var(--x-panel);
+}
+
+.matrix-wrap:focus-visible {
+  outline: 2px solid var(--x-sketch);
+  outline-offset: 3px;
+}
+
+.matrix {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.matrix caption {
+  padding: 14px 18px 6px;
+  text-align: left;
+  color: var(--x-muted);
+  font-size: 0.9rem;
+}
+
+.matrix th,
+.matrix td {
+  padding: 12px 18px;
+  text-align: left;
+  vertical-align: top;
+  border-top: 1px solid var(--x-line);
+}
+
+.matrix thead th {
+  color: var(--x-muted);
+  font:
+    600 0.75rem / 1.2 ui-monospace,
+    "JetBrains Mono",
+    monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.matrix tbody th {
+  width: 22%;
+  font-weight: 600;
+}
+
+.matrix .ext {
+  display: block;
+  margin-top: 2px;
+  color: var(--x-muted);
+  font:
+    400 0.82rem / 1.4 ui-monospace,
+    "JetBrains Mono",
+    monospace;
+}
+
+.matrix td {
+  position: relative;
+  width: 39%;
+  padding-left: 48px;
+}
+
+.matrix .mark {
+  position: absolute;
+  left: 18px;
+  top: 13px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.matrix .yes .mark {
+  color: #3dd6a3;
+  background: rgb(61 214 163 / 14%);
+}
+
+.matrix .no .mark {
+  color: var(--x-muted);
+  background: var(--x-raised);
+}
+
+.matrix .tag {
+  margin-left: 2px;
+}
+
+.notes {
+  margin: 16px 0 0;
+  padding-left: 20px;
+  color: var(--x-muted);
+  font-size: 0.95rem;
+}
+
+.notes li + li {
+  margin-top: 4px;
+}
+
+.page-end {
+  padding: 80px 0 72px;
+  text-align: center;
+}
+
+.subpage .page-end h2 {
+  margin-bottom: 8px;
+}
+
+.page-end p {
+  margin: 0 0 8px;
+  color: var(--x-muted);
+}
+
+.page-end .actions {
+  margin: 24px 0 20px;
+}
+
+/* ---- The download page (ADR-0057's amendment of 2026-10-11) -------------------- */
+.platforms {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 16px;
+  align-items: start;
+  padding: 40px 0 8px;
+}
+
+.platforms .platform {
+  padding: 22px 24px 24px;
+  border-radius: 16px;
+  border: 1px solid var(--x-line);
+  border-top: 3px solid var(--cat);
+  background: linear-gradient(
+    170deg,
+    color-mix(in srgb, var(--cat) 6%, var(--x-panel)),
+    var(--x-panel) 40%
+  );
+  scroll-margin-top: 16px;
+}
+
+.platforms .platform h2 {
+  margin: 0 0 4px;
+}
+
+.platforms .platform h3 {
+  margin: 20px 0 6px;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.platforms .platform p,
+.platforms .platform li {
+  color: var(--x-muted);
+  font-size: 0.97rem;
+}
+
+.platforms .platform p {
+  margin: 0 0 8px;
+}
+
+.platforms .platform .needs {
+  color: var(--x-glow-muted);
+}
+
+.platforms .platform b {
+  color: var(--x-ink);
+  font-weight: 600;
+}
+
+.install-steps {
+  margin: 12px 0 0;
+  padding-left: 22px;
+}
+
+.platforms .install-steps li + li {
+  margin-top: 6px;
+}
+
+/* A command to copy: wraps rather than scrolls, so it needs no focus of its own. */
+.platforms .platform pre {
+  margin: 8px 0 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--x-line);
+  background: var(--x-bg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.platforms .platform pre code {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--x-ink);
+  font-size: 0.88rem;
+}
+
+.topic-text {
+  max-width: 46em;
+  margin: 0;
+  color: var(--x-muted);
+}
+
+/* ---- The landing page's FAQ: <details>, no script ---------------------------- */
+.faq {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 40px;
+  align-items: start;
+  padding: 24px 0 72px;
+}
+
+.faq .faq-text p {
+  color: var(--x-muted);
+}
+
+.faq-text a {
+  color: var(--x-link);
+}
+
+.faq-list {
+  display: grid;
+  gap: 10px;
+}
+
+.faq details {
+  border: 1px solid var(--x-line);
+  border-radius: 14px;
+  background: var(--x-panel);
+  transition: border-color 200ms;
+}
+
+.faq details[open] {
+  border-color: color-mix(in srgb, var(--x-sketch) 45%, var(--x-line));
+}
+
+.faq summary {
+  position: relative;
+  padding: 16px 52px 16px 20px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.faq summary::-webkit-details-marker {
+  display: none;
+}
+
+/* A plus that turns into a minus, drawn rather than typed. */
+.faq summary::before,
+.faq summary::after {
+  content: "";
+  position: absolute;
+  right: 22px;
+  top: 50%;
+  width: 14px;
+  height: 2px;
+  margin-top: -1px;
+  border-radius: 1px;
+  background: var(--x-sketch);
+}
+
+.faq summary::after {
+  transform: rotate(90deg);
+}
+
+.faq details[open] summary::after {
+  transform: rotate(0deg);
+}
+
+.faq summary:focus-visible {
+  outline: 2px solid var(--x-sketch);
+  outline-offset: 3px;
+  border-radius: 14px;
+}
+
+.faq .faq-list details p {
+  margin: 0;
+  padding: 0 20px 18px;
+  color: var(--x-muted);
+}
+
+.faq details a {
+  color: var(--x-link);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .faq summary::after {
+    transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+}
+
+@media (max-width: 760px) {
+  .faq {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .topic-head .card-icon {
+    display: none;
+  }
 }

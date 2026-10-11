@@ -125,6 +125,8 @@ test('the landing page leads to the app, shows the walkthrough and keeps to its 
     .poll(() => first.evaluate((el) => (el as unknown as { naturalWidth: number }).naturalWidth))
     .toBeGreaterThan(0);
   await expect(page.getByRole('heading', { name: 'What it does' })).toBeVisible();
+  // The features live on a page of their own (ADR-0057's amendment of 2026-10-11).
+  await expect(page.locator('[data-all-features]')).toHaveAttribute('href', '/features/');
   // The contact address, as a mailto and as text to copy (ADR-0057).
   await expect(page.getByRole('link', { name: 'hello@extrudo.org' })).toHaveAttribute(
     'href',
@@ -236,11 +238,11 @@ test('the steps are a plain list without JavaScript', async ({ browser }) => {
     const box = await shots.nth(n).boundingBox();
     expect(box?.height ?? 0).toBeGreaterThan(100);
   }
-  // The hero is the text alone (the toy needs a script), and the cards are all there.
+  // The hero is the text alone (the toy needs a script), and the templates show.
   await expect(heading(page)).toBeVisible();
   await expect(page.locator('[data-toy]')).toBeHidden();
-  await expect(page.locator('.cards li').first()).toBeVisible();
-  expect(await computed(page, '.cards li', 'opacity')).toBe('1');
+  await expect(page.locator('.templates')).toBeVisible();
+  expect(await computed(page, '.templates', 'opacity')).toBe('1');
   await context.close();
 });
 
@@ -346,7 +348,7 @@ test('the toy breathes until it is touched, and not under reduced motion', async
   await expect(width).toHaveValue('80');
 });
 
-test('the page has a Changelog link and says the desktop app is coming', async ({ page }) => {
+test('the page has a Changelog link and says the desktop app is available', async ({ page }) => {
   await page.goto(`${host.url}/`);
   const nav = page.getByRole('navigation', { name: 'Site' });
   await expect(nav.getByRole('link')).toHaveText([
@@ -356,17 +358,148 @@ test('the page has a Changelog link and says the desktop app is coming', async (
     'GitHub',
     'Open Extrudo',
   ]);
+  await expect(nav.getByRole('link', { name: 'Features' })).toHaveAttribute('href', '/features/');
   await expect(nav.getByRole('link', { name: 'Changelog' })).toHaveAttribute(
     'href',
     'https://github.com/zoltanf/extrudo/blob/main/docs/CHANGELOG.md',
   );
-  await expect(page.locator('.soon')).toContainText(
-    'Coming to a computer near you: a full offline app for Linux, macOS and Windows.',
-  );
-  await expect(page.locator('.soon b')).toHaveText('Soon');
+  // The pill under the headline leads to the download page (ADR-0057's amendment of
+  // 2026-10-11; it said "Soon" until the desktop app was out).
+  const pill = page.locator('[data-download]');
+  await expect(pill).toHaveAttribute('href', '/download/');
+  await expect(pill).toContainText('The desktop app for Linux, macOS and Windows');
+  await expect(pill.locator('b')).toHaveText('Available');
   // The headline keeps its exact words, in its two highlighted spans.
   await expect(page.locator('h1 .hl-sketch')).toHaveText('Parametric CAD');
   await expect(page.locator('h1 .hl-solid')).toHaveText('3D printing');
+});
+
+test('the features page lists what Extrudo does and the formats it reads and writes', async ({
+  page,
+}) => {
+  // ADR-0057's amendment of 2026-10-11: the features moved off the landing page, so
+  // the nav's Features link no longer scrolls through the walkthrough's stage.
+  const policy = await watchPolicy(page);
+  await page.goto(`${host.url}/`);
+  await page
+    .getByRole('navigation', { name: 'Site' })
+    .getByRole('link', { name: 'Features' })
+    .click();
+  await expect(page).toHaveURL(`${host.url}/features/`);
+  await expect(page.getByRole('heading', { level: 1, name: 'What Extrudo does' })).toBeVisible();
+  // The shared header marks the page, and the footer is the landing page's.
+  const nav = page.getByRole('navigation', { name: 'Site' });
+  await expect(nav.getByRole('link', { name: 'Features' })).toHaveAttribute('aria-current', 'page');
+  await expect(nav.getByRole('link', { name: /^Open Extrudo/ })).toHaveAttribute(
+    'href',
+    `${APP_URL}/`,
+  );
+  await expect(page.locator('[data-privacy]')).toContainText('Cloudflare Web Analytics');
+  // One link per section, each to a section that is there.
+  const jump = page.getByRole('navigation', { name: 'On this page' }).getByRole('link');
+  await expect(jump).toHaveText([
+    'Sketching',
+    'Solids',
+    'Parameters',
+    '3D printing',
+    'Import and export',
+    'Scripts and plugins',
+    'Your designs',
+  ]);
+  for (const href of await jump.evaluateAll((links) =>
+    links.map((link) => link.getAttribute('href')),
+  )) {
+    await expect(page.locator(href ?? '#none')).toHaveCount(1);
+  }
+  // The format matrix: a row per format, an import and an export cell each.
+  const matrix = page.getByRole('table', { name: 'File formats Extrudo imports and exports' });
+  await expect(matrix.getByRole('columnheader')).toHaveText(['Format', 'Import', 'Export']);
+  const row = (name: string) => matrix.getByRole('row', { name: new RegExp(`^${name}`) });
+  await expect(matrix.locator('tbody tr')).toHaveCount(13);
+  await expect(row('STEP').getByRole('cell').nth(0)).toContainText('Yes: Exact solid bodies');
+  await expect(row('OBJ').getByRole('cell').nth(1)).toHaveText(/^\s*–\s*No\s*$/);
+  await expect(row('TypeScript').getByRole('cell').nth(0)).toHaveText(/^\s*–\s*No\s*$/);
+  await expect(row('f3d design')).toContainText('Latest build');
+  // Its frame scrolls on a phone, so it takes the keyboard's focus.
+  await expect(
+    page.getByRole('region', { name: 'File formats Extrudo imports and exports' }),
+  ).toHaveAttribute('tabindex', '0');
+  // Every docs link on the page is a page the site built.
+  for (const href of await page
+    .locator('a[href^="/docs/"]')
+    .evaluateAll((links) => links.map((link) => link.getAttribute('href') as string))) {
+    expect((await page.request.get(`${host.url}${href}`)).status(), href).toBe(200);
+  }
+  expect(policy.errors).toEqual([]);
+  expect(await policy.violations()).toEqual([]);
+});
+
+test('the download page says how to install the desktop app on each system', async ({ page }) => {
+  const policy = await watchPolicy(page);
+  await page.goto(`${host.url}/`);
+  await page.locator('[data-download]').click();
+  await expect(page).toHaveURL(`${host.url}/download/`);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Extrudo on your desktop' }),
+  ).toBeVisible();
+  // No nav entry of its own: the header marks nothing as current.
+  await expect(page.locator('.top nav [aria-current]')).toHaveCount(0);
+  const latest = 'https://github.com/zoltanf/extrudo/releases/latest';
+  await expect(page.locator('[data-latest-release]')).toHaveAttribute('href', latest);
+  const platforms = page.getByRole('navigation', { name: 'Platforms' }).getByRole('link');
+  await expect(platforms).toHaveText(['Windows', 'macOS', 'Linux']);
+  const section = (name: string) => page.getByRole('region', { name, exact: true });
+  // Each section names its file by what it ends in (the version is in the name).
+  await expect(section('Windows')).toContainText('win-x64.exe');
+  await expect(section('Windows')).toContainText('Run anyway');
+  await expect(section('macOS')).toContainText('brew install --cask zoltanf/extrudo/extrudo');
+  await expect(section('macOS')).toContainText('mac-arm64.dmg');
+  await expect(section('macOS')).toContainText('Open Anyway');
+  await expect(section('Linux')).toContainText('chmod +x extrudo-*-linux-x86_64.AppImage');
+  await expect(section('Linux')).toContainText('sudo apt install ./extrudo-*-linux-amd64.deb');
+  for (const name of ['Windows', 'macOS', 'Linux']) {
+    await expect(
+      section(name).getByRole('link', { name: 'latest release' }).first(),
+    ).toHaveAttribute('href', latest);
+  }
+  // The footer links here from every page.
+  await expect(page.locator('.foot').getByRole('link', { name: 'Desktop app' })).toHaveAttribute(
+    'href',
+    '/download/',
+  );
+  expect(policy.errors).toEqual([]);
+  expect(await policy.violations()).toEqual([]);
+});
+
+test('the landing page links each feature group to its section, and answers questions', async ({
+  page,
+}) => {
+  await page.goto(`${host.url}/`);
+  const groups = page.getByRole('navigation', { name: 'Features' }).getByRole('link');
+  await expect(groups).toHaveCount(7);
+  await expect(groups.first()).toHaveAttribute('href', '/features/#sketch');
+  await groups.filter({ hasText: 'Import and export' }).click();
+  await expect(page).toHaveURL(`${host.url}/features/#files`);
+  await expect(page.getByRole('heading', { name: 'Import and export' })).toBeInViewport();
+
+  // The FAQ: <details>, so it works without a script; an answer shows on a click.
+  await page.goto(`${host.url}/`);
+  const faq = page.getByRole('region', { name: 'Questions and answers' });
+  await expect(faq.locator('details')).toHaveCount(11);
+  const question = faq.getByText('Where are my designs stored?');
+  await expect(faq.locator('details[open]')).toHaveCount(0);
+  await question.click();
+  await expect(faq.locator('details[open]')).toHaveCount(1);
+  await expect(faq.locator('details[open] p')).toContainText('Export Design');
+  await question.click();
+  await expect(faq.locator('details[open]')).toHaveCount(0);
+  await faq.getByText('Are my designs shared with others?').click();
+  await expect(faq.locator('details[open] p')).toContainText('nothing you make is uploaded');
+  await faq.getByText('Can I open files from other CAD programs?').click();
+  await expect(faq.getByRole('link', { name: 'the full table of formats' })).toHaveAttribute(
+    'href',
+    '/features/#files',
+  );
 });
 
 test('the landing page is dark under a light system theme, the docs are not', async ({ page }) => {
@@ -744,6 +877,9 @@ const TEXT_BOXES = `(() => {
     const text = (node.textContent || '').trim().replace(/\\s+/g, ' ');
     const element = node.parentElement;
     if (!text || !element || element.closest('script, style, noscript')) continue;
+    // Text for screen readers only (the walkthrough's list, the matrix's "Yes:") is
+    // clipped to nothing: it paints no glyph, so whatever lies at its box is no background.
+    if (element.closest('.sr-only')) continue;
     const style = getComputedStyle(element);
     if (style.visibility !== 'visible') continue;
     const range = document.createRange();
@@ -831,7 +967,7 @@ function backgroundRange(png: Buffer, boxes: TextBox[]): string {
   })()`;
 }
 
-test('every text on the landing page meets WCAG AA contrast against what is painted behind it', async ({
+test('every text on the landing, features and download pages meets WCAG AA contrast against what is painted behind it', async ({
   page,
 }) => {
   // axe reports text over the body's gradient (`--x-glow`) as *incomplete* instead of
@@ -840,8 +976,9 @@ test('every text on the landing page meets WCAG AA contrast against what is pain
   // text's own colour against the lightest and the darkest pixel behind its line boxes.
   // AA is 4.5:1, or 3:1 for large text (24 px, or 18.66 px bold). The page is dark
   // under both system themes (ADR-0057 amendment, 2026-10-05), and both are measured.
-  test.setTimeout(90_000);
+  test.setTimeout(240_000);
   const failures: {
+    path: string;
     scheme: string;
     width: number;
     text: string;
@@ -849,60 +986,73 @@ test('every text on the landing page meets WCAG AA contrast against what is pain
     need: number;
     opacity?: number;
   }[] = [];
-  for (const colorScheme of ['dark', 'light'] as const) {
-    for (const viewport of [
-      { width: 1280, height: 860 },
-      { width: 375, height: 812 },
-    ]) {
-      await page.setViewportSize(viewport);
-      await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
-      await page.goto(`${host.url}/`);
-      await expect(heading(page)).toBeVisible();
-      await page.evaluate('document.fonts.ready.then(() => true)');
-      const boxes = (await page.evaluate(TEXT_BOXES)) as TextBox[];
-      expect(boxes.length).toBeGreaterThan(20);
-      await page.evaluate(HIDE_TEXT);
-      const png = await page.screenshot({ fullPage: true, animations: 'disabled' });
-      const blank = await page.context().newPage();
-      const ranges = (await blank.evaluate(backgroundRange(png, boxes))) as {
-        light: string;
-        dark: string;
-      }[];
-      await blank.close();
-      boxes.forEach((box, i) => {
-        // The measurement reads the computed colour, which ignores opacity: a
-        // translucent text node can look fine here and be far under AA on screen.
-        if (box.opacity < 1) {
-          failures.push({
-            scheme: colorScheme,
-            width: viewport.width,
-            text: box.text,
-            ratio: box.opacity,
-            need: 1,
-            opacity: box.opacity,
-          });
-          return;
-        }
-        const range = ranges[i];
-        if (!range) return;
-        const ratio = Math.min(contrast(box.colour, range.light), contrast(box.colour, range.dark));
-        const need = box.large ? 3 : 4.5;
-        if (ratio < need) {
-          failures.push({
-            scheme: colorScheme,
-            width: viewport.width,
-            text: box.text,
-            ratio: Number(ratio.toFixed(2)),
-            need,
-          });
-        }
-      });
+  for (const path of ['/', '/features/', '/download/']) {
+    for (const colorScheme of ['dark', 'light'] as const) {
+      for (const viewport of [
+        { width: 1280, height: 860 },
+        { width: 375, height: 812 },
+      ]) {
+        await page.setViewportSize(viewport);
+        await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
+        await page.goto(`${host.url}${path}`);
+        await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+        await page.evaluate('document.fonts.ready.then(() => true)');
+        // The FAQ's answers are measured too.
+        await page.evaluate(
+          "document.querySelectorAll('details').forEach((details) => { details.open = true; })",
+        );
+        const boxes = (await page.evaluate(TEXT_BOXES)) as TextBox[];
+        expect(boxes.length).toBeGreaterThan(20);
+        await page.evaluate(HIDE_TEXT);
+        const png = await page.screenshot({ fullPage: true, animations: 'disabled' });
+        const blank = await page.context().newPage();
+        const ranges = (await blank.evaluate(backgroundRange(png, boxes))) as {
+          light: string;
+          dark: string;
+        }[];
+        await blank.close();
+        boxes.forEach((box, i) => {
+          // The measurement reads the computed colour, which ignores opacity: a
+          // translucent text node can look fine here and be far under AA on screen.
+          if (box.opacity < 1) {
+            failures.push({
+              path,
+              scheme: colorScheme,
+              width: viewport.width,
+              text: box.text,
+              ratio: box.opacity,
+              need: 1,
+              opacity: box.opacity,
+            });
+            return;
+          }
+          const range = ranges[i];
+          if (!range) return;
+          const ratio = Math.min(
+            contrast(box.colour, range.light),
+            contrast(box.colour, range.dark),
+          );
+          const need = box.large ? 3 : 4.5;
+          if (ratio < need) {
+            failures.push({
+              path,
+              scheme: colorScheme,
+              width: viewport.width,
+              text: box.text,
+              ratio: Number(ratio.toFixed(2)),
+              need,
+            });
+          }
+        });
+      }
     }
   }
   expect(failures, 'text under WCAG AA contrast against its painted background').toEqual([]);
 });
 
-test('the landing page passes an axe audit under both system themes', async ({ page }) => {
+test('the landing, features and download pages pass an axe audit under both system themes', async ({
+  page,
+}) => {
   // NFR-07, like e2e/a11y.spec.ts for the app: WCAG 2.1 A and AA. The page is dark
   // whatever the system theme (ADR-0057 amendment, 2026-10-05); both schemes are
   // emulated to prove it.
@@ -910,24 +1060,29 @@ test('the landing page passes an axe audit under both system themes', async ({ p
   // over the body's gradient (`--x-glow`), which it reports as *incomplete* instead of
   // passing or failing, so the measurement of every text against its painted
   // background above covers contrast.
-  for (const colorScheme of ['light', 'dark'] as const) {
-    await page.emulateMedia({ colorScheme });
-    await page.goto(`${host.url}/`);
-    await expect(heading(page)).toBeVisible();
-    const results = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-      .analyze();
-    expect
-      .soft(
-        results.violations.map((v) => ({
-          theme: colorScheme,
-          rule: v.id,
-          impact: v.impact,
-          help: v.help,
-          nodes: v.nodes.map((n) => `${n.target.join(' ')} :: ${n.html.slice(0, 220)}`),
-        })),
-        `axe violations in the ${colorScheme} theme`,
-      )
-      .toEqual([]);
-  }
+  for (const path of ['/', '/features/', '/download/'])
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.goto(`${host.url}${path}`);
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      await page.evaluate(
+        "document.querySelectorAll('details').forEach((details) => { details.open = true; })",
+      );
+      const results = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+        .analyze();
+      expect
+        .soft(
+          results.violations.map((v) => ({
+            path,
+            theme: colorScheme,
+            rule: v.id,
+            impact: v.impact,
+            help: v.help,
+            nodes: v.nodes.map((n) => `${n.target.join(' ')} :: ${n.html.slice(0, 220)}`),
+          })),
+          `axe violations on ${path} in the ${colorScheme} theme`,
+        )
+        .toEqual([]);
+    }
 });
