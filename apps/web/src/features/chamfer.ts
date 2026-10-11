@@ -48,9 +48,9 @@ import {
   type FeatureInputs,
 } from '@extrudo/core';
 import { chamferSetManipulators } from './edgeHandles';
-import { skipLostEdgesField, withoutSkipOff } from './skipLostEdges';
+import { skipLostEdgesField, withoutSkipOff, withSkipShown } from './skipLostEdges';
 import { type DialogField, type DialogValues, defineFeatureDialog, type Manipulator } from './spec';
-import { defaultInputs } from './values';
+import { defaultFromInputs, defaultInputs } from './values';
 
 const hasEdges = (values: DialogValues, n: number) =>
   (values.refs[chamferEdgesKey(n)]?.length ?? 0) > 0;
@@ -158,6 +158,9 @@ export const chamferDialog = defineFeatureDialog({
   ],
   toInputs(values): FeatureInputs {
     return withoutSkipOff(defaultInputs(chamferDialog, values));
+  },
+  fromInputs(inputs): Partial<DialogValues> {
+    return withSkipShown(defaultFromInputs(chamferDialog, inputs));
   },
   // The result replaces the body it bevels: drawn as the body itself.
   previewStyle: () => 'new',

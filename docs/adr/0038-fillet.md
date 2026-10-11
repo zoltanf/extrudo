@@ -374,8 +374,13 @@ The variable-radius fillet (ADR-0064) takes the same path.
   document and every fillet made in the app without it computes and fails as
   before, error order included.
 - **The dialog** has it as its last field, the toggle "Skip lost edges"
-  (`apps/web/src/features/skipLostEdges.ts`), shown always so a person can
-  turn it on for a fillet whose edges come and go, or off for an imported one.
+  (`apps/web/src/features/skipLostEdges.ts`), **shown only for a fillet that
+  has it on** (the owner, 2026-10-11): an imported one, or one an API call or
+  a macro made. Opening such a fillet marks the dialog (`withSkipShown`, a
+  value that is no input), so once unticked — which turns the setting off and
+  lets the lost edge fail the fillet again — the box stays until the dialog
+  closes and can be ticked back. A new fillet never shows it, so the app
+  doesn't offer a way round ADR-0033's loud failure.
 - The API (`d.fillet({ …, skipLostEdges: true })`), its reference pages and
   the macro emitter carry it through the schema with no code of their own; the
   CLI reports the warning like any other. `docs/file-format.md` §6.8.
@@ -392,5 +397,8 @@ picks wrong edges (ADR-0083's corpus), where leaving one out picks none.
 **Tests.** `features/fillet.test.ts` "skipLostEdges": one edge found and one
 lost (twice) builds the same body as the found edge alone, warns and keeps the
 lost one in `refs`; a variable set; all lost fails; without the input one lost
-edge still fails. `apps/web/src/features/skipLostEdges.test.ts` (the toggle),
-`packages/api/src/emit.test.ts` (the round trip).
+edge still fails. `apps/web/src/features/skipLostEdges.test.ts` (the toggle
+absent on a new or plain feature, shown on one that has it, kept after
+unticking), `packages/api/src/emit.test.ts` (the round trip) and
+`e2e/fillet.spec.ts` (a design with the input on and a lost edge: the warning,
+unticking fails it, a new fillet has no box).

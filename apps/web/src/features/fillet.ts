@@ -27,7 +27,8 @@
  *
  * **Skip lost edges (ADR-0038's amendment, 2026-10-11).** The last field, a
  * toggle stored only while on: the fillet then builds from the edges it finds
- * and warns about the rest (`skipLostEdges.ts`).
+ * and warns about the rest (`skipLostEdges.ts`). It shows only for a fillet
+ * that has it on (an imported one, or one an API call made).
  */
 import {
   FILLET_EDGE_KINDS,
@@ -39,7 +40,7 @@ import {
   filletSwapKey,
 } from '@extrudo/core';
 import { setDistanceManipulator, variableSetManipulators } from './edgeHandles';
-import { skipLostEdgesField, withoutSkipOff } from './skipLostEdges';
+import { skipLostEdgesField, withoutSkipOff, withSkipShown } from './skipLostEdges';
 import { type DialogField, type DialogValues, defineFeatureDialog, type Manipulator } from './spec';
 import { defaultFromInputs, defaultInputs } from './values';
 
@@ -132,7 +133,7 @@ export const filletDialog = defineFeatureDialog({
     for (let n = 1; n <= FILLET_MAX_SETS; n++) {
       toggles[variableKey(n)] = filletEndKey(n) in inputs;
     }
-    return { ...stored, toggles };
+    return withSkipShown({ ...stored, toggles });
   },
   // The result replaces the body it rounds: drawn as the body itself.
   previewStyle: () => 'new',

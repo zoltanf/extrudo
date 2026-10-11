@@ -1,4 +1,13 @@
+import { writeFileSync } from 'node:fs';
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import {
+  createDocument,
+  type Feature,
+  type FeatureId,
+  filletInputs,
+  primitiveInputs,
+} from '../packages/core/src/index';
+import { writeArchive } from '../packages/storage/src/archive';
 import { exportModel, objectsOf3mf, solidTab } from './benchmark-helpers';
 import { kernelReady, openProject, pickTool, projector } from './helpers';
 
@@ -529,56 +538,81 @@ test('a variable set has a handle at each end of its chain; Swap ends changes th
   await expect(radiusField).toHaveValue('2 mm');
 });
 
-test('Skip lost edges builds a fillet whose edge on an earlier round is lost, with a warning', async ({
+test('Skip lost edges shows only on a fillet that has it on; unticked, the lost edge fails it again', async ({
   page,
-}) => {
-  const viewport = viewportOf(page);
-  await openProject(page);
-  await kernelReady(page);
-  await cube(page);
-  const at = await settledProjector(viewport);
-
-  // Round one vertical edge, then the top front edge with the round's arc and the right edge.
-  await clickEdge(page, at, [10, -10, 10]);
-  await page.keyboard.press('f');
-  const first = page.getByRole('region', { name: 'Fillet dialog' });
-  await first.getByRole('textbox', { name: 'Radius', exact: true }).fill('4 mm');
-  await expect(first).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
-  await first.getByRole('button', { name: 'OK' }).click();
-  await expect(first).toBeHidden();
-  await kernelReady(page);
-
-  await clickTopFront(page, at);
-  await page.keyboard.press('f');
-  const second = page.getByRole('region', { name: 'Fillet dialog' });
-  await expect(second.getByRole('button', { name: 'Edges', exact: true })).toHaveText('3 edges');
-  const skip = second.getByRole('checkbox', { name: 'Skip lost edges' });
-  await expect(skip).not.toBeChecked();
-  await skip.check();
-  await second.getByRole('textbox', { name: 'Radius', exact: true }).fill('1 mm');
-  await expect(second).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
-  await second.getByRole('button', { name: 'OK' }).click();
-  await expect(second).toBeHidden();
-  await kernelReady(page);
-
-  // Suppressing the first round loses the arc: the second is built from the two lines and warns.
-  await chip(page, 'Fillet1').click({ button: 'right' });
-  await page.getByRole('menuitem', { name: /^Suppress/ }).click();
-  await expect(chip(page, 'Fillet2')).toHaveAccessibleName('Fillet2 (warning)');
-  await chip(page, 'Fillet2').hover();
-  await expect(page.getByRole('tooltip')).toContainText(
-    "1 of 3 edges can't be found and is left out of the fillet.",
+}, info) => {
+  // A design as the .f3d import or an API call makes it: a cube and a fillet on one of
+  // its vertical edges and on an edge that doesn't exist, with skipLostEdges on.
+  const doc = createDocument({ name: 'Lost edge' });
+  const side = (role: string) => `box:B:side:${role}`;
+  const feature = (id: string, type: string, name: string, inputs: Feature['inputs']): Feature => ({
+    id: id as FeatureId,
+    type,
+    name,
+    suppressed: false,
+    inputs,
+  });
+  doc.features.push(
+    feature(
+      'B',
+      'box',
+      'Box1',
+      primitiveInputs('box', { numbers: { length: '20 mm', width: '20 mm', height: '20 mm' } }),
+    ),
+    feature('F', 'fillet', 'Fillet1', {
+      ...filletInputs([
+        {
+          edges: [
+            { kind: 'edge', id: `e[${[side('front'), side('right')].sort().join('|')}]` },
+            { kind: 'edge', id: 'e[nothing:here|nor:there]' },
+          ],
+          radius: '4 mm',
+        },
+      ]),
+      skipLostEdges: { kind: 'bool', value: true },
+    }),
   );
-  await expect(viewport).toHaveAttribute('data-bodies', /^Body1:\d+:20,20,20$/);
+  doc.timelineMarker = doc.features.length;
+  const file = info.outputPath('lost-edge.extrudo');
+  writeFileSync(file, writeArchive(doc));
+  await page.goto('./');
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    page.getByRole('button', { name: 'Import…', exact: true }).click(),
+  ]);
+  await chooser.setFiles(file);
+  await kernelReady(page);
+  const viewport = viewportOf(page);
+  await expect(chip(page, 'Fillet1')).toHaveAccessibleName('Fillet1 (warning)');
+  await chip(page, 'Fillet1').hover();
+  await expect(page.getByRole('tooltip')).toContainText(
+    "1 of 2 edges can't be found and is left out of the fillet.",
+  );
+  await expect(viewport).toHaveAttribute('data-bodies', /^Body1:7:20,20,20$/);
 
-  // Its dialog opens with the toggle on; turned off, the lost edge fails it again.
+  // Its dialog shows the box ticked; unticked, the fillet fails on the lost edge, and
+  // the box stays so it can be ticked back.
   await page.mouse.move(10, 10, { steps: 5 });
-  await chip(page, 'Fillet2').dblclick();
-  const edit = page.getByRole('region', { name: 'Edit Fillet2 dialog' });
-  await expect(edit.getByRole('checkbox', { name: 'Skip lost edges' })).toBeChecked();
-  await edit.getByRole('checkbox', { name: 'Skip lost edges' }).uncheck();
+  await chip(page, 'Fillet1').dblclick();
+  const edit = page.getByRole('region', { name: 'Edit Fillet1 dialog' });
+  const skip = edit.getByRole('checkbox', { name: 'Skip lost edges' });
+  await expect(skip).toBeChecked();
+  await skip.uncheck();
   await expect(edit).toHaveAttribute('data-preview-status', 'error', { timeout: 15_000 });
   await expect(edit.getByRole('status', { name: 'Feature status' })).toContainText(
     "Can't find an edge to fillet",
   );
+  await skip.check();
+  await expect(edit).toHaveAttribute('data-preview-status', 'warning', { timeout: 15_000 });
+  await edit
+    .getByRole('button', { name: /^Cancel/ })
+    .last()
+    .click();
+  await expect(edit).toBeHidden();
+
+  // A new fillet has no such box.
+  await pickTool(page, 'Fillet');
+  const fresh = page.getByRole('region', { name: 'Fillet dialog' });
+  await expect(fresh.getByRole('textbox', { name: 'Radius', exact: true })).toBeVisible();
+  await expect(fresh.getByRole('checkbox', { name: 'Skip lost edges' })).toHaveCount(0);
 });

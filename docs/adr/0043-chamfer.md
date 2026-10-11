@@ -361,5 +361,6 @@ the edges, and a dropped set needs none); a lost reference face of a set that
 **keeps** edges still fails the chamfer, since guessing the default face would
 put the distances the other way round. Without the input the face is resolved
 first, as it always was, so the error order is unchanged. The dialog's last
-field is the same "Skip lost edges" toggle. Tests: `features/chamfer.test.ts`
+field is the same "Skip lost edges" toggle, shown only for a chamfer that has
+the input on. Tests: `features/chamfer.test.ts`
 "skipLostEdges"; `docs/file-format.md` §6.9.

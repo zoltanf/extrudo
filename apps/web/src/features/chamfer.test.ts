@@ -5,7 +5,6 @@ import {
   chamferSets,
   type FeatureId,
   insertFeature,
-  SKIP_LOST_EDGES_KEY,
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import { chamferDialog } from './chamfer';
@@ -32,11 +31,7 @@ function setup() {
   return { ...t, asked };
 }
 
-// The sets' fields: the always-shown last toggle is skipLostEdges.test.ts's.
-const names = (values: DialogValues) =>
-  shownFields(chamferDialog, values)
-    .map((f) => f.name)
-    .filter((name) => name !== SKIP_LOST_EDGES_KEY);
+const names = (values: DialogValues) => shownFields(chamferDialog, values).map((f) => f.name);
 
 describe('the chamfer dialog', () => {
   it('is the app’s dialog for the Chamfer tool', () => {
