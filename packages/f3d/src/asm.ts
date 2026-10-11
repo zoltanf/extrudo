@@ -166,6 +166,8 @@ export type AsmSurface =
       radius: number;
       /** A cylinder: no half-angle. */
       cylinder: boolean;
+      /** How much the radius grows per cm along `axis` (tan of the half-angle; 0: a cylinder). */
+      slope: number;
     }
   | { kind: 'other'; type: string };
 
@@ -190,14 +192,18 @@ function surfaceOf(r: AsmRecord | undefined): AsmSurface {
     return { kind: 'plane', point: vs[0], normal: vs[1] };
   if (r.type.endsWith('cone-surface') && vs[0] && vs[1] && vs[2]) {
     const major = vs[2];
-    // ratio, sine and cosine of the half-angle follow the three vectors.
+    // ratio, sine and cosine of the half-angle follow the three vectors; a
+    // negative sine narrows the cone along its axis.
     const sine = ds[1] ?? 0;
+    const cosine = ds[2] ?? 1;
+    const cylinder = Math.abs(sine) < 1e-12;
     return {
       kind: 'cone',
       center: vs[0],
       axis: vs[1],
       radius: Math.hypot(major[0], major[1], major[2]),
-      cylinder: Math.abs(sine) < 1e-12,
+      cylinder,
+      slope: cylinder || Math.abs(cosine) < 1e-12 ? 0 : sine / cosine,
     };
   }
   return { kind: 'other', type: r.type };

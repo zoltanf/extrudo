@@ -71,7 +71,16 @@ import {
   sketchSpline,
   type Vec3,
 } from './decode/sketch-geometry';
-import { SKETCH_TEXT, type SketchText, sketchText, TEXT_PROFILE_OPERAND } from './decode/text';
+import {
+  boxSize,
+  oldTextBoxes,
+  SKETCH_TEXT,
+  SKETCH_TEXT_OLD,
+  type SketchText,
+  sketchText,
+  sketchTextOld,
+  TEXT_PROFILE_OPERAND,
+} from './decode/text';
 import { TIMELINE, timeline } from './decode/timeline';
 import { Segment } from './segment';
 
@@ -361,6 +370,16 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     const t = tryDecode(`text #${id}`, () => sketchText.decode(seg, id));
     if (t?.owner !== undefined) sketchOf(t.owner).texts.push(t);
   }
+  const boxes = oldTextBoxes(seg, (id) => {
+    const f = seg.frame(id);
+    return refsIn(seg, f.start, f.end);
+  });
+  for (const id of seg.idsOf(SKETCH_TEXT_OLD)) {
+    const t = tryDecode(`text #${id}`, () => sketchTextOld.decode(seg, id));
+    const box = boxes.get(id);
+    if (t?.old && box) t.old.box = boxSize(t, box);
+    if (t?.owner !== undefined) sketchOf(t.owner).texts.push(t);
+  }
   for (const id of seg.idsOf(SKETCH_CONIC)) {
     const c = tryDecode(`conic #${id}`, () => sketchConic.decode(seg, id));
     if (c?.owner !== undefined) sketchOf(c.owner).splines.push(c);
@@ -598,7 +617,8 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
  * which maps operation IDs to records — u32 n × (u64 operation, u64 record),
  * or in newer files u32 n × (u64 operation, u32 m, m × u64 records) — then
  * u32 k, k × u64 (not read) and the closing reference. Found by shape: the
- * longest list whose records all exist and that the trailer ends exactly.
+ * longest list that the trailer ends exactly and whose records exist, but
+ * for a few (an operation can name a record the file no longer has).
  */
 function readOperationTable(seg: Segment, id: number): Map<number, number[]> {
   const f = seg.frame(id);
@@ -619,14 +639,17 @@ function readOperationTable(seg: Segment, id: number): Map<number, number[]> {
       try {
         const table = new Map<number, number[]>();
         let ok = true;
+        let missing = 0;
         for (let i = 0; i < n && ok; i++) {
           const op = r.u64();
           const m = lists ? r.u32() : 1;
           if (m === 0 || m * 8 > r.remaining) ok = false;
           const records: number[] = [];
           for (let j = 0; j < m && ok; j++) records.push(r.u64());
-          ok &&= records.every((x) => seg.has(x));
-          table.set(op, records);
+          const found = records.filter((x) => seg.has(x));
+          if (found.length < records.length) missing++;
+          ok &&= 4 * missing <= n;
+          table.set(op, found);
         }
         if (ok && endsHere(r)) {
           best = table;
@@ -651,7 +674,8 @@ function readTextOperand(seg: Segment, id: number): ProfileOperand {
   for (const r of refsIn(seg, f.start, f.end))
     if (seg.typeOf(r)?.guid === RECORD_REF) {
       const text = readRecordRef(seg, r);
-      if (seg.typeOf(text)?.guid === SKETCH_TEXT) return { id, sketch, text };
+      const kind = seg.typeOf(text)?.guid;
+      if (kind === SKETCH_TEXT || kind === SKETCH_TEXT_OLD) return { id, sketch, text };
     }
   throw new F3dFormatError(`Text profile #${id}: no text of this kind.`);
 }

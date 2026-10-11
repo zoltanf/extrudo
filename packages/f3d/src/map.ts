@@ -34,11 +34,18 @@ import type { AsmSurface } from './asm';
 import type { ProfileOperand, ProfileRegion } from './decode/extrude';
 import type { ParameterValue } from './decode/parameters';
 import type { RevolveAxis } from './decode/revolve';
-import type { SketchCircular, SketchPoint, SketchSpline, Vec3 } from './decode/sketch-geometry';
+import type {
+  SketchCircular,
+  SketchLine,
+  SketchPoint,
+  SketchSpline,
+  Vec3,
+} from './decode/sketch-geometry';
+import type { SketchText } from './decode/text';
+import { type EdgeShape, edgeShape } from './edge-shape';
 import type {
   F3dCircularPattern,
   F3dDesign,
-  F3dEdge,
   F3dEdgeFeature,
   F3dExtrude,
   F3dFace,
@@ -76,6 +83,8 @@ interface SketchEntry {
   placement: Placement;
   /** Extrudo curve ID → Fusion curve tag. */
   tags: Map<string, bigint>;
+  /** Extrudo curve ID → the Fusion line, circle or arc it was drawn from. */
+  curves: Map<string, SketchLine | SketchCircular>;
   /** Fusion text record → Extrudo text entity ID. */
   texts: Map<number, string>;
   fusion: F3dSketch;
@@ -97,14 +106,18 @@ interface ImportedExtrude {
 }
 
 /**
- * An imported fillet or chamfer: the Extrudo name of each Fusion edge it
- * rounds, in Fusion's order. Fusion tags the face made from the k-th edge
- * with the token k; Extrudo names it `<op>:<feature>:from:(<edge name>)`.
+ * An imported fillet or chamfer: the Extrudo name and the geometry of each
+ * Fusion edge it rounds, in Fusion's order. Extrudo names the face made from
+ * an edge `<op>:<feature>:from:(<edge name>)`. Fusion's face token is often
+ * the edge's place in that order, but not always (it counts other faces
+ * too), so a face is matched to the edge nearest a point on it where one is
+ * known.
  */
 interface ImportedRound {
   op: 'fillet' | 'chamfer';
   id: string;
   edges: (string | undefined)[];
+  shapes: (EdgeShape | undefined)[];
 }
 
 /** A revolve that was imported: what naming its faces needs. */
@@ -292,14 +305,15 @@ export function f3dToDesign(
         sketch: fusion,
       };
       const tags = new Map<string, bigint>();
+      const curves = new Map<string, SketchLine | SketchCircular>();
       const texts = new Map<number, string>();
       const used = profileCurves.get(fusion.id) ?? new Set<string>();
       const handle = d.sketch(
         placement.plane,
-        (k) => drawSketch(k, copy, placement, { tags, texts }, used, report),
+        (k) => drawSketch(k, copy, placement, { tags, curves, texts }, used, report),
         { name },
       );
-      made = { handle, placement, tags, texts, fusion, profileCurves: used };
+      made = { handle, placement, tags, curves, texts, fusion, profileCurves: used };
     }
     moved.set(key, made);
     return made;
@@ -332,11 +346,12 @@ export function f3dToDesign(
           continue;
         }
         const tags = new Map<string, bigint>();
+        const curves = new Map<string, SketchLine | SketchCircular>();
         const texts = new Map<number, string>();
         const used = profileCurves.get(feature.sketch.id) ?? new Set<string>();
         const handle = d.sketch(
           placement.plane,
-          (k) => drawSketch(k, feature, placement, { tags, texts }, used, report),
+          (k) => drawSketch(k, feature, placement, { tags, curves, texts }, used, report),
           {
             name: feature.name,
           },
@@ -345,11 +360,27 @@ export function f3dToDesign(
           handle,
           placement,
           tags,
+          curves,
           texts,
           fusion: feature.sketch,
           profileCurves: used,
         });
         report.imported.push(feature.name);
+      } else if (
+        feature.type === 'extrude' &&
+        feature.profiles.length === 0 &&
+        feature.faces.length > 0 &&
+        feature.start !== 'face' &&
+        !feature.parameters.some((p) => p.kind === 'Side1Offset')
+      ) {
+        // Faces as the profile (press-pull).
+        const made = faceExtrude(d, feature, naming, expressionOf, participants, report);
+        if (typeof made === 'string')
+          report.skipped.push({ name: feature.name, kind: 'Extrude', reason: made });
+        else {
+          replayable.set(feature.id, { id: made.id, name: feature.name });
+          report.imported.push(feature.name);
+        }
       } else if (feature.type === 'extrude') {
         const made = extrude(
           d,
@@ -554,11 +585,15 @@ function drawSketch(
   k: SketchBuilder,
   feature: F3dSketchFeature,
   placement: Placement,
-  made: { tags: Map<string, bigint>; texts: Map<number, string> },
+  made: {
+    tags: Map<string, bigint>;
+    curves: Map<string, SketchLine | SketchCircular>;
+    texts: Map<number, string>;
+  },
   profileCurves: Set<string>,
   report: ImportReport,
 ): void {
-  const { tags } = made;
+  const { tags, curves } = made;
   const s: F3dSketch = feature.sketch;
   const points = new Map<number, SketchPoint>(s.points.map((p) => [p.id, p]));
   const at = (id: number, fallback: Vec3): Vec2 => {
@@ -591,6 +626,7 @@ function drawSketch(
     join(l.endPoint, h.end);
     used.add(l.startPoint).add(l.endPoint);
     if (l.tag !== undefined) tags.set(h.id, l.tag);
+    curves.set(h.id, l);
     if (l.construction) setConstruction(h.id);
   }
   for (const c of s.circulars) {
@@ -605,6 +641,7 @@ function drawSketch(
       const h = k.circle(center, r);
       join(c.centerPoint, h.center);
       if (c.tag !== undefined) tags.set(h.id, c.tag);
+      curves.set(h.id, c);
       if (c.construction) setConstruction(h.id);
       continue;
     }
@@ -623,6 +660,7 @@ function drawSketch(
     join(c.endPoint, h.end);
     used.add(c.startPoint).add(c.endPoint);
     if (c.tag !== undefined) tags.set(h.id, c.tag);
+    curves.set(h.id, c);
     if (c.construction) setConstruction(h.id);
   }
   for (const c of s.splines) {
@@ -669,12 +707,28 @@ function drawSketch(
     if (c.construction) setConstruction(h.id);
   }
   for (const t of s.texts) {
+    const base = [Math.cos(t.angle), Math.sin(t.angle)] as const;
+    const up = [-base[1], base[0]] as const;
+    if (t.old) {
+      const at = oldTextAnchor(t);
+      const font = fontFor(t.font);
+      const flip = t.old.mirrored ? -1 : 1;
+      const h = k.text(
+        placement.map(at.u, at.v),
+        placement.map(at.u + flip * up[0] * t.height, at.v + flip * up[1] * t.height),
+        { text: t.text, font: font.id, align: at.align },
+        { upright: false },
+      );
+      made.texts.set(t.id, h.id);
+      report.notes.push(
+        `${feature.name}: text "${t.text}" in ${t.font} is drawn in ${font.family}${at.guessed ? ', placed by its box corner (its alignment is not read)' : ''}${t.old.mirrored ? ', turned instead of mirrored' : ''}.`,
+      );
+      continue;
+    }
     // Fusion's height is the font size and its box's bottom edge the
     // baseline; Extrudo's height is the capitals'. Centred in the box: the
     // font is Extrudo's own, so the width differs, and centring keeps the
     // text where it was.
-    const base = [Math.cos(t.angle), Math.sin(t.angle)] as const;
-    const up = [-base[1], base[0]] as const;
     const u = t.at[0] + (base[0] * t.width) / 2;
     const v = t.at[1] + (base[1] * t.width) / 2;
     const cap = t.height * CAP_HEIGHT;
@@ -711,6 +765,41 @@ function drawSketch(
     }
   }
   if (skipped) report.notes.push(`${feature.name}: ${skipped} coincident constraints left out.`);
+}
+
+/** Fusion's line advance for Arial, in capital heights (1.15 em over a 0.716 em capital). */
+const OLD_TEXT_LINE = 1.15 / CAP_HEIGHT;
+
+/**
+ * Where an older text's first baseline starts (sketch frame, cm) and how it
+ * aligns there, from its box and alignment codes: horizontally 1 left, 3
+ * centre; vertically 1 the capitals' top at the box's top, 3 the lines'
+ * middle at the box's (both checked on the B-rep). Others, or no box: the
+ * box's corner.
+ */
+function oldTextAnchor(t: SketchText): {
+  u: number;
+  v: number;
+  align: 'left' | 'center';
+  guessed: boolean;
+} {
+  const old = t.old as NonNullable<SketchText['old']>;
+  const [w, h] = old.box ?? [0, 0];
+  const lines = t.text.split('\n').length;
+  const block = t.height * (1 + (lines - 1) * OLD_TEXT_LINE);
+  const known =
+    old.box !== undefined && [1, 3].includes(old.horizontal) && [1, 3].includes(old.vertical);
+  const x = known && old.horizontal === 3 ? w / 2 : 0;
+  const y = !known ? 0 : old.vertical === 1 ? h - t.height : (h + block) / 2 - t.height;
+  const flip = old.mirrored ? -1 : 1;
+  const base = [Math.cos(t.angle), Math.sin(t.angle)] as const;
+  const up = [-base[1] * flip, base[0] * flip] as const;
+  return {
+    u: t.at[0] + base[0] * x + up[0] * y,
+    v: t.at[1] + base[1] * x + up[1] * y,
+    align: known && old.horizontal === 3 ? 'center' : 'left',
+    guessed: !known,
+  };
 }
 
 /** An arc's end point in the Extrudo plane, from its angle about its own axes. */
@@ -860,9 +949,38 @@ function extrude(
     else inputs.extent = 'through-all';
   } else if (f.direction === 'two-sides') {
     inputs.direction = 'two-sides';
-    if (!along || !against) return 'a two-sided extrude without two distances';
-    inputs.distance = expressionOf(along, negative);
-    inputs.distance2 = expressionOf(against, against.value < 0);
+    // Each side: a distance, up to a face (its offset parameter and the next
+    // face operand), or through everything.
+    const face2 = param('Side2Offset')
+      ? f.faces[(startFace ? 1 : 0) + (toFace ? 1 : 0)]
+      : undefined;
+    const sides = [
+      {
+        dist: along,
+        face: toFace,
+        past: param('Side1Offset'),
+        keys: ['extent', 'distance', 'toObject', 'offset'],
+      },
+      {
+        dist: against,
+        face: face2,
+        past: param('Side2Offset'),
+        keys: ['extent2', 'distance2', 'toObject2', 'offset2'],
+      },
+    ] as const;
+    for (const [i, side] of sides.entries()) {
+      const [extent, distance, toObject, past] = side.keys;
+      if (side.dist)
+        inputs[distance] = expressionOf(side.dist, i === 0 ? negative : side.dist.value < 0);
+      else if (side.face) {
+        const name = faceName(side.face, naming);
+        if (!name) return `its side ${i + 1} goes up to a face that could not be found`;
+        inputs[extent] = 'to-object';
+        inputs[toObject] = { kind: 'face', id: name };
+        if (side.past && Math.abs(side.past.value) > 1e-12)
+          inputs[past] = numberExpression(side.past.value, 'cm');
+      } else inputs[extent] = 'through-all';
+    }
     if (taper2 && Math.abs(taper2.value) > 1e-12) inputs.taper2 = expressionOf(taper2);
   } else {
     inputs.direction = 'symmetric';
@@ -883,6 +1001,44 @@ function extrude(
     oneSided: f.direction === 'one-side',
     side1: f.reversed !== negative ? -1 : 1,
   };
+}
+
+/**
+ * Adds an extrude of body faces (press-pull): both Fusion and Extrudo sweep a
+ * flat face along its outward normal, Fusion's side 1 against it when
+ * reversed or given a negative distance. Returns why not when it cannot.
+ */
+function faceExtrude(
+  d: Design,
+  f: F3dExtrude,
+  naming: FaceNaming,
+  expressionOf: (p: ParameterValue, negate?: boolean) => string,
+  participants: (records: number[]) => GeomRef[] | undefined,
+  report: ImportReport,
+): string | { id: string } {
+  if (!f.solid) return 'surface extrudes are not supported';
+  if (f.direction !== 'one-side') return `a ${f.direction} extrude of faces is not supported yet`;
+  const profiles: GeomRef[] = [];
+  for (const face of f.faces) {
+    const id = faceName(face, naming);
+    if (id && !profiles.some((p) => p.id === id)) profiles.push({ kind: 'face', id });
+  }
+  if (profiles.length === 0) return 'its profile is a face that could not be named';
+  if (profiles.length < new Set(f.faces.map((x) => JSON.stringify(x.tags))).size)
+    report.notes.push(`${f.name}: some of the faces it extrudes could not be named.`);
+  const param = (kind: string) => f.parameters.find((p) => p.kind === kind);
+  const along = param('AlongDistance');
+  const taper = param('TaperAngle');
+  const negative = (along?.value ?? 0) < 0;
+  const inputs: Record<string, unknown> = { profiles, operation: f.operation };
+  if (along) inputs.distance = expressionOf(along, negative);
+  else inputs.extent = 'through-all';
+  if (taper && Math.abs(taper.value) > 1e-12) inputs.taper = expressionOf(taper);
+  if (f.reversed !== negative) inputs.flip = true;
+  const bodies = f.operation === 'new-body' ? undefined : participants(f.participants);
+  if (bodies) inputs.bodies = bodies;
+  const made = d.extrude(inputs as Parameters<Design['extrude']>[0], { name: f.name });
+  return { id: made.id };
 }
 
 /** The Extrudo curves around the chosen regions of a sketch. */
@@ -1193,98 +1349,7 @@ function planeOffset(face: F3dFace, m: Matrix): number | undefined {
 }
 
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const scale = (a: Vec3, k: number): Vec3 => [a[0] * k, a[1] * k, a[2] * k];
-const round6 = (x: number) => Math.round(x * 1e6) / 1e6 || 0;
-/** A direction with its first non-zero component positive, as Extrudo stores axes. */
-const canonical = (v: Vec3): Vec3 => {
-  const first = v.find((x) => Math.abs(x) > 1e-9) ?? 1;
-  const k = first < 0 ? -1 : 1;
-  return [round6(v[0] * k), round6(v[1] * k), round6(v[2] * k)];
-};
-
-interface EdgeShape {
-  type: string;
-  at: [number, number, number];
-  dir: [number, number, number];
-  size: number;
-}
-
-/**
- * A line edge through `p0` along unit `dir` (cm), ended by the bounding faces
- * that are planes across it.
- */
-function lineShape(p0: Vec3, dir: Vec3, bounds: F3dFace[]): EdgeShape | undefined {
-  const ts: number[] = [];
-  for (const f of bounds) {
-    const s = f.surface;
-    if (s?.kind !== 'plane') continue;
-    const nd = dot(s.normal, dir);
-    if (Math.abs(nd) < 1e-9) continue;
-    ts.push(dot(s.normal, sub(s.point, p0)) / nd);
-  }
-  if (ts.length < 2) return undefined;
-  const t0 = Math.min(...ts);
-  const t1 = Math.max(...ts);
-  if (t1 - t0 < 1e-9) return undefined;
-  const mid = add(p0, scale(dir, (t0 + t1) / 2));
-  return {
-    type: 'line',
-    at: [round6(mid[0] * 10), round6(mid[1] * 10), round6(mid[2] * 10)],
-    dir: canonical(dir),
-    size: round6((t1 - t0) * 10),
-  };
-}
-
-/**
- * An edge's geometry in mm, from its two faces' surfaces (cm): two planes
- * meet in a line, and a plane touches a cylinder along it (a fillet's edge)
- * in one, each ended by the bounding faces that are planes; a plane across
- * a cylinder's axis cuts a circle. What Extrudo's fingerprint of that edge
- * would hold: type, midpoint (a circle: its centre), axis or direction,
- * length.
- */
-function edgeShape(e: F3dEdge): EdgeShape | undefined {
-  const a = e.faces[0].surface;
-  const b = e.faces[1].surface;
-  if (!a || !b) return undefined;
-  const plane = (s: AsmSurface) => (s.kind === 'plane' ? s : undefined);
-  const pa = plane(a);
-  const pb = plane(b);
-  if (pa && pb) {
-    const u = cross(pa.normal, pb.normal);
-    const uu = dot(u, u);
-    if (uu < 1e-12) return undefined;
-    const d1 = dot(pa.normal, pa.point);
-    const d2 = dot(pb.normal, pb.point);
-    const p0 = scale(add(scale(cross(pb.normal, u), d1), scale(cross(u, pa.normal), d2)), 1 / uu);
-    return lineShape(p0, scale(u, 1 / Math.sqrt(uu)), e.bounds);
-  }
-  const touching = pa ?? pb;
-  const cylinder = a.kind === 'cone' ? a : b.kind === 'cone' ? b : undefined;
-  if (touching && cylinder?.cylinder) {
-    const axis = scale(cylinder.axis, 1 / norm(cylinder.axis));
-    const n = scale(touching.normal, 1 / norm(touching.normal));
-    const off = dot(sub(cylinder.center, touching.point), n);
-    if (Math.abs(dot(n, axis)) < 1e-9 && Math.abs(Math.abs(off) - cylinder.radius) < 1e-6)
-      return lineShape(sub(cylinder.center, scale(n, off)), axis, e.bounds);
-  }
-  const p = pa ?? pb;
-  const c = a.kind === 'cone' ? a : b.kind === 'cone' ? b : undefined;
-  if (p && c?.cylinder) {
-    const axis = scale(c.axis, 1 / norm(c.axis));
-    const along = dot(p.normal, axis);
-    if (Math.abs(Math.abs(along) - 1) > 1e-6) return undefined;
-    const center = add(c.center, scale(axis, dot(p.normal, sub(p.point, c.center)) / along));
-    return {
-      type: 'circle',
-      at: [round6(center[0] * 10), round6(center[1] * 10), round6(center[2] * 10)],
-      dir: canonical(axis),
-      size: round6(2 * Math.PI * c.radius * 10),
-    };
-  }
-  return undefined;
-}
 const cross = (a: Vec3, b: Vec3): Vec3 => [
   a[1] * b[2] - a[2] * b[1],
   a[2] * b[0] - a[0] * b[2],
@@ -1316,12 +1381,14 @@ const miss = (why: string): undefined => {
  * side swept from one of the curves around the extruded regions (a plane
  * through a line's two ends, a cylinder about a circle's or arc's centre).
  */
-function faceName(face: F3dFace, naming: FaceNaming): string | undefined {
+function faceName(face: F3dFace, naming: FaceNaming, hint?: Vec3): string | undefined {
   if (face.feature === undefined) return miss('no feature');
   const round = naming.rounds.get(face.feature);
   if (round) {
     const k = Number(face.tags[0]?.token);
-    const edge = Number.isInteger(k) ? round.edges[k - 1] : undefined;
+    const near = hint ? nearestEdge(round, hint) : undefined;
+    const edge =
+      near !== undefined ? round.edges[near] : Number.isInteger(k) ? round.edges[k - 1] : undefined;
     if (!edge) return miss(`${round.op} face: its edge has no name`);
     return `${round.op}:${round.id}:from:(${edge})`;
   }
@@ -1334,8 +1401,14 @@ function faceName(face: F3dFace, naming: FaceNaming): string | undefined {
   const m = ex.sketch.fusion.frame;
   const O: Vec3 = [m[3] as number, m[7] as number, m[11] as number];
   const N: Vec3 = [m[2] as number, m[6] as number, m[10] as number];
-  const lines = new Map(ex.sketch.fusion.lines.map((l) => [String(l.tag), l]));
-  const circles = new Map(ex.sketch.fusion.circulars.map((c) => [String(c.tag), c]));
+  const line = (curve: string) => {
+    const c = ex.sketch.curves.get(curve);
+    return c && !('center' in c) ? c : undefined;
+  };
+  const circle = (curve: string) => {
+    const c = ex.sketch.curves.get(curve);
+    return c && 'center' in c ? c : undefined;
+  };
   const tol = 1e-5;
   if (s.kind === 'plane') {
     if (norm(cross(s.normal, N)) < 1e-6) {
@@ -1345,25 +1418,85 @@ function faceName(face: F3dFace, naming: FaceNaming): string | undefined {
       if (Math.abs(h) < tol) return miss('profile plane of a two-sided extrude');
       return `extrude:${ex.id}:cap:${Math.sign(h) === ex.side1 ? 'end' : 'start'}`;
     }
-    for (const curve of ex.curves) {
-      const l = lines.get(String(ex.sketch.tags.get(curve)));
-      if (!l) continue;
-      const on = (p: Vec3) => Math.abs(dot(sub(toModel(m, p), s.point), s.normal)) < tol;
-      if (on(l.start) && on(l.end)) return `extrude:${ex.id}:side:${curve}`;
-    }
-    return miss('plane side: no curve');
+    const on = (p: Vec3) => Math.abs(dot(sub(toModel(m, p), s.point), s.normal)) < tol;
+    const hits = ex.curves.filter((curve) => {
+      const l = line(curve);
+      return l && on(l.start) && on(l.end);
+    });
+    const curve = sideCurve(hits, face, hint, (curve, p) => {
+      const l = line(curve) as SketchLine;
+      const a = toModel(m, l.start);
+      const d = sub(toModel(m, l.end), a);
+      const t = dot(sub(p, a), d) / dot(d, d);
+      return t > -1e-4 && t < 1 + 1e-4;
+    });
+    return curve ? `extrude:${ex.id}:side:${curve}` : miss('plane side: no curve');
   }
-  if (s.kind === 'cone' && s.cylinder && norm(cross(s.axis, N)) < 1e-6) {
-    for (const curve of ex.curves) {
-      const c = circles.get(String(ex.sketch.tags.get(curve)));
-      if (!c || Math.abs(c.radius - s.radius) > tol) continue;
+  if (s.kind === 'cone' && norm(cross(s.axis, N)) / norm(s.axis) < 1e-6) {
+    // A cylinder, or a cone where the extrude tapers: the curve's radius in the sketch plane.
+    const axis = scale(s.axis, 1 / norm(s.axis));
+    const hits = ex.curves.filter((curve) => {
+      const c = circle(curve);
+      if (!c) return false;
       const off = sub(toModel(m, c.center), s.center);
-      if (norm(cross(off, s.axis)) / Math.max(norm(s.axis), 1e-12) < tol)
-        return `extrude:${ex.id}:side:${curve}`;
-    }
-    return miss('cylinder side: no curve');
+      if (norm(cross(off, axis)) >= tol) return false;
+      return Math.abs(c.radius - (s.radius + s.slope * dot(off, axis))) < tol;
+    });
+    const curve = sideCurve(hits, face, hint, (curve, p) => {
+      const c = circle(curve) as SketchCircular;
+      const span = c.endAngle - c.startAngle;
+      if (span >= 2 * Math.PI - 1e-9) return true;
+      const dir = (v: Vec3) => sub(toModel(m, v), toModel(m, [0, 0, 0]));
+      const x = dir(c.xAxis);
+      const y = cross(dir(c.normal), x);
+      const w = sub(p, toModel(m, c.center));
+      const turn = Math.atan2(dot(w, y), dot(w, x)) - c.startAngle;
+      const a = ((turn % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+      return a < span + 1e-6 || a > 2 * Math.PI - 1e-6;
+    });
+    return curve ? `extrude:${ex.id}:side:${curve}` : miss('cylinder side: no curve');
   }
   return miss(`surface ${s.kind === 'other' ? s.type : s.kind}`);
+}
+
+/** The named edge of a fillet or chamfer nearest a point (cm), by its geometry. */
+function nearestEdge(round: ImportedRound, p: Vec3): number | undefined {
+  let best: number | undefined;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  round.shapes.forEach((shape, i) => {
+    if (!shape?.ends || !round.edges[i]) return;
+    const [a, b] = shape.ends;
+    let d: number;
+    if (shape.type === 'line') {
+      const ab = sub(b, a);
+      const t = Math.max(0, Math.min(1, dot(sub(p, a), ab) / dot(ab, ab)));
+      d = norm(sub(p, [a[0] + ab[0] * t, a[1] + ab[1] * t, a[2] + ab[2] * t]));
+    } else {
+      d = Math.min(norm(sub(p, a)), norm(sub(p, b)), norm(sub(p, shape.mid)));
+    }
+    if (d < bestDistance) [best, bestDistance] = [i, d];
+  });
+  return best;
+}
+
+/**
+ * Which of an extrude's curves on a face's surface swept that face. Fusion
+ * gives a face it merged one tag per face merged into it: when it merged all
+ * of these curves' sides, Extrudo merged them too and kept the smallest name.
+ * Otherwise the one whose stretch holds `hint` (a point on the face, model
+ * space, cm), else the first.
+ */
+function sideCurve(
+  hits: string[],
+  face: F3dFace,
+  hint: Vec3 | undefined,
+  holds: (curve: string, p: Vec3) => boolean,
+): string | undefined {
+  if (hits.length < 2) return hits[0];
+  const op = Math.abs(face.tags[0]?.designs[0] ?? Number.NaN);
+  const merged = face.tags.filter((t) => Math.abs(t.designs[0] ?? Number.NaN) === op).length;
+  if (merged >= hits.length) return [...hits].sort()[0];
+  return (hint && hits.find((curve) => holds(curve, hint))) || hits[0];
 }
 
 /**
@@ -1461,6 +1594,7 @@ function edgeTreatment(
 ): string | ImportedRound {
   const inputs: Record<string, unknown> = {};
   const edges: (string | undefined)[] = [];
+  const shapes: (EdgeShape | undefined)[] = [];
   let set = 0;
   let total = 0;
   let named = 0;
@@ -1468,23 +1602,40 @@ function edgeTreatment(
     const refs: GeomRef[] = [];
     for (const e of s.edges) {
       total++;
-      const a = faceName(e.faces[0], naming);
-      const b = faceName(e.faces[1], naming);
       const shape = edgeShape(e);
+      const a = faceName(e.faces[0], naming, shape?.mid);
+      const b = faceName(e.faces[1], naming, shape?.mid);
       const names = a && b && a !== b ? [a, b] : undefined;
       edges.push(names ? edgeName(names) : undefined);
+      shapes.push(shape);
       // A fillet's or chamfer's face name is read off the edge it rounds, as
       // named here; Extrudo may have found that edge by its shape instead,
       // under another name. Such a name alone is too weak to hold the edge
       // (a lost edge fails the whole feature), so it needs the shape too.
       const guessed = names?.some((n) => /^(fillet|chamfer):/.test(n)) ?? false;
       if (!shape && (!names || guessed)) continue;
+      // Geometry alone, without a named face beside it, matches some other
+      // edge of that kind and size as readily as this one (most such picks
+      // in the corpus were wrong): left out.
+      const beside = names ?? [...new Set([a, b].filter((x): x is string => !!x))];
+      if (beside.length === 0) continue;
       // The name, when both faces have one; the geometry always, so Extrudo
       // finds the edge where joins merged or split those faces.
       const id = names ? edgeName(names) : `e[f3d.edge.${f.id}.${total}]`;
       const ref: GeomRef = { kind: 'edge', id };
-      if (shape) ref.fingerprint = { ...shape, ...(names ? { adj: [...names].sort() } : {}) };
-      if (!refs.some((r) => r.id === id)) refs.push(ref);
+      if (shape) {
+        const { type, at, dir, size } = shape;
+        ref.fingerprint = { type, at, dir, size, adj: [...beside].sort() };
+      }
+      // Two edges can share a name (both between the same two faces, which
+      // Extrudo numbers or splits): kept apart by where they are.
+      const at = ref.fingerprint?.at;
+      const same = (r: GeomRef) =>
+        r.id === id &&
+        (!at ||
+          !r.fingerprint?.at ||
+          Math.hypot(...at.map((v, i) => v - (r.fingerprint?.at?.[i] ?? 0))) < 1e-3);
+      if (!refs.some(same)) refs.push(ref);
       named++;
     }
     if (refs.length === 0 || !s.size || set >= 32) continue;
@@ -1514,7 +1665,7 @@ function edgeTreatment(
     f.type === 'fillet'
       ? d.fillet(inputs as Parameters<Design['fillet']>[0], { name: f.name })
       : d.chamfer(inputs as Parameters<Design['chamfer']>[0], { name: f.name });
-  return { op: f.type, id: made.id, edges };
+  return { op: f.type, id: made.id, edges, shapes };
 }
 
 /**

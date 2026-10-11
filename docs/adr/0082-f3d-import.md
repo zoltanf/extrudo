@@ -58,9 +58,13 @@ practical.
      scheme from the features that made their two faces — extrudes
      (`extrude:<id>:cap:start`, `…:side:<curve>`), revolves
      (`revolve:<id>:side:<curve>`) and earlier fillets and chamfers
-     (`fillet:<id>:from:(<edge>)`, Fusion's face token being the edge's place
-     in that feature's list) — and carry a fingerprint of the edge's line or
-     circle for where a join merged faces.
+     (`fillet:<id>:from:(<edge>)`, from that feature's edge nearest the edge
+     being named) — and carry a fingerprint of the edge's line or arc (its ends
+     where the faces that bound it cut it) for where a join merged faces. A
+     face Fusion merged from several of an extrude's sides takes the smallest
+     of their names, as Extrudo's merge does; otherwise the side whose curve
+     holds the edge. An edge with no nameable face is left out: its geometry
+     alone matched the wrong edge more often than the right one.
    - The bodies Fusion joined, cut or intersected become the extrude's or
      revolve's `bodies` when each is the only body of an imported feature
      (Extrudo's default is every body it meets). Bodies hidden in Fusion are
@@ -77,12 +81,18 @@ practical.
      (Extrudo's letters are not Fusion's width); an extrude of it takes the
      whole text. A sketch with text is never placed mirrored (the XZ plane
      faces the other way in Fusion): it goes on a plane facing Fusion's
-     normal instead, so the text reads the same way.
+     normal instead, so the text reads the same way. An older file's text
+     (2018–19) has its capitals' height, a box and alignment codes: it is
+     aligned in its box as Fusion did (left or centred; top or middle), and
+     a text Fusion mirrored in its sketch is turned instead.
    - An extrude that starts at an offset, or from a face parallel to its
      sketch, takes its profiles from a copy of the sketch moved that far
      along its normal (Extrudo's extrude starts on its sketch). One that goes
      up to a parallel plane becomes that distance; up to another face, a
-     to-object extent when the face can be named.
+     to-object extent when the face can be named. Either side of a two-sided
+     extrude goes up to a face or through everything when it has no
+     distance. Faces of bodies as the profile (press-pull) are extruded
+     along their outward normal when they can be named.
    - A revolve about an origin axis or a line of its own sketch keeps its
      angle.
    - A hole on a face parallel to an origin plane becomes a sketch of its
@@ -114,13 +124,14 @@ practical.
 - On the owner's 250 files every file decodes and maps to a valid design.
   Rebuilt with our kernel and compared with the reference STEP (volume within
   0.5 %, tight bounding box within 0.05 mm; hidden bodies left out, as Fusion's
-  STEP export leaves them out; 7 references hold no solid): of 243, 105 match
-  (26 of them while skipping features the result does not need), 72 lose some
-  features, 58 build different geometry and 8 have no body. The common gaps,
-  by count: fillet and chamfer edges Extrudo cannot find again (rough
-  fingerprints for arcs, faces gone from the final B-rep), components, faces
-  given as an extrude's profile, older sketch texts, threads, sweeps, splits,
-  mirrors, and sketch dimensions and constraints.
+  STEP export leaves them out; 7 references hold no solid): of 243, 120 match
+  (7 of them while skipping features the result does not need), 60 lose some
+  features, 54 build different geometry, 8 have no body and 1 crashes the
+  kernel (an OCCT trap on a chamfer). The common gaps, by count: fillet and
+  chamfer edges Extrudo cannot find again (faces of features not imported,
+  faces gone from the final B-rep), components, faces given as an extrude's
+  profile that cannot be named, threads, sweeps, splits, mirrors, and sketch
+  dimensions and constraints.
 - The format changes between Fusion versions (record versions, reference
   widths). Each decoder checks its record's version and reports what it does
   not know instead of guessing; the report reaches the user.

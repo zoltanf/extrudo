@@ -143,6 +143,63 @@ async function measures(f3d: F3dDesign): Promise<Measure[]> {
 const RING = Math.PI * (5.5 ** 2 - 2.1 ** 2) * 0.8;
 
 describe('f3dToDesign', () => {
+  it("extrudes a body's face along its outward normal (press-pull)", async () => {
+    const f3d = washer();
+    f3d.features.push({
+      ...(f3d.features[1] as F3dExtrude),
+      id: 3,
+      name: 'Extrude2',
+      operation: 'join',
+      parameters: [parameter({ name: 'd5', kind: 'AlongDistance', value: 0.2 })],
+      profiles: [],
+      // The ring's top, made by Extrude1 (record 2).
+      faces: [
+        {
+          tags: [],
+          feature: 2,
+          surface: { kind: 'plane', point: [0, 0, 0.08], normal: [0, 0, 1] },
+        },
+      ],
+    });
+    expect(f3dToDesign(f3d, 'Washer').report.imported).toContain('Extrude2');
+    expect(await volumes(f3d)).toEqual([expect.closeTo(RING * 3.5, 3)]);
+  });
+
+  it('cuts through everything on both sides when a two-sided extrude has no distances', async () => {
+    const f3d = washer();
+    const cutter = circle(30, 103n, 0.4);
+    f3d.features.push(
+      {
+        type: 'sketch',
+        id: 3,
+        kind: 'Sketch',
+        name: 'Sketch2',
+        suppressed: false,
+        parameters: [],
+        sketch: {
+          id: 6,
+          // Halfway up the ring, so both sides have something to cut.
+          frame: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0.04, 0, 0, 0, 1],
+          points: [cutter.point],
+          lines: [],
+          circulars: [cutter.circle],
+          splines: [],
+          texts: [],
+        },
+      },
+      {
+        ...(f3d.features[1] as F3dExtrude),
+        id: 4,
+        name: 'Extrude2',
+        operation: 'cut',
+        direction: 'two-sides',
+        parameters: [],
+        profiles: [{ id: 32, sketch: 6, regions: [region([[103n]])] }],
+      },
+    );
+    expect(await volumes(f3d)).toEqual([expect.closeTo(Math.PI * (5.5 ** 2 - 4 ** 2) * 0.8, 3)]);
+  });
+
   it('keeps user parameters and drives the extrude by them', () => {
     const { design, report } = f3dToDesign(washer(), 'Washer');
     const doc = design.toJSON();
@@ -510,6 +567,54 @@ describe('f3dToDesign', () => {
     expect(((letter?.bbox.min[0] ?? 0) + (letter?.bbox.max[0] ?? 0)) / 2).toBeCloseTo(23.61, 0);
     expect(letter?.bbox.min[1]).toBeCloseTo(0, 1);
     expect(letter?.bbox.max[1]).toBeCloseTo(7.16, 1);
+  });
+
+  it('places an older text in its box by its alignment, its height the capitals', async () => {
+    const f3d = washer();
+    // "H" 5 mm high, centred (3, 3) in a 20 × 10 mm box from (20, 0) mm.
+    f3d.features.push(
+      {
+        type: 'sketch',
+        id: 3,
+        kind: 'Sketch',
+        name: 'Sketch2',
+        suppressed: false,
+        parameters: [],
+        sketch: {
+          id: 6,
+          frame: IDENTITY,
+          points: [],
+          lines: [],
+          circulars: [],
+          splines: [],
+          texts: [
+            {
+              id: 50,
+              text: 'H',
+              font: 'Arial',
+              height: 0.5,
+              angle: 0,
+              at: [2, 0],
+              width: 0,
+              old: { mirrored: false, horizontal: 3, vertical: 3, box: [2, 1] },
+            },
+          ],
+        },
+      },
+      {
+        ...(f3d.features[1] as F3dExtrude),
+        id: 4,
+        name: 'Extrude2',
+        parameters: [parameter({ name: 'd5', kind: 'AlongDistance', value: 0.2 })],
+        profiles: [{ id: 32, sketch: 6, text: 50 }],
+      },
+    );
+    const { report } = f3dToDesign(f3d, 'Washer');
+    expect(report.imported).toContain('Extrude2');
+    const [, letter] = await measures(f3d);
+    expect(((letter?.bbox.min[0] ?? 0) + (letter?.bbox.max[0] ?? 0)) / 2).toBeCloseTo(30, 0);
+    expect(letter?.bbox.min[1]).toBeCloseTo(2.5, 1);
+    expect(letter?.bbox.max[1]).toBeCloseTo(7.5, 1);
   });
 
   it("moves an extrude's face along its outward normal", async () => {

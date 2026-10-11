@@ -68,6 +68,8 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `111A78C2…` | Sketch conic (v0) | after the curve ids: f64 rho, `01 00`, then the curve as a spline stores it (u32 degree 2, f64 tolerance, knots, weights 1, rho / (1 − rho), 1, and the start, shoulder and end as poles); a trailer; refs to the shoulder, end and start points. The base level ends in the owner backlink |
 | `D82E012F…` | Sketch spline (v3) | derived level: the curve ids, an 8-byte carrier (all `ff`, or a reference); base level: two helper refs, ref end point, ref start point, `01 00`, u32 degree, f64 fit tolerance, then knots, weights (empty unless rational) and xyz poles, each `u32 n, u32 n, u32 8` and n × 1 or 3 f64; a trailer; owner backlink |
 | `F0B1AFA3…` | Sketch text (v3, v4) | leading block u32 n, n × (ref box line, u32); property block (`txt_tag`, `txt_tag_base`); f64 baseline angle, a byte, 4 bytes, 12 zero bytes, f32 1, wstr font family, f64 font size (cm), 2 bytes, the box corner the baseline starts from (2 f64), zeros (v4: and three bytes), wstr text, the box lines again, a trailer, owner backlink. The box runs along the baseline for the text's advance width and up (90° anticlockwise) for the font size; its bottom edge is the baseline |
+| `E0618268…` | Sketch text, older (v0, 2018–19 files) | presence byte, property block (`textex_tag`, `txt_tag_base`); a byte, f64, 12 zero bytes, f32 1; wstr font family; a byte; f64 height (cm, the capitals'), a reference to its parameter when it has one; u32 horizontal alignment (1 left, 3 centre), 3 zero bytes; wstr text (lines split by `\n`); a byte, the vertical alignment (1 the capitals' top at the box's top, 3 the lines' middle at the box's); u32 weight (500, 750) or other fields; a 4 × 4 row-major matrix from the text's frame to the sketch's (cm), its origin the box's lower left corner; trailer, owner backlink |
+| `8B369926…` | Older text's box (a coincident-constraint subclass) | references the text and the four `16DEFC4D…` box lines (a sketch-line subclass; start and displacement, 6 f64, in the base level) |
 | `EA3B930A…` | Text box line | a sketch-line subclass: a ref to its text, then start and displacement as a line's |
 | `362B7EC3…` | Point incidence | u32 n, n refs to curves, u8, ref point |
 | `44A64366…` | Sketch | its base level's first reference is the placement |
@@ -76,8 +78,8 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `DD405BC2…` | Extrude | op u32 (1 join, 2 cut, 3 intersect, 4 new body), direction u32 (1 one side, 2 two sides, 3 symmetric), face-extend u32, reversed u8, solid u8, start u8 (0 profile plane, 1 offset, 2 face) — at payload offset 9, 8, 7, 19 or 18 depending on the version |
 | `4BD53E5A…` | Sketch-profile operand | the sketch's record number as decimal UTF-16; record N + 3, when it is `0D57BD2F…`, selects regions |
 | `0D57BD2F…` | Profile regions | see below |
-| `92F9A5F4…` | Entity-profile operand | names its sketch as a sketch-profile operand does, and the entity by a `90055C05…` record reference: a text (`F0B1AFA3…`, or the older `E0618268…`, not read) whose letters are the profile |
-| `5D89B935…` | Operation table | u32 n × (u64 operation id, u64 record), or in newer files u32 n × (u64 operation id, u32 m, m × u64 records); then u32 k, k × u64 and the closing reference. Version 1 has another list in front |
+| `92F9A5F4…` | Entity-profile operand | names its sketch as a sketch-profile operand does, and the entity by a `90055C05…` record reference: a text (`F0B1AFA3…`, or the older `E0618268…`) whose letters are the profile |
+| `5D89B935…` | Operation table | u32 n × (u64 operation id, u64 record), or in newer files u32 n × (u64 operation id, u32 m, m × u64 records); then u32 k, k × u64 and the closing reference. Version 1 has another list in front. A record can be missing from the file (seen: one of 41) |
 | `E3849A15…` | Revolve | op u32 (as an extrude's) then u32 2, at payload offset 6 (after an empty property block) or 2; a sketch-profile operand; a geometry operand for the axis; the angles are parameters it owns (`AlongAngle`, …) |
 | `5A1BF548…` | Geometry operand | refers to what it names: a sketch curve (`E2CEFD18…`: u64 0, u64 sketch record, u64 curve tag), an origin axis (`90055C05…`: u64 record), and its geometry in model space (`50AEE8B4…`: a line as start and displacement; `994C518A…`: a point; `CC54ECAD…`: a plane) |
 | `50AEE8B4…` | Model line | 2 zero bytes, start (3 f64), displacement (3 f64) |
@@ -94,7 +96,7 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `F2A7590D…` | Hole placement | u32 8, 6 f64 (the first three zero wherever seen, the last three the face plane's normal), …; its geometry operand holds the face's plane (`CC54ECAD…`) |
 | `2CA5A1CD…` | Operand group | one per fillet/chamfer edge set; members are edge operands (or face or body operands, for other features) |
 | `5662F619…` | Edge or face operand | refers to its recipe; an extrude's face operands name its start face and the face it goes up to |
-| `7ACC2A03…` | Edge or face recipe | u32 1, u32 3, u32 n faces; per face u32 tags; per tag str8 token, u32 0, u32 k, k × i32 operation id, u32 0; then `edge_recipe_data` and a program (not read). An edge lists its two faces first, a face itself; the rest are neighbours. A fillet's or chamfer's face has the token k of the k-th edge in that feature's list; an extrude's start cap 1, end cap 2, sides from 3 |
+| `7ACC2A03…` | Edge or face recipe | u32 1, u32 3, u32 n faces; per face u32 tags; per tag str8 token, u32 0, u32 k, k × i32 operation id, u32 0; then `edge_recipe_data` and a program (not read). An edge lists its two faces first, a face itself; the rest are neighbours. A fillet's or chamfer's face often has the token k of the k-th edge in that feature's list, but the tokens count other faces too (a one-edge fillet's face can be 4; a four-edge chamfer's 1, 2, 5, 6); an extrude's start cap 1, end cap 2, sides from 3 |
 
 An extrude's extent shows in the parameters it owns: `AlongDistance` for a
 distance, `Side1Offset` (and a face operand) for up to an object, none for
@@ -172,3 +174,15 @@ string, 0, a count and that many operation ids. A fillet's edge recipe names
 faces by the same (token, operation id), which is how an edge is found: its
 two faces' surfaces give the line or circle it lies on, and the operation
 table gives the feature that made each face.
+
+A face Fusion merged from coplanar faces (after a join) carries one tag per
+face merged into it, sorted by operation id: `[18@303 5@303 4@305 6@307]` is
+two sides of operation 303 and faces of 305 and 307. A face copied by a
+pattern carries tags with several operation ids: the source feature's, the
+pattern's and the instance's.
+
+`cone-surface`: centre, axis (unit), major axis (its length the radius at
+the centre), ratio, then the sine and cosine of the half-angle. The radius at
+h cm along the axis is r + h · sine / cosine; a negative sine narrows the cone
+along its axis (a countersink drilled along the axis). A sine of 0 is a
+cylinder.
