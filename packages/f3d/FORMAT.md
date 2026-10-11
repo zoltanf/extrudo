@@ -175,6 +175,29 @@ Found statistically (curves the file's own profiles use are never construction)
 and not certain; curves a profile uses are imported as non-construction
 whatever the flag says.
 
+## Components
+
+Every component, the root included, is a component record; what belongs to it
+is found by following references, since the frames differ between file
+generations.
+
+| Type GUID | What | How it is read |
+|---|---|---|
+| `E03784ED…` | Component | its most-derived level references its occurrence list (`904F885E…`), body containers (`CD57BC48…`) and history (`C3423E04…`); its base level references the occurrence list again, then a few bytes, a wstr GUID and the wstr name (the root's is the design's name and version, "Bracket v3") |
+| `C3423E04…` | Component history | references the component's feature list (`3A6D1E62…`) and its own timeline (only the root's lists items: the file keeps one timeline for all components) |
+| `3A6D1E62…` | Feature list | its base level lists the records the component owns; every timeline feature's base level ends with a reference to the feature list of its component |
+| `CD57BC48…` | Body container | its last component reference is its component; a body (`D3937028…`) references the container of the component it is in |
+| `CE2913AA…` | Occurrence | a reference to the component; after a stretch that differs between generations, u32 ordinal (1 for a component's first occurrence, 2, 3… for copies), wstr component GUID, wstr occurrence GUID; when placed, a row-major 4 × 4 rigid transform (cm) after those. The root's is named `rootInstance`. A component's occurrence list references the occurrences of its children |
+| `2BB3BB69…` | Hidden occurrence | references a component (first) and its occurrence; one per occurrence whose light bulb is off. Worked out from the samples alone: in each of them, the components these name are the ones a STEP export of the design leaves out |
+| `56225BC7…` | Body to Component (timeline item) | a body operand (`9716F783…` → body link → body) names the body it takes; it makes a new body record in the target component, whose body link names the item or one of its own records as the feature that made it. The body it took stays in its old component, hidden |
+
+Seen in the samples: no component placed twice, none nested, and placed
+occurrences away from the origin only in a design with no timeline.
+
+A body's index sits after a −1.0 double in most files (payload offset 10 in
+class version 16); in some it is 16 bytes after the body's GUID string, behind
+other numbers.
+
 ## ASM B-rep
 
 ACIS SAB with 8-byte integers: `ASM BinaryFile8`, u64 version, record count,

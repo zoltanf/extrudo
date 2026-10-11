@@ -461,13 +461,14 @@ export function f3dToDesign(
   }
   components.enter(undefined);
   // Bodies hidden in the file stay hidden (a STEP export of the same design leaves them out too)
-  // — unless a shown body came from a feature not imported (Body to
-  // Component moves a body on as a new one: its shape is still the hidden
-  // one's here), or a later join here takes every body it meets (the file's
-  // named bodies it joins were not known), which may have merged a shown one in.
+  // — unless a body that can be seen (shown, in a shown component) came from a
+  // feature not imported (its shape may be the hidden one's moved on; a Body to
+  // Component's copy is already the body it took, see ComponentMapping), or a
+  // later join here takes every body it meets (the file's named bodies it joins
+  // were not known), which may have merged a shown one in.
   const shownElsewhere = f3d.bodies.some(
     (b) =>
-      b.visible &&
+      components.seen(b) &&
       !components.aliases.has(b.id) &&
       (b.creator === undefined || !replayable.has(b.creator)),
   );

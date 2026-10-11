@@ -14,7 +14,8 @@
  *   feature list of the component it belongs to.
  * - A body (`D3937028…`) references the body container of its component, and
  *   the container references the component.
- * - A component whose occurrence is hidden is named by a `2BB3BB69…` record.
+ * - An occurrence that is hidden is named, by its path from the root, by a
+ *   `2BB3BB69…` record; a hidden component hides the ones inside it.
  * - An occurrence (`CE2913AA…`) places a component: a reference to the
  *   component, u32 ordinal (1 for the first occurrence of a component, 2, 3…
  *   for copies), the component's GUID and the occurrence's GUID, then, when
@@ -219,7 +220,8 @@ export function readComponents(seg: Segment): ComponentTree {
     for (const history of ofType(seg, own, COMPONENT_HISTORY))
       for (const list of ofType(seg, levelRefs(seg, history), FEATURE_LIST))
         featureLists.set(list, id);
-    for (const list of ofType(seg, own, OCCURRENCE_LIST)) occurrenceLists.set(list, id);
+    for (const list of ofType(seg, [...own, ...baseRefs(seg, id)], OCCURRENCE_LIST))
+      occurrenceLists.set(list, id);
   }
   for (const id of seg.idsOf(BODY_CONTAINER)) {
     const owner = ofType(seg, levelRefs(seg, id), COMPONENT).at(-1);
@@ -240,10 +242,27 @@ export function readComponents(seg: Segment): ComponentTree {
       const child = [...components.values()].find((c) => c.occurrences.some((o) => o.id === occ));
       if (child && child.id !== owner) child.parent = owner;
     }
+  // A hidden-occurrence record names the occurrence's path from the root, then
+  // the path again: the occurrence is the last one before the repeat (else the
+  // record's first component, where the path's references are of another form).
+  const byOccurrence = new Map<number, F3dComponent>();
+  for (const c of components.values()) for (const o of c.occurrences) byOccurrence.set(o.id, c);
   for (const id of seg.idsOf(HIDDEN_OCCURRENCE)) {
-    const hidden = components.get(ofType(seg, levelRefs(seg, id), COMPONENT)[0] ?? -1);
-    if (hidden) hidden.visible = false;
+    const refs = levelRefs(seg, id);
+    const path = ofType(seg, refs, OCCURRENCE);
+    const repeat = path.indexOf(path[0] as number, 1);
+    const leaf = path[(repeat > 0 ? repeat : path.length) - 1];
+    const hidden =
+      (leaf !== undefined ? byOccurrence.get(leaf) : undefined) ??
+      components.get(ofType(seg, refs, COMPONENT)[0] ?? -1);
+    if (hidden && !hidden.root) hidden.visible = false;
   }
+  // A hidden component hides the components inside it.
+  const hiddenAbove = (c: F3dComponent, depth = 0): boolean => {
+    const parent = c.parent === undefined ? undefined : components.get(c.parent);
+    return !!parent && depth < 64 && (!parent.visible || hiddenAbove(parent, depth + 1));
+  };
+  for (const c of components.values()) if (hiddenAbove(c)) c.visible = false;
   const all = [...components.values()];
   return {
     components: [...all.filter((c) => c.root), ...all.filter((c) => !c.root)],

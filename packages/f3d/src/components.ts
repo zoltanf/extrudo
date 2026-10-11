@@ -60,6 +60,7 @@ export class ComponentMapping {
     const components = f3d.components ?? [];
     const byId = new Map(components.map((c) => [c.id, c]));
     const taken = new Set<string>();
+    const nested = new Map<number, string[]>();
     for (const c of components) {
       if (c.root) continue;
       const name = uniqueName(c.name, taken);
@@ -69,8 +70,22 @@ export class ComponentMapping {
         d.state.dispatch(setComponentDisplay({ ids: [handle.id], display: 'hidden' }));
         report.notes.push(`Component ${name} is hidden, as in the file.`);
       }
-      const notes = placementNotes(c, byId);
-      for (const note of notes) report.notes.push(`Component ${name}: ${note}`);
+      for (const note of placementNotes(c)) report.notes.push(`Component ${name}: ${note}`);
+      const parent = c.parent === undefined ? undefined : byId.get(c.parent);
+      if (parent && !parent.root) {
+        const names = nested.get(parent.id) ?? [];
+        names.push(name);
+        nested.set(parent.id, names);
+      }
+    }
+    // Extrudo components don't nest (ADR-0081 §9): the ones inside another stand alone.
+    for (const [parent, names] of nested) {
+      const inside = this.#handles.get(parent)?.name ?? 'another component';
+      report.notes.push(
+        names.length === 1
+          ? `Component ${names[0]} is inside ${inside} in the file; here it stands alone.`
+          : `Components ${list(names)} are inside ${inside} in the file; here they stand alone.`,
+      );
     }
     for (const f of d.toJSON().features) this.#seen.add(f.id);
   }
@@ -118,6 +133,12 @@ export class ComponentMapping {
     return this.#f3d.bodies.some((b) => moved.includes(b.id) && b.visible);
   }
 
+  /** Whether a body can be seen: shown itself, in a component the file shows. */
+  seen(body: F3dBody): boolean {
+    const component = this.#f3d.components?.find((c) => c.id === body.component);
+    return this.shown(body) && (component?.visible ?? true);
+  }
+
   /** The bodies a body was moved on as (empty: it was not moved). */
   #movedTo(record: number): number[] {
     return [...this.aliases].filter(([, source]) => source === record).map(([made]) => made);
@@ -158,20 +179,21 @@ function uniqueName(name: string, taken: Set<string>): string {
   return chosen;
 }
 
-/** What the file says about a component that an Extrudo component can't hold. */
-function placementNotes(c: F3dComponent, byId: Map<number, F3dComponent>): string[] {
+/** What the file says about a component's placement that an Extrudo component can't hold. */
+function placementNotes(c: F3dComponent): string[] {
   const notes: string[] = [];
-  const moved = c.occurrences.filter((o) => o.transform && !isIdentity(o.transform));
-  if (moved.length > 0)
+  if (c.occurrences.some((o) => o.transform && !isIdentity(o.transform)))
     notes.push(
       'the file places it away from its own origin; it is imported where its own features make its bodies.',
     );
   if (c.occurrences.length > 1)
     notes.push(`the file places it ${c.occurrences.length} times; it is imported once.`);
-  const parent = c.parent === undefined ? undefined : byId.get(c.parent);
-  if (parent && !parent.root)
-    notes.push(
-      `it is inside ${parent.name || 'another component'} in the file; here it stands alone.`,
-    );
   return notes;
+}
+
+/** "A", "A and B", "A, B and C". */
+function list(names: string[]): string {
+  return names.length < 2
+    ? (names[0] ?? '')
+    : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 }
