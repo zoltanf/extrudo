@@ -207,6 +207,8 @@ export interface F3dEdgeSet {
 export interface F3dEdgeFeature extends FeatureBase {
   type: 'fillet' | 'chamfer';
   sets: F3dEdgeSet[];
+  /** The surfaces of the B-rep faces it made (tagged with its operations), cm. */
+  made?: AsmSurface[];
 }
 
 export interface F3dRevolve extends FeatureBase {
@@ -524,6 +526,16 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     const records = operations.get(design);
     return records?.find((r) => onTimeline.has(r)) ?? records?.[0];
   };
+  // Feature record → the surfaces of the B-rep faces tagged with its operations.
+  const madeBy = (record: number): AsmSurface[] => {
+    const ops = new Set<number>();
+    for (const [op, records] of operations) if (records.includes(record)) ops.add(op);
+    const out = new Set<AsmFace>();
+    for (const list of faces.values())
+      for (const face of list)
+        if (face.tags.some((t) => ops.has(Math.abs(t.design)))) out.add(face);
+    return [...out].map((face) => face.surface);
+  };
   // Instance operation id → instance code, over every copying feature.
   const instances = new Map<number, number>();
   for (const guid of [MIRROR, RECTANGULAR_PATTERN, CIRCULAR_PATTERN, PATH_PATTERN])
@@ -801,8 +813,11 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       const sets = tryDecode(`${kind} #${id}`, () =>
         readEdgeSets(seg, scope, base.parameters, kind, faces, featureOf, instances),
       );
-      if (sets) features.push({ type: kind, ...base, sets });
-      else features.push({ type: 'other', ...base });
+      if (!sets) features.push({ type: 'other', ...base });
+      else {
+        const made = madeBy(id);
+        features.push({ type: kind, ...base, sets, ...(made.length > 0 ? { made } : {}) });
+      }
     } else features.push({ type: 'other', ...base });
   }
 

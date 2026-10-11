@@ -31,6 +31,7 @@ import {
   type Profile,
 } from '@extrudo/sketch/profiles';
 import type { AsmSurface } from './asm';
+import { firstFace } from './chamfer-side';
 import { ComponentMapping } from './components';
 import type { ProfileOperand, ProfileRegion } from './decode/extrude';
 import type { ParameterValue } from './decode/parameters';
@@ -1827,6 +1828,16 @@ function edgeTreatment(
   let named = 0;
   for (const s of f.sets) {
     const refs: GeomRef[] = [];
+    // A chamfer with two sizes: each edge's two faces, the one its first
+    // distance goes on first, when the file's chamfer faces show it.
+    const sides = new Map<GeomRef, [string, string]>();
+    const pairs = new Map<GeomRef, readonly string[]>();
+    const second =
+      f.type === 'chamfer' && s.size && s.size2
+        ? s.size2.unit === 'deg'
+          ? s.size.value * Math.tan(s.size2.value)
+          : s.size2.value
+        : undefined;
     for (const e of s.edges) {
       total++;
       const shape = edgeShape(e);
@@ -1885,24 +1896,61 @@ function edgeTreatment(
         (!at ||
           !r.fingerprint?.at ||
           Math.hypot(...at.map((v, i) => v - (r.fingerprint?.at?.[i] ?? 0))) < 1e-3);
-      if (!refs.some(same)) refs.push(ref);
+      if (!refs.some(same)) {
+        refs.push(ref);
+        if (names) pairs.set(ref, names);
+        const k =
+          names && shape && second !== undefined && s.size && f.made
+            ? firstFace(e, shape, f.made, s.size.value, second)
+            : undefined;
+        if (a && b && k !== undefined) sides.set(ref, k === 0 ? [a, b] : [b, a]);
+      }
       trace(ref);
       named++;
     }
-    if (refs.length === 0 || !s.size || set >= 32) continue;
+    if (refs.length === 0 || !s.size) continue;
+    // Extrudo takes one reference face per set, which must touch each of its
+    // edges: the face every edge shown takes its first distance on, or, with
+    // the sizes swapped, the face every edge takes its second on. Edges that
+    // disagree (a chain round a corner) keep Extrudo's own choice.
+    const shown = [...sides.values()];
+    const common = (i: 0 | 1) => {
+      const face = shown[0]?.[i];
+      return face !== undefined &&
+        shown.every((x) => x[i] === face) &&
+        refs.every((r) => pairs.get(r)?.includes(face))
+        ? face
+        : undefined;
+    };
+    const first = common(0);
+    const other = first === undefined ? common(1) : undefined;
+    if (set >= 32) continue;
     const n = set === 0 ? '' : String(set + 1);
     inputs[`edges${n}`] = refs;
     if (f.type === 'fillet') inputs[`radius${n}`] = expressionOf(s.size);
     else {
       inputs[`distance${n}`] = expressionOf(s.size);
       if (s.size2) {
+        const d1 = expressionOf(s.size);
+        const d2 = expressionOf(s.size2);
         if (s.size2.unit === 'deg') {
           inputs[`mode${n}`] = 'distance-angle';
-          inputs[`angle${n}`] = expressionOf(s.size2);
+          inputs[`angle${n}`] = d2;
+          if (other) {
+            // The other face's distance, d · tan θ, at 90° − θ to it.
+            inputs[`distance${n}`] = `(${d1}) * tan(${d2})`;
+            inputs[`angle${n}`] = `90 deg - (${d2})`;
+          }
         } else {
           inputs[`mode${n}`] = 'two-distances';
-          inputs[`distanceB${n}`] = expressionOf(s.size2);
+          inputs[`distanceB${n}`] = d2;
+          if (other) {
+            inputs[`distance${n}`] = d2;
+            inputs[`distanceB${n}`] = d1;
+          }
         }
+        const face = first ?? other;
+        if (face) inputs[`face${n}`] = [{ kind: 'face', id: face }];
       }
     }
     set++;

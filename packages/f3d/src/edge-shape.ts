@@ -77,7 +77,7 @@ function radial(c: Cone, x: Vec3): number {
 }
 
 /** Where a line `p0 + t·u` (unit u) crosses or touches a surface: its t values. */
-function lineCuts(p0: Vec3, u: Vec3, s: AsmSurface): number[] {
+export function lineCuts(p0: Vec3, u: Vec3, s: AsmSurface): number[] {
   if (s.kind === 'plane') {
     const nd = dot(s.normal, u);
     return Math.abs(nd) < 1e-9 ? [] : [dot(s.normal, sub(s.point, p0)) / nd];
@@ -218,7 +218,7 @@ function extent(
 }
 
 /** A face's surface where it is: a copy's own, not the copied face's. */
-const surfaceOf = (f: F3dFace) => (f.instance ? f.own : f.surface);
+export const surfaceOf = (f: F3dFace) => (f.instance ? f.own : f.surface);
 const surfaces = (faces: F3dFace[]) => faces.flatMap((f) => surfaceOf(f) ?? []);
 
 /** A curve two surfaces may meet in (cm). */
