@@ -27,13 +27,15 @@ on Windows and a dmg on macOS (also `brew install --cask zoltanf/extrudo/extrudo
 You start on the home screen:
 
 - **New design** opens an empty design in millimetres.
+- **Import…** adds a design from a file: an `.extrudo` or `.f3d` design, or a STEP, mesh or
+  OpenSCAD file, which becomes a new design with the [Import Model](./files.md) dialog open.
+- **Start from a template** shows the templates: the Wall bracket, Storage box, Box with a lid
+  and PCB enclosure. Each opens as a copy, with parameters and a timeline to poke at, which is a
+  good way to see how a finished design is put together. While you have no designs the
+  templates are always shown; once you have some, they fold away so your designs come first.
 - **Take the tour** builds a first box in five short steps, with a card that follows what you do.
-- **Start from a template** opens a copy of the Wall bracket, Storage box, Box with a lid or
-  PCB enclosure. They have parameters and a timeline to poke at, which is a good way to see how
-  a finished design is put together.
 - **More examples…**, under the templates, lists further designs. Each one opens as a copy you can edit.
 - **Your designs** lists what is stored in this browser, with search and sorting.
-  **Import .extrudo** adds a design from a file.
 
 ## The layout
 
@@ -139,7 +141,7 @@ top bar says when it is done. Nothing is sent anywhere.
 A browser can clear its storage when the disk is nearly full. The home screen tells you whether
 yours promised not to: **Stored on this device** is good, **Storage may be cleared** means you
 should keep a copy. To keep one, use **Home › Export Design**, which writes an `.extrudo` file
-you can store anywhere and open again with **Import Design** (or **Import .extrudo** on the home
+you can store anywhere and open again with **Import Design** (or **Import…** on the home
 screen). The file holds the whole design, with its versions.
 
 **Ctrl+S** does not save the file; it saves a named version inside the design, which you can

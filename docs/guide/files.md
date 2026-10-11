@@ -46,13 +46,16 @@ useful if you want to turn a design into a program. See the
 
 All of these are in **Home › Files**.
 
-- **Import Design** opens an `.extrudo` file as a new design. The home screen's **Import
-  .extrudo** button does the same.
+- **Import Design** opens an `.extrudo` file as a new design. The home screen's **Import…**
+  card does the same, and takes `.f3d` and the model files below too: a model file becomes a
+  new design with the Import Model dialog open.
 - **Import Model** brings in a STEP file, an STL, 3MF or OBJ mesh, or an OpenSCAD `.scad`
   file, as bodies in the current design. A STEP file keeps its exact surfaces. A mesh becomes a
   [mesh body](./bodies.md) and must be closed. An OpenSCAD file is compiled in your browser, and
   its customizer variables show up as fields you can change. The **Up** setting says whether the
-  file's up is Z or Y, and a mesh has a **Units** setting.
+  file's up is Z or Y, and a mesh has a **Units** setting. An `.f3d` file picked here opens as a
+  new design instead, with its parameters, sketches, pulled solids, fillets and chamfers; a
+  notice says what came across.
 - **Import Drawing** needs an open sketch. It reads an SVG or DXF file and adds its lines and
   curves to the sketch, at the **Scale** and **Units** you choose. **Fixed** (on by default)
   pins the curves where they are, so they do not move when you add constraints.

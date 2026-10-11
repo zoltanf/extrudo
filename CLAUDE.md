@@ -449,9 +449,17 @@ raw, +1.3 kB brotli, 20.57 / 6.66 / 4.63 MB unchanged) and P6-05's STEP
 assemblies (`pushStepGroup`, `writeStepAssembly`: +4.9 kB raw, +3 kB brotli;
 20.57 / 6.66 / 4.63 MB before) and P6-05's pose proximity (`proximityOpen`,
 `proximityPose`, `proximityClose`: +32.6 kB raw, +10.1 kB brotli; 20.58 / 6.66
-/ 4.63 MB before, 20.61 / 6.67 / 4.64 MB after); the 15.76 MB / 3.69 MB brotli
+/ 4.63 MB before, 20.61 / 6.67 / 4.64 MB after) and the 8 MB stack, its guard
+and ADR-0038's rod refusal (2026-10-11: +12.3 kB raw, +3 kB gzip; 20.62 / 6.67 /
+4.64 MB after) and ADR-0051's seam retry and far-face check (2026-10-11: +13.2 kB
+raw, +9.2 kB gzip; 20.64 / 6.68 MB after); the 15.76 MB / 3.69 MB brotli
 of ADR-0037 was P2-15's; OCCT input hash
-`a246513b1c48` (release `occt-a246513b1c48`); **don't
+`e67295b269ca` (release `occt-e67295b269ca`); **the WASM stack is 8 MB**
+(`STACK_SIZE` in `libcascade.config.ts`; Emscripten's default 64 kB was run past
+by booleans and chamfers on B-spline faces, silently corrupting static data until
+a later call trapped: ADR-0001's amendment of 2026-10-11), and the facade aborts
+when anything reaches the stack's lowest 64 kB (`checkStackGuard` in `beginOp`
+and `store`); **don't
 expose an OCCT type in a facade method**, and no raw access from JS: the
 memory test's leak control leaks through the facade).
 ADR-0039 (P2-17) built benchmarks B2 and B3 through the UI
@@ -879,7 +887,14 @@ past a cylinder's axis; bisection gives `[status, value]` read through
 `OffsetFaceError.problems`; solids with a sealed void are refused, and **so are
 bodies where one smooth chain has a sharp edge inside it** (two fillets
 meeting at a corner, `smoothChains`): OCCT's offset traps the wasm heap on
-them whichever face is offset, even the floor).
+them whichever face is offset, even the floor). **ADR-0051's amendment
+(2026-10-11)**: a notch across a cylinder's seam made OCCT's offset return a
+null shape for every face, so a body with a seam is retried on a copy with its
+closed faces divided (`ShapeUpgrade_ShapeDivideClosed`) and merged back
+(`UnifySameDomain`), the history composed through the three steps
+(`DividedOffset`), and `offsetIsGood` also asks `farFacesKept` (a face neither
+moving nor next to a moving one keeps its area and centre), which refuses the
+valid junk OCCT can make of a face pushed through the body.
 **OCCT moves the faces that run smoothly into a picked face together** (angle
 under 4 degrees), so the facade's `tangentFaces` and `KernelApi.tangentChain(…,
 kind)` let the dialog's face field (`tangentChain: true`) pick the whole chain
@@ -2100,7 +2115,7 @@ viewport store, **Radial right-click menu** (a checkbox on the same state as the
 Version history, Settings, Help, and the name plus the save dot are one `TitleGroup`
 centred between the cluster and Version history; the pure `titleFit`
 (`shell/titleFit.ts`) drops the save word first (`data-title-fit="dot"`), then truncates
-the name (`truncate`, `title` = full name). The separator after the cluster is gone. **Tiles first**: Home › Files has no fixed `more` (Import Design, Import Model — `importBody`, full label "Import STEP, mesh or OpenSCAD…" —, Import Drawing, Canvas, Export Design, Export Model, Export as Script, Save to Linked Folder), Construct › Planes shows all seven planes as tiles, and a tile is a fixed 64 px wide, its label the tool's full name wrapped onto up to two 11 px lines when it fits, its short name otherwise (ADR-0079 round 3).
+the name (`truncate`, `title` = full name). The separator after the cluster is gone. **Tiles first**: Home › Files has no fixed `more` (Import Design, Import Model — `importBody`, full label "Import STEP, mesh, OpenSCAD or .f3d…" —, Import Drawing, Canvas, Export Design, Export Model, Export as Script, Save to Linked Folder), Construct › Planes shows all seven planes as tiles, and a tile is a fixed 64 px wide, its label the tool's full name wrapped onto up to two 11 px lines when it fits, its short name otherwise (ADR-0079 round 3).
 
 ADR-0080 (P6-06, slice S1) made the docs site one site: `apps/site/src/docs.ts`'s
 `COLLECTIONS` map `docs/guide` → `/docs/`, `guide/tutorials` → `/docs/tutorials/`,
@@ -2184,9 +2199,11 @@ ADR-0083 (the owner, 2026-10-10) added **`.f3d` import**, `packages/f3d`
 (parameters, timeline, sketches, extrudes with their profile regions,
 fillet/chamfer edges as tagged ASM faces), `f3dToDesign` writes it through the
 API and returns a report (imported, skipped with why, notes); the format is in
-`packages/f3d/FORMAT.md`. The app's **Import .f3d…** (Home › Files,
-`importF3dFile` in `project/actions.ts`, its own lazy chunk) makes a new
-design. No sample files in the repo: `F3D_SAMPLES=<dir>` runs
+`packages/f3d/FORMAT.md`. Home › Files › **Import Model** takes an `.f3d` too
+(`importF3dFile` in `project/actions.ts`, its own lazy chunk) and makes a new
+design of it (no separate tile, 2026-10-11). The home screen's one **Import…** card
+(Start row; `importAnyFile`) takes `.extrudo`, `.f3d` and model files; a model file makes a
+new design that opens with the Import dialog on it (`requestModelImport`). No sample files in the repo: `F3D_SAMPLES=<dir>` runs
 `corpus.test.ts`. Gaps (face profiles, start offsets, holes, revolves,
 patterns, components, sketch dimensions) are in the ADR.
 
@@ -2387,6 +2404,15 @@ them. Notes further down that name a machine apply to that machine only.
   The CI path is proven (run 36179601320, 2026-09-25): the `occt` job took
   about 16 minutes and published the release before the tests ran. After a
   local rebuild, restart the dev server: it keeps serving the old WASM.
+- **A trap that moves when the heap or call order changes may be a stack
+  overflow** (2026-10-11): build the native harness with the build's own stack
+  (`-sSTACK_SIZE=8MB` today; it was 64 kB until ADR-0001's amendment of that day)
+  and `-sSTACK_OVERFLOW_CHECK=2`, which names the frame. On the real build,
+  painting the stack from JS between calls measures each call's depth (the
+  stack is the 8 MB below the initial `__stack_pointer`, the first mutable i32
+  global in the binary's global section). The OCCT bindings step compiles the
+  facade without Emscripten's own headers (`emscripten/stack.h` is "file not
+  found" there): declare such a function `extern "C"` yourself.
 - **Facade C++ (`packages/kernel/occt/facade/`):** the toolchain binds every
   class in the file, so it holds one class with no overloaded names. Check it
   in seconds with `em++ -fsyntax-only` inside the image (README, Arch
@@ -3052,6 +3078,20 @@ them. Notes further down that name a machine apply to that machine only.
   api:generate` before `pnpm build` when the Markdown changed, and the unit tests
   are `apps/site/src/docs.test.ts` (every file becomes a page, links point to
   pages, the sidebar's order).
+- **Features, download and FAQ e2e** (`e2e/site.spec.ts`, ADR-0057's amendment of
+  2026-10-11): `/features/` is a second page of the site (`apps/site/features/index.html`;
+  both pages take the header, footer and icon sprite from `apps/site/src/partials.ts`
+  through `<!-- site:… -->` markers, the header marking the current page with
+  `aria-current`). Its `nav` "On this page" links seven sections (`#sketch` … `#yours`),
+  the format matrix is the `table` "File formats Extrudo imports and exports" (13 rows,
+  cells "Yes: …" / "No" through `.sr-only`), and a **"Latest build" tag** (`.tag`) marks
+  what only edge has: take the tags off when a release ships those features. The landing
+  page keeps `nav` "Features" (links to `/features/#…`) and `[data-all-features]`, and its
+  FAQ is the `region` "Questions and answers" (eleven `<details>`). `/download/` (the
+  hero's pill `[data-download]`, "Available", and the footer's "Desktop app" lead there)
+  has `nav` "Platforms" and the regions "Windows", "macOS" and "Linux"; it names files by
+  their ending and links `releases/latest`, never a version. The contrast measurement
+  and axe run on all three pages with every `<details>` open and skip `.sr-only` text.
 - **Update toast e2e** (`e2e/pwa.spec.ts`, "an update is waiting"): the host
   swaps `/sw.js` for a copy with another `VERSION`, `registration.update()` makes
   the browser install it, and it **waits** (the old version stays active:
@@ -3396,7 +3436,11 @@ them. Notes further down that name a machine apply to that machine only.
   appear in the trace) and sweeping the parameter in separate processes. The
   fillet one is `Geom2dAdaptor_Curve::EvalD1` under `ChFi3d_Builder::StartSol`
   when a round's contact line leaves a face through a wall parallel to the
-  edge; the facade refuses it first (`filletRollsOff`). **Never `scope.keep`
+  edge; the facade refuses it first (`filletRollsOff`). The second one,
+  `memory access out of bounds` in `TopOpeBRepBuild_Builder::MergeSolid` under
+  `ChFi3d_Builder::Compute`, is two rounds meeting at a corner where one runs
+  over a curved boundary of its face (a rod lying on a step); `filletRollsOff`
+  refuses that too, for chains that meet another (ADR-0038's 2026-10-10 amendment). **Never `scope.keep`
   inside a loop or round that can still throw**: keep after the last thing
   that can fail (a later failure leaks what was kept; strict leaks catches it).
 - **Accessibility e2e** (`e2e/a11y.spec.ts`): axe per screen, both themes;

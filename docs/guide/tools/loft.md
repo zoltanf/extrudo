@@ -2,7 +2,7 @@
 title: Loft
 section: Tools
 category: Solid
-order: 23
+order: 22
 ---
 
 # Loft

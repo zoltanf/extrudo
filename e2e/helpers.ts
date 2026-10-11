@@ -10,13 +10,29 @@ export async function openProject(page: Page, from: 'blank' | 'wall-bracket' = '
   if (from === 'blank') {
     await page.getByRole('button', { name: 'New design' }).click();
   } else {
-    await page.getByRole('button', { name: 'Start from the Wall bracket template' }).click();
+    await startFromTemplate(page, 'Wall bracket');
   }
   await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
   const viewport = page.getByRole('region', { name: 'Viewport' });
   // The viewport is lazy: wait until its first frame is drawn.
   await expect(viewport).toHaveAttribute('data-ready', 'true');
   return viewport;
+}
+
+/**
+ * Starts a design from a home-screen template. Once designs are stored the
+ * gallery is folded under Start › Start from a template, so that opens it first
+ * (again if the list's first load folded it under the click).
+ */
+export async function startFromTemplate(page: Page, name: string) {
+  const card = page.getByRole('button', { name: `Start from the ${name} template` });
+  await expect(async () => {
+    if (!(await card.isVisible())) {
+      await page.getByRole('button', { name: 'Start from a template', exact: true }).click();
+    }
+    await expect(card).toBeVisible({ timeout: 1000 });
+  }).toPass();
+  await card.click();
 }
 
 export const saveStatus = (page: Page) => page.getByRole('status', { name: 'Save status' });

@@ -11,6 +11,7 @@ import {
   newSketchOnXY,
   pickTool,
   selectTab,
+  startFromTemplate,
 } from './helpers';
 import { type StaticHost, startStaticHost } from './static-host';
 
@@ -92,7 +93,7 @@ test('the app runs cross-origin isolated under the content policy: kernel, recom
   expect(await page.evaluate('window.crossOriginIsolated')).toBe(true);
 
   // A design that needs the kernel worker, its WASM and a fresh recompute.
-  await page.getByRole('button', { name: 'Start from the Wall bracket template' }).click();
+  await startFromTemplate(page, 'Wall bracket');
   await kernelReady(page);
   const viewport = page.getByRole('region', { name: 'Viewport' });
   await expect(viewport).toHaveAttribute('data-ready', 'true');
@@ -190,7 +191,7 @@ test('nothing in a whole session evaluates a string', async ({ page, request }) 
 
   const policy = await watchPolicy(page);
   await page.goto(`${host.url}/`);
-  await page.getByRole('button', { name: 'Start from the Wall bracket template' }).click();
+  await startFromTemplate(page, 'Wall bracket');
   await kernelReady(page);
   const viewport = page.getByRole('region', { name: 'Viewport' });
   await expect(viewport).toHaveAttribute('data-ready', 'true');

@@ -1,9 +1,11 @@
 import type { ProjectSummary } from '@extrudo/storage';
 import {
   ArrowLeft,
+  ChevronDown,
   GraduationCap,
   HardDrive,
   Import,
+  LayoutTemplate,
   Plus,
   Search,
   Settings,
@@ -11,7 +13,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { type ReactNode, useId, useMemo, useState } from 'react';
 import { useShortcuts } from '../commands/shortcuts';
 import {
   Button,
@@ -34,8 +36,7 @@ import {
   createTutorialProject,
   describeError,
   exportProject,
-  importF3dFile,
-  importProject,
+  importAnyFile,
 } from '../project/actions';
 import { exampleHref, navigate, projectHref } from '../routes';
 import { preferencesAccess } from '../settings/displaySettings';
@@ -72,6 +73,9 @@ export function HomeScreen({ platform }: { platform: Platform }) {
   const [sort, setSort] = useState<Sort>('modified');
   const [showTrash, setShowTrash] = useState(false);
   const [showExamples, setShowExamples] = useState(false);
+  // The template gallery: open while there are no designs, folded under its Start card
+  // once there are, so Your designs comes first (ADR-0083 §4).
+  const [templatesOpen, setTemplatesOpen] = useState<boolean>();
   const [purging, setPurging] = useState<ProjectSummary>();
   const now = new Date();
 
@@ -114,13 +118,10 @@ export function HomeScreen({ platform }: { platform: Platform }) {
     writeTour(platform.preferences, 'dismissed');
     setTourCard(false);
   };
+  // A design file, an .f3d or a model file (ADR-0083 §4): each opens as a design.
   const importFile = () =>
-    importProject(platform)
+    importAnyFile(platform)
       .then((summary) => summary && open(summary.id))
-      .catch((e: unknown) => push('error', `Import failed: ${describeError(e)}`));
-  const importF3d = () =>
-    importF3dFile(platform)
-      .then((id) => id && open(id))
       .catch((e: unknown) => push('error', `Import failed: ${describeError(e)}`));
 
   const actions: CardActions = {
@@ -140,6 +141,8 @@ export function HomeScreen({ platform }: { platform: Platform }) {
   };
 
   const trashed = projects?.filter((p) => p.trashed) ?? [];
+  const showTemplates =
+    templatesOpen ?? (projects !== undefined && !projects.some((p) => !p.trashed));
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = (projects ?? [])
@@ -203,6 +206,20 @@ export function HomeScreen({ platform }: { platform: Platform }) {
                   {/* Muted grey falls below 4.5:1 on the accent tint (P3-13 axe audit). */}
                   <span className="text-sm text-ink/75">An empty design in millimetres.</span>
                 </button>
+                <StartCard
+                  label="Import…"
+                  description=".extrudo, .f3d, STEP, mesh, OpenSCAD."
+                  icon={<Import size={22} strokeWidth={1.75} />}
+                  onClick={() => void importFile()}
+                />
+                <StartCard
+                  label="Start from a template"
+                  description="A finished design with parameters to change."
+                  icon={<LayoutTemplate size={22} strokeWidth={1.75} />}
+                  expanded={showTemplates}
+                  controls="templates"
+                  onClick={() => setTemplatesOpen(!showTemplates)}
+                />
                 {tourCard && (
                   <div className="relative flex min-h-32 rounded-card border border-line bg-raised transition-colors duration-(--x-fast) hover:border-accent">
                     <button
@@ -231,13 +248,17 @@ export function HomeScreen({ platform }: { platform: Platform }) {
             </section>
           )}
 
-          {!showTrash && (
-            <section aria-labelledby="templates-heading" className="flex flex-col gap-3">
+          {!showTrash && showTemplates && (
+            <section
+              id="templates"
+              aria-labelledby="templates-heading"
+              className="flex flex-col gap-3"
+            >
               <h2
                 id="templates-heading"
                 className="text-xs font-semibold tracking-[0.08em] text-muted uppercase"
               >
-                Start from a template
+                Templates
               </h2>
               <ul
                 aria-label="Templates"
@@ -325,20 +346,10 @@ export function HomeScreen({ platform }: { platform: Platform }) {
                 </Select>
               </div>
               {!showTrash && (
-                <>
-                  <Button onClick={() => void importFile()}>
-                    <Import size={16} />
-                    Import .extrudo
-                  </Button>
-                  <Button onClick={() => void importF3d()}>
-                    <Import size={16} />
-                    Import .f3d
-                  </Button>
-                  <Button variant="ghost" onClick={() => setShowTrash(true)}>
-                    <Trash2 size={16} />
-                    Trash{trashed.length > 0 && ` (${trashed.length})`}
-                  </Button>
-                </>
+                <Button variant="ghost" onClick={() => setShowTrash(true)}>
+                  <Trash2 size={16} />
+                  Trash{trashed.length > 0 && ` (${trashed.length})`}
+                </Button>
               )}
             </div>
 
@@ -392,6 +403,54 @@ export function HomeScreen({ platform }: { platform: Platform }) {
       />
       <Toasts toasts={toasts} onDismiss={dismiss} />
     </div>
+  );
+}
+
+/**
+ * A card in the Start row beside New design: an icon, a name and what it does.
+ * `expanded` makes it the button that shows or hides the section `controls`.
+ */
+function StartCard({
+  label,
+  description,
+  icon,
+  expanded,
+  controls,
+  onClick,
+}: {
+  label: string;
+  description: string;
+  icon: ReactNode;
+  expanded?: boolean;
+  controls?: string;
+  onClick: () => void;
+}) {
+  const id = useId();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      aria-describedby={id}
+      aria-expanded={expanded}
+      aria-controls={expanded ? controls : undefined}
+      className="group relative flex min-h-32 flex-col items-start justify-end gap-1 rounded-card border border-line bg-raised p-4 text-left transition-colors duration-(--x-fast) hover:border-accent focus-visible:border-accent"
+    >
+      <span className="mb-auto grid size-10 place-items-center rounded-control bg-accent-soft text-ink transition-transform duration-(--x-normal) ease-ui group-hover:-translate-y-0.5">
+        {icon}
+      </span>
+      {expanded !== undefined && (
+        <ChevronDown
+          size={18}
+          aria-hidden="true"
+          className={`absolute top-4 right-4 text-muted transition-transform duration-(--x-normal) ease-ui ${expanded ? 'rotate-180' : ''}`}
+        />
+      )}
+      <span className="text-lg font-semibold">{label}</span>
+      <span id={id} className="text-sm text-muted">
+        {description}
+      </span>
+    </button>
   );
 }
 

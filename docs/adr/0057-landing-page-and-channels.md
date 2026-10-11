@@ -351,3 +351,83 @@ page:
   the contrast measurement and the axe audit under both system themes.
 - The contrast test hides the headline's dashed underline while it measures:
   it hangs into the next line's text box without touching a glyph.
+
+## Amendment 2026-10-11: a features page, a format matrix, an FAQ, a download page
+
+### What
+
+The owner asked for the features moved off the landing page, a table of the
+file formats Extrudo imports and exports, an FAQ, and a download page now that
+the desktop app is out (v0.5.0 published its installers). The
+walkthrough's pictures were also out of date (the toolbar's 64 px tiles of
+ADR-0079's third round), so they were recorded again.
+
+- **`/features/`** is a second static page of the site (`apps/site/features/index.html`,
+  a second entry in `build.rolldownOptions.input`). It has seven sections in the
+  app's category colours (sketching, solids, parameters, 3D printing, import and
+  export, scripts and plugins, your designs), each a heading, a line and a grid
+  of short items, with a link to the guide's page. A row of links at the top
+  (`nav` "On this page") jumps to them. Features that are only in the edge build
+  carry a **"Latest build" tag** (`.tag`), explained under the intro: the site
+  deploys from main, while app.extrudo.org stays on the last release. **The tags
+  come off when the next release ships them** (components and joints, `.f3d`
+  import, STEP assemblies and grouped 3MF components at the time of writing).
+- **The format matrix** is a `<table>` (caption "File formats Extrudo imports and
+  exports", a row header per format, Import and Export cells with a ✓ or – and
+  a visually hidden "Yes:" or "No" for screen readers). It sits in a focusable
+  `<section>` frame that scrolls sideways on a phone (`min-width: 640px`).
+- **The landing page** keeps a short "What it does" section: one line, the same
+  seven links (to `/features/#…`) and a "See all features" button. The nav's
+  Features link goes to `/features/`, so it no longer scrolls through the pinned
+  stage, which was the owner's complaint.
+- **The FAQ** is on the landing page after the templates: eleven `<details>`
+  blocks, no script. It has no nav link, for the same reason the features moved:
+  a jump down the page scrolls through the stage.
+- **`/download/`** (`apps/site/download/index.html`, a third input) says how to
+  install the desktop app on Windows, macOS (Homebrew or the dmg; Apple silicon
+  only, as the builds are) and Linux (AppImage or deb), what the unsigned
+  installers ask on the first start, and how each one updates, from
+  `docs/guide/desktop.md` and the cask. **It links to `releases/latest` and names
+  each file by its ending** (`win-x64.exe`, `mac-arm64.dmg`, `linux-x86_64.AppImage`,
+  `linux-amd64.deb`), never by a version: the site deploys from main, where the
+  version is bumped before the release exists. The hero's pill, "Soon" while the
+  app was coming, now reads **"Available"**, has a solid border instead of the
+  dashed sketch line, and links here (`[data-download]`); the footer links here
+  from every page ("Desktop app"). The page has no nav entry.
+- **One header, footer and sprite** for both pages: `src/partials.ts`, written in
+  by `vite.config.ts` in place of `<!-- site:sprite -->`, `<!-- site:header -->`
+  and `<!-- site:footer -->` before the addresses are filled in; the header marks
+  the current page (`aria-current="page"`). `.top nav` scopes the header's link
+  styles, since the pages' own link rows are `nav`s too.
+- **The pictures** come from `pnpm demos -g walkthrough` as before. The recorder
+  now hides the status bar's renderer note and frame rate (the headless browser
+  renders in software, which a visitor's GPU doesn't), opens Fillet from its tile
+  so step 8 shows the Modify tab, and also records the templates section's
+  `home.webp`, which was taken by hand until now.
+
+### Rejected
+
+- **The features as a docs page** (Markdown under `docs/guide/`). The docs carry
+  no script and the site's look; this page is the landing page's, in its colours
+  and with its header.
+- **Copying the header and footer into the second page.** Two copies drift; the
+  partials keep one.
+- **Download links to the files themselves.** Their names carry the version, and
+  the site can't know the latest release's version without fetching it at
+  runtime (a script and a cross-origin request the content policy doesn't allow).
+- **A nav link to the FAQ.** It would scroll through the stage, as Features did.
+
+### Consequences
+
+- `e2e/site.spec.ts` follows the nav to `/features/`, checks the current-page
+  mark, the section links, the matrix (13 rows, a STEP import, an OBJ export
+  refused, the "Latest build" tag on `.f3d`), that every `/docs/` link on the page
+  was built, no console error and no policy violation; and the landing page's
+  section links and FAQ. The contrast measurement and the axe audit run on both
+  pages with every FAQ answer open, and the measurement now **skips text inside
+  `.sr-only`**: it is clipped to nothing, so the pixels at its box are no
+  background (the walkthrough's list was measured against whatever lay there).
+- `src/partials.test.ts` checks every page carries each marker once.
+- The download page's test follows the pill, checks the three sections' files,
+  commands and first-start steps and the `releases/latest` links; the contrast
+  and axe checks cover it too.

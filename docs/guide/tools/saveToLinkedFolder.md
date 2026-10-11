@@ -2,7 +2,7 @@
 title: Save to Linked Folder
 section: Tools
 category: Home
-order: 15
+order: 14
 ---
 
 # Save to Linked Folder

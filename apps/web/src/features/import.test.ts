@@ -9,14 +9,17 @@ import {
   importInputs,
   newId,
 } from '@extrudo/core';
-import { afterEach, describe, expect, it } from 'vitest';
+import type { ProjectStore } from '@extrudo/storage';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   clearPendingImport,
   formatSize,
   importDialog,
   importedFile,
   type PendingImport,
+  pendingImport,
   pendingImportStore,
+  pickImportFile,
 } from './import';
 import { featureDialogs, specForCommand } from './registry';
 import {
@@ -154,6 +157,27 @@ describe('the Import dialog', () => {
     expect(formatSize(512)).toBe('512 B');
     expect(formatSize(30_906)).toBe('30 kB');
     expect(formatSize(2.5 * 1024 * 1024)).toBe('2.5 MB');
+  });
+});
+
+describe('Import Model with an .f3d file (ADR-0083 §4)', () => {
+  it('hands the file to openF3d and stores nothing with the design', async () => {
+    const file = new File([new Uint8Array([1, 2, 3])], 'Bracket.F3D');
+    const writeAttachment = vi.fn();
+    const openF3d = vi.fn();
+    const notify = vi.fn();
+    const picked = await pickImportFile({
+      files: { pick: async (accept) => (accept.split(',').includes('.f3d') ? file : undefined) },
+      projects: { writeAttachment } as unknown as ProjectStore,
+      store: { getState: () => ({ doc: emptyDocument() }) } as never,
+      notify,
+      openF3d,
+    });
+    expect(picked).toBeUndefined();
+    expect(openF3d).toHaveBeenCalledWith(file);
+    expect(writeAttachment).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+    expect(pendingImport()).toBeUndefined();
   });
 });
 

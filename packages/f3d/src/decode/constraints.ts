@@ -152,7 +152,8 @@ export function readSketchDimension(
   const kind = parameter && KINDS.find(([re]) => re.test(parameter.kind))?.[1];
   if (!parameter || !kind) return undefined;
   const out: SketchDimensionRecord = { id, kind, loci, parameter };
-  if (kind === 'linear' && seg.typeOf(id)?.guid === LINEAR_DIMENSION) {
+  // The orientation bytes sit before the owner reference, inside this record.
+  if (kind === 'linear' && seg.typeOf(id)?.guid === LINEAR_DIMENSION && r.pos - 7 >= f.start) {
     const b = seg.bulk;
     const [x, y] = [b[r.pos - 7], b[r.pos - 6]];
     if (x === 0x40 && y === 0) out.orientation = 'aligned';

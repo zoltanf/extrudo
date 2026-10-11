@@ -224,7 +224,6 @@ const FILE_KEYWORDS: Record<FileCommandId, string> = {
   exportProject: 'file download save project backup extrudo',
   exportScript: 'file download code typescript macro api program',
   importProject: 'file open upload project extrudo',
-  importF3d: 'file open upload import f3d convert design',
   saveToLinkedFolder: 'file folder disk sync save project extrudo linked external',
   plugins: 'file plugins extensions add-ons install enable remove extrudo-plugin',
 };

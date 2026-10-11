@@ -14,6 +14,7 @@
 import type { SketchBuilder } from '@extrudo/api';
 import {
   evaluateExpression,
+  isReservedName,
   type Quantity,
   type SketchArc,
   type SketchCircle,
@@ -41,7 +42,14 @@ export type LeftOut =
   /** The solver calls it redundant or conflicting with the rest. */
   | 'overconstrains'
   /** The sketch would move with it. */
-  | 'moves';
+  | 'moves'
+  /** Past the first {@link MAX_CANDIDATES} of a sketch. */
+  | 'limit'
+  /** The solver failed on the sketch, so none of its constraints could be checked. */
+  | 'failed';
+
+/** At most this many constraints and dimensions of one sketch are vetted (the samples have up to 213). */
+export const MAX_CANDIDATES = 1000;
 
 export interface ConstraintTally {
   constraints: number;
@@ -92,8 +100,8 @@ export function newTally(): ConstraintTally {
 
 /** A parameter's evaluated value in Extrudo's base units, when its unit is one Extrudo knows. */
 export function quantityOf(p: ParameterValue): Quantity | undefined {
-  const length = { mm: 1, cm: 10, m: 1000, in: 25.4, ft: 304.8 } as Record<string, number>;
-  if (p.unit in length) return { value: p.value * 10, dim: { length: 1, angle: 0 } };
+  if (['mm', 'cm', 'm', 'in', 'ft'].includes(p.unit))
+    return { value: p.value * 10, dim: { length: 1, angle: 0 } };
   if (p.unit === 'deg' || p.unit === 'rad')
     return { value: (p.value * 180) / Math.PI, dim: { length: 0, angle: 1 } };
   if (p.unit === '') return { value: p.value, dim: { length: 0, angle: 0 } };
@@ -132,83 +140,132 @@ export function addSketchConstraints(
   const dimensions = sketch.dimensions ?? [];
   if (relations.length === 0 && dimensions.length === 0) return undefined;
   const left: Partial<Record<LeftOut, number>> = {};
+  const counted: string[] = [];
   const leave = (why: LeftOut, what: string) => {
     left[why] = (left[why] ?? 0) + 1;
     const key = `${why}:${what}`;
     ctx.tally.byKind[key] = (ctx.tally.byKind[key] ?? 0) + 1;
+    counted.push(key);
   };
   const candidates: Candidate[] = [];
   const geo = new Geometry(k.data);
-
-  for (const r of relations) {
-    const c = relationCandidate(k, r, drawn, geo);
-    if (typeof c === 'string') leave(c, r.kind ?? `0x${r.mask.toString(16)}`);
-    else candidates.push(c);
-  }
-  // Dimensions in an order where one an expression names comes first.
-  const pending = [...dimensions].sort((a, b) => a.parameter.number - b.parameter.number);
-  const named = new Set(pending.map((d) => d.parameter.name));
-  for (let pass = 0; pending.length > 0 && pass < 2; pass++) {
-    for (let i = 0; i < pending.length; ) {
-      const d = pending[i] as SketchDimensionRecord;
-      const deps = namesIn(d.parameter.expression);
-      const waits = pass === 0 && deps.some((n) => named.has(n) && !ctx.values.has(n));
-      if (waits) {
-        i++;
-        continue;
-      }
-      pending.splice(i, 1);
-      const c = dimensionCandidate(k, d, drawn, geo, ctx);
-      if (typeof c === 'string') {
-        leave(c, d.kind);
-        continue;
-      }
-      candidates.push(c);
-      // Later dimensions may name this one already (it is vetted below).
-      if (c.name && c.quantity) ctx.values.set(c.name, c.quantity);
-    }
-  }
-
-  vet(k, candidates, ctx, leave);
-
-  // An expression naming a dimension that was left out takes its value instead.
-  const dropped = new Set(
-    candidates.filter((c) => c.id === undefined && c.name).map((c) => c.name as string),
-  );
-  if (dropped.size > 0)
-    for (const c of candidates) {
-      if (c.id === undefined || c.expr === undefined || c.numeric === undefined) continue;
-      if (!namesIn(c.expr).some((n) => dropped.has(n))) continue;
-      const stored = (k.data.dimensions as Record<string, { expr: string }>)[c.id];
-      if (stored) stored.expr = c.numeric;
-    }
-
-  for (const c of candidates) {
-    if (c.id === undefined) {
-      if (c.name) ctx.values.delete(c.name);
-      continue;
-    }
-    if (c.kind === 'constraint') ctx.tally.constraints++;
-    else {
-      ctx.tally.dimensions++;
-      if (c.name) ctx.taken.add(c.name);
-    }
-  }
-  for (const [why, n] of Object.entries(left) as [LeftOut, number][])
-    ctx.tally.leftOut[why] = (ctx.tally.leftOut[why] ?? 0) + n;
-  const total = Object.values(left).reduce((a, b) => a + (b ?? 0), 0);
-  if (total === 0) return undefined;
-  const words: Record<LeftOut, string> = {
-    geometry: 'name geometry not imported',
-    unsupported: 'have no Extrudo counterpart',
-    mismatch: "don't match the geometry",
-    overconstrains: 'over-constrain the sketch',
-    moves: 'would move geometry',
+  // What the sketch held before, to put back if the solver fails.
+  const before = {
+    constraints: { ...k.data.constraints },
+    dimensions: { ...k.data.dimensions },
   };
-  const why = (Object.entries(left) as [LeftOut, number][])
-    .map(([w, n]) => `${n} ${words[w]}`)
-    .join(', ');
-  return `${label}: ${total} of ${relations.length + dimensions.length} constraints and dimensions left out (${why}).`;
+  const claimed: string[] = [];
+  try {
+    vetAll();
+  } catch {
+    for (const key of Object.keys(k.data.constraints))
+      if (!(key in before.constraints)) delete (k.data.constraints as Record<string, unknown>)[key];
+    for (const key of Object.keys(k.data.dimensions))
+      if (!(key in before.dimensions)) delete (k.data.dimensions as Record<string, unknown>)[key];
+    for (const name of claimed) {
+      ctx.values.delete(name);
+      ctx.taken.delete(name);
+    }
+    for (const c of candidates) c.id = undefined;
+    // All of them count as unchecked instead.
+    for (const key of counted.splice(0)) ctx.tally.byKind[key] = (ctx.tally.byKind[key] ?? 1) - 1;
+    for (const why of Object.keys(left) as LeftOut[]) delete left[why];
+    for (let i = 0; i < relations.length + dimensions.length; i++) leave('failed', 'sketch');
+  }
+  return finish();
+
+  function vetAll(): void {
+    let budget = MAX_CANDIDATES;
+    for (const r of relations) {
+      if (budget-- <= 0) {
+        leave('limit', r.kind ?? `0x${r.mask.toString(16)}`);
+        continue;
+      }
+      const c = relationCandidate(k, r, drawn, geo);
+      if (typeof c === 'string') leave(c, r.kind ?? `0x${r.mask.toString(16)}`);
+      else candidates.push(c);
+    }
+    // Dimensions in an order where one an expression names comes first.
+    const pending = [...dimensions].sort((a, b) => a.parameter.number - b.parameter.number);
+    const named = new Set(pending.map((d) => d.parameter.name));
+    for (let pass = 0; pending.length > 0 && pass < 2; pass++) {
+      for (let i = 0; i < pending.length; ) {
+        const d = pending[i] as SketchDimensionRecord;
+        const deps = namesIn(d.parameter.expression);
+        const waits = pass === 0 && deps.some((n) => named.has(n) && !ctx.values.has(n));
+        if (waits) {
+          i++;
+          continue;
+        }
+        pending.splice(i, 1);
+        if (budget-- <= 0) {
+          leave('limit', d.kind);
+          continue;
+        }
+        const c = dimensionCandidate(k, d, drawn, geo, ctx);
+        if (typeof c === 'string') {
+          leave(c, d.kind);
+          continue;
+        }
+        candidates.push(c);
+        // Later dimensions may name this one already (it is vetted below), and
+        // none may take its name.
+        if (c.name) {
+          claimed.push(c.name);
+          ctx.taken.add(c.name);
+          if (c.quantity) ctx.values.set(c.name, c.quantity);
+        }
+      }
+    }
+
+    vet(k, candidates, ctx, leave);
+  }
+
+  function finish(): string | undefined {
+    // An expression naming a dimension that was left out takes its value instead.
+    const dropped = new Set(
+      candidates.filter((c) => c.id === undefined && c.name).map((c) => c.name as string),
+    );
+    if (dropped.size > 0)
+      for (const c of candidates) {
+        if (c.id === undefined || c.expr === undefined || c.numeric === undefined) continue;
+        if (!namesIn(c.expr).some((n) => dropped.has(n))) continue;
+        const stored = (k.data.dimensions as Record<string, { expr: string }>)[c.id];
+        if (stored) stored.expr = c.numeric;
+      }
+
+    for (const c of candidates) {
+      if (c.id === undefined) {
+        if (c.name) {
+          ctx.values.delete(c.name);
+          ctx.taken.delete(c.name);
+        }
+        continue;
+      }
+      if (c.kind === 'constraint') ctx.tally.constraints++;
+      else {
+        ctx.tally.dimensions++;
+        if (c.name) ctx.taken.add(c.name);
+      }
+    }
+    for (const [why, n] of Object.entries(left) as [LeftOut, number][])
+      ctx.tally.leftOut[why] = (ctx.tally.leftOut[why] ?? 0) + n;
+    const total = Object.values(left).reduce((a, b) => a + (b ?? 0), 0);
+    if (total === 0) return undefined;
+    const words: Record<LeftOut, string> = {
+      geometry: 'name geometry not imported',
+      unsupported: 'have no Extrudo counterpart',
+      mismatch: "don't match the geometry",
+      overconstrains: 'over-constrain the sketch',
+      moves: 'would move geometry',
+      limit: `are past the first ${MAX_CANDIDATES} of a sketch`,
+      failed: 'could not be checked (the solver failed on this sketch)',
+    };
+    const why = (Object.entries(left) as [LeftOut, number][])
+      .map(([w, n]) => `${n} ${words[w]}`)
+      .join(', ');
+    return `${label}: ${total} of ${relations.length + dimensions.length} constraints and dimensions left out (${why}).`;
+  }
 }
 
 /**
@@ -606,18 +663,24 @@ function dimensionCandidate(
   const types = e.map((id) => geo.entity(id)?.type);
   const value = want.value;
   const near = (measured: number) => Math.abs(measured - value) <= TOLERANCE;
-  const name =
-    !ctx.taken.has(p.name) && /^[A-Za-z_][A-Za-z0-9_]*$/.test(p.name) ? p.name : undefined;
+  // The file's name where Extrudo can take it; else one of Extrudo's own, so
+  // no dimension is left for the design to name (its names could clash).
+  const own =
+    p.name.length <= 64 &&
+    /^[A-Za-z_][A-Za-z0-9_]*$/.test(p.name) &&
+    !isReservedName(p.name) &&
+    !ctx.taken.has(p.name);
+  const name = own ? p.name : undefined;
   const candidate = (
     kind: 'length' | 'angle',
     add: (expr: string, options: { name?: string }) => string,
   ): Candidate => {
     const { expr, numeric } = dimensionExpression(p, want, kind, ctx);
-    const options = name ? { name } : {};
     return {
       kind: 'dimension',
       what: d.kind,
-      add: () => add(expr, options),
+      // Added once; one Extrudo names itself only when the file's can't be taken.
+      add: () => add(expr, { name: name ?? ctx.freeName() }),
       expr,
       numeric,
       value,

@@ -2,7 +2,7 @@
 title: Extend
 section: Tools
 category: Sketch
-order: 98
+order: 97
 ---
 
 # Extend

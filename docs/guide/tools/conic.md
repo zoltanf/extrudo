@@ -2,7 +2,7 @@
 title: Conic
 section: Tools
 category: Sketch
-order: 87
+order: 86
 ---
 
 # Conic

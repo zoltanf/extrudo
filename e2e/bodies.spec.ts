@@ -7,6 +7,7 @@ import {
   openProject,
   projector,
   sketchOnXY,
+  startFromTemplate,
 } from './helpers';
 
 // P2-08: bodies (ADR-0030). The browser's Bodies folder renames, hides,
@@ -326,7 +327,7 @@ test('a body made see-through after it was drawn opaque draws see-through', asyn
     };
   })()`);
   await page.goto('./');
-  await page.getByRole('button', { name: 'Start from the PCB enclosure template' }).click();
+  await startFromTemplate(page, 'PCB enclosure');
   const viewport = page.getByRole('region', { name: 'Viewport' });
   await expect(viewport).toHaveAttribute('data-ready', 'true');
   await kernelReady(page);
@@ -389,7 +390,7 @@ async function overFace(page: Page, viewport: Locator) {
 
 test('a ghost body is stored, drawn grey and takes no part in picking', async ({ page }) => {
   await page.goto('./');
-  await page.getByRole('button', { name: 'Start from the Box with a lid template' }).click();
+  await startFromTemplate(page, 'Box with a lid');
   const viewport = page.getByRole('region', { name: 'Viewport' });
   await expect(viewport).toHaveAttribute('data-ready', 'true');
   await kernelReady(page);

@@ -12,6 +12,7 @@ import type { ParameterValue } from './decode/parameters';
 import type { SketchLine, SketchPoint } from './decode/sketch-geometry';
 import { f3dToDesign } from './map';
 import { type F3dDesign, type F3dExtrude, type F3dSketchFeature, IDENTITY } from './model';
+import { MAX_CANDIDATES } from './sketch-constraints';
 
 let planegcs: PlanegcsModule;
 
@@ -347,5 +348,59 @@ describe('sketch constraints and dimensions', () => {
     const data = sketchOf(design.toJSON());
     expect(types(data).every((t) => t === 'coincident')).toBe(true);
     expect(report.constraints).toBeUndefined();
+  });
+  it("names a dimension itself where the file's name can't be taken, and counts on past a huge one", () => {
+    const f3d = plate(RECTANGLE(), [
+      // A reserved word, a name used twice: both would refuse the whole sketch.
+      dimension('linear', [1, 2], { name: 'max', value: 4 }, 'horizontal'),
+      dimension('linear', [12], { name: 'd2', value: 2 }, 'aligned'),
+      dimension('linear', [1, 6], { name: 'd2', value: 2 }, 'horizontal'),
+    ]);
+    // The file's own parameters, one with a number past 2^53 (counting on from it stood still).
+    f3d.parameters = [
+      parameter({ name: 'd2', value: 2 }),
+      parameter({ name: 'd9', value: 1 }),
+      parameter({ name: 'd99999999999999999', value: 1 }),
+    ];
+    const { data, report } = load(f3d);
+    expect(Object.values(data.dimensions).map((d) => d.paramName)).toEqual(['d10', 'd2', 'd11']);
+    expect(report.constraints).toMatchObject({ dimensions: 3, leftOut: {} });
+  });
+
+  it("keeps a sketch's geometry when the solver fails on it, leaving its constraints out", () => {
+    const broken = {
+      solve: () => {
+        throw new Error('Aborted(OOM)');
+      },
+      dispose: () => {},
+    } as unknown as SketchSolver;
+    const { design, report } = f3dToDesign(
+      plate(RECTANGLE(), [dimension('linear', [12], { name: 'd2', value: 2 }, 'aligned')]),
+      'Plate',
+      { solver: broken },
+    );
+    expect(design.validate()).toEqual([]);
+    const data = sketchOf(design.toJSON());
+    expect(Object.values(data.entities).filter((e) => e.type === 'line')).toHaveLength(4);
+    expect(new Set(types(data))).toEqual(new Set(['coincident']));
+    expect(data.dimensions).toEqual({});
+    expect(report.constraints).toMatchObject({
+      constraints: 0,
+      dimensions: 0,
+      leftOut: { failed: 5 },
+    });
+    expect(report.imported).toContain('Sketch1');
+  });
+
+  it(`vets at most ${MAX_CANDIDATES} constraints and dimensions of a sketch`, {
+    timeout: 60_000,
+  }, () => {
+    const many = Array.from({ length: MAX_CANDIDATES + 3 }, () => relation('horizontal', 11));
+    const { report } = load(plate(many, []));
+    expect(report.constraints?.constraints).toBe(1);
+    expect(report.constraints?.leftOut).toEqual({
+      overconstrains: MAX_CANDIDATES - 1,
+      limit: 3,
+    });
   });
 });

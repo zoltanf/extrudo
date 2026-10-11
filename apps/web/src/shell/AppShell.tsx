@@ -62,7 +62,7 @@ import { calibrationStore, pickCanvasFile } from '../features/canvas';
 import { DialogOverlay } from '../features/DialogOverlay';
 import { type DialogKernel, dialogBodies, viewPreview } from '../features/dialog';
 import { DIALOG_COLUMN, FeatureDialog } from '../features/FeatureDialog';
-import { pickImportFile } from '../features/import';
+import { pickImportFile, takeModelImport } from '../features/import';
 import { pickName } from '../features/pickName';
 import { dialogPlanePick, dialogPlanePicker } from '../features/planePicker';
 import { PRESS_PULL, PRESS_PULL_PROMPT, pressPullTarget } from '../features/pressPull';
@@ -542,7 +542,7 @@ export function AppShell({
   const startTutorialRef = useRef<() => void>(() => {});
   const openJointCheckRef = useRef<(id?: JointId, run?: boolean) => void>(() => {});
   /** The File menu's Import, which is the Insert tab's tile (P4-06). */
-  const startImportRef = useRef<() => void>(() => {});
+  const startImportRef = useRef<(picked?: File) => void>(() => {});
   /** The File menu's Export Design as Script (P5-05). */
   const exportScriptRef = useRef<() => void>(() => {});
   /** Canvas's tool, which picks its picture before its dialog opens. */
@@ -558,6 +558,13 @@ export function AppShell({
     kernel,
     notify,
   });
+  // A model file the home screen's Import… made this design for (ADR-0083 §4): its
+  // Import dialog opens once the dialogs can.
+  useEffect(() => {
+    if (!dialog) return;
+    const picked = takeModelImport(doc.id);
+    if (picked) startImportRef.current(picked);
+  }, [dialog, doc.id]);
   // The model's bodies with their names (ADR-0030): new bodies get stored names as soon as a
   // recompute shows them, amended into the undo step that made them.
   useEffect(() => followBodyNames(store, model), [store, model]);
@@ -1637,7 +1644,8 @@ export function AppShell({
     }
   };
   // P4-06: Import picks a model file, stores its bytes with the design and opens
-  // the dialog, which previews what the file holds (ADR-0066 §0, §2).
+  // the dialog, which previews what the file holds (ADR-0066 §0, §2). An `.f3d`
+  // opens as a new design instead (ADR-0083 §4).
   exportScriptRef.current = () => {
     const { doc: current } = store.getState();
     void designCode(current).then((code) => {
@@ -1646,7 +1654,7 @@ export function AppShell({
       notify('success', `Exported ${name}.`);
     });
   };
-  startImportRef.current = () => {
+  startImportRef.current = (picked) => {
     if (mode !== 'model') return;
     if (picking) cancelCreateSketch(stores);
     if (measuring || sectioning || printing || overhanging || thickening || customizing) {
@@ -1654,10 +1662,11 @@ export function AppShell({
     }
     dialog?.cancel();
     void pickImportFile({
-      files: platform.files,
+      files: picked ? { pick: async () => picked } : platform.files,
       projects: platform.projects,
       store,
       notify,
+      openF3d: file.importF3d,
     }).then((pending) => {
       if (pending) dialog?.start(IMPORT_TYPE);
     });

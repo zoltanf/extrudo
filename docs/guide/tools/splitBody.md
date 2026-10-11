@@ -2,7 +2,7 @@
 title: Split Body
 section: Tools
 category: Modify
-order: 50
+order: 49
 ---
 
 # Split Body
