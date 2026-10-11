@@ -142,3 +142,30 @@ draws the bell; the toasts stay in the view's bottom-right corner, or at the
 foot of the sketch palette, and the open dialog's `clearRight` is unchanged.
 The home screen has no status bar and never showed the bell; it stays so. The
 Ctrl+K command opens the same popover, anchored at the status-bar bell.
+
+## Amendment, 2026-10-11: long messages are clamped
+
+The owner's UI review 3 (R3-17, `docs/plans/ui-review-2026-10-11.md`): after an `.f3d` import
+a toast spanned the whole view with five lines of number lists. A run of text without spaces
+made the toast's text span wider than the stack's `max-w-96`, since a flex item doesn't
+shrink below its longest word.
+
+- **`ClampedText`** (`design-system/ClampedText.tsx`) draws a message clamped to three lines
+  (`line-clamp-3`) with a **Show more** / **Show less** button (`aria-expanded`,
+  `aria-controls`), and breaks a word anywhere (`overflow-wrap: anywhere`). The whole text is
+  always in the page, so a screen reader reads it all. Whether a message is long is measured
+  in the browser (its scroll height against three and a half lines, so a `normal` line
+  height isn't miscounted) and guessed before that (`mightOverflow`: over 160 characters or
+  four lines), so a static render and the first frame are right too. Hooks:
+  `[data-clamp-text]`, with `data-clamped="true"` while clamped.
+- **A toast** is at most **420 px** wide (`TOAST_MAX_WIDTH`; the stack and each toast) and its
+  text is a `ClampedText`; each toast carries `data-toast="<tone>"`. **A toast opened with Show
+  more stays until it is dismissed** (the store's `keep(id)`, `Toast.kept`; its timer then
+  does nothing), since six seconds is too short to read what was opened.
+- **The history's rows** use the same `ClampedText` (its screen-reader tone word and ×n count
+  inside the clamp).
+
+`e2e/notifications.spec.ts` exports a design with a very long name and checks the toast's
+width, its three lines, Show more by keyboard, that it stays past its lifetime, and the
+history row. `Toasts.test.tsx` checks a 2,000-character message's markup.
+

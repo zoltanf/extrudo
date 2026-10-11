@@ -554,3 +554,18 @@ holders above, a case whose fillet now rounds all four of the
 file's edges (3.3 % → 4.2 % volume error) and a toy whose rounds already failed
 (0.1 % → 0.2 %); a stand's chamfer no longer picks four edges 5 mm
 off by fingerprint, and its volume error went from 0.04 % to 0.25 %.
+
+## Amendment, 2026-10-11: reasons in plain words
+
+The owner's UI review 3 (R3-18): a toast after an import showed "profile region {…} not found
+in the sketch (it has N: {…})" with hundreds of curve keys. A skipped feature's report entry
+(`SkippedFeature`) now has `reason`, a few plain words for people, at most `MAX_REASON` (120)
+characters and never a list in braces, and `detail`, the technical text, when it says more.
+`skippedFeature(name, kind, raw)` words every reason the mapper gives: a profile region that
+could not be matched becomes "its profile couldn't be matched to Sketch3's curves" (the raw
+text, `unmatchedRegion`, now names the sketch), a short plain reason stays as it is, and a
+longer or technical one (a thrown error) becomes "it couldn't be rebuilt in Extrudo". The app's
+notice (`importNotices`) shows the reasons only; `corpus.test.ts` writes every skipped
+feature's reason and detail to `F3D_REPORT=<file>` for bug reports. `reasons.test.ts` covers
+the wording.
+

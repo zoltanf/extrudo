@@ -2205,7 +2205,9 @@ API and returns a report (imported, skipped with why, notes); the format is in
 design of it (no separate tile, 2026-10-11). The home screen's one **Import…** card
 (Start row; `importAnyFile`) takes `.extrudo`, `.f3d` and model files; a model file makes a
 new design that opens with the Import dialog on it (`requestModelImport`). No sample files in the repo: `F3D_SAMPLES=<dir>` runs
-`corpus.test.ts`. Gaps (face profiles, start offsets, holes, revolves,
+`corpus.test.ts` (`F3D_REPORT=<file>` writes what each file left out, with the technical
+detail). A skipped feature's `reason` is plain words for people (at most `MAX_REASON`, 120
+characters, never a list in braces: `skippedFeature`, R3-18) and `detail` the technical text. Gaps (face profiles, start offsets, holes, revolves,
 patterns, components, sketch dimensions) are in the ADR.
 
 Next (tasks may run in parallel on separate branches and worktrees, merged to
@@ -3205,7 +3207,10 @@ them. Notes further down that name a machine apply to that machine only.
   empty panel says "No notifications yet."); the panel is `dialog` "Notification history" with regions
   "Errors" and "Earlier", rows `[data-notification="error|info|success"]`
   (a repeat has `[data-count]`), and a stale action is a disabled button named
-  "Show (no longer applies)". The toasts stay in the view's
+  "Show (no longer applies)". A toast is `[data-toast="<tone>"]`, at most 420 px
+  wide; a long text (`[data-clamp-text]`, `data-clamped="true"` while clamped) has
+  a "Show more"/"Show less" button and stays until dismissed once opened (R3-17;
+  the history rows clamp the same way). The toasts stay in the view's
   bottom-right corner (12 px from its edges) and no longer cover the bell, so
   nothing needs dismissing to reach it; blur the bell after Esc closes its
   panel (focus returns to it) before pressing tool keys. Unit tests use `createNotifications({ now, later })` with injected

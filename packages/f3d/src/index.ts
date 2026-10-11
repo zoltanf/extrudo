@@ -27,7 +27,14 @@ export {
   previewBytes,
 } from './archive';
 export { F3dFormatError } from './bytes';
-export { f3dToDesign, type ImportOptions, type ImportReport, type ImportResult } from './map';
+export {
+  f3dToDesign,
+  type ImportOptions,
+  type ImportReport,
+  type ImportResult,
+  MAX_REASON,
+  type SkippedFeature,
+} from './map';
 export {
   type F3dDesign,
   type F3dExtrude,

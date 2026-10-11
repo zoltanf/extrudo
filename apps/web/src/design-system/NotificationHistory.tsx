@@ -2,6 +2,7 @@ import { Bell } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useStore } from 'zustand';
 import { Button } from './Button';
+import { ClampedText } from './ClampedText';
 import {
   actionsOf,
   applies,
@@ -85,7 +86,8 @@ export function NotificationHistory({ store }: { store: NotificationStore }) {
   );
 }
 
-function HistoryPanel({
+/** The panel's contents; exported for its unit test (a popover's content isn't rendered statically). */
+export function HistoryPanel({
   store,
   history,
 }: {
@@ -157,16 +159,18 @@ function Group({
               aria-hidden="true"
             />
             <div className="min-w-0 flex-1">
-              <p className="break-words">
-                <span className="sr-only">{TONE_WORD[n.tone]}: </span>
-                {n.text}
-                {n.count > 1 && (
-                  <span className="ml-1.5 text-muted tabular-nums" data-count={n.count}>
-                    <span aria-hidden="true">×{n.count}</span>
-                    <span className="sr-only">, {n.count} times</span>
-                  </span>
-                )}
-              </p>
+              <ClampedText
+                text={n.text}
+                prefix={<span className="sr-only">{TONE_WORD[n.tone]}: </span>}
+                suffix={
+                  n.count > 1 && (
+                    <span className="ml-1.5 text-muted tabular-nums" data-count={n.count}>
+                      <span aria-hidden="true">×{n.count}</span>
+                      <span className="sr-only">, {n.count} times</span>
+                    </span>
+                  )
+                }
+              />
               <time className="text-muted text-xs" dateTime={new Date(n.at).toISOString()}>
                 {timeOf(n.at)}
               </time>

@@ -50,6 +50,21 @@ describe('notifications', () => {
     expect(t.state().history).toHaveLength(3);
   });
 
+  it('keeps a toast whose long text was opened until it is dismissed (R3-17)', () => {
+    const t = setup();
+    const read = t.state().push('info', 'A long import report.');
+    t.state().push('info', 'Short.');
+    t.state().keep(read);
+    expect(t.state().toasts.find((x) => x.id === read)?.kept).toBe(true);
+    for (const timer of t.timers) timer.fn();
+    expect(t.state().toasts.map((x) => x.text)).toEqual(['A long import report.']);
+    t.state().dismiss(read);
+    expect(t.state().toasts).toEqual([]);
+    // Keeping one that already left does nothing.
+    t.state().keep(read);
+    expect(t.state().toasts).toEqual([]);
+  });
+
   it('records a quiet notification in the history only (P3-13)', () => {
     const t = setup();
     t.state().push('error', 'Extrude2: no profile.', { quiet: true });

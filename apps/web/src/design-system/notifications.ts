@@ -54,6 +54,8 @@ export interface Toast extends ToastOptions {
   id: number;
   tone: ToastTone;
   text: string;
+  /** Kept on screen until dismissed: its long text was opened to read (R3-17). */
+  kept?: boolean;
 }
 
 /** One entry of the history: a message and how often it came. */
@@ -89,6 +91,11 @@ export interface NotificationState {
   /** Shows a toast (and records it); answers its ID, so it can be taken back. */
   push(tone: ToastTone, text: string, options?: ToastOptions): number;
   dismiss(id: number): void;
+  /**
+   * Keeps a toast on screen until it is dismissed, past its lifetime: someone opened its long
+   * text with Show more (R3-17) and is reading it.
+   */
+  keep(id: number): void;
   setOpen(open: boolean): void;
   /** Forgets the history (the toasts on screen stay). */
   clear(): void;
@@ -144,13 +151,20 @@ export function createNotifications(env: NotificationEnv = {}): NotificationStor
         ),
       }));
       if (tone !== 'error' && !options.quiet) {
-        later(() => get().dismiss(id), options.lifetime ?? TOAST_LIFETIME_MS);
+        later(() => {
+          if (!get().toasts.find((t) => t.id === id)?.kept) get().dismiss(id);
+        }, options.lifetime ?? TOAST_LIFETIME_MS);
       }
       return id;
     },
     dismiss(id) {
       if (get().toasts.some((t) => t.id === id)) {
         set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+      }
+    },
+    keep(id) {
+      if (get().toasts.some((t) => t.id === id && !t.kept)) {
+        set((s) => ({ toasts: s.toasts.map((t) => (t.id === id ? { ...t, kept: true } : t)) }));
       }
     },
     setOpen(open) {
