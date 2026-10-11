@@ -78,6 +78,8 @@ export interface ComponentTree {
   featureLists: Map<number, number>;
   /** Body container record → component record. */
   bodyContainers: Map<number, number>;
+  /** Feature (or other record) → the body records its body links say it made. */
+  bodiesMadeBy: Map<number, number[]>;
 }
 
 /** Every local reference in a byte range, by shape, left to right. */
@@ -263,11 +265,23 @@ export function readComponents(seg: Segment): ComponentTree {
     return !!parent && depth < 64 && (!parent.visible || hiddenAbove(parent, depth + 1));
   };
   for (const c of components.values()) if (hiddenAbove(c)) c.visible = false;
+  const bodiesMadeBy = new Map<number, number[]>();
+  for (const link of seg.idsOf(BODY_LINK)) {
+    const refs = levelRefs(seg, link);
+    const at = refs.findIndex((r) => seg.typeOf(r)?.guid === BODY);
+    const body = refs[at];
+    const by = refs[at + 1];
+    if (at < 0 || body === undefined || by === undefined) continue;
+    const list = bodiesMadeBy.get(by) ?? [];
+    if (!list.includes(body)) list.push(body);
+    bodiesMadeBy.set(by, list);
+  }
   const all = [...components.values()];
   return {
     components: [...all.filter((c) => c.root), ...all.filter((c) => !c.root)],
     featureLists,
     bodyContainers,
+    bodiesMadeBy,
   };
 }
 
@@ -323,14 +337,9 @@ export function readBodyMove(seg: Segment, tree: ComponentTree, id: number): F3d
       for (const body of ofType(seg, levelRefs(seg, link), BODY).slice(0, 1))
         if (!sources.includes(body)) sources.push(body);
   const made: number[] = [];
-  for (const link of seg.idsOf(BODY_LINK)) {
-    const refs = levelRefs(seg, link);
-    const at = refs.findIndex((r) => seg.typeOf(r)?.guid === BODY);
-    const body = refs[at];
-    const by = refs[at + 1];
-    if (body !== undefined && by !== undefined && own.has(by) && !sources.includes(body))
-      if (!made.includes(body)) made.push(body);
-  }
+  for (const by of own)
+    for (const body of tree.bodiesMadeBy.get(by) ?? [])
+      if (!sources.includes(body) && !made.includes(body)) made.push(body);
   const target = made.map((b) => componentOfBody(seg, tree, b)).find((c) => c !== undefined);
   return { id, sources, made, ...(target !== undefined ? { target } : {}) };
 }

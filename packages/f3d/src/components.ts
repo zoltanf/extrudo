@@ -38,9 +38,12 @@ export class ComponentMapping {
   /** f3d component record → its Extrudo component. */
   readonly #handles = new Map<number, ComponentHandle>();
   readonly #moves = new Map<number, F3dBodyMove>();
-  /** Extrudo features already stamped (or made before the first step). */
-  readonly #seen = new Set<string>();
   #current: ComponentId | undefined;
+  /** How many Extrudo features there were when the current step began. */
+  #count = 0;
+  readonly #byId = new Map<number, F3dComponent>();
+  /** A body record → the bodies a "Body to Component" made of it. */
+  readonly #copies = new Map<number, number[]>();
   /**
    * A body record a "Body to Component" made → the body record it took
    * (one for one only): the same body to Extrudo, which moves none.
@@ -54,11 +57,14 @@ export class ComponentMapping {
       this.#moves.set(move.id, move);
       const [source] = move.sources;
       const [made] = move.made;
-      if (move.sources.length === 1 && move.made.length === 1 && source !== undefined)
+      if (move.sources.length === 1 && move.made.length === 1 && source !== undefined) {
         this.aliases.set(made as number, source);
+        this.#copies.set(source, [...(this.#copies.get(source) ?? []), made as number]);
+      }
     }
     const components = f3d.components ?? [];
-    const byId = new Map(components.map((c) => [c.id, c]));
+    const byId = this.#byId;
+    for (const c of components) byId.set(c.id, c);
     const taken = new Set<string>();
     const nested = new Map<number, string[]>();
     for (const c of components) {
@@ -87,7 +93,7 @@ export class ComponentMapping {
           : `Components ${list(names)} are inside ${inside} in the file; here they stand alone.`,
       );
     }
-    for (const f of d.toJSON().features) this.#seen.add(f.id);
+    this.#count = d.toJSON().features.length;
   }
 
   /** The Extrudo component of an f3d component record (none for the root). */
@@ -100,12 +106,12 @@ export class ComponentMapping {
    * stamps the Extrudo features the previous step made with its component.
    */
   enter(feature: F3dFeature | undefined): void {
-    for (const f of this.#d.toJSON().features) {
-      if (this.#seen.has(f.id)) continue;
-      this.#seen.add(f.id);
-      if (this.#current !== undefined)
+    // The import adds features at the end of the timeline.
+    const features = this.#d.toJSON().features;
+    if (this.#current !== undefined)
+      for (const f of features.slice(this.#count))
         this.#d.state.dispatch(setFeatureComponent({ id: f.id, component: this.#current }));
-    }
+    this.#count = features.length;
     this.#current = this.of(feature?.component)?.id;
   }
 
@@ -135,13 +141,13 @@ export class ComponentMapping {
 
   /** Whether a body can be seen: shown itself, in a component the file shows. */
   seen(body: F3dBody): boolean {
-    const component = this.#f3d.components?.find((c) => c.id === body.component);
+    const component = body.component === undefined ? undefined : this.#byId.get(body.component);
     return this.shown(body) && (component?.visible ?? true);
   }
 
   /** The bodies a body was moved on as (empty: it was not moved). */
   #movedTo(record: number): number[] {
-    return [...this.aliases].filter(([, source]) => source === record).map(([made]) => made);
+    return this.#copies.get(record) ?? [];
   }
 
   /**

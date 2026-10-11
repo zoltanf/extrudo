@@ -183,3 +183,51 @@ work and its memory (the security review of PR #7). The rules:
   that application, which a person leaving it may no longer have.
 - **Geometry only from the B-rep** (ASM SAB): no history, and a STEP export
   already gives that.
+
+## Amendment, 2026-10-11 (components)
+
+The file's components become Extrudo components (ADR-0081) instead of
+joining one flat design. This replaces decision 3's line on components.
+
+- **Decoding** (`packages/f3d/src/decode/component.ts`, `FORMAT.md` §
+  Components): every component, the root included, is a component record with
+  its name; a timeline feature's base level names the feature list of its
+  component, a body names the body container of its component, an occurrence
+  places a component (ordinal, optional rigid transform) and a component's
+  occurrence list holds the occurrences of the components inside it. A
+  hidden-occurrence record names the path to an occurrence whose light bulb is
+  off, and a hidden component hides the ones inside it. A "Body to Component"
+  item names the body it takes and makes a copy in its target component.
+  `readF3d` adds `components`, `bodyMoves` and a `component` on each feature
+  and body.
+- **Mapping** (`packages/f3d/src/components.ts`, `ComponentMapping`): one
+  Extrudo component per component but the root (the root is the design, so
+  its bodies stay loose), named as in the file (made unique, "Component1" for
+  an empty name). Every Extrudo feature a timeline step makes is stamped with
+  that step's component (`setFeatureComponent`), so its bodies join it by
+  ADR-0081's rule; at the end each body the import knows is put where the file
+  has it when the stamp says otherwise. A "Body to Component" is imported when
+  the body it takes was: Extrudo moves nothing, so the body joins the target
+  component and is shown as the file shows its copy; that copy counts as the
+  body it took wherever the file names it. A hidden component stays hidden.
+- **What an Extrudo component cannot hold is reported, not guessed**: a
+  component placed away from its own origin is imported where its own features
+  make its bodies; one placed several times is imported once; nested
+  components stand alone (ADR-0081 §9 defers nesting). Seen in the samples: no
+  copies, nesting in a few designs, and placed occurrences only in a design
+  with no timeline.
+- **Bodies hidden in the file**: a body in a hidden component no longer counts
+  as "shown elsewhere", which kept every hidden body shown before.
+- Body records whose index sits 16 bytes after their GUID string (behind other
+  numbers) now decode too (38 → 18 undecoded body records in the samples).
+
+Results on the samples (the measurement now also leaves out the bodies of
+hidden components, as the reference STEP export does): of 243, 122 match (115 + 7 while skipping
+features; 120 before), 59 lose some features, 53 build different geometry, 8
+have no body and 1 crashes the kernel; no file got further from its
+reference. Leaving hidden components out is most of it (a design whose other
+parts are hidden: 51.6 → 0.03, 5.4 → 0.014 relative volume error); a "Body to
+Component" design whose moved bodies are now known matches. Open: a design
+whose shown body came from a feature not imported still shows every hidden
+body (the rule above), and bodies a feature makes several of are not put into
+another component when "Body to Component" moves them.
