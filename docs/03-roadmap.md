@@ -1113,7 +1113,10 @@ end to end, faster than in established desktop CAD.
   *Slice 3 done 2026-10-07* (custom features in the app: dialogs generated from
   the manifest, "Update to <version>"). *Slice 4 done 2026-10-07* (the review's
   fixes: bounded inflation, a foreign `in:` input, manifest strings, docs, tests).
-- [ ] **P6-04 i18n** (community translations).
+- [ ] **P6-04 i18n** (community translations). **Deferred (owner, 2026-10-11):**
+  English only for now ("I don't want other languages than English at this
+  point, we leave that for later"); the owner's walk through the UI it waited
+  for is UI review 3 below. Strings stay translation-ready (FR-UX-07).
 - [x] **P6-05 Components and simple assemblies** (multiple components, as-built
   joints), if demand warrants. Done 2026-10-11 (ADR-0081): components and
   as-built joints (rigid, revolute, slider) with the pose preview and the
@@ -1147,6 +1150,22 @@ end to end, faster than in established desktop CAD.
   Slice 2 (2026-10-06): the constraint and dimension tools pick body geometry
   directly (`ToolContext.pickModel`), projecting the ref and writing the
   constraint or dimension against the projected entity in the same undo step.
+
+## The owner's UI reviews
+
+Findings from the owner's walks through the app, outside the phases. Rounds 1
+to 3 of 2026-10-08 are ADR-0079's.
+
+- [ ] **UI review 3 (2026-10-11):** nineteen items (R3-01 to R3-19: the
+  timeline's playback buttons and scroll bar, mouse controls and neutral preset
+  names, one search for Ctrl+K and the toolbox, ghost bodies, the right-click
+  list, the Home, Construct, Inspect and sketch-mode tabs, Plugins in the gear
+  menu, two icons, the new-design hint, tooltip clips, long notifications, the
+  f3d import's messages), with slices and the owner's decisions of the same day
+  (presets renamed Spindle, Crank and Glide; ten pins in two rows; the ring
+  alone when radial; a first batch of tooltip clips, Solid and Modify, and every
+  clip re-recorded), in
+  [`docs/plans/ui-review-2026-10-11.md`](plans/ui-review-2026-10-11.md).
 
 ---
 

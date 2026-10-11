@@ -13,7 +13,13 @@
  * exactly; splines as polylines.
  */
 import type { RegionPiece } from './decode/extrude';
-import type { SketchCircular, SketchSpline, Vec3 } from './decode/sketch-geometry';
+import {
+  ellipseSweep,
+  type SketchCircular,
+  type SketchEllipse,
+  type SketchSpline,
+  type Vec3,
+} from './decode/sketch-geometry';
 import type { F3dSketch } from './model';
 
 export type Vec2 = [number, number];
@@ -351,7 +357,36 @@ function trace(s: F3dSketch, profileCurves: Set<string>): Traced[] {
       box: boxOf(pts),
     });
   }
+  // Ellipses and elliptical arcs as polylines over their parameter angle.
+  for (const e of s.ellipses ?? []) {
+    const t0 = e.startAngle;
+    const t1 = t0 + ellipseSweep(e);
+    const n = Math.max(16, Math.ceil(((t1 - t0) / (2 * Math.PI)) * 96));
+    const params = Array.from({ length: n + 1 }, (_, i) => t0 + ((t1 - t0) * i) / n);
+    const pts = params.map((t) => ellipseAt(e, t));
+    // The ends sit on the file's own points, as the other curves' do.
+    if (e.startPoint !== undefined) pts[0] = pt(e.startPoint, e.center);
+    if (e.endPoint !== undefined) pts[n] = pt(e.endPoint, e.center);
+    const closed = dist2(pts[0] as Vec2, pts[n] as Vec2) < TOL;
+    out.push({
+      key: keyOf(e.tag, e.secondary),
+      curve: { kind: 'polyline', points: pts, params, closed },
+      t0,
+      t1,
+      closed,
+      box: boxOf(pts),
+    });
+  }
   return out;
+}
+
+/** The point at parameter angle `t` of an ellipse, in its sketch's frame. */
+export function ellipseAt(e: SketchEllipse, t: number): Vec2 {
+  const [c, s] = [Math.cos(t), Math.sin(t)];
+  return [
+    e.center[0] + e.major[0] * e.majorRadius * c + e.minor[0] * e.minorRadius * s,
+    e.center[1] + e.major[1] * e.majorRadius * c + e.minor[1] * e.minorRadius * s,
+  ];
 }
 
 /** Each curve, and where the sketch's other curves meet it (its parameter there). */

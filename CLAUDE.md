@@ -54,7 +54,7 @@ desktop app, four slices and the Homebrew cask, ADR-0075), P6-02 (the slicer
 launch), P6-03 (the plugin API, four slices, ADR-0077) and P6-07 (auto-project,
 ADR-0074) and P6-06 (the docs site, tutorials and examples, ADR-0080; done
 2026-10-09) and P6-05 (components and as-built joints, ADR-0081; done
-2026-10-11) are done; P6-04 (i18n) is open.
+2026-10-11) are done; P6-04 (i18n) is deferred (owner, 2026-10-11: English only for now).
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -2212,9 +2212,11 @@ main one at a time): Phases 0, 1, 2, 3 and 5 are complete, Phase 4 is complete
 apart from **P4-12's remaining backlog** (the items `docs/03-roadmap.md` still
 lists as open: a chamfer's handles on curved faces or edges, shell openings
 through curved faces, a point where two curved faces and a plane meet, and the
-rest), and Phase 6 has P6-04 (i18n) left (P6-05 and P6-06 are done,
-2026-10-09). **P6-04 waits for the owner's walk through the UI** (owner,
-2026-10-07). The repository is public (2026-10-04); the first public
+rest), and Phase 6 has only P6-04 (i18n) left, **deferred** (owner,
+2026-10-11: English only for now; P6-05 and P6-06 are done). **The owner's UI
+review 3 (2026-10-11) is the work to do**: nineteen items with slices and the
+owner's decisions in `docs/plans/ui-review-2026-10-11.md` (the roadmap's "The
+owner's UI reviews"). The repository is public (2026-10-04); the first public
 release is **v0.4.0** (no v0.3.0 tag): the owner does the slicer check and a
 fresh look on edge, the agent then bumps the versions to 0.4.0, and **the owner
 tags** (`docs/release-checklist.md`; don't tag yourself). v0.4.1 fixed the desktop build; **v0.5.0** (2026-10-10) is the next release.
