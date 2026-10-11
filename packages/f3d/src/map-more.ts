@@ -1,6 +1,6 @@
 /**
  * Mapping of the features added after the first import (ADR-0083's
- * amendment of 2026-10-11): mirror, rectangular pattern and sweep. Each
+ * amendment of 2026-10-11): mirror, rectangular pattern, sweep and split body. Each
  * returns why it was left out, or what it made.
  */
 import type { Design, GeomRef } from '@extrudo/api';
@@ -10,7 +10,7 @@ import type { ParameterValue } from './decode/parameters';
 import type { RevolveAxis } from './decode/revolve';
 import type { Vec3 } from './decode/sketch-geometry';
 import { axisRef, type ImportReport, placeSketch, type SketchEntry, selectProfiles } from './map';
-import type { F3dMirror, F3dRectangularPattern, F3dSweep } from './model';
+import type { F3dMirror, F3dRectangularPattern, F3dSplit, F3dSweep } from './model';
 
 /** What the copying features need from the import so far. */
 export interface CopyContext {
@@ -57,13 +57,15 @@ function planeRef(
   plane: ModelPlane,
   name: string,
   report: ImportReport,
+  /** What the feature does in the plane, for the note ("mirrors in"). */
+  verb: string,
 ): GeomRef | undefined {
   const { origin: O, x: X, y: Y } = plane;
   const N: Vec3 = [X[1] * Y[2] - X[2] * Y[1], X[2] * Y[0] - X[0] * Y[2], X[0] * Y[1] - X[1] * Y[0]];
   const m = [X[0], Y[0], N[0], O[0], X[1], Y[1], N[1], O[1], X[2], Y[2], N[2], O[2], 0, 0, 0, 1];
   const notes: ImportReport = { imported: [], skipped: [], notes: [] };
   const placed = placeSketch(d, m, notes, name);
-  for (const note of notes.notes) report.notes.push(note.replace(': drawn on ', ': mirrors in '));
+  for (const note of notes.notes) report.notes.push(note.replace(': drawn on ', `: ${verb} `));
   return placed?.plane;
 }
 
@@ -98,7 +100,7 @@ export function mirror(d: Design, f: F3dMirror, context: CopyContext): string | 
   if (!f.plane) return 'its plane was not found';
   const copied = copiedInputs(f, context);
   if (typeof copied === 'string') return copied;
-  const plane = planeRef(d, f.plane, f.name, context.report);
+  const plane = planeRef(d, f.plane, f.name, context.report, 'mirrors in');
   if (!plane) return 'its plane is not along an origin axis';
   d.mirror({ ...copied, plane } as Parameters<Design['mirror']>[0], { name: f.name });
   return undefined;
@@ -191,4 +193,16 @@ export function sweep(
   const bodies = f.operation === 'new-body' ? undefined : participants(f.participants);
   if (bodies) inputs.bodies = bodies;
   return { id: d.sweep(inputs as Parameters<Design['sweep']>[0], { name: f.name }).id };
+}
+
+/** A split of bodies by a plane, keeping both sides. */
+export function splitBody(d: Design, f: F3dSplit, context: CopyContext): string | undefined {
+  if (!f.plane) return 'it splits with a face (only planes are imported)';
+  if (f.bodies.length === 0) return 'the bodies it splits were not found';
+  const bodies = context.bodies(f.bodies);
+  if (!bodies) return 'a body it splits was not imported as one body of one feature';
+  const plane = planeRef(d, f.plane, f.name, context.report, 'splits on');
+  if (!plane) return 'its plane is not along an origin axis';
+  d.splitBody({ bodies, plane } as Parameters<Design['splitBody']>[0], { name: f.name });
+  return undefined;
 }

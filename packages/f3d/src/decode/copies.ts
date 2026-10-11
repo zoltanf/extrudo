@@ -29,6 +29,8 @@ export const RECTANGULAR_PATTERN = 'AE12AD3F-BB81-4B59-9D34-A599E58E4BF6';
 export const PATH_PATTERN = 'B0B3D9E5-1C25-47BC-ABCD-E723F193DF1B';
 /** An operand group holding a pattern direction (also a hole's placement). */
 export const DIRECTION_GROUP = HOLE_PLACEMENT;
+/** Split body: its body operands name the bodies, its plane is read as a mirror's. */
+export const SPLIT_BODY = '65CA3206-E33A-471E-8E40-2C72B57C6181';
 
 /** What a mirror or pattern copies. */
 export interface CopiedObjects {
@@ -80,7 +82,7 @@ export function readCopied(seg: Segment, scope: Scope, inside: Inside): CopiedOb
   return { objects, features, bodies };
 }
 
-/** A mirror's plane: the model plane of its geometry operand that names no body. */
+/** A mirror's (or split's) plane: the model plane of its geometry operand that names no body. */
 export function readMirrorPlane(
   seg: Segment,
   scope: Scope,

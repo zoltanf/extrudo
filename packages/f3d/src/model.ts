@@ -234,6 +234,14 @@ export interface F3dSweep extends FeatureBase {
   participants: number[];
 }
 
+export interface F3dSplit extends FeatureBase {
+  type: 'split';
+  /** The bodies it splits, by body record. */
+  bodies: number[];
+  /** Its splitting plane, model space (missing: it splits with a face, not read). */
+  plane?: ModelPlane;
+}
+
 export interface F3dOther extends FeatureBase {
   type: 'other';
 }
@@ -249,6 +257,7 @@ export type F3dFeature =
   | F3dMirror
   | F3dRectangularPattern
   | F3dSweep
+  | F3dSplit
   | F3dOther;
 
 /** A body of the design: its number, whether it is shown, the feature that made it. */
@@ -636,6 +645,14 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         directions: tryDecode(`directions #${id}`, () => readDirections(seg, scope, inside)) ?? [],
         counts: tryDecode(`counts #${id}`, () => readCounts(seg, scope, inside)) ?? [],
       });
+    } else if (FEATURE_TYPES[type.guid] === 'Split') {
+      const inside = (ref: number) => {
+        const f = seg.frame(ref);
+        return refsIn(seg, f.start, f.end);
+      };
+      const { bodies } = readCopied(seg, scope, inside);
+      const plane = tryDecode(`split plane #${id}`, () => readMirrorPlane(seg, scope, inside));
+      features.push({ type: 'split', ...base, bodies, ...(plane ? { plane } : {}) });
     } else if (FEATURE_TYPES[type.guid] === 'Sweep') {
       const operation = tryDecode(`sweep #${id}`, () => readSweepOperation(seg, scope));
       if (!operation) {

@@ -342,4 +342,32 @@ describe('f3dToDesign: copying features', () => {
       ]),
     );
   });
+
+  it('splits a body in two by a plane', async () => {
+    const f3d = washerWithHole();
+    f3d.bodies = [{ id: 50, index: 1, visible: true, creator: 2 }];
+    f3d.features.push({
+      ...base,
+      type: 'split',
+      id: 7,
+      kind: 'Split',
+      name: 'Split1',
+      bodies: [50],
+      // The XZ plane: its normal x × y is −Y.
+      plane: { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 0, 1] },
+    });
+    const { design, report } = f3dToDesign(f3d, 'Washer');
+    expect(report.imported).toContain('Split1');
+    const split = design.toJSON().features.find((f) => f.name === 'Split1');
+    expect(split?.inputs).toMatchObject({
+      bodies: { refs: [{ kind: 'body', id: `${design.toJSON().features[1]?.id}:0` }] },
+      plane: { refs: [{ kind: 'plane', id: 'origin:xz' }] },
+    });
+    // The hole at (3.8, 0) mm is cut in half by the plane.
+    const halves = await volumes(f3d);
+    expect(halves).toEqual([
+      expect.closeTo((RING - HOLE) / 2, 3),
+      expect.closeTo((RING - HOLE) / 2, 3),
+    ]);
+  });
 });

@@ -43,7 +43,7 @@ import type {
 } from './decode/sketch-geometry';
 import type { SketchText } from './decode/text';
 import { type EdgeShape, edgeShape } from './edge-shape';
-import { type CopyContext, mirror, rectangularPattern, sweep } from './map-more';
+import { type CopyContext, mirror, rectangularPattern, splitBody, sweep } from './map-more';
 import type {
   F3dCircularPattern,
   F3dDesign,
@@ -435,7 +435,11 @@ export function f3dToDesign(
           replayable.set(feature.id, { id: made.id, name: feature.name });
           report.imported.push(feature.name);
         }
-      } else if (feature.type === 'mirror' || feature.type === 'rectangular-pattern') {
+      } else if (
+        feature.type === 'mirror' ||
+        feature.type === 'rectangular-pattern' ||
+        feature.type === 'split'
+      ) {
         const context: CopyContext = {
           made: replayable,
           sketches,
@@ -446,7 +450,9 @@ export function f3dToDesign(
         const reason =
           feature.type === 'mirror'
             ? mirror(d, feature, context)
-            : rectangularPattern(d, feature, context);
+            : feature.type === 'split'
+              ? splitBody(d, feature, context)
+              : rectangularPattern(d, feature, context);
         if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
         else report.imported.push(feature.name);
       } else if (feature.type === 'fillet' || feature.type === 'chamfer') {
