@@ -451,7 +451,8 @@ assemblies (`pushStepGroup`, `writeStepAssembly`: +4.9 kB raw, +3 kB brotli;
 `proximityPose`, `proximityClose`: +32.6 kB raw, +10.1 kB brotli; 20.58 / 6.66
 / 4.63 MB before, 20.61 / 6.67 / 4.64 MB after) and the 8 MB stack, its guard
 and ADR-0038's rod refusal (2026-10-11: +12.3 kB raw, +3 kB gzip; 20.62 / 6.67 /
-4.64 MB after); the 15.76 MB / 3.69 MB brotli
+4.64 MB after) and ADR-0051's seam retry and far-face check (2026-10-11: +13.2 kB
+raw, +9.2 kB gzip; 20.64 / 6.68 MB after); the 15.76 MB / 3.69 MB brotli
 of ADR-0037 was P2-15's; OCCT input hash
 `e67295b269ca` (release `occt-e67295b269ca`); **the WASM stack is 8 MB**
 (`STACK_SIZE` in `libcascade.config.ts`; Emscripten's default 64 kB was run past

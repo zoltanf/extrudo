@@ -6,6 +6,7 @@ import {
   Kernel,
   KernelError,
   OffsetFaceError,
+  type ShapeHandle,
   ShellError,
 } from './kernel';
 import { EDGE_SEAM } from './mesh';
@@ -578,7 +579,7 @@ describe('errors and ownership', () => {
         : scope.track(kernel.box([2, 20, 12], [-1, 20, 5]));
       return scope.track(kernel.cut(cylinder, slot, { simplify: true })).shape;
     };
-    const outcomes = (body: number, distance: number) => {
+    const outcomes = (body: ShapeHandle, distance: number) => {
       const out: string[] = [];
       for (let face = 0; face < kernel.count(body, 'face'); face++) {
         try {
