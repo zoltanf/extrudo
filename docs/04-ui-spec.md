@@ -8,8 +8,8 @@ branding.
 the mouse controls (into the Settings menu; presets Spindle, Crank, Glide,
 Blender, Trackpad), command search (one dialog for Ctrl+K and S, ten pins), ghost
 bodies, the right-click menu (the ring alone when radial), the tabs (Home's Import
-and Export groups, Inspect inside Construct, Plugins in the Settings menu),
-tooltip clips and long notifications. The items are in
+and Export groups, Inspect inside Construct, Plugins in the Settings menu)
+and tooltip clips. The items are in
 [`plans/ui-review-2026-10-11.md`](plans/ui-review-2026-10-11.md); this spec
 still describes the app as it is, and each slice updates the sections it
 changes.
@@ -225,11 +225,16 @@ brief, voice) is in **`05-brand.md`**. In short:
 - **Toasts** appear in the view's bottom-right corner, newest at the
   bottom; while a sketch is open they sit at the foot of the sketch
   palette's column, so they never cover it. Errors stay until dismissed.
+  A toast is at most 420 px wide and shows three lines of a long message,
+  with **Show more** / **Show less** for the rest (`aria-expanded`); a toast
+  opened that way stays until dismissed, and a word longer than a line breaks
+  anywhere instead of widening it (the owner's UI review 3, R3-17).
   **Notification history (P3-16, ADR-0041):** a bell button at
   the status bar's right edge (always there, muted while empty; badge: how many came since
   the list was last opened, red if one is an error). It opens a panel of
   the session's earlier notifications, newest first with errors in a group
-  of their own on top, then the rest; repeats show ×n and the time; Clear
+  of their own on top, then the rest; repeats show ×n and the time; a long
+  message is clamped to three lines with Show more, as in a toast; Clear
   all empties it. An action stays clickable while it still applies (Show
   for a hidden sketch) and shows disabled once it doesn't. Esc closes the
   panel and returns focus to the button; Ctrl+K "Notification History"

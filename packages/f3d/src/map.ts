@@ -86,12 +86,48 @@ type Vec2 = [number, number];
 export interface ImportReport {
   /** Timeline features that became Extrudo features. */
   imported: string[];
-  /** Timeline features left out, with why. */
-  skipped: { name: string; kind: string; reason: string }[];
+  /**
+   * Timeline features left out, with why: `reason` in a few plain words for people (at most
+   * `MAX_REASON` characters, never a list of curve keys; the app shows it), `detail` the
+   * technical text when it says more (bug reports, `corpus.test.ts`; R3-18).
+   */
+  skipped: SkippedFeature[];
   /** Smaller things that were approximated. */
   notes: string[];
   /** Sketch constraints and dimensions brought over (only with a solver, `ImportOptions.solver`). */
   constraints?: ConstraintTally;
+}
+
+/** A timeline feature the import left out (R3-18). */
+export interface SkippedFeature {
+  name: string;
+  kind: string;
+  /** Why, in plain words for people: at most `MAX_REASON` characters. */
+  reason: string;
+  /** The technical reason, when it is longer than or differs from `reason`. */
+  detail?: string;
+}
+
+/** The longest reason a person reads in the app's notice (R3-18). */
+export const MAX_REASON = 120;
+
+/**
+ * Words a skipped feature's raw reason for people (R3-18): a profile region the import could
+ * not match becomes "its profile couldn't be matched to Sketch3's curves" (the raw text lists
+ * the file's curve keys), a short plain reason stays as it is, and anything longer or
+ * technical (a thrown error, a list in braces) becomes a general sentence; the raw text is
+ * kept as `detail` whenever it differs.
+ */
+export function skippedFeature(name: string, kind: string, raw: string): SkippedFeature {
+  const reason = plainReason(raw);
+  return reason === raw ? { name, kind, reason } : { name, kind, reason, detail: raw };
+}
+
+function plainReason(raw: string): string {
+  const unmatched = /^profile region \{.*?\} not found in (.+?) \(it has \d+/s.exec(raw);
+  if (unmatched) return `its profile couldn't be matched to ${unmatched[1]}'s curves`;
+  if (raw.length <= MAX_REASON && !/[{}]/.test(raw)) return raw;
+  return "it couldn't be rebuilt in Extrudo";
 }
 
 export interface ImportResult {
@@ -485,7 +521,7 @@ export function f3dToDesign(
         // Faces as the profile (press-pull).
         const made = faceExtrude(d, feature, naming, expressionOf, participants, report);
         if (typeof made === 'string')
-          report.skipped.push({ name: feature.name, kind: 'Extrude', reason: made });
+          report.skipped.push(skippedFeature(feature.name, 'Extrude', made));
         else {
           replayable.set(feature.id, { id: made.id, name: feature.name });
           report.imported.push(feature.name);
@@ -502,7 +538,7 @@ export function f3dToDesign(
           report,
         );
         if (typeof made === 'string')
-          report.skipped.push({ name: feature.name, kind: 'Extrude', reason: made });
+          report.skipped.push(skippedFeature(feature.name, 'Extrude', made));
         else {
           extrudes.set(feature.id, made);
           replayable.set(feature.id, { id: made.id, name: feature.name });
@@ -511,7 +547,7 @@ export function f3dToDesign(
       } else if (feature.type === 'hole') {
         const made = hole(d, feature, expressionOf, report);
         if (typeof made === 'string')
-          report.skipped.push({ name: feature.name, kind: 'Hole', reason: made });
+          report.skipped.push(skippedFeature(feature.name, 'Hole', made));
         else {
           replayable.set(feature.id, { id: made.id, name: feature.name });
           naming.holes.set(feature.id, made);
@@ -520,7 +556,7 @@ export function f3dToDesign(
       } else if (feature.type === 'revolve') {
         const made = revolve(d, feature, sketches, expressionOf, participants, report);
         if (typeof made === 'string')
-          report.skipped.push({ name: feature.name, kind: 'Revolve', reason: made });
+          report.skipped.push(skippedFeature(feature.name, 'Revolve', made));
         else {
           naming.revolves.set(feature.id, made);
           replayable.set(feature.id, { id: made.id, name: feature.name });
@@ -528,12 +564,12 @@ export function f3dToDesign(
         }
       } else if (feature.type === 'offset-faces') {
         const reason = offsetFaces(d, feature, naming, expressionOf, report);
-        if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
+        if (reason) report.skipped.push(skippedFeature(feature.name, feature.kind, reason));
         else report.imported.push(feature.name);
       } else if (feature.type === 'circular-pattern') {
         const made = circularPattern(d, feature, replayable, sketches, expressionOf, report);
         if (typeof made === 'string')
-          report.skipped.push({ name: feature.name, kind: feature.kind, reason: made });
+          report.skipped.push(skippedFeature(feature.name, feature.kind, made));
         else {
           // The file numbers instances from 1, the original; Extrudo from 0.
           const label = (code: number) => (code >= 2 ? String(code - 1) : undefined);
@@ -553,12 +589,12 @@ export function f3dToDesign(
           expressionOf,
           report,
         );
-        if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
+        if (reason) report.skipped.push(skippedFeature(feature.name, feature.kind, reason));
         else report.imported.push(feature.name);
       } else if (feature.type === 'sweep') {
         const made = sweep(d, feature, sketches, expressionOf, participants, report);
         if (typeof made === 'string')
-          report.skipped.push({ name: feature.name, kind: feature.kind, reason: made });
+          report.skipped.push(skippedFeature(feature.name, feature.kind, made));
         else {
           replayable.set(feature.id, { id: made.id, name: feature.name });
           report.imported.push(feature.name);
@@ -578,7 +614,7 @@ export function f3dToDesign(
         };
         if (feature.type === 'split') {
           const reason = splitBody(d, feature, context);
-          if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
+          if (reason) report.skipped.push(skippedFeature(feature.name, feature.kind, reason));
           else report.imported.push(feature.name);
         } else {
           const made =
@@ -588,7 +624,7 @@ export function f3dToDesign(
                 ? pathPattern(d, feature, context)
                 : rectangularPattern(d, feature, context);
           if (typeof made === 'string')
-            report.skipped.push({ name: feature.name, kind: feature.kind, reason: made });
+            report.skipped.push(skippedFeature(feature.name, feature.kind, made));
           else {
             naming.copies.set(feature.id, made);
             report.imported.push(feature.name);
@@ -597,7 +633,7 @@ export function f3dToDesign(
       } else if (feature.type === 'fillet' || feature.type === 'chamfer') {
         const made = edgeTreatment(d, feature, naming, expressionOf, report);
         if (typeof made === 'string')
-          report.skipped.push({ name: feature.name, kind: feature.kind, reason: made });
+          report.skipped.push(skippedFeature(feature.name, feature.kind, made));
         else {
           naming.rounds.set(feature.id, made);
           report.imported.push(feature.name);
@@ -607,7 +643,7 @@ export function f3dToDesign(
         report.imported.push(feature.name);
       } else if (components.isBodyMove(feature)) {
         const reason = components.bodyMove(feature, bodyOf);
-        if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
+        if (reason) report.skipped.push(skippedFeature(feature.name, feature.kind, reason));
         else report.imported.push(feature.name);
       } else {
         report.skipped.push({
@@ -617,11 +653,7 @@ export function f3dToDesign(
         });
       }
     } catch (error) {
-      report.skipped.push({
-        name: feature.name,
-        kind: feature.kind,
-        reason: (error as Error).message,
-      });
+      report.skipped.push(skippedFeature(feature.name, feature.kind, (error as Error).message));
     }
   }
   components.enter(undefined);
@@ -1318,6 +1350,19 @@ function regionCurves(entry: SketchEntry, profiles: GeomRef[]): string[] {
   return [...curves];
 }
 
+/**
+ * The technical reason a profile region wasn't found: the curve keys the file names it by and
+ * the first regions the sketch has. A person reads `skippedFeature`'s wording of it instead.
+ */
+export function unmatchedRegion(
+  sketch: string,
+  wanted: readonly string[],
+  count: number,
+  have: readonly string[],
+): string {
+  return `profile region {${wanted.join('|')}} not found in ${sketch} (it has ${count}: ${have.map((k) => `{${k}}`).join(' ')})`;
+}
+
 /** The Extrudo profiles a feature's profile operands select, and the sketch they are in. */
 export function selectProfiles(
   operands: ProfileOperand[],
@@ -1386,7 +1431,12 @@ export function selectProfiles(
             ),
           )
           .slice(0, 8);
-        return `profile region {${want.outer.map((l) => keyOf(l)).join('|')}} not found in the sketch (it has ${regions.length}: ${have.map((k) => `{${k}}`).join(' ')})`;
+        return unmatchedRegion(
+          sketch.handle.name,
+          want.outer.map((l) => keyOf(l)),
+          regions.length,
+          have,
+        );
       }
       for (const ref of refs) if (!profiles.some((p) => p.id === ref.id)) profiles.push(ref);
     }

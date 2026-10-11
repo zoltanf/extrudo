@@ -67,7 +67,7 @@ export function HomeScreen({ platform }: { platform: Platform }) {
   useShortcuts(shortcuts);
   const { projects, error, refresh } = useProjects(platform);
   const persistence = usePersistence(platform);
-  const { toasts, push, dismiss } = useToasts();
+  const { toasts, push, dismiss, keep } = useToasts();
   useUpdateNotice(push, platform);
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<Sort>('modified');
@@ -401,7 +401,7 @@ export function HomeScreen({ platform }: { platform: Platform }) {
           if (p) void run(() => platform.projects.purge(p.id), "Couldn't delete");
         }}
       />
-      <Toasts toasts={toasts} onDismiss={dismiss} />
+      <Toasts toasts={toasts} onDismiss={dismiss} onKeep={keep} />
     </div>
   );
 }

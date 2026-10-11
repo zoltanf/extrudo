@@ -119,7 +119,7 @@ function ProjectEditor({
     [platform],
   );
   const autosave = useAutosave(store, viewport, platform);
-  const { toasts, push, dismiss, notifications } = useToasts();
+  const { toasts, push, dismiss, keep, notifications } = useToasts();
   useUpdateNotice(push, platform);
   useSoftwareNotice(push, platform);
   // The linked folder (P4-09, ADR-0065 §3): a file on disk this project is
@@ -214,7 +214,7 @@ function ProjectEditor({
       file={file}
       platform={platform}
       notify={push}
-      toasts={{ toasts, onDismiss: dismiss, history: notifications }}
+      toasts={{ toasts, onDismiss: dismiss, onKeep: keep, history: notifications }}
       kernel={recomputer}
       pendingBodies={pendingBodies}
     />

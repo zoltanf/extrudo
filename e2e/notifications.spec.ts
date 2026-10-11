@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
-import { clicker, kernelReady, openProject, pickTool, sketchOnXY } from './helpers';
+import { renameProject } from './benchmark-helpers';
+import { clicker, fileAction, kernelReady, openProject, pickTool, sketchOnXY } from './helpers';
 
 // P3-16 (ADR-0041): the notification history. The bell at the status bar's right
 // edge (always there since 2026-10-10) opens the session's earlier notifications:
@@ -199,4 +200,56 @@ test("a recompute's first new error goes into the history, with Edit (P3-13)", a
   await expect(
     history(page).getByRole('button', { name: 'Edit (no longer applies)' }),
   ).toBeDisabled();
+});
+
+// R3-17 (the owner's UI review 3): a long message no longer fills the view. A toast is at most
+// 420 px wide and shows three lines with Show more; opened, it stays until dismissed. The
+// history's row clamps the same way.
+test('a long message shows three lines in a toast, the rest behind Show more', async ({ page }) => {
+  await openProject(page);
+  // A design whose name runs on: exporting it says so in a toast.
+  const name = Array.from({ length: 24 }, (_, i) => `Bracket-holder-part-${i + 1}`).join(' ');
+  await renameProject(page, name);
+  await Promise.all([page.waitForEvent('download'), fileAction(page, 'Export .extrudo')]);
+  const toast = page.locator('[data-toast]').filter({ hasText: 'Exported Bracket-holder' });
+  await expect(toast).toBeVisible();
+  const text = toast.locator('[data-clamp-text]');
+  // The text's height in font sizes: three lines of 1.2 to 1.5 each.
+  const height = () =>
+    text.evaluate(
+      (el) =>
+        el.getBoundingClientRect().height /
+        Number.parseFloat(el.ownerDocument.defaultView?.getComputedStyle(el).fontSize ?? '16'),
+    );
+  await expect(text).toHaveAttribute('data-clamped', 'true');
+  expect(await height()).toBeGreaterThan(3);
+  expect(await height()).toBeLessThanOrEqual(4.6);
+  expect((await toast.boundingBox())?.width ?? 0).toBeLessThanOrEqual(420);
+  // The whole name is in the page, for a screen reader.
+  await expect(text).toContainText(`${name}.extrudo`);
+
+  // By keyboard: Show more opens it, and it stays past its six seconds.
+  const more = toast.getByRole('button', { name: 'Show more' });
+  await expect(more).toHaveAttribute('aria-expanded', 'false');
+  await more.focus();
+  await page.keyboard.press('Enter');
+  const less = toast.getByRole('button', { name: 'Show less' });
+  await expect(less).toHaveAttribute('aria-expanded', 'true');
+  await expect(text).not.toHaveAttribute('data-clamped');
+  expect(await height()).toBeGreaterThan(6);
+  await page.waitForTimeout(7000);
+  await expect(toast).toBeVisible();
+  await less.click();
+  await expect(text).toHaveAttribute('data-clamped', 'true');
+  await toast.getByRole('button', { name: 'Dismiss' }).click();
+  await expect(toast).toHaveCount(0);
+
+  // The history's row: clamped too, the full text one click away.
+  await bell(page).click();
+  const row = history(page)
+    .locator('[data-notification]')
+    .filter({ hasText: 'Exported Bracket-holder' });
+  await expect(row.locator('[data-clamp-text]')).toHaveAttribute('data-clamped', 'true');
+  await row.getByRole('button', { name: 'Show more' }).click();
+  await expect(row.locator('[data-clamp-text]')).not.toHaveAttribute('data-clamped');
 });

@@ -260,6 +260,8 @@ export interface AppShellProps {
   toasts?: {
     toasts: Toast[];
     onDismiss(id: number): void;
+    /** A toast whose long text was opened stays until dismissed (R3-17). */
+    onKeep?(id: number): void;
     /** The session's notification history (P3-16): the status bar's bell opens it. */
     history?: NotificationStore;
   };
@@ -2630,7 +2632,12 @@ export function AppShell({
               onFinish={() => finishSketch(stores)}
             />
             {toasts && (
-              <Toasts place="column" toasts={toasts.toasts} onDismiss={toasts.onDismiss} />
+              <Toasts
+                place="column"
+                toasts={toasts.toasts}
+                onDismiss={toasts.onDismiss}
+                onKeep={toasts.onKeep}
+              />
             )}
           </PanelColumn>
         )}
@@ -2642,6 +2649,7 @@ export function AppShell({
             clearRight={dialogOpen ? DIALOG_COLUMN : undefined}
             toasts={toasts.toasts}
             onDismiss={toasts.onDismiss}
+            onKeep={toasts.onKeep}
           />
         )}
       </main>
