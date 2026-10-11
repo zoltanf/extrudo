@@ -458,7 +458,6 @@ The review for untrusted files changed three things in the constraint import:
 3. **A solver failure stays in its sketch**: the sketch keeps its geometry and
    joins, and all of its constraints and dimensions are left out as `failed`.
    The app's import no longer fails when disposing a broken solver throws.
-
 ## Amendment (2026-10-11): elliptical arcs
 
 The file's ellipse record (`FF23079A…`: centre, unit major and minor axes,
@@ -495,3 +494,63 @@ no counterpart, 123 that don't match the geometry, 145 that over-constrain
 2 that would move geometry. No imported sketch over-constrained or
 conflicting; largest move 8.5e-7 mm. Rebuilt geometry: no verdict changes;
 one file imports one more feature (still partial, volume error 2.544 % → 2.536 %).
+
+## Amendment, 2026-10-11 (fillet and chamfer edges)
+
+Fillets and chamfers were the importer's largest loss: about 280 of the
+1,000 imported ones failed in the kernel, most for a reference it could not
+find or a size it refused. A corpus tool resolved every edge reference the
+way the kernel does, against the bodies just before its feature, and
+judged the pick against the file's own edge geometry; this amendment is
+what that showed.
+
+1. **Copies are measured where they are.** An edge on a pattern's or
+   mirror's copy was measured on the copied face, so its fingerprint sat on
+   the original (a gear's 46 tooth edges all pointed at the first tooth).
+   The copy's own B-rep face gives its surface now.
+2. **The B-rep's stored edges.** The ASM reader follows each face's loops to
+   its edges (curve, vertices, the face across). The streams keep earlier
+   states too, so the edge a fillet rounded is often still there between its
+   two faces (`F3dEdge.known`). It picks which of two lines a plane or a
+   cylinder meets a cylinder in (a tooth's side and the root circle), gives
+   the line or circle where the two surfaces are not followed, and picks the
+   stretch the bounding faces' cuts end the edge at when a bounding cylinder
+   cuts the line twice. A plane slanted across a cylinder gives an ellipse.
+   An edge held only by a guessed round face's name or by one face still
+   needs a line or circle of the two surfaces themselves: letting the new
+   curves hold such edges made whole rounds fail where the edges lay on an
+   earlier round the kernel could not make.
+3. **Two-size chamfers take their reference face.** With two distances, or a
+   distance and an angle, which face takes the first distance shows only in
+   the chamfer faces the file made (`F3dEdgeFeature.made`): from a point on
+   the edge, along each face square to it, the chamfer face lies that
+   face's distance away. A set gets Extrudo's reference face when all its
+   edges agree on it, or on the other face with the sizes swapped
+   (d · tan θ at 90° − θ); a set is never split, since a tangent chain
+   must stay in one set. Extrudo's angle is the file's (the other distance
+   is d · tan θ on both sides).
+4. **Chains are not spelled out.** The kernel rounds a whole tangent chain
+   whichever of its edges it is given. An edge held only by a guessed name or
+   one face's that runs on smoothly from an edge held by name is left out:
+   it added nothing, and when it lay on an earlier round that failed it was
+   lost and failed this round too (30 rounds in the corpus failed only that
+   way, nearly all after the earlier round failed).
+
+Not done: an edge on an earlier round that failed is still lost where it is
+not part of a chain (the kernel fails the whole feature on one lost edge,
+and the importer can't know which rounds the kernel will refuse); a chamfer
+or fillet that consumes a whole face, which the file allows and the kernel
+refuses ("too large", max a hair under the face's width: two holders
+now fail there instead of bevelling the wrong face); rounds on edges whose
+faces belong to features not imported (regions not found, sweeps).
+
+Corpus (250 files, bodies of hidden components left out, sketches vetted by
+the solver as in the app): match 122, match while skipping 8, partial 48,
+different geometry 57, no body 8, crash 0, no reference 7 — from 118, 8, 48,
+61, 8, 0, 7 with the import before this amendment. Four designs match that did
+not; references whose pick lies on the file's edge rose (by name 3,732 →
+3,843 before item 4) and picks off it fell (by name 118 → 57). Worse: the two
+holders above, a case whose fillet now rounds all four of the
+file's edges (3.3 % → 4.2 % volume error) and a toy whose rounds already failed
+(0.1 % → 0.2 %); a stand's chamfer no longer picks four edges 5 mm
+off by fingerprint, and its volume error went from 0.04 % to 0.25 %.

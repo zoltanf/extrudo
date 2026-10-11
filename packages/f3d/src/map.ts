@@ -33,6 +33,7 @@ import {
   type Profile,
 } from '@extrudo/sketch/profiles';
 import type { AsmSurface } from './asm';
+import { firstFace } from './chamfer-side';
 import { ComponentMapping } from './components';
 import type { ProfileOperand, ProfileRegion } from './decode/extrude';
 import type { ParameterValue } from './decode/parameters';
@@ -47,7 +48,7 @@ import {
   type Vec3,
 } from './decode/sketch-geometry';
 import type { SketchText } from './decode/text';
-import { type EdgeShape, edgeShape } from './edge-shape';
+import { continues, type EdgeShape, edgeShape } from './edge-shape';
 import {
   type CopyContext,
   type MadeCopies,
@@ -1692,8 +1693,21 @@ function toModel(m: Matrix, p: Vec3): Vec3 {
 
 /** Why faces could not be named, counted (for the corpus tools). */
 export const faceMisses: Record<string, number> = {};
+/** For the corpus tools: called with every fillet or chamfer edge as it is named. */
+export const edgeTrace: {
+  edge?: (row: {
+    feature: string;
+    edge: F3dEdgeFeature['sets'][number]['edges'][number];
+    names: (string | undefined)[];
+    why: (string | undefined)[];
+    shape?: EdgeShape;
+    ref?: GeomRef;
+  }) => void;
+} = {};
+let lastMiss: string | undefined;
 const miss = (why: string): undefined => {
   faceMisses[why] = (faceMisses[why] ?? 0) + 1;
+  lastMiss = why;
   return undefined;
 };
 
@@ -1966,25 +1980,61 @@ function edgeTreatment(
   let named = 0;
   for (const s of f.sets) {
     const refs: GeomRef[] = [];
+    // Edges held only by a guessed name or one face's, with their shapes.
+    const weak = new Map<GeomRef, EdgeShape | undefined>();
+    const strong = new Map<GeomRef, EdgeShape | undefined>();
+    // A chamfer with two sizes: each edge's two faces, the one its first
+    // distance goes on first, when the file's chamfer faces show it.
+    const sides = new Map<GeomRef, [string, string]>();
+    const pairs = new Map<GeomRef, readonly string[]>();
+    const second =
+      f.type === 'chamfer' && s.size && s.size2
+        ? s.size2.unit === 'deg'
+          ? s.size.value * Math.tan(s.size2.value)
+          : s.size2.value
+        : undefined;
     for (const e of s.edges) {
       total++;
       const shape = edgeShape(e);
+      lastMiss = undefined;
       const a = faceName(e.faces[0], naming, shape?.mid);
+      const whyA = a ? undefined : lastMiss;
+      lastMiss = undefined;
       const b = faceName(e.faces[1], naming, shape?.mid);
+      const trace = (ref?: GeomRef) =>
+        edgeTrace.edge?.({
+          feature: f.name,
+          edge: e,
+          names: [a, b],
+          why: [whyA, b ? undefined : lastMiss],
+          ...(shape ? { shape } : {}),
+          ...(ref ? { ref } : {}),
+        });
       const names = a && b && a !== b ? [a, b] : undefined;
       edges.push(names ? edgeName(names) : undefined);
       shapes.push(shape);
       // A fillet's or chamfer's face name is read off the edge it rounds, as
       // named here; Extrudo may have found that edge by its shape instead,
       // under another name. Such a name alone is too weak to hold the edge
-      // (a lost edge fails the whole feature), so it needs the shape too.
+      // (a lost edge fails the whole feature), so it needs the shape too:
+      // a line or circle the two surfaces meet in. Ellipses and curves the
+      // file's B-rep edges chose help find an edge both faces name, but
+      // letting them hold such an edge added whole-feature failures in the
+      // files seen (it lay on an earlier round the kernel could not make).
       const guessed = names?.some((n) => /^(fillet|chamfer):/.test(n)) ?? false;
-      if (!shape && (!names || guessed)) continue;
+      const sure = !!shape && shape.type !== 'ellipse' && !shape.chosen;
+      if (!sure && (!names || guessed)) {
+        trace();
+        continue;
+      }
       // Geometry alone, without a named face beside it, matches some other
       // edge of that kind and size as readily as this one (most such picks
       // in the corpus were wrong): left out.
       const beside = names ?? [...new Set([a, b].filter((x): x is string => !!x))];
-      if (beside.length === 0) continue;
+      if (beside.length === 0) {
+        trace();
+        continue;
+      }
       // The name, when both faces have one; the geometry always, so Extrudo
       // finds the edge where joins merged or split those faces.
       const id = names ? edgeName(names) : `e[f3d.edge.${f.id}.${total}]`;
@@ -2001,23 +2051,80 @@ function edgeTreatment(
         (!at ||
           !r.fingerprint?.at ||
           Math.hypot(...at.map((v, i) => v - (r.fingerprint?.at?.[i] ?? 0))) < 1e-3);
-      if (!refs.some(same)) refs.push(ref);
+      if (!refs.some(same)) {
+        refs.push(ref);
+        (guessed || !names ? weak : strong).set(ref, shape);
+        if (names) pairs.set(ref, names);
+        const k =
+          names && shape && second !== undefined && s.size && f.made
+            ? firstFace(e, shape, f.made, s.size.value, second)
+            : undefined;
+        if (a && b && k !== undefined) sides.set(ref, k === 0 ? [a, b] : [b, a]);
+      }
+      trace(ref);
       named++;
     }
-    if (refs.length === 0 || !s.size || set >= 32) continue;
+    // The kernel rounds a whole tangent chain whichever of its edges it is
+    // given. A weak edge that only continues the chain of an edge held by
+    // name adds nothing then, and when it lies on an earlier round the
+    // kernel could not make, it is lost and fails this round too: left out.
+    const chained = new Set<GeomRef>();
+    const holders = [...strong.values()];
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const [ref, shape] of weak) {
+        if (chained.has(ref) || !shape) continue;
+        if (holders.some((h) => h && continues(shape, h))) {
+          chained.add(ref);
+          holders.push(shape);
+          grew = true;
+        }
+      }
+    }
+    for (const ref of chained) refs.splice(refs.indexOf(ref), 1);
+    if (refs.length === 0 || !s.size) continue;
+    // Extrudo takes one reference face per set, which must touch each of its
+    // edges: the face every edge shown takes its first distance on, or, with
+    // the sizes swapped, the face every edge takes its second on. Edges that
+    // disagree (a chain round a corner) keep Extrudo's own choice.
+    const shown = [...sides.values()];
+    const common = (i: 0 | 1) => {
+      const face = shown[0]?.[i];
+      return face !== undefined &&
+        shown.every((x) => x[i] === face) &&
+        refs.every((r) => pairs.get(r)?.includes(face))
+        ? face
+        : undefined;
+    };
+    const first = common(0);
+    const other = first === undefined ? common(1) : undefined;
+    if (set >= 32) continue;
     const n = set === 0 ? '' : String(set + 1);
     inputs[`edges${n}`] = refs;
     if (f.type === 'fillet') inputs[`radius${n}`] = expressionOf(s.size);
     else {
       inputs[`distance${n}`] = expressionOf(s.size);
       if (s.size2) {
+        const d1 = expressionOf(s.size);
+        const d2 = expressionOf(s.size2);
         if (s.size2.unit === 'deg') {
           inputs[`mode${n}`] = 'distance-angle';
-          inputs[`angle${n}`] = expressionOf(s.size2);
+          inputs[`angle${n}`] = d2;
+          if (other) {
+            // The other face's distance, d · tan θ, at 90° − θ to it.
+            inputs[`distance${n}`] = `(${d1}) * tan(${d2})`;
+            inputs[`angle${n}`] = `90 deg - (${d2})`;
+          }
         } else {
           inputs[`mode${n}`] = 'two-distances';
-          inputs[`distanceB${n}`] = expressionOf(s.size2);
+          inputs[`distanceB${n}`] = d2;
+          if (other) {
+            inputs[`distance${n}`] = d2;
+            inputs[`distanceB${n}`] = d1;
+          }
         }
+        const face = first ?? other;
+        if (face) inputs[`face${n}`] = [{ kind: 'face', id: face }];
       }
     }
     set++;

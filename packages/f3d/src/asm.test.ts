@@ -100,3 +100,77 @@ describe('asmFaces tags', () => {
     expect(asmFaces(records)[0]?.tags).toEqual([{ token: 'tok', design: 5 }]);
   });
 });
+
+describe('asmFaces edges', () => {
+  /** tag 0x13: a position (three doubles). */
+  const pos = (x: number, y: number, z: number): number[] => {
+    const b = new Uint8Array(24);
+    const v = new DataView(b.buffer);
+    for (const [i, c] of [x, y, z].entries()) v.setFloat64(i * 8, c, true);
+    return [0x13, ...b];
+  };
+  const record = (type: string, ...values: number[][]) => [
+    ...className(type),
+    ...values.flat(),
+    0x11,
+  ];
+  const tag = (token: string, design: number) =>
+    record(
+      'ATTRIB_CUSTOM-attrib',
+      ptr(-1),
+      ptr(-1),
+      str7('generic_tag_attrib_def '),
+      int(1),
+      int(0),
+      str7(token),
+      int(0),
+      int(1),
+      int(design),
+    );
+  /**
+   * Two faces sharing one straight edge: 0, 1 faces; 2, 3 loops; 4, 5
+   * coedges (each its own next and previous, the other's partner); 6 the
+   * edge; 7, 8 vertices; 9, 10 points; 11 the curve; 12, 13 tags; 14 a surface.
+   */
+  const twoFaces = (coedgeB = ptr(5)) =>
+    readAsm(
+      stream(
+        record('face', ptr(12), int(0), ptr(-1), ptr(-1), ptr(2), ptr(-1), ptr(-1), ptr(14)),
+        record('face', ptr(13), int(0), ptr(-1), ptr(-1), ptr(3), ptr(-1), ptr(-1), ptr(14)),
+        record('loop', ptr(-1), int(-1), ptr(-1), ptr(-1), ptr(4), ptr(0)),
+        record('loop', ptr(-1), int(-1), ptr(-1), ptr(-1), coedgeB, ptr(1)),
+        record('coedge', ptr(-1), int(-1), ptr(-1), ptr(4), ptr(4), ptr(5), ptr(6), ptr(2)),
+        record('coedge', ptr(-1), int(-1), ptr(-1), ptr(5), ptr(5), ptr(4), ptr(6), ptr(3)),
+        record('edge', ptr(-1), int(-1), ptr(-1), ptr(7), ptr(8), ptr(4), ptr(11)),
+        record('vertex', ptr(-1), int(-1), ptr(-1), ptr(6), ptr(9)),
+        record('vertex', ptr(-1), int(-1), ptr(-1), ptr(6), ptr(10)),
+        record('point', ptr(-1), int(-1), ptr(-1), pos(0, 0, 0)),
+        record('point', ptr(-1), int(-1), ptr(-1), pos(4, 0, 0)),
+        record('straight-curve', ptr(-1), int(-1), ptr(-1), pos(0, 0, 0), pos(1, 0, 0)),
+        tag('a', 7),
+        tag('b', 8),
+        record('plane-surface', ptr(-1), int(-1), ptr(-1), pos(0, 0, 0), pos(0, 0, 1)),
+      ),
+    );
+
+  it('reads each edge with its curve, its vertices and the tags across it', () => {
+    const [a, b] = asmFaces(twoFaces());
+    expect(a?.edges).toEqual([
+      {
+        curve: { kind: 'line', point: [0, 0, 0], direction: [1, 0, 0] },
+        points: [
+          [0, 0, 0],
+          [4, 0, 0],
+        ],
+        across: [{ token: 'b', design: 8 }],
+      },
+    ]);
+    expect(b?.edges[0]?.across).toEqual([{ token: 'a', design: 7 }]);
+  });
+
+  it('walks a coedge cycle that never comes back to its start once', () => {
+    // Loop 3 starts at coedge 4, whose next (itself) never returns to 5... walked once each.
+    const faces = asmFaces(twoFaces(ptr(4)));
+    expect(faces[1]?.edges).toHaveLength(1);
+  });
+});

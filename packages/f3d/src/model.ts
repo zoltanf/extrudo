@@ -5,7 +5,7 @@
  * the file's internal centimetres here; the mapper converts.
  */
 import { designSegments, type Entries, unzip } from './archive';
-import { type AsmFace, type AsmSurface, asmFaces, readAsm } from './asm';
+import { type AsmCurve, type AsmFace, type AsmSurface, asmFaces, readAsm } from './asm';
 import { F3dFormatError, Reader } from './bytes';
 import { BODY, type BodyFlags, readBody } from './decode/body';
 import {
@@ -189,12 +189,25 @@ export interface F3dFace {
    * instance's code; `feature` and `surface` are then the face it copies.
    */
   instance?: { pattern: number; code: number };
+  /** A copy's own surface, where the copy is (`surface` is the copied face's). */
+  own?: AsmSurface;
 }
 
 /** An edge, as the two faces it runs between and the faces that end it. */
 export interface F3dEdge {
   faces: [F3dFace, F3dFace];
   bounds: F3dFace[];
+  /**
+   * The edges the file's B-rep streams hold between those two faces, each
+   * as some state of the design had it (the streams keep earlier states
+   * too): its curve and its vertices, cm. Distinct ones only.
+   */
+  known?: KnownEdge[];
+}
+
+export interface KnownEdge {
+  curve: AsmCurve;
+  points: [number, number, number][];
 }
 
 export interface F3dEdgeSet {
@@ -208,6 +221,8 @@ export interface F3dEdgeSet {
 export interface F3dEdgeFeature extends FeatureBase {
   type: 'fillet' | 'chamfer';
   sets: F3dEdgeSet[];
+  /** The surfaces of the B-rep faces it made (tagged with its operations), cm. */
+  made?: AsmSurface[];
 }
 
 export interface F3dRevolve extends FeatureBase {
@@ -543,6 +558,16 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     const records = operations.get(design);
     return records?.find((r) => onTimeline.has(r)) ?? records?.[0];
   };
+  // Feature record → the surfaces of the B-rep faces tagged with its operations.
+  const madeBy = (record: number): AsmSurface[] => {
+    const ops = new Set<number>();
+    for (const [op, records] of operations) if (records.includes(record)) ops.add(op);
+    const out = new Set<AsmFace>();
+    for (const list of faces.values())
+      for (const face of list)
+        if (face.tags.some((t) => ops.has(Math.abs(t.design)))) out.add(face);
+    return [...out].map((face) => face.surface);
+  };
   // Instance operation id → instance code, over every copying feature.
   const instances = new Map<number, number>();
   for (const guid of [MIRROR, RECTANGULAR_PATTERN, CIRCULAR_PATTERN, PATH_PATTERN])
@@ -820,8 +845,11 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       const sets = tryDecode(`${kind} #${id}`, () =>
         readEdgeSets(seg, scope, base.parameters, kind, faces, featureOf, instances),
       );
-      if (sets) features.push({ type: kind, ...base, sets });
-      else features.push({ type: 'other', ...base });
+      if (!sets) features.push({ type: 'other', ...base });
+      else {
+        const made = madeBy(id);
+        features.push({ type: kind, ...base, sets, ...(made.length > 0 ? { made } : {}) });
+      }
     } else features.push({ type: 'other', ...base });
   }
 
@@ -998,6 +1026,8 @@ function faceOf(
     out.instance = { pattern, code };
     const source = candidates.find((f) => !f.tags.some((t) => t.design === patternOp));
     if (source) out.surface = source.surface;
+    const own = candidates.find((f) => f.tags.some((t) => t.design === instanceOp));
+    if (own) out.own = own.surface;
     return out;
   }
   const found = candidates[0];
@@ -1029,14 +1059,45 @@ function readEdgeSets(
     .sort((a, b) => a.number - b.number)
     .filter((p) => (kind === 'fillet' ? p.kind === 'Radius' : p.kind !== 'TangencyWeight'));
   const face = (tags: FaceTag[]) => faceOf(tags, faces, featureOf, instances);
+  /** The B-rep key of the face a recipe's tags name: a copy's own face, else the face itself. */
+  const keyOf = (tags: FaceTag[]): string | undefined => {
+    const t = tags[0];
+    if (!t) return undefined;
+    const [design = -1, pattern = -1, instance = -1] = t.designs;
+    return pattern > 0 && instance > 0 && instances.has(instance)
+      ? `${t.token}@${instance}`
+      : `${t.token}@${Math.abs(design)}`;
+  };
+  const knownBetween = (a: FaceTag[], b: FaceTag[]): KnownEdge[] => {
+    const ka = keyOf(a);
+    const kb = keyOf(b);
+    if (!ka || !kb) return [];
+    const out = new Map<string, KnownEdge>();
+    for (const f of faces.get(ka) ?? [])
+      for (const e of f.edges) {
+        if (!e.across.some((t) => `${t.token}@${t.design}` === kb)) continue;
+        const key = `${e.curve.kind}:${e.points
+          .map((p) => p.map((x) => x.toFixed(6)).join(','))
+          .sort()
+          .join(' ')}`;
+        if (!out.has(key)) out.set(key, { curve: e.curve, points: e.points });
+      }
+    return [...out.values()];
+  };
   const perSet = kind === 'chamfer' && sizes.length >= 2 * groups.length ? 2 : 1;
   return groups.map((group, i) => {
     const edges: F3dEdge[] = [];
     for (const recipeId of recipesIn(seg, group)) {
       const recipe = readEdgeRecipe(seg, recipeId);
       const [a, b, ...rest] = recipe.faces;
-      if (a && b)
-        edges.push({ faces: [face(a.tags), face(b.tags)], bounds: rest.map((x) => face(x.tags)) });
+      if (!a || !b) continue;
+      const edge: F3dEdge = {
+        faces: [face(a.tags), face(b.tags)],
+        bounds: rest.map((x) => face(x.tags)),
+      };
+      const known = knownBetween(a.tags, b.tags);
+      if (known.length > 0) edge.known = known;
+      edges.push(edge);
     }
     const set: F3dEdgeSet = { edges };
     const size = sizes[i * perSet];
