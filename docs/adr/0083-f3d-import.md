@@ -414,3 +414,28 @@ kind).
 Deferred: a Fix relation (not found in the files), offset and sketch-pattern
 relations (Extrudo has none), constraints on ellipses and splines, and naming
 feature inputs after their `dN` (nothing in the corpus needs it).
+
+## Amendment, 2026-10-11 (sketch constraints with the rest; hostile files)
+
+Merged with the components and features amendments, the sketch constraints
+change nothing they import: sketches inside components are stamped like any
+feature, and the curves sweeps and path patterns follow are drawn and solved
+in place (nothing moves), so the corpus results are those of the three
+amendments together, two designs closer through the unit kind.
+
+The review for untrusted files changed three things in the constraint import:
+
+1. **Every imported dimension is named by the import.** The file's name when
+   Extrudo can take it (valid, at most 64 characters, not a unit, function or
+   constant, not taken, not used twice in the sketch), else one of Extrudo's
+   own past the file's last `dN`. Before, a dimension without a usable name
+   was named by the design at commit, from a counter that doesn't see the
+   sketch's other names, and a clash, a reserved word such as `max` or a name
+   used twice refused the whole sketch. Only `dN` numbers up to nine digits
+   count, so a huge one in a file can't make the counting stand still.
+2. **At most 1,000 constraints and dimensions of a sketch are vetted** (the
+   samples have 213 at most); the rest are left out as `limit`. Vetting solves
+   once per candidate it takes out, so this bounds the solves a sketch costs.
+3. **A solver failure stays in its sketch**: the sketch keeps its geometry and
+   joins, and all of its constraints and dimensions are left out as `failed`.
+   The app's import no longer fails when disposing a broken solver throws.
