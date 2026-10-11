@@ -7,7 +7,7 @@ order: 8
 
 # Import .f3d
 
-Open an .f3d design file as a new design: its parameters, sketches, extrudes, fillets and chamfers.
+Open an .f3d design file as a new design: its parameters, sketches, pulled solids, fillets and chamfers.
 
 | Where | Shortcut |
 |---|---|

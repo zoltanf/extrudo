@@ -416,7 +416,7 @@ test('Home and Construct show every tool as a tile at 1440 px, labels on one lin
     `[...document.querySelectorAll('[data-toolbar-group="Files"] button[data-tool]')].map((t) => t.dataset.tool).join(',')`,
   )) as string;
   expect(files).toMatch(
-    /^importProject,importBody,importDrawing,canvas,exportProject,export,exportScript(,saveToLinkedFolder)?$/,
+    /^importProject,importF3d,importBody,importDrawing,canvas,exportProject,export,exportScript(,saveToLinkedFolder)?$/,
   );
   for (const name of ['Import Design', 'Import Model', 'Import Drawing', 'Export Model']) {
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible();

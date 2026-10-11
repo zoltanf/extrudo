@@ -924,7 +924,7 @@ export const TOOLS = {
     short: 'Import .f3d',
     icon: 'import-design',
     category: 'file',
-    hint: 'Open an .f3d design file as a new design: its parameters, sketches, extrudes, fillets and chamfers.',
+    hint: 'Open an .f3d design file as a new design: its parameters, sketches, pulled solids, fillets and chamfers.',
   },
   saveToLinkedFolder: {
     id: 'saveToLinkedFolder',
