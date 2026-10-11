@@ -2,8 +2,8 @@
  * Components through the mapper, on hand-built decoded designs: a box in the
  * root and a lid in a component of its own; a component the file hides; and a
  * body that "Body to Component" moved out of the root; a mirror and a split
- * inside a component. The bodies are
- * recomputed and grouped as the app groups them (ADR-0081's rule).
+ * inside a component. The bodies are recomputed and grouped as the app groups
+ * them (ADR-0081's rule).
  */
 import { type BodyId, componentMembers } from '@extrudo/core';
 import { Kernel } from '@extrudo/kernel';
@@ -256,7 +256,7 @@ describe('components', () => {
     expect(report.notes.filter((n) => n.includes('hidden'))).toEqual([]);
   });
 
-  it("keeps the bodies a mirror or a split makes inside the component it belongs to", async () => {
+  it('keeps the bodies a mirror or a split makes inside the component it belongs to', async () => {
     // The Lid's 1 cm cube, copied in the YZ plane by a mirror of the Lid.
     const mirrored = boxAndLid();
     mirrored.features.push({
