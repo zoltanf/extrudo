@@ -1,7 +1,8 @@
 /**
  * The marking menu's geometry (P3-11, ADR-0042): eight wedges round the
  * pointer, numbered clockwise from the top (0 = up, 1 = up-right, 2 = right
- * ...), and where the menu goes so it never leaves the window. Pure, so the
+ * ...), and where the ring or the list style's list goes so it never leaves
+ * the window. Pure, so the
  * gesture and the placement are unit tested; `MarkingMenu.tsx` draws it.
  */
 
@@ -12,14 +13,14 @@ export const RING_INNER = 36;
 export const RING_OUTER = 132;
 /** Distance from the ring's centre to a wedge's label, px. */
 export const LABEL_RADIUS = 92;
-/** The overflow list under the ring: width, row height, and padding, px. */
+/** The list style's menu: width, row height, separator, padding and border, px. */
 export const LIST_WIDTH = 232;
 export const LIST_ROW = 32;
 export const LIST_SEPARATOR = 9;
 export const LIST_PADDING = 8;
-/** The list never grows taller than this, px; it scrolls instead. */
-export const LIST_MAX_HEIGHT = 320;
-/** Space between the ring and the list, and the window's edge, px. */
+/** The list's border, top and bottom together, px (its box includes it). */
+export const LIST_BORDER = 2;
+/** Space between the pointer and a list beside it, and the window's edge, px. */
 export const GAP = 6;
 export const MARGIN = 8;
 
@@ -83,26 +84,34 @@ export function wedgePath(
   ].join(' ');
 }
 
-/** The height of the overflow list for `rows` entries with `separators` group breaks. */
+/**
+ * The whole height of the list for `rows` entries with `separators` group breaks, its padding
+ * and border included: every row shows, with no scroll bar, wherever this fits (R3-08).
+ */
 export function listHeight(rows: number, separators: number): number {
   if (rows === 0) return 0;
-  return Math.min(LIST_MAX_HEIGHT, rows * LIST_ROW + separators * LIST_SEPARATOR + LIST_PADDING);
+  return rows * LIST_ROW + separators * LIST_SEPARATOR + LIST_PADDING + LIST_BORDER;
 }
 
+/** Where the list went: under the pointer, over it, beside it, or squeezed into a short window. */
+export type ListSide = 'below' | 'above' | 'beside' | 'short';
+
 export interface Placement {
-  /** The ring's centre in window px. */
+  /** The ring's centre in window px (the radial style), or the pointer (the list style). */
   center: { x: number; y: number };
   /** The list's top-left corner and size in window px (`height` 0: no list). */
-  list: { left: number; top: number; width: number; height: number };
+  list: { left: number; top: number; width: number; height: number; side?: ListSide };
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(v, Math.max(lo, hi)));
 
 /**
- * Places the ring on `at` and the list below it. The ring keeps clear of
- * the window's edges; the list goes below the ring, or above it when there
- * is no room below, and is shortened (it scrolls) when neither fits.
- * Without a ring (`null`: the plain list), the list opens at the pointer.
+ * Places the menu (ADR-0042; the owner's UI review 3, R3-08). The radial style is **the ring
+ * alone**, kept clear of the window's edges: no list under it. The list style (`ring` null)
+ * shows **every row**: its top-left corner at the pointer when it fits below, its bottom-left
+ * corner there when it fits above, else beside the pointer (right of it, or left when the
+ * right has no room) and moved up or down until it fits; only a window shorter than the
+ * whole list makes it scroll.
  */
 export function placeMenu(
   at: { x: number; y: number },
@@ -111,34 +120,31 @@ export function placeMenu(
   ring: number | null = RING_OUTER,
 ): Placement {
   const width = Math.min(LIST_WIDTH, view.width - 2 * MARGIN);
+  if (ring !== null) {
+    const center = {
+      x: clamp(at.x, ring + MARGIN, view.width - ring - MARGIN),
+      y: clamp(at.y, ring + MARGIN, view.height - ring - MARGIN),
+    };
+    return { center, list: { left: center.x, top: center.y, width, height: 0 } };
+  }
   const wanted = listHeight(list.rows, list.separators);
-  if (ring === null) {
-    const height = Math.min(wanted, view.height - 2 * MARGIN);
+  const left = clamp(at.x, MARGIN, view.width - width - MARGIN);
+  if (at.y + wanted <= view.height - MARGIN)
+    return { center: at, list: { left, top: at.y, width, height: wanted, side: 'below' } };
+  if (at.y - wanted >= MARGIN)
+    return { center: at, list: { left, top: at.y - wanted, width, height: wanted, side: 'above' } };
+  const room = view.height - 2 * MARGIN;
+  if (wanted <= room) {
+    // Beside the pointer, so the list doesn't open over what was right-clicked.
+    const right = at.x + GAP;
+    const besideLeft =
+      right + width <= view.width - MARGIN ? right : Math.max(MARGIN, at.x - GAP - width);
+    const top = clamp(at.y - wanted / 2, MARGIN, view.height - wanted - MARGIN);
     return {
       center: at,
-      list: {
-        left: clamp(at.x, MARGIN, view.width - width - MARGIN),
-        top: clamp(at.y, MARGIN, view.height - height - MARGIN),
-        width,
-        height,
-      },
+      list: { left: besideLeft, top, width, height: wanted, side: 'beside' },
     };
   }
-  const cx = clamp(at.x, ring + MARGIN, view.width - ring - MARGIN);
-  const cy = clamp(at.y, ring + MARGIN, view.height - ring - MARGIN);
-  const left = clamp(cx - width / 2, MARGIN, view.width - width - MARGIN);
-  const center = { x: cx, y: cy };
-  if (wanted === 0) return { center, list: { left, top: cy, width, height: 0 } };
-  const below = view.height - MARGIN - (cy + ring + GAP);
-  const above = cy - ring - GAP - MARGIN;
-  if (wanted <= below)
-    return { center, list: { left, top: cy + ring + GAP, width, height: wanted } };
-  if (wanted <= above) {
-    return { center, list: { left, top: cy - ring - GAP - wanted, width, height: wanted } };
-  }
-  // Neither side fits the whole list: the roomier side, shortened.
-  const height = Math.max(LIST_ROW * 2, Math.min(wanted, Math.max(below, above)));
-  return below >= above
-    ? { center, list: { left, top: cy + ring + GAP, width, height } }
-    : { center, list: { left, top: cy - ring - GAP - height, width, height } };
+  // The window is shorter than the whole list: all of its height, scrolling.
+  return { center: at, list: { left, top: MARGIN, width, height: room, side: 'short' } };
 }

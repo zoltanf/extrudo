@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { kernelReady, openProject, rollMarker } from './helpers';
+import { kernelReady, listStyleMenu, openProject, rollMarker } from './helpers';
 
 // P4-09 (ADR-0065 §1 and §2): timeline groups. A run of neighbouring chips
 // picked with Shift groups from the chip menu or the marking menu; a folded
@@ -341,6 +341,8 @@ test('a group that could not move anywhere is refused as a whole', async ({ page
 });
 
 test('the marking menu groups the picked chips too', async ({ page }) => {
+  // The entry is the list style's (R3-08: the ring has no list).
+  await listStyleMenu(page);
   const view = await openProject(page, 'wall-bracket');
   await kernelReady(page);
   await expect(view).toHaveAttribute('data-bodies', 'Bracket:12:40,80,60');

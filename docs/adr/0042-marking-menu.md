@@ -178,3 +178,29 @@ there, and the settings page is one small dialog.
   flag so Delete, Repeat last (labelled without a tool's name) and the sketch's
   Construction toggle are offered whatever is selected now.
 - A command may sit in two wedges; the dialog does not stop it.
+
+## Amendment (2026-10-11): the ring alone, or a list with every entry
+
+The owner's UI review 3 (R3-08, `docs/plans/ui-review-2026-10-11.md`): the list under the ring
+showed four entries and scrolled, "although there is plenty of space", in the list style too;
+and "do we need this menu here if we have the radial menu selected?" Decided the same day:
+**keep only the ring when that is selected.**
+
+- **The radial style is the ring alone.** `MarkingMenu` draws no list under it (no
+  `[data-marking-list]`, no `[data-marking-entry]`), the arrow keys stay in the ring (Down from
+  the bottom wedge no longer goes into a list), and `placeMenu` returns the ring's centre only.
+  What only the list offered is reachable elsewhere: Ctrl+K, the browser's and timeline's
+  menus, the long press's "Select other…", and any command can be put on a wedge
+  ("Customize Marking Menu…").
+- **The list style shows every row.** Both causes of the scroll bar are gone: `listHeight` had
+  a cap (`LIST_MAX_HEIGHT`, 320 px), and it left out the list's 2 px border (`LIST_BORDER`), so
+  the content was always 2 px taller than its box. `placeMenu(…, null)` puts the list's
+  top-left corner at the pointer when all of it fits below, its bottom-left corner there when
+  it fits above, else **beside** the pointer (right of it, or left at the right edge) moved up
+  or down until it fits, and only a window shorter than the whole list makes it scroll
+  (`side`: `below`, `above`, `beside`, `short`, also `data-marking-list`'s value).
+- e2e: `marking-menu.spec.ts` checks the ring has no list, and the list style's list has
+  `scrollHeight <= clientHeight` at 1440 × 900 wherever it opens; the specs that pick a list
+  entry (`bodies`, `components-placement`, `print-aids`, `timeline-groups`) switch to the list
+  style before the page loads (`listStyleMenu` in `e2e/helpers.ts`).
+

@@ -50,6 +50,15 @@ export async function rollMarker(page: Page, key: 'Home' | 'End' | 'ArrowLeft' |
   await page.keyboard.press(key);
 }
 
+/**
+ * Makes the right-click menu the list style for this page, before it loads. Since the owner's
+ * UI review 3 (R3-08) the ring has no list under it, so a test that picks a list entry
+ * (`[data-marking-entry]`) uses the list style, where every wedge and entry is a row.
+ */
+export async function listStyleMenu(page: Page) {
+  await page.addInitScript("localStorage.setItem('extrudo.marking.radial', 'false')");
+}
+
 /** Waits until the kernel has computed the document (P2-01): chips show their status. */
 export async function kernelReady(page: Page) {
   await expect(page.getByRole('status', { name: 'Kernel' })).toHaveAttribute(

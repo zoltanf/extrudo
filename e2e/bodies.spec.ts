@@ -2,6 +2,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 import {
   clicker,
   kernelReady,
+  listStyleMenu,
   mapping,
   newSketchOnXY,
   openProject,
@@ -487,6 +488,8 @@ test('Ctrl+Z steps the display state back one at a time', async ({ page }) => {
 });
 
 test('the marking menu offers Show as Ghost and ghosts the body', async ({ page }) => {
+  // The entries are the list style's (R3-08: the ring has no list).
+  await listStyleMenu(page);
   const viewport = await openProject(page, 'wall-bracket');
   await kernelReady(page);
   await expect(viewport).toHaveAttribute('data-bodies', 'Bracket:12:40,80,60');

@@ -559,8 +559,10 @@ handle from the path's start along a straight path. `pickBox` takes
 construction planes/axes/points as a `construction` kind last in `BOX_ORDER`.
 No facade change. **2026-10-07 addendum**: `tangentPlane`'s `point` on a cone is the exact foot on the nearest generatrix (the apex past it; a point on the axis warns and follows the angle), and `pointAtIntersection` takes an edge and a **curved** face (`edgeMeetsFace`, closest points within 1 µm); a point where two curved faces and a plane meet stays open (it needs a face-face section the facade lacks).
 ADR-0042 (P3-11) added the right-click marking menu:
-`design-system/MarkingMenu.tsx` draws eight wedges and a list (pure
-geometry in `marking.ts`); **a wedge is a command ID** in the two tables in
+`design-system/MarkingMenu.tsx` draws eight wedges, alone, or one list in the list
+style (R3-08, ADR-0042's 2026-10-11 amendment: the ring has no list under it, and the
+list shows every row, scrolling only in a window shorter than it; pure geometry in
+`marking.ts`); **a wedge is a command ID** in the two tables in
 `commands/marking.ts` (`MODEL_SLOTS`, `SKETCH_SLOTS`; `resolveSlots` matches
 them with `buildCommands`, a missing or `unavailable` command leaves its
 wedge dimmed, so **a task that adds Move, Press Pull or Fillet only adds
@@ -3222,15 +3224,18 @@ them. Notes further down that name a machine apply to that machine only.
   movement opens `menu` "Marking menu" (`data-marking-menu="radial|list"`)
   with wedges `[data-marking-slot="<command id>"]` (`aria-disabled` when
   dimmed; `[data-wedge="n"]` in the ring's SVG carries `data-active` under
-  the pointer) and list rows `[data-marking-entry="<id>"]` (`selectOther`,
-  `sketchOnFace`, `measure`, `hideBody`, `appearance`, `fit`, `projection`,
-  `delete`, `cancelTool`...); the ring is `[data-marking-ring]`, the list
-  `[data-marking-list]`. Wedges pick on pointer release from the pointer's
+  the pointer); **the ring has no list** (R3-08), so a test that picks a row
+  `[data-marking-entry="<id>"]` (`selectOther`, `sketchOnFace`, `measure`,
+  `hideBody`, `appearance`, `fit`, `projection`, `delete`, `cancelTool`...; in the
+  list style the wedges' commands are rows too, first) calls `listStyleMenu(page)`
+  (`e2e/helpers.ts`, sets `marking.radial` false) **before** the page loads; the
+  ring is `[data-marking-ring]`, the list `[data-marking-list="below|above|beside|short"]`
+  (`scrollHeight <= clientHeight` unless `short`). Wedges pick on pointer release from the pointer's
   direction, so click them or press-move-release from the ring's centre
   (`ringCentre`). A right-click selects what is under it: the pointer at the
   middle of the wall bracket often hovers an edge, so `overFace` scans for
   `data-model-hover` `face:`. The sketch ring has no Delete wedge (the list
-  does). While a sketch tool runs the selection overlay
+  style has the entry). While a sketch tool runs the selection overlay
   (`[data-selected-entities]`) is gone; `[data-sketch-summary]` is on both
   overlays. The debug kernel page has no `viewMenu`, so its right-click is
   still "Select other…" (`model-select.spec.ts`).

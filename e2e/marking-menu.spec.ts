@@ -1,9 +1,18 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { kernelReady, newSketchOnXY, openProject, pickTool, projector } from './helpers';
+import {
+  kernelReady,
+  listStyleMenu,
+  newSketchOnXY,
+  openProject,
+  pickTool,
+  projector,
+} from './helpers';
 
 // P3-11: the right-click marking menu (FR-UX-03, ADR-0042) and the context
 // menus of the other surfaces. A right-click without movement opens a ring of
-// eight wedges and a list; a right-drag still navigates.
+// eight wedges, alone since the owner's UI review 3 (R3-08), or with the list
+// style one list of the wedges and the entries, all of it with no scroll bar;
+// a right-drag still navigates.
 
 test.use({ viewport: { width: 1440, height: 900 } });
 test.describe.configure({ timeout: 60_000 });
@@ -97,9 +106,7 @@ async function ringCentre(page: Page) {
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
-test('a right-click on a face opens the ring and the list, selecting the face', async ({
-  page,
-}) => {
+test('a right-click on a face opens the ring alone, selecting the face', async ({ page }) => {
   const { viewport } = await bracket(page);
   const over = await overFace(page, viewport);
   await rightClick(page, over);
@@ -119,18 +126,37 @@ test('a right-click on a face opens the ring and the list, selecting the face', 
   await expect(slot(page, 'pressPull')).toBeEnabled();
   await expect(slot(page, 'delete')).toHaveAttribute('aria-disabled', 'true');
   await expect(slot(page, 'repeatLast')).toHaveAttribute('aria-disabled', 'true');
-
-  // The overflow list: the stack, then what a face allows, then the view.
-  for (const id of ['selectOther', 'sketchOnFace', 'measure', 'hideBody', 'exportBodies', 'fit']) {
-    await expect(entry(page, id)).toBeVisible();
-  }
-  await expect(entry(page, 'appearance')).toHaveText('Appearance…');
+  // R3-08: no list under the ring.
+  await expect(menu.locator('[data-marking-list]')).toHaveCount(0);
+  await expect(menu.locator('[data-marking-entry]')).toHaveCount(0);
   await page.screenshot({ path: test.info().outputPath('marking-menu-face.png') });
 
   // Esc closes it and leaves the selection alone.
   await page.keyboard.press('Escape');
   await expect(menu).toHaveCount(0);
   await expect(selection(page)).toHaveText(/^1 face/);
+});
+
+test('the list style shows every row with no scroll bar, the wedges first', async ({ page }) => {
+  await listStyleMenu(page);
+  const { viewport } = await bracket(page);
+  const over = await overFace(page, viewport);
+  await rightClick(page, over);
+  const menu = menuOf(page);
+  await expect(menu).toHaveAttribute('data-marking-menu', 'list');
+  await expect(selection(page)).toHaveText(/^1 face/);
+  // The wedges' commands, then the stack, then what a face allows, then the view.
+  await expect(menu.getByRole('menuitem').first()).toHaveText(/^Sketch/);
+  for (const id of ['selectOther', 'sketchOnFace', 'measure', 'hideBody', 'exportBodies', 'fit']) {
+    await expect(entry(page, id)).toBeVisible();
+  }
+  await expect(entry(page, 'appearance')).toHaveText('Appearance…');
+  // All of it shows at 1440 × 900: no scroll bar (R3-08).
+  const list = menu.locator('[data-marking-list]');
+  expect(await list.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(0);
+  await page.screenshot({ path: test.info().outputPath('marking-menu-list.png') });
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
 });
 
 test('a flick towards a wedge runs its command', async ({ page }) => {
@@ -166,29 +192,29 @@ test('a press and release in the middle of the ring picks nothing; a click outsi
   await expect(page.getByRole('region', { name: 'Extrude dialog' })).toHaveCount(0);
 });
 
-test('a wedge picks by click; the list holds the view commands over empty space', async ({
-  page,
-}) => {
+test('a wedge picks by click', async ({ page }) => {
   const { viewport } = await bracket(page);
   await rightClick(page, await empty(viewport));
   const menu = menuOf(page);
   await expect(menu).toBeVisible();
-  // Over nothing there is no stack, no body entry; the view commands are all that is left.
-  await expect(entry(page, 'selectOther')).toHaveCount(0);
-  await expect(menu.locator('[data-marking-entry]')).toHaveText([
-    /^Fit/,
-    /^Home View/,
-    /^Orthographic$/,
-    /^Redo/,
-  ]);
-  await entry(page, 'projection').click();
-  await expect(menu).toHaveCount(0);
-  await expect(viewport).toHaveAttribute('data-camera-projection', 'orthographic');
-
-  await rightClick(page, await empty(viewport));
   await slot(page, 'sketch').click();
   await expect(menu).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Create Sketch' })).toBeVisible();
+});
+
+test('the list style holds the view commands over empty space', async ({ page }) => {
+  await listStyleMenu(page);
+  const { viewport } = await bracket(page);
+  await rightClick(page, await empty(viewport));
+  const menu = menuOf(page);
+  await expect(menu).toBeVisible();
+  // Over nothing there is no stack, no body entry; after the wedges' commands, the view's.
+  await expect(entry(page, 'selectOther')).toHaveCount(0);
+  for (const name of [/^Fit/, /^Home View/, /^Orthographic$/, /^Redo/])
+    await expect(menu.getByRole('menuitem', { name })).toBeVisible();
+  await entry(page, 'projection').click();
+  await expect(menu).toHaveCount(0);
+  await expect(viewport).toHaveAttribute('data-camera-projection', 'orthographic');
 });
 
 test('a right-drag still navigates and opens no menu; a right-click on the sketch palette does not either', async ({
@@ -223,7 +249,7 @@ test('Repeat last runs the last tool again', async ({ page }) => {
   await expect(page.getByRole('region', { name: 'Extrude dialog' })).toBeVisible();
 });
 
-test('the keyboard reaches every wedge and the list', async ({ page }) => {
+test('the keyboard reaches every wedge', async ({ page }) => {
   const { viewport } = await bracket(page);
   await rightClick(page, await empty(viewport));
   const menu = menuOf(page);
@@ -249,12 +275,31 @@ test('the keyboard reaches every wedge and the list', async ({ page }) => {
   await expect(page.getByRole('region', { name: 'Extrude dialog' })).toHaveCount(0);
   await page.keyboard.press('ArrowDown');
   await expect(slot(page, 'pressPull')).toBeFocused();
+  // There is no list to carry on into (R3-08): the bottom wedge keeps the focus.
   await page.keyboard.press('ArrowDown');
-  await expect(entry(page, 'fit')).toBeFocused();
+  await expect(slot(page, 'pressPull')).toBeFocused();
   await page.keyboard.press('Escape');
 });
 
+test('the keyboard walks the list style’s rows', async ({ page }) => {
+  await listStyleMenu(page);
+  const { viewport } = await bracket(page);
+  await rightClick(page, await empty(viewport));
+  const menu = menuOf(page);
+  await expect(menu).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(menu.getByRole('menuitem').first()).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(menu.getByRole('menuitem').last()).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(menu.getByRole('menuitem').first()).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(menu).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Create Sketch' })).toBeVisible();
+});
+
 test('Select other… in the list opens the stack, as a right-click used to', async ({ page }) => {
+  await listStyleMenu(page);
   const { viewport } = await bracket(page);
   const over = await overFace(page, viewport);
   await rightClick(page, over);
@@ -279,6 +324,7 @@ test('a long press still opens Select other… directly', async ({ page }) => {
 });
 
 test('Body entries hide the body and open its appearance', async ({ page }) => {
+  await listStyleMenu(page);
   const { viewport } = await bracket(page);
   const over = await overFace(page, viewport);
   await rightClick(page, over);
@@ -309,25 +355,45 @@ test('a body selected in the browser is deleted from the ring', async ({ page })
   await expect(viewport).not.toHaveAttribute('data-bodies');
 });
 
+const corners = (box: { x: number; y: number; width: number; height: number }) => [
+  { x: box.x + box.width - 4, y: box.y + box.height - 60 },
+  { x: box.x + box.width - 4, y: box.y + 120 },
+  { x: box.x + 300, y: box.y + box.height - 60 },
+];
+
 test('the ring keeps clear of the window edges', async ({ page }) => {
   const { viewport } = await bracket(page);
   const box = await viewport.boundingBox();
   if (!box) throw new Error('no viewport');
   const size = page.viewportSize() ?? { width: 1440, height: 900 };
-  for (const at of [
-    { x: box.x + box.width - 4, y: box.y + box.height - 60 },
-    { x: box.x + box.width - 4, y: box.y + 120 },
-    { x: box.x + 300, y: box.y + box.height - 60 },
-  ]) {
+  for (const at of corners(box)) {
     await rightClick(page, at);
     const ring = await menuOf(page).locator('[data-marking-ring]').boundingBox();
-    const list = await menuOf(page).locator('[data-marking-list]').boundingBox();
-    for (const b of [ring, list]) {
-      expect(b?.x).toBeGreaterThanOrEqual(0);
-      expect(b?.y).toBeGreaterThanOrEqual(0);
-      expect((b?.x ?? 0) + (b?.width ?? 0)).toBeLessThanOrEqual(size.width);
-      expect((b?.y ?? 0) + (b?.height ?? 0)).toBeLessThanOrEqual(size.height);
-    }
+    expect(ring?.x).toBeGreaterThanOrEqual(0);
+    expect(ring?.y).toBeGreaterThanOrEqual(0);
+    expect((ring?.x ?? 0) + (ring?.width ?? 0)).toBeLessThanOrEqual(size.width);
+    expect((ring?.y ?? 0) + (ring?.height ?? 0)).toBeLessThanOrEqual(size.height);
+    await page.keyboard.press('Escape');
+    await expect(menuOf(page)).toHaveCount(0);
+  }
+});
+
+test('the list style’s list stays in the window, whole, wherever it opens', async ({ page }) => {
+  await listStyleMenu(page);
+  const { viewport } = await bracket(page);
+  const box = await viewport.boundingBox();
+  if (!box) throw new Error('no viewport');
+  const size = page.viewportSize() ?? { width: 1440, height: 900 };
+  for (const at of [...corners(box), { x: box.x + 300, y: box.y + box.height / 2 }]) {
+    // Over the bracket's face the list is longest; over empty space it is short.
+    await rightClick(page, at);
+    const list = menuOf(page).locator('[data-marking-list]');
+    const b = await list.boundingBox();
+    expect(b?.x).toBeGreaterThanOrEqual(0);
+    expect(b?.y).toBeGreaterThanOrEqual(0);
+    expect((b?.x ?? 0) + (b?.width ?? 0)).toBeLessThanOrEqual(size.width);
+    expect((b?.y ?? 0) + (b?.height ?? 0)).toBeLessThanOrEqual(size.height);
+    expect(await list.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(0);
     await page.keyboard.press('Escape');
     await expect(menuOf(page)).toHaveCount(0);
   }
@@ -378,12 +444,30 @@ test('in a sketch the ring holds the sketch tools; Cancel and Finish Sketch work
     await expect(slot(page, id)).toBeEnabled();
   }
   await expect(menu.locator('[data-marking-slot]')).toHaveCount(8);
-  await expect(entry(page, 'lookAtSketch')).toBeVisible();
+  await expect(menu.locator('[data-marking-list]')).toHaveCount(0);
   await page.screenshot({ path: test.info().outputPath('marking-menu-sketch.png') });
 
-  // A wedge starts the tool; while it runs the list offers Cancel.
+  // A wedge starts the tool.
   await slot(page, 'line').click();
   // (The selection overlay, which shows while no tool runs, is gone.)
+  await expect(page.locator('[data-selected-entities]')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-selected-entities]')).toHaveCount(1);
+
+  await rightClick(page, await empty(viewport));
+  await slot(page, 'finishSketch').click();
+  await expect(page.getByRole('region', { name: 'Sketch palette' })).toHaveCount(0);
+});
+
+test('in a sketch the list style offers Look At, Cancel and Repeat', async ({ page }) => {
+  await listStyleMenu(page);
+  await openProject(page);
+  await newSketchOnXY(page);
+  const viewport = page.getByRole('region', { name: 'Viewport' });
+  await rightClick(page, await empty(viewport));
+  await expect(entry(page, 'lookAtSketch')).toBeVisible();
+  // A row starts the tool; while it runs the list offers Cancel.
+  await entry(page, 'line').click();
   await expect(page.locator('[data-selected-entities]')).toHaveCount(0);
   await rightClick(page, await empty(viewport));
   await entry(page, 'cancelTool').click();
@@ -394,13 +478,10 @@ test('in a sketch the ring holds the sketch tools; Cancel and Finish Sketch work
   await entry(page, 'repeatLast').click();
   await expect(page.locator('[data-selected-entities]')).toHaveCount(0);
   await page.keyboard.press('Escape');
-
-  await rightClick(page, await empty(viewport));
-  await slot(page, 'finishSketch').click();
-  await expect(page.getByRole('region', { name: 'Sketch palette' })).toHaveCount(0);
 });
 
 test('in a sketch a right-click selects a curve and offers Delete', async ({ page }) => {
+  await listStyleMenu(page);
   await openProject(page);
   const at = await newSketchOnXY(page);
   // A line from (0,0) to (40,0), drawn with the Line tool.
@@ -430,7 +511,7 @@ test('in a sketch a right-click selects a curve and offers Delete', async ({ pag
     'data-selected-entities',
     /.+/,
   );
-  // The sketch ring has no Delete wedge: it is the list's first entry.
+  // The sketch ring has no Delete wedge: the list style has it as an entry.
   await expect(entry(page, 'delete')).not.toHaveAttribute('aria-disabled', 'true');
   await expect(entry(page, 'clearSelection')).toBeVisible();
   await entry(page, 'delete').click();
@@ -487,6 +568,7 @@ test('a design card on the home screen has a right-click menu', async ({ page })
 });
 
 test('a right-click on a construction plane offers Edit, Hide and Delete', async ({ page }) => {
+  await listStyleMenu(page);
   const viewport = await openProject(page);
   await kernelReady(page);
   const at = await projector(viewport);
