@@ -2,7 +2,7 @@
 title: Inscribed Polygon
 section: Tools
 category: Sketch
-order: 78
+order: 79
 ---
 
 # Inscribed Polygon

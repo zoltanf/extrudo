@@ -2,7 +2,7 @@
 title: Axis Along Edge
 section: Tools
 category: Construct
-order: 60
+order: 61
 ---
 
 # Axis Along Edge

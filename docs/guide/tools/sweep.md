@@ -2,7 +2,7 @@
 title: Sweep
 section: Tools
 category: Solid
-order: 21
+order: 22
 ---
 
 # Sweep

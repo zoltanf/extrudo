@@ -2,7 +2,7 @@
 title: 3-Point Rectangle
 section: Tools
 category: Sketch
-order: 71
+order: 72
 ---
 
 # 3-Point Rectangle

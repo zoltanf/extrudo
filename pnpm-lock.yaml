@@ -263,6 +263,9 @@ importers:
       '@extrudo/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@extrudo/f3d':
+        specifier: workspace:*
+        version: link:../../packages/f3d
       '@extrudo/fonts':
         specifier: workspace:*
         version: link:../../packages/fonts
@@ -401,6 +404,28 @@ importers:
       zustand:
         specifier: ^5.0.15
         version: 5.0.15(@types/react@19.3.0)(immer@11.1.18)(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))
+
+  packages/f3d:
+    dependencies:
+      '@extrudo/api':
+        specifier: workspace:*
+        version: link:../api
+      '@extrudo/core':
+        specifier: workspace:*
+        version: link:../core
+      '@extrudo/sketch':
+        specifier: workspace:*
+        version: link:../sketch
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+      fzstd:
+        specifier: ^0.1.1
+        version: 0.1.1
+    devDependencies:
+      '@extrudo/kernel':
+        specifier: workspace:*
+        version: link:../kernel
 
   packages/fonts: {}
 
@@ -2781,6 +2806,9 @@ packages:
 
   function-bind@1.1.2:
     resolution: {integrity: sha512-7XHNxH7qX9xG5mIwxkhumTox/MIRNcOgDrxWsMt2pAr23WHp6MrRlN7FBSFpCpr+oVO0F744iUgR82nJMfG2SA==}
+
+  fzstd@0.1.1:
+    resolution: {integrity: sha512-dkuVSOKKwh3eas5VkJy1AW1vFpet8TA/fGmVA5krThl8YcOVE/8ZIoEA1+U1vEn5ckxxhLirSdY837azmbaNHA==}
 
   gensync@1.0.0-beta.2:
     resolution: {integrity: sha512-3hN7NaskYvMDLQY55gnW3NQ+mesEAepTqlg+VEbj7zzqEMBVNhzcGYYeqFo/TlYz6eQiFcp1HcsCZO+nGgS8zg==}
@@ -6213,6 +6241,8 @@ snapshots:
     optional: true
 
   function-bind@1.1.2: {}
+
+  fzstd@0.1.1: {}
 
   gensync@1.0.0-beta.2: {}
 

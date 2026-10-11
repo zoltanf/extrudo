@@ -2,7 +2,7 @@
 title: Tangent Arc
 section: Tools
 category: Sketch
-order: 76
+order: 77
 ---
 
 # Tangent Arc

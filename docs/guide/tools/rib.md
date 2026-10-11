@@ -2,7 +2,7 @@
 title: Rib
 section: Tools
 category: Solid
-order: 30
+order: 31
 ---
 
 # Rib

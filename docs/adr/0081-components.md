@@ -39,8 +39,8 @@ The constraints that shape the decision:
 - **Older readers must open newer files** (ADR-0050): unknown keys are left
   out with a notice. A component model whose loss leaves the geometry intact
   degrades well; one that changes the geometry does not.
-- **A future Fusion import flattens components** (`docs/research/fusion-import.md`
-  §5.3: each occurrence's bodies placed by a Move feature, joints dropped with a
+- **A future `.f3d` import flattens components** (the import research's plan:
+  each occurrence's bodies placed by a Move feature, joints dropped with a
   note). Whatever we pick should let that importer keep the components instead
   of flattening them, and later its joints.
 - **Print-in-place parts move after printing.** A hinge printed assembled has
@@ -442,8 +442,8 @@ A `GeomRef` names a body or a face, edge or vertex by its persistent name,
   `AddComponent` at identity); loose bodies stay top-level products. A file
   with no component involved is byte-identical to today's (the existing
   `writeStep` paths). Importing STEP assemblies *as* components is deferred
-  (§9), and is the door a Fusion import (route A, the person's STEP export)
-  walks through.
+  (§9), and is the door a design brought over as a STEP export walks
+  through.
 - **STL** holds no structure: the bodies are concatenated as today; **Export
   Component…** opens the dialog with that component's bodies chosen and the file
   named "<design> - <component>".
@@ -508,17 +508,17 @@ Place on Bed's `carry` is an evaluator change; there is no new facade call.
   when one collides or is under the minimum, so a print-in-place design can be
   checked in a project's CI.
 
-### 10. What a Fusion import does with this
+### 10. What the `.f3d` import does with this
 
-`docs/research/fusion-import.md` §5.3 flattens components because there were
-none. With this ADR the importer keeps them: one Extrudo component per Fusion
-occurrence, its features stamped with it, its placement a Move feature as that
+The import research planned to flatten components because there were none.
+With this ADR the importer keeps them: one Extrudo component per occurrence in
+the file, its features stamped with it, its placement a Move feature as that
 section already plans, a second occurrence of one component a Move copy into a
-component of its own (the importer's "<name> (2)"). Fusion's rigid, revolute
+component of its own (the importer's "<name> (2)"). The file's rigid, revolute
 and slider joints between two imported occurrences can become §4's joints
 once the importer can name their frames' geometry (a later task); every other
-joint type is dropped with a note. Nested Fusion components flatten to one level, named
-"Parent › Child".
+joint type is dropped with a note. Nested components flatten to one level,
+named "Parent › Child".
 
 ## Alternatives considered and rejected
 

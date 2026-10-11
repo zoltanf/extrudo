@@ -2,7 +2,7 @@
 title: Place on Bed
 section: Tools
 category: 3D Print
-order: 116
+order: 117
 ---
 
 # Place on Bed

@@ -2,7 +2,7 @@
 title: 3-Point Arc
 section: Tools
 category: Sketch
-order: 69
+order: 70
 ---
 
 # 3-Point Arc

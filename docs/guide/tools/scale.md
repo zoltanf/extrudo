@@ -2,7 +2,7 @@
 title: Scale
 section: Tools
 category: Modify
-order: 50
+order: 51
 ---
 
 # Scale

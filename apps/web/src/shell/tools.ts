@@ -918,6 +918,14 @@ export const TOOLS = {
     category: 'file',
     hint: 'Open an .extrudo file as a new design.',
   },
+  importF3d: {
+    id: 'importF3d',
+    label: 'Import .f3d…',
+    short: 'Import .f3d',
+    icon: 'import-design',
+    category: 'file',
+    hint: 'Open an .f3d design file as a new design: its parameters, sketches, pulled solids, fillets and chamfers.',
+  },
   saveToLinkedFolder: {
     id: 'saveToLinkedFolder',
     label: 'Save to Linked Folder',
@@ -978,6 +986,7 @@ export const TABS: Tab[] = [
         // picture lies on a plane to trace (ADR-0066).
         tools: [
           'importProject',
+          'importF3d',
           'importBody',
           'importDrawing',
           'canvas',
@@ -1158,6 +1167,7 @@ export const FILE_COMMANDS = {
   exportProject: 'exportFile',
   exportScript: 'exportScript',
   importProject: 'importFile',
+  importF3d: 'importF3d',
   saveToLinkedFolder: 'saveToLinkedFolder',
   plugins: 'plugins',
 } as const satisfies Partial<Record<ToolId, string>>;

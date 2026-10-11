@@ -2,7 +2,7 @@
 title: Plugins
 section: Tools
 category: Home
-order: 17
+order: 18
 ---
 
 # Plugins
