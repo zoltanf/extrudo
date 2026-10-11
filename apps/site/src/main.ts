@@ -36,9 +36,9 @@ for (const toy of document.querySelectorAll<HTMLElement>('[data-toy]')) {
   enhanceToy(toy);
 }
 
-// Scroll reveals: the cards and the templates fade up as they arrive. Without this
-// script, or under reduced motion, they are simply there (site.css only hides them
-// for `html.js` under `prefers-reduced-motion: no-preference`).
+// Scroll reveal: the templates fade up as they arrive. Without this script, or under
+// reduced motion, they are simply there (site.css only hides them for `html.js` under
+// `prefers-reduced-motion: no-preference`).
 document.documentElement.classList.add('js');
 const seen = new IntersectionObserver(
   (entries) => {
@@ -50,4 +50,4 @@ const seen = new IntersectionObserver(
   },
   { rootMargin: '0px 0px -8% 0px' },
 );
-for (const element of document.querySelectorAll('.cards li, .templates')) seen.observe(element);
+for (const element of document.querySelectorAll('.templates')) seen.observe(element);

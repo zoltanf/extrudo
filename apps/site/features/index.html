@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Features: Extrudo, parametric CAD for 3D printing</title>
+    <meta
+      name="description"
+      content="Everything Extrudo does: constrained sketches, exact solids, parameters and a timeline, tools for 3D printing, scripting, and the file formats it imports and exports."
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="canonical" href="__SITE_URL__/features/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Extrudo" />
+    <meta property="og:title" content="Features: Extrudo, parametric CAD for 3D printing" />
+    <meta
+      property="og:description"
+      content="Constrained sketches, exact solids, parameters everywhere, print checks, scripting, and a table of every file format Extrudo reads and writes."
+    />
+    <meta property="og:url" content="__SITE_URL__/features/" />
+    <meta property="og:image" content="__SITE_URL__/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="The Extrudo logo: a dashed blue sketch square turning into an amber solid."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body>
+    <!-- site:sprite -->
+    <a class="skip" href="#main">Skip to content</a>
+    <!-- site:header -->
+
+    <main id="main" class="subpage">
+      <section class="page-intro" aria-labelledby="page-title">
+        <p class="eyebrow">Features</p>
+        <h1 id="page-title">What Extrudo does</h1>
+        <p class="lead">
+          Extrudo is parametric CAD for 3D printing that runs in your browser. This page lists
+          what it can do, and the table further down says which files it reads and writes.
+        </p>
+        <nav class="jump" aria-label="On this page">
+          <a class="cat-sketch" href="#sketch"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sketch" /></svg>Sketching</a>
+          <a class="cat-solid" href="#solids"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-extrude" /></svg>Solids</a>
+          <a class="cat-param" href="#parameters"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-customizer" /></svg>Parameters</a>
+          <a class="cat-print" href="#printing"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-print" /></svg>3D printing</a>
+          <a class="cat-files" href="#files"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-file" /></svg>Import and export</a>
+          <a class="cat-open" href="#programmable"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-open" /></svg>Scripts and plugins</a>
+          <a class="cat-home" href="#yours"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-home" /></svg>Your designs</a>
+        </nav>
+        <p class="latest-note">
+          <span class="tag">Latest build</span> marks what is in the
+          <a href="__EDGE_URL__/">latest build</a> and comes to the stable app with the next
+          release.
+        </p>
+      </section>
+
+      <section id="sketch" class="topic cat-sketch" aria-labelledby="sketch-title">
+        <div class="topic-head">
+          <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sketch" /></svg></span>
+          <div>
+            <h2 id="sketch-title">Sketch with constraints</h2>
+            <p>
+              Every part starts as a flat drawing on a plane or on a face of the model.
+              Constraints and dimensions hold it in shape, so changing one number moves everything
+              that depends on it.
+            </p>
+          </div>
+        </div>
+        <ul class="points">
+          <li>
+            <h3>Drawing tools</h3>
+            <p>
+              Lines with tangent arcs, rectangles, circles, arcs, polygons, slots, ellipses and
+              points, plus splines through points or by control points, and conics.
+            </p>
+          </li>
+          <li>
+            <h3>Constraints as you draw</h3>
+            <p>
+              Thirteen constraint tools, from coincident and tangent to symmetric and equal. Many
+              are added for you while you draw, and only when they fit.
+            </p>
+          </li>
+          <li>
+            <h3>Dimensions with names</h3>
+            <p>
+              A driving dimension can carry a name and an expression, and other features can use
+              it. Change it and the sketch solves again.
+            </p>
+          </li>
+          <li>
+            <h3>See what is still free</h3>
+            <p>
+              Colours show which curves can still move, the palette counts what is left, and a
+              dimension that would over-constrain the sketch asks before it is added.
+            </p>
+          </li>
+          <li>
+            <h3>Edit tools</h3>
+            <p>
+              Trim, extend, break, fillet, chamfer, offset, mirror, move, copy, scale and
+              patterns. Each one is a single undo step.
+            </p>
+          </li>
+          <li>
+            <h3>Text</h3>
+            <p>
+              Text in one of the bundled fonts or your own TTF, OTF or WOFF file, which is kept
+              inside the design. Extrude it, or emboss it onto a face.
+            </p>
+          </li>
+          <li>
+            <h3>Work from the model</h3>
+            <p>
+              Sketch on any flat face, project edges, vertices and whole bodies, or cut a body with
+              the sketch plane. Drawing near a body's edge snaps to it and projects it for you.
+            </p>
+          </li>
+          <li>
+            <h3>Bring a drawing in</h3>
+            <p>
+              Import an SVG or DXF file into a sketch as exact curves, or lay a picture on a plane
+              and trace it at its real size.
+            </p>
+          </li>
+        </ul>
+        <p class="more"><a href="/docs/sketching/">Sketching in the guide <span aria-hidden="true">→</span></a></p>
+      </section>
+
+      <section id="solids" class="topic cat-solid" aria-labelledby="solids-title">
+        <div class="topic-head">
+          <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-extrude" /></svg></span>
+          <div>
+            <h2 id="solids-title">Real solids</h2>
+            <p>
+              Parts are built on Open CASCADE, an open-source geometry kernel, so circles stay
+              circles and fillets stay round. The model only becomes triangles when you export a
+              mesh.
+            </p>
+          </div>
+        </div>
+        <ul class="points">
+          <li>
+            <h3>Extrude and revolve</h3>
+            <p>
+              To a distance, through everything, or up to a face or a body; on one side, both
+              sides or symmetric; with a taper. Each makes a new body, or joins, cuts or
+              intersects.
+            </p>
+          </li>
+          <li>
+            <h3>Sweep, loft and coil</h3>
+            <p>
+              Sweep a profile along a path with a twist or a change of scale, loft through
+              sections, or wind a coil for springs and spirals.
+            </p>
+          </li>
+          <li>
+            <h3>Fillet and chamfer</h3>
+            <p>
+              Round or bevel up to 32 sets of edges, each with its own size. A fillet's radius can
+              change along its edge, and when one is too big the message says how far it can go.
+            </p>
+          </li>
+          <li>
+            <h3>Shell</h3>
+            <p>
+              Hollow a body with walls of a set thickness, take faces away to open it, and give
+              chosen faces a wall of their own.
+            </p>
+          </li>
+          <li>
+            <h3>Holes</h3>
+            <p>
+              Simple, counterbored or countersunk, blind or through. Presets cover M2 to M8
+              clearance holes and M2 to M5 heat-set inserts.
+            </p>
+          </li>
+          <li>
+            <h3>Threads</h3>
+            <p>
+              Modelled threads, ready to print: ISO metric, UNC and UNF, trapezoidal, buttress,
+              PCO-1881 bottle necks and tapered NPT, with one start or several. The size can fit
+              itself to the face.
+            </p>
+          </li>
+          <li>
+            <h3>Patterns and mirror</h3>
+            <p>
+              Rectangular, circular or along a path, of bodies or of features. Click an instance
+              to leave it out, or drag a handle for more of them.
+            </p>
+          </li>
+          <li>
+            <h3>Emboss and deboss</h3>
+            <p>
+              Put text or a profile onto a flat face, wrap it round a cylinder or a cone, or
+              project it onto a curved surface.
+            </p>
+          </li>
+          <li>
+            <h3>Body tools</h3>
+            <p>
+              Combine bodies (join, cut, intersect), split, move or copy, mirror, scale and draft
+              them, offset or press-pull a face, and add ribs.
+            </p>
+          </li>
+          <li>
+            <h3>Primitives and construction</h3>
+            <p>
+              Box, cylinder, sphere and torus to start from, and planes, axes and points built from
+              the geometry you already have.
+            </p>
+          </li>
+          <li>
+            <h3>Components and joints <span class="tag">Latest build</span></h3>
+            <p>
+              Group bodies into components, connect them with rigid, revolute or slider joints,
+              move them through their range and check the clearance as they go.
+            </p>
+          </li>
+        </ul>
+        <p class="more"><a href="/docs/features-and-timeline/">Features in the guide <span aria-hidden="true">→</span></a></p>
+      </section>
+
+      <section id="parameters" class="topic cat-param" aria-labelledby="parameters-title">
+        <div class="topic-head">
+          <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-customizer" /></svg></span>
+          <div>
+            <h2 id="parameters-title">Parameters everywhere</h2>
+            <p>
+              A design is a recipe: a timeline of features, each with its inputs. Change an input
+              and everything after it is built again.
+            </p>
+          </div>
+        </div>
+        <ul class="points">
+          <li>
+            <h3>Expressions with units</h3>
+            <p>
+              Every number field takes an expression with units, like
+              <code>wall * 1.5 + 2 mm</code>, and shows what it comes to as you type.
+            </p>
+          </li>
+          <li>
+            <h3>Parameters</h3>
+            <p>
+              Named values in one dialog, used by sketches and features alike. A named dimension
+              is a parameter too.
+            </p>
+          </li>
+          <li>
+            <h3>Customizer</h3>
+            <p>
+              Put the parameters that matter on sliders, in groups, and save sets of values as
+              configurations, such as Small and Large.
+            </p>
+          </li>
+          <li>
+            <h3>Timeline</h3>
+            <p>
+              Roll back to any step, drag features into a new order, suppress the ones you don't
+              need, and fold the ones that belong together into a group.
+            </p>
+          </li>
+          <li>
+            <h3>Fixing references</h3>
+            <p>
+              When an edit takes away a face that a later feature used, Extrudo shows where it was
+              and lets you pick its replacement.
+            </p>
+          </li>
+          <li>
+            <h3>Undo and versions</h3>
+            <p>
+              Every change can be undone. Save named versions inside the design, then restore one
+              or open it as a copy.
+            </p>
+          </li>
+        </ul>
+        <p class="more"><a href="/docs/parameters/">Parameters in the guide <span aria-hidden="true">→</span></a></p>
+      </section>
+
+      <section id="printing" class="topic cat-print" aria-labelledby="printing-title">
+        <div class="topic-head">
+          <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-print" /></svg></span>
+          <div>
+            <h2 id="printing-title">Made for printing</h2>
+            <p>
+              The 3D Print tab has what it takes to get a part off the screen and onto the bed.
+            </p>
+          </div>
+        </div>
+        <ul class="points">
+          <li>
+            <h3>Place on bed</h3>
+            <p>
+              Pick the face to print on, and the part turns and drops onto the bed. Spin it to fit
+              the plate.
+            </p>
+          </li>
+          <li>
+            <h3>Overhangs</h3>
+            <p>
+              Shade every face steeper than your angle, measured from the bed or from a face you
+              pick as the bottom.
+            </p>
+          </li>
+          <li>
+            <h3>Wall thickness</h3>
+            <p>
+              Find the walls thinner than your minimum, two line widths unless you set another,
+              and see where the thinnest one is.
+            </p>
+          </li>
+          <li>
+            <h3>Print info</h3>
+            <p>
+              Volume, weight, filament length and cost, worked out from your material, walls, line
+              width and infill.
+            </p>
+          </li>
+          <li>
+            <h3>Print tolerance</h3>
+            <p>
+              One clearance for the whole design (tight, normal or loose) that hole presets and
+              threads take into account, so parts that fit together print that way.
+            </p>
+          </li>
+          <li>
+            <h3>Look inside, measure</h3>
+            <p>
+              Cut the model with up to three section planes or a box, and measure distances,
+              angles, areas and volumes.
+            </p>
+          </li>
+          <li>
+            <h3>Export and send</h3>
+            <p>
+              3MF with names, colours and units, STL, or STEP for other CAD programs. The desktop
+              app hands the model straight to PrusaSlicer, OrcaSlicer, Bambu Studio or Cura.
+            </p>
+          </li>
+          <li>
+            <h3>Templates and examples</h3>
+            <p>
+              Start from a wall bracket, a storage box, a box with a lid or a circuit board
+              enclosure, and change their parameters.
+            </p>
+          </li>
+        </ul>
+        <p class="more"><a href="/docs/printing/">Printing in the guide <span aria-hidden="true">→</span></a></p>
+      </section>
+
+      <section id="files" class="topic cat-files" aria-labelledby="files-title">
+        <div class="topic-head">
+          <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-file" /></svg></span>
+          <div>
+            <h2 id="files-title">Import and export</h2>
+            <p>
+              Bring in what you have, and take out what your slicer or another CAD program needs.
+              Files are read and written on your own computer; nothing is uploaded.
+            </p>
+          </div>
+        </div>
+        <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: the table scrolls sideways on a phone, and a keyboard has to be able to scroll it (WCAG 2.1.1) -->
+        <section class="matrix-wrap" tabindex="0" aria-labelledby="formats-caption">
+          <table class="matrix">
+            <caption id="formats-caption">File formats Extrudo imports and exports</caption>
+            <thead>
+              <tr>
+                <th scope="col">Format</th>
+                <th scope="col">Import</th>
+                <th scope="col">Export</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Extrudo design <span class="ext">.extrudo</span></th>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>Opens as a new design, with its versions and the files it carries.</td>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>The whole design: timeline, parameters, versions and attached files.</td>
+              </tr>
+              <tr>
+                <th scope="row">STEP <span class="ext">.step .stp</span></th>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>Exact solid bodies, with their colours.</td>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>Exact bodies with their names and colours. Components as assemblies <span class="tag">Latest build</span></td>
+              </tr>
+              <tr>
+                <th scope="row">3MF <span class="ext">.3mf</span></th>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>Mesh bodies, in the file's own unit.</td>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>Meshes with their names, colours and unit, at the resolution you pick. Components grouped <span class="tag">Latest build</span></td>
+              </tr>
+              <tr>
+                <th scope="row">STL <span class="ext">.stl</span></th>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>A mesh body, from binary or text STL.</td>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>Binary STL, at the resolution you pick.</td>
+              </tr>
+              <tr>
+                <th scope="row">OBJ <span class="ext">.obj</span></th>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>A mesh body.</td>
+                <td class="no"><span class="mark" aria-hidden="true">–</span><span class="sr-only">No</span></td>
+              </tr>
+              <tr>
+                <th scope="row">OpenSCAD <span class="ext">.scad</span></th>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>Compiled in your browser into a mesh body. Its customizer variables become fields you can change.</td>
+                <td class="no"><span class="mark" aria-hidden="true">–</span><span class="sr-only">No</span></td>
+              </tr>
+              <tr>
+                <th scope="row">f3d design <span class="ext">.f3d</span></th>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>A new design with the file's parameters, sketches, extrudes, fillets and chamfers. A report lists what was left out. <span class="tag">Latest build</span></td>
+                <td class="no"><span class="mark" aria-hidden="true">–</span><span class="sr-only">No</span></td>
+              </tr>
+              <tr>
+                <th scope="row">SVG <span class="ext">.svg</span></th>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>Paths and shapes into an open sketch, as exact curves.</td>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>A sketch's curves, or its profiles filled.</td>
+              </tr>
+              <tr>
+                <th scope="row">DXF <span class="ext">.dxf</span></th>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>Lines, arcs, circles, polylines, ellipses, splines and blocks into an open sketch.</td>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>A sketch's curves or profiles, as DXF R12.</td>
+              </tr>
+              <tr>
+                <th scope="row">Pictures <span class="ext">.png .jpg .webp</span></th>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>A canvas on a plane to trace over, calibrated to its real size.</td>
+                <td class="no"><span class="mark" aria-hidden="true">–</span><span class="sr-only">No</span></td>
+              </tr>
+              <tr>
+                <th scope="row">Fonts <span class="ext">.ttf .otf .woff</span></th>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>Fonts for sketch text, kept inside the design.</td>
+                <td class="no"><span class="mark" aria-hidden="true">–</span><span class="sr-only">No</span></td>
+              </tr>
+              <tr>
+                <th scope="row">TypeScript <span class="ext">.ts</span></th>
+                <td class="no"><span class="mark" aria-hidden="true">–</span><span class="sr-only">No</span></td>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>The code that builds the design again, through Export as Script.</td>
+              </tr>
+              <tr>
+                <th scope="row">Plugins <span class="ext">.extrudo-plugin</span></th>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>Installs the plugin's features and commands.</td>
+                <td class="no"><span class="mark" aria-hidden="true">–</span><span class="sr-only">No</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+        <ul class="notes">
+          <li>
+            A mesh (STL, 3MF, OBJ or OpenSCAD) has to be a closed solid. You can cut, join, move
+            and split mesh bodies, but a mesh has no exact edges or faces to fillet or shell.
+          </li>
+          <li>Every imported file is stored inside the design, so it travels with the design.</li>
+          <li>
+            Imports are in Home › Files. Models export from Export Model, sketches from the Sketch
+            tab's Export.
+          </li>
+        </ul>
+        <p class="more"><a href="/docs/files/">Files in the guide <span aria-hidden="true">→</span></a></p>
+      </section>
+
+      <section id="programmable" class="topic cat-open" aria-labelledby="programmable-title">
+        <div class="topic-head">
+          <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-open" /></svg></span>
+          <div>
+            <h2 id="programmable-title">Scripts, macros and plugins</h2>
+            <p>
+              When clicking gets repetitive, write it down. Code runs in a sandbox and builds the
+              same features you would make by hand.
+            </p>
+          </div>
+        </div>
+        <ul class="points">
+          <li>
+            <h3>Script feature</h3>
+            <p>
+              Write TypeScript inside the design to make features from loops and maths. It reads
+              the design's parameters and is built again with the rest of the timeline.
+            </p>
+          </li>
+          <li>
+            <h3>Record a macro</h3>
+            <p>
+              Record what you do and get it back as a script, to reuse it or to replace the steps
+              it recorded. Export as Script does the same for a whole design.
+            </p>
+          </li>
+          <li>
+            <h3>Plugins</h3>
+            <p>
+              Install plugins that add their own features and commands. A design carries the
+              plugins it uses, so it opens on a machine that lacks them.
+            </p>
+          </li>
+          <li>
+            <h3>Document API</h3>
+            <p>
+              A documented TypeScript API builds designs in code, with every feature type, its
+              inputs and the names of its faces.
+            </p>
+          </li>
+          <li>
+            <h3>Command line</h3>
+            <p>
+              From the source repository, <code>extrudo</code> opens a design without a browser,
+              sets its parameters and exports STL, 3MF or STEP.
+            </p>
+          </li>
+        </ul>
+        <p class="more"><a href="/docs/api/">The API docs <span aria-hidden="true">→</span></a></p>
+      </section>
+
+      <section id="yours" class="topic cat-home" aria-labelledby="yours-title">
+        <div class="topic-head">
+          <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-home" /></svg></span>
+          <div>
+            <h2 id="yours-title">Your designs stay with you</h2>
+            <p>No account, no server holding your work, and the code is open.</p>
+          </div>
+        </div>
+        <ul class="points">
+          <li>
+            <h3>Saved as you go</h3>
+            <p>
+              Designs are saved in your browser a moment after each change. Nothing is sent
+              anywhere, and there is nothing to sign up for.
+            </p>
+          </li>
+          <li>
+            <h3>Works offline</h3>
+            <p>
+              After the first visit, Extrudo opens without a connection. Install it from the
+              browser's menu to give it a window of its own.
+            </p>
+          </li>
+          <li>
+            <h3>Linked folders</h3>
+            <p>
+              In Chrome and Edge, keep designs as <code>.extrudo</code> files in a folder on your
+              disk, written back as you work.
+            </p>
+          </li>
+          <li>
+            <h3>Desktop app</h3>
+            <p>
+              For Linux, Windows and macOS: <code>.extrudo</code> files open from your file
+              manager, and Send to Slicer hands a model to your slicer.
+              <a href="/download/">Download it</a>.
+            </p>
+          </li>
+          <li>
+            <h3>Free and open source</h3>
+            <p>
+              GPL-3.0, built in the open on GitHub. The file format is documented and
+              MIT-licensed, so other programs can read your designs.
+            </p>
+          </li>
+          <li>
+            <h3>Help where you need it</h3>
+            <p>
+              A five-step tour for your first part, short clips in the main tools' tooltips, and
+              F1 for the guide's page on the tool under the pointer.
+            </p>
+          </li>
+        </ul>
+        <p class="more"><a href="/download/">Download the desktop app <span aria-hidden="true">→</span></a></p>
+      </section>
+
+      <section class="page-end" aria-labelledby="end-title">
+        <h2 id="end-title">Try it now</h2>
+        <p>Nothing to install and no account. Open it and start a sketch.</p>
+        <p class="actions">
+          <a class="button big" href="__APP_URL__/">Open Extrudo <span aria-hidden="true">→</span></a>
+        </p>
+        <p><a class="guide-link" href="/docs/getting-started/">Getting started in the guide</a></p>
+      </section>
+    </main>
+
+    <!-- site:footer -->
+  </body>
+</html>

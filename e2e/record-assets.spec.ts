@@ -564,8 +564,21 @@ const WALKTHROUGH = join(process.cwd(), 'apps', 'site', 'src', 'images', 'walkth
 /** WebP quality for the walkthrough stills; lower it (not below 0.7) if a file is over target. */
 const WEBP_QUALITY = 0.82;
 
-/** Encodes a full-page PNG to a 1440- and a 960-wide WebP in Chromium and writes both. */
-async function saveWebp(page: Page, stem: string, png: Buffer, quality: number) {
+/** The landing page's other pictures (`apps/site/src/images/`): the home screen. */
+const SITE_IMAGES = join(process.cwd(), 'apps', 'site', 'src', 'images');
+
+/**
+ * Encodes a full-page PNG to a 1440- and a 960-wide WebP in Chromium and writes both
+ * into `dir` (only the 1440-wide one when `small` is false).
+ */
+async function saveWebp(
+  page: Page,
+  stem: string,
+  png: Buffer,
+  quality: number,
+  dir = WALKTHROUGH,
+  small = true,
+) {
   const dataUrl = `data:image/png;base64,${png.toString('base64')}`;
   const blank = await page.context().newPage();
   let encoded: { wide: string; small: string };
@@ -593,12 +606,13 @@ async function saveWebp(page: Page, stem: string, png: Buffer, quality: number) 
   }
   const decode = (url: string) => Buffer.from(url.slice(url.indexOf(',') + 1), 'base64');
   const wide = decode(encoded.wide);
-  const small = decode(encoded.small);
-  await mkdir(WALKTHROUGH, { recursive: true });
-  await writeFile(join(WALKTHROUGH, `${stem}.webp`), wide);
-  await writeFile(join(WALKTHROUGH, `${stem}-960.webp`), small);
+  const narrow = decode(encoded.small);
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, `${stem}.webp`), wide);
+  if (small) await writeFile(join(dir, `${stem}-960.webp`), narrow);
   console.log(
-    `${stem}: ${(wide.length / 1024).toFixed(1)} kB at 1440, ${(small.length / 1024).toFixed(1)} kB at 960`,
+    `${stem}: ${(wide.length / 1024).toFixed(1)} kB at 1440` +
+      (small ? `, ${(narrow.length / 1024).toFixed(1)} kB at 960` : ''),
   );
 }
 
@@ -739,13 +753,33 @@ async function setField(field: ReturnType<Page['getByRole']>, text: string, valu
   }
 }
 
+test("walkthrough: the landing page's home screen", async ({ page }) => {
+  // The templates section's picture (apps/site/src/images/home.webp): the home screen
+  // a first visit sees, with the tour's card and the template gallery.
+  await page.goto('./');
+  await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        'Array.from(document.images).every((image) => image.complete && image.naturalWidth > 0)',
+      ),
+    )
+    .toBe(true);
+  await page.evaluate('document.fonts.ready.then(() => true)');
+  await page.mouse.move(1430, 890);
+  await page.waitForTimeout(200);
+  await saveWebp(page, 'home', await page.screenshot(), WEBP_QUALITY, SITE_IMAGES, false);
+});
+
 test("walkthrough: the landing page's steps", async ({ page }) => {
   test.setTimeout(600_000);
   // A locator that never appears should fail, not wait forever.
   page.setDefaultTimeout(30_000);
-  // Info toasts ("Sketch1 is hidden…") and their bell would clutter a still frame.
+  // Info toasts ("Sketch1 is hidden…") and their bell would clutter a still frame, and
+  // the status bar's renderer note and frame rate describe the headless browser's
+  // software rendering, not what a visitor's GPU shows.
   const quiet =
-    '[role="status"]:has(button[aria-label="Dismiss"]), button[aria-label^="Notification history"] { display: none !important; }';
+    '[role="status"]:has(button[aria-label="Dismiss"]), button[aria-label^="Notification history"], [data-renderer], [data-render-stats] { display: none !important; }';
   await page.addInitScript(
     `document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = ${JSON.stringify(quiet)}; document.head.append(s); });`,
   );
@@ -1038,7 +1072,8 @@ test("walkthrough: the landing page's steps", async ({ page }) => {
   // Step 8: round the four outer vertical edges, radius 3 mm.
   home = await frameTight(page);
   await clickEdge(page, home, [40, -30, 15]);
-  await page.keyboard.press('f');
+  // From its tile, so the picture shows the Modify tab with Fillet active.
+  await pickTool(page, 'Fillet');
   const fillet = page.getByRole('region', { name: 'Fillet dialog' });
   await expect(fillet).toBeVisible();
   const edgesButton = () => fillet.getByRole('button', { name: 'Edges', exact: true });
