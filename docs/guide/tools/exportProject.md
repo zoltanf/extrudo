@@ -11,7 +11,7 @@ Download the whole design as an .extrudo file, with its versions and attachments
 
 | Where | Shortcut |
 |---|---|
-| Home › Files | None |
+| Home › Export | None |
 
 <!-- notes -->
 <!-- /notes -->

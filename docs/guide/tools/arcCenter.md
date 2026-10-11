@@ -2,7 +2,7 @@
 title: Center Point Arc
 section: Tools
 category: Sketch
-order: 75
+order: 74
 ---
 
 # Center Point Arc

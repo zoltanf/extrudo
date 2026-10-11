@@ -63,7 +63,7 @@ describe('a tool page', () => {
   it('lists every placement of a tool that lives in two tabs', () => {
     const pages = toolPages(() => undefined);
     const extrude = pages.get(`${TOOLS_DIR}/export.md`);
-    expect(extrude).toContain('Home › Files (as Export Model) · 3D Print › Output');
+    expect(extrude).toContain('Home › Export (as Export Model) · 3D Print › Output');
   });
 
   it('makes no page for a tool that is not ready yet', () => {

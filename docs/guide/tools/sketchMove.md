@@ -2,7 +2,7 @@
 title: Move
 section: Tools
 category: Sketch
-order: 99
+order: 98
 ---
 
 # Move

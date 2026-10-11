@@ -225,8 +225,9 @@ export async function pickTool(page: Page, name: string) {
 
 /**
  * Runs what used to be a File menu item (ADR-0079): a tile of the Home tab, or
- * an item of its Files ▾ menu. `label` is the command's name ("Export .extrudo",
- * "Save to Linked Folder", "Plugins…", "Import" for STEP, mesh and OpenSCAD).
+ * an item of one of its groups' ▾ menus (Import and Export, R3-09). `label` is the
+ * command's name ("Export .extrudo", "Save to Linked Folder", "Import Model" for STEP,
+ * mesh, OpenSCAD and .f3d). Plugins… is in the Settings menu since R3-12.
  */
 export async function fileAction(page: Page, label: string) {
   await selectTab(page, 'Home');
@@ -251,7 +252,7 @@ export async function fileAction(page: Page, label: string) {
   throw new Error(`No Home tab command named "${label}"`);
 }
 
-/** Whether the Home tab offers a command (a tile or a Files ▾ menu item). */
+/** Whether the Home tab offers a command (a tile or a group's ▾ menu item). */
 export async function hasFileAction(page: Page, label: string): Promise<boolean> {
   await selectTab(page, 'Home');
   if ((await tileNamed(page, label).count()) > 0) return true;

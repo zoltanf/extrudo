@@ -140,7 +140,7 @@ const toItem = (command: AppCommand): MenuItemModel => {
 
 /**
  * The menus for the current mode. File (the Home tab), Edit, View (with Panels and
- * Theme folded in), a menu per other visible tab (Solid, Modify, Construct, Inspect or
+ * Theme folded in), a menu per other visible tab (Solid, Modify, Construct or
  * Sketch, 3D Print) and Help,
  * with the macOS Window menu before Help. Commands a mode hides are absent, and
  * an unavailable command is a disabled item.

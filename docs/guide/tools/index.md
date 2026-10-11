@@ -22,12 +22,15 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 - [Save Version](./saveVersion.md) — Keep this state of the design with a description, to come back to later.
 - [Version History](./versionHistory.md) — Saved versions of this design: save one, restore one, or open one as a copy.
 
-### Files
+### Import
 
 - [Import .extrudo](./importProject.md) — Open an .extrudo file as a new design.
 - [Import STEP, mesh, OpenSCAD or .f3d](./importBody.md) — Bring in a STEP file, a mesh (STL, 3MF, OBJ) or an OpenSCAD file as bodies you can cut, combine and print. An .f3d file opens as a new design.
 - [Import Drawing](./importDrawing.md) — Bring an SVG or DXF drawing into the sketch as ordinary curves.
 - [Canvas](./canvas.md) — Lay a picture on a plane as a reference to trace, and calibrate it to real scale.
+
+### Export
+
 - [Export .extrudo](./exportProject.md) — Download the whole design as an .extrudo file, with its versions and attachments.
 - [Export](./export.md) — STL, 3MF or STEP for printing and sharing.
 - [Export Design as Script](./exportScript.md) — Download the design as TypeScript that makes it again with the document API.
@@ -37,10 +40,6 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 
 - [Parameters](./parameters.md) — Named values and expressions that drive the model.
 - [Customizer](./customizer.md) — The few parameters this design exposes, with sliders, and named configurations.
-
-### Extend
-
-- [Plugins](./plugins.md) — Install, enable and remove plugins: custom features and commands.
 
 ## Solid
 
@@ -126,8 +125,6 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 - [Point](./constructionPoint.md) — A construction point at a vertex, a circle center, a face center or coordinates.
 - [Point on Path](./pointOnPath.md) — A point a fraction or a length along a path of sketch curves and edges.
 - [Point at Intersection](./pointAtIntersection.md) — The point where two edges, an edge and a plane, or three planes meet.
-
-## Inspect
 
 ### Inspect
 

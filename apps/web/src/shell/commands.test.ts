@@ -182,7 +182,7 @@ describe('buildCommands', () => {
     const ctx = context('model');
     const commands = byId({ ...ctx, file: { ...ctx.file, exportScript } });
     commands.get('exportScript')?.run();
-    expect(commands.get('exportScript')?.group).toBe('Home › Files');
+    expect(commands.get('exportScript')?.group).toBe('Home › Export');
     expect(
       byId({ ...context('sketch'), file: { ...ctx.file, exportScript } }).has('exportScript'),
     ).toBe(false);
@@ -190,7 +190,7 @@ describe('buildCommands', () => {
     expect(byId(ctx).has('exportScript')).toBe(false);
   });
 
-  it("offers Plugins… in the Home tab, and the enabled plugins' commands in the model only (P6-03)", () => {
+  it("offers Plugins… beside Settings, and the enabled plugins' commands in the model only (P6-03, R3-12)", () => {
     const plugins = vi.fn();
     const ctx = context('model');
     const run = vi.fn();
@@ -204,7 +204,7 @@ describe('buildCommands', () => {
     const model = byId({ ...ctx, file: { ...ctx.file, plugins }, plugins: [command] });
     expect(model.get('plugins')).toMatchObject({
       label: 'Plugins…',
-      group: 'Home › Extend',
+      group: 'Panels',
       keys: [],
     });
     model.get('plugins')?.run();
@@ -253,7 +253,9 @@ describe('buildCommands', () => {
     expect(sketch.get('parameters')?.group).toBe('Home › Parameters');
     expect(model.get('fillet')?.group).toBe('Modify › Modify');
     expect(model.get('offsetPlane')?.group).toBe('Construct › Planes');
-    expect(model.get('measure')?.group).toBe('Inspect › Inspect');
+    // Inspect's tools are a group of the Construct tab (R3-10).
+    expect(model.get('measure')?.group).toBe('Construct › Inspect');
+    expect(model.get('section')?.group).toBe('Construct › Inspect');
     expect(sketch.has('finishSketch')).toBe(true);
     expect(model.has('delete')).toBe(false);
     expect(sketch.get('delete')?.keys).toEqual(['Delete', 'Backspace']);
@@ -454,9 +456,12 @@ describe('buildCommands', () => {
     }
     expect(ctx.runTool).not.toHaveBeenCalled();
     // The Home tab comes first, so a tool on two tabs (Export) is offered as Home's.
-    expect(commands.get('export')?.group).toBe('Home › Files');
-    expect(commands.get('importBody')?.group).toBe('Home › Files');
-    expect(commands.get('canvas')?.group).toBe('Home › Files');
+    // Import and Export are Home's two file groups (R3-09).
+    expect(commands.get('export')?.group).toBe('Home › Export');
+    expect(commands.get('importBody')?.group).toBe('Home › Import');
+    expect(commands.get('canvas')?.group).toBe('Home › Import');
+    expect(commands.get('importProject')?.group).toBe('Home › Import');
+    expect(commands.get('exportProject')?.group).toBe('Home › Export');
   });
 
   it('offers Save to Linked Folder only where a folder is linked and the project is not (P4-09)', () => {
@@ -469,7 +474,7 @@ describe('buildCommands', () => {
     const command = byId(ctx).get('saveToLinkedFolder');
     expect(command).toMatchObject({
       label: 'Save to Linked Folder',
-      group: 'Home › Files',
+      group: 'Home › Export',
       keys: [],
     });
     expect(command?.keywords).toContain('folder');

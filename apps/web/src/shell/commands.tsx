@@ -403,6 +403,12 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     ctx.browser.toggle,
     { icon: icon(PanelLeft), keywords: 'Panels browser tree' },
   );
+  // Plugins are in the Settings menu, not a tab (the owner's UI review 3, R3-12); Ctrl+K keeps
+  // the command, beside Settings…
+  if (ctx.file.plugins) {
+    const command = fileCommand('plugins', 'Panels', ctx);
+    if (command) add(command);
+  }
   if (ctx.settings) {
     plain('openSettings', 'Settings…', 'Panels', ctx.settings.open, {
       icon: icon(Settings),

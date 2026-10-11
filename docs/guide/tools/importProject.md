@@ -11,7 +11,7 @@ Open an .extrudo file as a new design.
 
 | Where | Shortcut |
 |---|---|
-| Home › Files | None |
+| Home › Import | None |
 
 <!-- notes -->
 <!-- /notes -->

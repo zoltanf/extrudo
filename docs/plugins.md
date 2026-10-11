@@ -150,7 +150,7 @@ feature, with the plugin's name and version in its tooltip.
 
 ## Installing and using
 
-**File › Plugins…** (or Ctrl+K "Plugins…"): *Install…* picks a `.extrudo-plugin`
+**Settings (the gear) › Plugins…** (or Ctrl+K "Plugins…"; on macOS also the app menu): *Install…* picks a `.extrudo-plugin`
 file; the dialog shows its README and license as plain text, and the checkbox
 **Enabled** turns it on or off. Plugins live in the browser's storage (OPFS) or,
 in the desktop app, the user data folder — never in a design. An enabled plugin

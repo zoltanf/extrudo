@@ -27,7 +27,7 @@ when it has not. In the second case, export the designs you care about.
 
 ## Taking a design out: Export Design
 
-**Home › Files › Export Design** downloads the design as an `.extrudo` file. It is the whole
+**Home › Export › Export .extrudo** downloads the design as an `.extrudo` file. It is the whole
 design: the timeline, parameters, bodies' names and colours, any fonts or files you imported,
 the thumbnail, and every saved version. Import it on another machine or in another browser and
 you have the same design.
@@ -38,13 +38,13 @@ repository describes every field. A design saved by an older Extrudo still opens
 A design saved by a newer one opens too, and Extrudo tells you if it had to leave out something
 it does not know.
 
-**Home › Files › Export as Script** writes the design as TypeScript that rebuilds it, which is
+**Home › Export › Export as Script** writes the design as TypeScript that rebuilds it, which is
 useful if you want to turn a design into a program. See the
 [API reference](../api/README.md).
 
 ## Bringing things in
 
-All of these are in **Home › Files**.
+These are in the Home tab's **Import** group.
 
 - **Import Design** opens an `.extrudo` file as a new design. The home screen's **Import…**
   card does the same, and takes `.f3d` and the model files below too: a model file becomes a
@@ -90,7 +90,7 @@ Browsers that allow it (Chrome and Edge) can keep a copy of your designs as real
 home screen, **Linked folder › Link a folder…** asks you to choose a folder. From then on:
 
 - the folder's `.extrudo` files are listed on the home screen, and clicking one opens it;
-- **Home › Files › Save to Linked Folder** links an open design to the folder;
+- **Home › Export › Save to Linked Folder** links an open design to the folder;
 - a linked design is written to its file after each autosave, at most every ten seconds.
 
 The browser's own copy stays the main one. If the folder is unreachable (the browser can lose

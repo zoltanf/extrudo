@@ -7,8 +7,7 @@ branding.
 **Changes decided, not built yet (2026-10-11):** the owner's UI review 3 changes
 the mouse controls (into the Settings menu; presets Spindle, Crank, Glide,
 Blender, Trackpad), command search (one dialog for Ctrl+K and S, ten pins), ghost
-bodies, the tabs (Home's Import and Export groups, Inspect inside Construct, Plugins
-in the Settings menu) and tooltip clips. The items are in
+bodies and tooltip clips. The items are in
 [`plans/ui-review-2026-10-11.md`](plans/ui-review-2026-10-11.md); this spec
 still describes the app as it is, and each slice updates the sections it
 changes.
@@ -42,7 +41,7 @@ brief, voice) is in **`05-brand.md`**. In short:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│ ◆ extrudo. HOME SOLID MODIFY CONSTRUCT INSPECT 3D PRINT │ ⟲ ⟳ ▦ 🔍   Name • Saved   🕘 ⚙ ? │  Top bar
+│ ◆ extrudo. HOME SOLID MODIFY CONSTRUCT 3D PRINT │ ⟲ ⟳ ▦ 🔍   Name • Saved   🕘 ⚙ ? │          Top bar
 ├────────────────────────────────────────────────────────────────────────────┤
 │ CREATE  │ PRIMITIVES │ FEATURES │ PATTERN │ PROGRAM                         │  Tool groups
 ├───────────────┬──────────────────────────────────────────────┬─────────────┤
@@ -88,13 +87,16 @@ brief, voice) is in **`05-brand.md`**. In short:
   planned, and a one-item dropdown did nothing. The 3D Print tab covers the
   printing "mode".
 - **Tabs** (ADR-0079): `HOME` (the design as a whole: New Design, All
-  Designs; Save Version, Version History; Files: Import, Import Drawing,
-  Canvas, Export Design, Export Model, Export as Script, and in its menu Import
-  .extrudo and Save to Linked Folder; Parameters, Customizer; Plugins),
-  `SOLID` (default: Create, Primitives, Features, Pattern, Program), `MODIFY`
-  (Modify, Transform), `CONSTRUCT` (Planes, Axes, Points), `INSPECT` (Measure,
-  Section Analysis) and `3D PRINT` (our addition: export, orientation,
-  overhang, slicer hand-off, mass/filament). `SKETCH` shows only while editing
+  Designs; Save Version, Version History; **Import**: Import .extrudo, Import
+  Model, Import Drawing, Canvas; **Export**: Export .extrudo, Export Model,
+  Export as Script, Save to Linked Folder (two groups since the owner's UI
+  review 3, R3-09, where there was one Files group); Parameters, Customizer),
+  `SOLID` (default: Create, Primitives, Features, Pattern, Program, Component),
+  `MODIFY` (Modify, Transform), `CONSTRUCT` (Planes, Axes, Points, and
+  **Inspect**: Measure, Section Analysis — there is no Inspect tab since R3-10,
+  a tab of two tools took room) and `3D PRINT` (our addition: export,
+  orientation, overhang, slicer hand-off, mass/filament). **Plugins…** is an
+  item of the Settings (gear) menu and a Ctrl+K command (R3-12), not a tile. `SKETCH` shows only while editing
   a sketch, replacing every tab but HOME: 3D PRINT goes too (the owner's UI
   review 3, R3-11), since its tools work on bodies and SKETCH keeps its own
   Export Sketch. A sketch selects SKETCH whichever tab was selected, and
@@ -115,7 +117,7 @@ brief, voice) is in **`05-brand.md`**. In short:
   summary line says what the file holds ("1 body, 620 triangles,
   watertight", or which bodies aren't closed) before Export saves it.
   Format and resolution are remembered.
-- **Measure** (P2-13, ADR-0035): Inspect › Measure or 3D Print › Prepare,
+- **Measure** (P2-13, ADR-0035): Construct › Inspect › Measure or 3D Print › Prepare,
   key `I`. A panel where feature dialogs open, pressed like a tool
   (Esc or Close ends it; the selection stays). It measures the model
   selection: a plain click adds until two things are picked, the next
@@ -133,7 +135,7 @@ brief, voice) is in **`05-brand.md`**. In short:
   and with a face or a curve the angle and centre distance only.
   Values are in the document's unit and precision and can be selected
   to copy.
-- **Section Analysis** (P3-09, ADR-0045): Inspect › Section Analysis, `Shift+S`, the
+- **Section Analysis** (P3-09, ADR-0045): Construct › Inspect › Section Analysis, `Shift+S`, the
   context list's "Section Here" on a flat face. A panel in the same
   corner as Measure (Esc or Done closes it; the section stays). A new
   section asks for a plane: click an origin plane, a construction plane
@@ -513,7 +515,8 @@ a right-click without movement, as Onshape's context menu does.
   Editor undo changes text, OK adds or edits one document undo step. The Script
   stays one timeline chip, with its generated count in the tooltip; bodies are
   ordinary browser entries and may be picked by later features.
-- **Plugins (P6-03, ADR-0077):** Home › Plugins (Ctrl+K "Plugins…") installs, enables
+- **Plugins (P6-03, ADR-0077):** the Settings (gear) menu's Plugins… (Ctrl+K "Plugins…";
+  on macOS the app menu, beside Settings…; R3-12) installs, enables
   and removes `.extrudo-plugin` files and lists a design's plugins that aren't installed
   (Install) or are older than the installed version (Update to <version>, one undo
   step). An enabled plugin's custom features are the items of Solid › Create ▾
@@ -841,7 +844,7 @@ Plain language, with the fix if we know it:
   window. The view will be slower than with a graphics card.", why it is a
   separate window (the setting lets websites run graphics code on the
   processor, which Chrome keeps off by default for safety) and that designs are
-  per profile (Home › Export Design here, Home › Files › Import Design there). Brave, Opera, Vivaldi and other Chromium browsers get the flags and a separate `--user-data-dir` instead of a command (`[data-swiftshader-flags]`); the Copy button copies `edge://gpu` on Edge, `chrome://gpu` otherwise. The timeline, browser, parameters, customizer and export keep
+  per profile (Home › Export › Export .extrudo here, Home › Import › Import .extrudo there). Brave, Opera, Vivaldi and other Chromium browsers get the flags and a separate `--user-data-dir` instead of a command (`[data-swiftshader-flags]`); the Copy button copies `edge://gpu` on Edge, `chrome://gpu` otherwise. The timeline, browser, parameters, customizer and export keep
   working.
 - **The view crashed**: "The 3D view stopped working" with the error and
   [Try again]. **The driver reset** (context lost): "The graphics driver reset

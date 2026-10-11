@@ -11,7 +11,7 @@ Bring in a STEP file, a mesh (STL, 3MF, OBJ) or an OpenSCAD file as bodies you c
 
 | Where | Shortcut |
 |---|---|
-| Home › Files | None |
+| Home › Import | None |
 
 <!-- notes -->
 <!-- /notes -->

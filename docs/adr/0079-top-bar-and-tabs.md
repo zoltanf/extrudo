@@ -267,3 +267,19 @@ item lands in its own slice; this section grows with them.
   selected (`useToolbarTab`'s effect), and finishing it brings the model's tabs back with
   Solid selected. The 3D Print tools are therefore not in Ctrl+K while a sketch is open
   either, since `buildCommands` lists the shown tabs' tools.
+- **Home › Files splits into Import and Export** (R3-09, slice C): "import should be one
+  section, including the canvas as well, and then export should be another section." Group
+  **Import**: Import .extrudo, Import Model, Import Drawing, Canvas; group **Export**: Export
+  .extrudo, Export Model, Export as Script, Save to Linked Folder. Command groups follow ("Home
+  › Import", "Home › Export"), and the desktop menu projection puts a separator between them
+  by itself (`menuModel`'s `entries` separate sub-groups). At 1024 px the Home tab's row still
+  fits (`e2e/topbar.spec.ts` checks its `scrollWidth`).
+- **Inspect joins the Construct tab** (R3-10, slice C): "since the inspect only has two options
+  … merge it with the construct tab". Construct has a fourth group **Inspect** (Measure, Section
+  Analysis); the Inspect tab and `TabId`'s `inspect` are gone, so the model has five tabs (Home,
+  Solid, Modify, Construct, 3D Print) and `tabOfTool('measure', 'model')` is `construct`
+  (Measure stays in 3D Print › Prepare too). Construct's fifteen tiles fit at 1440 px.
+- **Plugins leave the Home tab** (R3-12, slice C; ADR-0077's amendment): the Extend group is
+  gone; Plugins… is in the Settings menu and Ctrl+K, and on macOS in the app menu beside
+  Settings….
+

@@ -40,7 +40,7 @@ test('the tabs share the wordmark baseline and undo, redo, toolbox and search li
   console.log(
     `baselines: wordmark ${m.word}, tabs ${m.tabs.join(' ')}; glyph centres ${m.glyphs.join(' ')}`,
   );
-  expect(m.tabs.length).toBe(6);
+  expect(m.tabs.length).toBe(5);
   for (const y of m.tabs) expect(Math.abs(y - m.word)).toBeLessThanOrEqual(1);
   expect(Math.max(...m.glyphs) - Math.min(...m.glyphs)).toBeLessThanOrEqual(1);
 });
@@ -50,14 +50,7 @@ test('one top bar: the tabs in order, no File menu, undo, redo and search work',
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
-  await expect(tabs(page)).toHaveText([
-    'Home',
-    'Solid',
-    'Modify',
-    'Construct',
-    'Inspect',
-    '3D Print',
-  ]);
+  await expect(tabs(page)).toHaveText(['Home', 'Solid', 'Modify', 'Construct', '3D Print']);
   await expect(tabs(page).filter({ hasText: 'Solid' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('button', { name: /^File/ })).toHaveCount(0);
   await expect(page.getByRole('tab', { name: 'Insert' })).toHaveCount(0);
@@ -120,14 +113,7 @@ test('a sketch shows Home and Sketch only (R3-11)', async ({ page }) => {
   await expect(tabs(page).filter({ hasText: 'Sketch' })).toHaveAttribute('aria-selected', 'true');
   // Finishing it brings the model's tabs back.
   await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
-  await expect(tabs(page)).toHaveText([
-    'Home',
-    'Solid',
-    'Modify',
-    'Construct',
-    'Inspect',
-    '3D Print',
-  ]);
+  await expect(tabs(page)).toHaveText(['Home', 'Solid', 'Modify', 'Construct', '3D Print']);
   await expect(tabs(page).filter({ hasText: 'Solid' })).toHaveAttribute('aria-selected', 'true');
 });
 
@@ -429,17 +415,22 @@ test('Home and Construct show every tool as a tile at 1440 px, each 64 px wide',
       return bad.join(',');
     })()`);
     expect(bad).toBe('');
-    // Home keeps its menu-less Files group; Construct no fixed ▾ menu on Planes.
+    // Home's Import and Export groups have no menu; Construct no fixed ▾ menu on Planes.
     const planes = toolbar.locator('[data-toolbar-group="Planes"] button[aria-haspopup]');
     if (tab === 'Construct') await expect(planes).toHaveCount(0);
   }
   await page.getByRole('tab', { name: 'Home' }).click();
-  const files = (await page.evaluate(
-    `[...document.querySelectorAll('[data-toolbar-group="Files"] button[data-tool]')].map((t) => t.dataset.tool).join(',')`,
-  )) as string;
-  expect(files).toMatch(
-    /^importProject,importBody,importDrawing,canvas,exportProject,export,exportScript(,saveToLinkedFolder)?$/,
+  const group = async (name: string) =>
+    (await page.evaluate(
+      `[...document.querySelectorAll('[data-toolbar-group="${name}"] button[data-tool]')].map((t) => t.dataset.tool).join(',')`,
+    )) as string;
+  // R3-09: Import and Export instead of one Files group; no Extend group (R3-12).
+  expect(await group('Import')).toBe('importProject,importBody,importDrawing,canvas');
+  expect(await group('Export')).toMatch(
+    /^exportProject,export,exportScript(,saveToLinkedFolder)?$/,
   );
+  await expect(toolbar.locator('[data-toolbar-group="Files"]')).toHaveCount(0);
+  await expect(toolbar.locator('[data-toolbar-group="Extend"]')).toHaveCount(0);
   for (const name of ['Import .extrudo', 'Import Model', 'Import Drawing', 'Export Model']) {
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
   }
@@ -447,6 +438,20 @@ test('Home and Construct show every tool as a tile at 1440 px, each 64 px wide',
   for (const name of ['3-Point Plane', 'Plane Along Path', 'Angled Midplane']) {
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
   }
+  // Inspect's tools are Construct's fourth group (R3-10).
+  expect(await group('Inspect')).toBe('measure,section');
+
+  // 1024 px: the Home tab's groups still fit the row (some tiles in their group menus).
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await page.getByRole('tab', { name: 'Home' }).click();
+  await page.waitForTimeout(150);
+  expect(
+    await page.evaluate(
+      `(() => { const r = document.querySelector('#toolbar-groups'); return r.scrollWidth - r.clientWidth; })()`,
+    ),
+  ).toBeLessThanOrEqual(0);
+  console.log(`fit at 1024 px, Home: ${await toolbar.getAttribute('data-toolbar-fit')}`);
+  await page.setViewportSize({ width: 1440, height: 900 });
 
   // 900 px: the fit numbers for the two tabs.
   await page.setViewportSize({ width: 900, height: 900 });

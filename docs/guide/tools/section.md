@@ -1,8 +1,8 @@
 ---
 title: Section Analysis
 section: Tools
-category: Inspect
-order: 65
+category: Construct
+order: 64
 ---
 
 # Section Analysis
@@ -11,7 +11,7 @@ Cut the view through a plane, with the cut filled in. Look inside without changi
 
 | Where | Shortcut |
 |---|---|
-| Inspect › Inspect | Shift+S |
+| Construct › Inspect | Shift+S |
 
 <!-- notes -->
 <!-- /notes -->

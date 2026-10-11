@@ -8,15 +8,11 @@ import { defaultTab, FILE_COMMANDS, TABS, TOOLS, tabOfTool, visibleTabs } from '
 const labels = (mode: 'model' | 'sketch') => visibleTabs(mode).map((t) => t.label);
 
 describe('visibleTabs (ADR-0079 §2)', () => {
-  it('shows Home, Solid, Modify, Construct, Inspect and 3D Print in the model', () => {
-    expect(labels('model')).toEqual([
-      'Home',
-      'Solid',
-      'Modify',
-      'Construct',
-      'Inspect',
-      '3D Print',
-    ]);
+  it('shows Home, Solid, Modify, Construct and 3D Print in the model (R3-10: no Inspect tab)', () => {
+    expect(labels('model')).toEqual(['Home', 'Solid', 'Modify', 'Construct', '3D Print']);
+    const construct = TABS.find((t) => t.id === 'construct');
+    expect(construct?.groups.map((g) => g.label)).toEqual(['Planes', 'Axes', 'Points', 'Inspect']);
+    expect(construct?.groups.at(-1)?.tools).toEqual(['measure', 'section']);
   });
 
   it('replaces the model tabs with Sketch while a sketch is open, 3D Print too (R3-11)', () => {
@@ -33,25 +29,43 @@ describe('visibleTabs (ADR-0079 §2)', () => {
     }
   });
 
-  it('has no Insert tab: its tools are in Home › Files', () => {
+  it('has no Insert tab, and Home has Import and Export groups instead of Files (R3-09)', () => {
     expect(TABS.some((t) => t.label === 'Insert')).toBe(false);
-    const files = TABS.find((t) => t.id === 'home')?.groups.find((g) => g.label === 'Files');
-    expect(files?.tools).toEqual(expect.arrayContaining(['importBody', 'importDrawing', 'canvas']));
+    const home = TABS.find((t) => t.id === 'home');
+    expect(home?.groups.map((g) => g.label)).toEqual([
+      'Design',
+      'Versions',
+      'Import',
+      'Export',
+      'Parameters',
+    ]);
+    const group = (label: string) => home?.groups.find((g) => g.label === label)?.tools;
+    expect(group('Import')).toEqual(['importProject', 'importBody', 'importDrawing', 'canvas']);
+    expect(group('Export')).toEqual([
+      'exportProject',
+      'export',
+      'exportScript',
+      'saveToLinkedFolder',
+    ]);
   });
 
-  it('puts every Home file command in the Home tab, with a file icon', () => {
+  it('puts every Home file command in the Home tab, with a file icon; Plugins in the Settings menu', () => {
     const home = TABS.find((t) => t.id === 'home');
     const ids = home?.groups.flatMap((g) => [...g.tools, ...(g.more ?? [])]) ?? [];
     for (const id of Object.keys(FILE_COMMANDS)) {
-      expect(ids).toContain(id);
       expect(TOOLS[id as keyof typeof TOOLS].category).toBe('file');
+      // R3-12: Plugins is an item of the Settings menu and a Ctrl+K command, not a tile.
+      if (id === 'plugins') expect(ids).not.toContain(id);
+      else expect(ids).toContain(id);
     }
+    expect(TABS.some((t) => t.groups.some((g) => g.label === 'Extend'))).toBe(false);
   });
 
   it('finds the tab that holds a tool', () => {
     expect(tabOfTool('fillet', 'model')).toBe('modify');
     expect(tabOfTool('offsetPlane', 'model')).toBe('construct');
-    expect(tabOfTool('measure', 'model')).toBe('inspect');
+    expect(tabOfTool('measure', 'model')).toBe('construct');
+    expect(tabOfTool('section', 'model')).toBe('construct');
     expect(tabOfTool('planeAlongPath', 'model')).toBe('construct');
     expect(tabOfTool('parameters', 'sketch')).toBe('home');
     expect(tabOfTool('line', 'sketch')).toBe('sketch');
@@ -91,9 +105,16 @@ describe('the desktop menu (ADR-0075 slice 2) after ADR-0079', () => {
     expect(commands.map((c) => c.id).filter((id) => !listed.has(id))).toEqual([]);
     expect(menus[0]?.label).toBe('File');
     expect(menus.map((m) => m.label)).not.toContain('Home');
-    const file = menus[0]?.items.flatMap((i) => ('id' in i && i.id ? [i.id] : [])) ?? [];
-    expect(file).toEqual(
-      expect.arrayContaining(['newDesign', 'saveVersion', 'exportProject', 'plugins']),
+    const ids = (label: string) =>
+      menus
+        .find((m) => m.label === label)
+        ?.items.flatMap((i) => ('id' in i && i.id ? [i.id] : [])) ?? [];
+    expect(ids('File')).toEqual(
+      expect.arrayContaining(['newDesign', 'saveVersion', 'exportProject']),
     );
+    // Plugins… is beside Settings… (R3-12): in View's Panels, which the macOS template moves
+    // into the app menu.
+    expect(ids('File')).not.toContain('plugins');
+    expect(ids('View')).toContain('plugins');
   });
 });

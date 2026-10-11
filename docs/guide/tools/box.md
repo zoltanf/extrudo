@@ -2,7 +2,7 @@
 title: Box
 section: Tools
 category: Solid
-order: 24
+order: 23
 ---
 
 # Box

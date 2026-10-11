@@ -11,7 +11,7 @@ Download the design as TypeScript that makes it again with the document API.
 
 | Where | Shortcut |
 |---|---|
-| Home › Files | None |
+| Home › Export | None |
 
 <!-- notes -->
 <!-- /notes -->

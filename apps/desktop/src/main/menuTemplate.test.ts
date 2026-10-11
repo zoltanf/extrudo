@@ -150,6 +150,43 @@ describe('buildMenuTemplate (P6-01 slice 2)', () => {
     ]);
   });
 
+  it('puts Settings… and Plugins… in the app menu, out of View (R3-12)', () => {
+    const spy = handlers();
+    const withPanels = [
+      ...model,
+      {
+        label: 'View',
+        items: [
+          { id: 'fit', label: 'Fit' },
+          { separator: true as const },
+          { id: 'plugins', label: 'Plugins…' },
+          { id: 'openSettings', label: 'Settings…', accelerator: 'CmdOrCtrl+,' },
+        ],
+      },
+    ];
+    const mac = buildMenuTemplate(withPanels, options({ handlers: spy }));
+    const app = submenu(mac[0]);
+    expect(app.map((entry) => entry.role ?? entry.label ?? entry.type).slice(0, 5)).toEqual([
+      'about',
+      'separator',
+      'Settings…',
+      'Plugins…',
+      'separator',
+    ]);
+    click(app[3] as MenuItemConstructorOptions);
+    expect(spy.run).toHaveBeenCalledWith('plugins');
+    // View keeps what is left, with no stray separator.
+    const view = submenu(mac.find((m) => m.label === 'View'));
+    expect(view.map((entry) => entry.label ?? entry.type)).toEqual(['Fit']);
+    // Without them the app menu is as before.
+    const plain = submenu(buildMenuTemplate(model, options())[0]);
+    expect(plain.map((entry) => entry.role ?? entry.label ?? entry.type).slice(0, 3)).toEqual([
+      'about',
+      'separator',
+      'services',
+    ]);
+  });
+
   it('builds no menu at all on Windows and Linux (ADR-0075, 2026-10-09)', () => {
     for (const platform of ['win32', 'linux', 'freebsd'] as const) {
       expect(hasApplicationMenu(platform)).toBe(false);
