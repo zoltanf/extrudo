@@ -348,3 +348,18 @@ of a non-uniformly scaled cylinder's rim used the whole 64 kB stack. The test
 "has the stack OCCT needs on B-spline faces: a chamfer and a STEP export after a
 non-uniform scale" in `kernel.test.ts` builds exactly that and failed on the old
 build.
+
+## Amendment 2026-10-11: leaving lost edges out (`skipLostEdges`)
+
+The chamfer takes the fillet's `skipLostEdges` input (ADR-0038's amendment of
+this date, which has the reasons and the rejected options) through the same
+`edgeResolver`: with it, lost edges are left out with the warning "… left out
+of the chamfer …" and listed for Fix References, and with none found it fails
+as before. Two rules of its own: a set **none** of whose edges is found is
+left out whole and its reference face is not looked for (it may be lost with
+the edges, and a dropped set needs none); a lost reference face of a set that
+**keeps** edges still fails the chamfer, since guessing the default face would
+put the distances the other way round. Without the input the face is resolved
+first, as it always was, so the error order is unchanged. The dialog's last
+field is the same "Skip lost edges" toggle. Tests: `features/chamfer.test.ts`
+"skipLostEdges"; `docs/file-format.md` §6.9.

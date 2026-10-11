@@ -342,3 +342,55 @@ end), which by itself corrupts memory and traps later. With the 8 MB stack the
 rod case above still traps without this refusal ("memory access out of bounds",
 the native harness at 8 MB), so the refusal stays: it guards a fault of OCCT's,
 not of the stack.
+
+## Amendment 2026-10-11: leaving lost edges out (`skipLostEdges`)
+
+**Context.** One edge reference the kernel can't resolve fails the whole
+fillet (ADR-0033: a `LostReferenceError`, Fix References offers the edge).
+That is right for a fillet a person just made: the loss is loud and fixable.
+It is wrong for a design written by a program that knows some of its edges
+may not exist — the f3d importer (ADR-0083) names a few edges on an earlier
+round the kernel couldn't build, or on a face of a feature it couldn't
+import, and one such edge took the whole round down in about 30 designs.
+
+**Decision.** A feature-wide optional `bool` input, **`skipLostEdges`**
+(core's `SKIP_LOST_EDGES_KEY`, shared with the chamfer, ADR-0043's
+amendment). With it `true`, the evaluator resolves each edge through
+`edgeResolver` (`packages/kernel/src/features/lost-edges.ts`): a lost edge is
+left out and counted, and when at least one edge was found the fillet is
+built from those and warns "2 of 7 edges can't be found and are left out of
+the fillet. Use Fix References to pick them again." When **no** edge is found
+the first loss is thrown, so the fillet fails exactly as without the input.
+The variable-radius fillet (ADR-0064) takes the same path.
+
+- **Where:** in the evaluator, around `ctx.resolve` — the resolve layer, not
+  the facade, which only ever sees edge indices. `ctx.resolve` has already
+  noted each loss as `lost` in the engine (`#references`), and the engine
+  attaches `refs` to any status that isn't `ok`, so the warning status lists
+  the lost edges and Fix References offers them as it does for an error
+  (ADR-0033's amendment of this date).
+- **Absent means today's behaviour.** The input is stored only as `true`
+  (the dialog drops it while off, `withoutSkipOff`), so every existing
+  document and every fillet made in the app without it computes and fails as
+  before, error order included.
+- **The dialog** has it as its last field, the toggle "Skip lost edges"
+  (`apps/web/src/features/skipLostEdges.ts`), shown always so a person can
+  turn it on for a fillet whose edges come and go, or off for an imported one.
+- The API (`d.fillet({ …, skipLostEdges: true })`), its reference pages and
+  the macro emitter carry it through the schema with no code of their own; the
+  CLI reports the warning like any other. `docs/file-format.md` §6.8.
+
+**Rejected.** A `ResolveOptions` flag that makes `ctx.resolve` answer
+`undefined` for every feature: the counting, the warning's words and the
+"none found fails" rule are the fillet's and chamfer's, and no other feature
+asked for it. A flag per edge set: the importer sets it on all of them, and a
+person thinks of it per feature. Turning it on by default: a lost edge would
+then change the shape with only a warning, where ADR-0033 wants the person to
+choose. Lowering the fingerprint threshold so more lost edges are guessed: it
+picks wrong edges (ADR-0083's corpus), where leaving one out picks none.
+
+**Tests.** `features/fillet.test.ts` "skipLostEdges": one edge found and one
+lost (twice) builds the same body as the found edge alone, warns and keeps the
+lost one in `refs`; a variable set; all lost fails; without the input one lost
+edge still fails. `apps/web/src/features/skipLostEdges.test.ts` (the toggle),
+`packages/api/src/emit.test.ts` (the round trip).

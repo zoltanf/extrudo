@@ -528,3 +528,57 @@ test('a variable set has a handle at each end of its chain; Swap ends changes th
   expect(changed, 'End radius after the drag').toBeGreaterThan(5.5);
   await expect(radiusField).toHaveValue('2 mm');
 });
+
+test('Skip lost edges builds a fillet whose edge on an earlier round is lost, with a warning', async ({
+  page,
+}) => {
+  const viewport = viewportOf(page);
+  await openProject(page);
+  await kernelReady(page);
+  await cube(page);
+  const at = await settledProjector(viewport);
+
+  // Round one vertical edge, then the top front edge with the round's arc and the right edge.
+  await clickEdge(page, at, [10, -10, 10]);
+  await page.keyboard.press('f');
+  const first = page.getByRole('region', { name: 'Fillet dialog' });
+  await first.getByRole('textbox', { name: 'Radius', exact: true }).fill('4 mm');
+  await expect(first).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await first.getByRole('button', { name: 'OK' }).click();
+  await expect(first).toBeHidden();
+  await kernelReady(page);
+
+  await clickTopFront(page, at);
+  await page.keyboard.press('f');
+  const second = page.getByRole('region', { name: 'Fillet dialog' });
+  await expect(second.getByRole('button', { name: 'Edges', exact: true })).toHaveText('3 edges');
+  const skip = second.getByRole('checkbox', { name: 'Skip lost edges' });
+  await expect(skip).not.toBeChecked();
+  await skip.check();
+  await second.getByRole('textbox', { name: 'Radius', exact: true }).fill('1 mm');
+  await expect(second).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await second.getByRole('button', { name: 'OK' }).click();
+  await expect(second).toBeHidden();
+  await kernelReady(page);
+
+  // Suppressing the first round loses the arc: the second is built from the two lines and warns.
+  await chip(page, 'Fillet1').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: /^Suppress/ }).click();
+  await expect(chip(page, 'Fillet2')).toHaveAccessibleName('Fillet2 (warning)');
+  await chip(page, 'Fillet2').hover();
+  await expect(page.getByRole('tooltip')).toContainText(
+    "1 of 3 edges can't be found and is left out of the fillet.",
+  );
+  await expect(viewport).toHaveAttribute('data-bodies', /^Body1:\d+:20,20,20$/);
+
+  // Its dialog opens with the toggle on; turned off, the lost edge fails it again.
+  await page.mouse.move(10, 10, { steps: 5 });
+  await chip(page, 'Fillet2').dblclick();
+  const edit = page.getByRole('region', { name: 'Edit Fillet2 dialog' });
+  await expect(edit.getByRole('checkbox', { name: 'Skip lost edges' })).toBeChecked();
+  await edit.getByRole('checkbox', { name: 'Skip lost edges' }).uncheck();
+  await expect(edit).toHaveAttribute('data-preview-status', 'error', { timeout: 15_000 });
+  await expect(edit.getByRole('region', { name: 'Feature status' })).toContainText(
+    "Can't find an edge to fillet",
+  );
+});

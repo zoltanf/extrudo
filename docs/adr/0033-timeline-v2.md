@@ -199,3 +199,12 @@ References opens, or the Redefine Plane prompt of a sketch — and (c) the
 chips picked in the timeline. `ghostsOf` (pure) turns those IDs, the document
 and the statuses into the ghosts; the Viewport region's `data-ghosts` lists
 them as `<featureId>:<type>:<x,y,z>` (rounded to 0.01; absent with none).
+
+## Amendment 2026-10-11: lost references on a warning
+
+A fillet or chamfer with `skipLostEdges` (ADR-0038's and ADR-0043's
+amendments) is built without the edges it lost and ends with a **warning**,
+not an error. The engine already attaches `FeatureStatus.refs` to any status
+that isn't `ok`, so its lost edges are listed there and Fix References and
+the ghosts of lost geometry work on the warning as they do on an error; this
+amendment only records that a warning may carry `lost` references too.

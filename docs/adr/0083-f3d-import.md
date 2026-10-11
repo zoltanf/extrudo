@@ -453,3 +453,36 @@ The review for untrusted files changed three things in the constraint import:
 3. **A solver failure stays in its sketch**: the sketch keeps its geometry and
    joins, and all of its constraints and dimensions are left out as `failed`.
    The app's import no longer fails when disposing a broken solver throws.
+
+## Amendment, 2026-10-11 (lost edges no longer take the whole round down)
+
+Some edges a fillet or chamfer of the file names can't be found in Extrudo's
+body: they lie on an earlier round the kernel couldn't build, or on a face of
+a feature that wasn't imported. One such edge used to fail the whole round
+(ADR-0033), and the rounds after it that needed its faces with it. The
+importer now sets **`skipLostEdges: true`** on every fillet and chamfer it
+writes (ADR-0038's and ADR-0043's amendments of this date): the round is
+built from the edges that are found and warns how many it left out, listing
+them for Fix References; a round none of whose edges is found still fails.
+Features made in the app keep failing loudly, since they don't set it.
+
+Corpus (250 files, with the components and features work; baseline the same
+code without the input): match 118 → 121, match despite skips 8,
+partial 48, mismatch 61 → 58, no bodies 8, no reference 7, no errors. Of the
+fillets and chamfers, 271 → 235 fail, and those that fail on a lost edge
+77 → 17 (47 → 11 files; the 17 have every edge lost). 37 rounds now build
+(each with a warning: some leave their lost edges out, others find all their
+edges now because an earlier round they stand on builds), 24 get past the
+lost edge to OCCT and fail there ("too large", "can't be chamfered with any
+distance", edges between rounds that meet), and one round fails that built
+before: a chamfer whose faces an earlier chamfer now narrows (0.5 mm against a
+maximum of 0.49). New matches: three designs whose single chamfer was held by
+one lost edge. No verdict got worse; a few volumes moved away from the
+reference by less than 0.4 % where a round now built on part of its edges
+while an earlier round it continues still fails (the edges on that round are
+the ones left out), which the import can't do better without that round.
+
+Next: the edge naming gate for guessed names (fillet and chamfer face names
+read off a neighbour, kept only with a sure shape, because one lost edge
+failed the round) can be relaxed now that a lost one only drops out — a
+follow-up for that work's branch.
