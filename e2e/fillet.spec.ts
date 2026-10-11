@@ -578,7 +578,7 @@ test('Skip lost edges builds a fillet whose edge on an earlier round is lost, wi
   await expect(edit.getByRole('checkbox', { name: 'Skip lost edges' })).toBeChecked();
   await edit.getByRole('checkbox', { name: 'Skip lost edges' }).uncheck();
   await expect(edit).toHaveAttribute('data-preview-status', 'error', { timeout: 15_000 });
-  await expect(edit.getByRole('region', { name: 'Feature status' })).toContainText(
+  await expect(edit.getByRole('status', { name: 'Feature status' })).toContainText(
     "Can't find an edge to fillet",
   );
 });
