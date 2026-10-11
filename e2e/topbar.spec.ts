@@ -136,7 +136,7 @@ test('the toolbar moves tiles into their group menus to fit a narrow window, and
   await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
   const toolbar = page.locator('#toolbar-groups');
-  await expect(toolbar).toHaveAttribute('data-toolbar-fit', '0,0,0,0,0');
+  await expect(toolbar).toHaveAttribute('data-toolbar-fit', '0,0,0,0,0,0');
   const wide = await measure(page);
   const chrome =
     wide.content -
@@ -179,7 +179,7 @@ test('the toolbar moves tiles into their group menus to fit a narrow window, and
 
   // Widening brings every tile back.
   await page.setViewportSize({ width: 1440, height: 900 });
-  await expect(toolbar).toHaveAttribute('data-toolbar-fit', '0,0,0,0,0');
+  await expect(toolbar).toHaveAttribute('data-toolbar-fit', '0,0,0,0,0,0');
   for (const id of wide.groups.flatMap((g) => g.ids)) {
     await expect(page.locator(`#toolbar-groups [data-tool="${id}"]`)).toBeVisible();
   }

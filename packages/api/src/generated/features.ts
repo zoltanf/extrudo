@@ -968,6 +968,7 @@ export interface FeatureMethods {
    *
    * @param inputs.face The flat faces that go down, one per body. Required.
    * @param inputs.spin Turn about the vertical through the face's centre once it lies on the bed; an angle. Without one, no turn.
+   * @param inputs.carry Bodies that take the same turn and drop as the face's body (a component placed as one). Only with one face.
    */
   placeOnBed(
     inputs: PlainInputs<PlaceOnBedInputs>,

@@ -12,7 +12,7 @@
  */
 import { CommandError, type DocumentDraft, defineCommand } from './commands';
 import { normalizeGroupsInPlace } from './groups';
-import type { FeatureId } from './ids';
+import type { FeatureId, JointId } from './ids';
 import type { ExtrudoDocument, Feature, GeomRef, GeomRefKind } from './schema';
 import { scriptOfGenerated } from './script';
 
@@ -234,11 +234,29 @@ export interface ReferenceReplacement {
  * a fix picked by hand). Refused if the feature stores none of them, if a
  * sketch would lose its plane or a projection its source, or if a new
  * reference names the feature itself or one after it.
+ *
+ * `id` may also be a joint's (P6-05, ADR-0081 §4): its frames' references are
+ * replaced the same way. A joint has no timeline position, so any feature's
+ * geometry may be its new frame, and a frame can't be removed.
  */
 export const replaceReferences = defineCommand<{
-  id: FeatureId;
+  id: FeatureId | JointId;
   replace: readonly ReferenceReplacement[];
 }>('feature.references', 'Fix references', (draft, { id, replace }) => {
+  const joint = draft.joints?.find((j) => j.id === id);
+  if (joint) {
+    let changed = 0;
+    for (const side of ['a', 'b'] as const) {
+      const frame = joint[side];
+      const r = replace.find((x) => x.from.kind === frame.ref.kind && x.from.id === frame.ref.id);
+      if (!r) continue;
+      if (!r.to) throw new CommandError(`${joint.name} needs a frame on each side: pick one.`);
+      frame.ref = r.to;
+      changed++;
+    }
+    if (changed === 0) throw new CommandError(`${joint.name} has none of those references.`);
+    return;
+  }
   const index = draft.features.findIndex((f) => f.id === id);
   const feature = draft.features[index];
   if (!feature) throw new CommandError(`Feature ${id} doesn't exist.`);

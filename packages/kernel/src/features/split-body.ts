@@ -57,6 +57,9 @@ function evaluateSplitBody(ctx: EvalContext<SplitBodyInputs>): FeatureOutput {
   using scope = kernel.scope();
   const bodies = new Map(ctx.bodies);
   const names = new Map<BodyId, TopoNames>();
+  // Where a mesh side came from (P6-05, ADR-0081 §2): a side that gets a fresh
+  // ID is a piece of the body the plane cut, which existed before this feature.
+  const origins = new Map<BodyId, BodyId>();
   let whole = 0;
   let next = 0;
   for (const id of ids) {
@@ -87,6 +90,7 @@ function evaluateSplitBody(ctx: EvalContext<SplitBodyInputs>): FeatureOutput {
     while (bodies.has(extra)) extra = ctx.bodyId(next++);
     bodies.set(extra, smaller.shape);
     names.set(extra, smaller.names);
+    origins.set(extra, id);
   }
   if (whole === ids.length) {
     throw new KernelError(
@@ -104,7 +108,10 @@ function evaluateSplitBody(ctx: EvalContext<SplitBodyInputs>): FeatureOutput {
   }
   // Kept now: splitSolids takes the compounds apart, the pieces go back to the scope.
   for (const [id, shape] of bodies) if (names.has(id)) scope.keep(shape);
-  return nameMeshBodies(ctx, splitSolids(ctx, scope, { bodies, names }));
+  return nameMeshBodies(
+    ctx,
+    splitSolids(ctx, scope, { bodies, names, ...(origins.size > 0 && { origins }) }),
+  );
 }
 
 /**

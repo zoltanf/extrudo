@@ -2,7 +2,7 @@
 title: Fit Point Spline
 section: Tools
 category: Sketch
-order: 83
+order: 85
 ---
 
 # Fit Point Spline

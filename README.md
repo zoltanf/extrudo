@@ -6,9 +6,8 @@
 </p>
 
 <h1 align="center">Extrudo</h1>
-
 <p align="center">
-  Parametric CAD for 3D printing, in your browser. Free and open source.
+  Parametric CAD for 3D printing, in your browser. Free and open source, try it now at: <a href="https://extrudo.org">extrudo.org</a>
 </p>
 
 Sketch a profile, pull it into a solid, round the edges, and change one number

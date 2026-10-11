@@ -180,8 +180,9 @@ export function solidFacts(mesh: TriangleMesh): MeshFacts {
 export function objectsOf3mf(file: Exported): MeshObject[] {
   const model = read3mf(file.bytes);
   expect(model.unit).toBe('millimeter');
-  expect(model.build).toEqual(model.objects.map((o) => o.id));
-  return model.objects;
+  // One mesh per body, whether or not the export kept a component's bodies
+  // together (a grouped object expands to its parts; P6-05, ADR-0081 §7).
+  return model.items.flatMap((item) => item.meshes.map((part) => part.object));
 }
 
 /** The mesh of a binary STL export. */

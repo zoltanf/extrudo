@@ -3,13 +3,19 @@ import {
   CANVAS_TYPE,
   type Command,
   CommandError,
+  type ComponentId,
   type DocumentStore,
+  evaluateParameters,
   type Feature,
   type FeatureId,
   formatQuantity,
   type GeomRef,
   IMPORT_TYPE,
   isFeatureVisible,
+  type JointId,
+  type JointReport,
+  type JointType,
+  jointRange,
   LENGTH,
   type ModelStore,
   pluginFileOf,
@@ -17,8 +23,10 @@ import {
   redefineSketchPlane,
   type SelectionItem,
   type SessionStore,
+  type ViewId,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
+import type { Matrix12 } from '@extrudo/kernel/matrix';
 import {
   type CSSProperties,
   lazy,
@@ -33,6 +41,10 @@ import { useStore } from 'zustand';
 import { keysFor } from '../commands/keymap';
 import { isRepeatable } from '../commands/marking';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
+import { followComponentSession } from '../components/active';
+import { createComponentActions } from '../components/componentActions';
+import { componentRows, componentsSummary } from '../components/componentRows';
+import { createPlacementActions } from '../components/placement';
 import { CustomizerPanel } from '../customizer/CustomizerPanel';
 import { CUSTOMIZER_TOOL, useCustomizer } from '../customizer/useCustomizer';
 import {
@@ -57,6 +69,18 @@ import { PRESS_PULL, PRESS_PULL_PROMPT, pressPullTarget } from '../features/pres
 import { cornersStore } from '../features/primitiveCorners';
 import { type FeatureDialogs, featureDialogs, specForCommand } from '../features/registry';
 import { useDialogItems, useFeatureDialogs } from '../features/useFeatureDialogs';
+import { ClearanceOverlay } from '../joints/ClearanceOverlay';
+import { ClearanceSection } from '../joints/ClearanceSection';
+import { clearanceMarks, defaultMinGap } from '../joints/clearance';
+import { followJointPose } from '../joints/followPose';
+import { JointDialog } from '../joints/JointDialog';
+import { JointPanel } from '../joints/JointPanel';
+import { createJointActions } from '../joints/jointActions';
+import type { JointDialogKernel } from '../joints/jointController';
+import { type JointRow, jointRows, jointsSummary } from '../joints/jointRows';
+import { clampPose, posedBodies, poseMatrix } from '../joints/pose';
+import { type JointCheckKernel, useJointCheck } from '../joints/useJointCheck';
+import { useJointDialog } from '../joints/useJointDialog';
 import { MacroDialog } from '../macro/MacroDialog';
 import {
   createMacroStore,
@@ -116,6 +140,8 @@ import { planeName, SECTION_TOOL, useSection } from '../section/useSection';
 import { readTopology, selectionRefs, sketchEntityIdsIn } from '../selection/items';
 import { type LookSketch, selectionLookTarget } from '../selection/lookAt';
 import { useModelSelection } from '../selection/useModelSelection';
+import { storeAccess } from '../settings/displaySettings';
+import { SettingsDialog } from '../settings/SettingsDialog';
 import type { FontPicker } from '../sketch/addFont';
 import { useBodiesBefore } from '../sketch/baseBodies';
 import { type ExportRequest, ExportSketchDialog } from '../sketch/ExportSketchDialog';
@@ -150,11 +176,15 @@ import { textDraftStore } from '../sketch/textDraft';
 import type { ToolHost } from '../sketch/tools/host';
 import { isPickingTool, isSketchTool } from '../sketch/tools/ids';
 import { IMPORT_DRAWING_TOOL } from '../sketch/tools/importDrawing';
+import { boundsOf } from '../viewport/bodyGeometry';
 import { canvasDrawings } from '../viewport/canvasGeometry';
 import { forgetCanvasImages } from '../viewport/canvasImages';
 import type { ConstructionDrawing } from '../viewport/constructionGeometry';
 import { ghostsOf } from '../viewport/ghostGeometry';
+import { JointHandle } from '../viewport/JointHandle';
+import type { JointDrawing } from '../viewport/jointGeometry';
 import { ModelProgress, useRecomputeFinished } from '../viewport/ModelProgress';
+import { namedViewSaveStore } from '../viewport/namedViewSave';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
 import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker, SketchInput } from '../viewport/Viewport';
@@ -181,6 +211,7 @@ import { docsPath } from './docsLinks';
 import { createFeatureActions } from './featureActions';
 import { createGroupActions } from './groupActions';
 import { menuModel, NATIVE_MENU_OWN, QUIT_ID, SAVE_AS_ID } from './menuModel';
+import { createViewActions } from './namedViews';
 import { Splitter, usePanel } from './panels';
 import { watchRecomputeErrors } from './recomputeErrors';
 import { Timeline } from './Timeline';
@@ -241,7 +272,12 @@ export interface AppShellProps {
    * cache (ADR-0078): listed as pending rows until a recompute finishes.
    */
   pendingBodies?: readonly string[];
-  kernel?: DialogKernel & ModelExporter & MeasureKernel & Partial<PluginCommandKernel>;
+  kernel?: DialogKernel &
+    ModelExporter &
+    MeasureKernel &
+    Partial<PluginCommandKernel> &
+    Partial<Pick<JointDialogKernel, 'resolveJoint'>> &
+    Partial<JointCheckKernel>;
 }
 
 /** The app's feature dialogs (`features/registry.ts`). */
@@ -504,6 +540,7 @@ export function AppShell({
   // `run` changes every render; commands reach the latest one through a ref.
   const runRef = useRef<(tool: ToolId) => void>(() => {});
   const startTutorialRef = useRef<() => void>(() => {});
+  const openJointCheckRef = useRef<(id?: JointId, run?: boolean) => void>(() => {});
   /** The File menu's Import, which is the Insert tab's tile (P4-06). */
   const startImportRef = useRef<() => void>(() => {});
   /** The File menu's Export Design as Script (P5-05). */
@@ -524,7 +561,15 @@ export function AppShell({
   // The model's bodies with their names (ADR-0030): new bodies get stored names as soon as a
   // recompute shows them, amended into the undo step that made them.
   useEffect(() => followBodyNames(store, model), [store, model]);
-  const bodyList = useMemo(() => bodyEntries(doc, bodies), [doc, bodies]);
+  // The active and the isolated component follow the document: an undo, a delete or a version
+  // restore that removes one clears it (P6-05 S4, ADR-0081 §6).
+  useEffect(() => followComponentSession(store, session), [store, session]);
+  const activeComponent = useStore(session, (s) => s.activeComponent);
+  const isolatedComponent = useStore(session, (s) => s.isolatedComponent);
+  const bodyList = useMemo(
+    () => bodyEntries(doc, bodies, model.getState().origins),
+    [doc, bodies, model],
+  );
   // Until the first recompute has finished the browser lists the bodies the last one made
   // (the model cache, ADR-0078) as pending rows; everything else sees only computed bodies.
   const recomputed = useRecomputeFinished(model);
@@ -646,10 +691,126 @@ export function AppShell({
     }),
     [store, session, notify],
   );
+  // The named views (ADR-0008's amendment): the browser's rows, the nav bar's
+  // menu and the commands' shared actions.
+  const viewActions = useMemo(
+    () => createViewActions(store, viewport, notify),
+    [store, viewport, notify],
+  );
+  const namedViewEntries = useMemo(
+    () => ({
+      views: doc.views,
+      restore: (id: ViewId) => viewActions.restore(id),
+      save: (name: string) => viewActions.save(name),
+    }),
+    [doc.views, viewActions],
+  );
+  const componentList = useMemo(() => componentRows(doc, bodyList).rows, [doc, bodyList]);
+  const componentListRef = useRef(componentList);
+  componentListRef.current = componentList;
+  const componentActions = useMemo(
+    () =>
+      createComponentActions(
+        { store, session },
+        (id) =>
+          componentListRef.current.find((r) => r.component.id === id)?.bodies.map((b) => b.id) ??
+          [],
+        notify,
+      ),
+    [store, session, notify],
+  );
+  // Joints (P6-05, ADR-0081 §4): the Joint dialog, the browser's rows and the view's axes.
+  const componentOfBody = useMemo(() => {
+    const of = new Map(bodyList.map((b) => [b.id, b.component]));
+    return (id: BodyId) => of.get(id);
+  }, [bodyList]);
+  const { controller: jointDialog, open: jointOpen } = useJointDialog({
+    store,
+    session,
+    model,
+    viewport,
+    kernel: kernel && {
+      reference: (body, kind, index) => kernel.reference(body, kind, index),
+      resolveJoint: (joint) => kernel.resolveJoint?.(joint) ?? Promise.resolve(undefined),
+    },
+    componentOf: componentOfBody,
+    notify,
+  });
+  // The joint pose (P6-05 J2, ADR-0081 §4): which joint's panel is open; the pose itself is
+  // `viewport.jointPose`, view state that any tool, dialog or sketch clears.
+  const [poseJointId, setPoseJointId] = useState<JointId>();
+  const openPose = useCallback(
+    (id: JointId) => {
+      jointDialog?.cancel();
+      dialog?.cancel();
+      setPoseJointId(id);
+      viewport.getState().setJointPose({ joint: id, value: 0 });
+    },
+    [jointDialog, dialog, viewport],
+  );
+  const closePose = useCallback(() => {
+    setPoseJointId(undefined);
+    viewport.getState().setJointPose(undefined);
+  }, [viewport]);
+  useEffect(() => followJointPose(store, model, viewport), [store, model, viewport]);
+  const jointActions = useMemo(
+    () =>
+      jointDialog &&
+      createJointActions({ store, model, dialog: jointDialog, pose: openPose }, notify),
+    [store, model, jointDialog, notify, openPose],
+  );
+  const jointReports = useStore(model, (s) => s.joints);
+  const [hoveredJoint, setHoveredJoint] = useState<JointId>();
+  const jointRowsOf = useCallback(
+    (component: ComponentId): JointRow[] =>
+      jointRows(doc, component, jointReports, componentOfBody),
+    [doc, jointReports, componentOfBody],
+  );
+  // Ctrl+K "Pose Joint": the hovered joint row's, else the only revolute or slider joint.
+  const poseCommand = useMemo(
+    () => ({
+      run() {
+        const posable = (doc.joints ?? []).filter((j) => j.type !== 'rigid' && !j.suppressed);
+        const hovered = posable.find((j) => j.id === hoveredJoint);
+        const only = posable.length === 1 ? posable[0] : undefined;
+        const joint = hovered ?? only;
+        if (joint) openPose(joint.id);
+        else if (posable.length === 0) notify('info', 'Make a revolute or slider joint first.');
+        else notify('info', "Choose Pose… on a joint's row in the browser.");
+      },
+    }),
+    [doc.joints, hoveredJoint, openPose, notify],
+  );
+  const placementActions = useMemo(
+    () =>
+      dialog
+        ? createPlacementActions({
+            store,
+            session,
+            dialog,
+            members: (id) =>
+              componentListRef.current
+                .find((r) => r.component.id === id)
+                ?.bodies.map((b) => b.id) ?? [],
+            notify,
+          })
+        : undefined,
+    [store, session, dialog, notify],
+  );
   const selectedBodyIds = useMemo(
     () => selection.filter((item) => item.kind === 'body').map((item) => item.id as BodyId),
     [selection],
   );
+  // The component all the selected bodies share, if they share one (activate and isolate act on it).
+  const selectedComponent = useMemo(() => {
+    if (selectedBodyIds.length === 0) return undefined;
+    const owners = new Set(
+      selectedBodyIds.map((id) => bodyList.find((b) => b.id === id)?.component),
+    );
+    const [only] = [...owners];
+    return owners.size === 1 && only !== undefined ? only : undefined;
+  }, [selectedBodyIds, bodyList]);
+  const selectedComponentName = doc.components?.find((c) => c.id === selectedComponent)?.name;
   // The Project tool (P2-09) picks body edges, faces, vertices and bodies in the open sketch;
   // Intersect (P4-12) faces and bodies. "Keep linked" off makes the next picks an include.
   const [keepLinked, setKeepLinked] = useState(true);
@@ -677,7 +838,19 @@ export function AppShell({
   });
   // Editing a feature shows and picks the bodies before it (the preview's base), and so
   // does the Project tool in a sketch that later features build on.
-  const shownBodies = project.bodies ?? redefineBase ?? dialogBodies(dialogOpen, bodies);
+  const sceneBodies = project.bodies ?? redefineBase ?? dialogBodies(dialogOpen, bodies);
+  // Isolation (P6-05 S4, ADR-0081 §6): the view, its picking and Fit see only the isolated
+  // component's bodies (a body the list doesn't know, a preview's, stays).
+  const shownBodies = useMemo(() => {
+    if (isolatedComponent === undefined) return sceneBodies;
+    const owner = new Map(bodyList.map((b) => [b.id, b.component]));
+    return Object.fromEntries(
+      Object.entries(sceneBodies).filter(([id]) => {
+        const has = owner.has(id as BodyId);
+        return !has || owner.get(id as BodyId) === isolatedComponent;
+      }),
+    ) as typeof sceneBodies;
+  }, [sceneBodies, isolatedComponent, bodyList]);
   const overhang = useOverhang({
     viewport,
     doc,
@@ -698,6 +871,23 @@ export function AppShell({
     model: mode === 'model',
     preferences: platform.preferences,
   });
+  // A joint's clearance check (P6-05 J3, ADR-0081 §4): asked of the kernel worker on demand.
+  const jointCheck = useJointCheck({
+    viewport,
+    doc: () => doc,
+    bodies: () => Object.keys(bodies) as BodyId[],
+    componentOf: componentOfBody,
+    kernel:
+      kernel?.checkJoint && kernel.cancelCheck
+        ? {
+            checkJoint: (request, onProgress) =>
+              (kernel.checkJoint as JointCheckKernel['checkJoint'])(request, onProgress),
+            cancelCheck: () => kernel.cancelCheck?.(),
+          }
+        : undefined,
+    open: poseJointId !== undefined,
+  });
+  // Its marks at the pose shown: as built (0) until the pose preview (J2) can show another.
   const dialogItems = useDialogItems(dialogOpen, shownBodies);
   const preview = useMemo(() => viewPreview(dialogOpen), [dialogOpen]);
   const canSlicer = platform.openInSlicer !== undefined;
@@ -733,12 +923,13 @@ export function AppShell({
   );
   // A dialog stops a nav tool, like any command.
   useEffect(() => {
-    if (dialogOpen) viewport.getState().setTool(undefined);
-  }, [dialogOpen, viewport]);
+    if (dialogOpen || jointOpen) viewport.getState().setTool(undefined);
+  }, [dialogOpen, jointOpen, viewport]);
   // Feature dialogs belong to the model: opening a sketch (from the timeline, say) ends one.
   useEffect(() => {
     if (mode === 'sketch') dialog?.cancel();
-  }, [mode, dialog]);
+    if (mode === 'sketch') jointDialog?.cancel();
+  }, [mode, dialog, jointDialog]);
 
   // A document change can make a notification's action stale (or valid again): an open
   // history panel asks again (P3-17, ADR-0041).
@@ -866,6 +1057,8 @@ export function AppShell({
     [desktop, recentNames],
   );
   const [markingDialog, setMarkingDialog] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const displayAccess = useMemo(() => storeAccess(viewport), [viewport]);
   // `listing` builds a mode's commands for the Customize Marking Menu dialog: what the mode
   // offers whatever is selected now (Delete, Repeat last and the construction toggle included).
   const commandBuilder = useMemo(
@@ -934,7 +1127,14 @@ export function AppShell({
         viewport,
         browser: { collapsed: browser.collapsed, toggle: browser.toggle },
         file: fileActions,
+        // Named views (ADR-0008's amendment): save opens the nav bar's prompt.
+        views: {
+          list: doc.views.map((v) => ({ id: v.id, name: v.name })),
+          save: () => namedViewSaveStore.getState().show(),
+          restore: (id: ViewId) => viewActions.restore(id),
+        },
         theme: { choice, set: setChoice },
+        settings: { open: () => setSettingsOpen(true) },
         ...(listing
           ? { repeat: { id: m === 'model' ? 'extrude' : 'line' } }
           : lastTool && { repeat: { id: lastTool } }),
@@ -952,6 +1152,40 @@ export function AppShell({
         tutorial: { start: () => startTutorialRef.current() },
         docs: { open: (page: DocsPage) => platform.openDocs(docsPath(page)) },
         macro: { recording: recording !== undefined },
+        componentCount: doc.components?.length ?? 0,
+        pose: poseCommand,
+        ...(m === 'model' && {
+          joints: {
+            checkClearance: () => openJointCheckRef.current(),
+            ...(!(doc.joints ?? []).some((j) => j.type !== 'rigid' && !j.suppressed) && {
+              unavailable: 'Make a revolute or slider joint first.',
+            }),
+          },
+        }),
+        ...(m === 'model' && {
+          components: {
+            ...(selectedComponent !== undefined &&
+              selectedComponentName !== undefined && { selected: { name: selectedComponentName } }),
+            active: activeComponent !== undefined,
+            isolated: isolatedComponent !== undefined,
+            activate: () => {
+              if (selectedComponent === undefined) {
+                notify('info', 'Select the bodies of one component first.');
+                return;
+              }
+              session.getState().activateComponent(selectedComponent);
+            },
+            deactivate: () => session.getState().activateComponent(undefined),
+            isolate: () => {
+              if (selectedComponent === undefined) {
+                notify('info', 'Select the bodies of one component first.');
+                return;
+              }
+              session.getState().isolateComponent(selectedComponent);
+            },
+            exitIsolation: () => session.getState().isolateComponent(undefined),
+          },
+        }),
         ...(desktop &&
           platform.menus && {
             desktop: {
@@ -979,8 +1213,15 @@ export function AppShell({
       remove,
       dialogOpen,
       selectedBodyIds,
+      selectedComponent,
+      selectedComponentName,
+      activeComponent,
+      isolatedComponent,
+      session,
       selection,
       bodyActions,
+      viewActions,
+      doc.views,
       construction,
       stores,
       viewport,
@@ -994,6 +1235,9 @@ export function AppShell({
       markingStyle.radial,
       markingStyle.toggle,
       platform,
+      doc.components?.length,
+      doc.joints,
+      poseCommand,
     ],
   );
   const commands = useMemo(() => commandBuilder(mode, false), [commandBuilder, mode]);
@@ -1082,6 +1326,13 @@ export function AppShell({
             { keys: 'Enter', run: () => dialog.ok() },
           ]
         : []),
+      // The Joint dialog (P6-05) the same way.
+      ...(jointOpen && jointDialog
+        ? [
+            { keys: 'Escape', inFields: true, run: () => jointDialog.cancel() },
+            { keys: 'Enter', run: () => void jointDialog.ok() },
+          ]
+        : []),
       ...commandShortcuts(commands),
       ...keysFor('commandPalette').map((keys) => ({
         keys,
@@ -1143,6 +1394,8 @@ export function AppShell({
       viewport,
       dialogOpen,
       dialog,
+      jointOpen,
+      jointDialog,
     ],
   );
   useShortcuts(shortcuts);
@@ -1161,6 +1414,33 @@ export function AppShell({
     dialog?.cancel();
     session.getState().setTool(OVERHANG_TOOL);
   };
+  /**
+   * Opens the Joint panel (J2) with its Clearance section (P6-05 J3) on a joint: the one asked
+   * for, else the check's, else the only joint that moves. `run` checks it at once (the joint
+   * row's Check Clearance and the command); the browser's Analysis row only opens it.
+   */
+  const openJointCheck = (id?: JointId, run = true) => {
+    if (mode !== 'model') return;
+    const movable = (doc.joints ?? []).filter((j) => j.type !== 'rigid' && !j.suppressed);
+    const joint =
+      id ?? jointCheck.state?.joint ?? (movable.length === 1 ? movable[0]?.id : undefined);
+    if (joint === undefined) {
+      notify(
+        'info',
+        movable.length === 0
+          ? 'Make a revolute or slider joint first.'
+          : "Pick a joint: its row's menu has Check Clearance.",
+      );
+      return;
+    }
+    if (picking) cancelCreateSketch(stores);
+    // The Joint panel and its pose close when a tool runs (J2): end the one that does.
+    session.getState().setTool(undefined);
+    openPose(joint);
+    jointCheck.controller.open(joint);
+    if (run) void jointCheck.controller.start();
+  };
+  openJointCheckRef.current = openJointCheck;
   /** Opens the Wall Thickness panel on the check as it is (the browser's row). */
   const openThickness = () => {
     if (mode !== 'model') return;
@@ -1169,6 +1449,16 @@ export function AppShell({
     session.getState().setTool(THICKNESS_TOOL);
   };
   const run = (tool: ToolId) => {
+    // Any other command ends the Joint dialog (P6-05), as it ends a feature dialog.
+    if (tool !== 'joint') jointDialog?.cancel();
+    // The Joint dialog (P6-05, ADR-0081 §6): no feature, no preview recompute.
+    if (tool === 'joint') {
+      if (mode !== 'model') return;
+      if (picking) cancelCreateSketch(stores);
+      dialog?.cancel();
+      jointActions?.start();
+      return;
+    }
     // The Home tab's file commands (ADR-0079) run what the File menu's items ran.
     if (isFileCommand(tool)) {
       fileActions[FILE_COMMANDS[tool]]?.();
@@ -1219,6 +1509,17 @@ export function AppShell({
       if (mode !== 'model') return;
       const { features, timelineMarker } = store.getState().doc;
       macro.getState().start(timelineMarker, features.length);
+      return;
+    }
+    // P6-05 S3: New Component makes a component of the selected bodies (none: an empty one).
+    if (tool === 'newComponent') {
+      if (mode !== 'model') return;
+      componentActions.newComponent(
+        session
+          .getState()
+          .selection.filter((item) => item.kind === 'body')
+          .map((item) => item.id as BodyId),
+      );
       return;
     }
     if (tool === 'stopMacro') {
@@ -1387,6 +1688,7 @@ export function AppShell({
       kernel: kernel as PluginCommandKernel,
       plugins: platform.plugins,
       store,
+      session,
       selection: selected,
     }).then((outcome) => notify(outcome.ok ? 'success' : 'error', outcome.message));
   };
@@ -1547,7 +1849,11 @@ export function AppShell({
   const calibration = calibrationPoints.length > 0 ? calibrationPoints : cornerPoints;
   // An open feature dialog's picks are what the view shows selected (a revolve's axis line,
   // the bodies in the browser).
-  const shownSelection = dialogItems ?? selection;
+  const jointItems = useMemo(
+    () => (jointOpen && jointDialog ? jointDialog.items(shownBodies) : undefined),
+    [jointOpen, jointDialog, shownBodies],
+  );
+  const shownSelection = jointItems ?? dialogItems ?? selection;
   // A dialog picking sketch points (a hole's) has the view draw every shown sketch's points.
   const pickingSketchPoints = useMemo(() => {
     const field = dialogOpen?.spec.fields.find((f) => f.name === dialogOpen.pickField);
@@ -1568,9 +1874,107 @@ export function AppShell({
         ...hoveredFeatures,
         ...(fixingId ? [fixingId] : []),
         ...pickedChips,
-      ]),
-    [doc.features, featureStatuses, hoveredFeatures, fixingId, pickedChips],
+      ]).concat(
+        // A joint's lost frames (P6-05): of the hovered joint row and the joint being fixed.
+        ghostsOf(
+          (doc.joints ?? []).map((j) => ({
+            id: j.id as unknown as FeatureId,
+            name: j.name,
+            inputs: { a: { kind: 'ref', refs: [j.a.ref] }, b: { kind: 'ref', refs: [j.b.ref] } },
+          })),
+          jointReports,
+          [...(hoveredJoint ? [hoveredJoint] : []), ...(jointOpen?.fix ? [jointOpen.id] : [])],
+        ),
+      ),
+    [
+      doc.features,
+      doc.joints,
+      featureStatuses,
+      jointReports,
+      hoveredFeatures,
+      fixingId,
+      pickedChips,
+      hoveredJoint,
+      jointOpen,
+    ],
   );
+  // Posing (P6-05 J2, ADR-0081 §4): any tool, dialog or sketch puts the joint back, so nothing
+  // is ever modelled against a posed body; a joint that goes away closes its panel.
+  useEffect(() => {
+    if (activeTool !== undefined || dialogOpen || jointOpen || mode === 'sketch') closePose();
+  }, [activeTool, dialogOpen, jointOpen, mode, closePose]);
+  useEffect(() => {
+    if (poseJointId && !doc.joints?.some((j) => j.id === poseJointId)) closePose();
+  }, [doc.joints, poseJointId, closePose]);
+  const jointPose = useStore(viewport, (s) => s.jointPose);
+  const poseJoint = poseJointId ? doc.joints?.find((j) => j.id === poseJointId) : undefined;
+  const poseReport = poseJoint ? jointReports[poseJoint.id] : undefined;
+  const poseRange = useMemo(() => {
+    if (!poseJoint || poseJoint.type === 'rigid') return undefined;
+    const evaluation = evaluateParameters(doc);
+    const unit = poseJoint.type === 'slider' ? 'length' : 'angle';
+    const range = jointRange(poseJoint, (input) => {
+      const r = evaluation.evaluate(input.expr, unit);
+      return r.ok ? r.value : Number.NaN;
+    });
+    return range && Number.isFinite(range.min) && Number.isFinite(range.max) ? range : undefined;
+  }, [doc, poseJoint]);
+  const posing = useMemo(() => {
+    if (!jointPose || jointPose.value === 0) return undefined;
+    const joint = doc.joints?.find((j) => j.id === jointPose.joint);
+    const report = jointReports[jointPose.joint];
+    if (!joint || joint.suppressed || report?.status !== 'ok') return undefined;
+    const matrix = poseMatrix(report, joint, jointPose.value);
+    const members = componentList.map((r) => ({
+      id: r.component.id,
+      bodies: r.bodies.map((b) => b.id),
+    }));
+    const moving = posedBodies(doc, joint, members).filter((id) => id in shownBodies);
+    if (moving.length === 0) return undefined;
+    const value = Number(jointPose.value.toFixed(2));
+    const mover = doc.components?.find((c) => c.id === joint.a.component)?.name ?? joint.name;
+    return {
+      matrices: Object.fromEntries(moving.map((id) => [id, matrix])) as Record<BodyId, Matrix12>,
+      summary: `${joint.name.replace(/\s+/g, '_')}=${value}`,
+      text: `Posed: ${mover} at ${value}${joint.type === 'slider' ? ' mm' : '°'} — the design is unchanged.`,
+    };
+  }, [jointPose, doc, jointReports, componentList, shownBodies]);
+  // The clearance check's marks (P6-05 J3) at the pose shown: its joint's pose, else as built.
+  const { state: checkState, status: checkStatus, result: checkResult } = jointCheck;
+  const checkPose =
+    jointPose && checkState && jointPose.joint === checkState.joint ? jointPose.value : 0;
+  const jointMarks = useMemo(
+    () =>
+      clearanceMarks({ state: checkState, status: checkStatus, result: checkResult }, checkPose),
+    [checkState, checkStatus, checkResult, checkPose],
+  );
+  // The handle stands at the moving side's box centre, as built.
+  const poseCentre = useMemo(() => {
+    if (!poseJoint || poseJoint.type === 'rigid' || !poseReport?.axis) return undefined;
+    const members = componentList.map((r) => ({
+      id: r.component.id,
+      bodies: r.bodies.map((b) => b.id),
+    }));
+    const meshes = posedBodies(doc, poseJoint, members).flatMap((id) => {
+      const mesh = shownBodies[id];
+      return mesh ? [mesh] : [];
+    });
+    return boundsOf(meshes)?.center;
+  }, [poseJoint, poseReport?.axis, doc, componentList, shownBodies]);
+  // The axes the view draws (P6-05): the hovered joint row's and the open Joint dialog's.
+  const jointAxes = useMemo(() => {
+    const shown: JointDrawing[] = [];
+    const add = (id: string, type: JointType, report: JointReport | undefined) => {
+      if (!report?.axis || (report.status !== 'ok' && report.status !== 'warning')) return;
+      shown.push({ id, type, origin: report.axis.origin, direction: report.axis.direction });
+    };
+    const hovered = doc.joints?.find((j) => j.id === hoveredJoint);
+    if (hovered && !hovered.suppressed) add(hovered.id, hovered.type, jointReports[hovered.id]);
+    if (jointOpen && jointOpen.id !== hoveredJoint) {
+      add(jointOpen.id, jointOpen.type, jointOpen.report);
+    }
+    return shown;
+  }, [doc.joints, hoveredJoint, jointReports, jointOpen]);
   const sketches = useMemo(() => {
     const out: SketchDrawing[] = [];
     doc.features.forEach((feature, index) => {
@@ -1661,10 +2065,11 @@ export function AppShell({
     pickedChips: useStore(timelineSelection, (s) => s.chips),
     enabled:
       mode === 'model'
-        ? !picking && !dialogOpen && !projecting && !measuring && !section.choosing
+        ? !picking && !dialogOpen && !jointOpen && !projecting && !measuring && !section.choosing
         : !projecting && sketchPlane !== undefined,
     radial: markingStyle.radial,
     overrides: markingSlots.overrides,
+    placement: placementActions,
     ...(runningTool && { runningTool }),
   });
   // In the model, with no command running, the view picks bodies, sketch curves and
@@ -1672,7 +2077,7 @@ export function AppShell({
   const sessionSelect = useModelSelection(
     session,
     bodies,
-    mode === 'model' && !picking && !dialogOpen,
+    mode === 'model' && !picking && !dialogOpen && !jointOpen,
   );
   // While Measure runs, two plain clicks pick two things to measure between.
   const measureSelect = useMemo(
@@ -1681,13 +2086,15 @@ export function AppShell({
   );
   const modelSelect = section.choosing
     ? undefined
-    : dialogOpen && mode === 'model'
-      ? dialogPlanePick(dialog, dialogOpen)
-        ? undefined
-        : dialog?.select
-      : projecting
-        ? project.select
-        : (measureSelect ?? sessionSelect);
+    : jointOpen && jointDialog && mode === 'model'
+      ? jointDialog.select
+      : dialogOpen && mode === 'model'
+        ? dialogPlanePick(dialog, dialogOpen)
+          ? undefined
+          : dialog?.select
+        : projecting
+          ? project.select
+          : (measureSelect ?? sessionSelect);
   // Body rows show the bodies in the selection (the dialog's picks while one is open).
   const selectedBodies = useMemo(
     () => new Set(shownSelection.filter((i) => i.kind === 'body').map((i) => i.id)),
@@ -1792,6 +2199,7 @@ export function AppShell({
         }}
         viewport={viewport}
         onCustomizeMarking={() => setMarkingDialog(true)}
+        onSettings={() => setSettingsOpen(true)}
       />
       <TutorialCard tutorial={tutorial} />
       <ViewportHint
@@ -1847,6 +2255,19 @@ export function AppShell({
             actions={featureActions}
             bodies={browserBodies}
             bodyActions={bodyActions}
+            viewActions={viewActions}
+            componentActions={componentActions}
+            {...(jointActions && {
+              joints: {
+                rows: jointRowsOf,
+                actions: jointActions,
+                onHover: setHoveredJoint,
+                onCheckClearance: (id) => openJointCheck(id),
+              },
+            })}
+            activeComponent={activeComponent}
+            isolatedComponent={isolatedComponent}
+            placementActions={placementActions}
             selectedBodies={selectedBodies}
             statuses={featureStatuses}
             recomputeFinished={recomputeFinished}
@@ -1892,6 +2313,17 @@ export function AppShell({
                 },
               },
             })}
+            {...(jointCheck.state &&
+              jointCheck.joint && {
+                jointCheck: {
+                  label: `Clearance · ${jointCheck.joint.name}`,
+                  on: jointCheck.state.on,
+                  active: poseJointId === jointCheck.state.joint,
+                  onToggle: () => jointCheck.controller.setOn(!jointCheck.state?.on),
+                  onEdit: () => openJointCheck(undefined, false),
+                  onRemove: () => jointCheck.controller.remove(),
+                },
+              })}
             width={browser.size}
             collapsed={browser.collapsed}
             animate={browser.animate}
@@ -1924,8 +2356,24 @@ export function AppShell({
           >
             <Viewport
               viewport={viewport}
+              namedViews={namedViewEntries}
               bodies={shownBodies}
               meta={bodyMeta}
+              components={componentsSummary(componentList)}
+              joints={jointsSummary(doc, jointReports, componentOfBody)}
+              jointAxes={jointAxes}
+              {...(posing && {
+                posed: posing.matrices,
+                jointPose: posing.summary,
+                poseBar: {
+                  text: posing.text,
+                  onReset: () =>
+                    viewport.getState().setJointPose(jointPose && { ...jointPose, value: 0 }),
+                },
+              })}
+              activeComponent={doc.components?.find((c) => c.id === activeComponent)?.name}
+              isolatedComponent={doc.components?.find((c) => c.id === isolatedComponent)?.name}
+              onExitIsolation={() => session.getState().isolateComponent(undefined)}
               sketches={sketches}
               sketchPlane={sketchPlane}
               planePicker={planePicker}
@@ -1937,7 +2385,7 @@ export function AppShell({
               commandRunning={drawing || picking || projecting || measuring || section.choosing}
               onStopCommand={stopCommand}
               hover={hover}
-              selection={dialogItems ?? selection}
+              selection={jointItems ?? dialogItems ?? selection}
               modelSelect={modelSelect}
               preview={preview}
               viewMenu={viewMenu}
@@ -1951,6 +2399,12 @@ export function AppShell({
               {...(thickness.summary !== undefined && {
                 thickness: { thin: thickness.shading, summary: thickness.summary },
               })}
+              {...(jointCheck.summary !== undefined && {
+                jointCheck: {
+                  summary: jointCheck.summary,
+                  ...(jointMarks.collisions && { collisions: jointMarks.collisions }),
+                },
+              })}
             >
               {dialogOpen && dialog && (
                 <DialogOverlay
@@ -1958,6 +2412,28 @@ export function AppShell({
                   viewport={viewport}
                   settings={doc.settings}
                   bodies={shownBodies}
+                />
+              )}
+              {jointMarks.leader && (
+                <ClearanceOverlay
+                  {...jointMarks.leader}
+                  viewport={viewport}
+                  settings={doc.settings}
+                />
+              )}
+              {poseJoint && poseReport?.status === 'ok' && poseCentre && jointPose && (
+                <JointHandle
+                  viewport={viewport}
+                  joint={poseJoint}
+                  report={poseReport}
+                  centre={poseCentre}
+                  value={jointPose.value}
+                  onChange={(value) =>
+                    viewport.getState().setJointPose({
+                      joint: poseJoint.id,
+                      value: clampPose(poseJoint, poseRange, value),
+                    })
+                  }
                 />
               )}
               {thickness.spot && (
@@ -2058,6 +2534,35 @@ export function AppShell({
           />
         )}
         {dialog && <FeatureDialog controller={dialog} settings={doc.settings} />}
+        {jointDialog && <JointDialog controller={jointDialog} doc={doc} />}
+        {poseJoint && !jointOpen && (
+          <JointPanel
+            doc={doc}
+            joint={poseJoint}
+            report={poseReport}
+            range={poseRange}
+            value={jointPose?.joint === poseJoint.id ? jointPose.value : 0}
+            onPose={(value) => viewport.getState().setJointPose({ joint: poseJoint.id, value })}
+            onClose={closePose}
+            {...(poseJoint.type !== 'rigid' && {
+              clearance: (
+                <ClearanceSection
+                  key={poseJoint.id}
+                  tool={jointCheck}
+                  joint={poseJoint.id}
+                  defaultMin={defaultMinGap(doc)}
+                  settings={doc.settings}
+                  onShow={(value) =>
+                    viewport.getState().setJointPose({
+                      joint: poseJoint.id,
+                      value: clampPose(poseJoint, poseRange, value),
+                    })
+                  }
+                />
+              ),
+            })}
+          />
+        )}
         {sectioning && (
           <SectionPanel
             tool={section}
@@ -2161,6 +2666,7 @@ export function AppShell({
       <MacroDialog
         recorded={recorded}
         store={store}
+        session={session}
         notify={notify}
         onClose={() => setRecorded(undefined)}
       />
@@ -2170,6 +2676,20 @@ export function AppShell({
         apply={apply}
         open={parametersOpen}
         onOpenChange={setParametersOpen}
+      />
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        preferences={platform.preferences}
+        display={displayAccess}
+        doc={doc}
+        theme={choice}
+        onThemeChange={setChoice}
+        markingRadial={markingStyle.radial}
+        onMarkingRadial={markingStyle.toggle}
+        onCustomizeMarking={() => setMarkingDialog(true)}
+        desktop={platform.desktop !== undefined}
+        installedSlicers={platform.installedSlicers}
       />
       <CustomizeMarkingMenu
         open={markingDialog}

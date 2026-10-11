@@ -32,7 +32,7 @@ function fixtures(): [name: string, path: string, doc: ExtrudoDocument][] {
           ExtrudoDocument,
         ];
       });
-  return [...read('benchmarks'), ...read('scripts')];
+  return [...read('benchmarks'), ...read('scripts'), ...read('components')];
 }
 
 /** Runs emitted code to build the design it describes. */

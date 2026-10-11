@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CommandError } from './commands';
 import { createDocument } from './document';
 import { renameDocument, renameFeature } from './document-commands';
+import type { ComponentId } from './ids';
 import { createDocumentStore, createModelStore, createSessionStore } from './stores';
 import { bid, fid, sampleDocument } from './testing';
 
@@ -132,6 +133,19 @@ describe('session store', () => {
     store.getState().setSketchSliceFlip(1);
     store.getState().exitSketch();
     expect(store.getState().sketchSliceFlip).toBeUndefined();
+  });
+
+  it('keeps the active and isolated component across sketch mode (P6-05 S4)', () => {
+    const store = createSessionStore();
+    const lid = 'c1' as ComponentId;
+    store.getState().activateComponent(lid);
+    store.getState().isolateComponent(lid);
+    store.getState().enterSketch(fid('f1'));
+    expect(store.getState()).toMatchObject({ activeComponent: lid, isolatedComponent: lid });
+    store.getState().exitSketch();
+    expect(store.getState()).toMatchObject({ activeComponent: lid, isolatedComponent: lid });
+    store.getState().activateComponent(undefined);
+    expect(store.getState()).toMatchObject({ activeComponent: undefined, isolatedComponent: lid });
   });
 
   it('only notifies when the hovered item really changes', () => {

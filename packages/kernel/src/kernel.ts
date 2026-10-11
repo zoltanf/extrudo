@@ -463,6 +463,24 @@ export interface WrapFrame {
   halfAngle?: number;
 }
 
+/** One pose measured by a `Kernel.proximity` session. */
+export interface ProximityPose {
+  /** mm, capped at the session's search distance. */
+  distance: number;
+  /** The closest points, on the placed moving shape and on the other; absent at the cap. */
+  from?: Vec3;
+  to?: Vec3;
+  /** The faces they are on (moving, other); absent where one solid lies inside the other. */
+  faces?: [number, number];
+}
+
+/** A pose-proximity session (`Kernel.proximity`): close it when done. */
+export interface ProximitySession extends Disposable {
+  /** The distance with `moving` placed by a 3 × 4 matrix (a move or a turn). */
+  pose(matrix: readonly number[]): ProximityPose;
+  close(): void;
+}
+
 export interface KernelStats {
   /** Shapes held in the arena. */
   liveShapes: number;
@@ -1033,6 +1051,58 @@ export class Kernel {
     if (v.length < 6) throw new KernelError("Couldn't find the closest points of these shapes.");
     const at = (k: number) => v[k] as number;
     return { distance, from: [at(0), at(1), at(2)], to: [at(3), at(4), at(5)] };
+  }
+
+  /**
+   * A pose-proximity session (P6-05 J3, ADR-0081's J3 amendment): measures
+   * `moving` placed at many poses against `other` without copying it, each
+   * pose the exact distance `closestPoints` gives for a moved copy, capped at
+   * `search` mm (`search` back with no points means nothing is within it).
+   * The facade keeps both shapes' faces, boxes and meshes between poses.
+   * Close it (or `using` it) when done: an open session holds memory.
+   */
+  proximity(moving: ShapeHandle, other: ShapeHandle, search: number): ProximitySession {
+    this.#solid(moving, 'Measure');
+    this.#solid(other, 'Measure');
+    const f = this.#facade;
+    const id = f.proximityOpen(moving, other, search);
+    if (id <= 0) throw new KernelError(f.lastError() || "Couldn't measure these shapes.");
+    let open = true;
+    const close = () => {
+      if (!open) return;
+      open = false;
+      f.proximityClose(id);
+    };
+    return {
+      pose: (matrix) => {
+        if (!open) throw new KernelError('This proximity session is closed.');
+        if (matrix.length !== 12) throw new KernelError('A pose needs 12 numbers.');
+        f.clearNumbers();
+        for (const value of matrix) f.pushNumber(value);
+        const distance = f.proximityPose(id);
+        if (distance < 0) {
+          throw new KernelError(f.lastError() || "Couldn't measure these shapes.");
+        }
+        const v = this.#copy(Float64Array, f.geometryPtr(), f.geometrySize());
+        if (v.length < 8) return { distance };
+        const at = (k: number) => v[k] as number;
+        const faces: [number, number] | undefined =
+          at(6) >= 0 && at(7) >= 0 ? [at(6), at(7)] : undefined;
+        return {
+          distance,
+          from: [at(0), at(1), at(2)],
+          to: [at(3), at(4), at(5)],
+          ...(faces && { faces }),
+        };
+      },
+      close,
+      [Symbol.dispose]: close,
+    };
+  }
+
+  /** Proximity sessions still open: a leak shows here. */
+  proximitySessions(): number {
+    return this.#facade.proximitySessions();
   }
 
   /**
@@ -1668,24 +1738,38 @@ export class Kernel {
    * (P2-12). The text is ASCII. A mesh body is refused: STEP holds exact
    * B-rep geometry (ADR-0066 §3). A part's `color` (`#rrggbb`) is written as
    * its solid's colour (P4-12, ADR-0034's amendment); with no colour at all
-   * the file is exactly what it was before colours.
+   * the file is exactly what it was before colours. A part's `group` (an
+   * index into `groups`, the groups' names) makes it a component of an
+   * assembly product named after its group (P6-05, ADR-0081 §7): the groups
+   * come first, in order, then the parts in no group; with no part in a group
+   * the file is exactly what it was before groups.
    */
-  writeStep(parts: readonly { shape: ShapeHandle; name: string; color?: string }[]): string {
+  writeStep(
+    parts: readonly { shape: ShapeHandle; name: string; color?: string; group?: number }[],
+    groups: readonly string[] = [],
+  ): string {
     for (const { shape } of parts) this.#solid(shape, 'A STEP file');
+    const grouped = parts.some(
+      ({ group }) => group !== undefined && group >= 0 && group < groups.length,
+    );
     const f = this.#facade;
     f.clearArgs();
     f.clearStepNames();
     f.clearStepColors();
-    for (const { shape, name, color } of parts) {
+    f.clearStepGroups();
+    for (const { shape, name, color, group } of parts) {
       f.pushArg(shape);
       f.pushStepName(stepString(name));
       const rgb = color === undefined ? undefined : hexToRgb(color);
       if (rgb) f.stageStepColor(rgb[0], rgb[1], rgb[2]);
       else f.stageStepColor(-1, -1, -1);
+      if (grouped) f.pushStepGroup(group ?? -1);
     }
+    if (grouped) for (const name of groups) f.pushStepGroupName(stepString(name));
     const size = f.writeStep();
     f.clearStepNames();
     f.clearStepColors();
+    f.clearStepGroups();
     if (size < 0) throw new KernelError(f.lastError() || "Couldn't write the STEP file.");
     try {
       return new TextDecoder('latin1').decode(this.#copy(Uint8Array, f.exportTextPtr(), size));

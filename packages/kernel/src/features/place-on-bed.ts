@@ -6,13 +6,16 @@
  * where the face is on each recompute, so the feature follows the body when
  * an earlier feature changes it. With several faces (P3-17) every body lies
  * on its own face where it is, and an optional spin turns each about the
- * vertical through its face's centre.
+ * vertical through its face's centre. With `carry` (ADR-0081 §3) other
+ * bodies take the same turn and drop as the face's own body, so a component
+ * is placed as one: one face only, and the face's own body may not be
+ * carried.
  */
 import { type BodyId, type PlaceOnBedInputs, placeOnBedFeature } from '@extrudo/core';
 import { KernelError, MeshBodyError, meshBodyMessage } from '../kernel';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { compose, faceDown, type Matrix12, rotation } from './matrix';
-import { isIdentity, transformBodies, withImages } from './transform';
+import { existing, isIdentity, transformBodies, withImages } from './transform';
 
 /** How far a body may reach below the bed before Place on Bed says so (mm). */
 const BELOW = 1e-4;
@@ -28,6 +31,10 @@ export const kernelPlaceOnBed: KernelFeatureDefinition<PlaceOnBedInputs> = {
 function evaluatePlaceOnBed(ctx: EvalContext<PlaceOnBedInputs>): FeatureOutput {
   const refs = ctx.inputs.face.refs;
   if (refs.length === 0) throw new KernelError('Pick the flat face that goes down onto the bed.');
+  const carryRefs = ctx.inputs.carry?.refs ?? [];
+  if (carryRefs.length > 0 && refs.length !== 1) {
+    throw new KernelError('Pick one face to carry other bodies with it.');
+  }
   const several = refs.length > 1;
   const spin = ctx.inputs.spin ? ctx.value('spin') * RADIANS : 0;
 
@@ -70,6 +77,19 @@ function evaluatePlaceOnBed(ctx: EvalContext<PlaceOnBedInputs>): FeatureOutput {
         ? 'The faces are already on the bed: nothing moves.'
         : 'The face is already on the bed: nothing moves.',
     );
+  }
+
+  // Carried bodies take the face's own turn and drop (ADR-0081 §3): a whole
+  // component is placed as one. Only reachable with a single face.
+  if (carryRefs.length > 0) {
+    const owned = new Set(bodies);
+    for (const body of existing(ctx, carryRefs, 'carry along')) {
+      if (owned.has(body)) {
+        throw new KernelError("The face's own body moves anyway: leave it out of Carry along.");
+      }
+      bodies.push(body);
+      matrices.push(matrices[0] as Matrix12);
+    }
   }
 
   using scope = ctx.kernel.scope();

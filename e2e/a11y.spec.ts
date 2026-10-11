@@ -110,6 +110,31 @@ for (const theme of ['dark', 'light'] as const) {
       await audit(page, `${theme} macro dialog`);
       await page.getByRole('button', { name: 'Close', exact: true }).click();
 
+      // The browser with a component holding a body (P6-05).
+      await page
+        .getByRole('complementary', { name: 'Browser' })
+        .locator('[data-body] button')
+        .first()
+        .click();
+      await pickTool(page, 'New Component');
+      await expect(page.getByRole('region', { name: 'Viewport' })).toHaveAttribute(
+        'data-components',
+        /^Component1:/,
+      );
+      await audit(page, `${theme} browser with a component`);
+
+      // The Joint dialog (P6-05 J1): a second, empty component makes it available.
+      await page.keyboard.press('Escape');
+      await pickTool(page, 'New Component');
+      await expect(page.getByRole('region', { name: 'Viewport' })).toHaveAttribute(
+        'data-components',
+        /;Component2:$/,
+      );
+      await page.keyboard.press('j');
+      await expect(page.getByRole('region', { name: 'Joint dialog' })).toBeVisible();
+      await audit(page, `${theme} joint dialog`);
+      await page.getByRole('button', { name: 'Cancel Esc' }).click();
+
       // Parameters.
       await pickTool(page, 'Parameters');
       await expect(page.getByRole('dialog', { name: 'Parameters' })).toBeVisible();
@@ -120,6 +145,15 @@ for (const theme of ['dark', 'light'] as const) {
       await page.keyboard.press('Control+s');
       await expect(page.getByRole('dialog', { name: 'Versions' })).toBeVisible();
       await audit(page, `${theme} versions`);
+      await page.keyboard.press('Escape');
+
+      // Settings (ADR-0082): the first page and the print settings.
+      await page.keyboard.press('Control+,');
+      await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
+      await audit(page, `${theme} settings`);
+      await page.locator('[data-settings-section="printing"]').click();
+      await expect(page.locator('[data-settings-page="printing"]')).toBeVisible();
+      await audit(page, `${theme} settings 3D printing`);
       await page.keyboard.press('Escape');
 
       // Command palette.

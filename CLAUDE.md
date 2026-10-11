@@ -53,7 +53,8 @@ ADR-0031's amendment, 2026-10-06) are done. Phase 6: P6-01 (the Electron
 desktop app, four slices and the Homebrew cask, ADR-0075), P6-02 (the slicer
 launch), P6-03 (the plugin API, four slices, ADR-0077) and P6-07 (auto-project,
 ADR-0074) and P6-06 (the docs site, tutorials and examples, ADR-0080; done
-2026-10-09) are done; P6-04 (i18n) and P6-05 (components) are open.
+2026-10-09) and P6-05 (components and as-built joints, ADR-0081; done
+2026-10-11) are done; P6-04 (i18n) is open.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -73,7 +74,12 @@ sample document in memory until storage exists. ADR-0008 (P0-05) set the
 viewport (`apps/web/src/viewport/`): Z-up world in mm, our own camera
 controller (target + quaternion + size, both projections), mouse presets as
 tables, shader grid, CSS 3D ViewCube, a viewport store with display settings
-as preferences. ADR-0009 (P0-08) set storage (`packages/storage`):
+as preferences. **Named views (ADR-0008's amendment, 2026-10-10)** save and
+restore the camera: core's `saveView`/`updateView`/`removeView` commands over
+`doc.views` (a view camera is `projection`/`position`/`target`/`up`, plus
+`size` for orthographic only; the conversion is `viewport/namedView.ts`), the
+nav bar's Named views menu and the browser's rows restore, update, rename and
+delete (one undo step; restoring is view state, never a command). ADR-0009 (P0-08) set storage (`packages/storage`):
 `ProjectStore` over an IndexedDB index and OPFS files, `.extrudo` zips through
 core's migrations; in the web app, an async `webPlatform()` with projects,
 persistent storage and file download/pick, autosave (`project/autosave.ts`;
@@ -420,8 +426,8 @@ files into `dist/sw.js` and versions it; registration in
 manifest and icons; `scripts/measure-startup.mjs` measures size and
 startup against NFR-02 (all three targets hold with a wide margin). It
 also found that the kernel uses no raw OCCT bindings, so the build's
-binding list is now just `ExtrudoFacade` (built by CI: WASM 20.57 MB raw,
-6.66 MB gzip, 4.63 MB brotli (Node's zlib at its best settings), after
+binding list is now just `ExtrudoFacade` (built by CI: WASM 20.61 MB raw,
+6.67 MB gzip, 4.64 MB brotli (Node's zlib at its best settings), after
 P4-04/P4-05/P4-10's facade methods, P4-12's `DYNAMIC_EXECUTION: 0`, P4-12
 §H3's `integrateVolume`, P4-12's split boolean and `extendFace` (about 10 kB)
 and P4-12's `shellFaces`, `pushWall`/`clearWalls` and the shell's plugs (about
@@ -439,9 +445,13 @@ match (2026-10-07, under 0.01 MB) and the taper review's identity pairing
 conics (`sketchConic`, the Gauss–Kronrod volume and `GCPnts_AbscissaPoint`:
 +75 kB raw, +34 kB brotli; 20.50 / 6.62 / 4.60 MB before) and P4-12's tapered
 threads (`threadFace` on cones, `threadSweep`'s taper, `helixWire`: +339 bytes
-raw, +1.3 kB brotli, 20.57 / 6.66 / 4.63 MB unchanged); the 15.76 MB / 3.69 MB brotli
+raw, +1.3 kB brotli, 20.57 / 6.66 / 4.63 MB unchanged) and P6-05's STEP
+assemblies (`pushStepGroup`, `writeStepAssembly`: +4.9 kB raw, +3 kB brotli;
+20.57 / 6.66 / 4.63 MB before) and P6-05's pose proximity (`proximityOpen`,
+`proximityPose`, `proximityClose`: +32.6 kB raw, +10.1 kB brotli; 20.58 / 6.66
+/ 4.63 MB before, 20.61 / 6.67 / 4.64 MB after); the 15.76 MB / 3.69 MB brotli
 of ADR-0037 was P2-15's; OCCT input hash
-`ec62df7eead4` (release `occt-ec62df7eead4`); **don't
+`a246513b1c48` (release `occt-a246513b1c48`); **don't
 expose an OCCT type in a facade method**, and no raw access from JS: the
 memory test's leak control leaks through the facade).
 ADR-0039 (P2-17) built benchmarks B2 and B3 through the UI
@@ -2126,7 +2136,49 @@ F1 (User Guide has no key), the guide's pictures are recorded by `pnpm demos
 -g guide` (`e2e/guide-shots.spec.ts`, like `-g tutorials`) and the tutorials are
 numbered 1 first-part, 2 storage-box, 3 name-tag, 4 bottle-cap.
 
-ADR-0082 (the owner, 2026-10-10) added **`.f3d` import**, `packages/f3d`
+ADR-0082 (2026-10-10) added **the Settings screen** (`apps/web/src/settings/`, no
+kernel, schema or file-format change): the dialog "Settings" (`SettingsDialog`;
+gear › Settings…, **Ctrl+,** `openSettings` in `commands/keymap.ts`, the Ctrl+K command,
+the home screen's gear) with sections General, View and navigation, Sketch, 3D
+printing, Export and Desktop (`desktop` shown only where `platform.desktop`
+exists; remembered in `settings.section`). Rules a change must keep: **every
+preference key lives in one section of `settings/inventory.ts` or in
+`NOT_IN_SETTINGS` with a reason** (`inventory.test.ts` scans the source for keys,
+`viewport` expanding to its `DEFAULT_SETTINGS` fields, and fails on one that is in
+neither), **the dialog edits the same state as the quick controls** (the project's
+viewport store through `storeAccess`, the preference itself on the home screen
+through `preferencesAccess`; `print.material` through `print/materialStore.ts`,
+one store per `Preferences` that Print Info and the dialog share, so never keep a
+copy of it in component state), and **a preset material's density is an
+override**: `print.material.densities` holds only what a person changed
+(`withDensity`/`withoutDensity`, writing the built-in number removes the entry),
+so an untouched material follows `MATERIALS`; `density` stays the Custom
+material's own (default `1.24`). Print Info's Density field shows for every
+material. Slicer paths are the desktop preference `slicers.paths` main reads per
+call; there is no auto-update switch (the updater has none) and no zoom setting.
+
+ADR-0081 (P6-05, 2026-10-10 to 11) added **components and as-built joints**: a
+component is a named set of bodies (`doc.components[]`: ID, name, display; **no
+transform**: placement stays the timeline's, so Move/Copy/Place Component are
+the Move and Place on Bed features, Place on Bed's `carry` input taking the
+others along), membership is `BodyMeta.component` plus `Feature.component` (the
+stamp of the active component) with `componentOfBody` (stored metadata, else the
+body a piece broke off through the kernel's `origins`, else the stamp) as the one
+rule; **components never enter a reference**. Session state: `activeComponent`
+and `isolatedComponent`, followed by `followComponentSession`; every app insert
+goes through `withActiveComponent` (a source-reading test lists the sites).
+Export: 3MF `<components>` and STEP assemblies behind "Keep components
+together"; Print Info's rows per component (`PrintInfo.components`, split by
+`BodyEntry.component`). **Joints** (`doc.joints[]`: rigid, revolute, slider; side
+`a` moves, `b` stays; frames are ordinary `GeomRef`s) are resolved at the marker
+after the walk (`ModelState.joints`, uncached); **the pose is view state**
+(`viewport.jointPose`, reset by any tool, posed bodies unpickable) and the
+clearance check is `KernelApi.checkJoint` on existing kernel calls
+(`packages/kernel/src/joints/`, ADR-0081's Results). The API has `d.component` and
+`d.joint` (a suppressed joint stored only as `true`), the emitter writes them
+and the CLI has `check --joints`. Guide: `docs/guide/components.md`.
+
+ADR-0083 (the owner, 2026-10-10) added **`.f3d` import**, `packages/f3d`
 (`@extrudo/f3d`, pure TS; deps `@extrudo/api`, core, sketch, `fflate`,
 `fzstd`; kernel test-only). `readF3d` decodes the archive into plain data
 (parameters, timeline, sketches, extrudes with their profile regions,
@@ -2143,7 +2195,7 @@ main one at a time): Phases 0, 1, 2, 3 and 5 are complete, Phase 4 is complete
 apart from **P4-12's remaining backlog** (the items `docs/03-roadmap.md` still
 lists as open: a chamfer's handles on curved faces or edges, shell openings
 through curved faces, a point where two curved faces and a plane meet, and the
-rest), and Phase 6 has P6-04 (i18n) and P6-05 (components) left (P6-06 is done,
+rest), and Phase 6 has P6-04 (i18n) left (P6-05 and P6-06 are done,
 2026-10-09). **P6-04 waits for the owner's walk through the UI** (owner,
 2026-10-07). The repository is public (2026-10-04); the first public
 release is **v0.4.0** (no v0.3.0 tag): the owner does the slicer check and a
@@ -2186,7 +2238,7 @@ must never depend on the GPL packages.
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for the v0.4.0 release |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved). ADR-0067: hardening before Phase 5 (no 'unsafe-eval', threads, mass properties, heap growth, sweep placement). ADR-0068: the public document API (`@extrudo/api`). ADR-0069: the headless CLI (`extrudo`). ADR-0070: the Script feature (QuickJS sandbox, `@extrudo/script`). ADR-0071: OpenSCAD import (`.scad` attachments as mesh bodies, `@extrudo/openscad`, async preparation and runtime WASM caching). ADR-0072: wall-thickness check. ADR-0073: macro recording (the document-to-script emitter, `@extrudo/api`; Record, Stop and the Macro dialog in the app). ADR-0074: auto-project (a body edge or vertex a sketch tool snaps to is projected into the sketch on the fly; `viewport.autoProject`/`autoProjectFace`; its amendment, 2026-10-06, has the constraint and dimension tools pick body geometry directly; its 2026-10-07 amendment pins a pending to its own undo step, refuses curved edges to picking tools and revives a deleted projection). ADR-0076: WebGL fallback (software rendering notice, no-WebGL panel, error boundaries, context loss, desktop SwiftShader switch). ADR-0075: the Electron desktop app (electron-vite main/preload/renderer built from the web app's own source; the `@extrudo/storage/node` store; `desktopPlatform` through one typed preload bridge, `shared/ipc.ts`; slice 2 adds the native menus from the command registry, the `.extrudo` association and recent files; slice 3 unsigned installers; slice 4 auto-update through `electron-updater` and `Platform.updates`) ADR-0077: the plugin API (`.extrudo-plugin` files: a strict manifest and one module; the `plugin` feature with `in:<name>` inputs, expanded like a Script through `ScriptHost.runPlugin`; the design carries the plugin as an attachment; slice 2 the installed plugins (`PluginStore`, the Plugins dialog) and commands run in the worker; slice 3 the generated dialogs, the Create menu's Plugins items, Update to <version>). ADR-0078: model progress notice and the model cache (pending body rows before the first recompute). ADR-0079: one top bar with the tabs, a Home tab instead of the File menu, toolbars that fit the window (the pure `fitToolbar`). ADR-0080: docs site, tutorials and examples (collections under `/docs/`, one sidebar, asset emission, generated tool pages, examples registry, tutorials as e2e specs). |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved). ADR-0067: hardening before Phase 5 (no 'unsafe-eval', threads, mass properties, heap growth, sweep placement). ADR-0068: the public document API (`@extrudo/api`). ADR-0069: the headless CLI (`extrudo`). ADR-0070: the Script feature (QuickJS sandbox, `@extrudo/script`). ADR-0071: OpenSCAD import (`.scad` attachments as mesh bodies, `@extrudo/openscad`, async preparation and runtime WASM caching). ADR-0072: wall-thickness check. ADR-0073: macro recording (the document-to-script emitter, `@extrudo/api`; Record, Stop and the Macro dialog in the app). ADR-0074: auto-project (a body edge or vertex a sketch tool snaps to is projected into the sketch on the fly; `viewport.autoProject`/`autoProjectFace`; its amendment, 2026-10-06, has the constraint and dimension tools pick body geometry directly; its 2026-10-07 amendment pins a pending to its own undo step, refuses curved edges to picking tools and revives a deleted projection). ADR-0076: WebGL fallback (software rendering notice, no-WebGL panel, error boundaries, context loss, desktop SwiftShader switch). ADR-0075: the Electron desktop app (electron-vite main/preload/renderer built from the web app's own source; the `@extrudo/storage/node` store; `desktopPlatform` through one typed preload bridge, `shared/ipc.ts`; slice 2 adds the native menus from the command registry, the `.extrudo` association and recent files; slice 3 unsigned installers; slice 4 auto-update through `electron-updater` and `Platform.updates`) ADR-0077: the plugin API (`.extrudo-plugin` files: a strict manifest and one module; the `plugin` feature with `in:<name>` inputs, expanded like a Script through `ScriptHost.runPlugin`; the design carries the plugin as an attachment; slice 2 the installed plugins (`PluginStore`, the Plugins dialog) and commands run in the worker; slice 3 the generated dialogs, the Create menu's Plugins items, Update to <version>). ADR-0078: model progress notice and the model cache (pending body rows before the first recompute). ADR-0079: one top bar with the tabs, a Home tab instead of the File menu, toolbars that fit the window (the pure `fitToolbar`). ADR-0080: docs site, tutorials and examples (collections under `/docs/`, one sidebar, asset emission, generated tool pages, examples registry, tutorials as e2e specs). ADR-0081: components and as-built joints (named sets of bodies with no transform, the active and isolated component, 3MF and STEP grouping, rigid, revolute and slider joints with a pose preview and a clearance check). ADR-0082: the Settings screen (a dialog of the person's preferences in sections, the preference inventory, per-material density overrides in `print.material`, shared print settings store). ADR-0083: reading `.f3d` files (`@extrudo/f3d`: our own decoder of the archive, object stream and ASM face tags; the timeline mapped onto `@extrudo/api` with a report of what was left out). |
 
 ## Stack summary
 
@@ -2362,6 +2414,16 @@ them. Notes further down that name a machine apply to that machine only.
   `data-ready` (first frame drawn; the viewport is a lazy chunk). WebGL runs
   on SwiftShader in headless Chromium (unless `E2E_GPU=1`) and renders the
   same in the Arch and Ubuntu images.
+- **Named views e2e** (`e2e/named-views.spec.ts`, ADR-0008's amendment): the
+  nav bar's "Named views" button opens the menu (its save prompt is the
+  dialog "Save current view", a textbox "Name" prefilled "View1" and
+  Save/Cancel); restore is an animated move, so wait for
+  `data-camera-direction`/`-size` to settle (the attributes are rounded to
+  1e-3, so exact string compares are within 1e-3). The browser's "Named
+  views" folder is closed by default — `openViewsFolder` in the spec only
+  clicks it when `aria-expanded` is `false` (a second click closes it).
+  Rows are buttons named after the view inside the `complementary` "Browser"
+  (`data-view` on the row); their right-click menu is `menu` "<name> menu".
 - Biome needs `css.parser.tailwindDirectives` for Tailwind's `@theme` and
   `@custom-variant`, and the icon sources are exempt from
   `noSvgWithoutTitle` (they are decorative; controls carry the label).
@@ -3917,6 +3979,19 @@ them. Notes further down that name a machine apply to that machine only.
   the cache file in OPFS (`projects/<id>/model-cache.json`, written after the
   recompute, fire and forget) before reloading. Under reduced motion
   `getAnimations({ subtree: true })` on the icon is empty (pass it as a string).
+- **Settings e2e** (`e2e/settings.spec.ts`, ADR-0082): Ctrl+, opens `dialog`
+  "Settings" (also the gear's menuitem "Settings…", whose accessible name ends with
+  the key); sections are `[data-settings-section="general|view|sketch|printing|export|desktop"]`
+  (buttons in `[data-settings-nav]`; at under 640 px a combobox "Section" instead) and the
+  page is `[data-settings-page="<id>"]`. Fields are named after what they are: textboxes
+  "PLA density", "PETG density", "ABS density", "TPU density", "Custom density" (`exact`:
+  "Walls", "Line width", "Infill", "Price per kg"), buttons "Reset PLA density" (only while
+  changed) and "Reset 3D printing to defaults", radios "Light"/"Dark"/"System" (theme),
+  checkboxes "Radial right-click menu", "Snap to grid", "Auto-project body edges"…, comboboxes
+  "Mouse buttons", "Projection", "Visual style", "Default format", "Default resolution". The
+  number fields write as you type (`fill`, then `blur()`); Print Info's textbox "Density" shows
+  the effective density for **every** material. Preferences are localStorage, so a reload keeps
+  them; the desktop section isn't in the web build.
 - **Help links e2e** (`e2e/help-links.spec.ts`, P6-06 S9): the docs host is
   answered locally with `context.route('https://extrudo.org/**', …)` (no
   request leaves the machine; `route.abort()` would replace the popup's URL
@@ -3927,6 +4002,21 @@ them. Notes further down that name a machine apply to that machine only.
   Reference" → `…/docs/tools/`; the Extrude tile's tooltip shows "F1 for more"
   and holds no `a`/`button`. The Help menu's "Tutorials" item also matches a
   plain 'Tutorial' name, so specs pick the tour's item with `/^Tutorial$/`.
+- **Components e2e** (`e2e/components.spec.ts`, `components-placement.spec.ts`;
+  P6-05): the Viewport region's `data-components` ("Lid:Body1,Body2" per
+  component), `data-active-component`, `data-isolated`, `data-ghost-bodies`; the
+  browser's `[data-component]` rows (`data-component-display`) and
+  `[data-body]` rows (`data-body-component`); New Component is
+  `pickTool(page, 'New Component')`, a rename F2 on the row's button; the
+  isolation bar is `[data-isolation-bar]`; Print Info's per-component rows are
+  `[data-print-component="<name>"]` (`print-aids.spec.ts`, "Loose bodies" for
+  the rest).
+- **Joints e2e** (`e2e/joints.spec.ts`, P6-05 J1–J3): the Viewport's
+  `data-joints` ("Hinge:revolute:ok:<component>:1,0,0"), `data-joint-pose`,
+  `data-posed-bodies`, `data-joint-check`, `[data-joint-handle]`,
+  `[data-pose-bar]`; joint rows are `[data-joint]` with `data-joint-status` and
+  `data-joint-type` under their moving component. The fixture is
+  `fixtures/components/hinge.extrudo`; a whole-turn check takes 2-3 s there.
 - **Emboss e2e** (`e2e/emboss.spec.ts`, P4-04): the tool is `emboss` in Create's
   menu (`menuitem` "Emboss", no key); its dialog is the region "Emboss dialog" /
   "Edit Emboss1 dialog" with the buttons "Profiles" and "Face" (`exact: true`:

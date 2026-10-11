@@ -35,6 +35,7 @@ function printInfo(choice?: Partial<MaterialChoice>, state?: PrintInfo['state'])
     state: state ?? 'ready',
     bodies,
     volume: 8000,
+    components: [],
     estimate: printEstimate(bodies, {
       density,
       diameter: full.diameter,
@@ -90,6 +91,27 @@ describe('the Print Info panel', () => {
     // Walls in the width: 4 walls of 0.6 mm cover 5760 mm³, and 15 % of the rest is 336.
     const walls = html(printInfo({ walls: 4, lineWidth: '0.6' }));
     expect(walls).toMatch(/data-print-row="printed"[^>]*>6\.10 cm³/);
+  });
+
+  it('lists a component and the loose bodies under unchanged totals (P6-05 S9)', () => {
+    const info = printInfo();
+    const half = printEstimate([{ volume: 4000, area: 1200 }], {
+      density: info.density as number,
+      diameter: info.choice.diameter,
+      walls: 2,
+      lineWidth: 0.45,
+      infill: 15,
+      price: 25,
+    });
+    const rows = [
+      { id: 'cmp1' as never, name: 'Lid', count: 1, estimate: half },
+      { id: undefined, name: 'Loose bodies', count: 1, estimate: half },
+    ];
+    const out = html({ ...info, components: rows });
+    expect(out).toContain('data-print-component="Lid"');
+    expect(out).toContain('data-print-component="Loose bodies"');
+    expect(out).toMatch(/data-print-row="volume"[^>]*>8\.00 cm³/);
+    expect(html(info)).not.toContain('data-print-component');
   });
 
   it('says what it cannot do, and asks for a density it can weigh', () => {

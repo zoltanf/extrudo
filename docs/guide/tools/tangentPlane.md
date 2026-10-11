@@ -2,7 +2,7 @@
 title: Tangent Plane
 section: Tools
 category: Construct
-order: 53
+order: 55
 ---
 
 # Tangent Plane

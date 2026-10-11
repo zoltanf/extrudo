@@ -1,11 +1,13 @@
 import type { BodyId, BodyMeta } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
+import type { Matrix12 } from '@extrudo/kernel/matrix';
 import { useEffect, useMemo } from 'react';
 import { BufferAttribute, BufferGeometry, Color, type Plane } from 'three';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import type { SectionClip } from '../section/clip';
+import { usePose } from './Bodies';
 import { edgeSegments } from './bodyGeometry';
 import { ghostBodies } from './bodyGhosts';
 import { clipPlanes } from './clipPlanes';
@@ -24,6 +26,7 @@ export function GhostBodies({
   color,
   edge,
   section,
+  posed,
 }: {
   bodies: Readonly<Record<BodyId, BodyMesh>>;
   meta: Record<BodyId, BodyMeta>;
@@ -32,11 +35,13 @@ export function GhostBodies({
   /** The edge colour; the ghost's edges are drawn at a quarter of its alpha. */
   edge: Rgba;
   section?: { clips: readonly SectionClip[] };
+  /** Ghosts of posed bodies are drawn posed too (P6-05 J2). */
+  posed?: Readonly<Record<BodyId, Matrix12>>;
 }) {
   const ghosts = useMemo(() => ghostBodies(bodies, meta), [bodies, meta]);
   const planes = useMemo(() => clipPlanes(section?.clips) ?? null, [section?.clips]);
   return ghosts.map(([id, mesh]) => (
-    <GhostBody key={id} mesh={mesh} color={color} edge={edge} planes={planes} />
+    <GhostBody key={id} mesh={mesh} color={color} edge={edge} planes={planes} pose={posed?.[id]} />
   ));
 }
 
@@ -51,12 +56,15 @@ function GhostBody({
   color,
   edge,
   planes,
+  pose,
 }: {
   mesh: BodyMesh;
   color: Rgba;
   edge: Rgba;
   planes: Plane[] | null;
+  pose: Matrix12 | undefined;
 }) {
+  const group = usePose(pose);
   const faces = useMemo(() => {
     const g = new BufferGeometry();
     g.setAttribute('position', new BufferAttribute(mesh.positions, 3));
@@ -89,7 +97,7 @@ function GhostBody({
   const lines = useMemo(() => new LineSegments2(edges, edgeMaterial), [edges, edgeMaterial]);
 
   return (
-    <group>
+    <group ref={group}>
       <mesh geometry={faces}>
         <meshStandardMaterial
           color={faceColor}

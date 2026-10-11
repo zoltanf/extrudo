@@ -11,7 +11,7 @@
 import { FORMAT_NAME, FORMAT_VERSION } from './format';
 import { FILE_INPUT_MEDIA_TYPES, MEDIA_TYPES } from './media-types';
 import { PARAMETER_NAME } from './names';
-import { GeomRefSchema, Vec3Schema } from './refs';
+import { type GeomRefKind, GeomRefSchema, Vec3Schema } from './refs';
 import { attachmentFontId, SketchDataSchema } from './sketch/schema';
 import { z } from './zod';
 
@@ -21,10 +21,12 @@ export * from './refs';
 import {
   AttachmentIdSchema,
   BodyIdSchema,
+  ComponentIdSchema,
   ConfigurationIdSchema,
   DocumentIdSchema,
   FeatureIdSchema,
   GroupIdSchema,
+  JointIdSchema,
   ParameterIdSchema,
   ViewIdSchema,
 } from './ids';
@@ -183,6 +185,12 @@ export const FeatureSchema = z.strictObject({
   /** `false` hides the feature's own geometry (a sketch's curves) in the view (P1-12). Absent means shown. */
   visible: z.boolean().optional(),
   inputs: FeatureInputsSchema,
+  /**
+   * The component the feature's **new** bodies join (P6-05, ADR-0081 §2 rule
+   * 3): the app stamps the active component when it inserts the feature, and
+   * editing the feature never changes it. Nothing in the recompute reads it.
+   */
+  component: ComponentIdSchema.optional(),
 });
 export type Feature = z.infer<typeof FeatureSchema>;
 
@@ -208,18 +216,37 @@ export const BodyMetaSchema = z.strictObject({
    * the body hidden (ADR-0050's lenient reading).
    */
   ghost: z.boolean().optional(),
+  /**
+   * The component the body belongs to (P6-05, ADR-0081 §2); absent: the body
+   * is loose. Membership lives here, so a body is in at most one component.
+   */
+  component: ComponentIdSchema.optional(),
 });
 export type BodyMeta = z.infer<typeof BodyMetaSchema>;
+
+/**
+ * A named view's camera (ADR-0008's amendment, 2026-10-10): the camera's pose
+ * as a renderer keeps it. `position` is the camera's own point (a
+ * perspective camera sits `distance` from the target, so position and target
+ * together also fix the view's `size`); `up` is the camera's up direction.
+ * `size` is stored only for orthographic views: the orthographic camera sits
+ * far back at a distance that depends on the zoom, so position, target and up
+ * alone don't say how tall the view is (the viewport's visible height through
+ * the target, in mm).
+ */
+export const ViewCameraSchema = z.strictObject({
+  projection: z.enum(['perspective', 'orthographic']),
+  position: Vec3Schema,
+  target: Vec3Schema,
+  up: Vec3Schema,
+  size: z.number().positive().optional(),
+});
+export type ViewCamera = z.infer<typeof ViewCameraSchema>;
 
 export const NamedViewSchema = z.strictObject({
   id: ViewIdSchema,
   name: z.string().min(1),
-  camera: z.strictObject({
-    projection: z.enum(['perspective', 'orthographic']),
-    position: Vec3Schema,
-    target: Vec3Schema,
-    up: Vec3Schema,
-  }),
+  camera: ViewCameraSchema,
 });
 export type NamedView = z.infer<typeof NamedViewSchema>;
 
@@ -274,6 +301,84 @@ export const GroupSchema = z.strictObject({
 });
 export type Group = z.infer<typeof GroupSchema>;
 
+/**
+ * A component (P6-05, ADR-0081 §1-2): a named, user-made set of bodies that
+ * shows, hides, exports and is placed as a unit. It stores **no transform**:
+ * where its bodies are is where the timeline put them (§3), and membership
+ * lives on each body's metadata (`BodyMeta.component`), not in a list here.
+ * Nothing in the recompute reads components, so an older reader that leaves
+ * them out opens the same geometry as loose bodies.
+ */
+export const ComponentSchema = z.strictObject({
+  id: ComponentIdSchema,
+  /** Unique in the design, compared case-insensitively ("Lid" and "lid" are one name). */
+  name: z.string().min(1).max(100),
+  /** The same pair rule as `BodyMeta`: `ghost` only as `true`, only with `visible: false`. */
+  visible: z.boolean(),
+  ghost: z.boolean().optional(),
+});
+export type Component = z.infer<typeof ComponentSchema>;
+
+/**
+ * One side of a joint (P6-05, ADR-0081 §4): the geometry picked on it, by its
+ * persistent name like any feature's reference, and the component it is on.
+ * The component is metadata the app reads and checks; it never enters the
+ * reference (§5).
+ */
+export const JointFrameSchema = z.strictObject({
+  /** The side's component. */
+  component: ComponentIdSchema,
+  /** The picked face, edge, axis, sketch line, vertex or body (`JOINT_FRAME_KINDS`). */
+  ref: GeomRefSchema,
+});
+export type JointFrame = z.infer<typeof JointFrameSchema>;
+
+/**
+ * An as-built joint between two components (P6-05, ADR-0081 §4): made where
+ * the parts already are, so nothing moves when it is made. Side `a` moves,
+ * side `b` stays; the axis or direction is read from `b`'s frame. The joint
+ * moves nothing stored: posing it is view state and its clearance check is a
+ * kernel query, so the recompute never reads joints for geometry.
+ */
+export const JointSchema = z.strictObject({
+  id: JointIdSchema,
+  /** Unique in the design, compared case-insensitively. */
+  name: z.string().min(1).max(100),
+  type: z.enum(['rigid', 'revolute', 'slider']),
+  /** The side that moves. */
+  a: JointFrameSchema,
+  /** The side that stays. */
+  b: JointFrameSchema,
+  /** The lower limit: an angle (revolute) or a length (slider); 0 is as built. */
+  min: ExprInputSchema.optional(),
+  /** The upper limit, in the same unit. A revolute without both limits turns a whole turn. */
+  max: ExprInputSchema.optional(),
+  /** Reverses the positive direction (stored only as `true`). */
+  flip: z.literal(true).optional(),
+  /** Kept, but not resolved, posed or checked (stored only as `true`). */
+  suppressed: z.literal(true).optional(),
+});
+export type Joint = z.infer<typeof JointSchema>;
+
+/**
+ * Reference kinds a joint frame may be, per type (ADR-0081 §4): a revolute's
+ * axis is a round face's, a circular edge's, a straight edge's, an axis or a
+ * sketch line; a slider's direction a flat face's normal, a straight edge's,
+ * an axis or a sketch line; a rigid joint takes any face, edge, vertex or body.
+ */
+export const JOINT_FRAME_KINDS: Readonly<Record<Joint['type'], readonly GeomRefKind[]>> = {
+  rigid: ['face', 'edge', 'vertex', 'body'],
+  revolute: ['face', 'edge', 'axis', 'sketchEntity'],
+  slider: ['face', 'edge', 'axis', 'sketchEntity'],
+};
+
+/** The unit a joint type's limits take: an angle for a revolute, a length for a slider. */
+export const JOINT_LIMIT_UNIT: Readonly<Record<Joint['type'], UnitKind | undefined>> = {
+  rigid: undefined,
+  revolute: 'angle',
+  slider: 'length',
+};
+
 export const DocumentSchema = z
   .strictObject({
     format: z.literal(FORMAT_NAME),
@@ -291,6 +396,10 @@ export const DocumentSchema = z
     timelineMarker: z.int().min(0),
     /** Folds of the timeline (P4-09, ADR-0065 §1); absent when there are none. */
     groups: z.array(GroupSchema).optional(),
+    /** Components, in browser order (P6-05, ADR-0081); absent when there are none. */
+    components: z.array(ComponentSchema).optional(),
+    /** Joints between components, in browser order (P6-05, ADR-0081 §4); absent when there are none. */
+    joints: z.array(JointSchema).optional(),
     bodies: z.record(BodyIdSchema, BodyMetaSchema),
     views: z.array(NamedViewSchema),
     /** Named value sets for the customizer (P4-07); absent when there are none. */
@@ -321,9 +430,16 @@ export const DocumentSchema = z
       ['configurations', 'id', (doc.configurations ?? []).map((c) => c.id)],
       // "Small" and "small" are the same configuration to a reader (P4-07).
       ['configurations', 'name', (doc.configurations ?? []).map((c) => c.name), configurationKey],
+      ['components', 'id', (doc.components ?? []).map((c) => c.id)],
+      // "Lid" and "lid" are the same component to a reader (ADR-0081 §2).
+      ['components', 'name', (doc.components ?? []).map((c) => c.name), (n) => n.toLowerCase()],
+      ['joints', 'id', (doc.joints ?? []).map((j) => j.id)],
+      ['joints', 'name', (doc.joints ?? []).map((j) => j.name), (n) => n.toLowerCase()],
     ];
     for (const [list, key, values, fold] of unique) reportDuplicates(ctx, list, key, values, fold);
     reportGroups(ctx, doc);
+    reportComponentRefs(ctx, doc);
+    reportJoints(ctx, doc);
     // A slider range isn't a constraint (ADR-0059 §1), but min above max is a
     // mistake rather than a choice, so the document says so.
     doc.parameters.forEach((p, index) => {
@@ -372,6 +488,94 @@ function reportFiles(ctx: z.RefinementCtx, doc: z.infer<typeof DocumentSchema>):
       });
     }
   }
+}
+
+/**
+ * Every `component` a body or a feature names must exist, and a component's
+ * `ghost` comes only with `visible: false` (P6-05, ADR-0081 §2). The issue
+ * names the body, the feature or the component, so a file's error points at it.
+ */
+function reportComponentRefs(ctx: z.RefinementCtx, doc: z.infer<typeof DocumentSchema>): void {
+  const known = new Set<string>((doc.components ?? []).map((c) => c.id));
+  const missing = (id: string) => `names component ${id}, which the design doesn't have`;
+  for (const [id, meta] of Object.entries(doc.bodies)) {
+    if (meta.component === undefined || known.has(meta.component)) continue;
+    ctx.addIssue({
+      code: 'custom',
+      path: ['bodies', id, 'component'],
+      message: missing(meta.component),
+    });
+  }
+  doc.features.forEach((feature, index) => {
+    if (feature.component === undefined || known.has(feature.component)) return;
+    ctx.addIssue({
+      code: 'custom',
+      path: ['features', index, 'component'],
+      message: missing(feature.component),
+    });
+  });
+  (doc.components ?? []).forEach((component, index) => {
+    if (!component.ghost || !component.visible) return;
+    ctx.addIssue({
+      code: 'custom',
+      path: ['components', index, 'ghost'],
+      message: 'is set on a visible component (a ghost is stored with visible: false)',
+    });
+  });
+}
+
+/**
+ * A joint's two sides name components the design has, and different ones; its
+ * limits come only with a revolute or a slider, in the unit the type takes; and
+ * each frame is a kind the type reads (P6-05, ADR-0081 §4). The issue names the
+ * joint's part, so a file's error points at it.
+ */
+function reportJoints(ctx: z.RefinementCtx, doc: z.infer<typeof DocumentSchema>): void {
+  const components = new Map((doc.components ?? []).map((c) => [c.id as string, c.name]));
+  (doc.joints ?? []).forEach((joint, index) => {
+    for (const side of ['a', 'b'] as const) {
+      const frame = joint[side];
+      if (!components.has(frame.component)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['joints', index, side, 'component'],
+          message: `names component ${frame.component}, which the design doesn't have`,
+        });
+      }
+      if (!JOINT_FRAME_KINDS[joint.type].includes(frame.ref.kind)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['joints', index, side, 'ref', 'kind'],
+          message: `is ${frame.ref.kind}, which a ${joint.type} joint doesn't take`,
+        });
+      }
+    }
+    if (joint.a.component === joint.b.component && components.has(joint.a.component)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['joints', index, 'b', 'component'],
+        message: `both sides are in ${components.get(joint.a.component)}: pick a frame on another component`,
+      });
+    }
+    const unit = JOINT_LIMIT_UNIT[joint.type];
+    for (const limit of ['min', 'max'] as const) {
+      const input = joint[limit];
+      if (!input) continue;
+      if (unit === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['joints', index, limit],
+          message: 'is set on a rigid joint, which has no limits',
+        });
+      } else if ((input.unit ?? 'length') !== unit) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['joints', index, limit],
+          message: `is ${input.unit ?? 'length'}, but a ${joint.type} joint's limits are ${unit === 'angle' ? 'angles' : 'lengths'}`,
+        });
+      }
+    }
+  });
 }
 
 /**

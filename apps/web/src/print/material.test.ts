@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   checkPrintField,
+  chosenDensityExpression,
   costText,
   DEFAULT_MATERIAL,
   DEFAULT_PRINT,
+  densityExpression,
+  isDensityOverridden,
   lengthText,
   MATERIALS,
   type PrintSettings,
@@ -12,6 +15,8 @@ import {
   resolveMaterialChoice,
   volumeText,
   weightText,
+  withDensity,
+  withoutDensity,
 } from './material';
 
 /** The settings P4-12's defaults describe: 2 walls of 0.45 mm, 15 % infill, 25 per kg. */
@@ -174,5 +179,39 @@ describe('print estimates', () => {
     expect(costText(3.5)).toBe('3.50');
     expect(costText(0)).toBe('0.00');
     expect(costText(0.004)).toBe('0.004');
+  });
+
+  describe('density overrides (ADR-0082)', () => {
+    it('follows the built-in density until a person changes it', () => {
+      const choice = resolveMaterialChoice();
+      expect(densityExpression(choice, 'pla')).toBe('1.24');
+      expect(isDensityOverridden(choice, 'pla')).toBe(false);
+      expect(choice.densities).toBeUndefined();
+    });
+
+    it('stores only the overrides, and the built-in value removes one', () => {
+      const own = withDensity(resolveMaterialChoice(), 'pla', '1.3');
+      expect(own.densities).toEqual({ pla: '1.3' });
+      expect(densityExpression(own, 'pla')).toBe('1.3');
+      expect(densityExpression(own, 'petg')).toBe('1.27');
+      expect(chosenDensityExpression(own)).toBe('1.3');
+      // Writing the built-in number back is no override.
+      expect(withDensity(own, 'pla', '1.24').densities).toBeUndefined();
+      expect(withoutDensity(own, 'pla').densities).toBeUndefined();
+      // One override stays when another is reset.
+      const two = withDensity(own, 'abs', '1.05');
+      expect(withoutDensity(two, 'pla').densities).toEqual({ abs: '1.05' });
+    });
+
+    it('reads a stored preference with overrides, and drops malformed ones', () => {
+      const read = resolveMaterialChoice({
+        material: 'petg',
+        densities: { pla: '1.3', petg: 5, nylon: '1.1', tpu: ' ' } as never,
+      });
+      expect(read.densities).toEqual({ pla: '1.3' });
+      expect(chosenDensityExpression(read)).toBe('1.27');
+      // The custom material's own density is separate, and starts at PLA's.
+      expect(chosenDensityExpression(resolveMaterialChoice({ material: 'custom' }))).toBe('1.24');
+    });
   });
 });

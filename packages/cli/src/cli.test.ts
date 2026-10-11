@@ -51,6 +51,13 @@ async function fixture(name: string, as = name): Promise<string> {
   return path;
 }
 
+/** A copy of a component fixture (`fixtures/components/`) in the temporary directory. */
+async function componentFixture(name: string): Promise<string> {
+  const path = join(dir, `${name}.extrudo`);
+  await copyFile(join(ROOT, 'fixtures/components', `${name}.extrudo`), path);
+  return path;
+}
+
 /**
  * Every case spawns Node processes that load the OCCT WASM, which is well over
  * Vitest's 5 s default when everything runs in parallel; each gets a minute.
@@ -343,6 +350,77 @@ describe('a design with an OpenSCAD import (P5-04, ADR-0071)', () => {
       expect(check.volume).toBeCloseTo(50 * 50 * 10 - hole, 1);
     },
   );
+});
+
+describe('components and joints (P6-05 S8)', () => {
+  it('lists components under info and exports one as a grouped 3MF', SPAWNING, async () => {
+    const design = await componentFixture('lid-box');
+    const text = await extrudo(['info', design]);
+    expect(text.code).toBe(0);
+    expect(text.stdout).toContain('Components:');
+    expect(text.stdout).toContain('Lid');
+
+    const json = await extrudo(['info', design, '--json']);
+    const report = JSON.parse(json.stdout);
+    const lid = report.components.find((c: { name: string }) => c.name === 'Lid');
+    const box = report.components.find((c: { name: string }) => c.name === 'Box');
+    expect(lid.bodies.length).toBe(2);
+    expect(box.bodies.length).toBe(1);
+    // Every body names the component it is in.
+    expect(report.bodies.every((b: { component?: unknown }) => b.component)).toBe(true);
+
+    // --component Lid writes a 3MF with one object of two parts.
+    const out = join(dir, 'lid.3mf');
+    const exported = await extrudo([
+      'export',
+      design,
+      '--format',
+      '3mf',
+      '--component',
+      'Lid',
+      '--out',
+      out,
+    ]);
+    expect(exported.code).toBe(0);
+    const grouped = read3mf(new Uint8Array(await readFile(out)));
+    expect(grouped.items.length).toBe(1);
+    expect(grouped.items[0]?.meshes.length).toBe(2);
+
+    // --flat writes one object per body.
+    const flatOut = join(dir, 'lid-flat.3mf');
+    await extrudo([
+      'export',
+      design,
+      '--format',
+      '3mf',
+      '--component',
+      'Lid',
+      '--flat',
+      '--out',
+      flatOut,
+    ]);
+    const flat = read3mf(new Uint8Array(await readFile(flatOut)));
+    expect(flat.items.length).toBe(2);
+  });
+
+  it('is 2 about a component the design does not have', SPAWNING, async () => {
+    const design = await componentFixture('lid-box');
+    const failed = await extrudo(['export', design, '--format', '3mf', '--component', 'Nope']);
+    expect(failed.code).toBe(2);
+    expect(failed.stderr).toContain('component');
+  });
+
+  it('checks a joint clearance, and is 2 under the minimum', { timeout: 180_000 }, async () => {
+    const design = await componentFixture('hinge');
+    const ok = await extrudo(['check', design, '--joints']);
+    expect(ok.code).toBe(0);
+    expect(ok.stdout).toContain('Hinge');
+    expect(ok.stdout).toContain('no collision');
+
+    const under = await extrudo(['check', design, '--joints', '--min-gap', '0.5mm']);
+    expect(under.code).toBe(2);
+    expect(under.stderr + under.stdout).toContain('under the minimum');
+  });
 });
 
 describe('the command line itself', () => {

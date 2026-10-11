@@ -72,7 +72,11 @@ function context(features: Feature[] = []): DialogContext {
   for (const feature of features) {
     t.store.getState().dispatch(insertFeature({ feature, index: 0 }));
   }
-  return { doc: t.store.getState().doc, bodies: { [BOX]: namedBoxMesh() } };
+  return {
+    doc: t.store.getState().doc,
+    featureId: 'F' as FeatureId,
+    bodies: { [BOX]: namedBoxMesh() },
+  };
 }
 
 const manipulatorContext = (base: DialogContext): ManipulatorContext => ({

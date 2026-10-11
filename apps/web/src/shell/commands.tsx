@@ -5,6 +5,8 @@
  * Ctrl+K palette and the S toolbox, so a command found in search runs the
  * same way as its key.
  */
+
+import type { ViewId } from '@extrudo/core';
 import {
   Bell,
   BookOpen,
@@ -23,11 +25,13 @@ import {
   RefreshCw,
   Repeat2,
   ScanEye,
+  Settings,
   Shapes,
   Sun,
   SunMoon,
   Trash2,
   Undo2,
+  Video,
   Wrench,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -99,11 +103,35 @@ export interface CommandContext {
    * it again. Absent until one has run, or when it isn't offered in this mode.
    */
   repeat?: { id: string };
+  /** How many components the design has (P6-05): a joint needs two. */
+  componentCount?: number;
+  /**
+   * Joints (P6-05 J3): Check Joint Clearance opens the Clearance panel on the check's joint or
+   * the only one that moves. Model mode only; `unavailable` with no joint to check.
+   */
+  joints?: { checkClearance(): void; unavailable?: string };
+  /** Opens the Joint panel on a joint (P6-05 J2): the hovered row's, else the only one. */
+  pose?: { run(): void };
   /** Macro recording (P5-05): whether one runs; Record and Stop show accordingly. */
   macro?: { recording: boolean };
+  /**
+   * Components (P6-05 S4, ADR-0081 §6): the component the selected bodies all share (absent
+   * when they share none), and whether one is active or isolated. Model mode only.
+   */
+  components?: {
+    selected?: { name: string };
+    active: boolean;
+    isolated: boolean;
+    activate(): void;
+    deactivate(): void;
+    isolate(): void;
+    exitIsolation(): void;
+  };
   /** The right-click menu's style (P3-11): the ring, or one plain list. */
   markingMenu?: { radial: boolean; toggle(): void; customize?: () => void };
   theme: { choice: ThemeChoice; set(choice: ThemeChoice): void };
+  /** Opens the Settings dialog (ADR-0082). */
+  settings?: { open(): void };
   /**
    * Tools that work because a feature dialog is registered for them
    * (P2-05), even while `shell/tools.ts` still names the task that brings them.
@@ -127,6 +155,16 @@ export interface CommandContext {
     quit(): void;
     checkForUpdates?(): void;
     clearRecent?(): void;
+  };
+  /**
+   * The document's named views (ADR-0008's amendment, 2026-10-10): "Save
+   * Current View…" opens the nav bar's save prompt, and one command per view
+   * restores it. Saving and restoring camera views is never a key.
+   */
+  views?: {
+    list: readonly { id: ViewId; name: string }[];
+    save(): void;
+    restore(id: ViewId): void;
   };
 }
 
@@ -247,6 +285,7 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
         }
         const command = toolCommand(id, where, ctx);
         if (id === 'importDrawing' && ctx.mode !== 'sketch') add(noDrawing(ctx, command));
+        else if (id === 'joint' && (ctx.componentCount ?? 0) < 2) add(noJoint(ctx, command));
         else if (MODEL_ONLY.has(id) && ctx.mode === 'sketch') add(modelOnly(ctx, command));
         else add(command);
       }
@@ -293,6 +332,28 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
       });
     }
   }
+  if (ctx.mode === 'model' && ctx.joints) {
+    const { checkClearance, unavailable } = ctx.joints;
+    plain('checkJointClearance', 'Check Joint Clearance', 'Solid › Component', checkClearance, {
+      keywords: 'Solid Component joint hinge slider clearance gap collision print in place',
+      ...(unavailable && { unavailable }),
+    });
+  }
+  if (ctx.mode === 'model' && ctx.components) {
+    const c = ctx.components;
+    const group = 'Solid › Component';
+    const needs = c.selected ? undefined : 'Select the bodies of one component first.';
+    plain('activateComponent', 'Activate Component', group, c.activate, {
+      keywords: 'component active new features go into',
+      ...(needs && { unavailable: needs }),
+    });
+    if (c.active) plain('deactivateComponent', 'Deactivate Component', group, c.deactivate);
+    plain('isolateComponent', 'Isolate Component', group, c.isolate, {
+      keywords: 'component show only',
+      ...(needs && { unavailable: needs }),
+    });
+    if (c.isolated) plain('exitIsolation', 'Exit Isolation', group, c.exitIsolation);
+  }
   plain('undo', 'Undo', 'Edit', ctx.undo, { icon: icon(Undo2) });
   plain('redo', 'Redo', 'Edit', ctx.redo, { icon: icon(Redo2) });
   // Repeat last (P3-11): the last tool again, when this mode offers it and it can run.
@@ -323,6 +384,19 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
       keywords: 'View standard orientation camera',
     });
   }
+  // Named views (ADR-0008's amendment): save the camera now, or restore one.
+  if (ctx.views) {
+    plain('saveNamedView', 'Save Current View…', 'View', ctx.views.save, {
+      icon: icon(Video),
+      keywords: 'View named save camera recall orientation store',
+    });
+    for (const v of ctx.views.list) {
+      plain(`namedView:${v.id}`, `View: ${v.name}`, 'View', () => ctx.views?.restore(v.id), {
+        icon: icon(Video),
+        keywords: `View named restore camera ${v.name}`,
+      });
+    }
+  }
   plain(
     'toggleBrowser',
     ctx.browser.collapsed ? 'Show Browser' : 'Hide Browser',
@@ -330,6 +404,19 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     ctx.browser.toggle,
     { icon: icon(PanelLeft), keywords: 'Panels browser tree' },
   );
+  if (ctx.settings) {
+    plain('openSettings', 'Settings…', 'Panels', ctx.settings.open, {
+      icon: icon(Settings),
+      inFields: true,
+      keywords: 'Panels settings preferences options theme density material units mouse navigation',
+    });
+  }
+  if (ctx.pose && ctx.mode === 'model' && (ctx.componentCount ?? 0) >= 2) {
+    plain('poseJoint', 'Pose Joint', 'Solid › Component', ctx.pose.run, {
+      icon: icon(Circle),
+      keywords: 'Solid component joint pose move swing slide preview hinge slider revolute',
+    });
+  }
   if (ctx.markingMenu) {
     plain(
       'markingMenuStyle',
@@ -453,6 +540,12 @@ function noDrawing(ctx: CommandContext, command: AppCommand): AppCommand {
     unavailable: DRAWING_IMPORT_UNAVAILABLE,
     run: () => ctx.notify('info', DRAWING_IMPORT_UNAVAILABLE),
   };
+}
+
+/** A joint with fewer than two components (ADR-0081 §4): the command with the reason. */
+function noJoint(ctx: CommandContext, command: AppCommand): AppCommand {
+  const reason = 'Make two components first.';
+  return { ...command, unavailable: reason, run: () => ctx.notify('info', reason) };
 }
 
 /** Whether a tool runs: built, or made ready by a registered feature dialog (P2-05). */

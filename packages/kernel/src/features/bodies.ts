@@ -28,7 +28,7 @@ const SAME_VOLUME = 1e-6;
  * evaluator's shape scope: split shapes go back to the scope; bodies passed
  * on unchanged (the handles in `ctx.bodies`) are never split.
  */
-export function splitSolids<T extends Pick<FeatureOutput, 'bodies' | 'names'>>(
+export function splitSolids<T extends Pick<FeatureOutput, 'bodies' | 'names' | 'origins'>>(
   ctx: EvalContext,
   scope: ShapeScope,
   output: T,
@@ -37,6 +37,10 @@ export function splitSolids<T extends Pick<FeatureOutput, 'bodies' | 'names'>>(
   if (!output.bodies || !output.names) return output;
   const before = new Set(ctx.bodies.values());
   const pieces = new Map<BodyId, { id: BodyId; shape: ShapeHandle; names: TopoNames }[]>();
+  // Where a piece came from (P6-05, ADR-0081 §2): only a fresh piece of a body
+  // that existed before this feature gets an origin; a copy or a new body does
+  // not. An evaluator may already have recorded some (Split Body's mesh sides).
+  const origins = new Map<BodyId, BodyId>(output.origins ?? []);
   const used = new Set(output.bodies.keys());
   let next = 0;
   const freshId = (): BodyId => {
@@ -74,8 +78,13 @@ export function splitSolids<T extends Pick<FeatureOutput, 'bodies' | 'names'>>(
         const faces = kernel.isMesh(solid)
           ? [i === 0 ? (table.faces[0] ?? '') : splitName(table.faces[0] ?? '', i + 1)]
           : kernel.locate(solid, whole, 'face').map((at) => table.faces[at] ?? '');
+        const pieceId = i === 0 ? id : freshId();
+        // A piece of a body that existed before this feature keeps its source
+        // (P6-05, ADR-0081 §2); the largest keeps the body's own ID, so only
+        // the fresh pieces are recorded.
+        if (i > 0 && ctx.bodies.has(id)) origins.set(pieceId, id);
         return {
-          id: i === 0 ? id : freshId(),
+          id: pieceId,
           shape: scope.keep(solid),
           names: deriveNames(faces, kernel.describe(solid)),
         };
@@ -103,7 +112,7 @@ export function splitSolids<T extends Pick<FeatureOutput, 'bodies' | 'names'>>(
       names.set(piece.id, piece.names);
     }
   }
-  return { ...output, bodies, names };
+  return { ...output, bodies, names, origins };
 }
 
 /**

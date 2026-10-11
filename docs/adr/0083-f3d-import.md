@@ -1,4 +1,4 @@
-# ADR-0082: Reading Fusion `.f3d` files
+# ADR-0083: Reading Fusion `.f3d` files
 
 - **Status:** Accepted, 2026-10-10 (the owner: read `.f3d` directly, with our
   own TypeScript decoder; the app's import first, then coverage). It replaces

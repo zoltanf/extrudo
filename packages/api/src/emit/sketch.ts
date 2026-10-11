@@ -43,14 +43,19 @@ import { refExpr } from './refs';
 const DEFAULT_FONT_ID = 'inter-regular@1';
 
 /** The `design.sketch(…)` call for a selected sketch feature. */
-export function sketchExpr(feature: Feature, name: string | undefined, ctx: EmitContext): Expr {
+export function sketchExpr(
+  feature: Feature,
+  name: string | undefined,
+  componentVar: string | undefined,
+  ctx: EmitContext,
+): Expr {
   const view = ctx.sketchOf.get(feature.id);
   if (!view) throw new Error(`No stored sketch for ${feature.id}.`);
   const { plane, data } = view;
   const result = sketchBody(data, ctx);
   const planeExpr = refExpr(plane, ctx);
   const args: Expr[] = [planeExpr, { t: 'arrow', params: '(k)', body: result.body }];
-  const options = sketchOptions(name, result.construction);
+  const options = sketchOptions(name, result.construction, componentVar);
   if (options) args.push(options);
   return call('design.sketch', args);
 }
@@ -373,9 +378,14 @@ function withOptions(args: Expr[], options: [string, Expr][]): Expr[] {
   return options.length > 0 ? [...args, obj(options)] : args;
 }
 
-/** The `d.sketch` options: its name, and whether every curve is construction. */
-function sketchOptions(name: string | undefined, construction: boolean): Expr | undefined {
+/** The `d.sketch` options: its name, its component and whether every curve is construction. */
+function sketchOptions(
+  name: string | undefined,
+  construction: boolean,
+  componentVar: string | undefined,
+): Expr | undefined {
   const props: [string, Expr][] = [];
+  if (componentVar !== undefined) props.push(['component', raw(componentVar)]);
   if (name !== undefined) props.push(['name', str(name)]);
   if (construction) props.push(['construction', bool(true)]);
   return props.length > 0 ? obj(props) : undefined;

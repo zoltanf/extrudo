@@ -2,7 +2,7 @@
 title: Chamfer
 section: Tools
 category: Modify
-order: 40
+order: 42
 ---
 
 # Chamfer

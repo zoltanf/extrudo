@@ -2,21 +2,28 @@ import {
   type BodyId,
   bodyDisplay,
   CANVAS_TYPE,
+  type Component,
+  type ComponentId,
   type DocumentStore,
   type Feature,
   type FeatureId,
   type FeatureStatus,
   isConstructionType,
   isFeatureVisible,
+  type JointId,
+  type NamedView,
 } from '@extrudo/core';
 import {
   Box,
+  Boxes,
   ChevronDown,
   ChevronRight,
+  Copy,
   Eye,
   EyeDashed,
   EyeOff,
   FileDown,
+  Move3d,
   Palette,
   PanelLeftClose,
   PanelLeftOpen,
@@ -27,6 +34,7 @@ import {
   Video,
 } from 'lucide-react';
 import {
+  type DragEvent,
   type HTMLAttributes,
   type KeyboardEvent,
   type MouseEvent,
@@ -36,19 +44,26 @@ import {
   useState,
 } from 'react';
 import { useStore } from 'zustand';
+import type { ComponentActions } from '../components/componentActions';
+import { type ComponentRow, componentRows } from '../components/componentRows';
+import type { PlacementActions } from '../components/placement';
 import {
   ContextMenu,
   IconButton,
   MenuItem,
   MenuSeparator,
+  MenuSub,
   Popover,
   TextInput,
   ToolIcon,
   Tooltip,
 } from '../design-system';
+import type { JointActions } from '../joints/jointActions';
+import type { JointRow } from '../joints/jointRows';
+import { PLANE_AXIS_COLOR, TOKENS } from '../viewport/colors';
 import { ProgressCube } from '../viewport/ModelProgress';
 import { activeFeatureCount } from '../viewport/progressRules';
-import { ORIGIN_ITEMS, type ViewportStore } from '../viewport/store';
+import { ORIGIN_ITEMS, type OriginItem, type ViewportStore } from '../viewport/store';
 import {
   BODY_COLORS,
   BODY_OPACITIES,
@@ -64,6 +79,7 @@ import {
 import { FeatureMenuItems, RenameField } from './FeatureMenu';
 import type { FeatureActions } from './featureActions';
 import { type FeatureProblem, featureProblem, StatusGlyph } from './featureStatus';
+import type { ViewActions } from './namedViews';
 import { toolForFeature } from './tools';
 
 export const BROWSER_ID = 'browser-panel';
@@ -84,6 +100,25 @@ export interface BrowserPanelProps {
   bodies: readonly BodyEntry[];
   /** Rename, show/hide, colour, opacity and remove bodies (P2-08). */
   bodyActions: BodyActions;
+  /** Rename, show/hide, select and delete components (P6-05, ADR-0081 §6). */
+  componentActions: ComponentActions;
+  /**
+   * Joints (P6-05 J1, ADR-0081 §6): each component lists the joints it moves after its bodies.
+   * Absent: no joint rows (and no New Joint… in a component's menu).
+   */
+  joints?: {
+    rows(component: ComponentId): JointRow[];
+    actions: JointActions;
+    /** The pointer on a joint's row (`undefined` when it leaves): the view draws its axis. */
+    onHover(id: JointId | undefined): void;
+    /** A revolute's or slider's Check Clearance (P6-05 J3): opens the check and runs it. */
+    onCheckClearance?(id: JointId): void;
+  };
+  /** The active and the isolated component (session state, P6-05 S4). */
+  activeComponent?: ComponentId;
+  isolatedComponent?: ComponentId;
+  /** Move, copy and place a component as one (P6-05 S5, ADR-0081 §3). */
+  placementActions?: PlacementActions;
   /** Bodies in the model selection: their rows show selected. */
   selectedBodies?: ReadonlySet<string>;
   /**
@@ -103,10 +138,14 @@ export interface BrowserPanelProps {
   overhang?: AnalysisEntry;
   /** The wall-thickness check (P5-06), while there is one: a row in the same folder. */
   thickness?: AnalysisEntry;
+  /** A joint's clearance check (P6-05 J3), while there is one: a row in the same folder. */
+  jointCheck?: AnalysisEntry;
   /** The kernel's verdict per feature: rows show ✕ or ⚠ as the timeline's chips do (P3-17). */
   statuses?: Readonly<Record<string, FeatureStatus | undefined>>;
   /** A recompute has finished since the page opened (default: yes). Until then an empty Bodies folder is "computing" (ADR-0078). */
   recomputeFinished?: boolean;
+  /** Restore, update, rename and delete the named views (ADR-0008's amendment, 2026-10-10). */
+  viewActions: ViewActions;
 }
 
 /** One row of the Analysis folder: a view analysis with its eye, its panel and its removal. */
@@ -142,14 +181,21 @@ export function BrowserPanel({
   actions,
   bodies,
   bodyActions,
+  componentActions,
+  joints,
+  activeComponent,
+  isolatedComponent,
+  placementActions,
   selectedBodies = NO_BODIES,
   onPickBody,
   onHoverBody,
   section,
   overhang,
   thickness,
+  jointCheck,
   statuses = NO_STATUSES,
   recomputeFinished = true,
+  viewActions,
 }: BrowserPanelProps) {
   const doc = useStore(store, (s) => s.doc);
   const origin = useStore(viewport, (s) => s.origin);
@@ -167,7 +213,9 @@ export function BrowserPanel({
   const canvasShown = canvasFeatures.some(({ feature }) => isFeatureVisible(feature));
   const originShown = ORIGIN_ITEMS.some(({ value }) => origin[value]);
   const sketchesShown = sketches.some(({ feature }) => isFeatureVisible(feature));
-  const bodiesShown = bodies.some(({ meta }) => meta.visible);
+  const bodiesShown = bodies.some(({ display }) => display === 'shown');
+  const grouped = componentRows(doc, bodies);
+  const components = doc.components ?? [];
 
   // The panel floats over the view's left edge in frosted glass (like the nav bar), so the
   // view never resizes. Collapsed, it slides out to the left, then turns invisible
@@ -202,9 +250,13 @@ export function BrowserPanel({
               </Leaf>
             </Folder>
             <Folder label="Named views" icon={<Video size={14} />} defaultOpen={false}>
-              <Leaf muted>
-                {doc.views.length === 0 ? 'No named views yet' : `${doc.views.length} views`}
-              </Leaf>
+              {doc.views.length === 0 ? (
+                <Leaf muted>No named views yet</Leaf>
+              ) : (
+                doc.views.map((view) => (
+                  <ViewLeaf key={view.id} view={view} actions={viewActions} />
+                ))
+              )}
             </Folder>
             <Folder
               label="Origin"
@@ -223,6 +275,14 @@ export function BrowserPanel({
                   label={`${label} menu`}
                   trigger={
                     <Leaf>
+                      {PLANE_SWATCH[value] && (
+                        <span
+                          aria-hidden
+                          data-plane-swatch={value}
+                          className="size-2.5 shrink-0 rounded-sm"
+                          style={{ background: `var(${PLANE_SWATCH[value]})` }}
+                        />
+                      )}
                       <span className={origin[value] ? '' : 'text-muted'}>{label}</span>
                       <EyeToggle
                         name={label}
@@ -353,15 +413,17 @@ export function BrowserPanel({
                 ))}
               </Folder>
             )}
-            {(section || overhang || thickness) && (
+            {(section || overhang || thickness || jointCheck) && (
               <Folder
                 label="Analysis"
                 icon={<ToolIcon name="section" category="inspect" size={16} />}
                 eye={{
-                  visible: Boolean(section?.on || overhang?.on || thickness?.on),
+                  visible: Boolean(section?.on || overhang?.on || thickness?.on || jointCheck?.on),
                   onToggle: () => {
-                    const on = Boolean(section?.on || overhang?.on || thickness?.on);
-                    for (const entry of [section, overhang, thickness]) {
+                    const on = Boolean(
+                      section?.on || overhang?.on || thickness?.on || jointCheck?.on,
+                    );
+                    for (const entry of [section, overhang, thickness, jointCheck]) {
                       if (entry && entry.on === on) entry.onToggle();
                     }
                   },
@@ -388,12 +450,23 @@ export function BrowserPanel({
                     rowAttribute={{ 'data-thickness-row': thickness.on ? 'on' : 'off' }}
                   />
                 )}
+                {jointCheck && (
+                  <AnalysisRow
+                    name="clearance"
+                    entry={jointCheck}
+                    rowAttribute={{ 'data-joint-check-row': jointCheck.on ? 'on' : 'off' }}
+                  />
+                )}
               </Folder>
             )}
             <Folder
               label="Bodies"
               icon={<Box size={14} />}
               count={bodies.length}
+              dropTarget={{
+                name: 'bodies',
+                onDrop: (ids) => bodyActions.moveToComponent(ids, null),
+              }}
               menu={
                 bodies.length > 0 && bodyActions.exportBodies ? (
                   <MenuItem
@@ -417,7 +490,7 @@ export function BrowserPanel({
                   : undefined
               }
             >
-              {bodies.length === 0 ? (
+              {bodies.length === 0 && components.length === 0 ? (
                 bodiesEmptyState({
                   listed: bodies.length,
                   finished: recomputeFinished,
@@ -437,21 +510,48 @@ export function BrowserPanel({
                   <Leaf muted>No bodies yet</Leaf>
                 )
               ) : (
-                bodies.map((body) =>
-                  body.pending ? (
-                    <PendingBodyLeaf key={body.id} body={body} actions={bodyActions} />
-                  ) : (
-                    <BodyLeaf
-                      key={body.id}
-                      body={body}
-                      selected={selectedBodies.has(body.id)}
-                      selection={selectedBodies}
-                      actions={bodyActions}
-                      onPick={onPickBody}
-                      onHover={onHoverBody}
+                <>
+                  {grouped.rows.map((row) => (
+                    <ComponentFolder
+                      key={row.component.id}
+                      row={row}
+                      actions={componentActions}
+                      active={row.component.id === activeComponent}
+                      isolated={isolatedComponent}
+                      placement={placementActions}
+                      bodyActions={bodyActions}
+                      {...(joints && { joints })}
+                      renderBody={(body) => (
+                        <BodyLeaf
+                          key={body.id}
+                          body={body}
+                          selected={selectedBodies.has(body.id)}
+                          selection={selectedBodies}
+                          actions={bodyActions}
+                          components={components}
+                          onPick={onPickBody}
+                          onHover={onHoverBody}
+                        />
+                      )}
                     />
-                  ),
-                )
+                  ))}
+                  {grouped.loose.map((body) =>
+                    body.pending ? (
+                      <PendingBodyLeaf key={body.id} body={body} actions={bodyActions} />
+                    ) : (
+                      <BodyLeaf
+                        key={body.id}
+                        body={body}
+                        selected={selectedBodies.has(body.id)}
+                        selection={selectedBodies}
+                        actions={bodyActions}
+                        components={components}
+                        onPick={onPickBody}
+                        onHover={onHoverBody}
+                      />
+                    ),
+                  )}
+                </>
               )}
             </Folder>
           </ul>
@@ -632,11 +732,67 @@ function PendingBodyLeaf({ body, actions }: { body: BodyEntry; actions: BodyActi
   );
 }
 
+/**
+ * A named view's row (ADR-0008's amendment, 2026-10-10): a click restores the
+ * saved camera (an animated move, not a command), F2 or Rename renames it,
+ * Update to Current View overwrites its camera, Delete removes it.
+ */
+function ViewLeaf({ view, actions }: { view: NamedView; actions: ViewActions }) {
+  const [renaming, setRenaming] = useState(false);
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'F2') setRenaming(true);
+    else if (event.key === 'Delete' || event.key === 'Backspace') actions.remove(view.id);
+    else if (event.key === 'Enter') actions.restore(view.id);
+    else return;
+    // Handled here: not a shortcut for the view as well.
+    event.preventDefault();
+  };
+  return (
+    <ContextMenu
+      label={`${view.name} menu`}
+      disabled={renaming}
+      trigger={
+        <Leaf data-view={view.id}>
+          {renaming ? (
+            <RenameField
+              name={view.name}
+              label={`Rename ${view.name}`}
+              className="h-6 min-w-0 flex-1 px-1"
+              onCommit={(name) => actions.rename(view.id, name)}
+              onDone={() => setRenaming(false)}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => actions.restore(view.id)}
+              onKeyDown={onKeyDown}
+              className="min-w-0 truncate rounded-input text-left focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              {view.name}
+            </button>
+          )}
+        </Leaf>
+      }
+    >
+      <MenuItem onSelect={() => actions.restore(view.id)}>Restore</MenuItem>
+      <MenuItem onSelect={() => actions.update(view.id)}>Update to Current View</MenuItem>
+      <MenuItem icon={<Pencil size={14} />} shortcut="F2" onSelect={() => setRenaming(true)}>
+        Rename
+      </MenuItem>
+      <MenuSeparator />
+      <MenuItem icon={<Trash2 size={14} />} shortcut="Del" onSelect={() => actions.remove(view.id)}>
+        Delete
+      </MenuItem>
+    </ContextMenu>
+  );
+}
+
 function BodyLeaf({
   body,
   selected,
   selection,
   actions,
+  components,
   onPick,
   onHover,
 }: {
@@ -644,13 +800,19 @@ function BodyLeaf({
   selected: boolean;
   selection: ReadonlySet<string>;
   actions: BodyActions;
+  /** The design's components, for the menu's "Move to Component". */
+  components: readonly Component[];
   onPick?(id: BodyId, toggle: boolean): void;
   onHover?(id: BodyId | undefined): void;
 }) {
   const [renaming, setRenaming] = useState(false);
   const [appearance, setAppearance] = useState(false);
   const { id, meta } = body;
-  const display = bodyDisplay(meta);
+  // The eye acts on the body's own state; the row shows what is drawn (a component's
+  // hidden or ghost state wins, ADR-0081 §6).
+  const own = bodyDisplay(meta);
+  const display = body.display;
+  const dragIds = () => (selected && selection.size > 1 ? ([...selection] as BodyId[]) : [id]);
   const remove = () =>
     actions.remove(selected && selection.size > 1 ? ([...selection] as BodyId[]) : [id]);
   const onKeyDown = (event: KeyboardEvent) => {
@@ -667,6 +829,12 @@ function BodyLeaf({
     <Leaf
       data-body={id}
       data-body-display={display}
+      data-body-component={body.component}
+      draggable
+      onDragStart={(event: DragEvent) => {
+        event.dataTransfer?.setData(BODIES_MIME, JSON.stringify(dragIds()));
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+      }}
       // Selection is the name button's aria-pressed: a list item takes no aria-selected (axe).
       data-selected={selected || undefined}
       // A mesh body (P4-06, ADR-0066 §3) says so, next to its "Mesh" tag.
@@ -720,8 +888,8 @@ function BodyLeaf({
       {!renaming && (
         <BodyEyeToggle
           name={meta.name}
-          display={display}
-          onToggle={() => actions.setDisplay([id], nextBodyDisplay(display))}
+          display={own}
+          onToggle={() => actions.setDisplay([id], nextBodyDisplay(own))}
         />
       )}
     </Leaf>
@@ -735,17 +903,17 @@ function BodyLeaf({
       >
         Rename
       </MenuItem>
-      {display !== 'shown' && (
+      {own !== 'shown' && (
         <MenuItem icon={<Eye size={14} />} onSelect={() => actions.setDisplay([id], 'shown')}>
           Show Body
         </MenuItem>
       )}
-      {display !== 'ghost' && (
+      {own !== 'ghost' && (
         <MenuItem icon={<EyeDashed size={14} />} onSelect={() => actions.setDisplay([id], 'ghost')}>
           Show as Ghost
         </MenuItem>
       )}
-      {display !== 'hidden' && (
+      {own !== 'hidden' && (
         <MenuItem icon={<EyeOff size={14} />} onSelect={() => actions.setDisplay([id], 'hidden')}>
           Hide Body
         </MenuItem>
@@ -753,6 +921,21 @@ function BodyLeaf({
       <MenuItem icon={<Palette size={14} />} onSelect={() => setAppearance(true)}>
         Appearance…
       </MenuItem>
+      <MenuSub label="Move to Component" icon={<Boxes size={14} />}>
+        {components
+          .filter((c) => c.id !== body.component)
+          .map((c) => (
+            <MenuItem key={c.id} onSelect={() => actions.moveToComponent(dragIds(), c.id)}>
+              {c.name}
+            </MenuItem>
+          ))}
+        <MenuItem onSelect={() => actions.newComponent(dragIds())}>New Component…</MenuItem>
+        {body.component !== undefined && (
+          <MenuItem onSelect={() => actions.moveToComponent(dragIds(), null)}>
+            No Component
+          </MenuItem>
+        )}
+      </MenuSub>
       {actions.exportBodies && (
         <MenuItem
           icon={<FileDown size={14} />}
@@ -957,15 +1140,309 @@ function BodyEyeToggle({
   );
 }
 
+/** What a body row drag carries: a JSON list of body IDs (P6-05 S3). */
+const BODIES_MIME = 'application/x-extrudo-bodies';
+
+/** A component in the Bodies folder (ADR-0081 §6): a nested folder of its live bodies. */
+function ComponentFolder({
+  row,
+  actions,
+  active,
+  isolated,
+  placement,
+  bodyActions,
+  joints,
+  renderBody,
+}: {
+  row: ComponentRow;
+  actions: ComponentActions;
+  active: boolean;
+  isolated: ComponentId | undefined;
+  placement?: PlacementActions;
+  bodyActions: BodyActions;
+  joints?: BrowserPanelProps['joints'];
+  renderBody(body: BodyEntry): ReactNode;
+}) {
+  const { component, bodies, display } = row;
+  const id = component.id;
+  const jointRows = joints?.rows(id) ?? [];
+  return (
+    <Folder
+      label={component.name}
+      icon={<Boxes size={14} />}
+      count={bodies.length}
+      nested
+      attrs={{
+        'data-component': id,
+        'data-component-display': display,
+        'data-component-active': active ? '' : undefined,
+        'data-isolated-out': isolated !== undefined && isolated !== id ? '' : undefined,
+      }}
+      marker={active}
+      dimmed={isolated !== undefined && isolated !== id}
+      dropTarget={{
+        name: `component:${id}`,
+        onDrop: (ids) => bodyActions.moveToComponent(ids, id),
+      }}
+      rename={{ onCommit: (name) => actions.rename(id, name) }}
+      onSelect={(mode) => actions.select(id, mode)}
+      displayEye={{
+        display,
+        onToggle: () => actions.setDisplay([id], nextBodyDisplay(display)),
+      }}
+      menu={
+        <>
+          {display !== 'shown' && (
+            <MenuItem icon={<Eye size={14} />} onSelect={() => actions.setDisplay([id], 'shown')}>
+              Show Component
+            </MenuItem>
+          )}
+          {display !== 'ghost' && (
+            <MenuItem
+              icon={<EyeDashed size={14} />}
+              onSelect={() => actions.setDisplay([id], 'ghost')}
+            >
+              Show as Ghost
+            </MenuItem>
+          )}
+          {display !== 'hidden' && (
+            <MenuItem
+              icon={<EyeOff size={14} />}
+              onSelect={() => actions.setDisplay([id], 'hidden')}
+            >
+              Hide Component
+            </MenuItem>
+          )}
+          {joints && (
+            <>
+              <MenuSeparator />
+              <MenuItem
+                icon={<ToolIcon name="joint-revolute" category="construct" size={14} />}
+                onSelect={() => joints.actions.start()}
+              >
+                New Joint…
+              </MenuItem>
+            </>
+          )}
+          <MenuSeparator />
+          {active ? (
+            <MenuItem onSelect={() => actions.activate(undefined)}>Deactivate</MenuItem>
+          ) : (
+            <MenuItem onSelect={() => actions.activate(id)}>Activate</MenuItem>
+          )}
+          {isolated === id ? (
+            <MenuItem onSelect={() => actions.isolate(undefined)}>Exit Isolation</MenuItem>
+          ) : (
+            <MenuItem onSelect={() => actions.isolate(id)}>Isolate</MenuItem>
+          )}
+          <MenuSeparator />
+          {placement && bodies.length > 0 && (
+            <>
+              <MenuItem icon={<Move3d size={14} />} onSelect={() => placement.move(id)}>
+                Move Component
+              </MenuItem>
+              <MenuItem icon={<Copy size={14} />} onSelect={() => placement.copy(id)}>
+                Copy Component
+              </MenuItem>
+              <MenuSeparator />
+            </>
+          )}
+          {bodyActions.exportBodies && bodies.length > 0 && (
+            <MenuItem
+              icon={<FileDown size={14} />}
+              onSelect={() => bodyActions.exportBodies?.(bodies.map((b) => b.id))}
+            >
+              Export Component…
+            </MenuItem>
+          )}
+          <MenuItem icon={<Trash2 size={14} />} onSelect={() => actions.remove(id)}>
+            Delete Component
+          </MenuItem>
+        </>
+      }
+    >
+      {bodies.length === 0 ? <Leaf muted>No bodies</Leaf> : bodies.map((body) => renderBody(body))}
+      {joints &&
+        jointRows.map((jointRow) => (
+          <JointLeaf
+            key={jointRow.joint.id}
+            row={jointRow}
+            actions={joints.actions}
+            onHover={joints.onHover}
+            {...(joints.onCheckClearance && { onCheckClearance: joints.onCheckClearance })}
+          />
+        ))}
+    </Folder>
+  );
+}
+
+const JOINT_ICONS = {
+  rigid: 'joint-rigid',
+  revolute: 'joint-revolute',
+  slider: 'joint-slider',
+} as const;
+
+/**
+ * A joint in its moving component's folder (P6-05 J1, ADR-0081 §6): the type's icon, the name
+ * (F2 renames, double-click or Enter edits, Delete deletes), the kernel's ✕ or ⚠ with its message,
+ * and a menu: Edit, Rename, Suppress, Fix References / Keep Closest Match, Delete Joint. The
+ * pointer on it draws its axis in the view.
+ */
+function JointLeaf({
+  row,
+  actions,
+  onHover,
+  onCheckClearance,
+}: {
+  row: JointRow;
+  actions: JointActions;
+  onHover(id: JointId | undefined): void;
+  onCheckClearance?(id: JointId): void;
+}) {
+  const [renaming, setRenaming] = useState(false);
+  const { joint, status, message, refs } = row;
+  const suppressed = joint.suppressed === true;
+  const problem = status === 'error' || status === 'warning' ? status : undefined;
+  const fixable = (refs?.length ?? 0) > 0;
+  const guessed = refs?.some((r) => r.state === 'guessed' && r.now) ?? false;
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'F2') setRenaming(true);
+    else if (event.key === 'Delete' || event.key === 'Backspace') actions.remove([joint.id]);
+    else if (event.key === 'Enter') actions.edit(joint.id);
+    else return;
+    event.preventDefault();
+  };
+  const states = [
+    suppressed && 'suppressed',
+    status === 'inactive' && 'rolled back',
+    problem && (message ? `${problem}: ${message}` : problem),
+  ].filter(Boolean);
+  return (
+    <ContextMenu
+      label={`${joint.name} menu`}
+      disabled={renaming}
+      trigger={
+        <Leaf
+          data-joint={joint.id}
+          data-joint-type={joint.type}
+          data-joint-status={suppressed ? undefined : status}
+          data-joint-suppressed={suppressed || undefined}
+          onDoubleClick={renaming ? undefined : () => actions.edit(joint.id)}
+          onPointerEnter={() => onHover(joint.id)}
+          onPointerLeave={() => onHover(undefined)}
+        >
+          <span className="-ml-5 grid w-4 place-items-center">
+            <ToolIcon name={JOINT_ICONS[joint.type]} category="construct" size={14} />
+          </span>
+          {renaming ? (
+            <RenameField
+              name={joint.name}
+              label={`Rename ${joint.name}`}
+              className="h-6 min-w-0 flex-1 px-1"
+              onCommit={(name) => actions.rename(joint.id, name)}
+              onDone={() => setRenaming(false)}
+            />
+          ) : (
+            <button
+              type="button"
+              onKeyDown={onKeyDown}
+              aria-description={states.join(', ') || undefined}
+              className={`min-w-0 truncate rounded-input text-left focus-visible:outline-2 focus-visible:outline-accent ${
+                suppressed || status === 'inactive' ? 'text-muted' : ''
+              } ${suppressed ? 'line-through' : ''}`}
+            >
+              {joint.name}
+            </button>
+          )}
+          {problem && !renaming && (
+            <Tooltip label={problem === 'error' ? 'Error' : 'Warning'} hint={message} side="right">
+              <span className="grid size-5 shrink-0 place-items-center">
+                <StatusGlyph status={problem} />
+              </span>
+            </Tooltip>
+          )}
+          {!renaming && (
+            <span className="ml-auto flex items-center">
+              <IconButton
+                label={`Edit ${joint.name}`}
+                className="size-6"
+                onClick={() => actions.edit(joint.id)}
+              >
+                <Pencil size={13} />
+              </IconButton>
+            </span>
+          )}
+        </Leaf>
+      }
+    >
+      <MenuItem icon={<Pencil size={14} />} onSelect={() => actions.edit(joint.id)}>
+        Edit
+      </MenuItem>
+      <MenuItem
+        icon={<TextCursorInput size={14} />}
+        shortcut="F2"
+        onSelect={() => setRenaming(true)}
+      >
+        Rename
+      </MenuItem>
+      {actions.pose && joint.type !== 'rigid' && !suppressed && (
+        <MenuItem onSelect={() => actions.pose?.(joint.id)}>Pose…</MenuItem>
+      )}
+      <MenuItem onSelect={() => actions.setSuppressed([joint.id], !suppressed)}>
+        {suppressed ? 'Unsuppress' : 'Suppress'}
+      </MenuItem>
+      {fixable && (
+        <MenuItem onSelect={() => actions.edit(joint.id, { fix: refs ?? [] })}>
+          Fix References
+        </MenuItem>
+      )}
+      {guessed && (
+        <MenuItem onSelect={() => actions.keepClosestMatch(joint.id)}>Keep Closest Match</MenuItem>
+      )}
+      {onCheckClearance && joint.type !== 'rigid' && !suppressed && (
+        <MenuItem onSelect={() => onCheckClearance(joint.id)}>Check Clearance</MenuItem>
+      )}
+      <MenuSeparator />
+      <MenuItem icon={<Trash2 size={14} />} onSelect={() => actions.remove([joint.id])}>
+        Delete Joint
+      </MenuItem>
+    </ContextMenu>
+  );
+}
+
 function Folder({
   label,
   icon,
   defaultOpen = true,
   eye,
+  displayEye,
   count,
   menu,
+  nested,
+  attrs,
+  marker,
+  dimmed,
+  dropTarget,
+  rename,
+  onSelect,
   children,
 }: {
+  /** Listed inside another folder: one level deeper. */
+  nested?: boolean;
+  /** Extra `data-*` attributes on the row's `li`. */
+  attrs?: Record<`data-${string}`, string | undefined>;
+  /** A filled dot before the label: the active component. */
+  marker?: boolean;
+  /** Drawn at half opacity (another component is isolated). */
+  dimmed?: boolean;
+  /** Body rows dragged onto the folder's header arrive here with their IDs. */
+  dropTarget?: { name: string; onDrop(ids: BodyId[]): void };
+  /** A three-state eye (shown, ghost, hidden) instead of `eye`'s two. */
+  displayEye?: { display: BodyDisplay; onToggle(): void };
+  /** The label renames in place (F2, double-click, or the menu's Rename). */
+  rename?: { onCommit(name: string): boolean };
+  /** A click on the label selects what is in the folder (`Shift` adds); the chevron toggles. */
+  onSelect?(mode: 'replace' | 'add'): void;
   label: string;
   icon: ReactNode;
   defaultOpen?: boolean;
@@ -981,28 +1458,112 @@ function Folder({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const [renaming, setRenaming] = useState(false);
+  const [over, setOver] = useState(false);
+  const accepts = (event: DragEvent) =>
+    dropTarget !== undefined && event.dataTransfer?.types.includes(BODIES_MIME) === true;
+  const labelNode =
+    renaming && rename ? (
+      <RenameField
+        name={label}
+        label={`Rename ${label}`}
+        className="h-6 min-w-0 flex-1 px-1"
+        onCommit={rename.onCommit}
+        onDone={() => setRenaming(false)}
+      />
+    ) : null;
+  const onLabelKey = (event: KeyboardEvent) => {
+    if (event.key === 'F2' && rename) {
+      setRenaming(true);
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+  const chevron = (
+    <span className="text-muted">
+      {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+    </span>
+  );
+  const countBadge = count !== undefined && count > 0 && (
+    <span
+      data-folder-count={count}
+      className="ml-1 rounded-full bg-accent-soft px-1.5 font-mono text-xs text-muted"
+    >
+      {count}
+    </span>
+  );
   const header = (
-    <div className="flex h-7 items-center rounded-input pr-1 hover:bg-accent-soft">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-        className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-input px-1 text-left"
-      >
-        <span className="text-muted">
-          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </span>
-        <span className="grid w-4 place-items-center text-muted">{icon}</span>
-        {label}
-        {count !== undefined && count > 0 && (
-          <span
-            data-folder-count={count}
-            className="ml-1 rounded-full bg-accent-soft px-1.5 font-mono text-xs text-muted"
+    // biome-ignore lint/a11y/noStaticElementInteractions: a pointer-only drop target for body rows; the Move to Component menu is the keyboard path
+    <div
+      data-drop={dropTarget?.name}
+      data-drop-over={over || undefined}
+      className={`flex h-7 items-center rounded-input pr-1 hover:bg-accent-soft ${over ? 'bg-accent-soft outline-2 outline-accent' : ''}`}
+      onDragOver={(event) => {
+        if (!accepts(event)) return;
+        event.preventDefault();
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(event) => {
+        setOver(false);
+        if (!accepts(event) || !dropTarget) return;
+        event.preventDefault();
+        try {
+          const ids = JSON.parse(event.dataTransfer.getData(BODIES_MIME)) as BodyId[];
+          if (Array.isArray(ids)) dropTarget.onDrop(ids);
+        } catch {
+          // Not ours.
+        }
+      }}
+    >
+      {onSelect ? (
+        <>
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-label={`${open ? 'Collapse' : 'Expand'} ${label}`}
+            onClick={() => setOpen(!open)}
+            className="flex h-7 shrink-0 items-center gap-1.5 rounded-input px-1"
           >
-            {count}
-          </span>
-        )}
-      </button>
+            {chevron}
+            <span className="grid w-4 place-items-center text-muted">{icon}</span>
+          </button>
+          {marker && (
+            <span
+              data-active-marker
+              role="img"
+              aria-label="Active component"
+              className="mr-1 size-2 shrink-0 rounded-full bg-accent"
+            />
+          )}
+          {labelNode ?? (
+            <button
+              type="button"
+              onClick={(event) =>
+                onSelect(event.shiftKey || event.ctrlKey || event.metaKey ? 'add' : 'replace')
+              }
+              onDoubleClick={() => rename && setRenaming(true)}
+              onKeyDown={onLabelKey}
+              className="flex h-7 min-w-0 flex-1 items-center rounded-input text-left focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              <span className="min-w-0 truncate">{label}</span>
+            </button>
+          )}
+          {countBadge}
+        </>
+      ) : (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+          className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-input px-1 text-left"
+        >
+          {chevron}
+          <span className="grid w-4 place-items-center text-muted">{icon}</span>
+          {label}
+          {countBadge}
+        </button>
+      )}
       {eye && (
         <EyeToggle
           name={`all ${label.toLowerCase()}`}
@@ -1010,11 +1571,26 @@ function Folder({
           onToggle={eye.onToggle}
         />
       )}
+      {displayEye && !renaming && (
+        <BodyEyeToggle name={label} display={displayEye.display} onToggle={displayEye.onToggle} />
+      )}
     </div>
   );
   return (
-    <li>
-      <ContextMenu label={`${label} menu`} trigger={header}>
+    <li
+      {...attrs}
+      className={`${nested ? 'pl-3' : ''} ${dimmed ? 'opacity-50' : ''}`.trim() || undefined}
+    >
+      <ContextMenu label={`${label} menu`} trigger={header} disabled={renaming}>
+        {rename && (
+          <MenuItem
+            icon={<TextCursorInput size={14} />}
+            shortcut="F2"
+            onSelect={() => setRenaming(true)}
+          >
+            Rename
+          </MenuItem>
+        )}
         <MenuItem
           icon={open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           onSelect={() => setOpen(!open)}
@@ -1035,6 +1611,13 @@ function Folder({
     </li>
   );
 }
+
+/** The swatch of each origin plane's row: its normal axis's colour (`PLANE_AXIS_COLOR`). */
+const PLANE_SWATCH: Partial<Record<OriginItem, string>> = {
+  xy: TOKENS[PLANE_AXIS_COLOR.xy],
+  xz: TOKENS[PLANE_AXIS_COLOR.xz],
+  yz: TOKENS[PLANE_AXIS_COLOR.yz],
+};
 
 function Leaf({
   muted,
@@ -1063,6 +1646,7 @@ const ANALYSIS_MENUS: Record<string, string> = {
   section: 'Section',
   overhang: 'Overhang',
   'wall thickness': 'Wall thickness',
+  clearance: 'Clearance',
 };
 
 /** A row of the Analysis folder (P3-09, P3-10, P5-06): name (opens the panel), eye, and a menu. */

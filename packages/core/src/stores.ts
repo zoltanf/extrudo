@@ -14,11 +14,13 @@ import { freeze } from 'immer';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { CanvasReport } from './canvas';
 import { applyCommand, type Command } from './commands';
+import type { BodyOrigins } from './components';
 import type { ConstructionReport } from './construction';
 import { type HistoryOptions, UndoHistory } from './history';
-import type { BodyId, FeatureId } from './ids';
+import type { BodyId, ComponentId, FeatureId, JointId } from './ids';
 import type { ImportReport } from './import';
 import type { ExtrudoDocument, GeomRef, GeomRefKind } from './schema';
+import type { Vec3 } from './sketch/planes';
 import type { SketchReport } from './sketch/projection';
 
 export interface DocumentState {
@@ -163,6 +165,13 @@ export interface SessionState {
    * decides afresh. Session state: not saved.
    */
   sketchSliceFlip: 1 | -1 | undefined;
+  /**
+   * The component new features are stamped into (P6-05 S4, ADR-0081 §6). Session state: not
+   * saved, not undoable, kept across sketch mode.
+   */
+  activeComponent: ComponentId | undefined;
+  /** The only component the view draws and picks while set (ADR-0081 §6). Session state. */
+  isolatedComponent: ComponentId | undefined;
   enterSketch(id: FeatureId): void;
   exitSketch(): void;
   setTool(tool: string | undefined): void;
@@ -170,6 +179,8 @@ export interface SessionState {
   clearSelection(): void;
   setHover(item: SelectionItem | undefined): void;
   setSketchSliceFlip(flip: 1 | -1 | undefined): void;
+  activateComponent(id: ComponentId | undefined): void;
+  isolateComponent(id: ComponentId | undefined): void;
 }
 
 export type SessionStore = StoreApi<SessionState>;
@@ -182,6 +193,8 @@ export function createSessionStore(): SessionStore {
     selection: [],
     hover: undefined,
     sketchSliceFlip: undefined,
+    activeComponent: undefined,
+    isolatedComponent: undefined,
     enterSketch(id) {
       set({
         mode: 'sketch',
@@ -216,6 +229,12 @@ export function createSessionStore(): SessionStore {
     },
     setSketchSliceFlip(sketchSliceFlip) {
       if (sketchSliceFlip !== get().sketchSliceFlip) set({ sketchSliceFlip });
+    },
+    activateComponent(activeComponent) {
+      if (activeComponent !== get().activeComponent) set({ activeComponent });
+    },
+    isolateComponent(isolatedComponent) {
+      if (isolatedComponent !== get().isolatedComponent) set({ isolatedComponent });
     },
   }));
 }
@@ -297,6 +316,32 @@ export interface ReferenceIssue {
   now?: GeomRef;
 }
 
+/**
+ * What the kernel found for a joint at the marker (P6-05, ADR-0081 §4): its
+ * frames resolved, the axis or direction read from side b, and whether side
+ * a's frame agrees with it as built.
+ */
+export interface JointReport {
+  /**
+   * `ok`; `warning`: the frames disagree, or one was guessed; `error`: a frame
+   * is lost or can't give an axis; `inactive`: a frame is on a feature the
+   * marker has rolled back.
+   */
+  status: 'ok' | 'warning' | 'error' | 'inactive';
+  message?: string;
+  /** Frames the kernel lost or guessed, for Fix References (as `FeatureStatus.refs`). */
+  refs?: ReferenceIssue[];
+  /** A revolute's axis or a slider's direction (unit), read from side b's frame. */
+  axis?: { origin: Vec3; direction: Vec3 };
+  /** A revolute: how far a's axis is from b's, mm. */
+  offset?: number;
+  /**
+   * The body each side's frame resolved on, where it is on one: the app checks
+   * it is still in the side's component ("Hinge's moving frame isn't on Leaf").
+   */
+  bodies?: { a?: BodyId; b?: BodyId };
+}
+
 /** How the last recompute went, for the status bar. */
 export interface ModelStats {
   ms: number;
@@ -337,6 +382,15 @@ export interface ModelState<TBody> {
    * into `doc.bodies` once, when it first names a body.
    */
   imports: Record<FeatureId, ImportReport>;
+  /**
+   * Where each body the last recompute broke off another came from (P6-05,
+   * ADR-0081 §2): a piece → the body it was cut from. The app reads it to put a
+   * new piece in the component its source is in. Empty when no feature split a
+   * body.
+   */
+  origins: BodyOrigins;
+  /** What the last recompute found for each unsuppressed joint (P6-05, ADR-0081 §4). */
+  joints: Record<JointId, JointReport>;
   stats: ModelStats | undefined;
   /**
    * The document `features` and `bodies` were computed from, when the
@@ -352,6 +406,8 @@ export interface ModelState<TBody> {
     construction?: Record<FeatureId, ConstructionReport>;
     canvases?: Record<FeatureId, CanvasReport>;
     imports?: Record<FeatureId, ImportReport>;
+    origins?: BodyOrigins;
+    joints?: Record<JointId, JointReport>;
     stats?: ModelStats;
     doc?: ExtrudoDocument;
   }): void;
@@ -371,6 +427,8 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
     construction: {} as Record<FeatureId, ConstructionReport>,
     canvases: {} as Record<FeatureId, CanvasReport>,
     imports: {} as Record<FeatureId, ImportReport>,
+    origins: {} as BodyOrigins,
+    joints: {} as Record<JointId, JointReport>,
     stats: undefined,
     doc: undefined,
   });
@@ -379,7 +437,18 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
     computing() {
       set({ status: 'computing', error: undefined });
     },
-    computed({ features, bodies, sketches, construction, canvases, imports, stats, doc }) {
+    computed({
+      features,
+      bodies,
+      sketches,
+      construction,
+      canvases,
+      imports,
+      origins,
+      joints,
+      stats,
+      doc,
+    }) {
       set((s) => ({
         status: 'ready',
         error: undefined,
@@ -389,6 +458,8 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
         construction: construction ?? s.construction,
         canvases: canvases ?? s.canvases,
         imports: imports ?? s.imports,
+        origins: origins ?? s.origins,
+        joints: joints ?? s.joints,
         stats,
         doc,
       }));

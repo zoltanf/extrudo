@@ -13,6 +13,8 @@ import { readTopology } from './items';
 /** Face state bits. */
 export const HOVER = 1;
 export const SELECTED = 2;
+/** A face a joint's clearance check found colliding (P6-05 J3): tinted in the error colour. */
+export const COLLIDE = 4;
 
 export interface BodyHighlight {
   /** Per face: `HOVER` and `SELECTED` bits. */
@@ -66,14 +68,27 @@ export interface FacePalette {
   base: Rgb;
   /** The accent the highlights blend in. */
   accent: Rgb;
+  /** The colour a colliding face takes (`COLLIDE`), under the highlights. */
+  error?: Rgb;
 }
 
 /** How much accent a face takes: pre-highlight 45 %, selected 90 % (docs/05-brand.md §3.4). */
 export const HOVER_MIX = 0.45;
 export const SELECTED_MIX = 0.9;
 
+/** How much of the error colour a colliding face takes. */
+export const COLLIDE_MIX = 0.85;
+
 /** The colour of a face in a state. */
-export function faceColor(state: number, { base, accent }: FacePalette): Rgb {
+export function faceColor(state: number, { base: own, accent, error }: FacePalette): Rgb {
+  const base: Rgb =
+    state & COLLIDE && error
+      ? [
+          own[0] + (error[0] - own[0]) * COLLIDE_MIX,
+          own[1] + (error[1] - own[1]) * COLLIDE_MIX,
+          own[2] + (error[2] - own[2]) * COLLIDE_MIX,
+        ]
+      : own;
   const t = state & SELECTED ? SELECTED_MIX : state & HOVER ? HOVER_MIX : 0;
   return [
     base[0] + (accent[0] - base[0]) * t,

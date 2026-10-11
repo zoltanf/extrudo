@@ -2,7 +2,7 @@
 title: Offset Face
 section: Tools
 category: Modify
-order: 42
+order: 44
 ---
 
 # Offset Face

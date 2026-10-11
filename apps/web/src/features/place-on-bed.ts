@@ -7,8 +7,11 @@
  * dialog with the face already picked (pre-selection).
  */
 import { placeOnBedFeature } from '@extrudo/core';
-import { defineFeatureDialog } from './spec';
+import { defineFeatureDialog, type FeatureDialogSpec } from './spec';
+import { defaultInputs } from './values';
 
+// Bound after its definition, so `toInputs` can use the default mapping.
+let spec: FeatureDialogSpec;
 export const placeOnBedDialog = defineFeatureDialog({
   ...placeOnBedFeature,
   command: 'placeOnBed',
@@ -29,7 +32,25 @@ export const placeOnBedDialog = defineFeatureDialog({
       default: '0 deg',
       hint: 'Turns the body about the vertical through the middle of its face, once it lies on the bed.',
     },
+    {
+      kind: 'selection',
+      name: 'carry',
+      label: 'Carry along',
+      accepts: ['body'],
+      min: 0,
+      prompt: 'Pick bodies to place with the face',
+      hint: "Bodies that take the same turn and drop as the face's body, so a component is placed as one. One face only.",
+    },
   ],
+  // `carry` is stored only when a body is picked (ADR-0081 §3: optional), so
+  // a place that carries nothing reads as it always did.
+  toInputs(values, ctx) {
+    const inputs = { ...defaultInputs(spec, values, ctx) };
+    const carry = inputs.carry;
+    if (carry?.kind === 'ref' && carry.refs.length === 0) delete inputs.carry;
+    return inputs;
+  },
   // The turned bodies over the model's own, which stay drawn where they are.
   previewStyle: () => 'new',
 });
+spec = placeOnBedDialog;

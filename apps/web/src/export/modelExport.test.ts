@@ -1,5 +1,6 @@
-import type { BodyId, BodyMeta } from '@extrudo/core';
+import type { BodyId, BodyMeta, ComponentId } from '@extrudo/core';
 import { checkManifold, read3mf, readStl, type TriangleMesh } from '@extrudo/io';
+import { componentAssemblies } from '@extrudo/kernel';
 import { describe, expect, it } from 'vitest';
 import type { SlicerFile, SlicerId } from '../platform/slicer';
 import {
@@ -175,6 +176,77 @@ describe('model files', () => {
     expect(modelFileName('Wall bracket', bodies, '3mf')).toBe('Wall bracket.3mf');
     expect(modelFileName('Wall bracket', [pin], 'stl')).toBe('Wall bracket - Pin.stl');
     expect(modelFileName('a/b', [], 'step')).toBe('a b.step');
+  });
+
+  it('names a single-component file after the component (P6-05, ADR-0081 §7)', () => {
+    const lid = { id: 'cmp1' as ComponentId, name: 'Lid' };
+    const lid1 = { ...body('Lid1'), component: lid };
+    const lid2 = { ...body('Lid2'), component: lid };
+    expect(modelFileName('Shelf', [lid1, lid2], '3mf')).toBe('Shelf - Lid.3mf');
+    // One body keeps its own name, whatever component it is in.
+    expect(modelFileName('Shelf', [lid1], '3mf')).toBe('Shelf - Lid1.3mf');
+    // Bodies of different components are the project's own name.
+    expect(modelFileName('Shelf', [lid1, pin], '3mf')).toBe('Shelf.3mf');
+  });
+
+  it('groups a component’s bodies as one 3MF object when asked (P6-05, ADR-0081 §7)', async () => {
+    const lid = { id: 'cmp1' as ComponentId, name: 'Lid' };
+    const lid1 = { ...body('Lid1'), component: lid };
+    const lid2 = { ...body('Lid2'), component: lid };
+    const chosen = [lid1, lid2, pin];
+    const { kernel } = fakeKernel({
+      [lid1.id]: tetra(0),
+      [lid2.id]: tetra(20),
+      [pin.id]: tetra(40),
+    });
+    const meshed = await meshBodies(kernel, chosen, RESOLUTIONS.medium);
+    const grouped = read3mf(
+      new Uint8Array(await meshFile(meshed, '3mf', 'Shelf', true).blob.arrayBuffer()),
+    );
+    // One grouped item (the component, two meshes), then the loose pin.
+    expect(grouped.objects.map((o) => o.name)).toEqual(['Lid1', 'Lid2', 'Pin']);
+    expect(grouped.items.map((item) => item.meshes.length)).toEqual([2, 1]);
+    // Without grouping every body is its own object and item.
+    const flat = read3mf(
+      new Uint8Array(await meshFile(meshed, '3mf', 'Shelf', false).blob.arrayBuffer()),
+    );
+    expect(flat.items.map((item) => item.meshes.length)).toEqual([1, 1, 1]);
+  });
+
+  it('groups bodies by component in first-seen order', () => {
+    const lid = { id: 'cmp1' as ComponentId, name: 'Lid' };
+    const lid1 = { ...body('Lid1'), component: lid };
+    const lid2 = { ...body('Lid2'), component: lid };
+    expect(componentAssemblies([lid1, pin, lid2])).toEqual([{ name: 'Lid', parts: [0, 2] }]);
+    expect(componentAssemblies([pin])).toBeUndefined();
+  });
+
+  it('passes a body’s component name to the STEP writer when grouping (P6-05)', async () => {
+    const lid = { id: 'cmp1' as ComponentId, name: 'Lid' };
+    const red = { ...body('Red', { color: '#c81e28' }), component: lid };
+    const { kernel, calls } = fakeKernel(meshes);
+    await stepFile(kernel, [red, pin], 'Shelf', true);
+    expect(calls).toEqual([
+      [
+        'step',
+        [
+          { id: red.id, name: 'Red', color: '#c81e28', component: 'Lid' },
+          { id: pin.id, name: 'Pin' },
+        ],
+      ],
+    ]);
+    // Without grouping the component is dropped: every body stays top level.
+    calls.length = 0;
+    await stepFile(kernel, [red, pin], 'Shelf', false);
+    expect(calls).toEqual([
+      [
+        'step',
+        [
+          { id: red.id, name: 'Red', color: '#c81e28' },
+          { id: pin.id, name: 'Pin' },
+        ],
+      ],
+    ]);
   });
 
   it('formats sizes', () => {

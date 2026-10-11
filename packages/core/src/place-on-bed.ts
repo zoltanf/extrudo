@@ -34,6 +34,16 @@ export const PlaceOnBedInputsSchema = z.strictObject({
     .describe(
       "Turn about the vertical through the face's centre once it lies on the bed; an angle. Without one, no turn.",
     ),
+  /**
+   * Bodies that take the same turn and drop as the face's own body, so a
+   * component is placed as one (ADR-0081 §3). Only with a single face; a
+   * carried body that also owns a face is an error.
+   */
+  carry: refsOf(['body'])
+    .optional()
+    .describe(
+      "Bodies that take the same turn and drop as the face's body (a component placed as one). Only with one face.",
+    ),
 });
 export type PlaceOnBedInputs = z.infer<typeof PlaceOnBedInputsSchema>;
 
@@ -47,11 +57,13 @@ export const placeOnBedFeature: FeatureDefinition<PlaceOnBedInputs> = {
 
 /**
  * A Place on Bed's inputs from the face, or faces (tests, scripts; the dialog
- * builds the same shape), and an optional spin angle expression.
+ * builds the same shape), an optional spin angle expression, and the bodies
+ * that are carried along with the face's own (ADR-0081 §3).
  */
 export function placeOnBedInputs(
   faces: GeomRef | readonly GeomRef[],
   spin?: string,
+  carry?: readonly GeomRef[],
 ): PlaceOnBedInputs {
   const input: RefInput = {
     kind: 'ref',
@@ -61,6 +73,10 @@ export function placeOnBedInputs(
   if (spin !== undefined) {
     const expr: ExprInput = { kind: 'expr', expr: spin, unit: 'angle' };
     inputs.spin = expr;
+  }
+  if (carry !== undefined && carry.length > 0) {
+    const refs: RefInput = { kind: 'ref', refs: [...carry] };
+    inputs.carry = refs;
   }
   return inputs;
 }

@@ -18,9 +18,11 @@ import {
   newId,
   pluginCommandId,
   remintFeatures,
+  type SessionStore,
 } from '@extrudo/core';
 import type { PluginCommandResult } from '@extrudo/kernel';
 import type { InstalledPlugin, PluginStore } from '@extrudo/storage';
+import { withActiveComponent } from '../components/active';
 import { enabledPlugins, type PluginEntry } from './plugins';
 
 /** A plugin command as the shell lists it: `plugin:<plugin>:<command>`, group "Plugins › <name>". */
@@ -68,6 +70,7 @@ export async function runPluginCommand({
   kernel,
   plugins,
   store,
+  session,
   selection,
   ids,
 }: {
@@ -75,6 +78,8 @@ export async function runPluginCommand({
   kernel: PluginCommandKernel;
   plugins: Pick<PluginStore, 'bytes'>;
   store: DocumentStore;
+  /** The active component stamps what the command makes (P6-05 S4). */
+  session?: SessionStore;
   selection: readonly GeomRef[];
   /** New feature IDs, for tests; `newId()` otherwise. */
   ids?: () => FeatureId;
@@ -94,7 +99,13 @@ export async function runPluginCommand({
       message: message.startsWith(plugin.name) ? message : `${plugin.name}: ${message}`,
     };
   }
-  return insertCommandFeatures(store, result.features, `${plugin.name}: ${command.label}`, ids);
+  return insertCommandFeatures(
+    store,
+    result.features,
+    `${plugin.name}: ${command.label}`,
+    ids,
+    session,
+  );
 }
 
 /**
@@ -106,11 +117,14 @@ export function insertCommandFeatures(
   features: readonly Feature[],
   label: string,
   ids: () => FeatureId = () => newId<FeatureId>(),
+  session?: SessionStore,
 ): PluginCommandOutcome {
   if (features.length === 0) return { ok: true, message: `${label} added nothing.`, ids: [] };
   const { doc } = store.getState();
   const fresh = features.map(() => ids());
-  const reminted = remintFeatures(features, doc, fresh);
+  const reminted = remintFeatures(features, doc, fresh).map((f) =>
+    session ? withActiveComponent(f, session) : f,
+  );
   store.getState().beginTransaction(label);
   try {
     // Each lands at the marker, which moves past it, so they keep their order.

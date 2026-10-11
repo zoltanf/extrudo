@@ -7,16 +7,18 @@ import { CommandError, type DocumentDraft, defineCommand } from './commands';
 import { isReservedName } from './expr/evaluate';
 import { mentions, parameterNames, renameReferences } from './expr/parameters';
 import { dropFeatureFromGroups, normalizeGroupsInPlace } from './groups';
-import type { BodyId, FeatureId, ParameterId } from './ids';
+import type { BodyId, FeatureId, ParameterId, ViewId } from './ids';
 import { makesFeatures } from './plugin-feature';
 import {
   type BodyMeta,
   type ExtrudoDocument,
   type Feature,
   type FeatureInputs,
+  type NamedView,
   PARAMETER_NAME,
   type Parameter,
   type Settings,
+  type ViewCamera,
 } from './schema';
 import { referencedFeatures } from './timeline';
 
@@ -95,6 +97,14 @@ export const updateParameter = defineCommand<{
     for (const { holder } of featureExpressions(draft)) {
       if (mentions(holder.expr, oldName))
         holder.expr = renameReferences(holder.expr, oldName, newName);
+    }
+    // A joint's limits too (ADR-0081 §4).
+    for (const joint of draft.joints ?? []) {
+      for (const limit of [joint.min, joint.max]) {
+        if (limit && mentions(limit.expr, oldName)) {
+          limit.expr = renameReferences(limit.expr, oldName, newName);
+        }
+      }
     }
   }
 });
@@ -309,6 +319,86 @@ export const nameBodies = defineCommand<{ bodies: Readonly<Record<BodyId, BodyMe
 );
 
 /**
+ * The name a newly saved view starts from (ADR-0008's amendment, 2026-10-10):
+ * "View1", "View2"…, the lowest number no view uses, as body names work.
+ * Pure, so the name the popover prefills is the one that gets stored.
+ */
+export function defaultViewName(views: readonly NamedView[]): string {
+  const taken = new Set(views.map((v) => v.name));
+  let next = 1;
+  while (taken.has(`View${next}`)) next++;
+  return `View${next}`;
+}
+
+/**
+ * A view name the way the view commands store it: trimmed and non-empty; a
+ * name another view already has (not `exceptId`) gets the next free
+ * "`<name>` 2" ("Front" taken → "Front 2", then "Front 3"). Views' names are
+ * compared exactly, case sensitively, like every name but a configuration's.
+ */
+export function uniqueViewName(
+  views: readonly NamedView[],
+  wanted: string,
+  exceptId?: ViewId,
+): string {
+  const trimmed = wanted.trim();
+  if (!trimmed) throw new CommandError("The name can't be empty.");
+  const taken = (name: string) => views.some((v) => v.id !== exceptId && v.name === name);
+  if (!taken(trimmed)) return trimmed;
+  let n = 2;
+  while (taken(`${trimmed} ${n}`)) n++;
+  return `${trimmed} ${n}`;
+}
+
+function findView(draft: DocumentDraft, id: ViewId) {
+  const view = draft.views.find((v) => v.id === id);
+  if (!view) throw new CommandError(`View ${id} doesn't exist.`);
+  return view;
+}
+
+/**
+ * Saves the current camera as a named view (ADR-0008's amendment). The
+ * caller (the app) reads the camera from the viewport store and puts a fresh
+ * ID in the payload. A name taken by another view is uniquified ("Front" →
+ * "Front 2"); the name can't be empty.
+ */
+export const saveView = defineCommand<{ id: ViewId; name: string; camera: ViewCamera }>(
+  'view.save',
+  'Save view',
+  (draft, { id, name, camera }) => {
+    if (draft.views.some((v) => v.id === id)) {
+      throw new CommandError(`View ${id} already exists.`);
+    }
+    draft.views.push({ id, name: uniqueViewName(draft.views, name), camera });
+  },
+);
+
+/**
+ * Renames a view, or overwrites its camera with the current one (the
+ * browser's "Update to Current View"), or both. One undo step.
+ */
+export const updateView = defineCommand<{ id: ViewId; name?: string; camera?: ViewCamera }>(
+  'view.update',
+  'Update view',
+  (draft, { id, name, camera }) => {
+    const view = findView(draft, id);
+    if (name !== undefined) view.name = uniqueViewName(draft.views, name, id);
+    if (camera !== undefined) view.camera = camera;
+  },
+);
+
+/** Deletes a named view. Nothing refers to one, so nothing is refused. */
+export const removeView = defineCommand<{ id: ViewId }>(
+  'view.remove',
+  'Delete view',
+  (draft, { id }) => {
+    const index = draft.views.findIndex((v) => v.id === id);
+    if (index < 0) throw new CommandError(`View ${id} doesn't exist.`);
+    draft.views.splice(index, 1);
+  },
+);
+
+/**
  * The names new bodies get, in the order given: "Body1", "Body2"…, the
  * lowest numbers that no stored body (live or gone) and no earlier new body
  * uses. Pure, so the name the browser shows before it is stored is the one
@@ -427,6 +517,12 @@ export function refuseIfUsed(
     if (except.has(holder) || holder.driven || holder.paramName === name) continue;
     if (!mentions(holder.expr, name)) continue;
     users.add(dimension && holder.paramName ? `\`${holder.paramName}\`` : feature.name);
+  }
+  // A joint's limits are expression owners too, never named (ADR-0081 §4).
+  for (const joint of draft.joints ?? []) {
+    const unit = joint.type === 'slider' ? 'travel' : 'angle';
+    if (joint.min && mentions(joint.min.expr, name)) users.add(`${joint.name}'s minimum ${unit}`);
+    if (joint.max && mentions(joint.max.expr, name)) users.add(`${joint.name}'s maximum ${unit}`);
   }
   if (users.size > 0) {
     const list = [...users];

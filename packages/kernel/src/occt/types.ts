@@ -115,6 +115,10 @@ export interface FacadeBinding {
   subShape(shape: number, kind: number, index: number): number;
   locate(part: number, whole: number, kind: number): number;
   distance(a: number, b: number): number;
+  proximityOpen(moving: number, other: number, search: number): number;
+  proximityPose(id: number): number;
+  proximityClose(id: number): void;
+  proximitySessions(): number;
   lookupPtr(): number;
   lookupSize(): number;
   describe(shape: number): number;
@@ -205,6 +209,9 @@ export interface FacadeBinding {
   pushStepName(name: string): void;
   clearStepColors(): void;
   stageStepColor(r: number, g: number, b: number): void;
+  clearStepGroups(): void;
+  pushStepGroup(group: number): void;
+  pushStepGroupName(name: string): void;
   writeStep(): number;
   readStep(text: string): number;
   readStepColors(text: string): number;

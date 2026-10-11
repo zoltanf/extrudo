@@ -135,7 +135,8 @@ function findRef(value: unknown, kind: string, id: string): RefLike | undefined 
  */
 export function ghostsOf(
   features: readonly Pick<Feature, 'id' | 'name' | 'inputs'>[],
-  statuses: Readonly<Record<string, FeatureStatus | undefined>>,
+  /** A feature's status, or a joint's report (P6-05): only their `refs` are read. */
+  statuses: Readonly<Record<string, Pick<FeatureStatus, 'refs'> | undefined>>,
   ids: Iterable<string>,
 ): Ghost[] {
   const out: Ghost[] = [];

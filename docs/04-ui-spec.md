@@ -159,6 +159,42 @@ brief, voice) is in **`05-brand.md`**. In short:
   at once); the preview shows the body turned so the face lies on the bed
   (z = 0); a warning says when part of the body would end up below it. Also
   "Place on Bed" in the context list of a flat face.
+- **Components** (P6-05 S3–S5, S9, ADR-0081 §6). Solid › **Component** group:
+  New Component (no key; the selected bodies, or an empty one, which it
+  activates) and Joint (`J`). In the browser the Bodies folder lists a nested
+  row per component first (count badge, eye shown → ghost → hidden, `F2`
+  rename, a filled marker while active), its bodies and the joints whose moving
+  side it is under it; loose bodies follow at the folder's own level. A click
+  selects its bodies; a body row dragged onto it joins it, onto the Bodies
+  header leaves. Its menu: Activate/Deactivate, Isolate/Exit Isolation, Move
+  Component, Copy Component, Export Component…, Delete Component. The **status
+  bar** says "Active: Lid" (menu: Deactivate); the **isolation bar** at the
+  top centre of the view says "Showing Lid only" with Exit isolation, next to
+  the pose bar (J2). Print Info lists a row per component under its totals,
+  "Loose bodies" for the rest.
+- **Joint clearance** (P6-05 J3, ADR-0081 §4). A revolute or slider joint's
+  row has **Check Clearance** (also Ctrl+K "Check Joint Clearance", on the
+  joint being checked or the only joint that moves): it opens the Joint panel
+  (the pose) with its Clearance section under the pose and runs the check at
+  once. The section has "Minimum gap" (an
+  expression field; the design's `tolerance` parameter when it has one, else
+  0.2 mm), a "Check clearance" button that reads "Checking 12 of 36…" with
+  Cancel while it runs, and the result's lines: "Tightest gap 0.30 mm at
+  0°–90°" (a flat minimum is a range), "Tightest gap 0.18 mm at 72°", "Under
+  0.3 mm from 64° to 81°", "Collides from 64.2° to 81.0° (3.2 mm³ at 72°)" and
+  "No collision from 0° to 90°."; each line has **Show**, which poses the joint
+  there. A change to the design after a check
+  says "The design changed: check again." The check samples the motion in the
+  kernel worker (every other body counts, hidden and ghosts too: a clearance is
+  the design's, not the view's). At the pose shown (as built when the joint
+  isn't posed), the tightest gap has a leader between its two closest points
+  with the gap on it when that is the pose it was found at, and the faces of a
+  collision whose range holds that pose are tinted in the error colour. It is
+  view state like the wall-thickness check: closing the Joint panel stops a
+  running check and keeps the result; the browser's Analysis folder has the row
+  "Clearance · Hinge" (click to open the Joint panel on it, eye hides the marks,
+  menu Remove). The section checks one joint at a time: opened on another
+  joint, it starts a new check there.
 - **Tool groups:** each group shows 3–6 most-used tools as buttons plus a
   dropdown with the full list. Users can pin tools to the toolbar.
 - **Browser (left):** collapsible tree with an eye toggle per item and
@@ -196,6 +232,19 @@ brief, voice) is in **`05-brand.md`**. In short:
   views. The wireframe and hidden-edge styles also draw the silhouettes
   of curved faces (the outline of a hole or a cylinder as seen now), which
   follow the camera; seams are never drawn (P2-08).
+- **Named views (ADR-0008's amendment, 2026-10-10):** the nav bar's Named
+  views menu lists the saved views by name (a click restores the camera,
+  animated; the saved projection comes with it), then Save Current View…,
+  which opens a small popover on the button: a Name field prefilled with
+  "View1", "View2"… (the lowest number no view uses; a taken name saves as
+  "`<name>` 2"), Save and Cancel (Enter/Esc). Ctrl+K has the same "Save
+  Current View…" (no key) and one "View: `<name>`" command per view. The
+  browser's Named views rows restore on a click; their right-click menu has
+  Restore, Update to Current View (overwrites the saved camera with the
+  current one), Rename (F2) and Delete. Saving, updating, renaming and
+  deleting are document commands (one undo step each); restoring only moves
+  the camera and is never undoable. A view holds only the camera: no
+  thumbnails, no section or display settings.
 - A running tool is highlighted on the toolbar: its tile, or, for a tool
   from a group's menu, the group's label.
 - **Command dialog (right, floating):** appears for the active feature and is
@@ -624,7 +673,7 @@ Fusion-compatible where Fusion has them; remappable in settings.
 | C | Center circle | F | Fillet |
 | A | 3-point arc (ours) | H | Hole |
 | P | Project | M | Move/Copy |
-| D | Sketch dimension | J | Joint (reserved) |
+| D | Sketch dimension | J | Joint |
 | T | Trim | S | Toolbox |
 | O | Offset | I | Measure |
 | X | Construction toggle | Delete | Delete |
@@ -636,7 +685,37 @@ Shift+1…7 are Home, Top, Bottom, Front, Back, Left, Right, by key
 position (they work on any layout). The keys live in one table,
 `apps/web/src/commands/keymap.ts`; P is Project (P2-09), Shift+P Intersect in a
 sketch (P4-12; Offset Plane on the model); Shift+S is Section
-Analysis (P3-09); Q and J wait for their tools.
+Analysis (P3-09); Q is Press/Pull (P3-08) and J the Joint dialog (P6-05,
+ADR-0081 §4).
+
+### 5.0 Posing a joint (P6-05 J2, ADR-0081 §4, §6)
+
+A joint row's **Pose…** (or Ctrl+K "Pose Joint": the hovered row's joint, else the
+only revolute or slider one) opens the **Joint** panel on the right: a slider and
+an expression field of the same name, "Angle" (degrees, a whole turn −180…180
+without limits) or "Travel" (mm, needs both limits), Reset and Done. A value
+typed past a limit is held to it and the panel says "Limited to 90°". A joint
+whose frames disagree, or are lost, is not posed: the panel shows the joint's
+own message. While the panel is open the view has a **handle**: an arc about
+the axis (revolute) or an arrow along the direction (slider) at the moving
+side's box centre; dragging it poses the joint, snapping to 5° or 1 mm unless
+Shift is held. A bar at the view's top centre says "Posed: Leaf at 72° — the
+design is unchanged." with Reset. The pose is **view state**: not saved, not
+undoable, recomputes nothing; the moving components (and what rigid joints
+carry with them) are drawn through the pose's matrix, are **not pickable** while
+posed, take no section cap, and Fit ignores the pose. Starting any tool, dialog
+or sketch, closing the panel, or the joint going away puts everything back.
+
+### 5.1 Settings (ADR-0082)
+
+Ctrl+, opens the Settings dialog from anywhere (the gear's first item, Ctrl+K
+"Settings…", the home screen's gear). A modal dialog, sections in a list on the
+left and the selected page on the right (below 640 px one column with a select);
+General, View and navigation, Sketch, 3D printing, Export and, on the desktop,
+Desktop. The last section is remembered. Controls are the same state as the
+quick ones elsewhere (gear menu, sketch palette, Print Info, Export dialog), so
+the dialog never disagrees with them; numbers are `<ExpressionInput>`s with a
+per-field Reset when they differ from the default.
 
 ## 6. Home screen
 
@@ -649,6 +728,7 @@ Analysis (P3-09); Q and J wait for their tools.
   benchmark fixtures B2, B4 and B5. A template opens as a new design under its
   own name (a copy, never the template's file) with its picture on the card;
   "Import" (`.extrudo`, STEP, STL, SVG).
+- A gear opens Settings (§5.1) next to the theme menu.
 - Search and sort. A trash view with restore.
 - The storage indicator warns if persistent storage is not granted.
 

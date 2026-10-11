@@ -22,6 +22,7 @@ a valid feature.
 | --- | --- | --- | --- |
 | `face` | `GeomRef \| GeomRef[]` (`face`) | **required** | The flat faces that go down, one per body. |
 | `spin` | `string \| number \| ParameterHandle` | optional | Turn about the vertical through the face's centre once it lies on the bed; an angle. Without one, no turn. |
+| `carry` | `GeomRef \| GeomRef[]` (`body`) | optional | Bodies that take the same turn and drop as the face's body (a component placed as one). Only with one face. |
 
 ## Faces
 

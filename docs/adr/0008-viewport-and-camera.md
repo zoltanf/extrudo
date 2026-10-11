@@ -39,13 +39,14 @@ clicks the ViewCube's Top face and checks the camera orientation.
 3. **A viewport store in the web app** (`viewport/store.ts`, vanilla
    Zustand, one per open document), not in core's session store. The camera
    changes on every pointer move and uses three.js math, which core must not
-   depend on. It holds the view, the running transition (advanced by
+   depend on. It holds the view,    the running transition (advanced by
    `step(now)` from the render loop, so tests drive it with a fake clock),
    the scene bounds for fit, the nav-bar tool, and the display settings:
    projection, visual style, grid, mouse preset and origin visibility. The
    settings are user preferences (`Platform.preferences`); the camera is not
-   saved. Named views will convert a `View` to the schema's
-   `{ projection, position, target, up }`.
+   saved. Named views convert a `View` to the schema's
+   `{ projection, position, target, up }` (and `size` for orthographic; the
+   amendment of 2026-10-10).
 4. **Mouse mapping as tables** (`viewport/navigation.ts`): one pure function
    from button + modifiers to orbit/pan/zoom per preset. Fusion (the
    default until 2026-09-27; see the amendment):
@@ -128,7 +129,8 @@ clicks the ViewCube's Top face and checks the camera orientation.
   the geometry under the cursor. Picking (P1-02 / P2) can add a depth pick for
   both.
 - Touch gestures are not mapped yet (touch drags do nothing on the canvas).
-- Named views stay disabled in the nav bar; the Browser lists the document's.
+- Named views stayed disabled in the nav bar until the 2026-10-10 amendment,
+  which wires both places up (save, restore, rename, delete).
 - **P1-01** uses `lookFrom` (or `animateTo`) for the Look At animation and the
   origin planes for sketch-plane selection; hover highlight of origin items
   comes with P2-08.
@@ -206,3 +208,44 @@ clicks the ViewCube's Top face and checks the camera orientation.
   projections with and without a shift.
 - The Viewport region carries `data-camera-shift`; the e2e helpers
   `mapping` and `projector` use it.
+
+## Amendment, 2026-10-10: saving named views
+
+The schema's `doc.views` (`NamedViewSchema`, file format §4.3) existed from
+the start and the nav bar's and the browser's Named views places were
+placeholders; nothing wrote to it. Now it works:
+
+- **Core commands** (`document-commands.ts`, one undo step each, the caller
+  passes the ID): `saveView({ id, name, camera })`, `updateView({ id, name?,
+  camera? })` (rename, or overwrite the camera, or both) and `removeView({
+  id })`. Names are trimmed and can't be empty; a name taken by another view
+  gets the next free "`<name>` 2" (`uniqueViewName`), and the default name is
+  "View1", "View2"… the lowest number no view uses (`defaultViewName`, as
+  `newBodyNames` works). Views are never referred to by anything, so a delete
+  is always allowed.
+- **The camera is `ViewCamera`** (`schema.ts`): `projection`, `position`
+  (the camera's own point), `target`, `up`, plus an optional `size` —
+  **orthographic only** (added with this amendment; no version bump, an
+  optional field). A perspective camera sits `perspectiveDistance(size)` from
+  the target, so its position fixes the size; the orthographic camera sits
+  far back at a distance that depends on the zoom, so without `size` an
+  orthographic view could not be restored exactly. `viewToCamera` /
+  `cameraToView` (`viewport/namedView.ts`) convert both ways; restoring is
+  exact within 1e-6 in both projections. The `View.shift` of a fit is not
+  saved: the target restores centred, orbiting unchanged.
+- **Saving** reads the live camera from the viewport store and dispatches
+  `saveView` — a normal command, so the design marks unsaved and undoes with
+  the rest. **Restoring** sets the saved projection and animates the camera
+  through the store's standard move (`animateTo`, the one Shift+1… use): view
+  state, never a command, never undoable, never unsaved.
+- **UI:** the nav bar's Named views button is always enabled; its menu lists
+  the views by name (click to restore) above "Save Current View…", which
+  opens a small popover anchored on the button (a Name field prefilled with
+  `defaultViewName`, Save/Cancel; Enter/Esc). The Ctrl+K command of the same
+  name opens the same prompt (`viewport/namedViewSave.ts`, a shared open
+  flag); one "View: `<name>`" command per view restores it — no keys. The
+  browser's Named views rows restore on a click, and their right-click menu
+  has Restore, Update to Current View, Rename (F2) and Delete.
+- **Not here:** thumbnails per view, saving section or display settings with
+  a view, and keyboard slots for views stay out (the owner's request was
+  save/restore/rename/delete).

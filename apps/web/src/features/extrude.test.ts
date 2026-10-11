@@ -54,7 +54,12 @@ function values(over: Partial<DialogValues>): DialogValues {
 
 function context(over: Partial<DialogContext> = {}): DialogContext {
   const t = setupDialogs([extrudeDialog]);
-  return { doc: t.store.getState().doc, bodies: { [BOX]: namedBoxMesh() }, ...over };
+  return {
+    doc: t.store.getState().doc,
+    featureId: 'F' as FeatureId,
+    bodies: { [BOX]: namedBoxMesh() },
+    ...over,
+  };
 }
 
 function manipulatorContext(

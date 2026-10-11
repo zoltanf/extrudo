@@ -117,7 +117,9 @@ export function isElectronAccelerator(value: string): boolean {
   const key = parts.pop();
   if (!key) return false;
   const keyOk =
-    /^[A-Za-z0-9]$/.test(key) || /^F([1-9]|1[0-9]|2[0-4])$/.test(key) || NAMED_KEYS.has(key);
+    /^[A-Za-z0-9,./;'[\]\\=`-]$/.test(key) ||
+    /^F([1-9]|1[0-9]|2[0-4])$/.test(key) ||
+    NAMED_KEYS.has(key);
   return keyOk && parts.every((part) => MODIFIERS.has(part));
 }
 

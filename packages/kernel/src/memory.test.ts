@@ -608,6 +608,33 @@ describe('memory', () => {
     expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
   });
 
+  it('writing a grouped STEP file 300 times does not grow the heap', { timeout: 180_000 }, () => {
+    // P6-05 (ADR-0081 §7): an assembly product per component through an
+    // XCAF document that lives only for the call, its colours read back.
+    using scope = kernel.scope();
+    const lid = scope.track(kernel.box([10, 10, 10]));
+    const seal = scope.track(kernel.box([10, 10, 2], [0, 0, 12]));
+    const base = scope.track(kernel.box([20, 20, 5], [30, 0, 0]));
+    const run = (i: number) => {
+      const text = kernel.writeStep(
+        [
+          { shape: lid, name: `Lid${i}`, color: '#c81e28', group: 0 },
+          { shape: seal, name: 'Seal', group: 0 },
+          { shape: base, name: 'Base' },
+        ],
+        ['Lid'],
+      );
+      if (kernel.readStepColors(text).solids[0] !== '#c81e28') throw new Error('no colour');
+    };
+    for (let i = 0; i < WARM_UP; i++) run(i);
+    const before = kernel.stats();
+    for (let i = 0; i < 300; i++) run(i);
+    const after = kernel.stats();
+
+    expect(after.liveShapes).toBe(3);
+    expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
+  });
+
   it(`filleting ${REBUILDS} times, failing ones with their diagnosis included, does not grow the heap`, {
     timeout: 300_000,
   }, () => {

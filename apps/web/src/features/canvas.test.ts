@@ -61,6 +61,7 @@ function contextOf(pending: PendingCanvas | undefined): DialogContext {
       ...emptyDocument(),
       ...(pending && { attachments: { [pending.id]: pending.attachment } }),
     },
+    featureId: 'F' as FeatureId,
     bodies: {},
   };
 }

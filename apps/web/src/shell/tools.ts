@@ -493,6 +493,21 @@ export const TOOLS = {
     category: 'create',
     hint: 'Stop recording and see the code for what you made.',
   },
+  newComponent: {
+    id: 'newComponent',
+    label: 'New Component',
+    short: 'Component',
+    icon: 'component',
+    category: 'construct',
+    hint: 'Gather the selected bodies into a named component, to show, hide and export as one part.',
+  },
+  joint: {
+    id: 'joint',
+    label: 'Joint',
+    icon: 'joint-revolute',
+    category: 'construct',
+    hint: 'Join two components where they are: a hinge, a slide or a rigid link, to pose and check.',
+  },
   rib: {
     id: 'rib',
     label: 'Rib',
@@ -998,6 +1013,8 @@ export const TABS: Tab[] = [
       { label: 'Pattern', tools: ['rectangularPattern', 'circularPattern', 'pathPattern'] },
       // Record and Stop show one at a time (P5-05).
       { label: 'Program', tools: ['script', 'recordMacro', 'stopMacro'] },
+      // Components organise bodies into parts (P6-05, ADR-0081).
+      { label: 'Component', tools: ['newComponent', 'joint'] },
     ],
   },
   {

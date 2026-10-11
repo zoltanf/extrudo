@@ -25,6 +25,7 @@ import {
 } from '@extrudo/core';
 import {
   ArrowDownToLine,
+  Boxes,
   CirclePlay,
   Eraser,
   Eye,
@@ -47,6 +48,7 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { keysFor } from '../commands/keymap';
+import type { PlacementActions } from '../components/placement';
 import type { MarkingEntry } from '../design-system';
 import { readTopology } from '../selection/items';
 import type { ViewportStore } from '../viewport/store';
@@ -70,6 +72,8 @@ export interface ContextInput {
   };
   /** Grouping the timeline's picked chips, which the list offers as "Group" (P4-09). */
   groupActions: GroupActions;
+  /** Placing a component as one (P6-05 S5, ADR-0081 §3): "Place Component on Bed". */
+  placement?: PlacementActions;
   /** The feature chips picked in the timeline (P3-17): two or more can be grouped. */
   pickedChips: readonly FeatureId[];
   viewport: ViewportStore;
@@ -234,6 +238,24 @@ function modelGroups(input: ContextInput): MarkingEntry[][] {
       }),
     );
   }
+  // P6-05 S5: a flat face of a body in a component places the whole component
+  // (the face's body and its other live bodies, carried along: ADR-0081 §3).
+  const faceTopology = faces.length === 1 && selection.length === 1 ? faces[0] : undefined;
+  const faceBody = faceTopology && input.bodies.find((b) => b.id === faceTopology.body);
+  const component = faceBody?.component;
+  if (faceTopology && component && input.placement) {
+    const carried = input.bodies.filter(
+      (b) => b.component === component && b.id !== faceTopology.body,
+    );
+    if (carried.length > 0) {
+      geometry.push({
+        id: 'placeComponentOnBed',
+        label: 'Place Component on Bed',
+        icon: icon(<ArrowDownToLine {...small} />),
+        onSelect: () => input.placement?.placeOnBed(component, faceTopology.body),
+      });
+    }
+  }
   if (topology.length > 0) {
     geometry.push(commandEntry(input, 'measure', 'Measure', { icon: icon(<Ruler {...small} />) }));
   }
@@ -290,6 +312,9 @@ function modelGroups(input: ContextInput): MarkingEntry[][] {
         onSelect: () => bodyActions.exportBodies?.(ids),
       });
     }
+    body.push(
+      commandEntry(input, 'newComponent', 'New Component…', { icon: icon(<Boxes {...small} />) }),
+    );
     if (selection.some((i) => i.kind === 'body')) {
       body.push(commandEntry(input, 'delete', 'Delete', { icon: icon(<Trash2 {...small} />) }));
     }

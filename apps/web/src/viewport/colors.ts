@@ -52,7 +52,8 @@ export interface SceneColors {
   thickness: Rgba;
 }
 
-const TOKENS: Record<keyof SceneColors, string> = {
+/** The token each scene colour is read from (exported for the tests). */
+export const TOKENS: Record<keyof SceneColors, string> = {
   grid: '--x-grid',
   axisX: '--x-axis-x',
   axisY: '--x-axis-y',
@@ -78,6 +79,16 @@ const TOKENS: Record<keyof SceneColors, string> = {
   overhang: '--x-error',
   thickness: '--x-error',
 };
+
+/**
+ * The colour of each origin plane (the axis it is normal to): XY is
+ * blue like Z, XZ green like Y, YZ red like X.
+ */
+export const PLANE_AXIS_COLOR = {
+  xy: 'axisZ',
+  xz: 'axisY',
+  yz: 'axisX',
+} as const satisfies Record<'xy' | 'xz' | 'yz', keyof SceneColors>;
 
 const FALLBACK: Rgba = { r: 0.5, g: 0.5, b: 0.5, a: 1 };
 

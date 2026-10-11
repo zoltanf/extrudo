@@ -197,3 +197,121 @@ describe('customizer and configurations (P4-07, ADR-0059)', () => {
     expect(DocumentSchema.parse(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
   });
 });
+
+describe('components (P6-05, ADR-0081 §2)', () => {
+  const box = { id: 'box', name: 'Box', visible: true };
+  const lid = { id: 'lid', name: 'Lid', visible: true };
+  function withComponents(over: Record<string, unknown> = {}) {
+    const doc = sampleDocument();
+    return {
+      ...doc,
+      components: [box, lid],
+      features: doc.features.map((f, i) => (i === 1 ? { ...f, component: 'box' } : f)),
+      bodies: { 'f2:0': { name: 'Body1', visible: true, component: 'lid' } },
+      ...over,
+    };
+  }
+
+  it('accepts components, memberships and stamps, and a design without any', () => {
+    expect(issues(withComponents())).toEqual([]);
+    expect(issues(sampleDocument())).toEqual([]);
+  });
+
+  it('reports duplicate IDs and names in another case', () => {
+    expect(
+      issues(withComponents({ components: [box, lid, { ...lid, id: 'box', name: 'Seal' }] })),
+    ).toEqual(['components.2.id: duplicate id "box"']);
+    expect(
+      issues(withComponents({ components: [box, lid, { ...lid, id: 'c3', name: 'LID' }] })),
+    ).toEqual(['components.2.name: duplicate name "LID"']);
+  });
+
+  it('reports a body or a feature naming a component the design lacks', () => {
+    expect(
+      issues(withComponents({ bodies: { 'f2:0': { name: 'B', visible: true, component: 'x' } } })),
+    ).toEqual(["bodies.f2:0.component: names component x, which the design doesn't have"]);
+    const doc = sampleDocument();
+    expect(
+      issues({
+        ...doc,
+        features: doc.features.map((f, i) => (i === 2 ? { ...f, component: 'y' } : f)),
+      }),
+    ).toEqual(["features.2.component: names component y, which the design doesn't have"]);
+  });
+
+  it('reports ghost on a visible component', () => {
+    expect(issues(withComponents({ components: [{ ...box, ghost: true }, lid] }))).toEqual([
+      'components.0.ghost: is set on a visible component (a ghost is stored with visible: false)',
+    ]);
+    expect(
+      issues(withComponents({ components: [{ ...box, visible: false, ghost: true }, lid] })),
+    ).toEqual([]);
+  });
+
+  it('checks the record itself', () => {
+    expect(issues(withComponents({ components: [{ ...box, name: '' }, lid] }))).toHaveLength(1);
+    expect(
+      issues(withComponents({ components: [{ ...box, name: 'x'.repeat(101) }, lid] })),
+    ).toHaveLength(1);
+    expect(issues(withComponents({ components: [{ ...box, transform: [] }, lid] }))).toHaveLength(
+      1,
+    );
+  });
+});
+
+describe('joints (P6-05, ADR-0081 §4)', () => {
+  const components = [
+    { id: 'base', name: 'Base', visible: true },
+    { id: 'leaf', name: 'Leaf', visible: true },
+  ];
+  const hinge = {
+    id: 'j1',
+    name: 'Hinge',
+    type: 'revolute',
+    a: { component: 'leaf', ref: { kind: 'face', id: 'hole:f2:side:wall' } },
+    b: { component: 'base', ref: { kind: 'edge', id: 'e[a|b]' } },
+    min: { kind: 'expr', expr: '0 deg', unit: 'angle' },
+    max: { kind: 'expr', expr: '90 deg', unit: 'angle' },
+  };
+  const withJoints = (joints: unknown[]) => ({ ...sampleDocument(), components, joints });
+
+  it('accepts joints, and a design without any', () => {
+    expect(issues(withJoints([hinge]))).toEqual([]);
+    expect(issues({ ...sampleDocument(), components })).toEqual([]);
+  });
+
+  it('reports duplicate IDs and names in another case', () => {
+    expect(issues(withJoints([hinge, { ...hinge, name: 'Other' }]))).toEqual([
+      'joints.1.id: duplicate id "j1"',
+    ]);
+    expect(issues(withJoints([hinge, { ...hinge, id: 'j2', name: 'HINGE' }]))).toEqual([
+      'joints.1.name: duplicate name "HINGE"',
+    ]);
+  });
+
+  it('reports a missing component, both sides on one, limits and kinds the type lacks', () => {
+    expect(issues(withJoints([{ ...hinge, a: { ...hinge.a, component: 'x' } }]))).toEqual([
+      "joints.0.a.component: names component x, which the design doesn't have",
+    ]);
+    expect(issues(withJoints([{ ...hinge, b: { ...hinge.b, component: 'leaf' } }]))).toEqual([
+      'joints.0.b.component: both sides are in Leaf: pick a frame on another component',
+    ]);
+    const rigid = { ...hinge, type: 'rigid', min: undefined, max: hinge.max };
+    expect(issues(withJoints([JSON.parse(JSON.stringify(rigid))]))).toEqual([
+      'joints.0.max: is set on a rigid joint, which has no limits',
+    ]);
+    expect(issues(withJoints([{ ...hinge, type: 'slider' }]))).toEqual([
+      "joints.0.min: is angle, but a slider joint's limits are lengths",
+      "joints.0.max: is angle, but a slider joint's limits are lengths",
+    ]);
+    expect(
+      issues(withJoints([{ ...hinge, a: { ...hinge.a, ref: { kind: 'vertex', id: 'v[a]' } } }])),
+    ).toEqual(["joints.0.a.ref.kind: is vertex, which a revolute joint doesn't take"]);
+  });
+
+  it('checks the record itself', () => {
+    expect(issues(withJoints([{ ...hinge, flip: false }]))).toHaveLength(1);
+    expect(issues(withJoints([{ ...hinge, type: 'ball' }]))).toHaveLength(1);
+    expect(issues(withJoints([{ ...hinge, pose: 30 }]))).toHaveLength(1);
+  });
+});

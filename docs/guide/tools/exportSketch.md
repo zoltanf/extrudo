@@ -2,7 +2,7 @@
 title: Export Sketch
 section: Tools
 category: Sketch
-order: 114
+order: 116
 ---
 
 # Export Sketch

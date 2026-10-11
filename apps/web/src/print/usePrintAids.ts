@@ -11,6 +11,7 @@
 import {
   type BodyId,
   type BodyMeta,
+  type ComponentId,
   type EvaluateResult,
   ExprError,
   type ExtrudoDocument,
@@ -30,14 +31,15 @@ import { readTopology } from '../selection/items';
 import type { ViewportStore } from '../viewport/store';
 import {
   checkPrintField,
+  chosenDensityExpression,
   DEFAULT_PRINT,
   type MaterialChoice,
   type PrintEstimate,
   type PrintField,
   presetDensity,
   printEstimate,
-  resolveMaterialChoice,
 } from './material';
+import { materialStore, useMaterialChoice } from './materialStore';
 import {
   analyzeOverhang,
   bedLevel,
@@ -58,8 +60,6 @@ import {
 export const PRINT_INFO_TOOL = 'printInfo';
 export const OVERHANG_TOOL = 'overhang';
 
-const MATERIAL_PREFERENCE = 'print.material';
-
 // ---------------------------------------------------------------- print info
 
 export interface PrintInfoBody {
@@ -69,6 +69,17 @@ export interface PrintInfoBody {
   volume: number;
   /** mm², of every face of the body: how much of it a wall's thickness can cover. */
   area: number;
+}
+
+/** One component's share of the counted bodies (P6-05 S9, ADR-0081 §7). */
+export interface PrintInfoComponent {
+  /** Undefined for the "Loose bodies" row. */
+  id: ComponentId | undefined;
+  name: string;
+  /** How many of the counted bodies it holds. */
+  count: number;
+  /** Undefined while measuring or while a setting doesn't evaluate. */
+  estimate: PrintEstimate | undefined;
 }
 
 export interface PrintInfo {
@@ -85,6 +96,11 @@ export interface PrintInfo {
   /** Total solid volume, mm³. */
   volume: number | undefined;
   estimate: PrintEstimate | undefined;
+  /**
+   * Per component, under the totals: the counted bodies split by component, in the browser's
+   * order, then "Loose bodies" when some are loose. Empty when the design has no components.
+   */
+  components: PrintInfoComponent[];
   error?: string;
 }
 
@@ -94,7 +110,7 @@ export interface PrintInfoOptions {
   doc: ExtrudoDocument;
   selection: readonly SelectionItem[];
   /** The model's bodies with their names, and their meshes (a change asks the kernel again). */
-  bodyList: readonly { id: BodyId; meta: BodyMeta }[];
+  bodyList: readonly { id: BodyId; meta: BodyMeta; component?: ComponentId }[];
   meshes: Readonly<Record<BodyId, BodyMesh>>;
   /** The panel is open. */
   active: boolean;
@@ -109,16 +125,10 @@ export function usePrintInfo({
   meshes,
   active,
 }: PrintInfoOptions): PrintInfo {
-  const [choice, setChoiceState] = useState<MaterialChoice>(() =>
-    resolveMaterialChoice(preferences.get<Partial<MaterialChoice>>(MATERIAL_PREFERENCE, {})),
-  );
+  // One store per preferences, shared with the Settings dialog (ADR-0082).
+  const choice = useMaterialChoice(preferences);
   const setChoice = useCallback(
-    (change: Partial<MaterialChoice>) =>
-      setChoiceState((current) => {
-        const next = { ...current, ...change };
-        preferences.set(MATERIAL_PREFERENCE, next);
-        return next;
-      }),
+    (change: Partial<MaterialChoice>) => materialStore(preferences).set(change),
     [preferences],
   );
 
@@ -142,10 +152,12 @@ export function usePrintInfo({
     [evaluate, choice],
   );
   const density = useMemo(() => {
-    if (choice.material !== 'custom') return presetDensity(choice.material);
-    const result = evaluate('density', choice.density);
+    const result = evaluate('density', chosenDensityExpression(choice));
+    // A preset whose own density doesn't evaluate any more (a deleted parameter) falls back
+    // to the built-in number rather than hiding the weight.
+    if (!result.ok && choice.material !== 'custom') return presetDensity(choice.material);
     return result.ok ? result.value : undefined;
-  }, [choice.material, choice.density, evaluate]);
+  }, [choice, evaluate]);
 
   // The bodies: those selected (a face or an edge picks its body), else every shown one.
   const ids = useMemo(() => initialBodies(bodyList, selection), [bodyList, selection]);
@@ -199,16 +211,44 @@ export function usePrintInfo({
     });
   }, [fresh, ids, names]);
   const volume = fresh?.inspection ? bodies.reduce((sum, b) => sum + b.volume, 0) : undefined;
+  const walls = number('walls');
+  const lineWidth = number('lineWidth');
+  const infill = number('infill');
+  const price = number('price');
   const settings = {
     density: density ?? 0,
     diameter: choice.diameter,
-    walls: number('walls'),
-    lineWidth: number('lineWidth'),
-    infill: number('infill'),
-    price: number('price'),
+    walls,
+    lineWidth,
+    infill,
+    price,
   };
   const estimate =
     volume !== undefined && density !== undefined ? printEstimate(bodies, settings) : undefined;
+  // The same counted bodies, split by component (a body naming a missing component is loose).
+  const components = ((): PrintInfoComponent[] => {
+    const list = doc.components ?? [];
+    if (list.length === 0 || volume === undefined) return [];
+    const owner = new Map(bodyList.map((b) => [b.id, b.component]));
+    const known = new Set(list.map((c) => c.id));
+    const group = (id: ComponentId | undefined) =>
+      bodies.filter((b) => {
+        const c = owner.get(b.id);
+        return id === undefined ? c === undefined || !known.has(c) : c === id;
+      });
+    const row = (id: ComponentId | undefined, name: string): PrintInfoComponent => {
+      const members = group(id);
+      return {
+        id,
+        name,
+        count: members.length,
+        estimate: density !== undefined ? printEstimate(members, settings) : undefined,
+      };
+    };
+    const rows = list.map((c) => row(c.id, c.name)).filter((r) => r.count > 0);
+    const loose = row(undefined, 'Loose bodies');
+    return loose.count > 0 ? [...rows, loose] : rows;
+  })();
   const state: PrintInfo['state'] =
     ids.length === 0 ? 'empty' : fresh?.error ? 'error' : fresh?.inspection ? 'ready' : 'pending';
   return {
@@ -221,6 +261,7 @@ export function usePrintInfo({
     bodies,
     volume,
     estimate,
+    components,
     ...(fresh?.error && { error: fresh.error }),
   };
 }

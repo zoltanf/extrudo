@@ -1,3 +1,4 @@
+import { defaultViewName, type NamedView, type ViewId } from '@extrudo/core';
 import {
   Box,
   ChevronDown,
@@ -11,10 +12,11 @@ import {
   Video,
   ZoomIn,
 } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import {
+  Button,
   IconButton,
   Menu,
   MenuCheckboxItem,
@@ -22,8 +24,11 @@ import {
   MenuLabel,
   MenuRadioGroup,
   MenuSeparator,
+  Popover,
+  TextInput,
 } from '../design-system';
 import { FILTER_KINDS, isFiltered } from '../selection/filter';
+import { namedViewSaveStore } from './namedViewSave';
 import { NAV_PRESETS, type NavAction } from './navigation';
 import { VISUAL_STYLES, type ViewportStore } from './store';
 
@@ -54,6 +59,21 @@ export interface NavBarProps {
   commandRunning?: boolean;
   /** Select pressed while a command runs: stop it. */
   onStopCommand?(): void;
+  /**
+   * The document's named views and what their menu items do (ADR-0008's
+   * amendment, 2026-10-10). Absent nowhere today; the shell always passes it.
+   */
+  namedViews?: NamedViewEntries;
+}
+
+/** The saved views and the actions the nav bar's menu offers on them. */
+export interface NamedViewEntries {
+  /** The document's views, in the order saved. */
+  views: readonly NamedView[];
+  /** Restores a view: an animated camera move, view state, not undoable. */
+  restore(id: ViewId): void;
+  /** Saves the live camera under `name`; `false` when the name is refused. */
+  save(name: string): boolean;
 }
 
 /**
@@ -62,7 +82,7 @@ export interface NavBarProps {
  * mouse preset. Glass pill: `raised` at 85 % with a 6 px backdrop blur
  * (docs/05-brand.md §5).
  */
-export function NavBar({ store, commandRunning = false, onStopCommand }: NavBarProps) {
+export function NavBar({ store, commandRunning = false, onStopCommand, namedViews }: NavBarProps) {
   const { tool, projection, visualStyle, grid, preset, selectionFilter } = useStore(
     store,
     useShallow(({ tool, projection, visualStyle, grid, preset, selectionFilter }) => ({
@@ -76,6 +96,12 @@ export function NavBar({ store, commandRunning = false, onStopCommand }: NavBarP
   );
   const filtered = isFiltered(selectionFilter);
   const s = store.getState();
+  const views = namedViews?.views ?? NO_VIEWS;
+  const saveOpen = useStore(namedViewSaveStore, (st) => st.open);
+  const closeSave = namedViewSaveStore.getState().close;
+  // The popover lives here even when a command opened it; leaving it open
+  // across documents would show it where nobody asked for it.
+  useEffect(() => () => namedViewSaveStore.getState().close(), []);
 
   return (
     <nav
@@ -195,9 +221,112 @@ export function NavBar({ store, commandRunning = false, onStopCommand }: NavBarP
           cursor.
         </p>
       </Menu>
-      <IconButton label="Named views" hint="Saving and recalling views comes later." disabled>
-        <Video size={16} strokeWidth={1.75} />
-      </IconButton>
+      {/* Named views (ADR-0008's amendment): the saved views to restore, then
+          the save prompt on a popover anchored on this button. The popover's
+          anchor wraps the menu's trigger, since both live on one button. The
+          debug pages have no document, so their button stays as it was. */}
+      {namedViews ? (
+        <Popover
+          anchorOnly
+          open={saveOpen}
+          onOpenChange={(open) => {
+            if (!open) closeSave();
+          }}
+          side="top"
+          align="center"
+          label="Save current view"
+          trigger={
+            <span className="inline-flex">
+              <Menu
+                label="Named views"
+                align="center"
+                onCloseAutoFocus={(event) => {
+                  // The save popover keeps the focus: it is opening right now.
+                  if (namedViewSaveStore.getState().open) event.preventDefault();
+                }}
+                trigger={
+                  <IconButton
+                    label="Named views"
+                    hint="Restore a saved view, or save the camera now."
+                  >
+                    <Video size={16} strokeWidth={1.75} />
+                  </IconButton>
+                }
+              >
+                {views.length === 0 && (
+                  <p className="px-2 pt-1.5 pb-1 text-sm text-muted">No named views yet.</p>
+                )}
+                {views.map((view) => (
+                  <MenuItem key={view.id} onSelect={() => namedViews.restore(view.id)}>
+                    {view.name}
+                  </MenuItem>
+                ))}
+                <MenuSeparator />
+                <MenuItem onSelect={() => namedViewSaveStore.getState().show()}>
+                  Save Current View…
+                </MenuItem>
+              </Menu>
+            </span>
+          }
+        >
+          <SaveViewForm views={views} onSave={namedViews.save} onClose={closeSave} />
+        </Popover>
+      ) : (
+        <IconButton label="Named views" hint="Saving and recalling views comes later." disabled>
+          <Video size={16} strokeWidth={1.75} />
+        </IconButton>
+      )}
     </nav>
+  );
+}
+
+const NO_VIEWS: readonly NamedView[] = [];
+
+/** The save prompt: a name prefilled with the next "View<n>", and Save/Cancel. */
+function SaveViewForm({
+  views,
+  onSave,
+  onClose,
+}: {
+  views: readonly NamedView[];
+  onSave(name: string): boolean;
+  onClose(): void;
+}) {
+  const [name, setName] = useState(() => defaultViewName(views));
+  const input = useRef<HTMLInputElement>(null);
+  const save = () => {
+    if (onSave(name)) onClose();
+  };
+  return (
+    <form
+      className="flex w-56 flex-col gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        save();
+      }}
+    >
+      <TextInput
+        ref={input}
+        aria-label="Name"
+        value={name}
+        autoFocus
+        onFocus={(event) => event.currentTarget.select()}
+        onChange={(event) => setName(event.target.value)}
+        onKeyDown={(event) => {
+          // Keys typed into the name aren't shortcuts.
+          event.stopPropagation();
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            onClose();
+          }
+        }}
+      />
+      <div className="flex justify-end gap-2">
+        <Button onClick={onClose}>Cancel</Button>
+        <Button variant="primary" type="submit">
+          Save
+        </Button>
+      </div>
+    </form>
   );
 }

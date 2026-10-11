@@ -5,6 +5,11 @@
  * object is one build item, placed as modelled (no transform). Units are
  * millimetres.
  *
+ * With `assemblies` (P6-05, ADR-0081 §7) several mesh objects become the
+ * `<components>` of one grouped `object`, one build item per group: a slicer
+ * reads such an object as one part made of several, which is what a component
+ * is for. Without it the XML is exactly as before.
+ *
  * Colours use the materials extension (not required, so a consumer may
  * ignore them): one `m:colorgroup` with a colour per coloured body, which
  * the object names as its default property (`pid`/`pindex`) and, because
@@ -35,6 +40,21 @@ export interface ThreeMfOptions {
   application?: string;
   /** Decimals of coordinates in mm (default 5: 10 nm). */
   decimals?: number;
+  /**
+   * Grouped build items (P6-05, ADR-0081 §7): one `object` per assembly whose
+   * `<components>` list names the mesh objects (`parts` are indices into
+   * `objects`). Build items are the assemblies in order, then the objects in
+   * no assembly, in order. Absent (or empty): one object and item per mesh,
+   * exactly as before.
+   */
+  assemblies?: readonly ThreeMfAssembly[];
+}
+
+/** One assembly of a 3MF export: a named group of mesh objects (ADR-0081 §7). */
+export interface ThreeMfAssembly {
+  name: string;
+  /** Indices into the `objects` passed to `write3mf`/`modelXml`. */
+  parts: readonly number[];
 }
 
 /** Writes bodies as a 3MF package, one object and build item each. */
@@ -73,6 +93,19 @@ function relationships(): string {
 /** The model part's XML. */
 export function modelXml(objects: readonly MeshObject[], options: ThreeMfOptions = {}): string {
   const decimals = options.decimals ?? 5;
+  const assemblies = (options.assemblies ?? []).filter((a) => a.parts.length > 0);
+  // A part may be in one assembly only, and must be one of the objects.
+  const seen = new Set<number>();
+  for (const assembly of assemblies) {
+    for (const part of assembly.parts) {
+      if (part < 0 || part >= objects.length) {
+        throw new Error(`Assembly part ${part} is not one of the ${objects.length} objects.`);
+      }
+      if (seen.has(part)) throw new Error(`Object ${part} is in two assemblies.`);
+      seen.add(part);
+    }
+  }
+  const grouped = assemblies.length > 0;
   const out: string[] = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     `<model unit="${options.unit ?? 'millimeter'}" xml:lang="en-US" xmlns="${CORE}" xmlns:m="${MATERIAL}">`,
@@ -82,7 +115,8 @@ export function modelXml(objects: readonly MeshObject[], options: ThreeMfOptions
     out.push(` <metadata name="Application">${xmlText(options.application)}</metadata>`);
   }
   out.push(' <resources>');
-  // Resource IDs: 1 for the colour group (if any), then one per object.
+  // Resource IDs: 1 for the colour group (if any), then one per object, the
+  // grouped objects after the mesh objects.
   const colored = objects.filter((o) => o.color !== undefined);
   const group = colored.length > 0 ? 1 : 0;
   if (group) {
@@ -113,10 +147,29 @@ export function modelXml(objects: readonly MeshObject[], options: ThreeMfOptions
     }
     out.push('    </triangles>', '   </mesh>', '  </object>');
   });
+  if (grouped) {
+    assemblies.forEach((assembly, j) => {
+      const id = group + 1 + objects.length + j;
+      out.push(`  <object id="${id}" type="model" name="${xmlText(assembly.name)}">`);
+      out.push('   <components>');
+      for (const part of assembly.parts)
+        out.push(`    <component objectid="${group + 1 + part}"/>`);
+      out.push('   </components>', '  </object>');
+    });
+  }
   out.push(' </resources>', ' <build>');
-  objects.forEach((_, i) => {
-    out.push(`  <item objectid="${group + 1 + i}"/>`);
-  });
+  if (grouped) {
+    assemblies.forEach((_, j) => {
+      out.push(`  <item objectid="${group + 1 + objects.length + j}"/>`);
+    });
+    objects.forEach((_, i) => {
+      if (!seen.has(i)) out.push(`  <item objectid="${group + 1 + i}"/>`);
+    });
+  } else {
+    objects.forEach((_, i) => {
+      out.push(`  <item objectid="${group + 1 + i}"/>`);
+    });
+  }
   out.push(' </build>', '</model>', '');
   return out.join('\n');
 }
@@ -150,20 +203,41 @@ export interface ThreeMfModel {
   unit: string;
   metadata: Record<string, string>;
   objects: ThreeMfObject[];
-  /** Object IDs of the build items, in order. */
+  /** Object IDs of the build items, in order (a grouped item's own object ID). */
   build: number[];
+  /**
+   * The build items expanded (P6-05, ADR-0081 §7): a `<components>` grouped
+   * object's parts, each with its transform, so an importer makes one body per
+   * part. An item that names a plain mesh has one part, the object itself.
+   */
+  items: ThreeMfItem[];
   /** The package's part names. */
   parts: string[];
   contentTypes: string;
   relationships: string;
 }
 
+/** One build item's meshes, expanded through a grouped object's components. */
+export interface ThreeMfItem {
+  objectId: number;
+  meshes: ThreeMfItemPart[];
+}
+
+/** One mesh of a build item, with the transform it is placed by, when any. */
+export interface ThreeMfItemPart {
+  object: ThreeMfObject;
+  /** Row-major 4×3 transform (item `transform` composed with the component's). */
+  transform?: number[];
+}
+
 /**
  * Reads the mesh objects of a 3MF package: enough for tests and simple
  * files. Handles the core spec's objects with meshes, names, metadata,
  * base materials and the materials extension's colour groups as object
- * defaults, and build items. Components, transforms, per-triangle
- * properties and other extensions are ignored.
+ * defaults, build items, and the `<components>`/`<component>` grouping and
+ * transforms that a component export writes (ADR-0081 §7). A grouped object
+ * is not a mesh, so it stays out of `objects`; `items` lists the expanded
+ * meshes. Per-triangle properties and other extensions are ignored.
  */
 export function read3mf(bytes: Uint8Array): ThreeMfModel {
   const entries = unzipSync(bytes);
@@ -184,13 +258,23 @@ export function read3mf(bytes: Uint8Array): ThreeMfModel {
     metadata: {},
     objects: [],
     build: [],
+    items: [],
     parts: Object.keys(entries),
     contentTypes: text('[Content_Types].xml'),
     relationships,
   };
   const colors = new Map<number, string[]>();
+  /** Grouped objects by ID: their `<component>` list (ADR-0081 §7). */
+  const assemblies = new Map<number, { objectId: number; transform?: number[] }[]>();
+  const rawItems: { objectId: number; transform?: number[] }[] = [];
   let group: string[] | undefined;
-  let object: (ThreeMfObject & { pid?: number; pindex?: number }) | undefined;
+  let object:
+    | (ThreeMfObject & {
+        pid?: number;
+        pindex?: number;
+        components: { objectId: number; transform?: number[] }[];
+      })
+    | undefined;
   let positions: number[] = [];
   let indices: number[] = [];
   let metadata: string | undefined;
@@ -228,13 +312,17 @@ export function read3mf(bytes: Uint8Array): ThreeMfModel {
         break;
       case 'object':
         if (tag.closing && object) {
-          const { pid, pindex, ...rest } = object;
-          const color = pid === undefined ? undefined : colors.get(pid)?.[pindex ?? 0];
-          model.objects.push({
-            ...rest,
-            mesh: { positions: new Float64Array(positions), indices: new Uint32Array(indices) },
-            ...(color !== undefined && { color }),
-          });
+          const { pid, pindex, components, ...rest } = object;
+          if (components.length > 0) {
+            assemblies.set(object.id, components);
+          } else {
+            const color = pid === undefined ? undefined : colors.get(pid)?.[pindex ?? 0];
+            model.objects.push({
+              ...rest,
+              mesh: { positions: new Float64Array(positions), indices: new Uint32Array(indices) },
+              ...(color !== undefined && { color }),
+            });
+          }
           object = undefined;
         } else if (!tag.closing) {
           object = {
@@ -242,6 +330,7 @@ export function read3mf(bytes: Uint8Array): ThreeMfModel {
             name: unescapeXml(a.name ?? ''),
             type: a.type ?? 'model',
             mesh: { positions: new Float64Array(), indices: new Uint32Array() },
+            components: [],
             ...(a.pid !== undefined && { pid: Number(a.pid) }),
             ...(a.pindex !== undefined && { pindex: Number(a.pindex) }),
           };
@@ -249,18 +338,106 @@ export function read3mf(bytes: Uint8Array): ThreeMfModel {
           indices = [];
         }
         break;
+      case 'component': {
+        if (object) {
+          const transform = parseTransform(a.transform);
+          object.components.push({ objectId: Number(a.objectid), ...(transform && { transform }) });
+        }
+        break;
+      }
       case 'vertex':
         positions.push(Number(a.x), Number(a.y), Number(a.z));
         break;
       case 'triangle':
         indices.push(Number(a.v1), Number(a.v2), Number(a.v3));
         break;
-      case 'item':
-        model.build.push(Number(a.objectid));
+      case 'item': {
+        const transform = parseTransform(a.transform);
+        rawItems.push({ objectId: Number(a.objectid), ...(transform && { transform }) });
         break;
+      }
     }
   }
+  model.build = rawItems.map((item) => item.objectId);
+  const byId = new Map(model.objects.map((o) => [o.id, o]));
+  model.items = rawItems.map(({ objectId, transform }) => {
+    const parts = assemblies.get(objectId);
+    if (parts === undefined) {
+      const object = byId.get(objectId);
+      return {
+        objectId,
+        meshes: object ? [{ object, ...(transform !== undefined && { transform }) }] : [],
+      };
+    }
+    const meshes = parts.flatMap((part) => {
+      const object = byId.get(part.objectId);
+      if (!object) return [];
+      const composed = composeTransforms(transform, part.transform);
+      return [{ object, ...(composed !== undefined && { transform: composed }) }];
+    });
+    return { objectId, meshes };
+  });
   return model;
+}
+
+/** A 3MF transform attribute (12 row-major numbers), or `undefined` if absent or malformed. */
+function parseTransform(value: string | undefined): number[] | undefined {
+  if (value === undefined) return undefined;
+  const parts = value.trim().split(/\s+/).map(Number);
+  return parts.length === 12 && parts.every(Number.isFinite) ? parts : undefined;
+}
+
+/**
+ * `outer` applied after `inner` (both 4×3 row-major), or whichever is
+ * present. `m` maps `p` to `L·p + t` with `L = [[m0,m3,m6],[m1,m4,m7],[m2,m5,m8]]`.
+ */
+function composeTransforms(
+  outer: number[] | undefined,
+  inner: number[] | undefined,
+): number[] | undefined {
+  if (outer === undefined) return inner;
+  if (inner === undefined) return outer;
+  const lo = [
+    [outer[0] as number, outer[3] as number, outer[6] as number],
+    [outer[1] as number, outer[4] as number, outer[7] as number],
+    [outer[2] as number, outer[5] as number, outer[8] as number],
+  ];
+  const li = [
+    [inner[0] as number, inner[3] as number, inner[6] as number],
+    [inner[1] as number, inner[4] as number, inner[7] as number],
+    [inner[2] as number, inner[5] as number, inner[8] as number],
+  ];
+  const to = [outer[9] as number, outer[10] as number, outer[11] as number];
+  const ti = [inner[9] as number, inner[10] as number, inner[11] as number];
+  const r = [0, 1, 2].map((i) =>
+    [0, 1, 2].map(
+      (j) =>
+        (lo[i]?.[0] as number) * (li[0]?.[j] as number) +
+        (lo[i]?.[1] as number) * (li[1]?.[j] as number) +
+        (lo[i]?.[2] as number) * (li[2]?.[j] as number),
+    ),
+  );
+  const tr = [0, 1, 2].map(
+    (i) =>
+      (lo[i]?.[0] as number) * (ti[0] as number) +
+      (lo[i]?.[1] as number) * (ti[1] as number) +
+      (lo[i]?.[2] as number) * (ti[2] as number) +
+      (to[i] as number),
+  );
+  return [
+    r[0]?.[0] as number,
+    r[1]?.[0] as number,
+    r[2]?.[0] as number,
+    r[0]?.[1] as number,
+    r[1]?.[1] as number,
+    r[2]?.[1] as number,
+    r[0]?.[2] as number,
+    r[1]?.[2] as number,
+    r[2]?.[2] as number,
+    tr[0] as number,
+    tr[1] as number,
+    tr[2] as number,
+  ];
 }
 
 interface Tag {

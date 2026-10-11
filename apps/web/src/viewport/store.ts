@@ -4,7 +4,9 @@
  * open document. Nothing here is saved in the document or undoable; the
  * display settings are user preferences.
  */
+import type { JointId } from '@extrudo/core';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import type { JointCheckState } from '../joints/clearance';
 import type { Preferences } from '../platform';
 import type { OverhangState } from '../print/overhang';
 import type { ThicknessState } from '../print/thickness';
@@ -25,6 +27,12 @@ import {
 } from './camera';
 import type { NavAction, NavPreset } from './navigation';
 import type { RenderStats } from './renderMeter';
+
+/** A joint posed in the view (P6-05 J2, ADR-0081 §4): degrees for a revolute, mm for a slider. */
+export interface JointPose {
+  joint: JointId;
+  value: number;
+}
 
 export type VisualStyle = 'shaded' | 'shadedEdges' | 'wireframe' | 'hiddenEdges';
 
@@ -191,6 +199,18 @@ export interface ViewportState extends ViewportSettings {
    * project is open.
    */
   thickness: ThicknessState | undefined;
+  /**
+   * A joint's clearance check (P6-05 J3, ADR-0081 §4): which joint, its minimum gap and
+   * whether the view draws its marks. View state like the wall-thickness check's; the result
+   * lives with the check (`joints/useJointCheck.ts`).
+   */
+  jointCheck: JointCheckState | undefined;
+  /**
+   * A joint posed in the view (P6-05 J2, ADR-0081 §4): the moving components are drawn through
+   * the pose's matrix and can't be picked. View state like the section: not saved, not
+   * undoable, recomputes nothing; any tool, dialog or sketch clears it.
+   */
+  jointPose: JointPose | undefined;
 
   /** Moves the camera at once (drags, wheel) and stops any animation. */
   setView(view: View): void;
@@ -260,6 +280,12 @@ export interface ViewportState extends ViewportSettings {
   setThickness(thickness: ThicknessState | undefined): void;
   /** Changes part of the wall-thickness check; nothing while there is none. */
   updateThickness(patch: Partial<ThicknessState>): void;
+  /** Starts, replaces or (`undefined`) removes the clearance check. */
+  setJointCheck(check: JointCheckState | undefined): void;
+  /** Changes part of the clearance check; nothing while there is none. */
+  updateJointCheck(patch: Partial<JointCheckState>): void;
+  /** Poses a joint, or (`undefined`) puts everything back as built. */
+  setJointPose(pose: JointPose | undefined): void;
 }
 
 export type ViewportStore = StoreApi<ViewportState>;
@@ -274,7 +300,7 @@ export interface ViewportStoreOptions {
 
 const PREFERENCES_KEY = 'viewport';
 
-function loadSettings(preferences: Preferences): ViewportSettings {
+export function loadSettings(preferences: Preferences): ViewportSettings {
   const stored = preferences.get<Partial<ViewportSettings>>(PREFERENCES_KEY, {});
   return {
     ...DEFAULT_SETTINGS,
@@ -324,6 +350,8 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       sectionBox: undefined,
       overhang: undefined,
       thickness: undefined,
+      jointCheck: undefined,
+      jointPose: undefined,
 
       setView(view) {
         set({ view, transition: undefined });
@@ -483,6 +511,25 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       updateThickness(patch) {
         const current = get().thickness;
         if (current) set({ thickness: { ...current, ...patch } });
+      },
+      setJointCheck(jointCheck) {
+        set({ jointCheck });
+      },
+      updateJointCheck(patch) {
+        const current = get().jointCheck;
+        if (current) set({ jointCheck: { ...current, ...patch } });
+      },
+      setJointPose(jointPose) {
+        const current = get().jointPose;
+        if (current === jointPose) return;
+        if (
+          current &&
+          jointPose &&
+          current.joint === jointPose.joint &&
+          current.value === jointPose.value
+        )
+          return;
+        set({ jointPose });
       },
     };
   });

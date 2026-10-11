@@ -7,9 +7,11 @@ import {
   type SketchData,
   type SketchFrame,
 } from '@extrudo/core';
+import { translation } from '@extrudo/kernel/matrix';
 import { detectProfiles, profileAt } from '@extrudo/sketch/profiles';
 import { describe, expect, it } from 'vitest';
 import { textProfiles, textSketch } from '../sketch/textTesting';
+import { pickableBodies } from '../viewport/posedBodies';
 import { DEFAULT_FILTER, type SelectionFilter } from './filter';
 import {
   type PickScene,
@@ -443,5 +445,25 @@ describe('construction planes and points (P3-05)', () => {
       'plane',
       'body',
     ]);
+  });
+});
+
+describe('posed bodies (P6-05 J2)', () => {
+  const pose = translation([0, 0, 5]);
+  const bodies = { [B]: cube };
+  const items = (posed?: Record<BodyId, typeof pose>) => ({
+    bodies: pickableBodies(bodies, {}, posed),
+    sketches: [],
+    occluding: true,
+  });
+
+  it('is not picked while posed, and is again when it is put back', () => {
+    const spot = at([5, 5, 10]);
+    expect(pickTop(items(), iso, spot, DEFAULT_FILTER)).toEqual({ kind: 'face', id: 'b:1' });
+    expect(pickTop(items({ [B]: pose }), iso, spot, DEFAULT_FILTER)).toBeUndefined();
+    expect(pickTop(items(undefined), iso, spot, DEFAULT_FILTER)).toEqual({
+      kind: 'face',
+      id: 'b:1',
+    });
   });
 });

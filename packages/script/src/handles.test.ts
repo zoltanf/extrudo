@@ -19,6 +19,16 @@ const PUBLISHED = Object.entries(api)
   )
   .map(([name, value]) => [name, value] as const);
 
+/**
+ * The handle classes a script can never hold, so the bridge need not know them:
+ * `component` and `joint` are refused by name (ADR-0081 §9), so nothing in the
+ * sandbox ever returns one.
+ */
+const UNREACHABLE: Readonly<Record<string, string>> = {
+  ComponentHandle: 'a script cannot add a component (ADR-0081 §9)',
+  JointHandle: 'a script cannot add a joint (ADR-0081 §9)',
+};
+
 /** Whether an instance of `published` is a handle: it is one of the classes, or of a kind of one. */
 const covered = (published: new (...args: never[]) => object): boolean =>
   HANDLE_CLASSES.some((known) => published === known || published.prototype instanceof known);
@@ -26,9 +36,19 @@ const covered = (published: new (...args: never[]) => object): boolean =>
 describe('the bridge knows every handle', () => {
   it('covers every class the API publishes as a handle', () => {
     expect(PUBLISHED.length).toBeGreaterThan(10);
-    expect(PUBLISHED.filter(([, value]) => !covered(value as never)).map(([name]) => name)).toEqual(
-      [],
-    );
+    expect(
+      PUBLISHED.filter(([name]) => !(name in UNREACHABLE))
+        .filter(([, value]) => !covered(value as never))
+        .map(([name]) => name),
+    ).toEqual([]);
+  });
+
+  it('names a reason for every handle it is not made to know', () => {
+    const names = new Set(PUBLISHED.map(([name]) => name));
+    for (const name of Object.keys(UNREACHABLE)) {
+      expect(names.has(name), name).toBe(true);
+      expect(UNREACHABLE[name], name).toBeTruthy();
+    }
   });
 
   it('knows nothing that is not one', () => {

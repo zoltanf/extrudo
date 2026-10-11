@@ -104,6 +104,8 @@ export interface AppBarProps {
   /** Settings › General › Radial right-click menu: the same state as the command that toggles it. */
   markingRadial: boolean;
   onMarkingRadial(radial: boolean): void;
+  /** Opens the Settings dialog (ADR-0082). */
+  onSettings(): void;
 }
 
 /** A command's first key as it reads here ("Ctrl+K"). */
@@ -137,6 +139,7 @@ export function AppBar({
   onMarkingRadial,
   viewport,
   onCustomizeMarking,
+  onSettings,
 }: AppBarProps) {
   const name = useStore(store, (s) => s.doc.name);
   const { canUndo, canRedo, undoLabel, redoLabel, undo, redo } = useStore(store);
@@ -206,6 +209,7 @@ export function AppBar({
           onCustomizeMarking={onCustomizeMarking}
           markingRadial={markingRadial}
           onMarkingRadial={onMarkingRadial}
+          onSettings={onSettings}
         />
         <Menu
           label="Help"
@@ -296,6 +300,7 @@ function SettingsMenu({
   onCustomizeMarking,
   markingRadial,
   onMarkingRadial,
+  onSettings,
 }: Pick<
   AppBarProps,
   | 'viewport'
@@ -304,6 +309,7 @@ function SettingsMenu({
   | 'onCustomizeMarking'
   | 'markingRadial'
   | 'onMarkingRadial'
+  | 'onSettings'
 >) {
   const autoProject = useStore(viewport, (s) => s.autoProject);
   const autoProjectFace = useStore(viewport, (s) => s.autoProjectFace);
@@ -317,6 +323,14 @@ function SettingsMenu({
         </IconButton>
       }
     >
+      <MenuItem
+        icon={<Settings size={14} />}
+        shortcut={keyLabel('openSettings')}
+        onSelect={onSettings}
+      >
+        Settings…
+      </MenuItem>
+      <MenuSeparator />
       <MenuLabel>General</MenuLabel>
       <MenuCheckboxItem
         checked={autoProject}

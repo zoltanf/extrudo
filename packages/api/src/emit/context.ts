@@ -4,10 +4,12 @@
  * stored sketch behind a selected sketch feature.
  */
 import type {
+  ComponentId,
   ExtrudoDocument,
   Feature,
   FeatureDefinition,
   GeomRef,
+  JointId,
   SketchData,
 } from '@extrudo/core';
 import { documentFeatures } from '@extrudo/core';
@@ -24,6 +26,10 @@ export interface EmitContext {
   selected: ReadonlySet<string>;
   /** A selected feature's ID → the variable its call is assigned to. */
   varOf: ReadonlyMap<string, string>;
+  /** A component's ID → the variable it is emitted as (ADR-0081 §9). */
+  componentOf: ReadonlyMap<ComponentId, string>;
+  /** A joint's ID → the variable it is emitted as. */
+  jointOf: ReadonlyMap<JointId, string>;
   featureById: ReadonlyMap<string, Feature>;
   /** A selected sketch feature's ID → its plane and content. */
   sketchOf: ReadonlyMap<string, SketchView>;

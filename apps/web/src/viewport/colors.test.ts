@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { capColors, parseCssColor } from './colors';
+import { capColors, PLANE_AXIS_COLOR, parseCssColor, TOKENS } from './colors';
 
 describe('parseCssColor', () => {
   it.each([
@@ -40,5 +40,13 @@ describe('capColors', () => {
     const dark = { r: 0.12, g: 0.13, b: 0.15, a: 1 };
     const { fill, hatch } = capColors(dark, teal, { r: 0.95, g: 0.96, b: 0.98, a: 1 });
     expect(hatch.r).toBeGreaterThan(fill.r);
+  });
+});
+
+describe('PLANE_AXIS_COLOR', () => {
+  it('colours each origin plane with the axis it is normal to', () => {
+    expect(TOKENS[PLANE_AXIS_COLOR.xy]).toBe('--x-axis-z');
+    expect(TOKENS[PLANE_AXIS_COLOR.xz]).toBe('--x-axis-y');
+    expect(TOKENS[PLANE_AXIS_COLOR.yz]).toBe('--x-axis-x');
   });
 });

@@ -32,6 +32,8 @@ import {
   isScadMediaType,
   isSweepReport,
   isThreadReport,
+  type Joint,
+  type JointReport,
   MODEL_MEDIA_TYPES,
   type ModelStore,
   makesFeatures,
@@ -51,11 +53,17 @@ import {
 } from './client';
 import type { SmoothKind, SubShapeKind } from './history';
 import type { Inspection, InspectTarget } from './inspect';
+import type { JointCheck, JointCheckRequest } from './joints/check';
 import type { BodyMesh, MeshOptions } from './mesh';
 import type { StepBody } from './model-export';
 import { type PluginCommandResult, pluginCommandFileId } from './plugin-command';
 import type { BodyResult, PreviewToolMesh, RecomputeResult } from './recompute/types';
-import { type BodyExportMesh, type ExportProgress, isKernelCrash } from './service';
+import {
+  type BodyExportMesh,
+  type CheckProgress,
+  type ExportProgress,
+  isKernelCrash,
+} from './service';
 
 export interface RecomputerOptions {
   spawn: SpawnKernel;
@@ -393,6 +401,32 @@ export class Recomputer {
     return this.client.call((api) => api.inspect(targets));
   }
 
+  /**
+   * A joint's frames resolved against what the model store shows (P6-05,
+   * ADR-0081 §4): the Joint dialog's readout. Undefined if the kernel can't say.
+   */
+  async resolveJoint(joint: Joint): Promise<JointReport | undefined> {
+    try {
+      return await this.client.call((api) => api.resolveJoint(joint));
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * The clearance check along a joint's motion on what the model store shows
+   * (P6-05 J3, ADR-0081 §4). The next recompute, a newer check or
+   * `cancelCheck` stops it (rejects with `isCheckCancelled`).
+   */
+  checkJoint(request: JointCheckRequest, onProgress?: CheckProgress): Promise<JointCheck> {
+    return this.client.call((api) => api.checkJoint(request, onProgress));
+  }
+
+  /** Stops a running clearance check. */
+  cancelCheck(): void {
+    this.client.call((api) => api.cancelCheck()).catch(() => {});
+  }
+
   /** The dialog closed: drops a pending preview. */
   endPreview(): void {
     this.#endPreview();
@@ -657,6 +691,10 @@ export class Recomputer {
       imports: sameReports(previous.imports, imports)
         ? previous.imports
         : (imports as Record<FeatureId, ImportReport>),
+      origins: result.origins,
+      ...(result.joints && {
+        joints: sameReports(previous.joints, result.joints) ? previous.joints : result.joints,
+      }),
       stats: {
         ms: result.stats.ms,
         evaluated: result.stats.evaluated.length,

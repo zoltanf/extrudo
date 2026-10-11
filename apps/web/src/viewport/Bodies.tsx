@@ -1,14 +1,18 @@
 import type { BodyId, BodyMeta, SelectionItem } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
-import { useFrame } from '@react-three/fiber';
+import type { Matrix12 } from '@extrudo/kernel/matrix';
+import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import {
   BufferAttribute,
   BufferGeometry,
   Color,
   GreaterDepth,
+  type Group,
   type Material,
+  Matrix4,
   type Plane,
+  Vector3,
 } from 'three';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
@@ -18,6 +22,7 @@ import type { SectionClip } from '../section/clip';
 import {
   type BodyHighlight,
   bodyHighlight,
+  COLLIDE,
   edgeSegmentsOf,
   type FacePalette,
   paintFaces,
@@ -76,6 +81,25 @@ export interface BodiesProps {
    * triangle is thinner than the minimum), shaded in `color`.
    */
   thickness?: { thin: Record<BodyId, Float32Array>; color: Rgba };
+  /** A joint's clearance check (P6-05 J3): the colliding faces per body, tinted in `color`. */
+  collisions?: { faces: Readonly<Record<BodyId, readonly number[]>>; color: Rgba };
+  /**
+   * Bodies drawn posed (P6-05 J2): each through its matrix, a view-side look only. A posed
+   * body takes no section cap (the cap's quad is placed in world space).
+   */
+  posed?: Readonly<Record<BodyId, Matrix12>>;
+}
+
+/** A pose as a three.js matrix (both are row-major with the translation in the last column). */
+export function poseToMatrix4(pose: Matrix12): Matrix4 {
+  const m = pose;
+  // biome-ignore format: keeps the rows of the 4 x 4 together.
+  return new Matrix4().set(
+    m[0] as number, m[1] as number, m[2] as number, m[3] as number,
+    m[4] as number, m[5] as number, m[6] as number, m[7] as number,
+    m[8] as number, m[9] as number, m[10] as number, m[11] as number,
+    0, 0, 0, 1,
+  );
 }
 
 export { clipPlanes };
@@ -99,6 +123,8 @@ export function Bodies({
   section,
   overhang,
   thickness,
+  collisions,
+  posed,
 }: BodiesProps) {
   const shown = useMemo(
     () =>
@@ -120,14 +146,25 @@ export function Bodies({
       opacity={meta[id]?.opacity ?? 1}
       edge={edge}
       accent={highlight}
-      marks={bodyHighlight(id, mesh, hover, selection)}
+      marks={withCollisions(bodyHighlight(id, mesh, hover, selection), collisions?.faces[id])}
+      {...(collisions && { error: collisions.color })}
       onSilhouettes={onSilhouettes}
+      {...(posed?.[id] && { pose: posed[id] })}
       {...(overhang && { overhang })}
       {...(thickness && { thickness: { thin: thickness.thin[id], color: thickness.color } })}
       {...(section &&
         planes && { section: { ...section, planes, order: 10 + 3 * CAP_SLOTS * index } })}
     />
   ));
+}
+
+/** Marks a check's colliding faces on a body's highlight. */
+function withCollisions(marks: BodyHighlight, faces: readonly number[] | undefined): BodyHighlight {
+  if (!faces) return marks;
+  for (const f of faces) {
+    if (f < marks.faces.length) marks.faces[f] = (marks.faces[f] ?? 0) | COLLIDE;
+  }
+  return marks;
 }
 
 function hex(value: string): Rgba {
@@ -143,11 +180,13 @@ function Body({
   opacity,
   edge,
   accent,
+  error,
   marks,
   onSilhouettes,
   section,
   overhang,
   thickness,
+  pose,
 }: {
   id: BodyId;
   mesh: BodyMesh;
@@ -157,6 +196,8 @@ function Body({
   opacity: number;
   edge: Rgba;
   accent: Rgba;
+  /** The colour colliding faces take (P6-05 J3). */
+  error?: Rgba;
   marks: BodyHighlight;
   onSilhouettes?(body: BodyId, segments: number): void;
   section?: {
@@ -169,8 +210,11 @@ function Body({
   overhang?: { view: OverhangView; color: Rgba };
   /** The wall-thickness check (P5-06): per-node thin flags, shaded in `color`. */
   thickness?: { thin: Float32Array | undefined; color: Rgba };
+  /** Drawn through this matrix (a joint posed, P6-05 J2). */
+  pose?: Matrix12;
 }) {
   const planes = section?.planes ?? null;
+  const group = usePose(pose);
   // The analysis shadings are patches of the face material; their settings are uniforms.
   // The thin-wall mix runs after the overhang one wherever both flag a triangle (ADR-0072 §3).
   const shading = useMemo(() => createOverhangShading(), []);
@@ -186,7 +230,7 @@ function Body({
     g.setIndex(new BufferAttribute(mesh.indices, 1));
     return g;
   }, [mesh]);
-  useFaceColors(faces, mesh, body, accent, marks.faces);
+  useFaceColors(faces, mesh, body, accent, marks.faces, error);
   useThinFlags(faces, thickness?.thin);
   const edges = useMemo(() => {
     const g = new LineSegmentsGeometry();
@@ -234,7 +278,7 @@ function Body({
   const hiddenLines = useMemo(() => new LineSegments2(edges, hiddenEdges), [edges, hiddenEdges]);
 
   return (
-    <group>
+    <group ref={group}>
       {showFaces && (
         <mesh geometry={faces}>
           <meshStandardMaterial
@@ -260,7 +304,7 @@ function Body({
           />
         </mesh>
       )}
-      {showFaces && section && (
+      {showFaces && section && !pose && (
         <SectionCap
           faces={faces}
           mesh={mesh}
@@ -278,6 +322,7 @@ function Body({
           visible={visibleEdges}
           hidden={style === 'hiddenEdges' ? hiddenEdges : undefined}
           onCount={onSilhouettes}
+          pose={pose}
         />
       )}
       <EdgeMarks mesh={mesh} edges={marks.selectedEdges} color={accent} width={3} planes={planes} />
@@ -293,6 +338,30 @@ function Body({
       <VertexMarks mesh={mesh} vertices={marks.hoverVertices} color={accent} planes={planes} />
     </group>
   );
+}
+
+/**
+ * Puts a pose on a group (P6-05 J2): the matrix is the group's own, never recomputed from
+ * position/rotation/scale, and the scene asks for a frame as it changes.
+ */
+export function usePose(pose: Matrix12 | undefined) {
+  const group = useRef<Group>(null);
+  const invalidate = useThree((s) => s.invalidate);
+  useLayoutEffect(() => {
+    const g = group.current;
+    if (!g) return;
+    g.matrixAutoUpdate = pose === undefined;
+    if (pose) g.matrix.copy(poseToMatrix4(pose));
+    else {
+      g.matrix.identity();
+      g.position.set(0, 0, 0);
+      g.quaternion.identity();
+      g.scale.set(1, 1, 1);
+    }
+    g.matrixWorldNeedsUpdate = true;
+    invalidate();
+  }, [pose, invalidate]);
+  return group;
 }
 
 const linear = (c: Rgba): [number, number, number] => {
@@ -312,12 +381,17 @@ function useFaceColors(
   body: Rgba,
   accent: Rgba,
   states: Uint8Array,
+  error?: Rgba,
 ) {
   const painted = useRef<{ geometry: BufferGeometry; key: string; states: Uint8Array }>(undefined);
   useLayoutEffect(() => {
     const attribute = faces.getAttribute('color') as BufferAttribute;
-    const palette: FacePalette = { base: linear(body), accent: linear(accent) };
-    const key = `${palette.base.join()}/${palette.accent.join()}`;
+    const palette: FacePalette = {
+      base: linear(body),
+      accent: linear(accent),
+      ...(error && { error: linear(error) }),
+    };
+    const key = `${palette.base.join()}/${palette.accent.join()}/${palette.error?.join() ?? ''}`;
     const last = painted.current;
     const previous = last?.geometry === faces && last.key === key ? last.states : undefined;
     const range = paintFaces(attribute.array as Float32Array, mesh, states, palette, previous);
@@ -326,7 +400,7 @@ function useFaceColors(
     attribute.clearUpdateRanges();
     attribute.addUpdateRange(range[0] * 3, range[1] * 3);
     attribute.needsUpdate = true;
-  }, [faces, mesh, body, accent, states]);
+  }, [faces, mesh, body, accent, states, error]);
 }
 
 /** One compiled program for both analysis patches; their settings are uniforms. */
@@ -359,13 +433,17 @@ function Silhouettes({
   visible,
   hidden,
   onCount,
+  pose,
 }: {
   id: BodyId;
   mesh: BodyMesh;
   visible: Material;
   hidden: Material | undefined;
   onCount?(body: BodyId, segments: number): void;
+  /** The group's pose: the camera is turned into the mesh's own space. */
+  pose?: Matrix12 | undefined;
 }) {
+  const inverse = useMemo(() => (pose ? poseToMatrix4(pose).invert() : undefined), [pose]);
   const curved = useMemo(() => curvedFaces(mesh), [mesh]);
   const plan = useMemo(() => silhouettePlan(mesh, curved), [mesh, curved]);
   const buffer = useMemo(() => new Float32Array(silhouetteCapacity(curved)), [curved]);
@@ -386,13 +464,23 @@ function Silhouettes({
   useFrame(({ camera }) => {
     const m = camera.matrixWorld.elements;
     const perspective = (camera as { isPerspectiveCamera?: boolean }).isPerspectiveCamera === true;
-    const key = `${perspective}:${m.join(',')}`;
+    const key = `${perspective}:${m.join(',')}:${pose?.join(',') ?? ''}`;
     const was = last.current;
     if (was?.key === key && was.buffer === buffer && was.lines === lines) return;
     last.current = { key, buffer, lines };
-    const view: SilhouetteView = perspective
+    let view: SilhouetteView = perspective
       ? { eye: [m[12] ?? 0, m[13] ?? 0, m[14] ?? 0] }
       : { direction: [-(m[8] ?? 0), -(m[9] ?? 0), -(m[10] ?? 1)] };
+    if (inverse) {
+      // A posed body's mesh stays in its own space: look at it from where the camera is there.
+      if ('eye' in view) {
+        const e = new Vector3(...view.eye).applyMatrix4(inverse);
+        view = { eye: [e.x, e.y, e.z] };
+      } else {
+        const d = new Vector3(...view.direction).transformDirection(inverse);
+        view = { direction: [d.x, d.y, d.z] };
+      }
+    }
     const count = silhouetteSegments(mesh, plan, view, buffer);
     if (count > 0) geometry.setPositions(buffer.subarray(0, count));
     lines.front.visible = count > 0;

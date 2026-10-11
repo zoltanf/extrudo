@@ -163,6 +163,44 @@ and its reference by running one command. They are all listed under
 [Features](features/README.md), with their inputs, their face roles and an
 example each.
 
+## Components and joints
+
+A **component** is a named set of bodies (ADR-0081): a box and its lid, quickly
+shown, exported and weighed as one part. `d.component(name)` makes one and
+returns a handle; the build form stamps every feature added inside it, and
+`FeatureOptions.component` (or `SketchOptions.component`) stamps one explicitly.
+`handle.add(...)` moves bodies in, and `handle.bodies()` reads the stored ones.
+A component stores no transform: placing it is a `moveBodies` feature over its
+bodies.
+
+A **joint** is an as-built link between two components (ADR-0081 §4): side `a`
+moves, side `b` stays. Its frames are ordinary references; the component beside
+each is metadata, never part of the reference.
+
+```ts
+import { Design } from '@extrudo/api';
+
+const d = Design.create({ name: 'Hinge' });
+const base = d.component('Base');
+const leaf = d.component('Leaf');
+const plate = d.box({ length: '40 mm', width: '20 mm', height: '4 mm' }, { component: leaf });
+base.add(d.ref('body', 'f2:0'));
+
+const hinge = d.joint('Hinge', {
+  type: 'revolute',
+  a: { component: leaf, frame: plate.face('side:front') },
+  b: { component: base, frame: d.ref('face', 'cylinder:Pin:side:wall') },
+  min: '0 deg',
+  max: '180 deg',
+});
+
+const components = d.components(); // every stored component
+const joints = d.joints();         // every stored joint
+```
+
+The frames must already agree as built (a revolute's two axes are collinear, a
+slider's two directions parallel); nothing moves when a joint is made.
+
 ## Stability
 
 `API_VERSION` is `1`. The feature methods follow the document's feature inputs,

@@ -1,6 +1,6 @@
 # ADR-0081: Components and simple assemblies
 
-- **Status:** Accepted, 2026-10-10 (the owner: build it, starting with the
+- **Status:** Implemented, 2026-10-11 (accepted 2026-10-10; the owner: build it, starting with the
   slices without UI; joints planned now, not deferred, for print-in-place
   hinge checks). Slices in `docs/plans/p6-05-components.md`.
 - **Task:** P6-05 "Components and simple assemblies (multiple components,
@@ -600,6 +600,178 @@ joint type is dropped with a note. Nested Fusion components flatten to one level
   should include it.
 - A posed body is drawn where it isn't: picking it is off and any tool resets
   the pose, so a pose can never leak into a reference.
+
+## Results
+
+### J3: the clearance check (2026-10-10)
+
+Measured on the Ubuntu machine (4 cores), one kernel in Node, `BENCH=1 pnpm
+vitest run packages/kernel/src/joints/check-bench` (median of three):
+
+| Design | Faces (moving + other) | Range | Poses | Time |
+|---|---|---|---|---|
+| The hinge fixture | 11 + 11 | −180…180° | 67 | 1.55 s |
+| The hinge with 22 ribs fused across each plate | 137 + 129 | −180…180° | 67 | 16.3 s |
+
+In the browser (`e2e/joints.spec.ts`, two Playwright workers, the worker's
+WASM): the fixture's 0…90° check takes 2.5–3.0 s from the menu click to the
+result, 0…180° 1.9–2.6 s. A collision's start lands within 0.02° of the angle
+worked out from the fixture's numbers (140.06° against 180° − 2·atan(2/5.5) =
+140.05°).
+
+**The 2 s budget holds for the fixture, not for 100-face bodies.** The time is
+in `BRepExtrema_DistShapeShape`, not in the transformed copies: at 130 faces a
+side one `closestPoints` takes 340–440 ms a pose where the bodies are apart
+(11–45 ms where they touch, as it stops at the first contact), `transform`
+3.5 ms. Two ways round it were measured and rejected:
+
+- **Face pairs from TypeScript**, nearest boxes first, stopping once no box can
+  be nearer than the best gap: slower, because a moved face's box is loose and
+  boxes of a body's faces overlap, so most pairs stay in (3,622 face distances
+  at 26 ms each for one whole turn of a drilled 99-face hinge, 98 s against
+  54 s for whole bodies).
+- **manifold-3d's `minGap` on meshes** of the bodies (meshed once, moved by
+  manifold's transform): 70–170 ms a pose at 0.01 and 0.002 mm deflection, no
+  faster than OCCT at that size and only as exact as the mesh.
+
+The recorded next step is a facade call rather than the transformed copy the
+Decision expected: one that measures many poses of the same pair, keeping
+OCCT's per-face bounding volumes and extrema of the fixed body between calls
+(or `BRepExtrema_ShapeProximity`'s BVH as a first pass), so a pose costs the
+faces near the gap only. Until then a whole turn of a 130-face hinge takes
+about 16 s, with its progress shown and Cancel.
+
+**`common` only where it decides something.** Telling touching from
+interference costs a boolean (60–300 ms at 130 faces), so the check runs one at
+each contact run's middle, at its ends only when the middle merely touches,
+and bisects a collision's boundary next to a free pose on the gap alone (where
+contact starts is where the collision does); a boundary between touching and
+colliding poses still takes a `common` per step while the budget of 12 lasts.
+
+**A flat minimum is reported at the pose nearest as built** (`tightest.over`
+holds the stretch), so its leader can be drawn before the pose preview exists
+and `data-joint-check` reads `at=0` for the fixture.
+
+**The fixture was wrong as built.** J1's base plate (`y` −24…−4) reached into
+the leaf's Ø10 knuckle (to `y` −5), so the hinge collided at 0°. Its plate is
+now the leaf's mirror (`y` −25.5…−5.5) with two bridges joining it to its
+knuckles, 0.5 mm clear of everything on the leaf.
+
+### J3 amendment, 2026-10-10: pose proximity
+
+The facade now measures a pair at many poses itself, the step the Results above
+recorded. **Three calls** (`packages/kernel/occt/facade/extrudo_facade.cpp`, one
+class, no overloads, no OCCT type in a signature):
+
+- `int proximityOpen(int moving, int other, double search)` → a session id (0 and
+  `lastError()` on failure). It keeps, per face of both shapes in their own
+  frames, the face (a reference, not a copy), its box (`BRepBndLib::AddOptimal`
+  from the geometry, grown by the face's tolerance and 1 µm) and its triangles
+  (a `BRepBuilderAPI_Copy` meshed at 0.01 mm and 0.5 rad, as `exportMesh` does,
+  so the shape's display triangulation is untouched), plus each solid's box,
+  a vertex of it and a `BRepClass3d_SolidClassifier` made the first time it is
+  needed.
+- `double proximityPose(int id)` reads the pose as 12 staged numbers
+  (`clearNumbers`/`pushNumber`, as `transform`) and returns the exact distance
+  between the moved `moving` and `other`, capped at `search`; under it,
+  `geometryNumbers` holds `[from xyz, to xyz, moving face, other face]` (a face
+  index is −1 where one solid inside the other decided it), the buffer
+  `closestPoints` reads. −1 on failure.
+- `void proximityClose(int id)`, and `int proximitySessions()` for leak tests.
+
+**The query moves, not the shape**: a moving face is measured as
+`face.Moved(location)` (a location, no rebuilt B-rep), its box as an oriented
+box, its triangles moved once per pose. A pose then: (1) a box bound for every
+face pair; (2) the pair nearest at the last pose measured first (poses come in
+small steps, so it usually is the nearest again, and its distance prunes the
+rest); (3) a triangle bound for each pair whose box bound is under the best so
+far; (4) `BRepExtrema_DistShapeShape` on the face pairs in order of that bound
+while it is under the best; (5) where no face is within reach, a solid of one
+inside a solid of the other (only asked where its box fits in the other's)
+gives 0, as `distance`'s `InnerSolution` does.
+
+**The lower bounds.** A pair's bound is the larger of two:
+
+- **Boxes**: the widest gap between the two boxes' shadows on the 15 separating
+  axes of an oriented box (the moved face's own-frame box) and an axis-aligned
+  one, after a sphere test. A shadow on a unit axis is never longer than the
+  distance it comes from, so it is safe whatever the geometry.
+- **Triangles**: the smallest triangle distance between the two meshes (a
+  crossing is 0; else the closest of 6 point–triangle and 9 segment–segment
+  distances, triangle boxes pruning first) **minus both faces' deflections**:
+  a face's deflection is its tolerance plus, unless it is flat and bounded by
+  straight edges (then its triangles are the face exactly), twice the larger
+  of the 0.01 mm asked for and the deflection BRepMesh measured. This trusts
+  BRepMesh's own deflection (with a factor of two) on curved faces, which is
+  what the task's choice of "a triangle distance minus both faces' mesh
+  deflections" accepts.
+
+A pair is measured exactly when its bound is under the best by more than
+5 × 10⁻⁷ mm: under the 10⁻⁶ the answer is held to, and over what a flat pair's
+bound falls short of its distance by (its two tolerances). Without that
+allowance a rib's edge, which belongs to two faces on each side, made 308 face
+pairs of one equal distance all be measured (215 ms a pose). The answer equals
+`closestPoints` on a moved copy within 10⁻⁶ mm (the native harness: within
+2 × 10⁻¹⁵ at all 66 poses of both hinges).
+
+**The kernel**: `Kernel.proximity(moving, other, search)` returns a
+`ProximitySession` (`pose(matrix) → { distance, from?, to?, faces? }`,
+`close()`, `[Symbol.dispose]`). `checkJoint` opens one per pair of solid bodies
+for the whole check and closes them all in `finally` (a cancel too); a mesh pair
+keeps `minGap` on a transformed copy, and `common` still runs on a transformed
+copy where the gap is 0. A pose with no points (nothing within `search`) counts
+as no gap for that pair, which is what `tightest`'s comment already said; the
+existing joint tests pass unedited.
+
+**Measured** (Ubuntu machine, `BENCH=1 pnpm vitest run
+packages/kernel/src/joints/check-bench --reporter=verbose`, which now also runs
+the old path through a kernel whose `proximity` is a moved copy and
+`closestPoints`, and checks that both give the same result, closest points
+aside):
+
+| Design | Faces | Poses | Old | New |
+|---|---|---|---|---|
+| The hinge fixture | 11 + 11 | 67 | 1,240 ms | 374 ms |
+| The ribbed hinge | 137 + 129 | 67 | 11,959 ms | 704 ms |
+
+(The old column is lower than the Results' 1.55 s and 16.3 s: another run on a
+quieter machine.) The native harness (`spikes/p6-05-joint-proximity/`, the
+poses that check measures, `-O2`): 1.92 s → 0.42 s and 14.7 s → 0.60 s for the
+distances alone; a session opens in 40 ms (11 faces) and 90–150 ms (137).
+
+**WASM size** (Node's zlib, gzip level 9 and brotli quality 11, as
+`scripts/measure-startup.mjs`): 20.58 / 6.66 / 4.63 MB raw / gzip / brotli
+before, 20.61 / 6.67 / 4.64 MB after (+32.6 kB raw, +14.1 kB gzip, +10.1 kB
+brotli); OCCT input hash `a246513b1c48`.
+
+Tested in `packages/kernel/src/joints/proximity.test.ts`: 50 seeded poses each
+of the fixture and the ribbed hinge (as built, turned, shifted into touching
+and overlap, and beyond `search`) equal `closestPoints` within 10⁻⁶ mm, their
+points lie on the shapes and the two faces as far apart as the distance (and
+are `closestPoints`' own wherever those agree; elsewhere the minimum is not
+unique, as the pin in its hole), the pin with no clearance, a solid inside
+another, open–200 poses–close flat on a kernel of its own with a leak control
+that must move the heap, and a cancelled check closing its sessions.
+
+### S1–S9 (2026-10-10 to 2026-10-11)
+
+Every slice landed as §2–§9 describe; what each added beyond the text:
+
+- **S1 core** `components[]`, `BodyMeta.component`, `Feature.component`, §2's rule in
+  `componentOfBody` and six commands; no format bump. **S2** `origins` from the kernel for broken
+  pieces. **S7** STEP assemblies through XDE (native harness `spikes/p6-05-step-assembly/`).
+- **S3–S5, S6** The browser rows, the active and isolated component (session state, followed by
+  `followComponentSession`), Move/Copy/Place Component (Place on Bed's `carry` input), the 3MF
+  `<components>` writer and reader and the Export dialog's grouping.
+- **J1, J2** The joint records and dialog, the engine's frame pass after the walk, the pose as
+  view state with its handle; **J3** above.
+- **S8** The API (`d.component`, `d.joint`), the emitter and the CLI (`check --joints`).
+- **S9** Print Info's per-component rows split the counted bodies by `BodyEntry.component`, which
+  is `componentOfBody` with the kernel's origins, so the same rule applies as in the browser; a
+  body naming a missing component is loose. The guide page is `docs/guide/components.md`. The
+  emitter wrote `design.box({ component })` for a feature with no inputs, which the API refuses
+  (the options object became the inputs); an empty inputs object now holds its place. A joint's
+  `suppressed` flag round-trips through `d.joint`, the emitter and `emit.test.ts`.
 
 ## Slices
 

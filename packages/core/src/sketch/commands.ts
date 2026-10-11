@@ -9,7 +9,14 @@ import { insertFeature, refuseIfUsed } from '../document-commands';
 import { isReservedName } from '../expr/evaluate';
 import { nextModelParameterName, parameterNames } from '../expr/parameters';
 import { nextFeatureName } from '../features';
-import type { ConstraintId, DimensionId, FeatureId, ProjectionId, SketchEntityId } from '../ids';
+import type {
+  ComponentId,
+  ConstraintId,
+  DimensionId,
+  FeatureId,
+  ProjectionId,
+  SketchEntityId,
+} from '../ids';
 import type { Feature, GeomRef } from '../schema';
 import { checkNewReferences } from '../timeline';
 import { dimensionRefs } from './dimensions';
@@ -32,22 +39,24 @@ import type { TextAlign } from './text-layout';
  * Adds an empty sketch on `plane` at the timeline marker. Without a `name`
  * it takes the next free default name ("Sketch3").
  */
-export const createSketch = defineCommand<{ id: FeatureId; plane: GeomRef; name?: string }>(
-  'sketch.create',
-  'Create sketch',
-  (draft, { id, plane, name }) => {
-    checkSketchPlane(plane);
-    const feature: Feature = {
-      id,
-      type: SKETCH_TYPE,
-      name: name ?? nextFeatureName(draft, sketchFeature.label),
-      suppressed: false,
-      inputs: sketchInputs(plane),
-    };
-    const insert = insertFeature({ feature });
-    insert.recipe(draft, insert.payload);
-  },
-);
+export const createSketch = defineCommand<{
+  id: FeatureId;
+  plane: GeomRef;
+  name?: string;
+  component?: ComponentId;
+}>('sketch.create', 'Create sketch', (draft, { id, plane, name, component }) => {
+  checkSketchPlane(plane);
+  const feature: Feature = {
+    id,
+    type: SKETCH_TYPE,
+    name: name ?? nextFeatureName(draft, sketchFeature.label),
+    suppressed: false,
+    inputs: sketchInputs(plane),
+    ...(component !== undefined && { component }),
+  };
+  const insert = insertFeature({ feature });
+  insert.recipe(draft, insert.payload);
+});
 
 /**
  * Puts a sketch on another plane or flat face (P2-11, ADR-0033): "Redefine

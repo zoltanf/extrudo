@@ -162,7 +162,7 @@ same way, axes either way), size ratio (0.2) and the Jaccard overlap of
 neighbour names without split numbers (0.25) — also those inside a name, so
 `fillet:f9:from:(e[a#2|b])` and `fillet:f9:from:(e[a|b])` are one neighbour
 (an imported reference names a fillet's face from the edge before it was
-split, ADR-0082). A match needs
+split, ADR-0083). A match needs
 `FINGERPRINT_THRESHOLD` = 0.6: the same face of an extrude recreated
 under a new feature ID scores 0.75 (everything but the neighbour names),
 a moved face with renamed neighbours around 0.9, a different plane far

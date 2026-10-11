@@ -41,6 +41,14 @@ export {
   unionBox,
 } from './inspect';
 export {
+  CancelledError,
+  isCheckCancelled,
+  type JointCheck,
+  type JointCheckRequest,
+  jointMatrix,
+  refusal as jointCheckRefusal,
+} from './joints/check';
+export {
   type Axis,
   type BooleanOptions,
   ChamferError,
@@ -90,6 +98,7 @@ export {
 export { CREASE, displayMesh, type MeshTriangles } from './mesh-body';
 export {
   ANGLE_RANGE,
+  componentAssemblies,
   DEFLECTION_RANGE,
   type ExportBody,
   formatBytes,
@@ -105,6 +114,7 @@ export {
   type StepBody,
   safeFileName,
   stepBody,
+  stepGroups,
   stlBytes,
 } from './model-export';
 export {
@@ -191,6 +201,7 @@ export {
 } from './script-host';
 export {
   type BodyExportMesh,
+  type CheckProgress,
   ExportCancelledError,
   type ExportProgress,
   isExportCancelled,

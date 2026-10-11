@@ -127,6 +127,8 @@ fill, and the timeline chip background (colour at 16% over `bg`).
 | `axis-y` | `#5FCF78` | `#23994A` | Y axis |
 | `axis-z` | `#5B8CFF` | `#2F63E0` | Z axis |
 
+The origin planes take the colour of the axis they are normal to: XY the Z colour, XZ the Y colour, YZ the X colour (2026-10-10, `PLANE_AXIS_COLOR`). Their browser rows show the same swatch.
+
 **Body swatches** (P2-08, ADR-0030). A body's colour is stored in the
 document as a fixed `#rrggbb`, the same in both themes, so the picker
 offers swatches rather than tokens: Default (no colour stored: the
