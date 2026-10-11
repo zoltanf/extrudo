@@ -328,3 +328,16 @@ Rejected: a `display: 'shown' | 'ghost' | 'hidden'` enum replacing `visible`
 view state outside the document (the owner treats it like hiding, which is
 stored); a "ghost" command in the command registry (the menus are built from
 `BodyActions`, so an entry is enough, and there is no toolbar tile or key).
+
+## Amendment (2026-10-11): the colour dot opens Appearance
+
+The owner's UI review 3 (R3-07, `docs/plans/ui-review-2026-10-11.md`): "clicking on this small
+colour that is in front of the body … we should immediately open this appearance dialog". The
+row's colour dot was decoration and the Appearance popover's anchor; it is now the popover's
+**trigger**, a button named "Appearance of <body>" (`data-body-colour`), 18 px round its 10 px
+dot with a negative margin so the row's layout is unchanged. The body menu's Appearance… opens
+the same popover, anchored to the dot, as before; a click on the name still selects the body,
+and the dot's click doesn't. Esc closes the popover and gives the focus back to the dot.
+`e2e/bodies.spec.ts` opens it from the dot by click and by Enter and applies a colour. Pending
+rows (ADR-0078) keep a plain dot: they have no menu either.
+

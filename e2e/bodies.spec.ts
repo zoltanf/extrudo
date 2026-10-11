@@ -142,6 +142,30 @@ test('renames, hides, colours and removes a body from the browser', async ({ pag
   await page.keyboard.press('Control+z');
   await expect(viewport).toHaveAttribute('data-body-appearance', 'Mount:#5b7cff:1');
 
+  // The row's colour dot opens the same panel (the owner's UI review 3, R3-07), anchored to
+  // it; a colour applies as from the menu, and the body isn't selected by it.
+  const dot = browserOf(page).getByRole('button', { name: 'Appearance of Mount' });
+  await dot.click();
+  await expect(panel).toBeVisible();
+  const at = await dot.boundingBox();
+  const box = await panel.boundingBox();
+  if (!at || !box) throw new Error('not visible');
+  expect(box.x).toBeGreaterThan(at.x + at.width);
+  await panel.getByRole('radio', { name: 'Green' }).check();
+  await expect(viewport).toHaveAttribute('data-body-appearance', 'Mount:#2fbf8f:1');
+  await expect(bodyRow(page, 'Mount')).toHaveAttribute('aria-pressed', 'false');
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+  // Keyboard too: the dot is a button in the tab order.
+  await dot.focus();
+  await page.keyboard.press('Enter');
+  await expect(panel).toBeVisible();
+  await panel.getByRole('radio', { name: 'Green' }).focus();
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+  await page.keyboard.press('Control+z');
+  await expect(viewport).toHaveAttribute('data-body-appearance', 'Mount:#5b7cff:1');
+
   // A click on the row selects the body in the model; Delete removes it through a Remove.
   await bodyRow(page, 'Mount').click();
   await expect(viewport).toHaveAttribute('data-model-selection', /^body:/);
