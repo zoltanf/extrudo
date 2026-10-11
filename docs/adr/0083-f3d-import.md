@@ -111,11 +111,16 @@ with a reference STEP) showed it is practical.
    - Components' features join the one design, with a note (Extrudo has no
      components yet, ADR-0081).
    - Everything else is skipped and listed in the report.
-4. **In the app**, Home › Files has **Import .f3d…** (and the home screen a
-   button; Import .extrudo accepts `.f3d` too). Each import makes a new design
-   with the file's preview as its thumbnail; when it opens, a notice says how
-   many timeline features came across and lists the rest. The package is its
-   own lazy chunk.
+4. **In the app**, Home › Files › **Import Model** accepts `.f3d` (Import
+   .extrudo… too). The home screen's one **Import…** card (the Start row,
+   beside New design) takes `.extrudo`, `.f3d` and the model files (STEP,
+   meshes, OpenSCAD); a model file makes a new design named for it, which
+   opens with Import Model's dialog on the file. An `.f3d` import makes a new
+   design with the file's preview as its thumbnail; when it opens, a notice
+   says how many timeline features came across and lists the rest. The
+   package is its own lazy chunk. Amended 2026-10-11 (the owner): the separate
+   Import .f3d… tile and home-screen button went into Import Model and
+   Import….
 5. **No sample files in the repository.** The designs used to work out the
    format are other people's or the owner's own; `corpus.test.ts` reads a
    folder of them when `F3D_SAMPLES` points at one. `map.test.ts` covers the
@@ -183,6 +188,20 @@ work and its memory (the security review of PR #7). The rules:
   that application, which a person leaving it may no longer have.
 - **Geometry only from the B-rep** (ASM SAB): no history, and a STEP export
   already gives that.
+
+## Amendment 2026-10-11: no kernel crash left in the corpus
+
+The one file whose rebuild crashed the kernel (an OCCT trap on a chamfer, see
+Consequences) was the kernel's fault, not the import's: the OCCT WASM ran on a
+64 kB stack, which an earlier boolean on B-spline faces ran past, and the
+chamfer tripped over the damage (ADR-0001's amendment of the same day: an 8 MB
+stack and a guard). That file now rebuilds to its end and counts among those
+that build different geometry: **120 match, 60 lose some features, 55 build
+different geometry, 8 have no body, none crash** (every other file's volume,
+box, skips and failures are unchanged). Its chamfer and four other edge or face
+features end in ordinary messages ("Distance 0.75 mm is too large… (max ≈
+0.74 mm)"), and one more chamfer loses its edge: OCCT can't build them on the
+geometry the import gives them, which is an import question, not a kernel one.
 
 ## Amendment, 2026-10-11 (components)
 
@@ -354,6 +373,91 @@ amendment alone; the four worse than with components alone are the features
 amendment's own (threads now cut where the rest of the part is still off,
 and one chamfer on copied faces).
 
+## Amendment (2026-10-11): sketch constraints and dimensions
+
+Imported sketches used to carry geometry and the coincident joins of shared
+points only, and inputs naming the file's dimension parameters (`d12`) took
+plain values. Now the file's sketch relations and dimensions come over, so an
+imported sketch stays drivable.
+
+- **Reading** (`decode/constraints.ts`, `packages/f3d/FORMAT.md`): a relation
+  record lists its points and curves and a kind mask (coincident, collinear,
+  concentric, parallel, perpendicular, horizontal, vertical, tangent,
+  symmetric, equal, midpoint; every mask checked against the solved geometry
+  over the owner's corpus); a dimension record lists what it measures and
+  refers to the owner of the parameter it drives, whose value record holds
+  the `dN` name, expression and value. A linear dimension's direction
+  (aligned, horizontal, vertical) is a byte pair before that reference.
+- **The rule: imported geometry never moves** (`sketch-constraints.ts`). A
+  constraint or dimension is taken only when the geometry, where the file put
+  it and as Extrudo's frame sees it, already satisfies it (1e-6 mm; the plane
+  map may turn the file's horizontal into Extrudo's vertical, which the
+  geometry decides). The sketch is then solved with planegcs: what the solver
+  calls redundant or conflicting, and then anything that would still move a
+  point, is taken out one at a time (the latest first) and counted, never
+  forced. Trouble the sketch had before (its own joins) is not held against
+  them. A tangent's side is read once every point making its joint is in.
+- **The solver is the caller's**: `ImportOptions.solver` takes a
+  `SketchSolver`; `@extrudo/f3d` imports only types from the sketch package's
+  main entry (planegcs stays out of its chunk), and the app loads
+  `@extrudo/sketch/browser` for the import. Without a solver nothing changes.
+- **Parameters**: a dimension is named after the file's parameter (`d12`)
+  when the name is free, and keeps the file's expression when every name in
+  it is a user parameter or an imported dimension Extrudo evaluates to the
+  file's value; else it takes the value. An expression naming a dimension that
+  was left out falls back to its value. Feature inputs naming an imported
+  dimension keep their expressions (none in the corpus do; dimensions name
+  dimensions 430 times and user parameters 890 times). Extrudo's own new names
+  (a text's height dimension) count on from past the file's last `dN`. User
+  parameters now get the file's unit kind, so a unitless count no longer reads
+  as a length.
+- **The projected origin**, which the file holds fixed, gets a `fix` when the
+  sketch has constraints (a point is made for it when only a constraint or
+  dimension names it).
+- **Report**: `ImportReport.constraints` (counts, left out by why and kind, the
+  largest displacement); a note per sketch with left-outs; one app notice.
+
+Results on the owner's 250 files: 9,280 constraints and 4,779 dimensions
+imported (1,248 of the dimensions keep an expression naming another parameter);
+left out: 89 with no counterpart (linear dimensions on circles, a midpoint of
+two lines, a diameter on an arc, an unknown seven-point relation), 123 that
+don't match the geometry (mostly offset dimensions, whose value is a signed
+offset), 141 that over-constrain, 150 naming geometry the import doesn't draw
+(text-box lines, ellipses, projected curves), 2 that would move geometry (an
+ill-conditioned point on a circle a line touches). Every imported sketch
+solves with no redundant or conflicting constraint and no point moving more
+than 8.5e-7 mm; vetting takes 38 s over the corpus (3.5 s for the slowest
+file). The rebuilt geometry is unchanged (two files closer through the unit
+kind).
+
+Deferred: a Fix relation (not found in the files), offset and sketch-pattern
+relations (Extrudo has none), constraints on ellipses and splines, and naming
+feature inputs after their `dN` (nothing in the corpus needs it).
+
+## Amendment, 2026-10-11 (sketch constraints with the rest; hostile files)
+
+Merged with the components and features amendments, the sketch constraints
+change nothing they import: sketches inside components are stamped like any
+feature, and the curves sweeps and path patterns follow are drawn and solved
+in place (nothing moves), so the corpus results are those of the three
+amendments together, two designs closer through the unit kind.
+
+The review for untrusted files changed three things in the constraint import:
+
+1. **Every imported dimension is named by the import.** The file's name when
+   Extrudo can take it (valid, at most 64 characters, not a unit, function or
+   constant, not taken, not used twice in the sketch), else one of Extrudo's
+   own past the file's last `dN`. Before, a dimension without a usable name
+   was named by the design at commit, from a counter that doesn't see the
+   sketch's other names, and a clash, a reserved word such as `max` or a name
+   used twice refused the whole sketch. Only `dN` numbers up to nine digits
+   count, so a huge one in a file can't make the counting stand still.
+2. **At most 1,000 constraints and dimensions of a sketch are vetted** (the
+   samples have 213 at most); the rest are left out as `limit`. Vetting solves
+   once per candidate it takes out, so this bounds the solves a sketch costs.
+3. **A solver failure stays in its sketch**: the sketch keeps its geometry and
+   joins, and all of its constraints and dimensions are left out as `failed`.
+   The app's import no longer fails when disposing a broken solver throws.
 ## Amendment, 2026-10-11 (fillet and chamfer edges)
 
 Fillets and chamfers were the importer's largest loss: about 280 of the

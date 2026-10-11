@@ -2,7 +2,7 @@
 title: Sketch Fillet
 section: Tools
 category: Sketch
-order: 94
+order: 93
 ---
 
 # Sketch Fillet

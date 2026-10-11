@@ -2,7 +2,7 @@
 title: New Component
 section: Tools
 category: Solid
-order: 38
+order: 37
 ---
 
 # New Component

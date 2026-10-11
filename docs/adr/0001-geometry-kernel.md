@@ -288,3 +288,52 @@ decided or learned on the way:
   minute. The crashing call is not retried.
 - **The facade source is LGPL-2.1-or-later** with the license text in
   `facade/LICENSE`, as planned.
+
+## Amendment 2026-10-11: an 8 MB stack and a guard against overflowing it
+
+Two designs trapped the kernel ("table index is out of bounds" in a chamfer,
+"memory access out of bounds" in a fillet), and a STEP export of the body
+before the chamfer failed or trapped as well, though the body was valid. The
+cause was neither operation: **the WASM stack was Emscripten's default,
+64 kB**, and OCCT outgrows it. The stack is a fixed block of linear memory just
+above the static data and grows down towards it; an optimised build has no
+overflow check, so a call that needs more writes over the data beneath (vtables,
+globals) and returns as if nothing happened. A later, unrelated call then traps,
+fails, or computes with the damage.
+
+Measured on the real build by painting the stack from JS between calls (the
+initial `__stack_pointer` read from the binary's global section): a box with a
+cylinder fused uses under 2 kB; **a non-uniform scale 61.9 kB and a boolean on
+B-spline faces 62.1 kB** (OCCT's B-spline evaluation, `BSplSLib`, takes large
+frames under the booleans' point projections); a chamfer on a scaled cylinder's
+B-spline edge reaches the end of the stack, after which the next STEP export
+fails. Both designs had calls that reached the end. The native harness (the
+facade over the image's static libraries) reproduces the traps with
+`-sSTACK_SIZE=64KB` and `-sSTACK_OVERFLOW_CHECK=2` names the frame
+(`BSplSLib::RationalDerivative`); every spike so far was built with
+`-sSTACK_SIZE=8MB`, which is why none saw it.
+
+**Decision.**
+
+- `STACK_SIZE: '8MB'` in `libcascade.config.ts`, the size every native harness
+  ran with. It is reserved linear memory, nothing more; the heap's top
+  (`heapTop()`, the recycle limit of ADR-0067 §H4) is unaffected.
+- **The facade guards the stack's lowest 64 kB**: painted with a pattern when the
+  facade is made, checked every 16 bytes when an operation starts (`beginOp`)
+  and before a result is stored (`store`). A changed word means the stack ran
+  over; the module aborts there (`Aborted()`, a `KernelCrashError` like any trap,
+  so the app restarts the worker and marks the feature) instead of carrying on
+  with damaged memory. A single word at the bottom did not catch the overflow in
+  the harness: the frame that overflows can be a large, partly used local array
+  that skips it. The guard is off when the stack is smaller than four times the
+  zone (harness builds with tiny stacks); `EXTRUDO_STACK_GUARD_BYTES` overrides
+  the zone's size there.
+
+**Rejected.** `-sSTACK_OVERFLOW_CHECK=2` (a check on every stack-pointer
+change): exact, but the harness's fuse went from 441 ms to 703 ms. A stack placed
+before the static data (`--stack-first`, where an overflow traps at once below
+address 0): libcascade's config takes `-s` settings only, and `STACK_FIRST` is
+internal to Emscripten.
+
+Test: `kernel.test.ts` "has the stack OCCT needs on B-spline faces: a chamfer and
+a STEP export after a non-uniform scale" (it failed on the 64 kB build).

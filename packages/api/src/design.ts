@@ -52,6 +52,7 @@ import {
   type GroupId,
   groupFeatures,
   insertFeature,
+  isReservedName,
   JOINT_FRAME_KINDS,
   JOINT_LIMIT_UNIT,
   type Joint,
@@ -69,6 +70,7 @@ import {
   nextModelParameterName,
   type Parameter,
   type ParameterId,
+  parameterNames,
   removeFeature,
   removeParameter,
   renameFeature,
@@ -753,19 +755,33 @@ export interface Design extends FeatureMethods {}
 /**
  * New driving dimensions take the next free model parameter names (`d1`, `d2`…),
  * as the app's host gives them when a tool adds one (ADR-0016); a named
- * dimension keeps the name its call gave.
+ * dimension keeps the name its call gave. A generated name skips every name
+ * the document already uses, the names this sketch's own calls gave (a
+ * `{ name: 'd1' }` beside an unnamed dimension) and reserved names (units,
+ * functions, constants), so the sketch is never refused for a clash it didn't
+ * ask for.
  */
 function namedDimensions(
   dimensions: Record<string, SketchDimension>,
   doc: ExtrudoDocument,
 ): Record<string, SketchDimension> {
+  const taken = parameterNames(doc);
+  for (const dimension of Object.values(dimensions)) {
+    if (dimension.paramName !== undefined) taken.add(dimension.paramName);
+  }
   let next = Number(nextModelParameterName(doc).slice(1));
+  const free = (): string => {
+    let name = `d${next++}`;
+    while (taken.has(name) || isReservedName(name)) name = `d${next++}`;
+    taken.add(name);
+    return name;
+  };
   const named: Record<string, SketchDimension> = {};
   for (const [id, dimension] of Object.entries(dimensions)) {
     named[id] =
       dimension.driven || dimension.paramName !== undefined
         ? dimension
-        : { ...dimension, paramName: `d${next++}` };
+        : { ...dimension, paramName: free() };
   }
   return named;
 }

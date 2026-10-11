@@ -19,11 +19,13 @@ import {
 } from '@extrudo/api';
 import {
   type BodyId,
+  evaluateParameters,
   faceSketchFrame,
   ORIGIN_PLANES,
   type SketchData,
   updateBody,
 } from '@extrudo/core';
+import type { SketchSolver } from '@extrudo/sketch';
 import {
   detectProfiles,
   insidePolygon,
@@ -69,6 +71,13 @@ import type {
   Matrix,
 } from './model';
 import { insidePieces, nurbsAt, regionPieces, type SketchPieces, sketchPieces } from './regions';
+import {
+  addSketchConstraints,
+  type ConstraintContext,
+  type ConstraintTally,
+  newTally,
+  quantityOf,
+} from './sketch-constraints';
 
 type Vec2 = [number, number];
 
@@ -79,6 +88,8 @@ export interface ImportReport {
   skipped: { name: string; kind: string; reason: string }[];
   /** Smaller things that were approximated. */
   notes: string[];
+  /** Sketch constraints and dimensions brought over (only with a solver, `ImportOptions.solver`). */
+  constraints?: ConstraintTally;
 }
 
 export interface ImportResult {
@@ -186,6 +197,14 @@ interface Placement {
   opposite: boolean;
 }
 
+/** The kind of a parameter's unit, as Extrudo stores it; undefined for one Extrudo has no kind for. */
+function unitKind(unit: string): 'length' | 'angle' | 'unitless' | undefined {
+  if (unit === '') return 'unitless';
+  if (['mm', 'cm', 'm', 'in', 'ft'].includes(unit)) return 'length';
+  if (unit === 'deg' || unit === 'rad') return 'angle';
+  return undefined;
+}
+
 /** The file's units in an expression are Extrudo's too, except a few spellings. */
 function numberExpression(value: number, unit: string): string {
   const v = Number(value.toPrecision(12));
@@ -221,6 +240,12 @@ function fontFor(family: string): { id: string; family: string } {
 export interface ImportOptions {
   id?: string;
   appVersion?: string;
+  /**
+   * A sketch solver (planegcs), to bring the file's sketch constraints and
+   * dimensions over: each is checked against it so imported geometry never
+   * moves. Without one, sketches keep only the joins of shared points.
+   */
+  solver?: SketchSolver;
 }
 
 export function f3dToDesign(
@@ -240,21 +265,20 @@ export function f3dToDesign(
 
   // User parameters, in the order they were made.
   for (const p of [...f3d.userParameters].sort((a, b) => a.number - b.number)) {
+    const unit = p.text === undefined ? unitKind(p.unit) : undefined;
     try {
-      d.parameter(
-        p.name,
-        p.text !== undefined ? `'${p.text}'` : p.expression,
-        p.comment ? { comment: p.comment } : {},
-      );
+      d.parameter(p.name, p.text !== undefined ? `'${p.text}'` : p.expression, {
+        ...(p.comment ? { comment: p.comment } : {}),
+        ...(unit ? { unit } : {}),
+      });
       userNames.add(p.name);
     } catch (error) {
       // An expression Extrudo does not read: keep the value.
       try {
-        d.parameter(
-          p.name,
-          numberExpression(p.value, p.unit),
-          p.comment ? { comment: p.comment } : {},
-        );
+        d.parameter(p.name, numberExpression(p.value, p.unit), {
+          ...(p.comment ? { comment: p.comment } : {}),
+          ...(unit ? { unit } : {}),
+        });
         userNames.add(p.name);
         report.notes.push(
           `Parameter ${p.name}: "${p.expression}" kept as its value (${(error as Error).message}).`,
@@ -265,17 +289,55 @@ export function f3dToDesign(
     }
   }
 
+  // The file's sketch constraints and dimensions, vetted by the solver.
+  let constraints: ConstraintContext | undefined;
+  if (options.solver) {
+    // Expressions may name the user parameters Extrudo evaluates as the file did.
+    const values = new Map<string, ReturnType<typeof quantityOf> & {}>();
+    const evaluated = evaluateParameters(d.doc).parameters;
+    for (const p of f3d.userParameters) {
+      const q = quantityOf(p);
+      const got = evaluated.get(p.name)?.result;
+      if (q && got?.ok && Math.abs(got.value - q.value) <= 1e-9 * (1 + Math.abs(q.value)))
+        values.set(p.name, q);
+    }
+    // Names the file gives its own parameters stay free for them; Extrudo's
+    // own new names (a text's height, a dimension whose file name can't be
+    // taken) count on from past the last of them.
+    let next = 1;
+    for (const p of f3d.parameters) {
+      // A safe integer only: past 2^53, counting on from it would stand still.
+      const n = /^d(\d{1,9})$/.exec(p.name);
+      if (n) next = Math.max(next, Number(n[1]) + 1);
+    }
+    const taken = new Set(userNames);
+    constraints = {
+      solver: options.solver,
+      values,
+      taken,
+      tally: newTally(),
+      freeName: () => {
+        while (taken.has(`d${next}`)) next++;
+        const name = `d${next++}`;
+        taken.add(name);
+        return name;
+      },
+    };
+    report.constraints = constraints.tally;
+  }
+  const known = (n: string) => userNames.has(n) || (constraints?.taken.has(n) ?? false);
+
   /**
    * An input's expression: the file's own when it only names user parameters
-   * (so the design stays driven by them), its value otherwise — dimension
-   * parameters (`d12`) have no Extrudo counterpart yet.
+   * and imported sketch dimensions (so the design stays driven by them), its
+   * value otherwise — a feature's own parameters (`d12`) have no Extrudo
+   * counterpart yet.
    */
   const expressionOf = (p: ParameterValue, negate = false): string => {
     const names = p.expression.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [];
     const units = new Set(['mm', 'cm', 'm', 'in', 'ft', 'deg', 'rad', 'um', 'mil']);
-    const own = names.every((n) => units.has(n) || userNames.has(n));
-    if (own && names.some((n) => userNames.has(n)))
-      return negate ? `-(${p.expression})` : p.expression;
+    const own = names.every((n) => units.has(n) || known(n));
+    if (own && names.some((n) => known(n))) return negate ? `-(${p.expression})` : p.expression;
     return numberExpression(negate ? -p.value : p.value, p.unit);
   };
 
@@ -395,7 +457,8 @@ export function f3dToDesign(
         const used = profileCurves.get(feature.sketch.id) ?? new Set<string>();
         const handle = d.sketch(
           placement.plane,
-          (k) => drawSketch(k, feature, placement, { tags, curves, texts }, used, report),
+          (k) =>
+            drawSketch(k, feature, placement, { tags, curves, texts }, used, report, constraints),
           {
             name: feature.name,
           },
@@ -705,6 +768,7 @@ function drawSketch(
   },
   profileCurves: Set<string>,
   report: ImportReport,
+  constraints?: ConstraintContext,
 ): void {
   const { tags, curves } = made;
   const s: F3dSketch = feature.sketch;
@@ -830,8 +894,9 @@ function drawSketch(
         placement.map(at.u, at.v),
         placement.map(at.u + flip * up[0] * t.height, at.v + flip * up[1] * t.height),
         { text: t.text, font: font.id, align: at.align },
-        { upright: false },
+        { upright: false, ...(constraints ? { height: false } : {}) },
       );
+      if (constraints) textHeight(k, h, constraints.freeName());
       made.texts.set(t.id, h.id);
       report.notes.push(
         `${feature.name}: text "${t.text}" in ${t.font} is drawn in ${font.family}${at.guessed ? ', placed by its box corner (its alignment is not read)' : ''}${t.old.mirrored ? ', turned instead of mirrored' : ''}.`,
@@ -850,17 +915,21 @@ function drawSketch(
       placement.map(u, v),
       placement.map(u + up[0] * cap, v + up[1] * cap),
       { text: t.text, font: font.id, align: 'center' },
-      { upright: false },
+      { upright: false, ...(constraints ? { height: false } : {}) },
     );
+    if (constraints) textHeight(k, h, constraints.freeName());
     made.texts.set(t.id, h.id);
     report.notes.push(`${feature.name}: text "${t.text}" in ${t.font} is drawn in ${font.family}.`);
   }
   // Points on their own (hole centres, reference points), except the
   // projected origin every sketch has.
+  let origin: SketchPoint | undefined;
   for (const p of s.points) {
-    if (used.has(p.id)) continue;
     const xy = placement.map(p.at[0], p.at[1]);
-    if (Math.hypot(xy[0], xy[1]) < 1e-9 && p.tag === 100n) continue;
+    const isOrigin = Math.hypot(xy[0], xy[1]) < 1e-9 && p.tag === 100n;
+    if (isOrigin) origin = p;
+    if (used.has(p.id)) continue;
+    if (isOrigin) continue;
     join(p.id, k.point(xy));
   }
   // An f3d point shared by several curves is one point; Extrudo gives each
@@ -878,6 +947,48 @@ function drawSketch(
     }
   }
   if (skipped) report.notes.push(`${feature.name}: ${skipped} coincident constraints left out.`);
+  if (!constraints) return;
+  // The projected origin is fixed in the file: a point there (made when only
+  // a constraint or dimension names it) is fixed here.
+  if (origin && ((s.relations ?? []).length > 0 || (s.dimensions ?? []).length > 0)) {
+    const at = origin;
+    const mentioned = [...(s.relations ?? []), ...(s.dimensions ?? [])].some((c) =>
+      c.loci.some((l) => l.id === at.id),
+    );
+    if (!joined.has(at.id) && mentioned) join(at.id, k.point(placement.map(at.at[0], at.at[1])));
+    const first = joined.get(at.id)?.[0];
+    if (first) k.fix(first);
+  }
+  const ids = new Map<number, string>();
+  for (const [id, curve] of curves) ids.set(curve.id, id);
+  const note = addSketchConstraints(
+    k,
+    s,
+    {
+      points: new Map([...joined].map(([p, handles]) => [p, handles.map((h) => h.id)])),
+      curves: ids,
+      map: placement.map,
+    },
+    constraints,
+    feature.name,
+  );
+  if (note) report.notes.push(note);
+}
+
+/** A text's height dimension, named so it takes none of the file's own parameter names. */
+function textHeight(k: SketchBuilder, h: ReturnType<SketchBuilder['text']>, name: string): void {
+  const at = (id: string) => {
+    const p = k.data.entities[id as keyof typeof k.data.entities] as { x: number; y: number };
+    return [p.x, p.y] as const;
+  };
+  const [a, b] = [at(h.anchor.id), at(h.top.id)];
+  k.dimension(
+    [h.anchor, h.top],
+    `${Number(Math.hypot(b[0] - a[0], b[1] - a[1]).toPrecision(12))} mm`,
+    {
+      name,
+    },
+  );
 }
 
 /** The file's line advance for Arial, in capital heights (1.15 em over a 0.716 em capital). */

@@ -2,7 +2,7 @@
 title: Plane at Angle
 section: Tools
 category: Construct
-order: 53
+order: 52
 ---
 
 # Plane at Angle

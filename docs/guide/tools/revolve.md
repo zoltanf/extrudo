@@ -2,7 +2,7 @@
 title: Revolve
 section: Tools
 category: Solid
-order: 21
+order: 20
 ---
 
 # Revolve

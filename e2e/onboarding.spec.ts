@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { viewportOf } from './benchmark-helpers';
-import { kernelReady, openProject, pickTool, selectTab } from './helpers';
+import { kernelReady, openProject, pickTool, selectTab, startFromTemplate } from './helpers';
 
 // P3-12: the rest of the onboarding (ADR-0052): the template gallery, the
 // hint over an empty design, and the tool tooltips with their demo clips.
@@ -58,7 +58,7 @@ test('the gallery offers four templates, each opens as a copy with its name and 
 
   // Opening the same template again makes a second design, not the first one again.
   await page.goto('./');
-  await page.getByRole('button', { name: 'Start from the Box with a lid template' }).click();
+  await startFromTemplate(page, 'Box with a lid');
   await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
   await kernelReady(page);
   await page.goto('./');
@@ -69,7 +69,7 @@ test('the gallery offers four templates, each opens as a copy with its name and 
   await expect(designs.locator('img')).toHaveCount(2);
 
   // The others open too: the wall bracket (code) and the enclosure (file).
-  await page.getByRole('button', { name: 'Start from the PCB enclosure template' }).click();
+  await startFromTemplate(page, 'PCB enclosure');
   await kernelReady(page);
   await expect(viewport).toHaveAttribute('data-bodies', /Enclosure:\d+:.* Lid:\d+:/);
 });

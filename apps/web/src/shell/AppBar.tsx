@@ -47,11 +47,11 @@ export interface FileActions {
   home(): void;
   exportFile(): void;
   importFile(): void;
-  /** Picks an `.f3d` file and opens it as a new design. */
-  importF3d?(): void;
+  /** Opens an `.f3d` file Import Model picked as a new design (ADR-0083 §4). */
+  importF3d?(file: File): void;
   /** Opens the model's export (STL, 3MF, STEP; P2-12). */
   exportModel?(): void;
-  /** Picks a STEP, mesh or OpenSCAD file and opens the Import dialog (P4-06, P5-04). */
+  /** Picks a STEP, mesh or OpenSCAD file and opens the Import dialog (P4-06, P5-04); an `.f3d` goes to `importF3d`. */
   importModel?(): void;
   /** Downloads the design as TypeScript that makes it again (P5-05). */
   exportScript?(): void;

@@ -2,7 +2,7 @@
 title: Press Pull
 section: Tools
 category: Modify
-order: 40
+order: 39
 ---
 
 # Press Pull
