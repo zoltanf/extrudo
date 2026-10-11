@@ -599,7 +599,9 @@ a right-click without movement, as Onshape's context menu does.
   Body / Show as Ghost / Hide Body (the states the body is not in),
   Appearance… (a popover on the dot: colour swatches, Default first, and
   opacity Opaque, 75 %, 50 %, 25 %; each choice is one undo step) and
-  Delete. The folder's eye hides or shows all bodies in one step (showing
+  Delete. The row's colour dot is itself a button, "Appearance of <body>",
+  that opens the same popover (the owner's UI review 3, R3-07); a click on the
+  name still selects the body. The folder's eye hides or shows all bodies in one step (showing
   clears a ghost).
 - **Removing bodies:** Delete (the browser, the body menu, or Delete in
   the view with bodies selected) adds a **Remove** feature at the marker

@@ -2714,7 +2714,10 @@ them. Notes further down that name a machine apply to that machine only.
 - **Bodies e2e** (`e2e/bodies.spec.ts`) reads the Viewport region's
   `data-body-appearance` ("Name:#rrggbb|default:opacity") and
   `data-silhouettes`, the browser's `[data-folder-count]` and
-  `[data-body]` rows (name button `aria-pressed` when selected). A ghost
+  `[data-body]` rows (name button `aria-pressed` when selected; the colour dot
+  before it is the button "Appearance of <name>", `data-body-colour`, which
+  opens the dialog "<name> appearance" — R3-07 — so match a body's name button
+  with `exact: true`). A ghost
   body (ADR-0030's amendment, 2026-10-09) is `data-ghost-bodies` on the
   Viewport ("Lid", absent when none) and `data-body-display="shown|ghost|hidden"`
   on its row; a body row's eye cycles shown → ghost → hidden (icon `EyeDashed`

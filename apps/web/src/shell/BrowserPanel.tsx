@@ -844,21 +844,29 @@ function BodyLeaf({
       onPointerLeave={() => onHover?.(undefined)}
     >
       <Popover
-        anchorOnly
         open={appearance}
         onOpenChange={setAppearance}
         side="right"
         label={`${meta.name} appearance`}
         trigger={
-          // The popover sits on the colour dot; a plain element takes its anchor ref.
-          <span
-            aria-hidden
-            className="size-2.5 shrink-0 rounded-full border border-line"
-            style={{
-              background: meta.color ?? 'var(--x-body-default)',
-              opacity: Math.max(meta.opacity ?? 1, 0.35),
-            }}
-          />
+          // The colour dot opens Appearance (the owner's UI review 3, R3-07), as the body
+          // menu's Appearance… does; the popover sits on it either way. A click on the
+          // name still selects the body.
+          <button
+            type="button"
+            aria-label={`Appearance of ${meta.name}`}
+            data-body-colour=""
+            className="-m-1 grid size-[18px] shrink-0 place-items-center rounded-full hover:bg-accent-soft focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            <span
+              aria-hidden
+              className="size-2.5 rounded-full border border-line"
+              style={{
+                background: meta.color ?? 'var(--x-body-default)',
+                opacity: Math.max(meta.opacity ?? 1, 0.35),
+              }}
+            />
+          </button>
         }
       >
         <AppearancePanel body={body} actions={actions} />
