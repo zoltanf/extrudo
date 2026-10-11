@@ -18,6 +18,11 @@ import {
   readComponents,
 } from './decode/component';
 import {
+  readSketchConstraints,
+  type SketchDimensionRecord,
+  type SketchRelation,
+} from './decode/constraints';
+import {
   type CopiedObjects,
   MIRROR,
   PATH_PATTERN,
@@ -134,6 +139,9 @@ export interface F3dSketch {
   /** Splines and conics. */
   splines: SketchSpline[];
   texts: SketchText[];
+  /** Its geometric constraints and dimensions, as the file stores them. */
+  relations?: SketchRelation[];
+  dimensions?: SketchDimensionRecord[];
 }
 
 interface FeatureBase {
@@ -489,6 +497,17 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
   for (const id of seg.idsOf(SKETCH_CONIC)) {
     const c = tryDecode(`conic #${id}`, () => sketchConic.decode(seg, id));
     if (c?.owner !== undefined) sketchOf(c.owner).splines.push(c);
+  }
+
+  // Constraints and dimensions, in the sketch their points and curves are in.
+  const geometryOwner = new Map<number, number>();
+  for (const s of sketches.values())
+    for (const g of [...s.points, ...s.lines, ...s.circulars, ...s.splines])
+      geometryOwner.set(g.id, s.id);
+  const constraints = readSketchConstraints(seg, parameters, (r) => geometryOwner.get(r), problems);
+  for (const [id, c] of constraints) {
+    const s = sketches.get(id);
+    if (s) Object.assign(s, c);
   }
 
   // Face tags name the feature that made a face by its operation ID; the

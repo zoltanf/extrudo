@@ -353,3 +353,64 @@ geometry 60, no body 8, crash 1, no reference 7 — from 113, 7, 60, 54, 8, 1,
 amendment alone; the four worse than with components alone are the features
 amendment's own (threads now cut where the rest of the part is still off,
 and one chamfer on copied faces).
+
+## Amendment (2026-10-11): sketch constraints and dimensions
+
+Imported sketches used to carry geometry and the coincident joins of shared
+points only, and inputs naming the file's dimension parameters (`d12`) took
+plain values. Now the file's sketch relations and dimensions come over, so an
+imported sketch stays drivable.
+
+- **Reading** (`decode/constraints.ts`, `packages/f3d/FORMAT.md`): a relation
+  record lists its points and curves and a kind mask (coincident, collinear,
+  concentric, parallel, perpendicular, horizontal, vertical, tangent,
+  symmetric, equal, midpoint; every mask checked against the solved geometry
+  over the owner's corpus); a dimension record lists what it measures and
+  refers to the owner of the parameter it drives, whose value record holds
+  the `dN` name, expression and value. A linear dimension's direction
+  (aligned, horizontal, vertical) is a byte pair before that reference.
+- **The rule: imported geometry never moves** (`sketch-constraints.ts`). A
+  constraint or dimension is taken only when the geometry, where the file put
+  it and as Extrudo's frame sees it, already satisfies it (1e-6 mm; the plane
+  map may turn the file's horizontal into Extrudo's vertical, which the
+  geometry decides). The sketch is then solved with planegcs: what the solver
+  calls redundant or conflicting, and then anything that would still move a
+  point, is taken out one at a time (the latest first) and counted, never
+  forced. Trouble the sketch had before (its own joins) is not held against
+  them. A tangent's side is read once every point making its joint is in.
+- **The solver is the caller's**: `ImportOptions.solver` takes a
+  `SketchSolver`; `@extrudo/f3d` imports only types from the sketch package's
+  main entry (planegcs stays out of its chunk), and the app loads
+  `@extrudo/sketch/browser` for the import. Without a solver nothing changes.
+- **Parameters**: a dimension is named after the file's parameter (`d12`)
+  when the name is free, and keeps the file's expression when every name in
+  it is a user parameter or an imported dimension Extrudo evaluates to the
+  file's value; else it takes the value. An expression naming a dimension that
+  was left out falls back to its value. Feature inputs naming an imported
+  dimension keep their expressions (none in the corpus do; dimensions name
+  dimensions 430 times and user parameters 890 times). Extrudo's own new names
+  (a text's height dimension) count on from past the file's last `dN`. User
+  parameters now get the file's unit kind, so a unitless count no longer reads
+  as a length.
+- **The projected origin**, which the file holds fixed, gets a `fix` when the
+  sketch has constraints (a point is made for it when only a constraint or
+  dimension names it).
+- **Report**: `ImportReport.constraints` (counts, left out by why and kind, the
+  largest displacement); a note per sketch with left-outs; one app notice.
+
+Results on the owner's 250 files: 9,280 constraints and 4,779 dimensions
+imported (1,248 of the dimensions keep an expression naming another parameter);
+left out: 89 with no counterpart (linear dimensions on circles, a midpoint of
+two lines, a diameter on an arc, an unknown seven-point relation), 123 that
+don't match the geometry (mostly offset dimensions, whose value is a signed
+offset), 141 that over-constrain, 150 naming geometry the import doesn't draw
+(text-box lines, ellipses, projected curves), 2 that would move geometry (an
+ill-conditioned point on a circle a line touches). Every imported sketch
+solves with no redundant or conflicting constraint and no point moving more
+than 8.5e-7 mm; vetting takes 38 s over the corpus (3.5 s for the slowest
+file). The rebuilt geometry is unchanged (two files closer through the unit
+kind).
+
+Deferred: a Fix relation (not found in the files), offset and sketch-pattern
+relations (Extrudo has none), constraints on ellipses and splines, and naming
+feature inputs after their `dN` (nothing in the corpus needs it).

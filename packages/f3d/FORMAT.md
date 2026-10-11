@@ -87,6 +87,8 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `8B369926…` | Older text's box (a coincident-constraint subclass) | references the text and the four `16DEFC4D…` box lines (a sketch-line subclass; start and displacement, 6 f64, in the base level) |
 | `EA3B930A…` | Text box line | a sketch-line subclass: a ref to its text, then start and displacement as a line's |
 | `362B7EC3…` | Point incidence | u32 n, n refs to curves, u8, ref point |
+| `60403D47…` | Sketch relation (a geometric constraint) | see below; subclasses keep it in their base level |
+| `0C3F3829…` | Sketch dimension (base type) | see below; subclasses `8C780195…` linear, `664AD49F…` diameter, `8EDAC24D…` radial, `6EEAFDE5…` angular |
 | `44A64366…` | Sketch | its base level's first reference is the placement |
 | `F47A46FB…` | Sketch placement | u8 identity, or 16 f64: the sketch-to-model matrix, row-major |
 | `8DA771B7…` | Sketch feature | refers to its sketch (`44A64366…`) |
@@ -180,6 +182,43 @@ at byte 0 (49-byte tail) or 6 (52- or 56-byte tail); circles at byte 2 (51) or
 Found statistically (curves the file's own profiles use are never construction)
 and not certain; curves a profile uses are imported as non-construction
 whatever the flag says.
+
+### Sketch constraints and dimensions
+
+A **relation** (`60403D47…`, v3) is one geometric constraint:
+
+```
+u8 1 (leading block), u32 n, n × (ref point or curve, u32 role)
+property block (usually empty; sometimes EntityGenesis)
+ref sketch, u32 kind mask, u32 state mask
+u32 n, n × ref (the loci again), u8
+```
+
+The kind mask, checked against the solved geometry over the corpus: `0x1`
+coincident (two points, or a point on a line, circle or arc — never a curve's
+own end point), `0x2` collinear, `0x4` concentric, `0x10` parallel, `0x20`
+perpendicular, `0x40` horizontal, `0x80` vertical (along the sketch's own
+axes), `0x100` tangent, `0x400` symmetric (two points, lines or circles and
+the line that is the axis), `0x800` equal, `0x1000` midpoint (a point and a
+line). `0x2000` (seven points) is not known. The roles look like counters and
+are not used. Subclasses with kind 0 and a state mask hold other sketch
+constructions: `D3BD153B…` offsets (state `0x20`), `40800FB9…` sketch
+patterns, `8B369926…` an older text's box. A Fix constraint was not found.
+
+A **dimension** (a subclass of `0C3F3829…`) opens with the same leading block
+(its first locus is often the null reference), then presentation data, then a
+reference to the owner record (`D91D429C…`) of the parameter it drives; the
+parameter value with that owner holds its `dN` name, expression and value. A
+linear dimension measures two points, a line (its length), two parallel lines
+or a point and a line; its direction is the byte pair 7 and 6 bytes before
+the owner reference: `40 00` aligned, `00 40` horizontal, `00 80` vertical.
+A diameter dimension measures a circle, a radial one an arc, an angular one
+two lines (the angle or its supplement, whichever the value is).
+
+The importer (`sketch-constraints.ts`) takes a constraint or dimension only
+when the geometry already satisfies it where the file put it, then solves the
+sketch and takes out whatever the solver calls redundant or conflicting, or
+anything that would move a point.
 
 ## Components
 
