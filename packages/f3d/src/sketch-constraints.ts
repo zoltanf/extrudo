@@ -50,6 +50,8 @@ export interface ConstraintTally {
   leftOut: Partial<Record<LeftOut, number>>;
   /** The largest point displacement solving any imported sketch caused, mm. */
   maxDisplacement: number;
+  /** Left out, by why and what (`mismatch:tangent`, `geometry:linear`). */
+  byKind: Record<string, number>;
 }
 
 /** What the importer keeps across sketches. */
@@ -85,7 +87,7 @@ const ANGULAR = 1e-9;
 const MOVE = 1e-6;
 
 export function newTally(): ConstraintTally {
-  return { constraints: 0, dimensions: 0, leftOut: {}, maxDisplacement: 0 };
+  return { constraints: 0, dimensions: 0, leftOut: {}, maxDisplacement: 0, byKind: {} };
 }
 
 /** A parameter's evaluated value in Extrudo's base units, when its unit is one Extrudo knows. */
@@ -100,6 +102,8 @@ export function quantityOf(p: ParameterValue): Quantity | undefined {
 
 interface Candidate {
   kind: 'constraint' | 'dimension';
+  /** What it is, for the tally: the relation's or the dimension's kind. */
+  what: string;
   /** Adds it to the sketch; returns its ID. */
   add: () => string;
   id?: string;
@@ -128,15 +132,17 @@ export function addSketchConstraints(
   const dimensions = sketch.dimensions ?? [];
   if (relations.length === 0 && dimensions.length === 0) return undefined;
   const left: Partial<Record<LeftOut, number>> = {};
-  const leave = (why: LeftOut) => {
+  const leave = (why: LeftOut, what: string) => {
     left[why] = (left[why] ?? 0) + 1;
+    const key = `${why}:${what}`;
+    ctx.tally.byKind[key] = (ctx.tally.byKind[key] ?? 0) + 1;
   };
   const candidates: Candidate[] = [];
   const geo = new Geometry(k.data);
 
   for (const r of relations) {
     const c = relationCandidate(k, r, drawn, geo);
-    if (typeof c === 'string') leave(c);
+    if (typeof c === 'string') leave(c, r.kind ?? `0x${r.mask.toString(16)}`);
     else candidates.push(c);
   }
   // Dimensions in an order where one an expression names comes first.
@@ -154,7 +160,7 @@ export function addSketchConstraints(
       pending.splice(i, 1);
       const c = dimensionCandidate(k, d, drawn, geo, ctx);
       if (typeof c === 'string') {
-        leave(c);
+        leave(c, d.kind);
         continue;
       }
       candidates.push(c);
@@ -208,15 +214,15 @@ export function addSketchConstraints(
 /**
  * Adds the candidates and solves; takes out what the solver names redundant
  * or conflicting, one at a time (the latest first), until the sketch solves
- * as cleanly as it did without them; then, if solving still moves a point,
- * takes them all out. Trouble the sketch had before (its own coincident
- * joins) is not held against the candidates.
+ * as cleanly as it did without them; then, while solving still moves a point,
+ * the latest candidate in a component that moved. Trouble the sketch had
+ * before (its own coincident joins) is not held against the candidates.
  */
 function vet(
   k: SketchBuilder,
   candidates: Candidate[],
   ctx: ConstraintContext,
-  leave: (why: LeftOut) => void,
+  leave: (why: LeftOut, what: string) => void,
 ): void {
   const values: Record<string, number> = {};
   const before = ctx.solver.solve(k.data, {});
@@ -227,8 +233,21 @@ function vet(
       c.id = c.add();
       if (c.value !== undefined) values[c.id] = c.value;
     } catch {
-      leave('unsupported');
+      leave('unsupported', c.what);
     }
+  }
+  // A tangent keeps the side its curves meet on, read once every point that
+  // makes the joint (a point on the circle, say) is in.
+  for (const c of candidates) {
+    const t = c.id === undefined ? undefined : k.data.constraints[c.id as never];
+    if (t?.type !== 'tangent') continue;
+    const reversed = tangentReversed(
+      { ...k.data, constraints: withoutKey(k.data.constraints, c.id as string) },
+      t.a,
+      t.b,
+    );
+    if (reversed === undefined) delete (t as { reversed?: boolean }).reversed;
+    else (t as { reversed?: boolean }).reversed = reversed;
   }
   const remove = (c: Candidate) => {
     const id = c.id as string;
@@ -259,21 +278,35 @@ function vet(
       latest((c) => refsOf(k.data, c.id as string).some((e) => trouble.has(e)));
     if (pick) {
       remove(pick);
-      leave('overconstrains');
+      leave('overconstrains', pick.what);
       continue;
     }
-    let moved = displacement(k.data, result.solution.points);
-    if (moved > MOVE) {
-      for (const c of candidates) {
-        if (c.id === undefined) continue;
-        remove(c);
-        leave('moves');
+    // Solving moves something: the latest candidate in a component that moved goes.
+    const moved = movedPoints(k.data, result.solution.points);
+    if (moved.size > 0) {
+      const moving = new Set(
+        result.components
+          .filter((r) => r.entities.some((e) => moved.has(e)))
+          .flatMap((r) => r.entities),
+      );
+      const culprit = latest((c) => refsOf(k.data, c.id as string).some((e) => moving.has(e)));
+      if (culprit) {
+        remove(culprit);
+        leave('moves', culprit.what);
+        continue;
       }
-      moved = displacement(k.data, ctx.solver.solve(k.data, {}).solution.points);
     }
-    ctx.tally.maxDisplacement = Math.max(ctx.tally.maxDisplacement, moved);
+    ctx.tally.maxDisplacement = Math.max(
+      ctx.tally.maxDisplacement,
+      displacement(k.data, result.solution.points),
+    );
     return;
   }
+}
+
+function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
+  const { [key]: _, ...rest } = record;
+  return rest;
 }
 
 /** The entities a constraint or dimension refers to. */
@@ -284,6 +317,20 @@ function refsOf(data: SketchData, id: string): string[] {
   return ['a', 'b', 'point', 'curve', 'of', 'entity', 'axis']
     .map((key) => o[key])
     .filter((v): v is string => typeof v === 'string');
+}
+
+/** The points a solve moved further than {@link MOVE}. */
+function movedPoints(
+  data: SketchData,
+  points: Readonly<Record<string, { x: number; y: number }>>,
+): Set<string> {
+  const out = new Set<string>();
+  for (const [id, p] of Object.entries(points)) {
+    const e = (data.entities as Record<string, { type: string; x?: number; y?: number }>)[id];
+    if (e?.type === 'point' && Math.hypot(p.x - (e.x as number), p.y - (e.y as number)) > MOVE)
+      out.add(id);
+  }
+  return out;
 }
 
 /** The largest distance a solve moved any point of the sketch (mm). */
@@ -357,7 +404,11 @@ function relationCandidate(
   const e = ids as string[];
   const types = e.map((id) => geo.entity(id)?.type);
   const of = (t: string) => e.filter((_, i) => types[i] === t);
-  const make = (add: () => string): Candidate => ({ kind: 'constraint', add });
+  const make = (add: () => string): Candidate => ({
+    kind: 'constraint',
+    what: r.kind as string,
+    add,
+  });
   switch (r.kind) {
     case 'coincident': {
       if (e.length !== 2) return 'unsupported';
@@ -432,12 +483,25 @@ function relationCandidate(
     }
     case 'midpoint': {
       const [point] = of('point');
-      const [line] = of('line');
-      if (e.length !== 2 || point === undefined || line === undefined) return 'unsupported';
-      const [a, b] = geo.line(line);
-      const m: Vec2 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      const [curve] = [...of('line'), ...of('arc')];
+      if (e.length !== 2 || point === undefined || curve === undefined) return 'unsupported';
+      let m: Vec2;
+      if (geo.entity(curve)?.type === 'line') {
+        const [a, b] = geo.line(curve);
+        m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      } else {
+        // An arc runs counter-clockwise from its start to its end.
+        const arc = geo.entity(curve) as SketchArc;
+        const c = geo.center(curve);
+        const [s0, s1] = [sub(geo.point(arc.start), c), sub(geo.point(arc.end), c)];
+        const from = Math.atan2(s0[1], s0[0]);
+        let sweep = Math.atan2(s1[1], s1[0]) - from;
+        while (sweep <= 0) sweep += 2 * Math.PI;
+        const r = geo.radius(curve);
+        m = [c[0] + r * Math.cos(from + sweep / 2), c[1] + r * Math.sin(from + sweep / 2)];
+      }
       return dist(geo.point(point), m) <= TOLERANCE
-        ? make(() => k.midpoint(point, line))
+        ? make(() => k.midpoint(point, curve))
         : 'mismatch';
     }
     case 'tangent': {
@@ -455,36 +519,40 @@ function relationCandidate(
         ok = Math.abs(toLine(geo.center(a), geo.line(b)) - geo.radius(a)) <= TOLERANCE;
       } else return 'unsupported';
       if (!ok) return 'mismatch';
-      return make(() => k.tangent(a, b, tangentReversed(k.data, a, b) ?? false));
+      return make(() => k.tangent(a, b));
     }
     case 'symmetric': {
       if (e.length !== 3) return 'unsupported';
-      // The axis is the one line; with three lines, the one the others mirror across.
+      // The axis is a line the other two mirror onto each other across.
       const lines = e.filter((_, i) => types[i] === 'line');
-      for (const axis of lines.length === 1 ? lines : lines) {
+      for (const axis of lines) {
         const [p, q] = e.filter((id) => id !== axis) as [string, string];
         const [tp, tq] = [geo.entity(p)?.type, geo.entity(q)?.type];
-        if (tp !== tq || !(tp === 'point' || isCircular(tp) || tp === 'line')) continue;
-        const centre = (id: string): Vec2 => {
-          const t = geo.entity(id)?.type;
-          if (t === 'point') return geo.point(id);
-          if (t === 'line') {
-            const [s, f] = geo.line(id);
-            return [(s[0] + f[0]) / 2, (s[1] + f[1]) / 2];
-          }
-          return geo.center(id);
+        if (tp !== tq) continue;
+        const [o, f] = geo.line(axis);
+        const u = sub(f, o);
+        const mirror = (x: Vec2): Vec2 => {
+          const t = dot(sub(x, o), u) / dot(u, u);
+          return [2 * (o[0] + t * u[0]) - x[0], 2 * (o[1] + t * u[1]) - x[1]];
         };
-        const ax = geo.line(axis);
-        const [cp, cq] = [centre(p), centre(q)];
-        const mid: Vec2 = [(cp[0] + cq[0]) / 2, (cp[1] + cq[1]) / 2];
-        const across = sub(cq, cp);
-        const along = sub(ax[1], ax[0]);
-        const ok =
-          toLine(mid, ax) <= TOLERANCE &&
-          Math.abs(dot(across, along)) / len(along) <= TOLERANCE &&
-          (tp !== 'circle' && tp !== 'arc'
-            ? true
-            : Math.abs(geo.radius(p) - geo.radius(q)) <= TOLERANCE);
+        const same = (x: Vec2, y: Vec2) => dist(x, y) <= TOLERANCE;
+        let ok = false;
+        if (tp === 'point') ok = same(mirror(geo.point(p)), geo.point(q));
+        else if (tp === 'line') {
+          const [ps, pe] = geo.line(p).map(mirror) as [Vec2, Vec2];
+          const [qs, qe] = geo.line(q);
+          ok = (same(ps, qs) && same(pe, qe)) || (same(ps, qe) && same(pe, qs));
+        } else if (tp === 'circle')
+          ok =
+            same(mirror(geo.center(p)), geo.center(q)) &&
+            Math.abs(geo.radius(p) - geo.radius(q)) <= TOLERANCE;
+        else if (tp === 'arc') {
+          // Extrudo's mirrored arc runs the other way: a's start is b's end's image.
+          const [ap, aq] = [geo.entity(p) as SketchArc, geo.entity(q) as SketchArc];
+          ok =
+            same(mirror(geo.point(ap.start)), geo.point(aq.end)) &&
+            same(mirror(geo.point(ap.end)), geo.point(aq.start));
+        } else continue;
         if (ok) return make(() => k.symmetric(p, q, axis));
       }
       return lines.length === 0 ? 'unsupported' : 'mismatch';
@@ -548,6 +616,7 @@ function dimensionCandidate(
     const options = name ? { name } : {};
     return {
       kind: 'dimension',
+      what: d.kind,
       add: () => add(expr, options),
       expr,
       numeric,

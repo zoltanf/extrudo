@@ -163,6 +163,15 @@ const RECTANGLE = () => [
   relation('vertical', 14),
 ];
 
+/** The first sketch's data. */
+function sketchOf(doc: {
+  features: { type: string; inputs: Record<string, unknown> }[];
+}): SketchData {
+  const sketch = doc.features.find((f) => f.type === 'sketch');
+  if (!sketch) throw new Error('No sketch.');
+  return (sketch.inputs.sketch as { sketch: SketchData }).sketch;
+}
+
 /** Imports with a fresh solver; returns the sketch and the report. */
 function load(f3d: F3dDesign) {
   const solver = new SketchSolver(planegcs);
@@ -170,9 +179,7 @@ function load(f3d: F3dDesign) {
     const { design, report } = f3dToDesign(f3d, 'Plate', { solver });
     expect(design.validate()).toEqual([]);
     const doc = design.toJSON();
-    const sketch = doc.features.find((f) => f.type === 'sketch');
-    const data = (sketch?.inputs.sketch as { sketch: SketchData }).sketch;
-    return { doc, data, report };
+    return { doc, data: sketchOf(doc), report };
   } finally {
     solver.dispose();
   }
@@ -295,10 +302,49 @@ describe('sketch constraints and dimensions', () => {
     expect(report.constraints?.constraints).toBe(1);
   });
 
+  it('keeps a tangent line on the side of the circle it touches', () => {
+    // A line along the top of a 1 cm circle, its start on the circle: tangent,
+    // and solving must not flip it to the circle's other side.
+    const f3d = plate([], []);
+    const sketch = (f3d.features[0] as F3dSketchFeature).sketch;
+    const centre = point(20, 0, -5);
+    const [s, f] = [point(21, 0, -4), point(22, 3, -4)];
+    sketch.points.push(centre, s, f);
+    sketch.lines.push(line(23, 123n, s, f));
+    sketch.circulars.push({
+      id: 24,
+      tag: 124n,
+      center: centre.at,
+      normal: [0, 0, 1],
+      xAxis: [1, 0, 0],
+      radius: 1,
+      startAngle: 0,
+      endAngle: 2 * Math.PI,
+      centerPoint: 20,
+      construction: false,
+    });
+    sketch.relations = [
+      { ...relation('coincident', 21, 24), mask: 0x1 },
+      { ...relation('horizontal', 23) },
+      {
+        ...relation('coincident', 22, 24),
+        kind: 'tangent',
+        mask: 0x100,
+        loci: [
+          { id: 23, role: 0 },
+          { id: 24, role: 0 },
+        ],
+      },
+    ];
+    const { data, report } = load(f3d);
+    expect(types(data)).toEqual(expect.arrayContaining(['pointOnCurve', 'horizontal', 'tangent']));
+    expect(report.constraints?.leftOut).toEqual({});
+    expect(solveAsApp(data, {}).moved).toBeLessThan(1e-9);
+  });
+
   it('imports nothing without a solver', () => {
     const { design, report } = f3dToDesign(plate(RECTANGLE(), []), 'Plate');
-    const sketch = design.toJSON().features.find((f) => f.type === 'sketch');
-    const data = (sketch?.inputs.sketch as { sketch: SketchData }).sketch;
+    const data = sketchOf(design.toJSON());
     expect(types(data).every((t) => t === 'coincident')).toBe(true);
     expect(report.constraints).toBeUndefined();
   });
