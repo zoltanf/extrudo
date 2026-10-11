@@ -33,6 +33,12 @@ export default defineBuild({
     // 'unsafe-eval' (ADR-0067 H1, ADR-0054). Embind then builds its invokers as
     // closures instead of evaluating them; the cost is measured in ADR-0067.
     DYNAMIC_EXECUTION: 0,
+    // Emscripten's default stack is 64 kB, and OCCT outgrows it: a boolean on
+    // B-spline faces needed more than that, and an optimised build has no
+    // check, so the overflow wrote over static data and a later call trapped
+    // (ADR-0001's amendment, 2026-10-11). The facade guards the stack's last
+    // 64 kB and stops the module if anything reaches them.
+    STACK_SIZE: '8MB',
   },
   compilerFlags: { exceptions: 'wasm', noEntry: true, simd: true, optimize: 'O3' },
   variants: [{ name: 'single' }],
