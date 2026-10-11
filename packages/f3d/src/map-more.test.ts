@@ -614,4 +614,70 @@ describe('f3dToDesign: copying features', () => {
       expect(await volumes(f3d)).toEqual([expect.closeTo(RING - 2 * HOLE, 3)]);
     }
   });
+
+  it("names a hole's wall as Extrudo names it, so a chamfer on its rim resolves", async () => {
+    const f3d = washerWithHole();
+    // Replace the cut with a 1 mm hole drilled 0.8 mm into the ring's top at (3.8, 0) mm.
+    f3d.features.splice(2, 2, {
+      ...base,
+      type: 'hole',
+      id: 4,
+      kind: 'Hole',
+      name: 'Hole1',
+      parameters: [
+        parameter({ name: 'd5', kind: 'HoleDiameter', value: 0.1 }),
+        parameter({ name: 'd6', kind: 'HoleDepth', value: 0.08 }),
+        parameter({ name: 'd7', kind: 'TipAngle', unit: 'deg', value: Math.PI }),
+      ],
+      plane: { origin: [0, 0, 0.08], x: [1, 0, 0], y: [0, 1, 0] },
+      centres: [[0.38, 0, 0.08]],
+      flipped: false,
+    });
+    f3d.features.push({
+      ...base,
+      type: 'chamfer',
+      id: 8,
+      kind: 'Chamfer',
+      name: 'Chamfer1',
+      sets: [
+        {
+          size: parameter({ name: 'd8', kind: 'Distance', value: 0.01 }),
+          edges: [
+            {
+              faces: [
+                {
+                  tags: [{ token: '2', designs: [301] }],
+                  feature: 2,
+                  surface: { kind: 'plane', point: [0, 0, 0.08], normal: [0, 0, 1] },
+                },
+                {
+                  tags: [{ token: '3', designs: [303] }],
+                  feature: 4,
+                  surface: {
+                    kind: 'cone',
+                    center: [0.38, 0, 0],
+                    axis: [0, 0, -1],
+                    radius: 0.05,
+                    cylinder: true,
+                    slope: 0,
+                  },
+                },
+              ],
+              bounds: [],
+            },
+          ],
+        },
+      ],
+    });
+    const { design, report } = f3dToDesign(f3d, 'Washer');
+    expect(report.imported).toEqual(expect.arrayContaining(['Hole1', 'Chamfer1']));
+    const doc = design.toJSON();
+    const hole = doc.features.find((f) => f.name === 'Hole1');
+    const point = (hole?.inputs.points as { refs: { id: string }[] }).refs[0]?.id.split('/')[1];
+    const chamfer = doc.features.find((f) => f.name === 'Chamfer1');
+    const ref = (chamfer?.inputs.edges as { refs: { id: string }[] } | undefined)?.refs[0]?.id;
+    expect(ref).toContain(`hole:${hole?.id}:side:${point}.wall`);
+    const [volume] = await volumes(f3d);
+    expect(volume).toBeLessThan(RING - HOLE);
+  });
 });

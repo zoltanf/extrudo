@@ -155,6 +155,22 @@ interface FaceNaming {
    * `label` turns the file's instance code into Extrudo's label.
    */
   copies: Map<number, MadeCopies>;
+  holes: Map<number, ImportedHole>;
+}
+
+/** An imported hole: where its holes are and their sizes, for naming their faces. */
+interface ImportedHole {
+  id: string;
+  /** Per hole, its centre on the face (model space, cm) and its sketch point's entity ID. */
+  centres: { at: Vec3; point: string }[];
+  /** The way it drills, model space, unit. */
+  down: Vec3;
+  /** cm. */
+  diameter: number;
+  depth?: number;
+  cbDiameter?: number;
+  cbDepth?: number;
+  csDiameter?: number;
 }
 
 /** Where an f3d sketch lands in Extrudo: a plane and a 2D map into its frame. */
@@ -267,6 +283,7 @@ export function f3dToDesign(
     revolves: new Map(),
     rounds: new Map(),
     copies: new Map(),
+    holes: new Map(),
   };
   /** f3d feature record → the Extrudo feature a pattern can replay for it. */
   const replayable = new Map<number, { id: string; name: string }>();
@@ -428,6 +445,7 @@ export function f3dToDesign(
           report.skipped.push({ name: feature.name, kind: 'Hole', reason: made });
         else {
           replayable.set(feature.id, { id: made.id, name: feature.name });
+          naming.holes.set(feature.id, made);
           report.imported.push(feature.name);
         }
       } else if (feature.type === 'revolve') {
@@ -1225,7 +1243,7 @@ function hole(
   f: F3dHole,
   expressionOf: (p: ParameterValue, negate?: boolean) => string,
   report: ImportReport,
-): string | { id: string } {
+): string | ImportedHole {
   if (!f.plane) return 'its face was not found';
   if (f.centres.length === 0) return 'its centres were not found';
   const { origin: O, x: X, y: Y } = f.plane;
@@ -1287,7 +1305,67 @@ function hole(
   }
   // Extrudo drills against its plane's normal; the file against N, unless flipped.
   if (placement.opposite !== f.flipped) inputs.flip = true;
-  return { id: d.hole(inputs as Parameters<Design['hole']>[0], { name: f.name }).id };
+  const id = d.hole(inputs as Parameters<Design['hole']>[0], { name: f.name }).id;
+  const size = (kind: string) => param(kind)?.value;
+  const n = scale(N, 1 / norm(N));
+  return {
+    id,
+    centres: f.centres.map((at, i) => ({
+      at,
+      point: (points[i]?.ref().id ?? '').split('/').pop() as string,
+    })),
+    down: f.flipped ? n : scale(n, -1),
+    diameter: size('HoleDiameter') ?? 0,
+    ...(size('HoleDepth') !== undefined ? { depth: size('HoleDepth') } : {}),
+    ...(size('CBDiameter') !== undefined ? { cbDiameter: size('CBDiameter') } : {}),
+    ...(size('CBDepth') !== undefined ? { cbDepth: size('CBDepth') } : {}),
+    ...(size('CSDiameter') !== undefined ? { csDiameter: size('CSDiameter') } : {}),
+  };
+}
+
+/**
+ * The name of a face of an imported hole, `hole:<id>:side:<point>.<role>`:
+ * the hole whose axis the face's surface is on (or, for a flat face, whose
+ * axis the face crosses nearest the hint), and the role by its shape and
+ * size — a cylinder the wall or a counterbore's wall, a cone a countersink
+ * or the drill point, a plane square to the axis a counterbore's floor or a
+ * flat bottom.
+ */
+function holeFaceName(s: AsmSurface, h: ImportedHole, hint?: Vec3): string | undefined {
+  const tol = 1e-4;
+  const D = h.down;
+  const name = (c: { point: string }, role: string) => `hole:${h.id}:side:${c.point}.${role}`;
+  if (s.kind === 'cone') {
+    const axis = scale(s.axis, 1 / norm(s.axis));
+    if (norm(cross(axis, D)) > 1e-6) return miss('hole face: not along the hole');
+    const c = h.centres.find((x) => norm(cross(sub(x.at, s.center), axis)) < tol);
+    if (!c) return miss('hole face: on no hole axis');
+    const r = (at: Vec3) => s.radius + s.slope * dot(sub(at, s.center), axis);
+    const near = (a: number, b: number | undefined) => b !== undefined && Math.abs(a - b / 2) < tol;
+    if (s.slope === 0 || s.cylinder) {
+      if (near(s.radius, h.diameter)) return name(c, 'wall');
+      if (near(s.radius, h.cbDiameter)) return name(c, 'cbwall');
+      return miss('hole face: cylinder of another size');
+    }
+    // A countersink's cone has the countersink's radius at the face; the drill point does not.
+    return name(c, near(r(c.at), h.csDiameter) ? 'cone' : 'tip');
+  }
+  if (s.kind === 'plane') {
+    if (norm(cross(s.normal, D)) > 1e-6) return miss('hole face: plane not square to the hole');
+    const depth = dot(sub(s.point, h.centres[0]?.at ?? s.point), D);
+    const across = (x: { at: Vec3 }) => norm(cross(sub(hint ?? s.point, x.at), D));
+    const c =
+      h.centres.length === 1
+        ? h.centres[0]
+        : hint
+          ? [...h.centres].sort((a, b) => across(a) - across(b))[0]
+          : undefined;
+    if (!c) return miss('hole face: which hole');
+    if (h.cbDepth !== undefined && Math.abs(depth - h.cbDepth) < tol) return name(c, 'cbfloor');
+    if (h.depth !== undefined && Math.abs(depth - h.depth) < tol) return name(c, 'floor');
+    return miss('hole face: plane at another depth');
+  }
+  return miss('hole face: surface');
 }
 
 const ORIGIN_AXES: [string, Vec3][] = [
@@ -1493,6 +1571,9 @@ function faceName(
     if (!edge) return miss(`${round.op} face: its edge has no name`);
     return `${round.op}:${round.id}:from:(${edge})`;
   }
+  const hole = naming.holes.get(face.feature);
+  if (hole)
+    return face.surface ? holeFaceName(face.surface, hole, hint) : miss('face not in the B-rep');
   const rev = naming.revolves.get(face.feature);
   if (rev) return face.surface ? revolveFaceName(face.surface, rev) : miss('face not in the B-rep');
   const ex = naming.extrudes.get(face.feature);
@@ -1564,8 +1645,10 @@ function faceName(
 }
 
 /** The named edge of a fillet or chamfer nearest a point (cm), by its geometry. */
-/** The sketch circle's radius (cm) behind an imported extrude's side face name. */
+/** The radius (cm) behind an imported extrude's side face name, or a hole's wall. */
 function sideRadius(name: string, naming: FaceNaming): number | undefined {
+  const w = /^hole:([^:]+):side:[^.]+\.wall$/.exec(name);
+  if (w) for (const h of naming.holes.values()) if (h.id === w[1]) return h.diameter / 2;
   const m = /^extrude:([^:]+):side:(.+)$/.exec(name);
   if (!m) return undefined;
   for (const ex of naming.extrudes.values()) {
