@@ -233,6 +233,19 @@ describe('components', () => {
     ]);
   });
 
+  it('gives a long name cut at a space a name of its own', () => {
+    const f3d = boxAndLid();
+    const long = 'X'.repeat(89);
+    f3d.components?.push(
+      { id: 3000, name: `${long} Y`, root: false, visible: true, occurrences: [] },
+      { id: 4000, name: long, root: false, visible: true, occurrences: [] },
+    );
+    const names = f3dToDesign(f3d, 'Box')
+      .design.toJSON()
+      .components?.map((c) => c.name);
+    expect(names).toEqual(['Lid', long, `${long} (2)`]);
+  });
+
   it('moves a body Body to Component took into its target, shown as its moved copy is', async () => {
     const f3d = boxAndLid();
     // The box is made in the root, then moved into the Lid: the file hides the

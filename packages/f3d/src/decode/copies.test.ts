@@ -173,6 +173,44 @@ describe('copying features', () => {
     ]);
   });
 
+  it('passes over a 1 byte whose list is not one, at its first bad pair', () => {
+    const ref = (id: number) => [1, ...u64(id), 0, 0];
+    const { seg, inside, scope } = fixture({
+      1: { guid: 'pattern', refs: [10] },
+      10: {
+        guid: 'data',
+        bytes: [
+          // A stray 1 announcing two pairs, the first with code 0.
+          1,
+          ...u32(2),
+          ...u64(0),
+          ...u64(0),
+          1,
+          ...u32(1),
+          ...u64(2),
+          ...u64(312),
+          ...u32(1),
+          ...ref(20),
+        ],
+      },
+      20: { guid: 'instance' },
+    });
+    expect([...readInstances(seg, scope([], 1), inside)]).toEqual([[312, 2]]);
+  });
+
+  it('reads no flags from a path pattern data record too short to hold them', () => {
+    const { seg, inside, scope } = fixture({
+      1: { guid: 'pattern', refs: [10] },
+      10: { guid: PATH_PATTERN_DATA, bytes: [1, ...u32(2), 0, 0] },
+    });
+    expect(readPathPattern(seg, scope([], 1), inside)).toEqual({
+      path: [],
+      extent: true,
+      aligned: false,
+      flag: 0,
+    });
+  });
+
   it("unpairs a rectangular pattern's instance codes", () => {
     // A row: (u, 0) codes u(u + 1) / 2 — 1 the original, 3 the second, 36 the eighth.
     expect([1, 3, 6, 36].map(cantorPair)).toEqual([

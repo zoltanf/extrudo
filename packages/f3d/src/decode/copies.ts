@@ -159,9 +159,15 @@ export function readInstances(seg: Segment, scope: Scope, inside: Inside): Map<n
         const r = new Reader(seg.bulk, at + 1, f.end);
         const n = r.u32();
         if (n < 1 || n > 10_000 || n * 16 > r.remaining) continue;
+        // Checked pair by pair: a stray 1 byte is rejected at its first bad pair.
         const list: [number, number][] = [];
-        for (let i = 0; i < n; i++) list.push([r.u64(), r.u64()]);
-        if (list.some(([code, op]) => code < 1 || code > 1e8 || op < 1 || op > 1e9)) continue;
+        for (let i = 0; i < n; i++) {
+          const code = r.u64();
+          const op = r.u64();
+          if (code < 1 || code > 1e8 || op < 1 || op > 1e9) break;
+          list.push([code, op]);
+        }
+        if (list.length < n) continue;
         // The instance records follow.
         const m = r.u32();
         if (m < 1 || m > 10_000) continue;
@@ -236,8 +242,10 @@ export function readPathPattern(seg: Segment, scope: Scope, inside: Inside): Pat
     const f = seg.frame(data);
     const b = seg.bulk;
     out.extent = new Reader(b, f.start + 1, f.end).u32() === 2;
-    out.aligned = b[f.start + 60] === 1;
-    out.flag = b[f.start + 61] as number;
+    if (f.end - f.start >= 62) {
+      out.aligned = b[f.start + 60] === 1;
+      out.flag = b[f.start + 61] as number;
+    }
   }
   return out;
 }

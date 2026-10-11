@@ -177,7 +177,8 @@ export class ComponentMapping {
 
 /** A component name Extrudo takes: non-empty, at most 100 characters, unique in any case. */
 function uniqueName(name: string, taken: Set<string>): string {
-  const base = name.trim().slice(0, 90);
+  // Trimmed again after the cut: Extrudo trims a name before it checks it is unique.
+  const base = name.trim().slice(0, 90).trim();
   let chosen = base || 'Component1';
   for (let n = 2; taken.has(chosen.toLowerCase()); n++)
     chosen = base ? `${base} (${n})` : `Component${n}`;

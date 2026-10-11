@@ -94,15 +94,27 @@ function refs(seg: Segment, start: number, end: number): number[] {
   return out;
 }
 
-const levelRefs = (seg: Segment, id: number): number[] => {
-  const f = seg.frame(id);
-  return refs(seg, f.start, f.end);
+/** Each record's references, read once per segment (the walks below revisit records). */
+const levelCache = new WeakMap<Segment, Map<number, number[]>>();
+const levelRefs = (seg: Segment, id: number): readonly number[] => {
+  let cache = levelCache.get(seg);
+  if (!cache) {
+    cache = new Map();
+    levelCache.set(seg, cache);
+  }
+  let out = cache.get(id);
+  if (!out) {
+    const f = seg.frame(id);
+    out = refs(seg, f.start, f.end);
+    cache.set(id, out);
+  }
+  return out;
 };
 const baseRefs = (seg: Segment, id: number): number[] => {
   const f = seg.frame(id);
   return f.base ? refs(seg, f.base.start, f.base.end) : [];
 };
-const ofType = (seg: Segment, ids: number[], guid: string) =>
+const ofType = (seg: Segment, ids: readonly number[], guid: string) =>
   ids.filter((id) => seg.typeOf(id)?.guid === guid);
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -332,8 +344,8 @@ export interface F3dBodyMove {
 export function readBodyMove(seg: Segment, tree: ComponentTree, id: number): F3dBodyMove {
   const own = new Set([id, ...levelRefs(seg, id), ...baseRefs(seg, id)]);
   const sources: number[] = [];
-  for (const operand of ofType(seg, levelRefs(seg, id), BODY_OPERAND))
-    for (const link of ofType(seg, levelRefs(seg, operand), BODY_LINK))
+  for (const operand of new Set(ofType(seg, levelRefs(seg, id), BODY_OPERAND)))
+    for (const link of new Set(ofType(seg, levelRefs(seg, operand), BODY_LINK)))
       for (const body of ofType(seg, levelRefs(seg, link), BODY).slice(0, 1))
         if (!sources.includes(body)) sources.push(body);
   const made: number[] = [];

@@ -403,6 +403,18 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       return undefined;
     }
   };
+  // A record's references, each once and in order, read once: the copying
+  // features' walks go several levels deep, and a file may name a record many times.
+  const distinctRefs = new Map<number, number[]>();
+  const insideOnce = (ref: number): number[] => {
+    let refs = distinctRefs.get(ref);
+    if (!refs) {
+      const f = seg.frame(ref);
+      refs = [...new Set(refsIn(seg, f.start, f.end))];
+      distinctRefs.set(ref, refs);
+    }
+    return refs;
+  };
 
   // Parameters, and which feature owns each (owner record → its first reference).
   const parameters: ParameterValue[] = [];
@@ -504,12 +516,10 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
   for (const guid of [MIRROR, RECTANGULAR_PATTERN, CIRCULAR_PATTERN, PATH_PATTERN])
     for (const id of seg.idsOf(guid)) {
       const scope = tryDecode(`feature #${id}`, () => readScope(seg, id));
-      const inside = (ref: number) => {
-        const f = seg.frame(ref);
-        return refsIn(seg, f.start, f.end);
-      };
-      if (scope)
-        for (const [op, code] of readInstances(seg, scope, inside)) instances.set(op, code);
+      const found = scope
+        ? tryDecode(`instances #${id}`, () => readInstances(seg, scope, insideOnce))
+        : undefined;
+      for (const [op, code] of found ?? []) instances.set(op, code);
     }
   const features: F3dFeature[] = [];
   for (const id of items) {
@@ -682,22 +692,25 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         ...(distance ? { distance } : {}),
       });
     } else if (FEATURE_TYPES[type.guid] === 'Mirror') {
-      const inside = (ref: number) => {
-        const f = seg.frame(ref);
-        return refsIn(seg, f.start, f.end);
-      };
-      const copied = readCopied(seg, scope, inside);
+      const inside = insideOnce;
+      const copied = tryDecode(`mirror #${id}`, () => readCopied(seg, scope, inside));
+      if (!copied) {
+        features.push({ type: 'other', ...base });
+        continue;
+      }
       const plane = tryDecode(`mirror plane #${id}`, () => readMirrorPlane(seg, scope, inside));
       features.push({ type: 'mirror', ...base, ...copied, ...(plane ? { plane } : {}) });
     } else if (FEATURE_TYPES[type.guid] === 'RectangularPattern') {
-      const inside = (ref: number) => {
-        const f = seg.frame(ref);
-        return refsIn(seg, f.start, f.end);
-      };
+      const inside = insideOnce;
+      const copied = tryDecode(`pattern #${id}`, () => readCopied(seg, scope, inside));
+      if (!copied) {
+        features.push({ type: 'other', ...base });
+        continue;
+      }
       features.push({
         type: 'rectangular-pattern',
         ...base,
-        ...readCopied(seg, scope, inside),
+        ...copied,
         directions: tryDecode(`directions #${id}`, () => readDirections(seg, scope, inside)) ?? [],
         counts: tryDecode(`counts #${id}`, () => readCounts(seg, scope, inside)) ?? [],
       });
@@ -706,7 +719,8 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       const threaded: F3dFace[] = [];
       for (const group of scope.refs) {
         if (seg.typeOf(group)?.guid !== OPERAND_GROUP) continue;
-        for (const recipe of recipesIn(seg, group)) {
+        for (const recipe of tryDecode(`thread faces #${group}`, () => recipesIn(seg, group)) ??
+          []) {
           const first = tryDecode(`face #${recipe}`, () => readEdgeRecipe(seg, recipe))?.faces[0];
           if (first) threaded.push(faceOf(first.tags, faces, featureOf, instances));
         }
@@ -714,27 +728,26 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       if (spec) features.push({ type: 'thread', ...base, spec, faces: threaded });
       else features.push({ type: 'other', ...base });
     } else if (FEATURE_TYPES[type.guid] === 'PathPattern') {
-      const inside = (ref: number) => {
-        const f = seg.frame(ref);
-        return refsIn(seg, f.start, f.end);
-      };
+      const inside = insideOnce;
       const spec = tryDecode(`path pattern #${id}`, () => readPathPattern(seg, scope, inside));
       const count = tryDecode(`count #${id}`, () => readCounts(seg, scope, inside))?.[0];
-      if (spec)
+      const copied = tryDecode(`path pattern #${id}`, () => readCopied(seg, scope, inside));
+      if (spec && copied)
         features.push({
           type: 'path-pattern',
           ...base,
-          ...readCopied(seg, scope, inside),
+          ...copied,
           ...spec,
           ...(count ? { count } : {}),
         });
       else features.push({ type: 'other', ...base });
     } else if (FEATURE_TYPES[type.guid] === 'Split') {
-      const inside = (ref: number) => {
-        const f = seg.frame(ref);
-        return refsIn(seg, f.start, f.end);
-      };
-      const { bodies } = readCopied(seg, scope, inside);
+      const inside = insideOnce;
+      const bodies = tryDecode(`split #${id}`, () => readCopied(seg, scope, inside))?.bodies;
+      if (!bodies) {
+        features.push({ type: 'other', ...base });
+        continue;
+      }
       const plane = tryDecode(`split plane #${id}`, () => readMirrorPlane(seg, scope, inside));
       features.push({ type: 'split', ...base, bodies, ...(plane ? { plane } : {}) });
     } else if (FEATURE_TYPES[type.guid] === 'Sweep') {
@@ -743,27 +756,31 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         features.push({ type: 'other', ...base });
         continue;
       }
-      const inside = (ref: number) => {
-        const f = seg.frame(ref);
-        return refsIn(seg, f.start, f.end);
-      };
+      const inside = insideOnce;
       const profiles: ProfileOperand[] = [];
       for (const group of scope.refs)
         if (seg.typeOf(group)?.guid === OPERAND_GROUP)
-          for (const ref of inside(group))
+          for (const ref of tryDecode(`sweep #${id}`, () => inside(group)) ?? [])
             if (seg.typeOf(ref)?.guid === SKETCH_PROFILE_OPERAND) {
               const p = tryDecode(`profile #${ref}`, () => readProfileOperand(seg, ref));
               if (p) profiles.push(p);
             }
-      const { paths, edges } = readPaths(seg, scope, inside);
+      const read = tryDecode(`sweep #${id}`, () => ({
+        ...readPaths(seg, scope, inside),
+        participants: participantsOf(seg, scope),
+      }));
+      if (!read) {
+        features.push({ type: 'other', ...base });
+        continue;
+      }
       features.push({
         type: 'sweep',
         ...base,
         operation,
         profiles,
-        paths,
-        pathEdges: edges,
-        participants: participantsOf(seg, scope),
+        paths: read.paths,
+        pathEdges: read.edges,
+        participants: read.participants,
       });
     } else if (FEATURE_TYPES[type.guid] === 'Fillet' || FEATURE_TYPES[type.guid] === 'Chamfer') {
       const kind = FEATURE_TYPES[type.guid] === 'Fillet' ? 'fillet' : 'chamfer';
