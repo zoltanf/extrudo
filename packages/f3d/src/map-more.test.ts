@@ -541,7 +541,7 @@ describe('f3dToDesign: copying features', () => {
     const doc = design.toJSON();
     const id = (name: string) => doc.features.find((f) => f.name === name)?.id;
     const chamfer = doc.features.find((f) => f.name === 'Chamfer1');
-    const ref = (chamfer?.inputs.edges as { refs: { id: string }[] }).refs[0]?.id;
+    const ref = (chamfer?.inputs.edges as { refs: { id: string }[] } | undefined)?.refs[0]?.id;
     expect(ref).toMatch(
       new RegExp(
         `^e\\[extrude:${id('Extrude1')}:cap:end\\|pattern:${id('C-Pattern1')}:1:from:\\(extrude:${id('Extrude2')}:side:[^)]+\\)\\]$`,
