@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Download Extrudo for Windows, macOS and Linux</title>
+    <meta
+      name="description"
+      content="Install the Extrudo desktop app on Windows, macOS or Linux: the same parametric CAD as in the browser, in a window of its own, with files on your disk and Send to Slicer."
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="canonical" href="__SITE_URL__/download/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Extrudo" />
+    <meta property="og:title" content="Download Extrudo for Windows, macOS and Linux" />
+    <meta
+      property="og:description"
+      content="The Extrudo desktop app: parametric CAD for 3D printing in a window of its own, for Windows, macOS and Linux."
+    />
+    <meta property="og:url" content="__SITE_URL__/download/" />
+    <meta property="og:image" content="__SITE_URL__/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="The Extrudo logo: a dashed blue sketch square turning into an amber solid."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body>
+    <!-- site:sprite -->
+    <a class="skip" href="#main">Skip to content</a>
+    <!-- site:header -->
+
+    <main id="main" class="subpage">
+      <section class="page-intro" aria-labelledby="page-title">
+        <p class="eyebrow">Desktop app</p>
+        <h1 id="page-title">Extrudo on your desktop</h1>
+        <p class="lead">
+          The same Extrudo as in the browser, in a window of its own. It opens
+          <code>.extrudo</code> files from your file manager, keeps designs as files on your disk,
+          and sends models straight to PrusaSlicer, OrcaSlicer, Bambu Studio or Cura.
+        </p>
+        <nav class="jump" aria-label="Platforms">
+          <a class="cat-sketch" href="#windows">Windows</a>
+          <a class="cat-solid" href="#macos">macOS</a>
+          <a class="cat-print" href="#linux">Linux</a>
+        </nav>
+        <p class="actions">
+          <a class="button big" href="https://github.com/zoltanf/extrudo/releases/latest" data-latest-release>
+            Latest release on GitHub <span aria-hidden="true">→</span>
+          </a>
+        </p>
+        <p class="latest-note">
+          The installers are not signed yet, so your system asks before the first start. Each
+          section below says what to choose.
+        </p>
+      </section>
+
+      <div class="platforms">
+        <section id="windows" class="platform cat-sketch" aria-labelledby="windows-title">
+          <h2 id="windows-title">Windows</h2>
+          <p class="needs">64-bit Windows (x64).</p>
+          <ol class="install-steps">
+            <li>
+              From the
+              <a href="https://github.com/zoltanf/extrudo/releases/latest">latest release</a>,
+              download the file ending in <code>win-x64.exe</code>.
+            </li>
+            <li>
+              Run it. Windows may say it protected your PC, because the installer is not signed
+              yet: choose <b>More info</b>, then <b>Run anyway</b>.
+            </li>
+            <li>
+              Choose whether to install it for you alone or for everyone on the computer, and in
+              which folder.
+            </li>
+            <li>Start Extrudo from the Start menu.</li>
+          </ol>
+          <h3>Updates</h3>
+          <p>
+            Extrudo downloads a new version in the background and tells you when it is ready.
+            Press <b>Restart</b>, or let it install the next time you quit. Your open designs are
+            saved first.
+          </p>
+        </section>
+
+        <section id="macos" class="platform cat-solid" aria-labelledby="macos-title">
+          <h2 id="macos-title">macOS</h2>
+          <p class="needs">A Mac with Apple silicon (M1 or newer).</p>
+          <h3>With Homebrew</h3>
+          <pre><code>brew install --cask zoltanf/extrudo/extrudo</code></pre>
+          <h3>Or by hand</h3>
+          <ol class="install-steps">
+            <li>
+              From the
+              <a href="https://github.com/zoltanf/extrudo/releases/latest">latest release</a>,
+              download the file ending in <code>mac-arm64.dmg</code>.
+            </li>
+            <li>Open it and drag Extrudo into Applications.</li>
+          </ol>
+          <h3>The first start</h3>
+          <p>
+            Extrudo is not signed with an Apple certificate yet, so macOS says it can't be opened.
+            Open <b>System Settings › Privacy &amp; Security</b> and choose <b>Open Anyway</b>
+            next to Extrudo. You do this once for each install.
+          </p>
+          <h3>Updates</h3>
+          <p>
+            Extrudo tells you when a new version is out. Update with <code>brew upgrade</code>,
+            or download the new dmg.
+          </p>
+        </section>
+
+        <section id="linux" class="platform cat-print" aria-labelledby="linux-title">
+          <h2 id="linux-title">Linux</h2>
+          <p class="needs">64-bit x86 (x86_64).</p>
+          <h3>AppImage, for any distribution</h3>
+          <p>
+            From the
+            <a href="https://github.com/zoltanf/extrudo/releases/latest">latest release</a>,
+            download the file ending in <code>linux-x86_64.AppImage</code>, then make it
+            executable and run it:
+          </p>
+          <pre><code>chmod +x extrudo-*-linux-x86_64.AppImage
+./extrudo-*-linux-x86_64.AppImage</code></pre>
+          <p>
+            On Arch-based systems (Arch, Omarchy, Manjaro) an AppImage needs <code>fuse2</code>:
+            <code>sudo pacman -S fuse2</code>. The AppImage updates itself, like the Windows app.
+          </p>
+          <h3>A .deb, for Debian and Ubuntu</h3>
+          <p>Download the file ending in <code>linux-amd64.deb</code> and install it:</p>
+          <pre><code>sudo apt install ./extrudo-*-linux-amd64.deb</code></pre>
+          <p>
+            Extrudo tells you when a new version is out. Install the new .deb the same way.
+          </p>
+        </section>
+      </div>
+
+      <section class="topic" aria-labelledby="designs-title">
+        <h2 id="designs-title">Your designs from the browser</h2>
+        <p class="topic-text">
+          The desktop app keeps its own designs, apart from the ones in your browser. To bring a
+          design over, export it in the browser with Home › Export Design and open the
+          <code>.extrudo</code> file in the desktop app.
+        </p>
+        <p class="more"><a href="/docs/desktop/">The desktop app in the guide <span aria-hidden="true">→</span></a></p>
+      </section>
+
+      <section class="page-end" aria-labelledby="end-title">
+        <h2 id="end-title">Rather not install anything?</h2>
+        <p>Extrudo runs in Chrome, Edge, Firefox and Safari, and works offline after the first visit.</p>
+        <p class="actions">
+          <a class="button big" href="__APP_URL__/">Open Extrudo in the browser <span aria-hidden="true">→</span></a>
+        </p>
+      </section>
+    </main>
+
+    <!-- site:footer -->
+  </body>
+</html>

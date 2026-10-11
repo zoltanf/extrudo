@@ -30,49 +30,19 @@
     <script type="module" src="/src/main.ts"></script>
   </head>
   <body>
-    <svg class="sprite" aria-hidden="true" focusable="false">
-      <symbol id="i-sketch" viewBox="0 0 24 24"><rect x="3" y="8" width="13" height="13" rx="2.5" stroke-dasharray="3 2.6" /><path class="f" d="M12.6 17.4 13.5 13.6 19.7 4.9A1.7 1.7 0 0 1 22.1 4.5 1.7 1.7 0 0 1 22.5 6.9L16.3 15.6Z" /></symbol>
-      <symbol id="i-extrude" viewBox="0 0 24 24"><path class="f" d="M4 14.5 12 10.5 20 14.5 12 18.5Z" /><path d="M4 14.5V18.5L12 22.5 20 18.5V14.5M12 18.5V22.5" /><path d="M12 2.5V8.5M9 5.5 12 2.5 15 5.5" /></symbol>
-      <symbol id="i-customizer" viewBox="0 0 24 24"><path d="M3.5 6.5H20.5M3.5 12H20.5M3.5 17.5H20.5" /><circle class="f" cx="8" cy="6.5" r="2.4" /><circle class="f" cx="15.5" cy="12" r="2.4" /><circle class="f" cx="11" cy="17.5" r="2.4" /></symbol>
-      <symbol id="i-print" viewBox="0 0 24 24"><rect class="f" x="7" y="3" width="10" height="8" rx="1.5" /><path d="M12 13V17M10 15 12 17 14 15" /><path d="M3 20.5H21" /></symbol>
-      <symbol id="i-home" viewBox="0 0 24 24"><path class="f" d="M4 11 12 4l8 7v8.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19.5Z" /><path d="M9.5 21v-6h5v6" /></symbol>
-      <symbol id="i-open" viewBox="0 0 24 24"><path d="M8 7 3 12l5 5M16 7l5 5-5 5" /><circle class="f" cx="12" cy="12" r="2.6" /></symbol>
-      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
-      <symbol id="i-sketch-plane" viewBox="0 0 24 24"><rect class="f" x="3.5" y="6" width="17" height="12" rx="1" /><path d="M12 12 20.5 6" stroke-dasharray="3 2.6" /><circle cx="12" cy="12" r="1.6" /></symbol>
-      <symbol id="i-shell" viewBox="0 0 24 24"><path class="f" d="M3 8 12 4 21 8V17L12 21 3 17Z" /><path d="M7 9.5 12 7.3 17 9.5V15.3L12 17.5 7 15.3Z" /></symbol>
-      <symbol id="i-pattern" viewBox="0 0 24 24"><rect class="f" x="3" y="3" width="7.5" height="7.5" rx="1.6" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6" stroke-dasharray="2.4 2" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6" stroke-dasharray="2.4 2" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6" stroke-dasharray="2.4 2" /></symbol>
-      <symbol id="i-fillet" viewBox="0 0 24 24"><path class="f" d="M4 4H20V12.5A7.5 7.5 0 0 1 12.5 20H4Z" /><path d="M20 16V20H16" stroke-dasharray="1.6 2.2" /></symbol>
-    </svg>
+    <!-- site:sprite -->
     <a class="skip" href="#main">Skip to content</a>
-    <header class="top">
-      <a class="brand" href="/" aria-label="Extrudo home">
-        <svg class="mark" width="32" height="32" viewBox="0 0 64 64" aria-hidden="true">
-          <path class="mark-top" d="M10 24 24 10H52L38 24Z" />
-          <path class="mark-side" d="M38 24 52 10V38L38 52Z" />
-          <rect class="mark-sketch" x="10" y="24" width="28" height="28" rx="1" />
-          <circle class="mark-dot" cx="10" cy="24" r="2.2" />
-          <circle class="mark-dot" cx="38" cy="24" r="2.2" />
-          <circle class="mark-dot" cx="10" cy="52" r="2.2" />
-          <circle class="mark-dot" cx="38" cy="52" r="2.2" />
-        </svg>
-        <span class="wordmark">extrudo</span>
-      </a>
-      <nav aria-label="Site">
-        <a href="#features">Features</a>
-        <a href="https://github.com/zoltanf/extrudo/blob/main/docs/CHANGELOG.md">Changelog</a>
-        <a href="/docs/">Docs</a>
-        <a href="https://github.com/zoltanf/extrudo">GitHub</a>
-        <a class="button small" href="__APP_URL__/">Open Extrudo</a>
-      </nav>
-    </header>
+    <!-- site:header -->
 
     <main id="main">
       <section class="hero" aria-labelledby="hero-title">
         <div class="hero-text">
           <h1 id="hero-title"><span class="hl-sketch">Parametric CAD</span> for <span class="hl-solid">3D printing</span>, in your browser.</h1>
-          <p class="soon">
-            <b>Soon</b> Coming to a computer near you: a full offline app for Linux, macOS and
-            Windows.
+          <p class="announce-line">
+            <a class="announce" href="/download/" data-download>
+              <b>Available</b> The desktop app for Linux, macOS and Windows
+              <span aria-hidden="true">→</span>
+            </a>
           </p>
           <p class="lead">
             Sketch a profile, pull it into a solid, round the edges, and change one number to watch
@@ -322,63 +292,23 @@
         </ol>
       </section>
 
-      <section id="features" class="features" aria-labelledby="features-title">
+      <section class="features" aria-labelledby="features-title">
         <p class="eyebrow">Features</p>
         <h2 id="features-title">What it does</h2>
-        <ul class="cards">
-          <li class="cat-sketch">
-            <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sketch" /></svg></span>
-            <h3>Sketch with constraints</h3>
-            <p>
-              Lines, arcs, circles, slots and splines snap into place with automatic constraints and
-              driving dimensions. A sketch shows how much freedom is left, and says plainly when
-              something contradicts.
-            </p>
-          </li>
-          <li class="cat-solid">
-            <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-extrude" /></svg></span>
-            <h3>Real solids</h3>
-            <p>
-              Extrude, revolve, fillet, chamfer, shell, holes and patterns on exact geometry: real
-              circles and fillets, not a mesh of triangles. What you design is what comes out of
-              the printer.
-            </p>
-          </li>
-          <li class="cat-param">
-            <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-customizer" /></svg></span>
-            <h3>Parameters everywhere</h3>
-            <p>
-              Every number takes an expression with units, like <code>wall * 1.5 + 2 mm</code>.
-              The design is a timeline you can roll back, reorder and edit, and it rebuilds as you
-              go.
-            </p>
-          </li>
-          <li class="cat-print">
-            <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-print" /></svg></span>
-            <h3>Made for printing</h3>
-            <p>
-              Lay a face flat on the bed, see overhangs, get the weight and filament length, and
-              export 3MF, STL or STEP. Templates for brackets, boxes, lids and enclosures get you
-              started.
-            </p>
-          </li>
-          <li class="cat-home">
-            <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-home" /></svg></span>
-            <h3>Yours, offline too</h3>
-            <p>
-              Designs stay on your own machine. It works offline once it has loaded, and you can
-              install it from the browser's menu like an app.
-            </p>
-          </li>
-          <li class="cat-open">
-            <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-open" /></svg></span>
-            <h3>Free and open source</h3>
-            <p>
-              GPL-3.0, built in the open. The <code>.extrudo</code> file format is documented and
-              MIT-licensed, so other tools can read your designs.
-            </p>
-          </li>
-        </ul>
+        <p class="features-lead">
+          Constrained sketches, exact solids, parameters everywhere and checks for printing, plus
+          scripts, plugins and the file formats you already use.
+        </p>
+        <nav class="jump" aria-label="Features">
+          <a class="cat-sketch" href="/features/#sketch"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sketch" /></svg>Sketching</a>
+          <a class="cat-solid" href="/features/#solids"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-extrude" /></svg>Solids</a>
+          <a class="cat-param" href="/features/#parameters"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-customizer" /></svg>Parameters</a>
+          <a class="cat-print" href="/features/#printing"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-print" /></svg>3D printing</a>
+          <a class="cat-files" href="/features/#files"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-file" /></svg>Import and export</a>
+          <a class="cat-open" href="/features/#programmable"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-open" /></svg>Scripts and plugins</a>
+          <a class="cat-home" href="/features/#yours"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-home" /></svg>Your designs</a>
+        </nav>
+        <p><a class="button" href="/features/" data-all-features>See all features <span aria-hidden="true">→</span></a></p>
       </section>
 
       <section class="templates" aria-labelledby="templates-title">
@@ -397,31 +327,113 @@
           width="1440"
           height="900"
           loading="lazy"
-          alt="Extrudo's home screen, with a New design card, the tour and four templates."
+          alt="Extrudo's home screen, with a New design card, the tour, four templates and more examples."
         />
+      </section>
+      <section id="faq" class="faq" aria-labelledby="faq-title">
+        <div class="faq-text">
+          <p class="eyebrow">FAQ</p>
+          <h2 id="faq-title">Questions and answers</h2>
+          <p>
+            Short answers to what people ask first. The <a href="/docs/">guide</a> has the long
+            ones.
+          </p>
+        </div>
+        <div class="faq-list">
+          <details>
+            <summary>Is Extrudo free?</summary>
+            <p>
+              Yes. Extrudo is free and open source under the GPL-3.0. There is no paid version and
+              no account.
+            </p>
+          </details>
+          <details>
+            <summary>Do I need to install anything?</summary>
+            <p>
+              No. Open it in a current Chrome, Edge, Firefox or Safari and start designing. To give
+              it a window of its own, install it from the browser's menu.
+            </p>
+          </details>
+          <details>
+            <summary>Is there a desktop app?</summary>
+            <p>
+              Yes, for Linux, Windows and macOS. It is the same Extrudo in a window of its own: it
+              opens <code>.extrudo</code> files from your file manager and sends models straight
+              to your slicer. <a href="/download/">Download and install it</a>.
+            </p>
+          </details>
+          <details>
+            <summary>Where are my designs stored?</summary>
+            <p>
+              In your browser's own storage, on your computer. Nothing is uploaded, and the app
+              has no analytics. To keep a copy or move a design to another machine, use Home ›
+              Export Design, which writes an <code>.extrudo</code> file. In Chrome and Edge you can
+              also link a folder on your disk, and the desktop app saves to files.
+            </p>
+          </details>
+          <details>
+            <summary>Are my designs shared with others?</summary>
+            <p>
+              No. Extrudo has no server that keeps designs, so nothing you make is uploaded or
+              seen by anyone else. A design only leaves your computer when you send it yourself:
+              export it with Home › Export Design and share the <code>.extrudo</code> file, or
+              export a 3MF, STL or STEP file of the model.
+            </p>
+          </details>
+          <details>
+            <summary>Does it work offline?</summary>
+            <p>
+              Yes. After the first visit the app is kept in your browser and opens without a
+              connection. The one exception is the OpenSCAD compiler, which is downloaded the
+              first time you import a <code>.scad</code> file.
+            </p>
+          </details>
+          <details>
+            <summary>Can I open files from other CAD programs?</summary>
+            <p>
+              STEP files come in as exact solid bodies, STL, 3MF and OBJ files as mesh bodies, and
+              OpenSCAD files are compiled in your browser. The latest build also reads
+              <code>.f3d</code> files. The features page has
+              <a href="/features/#files">the full table of formats</a>.
+            </p>
+          </details>
+          <details>
+            <summary>Which slicers does it work with?</summary>
+            <p>
+              Any slicer that opens 3MF or STL. A 3MF file keeps your bodies' names, colours and
+              units. The desktop app can also open the model straight in PrusaSlicer, OrcaSlicer,
+              Bambu Studio or Cura.
+            </p>
+          </details>
+          <details>
+            <summary>Can I automate a design?</summary>
+            <p>
+              Yes. A Script feature runs TypeScript inside the design, a recorded macro gives you
+              the code for what you just did, and plugins add features of their own. The
+              <a href="/docs/api/">API docs</a> cover all three.
+            </p>
+          </details>
+          <details>
+            <summary>Is it ready for real work?</summary>
+            <p>
+              It is young and changes quickly. Designs saved by an older version keep opening in
+              newer ones, and the file format is documented. Still, export a copy of the designs
+              that matter to you.
+            </p>
+          </details>
+          <details>
+            <summary>How do I report a problem or ask for a feature?</summary>
+            <p>
+              Open an issue on
+              <a href="https://github.com/zoltanf/extrudo/issues/new/choose">GitHub</a>, or write to
+              <a href="mailto:__CONTACT_EMAIL__">__CONTACT_EMAIL__</a>. To help with the code, start
+              with <a href="https://github.com/zoltanf/extrudo/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>.
+            </p>
+          </details>
+        </div>
       </section>
     </main>
 
-    <footer class="foot">
-      <p data-contact>
-        Questions or feedback? Write to
-        <a href="mailto:__CONTACT_EMAIL__">__CONTACT_EMAIL__</a>.
-      </p>
-      <p>
-        <a href="https://github.com/zoltanf/extrudo">Source code</a> ·
-        <a href="https://github.com/zoltanf/extrudo/issues/new/choose">Report a problem</a> ·
-        <a href="https://github.com/zoltanf/extrudo/blob/main/CODE_OF_CONDUCT.md">Code of conduct</a> ·
-        <a href="https://github.com/zoltanf/extrudo/blob/main/docs/file-format.md">File format</a> ·
-        <a href="/docs/api/" data-api-docs>API docs</a>
-      </p>
-      <p class="muted">Extrudo is free software under the GPL-3.0. It shares no code or artwork with any commercial CAD product.</p>
-      <p class="muted" data-privacy>
-        Privacy: this page counts visits with Cloudflare Web Analytics, which uses no cookies
-        and builds no profile of you. The Extrudo app has no analytics, and your designs stay in
-        your browser. Both are hosted on Cloudflare, which sees each visitor's IP address as any
-        web host does
-        (<a href="https://www.cloudflare.com/privacypolicy/">Cloudflare's privacy policy</a>).
-      </p>
-    </footer>
+    <!-- site:footer -->
   </body>
 </html>
