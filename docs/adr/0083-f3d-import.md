@@ -483,9 +483,10 @@ distance", edges between rounds that meet), and one round fails that built
 before: a chamfer whose faces an earlier chamfer now narrows (0.5 mm against a
 maximum of 0.49). New matches: three designs whose single chamfer was held by
 one lost edge. No verdict got worse; a few volumes moved away from the
-reference by less than 0.4 % where a round now built on part of its edges
-while an earlier round it continues still fails (the edges on that round are
-the ones left out), which the import can't do better without that round.
+reference (by 0.03 to 0.31 percentage points, and 0.85 for a design already
+432 % off) where a round now built on part of its edges while an earlier round
+it continues still fails (the edges on that round are the ones left out),
+which the import can't do better without that round.
 
 Next: the edge naming gate for guessed names (fillet and chamfer face names
 read off a neighbour, kept only with a sure shape, because one lost edge
