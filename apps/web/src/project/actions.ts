@@ -69,7 +69,7 @@ export async function importProject(
   const file = await platform.files.pick(`${FILE_EXTENSION},application/zip,${F3D_ACCEPT}`);
   if (!file) return undefined;
   if (/\.f3d$/i.test(file.name)) {
-    const id = await importFusionFile(platform, file);
+    const id = await importF3dFile(platform, file);
     return id ? { id } : undefined;
   }
   const notices: string[] = [];
@@ -86,7 +86,7 @@ export const F3D_ACCEPT = '.f3d';
  * design; `undefined` if they cancel. The importer loads only now (its own
  * chunk). What it could not bring over is left for the design's page.
  */
-export async function importFusionFile(
+export async function importF3dFile(
   platform: Platform,
   picked?: File,
 ): Promise<ProjectId | undefined> {
@@ -115,9 +115,11 @@ function importNotices(report: {
   imported: string[];
   skipped: { name: string; kind: string; reason: string }[];
 }): string[] {
-  const skipped = report.skipped.filter((s) => s.reason !== 'suppressed in Fusion');
+  const skipped = report.skipped.filter((s) => s.reason !== 'suppressed in the file');
   const total = report.imported.length + skipped.length;
-  const out = [`Imported from Fusion: ${report.imported.length} of ${total} timeline features.`];
+  const out = [
+    `Imported from the .f3d file: ${report.imported.length} of ${total} timeline features.`,
+  ];
   if (skipped.length > 0) {
     const shown = skipped.slice(0, 6).map((s) => `${s.name} (${s.reason})`);
     const more = skipped.length - shown.length;

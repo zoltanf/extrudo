@@ -34,7 +34,7 @@ import {
   createTutorialProject,
   describeError,
   exportProject,
-  importFusionFile,
+  importF3dFile,
   importProject,
 } from '../project/actions';
 import { exampleHref, navigate, projectHref } from '../routes';
@@ -118,8 +118,8 @@ export function HomeScreen({ platform }: { platform: Platform }) {
     importProject(platform)
       .then((summary) => summary && open(summary.id))
       .catch((e: unknown) => push('error', `Import failed: ${describeError(e)}`));
-  const importFusion = () =>
-    importFusionFile(platform)
+  const importF3d = () =>
+    importF3dFile(platform)
       .then((id) => id && open(id))
       .catch((e: unknown) => push('error', `Import failed: ${describeError(e)}`));
 
@@ -330,7 +330,7 @@ export function HomeScreen({ platform }: { platform: Platform }) {
                     <Import size={16} />
                     Import .extrudo
                   </Button>
-                  <Button onClick={() => void importFusion()}>
+                  <Button onClick={() => void importF3d()}>
                     <Import size={16} />
                     Import .f3d
                   </Button>

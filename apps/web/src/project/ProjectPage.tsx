@@ -24,7 +24,7 @@ import {
   createTutorialProject,
   describeError,
   exportProject,
-  importFusionFile,
+  importF3dFile,
   importProject,
   loadProject,
   takeOpenNotices,
@@ -168,8 +168,8 @@ function ProjectEditor({
           .then((summary) => summary && navigate(projectHref(summary.id)))
           .catch((error: unknown) => push('error', `Import failed: ${describeError(error)}`));
       },
-      importFusion: () => {
-        importFusionFile(platform)
+      importF3d: () => {
+        importF3dFile(platform)
           .then((id) => id && navigate(projectHref(id)))
           .catch((error: unknown) => push('error', `Import failed: ${describeError(error)}`));
       },

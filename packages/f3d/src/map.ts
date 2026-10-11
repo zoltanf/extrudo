@@ -324,7 +324,7 @@ export function f3dToDesign(
       report.skipped.push({
         name: feature.name,
         kind: feature.kind,
-        reason: 'suppressed in Fusion',
+        reason: 'suppressed in the file',
       });
       continue;
     }
@@ -474,7 +474,7 @@ export function f3dToDesign(
     d.state.dispatch(
       updateBody({ id: known.id, changes: { name: `Body${known.index}`, visible: false } }),
     );
-    report.notes.push(`Body${known.index} (made by ${known.by}) is hidden, as in Fusion.`);
+    report.notes.push(`Body${known.index} (made by ${known.by}) is hidden, as in the file.`);
   }
   return { design: d, report };
 }
@@ -1127,7 +1127,7 @@ function selectProfiles(
     }
     if (lost && profiles.length === before)
       return 'the curves around its profile regions were deleted';
-    if (lost) note(`${lost} profile region(s) left out: their curves were deleted in Fusion.`);
+    if (lost) note(`${lost} profile region(s) left out: their curves were deleted in the file.`);
   }
   return entry ? { profiles, entry } : 'no profile';
 }

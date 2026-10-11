@@ -273,7 +273,7 @@ describe('f3dToDesign', () => {
     const { report } = f3dToDesign(f3d, 'Washer');
     expect(report.skipped).toEqual([
       { name: 'Revolve1', kind: 'Revolve', reason: 'not supported yet' },
-      { name: 'Shell1', kind: 'Shell', reason: 'suppressed in Fusion' },
+      { name: 'Shell1', kind: 'Shell', reason: 'suppressed in the file' },
       { name: 'Sketch2', kind: 'Sketch', reason: 'its plane is not along an origin axis' },
     ]);
   });
