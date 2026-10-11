@@ -19,11 +19,13 @@ import {
 } from '@extrudo/api';
 import {
   type BodyId,
+  evaluateParameters,
   faceSketchFrame,
   ORIGIN_PLANES,
   type SketchData,
   updateBody,
 } from '@extrudo/core';
+import type { SketchSolver } from '@extrudo/sketch';
 import {
   detectProfiles,
   insidePolygon,
@@ -31,6 +33,7 @@ import {
   type Profile,
 } from '@extrudo/sketch/profiles';
 import type { AsmSurface } from './asm';
+import { ComponentMapping } from './components';
 import type { ProfileOperand, ProfileRegion } from './decode/extrude';
 import type { ParameterValue } from './decode/parameters';
 import type { RevolveAxis } from './decode/revolve';
@@ -43,6 +46,16 @@ import type {
 } from './decode/sketch-geometry';
 import type { SketchText } from './decode/text';
 import { type EdgeShape, edgeShape } from './edge-shape';
+import {
+  type CopyContext,
+  type MadeCopies,
+  mirror,
+  pathPattern,
+  rectangularPattern,
+  splitBody,
+  sweep,
+  thread,
+} from './map-more';
 import type {
   F3dCircularPattern,
   F3dDesign,
@@ -57,6 +70,13 @@ import type {
   Matrix,
 } from './model';
 import { insidePieces, nurbsAt, regionPieces, type SketchPieces, sketchPieces } from './regions';
+import {
+  addSketchConstraints,
+  type ConstraintContext,
+  type ConstraintTally,
+  newTally,
+  quantityOf,
+} from './sketch-constraints';
 
 type Vec2 = [number, number];
 
@@ -67,6 +87,8 @@ export interface ImportReport {
   skipped: { name: string; kind: string; reason: string }[];
   /** Smaller things that were approximated. */
   notes: string[];
+  /** Sketch constraints and dimensions brought over (only with a solver, `ImportOptions.solver`). */
+  constraints?: ConstraintTally;
 }
 
 export interface ImportResult {
@@ -80,7 +102,7 @@ type ReadonlyVec3 = readonly [number, number, number];
 const dot = (a: ReadonlyVec3, b: ReadonlyVec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const EPS = 1e-6;
 
-interface SketchEntry {
+export interface SketchEntry {
   handle: SketchHandle;
   placement: Placement;
   /** Extrudo curve ID → f3d curve tag. */
@@ -139,6 +161,28 @@ interface FaceNaming {
   extrudes: Map<number, ImportedExtrude>;
   revolves: Map<number, ImportedRevolve>;
   rounds: Map<number, ImportedRound>;
+  /**
+   * Imported mirrors and patterns, by f3d record: Extrudo names a copied
+   * face `<op>:<feature>:<label>:from:(<name>)` (a mirror's has no label);
+   * `label` turns the file's instance code into Extrudo's label.
+   */
+  copies: Map<number, MadeCopies>;
+  holes: Map<number, ImportedHole>;
+}
+
+/** An imported hole: where its holes are and their sizes, for naming their faces. */
+interface ImportedHole {
+  id: string;
+  /** Per hole, its centre on the face (model space, cm) and its sketch point's entity ID. */
+  centres: { at: Vec3; point: string }[];
+  /** The way it drills, model space, unit. */
+  down: Vec3;
+  /** cm. */
+  diameter: number;
+  depth?: number;
+  cbDiameter?: number;
+  cbDepth?: number;
+  csDiameter?: number;
 }
 
 /** Where an f3d sketch lands in Extrudo: a plane and a 2D map into its frame. */
@@ -150,6 +194,14 @@ interface Placement {
   mirrored: boolean;
   /** The file's sketch normal points against the Extrudo plane's. */
   opposite: boolean;
+}
+
+/** The kind of a parameter's unit, as Extrudo stores it; undefined for one Extrudo has no kind for. */
+function unitKind(unit: string): 'length' | 'angle' | 'unitless' | undefined {
+  if (unit === '') return 'unitless';
+  if (['mm', 'cm', 'm', 'in', 'ft'].includes(unit)) return 'length';
+  if (unit === 'deg' || unit === 'rad') return 'angle';
+  return undefined;
 }
 
 /** The file's units in an expression are Extrudo's too, except a few spellings. */
@@ -187,6 +239,12 @@ function fontFor(family: string): { id: string; family: string } {
 export interface ImportOptions {
   id?: string;
   appVersion?: string;
+  /**
+   * A sketch solver (planegcs), to bring the file's sketch constraints and
+   * dimensions over: each is checked against it so imported geometry never
+   * moves. Without one, sketches keep only the joins of shared points.
+   */
+  solver?: SketchSolver;
 }
 
 export function f3dToDesign(
@@ -202,24 +260,24 @@ export function f3dToDesign(
     ...(options.appVersion ? { appVersion: options.appVersion } : {}),
   });
   const userNames = new Set<string>();
+  const components = new ComponentMapping(d, f3d, report);
 
   // User parameters, in the order they were made.
   for (const p of [...f3d.userParameters].sort((a, b) => a.number - b.number)) {
+    const unit = p.text === undefined ? unitKind(p.unit) : undefined;
     try {
-      d.parameter(
-        p.name,
-        p.text !== undefined ? `'${p.text}'` : p.expression,
-        p.comment ? { comment: p.comment } : {},
-      );
+      d.parameter(p.name, p.text !== undefined ? `'${p.text}'` : p.expression, {
+        ...(p.comment ? { comment: p.comment } : {}),
+        ...(unit ? { unit } : {}),
+      });
       userNames.add(p.name);
     } catch (error) {
       // An expression Extrudo does not read: keep the value.
       try {
-        d.parameter(
-          p.name,
-          numberExpression(p.value, p.unit),
-          p.comment ? { comment: p.comment } : {},
-        );
+        d.parameter(p.name, numberExpression(p.value, p.unit), {
+          ...(p.comment ? { comment: p.comment } : {}),
+          ...(unit ? { unit } : {}),
+        });
         userNames.add(p.name);
         report.notes.push(
           `Parameter ${p.name}: "${p.expression}" kept as its value (${(error as Error).message}).`,
@@ -230,23 +288,67 @@ export function f3dToDesign(
     }
   }
 
+  // The file's sketch constraints and dimensions, vetted by the solver.
+  let constraints: ConstraintContext | undefined;
+  if (options.solver) {
+    // Expressions may name the user parameters Extrudo evaluates as the file did.
+    const values = new Map<string, ReturnType<typeof quantityOf> & {}>();
+    const evaluated = evaluateParameters(d.doc).parameters;
+    for (const p of f3d.userParameters) {
+      const q = quantityOf(p);
+      const got = evaluated.get(p.name)?.result;
+      if (q && got?.ok && Math.abs(got.value - q.value) <= 1e-9 * (1 + Math.abs(q.value)))
+        values.set(p.name, q);
+    }
+    // Names the file gives its own parameters stay free for them; Extrudo's
+    // own new names (a text's height, a dimension whose file name can't be
+    // taken) count on from past the last of them.
+    let next = 1;
+    for (const p of f3d.parameters) {
+      // A safe integer only: past 2^53, counting on from it would stand still.
+      const n = /^d(\d{1,9})$/.exec(p.name);
+      if (n) next = Math.max(next, Number(n[1]) + 1);
+    }
+    const taken = new Set(userNames);
+    constraints = {
+      solver: options.solver,
+      values,
+      taken,
+      tally: newTally(),
+      freeName: () => {
+        while (taken.has(`d${next}`)) next++;
+        const name = `d${next++}`;
+        taken.add(name);
+        return name;
+      },
+    };
+    report.constraints = constraints.tally;
+  }
+  const known = (n: string) => userNames.has(n) || (constraints?.taken.has(n) ?? false);
+
   /**
    * An input's expression: the file's own when it only names user parameters
-   * (so the design stays driven by them), its value otherwise — dimension
-   * parameters (`d12`) have no Extrudo counterpart yet.
+   * and imported sketch dimensions (so the design stays driven by them), its
+   * value otherwise — a feature's own parameters (`d12`) have no Extrudo
+   * counterpart yet.
    */
   const expressionOf = (p: ParameterValue, negate = false): string => {
     const names = p.expression.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [];
     const units = new Set(['mm', 'cm', 'm', 'in', 'ft', 'deg', 'rad', 'um', 'mil']);
-    const own = names.every((n) => units.has(n) || userNames.has(n));
-    if (own && names.some((n) => userNames.has(n)))
-      return negate ? `-(${p.expression})` : p.expression;
+    const own = names.every((n) => units.has(n) || known(n));
+    if (own && names.some((n) => known(n))) return negate ? `-(${p.expression})` : p.expression;
     return numberExpression(negate ? -p.value : p.value, p.unit);
   };
 
   const sketches = new Map<number, SketchEntry>();
   const extrudes = new Map<number, ImportedExtrude>();
-  const naming: FaceNaming = { extrudes, revolves: new Map(), rounds: new Map() };
+  const naming: FaceNaming = {
+    extrudes,
+    revolves: new Map(),
+    rounds: new Map(),
+    copies: new Map(),
+    holes: new Map(),
+  };
   /** f3d feature record → the Extrudo feature a pattern can replay for it. */
   const replayable = new Map<number, { id: string; name: string }>();
   // Extrudo names a body after the feature that made it — and, of several, by
@@ -257,7 +359,7 @@ export function f3dToDesign(
   for (const body of f3d.bodies)
     if (body.creator !== undefined) madeBy.set(body.creator, (madeBy.get(body.creator) ?? 0) + 1);
   const bodyOf = (record: number): { id: BodyId; index: number; by: string } | undefined => {
-    const body = bodyRecords.get(record);
+    const body = bodyRecords.get(components.aliases.get(record) ?? record);
     if (body?.creator === undefined || madeBy.get(body.creator) !== 1) return undefined;
     const made = replayable.get(body.creator);
     return made ? { id: `${made.id}:0` as BodyId, index: body.index, by: made.name } : undefined;
@@ -272,7 +374,7 @@ export function f3dToDesign(
   // whatever the flag reading says.
   const profileCurves = new Map<number, Set<string>>();
   for (const f of f3d.features) {
-    if (f.type !== 'extrude') continue;
+    if (f.type !== 'extrude' && f.type !== 'sweep') continue;
     for (const operand of f.profiles) {
       const set = profileCurves.get(operand.sketch) ?? new Set<string>();
       for (const r of operand.regions ?? [])
@@ -322,6 +424,7 @@ export function f3dToDesign(
   };
 
   for (const feature of f3d.features) {
+    components.enter(feature);
     if (feature.suppressed) {
       report.skipped.push({
         name: feature.name,
@@ -353,7 +456,8 @@ export function f3dToDesign(
         const used = profileCurves.get(feature.sketch.id) ?? new Set<string>();
         const handle = d.sketch(
           placement.plane,
-          (k) => drawSketch(k, feature, placement, { tags, curves, texts }, used, report),
+          (k) =>
+            drawSketch(k, feature, placement, { tags, curves, texts }, used, report, constraints),
           {
             name: feature.name,
           },
@@ -407,6 +511,7 @@ export function f3dToDesign(
           report.skipped.push({ name: feature.name, kind: 'Hole', reason: made });
         else {
           replayable.set(feature.id, { id: made.id, name: feature.name });
+          naming.holes.set(feature.id, made);
           report.imported.push(feature.name);
         }
       } else if (feature.type === 'revolve') {
@@ -423,9 +528,69 @@ export function f3dToDesign(
         if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
         else report.imported.push(feature.name);
       } else if (feature.type === 'circular-pattern') {
-        const reason = circularPattern(d, feature, replayable, sketches, expressionOf, report);
+        const made = circularPattern(d, feature, replayable, sketches, expressionOf, report);
+        if (typeof made === 'string')
+          report.skipped.push({ name: feature.name, kind: feature.kind, reason: made });
+        else {
+          // The file numbers instances from 1, the original; Extrudo from 0.
+          const label = (code: number) => (code >= 2 ? String(code - 1) : undefined);
+          naming.copies.set(feature.id, { op: 'pattern', id: made.id, label });
+          report.imported.push(feature.name);
+        }
+      } else if (feature.type === 'thread') {
+        const { major, minor, external } = feature.spec;
+        const crest = { radius: (external ? major : minor) / 2, slack: major - minor };
+        const reason = thread(
+          d,
+          feature,
+          (face) => {
+            const id = faceName(face, naming, undefined, crest);
+            return id ? { id, radius: sideRadius(id, naming) } : undefined;
+          },
+          expressionOf,
+          report,
+        );
         if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
         else report.imported.push(feature.name);
+      } else if (feature.type === 'sweep') {
+        const made = sweep(d, feature, sketches, expressionOf, participants, report);
+        if (typeof made === 'string')
+          report.skipped.push({ name: feature.name, kind: feature.kind, reason: made });
+        else {
+          replayable.set(feature.id, { id: made.id, name: feature.name });
+          report.imported.push(feature.name);
+        }
+      } else if (
+        feature.type === 'mirror' ||
+        feature.type === 'rectangular-pattern' ||
+        feature.type === 'path-pattern' ||
+        feature.type === 'split'
+      ) {
+        const context: CopyContext = {
+          made: replayable,
+          sketches,
+          expressionOf,
+          bodies: participants,
+          report,
+        };
+        if (feature.type === 'split') {
+          const reason = splitBody(d, feature, context);
+          if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
+          else report.imported.push(feature.name);
+        } else {
+          const made =
+            feature.type === 'mirror'
+              ? mirror(d, feature, context)
+              : feature.type === 'path-pattern'
+                ? pathPattern(d, feature, context)
+                : rectangularPattern(d, feature, context);
+          if (typeof made === 'string')
+            report.skipped.push({ name: feature.name, kind: feature.kind, reason: made });
+          else {
+            naming.copies.set(feature.id, made);
+            report.imported.push(feature.name);
+          }
+        }
       } else if (feature.type === 'fillet' || feature.type === 'chamfer') {
         const made = edgeTreatment(d, feature, naming, expressionOf, report);
         if (typeof made === 'string')
@@ -435,10 +600,12 @@ export function f3dToDesign(
           report.imported.push(feature.name);
         }
       } else if (feature.kind === 'Component' || feature.kind === 'CreateComponent') {
-        // The component's own features are on this timeline: they join the design.
-        report.notes.push(
-          `${feature.name}: components are not supported yet; its features are part of this design.`,
-        );
+        // An Extrudo component already stands for it; its features follow on this timeline.
+        report.imported.push(feature.name);
+      } else if (components.isBodyMove(feature)) {
+        const reason = components.bodyMove(feature, bodyOf);
+        if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
+        else report.imported.push(feature.name);
       } else {
         report.skipped.push({
           name: feature.name,
@@ -454,13 +621,18 @@ export function f3dToDesign(
       });
     }
   }
+  components.enter(undefined);
   // Bodies hidden in the file stay hidden (a STEP export of the same design leaves them out too)
-  // — unless a shown body came from a feature not imported (Body to
-  // Component moves a body on as a new one: its shape is still the hidden
-  // one's here), or a later join here takes every body it meets (the file's
-  // named bodies it joins were not known), which may have merged a shown one in.
+  // — unless a body that can be seen (shown, in a shown component) came from a
+  // feature not imported (its shape may be the hidden one's moved on; a Body to
+  // Component's copy is already the body it took, see ComponentMapping), or a
+  // later join here takes every body it meets (the file's named bodies it joins
+  // were not known), which may have merged a shown one in.
   const shownElsewhere = f3d.bodies.some(
-    (b) => b.visible && (b.creator === undefined || !replayable.has(b.creator)),
+    (b) =>
+      components.seen(b) &&
+      !components.aliases.has(b.id) &&
+      (b.creator === undefined || !replayable.has(b.creator)),
   );
   const order = new Map(d.toJSON().features.map((f, i) => [f.id as string, i]));
   let lastOpenJoin = -1;
@@ -471,13 +643,14 @@ export function f3dToDesign(
     if (join && !inputs.bodies?.refs?.length) lastOpenJoin = i;
   });
   for (const body of shownElsewhere ? [] : f3d.bodies) {
-    const known = body.visible ? undefined : bodyOf(body.id);
+    const known = components.shown(body) ? undefined : bodyOf(body.id);
     if (!known || (order.get(known.id.split(':')[0] as string) ?? 0) < lastOpenJoin) continue;
     d.state.dispatch(
       updateBody({ id: known.id, changes: { name: `Body${known.index}`, visible: false } }),
     );
     report.notes.push(`Body${known.index} (made by ${known.by}) is hidden, as in the file.`);
   }
+  components.finish(bodyOf);
   return { design: d, report };
 }
 
@@ -500,7 +673,7 @@ const planeKey = (...values: number[]) => values.map((v) => Number(v.toPrecision
  * (and moved along its normal). A construction plane's frame follows its
  * normal alone (`faceSketchFrame`), which here is the file's sketch normal.
  */
-function placeSketch(
+export function placeSketch(
   d: Design,
   m: Matrix,
   report: ImportReport,
@@ -594,6 +767,7 @@ function drawSketch(
   },
   profileCurves: Set<string>,
   report: ImportReport,
+  constraints?: ConstraintContext,
 ): void {
   const { tags, curves } = made;
   const s: F3dSketch = feature.sketch;
@@ -719,8 +893,9 @@ function drawSketch(
         placement.map(at.u, at.v),
         placement.map(at.u + flip * up[0] * t.height, at.v + flip * up[1] * t.height),
         { text: t.text, font: font.id, align: at.align },
-        { upright: false },
+        { upright: false, ...(constraints ? { height: false } : {}) },
       );
+      if (constraints) textHeight(k, h, constraints.freeName());
       made.texts.set(t.id, h.id);
       report.notes.push(
         `${feature.name}: text "${t.text}" in ${t.font} is drawn in ${font.family}${at.guessed ? ', placed by its box corner (its alignment is not read)' : ''}${t.old.mirrored ? ', turned instead of mirrored' : ''}.`,
@@ -739,17 +914,21 @@ function drawSketch(
       placement.map(u, v),
       placement.map(u + up[0] * cap, v + up[1] * cap),
       { text: t.text, font: font.id, align: 'center' },
-      { upright: false },
+      { upright: false, ...(constraints ? { height: false } : {}) },
     );
+    if (constraints) textHeight(k, h, constraints.freeName());
     made.texts.set(t.id, h.id);
     report.notes.push(`${feature.name}: text "${t.text}" in ${t.font} is drawn in ${font.family}.`);
   }
   // Points on their own (hole centres, reference points), except the
   // projected origin every sketch has.
+  let origin: SketchPoint | undefined;
   for (const p of s.points) {
-    if (used.has(p.id)) continue;
     const xy = placement.map(p.at[0], p.at[1]);
-    if (Math.hypot(xy[0], xy[1]) < 1e-9 && p.tag === 100n) continue;
+    const isOrigin = Math.hypot(xy[0], xy[1]) < 1e-9 && p.tag === 100n;
+    if (isOrigin) origin = p;
+    if (used.has(p.id)) continue;
+    if (isOrigin) continue;
     join(p.id, k.point(xy));
   }
   // An f3d point shared by several curves is one point; Extrudo gives each
@@ -767,6 +946,48 @@ function drawSketch(
     }
   }
   if (skipped) report.notes.push(`${feature.name}: ${skipped} coincident constraints left out.`);
+  if (!constraints) return;
+  // The projected origin is fixed in the file: a point there (made when only
+  // a constraint or dimension names it) is fixed here.
+  if (origin && ((s.relations ?? []).length > 0 || (s.dimensions ?? []).length > 0)) {
+    const at = origin;
+    const mentioned = [...(s.relations ?? []), ...(s.dimensions ?? [])].some((c) =>
+      c.loci.some((l) => l.id === at.id),
+    );
+    if (!joined.has(at.id) && mentioned) join(at.id, k.point(placement.map(at.at[0], at.at[1])));
+    const first = joined.get(at.id)?.[0];
+    if (first) k.fix(first);
+  }
+  const ids = new Map<number, string>();
+  for (const [id, curve] of curves) ids.set(curve.id, id);
+  const note = addSketchConstraints(
+    k,
+    s,
+    {
+      points: new Map([...joined].map(([p, handles]) => [p, handles.map((h) => h.id)])),
+      curves: ids,
+      map: placement.map,
+    },
+    constraints,
+    feature.name,
+  );
+  if (note) report.notes.push(note);
+}
+
+/** A text's height dimension, named so it takes none of the file's own parameter names. */
+function textHeight(k: SketchBuilder, h: ReturnType<SketchBuilder['text']>, name: string): void {
+  const at = (id: string) => {
+    const p = k.data.entities[id as keyof typeof k.data.entities] as { x: number; y: number };
+    return [p.x, p.y] as const;
+  };
+  const [a, b] = [at(h.anchor.id), at(h.top.id)];
+  k.dimension(
+    [h.anchor, h.top],
+    `${Number(Math.hypot(b[0] - a[0], b[1] - a[1]).toPrecision(12))} mm`,
+    {
+      name,
+    },
+  );
 }
 
 /** The file's line advance for Arial, in capital heights (1.15 em over a 0.716 em capital). */
@@ -1056,7 +1277,7 @@ function regionCurves(entry: SketchEntry, profiles: GeomRef[]): string[] {
 }
 
 /** The Extrudo profiles a feature's profile operands select, and the sketch they are in. */
-function selectProfiles(
+export function selectProfiles(
   operands: ProfileOperand[],
   sketchOf: (operand: ProfileOperand) => SketchEntry | string,
   note: (text: string) => void = () => {},
@@ -1144,7 +1365,7 @@ function hole(
   f: F3dHole,
   expressionOf: (p: ParameterValue, negate?: boolean) => string,
   report: ImportReport,
-): string | { id: string } {
+): string | ImportedHole {
   if (!f.plane) return 'its face was not found';
   if (f.centres.length === 0) return 'its centres were not found';
   const { origin: O, x: X, y: Y } = f.plane;
@@ -1206,7 +1427,67 @@ function hole(
   }
   // Extrudo drills against its plane's normal; the file against N, unless flipped.
   if (placement.opposite !== f.flipped) inputs.flip = true;
-  return { id: d.hole(inputs as Parameters<Design['hole']>[0], { name: f.name }).id };
+  const id = d.hole(inputs as Parameters<Design['hole']>[0], { name: f.name }).id;
+  const size = (kind: string) => param(kind)?.value;
+  const n = scale(N, 1 / norm(N));
+  return {
+    id,
+    centres: f.centres.map((at, i) => ({
+      at,
+      point: (points[i]?.ref().id ?? '').split('/').pop() as string,
+    })),
+    down: f.flipped ? n : scale(n, -1),
+    diameter: size('HoleDiameter') ?? 0,
+    ...(size('HoleDepth') !== undefined ? { depth: size('HoleDepth') } : {}),
+    ...(size('CBDiameter') !== undefined ? { cbDiameter: size('CBDiameter') } : {}),
+    ...(size('CBDepth') !== undefined ? { cbDepth: size('CBDepth') } : {}),
+    ...(size('CSDiameter') !== undefined ? { csDiameter: size('CSDiameter') } : {}),
+  };
+}
+
+/**
+ * The name of a face of an imported hole, `hole:<id>:side:<point>.<role>`:
+ * the hole whose axis the face's surface is on (or, for a flat face, whose
+ * axis the face crosses nearest the hint), and the role by its shape and
+ * size — a cylinder the wall or a counterbore's wall, a cone a countersink
+ * or the drill point, a plane square to the axis a counterbore's floor or a
+ * flat bottom.
+ */
+function holeFaceName(s: AsmSurface, h: ImportedHole, hint?: Vec3): string | undefined {
+  const tol = 1e-4;
+  const D = h.down;
+  const name = (c: { point: string }, role: string) => `hole:${h.id}:side:${c.point}.${role}`;
+  if (s.kind === 'cone') {
+    const axis = scale(s.axis, 1 / norm(s.axis));
+    if (norm(cross(axis, D)) > 1e-6) return miss('hole face: not along the hole');
+    const c = h.centres.find((x) => norm(cross(sub(x.at, s.center), axis)) < tol);
+    if (!c) return miss('hole face: on no hole axis');
+    const r = (at: Vec3) => s.radius + s.slope * dot(sub(at, s.center), axis);
+    const near = (a: number, b: number | undefined) => b !== undefined && Math.abs(a - b / 2) < tol;
+    if (s.slope === 0 || s.cylinder) {
+      if (near(s.radius, h.diameter)) return name(c, 'wall');
+      if (near(s.radius, h.cbDiameter)) return name(c, 'cbwall');
+      return miss('hole face: cylinder of another size');
+    }
+    // A countersink's cone has the countersink's radius at the face; the drill point does not.
+    return name(c, near(r(c.at), h.csDiameter) ? 'cone' : 'tip');
+  }
+  if (s.kind === 'plane') {
+    if (norm(cross(s.normal, D)) > 1e-6) return miss('hole face: plane not square to the hole');
+    const depth = dot(sub(s.point, h.centres[0]?.at ?? s.point), D);
+    const across = (x: { at: Vec3 }) => norm(cross(sub(hint ?? s.point, x.at), D));
+    const c =
+      h.centres.length === 1
+        ? h.centres[0]
+        : hint
+          ? [...h.centres].sort((a, b) => across(a) - across(b))[0]
+          : undefined;
+    if (!c) return miss('hole face: which hole');
+    if (h.cbDepth !== undefined && Math.abs(depth - h.cbDepth) < tol) return name(c, 'cbfloor');
+    if (h.depth !== undefined && Math.abs(depth - h.depth) < tol) return name(c, 'floor');
+    return miss('hole face: plane at another depth');
+  }
+  return miss('hole face: surface');
 }
 
 const ORIGIN_AXES: [string, Vec3][] = [
@@ -1220,7 +1501,7 @@ const ORIGIN_AXES: [string, Vec3][] = [
  * imported sketch (`only`: of that sketch alone); with the sign of its
  * direction against the file's.
  */
-function axisRef(
+export function axisRef(
   axis: RevolveAxis,
   sketches: Map<number, SketchEntry>,
   only?: SketchEntry,
@@ -1306,7 +1587,7 @@ function circularPattern(
   sketches: Map<number, SketchEntry>,
   expressionOf: (p: ParameterValue, negate?: boolean) => string,
   report: ImportReport,
-): string | undefined {
+): string | { id: string } {
   if (f.objects !== 'features' || f.features.length === 0)
     return 'it repeats faces (only features are imported)';
   if (!f.axis) return 'its axis was not found';
@@ -1333,8 +1614,7 @@ function circularPattern(
     count: expressionOf(f.count),
   };
   if (angle) inputs.angle = expressionOf(angle, axis.sign < 0);
-  d.circularPattern(inputs as Parameters<Design['circularPattern']>[0], { name: f.name });
-  return undefined;
+  return d.circularPattern(inputs as Parameters<Design['circularPattern']>[0], { name: f.name });
 }
 
 /**
@@ -1383,7 +1663,26 @@ const miss = (why: string): undefined => {
  * side swept from one of the curves around the extruded regions (a plane
  * through a line's two ends, a cylinder about a circle's or arc's centre).
  */
-function faceName(face: F3dFace, naming: FaceNaming, hint?: Vec3): string | undefined {
+function faceName(
+  face: F3dFace,
+  naming: FaceNaming,
+  hint?: Vec3,
+  /**
+   * A thread's face: its crest radius and how far (cm) the cylinder may have
+   * moved off its sketch circle; the nearest coaxial circle is taken.
+   */
+  crest?: { radius: number; slack: number },
+): string | undefined {
+  if (face.instance) {
+    // A copy: named after the face it copies.
+    const { instance, ...source } = face;
+    const copy = naming.copies.get(instance.pattern);
+    if (!copy) return miss('copied by a mirror or pattern not imported');
+    const label = copy.label(instance.code);
+    if (label === undefined) return miss('copy: instance not known');
+    const name = faceName(source, naming, undefined, crest);
+    return name && `${copy.op}:${copy.id}:${label === '' ? '' : `${label}:`}from:(${name})`;
+  }
   if (face.feature === undefined) return miss('no feature');
   const round = naming.rounds.get(face.feature);
   if (round) {
@@ -1394,6 +1693,9 @@ function faceName(face: F3dFace, naming: FaceNaming, hint?: Vec3): string | unde
     if (!edge) return miss(`${round.op} face: its edge has no name`);
     return `${round.op}:${round.id}:from:(${edge})`;
   }
+  const hole = naming.holes.get(face.feature);
+  if (hole)
+    return face.surface ? holeFaceName(face.surface, hole, hint) : miss('face not in the B-rep');
   const rev = naming.revolves.get(face.feature);
   if (rev) return face.surface ? revolveFaceName(face.surface, rev) : miss('face not in the B-rep');
   const ex = naming.extrudes.get(face.feature);
@@ -1437,13 +1739,16 @@ function faceName(face: F3dFace, naming: FaceNaming, hint?: Vec3): string | unde
   if (s.kind === 'cone' && norm(cross(s.axis, N)) / norm(s.axis) < 1e-6) {
     // A cylinder, or a cone where the extrude tapers: the curve's radius in the sketch plane.
     const axis = scale(s.axis, 1 / norm(s.axis));
-    const hits = ex.curves.filter((curve) => {
+    const gap = (curve: string) => {
       const c = circle(curve);
-      if (!c) return false;
+      if (!c) return Number.POSITIVE_INFINITY;
       const off = sub(toModel(m, c.center), s.center);
-      if (norm(cross(off, axis)) >= tol) return false;
-      return Math.abs(c.radius - (s.radius + s.slope * dot(off, axis))) < tol;
-    });
+      if (norm(cross(off, axis)) >= tol) return Number.POSITIVE_INFINITY;
+      return Math.abs(c.radius - ((crest?.radius ?? s.radius) + s.slope * dot(off, axis)));
+    };
+    const near = ex.curves.filter((curve) => gap(curve) < tol + (crest?.slack ?? 0));
+    // A thread's face: the nearest circle alone.
+    const hits = crest ? near.sort((a, b) => gap(a) - gap(b)).slice(0, 1) : near;
     const curve = sideCurve(hits, face, hint, (curve, p) => {
       const c = circle(curve) as SketchCircular;
       const span = c.endAngle - c.startAngle;
@@ -1462,6 +1767,20 @@ function faceName(face: F3dFace, naming: FaceNaming, hint?: Vec3): string | unde
 }
 
 /** The named edge of a fillet or chamfer nearest a point (cm), by its geometry. */
+/** The radius (cm) behind an imported extrude's side face name, or a hole's wall. */
+function sideRadius(name: string, naming: FaceNaming): number | undefined {
+  const w = /^hole:([^:]+):side:[^.]+\.wall$/.exec(name);
+  if (w) for (const h of naming.holes.values()) if (h.id === w[1]) return h.diameter / 2;
+  const m = /^extrude:([^:]+):side:(.+)$/.exec(name);
+  if (!m) return undefined;
+  for (const ex of naming.extrudes.values()) {
+    if (ex.id !== m[1]) continue;
+    const c = ex.sketch.curves.get(m[2] as string);
+    return c && 'center' in c ? c.radius : undefined;
+  }
+  return undefined;
+}
+
 function nearestEdge(round: ImportedRound, p: Vec3): number | undefined {
   let best: number | undefined;
   let bestDistance = Number.POSITIVE_INFINITY;
@@ -1560,6 +1879,10 @@ function offsetFaces(
   report: ImportReport,
 ): string | undefined {
   if (!f.distance) return 'its distance was not found';
+  // The one such offset in the files seen fails in the kernel: its body has a
+  // notch across a cylinder's seam, where Offset Face refuses every face.
+  if (f.faces.some((face) => face.instance))
+    return 'it moves faces a pattern or mirror copied (not imported yet)';
   if (Math.abs(f.distance.value) < 1e-12)
     return 'its distance is 0 (Extrudo refuses an offset that moves nothing)';
   const faces: GeomRef[] = [];

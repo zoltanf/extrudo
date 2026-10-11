@@ -30,7 +30,8 @@ export class Reader {
 
   constructor(bytes: Uint8Array, start = 0, end = bytes.length) {
     this.bytes = bytes;
-    this.end = end;
+    // Never past the bytes: a record whose end a file puts beyond them stops there.
+    this.end = Math.min(end, bytes.length);
     this.#view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     this.pos = start;
   }

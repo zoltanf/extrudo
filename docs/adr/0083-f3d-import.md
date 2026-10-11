@@ -202,3 +202,259 @@ box, skips and failures are unchanged). Its chamfer and four other edge or face
 features end in ordinary messages ("Distance 0.75 mm is too large… (max ≈
 0.74 mm)"), and one more chamfer loses its edge: OCCT can't build them on the
 geometry the import gives them, which is an import question, not a kernel one.
+
+## Amendment, 2026-10-11 (components)
+
+The file's components become Extrudo components (ADR-0081) instead of
+joining one flat design. This replaces decision 3's line on components.
+
+- **Decoding** (`packages/f3d/src/decode/component.ts`, `FORMAT.md` §
+  Components): every component, the root included, is a component record with
+  its name; a timeline feature's base level names the feature list of its
+  component, a body names the body container of its component, an occurrence
+  places a component (ordinal, optional rigid transform) and a component's
+  occurrence list holds the occurrences of the components inside it. A
+  hidden-occurrence record names the path to an occurrence whose light bulb is
+  off, and a hidden component hides the ones inside it. A "Body to Component"
+  item names the body it takes and makes a copy in its target component.
+  `readF3d` adds `components`, `bodyMoves` and a `component` on each feature
+  and body.
+- **Mapping** (`packages/f3d/src/components.ts`, `ComponentMapping`): one
+  Extrudo component per component but the root (the root is the design, so
+  its bodies stay loose), named as in the file (made unique, "Component1" for
+  an empty name). Every Extrudo feature a timeline step makes is stamped with
+  that step's component (`setFeatureComponent`), so its bodies join it by
+  ADR-0081's rule; at the end each body the import knows is put where the file
+  has it when the stamp says otherwise. A "Body to Component" is imported when
+  the body it takes was: Extrudo moves nothing, so the body joins the target
+  component and is shown as the file shows its copy; that copy counts as the
+  body it took wherever the file names it. A hidden component stays hidden.
+- **What an Extrudo component cannot hold is reported, not guessed**: a
+  component placed away from its own origin is imported where its own features
+  make its bodies; one placed several times is imported once; nested
+  components stand alone (ADR-0081 §9 defers nesting). Seen in the samples: no
+  copies, nesting in a few designs, and placed occurrences only in a design
+  with no timeline.
+- **Bodies hidden in the file**: a body in a hidden component no longer counts
+  as "shown elsewhere", which kept every hidden body shown before.
+- Body records whose index sits 16 bytes after their GUID string (behind other
+  numbers) now decode too (38 → 18 undecoded body records in the samples).
+
+Results on the samples (the measurement now also leaves out the bodies of
+hidden components, as the reference STEP export does): of 243, 122 match (115 + 7 while skipping
+features; 120 before), 59 lose some features, 53 build different geometry, 8
+have no body and 1 crashes the kernel; no file got further from its
+reference. Leaving hidden components out is most of it (a design whose other
+parts are hidden: 51.6 → 0.03, 5.4 → 0.014 relative volume error); a "Body to
+Component" design whose moved bodies are now known matches. Open: a design
+whose shown body came from a feature not imported still shows every hidden
+body (the rule above), and bodies a feature makes several of are not put into
+another component when "Body to Component" moves them.
+
+## Amendment, 2026-10-11: mirrors, rectangular patterns, sweeps, splits, threads and copied faces
+
+The first import skipped five feature kinds the corpus uses (threads in 6
+files, sweeps in 7, splits in 3, mirrors in 4, rectangular and path patterns
+in 5) and could not name a face a pattern had copied. This amendment maps
+them; the decoders are `decode/copies.ts`, `decode/sweep.ts` and
+`decode/thread.ts`, the mappers `map-more.ts`, and the layouts are in
+`packages/f3d/FORMAT.md`.
+
+1. **Mirror** (of features or bodies) becomes Extrudo's Mirror in a plane
+   built as a sketch's (an origin plane, one moved along its normal, or one
+   turned about an origin axis). **Rectangular pattern** (of features or
+   bodies) becomes Extrudo's, `measure: extent`: the file's distance is the
+   whole run from the first instance to the last (both corpus patterns fit
+   only that reading), signed along the direction; a direction group's own
+   vector can point against its line, and then the pattern runs the other
+   way. A grid's second direction is mapped the same way (none in the
+   corpus). Mirrors and patterns of faces stay skipped: Extrudo copies bodies
+   and features, not faces.
+2. **Sweep** of sketch profiles along a chain of sketch curves, with its
+   operation, twist and named bodies. Extrudo sweeps the whole path; a sweep
+   that follows only part of it (`AlongDistance` and `AgainstDistance` both
+   under 1), follows a guide rail, tapers or runs along body edges is skipped.
+   The file's profiles need not touch the path and are carried along it
+   where they are drawn, which is what Extrudo does too (it warns).
+3. **Split body** by a plane, both sides kept, for bodies known as the one
+   body of an imported feature. Splits by a face are skipped (none in the
+   corpus).
+4. **Thread**: Extrudo's modeled thread at the file's major diameter and
+   pitch with no clearance (the file stores the thread class's own
+   diameters), full length or a length from an offset. The file resizes the
+   face to the thread (a shaft's to the major diameter, a hole's to the
+   minor), so the face is found as the sketch circle of the side nearest that
+   crest, not by the B-rep's radius. A thread in a hole wider than the thread
+   is skipped (the file fills the hole in first; Extrudo only cuts). 55° pipe
+   threads get Extrudo's 60° profile, with a note. Every thread in the corpus
+   is modeled; a cosmetic flag was not found, so a cosmetic thread would be
+   cut too.
+5. **Faces a pattern or mirror copied** carry the tag `[source op, pattern
+   op, instance op]`. The face is named after the face it copies (the B-rep
+   face with the source's tag and not the pattern's) as Extrudo names a
+   copy, `<op>:<feature>:<label>:from:(<name>)` (a mirror's without a
+   label). The label comes from the copying feature's instance list: a
+   circular pattern numbers its instances from 1 (the original), a
+   rectangular pattern Cantor-pairs its two indexes, a mirror has one copy.
+
+**Results** (the same check as above, 250 files): match 113 → 116, match
+while skipping 7 → 6, partial 60 → 56, different geometry 54 → 56 (two
+partials now map every feature and land within 2 %), no body 8, kernel
+crash 1. Sweeps took four rails and boxes from 40-56 % volume error to
+0.5-3 %; the threaded pipe adapter went from 23 % to 1.4 % (the 55°
+profile). One file got worse: its reference is the swept body alone,
+because the straight body it was made beside was moved into a component and
+hidden, which this import does not follow yet.
+
+**Not done:** splits of bodies Extrudo can only know by position.
+
+**Second round (same day).**
+
+6. **Path pattern** of features or bodies along a chain of sketch curves.
+   The file stores the start point; Extrudo walks a chain from its first
+   curve's own start (or its far end with `flip`), so the line at the start
+   point goes first, flipped when the start is its end; a path that doesn't
+   start with a line is skipped. The distance is the whole extent (the data
+   record's u32 2, as a rectangular pattern's) and the copies turn with the
+   path where the file's flag says so. Checked against the copied faces in
+   the file's B-rep: the copies land within 0.06 mm (Extrudo samples a
+   curved path as a polyline). Its instance code is 1.
+7. **Hole faces** are named `hole:<id>:side:<point>.<role>` by geometry: the
+   hole whose axis the surface lies on, the role by shape and size (wall or
+   counterbore wall by radius, countersink cone or drill point, counterbore
+   floor or flat bottom by depth). The file's face tokens for holes are not
+   used. Few references need it (6 in 2 files), but a thread on a hole's wall
+   now imports.
+8. **An offset of faces a pattern copied is skipped again.** The one such
+   offset in the corpus failed in the kernel, not in the import: Offset Face
+   refuses every face of a body that has a notch across a cylinder's seam (a
+   cylinder with a rectangular cut at +X reproduces it; at +Y or −X it
+   works). That is the kernel's to fix.
+
+The second round's results: match 116, match while skipping 6, partial 55,
+different geometry 57, no body 8, crash 1. The two path-pattern rails halve
+their volume error (0.53 % → 0.22 %, 0.46 % → 0.15 %); the threaded
+pipe inlet's thread now imports (41 % → 28 %; the rest is an extrude's
+region). For a threaded part, the reference STEP's tight box is inflated by
+its spline thread faces (a mesh of the same STEP spans the part exactly), so
+the box check can fail where the geometry agrees.
+
+## Amendment, 2026-10-11 (components and features together)
+
+The components amendment and the features amendment were written in
+parallel; this one records what changed when they met.
+
+1. **Features inside components.** Every timeline step stamps the Extrudo
+   features it adds with its component, so a mirror, pattern, sweep, split
+   or thread in a component puts its bodies there too: copies and split
+   pieces follow ADR-0081's rule (the stamp, or the body a piece broke off).
+2. **A cut and paste of bodies is a body move.** Its records have Body to
+   Component's shape (body operand → link → the body it takes; the body it
+   makes is in the target component), so it is read the same way. Its scope
+   keeps no history state, which the first import read as "suppressed", so
+   the paste was dropped and a body pasted into a hidden component stayed in
+   view. Two designs now match (a rail whose straight body went to a hidden
+   component: 98.6 % → 0.12 % volume error; a power-supply module: 495 % →
+   0.34 %). The plain cut and paste names no body and stays unread.
+3. **Hostile files.** The new decoders walk references several levels deep.
+   Each record's references are now read once and each record visited once
+   per walk, a pattern's instance list is checked pair by pair, a record's
+   end and every reader stop at the end of the bytes, and a malformed
+   mirror, pattern, split, sweep or thread record becomes an unread item
+   instead of failing the whole import. A component name cut to 90
+   characters is trimmed again, so it can't clash after Extrudo trims it.
+
+Corpus (250 files; bodies of hidden components left out, as a STEP export
+leaves them out): match 118, match while skipping 8, partial 48, different
+geometry 60, no body 8, crash 1, no reference 7 — from 113, 7, 60, 54, 8, 1,
+7 before both amendments, 115, 7, 59, 53 after components alone and 116, 6,
+55, 57 after features alone. No file is worse than with the features
+amendment alone; the four worse than with components alone are the features
+amendment's own (threads now cut where the rest of the part is still off,
+and one chamfer on copied faces).
+
+## Amendment (2026-10-11): sketch constraints and dimensions
+
+Imported sketches used to carry geometry and the coincident joins of shared
+points only, and inputs naming the file's dimension parameters (`d12`) took
+plain values. Now the file's sketch relations and dimensions come over, so an
+imported sketch stays drivable.
+
+- **Reading** (`decode/constraints.ts`, `packages/f3d/FORMAT.md`): a relation
+  record lists its points and curves and a kind mask (coincident, collinear,
+  concentric, parallel, perpendicular, horizontal, vertical, tangent,
+  symmetric, equal, midpoint; every mask checked against the solved geometry
+  over the owner's corpus); a dimension record lists what it measures and
+  refers to the owner of the parameter it drives, whose value record holds
+  the `dN` name, expression and value. A linear dimension's direction
+  (aligned, horizontal, vertical) is a byte pair before that reference.
+- **The rule: imported geometry never moves** (`sketch-constraints.ts`). A
+  constraint or dimension is taken only when the geometry, where the file put
+  it and as Extrudo's frame sees it, already satisfies it (1e-6 mm; the plane
+  map may turn the file's horizontal into Extrudo's vertical, which the
+  geometry decides). The sketch is then solved with planegcs: what the solver
+  calls redundant or conflicting, and then anything that would still move a
+  point, is taken out one at a time (the latest first) and counted, never
+  forced. Trouble the sketch had before (its own joins) is not held against
+  them. A tangent's side is read once every point making its joint is in.
+- **The solver is the caller's**: `ImportOptions.solver` takes a
+  `SketchSolver`; `@extrudo/f3d` imports only types from the sketch package's
+  main entry (planegcs stays out of its chunk), and the app loads
+  `@extrudo/sketch/browser` for the import. Without a solver nothing changes.
+- **Parameters**: a dimension is named after the file's parameter (`d12`)
+  when the name is free, and keeps the file's expression when every name in
+  it is a user parameter or an imported dimension Extrudo evaluates to the
+  file's value; else it takes the value. An expression naming a dimension that
+  was left out falls back to its value. Feature inputs naming an imported
+  dimension keep their expressions (none in the corpus do; dimensions name
+  dimensions 430 times and user parameters 890 times). Extrudo's own new names
+  (a text's height dimension) count on from past the file's last `dN`. User
+  parameters now get the file's unit kind, so a unitless count no longer reads
+  as a length.
+- **The projected origin**, which the file holds fixed, gets a `fix` when the
+  sketch has constraints (a point is made for it when only a constraint or
+  dimension names it).
+- **Report**: `ImportReport.constraints` (counts, left out by why and kind, the
+  largest displacement); a note per sketch with left-outs; one app notice.
+
+Results on the owner's 250 files: 9,280 constraints and 4,779 dimensions
+imported (1,248 of the dimensions keep an expression naming another parameter);
+left out: 89 with no counterpart (linear dimensions on circles, a midpoint of
+two lines, a diameter on an arc, an unknown seven-point relation), 123 that
+don't match the geometry (mostly offset dimensions, whose value is a signed
+offset), 141 that over-constrain, 150 naming geometry the import doesn't draw
+(text-box lines, ellipses, projected curves), 2 that would move geometry (an
+ill-conditioned point on a circle a line touches). Every imported sketch
+solves with no redundant or conflicting constraint and no point moving more
+than 8.5e-7 mm; vetting takes 38 s over the corpus (3.5 s for the slowest
+file). The rebuilt geometry is unchanged (two files closer through the unit
+kind).
+
+Deferred: a Fix relation (not found in the files), offset and sketch-pattern
+relations (Extrudo has none), constraints on ellipses and splines, and naming
+feature inputs after their `dN` (nothing in the corpus needs it).
+
+## Amendment, 2026-10-11 (sketch constraints with the rest; hostile files)
+
+Merged with the components and features amendments, the sketch constraints
+change nothing they import: sketches inside components are stamped like any
+feature, and the curves sweeps and path patterns follow are drawn and solved
+in place (nothing moves), so the corpus results are those of the three
+amendments together, two designs closer through the unit kind.
+
+The review for untrusted files changed three things in the constraint import:
+
+1. **Every imported dimension is named by the import.** The file's name when
+   Extrudo can take it (valid, at most 64 characters, not a unit, function or
+   constant, not taken, not used twice in the sketch), else one of Extrudo's
+   own past the file's last `dN`. Before, a dimension without a usable name
+   was named by the design at commit, from a counter that doesn't see the
+   sketch's other names, and a clash, a reserved word such as `max` or a name
+   used twice refused the whole sketch. Only `dN` numbers up to nine digits
+   count, so a huge one in a file can't make the counting stand still.
+2. **At most 1,000 constraints and dimensions of a sketch are vetted** (the
+   samples have 213 at most); the rest are left out as `limit`. Vetting solves
+   once per candidate it takes out, so this bounds the solves a sketch costs.
+3. **A solver failure stays in its sketch**: the sketch keeps its geometry and
+   joins, and all of its constraints and dimensions are left out as `failed`.
+   The app's import no longer fails when disposing a broken solver throws.

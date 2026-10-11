@@ -87,6 +87,8 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `8B369926…` | Older text's box (a coincident-constraint subclass) | references the text and the four `16DEFC4D…` box lines (a sketch-line subclass; start and displacement, 6 f64, in the base level) |
 | `EA3B930A…` | Text box line | a sketch-line subclass: a ref to its text, then start and displacement as a line's |
 | `362B7EC3…` | Point incidence | u32 n, n refs to curves, u8, ref point |
+| `60403D47…` | Sketch relation (a geometric constraint) | see below; subclasses keep it in their base level |
+| `0C3F3829…` | Sketch dimension (base type) | see below; subclasses `8C780195…` linear, `664AD49F…` diameter, `8EDAC24D…` radial, `6EEAFDE5…` angular |
 | `44A64366…` | Sketch | its base level's first reference is the placement |
 | `F47A46FB…` | Sketch placement | u8 identity, or 16 f64: the sketch-to-model matrix, row-major |
 | `8DA771B7…` | Sketch feature | refers to its sketch (`44A64366…`) |
@@ -102,13 +104,19 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `CC54ECAD…` | Model plane | 3 bytes, origin, x direction, y direction (9 f64) |
 | `1C037A07…` | Hole | see below |
 | `D087EFE5…` | Offset faces | the distance is a parameter it owns (`distance`, along the outward normal); an operand group of face operands (`5662F619…`), each recipe naming its face first |
+| `FCBB1707…` | Sweep | op u32 at payload offset 6 (after an empty property block; as an extrude's: 1 join, 2 cut, 3 intersect, 4 new body); an operand group with the sketch-profile operand; an operand group of geometry operands, the path, each naming a sketch curve (`E2CEFD18…`) beside the curve in model space; a body operand per body it joins or cuts. Parameters it owns: `AlongDistance` and `AgainstDistance` (how much of the path it follows from the profile, one way and back, as fractions), `TwistAngle`, `TaperAngle`, and `AlongRailDistance`/`AgainstRailDistance` for a guide rail. The profile need not touch the path |
+| `B0B3D9E5…` | Path pattern | what it copies as a mirror's; a count record (`countU`); the distance a parameter it owns (`PathPatternDelta`); the path an operand group of geometry operands, each naming a sketch curve. Its data record (`BE1FB171…`): u8, u32 2 (extent, as a rectangular pattern's), the count record, 4 zero bytes, the distance's parameter owner, 5 zero bytes, the original's reference point (3 f64, cm), four flag bytes (`01 00 01 00` in both files: the first is 1 where the copies turn with the path, which the copied faces in the B-rep confirm), the path group, the distance again (f64, cm), the start group and the instance list. The start group (`69EE2FA7…`, an operand-group subtype): 19 bytes, the start point on the path (3 f64, cm), a geometry operand naming the path's first curve. A copy is the original moved by the way the path went from the start point to the point the distance along it, and turned with it about the start point; its instance code is 1 |
+| `65CA3206…` | Split body | an operand group with a body operand per body it splits; an operand group with the splitting tool: a geometry operand naming a plane (record reference) beside the plane in model space (`CC54ECAD…`), as a mirror's. Both sides are kept |
+| `584D9526…` | Thread | after the prologue and an empty property block (offset 6, or 2 without one): f64 profile angle (60 metric, 55 pipe), u8 external (1 on a shaft, 0 in a hole), wstr class (`6g`, `6H`, `A`), wstr designation (`M10x1.5`, `G 1/2-14`), wstr size, wstr family (`ISO Metric profile`, `BSP Pipe Threads`), u8 full length (0: `ThreadLength` and `ThreadOffset` are parameters it owns), u32 1 or 2 (not known), f64 major and minor diameters, a byte, f64 pitch, f64 pitch diameter (cm; the class's own sizes, so a `6H` major is above the nominal). An operand group with a face operand per face. The file resizes the face to the thread (an external one's crest to the major diameter, a hole's to the minor), so the face's B-rep radius is not its sketch circle's. Every thread in the corpus is modeled (the reference STEPs have the thread's faces); a cosmetic flag was not found |
 | `11F1A5CE…` | Circular pattern | the total angle is a parameter it owns (`TotalAngle`); a count record; an operand group of what it repeats; the axis as a geometry operand with a model line |
 | `A085449A…` | Pattern count | refers to the count's parameter value (`countU`) |
+| `D1728651…` | Mirror | shares the circular pattern's base type. An operand group of what it copies: per feature a geometry operand with a record reference and a body link, per body a body operand, per face a face operand; the plane is a geometry operand holding a record reference to the plane it names (origin or construction plane) and that plane in model space (`CC54ECAD…`). Its count record says 2 |
+| `AE12AD3F…` | Rectangular pattern | what it copies as a mirror's; count records `countU`, `CountV`; the distances are parameters it owns (`uSpaceDistance`, `vSpaceDistance`): the whole extent from the first instance to the last, signed; each direction is a direction group (`F2A7590D…`) holding a geometry operand with the direction's model line. The group opens with two zero bytes, a u32 (8 or 16), a point and a vector (3 f64 each); the vector can point against the line (the pattern then runs the other way). Spacing instead of extent, and a symmetric pattern, have not been seen |
 | `90055C05…` | Record by number | 2 zero bytes, u64 record: an origin axis, or the feature a pattern repeats |
 | `D26351F0…` | Body link | wstr body GUID; refs to the body (`D3937028…`) and the feature that made it. In a pattern's geometry operand beside a `90055C05…`, the body that feature acted on |
 | `D3937028…` | Body | GUID and appearance strings, then u32 index (its number, "Body3"), u32 n, n bytes, u32, u8 1, u8 light bulb (1 shown, 0 hidden). Newer files put a −1.0 double just before the index; class version 16 starts it at payload offset 10. a STEP export of the design leaves hidden bodies out |
 | `9716F783…` | Body operand | refers to a body link. In an extrude's or revolve's operand group, one per body it joins, cuts or intersects; in a pattern's, one per body it repeats |
-| `F2A7590D…` | Hole placement | u32 8, 6 f64 (the first three zero wherever seen, the last three the face plane's normal), …; its geometry operand holds the face's plane (`CC54ECAD…`) |
+| `F2A7590D…` | Hole placement, pattern direction (an operand-group subtype) | u32 8, 6 f64 (the first three zero wherever seen, the last three the face plane's normal), …; its geometry operand holds the face's plane (`CC54ECAD…`) |
 | `2CA5A1CD…` | Operand group | one per fillet/chamfer edge set; members are edge operands (or face or body operands, for other features) |
 | `5662F619…` | Edge or face operand | refers to its recipe; an extrude's face operands name its start face and the face it goes up to |
 | `7ACC2A03…` | Edge or face recipe | u32 1, u32 3, u32 n faces; per face u32 tags; per tag str8 token, u32 0, u32 k, k × i32 operation id, u32 0; then `edge_recipe_data` and a program (not read). An edge lists its two faces first, a face itself; the rest are neighbours. A fillet's or chamfer's face often has the token k of the k-th edge in that feature's list, but the tokens count other faces too (a one-edge fillet's face can be 4; a four-edge chamfer's 1, 2, 5, 6); an extrude's start cap 1, end cap 2, sides from 3 |
@@ -175,6 +183,67 @@ Found statistically (curves the file's own profiles use are never construction)
 and not certain; curves a profile uses are imported as non-construction
 whatever the flag says.
 
+### Sketch constraints and dimensions
+
+A **relation** (`60403D47…`, v3) is one geometric constraint:
+
+```
+u8 1 (leading block), u32 n, n × (ref point or curve, u32 role)
+property block (usually empty; sometimes EntityGenesis)
+ref sketch, u32 kind mask, u32 state mask
+u32 n, n × ref (the loci again), u8
+```
+
+The kind mask, checked against the solved geometry over the corpus: `0x1`
+coincident (two points, or a point on a line, circle or arc — never a curve's
+own end point), `0x2` collinear, `0x4` concentric, `0x10` parallel, `0x20`
+perpendicular, `0x40` horizontal, `0x80` vertical (along the sketch's own
+axes), `0x100` tangent, `0x400` symmetric (two points, lines or circles and
+the line that is the axis), `0x800` equal, `0x1000` midpoint (a point and a
+line). `0x2000` (seven points) is not known. The roles look like counters and
+are not used. Subclasses with kind 0 and a state mask hold other sketch
+constructions: `D3BD153B…` offsets (state `0x20`), `40800FB9…` sketch
+patterns, `8B369926…` an older text's box. A Fix constraint was not found.
+
+A **dimension** (a subclass of `0C3F3829…`) opens with the same leading block
+(its first locus is often the null reference), then presentation data, then a
+reference to the owner record (`D91D429C…`) of the parameter it drives; the
+parameter value with that owner holds its `dN` name, expression and value. A
+linear dimension measures two points, a line (its length), two parallel lines
+or a point and a line; its direction is the byte pair 7 and 6 bytes before
+the owner reference: `40 00` aligned, `00 40` horizontal, `00 80` vertical.
+A diameter dimension measures a circle, a radial one an arc, an angular one
+two lines (the angle or its supplement, whichever the value is).
+
+The importer (`sketch-constraints.ts`) takes a constraint or dimension only
+when the geometry already satisfies it where the file put it, then solves the
+sketch and takes out whatever the solver calls redundant or conflicting, or
+anything that would move a point.
+
+## Components
+
+Every component, the root included, is a component record; what belongs to it
+is found by following references, since the frames differ between file
+generations.
+
+| Type GUID | What | How it is read |
+|---|---|---|
+| `E03784ED…` | Component | its most-derived level references its occurrence list (`904F885E…`), body containers (`CD57BC48…`) and history (`C3423E04…`); its base level references the occurrence list again, then a few bytes, a wstr GUID and the wstr name (the root's is the design's name and version, "Bracket v3") |
+| `C3423E04…` | Component history | references the component's feature list (`3A6D1E62…`) and its own timeline (only the root's lists items: the file keeps one timeline for all components) |
+| `3A6D1E62…` | Feature list | its base level lists the records the component owns; every timeline feature's base level ends with a reference to the feature list of its component |
+| `CD57BC48…` | Body container | its last component reference is its component; a body (`D3937028…`) references the container of the component it is in |
+| `CE2913AA…` | Occurrence | a reference to the component; after a stretch that differs between generations, u32 ordinal (1 for a component's first occurrence, 2, 3… for copies), wstr component GUID, wstr occurrence GUID; when placed, a row-major 4 × 4 rigid transform (cm) after those. The root's is named `rootInstance`. A component's occurrence list references the occurrences of its children |
+| `2BB3BB69…` | Hidden occurrence | references a component (first) and its occurrence; one per occurrence whose light bulb is off. Worked out from the samples alone: in each of them, the components these name are the ones a STEP export of the design leaves out |
+| `56225BC7…` | Body to Component (timeline item) | a body operand (`9716F783…` → body link → body) names the body it takes; it makes a new body record in the target component, whose body link names the item or one of its own records as the feature that made it. The body it took stays in its old component, hidden |
+| `BA3059E4…` | Cut and paste of bodies (`CutPasteBodies`, timeline item) | the same shape as Body to Component (body operand → body link → the body it takes; a new body record in the target component whose body link names one of the item's own records); its scope has **no history state**, like a sketch, so a missing state doesn't mean suppressed. The plain cut and paste (`D57B1A22…`, `CutPaste`) names no body operand and is not read |
+
+Seen in the samples: no component placed twice, nesting in a few designs, and placed
+occurrences away from the origin only in a design with no timeline.
+
+A body's index sits after a −1.0 double in most files (payload offset 10 in
+class version 16); in some it is 16 bytes after the body's GUID string, behind
+other numbers.
+
 ## ASM B-rep
 
 ACIS SAB with 8-byte integers: `ASM BinaryFile8`, u64 version, record count,
@@ -193,8 +262,18 @@ table gives the feature that made each face.
 A face merged from coplanar faces (after a join) carries one tag per
 face merged into it, sorted by operation id: `[18@303 5@303 4@305 6@307]` is
 two sides of operation 303 and faces of 305 and 307. A face copied by a
-pattern carries tags with several operation ids: the source feature's, the
-pattern's and the instance's.
+pattern or mirror carries tags with several operation ids: the source
+feature's, the pattern's and the instance's (`[5@309/311/328]`); the face it
+copies is the one with the source's tag and not the pattern's.
+
+A copying feature's data record (the first record its members name:
+`C444E6AD…` for a mirror, `EA0E146E…` for a rectangular pattern,
+`7493A99D…` for a circular one) lists its instances: `u8 1, u32 n, n ×
+(u64 code, u64 operation id)`, then `u32 m` and m instance records
+(`AD719C1A…`; m can exceed n). A circular pattern's codes number the
+instances from 1, the original; a rectangular pattern's Cantor-pair its two
+indexes, the original's (1, 0), so a row's instance u has code u(u + 1)/2; a
+mirror's one copy is 2.
 
 `cone-surface`: centre, axis (unit), major axis (its length the radius at
 the centre), ratio, then the sine and cosine of the half-angle. The radius at

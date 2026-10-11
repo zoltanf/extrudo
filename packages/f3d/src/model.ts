@@ -9,6 +9,33 @@ import { type AsmFace, type AsmSurface, asmFaces, readAsm } from './asm';
 import { F3dFormatError, Reader } from './bytes';
 import { BODY, type BodyFlags, readBody } from './decode/body';
 import {
+  BODY_MOVES,
+  componentOfBody,
+  componentOfFeature,
+  type F3dBodyMove,
+  type F3dComponent,
+  readBodyMove,
+  readComponents,
+} from './decode/component';
+import {
+  readSketchConstraints,
+  type SketchDimensionRecord,
+  type SketchRelation,
+} from './decode/constraints';
+import {
+  type CopiedObjects,
+  MIRROR,
+  PATH_PATTERN,
+  type PathPatternSpec,
+  RECTANGULAR_PATTERN,
+  readCopied,
+  readCounts,
+  readDirections,
+  readInstances,
+  readMirrorPlane,
+  readPathPattern,
+} from './decode/copies';
+import {
   EDGE_OPERAND,
   EDGE_RECIPE,
   type FaceTag,
@@ -42,6 +69,7 @@ import {
 import {
   BODY_LINK,
   BODY_OPERAND,
+  CIRCULAR_PATTERN,
   PATTERN_COUNT,
   RECORD_REF,
   readRecordRef,
@@ -71,6 +99,7 @@ import {
   sketchSpline,
   type Vec3,
 } from './decode/sketch-geometry';
+import { type CurveRef, readPaths, readSweepOperation } from './decode/sweep';
 import {
   boxSize,
   oldTextBoxes,
@@ -81,6 +110,7 @@ import {
   sketchTextOld,
   TEXT_PROFILE_OPERAND,
 } from './decode/text';
+import { readThreadSpec, type ThreadSpec } from './decode/thread';
 import { TIMELINE, timeline } from './decode/timeline';
 import { Segment } from './segment';
 
@@ -109,6 +139,9 @@ export interface F3dSketch {
   /** Splines and conics. */
   splines: SketchSpline[];
   texts: SketchText[];
+  /** Its geometric constraints and dimensions, as the file stores them. */
+  relations?: SketchRelation[];
+  dimensions?: SketchDimensionRecord[];
 }
 
 interface FeatureBase {
@@ -120,6 +153,8 @@ interface FeatureBase {
   suppressed: boolean;
   /** Parameters this feature owns, by kind ("AlongDistance", "Linear Dimension-2", …). */
   parameters: ParameterValue[];
+  /** The component it belongs to (component record), when the file says. */
+  component?: number;
 }
 
 export interface F3dSketchFeature extends FeatureBase {
@@ -143,6 +178,11 @@ export interface F3dFace {
   feature?: number;
   /** The face's surface in model space, cm, when the B-rep still has it. */
   surface?: AsmSurface;
+  /**
+   * A face a mirror or pattern copied: the copying feature (record) and the
+   * instance's code; `feature` and `surface` are then the face it copies.
+   */
+  instance?: { pattern: number; code: number };
 }
 
 /** An edge, as the two faces it runs between and the faces that end it. */
@@ -200,6 +240,52 @@ export interface F3dOffsetFaces extends FeatureBase {
   distance?: ParameterValue;
 }
 
+export interface F3dMirror extends FeatureBase, CopiedObjects {
+  type: 'mirror';
+  /** The mirror plane, model space. */
+  plane?: ModelPlane;
+}
+
+export interface F3dRectangularPattern extends FeatureBase, CopiedObjects {
+  type: 'rectangular-pattern';
+  /** Its directions in order (the second makes a grid). */
+  directions: RevolveAxis[];
+  /** `countU`, then `CountV`. */
+  counts: ParameterValue[];
+}
+
+export interface F3dSweep extends FeatureBase {
+  type: 'sweep';
+  operation: BodyOperation;
+  profiles: ProfileOperand[];
+  /** Per path (a second one is a guide rail), the sketch curves it runs along. */
+  paths: CurveRef[][];
+  /** A path names a body edge (or the profile is a face). */
+  pathEdges: boolean;
+  /** The bodies it joins, cuts or intersects (body records); empty: none named. */
+  participants: number[];
+}
+
+export interface F3dPathPattern extends FeatureBase, CopiedObjects, PathPatternSpec {
+  type: 'path-pattern';
+  count?: ParameterValue;
+}
+
+export interface F3dSplit extends FeatureBase {
+  type: 'split';
+  /** The bodies it splits, by body record. */
+  bodies: number[];
+  /** Its splitting plane, model space (missing: it splits with a face, not read). */
+  plane?: ModelPlane;
+}
+
+export interface F3dThread extends FeatureBase {
+  type: 'thread';
+  spec: ThreadSpec;
+  /** The faces it threads, each named by its recipe's first face. */
+  faces: F3dFace[];
+}
+
 export interface F3dOther extends FeatureBase {
   type: 'other';
 }
@@ -212,6 +298,12 @@ export type F3dFeature =
   | F3dEdgeFeature
   | F3dCircularPattern
   | F3dOffsetFaces
+  | F3dMirror
+  | F3dRectangularPattern
+  | F3dSweep
+  | F3dSplit
+  | F3dPathPattern
+  | F3dThread
   | F3dOther;
 
 /** A body of the design: its number, whether it is shown, the feature that made it. */
@@ -220,6 +312,8 @@ export interface F3dBody extends BodyFlags {
   id: number;
   /** The timeline feature that made it, by record. */
   creator?: number;
+  /** The component it is in (component record), when the file says. */
+  component?: number;
 }
 
 export interface F3dDesign {
@@ -227,6 +321,10 @@ export interface F3dDesign {
   userParameters: ParameterValue[];
   features: F3dFeature[];
   bodies: F3dBody[];
+  /** The components, the root (the design itself) first. */
+  components?: F3dComponent[];
+  /** The "Body to Component" items, in timeline order. */
+  bodyMoves?: F3dBodyMove[];
   /** Records the reader could not decode, with why. */
   problems: string[];
 }
@@ -313,6 +411,18 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       return undefined;
     }
   };
+  // A record's references, each once and in order, read once: the copying
+  // features' walks go several levels deep, and a file may name a record many times.
+  const distinctRefs = new Map<number, number[]>();
+  const insideOnce = (ref: number): number[] => {
+    let refs = distinctRefs.get(ref);
+    if (!refs) {
+      const f = seg.frame(ref);
+      refs = [...new Set(refsIn(seg, f.start, f.end))];
+      distinctRefs.set(ref, refs);
+    }
+    return refs;
+  };
 
   // Parameters, and which feature owns each (owner record → its first reference).
   const parameters: ParameterValue[] = [];
@@ -389,6 +499,17 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     if (c?.owner !== undefined) sketchOf(c.owner).splines.push(c);
   }
 
+  // Constraints and dimensions, in the sketch their points and curves are in.
+  const geometryOwner = new Map<number, number>();
+  for (const s of sketches.values())
+    for (const g of [...s.points, ...s.lines, ...s.circulars, ...s.splines])
+      geometryOwner.set(g.id, s.id);
+  const constraints = readSketchConstraints(seg, parameters, (r) => geometryOwner.get(r), problems);
+  for (const [id, c] of constraints) {
+    const s = sketches.get(id);
+    if (s) Object.assign(s, c);
+  }
+
   // Face tags name the feature that made a face by its operation ID; the
   // operation table maps those IDs to feature records.
   const operations = new Map<number, number[]>();
@@ -409,6 +530,16 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     const records = operations.get(design);
     return records?.find((r) => onTimeline.has(r)) ?? records?.[0];
   };
+  // Instance operation id → instance code, over every copying feature.
+  const instances = new Map<number, number>();
+  for (const guid of [MIRROR, RECTANGULAR_PATTERN, CIRCULAR_PATTERN, PATH_PATTERN])
+    for (const id of seg.idsOf(guid)) {
+      const scope = tryDecode(`feature #${id}`, () => readScope(seg, id));
+      const found = scope
+        ? tryDecode(`instances #${id}`, () => readInstances(seg, scope, insideOnce))
+        : undefined;
+      for (const [op, code] of found ?? []) instances.set(op, code);
+    }
   const features: F3dFeature[] = [];
   for (const id of items) {
     const type = seg.typeOf(id);
@@ -420,7 +551,8 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         id,
         kind: scope?.kind ?? label ?? type?.guid ?? '?',
         name: scope ? nameOf(scope) : (label ?? 'Timeline item'),
-        suppressed: scope ? scope.state === null : false,
+        // A body move keeps no history state: none doesn't mean suppressed there.
+        suppressed: scope ? scope.state === null && !BODY_MOVES.has(type?.guid ?? '') : false,
         parameters: byScope.get(id) ?? [],
       });
       continue;
@@ -466,7 +598,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         if (seg.typeOf(group)?.guid !== OPERAND_GROUP) continue;
         for (const recipe of recipesIn(seg, group)) {
           const first = tryDecode(`face #${recipe}`, () => readEdgeRecipe(seg, recipe))?.faces[0];
-          if (first) named.push(faceOf(first.tags, faces, featureOf));
+          if (first) named.push(faceOf(first.tags, faces, featureOf, instances));
         }
       }
       features.push({
@@ -569,7 +701,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         if (seg.typeOf(group)?.guid !== OPERAND_GROUP) continue;
         for (const recipe of recipesIn(seg, group)) {
           const first = tryDecode(`face #${recipe}`, () => readEdgeRecipe(seg, recipe))?.faces[0];
-          if (first) moved.push(faceOf(first.tags, faces, featureOf));
+          if (first) moved.push(faceOf(first.tags, faces, featureOf, instances));
         }
       }
       const distance = base.parameters.find((p) => p.kind === 'distance');
@@ -579,10 +711,101 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         faces: moved,
         ...(distance ? { distance } : {}),
       });
+    } else if (FEATURE_TYPES[type.guid] === 'Mirror') {
+      const inside = insideOnce;
+      const copied = tryDecode(`mirror #${id}`, () => readCopied(seg, scope, inside));
+      if (!copied) {
+        features.push({ type: 'other', ...base });
+        continue;
+      }
+      const plane = tryDecode(`mirror plane #${id}`, () => readMirrorPlane(seg, scope, inside));
+      features.push({ type: 'mirror', ...base, ...copied, ...(plane ? { plane } : {}) });
+    } else if (FEATURE_TYPES[type.guid] === 'RectangularPattern') {
+      const inside = insideOnce;
+      const copied = tryDecode(`pattern #${id}`, () => readCopied(seg, scope, inside));
+      if (!copied) {
+        features.push({ type: 'other', ...base });
+        continue;
+      }
+      features.push({
+        type: 'rectangular-pattern',
+        ...base,
+        ...copied,
+        directions: tryDecode(`directions #${id}`, () => readDirections(seg, scope, inside)) ?? [],
+        counts: tryDecode(`counts #${id}`, () => readCounts(seg, scope, inside)) ?? [],
+      });
+    } else if (FEATURE_TYPES[type.guid] === 'Thread') {
+      const spec = tryDecode(`thread #${id}`, () => readThreadSpec(seg, scope));
+      const threaded: F3dFace[] = [];
+      for (const group of scope.refs) {
+        if (seg.typeOf(group)?.guid !== OPERAND_GROUP) continue;
+        for (const recipe of tryDecode(`thread faces #${group}`, () => recipesIn(seg, group)) ??
+          []) {
+          const first = tryDecode(`face #${recipe}`, () => readEdgeRecipe(seg, recipe))?.faces[0];
+          if (first) threaded.push(faceOf(first.tags, faces, featureOf, instances));
+        }
+      }
+      if (spec) features.push({ type: 'thread', ...base, spec, faces: threaded });
+      else features.push({ type: 'other', ...base });
+    } else if (FEATURE_TYPES[type.guid] === 'PathPattern') {
+      const inside = insideOnce;
+      const spec = tryDecode(`path pattern #${id}`, () => readPathPattern(seg, scope, inside));
+      const count = tryDecode(`count #${id}`, () => readCounts(seg, scope, inside))?.[0];
+      const copied = tryDecode(`path pattern #${id}`, () => readCopied(seg, scope, inside));
+      if (spec && copied)
+        features.push({
+          type: 'path-pattern',
+          ...base,
+          ...copied,
+          ...spec,
+          ...(count ? { count } : {}),
+        });
+      else features.push({ type: 'other', ...base });
+    } else if (FEATURE_TYPES[type.guid] === 'Split') {
+      const inside = insideOnce;
+      const bodies = tryDecode(`split #${id}`, () => readCopied(seg, scope, inside))?.bodies;
+      if (!bodies) {
+        features.push({ type: 'other', ...base });
+        continue;
+      }
+      const plane = tryDecode(`split plane #${id}`, () => readMirrorPlane(seg, scope, inside));
+      features.push({ type: 'split', ...base, bodies, ...(plane ? { plane } : {}) });
+    } else if (FEATURE_TYPES[type.guid] === 'Sweep') {
+      const operation = tryDecode(`sweep #${id}`, () => readSweepOperation(seg, scope));
+      if (!operation) {
+        features.push({ type: 'other', ...base });
+        continue;
+      }
+      const inside = insideOnce;
+      const profiles: ProfileOperand[] = [];
+      for (const group of scope.refs)
+        if (seg.typeOf(group)?.guid === OPERAND_GROUP)
+          for (const ref of tryDecode(`sweep #${id}`, () => inside(group)) ?? [])
+            if (seg.typeOf(ref)?.guid === SKETCH_PROFILE_OPERAND) {
+              const p = tryDecode(`profile #${ref}`, () => readProfileOperand(seg, ref));
+              if (p) profiles.push(p);
+            }
+      const read = tryDecode(`sweep #${id}`, () => ({
+        ...readPaths(seg, scope, inside),
+        participants: participantsOf(seg, scope),
+      }));
+      if (!read) {
+        features.push({ type: 'other', ...base });
+        continue;
+      }
+      features.push({
+        type: 'sweep',
+        ...base,
+        operation,
+        profiles,
+        paths: read.paths,
+        pathEdges: read.edges,
+        participants: read.participants,
+      });
     } else if (FEATURE_TYPES[type.guid] === 'Fillet' || FEATURE_TYPES[type.guid] === 'Chamfer') {
       const kind = FEATURE_TYPES[type.guid] === 'Fillet' ? 'fillet' : 'chamfer';
       const sets = tryDecode(`${kind} #${id}`, () =>
-        readEdgeSets(seg, scope, base.parameters, kind, faces, featureOf),
+        readEdgeSets(seg, scope, base.parameters, kind, faces, featureOf, instances),
       );
       if (sets) features.push({ type: kind, ...base, sets });
       else features.push({ type: 'other', ...base });
@@ -607,11 +830,31 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     bodies.push({ id, ...flags, ...(creator !== undefined ? { creator } : {}) });
   }
 
+  // Components: which one each feature and body belongs to, and the bodies moved between them.
+  const tree = tryDecode('components', () => readComponents(seg));
+  const bodyMoves: F3dBodyMove[] = [];
+  if (tree) {
+    for (const f of features) {
+      const component = tryDecode(`feature #${f.id}`, () => componentOfFeature(seg, tree, f.id));
+      if (component !== undefined) f.component = component;
+      if (BODY_MOVES.has(seg.typeOf(f.id)?.guid ?? '')) {
+        const move = tryDecode(`body move #${f.id}`, () => readBodyMove(seg, tree, f.id));
+        if (move) bodyMoves.push(move);
+      }
+    }
+    for (const b of bodies) {
+      const component = tryDecode(`body #${b.id}`, () => componentOfBody(seg, tree, b.id));
+      if (component !== undefined) b.component = component;
+    }
+  }
+
   return {
     parameters,
     userParameters: parameters.filter((p) => p.user),
     features,
     bodies,
+    ...(tree ? { components: tree.components } : {}),
+    bodyMoves,
     problems,
   };
 }
@@ -726,13 +969,25 @@ function faceOf(
   tags: FaceTag[],
   faces: Map<string, AsmFace[]>,
   featureOf: (design: number) => number | undefined,
+  instances?: Map<number, number>,
 ): F3dFace {
   const first = tags[0];
   const design = first ? Math.abs(first.designs[0] ?? -1) : -1;
   const out: F3dFace = { tags };
   const feature = design >= 0 ? featureOf(design) : undefined;
   if (feature !== undefined) out.feature = feature;
-  const found = first ? faces.get(`${first.token}@${design}`)?.[0] : undefined;
+  const [, patternOp = -1, instanceOp = -1] = first?.designs ?? [];
+  const code = patternOp > 0 && instanceOp > 0 ? instances?.get(instanceOp) : undefined;
+  const pattern = code !== undefined ? featureOf(patternOp) : undefined;
+  const candidates = first ? (faces.get(`${first.token}@${design}`) ?? []) : [];
+  if (code !== undefined && pattern !== undefined) {
+    // A copy: named after the face it copies, whose surface is the one without the pattern's tag.
+    out.instance = { pattern, code };
+    const source = candidates.find((f) => !f.tags.some((t) => t.design === patternOp));
+    if (source) out.surface = source.surface;
+    return out;
+  }
+  const found = candidates[0];
   if (found) out.surface = found.surface;
   return out;
 }
@@ -754,12 +1009,13 @@ function readEdgeSets(
   kind: 'fillet' | 'chamfer',
   faces: Map<string, AsmFace[]>,
   featureOf: (design: number) => number | undefined,
+  instances: Map<number, number>,
 ): F3dEdgeSet[] {
   const groups = scope.refs.filter((r) => seg.typeOf(r)?.guid === OPERAND_GROUP);
   const sizes = [...parameters]
     .sort((a, b) => a.number - b.number)
     .filter((p) => (kind === 'fillet' ? p.kind === 'Radius' : p.kind !== 'TangencyWeight'));
-  const face = (tags: FaceTag[]) => faceOf(tags, faces, featureOf);
+  const face = (tags: FaceTag[]) => faceOf(tags, faces, featureOf, instances);
   const perSet = kind === 'chamfer' && sizes.length >= 2 * groups.length ? 2 : 1;
   return groups.map((group, i) => {
     const edges: F3dEdge[] = [];
