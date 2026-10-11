@@ -1,0 +1,137 @@
+/**
+ * Features that copy others: mirror (`D1728651…`), rectangular pattern
+ * (`AE12AD3F…`) and path pattern (`B0B3D9E5…`), which share the circular
+ * pattern's base type. What they copy sits in operand groups: a geometry
+ * operand (`5A1BF548…`) holding a record reference (`90055C05…`) and a body
+ * link per feature; a body operand (`9716F783…`) per body; a face operand
+ * (`5662F619…`) per face.
+ *
+ * A mirror's plane is a geometry operand holding the plane in model space
+ * (`CC54ECAD…`) beside the plane it names (an origin or construction plane).
+ * A rectangular pattern's directions are direction groups (`F2A7590D…`, an
+ * operand-group subtype), each holding a geometry operand with the direction
+ * as a model line (`50AEE8B4…`); its counts are `countU`/`CountV` count
+ * records and its distances the parameters it owns (`uSpaceDistance`,
+ * `vSpaceDistance`), signed along the line.
+ */
+import type { Segment } from '../segment';
+import { BODY } from './body';
+import { EDGE_OPERAND, OPERAND_GROUP } from './edges';
+import { HOLE_PLACEMENT, MODEL_PLANE, type ModelPlane, readModelPlane } from './hole';
+import { PARAMETER_VALUE, type ParameterValue, parameterValue } from './parameters';
+import { BODY_LINK, BODY_OPERAND, PATTERN_COUNT, RECORD_REF, readRecordRef } from './pattern';
+import { GEOMETRY_OPERAND, type RevolveAxis, readAxis } from './revolve';
+import type { Scope } from './scope';
+import type { Vec3 } from './sketch-geometry';
+
+export const MIRROR = 'D1728651-3640-4CCF-8083-AF7703013978';
+export const RECTANGULAR_PATTERN = 'AE12AD3F-BB81-4B59-9D34-A599E58E4BF6';
+export const PATH_PATTERN = 'B0B3D9E5-1C25-47BC-ABCD-E723F193DF1B';
+/** An operand group holding a pattern direction (also a hole's placement). */
+export const DIRECTION_GROUP = HOLE_PLACEMENT;
+
+/** What a mirror or pattern copies. */
+export interface CopiedObjects {
+  /** `faces`: face operands, which are not read further. */
+  objects: 'features' | 'bodies' | 'faces';
+  /** Features it copies, by record. */
+  features: number[];
+  /** Bodies it copies, by body record. */
+  bodies: number[];
+}
+
+type Inside = (id: number) => number[];
+
+/** The features, bodies or faces a copying feature's operand groups name. */
+export function readCopied(seg: Segment, scope: Scope, inside: Inside): CopiedObjects {
+  const features: number[] = [];
+  const bodies: number[] = [];
+  let faces = false;
+  const type = (id: number) => seg.typeOf(id)?.guid;
+  for (const group of scope.refs) {
+    if (type(group) !== OPERAND_GROUP) continue;
+    for (const member of inside(group)) {
+      const t = type(member);
+      if (t === EDGE_OPERAND) faces = true;
+      else if (t === BODY_OPERAND) {
+        for (const link of inside(member)) {
+          if (type(link) !== BODY_LINK) continue;
+          const body = inside(link).find((r) => type(r) === BODY);
+          if (body !== undefined && !bodies.includes(body)) bodies.push(body);
+        }
+      } else if (t === GEOMETRY_OPERAND) {
+        const refs = inside(member);
+        if (!refs.some((r) => type(r) === BODY_LINK)) continue;
+        for (const r of refs)
+          if (type(r) === RECORD_REF) {
+            const record = readRecordRef(seg, r);
+            if (!features.includes(record)) features.push(record);
+          }
+      }
+    }
+  }
+  const objects = features.length
+    ? 'features'
+    : bodies.length
+      ? 'bodies'
+      : faces
+        ? 'faces'
+        : 'features';
+  return { objects, features, bodies };
+}
+
+/** A mirror's plane: the model plane of its geometry operand that names no body. */
+export function readMirrorPlane(
+  seg: Segment,
+  scope: Scope,
+  inside: Inside,
+): ModelPlane | undefined {
+  for (const ref of scope.refs) {
+    if (seg.typeOf(ref)?.guid !== GEOMETRY_OPERAND) continue;
+    const refs = inside(ref);
+    if (refs.some((r) => seg.typeOf(r)?.guid === BODY_LINK)) continue;
+    const plane = refs.find((r) => seg.typeOf(r)?.guid === MODEL_PLANE);
+    if (plane !== undefined) return readModelPlane(seg, plane);
+  }
+  return undefined;
+}
+
+/**
+ * A rectangular pattern's directions, in order: the line of each direction
+ * group's operand, turned the way the group's own vector points. The group
+ * opens with two zero bytes, a u32 (8 or 16) and two vectors: a point and
+ * the direction, which is against the line where the pattern runs the other
+ * way (seen once).
+ */
+export function readDirections(seg: Segment, scope: Scope, inside: Inside): RevolveAxis[] {
+  const out: RevolveAxis[] = [];
+  for (const ref of scope.refs) {
+    if (seg.typeOf(ref)?.guid !== DIRECTION_GROUP) continue;
+    const r = seg.reader(ref);
+    r.zeros(2);
+    r.u32();
+    r.skip(24);
+    const v: Vec3 = [r.f64(), r.f64(), r.f64()];
+    for (const g of inside(ref)) {
+      if (seg.typeOf(g)?.guid !== GEOMETRY_OPERAND) continue;
+      const axis = readAxis(seg, inside(g));
+      if (!axis) continue;
+      const D = axis.direction;
+      if (D[0] * v[0] + D[1] * v[1] + D[2] * v[2] < 0) axis.direction = [-D[0], -D[1], -D[2]];
+      out.push(axis);
+      break;
+    }
+  }
+  return out;
+}
+
+/** The parameter values a feature's count records name, in reference order (`countU`, `CountV`). */
+export function readCounts(seg: Segment, scope: Scope, inside: Inside): ParameterValue[] {
+  const out: ParameterValue[] = [];
+  for (const ref of scope.refs) {
+    if (seg.typeOf(ref)?.guid !== PATTERN_COUNT) continue;
+    const value = inside(ref).find((r) => seg.typeOf(r)?.guid === PARAMETER_VALUE);
+    if (value !== undefined) out.push(parameterValue.decode(seg, value));
+  }
+  return out;
+}

@@ -9,6 +9,13 @@ import { type AsmFace, type AsmSurface, asmFaces, readAsm } from './asm';
 import { F3dFormatError, Reader } from './bytes';
 import { BODY, type BodyFlags, readBody } from './decode/body';
 import {
+  type CopiedObjects,
+  readCopied,
+  readCounts,
+  readDirections,
+  readMirrorPlane,
+} from './decode/copies';
+import {
   EDGE_OPERAND,
   EDGE_RECIPE,
   type FaceTag,
@@ -200,6 +207,20 @@ export interface F3dOffsetFaces extends FeatureBase {
   distance?: ParameterValue;
 }
 
+export interface F3dMirror extends FeatureBase, CopiedObjects {
+  type: 'mirror';
+  /** The mirror plane, model space. */
+  plane?: ModelPlane;
+}
+
+export interface F3dRectangularPattern extends FeatureBase, CopiedObjects {
+  type: 'rectangular-pattern';
+  /** Its directions in order (the second makes a grid). */
+  directions: RevolveAxis[];
+  /** `countU`, then `CountV`. */
+  counts: ParameterValue[];
+}
+
 export interface F3dOther extends FeatureBase {
   type: 'other';
 }
@@ -212,6 +233,8 @@ export type F3dFeature =
   | F3dEdgeFeature
   | F3dCircularPattern
   | F3dOffsetFaces
+  | F3dMirror
+  | F3dRectangularPattern
   | F3dOther;
 
 /** A body of the design: its number, whether it is shown, the feature that made it. */
@@ -578,6 +601,26 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         ...base,
         faces: moved,
         ...(distance ? { distance } : {}),
+      });
+    } else if (FEATURE_TYPES[type.guid] === 'Mirror') {
+      const inside = (ref: number) => {
+        const f = seg.frame(ref);
+        return refsIn(seg, f.start, f.end);
+      };
+      const copied = readCopied(seg, scope, inside);
+      const plane = tryDecode(`mirror plane #${id}`, () => readMirrorPlane(seg, scope, inside));
+      features.push({ type: 'mirror', ...base, ...copied, ...(plane ? { plane } : {}) });
+    } else if (FEATURE_TYPES[type.guid] === 'RectangularPattern') {
+      const inside = (ref: number) => {
+        const f = seg.frame(ref);
+        return refsIn(seg, f.start, f.end);
+      };
+      features.push({
+        type: 'rectangular-pattern',
+        ...base,
+        ...readCopied(seg, scope, inside),
+        directions: tryDecode(`directions #${id}`, () => readDirections(seg, scope, inside)) ?? [],
+        counts: tryDecode(`counts #${id}`, () => readCounts(seg, scope, inside)) ?? [],
       });
     } else if (FEATURE_TYPES[type.guid] === 'Fillet' || FEATURE_TYPES[type.guid] === 'Chamfer') {
       const kind = FEATURE_TYPES[type.guid] === 'Fillet' ? 'fillet' : 'chamfer';

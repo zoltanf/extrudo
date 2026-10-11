@@ -43,6 +43,7 @@ import type {
 } from './decode/sketch-geometry';
 import type { SketchText } from './decode/text';
 import { type EdgeShape, edgeShape } from './edge-shape';
+import { type CopyContext, mirror, rectangularPattern } from './map-more';
 import type {
   F3dCircularPattern,
   F3dDesign,
@@ -80,7 +81,7 @@ type ReadonlyVec3 = readonly [number, number, number];
 const dot = (a: ReadonlyVec3, b: ReadonlyVec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const EPS = 1e-6;
 
-interface SketchEntry {
+export interface SketchEntry {
   handle: SketchHandle;
   placement: Placement;
   /** Extrudo curve ID → f3d curve tag. */
@@ -426,6 +427,20 @@ export function f3dToDesign(
         const reason = circularPattern(d, feature, replayable, sketches, expressionOf, report);
         if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
         else report.imported.push(feature.name);
+      } else if (feature.type === 'mirror' || feature.type === 'rectangular-pattern') {
+        const context: CopyContext = {
+          made: replayable,
+          sketches,
+          expressionOf,
+          bodies: participants,
+          report,
+        };
+        const reason =
+          feature.type === 'mirror'
+            ? mirror(d, feature, context)
+            : rectangularPattern(d, feature, context);
+        if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
+        else report.imported.push(feature.name);
       } else if (feature.type === 'fillet' || feature.type === 'chamfer') {
         const made = edgeTreatment(d, feature, naming, expressionOf, report);
         if (typeof made === 'string')
@@ -500,7 +515,7 @@ const planeKey = (...values: number[]) => values.map((v) => Number(v.toPrecision
  * (and moved along its normal). A construction plane's frame follows its
  * normal alone (`faceSketchFrame`), which here is the file's sketch normal.
  */
-function placeSketch(
+export function placeSketch(
   d: Design,
   m: Matrix,
   report: ImportReport,
@@ -1220,7 +1235,7 @@ const ORIGIN_AXES: [string, Vec3][] = [
  * imported sketch (`only`: of that sketch alone); with the sign of its
  * direction against the file's.
  */
-function axisRef(
+export function axisRef(
   axis: RevolveAxis,
   sketches: Map<number, SketchEntry>,
   only?: SketchEntry,
