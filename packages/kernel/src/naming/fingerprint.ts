@@ -8,7 +8,9 @@ import type { SubShapeKind } from '../history';
 import type { Vec3 } from '../kernel';
 import type { ShapeDescription } from './description';
 import type { TopoNames } from './names';
-import { parseFace } from './topo-id';
+
+/** Split numbers (`#2`) anywhere in a name. */
+const SPLITS = /#\d+/g;
 
 /** The lowest score a fingerprint match needs to be used (0–1). */
 export const FINGERPRINT_THRESHOLD = 0.6;
@@ -63,7 +65,7 @@ export function fingerprintOf(
  * of: position (distance against the element's own size), direction (a
  * plane's normal must point the same way; axes and lines either way), size
  * (smaller over larger) and neighbours (shared adjacent faces, comparing
- * names without their split numbers).
+ * names without their split numbers, also those of the names inside them).
  */
 export function fingerprintScore(
   stored: GeomFingerprint,
@@ -102,9 +104,14 @@ export function fingerprintScore(
   return parts.reduce((sum, [w, s]) => sum + w * s, 0) / weight;
 }
 
-/** Shared names over all names (Jaccard), ignoring split numbers. */
+/**
+ * Shared names over all names (Jaccard), ignoring split numbers — those
+ * inside a name too: a fillet's face is named after its edge as it was
+ * called then (`fillet:f9:from:(e[a#2|b])`), and a reference made without
+ * that split (`…(e[a|b])`) still means the same neighbour.
+ */
 function overlap(a: readonly string[], b: readonly string[]): number {
-  const stems = (names: readonly string[]) => new Set(names.map((n) => parseFace(n).stem));
+  const stems = (names: readonly string[]) => new Set(names.map((n) => n.replace(SPLITS, '')));
   const sa = stems(a);
   const sb = stems(b);
   let shared = 0;

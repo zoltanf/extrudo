@@ -246,4 +246,11 @@ describe('fingerprints', () => {
     const moved = { ...top, at: [6, 5, 10] as [number, number, number], adj: ['left#2'] };
     expect(fingerprintScore(top, moved, 'face')).toBeGreaterThan(0.9);
   });
+
+  it('compares neighbours without split numbers inside their names too', () => {
+    const edge = fingerprintOf(d, names, 'edge', 0);
+    const stored = { ...edge, adj: ['fillet:f9:from:(e[left|top])', 'top'] };
+    const now = { ...edge, adj: ['fillet:f9:from:(e[left#1|top])', 'top#2'] };
+    expect(fingerprintScore(stored, now, 'edge')).toBeCloseTo(1);
+  });
 });
