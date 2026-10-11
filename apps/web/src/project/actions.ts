@@ -81,6 +81,9 @@ export async function importProject(
 /** What an `.f3d` file is picked as. */
 export const F3D_ACCEPT = '.f3d';
 
+/** The most a `.f3d` file may be before it is read (M1). */
+export const MAX_F3D_BYTES = 100 * 1024 * 1024;
+
 /**
  * Lets the user pick an `.f3d` file and imports it as a new
  * design; `undefined` if they cancel. The importer loads only now (its own
@@ -92,15 +95,19 @@ export async function importF3dFile(
 ): Promise<ProjectId | undefined> {
   const file = picked ?? (await platform.files.pick(F3D_ACCEPT));
   if (!file) return undefined;
+  // Reading and decoding run on the UI thread, so refuse a huge file first (M1).
+  if (file.size > MAX_F3D_BYTES)
+    throw new Error(
+      `This .f3d file is too large to import (the limit is ${MAX_F3D_BYTES / (1024 * 1024)} MB).`,
+    );
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const { f3dPreview, importF3d } = await import('@extrudo/f3d');
+  const { importF3d } = await import('@extrudo/f3d');
   const name = file.name.replace(/\.f3d$/i, '') || 'Imported design';
-  const { design, report } = importF3d(bytes, name, {
+  const { design, report, preview } = importF3d(bytes, name, {
     id: crypto.randomUUID(),
     appVersion: APP_VERSION,
   });
   const doc = design.toJSON();
-  const preview = f3dPreview(bytes);
   const id = await createProject(
     platform,
     doc,

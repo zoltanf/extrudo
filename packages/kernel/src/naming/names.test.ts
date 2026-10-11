@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { HistoryRecord } from '../history';
 import type { Vec3 } from '../kernel';
 import type { ShapeDescription } from './description';
-import { fingerprintOf, fingerprintScore } from './fingerprint';
+import { FINGERPRINT_THRESHOLD, fingerprintOf, fingerprintScore } from './fingerprint';
 import { deriveNames, nameSweep, positionalNames, propagateNames } from './names';
 
 /** Faces at the given centroids; edges between the listed faces; a vertex per edge end. */
@@ -252,5 +252,28 @@ describe('fingerprints', () => {
     const stored = { ...edge, adj: ['fillet:f9:from:(e[left|top])', 'top'] };
     const now = { ...edge, adj: ['fillet:f9:from:(e[left#1|top])', 'top#2'] };
     expect(fingerprintScore(stored, now, 'edge')).toBeCloseTo(1);
+  });
+
+  it('tells apart faces whose neighbours differ only by an inner split', () => {
+    // L3: `#n` inside a neighbour's name is stripped, so two candidates can
+    // share their neighbour set. The position, direction and size must still
+    // separate them; if these ever stopped doing so, the wrong face could win.
+    const stored = {
+      type: 'plane',
+      at: [5, 5, 10] as [number, number, number],
+      dir: [0, 0, 1] as [number, number, number],
+      size: 100,
+      adj: ['fillet:f9:from:(e[a#1|b])'],
+    };
+    const right = { ...stored, adj: ['fillet:f9:from:(e[a#2|b])'] };
+    const wrong = {
+      type: 'plane' as const,
+      at: [40, 0, 10] as [number, number, number],
+      dir: [1, 0, 0] as [number, number, number],
+      size: 4,
+      adj: ['fillet:f9:from:(e[a#2|b])'],
+    };
+    expect(fingerprintScore(stored, right, 'face')).toBeGreaterThan(0.9);
+    expect(fingerprintScore(stored, wrong, 'face')).toBeLessThan(FINGERPRINT_THRESHOLD);
   });
 });

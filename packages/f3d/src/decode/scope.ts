@@ -19,6 +19,11 @@
 import { F3dFormatError, Reader } from '../bytes';
 import type { Segment } from '../segment';
 
+/** The last bytes of a record that may hold its feature tail (M3). */
+const SCAN_WINDOW = 64 * 1024;
+/** The most name-like positions `tableEndingAt` is tried at (M3). */
+const MAX_CANDIDATES = 4096;
+
 export interface Scope {
   id: number;
   kind: string;
@@ -93,7 +98,14 @@ export function readScope(seg: Segment, id: number): Scope {
   const b = seg.bulk;
   // Scan backwards for `u32 L` + L UTF-16 letters preceded by a reference
   // table and a u32 state.
-  for (let p = f.end - 8; p >= f.start + 6; p--) {
+  //
+  // The record is untrusted, so bound the work (M3): the tail is written at
+  // the record's end, so only its last window is searched, and only so many
+  // name-like positions are tried. A crafted record full of lookalikes would
+  // otherwise call `tableEndingAt` (up to 1,026 tries) at every byte.
+  const from = Math.max(f.start + 6, f.end - SCAN_WINDOW);
+  let tried = 0;
+  for (let p = f.end - 8; p >= from; p--) {
     const n =
       (b[p] as number) |
       ((b[p + 1] as number) << 8) |
@@ -101,6 +113,7 @@ export function readScope(seg: Segment, id: number): Scope {
       ((b[p + 3] as number) << 24);
     if (n < 3 || n > 40 || p + 4 + 2 * n > f.end) continue;
     if (!isKindAt(b, p + 4, n)) continue;
+    if (++tried > MAX_CANDIDATES) break;
     const table = tableEndingAt(seg, f.start, p - 4);
     if (!table) continue;
     const r = new Reader(b, p - 4, f.end);

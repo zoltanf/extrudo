@@ -156,6 +156,7 @@ Regenerate the list with `pnpm licenses list --prod`.
     immer
     zod
     fflate
+    fzstd (Arjun Barrett)
     radix-ui and the @radix-ui/* primitives it re-exports (WorkOS), with
       @floating-ui/* (Floating UI contributors), aria-hidden,
       react-remove-scroll and its helpers, get-nonce, detect-node-es,

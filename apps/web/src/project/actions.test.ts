@@ -2,7 +2,7 @@ import { createDocument } from '@extrudo/core';
 import { memoryProjectStore, writeArchive } from '@extrudo/storage';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Platform } from '../platform';
-import { openExternalFile } from './actions';
+import { importF3dFile, MAX_F3D_BYTES, openExternalFile } from './actions';
 
 const fakePlatform = (projects: ReturnType<typeof memoryProjectStore>): Platform =>
   ({ projects }) as unknown as Platform;
@@ -50,5 +50,24 @@ describe('openExternalFile (P6-01 slice 2, finding 3)', () => {
     const stored = await projects.get(other.id);
     expect(stored?.linked?.external).toBe(true);
     expect(stored?.linked?.file).toBe('/models/B.extrudo');
+  });
+});
+
+describe('importF3dFile (M1)', () => {
+  it('refuses a file over 100 MB before reading it', async () => {
+    const projects = memoryProjectStore();
+    let read = false;
+    const file = {
+      name: 'huge.f3d',
+      size: MAX_F3D_BYTES + 1,
+      arrayBuffer: () => {
+        read = true;
+        return Promise.resolve(new ArrayBuffer(0));
+      },
+    } as unknown as File;
+    await expect(importF3dFile(fakePlatform(projects), file)).rejects.toThrow(
+      /too large to import/,
+    );
+    expect(read).toBe(false);
   });
 });

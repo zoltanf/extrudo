@@ -121,6 +121,42 @@ with a reference STEP) showed it is practical.
    folder of them when `F3D_SAMPLES` points at one. `map.test.ts` covers the
    mapper on hand-built decoded data.
 
+## Hostile files
+
+A `.f3d` is untrusted input, read on the UI thread, so the reader bounds its
+work and its memory (the security review of PR #7). The rules:
+
+- **The archive** (`archive.ts`): at most `MAX_ENTRIES` = 4096 entries; one
+  entry at most `MAX_ENTRY_BYTES` = 256 MB, and all entries together at most
+  `MAX_TOTAL_BYTES` = 512 MB. Both are checked from the central directory's
+  declared sizes **before** anything is inflated. Each entry inflates into a
+  buffer of its declared size (fflate's `out` option, fzstd's output buffer),
+  so a decompression bomb cannot allocate past it, and the **real** output —
+  never a header's claim — is counted against the total. Only the entries the
+  import reads are decompressed at all: the design streams (`MetaStream.dat`,
+  `BulkStream.dat`), the B-rep `.smb`/`.smbh` streams and the preview. Every
+  local header's name must match its central directory entry, and two central
+  entries may not point at one local header.
+- **The ASM B-rep stream** (`asm.ts`): every tag's value is bounds-checked
+  before it is read; a string length is refused when it is negative or runs
+  past the stream; a tag's reference count is refused when it exceeds the
+  values that are left.
+- **The design stream** (`decode/`): every count is read through `bytes.ts`'s
+  `Reader`, which refuses a list longer than the bytes that remain.
+- **The feature tail** (`decode/scope.ts`): the backward scan is bounded to
+  the record's last 64 kB and to `MAX_CANDIDATES` name-like positions.
+- **The app** (`apps/web/src/project/actions.ts`): a `.f3d` larger than 100 MB
+  is refused before it is read.
+- **The preview**: kept only when it starts with the 8-byte PNG signature and
+  is at most 1 MB; otherwise the design imports without a thumbnail.
+- Errors are worded for the person, e.g. "This .f3d file is too large to
+  import (an entry unpacks to more than 256 MB)."
+
+## Deferred
+
+- Decoding in a worker, so reading a large file does not block the UI thread
+  (the app caps the file at 100 MB for now, M1).
+
 ## Consequences
 
 - On the owner's 250 files every file decodes and maps to a valid design.

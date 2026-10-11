@@ -72,6 +72,8 @@ export interface ImportReport {
 export interface ImportResult {
   design: Design;
   report: ImportReport;
+  /** The file's preview PNG, when it has a usable one (only `importF3d` sets it). */
+  preview?: Uint8Array;
 }
 
 type ReadonlyVec3 = readonly [number, number, number];

@@ -15,11 +15,17 @@
  * `readF3d` decodes the design records into plain data, `f3dToDesign` maps
  * that onto `@extrudo/api`.
  */
-import { unzip } from './archive';
+import { previewBytes, unzip } from './archive';
 import type { ImportOptions, ImportResult } from './map';
 import { f3dToDesign } from './map';
-import { readF3d } from './model';
+import { readF3dEntries } from './model';
 
+export {
+  MAX_ENTRIES,
+  MAX_ENTRY_BYTES,
+  MAX_TOTAL_BYTES,
+  previewBytes,
+} from './archive';
 export { F3dFormatError } from './bytes';
 export { f3dToDesign, type ImportOptions, type ImportReport, type ImportResult } from './map';
 export {
@@ -31,18 +37,23 @@ export {
   readF3d,
 } from './model';
 
-/** Reads a `.f3d` file and builds the Extrudo design it describes. */
+/**
+ * Reads a `.f3d` file and builds the Extrudo design it describes. The preview
+ * PNG comes back from the entries this already unpacked, so a caller needs no
+ * second unzip (M2).
+ */
 export function importF3d(
   bytes: Uint8Array,
   name: string,
   options: ImportOptions = {},
 ): ImportResult {
-  return f3dToDesign(readF3d(bytes), name, options);
+  const entries = unzip(bytes);
+  const { design, report } = f3dToDesign(readF3dEntries(entries), name, options);
+  const preview = previewBytes(entries);
+  return { design, report, ...(preview ? { preview } : {}) };
 }
 
-/** The PNG preview stored in the file, if there is one. */
+/** The PNG preview stored in the file, if there is a usable one (L1). */
 export function f3dPreview(bytes: Uint8Array): Uint8Array | undefined {
-  for (const [name, content] of unzip(bytes))
-    if (name.endsWith('/Previews/small.png')) return content;
-  return undefined;
+  return previewBytes(unzip(bytes));
 }

@@ -265,7 +265,11 @@ function readPlacement(seg: Segment, id: number): Matrix {
 
 /** Reads every design segment of a `.f3d` file; the first is the design. */
 export function readF3d(bytes: Uint8Array): F3dDesign {
-  const entries = unzip(bytes);
+  return readF3dEntries(unzip(bytes));
+}
+
+/** Reads the design from an archive that is already unzipped. */
+export function readF3dEntries(entries: Entries): F3dDesign {
   const segments = designSegments(entries);
   const first = segments[0];
   if (!first) throw new F3dFormatError('No design in this file.');

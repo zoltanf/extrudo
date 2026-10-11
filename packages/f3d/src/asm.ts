@@ -43,12 +43,25 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let p = 15 + 32; // version, record count, entity count, flags
   const i64 = (at: number) => Number(view.getBigInt64(at, true));
+  // Every read below goes through this: a crafted stream must not read past
+  // its own end (the ASM reader is given untrusted file bytes).
+  const need = (n: number): void => {
+    if (n < 0 || p + n > bytes.length)
+      throw new F3dFormatError(`ASM: read past the end at ${p} (+${n}, end ${bytes.length}).`);
+  };
   // Header: product, kernel and date strings, then three doubles.
   for (let n = 0; n < 6; n++) {
+    need(1);
     const t = bytes[p++];
-    if (t === 0x07) p += 1 + (bytes[p] as number);
-    else if (t === 0x06) p += 8;
-    else throw new F3dFormatError(`ASM header: tag ${t} at ${p - 1}.`);
+    if (t === 0x07) {
+      need(1);
+      const len = bytes[p] as number;
+      need(1 + len);
+      p += 1 + len;
+    } else if (t === 0x06) {
+      need(8);
+      p += 8;
+    } else throw new F3dFormatError(`ASM header: tag ${t} at ${p - 1}.`);
   }
   const records: AsmRecord[] = [];
   let values: AsmValue[] = [];
@@ -60,7 +73,9 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
     switch (t) {
       case 0x0d:
       case 0x0e: {
+        need(1);
         const n = bytes[p] as number;
+        need(1 + n);
         names.push(str(n, p + 1));
         p += 1 + n;
         if (t === 0x0d) {
@@ -78,19 +93,23 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
       case 0x04:
       case 0x15:
       case 0x17:
+        need(8);
         values.push({ t: 'int', v: i64(p) });
         p += 8;
         break;
       case 0x0c:
+        need(8);
         values.push({ t: 'ptr', v: i64(p) });
         p += 8;
         break;
       case 0x06:
+        need(8);
         values.push({ t: 'dbl', v: view.getFloat64(p, true) });
         p += 8;
         break;
       case 0x13:
       case 0x14:
+        need(24);
         values.push({
           t: 'vec',
           v: [
@@ -102,24 +121,34 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
         p += 24;
         break;
       case 0x16:
+        need(16);
         values.push({ t: 'uv', v: [view.getFloat64(p, true), view.getFloat64(p + 8, true)] });
         p += 16;
         break;
       case 0x07: {
+        need(1);
         const n = bytes[p] as number;
+        need(1 + n);
         values.push({ t: 'str', v: str(n, p + 1) });
         p += 1 + n;
         break;
       }
       case 0x08: {
+        need(2);
         const n = view.getUint16(p, true);
+        need(2 + n);
         values.push({ t: 'str', v: str(n, p + 2) });
         p += 2 + n;
         break;
       }
       case 0x09:
       case 0x12: {
+        need(8);
         const n = i64(p);
+        // A negative length would walk the cursor backwards and loop forever
+        // on the same tag; a length past the end reads junk.
+        if (n < 0 || 8 + n > bytes.length - p)
+          throw new F3dFormatError(`ASM: string length ${n} at ${p} is out of bounds.`);
         values.push({ t: 'str', v: str(n, p + 8) });
         p += 8 + n;
         break;
@@ -137,14 +166,17 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
         values.push({ t: 'close' });
         break;
       case 0x05:
+        need(4);
         values.push({ t: 'dbl', v: view.getFloat32(p, true) });
         p += 4;
         break;
       case 0x03:
+        need(2);
         values.push({ t: 'int', v: view.getInt16(p, true) });
         p += 2;
         break;
       case 0x02:
+        need(1);
         values.push({ t: 'int', v: bytes[p] as number });
         p += 1;
         break;
@@ -231,6 +263,10 @@ function tagsOf(r: AsmRecord): { token: string; design: number }[] {
     if (tok?.t !== 'str') break;
     int(); // 0
     const n = int();
+    // The count is untrusted: each reference is one value, so more than the
+    // values that are left would push NaN entries past the end (H2).
+    if (!Number.isFinite(n) || n < 0 || n > v.length - i)
+      throw new F3dFormatError(`ASM tag: ${n} references at ${i} of ${v.length}.`);
     for (let k = 0; k < n; k++) out.push({ token: tok.v, design: int() });
     if (v[i]?.t === 'int' && (v[i] as { v: number }).v === 0 && v[i + 1]?.t !== 'str') i++;
   }
