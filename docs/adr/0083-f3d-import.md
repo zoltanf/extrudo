@@ -503,7 +503,7 @@ Not done: an edge on an earlier round that failed is still lost where it is
 not part of a chain (the kernel fails the whole feature on one lost edge,
 and the importer can't know which rounds the kernel will refuse); a chamfer
 or fillet that consumes a whole face, which the file allows and the kernel
-refuses ("too large", max a hair under the face's width: two towel holders
+refuses ("too large", max a hair under the face's width: two holders
 now fail there instead of bevelling the wrong face); rounds on edges whose
 faces belong to features not imported (regions not found, sweeps).
 
@@ -513,7 +513,7 @@ different geometry 57, no body 8, crash 0, no reference 7 — from 118, 8, 48,
 61, 8, 0, 7 with the import before this amendment. Four designs match that did
 not; references whose pick lies on the file's edge rose (by name 3,732 →
 3,843 before item 4) and picks off it fell (by name 118 → 57). Worse: the two
-towel holders above, a box insert whose fillet now rounds all four of the
+holders above, a case whose fillet now rounds all four of the
 file's edges (3.3 % → 4.2 % volume error) and a toy whose rounds already failed
-(0.1 % → 0.2 %); a power station's chamfer no longer picks four edges 5 mm
+(0.1 % → 0.2 %); a stand's chamfer no longer picks four edges 5 mm
 off by fingerprint, and its volume error went from 0.04 % to 0.25 %.
