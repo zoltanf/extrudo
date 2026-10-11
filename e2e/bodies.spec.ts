@@ -470,6 +470,24 @@ test('a ghost body is stored, drawn grey and takes no part in picking', async ({
   await expect(bodyLeaf(page, 'Lid')).toHaveAttribute('data-body-display', 'ghost');
 });
 
+// R3-06 (the owner's UI review 3): a ghost has no edge lines, and a soft halo round its
+// outline instead. The baseline comes from the Playwright Ubuntu image, which renders like CI.
+test('a ghost body looks right: no edge lines, a soft halo (R3-06)', async ({ page }) => {
+  const viewport = await openProject(page, 'wall-bracket');
+  await kernelReady(page);
+  await expect(viewport).toHaveAttribute('data-bodies', 'Bracket:12:40,80,60');
+  await browserOf(page).getByRole('button', { name: 'Show as ghost Bracket' }).click();
+  await expect(viewport).toHaveAttribute('data-ghost-bodies', 'Bracket');
+  await browserOf(page).getByRole('button', { name: 'Hide Bracket' }).blur();
+  await page.keyboard.press('Shift+1');
+  await still(viewport);
+  await page.mouse.move(0, 0);
+  await expect(viewport).toHaveScreenshot('ghost-body.png', {
+    animations: 'disabled',
+    caret: 'hide',
+  });
+});
+
 test('Ctrl+Z steps the display state back one at a time', async ({ page }) => {
   const viewport = await openProject(page, 'wall-bracket');
   await kernelReady(page);

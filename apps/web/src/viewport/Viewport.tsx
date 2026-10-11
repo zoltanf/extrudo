@@ -1015,7 +1015,6 @@ function Scene({
         bodies={bodies}
         meta={meta}
         color={colors.ghostBody}
-        edge={colors.edge}
         {...(posed && { posed })}
         {...(sectionClip && { section: { clips: sectionClip } })}
       />

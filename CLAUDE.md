@@ -305,7 +305,10 @@ and hidden-edge styles draw silhouettes of curved faces
 bodies**: `BodyMeta.ghost` (stored only as `true`, only with `visible: false`;
 `updateBody` keeps the pair, `bodyDisplay` names shown/ghost/hidden) draws a
 body as a vague grey shape at 30 % opacity through a separate `GhostBodies`
-component that takes no part in picking, Fit or any analysis; the browser
+component that takes no part in picking, Fit or any analysis — **no edge lines, a soft
+halo** round its outline since R3-06 (`viewport/ghostHalo.ts`: three back-face shells
+pushed out 2, 4 and 7 CSS px along welded normals in clip space, drawn only where the
+ghost's faces didn't set stencil bit 0x80; baseline `e2e/bodies.spec.ts-snapshots/ghost-body`); the browser
 row's eye cycles shown → ghost → hidden (`EyeDashed`), `data-ghost-bodies`
 names the ghosts, and the body and marking menus offer the states a body is
 not in. ADR-0031 (P2-09) added sketches on flat
