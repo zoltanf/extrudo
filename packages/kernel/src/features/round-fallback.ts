@@ -6,8 +6,8 @@
  * already probed each chain alone (that is how it names the largest radius that
  * works), so a `too-large`/`unfilletable` failure names its failing chain.
  *
- * When the rebuild fails, or more than half of the feature's edges would be
- * left out, the feature fails exactly as on main (the original error). There is
+ * When the rebuild fails, or more than a third of the feature's edges would be
+ * left out, the feature fails with the original error. There is
  * no greedy one-by-one pass: leaving out most of a round is not better than
  * failing it.
  *
@@ -53,7 +53,7 @@ export function buildRound<P extends { index: number }, R>(
       options.warn(leftOutWarning(dropped, picks.length, options.feature, options.reason(error)));
       return result;
     } catch {
-      // The rest can't all be built either: fail as on main.
+      // The rest can't all be built either: fail with the original error.
       throw error;
     }
   }
