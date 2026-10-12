@@ -13,5 +13,7 @@ Stop recording and see the code for what you made.
 |---|---|
 | Solid › Program | None |
 
+<video src="demo:stopMacro" muted loop autoplay playsinline aria-label="Stop Macro demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

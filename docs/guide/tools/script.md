@@ -13,5 +13,7 @@ Make features with TypeScript or JavaScript, using the design’s parameters.
 |---|---|
 | Solid › Program | None |
 
+<video src="demo:script" muted loop autoplay playsinline aria-label="Script demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

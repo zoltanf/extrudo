@@ -968,13 +968,22 @@ under a new ID with its checked-in `home/templates/*.png` as thumbnail).
 `public/demos/<toolId>.webm`, rendered only while the tooltip is open, a still
 under reduced motion, removed on a load error); **demos are not precached**
 (`SKIPPED` in `precache-plugin.ts`, and `sw.js` leaves `/demos/` to the
-network); `DEMO_TOOLS` in `demos.ts` lists the thirteen that have one and
-`demos.test.ts` checks it against the files (150 kB each). **`pnpm demos`**
+network); `DEMO_TOOLS` in `demos.ts` lists the tools that have one (every Solid
+tile since the owner's UI review 3, R3-16;
+`WHOLE_TABS` in `demos.test.ts` checks it per tab) and `demos.test.ts` checks it against the files (150 kB each). **`pnpm demos`**
 (`scripts/record-demos.mjs` → `e2e/record-assets.spec.ts`, which skips itself
-without `RECORD_ASSETS=1`) records the clips and the template pictures through
+without `RECORD_ASSETS=1`; `-g "demo: extrude$"` records one) records the clips and the template pictures through
 the real app: a screenshot loop (`e2e/demo-recorder.ts`) piped into Playwright's
 own ffmpeg (`playwright install ffmpeg`: MJPEG in, VP8 out, `crop`/`scale`
-filters), a drawn cursor in the page.
+filters), a drawn cursor in the page. **A clip is framed round the action**
+(ADR-0052's amendment of 2026-10-11): a 400 × 250 px region (`FRAME`) that
+`frameWorld` zooms the geometry into and pans clear of the browser, toolbar and dialog
+(`safeArea`), no chrome and no text the clip depends on; each scene imports its small
+design from `fixtures/demos/<tool>.extrudo` (written through `@extrudo/api` by
+`packages/cli/src/demo-designs.test.ts`, `WRITE_FIXTURES=1`), pans with the nav bar's
+Pan tool and a left drag (a right drag opens the marking menu), and is encoded again
+at a lower bitrate when it is over 140 kB (200 kbit/s first, which keeps every clip within the 2 MB total). Look at three frames of every clip at 236 px before
+committing it.
 ADR-0054 (P3-15) prepared the public release: **hosting is Cloudflare Pages**,
 deployed by `.github/workflows/deploy.yml` (after CI succeeds on main; skips
 cleanly without the secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`;

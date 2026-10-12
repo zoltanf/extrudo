@@ -72,9 +72,14 @@ export const CURSOR_SCRIPT = `
 })();
 `;
 
-/** Keeps what isn't part of a demo out of the frame: the onboarding hint and card. */
+/**
+ * Keeps what isn't part of a demo out of the frame: the onboarding card, and the status bar's
+ * render rate and kernel timing, which change every frame (made transparent, not hidden: the
+ * recorder waits on the kernel's status through the accessibility tree).
+ */
 export const DEMO_STYLE = `
 [aria-label="Tutorial"], [data-tutorial-ring] { display: none !important; }
+[data-render-stats], [data-renderer], output[aria-label="Kernel"] { color: transparent !important; }
 `;
 
 export interface Clip {
@@ -123,18 +128,40 @@ export class Recorder {
     await this.#loop;
   }
 
-  /** The frames at a constant rate: each slot gets the latest frame taken by then, and the last one is held. */
-  resample(holdMs = 600): Buffer[] {
+  /**
+   * The frames at a constant rate: each slot gets the latest frame taken by then, and the last
+   * one is held. A run of identical frames (nothing moved: the kernel computing, a dialog
+   * opening out of frame) lasts at most `stillMs` of the clip, so a tooltip's loop shows the
+   * action and not the waiting.
+   */
+  resample(holdMs = 600, stillMs = 400): Buffer[] {
     const first = this.frames[0];
     const last = this.frames.at(-1);
     if (!first || !last) throw new Error('nothing was recorded');
+    // The clip's own clock: real time, except inside a run of identical frames.
+    const times: number[] = [0];
+    let still = 0;
+    for (let i = 1; i < this.frames.length; i++) {
+      const frame = this.frames[i] as Frame;
+      const previous = this.frames[i - 1] as Frame;
+      const dt = frame.at - previous.at;
+      if (frame.jpeg.equals(previous.jpeg)) {
+        const step = Math.max(0, Math.min(dt, stillMs - still));
+        still += dt;
+        times.push((times[i - 1] as number) + step);
+      } else {
+        still = 0;
+        times.push((times[i - 1] as number) + dt);
+      }
+    }
     const step = 1000 / FPS;
-    const count = Math.floor((last.at - first.at) / step) + 1;
+    const end = times.at(-1) as number;
+    const count = Math.floor(end / step) + 1;
     const out: Buffer[] = [];
     let cursor = 0;
     for (let k = 0; k < count; k++) {
-      const t = first.at + k * step;
-      while (this.frames[cursor + 1] && (this.frames[cursor + 1] as Frame).at <= t) cursor++;
+      const t = k * step;
+      while (cursor + 1 < times.length && (times[cursor + 1] as number) <= t) cursor++;
       out.push((this.frames[cursor] as Frame).jpeg);
     }
     for (let k = 0; k < Math.round((holdMs / 1000) * FPS); k++) out.push(last.jpeg);

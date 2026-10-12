@@ -13,5 +13,7 @@ Move profiles along a path of sketch curves or edges, with an optional twist and
 |---|---|
 | Solid › Create | None |
 
+<video src="demo:sweep" muted loop autoplay playsinline aria-label="Sweep demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

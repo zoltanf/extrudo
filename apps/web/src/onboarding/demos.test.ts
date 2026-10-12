@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { TOOLS } from '../shell/tools';
+import { TABS, TOOLS } from '../shell/tools';
 import { DEMO_TOOLS, demoUrl } from './demos';
 import { ToolDemo } from './ToolDemo';
 
@@ -30,6 +30,9 @@ const WANTED = [
   'rectangularPattern',
 ];
 
+/** The owner's UI review 3 (R3-16): every tile of these tabs has a clip. */
+const WHOLE_TABS = ['solid'];
+
 describe('tool demos', () => {
   it('lists exactly the clips on disk, each for a real tool', () => {
     expect([...DEMO_TOOLS].sort()).toEqual(names);
@@ -38,6 +41,18 @@ describe('tool demos', () => {
 
   it('has a clip for the most used tools', () => {
     expect(WANTED.filter((id) => !DEMO_TOOLS.includes(id))).toEqual([]);
+  });
+
+  it('has a clip for every tile of the tabs whose batch is recorded', () => {
+    for (const tab of WHOLE_TABS) {
+      const groups = TABS.find((t) => t.id === tab)?.groups ?? [];
+      expect(groups.length).toBeGreaterThan(0);
+      const tiles = groups.flatMap((group) => group.tools);
+      expect({ tab, missing: tiles.filter((id) => !DEMO_TOOLS.includes(id)) }).toEqual({
+        tab,
+        missing: [],
+      });
+    }
   });
 
   it('keeps every clip small enough for a tooltip', async () => {

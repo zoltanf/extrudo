@@ -13,5 +13,7 @@ A box on a plane or a flat face, from its length, width and height.
 |---|---|
 | Solid › Primitives | None |
 
+<video src="demo:box" muted loop autoplay playsinline aria-label="Box demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

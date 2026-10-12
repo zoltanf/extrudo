@@ -13,5 +13,7 @@ A solid through profiles on different planes, in order; a point can start or end
 |---|---|
 | Solid › Create | None |
 
+<video src="demo:loft" muted loop autoplay playsinline aria-label="Loft demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

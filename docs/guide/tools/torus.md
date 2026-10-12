@@ -13,5 +13,7 @@ A ring centred on a plane or a flat face, from its diameter and tube diameter.
 |---|---|
 | Solid › Primitives | None |
 
+<video src="demo:torus" muted loop autoplay playsinline aria-label="Torus demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

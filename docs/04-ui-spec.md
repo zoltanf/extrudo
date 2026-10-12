@@ -804,10 +804,12 @@ per-field Reset when they differ from the default.
   extrude, a fillet, chamfer or shell; so it follows any route, undo steps it
   back, and at the end the card says "You made a box".
 - **Every tool tooltip** (toolbar tiles and the constraint icons): name,
-  shortcut, one sentence and, for the most used tools, a looping demo of 3 to 4
-  seconds (WebM, 480 × 300, 20 to 60 kB) that loads only when the tooltip
-  opens. Create Sketch, Line, Rectangle, Circle, Dimension, Extrude, Revolve,
-  Fillet, Shell, Hole, Press Pull and Rectangular Pattern have one. With
+  shortcut, one sentence and a looping demo of 2 to 10 seconds (WebM,
+  480 × 300, under 150 kB) that loads only when the tooltip opens. Every tile of
+  the Solid tab has one (the owner's UI review 3, R3-16), as do Line,
+  Rectangle, Circle, Dimension, Fillet, Chamfer, Shell and Press Pull. A clip
+  is framed round the action, so the pick, the handle and the geometry it
+  changes fill the tooltip's 236 px; it shows no toolbar and needs no text. With
   reduced motion the clip doesn't play (its first frame is a still); offline,
   or if the file is missing, the tooltip has its words alone. A toolbar tile's
   tooltip ends with a muted "F1 for more" line (plain text: a tooltip holds no

@@ -13,5 +13,7 @@ Copies of bodies, or repeats of features, along sketch curves or edges.
 |---|---|
 | Solid › Pattern | None |
 
+<video src="demo:pathPattern" muted loop autoplay playsinline aria-label="Path Pattern demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

@@ -205,3 +205,43 @@ that an empty design shows no hint, `e2e/tutorial.spec.ts` and `e2e/a11y.spec.ts
 expect it). §3 above describes what it was. The tutorial, the home card and the tooltip demos
 stay; a hint may come back as part of a later tutorial. The open item about "the hint's
 arrow" no longer applies.
+
+## Amendment (2026-10-11): a clip for every Solid tile, framed for the tooltip
+
+The owner's UI review 3 (R3-16, decision 4): "let's do a first batch, and yes, I would re-record
+everything. Please make sure when recording that the important part is visible in the tooltip."
+The first batch is every tile of the Solid and Modify tabs plus the thirteen clips above,
+re-recorded in the current UI; Construct, 3D Print and the Sketch tab follow later. It comes in
+two pull requests: **Solid** (this part: 21 tiles, 16 of them new) and then **Modify** with the
+four sketch clips.
+
+- **The frame is the action, not the window.** A clip is a 400 × 250 px region of the page
+  (`FRAME`), scaled to the 480 × 300 file, which the tooltip shows 236 px wide. The scenes
+  zoom the view until the geometry fills about 70 % of the frame (`frameWorld`), pan it clear of
+  the browser, the toolbar and the open dialog (`safeArea`), and keep the pointer, the pick and
+  the handle inside. No chrome is in the frame, except where the result lives there:
+  New Component's clip shows the browser's rows, because the tool's outcome is the component
+  in the browser, and Record Macro's shows the status bar's red dot. No clip depends on text.
+- **Each scene starts from a small design**, `fixtures/demos/<tool>.extrudo`. They are written
+  through `@extrudo/api` by `packages/cli/src/demo-designs.test.ts`, which recomputes each one
+  headless and checks the files match the code (`WRITE_FIXTURES=1` rewrites them). The scene
+  imports its file from the home screen, so it never draws its own setup on camera.
+- **Panning uses the nav bar's Pan tool and a left drag.** A right-button drag opens the
+  marking menu, because Chromium on Linux fires `contextmenu` when the button goes down.
+- **Still stretches are cut short.** `Recorder.resample` advances a run of byte-identical
+  frames by at most 400 ms, so waiting on the kernel doesn't show as a frozen clip. The
+  status bar's render rate and kernel state are drawn transparent (`DEMO_STYLE`), because
+  their changing text would make every frame differ.
+- **The size budgets hold while recording.** Clips are encoded at 200 kbit/s, which at the
+  tooltip's 236 px looks the same as the 600 kbit/s the first clips had. That keeps 37 clips
+  under the 2 MB total `demos.test.ts` asks for. A clip over 140 kB is encoded again at
+  150 kbit/s, then 110 kbit/s, and the scene fails if it is still over. (Raising the CRF barely
+  changed the size: VP8's rate control held the bitrate.) `demos.test.ts` keeps 150 kB a clip,
+  and it checks that every tile of each tab whose batch is recorded (`WHOLE_TABS`) has a clip.
+
+Rejected:
+- Recording the whole work area and cropping it later: a pick or a handle is a few pixels
+  at 236 px.
+- Drawing each scene's setup on camera: it doubles every clip's length for what isn't the
+  tool.
+- Shortening long clips by speeding them up: a drag at double speed reads as a jump.

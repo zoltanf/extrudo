@@ -13,5 +13,7 @@ Gather the selected bodies into a named component, to show, hide and export as o
 |---|---|
 | Solid › Component | None |
 
+<video src="demo:newComponent" muted loop autoplay playsinline aria-label="New Component demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

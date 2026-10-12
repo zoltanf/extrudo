@@ -13,5 +13,7 @@ A cylinder on a plane or a flat face, from its diameter and height.
 |---|---|
 | Solid › Primitives | None |
 
+<video src="demo:cylinder" muted loop autoplay playsinline aria-label="Cylinder demo"></video>
+
 <!-- notes -->
 <!-- /notes -->
