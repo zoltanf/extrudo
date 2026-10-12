@@ -380,7 +380,8 @@ through the same save-then-quit handler.
 **External-file links.** A project opened from a path (Open…, the association,
 Open Recent) or Save-As'd is linked with `LinkedFile.external: true` and
 `file` an absolute path — the project index only, no document or file-format
-change. Main records every path it issued this session (`deliverOpen`,
+change. Main records every path it issued (`deliverOpen`, kept across restarts
+since the 2026-10-12 amendment,
 `savedFile`) and `file:write-path`/`file:stat-path`/`file:read-path` refuse any
 other with a `StorageError`, so a compromised renderer still reads and writes
 nothing it wasn't handed. `linkedFolder.ts` dispatches an `external` link to
@@ -777,3 +778,25 @@ The first run on the macOS runner also showed that the top-level
 entry), where the cask's `app "Extrudo.app"`, the docs and Finder expect
 `Extrudo.app`; `mac.executableName: Extrudo` fixes that for macOS only (Linux
 keeps `extrudo`).
+
+### Amendment, 2026-10-12: issued paths outlive the session
+
+v0.6.0 on Linux showed "Extrudo was not asked to open that file." on every
+autosave of a design opened from a file: the project keeps its external link
+across restarts (the index), but main's set of issued paths was the session's
+alone, so a project reopened from the home screen after a restart (or an update's
+relaunch) had every write-back refused, and each refusal was a new toast.
+
+- Main keeps the issued paths in `userData/external-paths.json`
+  (`createExternalPaths(file)`, newest last, at most `MAX_EXTERNAL_PATHS` = 500,
+  written atomically). Only `issue` writes it, and `issue` is still called only
+  where main chose the path, so the renderer still can't name one; a damaged file
+  reads as empty.
+- At start main issues every path in its own recent list (`recent.json`, also
+  written only by main), which covers the links made before the file existed.
+- `linkedFolder.ts` says a write-back error once and again only after a write
+  gets through, so a failure that repeats on every save is one toast.
+
+Rejected: dropping the check for `external` links (the renderer would name any
+path again), and re-issuing a path when the renderer reopens a project (the
+renderer would be the one naming it).

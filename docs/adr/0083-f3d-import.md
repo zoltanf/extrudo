@@ -616,6 +616,20 @@ Next: measure the weak-edge rule relaxed for imported rounds (keep guessed
 and chain-continuing edges, let `skipLostEdges` drop the lost ones), against
 the wrong picks it lets in.
 
+## Amendment, 2026-10-12: the active design segment
+
+A `.f3d` file can carry more than one design segment: the active design sits under the asset
+folder marked `[Active]`, while an `Animation/` or `Simulation …/` asset holds a design
+segment of its own. `readF3dEntries` used `designSegments(entries)[0]`, sorted by folder name,
+so a file whose animated asset sorted first read an empty timeline and imported nothing. It
+now takes the segment under the `[Active]` folder and falls back to the first when no folder
+is marked that way (`activeDesignSegment` in `model.ts`).
+
+Corpus (250 files): no bodies 8 → 7, mismatch 56 → 57, every other verdict unchanged; matches
+do not move. Both files that carry more than one segment now read their real design — one
+imports bodies it had none of, the other reads its real design, which is direct-modelled and
+so not built by the feature replay.
+
 ## Amendment 2026-10-12 (the imported rounds build what they can)
 
 The import sets `skipLostEdges` on every fillet and chamfer it writes

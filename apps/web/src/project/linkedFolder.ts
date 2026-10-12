@@ -87,6 +87,11 @@ export function createLinkedProject(ctx: LinkedContext): LinkedProject {
   /** The file that changed on disk, and what was on it: what a conflict toast answers. */
   let conflict: { file: string; onDisk: number } | undefined;
   /**
+   * The error last said, so a write-back that keeps failing (every autosave
+   * tries again) says it once, not a toast per save; a written file clears it.
+   */
+  let lastError: string | undefined;
+  /**
    * The link is in the project index, not the document (ADR-0065 §3), so it is
    * read when the project opens. A write waits for it: the first autosave must
    * not be the one that finds no link and does nothing.
@@ -163,7 +168,10 @@ export function createLinkedProject(ctx: LinkedContext): LinkedProject {
         ],
       });
     } else if (outcome.kind === 'error') {
-      ctx.notify('error', outcome.message);
+      if (outcome.message !== lastError) ctx.notify('error', outcome.message);
+      lastError = outcome.message;
+    } else if (outcome.kind === 'written') {
+      lastError = undefined;
     }
     return outcome;
   }

@@ -187,6 +187,26 @@ describe('a linked project (P4-09, ADR-0065 §3)', () => {
       text: 'Extrudo may not write to Designs yet. Reconnect it on the home screen.',
     });
   });
+
+  it('says a write-back that keeps failing once, until a write gets through', async () => {
+    const t = await setup();
+    await t.project.linkNow();
+    t.folder.setPermission('prompt');
+    const errors = () => t.notifications.filter((n) => n.tone === 'error').length;
+    for (let save = 0; save < 3; save++) {
+      t.passThrottle();
+      await t.project.afterSave();
+    }
+    expect(errors()).toBe(1);
+    // A write that works clears it, so the next failure is said again.
+    t.folder.setPermission('granted');
+    t.passThrottle();
+    await t.project.afterSave();
+    t.folder.setPermission('prompt');
+    t.passThrottle();
+    await t.project.afterSave();
+    expect(errors()).toBe(2);
+  });
 });
 
 describe('an external-linked project (P6-01 slice 2, finding 3)', () => {

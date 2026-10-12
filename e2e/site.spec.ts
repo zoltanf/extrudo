@@ -419,7 +419,7 @@ test('the features page lists what Extrudo does and the formats it reads and wri
   await expect(row('STEP').getByRole('cell').nth(0)).toContainText('Yes: Exact solid bodies');
   await expect(row('OBJ').getByRole('cell').nth(1)).toHaveText(/^\s*–\s*No\s*$/);
   await expect(row('TypeScript').getByRole('cell').nth(0)).toHaveText(/^\s*–\s*No\s*$/);
-  await expect(row('f3d design')).toContainText('Latest build');
+  await expect(row('f3d design').getByRole('cell').nth(0)).toContainText('Yes: A new design');
   // Its frame scrolls on a phone, so it takes the keyboard's focus.
   await expect(
     page.getByRole('region', { name: 'File formats Extrudo imports and exports' }),

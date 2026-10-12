@@ -2,7 +2,12 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
-## Next
+## v0.6.1 (2026-10-12)
+
+- 2026-10-12 · **Import .f3d: the active design segment** (ADR-0083's amendment): a file that carries more than one design segment (an animated or simulated asset beside the model) now reads the segment under the `[Active]` folder instead of whichever sorted first, so an empty animation timeline no longer hides the design; on the 250-file corpus no bodies 8 → 7 and mismatch 56 → 57, matches unchanged.
+- 2026-10-12 · **Desktop: a design opened from a file saves back to it after a restart** (ADR-0075's amendment): main keeps the paths it handed out in `userData/external-paths.json` and takes in its recent list at start, so a project reopened from the home screen after a restart or an update no longer has every write-back refused with "Extrudo was not asked to open that file."; a write-back error that repeats on every save is said once.
+
+## v0.6.0 (2026-10-12)
 
 - 2026-10-12 · **Fillets and chamfers built from the chains that work** (ADR-0038's and ADR-0043's amendments, ADR-0083's): with `skipLostEdges` on (the .f3d import sets it on every round), a round one of whose tangent chains is too large now keeps the edges that build and warns "2 of 9 edges left out of the fillet: Radius 3 mm is too large for edge 12 (max ≈ 1.2 mm). Use Fix References…" instead of failing whole; it leaves out at most a third of the edges, and without the input or past that bound it fails as before. On the 250-file corpus 127 designs match (was 123), with no design's verdict worse.
 - 2026-10-12 · **UI review 3, slice I (2 of 2): a tooltip clip for every Modify tile** (R3-16; ADR-0052's amendment): the twelve Modify tiles (Press Pull, Fillet, Chamfer, Shell, Offset Face, Draft, Thread, Move, Mirror, Combine, Split Body, Scale) get clips and Line, Rectangle, Circle and Dimension are re-recorded, so all 37 clips are in the current UI and framed for the tooltip's 236 px; clips are encoded at 200 kbit/s, which looks the same at that size and keeps all of them under 2 MB; `e2e/onboarding.spec.ts` checks that the Dimension clip loads and plays in a sketch in the light theme.

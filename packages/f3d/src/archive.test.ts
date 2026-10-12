@@ -8,6 +8,7 @@ import { deflateSync, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { MAX_ENTRIES, MAX_ENTRY_BYTES, MAX_TOTAL_BYTES, previewBytes, unzip } from './archive';
 import { f3dPreview, importF3d } from './index';
+import { readF3dEntries } from './model';
 
 const enc = new TextEncoder();
 const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
@@ -185,6 +186,28 @@ describe('unzip limits (H3)', () => {
     ]);
     const entries = unzip(bytes);
     expect([...entries.keys()]).toEqual([META]);
+  });
+});
+
+describe('active design segment', () => {
+  it('reads the [Active] design, not an Animation segment', () => {
+    const entries = new Map<string, Uint8Array>([
+      // The Animation asset's own segment sorts first; its stream is not a
+      // design, so reading it would throw.
+      ['Animation/Design1/MetaStream.dat', new Uint8Array([1, 2, 3])],
+      ['Animation/Design1/BulkStream.dat', new Uint8Array(0)],
+      ['Asset[Active]/Design1/MetaStream.dat', metaStream()],
+      ['Asset[Active]/Design1/BulkStream.dat', new Uint8Array(0)],
+    ]);
+    expect(readF3dEntries(entries).features).toEqual([]);
+  });
+
+  it('reads the only segment when no folder is marked active', () => {
+    const entries = new Map<string, Uint8Array>([
+      ['Asset/Design1/MetaStream.dat', metaStream()],
+      ['Asset/Design1/BulkStream.dat', new Uint8Array(0)],
+    ]);
+    expect(readF3dEntries(entries).features).toEqual([]);
   });
 });
 

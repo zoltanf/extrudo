@@ -80,9 +80,12 @@ function main(): void {
   const recent = createRecentFile(join(userData, 'recent.json'));
   const slicers = nodeSlicerService(app.getPath('temp'), () => preferences.read()['slicers.paths']);
   const openQueue = createOpenQueue();
-  // The paths main itself chose this session (deliverOpen, Save As…): the only
-  // ones the renderer may read or write back through `file:*path` (finding 3).
-  const paths = createExternalPaths();
+  // The paths main itself chose (deliverOpen, Save As…), kept across restarts
+  // as the projects keep their links: the only ones the renderer may read or
+  // write back through `file:*path` (finding 3). The recent list's paths are
+  // ones main opened too, which covers links made before the file was kept.
+  const paths = createExternalPaths(join(userData, 'external-paths.json'));
+  for (const entry of recent.list()) if (!paths.issued(entry.path)) paths.issue(entry.path);
   const externalFiles = createExternalFiles(paths);
 
   let window: BrowserWindow | null = null;

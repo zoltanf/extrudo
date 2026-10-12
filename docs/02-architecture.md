@@ -783,4 +783,4 @@ bundle-size budget. Every agent task must leave CI green.
 This list stops at ADR-0032. Every later record (ADR-0033 onwards: timeline
 v2, export, measuring, versions, the Phase 3 and 4 features, hosting,
 hardening, the document API) is in `docs/adr/`, with a one-line summary
-each in `CLAUDE.md`'s "Read first" table.
+each in `CLAUDE.md`'s "Where things are documented" table.
