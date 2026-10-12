@@ -13,5 +13,7 @@ Move or turn bodies with the gizmo, about an axis or point to point. Copy keeps 
 |---|---|
 | Modify › Transform | M |
 
+<video src="demo:move" muted loop autoplay playsinline aria-label="Move/Copy demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

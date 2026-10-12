@@ -13,5 +13,7 @@ Join, cut or intersect a target body with tool bodies.
 |---|---|
 | Modify › Transform | None |
 
+<video src="demo:combine" muted loop autoplay playsinline aria-label="Combine demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

@@ -4,12 +4,6 @@ Reference for concepts: the public help of established desktop CAD tools. Use
 it to understand *behaviour* only. Never copy their icons, images, text or
 branding.
 
-**Changes decided, not built yet (2026-10-11):** the owner's UI review 3 changes
-the tooltip clips. The items are in
-[`plans/ui-review-2026-10-11.md`](plans/ui-review-2026-10-11.md); this spec
-still describes the app as it is, and each slice updates the sections it
-changes.
-
 ## 1. Design language
 
 The full visual system (logo, colour tokens, type, radius, motion, icon
@@ -806,8 +800,9 @@ per-field Reset when they differ from the default.
 - **Every tool tooltip** (toolbar tiles and the constraint icons): name,
   shortcut, one sentence and a looping demo of 2 to 10 seconds (WebM,
   480 × 300, under 150 kB) that loads only when the tooltip opens. Every tile of
-  the Solid tab has one (the owner's UI review 3, R3-16), as do Line,
-  Rectangle, Circle, Dimension, Fillet, Chamfer, Shell and Press Pull. A clip
+  the Solid and Modify tabs has one (the owner's UI review 3, R3-16), as do
+  Line, Rectangle, Circle and Dimension; Construct, 3D Print and the rest of the
+  Sketch tab follow in later batches. A clip
   is framed round the action, so the pick, the handle and the geometry it
   changes fill the tooltip's 236 px; it shows no toolbar and needs no text. With
   reduced motion the clip doesn't play (its first frame is a still); offline,

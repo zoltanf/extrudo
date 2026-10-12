@@ -13,5 +13,7 @@ Make bodies larger or smaller about a point, by one factor or one per axis.
 |---|---|
 | Modify › Transform | None |
 
+<video src="demo:scale" muted loop autoplay playsinline aria-label="Scale demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

@@ -13,5 +13,7 @@ Tilt faces by a few degrees about a plane, so the part comes off the bed or out 
 |---|---|
 | Modify › Modify | None |
 
+<video src="demo:draft" muted loop autoplay playsinline aria-label="Draft demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

@@ -13,8 +13,9 @@
  */
 
 /**
- * The tools that have a clip: the first batch of R3-16 is every tile of the Solid tab (in the
- * tab's order), then the clips ADR-0052 recorded first, which the Modify batch re-records.
+ * The tools that have a clip: the first batch of R3-16 is every tile of the Solid and Modify
+ * tabs (in the tabs' order) and the sketch tools ADR-0052 recorded first, all recorded in the
+ * current UI. Construct, 3D Print and the Sketch tab follow in later batches.
  */
 export const DEMO_TOOLS: readonly string[] = [
   // Solid › Create, Primitives, Features, Pattern, Program, Component.
@@ -39,15 +40,24 @@ export const DEMO_TOOLS: readonly string[] = [
   'stopMacro',
   'newComponent',
   'joint',
-  // ADR-0052's: the sketch tools and Modify's.
+  // Modify › Modify, Transform.
+  'pressPull',
+  'fillet',
+  'chamfer',
+  'shell',
+  'offsetFace',
+  'draft',
+  'thread',
+  'move',
+  'mirror',
+  'combine',
+  'splitBody',
+  'scale',
+  // Sketch › Create.
   'line',
   'rectangle',
   'circle',
   'dimension',
-  'fillet',
-  'chamfer',
-  'shell',
-  'pressPull',
 ];
 
 /** Where a tool's clip is, or `undefined` if it has none. */

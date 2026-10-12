@@ -31,7 +31,7 @@ const WANTED = [
 ];
 
 /** The owner's UI review 3 (R3-16): every tile of these tabs has a clip. */
-const WHOLE_TABS = ['solid'];
+const WHOLE_TABS = ['solid', 'modify'];
 
 describe('tool demos', () => {
   it('lists exactly the clips on disk, each for a real tool', () => {

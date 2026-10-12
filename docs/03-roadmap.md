@@ -1156,7 +1156,7 @@ end to end, faster than in established desktop CAD.
 Findings from the owner's walks through the app, outside the phases. Rounds 1
 to 3 of 2026-10-08 are ADR-0079's.
 
-- [ ] **UI review 3 (2026-10-11):** nineteen items (R3-01 to R3-19: the
+- [x] **UI review 3 (2026-10-11):** *Done 2026-10-12*, slices A to I. Nineteen items (R3-01 to R3-19: the
   timeline's playback buttons and scroll bar, mouse controls and neutral preset
   names, one search for Ctrl+K and the toolbox, ghost bodies, the right-click
   list, the Home, Construct, Inspect and sketch-mode tabs, Plugins in the gear

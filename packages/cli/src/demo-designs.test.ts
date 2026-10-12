@@ -94,6 +94,50 @@ export const DEMO_DESIGNS: Record<string, (d: Design) => void> = {
     d.box({ x: '-14 mm', length: '20 mm', width: '20 mm', height: '12 mm' });
     d.box({ x: '14 mm', length: '20 mm', width: '20 mm', height: '20 mm' });
   },
+  // The Modify tab's scenes start from one block, or a block with something to work on.
+  pressPull: (d) => {
+    d.box({ length: '30 mm', width: '20 mm', height: '10 mm' });
+  },
+  fillet: (d) => {
+    d.box({ length: '30 mm', width: '20 mm', height: '14 mm' });
+  },
+  chamfer: (d) => {
+    d.box({ length: '30 mm', width: '20 mm', height: '14 mm' });
+  },
+  shell: (d) => {
+    d.box({ length: '30 mm', width: '24 mm', height: '16 mm' });
+  },
+  // A plate with a hole: the offset face scene closes the hole in.
+  offsetFace: (d) => {
+    d.box({ length: '36 mm', width: '24 mm', height: '10 mm' });
+    d.cylinder({ diameter: '12 mm', height: '10 mm', operation: 'cut' });
+  },
+  draft: (d) => {
+    d.box({ length: '20 mm', width: '20 mm', height: '20 mm' });
+  },
+  thread: (d) => {
+    d.cylinder({ diameter: '20 mm', height: '16 mm' });
+  },
+  move: (d) => {
+    d.box({ length: '16 mm', width: '16 mm', height: '16 mm' });
+  },
+  // A block off the YZ plane, for its mirror copy to land across it; behind the XZ plane, so the
+  // YZ plane's square in front of it can be clicked.
+  mirror: (d) => {
+    d.box({ x: '16 mm', y: '10 mm', length: '16 mm', width: '16 mm', height: '16 mm' });
+  },
+  // A block and a peg through its end: Combine cuts the peg out of the block.
+  combine: (d) => {
+    d.box({ x: '-6 mm', length: '30 mm', width: '20 mm', height: '12 mm' });
+    d.cylinder({ x: '9 mm', diameter: '12 mm', height: '24 mm' });
+  },
+  // Across the YZ plane and behind the XZ plane, so the YZ plane's square in front can be clicked.
+  splitBody: (d) => {
+    d.box({ y: '12 mm', length: '30 mm', width: '20 mm', height: '20 mm' });
+  },
+  scale: (d) => {
+    d.box({ length: '14 mm', width: '14 mm', height: '14 mm' });
+  },
 };
 
 /** A design's timeline, with nothing that changes from run to run. */

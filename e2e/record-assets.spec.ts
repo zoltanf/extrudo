@@ -1046,6 +1046,404 @@ test('demo: joint', async ({ page }) => {
   });
 });
 
+// ---- The Modify tab and the sketch tools (R3-16, the second part) ------------
+
+/** Sketch mm → page px in a new sketch on XY, settled. */
+async function sketchView(page: Page) {
+  await newSketchOnXY(page);
+  await settled(viewportOf(page));
+  return mapping(viewportOf(page));
+}
+
+/** A frame round a sketch point, zoomed so `width` mm of the sketch fill most of it. */
+async function sketchFrame(
+  page: Page,
+  at: Awaited<ReturnType<typeof mapping>>,
+  width = 80,
+): Promise<{ at: Awaited<ReturnType<typeof mapping>>; clip: Clip }> {
+  const span = Math.hypot(at(width, 0).x - at(0, 0).x, at(width, 0).y - at(0, 0).y);
+  const centre = at(0, 0);
+  if (Math.abs(span / FRAME.width - 0.85) > 0.1) {
+    const viewport = viewportOf(page);
+    const size = async () => Number(await viewport.getAttribute('data-camera-size'));
+    await page.mouse.move(centre.x, centre.y);
+    const before = await size();
+    await page.mouse.wheel(0, clamp(Math.log(span / (FRAME.width * 0.85)) / 0.0015, -400, 400));
+    await expect.poll(size).not.toBe(before);
+    await settled(viewport);
+    return sketchFrame(page, await mapping(viewport), width);
+  }
+  return { at, clip: await frameAt(page, centre) };
+}
+
+/** Draws a rectangle in the open sketch (not recorded). */
+async function drawRectangle(
+  page: Page,
+  at: Awaited<ReturnType<typeof mapping>>,
+  [x1, y1]: [number, number],
+  [x2, y2]: [number, number],
+) {
+  await page.keyboard.press('r');
+  for (const [x, y] of [
+    [x1, y1],
+    [x2, y2],
+  ] as const) {
+    const q = at(x, y);
+    await page.mouse.move(q.x, q.y);
+    await page.mouse.click(q.x, q.y);
+  }
+  await page.keyboard.press('Escape');
+}
+
+/** Types into a dialog field the pointer doesn't visit (out of frame), key by key. */
+async function typeQuietly(page: Page, field: ReturnType<Page['getByRole']>, text: string) {
+  await field.focus();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type(text, { delay: 220 });
+  await field.blur();
+}
+
+/** A point of an origin plane's square where no body is in front (the home view). */
+async function planeSquare(page: Page, plane: 'xy' | 'yz') {
+  const s = Number(await attr(viewportOf(page), 'data-camera-size')) * 0.16;
+  return plane === 'xy' ? ([s * 0.35, -s * 0.35, 0] as Vec3) : ([0, -s * 0.35, s * 0.35] as Vec3);
+}
+
+test('demo: line', async ({ page }) => {
+  await demoProject(page);
+  const { at, clip } = await sketchFrame(page, await sketchView(page), 70);
+  const p = pointer(page);
+  await p.jump(at(-34, 12));
+  await record(page, 'line', clip, async () => {
+    await page.waitForTimeout(300);
+    await page.keyboard.press('l');
+    await p.click(at(-30, -15), 420);
+    await p.click(at(10, -15), 420);
+    await p.click(at(10, 15), 420);
+    await p.click(at(-30, -15), 480);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(400);
+  });
+});
+
+test('demo: rectangle', async ({ page }) => {
+  await demoProject(page);
+  const { at, clip } = await sketchFrame(page, await sketchView(page), 70);
+  const p = pointer(page);
+  await p.jump(at(-34, 15));
+  await record(page, 'rectangle', clip, async () => {
+    await page.waitForTimeout(300);
+    await page.keyboard.press('r');
+    await p.click(at(-30, -15), 420);
+    await p.click(at(30, 15), 650);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(400);
+  });
+});
+
+test('demo: circle', async ({ page }) => {
+  await demoProject(page);
+  const { at, clip } = await sketchFrame(page, await sketchView(page), 60);
+  const p = pointer(page);
+  await p.jump(at(-26, 14));
+  await record(page, 'circle', clip, async () => {
+    await page.waitForTimeout(300);
+    await page.keyboard.press('c');
+    await p.click(at(0, 0), 420);
+    await p.click(at(20, 0), 600);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(400);
+  });
+});
+
+test('demo: dimension', async ({ page }) => {
+  await demoProject(page);
+  const view = await sketchView(page);
+  await drawRectangle(page, view, [-30, -10], [30, 10]);
+  const { at, clip } = await sketchFrame(page, await mapping(viewportOf(page)), 80);
+  const p = pointer(page);
+  await p.jump(at(-34, 18));
+  await record(page, 'dimension', clip, async () => {
+    await page.waitForTimeout(300);
+    await page.keyboard.press('d');
+    await p.click(at(0, -10), 450);
+    await p.click(at(0, -20), 420);
+    await page.keyboard.type('45', { delay: 220 });
+    await page.waitForTimeout(200);
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(600);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+  });
+});
+
+test('demo: pressPull', async ({ page }) => {
+  await demoDesign(page, 'pressPull');
+  await turnView(page, 'Shift+1');
+  const { at, clip } = await frameWorld(page, boxPoints([-15, -10, 0], [15, 10, 20]));
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 50, y: clip.y + clip.height - 30 });
+  const dialog = page.getByRole('region', { name: 'Offset Face dialog' });
+  await record(page, 'pressPull', clip, async () => {
+    await pickModel(page, p, at, [4, -3, 10], /^face:/);
+    await page.keyboard.press('q');
+    await previewed(dialog);
+    await page.waitForTimeout(300);
+    await p.drag(await handleAt(page, 'distance'), at([4, -3, 19]));
+    await commit(page, dialog);
+  });
+});
+
+test('demo: fillet', async ({ page }) => {
+  await demoDesign(page, 'fillet');
+  await turnView(page, 'Shift+1');
+  const { at, clip } = await frameWorld(page, boxPoints([-15, -10, 0], [15, 10, 14]));
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 50, y: clip.y + clip.height - 30 });
+  const dialog = page.getByRole('region', { name: 'Fillet dialog' });
+  await record(page, 'fillet', clip, async () => {
+    await pickModel(page, p, at, [-4, -10, 14], /^edge:/, { dy: 2 });
+    await runTool(page, 'fillet', 'modify');
+    await previewed(dialog);
+    await page.waitForTimeout(300);
+    // Away from the edge along the bisector of its two faces: the round grows.
+    await p.drag(await handleAt(page, 'radius'), at([-4, -12.5, 16.5]));
+    await commit(page, dialog);
+  });
+});
+
+test('demo: chamfer', async ({ page }) => {
+  await demoDesign(page, 'chamfer');
+  await turnView(page, 'Shift+1');
+  const { at, clip } = await frameWorld(page, boxPoints([-15, -10, 0], [15, 10, 14]));
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 50, y: clip.y + clip.height - 30 });
+  const dialog = page.getByRole('region', { name: 'Chamfer dialog' });
+  await record(page, 'chamfer', clip, async () => {
+    await pickModel(page, p, at, [-4, -10, 14], /^edge:/, { dy: 2 });
+    await runTool(page, 'chamfer', 'modify');
+    await previewed(dialog);
+    await page.waitForTimeout(300);
+    await p.drag(await handleAt(page, 'distance'), at([-4, -12.5, 16.5]));
+    await commit(page, dialog);
+  });
+});
+
+test('demo: shell', async ({ page }) => {
+  await demoDesign(page, 'shell');
+  await turnView(page, 'Shift+1');
+  const { at, clip } = await frameWorld(page, boxPoints([-15, -12, 0], [15, 12, 16]));
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 50, y: clip.y + clip.height - 30 });
+  const dialog = page.getByRole('region', { name: 'Shell dialog' });
+  await record(page, 'shell', clip, async () => {
+    await pickModel(page, p, at, [3, -2, 16], /^face:/);
+    await runTool(page, 'shell', 'modify');
+    await previewed(dialog);
+    await page.waitForTimeout(700);
+    await commit(page, dialog);
+    await page.waitForTimeout(500);
+  });
+});
+
+test('demo: offsetFace', async ({ page }) => {
+  await demoDesign(page, 'offsetFace');
+  await turnView(page, 'Shift+1');
+  const { at, clip } = await frameWorld(page, boxPoints([-18, -12, 0], [18, 12, 10]));
+  // The hole's far wall faces the camera.
+  const wall = await spot(
+    page,
+    at,
+    [
+      [-4.2, 4.2, 6],
+      [-2, 5.6, 6],
+      [-5.6, 2, 6],
+    ],
+    /^face:/,
+  );
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 50, y: clip.y + clip.height - 30 });
+  const dialog = page.getByRole('region', { name: 'Offset Face dialog' });
+  await record(page, 'offsetFace', clip, async () => {
+    await clickSpot(page, p, wall);
+    await runTool(page, 'offsetFace', 'modify');
+    await previewed(dialog);
+    await page.waitForTimeout(300);
+    // Positive is out of the material, into the hole: the hole closes in. The arrow is
+    // foreshortened, so a short move on the screen is a long one along it.
+    const from = await handleAt(page, 'distance');
+    const centre = at([0, 0, 6]);
+    await p.drag(from, {
+      x: from.x + (centre.x - from.x) * 0.3,
+      y: from.y + (centre.y - from.y) * 0.3,
+    });
+    await commit(page, dialog);
+  });
+});
+
+test('demo: draft', async ({ page }) => {
+  await demoDesign(page, 'draft');
+  await turnView(page, 'Shift+1');
+  const { at, clip } = await frameWorld(page, boxPoints([-12, -12, 0], [12, 12, 20]));
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 50, y: clip.y + clip.height - 30 });
+  const dialog = page.getByRole('region', { name: 'Draft dialog' });
+  await record(page, 'draft', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'draft', 'modify');
+    await expect(dialog).toBeVisible();
+    await pickModel(page, p, at, [0, -10, 10], /^face:/);
+    await pickModel(page, p, at, [10, 0, 10], /^face:/);
+    // The neutral plane: the top face, which keeps its size while the sides tilt.
+    await dialog.getByRole('button', { name: 'Plane', exact: true }).dispatchEvent('click');
+    await p.click(at([2, -2, 20]), 450);
+    await expect(dialog.getByRole('button', { name: 'Plane', exact: true })).toHaveText('1 face');
+    await previewed(dialog);
+    await p.moveTo({ x: clip.x + clip.width - 60, y: clip.y + 50 }, 400);
+    await typeQuietly(page, dialog.getByRole('textbox', { name: 'Angle', exact: true }), '10');
+    await commit(page, dialog);
+  });
+});
+
+test('demo: thread', async ({ page }) => {
+  await demoDesign(page, 'thread');
+  await turnView(page, 'Shift+1');
+  const { at, clip } = await frameWorld(page, boxPoints([-10, -10, 0], [10, 10, 16]));
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 50, y: clip.y + clip.height - 30 });
+  const dialog = page.getByRole('region', { name: 'Thread dialog' });
+  await record(page, 'thread', clip, async () => {
+    await pickModel(page, p, at, [7.07, -7.07, 8], /^face:/);
+    await runTool(page, 'thread', 'modify');
+    await expect(dialog).toHaveAttribute('data-preview-status', /^(ok|warning)$/, {
+      timeout: 90_000,
+    });
+    await commit(page, dialog);
+    await page.waitForTimeout(400);
+  });
+});
+
+test('demo: move', async ({ page }) => {
+  await demoDesign(page, 'move');
+  await turnView(page, 'Shift+1');
+  const { at, clip } = await frameWorld(page, boxPoints([-8, -8, 0], [24, 8, 16]), 0.65);
+  await selectBodyRows(page, ['Body1']);
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 50, y: clip.y + clip.height - 30 });
+  const dialog = page.getByRole('region', { name: 'Move dialog' });
+  await record(page, 'move', clip, async () => {
+    await page.waitForTimeout(300);
+    await page.keyboard.press('m');
+    await expect(dialog).toBeVisible();
+    await page.waitForTimeout(400);
+    const from = await handleAt(page, 'dx');
+    const step = { x: at([14, 0, 0]).x - at([0, 0, 0]).x, y: at([14, 0, 0]).y - at([0, 0, 0]).y };
+    await p.drag(from, { x: from.x + step.x, y: from.y + step.y }, 900);
+    await commit(page, dialog);
+  });
+});
+
+test('demo: mirror', async ({ page }) => {
+  await demoDesign(page, 'mirror');
+  await turnView(page, 'Shift+1');
+  const { clip } = await frameWorld(page, boxPoints([-24, 2, 0], [24, 18, 16]), 0.7);
+  const square = await planeSquare(page, 'yz');
+  const at = await projector(viewportOf(page));
+  await selectBodyRows(page, ['Body1']);
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 50, y: clip.y + clip.height - 30 });
+  const dialog = page.getByRole('region', { name: 'Mirror dialog' });
+  await record(page, 'mirror', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'mirror', 'modify');
+    await expect(dialog).toBeVisible();
+    await page.waitForTimeout(300);
+    await p.click(at(square), 500);
+    await expect(dialog.getByRole('button', { name: 'Plane', exact: true })).toHaveText('YZ plane');
+    await commit(page, dialog);
+  });
+});
+
+test('demo: combine', async ({ page }) => {
+  await demoDesign(page, 'combine');
+  await turnView(page, 'Shift+1');
+  const { at, clip } = await frameWorld(page, boxPoints([-21, -10, 0], [15, 10, 24]));
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 50, y: clip.y + clip.height - 30 });
+  const dialog = page.getByRole('region', { name: 'Combine dialog' });
+  await record(page, 'combine', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'combine', 'modify');
+    await expect(dialog).toBeVisible();
+    // The block is the target, the peg the tool it loses.
+    await pickModel(page, p, at, [-12, -4, 12], /^body:/);
+    await dialog.getByRole('button', { name: 'Tools', exact: true }).dispatchEvent('click');
+    await pickModel(page, p, at, [9, 0, 24], /^body:/);
+    await dialog.getByRole('combobox', { name: 'Operation' }).selectOption('cut');
+    await previewed(dialog);
+    await page.waitForTimeout(500);
+    await commit(page, dialog);
+  });
+});
+
+test('demo: splitBody', async ({ page }) => {
+  await demoDesign(page, 'splitBody');
+  await turnView(page, 'Shift+1');
+  const { clip } = await frameWorld(page, boxPoints([-15, -6, 0], [15, 22, 20]), 0.7);
+  const square = await planeSquare(page, 'yz');
+  const at = await projector(viewportOf(page));
+  await selectBodyRows(page, ['Body1']);
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 50, y: clip.y + clip.height - 30 });
+  const dialog = page.getByRole('region', { name: 'Split Body dialog' });
+  await record(page, 'splitBody', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'splitBody', 'modify');
+    await expect(dialog).toBeVisible();
+    await page.waitForTimeout(300);
+    await p.click(at(square), 500);
+    await expect(dialog.getByRole('button', { name: 'Plane', exact: true })).toHaveText('YZ plane');
+    await commit(page, dialog);
+    // Two bodies now: a click on one half picks it alone.
+    const half = await spot(
+      page,
+      at,
+      [
+        [8, 2, 20],
+        [8, 8, 20],
+      ],
+      /^face:/,
+    );
+    await clickSpot(page, p, half);
+    await page.waitForTimeout(700);
+  });
+});
+
+test('demo: scale', async ({ page }) => {
+  await demoDesign(page, 'scale');
+  await turnView(page, 'Shift+1');
+  const { clip } = await frameWorld(page, boxPoints([-12, -12, -4], [12, 12, 18]), 0.7);
+  await selectBodyRows(page, ['Body1']);
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 50, y: clip.y + clip.height - 30 });
+  const dialog = page.getByRole('region', { name: 'Scale dialog' });
+  await record(page, 'scale', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'scale', 'modify');
+    await previewed(dialog);
+    await page.waitForTimeout(300);
+    await typeQuietly(
+      page,
+      dialog.getByRole('textbox', { name: 'Scale factor', exact: true }),
+      '1.6',
+    );
+    await previewed(dialog);
+    await page.waitForTimeout(500);
+    await commit(page, dialog);
+  });
+});
+
 // ---- The landing page's walkthrough (ADR-0057 amendment) ---------------------
 
 const WALKTHROUGH = join(process.cwd(), 'apps', 'site', 'src', 'images', 'walkthrough');

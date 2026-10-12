@@ -1,6 +1,13 @@
 import { expect, type Page, test } from '@playwright/test';
 import { viewportOf } from './benchmark-helpers';
-import { kernelReady, openProject, pickTool, selectTab, startFromTemplate } from './helpers';
+import {
+  kernelReady,
+  newSketchOnXY,
+  openProject,
+  pickTool,
+  selectTab,
+  startFromTemplate,
+} from './helpers';
 
 // P3-12: the rest of the onboarding (ADR-0052): the template gallery, the
 // hint over an empty design, and the tool tooltips with their demo clips.
@@ -118,8 +125,30 @@ test('a toolbar tooltip has the name, the key, a sentence and a looping demo', a
   );
   await page.mouse.move(700, 500, { steps: 5 });
   await expect(tooltip).toHaveCount(0);
-  await page.getByRole('button', { name: 'Combine', exact: true }).hover();
+  // Construct's tools get their clips in a later batch (R3-16).
+  await selectTab(page, 'Construct');
+  await page.mouse.move(700, 500, { steps: 5 });
+  await expect(tooltip).toHaveCount(0);
+  await page.getByRole('button', { name: 'Offset Plane', exact: true }).hover();
+  await expect(tooltip).toContainText('Offset Plane');
   await expect(tooltip.locator('video')).toHaveCount(0);
+});
+
+// R3-16: the owner saw an empty box where the Sketch Dimension tile's clip plays (on edge, in
+// the light theme, where the box before the first frame is white). Here it loads and plays.
+test('the Dimension tile’s clip loads and plays in a sketch, in the light theme', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await openProject(page);
+  await kernelReady(page);
+  await newSketchOnXY(page);
+  await page.locator('[data-tool="dimension"]').first().hover();
+  const video = page.getByRole('tooltip').locator('video[data-tool-demo="dimension"]');
+  await expect(video).toHaveAttribute('src', /demos\/dimension\.webm$/);
+  await expect.poll(() => video.evaluate(readyState)).toBeGreaterThan(1);
+  await expect.poll(() => video.evaluate(paused)).toBe(false);
+  expect(await video.evaluate((v) => (v as { videoWidth: number }).videoWidth)).toBe(480);
 });
 
 test('with reduced motion a demo is a still, and it loads only when its tooltip opens', async ({

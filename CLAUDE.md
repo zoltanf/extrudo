@@ -969,7 +969,7 @@ under a new ID with its checked-in `home/templates/*.png` as thumbnail).
 under reduced motion, removed on a load error); **demos are not precached**
 (`SKIPPED` in `precache-plugin.ts`, and `sw.js` leaves `/demos/` to the
 network); `DEMO_TOOLS` in `demos.ts` lists the tools that have one (every Solid
-tile since the owner's UI review 3, R3-16;
+and Modify tile and four sketch tools since the owner's UI review 3, R3-16;
 `WHOLE_TABS` in `demos.test.ts` checks it per tab) and `demos.test.ts` checks it against the files (150 kB each). **`pnpm demos`**
 (`scripts/record-demos.mjs` → `e2e/record-assets.spec.ts`, which skips itself
 without `RECORD_ASSETS=1`; `-g "demo: extrude$"` records one) records the clips and the template pictures through
@@ -2238,9 +2238,10 @@ lists as open: a chamfer's handles on curved faces or edges, shell openings
 through curved faces, a point where two curved faces and a plane meet, and the
 rest), and Phase 6 has only P6-04 (i18n) left, **deferred** (owner,
 2026-10-11: English only for now; P6-05 and P6-06 are done). **The owner's UI
-review 3 (2026-10-11) is the work to do**: nineteen items with slices and the
-owner's decisions in `docs/plans/ui-review-2026-10-11.md` (the roadmap's "The
-owner's UI reviews"). The repository is public (2026-10-04); the first public
+review 3 (2026-10-11) is done** (2026-10-12, slices A to I): nineteen items with
+the owner's decisions in `docs/plans/ui-review-2026-10-11.md` (the roadmap's "The
+owner's UI reviews"); its tooltip clips cover the Solid and Modify tabs, and
+Construct, 3D Print and the Sketch tab follow in later batches. The repository is public (2026-10-04); the first public
 release is **v0.4.0** (no v0.3.0 tag): the owner does the slicer check and a
 fresh look on edge, the agent then bumps the versions to 0.4.0, and **the owner
 tags** (`docs/release-checklist.md`; don't tag yourself). v0.4.1 fixed the desktop build; **v0.5.0** (2026-10-10) is the next release.

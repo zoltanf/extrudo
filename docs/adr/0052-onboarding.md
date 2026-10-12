@@ -239,6 +239,17 @@ four sketch clips.
   changed the size: VP8's rate control held the bitrate.) `demos.test.ts` keeps 150 kB a clip,
   and it checks that every tile of each tab whose batch is recorded (`WHOLE_TABS`) has a clip.
 
+**The Modify part** (the second pull request) adds the twelve Modify tiles (Press Pull, Fillet,
+Chamfer, Shell, Offset Face, Draft, Thread, Move, Mirror, Combine, Split Body, Scale) and
+re-records Line, Rectangle, Circle and Dimension, so all 37 clips are in the current UI. Mirror's
+and Split Body's blocks sit behind the XZ plane, which keeps the YZ plane's square in front of
+them clickable. Draft and Scale type their value into the field (no handle to drag). The owner
+saw an empty box in the Sketch Dimension tooltip on edge (R3-16). That box is the video's own
+background (`bg-bg`, white in the light theme) before its first frame draws, so the clip hadn't
+loaded; the file itself decodes. Edge can't be reached from the agent's machine. Locally the clip
+loads and plays in its tooltip in a sketch, in the light theme, and `e2e/onboarding.spec.ts`
+now checks that. Whether it plays on a fresh edge visit is for the owner to see after the deploy.
+
 Rejected:
 - Recording the whole work area and cropping it later: a pick or a handle is a few pixels
   at 236 px.
