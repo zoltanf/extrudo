@@ -2,7 +2,7 @@
 title: Sketch Scale
 section: Tools
 category: Sketch
-order: 101
+order: 100
 ---
 
 # Sketch Scale

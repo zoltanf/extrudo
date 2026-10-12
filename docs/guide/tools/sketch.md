@@ -2,7 +2,7 @@
 title: Create Sketch
 section: Tools
 category: Solid
-order: 18
+order: 17
 ---
 
 # Create Sketch

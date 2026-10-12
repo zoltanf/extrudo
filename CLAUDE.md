@@ -647,7 +647,7 @@ body by the stencil method in `viewport/SectionCap.tsx` (the canvas asks
 for `stencil: true`), tinted through `capColors`. **`pick.ts` skips what
 is clipped and treats what lies behind a cap as occluded** (`capDepth`),
 so a new pick path must go through `pickStack`/`pickBox`. The tool is
-Inspect › Inspect › Section Analysis (ADR-0079; `Shift+S`, session tool `section`,
+Construct › Inspect › Section Analysis (ADR-0079, R3-10; `Shift+S`, session tool `section`,
 panel `SectionPanel`, arrow `SectionOverlay`), the browser has an
 Analysis folder while a section exists, and a selected flat face takes it
 at once ("Section Here" in the context list). **P4-12 (ADR-0045's amendment)
@@ -1317,7 +1317,7 @@ path, keeping what you had as a version) and "Overwrite" — a toast can carry
 several buttons (`ToastOptions.actions`, with `action` the first of them), both
 with `available()`. Errors (permission lost, file removed) are toasts. The home
 screen's "Linked folder" section opens a file as a project **linked** to it;
-"Save to Linked Folder" (Home › Files tile, Ctrl+K) links an unlinked one, refusing a
+"Save to Linked Folder" (Home › Export tile, Ctrl+K) links an unlinked one, refusing a
 name that is already in the folder.
 
 ADR-0066 (P4-06, slice 1) added **drawings into a sketch**: `@extrudo/io`
@@ -1820,7 +1820,7 @@ marker's index at Record, `base` its length, because new features land at the
 marker; the run is `features[from .. from + length − base)`, and an undo below
 `base` ends it); the status bar's `[data-macro-recording]` counts; the tools
 `recordMacro`/`stopMacro` (Solid › Program's tiles since ADR-0079; `CommandContext.macro` and
-`ToolbarProps.hidden` show one at a time) and `exportScript` (Home › Files, Ctrl+K)
+`ToolbarProps.hidden` show one at a time) and `exportScript` (Home › Export, Ctrl+K)
 are in `AppShell.run`/`buildCommands`. **Stop** emits through a lazy `@extrudo/api`
 import (the web app depends on it only for this) and opens `MacroDialog` (region
 "Macro", code in `CodeView`, `scriptEditor.tsx`'s read-only editor). **Replace is
@@ -2087,17 +2087,20 @@ ADR-0079 (the owner's UI review, 2026-10-08) made **one top bar with the tabs**:
 and Search commands, then the design's name, version history, save state, settings,
 help and theme — and `shell/Toolbar.tsx` the selected tab's groups below it (the tab is
 `useToolbarTab(mode)` in `AppShell`). **The File menu is gone**: its items are the
-**Home** tab's tiles (Design, Versions, Files with Import / Import Drawing / Canvas /
-Export Design / Export Model / Export as Script ▾ Import .extrudo, Save to Linked
-Folder, Parameters with Customizer, Extend with Plugins); the tabs are **Home, Solid
-(Create, Primitives, Features, Pattern, Program), Modify (Modify, Transform), Construct
-(Planes, Axes, Points), Inspect, 3D Print** in the model and **Home, Sketch** in a
-sketch (3D Print went in the owner's UI review 3, R3-11; `visibleTabs`, `defaultTab`, `tabOfTool` in `shell/tools.ts`); there is no
+**Home** tab's tiles (Design, Versions, **Import** — Import .extrudo, Import Model,
+Import Drawing, Canvas — and **Export** — Export .extrudo, Export Model, Export as
+Script, Save to Linked Folder — since R3-09, Parameters with Customizer); **Plugins…
+is in the Settings (gear) menu** and Ctrl+K (R3-12; on macOS the app menu, beside
+Settings…: `APP_MENU_IDS` in `apps/desktop/src/main/menuTemplate.ts`); the tabs are
+**Home, Solid (Create, Primitives, Features, Pattern, Program, Component), Modify
+(Modify, Transform), Construct (Planes, Axes, Points, Inspect — Measure and Section
+Analysis, R3-10: there is no Inspect tab), 3D Print** in the model and **Home,
+Sketch** in a sketch (3D Print went in the owner's UI review 3, R3-11; `visibleTabs`, `defaultTab`, `tabOfTool` in `shell/tools.ts`); there is no
 Insert tab. **Home's file actions are commands, not tools**: `TOOLS` lists them (category
 `file`, token `--x-cat-file`, nine new icons) and `FILE_COMMANDS` names the
 `FileActions` method each runs (`AppShell.run` for a tile, `fileCommand` in
 `buildCommands`), with the old command IDs; an absent method hides the tile and the
-command. Command groups follow the tabs ("Home › Files"), and the **desktop menu maps
+command. Command groups follow the tabs ("Home › Import", "Construct › Inspect"), and the **desktop menu maps
 Home to its File menu** (`menuModel`'s `topMenu`). **Toolbars fit the window**: the pure
 `fitToolbar` (`shell/toolbarFit.ts`) moves the last tile of the fullest group (ties: the
 earlier group) into its ▾ until the row fits, never below one tile; the toolbar measures
@@ -2118,7 +2121,7 @@ viewport store, **Radial right-click menu** (a checkbox on the same state as the
 Version history, Settings, Help, and the name plus the save dot are one `TitleGroup`
 centred between the cluster and Version history; the pure `titleFit`
 (`shell/titleFit.ts`) drops the save word first (`data-title-fit="dot"`), then truncates
-the name (`truncate`, `title` = full name). The separator after the cluster is gone. **Tiles first**: Home › Files has no fixed `more` (Import Design, Import Model — `importBody`, full label "Import STEP, mesh, OpenSCAD or .f3d…" —, Import Drawing, Canvas, Export Design, Export Model, Export as Script, Save to Linked Folder), Construct › Planes shows all seven planes as tiles, and a tile is a fixed 64 px wide, its label the tool's full name wrapped onto up to two 11 px lines when it fits, its short name otherwise (ADR-0079 round 3).
+the name (`truncate`, `title` = full name). The separator after the cluster is gone. **Tiles first**: Home's file groups have no fixed `more` (Import: Import Design, Import Model — `importBody`, full label "Import STEP, mesh, OpenSCAD or .f3d…" —, Import Drawing, Canvas; Export: Export Design, Export Model, Export as Script, Save to Linked Folder; one Files group until R3-09), Construct › Planes shows all seven planes as tiles, and a tile is a fixed 64 px wide, its label the tool's full name wrapped onto up to two 11 px lines when it fits, its short name otherwise (ADR-0079 round 3).
 
 ADR-0080 (P6-06, slice S1) made the docs site one site: `apps/site/src/docs.ts`'s
 `COLLECTIONS` map `docs/guide` → `/docs/`, `guide/tutorials` → `/docs/tutorials/`,
@@ -2202,7 +2205,7 @@ ADR-0083 (the owner, 2026-10-10) added **`.f3d` import**, `packages/f3d`
 (parameters, timeline, sketches, extrudes with their profile regions,
 fillet/chamfer edges as tagged ASM faces), `f3dToDesign` writes it through the
 API and returns a report (imported, skipped with why, notes); the format is in
-`packages/f3d/FORMAT.md`. Home › Files › **Import Model** takes an `.f3d` too
+`packages/f3d/FORMAT.md`. Home › Import › **Import Model** takes an `.f3d` too
 (`importF3dFile` in `project/actions.ts`, its own lazy chunk) and makes a new
 design of it (no separate tile, 2026-10-11). The home screen's one **Import…** card
 (Start row; `importAnyFile`) takes `.extrudo`, `.f3d` and model files; a model file makes a
@@ -3815,7 +3818,7 @@ them. Notes further down that name a machine apply to that machine only.
   with `data-linked-folder` (`none`/`needs-permission`/`ready`/`loading`) and
   file cards `[data-linked-file="<name>"]`; "Link a folder…", "Reconnect",
   "Unlink the folder" and "Refresh the linked folder" are its buttons; the
-  project's own command is Home › Files tile "Save to Linked Folder" (ADR-0079;
+  project's own command is Home › Export tile "Save to Linked Folder" (ADR-0079;
   `fileAction`, and `hasFileAction` is false once the project is linked) and says "Saved <file> to the linked
   folder.". **The write-back is throttled**, so a test that edits and waits
   must wait 12 s for the trailing write; the file's bytes are read out of OPFS

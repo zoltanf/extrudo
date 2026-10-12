@@ -7,6 +7,7 @@ import {
   LayoutGrid,
   ListChecks,
   PanelsTopLeft,
+  Puzzle,
   Redo2,
   RefreshCw,
   Search,
@@ -210,6 +211,7 @@ export function AppBar({
           markingRadial={markingRadial}
           onMarkingRadial={onMarkingRadial}
           onSettings={onSettings}
+          onPlugins={file.plugins}
         />
         <Menu
           label="Help"
@@ -301,6 +303,7 @@ function SettingsMenu({
   markingRadial,
   onMarkingRadial,
   onSettings,
+  onPlugins,
 }: Pick<
   AppBarProps,
   | 'viewport'
@@ -310,7 +313,10 @@ function SettingsMenu({
   | 'markingRadial'
   | 'onMarkingRadial'
   | 'onSettings'
->) {
+> & {
+  /** Opens the Plugins dialog (R3-12: it left the Home tab for this menu). */
+  onPlugins?: (() => void) | undefined;
+}) {
   const autoProject = useStore(viewport, (s) => s.autoProject);
   const autoProjectFace = useStore(viewport, (s) => s.autoProjectFace);
   return (
@@ -330,6 +336,11 @@ function SettingsMenu({
       >
         Settings…
       </MenuItem>
+      {onPlugins && (
+        <MenuItem icon={<Puzzle size={14} />} onSelect={onPlugins}>
+          Plugins…
+        </MenuItem>
+      )}
       <MenuSeparator />
       <MenuLabel>General</MenuLabel>
       <MenuCheckboxItem

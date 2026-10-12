@@ -11,7 +11,7 @@ Keep this design as an .extrudo file in the linked folder on disk.
 
 | Where | Shortcut |
 |---|---|
-| Home › Files | None |
+| Home › Export | None |
 
 <!-- notes -->
 <!-- /notes -->

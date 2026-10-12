@@ -13,7 +13,7 @@ model. They colour it or give you numbers, so you can run them as often as you l
 
 ## Export a model
 
-Press **Export** in the Output group (or **Home › Files › Export Model**). The **Export model**
+Press **Export** in the Output group (or **Home › Export › Export Model**). The **Export model**
 dialog lists the design's bodies. Tick the ones to export, or tick **All bodies**. Hidden bodies
 are listed too, marked "hidden", so you can export a part you have tucked away.
 
@@ -104,7 +104,7 @@ way. Use it to find what to thicken, then confirm with the slicer.
 
 ## Look inside: Section Analysis
 
-[Section Analysis](./tools/section.md) (`Shift+S`, in **Inspect**) cuts the view through a
+[Section Analysis](./tools/section.md) (`Shift+S`, in **Construct › Inspect**) cuts the view through a
 plane and fills the cut, so you can see walls, hollows and internal features. Pick an origin
 plane, a construction plane or a flat face, then drag the arrow or type an **Offset**.
 **Flip** chooses which side stays. **Add plane** (shown once a plane exists) adds up to three

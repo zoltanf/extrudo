@@ -2,7 +2,7 @@
 title: Offset
 section: Tools
 category: Sketch
-order: 95
+order: 94
 ---
 
 # Offset

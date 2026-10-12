@@ -949,7 +949,7 @@ export interface ToolGroup {
   labels?: Partial<Record<ToolId, string>>;
 }
 
-export type TabId = 'home' | 'solid' | 'modify' | 'construct' | 'inspect' | 'sketch' | 'print';
+export type TabId = 'home' | 'solid' | 'modify' | 'construct' | 'sketch' | 'print';
 
 export interface Tab {
   id: TabId;
@@ -959,11 +959,13 @@ export interface Tab {
 
 /**
  * Toolbar tabs (UI spec §2, ADR-0079). Home holds what concerns the design as a
- * whole (its files, versions, parameters and plugins: the old File menu and the
- * Insert tab); Solid makes geometry, Modify changes it, Construct and Inspect
- * have tabs of their own, and 3D Print prepares the model's export. `sketch`
- * shows only while a sketch is open, in place of every tab but Home, whose
- * tools don't apply there; Finish Sketch sits after its groups.
+ * whole (its files to import and export, versions and parameters: the old File
+ * menu and the Insert tab); Solid makes geometry, Modify changes it, Construct
+ * makes reference geometry and holds Inspect's two tools (the owner's UI review 3,
+ * R3-10: a tab of two tools took precious room), and 3D Print prepares the
+ * model's export. Plugins are in the Settings menu (R3-12). `sketch` shows only
+ * while a sketch is open, in place of every tab but Home, whose tools don't
+ * apply there; Finish Sketch sits after its groups.
  */
 export const TABS: Tab[] = [
   {
@@ -972,25 +974,17 @@ export const TABS: Tab[] = [
     groups: [
       { label: 'Design', tools: ['newDesign', 'openFile', 'saveAs', 'allDesigns'] },
       { label: 'Versions', tools: ['saveVersion', 'versionHistory'] },
+      // What comes in and what goes out, as two groups (the owner's UI review 3, R3-09).
+      // P4-06: a model file becomes bodies, a drawing becomes sketch curves, and a
+      // picture lies on a plane to trace (ADR-0066).
+      { label: 'Import', tools: ['importProject', 'importBody', 'importDrawing', 'canvas'] },
       {
-        label: 'Files',
-        // P4-06: a model file becomes bodies, a drawing becomes sketch curves, and a
-        // picture lies on a plane to trace (ADR-0066).
-        tools: [
-          'importProject',
-          'importBody',
-          'importDrawing',
-          'canvas',
-          'exportProject',
-          'export',
-          'exportScript',
-          'saveToLinkedFolder',
-        ],
+        label: 'Export',
+        tools: ['exportProject', 'export', 'exportScript', 'saveToLinkedFolder'],
         labels: { export: 'Export Model' },
       },
       // What a design exposes is a few of its parameters (P4-07).
       { label: 'Parameters', tools: ['parameters', 'customizer'] },
-      { label: 'Extend', tools: ['plugins'] },
     ],
   },
   {
@@ -1037,12 +1031,9 @@ export const TABS: Tab[] = [
       },
       { label: 'Axes', tools: ['axisThroughPoints', 'axisThroughCylinder', 'axisAlongEdge'] },
       { label: 'Points', tools: ['constructionPoint', 'pointOnPath', 'pointAtIntersection'] },
+      // The Inspect tab's two tools (R3-10).
+      { label: 'Inspect', tools: ['measure', 'section'] },
     ],
-  },
-  {
-    id: 'inspect',
-    label: 'Inspect',
-    groups: [{ label: 'Inspect', tools: ['measure', 'section'] }],
   },
   {
     id: 'sketch',
@@ -1127,8 +1118,8 @@ export const TABS: Tab[] = [
 const SKETCH_TABS: ReadonlySet<TabId> = new Set(['home', 'sketch']);
 
 /**
- * The tabs shown in a mode, in order: Home, Solid, Modify, Construct, Inspect and
- * 3D Print in the model; Home and Sketch while a sketch is open.
+ * The tabs shown in a mode, in order: Home, Solid, Modify, Construct and 3D Print
+ * in the model; Home and Sketch while a sketch is open.
  */
 export function visibleTabs(mode: 'model' | 'sketch'): Tab[] {
   return TABS.filter((t) => (mode === 'sketch' ? SKETCH_TABS.has(t.id) : t.id !== 'sketch'));

@@ -574,3 +574,17 @@ documentation drift. What changed:
 - Not changed (the review judged them not worth it): `read` shipping a plugin's
   code on every list refresh, the filesystem path in a Node error's message, the
   crash-window orphan folder.
+
+## Amendment (2026-10-11): Plugins… in the Settings menu
+
+The owner's UI review 3 (R3-12, `docs/plans/ui-review-2026-10-11.md`): "this is a rarely used
+functionality … let's move the plugins to under the settings menu". The Home tab's Extend group
+(one tile) is gone. **Plugins…** is an item of the app bar's Settings (gear) menu, right under
+Settings… (`SettingsMenu`'s `onPlugins`, from `FileActions.plugins`), and stays a Ctrl+K command,
+now in the Panels group beside Settings… (`buildCommands`, no longer from a tab). The native
+macOS menu, where the Home tab was the File menu, puts it in the application menu after About,
+with Settings… (`APP_MENU_IDS` in `apps/desktop/src/main/menuTemplate.ts` takes both out of
+View's Panels); Windows and Linux have no menu bar. Enabled plugins' features stay in Solid ›
+Create ▾, and the tool page `docs/guide/tools/plugins.md` goes with the tile (the guide's
+`docs/plugins.md` says where the item is). `e2e/plugins.spec.ts` opens the dialog from the gear.
+

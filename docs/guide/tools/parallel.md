@@ -2,7 +2,7 @@
 title: Parallel
 section: Tools
 category: Sketch
-order: 107
+order: 106
 ---
 
 # Parallel

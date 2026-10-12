@@ -11,7 +11,7 @@ Lay a picture on a plane as a reference to trace, and calibrate it to real scale
 
 | Where | Shortcut |
 |---|---|
-| Home › Files | None |
+| Home › Import | None |
 
 <!-- notes -->
 <!-- /notes -->

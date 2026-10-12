@@ -139,17 +139,29 @@ function desktopFileEntries(
 }
 
 /**
+ * The model's commands that macOS keeps in the application menu, after About: Settings…
+ * (ADR-0082) and Plugins… (the owner's UI review 3, R3-12: Plugins left the Home tab, which
+ * is the File menu, for the Settings menu). The renderer files both under View's Panels;
+ * the template takes them out of there.
+ */
+export const APP_MENU_IDS: ReadonlySet<string> = new Set(['openSettings', 'plugins']);
+
+/**
  * The macOS application menu, item by item rather than `role: 'appMenu'`
  * (finding 4): Electron's app menu ships its own raw Quit, which would bypass
  * the renderer's save-then-quit. Ours routes through `handlers.quit()` like the
  * File menu's, and there is no second Quit for the same accelerator.
  */
-function appMenu(handlers: MenuHandlers): MenuItemConstructorOptions {
+function appMenu(
+  handlers: MenuHandlers,
+  own: readonly MenuItemConstructorOptions[] = [],
+): MenuItemConstructorOptions {
   return {
     label: 'Extrudo',
     submenu: [
       { role: 'about' },
       { type: 'separator' },
+      ...(own.length > 0 ? [...own, { type: 'separator' as const }] : []),
       { role: 'services' },
       { type: 'separator' },
       { role: 'hide' },
@@ -159,6 +171,21 @@ function appMenu(handlers: MenuHandlers): MenuItemConstructorOptions {
       { label: 'Quit Extrudo', accelerator: 'CmdOrCtrl+Q', click: () => handlers.quit() },
     ],
   };
+}
+
+/** A menu without the items the app menu takes, and without the separators that leaves stray. */
+function withoutAppItems(menu: MenuModel): MenuModel {
+  const kept = menu.items.filter((entry) => !('id' in entry && APP_MENU_IDS.has(entry.id ?? '')));
+  const items: MenuEntryModel[] = [];
+  for (const entry of kept) {
+    const separator = (entry as { separator?: true }).separator === true;
+    const last = items[items.length - 1] as { separator?: true } | undefined;
+    if (separator && (items.length === 0 || last?.separator === true)) continue;
+    items.push(entry);
+  }
+  while ((items[items.length - 1] as { separator?: true } | undefined)?.separator === true)
+    items.pop();
+  return { label: menu.label, items };
 }
 
 /**
@@ -182,12 +209,22 @@ export function buildMenuTemplate(
   const { recent, handlers, platform, menuListening } = options;
   if (!hasApplicationMenu(platform)) return [];
   const desktop = desktopFileEntries(recent, handlers, { menuListening });
-  const template: MenuItemConstructorOptions[] = [appMenu(handlers)];
+  // Settings… and Plugins… go to the app menu, in that order, wherever the model put them.
+  const own = [...APP_MENU_IDS].flatMap((id) => {
+    for (const menu of model) {
+      const found = menu.items.find((entry) => 'id' in entry && entry.id === id);
+      if (found) return [item(found, handlers)];
+    }
+    return [];
+  });
+  const template: MenuItemConstructorOptions[] = [appMenu(handlers, own)];
 
   let sawFile = false;
   let sawHelp = false;
   const updates = updatesEntry(handlers, options.updates === true);
-  for (const menu of model) {
+  for (const source of model) {
+    const menu = withoutAppItems(source);
+    if (menu.items.length === 0) continue;
     if (menu.label === 'Help') {
       sawHelp = true;
       const items = menu.items.map((entry) => item(entry, handlers));

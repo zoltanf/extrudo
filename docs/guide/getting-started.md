@@ -45,8 +45,9 @@ You start on the home screen:
    **Toolbox** and **Search commands**, then the design's name with its save state, **Version
    history**, **Settings** and **Help**.
 2. **The toolbar** shows the groups of the selected tab. In a model the tabs are Home, Solid,
-   Modify, Construct, Inspect and 3D Print; while a sketch is open they are Home, Sketch and 3D
-   Print. Home holds what concerns the whole design: files, versions, parameters, plugins.
+   Modify, Construct and 3D Print; while a sketch is open they are Home and Sketch. Home holds
+   what concerns the whole design: importing and exporting files, versions and parameters.
+   Plugins are in the **Settings** menu.
    When a group has more tools than fit, the rest are under its ▾ menu.
 3. **The browser** lists the origin, sketches, construction geometry and bodies. The eye hides
    or shows an item, a click selects it, and `F2` renames.

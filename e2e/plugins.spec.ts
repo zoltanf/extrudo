@@ -3,7 +3,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { readArchive } from '../packages/storage/src/archive';
 import { writePluginFile } from '../packages/storage/src/plugin-file';
 import { chip, exportProject, primitive } from './benchmark-helpers';
-import { fileAction, kernelReady, openProject, projector, selectTab } from './helpers';
+import { kernelReady, openProject, projector, selectTab } from './helpers';
 
 // Installed plugins and plugin commands (P6-03 slice 2, ADR-0077 §4-§5): the
 // example plugin (`examples/plugins/name-plate/`) packed here, installed
@@ -26,8 +26,10 @@ const pluginFile = () =>
 const dialog = (page: Page) => page.getByRole('dialog', { name: 'Plugins' });
 const palette = (page: Page) => page.getByRole('dialog', { name: 'Command palette' });
 
+/** Opens the Plugins dialog from the Settings (gear) menu (R3-12: it left the Home tab). */
 async function openPlugins(page: Page) {
-  await fileAction(page, 'Plugins…');
+  await page.locator('header').getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Plugins…' }).click();
   await expect(dialog(page)).toBeVisible();
 }
 
