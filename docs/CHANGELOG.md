@@ -4,6 +4,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.6.1 (2026-10-12)
 
+- 2026-10-12 · **Import .f3d: the active design segment** (ADR-0083's amendment): a file that carries more than one design segment (an animated or simulated asset beside the model) now reads the segment under the `[Active]` folder instead of whichever sorted first, so an empty animation timeline no longer hides the design; on the 250-file corpus no bodies 8 → 7 and mismatch 56 → 57, matches unchanged.
 - 2026-10-12 · **Desktop: a design opened from a file saves back to it after a restart** (ADR-0075's amendment): main keeps the paths it handed out in `userData/external-paths.json` and takes in its recent list at start, so a project reopened from the home screen after a restart or an update no longer has every write-back refused with "Extrudo was not asked to open that file."; a write-back error that repeats on every save is said once.
 
 ## v0.6.0 (2026-10-12)

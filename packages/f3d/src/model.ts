@@ -4,7 +4,7 @@
  * plane and geometry, and features with their inputs. Lengths stay in
  * the file's internal centimetres here; the mapper converts.
  */
-import { designSegments, type Entries, unzip } from './archive';
+import { designSegments, type Entries, type SegmentFiles, unzip } from './archive';
 import { type AsmCurve, type AsmFace, type AsmSurface, asmFaces, readAsm } from './asm';
 import { F3dFormatError, Reader } from './bytes';
 import { BODY, type BodyFlags, readBody } from './decode/body';
@@ -382,15 +382,25 @@ function readPlacement(seg: Segment, id: number): Matrix {
   return m;
 }
 
-/** Reads every design segment of a `.f3d` file; the first is the design. */
+/** Reads every design segment of a `.f3d` file; the active design's is read. */
 export function readF3d(bytes: Uint8Array): F3dDesign {
   return readF3dEntries(unzip(bytes));
 }
 
-/** Reads the design from an archive that is already unzipped. */
+/**
+ * The design segment to read among an archive's. A file can carry more than
+ * one: the active design lives under the asset folder marked `[Active]`, while
+ * `Animation/` and `Simulation …/` assets have their own design segments whose
+ * timelines are empty. Without an `[Active]` folder, the first segment is the
+ * design.
+ */
+export function activeDesignSegment(segments: SegmentFiles[]): SegmentFiles | undefined {
+  return segments.find((s) => s.folder.includes('[Active]/')) ?? segments[0];
+}
+
+/** Reads the active design from an archive that is already unzipped. */
 export function readF3dEntries(entries: Entries): F3dDesign {
-  const segments = designSegments(entries);
-  const first = segments[0];
+  const first = activeDesignSegment(designSegments(entries));
   if (!first) throw new F3dFormatError('No design in this file.');
   return readSegment(new Segment(first.meta, first.bulk), brepFaces(entries, first.folder));
 }
