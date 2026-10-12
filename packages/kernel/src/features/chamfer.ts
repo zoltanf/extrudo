@@ -18,6 +18,7 @@ import { type NamedShape, withHistory } from '../naming/ops';
 import type { ResolvedRef } from '../naming/resolve';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { edgeResolver } from './lost-edges';
+import { buildRound } from './round-fallback';
 
 /**
  * The chamfer feature in the kernel (P3-02, ADR-0043): bevels the picked
@@ -58,6 +59,22 @@ interface EdgePick {
   spec: ChamferSpec;
   /** The set it came from (1-based), for messages. */
   set: number;
+}
+
+/**
+ * The edges a chamfer failure blames, for the chain-dropping retry (as
+ * `blameFillet`): a `too-large` or `unchamferable` chain's edges, `[]` when it
+ * blames no chain, `undefined` for a mixed or unknown failure.
+ */
+function blameChamfer(error: unknown): number[] | undefined {
+  if (!(error instanceof ChamferError)) return undefined;
+  const out = new Set<number>();
+  for (const problem of error.problems) {
+    if (problem.kind === 'too-large' || problem.kind === 'unchamferable')
+      for (const edge of problem.edges) out.add(edge);
+    else if (problem.kind === 'mixed' || problem.kind === 'other') return undefined;
+  }
+  return [...out];
 }
 
 function evaluateChamfer(ctx: EvalContext<ChamferInputs>): FeatureOutput {
@@ -111,13 +128,22 @@ function evaluateChamfer(ctx: EvalContext<ChamferInputs>): FeatureOutput {
   const made = new Map<BodyId, NamedShape>();
   for (const [body, picks] of byBody) {
     const shape = ctx.bodies.get(body) as ShapeHandle;
+    const build = (kept: readonly EdgePick[]): ReturnType<typeof kernel.chamfer> =>
+      kernel.chamfer(
+        shape,
+        kept.map((p) => p.index),
+        kept.map((p) => p.spec),
+      );
     let result: ReturnType<typeof kernel.chamfer>;
     try {
-      result = kernel.chamfer(
-        shape,
-        picks.map((p) => p.index),
-        picks.map((p) => p.spec),
-      );
+      result = buildRound(picks, {
+        build,
+        blame: blameChamfer,
+        reason: (error) => (error instanceof ChamferError ? chamferMessage(error, picks) : ''),
+        feature: 'chamfer',
+        skip,
+        warn: (message) => ctx.warn(message),
+      });
     } catch (error) {
       if (error instanceof ChamferError) throw new KernelError(chamferMessage(error, picks));
       throw error;

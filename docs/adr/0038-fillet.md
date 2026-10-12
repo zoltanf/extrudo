@@ -402,3 +402,24 @@ absent on a new or plain feature, shown on one that has it, kept after
 unticking), `packages/api/src/emit.test.ts` (the round trip) and
 `e2e/fillet.spec.ts` (a design with the input on and a lost edge: the warning,
 unticking fails it, a new fillet has no box).
+
+## Amendment 2026-10-12: building the chains that work (`skipLostEdges`)
+
+A round failed whole when one of its tangent chains couldn't be built ("Radius
+N is too large for edge N", "These fillets can't all be built where they
+meet"). The corpus is mostly imported rounds, and the facade already probes
+each chain alone to name the largest radius that works, so its diagnosis knows
+which chain failed. With `skipLostEdges` on and a `too-large`/`unfilletable`
+diagnosis, the edges of the blamed chains are now dropped and the rest built
+once, warning "2 of 9 edges left out of the fillet: Radius 3 mm is too large for
+edge 12 (max ≈ 1.2 mm). Use Fix References to pick other edges or a smaller
+size." Two bounds: at most a third of the edges may be left out (a larger drop
+changed downstream geometry in the corpus — a later cut then removed a whole
+body), and there is no edge-by-edge fallback; when the rebuild fails it fails as
+without the input, with the original error. Without `skipLostEdges` nothing
+changes. `packages/kernel/src/features/round-fallback.ts` (`buildRound`),
+`blameFillet` in `fillet.ts`.
+
+Corpus (250 files): match 123 → 127, no design's verdict worse, four designs
+reach a match. Tests: `fillet.test.ts` "builds the chains that work …" and "…
+more than a third …".

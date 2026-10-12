@@ -364,3 +364,14 @@ first, as it always was, so the error order is unchanged. The dialog's last
 field is the same "Skip lost edges" toggle, shown only for a chamfer that has
 the input on. Tests: `features/chamfer.test.ts`
 "skipLostEdges"; `docs/file-format.md` §6.9.
+
+## Amendment 2026-10-12: building the chains that work
+
+The chamfer takes the fillet's chain-dropping rule (ADR-0038's amendment of
+this date, which has the reasons and the bounds): with `skipLostEdges` on and a
+`too-large`/`unchamferable` diagnosis, the edges of the blamed chains are
+dropped and the rest built once, warning "2 of 9 edges left out of the chamfer:
+…". At most a third of the edges may be left out, there is no edge-by-edge
+fallback, and a failed rebuild fails as before; without the input nothing
+changes. `blameChamfer` in `chamfer.ts`. Corpus (250 files): match 123 → 127,
+no design's verdict worse.

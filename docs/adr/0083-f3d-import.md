@@ -615,3 +615,13 @@ rule is a measurement for the edges work, not a change made here.
 Next: measure the weak-edge rule relaxed for imported rounds (keep guessed
 and chain-continuing edges, let `skipLostEdges` drop the lost ones), against
 the wrong picks it lets in.
+
+## Amendment 2026-10-12 (the imported rounds build what they can)
+
+The import sets `skipLostEdges` on every fillet and chamfer it writes
+(ADR-0038's and ADR-0043's amendments of 2026-10-11). Those rounds now also
+build the chains that work: a round whose one tangent chain is too large keeps
+the rest and warns how many edges were left out and why, instead of failing
+whole (at most a third of the edges; a larger drop fails as before). On the
+250-file corpus this moved four designs from *mismatch* to *match* — match 123
+→ 127 — with no design's verdict worse and no body lost.

@@ -505,6 +505,78 @@ describe('fillet', { timeout: 120_000 }, () => {
       expect(st.message).toMatch(/^1 of 2 edges can't be found and is left out of the fillet/);
     });
 
+    it('builds the chains that work and leaves the rest out (ADR-0038 amendment, 2026-10-12)', async () => {
+      const base = block();
+      const first = ok(await run(testDocument(base.features)));
+      const front = refTo(first, 'edge', between(cap, side(base.lines.bottom)));
+      const right = refTo(first, 'edge', between(cap, side(base.lines.right)));
+      const back = refTo(first, 'edge', between(cap, side(base.lines.top)));
+      const alone = ok(
+        await runWithShapes(
+          testDocument([
+            ...base.features,
+            fillet('F', [
+              { edges: [front], radius: '2 mm' },
+              { edges: [right], radius: '2 mm' },
+            ]),
+          ]),
+        ),
+      );
+      expect(alone.bodies).toHaveLength(1);
+      const expected = measure('B:0');
+      const result = await runWithShapes(
+        testDocument([
+          ...base.features,
+          skipping('F', [
+            { edges: [front], radius: '2 mm' },
+            { edges: [right], radius: '2 mm' },
+            // 25 mm is too large for the 20 mm body: that chain can't be built.
+            { edges: [back], radius: '25 mm' },
+          ]),
+        ]),
+      );
+      const st = status(result, 'F');
+      expect(st.status).toBe('warning');
+      expect(st.message).toMatch(/^1 of 3 edges left out of the fillet:/);
+      expect(st.message).toMatch(/too large for edge/);
+      expect(measure('B:0').volume).toBeCloseTo(expected.volume, 6);
+      expect(measure('B:0').faces).toBe(expected.faces);
+      // Without the option the whole fillet fails, as before.
+      const without = await run(
+        testDocument([
+          ...base.features,
+          fillet('F', [
+            { edges: [front], radius: '2 mm' },
+            { edges: [right], radius: '2 mm' },
+            { edges: [back], radius: '25 mm' },
+          ]),
+        ]),
+      );
+      expect(status(without, 'F').status).toBe('error');
+    });
+
+    it('fails as before when more than a third of the edges would be left out (ADR-0038 amendment, 2026-10-12)', async () => {
+      const base = block();
+      const first = ok(await run(testDocument(base.features)));
+      const front = refTo(first, 'edge', between(cap, side(base.lines.bottom)));
+      const right = refTo(first, 'edge', between(cap, side(base.lines.right)));
+      const back = refTo(first, 'edge', between(cap, side(base.lines.top)));
+      const left = refTo(first, 'edge', between(cap, side(base.lines.left)));
+      const result = await run(
+        testDocument([
+          ...base.features,
+          skipping('F', [
+            { edges: [front], radius: '2 mm' },
+            { edges: [right], radius: '2 mm' },
+            // Two of the four chains are too large: half, more than a third.
+            { edges: [back], radius: '25 mm' },
+            { edges: [left], radius: '25 mm' },
+          ]),
+        ]),
+      );
+      expect(status(result, 'F').status).toBe('error');
+    });
+
     it('with no edge found it fails as without the option', async () => {
       const base = block();
       const result = await run(

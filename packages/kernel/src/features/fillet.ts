@@ -11,6 +11,7 @@ import type { TopoNames } from '../naming/names';
 import { type NamedShape, withHistory } from '../naming/ops';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { edgeResolver } from './lost-edges';
+import { buildRound } from './round-fallback';
 
 /**
  * The fillet feature in the kernel (P3-01, ADR-0038): rounds the picked
@@ -51,6 +52,23 @@ interface EdgePick {
   set: number;
 }
 
+/**
+ * The edges a fillet failure blames, for the chain-dropping retry: a
+ * `too-large` or `unfilletable` chain's edges. `[]` when the diagnosis blames
+ * no chain (each works alone: tried together, status 4), and `undefined` for a
+ * mixed-radii or unknown failure, which is not a size problem and is rethrown.
+ */
+function blameFillet(error: unknown): number[] | undefined {
+  if (!(error instanceof FilletError)) return undefined;
+  const out = new Set<number>();
+  for (const problem of error.problems) {
+    if (problem.kind === 'too-large' || problem.kind === 'unfilletable')
+      for (const edge of problem.edges) out.add(edge);
+    else if (problem.kind === 'mixed-radii' || problem.kind === 'other') return undefined;
+  }
+  return [...out];
+}
+
 function evaluateFillet(ctx: EvalContext<FilletInputs>): FeatureOutput {
   const { kernel } = ctx;
   const sets = filletSets(ctx.inputs);
@@ -58,10 +76,11 @@ function evaluateFillet(ctx: EvalContext<FilletInputs>): FeatureOutput {
 
   // Edges by body, each with its set's radii.
   const byBody = new Map<BodyId, EdgePick[]>();
+  const skip = skipsLostEdges(ctx.inputs);
   const edges = edgeResolver(ctx, {
     label: 'an edge to fillet',
     feature: 'fillet',
-    skip: skipsLostEdges(ctx.inputs),
+    skip,
   });
   for (const set of sets) {
     const radii = setRadii(ctx, set);
@@ -91,19 +110,28 @@ function evaluateFillet(ctx: EvalContext<FilletInputs>): FeatureOutput {
   const made = new Map<BodyId, NamedShape>();
   for (const [body, picks] of byBody) {
     const shape = ctx.bodies.get(body) as ShapeHandle;
-    let result: ReturnType<typeof kernel.fillet>;
-    try {
-      result = variable
+    const build = (kept: readonly EdgePick[]): ReturnType<typeof kernel.fillet> =>
+      variable
         ? kernel.filletVariable(
             shape,
-            picks.map((p) => p.index),
-            picks.map((p) => [p.radius, p.radiusEnd] as [number, number]),
+            kept.map((p) => p.index),
+            kept.map((p) => [p.radius, p.radiusEnd] as [number, number]),
           )
         : kernel.fillet(
             shape,
-            picks.map((p) => p.index),
-            picks.map((p) => p.radius),
+            kept.map((p) => p.index),
+            kept.map((p) => p.radius),
           );
+    let result: ReturnType<typeof kernel.fillet>;
+    try {
+      result = buildRound(picks, {
+        build,
+        blame: blameFillet,
+        reason: (error) => (error instanceof FilletError ? filletMessage(error, picks) : ''),
+        feature: 'fillet',
+        skip,
+        warn: (message) => ctx.warn(message),
+      });
     } catch (error) {
       if (error instanceof FilletError) throw new KernelError(filletMessage(error, picks));
       throw error;
