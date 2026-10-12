@@ -341,3 +341,31 @@ and the dot's click doesn't. Esc closes the popover and gives the focus back to 
 `e2e/bodies.spec.ts` opens it from the dot by click and by Enter and applies a colour. Pending
 rows (ADR-0078) keep a plain dot: they have no menu either.
 
+## Amendment (2026-10-11): a ghost has a halo, not edges
+
+The owner's UI review 3 (R3-06, `docs/plans/ui-review-2026-10-11.md`): "the visible edges should
+not be rendered, and we should add a bit of a hollow [halo] effect around the object … the edges
+are kind of blurred a bit." A ghost draws **no edge lines** (the `edge` colour and the
+`LineSegments2` are gone from `GhostBodies`) and a **soft halo** round its outline instead:
+
+- **Three shells** of the ghost's own mesh (`HALO_SHELLS` in `viewport/ghostHalo.ts`: 2, 4 and
+  7 CSS px at 30 %, 15 % and 7 % of the ghost's grey), back faces only, each pushed out along
+  its normals **in clip space by a constant number of screen pixels** (`haloPatch`, an
+  `onBeforeCompile` patch of a `MeshBasicMaterial`: the normal projected to the screen, times
+  `2 · width / resolution · w`), so the halo is as wide at any zoom and in both projections.
+  The shells use **welded normals** (`smoothNormals`: every node at one position, rounded to
+  1e-5 mm, gets their average) because the display mesh splits nodes at sharp edges and shells
+  pushed along split normals crack open at the corners.
+- **Only outside the ghost**: the ghost's faces set stencil bit `0x80` (`GHOST_STENCIL_BIT`;
+  write mask that bit only) and the shells draw where it is not set, so the inside keeps its
+  plain 30 % grey whatever the depth complexity of a concave body. Faces render before shells
+  (`renderOrder` 1 and 2), after every opaque body and the section caps, whose own stencil
+  passes are done by then and which the next frame's clear starts afresh.
+- Clipping, posing and "takes no part in picking, Fit or any analysis" are unchanged, and so is
+  `data-ghost-bodies`. Rejected: a screen-space blur of a ghost mask (a render target and a
+  post pass for a few pixels of glow) and a fresnel rim on the faces (a box's flat faces have
+  one angle each, so they would get no gradient at their outline).
+
+`e2e/bodies.spec.ts` "a ghost body looks right" keeps the baseline `ghost-body` (the Playwright
+image); `ghostHalo.test.ts` covers the welded normals.
+

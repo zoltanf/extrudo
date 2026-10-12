@@ -6,8 +6,8 @@ branding.
 
 **Changes decided, not built yet (2026-10-11):** the owner's UI review 3 changes
 the mouse controls (into the Settings menu; presets Spindle, Crank, Glide,
-Blender, Trackpad), command search (one dialog for Ctrl+K and S, ten pins), ghost
-bodies and tooltip clips. The items are in
+Blender, Trackpad), command search (one dialog for Ctrl+K and S, ten pins)
+and tooltip clips. The items are in
 [`plans/ui-review-2026-10-11.md`](plans/ui-review-2026-10-11.md); this spec
 still describes the app as it is, and each slice updates the sections it
 changes.
@@ -602,9 +602,9 @@ a right-click without movement, as Onshape's context menu does.
   body is named "Body1", "Body2"… (the lowest free number) as soon as it
   appears, and keeps that name: removing another body renumbers nothing.
   Each row has a colour dot, the name and an eye. The eye cycles a body
-  through **shown**, **ghost** (a grey see-through shape that takes no part
-  in picking, Fit or the print checks) and **hidden** (ADR-0030's
-  amendment). A click selects the body in the model (Shift or Ctrl toggles),
+  through **shown**, **ghost** (a grey see-through shape with no edge lines
+  and a soft halo round its outline, R3-06, that takes no part in picking,
+  Fit or the print checks) and **hidden** (ADR-0030's amendment). A click selects the body in the model (Shift or Ctrl toggles),
   or puts it in an open dialog's field (an extrude's Bodies); the pointer on
   a row highlights the body in the view. F2 renames, Delete removes (all
   selected bodies when the row is one of them). Folders have right-click
