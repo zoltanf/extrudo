@@ -134,14 +134,23 @@ function readEdge(records: AsmRecord[], is: ReturnType<typeof isType>, edge: num
   const curvePtr = ep.find((p) => p >= 0 && nameOf(records[p]).endsWith('curve')) ?? -1;
   const start = vertexPoint(records, is, vertices[0] ?? -1);
   const end = vertexPoint(records, is, vertices[1] ?? -1);
+  const curve = curveAt(records, curvePtr);
+  // The edge runs against its curve when the edge record's sense is true (read
+  // from the record). For a straight curve the points say it directly, and the
+  // two disagree on a rare few edges in the corpus, where the points are the
+  // ones a kernel can rebuild, so a line's sense comes from its geometry.
+  const sense = bools(records[edge])[0] ?? false;
+  const reversed =
+    curve.kind === 'line' && start && end
+      ? (end[0] - start[0]) * curve.direction[0] +
+          (end[1] - start[1]) * curve.direction[1] +
+          (end[2] - start[2]) * curve.direction[2] <
+        0
+      : sense;
   return {
     id: edge,
-    curve: curveAt(records, curvePtr),
-    // The edge record's first boolean is its sense; ACIS writes it true when the
-    // edge runs against the curve (measured over the corpus: an edge with its
-    // sense true has its end-to-start against the curve's direction). STEP
-    // `EDGE_CURVE` wants the opposite.
-    reversed: bools(records[edge])[0] ?? false,
+    curve,
+    reversed,
     ...(start ? { start } : {}),
     ...(end ? { end } : {}),
   };

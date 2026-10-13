@@ -134,7 +134,7 @@ export function solidToStep(solid: AsmBodySolid): string {
   const w = new StepWriter();
   const ctx = header(w);
   const vertexAt = new Map<string, number>();
-  const edgeAt = new Map<number, number>();
+  const edgeAt = new Map<number, number[]>();
   const vertex = (p: [number, number, number]): number => {
     const key = p.map((x) => x.toFixed(7)).join(',');
     const cached = vertexAt.get(key);
@@ -143,7 +143,13 @@ export function solidToStep(solid: AsmBodySolid): string {
     vertexAt.set(key, at);
     return at;
   };
-  const edge = (e: AsmBodyFace['loops'][number]['coedges'][number]['edge']): number => {
+  /**
+   * The STEP edges of one file edge, in order. A closed edge (a full circle
+   * whose two vertices are the same point) is split at its antipode into two
+   * half edges: a kernel reads a start-equals-end `EDGE_CURVE` as a degenerate
+   * edge, and the reference exports split them too. Any other edge is one.
+   */
+  const edge = (e: AsmBodyFace['loops'][number]['coedges'][number]['edge']): number[] => {
     const cached = edgeAt.get(e.id);
     if (cached !== undefined) return cached;
     if (e.start === undefined) throw new UnsupportedGeometry('an edge with no vertex');
@@ -153,36 +159,54 @@ export function solidToStep(solid: AsmBodySolid): string {
     const curve = w.curve(e.curve);
     // The edge runs against its curve when the edge record's sense is true, so
     // `EDGE_CURVE`'s same-sense is the opposite of the edge's own sense.
-    const ec = w.add("EDGE_CURVE('',#{},#{},#{},.{}.)", [
-      start,
-      end,
-      curve,
-      e.reversed ? 'F' : 'T',
-    ]);
-    edgeAt.set(e.id, ec);
-    return ec;
+    const same = e.reversed ? 'F' : 'T';
+    const refs: number[] = [];
+    if (start === end && e.curve.kind === 'ellipse') {
+      const c = e.curve.center;
+      const mid = vertex([2 * c[0] - e.start[0], 2 * c[1] - e.start[1], 2 * c[2] - e.start[2]]);
+      refs.push(w.add("EDGE_CURVE('',#{},#{},#{},.{}.)", [start, mid, curve, same]));
+      refs.push(w.add("EDGE_CURVE('',#{},#{},#{},.{}.)", [mid, end, curve, same]));
+    } else {
+      refs.push(w.add("EDGE_CURVE('',#{},#{},#{},.{}.)", [start, end, curve, same]));
+    }
+    edgeAt.set(e.id, refs);
+    return refs;
   };
   const faceRefs: number[] = [];
   for (const face of solid.faces) {
     const bounds: number[] = [];
     for (const loop of face.loops) {
-      const oriented: number[] = [];
+      // ACIS winds a loop counter-clockwise about the face's normal (its outward
+      // side), but STEP wants it counter-clockwise about the surface's own
+      // normal, so a reversed face's loop is reversed here (which also flips
+      // each oriented edge's sense).
+      const oriented: { ref: number; forward: boolean }[] = [];
       for (const coedge of loop.coedges)
-        oriented.push(
-          w.add("ORIENTED_EDGE('',*,*,#{}, .{}.)", [edge(coedge.edge), coedge.forward ? 'T' : 'F']),
-        );
-      if (oriented.length === 0) throw new UnsupportedGeometry('a loop with no edge');
-      const el = w.add("EDGE_LOOP('',({}))", [oriented.map((x) => `#${x}`).join(',')]);
+        for (const ref of edge(coedge.edge)) oriented.push({ ref, forward: coedge.forward });
+      if (face.reversed) {
+        oriented.reverse();
+        for (const o of oriented) o.forward = !o.forward;
+      }
+      const refs = oriented.map((o) =>
+        w.add("ORIENTED_EDGE('',*,*,#{}, .{}.)", [o.ref, o.forward ? 'T' : 'F']),
+      );
+      if (refs.length === 0) throw new UnsupportedGeometry('a loop with no edge');
+      const el = w.add("EDGE_LOOP('',({}))", [refs.map((x) => `#${x}`).join(',')]);
       const cls = loop.outer ? 'FACE_OUTER_BOUND' : 'FACE_BOUND';
       bounds.push(w.add(`${cls}('',#{},.T.)`, [el]));
     }
     if (bounds.length === 0) throw new UnsupportedGeometry('a face with no boundary');
     const surface = w.surface(face.surface);
+    // The face's own sense flag is ACIS's, and it tells which side of the
+    // surface the face is on. The kernel rebuilt every body in the corpus with
+    // the flag's own value here and the loop reversed when it is set (a body
+    // whose loops run the other way round than its surfaces is written
+    // inside-out otherwise); the two go together.
     faceRefs.push(
       w.add("ADVANCED_FACE('',({}),#{},.{}.)", [
         bounds.map((x) => `#${x}`).join(','),
         surface,
-        face.reversed ? 'F' : 'T',
+        face.reversed ? 'T' : 'F',
       ]),
     );
   }
@@ -287,6 +311,24 @@ class StepWriter {
   surface(s: AsmSurface): number {
     if (s.kind === 'plane')
       return this.add("PLANE('',#{})", [this.axis2(s.point, s.normal, s.normal)]);
+    if (s.kind === 'sphere') {
+      // A sphere is symmetric about its pole axis; any X reference does.
+      return this.add("SPHERICAL_SURFACE('',#{},{})", [
+        this.axis2(s.center, s.axis, s.axis),
+        s.radius * 10,
+      ]);
+    }
+    if (s.kind === 'torus') {
+      // A degenerate torus (a spindle or a horn torus) is not a solid STEP can
+      // hold; refuse it rather than write a surface the kernel cannot rebuild.
+      if (!(s.minor < s.major))
+        throw new UnsupportedGeometry('a torus whose tube is not smaller than its ring');
+      return this.add("TOROIDAL_SURFACE('',#{},{},{})", [
+        this.axis2(s.center, s.axis, s.ref),
+        s.major * 10,
+        s.minor * 10,
+      ]);
+    }
     if (s.kind === 'cone') {
       // A narrowing cone (negative file slope) widens along −axis; STEP's
       // semi-angle is positive and the cone widens along the placement's +Z, so

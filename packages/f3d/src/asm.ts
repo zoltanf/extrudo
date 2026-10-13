@@ -208,6 +208,25 @@ export type AsmSurface =
       /** How much the radius grows per cm along `axis` (tan of the half-angle; 0: a cylinder). */
       slope: number;
     }
+  | {
+      kind: 'sphere';
+      center: [number, number, number];
+      /** The pole axis (the sphere's u/v origin is arbitrary around it). */
+      axis: [number, number, number];
+      radius: number;
+    }
+  | {
+      kind: 'torus';
+      center: [number, number, number];
+      /** The torus axis (the placement's Z). */
+      axis: [number, number, number];
+      /** The direction of the tube centre (the placement's X). */
+      ref: [number, number, number];
+      /** Centre-to-tube-centre radius. */
+      major: number;
+      /** Tube radius. */
+      minor: number;
+    }
   | { kind: 'other'; type: string };
 
 /** An edge's curve, in model space (cm). */
@@ -268,6 +287,21 @@ function surfaceOf(r: AsmRecord | undefined): AsmSurface {
       slope: cylinder || Math.abs(cosine) < 1e-12 ? 0 : sine / cosine,
     };
   }
+  // sphere: centre, radius, then the pole axis and the reference direction.
+  if (r.type.endsWith('sphere-surface') && vs[0] && ds[0] !== undefined)
+    return { kind: 'sphere', center: vs[0], axis: vs[1] ?? [0, 0, 1], radius: ds[0] };
+  // torus: centre, axis, major radius, minor radius, then the tube direction.
+  if (r.type.endsWith('torus-surface') && vs[0] && vs[1] && ds[0] !== undefined)
+    return {
+      kind: 'torus',
+      center: vs[0],
+      axis: vs[1],
+      ref: vs[2] ?? [1, 0, 0],
+      major: ds[0],
+      // A negative minor radius only flips the tube's outward direction; STEP
+      // wants the radius positive.
+      minor: Math.abs(ds[1] ?? 0),
+    };
   return { kind: 'other', type: r.type };
 }
 

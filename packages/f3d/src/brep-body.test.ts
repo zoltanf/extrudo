@@ -395,17 +395,28 @@ describe('asmBodies', () => {
   });
 
   it('keeps the edge sense: an edge can run against its curve', () => {
-    const one = asmBodies(
+    const against = asmBodies(
       readAsm(
         solidStream([
           {
             surface: { t: 'plane', p: V0, n: [0, 0, 1] },
-            loops: [[{ curve: { t: 'line', p: V0, d: [1, 0, 0] }, a: V0, b: V1, reversed: true }]],
+            loops: [[{ curve: { t: 'line', p: V0, d: [-1, 0, 0] }, a: V0, b: V1 }]],
           },
         ]),
       ),
     );
-    expect(one[0]?.faces[0]?.loops[0]?.coedges[0]?.edge.reversed).toBe(true);
+    const withIt = asmBodies(
+      readAsm(
+        solidStream([
+          {
+            surface: { t: 'plane', p: V0, n: [0, 0, 1] },
+            loops: [[{ curve: { t: 'line', p: V0, d: [1, 0, 0] }, a: V0, b: V1 }]],
+          },
+        ]),
+      ),
+    );
+    expect(against[0]?.faces[0]?.loops[0]?.coedges[0]?.edge.reversed).toBe(true);
+    expect(withIt[0]?.faces[0]?.loops[0]?.coedges[0]?.edge.reversed).toBe(false);
   });
 
   it('reads an inner loop as a second, non-outer loop', () => {
@@ -474,9 +485,13 @@ describe('solidToStep', () => {
     expect(step).toMatch(/CIRCLE\('',#\d+,50\)/); // 5 cm radius → 50 mm
   });
 
-  it('keeps a reversed face as a false same-sense', () => {
+  it('reverses a reversed face’s loop and writes its same-sense true', () => {
     const { step } = solidStep(firstSolid(solidStream(boxFaces(true))));
-    expect(step).toContain(',.F.);');
+    // The face's own sense flag is true here (ACIS winds its loop about the
+    // face normal): the loop is reversed, so an orientation flips to false.
+    expect(step).toContain('ORIENTED_EDGE');
+    expect(step).toMatch(/ORIENTED_EDGE\('',\*,\*,#\d+, \.F\.\)/);
+    expect(step).toMatch(/ADVANCED_FACE\([^)]*\)[^;]*,\.T\.\);/);
   });
 
   it('writes an edge that runs against its curve as a false same-sense', () => {
@@ -485,7 +500,7 @@ describe('solidToStep', () => {
         solidStream([
           {
             surface: { t: 'plane', p: V0, n: [0, 0, 1] },
-            loops: [[{ curve: { t: 'line', p: V0, d: [1, 0, 0] }, a: V0, b: V1, reversed: true }]],
+            loops: [[{ curve: { t: 'line', p: V0, d: [-1, 0, 0] }, a: V0, b: V1 }]],
           },
         ]),
       ),
