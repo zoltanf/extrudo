@@ -33,6 +33,13 @@ export interface BodyStep {
   component?: number;
   /** The STEP text, when the body was written. */
   step?: string;
+  /**
+   * The written body has a sphere or torus face whose surface the file signed
+   * inward (a negative radius). The body is still written, but the writer does
+   * not yet rebuild such bodies reliably, so it does not vouch for the solid (the
+   * body check leaves it unchecked).
+   */
+  inward?: boolean;
   /** Why the body was not written. */
   reason?: string;
 }
@@ -402,7 +409,7 @@ export function solidStep(solid: AsmBodySolid): { step?: string; reason?: string
  * that name it, and every surface and curve is a plane, cylinder, cone,
  * sphere, torus, line or circle/ellipse; otherwise the body comes back with a
  * reason. This is the bytes wrapper: it unzips and decodes the design itself.
- * A caller that already has both (the importer, M2) uses {@link bodiesStep}
+ * A caller that already has both (the importer) uses {@link bodiesStep}
  * instead, so a 100 MB file is not unzipped and decoded twice.
  */
 export function f3dBodiesStep(bytes: Uint8Array): BodyStep[] {
@@ -479,7 +486,22 @@ export function bodiesStep(entries: Entries, design: F3dDesign): BodyStep[] {
       out.push(at({ reason: 'the body is not in its stream' }));
       continue;
     }
-    out.push(at(solidStep(solid)));
+    // Only a written body is flagged: a body the writer refused keeps its own
+    // reason, and the inward sign is what the body check later acts on.
+    const written = solidStep(solid);
+    out.push(
+      at({
+        ...written,
+        ...(written.step !== undefined && hasInwardFace(solid) ? { inward: true } : {}),
+      }),
+    );
   }
   return out;
+}
+
+/** True when any face's sphere/torus surface carries the file's inward sign (a negative radius). */
+export function hasInwardFace(solid: AsmBodySolid): boolean {
+  return solid.faces.some(
+    (f) => (f.surface.kind === 'sphere' || f.surface.kind === 'torus') && f.surface.inward,
+  );
 }

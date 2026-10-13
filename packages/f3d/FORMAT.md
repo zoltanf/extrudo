@@ -345,6 +345,13 @@ component's bodies in order and points at a record (`74CA4562…` or
 *i* of the container is the stream's *i*-th `lump`. The container lists the
 visible bodies; a stream can hold a hidden body's solid beside them.
 
+A body with a sphere or torus face the file signs inward (a negative radius)
+is not yet rebuilt reliably: on the corpus, every body the writer got wrong
+while the replayed timeline was right carried such a face, though the sign is
+not the whole cause (in some of them the body's container leads to a different
+solid than the visible one). The writer still writes such a body but leaves it
+unchecked (see `body-check.ts`), and the replayed timeline stays.
+
 The streams hold more than the solved B-rep: earlier versions of faces (one
 face tag can appear on several faces with different extents) and their
 edges. So the edge a fillet or chamfer rounded is often still there between

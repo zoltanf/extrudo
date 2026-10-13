@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { readAsm } from './asm';
 import { type AsmBodySolid, asmBodies } from './asm-body';
-import { solidStep, utf16StreamName } from './brep-step';
+import { hasInwardFace, solidStep, utf16StreamName } from './brep-step';
 import { F3dFormatError } from './bytes';
 
 type V = [number, number, number];
@@ -636,6 +636,40 @@ describe('solidToStep', () => {
     expect(reason).toBeUndefined();
     expect(step).toMatch(/TOROIDAL_SURFACE\('',#\d+,15,2\.5\)/); // minor positive
     expect(step).toMatch(/ADVANCED_FACE\([^)]*\)[^;]*,.F\.\);/);
+  });
+
+  it('reports an inward-signed sphere or torus surface, and nothing else', () => {
+    const inwardSphere = firstSolid(
+      solidStream([
+        {
+          surface: { t: 'sphere', c: [1, 2, 3], axis: [0, 0, 1], r: 2.5, inward: true },
+          loops: [squareAt(0)],
+        },
+      ]),
+    );
+    expect(hasInwardFace(inwardSphere)).toBe(true);
+    const inwardTorus = firstSolid(
+      solidStream([
+        {
+          surface: { t: 'torus', c: V0, axis: [0, 0, 1], major: 1.5, minor: 0.25, inward: true },
+          loops: [squareAt(0)],
+        },
+      ]),
+    );
+    expect(hasInwardFace(inwardTorus)).toBe(true);
+    expect(hasInwardFace(firstSolid(solidStream(boxFaces())))).toBe(false);
+    expect(
+      hasInwardFace(
+        firstSolid(
+          solidStream([
+            {
+              surface: { t: 'sphere', c: [1, 2, 3], axis: [0, 0, 1], r: 2.5 },
+              loops: [squareAt(0)],
+            },
+          ]),
+        ),
+      ),
+    ).toBe(false);
   });
 
   it('reverses the face a negative-radius surface points the other way', () => {
