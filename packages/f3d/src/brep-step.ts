@@ -1,6 +1,7 @@
 /**
  * A body of the file's B-rep streams → AP214 STEP text (mm), for planes,
- * cylinders and cones with straight and elliptical (circle) edges. Anything
+ * cylinders, cones, spheres and tori with straight and elliptical (circle)
+ * edges. Anything
  * else is refused with a reason: the importer needs only the bodies whose
  * analytic geometry a kernel can rebuild exactly.
  *
@@ -394,8 +395,9 @@ export function solidStep(solid: AsmBodySolid): { step?: string; reason?: string
 /**
  * The design's visible bodies as STEP, one entry per body. A body is written
  * only when its stream is named, its stream has as many solids as the bodies
- * that name it, and every surface and curve is a plane, cylinder, cone, line
- * or circle/ellipse; otherwise the body comes back with a reason.
+ * that name it, and every surface and curve is a plane, cylinder, cone,
+ * sphere, torus, line or circle/ellipse; otherwise the body comes back with a
+ * reason.
  */
 export function f3dBodiesStep(bytes: Uint8Array): BodyStep[] {
   let entries: Entries;

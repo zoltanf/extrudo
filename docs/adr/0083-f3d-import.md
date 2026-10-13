@@ -670,7 +670,7 @@ no edge is not written; `f3dBodiesStep` returns the reason instead, so an open
 shell is never emitted. `ASM` streams also write each record's class followed by
 its base classes (each with a `0x0d` tag); `readAsm` keeps the last name in
 `type` (what the rest of the reader was written against) and the record's own
-class in a new `derived` field, which this round uses. The two container
+class in a new `derived` field, which this reader uses. The two container
 members that name a stream file are the type table's own 36-character GUID
 strings (`74CA4562…`, `40DCC3F41D…` — the latter ten hex digits before its first
 dash, as the file writes it); both are read from the bulk and are needed
@@ -678,7 +678,7 @@ dash, as the file writes it); both are read from the bulk and are needed
 
 **Limits.** Spline, torus and sphere surfaces and intcurve / exp_par_cur curves
 are not carried; they are refused with a reason (the stream often holds an
-approximating NURBS for them, which a later round can read). A stream can hold
+approximating NURBS for them, which a later change can read). A stream can hold
 more solids than the visible bodies that name it (a hidden body's solid beside
 them); those are left unwritten rather than pairing by position, since the
 container does not mark the hidden ones.
@@ -691,7 +691,7 @@ cannot make the read quadratic, and a chain that runs away throws instead of
 looping. The reader shares `readAsm`'s guarantees (no read past the stream's
 end).
 
-## Amendment, 2026-10-13 (round A2): orientation, spheres and tori, closed edges
+## Amendment, 2026-10-13: B-rep orientation, spheres and tori, closed edges
 
 The B-rep writer above was written against the wrong sense on three readings;
 this amendment corrects them and adds two surfaces. It still does not touch the
