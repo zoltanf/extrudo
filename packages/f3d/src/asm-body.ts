@@ -13,8 +13,10 @@
  * order, are the solids of the stream.
  *
  * Every walk is bounded: each pointer index is checked against the record
- * count, each chain is followed with a seen-set, and a crafted stream that
- * repeats or runs away throws `F3dFormatError` instead of looping.
+ * count, the whole stream is walked once (a shell, face, loop or coedge is read
+ * at most once — a duplicate shell is skipped, a duplicated face, loop or
+ * coedge throws `F3dFormatError`), so a crafted stream cannot make the read
+ * quadratic, and a chain that runs away throws instead of looping.
  */
 import { type AsmCurve, type AsmRecord, type AsmSurface, asmCurveOf, asmSurfaceOf } from './asm';
 import { F3dFormatError } from './bytes';
@@ -72,8 +74,8 @@ const bools = (r: AsmRecord | undefined): boolean[] =>
 /** A record's own class name (its base classes are dropped). */
 const nameOf = (r: AsmRecord | undefined): string => r?.derived ?? r?.type ?? '';
 
-/** A ray from the record type / a subtype of it (`tedge-edge`, `tvertex-vertex`). */
-function typeer(records: AsmRecord[]) {
+/** True when a record is `type` or a subtype of it (`tedge-edge`, `tvertex-vertex`). */
+function isType(records: AsmRecord[]) {
   return (p: number, type: string): boolean => {
     if (p < 0 || p >= records.length) return false;
     const t = nameOf(records[p]);
@@ -81,14 +83,14 @@ function typeer(records: AsmRecord[]) {
   };
 }
 
-/** The first pointer at `ptr` that names a record of `type`. */
+/** The first pointer naming a record of `type`. */
 const firstOf = (is: (p: number, t: string) => boolean, ptrs: number[], type: string): number =>
   ptrs.find((p) => is(p, type)) ?? -1;
 
 /** A vertex's position, following vertex → point. */
 function vertexPoint(
   records: AsmRecord[],
-  is: ReturnType<typeof typeer>,
+  is: ReturnType<typeof isType>,
   v: number,
 ): AsmPoint | undefined {
   if (!is(v, 'vertex')) return undefined;
@@ -101,17 +103,26 @@ function vertexPoint(
 /** A surface's geometry, with the record's own class name when it is not carried. */
 function surfaceAt(records: AsmRecord[], p: number): AsmSurface {
   const s = asmSurfaceOf(records[p]);
-  return s.kind === 'other' ? { kind: 'other', type: nameOf(records[p]) } : s;
+  return s.kind === 'other' ? { kind: 'other', type: nameOf(records[p]) || s.type } : s;
 }
 
 /** A curve's geometry, with the record's own class name when it is not carried. */
 function curveAt(records: AsmRecord[], p: number): AsmCurve {
   const c = asmCurveOf(records[p]);
-  return c.kind === 'other' ? { kind: 'other', type: nameOf(records[p]) } : c;
+  return c.kind === 'other' ? { kind: 'other', type: nameOf(records[p]) || c.type } : c;
+}
+
+/** The stream's walk state: a shell, face, loop or coedge is read at most once. */
+interface Walk {
+  is: ReturnType<typeof isType>;
+  shells: Set<number>;
+  faces: Set<number>;
+  loops: Set<number>;
+  coedges: Set<number>;
 }
 
 /** One edge record: its curve, its two vertices' points. */
-function readEdge(records: AsmRecord[], is: ReturnType<typeof typeer>, edge: number): AsmBodyEdge {
+function readEdge(records: AsmRecord[], is: ReturnType<typeof isType>, edge: number): AsmBodyEdge {
   const ep = pointers(records[edge]);
   const vertices = ep.filter((p) => is(p, 'vertex'));
   const curvePtr = ep.find((p) => p >= 0 && nameOf(records[p]).endsWith('curve')) ?? -1;
@@ -126,67 +137,60 @@ function readEdge(records: AsmRecord[], is: ReturnType<typeof typeer>, edge: num
 }
 
 /** The loops of one face, in the file’s order, each with its coedges in order. */
-function readLoops(
-  records: AsmRecord[],
-  is: ReturnType<typeof typeer>,
-  face: number,
-): AsmBodyLoop[] {
+function readLoops(records: AsmRecord[], walk: Walk, face: number): AsmBodyLoop[] {
   const loops: AsmBodyLoop[] = [];
-  const seen = new Set<number>();
-  let loop = firstOf(is, pointers(records[face]), 'loop');
+  let loop = firstOf(walk.is, pointers(records[face]), 'loop');
   while (loop >= 0) {
-    if (seen.has(loop)) throw new F3dFormatError('ASM body: a loop chain repeats.');
-    seen.add(loop);
+    if (walk.loops.has(loop)) throw new F3dFormatError('ASM body: a loop is used by two faces.');
+    walk.loops.add(loop);
     if (loops.length >= MAX_LOOPS) throw new F3dFormatError('ASM body: too many loops.');
     const outer = loops.length === 0;
     const coedges: AsmBodyCoedge[] = [];
-    const seenCoedge = new Set<number>();
-    let coedge = firstOf(is, pointers(records[loop]), 'coedge');
+    const cycle = new Set<number>();
+    let coedge = firstOf(walk.is, pointers(records[loop]), 'coedge');
     while (coedge >= 0) {
-      if (seenCoedge.has(coedge)) break; // the coedge cycle closes; the loop is whole
-      seenCoedge.add(coedge);
+      if (cycle.has(coedge)) break; // the coedge cycle closes; the loop is whole
+      cycle.add(coedge);
+      if (walk.coedges.has(coedge))
+        throw new F3dFormatError('ASM body: a coedge is used by two loops.');
+      walk.coedges.add(coedge);
       if (coedges.length >= MAX_EDGES) throw new F3dFormatError('ASM body: too many coedges.');
       const cp = pointers(records[coedge]);
-      const edge = firstOf(is, cp, 'edge');
+      const edge = firstOf(walk.is, cp, 'edge');
       if (edge >= 0) {
         const forward = bools(records[coedge])[0] ?? true;
-        coedges.push({ edge: readEdge(records, is, edge), forward });
+        coedges.push({ edge: readEdge(records, walk.is, edge), forward });
       }
       coedge = firstOf(
-        is,
-        cp.filter((p) => is(p, 'coedge')),
+        walk.is,
+        cp.filter((p) => walk.is(p, 'coedge')),
         'coedge',
       );
     }
     loops.push({ coedges, outer });
-    loop = firstOf(is, pointers(records[loop]), 'loop');
+    loop = firstOf(walk.is, pointers(records[loop]), 'loop');
   }
   return loops;
 }
 
 /** One face record: its surface, its sense and its loops. */
-function readFace(records: AsmRecord[], is: ReturnType<typeof typeer>, face: number): AsmBodyFace {
+function readFace(records: AsmRecord[], walk: Walk, face: number): AsmBodyFace {
   const fp = pointers(records[face]);
   const surface = fp[fp.length - 1] ?? -1;
   const reversed = bools(records[face])[0] ?? false;
-  return { surface: surfaceAt(records, surface), reversed, loops: readLoops(records, is, face) };
+  return { surface: surfaceAt(records, surface), reversed, loops: readLoops(records, walk, face) };
 }
 
 /** The faces of one shell: its first face, then the face chain. */
-function shellFaces(
-  records: AsmRecord[],
-  is: ReturnType<typeof typeer>,
-  shell: number,
-): AsmBodyFace[] {
+function shellFaces(records: AsmRecord[], walk: Walk, shell: number): AsmBodyFace[] {
   const faces: AsmBodyFace[] = [];
-  const seen = new Set<number>();
-  let face = firstOf(is, pointers(records[shell]), 'face');
+  let face = firstOf(walk.is, pointers(records[shell]), 'face');
   while (face >= 0) {
-    if (seen.has(face)) throw new F3dFormatError('ASM body: a face chain repeats.');
-    seen.add(face);
+    if (walk.faces.has(face)) throw new F3dFormatError('ASM body: a face is used by two shells.');
+    walk.faces.add(face);
     if (faces.length >= MAX_FACES) throw new F3dFormatError('ASM body: too many faces.');
-    faces.push(readFace(records, is, face));
-    const next = pointers(records[face]).find((p) => p !== face && is(p, 'face')) ?? -1;
+    faces.push(readFace(records, walk, face));
+    const next = pointers(records[face]).find((p) => p !== face && walk.is(p, 'face')) ?? -1;
     face = next;
   }
   return faces;
@@ -195,17 +199,26 @@ function shellFaces(
 /**
  * The live solids of a B-rep stream, one per `lump`, in stream order. Each is
  * the faces of the shell that lump names (the current shell; the stream's
- * earlier shells are not read).
+ * earlier shells are not read). The whole stream is walked once: a shell read
+ * already is skipped, and a face, loop or coedge claimed twice throws, so a
+ * crafted stream cannot make the read quadratic.
  */
 export function asmBodies(records: AsmRecord[]): AsmBodySolid[] {
-  const is = typeer(records);
+  const walk: Walk = {
+    is: isType(records),
+    shells: new Set(),
+    faces: new Set(),
+    loops: new Set(),
+    coedges: new Set(),
+  };
   const out: AsmBodySolid[] = [];
   for (let i = 0; i < records.length; i++) {
     if (records[i]?.type !== 'lump') continue;
     if (out.length >= MAX_SOLIDS) throw new F3dFormatError('ASM body: too many solids.');
-    const shell = firstOf(is, pointers(records[i]), 'shell');
-    if (shell < 0) continue;
-    out.push({ faces: shellFaces(records, is, shell) });
+    const shell = firstOf(walk.is, pointers(records[i]), 'shell');
+    if (shell < 0 || walk.shells.has(shell)) continue;
+    walk.shells.add(shell);
+    out.push({ faces: shellFaces(records, walk, shell) });
   }
   return out;
 }

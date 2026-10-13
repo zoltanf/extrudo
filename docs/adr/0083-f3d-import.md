@@ -661,12 +661,20 @@ design leaves them out.
 
 **What is written.** `brep-step.ts` writes one body as AP214 STEP in mm:
 `PLANE`, `CYLINDRICAL_SURFACE`, `CONICAL_SURFACE`, `LINE`, `CIRCLE` and
-`ELLIPSE`, sharing vertices and edges. A body with any other surface or curve is
-not written; `f3dBodiesStep` returns the reason instead. `ASM` streams also
-write each record's class followed by its base classes (each with a `0x0d`
-tag); `readAsm` keeps the last name in `type` (what the rest of the reader was
-written against) and the record's own class in a new `derived` field, which this
-round uses.
+`ELLIPSE`, sharing vertices and edges. A cone whose file slope is negative
+narrows along its axis, while STEP's semi-angle is positive and the cone widens
+along the placement's +Z, so the writer flips the placement axis for a negative
+slope (the radius sits at the centre, which stays put). A body with any other
+surface or curve, an edge with no vertex, a face with no boundary or a loop with
+no edge is not written; `f3dBodiesStep` returns the reason instead, so an open
+shell is never emitted. `ASM` streams also write each record's class followed by
+its base classes (each with a `0x0d` tag); `readAsm` keeps the last name in
+`type` (what the rest of the reader was written against) and the record's own
+class in a new `derived` field, which this round uses. The two container
+members that name a stream file are the type table's own 36-character GUID
+strings (`74CA4562…`, `40DCC3F41D…` — the latter ten hex digits before its first
+dash, as the file writes it); both are read from the bulk and are needed
+(containers with bodies use both).
 
 **Limits.** Spline, torus and sphere surfaces and intcurve / exp_par_cur curves
 are not carried; they are refused with a reason (the stream often holds an
@@ -676,6 +684,9 @@ them); those are left unwritten rather than pairing by position, since the
 container does not mark the hidden ones.
 
 **Hostile input.** Every walk is bounded: each pointer index is checked against
-the record count, each chain is followed with a seen-set, and a crafted stream
-whose face or loop chain repeats throws `F3dFormatError` instead of looping.
-The reader shares `readAsm`'s guarantees (no read past the stream's end).
+the record count, the whole stream is walked once (a shell, face, loop or coedge
+is read at most once — a duplicate shell is skipped, a duplicated face, loop or
+coedge throws `F3dFormatError`), so a crafted stream of many lumps on one shell
+cannot make the read quadratic, and a chain that runs away throws instead of
+looping. The reader shares `readAsm`'s guarantees (no read past the stream's
+end).

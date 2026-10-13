@@ -86,7 +86,10 @@ const keyCurve = (c: CurveIn) =>
     : `e:${keyV(c.c)}:${keyV(c.n)}:${keyV(c.major)}:${c.ratio}`;
 
 /** A stream with one lump holding `faces`, laid out as the reader expects. */
-function solidStream(faces: FaceIn[], opts: { faceCycle?: boolean } = {}): Uint8Array {
+function solidStream(
+  faces: FaceIn[],
+  opts: { faceCycle?: boolean; lumps?: number } = {},
+): Uint8Array {
   const vertexAt = new Map<string, number>();
   const vertices: V[] = [];
   const curveAt = new Map<string, number>();
@@ -132,12 +135,12 @@ function solidStream(faces: FaceIn[], opts: { faceCycle?: boolean } = {}): Uint8
     return at;
   };
   const faceCoedges: { edge: number; forward: boolean }[][][] = faces.map((face) => {
+    surface(face.surface);
     for (const loop of face.loops)
       for (const o of loop) {
         if (o.a) vertex(o.a);
         if (o.b) vertex(o.b);
         curve(o.curve);
-        surface(face.surface);
       }
     return face.loops.map((loop) =>
       loop.map((o) => ({ edge: edgeOf(o), forward: o.forward ?? true })),
@@ -146,10 +149,11 @@ function solidStream(faces: FaceIn[], opts: { faceCycle?: boolean } = {}): Uint8
   const flatCoedges = faceCoedges.flat(2);
 
   // Index blocks, in a fixed order so pointers can be written once.
+  const lumps = opts.lumps ?? 1;
   const BODY = 0;
   const LUMP = 1;
-  const SHELL = 2;
-  const FACE = 3;
+  const SHELL = LUMP + lumps;
+  const FACE = SHELL + 1;
   const LOOP = FACE + faces.length;
   const COEDGE = LOOP + faces.reduce((n, f) => n + f.loops.length, 0);
   const EDGE = COEDGE + flatCoedges.length;
@@ -160,7 +164,8 @@ function solidStream(faces: FaceIn[], opts: { faceCycle?: boolean } = {}): Uint8
 
   const records: number[][] = new Array(SURFACE + surfaces.length);
   records[BODY] = rec('body', ptr(-1), int(1), ptr(-1), ptr(LUMP), ptr(-1), ptr(-1));
-  records[LUMP] = rec('lump', ptr(-1), int(-1), ptr(-1), ptr(SHELL), ptr(BODY));
+  for (let li = 0; li < lumps; li++)
+    records[LUMP + li] = rec('lump', ptr(-1), int(-1), ptr(-1), ptr(SHELL), ptr(BODY));
   records[SHELL] = rec('shell', ptr(-1), int(-1), ptr(-1), ptr(-1), ptr(FACE), ptr(-1), ptr(LUMP));
 
   let loopIdx = LOOP;
@@ -404,6 +409,12 @@ describe('asmBodies', () => {
       F3dFormatError,
     );
   });
+
+  it('reads a stream whose many lumps all name one shell just once', () => {
+    const solids = asmBodies(readAsm(solidStream(boxFaces(), { lumps: 10_000 })));
+    expect(solids).toHaveLength(1);
+    expect(solids[0]?.faces).toHaveLength(6);
+  });
 });
 
 describe('solidToStep', () => {
@@ -468,5 +479,63 @@ describe('solidToStep', () => {
     );
     expect(step).toBeUndefined();
     expect(reason).toBe('unsupported geometry (torus-surface)');
+  });
+
+  // A cone's file slope is sine/cosine; a negative slope narrows along its axis.
+  // STEP's semi-angle is positive and the cone widens along the placement's +Z.
+  const coneSolid = (sine: number) =>
+    firstSolid(
+      solidStream([
+        {
+          surface: { t: 'cone', c: V0, axis: [0, 0, 1], major: [5, 0, 0], sine, cosine: 1 },
+          loops: [[line(V0, V1)]],
+        },
+      ]),
+    );
+
+  it('writes a widening cone with its axis and a positive semi-angle', () => {
+    const { step, reason } = solidStep(coneSolid(0.5));
+    expect(reason).toBeUndefined();
+    expect(step).toMatch(/CONICAL_SURFACE\('',#\d+,50,0\.463647609\)/);
+    expect(step).toContain("DIRECTION('',(0,0,1))");
+    expect(step).not.toContain("DIRECTION('',(0,0,-1))");
+  });
+
+  it('writes a narrowing cone with the axis flipped, same positive semi-angle', () => {
+    const { step, reason } = solidStep(coneSolid(-0.5));
+    expect(reason).toBeUndefined();
+    expect(step).toMatch(/CONICAL_SURFACE\('',#\d+,50,0\.463647609\)/);
+    expect(step).toContain("DIRECTION('',(0,0,-1))");
+  });
+
+  it('refuses an edge with no vertex instead of writing a broken shell', () => {
+    const { step, reason } = solidStep(
+      firstSolid(
+        solidStream([
+          {
+            surface: { t: 'plane', p: V0, n: [0, 0, 1] },
+            loops: [[{ curve: { t: 'line', p: V0, d: [1, 0, 0] } }]],
+          },
+        ]),
+      ),
+    );
+    expect(step).toBeUndefined();
+    expect(reason).toBe('unsupported geometry (an edge with no vertex)');
+  });
+
+  it('refuses a face with no boundary', () => {
+    const { step, reason } = solidStep(
+      firstSolid(solidStream([{ surface: { t: 'plane', p: V0, n: [0, 0, 1] }, loops: [] }])),
+    );
+    expect(step).toBeUndefined();
+    expect(reason).toBe('unsupported geometry (a face with no boundary)');
+  });
+
+  it('refuses a loop with no edge', () => {
+    const { step, reason } = solidStep(
+      firstSolid(solidStream([{ surface: { t: 'plane', p: V0, n: [0, 0, 1] }, loops: [[]] }])),
+    );
+    expect(step).toBeUndefined();
+    expect(reason).toBe('unsupported geometry (a loop with no edge)');
   });
 });

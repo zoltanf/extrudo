@@ -43,7 +43,12 @@ export class UnsupportedGeometry extends Error {
 }
 
 const CONTAINER = 'CD57BC48-50EC-47DC-975A-FB6DEA72F4DA';
-/** The two container members that name a stream file. */
+/**
+ * The two container members that name a stream file. These are the type table's
+ * own 36-character GUID strings, not standard 8-4-4-4-12 ones: the second has
+ * ten hex digits before its first dash, as the file writes it, and containers
+ * with bodies do use it (both were read from the bulk, not guessed).
+ */
 const STREAM_RECORDS = [
   '74CA4562-59F8-4C97-8AD1-F8297C21F9AA',
   '40DCC3F41D-E94F-B3B1-3E95-9B6ABE572C',
@@ -125,8 +130,10 @@ export function solidToStep(solid: AsmBodySolid): string {
   const edge = (e: AsmBodyFace['loops'][number]['coedges'][number]['edge']): number => {
     const cached = edgeAt.get(e.id);
     if (cached !== undefined) return cached;
-    const start = vertex(e.start ?? [0, 0, 0]);
-    const end = vertex(e.end ?? e.start ?? [0, 0, 0]);
+    if (e.start === undefined) throw new UnsupportedGeometry('an edge with no vertex');
+    // A closed edge (a full circle) may name one vertex; both ends are that point.
+    const start = vertex(e.start);
+    const end = vertex(e.end ?? e.start);
     const curve = w.curve(e.curve);
     const ec = w.add("EDGE_CURVE('',#{},#{},#{},.T.)", [start, end, curve]);
     edgeAt.set(e.id, ec);
@@ -137,18 +144,16 @@ export function solidToStep(solid: AsmBodySolid): string {
     const bounds: number[] = [];
     for (const loop of face.loops) {
       const oriented: number[] = [];
-      for (const coedge of loop.coedges) {
-        if (coedge.edge.start === undefined) continue;
+      for (const coedge of loop.coedges)
         oriented.push(
           w.add("ORIENTED_EDGE('',*,*,#{}, .{}.)", [edge(coedge.edge), coedge.forward ? 'T' : 'F']),
         );
-      }
-      if (oriented.length === 0) continue;
+      if (oriented.length === 0) throw new UnsupportedGeometry('a loop with no edge');
       const el = w.add("EDGE_LOOP('',({}))", [oriented.map((x) => `#${x}`).join(',')]);
       const cls = loop.outer ? 'FACE_OUTER_BOUND' : 'FACE_BOUND';
       bounds.push(w.add(`${cls}('',#{},.T.)`, [el]));
     }
-    if (bounds.length === 0) continue;
+    if (bounds.length === 0) throw new UnsupportedGeometry('a face with no boundary');
     const surface = w.surface(face.surface);
     faceRefs.push(
       w.add("ADVANCED_FACE('',({}),#{},.{}.)", [
@@ -212,7 +217,14 @@ class StepWriter {
     this.#n += 1;
     let i = 0;
     this.#lines.push(
-      `#${this.#n}=${refs.length ? text.replace(/\{\}/g, () => String(refs[i++])) : text};`,
+      `#${this.#n}=${
+        refs.length
+          ? text.replace(/\{\}/g, () => {
+              const v = refs[i++];
+              return typeof v === 'number' ? g(v) : String(v);
+            })
+          : text
+      };`,
     );
     return this.#n;
   }
@@ -253,11 +265,16 @@ class StepWriter {
     if (s.kind === 'plane')
       return this.add("PLANE('',#{})", [this.axis2(s.point, s.normal, s.normal)]);
     if (s.kind === 'cone') {
-      const axis = this.axis2(s.center, s.axis, s.axis);
+      // A narrowing cone (negative file slope) widens along −axis; STEP's
+      // semi-angle is positive and the cone widens along the placement's +Z, so
+      // flip the axis (the radius is at the centre, which stays put).
+      const narrowing = s.slope < -1e-12;
+      const axis = (narrowing ? s.axis.map((v) => -v) : s.axis) as [number, number, number];
+      const place = this.axis2(s.center, axis, axis);
       if (s.cylinder || Math.abs(s.slope) < 1e-9)
-        return this.add("CYLINDRICAL_SURFACE('',#{},{})", [axis, s.radius * 10]);
+        return this.add("CYLINDRICAL_SURFACE('',#{},{})", [place, s.radius * 10]);
       return this.add("CONICAL_SURFACE('',#{},{},{})", [
-        axis,
+        place,
         s.radius * 10,
         Math.atan(Math.abs(s.slope)),
       ]);
