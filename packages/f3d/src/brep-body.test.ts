@@ -29,6 +29,8 @@ interface Occurrence {
   a?: V;
   b?: V;
   forward?: boolean;
+  /** The edge's own sense: true when it runs against its curve. */
+  reversed?: boolean;
 }
 type SurfaceIn =
   | { t: 'plane'; p: V; n: V }
@@ -127,7 +129,9 @@ function solidStream(
   const edgeAt = new Map<string, number>();
   const edgeOf = (o: Occurrence): number => {
     const k =
-      o.a && o.b ? `line:${[keyV(o.a), keyV(o.b)].sort().join('|')}` : `curve:${keyCurve(o.curve)}`;
+      (o.a && o.b
+        ? `line:${[keyV(o.a), keyV(o.b)].sort().join('|')}`
+        : `curve:${keyCurve(o.curve)}`) + `:${o.reversed ? 'r' : 'f'}`;
     const known = edgeAt.get(k);
     if (known !== undefined) return known;
     const at = edges.push(o) - 1;
@@ -264,7 +268,7 @@ function solidStream(
       ptr(o.b ? VERTEX + (vertexAt.get(keyV(o.b)) as number) : -1),
       ptr(coedgeForEdge(ei)),
       ptr(CURVE + (curveAt.get(keyCurve(o.curve)) as number)),
-      boolean(false),
+      boolean(o.reversed ?? false),
       str('unknown'),
     );
   }
@@ -390,6 +394,20 @@ describe('asmBodies', () => {
     expect(one[0]?.faces[0]?.loops[0]?.coedges[0]?.forward).toBe(false);
   });
 
+  it('keeps the edge sense: an edge can run against its curve', () => {
+    const one = asmBodies(
+      readAsm(
+        solidStream([
+          {
+            surface: { t: 'plane', p: V0, n: [0, 0, 1] },
+            loops: [[{ curve: { t: 'line', p: V0, d: [1, 0, 0] }, a: V0, b: V1, reversed: true }]],
+          },
+        ]),
+      ),
+    );
+    expect(one[0]?.faces[0]?.loops[0]?.coedges[0]?.edge.reversed).toBe(true);
+  });
+
   it('reads an inner loop as a second, non-outer loop', () => {
     const solid = asmBodies(
       readAsm(
@@ -459,6 +477,20 @@ describe('solidToStep', () => {
   it('keeps a reversed face as a false same-sense', () => {
     const { step } = solidStep(firstSolid(solidStream(boxFaces(true))));
     expect(step).toContain(',.F.);');
+  });
+
+  it('writes an edge that runs against its curve as a false same-sense', () => {
+    const { step } = solidStep(
+      firstSolid(
+        solidStream([
+          {
+            surface: { t: 'plane', p: V0, n: [0, 0, 1] },
+            loops: [[{ curve: { t: 'line', p: V0, d: [1, 0, 0] }, a: V0, b: V1, reversed: true }]],
+          },
+        ]),
+      ),
+    );
+    expect(step).toMatch(/EDGE_CURVE\('',#\d+,#\d+,#\d+,\.F\.\)/);
   });
 
   it('marks the first loop outer and a hole as a bound', () => {

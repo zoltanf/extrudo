@@ -151,7 +151,14 @@ export function solidToStep(solid: AsmBodySolid): string {
     const start = vertex(e.start);
     const end = vertex(e.end ?? e.start);
     const curve = w.curve(e.curve);
-    const ec = w.add("EDGE_CURVE('',#{},#{},#{},.T.)", [start, end, curve]);
+    // The edge runs against its curve when the edge record's sense is true, so
+    // `EDGE_CURVE`'s same-sense is the opposite of the edge's own sense.
+    const ec = w.add("EDGE_CURVE('',#{},#{},#{},.{}.)", [
+      start,
+      end,
+      curve,
+      e.reversed ? 'F' : 'T',
+    ]);
     edgeAt.set(e.id, ec);
     return ec;
   };

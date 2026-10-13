@@ -31,6 +31,12 @@ export interface AsmBodyEdge {
   curve: AsmCurve;
   start?: AsmPoint;
   end?: AsmPoint;
+  /**
+   * The edge's own sense flag: true when the edge runs against its curve (the
+   * edge's start-to-end direction is opposite the curve's own parametrisation),
+   * false when it runs with it. `EDGE_CURVE`'s same-sense is the opposite.
+   */
+  reversed: boolean;
 }
 
 /** One edge as one loop sees it, in the loop's order. */
@@ -121,7 +127,7 @@ interface Walk {
   coedges: Set<number>;
 }
 
-/** One edge record: its curve, its two vertices' points. */
+/** One edge record: its curve, its two vertices' points, its sense. */
 function readEdge(records: AsmRecord[], is: ReturnType<typeof isType>, edge: number): AsmBodyEdge {
   const ep = pointers(records[edge]);
   const vertices = ep.filter((p) => is(p, 'vertex'));
@@ -131,6 +137,11 @@ function readEdge(records: AsmRecord[], is: ReturnType<typeof isType>, edge: num
   return {
     id: edge,
     curve: curveAt(records, curvePtr),
+    // The edge record's first boolean is its sense; ACIS writes it true when the
+    // edge runs against the curve (measured over the corpus: an edge with its
+    // sense true has its end-to-start against the curve's direction). STEP
+    // `EDGE_CURVE` wants the opposite.
+    reversed: bools(records[edge])[0] ?? false,
     ...(start ? { start } : {}),
     ...(end ? { end } : {}),
   };
