@@ -35,7 +35,9 @@ interface Occurrence {
 type SurfaceIn =
   | { t: 'plane'; p: V; n: V }
   | { t: 'cone'; c: V; axis: V; major: V; sine: number; cosine: number }
-  | { t: 'torus' };
+  | { t: 'sphere'; c: V; axis: V; r: number }
+  | { t: 'torus'; c: V; axis: V; major: number; minor: number; ref?: V }
+  | { t: 'other'; type: string };
 interface FaceIn {
   surface: SurfaceIn;
   reversed?: boolean;
@@ -319,15 +321,30 @@ function solidStream(
         dbl(s.sine),
         dbl(s.cosine),
       );
-    else
+    else if (s.t === 'sphere')
+      records[SURFACE + si] = rec(
+        'sphere-surface',
+        ptr(-1),
+        int(-1),
+        ptr(-1),
+        vec(...s.c),
+        dbl(s.r),
+        vec(...s.axis),
+        vec(...((s.axis[0] === 0 && s.axis[2] === 0 ? [0, 0, 1] : [1, 0, 0]) as V)),
+      );
+    else if (s.t === 'torus')
       records[SURFACE + si] = rec(
         'torus-surface',
         ptr(-1),
         int(-1),
         ptr(-1),
-        vec(0, 0, 0),
-        vec(0, 0, 1),
+        vec(...s.c),
+        vec(...s.axis),
+        dbl(s.major),
+        dbl(s.minor),
+        vec(...(s.ref ?? [1, 0, 0])),
       );
+    else records[SURFACE + si] = rec(s.type, ptr(-1), int(-1), ptr(-1));
   }
   return stream(...records);
 }
@@ -487,7 +504,7 @@ describe('solidToStep', () => {
 
   it('reverses a reversed face’s loop and writes its same-sense true', () => {
     const { step } = solidStep(firstSolid(solidStream(boxFaces(true))));
-    // The face's own sense flag is true here (ACIS winds its loop about the
+    // The face's own sense flag is true here (the file winds its loop about the
     // face normal): the loop is reversed, so an orientation flips to false.
     expect(step).toContain('ORIENTED_EDGE');
     expect(step).toMatch(/ORIENTED_EDGE\('',\*,\*,#\d+, \.F\.\)/);
@@ -522,10 +539,83 @@ describe('solidToStep', () => {
 
   it('refuses an unsupported surface with a reason', () => {
     const { step, reason } = solidStep(
-      firstSolid(solidStream([{ surface: { t: 'torus' }, loops: [squareAt(0)] }])),
+      firstSolid(
+        solidStream([{ surface: { t: 'other', type: 'bspline-surface' }, loops: [squareAt(0)] }]),
+      ),
     );
     expect(step).toBeUndefined();
-    expect(reason).toBe('unsupported geometry (torus-surface)');
+    expect(reason).toBe('unsupported geometry (bspline-surface)');
+  });
+
+  it('writes a sphere as a spherical surface with its radius', () => {
+    const { step, reason } = solidStep(
+      firstSolid(
+        solidStream([
+          {
+            surface: { t: 'sphere', c: [1, 2, 3], axis: [0, 0, 1], r: 2.5 },
+            loops: [squareAt(0)],
+          },
+        ]),
+      ),
+    );
+    expect(reason).toBeUndefined();
+    expect(step).toMatch(/SPHERICAL_SURFACE\('',#\d+,25\)/);
+    expect(step).toContain("CARTESIAN_POINT('',(10,20,30))");
+  });
+
+  it('writes a torus as a toroidal surface with its two radii', () => {
+    const { step, reason } = solidStep(
+      firstSolid(
+        solidStream([
+          {
+            surface: { t: 'torus', c: V0, axis: [0, 0, 1], major: 1.5, minor: 0.25 },
+            loops: [squareAt(0)],
+          },
+        ]),
+      ),
+    );
+    expect(reason).toBeUndefined();
+    expect(step).toMatch(/TOROIDAL_SURFACE\('',#\d+,15,2\.5\)/);
+  });
+
+  it('refuses a degenerate torus with a reason', () => {
+    const { step, reason } = solidStep(
+      firstSolid(
+        solidStream([
+          {
+            surface: { t: 'torus', c: V0, axis: [0, 0, 1], major: 0.3, minor: 0.3 },
+            loops: [squareAt(0)],
+          },
+        ]),
+      ),
+    );
+    expect(step).toBeUndefined();
+    expect(reason).toBe('unsupported geometry (a torus whose tube is not smaller than its ring)');
+  });
+
+  it('splits a closed circle edge into two half edges at its antipode', () => {
+    const { step, reason } = solidStep(
+      firstSolid(
+        solidStream([
+          {
+            surface: { t: 'plane', p: V0, n: [0, 0, 1] },
+            loops: [
+              [
+                {
+                  curve: { t: 'ellipse', c: V0, n: [0, 0, 1], major: [5, 0, 0], ratio: 1 },
+                  a: [5, 0, 0],
+                  b: [5, 0, 0],
+                },
+              ],
+            ],
+          },
+        ]),
+      ),
+    );
+    expect(reason).toBeUndefined();
+    // Two EDGE_CURVEs on the same circle, meeting at the antipode (−5, 0, 0).
+    expect((step as string).match(/EDGE_CURVE/g)).toHaveLength(2);
+    expect(step).toContain("CARTESIAN_POINT('',(-50,0,0))");
   });
 
   // A cone's file slope is sine/cosine; a negative slope narrows along its axis.

@@ -311,6 +311,27 @@ normal, the major axis (as long as the major radius) and the minor-to-major
 ratio (1: a circle). Subtypes (`tedge-edge`, `tvertex-vertex`) end in the
 base type's name.
 
+A `sphere-surface` is a centre, a radius, then the pole axis and a reference
+direction (both unit; the sphere is symmetric about the axis). A
+`torus-surface` is a centre, the axis, the major (centre-to-tube-centre) radius,
+the minor (tube) radius and the tube's reference direction; a negative minor
+radius only flips the tube's outward side.
+
+An `edge` record's pointers and values are: its two vertices, each with its
+parameter on the curve, a coedge, the curve, then a sense flag and a convexity
+string. The sense is true when the edge runs against its curve (the edge's
+start-to-end direction is opposite the curve's own parameter direction), so
+STEP's `EDGE_CURVE` same-sense is its opposite; for a straight curve the two
+vertex positions say the same thing directly. A full-circle edge has one vertex
+and parameters that span 2π; STEP is written with it split at its antipode into
+two half edges.
+
+A `face` record's two trailing flags are its sense and a second flag the file
+writes false throughout. A loop's coedges are wound counter-clockwise about the
+face's normal (the surface's normal when the face's sense is false, its reverse
+when true), while STEP wants a loop counter-clockwise about the surface's
+normal, so a reversed face's loop is written reversed.
+
 A stream is one or more solids, grouped `body` → `lump` → `shell` → face chain.
 Each `lump` names its shell and its body, and the shell's face chain is that
 lump's faces; the stream's earlier shells (history) carry no faces. A design

@@ -176,7 +176,7 @@ export function solidToStep(solid: AsmBodySolid): string {
   for (const face of solid.faces) {
     const bounds: number[] = [];
     for (const loop of face.loops) {
-      // ACIS winds a loop counter-clockwise about the face's normal (its outward
+      // the file winds a loop counter-clockwise about the face's normal (its outward
       // side), but STEP wants it counter-clockwise about the surface's own
       // normal, so a reversed face's loop is reversed here (which also flips
       // each oriented edge's sense).
@@ -197,7 +197,7 @@ export function solidToStep(solid: AsmBodySolid): string {
     }
     if (bounds.length === 0) throw new UnsupportedGeometry('a face with no boundary');
     const surface = w.surface(face.surface);
-    // The face's own sense flag is ACIS's, and it tells which side of the
+    // The face's own sense flag is the file's, and it tells which side of the
     // surface the face is on. The kernel rebuilt every body in the corpus with
     // the flag's own value here and the loop reversed when it is set (a body
     // whose loops run the other way round than its surfaces is written
@@ -445,9 +445,12 @@ export function f3dBodiesStep(bytes: Uint8Array): BodyStep[] {
     const siblings = linkedCount.get(link.file) ?? 0;
     // The container lists the component's visible bodies in creation order and
     // the stream's lumps are its solids in creation order, so they pair only
-    // when the counts agree. A stream can also hold a hidden body's solid (the
-    // container does not list it), and a stream that holds more than the bodies
-    // that name it cannot be aligned, so it is left unwritten.
+    // when the counts agree. A stream can also hold a hidden body's or a
+    // construction body's solid (the container does not list it), and a stream
+    // that holds more than the bodies that name it cannot be aligned: the
+    // component's bodies by index line up with the lumps on only some of the
+    // corpus, so the extra solids stay unwritten rather than guessed. See the
+    // round-A2 notes (step 4).
     if (cached.length !== siblings) {
       out.push({
         name,
