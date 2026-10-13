@@ -469,7 +469,9 @@ export function bodiesStep(entries: Entries, design: F3dDesign): BodyStep[] {
     // component's bodies by index line up with the lumps on only some of the
     // corpus, so the extra solids stay unwritten rather than guessed.
     if (cached.length !== siblings) {
-      out.push(at({ reason: `stream holds ${cached.length} bodies for ${siblings} design bodies` }));
+      out.push(
+        at({ reason: `stream holds ${cached.length} bodies for ${siblings} design bodies` }),
+      );
       continue;
     }
     const solid = cached[link.index];

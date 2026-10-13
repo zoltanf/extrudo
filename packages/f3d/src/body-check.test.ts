@@ -42,11 +42,13 @@ describe('planBodies: pairing', () => {
     const one = box(0, 10);
     // Volume 0.5 % over is within; the same box within 0.05 mm is within.
     const within: BodyMeasure = { volume: one.volume * (1 + VOLUME_TOLERANCE), box: one.box };
-    expect(planBodies({ replayed: [{ id: bid('r1'), measure: one }], file: [file(1, within)] }).matched)
-      .toHaveLength(1);
+    expect(
+      planBodies({ replayed: [{ id: bid('r1'), measure: one }], file: [file(1, within)] }).matched,
+    ).toHaveLength(1);
     const overVolume: BodyMeasure = { volume: one.volume * 1.006, box: one.box };
     expect(
-      planBodies({ replayed: [{ id: bid('r1'), measure: one }], file: [file(1, overVolume)] }).matched,
+      planBodies({ replayed: [{ id: bid('r1'), measure: one }], file: [file(1, overVolume)] })
+        .matched,
     ).toHaveLength(0);
     const overBox: BodyMeasure = {
       volume: one.volume,
@@ -246,7 +248,11 @@ describe('applyBodyPlan', () => {
     // One attachment record per frozen body, content-addressed.
     const attachments = Object.values(design.doc.attachments ?? {});
     expect(attachments).toHaveLength(1);
-    expect(attachments[0]).toMatchObject({ name: 'Body2', fileName: 'Body2.step', mediaType: 'model/step' });
+    expect(attachments[0]).toMatchObject({
+      name: 'Body2',
+      fileName: 'Body2.step',
+      mediaType: 'model/step',
+    });
     expect(attachments[0]?.size).toBe(3);
     expect(design.validate()).toEqual([]);
     // The marker stays at the end (every feature active).

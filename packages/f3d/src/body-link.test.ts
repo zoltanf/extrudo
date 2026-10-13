@@ -4,9 +4,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import { bodiesStep } from './brep-step';
-import type { F3dExtrude, F3dFeature, F3dSketchFeature } from './model';
-import { IDENTITY, type F3dDesign } from './model';
 import { f3dToDesign } from './map';
+import type { F3dExtrude, F3dFeature, F3dSketchFeature } from './model';
+import { type F3dDesign, IDENTITY } from './model';
 
 function circle(id: number, tag: bigint, radius: number) {
   return {

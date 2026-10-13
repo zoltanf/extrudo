@@ -5,12 +5,18 @@
  * samples, no `.f3d` bytes: the replay fixture is hand-built and the STEP comes
  * from `solidStep`.
  */
-import { Design } from '@extrudo/api';
+import type { Design } from '@extrudo/api';
 import type { AttachmentId, BodyId } from '@extrudo/core';
 import { Kernel } from '@extrudo/kernel';
 import { kernelFeatures, loadOcct, RecomputeEngine } from '@extrudo/kernel/node';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { AsmBodyCoedge, AsmBodyEdge, AsmBodyFace, AsmBodyLoop, AsmBodySolid } from './asm-body';
+import type {
+  AsmBodyCoedge,
+  AsmBodyEdge,
+  AsmBodyFace,
+  AsmBodyLoop,
+  AsmBodySolid,
+} from './asm-body';
 import {
   applyBodyPlan,
   type BodyMeasure,
@@ -22,7 +28,7 @@ import {
 import { type BodyStep, solidStep } from './brep-step';
 import { f3dToDesign } from './map';
 import type { F3dExtrude, F3dSketchFeature } from './model';
-import { IDENTITY, type F3dDesign } from './model';
+import { type F3dDesign, IDENTITY } from './model';
 
 type V = [number, number, number];
 
@@ -89,10 +95,42 @@ function squareDesign(): F3dDesign {
     { id: 4, at: at(0, 1), incidence: 0 },
   ];
   const lines = [
-    { id: 10, tag: 11n, start: at(0, 0), end: at(1, 0), startPoint: 1, endPoint: 2, construction: false },
-    { id: 11, tag: 12n, start: at(1, 0), end: at(1, 1), startPoint: 2, endPoint: 3, construction: false },
-    { id: 12, tag: 13n, start: at(1, 1), end: at(0, 1), startPoint: 3, endPoint: 4, construction: false },
-    { id: 13, tag: 14n, start: at(0, 1), end: at(0, 0), startPoint: 4, endPoint: 1, construction: false },
+    {
+      id: 10,
+      tag: 11n,
+      start: at(0, 0),
+      end: at(1, 0),
+      startPoint: 1,
+      endPoint: 2,
+      construction: false,
+    },
+    {
+      id: 11,
+      tag: 12n,
+      start: at(1, 0),
+      end: at(1, 1),
+      startPoint: 2,
+      endPoint: 3,
+      construction: false,
+    },
+    {
+      id: 12,
+      tag: 13n,
+      start: at(1, 1),
+      end: at(0, 1),
+      startPoint: 3,
+      endPoint: 4,
+      construction: false,
+    },
+    {
+      id: 13,
+      tag: 14n,
+      start: at(0, 1),
+      end: at(0, 0),
+      startPoint: 4,
+      endPoint: 1,
+      construction: false,
+    },
   ];
   const sketch: F3dSketchFeature = {
     type: 'sketch',
@@ -118,7 +156,19 @@ function squareDesign(): F3dDesign {
     kind: 'Extrude',
     name: 'Extrude1',
     suppressed: false,
-    parameters: [{ name: 'd3', expression: '1', kind: 'AlongDistance', unit: 'cm', value: 1, comment: '', user: false, number: 1, id: 0 }],
+    parameters: [
+      {
+        name: 'd3',
+        expression: '1',
+        kind: 'AlongDistance',
+        unit: 'cm',
+        value: 1,
+        comment: '',
+        user: false,
+        number: 1,
+        id: 0,
+      },
+    ],
     operation: 'new-body',
     direction: 'one-side',
     reversed: false,

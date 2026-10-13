@@ -45,7 +45,13 @@ const ALLOWED = {
   // through the document API (and the sketch package's profile detection, to
   // match the file's profile regions). Storage only for its hash (a frozen
   // body's STEP is named by SHA-256, design §3); the kernel only in its tests.
-  '@extrudo/f3d': ['@extrudo/api', '@extrudo/core', '@extrudo/sketch', '@extrudo/storage', '@extrudo/kernel'],
+  '@extrudo/f3d': [
+    '@extrudo/api',
+    '@extrudo/core',
+    '@extrudo/sketch',
+    '@extrudo/storage',
+    '@extrudo/kernel',
+  ],
   // The script runner (ADR-0070): user code in QuickJS, building features
   // through @extrudo/api. Nothing of the kernel's: the kernel gets the runner
   // injected, so this package stays out of its dependency graph.

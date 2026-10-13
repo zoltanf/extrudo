@@ -7,8 +7,8 @@
 import { deflateSync, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { MAX_ENTRIES, MAX_ENTRY_BYTES, MAX_TOTAL_BYTES, previewBytes, unzip } from './archive';
-import { f3dPreview, importF3d } from './index';
 import { f3dBodiesStep } from './brep-step';
+import { f3dPreview, importF3d } from './index';
 import { readF3dEntries } from './model';
 
 const enc = new TextEncoder();
