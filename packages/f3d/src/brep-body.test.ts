@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { readAsm } from './asm';
 import { type AsmBodySolid, asmBodies } from './asm-body';
-import { solidStep } from './brep-step';
+import { solidStep, utf16StreamName } from './brep-step';
 import { F3dFormatError } from './bytes';
 
 type V = [number, number, number];
@@ -537,5 +537,22 @@ describe('solidToStep', () => {
     );
     expect(step).toBeUndefined();
     expect(reason).toBe('unsupported geometry (a loop with no edge)');
+  });
+});
+
+describe('utf16StreamName', () => {
+  const utf16 = (text: string) => Uint8Array.from([...text].flatMap((c) => [c.charCodeAt(0), 0]));
+
+  it('finds a stream name among other bytes', () => {
+    const name = 'BREP.0a1b2c3d-0000-4000-8000-00000000abcd.smbh';
+    const bytes = new Uint8Array([1, 2, 3, ...utf16(name), 0, 0]);
+    expect(utf16StreamName(bytes, 0, bytes.length)).toBe(name);
+  });
+
+  it('scans a crafted run of printable UTF-16 in linear time', () => {
+    const bytes = utf16('B'.repeat(1 << 20));
+    const t0 = performance.now();
+    expect(utf16StreamName(bytes, 0, bytes.length)).toBeUndefined();
+    expect(performance.now() - t0).toBeLessThan(2000);
   });
 });

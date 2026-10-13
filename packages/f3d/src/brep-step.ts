@@ -61,6 +61,12 @@ const STREAM_RECORDS = [
  */
 function bodyStreams(seg: Segment): Map<number, { file: string; index: number }> {
   const out = new Map<number, { file: string; index: number }>();
+  // A stream-file record is scanned once, however many containers name it.
+  const names = new Map<number, string | undefined>();
+  const nameOf = (r: number): string | undefined => {
+    if (!names.has(r)) names.set(r, streamName(seg, r));
+    return names.get(r);
+  };
   for (const id of seg.idsOf(CONTAINER)) {
     let frame: ReturnType<Segment['frame']>;
     try {
@@ -73,10 +79,10 @@ function bodyStreams(seg: Segment): Map<number, { file: string; index: number }>
     if (bodies.length === 0) continue;
     const fileRef = refs.find((r) => {
       const guid = seg.typeOf(r)?.guid ?? '';
-      return STREAM_RECORDS.some((g) => guid.startsWith(g)) && streamName(seg, r) !== undefined;
+      return STREAM_RECORDS.some((g) => guid.startsWith(g)) && nameOf(r) !== undefined;
     });
     if (fileRef === undefined) continue;
-    const file = streamName(seg, fileRef) as string;
+    const file = nameOf(fileRef) as string;
     bodies.forEach((body, index) => {
       if (!out.has(body)) out.set(body, { file, index });
     });
@@ -92,13 +98,23 @@ function streamName(seg: Segment, id: number): string | undefined {
   } catch {
     return undefined;
   }
-  const b = seg.bulk;
-  // The name is a UTF-16LE string beginning with 'B'.
-  for (let i = frame.start; i + 10 <= frame.end; i++) {
-    if (b[i] !== 0x42 || b[i + 1] !== 0x00) continue;
+  return utf16StreamName(seg.bulk, frame.start, frame.end);
+}
+
+/** The longest name: `BREP.` + a 36-character uuid + `.smbh`. */
+const MAX_NAME = 46;
+
+/**
+ * The first UTF-16LE `BREP.<uuid>.smb[h]` name in `bytes[start, end)`. Each
+ * candidate is read for at most `MAX_NAME` characters, so the scan is linear in
+ * the range however the bytes are crafted.
+ */
+export function utf16StreamName(bytes: Uint8Array, start: number, end: number): string | undefined {
+  for (let i = start; i + 10 <= end; i++) {
+    if (bytes[i] !== 0x42 || bytes[i + 1] !== 0x00) continue;
     let s = '';
-    for (let k = i; k + 1 < frame.end; k += 2) {
-      const c = (b[k] as number) | ((b[k + 1] as number) << 8);
+    for (let k = i; k + 1 < end && s.length <= MAX_NAME; k += 2) {
+      const c = (bytes[k] as number) | ((bytes[k + 1] as number) << 8);
       if (c < 0x20 || c > 0x7e) break;
       s += String.fromCharCode(c);
     }
