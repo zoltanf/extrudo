@@ -44,7 +44,7 @@ const ALLOWED = {
   // The .f3d importer: decodes the archive and builds the design
   // through the document API (and the sketch package's profile detection, to
   // match the file's profile regions). Storage only for its hash (a frozen
-  // body's STEP is named by SHA-256, design §3); the kernel only in its tests.
+  // body's STEP is named by SHA-256); the kernel only in its tests.
   '@extrudo/f3d': [
     '@extrudo/api',
     '@extrudo/core',

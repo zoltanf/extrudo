@@ -239,7 +239,7 @@ describe('preview (L1, M2)', () => {
   });
 });
 
-describe('the importer shares its decode with the B-rep writer (B1)', () => {
+describe('the importer shares its decode with the B-rep writer', () => {
   it('gives the same steps from the entries it already unzipped', () => {
     const bytes = designZip();
     const imported = importF3d(bytes, 'Part', { bodies: true });

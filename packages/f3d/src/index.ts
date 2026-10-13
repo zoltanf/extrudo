@@ -80,7 +80,7 @@ export function importF3d(
   const { design, report, bodies } = f3dToDesign(f3d, name, options);
   const preview = previewBytes(entries);
   if (!options.bodies) return { design, report, ...(preview ? { preview } : {}) };
-  // The B-rep writer runs on the entries already unzipped (M2, B1).
+  // The B-rep writer runs on the entries already unzipped (M2).
   const steps = bodiesStep(entries, f3d);
   return { design, report, ...(preview ? { preview } : {}), bodies, steps };
 }

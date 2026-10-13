@@ -1,12 +1,12 @@
 /**
- * Chunk B1: check the bodies the replay made against the file's own B-rep
+ * The body check compares the bodies the replay made against the file's own B-rep
  * bodies. The importer rebuilds a design from the timeline and, where the file
  * carried a B-rep stream, `brep-step.ts` writes that body as STEP. This module
  * compares the two sets by geometry and decides, per file body, whether the
  * replayed body is the file's (editable) or the file's own shape must come in
  * frozen, with the replayed version taken out by a Remove.
  *
- * Three pieces, all pure but for the `Design` edits, so the app (B2) and the
+ * Three pieces, all pure but for the `Design` edits, so the app and the Node
  * Node corpus tooling run the same code:
  *
  * 1. {@link probeDocument}: the replay document plus one attachment record and
@@ -48,7 +48,7 @@ export const BOX_TOLERANCE = 0.05;
 /** The smallest box overlap (IoU) that makes an unpaired replayed body a frozen body's counterpart. */
 export const IOU_MIN = 0.5;
 
-/** The Remove feature's name (design §3). */
+/** The Remove feature's name. */
 export const REMOVE_NAME = 'Remove rebuilt bodies';
 
 /** A body's measured shape: volume (mm³) and tight bounding box (mm). */
@@ -152,7 +152,7 @@ export function fileBodies(
   return steps.map((step) => {
     const link = linkOf.get(step.record);
     const got = measured.get(step.record);
-    // F: only a clean import counts (exactly one body, a positive volume) — design §1.4.
+    // A file body counts as checked only with a clean import (one body, a positive volume).
     const measure = got && !('error' in got) && got.volume > 0 ? got : undefined;
     const reason =
       got && 'error' in got
@@ -173,7 +173,7 @@ export function fileBodies(
 
 /**
  * The replay document plus one attachment record and one `import` per written
- * body (design §2a), so a kernel computes the replayed bodies and the file's
+ * body, so a kernel computes the replayed bodies and the file's
  * own shapes together. Only bodies the writer could write are probed; the rest
  * stay unchecked. The probe is thrown away after measuring: it is not the
  * project's document.
@@ -242,7 +242,7 @@ function boxIoU(
 
 /**
  * Pairs the measured replayed bodies with the measured file bodies by geometry
- * (design §1.4), then decides each file body's outcome (design §3):
+ * (volume and box), then decides each file body's outcome:
  *
  * - matched → **editable** (the replayed body stays; the file's name goes on it).
  * - written and probe-imported but unpaired → **frozen**; its counterpart (the
@@ -252,7 +252,7 @@ function boxIoU(
  * - an unchecked body with no unpaired replayed body left for it → **missing**.
  *
  * Leftover unpaired replayed bodies are taken out too only when every visible
- * file body was checked (design §3). The 25 MB / 100 MB attachment limits turn
+ * file body was checked. The 25 MB / 100 MB attachment limits turn
  * a frozen body into an unchecked one ("too large to keep with the design"), in
  * file order.
  */
@@ -296,7 +296,7 @@ export function planBodies(measures: BodyMeasures): BodyPlan {
   }
 
   // The measured but unpaired bodies: frozen, unless an attachment limit stops
-  // them (design §3), in which case they stay unchecked.
+  // them, in which case they stay unchecked.
   const counterpartUsed = new Set<BodyId>();
   let total = 0;
   for (const f of file) {
@@ -325,7 +325,7 @@ export function planBodies(measures: BodyMeasures): BodyPlan {
   }
 
   // Leftover unpaired replayed bodies: taken out too only when nothing is
-  // unchecked (design §3). With unchecked bodies, some leftovers may be their
+  // unchecked. With unchecked bodies, some leftovers may be their
   // replay, so they are kept; the unchecked bodies the leftovers can't explain
   // are missing (count only).
   const leftovers = replayed.filter((r) => !pairedR.has(r.id) && !counterpartUsed.has(r.id));
@@ -488,7 +488,7 @@ export function bodyFiles(
 }
 
 /**
- * The plan's outcomes as the report's (design §4), with each component ID
+ * The plan's outcomes as the report's, with each component ID
  * resolved to its name so repeated names across components can be told apart.
  */
 export function bodyOutcomes(plan: BodyPlan, design: Design): BodyOutcome[] {

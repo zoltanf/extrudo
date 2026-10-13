@@ -125,7 +125,7 @@ export interface BodyOutcome {
  * One of the file's visible bodies, as a link to the Extrudo body it became: the writer's own
  * record and name, the Extrudo component the file has it in (`components.of`) and the replayed
  * Extrudo body its creator link points at (`bodyOf`). The hint is only used to find the
- * counterpart of a body that did not pair, never to declare a match (B1).
+ * counterpart of a body that did not pair, never to declare a match.
  */
 export interface BodyLink {
   /** The body record. */
@@ -175,7 +175,7 @@ export interface ImportResult {
   preview?: Uint8Array;
   /**
    * One link per file body (record, name, component, hint). `f3dToDesign` always builds them;
-   * `importF3d` returns them only with `{ bodies: true }` (B1).
+   * `importF3d` returns them only with `{ bodies: true }`.
    */
   bodies?: BodyLink[];
   /** The B-rep writer's steps (record, name, component, step/reason); only with `{ bodies: true }`. */
@@ -331,7 +331,7 @@ export interface ImportOptions {
   solver?: SketchSolver;
   /**
    * Also run the B-rep writer on the entry list the importer already has, and return it with
-   * the body links (B1): `importF3d` sets this; it keeps a 100 MB file from being unzipped and
+   * the body links: `importF3d` sets this; it keeps a 100 MB file from being unzipped and
    * decoded twice.
    */
   bodies?: boolean;

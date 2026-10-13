@@ -1,6 +1,6 @@
 /**
  * The body links (`ImportResult.bodies`) and the writer's `record`/`component`
- * fields (B1, design §1.1-1.2). Synthetic designs only; no real file.
+ * fields. Synthetic designs only; no real file.
  */
 import { describe, expect, it } from 'vitest';
 import { bodiesStep } from './brep-step';

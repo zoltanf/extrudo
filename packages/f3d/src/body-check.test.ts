@@ -1,5 +1,5 @@
 /**
- * The body check (B1, design §1.4, §3, §4): pairing within and outside each
+ * The body check: pairing within and outside each
  * tolerance, counterparts, leftovers, outcomes, the attachment limits, and the
  * plan applied to a `Design`. Pure, no kernel and no samples.
  */

@@ -1,5 +1,5 @@
 /**
- * The body check end to end, with the real kernel (B1, design §5): a synthetic
+ * The body check end to end, with the real kernel: a synthetic
  * `.f3d` design whose replay makes a 10 mm box, against a STEP of the same box
  * (editable) and of a different box (frozen: a Remove and an import). No
  * samples, no `.f3d` bytes: the replay fixture is hand-built and the STEP comes
