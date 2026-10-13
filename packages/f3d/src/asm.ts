@@ -214,6 +214,8 @@ export type AsmSurface =
       /** The pole axis (the sphere's u/v origin is arbitrary around it). */
       axis: [number, number, number];
       radius: number;
+      /** The file wrote a negative radius: the surface normal points inward. */
+      inward: boolean;
     }
   | {
       kind: 'torus';
@@ -222,10 +224,12 @@ export type AsmSurface =
       axis: [number, number, number];
       /** The direction of the tube centre (the placement's X). */
       ref: [number, number, number];
-      /** Centre-to-tube-centre radius. */
+      /** Centre-to-tube-centre radius (as the file writes it, so it can be negative). */
       major: number;
-      /** Tube radius. */
+      /** Tube radius, made positive. */
       minor: number;
+      /** The file wrote a negative minor radius: the surface normal points inward. */
+      inward: boolean;
     }
   | { kind: 'other'; type: string };
 
@@ -289,7 +293,14 @@ function surfaceOf(r: AsmRecord | undefined): AsmSurface {
   }
   // sphere: centre, radius, then the pole axis and the reference direction.
   if (r.type.endsWith('sphere-surface') && vs[0] && ds[0] !== undefined)
-    return { kind: 'sphere', center: vs[0], axis: vs[1] ?? [0, 0, 1], radius: ds[0] };
+    return {
+      kind: 'sphere',
+      center: vs[0],
+      axis: vs[1] ?? [0, 0, 1],
+      radius: Math.abs(ds[0]),
+      // A negative radius is the file's way of pointing the normal inward.
+      inward: ds[0] < 0,
+    };
   // torus: centre, axis, major radius, minor radius, then the tube direction.
   if (r.type.endsWith('torus-surface') && vs[0] && vs[1] && ds[0] !== undefined)
     return {
@@ -298,9 +309,10 @@ function surfaceOf(r: AsmRecord | undefined): AsmSurface {
       axis: vs[1],
       ref: vs[2] ?? [1, 0, 0],
       major: ds[0],
-      // A negative minor radius only flips the tube's outward direction; STEP
-      // wants the radius positive.
+      // A negative minor radius points the tube's normal inward; STEP wants the
+      // radius positive, so the sign is carried separately.
       minor: Math.abs(ds[1] ?? 0),
+      inward: (ds[1] ?? 0) < 0,
     };
   return { kind: 'other', type: r.type };
 }

@@ -35,12 +35,18 @@ interface Occurrence {
 type SurfaceIn =
   | { t: 'plane'; p: V; n: V }
   | { t: 'cone'; c: V; axis: V; major: V; sine: number; cosine: number }
-  | { t: 'sphere'; c: V; axis: V; r: number }
-  | { t: 'torus'; c: V; axis: V; major: number; minor: number; ref?: V }
+  | { t: 'sphere'; c: V; axis: V; r: number; inward?: boolean }
+  | { t: 'torus'; c: V; axis: V; major: number; minor: number; ref?: V; inward?: boolean }
   | { t: 'other'; type: string };
+
+/** Whether a surface is written with a negative radius (its normal inward). */
+const inwardOf = (s: SurfaceIn): boolean =>
+  (s.t === 'sphere' || s.t === 'torus') && s.inward === true;
 interface FaceIn {
   surface: SurfaceIn;
   reversed?: boolean;
+  /** The raw face-record flag (its forward sense); overrides `reversed` when set. */
+  forward?: boolean;
   loops: Occurrence[][];
 }
 
@@ -247,7 +253,12 @@ function solidStream(
       ptr(SHELL),
       ptr(-1),
       ptr(SURFACE + (surfaceAt.get(JSON.stringify(faces[fi]?.surface)) as number)),
-      boolean(faces[fi]?.reversed ?? false),
+      // The record's flag is the face's forward sense; the reader derives the
+      // reversed flag from it and the surface's radius sign.
+      boolean(
+        faces[fi]?.forward ??
+          !(faces[fi]?.reversed ?? false) !== inwardOf((faces[fi] as FaceIn).surface),
+      ),
     );
   }
 
@@ -328,7 +339,7 @@ function solidStream(
         int(-1),
         ptr(-1),
         vec(...s.c),
-        dbl(s.r),
+        dbl(s.inward ? -s.r : s.r),
         vec(...s.axis),
         vec(...((s.axis[0] === 0 && s.axis[2] === 0 ? [0, 0, 1] : [1, 0, 0]) as V)),
       );
@@ -341,7 +352,7 @@ function solidStream(
         vec(...s.c),
         vec(...s.axis),
         dbl(s.major),
-        dbl(s.minor),
+        dbl(s.inward ? -s.minor : s.minor),
         vec(...(s.ref ?? [1, 0, 0])),
       );
     else records[SURFACE + si] = rec(s.type, ptr(-1), int(-1), ptr(-1));
@@ -591,6 +602,103 @@ describe('solidToStep', () => {
     );
     expect(step).toBeUndefined();
     expect(reason).toBe('unsupported geometry (a torus whose tube is not smaller than its ring)');
+  });
+
+  it('writes a reversed, inward sphere with a positive radius and same-sense false', () => {
+    const solid = firstSolid(
+      solidStream([
+        {
+          surface: { t: 'sphere', c: [1, 2, 3], axis: [0, 0, 1], r: 2.5, inward: true },
+          reversed: true,
+          loops: [squareAt(0)],
+        },
+      ]),
+    );
+    expect(solid.faces[0]?.reversed).toBe(true);
+    const { step, reason } = solidStep(solid);
+    expect(reason).toBeUndefined();
+    expect(step).toMatch(/SPHERICAL_SURFACE\('',#\d+,25\)/); // radius positive
+    expect(step).toMatch(/ADVANCED_FACE\([^)]*\)[^;]*,.F\.\);/); // face reversed
+  });
+
+  it('writes a reversed, inward torus with a positive minor radius and same-sense false', () => {
+    const solid = firstSolid(
+      solidStream([
+        {
+          surface: { t: 'torus', c: V0, axis: [0, 0, 1], major: 1.5, minor: 0.25, inward: true },
+          reversed: true,
+          loops: [squareAt(0)],
+        },
+      ]),
+    );
+    expect(solid.faces[0]?.reversed).toBe(true);
+    const { step, reason } = solidStep(solid);
+    expect(reason).toBeUndefined();
+    expect(step).toMatch(/TOROIDAL_SURFACE\('',#\d+,15,2\.5\)/); // minor positive
+    expect(step).toMatch(/ADVANCED_FACE\([^)]*\)[^;]*,.F\.\);/);
+  });
+
+  it('reverses the face a negative-radius surface points the other way', () => {
+    // The same raw face flag (forward) gives a forward face on a positive-radius
+    // surface and a reversed face on a negative-radius one.
+    const plain = firstSolid(
+      solidStream([
+        {
+          surface: { t: 'sphere', c: [1, 2, 3], axis: [0, 0, 1], r: 2.5 },
+          forward: false,
+          loops: [squareAt(0)],
+        },
+      ]),
+    );
+    const inward = firstSolid(
+      solidStream([
+        {
+          surface: { t: 'sphere', c: [1, 2, 3], axis: [0, 0, 1], r: 2.5, inward: true },
+          forward: false,
+          loops: [squareAt(0)],
+        },
+      ]),
+    );
+    expect(plain.faces[0]?.reversed).toBe(true);
+    expect(inward.faces[0]?.reversed).toBe(false);
+  });
+
+  it('refuses a torus with a negative ring radius with its own reason', () => {
+    const { step, reason } = solidStep(
+      firstSolid(
+        solidStream([
+          {
+            surface: { t: 'torus', c: V0, axis: [0, 0, 1], major: -1.5, minor: 0.25 },
+            loops: [squareAt(0)],
+          },
+        ]),
+      ),
+    );
+    expect(step).toBeUndefined();
+    expect(reason).toBe('unsupported geometry (a torus with a negative ring radius)');
+  });
+
+  it('declares every box face normal outward, after its same-sense', () => {
+    const solid = firstSolid(solidStream(boxFaces()));
+    const all: V[] = [];
+    for (const f of solid.faces)
+      for (const l of f.loops) for (const c of l.coedges) if (c.edge.start) all.push(c.edge.start);
+    const avg = (ps: V[], k: number): number =>
+      ps.reduce((a, p) => a + (p[k] as number), 0) / ps.length;
+    const centre: V = [avg(all, 0), avg(all, 1), avg(all, 2)];
+    for (const f of solid.faces) {
+      if (f.surface.kind !== 'plane') throw new Error('box face is not a plane');
+      const n = f.surface.normal;
+      // `same_sense` is true for a not-reversed face, so the declared normal is
+      // the surface's own unless the face is reversed.
+      const declared = (f.reversed ? n.map((x) => -x) : n) as V;
+      const pts: V[] = [];
+      for (const l of f.loops) for (const c of l.coedges) if (c.edge.start) pts.push(c.edge.start);
+      const at: V = [avg(pts, 0), avg(pts, 1), avg(pts, 2)];
+      const out: V = [at[0] - centre[0], at[1] - centre[1], at[2] - centre[2]];
+      const dot = declared[0] * out[0] + declared[1] * out[1] + declared[2] * out[2];
+      expect(dot).toBeGreaterThan(0);
+    }
   });
 
   it('splits a closed circle edge into two half edges at its antipode', () => {

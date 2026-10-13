@@ -314,8 +314,10 @@ base type's name.
 A `sphere-surface` is a centre, a radius, then the pole axis and a reference
 direction (both unit; the sphere is symmetric about the axis). A
 `torus-surface` is a centre, the axis, the major (centre-to-tube-centre) radius,
-the minor (tube) radius and the tube's reference direction; a negative minor
-radius only flips the tube's outward side.
+the minor (tube) radius and the tube's reference direction. A negative radius —
+the sphere's, or the torus's minor one — is the file's way of pointing that
+surface's normal inward; a negative torus major radius is not a torus a kernel
+can rebuild.
 
 An `edge` record's pointers and values are: its two vertices, each with its
 parameter on the curve, a coedge, the curve, then a sense flag and a convexity
@@ -326,11 +328,12 @@ vertex positions say the same thing directly. A full-circle edge has one vertex
 and parameters that span 2π; STEP is written with it split at its antipode into
 two half edges.
 
-A `face` record's two trailing flags are its sense and a second flag the file
-writes false throughout. A loop's coedges are wound counter-clockwise about the
-face's normal (the surface's normal when the face's sense is false, its reverse
-when true), while STEP wants a loop counter-clockwise about the surface's
-normal, so a reversed face's loop is written reversed.
+A `face` record's two trailing flags are its forward sense (true when the face's
+normal runs with its surface's) and a second flag the file writes false
+throughout. STEP's `ADVANCED_FACE` same-sense is the opposite of *reversed*, and
+the file winds a loop the other way round from STEP's surface-normal winding, so
+a not-reversed face's loop is written reversed with same-sense true and a
+reversed face keeps the file's loop with same-sense false.
 
 A stream is one or more solids, grouped `body` → `lump` → `shell` → face chain.
 Each `lump` names its shell and its body, and the shell's face chain is that

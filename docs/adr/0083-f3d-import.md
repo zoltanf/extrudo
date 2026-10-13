@@ -705,12 +705,15 @@ positions say the edge's direction directly, so a line's sense is taken from its
 geometry and every other edge's from the flag. This is the change that moved
 most of the previously-written-but-wrong bodies to matching.
 
-**The loop winding and the face sense.** The file winds a face's loop
-counter-clockwise about the *face's* normal (the surface's normal, or its
-reverse when the face's sense flag is set); STEP wants the loop about the
-*surface's* normal. The writer now reverses a reversed face's loop and writes
-the face's own sense flag as `ADVANCED_FACE`'s same-sense. A body whose loops
-ran the other way round than its surfaces was otherwise written inside-out.
+**The loop winding and the face sense.** A face record's flag is its forward
+sense: true when the face's normal runs with its surface's. STEP's
+`ADVANCED_FACE` same-sense is the opposite of *reversed*, and the file winds a
+loop the other way round from STEP's surface-normal winding, so a not-reversed
+face's loop is reversed and its same-sense is true, while a reversed face keeps
+the file's loop and same-sense false. The reader stores the flag as `reversed`
+(the complement of the file's) and the writer writes
+`same_sense = reversed ? .F. : .T.`. A body whose loops ran the other way round
+than its surfaces was otherwise written inside-out.
 
 **Closed circle edges.** A full-circle edge (its two vertices at one point) has
 no start-equals-end `EDGE_CURVE` that a kernel reads cleanly; it is now split at
@@ -718,16 +721,19 @@ its antipode into two half edges, as the reference exports do.
 
 **Spheres and tori.** `sphere-surface` (centre, radius, pole axis) and
 `torus-surface` (centre, axis, major radius, minor radius, tube direction) are
-read and written as `SPHERICAL_SURFACE` / `TOROIDAL_SURFACE`. A negative minor
-radius is made positive; a torus whose tube is not smaller than its ring (a
-spindle or horn torus) is refused with a reason rather than written.
+read and written as `SPHERICAL_SURFACE` / `TOROIDAL_SURFACE`. A negative sphere
+radius or torus minor radius is the file's way of pointing that surface's normal
+inward: the writer writes the radius positive and marks the face reversed (the
+same loop/same-sense pair as above). A torus with a negative major radius is
+refused with its own reason, as is a torus whose tube is not smaller than its
+ring (a spindle or horn torus).
 
 **Still refused.** intcurve and spline curves and spline surfaces (the corpus's
 intcurves mostly carry no B-spline at all, and the ones that do carry a
-compound record that is not decoded here), and the degenerate torus. A body is
+compound record that is not decoded here), and the degenerate tori. A body is
 still refused when a stream holds a different number of solids than the bodies
 that name it: a stream can hold a hidden body's solid or a construction body's
 solid, and the component's body order lines up with the lumps on only part of
 the corpus (a first implementation matched a few more designs and wrote wrong
 solids for several others), so the extra solids stay unwritten rather than
-guessed. See the round's notes for the measurement.
+guessed.

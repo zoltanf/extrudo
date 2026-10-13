@@ -196,9 +196,13 @@ function readLoops(records: AsmRecord[], walk: Walk, face: number): AsmBodyLoop[
 /** One face record: its surface, its sense and its loops. */
 function readFace(records: AsmRecord[], walk: Walk, face: number): AsmBodyFace {
   const fp = pointers(records[face]);
-  const surface = fp[fp.length - 1] ?? -1;
-  const reversed = bools(records[face])[0] ?? false;
-  return { surface: surfaceAt(records, surface), reversed, loops: readLoops(records, walk, face) };
+  const surface = surfaceAt(records, fp[fp.length - 1] ?? -1);
+  // The face record's flag is the face's forward sense: true when the face's
+  // normal runs with its surface's. A surface the file wrote with a negative
+  // radius has its normal reversed, so the face is then reversed too.
+  const inward = (surface.kind === 'sphere' || surface.kind === 'torus') && surface.inward;
+  const forward = (bools(records[face])[0] ?? true) !== inward;
+  return { surface, reversed: !forward, loops: readLoops(records, walk, face) };
 }
 
 /** The faces of one shell: its first face, then the face chain. */

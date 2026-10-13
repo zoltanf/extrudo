@@ -176,14 +176,15 @@ export function solidToStep(solid: AsmBodySolid): string {
   for (const face of solid.faces) {
     const bounds: number[] = [];
     for (const loop of face.loops) {
-      // the file winds a loop counter-clockwise about the face's normal (its outward
-      // side), but STEP wants it counter-clockwise about the surface's own
-      // normal, so a reversed face's loop is reversed here (which also flips
-      // each oriented edge's sense).
       const oriented: { ref: number; forward: boolean }[] = [];
       for (const coedge of loop.coedges)
         for (const ref of edge(coedge.edge)) oriented.push({ ref, forward: coedge.forward });
-      if (face.reversed) {
+      // A not-reversed face is written with its loop reversed and same-sense
+      // true; a reversed face keeps the file's loop and same-sense false. The
+      // pair is what a kernel rebuilds the body with (the loop still winds the
+      // way STEP wants after the reversal). A surface the file wrote with a
+      // negative radius has its face already marked reversed by the reader.
+      if (!face.reversed) {
         oriented.reverse();
         for (const o of oriented) o.forward = !o.forward;
       }
@@ -197,16 +198,11 @@ export function solidToStep(solid: AsmBodySolid): string {
     }
     if (bounds.length === 0) throw new UnsupportedGeometry('a face with no boundary');
     const surface = w.surface(face.surface);
-    // The face's own sense flag is the file's, and it tells which side of the
-    // surface the face is on. The kernel rebuilt every body in the corpus with
-    // the flag's own value here and the loop reversed when it is set (a body
-    // whose loops run the other way round than its surfaces is written
-    // inside-out otherwise); the two go together.
     faceRefs.push(
       w.add("ADVANCED_FACE('',({}),#{},.{}.)", [
         bounds.map((x) => `#${x}`).join(','),
         surface,
-        face.reversed ? 'T' : 'F',
+        face.reversed ? 'F' : 'T',
       ]),
     );
   }
@@ -319,6 +315,9 @@ class StepWriter {
       ]);
     }
     if (s.kind === 'torus') {
+      // A negative major radius is not a torus a kernel can rebuild (the file
+      // uses the sign of the minor one to point the normal, not the major).
+      if (s.major < 0) throw new UnsupportedGeometry('a torus with a negative ring radius');
       // A degenerate torus (a spindle or a horn torus) is not a solid STEP can
       // hold; refuse it rather than write a surface the kernel cannot rebuild.
       if (!(s.minor < s.major))
@@ -449,8 +448,7 @@ export function f3dBodiesStep(bytes: Uint8Array): BodyStep[] {
     // construction body's solid (the container does not list it), and a stream
     // that holds more than the bodies that name it cannot be aligned: the
     // component's bodies by index line up with the lumps on only some of the
-    // corpus, so the extra solids stay unwritten rather than guessed. See the
-    // round-A2 notes (step 4).
+    // corpus, so the extra solids stay unwritten rather than guessed.
     if (cached.length !== siblings) {
       out.push({
         name,
