@@ -21,12 +21,16 @@ import { designSegments, type Entries, unzip } from './archive';
 import { type AsmCurve, type AsmSurface, readAsm } from './asm';
 import { type AsmBodyFace, type AsmBodySolid, asmBodies } from './asm-body';
 import { BODY } from './decode/body';
-import { activeDesignSegment, readF3dEntries, refsIn } from './model';
+import { activeDesignSegment, type F3dDesign, readF3dEntries, refsIn } from './model';
 import { Segment } from './segment';
 
 export interface BodyStep {
+  /** The body record. The body's file number is not unique across components. */
+  record: number;
   /** `Body<n>`, the body's number in the file. */
   name: string;
+  /** The file component record the body is in, when the file says. */
+  component?: number;
   /** The STEP text, when the body was written. */
   step?: string;
   /** Why the body was not written. */
@@ -397,17 +401,24 @@ export function solidStep(solid: AsmBodySolid): { step?: string; reason?: string
  * only when its stream is named, its stream has as many solids as the bodies
  * that name it, and every surface and curve is a plane, cylinder, cone,
  * sphere, torus, line or circle/ellipse; otherwise the body comes back with a
- * reason.
+ * reason. This is the bytes wrapper: it unzips and decodes the design itself.
+ * A caller that already has both (the importer, M2) uses {@link bodiesStep}
+ * instead, so a 100 MB file is not unzipped and decoded twice.
  */
 export function f3dBodiesStep(bytes: Uint8Array): BodyStep[] {
   let entries: Entries;
-  let design: ReturnType<typeof readF3dEntries>;
+  let design: F3dDesign;
   try {
     entries = unzip(bytes);
     design = readF3dEntries(entries);
   } catch {
     return [];
   }
+  return bodiesStep(entries, design);
+}
+
+/** {@link f3dBodiesStep} on an archive and a design that are already decoded. */
+export function bodiesStep(entries: Entries, design: F3dDesign): BodyStep[] {
   const first = activeDesignSegment(designSegments(entries));
   const streams = first
     ? bodyStreams(new Segment(first.meta, first.bulk))
@@ -420,14 +431,20 @@ export function f3dBodiesStep(bytes: Uint8Array): BodyStep[] {
   for (const body of design.bodies) {
     if (!body.visible) continue;
     const name = `Body${body.index}`;
+    const at = (extra: { step?: string; reason?: string }): BodyStep => ({
+      record: body.id,
+      name,
+      ...(body.component !== undefined ? { component: body.component } : {}),
+      ...extra,
+    });
     const link = streams.get(body.id);
     if (!link) {
-      out.push({ name, reason: 'no B-rep stream for this body' });
+      out.push(at({ reason: 'no B-rep stream for this body' }));
       continue;
     }
     const data = entryFor(entries, link.file);
     if (!data) {
-      out.push({ name, reason: `stream ${link.file} is missing from the archive` });
+      out.push(at({ reason: `stream ${link.file} is missing from the archive` }));
       continue;
     }
     let cached = solidsCache.get(link.file);
@@ -440,7 +457,7 @@ export function f3dBodiesStep(bytes: Uint8Array): BodyStep[] {
       solidsCache.set(link.file, cached);
     }
     if (!Array.isArray(cached)) {
-      out.push({ name, reason: `stream could not be read (${cached.error})` });
+      out.push(at({ reason: `stream could not be read (${cached.error})` }));
       continue;
     }
     const siblings = linkedCount.get(link.file) ?? 0;
@@ -452,18 +469,15 @@ export function f3dBodiesStep(bytes: Uint8Array): BodyStep[] {
     // component's bodies by index line up with the lumps on only some of the
     // corpus, so the extra solids stay unwritten rather than guessed.
     if (cached.length !== siblings) {
-      out.push({
-        name,
-        reason: `stream holds ${cached.length} bodies for ${siblings} design bodies`,
-      });
+      out.push(at({ reason: `stream holds ${cached.length} bodies for ${siblings} design bodies` }));
       continue;
     }
     const solid = cached[link.index];
     if (!solid) {
-      out.push({ name, reason: 'the body is not in its stream' });
+      out.push(at({ reason: 'the body is not in its stream' }));
       continue;
     }
-    out.push({ name, ...solidStep(solid) });
+    out.push(at(solidStep(solid)));
   }
   return out;
 }

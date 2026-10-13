@@ -19,6 +19,7 @@ import {
 } from '@extrudo/api';
 import {
   type BodyId,
+  type ComponentId,
   evaluateParameters,
   faceSketchFrame,
   ORIGIN_PLANES,
@@ -33,6 +34,7 @@ import {
   type Profile,
 } from '@extrudo/sketch/profiles';
 import type { AsmSurface } from './asm';
+import type { BodyStep } from './brep-step';
 import { firstFace } from './chamfer-side';
 import { ComponentMapping } from './components';
 import type { ProfileOperand, ProfileRegion } from './decode/extrude';
@@ -96,6 +98,42 @@ export interface ImportReport {
   notes: string[];
   /** Sketch constraints and dimensions brought over (only with a solver, `ImportOptions.solver`). */
   constraints?: ConstraintTally;
+  /** The file's visible bodies, checked against the file's own shapes (set by the body check). */
+  bodies?: BodyOutcome[];
+  /** Why the check could not run (kernel failed or took too long), when it didn't. */
+  bodyCheck?: { error: string };
+}
+
+/** What happened to one of the file's visible bodies in the body check. */
+export interface BodyOutcome {
+  /** `Body3`. */
+  name: string;
+  /** The Extrudo component's name, for repeated names across components. */
+  component?: string;
+  outcome: 'editable' | 'frozen' | 'unchecked' | 'missing';
+  /**
+   * Plain words (at most `MAX_REASON`, like `SkippedFeature.reason`): "the timeline didn't
+   * make it", "the timeline made it differently", "its shape uses surfaces Extrudo can't read
+   * from the file yet".
+   */
+  reason?: string;
+  /** Technical: dv and db, or the writer's reason (corpus/bug reports only). */
+  detail?: string;
+}
+
+/**
+ * One of the file's visible bodies, as a link to the Extrudo body it became: the writer's own
+ * record and name, the Extrudo component the file has it in (`components.of`) and the replayed
+ * Extrudo body its creator link points at (`bodyOf`). The hint is only used to find the
+ * counterpart of a body that did not pair, never to declare a match (B1).
+ */
+export interface BodyLink {
+  /** The body record. */
+  record: number;
+  /** `Body<n>`, its number in the file. */
+  name: string;
+  component?: ComponentId;
+  hint?: BodyId;
 }
 
 /** A timeline feature the import left out (R3-18). */
@@ -135,6 +173,13 @@ export interface ImportResult {
   report: ImportReport;
   /** The file's preview PNG, when it has a usable one (only `importF3d` sets it). */
   preview?: Uint8Array;
+  /**
+   * One link per file body (record, name, component, hint). `f3dToDesign` always builds them;
+   * `importF3d` returns them only with `{ bodies: true }` (B1).
+   */
+  bodies?: BodyLink[];
+  /** The B-rep writer's steps (record, name, component, step/reason); only with `{ bodies: true }`. */
+  steps?: BodyStep[];
 }
 
 type ReadonlyVec3 = readonly [number, number, number];
@@ -284,6 +329,12 @@ export interface ImportOptions {
    * moves. Without one, sketches keep only the joins of shared points.
    */
   solver?: SketchSolver;
+  /**
+   * Also run the B-rep writer on the entry list the importer already has, and return it with
+   * the body links (B1): `importF3d` sets this; it keeps a 100 MB file from being unzipped and
+   * decoded twice.
+   */
+  bodies?: boolean;
 }
 
 export function f3dToDesign(
@@ -686,7 +737,22 @@ export function f3dToDesign(
     report.notes.push(`Body${known.index} (made by ${known.by}) is hidden, as in the file.`);
   }
   components.finish(bodyOf);
-  return { design: d, report };
+  // One link per **visible** file body, aligned with the B-rep writer's steps (`bodiesStep`):
+  // the Extrudo component the file has it in, and the replayed body its creator link points at.
+  // The index alone is not unique across components, so the record is carried too.
+  const bodies: BodyLink[] = [];
+  for (const body of f3d.bodies) {
+    if (!body.visible) continue;
+    const component = components.of(body.component)?.id;
+    const hint = bodyOf(body.id)?.id;
+    bodies.push({
+      record: body.id,
+      name: `Body${body.index}`,
+      ...(component !== undefined ? { component } : {}),
+      ...(hint !== undefined ? { hint } : {}),
+    });
+  }
+  return { design: d, report, bodies };
 }
 
 /** The Extrudo frame of a sketch plane: its origin, axes and normal (mm). */

@@ -16,15 +16,18 @@
  * that onto `@extrudo/api`.
  */
 import { previewBytes, unzip } from './archive';
+import { bodiesStep } from './brep-step';
 import type { ImportOptions, ImportResult } from './map';
 import { f3dToDesign } from './map';
 import { readF3dEntries } from './model';
 
 export { MAX_ENTRIES, MAX_ENTRY_BYTES, MAX_TOTAL_BYTES, previewBytes } from './archive';
 export { type AsmBodyFace, type AsmBodySolid, asmBodies } from './asm-body';
-export { type BodyStep, f3dBodiesStep, UnsupportedGeometry } from './brep-step';
+export { type BodyStep, bodiesStep, f3dBodiesStep, UnsupportedGeometry } from './brep-step';
 export { F3dFormatError } from './bytes';
 export {
+  type BodyLink,
+  type BodyOutcome,
   f3dToDesign,
   type ImportOptions,
   type ImportReport,
@@ -52,9 +55,13 @@ export function importF3d(
   options: ImportOptions = {},
 ): ImportResult {
   const entries = unzip(bytes);
-  const { design, report } = f3dToDesign(readF3dEntries(entries), name, options);
+  const f3d = readF3dEntries(entries);
+  const { design, report, bodies } = f3dToDesign(f3d, name, options);
   const preview = previewBytes(entries);
-  return { design, report, ...(preview ? { preview } : {}) };
+  if (!options.bodies) return { design, report, ...(preview ? { preview } : {}) };
+  // The B-rep writer runs on the entries already unzipped (M2, B1).
+  const steps = bodiesStep(entries, f3d);
+  return { design, report, ...(preview ? { preview } : {}), bodies, steps };
 }
 
 /** The PNG preview stored in the file, if there is a usable one (L1). */
