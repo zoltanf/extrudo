@@ -447,7 +447,19 @@ export function applyBodyPlan(design: Design, plan: BodyPlan, steps: readonly Bo
       );
     }
     for (const m of plan.matched) {
-      design.state.dispatch(updateBody({ id: m.body, changes: { name: m.name } }));
+      // Set the file body's component too: a replayed body with no metadata of
+      // its own takes its component from the feature that made it (`origins`),
+      // and writing `name` alone would store a fresh, loose `{ name, visible:
+      // true }` record and lose that (a hidden component's body would show).
+      design.state.dispatch(
+        updateBody({
+          id: m.body,
+          changes: {
+            name: m.name,
+            ...(m.component !== undefined ? { component: m.component } : {}),
+          },
+        }),
+      );
     }
   });
 }

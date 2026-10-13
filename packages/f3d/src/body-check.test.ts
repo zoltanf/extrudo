@@ -288,4 +288,21 @@ describe('applyBodyPlan', () => {
     expect(design.doc.features).toEqual([]);
     expect(design.doc.attachments).toBeUndefined();
   });
+
+  it('keeps a matched body in its component when it is renamed', () => {
+    const design = Design.create({ name: 'T' });
+    const lid = design.component('Lid');
+    design.setComponentBodies(lid.id, [bid('make:0')]);
+    applyBodyPlan(
+      design,
+      {
+        matched: [{ body: bid('make:0'), record: 1, name: 'Body1', component: lid.id }],
+        frozen: [],
+        remove: [],
+        outcomes: [],
+      },
+      steps,
+    );
+    expect(design.doc.bodies[bid('make:0')]).toMatchObject({ name: 'Body1', component: lid.id });
+  });
 });
