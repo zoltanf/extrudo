@@ -1,0 +1,211 @@
+/**
+ * The topology of a B-rep stream: body → lump → shell → face, with each face's
+ * loops, their coedges in order, the edges with their curves and the
+ * vertices/points (see `FORMAT.md`, "ASM B-rep" → "Topology, and earlier
+ * states"). `asmFaces` flattens each face to a bag of edges for fillet and
+ * chamfer naming; this reader keeps the loops, the face sense and the
+ * shell/lump grouping a solid rebuild needs.
+ *
+ * A stream holds more than the solved solid: earlier versions of faces and
+ * shells, and several bodies. The live solid is the one a `lump` names: each
+ * `lump` points at its shell and its body, and the shell's face chain is the
+ * current shell (history shells carry no faces). So the lumps, in stream
+ * order, are the solids of the stream.
+ *
+ * Every walk is bounded: each pointer index is checked against the record
+ * count, each chain is followed with a seen-set, and a crafted stream that
+ * repeats or runs away throws `F3dFormatError` instead of looping.
+ */
+import { type AsmCurve, type AsmRecord, type AsmSurface, asmCurveOf, asmSurfaceOf } from './asm';
+import { F3dFormatError } from './bytes';
+
+/** A point in model space (cm). */
+export type AsmPoint = [number, number, number];
+
+/** How an edge runs, independent of which face sees it. */
+export interface AsmBodyEdge {
+  /** The edge record, shared when two loops use the same edge. */
+  id: number;
+  curve: AsmCurve;
+  start?: AsmPoint;
+  end?: AsmPoint;
+}
+
+/** One edge as one loop sees it, in the loop's order. */
+export interface AsmBodyCoedge {
+  edge: AsmBodyEdge;
+  /** The coedge's sense: true runs with the edge, false against it. */
+  forward: boolean;
+}
+
+/** A closed loop of a face; the first loop the file writes is the outer one. */
+export interface AsmBodyLoop {
+  coedges: AsmBodyCoedge[];
+  /** The face's outer loop (the first one); the rest are inner (holes). */
+  outer: boolean;
+}
+
+export interface AsmBodyFace {
+  surface: AsmSurface;
+  /** The face sense flag: true when the surface normal runs against the face. */
+  reversed: boolean;
+  loops: AsmBodyLoop[];
+}
+
+/** One solid of a stream: the faces of one lump's shell. */
+export interface AsmBodySolid {
+  faces: AsmBodyFace[];
+}
+
+/** A crafted stream may not take an unbounded number of steps per walk. */
+const MAX_SOLIDS = 1 << 16;
+const MAX_FACES = 1 << 18;
+const MAX_LOOPS = 1 << 12;
+const MAX_EDGES = 1 << 20;
+
+const pointers = (r: AsmRecord | undefined): number[] =>
+  r ? r.values.filter((v) => v.t === 'ptr').map((v) => (v as { v: number }).v) : [];
+
+const bools = (r: AsmRecord | undefined): boolean[] =>
+  r ? r.values.filter((v) => v.t === 'bool').map((v) => (v as { v: boolean }).v) : [];
+
+/** A record's own class name (its base classes are dropped). */
+const nameOf = (r: AsmRecord | undefined): string => r?.derived ?? r?.type ?? '';
+
+/** A ray from the record type / a subtype of it (`tedge-edge`, `tvertex-vertex`). */
+function typeer(records: AsmRecord[]) {
+  return (p: number, type: string): boolean => {
+    if (p < 0 || p >= records.length) return false;
+    const t = nameOf(records[p]);
+    return t === type || t.endsWith(`-${type}`);
+  };
+}
+
+/** The first pointer at `ptr` that names a record of `type`. */
+const firstOf = (is: (p: number, t: string) => boolean, ptrs: number[], type: string): number =>
+  ptrs.find((p) => is(p, type)) ?? -1;
+
+/** A vertex's position, following vertex → point. */
+function vertexPoint(
+  records: AsmRecord[],
+  is: ReturnType<typeof typeer>,
+  v: number,
+): AsmPoint | undefined {
+  if (!is(v, 'vertex')) return undefined;
+  const point = firstOf(is, pointers(records[v]), 'point');
+  if (point < 0) return undefined;
+  const at = records[point]?.values.find((x) => x.t === 'vec');
+  return at?.t === 'vec' ? at.v : undefined;
+}
+
+/** A surface's geometry, with the record's own class name when it is not carried. */
+function surfaceAt(records: AsmRecord[], p: number): AsmSurface {
+  const s = asmSurfaceOf(records[p]);
+  return s.kind === 'other' ? { kind: 'other', type: nameOf(records[p]) } : s;
+}
+
+/** A curve's geometry, with the record's own class name when it is not carried. */
+function curveAt(records: AsmRecord[], p: number): AsmCurve {
+  const c = asmCurveOf(records[p]);
+  return c.kind === 'other' ? { kind: 'other', type: nameOf(records[p]) } : c;
+}
+
+/** One edge record: its curve, its two vertices' points. */
+function readEdge(records: AsmRecord[], is: ReturnType<typeof typeer>, edge: number): AsmBodyEdge {
+  const ep = pointers(records[edge]);
+  const vertices = ep.filter((p) => is(p, 'vertex'));
+  const curvePtr = ep.find((p) => p >= 0 && nameOf(records[p]).endsWith('curve')) ?? -1;
+  const start = vertexPoint(records, is, vertices[0] ?? -1);
+  const end = vertexPoint(records, is, vertices[1] ?? -1);
+  return {
+    id: edge,
+    curve: curveAt(records, curvePtr),
+    ...(start ? { start } : {}),
+    ...(end ? { end } : {}),
+  };
+}
+
+/** The loops of one face, in the file’s order, each with its coedges in order. */
+function readLoops(
+  records: AsmRecord[],
+  is: ReturnType<typeof typeer>,
+  face: number,
+): AsmBodyLoop[] {
+  const loops: AsmBodyLoop[] = [];
+  const seen = new Set<number>();
+  let loop = firstOf(is, pointers(records[face]), 'loop');
+  while (loop >= 0) {
+    if (seen.has(loop)) throw new F3dFormatError('ASM body: a loop chain repeats.');
+    seen.add(loop);
+    if (loops.length >= MAX_LOOPS) throw new F3dFormatError('ASM body: too many loops.');
+    const outer = loops.length === 0;
+    const coedges: AsmBodyCoedge[] = [];
+    const seenCoedge = new Set<number>();
+    let coedge = firstOf(is, pointers(records[loop]), 'coedge');
+    while (coedge >= 0) {
+      if (seenCoedge.has(coedge)) break; // the coedge cycle closes; the loop is whole
+      seenCoedge.add(coedge);
+      if (coedges.length >= MAX_EDGES) throw new F3dFormatError('ASM body: too many coedges.');
+      const cp = pointers(records[coedge]);
+      const edge = firstOf(is, cp, 'edge');
+      if (edge >= 0) {
+        const forward = bools(records[coedge])[0] ?? true;
+        coedges.push({ edge: readEdge(records, is, edge), forward });
+      }
+      coedge = firstOf(
+        is,
+        cp.filter((p) => is(p, 'coedge')),
+        'coedge',
+      );
+    }
+    loops.push({ coedges, outer });
+    loop = firstOf(is, pointers(records[loop]), 'loop');
+  }
+  return loops;
+}
+
+/** One face record: its surface, its sense and its loops. */
+function readFace(records: AsmRecord[], is: ReturnType<typeof typeer>, face: number): AsmBodyFace {
+  const fp = pointers(records[face]);
+  const surface = fp[fp.length - 1] ?? -1;
+  const reversed = bools(records[face])[0] ?? false;
+  return { surface: surfaceAt(records, surface), reversed, loops: readLoops(records, is, face) };
+}
+
+/** The faces of one shell: its first face, then the face chain. */
+function shellFaces(
+  records: AsmRecord[],
+  is: ReturnType<typeof typeer>,
+  shell: number,
+): AsmBodyFace[] {
+  const faces: AsmBodyFace[] = [];
+  const seen = new Set<number>();
+  let face = firstOf(is, pointers(records[shell]), 'face');
+  while (face >= 0) {
+    if (seen.has(face)) throw new F3dFormatError('ASM body: a face chain repeats.');
+    seen.add(face);
+    if (faces.length >= MAX_FACES) throw new F3dFormatError('ASM body: too many faces.');
+    faces.push(readFace(records, is, face));
+    const next = pointers(records[face]).find((p) => p !== face && is(p, 'face')) ?? -1;
+    face = next;
+  }
+  return faces;
+}
+
+/**
+ * The live solids of a B-rep stream, one per `lump`, in stream order. Each is
+ * the faces of the shell that lump names (the current shell; the stream's
+ * earlier shells are not read).
+ */
+export function asmBodies(records: AsmRecord[]): AsmBodySolid[] {
+  const is = typeer(records);
+  const out: AsmBodySolid[] = [];
+  for (let i = 0; i < records.length; i++) {
+    if (records[i]?.type !== 'lump') continue;
+    if (out.length >= MAX_SOLIDS) throw new F3dFormatError('ASM body: too many solids.');
+    const shell = firstOf(is, pointers(records[i]), 'shell');
+    if (shell < 0) continue;
+    out.push({ faces: shellFaces(records, is, shell) });
+  }
+  return out;
+}

@@ -20,12 +20,9 @@ import type { ImportOptions, ImportResult } from './map';
 import { f3dToDesign } from './map';
 import { readF3dEntries } from './model';
 
-export {
-  MAX_ENTRIES,
-  MAX_ENTRY_BYTES,
-  MAX_TOTAL_BYTES,
-  previewBytes,
-} from './archive';
+export { MAX_ENTRIES, MAX_ENTRY_BYTES, MAX_TOTAL_BYTES, previewBytes } from './archive';
+export { type AsmBodyFace, type AsmBodySolid, asmBodies } from './asm-body';
+export { type BodyStep, f3dBodiesStep, UnsupportedGeometry } from './brep-step';
 export { F3dFormatError } from './bytes';
 export {
   f3dToDesign,

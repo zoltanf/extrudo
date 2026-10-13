@@ -30,6 +30,8 @@ export type AsmValue =
 export interface AsmRecord {
   /** `face`, `plane-surface`, `cone-surface`, `ATTRIB_CUSTOM-attrib`, … */
   type: string;
+  /** The record's own class, before its base classes (`intcurve-curve` for a curve whose last name is a base like `nullbs`). */
+  derived?: string;
   values: AsmValue[];
 }
 
@@ -67,6 +69,7 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
   let values: AsmValue[] = [];
   let names: string[] = [];
   let type = '';
+  let derived = '';
   const str = (len: number, at: number) => latin1.decode(bytes.subarray(at, at + len));
   while (p < bytes.length) {
     const t = bytes[p++] as number;
@@ -80,15 +83,19 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
         p += 1 + n;
         if (t === 0x0d) {
           type = names.join('-');
+          // The first class name is the record's own type; later names are its
+          // base classes (`intcurve`, `curve`, `spring_int_cur`, … `nullbs`).
+          if (derived === '') derived = type;
           names = [];
         }
         break;
       }
       case 0x11:
-        records.push({ type, values });
+        records.push({ type, derived: derived || type, values });
         if (type === 'End-of-ASM-data') return records;
         values = [];
         type = '';
+        derived = '';
         break;
       case 0x04:
       case 0x15:
@@ -401,4 +408,4 @@ export function asmFaces(records: AsmRecord[]): AsmFace[] {
   return faces;
 }
 
-export { vec as asmVec };
+export { curveOf as asmCurveOf, surfaceOf as asmSurfaceOf, vec as asmVec };

@@ -639,3 +639,43 @@ the rest and warns how many edges were left out and why, instead of failing
 whole (at most a third of the edges; a larger drop fails as before). On the
 250-file corpus this moved four designs from *mismatch* to *match* — match 123
 → 127 — with no design's verdict worse and no body lost.
+
+## Amendment, 2026-10-13: reading a body's B-rep stream as STEP
+
+The file carries each body's solid in an ASM B-rep stream
+(`…/Breps.BlobParts/BREP.<uuid>.smb[h]`). A slice now reads that stream into
+topology and writes the body as AP214 STEP, for bodies a kernel can rebuild
+exactly. It does not change the import: nothing in `map.ts` calls it yet; a
+later change can feed its STEP through the `import` feature (ADR-0066).
+
+**What is read.** `asm-body.ts` walks body → lump → shell → face: each face's
+surface and sense, its loops in order with their coedges and coedge sense, each
+edge's curve and vertices, and the outer/inner loop split (the first loop is the
+outer one, as the file writes it). Each `lump` names its live shell, so the
+lumps in stream order are the solids; history shells carry no faces and are not
+read. A design body reaches its stream through its body container: the container
+lists its component's bodies in order and points at the record whose payload is
+the `BREP.*.smb[h]` file name, so container body *i* pairs with lump *i*. Only
+visible bodies are taken; hidden ones are left out, as a STEP export of the
+design leaves them out.
+
+**What is written.** `brep-step.ts` writes one body as AP214 STEP in mm:
+`PLANE`, `CYLINDRICAL_SURFACE`, `CONICAL_SURFACE`, `LINE`, `CIRCLE` and
+`ELLIPSE`, sharing vertices and edges. A body with any other surface or curve is
+not written; `f3dBodiesStep` returns the reason instead. `ASM` streams also
+write each record's class followed by its base classes (each with a `0x0d`
+tag); `readAsm` keeps the last name in `type` (what the rest of the reader was
+written against) and the record's own class in a new `derived` field, which this
+round uses.
+
+**Limits.** Spline, torus and sphere surfaces and intcurve / exp_par_cur curves
+are not carried; they are refused with a reason (the stream often holds an
+approximating NURBS for them, which a later round can read). A stream can hold
+more solids than the visible bodies that name it (a hidden body's solid beside
+them); those are left unwritten rather than pairing by position, since the
+container does not mark the hidden ones.
+
+**Hostile input.** Every walk is bounded: each pointer index is checked against
+the record count, each chain is followed with a seen-set, and a crafted stream
+whose face or loop chain repeats throws `F3dFormatError` instead of looping.
+The reader shares `readAsm`'s guarantees (no read past the stream's end).
