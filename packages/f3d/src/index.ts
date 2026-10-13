@@ -23,6 +23,27 @@ import { readF3dEntries } from './model';
 
 export { MAX_ENTRIES, MAX_ENTRY_BYTES, MAX_TOTAL_BYTES, previewBytes } from './archive';
 export { type AsmBodyFace, type AsmBodySolid, asmBodies } from './asm-body';
+export {
+  applyBodyPlan,
+  BOX_TOLERANCE,
+  type BodyMeasures,
+  type BodyPlan,
+  type BodyProbe,
+  type BodyMeasure,
+  bodyFiles,
+  bodyOutcomes,
+  type FileBody,
+  fileBodies,
+  IOU_MIN,
+  type PlannedBody,
+  planBodies,
+  probeDocument,
+  type ProbeBody,
+  type ReplayedBody,
+  REMOVE_NAME,
+  stepSize,
+  VOLUME_TOLERANCE,
+} from './body-check';
 export { type BodyStep, bodiesStep, f3dBodiesStep, UnsupportedGeometry } from './brep-step';
 export { F3dFormatError } from './bytes';
 export {

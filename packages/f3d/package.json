@@ -15,6 +15,7 @@
     "@extrudo/api": "workspace:*",
     "@extrudo/core": "workspace:*",
     "@extrudo/sketch": "workspace:*",
+    "@extrudo/storage": "workspace:*",
     "fflate": "^0.8.3",
     "fzstd": "^0.1.1"
   },
