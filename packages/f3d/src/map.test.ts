@@ -815,4 +815,38 @@ describe('f3dToDesign', () => {
     expect(refs[0]?.id).toMatch(/^e\[extrude:/);
     expect(refs[1]?.fingerprint?.dir).toEqual([1, 0, 0]);
   });
+  it('leaves out a profile region it cannot match when the others are found', async () => {
+    // The ring, and a region along a dangling line and a curve the sketch no
+    // longer has (deleted after the pick): the extrude builds the ring.
+    const f3d = washer();
+    const sketch = f3d.features[0] as F3dSketchFeature;
+    sketch.sketch.points.push(
+      { id: 41, at: [0.7, 0, 0], incidence: 0 },
+      { id: 42, at: [0.9, 0, 0], incidence: 0 },
+    );
+    sketch.sketch.lines.push({
+      id: 40,
+      tag: 103n,
+      start: [0.7, 0, 0],
+      end: [0.9, 0, 0],
+      startPoint: 41,
+      endPoint: 42,
+      construction: false,
+    });
+    const extrude = f3d.features[1] as F3dExtrude;
+    extrude.profiles = [
+      { id: 30, sketch: 5, regions: [region([[101n]], [[102n]]), region([[103n, 999n]])] },
+    ];
+    const { report } = f3dToDesign(f3d, 'Washer');
+    expect(report.skipped).toEqual([]);
+    expect(report.notes).toContain(
+      "Extrude1: 1 profile region(s) left out: they couldn't be matched to Sketch1's curves.",
+    );
+    expect(await volumes(f3d)).toEqual([expect.closeTo(RING, 3)]);
+    // Not one region found: skipped as before, with the region's reason.
+    extrude.profiles = [{ id: 30, sketch: 5, regions: [region([[103n, 999n]])] }];
+    expect(f3dToDesign(f3d, 'Washer').report.skipped).toMatchObject([
+      { name: 'Extrude1', reason: "its profile couldn't be matched to Sketch1's curves" },
+    ]);
+  });
 });

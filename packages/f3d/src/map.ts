@@ -1461,6 +1461,9 @@ export function selectProfiles(
     const present = new Set([...sketch.tags.values()].map(String));
     const before = profiles.length;
     let lost = 0;
+    // A region not found while others of the operand are: left out with a note.
+    let missed: string | undefined;
+    let misses = 0;
     // A group's outline is the union of its other regions: wanted only where
     // one of those cannot be found exactly.
     const exact = new Map(
@@ -1503,18 +1506,25 @@ export function selectProfiles(
             ),
           )
           .slice(0, 8);
-        return unmatchedRegion(
+        missed ??= unmatchedRegion(
           sketch.handle.name,
           want.outer.map((l) => keyOf(l)),
           regions.length,
           have,
         );
+        misses++;
+        continue;
       }
       for (const ref of refs) if (!profiles.some((p) => p.id === ref.id)) profiles.push(ref);
     }
+    if (missed && profiles.length === before) return missed;
     if (lost && profiles.length === before)
       return 'the curves around its profile regions were deleted';
     if (lost) note(`${lost} profile region(s) left out: their curves were deleted in the file.`);
+    if (missed)
+      note(
+        `${misses} profile region(s) left out: they couldn't be matched to ${sketch.handle.name}'s curves.`,
+      );
   }
   return entry ? { profiles, entry } : 'no profile';
 }
