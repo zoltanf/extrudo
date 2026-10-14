@@ -29,8 +29,8 @@ import {
   asmBodies,
   isApexEdge,
 } from './asm-body';
-import { type LumpClaim, lumpOps, pairLumps } from './brep-lumps';
 import { type AsmBSplineCurve, type AsmBSplineSurface, splinePoint } from './asm-spline';
+import { type LumpClaim, lumpOps, pairLumps } from './brep-lumps';
 import { BODY } from './decode/body';
 import { activeDesignSegment, type F3dDesign, readF3dEntries, refsIn } from './model';
 import { Segment } from './segment';
