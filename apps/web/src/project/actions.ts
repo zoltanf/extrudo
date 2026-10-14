@@ -7,16 +7,19 @@ import {
   mediaTypeOf,
   modelKind,
 } from '@extrudo/core';
+import type { ImportReport, ImportResult } from '@extrudo/f3d';
 import {
   ArchiveError,
   type ProjectId,
   ProjectNotFoundError,
   type ProjectSummary,
 } from '@extrudo/storage';
+import { appNotifications } from '../design-system/notifications';
 import { IMPORT_ACCEPT, requestModelImport } from '../features/import';
 import { type OpenedFile, type Platform, safeFileName } from '../platform';
 import { navigate, projectHref } from '../routes';
 import { APP_VERSION } from '../version';
+import type { BodyCheck, BodyCheckResult } from './f3dCheck';
 
 /**
  * Saves a new project (blank, or the given document, with a picture for its card
@@ -111,10 +114,12 @@ export const MAX_F3D_BYTES = 100 * 1024 * 1024;
  * Lets the user pick an `.f3d` file and imports it as a new
  * design; `undefined` if they cancel. The importer loads only now (its own
  * chunk). What it could not bring over is left for the design's page.
+ * `check` stands in for the body check in tests (ADR-0084).
  */
 export async function importF3dFile(
   platform: Platform,
   picked?: File,
+  check?: BodyCheck,
 ): Promise<ProjectId | undefined> {
   const file = picked ?? (await platform.files.pick(F3D_ACCEPT));
   if (!file) return undefined;
@@ -131,11 +136,12 @@ export async function importF3dFile(
     .then((m) => m.loadSketchSolver())
     .catch(() => undefined);
   const name = file.name.replace(/\.f3d$/i, '') || 'Imported design';
-  let imported: ReturnType<typeof importF3d>;
+  let imported: ImportResult;
   try {
     imported = importF3d(bytes, name, {
       id: crypto.randomUUID(),
       appVersion: APP_VERSION,
+      bodies: true,
       ...(solver ? { solver } : {}),
     });
   } finally {
@@ -144,38 +150,128 @@ export async function importF3dFile(
       solver?.dispose();
     } catch {}
   }
-  const { design, report, preview } = imported;
-  const doc = design.toJSON();
+  return saveF3dImport(platform, imported, check ?? (await import('./f3dCheck')).checkF3dBodies);
+}
+
+/** What the busy toast says while the body check runs. */
+export const CHECKING_TEXT = 'Checking the bodies against the file…';
+
+/**
+ * Saves an imported `.f3d` design (ADR-0084). The body check runs first, before
+ * anything is saved; then the replayed design is saved as it is, the frozen
+ * bodies' STEP files are written, and the design with the plan applied is
+ * saved over it. Bytes go to storage before the document that names them
+ * (ADR-0061), and a failure part-way leaves the replayed design, with a notice.
+ */
+export async function saveF3dImport(
+  platform: Platform,
+  imported: ImportResult,
+  check: BodyCheck,
+): Promise<ProjectId> {
+  const { design, report, preview, steps = [], bodies: links = [] } = imported;
+  const replay = design.toJSON();
+  let result: BodyCheckResult;
+  if (steps.some((s) => s.step !== undefined && !s.inward)) {
+    const notifications = appNotifications.getState();
+    const toast = notifications.push('info', CHECKING_TEXT, { lifetime: 120_000 });
+    try {
+      result = await check(design, steps, links);
+    } catch (error) {
+      result = { error: describeError(error) };
+    } finally {
+      notifications.dismiss(toast);
+    }
+  }
   const id = await createProject(
     platform,
-    doc,
+    replay,
     preview ? new Blob([preview as Uint8Array<ArrayBuffer>], { type: 'image/png' }) : undefined,
   );
-  for (const message of importNotices(report)) noteOnOpen(id, message);
+  let removed = false;
+  if (result && 'error' in result) {
+    report.bodyCheck = { error: result.error };
+  } else if (result) {
+    const { applyBodyPlan, bodyFiles, bodyOutcomes } = await import('@extrudo/f3d');
+    const plan = result;
+    try {
+      applyBodyPlan(design, plan, steps);
+      const doc = design.toJSON();
+      for (const [attachment, bytes] of bodyFiles(design, steps)) {
+        const record = doc.attachments?.[attachment];
+        if (record) await platform.projects.writeAttachment(id, record.sha256, bytes);
+      }
+      if (doc !== replay) await platform.projects.save(doc);
+      report.bodies = bodyOutcomes(plan, design);
+      removed = plan.remove.length > 0;
+    } catch (error) {
+      report.bodyCheck = { error: describeError(error) };
+    }
+  }
+  for (const message of importNotices(report, removed)) noteOnOpen(id, message);
   return id;
 }
 
-/** The import report as a few readable notices. */
-function importNotices(report: {
-  imported: string[];
-  skipped: { name: string; kind: string; reason: string }[];
-  constraints?: { constraints: number; dimensions: number; leftOut: Record<string, number> };
-}): string[] {
+/** At most six items, then "and N more". */
+function listed(items: string[]): string {
+  const shown = items.slice(0, 6);
+  const more = items.length - shown.length;
+  return `${shown.join('; ')}${more > 0 ? `; and ${more} more` : ''}`;
+}
+
+/**
+ * The import report as a few readable notices. `removed`: the body check took
+ * replayed bodies out with "Remove rebuilt bodies".
+ */
+export function importNotices(
+  report: Pick<ImportReport, 'imported' | 'skipped' | 'constraints' | 'bodies' | 'bodyCheck'>,
+  removed = false,
+): string[] {
   const skipped = report.skipped.filter((s) => s.reason !== 'suppressed in the file');
   const total = report.imported.length + skipped.length;
   const out = [
     `Imported from the .f3d file: ${report.imported.length} of ${total} timeline features.`,
   ];
-  if (skipped.length > 0) {
-    const shown = skipped.slice(0, 6).map((s) => `${s.name} (${s.reason})`);
-    const more = skipped.length - shown.length;
-    out.push(`Not imported: ${shown.join('; ')}${more > 0 ? `; and ${more} more` : ''}.`);
-  }
+  if (skipped.length > 0)
+    out.push(`Not imported: ${listed(skipped.map((s) => `${s.name} (${s.reason})`))}.`);
   const c = report.constraints;
   const left = c ? Object.values(c.leftOut).reduce((a, b) => a + b, 0) : 0;
   if (c && c.constraints + c.dimensions + left > 0)
     out.push(
       `Sketches keep ${c.constraints} constraints and ${c.dimensions} dimensions from the file${left > 0 ? `; ${left} were left out because they would over-constrain or move the geometry, or have no counterpart` : ''}.`,
+    );
+  if (report.bodyCheck)
+    out.push(
+      `The bodies couldn't be checked against the file (${report.bodyCheck.error}); the design is as the timeline rebuilt it.`,
+    );
+  const bodies = report.bodies ?? [];
+  // A name the file repeats (in two components) says which component it is in.
+  const counts = new Map<string, number>();
+  for (const b of bodies) counts.set(b.name, (counts.get(b.name) ?? 0) + 1);
+  const label = (b: (typeof bodies)[number]) =>
+    b.component !== undefined && (counts.get(b.name) ?? 0) > 1
+      ? `${b.name} in ${b.component}`
+      : b.name;
+  const count = (outcome: string) => bodies.filter((b) => b.outcome === outcome).length;
+  const frozen = bodies.filter((b) => b.outcome === 'frozen');
+  if (frozen.length > 0)
+    out.push(
+      `Taken from the file's own shapes, without history: ${listed(frozen.map((b) => (b.reason ? `${label(b)} (${b.reason})` : label(b))))}.${removed ? ' Suppress "Remove rebuilt bodies" to see what the timeline made.' : ''}`,
+    );
+  const missing = count('missing');
+  if (missing > 0)
+    out.push(
+      missing === 1
+        ? "One of the file's bodies is missing: the timeline didn't make it, and its shape can't be read from the file yet."
+        : `${missing} of the file's bodies are missing: the timeline didn't make them, and their shapes can't be read from the file yet.`,
+    );
+  const editable = count('editable');
+  if (editable > 0 && frozen.length === 0 && missing === 0)
+    out.push(
+      editable === bodies.length
+        ? editable === 1
+          ? "The body matches the file's own shape."
+          : `All ${editable} bodies match the file's own shapes.`
+        : `${editable} of ${bodies.length} bodies match the file's own shapes; the rest couldn't be checked.`,
     );
   return out;
 }

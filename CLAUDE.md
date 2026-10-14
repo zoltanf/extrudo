@@ -37,7 +37,7 @@ worktrees, merged to main one at a time.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens, type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field. A test fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
-| `docs/adr/` | Architecture decision records, one per decision (0001 kernel … 0083 `.f3d` import), with amendments |
+| `docs/adr/` | Architecture decision records, one per decision (0001 kernel … 0084 `.f3d` file bodies), with amendments |
 | **`docs/agent/adr-digest.md`** | One paragraph per ADR: the files involved and **the rules a change must keep**. Read the paragraphs for the area you touch before changing it (`grep -n "ADR-0047" docs/agent/adr-digest.md`) |
 | **`docs/agent/e2e-notes.md`** | Per spec: regions, data attributes, selectors, picking coordinates and traps. Read before writing or fixing an e2e spec |
 | **`docs/agent/dev-environment.md`** | The two dev machines (Arch workstation, Ubuntu machine), OCCT/planegcs WASM builds and CI, the facade, Docker harnesses, fuzzing, and OCCT/planegcs/library facts |

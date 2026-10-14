@@ -3,7 +3,9 @@
 - **Status:** Accepted, 2026-10-10 (the owner: read `.f3d` directly, with our
   own TypeScript decoder; the app's import first, then coverage). It reverses
   the earlier "don't parse `.f3d`" recommendation and amends Open decision 5
-  in `docs/03-roadmap.md`.
+  in `docs/03-roadmap.md`. **Amended by ADR-0084** (2026-10-14): the import
+  checks each rebuilt body against the file's own and brings the file's shape
+  in where they differ, with a kernel at import time.
 - **Builds on:** ADR-0066 (import), ADR-0068 (the public document API, which
   the import writes through), ADR-0005 (topological naming), ADR-0081
   (components, not yet there to import into).

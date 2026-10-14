@@ -2247,3 +2247,19 @@ new design that opens with the Import dialog on it (`requestModelImport`). No sa
 `corpus.test.ts` (`F3D_REPORT=<file>` writes what each file left out, with the technical
 detail). A skipped feature's `reason` is plain words for people (at most `MAX_REASON`, 120
 characters, never a list in braces: `skippedFeature`, R3-18) and `detail` the technical text. **Amendments of 2026-10-11 and 2026-10-12** closed most of the original gaps: components (each a component of the design, ADR-0081), mirrors, rectangular and path patterns, sweeps, splits, modeled threads, naming a copied face, sketch constraints and dimensions, elliptical arcs as exact conics, fillet and chamfer edges read where the file has them, `skipLostEdges` on every round and chamfer (ADR-0038's and ADR-0043's amendments) and reading the segment under the `[Active]` folder (`activeDesignSegment` in `model.ts`). What still does not come across is in the ADR's Consequences (for example faces given as an extrude's profile that cannot be named).
+
+ADR-0084 (the owner, 2026-10-14) **checks each body an `.f3d` import rebuilt against the
+file's own B-rep body** and brings the file's shape in where the replay misses. Pure parts in
+`packages/f3d/src/body-check.ts` (`probeDocument`, `measureProbe`, `fileBodies`, `planBodies`,
+`applyBodyPlan`, `bodyFiles`, `bodyOutcomes`), shared with the private corpus tooling; the
+app's runner is `checkF3dBodies` (`apps/web/src/project/f3dCheck.ts`, lazy with the importer)
+and the wiring `saveF3dImport` in `project/actions.ts`. Rules: pair **by geometry only**
+(volume within 0.5 %, tight box within 0.05 mm; the creator hint only picks what to take out);
+the check runs **before the first save** in a throwaway worker that is always disposed, never
+writes the model cache, starts no kernel when no body was written and gives up after
+`CHECK_TIMEOUT_MS` (a failure keeps today's import plus one notice); a body with an
+inward-signed sphere/torus face stays unchecked; mismatches are taken out with **one Remove
+"Remove rebuilt bodies"** (never hide, suppress or delete) and brought in as **one `import
+"Import Body<n>"` per body** with its own attachment and component stamp; save order is replay
+doc, then STEP attachments, then the final doc; a STEP over 25 MB or past 100 MB in total
+stays unchecked; missing bodies are counted, never named. No schema change.

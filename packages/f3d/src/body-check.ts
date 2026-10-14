@@ -7,7 +7,7 @@
  * frozen, with the replayed version taken out by a Remove.
  *
  * Three pieces, all pure but for the `Design` edits, so the app and the Node
- * Node corpus tooling run the same code:
+ * corpus tooling run the same code:
  *
  * 1. {@link probeDocument}: the replay document plus one attachment record and
  *    one `import` per written body, appended at the marker. A kernel measures
@@ -227,6 +227,49 @@ export function probeDocument(replay: Design, steps: readonly BodyStep[]): BodyP
     }
   });
   return { design, bodies, files };
+}
+
+/** What a probe recompute made: each feature's status and the bodies, in order. */
+export interface ProbeOutput {
+  features: Readonly<Record<string, { status: 'ok' | 'warning' | 'error'; message?: string }>>;
+  bodies: readonly BodyId[];
+}
+
+/**
+ * Measures what a probe recompute made, with the kernel's measuring function:
+ * the replayed bodies (not a probe import's, not hidden by the replay) and,
+ * per probed file body, its measure or why its import is not clean (a feature
+ * that did not finish `ok`, or other than exactly one body). The result is
+ * what `fileBodies` and `planBodies` take.
+ */
+export async function measureProbe(
+  probe: BodyProbe,
+  made: ProbeOutput,
+  measure: (body: BodyId) => Promise<BodyMeasure | undefined>,
+): Promise<{
+  replayed: ReplayedBody[];
+  measured: Map<number, BodyMeasure | { error: string }>;
+}> {
+  const probeBodies = new Set(probe.bodies.map((b) => b.body));
+  const replayed: ReplayedBody[] = [];
+  for (const id of made.bodies) {
+    if (probeBodies.has(id) || probe.design.doc.bodies[id]?.visible === false) continue;
+    const m = await measure(id);
+    if (m) replayed.push({ id, measure: m });
+  }
+  const measured = new Map<number, BodyMeasure | { error: string }>();
+  for (const b of probe.bodies) {
+    const status = made.features[b.feature];
+    const count = made.bodies.filter((id) => id.startsWith(`${b.feature}:`)).length;
+    if (status && status.status !== 'ok') {
+      measured.set(b.record, { error: status.message ?? 'the probe import failed' });
+    } else if (count !== 1) {
+      measured.set(b.record, { error: `the probe made ${count} bodies` });
+    } else {
+      measured.set(b.record, (await measure(b.body)) ?? { error: 'no body' });
+    }
+  }
+  return { replayed, measured };
 }
 
 /** The largest component difference between two boxes, in mm. */

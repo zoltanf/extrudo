@@ -55,7 +55,11 @@ These are in the Home tab's **Import** group.
   its customizer variables show up as fields you can change. The **Up** setting says whether the
   file's up is Z or Y, and a mesh has a **Units** setting. An `.f3d` file picked here opens as a
   new design instead, with its parameters, sketches, pulled solids, fillets and chamfers; a
-  notice says what came across.
+  notice says what came across. Extrudo also checks each body it rebuilt against the shape
+  stored in the file. A body it couldn't rebuild, or rebuilt differently, comes in as the
+  file's own shape, without history (an **Import Body3** feature at the end of the timeline),
+  and one **Remove rebuilt bodies** feature takes the rebuilt version out: suppress it to see
+  what the timeline made.
 - **Import Drawing** needs an open sketch. It reads an SVG or DXF file and adds its lines and
   curves to the sketch, at the **Scale** and **Units** you choose. **Fixed** (on by default)
   pins the curves where they are, so they do not move when you add constraints.

@@ -4,7 +4,7 @@
  * plan applied to a `Design`. Pure, no kernel and no samples.
  */
 import { Design } from '@extrudo/api';
-import type { BodyId, ComponentId } from '@extrudo/core';
+import { type BodyId, type ComponentId, updateBody } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import {
   applyBodyPlan,
@@ -14,6 +14,7 @@ import {
   type FileBody,
   fileBodies,
   INWARD_REASON,
+  measureProbe,
   planBodies,
   probeDocument,
   REMOVE_NAME,
@@ -244,6 +245,43 @@ describe('probeDocument', () => {
     expect(probe.bodies).toHaveLength(1);
     expect(probe.bodies[0]?.record).toBe(1);
     expect(probe.files.size).toBe(1);
+  });
+});
+
+describe('measureProbe', () => {
+  it('measures shown replayed bodies and each clean probe import, and says why the rest are not', async () => {
+    const replay = Design.create({ name: 'T' });
+    replay.state.dispatch(
+      updateBody({ id: bid('hidden:0'), changes: { name: 'Hidden', visible: false } }),
+    );
+    const steps: BodyStep[] = [
+      { record: 1, name: 'Body1', step: 'ONE' },
+      { record: 2, name: 'Body2', step: 'TWO' },
+      { record: 3, name: 'Body3', step: 'THREE' },
+    ];
+    const probe = probeDocument(replay, steps);
+    const [one, two, three] = probe.bodies.map((b) => b.feature);
+    const asked: BodyId[] = [];
+    const { replayed, measured } = await measureProbe(
+      probe,
+      {
+        features: {
+          [one as string]: { status: 'ok' },
+          [two as string]: { status: 'error', message: 'unreadable STEP' },
+          [three as string]: { status: 'ok' },
+        },
+        bodies: [bid('shown:0'), bid('hidden:0'), bid(`${one}:0`)],
+      },
+      async (body) => {
+        asked.push(body);
+        return box(0, 10);
+      },
+    );
+    expect(replayed.map((r) => r.id)).toEqual([bid('shown:0')]);
+    expect(measured.get(1)).toEqual(box(0, 10));
+    expect(measured.get(2)).toEqual({ error: 'unreadable STEP' });
+    expect(measured.get(3)).toEqual({ error: 'the probe made 0 bodies' });
+    expect(asked).toEqual([bid('shown:0'), bid(`${one}:0`)]);
   });
 });
 
