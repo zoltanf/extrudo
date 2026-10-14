@@ -1,9 +1,9 @@
 /**
  * A body of the file's B-rep streams → AP214 STEP text (mm), for planes,
- * cylinders, cones, spheres and tori with straight and elliptical (circle)
- * edges. Anything
- * else is refused with a reason: the importer needs only the bodies whose
- * analytic geometry a kernel can rebuild exactly.
+ * cylinders, cones, spheres, tori and the B-spline surfaces the file stores for
+ * its procedural ones, with straight, elliptical (circle) and B-spline edges.
+ * Anything else (a helix, which keeps no B-spline; a degenerate torus; a solid
+ * with voids) is refused with a reason.
  *
  * The body a design record names is found through its body container
  * (`FORMAT.md`, `CD57BC48…`): a container lists the bodies of its component in
@@ -146,8 +146,8 @@ function entryFor(entries: Entries, file: string): Uint8Array | undefined {
 
 /** The solid as AP214 STEP text (mm). Throws `UnsupportedGeometry` on a surface or curve it does not carry. */
 export function solidToStep(solid: AsmBodySolid): string {
-  // The writer emits one closed shell; a lump's further shells are its voids,
-  // which it does not write, so such a solid would come out without them.
+  // The writer emits one closed shell; a lump with more shells has voids, which
+  // it does not write, so such a solid would come out wrong.
   if (solid.voids) throw new UnsupportedGeometry('a solid with an inner void');
   const w = new StepWriter();
   const ctx = header(w);
@@ -496,8 +496,8 @@ export function solidStep(solid: AsmBodySolid): { step?: string; reason?: string
  * The design's visible bodies as STEP, one entry per body. A body is written
  * only when its stream is named, one of the stream's solids is paired with it
  * ({@link pairLumps}), and every surface and curve is a plane, cylinder, cone,
- * sphere, torus, line or circle/ellipse; otherwise the body comes back with a
- * reason. This is the bytes wrapper: it unzips and decodes the design itself.
+ * sphere, torus, line, circle/ellipse or stored B-spline; otherwise the body
+ * comes back with a reason. This is the bytes wrapper: it unzips and decodes the design itself.
  * A caller that already has both (the importer) uses {@link bodiesStep}
  * instead, so a 100 MB file is not unzipped and decoded twice.
  */

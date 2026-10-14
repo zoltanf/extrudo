@@ -79,8 +79,9 @@ export interface AsmBodySolid {
   /** The faces of the lump's first shell. */
   faces: AsmBodyFace[];
   /**
-   * How many more shells with faces the lump holds (its inner voids: a lump's
-   * shells after the first bound cavities inside it). Their faces are not read.
+   * How many more shells with faces the lump holds: a lump's shells together
+   * bound it, one its outside and the others voids inside it. Their faces are
+   * not read.
    */
   voids?: number;
 }

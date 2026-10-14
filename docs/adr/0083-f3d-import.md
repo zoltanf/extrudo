@@ -791,3 +791,55 @@ refused as `creator in several solids` (they were editable; that design's
 verdict and volume error are unchanged). The crossed
 design now writes each body's own solid (its verdict was already a match: the
 check pairs by geometry), so the frozen body carries the right name.
+## Amendment, 2026-10-14: B-spline curves and surfaces in the B-rep writer
+
+The writer refused every body with an `intcurve` edge or a `spline-surface`
+face, the first blocker in most of the designs whose replay still missed. Those
+records keep, besides their procedure (an intersection, an offset, a blend, an
+extruded profile), the B-spline the file approximates them with; the writer now
+reads that B-spline and writes it. (The previous amendment's note that most
+intcurves carry no B-spline read a record's last class name, `nullbs`, which
+names a parameter curve inside the block; all but the helices do carry one.)
+
+**What is read.** A curve or surface record carries its definition in a subtype
+block, or a reference to a block written earlier in the same stream (counted in
+the order blocks open, nested ones included); `readAsm` now keeps the class names
+inside a block as values in place, since the layout depends on them. The new
+`asm-spline.ts` reads the block's B-spline: degree, form, knots with
+multiplicities (the file writes the end knots `degree` times; STEP's
+`degree + 1` is restored), control points and weights; for a surface the two
+directions and the grid. The procedure is never re-evaluated. The curve record's
+sense (against its B-spline) is folded into the edge's, and the edge's two
+parameters, which the file negates for each reversal, give its stretch of the
+B-spline; a surface record's sense is folded into the face's, as an inward
+sphere's is. `FORMAT.md` ("Spline curves and surfaces") has the layout and how
+it was checked: evaluating the decoded B-spline at each edge's parameters gives
+its vertices to under 1e-6 cm on all 31,484 B-spline edges of the corpus's
+live solids but 43 closed ones whose stretch wraps past the curve's start.
+
+**What is written.** `B_SPLINE_CURVE_WITH_KNOTS` and
+`B_SPLINE_SURFACE_WITH_KNOTS` in mm, as complex rational entities when a weight
+is not 1. A closed B-spline edge is split, like a full circle: at the curve's
+seam when its stretch crosses it, else at the middle of its stretch.
+
+**Still refused.** A helix (a thread's curves and faces) keeps no B-spline and
+is refused as "an intcurve with no B-spline". A lump with more than one shell
+(an outer shell and voids inside it) is now refused as "a solid with an inner
+void": the reader took only the lump's first shell, so such a solid was
+written without its cavities. The spline refusal had hidden this; with splines written,
+eight designs that matched through the replay were frozen to a body 0.7–3.5 %
+too large. Walking the lump's whole shell chain also stops a shell of it that
+an earlier (history) lump record names from being read as a second solid, so ten
+bodies whose stream seemed to hold more solids than bodies now give the void
+reason instead (no verdict changes). Writing the voids (`BREP_WITH_VOIDS`) is left for later.
+
+**Measured** on the 250-design corpus with the body check (replay → probe →
+plan → apply, the reference STEP's volume within 0.5 % and tight box within
+0.05 mm): 165 → 200 designs match of 237 → 239 comparable, 30 → 65 rescued,
+none harmed; bodies written 214 → 294 of 380, editable 131 → 158, frozen 78 →
+128, unchecked 147 → 82, missing 24 → 12. Three of the newly written frozen
+bodies fail OCCT's validity check yet measure as the reference does. The
+blockers now left in front of the body check are the voids (21 bodies),
+degenerate tori (14 with a tube not smaller than its ring, 9 with a negative
+ring radius), streams holding more solids than bodies (22), helices (7), edges
+with no curve (9) and inward-signed surfaces (8).

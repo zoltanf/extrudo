@@ -337,7 +337,13 @@ reversed face keeps the file's loop with same-sense false.
 
 A stream is one or more solids, grouped `body` → `lump` → `shell` → face chain.
 Each `lump` names its shell and its body, and the shell's face chain is that
-lump's faces; the stream's earlier shells (history) carry no faces. A design
+lump's faces; the stream's earlier shells (history) carry no faces. A lump
+can hold more than one shell: a shell's first pointer to another shell is the
+lump's next shell. Together they bound the solid: one is its outside, the others
+voids inside it (27 lumps in the corpus; in a body checked against its STEP
+export, the first shell's 59 faces plus the other shells' 24 made the export's
+83, and the first shell alone had 1.3 % more volume). An earlier `lump` record
+(history) can name one of the later shells as its own. A design
 body reaches its stream through its body container (`CD57BC48…`, the record in
 the design segment the body's `D3937028…` names): the container lists its
 component's bodies in order and points at a record (`74CA4562…` or
