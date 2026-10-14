@@ -22,7 +22,13 @@
  */
 import { designSegments, type Entries, unzip } from './archive';
 import { type AsmCurve, type AsmSurface, readAsm } from './asm';
-import { type AsmBodyEdge, type AsmBodyFace, type AsmBodySolid, asmBodies } from './asm-body';
+import {
+  type AsmBodyEdge,
+  type AsmBodyFace,
+  type AsmBodySolid,
+  asmBodies,
+  isApexEdge,
+} from './asm-body';
 import { type LumpClaim, lumpOps, pairLumps } from './brep-lumps';
 import { type AsmBSplineCurve, type AsmBSplineSurface, splinePoint } from './asm-spline';
 import { BODY } from './decode/body';
@@ -211,6 +217,9 @@ export function solidToStep(solid: AsmBodySolid): string {
     for (const face of faces) {
       const bounds: number[] = [];
       for (const loop of face.loops) {
+        // A cone's apex loop (one curveless edge at a point) is left out: a
+        // kernel closes the face at the apex itself.
+        if (loop.coedges.length > 0 && loop.coedges.every((c) => isApexEdge(c.edge))) continue;
         const oriented: { ref: number; forward: boolean }[] = [];
         for (const coedge of loop.coedges)
           for (const ref of edge(coedge.edge)) oriented.push({ ref, forward: coedge.forward });

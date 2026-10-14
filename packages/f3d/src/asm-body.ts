@@ -91,6 +91,9 @@ export interface AsmBodySolid {
   unknownOuter?: boolean;
 }
 
+/** The curve type of an edge record that names no curve. */
+const NO_CURVE = 'none';
+
 /** A crafted stream may not take an unbounded number of steps per walk. */
 const MAX_SOLIDS = 1 << 16;
 const MAX_FACES = 1 << 18;
@@ -183,7 +186,8 @@ function readEdge(records: AsmRecord[], walk: Walk, edge: number): AsmBodyEdge {
   const curvePtr = ep.find((p) => p >= 0 && nameOf(records[p]).endsWith('curve')) ?? -1;
   const start = vertexPoint(records, is, vertices[0] ?? -1);
   const end = vertexPoint(records, is, vertices[1] ?? -1);
-  const curve = curveAt(records, walk, curvePtr);
+  const curve: AsmCurve =
+    curvePtr < 0 ? { kind: 'other', type: NO_CURVE } : curveAt(records, walk, curvePtr);
   // The edge runs against its curve when the edge record's sense is true (read
   // from the record). For a straight curve the points say it directly, and the
   // two disagree on a rare few edges in the corpus, where the points are the
@@ -222,6 +226,16 @@ function readEdge(records: AsmRecord[], walk: Walk, edge: number): AsmBodyEdge {
     ...(start ? { start } : {}),
     ...(end ? { end } : {}),
   };
+}
+
+/**
+ * An edge with no curve whose two ends are one point: the file closes a cone's
+ * face at its apex with a loop of one such edge. STEP needs no bound there.
+ */
+export function isApexEdge(e: AsmBodyEdge): boolean {
+  if (e.curve.kind !== 'other' || e.curve.type !== NO_CURVE || !e.start) return false;
+  const end = e.end ?? e.start;
+  return Math.hypot(end[0] - e.start[0], end[1] - e.start[1], end[2] - e.start[2]) < 1e-9;
 }
 
 /** The loops of one face, in the file’s order, each with its coedges in order. */
@@ -319,6 +333,11 @@ export function asmBodies(records: AsmRecord[]): AsmBodySolid[] {
     if (out.length >= MAX_SOLIDS) throw new F3dFormatError('ASM body: too many solids.');
     const shell = firstOf(walk.is, pointers(records[i]), 'shell');
     if (shell < 0 || walk.shells.has(shell)) continue;
+    // A shell names its lump. A lump whose shell names another lump is an
+    // earlier record (history): its shell is a stale one whose face chain runs
+    // into the live lump's faces, so it is not a solid of its own.
+    const owner = firstOf(walk.is, pointers(records[shell]), 'lump');
+    if (owner >= 0 && owner !== i) continue;
     walk.shells.add(shell);
     // The lump's shells with faces, in the file's order.
     const shells: AsmBodyFace[][] = [];

@@ -43,7 +43,11 @@ interface SplineIn {
   /** Override the knot count the header says (a crafted record). */
   count?: number;
 }
-type CurveIn = LineIn | EllipseIn | SplineIn;
+/** An edge that names no curve (the file's edge at a cone's apex). */
+interface NoCurveIn {
+  t: 'none';
+}
+type CurveIn = LineIn | EllipseIn | SplineIn | NoCurveIn;
 interface Occurrence {
   curve: CurveIn;
   a?: V;
@@ -208,7 +212,7 @@ const keyCurve = (c: CurveIn) =>
  */
 function solidStream(
   shellFaces: FaceIn[],
-  opts: { faceCycle?: boolean; lumps?: number; voids?: FaceIn[][] } = {},
+  opts: { faceCycle?: boolean; lumps?: number; voids?: FaceIn[][]; staleLump?: boolean } = {},
 ): Uint8Array {
   const shellsIn = [shellFaces, ...(opts.voids ?? [])];
   const faces = shellsIn.flat();
@@ -271,7 +275,7 @@ function solidStream(
       for (const o of loop) {
         if (o.a) vertex(o.a);
         if (o.b) vertex(o.b);
-        curve(o.curve);
+        if (o.curve.t !== 'none') curve(o.curve);
       }
     return face.loops.map((loop) =>
       loop.map((o) => ({ edge: edgeOf(o), forward: o.forward ?? true })),
@@ -408,7 +412,7 @@ function solidStream(
       ptr(o.b ? VERTEX + (vertexAt.get(keyV(o.b)) as number) : -1),
       o.params ? dbl(o.params[1]) : [],
       ptr(coedgeForEdge(ei)),
-      ptr(CURVE + (curveAt.get(keyCurve(o.curve)) as number)),
+      ptr(o.curve.t === 'none' ? -1 : CURVE + (curveAt.get(keyCurve(o.curve)) as number)),
       boolean(o.reversed ?? false),
       str('unknown'),
     );
@@ -419,7 +423,7 @@ function solidStream(
     records[POINT + vi] = rec('point', ptr(-1), int(-1), ptr(-1), vec(...v));
   }
   for (let ci = 0; ci < curves.length; ci++) {
-    const c = curves[ci] as CurveIn;
+    const c = curves[ci] as Exclude<CurveIn, NoCurveIn>;
     records[CURVE + ci] =
       c.t === 'spline'
         ? intcurve(c)
@@ -487,6 +491,13 @@ function solidStream(
       );
     else if (s.t === 'spline') records[SURFACE + si] = splineSurface(s);
     else records[SURFACE + si] = rec(s.type, ptr(-1), int(-1), ptr(-1));
+  }
+  if (opts.staleLump) {
+    // An earlier lump record: its shell names the live lump and chains into
+    // the live shell's faces.
+    const at = records.length;
+    records.push(rec('lump', ptr(-1), int(-1), ptr(-1), ptr(at + 1), ptr(BODY)));
+    records.push(rec('shell', ptr(-1), int(-1), ptr(-1), ptr(-1), ptr(FACE), ptr(-1), ptr(LUMP)));
   }
   return stream(...records);
 }
@@ -1093,6 +1104,52 @@ describe('degenerate tori', () => {
           }
         }
     });
+});
+
+describe('cone apex and earlier lumps', () => {
+  // A cone narrowing to its apex at (0, 0, 1): base circle of radius 1 at z = 0.
+  const apex: V = [0, 0, 1];
+  const rim: V = [1, 0, 0];
+  const circle: Occurrence = {
+    curve: { t: 'ellipse', c: V0, n: [0, 0, 1], major: [1, 0, 0], ratio: 1 },
+    a: rim,
+    b: rim,
+  };
+  const point: Occurrence = { curve: { t: 'none' }, a: apex, b: apex };
+  const cone = (loops: Occurrence[][]): FaceIn => ({
+    surface: {
+      t: 'cone',
+      c: V0,
+      axis: [0, 0, 1],
+      major: [1, 0, 0],
+      sine: -Math.SQRT1_2,
+      cosine: Math.SQRT1_2,
+    },
+    loops,
+  });
+
+  it('leaves out the loop the file closes a cone with at its apex', () => {
+    for (const loops of [
+      [[circle], [point]],
+      [[point], [circle]],
+    ]) {
+      const { step, reason } = solidStep(firstSolid(solidStream([cone(loops)])));
+      expect(reason).toBeUndefined();
+      expect(step?.match(/FACE_(OUTER_)?BOUND\(/g)).toHaveLength(1);
+    }
+  });
+
+  it('still refuses an edge with no curve between two points', () => {
+    const open: Occurrence = { curve: { t: 'none' }, a: rim, b: apex };
+    const { reason } = solidStep(firstSolid(solidStream([cone([[circle], [open]])])));
+    expect(reason).toBe('unsupported geometry (none)');
+  });
+
+  it('skips an earlier lump whose shell names the live lump', () => {
+    const solids = asmBodies(readAsm(solidStream(boxFaces(), { staleLump: true })));
+    expect(solids).toHaveLength(1);
+    expect(solids[0]?.faces).toHaveLength(6);
+  });
 });
 
 describe('loop winding', () => {
