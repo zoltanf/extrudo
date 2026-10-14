@@ -9,6 +9,7 @@
 // snapshot); rewrite it with `pnpm vitest run -u packages/kernel/src/features/offset-face`
 // and review the diff.
 import {
+  type BodyId,
   type ExtrudoDocument,
   extrudeInputs,
   type Feature,
@@ -78,8 +79,11 @@ function extrude(id: string, sketchId: string, data: SketchData, distance: strin
   return { ...testFeature(id, 'extrude'), inputs: extrudeInputs([ref], { distance }) };
 }
 
-function offset(id: string, faces: GeomRef[], distance: string): Feature {
-  return { ...testFeature(id, 'offsetFace'), inputs: offsetFaceInputs(faces, distance) };
+function offset(id: string, faces: GeomRef[], distance: string, keepRounds = true): Feature {
+  return {
+    ...testFeature(id, 'offsetFace'),
+    inputs: offsetFaceInputs(faces, distance, keepRounds),
+  };
 }
 
 async function run(doc: ExtrudoDocument): Promise<Done> {
@@ -158,6 +162,7 @@ const round = (x: number, digits = 3) => {
 const faceNames = (result: Done, body = 0) => result.bodies[body]?.mesh?.faceIds ?? [];
 
 const BOX = { w: 40, d: 30, h: 20 };
+const B0 = 'B:0' as BodyId;
 const BOX_VOLUME = BOX.w * BOX.d * BOX.h;
 
 /** A 40 × 30 × 20 mm block (body `B:0`) on XY from z = 0 up. */
@@ -354,6 +359,110 @@ describe('offset face', { timeout: 120_000 }, () => {
     }
   });
 
+  it('with keepRounds off moves the rounds with the face, their radius growing, as before the flag', async () => {
+    // The owner's example (ADR-0051's second amendment): the right face +4 mm. On: the face
+    // at x = 44, the rounds 3 mm with their axes moved from x = 37 to 41, front and back where
+    // they were. Off (every offset saved before the flag): the rounds 7 mm on their old axes,
+    // and the front and back pushed out 4 mm with them.
+    const { base } = await withBlock();
+    const first = ok(await run(testDocument(base.features)));
+    const l = base.lines;
+    const right = side(l.right);
+    const corners: Feature = {
+      ...testFeature('R', 'fillet'),
+      inputs: filletInputs([
+        {
+          edges: [between(right, side(l.bottom)), between(right, side(l.top))].map((e) =>
+            refTo(first, 'edge', e),
+          ),
+          radius: '3 mm',
+        },
+      ]),
+    };
+    const rounded = ok(await runWithShapes(testDocument([...base.features, corners])));
+    const before = measure('B:0').volume;
+    const face = refTo(rounded, 'face', right);
+    const roundsOf = (result: Done) => {
+      const names = faceNames(result);
+      const shape = bodyShapes.get('B:0') as ShapeHandle;
+      return names
+        .filter((n) => n.startsWith('fillet:R:'))
+        .map((n) => kernel.surfaceGeometry(shape, names.indexOf(n)));
+    };
+
+    const kept = ok(
+      await runWithShapes(testDocument([...base.features, corners, offset('O', [face], '4 mm')])),
+    );
+    expect(measure('B:0').bbox.map((v) => Math.round(v) + 0)).toEqual([0, 0, 0, 44, 30, 20]);
+    expect(measure('B:0').volume - before).toBeCloseTo(4 * BOX.d * BOX.h, 3);
+    for (const r of roundsOf(kept)) {
+      expect(r.radius).toBeCloseTo(3, 6);
+      expect(r.origin?.[0]).toBeCloseTo(41, 6);
+    }
+
+    const old = ok(
+      await runWithShapes(
+        testDocument([...base.features, corners, offset('O', [face], '4 mm', false)]),
+      ),
+    );
+    const m = measure('B:0');
+    expect(m.valid).toBe(true);
+    expect(m.bbox.map((v) => Math.round(v) + 0)).toEqual([0, -4, 0, 44, 34, 20]);
+    const rounds = roundsOf(old);
+    expect(rounds).toHaveLength(2);
+    for (const r of rounds) {
+      expect(r.type).toBe('cylinder');
+      expect(r.radius).toBeCloseTo(7, 6);
+      expect(r.origin?.[0]).toBeCloseTo(37, 6);
+    }
+  });
+
+  it('picks a face’s smooth chain up to its rounds for the dialog, and the rounds it keeps', async () => {
+    const { base } = await withBlock();
+    const first = ok(await run(testDocument(base.features)));
+    const l = base.lines;
+    const right = side(l.right);
+    const corners: Feature = {
+      ...testFeature('R', 'fillet'),
+      inputs: filletInputs([
+        {
+          edges: [between(right, side(l.bottom)), between(right, side(l.top))].map((e) =>
+            refTo(first, 'edge', e),
+          ),
+          radius: '3 mm',
+        },
+      ]),
+    };
+    const rounded = ok(await run(testDocument([...base.features, corners])));
+    const names = faceNames(rounded);
+    const at = (n: string) => names.indexOf(n);
+    const rounds = names.filter((n) => n.startsWith('fillet:R:')).map(at);
+    const sorted = (list: readonly number[] | undefined) => [...(list ?? [])].sort((a, b) => a - b);
+    // On: the wall alone, its two rounds kept.
+    const on = engine.smoothFaces(B0, [at(right)], false, true);
+    expect(on?.faces).toEqual([at(right)]);
+    expect(sorted(on?.rounds)).toEqual(sorted(rounds));
+    // Off: the whole chain, the rounds and the front and back with them.
+    const off = engine.smoothFaces(B0, [at(right)], false, false);
+    expect(sorted(off?.faces)).toEqual(
+      sorted([at(right), ...rounds, at(side(l.bottom)), at(side(l.top))]),
+    );
+    expect(off?.rounds).toEqual([]);
+    // A click on a round takes its whole chain; the front with the right face keeps both rounds.
+    expect(sorted(engine.smoothFaces(B0, [rounds[0] ?? -1], false, true)?.faces)).toEqual(
+      sorted(off?.faces),
+    );
+    const two = engine.smoothFaces(B0, [at(right), at(side(l.bottom))], false, true);
+    expect(sorted(two?.faces)).toEqual(sorted([at(right), at(side(l.bottom))]));
+    expect(sorted(two?.rounds)).toEqual(sorted(rounds));
+    // A face with no smooth neighbour is itself; a face that isn't there is undefined.
+    expect(engine.smoothFaces(B0, [at(cap)], false, true)).toEqual({
+      faces: [at(cap)],
+      rounds: [],
+    });
+    expect(engine.smoothFaces(B0, [names.length], false, true)).toBeUndefined();
+  });
+
   it('moves the faces that run smoothly into a picked face along with it when none is a round', async () => {
     // A slot: two flat sides and two half-round ends, all one smooth chain made by the
     // extrude. Pushing one flat side out moves the whole chain: the ends grow.
@@ -366,6 +475,9 @@ describe('offset face', { timeout: 120_000 }, () => {
     const first = ok(await run(testDocument(features)));
     const bottom = first.bodies[0]?.mesh?.faceIds?.find((n) => n.startsWith('extrude:B:side:l'));
     expect(bottom).toBeDefined();
+    // The dialog picks the whole slot wall: no fillet's round stops it.
+    const index = faceNames(first).indexOf(bottom as string);
+    expect(engine.smoothFaces(B0, [index], false, true)?.faces).toHaveLength(4);
     ok(
       await runWithShapes(
         testDocument([...features, offset('O', [refTo(first, 'face', bottom as string)], '1 mm')]),

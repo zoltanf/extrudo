@@ -133,6 +133,7 @@ function bind(service: KernelService) {
     endPreview: () => service.endPreview(),
     reference: service.reference.bind(service),
     tangentChain: service.tangentChain.bind(service),
+    smoothFaces: service.smoothFaces.bind(service),
     exportMeshes: service.exportMeshes.bind(service),
     exportStep: service.exportStep.bind(service),
     inspect: service.inspect.bind(service),

@@ -51,6 +51,7 @@ import {
   type KernelStatus,
   type SpawnKernel,
 } from './client';
+import type { SmoothFaces } from './features/offset-face';
 import type { SmoothKind, SubShapeKind } from './history';
 import type { Inspection, InspectTarget } from './inspect';
 import type { JointCheck, JointCheckRequest } from './joints/check';
@@ -371,6 +372,23 @@ export class Recomputer {
   ): Promise<number[] | undefined> {
     try {
       return await this.client.call((api) => api.tangentChain(body, index, base, kind));
+    } catch {
+      return undefined;
+    }
+  }
+  /**
+   * The faces the Offset Face dialog picks for clicks on `faces` of a body the
+   * model store shows, and the rounds next to them that keep their radius
+   * (ADR-0051's second amendment). Undefined if the kernel can't say.
+   */
+  async smoothFaces(
+    body: BodyId,
+    faces: readonly number[],
+    base = false,
+    keepRounds = false,
+  ): Promise<SmoothFaces | undefined> {
+    try {
+      return await this.client.call((api) => api.smoothFaces(body, faces, base, keepRounds));
     } catch {
       return undefined;
     }

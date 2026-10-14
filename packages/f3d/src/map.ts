@@ -2090,8 +2090,11 @@ function offsetFaces(
     report.notes.push(
       `${f.name}: ${f.faces.length - named} of ${f.faces.length} faces left out (not made by an imported extrude, fillet or chamfer).`,
     );
+  // The file's rounds next to a moved face keep their radius (ADR-0051's amendments).
   d.offsetFace(
-    { faces, distance: expressionOf(f.distance) } as Parameters<Design['offsetFace']>[0],
+    { faces, distance: expressionOf(f.distance), keepRounds: true } as Parameters<
+      Design['offsetFace']
+    >[0],
     {
       name: f.name,
     },

@@ -35,6 +35,7 @@ import {
 } from '@extrudo/core';
 import type { ScadCompiler } from '@extrudo/openscad';
 import type { z } from 'zod';
+import { type SmoothFaces, smoothFaces } from '../features/offset-face';
 import type { SmoothKind, SubShapeKind } from '../history';
 import { resolveJoint } from '../joints/frames';
 import { type Kernel, KernelError, type ShapeHandle } from '../kernel';
@@ -266,6 +267,33 @@ export class RecomputeEngine {
     return kind === 'face'
       ? this.#kernel.tangentFaces(shape, index)
       : this.#kernel.tangentChain(shape, index);
+  }
+
+  /**
+   * The faces the Offset Face dialog picks for a click on each of `faces` of a
+   * body of the last finished recompute (or with `base` of the last preview's
+   * base), and the rounds next to them that keep their radius: their smooth
+   * chains, which with `keepRounds` stop at fillet rounds (`smoothFaces`,
+   * ADR-0051's second amendment). Undefined if there is no such body or face.
+   */
+  smoothFaces(
+    body: BodyId,
+    faces: readonly number[],
+    base = false,
+    keepRounds = false,
+  ): SmoothFaces | undefined {
+    const shape = (base ? this.#previewBase : this.#latest).get(body);
+    const names = shape === undefined ? undefined : this.#names.get(shape);
+    if (shape === undefined || !names) return undefined;
+    const count = this.#kernel.count(shape, 'face');
+    if (faces.length === 0 || faces.some((f) => f < 0 || f >= count)) return undefined;
+    return smoothFaces(
+      faces,
+      namesOf(names, 'face'),
+      (face) => this.#kernel.tangentFaces(shape, face),
+      () => this.#describe(shape),
+      keepRounds,
+    );
   }
 
   /**

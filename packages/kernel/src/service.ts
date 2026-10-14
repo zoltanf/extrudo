@@ -8,6 +8,7 @@ import type {
 } from '@extrudo/core';
 import type { ScadCompiler, ScadParametersResult } from '@extrudo/openscad';
 import { kernelFeatures } from './features';
+import type { SmoothFaces } from './features/offset-face';
 import type { SmoothKind, SubShapeKind } from './history';
 import { type Inspection, type InspectTarget, inspectShapes } from './inspect';
 import { checkJoint, type JointCheck, type JointCheckRequest } from './joints/check';
@@ -140,6 +141,18 @@ export interface KernelApi {
     base?: boolean,
     kind?: SmoothKind,
   ): Promise<number[] | undefined>;
+  /**
+   * The faces the Offset Face dialog picks for a click on each of `faces` of
+   * a body, and the fillet rounds next to them that keep their radius
+   * (`keepRounds`: the chains stop at them; ADR-0051's second amendment).
+   * `base` as for `reference`. Undefined if the body or a face is gone.
+   */
+  smoothFaces(
+    body: BodyId,
+    faces: readonly number[],
+    base?: boolean,
+    keepRounds?: boolean,
+  ): Promise<SmoothFaces | undefined>;
   /**
    * Bodies of the last finished recompute tessellated for STL and 3MF
    * (P2-12, ADR-0034): welded meshes at `tessellation`, in the order
@@ -417,6 +430,15 @@ export class KernelService implements KernelApi {
     kind: SmoothKind = 'edge',
   ): Promise<number[] | undefined> {
     return this.#run(() => this.#engineOf().tangentChain(body, index, base, kind));
+  }
+
+  smoothFaces(
+    body: BodyId,
+    faces: readonly number[],
+    base = false,
+    keepRounds = false,
+  ): Promise<SmoothFaces | undefined> {
+    return this.#run(() => this.#engineOf().smoothFaces(body, faces, base, keepRounds));
   }
 
   exportMeshes(

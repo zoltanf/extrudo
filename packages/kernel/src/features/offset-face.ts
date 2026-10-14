@@ -12,6 +12,7 @@ import {
   type OperationResult,
   type ShapeHandle,
 } from '../kernel';
+import type { ShapeDescription } from '../naming/description';
 import type { TopoNames } from '../naming/names';
 import { withHistory } from '../naming/ops';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
@@ -40,7 +41,10 @@ import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../rec
  * 0.1 mm stays a 3 mm round, its axis moved. It keeps its name. Other
  * smooth neighbours (a slot's round end, an imported body's blends) move
  * with the face as OCCT moves them, and so do the rounds where the re-made
- * round can't be built.
+ * round can't be built. Only with `keepRounds` on (ADR-0051's second
+ * amendment, 2026-10-14): without it (every offset saved before) the rounds
+ * move with the face, their radius changing, as they always did. The app's
+ * dialog picks a face's smooth chain up to its rounds (`smoothFaces`).
  *
  * A failure is turned into a message a person can act on (FR-UX-06): the
  * largest distance that works ("Pulling the face out by 25 mm is too far
@@ -79,7 +83,8 @@ function evaluateOffsetFace(ctx: EvalContext<OffsetFaceInputs>): FeatureOutput {
     const shape = ctx.bodies.get(body) as ShapeHandle;
     let result: OperationResult;
     try {
-      result = kernel.offsetFaces(shape, faces, distance, roundsNextTo(ctx, body, faces));
+      const blends = settings.keepRounds ? roundsNextTo(ctx, body, faces) : [];
+      result = kernel.offsetFaces(shape, faces, distance, blends);
     } catch (error) {
       if (error instanceof OffsetFaceError) {
         throw new KernelError(offsetMessage(error, distance, faces));
@@ -109,9 +114,17 @@ function evaluateOffsetFace(ctx: EvalContext<OffsetFaceInputs>): FeatureOutput {
 const ROUND_NAME = /^(?:[A-Za-z]+:[^:()]+:(?:[^:()]+:)?from:\()*fillet:/;
 
 /**
+ * Whether a face is a round that keeps its radius when a face next to it
+ * moves: named by a fillet (or a copy of one), on a cylinder or a torus.
+ */
+export function isKeptRound(name: string | undefined, type: string): boolean {
+  return ROUND_NAME.test(name ?? '') && (type === 'cylinder' || type === 'torus');
+}
+
+/**
  * The rounds next to the picked faces that keep their radius: faces of the
- * smooth chains through the picked ones, not picked themselves, named by a
- * fillet, on a cylinder or a torus. Each face is looked at once.
+ * smooth chains through the picked ones, not picked themselves, that are
+ * kept rounds (`isKeptRound`). Each face is looked at once.
  */
 function roundsNextTo(
   ctx: EvalContext<OffsetFaceInputs>,
@@ -128,11 +141,84 @@ function roundsNextTo(
       if (seen.has(next)) continue;
       seen.add(next);
       if (!ROUND_NAME.test(names[next] ?? '')) continue;
-      const { type } = kernel.surfaceGeometry(shape, next);
-      if (type === 'cylinder' || type === 'torus') rounds.push(next);
+      if (isKeptRound(names[next], kernel.surfaceGeometry(shape, next).type)) rounds.push(next);
     }
   }
   return rounds;
+}
+
+/** The faces an offset of some faces moves, and the rounds next to them it keeps. */
+export interface SmoothFaces {
+  /** The faces, the starting ones included. */
+  faces: number[];
+  /** The kept rounds next to them (none of `faces`). */
+  rounds: number[];
+}
+
+/**
+ * The faces the app's dialog picks for a click on each of `starts` (ADR-0051's
+ * second amendment, 2026-10-14): the face's smooth chain (`tangentChain`,
+ * what OCCT moves together). With `keepRounds`, the chain stops at the kept
+ * rounds (`isKeptRound`): the walk goes from the face across the edges it
+ * shares with faces of its chain, but not into a round, which is listed in
+ * `rounds` instead; faces that run smoothly into it without a round between
+ * (a slot's ends) still come along. A click on a round itself takes its whole
+ * chain, as without the flag. `chain` and `describe` are the kernel's (the
+ * engine passes its cached description).
+ */
+export function smoothFaces(
+  starts: readonly number[],
+  names: readonly (string | undefined)[],
+  chain: (face: number) => number[],
+  describe: () => ShapeDescription,
+  keepRounds: boolean,
+): SmoothFaces {
+  const faces = new Set<number>();
+  const rounds = new Set<number>();
+  let around: Map<number, number[]> | undefined;
+  const neighbours = (face: number): number[] => {
+    if (!around) {
+      const description = describe();
+      around = new Map();
+      for (const edge of description.edges) {
+        for (const a of edge.faces) {
+          const list = around.get(a) ?? [];
+          for (const b of edge.faces) if (b !== a && !list.includes(b)) list.push(b);
+          around.set(a, list);
+        }
+      }
+    }
+    return around.get(face) ?? [];
+  };
+  let types: ShapeDescription['faces'] | undefined;
+  const isRound = (face: number) => {
+    if (!ROUND_NAME.test(names[face] ?? '')) return false;
+    types ??= describe().faces;
+    return isKeptRound(names[face], types[face]?.type ?? 'other');
+  };
+  for (const start of starts) {
+    const members = chain(start);
+    if (!keepRounds || members.length < 2 || isRound(start)) {
+      for (const face of members) faces.add(face);
+      continue;
+    }
+    const inChain = new Set(members);
+    const reached = new Set([start]);
+    const queue = [start];
+    for (let face = queue.pop(); face !== undefined; face = queue.pop()) {
+      for (const next of neighbours(face)) {
+        if (!inChain.has(next) || reached.has(next)) continue;
+        if (isRound(next)) {
+          rounds.add(next);
+          continue;
+        }
+        reached.add(next);
+        queue.push(next);
+      }
+    }
+    for (const face of reached) faces.add(face);
+  }
+  return { faces: [...faces], rounds: [...rounds].filter((face) => !faces.has(face)) };
 }
 
 /**
