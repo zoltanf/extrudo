@@ -52,6 +52,12 @@ import {
   SKETCH_PROFILE_OPERAND,
 } from './decode/extrude';
 import {
+  allParticipants,
+  FEATURE_RECORDS,
+  readFeatureRecords,
+  timelineFeature,
+} from './decode/feature-records';
+import {
   centresFromCylinders,
   HOLE_PLACEMENT,
   MODEL_PLANE,
@@ -584,12 +590,34 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     const t = tryDecode(`timeline #${id}`, () => timeline.decode(seg, id));
     if (t) items.push(...t.items);
   }
-  // An operation can list several records; the timeline feature among them made the face.
+  // A feature acting in several components keeps a record per component; the
+  // timeline names its first.
+  const firstRecord = new Map<number, number>();
+  for (const id of seg.idsOf(FEATURE_RECORDS))
+    for (const [record, first] of tryDecode(`feature records #${id}`, () =>
+      readFeatureRecords(seg, id),
+    ) ?? [])
+      firstRecord.set(record, first);
+  const furtherRecords = new Map<number, number[]>();
+  for (const [record, first] of firstRecord) {
+    const list = furtherRecords.get(first) ?? [];
+    list.push(record);
+    furtherRecords.set(first, list);
+  }
+  // An operation can list several records; the timeline feature among them made the face,
+  // or the timeline feature whose record in another component it is.
   const onTimeline = new Set(items);
-  const featureOf = (design: number): number | undefined => {
-    const records = operations.get(design);
-    return records?.find((r) => onTimeline.has(r)) ?? records?.[0];
-  };
+  const featureOf = (design: number): number | undefined =>
+    timelineFeature(operations.get(design), onTimeline, firstRecord);
+  /** The bodies a feature names, with those its records in other components name. */
+  const participantsAll = (scope: Scope): number[] =>
+    allParticipants(
+      participantsOf(seg, scope),
+      (furtherRecords.get(scope.id) ?? []).map((record) => {
+        const other = tryDecode(`feature #${record}`, () => readScope(seg, record));
+        return other ? participantsOf(seg, other) : [];
+      }),
+    );
   // Feature record → the surfaces of the B-rep faces tagged with its operations.
   // `own`: not the copies a mirror or pattern made of them.
   const madeBy = (record: number, own = false): AsmSurface[] => {
@@ -682,7 +710,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         ...head,
         profiles,
         faces: named,
-        participants: participantsOf(seg, scope),
+        participants: participantsAll(scope),
       });
     } else if (FEATURE_TYPES[type.guid] === 'Revolve') {
       const operation = tryDecode(`revolve #${id}`, () => readRevolveOperation(seg, scope));
@@ -707,7 +735,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         ...base,
         operation,
         profiles,
-        participants: participantsOf(seg, scope),
+        participants: participantsAll(scope),
         ...(axis ? { axis } : {}),
       });
     } else if (FEATURE_TYPES[type.guid] === 'Hole') {
@@ -887,7 +915,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
             }
       const read = tryDecode(`sweep #${id}`, () => ({
         ...readPaths(seg, scope, inside),
-        participants: participantsOf(seg, scope),
+        participants: participantsAll(scope),
       }));
       if (!read) {
         features.push({ type: 'other', ...base });
@@ -913,7 +941,9 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         features.push({ type: kind, ...base, sets, ...(made.length > 0 ? { made } : {}) });
       }
     } else if (FEATURE_TYPES[type.guid] === 'TorusPrimitive') {
-      const torus = tryDecode(`torus #${id}`, () => readTorus(seg, scope, madeBy(id), insideOnce));
+      const torus = tryDecode(`torus #${id}`, () =>
+        readTorus(seg, scope, madeBy(id), insideOnce, participantsAll(scope)),
+      );
       features.push(torus ? { type: 'torus', ...base, ...torus } : { type: 'other', ...base });
     } else features.push({ type: 'other', ...base });
   }
@@ -1059,6 +1089,7 @@ function readTorus(
   scope: Scope,
   made: AsmSurface[],
   inside: (id: number) => number[],
+  participants: number[],
 ): Omit<F3dTorus, keyof FeatureBase | 'type'> {
   const { operation, matrix } = readTorusHead(seg, scope);
   const operand = scope.refs.find((r) => seg.typeOf(r)?.guid === GEOMETRY_OPERAND);
@@ -1076,7 +1107,7 @@ function readTorus(
     Math.abs(Math.abs(s.axis[0] * A[0] + s.axis[1] * A[1] + s.axis[2] * A[2]) - 1) < 1e-6;
   if (tori.length > 0 && !tori.some(same))
     throw new F3dFormatError(`Torus #${scope.id}: its B-rep torus is elsewhere.`);
-  return { operation, centre: C, axis: A, participants: participantsOf(seg, scope) };
+  return { operation, centre: C, axis: A, participants };
 }
 
 /**
