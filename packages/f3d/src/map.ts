@@ -60,6 +60,7 @@ import {
   splitBody,
   sweep,
   thread,
+  torus,
 } from './map-more';
 import type {
   F3dCircularPattern,
@@ -252,6 +253,8 @@ interface FaceNaming {
    */
   copies: Map<number, MadeCopies>;
   holes: Map<number, ImportedHole>;
+  /** Imported tori: Extrudo's id, by f3d record (one face, `torus:<id>:side:surface`). */
+  tori: Map<number, string>;
 }
 
 /** An imported hole: where its holes are and their sizes, for naming their faces. */
@@ -438,6 +441,7 @@ export function f3dToDesign(
     rounds: new Map(),
     copies: new Map(),
     holes: new Map(),
+    tori: new Map(),
   };
   /** f3d feature record → the Extrudo feature a pattern can replay for it. */
   const replayable = new Map<number, { id: string; name: string }>();
@@ -650,6 +654,15 @@ export function f3dToDesign(
           replayable.set(feature.id, { id: made.id, name: feature.name });
           report.imported.push(feature.name);
         }
+      } else if (feature.type === 'torus') {
+        const made = torus(d, feature, expressionOf, participants);
+        if (typeof made === 'string')
+          report.skipped.push(skippedFeature(feature.name, feature.kind, made));
+        else {
+          naming.tori.set(feature.id, made.id);
+          replayable.set(feature.id, { id: made.id, name: feature.name });
+          report.imported.push(feature.name);
+        }
       } else if (
         feature.type === 'mirror' ||
         feature.type === 'rectangular-pattern' ||
@@ -725,7 +738,8 @@ export function f3dToDesign(
   d.toJSON().features.forEach((f, i) => {
     const inputs = f.inputs as Record<string, { value?: unknown; refs?: unknown[] } | undefined>;
     const join =
-      (f.type === 'extrude' || f.type === 'revolve') && inputs.operation?.value === 'join';
+      (f.type === 'extrude' || f.type === 'revolve' || f.type === 'torus') &&
+      inputs.operation?.value === 'join';
     if (join && !inputs.bodies?.refs?.length) lastOpenJoin = i;
   });
   for (const body of shownElsewhere ? [] : f3d.bodies) {
@@ -1893,6 +1907,11 @@ function faceName(
     if (!edge) return miss(`${round.op} face: its edge has no name`);
     return `${round.op}:${round.id}:from:(${edge})`;
   }
+  const torus = naming.tori.get(face.feature);
+  if (torus)
+    return face.surface?.kind === 'torus'
+      ? `torus:${torus}:side:surface`
+      : miss('torus: not its surface');
   const hole = naming.holes.get(face.feature);
   if (hole)
     return face.surface ? holeFaceName(face.surface, hole, hint) : miss('face not in the B-rep');

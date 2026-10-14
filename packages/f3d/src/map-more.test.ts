@@ -790,4 +790,95 @@ describe('f3dToDesign: copying features', () => {
       reason: 'it moves faces a pattern or mirror copied (not imported yet)',
     });
   });
+
+  /** A torus (ring 24 mm, tube 8 mm) on the YZ plane, 75 mm up: as the file places it. */
+  const ring = (
+    id: number,
+    major: number,
+    minor: number,
+    axis: [number, number, number],
+  ): F3dFeature => ({
+    ...base,
+    type: 'torus',
+    id,
+    kind: 'TorusPrimitive',
+    name: `TorusPrimitive${id}`,
+    parameters: [
+      parameter({ name: 'd1', kind: 'MajorDiameter', value: major }),
+      parameter({ name: 'd2', kind: 'MinorDiameter', value: minor }),
+    ],
+    operation: 'new-body',
+    centre: [0, 0, 7.5],
+    axis,
+    participants: [],
+  });
+
+  it('makes a torus on the origin plane its axis is square to, and names its face', async () => {
+    const f3d: F3dDesign = {
+      parameters: [],
+      userParameters: [],
+      features: [
+        ring(1, 2.4, 0.8, [-1, 0, 0]),
+        {
+          ...base,
+          type: 'offset-faces',
+          id: 2,
+          kind: 'OffsetFaces',
+          name: 'OffsetFaces1',
+          distance: parameter({ name: 'd3', kind: 'distance', value: 0.05 }),
+          faces: [
+            {
+              tags: [{ token: '1', designs: [308] }],
+              feature: 1,
+              surface: {
+                kind: 'torus',
+                center: [0, 0, 7.5],
+                axis: [1, 0, 0],
+                ref: [0, 0, -1],
+                major: 1.2,
+                minor: 0.4,
+                inward: false,
+              },
+            },
+          ],
+        },
+      ],
+      bodies: [],
+      problems: [],
+    };
+    const { design, report } = f3dToDesign(f3d, 'Ring');
+    expect(report.imported).toEqual(['TorusPrimitive1', 'OffsetFaces1']);
+    const [torus, offset] = design.toJSON().features;
+    expect(torus?.inputs).toMatchObject({
+      plane: { refs: [{ kind: 'plane', id: 'origin:yz' }] },
+      x: { expr: '0 mm' },
+      y: { expr: '75 mm' },
+      offset: { expr: '0 mm' },
+    });
+    expect(JSON.stringify(offset?.inputs)).toContain(`torus:${torus?.id}:side:surface`);
+    // The tube grown by the offset: 2π² R r².
+    expect(await volumes(f3d)).toEqual([expect.closeTo(2 * Math.PI ** 2 * 12 * 4.5 ** 2, 1)]);
+  });
+
+  it('leaves out a torus off the origin axes, or one whose tube is not thinner than its ring', () => {
+    const f3d: F3dDesign = {
+      parameters: [],
+      userParameters: [],
+      features: [ring(1, 2.4, 0.8, [0.6, 0.8, 0]), ring(2, 2.4, 2.4, [0, 0, 1])],
+      bodies: [],
+      problems: [],
+    };
+    expect(f3dToDesign(f3d, 'Ring').report.skipped).toEqual([
+      {
+        name: 'TorusPrimitive1',
+        kind: 'TorusPrimitive',
+        reason: 'its axis is not along an origin axis',
+      },
+      {
+        name: 'TorusPrimitive2',
+        kind: 'TorusPrimitive',
+        reason: 'its tube is not thinner than its ring (Extrudo makes only a ring torus)',
+      },
+    ]);
+  });
 });

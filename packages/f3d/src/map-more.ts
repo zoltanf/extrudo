@@ -1,9 +1,11 @@
 /**
  * Mapping of the features added after the first import (ADR-0083's
- * amendment of 2026-10-11): mirror, rectangular pattern, sweep, split body and thread. Each
+ * amendment of 2026-10-11): mirror, rectangular pattern, sweep, split body, thread and
+ * torus (2026-10-14). Each
  * returns why it was left out, or what it made.
  */
 import type { Design, GeomRef } from '@extrudo/api';
+import { ORIGIN_PLANES } from '@extrudo/core';
 import { type CopiedObjects, cantorPair } from './decode/copies';
 import type { ModelPlane } from './decode/hole';
 import type { ParameterValue } from './decode/parameters';
@@ -18,6 +20,7 @@ import type {
   F3dSplit,
   F3dSweep,
   F3dThread,
+  F3dTorus,
   Matrix,
 } from './model';
 
@@ -345,4 +348,41 @@ export function pathPattern(
   const made = d.pathPattern(inputs as Parameters<Design['pathPattern']>[0], { name: f.name });
   // The one instance seen has code 1.
   return { op: 'pattern', id: made.id, label: (code) => (code >= 1 ? String(code) : undefined) };
+}
+
+/**
+ * A torus primitive, on the origin plane its axis is square to: its centre's
+ * place in that plane's frame and its height off it (mm). An axis along no
+ * origin axis is left out (none seen).
+ */
+export function torus(
+  d: Design,
+  f: F3dTorus,
+  expressionOf: (p: ParameterValue) => string,
+  participants: (records: number[]) => GeomRef[] | undefined,
+): string | { id: string } {
+  const major = f.parameters.find((p) => p.kind === 'MajorDiameter');
+  const minor = f.parameters.find((p) => p.kind === 'MinorDiameter');
+  if (!major || !minor) return 'its diameters were not found';
+  if (!(minor.value > 0 && minor.value < major.value))
+    return 'its tube is not thinner than its ring (Extrudo makes only a ring torus)';
+  const dot = (a: readonly number[], b: readonly number[]) =>
+    (a[0] as number) * (b[0] as number) +
+    (a[1] as number) * (b[1] as number) +
+    (a[2] as number) * (b[2] as number);
+  const p = ORIGIN_PLANES.find((o) => Math.abs(Math.abs(dot(f.axis, o.frame.normal)) - 1) < 1e-9);
+  if (!p) return 'its axis is not along an origin axis';
+  const mm = (v: number) => `${Number((10 * v).toPrecision(12))} mm`;
+  const inputs: Record<string, unknown> = {
+    plane: [{ kind: 'plane', id: p.id }],
+    x: mm(dot(f.centre, p.frame.x)),
+    y: mm(dot(f.centre, p.frame.y)),
+    offset: mm(dot(f.centre, p.frame.normal)),
+    diameter: expressionOf(major),
+    tube: expressionOf(minor),
+    operation: f.operation,
+  };
+  const bodies = f.operation === 'new-body' ? undefined : participants(f.participants);
+  if (bodies) inputs.bodies = bodies;
+  return { id: d.torus(inputs as Parameters<Design['torus']>[0], { name: f.name }).id };
 }
