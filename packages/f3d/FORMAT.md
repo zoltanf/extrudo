@@ -341,9 +341,26 @@ lump's faces; the stream's earlier shells (history) carry no faces. A design
 body reaches its stream through its body container (`CD57BC48…`, the record in
 the design segment the body's `D3937028…` names): the container lists its
 component's bodies in order and points at a record (`74CA4562…` or
-`40DCC3F4…`) whose payload is the stream's `BREP.<uuid>.smb[h]` name. So body
-*i* of the container is the stream's *i*-th `lump`. The container lists the
-visible bodies; a stream can hold a hidden body's solid beside them.
+`40DCC3F4…`) whose payload is the stream's `BREP.<uuid>.smb[h]` name.
+
+The container's order is not the stream's on every file, and a stream can hold
+solids no container lists: a hidden body's solid (a body no container names),
+solids a feature made for a later one (a tool body; its faces carry only that
+feature's operations) and earlier states of a body (their faces carry a subset
+of the final solid's operations). What ties a solid to its body is the face
+tags: the body's creator (the feature its first body link `D26351F0…` names
+after it) has operation IDs in the operation table, and the faces that feature
+made carry them. Measured over the 250-file corpus with a probe that lists each
+solid's operations beside each body's creator: in the streams holding as many
+solids as the bodies naming them, the creator's operations are on exactly one
+solid for 280 bodies, the container's position for 278 of them; the other two
+are one design whose two bodies the container lists the other way round (the
+reference export names the solids, and its face counts confirm the creators').
+In one stream of nine panels the container lists the bodies #1, #4, #2, #3…
+while the creators' operations put the solids in #1, #2, #3, #4 order. A
+feature that made several bodies tags all of them alike, so its bodies cannot
+be told apart by tags. Every body link in the corpus (449) is the only one for
+its body, so the links name no later feature that changed a body.
 
 A body with a sphere or torus face the file signs inward (a negative radius)
 is not yet rebuilt reliably: on the corpus, every body the writer got wrong

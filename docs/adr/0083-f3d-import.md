@@ -739,3 +739,55 @@ solid, and the component's body order lines up with the lumps on only part of
 the corpus (a first implementation matched a few more designs and wrote wrong
 solids for several others), so the extra solids stay unwritten rather than
 guessed.
+
+## Amendment, 2026-10-14: a stream's solids paired with the bodies by the face tags
+
+**What.** `bodiesStep` no longer pairs container body *i* with the stream's
+*i*-th solid, and no longer refuses a whole stream that holds more solids than
+the bodies that name it. Each body that names a stream (shown, hidden, or one
+the reader could not decode) claims solids by evidence (`pairLumps` in
+`brep-lumps.ts`): its creator's operation IDs (`F3dBody.ops`, from the
+operation table) against the operations on each solid's faces (`lumpOps`).
+In order: (1) the one solid carrying the creator's operations, unless another
+body has that same single candidate (both refused); a body with several takes
+the one left after the other bodies' single candidates are struck out;
+(2) the container order, only when the stream holds as many solids as bodies
+and no body's evidence disagrees with its position; (3) among several
+candidates, the one whose operations include every other candidate's (the
+latest state; the others are earlier states or tool solids of the same
+feature), when no other unpaired body lists it. Anything else is refused with
+a short reason (`solid not found: no creator`, `… creator in no solid`,
+`… creator in several solids`, `… another body claims it`); a solid no shown
+body claims is never written. The pairing counts its steps and gives up past
+4 M on a crafted file (`… too many solids`).
+
+**Why.** The container's order is not the stream's on every file, and the
+extra solids are tool solids, earlier states and hidden bodies' solids
+(`FORMAT.md`). Measured on the corpus before choosing: where the counts match,
+the creator's operations sit on one solid for 280 bodies and agree with the
+index for 278; the other two are a design whose two bodies the index wrote
+crossed (the reference export's solid names and face counts confirm the
+creators'). The latest-state key decides 15 bodies of streams with extra
+solids, each of whose face count matches a reference solid's. It runs after
+the container order, not before: in one design two shown bodies are a solid
+and its copy plus one operation, and the latest state would give both the
+copy. Body links name only a body's creator (one link per body over the 449
+in the corpus), so no later feature was available as a key; bodies in no
+container are mostly tool bodies whose operations also sit on the result, so
+they do not claim. The container order is dropped stream-wide when any body's
+evidence contradicts it: in one cabinet stream the index had written two of
+nine panels with another panel's solid, and the bodies of a feature that made
+two panels with equal tags there are now refused instead.
+
+**Numbers** (250 files, `probeDocument` → `planBodies` → `applyBodyPlan`,
+against the reference STEP): designs matching 165 → 169 of 237 comparable,
+rescued 30 → 34, harmed 0. File bodies: written 214 → 215, editable 131 → 126,
+frozen 78 → 84, unchecked 147 → 146, missing 24. Of the 32 bodies the "stream
+holds N bodies" refusal kept out, 9 are now written (3 editable, 6 frozen),
+21 reach the writer and stop at geometry it does not carry (15 intersection or
+spline, 6 degenerate tori), 1 is refused as `creator in several solids` and 1
+as `creator in no solid`. The 8 cabinet panels the index wrote before are now
+refused as `creator in several solids` (they were editable; that design's
+verdict and volume error are unchanged). The crossed
+design now writes each body's own solid (its verdict was already a match: the
+check pairs by geometry), so the frozen body carries the right name.
