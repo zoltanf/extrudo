@@ -241,3 +241,69 @@ test('Q on a sketch profile opens Extrude; with nothing selected it says what to
   );
   await expect(dialog.getByRole('combobox', { name: 'Operation' })).toHaveValue('new-body');
 });
+
+test('a wall of a rounded block keeps its rounds’ radius; turned off, the round grows and the side moves', async ({
+  page,
+}) => {
+  // ADR-0051's second amendment (2026-10-14): Keep rounds' radius is on for a new offset.
+  const viewport = viewportOf(page);
+  await openProject(page);
+  await kernelReady(page);
+  await primitive(page, 'Box');
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:20,20,20');
+  const at = await settledProjector(viewport);
+
+  // Round the vertical edge between the +X face and the front (x 10, y −10, z 0…20) 3 mm.
+  const edge = at([10, -10, 10]);
+  let found = false;
+  for (const dx of [0, 2, -2, 3, -3, 1, -1, 4, -4]) {
+    await page.mouse.move(edge.x + dx, edge.y);
+    await page.waitForTimeout(80);
+    if (((await viewport.getAttribute('data-model-hover')) ?? '').startsWith('edge:')) {
+      await page.mouse.click(edge.x + dx, edge.y);
+      found = true;
+      break;
+    }
+  }
+  expect(found).toBe(true);
+  await expect(viewport).toHaveAttribute('data-model-selection', /^edge:/);
+  await page.keyboard.press('q');
+  const fillet = page.getByRole('region', { name: 'Fillet dialog' });
+  await expect(fillet.getByRole('button', { name: 'Edges', exact: true })).toHaveText('1 edge');
+  await fillet.getByRole('textbox', { name: 'Radius', exact: true }).fill('3 mm');
+  await expect(fillet).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await fillet.getByRole('button', { name: 'OK' }).click();
+  await expect(fillet).toBeHidden();
+  await kernelReady(page);
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:7:20,20,20');
+
+  // The +X face, pulled out 4 mm: picked without the round, which keeps its 3 mm, so the
+  // front stays where it is and only the length grows.
+  await clickOn(page, at, [10, 3, 10], 'face');
+  await page.keyboard.press('q');
+  const dialog = page.getByRole('region', { name: 'Offset Face dialog' });
+  await expect(dialog.getByRole('checkbox', { name: 'Keep rounds’ radius' })).toBeChecked();
+  await expect(dialog.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
+  await expect(dialog.locator('[data-info="keptRounds"]')).toHaveText('1 round keeps its radius');
+  await dialog.getByRole('textbox', { name: 'Distance', exact: true }).fill('4 mm');
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).toBeHidden();
+  await kernelReady(page);
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:7:24,20,20');
+
+  // Off: the whole smooth chain is picked (the face, the round, the front), the round is
+  // offset to 7 mm on its old axis and the front moves out 4 mm too.
+  await chip(page, 'Offset Face1').dblclick();
+  const edit = page.getByRole('region', { name: 'Edit Offset Face1 dialog' });
+  await expect(edit.getByRole('checkbox', { name: 'Keep rounds’ radius' })).toBeChecked();
+  await expect(edit.locator('[data-info="keptRounds"]')).toHaveText('1 round keeps its radius');
+  await edit.getByRole('checkbox', { name: 'Keep rounds’ radius' }).uncheck();
+  await expect(edit.getByRole('button', { name: 'Faces', exact: true })).toHaveText('3 faces');
+  await expect(edit.locator('[data-info="keptRounds"]')).toHaveCount(0);
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await edit.getByRole('button', { name: 'OK' }).click();
+  await expect(edit).toBeHidden();
+  await kernelReady(page);
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:7:24,24,20');
+});

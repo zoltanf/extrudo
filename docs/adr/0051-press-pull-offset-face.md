@@ -377,3 +377,65 @@ body beside its offset, and a puzzle whose offsets now name 9 faces instead of
 7), no design's verdict worse. Tests: `offset-face.test.ts` "a round next to the moved face keeps
 its radius…", "moves rounds with the face, radius kept…", "…unless the rounds
 are made again", and "…when none is a round".
+
+## Amendment 2026-10-14 (second): the app keeps the rounds too, behind `keepRounds`
+
+The first amendment of the day left the app as it was: the dialog picks a face's
+whole smooth chain, so a click on a wall picked its corner rounds and they were
+offset with it (a 40 × 30 × 20 block with its right vertical edges rounded 3 mm,
+the right face +4 mm: rounds 7 mm on their old axes at x = 37, the front and
+back pushed out 4 mm). The owner decided the app should follow the kernel's rule
+(right face at x = 44, rounds 3 mm with their axes at x = 41, front and back
+unchanged).
+
+**Decision.**
+
+- **An input `keepRounds`** (`bool`, optional) on `offsetFace`. On, the
+  evaluator passes `roundsNextTo` to the facade as the first amendment
+  describes; **absent or off, it passes no rounds**, so the chains move whole
+  as before that amendment (rounds offset, radius changed). The dialog writes
+  it on for a new offset; `offsetFaceInputs` defaults it on; the `.f3d` import
+  writes it on (the first amendment's numbers are with it on).
+- **No format bump, no migration**: adding an optional input is additive
+  (file format §3), and absent reads as off, which is how every offset saved
+  before computes. A version bump would only have made older Extrudos report
+  every newer design as "saved by a newer Extrudo". One consequence: an
+  `.f3d` imported and saved between the first amendment and this one has no
+  input and goes back to offsetting its rounds; no release had the first
+  amendment, so only development builds could have written one.
+- **The dialog picks a chain up to its rounds** while **Keep rounds' radius**
+  is on (a toggle, the `keepRounds` input). The kernel's `smoothFaces`
+  (engine, service, `KernelApi`, `Recomputer`, the dialog's kernel) walks from
+  the clicked face across the edges it shares with faces of its smooth chain
+  (`tangentFaces`), not into a kept round (`isKeptRound`: the
+  `roundsNextTo` rule, `fillet:…` or a copy on a cylinder or torus, shared by
+  both), which it lists apart. Faces that run smoothly into the face without
+  a round between (a slot's ends) still come along. **A click on a round
+  itself takes its whole chain**, as without the flag (a round alone can't
+  move without its walls). Several starts: walls first, so a round a picked
+  wall reaches stays a kept round even when it is picked too.
+- **The dialog counts the kept rounds** in an info line ("2 rounds keep their
+  radius"): the framework's selection field option `keepRounds` (the toggle's
+  name) makes picks go through `smoothFaces` and keeps the rounds' face IDs in
+  the values' labels under `keptRoundsKey(field)` (no input), asked again for
+  all picks after each pick, when an offset is opened for editing, and when
+  the toggle changes; then the picks follow the toggle too (on: the rounds
+  dropped; off: the whole chains added). The count rather than a second
+  highlight colour: the selection highlight has one style per field, and a
+  second would need a new view channel for one dialog.
+- An offset opened for editing reads a missing input as off
+  (`fromInputs`), so OK on an old offset doesn't change its shape.
+
+Rejected: a format bump with a migration writing `false` (see above);
+defaulting absent to on (every saved app document would recompute
+differently wherever its picks don't hold the whole chain: scripts and API
+calls); stopping the chain in the dialog alone without a flag (the
+kernel's rule would still differ from what the dialog shows when the picks
+include rounds).
+
+Tests: core `offset-face.test.ts` (the input, an old document read as off);
+kernel `offset-face.test.ts` ("with keepRounds off moves the rounds with the
+face…": the owner's example both ways; "picks a face's smooth chain up to its
+rounds…"; the slot's chain stays whole); app `offset-face.test.ts` ("keep
+rounds' radius"); e2e `e2e/press-pull.spec.ts` ("a wall of a rounded block
+keeps its rounds' radius; turned off…").

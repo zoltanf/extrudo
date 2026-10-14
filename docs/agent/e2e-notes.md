@@ -1290,7 +1290,13 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   model "Extrude dialog"; with nothing selected a toast says "Select a face to
   move, an edge to round or a sketch profile to extrude, then press Q." The
   marking menu's wedge is `[data-marking-slot="pressPull"]` (enabled since
-  P3-08). Kernel-side: `pnpm vitest run -u packages/kernel/src/features/offset-face`
+  P3-08). **Keep rounds' radius** (ADR-0051's second amendment) is the
+  checkbox of that name (on for a new offset); the kept rounds' count is
+  `[data-info="keptRounds"]` ("1 round keeps its radius", absent at 0). The
+  cube's vertical edge between +X and the front is found by hovering a few
+  pixels either side of `(10, −10, 10)`; rounded 3 mm the cube is
+  `Body1:7:20,20,20`, its +X face (clicked at `(10, 3, 10)`) pulled 4 mm
+  `Body1:7:24,20,20` with the box on and `…24,24,20` off. Kernel-side: `pnpm vitest run -u packages/kernel/src/features/offset-face`
   rewrites the golden table; the facade's native harness lives in the
   scratchpad (`#define private public` over `extrudo_facade.cpp`, sweeps of
   every face at eight distances found no heap trap, unlike the shell's).

@@ -931,7 +931,20 @@ re-fillet each round at its radius between its two smooth sides; the moving set
 doesn't pass through a round, so faces past it stay) with the history composed
 in `ReblendedOffset` and **each old round face recorded as modified into its new
 face** (keeps its name); any failure falls back to the plain offset unchanged.
-A picked round is offset as before, and the dialog still picks whole chains.
+A picked round is offset as before. **ADR-0051's second amendment
+(2026-10-14): only with the input `keepRounds` on** (`bool`, optional;
+absent or off passes no rounds, so every offset saved before computes as it
+did; no format bump, no migration). The dialog, `offsetFaceInputs` and the
+`.f3d` import write it on; the dialog's toggle "Keep rounds' radius" (read as
+off for an old offset, `fromInputs`) makes the face field (`keepRounds:
+'keepRounds'` on the selection field) pick through the kernel's `smoothFaces`
+(`features/offset-face.ts`; engine, service, `KernelApi`, `Recomputer`): the
+chain walked across shared edges but not into a kept round (`isKeptRound`, the
+`roundsNextTo` rule), a click on a round takes its whole chain, walls are
+started first; the kept rounds' face IDs live in the values' labels under
+`keptRoundsKey(field)` (no input) for the info line "N rounds keep their
+radius", re-asked after each pick, on edit and when the toggle changes (which
+re-picks: on drops rounds, off adds whole chains).
 **OCCT moves the faces that run smoothly into a picked face together** (angle
 under 4 degrees), so the facade's `tangentFaces` and `KernelApi.tangentChain(…,
 kind)` let the dialog's face field (`tangentChain: true`) pick the whole chain
