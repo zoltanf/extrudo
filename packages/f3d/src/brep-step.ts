@@ -10,8 +10,9 @@
  * order and points at a stream-file record (`74CA4562…` / `40DCC3F4…`), whose
  * payload is the `BREP.<uuid>.smb[h]` entry name. Inside the stream the solids
  * are the `lump` records in order (each lump names its live shell, so the
- * stream's earlier shells are left behind), so the container's body list pairs
- * with the stream's lumps. Only the design's visible bodies are written; a
+ * stream's earlier shells are left behind). A body is paired with its solid by
+ * the operations on the solid's faces (`brep-lumps.ts`), and by the container's
+ * order only where those agree. Only the design's visible bodies are written; a
  * hidden body is left out, as a STEP export of the design leaves it out.
  *
  * This writer does not touch the importer's behaviour (`map.ts`): it is the
@@ -20,6 +21,7 @@
 import { designSegments, type Entries, unzip } from './archive';
 import { type AsmCurve, type AsmSurface, readAsm } from './asm';
 import { type AsmBodyFace, type AsmBodySolid, asmBodies } from './asm-body';
+import { type LumpClaim, lumpOps, pairLumps } from './brep-lumps';
 import { BODY } from './decode/body';
 import { activeDesignSegment, type F3dDesign, readF3dEntries, refsIn } from './model';
 import { Segment } from './segment';
@@ -67,8 +69,8 @@ const STREAM_RECORDS = [
 ];
 
 /**
- * The stream file each body of the design names, with its order inside the
- * stream: `Map<body record, { file, index }>`. Found through the containers;
+ * The stream file each body of the design names, with its order in the
+ * container that names it: `Map<body record, { file, index }>`. Found through the containers;
  * the first container that names the body and a stream file wins.
  */
 function bodyStreams(seg: Segment): Map<number, { file: string; index: number }> {
@@ -405,8 +407,8 @@ export function solidStep(solid: AsmBodySolid): { step?: string; reason?: string
 
 /**
  * The design's visible bodies as STEP, one entry per body. A body is written
- * only when its stream is named, its stream has as many solids as the bodies
- * that name it, and every surface and curve is a plane, cylinder, cone,
+ * only when its stream is named, one of the stream's solids is paired with it
+ * ({@link pairLumps}), and every surface and curve is a plane, cylinder, cone,
  * sphere, torus, line or circle/ellipse; otherwise the body comes back with a
  * reason. This is the bytes wrapper: it unzips and decodes the design itself.
  * A caller that already has both (the importer) uses {@link bodiesStep}
@@ -430,10 +432,25 @@ export function bodiesStep(entries: Entries, design: F3dDesign): BodyStep[] {
   const streams = first
     ? bodyStreams(new Segment(first.meta, first.bulk))
     : new Map<number, { file: string; index: number }>();
-  const solidsCache = new Map<string, AsmBodySolid[] | { error: string }>();
-  const linkedCount = new Map<string, number>();
-  for (const link of streams.values())
-    linkedCount.set(link.file, (linkedCount.get(link.file) ?? 0) + 1);
+  // The bodies that name each stream, hidden ones and ones the design could not
+  // decode too: they all claim solids.
+  const known = new Map(design.bodies.map((b) => [b.id, b]));
+  const claims = new Map<string, LumpClaim[]>();
+  for (const [id, link] of streams) {
+    const body = known.get(id);
+    const list = claims.get(link.file) ?? [];
+    list.push({
+      id,
+      index: link.index,
+      visible: body?.visible === true,
+      ...(body?.ops ? { ops: body.ops } : {}),
+    });
+    claims.set(link.file, list);
+  }
+  const cache = new Map<
+    string,
+    { solids: AsmBodySolid[]; paired: Map<number, number | string> } | { error: string }
+  >();
   const out: BodyStep[] = [];
   for (const body of design.bodies) {
     if (!body.visible) continue;
@@ -454,36 +471,31 @@ export function bodiesStep(entries: Entries, design: F3dDesign): BodyStep[] {
       out.push(at({ reason: `stream ${link.file} is missing from the archive` }));
       continue;
     }
-    let cached = solidsCache.get(link.file);
-    if (!cached) {
+    let read = cache.get(link.file);
+    if (!read) {
       try {
-        cached = asmBodies(readAsm(data));
+        const records = readAsm(data);
+        const solids = asmBodies(records);
+        // The container lists the component's bodies, the stream's lumps are
+        // its solids, and the two do not always line up by position (a hidden
+        // body's or a construction solid beside them, another order): each
+        // body is paired with its solid by the operations on the solid's faces.
+        read = { solids, paired: pairLumps(claims.get(link.file) ?? [], lumpOps(records)) };
       } catch (error) {
-        cached = { error: (error as Error).message };
+        read = { error: (error as Error).message };
       }
-      solidsCache.set(link.file, cached);
+      cache.set(link.file, read);
     }
-    if (!Array.isArray(cached)) {
-      out.push(at({ reason: `stream could not be read (${cached.error})` }));
+    if ('error' in read) {
+      out.push(at({ reason: `stream could not be read (${read.error})` }));
       continue;
     }
-    const siblings = linkedCount.get(link.file) ?? 0;
-    // The container lists the component's visible bodies in creation order and
-    // the stream's lumps are its solids in creation order, so they pair only
-    // when the counts agree. A stream can also hold a hidden body's or a
-    // construction body's solid (the container does not list it), and a stream
-    // that holds more than the bodies that name it cannot be aligned: the
-    // component's bodies by index line up with the lumps on only some of the
-    // corpus, so the extra solids stay unwritten rather than guessed.
-    if (cached.length !== siblings) {
-      out.push(
-        at({ reason: `stream holds ${cached.length} bodies for ${siblings} design bodies` }),
-      );
-      continue;
-    }
-    const solid = cached[link.index];
+    const paired = read.paired.get(body.id);
+    const solid = typeof paired === 'number' ? read.solids[paired] : undefined;
     if (!solid) {
-      out.push(at({ reason: 'the body is not in its stream' }));
+      out.push(
+        at({ reason: typeof paired === 'string' ? paired : 'the body is not in its stream' }),
+      );
       continue;
     }
     // Only a written body is flagged: a body the writer refused keeps its own
