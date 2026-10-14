@@ -51,13 +51,6 @@ export const IOU_MIN = 0.5;
 /** The Remove feature's name. */
 export const REMOVE_NAME = 'Remove rebuilt bodies';
 
-/**
- * Why a body with an inward-signed surface is not checked: the writer does not
- * yet rebuild such bodies reliably (on the corpus, every body it got wrong
- * while the replay was right carried such a surface).
- */
-export const INWARD_REASON = 'the shape uses a surface the file signs inward';
-
 /** A body's measured shape: volume (mm³) and tight bounding box (mm). */
 export interface BodyMeasure {
   volume: number;
@@ -159,17 +152,6 @@ export function fileBodies(
   return steps.map((step) => {
     const link = linkOf.get(step.record);
     const got = measured.get(step.record);
-    // A body with an inward-signed sphere/torus surface is written but not
-    // vouched for (the writer does not yet rebuild such bodies reliably), so
-    // it is left unchecked and the replay stands.
-    if (step.inward)
-      return {
-        record: step.record,
-        name: step.name,
-        ...(link?.component !== undefined ? { component: link.component } : {}),
-        ...(link?.hint !== undefined ? { hint: link.hint } : {}),
-        unchecked: INWARD_REASON,
-      };
     // A file body counts as checked only with a clean import (one body, a positive volume).
     const measure = got && !('error' in got) && got.volume > 0 ? got : undefined;
     const reason =
@@ -203,7 +185,6 @@ export function probeDocument(replay: Design, steps: readonly BodyStep[]): BodyP
   design.transaction('Probe the file bodies', () => {
     for (const step of steps) {
       if (step.step === undefined) continue;
-      if (step.inward) continue;
       const bytes = new TextEncoder().encode(step.step);
       const attachment = newId<AttachmentId>();
       const record: Attachment = {

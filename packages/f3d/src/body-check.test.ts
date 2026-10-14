@@ -13,7 +13,6 @@ import {
   bodyOutcomes,
   type FileBody,
   fileBodies,
-  INWARD_REASON,
   measureProbe,
   planBodies,
   probeDocument,
@@ -196,24 +195,6 @@ describe('fileBodies', () => {
     expect(bodies[0]?.size).toBe(1);
     expect(bodies[1]?.size).toBe(2);
   });
-
-  it('leaves a written body with an inward-signed surface unchecked, measure or not', () => {
-    const steps: BodyStep[] = [
-      { record: 1, name: 'Body1', step: 'a', inward: true },
-      { record: 2, name: 'Body2', step: 'bb', inward: true },
-    ];
-    const links: BodyLink[] = [
-      { record: 1, name: 'Body1', hint: bid('r1') },
-      { record: 2, name: 'Body2' },
-    ];
-    const measured = new Map<number, BodyMeasure | { error: string }>([
-      [1, { volume: 1255, box: [0, 0, 0, 1, 1, 1] }],
-    ]);
-    const bodies = fileBodies(steps, links, measured);
-    expect(bodies[0]).toMatchObject({ record: 1, unchecked: INWARD_REASON, hint: bid('r1') });
-    expect(bodies[0]?.measure).toBeUndefined();
-    expect(bodies[1]).toMatchObject({ record: 2, unchecked: INWARD_REASON });
-  });
 });
 
 describe('probeDocument', () => {
@@ -233,18 +214,6 @@ describe('probeDocument', () => {
     // The probe import is in the probe design and nothing leaked into the replay.
     expect(probe.design.doc.features.map((f) => f.type)).toEqual(['import']);
     expect(replay.doc.features).toEqual([]);
-  });
-
-  it('skips a written body with an inward-signed surface', () => {
-    const replay = Design.create({ name: 'T' });
-    const steps: BodyStep[] = [
-      { record: 1, name: 'Body1', step: 'ISO-10303-21;\nA;' },
-      { record: 2, name: 'Body2', step: 'ISO-10303-21;\nB;', inward: true },
-    ];
-    const probe = probeDocument(replay, steps);
-    expect(probe.bodies).toHaveLength(1);
-    expect(probe.bodies[0]?.record).toBe(1);
-    expect(probe.files.size).toBe(1);
   });
 });
 

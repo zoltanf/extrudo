@@ -8,7 +8,8 @@ import { describe, expect, it } from 'vitest';
 import { readAsm } from './asm';
 import { type AsmBodySolid, asmBodies } from './asm-body';
 import { splinePoint } from './asm-spline';
-import { hasInwardFace, solidStep, torusSpline, utf16StreamName } from './brep-step';
+import { fileBodies } from './body-check';
+import { solidStep, torusSpline, utf16StreamName } from './brep-step';
 import { F3dFormatError } from './bytes';
 
 type V = [number, number, number];
@@ -847,8 +848,8 @@ describe('solidToStep', () => {
     expect(step).toMatch(/ADVANCED_FACE\([^)]*\)[^;]*,.F\.\);/);
   });
 
-  it('reports an inward-signed sphere or torus surface, and nothing else', () => {
-    const inwardSphere = firstSolid(
+  it('writes an inward-signed sphere body, and the body check checks it', () => {
+    const solid = firstSolid(
       solidStream([
         {
           surface: { t: 'sphere', c: [1, 2, 3], axis: [0, 0, 1], r: 2.5, inward: true },
@@ -856,29 +857,17 @@ describe('solidToStep', () => {
         },
       ]),
     );
-    expect(hasInwardFace(inwardSphere)).toBe(true);
-    const inwardTorus = firstSolid(
-      solidStream([
-        {
-          surface: { t: 'torus', c: V0, axis: [0, 0, 1], major: 1.5, minor: 0.25, inward: true },
-          loops: [squareAt(0)],
-        },
-      ]),
+    const { step, reason } = solidStep(solid);
+    expect(reason).toBeUndefined();
+    expect(step).toBeDefined();
+    const measured = new Map([[1, { volume: 100, box: [0, 0, 0, 1, 1, 1] } as const]]);
+    const bodies = fileBodies(
+      [{ record: 1, name: 'Body1', step }],
+      [{ record: 1, name: 'Body1' }],
+      measured,
     );
-    expect(hasInwardFace(inwardTorus)).toBe(true);
-    expect(hasInwardFace(firstSolid(solidStream(boxFaces())))).toBe(false);
-    expect(
-      hasInwardFace(
-        firstSolid(
-          solidStream([
-            {
-              surface: { t: 'sphere', c: [1, 2, 3], axis: [0, 0, 1], r: 2.5 },
-              loops: [squareAt(0)],
-            },
-          ]),
-        ),
-      ),
-    ).toBe(false);
+    expect(bodies[0]?.measure).toEqual({ volume: 100, box: [0, 0, 0, 1, 1, 1] });
+    expect(bodies[0]?.unchecked).toBeUndefined();
   });
 
   it('reverses the face a negative-radius surface points the other way', () => {
@@ -1191,17 +1180,6 @@ describe('solids with voids', () => {
     expect(step).toMatch(new RegExp(`=BREP_WITH_VOIDS\\('body',#\\d+,\\(${ids}\\)\\);`));
     // A void's faces keep the file's sense: reversed, same-sense false.
     expect(step.match(/ADVANCED_FACE\([^;]*\.F\.\);/g)).toHaveLength(12);
-  });
-
-  it('reports an inward-signed surface on a void’s face', () => {
-    const ball: FaceIn = {
-      surface: { t: 'sphere', c: [5, 5, 5], axis: [0, 0, 1], r: 1, inward: true },
-      reversed: true,
-      loops: [],
-    };
-    const solid = firstSolid(solidStream(boxFaces(), { voids: [[ball]] }));
-    expect(solid.voids).toHaveLength(1);
-    expect(hasInwardFace(solid)).toBe(true);
   });
 });
 

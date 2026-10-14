@@ -171,7 +171,7 @@ export async function saveF3dImport(
   const { design, report, preview, steps = [], bodies: links = [] } = imported;
   const replay = design.toJSON();
   let result: BodyCheckResult;
-  if (steps.some((s) => s.step !== undefined && !s.inward)) {
+  if (steps.some((s) => s.step !== undefined)) {
     const notifications = appNotifications.getState();
     const toast = notifications.push('info', CHECKING_TEXT, { lifetime: 120_000 });
     try {

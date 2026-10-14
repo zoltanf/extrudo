@@ -44,13 +44,6 @@ export interface BodyStep {
   component?: number;
   /** The STEP text, when the body was written. */
   step?: string;
-  /**
-   * The written body has a sphere or torus face whose surface the file signed
-   * inward (a negative radius). The body is still written, but the writer does
-   * not yet rebuild such bodies reliably, so it does not vouch for the solid (the
-   * body check leaves it unchecked).
-   */
-  inward?: boolean;
   /** Why the body was not written. */
   reason?: string;
 }
@@ -794,15 +787,7 @@ export function bodiesStep(entries: Entries, design: F3dDesign): BodyStep[] {
       );
       continue;
     }
-    // Only a written body is flagged: a body the writer refused keeps its own
-    // reason, and the inward sign is what the body check later acts on.
-    const written = solidStep(solid);
-    out.push(
-      at({
-        ...written,
-        ...(written.step !== undefined && hasInwardFace(solid) ? { inward: true } : {}),
-      }),
-    );
+    out.push(at(solidStep(solid)));
   }
   return out;
 }
@@ -810,10 +795,3 @@ export function bodiesStep(entries: Entries, design: F3dDesign): BodyStep[] {
 /** A sphere or torus the file signs inward (a negative radius). */
 const inwardSurface = (s: AsmSurface): boolean =>
   ((s.kind === 'sphere' || s.kind === 'torus') && s.inward) || (s.kind === 'bspline' && s.reversed);
-
-/** True when any face's sphere/torus surface carries the file's inward sign (a negative radius). */
-export function hasInwardFace(solid: AsmBodySolid): boolean {
-  return [solid.faces, ...(solid.voids ?? [])]
-    .flat()
-    .some((f) => (f.surface.kind === 'sphere' || f.surface.kind === 'torus') && f.surface.inward);
-}
