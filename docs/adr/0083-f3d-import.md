@@ -950,3 +950,25 @@ distance) and 3 in one design to a plane at cosine 0.946 with −9.5 mm, whose e
 faces were 0.5104 mm off the file's and now lie on them. Replay corpus: no
 verdict changes (that design already matched, volume error 0.015 % → 0.010 %).
 Test: `map.test.ts` "measures an up-to-face offset along the sweep…".
+
+## Amendment, 2026-10-14: an offset's side face among collinear lines
+
+An Offset Faces names its faces without a point on them, and an extrude side
+on a plane that holds two collinear profile lines was named after the first of
+them: in a housing family the offset moved the wall next to the wrong corner.
+The file roots a side's plane on its line's stretch (FORMAT.md
+`plane-surface`), so the plane's root point is now the hint that picks the line
+when no other is given (`faceName` in `map.ts`). Survey of the corpus: of the
+7,864 extruded side planes that offsets, fillets and chamfers name, all have
+their root point on a line's stretch; of the 2,964 on planes holding several
+lines, 2,071 are on exactly one. Together with ADR-0051's amendment of the same
+day (rounds next to a moved face keep their radius), the 7 designs whose first
+divergence was an Offset Faces: 3 now have no divergence left (the housing
+family's corner round on the file's axis at 3 mm), 3 diverge first at a later
+feature that was skipped or failed before too, and 1 still at its Offset Faces
+(refused for rounds meeting at a sharp corner). Replay corpus: no verdict or
+feature status changes. Body check, both amendments together: editable bodies
+195 → 199, frozen 159 → 155, none worse; one design's offsets name 9 distinct
+faces instead of 7 (two collinear walls had come out as one name), and 3 of its
+bodies now rebuild as the file has them. Test: `map-more.test.ts` "offsets the side
+of the collinear line its plane is rooted at".

@@ -921,6 +921,17 @@ closed faces divided (`ShapeUpgrade_ShapeDivideClosed`) and merged back
 (`DividedOffset`), and `offsetIsGood` also asks `farFacesKept` (a face neither
 moving nor next to a moving one keeps its area and centre), which refuses the
 valid junk OCCT can make of a face pushed through the body.
+**ADR-0051's amendment (2026-10-14): a round next to a moved face keeps its
+radius.** The evaluator passes the unpicked fillet rounds (name `fillet:…` or a
+copy of one, cylinder or torus) of the picked faces' smooth chains
+(`roundsNextTo`; `Kernel.offsetFaces(…, blends)`, facade `pushBlend`, cleared by
+`clearArgs`); the facade first tries `buildReblendedOffset` (remove the rounds
+next to a moving face with `BRepAlgoAPI_Defeaturing`, offset the picked faces,
+re-fillet each round at its radius between its two smooth sides; the moving set
+doesn't pass through a round, so faces past it stay) with the history composed
+in `ReblendedOffset` and **each old round face recorded as modified into its new
+face** (keeps its name); any failure falls back to the plain offset unchanged.
+A picked round is offset as before, and the dialog still picks whole chains.
 **OCCT moves the faces that run smoothly into a picked face together** (angle
 under 4 degrees), so the facade's `tangentFaces` and `KernelApi.tangentChain(…,
 kind)` let the dialog's face field (`tangentChain: true`) pick the whole chain
