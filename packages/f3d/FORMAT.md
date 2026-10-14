@@ -403,11 +403,10 @@ A body with a sphere or torus face the file signs inward (a negative radius)
 was not rebuilt reliably: on the corpus, every body the writer got wrong
 while the replayed timeline was right carried such a face, though the sign is
 not the whole cause (in some of them the body's container leads to a different
-solid than the visible one). The writer still writes such a body but leaves it
-unchecked (see `body-check.ts`), and the replayed timeline stays. With the loop
-winding above corrected, the eight bodies the body check leaves unchecked for
-this reason each measure as the export's solid (volume within 0.02 %, box
-exact) when read on their own.
+solid than the visible one). With the loop winding above corrected, the writer
+vouches for such bodies and the body check checks them like any other: the eight
+bodies it once left unchecked for this reason each measure as the export's solid
+(volume within 0.02 %, box exact) when read on their own.
 
 The streams hold more than the solved B-rep: earlier versions of faces (one
 face tag can appear on several faces with different extents) and their

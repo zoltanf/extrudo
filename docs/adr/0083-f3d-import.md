@@ -882,9 +882,10 @@ winding picks the band: such faces came out as the rest of the torus (473.6 mm²
 where the export has 101.2). The loop now follows the file's own face flag. The
 eight bodies the body check leaves unchecked because of an inward-signed
 surface each measure as the export's solid once read on their own (volume
-within 0.02 %, box exact). The body check still leaves such bodies unchecked;
-lifting that is a separate decision (with the rule lifted, the corpus gains
-eight more matching designs and none harmed).
+within 0.02 %, box exact). The body check's rule that left such bodies
+unchecked was lifted the same day (ADR-0084's amendment): the writer now
+vouches for them. With the rule lifted, the corpus gains eight more matching
+designs and none harmed.
 
 **Cone apexes and earlier lumps.** Every edge with no curve in the corpus (125)
 is a cone's apex, closing the face as a loop of one edge whose two ends are the
@@ -904,4 +905,5 @@ match of 239 → 240 comparable, 65 → 70 rescued (two with voids, three with
 degenerate tori), none harmed; bodies written 294 → 349, editable 158 → 180,
 frozen 128 → 140, unchecked 82 → 51, missing 12 → 9. The writer's refusals left
 are streams holding more solids than bodies (24) and helices (7); 29 written
-bodies stay unchecked for an inward-signed surface.
+bodies carried an inward-signed surface, which the body check no longer leaves
+unchecked (ADR-0084's amendment of the same day).

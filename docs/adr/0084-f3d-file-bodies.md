@@ -103,3 +103,31 @@ compare the rebuilt body with, and to fall back on.
   alone or keep its own component.
 - **A validity check on the file's bodies:** none of the bodies that harmed a
   design on the corpus was invalid.
+
+## Amendment, 2026-10-14: the inward-body rule is lifted
+
+Decision 4 is withdrawn. A body with a sphere or torus face the file signs
+inward (a negative radius) is no longer written-but-unchecked: the writer writes
+it and vouches for it like any other body. `BodyStep.inward`, `hasInwardFace`
+(`packages/f3d/src/brep-step.ts`) and `INWARD_REASON`/the `inward` branches in
+`packages/f3d/src/body-check.ts` and `apps/web/src/project/actions.ts` are gone.
+
+**Why.** The rule existed because such bodies came out wrong: four designs were
+harmed when it was off. The cause was found and fixed the same day: the file
+winds a face's loop against its own surface's normal, and the writer decided the
+winding from the net reversal, which folds in the inward sign, so on an
+inward-signed surface the loop ran the wrong way (on a torus bounded by two
+parallel circles that picks the complementary band). ADR-0083's amendment of
+2026-10-14 ("Loop winding", commit `5c52dd93`) made the loop follow the file's
+own face flag. With that fix, the 29 written bodies that carry such a face each
+measure as their reference solid (volume within 0.02 %, box exact).
+
+**Measured.** On the 250-design corpus, with the rule in place the body check
+matched 205 of 240 comparable designs (ADR-0083's amendment of the same day);
+with the rule removed in the harness it matched 213, rescuing 78, none harmed.
+This change carries the same rule removal into the code: the writer no longer
+flags such a body and the check no longer leaves it unchecked.
+
+**Unchanged.** Pairing, the outcomes, the notices, the storage order and the
+`import`/Remove plan are as decided above; only the extra unchecked reason is
+gone.

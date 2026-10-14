@@ -2258,7 +2258,9 @@ and the wiring `saveF3dImport` in `project/actions.ts`. Rules: pair **by geometr
 the check runs **before the first save** in a throwaway worker that is always disposed, never
 writes the model cache, starts no kernel when no body was written and gives up after
 `CHECK_TIMEOUT_MS` (a failure keeps today's import plus one notice); a body with an
-inward-signed sphere/torus face stays unchecked; mismatches are taken out with **one Remove
+inward-signed sphere/torus face was left unchecked until 2026-10-14, when the writer's
+loop-winding fix (ADR-0083's amendment of the same day) lifted that rule (the `inward`
+field, `hasInwardFace` and `INWARD_REASON` are gone); mismatches are taken out with **one Remove
 "Remove rebuilt bodies"** (never hide, suppress or delete) and brought in as **one `import
 "Import Body<n>"` per body** with its own attachment and component stamp; save order is replay
 doc, then STEP attachments, then the final doc; a STEP over 25 MB or past 100 MB in total
