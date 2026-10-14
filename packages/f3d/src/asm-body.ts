@@ -434,9 +434,16 @@ const holds = (a: Box, b: Box): boolean =>
 function lumpSolid(shells: AsmBodyFace[][]): AsmBodySolid {
   if (shells.length < 2) return { faces: shells[0] ?? [] };
   const boxes = shells.map(shellBox);
-  const outer = boxes
-    .map((a, i) => (boxes.every((b, j) => i === j || holds(a, b)) ? i : -1))
-    .filter((i) => i >= 0);
+  // A box holds every other box exactly when it holds their union, so one
+  // pass for the union and one for the candidates keeps a crafted lump of
+  // many shells linear.
+  const union: Box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+  for (const b of boxes)
+    for (let k = 0; k < 3; k++) {
+      union[k] = Math.min(union[k] as number, b[k] as number);
+      union[k + 3] = Math.max(union[k + 3] as number, b[k + 3] as number);
+    }
+  const outer = boxes.map((a, i) => (holds(a, union) ? i : -1)).filter((i) => i >= 0);
   if (outer.length !== 1)
     return {
       faces: shells[0] as AsmBodyFace[],
