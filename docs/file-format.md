@@ -1025,16 +1025,18 @@ In a document with a print-tolerance parameter (a user parameter named
 
 Moves faces of bodies along their normals by a distance (P3-08, ADR-0051); the
 faces next to them are extended or trimmed to follow. No new keys: a feature
-with `ref` and `expr` inputs like the others.
+with `ref`, `expr` and `bool` inputs like the others.
 
 | Input | Kind | Required | Rule |
 |---|---|---|---|
 | `faces` | `ref` | yes | Refs of kind `face` (persistent face names, section 8): the faces to move. May lie on several bodies, each of which is offset on its own. Empty: an error until one is picked |
 | `distance` | `expr` | yes | Length. **Positive moves a face along its outward normal**: the body grows there (a pad grows, a hole's wall closes in). Negative moves it in. 0 is an error when the kernel evaluates it (not checked by the schema) |
+| `keepRounds` | `bool` | no | `true`: a fillet's round (a face a fillet made, or a pattern's or mirror's copy of one, on a cylinder or torus) next to a moved face that isn't listed keeps its radius: it is made again between the moved face and its other neighbour, which stays (ADR-0051's amendments, 2026-10-14). Absent or `false`: such rounds move with the face like any smooth neighbour and their radius changes by the distance, as before the flag existed. The app writes `true` for a new offset |
 
 Faces that run smoothly into a picked face (their normals at the shared edge
 within 4 degrees: the fillets round a pad) move with it by the same distance,
-whether or not they are listed; the app's dialog lists them. A planar face moves
+whether or not they are listed, except the rounds `keepRounds` keeps; the
+app's dialog lists them (with `keepRounds`, a face's chain up to its rounds). A planar face moves
 like a pad growing or sinking, a cylinder's wall changes its radius, a cone
 keeps its angle. **Every face keeps its name**, so later features that refer
 to a moved face keep finding it, and the distance can be edited freely; a face

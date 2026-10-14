@@ -22,6 +22,7 @@ a valid feature.
 | --- | --- | --- | --- |
 | `faces` | `GeomRef \| GeomRef[]` (`face`) | **required** | The faces to move along their outward normal. |
 | `distance` | `string \| number \| ParameterHandle` | **required** | How far; a length. Positive grows the body outwards, negative closes it in. |
+| `keepRounds` | `boolean` | default `false; the app turns it on for a new offset` | Fillet rounds next to the moved faces that aren't listed keep their radius: each is made again between the moved face and its other neighbour, which stays. Off, the faces that run smoothly into a listed one move with it, rounds included, and a round's radius changes by the distance. |
 
 ## Faces
 

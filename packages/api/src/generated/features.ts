@@ -1081,6 +1081,7 @@ export interface FeatureMethods {
    *
    * @param inputs.faces The faces to move along their outward normal. Required.
    * @param inputs.distance How far; a length. Positive grows the body outwards, negative closes it in. Required.
+   * @param inputs.keepRounds Fillet rounds next to the moved faces that aren't listed keep their radius: each is made again between the moved face and its other neighbour, which stays. Off, the faces that run smoothly into a listed one move with it, rounds included, and a round's radius changes by the distance. Default false; the app turns it on for a new offset.
    */
   offsetFace(
     inputs: PlainInputs<OffsetFaceInputs>,
