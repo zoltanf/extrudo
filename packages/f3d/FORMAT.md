@@ -316,8 +316,23 @@ direction (both unit; the sphere is symmetric about the axis). A
 `torus-surface` is a centre, the axis, the major (centre-to-tube-centre) radius,
 the minor (tube) radius and the tube's reference direction. A negative radius —
 the sphere's, or the torus's minor one — is the file's way of pointing that
-surface's normal inward; a negative torus major radius is not a torus a kernel
-can rebuild.
+surface's normal inward.
+
+A torus whose tube is not smaller than its ring (an apple, or a horn when they
+are equal) or whose major radius is negative with a tube that reaches past the
+axis (a lemon) is the tube circle centred at the signed major radius, swept round
+the axis, and a face uses its part on its own side of the axis: every vertex of
+the corpus's 115 such faces (980) lies on that circle with a non-negative
+distance from the axis. No `TOROIDAL_SURFACE` holds such a part; the file's own
+STEP export writes each of these faces it shares vertices with as a rational
+`B_SPLINE_SURFACE` of degree 2 × 2 (the corpus has no
+`DEGENERATE_TOROIDAL_SURFACE`).
+
+An `edge` record that names no curve (its two vertices one point) is a cone's
+apex: the file closes the cone's face there with a loop of that one edge
+(125 such edges in the corpus's live solids, all on cones, 104 in an inner
+loop and 21 in the outer one). The export writes the cone's face without it,
+with a seam line running to the apex.
 
 An `edge` record's pointers and values are: its two vertices, each with its
 parameter on the curve, a coedge, the curve, then a sense flag and a convexity
@@ -333,7 +348,15 @@ normal runs with its surface's) and a second flag the file writes false
 throughout. STEP's `ADVANCED_FACE` same-sense is the opposite of *reversed*, and
 the file winds a loop the other way round from STEP's surface-normal winding, so
 a not-reversed face's loop is written reversed with same-sense true and a
-reversed face keeps the file's loop with same-sense false.
+reversed face keeps the file's loop with same-sense false. The winding is
+against the file's own surface: a sphere or torus written with a negative radius
+(or a spline record that runs against its B-spline) points its normal the other
+way than the surface STEP gets, which reverses the face's same-sense but not
+the loop the file wound. A kernel reorients a face whose single loop winds the
+wrong way, but on a torus face bounded by two parallel circles the winding is
+what picks the band between them: such faces on inward tori came out as the
+rest of the torus (473.6 mm² for an export's 101.2) until the loop followed the
+file's own flag.
 
 A stream is one or more solids, grouped `body` → `lump` → `shell` → face chain.
 Each `lump` names its shell and its body, and the shell's face chain is that
@@ -342,8 +365,16 @@ can hold more than one shell: a shell's first pointer to another shell is the
 lump's next shell. Together they bound the solid: one is its outside, the others
 voids inside it (27 lumps in the corpus; in a body checked against its STEP
 export, the first shell's 59 faces plus the other shells' 24 made the export's
-83, and the first shell alone had 1.3 % more volume). An earlier `lump` record
-(history) can name one of the later shells as its own. A design
+83, and the first shell alone had 1.3 % more volume). The chain's order does not
+say which shell is the outside: it is the first in 21 of the 27 lumps and the
+second in 6, and in all 27 it is the only shell whose box (from its vertices)
+holds every other shell's. A void's faces keep the file's sense (their normals
+point out of the material, into the cavity); the export writes each void as an
+`ORIENTED_CLOSED_SHELL` with `.F.` over a `CLOSED_SHELL` of those faces, in a
+`BREP_WITH_VOIDS`. A shell names its lump: an earlier `lump` record (history)
+can name one of the later shells as its own (95 lump records in the corpus name
+a shell whose lump is another); two of them name a shell nothing else reaches,
+whose face chain runs into a live lump's faces. A design
 body reaches its stream through its body container (`CD57BC48…`, the record in
 the design segment the body's `D3937028…` names): the container lists its
 component's bodies in order and points at a record (`74CA4562…` or
@@ -369,11 +400,14 @@ be told apart by tags. Every body link in the corpus (449) is the only one for
 its body, so the links name no later feature that changed a body.
 
 A body with a sphere or torus face the file signs inward (a negative radius)
-is not yet rebuilt reliably: on the corpus, every body the writer got wrong
+was not rebuilt reliably: on the corpus, every body the writer got wrong
 while the replayed timeline was right carried such a face, though the sign is
 not the whole cause (in some of them the body's container leads to a different
 solid than the visible one). The writer still writes such a body but leaves it
-unchecked (see `body-check.ts`), and the replayed timeline stays.
+unchecked (see `body-check.ts`), and the replayed timeline stays. With the loop
+winding above corrected, the eight bodies the body check leaves unchecked for
+this reason each measure as the export's solid (volume within 0.02 %, box
+exact) when read on their own.
 
 The streams hold more than the solved B-rep: earlier versions of faces (one
 face tag can appear on several faces with different extents) and their
@@ -434,6 +468,18 @@ then the points with u running fastest (point (i, j) is the (j · nu + i)-th).
 A block written with 2 instead of that 0 keeps no B-spline (an extruded
 profile saved as a summary); none of those is a live face's surface in the
 corpus. Helix surfaces (`helix_spl_line`, `helix_spl_circ`) keep none either.
+
+A helix curve's block is `helix_int_cur`, a version, the parameter range (two
+doubles, each after a true), then the helix: a root point, a major and a minor
+axis (the radius at t = 0 and a quarter turn on), the rise per turn as a
+vector, a taper (0 throughout) and the axis. Root + major · cos t + minor · sin
+t + rise · t / 2π gives both vertices of 78 of the corpus's 84 helix edges at
+the edge's parameters, mapped as for a B-spline edge. A `helix_spl_circ`
+surface sweeps a circle of the block's last radius round the helix in the plane
+of the axis (every vertex of its 24 faces is that far from the helix); a
+`helix_spl_line` surface sweeps a straight profile, whose stored vector's
+meaning is not settled (its axial part matches the vertices, its radial part
+does not). The writer refuses both.
 
 An edge's two parameters are on its curve, negated when the edge runs against
 it, and again when the curve runs against its B-spline: evaluating the

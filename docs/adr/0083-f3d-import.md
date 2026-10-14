@@ -843,3 +843,65 @@ blockers now left in front of the body check are the voids (21 bodies),
 degenerate tori (14 with a tube not smaller than its ring, 9 with a negative
 ring radius), streams holding more solids than bodies (22), helices (7), edges
 with no curve (9) and inward-signed surfaces (8).
+
+## Amendment, 2026-10-14: voids, degenerate tori, cone apexes and loop winding in the B-rep writer
+
+The writer still refused four kinds of body after the B-spline amendment;
+three are now written, and a winding error that made inward-signed tori come
+out wrong is fixed. `bodiesStep`'s pairing and `body-check.ts` are unchanged.
+
+**Voids.** A lump's shell chain is its outer shell and the voids inside it.
+The file's order does not say which shell is the outside (the chain's first in
+21 of the corpus's 27 such lumps, its second in 6); in all 27 it is the only
+shell whose box holds every other shell's, so that is the rule, and a lump
+whose shells do not nest that way is refused ("a solid with voids whose outer
+shell is not known"). The voids are written as the file's own STEP export
+writes them: a `BREP_WITH_VOIDS` whose voids are `ORIENTED_CLOSED_SHELL`s
+(`.F.`) over closed shells of the void faces with the file's own senses. The
+kernel reads it as the outer solid less the voids (a synthetic 3 cm box with a
+1 cm cavity measures 26 000 mm³; on the corpus a written body with six voids
+measures exactly its outer shell less six times the void's volume).
+
+**Degenerate tori.** A torus whose tube is not smaller than its ring, or whose
+ring radius is negative, is the tube circle centred at the signed ring radius,
+and the face uses its part on its own side of the axis (all 980 vertices of the
+corpus's 115 such faces sit there). No `TOROIDAL_SURFACE` holds it; the export
+writes each such face it shares vertices with as a rational degree 2 × 2
+B-spline, and so does the writer now: the exact rational B-spline of the tube's
+arc from axis to axis, swept a whole turn, its seam in the middle of the widest
+angle the face's boundary leaves free. Its u × v normal points out of the tube,
+as the file's torus's does, so the face keeps its sense. A lemon whose tube does
+not reach the axis is still refused.
+
+**Loop winding.** The file winds a face's loop against its own surface's
+normal. The writer decided whether to reverse a loop from the face's sense
+after the reader had folded a negative radius (or a spline record's sense) into
+it, so on an inward-signed surface the loop ran the wrong way. A kernel turns a
+single wrong loop round, but on a torus face bounded by two parallel circles the
+winding picks the band: such faces came out as the rest of the torus (473.6 mm²
+where the export has 101.2). The loop now follows the file's own face flag. The
+eight bodies the body check leaves unchecked because of an inward-signed
+surface each measure as the export's solid once read on their own (volume
+within 0.02 %, box exact). The body check still leaves such bodies unchecked;
+lifting that is a separate decision (with the rule lifted, the corpus gains
+eight more matching designs and none harmed).
+
+**Cone apexes and earlier lumps.** Every edge with no curve in the corpus (125)
+is a cone's apex, closing the face as a loop of one edge whose two ends are the
+apex; the writer leaves that loop out (a kernel closes the cone itself), and
+any other curveless edge is still refused. A lump record whose shell names
+another lump is an earlier record; two such records reached a shell nothing
+else reaches, whose face chain runs into a live lump's faces, which made the
+whole stream unreadable. The reader now skips them.
+
+**Helices** stay refused: a thread needs both its helix curves and its helix
+surfaces, and neither keeps a B-spline. `FORMAT.md` records what was learned
+(the helix curve's layout reproduces the vertices of 78 of the 84 helix edges;
+the swept-line surface's stored profile vector is not settled).
+
+**Measured** on the 250-design corpus with the body check: 200 → 205 designs
+match of 239 → 240 comparable, 65 → 70 rescued (two with voids, three with
+degenerate tori), none harmed; bodies written 294 → 349, editable 158 → 180,
+frozen 128 → 140, unchecked 82 → 51, missing 12 → 9. The writer's refusals left
+are streams holding more solids than bodies (24) and helices (7); 29 written
+bodies stay unchecked for an inward-signed surface.
