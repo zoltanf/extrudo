@@ -815,6 +815,70 @@ describe('f3dToDesign', () => {
     expect(refs[0]?.id).toMatch(/^e\[extrude:/);
     expect(refs[1]?.fingerprint?.dir).toEqual([1, 0, 0]);
   });
+  it('rounds an edge by its two faces’ names when one is a round’s face nothing pins down', () => {
+    // A chamfer of the ring's top rim, then a fillet of the edge between the
+    // top and that chamfer's face, which the file's B-rep no longer has (a
+    // later feature took it): no line or circle backs the fillet's edge.
+    const f3d = washer();
+    const top: AsmSurface = { kind: 'plane', point: [0, 0, 0.08], normal: [0, 0, 1] };
+    const rim: AsmSurface = {
+      kind: 'cone',
+      center: [0, 0, 0],
+      axis: [0, 0, 1],
+      radius: 0.55,
+      cylinder: true,
+      slope: 0,
+    };
+    const ours = (surface: AsmSurface) => ({ tags: [], feature: 2, surface });
+    f3d.features.push(
+      {
+        type: 'chamfer',
+        id: 3,
+        kind: 'Chamfer',
+        name: 'Chamfer1',
+        suppressed: false,
+        parameters: [],
+        sets: [
+          {
+            edges: [{ faces: [ours(top), ours(rim)], bounds: [] }],
+            size: parameter({ name: 'd5', kind: 'Distance', value: 0.02 }),
+          },
+        ],
+      },
+      {
+        type: 'fillet',
+        id: 4,
+        kind: 'Fillet',
+        name: 'Fillet1',
+        suppressed: false,
+        parameters: [],
+        sets: [
+          {
+            edges: [
+              {
+                faces: [ours(top), { tags: [{ token: '1', designs: [303] }], feature: 3 }],
+                bounds: [],
+              },
+            ],
+            size: parameter({ name: 'd6', kind: 'Radius', value: 0.01 }),
+          },
+        ],
+      },
+    );
+    const { design, report } = f3dToDesign(f3d, 'Washer');
+    expect(report.skipped).toEqual([]);
+    const fillet = design.toJSON().features.find((f) => f.type === 'fillet');
+    const edges = fillet?.inputs.edges as
+      | { refs: { id: string; fingerprint?: unknown }[] }
+      | undefined;
+    const refs = edges?.refs ?? [];
+    expect(refs).toHaveLength(1);
+    expect(refs[0]?.id).toMatch(/^e\[.*chamfer:.*\]$/);
+    // By name alone: no shape to find another edge by.
+    expect(refs[0]?.fingerprint).toBeUndefined();
+    expect(fillet?.inputs.skipLostEdges).toMatchObject({ value: true });
+  });
+
   it('leaves out a profile region it cannot match when the others are found', async () => {
     // The ring, and a region along a dangling line and a curve the sketch no
     // longer has (deleted after the pick): the extrude builds the ring.

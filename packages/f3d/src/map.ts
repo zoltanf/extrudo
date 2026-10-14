@@ -2109,6 +2109,9 @@ function offsetFaces(
 /**
  * Adds a fillet or chamfer on the edges that can be named; returns why not
  * when none can, or the feature and its edges' names (for its faces' names).
+ * `loose`: the second try of a round none of whose edges passed the first,
+ * which also takes an edge named by both its faces where one name is a guessed
+ * round face's and no line or circle backs it — by that name alone.
  */
 function edgeTreatment(
   d: Design,
@@ -2116,6 +2119,7 @@ function edgeTreatment(
   naming: FaceNaming,
   expressionOf: (p: ParameterValue, negate?: boolean) => string,
   report: ImportReport,
+  loose = false,
 ): string | ImportedRound {
   const inputs: Record<string, unknown> = {};
   const edges: (string | undefined)[] = [];
@@ -2168,7 +2172,7 @@ function edgeTreatment(
       // files seen (it lay on an earlier round the kernel could not make).
       const guessed = names?.some((n) => /^(fillet|chamfer):/.test(n)) ?? false;
       const sure = !!shape && shape.type !== 'ellipse' && !shape.chosen;
-      if (!sure && (!names || guessed)) {
+      if (!sure && (!names || (guessed && !loose))) {
         trace();
         continue;
       }
@@ -2184,7 +2188,9 @@ function edgeTreatment(
       // finds the edge where joins merged or split those faces.
       const id = names ? edgeName(names) : `e[f3d.edge.${f.id}.${total}]`;
       const ref: GeomRef = { kind: 'edge', id };
-      if (shape) {
+      // A loose edge goes by its name alone: a shape the faces don't pin down
+      // finds some other edge as readily (see above).
+      if (shape && (sure || !guessed)) {
         const { type, at, dir, size } = shape;
         ref.fingerprint = { type, at, dir, size, adj: [...beside].sort() };
       }
@@ -2274,7 +2280,12 @@ function edgeTreatment(
     }
     set++;
   }
-  if (set === 0) return total === 0 ? 'no edges' : `none of its ${total} edges could be named`;
+  if (set === 0) {
+    // Nothing to build otherwise: the guessed names may still find their
+    // edges, and `skipLostEdges` drops those they don't.
+    if (!loose && total > 0) return edgeTreatment(d, f, naming, expressionOf, report, true);
+    return total === 0 ? 'no edges' : `none of its ${total} edges could be named`;
+  }
   if (named < total)
     report.notes.push(
       `${f.name}: ${total - named} of ${total} edges left out (their faces could not be named).`,
