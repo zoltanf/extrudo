@@ -58,7 +58,6 @@
 #include <IntCurvesFace_Intersector.hxx>
 #include <BndLib_Add2dCurve.hxx>
 #include <Bnd_Box2d.hxx>
-#include <ShapeFix_Shape.hxx>
 #include <ShapeFix_Solid.hxx>
 #include <BRepBuilderAPI_MakeSolid.hxx>
 #include <BRepBuilderAPI_MakeVertex.hxx>
@@ -399,14 +398,6 @@ public:
   void clearArgs() { args_.clear(); }
   void pushArg(int value) { args_.push_back(value); }
   void clearNumbers() { numbers_.clear(); }
-
-  /**
-   * Whether fillet(), filletVariable() and chamfer() heal a round OCCT built
-   * but BRepCheck rejects (see healedRound). Off by default; the kernel turns
-   * it on around one call, for imported rounds (ADR-0038's amendment of
-   * 2026-10-14).
-   */
-  void setRoundHealing(bool on) { healRounds_ = on; }
   void pushNumber(double value) { numbers_.push_back(value); }
 
   // ------------------------------------------------------------ primitives --
@@ -628,12 +619,6 @@ public:
       if (!result.IsNull() && BRepCheck_Analyzer(result).IsValid()) {
         recordHistory(builder, *input, 0, result);
         return store(result);
-      }
-      Handle(ShapeBuild_ReShape) context;
-      const TopoDS_Shape healed = healedRound(*input, result, context);
-      if (!healed.IsNull()) {
-        recordHealedHistory(builder, *input, context, healed);
-        return store(healed);
       }
       return explainChamfer(*input, edges, faces, edgeFaces, staged, spec, contourOf, chains);
     } catch (...) {
@@ -4940,7 +4925,6 @@ private:
   std::vector<int> args_;
   std::vector<int32_t> history_;
   std::string lastError_;
-  bool healRounds_ = false;
   double measured_[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   std::vector<float> positions_;
   std::vector<float> normals_;
@@ -5931,12 +5915,6 @@ private:
         recordHistory(builder, *input, 0, result);
         return store(result);
       }
-      Handle(ShapeBuild_ReShape) context;
-      const TopoDS_Shape healed = healedRound(*input, result, context);
-      if (!healed.IsNull()) {
-        recordHealedHistory(builder, *input, context, healed);
-        return store(healed);
-      }
       return explainFillet(*input, edges, edgeFaces, staged, radii, perEdge, contourOf, chains);
     } catch (...) {
       geometry_.clear();
@@ -6028,139 +6006,6 @@ private:
     return 0;
   }
 
-  /**
-   * A round OCCT built that BRepCheck rejects, healed (ADR-0038's amendment
-   * of 2026-10-14), or null. Only with healRounds_ on. On imported designs
-   * OCCT often builds the round and only one face is wrong where the round
-   * ends: its wire touches itself or is turned the wrong way. ShapeFix_Shape
-   * mends that face; the result is kept only when it is valid, has as many
-   * solids as the input, and its volume is within 1 % of the input's of what
-   * OCCT built (healing mends a face, it doesn't move material). `context`
-   * gets the healing's replacements, for the history.
-   */
-  TopoDS_Shape healedRound(const TopoDS_Shape& input, const TopoDS_Shape& built,
-                           Handle(ShapeBuild_ReShape)& context) {
-    if (!healRounds_ || built.IsNull()) return TopoDS_Shape();
-    try {
-      Handle(ShapeFix_Shape) fix = new ShapeFix_Shape(built);
-      fix->Perform();
-      TopoDS_Shape healed = fix->Shape();
-      if (healed.IsNull() || !BRepCheck_Analyzer(healed).IsValid()) return TopoDS_Shape();
-      int solidsIn = 0;
-      int solidsOut = 0;
-      TopoDS_Shape solid;
-      for (TopExp_Explorer it(input, TopAbs_SOLID); it.More(); it.Next()) ++solidsIn;
-      for (TopExp_Explorer it(healed, TopAbs_SOLID); it.More(); it.Next()) {
-        ++solidsOut;
-        solid = it.Current();
-      }
-      if (solidsIn == 0 || solidsOut != solidsIn) return TopoDS_Shape();
-      // A single solid comes back as one, whatever ShapeFix wraps it in.
-      if (input.ShapeType() == TopAbs_SOLID && healed.ShapeType() != TopAbs_SOLID) healed = solid;
-      const double before = exactVolume(input);
-      const double after = exactVolume(healed);
-      if (!(after > 0) || std::abs(after - exactVolume(built)) > 0.01 * std::abs(before)) return TopoDS_Shape();
-      context = fix->Context();
-      return healed;
-    } catch (...) {
-      return TopoDS_Shape();
-    }
-  }
-
-  /**
-   * recordHistory() for a round healed after it was built (healedRound): what
-   * the builder made is followed into the healed shape, and a sub-shape the
-   * builder kept but the healing replaced is `modified`. ShapeFix rebuilds a
-   * mended face, and its context doesn't always name the face the result
-   * holds, so a sub-shape is found as itself, else as the context's
-   * replacement, else as the result's sub-shapes on the same surface (a face)
-   * or curve (an edge): healing keeps the geometry and mends the topology.
-   */
-  template <typename Builder>
-  void recordHealedHistory(Builder& builder, const TopoDS_Shape& input,
-                           const Handle(ShapeBuild_ReShape)& context, const TopoDS_Shape& result) {
-    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> resultMaps[3];
-    for (int kind = 0; kind < 3; ++kind) TopExp::MapShapes(result, kindToEnum(kind), resultMaps[kind]);
-    const auto images = [&](const TopoDS_Shape& shape, int kind) {
-      NCollection_List<TopoDS_Shape> out;
-      if (resultMaps[kind].Contains(shape)) {
-        out.Append(shape);
-        return out;
-      }
-      const TopoDS_Shape now = context->Value(shape);
-      if (!now.IsNull()) {
-        for (TopExp_Explorer piece(now, kindToEnum(kind)); piece.More(); piece.Next()) {
-          if (resultMaps[kind].Contains(piece.Current())) out.Append(piece.Current());
-        }
-        if (!out.IsEmpty()) return out;
-      }
-      if (kind == 0) {
-        TopLoc_Location where;
-        const Handle(Geom_Surface) surface = BRep_Tool::Surface(TopoDS::Face(shape), where);
-        for (int i = 1; i <= resultMaps[0].Extent(); ++i) {
-          TopLoc_Location other;
-          if (BRep_Tool::Surface(TopoDS::Face(resultMaps[0](i)), other) == surface && other.IsEqual(where)) {
-            out.Append(resultMaps[0](i));
-          }
-        }
-      } else if (kind == 1) {
-        TopLoc_Location where;
-        double first = 0;
-        double last = 0;
-        const Handle(Geom_Curve) curve = BRep_Tool::Curve(TopoDS::Edge(shape), where, first, last);
-        if (curve.IsNull()) return out;
-        for (int i = 1; i <= resultMaps[1].Extent(); ++i) {
-          TopLoc_Location other;
-          if (BRep_Tool::Curve(TopoDS::Edge(resultMaps[1](i)), other, first, last) == curve && other.IsEqual(where)) {
-            out.Append(resultMaps[1](i));
-          }
-        }
-      }
-      return out;
-    };
-    const auto imagesOf = [&](const NCollection_List<TopoDS_Shape>& shapes) {
-      NCollection_List<TopoDS_Shape> out;
-      for (NCollection_List<TopoDS_Shape>::Iterator it(shapes); it.More(); it.Next()) {
-        const int made = enumToKind(it.Value().ShapeType());
-        if (made < 0) continue;
-        NCollection_List<TopoDS_Shape> found = images(it.Value(), made);
-        out.Append(found);
-      }
-      return out;
-    };
-    for (int kind = 0; kind < 3; ++kind) {
-      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> inputMap;
-      TopExp::MapShapes(input, kindToEnum(kind), inputMap);
-      for (int i = 1; i <= inputMap.Extent(); ++i) {
-        const TopoDS_Shape& sub = inputMap(i);
-        const bool deleted = builder.IsDeleted(sub);
-        if (deleted) {
-          pushRecord(0, kind, i - 1, 2);
-          history_.push_back(0);
-        }
-        bool modified = false;
-        if (!deleted) {
-          const NCollection_List<TopoDS_Shape>& made = builder.Modified(sub);
-          if (!made.IsEmpty()) {
-            modified = appendRelation(imagesOf(made), resultMaps, 0, kind, i - 1, 0);
-          } else if (!resultMaps[kind].Contains(sub)) {
-            modified = appendRelation(images(sub, kind), resultMaps, 0, kind, i - 1, 0);
-          }
-        }
-        appendRelation(imagesOf(builder.Generated(sub)), resultMaps, 0, kind, i - 1, 1);
-        if (!deleted && !modified) {
-          const int kept = resultMaps[kind].FindIndex(sub);
-          if (kept > 0) {
-            pushRecord(0, kind, i - 1, 3);
-            history_.push_back(1);
-            history_.push_back(kind);
-            history_.push_back(kept - 1);
-          }
-        }
-      }
-    }
-  }
-
   /** Whether these fillets build a valid solid (a probe: nothing is kept). */
   bool filletWorks(const TopoDS_Shape& input,
                    const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& edges,
@@ -6174,9 +6019,7 @@ private:
       builder.Build();
       if (!builder.IsDone()) return false;
       const TopoDS_Shape result = builder.Shape();
-      if (!result.IsNull() && BRepCheck_Analyzer(result).IsValid()) return true;
-      Handle(ShapeBuild_ReShape) context;
-      return !healedRound(input, result, context).IsNull();
+      return !result.IsNull() && BRepCheck_Analyzer(result).IsValid();
     } catch (...) {
       return false;
     }
@@ -6350,9 +6193,7 @@ private:
       builder.Build();
       if (!builder.IsDone()) return false;
       const TopoDS_Shape result = builder.Shape();
-      if (!result.IsNull() && BRepCheck_Analyzer(result).IsValid()) return true;
-      Handle(ShapeBuild_ReShape) context;
-      return !healedRound(input, result, context).IsNull();
+      return !result.IsNull() && BRepCheck_Analyzer(result).IsValid();
     } catch (...) {
       return false;
     }

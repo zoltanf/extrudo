@@ -143,19 +143,6 @@ export type FilletProblem =
   | { kind: 'together'; edges: number[]; factor: number }
   | { kind: 'other' };
 
-/**
- * Options of `Kernel.fillet`, `filletVariable` and `chamfer`.
- *
- * `heal`: a round OCCT builds but whose result fails the validity check
- * (one face's wire touching itself where the round ends) is mended with
- * OCCT's shape healing and kept when that makes it valid without moving
- * material (ADR-0038's amendment of 2026-10-14). The fillet and chamfer
- * features ask for it only for imported rounds (`skipLostEdges`).
- */
-export interface RoundOptions {
-  heal?: boolean;
-}
-
 /** A fillet OCCT couldn't build, with its diagnosis. */
 export class FilletError extends KernelError {
   override name = 'FilletError';
@@ -643,7 +630,6 @@ export class Kernel {
     shape: ShapeHandle,
     edges: readonly number[],
     radius: number | readonly number[],
-    options: RoundOptions = {},
   ): OperationResult {
     this.#solid(shape, 'Fillet');
     const f = this.#facade;
@@ -653,7 +639,7 @@ export class Kernel {
       f.pushArg(edge);
       f.pushNumber(typeof radius === 'number' ? radius : (radius[i] as number));
     });
-    const handle = this.#healing(options, () => f.fillet(shape));
+    const handle = f.fillet(shape);
     if (handle === 0) {
       throw new FilletError(
         f.lastError() || 'The fillet failed.',
@@ -678,7 +664,6 @@ export class Kernel {
     shape: ShapeHandle,
     edges: readonly number[],
     radii: readonly (readonly [number, number])[],
-    options: RoundOptions = {},
   ): OperationResult {
     this.#solid(shape, 'Fillet');
     const f = this.#facade;
@@ -691,7 +676,7 @@ export class Kernel {
       f.pushNumber(pair[0]);
       f.pushNumber(pair[1]);
     });
-    const handle = this.#healing(options, () => f.filletVariable(shape));
+    const handle = f.filletVariable(shape);
     if (handle === 0) {
       throw new FilletError(
         f.lastError() || 'The fillet failed.',
@@ -699,18 +684,6 @@ export class Kernel {
       );
     }
     return this.#withHistory(handle);
-  }
-
-  /** Runs one round call with the facade's round healing as `options` asks, off again after. */
-  #healing(options: RoundOptions, call: () => number): number {
-    if (!options.heal) return call();
-    const f = this.#facade;
-    f.setRoundHealing(true);
-    try {
-      return call();
-    } finally {
-      f.setRoundHealing(false);
-    }
   }
 
   /**
@@ -737,7 +710,6 @@ export class Kernel {
     shape: ShapeHandle,
     edges: readonly number[],
     spec: ChamferSpec | readonly ChamferSpec[],
-    options: RoundOptions = {},
   ): OperationResult {
     this.#solid(shape, 'Chamfer');
     const f = this.#facade;
@@ -753,7 +725,7 @@ export class Kernel {
       );
       f.pushNumber(one.mode !== 'equal' && one.flip ? 1 : 0);
     });
-    const handle = this.#healing(options, () => f.chamfer(shape));
+    const handle = f.chamfer(shape);
     if (handle === 0) {
       throw new ChamferError(
         f.lastError() || 'The chamfer failed.',

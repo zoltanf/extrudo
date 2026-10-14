@@ -232,21 +232,6 @@ function polygonPrism(sides = 24, radius = 20, height = 10) {
   return { features, edges };
 }
 
-/** The fillet test's block with a hole 2 mm from its side (body `H:0`): see holedBlock there. */
-function holedBlock() {
-  const b = new SketchBuilder();
-  rect(b, 0, 0, BOX.w, BOX.d);
-  const hole = b.circle(10, 15, 8).id;
-  const found = detectProfiles(b.sketch).find((p) => p.holes.length === 1);
-  if (!found) throw new Error('no profile with a hole');
-  const ref: GeomRef = { kind: 'profile', id: `SH/${found.id}` };
-  const features = [
-    sketch('SH', b.sketch),
-    { ...testFeature('H', 'extrude'), inputs: extrudeInputs([ref], { distance: `${BOX.h} mm` }) },
-  ];
-  return { features, rim: edgeName(['extrude:H:cap:end', `extrude:H:side:${hole}`]) };
-}
-
 describe('chamfer', { timeout: 120_000 }, () => {
   it('equal distance on one edge: a chamfer face named after it, the body a little smaller', async () => {
     const { base, edge, ref } = await withFrontEdge();
@@ -872,27 +857,6 @@ describe('chamfer', { timeout: 120_000 }, () => {
         /^2 of 3 edges left out of the chamfer: Edge \d+ can't be chamfered: it isn't a sharp edge between two faces of the body\./,
       );
       expect(measure('B:0').volume).toBeCloseTo(expected.volume, 6);
-    });
-
-    it('heals a chamfer OCCT builds with one unsound face (ADR-0043 amendment, 2026-10-14)', async () => {
-      const base = holedBlock();
-      const first = ok(await runWithShapes(testDocument(base.features)));
-      const unchamfered = measure('H:0').volume;
-      const rim = refTo(first, 'edge', base.rim);
-      const plain = await run(
-        testDocument([...base.features, chamfer('F', [{ edges: [rim], distance: '2 mm' }])]),
-      );
-      expect(status(plain, 'F').status).toBe('error');
-      const result = ok(
-        await runWithShapes(
-          testDocument([...base.features, skipping('F', [{ edges: [rim], distance: '2 mm' }])]),
-        ),
-      );
-      expect(measure('H:0').valid).toBe(true);
-      // About ½ · 2² mm² along the 50 mm rim.
-      expect(unchamfered - measure('H:0').volume).toBeGreaterThan(80);
-      expect(unchamfered - measure('H:0').volume).toBeLessThan(120);
-      expect(result.bodies[0]?.mesh?.faceIds).toContain(`chamfer:F:from:(${base.rim})`);
     });
 
     it('a lost reference face of a set that keeps edges still fails', async () => {

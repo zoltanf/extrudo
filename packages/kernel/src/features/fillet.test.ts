@@ -194,25 +194,6 @@ function polygonPrism(sides = 24, radius = 20, height = 10) {
   return { features, edges };
 }
 
-/**
- * A 40 × 30 × 20 mm block (body `H:0`) with a round hole of radius 8 through
- * it 2 mm from its left side: a 2 mm round on the hole's top edge is built
- * by OCCT with one face it can't make sound (healing mends it).
- */
-function holedBlock() {
-  const b = new SketchBuilder();
-  rect(b, 0, 0, BOX.w, BOX.d);
-  const hole = b.circle(10, 15, 8).id;
-  const found = detectProfiles(b.sketch).find((p) => p.holes.length === 1);
-  if (!found) throw new Error('no profile with a hole');
-  const ref: GeomRef = { kind: 'profile', id: `SH/${found.id}` };
-  const features = [
-    sketch('SH', b.sketch),
-    { ...testFeature('H', 'extrude'), inputs: extrudeInputs([ref], { distance: `${BOX.h} mm` }) },
-  ];
-  return { features, rim: edgeName(['extrude:H:cap:end', `extrude:H:side:${hole}`]) };
-}
-
 describe('fillet', { timeout: 120_000 }, () => {
   it('rounds one edge: a fillet face named after it, the body a little smaller', async () => {
     const base = block();
@@ -712,29 +693,6 @@ describe('fillet', { timeout: 120_000 }, () => {
       );
       expect(measure('B:0').volume).toBeCloseTo(expected.volume, 6);
       expect(measure('B:0').faces).toBe(expected.faces);
-    });
-
-    it('heals a round OCCT builds with one unsound face (ADR-0038 amendment, 2026-10-14)', async () => {
-      const base = holedBlock();
-      const first = ok(await runWithShapes(testDocument(base.features)));
-      const unrounded = measure('H:0').volume;
-      const rim = refTo(first, 'edge', base.rim);
-      const plain = await run(
-        testDocument([...base.features, fillet('F', [{ edges: [rim], radius: '2 mm' }])]),
-      );
-      expect(status(plain, 'F').status).toBe('error');
-      const result = ok(
-        await runWithShapes(
-          testDocument([...base.features, skipping('F', [{ edges: [rim], radius: '2 mm' }])]),
-        ),
-      );
-      const body = measure('H:0');
-      expect(body.valid).toBe(true);
-      // The rim's round takes away about (1 − π/4) · 2² mm² along the 50 mm rim.
-      expect(unrounded - body.volume).toBeGreaterThan(30);
-      expect(unrounded - body.volume).toBeLessThan(60);
-      // The round's face is named after the rim, through the healing.
-      expect(result.bodies[0]?.mesh?.faceIds).toContain(`fillet:F:from:(${base.rim})`);
     });
 
     it('fails as before when more than a third of the edges would be left out (ADR-0038 amendment, 2026-10-12)', async () => {
