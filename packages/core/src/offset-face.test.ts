@@ -3,6 +3,7 @@ import { createDocument } from './document';
 import { loadDocument } from './migrations';
 import {
   OFFSET_FACE_TYPE,
+  type OffsetFaceInputs,
   OffsetFaceInputsSchema,
   offsetFaceFeature,
   offsetFaceInputs,
@@ -38,7 +39,7 @@ describe('offset face inputs', () => {
     const loaded = loadDocument(JSON.parse(JSON.stringify(doc)));
     expect(loaded.migrated).toBe(false);
     expect(loaded.dropped).toEqual([]);
-    const inputs = loaded.doc.features[0]?.inputs as typeof old;
+    const inputs = loaded.doc.features[0]?.inputs as OffsetFaceInputs;
     expect(inputs.keepRounds).toBeUndefined();
     expect(offsetFaceSettings(inputs).keepRounds).toBe(false);
   });
