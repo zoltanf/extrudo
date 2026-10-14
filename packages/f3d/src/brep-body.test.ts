@@ -23,7 +23,26 @@ interface EllipseIn {
   major: V;
   ratio: number;
 }
-type CurveIn = LineIn | EllipseIn;
+/** An `intcurve` with its stored B-spline, as the file writes it. */
+interface SplineIn {
+  t: 'spline';
+  degree: number;
+  /** (value, multiplicity) pairs; the file writes the end knots `degree` times. */
+  knots: [number, number][];
+  points: V[];
+  weights?: number[];
+  /** 0 open, 1 closed, 2 periodic. */
+  form?: number;
+  /** The curve record's own sense flag. */
+  reversed?: boolean;
+  /** Write the block as `{ ref n }`: the n-th subtype block of the stream. */
+  ref?: number;
+  /** A curve saved with no B-spline (a helix). */
+  none?: boolean;
+  /** Override the knot count the header says (a crafted record). */
+  count?: number;
+}
+type CurveIn = LineIn | EllipseIn | SplineIn;
 interface Occurrence {
   curve: CurveIn;
   a?: V;
@@ -31,12 +50,28 @@ interface Occurrence {
   forward?: boolean;
   /** The edge's own sense: true when it runs against its curve. */
   reversed?: boolean;
+  /** The edge record's two parameters. */
+  params?: [number, number];
 }
 type SurfaceIn =
   | { t: 'plane'; p: V; n: V }
   | { t: 'cone'; c: V; axis: V; major: V; sine: number; cosine: number }
   | { t: 'sphere'; c: V; axis: V; r: number; inward?: boolean }
   | { t: 'torus'; c: V; axis: V; major: number; minor: number; ref?: V; inward?: boolean }
+  | {
+      t: 'spline';
+      uDegree: number;
+      vDegree: number;
+      uKnots: [number, number][];
+      vKnots: [number, number][];
+      /** u running fastest, as the file writes them. */
+      points: V[];
+      weights?: number[];
+      /** The surface record's own sense flag. */
+      reversed?: boolean;
+      /** Override the knot counts the header says (a crafted record). */
+      counts?: [number, number];
+    }
   | { t: 'other'; type: string };
 
 /** Whether a surface is written with a negative radius (its normal inward). */
@@ -81,6 +116,74 @@ const str = (s: string): number[] => {
   return [0x07, b.length, ...b];
 };
 const rec = (type: string, ...vals: number[][]): number[] => [...cls(type), ...vals.flat(), 0x11];
+const OPEN = [0x0f];
+const CLOSE = [0x10];
+/** A B-spline's knots and points as the file writes them, then its fit tolerance. */
+const bsBody = (knots: [number, number][], points: V[], weights?: number[]): number[][] => [
+  ...knots.flatMap(([k, m]) => [dbl(k), int(m)]),
+  ...points.flatMap((p, i) => [
+    dbl(p[0]),
+    dbl(p[1]),
+    dbl(p[2]),
+    ...(weights ? [dbl(weights[i] as number)] : []),
+  ]),
+  dbl(1e-6),
+];
+/** An `intcurve` record: sense flag, then its subtype block. */
+const intcurve = (c: SplineIn): number[] =>
+  rec(
+    'intcurve-curve',
+    ptr(-1),
+    int(-1),
+    ptr(-1),
+    boolean(c.reversed ?? false),
+    OPEN,
+    ...(c.ref !== undefined
+      ? [cls('ref'), int(c.ref)]
+      : c.none
+        ? [cls('helix_int_cur'), int(22800), boolean(true), dbl(0), cls('nullbs')]
+        : [
+            cls('exact_int_cur'),
+            int(22800),
+            int(0),
+            cls(c.weights ? 'nurbs' : 'nubs'),
+            int(c.degree),
+            int(c.form ?? 0),
+            int(c.count ?? c.knots.length),
+            ...bsBody(c.knots, c.points, c.weights),
+            cls('nullbs'),
+          ]),
+    CLOSE,
+    boolean(false),
+    boolean(false),
+  );
+const splineSurface = (s: Extract<SurfaceIn, { t: 'spline' }>): number[] =>
+  rec(
+    'spline-surface',
+    ptr(-1),
+    int(-1),
+    ptr(-1),
+    boolean(s.reversed ?? false),
+    OPEN,
+    cls('exact_spl_sur'),
+    int(22800),
+    int(0),
+    cls(s.weights ? 'nurbs' : 'nubs'),
+    int(s.uDegree),
+    int(s.vDegree),
+    ...(s.weights ? [cls('both')] : []),
+    int(0),
+    int(0),
+    int(0),
+    int(0),
+    int(s.counts?.[0] ?? s.uKnots.length),
+    int(s.counts?.[1] ?? s.vKnots.length),
+    ...s.uKnots.flatMap(([k, m]) => [dbl(k), int(m)]),
+    ...bsBody(s.vKnots, s.points, s.weights),
+    CLOSE,
+    boolean(false),
+    boolean(false),
+  );
 const header = (): number[] => [
   ...enc.encode('ASM BinaryFile8'),
   ...new Array<number>(32).fill(0),
@@ -93,7 +196,9 @@ const keyV = (v: V | undefined) => (v ? v.map((x) => x.toFixed(6)).join(',') : '
 const keyCurve = (c: CurveIn) =>
   c.t === 'line'
     ? `l:${keyV(c.p)}:${keyV(c.d)}`
-    : `e:${keyV(c.c)}:${keyV(c.n)}:${keyV(c.major)}:${c.ratio}`;
+    : c.t === 'ellipse'
+      ? `e:${keyV(c.c)}:${keyV(c.n)}:${keyV(c.major)}:${c.ratio}`
+      : `s:${JSON.stringify(c)}`;
 
 /** A stream with one lump holding `faces`, laid out as the reader expects. */
 function solidStream(
@@ -278,7 +383,9 @@ function solidStream(
       ptr(-1),
       int(-1),
       ptr(o.a ? VERTEX + (vertexAt.get(keyV(o.a)) as number) : -1),
+      o.params ? dbl(o.params[0]) : [],
       ptr(o.b ? VERTEX + (vertexAt.get(keyV(o.b)) as number) : -1),
+      o.params ? dbl(o.params[1]) : [],
       ptr(coedgeForEdge(ei)),
       ptr(CURVE + (curveAt.get(keyCurve(o.curve)) as number)),
       boolean(o.reversed ?? false),
@@ -293,18 +400,20 @@ function solidStream(
   for (let ci = 0; ci < curves.length; ci++) {
     const c = curves[ci] as CurveIn;
     records[CURVE + ci] =
-      c.t === 'line'
-        ? rec('straight-curve', ptr(-1), int(-1), ptr(-1), vec(...c.p), vec(...c.d))
-        : rec(
-            'ellipse-curve',
-            ptr(-1),
-            int(-1),
-            ptr(-1),
-            vec(...c.c),
-            vec(...c.n),
-            vec(...c.major),
-            dbl(c.ratio),
-          );
+      c.t === 'spline'
+        ? intcurve(c)
+        : c.t === 'line'
+          ? rec('straight-curve', ptr(-1), int(-1), ptr(-1), vec(...c.p), vec(...c.d))
+          : rec(
+              'ellipse-curve',
+              ptr(-1),
+              int(-1),
+              ptr(-1),
+              vec(...c.c),
+              vec(...c.n),
+              vec(...c.major),
+              dbl(c.ratio),
+            );
   }
   for (let si = 0; si < surfaces.length; si++) {
     const s = surfaces[si] as SurfaceIn;
@@ -355,6 +464,7 @@ function solidStream(
         dbl(s.inward ? -s.minor : s.minor),
         vec(...(s.ref ?? [1, 0, 0])),
       );
+    else if (s.t === 'spline') records[SURFACE + si] = splineSurface(s);
     else records[SURFACE + si] = rec(s.type, ptr(-1), int(-1), ptr(-1));
   }
   return stream(...records);
@@ -816,6 +926,240 @@ describe('solidToStep', () => {
     );
     expect(step).toBeUndefined();
     expect(reason).toBe('unsupported geometry (a loop with no edge)');
+  });
+});
+
+describe('B-spline curves and surfaces', () => {
+  // A cubic from V0 to V1 (cm) with the file's end multiplicities (3, not 4).
+  const cubic = (extra: Partial<SplineIn> = {}): SplineIn => ({
+    t: 'spline',
+    degree: 3,
+    knots: [
+      [0, 3],
+      [1, 3],
+    ],
+    points: [V0, [3, 1, 0], [7, 1, 0], V1],
+    ...extra,
+  });
+  const splineEdge = (c: SplineIn, params: [number, number] = [0, 1]): Occurrence => ({
+    curve: c,
+    a: V0,
+    b: V1,
+    params,
+  });
+  const onPlane = (...edges: Occurrence[]) =>
+    firstSolid(
+      solidStream([
+        // Closed through V2: the builder shares an edge record between two
+        // occurrences with the same two vertices.
+        {
+          surface: { t: 'plane', p: V0, n: [0, 0, 1] },
+          loops: [[...edges, line(V1, V2), line(V2, V0)]],
+        },
+      ]),
+    );
+  const firstEdge = (solid: AsmBodySolid) => solid.faces[0]?.loops[0]?.coedges[0]?.edge;
+  // A closed polyline square of degree 1, five points, the first repeated last.
+  const square = (extra: Partial<SplineIn> = {}): SplineIn => ({
+    t: 'spline',
+    degree: 1,
+    form: 1,
+    knots: [
+      [0, 1],
+      [1, 1],
+      [2, 1],
+      [3, 1],
+      [4, 1],
+    ],
+    points: [V0, [1, 0, 0], [1, 1, 0], [0, 1, 0], V0],
+    ...extra,
+  });
+
+  it('reads an intcurve’s stored B-spline, its end knots raised to degree + 1', () => {
+    const edge = firstEdge(onPlane(splineEdge(cubic())));
+    expect(edge?.curve.kind).toBe('bspline');
+    if (edge?.curve.kind !== 'bspline') return;
+    expect(edge.curve.spline.degree).toBe(3);
+    expect(edge.curve.spline.knots).toEqual([0, 1]);
+    expect(edge.curve.spline.mults).toEqual([4, 4]);
+    expect(edge.curve.spline.points).toHaveLength(4);
+    expect(edge.curve.spline.weights).toBeUndefined();
+    expect(edge.range).toEqual([0, 1]);
+    expect(edge.reversed).toBe(false);
+  });
+
+  it('follows a { ref n } block to the n-th subtype block of the stream', () => {
+    const solid = firstSolid(
+      solidStream([
+        {
+          surface: { t: 'plane', p: V0, n: [0, 0, 1] },
+          loops: [[splineEdge(cubic()), { ...splineEdge(cubic({ ref: 0 })), a: V1, b: V2 }]],
+        },
+      ]),
+    );
+    const first = solid.faces[0]?.loops[0]?.coedges[0]?.edge;
+    const second = solid.faces[0]?.loops[0]?.coedges[1]?.edge;
+    expect(second?.id).not.toBe(first?.id);
+    expect(second?.curve.kind).toBe('bspline');
+    if (second?.curve.kind === 'bspline') expect(second.curve.spline.points[1]).toEqual([3, 1, 0]);
+  });
+
+  it('folds the curve record’s sense into the edge, and maps its parameters', () => {
+    // The curve runs against its B-spline: the edge's parameters are negated.
+    const edge = firstEdge(onPlane(splineEdge(cubic({ reversed: true }), [-1, 0])));
+    expect(edge?.reversed).toBe(true);
+    expect(edge?.range?.map((t) => t + 0)).toEqual([0, 1]); // −0 + 0 is 0
+    const { step } = solidStep(onPlane(splineEdge(cubic({ reversed: true }), [-1, 0])));
+    expect(step).toMatch(/EDGE_CURVE\('',#\d+,#\d+,#\d+,\.F\.\)/);
+  });
+
+  it('writes a B-spline curve in mm with STEP’s knot multiplicities', () => {
+    const { step, reason } = solidStep(onPlane(splineEdge(cubic())));
+    expect(reason).toBeUndefined();
+    expect(step).toMatch(
+      /B_SPLINE_CURVE_WITH_KNOTS\('',3,\(#\d+,#\d+,#\d+,#\d+\),\.UNSPECIFIED\.,\.F\.,\.F\.,\(4,4\),\(0,1\),\.UNSPECIFIED\.\)/,
+    );
+    expect(step).toContain("CARTESIAN_POINT('',(30,10,0))");
+  });
+
+  it('writes a weighted curve as a rational B-spline', () => {
+    const { step, reason } = solidStep(onPlane(splineEdge(cubic({ weights: [1, 0.5, 0.5, 1] }))));
+    expect(reason).toBeUndefined();
+    expect(step).toContain('(BOUNDED_CURVE()B_SPLINE_CURVE(3,');
+    expect(step).toContain('RATIONAL_B_SPLINE_CURVE((1,0.5,0.5,1))');
+  });
+
+  it('writes a rational curve whose weights are all 1 as a plain B-spline', () => {
+    const { step } = solidStep(onPlane(splineEdge(cubic({ weights: [1, 1, 1, 1] }))));
+    expect(step).toContain("B_SPLINE_CURVE_WITH_KNOTS('',3,");
+    expect(step).not.toContain('RATIONAL');
+  });
+
+  it('splits a closed spline edge at the middle of its stretch', () => {
+    const solid = firstSolid(
+      solidStream([
+        {
+          surface: { t: 'plane', p: V0, n: [0, 0, 1] },
+          loops: [[{ curve: square(), a: V0, b: V0, params: [0, 4] }]],
+        },
+      ]),
+    );
+    const { step, reason } = solidStep(solid);
+    expect(reason).toBeUndefined();
+    expect((step as string).match(/EDGE_CURVE/g)).toHaveLength(2);
+    // The middle of 0…4 is the square's far corner, (1, 1, 0) cm.
+    expect(step).toContain("CARTESIAN_POINT('',(10,10,0))");
+    expect(step).toContain('.T.,.F.,(2,1,1,1,2)');
+  });
+
+  it('splits a closed spline edge that crosses its curve’s seam there', () => {
+    const corner: V = [1, 0, 0];
+    const solid = firstSolid(
+      solidStream([
+        {
+          surface: { t: 'plane', p: V0, n: [0, 0, 1] },
+          loops: [[{ curve: square(), a: corner, b: corner, params: [1, 5] }]],
+        },
+      ]),
+    );
+    const { step } = solidStep(solid);
+    const edges = (step as string).match(/EDGE_CURVE[^;]*/g) ?? [];
+    expect(edges).toHaveLength(2);
+    // The seam is the curve's first point, (0, 0, 0); the edge starts at (1, 0, 0).
+    expect(step).toContain("CARTESIAN_POINT('',(0,0,0))");
+    expect(step).toContain("CARTESIAN_POINT('',(10,0,0))");
+  });
+
+  it('refuses an intcurve with no stored B-spline with its own reason', () => {
+    const { step, reason } = solidStep(onPlane(splineEdge({ ...cubic(), none: true })));
+    expect(step).toBeUndefined();
+    expect(reason).toBe('unsupported geometry (an intcurve with no B-spline)');
+  });
+
+  it('refuses a crafted knot count instead of reading past the record', () => {
+    const edge = firstEdge(onPlane(splineEdge(cubic({ count: 1_000_000_000 }))));
+    expect(edge?.curve).toEqual({ kind: 'other', type: 'an intcurve with no B-spline' });
+  });
+
+  // A bilinear patch over the unit square, z rising along u (cm).
+  const patch = (extra: Partial<Extract<SurfaceIn, { t: 'spline' }>> = {}): SurfaceIn => ({
+    t: 'spline',
+    uDegree: 1,
+    vDegree: 1,
+    uKnots: [
+      [0, 1],
+      [1, 1],
+    ],
+    vKnots: [
+      [0, 1],
+      [1, 1],
+    ],
+    // u fastest: (0,0) (1,0) (0,1) (1,1)
+    points: [
+      [0, 0, 0],
+      [1, 0, 1],
+      [0, 1, 0],
+      [1, 1, 1],
+    ],
+    ...extra,
+  });
+  const onPatch = (surface: SurfaceIn, forward = true) =>
+    firstSolid(
+      solidStream([
+        {
+          surface,
+          forward,
+          loops: [
+            [
+              line([0, 0, 0], [1, 0, 1]),
+              line([1, 0, 1], [1, 1, 1]),
+              line([1, 1, 1], [0, 1, 0]),
+              line([0, 1, 0], [0, 0, 0]),
+            ],
+          ],
+        },
+      ]),
+    );
+
+  it('writes a spline surface’s grid with u as the outer list', () => {
+    const solid = onPatch(patch());
+    expect(solid.faces[0]?.surface.kind).toBe('bspline');
+    const { step, reason } = solidStep(solid);
+    expect(reason).toBeUndefined();
+    const m = (step as string).match(
+      /B_SPLINE_SURFACE_WITH_KNOTS\('',1,1,\(\(#(\d+),#(\d+)\),\(#(\d+),#(\d+)\)\),\.UNSPECIFIED\.,\.F\.,\.F\.,\.F\.,\(2,2\),\(2,2\),\(0,1\),\(0,1\),\.UNSPECIFIED\.\)/,
+    );
+    expect(m).not.toBeNull();
+    const point = (ref: string | undefined) =>
+      (step as string).match(new RegExp(`#${ref}=CARTESIAN_POINT\\('',\\(([^)]*)\\)\\)`))?.[1];
+    // Row u = 0 holds (0,0) and (0,1); row u = 1 holds (1,0) and (1,1), in mm.
+    expect([point(m?.[1]), point(m?.[2]), point(m?.[3]), point(m?.[4])]).toEqual([
+      '0,0,0',
+      '0,10,0',
+      '10,0,10',
+      '10,10,10',
+    ]);
+  });
+
+  it('flips the face of a spline surface whose record runs against its B-spline', () => {
+    const plain = solidStep(onPatch(patch())).step as string;
+    const against = solidStep(onPatch(patch({ reversed: true }))).step as string;
+    expect(plain).toMatch(/ADVANCED_FACE\([^;]*,\.T\.\);/);
+    expect(against).toMatch(/ADVANCED_FACE\([^;]*,\.F\.\);/);
+  });
+
+  it('writes a weighted surface as a rational B-spline surface', () => {
+    const { step } = solidStep(onPatch(patch({ weights: [1, 2, 1, 2] })));
+    expect(step).toContain('(BOUNDED_SURFACE()B_SPLINE_SURFACE(1,1,');
+    expect(step).toContain('RATIONAL_B_SPLINE_SURFACE(((1,1),(2,2)))');
+  });
+
+  it('refuses a crafted grid size instead of allocating it', () => {
+    const solid = onPatch(patch({ counts: [2, 1_000_000_000] }));
+    expect(solid.faces[0]?.surface).toEqual({
+      kind: 'other',
+      type: 'a spline surface with no B-spline',
+    });
   });
 });
 

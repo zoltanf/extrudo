@@ -14,6 +14,7 @@
  * 13 position and 14 vector (three doubles), 15 enum (8 bytes), 16 uv (two
  * doubles), 17 int64. Lengths are in centimetres.
  */
+import type { AsmBSplineCurve, AsmBSplineSurface } from './asm-spline';
 import { F3dFormatError } from './bytes';
 
 export type AsmValue =
@@ -25,7 +26,9 @@ export type AsmValue =
   | { t: 'str'; v: string }
   | { t: 'bool'; v: boolean }
   | { t: 'open' }
-  | { t: 'close' };
+  | { t: 'close' }
+  /** A class name inside a subtype block (`{ exact_int_cur … nubs … }`). */
+  | { t: 'name'; v: string };
 
 export interface AsmRecord {
   /** `face`, `plane-surface`, `cone-surface`, `ATTRIB_CUSTOM-attrib`, … */
@@ -70,6 +73,9 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
   let names: string[] = [];
   let type = '';
   let derived = '';
+  // Subtype bracket depth: class names inside a block are also kept, in
+  // place, as `name` values (a block's layout depends on them).
+  let depth = 0;
   const str = (len: number, at: number) => latin1.decode(bytes.subarray(at, at + len));
   while (p < bytes.length) {
     const t = bytes[p++] as number;
@@ -80,6 +86,7 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
         const n = bytes[p] as number;
         need(1 + n);
         names.push(str(n, p + 1));
+        if (depth > 0) values.push({ t: 'name', v: str(n, p + 1) });
         p += 1 + n;
         if (t === 0x0d) {
           type = names.join('-');
@@ -96,6 +103,7 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
         values = [];
         type = '';
         derived = '';
+        depth = 0;
         break;
       case 0x04:
       case 0x15:
@@ -168,9 +176,11 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
         break;
       case 0x0f:
         values.push({ t: 'open' });
+        depth++;
         break;
       case 0x10:
         values.push({ t: 'close' });
+        depth--;
         break;
       case 0x05:
         need(4);
@@ -231,6 +241,13 @@ export type AsmSurface =
       /** The file wrote a negative minor radius: the surface normal points inward. */
       inward: boolean;
     }
+  | {
+      kind: 'bspline';
+      /** The B-spline the file stores for a `spline-surface`. */
+      spline: AsmBSplineSurface;
+      /** The record's sense: true when its normal runs against the B-spline's (u × v). */
+      reversed: boolean;
+    }
   | { kind: 'other'; type: string };
 
 /** An edge's curve, in model space (cm). */
@@ -244,6 +261,13 @@ export type AsmCurve =
       major: [number, number, number];
       /** Minor over major radius (1: a circle). */
       ratio: number;
+    }
+  | {
+      kind: 'bspline';
+      /** The B-spline the file stores for an `intcurve`. */
+      spline: AsmBSplineCurve;
+      /** The record's sense: true when the curve runs against the B-spline's parameter. */
+      reversed: boolean;
     }
   | { kind: 'other'; type: string };
 

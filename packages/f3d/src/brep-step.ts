@@ -20,8 +20,9 @@
  */
 import { designSegments, type Entries, unzip } from './archive';
 import { type AsmCurve, type AsmSurface, readAsm } from './asm';
-import { type AsmBodyFace, type AsmBodySolid, asmBodies } from './asm-body';
+import { type AsmBodyEdge, type AsmBodyFace, type AsmBodySolid, asmBodies } from './asm-body';
 import { type LumpClaim, lumpOps, pairLumps } from './brep-lumps';
+import { type AsmBSplineCurve, type AsmBSplineSurface, splinePoint } from './asm-spline';
 import { BODY } from './decode/body';
 import { activeDesignSegment, type F3dDesign, readF3dEntries, refsIn } from './model';
 import { Segment } from './segment';
@@ -161,9 +162,11 @@ export function solidToStep(solid: AsmBodySolid): string {
    * The STEP edges of one file edge, in order. A closed edge (a full circle
    * whose two vertices are the same point) is split at its antipode into two
    * half edges: a kernel reads a start-equals-end `EDGE_CURVE` as a degenerate
-   * edge, and the reference exports split them too. Any other edge is one.
+   * edge, and the reference exports split them too. A B-spline edge is split
+   * where it crosses its closed curve's seam, and a closed one that does not
+   * cross it at the middle of its stretch. Any other edge is one.
    */
-  const edge = (e: AsmBodyFace['loops'][number]['coedges'][number]['edge']): number[] => {
+  const edge = (e: AsmBodyEdge): number[] => {
     const cached = edgeAt.get(e.id);
     if (cached !== undefined) return cached;
     if (e.start === undefined) throw new UnsupportedGeometry('an edge with no vertex');
@@ -174,15 +177,26 @@ export function solidToStep(solid: AsmBodySolid): string {
     // The edge runs against its curve when the edge record's sense is true, so
     // `EDGE_CURVE`'s same-sense is the opposite of the edge's own sense.
     const same = e.reversed ? 'F' : 'T';
-    const refs: number[] = [];
+    // The points the edge passes through, in the edge's own direction.
+    let via: [number, number, number][] = [];
     if (start === end && e.curve.kind === 'ellipse') {
       const c = e.curve.center;
-      const mid = vertex([2 * c[0] - e.start[0], 2 * c[1] - e.start[1], 2 * c[2] - e.start[2]]);
-      refs.push(w.add("EDGE_CURVE('',#{},#{},#{},.{}.)", [start, mid, curve, same]));
-      refs.push(w.add("EDGE_CURVE('',#{},#{},#{},.{}.)", [mid, end, curve, same]));
-    } else {
-      refs.push(w.add("EDGE_CURVE('',#{},#{},#{},.{}.)", [start, end, curve, same]));
+      via = [[2 * c[0] - e.start[0], 2 * c[1] - e.start[1], 2 * c[2] - e.start[2]]];
+    } else if (e.curve.kind === 'bspline') {
+      via = splineBreaks(e.curve.spline, e.range, start === end);
+      if (e.reversed) via.reverse();
     }
+    const chain = [start, ...via.map(vertex), end];
+    const refs: number[] = [];
+    for (let k = 0; k + 1 < chain.length; k++)
+      refs.push(
+        w.add("EDGE_CURVE('',#{},#{},#{},.{}.)", [
+          chain[k] as number,
+          chain[k + 1] as number,
+          curve,
+          same,
+        ]),
+      );
     edgeAt.set(e.id, refs);
     return refs;
   };
@@ -231,6 +245,36 @@ export function solidToStep(solid: AsmBodySolid): string {
   const rep = w.add("ADVANCED_BREP_SHAPE_REPRESENTATION('',(#{},#{}),#{})", [solidRef, axis, ctx]);
   w.add('SHAPE_DEFINITION_REPRESENTATION(#{},#{})', [w.productDefinitionShape, rep]);
   return w.text();
+}
+
+/**
+ * The points a B-spline edge is split at, in the B-spline's parameter order:
+ * its closed curve's seam when the edge's stretch crosses it, else the middle
+ * of a closed edge's stretch (a start-equals-end `EDGE_CURVE` is degenerate to
+ * a kernel). An edge with no stretch, or a stretch longer than the closed
+ * curve, is refused.
+ */
+function splineBreaks(
+  c: AsmBSplineCurve,
+  range: [number, number] | undefined,
+  closedEdge: boolean,
+): [number, number, number][] {
+  if (!range) return [];
+  const lo = c.knots[0] as number;
+  const hi = c.knots[c.knots.length - 1] as number;
+  const tol = (hi - lo) * 1e-9;
+  let [a, b] = range;
+  if (c.closed) {
+    // A closed curve's parameter wraps: bring the stretch's start into the
+    // knot range; a stretch that then runs past the end crosses the seam.
+    const period = hi - lo;
+    const turns = Math.floor((a - lo + tol) / period);
+    a -= turns * period;
+    b -= turns * period;
+    if (b - a > period + tol) throw new UnsupportedGeometry('a spline edge longer than its curve');
+    if (b > hi + tol) return [splinePoint(c, lo)];
+  }
+  return closedEdge ? [splinePoint(c, (a + b) / 2)] : [];
 }
 
 /** The STEP boilerplate's product/context entities; returns the representation context. */
@@ -357,7 +401,46 @@ class StepWriter {
         Math.atan(Math.abs(s.slope)),
       ]);
     }
+    if (s.kind === 'bspline') return this.bsplineSurface(s.spline);
     throw new UnsupportedGeometry(s.type);
+  }
+
+  /** A list of numbers or references, `(a,b,…)`. */
+  static list(xs: (number | string)[]): string {
+    return `(${xs.map((x) => (typeof x === 'number' ? g(x) : x)).join(',')})`;
+  }
+
+  bsplineCurve(c: AsmBSplineCurve): number {
+    const points = StepWriter.list(c.points.map((p) => `#${this.point(p)}`));
+    const closed = c.closed ? 'T' : 'F';
+    const knots = `${StepWriter.list(c.mults)},${StepWriter.list(c.knots)},.UNSPECIFIED.`;
+    if (!c.weights)
+      return this.add(
+        `B_SPLINE_CURVE_WITH_KNOTS('',${c.degree},${points},.UNSPECIFIED.,.${closed}.,.F.,${knots})`,
+      );
+    return this.add(
+      `(BOUNDED_CURVE()B_SPLINE_CURVE(${c.degree},${points},.UNSPECIFIED.,.${closed}.,.F.)` +
+        `B_SPLINE_CURVE_WITH_KNOTS(${knots})CURVE()GEOMETRIC_REPRESENTATION_ITEM()` +
+        `RATIONAL_B_SPLINE_CURVE(${StepWriter.list(c.weights)})REPRESENTATION_ITEM(''))`,
+    );
+  }
+
+  bsplineSurface(s: AsmBSplineSurface): number {
+    const grid = `(${s.points.map((row) => StepWriter.list(row.map((p) => `#${this.point(p)}`))).join(',')})`;
+    const flags = `.UNSPECIFIED.,.${s.uClosed ? 'T' : 'F'}.,.${s.vClosed ? 'T' : 'F'}.,.F.`;
+    const knots =
+      `${StepWriter.list(s.uMults)},${StepWriter.list(s.vMults)},` +
+      `${StepWriter.list(s.uKnots)},${StepWriter.list(s.vKnots)},.UNSPECIFIED.`;
+    if (!s.weights)
+      return this.add(
+        `B_SPLINE_SURFACE_WITH_KNOTS('',${s.uDegree},${s.vDegree},${grid},${flags},${knots})`,
+      );
+    const weights = `(${s.weights.map((row) => StepWriter.list(row)).join(',')})`;
+    return this.add(
+      `(BOUNDED_SURFACE()B_SPLINE_SURFACE(${s.uDegree},${s.vDegree},${grid},${flags})` +
+        `B_SPLINE_SURFACE_WITH_KNOTS(${knots})GEOMETRIC_REPRESENTATION_ITEM()` +
+        `RATIONAL_B_SPLINE_SURFACE(${weights})REPRESENTATION_ITEM('')SURFACE())`,
+    );
   }
 
   curve(c: AsmCurve): number {
@@ -375,6 +458,7 @@ class StepWriter {
         radius * Math.abs(c.ratio) * 10,
       ]);
     }
+    if (c.kind === 'bspline') return this.bsplineCurve(c.spline);
     throw new UnsupportedGeometry(c.type);
   }
 

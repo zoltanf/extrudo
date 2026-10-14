@@ -32,8 +32,12 @@ import { type F3dDesign, IDENTITY } from './model';
 
 type V = [number, number, number];
 
-/** The six faces of a box, as `brep-step.ts`'s writer reads them (stream helpers, by hand). */
-function boxSolid(size: number): AsmBodySolid {
+/**
+ * The six faces of a box, as `brep-step.ts`'s writer reads them (stream helpers,
+ * by hand). With `spline`, the top face is a B-spline surface and its four edges
+ * B-spline curves (degree 1: the same box, carried as splines).
+ */
+function boxSolid(size: number, spline = false): AsmBodySolid {
   const p = (x: number, y: number, z: number): V => [x, y, z];
   const V0 = p(0, 0, 0);
   const V1 = p(size, 0, 0);
@@ -49,12 +53,20 @@ function boxSolid(size: number): AsmBodySolid {
     const key = `${ka}|${kb}`;
     let e = edges.get(key);
     if (!e) {
+      const top = spline && a[2] === size && b[2] === size;
       e = {
         id: edges.size,
-        curve: { kind: 'line', point: a, direction: [b[0] - a[0], b[1] - a[1], b[2] - a[2]] },
+        curve: top
+          ? {
+              kind: 'bspline',
+              spline: { degree: 1, knots: [0, 1], mults: [2, 2], points: [a, b], closed: false },
+              reversed: false,
+            }
+          : { kind: 'line', point: a, direction: [b[0] - a[0], b[1] - a[1], b[2] - a[2]] },
         start: a,
         end: b,
         reversed: false,
+        ...(top ? { range: [0, 1] as [number, number] } : {}),
       };
       edges.set(key, e);
     }
@@ -73,10 +85,33 @@ function boxSolid(size: number): AsmBodySolid {
     reversed: false,
     loops: [loop],
   });
+  // u along x, v along y: the B-spline's normal (u × v) is +z, the top's outside.
+  const top: AsmBodyFace = {
+    surface: {
+      kind: 'bspline',
+      spline: {
+        uDegree: 1,
+        vDegree: 1,
+        uKnots: [0, 1],
+        uMults: [2, 2],
+        vKnots: [0, 1],
+        vMults: [2, 2],
+        points: [
+          [V4, V7],
+          [V5, V6],
+        ],
+        uClosed: false,
+        vClosed: false,
+      },
+      reversed: false,
+    },
+    reversed: false,
+    loops: [quad(V4, V5, V6, V7)],
+  };
   return {
     faces: [
       face(V0, [0, 0, -1], quad(V0, V3, V2, V1)),
-      face(V4, [0, 0, 1], quad(V4, V5, V6, V7)),
+      spline ? top : face(V4, [0, 0, 1], quad(V4, V5, V6, V7)),
       face(V0, [0, -1, 0], quad(V0, V1, V5, V4)),
       face(V3, [0, 1, 0], quad(V3, V7, V6, V2)),
       face(V0, [-1, 0, 0], quad(V0, V4, V7, V3)),
@@ -286,6 +321,18 @@ describe('body check with a kernel', () => {
     expect(after.size).toBe(1);
     // The 10 mm box: 1 cm³ → 1000 mm³.
     expect(([...after.values()][0] as BodyMeasure).volume).toBeCloseTo(1000, 3);
+  });
+
+  it('reads a box carried as B-splines back as the same box', async () => {
+    const { design, bodies } = f3dToDesign(squareDesign(), 'Box');
+    const step = solidStep(boxSolid(1, true)).step as string;
+    expect(step).toContain('B_SPLINE_SURFACE_WITH_KNOTS');
+    expect(step).toContain('B_SPLINE_CURVE_WITH_KNOTS');
+    const steps: BodyStep[] = [{ record: 1, name: 'Body1', step }];
+    const { plan } = await check(design, bodies, steps);
+    // The kernel's solid measures as the replayed 10 mm box: kept editable.
+    expect(plan.matched).toHaveLength(1);
+    expect(plan.frozen).toEqual([]);
   });
 
   it('freezes a different box: a Remove and an import body', async () => {

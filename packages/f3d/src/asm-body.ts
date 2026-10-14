@@ -19,6 +19,13 @@
  * quadratic, and a chain that runs away throws instead of looping.
  */
 import { type AsmCurve, type AsmRecord, type AsmSurface, asmCurveOf, asmSurfaceOf } from './asm';
+import {
+  asmSplineCurve,
+  asmSplineReversed,
+  asmSplineSurface,
+  type SubtypeTable,
+  subtypeTable,
+} from './asm-spline';
 import { F3dFormatError } from './bytes';
 
 /** A point in model space (cm). */
@@ -34,9 +41,16 @@ export interface AsmBodyEdge {
   /**
    * The edge's own sense flag: true when the edge runs against its curve (the
    * edge's start-to-end direction is opposite the curve's own parametrisation),
-   * false when it runs with it. `EDGE_CURVE`'s same-sense is the opposite.
+   * false when it runs with it. `EDGE_CURVE`'s same-sense is the opposite. For a
+   * B-spline curve this is against the B-spline's own parameter (the curve
+   * record's sense is folded in).
    */
   reversed: boolean;
+  /**
+   * For a B-spline curve: the edge's stretch of the B-spline's parameter, low
+   * to high (the edge record's two parameters, mapped through the curve's sense).
+   */
+  range?: [number, number];
 }
 
 /** One edge as one loop sees it, in the loop's order. */
@@ -106,21 +120,43 @@ function vertexPoint(
   return at?.t === 'vec' ? at.v : undefined;
 }
 
-/** A surface's geometry, with the record's own class name when it is not carried. */
-function surfaceAt(records: AsmRecord[], p: number): AsmSurface {
+/**
+ * A surface's geometry, with the record's own class name when it is not
+ * carried. A `spline-surface` is its stored B-spline.
+ */
+function surfaceAt(records: AsmRecord[], walk: Walk, p: number): AsmSurface {
+  const name = nameOf(records[p]);
+  if (name === 'spline-surface') {
+    const spline = asmSplineSurface(records, walk.table(), p);
+    return spline
+      ? { kind: 'bspline', spline, reversed: asmSplineReversed(records[p]) }
+      : { kind: 'other', type: 'a spline surface with no B-spline' };
+  }
   const s = asmSurfaceOf(records[p]);
-  return s.kind === 'other' ? { kind: 'other', type: nameOf(records[p]) || s.type } : s;
+  return s.kind === 'other' ? { kind: 'other', type: name || s.type } : s;
 }
 
-/** A curve's geometry, with the record's own class name when it is not carried. */
-function curveAt(records: AsmRecord[], p: number): AsmCurve {
+/**
+ * A curve's geometry, with the record's own class name when it is not
+ * carried. An `intcurve-curve` is its stored B-spline.
+ */
+function curveAt(records: AsmRecord[], walk: Walk, p: number): AsmCurve {
+  const name = nameOf(records[p]);
+  if (name === 'intcurve-curve') {
+    const spline = asmSplineCurve(records, walk.table(), p);
+    return spline
+      ? { kind: 'bspline', spline, reversed: asmSplineReversed(records[p]) }
+      : { kind: 'other', type: 'an intcurve with no B-spline' };
+  }
   const c = asmCurveOf(records[p]);
-  return c.kind === 'other' ? { kind: 'other', type: nameOf(records[p]) || c.type } : c;
+  return c.kind === 'other' ? { kind: 'other', type: name || c.type } : c;
 }
 
 /** The stream's walk state: a shell, face, loop or coedge is read at most once. */
 interface Walk {
   is: ReturnType<typeof isType>;
+  /** The stream's subtype blocks, read on the first spline met. */
+  table: () => SubtypeTable;
   shells: Set<number>;
   faces: Set<number>;
   loops: Set<number>;
@@ -128,13 +164,14 @@ interface Walk {
 }
 
 /** One edge record: its curve, its two vertices' points, its sense. */
-function readEdge(records: AsmRecord[], is: ReturnType<typeof isType>, edge: number): AsmBodyEdge {
+function readEdge(records: AsmRecord[], walk: Walk, edge: number): AsmBodyEdge {
+  const is = walk.is;
   const ep = pointers(records[edge]);
   const vertices = ep.filter((p) => is(p, 'vertex'));
   const curvePtr = ep.find((p) => p >= 0 && nameOf(records[p]).endsWith('curve')) ?? -1;
   const start = vertexPoint(records, is, vertices[0] ?? -1);
   const end = vertexPoint(records, is, vertices[1] ?? -1);
-  const curve = curveAt(records, curvePtr);
+  const curve = curveAt(records, walk, curvePtr);
   // The edge runs against its curve when the edge record's sense is true (read
   // from the record). For a straight curve the points say it directly, and the
   // two disagree on a rare few edges in the corpus, where the points are the
@@ -147,6 +184,25 @@ function readEdge(records: AsmRecord[], is: ReturnType<typeof isType>, edge: num
           (end[2] - start[2]) * curve.direction[2] <
         0
       : sense;
+  if (curve.kind === 'bspline') {
+    // The edge runs against the B-spline when exactly one of the edge and the
+    // curve record runs against what it is built on. The edge's two parameters
+    // are its own: each reversal negates the parameter, so the B-spline's
+    // stretch is the negated pair when the edge runs against it.
+    const against = sense !== curve.reversed;
+    const ts = records[edge]?.values.filter((v) => v.t === 'dbl').map((v) => v.v as number) ?? [];
+    const [t0, t1] = ts;
+    const range: [number, number] | undefined =
+      t0 !== undefined && t1 !== undefined ? (against ? [-t1, -t0] : [t0, t1]) : undefined;
+    return {
+      id: edge,
+      curve,
+      reversed: against,
+      ...(range ? { range } : {}),
+      ...(start ? { start } : {}),
+      ...(end ? { end } : {}),
+    };
+  }
   return {
     id: edge,
     curve,
@@ -179,7 +235,7 @@ function readLoops(records: AsmRecord[], walk: Walk, face: number): AsmBodyLoop[
       const edge = firstOf(walk.is, cp, 'edge');
       if (edge >= 0) {
         const forward = bools(records[coedge])[0] ?? true;
-        coedges.push({ edge: readEdge(records, walk.is, edge), forward });
+        coedges.push({ edge: readEdge(records, walk, edge), forward });
       }
       coedge = firstOf(
         walk.is,
@@ -196,11 +252,15 @@ function readLoops(records: AsmRecord[], walk: Walk, face: number): AsmBodyLoop[
 /** One face record: its surface, its sense and its loops. */
 function readFace(records: AsmRecord[], walk: Walk, face: number): AsmBodyFace {
   const fp = pointers(records[face]);
-  const surface = surfaceAt(records, fp[fp.length - 1] ?? -1);
+  const surface = surfaceAt(records, walk, fp[fp.length - 1] ?? -1);
   // The face record's flag is the face's forward sense: true when the face's
   // normal runs with its surface's. A surface the file wrote with a negative
-  // radius has its normal reversed, so the face is then reversed too.
-  const inward = (surface.kind === 'sphere' || surface.kind === 'torus') && surface.inward;
+  // radius has its normal reversed, so the face is then reversed too; so has a
+  // spline surface whose record runs against its B-spline (STEP's B-spline
+  // surface normal is the B-spline's own).
+  const inward =
+    ((surface.kind === 'sphere' || surface.kind === 'torus') && surface.inward) ||
+    (surface.kind === 'bspline' && surface.reversed);
   const forward = (bools(records[face])[0] ?? true) !== inward;
   return { surface, reversed: !forward, loops: readLoops(records, walk, face) };
 }
@@ -228,8 +288,13 @@ function shellFaces(records: AsmRecord[], walk: Walk, shell: number): AsmBodyFac
  * crafted stream cannot make the read quadratic.
  */
 export function asmBodies(records: AsmRecord[]): AsmBodySolid[] {
+  let table: SubtypeTable | undefined;
   const walk: Walk = {
     is: isType(records),
+    table: () => {
+      table ??= subtypeTable(records);
+      return table;
+    },
     shells: new Set(),
     faces: new Set(),
     loops: new Set(),

@@ -58,6 +58,33 @@ describe('readAsm', () => {
     expect(() => readAsm(bytes12)).toThrow(F3dFormatError);
   });
 
+  it('keeps the class names inside a subtype block as values, in place', () => {
+    // intcurve-curve, sense, { exact_int_cur 7 nubs 3 }: the names inside the
+    // brackets are the block's layout; the record's own class stays first.
+    const bytes = stream([
+      ...className('intcurve-curve'),
+      0x0b,
+      0x0f,
+      ...className('exact_int_cur'),
+      ...int(7),
+      ...className('nubs'),
+      ...int(3),
+      0x10,
+      0x11,
+    ]);
+    const [r] = readAsm(bytes);
+    expect(r?.derived).toBe('intcurve-curve');
+    expect(r?.values).toEqual([
+      { t: 'bool', v: false },
+      { t: 'open' },
+      { t: 'name', v: 'exact_int_cur' },
+      { t: 'int', v: 7 },
+      { t: 'name', v: 'nubs' },
+      { t: 'int', v: 3 },
+      { t: 'close' },
+    ]);
+  });
+
   it('rejects a fixed-width value that runs off the end', () => {
     const bytes = new Uint8Array([...header(), 0x13, 0x00]);
     expect(() => readAsm(bytes)).toThrow(F3dFormatError);
