@@ -5,8 +5,10 @@
  * or sinking, a cylinder's wall changes its radius, a hole's wall widens or
  * narrows the hole. Positive moves a face out of the body (along its outward
  * normal: the body grows there, a hole's wall closes in), negative moves it
- * in. Faces that run smoothly into a picked face (the fillets round a pad)
- * move with it.
+ * in. Faces that run smoothly into a picked face move with it, except a
+ * round a fillet made that isn't picked itself: it is made again at its
+ * radius between the moved face and its other neighbour, which stays
+ * (ADR-0051's amendment, 2026-10-14).
  *
  * The kernel adds its evaluator and the web app its dialog, each in its own
  * registry keyed by `OFFSET_FACE_TYPE` (ADR-0003). Inputs are plain `ref`

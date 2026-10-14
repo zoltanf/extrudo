@@ -66,7 +66,7 @@ sample document in memory until storage exists. ADR-0008 (P0-05) set the
 viewport (`apps/web/src/viewport/`): Z-up world in mm, our own camera
 controller (target + quaternion + size, both projections), mouse presets (Spindle the
 default, Crank, Glide, Blender, Trackpad; Shift swaps orbit and pan in Spindle and Crank; in
-the Settings menu's Mouse controls ▸ since R3-03/R3-04, ADR-0008's amendment) as
+the app menu's Mouse controls ▸ since R3-03/R3-04, ADR-0008's amendment) as
 tables, shader grid, CSS 3D ViewCube, a viewport store with display settings
 as preferences. **Named views (ADR-0008's amendment, 2026-10-10)** save and
 restore the camera: core's `saveView`/`updateView`/`removeView` commands over
@@ -921,6 +921,17 @@ closed faces divided (`ShapeUpgrade_ShapeDivideClosed`) and merged back
 (`DividedOffset`), and `offsetIsGood` also asks `farFacesKept` (a face neither
 moving nor next to a moving one keeps its area and centre), which refuses the
 valid junk OCCT can make of a face pushed through the body.
+**ADR-0051's amendment (2026-10-14): a round next to a moved face keeps its
+radius.** The evaluator passes the unpicked fillet rounds (name `fillet:…` or a
+copy of one, cylinder or torus) of the picked faces' smooth chains
+(`roundsNextTo`; `Kernel.offsetFaces(…, blends)`, facade `pushBlend`, cleared by
+`clearArgs`); the facade first tries `buildReblendedOffset` (remove the rounds
+next to a moving face with `BRepAlgoAPI_Defeaturing`, offset the picked faces,
+re-fillet each round at its radius between its two smooth sides; the moving set
+doesn't pass through a round, so faces past it stay) with the history composed
+in `ReblendedOffset` and **each old round face recorded as modified into its new
+face** (keeps its name); any failure falls back to the plain offset unchanged.
+A picked round is offset as before, and the dialog still picks whole chains.
 **OCCT moves the faces that run smoothly into a picked face together** (angle
 under 4 degrees), so the facade's `tangentFaces` and `KernelApi.tangentChain(…,
 kind)` let the dialog's face field (`tangentChain: true`) pick the whole chain
@@ -2124,7 +2135,7 @@ help and theme — and `shell/Toolbar.tsx` the selected tab's groups below it (t
 **Home** tab's tiles (Design, Versions, **Import** — Import .extrudo, Import Model,
 Import Drawing, Canvas — and **Export** — Export .extrudo, Export Model, Export as
 Script, Save to Linked Folder — since R3-09, Parameters with Customizer); **Plugins…
-is in the Settings (gear) menu** and Ctrl+K (R3-12; on macOS the app menu, beside
+is in the app menu** and Ctrl+K (R3-12; on macOS the app menu, beside
 Settings…: `APP_MENU_IDS` in `apps/desktop/src/main/menuTemplate.ts`); the tabs are
 **Home, Solid (Create, Primitives, Features, Pattern, Program, Component), Modify
 (Modify, Transform), Construct (Planes, Axes, Points, Inspect — Measure and Section
@@ -2155,7 +2166,20 @@ Search drops the one search from the button, `onSearch(at)`; no Toolbox button),
 side is Version history, Settings, Help, and the name plus the save dot are one `TitleGroup`
 centred between the cluster and Version history; the pure `titleFit`
 (`shell/titleFit.ts`) drops the save word first (`data-title-fit="dot"`), then truncates
-the name (`truncate`, `title` = full name). The separator after the cluster is gone. **Tiles first**: Home's file groups have no fixed `more` (Import: Import Design, Import Model — `importBody`, full label "Import STEP, mesh, OpenSCAD or .f3d…" —, Import Drawing, Canvas; Export: Export Design, Export Model, Export as Script, Save to Linked Folder; one Files group until R3-09), Construct › Planes shows all seven planes as tiles, and a tile is a fixed 64 px wide, its label the tool's full name wrapped onto up to two 11 px lines when it fits, its short name otherwise (ADR-0079 round 3).
+the name (`truncate`, `title` = full name). The separator after the cluster is gone.
+**Round 5 (2026-10-14, the owner's recording)**: the gear is the **app menu**
+(`shell/AppMenu.tsx`, button "Menu", four squares), shared by the design's bar and the home
+screen's: Settings…, Plugins…, then submenus **Behaviour ▸** (the auto-project
+checkboxes, Radial right-click menu, Customize Marking Menu… where a design is open),
+**Mouse controls ▸**, **Theme ▸**, and last **Quit** (Ctrl+Q, desktop only, `platform.menus`)
+or **Close design** (the web, in a design: back to Home; a page can't close its tab). It reads
+and writes the display settings through `DisplayAccess` (`storeAccess` in a design,
+`preferencesAccess` on Home). `ThemeMenu` is gone. Help ends with **Source on GitHub**. The
+home bar is a design's (h-10, logo 20, wordmark 16 px) with About, Docs and GitHub as
+tab-styled links that open through the platform (`Platform.openSite('about' | 'repo')`,
+`openDocs`): the desktop sends only the name over `site:open` and main holds the URLs
+(`SITE_URLS` in `main/docs.ts`), as for the docs; the web's addresses take `VITE_REPO_URL`
+and `VITE_ABOUT_URL` for a fork. **Tiles first**: Home's file groups have no fixed `more` (Import: Import Design, Import Model — `importBody`, full label "Import STEP, mesh, OpenSCAD or .f3d…" —, Import Drawing, Canvas; Export: Export Design, Export Model, Export as Script, Save to Linked Folder; one Files group until R3-09), Construct › Planes shows all seven planes as tiles, and a tile is a fixed 64 px wide, its label the tool's full name wrapped onto up to two 11 px lines when it fits, its short name otherwise (ADR-0079 round 3).
 
 ADR-0080 (P6-06, slice S1) made the docs site one site: `apps/site/src/docs.ts`'s
 `COLLECTIONS` map `docs/guide` → `/docs/`, `guide/tutorials` → `/docs/tutorials/`,
@@ -2193,8 +2217,8 @@ numbered 1 first-part, 2 storage-box, 3 name-tag, 4 bottle-cap.
 
 ADR-0082 (2026-10-10) added **the Settings screen** (`apps/web/src/settings/`, no
 kernel, schema or file-format change): the dialog "Settings" (`SettingsDialog`;
-gear › Settings…, **Ctrl+,** `openSettings` in `commands/keymap.ts`, the Ctrl+K command,
-the home screen's gear) with sections General, View and navigation, Sketch, 3D
+app menu › Settings…, **Ctrl+,** `openSettings` in `commands/keymap.ts`, the Ctrl+K command,
+the home screen's app menu) with sections General, View and navigation, Sketch, 3D
 printing, Export and Desktop (`desktop` shown only where `platform.desktop`
 exists; remembered in `settings.section`). Rules a change must keep: **every
 preference key lives in one section of `settings/inventory.ts` or in

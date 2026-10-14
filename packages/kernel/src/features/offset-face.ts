@@ -32,6 +32,16 @@ import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../rec
  * the distance can be edited freely. A face the offset swallows is gone
  * (its name with it); a face OCCT splits gets `#n`.
  *
+ * **A round keeps its radius** (ADR-0051's amendment, 2026-10-14): a
+ * constant-radius round a fillet made (a cylinder or torus face named
+ * `fillet:…`) that runs smoothly into a moving face is made again at its
+ * radius between the moved face and its other neighbour, which stays where
+ * it is, as the f3d files do: a 3 mm round between two walls pushed in by
+ * 0.1 mm stays a 3 mm round, its axis moved. It keeps its name. Other
+ * smooth neighbours (a slot's round end, an imported body's blends) move
+ * with the face as OCCT moves them, and so do the rounds where the re-made
+ * round can't be built.
+ *
  * A failure is turned into a message a person can act on (FR-UX-06): the
  * largest distance that works ("Pulling the face out by 25 mm is too far
  * for this body (max ≈ 19 mm)"), or plain words for what OCCT can't get
@@ -69,7 +79,7 @@ function evaluateOffsetFace(ctx: EvalContext<OffsetFaceInputs>): FeatureOutput {
     const shape = ctx.bodies.get(body) as ShapeHandle;
     let result: OperationResult;
     try {
-      result = kernel.offsetFaces(shape, faces, distance);
+      result = kernel.offsetFaces(shape, faces, distance, roundsNextTo(ctx, body, faces));
     } catch (error) {
       if (error instanceof OffsetFaceError) {
         throw new KernelError(offsetMessage(error, distance, faces));
@@ -93,6 +103,36 @@ function evaluateOffsetFace(ctx: EvalContext<OffsetFaceInputs>): FeatureOutput {
     names.set(body, table);
   }
   return { bodies, names };
+}
+
+/** A face name a fillet made, or a copy of one: `fillet:…`, `pattern:P:1:from:(fillet:…)`. */
+const ROUND_NAME = /^(?:[A-Za-z]+:[^:()]+:(?:[^:()]+:)?from:\()*fillet:/;
+
+/**
+ * The rounds next to the picked faces that keep their radius: faces of the
+ * smooth chains through the picked ones, not picked themselves, named by a
+ * fillet, on a cylinder or a torus. Each face is looked at once.
+ */
+function roundsNextTo(
+  ctx: EvalContext<OffsetFaceInputs>,
+  body: BodyId,
+  faces: readonly number[],
+): number[] {
+  const { kernel } = ctx;
+  const shape = ctx.bodies.get(body) as ShapeHandle;
+  const names = ctx.names(body).faces;
+  const seen = new Set(faces);
+  const rounds: number[] = [];
+  for (const face of faces) {
+    for (const next of kernel.tangentFaces(shape, face)) {
+      if (seen.has(next)) continue;
+      seen.add(next);
+      if (!ROUND_NAME.test(names[next] ?? '')) continue;
+      const { type } = kernel.surfaceGeometry(shape, next);
+      if (type === 'cylinder' || type === 'torus') rounds.push(next);
+    }
+  }
+  return rounds;
 }
 
 /**

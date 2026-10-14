@@ -6,12 +6,12 @@ order: 9
 
 # Settings
 
-Open **Settings** from the gear in the top bar (Settings…), with **Ctrl+,**, from Ctrl+K
-("Settings…") or from the gear on the home screen. The dialog gathers your preferences in one
+Open **Settings** from the app menu (four squares) in the top bar (Settings…), with **Ctrl+,**, from Ctrl+K
+("Settings…") or from the app menu on the home screen. The dialog gathers your preferences in one
 place. They belong to this browser or this computer, never to a design, so a design you send
 someone doesn't carry them.
 
-Everything in it is the same setting you can change where you work: the gear's checkboxes, the
+Everything in it is the same setting you can change where you work: the app menu's checkboxes, the
 sketch palette, the Print Info panel and the Export dialog stay as they are, and a change in
 either place shows in the other at once. A reload keeps them.
 

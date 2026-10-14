@@ -15,9 +15,17 @@ export const DOCS_URL = 'https://extrudo.org/docs';
  */
 const DOCS_PATH = /^\/(tools\/([A-Za-z0-9]+\/)?|tutorials\/|examples\/)?$/;
 
+/** The top bar's About and GitHub links, the same addresses as the web app's (`docsLinks.ts`). */
+export const SITE_URLS: Readonly<Record<string, string>> = {
+  about: 'https://extrudo.org',
+  repo: 'https://github.com/zoltanf/extrudo',
+};
+
 export interface Docs {
   /** Opens `DOCS_URL + path` for a whitelisted path; ignores anything else. */
   open(path: unknown): void;
+  /** Opens a `SITE_URLS` entry by name; ignores any other name. */
+  openSite(link: unknown): void;
 }
 
 /** Builds the docs opener over an injected `openExternal`-like dependency. */
@@ -26,6 +34,10 @@ export function createDocs(openExternal: (url: string) => void): Docs {
     open(path) {
       if (typeof path !== 'string' || !DOCS_PATH.test(path)) return;
       openExternal(DOCS_URL + path);
+    },
+    openSite(link) {
+      if (typeof link !== 'string' || !Object.hasOwn(SITE_URLS, link)) return;
+      openExternal(SITE_URLS[link] as string);
     },
   };
 }

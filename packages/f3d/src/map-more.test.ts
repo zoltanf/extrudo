@@ -684,6 +684,88 @@ describe('f3dToDesign: copying features', () => {
     expect(volume).toBeLessThan(RING - HOLE);
   });
 
+  it('offsets the side of the collinear line its plane is rooted at', async () => {
+    // A 40 × 20 mm plate 10 mm thick with a notch in its top edge (x 20…30, 5 mm deep): the
+    // top edge is two collinear lines, 10 mm (x 40…30) and 20 mm (x 20…0) long. The file
+    // roots a side's plane on its line, here at the short one's start, (40, 20) mm.
+    const at: [number, number][] = [
+      [0, 0],
+      [4, 0],
+      [4, 2],
+      [3, 2],
+      [3, 1.5],
+      [2, 1.5],
+      [2, 2],
+      [0, 2],
+    ];
+    const tags = at.map((_, i) => BigInt(301 + i));
+    const f3d: F3dDesign = {
+      parameters: [],
+      userParameters: [],
+      features: [
+        {
+          ...base,
+          type: 'sketch',
+          id: 1,
+          kind: 'Sketch',
+          name: 'Sketch1',
+          sketch: {
+            id: 5,
+            frame: IDENTITY,
+            points: at.map(([x, y], i) => ({ id: 20 + i, at: [x, y, 0], incidence: 0 })),
+            lines: at.map(([x, y], i) => {
+              const [u, v] = at[(i + 1) % at.length] as [number, number];
+              return {
+                id: 40 + i,
+                tag: tags[i] as bigint,
+                start: [x, y, 0],
+                end: [u, v, 0],
+                startPoint: 20 + i,
+                endPoint: 20 + ((i + 1) % at.length),
+                construction: false,
+              };
+            }),
+            circulars: [],
+            splines: [],
+            texts: [],
+          },
+        },
+        {
+          ...extrude(2, 'Extrude1', 5, 'new-body', 0n),
+          parameters: [parameter({ name: 'd2', kind: 'AlongDistance', value: 1 })],
+          profiles: [
+            {
+              id: 102,
+              sketch: 5,
+              regions: [{ outer: [tags], inner: [], outerPieces: whole([tags]), innerPieces: [] }],
+            },
+          ],
+        },
+        {
+          ...base,
+          type: 'offset-faces',
+          id: 3,
+          kind: 'OffsetFaces',
+          name: 'OffsetFaces1',
+          distance: parameter({ name: 'd3', kind: 'distance', value: 0.1 }),
+          faces: [
+            {
+              tags: [{ token: '3', designs: [2] }],
+              feature: 2,
+              surface: { kind: 'plane', point: [4, 2, 0], normal: [0, 1, 0] },
+            },
+          ],
+        },
+      ],
+      bodies: [],
+      problems: [],
+    };
+    const { report } = f3dToDesign(f3d, 'Plate');
+    expect(report.imported).toContain('OffsetFaces1');
+    // 7.5 cm² × 1 cm, and the 10 mm side pushed out 1 mm (the 20 mm one would add 200 mm³).
+    expect(await volumes(f3d)).toEqual([expect.closeTo(7500 + 100, 3)]);
+  });
+
   it('leaves out an offset of faces a pattern copied, saying why', () => {
     const f3d = washerWithHole();
     f3d.features.push({

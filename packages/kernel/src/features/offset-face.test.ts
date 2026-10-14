@@ -2,7 +2,8 @@
 // real OCCT: planar faces pulled out and pushed in, a cylinder's wall (a
 // radius change), faces that run smoothly into each other moving together,
 // faces keeping their names (a fillet after an offset survives the distance
-// changing), several bodies, lost references, and the messages of offsets that
+// changing), rounds next to a moved face keeping their radius (ADR-0051's
+// amendment, 2026-10-14), several bodies, lost references, and the messages of offsets that
 // can't be built with the largest distance that works (FR-UX-06).
 // `golden/offset-face-options.json` is a golden table of cases (a Vitest file
 // snapshot); rewrite it with `pnpm vitest run -u packages/kernel/src/features/offset-face`
@@ -261,10 +262,10 @@ describe('offset face', { timeout: 120_000 }, () => {
     expect(faceNames(less).some((n) => n.startsWith('fillet:R:'))).toBe(true);
   });
 
-  it('moves the faces that run smoothly into a picked face along with it', async () => {
+  it('a round next to the moved face keeps its radius, and the face past it stays', async () => {
     // A cylinder with its top edge rounded: the top, the rounded band and the wall are one
-    // smooth chain. Pulling the top 2 mm out grows the whole pad, radius and height; the
-    // floor, which meets the wall at a crease, stays.
+    // smooth chain. Pulling the top 2 mm out moves the top; the 3 mm round is made again
+    // between the moved top and the wall, which stays, as does the floor.
     const c = cylinder();
     const first = ok(await run(testDocument(c.features)));
     const round: Feature = {
@@ -273,21 +274,107 @@ describe('offset face', { timeout: 120_000 }, () => {
         { edges: [refTo(first, 'edge', between(cap, c.wall))], radius: '3 mm' },
       ]),
     };
-    const rounded = ok(await run(testDocument([...c.features, round])));
+    const rounded = ok(await runWithShapes(testDocument([...c.features, round])));
+    const before = measure('B:0').volume;
     const top = refTo(rounded, 'face', cap);
     const result = ok(
       await runWithShapes(testDocument([...c.features, round, offset('O', [top], '2 mm')])),
     );
-    expect(measure('B:0')).toMatchObject({ valid: true, faces: 4 });
-    expect(measure('B:0').bbox.map((v) => Math.round(v) + 0)).toEqual([-12, -12, 0, 12, 12, 22]);
-    expect(faceNames(result).filter((n) => n.startsWith('fillet:R:'))).toHaveLength(1);
-    // The kernel says which faces move together, and the floor stands alone.
+    const m = measure('B:0');
+    expect(m).toMatchObject({ valid: true, faces: 4 });
+    expect(m.bbox.map((v) => Math.round(v) + 0)).toEqual([-10, -10, 0, 10, 10, 22]);
+    // The wall is 2 mm taller: the volume grows by that ring.
+    expect(m.volume - before).toBeCloseTo(Math.PI * 10 * 10 * 2, 1);
+    const names = faceNames(result);
+    const band = names.findIndex((n) => n.startsWith('fillet:R:'));
+    expect(band).toBeGreaterThanOrEqual(0);
     const shape = bodyShapes.get('B:0') as ShapeHandle;
-    expect(kernel.tangentFaces(shape, faceNames(result).indexOf(cap))).toHaveLength(3);
-    expect(kernel.tangentFaces(shape, faceNames(result).indexOf(floor))).toHaveLength(1);
+    const torus = kernel.surfaceGeometry(shape, band);
+    expect(torus.type).toBe('torus');
+    expect(torus.minorRadius).toBeCloseTo(3, 6);
+    expect(torus.origin?.[2]).toBeCloseTo(19, 6);
+    expect(kernel.surfaceGeometry(shape, names.indexOf(c.wall)).radius).toBeCloseTo(10, 6);
+    // The kernel says which faces run smoothly into each other, and the floor stands alone.
+    expect(kernel.tangentFaces(shape, names.indexOf(cap))).toHaveLength(3);
+    expect(kernel.tangentFaces(shape, names.indexOf(floor))).toHaveLength(1);
   });
 
-  it('refuses a body whose rounded edges meet at a sharp corner, before OCCT can trap on it', async () => {
+  it('moves rounds with the face, radius kept, on a block with rounded corners', async () => {
+    // The two vertical edges at the right face rounded 3 mm; the right face pushed out and in
+    // by 1 mm. Each round's axis follows the face by 1 mm, its radius stays 3 mm, the front
+    // and back stay where they are (an offset of the rounds would have grown them to 4 mm
+    // and moved the front and back too).
+    const { base } = await withBlock();
+    const first = ok(await run(testDocument(base.features)));
+    const l = base.lines;
+    const right = side(l.right);
+    const corners: Feature = {
+      ...testFeature('R', 'fillet'),
+      inputs: filletInputs([
+        {
+          edges: [between(right, side(l.bottom)), between(right, side(l.top))].map((e) =>
+            refTo(first, 'edge', e),
+          ),
+          radius: '3 mm',
+        },
+      ]),
+    };
+    const rounded = ok(await runWithShapes(testDocument([...base.features, corners])));
+    const before = measure('B:0');
+    const roundNames = faceNames(rounded)
+      .filter((n) => n.startsWith('fillet:R:'))
+      .sort();
+    expect(roundNames).toHaveLength(2);
+    const face = refTo(rounded, 'face', right);
+    for (const d of [1, -1]) {
+      const result = ok(
+        await runWithShapes(
+          testDocument([...base.features, corners, offset('O', [face], `${d} mm`)]),
+        ),
+      );
+      const m = measure('B:0');
+      expect(m).toMatchObject({ valid: true, faces: 8 });
+      // The box round a filleted body is a little loose.
+      expect(m.bbox.map((v) => Math.round(v) + 0)).toEqual([0, 0, 0, BOX.w + d, BOX.d, BOX.h]);
+      // The straight part between the rounds moves by d over the 30 × 20 face.
+      expect(m.volume - before.volume).toBeCloseTo(d * BOX.d * BOX.h, 3);
+      const names = faceNames(result);
+      expect(names.filter((n) => n.startsWith('fillet:R:')).sort()).toEqual(roundNames);
+      const shape = bodyShapes.get('B:0') as ShapeHandle;
+      const axes = roundNames.map((n) => kernel.surfaceGeometry(shape, names.indexOf(n)));
+      for (const axis of axes) {
+        expect(axis.type).toBe('cylinder');
+        expect(axis.radius).toBeCloseTo(3, 6);
+        expect(axis.origin?.[0]).toBeCloseTo(BOX.w - 3 + d, 6);
+      }
+      expect(axes.map((a) => round(a.origin?.[1] ?? Number.NaN, 6)).sort((a, b) => a - b)).toEqual([
+        3,
+        BOX.d - 3,
+      ]);
+    }
+  });
+
+  it('moves the faces that run smoothly into a picked face along with it when none is a round', async () => {
+    // A slot: two flat sides and two half-round ends, all one smooth chain made by the
+    // extrude. Pushing one flat side out moves the whole chain: the ends grow.
+    const b = new SketchBuilder();
+    b.line(0, 0, 40, 0);
+    b.arc(40, 5, 5, -90, 90);
+    b.line(40, 10, 0, 10);
+    b.arc(0, 5, 5, 90, 270);
+    const features = [sketch('SB', b.sketch), extrude('B', 'SB', b.sketch, '10 mm')];
+    const first = ok(await run(testDocument(features)));
+    const bottom = first.bodies[0]?.mesh?.faceIds?.find((n) => n.startsWith('extrude:B:side:l'));
+    expect(bottom).toBeDefined();
+    ok(
+      await runWithShapes(
+        testDocument([...features, offset('O', [refTo(first, 'face', bottom as string)], '1 mm')]),
+      ),
+    );
+    expect(measure('B:0').bbox.map((v) => Math.round(v) + 0)).toEqual([-6, -1, 0, 46, 11, 10]);
+  });
+
+  it('refuses a body whose rounded edges meet at a sharp corner, before OCCT can trap on it, unless the rounds are made again', async () => {
     const base = block();
     const first = ok(await run(testDocument(base.features)));
     const l = base.lines;
@@ -300,17 +387,18 @@ describe('offset face', { timeout: 120_000 }, () => {
       inputs: filletInputs([{ edges, radius: '3 mm' }]),
     };
     const rounded = ok(await run(testDocument([...base.features, round])));
-    for (const face of [cap, floor]) {
-      const failed = await run(
-        testDocument([
-          ...base.features,
-          round,
-          offset('O', [refTo(rounded, 'face', face)], '2 mm'),
-        ]),
-      );
-      expect(status(failed, 'O').status).toBe('error');
-      expect(status(failed, 'O').message).toMatch(/rounded edges that meet at a sharp corner/);
-    }
+    const at = (face: string) =>
+      testDocument([...base.features, round, offset('O', [refTo(rounded, 'face', face)], '2 mm')]);
+    // The floor touches no round: OCCT would offset the body as it is, and is not let.
+    const failed = await run(at(floor));
+    expect(status(failed, 'O').status).toBe('error');
+    expect(status(failed, 'O').message).toMatch(/rounded edges that meet at a sharp corner/);
+    // The top runs into all three rounds: they are taken off, the top moved, and the rounds
+    // made again at 3 mm, so the offset never sees the corners.
+    const top = ok(await runWithShapes(at(cap)));
+    expect(measure('B:0')).toMatchObject({ valid: true });
+    expect(measure('B:0').bbox.map((v) => Math.round(v) + 0)).toEqual([0, 0, 0, 40, 30, 22]);
+    expect(faceNames(top).filter((n) => n.startsWith('fillet:R:'))).toHaveLength(3);
   });
 
   it('offsets faces of several bodies, each on its own', async () => {

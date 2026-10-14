@@ -2,15 +2,13 @@ import { type DocumentStore, renameDocument } from '@extrudo/core';
 import {
   BookOpen,
   CircleHelp,
+  Code,
   GraduationCap,
   History,
   ListChecks,
-  Mouse,
-  Puzzle,
   Redo2,
   RefreshCw,
   Search,
-  Settings,
   Shapes,
   Undo2,
   Wrench,
@@ -24,12 +22,9 @@ import {
   IconButton,
   LogoMark,
   Menu,
-  MenuCheckboxItem,
   MenuItem,
   MenuLabel,
-  MenuRadioGroup,
   MenuSeparator,
-  MenuSub,
   Popover,
   TextInput,
   type ThemeChoice,
@@ -38,8 +33,8 @@ import {
 } from '../design-system';
 import type { Autosaver } from '../project/autosave';
 import { HOME_HREF } from '../routes';
-import { NAV_PRESETS } from '../viewport/navigation';
-import type { ViewportStore } from '../viewport/store';
+import type { DisplayAccess } from '../settings/displaySettings';
+import { AppMenu } from './AppMenu';
 import type { DocsPage } from './docsLinks';
 import { TITLE_GAP, type TitleFit, titleFit } from './titleFit';
 
@@ -94,8 +89,8 @@ export interface AppBarProps {
    * `at`, or centred when absent (the Help menu).
    */
   onSearch(at?: { x: number; y: number }): void;
-  /** The view's display settings: Settings › General reads and writes the auto-project ones. */
-  viewport: ViewportStore;
+  /** The view's display settings: the app menu's General and Mouse controls read and write them. */
+  display: DisplayAccess;
   /** Opens "Customize Marking Menu…". */
   onCustomizeMarking(): void;
   /** Starts the tutorial (P3-12). */
@@ -111,6 +106,12 @@ export interface AppBarProps {
   onMarkingRadial(radial: boolean): void;
   /** Opens the Settings dialog (ADR-0082). */
   onSettings(): void;
+  /** Help › Source on GitHub. */
+  onSource(): void;
+  /** The app menu's Quit (desktop only); absent on the web. */
+  onQuit?: (() => void) | undefined;
+  /** The app menu's Close design (the web's stand-in for Quit). */
+  onCloseDesign?: (() => void) | undefined;
 }
 
 /** A command's first key as it reads here ("Ctrl+K"). */
@@ -125,8 +126,8 @@ const Separator = () => <div className="mx-1.5 h-5 w-px shrink-0 bg-line" aria-h
 /**
  * The top bar (UI spec §2, ADR-0079): the logo, the toolbar's tabs, search, undo,
  * redo (UI review 3, R3-05), the design's name and save state centred
- * between them and the right-hand buttons: version history, settings (with the
- * theme) and help. The File menu it once had is the Home tab.
+ * between them and the right-hand buttons: version history, the app menu
+ * (`AppMenu`) and help. The File menu it once had is the Home tab.
  */
 export function AppBar({
   store,
@@ -142,9 +143,12 @@ export function AppBar({
   onCheckUpdates,
   markingRadial,
   onMarkingRadial,
-  viewport,
+  display,
   onCustomizeMarking,
   onSettings,
+  onSource,
+  onQuit,
+  onCloseDesign,
 }: AppBarProps) {
   const name = useStore(store, (s) => s.doc.name);
   const { canUndo, canRedo, undoLabel, redoLabel, undo, redo } = useStore(store);
@@ -199,8 +203,8 @@ export function AppBar({
             <History size={18} strokeWidth={1.75} />
           </IconButton>
         )}
-        <SettingsMenu
-          viewport={viewport}
+        <AppMenu
+          display={display}
           theme={theme}
           onThemeChange={onThemeChange}
           onCustomizeMarking={onCustomizeMarking}
@@ -208,6 +212,8 @@ export function AppBar({
           onMarkingRadial={onMarkingRadial}
           onSettings={onSettings}
           onPlugins={file.plugins}
+          onQuit={onQuit}
+          onCloseDesign={onCloseDesign}
         />
         <Menu
           label="Help"
@@ -249,6 +255,10 @@ export function AppBar({
           <MenuItem icon={<Wrench size={14} />} onSelect={() => onDocs('tools')}>
             Tool Reference
           </MenuItem>
+          <MenuSeparator />
+          <MenuItem icon={<Code size={14} />} onSelect={onSource}>
+            Source on GitHub
+          </MenuItem>
           {onCheckUpdates && (
             <>
               <MenuSeparator />
@@ -283,102 +293,6 @@ function SearchButton({ onSearch }: Pick<AppBarProps, 'onSearch'>) {
         <Search size={18} strokeWidth={1.75} />
       </IconButton>
     </span>
-  );
-}
-
-/** The gear: general settings, then the theme below (ADR-0079, round 2). */
-function SettingsMenu({
-  viewport,
-  theme,
-  onThemeChange,
-  onCustomizeMarking,
-  markingRadial,
-  onMarkingRadial,
-  onSettings,
-  onPlugins,
-}: Pick<
-  AppBarProps,
-  | 'viewport'
-  | 'theme'
-  | 'onThemeChange'
-  | 'onCustomizeMarking'
-  | 'markingRadial'
-  | 'onMarkingRadial'
-  | 'onSettings'
-> & {
-  /** Opens the Plugins dialog (R3-12: it left the Home tab for this menu). */
-  onPlugins?: (() => void) | undefined;
-}) {
-  const autoProject = useStore(viewport, (s) => s.autoProject);
-  const autoProjectFace = useStore(viewport, (s) => s.autoProjectFace);
-  const preset = useStore(viewport, (s) => s.preset);
-  return (
-    <Menu
-      label="Settings"
-      align="end"
-      trigger={
-        <IconButton label="Settings">
-          <Settings size={18} strokeWidth={1.75} />
-        </IconButton>
-      }
-    >
-      <MenuItem
-        icon={<Settings size={14} />}
-        shortcut={keyLabel('openSettings')}
-        onSelect={onSettings}
-      >
-        Settings…
-      </MenuItem>
-      {onPlugins && (
-        <MenuItem icon={<Puzzle size={14} />} onSelect={onPlugins}>
-          Plugins…
-        </MenuItem>
-      )}
-      <MenuSeparator />
-      <MenuLabel>General</MenuLabel>
-      <MenuCheckboxItem
-        checked={autoProject}
-        onChange={(v) => viewport.getState().setAutoProject(v)}
-      >
-        Auto-project body edges
-      </MenuCheckboxItem>
-      <MenuCheckboxItem
-        checked={autoProjectFace}
-        onChange={(v) => viewport.getState().setAutoProjectFace(v)}
-      >
-        Auto-project face outline
-      </MenuCheckboxItem>
-      {/* The same state as the command "Right-Click Menu: Use a List / Use the Ring". */}
-      <MenuCheckboxItem checked={markingRadial} onChange={onMarkingRadial}>
-        Radial right-click menu
-      </MenuCheckboxItem>
-      <MenuItem onSelect={onCustomizeMarking}>Customize Marking Menu…</MenuItem>
-      {/* The nav bar's Mouse controls moved here (the owner's UI review 3, R3-03); each
-          preset says what it binds before it is chosen. The Settings dialog's "Mouse
-          buttons" is the same preference. */}
-      <MenuSub label="Mouse controls" icon={<Mouse size={14} />}>
-        <MenuRadioGroup
-          value={preset}
-          onChange={(value) => viewport.getState().setPreset(value)}
-          options={NAV_PRESETS.map((p) => ({
-            value: p.value,
-            label: p.label,
-            description: p.summary,
-          }))}
-        />
-      </MenuSub>
-      <MenuSeparator />
-      <MenuLabel>Theme</MenuLabel>
-      <MenuRadioGroup
-        value={theme}
-        onChange={onThemeChange}
-        options={[
-          { value: 'system', label: 'System' },
-          { value: 'light', label: 'Light' },
-          { value: 'dark', label: 'Dark' },
-        ]}
-      />
-    </Menu>
   );
 }
 

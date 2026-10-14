@@ -12,6 +12,7 @@ export interface FacadeBinding {
   releaseAll(): void;
   clearArgs(): void;
   pushArg(value: number): void;
+  pushBlend(face: number): void;
   clearNumbers(): void;
   pushNumber(value: number): void;
   makeBox(x: number, y: number, z: number, dx: number, dy: number, dz: number): number;

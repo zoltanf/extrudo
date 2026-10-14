@@ -787,15 +787,26 @@ export class Kernel {
    * shape's face list) by `distance` mm along its outward normal (positive
    * grows the body there, negative cuts into it), the faces next to them
    * extended or trimmed to follow. OCCT moves the faces that run smoothly
-   * into a picked one with it (`tangentFaces`). A failure is an
+   * into a picked one with it (`tangentFaces`), except through `blends`:
+   * constant-radius rounds (cylinder or torus faces) that are removed and
+   * made again at their radius between the moved faces and their other
+   * neighbours, which stay (ADR-0051's amendment, 2026-10-14); where that
+   * can't be built, they move with the rest as before. A failure is an
    * `OffsetFaceError` with the facade's diagnosis. History: input 0; every
-   * face generates its offset image, a face the offset swallows is deleted.
+   * face generates its offset image, a face the offset swallows is deleted,
+   * a re-made round is modified into its new face.
    */
-  offsetFaces(shape: ShapeHandle, faces: readonly number[], distance: number): OperationResult {
+  offsetFaces(
+    shape: ShapeHandle,
+    faces: readonly number[],
+    distance: number,
+    blends: readonly number[] = [],
+  ): OperationResult {
     this.#solid(shape, 'Press Pull');
     const f = this.#facade;
     f.clearArgs();
     for (const face of faces) f.pushArg(face);
+    for (const face of blends) f.pushBlend(face);
     const handle = f.offsetFaces(shape, distance);
     if (handle === 0) {
       throw new OffsetFaceError(

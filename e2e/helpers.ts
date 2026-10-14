@@ -327,3 +327,30 @@ export async function projector(viewport: Locator) {
     };
   };
 }
+
+/** The top bar's app menu button (four squares), on the home screen and in a design. */
+export const appMenu = (page: Page) =>
+  page.locator('header').getByRole('button', { name: 'Menu', exact: true });
+
+/** Opens one of the app menu's submenus (Behaviour, Mouse controls, Theme) and returns it. */
+export async function appSubmenu(page: Page, name: 'Behaviour' | 'Mouse controls' | 'Theme') {
+  await appMenu(page).click();
+  await page.getByRole('menuitem', { name, exact: true }).click();
+  const menu = page.getByRole('menu', { name, exact: true });
+  await expect(menu).toBeVisible();
+  return menu;
+}
+
+/**
+ * Chooses an item in an open submenu by keyboard: a pointer jumping straight from the
+ * submenu's trigger to an item (as Playwright's click moves it) closes a Radix submenu.
+ */
+export async function chooseInMenu(
+  menu: Locator,
+  role: 'menuitemradio' | 'menuitemcheckbox' | 'menuitem',
+  name: string,
+) {
+  // A checked checkbox's name starts with its ✓, so only a radio is matched exactly.
+  await menu.getByRole(role, { name, exact: role === 'menuitemradio' }).focus();
+  await menu.page().keyboard.press('Enter');
+}

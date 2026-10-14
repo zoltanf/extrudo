@@ -11,7 +11,7 @@ export type NavPreset = 'spindle' | 'crank' | 'glide' | 'blender' | 'trackpad';
  * The presets in menu order; the first is the default (`DEFAULT_SETTINGS.preset`). The first
  * three are named after a workshop motion that says what the drag does (the owner's UI review 3,
  * R3-04): no preset is named after another CAD product; Blender keeps its name by the owner's
- * choice. `summary` is the one line the Settings menu shows under the preset and the Settings
+ * choice. `summary` is the one line the app menu shows under the preset and the Settings
  * dialog under its field: what orbits, pans and zooms, and what Shift does.
  */
 export const NAV_PRESETS: readonly { value: NavPreset; label: string; summary: string }[] = [
