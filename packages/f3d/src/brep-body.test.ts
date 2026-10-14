@@ -7,7 +7,8 @@
 import { describe, expect, it } from 'vitest';
 import { readAsm } from './asm';
 import { type AsmBodySolid, asmBodies } from './asm-body';
-import { hasInwardFace, solidStep, utf16StreamName } from './brep-step';
+import { splinePoint } from './asm-spline';
+import { hasInwardFace, solidStep, torusSpline, utf16StreamName } from './brep-step';
 import { F3dFormatError } from './bytes';
 
 type V = [number, number, number];
@@ -785,7 +786,7 @@ describe('solidToStep', () => {
     expect(step).toMatch(/TOROIDAL_SURFACE\('',#\d+,15,2\.5\)/);
   });
 
-  it('refuses a degenerate torus with a reason', () => {
+  it('writes a torus whose tube is not smaller than its ring as a rational B-spline', () => {
     const { step, reason } = solidStep(
       firstSolid(
         solidStream([
@@ -796,8 +797,9 @@ describe('solidToStep', () => {
         ]),
       ),
     );
-    expect(step).toBeUndefined();
-    expect(reason).toBe('unsupported geometry (a torus whose tube is not smaller than its ring)');
+    expect(reason).toBeUndefined();
+    expect(step).not.toContain('TOROIDAL_SURFACE');
+    expect(step).toContain('RATIONAL_B_SPLINE_SURFACE');
   });
 
   it('writes a reversed, inward sphere with a positive radius and same-sense false', () => {
@@ -1012,6 +1014,111 @@ describe('solidToStep', () => {
     );
     expect(step).toBeUndefined();
     expect(reason).toBe('unsupported geometry (a loop with no edge)');
+  });
+});
+
+describe('degenerate tori', () => {
+  type Torus = Parameters<typeof torusSpline>[0];
+  const torus = (major: number, minor: number): Torus => ({
+    kind: 'torus',
+    center: [1, 2, 3],
+    axis: [0, 0, 1],
+    ref: [1, 0, 0],
+    major,
+    minor,
+    inward: false,
+  });
+  /** The surface at (u, v): its weights are a u weight times a v weight, so rows then a column. */
+  const at = (s: ReturnType<typeof torusSpline>, u: number, v: number): V => {
+    const row = (i: number) =>
+      splinePoint(
+        {
+          degree: 2,
+          knots: s.vKnots,
+          mults: s.vMults,
+          points: s.points[i] as V[],
+          weights: s.weights?.[i] as number[],
+          closed: false,
+        },
+        v,
+      );
+    return splinePoint(
+      {
+        degree: 2,
+        knots: s.uKnots,
+        mults: s.uMults,
+        points: s.points.map((_, i) => row(i)),
+        weights: s.weights?.map((w) => w[0] as number),
+        closed: true,
+      },
+      u,
+    );
+  };
+  for (const [name, major, minor] of [
+    ['an apple (tube larger than ring)', 1, 2],
+    ['a horn (tube equal to ring)', 1.5, 1.5],
+    ['a lemon (negative ring)', -1, 2],
+  ] as const)
+    it(`writes ${name} as the tube's arc on its side of the axis, swept round`, () => {
+      const s = torusSpline(torus(major, minor), 0.4);
+      const [u0, u1] = [s.uKnots[0] as number, s.uKnots[s.uKnots.length - 1] as number];
+      const [v0, v1] = [s.vKnots[0] as number, s.vKnots[s.vKnots.length - 1] as number];
+      expect(u0).toBeCloseTo(0.4, 12);
+      expect(u1 - u0).toBeCloseTo(2 * Math.PI, 12);
+      for (let a = 0; a <= 8; a++)
+        for (let b = 0; b <= 8; b++) {
+          const u = u0 + ((u1 - u0) * a) / 8;
+          const v = v0 + ((v1 - v0) * b) / 8;
+          const p = at(s, u, v);
+          const q: V = [p[0] - 1, p[1] - 2, p[2] - 3];
+          const radial = q[0] * Math.cos(u) + q[1] * Math.sin(u);
+          // On the tube circle centred at the signed ring radius, on its own side of the axis.
+          expect(Math.hypot(radial - major, q[2])).toBeCloseTo(minor, 9);
+          expect(radial).toBeGreaterThan(-1e-9);
+          expect(Math.abs(q[0] * Math.sin(u) - q[1] * Math.cos(u))).toBeLessThan(1e-9);
+          // The two ends of the arc are on the axis.
+          if (b === 0 || b === 8) expect(radial).toBeCloseTo(0, 9);
+          if (b === 4 && a === 3) {
+            // u × v points out of the tube.
+            const h = 1e-6;
+            const du = at(s, u + h, v).map((x, k) => x - (p[k] as number)) as V;
+            const dv = at(s, u, v + h).map((x, k) => x - (p[k] as number)) as V;
+            const n: V = [
+              du[1] * dv[2] - du[2] * dv[1],
+              du[2] * dv[0] - du[0] * dv[2],
+              du[0] * dv[1] - du[1] * dv[0],
+            ];
+            const out: V = [q[0] - major * Math.cos(u), q[1] - major * Math.sin(u), q[2]];
+            expect(n[0] * out[0] + n[1] * out[1] + n[2] * out[2]).toBeGreaterThan(0);
+          }
+        }
+    });
+});
+
+describe('loop winding', () => {
+  /** The written loop: each oriented edge's edge-curve id and flag, in order. */
+  const loopOf = (step: string): string[] => {
+    const loop = step.match(/EDGE_LOOP\('',\(([^)]*)\)\)/)?.[1] ?? '';
+    return loop.split(',').map((ref) => {
+      const line = step.match(
+        new RegExp(`${ref}=ORIENTED_EDGE\\('',\\*,\\*,(#\\d+), \\.(T|F)\\.\\)`),
+      );
+      return `${line?.[1]}${line?.[2]}`;
+    });
+  };
+  it('follows the file’s face flag on a negative-radius surface, not the folded sense', () => {
+    // The same raw flag on a sphere signed outward and inward: the faces' senses
+    // differ (the reader folds the sign in), the loop the file wound does not.
+    const face = (inward: boolean): FaceIn => ({
+      surface: { t: 'sphere', c: [1, 2, 3], axis: [0, 0, 1], r: 2.5, inward },
+      forward: true,
+      loops: [squareAt(0)],
+    });
+    const plain = solidStep(firstSolid(solidStream([face(false)]))).step as string;
+    const inward = solidStep(firstSolid(solidStream([face(true)]))).step as string;
+    expect(plain).toMatch(/ADVANCED_FACE\([^;]*\.T\.\);/);
+    expect(inward).toMatch(/ADVANCED_FACE\([^;]*\.F\.\);/);
+    expect(loopOf(inward)).toEqual(loopOf(plain));
   });
 });
 

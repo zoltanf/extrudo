@@ -2,8 +2,10 @@
  * A body of the file's B-rep streams → AP214 STEP text (mm), for planes,
  * cylinders, cones, spheres, tori and the B-spline surfaces the file stores for
  * its procedural ones, with straight, elliptical (circle) and B-spline edges.
- * A solid with voids is written as `BREP_WITH_VOIDS`. Anything else (a helix,
- * which keeps no B-spline; a degenerate torus) is refused with a reason.
+ * A solid with voids is written as `BREP_WITH_VOIDS`, and a torus whose tube is
+ * not smaller than its ring (or whose ring radius is negative) as the exact
+ * rational B-spline of the part its face uses. Anything else (a helix, which
+ * keeps no B-spline) is refused with a reason.
  *
  * The body a design record names is found through its body container
  * (`FORMAT.md`, `CD57BC48…`): a container lists the bodies of its component in
@@ -212,12 +214,13 @@ export function solidToStep(solid: AsmBodySolid): string {
         const oriented: { ref: number; forward: boolean }[] = [];
         for (const coedge of loop.coedges)
           for (const ref of edge(coedge.edge)) oriented.push({ ref, forward: coedge.forward });
-        // A not-reversed face is written with its loop reversed and same-sense
-        // true; a reversed face keeps the file's loop and same-sense false. The
-        // pair is what a kernel rebuilds the body with (the loop still winds the
-        // way STEP wants after the reversal). A surface the file wrote with a
-        // negative radius has its face already marked reversed by the reader.
-        if (!face.reversed) {
+        // The file winds a loop against its own surface's normal: a face the
+        // file marks forward is written with its loop reversed (and same-sense
+        // true), a face it marks reversed keeps the file's loop (same-sense
+        // false). A surface the file wrote with a negative radius points the
+        // other way than the one written, so the reader has its face marked
+        // reversed for the same-sense, but its loop still follows the file's flag.
+        if (!face.reversed !== inwardSurface(face.surface)) {
           oriented.reverse();
           for (const o of oriented) o.forward = !o.forward;
         }
@@ -230,7 +233,12 @@ export function solidToStep(solid: AsmBodySolid): string {
         bounds.push(w.add(`${cls}('',#{},.T.)`, [el]));
       }
       if (bounds.length === 0) throw new UnsupportedGeometry('a face with no boundary');
-      const surface = w.surface(face.surface);
+      // A torus no `TOROIDAL_SURFACE` holds is written as the rational B-spline
+      // of its part the file uses, as the file's own STEP export writes it.
+      const surface =
+        face.surface.kind === 'torus' && degenerateTorus(face.surface)
+          ? w.bsplineSurface(torusSpline(face.surface, seamAngle(face)))
+          : w.surface(face.surface);
       faceRefs.push(
         w.add("ADVANCED_FACE('',({}),#{},.{}.)", [
           bounds.map((x) => `#${x}`).join(','),
@@ -291,6 +299,187 @@ function splineBreaks(
     if (b > hi + tol) return [splinePoint(c, lo)];
   }
   return closedEdge ? [splinePoint(c, (a + b) / 2)] : [];
+}
+
+type Torus = Extract<AsmSurface, { kind: 'torus' }>;
+type Vec = [number, number, number];
+const dot = (a: Vec, b: Vec): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const sub = (a: Vec, b: Vec): Vec => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const scaled = (a: Vec, k: number): Vec => [a[0] * k, a[1] * k, a[2] * k];
+const cross = (a: Vec, b: Vec): Vec => [
+  a[1] * b[2] - a[2] * b[1],
+  a[2] * b[0] - a[0] * b[2],
+  a[0] * b[1] - a[1] * b[0],
+];
+const unit = (a: Vec): Vec => scaled(a, 1 / (Math.hypot(a[0], a[1], a[2]) || 1));
+
+/**
+ * A torus `TOROIDAL_SURFACE` cannot hold: the file's tube is not smaller than
+ * its ring (an apple, or a horn when they are equal), or its ring radius is
+ * negative (a lemon). The file's torus is the tube circle swept round the
+ * axis with its centre at the signed ring radius, and a face uses the part of
+ * it on its own side of the axis (every vertex of the corpus's 115 such faces
+ * sits there).
+ */
+function degenerateTorus(s: Torus): boolean {
+  if (s.major > 0 && s.minor < s.major) return false;
+  if (!(s.minor > 0)) throw new UnsupportedGeometry('a torus with no tube');
+  // A lemon whose tube does not reach the axis has no part on its side of it.
+  if (s.major < 0 && -s.major >= s.minor)
+    throw new UnsupportedGeometry('a torus with a negative ring radius');
+  return true;
+}
+
+/** The torus's axes: its reference direction (made square to the axis), Z × X, and the axis. */
+function torusFrame(s: Torus): [Vec, Vec, Vec] {
+  const Z = unit(s.axis);
+  let X = sub(s.ref, scaled(Z, dot(s.ref, Z)));
+  if (Math.hypot(X[0], X[1], X[2]) < 1e-9)
+    X = cross(Z, Math.abs(Z[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]);
+  X = unit(X);
+  return [X, cross(Z, X), Z];
+}
+
+/**
+ * A rational quadratic arc of the unit circle from angle `a` to `b`, in
+ * pieces of at most a quarter turn: its control points (a corner sits
+ * 1 / cos(half the piece) out), weights, and knots (the angles) with STEP's
+ * multiplicities.
+ */
+function unitArc(a: number, b: number) {
+  const n = Math.max(1, Math.ceil((b - a) / (Math.PI / 2) - 1e-9));
+  const step = (b - a) / n;
+  const corner = Math.cos(step / 2);
+  const points: [number, number][] = [];
+  const weights: number[] = [];
+  for (let k = 0; k < n; k++) {
+    const t = a + k * step;
+    points.push([Math.cos(t), Math.sin(t)]);
+    weights.push(1);
+    points.push([Math.cos(t + step / 2) / corner, Math.sin(t + step / 2) / corner]);
+    weights.push(corner);
+  }
+  points.push([Math.cos(b), Math.sin(b)]);
+  weights.push(1);
+  const knots = Array.from({ length: n + 1 }, (_, k) => a + k * step);
+  const mults = knots.map((_, k) => (k === 0 || k === n ? 3 : 2));
+  return { points, weights, knots, mults };
+}
+
+/**
+ * The part of a degenerate torus on its face's side of the axis as an exact
+ * rational B-spline: the tube circle's arc from axis to axis (the angles where
+ * ring + tube · cos v ≥ 0), swept a whole turn round the axis from `seam`.
+ * Its normal (u × v) points out of the tube, as the file's torus's does with
+ * a positive tube radius, so the face keeps its sense.
+ */
+export function torusSpline(s: Torus, seam: number): AsmBSplineSurface {
+  const [X, Y, Z] = torusFrame(s);
+  const reach = Math.acos(Math.min(1, Math.max(-1, -s.major / s.minor)));
+  const u = unitArc(seam, seam + 2 * Math.PI);
+  const v = unitArc(-reach, reach);
+  const points = u.points.map(([c, d]) =>
+    v.points.map(([x, z]): Vec => {
+      const radial = s.major + s.minor * x;
+      return [0, 1, 2].map(
+        (k) =>
+          (s.center[k] as number) +
+          radial * (c * (X[k] as number) + d * (Y[k] as number)) +
+          s.minor * z * (Z[k] as number),
+      ) as Vec;
+    }),
+  );
+  return {
+    uDegree: 2,
+    vDegree: 2,
+    uKnots: u.knots,
+    uMults: u.mults,
+    vKnots: v.knots,
+    vMults: v.mults,
+    points,
+    weights: u.weights.map((a) => v.weights.map((b) => a * b)),
+    uClosed: true,
+    vClosed: reach > Math.PI - 1e-12,
+  };
+}
+
+/**
+ * Where a degenerate torus face's B-spline starts round the axis: in the
+ * middle of the widest angle its boundary leaves free, so the seam stays off
+ * the face when it does not go all the way round.
+ */
+function seamAngle(face: AsmBodyFace): number {
+  const s = face.surface as Torus;
+  const [X, Y] = torusFrame(s);
+  const angles: number[] = [];
+  for (const loop of face.loops)
+    for (const { edge } of loop.coedges)
+      for (const p of edgeSamples(edge)) {
+        const q = sub(p, s.center);
+        const x = dot(q, X);
+        const y = dot(q, Y);
+        if (Math.hypot(x, y) > 1e-9) angles.push(Math.atan2(y, x));
+      }
+  if (angles.length === 0) return 0;
+  angles.sort((a, b) => a - b);
+  let at = (angles[angles.length - 1] as number) - 2 * Math.PI;
+  let widest = -1;
+  let seam = 0;
+  for (const a of angles) {
+    if (a - at > widest) {
+      widest = a - at;
+      seam = at + widest / 2;
+    }
+    at = a;
+  }
+  return seam;
+}
+
+/** Points along an edge: its vertices, and samples of an arc or a B-spline stretch. */
+function edgeSamples(e: AsmBodyEdge): Vec[] {
+  const out: Vec[] = [];
+  if (e.start) out.push(e.start);
+  if (e.end) out.push(e.end);
+  const c = e.curve;
+  const N = 32;
+  if (c.kind === 'ellipse' && e.start) {
+    const a = Math.hypot(c.major[0], c.major[1], c.major[2]);
+    const b = a * Math.abs(c.ratio);
+    if (!(a > 0 && b > 0)) return out;
+    const X = unit(c.major);
+    const Y = unit(cross(c.normal, X));
+    const angle = (p: Vec): number => {
+      const q = sub(p, c.center);
+      return Math.atan2(dot(q, Y) / b, dot(q, X) / a);
+    };
+    const t0 = angle(e.start);
+    const t1 = e.end ? angle(e.end) : t0;
+    // The edge runs with the curve's angle unless it runs against its curve.
+    const dir = e.reversed ? -1 : 1;
+    let sweep = (dir * (t1 - t0)) % (2 * Math.PI);
+    if (sweep <= 1e-9) sweep += 2 * Math.PI;
+    for (let k = 1; k < N; k++) {
+      const t = t0 + (dir * sweep * k) / N;
+      out.push(
+        [0, 1, 2].map(
+          (i) =>
+            (c.center[i] as number) +
+            a * Math.cos(t) * (X[i] as number) +
+            b * Math.sin(t) * (Y[i] as number),
+        ) as Vec,
+      );
+    }
+  } else if (c.kind === 'bspline' && e.range) {
+    const [lo, hi] = e.range;
+    const k0 = c.spline.knots[0] as number;
+    const period = (c.spline.knots[c.spline.knots.length - 1] as number) - k0;
+    for (let k = 1; k < N; k++) {
+      let t = lo + ((hi - lo) * k) / N;
+      if (c.spline.closed && period > 0) t = k0 + ((((t - k0) % period) + period) % period);
+      out.push(splinePoint(c.spline, t));
+    }
+  }
+  return out;
 }
 
 /** The STEP boilerplate's product/context entities; returns the representation context. */
@@ -389,11 +578,9 @@ class StepWriter {
       ]);
     }
     if (s.kind === 'torus') {
-      // A negative major radius is not a torus a kernel can rebuild (the file
-      // uses the sign of the minor one to point the normal, not the major).
+      // A degenerate torus is written as a B-spline by the face (see
+      // `torusSpline`); this is only reached by a caller with the surface alone.
       if (s.major < 0) throw new UnsupportedGeometry('a torus with a negative ring radius');
-      // A degenerate torus (a spindle or a horn torus) is not a solid STEP can
-      // hold; refuse it rather than write a surface the kernel cannot rebuild.
       if (!(s.minor < s.major))
         throw new UnsupportedGeometry('a torus whose tube is not smaller than its ring');
       return this.add("TOROIDAL_SURFACE('',#{},{},{})", [
@@ -610,6 +797,10 @@ export function bodiesStep(entries: Entries, design: F3dDesign): BodyStep[] {
   }
   return out;
 }
+
+/** A sphere or torus the file signs inward (a negative radius). */
+const inwardSurface = (s: AsmSurface): boolean =>
+  ((s.kind === 'sphere' || s.kind === 'torus') && s.inward) || (s.kind === 'bspline' && s.reversed);
 
 /** True when any face's sphere/torus surface carries the file's inward sign (a negative radius). */
 export function hasInwardFace(solid: AsmBodySolid): boolean {
