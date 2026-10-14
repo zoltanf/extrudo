@@ -203,7 +203,7 @@ const keyCurve = (c: CurveIn) =>
 /** A stream with one lump holding `faces`, laid out as the reader expects. */
 function solidStream(
   faces: FaceIn[],
-  opts: { faceCycle?: boolean; lumps?: number } = {},
+  opts: { faceCycle?: boolean; lumps?: number; voids?: number } = {},
 ): Uint8Array {
   const vertexAt = new Map<string, number>();
   const vertices: V[] = [];
@@ -279,11 +279,34 @@ function solidStream(
   const CURVE = POINT + vertices.length;
   const SURFACE = CURVE + curves.length;
 
-  const records: number[][] = new Array(SURFACE + surfaces.length);
+  // Void shells go last: each names the next, and a face (its own faces are not read).
+  const VOID = SURFACE + surfaces.length;
+  const voids = opts.voids ?? 0;
+  const records: number[][] = new Array(VOID + voids);
+  for (let k = 0; k < voids; k++)
+    records[VOID + k] = rec(
+      'shell',
+      ptr(-1),
+      int(-1),
+      ptr(-1),
+      ptr(k + 1 < voids ? VOID + k + 1 : -1),
+      ptr(FACE),
+      ptr(-1),
+      ptr(LUMP),
+    );
   records[BODY] = rec('body', ptr(-1), int(1), ptr(-1), ptr(LUMP), ptr(-1), ptr(-1));
   for (let li = 0; li < lumps; li++)
     records[LUMP + li] = rec('lump', ptr(-1), int(-1), ptr(-1), ptr(SHELL), ptr(BODY));
-  records[SHELL] = rec('shell', ptr(-1), int(-1), ptr(-1), ptr(-1), ptr(FACE), ptr(-1), ptr(LUMP));
+  records[SHELL] = rec(
+    'shell',
+    ptr(-1),
+    int(-1),
+    ptr(-1),
+    ptr(voids > 0 ? VOID : -1),
+    ptr(FACE),
+    ptr(-1),
+    ptr(LUMP),
+  );
 
   let loopIdx = LOOP;
   let g = 0;
@@ -575,6 +598,17 @@ describe('asmBodies', () => {
     expect(() => asmBodies(readAsm(solidStream(boxFaces(), { faceCycle: true })))).toThrow(
       F3dFormatError,
     );
+  });
+
+  it('counts a lump’s further shells as voids, and the writer refuses them', () => {
+    const solids = asmBodies(readAsm(solidStream(boxFaces(), { voids: 2 })));
+    expect(solids).toHaveLength(1);
+    expect(solids[0]?.faces).toHaveLength(6);
+    expect(solids[0]?.voids).toBe(2);
+    expect(solidStep(solids[0] as AsmBodySolid)).toEqual({
+      reason: 'unsupported geometry (a solid with an inner void)',
+    });
+    expect(asmBodies(readAsm(solidStream(boxFaces())))[0]?.voids).toBeUndefined();
   });
 
   it('reads a stream whose many lumps all name one shell just once', () => {

@@ -379,6 +379,68 @@ edge was longer or shorter then), so they tell which line or circle the
 edge is on, and which stretch of it when the bounding faces leave a choice,
 not where it ends on their own.
 
+### Spline curves and surfaces
+
+An `intcurve` (a procedural curve: an intersection, an offset, a blend's
+spring) and a `spline-surface` (a blend, an extruded or swept profile, a
+loft) carry their definition in a subtype block between `0x0F` and `0x10`.
+Inside a block the class names (`0x0D`/`0x0E`) are values in their own right,
+not the record's type: `{ exact_int_cur 22800 0 nubs 3 0 2 … }`. The record's
+value just before the block is its sense flag: true when the curve runs
+against its B-spline's parameter, or the surface's normal against the
+B-spline's own (u × v). Only `intcurve-curve`, `spline-surface`, `pcurve` and
+`tcoedge-coedge` records hold blocks.
+
+A block can be a reference instead, `{ ref n }`: the n-th block the stream
+wrote before it, counting every block that opens with a class name other than
+`ref`, in the order they open (blocks nested inside another, and those of
+other records, included). Over the corpus every one of the 72,445 references
+lands on an earlier block of the right kind (a curve on a curve, a surface on
+a surface, a parameter curve on a parameter curve) with this count, and 38,508
+miss when blocks are counted as they close.
+
+A curve block is the subtype's name, a version integer, a 0 (the B-spline is
+saved; a helix has none and writes `nullbs`), then the B-spline:
+
+| field | values |
+|---|---|
+| kind | `nubs` (polynomial) or `nurbs` (rational) |
+| degree, form, knot count | integers; form 0 open, 1 closed, 2 periodic |
+| knots | that many (value, multiplicity) pairs, the values increasing |
+| control points | x, y, z (cm), and a weight after each for `nurbs` |
+
+then the fit tolerance (a double) and the subtype's own data (its surfaces,
+its parameter curves, ranges). The end knots are written with multiplicity
+`degree`, not the `degree + 1` STEP wants, so there are `Σ multiplicities −
+degree + 1` control points. Checked on every B-spline block in the corpus
+(curves, parameter curves and surfaces, nested ones included): the end
+multiplicity equals the degree in all of them, and the run of doubles after
+the knots is exactly that many points (3 or 4 doubles each) plus the fit
+tolerance. A closed or periodic curve's first and last points are the same.
+
+A surface block holds the subtype's own data first (an extruded profile's
+curve as a whole `intcurve` block, its direction; a blend's support surfaces
+and spine), then a 0 and the surface's B-spline, at the block's own bracket
+depth: `nubs`/`nurbs`, u and v degrees, for `nurbs` the name of the rational
+directions (`u`, `v` or `both`; every point still has a weight), u and v
+forms, two singularity flags, u and v knot counts, the u knots, the v knots,
+then the points with u running fastest (point (i, j) is the (j · nu + i)-th).
+A block written with 2 instead of that 0 keeps no B-spline (an extruded
+profile saved as a summary); none of those is a live face's surface in the
+corpus. Helix surfaces (`helix_spl_line`, `helix_spl_circ`) keep none either.
+
+An edge's two parameters are on its curve, negated when the edge runs against
+it, and again when the curve runs against its B-spline: evaluating the
+B-spline at the edge's parameters gives its two vertices to under 1e-6 cm on
+all 31,484 B-spline edges of the corpus's live solids but 43. Those 43 are
+closed edges on closed curves whose stretch starts away from the curve's
+first point (a stretch of one period, past the end of the knot range), and
+the vertex is where the stretch, wrapped by the period, says.
+
+The file's STEP export of the same body re-fits its splines (other knots,
+other points), so its `B_SPLINE_*` entities agree with these only at the
+ends; they cannot be compared knot by knot.
+
 ### Fillet and chamfer faces
 
 A fillet's own faces (tagged with its operation ids) are cylinders of its

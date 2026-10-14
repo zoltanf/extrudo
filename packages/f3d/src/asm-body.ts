@@ -76,7 +76,13 @@ export interface AsmBodyFace {
 
 /** One solid of a stream: the faces of one lump's shell. */
 export interface AsmBodySolid {
+  /** The faces of the lump's first shell. */
   faces: AsmBodyFace[];
+  /**
+   * How many more shells with faces the lump holds (its inner voids: a lump's
+   * shells after the first bound cavities inside it). Their faces are not read.
+   */
+  voids?: number;
 }
 
 /** A crafted stream may not take an unbounded number of steps per walk. */
@@ -307,7 +313,17 @@ export function asmBodies(records: AsmRecord[]): AsmBodySolid[] {
     const shell = firstOf(walk.is, pointers(records[i]), 'shell');
     if (shell < 0 || walk.shells.has(shell)) continue;
     walk.shells.add(shell);
-    out.push({ faces: shellFaces(records, walk, shell) });
+    const faces = shellFaces(records, walk, shell);
+    // A shell's first pointer of its own type is the lump's next shell; each
+    // shell is visited once, so a crafted chain ends.
+    let voids = 0;
+    let next = firstOf(walk.is, pointers(records[shell]), 'shell');
+    while (next >= 0 && !walk.shells.has(next)) {
+      walk.shells.add(next);
+      if (firstOf(walk.is, pointers(records[next]), 'face') >= 0) voids++;
+      next = firstOf(walk.is, pointers(records[next]), 'shell');
+    }
+    out.push(voids > 0 ? { faces, voids } : { faces });
   }
   return out;
 }

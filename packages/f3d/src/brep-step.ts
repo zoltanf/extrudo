@@ -146,6 +146,9 @@ function entryFor(entries: Entries, file: string): Uint8Array | undefined {
 
 /** The solid as AP214 STEP text (mm). Throws `UnsupportedGeometry` on a surface or curve it does not carry. */
 export function solidToStep(solid: AsmBodySolid): string {
+  // The writer emits one closed shell; a lump's further shells are its voids,
+  // which it does not write, so such a solid would come out without them.
+  if (solid.voids) throw new UnsupportedGeometry('a solid with an inner void');
   const w = new StepWriter();
   const ctx = header(w);
   const vertexAt = new Map<string, number>();
