@@ -333,6 +333,12 @@ export interface F3dBody extends BodyFlags {
   id: number;
   /** The timeline feature that made it, by record. */
   creator?: number;
+  /**
+   * The operation IDs the operation table maps to the creator: the B-rep's face
+   * tags name the faces that feature made by these, so they tell which solid of
+   * the body's stream is the body.
+   */
+  ops?: number[];
   /** The component it is in (component record), when the file says. */
   component?: number;
 }
@@ -873,12 +879,27 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     const by = refs[at + 1];
     if (body !== undefined && by !== undefined && !creators.has(body)) creators.set(body, by);
   }
+  // Record → the operation IDs that name it, for the creators' face tags.
+  const opsOf = new Map<number, number[]>();
+  // Each operation is one map key, so a record collects an operation once.
+  for (const [op, records] of operations)
+    for (const r of new Set(records)) {
+      const list = opsOf.get(r) ?? [];
+      list.push(op);
+      opsOf.set(r, list);
+    }
   const bodies: F3dBody[] = [];
   for (const id of seg.idsOf(BODY)) {
     const flags = tryDecode(`body #${id}`, () => readBody(seg, id));
     if (!flags) continue;
     const creator = creators.get(id);
-    bodies.push({ id, ...flags, ...(creator !== undefined ? { creator } : {}) });
+    const ops = creator !== undefined ? opsOf.get(creator) : undefined;
+    bodies.push({
+      id,
+      ...flags,
+      ...(creator !== undefined ? { creator } : {}),
+      ...(ops ? { ops: [...ops] } : {}),
+    });
   }
 
   // Components: which one each feature and body belongs to, and the bodies moved between them.

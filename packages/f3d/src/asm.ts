@@ -426,6 +426,28 @@ function faceEdges(
   return out;
 }
 
+/**
+ * The (token, design record) tags of one face record, from its attribute
+ * chain (at most 64 attributes are followed).
+ */
+export function asmFaceTags(
+  records: AsmRecord[],
+  face: number,
+): { token: string; design: number }[] {
+  const tags: { token: string; design: number }[] = [];
+  let a = pointers(records[face])[0] ?? -1;
+  for (let guard = 0; a >= 0 && guard < 64; guard++) {
+    const ar = records[a];
+    if (!ar) break;
+    if (ar.type.startsWith('ATTRIB_CUSTOM')) tags.push(...tagsOf(ar));
+    // attrib: owner-side pointers come after the attribute and history slots;
+    // the next attribute is the second pointer.
+    const ap = ar.values.filter((v) => v.t === 'ptr').map((v) => (v as { v: number }).v);
+    a = ap[1] ?? -1;
+  }
+  return tags;
+}
+
 /** The faces of an ASM stream with their surfaces, tags and edges. */
 export function asmFaces(records: AsmRecord[]): AsmFace[] {
   const faces: AsmFace[] = [];
@@ -435,17 +457,7 @@ export function asmFaces(records: AsmRecord[]): AsmFace[] {
     const ptrs = pointers(r);
     // face: attribute, (history id), next face, loop, shell, subshell, surface
     const surfacePtr = ptrs[ptrs.length - 1] ?? -1;
-    const tags: { token: string; design: number }[] = [];
-    let a = ptrs[0] ?? -1;
-    for (let guard = 0; a >= 0 && guard < 64; guard++) {
-      const ar = records[a];
-      if (!ar) break;
-      if (ar.type.startsWith('ATTRIB_CUSTOM')) tags.push(...tagsOf(ar));
-      // attrib: owner-side pointers come after the attribute and history slots;
-      // the next attribute is the second pointer.
-      const ap = ar.values.filter((v) => v.t === 'ptr').map((v) => (v as { v: number }).v);
-      a = ap[1] ?? -1;
-    }
+    const tags = asmFaceTags(records, index);
     faces.push({ index, surface: surfaceOf(records[surfacePtr]), tags, edges: [] });
     tagsAt.set(index, tags);
   });
