@@ -1251,7 +1251,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 ### `e2e/plugins.spec.ts`
 
 - P6-03 (ADR-0077): the Plugins dialog (`dialog` "Plugins") opens from the
-  Settings (gear) menu's "Plugins…" (R3-12). The example plugin
+  app menu's "Plugins…" (R3-12). The example plugin
   (`examples/plugins/name-plate/`) is packed here with `writePluginFile` and
   installed through the dialog's own "Install…" file chooser
   (`name-plate.extrudo-plugin`, `application/zip`).
@@ -1511,7 +1511,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 ### `e2e/settings.spec.ts`
 
 - **Settings e2e** (`e2e/settings.spec.ts`, ADR-0082): Ctrl+, opens `dialog`
-  "Settings" (also the gear's menuitem "Settings…", whose accessible name ends with
+  "Settings" (also the app menu's menuitem "Settings…", whose accessible name ends with
   the key); sections are `[data-settings-section="general|view|sketch|printing|export|desktop"]`
   (buttons in `[data-settings-nav]`; at under 640 px a combobox "Section" instead) and the
   page is `[data-settings-page="<id>"]`. Fields are named after what they are: textboxes
@@ -1554,7 +1554,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 - P0-04, the app shell: full-page screenshots
   `shell-dark.png`/`shell-light.png` (`animations: 'disabled'`, `caret:
   'hide'`) with `document.fonts.ready` awaited as a string. The theme follows
-  the system (dark) by default; choosing Light in the Settings menu
+  the system (dark) by default; choosing Light in the app menu
   (menuitemradio) survives a reload.
 
 - The browser panel resizes: the `separator` "Resize browser" (width 248)
@@ -2116,6 +2116,14 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   Construct, 3D Print (Solid selected by default), there is no File menu and
   no Insert tab, and `header` holds Search, Undo and Redo. The chrome above
   the view is ≤ 134 px (top bar 40 + toolbar row 92 + border).
+- The app menu (round 5): `appMenu(page)` is the header's button "Menu";
+  `appSubmenu(page, 'Behaviour' | 'Mouse controls' | 'Theme')` opens a submenu and
+  returns the `menu` of that name, and `chooseInMenu(menu, role, name)` picks an item
+  by focus + Enter (a Playwright click jumping from the trigger closes a Radix
+  submenu). Escape in a submenu closes the whole menu. On the web the root menu's
+  items are Settings…, Plugins…, Behaviour, Mouse controls, Theme, Close design.
+  Home's `navigation` "Extrudo" has the links About, Docs, GitHub;
+  `help-links.spec.ts` routes `https://github.com/**` like the docs host.
 
 - Text baselines are measured through an injected zero-size inline-block
   probe; all five tabs share the wordmark's baseline (≤ 1 px) and the
@@ -2132,7 +2140,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   Construct's four groups are checked by tool id (`R3-09`/`R3-10`/`R3-12`),
   and a real sketch shows only Home and Sketch (`R3-11`).
 
-- The Settings menu holds "Auto-project body edges"/"Auto-project face
+- The app menu holds "Auto-project body edges"/"Auto-project face
   outline" (menuitemcheckboxes, shared with a sketch's palette), the theme
   radios and "Customize Marking Menu…"; its "Radial right-click menu" checkbox
   is in step with the `Right-Click Menu: Use the Ring` command. The web build
@@ -2184,7 +2192,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   and turn arrows; `status` "Current view" names the view (home is `Top Front
   Right view`, direction `-0.577,0.577,-0.577`).
 
-- Mouse presets live in the Settings menu's "Mouse controls" submenu
+- Mouse presets live in the app menu's "Mouse controls" submenu
   (`menuitemradio` Spindle/Crank/Glide/Blender/Trackpad, each with an
   accessible description; Spindle default) and in the Settings dialog's
   combobox "Mouse buttons" (R3-03). A Radix submenu closes when a pointer

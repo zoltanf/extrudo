@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { kernelReady, openProject, pickTool } from './helpers';
+import { appMenu, appSubmenu, kernelReady, openProject, pickTool } from './helpers';
 
 // ADR-0082: the Settings dialog. Preferences are per browser (localStorage), so each test
 // starts from the defaults and a reload keeps what it changed.
@@ -34,7 +34,7 @@ test('Ctrl+, opens Settings and every section opens', async ({ page }) => {
   await section(page, 'sketch').click();
   await page.keyboard.press('Escape');
   await expect(dialog(page)).toBeHidden();
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await appMenu(page).click();
   await page.getByRole('menuitem', { name: /^Settings…/ }).click();
   await expect(page.locator('[data-settings-page="sketch"]')).toBeVisible();
 });
@@ -97,9 +97,9 @@ test('Radial right-click menu matches the gear menu; the theme applies at once',
   await radial.uncheck();
   await page.keyboard.press('Escape');
 
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const menu = await appSubmenu(page, 'Behaviour');
   await expect(
-    page.getByRole('menuitemcheckbox', { name: 'Radial right-click menu' }),
+    menu.getByRole('menuitemcheckbox', { name: 'Radial right-click menu' }),
   ).toHaveAttribute('aria-checked', 'false');
   await page.keyboard.press('Escape');
 
@@ -141,7 +141,8 @@ test('settings survive a reload, and a sketch setting is the palette’s', async
 
 test('the home screen has the same dialog', async ({ page }) => {
   await page.goto('./');
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await appMenu(page).click();
+  await page.getByRole('menuitem', { name: /^Settings…/ }).click();
   await expect(dialog(page)).toBeVisible();
   await section(page, 'view').click();
   await dialog(page).getByRole('combobox', { name: 'Projection' }).selectOption('orthographic');

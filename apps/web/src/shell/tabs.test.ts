@@ -49,12 +49,12 @@ describe('visibleTabs (ADR-0079 §2)', () => {
     ]);
   });
 
-  it('puts every Home file command in the Home tab, with a file icon; Plugins in the Settings menu', () => {
+  it('puts every Home file command in the Home tab, with a file icon; Plugins in the app menu', () => {
     const home = TABS.find((t) => t.id === 'home');
     const ids = home?.groups.flatMap((g) => [...g.tools, ...(g.more ?? [])]) ?? [];
     for (const id of Object.keys(FILE_COMMANDS)) {
       expect(TOOLS[id as keyof typeof TOOLS].category).toBe('file');
-      // R3-12: Plugins is an item of the Settings menu and a Ctrl+K command, not a tile.
+      // R3-12: Plugins is an item of the app menu and a Ctrl+K command, not a tile.
       if (id === 'plugins') expect(ids).not.toContain(id);
       else expect(ids).toContain(id);
     }

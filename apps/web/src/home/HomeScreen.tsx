@@ -8,7 +8,6 @@ import {
   LayoutTemplate,
   Plus,
   Search,
-  Settings,
   ShieldAlert,
   Trash2,
   X,
@@ -31,6 +30,8 @@ import {
 } from '../design-system';
 import { requestTutorial, tourOffered, writeTour } from '../onboarding/state';
 import type { Persistence, Platform } from '../platform';
+import { PluginsDialog } from '../plugins/PluginsDialog';
+import { createPluginsStore } from '../plugins/plugins';
 import {
   createProject,
   createTutorialProject,
@@ -41,7 +42,8 @@ import {
 import { exampleHref, navigate, projectHref } from '../routes';
 import { preferencesAccess } from '../settings/displaySettings';
 import { SettingsDialog } from '../settings/SettingsDialog';
-import { ThemeMenu } from '../shell/ThemeMenu';
+import { AppMenu } from '../shell/AppMenu';
+import { ABOUT_URL, docsPath, docsUrl, REPO_URL } from '../shell/docsLinks';
 import { useUpdateNotice } from '../shell/useUpdateNotice';
 import { useMarkingStyle } from '../shell/viewMenu';
 import { EXAMPLES } from './examples';
@@ -60,6 +62,9 @@ export function HomeScreen({ platform }: { platform: Platform }) {
   const { choice, setChoice } = useTheme(platform.preferences);
   const marking = useMarkingStyle(platform.preferences);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [pluginsOpen, setPluginsOpen] = useState(false);
+  const plugins = useMemo(() => createPluginsStore(platform.plugins), [platform]);
+  const display = preferencesAccess(platform.preferences);
   const shortcuts = useMemo(
     () => [{ keys: 'Mod+,', inFields: true, run: () => setSettingsOpen(true) }],
     [],
@@ -155,27 +160,55 @@ export function HomeScreen({ platform }: { platform: Platform }) {
 
   return (
     <div className="flex h-full flex-col bg-bg text-ink">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-3">
-        <LogoMark size={22} title="Extrudo" />
-        <Wordmark className="text-[17px]" />
+      {/* The same bar as a design's (ADR-0079): height, logo and the app menu. */}
+      <header className="flex h-10 shrink-0 items-stretch gap-1 border-b border-line px-2">
+        <span className="flex shrink-0 items-center gap-2 self-center px-1 py-0.5">
+          <LogoMark size={20} title="Extrudo" />
+          <Wordmark className="text-[16px]" />
+        </span>
+        <div className="w-1.5 shrink-0" aria-hidden="true" />
+        <nav aria-label="Extrudo" className="flex h-full items-stretch gap-0.5">
+          <TopLink href={ABOUT_URL} onOpen={() => platform.openSite('about')}>
+            About
+          </TopLink>
+          <TopLink href={docsUrl('guide')} onOpen={() => platform.openDocs(docsPath('guide'))}>
+            Docs
+          </TopLink>
+          <TopLink href={REPO_URL} onOpen={() => platform.openSite('repo')}>
+            GitHub
+          </TopLink>
+        </nav>
         <div className="flex-1" />
-        <StorageBadge persistence={persistence} />
-        <IconButton
-          label="Settings"
-          shortcut="Ctrl+,"
-          hint="Your preferences: theme, navigation, sketch, 3D printing, export."
-          onClick={() => setSettingsOpen(true)}
-        >
-          <Settings size={18} strokeWidth={1.75} />
-        </IconButton>
-        <ThemeMenu theme={choice} onThemeChange={setChoice} />
+        <div className="flex shrink-0 items-center gap-1">
+          <StorageBadge persistence={persistence} />
+          <AppMenu
+            display={display}
+            theme={choice}
+            onThemeChange={setChoice}
+            markingRadial={marking.radial}
+            onMarkingRadial={(radial) => {
+              if (radial !== marking.radial) marking.toggle();
+            }}
+            onSettings={() => setSettingsOpen(true)}
+            onPlugins={() => setPluginsOpen(true)}
+            onQuit={platform.menus ? () => platform.menus?.quit() : undefined}
+          />
+        </div>
       </header>
+      <PluginsDialog
+        open={pluginsOpen}
+        onOpenChange={setPluginsOpen}
+        plugins={plugins}
+        files={platform.files}
+        inDesign={noDesignPlugins}
+        onUpdate={noDesignPlugins}
+      />
 
       <SettingsDialog
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         preferences={platform.preferences}
-        display={preferencesAccess(platform.preferences)}
+        display={display}
         theme={choice}
         onThemeChange={setChoice}
         markingRadial={marking.radial}
@@ -503,6 +536,39 @@ function ExamplesDialog({
         ))}
       </ul>
     </Dialog>
+  );
+}
+
+/** No design is open here, so the Plugins dialog has none of a design's plugins to show or update. */
+const noDesignPlugins = () => Promise.reject(new Error('No design is open.'));
+
+/**
+ * A link in the top bar to an outside page, styled as the toolbar's tabs. It opens
+ * in a new tab through the platform (the desktop opens it in the browser); `href`
+ * is there for the address on hover and for copying it.
+ */
+function TopLink({
+  href,
+  onOpen,
+  children,
+}: {
+  href: string;
+  onOpen(): void;
+  children: ReactNode;
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(event) => {
+        event.preventDefault();
+        onOpen();
+      }}
+      className="flex items-center whitespace-nowrap border-b-2 border-transparent px-1.5 pt-[9px] text-xs font-semibold tracking-[0.08em] text-muted uppercase hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent lg:px-2.5"
+    >
+      {children}
+    </a>
   );
 }
 

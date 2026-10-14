@@ -90,7 +90,7 @@ brief, voice) is in **`05-brand.md`**. In short:
   **Inspect**: Measure, Section Analysis — there is no Inspect tab since R3-10,
   a tab of two tools took room) and `3D PRINT` (our addition: export,
   orientation, overhang, slicer hand-off, mass/filament). **Plugins…** is an
-  item of the Settings (gear) menu and a Ctrl+K command (R3-12), not a tile. `SKETCH` shows only while editing
+  item of the app menu and a Ctrl+K command (R3-12), not a tile. `SKETCH` shows only while editing
   a sketch, replacing every tab but HOME: 3D PRINT goes too (the owner's UI
   review 3, R3-11), since its tools work on bodies and SKETCH keeps its own
   Export Sketch. A sketch selects SKETCH whichever tab was selected, and
@@ -243,7 +243,7 @@ brief, voice) is in **`05-brand.md`**. In short:
   command ends a nav tool. Each nav tool has its own cursor (an orbit
   arrow, a magnifier, a hand), also during a navigation drag. Then fit
   (F6), ortho/perspective, visual style, grid and named views (the mouse
-  controls moved to the Settings menu, R3-03). The wireframe and hidden-edge styles also draw the silhouettes
+  controls moved to the app menu, R3-03). The wireframe and hidden-edge styles also draw the silhouettes
   of curved faces (the outline of a hole or a cylinder as seen now), which
   follow the camera; seams are never drawn (P2-08).
 - **Named views (ADR-0008's amendment, 2026-10-10):** the nav bar's Named
@@ -318,8 +318,8 @@ brief, voice) is in **`05-brand.md`**. In short:
 
 In Spindle, **Shift swaps orbit and pan**: Shift + middle-drag pans and
 Shift + right-drag orbits (the owner's UI review 3, R3-04); Shift + a
-left-click still adds to the selection. The presets are in the Settings
-(gear) menu's **Mouse controls ▸** submenu, each with its bindings on a
+left-click still adds to the selection. The presets are in the app menu's
+(four squares) **Mouse controls ▸** submenu, each with its bindings on a
 line under its name, and in the Settings dialog's "Mouse buttons" (the
 same preference; R3-03, there is no nav-bar button). After Spindle:
 **Crank** (right-drag orbits, middle-drag or Ctrl + right-drag pans; Shift
@@ -402,7 +402,7 @@ Crank or Glide. Since the right button drags, the right-click marking menu
   **Repeat last** runs the last tool started through the commands, the
   toolbar or the menu (not Undo, Delete, views or dialogs such as
   Parameters). **The list style** ("Right-Click Menu: Use a List" in
-  Ctrl+K, or the Settings menu's "Radial right-click menu" off) is one list:
+  Ctrl+K, or the app menu's "Radial right-click menu" off) is one list:
   the wedges' commands first, then the entries for what was right-clicked,
   **every row shown with no scroll bar**: under the pointer when all of it
   fits there, else above it, else beside it (moved up or down until it
@@ -528,7 +528,7 @@ Crank or Glide. Since the right button drags, the right-click marking menu
   Editor undo changes text, OK adds or edits one document undo step. The Script
   stays one timeline chip, with its generated count in the tooltip; bodies are
   ordinary browser entries and may be picked by later features.
-- **Plugins (P6-03, ADR-0077):** the Settings (gear) menu's Plugins… (Ctrl+K "Plugins…";
+- **Plugins (P6-03, ADR-0077):** the app menu's Plugins… (Ctrl+K "Plugins…";
   on macOS the app menu, beside Settings…; R3-12) installs, enables
   and removes `.extrudo-plugin` files and lists a design's plugins that aren't installed
   (Install) or are older than the installed version (Update to <version>, one undo
@@ -756,12 +756,12 @@ or sketch, closing the panel, or the joint going away puts everything back.
 
 ### 5.1 Settings (ADR-0082)
 
-Ctrl+, opens the Settings dialog from anywhere (the gear's first item, Ctrl+K
-"Settings…", the home screen's gear). A modal dialog, sections in a list on the
+Ctrl+, opens the Settings dialog from anywhere (the app menu's first item, Ctrl+K
+"Settings…", the home screen's app menu). A modal dialog, sections in a list on the
 left and the selected page on the right (below 640 px one column with a select);
 General, View and navigation, Sketch, 3D printing, Export and, on the desktop,
 Desktop. The last section is remembered. Controls are the same state as the
-quick ones elsewhere (gear menu, sketch palette, Print Info, Export dialog), so
+quick ones elsewhere (app menu, sketch palette, Print Info, Export dialog), so
 the dialog never disagrees with them; numbers are `<ExpressionInput>`s with a
 per-field Reset when they differ from the default.
 
@@ -776,7 +776,10 @@ per-field Reset when they differ from the default.
   benchmark fixtures B2, B4 and B5. A template opens as a new design under its
   own name (a copy, never the template's file) with its picture on the card;
   "Import" (`.extrudo`, STEP, STL, SVG).
-- A gear opens Settings (§5.1) next to the theme menu.
+- The top bar is a design's (ADR-0079 round 5): the logo, then **About**
+  (extrudo.org), **Docs** and **GitHub** styled as tabs, each opening in a new tab
+  (the desktop's browser), and on the right the storage badge and the same app menu
+  (four squares) as in a design, without Customize Marking Menu… and Close design.
 - Search and sort. A trash view with restore.
 - The storage indicator warns if persistent storage is not granted.
 

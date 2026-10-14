@@ -237,6 +237,12 @@ describe('preload bridge (ADR-0075 §1)', () => {
     ]);
   });
 
+  it('sends a site link name over site:open', () => {
+    const { ipc, calls } = fakeIpc();
+    createApi(ipc).docs.openSite('repo');
+    expect(calls).toEqual([{ channel: CHANNELS.siteOpen, args: ['repo'], kind: 'send' }]);
+  });
+
   it('asks main for Open File…, the recent names and an Open Recent by index and name', async () => {
     const { ipc, calls } = fakeIpc({ [CHANNELS.recentNames]: () => ['a.extrudo'] });
     const api = createApi(ipc);

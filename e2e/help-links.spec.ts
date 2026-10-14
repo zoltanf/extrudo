@@ -106,3 +106,37 @@ test("the Extrude tile's tooltip shows F1 for more (P6-06 S9)", async ({ page })
   // The footer is plain text: no link or button inside the tooltip.
   await expect(tooltip.locator('a, button')).toHaveCount(0);
 });
+
+test('Help › Source on GitHub opens the repository in a popup', async ({ page }) => {
+  await open(page);
+  await page
+    .context()
+    .route('https://github.com/**', (route) =>
+      route.fulfill({ status: 200, contentType: 'text/html', body: '' }),
+    );
+  const url = await popupUrl(page, async () => {
+    await page.getByRole('button', { name: 'Help' }).click();
+    await page.getByRole('menuitem', { name: 'Source on GitHub' }).click();
+  });
+  expect(url).toBe('https://github.com/zoltanf/extrudo');
+});
+
+test("the home screen's About, Docs and GitHub open in popups", async ({ page }) => {
+  for (const host of [`${DOCS}/**`, 'https://github.com/**']) {
+    await page
+      .context()
+      .route(host, (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '' }));
+  }
+  await page.goto('./');
+  const nav = page.getByRole('navigation', { name: 'Extrudo' });
+  for (const [name, expected] of [
+    ['About', `${DOCS}/`],
+    ['Docs', `${DOCS}/docs/`],
+    ['GitHub', 'https://github.com/zoltanf/extrudo'],
+  ] as const) {
+    const url = await popupUrl(page, () => nav.getByRole('link', { name }).click());
+    expect(url).toBe(expected);
+  }
+  // The home screen stays where it was.
+  await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
+});

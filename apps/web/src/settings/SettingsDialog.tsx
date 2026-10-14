@@ -56,7 +56,7 @@ export interface SettingsDialogProps {
 /**
  * The Settings dialog (ADR-0082): the person's preferences in one place. Sections in a list on
  * the left (a select when narrow), the selected page on the right. It reads and writes the same
- * state as the gear menu, the sketch palette, Print Info and the Export dialog, so an edit in
+ * state as the app menu, the sketch palette, Print Info and the Export dialog, so an edit in
  * either place shows in the other at once.
  *
  * Test hooks: `dialog` "Settings", the navigation `[data-settings-nav]` with a button per
