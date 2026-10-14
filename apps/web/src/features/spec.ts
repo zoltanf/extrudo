@@ -87,6 +87,15 @@ export interface SelectionField extends FieldBase {
    */
   tangentChain?: boolean;
   /**
+   * With `tangentChain`, on a face field (Offset Face's, ADR-0051's second
+   * amendment): the toggle field that, while on, stops a picked face's chain
+   * at the fillet rounds next to it, which keep their radius (the kernel's
+   * `smoothFaces`). Their face IDs are kept in
+   * `values.labels[keptRoundsKey(field)]` (no input), for the dialog to count;
+   * changing the toggle picks the chains again.
+   */
+  keepRounds?: string;
+  /**
    * The field takes sketch points (`sketchEntity` references to points) and
    * no curves (a hole's Points, P3-04): the view draws the points of the
    * shown sketches and picks them.
@@ -107,6 +116,9 @@ export interface SelectionField extends FieldBase {
   /** What a pick is called, singular and plural, where the kinds don't say ("point", "points"). */
   noun?: readonly [string, string];
 }
+
+/** Where a `keepRounds` field's kept rounds are kept in the values' `labels`. */
+export const keptRoundsKey = (field: string) => `${field}:keptRounds`;
 
 /** An `<ExpressionInput>`: an expression with a unit, which becomes a model parameter (`d7`). */
 export interface ExpressionField extends FieldBase {

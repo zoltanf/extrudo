@@ -1,9 +1,9 @@
 import { OffsetFaceInputsSchema, offsetFaceSettings } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import { meshSurfaceFrame } from './geometry';
-import { offsetFaceDialog, offsetManipulators } from './offset-face';
+import { keptRoundsText, offsetFaceDialog, offsetManipulators } from './offset-face';
 import { featureDialogs, specForCommand } from './registry';
-import type { ManipulatorContext } from './spec';
+import { keptRoundsKey, type ManipulatorContext } from './spec';
 import { BOX, FACE_IDS, namedBoxMesh, settle, setupDialogs } from './testing';
 import { defaultValues, mergeValues } from './values';
 
@@ -41,7 +41,8 @@ describe('the offset face dialog', () => {
     await settle();
     t.controller.setExpr('distance', '-3 mm');
     const inputs = t.open()?.draft.inputs ?? {};
-    expect(Object.keys(inputs).sort()).toEqual(['distance', 'faces']);
+    expect(Object.keys(inputs).sort()).toEqual(['distance', 'faces', 'keepRounds']);
+    expect(inputs.keepRounds).toEqual({ kind: 'bool', value: true });
     expect(OffsetFaceInputsSchema.safeParse(inputs).success).toBe(true);
     expect(offsetFaceSettings(inputs as never).faces.map((r) => r.id)).toEqual([FACE_IDS[1]]);
     expect(t.controller.ok()).toBe(true);
@@ -84,6 +85,137 @@ describe('the offset face dialog', () => {
     t.controller.edit(id as never);
     expect(t.open()?.values.exprs.distance).toBe('4 mm');
     expect(t.open()?.values.refs.faces?.map((r) => r.id)).toEqual([FACE_IDS[1]]);
+  });
+});
+
+/**
+ * The fake box with rounds, as the kernel's `smoothFaces` sees it: faces 2, 3 and 4 run
+ * smoothly into each other, 3 is a fillet's round between walls 2 and 4.
+ */
+function roundsSetup() {
+  const t = setup();
+  const asked: { faces: number[]; keep: boolean | undefined }[] = [];
+  const ROUND = 3;
+  const CHAIN = [2, 3, 4];
+  t.kernel.smoothFaces = async (_body, faces, _base, keep) => {
+    asked.push({ faces: [...faces], keep });
+    const out = new Set<number>();
+    const rounds = new Set<number>();
+    const ordered = [...faces].sort((a, b) => Number(a === ROUND) - Number(b === ROUND));
+    for (const face of ordered) {
+      if (!CHAIN.includes(face)) out.add(face);
+      else if (!keep) for (const f of CHAIN) out.add(f);
+      else if (face !== ROUND) {
+        out.add(face);
+        rounds.add(ROUND);
+      } else if (!rounds.has(ROUND)) for (const f of CHAIN) out.add(f);
+    }
+    return { faces: [...out], rounds: [...rounds].filter((f) => !out.has(f)) };
+  };
+  const ids = () => t.open()?.values.refs.faces?.map((r) => r.id) ?? [];
+  const kept = () => t.open()?.values.labels[keptRoundsKey('faces')] ?? [];
+  return { ...t, asked, ids, kept };
+}
+
+describe('keep rounds’ radius', () => {
+  it('is on for a new offset: a wall is picked without its round, which is counted', async () => {
+    const t = roundsSetup();
+    t.controller.start('offsetFace');
+    expect(t.open()?.values.toggles.keepRounds).toBe(true);
+    t.controller.select.onClick(faceItem(2), false);
+    await settle();
+    expect(t.ids()).toEqual([FACE_IDS[2]]);
+    expect(t.kept()).toEqual([FACE_IDS[3]]);
+    expect(keptRoundsText(t.open()?.values as never)).toBe('1 round keeps its radius');
+    // The kernel was asked with the flag, not for the plain chain.
+    expect(t.asked[0]).toEqual({ faces: [2], keep: true });
+    // The count is no input.
+    expect(Object.keys(t.open()?.draft.inputs ?? {}).sort()).toEqual([
+      'distance',
+      'faces',
+      'keepRounds',
+    ]);
+    // Unpicking the wall takes the count away.
+    t.controller.select.onClick(faceItem(2), false);
+    await settle();
+    expect(t.ids()).toEqual([]);
+    expect(t.kept()).toEqual([]);
+  });
+
+  it('a click on the round itself takes the whole chain, as before', async () => {
+    const t = roundsSetup();
+    t.controller.start('offsetFace');
+    t.controller.select.onClick(faceItem(3), false);
+    await settle();
+    expect(t.ids().sort()).toEqual([FACE_IDS[2], FACE_IDS[3], FACE_IDS[4]].sort());
+    expect(t.kept()).toEqual([]);
+  });
+
+  it('turned off picks the whole chain again and stores false; on again drops the round', async () => {
+    const t = roundsSetup();
+    t.controller.start('offsetFace');
+    t.controller.select.onClick(faceItem(2), false);
+    await settle();
+    t.controller.setToggle('keepRounds', false);
+    await settle();
+    expect(t.ids().sort()).toEqual([FACE_IDS[2], FACE_IDS[3], FACE_IDS[4]].sort());
+    expect(t.kept()).toEqual([]);
+    expect(t.open()?.draft.inputs.keepRounds).toEqual({ kind: 'bool', value: false });
+    t.controller.setToggle('keepRounds', true);
+    await settle();
+    // The round goes; the wall past it, picked while off, stays picked.
+    expect(t.ids().sort()).toEqual([FACE_IDS[2], FACE_IDS[4]].sort());
+    expect(t.kept()).toEqual([FACE_IDS[3]]);
+    expect(t.open()?.draft.inputs.keepRounds).toEqual({ kind: 'bool', value: true });
+  });
+
+  it('an offset saved before the option opens with it off, picks and all', async () => {
+    const t = roundsSetup();
+    t.controller.start('offsetFace');
+    t.controller.setToggle('keepRounds', false);
+    t.controller.select.onClick(faceItem(2), false);
+    await settle();
+    expect(t.controller.ok()).toBe(true);
+    const feature = t.store.getState().doc.features.at(-1);
+    // Stored as an older Extrudo did: no keepRounds.
+    const { keepRounds: _, ...old } = feature?.inputs ?? {};
+    t.store.setState((s) => ({
+      doc: {
+        ...s.doc,
+        features: s.doc.features.map((f) => (f.id === feature?.id ? { ...f, inputs: old } : f)),
+      },
+    }));
+    t.controller.edit(feature?.id as never);
+    await settle();
+    expect(t.open()?.values.toggles.keepRounds).toBe(false);
+    expect(t.ids().sort()).toEqual([FACE_IDS[2], FACE_IDS[3], FACE_IDS[4]].sort());
+    expect(t.kept()).toEqual([]);
+    expect(t.open()?.draft.inputs.keepRounds).toEqual({ kind: 'bool', value: false });
+  });
+
+  it('an edited offset with the option counts its kept rounds', async () => {
+    const t = roundsSetup();
+    t.controller.start('offsetFace');
+    t.controller.select.onClick(faceItem(2), false);
+    await settle();
+    expect(t.controller.ok()).toBe(true);
+    t.controller.edit(t.store.getState().doc.features.at(-1)?.id as never);
+    expect(t.kept()).toEqual([]);
+    await settle();
+    expect(t.open()?.values.toggles.keepRounds).toBe(true);
+    expect(t.ids()).toEqual([FACE_IDS[2]]);
+    expect(t.kept()).toEqual([FACE_IDS[3]]);
+  });
+
+  it('words the count', () => {
+    const at = (n: number) =>
+      keptRoundsText(
+        mergeValues(defaultValues(offsetFaceDialog), {
+          labels: { [keptRoundsKey('faces')]: Array.from({ length: n }, (_, i) => `r${i}`) },
+        }),
+      );
+    expect(at(1)).toBe('1 round keeps its radius');
+    expect(at(2)).toBe('2 rounds keep their radius');
   });
 });
 

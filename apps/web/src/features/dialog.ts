@@ -47,7 +47,13 @@ import {
   usedSketches,
   type Vec3,
 } from '@extrudo/core';
-import type { BodyMesh, Preview, ScadParametersResult, SubShapeKind } from '@extrudo/kernel';
+import type {
+  BodyMesh,
+  Preview,
+  ScadParametersResult,
+  SmoothFaces,
+  SubShapeKind,
+} from '@extrudo/kernel';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { withActiveComponent } from '../components/active';
 import type { ToastOptions } from '../design-system';
@@ -57,15 +63,16 @@ import { canvasDrawing } from '../viewport/canvasGeometry';
 import type { ModelSelect } from '../viewport/Viewport';
 import type { ViewPreview } from './preview';
 import { draftStatus, type PreviewDrawing, previewDrawing } from './preview';
-import { accepts, itemRef } from './refs';
+import { accepts, itemRef, refItems } from './refs';
 import type { FeatureDialogs } from './registry';
-import type {
-  DialogContext,
-  DialogField,
-  DialogValues,
-  FeatureDialogSpec,
-  ManipulatorContext,
-  SelectionField,
+import {
+  type DialogContext,
+  type DialogField,
+  type DialogValues,
+  type FeatureDialogSpec,
+  keptRoundsKey,
+  type ManipulatorContext,
+  type SelectionField,
 } from './spec';
 import {
   type Checked,
@@ -110,6 +117,17 @@ export interface DialogKernel {
     base?: boolean,
     kind?: 'edge' | 'face',
   ): Promise<number[] | undefined>;
+  /**
+   * The faces picked with clicks on `faces` of a body, and the fillet rounds
+   * next to them that keep their radius: for face fields with `keepRounds`
+   * (Offset Face, ADR-0051's second amendment). Absent: `tangentChain`.
+   */
+  smoothFaces?(
+    body: BodyId,
+    faces: readonly number[],
+    base?: boolean,
+    keepRounds?: boolean,
+  ): Promise<SmoothFaces | undefined>;
   /**
    * The customizer variables of a `.scad` file (P5-04 slice 2, ADR-0071 §5):
    * the Import dialog's rows. Absent: the dialog shows only stored overrides.
@@ -583,31 +601,136 @@ export function createDialogController(options: DialogControllerOptions): Dialog
    */
   const followChain = (field: string, item: SelectionItem, mode: 'add' | 'remove') => {
     const topology = readTopology(item);
-    if (!kernel?.tangentChain || (topology?.kind !== 'edge' && topology?.kind !== 'face')) return;
+    if (topology?.kind !== 'edge' && topology?.kind !== 'face') return;
     const kind = topology.kind;
     const mine = generation;
-    const base = get()?.base !== undefined;
-    kernel
-      .tangentChain(topology.body, topology.index, base, kind)
+    const start = get();
+    const base = start?.base !== undefined;
+    // A field that keeps rounds asks for the chain up to them (or the whole one while off).
+    const toggle = keepRoundsToggle(start, field);
+    const smooth = kind === 'face' && toggle !== undefined ? kernel?.smoothFaces : undefined;
+    const chain = smooth
+      ? smooth(
+          topology.body,
+          [topology.index],
+          base,
+          start?.values.toggles[toggle ?? ''] === true,
+        ).then((found) => found?.faces)
+      : kernel?.tangentChain?.(topology.body, topology.index, base, kind);
+    if (!chain) return;
+    chain
       .then((indices) => {
+        if (mine !== generation) return;
+        followed(field, topology.body, kind, indices, mode);
+        if (smooth) settleRounds(field, false);
+      })
+      .catch(() => {});
+  };
+
+  /** Adds or removes the chain `indices` (of `body`) to or from a field's picks. */
+  const followed = (
+    field: string,
+    body: BodyId,
+    kind: 'edge' | 'face',
+    indices: readonly number[] | undefined,
+    mode: 'add' | 'remove',
+  ) => {
+    const open = get();
+    if (!open || !indices || indices.length < 2) return;
+    const bodies = dialogBodies(open, model.getState().bodies);
+    const refs = [...(open.values.refs[field] ?? [])];
+    const added: SelectionItem[] = [];
+    for (const index of indices) {
+      const member = topologyItem({ kind, body, index });
+      const ref = itemRef(member, bodies);
+      if (!ref) continue;
+      const at = refs.findIndex((r) => r.kind === ref.kind && r.id === ref.id);
+      if (mode === 'add' && at < 0) {
+        refs.push(ref);
+        added.push(member);
+      } else if (mode === 'remove' && at >= 0) {
+        refs.splice(at, 1);
+      }
+    }
+    refresh(open, { ...open.values, refs: { ...open.values.refs, [field]: refs } });
+    for (const member of added) fingerprint(member);
+  };
+
+  /** The toggle that keeps rounds for a face field (`keepRounds`), if it has one. */
+  const keepRoundsToggle = (open: OpenDialog | undefined, field: string) => {
+    const spec = open && fieldOf(open, field);
+    return spec?.kind === 'selection' && spec.tangentChain ? spec.keepRounds : undefined;
+  };
+
+  /**
+   * Asks the kernel which fillet rounds next to a `keepRounds` field's faces
+   * keep their radius, and keeps their face IDs for the dialog to show
+   * (`keptRoundsKey`; no input). With `repick` (the toggle changed), the
+   * picks follow the toggle: the rounds taken out while it is on, the whole
+   * chains back while it is off.
+   */
+  const settleRounds = (field: string, repick: boolean) => {
+    const start = get();
+    const toggle = keepRoundsToggle(start, field);
+    const smooth = kernel?.smoothFaces;
+    if (!start || toggle === undefined || !smooth) return;
+    const keep = start.values.toggles[toggle] === true;
+    const mine = generation;
+    const base = start.base !== undefined;
+    const byBody = new Map<BodyId, number[]>();
+    for (const item of refItems(
+      start.values.refs[field] ?? [],
+      dialogBodies(start, model.getState().bodies),
+    )) {
+      const topology = readTopology(item);
+      if (topology?.kind !== 'face') continue;
+      byBody.set(topology.body, [...(byBody.get(topology.body) ?? []), topology.index]);
+    }
+    Promise.all(
+      [...byBody].map(([body, faces]) =>
+        smooth(body, faces, base, keep).then((found) => ({ body, found })),
+      ),
+    )
+      .then((answers) => {
         const open = get();
-        if (!open || mine !== generation || !indices || indices.length < 2) return;
+        if (!open || mine !== generation || open.values.toggles[toggle] !== keep) return;
         const bodies = dialogBodies(open, model.getState().bodies);
-        const refs = [...(open.values.refs[field] ?? [])];
+        const refOf = (body: BodyId, index: number) =>
+          itemRef(topologyItem({ kind: 'face', body, index }), bodies);
+        const before = open.values.refs[field] ?? [];
+        let refs = [...before];
+        const has = (ref: GeomRef) => refs.some((r) => r.kind === ref.kind && r.id === ref.id);
         const added: SelectionItem[] = [];
-        for (const index of indices) {
-          const member = topologyItem({ kind, body: topology.body, index });
-          const ref = itemRef(member, bodies);
-          if (!ref) continue;
-          const at = refs.findIndex((r) => r.kind === ref.kind && r.id === ref.id);
-          if (mode === 'add' && at < 0) {
+        const kept: string[] = [];
+        for (const { body, found } of answers) {
+          if (!found) continue;
+          for (const index of found.rounds) {
+            const ref = refOf(body, index);
+            if (!ref) continue;
+            if (repick) refs = refs.filter((r) => r.kind !== ref.kind || r.id !== ref.id);
+            if (!has(ref) && !kept.includes(ref.id)) kept.push(ref.id);
+          }
+          if (!repick) continue;
+          for (const index of found.faces) {
+            const ref = refOf(body, index);
+            if (!ref || has(ref)) continue;
             refs.push(ref);
-            added.push(member);
-          } else if (mode === 'remove' && at >= 0) {
-            refs.splice(at, 1);
+            added.push(topologyItem({ kind: 'face', body, index }));
           }
         }
-        refresh(open, { ...open.values, refs: { ...open.values.refs, [field]: refs } });
+        const key = keptRoundsKey(field);
+        const was = open.values.labels[key] ?? [];
+        const unchanged =
+          refs.length === before.length &&
+          added.length === 0 &&
+          was.length === kept.length &&
+          was.every((id, i) => id === kept[i]);
+        if (unchanged) return;
+        refresh(open, {
+          ...open.values,
+          refs: { ...open.values.refs, [field]: refs },
+          labels: { ...open.values.labels, [key]: kept },
+        });
         for (const member of added) fingerprint(member);
       })
       .catch(() => {});
@@ -737,6 +860,8 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       ...blank,
       ...(fixed && { note: fixNote(feature.name, spec, fixed) }),
     });
+    // Count the rounds an edited offset keeps.
+    for (const field of spec.fields) settleRounds(field.name, false);
     return true;
   };
 
@@ -771,10 +896,15 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       update(field, (open) => ({
         values: { ...open.values, choices: { ...open.values.choices, [field]: value } },
       })),
-    setToggle: (field, value) =>
+    setToggle: (field, value) => {
       update(field, (open) => ({
         values: { ...open.values, toggles: { ...open.values.toggles, [field]: value } },
-      })),
+      }));
+      // A face field whose chains stop at rounds while this is on picks them again.
+      const open = get();
+      for (const target of open?.spec.fields ?? [])
+        if (keepRoundsToggle(open, target.name) === field) settleRounds(target.name, true);
+    },
     setLabels: (field, labels) =>
       update(field, (open) => ({
         values: { ...open.values, labels: { ...open.values.labels, [field]: [...labels] } },
