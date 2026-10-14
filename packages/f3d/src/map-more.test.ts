@@ -687,7 +687,7 @@ describe('f3dToDesign: copying features', () => {
   it('offsets the side of the collinear line its plane is rooted at', async () => {
     // A 40 × 20 mm plate 10 mm thick with a notch in its top edge (x 20…30, 5 mm deep): the
     // top edge is two collinear lines, 10 mm (x 40…30) and 20 mm (x 20…0) long. The file
-    // roots a side's plane at its line's start, (40, 20) mm for the short one.
+    // roots a side's plane on its line, here at the short one's start, (40, 20) mm.
     const at: [number, number][] = [
       [0, 0],
       [4, 0],

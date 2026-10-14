@@ -1918,7 +1918,8 @@ function faceName(
       return l && on(l.start) && on(l.end);
     });
     // Without a hint, the plane's own root point: the file roots an extruded
-    // side's plane at its line's start, so it tells collinear lines apart.
+    // side's plane on its line's stretch (FORMAT.md), so it tells collinear
+    // lines apart.
     const curve = sideCurve(hits, face, hint ?? s.point, (curve, p) => {
       const l = line(curve) as SketchLine;
       const a = toModel(m, l.start);

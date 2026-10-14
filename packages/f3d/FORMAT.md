@@ -304,6 +304,15 @@ instances from 1, the original; a rectangular pattern's Cantor-pair its two
 indexes, the original's (1, 0), so a row's instance u has code u(u + 1)/2; a
 mirror's one copy is 2.
 
+`plane-surface`: a root point, then the unit normal. On the side of an
+extrude made by a sketch line, the root point lies on that line's stretch
+(swept to the face's height): of the 7,864 such planes the corpus's offsets,
+fillets and chamfers name, all of them; at the line's start in 3,005, its end
+in 2,629, a joint of two lines in 205, between its ends in 2,025. On a plane
+that holds several of the sketch's lines (2,964 of them) it lies on exactly
+one line's stretch in 2,071, which tells collinear sides apart where the
+recipe's tags don't (checked with a survey over the corpus, 2026-10-14).
+
 `cone-surface`: centre, axis (unit), major axis (its length the radius at
 the centre), ratio, then the sine and cosine of the half-angle. The radius at
 h cm along the axis is r + h · sine / cosine; a negative sine narrows the cone

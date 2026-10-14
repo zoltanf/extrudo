@@ -334,7 +334,8 @@ describe('offset face', { timeout: 120_000 }, () => {
       );
       const m = measure('B:0');
       expect(m).toMatchObject({ valid: true, faces: 8 });
-      expect(m.bbox).toEqual([0, 0, 0, BOX.w + d, BOX.d, BOX.h]);
+      // The box round a filleted body is a little loose.
+      expect(m.bbox.map((v) => Math.round(v) + 0)).toEqual([0, 0, 0, BOX.w + d, BOX.d, BOX.h]);
       // The straight part between the rounds moves by d over the 30 × 20 face.
       expect(m.volume - before.volume).toBeCloseTo(d * BOX.d * BOX.h, 3);
       const names = faceNames(result);
@@ -373,7 +374,7 @@ describe('offset face', { timeout: 120_000 }, () => {
     expect(measure('B:0').bbox.map((v) => Math.round(v) + 0)).toEqual([-6, -1, 0, 46, 11, 10]);
   });
 
-  it('refuses a body whose rounded edges meet at a sharp corner, before OCCT can trap on it', async () => {
+  it('refuses a body whose rounded edges meet at a sharp corner, before OCCT can trap on it, unless the rounds are made again', async () => {
     const base = block();
     const first = ok(await run(testDocument(base.features)));
     const l = base.lines;
@@ -386,17 +387,18 @@ describe('offset face', { timeout: 120_000 }, () => {
       inputs: filletInputs([{ edges, radius: '3 mm' }]),
     };
     const rounded = ok(await run(testDocument([...base.features, round])));
-    for (const face of [cap, floor]) {
-      const failed = await run(
-        testDocument([
-          ...base.features,
-          round,
-          offset('O', [refTo(rounded, 'face', face)], '2 mm'),
-        ]),
-      );
-      expect(status(failed, 'O').status).toBe('error');
-      expect(status(failed, 'O').message).toMatch(/rounded edges that meet at a sharp corner/);
-    }
+    const at = (face: string) =>
+      testDocument([...base.features, round, offset('O', [refTo(rounded, 'face', face)], '2 mm')]);
+    // The floor touches no round: OCCT would offset the body as it is, and is not let.
+    const failed = await run(at(floor));
+    expect(status(failed, 'O').status).toBe('error');
+    expect(status(failed, 'O').message).toMatch(/rounded edges that meet at a sharp corner/);
+    // The top runs into all three rounds: they are taken off, the top moved, and the rounds
+    // made again at 3 mm, so the offset never sees the corners.
+    const top = ok(await runWithShapes(at(cap)));
+    expect(measure('B:0')).toMatchObject({ valid: true });
+    expect(measure('B:0').bbox.map((v) => Math.round(v) + 0)).toEqual([0, 0, 0, 40, 30, 22]);
+    expect(faceNames(top).filter((n) => n.startsWith('fillet:R:'))).toHaveLength(3);
   });
 
   it('offsets faces of several bodies, each on its own', async () => {
