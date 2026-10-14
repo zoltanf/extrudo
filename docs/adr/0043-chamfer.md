@@ -375,3 +375,14 @@ dropped and the rest built once, warning "2 of 9 edges left out of the chamfer:
 fallback, and a failed rebuild fails as before; without the input nothing
 changes. `blameChamfer` in `chamfer.ts`. Corpus (250 files): match 123 → 127,
 no design's verdict worse.
+
+## Amendment 2026-10-14: chamfers at their limit
+
+The chamfer takes the fillet's at-limit retry (ADR-0038's amendment of this
+date, which has the reasons and the numbers): with `skipLostEdges` on and every
+problem `too-large` with a factor of at least 0.99, the blamed chains are built
+once more at × (1 − 1e-4) of their distances (both distances of a two-distance
+set; an angle stays), then at the factor the diagnosis found working, warning
+"Chamfer built at distance 5.9994 mm, a hair under the 6 mm asked for, which is
+just too large for edges 8 and 13." `chamferLimit` in `chamfer.ts`. Test:
+`chamfer.test.ts` "builds a chamfer at its limit a hair under its distance…".

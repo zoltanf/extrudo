@@ -423,3 +423,33 @@ changes. `packages/kernel/src/features/round-fallback.ts` (`buildRound`),
 Corpus (250 files): match 123 → 127, no design's verdict worse, four designs
 reach a match. Tests: `fillet.test.ts` "builds the chains that work …" and "…
 more than a third …".
+
+## Amendment 2026-10-14: rounds at their limit (`skipLostEdges`)
+
+A round that eats a whole neighbouring face fails at exactly that face's size:
+a 4 mm radius on a 4 mm thick plate is "Radius 4 mm is too large for edge 77
+(max ≈ 3.9 mm)". The facade's diagnosis bisects with seven halvings from 0 to
+the size asked for, so the largest it can name is 127/128 of it (0.9922); a
+round whose real limit is the size itself always shows that share. With
+`skipLostEdges` on and every problem `too-large` with a share of at least
+`NEAR_LIMIT` (0.99), the blamed chains are built once more a hair smaller
+(× (1 − 1e-4)) and, if that fails too, at the share the diagnosis found working,
+before any chain is dropped. It warns "Fillet built at radius 3.9996 mm, a hair
+under the 4 mm asked for, which is just too large for edge 77." (or "just under"
+for the 127/128 build). Over the corpus the too-large shares fall into two
+groups: 0.9922 (the bisection's ceiling) and 0.953–0.984, then nothing between
+0.9 and 0.953; 0.99 takes exactly the first group. When neither build works the
+chain-dropping rule of 2026-10-12 runs as before; without `skipLostEdges`
+nothing changes. `underLimit` in `round-fallback.ts`, `filletLimit` in
+`fillet.ts`.
+
+Corpus (250 files, replay only): designs within 0.5 % volume and 0.05 mm box
+135 → 142 (8 reach it, 1 leaves it: a design whose replay was already 0.48 %
+short of the file's volume for another reason; its 0.33 mm chamfer, now built
+on all 42 of its edges as in the file, takes it to 0.71 %). 50 rounds that failed now build (49 at their limit,
+5 of them at 127/128), 2 rounds further down the same designs now fail on edges
+next to the newly built faces. Body check (ADR-0084) on the 44 designs that
+changed: bodies editable 8 → 12, frozen 31 → 27 (5 frozen → editable, the
+design above editable → frozen). Tests: `fillet.test.ts` "builds a round at its
+limit a hair under its radius…", "…limit lies just under its radius…", "a round
+far over its limit…".

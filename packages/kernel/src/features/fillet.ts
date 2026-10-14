@@ -69,6 +69,28 @@ function blameFillet(error: unknown): number[] | undefined {
   return [...out];
 }
 
+/**
+ * The chains a fillet failure blames and the smallest share of their radius
+ * the diagnosis found working, when every problem is `too-large` with a
+ * maximum (the at-limit retry, `round-fallback.ts`); `undefined` otherwise.
+ */
+function filletLimit(
+  error: unknown,
+  picks: readonly EdgePick[],
+): { edges: number[]; share: number } | undefined {
+  if (!(error instanceof FilletError) || error.problems.length === 0) return undefined;
+  const edges: number[] = [];
+  let share = 1;
+  for (const problem of error.problems) {
+    if (problem.kind !== 'too-large') return undefined;
+    const pick = picks.find((p) => problem.edges.includes(p.index));
+    if (!pick || pick.radius !== pick.radiusEnd) return undefined;
+    share = Math.min(share, problem.max / pick.radius);
+    edges.push(...problem.edges);
+  }
+  return { edges, share };
+}
+
 function evaluateFillet(ctx: EvalContext<FilletInputs>): FeatureOutput {
   const { kernel } = ctx;
   const sets = filletSets(ctx.inputs);
@@ -131,6 +153,14 @@ function evaluateFillet(ctx: EvalContext<FilletInputs>): FeatureOutput {
         feature: 'fillet',
         skip,
         warn: (message) => ctx.warn(message),
+        limit: (error) => filletLimit(error, picks),
+        under: (pick, factor) => ({
+          ...pick,
+          radius: pick.radius * factor,
+          radiusEnd: pick.radiusEnd * factor,
+        }),
+        size: (pick) => pick.radius,
+        sizeName: 'radius',
       });
     } catch (error) {
       if (error instanceof FilletError) throw new KernelError(filletMessage(error, picks));

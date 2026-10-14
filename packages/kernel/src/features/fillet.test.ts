@@ -555,6 +555,70 @@ describe('fillet', { timeout: 120_000 }, () => {
       expect(status(without, 'F').status).toBe('error');
     });
 
+    it('builds a round at its limit a hair under its radius, with a warning (ADR-0038 amendment, 2026-10-14)', async () => {
+      const base = block();
+      const first = ok(await run(testDocument(base.features)));
+      const front = refTo(first, 'edge', between(cap, side(base.lines.bottom)));
+      // A radius of the block's whole height eats the front face: OCCT fails at
+      // exactly that size and the diagnosis can only name 127/128 of it.
+      const asked = `${BOX.h} mm`;
+      const plain = await run(
+        testDocument([...base.features, fillet('F', [{ edges: [front], radius: asked }])]),
+      );
+      expect(status(plain, 'F').status).toBe('error');
+      expect(status(plain, 'F').message).toMatch(
+        /^Radius 20 mm is too large for edge \d+ \(max ≈ 19 mm\)\.$/,
+      );
+      ok(
+        await runWithShapes(
+          testDocument([
+            ...base.features,
+            fillet('F', [{ edges: [front], radius: `${BOX.h * (1 - 1e-4)} mm` }]),
+          ]),
+        ),
+      );
+      const expected = measure('B:0');
+      const result = await runWithShapes(
+        testDocument([...base.features, skipping('F', [{ edges: [front], radius: asked }])]),
+      );
+      const st = status(result, 'F');
+      expect(st.status).toBe('warning');
+      expect(st.message).toMatch(
+        /^Fillet built at radius 19\.998 mm, a hair under the 20 mm asked for, which is just too large for edge \d+\.$/,
+      );
+      expect(measure('B:0').volume).toBeCloseTo(expected.volume, 6);
+      expect(measure('B:0').faces).toBe(expected.faces);
+      expect(measure('B:0').valid).toBe(true);
+    });
+
+    it('a round whose limit lies just under its radius is built at the radius the diagnosis found working', async () => {
+      const base = block();
+      const first = ok(await run(testDocument(base.features)));
+      const front = refTo(first, 'edge', between(cap, side(base.lines.bottom)));
+      // 20.1 mm: 0.5 % over the 20 mm the front face allows, so 20.098 fails
+      // too; the bisection's 127/128 of it (19.943 mm) works.
+      const result = await runWithShapes(
+        testDocument([...base.features, skipping('F', [{ edges: [front], radius: '20.1 mm' }])]),
+      );
+      const st = status(result, 'F');
+      expect(st.status).toBe('warning');
+      expect(st.message).toMatch(
+        /^Fillet built at radius 19\.943 mm, just under the 20\.1 mm asked for, which is just too large for edge \d+\.$/,
+      );
+      expect(measure('B:0').valid).toBe(true);
+    });
+
+    it('a round far over its limit is not built smaller: the chain is left out or it fails', async () => {
+      const base = block();
+      const first = ok(await run(testDocument(base.features)));
+      const front = refTo(first, 'edge', between(cap, side(base.lines.bottom)));
+      const result = await run(
+        testDocument([...base.features, skipping('F', [{ edges: [front], radius: '21 mm' }])]),
+      );
+      expect(status(result, 'F').status).toBe('error');
+      expect(status(result, 'F').message).toMatch(/^Radius 21 mm is too large/);
+    });
+
     it('fails as before when more than a third of the edges would be left out (ADR-0038 amendment, 2026-10-12)', async () => {
       const base = block();
       const first = ok(await run(testDocument(base.features)));

@@ -77,6 +77,30 @@ function blameChamfer(error: unknown): number[] | undefined {
   return [...out];
 }
 
+/**
+ * The chains a chamfer failure blames and the smallest share of their
+ * distances the diagnosis found working, when every problem is `too-large`
+ * (the at-limit retry, `round-fallback.ts`); `undefined` otherwise.
+ */
+function chamferLimit(error: unknown): { edges: number[]; share: number } | undefined {
+  if (!(error instanceof ChamferError) || error.problems.length === 0) return undefined;
+  const edges: number[] = [];
+  let share = 1;
+  for (const problem of error.problems) {
+    if (problem.kind !== 'too-large') return undefined;
+    share = Math.min(share, problem.factor);
+    edges.push(...problem.edges);
+  }
+  return { edges, share };
+}
+
+/** The spec with its lengths scaled by `factor` (an angle stays). */
+function scaledSpec(spec: ChamferSpec, factor: number): ChamferSpec {
+  return spec.mode === 'two-distances'
+    ? { ...spec, distance: spec.distance * factor, distanceB: spec.distanceB * factor }
+    : { ...spec, distance: spec.distance * factor };
+}
+
 function evaluateChamfer(ctx: EvalContext<ChamferInputs>): FeatureOutput {
   const { kernel } = ctx;
   const sets = chamferSets(ctx.inputs);
@@ -143,6 +167,10 @@ function evaluateChamfer(ctx: EvalContext<ChamferInputs>): FeatureOutput {
         feature: 'chamfer',
         skip,
         warn: (message) => ctx.warn(message),
+        limit: chamferLimit,
+        under: (pick, factor) => ({ ...pick, spec: scaledSpec(pick.spec, factor) }),
+        size: (pick) => pick.spec.distance,
+        sizeName: 'distance',
       });
     } catch (error) {
       if (error instanceof ChamferError) throw new KernelError(chamferMessage(error, picks));

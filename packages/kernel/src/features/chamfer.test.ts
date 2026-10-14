@@ -760,6 +760,34 @@ describe('chamfer', { timeout: 120_000 }, () => {
       expect(measure('B:0').volume).toBeCloseTo(expected.volume, 6);
     });
 
+    it('builds a chamfer at its limit a hair under its distance, with a warning (ADR-0043 amendment, 2026-10-14)', async () => {
+      const { base, ref } = await withFrontEdge();
+      const asked = `${BOX.h} mm`;
+      const plain = await run(
+        testDocument([...base.features, chamfer('F', [{ edges: [ref], distance: asked }])]),
+      );
+      expect(status(plain, 'F').status).toBe('error');
+      ok(
+        await runWithShapes(
+          testDocument([
+            ...base.features,
+            chamfer('F', [{ edges: [ref], distance: `${BOX.h * (1 - 1e-4)} mm` }]),
+          ]),
+        ),
+      );
+      const expected = measure('B:0');
+      const result = await runWithShapes(
+        testDocument([...base.features, skipping('F', [{ edges: [ref], distance: asked }])]),
+      );
+      const st = status(result, 'F');
+      expect(st.status).toBe('warning');
+      expect(st.message).toMatch(
+        /^Chamfer built at distance 19\.998 mm, a hair under the 20 mm asked for, which is just too large for edge \d+\.$/,
+      );
+      expect(measure('B:0').volume).toBeCloseTo(expected.volume, 6);
+      expect(measure('B:0').faces).toBe(expected.faces);
+    });
+
     it('a lost reference face of a set that keeps edges still fails', async () => {
       const { base, ref } = await withFrontEdge();
       const result = await run(
