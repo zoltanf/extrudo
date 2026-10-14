@@ -11,7 +11,14 @@ import type { ModelPlane } from './decode/hole';
 import type { ParameterValue } from './decode/parameters';
 import type { RevolveAxis } from './decode/revolve';
 import type { Vec3 } from './decode/sketch-geometry';
-import { axisRef, type ImportReport, placeSketch, type SketchEntry, selectProfiles } from './map';
+import {
+  axisRef,
+  type ImportReport,
+  placeSketch,
+  regionCurves,
+  type SketchEntry,
+  selectProfiles,
+} from './map';
 import type {
   F3dFace,
   F3dMirror,
@@ -23,6 +30,7 @@ import type {
   F3dTorus,
   Matrix,
 } from './model';
+import { type PathPiece, type ProfileCurve, type SweptFaces, sweptFaces } from './sweep-faces';
 
 /** What the copying features need from the import so far. */
 export interface CopyContext {
@@ -184,7 +192,7 @@ export function sweep(
   expressionOf: (p: ParameterValue, negate?: boolean) => string,
   participants: (records: number[]) => GeomRef[] | undefined,
   report: ImportReport,
-): string | { id: string } {
+): string | { id: string; faces?: SweptFaces } {
   if (f.profiles.length === 0) return 'its profile is a face, not a sketch profile';
   if (f.pathEdges) return 'its path runs along body edges (only sketch curves are imported)';
   if (f.paths.length !== 1)
@@ -220,8 +228,82 @@ export function sweep(
   if (twist && Math.abs(twist.value) > 1e-12) inputs.twist = expressionOf(twist);
   const bodies = f.operation === 'new-body' ? undefined : participants(f.participants);
   if (bodies) inputs.bodies = bodies;
-  return { id: d.sweep(inputs as Parameters<Design['sweep']>[0], { name: f.name }).id };
+  const id = d.sweep(inputs as Parameters<Design['sweep']>[0], { name: f.name }).id;
+  const faces = sweepFaces(f.paths[0] ?? [], sketches, selected.entry, selected.profiles);
+  return faces ? { id, faces } : { id };
 }
+
+/** What naming the sweep's faces needs: its path pieces and profile curves in model space. */
+function sweepFaces(
+  path: F3dSweep['paths'][number],
+  sketches: Map<number, SketchEntry>,
+  entry: SketchEntry,
+  profiles: GeomRef[],
+): SweptFaces | undefined {
+  const pieces: PathPiece[] = [];
+  for (const ref of path) {
+    const source = sketches.get(ref.sketch)?.source;
+    if (!source) return undefined;
+    const m = source.frame;
+    const tag = String(ref.tag);
+    const line = source.lines.find((l) => String(l.tag) === tag);
+    const arc = source.circulars.find((c) => String(c.tag) === tag);
+    if (line)
+      pieces.push({ kind: 'line', a: modelPoint(m, line.start), b: modelPoint(m, line.end) });
+    else if (arc) {
+      const y = crossOf(arc.normal, arc.xAxis);
+      const at = (θ: number): Vec3 =>
+        modelPoint(
+          m,
+          [0, 1, 2].map(
+            (i) =>
+              (arc.center[i] as number) +
+              arc.radius *
+                (Math.cos(θ) * (arc.xAxis[i] as number) + Math.sin(θ) * (y[i] as number)),
+          ) as Vec3,
+        );
+      const centre = modelPoint(m, arc.center);
+      const axis = sub3(modelPoint(m, arc.normal), modelPoint(m, [0, 0, 0]));
+      pieces.push({ kind: 'arc', a: at(arc.startAngle), b: at(arc.endAngle), centre, axis });
+    } else {
+      // A clamped spline: it runs from its first pole to its last, along the poles beside them.
+      const spline = source.splines.find((c) => String(c.tag) === tag);
+      const poles = spline?.poles.map((q) => modelPoint(m, q)) ?? [];
+      const k = spline ? spline.degree + 1 : 0;
+      const knots = spline?.knots ?? [];
+      const clamped =
+        poles.length >= 2 &&
+        knots.length >= 2 * k &&
+        knots.slice(0, k).every((v) => v === knots[0]) &&
+        knots.slice(-k).every((v) => v === knots[knots.length - 1]);
+      if (!clamped) return undefined;
+      const a = poles[0] as Vec3;
+      const b = poles[poles.length - 1] as Vec3;
+      const ta = sub3(poles[1] as Vec3, a);
+      const tb = sub3(b, poles[poles.length - 2] as Vec3);
+      pieces.push({ kind: 'curve', a, b, ta, tb, points: poles });
+    }
+  }
+  const m = entry.source.frame;
+  const curves: ProfileCurve[] = [];
+  for (const name of regionCurves(entry, profiles)) {
+    const c = entry.curves.get(name);
+    if (!c) continue;
+    if ('center' in c)
+      curves.push({ name, kind: 'arc', centre: modelPoint(m, c.center), radius: c.radius });
+    else curves.push({ name, kind: 'line', a: modelPoint(m, c.start), b: modelPoint(m, c.end) });
+  }
+  const origin: Vec3 = [m[3] as number, m[7] as number, m[11] as number];
+  const normal: Vec3 = [m[2] as number, m[6] as number, m[10] as number];
+  return sweptFaces(pieces, { origin, normal }, curves);
+}
+
+const sub3 = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const crossOf = (a: Vec3, b: Vec3): Vec3 => [
+  a[1] * b[2] - a[2] * b[1],
+  a[2] * b[0] - a[0] * b[2],
+  a[0] * b[1] - a[1] * b[0],
+];
 
 /** A split of bodies by a plane, keeping both sides. */
 export function splitBody(d: Design, f: F3dSplit, context: CopyContext): string | undefined {

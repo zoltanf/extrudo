@@ -524,6 +524,21 @@ The file's STEP export of the same body re-fits its splines (other knots,
 other points), so its `B_SPLINE_*` entities agree with these only at the
 ends; they cannot be compared knot by knot.
 
+### Sweep faces
+
+A sweep's own faces carry tokens of its operations: the start cap (on the
+profile's plane) 1, the end cap 2, and the sides numbered on from there, piece
+by piece of the path (one design, a profile of 26 curves along a line, an arc
+and a line: 114–139 along the line, 140–156 round the arc, 157–173 along the
+last line; not every number is a face). A side the profile sweeps in the
+path's own plane is one face carrying a tag per piece (`119 120 121`). The
+tokens are not read: the importer tells a sweep's faces by geometry, against
+each piece of a flat path of lines, arcs and splines (along a line a profile
+line sweeps a plane and an arc a cylinder; round an arc the faces of a revolve
+about its axis; along a spline only a plane at one height off the path's
+plane). Checked on 3 designs: every face the rounds there name along lines and
+arcs is told; those round a spline are not.
+
 ### Fillet and chamfer faces
 
 A fillet's own faces (tagged with its operation ids) are cylinders of its

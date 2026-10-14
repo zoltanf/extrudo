@@ -149,6 +149,77 @@ const RING = Math.PI * (5.5 ** 2 - 2.1 ** 2) * 0.8;
 const HOLE = Math.PI * 0.5 ** 2 * 0.8;
 const base = { suppressed: false, parameters: [] as ParameterValue[], bodies: [] as number[] };
 
+/** A 2 mm rod: a circle on XY swept 1 cm up Z along a line of a sketch on XZ. */
+function rod(): F3dDesign {
+  const profile = circle(10, 101n, 0.1);
+  // A sketch on XZ: (u, v) → (u, 0, v); its line runs 1 cm up Z.
+  const frame = [1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1];
+  return {
+    parameters: [],
+    userParameters: [],
+    features: [
+      sketch(1, 5, 'Sketch1', [profile]),
+      {
+        type: 'sketch',
+        id: 2,
+        kind: 'Sketch',
+        name: 'Sketch2',
+        suppressed: false,
+        parameters: [],
+        sketch: {
+          id: 6,
+          frame,
+          points: [
+            { id: 21, at: [0, 0, 0], incidence: 0 },
+            { id: 22, at: [0, 1, 0], incidence: 0 },
+          ],
+          lines: [
+            {
+              id: 20,
+              tag: 201n,
+              start: [0, 0, 0],
+              end: [0, 1, 0],
+              startPoint: 21,
+              endPoint: 22,
+              construction: false,
+            },
+          ],
+          circulars: [],
+          splines: [],
+          texts: [],
+        },
+      },
+      {
+        ...base,
+        type: 'sweep',
+        id: 3,
+        kind: 'Sweep',
+        name: 'Sweep1',
+        parameters: [
+          parameter({ name: 'd1', kind: 'AlongDistance', unit: '', value: 1 }),
+          parameter({ name: 'd2', kind: 'AgainstDistance', unit: '', value: 0 }),
+          parameter({ name: 'd3', kind: 'TaperAngle', unit: 'deg', value: 0 }),
+        ],
+        operation: 'new-body',
+        profiles: [
+          {
+            id: 30,
+            sketch: 5,
+            regions: [
+              { outer: [[101n]], inner: [], outerPieces: whole([[101n]]), innerPieces: [] },
+            ],
+          },
+        ],
+        paths: [[{ sketch: 6, tag: 201n }]],
+        pathEdges: false,
+        participants: [],
+      },
+    ],
+    bodies: [],
+    problems: [],
+  };
+}
+
 describe('f3dToDesign: copying features', () => {
   it('mirrors a cut in a plane through the origin', async () => {
     const f3d = washerWithHole();
@@ -243,76 +314,62 @@ describe('f3dToDesign: copying features', () => {
   });
 
   it('sweeps a profile along a line of another sketch', async () => {
-    const profile = circle(10, 101n, 0.1);
-    // A sketch on XZ: (u, v) → (u, 0, v); its line runs 1 cm up Z.
-    const frame = [1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1];
-    const f3d: F3dDesign = {
-      parameters: [],
-      userParameters: [],
-      features: [
-        sketch(1, 5, 'Sketch1', [profile]),
-        {
-          type: 'sketch',
-          id: 2,
-          kind: 'Sketch',
-          name: 'Sketch2',
-          suppressed: false,
-          parameters: [],
-          sketch: {
-            id: 6,
-            frame,
-            points: [
-              { id: 21, at: [0, 0, 0], incidence: 0 },
-              { id: 22, at: [0, 1, 0], incidence: 0 },
-            ],
-            lines: [
-              {
-                id: 20,
-                tag: 201n,
-                start: [0, 0, 0],
-                end: [0, 1, 0],
-                startPoint: 21,
-                endPoint: 22,
-                construction: false,
-              },
-            ],
-            circulars: [],
-            splines: [],
-            texts: [],
-          },
-        },
-        {
-          ...base,
-          type: 'sweep',
-          id: 3,
-          kind: 'Sweep',
-          name: 'Sweep1',
-          parameters: [
-            parameter({ name: 'd1', kind: 'AlongDistance', unit: '', value: 1 }),
-            parameter({ name: 'd2', kind: 'AgainstDistance', unit: '', value: 0 }),
-            parameter({ name: 'd3', kind: 'TaperAngle', unit: 'deg', value: 0 }),
-          ],
-          operation: 'new-body',
-          profiles: [
-            {
-              id: 30,
-              sketch: 5,
-              regions: [
-                { outer: [[101n]], inner: [], outerPieces: whole([[101n]]), innerPieces: [] },
-              ],
-            },
-          ],
-          paths: [[{ sketch: 6, tag: 201n }]],
-          pathEdges: false,
-          participants: [],
-        },
-      ],
-      bodies: [],
-      problems: [],
-    };
+    const f3d = rod();
     const { report } = f3dToDesign(f3d, 'Rod');
     expect(report.imported).toContain('Sweep1');
     expect(await volumes(f3d)).toEqual([expect.closeTo(Math.PI * 10, 2)]);
+  });
+
+  it("names a sweep's cap and side, so a chamfer on the rod's end resolves", async () => {
+    const f3d = rod();
+    f3d.features.push({
+      ...base,
+      type: 'chamfer',
+      id: 8,
+      kind: 'Chamfer',
+      name: 'Chamfer1',
+      sets: [
+        {
+          size: parameter({ name: 'd8', kind: 'Distance', value: 0.02 }),
+          edges: [
+            {
+              faces: [
+                {
+                  tags: [{ token: '2', designs: [303] }],
+                  feature: 3,
+                  surface: { kind: 'plane', point: [0, 0, 1], normal: [0, 0, 1] },
+                },
+                {
+                  tags: [{ token: '3', designs: [303] }],
+                  feature: 3,
+                  surface: {
+                    kind: 'cone',
+                    center: [0, 0, 0],
+                    axis: [0, 0, 1],
+                    radius: 0.1,
+                    cylinder: true,
+                    slope: 0,
+                  },
+                },
+              ],
+              bounds: [],
+            },
+          ],
+        },
+      ],
+    });
+    const { design, report } = f3dToDesign(f3d, 'Rod');
+    expect(report.imported).toContain('Chamfer1');
+    const doc = design.toJSON();
+    const sweep = doc.features.find((f) => f.name === 'Sweep1');
+    const chamfer = doc.features.find((f) => f.name === 'Chamfer1');
+    const ref = (chamfer?.inputs.edges as { refs: { id: string }[] } | undefined)?.refs[0]?.id;
+    expect(ref).toContain(`sweep:${sweep?.id}:cap:end`);
+    expect(ref).toContain(`sweep:${sweep?.id}:side:`);
+    // The rod less a 0.2 mm ring off its top rim.
+    const [volume] = await volumes(f3d);
+    expect(volume).toBeLessThan(Math.PI * 10 - 0.05);
+    expect(volume).toBeGreaterThan(Math.PI * 10 - 0.2);
   });
 
   it('leaves out a sweep along part of its path, or with a taper', () => {
