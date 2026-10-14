@@ -13,7 +13,7 @@
  * so not certain.
  */
 import type { AsmSurface } from '../asm';
-import type { Segment } from '../segment';
+import { readPrologue, type Segment } from '../segment';
 import type { Scope } from './scope';
 import type { Vec3 } from './sketch-geometry';
 
@@ -44,6 +44,37 @@ export function readModelPoint(seg: Segment, id: number): Vec3 {
   const r = seg.reader(id);
   r.skip(2);
   return [r.f64(), r.f64(), r.f64()];
+}
+
+/**
+ * `F2A7590D…` as a hole's placement: the prologue, u32 8, then a point and the start face's
+ * unit normal (3 f64 each). The point is zero where a model plane (`CC54ECAD…`) gives the
+ * face; where the face is a body face (an edge recipe naming it), it is the hole's place on
+ * that face. Undefined unless the values read as such.
+ */
+export function readHolePlacement(
+  seg: Segment,
+  id: number,
+): { point: Vec3; normal: Vec3 } | undefined {
+  const r = seg.reader(id);
+  if (readPrologue(r).leading || r.remaining < 52 || r.u32() !== 8) return undefined;
+  const v = (): Vec3 => [r.f64(), r.f64(), r.f64()];
+  const point = v();
+  const normal = v();
+  if (![...point, ...normal].every(Number.isFinite)) return undefined;
+  if (Math.abs(Math.hypot(...normal) - 1) > 1e-6) return undefined;
+  return { point, normal };
+}
+
+/** A plane through a point with the given unit normal, its directions picked so x × y is it. */
+export function planeThrough(point: Vec3, normal: Vec3): ModelPlane {
+  const [a, b, c] = normal;
+  // A direction in the plane: across the axis the normal leans on least.
+  const raw: Vec3 = Math.abs(c) < 0.9 ? [-b, a, 0] : [0, -c, b];
+  const len = Math.hypot(...raw);
+  const x: Vec3 = [raw[0] / len, raw[1] / len, raw[2] / len];
+  const y: Vec3 = [b * x[2] - c * x[1], c * x[0] - a * x[2], a * x[1] - b * x[0]];
+  return { origin: point, x, y };
 }
 
 /** Where the hole's own members start (`01 01`), by version and property block. */
