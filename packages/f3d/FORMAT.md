@@ -95,7 +95,7 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `44A64366…` | Sketch | its base level's first reference is the placement |
 | `F47A46FB…` | Sketch placement | u8 identity, or 16 f64: the sketch-to-model matrix, row-major |
 | `8DA771B7…` | Sketch feature | refers to its sketch (`44A64366…`) |
-| `DD405BC2…` | Extrude | op u32 (1 join, 2 cut, 3 intersect, 4 new body), direction u32 (1 one side, 2 two sides, 3 symmetric), face-extend u32, reversed u8, solid u8, start u8 (0 profile plane, 1 offset, 2 face) — at payload offset 9, 8, 7, 19 or 18 depending on the version; then three zero bytes and a unit vector (3 f64, model space) along the profile's normal (all 1182 extrudes of the corpus: unit, after three zero bytes; parallel to the sketch normal in 1172 of the 1175 with a sketch) |
+| `DD405BC2…` | Extrude | op u32 (1 join, 2 cut, 3 intersect, 4 new body), direction u32 (1 one side, 2 two sides, 3 symmetric), face-extend u32, reversed u8, solid u8, start u8 (0 profile plane, 1 offset, 2 face) — at payload offset 9, 8, 7, 19, 18 or 17 depending on the version and the leading reference (57 where that reference carries its target's type GUID: 8 extrudes in 3 files of the corpus, all of class version 5); then three zero bytes and a unit vector (3 f64, model space) along the profile's normal (all 1182 extrudes of the corpus: unit, after three zero bytes; parallel to the sketch normal in 1172 of the 1175 with a sketch) |
 | `4BD53E5A…` | Sketch-profile operand | the sketch's record number as decimal UTF-16; record N + 3, when it is `0D57BD2F…`, selects regions |
 | `0D57BD2F…` | Profile regions | see below |
 | `92F9A5F4…` | Entity-profile operand | names its sketch as a sketch-profile operand does, and the entity by a `90055C05…` record reference: a text (`F0B1AFA3…`, or the older `E0618268…`) whose letters are the profile |
@@ -119,10 +119,10 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `D26351F0…` | Body link | wstr body GUID; refs to the body (`D3937028…`) and the feature that made it. In a pattern's geometry operand beside a `90055C05…`, the body that feature acted on |
 | `D3937028…` | Body | GUID and appearance strings, then u32 index (its number, "Body3"), u32 n, n bytes, u32, u8 1, u8 light bulb (1 shown, 0 hidden). Newer files put a −1.0 double just before the index; class version 16 starts it at payload offset 10. a STEP export of the design leaves hidden bodies out |
 | `9716F783…` | Body operand | refers to a body link. In an extrude's or revolve's operand group, one per body it joins, cuts or intersects; in a pattern's, one per body it repeats |
-| `F2A7590D…` | Hole placement, pattern direction (an operand-group subtype) | u32 8, 6 f64 (the first three zero wherever seen, the last three the face plane's normal), …; its geometry operand holds the face's plane (`CC54ECAD…`) |
+| `F2A7590D…` | Hole placement, pattern direction (an operand-group subtype) | u32 8, 6 f64 (a point and the face plane's unit normal), …; either a geometry operand holding the face's plane (`CC54ECAD…`; the point is then zero) or a face operand (`5662F619…`) whose recipe names a body face (the point is then the hole's place on that face: in the 4 such holes of the corpus it lies on the recipe's B-rep plane, and the hole's cylinder axis meets the face there) |
 | `2CA5A1CD…` | Operand group | one per fillet/chamfer edge set; members are edge operands (or face or body operands, for other features) |
 | `5662F619…` | Edge or face operand | refers to its recipe; an extrude's face operands name its start face and the face it goes up to |
-| `7ACC2A03…` | Edge or face recipe | u32 1, u32 3, u32 n faces; per face u32 tags; per tag str8 token, u32 0, u32 k, k × i32 operation id, u32 0; then `edge_recipe_data` and a program (not read). An edge lists its two faces first, a face itself; the rest are neighbours. A fillet's or chamfer's face often has the token k of the k-th edge in that feature's list, but the tokens count other faces too (a one-edge fillet's face can be 4; a four-edge chamfer's 1, 2, 5, 6); an extrude's start cap 1, end cap 2, sides from 3 |
+| `7ACC2A03…` | Edge or face recipe | u32 1, u32 3, u32 n faces; per face u32 tags; per tag str8 token, u32 0, u32 k, k × i32 operation id, u32 0; then `edge_recipe_data` and a program (not read). An edge lists its two faces first, a face itself; the rest are neighbours. A fillet's or chamfer's face often has the token k of the k-th edge in that feature's list, but the tokens count other faces too (a one-edge fillet's face can be 4; a four-edge chamfer's 1, 2, 5, 6); an extrude's start cap 1, end cap 2, sides from 3. A first face with a negative token (`-1@301`, `-143@304`) names no face of the body: in the 11 such edge recipes of the corpus (all closed edges: a circle where a cylinder meets a cap or a plane) exactly one face follows the second, and the edge runs between the second face and that one (the B-rep holds an edge between those two where the stream kept it) |
 
 An extrude's extent shows in the parameters it owns: `AlongDistance` for a
 distance, `Side1Offset` (and a face operand) for up to an object, none for
@@ -151,7 +151,11 @@ A hole's sizes are parameters it owns: `HoleDiameter`, `HoleDepth`,
 `TipAngle` (180° is a flat bottom), and `CSDiameter`/`CSAngle` for a
 countersink or `CBDiameter`/`CBDepth` for a counterbore. Its references hold a
 hole placement (the plane of the face it starts on) and one geometry operand
-per centre (`994C518A…`, model space). It drills against the plane's normal
+per centre (`994C518A…`, model space). A hole placed by its distances to two
+edges (parameters `RefDim1`, `RefDim2`) stores no centre point: its centre is
+where the axis of the cylinder it made (the B-rep faces tagged by its
+operations, of radius `HoleDiameter`/2) meets the start face (the one such hole of
+the corpus: 3.9 mm and 3.8 mm, centre at y 3.9 mm, z 3.8 mm on the plane x = 0). It drills against the plane's normal
 (x × y). Its own members open with `01 01` (payload offset 10 after a
 property block, 6 without, 2 in version 4); 28 bytes on, a byte is 1 where it
 drills along the normal instead — seen once, on the only hole in the corpus
