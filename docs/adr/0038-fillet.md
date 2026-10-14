@@ -453,3 +453,66 @@ changed: bodies editable 8 → 12, frozen 31 → 27 (5 frozen → editable, the
 design above editable → frozen). Tests: `fillet.test.ts` "builds a round at its
 limit a hair under its radius…", "…limit lies just under its radius…", "a round
 far over its limit…".
+
+## Amendment 2026-10-14: rounds that fail together at their limit, and edges no round can take (`skipLostEdges`)
+
+Two more fallbacks in `buildRound` (`round-fallback.ts`), found on imported
+rounds that OCCT refused on a body that matches the file (job C's divergence
+report: 29 designs whose first divergence is such a round).
+
+- **Where they meet, at their limit.** Two rounds that between them eat a face
+  fail at exactly that face's size, and the diagnosis says the chains build
+  alone but not together, with the largest common scale at the bisection's
+  ceiling (127/128): a 20 mm block with its top-front and bottom-front edges at
+  radius 10 says "These fillets can't all be built where they meet" and builds
+  at 9.999. `filletLimit` now also takes a lone `together` problem; the
+  at-limit retry of the amendment above then scales every edge, warning
+  "Fillet built at radius 9.999 mm, a hair under the 10 mm asked for, which is
+  just too large where its edges meet." 11 of the corpus's 25 refused
+  "together" rounds failed at 0.992 (5 of the 9 first divergences of that kind).
+- **Edges no round can take.** OCCT won't take an edge whose faces meet
+  smoothly (a line where a plane runs tangent into a cylinder) or that isn't
+  between two faces: `unfilletable`. An imported set can hold such edges
+  (6 of 13 in one design); natively OCCT skips them and builds the rest, but
+  the facade names them and the third rule of 2026-10-12 then failed the
+  whole round. They are now left out first, with the usual warning ("6 of 13
+  edges left out of the fillet: Edge 32 can't be filleted: it isn't a sharp
+  edge between two faces of the body. …"), and don't count toward the third,
+  since leaving them out changes nothing the round builds on the others; the
+  rest goes through the other rules once. The message says "a sharp edge"
+  now, since a smooth edge is the common case.
+
+**Measured and not kept, with the evidence** (probes on the 177 first failing
+round calls of the 67 designs with a refused round, OCCT run natively on each
+input body without the facade's guards):
+
+- *Two passes* (the subset that builds, then the rest on its result): on the
+  "together" rounds the rest fails on the first pass's result at the same
+  factor (0 of the 4 tried). OCCT's fillet history has no edge records, so the
+  rest has to be found by its two faces' images.
+- *Another edge order*: 1 of the 177 builds reversed (a chamfer the rule
+  above now builds anyway); *the chamfer's other reference face*: none of the
+  3 chamfers with one.
+- *Healing a round OCCT built but the validity check rejects* (one face whose
+  wire touches itself where the round ends): `ShapeFix_Shape` makes 16 of 35
+  such results valid, the volume within 0.1 %, and a facade route (heal
+  as the last try, history followed by surface) built 16 more imported rounds, but no
+  design came to match the file and one got worse: its newly built rounds
+  meet at a corner that the offset-faces feature after them refuses
+  (ADR-0051's guard), so its replay no longer matched the file and the body
+  check took that body from the file. Taken out again; the facade is unchanged.
+- *The `filletRollsOff` guard* refuses 25 of the fillet calls before OCCT
+  runs; natively OCCT builds a valid round for 3 of them (two holders, a blind
+  holder) and fails on 16 anyway. The guard keeps a heap-corrupting trap out
+  (2026-10-01 amendment), so it stays.
+- What is left is OCCT's own limit: `StartsolFailure` (a concave 13 mm round
+  on a 2 mm strip whose ends have no face to end on: the round needs end caps
+  of its own), `WalkingFailure`, corners OCCT can't blend, and chamfers it
+  refuses at any size and in any edge order.
+
+Corpus (250 files, replay only): within 0.5 % volume and 0.05 mm box 147 →
+149, none worse; 12 rounds error → built (10 together at their limit, 2 with
+edges no round can take), none built → error. Body check (ADR-0084, all 250):
+bodies editable 195 → 198, frozen 159 → 156, no design harmed. Tests:
+`fillet.test.ts` "two rounds that between them eat a face …", "leaves out
+edges no round can take …"; `round-fallback.test.ts`.
