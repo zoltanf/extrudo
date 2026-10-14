@@ -200,11 +200,24 @@ const keyCurve = (c: CurveIn) =>
       ? `e:${keyV(c.c)}:${keyV(c.n)}:${keyV(c.major)}:${c.ratio}`
       : `s:${JSON.stringify(c)}`;
 
-/** A stream with one lump holding `faces`, laid out as the reader expects. */
+/**
+ * A stream with one lump holding `faces`, laid out as the reader expects. With
+ * `voids`, the lump's shell chain goes on with one shell per entry, each with
+ * its own faces.
+ */
 function solidStream(
-  faces: FaceIn[],
-  opts: { faceCycle?: boolean; lumps?: number; voids?: number } = {},
+  shellFaces: FaceIn[],
+  opts: { faceCycle?: boolean; lumps?: number; voids?: FaceIn[][] } = {},
 ): Uint8Array {
+  const shellsIn = [shellFaces, ...(opts.voids ?? [])];
+  const faces = shellsIn.flat();
+  // Each shell's faces are a run of the face block: [start, end).
+  const runs: [number, number][] = [];
+  for (let k = 0, at = 0; k < shellsIn.length; k++) {
+    runs.push([at, at + (shellsIn[k] as FaceIn[]).length]);
+    at += (shellsIn[k] as FaceIn[]).length;
+  }
+  const shellOf = (fi: number): number => runs.findIndex(([a, b]) => fi >= a && fi < b);
   const vertexAt = new Map<string, number>();
   const vertices: V[] = [];
   const curveAt = new Map<string, number>();
@@ -270,7 +283,7 @@ function solidStream(
   const BODY = 0;
   const LUMP = 1;
   const SHELL = LUMP + lumps;
-  const FACE = SHELL + 1;
+  const FACE = SHELL + shellsIn.length;
   const LOOP = FACE + faces.length;
   const COEDGE = LOOP + faces.reduce((n, f) => n + f.loops.length, 0);
   const EDGE = COEDGE + flatCoedges.length;
@@ -279,34 +292,22 @@ function solidStream(
   const CURVE = POINT + vertices.length;
   const SURFACE = CURVE + curves.length;
 
-  // Void shells go last: each names the next, and a face (its own faces are not read).
-  const VOID = SURFACE + surfaces.length;
-  const voids = opts.voids ?? 0;
-  const records: number[][] = new Array(VOID + voids);
-  for (let k = 0; k < voids; k++)
-    records[VOID + k] = rec(
+  const records: number[][] = new Array(SURFACE + surfaces.length);
+  records[BODY] = rec('body', ptr(-1), int(1), ptr(-1), ptr(LUMP), ptr(-1), ptr(-1));
+  for (let li = 0; li < lumps; li++)
+    records[LUMP + li] = rec('lump', ptr(-1), int(-1), ptr(-1), ptr(SHELL), ptr(BODY));
+  // Each shell names the next one of the lump, then its first face.
+  for (let k = 0; k < shellsIn.length; k++)
+    records[SHELL + k] = rec(
       'shell',
       ptr(-1),
       int(-1),
       ptr(-1),
-      ptr(k + 1 < voids ? VOID + k + 1 : -1),
-      ptr(FACE),
+      ptr(k + 1 < shellsIn.length ? SHELL + k + 1 : -1),
+      ptr(FACE + (runs[k] as [number, number])[0]),
       ptr(-1),
       ptr(LUMP),
     );
-  records[BODY] = rec('body', ptr(-1), int(1), ptr(-1), ptr(LUMP), ptr(-1), ptr(-1));
-  for (let li = 0; li < lumps; li++)
-    records[LUMP + li] = rec('lump', ptr(-1), int(-1), ptr(-1), ptr(SHELL), ptr(BODY));
-  records[SHELL] = rec(
-    'shell',
-    ptr(-1),
-    int(-1),
-    ptr(-1),
-    ptr(voids > 0 ? VOID : -1),
-    ptr(FACE),
-    ptr(-1),
-    ptr(LUMP),
-  );
 
   let loopIdx = LOOP;
   let g = 0;
@@ -365,20 +366,16 @@ function solidStream(
     }
   }
   for (let fi = 0; fi < faces.length; fi++) {
-    const next = opts.faceCycle
-      ? fi + 1 < faces.length
-        ? FACE + fi + 1
-        : FACE
-      : fi + 1 < faces.length
-        ? FACE + fi + 1
-        : -1;
+    const shell = shellOf(fi);
+    const [first, end] = runs[shell] as [number, number];
+    const next = fi + 1 < end ? FACE + fi + 1 : opts.faceCycle ? FACE + first : -1;
     records[FACE + fi] = rec(
       'face',
       ptr(-1),
       int(-1),
       ptr(next),
       ptr(loopIds[fi]?.[0] ?? -1),
-      ptr(SHELL),
+      ptr(SHELL + shell),
       ptr(-1),
       ptr(SURFACE + (surfaceAt.get(JSON.stringify(faces[fi]?.surface)) as number)),
       // The record's flag is the face's forward sense; the reader derives the
@@ -527,6 +524,43 @@ function squareAt(offset: number): Occurrence[] {
 }
 const firstSolid = (bytes: Uint8Array) => asmBodies(readAsm(bytes))[0] as AsmBodySolid;
 
+const moveV = (v: V, by: V): V => [v[0] + by[0], v[1] + by[1], v[2] + by[2]];
+/** A face moved by `by` (its surface, curves and points). */
+function moveFace(f: FaceIn, by: V): FaceIn {
+  const s = f.surface;
+  return {
+    ...f,
+    surface: s.t === 'plane' ? { ...s, p: moveV(s.p, by) } : s,
+    loops: f.loops.map((loop) =>
+      loop.map((o) => ({
+        ...o,
+        ...(o.a ? { a: moveV(o.a, by) } : {}),
+        ...(o.b ? { b: moveV(o.b, by) } : {}),
+        curve: o.curve.t === 'line' ? { ...o.curve, p: moveV(o.curve.p, by) } : o.curve,
+      })),
+    ),
+  };
+}
+/**
+ * A 2 cm cubic cavity at (at, at, at) inside the 10 cm box: the box's faces
+ * scaled down and moved, each face reversed, as the file writes a void's faces
+ * (their normals point out of the material, into the cavity).
+ */
+function cavity(at: number): FaceIn[] {
+  const scale = (v: V): V => [at + v[0] / 5, at + v[1] / 5, at + v[2] / 5];
+  return boxFaces().map((f) => ({
+    surface: f.surface.t === 'plane' ? { ...f.surface, p: scale(f.surface.p) } : f.surface,
+    reversed: true,
+    loops: f.loops.map((loop) =>
+      loop.map((o) => {
+        const a = scale(o.a as V);
+        const b = scale(o.b as V);
+        return line(a, b);
+      }),
+    ),
+  }));
+}
+
 describe('asmBodies', () => {
   it('reads a box as one solid with six faces, loops and edges', () => {
     const solids = asmBodies(readAsm(solidStream(boxFaces())));
@@ -600,15 +634,33 @@ describe('asmBodies', () => {
     );
   });
 
-  it('counts a lump’s further shells as voids, and the writer refuses them', () => {
-    const solids = asmBodies(readAsm(solidStream(boxFaces(), { voids: 2 })));
+  it('reads a lump’s further shells as voids, each with its own faces', () => {
+    const solids = asmBodies(readAsm(solidStream(boxFaces(), { voids: [cavity(2), cavity(6)] })));
     expect(solids).toHaveLength(1);
     expect(solids[0]?.faces).toHaveLength(6);
-    expect(solids[0]?.voids).toBe(2);
-    expect(solidStep(solids[0] as AsmBodySolid)).toEqual({
-      reason: 'unsupported geometry (a solid with an inner void)',
-    });
+    expect(solids[0]?.voids?.map((v) => v.length)).toEqual([6, 6]);
+    expect(solids[0]?.voids?.[0]?.every((f) => f.reversed)).toBe(true);
+    expect(solids[0]?.unknownOuter).toBeUndefined();
     expect(asmBodies(readAsm(solidStream(boxFaces())))[0]?.voids).toBeUndefined();
+  });
+
+  it('takes the shell whose box holds the others as the outside, in either order', () => {
+    const solid = firstSolid(solidStream(cavity(2), { voids: [boxFaces()] }));
+    // The outer box's corner (10, 10, 10) is in `faces`; the cavity is the void.
+    const points = (faces: AsmBodySolid['faces']) =>
+      faces.flatMap((f) => f.loops.flatMap((l) => l.coedges.map((c) => c.edge.start)));
+    expect(points(solid.faces)).toContainEqual([10, 10, 10]);
+    expect(solid.voids).toHaveLength(1);
+    expect(points(solid.voids?.[0] ?? [])).not.toContainEqual([10, 10, 10]);
+  });
+
+  it('marks a lump whose shells do not nest, and the writer refuses it', () => {
+    const apart = boxFaces().map((f) => moveFace(f, [20, 0, 0]));
+    const solid = firstSolid(solidStream(boxFaces(), { voids: [apart] }));
+    expect(solid.unknownOuter).toBe(true);
+    expect(solidStep(solid)).toEqual({
+      reason: 'unsupported geometry (a solid with voids whose outer shell is not known)',
+    });
   });
 
   it('reads a stream whose many lumps all name one shell just once', () => {
@@ -960,6 +1012,32 @@ describe('solidToStep', () => {
     );
     expect(step).toBeUndefined();
     expect(reason).toBe('unsupported geometry (a loop with no edge)');
+  });
+});
+
+describe('solids with voids', () => {
+  it('writes the voids as a BREP_WITH_VOIDS of reversed oriented shells', () => {
+    const solid = firstSolid(solidStream(boxFaces(), { voids: [cavity(2), cavity(6)] }));
+    const step = solidStep(solid).step as string;
+    expect(step).not.toContain('MANIFOLD_SOLID_BREP');
+    expect(step.match(/CLOSED_SHELL\('',\(/g)).toHaveLength(3);
+    const oriented = [...step.matchAll(/#(\d+)=ORIENTED_CLOSED_SHELL\('',\*,#\d+,\.F\.\);/g)];
+    expect(oriented).toHaveLength(2);
+    const ids = oriented.map((m) => `#${m[1]}`).join(',');
+    expect(step).toMatch(new RegExp(`=BREP_WITH_VOIDS\\('body',#\\d+,\\(${ids}\\)\\);`));
+    // A void's faces keep the file's sense: reversed, same-sense false.
+    expect(step.match(/ADVANCED_FACE\([^;]*\.F\.\);/g)).toHaveLength(12);
+  });
+
+  it('reports an inward-signed surface on a void’s face', () => {
+    const ball: FaceIn = {
+      surface: { t: 'sphere', c: [5, 5, 5], axis: [0, 0, 1], r: 1, inward: true },
+      reversed: true,
+      loops: [],
+    };
+    const solid = firstSolid(solidStream(boxFaces(), { voids: [[ball]] }));
+    expect(solid.voids).toHaveLength(1);
+    expect(hasInwardFace(solid)).toBe(true);
   });
 });
 

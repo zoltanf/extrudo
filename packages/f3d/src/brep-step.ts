@@ -2,8 +2,8 @@
  * A body of the file's B-rep streams → AP214 STEP text (mm), for planes,
  * cylinders, cones, spheres, tori and the B-spline surfaces the file stores for
  * its procedural ones, with straight, elliptical (circle) and B-spline edges.
- * Anything else (a helix, which keeps no B-spline; a degenerate torus; a solid
- * with voids) is refused with a reason.
+ * A solid with voids is written as `BREP_WITH_VOIDS`. Anything else (a helix,
+ * which keeps no B-spline; a degenerate torus) is refused with a reason.
  *
  * The body a design record names is found through its body container
  * (`FORMAT.md`, `CD57BC48…`): a container lists the bodies of its component in
@@ -146,9 +146,9 @@ function entryFor(entries: Entries, file: string): Uint8Array | undefined {
 
 /** The solid as AP214 STEP text (mm). Throws `UnsupportedGeometry` on a surface or curve it does not carry. */
 export function solidToStep(solid: AsmBodySolid): string {
-  // The writer emits one closed shell; a lump with more shells has voids, which
-  // it does not write, so such a solid would come out wrong.
-  if (solid.voids) throw new UnsupportedGeometry('a solid with an inner void');
+  // A lump with several shells whose outside is not known would come out wrong.
+  if (solid.unknownOuter)
+    throw new UnsupportedGeometry('a solid with voids whose outer shell is not known');
   const w = new StepWriter();
   const ctx = header(w);
   const vertexAt = new Map<string, number>();
@@ -203,43 +203,56 @@ export function solidToStep(solid: AsmBodySolid): string {
     edgeAt.set(e.id, refs);
     return refs;
   };
-  const faceRefs: number[] = [];
-  for (const face of solid.faces) {
-    const bounds: number[] = [];
-    for (const loop of face.loops) {
-      const oriented: { ref: number; forward: boolean }[] = [];
-      for (const coedge of loop.coedges)
-        for (const ref of edge(coedge.edge)) oriented.push({ ref, forward: coedge.forward });
-      // A not-reversed face is written with its loop reversed and same-sense
-      // true; a reversed face keeps the file's loop and same-sense false. The
-      // pair is what a kernel rebuilds the body with (the loop still winds the
-      // way STEP wants after the reversal). A surface the file wrote with a
-      // negative radius has its face already marked reversed by the reader.
-      if (!face.reversed) {
-        oriented.reverse();
-        for (const o of oriented) o.forward = !o.forward;
+  /** One shell's faces as a `CLOSED_SHELL`. */
+  const closedShell = (faces: AsmBodyFace[]): number => {
+    const faceRefs: number[] = [];
+    for (const face of faces) {
+      const bounds: number[] = [];
+      for (const loop of face.loops) {
+        const oriented: { ref: number; forward: boolean }[] = [];
+        for (const coedge of loop.coedges)
+          for (const ref of edge(coedge.edge)) oriented.push({ ref, forward: coedge.forward });
+        // A not-reversed face is written with its loop reversed and same-sense
+        // true; a reversed face keeps the file's loop and same-sense false. The
+        // pair is what a kernel rebuilds the body with (the loop still winds the
+        // way STEP wants after the reversal). A surface the file wrote with a
+        // negative radius has its face already marked reversed by the reader.
+        if (!face.reversed) {
+          oriented.reverse();
+          for (const o of oriented) o.forward = !o.forward;
+        }
+        const refs = oriented.map((o) =>
+          w.add("ORIENTED_EDGE('',*,*,#{}, .{}.)", [o.ref, o.forward ? 'T' : 'F']),
+        );
+        if (refs.length === 0) throw new UnsupportedGeometry('a loop with no edge');
+        const el = w.add("EDGE_LOOP('',({}))", [refs.map((x) => `#${x}`).join(',')]);
+        const cls = loop.outer ? 'FACE_OUTER_BOUND' : 'FACE_BOUND';
+        bounds.push(w.add(`${cls}('',#{},.T.)`, [el]));
       }
-      const refs = oriented.map((o) =>
-        w.add("ORIENTED_EDGE('',*,*,#{}, .{}.)", [o.ref, o.forward ? 'T' : 'F']),
+      if (bounds.length === 0) throw new UnsupportedGeometry('a face with no boundary');
+      const surface = w.surface(face.surface);
+      faceRefs.push(
+        w.add("ADVANCED_FACE('',({}),#{},.{}.)", [
+          bounds.map((x) => `#${x}`).join(','),
+          surface,
+          face.reversed ? 'F' : 'T',
+        ]),
       );
-      if (refs.length === 0) throw new UnsupportedGeometry('a loop with no edge');
-      const el = w.add("EDGE_LOOP('',({}))", [refs.map((x) => `#${x}`).join(',')]);
-      const cls = loop.outer ? 'FACE_OUTER_BOUND' : 'FACE_BOUND';
-      bounds.push(w.add(`${cls}('',#{},.T.)`, [el]));
     }
-    if (bounds.length === 0) throw new UnsupportedGeometry('a face with no boundary');
-    const surface = w.surface(face.surface);
-    faceRefs.push(
-      w.add("ADVANCED_FACE('',({}),#{},.{}.)", [
-        bounds.map((x) => `#${x}`).join(','),
-        surface,
-        face.reversed ? 'F' : 'T',
-      ]),
-    );
-  }
-  if (faceRefs.length === 0) throw new UnsupportedGeometry('a body with no writable face');
-  const shell = w.add("CLOSED_SHELL('',({}))", [faceRefs.map((x) => `#${x}`).join(',')]);
-  const solidRef = w.add("MANIFOLD_SOLID_BREP('body',#{})", [shell]);
+    if (faceRefs.length === 0) throw new UnsupportedGeometry('a body with no writable face');
+    return w.add("CLOSED_SHELL('',({}))", [faceRefs.map((x) => `#${x}`).join(',')]);
+  };
+  const shell = closedShell(solid.faces);
+  // A void's shell is written with the file's own face senses (each face's
+  // normal points out of the material, into the cavity) and named reversed by
+  // an `ORIENTED_CLOSED_SHELL`, as the file's own STEP export writes it.
+  const voids = (solid.voids ?? []).map((faces) =>
+    w.add("ORIENTED_CLOSED_SHELL('',*,#{},.F.)", [closedShell(faces)]),
+  );
+  const solidRef =
+    voids.length > 0
+      ? w.add("BREP_WITH_VOIDS('body',#{},({}))", [shell, voids.map((x) => `#${x}`).join(',')])
+      : w.add("MANIFOLD_SOLID_BREP('body',#{})", [shell]);
   const axis = w.add("AXIS2_PLACEMENT_3D('',#{},#{},#{})", [
     w.point([0, 0, 0]),
     w.direction([0, 0, 1]),
@@ -600,7 +613,7 @@ export function bodiesStep(entries: Entries, design: F3dDesign): BodyStep[] {
 
 /** True when any face's sphere/torus surface carries the file's inward sign (a negative radius). */
 export function hasInwardFace(solid: AsmBodySolid): boolean {
-  return solid.faces.some(
-    (f) => (f.surface.kind === 'sphere' || f.surface.kind === 'torus') && f.surface.inward,
-  );
+  return [solid.faces, ...(solid.voids ?? [])]
+    .flat()
+    .some((f) => (f.surface.kind === 'sphere' || f.surface.kind === 'torus') && f.surface.inward);
 }

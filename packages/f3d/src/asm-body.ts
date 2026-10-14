@@ -74,16 +74,21 @@ export interface AsmBodyFace {
   loops: AsmBodyLoop[];
 }
 
-/** One solid of a stream: the faces of one lump's shell. */
+/** One solid of a stream: the faces of one lump's shells. */
 export interface AsmBodySolid {
-  /** The faces of the lump's first shell. */
+  /** The faces of the lump's outer shell. */
   faces: AsmBodyFace[];
   /**
-   * How many more shells with faces the lump holds: a lump's shells together
-   * bound it, one its outside and the others voids inside it. Their faces are
-   * not read.
+   * The faces of each void: a lump can hold more than one shell, one its
+   * outside and the others cavities inside it. The outer shell is the one whose
+   * box holds every other shell's (the file's shell order does not say).
    */
-  voids?: number;
+  voids?: AsmBodyFace[][];
+  /**
+   * The lump holds several shells and no one shell's box holds all the others,
+   * so which is the outside is not known; `faces` is then the first shell's.
+   */
+  unknownOuter?: boolean;
 }
 
 /** A crafted stream may not take an unbounded number of steps per walk. */
@@ -289,8 +294,9 @@ function shellFaces(records: AsmRecord[], walk: Walk, shell: number): AsmBodyFac
 
 /**
  * The live solids of a B-rep stream, one per `lump`, in stream order. Each is
- * the faces of the shell that lump names (the current shell; the stream's
- * earlier shells are not read). The whole stream is walked once: a shell read
+ * the faces of the shell that lump names and of the shells chained after it
+ * (the outer shell and its voids; the stream's earlier shells are not read).
+ * The whole stream is walked once: a shell read
  * already is skipped, and a face, loop or coedge claimed twice throws, so a
  * crafted stream cannot make the read quadratic.
  */
@@ -314,17 +320,110 @@ export function asmBodies(records: AsmRecord[]): AsmBodySolid[] {
     const shell = firstOf(walk.is, pointers(records[i]), 'shell');
     if (shell < 0 || walk.shells.has(shell)) continue;
     walk.shells.add(shell);
-    const faces = shellFaces(records, walk, shell);
+    // The lump's shells with faces, in the file's order.
+    const shells: AsmBodyFace[][] = [];
+    const own = shellFaces(records, walk, shell);
+    if (own.length > 0) shells.push(own);
     // A shell's first pointer of its own type is the lump's next shell; each
     // shell is visited once, so a crafted chain ends.
-    let voids = 0;
     let next = firstOf(walk.is, pointers(records[shell]), 'shell');
     while (next >= 0 && !walk.shells.has(next)) {
       walk.shells.add(next);
-      if (firstOf(walk.is, pointers(records[next]), 'face') >= 0) voids++;
+      const faces = shellFaces(records, walk, next);
+      if (faces.length > 0) shells.push(faces);
       next = firstOf(walk.is, pointers(records[next]), 'shell');
     }
-    out.push(voids > 0 ? { faces, voids } : { faces });
+    out.push(lumpSolid(shells));
   }
   return out;
+}
+
+/** An axis-aligned box: min x, y, z, max x, y, z (cm). */
+type Box = [number, number, number, number, number, number];
+
+/**
+ * A box around a shell: its vertices, a whole circle's or ellipse's extent for
+ * a closed edge, a B-spline edge's control points (which hold the curve), and
+ * a sphere's or torus's extent for a face with no edge.
+ */
+function shellBox(faces: AsmBodyFace[]): Box {
+  const box: Box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+  const add = (p: AsmPoint, pad: AsmPoint = [0, 0, 0]): void => {
+    for (let k = 0; k < 3; k++) {
+      const x = p[k] as number;
+      const d = pad[k] as number;
+      box[k] = Math.min(box[k] as number, x - d);
+      box[k + 3] = Math.max(box[k + 3] as number, x + d);
+    }
+  };
+  for (const face of faces) {
+    const s = face.surface;
+    if (face.loops.length === 0 && (s.kind === 'sphere' || s.kind === 'torus')) {
+      const r = s.kind === 'sphere' ? s.radius : Math.abs(s.major) + s.minor;
+      add(s.center, [r, r, r]);
+    }
+    for (const loop of face.loops)
+      for (const { edge } of loop.coedges) {
+        if (edge.start) add(edge.start);
+        if (edge.end) add(edge.end);
+        const c = edge.curve;
+        if (c.kind === 'bspline') for (const p of c.spline.points) add(p);
+        else if (c.kind === 'ellipse' && edge.start && (!edge.end || same(edge.start, edge.end))) {
+          // A closed edge is the whole ellipse: along each axis it reaches
+          // √((a·eₖ)² + (b·eₖ)²) from its centre (a, b its two semi-axes).
+          const n = unit(c.normal);
+          const a = c.major;
+          const b = cross(n, a).map((x) => x * c.ratio) as AsmPoint;
+          add(
+            c.center,
+            [0, 1, 2].map((k) => Math.hypot(a[k] as number, b[k] as number)) as AsmPoint,
+          );
+        }
+      }
+  }
+  return box;
+}
+
+const same = (p: AsmPoint, q: AsmPoint): boolean =>
+  Math.abs(p[0] - q[0]) + Math.abs(p[1] - q[1]) + Math.abs(p[2] - q[2]) < 1e-9;
+const unit = (v: AsmPoint): AsmPoint => {
+  const n = Math.hypot(v[0], v[1], v[2]) || 1;
+  return [v[0] / n, v[1] / n, v[2] / n];
+};
+const cross = (u: AsmPoint, v: AsmPoint): AsmPoint => [
+  u[1] * v[2] - u[2] * v[1],
+  u[2] * v[0] - u[0] * v[2],
+  u[0] * v[1] - u[1] * v[0],
+];
+
+/** True when box `a` holds box `b` (to 1e-6 cm). */
+const holds = (a: Box, b: Box): boolean =>
+  [0, 1, 2].every(
+    (k) =>
+      (a[k] as number) <= (b[k] as number) + 1e-6 &&
+      (a[k + 3] as number) >= (b[k + 3] as number) - 1e-6,
+  );
+
+/**
+ * A lump's solid from its shells (with faces), in the file's order. One shell
+ * is the outside and the rest are voids inside it. The file's order does not
+ * say which: over the corpus the outer shell is the chain's first in most
+ * lumps and its second in others, and in every one it is the only shell whose
+ * box holds all the others'. A lump where no single shell does is marked
+ * `unknownOuter`.
+ */
+function lumpSolid(shells: AsmBodyFace[][]): AsmBodySolid {
+  if (shells.length < 2) return { faces: shells[0] ?? [] };
+  const boxes = shells.map(shellBox);
+  const outer = boxes
+    .map((a, i) => (boxes.every((b, j) => i === j || holds(a, b)) ? i : -1))
+    .filter((i) => i >= 0);
+  if (outer.length !== 1)
+    return {
+      faces: shells[0] as AsmBodyFace[],
+      voids: shells.slice(1),
+      unknownOuter: true,
+    };
+  const at = outer[0] as number;
+  return { faces: shells[at] as AsmBodyFace[], voids: shells.filter((_, i) => i !== at) };
 }

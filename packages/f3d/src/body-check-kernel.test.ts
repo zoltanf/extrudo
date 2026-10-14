@@ -37,8 +37,8 @@ type V = [number, number, number];
  * by hand). With `spline`, the top face is a B-spline surface and its four edges
  * B-spline curves (degree 1: the same box, carried as splines).
  */
-function boxSolid(size: number, spline = false): AsmBodySolid {
-  const p = (x: number, y: number, z: number): V => [x, y, z];
+function boxSolid(size: number, spline = false, at = 0): AsmBodySolid {
+  const p = (x: number, y: number, z: number): V => [x + at, y + at, z + at];
   const V0 = p(0, 0, 0);
   const V1 = p(size, 0, 0);
   const V2 = p(size, size, 0);
@@ -333,6 +333,34 @@ describe('body check with a kernel', () => {
     // The kernel's solid measures as the replayed 10 mm box: kept editable.
     expect(plan.matched).toHaveLength(1);
     expect(plan.frozen).toEqual([]);
+  });
+
+  it('reads a box with a cavity back as the box less the cavity', () => {
+    // A 3 cm box with a 1 cm cubic void at (1, 1, 1): the void's faces keep
+    // the file's sense, their normals into the cavity (reversed faces).
+    // Edge ids are record numbers, unique in a stream: renumber the cavity's.
+    const renumbered = new Map<AsmBodyEdge, AsmBodyEdge>();
+    const cavity = boxSolid(1, false, 1).faces.map((f) => ({
+      ...f,
+      reversed: true,
+      loops: f.loops.map((l) => ({
+        ...l,
+        coedges: l.coedges.map((c) => {
+          let edge = renumbered.get(c.edge);
+          if (!edge) {
+            edge = { ...c.edge, id: 100 + c.edge.id };
+            renumbered.set(c.edge, edge);
+          }
+          return { ...c, edge };
+        }),
+      })),
+    }));
+    const step = solidStep({ ...boxSolid(3), voids: [cavity] }).step as string;
+    expect(step).toContain('BREP_WITH_VOIDS');
+    const shape = kernel.readStep(step);
+    expect(kernel.isValid(shape)).toBe(true);
+    // 27 cm³ − 1 cm³ → 26000 mm³.
+    expect(kernel.properties(shape).volume).toBeCloseTo(26000, 2);
   });
 
   it('freezes a different box: a Remove and an import body', async () => {
