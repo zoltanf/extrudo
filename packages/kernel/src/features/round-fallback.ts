@@ -22,6 +22,18 @@
  * the limit lies between the two, the round is built at 127/128 of its size
  * (0.8 % under) rather than not at all.
  *
+ * **Where they meet, at their limit (2026-10-14).** The same retry runs when
+ * the diagnosis is that the chains build alone but not together, with the
+ * largest scale of every size that works at least `NEAR_LIMIT`: two rounds
+ * that between them eat a face fail at exactly that face's size too. Every
+ * edge is built a hair smaller.
+ *
+ * **Edges no round can take (2026-10-14).** An edge OCCT can't round at any
+ * size (`stuck`: its faces meet smoothly, or it isn't between two faces) is
+ * left out first, with a warning, and the rest goes through the rules above.
+ * It doesn't count toward the third: leaving it out changes nothing the
+ * round would build on the other edges.
+ *
  * Without `skipLostEdges` nothing here runs: the error is rethrown and the
  * feature fails as before.
  */
@@ -53,12 +65,25 @@ export interface RoundBuild<P extends { index: number }, R> {
    * `undefined` otherwise. With it and `under`, a round at its limit is
    * retried a hair smaller first.
    */
-  limit?: (error: unknown) => { edges: number[]; share: number } | undefined;
+  limit?: (error: unknown) => RoundLimit | undefined;
+  /**
+   * The edge indices a failure says can't be rounded at any size (OCCT
+   * won't take them: smooth, or not between two faces); `[]` when none.
+   */
+  stuck?: (error: unknown) => number[];
   /** The pick with its sizes scaled by `factor`. */
   under?: (pick: P, factor: number) => P;
   /** The pick's size in mm, for the warning, and what it is ("radius", "distance"). */
   size?: (pick: P) => number;
   sizeName?: string;
+}
+
+/** The chains at their limit and the smallest share of their size that works. */
+export interface RoundLimit {
+  edges: number[];
+  share: number;
+  /** The chains build alone, not together: the share scales every edge. */
+  together?: boolean;
 }
 
 export function buildRound<P extends { index: number }, R>(
@@ -69,6 +94,22 @@ export function buildRound<P extends { index: number }, R>(
     return options.build(picks);
   } catch (error) {
     if (!options.skip) throw error;
+    const stuck = options.stuck?.(error) ?? [];
+    if (stuck.length > 0) {
+      const kept = picks.filter((p) => !stuck.includes(p.index));
+      if (kept.length === 0 || kept.length === picks.length) throw error;
+      // Once: the facade names every such edge at once, before it builds.
+      const result = buildRound(kept, { ...options, stuck: undefined });
+      options.warn(
+        leftOutWarning(
+          picks.length - kept.length,
+          picks.length,
+          options.feature,
+          options.reason(error),
+        ),
+      );
+      return result;
+    }
     const hair = underLimit(picks, error, options);
     if (hair) return hair;
     const blamed = options.blame(error);
@@ -121,8 +162,9 @@ function underLimit<P extends { index: number }, R>(
         ? `edge ${first.index + 1}`
         : `edges ${listOf(blamed.map((p) => p.index + 1))}`;
     const what = options.sizeName ? `${options.sizeName} ` : '';
+    const where = near.together ? `where its edges meet` : `for ${edges}`;
     options.warn(
-      `${capitalized(options.feature)} built at ${what}${formatSize(asked * factor)}, ${how} the ${formatSize(asked)} asked for, which is just too large for ${edges}.`,
+      `${capitalized(options.feature)} built at ${what}${formatSize(asked * factor)}, ${how} the ${formatSize(asked)} asked for, which is just too large ${where}.`,
     );
     return result;
   }

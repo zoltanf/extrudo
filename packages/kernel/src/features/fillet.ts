@@ -11,7 +11,7 @@ import type { TopoNames } from '../naming/names';
 import { type NamedShape, withHistory } from '../naming/ops';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { edgeResolver } from './lost-edges';
-import { buildRound } from './round-fallback';
+import { buildRound, type RoundLimit } from './round-fallback';
 
 /**
  * The fillet feature in the kernel (P3-01, ADR-0038): rounds the picked
@@ -72,13 +72,16 @@ function blameFillet(error: unknown): number[] | undefined {
 /**
  * The chains a fillet failure blames and the smallest share of their radius
  * the diagnosis found working, when every problem is `too-large` with a
- * maximum (the at-limit retry, `round-fallback.ts`); `undefined` otherwise.
+ * maximum, or the chains only fail together (`together`: the factor of every
+ * radius that works); the at-limit retry, `round-fallback.ts`. `undefined`
+ * otherwise.
  */
-function filletLimit(
-  error: unknown,
-  picks: readonly EdgePick[],
-): { edges: number[]; share: number } | undefined {
+function filletLimit(error: unknown, picks: readonly EdgePick[]): RoundLimit | undefined {
   if (!(error instanceof FilletError) || error.problems.length === 0) return undefined;
+  const [only] = error.problems;
+  if (error.problems.length === 1 && only?.kind === 'together') {
+    return { edges: only.edges, share: only.factor, together: true };
+  }
   const edges: number[] = [];
   let share = 1;
   for (const problem of error.problems) {
@@ -89,6 +92,12 @@ function filletLimit(
     edges.push(...problem.edges);
   }
   return { edges, share };
+}
+
+/** The edges a fillet failure says OCCT can't round at any size (`unfilletable`). */
+function stuckEdges(error: unknown): number[] {
+  if (!(error instanceof FilletError)) return [];
+  return error.problems.flatMap((p) => (p.kind === 'unfilletable' ? p.edges : []));
 }
 
 function evaluateFillet(ctx: EvalContext<FilletInputs>): FeatureOutput {
@@ -154,6 +163,7 @@ function evaluateFillet(ctx: EvalContext<FilletInputs>): FeatureOutput {
         skip,
         warn: (message) => ctx.warn(message),
         limit: (error) => filletLimit(error, picks),
+        stuck: (error) => stuckEdges(error),
         under: (pick, factor) => ({
           ...pick,
           radius: pick.radius * factor,
@@ -245,7 +255,7 @@ function problemMessage(
         : `Edge ${edge} can't be rounded with radius ${radius}, or with any smaller one. Pick other edges, or check the faces around it.`;
     }
     case 'unfilletable':
-      return `Edge ${edgeOf(problem.edges)} can't be filleted: it isn't between two faces of the body.`;
+      return `Edge ${edgeOf(problem.edges)} can't be filleted: it isn't a sharp edge between two faces of the body.`;
     case 'mixed-radii': {
       const list = problem.edges.filter((e) => picks.some((p) => p.index === e)).map((e) => e + 1);
       return `Edges ${listOf(list)} are one chain of tangent edges, so they take one radius. Give them the same radius, or keep them in one set.`;

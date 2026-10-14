@@ -29,6 +29,17 @@ describe('docs', () => {
     ]);
   });
 
+  it('opens the landing site and the source by name, nothing else', () => {
+    const opened: string[] = [];
+    const docs = createDocs((url) => opened.push(url));
+    docs.openSite('about');
+    docs.openSite('repo');
+    for (const link of ['toString', '__proto__', 'https://evil.example.org/', undefined, 42]) {
+      docs.openSite(link);
+    }
+    expect(opened).toEqual(['https://extrudo.org', 'https://github.com/zoltanf/extrudo']);
+  });
+
   it('opens nothing for what is not a whitelisted path', () => {
     const opened: string[] = [];
     const docs = createDocs((url) => opened.push(url));

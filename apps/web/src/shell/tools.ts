@@ -963,7 +963,7 @@ export interface Tab {
  * menu and the Insert tab); Solid makes geometry, Modify changes it, Construct
  * makes reference geometry and holds Inspect's two tools (the owner's UI review 3,
  * R3-10: a tab of two tools took precious room), and 3D Print prepares the
- * model's export. Plugins are in the Settings menu (R3-12). `sketch` shows only
+ * model's export. Plugins are in the app menu (R3-12). `sketch` shows only
  * while a sketch is open, in place of every tab but Home, whose tools don't
  * apply there; Finish Sketch sits after its groups.
  */

@@ -309,3 +309,71 @@ Native harness: the facade over the image's libraries, the body built from
 bodies. Test: `kernel.test.ts` "offsets the faces of a notch across a cylinder's
 seam as it does anywhere else round the wall" (every face of the seam body was
 "unoffsettable" before).
+
+## Amendment 2026-10-14: a round next to a moved face keeps its radius
+
+Imported `.f3d` designs diverged from the file at an Offset Face (with
+ADR-0083's amendment of the same day, which names the right wall): a housing
+family pushes its walls in by 0.1 mm, and the file's 3 mm corner round between
+two of them stays a 3 mm round whose axis moves 0.1 mm in x and y, while OCCT's
+offset moved the round with the walls as part of their smooth chain and gave a
+3.1 mm round on the old axis. A second design shows the rest of the file's rule:
+it moves two planes, the 24.5 mm rounds between them and the next planes are
+made again at 24.5 mm (axis moved 0.4 mm), and the planes past the rounds, which
+OCCT moved with the chain, stay where they are, as does a 77.5 mm round between
+two of those.
+
+**Decision.**
+
+- **A round that isn't picked keeps its radius.** The evaluator hands the
+  facade the rounds of the picked faces' smooth chains (`roundsNextTo`): faces
+  named by a fillet (`fillet:…`, or a pattern's or mirror's copy of one), on a
+  cylinder or a torus, not picked themselves; at most one look per face.
+  `offsetFaces` (facade; `pushBlend` stages them, `clearArgs` clears them) then
+  tries `buildReblendedOffset` first: the moving faces are found as before but
+  without passing through such a round; the rounds next to a moving face are
+  removed (`BRepAlgoAPI_Defeaturing`, which extends their neighbours to meet);
+  the picked faces are offset as before (the smooth-chain refusal and
+  `offsetIsGood` run on the body without the rounds); and each round is made
+  again (`BRepFilletAPI_MakeFillet`) at its radius (a cylinder's, a torus's minor
+  one) on the edges between the faces its two smooth sides became. A round needs
+  exactly two such sides. The result must be a valid solid that grew or shrank
+  the way the distance says. The history is composed through the three steps
+  (`ReblendedOffset`), and each re-made round's old face is recorded as
+  **modified** into its new faces, so it keeps its name (ADR-0005).
+- **Otherwise as before.** When any step fails, the plain offset of this ADR
+  runs unchanged (rounds offset with the chain). A picked round is offset as
+  before (its radius changes): the dialog picks a face's whole smooth chain
+  (`tangentChain`), so offsets made in the app pick their rounds and behave as
+  they did. Faces that run smoothly into each other without a fillet's round
+  between them (a slot's half-round ends) still move together.
+- A side effect: a body whose rounds meet at a sharp corner, refused before
+  ("rounded edges that meet at a sharp corner"), now offsets a face that runs
+  into those rounds, since the offset runs on the body without them; a face
+  away from them is still refused.
+
+Rejected: offsetting the round with the faces and then changing its radius (no
+OCCT operation re-radiuses a face in place); moving the round rigidly (wrong
+for any angle but a translation along both sides at once); removing and
+re-making the rounds in TypeScript with a new facade "remove faces" call (three
+histories to compose in the kernel's naming instead of one in the facade).
+
+Numbers: native harness (the facade over the image's libraries): a
+40 × 30 × 20 block with its two vertical edges at x = 40 rounded 3 mm, the
+x = 40 face moved +1 mm: the rounds' axes at x = 38, radius 3, volume +600.000
+mm³ exactly (the plain offset gave radius 4 on the old axes and moved the front
+and back too); −1 mm likewise; a cylinder pad's rim torus follows its top +2 mm
+at minor radius 3. Replay corpus (250 files): no verdict changes, no feature's
+status changes; of the 50 imported Offset Faces 25 build and 25 fail, as
+before; 7 have rounds next to their faces, 6 of them now re-make the rounds and 1
+fails both ways as before. The divergence signal (`.f3d` faces due after
+each feature missing from the replay) on the 7 designs whose first divergence
+was an Offset Face: 3 have none left, 3 diverge first at a later feature (a
+skipped or failing one, failing before too), 1 still at its Offset Face, which
+is refused for its rounds meeting at a sharp corner away from the moved faces.
+Body check (each replayed body against the file's own, ADR-0084), both
+amendments together: editable bodies 195 → 199, frozen 159 → 155 (a design's
+body beside its offset, and a puzzle whose offsets now name 9 faces instead of
+7), no design's verdict worse. Tests: `offset-face.test.ts` "a round next to the moved face keeps
+its radius…", "moves rounds with the face, radius kept…", "…unless the rounds
+are made again", and "…when none is a round".

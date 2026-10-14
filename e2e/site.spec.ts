@@ -352,6 +352,7 @@ test('the page has a Changelog link and says the desktop app is available', asyn
   await page.goto(`${host.url}/`);
   const nav = page.getByRole('navigation', { name: 'Site' });
   await expect(nav.getByRole('link')).toHaveText([
+    'Apps New',
     'Features',
     'Changelog',
     'Docs',
@@ -359,6 +360,10 @@ test('the page has a Changelog link and says the desktop app is available', asyn
     'Open Extrudo',
   ]);
   await expect(nav.getByRole('link', { name: 'Features' })).toHaveAttribute('href', '/features/');
+  // Apps leads to the desktop app's download page, with a "New" pill.
+  const apps = nav.getByRole('link', { name: /^Apps/ });
+  await expect(apps).toHaveAttribute('href', '/download/');
+  await expect(apps.locator('.new')).toHaveText('New');
   await expect(nav.getByRole('link', { name: 'Changelog' })).toHaveAttribute(
     'href',
     'https://github.com/zoltanf/extrudo/blob/main/docs/CHANGELOG.md',
@@ -442,8 +447,11 @@ test('the download page says how to install the desktop app on each system', asy
   await expect(
     page.getByRole('heading', { level: 1, name: 'Extrudo on your desktop' }),
   ).toBeVisible();
-  // No nav entry of its own: the header marks nothing as current.
-  await expect(page.locator('.top nav [aria-current]')).toHaveCount(0);
+  // The nav's Apps link is this page, marked as current.
+  await expect(page.locator('.top nav [aria-current]')).toHaveCount(1);
+  await expect(
+    page.getByRole('navigation', { name: 'Site' }).getByRole('link', { name: /^Apps/ }),
+  ).toHaveAttribute('aria-current', 'page');
   const latest = 'https://github.com/zoltanf/extrudo/releases/latest';
   await expect(page.locator('[data-latest-release]')).toHaveAttribute('href', latest);
   const platforms = page.getByRole('navigation', { name: 'Platforms' }).getByRole('link');

@@ -16,6 +16,7 @@ import {
   type FeatureId,
   FeatureRegistry,
   type FeatureStatus,
+  filletInputs,
   type GeomRef,
   originPlaneRef,
   type SketchData,
@@ -786,6 +787,76 @@ describe('chamfer', { timeout: 120_000 }, () => {
       );
       expect(measure('B:0').volume).toBeCloseTo(expected.volume, 6);
       expect(measure('B:0').faces).toBe(expected.faces);
+    });
+
+    it('two chamfers that between them eat a face are built a hair under their distance (ADR-0043 amendment, 2026-10-14)', async () => {
+      const base = block();
+      const first = ok(await run(testDocument(base.features)));
+      const top = refTo(first, 'edge', between(cap, side(base.lines.bottom)));
+      const bottom = refTo(first, 'edge', between('extrude:B:cap:start', side(base.lines.bottom)));
+      const asked = `${BOX.h / 2} mm`;
+      const plain = await run(
+        testDocument([...base.features, chamfer('F', [{ edges: [top, bottom], distance: asked }])]),
+      );
+      expect(status(plain, 'F').message).toMatch(
+        /^These chamfers can't all be built where they meet/,
+      );
+      ok(
+        await runWithShapes(
+          testDocument([
+            ...base.features,
+            chamfer('F', [{ edges: [top, bottom], distance: `${(BOX.h / 2) * (1 - 1e-4)} mm` }]),
+          ]),
+        ),
+      );
+      const expected = measure('B:0');
+      const result = await runWithShapes(
+        testDocument([
+          ...base.features,
+          skipping('F', [{ edges: [top, bottom], distance: asked }]),
+        ]),
+      );
+      const st = status(result, 'F');
+      expect(st.status).toBe('warning');
+      expect(st.message).toBe(
+        'Chamfer built at distance 9.999 mm, a hair under the 10 mm asked for, which is just too large where its edges meet.',
+      );
+      expect(measure('B:0').volume).toBeCloseTo(expected.volume, 6);
+    });
+
+    it('leaves out edges no chamfer can take (smooth ones), however many (ADR-0043 amendment, 2026-10-14)', async () => {
+      const base = block();
+      const corner = between(side(base.lines.left), side(base.lines.bottom));
+      const first = ok(await run(testDocument(base.features)));
+      const rounded = [
+        ...base.features,
+        {
+          ...testFeature('R', 'fillet'),
+          inputs: filletInputs([{ edges: [refTo(first, 'edge', corner)], radius: '5 mm' }]),
+        },
+      ];
+      const second = ok(await run(testDocument(rounded)));
+      const face = `fillet:R:from:(${corner})`;
+      const top = refTo(second, 'edge', between(cap, side(base.lines.bottom)));
+      const smooth = [
+        refTo(second, 'edge', between(face, side(base.lines.bottom))),
+        refTo(second, 'edge', between(face, side(base.lines.left))),
+      ];
+      ok(
+        await runWithShapes(
+          testDocument([...rounded, chamfer('F', [{ edges: [top], distance: '2 mm' }])]),
+        ),
+      );
+      const expected = measure('B:0');
+      const result = await runWithShapes(
+        testDocument([...rounded, skipping('F', [{ edges: [top, ...smooth], distance: '2 mm' }])]),
+      );
+      const st = status(result, 'F');
+      expect(st.status).toBe('warning');
+      expect(st.message).toMatch(
+        /^2 of 3 edges left out of the chamfer: Edge \d+ can't be chamfered: it isn't a sharp edge between two faces of the body\./,
+      );
+      expect(measure('B:0').volume).toBeCloseTo(expected.volume, 6);
     });
 
     it('a lost reference face of a set that keeps edges still fails', async () => {

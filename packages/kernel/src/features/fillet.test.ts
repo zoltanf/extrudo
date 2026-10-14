@@ -619,6 +619,82 @@ describe('fillet', { timeout: 120_000 }, () => {
       expect(status(result, 'F').message).toMatch(/^Radius 21 mm is too large/);
     });
 
+    it('two rounds that between them eat a face are built a hair under their radius (ADR-0038 amendment, 2026-10-14)', async () => {
+      const base = block();
+      const first = ok(await run(testDocument(base.features)));
+      const top = refTo(first, 'edge', between(cap, side(base.lines.bottom)));
+      const bottom = refTo(first, 'edge', between('extrude:B:cap:start', side(base.lines.bottom)));
+      // Each alone works at half the block's height; together they meet in
+      // the middle of the front face, which OCCT can't build at exactly that size.
+      const asked = `${BOX.h / 2} mm`;
+      const plain = await run(
+        testDocument([...base.features, fillet('F', [{ edges: [top, bottom], radius: asked }])]),
+      );
+      expect(status(plain, 'F').status).toBe('error');
+      expect(status(plain, 'F').message).toMatch(
+        /^These fillets can't all be built where they meet/,
+      );
+      ok(
+        await runWithShapes(
+          testDocument([
+            ...base.features,
+            fillet('F', [{ edges: [top, bottom], radius: `${(BOX.h / 2) * (1 - 1e-4)} mm` }]),
+          ]),
+        ),
+      );
+      const expected = measure('B:0');
+      const result = await runWithShapes(
+        testDocument([...base.features, skipping('F', [{ edges: [top, bottom], radius: asked }])]),
+      );
+      const st = status(result, 'F');
+      expect(st.status).toBe('warning');
+      expect(st.message).toBe(
+        'Fillet built at radius 9.999 mm, a hair under the 10 mm asked for, which is just too large where its edges meet.',
+      );
+      expect(measure('B:0').volume).toBeCloseTo(expected.volume, 6);
+      expect(measure('B:0').faces).toBe(expected.faces);
+      expect(measure('B:0').valid).toBe(true);
+    });
+
+    it('leaves out edges no round can take (smooth ones), however many (ADR-0038 amendment, 2026-10-14)', async () => {
+      const base = block();
+      const corner = between(side(base.lines.left), side(base.lines.bottom));
+      const first = ok(await run(testDocument(base.features)));
+      const rounded = [
+        ...base.features,
+        fillet('R', [{ edges: [refTo(first, 'edge', corner)], radius: '5 mm' }]),
+      ];
+      const second = ok(await run(testDocument(rounded)));
+      const face = `fillet:R:from:(${corner})`;
+      const top = refTo(second, 'edge', between(cap, side(base.lines.bottom)));
+      // Where the corner round meets the two sides, its faces run into each other smoothly.
+      const smooth = [
+        refTo(second, 'edge', between(face, side(base.lines.bottom))),
+        refTo(second, 'edge', between(face, side(base.lines.left))),
+      ];
+      ok(
+        await runWithShapes(
+          testDocument([...rounded, fillet('F', [{ edges: [top], radius: '2 mm' }])]),
+        ),
+      );
+      const expected = measure('B:0');
+      const without = await run(
+        testDocument([...rounded, fillet('F', [{ edges: [top, ...smooth], radius: '2 mm' }])]),
+      );
+      expect(status(without, 'F').status).toBe('error');
+      const result = await runWithShapes(
+        testDocument([...rounded, skipping('F', [{ edges: [top, ...smooth], radius: '2 mm' }])]),
+      );
+      const st = status(result, 'F');
+      expect(st.status).toBe('warning');
+      // Two of three: more than the third a failing chain may take, but these change nothing.
+      expect(st.message).toMatch(
+        /^2 of 3 edges left out of the fillet: Edge \d+ can't be filleted: it isn't a sharp edge between two faces of the body\./,
+      );
+      expect(measure('B:0').volume).toBeCloseTo(expected.volume, 6);
+      expect(measure('B:0').faces).toBe(expected.faces);
+    });
+
     it('fails as before when more than a third of the edges would be left out (ADR-0038 amendment, 2026-10-12)', async () => {
       const base = block();
       const first = ok(await run(testDocument(base.features)));

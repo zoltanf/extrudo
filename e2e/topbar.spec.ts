@@ -1,6 +1,13 @@
 import { expect, type Page, test } from '@playwright/test';
 import { type FitGroup, fitToolbar } from '../apps/web/src/shell/toolbarFit';
-import { newSketchOnXY, openProject, saveStatus } from './helpers';
+import {
+  appMenu,
+  appSubmenu,
+  chooseInMenu,
+  newSketchOnXY,
+  openProject,
+  saveStatus,
+} from './helpers';
 
 // The top bar (ADR-0079): one row with the logo, the tabs, undo/redo/search, the
 // design's name and the right-hand buttons; the selected tab's tools in the row below,
@@ -218,59 +225,86 @@ test('the cluster is Search, Undo, Redo; no Toolbox or theme button (R3-05)', as
   await expect(header(page).getByRole('button', { name: 'Search commands' })).toHaveCount(0);
 });
 
-test('the right side is Version history, Settings, Help', async ({ page }) => {
+test('the right side is Version history, Menu, Help', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
   const history = await box(page, 'Version history');
-  const settings = await box(page, 'Settings');
+  const menu = await box(page, 'Menu');
   const help = await box(page, 'Help');
-  expect(history.x).toBeLessThan(settings.x);
-  expect(settings.x).toBeLessThan(help.x);
+  expect(history.x).toBeLessThan(menu.x);
+  expect(menu.x).toBeLessThan(help.x);
+  await expect(header(page).getByRole('button', { name: 'Settings', exact: true })).toHaveCount(0);
 });
 
-test('Settings holds the general options and the theme', async ({ page }) => {
+test('the app menu: Settings, Plugins, the submenus, then Close design on the web', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
-  const settings = header(page).getByRole('button', { name: 'Settings', exact: true });
-  await settings.click();
-  const body = page.getByRole('menuitemcheckbox', { name: 'Auto-project body edges' });
-  const face = page.getByRole('menuitemcheckbox', { name: 'Auto-project face outline' });
+  await appMenu(page).click();
+  const items = page.getByRole('menu', { name: 'Menu' }).getByRole('menuitem');
+  const names = await items.evaluateAll((els) =>
+    els.map((el) => (el.textContent ?? '').replace(/Ctrl.*$|▸/g, '').trim()),
+  );
+  expect(names).toEqual([
+    'Settings…',
+    'Plugins…',
+    'Behaviour',
+    'Mouse controls',
+    'Theme',
+    'Close design',
+  ]);
+  await expect(page.getByRole('menuitem', { name: /^Quit/ })).toHaveCount(0);
+  await page.getByRole('menuitem', { name: 'Close design' }).click();
+  await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
+});
+
+test('Behaviour holds the general options, Theme the theme', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openProject(page);
+  let menu = await appSubmenu(page, 'Behaviour');
+  const body = menu.getByRole('menuitemcheckbox', { name: 'Auto-project body edges' });
+  const face = menu.getByRole('menuitemcheckbox', { name: 'Auto-project face outline' });
   await expect(body).toBeChecked();
   await expect(face).not.toBeChecked();
-  await expect(page.getByRole('menuitem', { name: 'Customize Marking Menu…' })).toBeVisible();
-  for (const theme of ['System', 'Light', 'Dark']) {
-    await expect(page.getByRole('menuitemradio', { name: theme })).toBeVisible();
-  }
-  await page.getByRole('menuitemradio', { name: 'Light' }).click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(menu.getByRole('menuitem', { name: 'Customize Marking Menu…' })).toBeVisible();
   await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu')).toHaveCount(0);
+
+  menu = await appSubmenu(page, 'Theme');
+  for (const theme of ['System', 'Light', 'Dark']) {
+    await expect(menu.getByRole('menuitemradio', { name: theme })).toBeVisible();
+  }
+  await chooseInMenu(menu, 'menuitemradio', 'Light');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(page.getByRole('menu')).toHaveCount(0);
 
   // The menu and a sketch's palette share the preferences.
-  await settings.click();
-  await page.getByRole('menuitemcheckbox', { name: 'Auto-project body edges' }).click();
-  await page.getByRole('menuitemcheckbox', { name: 'Auto-project face outline' }).click();
+  menu = await appSubmenu(page, 'Behaviour');
+  await chooseInMenu(menu, 'menuitemcheckbox', 'Auto-project body edges');
+  await chooseInMenu(menu, 'menuitemcheckbox', 'Auto-project face outline');
   await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu')).toHaveCount(0);
   await newSketchOnXY(page);
   await expect(page.getByRole('checkbox', { name: 'Auto-project', exact: true })).not.toBeChecked();
-  await settings.click();
-  await page.getByRole('menuitemcheckbox', { name: 'Auto-project body edges' }).click();
+  menu = await appSubmenu(page, 'Behaviour');
+  await chooseInMenu(menu, 'menuitemcheckbox', 'Auto-project body edges');
   await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.getByRole('checkbox', { name: 'Auto-project', exact: true })).toBeChecked();
   await expect(page.getByRole('checkbox', { name: 'Auto-project face outline' })).toBeChecked();
 
-  await settings.click();
-  await page.getByRole('menuitem', { name: 'Customize Marking Menu…' }).click();
+  menu = await appSubmenu(page, 'Behaviour');
+  await chooseInMenu(menu, 'menuitem', 'Customize Marking Menu…');
   await expect(page.getByRole('region', { name: 'Customize Marking Menu' })).toBeVisible();
 });
 
-test('Settings has the Radial right-click menu, in step with the command', async ({ page }) => {
+test('Behaviour has the Radial right-click menu, in step with the command', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
-  const settings = header(page).getByRole('button', { name: 'Settings', exact: true });
-  const radial = page.getByRole('menuitemcheckbox', { name: 'Radial right-click menu' });
-  const customize = page.getByRole('menuitem', { name: 'Customize Marking Menu…' });
-
-  await settings.click();
+  let menu = await appSubmenu(page, 'Behaviour');
+  const radial = menu.getByRole('menuitemcheckbox', { name: 'Radial right-click menu' });
+  const customize = menu.getByRole('menuitem', { name: 'Customize Marking Menu…' });
   await expect(radial).toBeChecked();
   // It sits just above Customize Marking Menu….
   const above = (await radial.boundingBox()) as { y: number; height: number };
@@ -279,16 +313,43 @@ test('Settings has the Radial right-click menu, in step with the command', async
   expect(below.y - (above.y + above.height)).toBeLessThan(12);
 
   // The checkbox changes what the command offers…
-  await radial.click();
+  await chooseInMenu(menu, 'menuitemcheckbox', 'Radial right-click menu');
   await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu')).toHaveCount(0);
   await page.keyboard.press('Control+k');
   await page.getByRole('combobox', { name: 'Search commands' }).fill('right-click menu');
   await expect(page.getByRole('option', { name: /^Right-Click Menu: Use the Ring/ })).toBeVisible();
 
   // …and the command changes the checkbox.
   await page.getByRole('option', { name: /^Right-Click Menu: Use the Ring/ }).click();
-  await settings.click();
-  await expect(radial).toBeChecked();
+  menu = await appSubmenu(page, 'Behaviour');
+  await expect(
+    menu.getByRole('menuitemcheckbox', { name: 'Radial right-click menu' }),
+  ).toBeChecked();
+  await page.keyboard.press('Escape');
+});
+
+test('the home screen has the same bar: About, Docs, GitHub and the app menu', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('./');
+  const nav = page.getByRole('navigation', { name: 'Extrudo' });
+  await expect(nav.getByRole('link')).toHaveText(['About', 'Docs', 'GitHub']);
+  await expect(nav.getByRole('link', { name: 'GitHub' })).toHaveAttribute(
+    'href',
+    'https://github.com/zoltanf/extrudo',
+  );
+  // The bar is as tall as a design's, and the old Settings and Theme buttons are gone.
+  expect((await header(page).boundingBox())?.height).toBe(40);
+  await expect(header(page).getByRole('button', { name: 'Settings', exact: true })).toHaveCount(0);
+  await expect(header(page).getByRole('button', { name: 'Theme', exact: true })).toHaveCount(0);
+  await appMenu(page).click();
+  await expect(page.getByRole('menuitem', { name: /^Settings…/ })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Plugins…' })).toBeVisible();
+  // Nothing to close here, and no design's commands to customize.
+  await expect(page.getByRole('menuitem', { name: 'Close design' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  const menu = await appSubmenu(page, 'Behaviour');
+  await expect(menu.getByRole('menuitem', { name: 'Customize Marking Menu…' })).toHaveCount(0);
   await page.keyboard.press('Escape');
 });
 

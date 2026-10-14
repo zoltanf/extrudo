@@ -205,5 +205,6 @@ export async function desktopPlatform(api: ExtrudoApi = window.extrudo): Promise
     updates: desktopUpdates(api, appNotifications.getState().push),
     // The docs pages (P6-06 S9): main builds the URL from the whitelisted path.
     openDocs: (path) => api.docs.open(path),
+    openSite: (link) => api.docs.openSite(link),
   };
 }

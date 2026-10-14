@@ -66,6 +66,8 @@ export const CHANNELS = {
   updateRelease: 'extrudo:update:release',
   // The docs pages (P6-06 S9): a `docsPath` result, the URL main builds itself.
   docsOpen: 'extrudo:docs:open',
+  // The landing site and the source (the top bar's About and GitHub): a name, the URL main's own.
+  siteOpen: 'extrudo:site:open',
 } as const;
 
 export type Channel = (typeof CHANNELS)[keyof typeof CHANNELS];
@@ -285,6 +287,8 @@ export interface ExtrudoApi {
      * renderer can't make main open a page of its choosing.
      */
     open(path: string): void;
+    /** Opens the landing site or the source repository by name; main holds the URLs. */
+    openSite(link: 'about' | 'repo'): void;
   };
   readonly rescue: {
     /** Keeps the raw document JSON before returning; false if the file couldn't be written. */

@@ -18,7 +18,7 @@ import { type NamedShape, withHistory } from '../naming/ops';
 import type { ResolvedRef } from '../naming/resolve';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { edgeResolver } from './lost-edges';
-import { buildRound } from './round-fallback';
+import { buildRound, type RoundLimit } from './round-fallback';
 
 /**
  * The chamfer feature in the kernel (P3-02, ADR-0043): bevels the picked
@@ -79,11 +79,16 @@ function blameChamfer(error: unknown): number[] | undefined {
 
 /**
  * The chains a chamfer failure blames and the smallest share of their
- * distances the diagnosis found working, when every problem is `too-large`
- * (the at-limit retry, `round-fallback.ts`); `undefined` otherwise.
+ * distances the diagnosis found working, when every problem is `too-large`,
+ * or the chains only fail together (`together`); the at-limit retry,
+ * `round-fallback.ts`. `undefined` otherwise.
  */
-function chamferLimit(error: unknown): { edges: number[]; share: number } | undefined {
+function chamferLimit(error: unknown): RoundLimit | undefined {
   if (!(error instanceof ChamferError) || error.problems.length === 0) return undefined;
+  const [only] = error.problems;
+  if (error.problems.length === 1 && only?.kind === 'together') {
+    return { edges: only.edges, share: only.factor, together: true };
+  }
   const edges: number[] = [];
   let share = 1;
   for (const problem of error.problems) {
@@ -168,6 +173,10 @@ function evaluateChamfer(ctx: EvalContext<ChamferInputs>): FeatureOutput {
         skip,
         warn: (message) => ctx.warn(message),
         limit: chamferLimit,
+        stuck: (error) =>
+          error instanceof ChamferError
+            ? error.problems.flatMap((p) => (p.kind === 'unchamferable' ? p.edges : []))
+            : [],
         under: (pick, factor) => ({ ...pick, spec: scaledSpec(pick.spec, factor) }),
         size: (pick) => pick.spec.distance,
         sizeName: 'distance',
@@ -275,7 +284,7 @@ function problemMessage(
     case 'too-large':
       return tooLarge(problem, pickOf(problem.edges));
     case 'unchamferable':
-      return `Edge ${pickOf(problem.edges).index + 1} can't be chamfered: it isn't between two faces of the body.`;
+      return `Edge ${pickOf(problem.edges).index + 1} can't be chamfered: it isn't a sharp edge between two faces of the body.`;
     case 'mixed': {
       const list = problem.edges.filter((e) => picks.some((p) => p.index === e)).map((e) => e + 1);
       return `Edges ${listOf(list)} are one chain of tangent edges, so they take one setting. Give them the same values, or keep them in one set.`;

@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { clicker, openProject, pickTool, sketchOnXY } from './helpers';
+import { appSubmenu, clicker, openProject, pickTool, sketchOnXY } from './helpers';
 
 // P0-05: the viewport. The camera state is mirrored on the viewport element
 // as data attributes (direction, up, target, size), so these tests check
@@ -81,12 +81,8 @@ test('ViewCube edges, turn arrows and roll arrows', async ({ page }) => {
   await expect(viewport).toHaveAttribute('data-camera-up', '0,0,1');
 });
 
-/** Opens the Settings (gear) menu's Mouse controls submenu (R3-03: it left the nav bar). */
-async function mouseControls(page: Page) {
-  await page.locator('header').getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Mouse controls' }).click();
-  return page.getByRole('menu', { name: 'Mouse controls' });
-}
+/** Opens the app menu's Mouse controls submenu (R3-03: it left the nav bar). */
+const mouseControls = (page: Page) => appSubmenu(page, 'Mouse controls');
 
 /**
  * Chooses a mouse preset in the Settings menu, by keyboard: a pointer jumping straight from the

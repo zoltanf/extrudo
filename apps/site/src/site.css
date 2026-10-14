@@ -179,6 +179,22 @@ main,
   text-underline-offset: 6px;
 }
 
+/* The "New" pill on a nav link, in the announcement's sketch blue. */
+.top nav .new {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--x-sketch);
+  color: #10141b;
+  font:
+    600 0.65rem ui-monospace,
+    monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  vertical-align: 2px;
+}
+
 .button {
   display: inline-flex;
   align-items: center;

@@ -2200,9 +2200,12 @@ export function AppShell({
         onMarkingRadial={(radial) => {
           if (radial !== markingStyle.radial) markingStyle.toggle();
         }}
-        viewport={viewport}
+        display={displayAccess}
         onCustomizeMarking={() => setMarkingDialog(true)}
         onSettings={() => setSettingsOpen(true)}
+        onSource={() => platform.openSite('repo')}
+        onQuit={platform.menus ? () => void quitApp() : undefined}
+        onCloseDesign={platform.menus ? undefined : fileActions.home}
       />
       <TutorialCard tutorial={tutorial} />
       <Toolbar

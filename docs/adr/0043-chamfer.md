@@ -386,3 +386,17 @@ set; an angle stays), then at the factor the diagnosis found working, warning
 "Chamfer built at distance 5.9994 mm, a hair under the 6 mm asked for, which is
 just too large for edges 8 and 13." `chamferLimit` in `chamfer.ts`. Test:
 `chamfer.test.ts` "builds a chamfer at its limit a hair under its distance…".
+
+## Amendment 2026-10-14: chamfers that fail together at their limit, and edges no chamfer can take
+
+The chamfer takes the fillet's two new fallbacks of this date (ADR-0038's
+amendment, which has the reasons, the routes measured and not kept, and the
+numbers): with `skipLostEdges` on, a lone `together` diagnosis with a factor of
+at least 0.99 builds every edge a hair under its distances ("Chamfer built at
+distance 9.999 mm, a hair under the 10 mm asked for, which is just too large
+where its edges meet."), and `unchamferable` edges (smooth, or not between two
+faces) are left out first with a warning, not counted toward the third.
+`chamferLimit` and the `stuck` option in `chamfer.ts`. The message for such an
+edge is "Edge 12 can't be chamfered: it isn't a sharp edge between two faces of
+the body." Tests: `chamfer.test.ts` "two chamfers that between them eat a face
+…", "leaves out edges no chamfer can take …".

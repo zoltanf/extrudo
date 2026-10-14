@@ -30,10 +30,18 @@ describe('the shared pieces of the site', () => {
     expect(pageOf('/download/index.html')).toBe('download');
   });
 
-  it('marks the features link only on the features page', () => {
+  it('marks the current page in the nav', () => {
     expect(header('home')).not.toContain('aria-current');
-    expect(header('download')).not.toContain('aria-current');
     expect(header('features')).toContain('<a href="/features/" aria-current="page">Features</a>');
+    expect(header('features').split('aria-current')).toHaveLength(2);
+    expect(header('download')).toContain('<a href="/download/" aria-current="page">Apps');
+    expect(header('download').split('aria-current')).toHaveLength(2);
+  });
+
+  it('lists Apps, with its New pill, before Features', () => {
+    const html = header('home');
+    expect(html).toContain('<a href="/download/">Apps <b class="new">New</b></a>');
+    expect(html.indexOf('>Apps')).toBeLessThan(html.indexOf('>Features'));
   });
 
   it('keeps the address placeholders for the address plugin to fill in', () => {

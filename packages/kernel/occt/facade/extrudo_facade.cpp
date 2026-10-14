@@ -26,6 +26,7 @@
 #include <BOPAlgo_ArgumentAnalyzer.hxx>
 #include <BOPAlgo_BuilderFace.hxx>
 #include <BRepAlgoAPI_Common.hxx>
+#include <BRepAlgoAPI_Defeaturing.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
 #include <BRepAlgoAPI_Splitter.hxx>
@@ -135,6 +136,7 @@
 #include <IFSelect_ReturnStatus.hxx>
 #include <GProp_GProps.hxx>
 #include <NCollection_Array1.hxx>
+#include <NCollection_DataMap.hxx>
 #include <NCollection_IndexedDataMap.hxx>
 #include <NCollection_IndexedMap.hxx>
 #include <NCollection_List.hxx>
@@ -395,8 +397,13 @@ public:
 
   // ------------------------------------------------------------ arguments --
 
-  void clearArgs() { args_.clear(); }
+  void clearArgs() {
+    args_.clear();
+    blends_.clear();
+  }
   void pushArg(int value) { args_.push_back(value); }
+  /** A round offsetFaces re-makes at its radius rather than offsetting it (cleared by clearArgs). */
+  void pushBlend(int face) { blends_.push_back(face); }
   void clearNumbers() { numbers_.clear(); }
   void pushNumber(double value) { numbers_.push_back(value); }
 
@@ -827,6 +834,15 @@ public:
    * are. Records history for input 0: every face generates its (offset)
    * image; a face the offset swallows is deleted.
    *
+   * Rounds staged with pushBlend (constant-radius cylinder or torus faces a
+   * fillet made) are not offset with the faces they run into: they are
+   * removed, the picked faces moved, and the rounds made again at their own
+   * radius between the moved faces and their other neighbours (ADR-0051's
+   * amendment, 2026-10-14), so a 3 mm round stays a 3 mm round and the
+   * faces past it stay where they are. Each re-made round's face is
+   * recorded as modified from the old one, so it keeps its name. When that
+   * can't be built, the plain offset above is tried as before.
+   *
    * On failure it returns 0 with a message in lastError() and, in
    * geometryNumbers, [status, value]:
    * - 1 the distance is too large: the largest distance of the same sign
@@ -865,6 +881,28 @@ public:
         if (std::find(picked.begin(), picked.end(), index) == picked.end()) picked.push_back(index);
       }
       if (picked.empty()) return fail("Offset failed: no face to offset.");
+      std::vector<int> blends;
+      for (int index : blends_) {
+        if (index < 0 || index >= faces.Extent()) return fail("Offset failed: face index out of range.");
+        if (std::find(picked.begin(), picked.end(), index) == picked.end() &&
+            std::find(blends.begin(), blends.end(), index) == blends.end()) {
+          blends.push_back(index);
+        }
+      }
+      blends_.clear();
+      if (!blends.empty()) {
+        const TopoDS_Shape copy = BRepBuilderAPI_Copy(*input, true, false).Shape();
+        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> copyFaces;
+        TopExp::MapShapes(copy, TopAbs_FACE, copyFaces);
+        if (copyFaces.Extent() == faces.Extent()) {
+          ReblendedOffset reblended;
+          TopoDS_Shape result;
+          if (buildReblendedOffset(reblended, copy, copyFaces, picked, blends, distance, result)) {
+            recordHistory(reblended, copy, 0, result);
+            return store(result);
+          }
+        }
+      }
       // OCCT offsets a face's smooth neighbours with it: those are checked too. A chain with
       // a sharp edge inside it (fillets meeting at a corner) traps OCCT's offset: refused.
       std::vector<int> chain;
@@ -4923,6 +4961,7 @@ private:
   }
   int nextHandle_;
   std::vector<int> args_;
+  std::vector<int> blends_;
   std::vector<int32_t> history_;
   std::string lastError_;
   double measured_[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -7304,6 +7343,268 @@ private:
       // The merge must not change the body: the same volume within the integration's bound.
       const double before = exactVolume(offset);
       return std::fabs(exactVolume(result) - before) <= 1e-6 * std::fabs(before) + 1e-9;
+    } catch (...) {
+      result.Nullify();
+      return false;
+    }
+  }
+
+  /**
+   * The history of an offset whose rounds were removed first and made again
+   * after (buildReblendedOffset): each sub-shape taken through the removal,
+   * the offset (with the relation the offset gives) and the new rounds; a
+   * re-made round's old face is modified into its new faces.
+   */
+  struct ReblendedOffset {
+    BRepAlgoAPI_Defeaturing removal;
+    BRepOffset_MakeOffset offset;
+    std::unique_ptr<BRepFilletAPI_MakeFillet> rounds;
+    NCollection_DataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher> remade;
+
+    NCollection_List<TopoDS_Shape> removed(const TopoDS_Shape& sub) {
+      NCollection_List<TopoDS_Shape> out;
+      if (removal.IsDeleted(sub)) return out;
+      const NCollection_List<TopoDS_Shape>& modified = removal.Modified(sub);
+      if (modified.IsEmpty()) out.Append(sub);
+      else out = modified;
+      return out;
+    }
+
+    void rounded(const NCollection_List<TopoDS_Shape>& made, NCollection_List<TopoDS_Shape>& out,
+                 NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher>& seen) {
+      for (NCollection_List<TopoDS_Shape>::Iterator it(made); it.More(); it.Next()) {
+        if (rounds->IsDeleted(it.Value())) continue;
+        const NCollection_List<TopoDS_Shape>& modified = rounds->Modified(it.Value());
+        if (modified.IsEmpty()) {
+          if (seen.Add(it.Value())) out.Append(it.Value());
+          continue;
+        }
+        for (NCollection_List<TopoDS_Shape>::Iterator m(modified); m.More(); m.Next()) {
+          if (seen.Add(m.Value())) out.Append(m.Value());
+        }
+      }
+    }
+
+    NCollection_List<TopoDS_Shape> Modified(const TopoDS_Shape& sub) {
+      if (remade.IsBound(sub)) return remade(sub);
+      NCollection_List<TopoDS_Shape> out;
+      NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> seen;
+      const NCollection_List<TopoDS_Shape> all = removed(sub);
+      for (NCollection_List<TopoDS_Shape>::Iterator p(all); p.More(); p.Next()) rounded(offset.Modified(p.Value()), out, seen);
+      return out;
+    }
+
+    NCollection_List<TopoDS_Shape> Generated(const TopoDS_Shape& sub) {
+      NCollection_List<TopoDS_Shape> out;
+      if (remade.IsBound(sub)) return out;
+      NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> seen;
+      const NCollection_List<TopoDS_Shape> all = removed(sub);
+      for (NCollection_List<TopoDS_Shape>::Iterator p(all); p.More(); p.Next()) rounded(offset.Generated(p.Value()), out, seen);
+      return out;
+    }
+
+    bool IsDeleted(const TopoDS_Shape& sub) {
+      if (remade.IsBound(sub)) return false;
+      const NCollection_List<TopoDS_Shape> all = removed(sub);
+      for (NCollection_List<TopoDS_Shape>::Iterator p(all); p.More(); p.Next()) {
+        if (!offset.IsDeleted(p.Value())) return false;
+      }
+      return true;
+    }
+  };
+
+  /** The radius of a round's face: a cylinder's, or a torus's minor one; 0 for anything else. */
+  static double roundRadius(const TopoDS_Face& face) {
+    BRepAdaptor_Surface surface(face, false);
+    if (surface.GetType() == GeomAbs_Cylinder) return surface.Cylinder().Radius();
+    if (surface.GetType() == GeomAbs_Torus) return surface.Torus().MinorRadius();
+    return 0;
+  }
+
+  /**
+   * The offset of `input` (a copy) with the rounds `blends` (0-based face
+   * indices, none of them picked) that run smoothly into a moving face
+   * removed first (BRepAlgoAPI_Defeaturing), the picked faces moved by
+   * `distance`, and each round made again at its radius on the edges
+   * between the faces it ran between (ADR-0051's amendment, 2026-10-14).
+   * The moving faces are found as OCCT's offset finds them, but without
+   * passing through a round: a face past a round doesn't move. Into
+   * `result`, with `made` holding the history. False when the rounds can't
+   * be removed or made again, or the offset fails or isn't sound; each step
+   * runs once (no retries), and the body's smooth chains are checked after
+   * the removal as before an offset.
+   */
+  static bool buildReblendedOffset(ReblendedOffset& made, const TopoDS_Shape& input,
+                                   const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
+                                   const std::vector<int>& picked, const std::vector<int>& blends, double distance,
+                                   TopoDS_Shape& result) {
+    try {
+      const int count = faces.Extent();
+      // Faces next to each face across a smooth edge, as smoothChains() judges it.
+      std::vector<std::vector<int>> smooth(static_cast<size_t>(count));
+      EdgeFaceMap edgeFaces;
+      TopExp::MapShapesAndUniqueAncestors(input, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+      for (int e = 1; e <= edgeFaces.Extent(); ++e) {
+        std::vector<int> around;
+        for (const TopoDS_Shape& other : edgeFaces(e)) {
+          const int index = faces.FindIndex(other) - 1;
+          if (index >= 0 && std::find(around.begin(), around.end(), index) == around.end()) around.push_back(index);
+        }
+        if (around.size() != 2) continue;
+        const TopoDS_Edge edge = TopoDS::Edge(edgeFaces.FindKey(e));
+        gp_Dir a;
+        gp_Dir b;
+        if (edgeNormal(edge, TopoDS::Face(faces(around[0] + 1)), a) &&
+            edgeNormal(edge, TopoDS::Face(faces(around[1] + 1)), b) && a.Dot(b) > 0.99756) {
+          smooth[static_cast<size_t>(around[0])].push_back(around[1]);
+          smooth[static_cast<size_t>(around[1])].push_back(around[0]);
+        }
+      }
+      std::vector<char> isBlend(static_cast<size_t>(count), 0);
+      for (int index : blends) isBlend[static_cast<size_t>(index)] = 1;
+      // The moving faces: the picked ones and their smooth neighbours, not through a round.
+      std::vector<char> moves(static_cast<size_t>(count), 0);
+      std::vector<int> queue;
+      for (int index : picked) {
+        if (!moves[static_cast<size_t>(index)]) {
+          moves[static_cast<size_t>(index)] = 1;
+          queue.push_back(index);
+        }
+      }
+      for (size_t at = 0; at < queue.size(); ++at) {
+        for (int next : smooth[static_cast<size_t>(queue[at])]) {
+          if (moves[static_cast<size_t>(next)] || isBlend[static_cast<size_t>(next)]) continue;
+          moves[static_cast<size_t>(next)] = 1;
+          queue.push_back(next);
+        }
+      }
+      // The rounds next to a moving face are made again; each runs between its smooth
+      // neighbours that are not such rounds, and must have two.
+      std::vector<int> remake;
+      for (int index : blends) {
+        for (int next : smooth[static_cast<size_t>(index)]) {
+          if (moves[static_cast<size_t>(next)]) {
+            remake.push_back(index);
+            break;
+          }
+        }
+      }
+      if (remake.empty()) return false;
+      std::vector<char> remade(static_cast<size_t>(count), 0);
+      for (int index : remake) remade[static_cast<size_t>(index)] = 1;
+      std::vector<std::vector<int>> rails;
+      std::vector<double> radii;
+      for (int index : remake) {
+        std::vector<int> sides;
+        for (int next : smooth[static_cast<size_t>(index)]) {
+          if (!remade[static_cast<size_t>(next)] && std::find(sides.begin(), sides.end(), next) == sides.end()) {
+            sides.push_back(next);
+          }
+        }
+        const double radius = roundRadius(TopoDS::Face(faces(index + 1)));
+        if (sides.size() != 2 || !(radius > 1e-6)) return false;
+        rails.push_back(sides);
+        radii.push_back(radius);
+      }
+
+      made.removal.SetShape(input);
+      for (int index : remake) made.removal.AddFaceToRemove(faces(index + 1));
+      made.removal.SetRunParallel(false);
+      made.removal.SetToFillHistory(true);
+      made.removal.Build();
+      if (!made.removal.IsDone() || made.removal.HasErrors()) return false;
+      const TopoDS_Shape plain = asSolid(made.removal.Shape());
+      if (plain.IsNull() || !BRepCheck_Analyzer(plain).IsValid()) return false;
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> plainFaces;
+      TopExp::MapShapes(plain, TopAbs_FACE, plainFaces);
+      const auto plainIndices = [&](int index) {
+        std::vector<int> out;
+        const NCollection_List<TopoDS_Shape> all = made.removed(faces(index + 1));
+        for (NCollection_List<TopoDS_Shape>::Iterator p(all); p.More(); p.Next()) {
+          const int at = plainFaces.FindIndex(p.Value()) - 1;
+          if (at >= 0 && std::find(out.begin(), out.end(), at) == out.end()) out.push_back(at);
+        }
+        return out;
+      };
+      std::vector<int> pickedPlain;
+      for (int index : picked) {
+        for (int at : plainIndices(index)) {
+          if (std::find(pickedPlain.begin(), pickedPlain.end(), at) == pickedPlain.end()) pickedPlain.push_back(at);
+        }
+      }
+      if (pickedPlain.empty()) return false;
+      // OCCT's offset traps on a smooth chain with a crease inside (see smoothChains()).
+      std::vector<int> chain;
+      if (smoothChains(plain, plainFaces, chain)) return false;
+      const std::vector<int> movingPlain = smoothClosure(chain, pickedPlain);
+      TopoDS_Shape moved;
+      if (!buildOffset(made.offset, plain, plainFaces, pickedPlain, distance, moved) ||
+          !offsetIsGood(made.offset, plain, plainFaces, movingPlain, moved, distance)) {
+        return false;
+      }
+
+      // Each round on the edges between the faces its two sides became.
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> movedFaces;
+      TopExp::MapShapes(moved, TopAbs_FACE, movedFaces);
+      const auto movedImages = [&](int index) {
+        NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> out;
+        for (int at : plainIndices(index)) {
+          const TopoDS_Shape& face = plainFaces(at + 1);
+          if (movedFaces.Contains(face)) out.Add(face);
+          for (const TopoDS_Shape& m : made.offset.Modified(face)) {
+            if (movedFaces.Contains(m)) out.Add(m);
+          }
+          for (const TopoDS_Shape& m : made.offset.Generated(face)) {
+            if (m.ShapeType() == TopAbs_FACE && movedFaces.Contains(m)) out.Add(m);
+          }
+        }
+        return out;
+      };
+      EdgeFaceMap movedEdgeFaces;
+      TopExp::MapShapesAndUniqueAncestors(moved, TopAbs_EDGE, TopAbs_FACE, movedEdgeFaces);
+      made.rounds = std::make_unique<BRepFilletAPI_MakeFillet>(moved);
+      std::vector<std::vector<TopoDS_Shape>> roundEdges(remake.size());
+      NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> taken;
+      for (size_t k = 0; k < remake.size(); ++k) {
+        const NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> one = movedImages(rails[k][0]);
+        const NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> two = movedImages(rails[k][1]);
+        for (int e = 1; e <= movedEdgeFaces.Extent(); ++e) {
+          const NCollection_List<TopoDS_Shape>& around = movedEdgeFaces(e);
+          if (around.Extent() != 2) continue;
+          const TopoDS_Shape& a = around.First();
+          const TopoDS_Shape& b = around.Last();
+          if (!((one.Contains(a) && two.Contains(b)) || (one.Contains(b) && two.Contains(a)))) continue;
+          const TopoDS_Shape& edge = movedEdgeFaces.FindKey(e);
+          if (!taken.Add(edge)) continue;
+          made.rounds->Add(radii[k], TopoDS::Edge(edge));
+          roundEdges[k].push_back(edge);
+        }
+        if (roundEdges[k].empty()) return false;
+      }
+      made.rounds->Build();
+      if (!made.rounds->IsDone()) return false;
+      result = asSolid(made.rounds->Shape());
+      if (result.IsNull() || !BRepCheck_Analyzer(result).IsValid()) return false;
+      // The body grew where faces moved out and shrank where they moved in.
+      const double before = exactVolume(input);
+      const double after = exactVolume(result);
+      const double slack = 1e-6 * before;
+      if (!(after > 0) || (distance > 0 && after < before - slack) || (distance < 0 && after > before + slack)) {
+        return false;
+      }
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> resultFaces;
+      TopExp::MapShapes(result, TopAbs_FACE, resultFaces);
+      for (size_t k = 0; k < remake.size(); ++k) {
+        NCollection_List<TopoDS_Shape> news;
+        for (const TopoDS_Shape& edge : roundEdges[k]) {
+          for (const TopoDS_Shape& face : made.rounds->Generated(edge)) {
+            if (face.ShapeType() == TopAbs_FACE && resultFaces.Contains(face)) news.Append(face);
+          }
+        }
+        if (news.IsEmpty()) return false;
+        made.remade.Bind(faces(remake[k] + 1), news);
+      }
+      return true;
     } catch (...) {
       result.Nullify();
       return false;

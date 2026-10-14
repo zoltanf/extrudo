@@ -202,7 +202,7 @@ export function NavBar({ store, commandRunning = false, onStopCommand, namedView
       >
         <Grid3x3 size={16} strokeWidth={1.75} />
       </IconButton>
-      {/* The mouse controls moved to the Settings menu (the owner's UI review 3, R3-03). */}
+      {/* The mouse controls moved to the app menu (the owner's UI review 3, R3-03). */}
       <div className="mx-1 h-4 w-px bg-line" />
       {/* Named views (ADR-0008's amendment): the saved views to restore, then
           the save prompt on a popover anchored on this button. The popover's

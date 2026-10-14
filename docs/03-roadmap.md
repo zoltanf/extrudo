@@ -1153,6 +1153,126 @@ end to end, faster than in established desktop CAD.
   Slice 2 (2026-10-06): the constraint and dimension tools pick body geometry
   directly (`ToolContext.pickModel`), projecting the ref and writing the
   constraint or dimension against the projected entity in the same undo step.
+- [ ] **P6-08 MCP server in the desktop app** (owner, 2026-10-14). While the
+  desktop app runs, it hosts a Model Context Protocol server, so other agents
+  (Claude Code, Claude Desktop and other MCP clients) can read and change the
+  open design. A switch under Settings › Desktop turns it off. The web build
+  has none. *Deps:* P6-01, P5-01, P6-03.
+  *Scope, decided in a new ADR before any code:*
+  - **Transport and exposure:** Streamable HTTP served from Electron main,
+    bound to `127.0.0.1` only (never `0.0.0.0`, never a LAN address), on a
+    fixed default port that can be changed in Settings. Requests with an
+    `Origin` or `Host` other than localhost are refused, which stops DNS
+    rebinding and websites calling it. Every request needs a bearer token,
+    generated per install and kept under `userData`. Settings shows the
+    server's state and URL, and a "Copy client config" button gives the
+    URL and token as a ready-to-paste snippet.
+  - **On by default** (Open decision 6): the server does nothing useful
+    until the user copies the token from Settings.
+  - **Tools, built on what exists:**
+    - Read: the open designs, the document JSON, parameters and
+      configurations, every feature's status and every body (name, volume,
+      box), the selection, and a viewport screenshot.
+    - Change: set a parameter, apply a configuration, add or edit features
+      through `@extrudo/api`'s methods (ADR-0068), suppress, rename, remove,
+      run a command from the command registry, undo and redo.
+    - Files: open, save, export STL, 3MF or STEP.
+  - **Rules kept:**
+    - Every change is a core command, so it is undoable and shows in the
+      timeline, labelled as coming from the agent.
+    - Parameter writes go through `apply`, so sketches re-solve.
+    - Inputs are checked with the feature's own schema, and a bad call
+      answers with `ApiError`'s path and changes nothing.
+    - The kernel stays in its worker.
+    - Main forwards each tool call to the renderer over new channels in
+      `shared/ipc.ts` and validates them like every other channel. Main
+      never touches the document.
+  - **Safety:**
+    - A status indicator while a client is connected.
+    - Changes from an agent are undoable in one step each.
+    - A rate or size limit on screenshots and exports.
+    - No file paths outside those the user opened or main issued
+      (ADR-0075's external files).
+  - **A skill shipped with the server** (owner, 2026-10-14): an Agent Skill
+    (`SKILL.md`, optional `references/`) that teaches an agent how to
+    model in Extrudo:
+    - read the design and the feature status first;
+    - prefer parameters to raw numbers;
+    - name faces and edges through the API's references, never indices;
+    - check every feature's status and a screenshot after each change;
+    - plus worked examples (a box with a lid, a parametric bracket).
+
+    It is delivered over MCP following the Skills over MCP draft
+    (SEP-2640): a `skill://index.json` index and
+    `skill://extrudo/SKILL.md` and its files as resources. The server's
+    `instructions` tell the client to read the skill before modelling. A
+    `get_skill` tool returns the same text for clients that don't read
+    resources. The wire format follows the SEP as it stands when the task
+    starts; the ADR records the version.
+    - **Source:** the skill lives in the repo next to the server. Its
+      references to the API come from `pnpm api:generate`, so they can't
+      drift. A test fails when the skill names a tool or API method that
+      doesn't exist.
+    - **Also as a plain folder:** the same skill is attached to each
+      release, for clients that load skills from disk.
+  - **Dependency:** the MCP SDK (`@modelcontextprotocol/sdk`, MIT) goes
+    through the license allow-list and `NOTICE`, bundled into `out/main`.
+  - **Out of scope:** a headless `extrudo mcp` over stdio in the CLI (a
+    later task if wanted), and remote or LAN access.
+  *AC:*
+  - A Node test client connects with the token, lists the tools, adds an
+    extrude, sets a parameter and reads the new body's volume. The change
+    appears in the app's timeline and Ctrl+Z undoes it.
+  - Without the token, or with a foreign `Origin`, a request is refused.
+  - The server listens on `127.0.0.1` only (a test checks the bound address).
+  - Turning it off in Settings closes the port.
+  - The test client finds the skill through `skill://index.json`, reads
+    `SKILL.md`, and gets the same text from `get_skill`.
+  - An agent given only the skill and the server builds the box-with-lid
+    example without help (a recorded run, checked by the coordinator).
+  - `docs/desktop.md` gets a page on connecting Claude Code
+    (`claude mcp add --transport http …`).
+  - Split into slices before starting.
+
+## Phase 7 — Later (lowest priority, after everything else)
+
+**Owner, 2026-10-14: the last work on the roadmap.** Don't pick a task here
+while any earlier task is unchecked (P4-12's backlog and the deferred P6-04
+included), and only after the owner says go.
+
+- [ ] **P7-01 Inverse kinematics: several joints posed at once.** What
+  ADR-0081 deferred (§4, "Deferred"). Today you can pose one as-built joint at
+  a time. This task poses a chain or a closed loop (a four-bar, a scissor
+  lift, a gripper) together: drag a component and a solver finds the values
+  of every joint in between, within their limits. The pose stays a preview,
+  as in ADR-0081: it moves nothing that is stored. *Deps:* P6-05.
+  *Scope, decided in a new ADR before any code:*
+  - **The solver:** joint values as unknowns, the loop closures and the drag
+    target as residuals, solved by damped least squares (Levenberg–Marquardt).
+    It is pure TypeScript in a package that may hold no WASM, so it runs in
+    Node and in the CLI. planegcs is 2D and not reused. Write down any solver
+    that was tried and rejected.
+  - **Joint types the mechanisms need:** cylindrical, pin-slot, planar and
+    ball, added beside rigid, revolute and slider (additive schema,
+    `docs/file-format.md`). Which of them are in this task is the ADR's call.
+  - **Limits and failures:** a joint stops at its `min`/`max`, and a target
+    out of reach stops at the nearest pose with a message in the error-message
+    style. An over-constrained or locked loop is reported with the joints
+    that cause it, never as a silent jump. For the same start pose and target
+    the result is always the same.
+  - **Clearance:** ADR-0081's clearance check runs along a driven motion (one
+    driving joint swept over its range, the rest solved), not only over a
+    single joint.
+  - **Out of scope, unless the ADR says otherwise:** a pose that drives stored
+    geometry ("keep this position"), contact sets, motion studies and
+    animation, gears and couplings, joints inside nested components.
+  *AC:* a four-bar posed by dragging its crank: the coupler and rocker
+  follow and the loop stays closed (unit test: residual under 1e-6 mm over the
+  crank's full range). A three-link chain dragged past its reach stops at the
+  limit with a message. A locked loop names its joints. The clearance check
+  over a driven four-bar finds a planted collision at the right angle. An
+  e2e spec drags the crank in the view. Split into slices before starting
+  (well over ~1 500 lines).
 
 ## The owner's UI reviews
 
@@ -1233,3 +1353,10 @@ don't let Phase 3 features be built without it.
    **done 2026-10-12**: ~~STEP part names as body names~~ (ADR-0034's second
    amendment), and ~~a guide page on bringing a design over as STEP~~
    (`docs/guide/files.md`).
+6. ~~The desktop MCP server (P6-08): on or off by default?~~ **Decided
+   2026-10-14 (owner): on by default.** It listens on `127.0.0.1` only and
+   needs the per-install token. Copying the client config from Settings is
+   the user's consent, and no other machine can reach it. A switch in
+   Settings › Desktop turns it off. Rejected: off by default (one more step
+   for every user), and an Allow/Deny prompt for each new client (more work,
+   and it duplicates the token's purpose).
