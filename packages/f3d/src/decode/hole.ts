@@ -12,6 +12,7 @@
  * against it. Seen once in the corpus (the one hole that drills that way),
  * so not certain.
  */
+import type { AsmSurface } from '../asm';
 import type { Segment } from '../segment';
 import type { Scope } from './scope';
 import type { Vec3 } from './sketch-geometry';
@@ -57,4 +58,41 @@ export function readHoleFlipped(seg: Segment, scope: Scope): boolean {
     return b[p + 28] === 1;
   }
   return false;
+}
+
+/** The most holes `centresFromCylinders` returns (a file's faces are untrusted). */
+export const MAX_FOUND_CENTRES = 256;
+
+/**
+ * Hole centres read off the cylinders the hole made, for a hole the file places by its
+ * distances to edges rather than at points (no centre is stored then): every cylinder of the
+ * hole's radius (cm) whose axis is square to the start face's plane gives the point where
+ * that axis meets the plane. Faces split at a seam or kept from earlier states give the same
+ * point once. At most `MAX_FOUND_CENTRES`.
+ */
+export function centresFromCylinders(
+  surfaces: readonly AsmSurface[],
+  plane: ModelPlane,
+  radius: number,
+): Vec3[] {
+  const { origin: O, x: X, y: Y } = plane;
+  const n: Vec3 = [X[1] * Y[2] - X[2] * Y[1], X[2] * Y[0] - X[0] * Y[2], X[0] * Y[1] - X[1] * Y[0]];
+  const len = Math.hypot(...n);
+  if (!(len > 1e-9) || !(radius > 0)) return [];
+  const N = n.map((v) => v / len) as Vec3;
+  const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const out: Vec3[] = [];
+  for (const s of surfaces) {
+    if (out.length >= MAX_FOUND_CENTRES) break;
+    if (s.kind !== 'cone' || !s.cylinder || Math.abs(s.radius - radius) > 1e-6) continue;
+    const a = Math.hypot(...s.axis);
+    if (!(a > 1e-9)) continue;
+    const along = dot(s.axis, N) / a;
+    if (Math.abs(Math.abs(along) - 1) > 1e-6) continue;
+    // The axis point in the plane: the centre moved along N onto it.
+    const h = dot([s.center[0] - O[0], s.center[1] - O[1], s.center[2] - O[2]], N);
+    const c: Vec3 = [s.center[0] - h * N[0], s.center[1] - h * N[1], s.center[2] - h * N[2]];
+    if (!out.some((p) => Math.hypot(p[0] - c[0], p[1] - c[1], p[2] - c[2]) < 1e-6)) out.push(c);
+  }
+  return out;
 }

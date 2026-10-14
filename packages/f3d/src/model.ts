@@ -38,6 +38,7 @@ import {
 import {
   EDGE_OPERAND,
   EDGE_RECIPE,
+  edgeFaces,
   type FaceTag,
   OPERAND_GROUP,
   readEdgeRecipe,
@@ -51,6 +52,7 @@ import {
   SKETCH_PROFILE_OPERAND,
 } from './decode/extrude';
 import {
+  centresFromCylinders,
   HOLE_PLACEMENT,
   MODEL_PLANE,
   MODEL_POINT,
@@ -575,13 +577,18 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     return records?.find((r) => onTimeline.has(r)) ?? records?.[0];
   };
   // Feature record → the surfaces of the B-rep faces tagged with its operations.
-  const madeBy = (record: number): AsmSurface[] => {
+  // `own`: not the copies a mirror or pattern made of them.
+  const madeBy = (record: number, own = false): AsmSurface[] => {
     const ops = new Set<number>();
     for (const [op, records] of operations) if (records.includes(record)) ops.add(op);
     const out = new Set<AsmFace>();
     for (const list of faces.values())
       for (const face of list)
-        if (face.tags.some((t) => ops.has(Math.abs(t.design)))) out.add(face);
+        if (
+          face.tags.some((t) => ops.has(Math.abs(t.design))) &&
+          !(own && face.tags.some((t) => instances.has(Math.abs(t.design))))
+        )
+          out.add(face);
     return [...out].map((face) => face.surface);
   };
   // Instance operation id → instance code, over every copying feature.
@@ -711,6 +718,10 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
                 if (seg.typeOf(q)?.guid === MODEL_PLANE)
                   plane ??= tryDecode(`hole plane #${q}`, () => readModelPlane(seg, q));
       }
+      // Placed by distances to edges: no centre point; its own cylinders show where.
+      const diameter = base.parameters.find((p) => p.kind === 'HoleDiameter')?.value;
+      if (centres.length === 0 && plane && diameter)
+        centres.push(...centresFromCylinders(madeBy(id, true), plane, diameter / 2));
       const flipped = readHoleFlipped(seg, scope);
       features.push({ type: 'hole', ...base, centres, flipped, ...(plane ? { plane } : {}) });
     } else if (FEATURE_TYPES[type.guid] === 'CircularPattern') {
@@ -1119,12 +1130,12 @@ function readEdgeSets(
   return groups.map((group, i) => {
     const edges: F3dEdge[] = [];
     for (const recipeId of recipesIn(seg, group)) {
-      const recipe = readEdgeRecipe(seg, recipeId);
-      const [a, b, ...rest] = recipe.faces;
-      if (!a || !b) continue;
+      const recipe = edgeFaces(readEdgeRecipe(seg, recipeId).faces);
+      if (!recipe) continue;
+      const [a, b] = recipe.support;
       const edge: F3dEdge = {
         faces: [face(a.tags), face(b.tags)],
-        bounds: rest.map((x) => face(x.tags)),
+        bounds: recipe.bounds.map((x) => face(x.tags)),
       };
       const known = knownBetween(a.tags, b.tags);
       if (known.length > 0) edge.known = known;
