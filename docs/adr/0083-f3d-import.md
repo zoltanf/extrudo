@@ -919,3 +919,21 @@ round (job C's divergence report). Replay-only corpus: within 0.5 % volume and
 match → mismatch (0.48 % → 0.71 % volume; the newly built 0.33 mm chamfer is
 the file's, on all 42 of its edges, and the design was short of volume for
 another reason).
+
+## Amendment, 2026-10-14: a symmetric extrude's distance is each side's
+
+A symmetric extrude was imported with its `AlongDistance` as the whole length
+(Extrudo's default `symmetricMeasure`), so its caps came in at half the distance
+from the profile. The file's own cap faces (B-rep faces tagged by the feature's
+operations with a normal along the extrude's direction vector) lie the whole
+distance either side of the profile in all 26 symmetric extrudes of the corpus
+(10 designs; FORMAT.md "Extrude"), including the five that showed no divergence
+before only because their caps fall outside the body or on another plane. The
+import now writes `symmetricMeasure: 'half'`. No whole-length symmetric extrude
+is in the corpus, so a flag for one was not found; if a file has one it would
+come in twice as long. Replay corpus: within 0.5 % volume and 0.05 mm box 142 →
+147 (5 designs reach it, none leaves it); Pillar Connector's box error 8.5 mm →
+0; 4 rounds now build, 1 round further down now fails (it had been built on the
+half-length body). Body check on the 10 designs that changed: editable 1 → 6,
+frozen 6 → 1. Test: `map.test.ts` "extrudes a symmetric extrude's distance on
+each side…".

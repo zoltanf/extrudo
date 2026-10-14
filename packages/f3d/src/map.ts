@@ -1349,7 +1349,12 @@ function extrude(
     inputs.direction = 'symmetric';
     const dist = symmetric ?? along;
     if (!dist) inputs.extent = 'through-all';
-    else inputs.distance = expressionOf(dist, dist.value < 0);
+    else {
+      // The file's distance is each side's: every symmetric extrude of the
+      // corpus has its caps that far either side of the profile (FORMAT.md).
+      inputs.distance = expressionOf(dist, dist.value < 0);
+      inputs.symmetricMeasure = 'half';
+    }
   }
   if (taper && Math.abs(taper.value) > 1e-12) inputs.taper = expressionOf(taper);
   if (flip && !(f.direction === 'one-side' && toFace)) inputs.flip = true;

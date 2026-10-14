@@ -202,6 +202,18 @@ describe('f3dToDesign', () => {
     expect(await volumes(f3d)).toEqual([expect.closeTo(Math.PI * (5.5 ** 2 - 4 ** 2) * 0.8, 3)]);
   });
 
+  it("extrudes a symmetric extrude's distance on each side of the profile (each side, not the whole length)", async () => {
+    const f3d = washer();
+    const extrude = f3d.features[1] as F3dExtrude;
+    extrude.direction = 'symmetric';
+    const { design } = f3dToDesign(f3d, 'Washer');
+    const made = Object.values(design.toJSON().features).find((f) => f.type === 'extrude');
+    expect(made?.inputs.symmetricMeasure).toEqual({ kind: 'enum', value: 'half' });
+    // 0.8 mm either side of the sketch plane: twice the one-sided ring.
+    const [m] = await measures(f3d);
+    expect(m?.volume).toBeCloseTo(RING * 2, 3);
+  });
+
   it('keeps user parameters and drives the extrude by them', () => {
     const { design, report } = f3dToDesign(washer(), 'Washer');
     const doc = design.toJSON();

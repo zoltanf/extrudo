@@ -95,7 +95,7 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `44A64366…` | Sketch | its base level's first reference is the placement |
 | `F47A46FB…` | Sketch placement | u8 identity, or 16 f64: the sketch-to-model matrix, row-major |
 | `8DA771B7…` | Sketch feature | refers to its sketch (`44A64366…`) |
-| `DD405BC2…` | Extrude | op u32 (1 join, 2 cut, 3 intersect, 4 new body), direction u32 (1 one side, 2 two sides, 3 symmetric), face-extend u32, reversed u8, solid u8, start u8 (0 profile plane, 1 offset, 2 face) — at payload offset 9, 8, 7, 19 or 18 depending on the version |
+| `DD405BC2…` | Extrude | op u32 (1 join, 2 cut, 3 intersect, 4 new body), direction u32 (1 one side, 2 two sides, 3 symmetric), face-extend u32, reversed u8, solid u8, start u8 (0 profile plane, 1 offset, 2 face) — at payload offset 9, 8, 7, 19 or 18 depending on the version; then three zero bytes and a unit vector (3 f64, model space) along the profile's normal (all 1182 extrudes of the corpus: unit, after three zero bytes; parallel to the sketch normal in 1172 of the 1175 with a sketch) |
 | `4BD53E5A…` | Sketch-profile operand | the sketch's record number as decimal UTF-16; record N + 3, when it is `0D57BD2F…`, selects regions |
 | `0D57BD2F…` | Profile regions | see below |
 | `92F9A5F4…` | Entity-profile operand | names its sketch as a sketch-profile operand does, and the entity by a `90055C05…` record reference: a text (`F0B1AFA3…`, or the older `E0618268…`) whose letters are the profile |
@@ -128,6 +128,16 @@ An extrude's extent shows in the parameters it owns: `AlongDistance` for a
 distance, `Side1Offset` (and a face operand) for up to an object, none for
 through all; `ProfileOffset` is the start offset, from the profile plane or
 from the start face.
+
+A symmetric extrude's `AlongDistance` is each side's length, not the whole
+length: the file's own cap faces (the B-rep faces tagged by the feature's
+operations, normal along the direction vector above) lie that distance either
+side of the profile in every symmetric extrude of the corpus where both caps
+survive (26 extrudes in 10 designs: the gap between the caps is twice the
+distance). No whole-length symmetric extrude has been seen, so the record's
+flag for one, if there is one, is not known: the head block is the same in all
+26, and the few member bytes that differ between them (a prologue byte in
+version 8, one u32 that is 0, 5 or 10) split them in ways the caps don't.
 
 A hole's sizes are parameters it owns: `HoleDiameter`, `HoleDepth`,
 `TipAngle` (180° is a flat bottom), and `CSDiameter`/`CSAngle` for a
