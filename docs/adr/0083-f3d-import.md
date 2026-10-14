@@ -937,3 +937,16 @@ come in twice as long. Replay corpus: within 0.5 % volume and 0.05 mm box 142 �
 half-length body). Body check on the 10 designs that changed: editable 1 → 6,
 frozen 6 → 1. Test: `map.test.ts` "extrudes a symmetric extrude's distance on
 each side…".
+
+## Amendment, 2026-10-14: an up-to-face offset to a slanted plane
+
+The file measures an up-to-face offset (`Side1Offset`, `Side2Offset`) along the
+target face's normal; Extrudo's `offset` moves the target along the sweep. For
+a plane slanted to the sketch the import now writes the offset divided by the
+cosine between the sweep and the plane's normal (same sign); other faces keep
+it as it is (`alongSweep` in `map.ts`). The corpus has 16 up-to-face extrudes
+with a non-zero offset: 13 to a plane parallel to the sketch (already a
+distance) and 3 in one design to a plane at cosine 0.946 with −9.5 mm, whose end
+faces were 0.5104 mm off the file's and now lie on them. Replay corpus: no
+verdict changes (that design already matched, volume error 0.015 % → 0.010 %).
+Test: `map.test.ts` "measures an up-to-face offset along the sweep…".

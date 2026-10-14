@@ -139,6 +139,14 @@ flag for one, if there is one, is not known: the head block is the same in all
 26, and the few member bytes that differ between them (a prologue byte in
 version 8, one u32 that is 0, 5 or 10) split them in ways the caps don't.
 
+An up-to-face offset (`Side1Offset`, `Side2Offset`) is measured along the
+target face's normal. Seen on a face slanted to the sketch in one design
+(three extrudes, cosine 0.946, −9.5 mm): taken along the extrude direction the
+replayed end face lies 0.5104 mm (= 9.5 × (1 − 0.946)) off the file's own end
+face (the B-rep face tagged by the extrude, on the target's normal); divided by
+the cosine it lies on it (0.0000 mm, both extrudes whose end face survives).
+The other 13 offsets of the corpus are to faces parallel to the sketch.
+
 A hole's sizes are parameters it owns: `HoleDiameter`, `HoleDepth`,
 `TipAngle` (180° is a flat bottom), and `CSDiameter`/`CSAngle` for a
 countersink or `CBDiameter`/`CBDepth` for a counterbore. Its references hold a

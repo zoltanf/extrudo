@@ -15,7 +15,7 @@ import type { AsmSurface } from './asm';
 import type { ProfileRegion } from './decode/extrude';
 import type { ParameterValue } from './decode/parameters';
 import type { Vec3 } from './decode/sketch-geometry';
-import { f3dToDesign } from './map';
+import { alongSweep, f3dToDesign } from './map';
 import { type F3dDesign, type F3dExtrude, type F3dSketchFeature, IDENTITY } from './model';
 
 /** A region of whole curves (each one piece of one), as the decoder gives it. */
@@ -313,6 +313,27 @@ describe('f3dToDesign', () => {
     const [m] = await measures(f3d);
     expect(m?.bbox.min[2]).toBeCloseTo(-12, 1);
     expect(m?.bbox.max[2]).toBeCloseTo(0, 1);
+  });
+
+  it('measures an up-to-face offset along the sweep: divided by the cosine to a slanted plane', () => {
+    // The file measures it along the face's normal; 0.946 is the slant seen in the corpus.
+    const cos = 0.946;
+    const slanted = {
+      tags: [],
+      surface: {
+        kind: 'plane' as const,
+        point: [0, 0, 2] as [number, number, number],
+        normal: [0, -Math.sqrt(1 - cos * cos), -cos] as [number, number, number],
+      },
+    };
+    expect(alongSweep(-0.95, slanted, IDENTITY)).toBeCloseTo(-0.95 / cos, 12);
+    const parallel = {
+      ...slanted,
+      surface: { ...slanted.surface, normal: [0, 0, 1] as [number, number, number] },
+    };
+    expect(alongSweep(0.2, parallel, IDENTITY)).toBe(0.2);
+    const round = { tags: [], surface: undefined };
+    expect(alongSweep(0.2, round, IDENTITY)).toBe(0.2);
   });
 
   it('draws a cubic spline as a control spline', async () => {

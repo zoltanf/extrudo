@@ -1305,7 +1305,8 @@ function extrude(
       if (!name) return 'it goes up to a face that could not be found';
       inputs.extent = 'to-object';
       inputs.toObject = { kind: 'face', id: name };
-      if (Math.abs(past) > 1e-12) inputs.offset = numberExpression(past, 'cm');
+      const along = alongSweep(past, toFace, entry.source.frame);
+      if (Math.abs(along) > 1e-12) inputs.offset = numberExpression(along, 'cm');
     }
   } else if (f.direction === 'one-side') {
     if (along) inputs.distance = expressionOf(along, negative);
@@ -1340,8 +1341,8 @@ function extrude(
         if (!name) return `its side ${i + 1} goes up to a face that could not be found`;
         inputs[extent] = 'to-object';
         inputs[toObject] = { kind: 'face', id: name };
-        if (side.past && Math.abs(side.past.value) > 1e-12)
-          inputs[past] = numberExpression(side.past.value, 'cm');
+        const along = side.past ? alongSweep(side.past.value, side.face, entry.source.frame) : 0;
+        if (Math.abs(along) > 1e-12) inputs[past] = numberExpression(along, 'cm');
       } else inputs[extent] = 'through-all';
     }
     if (taper2 && Math.abs(taper2.value) > 1e-12) inputs.taper2 = expressionOf(taper2);
@@ -1791,6 +1792,19 @@ function planeOffset(face: F3dFace, m: Matrix): number | undefined {
   if (norm(cross(s.normal, N)) > 1e-6) return undefined;
   const O: Vec3 = [m[3] as number, m[7] as number, m[11] as number];
   return dot(sub(s.point, O), N);
+}
+
+/**
+ * An up-to-face offset (cm) as Extrudo measures it, along the sweep: the file
+ * measures it along a target plane's normal, so a plane slanted to the sketch
+ * takes it divided by the cosine between the two (the same sign: past the
+ * face). Any other face keeps it as it is.
+ */
+export function alongSweep(offset: number, face: F3dFace, m: Matrix): number {
+  const s = face.surface;
+  if (s?.kind !== 'plane') return offset;
+  const cos = Math.abs(dot(s.normal, [m[2] as number, m[6] as number, m[10] as number]));
+  return cos > 1e-6 ? offset / cos : offset;
 }
 
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
