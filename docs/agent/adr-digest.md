@@ -51,8 +51,11 @@ ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
-debug page at `#/debug/kernel`). ADR-0002 chose planegcs from our own WASM
-build, one solver system per independent sketch component
+debug page at `#/debug/kernel`). The `delete()` leak behind the facade
+(taucad/opencascade.js#40) is fixed in libcascade 3.1.0; we still build with
+3.0.2, and the upgrade is a P4-12 item (ADR-0001's amendment of 2026-10-15).
+After it, `delete()` frees for real: never delete a handle OCCT still
+references. ADR-0002 chose planegcs from our own WASM build, one solver system per independent sketch component
 (`docs/adr/0002-sketch-solver.md`). ADR-0003 (P0-06) set the document model in
 `packages/core`: strict zod schema, migrations on raw JSON, deterministic
 commands with Immer patches, nested undo transactions, vanilla Zustand stores.

@@ -1,6 +1,6 @@
 /**
- * What the About dialog says about where the app runs: browser, OS, GPU,
- * memory and storage. Everything comes from the browser's own APIs; nothing
+ * What the About dialog says about where the app runs: browser, OS, GPU and
+ * rendering, memory and storage. Everything comes from the browser's own APIs; nothing
  * leaves the machine unless the person copies it into a bug report. Fields a
  * browser doesn't expose (device memory outside Chromium) are left out.
  */
@@ -29,6 +29,16 @@ export const formatBytes = (bytes: number) =>
     : bytes >= MB
       ? `${Math.round(bytes / MB)} MB`
       : `${Math.round(bytes / 1024)} kB`;
+
+/** "under a minute", "12 min", "1 h 12 min", "2 d 3 h". */
+export function formatDuration(ms: number): string {
+  const min = Math.floor(ms / 60_000);
+  if (min < 1) return 'under a minute';
+  const [d, h, m] = [Math.floor(min / 1440), Math.floor(min / 60) % 24, min % 60];
+  if (d > 0) return h > 0 ? `${d} d ${h} h` : `${d} d`;
+  if (h > 0) return m > 0 ? `${h} h ${m} min` : `${h} h`;
+  return `${m} min`;
+}
 
 /** Browser name and version, from Client Hints where the browser has them, else the user agent. */
 async function browser(): Promise<{ browser: string; os: string }> {
@@ -72,25 +82,50 @@ async function browser(): Promise<{ browser: string; os: string }> {
   };
 }
 
-/** The GPU's name as WebGL reports it, from a throwaway context. */
-function gpu(): string | undefined {
+/** Renderer strings of software rasterisers (no GPU in the path). */
+const SOFTWARE = /SwiftShader|llvmpipe|softpipe|Software|Basic Render Driver/i;
+
+/**
+ * The GPU's name as WebGL reports it, and how the page renders: the WebGL
+ * version, the backend ANGLE translates to, and whether a GPU does the work
+ * (a context that refuses a major performance caveat fails on a software
+ * rasteriser). From throwaway contexts.
+ */
+function graphics(): { gpu?: string; rendering: string } {
   try {
-    const gl = document.createElement('canvas').getContext('webgl2');
-    if (!gl) return undefined;
+    const canvas = () => document.createElement('canvas');
+    const gl2 = canvas().getContext('webgl2');
+    const gl = gl2 ?? canvas().getContext('webgl');
+    if (!gl) return { rendering: 'WebGL unavailable' };
     const ext = gl.getExtension('WEBGL_debug_renderer_info');
-    const name = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
-    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    const raw = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
+    const caveat: WebGLContextAttributes = { failIfMajorPerformanceCaveat: true };
+    const fast = gl2 ? canvas().getContext('webgl2', caveat) : canvas().getContext('webgl', caveat);
+    for (const c of [gl, fast]) c?.getExtension('WEBGL_lose_context')?.loseContext();
     // "ANGLE (NVIDIA, NVIDIA GeForce GTX 1050 Ti (0x00001C82) Direct3D11 vs_5_0 ps_5_0, D3D11)"
-    return (
-      name
-        .replace(/^ANGLE \((.*)\)$/, '$1')
-        .replace(/\s*\(0x[0-9a-f]+\)/gi, '')
-        .replace(/,\s*(OpenGL|D3D11|Vulkan|Metal).*$/i, '')
-        // "AMD, AMD Radeon Graphics" → "AMD Radeon Graphics"
-        .replace(/^([^,]+), (\1\b)/, '$2')
-    );
+    // "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    const gpu = /SwiftShader/i.test(raw)
+      ? 'SwiftShader'
+      : raw
+          .replace(/^ANGLE \((.*)\)$/, '$1')
+          .replace(/\s*\(0x[0-9a-f]+\)/gi, '')
+          .replace(/,\s*(OpenGL|D3D11|Vulkan|Metal).*$/i, '')
+          // "AMD, AMD Radeon Graphics" → "AMD Radeon Graphics"
+          .replace(/^([^,]+), (\1\b)/, '$2');
+    const backend =
+      raw.match(/,\s*((?:OpenGL ES|OpenGL|Vulkan)(?: [\d.]+)?|D3D11|D3D9|Metal)/i)?.[1] ??
+      // "ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)"
+      (/\bANGLE Metal\b/.test(raw) ? 'Metal' : undefined);
+    const software = !fast || SOFTWARE.test(raw);
+    return {
+      gpu,
+      rendering: [
+        `WebGL ${gl2 ? 2 : 1}${backend ? ` on ${backend}` : ''}`,
+        software ? 'software rendering, slow' : 'hardware accelerated',
+      ].join(' · '),
+    };
   } catch {
-    return undefined;
+    return { rendering: 'WebGL unavailable' };
   }
 }
 
@@ -109,8 +144,14 @@ export type KernelInfo = () => Promise<{
   heap: { top: number; size: number };
 }>;
 
-/** The rows under "Running on". */
-export async function systemInfo(desktop: boolean, kernelInfo?: KernelInfo): Promise<InfoRow[]> {
+const present = (rows: (InfoRow | false | undefined)[]) =>
+  rows.filter((r): r is InfoRow => Boolean(r));
+
+/** The rows under "Running on", and under "Memory and storage". */
+export async function systemInfo(
+  desktop: boolean,
+  kernelInfo?: KernelInfo,
+): Promise<{ running: InfoRow[]; storage: InfoRow[] }> {
   const nav = navigator as Navigator & { deviceMemory?: number };
   const memory = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory;
   const [{ browser: name, os }, estimate, persisted, kernel] = await Promise.all([
@@ -119,37 +160,46 @@ export async function systemInfo(desktop: boolean, kernelInfo?: KernelInfo): Pro
     navigator.storage?.persisted?.().catch(() => undefined),
     kernelInfo?.().catch(() => undefined),
   ]);
-  const rows: (InfoRow | false | undefined)[] = [
+  const { gpu, rendering } = graphics();
+  const running = present([
     { label: 'App', value: appMode(desktop) },
+    { label: 'Open for', value: formatDuration(performance.now()) },
     { label: 'Browser', value: name },
     { label: 'System', value: os },
     {
       label: 'Processor',
       value: `${nav.hardwareConcurrency} threads${nav.deviceMemory ? ` · ${nav.deviceMemory >= 8 ? '8 GB or more' : `${nav.deviceMemory} GB`} RAM` : ''}`,
     },
-    { label: 'Graphics', value: gpu() ?? 'WebGL 2 unavailable' },
+    gpu !== undefined && { label: 'Graphics', value: gpu },
+    { label: 'Rendering', value: rendering },
     {
       label: 'Screen',
       value: `${screen.width} × ${screen.height} at ${Math.round(devicePixelRatio * 100)}%`,
     },
+    {
+      label: 'Window',
+      value: `${innerWidth} × ${innerHeight}${document.documentElement.dataset.theme ? `, ${document.documentElement.dataset.theme} theme` : ''}`,
+    },
     kernel && {
       label: 'Kernel worker',
       value: `${kernel.status}, ${kernel.restarts} ${kernel.restarts === 1 ? 'restart' : 'restarts'} · ${formatBytes(kernel.heap.top)} in use of ${formatBytes(kernel.heap.size)} WASM memory`,
-    },
-    memory && { label: 'Interface memory', value: `${formatBytes(memory.usedJSHeapSize)} JS heap` },
-    estimate?.quota !== undefined && {
-      label: 'Storage',
-      value: `${formatBytes(estimate.usage ?? 0)} used of ${formatBytes(estimate.quota)}${persisted ? ', persistent' : ''}`,
-    },
-    {
-      label: 'Service worker',
-      value: navigator.serviceWorker?.controller ? 'Controls this page' : 'None',
     },
     { label: 'Language', value: navigator.language },
     {
       label: 'Isolation',
       value: crossOriginIsolated ? 'Cross-origin isolated' : 'Not cross-origin isolated',
     },
-  ];
-  return rows.filter((r): r is InfoRow => Boolean(r));
+    {
+      label: 'Service worker',
+      value: navigator.serviceWorker?.controller ? 'Controls this page' : 'None',
+    },
+  ]);
+  const storage = present([
+    memory && { label: 'Interface memory', value: `${formatBytes(memory.usedJSHeapSize)} JS heap` },
+    estimate?.quota !== undefined && {
+      label: 'Storage',
+      value: `${formatBytes(estimate.usage ?? 0)} used of ${formatBytes(estimate.quota)}${persisted ? ', persistent' : ''}`,
+    },
+  ]);
+  return { running, storage };
 }

@@ -40,11 +40,12 @@ build, mirrored the same way (`openscad-<hash>`).
   libcascade / @libcascade/toolchain 3.0.2 (the build toolchain, taucad/opencascade.js)
     https://github.com/taucad/opencascade.js
     Toolchain: MIT. The OCCT it builds: see above.
-    Known issue we work around: taucad/opencascade.js#40 (open as of 2026-10-02):
+    Known issue in the toolchain version we use: taucad/opencascade.js#40:
     calling delete() on a JavaScript handle often does not free the memory the
     C++ object owns (NCollection_Array1, BRepAlgoAPI_Cut without Clear(),
     BRepFilletAPI_MakeFillet). It is why our C++ facade owns every OCCT object and
-    JavaScript only holds integer handles. https://github.com/taucad/opencascade.js/issues/40
+    JavaScript only holds integer handles. Fixed upstream in libcascade 3.1.0
+    (2026-10-13); we still build with 3.0.2. https://github.com/taucad/opencascade.js/issues/40
 
   manifold-3d 3.5.4 (the mesh kernel mesh bodies live in), in manifold.wasm
     https://github.com/elalish/manifold
