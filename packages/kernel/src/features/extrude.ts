@@ -176,7 +176,9 @@ function slab(node2d: CsgNode, sign: number, length: Scalar): CsgNode {
   return {
     kind: 'translate',
     v: [0, 0, half(signed)],
-    children: [{ kind: 'linear_extrude', height: absolute(length), center: true, children: [node2d] }],
+    children: [
+      { kind: 'linear_extrude', height: absolute(length), center: true, children: [node2d] },
+    ],
   };
 }
 

@@ -323,6 +323,76 @@ check that `half`/`negate`/`absolute` keep their brackets right around the
 translator's output. Patterns and Mirror of features need a hook that can
 replay another feature's tool (its hook's node), which none returns yet.
 
+## Results, slice 4a (2026-10-16)
+
+Built: the §7 hooks for **Extrude** and **Revolve** (their profile and text
+references, every extent and direction), and the profile conversion they share.
+
+**Profiles to 2D nodes** (`scad-export/profile.ts`, used by both hooks). A
+picked `profile` or whole-text `sketchEntity` reference resolves to the sketch
+output's own regions — the same `detectProfiles` the sketch evaluator keyed
+them by, so no copy of the arrangement — one `polygon(points, paths)` per
+region with the outer loop and its holes as paths (OpenSCAD fills even-odd).
+A loop that is one whole circle is `translate(centre) circle(r = radius)`
+instead, a hole under a polygon outer loop then a `difference` of it. A
+**line** is its two end points; an **arc** is sampled with `ctx.fragments(radius)`
+segments a full turn, proportionally for its sweep (at least one), so a
+profile's arcs facet exactly as OpenSCAD's own circles and cylinders; any
+other curve (spline, ellipse, conic, text glyph) the polyline `detectProfiles`
+already sampled at a 1e-3 mm sagitta, finer than the export's linear
+deflection. Points are numbers: the sketch geometry is fixed (ADR §4). Regions
+from different sketches are mapped into the first's plane frame. A face of a
+body is `ctx.unsupported('faces as profiles')`.
+
+`SketchOutputData` gained `sketch` (the `SketchData` the evaluator already
+had): one recorded reference, no extra recompute work, and the hook runs
+`detectProfiles` at export time only.
+
+**`CsgContext.fragments(radius)`** is OpenSCAD's own count for a full circle,
+`ceil(max(min(360 / $fa, radius * 2π / $fs), 5))` with `$fn = 0`, from the
+`$fa`/`$fs` `writeScad` writes (the same values, so a hook's arcs and
+OpenSCAD's circles agree). `writeScad` builds it from the tessellation and
+passes it through `walkVersions` into the context (`ScadSource.fragments`).
+
+**Extrude.** `linear_extrude` of the 2D nodes per side, placed by the sketch
+frame (`placed(frameMatrix(frame), …)`), then `operationCsg`. A distance is
+`ctx.scalar` of its input; its sign and side are `absolute`, `negate`, `half`
+and a `translate` along the plane's normal, so a negative distance and a
+`flip`, and a symmetric sweep measured `whole` or `half`, all come out right
+and stay live. Two sides are the union of a side each way. `through-all` (cut
+and intersect only) is a number past `ctx.bounds()` on that side, from the
+plane along the extrude direction, plus the kernel's margin. `to-object`, a
+taper, a face profile and `through-all` for a new body or join go through
+`ctx.unsupported`.
+
+**Revolve.** `rotate_extrude` of the 2D nodes, each point written as
+(distance from the axis, position along it) and placed so OpenSCAD's Z is the
+revolve axis and its X points from the axis into the profile's half (which
+keeps OpenSCAD 2021.01's x ≥ 0 rule); `flip` reverses the axis, as the
+evaluator does. Every extent the evaluator takes: one side, symmetric (whole
+and half), two sides and the sign, a full turn written as `rotate_extrude()`
+without an `angle`. A partial side that doesn't start at the profile is the
+sector turned about the axis (the placement's local Z) by its start. The
+evaluator's `axisOf` is now shared (narrowed to a `GeometryReader`, which
+`CsgContext` satisfies). `to-object`, a face profile and an axis out of the
+plane go through `ctx.unsupported`; a profile on both sides of the axis never
+reaches the hook (the evaluator fails first).
+
+**Deviations and choices:**
+
+- A `through-all` reads `ctx.bounds()` (every body before the feature), not
+  the evaluator's explicit participants; the ADR asks for "past the model's
+  bounding box", and the common automatic case matches.
+- The revolve's radial direction is the perpendicular of the profile's point
+  farthest from the axis; a profile across the axis is the evaluator's error,
+  not the hook's.
+- `export.test.ts` is untouched; the new tests are `extrude.test.ts`.
+
+**For slice 4b (wiring the translator):** `ctx.scalar(name)` already flows
+through `half`/`negate`/`absolute` and the `translate`s, so every distance,
+angle and factor becomes live without a hook change; check the bracket
+placement around the translator's output.
+
 ## Results, slice 4b (2026-10-16)
 
 Built: §4–§6 wired in. Scalars are live expressions over the parameter
@@ -397,8 +467,6 @@ tube keeps the torus on its plane in the Customizer.
 - Every expression core evaluates translates today, so "an input that
   doesn't translate is its value" is tested on `liveScalar` with a name the
   context lacks, as `params.test.ts` does for the block.
-- Biome reformatted `scad-export/profile.ts` and `extrude.test.ts` (slice
-  4a's, line breaks only) so `pnpm check` passes.
 
 **Tests** (`scad-export/live.test.ts`): most export a design, render it as
 written and with a parameter overridden (`defines`, OpenSCAD's `-D`), and

@@ -145,9 +145,7 @@ function revolveNode(
     const body: CsgNode = { kind: 'rotate_extrude', angle: sweep, children: [node2d] };
     // In the placement's local frame the axis is Z, so a side that doesn't
     // start at the profile is the sector turned about Z by its start.
-    return value(start) === 0
-      ? body
-      : { kind: 'rotate', a: start, v: [0, 0, 1], children: [body] };
+    return value(start) === 0 ? body : { kind: 'rotate', a: start, v: [0, 0, 1], children: [body] };
   };
   const whole = (): CsgNode => ({ kind: 'rotate_extrude', children: [node2d] });
   switch (settings.direction) {
@@ -179,7 +177,10 @@ function radialDirection(refs: readonly ProfileRef[], axis: Axis): Vec3 | undefi
   for (const ref of refs) {
     for (const loop of [ref.profile.outer, ...ref.profile.holes]) {
       for (const p of loop.polygon) {
-        const world = add(ref.frame.origin, add(scale(ref.frame.x, p[0]), scale(ref.frame.y, p[1])));
+        const world = add(
+          ref.frame.origin,
+          add(scale(ref.frame.x, p[0]), scale(ref.frame.y, p[1])),
+        );
         const rel = sub(world, axis.origin);
         const axial = dot(rel, axis.direction);
         const perp = sub(rel, scale(axis.direction, axial));
