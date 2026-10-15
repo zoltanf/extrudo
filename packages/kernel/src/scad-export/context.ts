@@ -44,6 +44,12 @@ export interface CsgContext<I extends FeatureInputs = FeatureInputs> {
   scalar(name: string): Scalar;
   /** An `expr` input's value (mm, degrees or plain), as `EvalContext.value`. */
   value(name: string): number;
+  /**
+   * How many segments OpenSCAD draws a full circle of `radius` (mm) with,
+   * from the same `$fa`/`$fs` the file writes (ADR-0086 §7): a profile's
+   * arcs facet exactly as OpenSCAD's own circles and cylinders do.
+   */
+  fragments(radius: number): number;
   /** Resolves a reference among the bodies before the feature, as its evaluator did. */
   resolve(ref: GeomRef, options?: ResolveOptions): ResolvedRef;
   /** The output of a feature this one refers to (a sketch's profiles and frame). */

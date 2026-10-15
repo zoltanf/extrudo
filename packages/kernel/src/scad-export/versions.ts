@@ -55,6 +55,12 @@ export interface ScadSource {
   bodyName?(body: BodyId): string | undefined;
   /** Turns an expression input into what the file writes (slice 2's translator); default its value. */
   scalar?(input: CsgInput): Scalar;
+  /**
+   * Segments for a full circle of a radius, from the file's `$fa`/`$fs`
+   * (ADR-0086 §7); `writeScad` sets it from the export's tessellation. A hook
+   * samples a profile's arcs with `CsgContext.fragments`.
+   */
+  fragments?(radius: number): number;
 }
 
 export type Version =
@@ -211,6 +217,9 @@ function context(
       const output = source.output(id);
       if (!output) throw new Unavailable(`${source.featureName(id) ?? id} has no result`);
       return output;
+    },
+    fragments(radius) {
+      return source.fragments?.(radius) ?? 5;
     },
     describe: (shape) => source.describe(shape),
     featureName: (id) => source.featureName(id),
