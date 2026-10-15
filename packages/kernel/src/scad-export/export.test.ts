@@ -14,6 +14,7 @@ import {
   filletInputs,
   type GeomRef,
   importInputs,
+  moveInputs,
   type PrimitiveInputOptions,
   type PrimitiveType,
   primitiveInputs,
@@ -25,6 +26,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import cubeStl from '../../../../fixtures/imports/cube.stl?url&inline';
 import { kernelFeatures } from '../features';
+import { kernelMove } from '../features/transform';
 import { Kernel } from '../kernel';
 import { loadManifold } from '../manifold';
 import { RESOLUTIONS } from '../model-export';
@@ -33,6 +35,7 @@ import { RecomputeEngine } from '../recompute/engine';
 import { testDocument, testFeature } from '../recompute/testing';
 import type { ImportedFile, KernelFeatureDefinition, RecomputeResult } from '../recompute/types';
 import type { ScadBody } from './file';
+import { boolean } from './ir';
 
 type Done = Extract<RecomputeResult, { status: 'done' }>;
 
@@ -408,6 +411,51 @@ describe('exportScad', () => {
     expect(cube.match(/\[\d+, \d+, \d+\]/g)?.length).toBe(8 + 12);
     expect(text).toMatch(/difference\(\) \{\n {4}Cube_v1\(\);\n {4}C_body_v1\(\);/);
     expectSame(await render(text), measured([body('Import1')]));
+  });
+
+  it('writes a tool two bodies use as a module, and one used once in place', async () => {
+    // Move with a test hook that moves each body by one shared translate (the
+    // hook for Move itself is a later slice): the scalar comes from the input.
+    const registry = kernelFeatures();
+    registry.register({
+      ...(kernelMove as unknown as KernelFeatureDefinition),
+      type: 'test-move',
+      csg(ctx) {
+        const shift = ctx.tool({ kind: 'sphere', r: ctx.scalar('dx') });
+        return new Map(
+          ctx.changed.map((id) => [id, boolean('union', [ctx.body(id), shift])] as const),
+        );
+      },
+    });
+    engine.clear();
+    engine = new RecomputeEngine(kernel, registry, { strictLeaks: true });
+    const move = (id: string, bodies: string[]): Feature => ({
+      ...testFeature(id, 'test-move'),
+      inputs: moveInputs(
+        bodies.map((b) => `${b}:0`),
+        { dx: '5 mm' },
+      ),
+    });
+    await run(
+      testDocument([box('A'), box('B', '50 mm'), move('Mover', ['A', 'B']), move('Solo', ['A'])]),
+    );
+    const text = exportScad([
+      { id: body('A'), name: 'A' },
+      { id: body('B'), name: 'B' },
+    ]);
+    expect(count(text, 'module Mover_tool()')).toBe(1);
+    expect(text).toMatch(
+      /module A_v2\(\) \{\n {2}union\(\) \{\n {4}A_v1\(\);\n {4}Mover_tool\(\);/,
+    );
+    expect(text).toMatch(
+      /module B_v2\(\) \{\n {2}union\(\) \{\n {4}B_v1\(\);\n {4}Mover_tool\(\);/,
+    );
+    expect(text).toMatch(
+      /module A_v3\(\) \{\n {2}union\(\) \{\n {4}A_v2\(\);\n {4}sphere\(r = 5\);/,
+    );
+    expect(text).not.toContain('Solo_tool');
+    // The tool's module comes before the first version that uses it.
+    expect(text.indexOf('module Mover_tool()')).toBeLessThan(text.indexOf('module A_v2()'));
   });
 
   it('refuses a body that is not in the model', async () => {
