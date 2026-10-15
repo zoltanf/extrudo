@@ -1058,3 +1058,73 @@ part's four.
 Tests: `edges.test.ts`, `hole.test.ts`, `extrude.test.ts`, and `map.test.ts`
 "rounds an edge by its two faces' names…" and "leaves out a profile region it
 cannot match…".
+
+## Amendment, 2026-10-14: a torus primitive, sweep faces, a feature's records in other components
+
+Three of the causes the skipped-features amendment above left open, each
+measured on the corpus before it was built.
+
+1. **Torus primitive** (`decode/torus.ts`, `map-more.ts` `torus`). Its record
+   holds the result operation, the two diameters as parameters it owns
+   (`MajorDiameter`, `MinorDiameter`) and a 4 × 4 matrix in the frame of the
+   plane it was made on (the plane a geometry operand holds in model space):
+   the centre is the matrix's origin and the axis its Z, both taken from that
+   frame into the model (FORMAT.md). The one torus of the corpus sits 7.5 cm
+   along the YZ plane's y: the file's B-rep torus is at (0, 0, 7.5) cm about
+   +X, where the matrix read in model axes would put it at (0, 7.5, 0). The
+   reader refuses the record when the B-rep keeps a torus the feature made
+   on another centre or axis. It maps to Extrudo's torus on the origin plane
+   square to its axis (place in the plane's frame, `offset` along its normal);
+   an axis along no origin axis is left out with that reason (none seen). Its
+   face is named `torus:<id>:side:surface` for later features.
+2. **Sweep faces** (`sweep-faces.ts`). The file numbers a sweep's sides piece
+   by piece of the path and merges a side the profile sweeps in the path's
+   plane into one face with a tag per piece; the tokens are not read. A face
+   is told by geometry instead: along a flat path a profile point keeps its
+   offset across the path and its height off the path's plane, so with the
+   profile carried to each piece's start a profile line sweeps a plane along a
+   line and an arc a cylinder, and round an arc of the path the faces are a
+   revolve's about its axis (planes square to it, cylinders, cones, tori);
+   along a spline only a plane at one height is known. The caps are the
+   planes across the path's ends, `cap:start` at the end nearer the profile
+   (in one design the profile sits 0.023 mm along the path from its end).
+   Paths that don't chain, aren't flat or don't cross the profile's plane
+   square to it name no sweep face (as before). 24 round edges in 3 designs
+   named sweep faces: all along lines and arcs are now named, the 4 round a
+   spline are not.
+3. **A feature's records in other components** (`decode/feature-records.ts`).
+   A feature acting on bodies of more than one component keeps a record per
+   component; only the first is on the timeline, and one record per design
+   (`12D00AC0…`) lists every feature's records under a GUID. The further
+   records have their own operations (which tag the faces they made in the
+   other component's bodies), name that component's body, and share the
+   first's sketch profile and parameter values; they are numbered in their own
+   component's count, so their name says nothing (a further record of the
+   timeline's `Extrude5` is named `Extrude3`, beside an unrelated `Extrude3` on
+   the timeline). Faces are now named through that list only: an operation
+   whose records are all off the timeline maps to the timeline feature one of
+   them is a further record of, never to a feature that shares its name. A
+   join, cut or intersection that names its bodies also takes those its
+   further records name (one that names none still acts on every body it
+   meets). 4 designs: in three the timeline's cut now also cuts the other
+   component's body, as the file's does.
+
+Replay-only corpus (with the solver), against the skipped-features amendment:
+skipped features 84 → 75 (the torus, 3 chamfers on sweeps, 4 fillets and a
+chamfer on a further record's faces); of the 9, 8 build and 1 fails (a chamfer
+along a line–spline–line chain that the kernel can't build with both line
+edges given; the body is the same as when it was skipped). Designs within
+0.5 % volume and 0.05 mm box 152 → 153 (a garden part, 5.74 % → 0.0006 %),
+none leaves it; two rails and two power-supply modules lose their last
+skipped feature and match without it. Volume error falls in two modules
+(46.09 % → 1.29 %, 4.41 % → 1.26 %), and in the design holding both modules'
+bodies it moves from +0.43 % to −0.49 %, still within: its second body now
+gets the cut (its volume is then the one module's replay's, 1.26 % over that
+module's reference) and no longer makes up for the first body's shortfall.
+Body check (ADR-0084, all 250): the replay matches 152 → 153 designs and the
+result after the check stays 225, none harmed (the garden part no longer
+needs the check: rescued 73 → 72); bodies editable 202 → 203 (the second body
+of the design holding both modules), frozen 152 → 151, unchecked 26 → 26.
+Tests: `decode/torus.test.ts`, `sweep-faces.test.ts`,
+`decode/feature-records.test.ts`, and `map-more.test.ts` "makes a torus on the
+origin plane…" and "names a sweep's cap and side…".

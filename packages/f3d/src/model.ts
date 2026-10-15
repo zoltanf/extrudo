@@ -52,6 +52,12 @@ import {
   SKETCH_PROFILE_OPERAND,
 } from './decode/extrude';
 import {
+  allParticipants,
+  FEATURE_RECORDS,
+  readFeatureRecords,
+  timelineFeature,
+} from './decode/feature-records';
+import {
   centresFromCylinders,
   HOLE_PLACEMENT,
   MODEL_PLANE,
@@ -120,6 +126,7 @@ import {
 } from './decode/text';
 import { readThreadSpec, type ThreadSpec } from './decode/thread';
 import { TIMELINE, timeline } from './decode/timeline';
+import { readTorusHead, torusPlacement } from './decode/torus';
 import { Segment } from './segment';
 
 export const SKETCH_CONTAINER = '44A64366-4BD3-4B24-881A-F94C206E8F2D';
@@ -311,6 +318,16 @@ export interface F3dThread extends FeatureBase {
   faces: F3dFace[];
 }
 
+export interface F3dTorus extends FeatureBase {
+  type: 'torus';
+  operation: BodyOperation;
+  /** Model space, cm; the axis a unit direction (its sense does not matter). */
+  centre: Vec3;
+  axis: Vec3;
+  /** The bodies it joins, cuts or intersects (body records); empty: none named. */
+  participants: number[];
+}
+
 export interface F3dOther extends FeatureBase {
   type: 'other';
 }
@@ -329,6 +346,7 @@ export type F3dFeature =
   | F3dSplit
   | F3dPathPattern
   | F3dThread
+  | F3dTorus
   | F3dOther;
 
 /** A body of the design: its number, whether it is shown, the feature that made it. */
@@ -572,12 +590,34 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     const t = tryDecode(`timeline #${id}`, () => timeline.decode(seg, id));
     if (t) items.push(...t.items);
   }
-  // An operation can list several records; the timeline feature among them made the face.
+  // A feature acting in several components keeps a record per component; the
+  // timeline names its first.
+  const firstRecord = new Map<number, number>();
+  for (const id of seg.idsOf(FEATURE_RECORDS))
+    for (const [record, first] of tryDecode(`feature records #${id}`, () =>
+      readFeatureRecords(seg, id),
+    ) ?? [])
+      firstRecord.set(record, first);
+  const furtherRecords = new Map<number, number[]>();
+  for (const [record, first] of firstRecord) {
+    const list = furtherRecords.get(first) ?? [];
+    list.push(record);
+    furtherRecords.set(first, list);
+  }
+  // An operation can list several records; the timeline feature among them made the face,
+  // or the timeline feature whose record in another component it is.
   const onTimeline = new Set(items);
-  const featureOf = (design: number): number | undefined => {
-    const records = operations.get(design);
-    return records?.find((r) => onTimeline.has(r)) ?? records?.[0];
-  };
+  const featureOf = (design: number): number | undefined =>
+    timelineFeature(operations.get(design), onTimeline, firstRecord);
+  /** The bodies a feature names, with those its records in other components name. */
+  const participantsAll = (scope: Scope): number[] =>
+    allParticipants(
+      participantsOf(seg, scope),
+      (furtherRecords.get(scope.id) ?? []).map((record) => {
+        const other = tryDecode(`feature #${record}`, () => readScope(seg, record));
+        return other ? participantsOf(seg, other) : [];
+      }),
+    );
   // Feature record → the surfaces of the B-rep faces tagged with its operations.
   // `own`: not the copies a mirror or pattern made of them.
   const madeBy = (record: number, own = false): AsmSurface[] => {
@@ -670,7 +710,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         ...head,
         profiles,
         faces: named,
-        participants: participantsOf(seg, scope),
+        participants: participantsAll(scope),
       });
     } else if (FEATURE_TYPES[type.guid] === 'Revolve') {
       const operation = tryDecode(`revolve #${id}`, () => readRevolveOperation(seg, scope));
@@ -695,7 +735,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         ...base,
         operation,
         profiles,
-        participants: participantsOf(seg, scope),
+        participants: participantsAll(scope),
         ...(axis ? { axis } : {}),
       });
     } else if (FEATURE_TYPES[type.guid] === 'Hole') {
@@ -875,7 +915,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
             }
       const read = tryDecode(`sweep #${id}`, () => ({
         ...readPaths(seg, scope, inside),
-        participants: participantsOf(seg, scope),
+        participants: participantsAll(scope),
       }));
       if (!read) {
         features.push({ type: 'other', ...base });
@@ -900,6 +940,11 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         const made = madeBy(id);
         features.push({ type: kind, ...base, sets, ...(made.length > 0 ? { made } : {}) });
       }
+    } else if (FEATURE_TYPES[type.guid] === 'TorusPrimitive') {
+      const torus = tryDecode(`torus #${id}`, () =>
+        readTorus(seg, scope, madeBy(id), insideOnce, participantsAll(scope)),
+      );
+      features.push(torus ? { type: 'torus', ...base, ...torus } : { type: 'other', ...base });
     } else features.push({ type: 'other', ...base });
   }
 
@@ -1031,6 +1076,38 @@ function readTextOperand(seg: Segment, id: number): ProfileOperand {
       if (kind === SKETCH_TEXT || kind === SKETCH_TEXT_OLD) return { id, sketch, text };
     }
   throw new F3dFormatError(`Text profile #${id}: no text of this kind.`);
+}
+
+/**
+ * A torus primitive's operation, place and bodies: its matrix taken from the
+ * frame of the plane its geometry operand holds. Where the B-rep keeps a
+ * torus the feature made, one of them must be on that centre and axis, or
+ * the reading is refused.
+ */
+function readTorus(
+  seg: Segment,
+  scope: Scope,
+  made: AsmSurface[],
+  inside: (id: number) => number[],
+  participants: number[],
+): Omit<F3dTorus, keyof FeatureBase | 'type'> {
+  const { operation, matrix } = readTorusHead(seg, scope);
+  const operand = scope.refs.find((r) => seg.typeOf(r)?.guid === GEOMETRY_OPERAND);
+  const record =
+    operand === undefined
+      ? undefined
+      : inside(operand).find((q) => seg.typeOf(q)?.guid === MODEL_PLANE);
+  if (record === undefined) throw new F3dFormatError(`Torus #${scope.id}: no plane.`);
+  const placed = torusPlacement(readModelPlane(seg, record), matrix);
+  if (!placed) throw new F3dFormatError(`Torus #${scope.id}: its plane or axis is degenerate.`);
+  const { centre: C, axis: A } = placed;
+  const tori = made.filter((s) => s.kind === 'torus');
+  const same = (s: (typeof tori)[number]) =>
+    Math.hypot(s.center[0] - C[0], s.center[1] - C[1], s.center[2] - C[2]) < 1e-6 &&
+    Math.abs(Math.abs(s.axis[0] * A[0] + s.axis[1] * A[1] + s.axis[2] * A[2]) - 1) < 1e-6;
+  if (tori.length > 0 && !tori.some(same))
+    throw new F3dFormatError(`Torus #${scope.id}: its B-rep torus is elsewhere.`);
+  return { operation, centre: C, axis: A, participants };
 }
 
 /**

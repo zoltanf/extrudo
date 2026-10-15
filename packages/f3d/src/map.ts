@@ -60,6 +60,7 @@ import {
   splitBody,
   sweep,
   thread,
+  torus,
 } from './map-more';
 import type {
   F3dCircularPattern,
@@ -82,6 +83,7 @@ import {
   newTally,
   quantityOf,
 } from './sketch-constraints';
+import { type SweptFaces, sweptCap, sweptHolds, sweptSides } from './sweep-faces';
 
 type Vec2 = [number, number];
 
@@ -252,6 +254,10 @@ interface FaceNaming {
    */
   copies: Map<number, MadeCopies>;
   holes: Map<number, ImportedHole>;
+  /** Imported tori: Extrudo's id, by f3d record (one face, `torus:<id>:side:surface`). */
+  tori: Map<number, string>;
+  /** Imported sweeps: Extrudo's id and, where the path lets them be told, what names their faces. */
+  sweeps: Map<number, { id: string; faces?: SweptFaces }>;
 }
 
 /** An imported hole: where its holes are and their sizes, for naming their faces. */
@@ -438,6 +444,8 @@ export function f3dToDesign(
     rounds: new Map(),
     copies: new Map(),
     holes: new Map(),
+    tori: new Map(),
+    sweeps: new Map(),
   };
   /** f3d feature record → the Extrudo feature a pattern can replay for it. */
   const replayable = new Map<number, { id: string; name: string }>();
@@ -648,6 +656,16 @@ export function f3dToDesign(
           report.skipped.push(skippedFeature(feature.name, feature.kind, made));
         else {
           replayable.set(feature.id, { id: made.id, name: feature.name });
+          naming.sweeps.set(feature.id, made);
+          report.imported.push(feature.name);
+        }
+      } else if (feature.type === 'torus') {
+        const made = torus(d, feature, expressionOf, participants);
+        if (typeof made === 'string')
+          report.skipped.push(skippedFeature(feature.name, feature.kind, made));
+        else {
+          naming.tori.set(feature.id, made.id);
+          replayable.set(feature.id, { id: made.id, name: feature.name });
           report.imported.push(feature.name);
         }
       } else if (
@@ -725,7 +743,8 @@ export function f3dToDesign(
   d.toJSON().features.forEach((f, i) => {
     const inputs = f.inputs as Record<string, { value?: unknown; refs?: unknown[] } | undefined>;
     const join =
-      (f.type === 'extrude' || f.type === 'revolve') && inputs.operation?.value === 'join';
+      (f.type === 'extrude' || f.type === 'revolve' || f.type === 'torus') &&
+      inputs.operation?.value === 'join';
     if (join && !inputs.bodies?.refs?.length) lastOpenJoin = i;
   });
   for (const body of shownElsewhere ? [] : f3d.bodies) {
@@ -1411,7 +1430,7 @@ function faceExtrude(
 }
 
 /** The Extrudo curves around the chosen regions of a sketch. */
-function regionCurves(entry: SketchEntry, profiles: GeomRef[]): string[] {
+export function regionCurves(entry: SketchEntry, profiles: GeomRef[]): string[] {
   const chosen = new Set(profiles.map((p) => p.id));
   const curves = new Set<string>();
   for (const region of entry.handle.regions) {
@@ -1893,6 +1912,22 @@ function faceName(
     if (!edge) return miss(`${round.op} face: its edge has no name`);
     return `${round.op}:${round.id}:from:(${edge})`;
   }
+  const swept = naming.sweeps.get(face.feature);
+  if (swept) {
+    const { id, faces } = swept;
+    if (!face.surface) return miss('face not in the B-rep');
+    if (!faces) return miss('sweep: its faces cannot be told along this path');
+    const cap = sweptCap(face.surface, faces);
+    if (cap) return `sweep:${id}:cap:${cap}`;
+    const hits = sweptSides(face.surface, faces);
+    const curve = sideCurve(hits, face, hint, (c, p) => sweptHolds(faces, c, p));
+    return curve ? `sweep:${id}:side:${curve}` : miss('sweep side: no curve');
+  }
+  const torus = naming.tori.get(face.feature);
+  if (torus)
+    return face.surface?.kind === 'torus'
+      ? `torus:${torus}:side:surface`
+      : miss('torus: not its surface');
   const hole = naming.holes.get(face.feature);
   if (hole)
     return face.surface ? holeFaceName(face.surface, hole, hint) : miss('face not in the B-rep');

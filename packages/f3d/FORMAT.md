@@ -111,6 +111,8 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `B0B3D9E5…` | Path pattern | what it copies as a mirror's; a count record (`countU`); the distance a parameter it owns (`PathPatternDelta`); the path an operand group of geometry operands, each naming a sketch curve. Its data record (`BE1FB171…`): u8, u32 2 (extent, as a rectangular pattern's), the count record, 4 zero bytes, the distance's parameter owner, 5 zero bytes, the original's reference point (3 f64, cm), four flag bytes (`01 00 01 00` in both files: the first is 1 where the copies turn with the path, which the copied faces in the B-rep confirm), the path group, the distance again (f64, cm), the start group and the instance list. The start group (`69EE2FA7…`, an operand-group subtype): 19 bytes, the start point on the path (3 f64, cm), a geometry operand naming the path's first curve. A copy is the original moved by the way the path went from the start point to the point the distance along it, and turned with it about the start point; its instance code is 1 |
 | `65CA3206…` | Split body | an operand group with a body operand per body it splits; an operand group with the splitting tool: a geometry operand naming a plane (record reference) beside the plane in model space (`CC54ECAD…`), as a mirror's. Both sides are kept |
 | `584D9526…` | Thread | after the prologue and an empty property block (offset 6, or 2 without one): f64 profile angle (60 metric, 55 pipe), u8 external (1 on a shaft, 0 in a hole), wstr class (`6g`, `6H`, `A`), wstr designation (`M10x1.5`, `G 1/2-14`), wstr size, wstr family (`ISO Metric profile`, `BSP Pipe Threads`), u8 full length (0: `ThreadLength` and `ThreadOffset` are parameters it owns), u32 1 or 2 (not known), f64 major and minor diameters, a byte, f64 pitch, f64 pitch diameter (cm; the class's own sizes, so a `6H` major is above the nominal). An operand group with a face operand per face. The file resizes the face to the thread (an external one's crest to the major diameter, a hole's to the minor), so the face's B-rep radius is not its sketch circle's. Every thread in the corpus is modeled (the reference STEPs have the thread's faces); a cosmetic flag was not found |
+| `12D00AC0…` | A feature's records in several components | u32 n, n × (wstr GUID, reference: the feature's first record, the one the timeline names); u32 n, n × (wstr GUID, u32 m, m references: every record of the feature, the first among them); a closing reference. A feature acting on bodies of several components (an extrude cutting through two components' bodies, a hole drilled through both) keeps a record per component; the further ones are not on the timeline, are numbered in their own component's count (the timeline's `Extrude5` has an `Extrude3` there), have their own operations (which tag the faces they made in that component's bodies) and a body operand for that component's body, and the same sketch profile and parameter values (checked on one extrude and one hole). Seen in 4 designs (3 extrudes, 1 hole); the record's other instances hold two empty lists |
+| `13BE0EF0…` | Torus primitive (v0) | u32 operation (as an extrude's; 1 join the one seen), a byte, four references (the parameter owners of `MajorDiameter` and `MinorDiameter`, the plane operand `7B6C3C2D…`, a `36D375CD…`), a byte, then a 4 × 4 row-major matrix (cm) in the frame of the plane it was made on; a body operand group for the bodies it joins, then a GUID string. The plane is a geometry operand among its references (`5A1BF548…`, naming an origin plane by `90055C05…`) holding the plane in model space (`CC54ECAD…`): the torus's centre is the matrix's origin and its axis the matrix's Z, taken from that frame (origin, x, y, x × y) into the model. Seen once (the plane YZ, the matrix a move of 7.5 cm along the plane's y): the file's B-rep torus is at (0, 0, 7.5) cm about +X, which the matrix read in model axes, (0, 7.5, 0), is not; the reference STEP agrees (one solid, 91 mm high) |
 | `11F1A5CE…` | Circular pattern | the total angle is a parameter it owns (`TotalAngle`); a count record; an operand group of what it repeats; the axis as a geometry operand with a model line |
 | `A085449A…` | Pattern count | refers to the count's parameter value (`countU`) |
 | `D1728651…` | Mirror | shares the circular pattern's base type. An operand group of what it copies: per feature a geometry operand with a record reference and a body link, per body a body operand, per face a face operand; the plane is a geometry operand holding a record reference to the plane it names (origin or construction plane) and that plane in model space (`CC54ECAD…`). Its count record says 2 |
@@ -522,6 +524,21 @@ the vertex is where the stretch, wrapped by the period, says.
 The file's STEP export of the same body re-fits its splines (other knots,
 other points), so its `B_SPLINE_*` entities agree with these only at the
 ends; they cannot be compared knot by knot.
+
+### Sweep faces
+
+A sweep's own faces carry tokens of its operations: the start cap (on the
+profile's plane) 1, the end cap 2, and the sides numbered on from there, piece
+by piece of the path (one design, a profile of 26 curves along a line, an arc
+and a line: 114–139 along the line, 140–156 round the arc, 157–173 along the
+last line; not every number is a face). A side the profile sweeps in the
+path's own plane is one face carrying a tag per piece (`119 120 121`). The
+tokens are not read: the importer tells a sweep's faces by geometry, against
+each piece of a flat path of lines, arcs and splines (along a line a profile
+line sweeps a plane and an arc a cylinder; round an arc the faces of a revolve
+about its axis; along a spline only a plane at one height off the path's
+plane). Checked on 3 designs: every face the rounds there name along lines and
+arcs is told; those round a spline are not.
 
 ### Fillet and chamfer faces
 

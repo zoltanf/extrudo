@@ -31,6 +31,7 @@ export const FEATURE_TYPES: Record<string, string> = {
   '65CA3206-E33A-471E-8E40-2C72B57C6181': 'Split',
   '584D9526-EF22-4F6F-9FE1-5FCF1F3CE575': 'Thread',
   'B0B3D9E5-1C25-47BC-ABCD-E723F193DF1B': 'PathPattern',
+  '13BE0EF0-467B-4F5A-BFFB-E0976171B678': 'TorusPrimitive',
 };
 
 const scopeDecoder: RecordDecoder<unknown> = { name: 'feature scope', decode: readScope };
