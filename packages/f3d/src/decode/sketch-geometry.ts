@@ -28,6 +28,12 @@ function vec3(r: Reader): Vec3 {
   return [r.f64(), r.f64(), r.f64()];
 }
 
+/** Refuses a record whose numbers aren't all finite: NaN and infinities never reach the mapping. */
+function finite(what: string, id: number, numbers: number[]): void {
+  if (!numbers.every(Number.isFinite))
+    throw new F3dFormatError(`${what} #${id}: a number that isn't finite.`);
+}
+
 /** The sketch a point or curve belongs to, read from its last eleven bytes. */
 export function ownerAtEnd(seg: Segment, r: Reader): number | undefined {
   const save = r.pos;
@@ -107,6 +113,7 @@ export const sketchPoint: RecordDecoder<SketchPoint> = {
         r.skip(8); // two f32 ones
         r.skip(5);
       } else unsupported('sketch point', version);
+      finite('Sketch point', id, at);
       if (r.localRef() !== incidence)
         throw new F3dFormatError(`Point #${id}: repeated reference differs.`);
       if (r.remaining === 15) r.zeros(4);
@@ -151,6 +158,7 @@ export const sketchLine: RecordDecoder<SketchLine> = {
       // The full form stores a unit normal; the compact planar form goes
       // straight on to the point references.
       if (!isPointRef(seg, r)) vec3(r);
+      finite('Sketch line', id, [...start, ...d]);
       const endPoint = r.localRef();
       const startPoint = r.localRef();
       // The subclass is drawn through profiles without splitting them: taken
@@ -226,6 +234,15 @@ export const sketchCircular: RecordDecoder<SketchCircular> = {
       const radius = r.f64();
       const startAngle = r.f64();
       const endAngle = r.f64();
+      finite('Sketch circle/arc', id, [
+        ...center,
+        ...normal,
+        ...xAxis,
+        radius,
+        startAngle,
+        endAngle,
+      ]);
+      if (!(radius > 0)) throw new F3dFormatError(`Sketch circle/arc #${id}: radius ${radius}.`);
       const centerPoint = r.localRef();
       const out: SketchCircular = {
         id,
@@ -409,6 +426,8 @@ function readNurbs(
   const weights = knots && array(1);
   const flat = weights && array(3);
   if (!knots || !weights || !flat) return undefined;
+  if (![...knots, ...flat].every(Number.isFinite) || !weights.every((w) => w > 0 && w < Infinity))
+    return undefined;
   const poles: Vec3[] = [];
   for (let i = 0; i < flat.length; i += 3)
     poles.push([flat[i] as number, flat[i + 1] as number, flat[i + 2] as number]);

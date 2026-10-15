@@ -83,10 +83,13 @@ function at(curve: Curve, t: number): Vec2 {
 /** An arc's parameter (angle) for a point on its circle, in [from, from + 2π). */
 function angleOf(curve: Extract<Curve, { kind: 'arc' }>, p: Vec2): number {
   const d = sub2(p, curve.c);
-  let a = Math.atan2(dot2(d, curve.y), dot2(d, curve.x));
-  while (a < curve.from - 1e-12) a += 2 * Math.PI;
-  while (a >= curve.from + 2 * Math.PI - 1e-12) a -= 2 * Math.PI;
-  return a;
+  const turn = 2 * Math.PI;
+  const a = Math.atan2(dot2(d, curve.y), dot2(d, curve.x));
+  // A modulo, not a loop of turns: a huge start angle costs no more than a small one.
+  let k = (a - curve.from) % turn;
+  if (k < -1e-12) k += turn;
+  if (k >= turn - 1e-12) k -= turn;
+  return curve.from + k;
 }
 
 /** A point at parameter `t` (within tolerance) of a traced curve, or undefined. */
