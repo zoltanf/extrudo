@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * The About dialog's logo, which designs itself when clicked: the four corner
  * points of a sketch pop in, the lines join them, the profile fills, and it
  * extrudes back and up into the mark (docs/05-brand.md §2) with the Extrude
- * tool's distance handle counting the millimetres. A small hidden treat; at
- * rest, and with reduced motion, it is the plain mark.
+ * tool's distance handle counting the millimetres. `autoPlay` runs it once on
+ * mount, from the empty sketch. At rest, and with reduced motion, it is the
+ * plain mark.
  */
 
 type Pt = readonly [number, number];
@@ -41,16 +42,24 @@ const easeOutBack = (x: number) => {
 };
 const add = (p: Pt, k: number): Pt => [p[0] + DIR[0] * k, p[1] + DIR[1] * k];
 const poly = (pts: readonly Pt[]) => `M${pts.map((p) => p.join(' ')).join('L')}Z`;
+const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-export function LogoReplay({ size = 120 }: { size?: number }) {
-  // Milliseconds into the replay; null at rest (the finished mark).
-  const [t, setT] = useState<number | null>(null);
+export function LogoReplay({
+  size = 120,
+  autoPlay = false,
+}: {
+  size?: number;
+  autoPlay?: boolean;
+}) {
+  // Milliseconds into the replay; null at rest (the finished mark). An
+  // autoplay starts after the fade-out, so the mark doesn't flash first.
+  const [t, setT] = useState<number | null>(() => (autoPlay && !reducedMotion() ? T.out[1] : null));
   const frame = useRef(0);
 
-  const play = useCallback(() => {
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const play = useCallback((from = 0) => {
+    if (reducedMotion()) return;
     cancelAnimationFrame(frame.current);
-    const start = performance.now();
+    const start = performance.now() - from;
     const tick = (now: number) => {
       const elapsed = now - start;
       if (elapsed >= T.end) {
@@ -62,7 +71,10 @@ export function LogoReplay({ size = 120 }: { size?: number }) {
     };
     frame.current = requestAnimationFrame(tick);
   }, []);
-  useEffect(() => () => cancelAnimationFrame(frame.current), []);
+  useEffect(() => {
+    if (autoPlay) play(T.out[1]);
+    return () => cancelAnimationFrame(frame.current);
+  }, [autoPlay, play]);
 
   const fadingOut = t !== null && t < T.out[1];
   const time = t === null || fadingOut ? T.end : t;
@@ -78,7 +90,7 @@ export function LogoReplay({ size = 120 }: { size?: number }) {
   return (
     <button
       type="button"
-      onClick={play}
+      onClick={() => play()}
       aria-label="Extrudo logo"
       className="group relative grid cursor-pointer place-items-center rounded-card outline-none focus-visible:ring-2 focus-visible:ring-accent"
     >

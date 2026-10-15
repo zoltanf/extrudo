@@ -30,6 +30,9 @@ test('Help › About Extrudo shows the build, links and closes with Esc', async 
   await expect(about.getByText('Running on')).toBeVisible();
   await expect(about.getByText('App', { exact: true })).toBeVisible();
   await expect(about.getByText('Browser', { exact: true })).toBeVisible();
+  await expect(
+    about.getByText(/^WebGL \d.*(hardware accelerated|software rendering)/),
+  ).toBeVisible();
   await expect(about.getByText('Engines')).toBeVisible();
   await expect(about.getByRole('button', { name: /Copy details/ })).toBeEnabled();
 
