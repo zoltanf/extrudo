@@ -129,7 +129,7 @@ export class Bridge {
     const object = this.#keep(ctx.newObject());
     for (const [key, own] of Object.entries(value as Record<string, unknown>)) {
       if (own === undefined) continue;
-      ctx.setProp(object, key, this.toValue(own));
+      this.#putOwn(object, key, this.toValue(own));
     }
     return object;
   }
@@ -243,7 +243,7 @@ export class Bridge {
     const object = this.#keep(ctx.newObject());
     for (const [key, own] of Object.entries(value as Record<string, unknown>)) {
       if (own === undefined) continue;
-      ctx.setProp(object, key, this.freezeDeep(own));
+      this.#putOwn(object, key, this.freezeDeep(own));
     }
     return this.freeze(object);
   }
@@ -300,6 +300,21 @@ export class Bridge {
 
   #keep(handle: QuickJSHandle): QuickJSHandle {
     return this.#scope.manage(handle);
+  }
+
+  /**
+   * One own property of a fresh object. Setting `__proto__` would run the
+   * prototype's setter instead (a number is dropped, an object becomes the
+   * prototype), so that key is defined: a parameter called `__proto__` stays a
+   * value in `params`. QuickJS can't define it writable, so it alone is
+   * read-only.
+   */
+  #putOwn(object: QuickJSHandle, key: string, value: QuickJSHandle): void {
+    if (key === '__proto__') {
+      this.#ctx.defineProp(object, key, { value, configurable: true, enumerable: true });
+    } else {
+      this.#ctx.setProp(object, key, value);
+    }
   }
 
   /** The host handle a proxy stands for, or `undefined` for anything else. */

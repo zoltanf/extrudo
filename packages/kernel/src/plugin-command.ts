@@ -14,6 +14,7 @@ import {
   evaluateParameters,
   type FeatureId,
   type GeomRef,
+  valuesByName,
 } from '@extrudo/core';
 import { readPluginFile } from '@extrudo/storage/plugin';
 import { checkedGenerated } from './features/script';
@@ -67,7 +68,7 @@ export function runPluginCommand(
   const what = `${manifest.name} ${manifest.version}`;
   const command = manifest.commands.find((c) => c.id === request.commandId);
   if (!command) return fail(`The plugin ${what} has no command "${request.commandId}".`);
-  const params = request.params ?? parameterValues(request.doc);
+  const params = request.params ?? valuesByName(evaluateParameters(request.doc));
   let result: ScriptRunResult;
   try {
     result = host.runPlugin({
@@ -102,12 +103,4 @@ export function runPluginCommand(
       log: result.log,
     };
   }
-}
-
-function parameterValues(doc: ExtrudoDocument): Record<string, number> {
-  const params: Record<string, number> = {};
-  for (const [name, parameter] of evaluateParameters(doc).parameters) {
-    if (parameter.result.ok) params[name] = parameter.result.value;
-  }
-  return params;
 }

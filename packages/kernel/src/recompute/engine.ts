@@ -32,6 +32,7 @@ import {
   type ReferenceIssue,
   referencedFeatures,
   scriptOfGenerated,
+  valuesByName,
 } from '@extrudo/core';
 import type { ScadCompiler } from '@extrudo/openscad';
 import type { z } from 'zod';
@@ -703,10 +704,7 @@ export class RecomputeEngine {
       // A group may name features after the script; the script can't group anyway.
       groups: [],
     };
-    const params: Record<string, number> = {};
-    for (const [name, parameter] of parameters.parameters) {
-      if (parameter.result.ok) params[name] = parameter.result.value;
-    }
+    const params = valuesByName(parameters);
     // What the run can read: never the clock in `meta` or the bodies' names.
     const key = hashOf(
       'expand',

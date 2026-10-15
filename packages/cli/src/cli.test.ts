@@ -15,6 +15,7 @@ import { type AttachmentId, addAttachment } from '@extrudo/core';
 import { checkManifold, read3mf, readStl } from '@extrudo/io';
 import { sha256Hex, writeArchive } from '@extrudo/storage';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { parse } from './cli';
 
 const run = promisify(execFile);
 const BIN = fileURLToPath(new URL('../bin/extrudo.mjs', import.meta.url));
@@ -443,6 +444,24 @@ describe('the command line itself', () => {
       expect(result.stderr, `extrudo ${args.join(' ')}`).toContain(expected);
       expect(result.stderr).toContain('Usage:');
     }
+  });
+
+  it('takes --param names as they are, Object.prototype members too', () => {
+    const options = parse([
+      'info',
+      'a.extrudo',
+      '--param',
+      'constructor=2mm',
+      '--param',
+      '__proto__=3mm',
+    ]);
+    expect('params' in options && [...options.params]).toEqual([
+      ['constructor', '2mm'],
+      ['__proto__', '3mm'],
+    ]);
+    expect(() =>
+      parse(['info', 'a.extrudo', '--param', 'toString=1', '--param', 'toString=2']),
+    ).toThrow('--param toString was given twice.');
   });
 
   it('is 1 about a parameter the design does not have or cannot read', SPAWNING, async () => {
