@@ -273,7 +273,7 @@ other numbers.
 
 ## ASM B-rep
 
-ACIS SAB with 8-byte integers: `ASM BinaryFile8`, u64 version, record count,
+SAB (binary SAT) with 8-byte integers: `ASM BinaryFile8`, u64 version, record count,
 entity count, flags; three strings and three doubles; then records of tagged
 values (`0x04` int, `0x06` double, `0x07` string, `0x0C` pointer, `0x0D` class
 name, `0x0E` base class, `0x11` end of record, `0x13`/`0x14` three doubles…).
@@ -327,7 +327,7 @@ cylinder.
 
 ### Topology, and earlier states
 
-The faces reach their edges the usual ACIS way (each record: attribute
+The faces reach their edges the usual SAT way (each record: attribute
 pointer, a history slot, a spare pointer, then):
 
 | record | pointers after those three |

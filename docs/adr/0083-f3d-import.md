@@ -464,7 +464,7 @@ The review for untrusted files changed three things in the constraint import:
 
 The file's ellipse record (`FF23079A…`: centre, unit major and minor axes,
 radii, parameter angles, and the centre, end and start points) is read; all
-69 in the owner's corpus are arcs (up to 190°), in 7 files. Extrudo's
+those in the owner's corpus are arcs (up to 190°). Extrudo's
 `ellipse` entity (ADR-0014) is whole and has no arc, so an arc is drawn as
 **exact conics** (ADR-0063's `mode: 'conic'`, a rational quadratic): one per
 quarter turn at most, each from the affine image of a circular arc — the
@@ -859,8 +859,8 @@ shell is not known"). The voids are written as the file's own STEP export
 writes them: a `BREP_WITH_VOIDS` whose voids are `ORIENTED_CLOSED_SHELL`s
 (`.F.`) over closed shells of the void faces with the file's own senses. The
 kernel reads it as the outer solid less the voids (a synthetic 3 cm box with a
-1 cm cavity measures 26 000 mm³; on the corpus a written body with six voids
-measures exactly its outer shell less six times the void's volume).
+1 cm cavity measures 26 000 mm³; on the corpus a written body with several voids
+measures exactly its outer shell less its voids' volume).
 
 **Degenerate tori.** A torus whose tube is not smaller than its ring, or whose
 ring radius is negative, is the tube circle centred at the signed ring radius,
@@ -946,8 +946,8 @@ a plane slanted to the sketch the import now writes the offset divided by the
 cosine between the sweep and the plane's normal (same sign); other faces keep
 it as it is (`alongSweep` in `map.ts`). The corpus has 16 up-to-face extrudes
 with a non-zero offset: 13 to a plane parallel to the sketch (already a
-distance) and 3 in one design to a plane at cosine 0.946 with −9.5 mm, whose end
-faces were 0.5104 mm off the file's and now lie on them. Replay corpus: no
+distance) and 3 in one design to a slanted plane, whose end
+faces were about half a millimetre off the file's and now lie on them. Replay corpus: no
 verdict changes (that design already matched, volume error 0.015 % → 0.010 %).
 Test: `map.test.ts` "measures an up-to-face offset along the sweep…".
 
@@ -1069,9 +1069,10 @@ measured on the corpus before it was built.
    (`MajorDiameter`, `MinorDiameter`) and a 4 × 4 matrix in the frame of the
    plane it was made on (the plane a geometry operand holds in model space):
    the centre is the matrix's origin and the axis its Z, both taken from that
-   frame into the model (FORMAT.md). The one torus of the corpus sits 7.5 cm
-   along the YZ plane's y: the file's B-rep torus is at (0, 0, 7.5) cm about
-   +X, where the matrix read in model axes would put it at (0, 7.5, 0). The
+   frame into the model (FORMAT.md). The corpus's torus, made on the YZ
+   plane with its centre along that plane's y, has its B-rep torus along
+   model Z about +X, where the matrix read in model axes would put it along
+   model Y. The
    reader refuses the record when the B-rep keeps a torus the feature made
    on another centre or axis. It maps to Extrudo's torus on the origin plane
    square to its axis (place in the plane's frame, `offset` along its normal);

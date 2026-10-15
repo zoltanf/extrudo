@@ -1,6 +1,6 @@
 /**
  * The ASM B-rep streams (`BREP.<uuid>.smb` / `.smbh`): the
- * binary form of ACIS SAT with 8-byte integers and pointers ("ASM
+ * binary form of SAT with 8-byte integers and pointers ("ASM
  * BinaryFile8"). Only what the importer needs is read: the faces, their
  * surfaces, and the tags the file attaches to them (`generic_tag_attrib_def`:
  * a token and the design record the face was made by), which is how a
