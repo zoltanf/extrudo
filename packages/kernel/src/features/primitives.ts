@@ -25,6 +25,9 @@ import { type NamedShape, namedPrism, namedRevolve } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
 import type { PlanarCurve, PlanarFrame } from '../planar';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
+import type { CsgContext, CsgResult } from '../scad-export/context';
+import { absolute, type CsgNode, frameMatrix, half, type Scalar, torus } from '../scad-export/ir';
+import { operationCsg } from '../scad-export/operation';
 import { splitSolids } from './bodies';
 import { explicitBodies, type OperationWords, operate } from './operation';
 import { planeOf } from './references';
@@ -65,6 +68,17 @@ type Build = (
 ) => NamedShape;
 
 /**
+ * A primitive's solid in OpenSCAD, in its frame (z along the normal, from the
+ * plane up), with `size(name)` each number input's scalar.
+ */
+type Solid = (
+  size: (name: string) => Scalar,
+  n: Numbers,
+  frame: SketchFrame,
+  settings: PrimitiveSettings,
+) => CsgNode;
+
+/**
  * A primitive's kernel definition (P2-10, ADR-0032): the placement frame,
  * the numbers checked, the solid built from a planar face swept by the
  * existing named operations (a box and a cylinder are prisms of a
@@ -74,6 +88,7 @@ type Build = (
 function primitive<I extends PrimitiveInputs>(
   feature: FeatureDefinition<I>,
   build: Build,
+  solid: Solid,
 ): KernelFeatureDefinition<I> {
   const type = feature.type as PrimitiveType;
   const words: OperationWords = {
@@ -99,8 +114,71 @@ function primitive<I extends PrimitiveInputs>(
       const data: PrimitiveOutputData = { frame, numbers };
       return { ...result, data, ...(warnings.length ? { warnings } : {}) };
     },
+    csg: (ctx) => primitiveCsg(ctx, solid),
   };
 }
+
+/**
+ * A primitive in OpenSCAD (ADR-0086 §7): the solid placed by the frame its
+ * output holds (`multmatrix`), its sizes the inputs' scalars, then the body
+ * operation (`operationCsg`).
+ */
+function primitiveCsg(ctx: CsgContext<PrimitiveInputs>, solid: Solid): CsgResult {
+  const settings = primitiveSettings(ctx.inputs);
+  const { frame, numbers } = ctx.output(ctx.feature.id).data as PrimitiveOutputData;
+  const size = (name: string): Scalar =>
+    ctx.input(name) ? ctx.scalar(name) : (numbers[name] as number);
+  const tool = solid(size, numbers, frame, settings);
+  return operationCsg(ctx, settings.operation, tool);
+}
+
+/** A solid placed by a frame. */
+const placed = (frame: SketchFrame, node: CsgNode): CsgNode => ({
+  kind: 'multmatrix',
+  m: frameMatrix(frame),
+  children: [node],
+});
+
+/**
+ * A box or a cylinder: centred on the frame's origin, through the plane by
+ * the height either way (OpenSCAD's sizes have no sign, so `abs` and a move
+ * by half the height).
+ */
+const lifted = (height: Scalar, node: CsgNode): CsgNode => ({
+  kind: 'translate',
+  v: [0, 0, half(height)],
+  children: [node],
+});
+
+const boxSolid: Solid = (size, _n, frame) =>
+  placed(
+    frame,
+    lifted(size('height'), {
+      kind: 'cube',
+      size: [size('length'), size('width'), absolute(size('height'))],
+      center: true,
+    }),
+  );
+
+const cylinderSolid: Solid = (size, _n, frame) => {
+  const r = half(size('diameter'));
+  return placed(
+    frame,
+    lifted(size('height'), {
+      kind: 'cylinder',
+      h: absolute(size('height')),
+      r1: r,
+      r2: r,
+      center: true,
+    }),
+  );
+};
+
+const sphereSolid: Solid = (size, _n, frame) =>
+  placed(frame, { kind: 'sphere', r: half(size('diameter')) });
+
+const torusSolid: Solid = (size, n, frame, settings) =>
+  placed(torusFrame(frame, n, settings), torus(half(size('diameter')), half(size('tube'))));
 
 /** Every number of the primitive: its input's value, or the default; sizes checked. */
 function numbersOf(ctx: EvalContext, type: PrimitiveType, settings: PrimitiveSettings): Numbers {
@@ -273,22 +351,31 @@ const buildTorus: Build = (ctx, scope, frame, n, settings) => {
       'The tube is as thick as the torus: make the tube diameter smaller than the diameter.',
     );
   }
+  const local = torusFrame(frame, n, settings);
+  const face = planarFace(ctx, scope, [circle([big, 0], small)], upright(local), ['surface']);
+  return turn(ctx, scope, face, local);
+};
+
+/**
+ * A torus's own frame (what its circle is turned in): its normal is the
+ * axis, its X a direction the circle is drawn along (the plane's X, unless
+ * the axis is that one), its origin the ring's centre, lifted by `seat`.
+ */
+function torusFrame(frame: SketchFrame, n: Numbers, settings: PrimitiveSettings): SketchFrame {
+  const big = (n.diameter ?? 0) / 2;
+  const small = (n.tube ?? 0) / 2;
   const axis = settings.axis ?? 'normal';
   const seat = settings.seat ?? 'centre';
   const lift = seat === 'centre' ? 0 : axis === 'normal' ? small : big + small;
   const origin = add(frame.origin, scale(frame.normal, lift));
   const along = axis === 'normal' ? frame.normal : axis === 'x' ? frame.x : frame.y;
-  // The revolve's own frame: its normal is the axis, its X a direction the
-  // circle is drawn along (the plane's X, unless the axis is that one).
-  const local: SketchFrame = {
+  return {
     origin,
     x: axis === 'x' ? frame.y : frame.x,
     y: cross(along, axis === 'x' ? frame.y : frame.x),
     normal: along,
   };
-  const face = planarFace(ctx, scope, [circle([big, 0], small)], upright(local), ['surface']);
-  return turn(ctx, scope, face, local);
-};
+}
 
 export const circle = (center: readonly [number, number], radius: number): PlanarCurve => ({
   kind: 'arc',
@@ -332,10 +419,14 @@ function turn(
   return tool;
 }
 
-export const kernelBox = primitive<BoxInputs>(boxFeature, buildBox);
-export const kernelCylinder = primitive<CylinderInputs>(cylinderFeature, buildCylinder);
-export const kernelSphere = primitive<SphereInputs>(sphereFeature, buildSphere);
-export const kernelTorus = primitive<TorusInputs>(torusFeature, buildTorus);
+export const kernelBox = primitive<BoxInputs>(boxFeature, buildBox, boxSolid);
+export const kernelCylinder = primitive<CylinderInputs>(
+  cylinderFeature,
+  buildCylinder,
+  cylinderSolid,
+);
+export const kernelSphere = primitive<SphereInputs>(sphereFeature, buildSphere, sphereSolid);
+export const kernelTorus = primitive<TorusInputs>(torusFeature, buildTorus, torusSolid);
 
 /** The four primitives' kernel definitions. */
 export const KERNEL_PRIMITIVES = [kernelBox, kernelCylinder, kernelSphere, kernelTorus] as const;

@@ -215,6 +215,8 @@ function context(
     describe: (shape) => source.describe(shape),
     featureName: (id) => source.featureName(id),
     before,
+    bodies: before,
+    bodyId: (n = 0) => `${feature.id}:${n}` as BodyId,
     after,
     changed,
     removed,

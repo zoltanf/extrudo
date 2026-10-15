@@ -126,3 +126,54 @@ export function matrixOf(rows: readonly number[]): Matrix {
     ];
   return [row(0), row(1), row(2)];
 }
+
+/** An expression's source as an operand: in parentheses unless it is a plain name or number. */
+const operand = (expr: string) =>
+  /^[A-Za-z_$][\w$]*$|^\d+(\.\d+)?$/.test(expr) ? expr : `(${expr})`;
+
+/** Half a scalar (a radius from a diameter): a number for a number. */
+export function half(value: Scalar): Scalar {
+  if (typeof value === 'number') return value / 2;
+  return { expr: `${operand(value.expr)} / 2`, value: value.value / 2 };
+}
+
+/** A scalar negated: a number for a number. */
+export function negate(value: Scalar): Scalar {
+  if (typeof value === 'number') return -value;
+  return { expr: `-${operand(value.expr)}`, value: -value.value };
+}
+
+/** A scalar's size, without its sign (a negative height's): a number for a number. */
+export function absolute(value: Scalar): Scalar {
+  if (typeof value === 'number') return Math.abs(value);
+  return { expr: `abs(${value.expr})`, value: Math.abs(value.value) };
+}
+
+/** A frame's placement: its X, Y and normal as the columns, its origin as the move. */
+export function frameMatrix(frame: {
+  origin: readonly number[];
+  x: readonly number[];
+  y: readonly number[];
+  normal: readonly number[];
+}): Matrix {
+  const { origin: o, x, y, normal: n } = frame;
+  const row = (k: number) =>
+    [x[k] ?? 0, y[k] ?? 0, n[k] ?? 0, o[k] ?? 0] as [number, number, number, number];
+  return [row(0), row(1), row(2)];
+}
+
+/**
+ * `child` transformed about `point` rather than the origin:
+ * `translate(point) transform translate(-point) child`, without the moves
+ * when the point is the origin.
+ */
+export function about(
+  point: readonly number[],
+  transform: (child: CsgNode) => CsgNode,
+  child: CsgNode,
+): CsgNode {
+  if (point.every((v) => v === 0)) return transform(child);
+  const [x = 0, y = 0, z = 0] = point;
+  const inner: CsgNode = { kind: 'translate', v: [-x, -y, -z], children: [child] };
+  return { kind: 'translate', v: [x, y, z], children: [transform(inner)] };
+}

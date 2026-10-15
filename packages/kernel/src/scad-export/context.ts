@@ -52,6 +52,13 @@ export interface CsgContext<I extends FeatureInputs = FeatureInputs> {
   featureName(feature: FeatureId): string | undefined;
   /** The body set before the feature, in creation order. */
   before: ReadonlyMap<BodyId, ShapeHandle>;
+  /**
+   * The same as `before`, under `EvalContext`'s name, so the evaluators'
+   * placement helpers (`centreOf`, `existing`) take either context.
+   */
+  bodies: ReadonlyMap<BodyId, ShapeHandle>;
+  /** The ID of the `n`th body the feature creates, as `EvalContext.bodyId` gave it. */
+  bodyId(n?: number): BodyId;
   /** The body set after it. */
   after: ReadonlyMap<BodyId, ShapeHandle>;
   /** Bodies of `after` with a shape `before` didn't have them with (new or changed), in order. */
