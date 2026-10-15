@@ -13,5 +13,7 @@ Shade the walls thinner than a minimum: they print weak or not at all.
 |---|---|
 | 3D Print › Prepare | None |
 
+<video src="demo:wallThickness" muted loop autoplay playsinline aria-label="Wall Thickness demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

@@ -13,9 +13,9 @@
  */
 
 /**
- * The tools that have a clip: every tile of the Solid, Modify and Construct tabs (in the tabs'
- * order) and the sketch tools ADR-0052 recorded first, all recorded in the current UI (R3-16).
- * 3D Print and the Sketch tab follow in a later batch.
+ * The tools that have a clip: every tile of the Solid, Modify, Construct and 3D Print
+ * tabs (in the tabs' order) and the sketch tools ADR-0052 recorded first, all recorded in the
+ * current UI (R3-16). The Sketch tab follows in the last slice.
  */
 export const DEMO_TOOLS: readonly string[] = [
   // Solid › Create, Primitives, Features, Pattern, Program, Component.
@@ -69,6 +69,14 @@ export const DEMO_TOOLS: readonly string[] = [
   'pointAtIntersection',
   'measure',
   'section',
+  // 3D Print › Prepare, Output (Measure is Construct's).
+  'placeOnBed',
+  'printInfo',
+  'tolerance',
+  'overhang',
+  'wallThickness',
+  'export',
+  'slicer',
   // Sketch › Create.
   'line',
   'rectangle',

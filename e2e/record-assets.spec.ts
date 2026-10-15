@@ -1658,6 +1658,138 @@ test('demo: section', async ({ page }) => {
   });
 });
 
+// ---- 3D Print tab
+
+test('demo: placeOnBed', async ({ page }) => {
+  await demoDesign(page, 'placeOnBed');
+  await turnView(page, 'Shift+1');
+  const { at, clip } = await frameWorld(page, boxPoints([-4, -14, -4], [44, 14, 36]), 0.6);
+  const p = pointer(page);
+  await p.jump({ x: clip.x + 40, y: clip.y + clip.height - 30 });
+  const dialog = page.getByRole('region', { name: 'Place on Bed dialog' });
+  await record(page, 'placeOnBed', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'placeOnBed', 'print');
+    await expect(dialog).toBeVisible();
+    await page.waitForTimeout(300);
+    await pickModel(page, p, at, [27, -6, 18], /^face:/);
+    await previewed(dialog);
+    await page.waitForTimeout(500);
+    await commit(page, dialog);
+    await page.waitForTimeout(600);
+  });
+});
+
+test('demo: overhang', async ({ page }) => {
+  await demoDesign(page, 'overhang');
+  // Seen from below (Shift+3), where the cap's underside is the shaded part.
+  await turnView(page, 'Shift+3');
+  const { clip } = await frameWorld(page, boxPoints([-18, -18, 0], [18, 18, 22]), 0.75);
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 40, y: clip.y + clip.height - 30 });
+  const viewport = viewportOf(page);
+  await record(page, 'overhang', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'overhang', 'print');
+    await expect(viewport).toHaveAttribute('data-overhang', /faces=[1-9]/, { timeout: 30_000 });
+    await page.waitForTimeout(900);
+  });
+});
+
+test('demo: wallThickness', async ({ page }) => {
+  await demoDesign(page, 'wallThickness');
+  await turnView(page, 'Shift+1');
+  const { clip } = await frameWorld(page, boxPoints([-15, -6.5, 0], [15, 5.3, 18]), 0.7);
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 40, y: clip.y + clip.height - 30 });
+  const viewport = viewportOf(page);
+  await record(page, 'wallThickness', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'wallThickness', 'print');
+    await expect(viewport).toHaveAttribute('data-thickness', /thin=[1-9]/, { timeout: 30_000 });
+    await page.waitForTimeout(900);
+  });
+});
+
+/** The frame of the panel a print tool opens in the right column, with the view beside it. */
+const PANEL_FRAME = { x: 1030, y: 283, width: 400, height: 250 } as const;
+
+test('demo: printInfo', async ({ page }) => {
+  await demoDesign(page, 'section');
+  await turnView(page, 'Shift+1');
+  const p = pointer(page);
+  await p.jump({ x: 1090, y: 520 });
+  const panel = page.getByRole('region', { name: 'Print Info' });
+  await record(page, 'printInfo', { ...PANEL_FRAME, y: 455 }, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'printInfo', 'print');
+    await expect(panel).toHaveAttribute('data-print-state', 'ready', { timeout: 30_000 });
+    await page.waitForTimeout(500);
+    // The numbers are at the foot of the panel: scroll to them.
+    // The panel's own list scrolls: to its foot.
+    await panel.evaluate((el) => {
+      const view = el.ownerDocument.defaultView;
+      for (const c of el.querySelectorAll('*')) {
+        const scrolls = /auto|scroll/.test(view?.getComputedStyle(c).overflowY ?? '');
+        if (scrolls && c.scrollHeight > c.clientHeight + 4) c.scrollTop = c.scrollHeight;
+      }
+    });
+    await page.waitForTimeout(600);
+    // Infill, 15 → 40 %: the weight below follows.
+    const infill = panel.getByRole('textbox', { name: 'Infill', exact: true });
+    await p.moveTo(await centreOf(infill), 450);
+    await typeQuietly(page, infill, '40');
+    await page.waitForTimeout(900);
+  });
+});
+
+test('demo: tolerance', async ({ page }) => {
+  await demoDesign(page, 'section');
+  await turnView(page, 'Shift+1');
+  const p = pointer(page);
+  await p.jump({ x: 1090, y: 330 });
+  const panel = page.getByRole('region', { name: 'Print tolerance' });
+  await record(page, 'tolerance', PANEL_FRAME, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'tolerance', 'print');
+    await expect(panel).toBeVisible();
+    await page.waitForTimeout(500);
+    await p.click(await centreOf(panel.getByRole('button', { name: /^Normal/ })), 600);
+    await expect(panel).toHaveAttribute('data-tolerance', 'set');
+    await page.waitForTimeout(1000);
+  });
+});
+
+/** The page point at the middle of an element. */
+async function centreOf(target: ReturnType<Page['locator']>) {
+  const box = await target.boundingBox();
+  if (!box) throw new Error('no box');
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+/** The export dialog, opened from the tile, with a format picked. */
+function exportScene(tool: string, format: RegExp) {
+  test(`demo: ${tool}`, async ({ page }) => {
+    await demoDesign(page, 'section');
+    await turnView(page, 'Shift+1');
+    const p = pointer(page);
+    await p.jump({ x: 960, y: 290 });
+    const dialog = page.getByRole('dialog', { name: /Export/ });
+    await record(page, tool, { x: 520, y: 250, width: 400, height: 250 }, async () => {
+      await page.waitForTimeout(300);
+      // The slicer tile is the desktop app's: the web build has the dialog it opens, so both
+      // clips are recorded from it.
+      await runTool(page, 'export', 'print');
+      await expect(dialog).toBeVisible();
+      await page.waitForTimeout(600);
+      await p.click(await centreOf(dialog.getByRole('radio', { name: format })), 600);
+      await page.waitForTimeout(1000);
+    });
+  });
+}
+exportScene('export', /^STL/);
+exportScene('slicer', /^3MF/);
+
 // ---- The landing page's walkthrough (ADR-0057 amendment) ---------------------
 
 const WALKTHROUGH = join(process.cwd(), 'apps', 'site', 'src', 'images', 'walkthrough');

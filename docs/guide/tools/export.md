@@ -13,5 +13,7 @@ STL, 3MF or STEP for printing and sharing.
 |---|---|
 | Home › Export (as Export Model) · 3D Print › Output | None |
 
+<video src="demo:export" muted loop autoplay playsinline aria-label="Export demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

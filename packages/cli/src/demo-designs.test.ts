@@ -191,6 +191,30 @@ export const DEMO_DESIGNS: Record<string, (d: Design) => void> = {
     d.box({ length: '36 mm', width: '24 mm', height: '20 mm' });
     d.cylinder({ diameter: '10 mm', height: '20 mm', operation: 'cut' });
   },
+  // The 3D Print tab's scenes. A wedge: its sloping face is the one to turn down.
+  placeOnBed: (d) => {
+    const side = d.sketch(d.origin.xz, (k) =>
+      k.polyline([
+        [0, 0],
+        [40, 0],
+        [40, 8],
+        [14, 28],
+        [0, 28],
+        [0, 0],
+      ]),
+    );
+    d.extrude({ profiles: side.profiles(), direction: 'symmetric', distance: '24 mm' });
+  },
+  // A post with a wide cap: the cap's underside leans out and shows as an overhang.
+  overhang: (d) => {
+    d.cylinder({ diameter: '10 mm', height: '16 mm' });
+    d.box({ length: '36 mm', width: '36 mm', height: '6 mm', offset: '16 mm', operation: 'join' });
+  },
+  // Two plates, 0.6 and 3 mm thick: the thin one is under the 0.9 mm minimum.
+  wallThickness: (d) => {
+    d.box({ y: '5 mm', length: '30 mm', width: '0.6 mm', height: '18 mm' });
+    d.box({ y: '-5 mm', length: '30 mm', width: '3 mm', height: '18 mm' });
+  },
   midplaneAngled: (d) => {
     d.box({ x: '30 mm', y: '-35 mm', length: '30 mm', width: '20 mm', height: '14 mm' });
   },

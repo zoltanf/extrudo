@@ -274,6 +274,18 @@ kbit/s, still stretches cut to 400 ms, `WHOLE_TABS` in `demos.test.ts`.
   planes' big squares show and take a click that would land on a face behind them. The point
   tools' results are a few pixels (the app draws a point small), so their scenes frame the body
   at 85 %.
-- **The total budget goes from 2 MB to 4 MB** (`demos.test.ts`): 56 clips of about 45 kB don't
+- **3D Print** (Measure is Construct's clip; seven new: Place on Bed, Print Info, Tolerance,
+  Overhang Analysis, Wall Thickness, Export, Send to Slicer). Place on Bed picks the wedge's
+  sloping face and the body turns down. Overhang Analysis is recorded from below (Shift+3): an
+  overhang faces down, so from above nothing shows; the cap's underside turns red. Wall
+  Thickness shows two plates, the 0.6 mm one shaded. **Print Info, Tolerance and the two
+  Export tiles live in a panel or a dialog, so their frames are a fixed region of the page**
+  (`PANEL_FRAME`, the dialog's middle) with the model beside it, not a `frameWorld`: Print
+  Info scrolls to its numbers and types an infill (the weight follows), Tolerance clicks the
+  Normal preset. **Send to Slicer is the desktop app's tile**: the web build, which records the
+  clips, leaves the tile unavailable (`platform.openInSlicer`), so its clip is the Export
+  dialog the tile opens there, with 3MF ("for slicers") picked; the slicer buttons themselves
+  are not in it. Re-record it from the desktop build if that ever matters.
+- **The total budget goes from 2 MB to 4 MB** (`demos.test.ts`): about 60 clips of about 45 kB don't
   fit 2 MB, and a clip loads only when its tooltip opens (not precached), so what a visitor
   fetches is one clip of at most 150 kB.
