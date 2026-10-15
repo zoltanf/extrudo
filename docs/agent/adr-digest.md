@@ -2175,11 +2175,14 @@ checkboxes, Radial right-click menu, Customize Marking Menu… where a design is
 or **Close design** (the web, in a design: back to Home; a page can't close its tab). It reads
 and writes the display settings through `DisplayAccess` (`storeAccess` in a design,
 `preferencesAccess` on Home). `ThemeMenu` is gone. Help ends with **Source on GitHub**. The
-home bar is a design's (h-10, logo 20, wordmark 16 px) with About, Docs and GitHub as
-tab-styled links that open through the platform (`Platform.openSite('about' | 'repo')`,
-`openDocs`): the desktop sends only the name over `site:open` and main holds the URLs
-(`SITE_URLS` in `main/docs.ts`), as for the docs; the web's addresses take `VITE_REPO_URL`
-and `VITE_ABOUT_URL` for a fork. **Tiles first**: Home's file groups have no fixed `more` (Import: Import Design, Import Model — `importBody`, full label "Import STEP, mesh, OpenSCAD or .f3d…" —, Import Drawing, Canvas; Export: Export Design, Export Model, Export as Script, Save to Linked Folder; one Files group until R3-09), Construct › Planes shows all seven planes as tiles, and a tile is a fixed 64 px wide, its label the tool's full name wrapped onto up to two 11 px lines when it fits, its short name otherwise (ADR-0079 round 3).
+home bar is a design's (h-10, logo 20, wordmark 16 px) with Docs and GitHub as tab-styled
+links that open through the platform (`Platform.openSite`, `openDocs`): the desktop sends
+only the name over `site:open` and main holds the URLs (`SITE_URLS` in `main/docs.ts`), as
+for the docs; the web's address takes `VITE_REPO_URL` for a fork. **ADR-0085's amendment**
+made the bar's About a button that opens the About dialog (not the landing site) and
+dropped `about` from `SiteLink`/`SITE_URLS`, so `openSite` keeps only `repo`; there is no
+Help menu on the home screen (the macOS About Extrudo still runs the dialog through the
+home screen's `menu:run` listener). **Tiles first**: Home's file groups have no fixed `more` (Import: Import Design, Import Model — `importBody`, full label "Import STEP, mesh, OpenSCAD or .f3d…" —, Import Drawing, Canvas; Export: Export Design, Export Model, Export as Script, Save to Linked Folder; one Files group until R3-09), Construct › Planes shows all seven planes as tiles, and a tile is a fixed 64 px wide, its label the tool's full name wrapped onto up to two 11 px lines when it fits, its short name otherwise (ADR-0079 round 3).
 
 ADR-0080 (P6-06, slice S1) made the docs site one site: `apps/site/src/docs.ts`'s
 `COLLECTIONS` map `docs/guide` → `/docs/`, `guide/tutorials` → `/docs/tutorials/`,
@@ -2292,3 +2295,24 @@ field, `hasInwardFace` and `INWARD_REASON` are gone); mismatches are taken out w
 "Import Body<n>"` per body** with its own attachment and component stamp; save order is replay
 doc, then STEP attachments, then the final doc; a STEP over 25 MB or past 100 MB in total
 stays unchecked; missing bodies are counted, never named. No schema change.
+
+ADR-0085 (the owner, 2026-10-14) **gives every build a version and an About dialog**
+(`apps/web/pwa/build-info.ts`, `src/version.ts`, `src/shell/AboutDialog.tsx`,
+`systemInfo.ts`, `aboutLinks.ts`, `HelpMenu.tsx`, `apps/desktop/src/main/links.ts`).
+Rules: the version is `git describe` from the last `v*` tag: plain `0.6.1` at the
+tag or on stable, `+edge.N` / `+dev.N` build metadata otherwise (never a
+pre-release suffix); `EXTRUDO_CHANNEL` (`edge` | `stable`, else `dev`) is set by the
+workflows, whose app builds check out with `fetch-depth: 0`; `BUILD.version` is for
+display only, **documents keep `APP_VERSION`** (the package version, `meta.appVersion`);
+**every About link is in `aboutLinks.ts`**, and an address that is new must also be in
+main's allow-list (a test fails otherwise); **links on the desktop go only through
+`Platform.openLink`** (`link:open`, main checks https, no credentials or port, host
+and path prefix); the dialog adds no cross-origin load and no string evaluation; the
+Help menu is `HelpMenu` with optional handlers (an item shows only when its handler is
+given); macOS's About runs the `about` command in the renderer. **Amendment
+(2026-10-14, merged with ADR-0079 round 5): the home bar's About is a button
+that opens the dialog (the `TopLink` look, `TopLinkButton`), there is no Help
+menu on the home screen (its `menu:run` listener stays for the macOS About),
+and both link mechanisms stay — `openSite(name)` for the fixed named pages
+(only `repo` now) and `openLink(url)` for the dialog's URLs that carry a
+hash; folding them into one was rejected for now.** No schema change.

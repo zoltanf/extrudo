@@ -14,6 +14,7 @@ import {
   Circle,
   GraduationCap,
   House,
+  Info,
   ListChecks,
   Magnet,
   Maximize,
@@ -92,6 +93,8 @@ export interface CommandContext {
   notifications?: { open(): void };
   /** The first-run tutorial (P3-12). */
   tutorial?: { start(): void };
+  /** Opens Help › About Extrudo: version, channel, where the app runs. */
+  about?: () => void;
   /**
    * Opens a docs page (P6-06 S9, ADR-0080 §5) through the platform. The Help
    * menu's items and the F1 command go through it; absent in tests that don't
@@ -507,6 +510,12 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     plain('docsTools', 'Tool Reference', 'Help', () => open('tools'), {
       icon: icon(Wrench),
       keywords: 'Help docs tool reference every tool learn',
+    });
+  }
+  if (ctx.about) {
+    plain('about', 'About Extrudo', 'Help', ctx.about, {
+      icon: icon(Info),
+      keywords: 'Help about version build channel edge stable browser system info',
     });
   }
 

@@ -149,6 +149,7 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         with:
           ref: ${{ env.SHA }}
+          fetch-depth: 0 # git describe in the build needs the tags and history
 
       - uses: pnpm/action-setup@v6 # version comes from "packageManager" in package.json
         if: steps.gate.outputs.run == 'true'
@@ -166,6 +167,8 @@ jobs:
       # a preview of it); the build reads SITE_URL (apps/web/pwa/site.ts).
       - name: Build (downloads the published WASM first)
         if: steps.gate.outputs.run == 'true'
+        env:
+          EXTRUDO_CHANNEL: ${{ matrix.channel }}
         run: SITE_URL="$APP_URL" pnpm build
 
       - name: Deploy apps/web/dist to the Pages project "extrudo" (${{ env.PAGES_BRANCH }})

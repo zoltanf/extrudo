@@ -72,6 +72,9 @@ export function createApi(ipc: IpcRendererLike): ExtrudoApi {
       open: (path) => ipc.send(CHANNELS.docsOpen, path),
       openSite: (link) => ipc.send(CHANNELS.siteOpen, link),
     },
+    links: {
+      open: (url) => ipc.send(CHANNELS.linkOpen, url),
+    },
     rescue: {
       put: (id, raw) => ipc.sendSync(CHANNELS.rescuePut, id, raw) === true,
       clear: (id) => ipc.send(CHANNELS.rescueClear, id),

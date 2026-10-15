@@ -11,7 +11,9 @@
     "vite.config.ts",
     "pwa/precache-plugin.ts",
     "pwa/headers.ts",
+    "pwa/build-info.ts",
     "pwa/headers.test.ts",
+    "pwa/build-info.test.ts",
     "pwa/site.ts",
     "pwa/site.test.ts"
   ]

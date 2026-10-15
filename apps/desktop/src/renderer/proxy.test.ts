@@ -39,6 +39,7 @@ function fakeApi(answers: Partial<Record<string, unknown>> = {}) {
       requestPersistence: async () => 'persistent',
     },
     docs: { open: () => {}, openSite: () => {} },
+    links: { open: () => {} },
     rescue: { put: () => true, clear: () => {}, list: () => [] },
     folders: {
       link: async () => undefined,

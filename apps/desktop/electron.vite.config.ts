@@ -2,6 +2,8 @@ import { resolve } from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'electron-vite';
+import pkg from '../web/package.json' with { type: 'json' };
+import { buildInfo } from '../web/pwa/build-info.ts';
 
 /**
  * The Electron build (P6-01, ADR-0075 §1). Main and preload are CommonJS
@@ -37,6 +39,8 @@ export default defineConfig({
   renderer: {
     root: 'src/renderer',
     base: './',
+    // The version, channel and commit the About dialog shows (`apps/web/src/version.ts`).
+    define: { __EXTRUDO_BUILD__: JSON.stringify(buildInfo(pkg.version)) },
     plugins: [react(), tailwindcss()],
     // Module workers, as on the web: the kernel worker's dynamic imports stay
     // chunks of their own (ADR-0070 §2).

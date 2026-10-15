@@ -842,8 +842,25 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   Help › User Guide → `…/docs/`, F1 on a hovered Extrude tile →
   `…/docs/tools/extrude/`, F1 with nothing hovered → `…/docs/`, Ctrl+K "Tool
   Reference" → `…/docs/tools/`; the Extrude tile's tooltip shows "F1 for more"
-  and holds no `a`/`button`. The Help menu's "Tutorials" item also matches a
-  plain 'Tutorial' name, so specs pick the tour's item with `/^Tutorial$/`.
+  and holds no `a`/`button`. "Help › Source on GitHub" opens the repository in a
+  popup, and a test checks the menu's last items are Source on GitHub then About
+  Extrudo (About last). The Help menu's "Tutorials" item also matches a
+  plain 'Tutorial' name, so specs pick the tour's item with `/^Tutorial$/`. The
+  home bar's Docs and GitHub are links that open in popups; its About is a button
+  that opens the dialog (ADR-0085).
+
+### `e2e/about.spec.ts`
+
+- **About e2e** (`e2e/about.spec.ts`, ADR-0085): Help (button "Help") › menu
+  item "About Extrudo" opens a `dialog` named /about/ (title "extrudo —
+  about"). Rows are `dt`/`dd` pairs under the headings "Build", "Running on"
+  and "Engines"; the version chip is the first text matching `/^\d+\.\d+\.\d+/`;
+  "Copy details" is a button, disabled until the system rows load; the logo
+  is the button "Extrudo logo" (replays, dialog stays open). Links keep their
+  `href` and open through `Platform.openLink` (a popup on the web): the
+  github.com host is answered locally with `context.route`, as in
+  help-links. The home bar's About button opens the same dialog (there is no Help
+  menu on the home screen).
 
 ### `e2e/hole.spec.ts`
 
@@ -2123,7 +2140,8 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   by focus + Enter (a Playwright click jumping from the trigger closes a Radix
   submenu). Escape in a submenu closes the whole menu. On the web the root menu's
   items are Settings…, Plugins…, Behaviour, Mouse controls, Theme, Close design.
-  Home's `navigation` "Extrudo" has the links About, Docs, GitHub;
+  Home's `navigation` "Extrudo" has the links Docs and GitHub and an About button
+  (opens the dialog, ADR-0085);
   `help-links.spec.ts` routes `https://github.com/**` like the docs host.
 
 - Text baselines are measured through an injected zero-size inline-block

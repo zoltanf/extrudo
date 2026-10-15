@@ -15,9 +15,8 @@ export const DOCS_URL = 'https://extrudo.org/docs';
  */
 const DOCS_PATH = /^\/(tools\/([A-Za-z0-9]+\/)?|tutorials\/|examples\/)?$/;
 
-/** The top bar's About and GitHub links, the same addresses as the web app's (`docsLinks.ts`). */
+/** The top bar's GitHub link, the same address as the web app's (`docsLinks.ts`). */
 export const SITE_URLS: Readonly<Record<string, string>> = {
-  about: 'https://extrudo.org',
   repo: 'https://github.com/zoltanf/extrudo',
 };
 

@@ -1,18 +1,5 @@
 import { type DocumentStore, renameDocument } from '@extrudo/core';
-import {
-  BookOpen,
-  CircleHelp,
-  Code,
-  GraduationCap,
-  History,
-  ListChecks,
-  Redo2,
-  RefreshCw,
-  Search,
-  Shapes,
-  Undo2,
-  Wrench,
-} from 'lucide-react';
+import { History, Redo2, Search, Undo2 } from 'lucide-react';
 import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { keysFor } from '../commands/keymap';
@@ -21,10 +8,6 @@ import {
   Button,
   IconButton,
   LogoMark,
-  Menu,
-  MenuItem,
-  MenuLabel,
-  MenuSeparator,
   Popover,
   TextInput,
   type ThemeChoice,
@@ -36,6 +19,7 @@ import { HOME_HREF } from '../routes';
 import type { DisplayAccess } from '../settings/displaySettings';
 import { AppMenu } from './AppMenu';
 import type { DocsPage } from './docsLinks';
+import { HelpMenu } from './HelpMenu';
 import { TITLE_GAP, type TitleFit, titleFit } from './titleFit';
 
 /** The design's file actions (the Home tab's commands, ADR-0079); the project page implements them. */
@@ -101,6 +85,8 @@ export interface AppBarProps {
   onHelp(): void;
   /** Help › Check for Updates… (desktop only, ADR-0075's 2026-10-09 amendment); absent on the web. */
   onCheckUpdates?(): void;
+  /** Help › About Extrudo. */
+  onAbout(): void;
   /** Settings › General › Radial right-click menu: the same state as the command that toggles it. */
   markingRadial: boolean;
   onMarkingRadial(radial: boolean): void;
@@ -141,6 +127,7 @@ export function AppBar({
   onDocs,
   onHelp,
   onCheckUpdates,
+  onAbout,
   markingRadial,
   onMarkingRadial,
   display,
@@ -215,59 +202,15 @@ export function AppBar({
           onQuit={onQuit}
           onCloseDesign={onCloseDesign}
         />
-        <Menu
-          label="Help"
-          align="end"
-          trigger={
-            <IconButton label="Help">
-              <CircleHelp size={18} strokeWidth={1.75} />
-            </IconButton>
-          }
-        >
-          <MenuLabel>Help</MenuLabel>
-          <MenuItem
-            icon={<Search size={14} />}
-            shortcut={keyLabel('search')}
-            onSelect={() => onSearch()}
-          >
-            Search…
-          </MenuItem>
-          <MenuSeparator />
-          {/* Five steps that build a box (P3-12). */}
-          <MenuItem icon={<GraduationCap size={14} />} onSelect={onTutorial}>
-            Tutorial
-          </MenuItem>
-          {/* The docs on the landing site (P6-06 S9, ADR-0080 §5). F1 is the
-              help command's key ("Help for This Tool"): the hovered tool's page, else the guide. */}
-          <MenuSeparator />
-          <MenuItem icon={<BookOpen size={14} />} onSelect={() => onDocs('guide')}>
-            User Guide
-          </MenuItem>
-          <MenuItem icon={<CircleHelp size={14} />} shortcut={keyLabel('help')} onSelect={onHelp}>
-            Help for This Tool
-          </MenuItem>
-          <MenuItem icon={<ListChecks size={14} />} onSelect={() => onDocs('tutorials')}>
-            Tutorials
-          </MenuItem>
-          <MenuItem icon={<Shapes size={14} />} onSelect={() => onDocs('examples')}>
-            Examples
-          </MenuItem>
-          <MenuItem icon={<Wrench size={14} />} onSelect={() => onDocs('tools')}>
-            Tool Reference
-          </MenuItem>
-          <MenuSeparator />
-          <MenuItem icon={<Code size={14} />} onSelect={onSource}>
-            Source on GitHub
-          </MenuItem>
-          {onCheckUpdates && (
-            <>
-              <MenuSeparator />
-              <MenuItem icon={<RefreshCw size={14} />} onSelect={onCheckUpdates}>
-                Check for Updates…
-              </MenuItem>
-            </>
-          )}
-        </Menu>
+        <HelpMenu
+          onSearch={() => onSearch()}
+          onTutorial={onTutorial}
+          onDocs={onDocs}
+          onHelp={onHelp}
+          onCheckUpdates={onCheckUpdates}
+          onSource={onSource}
+          onAbout={onAbout}
+        />
       </div>
     </header>
   );

@@ -24,6 +24,7 @@ import { createExternalFiles, createExternalPaths } from './externalFiles';
 import { createFolders } from './folders';
 import { HEADERS } from './headers';
 import { registerIpcHandlers } from './ipc';
+import { createLinks } from './links';
 import {
   buildMenuTemplate,
   hasApplicationMenu,
@@ -299,6 +300,7 @@ function main(): void {
         },
       },
       docs: createDocs((url) => void shell.openExternal(url)),
+      links: createLinks((url) => void shell.openExternal(url)),
     });
     createWindow();
     // Before the first menu, so Help › Check for Updates… knows whether it runs.

@@ -12,7 +12,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { type ReactNode, useId, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { useShortcuts } from '../commands/shortcuts';
 import {
   Button,
@@ -42,8 +42,9 @@ import {
 import { exampleHref, navigate, projectHref } from '../routes';
 import { preferencesAccess } from '../settings/displaySettings';
 import { SettingsDialog } from '../settings/SettingsDialog';
+import { AboutDialog } from '../shell/AboutDialog';
 import { AppMenu } from '../shell/AppMenu';
-import { ABOUT_URL, docsPath, docsUrl, REPO_URL } from '../shell/docsLinks';
+import { docsPath, docsUrl, REPO_URL } from '../shell/docsLinks';
 import { useUpdateNotice } from '../shell/useUpdateNotice';
 import { useMarkingStyle } from '../shell/viewMenu';
 import { EXAMPLES } from './examples';
@@ -62,6 +63,10 @@ export function HomeScreen({ platform }: { platform: Platform }) {
   const { choice, setChoice } = useTheme(platform.preferences);
   const marking = useMarkingStyle(platform.preferences);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  // macOS's application menu › About Extrudo runs the `about` command in the renderer; the
+  // home screen has no commands, so it answers that one id (ADR-0085).
+  useEffect(() => platform.menus?.onRun((id) => id === 'about' && setAboutOpen(true)), [platform]);
   const [pluginsOpen, setPluginsOpen] = useState(false);
   const plugins = useMemo(() => createPluginsStore(platform.plugins), [platform]);
   const display = preferencesAccess(platform.preferences);
@@ -168,9 +173,7 @@ export function HomeScreen({ platform }: { platform: Platform }) {
         </span>
         <div className="w-1.5 shrink-0" aria-hidden="true" />
         <nav aria-label="Extrudo" className="flex h-full items-stretch gap-0.5">
-          <TopLink href={ABOUT_URL} onOpen={() => platform.openSite('about')}>
-            About
-          </TopLink>
+          <TopLinkButton onOpen={() => setAboutOpen(true)}>About</TopLinkButton>
           <TopLink href={docsUrl('guide')} onOpen={() => platform.openDocs(docsPath('guide'))}>
             Docs
           </TopLink>
@@ -202,6 +205,13 @@ export function HomeScreen({ platform }: { platform: Platform }) {
         files={platform.files}
         inDesign={noDesignPlugins}
         onUpdate={noDesignPlugins}
+      />
+
+      <AboutDialog
+        open={aboutOpen}
+        onOpenChange={setAboutOpen}
+        desktop={platform.desktop !== undefined}
+        openLink={platform.openLink}
       />
 
       <SettingsDialog
@@ -542,6 +552,10 @@ function ExamplesDialog({
 /** No design is open here, so the Plugins dialog has none of a design's plugins to show or update. */
 const noDesignPlugins = () => Promise.reject(new Error('No design is open.'));
 
+/** The look a `TopLink` and its button twin share: the toolbar's tabs. */
+const TOP_LINK_CLASS =
+  'flex items-center whitespace-nowrap border-b-2 border-transparent px-1.5 pt-[9px] text-xs font-semibold tracking-[0.08em] text-muted uppercase hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent lg:px-2.5';
+
 /**
  * A link in the top bar to an outside page, styled as the toolbar's tabs. It opens
  * in a new tab through the platform (the desktop opens it in the browser); `href`
@@ -565,10 +579,22 @@ function TopLink({
         event.preventDefault();
         onOpen();
       }}
-      className="flex items-center whitespace-nowrap border-b-2 border-transparent px-1.5 pt-[9px] text-xs font-semibold tracking-[0.08em] text-muted uppercase hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent lg:px-2.5"
+      className={TOP_LINK_CLASS}
     >
       {children}
     </a>
+  );
+}
+
+/**
+ * The button twin of `TopLink`, for a bar item that opens something in the app
+ * rather than an outside page: About opens the About dialog (ADR-0085).
+ */
+function TopLinkButton({ onOpen, children }: { onOpen(): void; children: ReactNode }) {
+  return (
+    <button type="button" onClick={onOpen} className={TOP_LINK_CLASS}>
+      {children}
+    </button>
   );
 }
 

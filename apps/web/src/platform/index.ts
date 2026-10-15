@@ -15,7 +15,7 @@ import {
 } from '@extrudo/storage';
 import { appNotifications } from '../design-system/notifications';
 import { saveEverything } from '../project/autosave';
-import { ABOUT_URL, DOCS_URL, REPO_URL } from '../shell/docsLinks';
+import { DOCS_URL, REPO_URL } from '../shell/docsLinks';
 import type { MenuModel } from '../shell/menuModel';
 import { APP_VERSION } from '../version';
 import {
@@ -173,14 +173,20 @@ export interface Platform {
    */
   openDocs(path: string): void;
   /**
-   * Opens the landing site (`about`) or the source repository (`repo`): the
-   * top bar's About and GitHub links. The desktop sends the name; main holds the URLs.
+   * Opens a link in the system browser (the About dialog, ADR-0085): the web
+   * in a new tab, the desktop over `link:open` where main checks the URL
+   * against its allow-list (the window itself denies new windows).
+   */
+  openLink(url: string): void;
+  /**
+   * Opens the source repository (the top bar's GitHub link): the web in a new
+   * tab, the desktop over `site:open`, where main holds the URL.
    */
   openSite(link: SiteLink): void;
 }
 
 /** The outside pages `openSite` opens. */
-export type SiteLink = 'about' | 'repo';
+export type SiteLink = 'repo';
 
 /**
  * The web platform. Async because opening IndexedDB is, and because edits a
@@ -229,8 +235,11 @@ export async function webPlatform(): Promise<Platform> {
     openDocs: (path) => {
       window.open(`${DOCS_URL}${path}`, '_blank', 'noopener,noreferrer');
     },
-    openSite: (link) => {
-      window.open(link === 'about' ? ABOUT_URL : REPO_URL, '_blank', 'noopener,noreferrer');
+    openLink: (url) => {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    },
+    openSite: (_link) => {
+      window.open(REPO_URL, '_blank', 'noopener,noreferrer');
     },
     ...(folders && { folders }),
   };

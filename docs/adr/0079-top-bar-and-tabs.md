@@ -304,15 +304,16 @@ The owner's screen recording of 2026-10-14 asked for:
    didn't open, so a Quit there would do nothing. On Home the web menu has neither.
 3. **Help › Source on GitHub.**
 4. **The home screen's bar is a design's**: the same height (40 px), logo and wordmark
-   size; About (the landing site), Docs and GitHub beside the logo, set like the
-   toolbar's tabs (capitals, the tabs' baseline); and the same app menu instead of the
-   separate Settings and Theme buttons. Customize Marking Menu… needs a design's
-   commands, so Home leaves it out; Plugins… works there (no design, so nothing to
-   update).
+   size; About (the landing site; **ADR-0085 later made it open the About dialog
+   instead**), Docs and GitHub beside the logo, set like the toolbar's tabs
+   (capitals, the tabs' baseline); and the same app menu instead of the separate
+   Settings and Theme buttons. Customize Marking Menu… needs a design's commands,
+   so Home leaves it out; Plugins… works there (no design, so nothing to update).
 
 Outside pages open through the platform, not `window.open` in the component: the
 desktop denies new windows (P6-01's review), so `Platform.openSite('about' | 'repo')`
 sends only the name and main opens its own URL, the pattern `openDocs` set (ADR-0080
-§5). Rejected: letting the desktop's window-open handler pass an allow-list of URLs
-to `shell.openExternal` — it would take a URL from the renderer, which the docs
-opener avoids on purpose.
+§5). **ADR-0085's amendment dropped `about`**: the home bar's About opens the dialog
+and `openSite` keeps only `repo`. Rejected: letting the desktop's window-open handler
+pass an allow-list of URLs to `shell.openExternal` — it would take a URL from the
+renderer, which the docs opener avoids on purpose.

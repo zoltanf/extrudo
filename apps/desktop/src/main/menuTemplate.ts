@@ -147,6 +147,13 @@ function desktopFileEntries(
 export const APP_MENU_IDS: ReadonlySet<string> = new Set(['openSettings', 'plugins']);
 
 /**
+ * The `about` command's id (ADR-0085): the app menu's About Extrudo runs it in the
+ * renderer, which opens its own dialog (a project page through its command, the
+ * home screen through a `menu:run` listener). The model's own Help entry is left out.
+ */
+export const ABOUT_ID = 'about';
+
+/**
  * The macOS application menu, item by item rather than `role: 'appMenu'`
  * (finding 4): Electron's app menu ships its own raw Quit, which would bypass
  * the renderer's save-then-quit. Ours routes through `handlers.quit()` like the
@@ -159,7 +166,7 @@ function appMenu(
   return {
     label: 'Extrudo',
     submenu: [
-      { role: 'about' },
+      { label: 'About Extrudo', click: () => handlers.run(ABOUT_ID) },
       { type: 'separator' },
       ...(own.length > 0 ? [...own, { type: 'separator' as const }] : []),
       { role: 'services' },
@@ -175,7 +182,9 @@ function appMenu(
 
 /** A menu without the items the app menu takes, and without the separators that leaves stray. */
 function withoutAppItems(menu: MenuModel): MenuModel {
-  const kept = menu.items.filter((entry) => !('id' in entry && APP_MENU_IDS.has(entry.id ?? '')));
+  const kept = menu.items.filter(
+    (entry) => !('id' in entry && (APP_MENU_IDS.has(entry.id ?? '') || entry.id === ABOUT_ID)),
+  );
   const items: MenuEntryModel[] = [];
   for (const entry of kept) {
     const separator = (entry as { separator?: true }).separator === true;
