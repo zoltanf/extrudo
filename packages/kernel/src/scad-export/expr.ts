@@ -138,7 +138,7 @@ export function translateExpression(
             }
             case '*':
             case '/':
-              return { code: `(${a.code} ${node.op} ${b.code})`, atomic: true, q };
+              return { code: `(${a.code} ${node.op} ${strictly(b)})`, atomic: true, q };
             case '^':
               return { code: `pow(${a.code}, ${b.code})`, atomic: true, q };
             default:
