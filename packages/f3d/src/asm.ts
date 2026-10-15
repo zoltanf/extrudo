@@ -40,6 +40,23 @@ export interface AsmRecord {
 
 const latin1 = new TextDecoder('latin1');
 
+// One-byte values share one object each: a stream of them costs an array
+// slot per byte, not an object per byte (ADR-0083, hostile files round 2).
+const TRUE: AsmValue = Object.freeze({ t: 'bool', v: true });
+const FALSE: AsmValue = Object.freeze({ t: 'bool', v: false });
+const OPEN: AsmValue = Object.freeze({ t: 'open' });
+const CLOSE: AsmValue = Object.freeze({ t: 'close' });
+/**
+ * At most one value or class name per `BYTES_PER_VALUE` bytes, one record per
+ * `BYTES_PER_RECORD` and `MAX_VALUES` values in all. The files' streams have
+ * at least 8 bytes per value, 90 per record and 2.6 million values, and cost
+ * about 6.5 times their size in heap; a crafted stream within the caps costs
+ * at most about 18 times (2-character strings, an object each).
+ */
+const BYTES_PER_VALUE = 4;
+const BYTES_PER_RECORD = 16;
+const MAX_VALUES = 16_000_000;
+
 /** Every record of an ASM binary stream, in order (a pointer is an index into it). */
 export function readAsm(bytes: Uint8Array): AsmRecord[] {
   const magic = latin1.decode(bytes.subarray(0, 15));
@@ -69,6 +86,20 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
     } else throw new F3dFormatError(`ASM header: tag ${t} at ${p - 1}.`);
   }
   const records: AsmRecord[] = [];
+  const maxValues = Math.min(Math.ceil(bytes.length / BYTES_PER_VALUE), MAX_VALUES);
+  const maxRecords = Math.ceil(bytes.length / BYTES_PER_RECORD);
+  let valueCount = 0;
+  // Class names and small integers, one copy each.
+  const types = new Map<string, string>();
+  const smallInts = new Map<number, AsmValue>();
+  const smallInt = (v: number): AsmValue => {
+    let out = smallInts.get(v);
+    if (!out) {
+      out = Object.freeze({ t: 'int', v });
+      smallInts.set(v, out);
+    }
+    return out;
+  };
   let values: AsmValue[] = [];
   let names: string[] = [];
   let type = '';
@@ -79,6 +110,8 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
   const str = (len: number, at: number) => latin1.decode(bytes.subarray(at, at + len));
   while (p < bytes.length) {
     const t = bytes[p++] as number;
+    if (t !== 0x11 && ++valueCount > maxValues)
+      throw new F3dFormatError(`ASM: more than ${maxValues} values in ${bytes.length} bytes.`);
     switch (t) {
       case 0x0d:
       case 0x0e: {
@@ -89,7 +122,9 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
         if (depth > 0) values.push({ t: 'name', v: str(n, p + 1) });
         p += 1 + n;
         if (t === 0x0d) {
-          type = names.join('-');
+          const joined = names.join('-');
+          type = types.get(joined) ?? joined;
+          types.set(type, type);
           // The first class name is the record's own type; later names are its
           // base classes (`intcurve`, `curve`, `spring_int_cur`, … `nullbs`).
           if (derived === '') derived = type;
@@ -98,6 +133,11 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
         break;
       }
       case 0x11:
+        if (type === '') throw new F3dFormatError(`ASM: a record without a class at ${p - 1}.`);
+        if (records.length >= maxRecords)
+          throw new F3dFormatError(
+            `ASM: more than ${maxRecords} records in ${bytes.length} bytes.`,
+          );
         records.push({ type, derived: derived || type, values });
         if (type === 'End-of-ASM-data') return records;
         values = [];
@@ -169,17 +209,17 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
         break;
       }
       case 0x0a:
-        values.push({ t: 'bool', v: true });
+        values.push(TRUE);
         break;
       case 0x0b:
-        values.push({ t: 'bool', v: false });
+        values.push(FALSE);
         break;
       case 0x0f:
-        values.push({ t: 'open' });
+        values.push(OPEN);
         depth++;
         break;
       case 0x10:
-        values.push({ t: 'close' });
+        values.push(CLOSE);
         depth--;
         break;
       case 0x05:
@@ -189,12 +229,12 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
         break;
       case 0x03:
         need(2);
-        values.push({ t: 'int', v: view.getInt16(p, true) });
+        values.push(smallInt(view.getInt16(p, true)));
         p += 2;
         break;
       case 0x02:
         need(1);
-        values.push({ t: 'int', v: bytes[p] as number });
+        values.push(smallInt(bytes[p] as number));
         p += 1;
         break;
       default:

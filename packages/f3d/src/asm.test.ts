@@ -201,3 +201,65 @@ describe('asmFaces edges', () => {
     expect(faces[1]?.edges).toHaveLength(1);
   });
 });
+
+describe('readAsm memory', () => {
+  const MB = 1024 * 1024;
+  /** A stream of one record whose body is `n` copies of `value`. */
+  const flood = (value: number[], n: number) => {
+    const head = [...header(), ...className('a')];
+    const out = new Uint8Array(head.length + value.length * n + 1);
+    out.set(head);
+    for (let i = 0, at = head.length; i < n; i++, at += value.length) out.set(value, at);
+    out[out.length - 1] = 0x11;
+    return out;
+  };
+
+  it('refuses a flood of one-byte values quickly, before it builds an array per byte', () => {
+    // 16 MB of `true` became 0.8 GB of heap before the cap.
+    const t = performance.now();
+    expect(() => readAsm(flood([0x0a], 8 * MB))).toThrow(/more than .* values/);
+    expect(performance.now() - t).toBeLessThan(1000);
+  });
+
+  it('refuses records that carry no class, or more records than the bytes allow', () => {
+    expect(() => readAsm(stream([0x0a, 0x11]))).toThrow(/without a class/);
+    const tiny = [...className('a'), 0x11];
+    expect(() => readAsm(stream(...new Array<number[]>(1000).fill(tiny)))).toThrow(
+      /more than .* records/,
+    );
+  });
+
+  it('keeps a stream of small values within a small multiple of its size', () => {
+    // Under the cap the dearest values are short strings and floats, an
+    // object each (the files' streams cost about 6.5 times their size).
+    for (const value of [
+      [0x07, 2, 0x41, 0x42],
+      [0x05, 0, 0, 0x80, 0x3f],
+    ]) {
+      const bytes = flood(value, Math.floor((4 * MB) / value.length));
+      const t = performance.now();
+      const before = process.memoryUsage().heapUsed;
+      const records = readAsm(bytes);
+      const grown = process.memoryUsage().heapUsed - before;
+      expect(records[0]?.values.length).toBeGreaterThan(MB / 2);
+      // About 18 measured after a collection; without one the figure includes
+      // the values array's discarded growth steps.
+      expect(grown / bytes.length).toBeLessThan(40);
+      expect(performance.now() - t).toBeLessThan(3000);
+    }
+  });
+
+  it('shares one object for each one-byte value', () => {
+    const values = readAsm(stream([...className('a'), 0x0a, 0x0b, 0x02, 3, 0x0a, 0x02, 3, 0x11]))[0]
+      ?.values;
+    expect(values?.[0]).toBe(values?.[3]);
+    expect(values?.[2]).toBe(values?.[4]);
+    expect(values).toEqual([
+      { t: 'bool', v: true },
+      { t: 'bool', v: false },
+      { t: 'int', v: 3 },
+      { t: 'bool', v: true },
+      { t: 'int', v: 3 },
+    ]);
+  });
+});
