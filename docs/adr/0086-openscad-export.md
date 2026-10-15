@@ -322,3 +322,100 @@ translator, every scalar above becomes live without a change to the hooks;
 check that `half`/`negate`/`absolute` keep their brackets right around the
 translator's output. Patterns and Mirror of features need a hook that can
 replay another feature's tool (its hook's node), which none returns yet.
+
+## Results, slice 4b (2026-10-16)
+
+Built: §4–§6 wired in. Scalars are live expressions over the parameter
+variables, and the parameter block is collected from the walk.
+
+**The scalar wiring.** `ScadExpression` gained `refs` (the Extrudo parameter
+names it uses); `half`, `negate`, `absolute` and the new `sum` keep them.
+`scad-export/live.ts` holds `scadParameters(doc)` (`evaluateParameters`, the
+document's length unit, `scadNames`) and `liveScalar(parameters)`, which the
+engine's `exportScad(options)` passes as `ScadSource.scalar` along with
+`ScadSource.parameters`. `ScadSource.scalar(input, { feature, input })`
+writes:
+
+- the variable of the **named model parameter** that owns the input
+  (`ParameterOwner` `model`, same feature and input): `boxLen`, under
+  `/* [Hidden] */` with its own translated expression;
+- else `translateExpression(expr, unit, ctx)`: a result with refs is
+  `{ expr, value, refs }`; no result, or no refs (a constant such as
+  `10 mm + 5`), is the value as a number.
+
+Brackets are the IR helpers' (`operand`): a cylinder of diameter `width + 2`
+writes `r1 = (width + 2) / 2`; the translator strips its own outer pair, so
+every helper sees a bare expression.
+
+**`used` and `fixed`.** `writeScad` scans the written nodes (versions and the
+tools they reach; not polygon or polyhedron points) for `refs`: that is
+`used`. The walk records, per step, the inputs its hook read through
+`ctx.scalar` **as an expression** (`Versions.reads`). `parameterUse` (in
+`live.ts`) then collects, per written step:
+
+- every expression input of a step with a mesh version among the written
+  ones, and every input of a CSG step that isn't in its reads (a pattern's
+  count and spacing, a box's x offset);
+- following the step feature's stored references (`referencedFeatures`)
+  through features that wrote no body in the walk (sketches, construction
+  planes, axes, points), and on through theirs: their expression inputs and
+  their driving sketch dimensions;
+
+a named input counts as its own parameter, anything else by its expression's
+references, then every parameter those refer to (`EvaluatedParameter.refs`,
+transitively). Each parameter lists its features in timeline order, each
+once, named as the header names them; `parameterBlock` writes the "Also sets
+…, which this file holds fixed." line above the ones `used` brings in, and a
+parameter only fixed things use is not written. A source without
+`parameters` (tests that build one by hand) writes no block;
+`ScadExportOptions.parameters` (slice 1's placeholder) is gone.
+
+**The torus seat.** `torusSolid` places the ring by `torusFrame` with the
+seat left out (the axes stay the evaluator's), then lifts it with a
+`translate` along the plane's normal expressed in the torus's frame: by
+`half(tube)` with the axis along the normal, by
+`sum(half(diameter), half(tube))` with it in the plane. A live diameter or
+tube keeps the torus on its plane in the Customizer.
+
+**Known limits.**
+
+- A placement that depends on another body's geometry (a box on a face of an
+  extrude whose height is live, a move along an edge) is a number and not
+  tracked: the parameter behind it gets no "holds fixed" note.
+- A script's features (ADR-0070) write their values; the parameters a script
+  reads are not listed as fixed.
+- A Customizer parameter is written as its value (OpenSCAD's Customizer shows
+  only literals), as slice 2 did; everything that refers to it follows.
+
+**Deviations and choices:**
+
+- `exportScad(options, scalar?)` keeps its second argument as a test
+  override (`hooks.test.ts`'s stand-in translator checks the helpers'
+  brackets on odd expressions); without it the scalars are live.
+- A scalar read that came back as a number (a constant, or no translation)
+  is not a read: its references, if any, count as held fixed.
+- Every expression core evaluates translates today, so "an input that
+  doesn't translate is its value" is tested on `liveScalar` with a name the
+  context lacks, as `params.test.ts` does for the block.
+- Biome reformatted `scad-export/profile.ts` and `extrude.test.ts` (slice
+  4a's, line breaks only) so `pnpm check` passes.
+
+**Tests** (`scad-export/live.test.ts`): most export a design, render it as
+written and with a parameter overridden (`defines`, OpenSCAD's `-D`), and
+compare each with the kernel recomputed at that value (volume and box,
+Fine): a Customizer `width` with a hidden `wall = width / 10`; a cylinder of
+`width + 2` cut from a box; `height = 2` in a cm document written as 20; a
+named input `boxLen`; Move by `width`, Rotate by an angle, Scale by a
+factor; seated tori, one per axis case. Without an override: the pattern and
+fillet notes (and an unwritten `gap`), the sketch-dimension and
+offset-plane notes, the value fallback, byte-identical output twice.
+`hooks.test.ts` adds a joined Mirror copy that stays apart (a new body);
+the CLI test exports a design with a Customizer parameter and gets the
+kernel service's bytes.
+
+**For slice 5 (the app):** Export Model's OpenSCAD format calls
+`exportScad(options)` with the chosen bodies and resolution; the parameters
+come from the marker's document, so nothing else needs passing. The guide
+page should say which parameters stay live (sizes, distances, angles,
+factors) and that sketch geometry, placements and pattern counts are
+fixed, with the note in the file naming them.

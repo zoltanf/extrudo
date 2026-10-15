@@ -2354,9 +2354,18 @@ versions the exported bodies reach are written and meshed; a tool used twice
 or more is a `<Feature>_tool` module. **Deterministic**: every number through
 `scadNumber`, polyhedron points rounded to 1e-4 mm in first-use order with
 faces clockwise from outside, module names from body/feature names in
-timeline order (`<Body>_v<n>`), no date. Scalars are `number | { expr, value }`;
-slice 2's translator plugs in as `ScadSource.scalar`. The parameter block is
-`ScadExportOptions.parameters`, written after `$fa`/`$fs`. Slice 3 added hooks for the primitives,
+timeline order (`<Body>_v<n>`), no date. Scalars are `number | { expr, value,
+refs }` (slice 4b): the engine passes `liveScalar` (a named model input's
+variable, else `translateExpression`, else the value) and `scadParameters` as
+`ScadSource.scalar`/`parameters`; `writeScad` writes `parameterBlock` after
+`$fa`/`$fs` from the refs in the written nodes (`used`) and `parameterUse`'s
+`fixed`. **A hook reads every live scalar through `ctx.scalar(name)`** and
+builds on it only with the IR helpers (`half`, `negate`, `absolute`, `sum`:
+they keep `refs` and brackets); an expression input it doesn't read that way,
+every input of a mesh version's feature, and the expressions of body-less
+features they build on (sketch dimensions, construction planes) count as
+held fixed and get the Customizer note. A script's features write values.
+Slice 3 added hooks for the primitives,
 Move, Mirror, Scale and the rectangular and circular patterns of bodies.
 **A solid feature's hook builds its tool in place and hands it to
 `operationCsg(ctx, operation, tool)`** (`scad-export/operation.ts`, read from

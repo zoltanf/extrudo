@@ -102,8 +102,11 @@ extrudo export box.extrudo --format scad --out box.scad
   one file; without `--bodies` or `--component` it holds the shown bodies, as
   the app's Export Model chooses them (every body when none is shown), each in
   its colour under a comment naming its component. `--resolution` sets the
-  polyhedra's mesh and the file's `$fa`/`$fs`. The same design and options
-  give the same bytes.
+  polyhedra's mesh and the file's `$fa`/`$fs`. Sizes, distances, angles and
+  factors stay expressions over the design's parameters, which the file
+  declares at the top for OpenSCAD's Customizer (a parameter that also sets
+  geometry the file holds fixed, such as a sketch dimension, says so). The
+  same design and options give the same bytes.
 - `--resolution` is `coarse` (0.1 mm), `medium` (0.02 mm, the default), `fine`
   (0.005 mm) or a deflection in millimetres.
 - With `--json` it prints `{ "files": [{ "path", "name", "bytes", "bodies",
