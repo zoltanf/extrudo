@@ -6,7 +6,7 @@
 import type { BodyId } from '@extrudo/core';
 import { FeatureRegistry } from '@extrudo/core';
 import { read3mf } from '@extrudo/io';
-import type { ScadCompiler } from '@extrudo/openscad';
+import type { ScadCompiler, ScadDefine } from '@extrudo/openscad';
 import { expect } from 'vitest';
 import { kernelFeatures } from '../features';
 import type { Kernel } from '../kernel';
@@ -48,11 +48,16 @@ export interface Solid {
   max: number[];
 }
 
-/** What OpenSCAD makes of a file: its whole result's volume and box. */
-export async function render(compiler: ScadCompiler, source: string): Promise<Solid> {
+/** What OpenSCAD makes of a file (with `defines` overriding its variables): its whole result's volume and box. */
+export async function render(
+  compiler: ScadCompiler,
+  source: string,
+  defines: readonly ScadDefine[] = [],
+): Promise<Solid> {
   const result = await compiler.compile({
     fileName: 'export.scad',
     source: new TextEncoder().encode(source),
+    ...(defines.length > 0 && { defines }),
   });
   if (!result.ok) throw new Error(`OpenSCAD: ${result.error}`);
   let volume = 0;

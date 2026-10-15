@@ -13,8 +13,11 @@ import {
   type BodyId,
   type BodyMeta,
   componentOfBody,
+  type ExprInput,
   evaluateParameters,
+  type Feature,
   newBodyNames,
+  type ParameterId,
   readSketch,
   type SketchData,
   updateBody,
@@ -526,14 +529,39 @@ describe('components (P6-05 S8, ADR-0081 §9)', () => {
 });
 
 describe('an OpenSCAD export (P6-09, ADR-0086)', () => {
-  it('writes what the kernel service exports for the same bodies', {
+  it('writes what the kernel service exports for the same bodies, parameters included', {
     timeout: 180_000,
   }, async () => {
-    const job = await openComponentFixture('lid-box');
+    // The lid box with its base's height a Customizer parameter (the lid is
+    // split off, so a polyhedron).
+    const { doc: base } = readArchive(await readFile(fixture('components/lid-box.extrudo')));
+    const box = base.features.find((f) => f.name === 'Base') as Feature;
+    const height = box.inputs.height as ExprInput;
+    const job = await openBytes(
+      writeArchive({
+        ...base,
+        parameters: [
+          {
+            id: 'p-lid' as ParameterId,
+            name: 'baseHeight',
+            expression: '20 mm',
+            unit: 'length',
+            customizer: { min: 10, max: 30, step: 0.5 },
+          },
+        ],
+        features: base.features.map((f) =>
+          f === box
+            ? { ...f, inputs: { ...f.inputs, height: { ...height, expr: 'baseHeight' } } }
+            : f,
+        ),
+      }),
+    );
     const [file] = await job.export({ format: 'scad' });
     const text = new TextDecoder().decode(file?.bytes);
     expect(file?.name).toMatch(/\.scad$/);
     expect(text).toContain('(component Lid)');
+    expect(text).toContain('\nbaseHeight = 20; // [10:0.5:30]\n');
+    expect(text).toContain('cube(size = [60, 40, abs(baseHeight)], center = true)');
 
     // The same export straight from a kernel service of its own.
     const service = new KernelService(() => loadOcct());

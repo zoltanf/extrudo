@@ -429,6 +429,21 @@ describe('mirror', () => {
     expect(measured(kernel, engine, ids).volume).toBeCloseTo(70 * 20 * 10, 3);
   });
 
+  it("keeps a joined copy that doesn't touch its original as a new body", async () => {
+    // A box at x 10…50, mirrored in YZ: the copy (x −50…−10) stays apart, a
+    // new body as the evaluator numbers it, and the original keeps its version.
+    const mirror = {
+      ...testFeature('Mj', 'mirror'),
+      inputs: mirrorInputs(['A:0'], YZ, { copy: true, join: true }),
+    };
+    const result = await run(testDocument([box('A', '30 mm'), mirror]));
+    const ids = bodiesOf(result);
+    expect(ids).toEqual([body('A'), body('Mj')]);
+    const text = await expectExact(ids);
+    expect(text).not.toContain('module A_0_v2()');
+    expect(text).toMatch(/module Mj_0_v1\(\) \{\n {2}mirror\(\[1, 0, 0\]\)\n {4}A_0_v1\(\);/);
+  });
+
   it('meshes a mirror of features, and says why', async () => {
     const hole = rod('H', '12 mm', { operation: 'cut' });
     const mirror = {
