@@ -4,7 +4,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## Next
 
-- 2026-10-15 · **Tooltip clips for the Construct, 3D Print and Sketch tabs** (R3-16's rest; ADR-0052's amendment): slice 1, Construct: all 15 tiles (the planes, axes, points, Measure and Section Analysis) have a clip, each framed round the pick and the handle on a small design in `fixtures/demos/`; slice 2, 3D Print: Place on Bed, Print Info, Tolerance, Overhang Analysis, Wall Thickness, Export and Send to Slicer (the last is the Export dialog it opens: the web build records the clips); `demos.test.ts` checks both tabs' tiles.
+- 2026-10-15 · **Tooltip clips for the Construct, 3D Print and Sketch tabs** (R3-16's rest; ADR-0052's amendment): slice 1, Construct: all 15 tiles (the planes, axes, points, Measure and Section Analysis) have a clip, each framed round the pick and the handle on a small design in `fixtures/demos/`; slice 2, 3D Print: Place on Bed, Print Info, Tolerance, Overhang Analysis, Wall Thickness, Export and Send to Slicer (the last is the Export dialog it opens: the web build records the clips); slice 3, Sketch: Arc, Sketch Fillet, Trim, Offset, Parameters, the thirteen constraints and Export Sketch. Every tile of the Solid, Modify, Construct, 3D Print and Sketch tabs now has a clip (78 in all, 3.5 MB; the total budget is 4 MB); `demos.test.ts` checks the five tabs' tiles.
 
 ## v0.7.0 (2026-10-15)
 

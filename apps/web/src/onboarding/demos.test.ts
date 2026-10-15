@@ -31,7 +31,7 @@ const WANTED = [
 ];
 
 /** The owner's UI review 3 (R3-16): every tile of these tabs has a clip. */
-const WHOLE_TABS = ['solid', 'modify', 'construct', 'print'];
+const WHOLE_TABS = ['solid', 'modify', 'construct', 'print', 'sketch'];
 
 describe('tool demos', () => {
   it('lists exactly the clips on disk, each for a real tool', () => {
@@ -70,7 +70,7 @@ describe('tool demos', () => {
 
   it('gives a URL only to tools that have a clip', () => {
     expect(demoUrl('line')).toMatch(/demos\/line\.webm$/);
-    expect(demoUrl('parameters')).toBeUndefined();
+    expect(demoUrl('saveVersion')).toBeUndefined();
   });
 
   it('renders a muted, looping, hidden video for a tool with a clip, and nothing otherwise', () => {
@@ -80,6 +80,6 @@ describe('tool demos', () => {
     expect(html).toMatch(/\bautoPlay\b|\bautoplay\b/i);
     expect(html).toContain('loop');
     expect(html).toContain('demos/line.webm');
-    expect(renderToStaticMarkup(createElement(ToolDemo, { tool: 'parameters' }))).toBe('');
+    expect(renderToStaticMarkup(createElement(ToolDemo, { tool: 'saveVersion' }))).toBe('');
   });
 });

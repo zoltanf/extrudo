@@ -13,5 +13,7 @@ Join curves with no jump in curvature (G2).
 |---|---|
 | Sketch › Constraints | None |
 
+<video src="demo:smooth" muted loop autoplay playsinline aria-label="Smooth demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

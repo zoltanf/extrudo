@@ -13,5 +13,7 @@ Make a line vertical, or line up two points.
 |---|---|
 | Sketch › Constraints | None |
 
+<video src="demo:vertical" muted loop autoplay playsinline aria-label="Vertical demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

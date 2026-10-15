@@ -1790,6 +1790,479 @@ function exportScene(tool: string, format: RegExp) {
 exportScene('export', /^STL/);
 exportScene('slicer', /^3MF/);
 
+// ---- Sketch tab
+
+type Pt = readonly [number, number];
+type SketchAt = Awaited<ReturnType<typeof mapping>>;
+
+/** Draws what a sketch scene starts from, quietly: Ctrl keeps the inference from adding constraints. */
+async function drawQuietly(
+  page: Page,
+  at: SketchAt,
+  shapes: readonly (
+    | { line: readonly Pt[] }
+    | { circle: Pt; to: Pt }
+    | { arc: [Pt, Pt, Pt] }
+    | { rect: [Pt, Pt] }
+  )[],
+) {
+  const click = async ([x, y]: Pt) => {
+    const q = at(x, y);
+    await page.mouse.move(q.x, q.y);
+    await page.mouse.click(q.x, q.y);
+  };
+  for (const shape of shapes) {
+    const key = 'line' in shape ? 'l' : 'circle' in shape ? 'c' : 'arc' in shape ? 'a' : 'r';
+    await page.keyboard.press(key);
+    await page.keyboard.down('Control');
+    if ('line' in shape) {
+      for (const q of shape.line) await click(q);
+    } else if ('circle' in shape) {
+      await click(shape.circle);
+      await click(shape.to);
+    } else if ('arc' in shape) {
+      for (const q of shape.arc) await click(q);
+    } else {
+      await click(shape.rect[0]);
+      await click(shape.rect[1]);
+    }
+    await page.keyboard.up('Control');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(150);
+  }
+}
+
+/**
+ * A Sketch tab tool's scene: the shapes are drawn first (not recorded), then the tile runs and
+ * `picks` are clicked, in sketch millimetres; `then` adds what follows (a typed value).
+ */
+function sketchScene(
+  tool: string,
+  shapes: Parameters<typeof drawQuietly>[2],
+  picks: readonly Pt[],
+  options: {
+    width?: number;
+    extra?: (page: Page, p: Glide, at: SketchAt) => Promise<void>;
+    hover?: Pt;
+  } = {},
+) {
+  test(`demo: ${tool}`, async ({ page }) => {
+    await demoProject(page);
+    const view = await sketchView(page);
+    const { at, clip } = await sketchFrame(page, view, options.width ?? 80);
+    await drawQuietly(page, at, shapes);
+    const p = pointer(page);
+    const start = at(...(options.hover ?? [-36, 20]));
+    await p.jump(start);
+    await record(page, tool, clip, async () => {
+      await page.waitForTimeout(300);
+      await runTool(page, tool, 'sketch');
+      await page.waitForTimeout(350);
+      for (const pick of picks) {
+        await p.click(at(...pick), 450);
+        if (process.env.DEBUG_PROMPT) {
+          const prompt = await toolPrompt(page)
+            .innerText()
+            .catch(() => '(none)');
+          console.log(`PROMPT ${tool} @${pick}: ${prompt}`);
+        }
+        await page.waitForTimeout(250);
+      }
+      await options.extra?.(page, p, at);
+      await page.waitForTimeout(700);
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(500);
+    });
+  });
+}
+
+sketchScene('arc', [], [], {
+  extra: async (page, p, at) => {
+    await page.keyboard.press('a');
+    await p.click(at(-26, -8), 420);
+    await p.click(at(26, -8), 480);
+    await p.click(at(0, 16), 520);
+  },
+});
+
+sketchScene(
+  'coincident',
+  [
+    {
+      line: [
+        [-32, -14],
+        [-4, 6],
+      ],
+    },
+    {
+      line: [
+        [8, -8],
+        [34, 14],
+      ],
+    },
+  ],
+  [
+    [-4, 6],
+    [8, -8],
+  ],
+);
+
+sketchScene(
+  'collinear',
+  [
+    {
+      line: [
+        [-34, -10],
+        [-6, -2],
+      ],
+    },
+    {
+      line: [
+        [6, 8],
+        [34, 0],
+      ],
+    },
+  ],
+  [
+    [-20, -6],
+    [20, 4],
+  ],
+);
+
+sketchScene(
+  'concentric',
+  [
+    { circle: [-14, 0], to: [2, 0] },
+    { circle: [18, 2], to: [27, 2] },
+  ],
+  [
+    [2, 0],
+    [27, 2],
+  ],
+);
+
+sketchScene(
+  'midpoint',
+  [
+    {
+      line: [
+        [-34, -8],
+        [34, -8],
+      ],
+    },
+    {
+      line: [
+        [4, 6],
+        [14, 18],
+      ],
+    },
+  ],
+  [
+    [4, 6],
+    [-20, -8],
+  ],
+);
+
+sketchScene(
+  'fix',
+  [
+    {
+      line: [
+        [-22, -10],
+        [22, 8],
+      ],
+    },
+  ],
+  [[0, -1]],
+);
+
+sketchScene(
+  'parallel',
+  [
+    {
+      line: [
+        [-34, -14],
+        [8, -6],
+      ],
+    },
+    {
+      line: [
+        [-26, 20],
+        [24, 6],
+      ],
+    },
+  ],
+  [
+    [-13, -10],
+    [-1, 13],
+  ],
+);
+
+sketchScene(
+  'perpendicular',
+  [
+    {
+      line: [
+        [-34, -4],
+        [10, -12],
+      ],
+    },
+    {
+      line: [
+        [-10, 8],
+        [24, 16],
+      ],
+    },
+  ],
+  [
+    [-12, -8],
+    [7, 12],
+  ],
+);
+
+sketchScene(
+  'horizontal',
+  [
+    {
+      line: [
+        [-26, -10],
+        [26, 12],
+      ],
+    },
+  ],
+  [[0, 1]],
+);
+
+sketchScene(
+  'vertical',
+  [
+    {
+      line: [
+        [-18, -16],
+        [18, 16],
+      ],
+    },
+  ],
+  [[0, 0]],
+);
+
+sketchScene(
+  'tangent',
+  [
+    { circle: [0, 2], to: [14, 2] },
+    {
+      line: [
+        [-34, -20],
+        [34, -6],
+      ],
+    },
+  ],
+  [
+    [-24, -17.9],
+    [0, 16],
+  ],
+);
+
+sketchScene(
+  'smooth',
+  [
+    {
+      line: [
+        [-34, -10],
+        [-10, -10],
+      ],
+    },
+    {
+      arc: [
+        [-10, -10],
+        [14, 14],
+        [6, -2],
+      ],
+    },
+  ],
+  [
+    [-22, -10],
+    [8, -2],
+  ],
+);
+
+sketchScene(
+  'equal',
+  [
+    {
+      line: [
+        [-34, -12],
+        [-8, -12],
+      ],
+    },
+    {
+      line: [
+        [6, 6],
+        [34, 18],
+      ],
+    },
+  ],
+  [
+    [-21, -12],
+    [20, 12],
+  ],
+);
+
+sketchScene(
+  'symmetric',
+  [
+    {
+      line: [
+        [0, -20],
+        [0, 20],
+      ],
+    },
+    {
+      line: [
+        [-30, -8],
+        [-14, 6],
+      ],
+    },
+    {
+      line: [
+        [14, 10],
+        [32, -6],
+      ],
+    },
+  ],
+  [
+    [-22, -1],
+    [23, 2],
+    [0, 12],
+  ],
+);
+
+// Type the radius, then pick the corner; the pointer then steps aside to show the arc.
+sketchScene(
+  'sketchFillet',
+  [
+    {
+      line: [
+        [-20, -8],
+        [4, -8],
+        [4, 14],
+      ],
+    },
+  ],
+  [],
+  {
+    width: 50,
+    hover: [-20, 12],
+    extra: async (page, p, at) => {
+      await page.keyboard.type('8', { delay: 200 });
+      await p.click(at(4, -8), 500);
+      await p.moveTo(at(24, 12), 500);
+    },
+  },
+);
+
+sketchScene(
+  'trim',
+  [
+    {
+      line: [
+        [-34, -6],
+        [34, -6],
+      ],
+    },
+    {
+      line: [
+        [6, -20],
+        [6, 20],
+      ],
+    },
+  ],
+  [[-20, -6]],
+);
+
+sketchScene(
+  'sketchOffset',
+  [
+    {
+      rect: [
+        [-26, -12],
+        [26, 12],
+      ],
+    },
+  ],
+  [[0, -12]],
+  {
+    extra: async (page) => {
+      if (process.env.DEBUG_PROMPT) {
+        console.log(
+          `PROMPT offset after: ${await toolPrompt(page)
+            .innerText()
+            .catch(() => '(none)')}`,
+        );
+      }
+      await page.keyboard.type('6', { delay: 200 });
+      await page.waitForTimeout(300);
+      await page.keyboard.press('Enter');
+    },
+  },
+);
+
+test('demo: parameters', async ({ page }) => {
+  await demoProject(page);
+  const view = await sketchView(page);
+  const { at } = await sketchFrame(page, view, 80);
+  await drawQuietly(page, at, [
+    {
+      rect: [
+        [-26, -12],
+        [26, 12],
+      ],
+    },
+  ]);
+  const p = pointer(page);
+  await p.jump({ x: 600, y: 420 });
+  const dialog = page.getByRole('dialog', { name: 'Parameters' });
+  await record(page, 'parameters', { x: 215, y: 430, width: 400, height: 250 }, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'parameters', 'sketch');
+    await expect(dialog).toBeVisible();
+    await page.waitForTimeout(500);
+    await p.click(await centreOf(dialog.getByRole('textbox', { name: /name/i })), 450);
+    await page.keyboard.type('width', { delay: 150 });
+    const expression = dialog.getByPlaceholder(/10 mm/);
+    await p.click(await centreOf(expression), 450);
+    await page.keyboard.type('24 mm', { delay: 150 });
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(900);
+  });
+});
+
+test('demo: exportSketch', async ({ page }) => {
+  await demoProject(page);
+  const view = await sketchView(page);
+  const { at } = await sketchFrame(page, view, 80);
+  await drawQuietly(page, at, [
+    {
+      rect: [
+        [-26, -12],
+        [26, 12],
+      ],
+    },
+  ]);
+  const p = pointer(page);
+  await p.jump({ x: 960, y: 330 });
+  const dialog = page.getByRole('dialog', { name: /Export sketch/ });
+  await record(page, 'exportSketch', { x: 520, y: 330, width: 400, height: 250 }, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'exportSketch', 'sketch');
+    await expect(dialog).toBeVisible();
+    await page.waitForTimeout(600);
+    await p.click(await centreOf(dialog.getByRole('radio', { name: /^DXF/ })), 600);
+    await page.waitForTimeout(1000);
+  });
+});
+
 // ---- The landing page's walkthrough (ADR-0057 amendment) ---------------------
 
 const WALKTHROUGH = join(process.cwd(), 'apps', 'site', 'src', 'images', 'walkthrough');

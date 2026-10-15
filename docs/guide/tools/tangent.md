@@ -13,5 +13,7 @@ Make a curve touch another without a corner.
 |---|---|
 | Sketch › Constraints | None |
 
+<video src="demo:tangent" muted loop autoplay playsinline aria-label="Tangent demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

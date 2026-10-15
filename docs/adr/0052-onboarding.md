@@ -286,6 +286,17 @@ kbit/s, still stretches cut to 400 ms, `WHOLE_TABS` in `demos.test.ts`.
   clips, leaves the tile unavailable (`platform.openInSlicer`), so its clip is the Export
   dialog the tile opens there, with 3MF ("for slicers") picked; the slicer buttons themselves
   are not in it. Re-record it from the desktop build if that ever matters.
-- **The total budget goes from 2 MB to 4 MB** (`demos.test.ts`): about 60 clips of about 45 kB don't
+- **Sketch** (19 new: Arc, Sketch Fillet, Trim, Offset, Parameters, the thirteen constraints
+  and Export Sketch; Line, Rectangle, Circle and Dimension keep their clips, which pass the
+  look check). A scene opens a new sketch on XY, zooms it (`sketchFrame`), draws what the
+  tool works on with Ctrl held (inference off, so no constraint is added by the drawing) and
+  then runs the tile and clicks the picks in sketch millimetres (`sketchScene`). Each
+  constraint scene picks what its prompt asks for and the solver moves the geometry. Sketch
+  Fillet takes its radius **before** the corner is picked (the box follows the pointer; typing
+  after the pick changes nothing). Parameters and Export Sketch are dialogs, framed on their
+  fields like the Export dialog. Tools in the tab's "more" menus (the other arcs, shapes,
+  Extend, Break…) have no clip: the batch is the ribbon's tiles, the ones `WHOLE_TABS`
+  checks.
+- **The total budget goes from 2 MB to 4 MB** (`demos.test.ts`): 78 clips of about 45 kB (3.5 MB) don't
   fit 2 MB, and a clip loads only when its tooltip opens (not precached), so what a visitor
   fetches is one clip of at most 150 kB.
