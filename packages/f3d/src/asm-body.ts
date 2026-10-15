@@ -140,6 +140,15 @@ function vertexPoint(
  * carried. A `spline-surface` is its stored B-spline.
  */
 function surfaceAt(records: AsmRecord[], walk: Walk, p: number): AsmSurface {
+  let s = walk.surfaces.get(p);
+  if (!s) {
+    s = readSurface(records, walk, p);
+    walk.surfaces.set(p, s);
+  }
+  return s;
+}
+
+function readSurface(records: AsmRecord[], walk: Walk, p: number): AsmSurface {
   const name = nameOf(records[p]);
   if (name === 'spline-surface') {
     const spline = asmSplineSurface(records, walk.table(), p);
@@ -156,6 +165,15 @@ function surfaceAt(records: AsmRecord[], walk: Walk, p: number): AsmSurface {
  * carried. An `intcurve-curve` is its stored B-spline.
  */
 function curveAt(records: AsmRecord[], walk: Walk, p: number): AsmCurve {
+  let c = walk.curves.get(p);
+  if (!c) {
+    c = readCurve(records, walk, p);
+    walk.curves.set(p, c);
+  }
+  return c;
+}
+
+function readCurve(records: AsmRecord[], walk: Walk, p: number): AsmCurve {
   const name = nameOf(records[p]);
   if (name === 'intcurve-curve') {
     const spline = asmSplineCurve(records, walk.table(), p);
@@ -167,8 +185,15 @@ function curveAt(records: AsmRecord[], walk: Walk, p: number): AsmCurve {
   return c.kind === 'other' ? { kind: 'other', type: name || c.type } : c;
 }
 
-/** The stream's walk state: a shell, face, loop or coedge is read at most once. */
+/**
+ * The stream's walk state: a shell, face, loop or coedge is read at most once;
+ * a surface, curve or edge record that several of them name is read once and
+ * shared (so the STEP writer writes it once).
+ */
 interface Walk {
+  surfaces: Map<number, AsmSurface>;
+  curves: Map<number, AsmCurve>;
+  edges: Map<number, AsmBodyEdge>;
   is: ReturnType<typeof isType>;
   /** The stream's subtype blocks, read on the first spline met. */
   table: () => SubtypeTable;
@@ -178,8 +203,17 @@ interface Walk {
   coedges: Set<number>;
 }
 
-/** One edge record: its curve, its two vertices' points, its sense. */
+/** One edge record: its curve, its two vertices' points, its sense (read once per stream). */
 function readEdge(records: AsmRecord[], walk: Walk, edge: number): AsmBodyEdge {
+  let e = walk.edges.get(edge);
+  if (!e) {
+    e = edgeOf(records, walk, edge);
+    walk.edges.set(edge, e);
+  }
+  return e;
+}
+
+function edgeOf(records: AsmRecord[], walk: Walk, edge: number): AsmBodyEdge {
   const is = walk.is;
   const ep = pointers(records[edge]);
   const vertices = ep.filter((p) => is(p, 'vertex'));
@@ -322,6 +356,9 @@ export function asmBodies(records: AsmRecord[]): AsmBodySolid[] {
       table ??= subtypeTable(records);
       return table;
     },
+    surfaces: new Map(),
+    curves: new Map(),
+    edges: new Map(),
     shells: new Set(),
     faces: new Set(),
     loops: new Set(),
