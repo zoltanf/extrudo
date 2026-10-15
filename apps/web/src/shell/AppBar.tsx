@@ -2,6 +2,7 @@ import { type DocumentStore, renameDocument } from '@extrudo/core';
 import { History, Redo2, Search, Undo2 } from 'lucide-react';
 import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
+import { AgentIndicator } from '../agent/AgentIndicator';
 import { keysFor } from '../commands/keymap';
 import { shortcutLabel } from '../commands/shortcuts';
 import {
@@ -14,6 +15,7 @@ import {
   Tooltip,
   Wordmark,
 } from '../design-system';
+import type { AgentBridge } from '../platform';
 import type { Autosaver } from '../project/autosave';
 import { HOME_HREF } from '../routes';
 import type { DisplayAccess } from '../settings/displaySettings';
@@ -98,6 +100,8 @@ export interface AppBarProps {
   onQuit?: (() => void) | undefined;
   /** The app menu's Close design (the web's stand-in for Quit). */
   onCloseDesign?: (() => void) | undefined;
+  /** The desktop MCP server: the "Agent connected" badge (P6-08); absent on the web. */
+  agent?: AgentBridge | undefined;
 }
 
 /** A command's first key as it reads here ("Ctrl+K"). */
@@ -136,6 +140,7 @@ export function AppBar({
   onSource,
   onQuit,
   onCloseDesign,
+  agent,
 }: AppBarProps) {
   const name = useStore(store, (s) => s.doc.name);
   const { canUndo, canRedo, undoLabel, redoLabel, undo, redo } = useStore(store);
@@ -181,6 +186,7 @@ export function AppBar({
       <TitleGroup store={store} name={name} autosave={autosave} />
 
       <div className="flex shrink-0 items-center gap-1">
+        <AgentIndicator agent={agent} />
         {file.versionHistory && (
           <IconButton
             label="Version history"

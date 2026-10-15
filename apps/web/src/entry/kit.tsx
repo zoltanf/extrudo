@@ -12,6 +12,8 @@ export {
   TooltipProvider,
 } from '../design-system';
 export type {
+  AgentBridge,
+  AgentStatus,
   DesktopApp,
   DesktopMenus,
   ExternalFiles,
