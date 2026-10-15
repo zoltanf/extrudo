@@ -63,7 +63,7 @@ import type {
   PreviewTool,
 } from '../recompute/types';
 import type { CsgContext, CsgResult } from '../scad-export/context';
-import { boolean, type CsgNode, matrixOf } from '../scad-export/ir';
+import { boolean, type CsgNode, matrixOf, placed } from '../scad-export/ir';
 import { splitSolids } from './bodies';
 import { nameMeshBodies, transformedNames, warnIfBecameMesh } from './mesh-bodies';
 import {
@@ -767,7 +767,7 @@ export const kernelCircularPattern: KernelFeatureDefinition<CircularPatternInput
 
 /**
  * A pattern of bodies in OpenSCAD (ADR-0086 §7): each instance the evaluator
- * makes (`splitSkip` leaves out the skipped ones) is a `multmatrix` of its
+ * makes (`splitSkip` leaves out the skipped ones) is a `multmatrix` (or `translate`) of its
  * placement around the source's version, unrolled; a copy is the new body
  * `patternBodies` numbered, a join the union of the source and its copies.
  * Patterns of features replay their tools, which has no hook yet.
@@ -780,11 +780,8 @@ function patternCsg(
   if (settings.objects === 'features') return ctx.unsupported('patterning features');
   const ids = existingBodies(ctx, settings.bodies, 'pattern');
   const { placements } = splitSkip(settings.skip, all);
-  const at = (placement: Placement, node: CsgNode): CsgNode => ({
-    kind: 'multmatrix',
-    m: matrixOf(placement.matrix),
-    children: [node],
-  });
+  const at = (placement: Placement, node: CsgNode): CsgNode =>
+    placed(matrixOf(placement.matrix), node);
   const out = new Map<BodyId, CsgNode>();
   ids.forEach((id, bodyIndex) => {
     const original = ctx.body(id);

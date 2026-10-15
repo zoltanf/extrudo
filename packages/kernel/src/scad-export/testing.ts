@@ -10,6 +10,7 @@ import type { ScadCompiler } from '@extrudo/openscad';
 import { expect } from 'vitest';
 import { kernelFeatures } from '../features';
 import type { Kernel } from '../kernel';
+import { RESOLUTIONS } from '../model-export';
 import type { RecomputeEngine } from '../recompute/engine';
 import type { KernelFeatureDefinition } from '../recompute/types';
 
@@ -77,7 +78,10 @@ export async function render(compiler: ScadCompiler, source: string): Promise<So
   return { volume, min, max };
 }
 
-/** The kernel's measure of the bodies, together. */
+/**
+ * The kernel's measure of the bodies, together: the exact volume, and the box
+ * of a fine mesh (OCCT's own box is loose around trimmed curved faces).
+ */
 export function measured(kernel: Kernel, engine: RecomputeEngine, ids: readonly BodyId[]): Solid {
   let volume = 0;
   const min = [Infinity, Infinity, Infinity];
@@ -85,11 +89,13 @@ export function measured(kernel: Kernel, engine: RecomputeEngine, ids: readonly 
   for (const id of ids) {
     const shape = engine.latestBody(id);
     if (shape === undefined) throw new Error(`no body ${id}`);
-    const m = kernel.measure(shape);
-    volume += m.volume;
-    for (let k = 0; k < 3; k++) {
-      min[k] = Math.min(min[k] as number, m.bbox.min[k] as number);
-      max[k] = Math.max(max[k] as number, m.bbox.max[k] as number);
+    volume += kernel.measure(shape).volume;
+    const p = kernel.exportMesh(shape, RESOLUTIONS.fine).positions;
+    for (let i = 0; i < p.length; i += 3) {
+      for (let k = 0; k < 3; k++) {
+        min[k] = Math.min(min[k] as number, p[i + k] as number);
+        max[k] = Math.max(max[k] as number, p[i + k] as number);
+      }
     }
   }
   return { volume, min, max };

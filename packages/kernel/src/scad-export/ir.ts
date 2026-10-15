@@ -127,9 +127,23 @@ export function matrixOf(rows: readonly number[]): Matrix {
   return [row(0), row(1), row(2)];
 }
 
-/** An expression's source as an operand: in parentheses unless it is a plain name or number. */
-const operand = (expr: string) =>
-  /^[A-Za-z_$][\w$]*$|^\d+(\.\d+)?$/.test(expr) ? expr : `(${expr})`;
+/** Whether an expression is one operand already: a name, a number, a call or a bracketed whole. */
+function single(expr: string): boolean {
+  if (/^[A-Za-z_$][\w$]*$|^\d+(\.\d+)?$/.test(expr)) return true;
+  const open = /^[A-Za-z_$]?[\w$]*\(/.exec(expr)?.[0].length;
+  if (open === undefined || !expr.endsWith(')')) return false;
+  // The bracket the start opens must be the one at the end.
+  let depth = 0;
+  for (let i = open - 1; i < expr.length; i++) {
+    if (expr[i] === '(') depth++;
+    else if (expr[i] === ')') depth--;
+    if (depth === 0) return i === expr.length - 1;
+  }
+  return false;
+}
+
+/** An expression as an operand: in brackets unless it is one already. */
+const operand = (expr: string) => (single(expr) ? expr : `(${expr})`);
 
 /** Half a scalar (a radius from a diameter): a number for a number. */
 export function half(value: Scalar): Scalar {
@@ -176,4 +190,19 @@ export function about(
   const [x = 0, y = 0, z = 0] = point;
   const inner: CsgNode = { kind: 'translate', v: [-x, -y, -z], children: [child] };
   return { kind: 'translate', v: [x, y, z], children: [transform(inner)] };
+}
+
+/**
+ * `child` placed by a matrix: nothing for the identity, a `translate` for a move
+ * alone, else a `multmatrix`.
+ */
+export function placed(matrix: Matrix, child: CsgNode): CsgNode {
+  // Rounding noise of a turn (cos 90° = 6e-17) as the 0 it stands for.
+  const clean = (v: number) => (Math.abs(v) < 1e-12 ? 0 : v);
+  const m = matrix.map((row) => row.map(clean)) as unknown as Matrix;
+  const turned = m.some((row, i) => row.slice(0, 3).some((v, k) => v !== (i === k ? 1 : 0)));
+  if (turned) return { kind: 'multmatrix', m, children: [child] };
+  const v = [m[0][3], m[1][3], m[2][3]] as const;
+  if (v.every((x) => x === 0)) return child;
+  return { kind: 'translate', v, children: [child] };
 }

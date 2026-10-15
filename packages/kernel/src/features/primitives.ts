@@ -26,7 +26,15 @@ import { LostReferenceError } from '../naming/resolve';
 import type { PlanarCurve, PlanarFrame } from '../planar';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import type { CsgContext, CsgResult } from '../scad-export/context';
-import { absolute, type CsgNode, frameMatrix, half, type Scalar, torus } from '../scad-export/ir';
+import {
+  absolute,
+  type CsgNode,
+  frameMatrix,
+  half,
+  placed,
+  type Scalar,
+  torus,
+} from '../scad-export/ir';
 import { operationCsg } from '../scad-export/operation';
 import { splitSolids } from './bodies';
 import { explicitBodies, type OperationWords, operate } from './operation';
@@ -133,11 +141,7 @@ function primitiveCsg(ctx: CsgContext<PrimitiveInputs>, solid: Solid): CsgResult
 }
 
 /** A solid placed by a frame. */
-const placed = (frame: SketchFrame, node: CsgNode): CsgNode => ({
-  kind: 'multmatrix',
-  m: frameMatrix(frame),
-  children: [node],
-});
+const framed = (frame: SketchFrame, node: CsgNode): CsgNode => placed(frameMatrix(frame), node);
 
 /**
  * A box or a cylinder: centred on the frame's origin, through the plane by
@@ -151,7 +155,7 @@ const lifted = (height: Scalar, node: CsgNode): CsgNode => ({
 });
 
 const boxSolid: Solid = (size, _n, frame) =>
-  placed(
+  framed(
     frame,
     lifted(size('height'), {
       kind: 'cube',
@@ -162,7 +166,7 @@ const boxSolid: Solid = (size, _n, frame) =>
 
 const cylinderSolid: Solid = (size, _n, frame) => {
   const r = half(size('diameter'));
-  return placed(
+  return framed(
     frame,
     lifted(size('height'), {
       kind: 'cylinder',
@@ -175,10 +179,10 @@ const cylinderSolid: Solid = (size, _n, frame) => {
 };
 
 const sphereSolid: Solid = (size, _n, frame) =>
-  placed(frame, { kind: 'sphere', r: half(size('diameter')) });
+  framed(frame, { kind: 'sphere', r: half(size('diameter')) });
 
 const torusSolid: Solid = (size, n, frame, settings) =>
-  placed(torusFrame(frame, n, settings), torus(half(size('diameter')), half(size('tube'))));
+  framed(torusFrame(frame, n, settings), torus(half(size('diameter')), half(size('tube'))));
 
 /** Every number of the primitive: its input's value, or the default; sizes checked. */
 function numbersOf(ctx: EvalContext, type: PrimitiveType, settings: PrimitiveSettings): Numbers {
