@@ -1166,7 +1166,7 @@ end to end, faster than in established desktop CAD.
   Slice 2 (2026-10-06): the constraint and dimension tools pick body geometry
   directly (`ToolContext.pickModel`), projecting the ref and writing the
   constraint or dimension against the projected entity in the same undo step.
-- [ ] **P6-08 MCP server in the desktop app** (owner, 2026-10-14). While the
+- [x] **P6-08 MCP server in the desktop app** (owner, 2026-10-14; done 2026-10-15, ADR-0087). While the
   desktop app runs, it hosts a Model Context Protocol server, so other agents
   (Claude Code, Claude Desktop and other MCP clients) can read and change the
   open design. A switch under Settings › Desktop turns it off. The web build

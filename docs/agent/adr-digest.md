@@ -2339,3 +2339,72 @@ menu on the home screen (its `menu:run` listener stays for the macOS About),
 and both link mechanisms stay — `openSite(name)` for the fixed named pages
 (only `repo` now) and `openLink(url)` for the dialog's URLs that carry a
 hash; folding them into one was rejected for now.** No schema change.
+
+ADR-0087 (P6-08, 2026-10-15) added **the desktop MCP server and its skill** (no
+schema or file-format change). **Main** hosts it (`apps/desktop/src/main/mcp/`):
+`server.ts`'s `createMcpServer` (Node `http` bound to the literal `127.0.0.1`,
+default port 7474, path `/mcp`, the SDK's `StreamableHTTPServerTransport` in front
+of a low-level `Server` per session, at most 16), `admit.ts`'s pure `admit` (in
+this order: **403** for a `Host` other than `127.0.0.1:<port>`/`localhost:<port>`
+or an `Origin` other than `http://127.0.0.1[:port]`/`http://localhost[:port]`,
+**413** over 1 MB, **401** `{"error":"Unauthorized."}` without the bearer token,
+compared in constant time), `token.ts` (`userData/mcp-token`, 64 hex, mode 0600,
+read on every request so Regenerate applies at once), `service.ts` (the
+preferences `mcp.enabled` (true) and `mcp.port` (7474, 1024–65535) read by main
+itself; a `prefs:write` of an `mcp.*` key reconfigures: **off closes the port**;
+one change at a time; a bind error is the status's `error`), `exports.ts`
+(`userData/agent-exports/<stem>-<n>.<ext>`, never overwriting, 20 MB cap) and
+`skill.ts`/`skillFiles.ts` (the skill bundled with `import.meta.glob` `?raw`).
+**Main never touches the document and knows no tool**: the renderer sends the
+tool list (`extrudo:mcp:tools`), each call is `extrudo:mcp:request` → renderer →
+`extrudo:mcp:respond` (checked by `shared/mcp.ts`'s `isToolDefinitionList`/
+`isToolResponse`; text and PNG image content only; 60 s timeout; "Extrudo's window
+isn't open." while no page has said `app:ready` since its last full navigation —
+a hash route keeps it), status goes out over `extrudo:mcp:status` (`{ enabled,
+port, url, listening, clients, error? }`, `clients` = sessions with a stream open
+or a request in the last 30 s), `status-read`, `config` and `regenerate-token` are
+invokes; the one exception is `get_skill`, answered by main from the skill it
+serves. **Only `apps/desktop/src/main` and `apps/desktop/scripts` may import the
+SDK** (`check-boundaries.mjs`); it is a devDependency bundled into `out/main`,
+and `check-licenses.mjs`'s `BUNDLED_DEV` walks its dependency tree (NOTICE §4).
+**The tools are the web app's** (`apps/web/src/agent/`): `schemas.ts` (one zod
+schema per tool through core's `z`; `toolDefinitions()` via `z.toJSONSchema`),
+`tools.ts`'s `runTool` over an `AgentContext` and the open design's `AgentHost`
+(`host.ts`; `AppShell` registers it with `useAgentHost` while mounted, desktop
+only; `useAgentBridge` in `App` answers calls and sends the list), so
+`list_designs`, `new_design`, `open_design` work from the home screen. Rules a
+change must keep: **every change is one undo transaction `Agent: <what>`**
+(refused with `BUSY` while a transaction is open or a sketch is being edited, so
+it never joins the person's), **parameter writes go through the shell's
+`apply`**, **features come from `@extrudo/api`** run on `Design.from(document)`
+and go in at the marker after `remintFeatures` and `withActiveComponent`, through
+`apply` (`insertFromApi`; a name the agent asked for is kept when free), a bad
+input answers `ApiError`'s `path: message` and changes nothing, a change waits for
+the recompute (`settled`) and answers the features in error or warning
+(`problems`), with no design open a design tool answers "No design is open: call
+open_design first." as `isError`, never a throw; screenshots are paced to one a
+second and exports to one per 2 s (`createPacer`); the renderer never names a
+path (an export's bytes go to main). `add_sketch` draws shapes (dimensioned
+rectangles, circles with a diameter dimension, lines, polylines, arcs, slots) and
+answers the profiles; **`run_command` runs outside any agent transaction** (a
+command that opens a dialog or a sketch answers `{ command, opened }` and change
+tools wait for it), refuses `undo`/`redo`, and **`AGENT_DENIED_COMMANDS`** (quit,
+native dialogs and pickers, outside pages, app settings; plus `openRecent*`) is
+left out of `list_commands` and answers "Not available to agents."; `{ edgeBetween: [face, face] }` is the one input shorthand
+(`expandShorthands`, the API's `edgeName`). The top bar's `AgentIndicator`
+("Agent connected", `data-agent-clients`) shows while `clients > 0`; Settings ›
+Desktop › Agents has the switch, a plain numeric port field (an app setting, not
+a model value), the state line ("Listening on …", "Off.", the bind error), Copy
+client config (`clientConfig`) and Regenerate token. **The skill** is
+`apps/desktop/skill/extrudo/` (`SKILL.md` with `name: extrudo`; `references/api.md`
+from `pnpm api:generate`'s `skillPages()` and `references/tools.md` from
+`apps/web/src/agent/toolsPage.ts`, both stale-checked; `examples.md` hand-written,
+its JSON calls parsed, checked against the schemas and run through the tools by
+`skill.test.ts`), served per **SEP-2640 (Final)**: `capabilities.extensions
+["io.modelcontextprotocol/skills"] = { directoryRead: true }`, `skills/list`,
+`skills/get`, `skill://extrudo/<path>` resources and `resources/directory/read` as
+custom handlers, `instructions` "Read skill://extrudo/SKILL.md before modelling.".
+`desktop.yml`'s Linux job zips it as `extrudo-skill-<version>.zip` (attached to a
+tag's draft release). `apps/desktop/scripts/mcp-client.mjs --launch` (under
+`xvfb-run -a`; Chromium's headless Ozone crashes Electron's main) is the
+acceptance client, `--examples` runs the worked examples in the real kernel.

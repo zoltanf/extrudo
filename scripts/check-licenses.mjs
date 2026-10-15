@@ -6,7 +6,8 @@
 //
 // Uses `pnpm licenses list --prod --json` (the lockfile's packages, installed).
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 
 const ALLOWED = new Set([
   'MIT',
@@ -56,6 +57,50 @@ for (const [license, list] of Object.entries(byLicense)) {
     if (/^(OFL|LGPL)/.test(license) && !notice.includes(pkg.name)) {
       problems.push(`${pkg.name}: ${license}, but NOTICE does not name it`);
     }
+  }
+}
+
+// Development dependencies the desktop app bundles into `out/main`, so the
+// installer redistributes them (`--prod` doesn't see a devDependency): each
+// root and everything it depends on goes through the same allow-list
+// (P6-08, ADR-0087: the MCP SDK). NOTICE names the roots.
+const BUNDLED_DEV = [{ from: 'apps/desktop', name: '@modelcontextprotocol/sdk' }];
+
+/** The package's real folder, looked up the way Node resolves from `fromDir`. */
+function findPackage(fromDir, name) {
+  for (let dir = fromDir; ; dir = dirname(dir)) {
+    const candidates = [join(dir, 'node_modules', name)];
+    if (basename(dir) === 'node_modules') candidates.push(join(dir, name));
+    for (const candidate of candidates) {
+      if (existsSync(join(candidate, 'package.json'))) return realpathSync(candidate);
+    }
+    if (dirname(dir) === dir) return undefined;
+  }
+}
+
+const root = new URL('..', import.meta.url).pathname;
+const seen = new Set();
+for (const { from, name } of BUNDLED_DEV) {
+  if (!notice.includes(name)) problems.push(`${name}: bundled, but NOTICE does not name it`);
+  const queue = [[join(root, from), name]];
+  while (queue.length > 0) {
+    const [fromDir, dep] = queue.pop();
+    const dir = findPackage(fromDir, dep);
+    if (!dir) {
+      problems.push(`${dep}: bundled dependency not installed (run pnpm install)`);
+      continue;
+    }
+    if (seen.has(dir)) continue;
+    seen.add(dir);
+    const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+    packages += 1;
+    const license = typeof pkg.license === 'string' ? pkg.license : String(pkg.license?.type);
+    if (!acceptable(license)) {
+      problems.push(
+        `${pkg.name}@${pkg.version} (bundled by ${from}): license "${license}" is not allowed`,
+      );
+    }
+    for (const next of Object.keys(pkg.dependencies ?? {})) queue.push([dir, next]);
   }
 }
 

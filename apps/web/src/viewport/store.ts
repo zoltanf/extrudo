@@ -157,7 +157,7 @@ export interface ViewportState extends ViewportSettings {
   /** The nav-bar tool that turns a left-drag into orbit, pan or zoom. */
   tool: NavAction | undefined;
   /** Renders the view to a thumbnail PNG; set while the canvas is mounted. */
-  snapshot: (() => Promise<Blob | null>) | undefined;
+  snapshot: ((size?: number) => Promise<Blob | null>) | undefined;
   /** Frames per second and frame time while the canvas is mounted (the status bar shows them). */
   renderStats: RenderStats | undefined;
   /**
@@ -252,7 +252,7 @@ export interface ViewportState extends ViewportSettings {
   setAutoProjectFace(autoProjectFace: boolean): void;
   /** Turns the sketch palette's Slice on or off (P4-12). */
   setSketchSlice(sketchSlice: boolean): void;
-  setSnapshot(snapshot: (() => Promise<Blob | null>) | undefined): void;
+  setSnapshot(snapshot: ((size?: number) => Promise<Blob | null>) | undefined): void;
   setRenderStats(stats: RenderStats | undefined): void;
   setSelectionFilter(kind: FilterKind, on: boolean): void;
   resetSelectionFilter(): void;

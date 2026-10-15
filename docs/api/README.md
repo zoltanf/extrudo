@@ -15,6 +15,9 @@ It is pure TypeScript. No DOM, no WASM, no geometry kernel: it runs in Node, in
 a worker and in the browser, and computing the solids a design makes is the
 consumer's business, not this package's.
 
+An AI agent can call the same methods on the design open in the desktop app,
+through its MCP server: see [Connecting an agent (MCP)](https://github.com/zoltanf/extrudo/blob/main/docs/desktop.md#connecting-an-agent-mcp).
+
 ## Getting started
 
 ```ts

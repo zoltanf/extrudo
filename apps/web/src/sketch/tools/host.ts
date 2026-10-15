@@ -318,6 +318,13 @@ export interface ToolHost {
    * solved.
    */
   apply(commands: Command<unknown> | readonly Command<unknown>[]): void;
+  /**
+   * Loads the solver when it isn't in yet and resolves once it is (at once
+   * without a loader): the agent tools wait for it, so a sketch or a parameter
+   * change they `apply` is solved even in a design that had no dimensions
+   * (P6-08, ADR-0087 §5).
+   */
+  whenSolverReady(): Promise<void>;
   /** Opens a dimension of the open sketch for editing in place, or closes the editor. */
   editDimension(id: DimensionId | undefined): void;
   /** Answers `overConstrained`: add the dimension as driven (it measures), or drop the edit. */
@@ -1658,6 +1665,17 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         committing = was;
         refreshStatus();
       }
+    },
+    whenSolverReady() {
+      if (solver || !options.loadSolver) return Promise.resolve();
+      ensureSolver();
+      return new Promise<void>((resolve) => {
+        const unsubscribe = state.subscribe((s) => {
+          if (!s.solverReady) return;
+          unsubscribe();
+          resolve();
+        });
+      });
     },
     dispose() {
       disposed = true;

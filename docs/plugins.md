@@ -21,6 +21,9 @@ refused if it holds a control character (a tab is fine) or a bidirectional
 override. A module may not replace `Date` or `Math.random`: the run is refused
 at its end.
 
+To let an AI agent build designs in the running desktop app instead, see
+[Connecting an agent (MCP)](desktop.md#connecting-an-agent-mcp).
+
 ## The manifest
 
 `plugin.json` is checked strictly before anything else is read; a key the schema
