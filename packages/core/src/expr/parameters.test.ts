@@ -221,9 +221,10 @@ describe('names', () => {
         doc([param('__proto__', '4 mm'), param('toString', '__proto__ / 2'), param('bad', 'x')]),
       ),
     );
-    expect(Object.keys(values)).toEqual(['__proto__', 'toString']);
-    expect(values.__proto__).toBe(4);
-    expect(values.toString).toBe(2);
+    expect(Object.entries(values)).toEqual([
+      ['__proto__', 4],
+      ['toString', 2],
+    ]);
     expect(values.constructor).toBeUndefined();
     expect(Object.getPrototypeOf(values)).toBeNull();
   });
