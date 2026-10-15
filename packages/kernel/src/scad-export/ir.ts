@@ -8,6 +8,7 @@
  * resolved geometry (ADR-0086 §4).
  */
 import type { BodyId } from '@extrudo/core';
+import { scadNumber } from './number';
 
 /**
  * A scalar the file writes: a number, or an OpenSCAD expression over the
@@ -22,6 +23,8 @@ export interface ScadExpression {
   expr: string;
   /** What it evaluates to, in mm, degrees or plain units. */
   value: number;
+  /** The Extrudo parameter names it uses, each once: what the parameter block writes. */
+  refs: readonly string[];
 }
 
 export type Vec2 = readonly [Scalar, Scalar];
@@ -148,19 +151,35 @@ const operand = (expr: string) => (single(expr) ? expr : `(${expr})`);
 /** Half a scalar (a radius from a diameter): a number for a number. */
 export function half(value: Scalar): Scalar {
   if (typeof value === 'number') return value / 2;
-  return { expr: `${operand(value.expr)} / 2`, value: value.value / 2 };
+  return { expr: `${operand(value.expr)} / 2`, value: value.value / 2, refs: value.refs };
 }
 
 /** A scalar negated: a number for a number. */
 export function negate(value: Scalar): Scalar {
   if (typeof value === 'number') return -value;
-  return { expr: `-${operand(value.expr)}`, value: -value.value };
+  return { expr: `-${operand(value.expr)}`, value: -value.value, refs: value.refs };
 }
 
 /** A scalar's size, without its sign (a negative height's): a number for a number. */
 export function absolute(value: Scalar): Scalar {
   if (typeof value === 'number') return Math.abs(value);
-  return { expr: `abs(${value.expr})`, value: Math.abs(value.value) };
+  return { expr: `abs(${value.expr})`, value: Math.abs(value.value), refs: value.refs };
+}
+
+/**
+ * Two scalars added: a number for two numbers. No brackets are needed: `+`
+ * binds loosest of what the translator and these helpers write.
+ */
+export function sum(a: Scalar, b: Scalar): Scalar {
+  if (typeof a === 'number' && typeof b === 'number') return a + b;
+  const code = (s: Scalar) => (typeof s === 'number' ? scadNumber(s) : s.expr);
+  const refsOf = (s: Scalar) => (typeof s === 'number' ? [] : s.refs);
+  const value = (s: Scalar) => (typeof s === 'number' ? s : s.value);
+  return {
+    expr: `${code(a)} + ${code(b)}`,
+    value: value(a) + value(b),
+    refs: [...new Set([...refsOf(a), ...refsOf(b)])],
+  };
 }
 
 /** A frame's placement: its X, Y and normal as the columns, its origin as the move. */

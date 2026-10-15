@@ -31,15 +31,17 @@ import {
   type CsgNode,
   frameMatrix,
   half,
+  negate,
   placed,
   type Scalar,
+  sum,
   torus,
 } from '../scad-export/ir';
 import { operationCsg } from '../scad-export/operation';
 import { splitSolids } from './bodies';
 import { explicitBodies, type OperationWords, operate } from './operation';
 import { planeOf } from './references';
-import { add, cross, scale, unit } from './vec';
+import { add, cross, dot, scale, unit } from './vec';
 
 /**
  * The `data` of a primitive's output: where it sits and how big it is, for
@@ -181,8 +183,27 @@ const cylinderSolid: Solid = (size, _n, frame) => {
 const sphereSolid: Solid = (size, _n, frame) =>
   framed(frame, { kind: 'sphere', r: half(size('diameter')) });
 
-const torusSolid: Solid = (size, n, frame, settings) =>
-  framed(torusFrame(frame, n, settings), torus(half(size('diameter')), half(size('tube'))));
+/**
+ * A torus in its own frame (`torusFrame`, unlifted). A seat's lift is a
+ * `translate` along the plane's normal by the sizes' scalars, so with a live
+ * diameter or tube it still rests on the plane in OpenSCAD.
+ */
+const torusSolid: Solid = (size, n, frame, settings) => {
+  const local = torusFrame(frame, n, { ...settings, seat: 'centre' });
+  const ring = torus(half(size('diameter')), half(size('tube')));
+  if ((settings.seat ?? 'centre') === 'centre') return framed(local, ring);
+  const lift =
+    (settings.axis ?? 'normal') === 'normal'
+      ? half(size('tube'))
+      : sum(half(size('diameter')), half(size('tube')));
+  // The plane's normal in the torus's frame is one of its axes, either way.
+  const along = (axis: Vec3): Scalar => {
+    const k = Math.round(dot(frame.normal, axis));
+    return k === 0 ? 0 : k > 0 ? lift : negate(lift);
+  };
+  const v = [along(local.x), along(local.y), along(local.normal)] as const;
+  return framed(local, { kind: 'translate', v, children: [ring] });
+};
 
 /** Every number of the primitive: its input's value, or the default; sizes checked. */
 function numbersOf(ctx: EvalContext, type: PrimitiveType, settings: PrimitiveSettings): Numbers {

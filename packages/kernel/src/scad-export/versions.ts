@@ -18,6 +18,7 @@ import type { ResolvedRef, ResolveOptions } from '../naming/resolve';
 import type { FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import type { CsgContext, CsgInput } from './context';
 import type { CsgNode, Scalar } from './ir';
+import type { InputOf, ScadParameters } from './live';
 
 /**
  * A feature of the last recompute that wrote the body set: what the engine
@@ -53,8 +54,17 @@ export interface ScadSource {
   featureName(feature: FeatureId): string | undefined;
   /** A body's name in the document, when it has one. */
   bodyName?(body: BodyId): string | undefined;
-  /** Turns an expression input into what the file writes (slice 2's translator); default its value. */
-  scalar?(input: CsgInput): Scalar;
+  /**
+   * Turns an expression input into what the file writes (`liveScalar`: a
+   * parameter's variable or the translated expression); default its value.
+   * Not asked for a script's features, which write their values.
+   */
+  scalar?(input: CsgInput, at: InputOf): Scalar;
+  /**
+   * The document's parameters, for the parameter block (ADR-0086 §5); none
+   * (tests that build a source by hand) writes no block.
+   */
+  parameters?: ScadParameters;
   /**
    * Segments for a full circle of a radius, from the file's `$fa`/`$fs`
    * (ADR-0086 §7); `writeScad` sets it from the export's tessellation. A hook
@@ -98,6 +108,11 @@ export interface Versions {
   current: ReadonlyMap<BodyId, number>;
   /** How each step's feature is called in the header (a script's feature with its script). */
   stepNames: string[];
+  /**
+   * Per step, the inputs its hook read through `ctx.scalar` as an expression
+   * (live in the file); every other expression input is held fixed.
+   */
+  reads: ReadonlySet<string>[];
 }
 
 /** A hook referred to a body that isn't there before its feature. */
@@ -107,6 +122,7 @@ export function walkVersions(source: ScadSource): Versions {
   const versions: Version[] = [];
   const tools: Tool[] = [];
   const stepNames: string[] = [];
+  const reads: Set<string>[] = [];
   const current = new Map<BodyId, number>();
   const counts = new Map<BodyId, number>();
   const nextN = (body: BodyId) => {
@@ -120,6 +136,8 @@ export function walkVersions(source: ScadSource): Versions {
     const scriptName = step.script === undefined ? undefined : source.featureName(step.script);
     const name = scriptName ? `${scriptName} › ${feature.name}` : feature.name;
     stepNames.push(name);
+    const read = new Set<string>();
+    reads.push(read);
     const changed = [...after].filter(([id, shape]) => before.get(id) !== shape).map(([id]) => id);
     const removed = [...before.keys()].filter((id) => !after.has(id));
 
@@ -137,7 +155,7 @@ export function walkVersions(source: ScadSource): Versions {
       ? 'these options have no OpenSCAD equivalent'
       : 'no OpenSCAD equivalent';
     if (definition.csg && changed.some((id) => !split.has(id))) {
-      const ctx = context(source, step, current, tools, at, changed, removed, (reason) => {
+      const ctx = context(source, step, current, tools, at, changed, removed, read, (reason) => {
         why = reason;
       });
       try {
@@ -175,7 +193,7 @@ export function walkVersions(source: ScadSource): Versions {
     for (const id of removed) current.delete(id);
   });
 
-  return { versions, tools, current, stepNames };
+  return { versions, tools, current, stepNames, reads };
 }
 
 function context(
@@ -186,6 +204,7 @@ function context(
   at: number,
   changed: readonly BodyId[],
   removed: readonly BodyId[],
+  read: Set<string>,
   because: (reason: string) => void,
 ): CsgContext {
   const { feature, values, before, after } = step;
@@ -205,7 +224,10 @@ function context(
     scalar(name) {
       const found = input(name);
       if (!found) throw new Error(`${feature.name} has no expression "${name}".`);
-      return source.scalar?.(found) ?? found.value;
+      if (!source.scalar || step.script !== undefined) return found.value;
+      const scalar = source.scalar(found, { feature: feature.id, input: name });
+      if (typeof scalar !== 'number') read.add(name);
+      return scalar;
     },
     value(name) {
       const value = values[name];

@@ -12,8 +12,10 @@ import type { BodyId } from '@extrudo/core';
 import { KernelError } from '../kernel';
 import type { MeshOptions } from '../mesh';
 import type { CsgNode } from './ir';
+import { parameterUse, type WrittenStep } from './live';
 import { polyhedronOf } from './mesh';
 import { scadNumber } from './number';
+import { parameterBlock } from './params';
 import { type PrintRefs, printModule, printNode } from './print';
 import { type ScadSource, type Version, walkVersions } from './versions';
 
@@ -35,11 +37,6 @@ export interface ScadExportOptions {
   project: string;
   /** Extrudo's version, for the header. */
   version: string;
-  /**
-   * The parameter block (ADR-0086 §5), written after `$fa`/`$fs`: top-level
-   * variables and their Customizer sections. Empty until slice 2 writes it.
-   */
-  parameters?: string;
 }
 
 const RESERVED = new Set([
@@ -110,10 +107,21 @@ export function writeScad(source: ScadSource, options: ScadExportOptions): strin
     return at;
   });
 
-  // What they reach, and how often each tool is used there.
+  // What they reach, how often each tool is used there, and the parameters
+  // their scalars use.
   const reached = new Set<number>();
   const toolUses = new Map<number, number>();
+  const used = new Set<string>();
+  const scan = (value: unknown): void => {
+    if (Array.isArray(value)) for (const v of value) scan(v);
+    else if (typeof value === 'object' && value !== null && 'refs' in value) {
+      for (const ref of (value as { refs: readonly string[] }).refs) used.add(ref);
+    }
+  };
   const visit = (node: CsgNode): void => {
+    if (node.kind !== 'polygon' && node.kind !== 'polyhedron') {
+      for (const [key, value] of Object.entries(node)) if (key !== 'children') scan(value);
+    }
     if (node.kind === 'version') {
       reach(node.version);
       return;
@@ -193,15 +201,31 @@ export function writeScad(source: ScadSource, options: ScadExportOptions): strin
       lines.push(`//   ${versionName(at)}: ${commentText(version.reason)}`);
     }
   }
-  lines.push(
-    '',
-    `$fa = ${scadNumber(fa)};`,
-    `$fs = ${scadNumber(fs)};`,
-  );
+  lines.push('', `$fa = ${scadNumber(fa)};`, `$fs = ${scadNumber(fs)};`);
 
-  // The parameter block (ADR-0086 §5, §9) goes here: slice 2 passes it in.
-  const parameters = options.parameters?.trim() ?? '';
-  if (parameters !== '') lines.push('', parameters);
+  // The parameter block (ADR-0086 §5, §9): what the written code uses, and
+  // what the written versions' features hold fixed.
+  if (source.parameters) {
+    const steps = new Map<number, WrittenStep>();
+    for (const at of written) {
+      const version = versions[at] as Version;
+      const step = steps.get(version.step);
+      if (step) step.mesh ||= version.kind === 'mesh';
+      else {
+        steps.set(version.step, {
+          feature: (source.steps[version.step] as { feature: WrittenStep['feature'] }).feature,
+          name: walk.stepNames[version.step] as string,
+          mesh: version.kind === 'mesh',
+          read: walk.reads[version.step] as ReadonlySet<string>,
+          at: version.step,
+        });
+      }
+    }
+    const makers = new Set(source.steps.map((s) => s.feature.id));
+    const use = parameterUse(source.parameters, used, [...steps.values()], makers);
+    const block = parameterBlock(source.parameters.doc, source.parameters.expr, use).code.trim();
+    if (block !== '') lines.push('', block);
+  }
 
   // The modules, in timeline order: tools with the versions of their step.
   const tooled = [...toolName.keys()];

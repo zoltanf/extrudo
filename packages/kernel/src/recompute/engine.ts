@@ -50,6 +50,7 @@ import {
   resolveRef,
 } from '../naming/resolve';
 import { type ScadExportOptions, writeScad } from '../scad-export/file';
+import { liveScalar, scadParameters } from '../scad-export/live';
 import type { ScadSource, ScadStep } from '../scad-export/versions';
 import { type ScriptHost, ScriptRunError } from '../script-host';
 import { hashOf } from './hash';
@@ -319,11 +320,14 @@ export class RecomputeEngine {
    * Bodies of the last finished recompute as an OpenSCAD file (P6-09,
    * ADR-0086): the timeline replayed as body versions through the features'
    * `csg` hooks, polyhedra where they can't follow. Synchronous, so the
-   * shapes it reads stay the cache's throughout; nothing is cached.
+   * shapes it reads stay the cache's throughout; nothing is cached. Scalars
+   * are live over the marker's parameters (`liveScalar`) unless `scalar`
+   * (tests) says otherwise.
    */
   exportScad(options: ScadExportOptions, scalar?: ScadSource['scalar']): string {
     const at = this.#atMarker;
     if (!at) throw new KernelError('The model is still being computed. Try again.');
+    const parameters = scadParameters(at.doc);
     return writeScad(
       {
         kernel: this.#kernel,
@@ -334,7 +338,8 @@ export class RecomputeEngine {
         describe: (shape) => this.#describe(shape),
         featureName: at.featureName,
         bodyName: (id) => at.doc.bodies[id]?.name,
-        ...(scalar && { scalar }),
+        scalar: scalar ?? liveScalar(parameters),
+        parameters,
       },
       options,
     );

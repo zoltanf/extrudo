@@ -292,6 +292,7 @@ describe('primitives', () => {
     const scalar = (input: CsgInput): Scalar => ({
       expr: `(1 * ${scadNumber(input.value)})`,
       value: input.value,
+      refs: [],
     });
     await run(
       testDocument([
