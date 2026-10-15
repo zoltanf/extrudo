@@ -4,6 +4,7 @@
 // compiler) and its result measured against the kernel's body: volume and
 // box within the mesh's tolerance. Real OCCT and `strictLeaks`.
 import {
+  type AttachmentId,
   type BodyId,
   type CombineOperation,
   combineInputs,
@@ -12,6 +13,7 @@ import {
   type FeatureId,
   filletInputs,
   type GeomRef,
+  importInputs,
   type PrimitiveInputOptions,
   type PrimitiveType,
   primitiveInputs,
@@ -21,13 +23,15 @@ import { read3mf } from '@extrudo/io';
 import type { ScadCompiler } from '@extrudo/openscad';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import cubeStl from '../../../../fixtures/imports/cube.stl?url&inline';
 import { kernelFeatures } from '../features';
 import { Kernel } from '../kernel';
+import { loadManifold } from '../manifold';
 import { RESOLUTIONS } from '../model-export';
 import { loadOcct } from '../occt/load';
 import { RecomputeEngine } from '../recompute/engine';
 import { testDocument, testFeature } from '../recompute/testing';
-import type { KernelFeatureDefinition, RecomputeResult } from '../recompute/types';
+import type { ImportedFile, KernelFeatureDefinition, RecomputeResult } from '../recompute/types';
 import type { ScadBody } from './file';
 
 type Done = Extract<RecomputeResult, { status: 'done' }>;
@@ -42,6 +46,7 @@ let engine: RecomputeEngine;
 
 beforeAll(async () => {
   kernel = new Kernel(await loadOcct());
+  kernel.enableMeshes(await loadManifold());
   const { createNodeCompiler } = (await import(/* @vite-ignore */ NODE_ENTRY)) as {
     createNodeCompiler(): ScadCompiler;
   };
@@ -63,6 +68,11 @@ afterAll(() => {
 // ------------------------------------------------------------------ helpers
 
 const TESSELLATION = RESOLUTIONS.medium;
+
+/** A 20 mm cube, 0…20 on each axis, as a binary STL (a `?url&inline` data URL). */
+const CUBE_STL = Uint8Array.from(atob(cubeStl.slice(cubeStl.indexOf(',') + 1)), (c) =>
+  c.charCodeAt(0),
+);
 
 function primitive(id: string, type: PrimitiveType, options: PrimitiveInputOptions = {}): Feature {
   return { ...testFeature(id, type), inputs: primitiveInputs(type, options) };
@@ -364,6 +374,40 @@ describe('exportScad', () => {
     await run(testDocument([{ ...testFeature('Gen', 'test-maker'), name: 'Script1' }]));
     const text = exportScad([{ id: 'Gen.f1:0' as BodyId, name: 'Block' }]);
     expect(text).toContain('//   Block_v1: Script1 › Box1: no OpenSCAD equivalent');
+  });
+
+  it('writes a mesh body as its own triangles, and cuts it with CSG', async () => {
+    const file = 'file-1' as AttachmentId;
+    const held: ImportedFile = { bytes: CUBE_STL, mediaType: 'model/stl' };
+    engine.clear();
+    engine = new RecomputeEngine(kernel, kernelFeatures(), {
+      strictLeaks: true,
+      files: (id) => (id === file ? held : undefined),
+    });
+    const doc: ExtrudoDocument = {
+      ...testDocument([
+        { ...testFeature('Import1', 'import'), inputs: importInputs({ file }) },
+        rod('C', '10 mm'),
+        combine('Cut', 'Import1', ['C'], 'cut'),
+      ]),
+      attachments: {
+        [file]: {
+          name: 'cube',
+          fileName: 'cube.stl',
+          mediaType: 'model/stl',
+          sha256: 'c'.repeat(64),
+          size: CUBE_STL.length,
+        },
+      },
+    };
+    await run(doc);
+    const text = exportScad([{ id: body('Import1'), name: 'Cube' }]);
+    expect(text).toContain('//   Cube_v1: Import1: no OpenSCAD equivalent');
+    // The STL as it is: 8 corners and 12 triangles (every coordinate a whole number).
+    const cube = text.slice(text.indexOf('module Cube_v1()'), text.indexOf('module C_body_v1()'));
+    expect(cube.match(/\[\d+, \d+, \d+\]/g)?.length).toBe(8 + 12);
+    expect(text).toMatch(/difference\(\) \{\n {4}Cube_v1\(\);\n {4}C_body_v1\(\);/);
+    expectSame(await render(text), measured([body('Import1')]));
   });
 
   it('refuses a body that is not in the model', async () => {
