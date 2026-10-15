@@ -20,12 +20,10 @@ import {
   primitiveInputs,
   removeBodiesFeatureOf,
 } from '@extrudo/core';
-import { read3mf } from '@extrudo/io';
 import type { ScadCompiler } from '@extrudo/openscad';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import cubeStl from '../../../../fixtures/imports/cube.stl?url&inline';
-import { kernelFeatures } from '../features';
 import { kernelMove } from '../features/transform';
 import { Kernel } from '../kernel';
 import { loadManifold } from '../manifold';
@@ -36,12 +34,23 @@ import { testDocument, testFeature } from '../recompute/testing';
 import type { ImportedFile, KernelFeatureDefinition, RecomputeResult } from '../recompute/types';
 import type { ScadBody } from './file';
 import { boolean } from './ir';
+import {
+  count,
+  expectSame,
+  featuresWithoutHooks,
+  measured as measureWith,
+  nodeCompiler,
+  render as renderWith,
+} from './testing';
 
 type Done = Extract<RecomputeResult, { status: 'done' }>;
 
-// The Node compiler needs Node's types, which the kernel's program doesn't
-// have (see `import-scad.test.ts`).
-const NODE_ENTRY = '@extrudo/openscad/node';
+/**
+ * These tests are about the version walk and its fallback: the primitives
+ * they build with are polyhedra here, as they were before they had hooks
+ * (`hooks.test.ts` tests those).
+ */
+const features = () => featuresWithoutHooks(['box', 'cylinder', 'sphere', 'torus']);
 
 let kernel: Kernel;
 let compiler: ScadCompiler;
@@ -50,16 +59,13 @@ let engine: RecomputeEngine;
 beforeAll(async () => {
   kernel = new Kernel(await loadOcct());
   kernel.enableMeshes(await loadManifold());
-  const { createNodeCompiler } = (await import(/* @vite-ignore */ NODE_ENTRY)) as {
-    createNodeCompiler(): ScadCompiler;
-  };
-  compiler = createNodeCompiler();
+  compiler = await nodeCompiler();
 });
 
 beforeEach(() => {
   engine?.clear();
   expect(kernel.stats().liveShapes).toBe(0);
-  engine = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
+  engine = new RecomputeEngine(kernel, features(), { strictLeaks: true });
 });
 
 afterAll(() => {
@@ -127,70 +133,11 @@ function exportScad(bodies: readonly ScadBody[]): string {
   });
 }
 
-interface Solid {
-  volume: number;
-  min: number[];
-  max: number[];
-}
-
-/** What OpenSCAD makes of a file: its whole result's volume and box. */
-async function render(source: string): Promise<Solid> {
-  const result = await compiler.compile({
-    fileName: 'export.scad',
-    source: new TextEncoder().encode(source),
-  });
-  if (!result.ok) throw new Error(`OpenSCAD: ${result.error}`);
-  let volume = 0;
-  const min = [Infinity, Infinity, Infinity];
-  const max = [-Infinity, -Infinity, -Infinity];
-  for (const { mesh } of read3mf(result.model).objects) {
-    const p = mesh.positions;
-    for (let i = 0; i < p.length; i += 3) {
-      for (let k = 0; k < 3; k++) {
-        min[k] = Math.min(min[k] as number, p[i + k] as number);
-        max[k] = Math.max(max[k] as number, p[i + k] as number);
-      }
-    }
-    const at = (n: number) => [p[n * 3] ?? 0, p[n * 3 + 1] ?? 0, p[n * 3 + 2] ?? 0];
-    for (let t = 0; t < mesh.indices.length; t += 3) {
-      const [ax, ay, az] = at(mesh.indices[t] as number) as [number, number, number];
-      const [bx, by, bz] = at(mesh.indices[t + 1] as number) as [number, number, number];
-      const [cx, cy, cz] = at(mesh.indices[t + 2] as number) as [number, number, number];
-      volume +=
-        (ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx)) / 6;
-    }
-  }
-  return { volume, min, max };
-}
+/** OpenSCAD's result of a file, measured. */
+const render = (source: string) => renderWith(compiler, source);
 
 /** The kernel's measure of the bodies, together. */
-function measured(ids: readonly BodyId[]): Solid {
-  let volume = 0;
-  const min = [Infinity, Infinity, Infinity];
-  const max = [-Infinity, -Infinity, -Infinity];
-  for (const id of ids) {
-    const shape = engine.latestBody(id);
-    if (shape === undefined) throw new Error(`no body ${id}`);
-    const m = kernel.measure(shape);
-    volume += m.volume;
-    for (let k = 0; k < 3; k++) {
-      min[k] = Math.min(min[k] as number, m.bbox.min[k] as number);
-      max[k] = Math.max(max[k] as number, m.bbox.max[k] as number);
-    }
-  }
-  return { volume, min, max };
-}
-
-/** Within the mesh's tolerance: the volume to 0.5 %, the box to a few deflections. */
-function expectSame(actual: Solid, expected: Solid): void {
-  expect(Math.abs(actual.volume - expected.volume) / expected.volume).toBeLessThan(0.005);
-  for (let k = 0; k < 3; k++) {
-    expect(actual.min[k]).toBeCloseTo(expected.min[k] as number, 1);
-    expect(actual.max[k]).toBeCloseTo(expected.max[k] as number, 1);
-  }
-}
-
-const count = (text: string, what: string) => text.split(what).length - 1;
+const measured = (ids: readonly BodyId[]) => measureWith(kernel, engine, ids);
 
 // ------------------------------------------------------------------ tests
 
@@ -331,7 +278,7 @@ describe('exportScad', () => {
 
   it("writes a script's generated features under the script's name", async () => {
     // A feature that makes a combine, as a Script or a plugin does (ADR-0070 §1).
-    const registry = kernelFeatures();
+    const registry = features();
     registry.register({
       type: 'test-maker',
       label: 'Maker',
@@ -360,7 +307,7 @@ describe('exportScad', () => {
   });
 
   it("names a generated feature's polyhedron after its script", async () => {
-    const registry = kernelFeatures();
+    const registry = features();
     registry.register({
       type: 'test-maker',
       label: 'Maker',
@@ -383,7 +330,7 @@ describe('exportScad', () => {
     const file = 'file-1' as AttachmentId;
     const held: ImportedFile = { bytes: CUBE_STL, mediaType: 'model/stl' };
     engine.clear();
-    engine = new RecomputeEngine(kernel, kernelFeatures(), {
+    engine = new RecomputeEngine(kernel, features(), {
       strictLeaks: true,
       files: (id) => (id === file ? held : undefined),
     });
@@ -416,7 +363,7 @@ describe('exportScad', () => {
   it('writes a tool two bodies use as a module, and one used once in place', async () => {
     // Move with a test hook that moves each body by one shared translate (the
     // hook for Move itself is a later slice): the scalar comes from the input.
-    const registry = kernelFeatures();
+    const registry = features();
     registry.register({
       ...(kernelMove as unknown as KernelFeatureDefinition),
       type: 'test-move',

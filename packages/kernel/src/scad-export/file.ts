@@ -81,8 +81,23 @@ export function fragmentSize(linearDeflection: number): number {
   return Number(Math.sqrt(8 * linearDeflection).toPrecision(2));
 }
 
+/**
+ * Segments OpenSCAD draws a full circle of `radius` with, from the file's
+ * `$fa`/`$fs`, its own rule with `$fn = 0` (ADR-0086 §7):
+ * `max(min(360 / $fa, radius * 2π / $fs), 5)`, rounded up.
+ */
+export function fragmentsFor(fa: number, fs: number, radius: number): number {
+  return Math.ceil(Math.max(Math.min(360 / fa, (radius * 2 * Math.PI) / fs), 5));
+}
+
 export function writeScad(source: ScadSource, options: ScadExportOptions): string {
-  const walk = walkVersions(source);
+  const { angularDeflection, linearDeflection } = options.tessellation;
+  const fa = Number(((angularDeflection * 180) / Math.PI).toPrecision(3));
+  const fs = fragmentSize(linearDeflection);
+  const walk = walkVersions({
+    ...source,
+    ...(!source.fragments && { fragments: (radius: number) => fragmentsFor(fa, fs, radius) }),
+  });
   const { versions, tools } = walk;
 
   // The exported bodies' last versions.
@@ -178,11 +193,10 @@ export function writeScad(source: ScadSource, options: ScadExportOptions): strin
       lines.push(`//   ${versionName(at)}: ${commentText(version.reason)}`);
     }
   }
-  const { angularDeflection, linearDeflection } = options.tessellation;
   lines.push(
     '',
-    `$fa = ${scadNumber(Number(((angularDeflection * 180) / Math.PI).toPrecision(3)))};`,
-    `$fs = ${scadNumber(fragmentSize(linearDeflection))};`,
+    `$fa = ${scadNumber(fa)};`,
+    `$fs = ${scadNumber(fs)};`,
   );
 
   // The parameter block (ADR-0086 §5, §9) goes here: slice 2 passes it in.

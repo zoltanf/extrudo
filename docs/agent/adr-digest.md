@@ -2356,4 +2356,16 @@ or more is a `<Feature>_tool` module. **Deterministic**: every number through
 faces clockwise from outside, module names from body/feature names in
 timeline order (`<Body>_v<n>`), no date. Scalars are `number | { expr, value }`;
 slice 2's translator plugs in as `ScadSource.scalar`. The parameter block is
-`ScadExportOptions.parameters`, written after `$fa`/`$fs`.
+`ScadExportOptions.parameters`, written after `$fa`/`$fs`. Slice 3 added hooks for the primitives,
+Move, Mirror, Scale and the rectangular and circular patterns of bodies.
+**A solid feature's hook builds its tool in place and hands it to
+`operationCsg(ctx, operation, tool)`** (`scad-export/operation.ts`, read from
+`changed`/`removed`). **Hooks reuse the evaluators' placement math, never a
+copy of it:** `lineOf`/`planeOf`/`pointOf` take a `GeometryReader`,
+`centreOf`/`existing` a `Pick` of `EvalContext` that `CsgContext` also
+satisfies (it has `bodies` and `bodyId`), and Move's `moveMotion`, Scale's
+`scaleCentre`, the patterns' `rectangularRows`/`circularTurns` plus
+`splitSkip`, and `torusFrame` serve both; a primitive's frame comes from its
+output. Placements are numbers (`placed`, `frameMatrix`, `about` in `ir.ts`),
+sizes, distances, angles and factors `ctx.scalar` (through `half`, `negate`,
+`absolute`); pattern instances are unrolled.

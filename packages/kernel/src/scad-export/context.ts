@@ -44,6 +44,12 @@ export interface CsgContext<I extends FeatureInputs = FeatureInputs> {
   scalar(name: string): Scalar;
   /** An `expr` input's value (mm, degrees or plain), as `EvalContext.value`. */
   value(name: string): number;
+  /**
+   * How many segments OpenSCAD draws a full circle of `radius` (mm) with,
+   * from the same `$fa`/`$fs` the file writes (ADR-0086 §7): a profile's
+   * arcs facet exactly as OpenSCAD's own circles and cylinders do.
+   */
+  fragments(radius: number): number;
   /** Resolves a reference among the bodies before the feature, as its evaluator did. */
   resolve(ref: GeomRef, options?: ResolveOptions): ResolvedRef;
   /** The output of a feature this one refers to (a sketch's profiles and frame). */
@@ -52,6 +58,13 @@ export interface CsgContext<I extends FeatureInputs = FeatureInputs> {
   featureName(feature: FeatureId): string | undefined;
   /** The body set before the feature, in creation order. */
   before: ReadonlyMap<BodyId, ShapeHandle>;
+  /**
+   * The same as `before`, under `EvalContext`'s name, so the evaluators'
+   * placement helpers (`centreOf`, `existing`) take either context.
+   */
+  bodies: ReadonlyMap<BodyId, ShapeHandle>;
+  /** The ID of the `n`th body the feature creates, as `EvalContext.bodyId` gave it. */
+  bodyId(n?: number): BodyId;
   /** The body set after it. */
   after: ReadonlyMap<BodyId, ShapeHandle>;
   /** Bodies of `after` with a shape `before` didn't have them with (new or changed), in order. */
