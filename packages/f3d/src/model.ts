@@ -483,6 +483,22 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     return refs;
   };
 
+  // Each feature's scope read once, however many times the file names it.
+  const scopes = new Map<number, Scope | Error>();
+  const scopeOf = (id: number): Scope => {
+    let scope = scopes.get(id);
+    if (!scope) {
+      try {
+        scope = readScope(seg, id);
+      } catch (error) {
+        scope = error as Error;
+      }
+      scopes.set(id, scope);
+    }
+    if (scope instanceof Error) throw scope;
+    return scope;
+  };
+
   // Parameters, and which feature owns each (owner record → its first reference).
   const parameters: ParameterValue[] = [];
   for (const id of seg.idsOf(PARAMETER_VALUE)) {
@@ -585,11 +601,13 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
   }
 
   // The timeline, in order.
-  const items: number[] = [];
+  // Each item once: a file that repeats an id must not run its decode again.
+  const timelineItems = new Set<number>();
   for (const id of seg.idsOf(TIMELINE)) {
     const t = tryDecode(`timeline #${id}`, () => timeline.decode(seg, id));
-    if (t) items.push(...t.items);
+    for (const item of t?.items ?? []) timelineItems.add(item);
   }
+  const items = [...timelineItems];
   // A feature acting in several components keeps a record per component; the
   // timeline names its first.
   const firstRecord = new Map<number, number>();
@@ -606,7 +624,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
   }
   // An operation can list several records; the timeline feature among them made the face,
   // or the timeline feature whose record in another component it is.
-  const onTimeline = new Set(items);
+  const onTimeline = timelineItems;
   const featureOf = (design: number): number | undefined =>
     timelineFeature(operations.get(design), onTimeline, firstRecord);
   /** The bodies a feature names, with those its records in other components name. */
@@ -614,30 +632,51 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     allParticipants(
       participantsOf(seg, scope),
       (furtherRecords.get(scope.id) ?? []).map((record) => {
-        const other = tryDecode(`feature #${record}`, () => readScope(seg, record));
+        const other = tryDecode(`feature #${record}`, () => scopeOf(record));
         return other ? participantsOf(seg, other) : [];
       }),
     );
   // Feature record → the surfaces of the B-rep faces tagged with its operations.
   // `own`: not the copies a mirror or pattern made of them.
+  // Indexed once (record → operations, operation → faces), so each call costs
+  // what it returns rather than a pass over every operation and face.
+  let madeIndex:
+    | { ops: Map<number, number[]>; faces: Map<number, AsmFace[]>; order: Map<AsmFace, number> }
+    | undefined;
   const madeBy = (record: number, own = false): AsmSurface[] => {
-    const ops = new Set<number>();
-    for (const [op, records] of operations) if (records.includes(record)) ops.add(op);
+    if (!madeIndex) {
+      madeIndex = { ops: new Map(), faces: new Map(), order: new Map() };
+      for (const [op, records] of operations)
+        for (const r of new Set(records)) {
+          const of = madeIndex.ops.get(r) ?? [];
+          of.push(op);
+          madeIndex.ops.set(r, of);
+        }
+      for (const list of faces.values())
+        for (const face of list) {
+          if (madeIndex.order.has(face)) continue;
+          madeIndex.order.set(face, madeIndex.order.size);
+          for (const op of new Set(face.tags.map((t) => Math.abs(t.design)))) {
+            const of = madeIndex.faces.get(op) ?? [];
+            of.push(face);
+            madeIndex.faces.set(op, of);
+          }
+        }
+    }
+    const index = madeIndex;
     const out = new Set<AsmFace>();
-    for (const list of faces.values())
-      for (const face of list)
-        if (
-          face.tags.some((t) => ops.has(Math.abs(t.design))) &&
-          !(own && face.tags.some((t) => instances.has(Math.abs(t.design))))
-        )
-          out.add(face);
-    return [...out].map((face) => face.surface);
+    for (const op of index.ops.get(record) ?? [])
+      for (const face of index.faces.get(op) ?? [])
+        if (!(own && face.tags.some((t) => instances.has(Math.abs(t.design))))) out.add(face);
+    return [...out]
+      .sort((a, b) => (index.order.get(a) ?? 0) - (index.order.get(b) ?? 0))
+      .map((face) => face.surface);
   };
   // Instance operation id → instance code, over every copying feature.
   const instances = new Map<number, number>();
   for (const guid of [MIRROR, RECTANGULAR_PATTERN, CIRCULAR_PATTERN, PATH_PATTERN])
     for (const id of seg.idsOf(guid)) {
-      const scope = tryDecode(`feature #${id}`, () => readScope(seg, id));
+      const scope = tryDecode(`feature #${id}`, () => scopeOf(id));
       const found = scope
         ? tryDecode(`instances #${id}`, () => readInstances(seg, scope, insideOnce))
         : undefined;
@@ -647,7 +686,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
   for (const id of items) {
     const type = seg.typeOf(id);
     if (!type || !FEATURE_TYPES[type.guid]) {
-      const scope = tryDecode(`feature #${id}`, () => readScope(seg, id));
+      const scope = tryDecode(`feature #${id}`, () => scopeOf(id));
       const label = type ? TIMELINE_LABELS[type.guid] : undefined;
       features.push({
         type: 'other',
@@ -660,7 +699,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       });
       continue;
     }
-    const scope = tryDecode(`feature #${id}`, () => readScope(seg, id));
+    const scope = tryDecode(`feature #${id}`, () => scopeOf(id));
     if (!scope) continue;
     // Sketches have no history state of their own; a feature without one is suppressed.
     const isSketch = FEATURE_TYPES[type.guid] === 'Sketch';
@@ -1018,6 +1057,8 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
  * longest list that the trailer ends exactly and whose records exist, but
  * for a few (an operation can name a record the file no longer has).
  */
+const OPERATION_TABLE_BUDGET = 1_000_000;
+
 function readOperationTable(seg: Segment, id: number): Map<number, number[]> {
   const f = seg.frame(id);
   const endsHere = (r: Reader): boolean => {
@@ -1029,6 +1070,10 @@ function readOperationTable(seg: Segment, id: number): Map<number, number[]> {
   };
   let best: Map<number, number[]> | undefined;
   let size = -1;
+  // Every offset is tried, so the entries read across them are budgeted: the
+  // files' tables cost at most about 1,300 entry reads, a crafted record could
+  // cost its length squared.
+  let budget = OPERATION_TABLE_BUDGET;
   for (let at = f.start; at + 4 <= f.end; at++) {
     for (const lists of [false, true]) {
       const r = new Reader(seg.bulk, at, f.end);
@@ -1039,6 +1084,7 @@ function readOperationTable(seg: Segment, id: number): Map<number, number[]> {
         let ok = true;
         let missing = 0;
         for (let i = 0; i < n && ok; i++) {
+          if (--budget < 0) throw new F3dFormatError('the operation table takes too long to find');
           const op = r.u64();
           const m = lists ? r.u32() : 1;
           if (m === 0 || m * 8 > r.remaining) ok = false;
@@ -1053,7 +1099,8 @@ function readOperationTable(seg: Segment, id: number): Map<number, number[]> {
           best = table;
           size = n;
         }
-      } catch {
+      } catch (error) {
+        if (budget < 0) throw error;
         // not a table at this offset
       }
     }
