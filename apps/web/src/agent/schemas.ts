@@ -71,6 +71,10 @@ export const TOOL_SCHEMAS = {
     description: 'Lists the designs (id, name, last change); "open" marks the one open now.',
     input: empty,
   },
+  new_design: {
+    description: 'Makes a new empty design, opens it and answers it as get_design does.',
+    input: z.object({ name: z.string().min(1).optional().describe("The design's name.") }),
+  },
   open_design: {
     description: 'Opens a design by id (from list_designs) and waits until it is ready.',
     input: z.object({ id: id('The design id.') }),
@@ -86,7 +90,7 @@ export const TOOL_SCHEMAS = {
   },
   get_feature: {
     description:
-      "One feature: its type, name, status and inputs as the API's plain values (what add_feature and edit_feature take); a sketch lists its profiles.",
+      "One feature: its type, name, status and inputs as the API's plain values (what add_feature and edit_feature take); a sketch lists its plane, profiles and curves (an extrude's side face of curve <c> is side:<c>).",
     input: z.object({ id: id('The feature id.') }),
   },
   get_bodies: {
@@ -135,7 +139,7 @@ export const TOOL_SCHEMAS = {
   },
   add_feature: {
     description:
-      "Adds a feature at the timeline marker through the document API: type is the API method's feature type ('extrude', 'box', 'fillet', …) and inputs its plain values (see the skill's references/api.md). A bad input answers the input's path and changes nothing. One undo step.",
+      "Adds a feature at the timeline marker through the document API: type is the API method's feature type ('extrude', 'box', 'fillet', …) and inputs its plain values (see the skill's references/api.md); { edgeBetween: [faceName, faceName] } names the edge between two faces. A bad input answers the input's path and changes nothing. One undo step.",
     input: z.object({
       type: z.string().min(1).describe("The feature type, e.g. 'extrude'."),
       inputs: z.record(z.string(), z.unknown()).default({}).describe("The method's inputs."),

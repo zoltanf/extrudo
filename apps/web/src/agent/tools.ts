@@ -14,6 +14,7 @@
 import {
   ApiError,
   Design,
+  edgeName,
   type FeatureHandle,
   type RectangleHandle,
   type SketchBuilder,
@@ -55,6 +56,8 @@ export interface AgentContext {
   /** The open design's host, while one is open. */
   host(): AgentHost | undefined;
   designs(): Promise<readonly ProjectSummary[]>;
+  /** Makes a new empty design; resolves with its id. */
+  create(name: string | undefined): Promise<string>;
   /** Opens a design and resolves with its host once it is ready. */
   open(id: string): Promise<AgentHost>;
   /** Waits its turn: screenshots at most one a second. */
@@ -182,7 +185,10 @@ function featureDetail(host: AgentHost, id: string) {
   };
   if (feature.type === 'sketch') {
     const sketch = Design.from(doc).feature(feature.id) as SketchHandle;
-    return { ...base, plane: sketch.plane, profiles: sketch.profiles() };
+    const curves = Object.entries(sketch.data.entities)
+      .filter(([, entity]) => entity.type !== 'point')
+      .map(([curve, entity]) => ({ id: curve, type: entity.type }));
+    return { ...base, plane: sketch.plane, profiles: sketch.profiles(), curves };
   }
   return {
     ...base,
@@ -322,6 +328,25 @@ function insertFromApi(host: AgentHost, build: (d: Design) => void, name?: strin
   return fresh;
 }
 
+/**
+ * The one shorthand inputs may use: `{ edgeBetween: [face, face] }` is the edge
+ * between two faces by their persistent names, `{ kind: 'edge', id: 'e[…]' }`
+ * with the names sorted as the kernel names it (ADR-0005).
+ */
+export function expandShorthands(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(expandShorthands);
+  if (value === null || typeof value !== 'object') return value;
+  const entries = Object.entries(value);
+  const [first] = entries;
+  if (entries.length === 1 && first?.[0] === 'edgeBetween' && Array.isArray(first[1])) {
+    const faces = first[1];
+    if (faces.length >= 2 && faces.every((f) => typeof f === 'string')) {
+      return { kind: 'edge', id: edgeName(faces as string[]) };
+    }
+  }
+  return Object.fromEntries(entries.map(([key, inner]) => [key, expandShorthands(inner)]));
+}
+
 const nameOf = (host: AgentHost, id: FeatureId) =>
   host.store.getState().doc.features.find((f) => f.id === id)?.name;
 
@@ -333,7 +358,7 @@ type Handler<T extends ToolName> = (
   host: AgentHost | undefined,
 ) => Promise<AgentReply> | AgentReply;
 
-/** `host` is defined for every tool but list_designs, open_design and get_skill. */
+/** `host` is defined for every tool but list_designs, new_design, open_design and get_skill. */
 const need = (host: AgentHost | undefined): AgentHost => host as AgentHost;
 
 const HANDLERS: { [T in ToolName]: Handler<T> } = {
@@ -348,6 +373,7 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
           ...(p.id === host?.designId && { open: true }),
         })),
     ),
+  new_design: async ({ name }, ctx) => json(designSummary(await ctx.open(await ctx.create(name)))),
   open_design: async ({ id }, ctx) => {
     const designs = await ctx.designs();
     if (!designs.some((p) => p.id === id && !p.trashed)) {
@@ -435,7 +461,7 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
       const ids = insertFromApi(
         h,
         (d) => {
-          d.add(type, inputs as never, name ? { name } : {});
+          d.add(type, expandShorthands(inputs) as never, name ? { name } : {});
         },
         name,
       );
@@ -453,7 +479,7 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
     return change(ctx, h, `Edit ${feature.name}`, () => {
       // The feature's own schema checks the merged inputs on a scratch copy.
       const scratch = Design.from(doc);
-      const merged = { ...feature.inputs, ...inputs };
+      const merged = { ...feature.inputs, ...(expandShorthands(inputs) as object) };
       const handle: FeatureHandle = scratch.add(feature.type, merged as never, {
         name: feature.name,
       });
@@ -557,7 +583,7 @@ export async function runTool(
     return failure(`${path}${issue?.message ?? 'Bad input.'}`);
   }
   const host = ctx.host();
-  const needsDesign = !['list_designs', 'open_design', 'get_skill'].includes(tool);
+  const needsDesign = !['list_designs', 'new_design', 'open_design', 'get_skill'].includes(tool);
   if (needsDesign && !host) {
     return failure(NO_DESIGN);
   }

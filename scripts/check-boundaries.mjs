@@ -153,14 +153,20 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
-// The MCP SDK (P6-08, ADR-0087 §1) is the desktop main process's alone: the
-// server lives there, and the web build (and the renderer) must not carry it.
-const desktopMain = join(ROOT, 'apps/desktop/src/main') + sep;
+// The MCP SDK (P6-08, ADR-0087 §1) is the desktop main process's alone (and
+// its acceptance client's): the web build and the renderer must not carry it.
+const sdkAllowed = [
+  join(ROOT, 'apps/desktop/src/main') + sep,
+  join(ROOT, 'apps/desktop/scripts') + sep,
+];
 for (const dir of workspaceDirs) {
   for (const file of sourceFiles(dir)) {
-    if (file.startsWith(desktopMain) || file.includes(`${sep}out${sep}`)) continue;
+    if (sdkAllowed.some((allowed) => file.startsWith(allowed))) continue;
+    if (file.includes(`${sep}out${sep}`)) continue;
     if (/['"]@modelcontextprotocol\/sdk/.test(readFileSync(file, 'utf8'))) {
-      problems.push(`${relative(ROOT, file)}: only apps/desktop/src/main may import the MCP SDK`);
+      problems.push(
+        `${relative(ROOT, file)}: only apps/desktop/src/main (and scripts) may import the MCP SDK`,
+      );
     }
   }
 }

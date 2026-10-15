@@ -26,6 +26,7 @@ import { HEADERS } from './headers';
 import { registerIpcHandlers } from './ipc';
 import { createLinks } from './links';
 import { createMcpService } from './mcp/service';
+import { extrudoSkill, SKILL_INSTRUCTIONS } from './mcp/skillFiles';
 import {
   buildMenuTemplate,
   hasApplicationMenu,
@@ -104,6 +105,8 @@ function main(): void {
     tokenFile: join(userData, 'mcp-token'),
     exportsDir: join(userData, 'agent-exports'),
     version: app.getVersion(),
+    skill: extrudoSkill(),
+    instructions: SKILL_INSTRUCTIONS,
     send: (channel, payload) => {
       if (!window || !rendererUp) return false;
       window.webContents.send(channel, payload);
@@ -376,9 +379,10 @@ function main(): void {
       window = null;
       rendererUp = false;
     });
-    // A reload: tool calls wait for the new page's `app:ready`.
-    window.webContents.on('did-start-loading', () => {
-      rendererUp = false;
+    // A reload: tool calls wait for the new page's `app:ready`. A hash route
+    // (opening a design) stays in the same document and keeps the renderer up.
+    window.webContents.on('did-start-navigation', (details) => {
+      if (details.isMainFrame && !details.isSameDocument) rendererUp = false;
     });
 
     // A compromised renderer must not turn this window into a browser: no

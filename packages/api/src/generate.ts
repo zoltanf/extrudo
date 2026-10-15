@@ -16,7 +16,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { documentFeatures, type FeatureDefinition, z } from '@extrudo/core';
 import { exampleCall, methodName, PREAMBLE, SKETCH_TYPE } from './example-calls';
-import { featurePage, featuresIndex } from './pages';
+import { featurePage, featuresIndex, skillApiPage } from './pages';
 
 /** The repository root, four levels up from `packages/api/src`. */
 const ROOT = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
@@ -231,6 +231,14 @@ export function docPages(): Map<string, string> {
   return pages;
 }
 
+/** The shipped skill's generated API reference (P6-08, ADR-0087 §7). */
+export const SKILL_API_PATH = 'apps/desktop/skill/extrudo/references/api.md';
+
+/** The skill's generated page: path relative to the repository root, and its text. */
+export function skillPages(): Map<string, string> {
+  return new Map([[SKILL_API_PATH, skillApiPage(readFeatureDocs())]]);
+}
+
 /**
  * A generated page as it is on disk, or `undefined` when the file is not there
  * (the staleness test's way of telling a fresh feature from a missing page).
@@ -251,7 +259,12 @@ export function writeGenerated(): string[] {
   mkdirSync(DOCS_DIR, { recursive: true });
   const pages = docPages();
   for (const [path, page] of pages) writeFileSync(join(ROOT, path), page);
-  return [GENERATED_PATH, ...pages.keys()];
+  const skill = skillPages();
+  for (const [path, page] of skill) {
+    mkdirSync(dirname(join(ROOT, path)), { recursive: true });
+    writeFileSync(join(ROOT, path), page);
+  }
+  return [GENERATED_PATH, ...pages.keys(), ...skill.keys()];
 }
 
 /** One feature's inputs, with the descriptions the doc comments need. */

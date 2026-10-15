@@ -1,16 +1,11 @@
 import { Design } from '@extrudo/api';
-import {
-  type Command,
-  createDocumentStore,
-  createModelStore,
-  createSessionStore,
-  type ExtrudoDocument,
-} from '@extrudo/core';
+import type { ExtrudoDocument } from '@extrudo/core';
 import type { ProjectSummary } from '@extrudo/storage';
 import { describe, expect, it } from 'vitest';
 import type { AgentReply } from '../platform/agent';
 import type { AgentHost } from './host';
 import { TOOL_NAMES, toolDefinitions } from './schemas';
+import { fakeContext, fakeHost } from './testing';
 import { type AgentContext, BUSY, createPacer, NO_DESIGN, plainInput, runTool } from './tools';
 
 function plate(): ExtrudoDocument {
@@ -23,53 +18,7 @@ function plate(): ExtrudoDocument {
   return d.toJSON();
 }
 
-function fakeHost(doc = plate()) {
-  const store = createDocumentStore(doc);
-  const session = createSessionStore();
-  const model = createModelStore<unknown>();
-  const applied: string[] = [];
-  const ran: string[] = [];
-  const host: AgentHost = {
-    designId: 'p1',
-    store,
-    session,
-    model,
-    apply(commands: readonly Command<unknown>[]) {
-      // The shell's `apply`: one step for the lot (nested in the agent's).
-      store.getState().beginTransaction(commands[0]?.label ?? '');
-      for (const command of commands) {
-        applied.push(command.label);
-        store.getState().dispatch(command);
-      }
-      store.getState().commitTransaction();
-    },
-    bodies: async () => [
-      {
-        id: 'b1',
-        name: 'Body1',
-        volume: 4000,
-        box: { min: [0, 0, 0], max: [40, 20, 5] },
-        visible: true,
-      },
-    ],
-    snapshot: async () => new Blob([new Uint8Array([137, 80, 78, 71])], { type: 'image/png' }),
-    commands: () => [
-      { id: 'fitView', label: 'Fit view', group: 'View', run: () => ran.push('fitView') },
-      {
-        id: 'shell',
-        label: 'Shell',
-        group: 'Solid',
-        unavailable: 'Select a face first.',
-        run: () => {},
-      },
-    ],
-    undo: () => store.getState().undo(),
-    redo: () => store.getState().redo(),
-    save: async () => {},
-    exportModel: async () => new Uint8Array([1, 2, 3]),
-  };
-  return { host, store, session, model, applied, ran };
-}
+const plateHost = (doc = plate()) => fakeHost(doc, 'p1');
 
 const designs: ProjectSummary[] = [
   {
@@ -89,19 +38,8 @@ const designs: ProjectSummary[] = [
   } as unknown as ProjectSummary,
 ];
 
-function context(host: AgentHost | undefined, extra: Partial<AgentContext> = {}): AgentContext {
-  return {
-    host: () => host,
-    designs: async () => designs,
-    open: async () => {
-      if (!host) throw new Error('no host');
-      return host;
-    },
-    screenshotTurn: async () => {},
-    exportTurn: async () => {},
-    settleMs: 5,
-    ...extra,
-  };
+function context(host: AgentHost | undefined, extra: Partial<AgentContext> = {}) {
+  return fakeContext(host, designs, extra);
 }
 
 const textOf = (reply: AgentReply) => (reply.result.content[0] as { text: string }).text;
@@ -131,7 +69,7 @@ describe('the agent tools (ADR-0087 §5)', () => {
   });
 
   it('answers a bad input with its path', async () => {
-    const { host } = fakeHost();
+    const { host } = plateHost();
     const reply = await runTool('set_parameter', { name: 'w' }, context(host));
     expect(reply.result.isError).toBe(true);
     expect(textOf(reply)).toMatch(/^expression: /);
@@ -139,7 +77,7 @@ describe('the agent tools (ADR-0087 §5)', () => {
   });
 
   it('lists the designs, leaving out the trashed ones', async () => {
-    const { host } = fakeHost();
+    const { host } = plateHost();
     expect(jsonOf(await runTool('list_designs', {}, context(host)))).toEqual([
       { id: 'p1', name: 'Plate', modified: new Date(0).toISOString(), open: true },
     ]);
@@ -148,7 +86,7 @@ describe('the agent tools (ADR-0087 §5)', () => {
   });
 
   it('reads the design: parameters and the timeline with statuses', async () => {
-    const { host, model, store } = fakeHost();
+    const { host, model, store } = plateHost();
     const [sketch, extrude] = store.getState().doc.features;
     model.getState().computed({
       features: {
@@ -175,7 +113,7 @@ describe('the agent tools (ADR-0087 §5)', () => {
   });
 
   it("gives a feature's inputs as the API's plain values, and a sketch's profiles", async () => {
-    const { host, store } = fakeHost();
+    const { host, store } = plateHost();
     const [sketch, extrude] = store.getState().doc.features;
     const detail = jsonOf(await runTool('get_feature', { id: extrude?.id }, context(host)));
     expect(detail.inputs.distance).toBe('thickness');
@@ -186,7 +124,7 @@ describe('the agent tools (ADR-0087 §5)', () => {
   });
 
   it('sets a parameter through apply as one undo step named Agent: …', async () => {
-    const { host, store, applied } = fakeHost();
+    const { host, store, applied } = plateHost();
     const reply = await runTool(
       'set_parameter',
       { name: 'thickness', expression: '8 mm' },
@@ -202,13 +140,13 @@ describe('the agent tools (ADR-0087 §5)', () => {
   });
 
   it('creates a parameter that does not exist', async () => {
-    const { host, store } = fakeHost();
+    const { host, store } = plateHost();
     await runTool('set_parameter', { name: 'width', expression: '40 mm' }, context(host));
     expect(store.getState().doc.parameters.map((p) => p.name)).toEqual(['thickness', 'width']);
   });
 
   it('adds a sketch and an extrude of its profile: two steps, Ctrl+Z undoes the extrude', async () => {
-    const { host, store } = fakeHost();
+    const { host, store } = plateHost();
     const sketch = jsonOf(
       await runTool(
         'add_sketch',
@@ -241,7 +179,7 @@ describe('the agent tools (ADR-0087 §5)', () => {
   });
 
   it('refuses a bad feature input with its path and changes nothing', async () => {
-    const { host, store } = fakeHost();
+    const { host, store } = plateHost();
     const before = store.getState().doc;
     const reply = await runTool(
       'add_feature',
@@ -257,7 +195,7 @@ describe('the agent tools (ADR-0087 §5)', () => {
   });
 
   it('edits some inputs and keeps the rest', async () => {
-    const { host, store } = fakeHost();
+    const { host, store } = plateHost();
     const extrude = store.getState().doc.features[1];
     const reply = await runTool(
       'edit_feature',
@@ -272,7 +210,7 @@ describe('the agent tools (ADR-0087 §5)', () => {
   });
 
   it('suppresses, renames and removes, each one step', async () => {
-    const { host, store } = fakeHost();
+    const { host, store } = plateHost();
     const extrude = store.getState().doc.features[1];
     await runTool('suppress', { id: extrude?.id, on: true }, context(host));
     expect(store.getState().doc.features[1]?.suppressed).toBe(true);
@@ -290,7 +228,7 @@ describe('the agent tools (ADR-0087 §5)', () => {
   });
 
   it('refuses a change while a sketch or dialog is open', async () => {
-    const { host, store } = fakeHost();
+    const { host, store } = plateHost();
     store.getState().beginTransaction('Edit Extrude1');
     const reply = await runTool('rename', { id: 'Extrude1', name: 'x' }, context(host));
     expect(textOf(reply)).toBe(BUSY);
@@ -300,14 +238,14 @@ describe('the agent tools (ADR-0087 §5)', () => {
   it('applies a configuration by name', async () => {
     const d = Design.from(plate());
     d.configuration('Thick', { thickness: '9 mm' });
-    const { host, store } = fakeHost(d.toJSON());
+    const { host, store } = plateHost(d.toJSON());
     const reply = await runTool('apply_configuration', { configuration: 'Thick' }, context(host));
     expect(jsonOf(reply).result).toEqual({ configuration: 'Thick', changed: 1 });
     expect(store.getState().doc.parameters[0]?.expression).toBe('9 mm');
   });
 
   it('runs a command, refusing an unavailable one with its reason', async () => {
-    const { host, ran } = fakeHost();
+    const { host, ran } = plateHost();
     await runTool('run_command', { id: 'fitView' }, context(host));
     expect(ran).toEqual(['fitView']);
     expect(textOf(await runTool('run_command', { id: 'shell' }, context(host)))).toBe(
@@ -317,7 +255,7 @@ describe('the agent tools (ADR-0087 §5)', () => {
   });
 
   it('reads bodies, selection, a screenshot and exports with the file', async () => {
-    const { host, session } = fakeHost();
+    const { host, session } = plateHost();
     expect(jsonOf(await runTool('get_bodies', {}, context(host)))[0].volume).toBe(4000);
     session.getState().select([{ kind: 'face', id: 'b1:2' }]);
     expect(jsonOf(await runTool('get_selection', {}, context(host)))).toEqual([

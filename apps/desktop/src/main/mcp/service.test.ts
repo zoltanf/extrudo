@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { CHANNELS, type McpStatus } from '../../shared/ipc';
 import type { McpRequest } from '../../shared/mcp';
 import { createMcpService, type McpService, mcpPreferences } from './service';
+import { extrudoSkill, SKILL_INSTRUCTIONS } from './skillFiles';
 import { connectClient, freePort, post } from './testing';
 
 const tools = [
@@ -178,6 +179,33 @@ describe('the MCP service (ADR-0087 §3–4)', () => {
       content: [{ text: "Extrudo's window isn't open." }],
     });
     await other.close();
+  });
+
+  it('answers get_skill itself, with the SKILL.md it serves', async () => {
+    const port = await freePort();
+    const dir = mkdtempSync(join(tmpdir(), 'extrudo-mcp-'));
+    service = createMcpService({
+      preferences: () => ({ 'mcp.port': port }),
+      tokenFile: join(dir, 'mcp-token'),
+      exportsDir: join(dir, 'agent-exports'),
+      version: '0',
+      send: () => true,
+      skill: extrudoSkill(),
+      instructions: SKILL_INSTRUCTIONS,
+      log: { warn: () => {} },
+    });
+    service.setTools([
+      { name: 'get_skill', description: 'The skill.', inputSchema: { type: 'object' } },
+    ]);
+    await service.configure();
+    const client = await connectClient(service.config().url, service.config().token);
+    const result = (await client.callTool({ name: 'get_skill', arguments: {} })) as {
+      content: { text: string }[];
+    };
+    const read = await client.readResource({ uri: 'skill://extrudo/SKILL.md' });
+    expect(result.content[0]?.text).toBe((read.contents[0] as { text: string }).text);
+    expect(client.getInstructions()).toBe(SKILL_INSTRUCTIONS);
+    await client.close();
   });
 
   it('ignores a malformed tool list and response', async () => {

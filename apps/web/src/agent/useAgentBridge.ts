@@ -5,9 +5,12 @@
  * `runTool` against the open design's host (`agentHosts`). Nothing happens on
  * the web, where the platform has no agent bridge.
  */
+import { createDocument } from '@extrudo/core';
 import { useEffect, useSyncExternalStore } from 'react';
 import type { AgentBridge, AgentStatus, Platform } from '../platform';
+import { createProject } from '../project/actions';
 import { navigate, projectHref } from '../routes';
+import { APP_VERSION } from '../version';
 import { agentHosts, waitForHost } from './host';
 import { toolDefinitions } from './schemas';
 import { type AgentContext, createPacer, runTool } from './tools';
@@ -20,6 +23,11 @@ export function agentContext(platform: Platform): AgentContext {
   return {
     host: () => agentHosts.getState().host,
     designs: () => platform.projects.list(),
+    create: (name) =>
+      createProject(
+        platform,
+        createDocument({ appVersion: APP_VERSION, ...(name !== undefined && { name }) }),
+      ),
     async open(id) {
       if (agentHosts.getState().host?.designId !== id) navigate(projectHref(id));
       return waitForHost(id);

@@ -187,6 +187,7 @@ describe('desktopPlatform (ADR-0075 §3)', () => {
   it('assembles the whole Platform, recovering no rescue copies', async () => {
     const platform = await desktopPlatform(fakeApi());
     expect(Object.keys(platform).sort()).toEqual([
+      'agent',
       'desktop',
       'externalFiles',
       'files',

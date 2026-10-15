@@ -118,6 +118,10 @@ export function createMcpService(options: McpServiceOptions): McpService {
   poll.unref?.();
 
   function handle(tool: string, args: Record<string, unknown>): Promise<ToolResult> {
+    // The skill is main's: it serves it as resources, so it answers get_skill too.
+    if (tool === 'get_skill' && options.skill) {
+      return Promise.resolve({ content: [{ type: 'text', text: options.skill.text }] });
+    }
     const id = nextId++;
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
