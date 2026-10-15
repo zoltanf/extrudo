@@ -1,6 +1,14 @@
 import { expect, type Page, test } from '@playwright/test';
 import { renameProject } from './benchmark-helpers';
-import { clicker, fileAction, kernelReady, openProject, pickTool, sketchOnXY } from './helpers';
+import {
+  clicker,
+  fileAction,
+  kernelReady,
+  openProject,
+  parameterExpression,
+  pickTool,
+  sketchOnXY,
+} from './helpers';
 
 // P3-16 (ADR-0041): the notification history. The bell at the status bar's right
 // edge (always there since 2026-10-10) opens the session's earlier notifications:
@@ -168,8 +176,7 @@ test("a recompute's first new error goes into the history, with Edit (P3-13)", a
 
   // A width of 0 breaks Extrude1 (and what needs it): one quiet entry, no toast.
   await pickTool(page, 'Parameters');
-  const parameters = page.getByRole('dialog', { name: 'Parameters' });
-  const width = parameters.getByRole('textbox', { name: 'Expression of width', exact: true });
+  const width = await parameterExpression(page, 'width');
   await width.fill('0 mm');
   await width.press('Enter');
   await page.keyboard.press('Escape');

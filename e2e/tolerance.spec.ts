@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { closeParameters, openParameters, solidTab } from './benchmark-helpers';
-import { kernelReady, openProject, pickTool, projector } from './helpers';
+import { kernelReady, openProject, parameterExpression, pickTool, projector } from './helpers';
 
 // P4-08: the print tolerance (ADR-0062, FR-3DP-05). One document parameter
 // named `tolerance`, set from the 3D Print tab's Tolerance panel (one undo step
@@ -109,7 +109,7 @@ test('the panel creates the tolerance parameter, one undo step per change', asyn
   );
   // It is an ordinary parameter: the Parameters dialog lists it with its value.
   await parameters(page);
-  const expression = page.getByRole('textbox', { name: 'Expression of tolerance', exact: true });
+  const expression = await parameterExpression(page, 'tolerance');
   await expect(expression).toHaveValue('0.2 mm');
   // Its value shows under the field, like every parameter's.
   await expect(
@@ -128,7 +128,9 @@ test('the panel creates the tolerance parameter, one undo step per change', asyn
   await page.keyboard.press('Control+z');
   await expect(panel(page)).toHaveAttribute('data-tolerance', 'unset');
   await parameters(page);
-  await expect(page.getByRole('textbox', { name: 'Expression of tolerance' })).toHaveCount(0);
+  await expect(
+    page.getByRole('dialog', { name: 'Parameters' }).locator('[data-parameter-row="tolerance"]'),
+  ).toHaveCount(0);
   await closeParameters(page);
 });
 

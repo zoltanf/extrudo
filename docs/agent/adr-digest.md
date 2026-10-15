@@ -1162,7 +1162,8 @@ for changing, and a design holds named value sets (`configurations[]`). Core is
 `isPlainValue`; `removeParameter` drops a deleted parameter from every
 configuration). The app is `apps/web/src/customizer/` (the panel, its
 controller) plus the Parameters dialog's star and its Min/Max/Step/Group row with
-a Clear button each. **Every parameter write goes through the shell's `apply`**,
+a Clear button each (since ADR-0086: an inspector with a Customizer switch, ranges as
+expressions, the group on the parameter). **Every parameter write goes through the shell's `apply`**,
 applying a configuration included (so the sketches whose dimensions use a
 parameter are re-solved in the same undo step, ADR-0016); **no stored active
 configuration** — one goes stale after any edit or undo, so the panel shows the
@@ -2336,3 +2337,29 @@ menu on the home screen (its `menu:run` listener stays for the macOS About),
 and both link mechanisms stay — `openSite(name)` for the fixed named pages
 (only `repo` now) and `openLink(url)` for the dialog's URLs that carry a
 hash; folding them into one was rejected for now.** No schema change.
+
+ADR-0086 (the owner, 2026-10-15) **makes the Parameters dialog a list and an inspector,
+puts groups on parameters and keeps slider ranges as formulas** (format **2**, the first
+bump). Files: core `schema.ts` (`Parameter.group`, `CustomizerSchema` of strings, no
+min/max check), `customizer.ts` (`evaluateRange`, `setParameterGroup`, `moveParameter`,
+`RANGE_FIELDS`; `customizerRows(doc, evaluation)` takes the whole evaluation),
+`document-commands.ts` (`parameterUsers`, `refuseIfUsed` built on it, renames reach
+ranges), `migrations.ts` (`v1ToV2`), `format.ts`; the app's `parameters/ParametersDialog.tsx`
+(list, drag), `ParameterInspector.tsx`, `list.ts` (`listSections`, `dropIndex`,
+`stepIndex`, `labelOfUse`, `starCommand`). Rules: **`min`/`max`/`step` are expressions
+in the parameter's unit, stored as typed**; a range may use other parameters but **never
+the parameter or one of its dependents** (`evaluateRange` refuses; `customizerRows`
+leaves out an end that stopped evaluating, and both ends when min > max, so no slider
+rather than a wrong one); **the group is the parameter's** (`parameter.group`, 1–40
+characters, also for unexposed parameters) and the panel and the dialog group by it
+(no group first, "General" in the dialog, then groups by first appearance; flat list
+while no parameter has a group); **`doc.parameters` order is the dialog's and the
+panel's order** (`moveParameter` = one undo step, a group change included; order never
+changes a value; the macro emitter keeps dependency order); **"Used by" and the delete
+refusal come from the same `parameterUsers`** (ranges count as users); a formula
+parameter has no range fields. A migration from format 1 spells out the base unit
+(`25.4` → `25.4 mm`, `30` → `30 deg`) and moves `customizer.group`. e2e: rows are
+`[data-parameter-row="<name>"]` (`aria-current` when selected), sections
+`[data-parameter-section]`; select a row before its fields exist (`selectParameter`,
+`parameterExpression`, `addUserParameter` in `e2e/helpers.ts`).
+

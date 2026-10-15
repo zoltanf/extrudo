@@ -26,7 +26,7 @@ const IMAGE = AttachmentIdSchema.parse('a-1');
 
 const document = (inputs: Record<string, unknown>, mediaType?: string) => ({
   format: 'extrudo',
-  formatVersion: 1,
+  formatVersion: 2,
   id: 'd1',
   name: 'Design',
   settings: { units: 'mm', precision: 2 },

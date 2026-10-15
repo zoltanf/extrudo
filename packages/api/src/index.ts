@@ -5,7 +5,7 @@
  * import { Design } from '@extrudo/api';
  *
  * const d = Design.create({ name: 'Bracket', units: 'mm' });
- * const wall = d.parameter('wall', '3 mm', { customizer: { min: 1, max: 10, step: 0.5 } });
+ * const wall = d.parameter('wall', '3 mm', { customizer: { min: '1 mm', max: '10 mm', step: '0.5 mm' } });
  * d.box({ length: '40 mm', width: '20 mm', height: wall });
  * ```
  *

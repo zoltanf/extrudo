@@ -610,10 +610,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `[data-customizer-slider="<name>"]`, the groups as regions named after their
   group ("Size", "Walls"), the combobox "Configuration" and the button
   "Configuration actions" (Save as…/Update/Rename/Delete). A row's value field is
-  the textbox "Expression of `<name>`"; in the Parameters dialog a row's star is
-  the button "Show `<name>` in customizer" and the details row adds the textboxes
-  "Min/Max/Step of `<name>`" and the icon buttons "Clear Min/Max/Step of
-  `<name>`". The Configuration select has no option text hook: read the selected
+  the textbox "Expression of `<name>`"; in the Parameters dialog (select the
+  parameter first, `selectParameter`) the switch "Show `<name>` in customizer"
+  exposes it and the textboxes "Min/Max/Step of `<name>`" take expressions (an
+  emptied one takes that end away). The Configuration select has no option text hook: read the selected
   option's text through `evaluate` (e2e/ has no DOM library, so cast the element
   to `{options, selectedIndex}`). **A slider drag is real**: down, several
   moves, up on `[data-customizer-slider]`; the value steps from the range, and
@@ -1214,22 +1214,34 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 ### `e2e/parameters.spec.ts`
 
-- P0-07: the dialog (`pickTool(page, 'Parameters')`, a Home tile) has
-  textboxes `Expression of <name>` (`exact`) whose accessible description is
-  the live `= 75.20 mm`; use `toHaveAccessibleDescription`. Editing `wall` to
-  `3 mm` moves `inner` to 74 and `d3` to 15, and the dialog's own Undo/Redo
-  buttons step it back.
-
-- A unit error (`10 mm + 5 deg`) sets `aria-invalid` and "Can't add a length
-  and an angle."; Enter and blur don't commit it, Esc returns to the committed
-  value and keeps the dialog open (a second Esc closes it). A cycle (`inner +
-  1 mm` on `width`) reports "width refers to itself: width → inner → width."
-
-- New parameters use "New parameter name"/"New parameter expression" + "Add"
-  (a taken name is refused by an `alert`); renaming `wall` to `thickness`
-  through "Name of wall" rewrites `inner` to `width - 2 * thickness`; deleting
-  one that is in use is refused naming the users, an unused one goes and
-  Ctrl-free Undo brings it back.
+- P0-07, ADR-0086: the dialog (`pickTool(page, 'Parameters')`, a Home tile;
+  `parametersDialog(page)`) is a list and an inspector. **A parameter's
+  fields exist only while it is selected**: rows are
+  `[data-parameter-row="<name>"]` (`aria-current="true"` when selected),
+  sections `[data-parameter-section="<title>"]` ("User parameters" while
+  flat; "General", then groups); model parameters sit in the collapsed
+  "Model parameters" section. Use `selectParameter(page, name)` and
+  `parameterExpression(page, name)` (both open Model parameters when needed)
+  and `addUserParameter(page, name, expression, unit?)` from `helpers.ts`
+  (the form's "New parameter name"/"New parameter expression", the radio
+  group "New parameter unit", "Add"; the new parameter is selected after).
+- The inspector's textboxes: `Expression of <name>` (`exact`; accessible
+  description = the live `= 75.20 mm`), `Name of <name>`, `Comment on
+  <name>`, `Min/Max/Step of <name>`; the switch `Show <name> in customizer`;
+  the group chips are buttons (`aria-pressed`) in the group `Group of
+  <name>`, "New group" opens the textbox "New group name"; Delete is the
+  button `Delete <name>`; refusals are the dialog's `alert`. A row's value
+  is its text (`toContainText('75.20 mm')`).
+- Wall bracket opens with General: inner, holes; Size: width; Walls: wall;
+  Holes: tilt (the template's groups). Editing `wall` to `3 mm` moves
+  `inner` to 74 and `d3` to 15. A unit error (`10 mm + 5 deg`) sets
+  `aria-invalid`; Enter and blur don't commit; Esc reverts and keeps the
+  dialog open, a second Esc closes it. A cycle (`inner + 1 mm` on `width`)
+  reports "width refers to itself: width → inner → width.", a range using
+  `inner` on width "The range can't use inner: it changes with width."
+- **Drag is real**: `row.dragTo(target, { targetPosition: { x: 40, y: 4 } })`
+  (the top half of a row = before it); `Alt+ArrowDown` on a focused row
+  moves it; each is one undo step.
 
 ### `e2e/pattern.spec.ts`
 

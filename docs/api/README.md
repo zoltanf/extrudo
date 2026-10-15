@@ -21,7 +21,9 @@ consumer's business, not this package's.
 import { Design } from '@extrudo/api';
 
 const d = Design.create({ name: 'Plate' });
-const width = d.parameter('width', '80 mm', { customizer: { min: 20, max: 200, step: 5 } });
+const width = d.parameter('width', '80 mm', {
+  customizer: { min: '20 mm', max: '200 mm', step: '5 mm' },
+});
 
 const s = d.sketch(d.origin.xy, (k) => {
   const plate = k.rectangle([0, 0], [40, 20]);

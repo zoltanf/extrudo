@@ -141,7 +141,7 @@ test('a document parameter drives a variable, and the Customizer follows it', as
   await openParameters(page);
   await addParameter(page, 'plateWidth', '50 mm');
   const parameters = page.getByRole('dialog', { name: 'Parameters' });
-  await parameters.getByRole('button', { name: 'Show plateWidth in customizer' }).click();
+  await parameters.getByRole('switch', { name: 'Show plateWidth in customizer' }).click();
   for (const [field, text] of [
     ['Min', '20 mm'],
     ['Max', '80 mm'],

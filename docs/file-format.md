@@ -1,6 +1,6 @@
 # The `.extrudo` file format
 
-Specification of format version **1**, for people who write tools that read or
+Specification of format version **2**, for people who write tools that read or
 write Extrudo projects, and for us. It is derived from the zod schema in
 `packages/core/src/` (the schema is normative; if this text and the schema
 disagree, the schema wins and this text has a bug) and from the archive code
@@ -61,7 +61,7 @@ that common zip libraries support (stored or deflate).
 | `versions/<n>.json` | one per index entry | The complete document as it was when version `n` was saved. Same schema as `document.json`. |
 | `attachments/<sha256>` | one per file the document or a version names | The bytes of an attachment (section 4.5), named by their SHA-256. Stored uncompressed (fonts are already compressed). Written only when the design has attachments. |
 
-Reserved for later, not written or read by format version 1: `cache/`
+Reserved for later, not written or read by format version 2: `cache/`
 (kernel-derived data that a reader may drop). A reader must **ignore any entry
 it does not know**, including that one; a writer that copies a file it edited
 should keep unknown entries when it can.
@@ -79,7 +79,7 @@ store **before** the document that names them.
 | Field | Type | Meaning |
 |---|---|---|
 | `format` | `"extrudo"` | Required. The file is refused ("not an Extrudo project") unless this is exactly the string `extrudo`. |
-| `formatVersion` | integer | Required. The format version the writer used (currently 1). A file without an integer here is refused as damaged. A reader migrates by `document.json`'s own `formatVersion`, but treats the file as newer when either number is above what it knows (section 3). |
+| `formatVersion` | integer | Required. The format version the writer used (currently 2). A file without an integer here is refused as damaged. A reader migrates by `document.json`'s own `formatVersion`, but treats the file as newer when either number is above what it knows (section 3). |
 | `appVersion` | string | Version of the app that wrote the file (copy of `meta.appVersion`). |
 | `created` | ISO 8601 string | Copy of `meta.created`. |
 | `units` | `mm`, `cm`, `m` or `in` | Copy of `settings.units`. |
@@ -131,7 +131,7 @@ gives it a new one).
 ## 3. Versioning and migrations
 
 `document.json` carries `format` (always `"extrudo"`) and `formatVersion` (an
-integer; the current one is **1**). The rules:
+integer; the current one is **2**). The rules:
 
 - **Breaking changes bump `formatVersion`.** A breaking change is anything
   but adding an *optional* field: removing or renaming a field, changing a
@@ -153,7 +153,7 @@ integer; the current one is **1**). The rules:
   its feature type doesn't define and marks the feature with a warning
   ("This version of Extrudo doesn't know the input…"). Writers of other
   tools must not add private keys to the document all the same: a reader
-  drops them, and there is no `extensions` bag in format 1.
+  drops them, and there is no `extensions` bag in format 2.
 - **Reading a document** (`loadDocument`):
   1. The value must be an object with `format === "extrudo"` and an integer
      `formatVersion`, else `not-a-document`.
@@ -181,8 +181,16 @@ integer; the current one is **1**). The rules:
   `units`, parameters without IDs, `disabled` instead of `suppressed`,
   sketch lists as arrays). No release ever wrote it; it exists so the
   migration chain has a first step and a fixture
-  (`packages/core/fixtures/v0-bracket.json`). A third-party writer should
-  write version 1.
+  (`packages/core/fixtures/v0-bracket.json`).
+- **Version 1 → 2** (ADR-0086): a parameter's `customizer.min`, `max` and
+  `step` were numbers in the base unit and became expressions (section
+  5.1.1); the migration writes each with its base unit spelled out (`25.4` →
+  `"25.4 mm"`, `30` on an angle → `"30 deg"`, plain on a unitless
+  parameter), so a design in inches still reads them as millimetres.
+  `customizer.group` moved to the parameter's own `group` (section 5.1). An
+  older reader opens a version 2 file as its own version (above) unless a
+  range is there: a string where it expects a number makes it `too-new`.
+  A third-party writer should write version 2.
 
 ---
 
@@ -195,7 +203,7 @@ schema names unknown keys, and a reader leaves them out (section 3).
 | Key | Type | Required | Meaning and constraints |
 |---|---|---|---|
 | `format` | `"extrudo"` | yes | Literal. |
-| `formatVersion` | `1` | yes | Literal 1 in this specification. |
+| `formatVersion` | `2` | yes | Literal 2 in this specification. |
 | `id` | ID | yes | The project's identity (a UUID v4 from `crypto.randomUUID()` in practice; any non-empty string is accepted). Names the project in storage. |
 | `name` | string | yes | Non-empty. Shown in the app bar and the home screen. |
 | `settings` | object | yes | Section 4.1. |
@@ -230,7 +238,6 @@ Whole-document rules (checked after the per-field rules):
   and each frame's reference is a kind the type reads (section 4.8).
 - Each group (section 4.6) must name features that exist, run forwards along
   the timeline, and not share a feature with another group.
-- A parameter's customizer `min` must not be above its `max` (section 5.1).
 - A `text` entity whose `font` is `attachment:<id>` needs that `id` in
   `attachments` (section 7.1), and an input of kind `file` (section 6.1) needs
   its `id` there too, of a media type that feature reads (6.28 for an `import`,
@@ -445,6 +452,7 @@ User parameters, the named values of the parameters table.
 | `expression` | string | yes | An expression (section 5.2), for example `2 mm` or `width / 2`. |
 | `unit` | `"length"`, `"angle"` or `"unitless"` | yes | The *kind* the expression must evaluate to. |
 | `comment` | string | no | Free text. |
+| `group` | string | no | 1 to 40 characters: the group the parameter sits in, a section of the Parameters dialog and a heading in the customizer panel (ADR-0086 §1). Absent means no group. |
 | `customizer` | object | no | The parameter is shown in the customizer panel. Section 5.1.1. |
 
 Rules that the *evaluator* enforces but the schema does not: a name must not be
@@ -453,7 +461,8 @@ a **reserved word** (a unit `mm cm m in ft deg rad`, a function name, or
 `paramName` (below). Parameters may refer to each other in any order (the
 list order is not evaluation order); a **cycle** is an error reported on
 every parameter in it. All parameters and model parameters share **one
-namespace**.
+namespace**. The list order is the order the Parameters dialog and the
+customizer panel show (ADR-0086 §3); it never changes a value.
 
 #### 5.1.1 `customizer`
 
@@ -463,10 +472,21 @@ not exposed.
 
 | Field | Type | Required | Meaning |
 |---|---|---|---|
-| `min` | number | no | The slider's range, low end, in the parameter's **base unit** (mm, degrees, or plain). Absent means no slider. |
-| `max` | number | no | The slider's range, high end, in the base unit. Must not be below `min`. |
-| `step` | number | no | The slider's step in the base unit. Positive. Absent means the panel's own step. |
-| `group` | string | no | 1 to 40 characters: a heading in the panel. Parameters without a `group` come first, then the groups in order of first appearance. |
+| `min` | string | no | The slider's range, low end: an expression (section 5.2) in the parameter's unit, like its own (`"20 mm"`, `"wall * 5"`). Absent means no slider. |
+| `max` | string | no | The slider's range, high end, an expression in the same unit. |
+| `step` | string | no | The slider's step, an expression that must evaluate above 0. Absent means the panel's own step. |
+
+The panel groups exposed parameters by the parameter's `group` (section 5.1):
+parameters without one come first, then the groups in order of first
+appearance.
+
+A range expression may use other parameters, and it is evaluated whenever
+the panel shows it, so it follows them. It must not use the parameter itself
+or a parameter that depends on it (the range would move while the slider is
+dragged): an app refuses to store one and shows no slider for an end that has
+come to depend on it since. Neither does a range whose `min` evaluates above
+its `max` get a slider; the schema can't check that, since only evaluating
+can tell.
 
 The range is a **slider range, not a constraint**: an expression may evaluate
 outside `[min, max]` (the panel shows that with a warning). A parameter whose
@@ -1686,7 +1706,7 @@ test parses this block against the real schema, so it stays valid.)
 ```json example
 {
   "format": "extrudo",
-  "formatVersion": 1,
+  "formatVersion": 2,
   "id": "5b0b3ad0-2a52-4c6f-9c5e-0f2d3f9e0a11",
   "name": "Example bracket",
   "settings": { "units": "mm", "precision": 2 },
@@ -1697,7 +1717,8 @@ test parses this block against the real schema, so it stays valid.)
       "expression": "40 mm",
       "unit": "length",
       "comment": "Overall width",
-      "customizer": { "min": 20, "max": 80, "step": 5, "group": "Size" }
+      "group": "Size",
+      "customizer": { "min": "20 * wall", "max": "80 mm", "step": "5 mm" }
     },
     { "id": "param-wall", "name": "wall", "expression": "2 mm", "unit": "length" }
   ],
@@ -1812,7 +1833,7 @@ test parses this block against the real schema, so it stays valid.)
 ```
 
 Its container, with one saved version, holds `manifest.json`
-(`{"format":"extrudo","formatVersion":1,"appVersion":"0.1.0","created":"2026-09-29T10:00:00.000Z","units":"mm"}`),
+(`{"format":"extrudo","formatVersion":2,"appVersion":"0.1.0","created":"2026-09-29T10:00:00.000Z","units":"mm"}`),
 `document.json` (the above), `thumbnail.png` (optional), `versions/index.json`
 (`{"versions":[{"number":1,"description":"First cut","created":"2026-09-29T10:15:00.000Z","name":"Example bracket"}]}`)
 and `versions/1.json` (a document of the same shape).
@@ -1857,7 +1878,7 @@ exports.
 `views`), panel layout, undo history and the display settings are not part of
 the file.
 
-**Known gaps in format 1** (things a tool author might expect that are not
+**Known gaps in format 2** (things a tool author might expect that are not
 there yet): no hole, pattern, move or combine features; no imported bodies and
 no attachment kinds other than fonts; no `cache/`; no extension mechanism for
 third-party keys. Each will arrive as new feature types or optional fields, or
