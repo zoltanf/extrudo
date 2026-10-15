@@ -124,7 +124,7 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 
 - [Point](./constructionPoint.md) — A construction point at a vertex, a circle center, a face center or coordinates.
 - [Point on Path](./pointOnPath.md) — A point a fraction or a length along a path of sketch curves and edges.
-- [Point at Intersection](./pointAtIntersection.md) — The point where two edges, an edge and a plane, or three planes meet.
+- [Point at Intersection](./pointAtIntersection.md) — The point where two edges, an edge and a plane or face, two curved faces and a plane, or three planes or faces meet.
 
 ### Inspect
 

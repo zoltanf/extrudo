@@ -2,6 +2,10 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+## Unreleased
+
+- 2026-10-15 · **A point where two curved faces and a plane meet** (ADR-0040's addendum): `pointAtIntersection` now takes three references of which some are curved faces, solved by the facade's new `facesMeetPlane` (a face-face or face-plane section cut with a plane); several crossings take the point nearest the plane's centre with a warning, and three curved faces are refused.
+
 ## v0.7.0 (2026-10-15)
 
 - 2026-10-15 · **A ghost body shows only its nearest surface** (ADR-0030's amendment): a ghost draws a depth-only pass before its 30 % faces, so where its faces overlap on screen (a cylinder's back, inner walls, standoffs) the grey no longer stacks into darker patches and the inside no longer shows through; edges, sketches and construction behind a ghost still show through it, dimmed.
