@@ -2,8 +2,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   ellipseSweep,
+  SKETCH_CIRCULAR,
+  SKETCH_CONIC,
   SKETCH_ELLIPSE,
+  SKETCH_LINE,
   SKETCH_LINE_ALT,
+  sketchCircular,
+  sketchConic,
   sketchEllipse,
   sketchLine,
 } from './sketch-geometry';
@@ -119,5 +124,75 @@ describe('sketch line subclass', () => {
       construction: true,
       owner: 50,
     });
+  });
+});
+
+describe('hostile numbers', () => {
+  const circle = (numbers: number[]) =>
+    segment([
+      { guid: SKETCH, id: 50, body: [0] },
+      ...POINTS,
+      {
+        guid: SKETCH_CIRCULAR,
+        id: 12,
+        body: f64s(new Bytes().u8(0).u8(0), ...numbers)
+          .ref(1)
+          .raw(new Array(51).fill(0))
+          .ref(50).out,
+      },
+    ]);
+  // Centre, normal, zero-angle direction, radius, start and end angles.
+  const ok = [0, 0, 0, 0, 0, 1, 1, 0, 0, 2, 0, 1];
+
+  it('refuses a circle or arc whose numbers are not finite or whose radius is not positive', () => {
+    expect(sketchCircular.decode(circle(ok), 12)).toMatchObject({ radius: 2, owner: 50 });
+    const bad: [number, number][] = [
+      [10, Number.POSITIVE_INFINITY], // a start angle no turn brings round
+      [11, Number.NaN],
+      [0, Number.NEGATIVE_INFINITY],
+      [9, 0],
+      [9, -1],
+      [9, Number.NaN],
+    ];
+    for (const [at, value] of bad) {
+      const numbers = [...ok];
+      numbers[at] = value;
+      expect(() => sketchCircular.decode(circle(numbers), 12)).toThrow(/circle\/arc #12/);
+    }
+  });
+
+  it('refuses a line whose ends are not finite', () => {
+    const record = (x: number) =>
+      segment([
+        { guid: SKETCH, id: 50, body: [0] },
+        ...POINTS,
+        {
+          guid: SKETCH_LINE,
+          version: 1,
+          id: 11,
+          body: f64s(new Bytes().u8(0).u8(0), x, 0, 0, 2, 0, 0, 1, 0, 0)
+            .ref(2)
+            .ref(1)
+            .raw(new Array(49).fill(0))
+            .ref(50).out,
+        },
+      ]);
+    expect(sketchLine.decode(record(0), 11).end).toEqual([2, 0, 0]);
+    expect(() => sketchLine.decode(record(Number.NaN), 11)).toThrow(/isn't finite/);
+  });
+
+  it('refuses a spline whose poles, knots or weights are not finite', () => {
+    const conic = (pole: number, weight = 1) => {
+      const b = f64s(new Bytes().u8(0).u8(0), 0.5).u8(1).u8(0).u32(2);
+      f64s(b, 0).u32(6).u32(6).u32(8);
+      f64s(b, 0, 0, 0, 1, 1, 1).u32(3).u32(3).u32(8);
+      f64s(b, 1, weight, 1).u32(3).u32(3).u32(8);
+      f64s(b, 0, 0, 0, pole, 1, 0, 2, 0, 0);
+      return segment([...POINTS, { guid: SKETCH_CONIC, id: 13, body: b.ref(1).ref(2).ref(3).out }]);
+    };
+    expect(sketchConic.decode(conic(1), 13).poles[1]).toEqual([1, 1, 0]);
+    expect(() => sketchConic.decode(conic(Number.NaN), 13)).toThrow(/no conic/);
+    expect(() => sketchConic.decode(conic(1, Number.POSITIVE_INFINITY), 13)).toThrow(/no conic/);
+    expect(() => sketchConic.decode(conic(1, 0), 13)).toThrow(/no conic/);
   });
 });

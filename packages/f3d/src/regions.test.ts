@@ -100,3 +100,16 @@ describe('regionPieces', () => {
     expect(insidePieces(outline ?? [], [3, 1])).toBe(true);
   });
 });
+
+describe('hostile arcs', () => {
+  it('brings a huge start angle round in one step, not one turn at a time', () => {
+    // An open arc whose angles sit far out (the loop of turns took seconds at
+    // 1e10 and never ended past 1e17), crossed by a line.
+    for (const from of [1e10, 1e17, -1e300]) {
+      const arc = { ...circle(2n, 1), startAngle: from, endAngle: from + 3 };
+      const t = performance.now();
+      sketchPieces(sketch([line(1n, [-2, 0], [2, 0])], [arc]), new Set());
+      expect(performance.now() - t).toBeLessThan(1000);
+    }
+  });
+});

@@ -62,7 +62,9 @@ export function readAxis(seg: Segment, refs: number[]): RevolveAxis | undefined 
       r.zeros(2);
       const point: Vec3 = [r.f64(), r.f64(), r.f64()];
       const direction: Vec3 = [r.f64(), r.f64(), r.f64()];
-      if (Math.hypot(...direction) > 1e-12) line ??= { point, direction };
+      // An axis that isn't finite is no axis (Infinity passed the length test).
+      if ([...point, ...direction].every(Number.isFinite) && Math.hypot(...direction) > 1e-12)
+        line ??= { point, direction };
     } else if (type === SKETCH_CURVE_REF) {
       const r = seg.reader(id);
       r.zeros(2);

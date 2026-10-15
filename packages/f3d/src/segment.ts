@@ -69,9 +69,14 @@ export class Segment {
       const module = r.str8(256);
       const n = r.u32();
       if (n > r.remaining / 8) throw new F3dFormatError('Bad type table.');
-      const ids: number[] = [];
-      for (let k = 0; k < n; k++) ids.push(r.u64());
-      const entry: TypeEntry = { index: i, guid, base, version, module, ids };
+      // An id once, in the first type that lists it: a repeat would decode
+      // its record again (the files never repeat one).
+      const ids = new Set<number>();
+      for (let k = 0; k < n; k++) {
+        const id = r.u64();
+        if (!this.#typeOf.has(id)) ids.add(id);
+      }
+      const entry: TypeEntry = { index: i, guid, base, version, module, ids: [...ids] };
       this.types.push(entry);
       this.#byGuid.set(guid, entry);
       for (const id of ids) this.#typeOf.set(id, entry);

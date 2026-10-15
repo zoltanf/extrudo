@@ -6,6 +6,7 @@
  * evaluated value in internal units (cm, radians). A feature's or dimension's
  * parameter has an owner record; a user parameter has none.
  */
+import { finite } from '../bytes';
 import type { Segment } from '../segment';
 import { decodeLevel, type RecordDecoder, unsupported } from './common';
 
@@ -57,6 +58,7 @@ export const parameterValue: RecordDecoder<ParameterValue> = {
       const unit = r.wstr();
       const name = r.wstr();
       const value = r.f64();
+      if (!text) finite(`Parameter #${id}`, [value]);
       r.u8();
       const table = r.ref();
       return {
