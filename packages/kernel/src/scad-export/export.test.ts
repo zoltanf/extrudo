@@ -138,12 +138,11 @@ async function render(source: string): Promise<Solid> {
         max[k] = Math.max(max[k] as number, p[i + k] as number);
       }
     }
-    const at = (n: number) => [p[n * 3], p[n * 3 + 1], p[n * 3 + 2]] as number[];
+    const at = (n: number) => [p[n * 3] ?? 0, p[n * 3 + 1] ?? 0, p[n * 3 + 2] ?? 0];
     for (let t = 0; t < mesh.indices.length; t += 3) {
-      const [a, b, c] = [0, 1, 2].map((k) => at(mesh.indices[t + k] as number)) as number[][];
-      const [ax, ay, az] = a as number[];
-      const [bx, by, bz] = b as number[];
-      const [cx, cy, cz] = c as number[];
+      const [ax, ay, az] = at(mesh.indices[t] as number) as [number, number, number];
+      const [bx, by, bz] = at(mesh.indices[t + 1] as number) as [number, number, number];
+      const [cx, cy, cz] = at(mesh.indices[t + 2] as number) as [number, number, number];
       volume +=
         (ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx)) / 6;
     }
@@ -162,8 +161,8 @@ function measured(ids: readonly BodyId[]): Solid {
     const m = kernel.measure(shape);
     volume += m.volume;
     for (let k = 0; k < 3; k++) {
-      min[k] = Math.min(min[k] as number, m.bbox.min[k]);
-      max[k] = Math.max(max[k] as number, m.bbox.max[k]);
+      min[k] = Math.min(min[k] as number, m.bbox.min[k] as number);
+      max[k] = Math.max(max[k] as number, m.bbox.max[k] as number);
     }
   }
   return { volume, min, max };

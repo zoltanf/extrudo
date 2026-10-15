@@ -11,14 +11,20 @@ import {
   type AttachmentId,
   addAttachment,
   type BodyId,
+  type BodyMeta,
+  componentOfBody,
   evaluateParameters,
+  newBodyNames,
   readSketch,
   type SketchData,
   updateBody,
 } from '@extrudo/core';
 import { checkManifold, read3mf, readStl } from '@extrudo/io';
+import { RESOLUTIONS } from '@extrudo/kernel';
+import { KernelService, loadOcct } from '@extrudo/kernel/node';
+import { readArchive, writeArchive } from '@extrudo/storage';
 import { afterAll, describe, expect, it } from 'vitest';
-import { type DesignJob, type HeadlessError, openDesign } from './headless';
+import { type DesignJob, EXTRUDO_VERSION, type HeadlessError, openDesign } from './headless';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const fixture = (name: string) => `${ROOT}fixtures/${name}`;
@@ -516,6 +522,63 @@ describe('components (P6-05 S8, ADR-0081 §9)', () => {
     expect(hinge?.status).toBe('ok');
     expect(hinge?.check?.collisions.length).toBe(0);
     expect(hinge?.check?.tightest?.gap).toBeCloseTo(0.3, 2);
+  });
+});
+
+describe('an OpenSCAD export (P6-09, ADR-0086)', () => {
+  it('writes what the kernel service exports for the same bodies', {
+    timeout: 180_000,
+  }, async () => {
+    const job = await openComponentFixture('lid-box');
+    const [file] = await job.export({ format: 'scad' });
+    const text = new TextDecoder().decode(file?.bytes);
+    expect(file?.name).toMatch(/\.scad$/);
+    expect(text).toContain('(component Lid)');
+
+    // The same export straight from a kernel service of its own.
+    const service = new KernelService(() => loadOcct());
+    try {
+      const result = await service.recompute({ doc: job.doc });
+      if (result.status !== 'done') throw new Error('cancelled');
+      const doc = job.doc;
+      // A body the design hasn't named yet gets the name the app would give it.
+      const unnamed = newBodyNames(
+        doc,
+        result.bodies.map(({ id }) => id).filter((id) => !doc.bodies[id]),
+      );
+      const direct = await service.exportScad({
+        bodies: result.bodies.map(({ id }) => {
+          const meta = doc.bodies[id];
+          const component = componentOfBody(doc, id, result.origins);
+          const name = (doc.components ?? []).find((c) => c.id === component)?.name;
+          return {
+            id,
+            name: meta?.name ?? unnamed[id] ?? id,
+            ...(meta?.color !== undefined && { color: meta.color }),
+            ...(name !== undefined && { component: name }),
+          };
+        }),
+        tessellation: RESOLUTIONS.medium,
+        project: doc.name,
+        version: EXTRUDO_VERSION,
+      });
+      expect(text).toBe(direct);
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  it('leaves hidden bodies out unless they are asked for', { timeout: 180_000 }, async () => {
+    const archive = readArchive(await readFile(fixture('benchmarks/b4-box-with-lid.extrudo')));
+    const doc = archive.doc;
+    const lid = Object.entries(doc.bodies).find(([, meta]) => meta.name === 'Lid')?.[0] as BodyId;
+    doc.bodies = { ...doc.bodies, [lid]: { ...(doc.bodies[lid] as BodyMeta), visible: false } };
+    const job = await openBytes(writeArchive(doc));
+    const shown = new TextDecoder().decode((await job.export({ format: 'scad' }))[0]?.bytes);
+    expect(shown).toContain('// Box\n');
+    expect(shown).not.toContain('// Lid');
+    const asked = await job.export({ format: 'scad', bodies: ['Lid'] });
+    expect(new TextDecoder().decode(asked[0]?.bytes)).toContain('// Lid\n');
   });
 });
 

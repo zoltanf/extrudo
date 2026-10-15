@@ -15,6 +15,7 @@ import { type AttachmentId, addAttachment } from '@extrudo/core';
 import { checkManifold, read3mf, readStl } from '@extrudo/io';
 import { sha256Hex, writeArchive } from '@extrudo/storage';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { openDesign } from './headless';
 
 const run = promisify(execFile);
 const BIN = fileURLToPath(new URL('../bin/extrudo.mjs', import.meta.url));
@@ -208,6 +209,24 @@ describe('extrudo export', () => {
     expect(text).toContain('FILE_SCHEMA');
     expect(text).toContain('Box');
     expect(text).toContain('Lid');
+  });
+
+  it('writes an OpenSCAD file, as the library exports it', SPAWNING, async () => {
+    const design = await fixture('b4-box-with-lid');
+    const out = join(dir, 'box-and-lid.scad');
+    const result = await extrudo(['export', design, '--format', 'scad', '--out', out]);
+    expect(result.code).toBe(0);
+    const text = await readFile(out, 'utf8');
+    expect(text).toMatch(/^\/\/ .*\n\/\/ Exported from Extrudo /);
+    expect(text).toContain('// Box\n');
+    expect(text).toContain('// Lid\n');
+    const { job } = await openDesign(design);
+    try {
+      const [file] = await job.export({ format: 'scad' });
+      expect(text).toBe(new TextDecoder().decode(file?.bytes));
+    } finally {
+      await job.dispose();
+    }
   });
 
   it('is 2 about a body the design does not have', SPAWNING, async () => {
