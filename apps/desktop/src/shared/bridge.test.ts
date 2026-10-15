@@ -264,3 +264,30 @@ describe('preload bridge (ADR-0075 §1)', () => {
     ]);
   });
 });
+
+describe('the MCP channels (P6-08, ADR-0087 §4)', () => {
+  it('delivers tool calls to one handler and sends answers, tools and asks', async () => {
+    const { ipc, calls, emit, listeners } = fakeIpc({
+      [CHANNELS.mcpConfig]: () => ({ url: 'u', token: 't' }),
+    });
+    const api = createApi(ipc);
+    const seen: unknown[] = [];
+    api.agent.onRequest((request) => seen.push(['first', request]));
+    api.agent.onRequest((request) => seen.push(['second', request]));
+    emit(CHANNELS.mcpRequest, { id: 1, tool: 'get_design', args: {} });
+    expect(seen).toEqual([['second', { id: 1, tool: 'get_design', args: {} }]]);
+    api.agent.offRequest();
+    expect(listeners.get(CHANNELS.mcpRequest)).toEqual([]);
+
+    api.agent.respond({ id: 1, error: 'x' });
+    api.agent.setTools([]);
+    expect(await api.agent.config()).toEqual({ url: 'u', token: 't' });
+    await api.agent.regenerateToken();
+    expect(calls.map(({ channel, kind }) => [channel, kind])).toEqual([
+      [CHANNELS.mcpRespond, 'send'],
+      [CHANNELS.mcpTools, 'send'],
+      [CHANNELS.mcpConfig, 'invoke'],
+      [CHANNELS.mcpRegenerateToken, 'invoke'],
+    ]);
+  });
+});

@@ -1,10 +1,17 @@
 import { createDocument, type EvaluateResult, evaluateParameters } from '@extrudo/core';
 import { X } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { useAgentStatus } from '../agent/useAgentBridge';
 import type { ThemeChoice } from '../design-system';
 import { Button, Dialog, DialogClose, IconButton, Select, TextInput } from '../design-system';
 import { ExpressionInput } from '../parameters/ExpressionInput';
-import type { Platform, Preferences } from '../platform';
+import {
+  type AgentBridge,
+  type AgentStatus,
+  clientConfig,
+  type Platform,
+  type Preferences,
+} from '../platform';
 import { SLICERS, type SlicerId } from '../platform/slicer';
 import {
   checkPrintField,
@@ -27,6 +34,10 @@ import { type SectionId, type SectionInfo, visibleSections } from './inventory';
 const SECTION_KEY = 'settings.section';
 const EXPORT_KEY = 'export.model';
 const SLICER_PATHS_KEY = 'slicers.paths';
+// The desktop MCP server (P6-08, ADR-0087 §3): main reads both itself.
+const MCP_ENABLED_KEY = 'mcp.enabled';
+const MCP_PORT_KEY = 'mcp.port';
+const DEFAULT_MCP_PORT = 7474;
 
 let emptyDocument: ReturnType<typeof createDocument> | undefined;
 const empty = () => {
@@ -51,6 +62,8 @@ export interface SettingsDialogProps {
   /** The desktop build: shows the Desktop section. */
   desktop: boolean;
   installedSlicers?: Platform['installedSlicers'];
+  /** The desktop MCP server (P6-08): its switch, port, status and client config. */
+  agent?: AgentBridge | undefined;
 }
 
 /**
@@ -153,7 +166,13 @@ function Page({
     case 'export':
       return <ExportPage preferences={props.preferences} />;
     case 'desktop':
-      return <DesktopPage preferences={props.preferences} installed={props.installedSlicers} />;
+      return (
+        <DesktopPage
+          preferences={props.preferences}
+          installed={props.installedSlicers}
+          agent={props.agent}
+        />
+      );
   }
 }
 
@@ -589,9 +608,11 @@ function ExportPage({ preferences }: { preferences: Preferences }) {
 function DesktopPage({
   preferences,
   installed,
+  agent,
 }: {
   preferences: Preferences;
   installed?: Platform['installedSlicers'];
+  agent?: AgentBridge | undefined;
 }) {
   const [paths, setPaths] = useState(() =>
     preferences.get<Partial<Record<SlicerId, string>>>(SLICER_PATHS_KEY, {}),
@@ -634,6 +655,115 @@ function DesktopPage({
           />
         </Row>
       ))}
+      {agent && <AgentSettings preferences={preferences} agent={agent} />}
+    </>
+  );
+}
+
+/** What the server is doing, in one line (ADR-0087 §6). */
+export function agentStateText(status: AgentStatus | undefined, enabled: boolean): string {
+  if (!enabled) return 'Off.';
+  if (!status) return 'Starting…';
+  if (status.error) {
+    // Something else holds the port: if it answered a client, it has seen the token.
+    return /in use/.test(status.error)
+      ? `${status.error} If another program answered on this port, regenerate the token.`
+      : status.error;
+  }
+  if (!status.listening) return 'Starting…';
+  return `Listening on ${status.url}`;
+}
+
+/** A port a person may pick: 1024 to 65535 (below needs root). */
+export const validPort = (text: string): number | undefined => {
+  const port = Number(text.trim());
+  return Number.isInteger(port) && port >= 1024 && port <= 65535 ? port : undefined;
+};
+
+/**
+ * Settings › Desktop › Agents (P6-08, ADR-0087 §6): the MCP server's switch,
+ * its port (a plain number: a setting of the app, not a model value, so no
+ * expression), its state, and the client config with the token.
+ */
+function AgentSettings({ preferences, agent }: { preferences: Preferences; agent: AgentBridge }) {
+  const status = useAgentStatus(agent);
+  const [enabled, setEnabled] = useState(() => preferences.get<boolean>(MCP_ENABLED_KEY, true));
+  const [port, setPort] = useState(() =>
+    String(preferences.get<number>(MCP_PORT_KEY, DEFAULT_MCP_PORT)),
+  );
+  const [note, setNote] = useState<string>();
+  const portValue = validPort(port);
+  const commitPort = () => {
+    if (portValue === undefined) return;
+    if (portValue === preferences.get<number>(MCP_PORT_KEY, DEFAULT_MCP_PORT)) return;
+    preferences.set(MCP_PORT_KEY, portValue);
+  };
+  const copy = (config: Promise<Parameters<typeof clientConfig>[0]>, done: string) => {
+    void config
+      .then((c) => navigator.clipboard.writeText(clientConfig(c)))
+      .then(
+        () => setNote(done),
+        () => setNote("Couldn't copy the client config."),
+      );
+  };
+  return (
+    <>
+      <Heading>Agents (MCP)</Heading>
+      <p className="mb-2 text-xs text-muted">
+        AI agents such as Claude Code can read and change the open design through a server on this
+        computer. Only programs here that have the token can connect; every change they make is one
+        undo step.
+      </p>
+      <Check
+        label="Let agents connect"
+        checked={enabled}
+        onChange={(on) => {
+          setEnabled(on);
+          preferences.set(MCP_ENABLED_KEY, on);
+        }}
+        hint="Off closes the server at once."
+      />
+      <Row label="Port" hint={portValue === undefined ? 'A port from 1024 to 65535.' : undefined}>
+        <TextInput
+          aria-label="MCP server port"
+          inputMode="numeric"
+          className="w-28"
+          value={port}
+          onChange={(event) => setPort(event.target.value)}
+          onBlur={commitPort}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') commitPort();
+          }}
+        />
+      </Row>
+      <Row label="State">
+        <p role="status" aria-label="MCP server state" className="pt-1 text-sm">
+          {agentStateText(status, enabled)}
+        </p>
+      </Row>
+      <div className="flex flex-wrap gap-2 py-1.5">
+        <Button
+          onClick={() =>
+            copy(
+              agent.config(),
+              "Copied. Paste it into your agent's MCP settings: it holds the token.",
+            )
+          }
+        >
+          Copy client config
+        </Button>
+        <Button
+          onClick={() =>
+            copy(
+              agent.regenerateToken(),
+              'New token made and copied: clients with the old one are refused.',
+            )
+          }
+        >
+          Regenerate token
+        </Button>
+      </div>
+      {note && <p className="text-xs text-muted">{note}</p>}
     </>
   );
 }

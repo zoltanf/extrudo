@@ -937,17 +937,17 @@ function Scene({
   const thumbnailBoxRef = useRef(thumbnailBox);
   thumbnailBoxRef.current = thumbnailBox;
   useEffect(() => {
-    viewport.getState().setSnapshot(() => {
+    viewport.getState().setSnapshot((size = THUMBNAIL_SIZE) => {
       const { gl, scene, camera } = get();
       const box = thumbnailBoxRef.current;
       if (!box) {
         // Draw now: without preserveDrawingBuffer the canvas is only readable
         // in the task that rendered it.
         gl.render(scene, camera);
-        return thumbnailOf(gl.domElement);
+        return thumbnailOf(gl.domElement, size);
       }
       const { view, projection } = viewport.getState();
-      return thumbnailFromBox(gl, scene, thumbnailView(view, box, projection), projection);
+      return thumbnailFromBox(gl, scene, thumbnailView(view, box, projection), projection, size);
     });
     return () => viewport.getState().setSnapshot(undefined);
   }, [viewport, get]);
@@ -1125,8 +1125,8 @@ function thumbnailFromBox(
   scene: ThreeScene,
   view: View,
   projection: Projection,
+  size = THUMBNAIL_SIZE,
 ): Promise<Blob | null> {
-  const size = THUMBNAIL_SIZE;
   const out = document.createElement('canvas');
   out.width = size;
   out.height = size;
@@ -1178,16 +1178,16 @@ function thumbnailFromBox(
  * transparent: the home screen draws the viewport glow behind it, so the
  * thumbnail suits both themes.
  */
-function thumbnailOf(canvas: HTMLCanvasElement): Promise<Blob | null> {
+function thumbnailOf(canvas: HTMLCanvasElement, size = THUMBNAIL_SIZE): Promise<Blob | null> {
   const out = document.createElement('canvas');
-  out.width = THUMBNAIL_SIZE;
-  out.height = THUMBNAIL_SIZE;
+  out.width = size;
+  out.height = size;
   const ctx = out.getContext('2d');
   if (!ctx || canvas.width === 0 || canvas.height === 0) return Promise.resolve(null);
   const side = Math.min(canvas.width, canvas.height);
   const sx = (canvas.width - side) / 2;
   const sy = (canvas.height - side) / 2;
-  ctx.drawImage(canvas, sx, sy, side, side, 0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE);
+  ctx.drawImage(canvas, sx, sy, side, side, 0, 0, size, size);
   return new Promise((resolve) => out.toBlob(resolve, 'image/png'));
 }
 

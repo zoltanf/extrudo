@@ -15,6 +15,7 @@ import { isMenuModel } from '../shared/menuModel';
 import type { DialogFiles } from './dialogs';
 import type { ExternalFiles } from './externalFiles';
 import type { Folders } from './folders';
+import type { McpService } from './mcp/service';
 import { pluginCall } from './plugin-call';
 import type { PreferencesFile } from './preferences';
 import { type RecentFile, recentPathAt } from './recent';
@@ -70,6 +71,8 @@ export interface IpcDependencies {
   docs: { open(path: unknown): void; openSite(link: unknown): void };
   /** The About dialog's links (ADR-0085): a URL checked against main's allow-list. */
   links: { open(url: unknown): void };
+  /** The MCP server (P6-08, ADR-0087): the renderer's tools and answers, Settings' asks. */
+  mcp: McpService;
 }
 
 export function registerIpcHandlers(deps: IpcDependencies): void {
@@ -79,6 +82,8 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   ipcMain.handle(CHANNELS.prefsRead, () => deps.preferences.read());
   ipcMain.on(CHANNELS.prefsWrite, (_event, key: string, value: unknown) => {
     deps.preferences.set(key, value);
+    // Settings › Desktop's switch and port: off closes the port at once.
+    if (typeof key === 'string' && key.startsWith('mcp.')) void deps.mcp.configure();
   });
 
   ipcMain.handle(CHANNELS.storeCall, (_event, method: string, args: unknown[]) =>
@@ -216,4 +221,11 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   ipcMain.on(CHANNELS.docsOpen, (_event, path: unknown) => deps.docs.open(path));
   ipcMain.on(CHANNELS.linkOpen, (_event, url: unknown) => deps.links.open(url));
   ipcMain.on(CHANNELS.siteOpen, (_event, link: unknown) => deps.docs.openSite(link));
+
+  // The MCP server (P6-08, ADR-0087 §4): the payloads are checked in the service.
+  ipcMain.on(CHANNELS.mcpTools, (_event, tools: unknown) => deps.mcp.setTools(tools));
+  ipcMain.on(CHANNELS.mcpRespond, (_event, response: unknown) => deps.mcp.respond(response));
+  ipcMain.handle(CHANNELS.mcpStatusRead, () => deps.mcp.status());
+  ipcMain.handle(CHANNELS.mcpConfig, () => deps.mcp.config());
+  ipcMain.handle(CHANNELS.mcpRegenerateToken, () => deps.mcp.regenerateToken());
 }

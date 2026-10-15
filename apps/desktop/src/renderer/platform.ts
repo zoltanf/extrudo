@@ -22,6 +22,7 @@ import type {
 import { appNotifications } from '@extrudo/web/notifications';
 import { recoverRescued } from '@extrudo/web/platform/rescue';
 import type { ExtrudoApi, FolderEntry } from '../shared/ipc';
+import { desktopAgent } from './agent';
 import { unwrap } from './errors';
 import { desktopMenus } from './menus';
 import { createPluginProxy, createStoreProxy } from './proxy';
@@ -201,6 +202,7 @@ export async function desktopPlatform(api: ExtrudoApi = window.extrudo): Promise
     externalFiles: desktopExternalFiles(api),
     menus: desktopMenus(api),
     desktop: desktopApp(api),
+    agent: desktopAgent(api),
     ...desktopSlicer(api),
     updates: desktopUpdates(api, appNotifications.getState().push),
     // The docs pages (P6-06 S9): main builds the URL from the whitelisted path.

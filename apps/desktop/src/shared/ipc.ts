@@ -12,6 +12,7 @@
  */
 import type { MenuModel } from '@extrudo/web/menu-model';
 import type { SlicerFile, SlicerId } from '@extrudo/web/platform/slicer';
+import type { McpRequest, McpResponse, McpToolDefinition } from './mcp';
 
 export const CHANNELS = {
   prefsRead: 'extrudo:prefs:read',
@@ -70,6 +71,15 @@ export const CHANNELS = {
   linkOpen: 'extrudo:link:open',
   // The landing site and the source (the top bar's About and GitHub): a name, the URL main's own.
   siteOpen: 'extrudo:site:open',
+  // The MCP server (P6-08, ADR-0087 §4): main → renderer a tool call and the
+  // server's status; renderer → main the answer, the tool list, and Settings' asks.
+  mcpRequest: 'extrudo:mcp:request',
+  mcpRespond: 'extrudo:mcp:respond',
+  mcpTools: 'extrudo:mcp:tools',
+  mcpStatus: 'extrudo:mcp:status',
+  mcpStatusRead: 'extrudo:mcp:status-read',
+  mcpConfig: 'extrudo:mcp:config',
+  mcpRegenerateToken: 'extrudo:mcp:regenerate-token',
 } as const;
 
 export type Channel = (typeof CHANNELS)[keyof typeof CHANNELS];
@@ -195,6 +205,25 @@ export interface UpdateStatus {
   manual?: boolean;
 }
 
+/** The MCP server's state as main reports it over `mcp:status` (P6-08, ADR-0087 §6). */
+export interface McpStatus {
+  enabled: boolean;
+  port: number;
+  /** Where it listens (or would): `http://127.0.0.1:<port>/mcp`. */
+  url: string;
+  listening: boolean;
+  /** Clients with a stream open or a request in the last 30 s. */
+  clients: number;
+  /** Why it isn't listening although enabled (a port in use). */
+  error?: string;
+}
+
+/** What Settings' Copy client config needs. */
+export interface McpConfig {
+  url: string;
+  token: string;
+}
+
 /**
  * The API `contextBridge.exposeInMainWorld('extrudo', …)` publishes. The
  * renderer's `desktopPlatform()` is written against exactly this.
@@ -295,6 +324,20 @@ export interface ExtrudoApi {
   readonly links: {
     /** Opens a link in the system browser (ADR-0085): main allows only its own list of addresses. */
     open(url: string): void;
+  };
+  readonly agent: {
+    /** Registers the one handler for main's tool calls. */
+    onRequest(handler: (request: McpRequest) => void): void;
+    offRequest(): void;
+    respond(response: McpResponse): void;
+    /** The tools main lists to clients; sent once the app is up. */
+    setTools(tools: McpToolDefinition[]): void;
+    /** Registers the one handler for main's `mcp:status`. */
+    onStatus(handler: (status: McpStatus) => void): void;
+    offStatus(): void;
+    status(): Promise<McpStatus>;
+    config(): Promise<McpConfig>;
+    regenerateToken(): Promise<McpConfig>;
   };
   readonly rescue: {
     /** Keeps the raw document JSON before returning; false if the file couldn't be written. */

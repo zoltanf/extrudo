@@ -198,6 +198,12 @@ app redistributes Electron.
     licenses, in Electron's own LICENSE and LICENSES.chromium.html.
   electron-vite 5 (MIT)
     https://github.com/alex8088/electron-vite
+  @modelcontextprotocol/sdk 1 (MIT), bundled into the app's main process
+    https://github.com/modelcontextprotocol/typescript-sdk
+    The desktop MCP server (P6-08, ADR-0087). It and everything it depends
+    on (hono, @hono/node-server, ajv, zod and the rest, all MIT, ISC or
+    BSD) are checked against the allow-list by scripts/check-licenses.mjs
+    (its BUNDLED_DEV list), although they are devDependencies.
 
 
 5. Not third-party
