@@ -487,3 +487,23 @@ come from the marker's document, so nothing else needs passing. The guide
 page should say which parameters stay live (sizes, distances, angles,
 factors) and that sketch geometry, placements and pattern counts are
 fixed, with the note in the file naming them.
+
+**Acceptance (slice 6):** `scad-export/acceptance.test.ts` renders the real
+file and compares it with the kernel, one test per roadmap AC bullet: AC 1
+(a 60 × 40 × 15 box — a sketch rectangle extruded — with a pocket cut into
+its top by a sketch on its top face and a circular pattern of six holes cut
+from it) writes no `polyhedron`; AC 2 the same part with the box's four outer
+vertical edges filleted first writes exactly one `polyhedron` (the filleted
+version) with the pocket and the holes as `difference()` of it; AC 3 a
+Customizer `height` in group `Size`, range 5…50 step 1, value 20, drives the
+box's extrude distance and, rendered with `height = 35`, matches the kernel
+recomputed at 35; AC 4 the same document exported twice gives the same bytes.
+AC 5 (`packages/cli/src/headless.test.ts`, next to the export test) builds the
+AC 1 document, exports it through `DesignJob.export({ format: 'scad' })` and
+finds it byte-identical to `KernelService.exportScad`. This slice also fixes
+a symmetric extrude with `through-all` (cut or intersect): it went through
+`distanceScalar`, which threw "Enter a distance." and fell back to a mesh, so
+`features/extrude.ts` now writes both sides at the larger of the two
+`through-all` lengths, through the non-throwing `reachLength`, throwing only
+when neither direction reaches anything (a new `extrude.test.ts` case cuts a
+mid-plane box symmetrically through everything with no `polyhedron`).
