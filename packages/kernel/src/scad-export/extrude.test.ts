@@ -338,6 +338,26 @@ describe('extrude', () => {
     expect(count(text, 'X_tool();')).toBe(2);
   });
 
+  it('cuts symmetrically through everything from a mid-plane', async () => {
+    const b = new SketchBuilder();
+    b.circle(0, 0, 4);
+    const data = b.sketch;
+    const result = await run(
+      testDocument([
+        box('B', '0 mm', { numbers: { offset: '-5 mm' } }),
+        sketch('S', data),
+        extrude('E', [profile('S', data)], {
+          direction: 'symmetric',
+          extent: 'through-all',
+          operation: 'cut',
+        }),
+      ]),
+    );
+    expect(bodiesOf(result)).toEqual([body('B')]);
+    const text = await expectExact(bodiesOf(result));
+    expect(text).not.toContain('Enter a distance');
+  });
+
   it('samples arc profiles (a slot) and splines, and extrudes a text', async () => {
     const slot = new SketchBuilder();
     slot.arc(10, 0, 5, 90, 270);

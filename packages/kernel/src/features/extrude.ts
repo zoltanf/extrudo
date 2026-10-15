@@ -153,8 +153,21 @@ function sidesNode(
       side(settings.sides[0], sign);
       break;
     case 'symmetric': {
-      const whole = absolute(distanceScalar(ctx, settings.sides[0] as ExtrudeSide));
-      const each = settings.symmetricMeasure === 'half' ? whole : half(whole);
+      const side = settings.sides[0] as ExtrudeSide;
+      let each: Scalar;
+      if (side.extent === 'through-all') {
+        // Both sides reach the same length, the larger of the two `through-all`
+        // lengths: the evaluator's `max(through(n), through(scale(n, -1)))`.
+        const whole = Math.max(
+          reachLength(ctx, base.origin, n),
+          reachLength(ctx, base.origin, scale(n, -1)),
+        );
+        if (whole <= LENGTH_EPS) throw nothingToGoThrough();
+        each = whole;
+      } else {
+        const whole = absolute(distanceScalar(ctx, side));
+        each = settings.symmetricMeasure === 'half' ? whole : half(whole);
+      }
       nodes.push(slab(node2d, sign, each), slab(node2d, -sign, each));
       break;
     }
@@ -188,16 +201,22 @@ function distanceScalar(ctx: CsgContext<ExtrudeInputs>, side: ExtrudeSide): Scal
   return ctx.scalar(side.distance);
 }
 
-/** How far a side reaches past the plane for `through-all` (mm), plus the kernel's margin. */
-function throughLength(ctx: CsgContext<ExtrudeInputs>, point: Vec3, along: Vec3): number {
+/** How far a side reaches past the plane in one direction (0 when nothing is there), plus the margin. */
+function reachLength(ctx: CsgContext<ExtrudeInputs>, point: Vec3, along: Vec3): number {
   const bounds = ctx.bounds();
   if (!bounds) {
     throw new KernelError('There are no bodies to go through. Enter a distance instead.');
   }
   let far = 0;
   for (const c of corners(bounds.min, bounds.max)) far = Math.max(far, dot(sub(c, point), along));
+  return far <= LENGTH_EPS ? 0 : far + Math.max(1, 0.05 * far);
+}
+
+/** How far a side reaches past the plane for `through-all` (mm), plus the kernel's margin. */
+function throughLength(ctx: CsgContext<ExtrudeInputs>, point: Vec3, along: Vec3): number {
+  const far = reachLength(ctx, point, along);
   if (far <= LENGTH_EPS) throw nothingToGoThrough();
-  return far + Math.max(1, 0.05 * far);
+  return far;
 }
 
 function evaluateExtrude(ctx: EvalContext<ExtrudeInputs>): FeatureOutput {
