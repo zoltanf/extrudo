@@ -4,7 +4,7 @@
  *
  * ```
  * extrudo info   <design.extrudo> [--json]
- * extrudo export <design.extrudo> --format stl|3mf|step [--out <path>]
+ * extrudo export <design.extrudo> --format stl|3mf|step|scad [--out <path>]
  *                [--param name=expr]… [--config <name>] [--bodies a,b]
  *                [--resolution coarse|medium|fine|<mm>] [--json]
  * extrudo set    <design.extrudo> [--param name=expr]… [--config <name>] --out <new.extrudo>
@@ -62,7 +62,7 @@ const USAGE_TEXT = `extrudo ${EXTRUDO_VERSION} — recompute an Extrudo design i
 
 Usage:
   extrudo info   <design.extrudo> [--json]
-  extrudo export <design.extrudo> --format stl|3mf|step [--out <path>]
+  extrudo export <design.extrudo> --format stl|3mf|step|scad [--out <path>]
                 [--param name=expr]... [--config <name>] [--bodies a,b]
                 [--component name]... [--flat]
                 [--resolution coarse|medium|fine|<deviation mm>] [--json]
@@ -83,7 +83,8 @@ Options:
   --features a..b     Emit only this run of the timeline (feature indices or IDs).
   --out <path>        Where to write. For export it is the one file to write;
                       for set it is the .extrudo file to write.
-  --resolution        coarse, medium (the default), fine, or a deflection in mm.
+  --resolution        coarse, medium (the default), fine, or a deflection in mm
+                      (an OpenSCAD file: its polyhedra and $fa/$fs).
   --json              One JSON object on stdout instead of the text report.
 
 Exit codes: 0 ok, 1 usage, 2 the design has errors, 3 a file could not be read or written.`;
@@ -233,7 +234,7 @@ export function parse(argv: readonly string[]): Options | { help: true } | { ver
   if (values['min-gap'] !== undefined) options.minGap = values['min-gap'];
   if (values.features !== undefined) options.features = featuresOf(values.features);
   if (options.command === 'export' && options.format === undefined) {
-    throw new UsageError('extrudo export needs --format stl, 3mf or step.');
+    throw new UsageError('extrudo export needs --format stl, 3mf, step or scad.');
   }
   if (options.command === 'set' && options.out === undefined) {
     throw new UsageError('extrudo set needs --out <new.extrudo> to write.');
@@ -447,11 +448,11 @@ function pathOf(options: Options, file: ExportedFile): string {
   return beside === options.design ? join(folder, `export-${file.name}`) : beside;
 }
 
-/** `export`: the chosen bodies as mesh or STEP files. */
+/** `export`: the chosen bodies as mesh, STEP or OpenSCAD files. */
 async function exportCommand(options: Options, streams: Streams): Promise<number> {
   const format = (options.format ?? '').toLowerCase();
-  if (format !== 'stl' && format !== '3mf' && format !== 'step') {
-    throw new UsageError(`--format takes stl, 3mf or step ("${options.format}" is none).`);
+  if (format !== 'stl' && format !== '3mf' && format !== 'step' && format !== 'scad') {
+    throw new UsageError(`--format takes stl, 3mf, step or scad ("${options.format}" is none).`);
   }
   const resolution = resolutionOf(options.resolution);
   const job = await opened(options);

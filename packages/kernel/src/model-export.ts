@@ -171,7 +171,7 @@ export function safeFileName(name: string, extension: string): string {
 export function modelFileName(
   project: string,
   bodies: readonly ExportBody[],
-  format: ModelFormat,
+  format: ModelFormat | 'scad',
 ): string {
   const [only] = bodies;
   const component = only?.component;
