@@ -153,6 +153,23 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
+// The MCP SDK (P6-08, ADR-0087 §1) is the desktop main process's alone: the
+// server lives there, and the web build (and the renderer) must not carry it.
+const desktopMain = join(ROOT, 'apps/desktop/src/main') + sep;
+for (const dir of workspaceDirs) {
+  for (const file of sourceFiles(dir)) {
+    if (file.startsWith(desktopMain) || file.includes(`${sep}out${sep}`)) continue;
+    if (/['"]@modelcontextprotocol\/sdk/.test(readFileSync(file, 'utf8'))) {
+      problems.push(`${relative(ROOT, file)}: only apps/desktop/src/main may import the MCP SDK`);
+    }
+  }
+}
+
+if (problems.length > 0) {
+  console.error(`Package boundary violations:\n${problems.map((p) => `  - ${p}`).join('\n')}`);
+  process.exit(1);
+}
+
 // Module paths that differ only by case are one file on macOS and Windows, so
 // `import './ModelProgress'` can resolve to `modelProgress.ts` there (v0.4.0's
 // desktop build failed that way). Compare the stem (the path without its last
