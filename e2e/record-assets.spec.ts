@@ -1485,7 +1485,7 @@ function constructScene(
       await commit(page, dialog);
       // The pointer steps aside, so a small result (a point) is not under it.
       await p.moveTo({ x: clip.x + clip.width - 40, y: clip.y + 40 }, 450);
-      await page.waitForTimeout(700);
+      await page.waitForTimeout(1000);
     });
   });
 }
@@ -1579,7 +1579,11 @@ constructScene(
 constructScene(
   'pointAtIntersection',
   'Point at Intersection',
-  BOX_30,
+  // Framed close on the corner the two edges meet at, so the point reads.
+  [
+    [-2, -12, 2],
+    [17, 2, 16],
+  ],
   [
     { at: [0, -10, 14], kind: /^edge:/, dy: 2 },
     { at: [15, -10, 7], kind: /^edge:/, dy: 2 },
@@ -1676,7 +1680,9 @@ test('demo: placeOnBed', async ({ page }) => {
     await previewed(dialog);
     await page.waitForTimeout(500);
     await commit(page, dialog);
-    await page.waitForTimeout(600);
+    // The pointer steps aside and the placed body is held.
+    await p.moveTo({ x: clip.x + clip.width - 40, y: clip.y + 40 }, 450);
+    await page.waitForTimeout(1000);
   });
 });
 
