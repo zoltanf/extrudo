@@ -82,6 +82,8 @@ describe('parameters', () => {
     expect(d.parameter('tilt', '45 deg').unit).toBe('angle');
     expect(d.parameter('half', '20 mm').unit).toBe('length');
     expect(d.parameter('copies', '3', { unit: 'unitless' }).unit).toBe('unitless');
+    // A name on Object.prototype isn't a unit.
+    expect(d.parameter('odd', '2 toString').unit).toBe('length');
   });
 
   it('sets an expression by name or handle, and keeps the others', () => {

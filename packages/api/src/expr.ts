@@ -8,12 +8,12 @@
  * an explicit `unit` in the options overrides this.
  */
 import type { UnitKind } from '@extrudo/core';
-import { ANGLE, UNITS } from '@extrudo/core';
+import { ANGLE, unitNamed } from '@extrudo/core';
 
 /** What an expression's own unit says, or `length` for a plain number. */
 export function inferUnit(expression: string): UnitKind {
   const unit = expression.trim().split(/\s+/).at(-1) ?? '';
-  const known = UNITS[unit as keyof typeof UNITS];
+  const known = unitNamed(unit);
   if (!known) return 'length';
   return known.dim.angle === ANGLE.angle ? 'angle' : 'length';
 }

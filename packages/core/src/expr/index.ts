@@ -36,4 +36,5 @@ export {
   UNITLESS,
   UNITS,
   type Unit,
+  unitNamed,
 } from './units';

@@ -34,9 +34,23 @@ export const UNITS: Readonly<Record<string, Unit>> = {
 
 export const UNIT_NAMES = Object.keys(UNITS);
 
+/**
+ * `table[name]` for the table's own keys only. A plain `table[name]` or
+ * `name in table` also finds `constructor`, `toString` or `__proto__` on
+ * Object.prototype, and these names come from typed text and files.
+ */
+export function ownEntry<T>(table: Readonly<Record<string, T>>, name: string): T | undefined {
+  return Object.hasOwn(table, name) ? table[name] : undefined;
+}
+
+/** The unit called `name`, if there is one. */
+export function unitNamed(name: string): Unit | undefined {
+  return ownEntry(UNITS, name);
+}
+
 export function lengthFactor(unit: LengthUnit): number {
   // biome-ignore lint/style/noNonNullAssertion: every LengthUnit is in UNITS.
-  return UNITS[unit]!.factor;
+  return unitNamed(unit)!.factor;
 }
 
 export function dimOfKind(kind: UnitKind): Dim {
