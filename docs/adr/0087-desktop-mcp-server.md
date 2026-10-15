@@ -215,6 +215,21 @@ next to the installers, for clients that load skills from disk.
 - **A change is refused while a sketch is being edited or a dialog's
   transaction is open** ("Finish the sketch or close the open dialog in
   Extrudo first."): the agent's step would otherwise join the person's.
+- **A change waits for the sketch solver** (`AgentHost.ready`, the tool host's
+  `whenSolverReady`): the solver loads only when a design has dimensions, and a
+  sketch the agent dimensions by a parameter must be solved before the kernel
+  reads it.
+- **`run_command` refuses `undo` and `redo`**: inside the agent's own step they
+  would undo nothing; the `undo` and `redo` tools do it. Other commands (Quit
+  among them) run as the person's would.
+- **A renderer is ready again after `app:ready`**: `did-navigate` (a committed
+  cross-document navigation, not a hash route or one `will-navigate` blocked)
+  and `render-process-gone` mark it gone; until the app has mounted its handler
+  the renderer answers "Extrudo isn't ready yet". At most 64 calls wait at once
+  and 16 sessions live (a 17th while all hold a stream is 503).
+- **Port squatting:** another local user could bind 7474 first and receive the
+  token from a configured client. Settings shows "Port 7474 is in use by another
+  program."; the remedy is another port and a new token.
 - **Headless runs need a display.** Chromium's headless Ozone platform crashes
   Electron 44's main process, so the acceptance client runs under `xvfb-run -a`.
 

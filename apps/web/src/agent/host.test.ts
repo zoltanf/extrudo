@@ -10,6 +10,7 @@ function host(designId: string): AgentHost {
     session: createSessionStore(),
     model: createModelStore<unknown>(),
     apply: () => {},
+    ready: async () => {},
     bodies: async () => [],
     snapshot: async () => null,
     commands: () => [],
@@ -53,5 +54,11 @@ describe('the agent host registry (ADR-0087 §5)', () => {
     h.model.getState().computed({ features: {}, bodies: {}, doc: h.store.getState().doc });
     await waiting;
     expect(done).toBe(true);
+  });
+
+  it('settles at once when the recompute failed', async () => {
+    const h = host('e');
+    h.model.getState().failed('The kernel crashed.');
+    await expect(settled(h, 60_000)).resolves.toBeUndefined();
   });
 });

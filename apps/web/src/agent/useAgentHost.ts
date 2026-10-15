@@ -20,6 +20,7 @@ import type { MeasureKernel } from '../measure/inspection';
 import type { AgentExportFormat } from '../platform/agent';
 import { bodyEntries } from '../shell/bodies';
 import type { AppCommand } from '../shell/commands';
+import type { ToolHost } from '../sketch/tools/host';
 import { APP_VERSION } from '../version';
 import type { ViewportStore } from '../viewport/store';
 import { type AgentBody, type AgentHost, registerAgentHost } from './host';
@@ -34,6 +35,8 @@ export interface AgentShell {
   apply(command: Command<unknown>): void;
   commands: readonly AppCommand[];
   save(): Promise<void>;
+  /** The sketch tools' host (loaded lazily): its `apply` solves, once its solver is in. */
+  toolHost: Pick<ToolHost, 'whenSolverReady'> | undefined;
 }
 
 /** The bodies an export takes: the shown ones, else all (as the Export dialog starts). */
@@ -98,6 +101,13 @@ function createShellHost(designId: string, current: { current: AgentShell }): Ag
           visible: entry.display !== 'hidden',
         };
       });
+    },
+    async ready() {
+      // The tool host is a lazy chunk: wait for it (10 s at most), then for its solver.
+      for (let i = 0; i < 200 && !shell().toolHost; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      await shell().toolHost?.whenSolverReady();
     },
     snapshot: (size) => shell().viewport.getState().snapshot?.(size) ?? Promise.resolve(null),
     commands: () =>

@@ -34,6 +34,7 @@ export function fakeHost(
       }
       store.getState().commitTransaction();
     },
+    ready: async () => {},
     bodies: async () => [
       {
         id: 'b1',

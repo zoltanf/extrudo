@@ -189,13 +189,16 @@ export function createMcpServer(options: McpServerOptions): Promise<RunningMcpSe
     activity();
   }
 
-  function makeRoom(): void {
-    if (sessions.size < MAX_SESSIONS) return;
+  /** Room for one more session: the oldest idle one goes; false when every one holds a stream. */
+  function makeRoom(): boolean {
+    if (sessions.size < MAX_SESSIONS) return true;
     let oldest: [string, Session] | undefined;
     for (const entry of sessions) {
       if (entry[1].streams === 0 && (!oldest || entry[1].last < oldest[1].last)) oldest = entry;
     }
-    if (oldest) dropSession(oldest[0]);
+    if (!oldest) return false;
+    dropSession(oldest[0]);
+    return true;
   }
 
   async function onRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -222,7 +225,7 @@ export function createMcpServer(options: McpServerOptions): Promise<RunningMcpSe
       if (req.method !== 'POST' || !isInitializeRequest(body)) {
         return refuse(res, 400, 'Start a session with an initialize request.');
       }
-      makeRoom();
+      if (!makeRoom()) return refuse(res, 503, 'Too many sessions.');
       const server = newProtocolServer(options);
       const fresh: Session = {
         server,

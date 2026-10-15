@@ -47,6 +47,9 @@ import type { AgentExportFormat, AgentReply } from '../platform/agent';
 import { type AgentHost, settled } from './host';
 import { type SketchShape, TOOL_SCHEMAS, type ToolInput, type ToolName } from './schemas';
 
+/** Commands `run_command` leaves to their own tools. */
+const UNDO_COMMANDS: ReadonlySet<string> = new Set(['undo', 'redo']);
+
 export const NO_DESIGN = 'No design is open: call open_design first.';
 export const BUSY =
   'Finish the sketch or close the open dialog in Extrudo first: a change now would join it.';
@@ -223,6 +226,10 @@ async function change(
   body: () => unknown,
 ): Promise<AgentReply> {
   const { store, session } = host;
+  if (store.getState().transactionDepth > 0 || session.getState().mode === 'sketch') {
+    return failure(BUSY);
+  }
+  await host.ready();
   if (store.getState().transactionDepth > 0 || session.getState().mode === 'sketch') {
     return failure(BUSY);
   }
@@ -479,7 +486,16 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
     return change(ctx, h, `Edit ${feature.name}`, () => {
       // The feature's own schema checks the merged inputs on a scratch copy.
       const scratch = Design.from(doc);
-      const merged = { ...feature.inputs, ...(expandShorthands(inputs) as object) };
+      // An expression input that names a model parameter (`d17`) keeps the name, so
+      // whatever reads it still resolves.
+      const changed = expandShorthands(inputs) as Record<string, unknown>;
+      const merged: Record<string, unknown> = { ...feature.inputs, ...changed };
+      for (const [key, value] of Object.entries(changed)) {
+        const old = feature.inputs[key];
+        if (old?.kind === 'expr' && old.paramName !== undefined && typeof value !== 'object') {
+          merged[key] = { expr: String(value), paramName: old.paramName };
+        }
+      }
       const handle: FeatureHandle = scratch.add(feature.type, merged as never, {
         name: feature.name,
       });
@@ -520,6 +536,8 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
     const command = h.commands().find((c) => c.id === id);
     if (!command) return failure(`There is no command "${id}": list_commands lists them.`);
     if (command.unavailable) return failure(`${command.label}: ${command.unavailable}`);
+    // Inside the agent's own step they would undo nothing: the undo and redo tools do it.
+    if (UNDO_COMMANDS.has(command.id)) return failure(`Use the ${command.id} tool for that.`);
     return change(ctx, h, command.label, () => {
       command.run();
       return { command: command.id };

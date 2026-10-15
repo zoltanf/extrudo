@@ -22,6 +22,8 @@ import { readOrCreateToken, regenerateToken } from './token';
 
 /** A tool call the renderer hasn't answered in this long fails. */
 export const REQUEST_TIMEOUT_MS = 60_000;
+/** Calls waiting for the renderer at once; more are refused. */
+const MAX_PENDING = 64;
 /** How often the connected count is looked at again (it decays after 30 s). */
 const STATUS_POLL_MS = 5_000;
 
@@ -118,6 +120,11 @@ export function createMcpService(options: McpServiceOptions): McpService {
   poll.unref?.();
 
   function handle(tool: string, args: Record<string, unknown>): Promise<ToolResult> {
+    if (pending.size >= MAX_PENDING) {
+      return Promise.resolve(
+        textError('Too many calls are waiting for Extrudo: try again shortly.'),
+      );
+    }
     // The skill is main's: it serves it as resources, so it answers get_skill too.
     if (tool === 'get_skill' && options.skill) {
       return Promise.resolve({ content: [{ type: 'text', text: options.skill.text }] });
@@ -179,7 +186,10 @@ export function createMcpService(options: McpServiceOptions): McpService {
   return {
     configure() {
       // One change at a time: a quick on-off-on must not race two binds.
-      queue = queue.then(apply).then(emit, (cause: unknown) => log.warn('MCP server:', cause));
+      queue = queue
+        .then(apply)
+        .then(emit)
+        .catch((cause: unknown) => log.warn('MCP server:', cause));
       return queue;
     },
     setTools(list) {

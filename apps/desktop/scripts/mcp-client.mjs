@@ -150,6 +150,24 @@ async function run(url, token) {
   check(undone.undone === 'Agent: Set depth', `undo took back "${undone.undone}"`);
   const back = await callJson(client, 'get_bodies');
   check(Math.abs(back[0].volume - 4000) < 0.01, `after undo: ${back[0].volume} mm³`);
+  // A sketch whose size is a parameter is solved before the extrude reads it.
+  await call(client, 'set_parameter', { name: 'dia', expression: '20 mm' });
+  const peg = (
+    await callJson(client, 'add_sketch', {
+      plane: 'xy',
+      shapes: [{ shape: 'circle', center: [100, 0], diameter: 'dia' }],
+    })
+  ).result;
+  await callJson(client, 'add_feature', {
+    type: 'extrude',
+    inputs: { profiles: peg.profiles, distance: '10 mm' },
+  });
+  const pegs = await callJson(client, 'get_bodies');
+  const pegVolume = pegs.find((b) => Math.abs(b.volume - 4000) > 1)?.volume;
+  check(
+    Math.abs(pegVolume - Math.PI * 100 * 10) < 1,
+    `a 'dia' circle extruded 10 mm: ${pegVolume} mm³`,
+  );
   const shot = await client.callTool({ name: 'screenshot', arguments: {} });
   check(shot.content[0]?.type === 'image', 'screenshot is a PNG image block');
   await client.close();

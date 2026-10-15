@@ -36,6 +36,8 @@ export interface AgentHost {
   readonly model: ModelStore<unknown>;
   /** The shell's `apply`: the commands in one step, and the sketches they touch re-solved. */
   apply(commands: readonly Command<unknown>[]): void;
+  /** Resolves once a change can be applied with its sketches solved (the solver is in). */
+  ready(): Promise<void>;
   /** The bodies at the marker with their measures (the kernel's, as Print Info's). */
   bodies(): Promise<AgentBody[]>;
   /** A square PNG of the model, `size` px; null when the view isn't drawn. */
@@ -86,7 +88,11 @@ export function waitForHost(id: string, timeoutMs = 30_000): Promise<AgentHost> 
 export function settled(host: AgentHost, timeoutMs = 30_000): Promise<void> {
   const done = () => {
     const model = host.model.getState();
-    return model.status !== 'computing' && model.doc === host.store.getState().doc;
+    // A failed recompute is an answer too (it sets no `doc`): say so instead of waiting.
+    return (
+      model.status === 'failed' ||
+      (model.status !== 'computing' && model.doc === host.store.getState().doc)
+    );
   };
   if (done()) return Promise.resolve();
   return new Promise((resolve) => {

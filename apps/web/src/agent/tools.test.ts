@@ -209,6 +209,48 @@ describe('the agent tools (ADR-0087 §5)', () => {
     expect(store.getState().undoLabel).toBe('Agent: Edit Extrude1');
   });
 
+  it('keeps the model-parameter name of an expression it edits', async () => {
+    const doc = plate();
+    const extrude = doc.features[1];
+    const named = {
+      ...doc,
+      features: doc.features.map((f) =>
+        f.id === extrude?.id
+          ? {
+              ...f,
+              inputs: {
+                ...f.inputs,
+                distance: { kind: 'expr' as const, expr: '5 mm', paramName: 'd7' },
+              },
+            }
+          : f,
+      ),
+    } as ExtrudoDocument;
+    const { host, store } = plateHost(named);
+    await runTool(
+      'edit_feature',
+      { id: extrude?.id, inputs: { distance: '15 mm' } },
+      context(host),
+    );
+    expect(store.getState().doc.features[1]?.inputs.distance).toMatchObject({
+      kind: 'expr',
+      expr: '15 mm',
+      paramName: 'd7',
+    });
+  });
+
+  it('leaves undo and redo to their own tools in run_command', async () => {
+    const { host } = plateHost();
+    const commands = host.commands;
+    host.commands = () => [
+      ...commands(),
+      { id: 'undo', label: 'Undo', group: 'Edit', run: () => {} },
+    ];
+    expect(textOf(await runTool('run_command', { id: 'undo' }, context(host)))).toBe(
+      'Use the undo tool for that.',
+    );
+  });
+
   it('suppresses, renames and removes, each one step', async () => {
     const { host, store } = plateHost();
     const extrude = store.getState().doc.features[1];

@@ -1287,6 +1287,7 @@ export function AppShell({
     save: async () => {
       await autosave.flush();
     },
+    toolHost: host,
   });
   const markingCommands = useMemo(
     () =>

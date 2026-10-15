@@ -51,7 +51,13 @@ describe('desktopAgent (ADR-0087 §4)', () => {
       { id: 8, error: 'Kaput.' },
     ]);
     off();
-    expect(fake.listening()).toBe(false);
+    // Still listening: a call with no handler is answered, not lost.
+    expect(fake.listening()).toBe(true);
+    fake.send({ id: 9, tool: 'get_design', args: {} });
+    expect(fake.responses.at(-1)).toEqual({
+      id: 9,
+      error: "Extrudo isn't ready yet: try again in a moment.",
+    });
   });
 
   it('follows the status and passes the tool list and Settings asks', async () => {

@@ -379,10 +379,15 @@ function main(): void {
       window = null;
       rendererUp = false;
     });
-    // A reload: tool calls wait for the new page's `app:ready`. A hash route
-    // (opening a design) stays in the same document and keeps the renderer up.
-    window.webContents.on('did-start-navigation', (details) => {
-      if (details.isMainFrame && !details.isSameDocument) rendererUp = false;
+    // A reload: tool calls wait for the new page's `app:ready`. `did-navigate`
+    // fires only for a committed cross-document navigation (a hash route, or one
+    // `will-navigate` blocked, keeps the renderer up); a crashed renderer can't answer.
+    window.webContents.on('did-navigate', () => {
+      rendererUp = false;
+    });
+    window.webContents.on('render-process-gone', () => {
+      rendererUp = false;
+      mcp.rendererReset();
     });
 
     // A compromised renderer must not turn this window into a browser: no
