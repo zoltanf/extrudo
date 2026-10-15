@@ -30,6 +30,20 @@ describe('hostile segments', () => {
     ]);
   });
 
+  it('shares the budget across the segment’s tables', () => {
+    const L = 64 * 1024;
+    const n = L / 32;
+    const body: number[] = [];
+    while (body.length < L) body.push(n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, 0);
+    const seg = segment(
+      Array.from({ length: 20 }, (_, i) => ({ guid: OPERATION_TABLE, id: i + 1, body })),
+    );
+    const t = performance.now();
+    const design = readSegment(seg);
+    expect(performance.now() - t).toBeLessThan(1500);
+    expect(design.problems.filter((p) => p.endsWith('takes too long to find')).length).toBe(20);
+  });
+
   it('reads a timeline item once however often the file repeats it', () => {
     const body = new Bytes().u8(0).u8(0).ref(2).u32(100_000);
     for (let i = 0; i < 100_000; i++) body.ref(3);

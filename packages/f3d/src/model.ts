@@ -600,8 +600,9 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
   // Face tags name the feature that made a face by its operation ID; the
   // operation table maps those IDs to feature records.
   const operations = new Map<number, number[]>();
+  const budget = { left: OPERATION_TABLE_BUDGET };
   for (const id of seg.idsOf(OPERATION_TABLE)) {
-    const table = tryDecode(`operation table #${id}`, () => readOperationTable(seg, id));
+    const table = tryDecode(`operation table #${id}`, () => readOperationTable(seg, id, budget));
     for (const [op, records] of table ?? []) operations.set(op, records);
   }
 
@@ -1059,7 +1060,15 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
  */
 const OPERATION_TABLE_BUDGET = 1_000_000;
 
-function readOperationTable(seg: Segment, id: number): Map<number, number[]> {
+/**
+ * The entry reads the operation-table search may take over a whole segment
+ * (`budget.left` counts down across its tables).
+ */
+function readOperationTable(
+  seg: Segment,
+  id: number,
+  budget: { left: number },
+): Map<number, number[]> {
   const f = seg.frame(id);
   const endsHere = (r: Reader): boolean => {
     if (r.remaining < 4) return false;
@@ -1073,7 +1082,6 @@ function readOperationTable(seg: Segment, id: number): Map<number, number[]> {
   // Every offset is tried, so the entries read across them are budgeted: the
   // files' tables cost at most about 1,300 entry reads, a crafted record could
   // cost its length squared.
-  let budget = OPERATION_TABLE_BUDGET;
   for (let at = f.start; at + 4 <= f.end; at++) {
     for (const lists of [false, true]) {
       const r = new Reader(seg.bulk, at, f.end);
@@ -1084,7 +1092,8 @@ function readOperationTable(seg: Segment, id: number): Map<number, number[]> {
         let ok = true;
         let missing = 0;
         for (let i = 0; i < n && ok; i++) {
-          if (--budget < 0) throw new F3dFormatError('the operation table takes too long to find');
+          if (--budget.left < 0)
+            throw new F3dFormatError('the operation table takes too long to find');
           const op = r.u64();
           const m = lists ? r.u32() : 1;
           if (m === 0 || m * 8 > r.remaining) ok = false;
@@ -1100,7 +1109,7 @@ function readOperationTable(seg: Segment, id: number): Map<number, number[]> {
           size = n;
         }
       } catch (error) {
-        if (budget < 0) throw error;
+        if (budget.left < 0) throw error;
         // not a table at this offset
       }
     }
