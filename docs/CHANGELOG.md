@@ -2,6 +2,10 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+## Unreleased
+
+- 2026-10-15 · **OpenSCAD export, slice 1** (P6-09, ADR-0086): `exportScad` in the kernel (Node `KernelService`, the worker's `KernelApi` and `Recomputer`) and `extrudo export --format scad` write the chosen bodies as one `.scad` file: the last recompute replayed as body versions, Combine as `union`/`difference`/`intersection` of earlier versions and Remove as nothing, every other feature (no hook yet) a `polyhedron` of the shape at that version (welded, rounded to 1e-4 mm, clockwise), listed in the header with why; later Combines build on a polyhedron with CSG again, only versions the exported bodies reach are written and meshed, and the same design gives the same bytes. The parameter block, the scalar translator and the feature hooks for primitives, extrude, revolve and transforms follow in later slices.
+
 ## v0.7.0 (2026-10-15)
 
 - 2026-10-15 · **A ghost body shows only its nearest surface** (ADR-0030's amendment): a ghost draws a depth-only pass before its 30 % faces, so where its faces overlap on screen (a cylinder's back, inner walls, standoffs) the grey no longer stacks into darker patches and the inside no longer shows through; edges, sketches and construction behind a ghost still show through it, dimmed.

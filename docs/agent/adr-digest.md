@@ -2334,3 +2334,26 @@ menu on the home screen (its `menu:run` listener stays for the macOS About),
 and both link mechanisms stay — `openSite(name)` for the fixed named pages
 (only `repo` now) and `openLink(url)` for the dialog's URLs that carry a
 hash; folding them into one was rejected for now.** No schema change.
+
+ADR-0086 (P6-09, slice 1 2026-10-15) added **the OpenSCAD export**:
+`packages/kernel/src/scad-export/` (`ir.ts`, `print.ts`, `context.ts`,
+`versions.ts`, `mesh.ts`, `file.ts`, `number.ts`), `RecomputeEngine.exportScad`
+over `AtMarker.steps`, `exportScad` on `KernelService`/`KernelApi`/`Recomputer`,
+and `extrudo export --format scad`. Rules a change must keep: **the recompute
+only records** (`steps` holds references to each write feature's inputs,
+values and body maps, on the recompute channel); hooks and meshing run at
+export time only. **A feature's `csg(ctx)` hook** returns a node per body of
+`ctx.changed` built from `ctx.body(id)` (earlier versions) and numbers or
+`ctx.scalar(name)`, or `null`/`ctx.unsupported(reason)`; it changes nothing,
+releases what it makes and decides bodies from `before`/`after`, not the
+inputs. **Fallback to a polyhedron** (a mesh version, listed in the header
+with its reason): no hook, `null`, a body left out, a body broken into pieces
+(`origins` from a body that existed before: source and pieces), or a
+`KernelError` from the hook; later features build on it with CSG again. Only
+versions the exported bodies reach are written and meshed; a tool used twice
+or more is a `<Feature>_tool` module. **Deterministic**: every number through
+`scadNumber`, polyhedron points rounded to 1e-4 mm in first-use order with
+faces clockwise from outside, module names from body/feature names in
+timeline order (`<Body>_v<n>`), no date. Scalars are `number | { expr, value }`;
+slice 2's translator plugs in as `ScadSource.scalar`. The parameter block is
+`ScadExportOptions.parameters`, written after `$fa`/`$fs`.

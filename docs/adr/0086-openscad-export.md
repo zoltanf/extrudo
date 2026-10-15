@@ -166,3 +166,80 @@ stay exact for the rest.
   the user's choice.
 - Each new feature type should consider a `csg` hook; without one it falls
   back, so nothing breaks.
+
+## Results, slice 1 (2026-10-15)
+
+Built: §1–§3 and §8–§11 without the scalar expressions — the IR, the printer,
+the hook, the version walk, mesh versions, the file and the CLI. Hooks for
+**Combine** (`union`, `difference`, `intersection` of the target's and tools'
+versions; intersect takes the tools together) and **Remove** (an empty map:
+it changes no body).
+
+**Files** (`packages/kernel/src/scad-export/`): `ir.ts` (the node types and
+`boolean`, `torus`, `matrixOf`), `print.ts` (IR → text), `context.ts`
+(`CsgContext`, `CsgInput`, `CsgResult`), `versions.ts` (`ScadStep`,
+`ScadSource`, `walkVersions`), `mesh.ts` (`polyhedronOf`), `file.ts`
+(`writeScad`, `ScadBody`, `ScadExportOptions`, `scadIdentifier`,
+`fragmentSize`), `number.ts` (`scadNumber`, before this slice). The engine's
+`AtMarker` gained `steps` (each write feature of the last recompute with its
+inputs, values and the body maps before and after; references only), and
+`RecomputeEngine.exportScad(options, scalar?)` builds the `ScadSource` from it;
+`KernelService`, `KernelApi`, the worker API and `Recomputer` pass
+`exportScad(options)` through. The CLI's `export --format scad` is
+`DesignJob.export({ format: 'scad' })`.
+
+**The IR.** A `Scalar` is `number | { expr, value }`: the printer writes `expr`
+when there is one, so slice 2's translator plugs in without a type change
+(`ScadSource.scalar`, the engine's `exportScad(options, scalar)`). Nodes:
+`translate`, `rotate` (Euler vector, or angle and axis), `scale`, `mirror`,
+`multmatrix` (3 × 4 rows), `color`, `union`/`difference`/`intersection`,
+`cube`, `cylinder` (`r1`, `r2`, `center`), `sphere`, `polyhedron`, `circle`,
+`square`, `polygon` (with `paths`), `linear_extrude` (`center`, `twist`,
+`scale`), `rotate_extrude` (`angle`), `version` (a body's version, by the
+walk's index) and `tool` (a shared tool, by index).
+
+**`CsgContext`** gives a hook: `kernel`, `feature`, `inputs` (parsed as the
+evaluator had them); `input(name)` → `{ value, expr, unit }`, `scalar(name)`,
+`value(name)`; `resolve(ref)` (the engine's resolver over the bodies before
+the feature), `output(feature)`, `describe`, `featureName`; `before`, `after`,
+`changed` (bodies of `after` with a new shape), `removed`; `body(id)` (the
+version node of a body before the feature; throws when there is none),
+`bounds()` (the box around the bodies before, for `through-all`), `tool(node)`
+and `unsupported(reason)` (returns `null` and names the reason in the header).
+
+**Fallback, as built:** a changed body is a mesh version when its feature has
+no hook, the hook returns `null` or leaves the body out of its map, the feature
+broke a body into pieces (an `origins` entry from a body that existed before:
+the source and its pieces), or the hook throws a `KernelError` (another error
+is a bug and fails the export). The hook runs for every write step (cheap);
+only the versions the exported bodies reach are meshed and written. A tool is
+a module (`<Feature>_tool`, `_tool2`…) when the written versions use it twice
+or more, else written in place.
+
+**Deviations and choices:**
+
+- `$fa` is the angular deflection in degrees; `$fs` is the chord the linear
+  deflection allows on a 1 mm radius, `√(8·d)` (0.4 mm at Medium), so small
+  holes are as fine as Export Model's mesh and large ones follow `$fa`.
+- Module names: a body's name as the caller gives it, else its stored name,
+  else `<Feature> body` (`<Feature> body 2` for `:1`), as an identifier
+  (letters, digits, `_`; a leading digit gets `_`), made unique in the order
+  first written, then `_v<n>` (the body's n-th version in the timeline,
+  unwritten ones counted, so numbers stay put when the choice of bodies
+  changes).
+- The header names a script's generated feature as `Script1 › Box1`.
+- The CLI writes the shown bodies without `--bodies`/`--component` (every
+  body when none is shown), as §9 says; its STL, 3MF and STEP exports still
+  write every body, as before.
+- Hidden bodies are the caller's choice: `exportScad` writes the bodies it is
+  given. The app's dialog (a later slice) chooses them as Export Model does.
+
+**For slices 3–4 (the other hooks):** return a node for every body in
+`ctx.changed` you can translate; build it from `ctx.body(id)` for bodies the
+feature changes and from fresh geometry for what it makes; use `ctx.tool`
+for one tool cut into or joined to several bodies; write scalars with
+`ctx.scalar(name)` and placements as numbers (`multmatrix` from a resolved
+frame); several new bodies from one solid (a new-body extrude whose profile
+gives two solids) can't be told apart in OpenSCAD — leave them out of the
+map. A cut or join decides its bodies by comparing `before`/`after`, never
+from the inputs. A hook must release any shape it makes.
