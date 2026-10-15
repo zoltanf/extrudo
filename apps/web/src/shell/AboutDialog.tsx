@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { REVISION } from 'three';
 import type { BuildChannel } from '../../pwa/build-info';
-import { Button, IconButton, Wordmark } from '../design-system';
+import { IconButton, Wordmark } from '../design-system';
 import { BUILD } from '../version';
 import {
   CHANGELOG_URL,
@@ -46,7 +46,7 @@ export interface AboutDialogProps {
  * Help › About Extrudo: the build's version, channel and commit, where the app
  * runs (browser, system, GPU, memory, storage), and links to the site and the
  * source. "Copy details" puts it all on the clipboard for a bug report. The
- * logo replays its own design when clicked (`LogoReplay`).
+ * logo plays its own design once on open, and again when clicked (`LogoReplay`).
  */
 export function AboutDialog({
   open,
@@ -55,7 +55,7 @@ export function AboutDialog({
   kernelInfo,
   openLink,
 }: AboutDialogProps) {
-  const [rows, setRows] = useState<InfoRow[]>();
+  const [rows, setRows] = useState<{ running: InfoRow[]; storage: InfoRow[] }>();
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -103,8 +103,9 @@ export function AboutDialog({
     const text = [
       `Extrudo ${BUILD.version}`,
       ...lines('Build', buildRows.slice(1)),
-      ...lines('Running on', rows ?? []),
+      ...lines('Running on', rows?.running ?? []),
       ...lines('Engines', engineRows),
+      ...lines('Memory and storage', rows?.storage ?? []),
     ].join('\n');
     void navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
@@ -123,7 +124,7 @@ export function AboutDialog({
             event.preventDefault();
             (event.currentTarget as HTMLElement | null)?.focus();
           }}
-          className="fixed top-1/2 left-1/2 z-40 flex max-h-[calc(100vh-48px)] w-[min(520px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-dialog border border-line bg-raised text-ink shadow-raised"
+          className="fixed top-1/2 left-1/2 z-40 flex max-h-[calc(100vh-48px)] w-[min(880px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-dialog border border-line bg-raised text-ink shadow-raised"
         >
           {/* The hero: the mark on a sketch grid. */}
           <header className="relative isolate flex flex-col items-center gap-2 border-b border-line px-6 pt-7 pb-5 text-center">
@@ -143,7 +144,7 @@ export function AboutDialog({
                 <X size={18} strokeWidth={1.75} />
               </IconButton>
             </Radix.Close>
-            <LogoReplay size={112} />
+            <LogoReplay size={112} autoPlay />
             <Radix.Title className="mt-1 text-[34px]">
               <Wordmark />
               <span className="sr-only"> — about</span>
@@ -161,60 +162,69 @@ export function AboutDialog({
             </div>
           </header>
 
-          <div className="min-h-0 overflow-auto px-6 py-4">
-            <Section
-              title="Build"
-              action={
-                <Button variant="ghost" className="h-7 px-2" onClick={copy} disabled={!rows}>
-                  {copied ? <Check size={14} /> : <Copy size={14} />}
-                  {copied ? 'Copied' : 'Copy details'}
-                </Button>
-              }
-            >
-              {buildRows.map((r) =>
-                r.label === 'Commit' ? (
-                  <Row key={r.label} label={r.label}>
-                    <a
-                      href={COMMIT_URL(BUILD.commit)}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={opener(COMMIT_URL(BUILD.commit))}
-                      className="inline-flex items-center gap-1 font-mono underline-offset-2 hover:underline"
-                    >
+          {/* Two columns from md up: build, engines, memory and storage; then where it runs. */}
+          <div className="grid min-h-0 gap-x-10 gap-y-3 overflow-auto px-6 py-4 md:grid-cols-2">
+            <div>
+              <Section title="Build">
+                {buildRows.map((r) =>
+                  r.label === 'Commit' ? (
+                    <Row key={r.label} label={r.label}>
+                      <a
+                        href={COMMIT_URL(BUILD.commit)}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={opener(COMMIT_URL(BUILD.commit))}
+                        className="inline-flex items-center gap-1 font-mono underline-offset-2 hover:underline"
+                      >
+                        {r.value}
+                        <ExternalLink size={12} className="text-muted" />
+                      </a>
+                    </Row>
+                  ) : (
+                    <Row key={r.label} label={r.label}>
                       {r.value}
-                      <ExternalLink size={12} className="text-muted" />
-                    </a>
+                    </Row>
+                  ),
+                )}
+              </Section>
+              <Section title="Engines">
+                {engineRows.map((r) => (
+                  <Row key={r.label} label={r.label}>
+                    {r.value}
                   </Row>
+                ))}
+              </Section>
+              {rows && rows.storage.length > 0 && (
+                <Section title="Memory and storage">
+                  {rows.storage.map((r) => (
+                    <Row key={r.label} label={r.label}>
+                      {r.value}
+                    </Row>
+                  ))}
+                </Section>
+              )}
+            </div>
+            <div>
+              <Section title="Running on">
+                {rows ? (
+                  rows.running.map((r) => (
+                    <Row key={r.label} label={r.label}>
+                      {r.value}
+                    </Row>
+                  ))
                 ) : (
-                  <Row key={r.label} label={r.label}>
-                    {r.value}
-                  </Row>
-                ),
-              )}
-            </Section>
-            <Section title="Running on">
-              {rows ? (
-                rows.map((r) => (
-                  <Row key={r.label} label={r.label}>
-                    {r.value}
-                  </Row>
-                ))
-              ) : (
-                <p className="py-2 text-sm text-muted">Looking around…</p>
-              )}
-            </Section>
-            <Section title="Engines">
-              {engineRows.map((r) => (
-                <Row key={r.label} label={r.label}>
-                  {r.value}
-                </Row>
-              ))}
-            </Section>
+                  <p className="py-2 text-sm text-muted">Looking around…</p>
+                )}
+              </Section>
+            </div>
           </div>
 
           <footer className="flex flex-wrap items-center justify-center gap-x-1 gap-y-2 border-t border-line px-4 py-3">
             <LinkButton href={SITE} onOpen={opener} icon={<Globe size={14} />}>
               extrudo.org
+            </LinkButton>
+            <LinkButton href={CHANGELOG_URL} onOpen={opener} icon={<ScrollText size={14} />}>
+              What's new
             </LinkButton>
             <LinkButton href={REPO} onOpen={opener} icon={<FolderGit2 size={14} />}>
               GitHub
@@ -222,12 +232,15 @@ export function AboutDialog({
             <LinkButton href={ISSUES_URL} onOpen={opener} icon={<Bug size={14} />}>
               Report an issue
             </LinkButton>
-            <LinkButton href={CHANGELOG_URL} onOpen={opener} icon={<ScrollText size={14} />}>
-              What's new
-            </LinkButton>
+            <button type="button" onClick={copy} disabled={!rows} className={FOOTER_ITEM}>
+              {copied ? <Check size={14} /> : <Copy size={14} />}
+              {copied ? 'Copied' : 'Copy details'}
+            </button>
           </footer>
-          <p className="px-6 pb-1 text-center text-xs text-muted">
-            Free and open source under <MutedLink href={LICENSE_URL} onOpen={opener} />. Made with{' '}
+          <p className="px-6 pb-3 text-center text-xs leading-5 text-muted">
+            Free and open source under <MutedLink href={LICENSE_URL} onOpen={opener} />.
+            <br />
+            Made with{' '}
             {credits.map((c, i) => (
               <Fragment key={c.name}>
                 {i > 0 && (i === credits.length - 1 ? ' and ' : ', ')}
@@ -236,12 +249,11 @@ export function AboutDialog({
                 </MutedLink>
               </Fragment>
             ))}
-            .
-          </p>
-          <p className="px-6 pb-3 text-center text-xs text-muted">
+            .{' '}
             <MutedLink href={NOTICE_URL} onOpen={opener}>
               Third-party notices
             </MutedLink>
+            .
           </p>
         </Radix.Content>
       </Radix.Portal>
@@ -249,20 +261,11 @@ export function AboutDialog({
   );
 }
 
-function Section({
-  title,
-  action,
-  children,
-}: {
-  title: string;
-  action?: ReactNode;
-  children: ReactNode;
-}) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="mb-3 last:mb-0">
       <div className="mb-1 flex min-h-7 items-center justify-between">
         <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">{title}</h3>
-        {action}
       </div>
       <dl className="grid grid-cols-[128px_1fr] gap-x-4">{children}</dl>
     </section>
@@ -303,6 +306,9 @@ function MutedLink({
   );
 }
 
+const FOOTER_ITEM =
+  'inline-flex h-8 items-center gap-1.5 rounded-control px-2.5 text-base text-muted transition-colors hover:bg-panel hover:text-ink disabled:pointer-events-none disabled:opacity-50';
+
 function LinkButton({
   href,
   onOpen,
@@ -315,13 +321,7 @@ function LinkButton({
   children: ReactNode;
 }) {
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      onClick={onOpen(href)}
-      className="inline-flex h-8 items-center gap-1.5 rounded-control px-2.5 text-base text-muted transition-colors hover:bg-panel hover:text-ink"
-    >
+    <a href={href} target="_blank" rel="noreferrer" onClick={onOpen(href)} className={FOOTER_ITEM}>
       {icon}
       {children}
     </a>

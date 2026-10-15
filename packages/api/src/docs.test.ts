@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { type Attachment, type AttachmentId, addAttachment } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import { exampleBlock } from './example-calls';
-import { docOnDisk, docPages, readFeatureDocs } from './generate';
+import { docOnDisk, docPages, readFeatureDocs, skillPages } from './generate';
 import { FEATURE_TYPES, featureExamples } from './generated/features';
 import { Design } from './index';
 
@@ -247,3 +247,20 @@ const CHECK_TSCONFIG = {
   },
   include: ['*.ts'],
 };
+
+describe("the shipped skill's API reference (ADR-0087 §7)", () => {
+  it('is what the generator writes today', () => {
+    for (const [path, page] of skillPages()) {
+      expect(docOnDisk(path) === page, `${path}: run pnpm api:generate`).toBe(true);
+    }
+  });
+
+  it('lists every feature type but the sketch, with its inputs', () => {
+    const page = [...skillPages().values()][0] ?? '';
+    for (const feature of readFeatureDocs()) {
+      if (feature.type === 'sketch') continue;
+      expect(page, feature.type).toContain(`### \`${feature.type}\``);
+      for (const input of feature.inputs) expect(page, feature.type).toContain(`\`${input.name}\``);
+    }
+  });
+});

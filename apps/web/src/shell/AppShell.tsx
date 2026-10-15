@@ -38,6 +38,7 @@ import {
   useState,
 } from 'react';
 import { useStore } from 'zustand';
+import { useAgentHost } from '../agent/useAgentHost';
 import { keysFor } from '../commands/keymap';
 import { isRepeatable } from '../commands/marking';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
@@ -1272,6 +1273,22 @@ export function AppShell({
     ],
   );
   const commands = useMemo(() => commandBuilder(mode, false), [commandBuilder, mode]);
+  // The desktop MCP server's tools act on this design (P6-08, ADR-0087 §5): its host is
+  // registered while the shell is mounted, desktop only.
+  useAgentHost({
+    enabled: platform.agent !== undefined,
+    store,
+    session,
+    model,
+    viewport,
+    kernel,
+    apply,
+    commands,
+    save: async () => {
+      await autosave.flush();
+    },
+    toolHost: host,
+  });
   const markingCommands = useMemo(
     () =>
       markingDialog
@@ -2229,6 +2246,7 @@ export function AppShell({
         onSource={() => platform.openSite('repo')}
         onQuit={platform.menus ? () => void quitApp() : undefined}
         onCloseDesign={platform.menus ? undefined : fileActions.home}
+        agent={platform.agent}
       />
       <TutorialCard tutorial={tutorial} />
       <Toolbar
@@ -2716,6 +2734,7 @@ export function AppShell({
         onCustomizeMarking={() => setMarkingDialog(true)}
         desktop={platform.desktop !== undefined}
         installedSlicers={platform.installedSlicers}
+        agent={platform.agent}
       />
       <AboutDialog
         open={aboutOpen}
