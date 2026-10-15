@@ -91,7 +91,8 @@ in the browser.
   arrays), raw bindings only inside disposal scopes, a memory test (≥ 1000
   rebuilds on a small initial heap, plus a leak control that must fail), CI
   that can build the WASM (Docker). Upstream leak report:
-  [taucad/opencascade.js#40](https://github.com/taucad/opencascade.js/issues/40); check its status first.
+  [taucad/opencascade.js#40](https://github.com/taucad/opencascade.js/issues/40) (fixed in
+  libcascade 3.1.0 on 2026-10-13; the upgrade is a P4-12 item).
   *AC:* NFR-03 crash test (forced abort → worker restarts, app survives);
   memory test green.
   **Done 2026-09-25:** `packages/kernel` with the facade in `occt/facade/`,
@@ -1022,6 +1023,18 @@ end to end, faster than in established desktop CAD.
     drag and the B1-B5 recomputes measured within noise (ADR-0067 §Results).
     `e2e/hosting.spec.ts` asserts the served `script-src` and walks a whole
     session under it with no violation. No further work here.
+  - OCCT toolchain: `@libcascade/toolchain` 3.0.2 → **3.1.0**, which fixes
+    taucad/opencascade.js#40 (ADR-0001's amendment of 2026-10-15). Bump the
+    pin in `packages/kernel/package.json`, rebuild (new input hash: `pnpm occt
+    build` on the Arch workstation, or CI), then run `pnpm check` with the
+    memory test (`packages/kernel/src/memory.test.ts`; its leak controls leak
+    inside the facade, so they should still trip) and CI's e2e. Check that
+    nothing in `packages/kernel/src` calls `delete()` on a handle OCCT still
+    references, since 3.1.0 frees it. Read upstream's 3.1.0 changelog for the
+    other changes it brings (opencascade.js #47, #48, #49). Then update the
+    #40 mentions in `libcascade.config.ts`, `facade/extrudo_facade.cpp`,
+    `src/occt/scope.ts` and `memory.test.ts` (the first two are hash inputs,
+    so do it in the same rebuild).
 
 ---
 
@@ -1153,7 +1166,7 @@ end to end, faster than in established desktop CAD.
   Slice 2 (2026-10-06): the constraint and dimension tools pick body geometry
   directly (`ToolContext.pickModel`), projecting the ref and writing the
   constraint or dimension against the projected entity in the same undo step.
-- [ ] **P6-08 MCP server in the desktop app** (owner, 2026-10-14). While the
+- [x] **P6-08 MCP server in the desktop app** (owner, 2026-10-14; done 2026-10-15, ADR-0087). While the
   desktop app runs, it hosts a Model Context Protocol server, so other agents
   (Claude Code, Claude Desktop and other MCP clients) can read and change the
   open design. A switch under Settings › Desktop turns it off. The web build

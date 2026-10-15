@@ -166,7 +166,8 @@ depend on replicad or brepjs. Use them as code references.**
    - Reported upstream on 2026-09-25 as
      [taucad/opencascade.js#40](https://github.com/taucad/opencascade.js/issues/40), with the `NCollection_Array1` and
      `BRepAlgoAPI_Cut` reproduction (`spikes/p0-02-kernel/upstream-issue/`). If
-     upstream fixes it, more work can move back to raw bindings.
+     upstream fixes it, more work can move back to raw bindings. (Fixed upstream
+     in libcascade 3.1.0, 2026-10-13: see the amendment of 2026-10-15.)
 3. **Code references:**
    - replicad (MIT): wire, face and sketch builders, meshing, and its public
      build config (`packages/replicad-opencascadejs/build-source`) as a
@@ -337,3 +338,22 @@ internal to Emscripten.
 
 Test: `kernel.test.ts` "has the stack OCCT needs on B-spline faces: a chamfer and
 a STEP export after a non-uniform scale" (it failed on the 64 kB build).
+
+## Amendment 2026-10-15: the `delete()` leak is fixed upstream
+
+taucad/opencascade.js#40 was closed as fixed on 2026-10-12 by
+[taucad/opencascade.js#50](https://github.com/taucad/opencascade.js/pull/50) and
+released in **libcascade 3.1.0** (2026-10-13; 3.0.3 doesn't have it). The cause
+was the binding generator: about 2,100 classes (`gp_*`, `TopoDS_Shape`, every
+`BRep*API` builder, the `NCollection_*` containers) got an empty destructor, so
+`delete()` freed nothing. In 3.1.0 `delete()` frees the object wherever C++
+allows `delete ptr`, and a handle made from a raw `T*` return (`Cut.Builder()`,
+a map's `Seek()`) is borrowed and frees nothing. Upstream's notes warn that
+deleting an object OCCT still references is now a use-after-free instead of a
+silent leak.
+
+**Decision.** Nothing changes yet: we build with `@libcascade/toolchain` 3.0.2,
+where the leak remains, and the facade stays. It owns OCCT memory for other
+reasons as well (one copy out for results, history and meshes; no OCCT type in
+the bindings, ADR-0037). Moving to 3.1.0 is a P4-12 backlog item. Raw bindings
+come back only if a concrete need appears, and then only after the upgrade.

@@ -6,7 +6,14 @@
  */
 import { deflateSync, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { MAX_ENTRIES, MAX_ENTRY_BYTES, MAX_TOTAL_BYTES, previewBytes, unzip } from './archive';
+import {
+  MAX_ENTRIES,
+  MAX_ENTRY_BYTES,
+  MAX_RATIO,
+  MAX_TOTAL_BYTES,
+  previewBytes,
+  unzip,
+} from './archive';
 import { f3dBodiesStep } from './brep-step';
 import { f3dPreview, importF3d } from './index';
 import { readF3dEntries } from './model';
@@ -164,14 +171,43 @@ describe('unzip limits (H3)', () => {
     expect(() => unzip(bytes)).toThrow(/share one local header/);
   });
 
-  it('bounds a deflated entry to its declared size', () => {
-    // A 1000-byte payload that lies and declares 100: the out buffer truncates
-    // it, which is what stops a decompression bomb.
-    const payload = new Uint8Array(1000).fill(65);
-    const bytes = rawZip([{ name: META, data: deflateSync(payload), declaredSize: 100 }]);
-    const content = unzip(bytes).get(META);
-    expect(content?.length).toBe(100);
-    expect(content?.[0]).toBe(65);
+  it('refuses a deflated entry that unpacks past its declared size, without unpacking the rest', () => {
+    // 64 MB of zeros (64 KB deflated) that declares 16 bytes: inflating it all
+    // into the 16-byte buffer took half a second, about 7 s per compressed MB.
+    const payload = deflateSync(new Uint8Array(64 * 1024 * 1024), { level: 9 });
+    const t = performance.now();
+    expect(() => unzip(rawZip([{ name: META, data: payload, declaredSize: 16 }]))).toThrow(
+      /more than its declared 16 bytes/,
+    );
+    expect(performance.now() - t).toBeLessThan(250);
+  });
+
+  it('refuses a deflated entry that unpacks short of its declared size', () => {
+    const payload = deflateSync(new Uint8Array(1000).fill(65));
+    expect(() => unzip(rawZip([{ name: META, data: payload, declaredSize: 2000 }]))).toThrow(
+      /Wrong size/,
+    );
+    expect(
+      unzip(rawZip([{ name: META, data: payload, declaredSize: 1000 }])).get(META)?.[999],
+    ).toBe(65);
+  });
+
+  it('refuses a declared size far beyond what the compressed bytes can hold, before allocating it', () => {
+    const data = deflateSync(new Uint8Array(10));
+    const t = performance.now();
+    expect(() => unzip(rawZip([{ name: META, data, declaredSize: MAX_ENTRY_BYTES - 1 }]))).toThrow(
+      new RegExp(`more than ${MAX_RATIO} to 1`),
+    );
+    expect(() =>
+      unzip(rawZip([{ name: META, data: zstd(1, 10), method: 93, declaredSize: 100_000 }])),
+    ).toThrow(new RegExp(`more than ${MAX_RATIO} to 1`));
+    expect(performance.now() - t).toBeLessThan(250);
+  });
+
+  it('refuses garbage that is not deflate data', () => {
+    expect(() =>
+      unzip(rawZip([{ name: META, data: new Uint8Array([0xff, 0xff, 0xff]), declaredSize: 10 }])),
+    ).toThrow(/Bad compressed data/);
   });
 
   it('does not decompress an entry the import never reads', () => {
@@ -187,6 +223,46 @@ describe('unzip limits (H3)', () => {
     ]);
     const entries = unzip(bytes);
     expect([...entries.keys()]).toEqual([META]);
+  });
+});
+
+/**
+ * A hand-built Zstandard frame of run-length blocks (`blocks` of `length`
+ * bytes each): a 1 KB window, or a content size when `content` is given.
+ */
+function zstd(blocks: number, length: number, options: { content?: number; window?: number } = {}) {
+  const out = [0x28, 0xb5, 0x2f, 0xfd];
+  if (options.content !== undefined) out.push(0x20, options.content);
+  else out.push(0x00, options.window ?? 0x00);
+  for (let i = 0; i < blocks; i++) {
+    const header = (i === blocks - 1 ? 1 : 0) | (1 << 1) | (length << 3);
+    out.push(header & 0xff, (header >> 8) & 0xff, (header >> 16) & 0xff, 65 + i);
+  }
+  return new Uint8Array(out);
+}
+
+describe('unzip of Zstandard entries', () => {
+  const entry = (data: Uint8Array, declaredSize: number) =>
+    rawZip([{ name: META, data, method: 93, declaredSize }]);
+
+  it('reads a frame that fills its declared size exactly', () => {
+    expect([...(unzip(entry(zstd(2, 3), 6)).get(META) ?? [])]).toEqual([65, 65, 65, 66, 66, 66]);
+    expect(unzip(entry(zstd(1, 5, { content: 5 }), 5)).get(META)?.length).toBe(5);
+  });
+
+  it('refuses a frame that unpacks past or short of its declared size', () => {
+    expect(() => unzip(entry(zstd(2, 300), 400))).toThrow(/more than its declared 400 bytes/);
+    // The padded buffer used to come back as if full.
+    expect(() => unzip(entry(zstd(1, 300), 400))).toThrow(/Wrong size/);
+    expect(() => unzip(entry(zstd(1, 5, { content: 5 }), 6))).toThrow(/holds 5 bytes, not 6/);
+  });
+
+  it('refuses a second frame, a huge window or a truncated frame before decoding', () => {
+    const two = new Uint8Array([...zstd(1, 3), ...zstd(1, 3)]);
+    expect(() => unzip(entry(two, 6))).toThrow(/more than one frame/);
+    // Window descriptor 0xa8: a 1 GB window, allocated from these few bytes.
+    expect(() => unzip(entry(zstd(1, 3, { window: 0xa8 }), 3))).toThrow(/window/);
+    expect(() => unzip(entry(zstd(1, 3).subarray(0, 8), 3))).toThrow(/ends early/);
   });
 });
 
@@ -227,7 +303,14 @@ describe('preview (L1, M2)', () => {
   });
 
   it('ignores a preview larger than 1 MB', () => {
-    const bytes = designZip({ [PREVIEW]: png(1024 * 1024 + 1) });
+    // Not all zeros: those compress past the ratio a real entry can have.
+    const big = png(1024 * 1024 + 1);
+    let x = 1;
+    for (let i = PNG.length; i < big.length; i++) {
+      x = (x * 1103515245 + 12345) >>> 0;
+      big[i] = x >>> 24;
+    }
+    const bytes = designZip({ [PREVIEW]: big });
     expect(f3dPreview(bytes)).toBeUndefined();
     expect(importF3d(bytes, 'Part').preview).toBeUndefined();
   });

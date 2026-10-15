@@ -62,8 +62,8 @@ export const SECTIONS: readonly SectionInfo[] = [
   {
     id: 'desktop',
     label: 'Desktop',
-    summary: 'Slicers on this computer.',
-    keys: ['slicers.paths'],
+    summary: 'Slicers on this computer, and agents (MCP).',
+    keys: ['slicers.paths', 'mcp.enabled', 'mcp.port'],
     desktopOnly: true,
   },
 ];

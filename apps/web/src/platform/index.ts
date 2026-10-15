@@ -18,6 +18,7 @@ import { saveEverything } from '../project/autosave';
 import { DOCS_URL, REPO_URL } from '../shell/docsLinks';
 import type { MenuModel } from '../shell/menuModel';
 import { APP_VERSION } from '../version';
+import type { AgentBridge } from './agent';
 import {
   closedStorage,
   STORAGE_CLOSED_TEXT,
@@ -111,6 +112,11 @@ export interface DesktopApp {
 export interface Platform {
   /** The desktop app's own commands; absent on the web. */
   desktop?: DesktopApp;
+  /**
+   * The desktop MCP server's bridge (P6-08, ADR-0087): tool calls from main,
+   * the server's status, and Settings' asks. Absent on the web.
+   */
+  agent?: AgentBridge;
   preferences: Preferences;
   projects: ProjectStore;
   /**
@@ -245,6 +251,17 @@ export async function webPlatform(): Promise<Platform> {
   };
 }
 
+export {
+  type AgentBridge,
+  type AgentConfig,
+  type AgentContent,
+  type AgentExportFormat,
+  type AgentReply,
+  type AgentStatus,
+  type AgentToolDefinition,
+  type AgentToolResult,
+  clientConfig,
+} from './agent';
 export {
   BLOCKED_TEXT,
   closedStorage,

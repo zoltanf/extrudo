@@ -10,6 +10,15 @@ export class F3dFormatError extends Error {
 }
 
 /**
+ * Refuses a record whose numbers aren't all finite (`what` names it): NaN and
+ * infinities from a file never reach the mapping or the kernel.
+ */
+export function finite(what: string, numbers: readonly number[]): void {
+  if (!numbers.every(Number.isFinite))
+    throw new F3dFormatError(`${what}: a number that isn't finite.`);
+}
+
+/**
  * A reference to another record. `segment` is set when the target is in another
  * segment of the same design; `external` when it names another document.
  */

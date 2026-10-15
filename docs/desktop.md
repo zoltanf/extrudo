@@ -43,6 +43,38 @@ It finds PrusaSlicer, OrcaSlicer, Bambu Studio and Cura on `PATH` or as a flatpa
 (slicer IDs: `prusaslicer`, `orcaslicer`, `bambustudio`, `cura`; there is no UI
 for it yet). Flatpak slicers get the file through the document portal.
 
+## Connecting an agent (MCP)
+
+While the app runs it hosts an MCP server (ADR-0087) that AI agents such as
+Claude Code and Claude Desktop use to read and change the open design: the
+timeline and each feature's status, parameters, bodies and their volumes, a
+screenshot, and changes through the document API, each one undo step named
+`Agent: …`. The top bar shows **Agent connected** while one is.
+
+The server listens on `http://127.0.0.1:7474/mcp` (this computer only) and
+needs the install's token. Settings › Desktop › Agents shows its state, turns
+it off (the port closes at once), changes the port, and has **Copy client
+config**, which copies a ready-to-paste `mcpServers` entry with the URL and the
+token. **Regenerate token** makes a new one; clients with the old one are
+refused. For Claude Code:
+
+```sh
+claude mcp add --transport http extrudo http://127.0.0.1:7474/mcp --header "Authorization: Bearer <token>"
+```
+
+The server serves the **Extrudo skill** (`apps/desktop/skill/extrudo/`), which
+teaches an agent how to model here: read the design first, use parameters,
+name faces and edges, check each change. Clients that read skills over MCP find
+it through `skills/list` (`skill://extrudo/SKILL.md`); the others get it from
+the `get_skill` tool, or from `extrudo-skill-<version>.zip` attached to each
+release (unzip it into the client's skills folder).
+
+`apps/desktop/scripts/mcp-client.mjs` is the acceptance client: `--launch`
+starts the built app with a throwaway data directory (under `xvfb-run -a` on a
+headless machine; Chromium's headless Ozone platform crashes Electron) and runs
+token, tools, skill, a sketch, an extrude, a parameter change and the body's
+volume against it; `--examples` runs the skill's worked examples.
+
 ## Smoke test
 
 `apps/desktop/scripts/smoke.mjs` launches the app and waits for the kernel to

@@ -3,7 +3,7 @@
  * loop forever or run out of memory (the security review's H1 and H2).
  */
 import { describe, expect, it } from 'vitest';
-import { asmFaces, readAsm } from './asm';
+import { asmFaces, asmFaceTags, readAsm } from './asm';
 import { F3dFormatError } from './bytes';
 
 const enc = new TextEncoder();
@@ -199,5 +199,144 @@ describe('asmFaces edges', () => {
     // Loop 3 starts at coedge 4, whose next (itself) never returns to 5... walked once each.
     const faces = asmFaces(twoFaces(ptr(4)));
     expect(faces[1]?.edges).toHaveLength(1);
+  });
+});
+
+describe('readAsm memory', () => {
+  const MB = 1024 * 1024;
+  /** A stream of one record whose body is `n` copies of `value`. */
+  const flood = (value: number[], n: number) => {
+    const head = [...header(), ...className('a')];
+    const out = new Uint8Array(head.length + value.length * n + 1);
+    out.set(head);
+    for (let i = 0, at = head.length; i < n; i++, at += value.length) out.set(value, at);
+    out[out.length - 1] = 0x11;
+    return out;
+  };
+
+  it('refuses a flood of one-byte values quickly, before it builds an array per byte', () => {
+    // 16 MB of `true` became 0.8 GB of heap before the cap.
+    const t = performance.now();
+    expect(() => readAsm(flood([0x0a], 8 * MB))).toThrow(/more than .* values/);
+    expect(performance.now() - t).toBeLessThan(1000);
+  });
+
+  it('refuses records that carry no class, or more records than the bytes allow', () => {
+    expect(() => readAsm(stream([0x0a, 0x11]))).toThrow(/without a class/);
+    const tiny = [...className('a'), 0x11];
+    expect(() => readAsm(stream(...new Array<number[]>(1000).fill(tiny)))).toThrow(
+      /more than .* records/,
+    );
+  });
+
+  it('keeps a stream of small values within a small multiple of its size', () => {
+    // Under the cap the dearest values are short strings and floats, an
+    // object each (the files' streams cost about 6.5 times their size).
+    for (const value of [
+      [0x07, 2, 0x41, 0x42],
+      [0x05, 0, 0, 0x80, 0x3f],
+    ]) {
+      const bytes = flood(value, Math.floor((4 * MB) / value.length));
+      const t = performance.now();
+      const before = process.memoryUsage().heapUsed;
+      const records = readAsm(bytes);
+      const grown = process.memoryUsage().heapUsed - before;
+      expect(records[0]?.values.length).toBeGreaterThan(MB / 2);
+      // About 18 measured after a collection; without one the figure includes
+      // the values array's discarded growth steps.
+      expect(grown / bytes.length).toBeLessThan(40);
+      expect(performance.now() - t).toBeLessThan(3000);
+    }
+  });
+
+  it('shares one object for each one-byte value', () => {
+    const values = readAsm(stream([...className('a'), 0x0a, 0x0b, 0x02, 3, 0x0a, 0x02, 3, 0x11]))[0]
+      ?.values;
+    expect(values?.[0]).toBe(values?.[3]);
+    expect(values?.[2]).toBe(values?.[4]);
+    expect(values).toEqual([
+      { t: 'bool', v: true },
+      { t: 'bool', v: false },
+      { t: 'int', v: 3 },
+      { t: 'bool', v: true },
+      { t: 'int', v: 3 },
+    ]);
+  });
+});
+
+describe('asmFaces on shared records', () => {
+  const rec = (type: string, ...values: number[][]) => [...className(type), ...values.flat(), 0x11];
+  /**
+   * `faces` faces, each with its own attribute that leads to one shared tag
+   * attribute of `tags` references whose next attribute is itself.
+   */
+  const sharedTags = (faces: number, tags: number, sameStart = false) => {
+    const shared = 2 * faces;
+    const out: number[][] = [];
+    for (let i = 0; i < faces; i++) out.push(rec('face', ptr(sameStart ? faces : faces + i)));
+    for (let i = 0; i < faces; i++) out.push(rec('attrib', ptr(-1), ptr(shared)));
+    out.push(
+      rec(
+        'ATTRIB_CUSTOM-attrib',
+        ptr(-1),
+        ptr(shared),
+        str7('generic_tag_attrib_def '),
+        int(1),
+        int(0),
+        str7('tok'),
+        int(0),
+        int(tags),
+        ...Array.from({ length: tags }, (_, k) => int(k)),
+      ),
+    );
+    return readAsm(stream(...out));
+  };
+
+  it('follows a looping attribute chain once per attribute', () => {
+    // 500 faces × 63 hops round a 2,000-tag attribute copied 63 million tags.
+    const t = performance.now();
+    const faces = asmFaces(sharedTags(500, 2000));
+    expect(performance.now() - t).toBeLessThan(1000);
+    expect(faces).toHaveLength(500);
+    expect(faces[499]?.tags).toHaveLength(2000);
+  });
+
+  it('shares the tags of faces whose chains start at one attribute', () => {
+    const records = sharedTags(3, 5, true);
+    expect(asmFaceTags(records, 2)).toBe(asmFaceTags(records, 0));
+  });
+
+  it('refuses a stream whose faces would copy far more tags than it holds', () => {
+    const t = performance.now();
+    expect(() => asmFaces(sharedTags(2000, 4000))).toThrow(/share more tags/);
+    expect(performance.now() - t).toBeLessThan(1000);
+  });
+
+  it('refuses a stream whose faces would walk one long loop each', () => {
+    // 3,000 faces on one loop of 3,000 coedges: 9 million steps.
+    const n = 3000;
+    const LOOP = n;
+    const out: number[][] = [];
+    for (let i = 0; i < n; i++)
+      out.push(rec('face', ptr(-1), int(0), ptr(-1), ptr(-1), ptr(LOOP), ptr(-1), ptr(-1)));
+    out.push(rec('loop', ptr(-1), int(-1), ptr(-1), ptr(-1), ptr(LOOP + 1), ptr(0)));
+    for (let k = 0; k < n; k++)
+      out.push(
+        rec(
+          'coedge',
+          ptr(-1),
+          int(-1),
+          ptr(-1),
+          ptr(LOOP + 1 + ((k + 1) % n)),
+          ptr(LOOP + 1 + ((k + n - 1) % n)),
+          ptr(-1),
+          ptr(-1),
+          ptr(LOOP),
+        ),
+      );
+    const records = readAsm(stream(...out));
+    const t = performance.now();
+    expect(() => asmFaces(records)).toThrow(/share more loops/);
+    expect(performance.now() - t).toBeLessThan(1000);
   });
 });

@@ -35,6 +35,13 @@ A ZIP archive. Entries are stored, deflated, or (since 2025) Zstandard (method 9
   history): ASM ("ASM BinaryFile8"), see below.
 - `…/Previews/small.png` — the preview.
 
+Sizes seen over the 250-file corpus (2026-10-15, read from each central
+directory and by unpacking every entry the importer reads): no entry unpacks to
+more than 16 times its compressed size (`.dat` streams 15.8, `.smbh` 10.8,
+`.smb` 9.9, `.png` 8.5, the rest under 2.5). The 99 Zstandard entries are each
+one frame with no dictionary and no content size, and a window descriptor of
+2 MB. The largest B-rep stream unpacks to 26 MB.
+
 ## MetaStream: the type table and the record index
 
 ```
@@ -50,6 +57,10 @@ u64 next id, …
 ```
 
 `str8` is u32 byte count + ASCII; `wstr` u32 code-unit count + UTF-16LE.
+
+No record id is listed twice in the type table (one type per id, once), and no
+timeline lists an item twice, in the corpus's 255 design segments and 348
+timeline records (2026-10-15). The reader keeps an id's first listing.
 
 ## BulkStream: records
 
@@ -99,7 +110,7 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `4BD53E5A…` | Sketch-profile operand | the sketch's record number as decimal UTF-16; record N + 3, when it is `0D57BD2F…`, selects regions |
 | `0D57BD2F…` | Profile regions | see below |
 | `92F9A5F4…` | Entity-profile operand | names its sketch as a sketch-profile operand does, and the entity by a `90055C05…` record reference: a text (`F0B1AFA3…`, or the older `E0618268…`) whose letters are the profile |
-| `5D89B935…` | Operation table | u32 n × (u64 operation id, u64 record), or in newer files u32 n × (u64 operation id, u32 m, m × u64 records); then u32 k, k × u64 and the closing reference. Version 1 has another list in front. A record can be missing from the file (seen: one of 41) |
+| `5D89B935…` | Operation table | u32 n × (u64 operation id, u64 record), or in newer files u32 n × (u64 operation id, u32 m, m × u64 records); then u32 k, k × u64 and the closing reference. Version 1 has another list in front. A record can be missing from the file (seen: one of 41). Over the corpus (2026-10-15) every table is the first form, starts 2 to 2,306 bytes into its record, has at most 188 entries, and is found by the offset search in at most 1,280 entry reads |
 | `E3849A15…` | Revolve | op u32 (as an extrude's) then u32 2, at payload offset 6 (after an empty property block) or 2; a sketch-profile operand; a geometry operand for the axis; the angles are parameters it owns (`AlongAngle`, …) |
 | `5A1BF548…` | Geometry operand | refers to what it names: a sketch curve (`E2CEFD18…`: u64 0, u64 sketch record, u64 curve tag), an origin axis (`90055C05…`: u64 record), and its geometry in model space (`50AEE8B4…`: a line as start and displacement; `994C518A…`: a point; `CC54ECAD…`: a plane) |
 | `50AEE8B4…` | Model line | 2 zero bytes, start (3 f64), displacement (3 f64) |
@@ -277,6 +288,9 @@ SAB (binary SAT) with 8-byte integers: `ASM BinaryFile8`, u64 version, record co
 entity count, flags; three strings and three doubles; then records of tagged
 values (`0x04` int, `0x06` double, `0x07` string, `0x0C` pointer, `0x0D` class
 name, `0x0E` base class, `0x11` end of record, `0x13`/`0x14` three doubles…).
+Every record has a class name. Over the corpus's 666 streams (2026-10-15) a
+stream has at most one value per 8.5 bytes, at least 90 bytes per record and at
+most 2.6 million values; no record holds more than 167 one-byte values.
 
 A record writes its own class and then its base classes, each with a `0x0D`
 tag: a straight curve is `intcurve`, `curve` (joined `intcurve-curve`), a

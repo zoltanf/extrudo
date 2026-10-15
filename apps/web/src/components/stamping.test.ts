@@ -9,6 +9,7 @@ const sources = import.meta.glob<string>('../**/*.{ts,tsx}', {
 });
 
 const INSERTERS = [
+  '../agent/tools.ts',
   '../features/dialog.ts',
   '../sketch/mode.ts',
   '../plugins/runCommand.ts',
