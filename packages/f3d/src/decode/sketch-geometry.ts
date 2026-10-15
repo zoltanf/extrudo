@@ -4,7 +4,7 @@
  * reference to the sketch they belong to (the "owner backlink"); a curve names
  * its points directly (a line its end and start, a circle its centre).
  */
-import { F3dFormatError, type Reader } from '../bytes';
+import { F3dFormatError, finite, type Reader } from '../bytes';
 import type { Segment } from '../segment';
 import { decodeLevel, type RecordDecoder, unsupported } from './common';
 
@@ -26,12 +26,6 @@ export type Vec3 = [number, number, number];
 
 function vec3(r: Reader): Vec3 {
   return [r.f64(), r.f64(), r.f64()];
-}
-
-/** Refuses a record whose numbers aren't all finite: NaN and infinities never reach the mapping. */
-function finite(what: string, id: number, numbers: number[]): void {
-  if (!numbers.every(Number.isFinite))
-    throw new F3dFormatError(`${what} #${id}: a number that isn't finite.`);
 }
 
 /** The sketch a point or curve belongs to, read from its last eleven bytes. */
@@ -113,7 +107,7 @@ export const sketchPoint: RecordDecoder<SketchPoint> = {
         r.skip(8); // two f32 ones
         r.skip(5);
       } else unsupported('sketch point', version);
-      finite('Sketch point', id, at);
+      finite(`Sketch point #${id}`, at);
       if (r.localRef() !== incidence)
         throw new F3dFormatError(`Point #${id}: repeated reference differs.`);
       if (r.remaining === 15) r.zeros(4);
@@ -158,7 +152,7 @@ export const sketchLine: RecordDecoder<SketchLine> = {
       // The full form stores a unit normal; the compact planar form goes
       // straight on to the point references.
       if (!isPointRef(seg, r)) vec3(r);
-      finite('Sketch line', id, [...start, ...d]);
+      finite(`Sketch line #${id}`, [...start, ...d]);
       const endPoint = r.localRef();
       const startPoint = r.localRef();
       // The subclass is drawn through profiles without splitting them: taken
@@ -234,7 +228,7 @@ export const sketchCircular: RecordDecoder<SketchCircular> = {
       const radius = r.f64();
       const startAngle = r.f64();
       const endAngle = r.f64();
-      finite('Sketch circle/arc', id, [
+      finite(`Sketch circle/arc #${id}`, [
         ...center,
         ...normal,
         ...xAxis,

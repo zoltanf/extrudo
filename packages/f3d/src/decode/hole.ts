@@ -13,6 +13,7 @@
  * so not certain.
  */
 import type { AsmSurface } from '../asm';
+import { finite } from '../bytes';
 import { readPrologue, type Segment } from '../segment';
 import type { Scope } from './scope';
 import type { Vec3 } from './sketch-geometry';
@@ -33,7 +34,9 @@ export function readModelPlane(seg: Segment, id: number): ModelPlane {
   const r = seg.reader(id);
   r.skip(3);
   const v = (): Vec3 => [r.f64(), r.f64(), r.f64()];
-  return { origin: v(), x: v(), y: v() };
+  const plane = { origin: v(), x: v(), y: v() };
+  finite(`Model plane #${id}`, [...plane.origin, ...plane.x, ...plane.y]);
+  return plane;
 }
 
 /**
@@ -43,7 +46,9 @@ export function readModelPlane(seg: Segment, id: number): ModelPlane {
 export function readModelPoint(seg: Segment, id: number): Vec3 {
   const r = seg.reader(id);
   r.skip(2);
-  return [r.f64(), r.f64(), r.f64()];
+  const point: Vec3 = [r.f64(), r.f64(), r.f64()];
+  finite(`Model point #${id}`, point);
+  return point;
 }
 
 /**

@@ -6,7 +6,7 @@
  */
 import { designSegments, type Entries, type SegmentFiles, unzip } from './archive';
 import { type AsmCurve, type AsmFace, type AsmSurface, asmFaces, readAsm } from './asm';
-import { F3dFormatError, Reader } from './bytes';
+import { F3dFormatError, finite, Reader } from './bytes';
 import { BODY, type BodyFlags, readBody } from './decode/body';
 import {
   BODY_MOVES,
@@ -407,6 +407,7 @@ function readPlacement(seg: Segment, id: number): Matrix {
   if (r.u8() === 1) return IDENTITY;
   const m: Matrix = [];
   for (let i = 0; i < 16; i++) m.push(r.f64());
+  finite(`Placement #${id}`, m);
   return m;
 }
 
@@ -483,6 +484,14 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     return refs;
   };
 
+  // A record's references, or none (with a problem) when the record can't be
+  // framed: one bad record leaves out what names it, not the whole import.
+  const refsOf = (id: number): number[] =>
+    tryDecode(`record #${id}`, () => {
+      const f = seg.frame(id);
+      return refsIn(seg, f.start, f.end);
+    }) ?? [];
+
   // Each feature's scope read once, however many times the file names it.
   const scopes = new Map<number, Scope | Error>();
   const scopeOf = (id: number): Scope => {
@@ -507,8 +516,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
   }
   const scopeOfOwner = new Map<number, number>();
   for (const id of seg.idsOf(PARAMETER_OWNER)) {
-    const f = seg.frame(id);
-    const scope = refsIn(seg, f.start, f.end)[0];
+    const scope = refsOf(id)[0];
     if (scope !== undefined) scopeOfOwner.set(id, scope);
   }
   const byScope = new Map<number, ParameterValue[]>();
@@ -525,8 +533,8 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
   const sketchOf = (id: number): F3dSketch => {
     let s = sketches.get(id);
     if (!s) {
-      const f = seg.frame(id);
-      const placement = f.base
+      const f = tryDecode(`sketch #${id}`, () => seg.frame(id));
+      const placement = f?.base
         ? firstRefOfType(seg, f.base.start, f.base.end, SKETCH_PLACEMENT)
         : undefined;
       const frame =
@@ -559,10 +567,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     const t = tryDecode(`text #${id}`, () => sketchText.decode(seg, id));
     if (t?.owner !== undefined) sketchOf(t.owner).texts.push(t);
   }
-  const boxes = oldTextBoxes(seg, (id) => {
-    const f = seg.frame(id);
-    return refsIn(seg, f.start, f.end);
-  });
+  const boxes = oldTextBoxes(seg, refsOf);
   for (const id of seg.idsOf(SKETCH_TEXT_OLD)) {
     const t = tryDecode(`text #${id}`, () => sketchTextOld.decode(seg, id));
     const box = boxes.get(id);
@@ -765,8 +770,10 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
           const p = tryDecode(`profile #${ref}`, () => readProfileOperand(seg, ref));
           if (p) profiles.push(p);
         } else if (t === GEOMETRY_OPERAND && !axis) {
-          const f = seg.frame(ref);
-          axis = tryDecode(`axis #${ref}`, () => readAxis(seg, refsIn(seg, f.start, f.end)));
+          axis = tryDecode(`axis #${ref}`, () => {
+            const f = seg.frame(ref);
+            return readAxis(seg, refsIn(seg, f.start, f.end));
+          });
         }
       }
       features.push({
@@ -781,10 +788,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       const centres: Vec3[] = [];
       let plane: ModelPlane | undefined;
       let placed: Vec3 | undefined;
-      const inside = (ref: number) => {
-        const f = seg.frame(ref);
-        return refsIn(seg, f.start, f.end);
-      };
+      const inside = refsOf;
       for (const ref of scope.refs) {
         const t = seg.typeOf(ref)?.guid;
         if (t === GEOMETRY_OPERAND)
@@ -827,10 +831,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       const flipped = readHoleFlipped(seg, scope);
       features.push({ type: 'hole', ...base, centres, flipped, ...(plane ? { plane } : {}) });
     } else if (FEATURE_TYPES[type.guid] === 'CircularPattern') {
-      const inside = (ref: number) => {
-        const f = seg.frame(ref);
-        return refsIn(seg, f.start, f.end);
-      };
+      const inside = refsOf;
       const repeated: number[] = [];
       let objects: F3dCircularPattern['objects'] = 'features';
       let axis: RevolveAxis | undefined;
@@ -990,8 +991,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
   // Bodies, and the feature that made each (from the links features keep to them).
   const creators = new Map<number, number>();
   for (const id of seg.idsOf(BODY_LINK)) {
-    const f = seg.frame(id);
-    const refs = refsIn(seg, f.start, f.end);
+    const refs = refsOf(id);
     const at = refs.findIndex((r) => seg.typeOf(r)?.guid === BODY);
     const body = refs[at];
     const by = refs[at + 1];

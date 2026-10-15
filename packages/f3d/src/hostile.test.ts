@@ -4,6 +4,8 @@
  * repeated so a decode would run again for each (hand-built, no real file's bytes).
  */
 import { describe, expect, it } from 'vitest';
+import { PARAMETER_OWNER } from './decode/parameters';
+import { BODY_LINK } from './decode/pattern';
 import { Bytes, segment } from './decode/test-segment';
 import { TIMELINE } from './decode/timeline';
 import { OPERATION_TABLE, readSegment } from './model';
@@ -54,5 +56,21 @@ describe('hostile segments', () => {
     expect(seg.idsOf(OTHER)).toEqual([7]);
     expect(seg.idsOf(TIMELINE)).toEqual([]);
     expect(seg.typeOf(7)?.guid).toBe(OTHER);
+  });
+
+  it('leaves out a record that cannot be framed instead of aborting the import', () => {
+    const seg = segment([
+      { guid: PARAMETER_OWNER, id: 1, body: [0] },
+      { guid: BODY_LINK, id: 2, body: [0] },
+    ]);
+    // Each record's header repeats its id (after the 7-byte class tag): break both.
+    for (const at of [7, 7 + 4 + 3 + 8 + 4 + 1]) seg.bulk[at] = 99;
+    const design = readSegment(seg);
+    expect(design.problems).toEqual(
+      expect.arrayContaining([
+        'record #1: Record 1 repeats another id.',
+        'record #2: Record 2 repeats another id.',
+      ]),
+    );
   });
 });
