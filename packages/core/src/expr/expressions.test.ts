@@ -3,7 +3,7 @@ import type { LengthUnit, UnitKind } from '../schema';
 import { evaluateExpression, type Quantity } from './evaluate';
 import { formatQuantity } from './format';
 import { evaluateInline, type InlineParameter, inlineParameter } from './inline';
-import { parse, references, tokenize } from './parser';
+import { MAX_DEPTH, parse, references, tokenize } from './parser';
 import { ANGLE, type Dim, LENGTH, UNITLESS } from './units';
 
 const AREA: Dim = { length: 2, angle: 0 };
@@ -321,6 +321,29 @@ describe('syntax errors', () => {
     const e = error(source);
     expect(e.message).toBe(message);
     expect(e.span).toEqual({ start, end });
+  });
+});
+
+describe('nesting depth', () => {
+  it('refuses an expression nested past the cap with an expression error, not a stack overflow', () => {
+    const deep = 100_000;
+    for (const source of [
+      `${'('.repeat(deep)}1${')'.repeat(deep)}`,
+      `${'-'.repeat(deep)}1`,
+      `${'1 + '.repeat(deep)}1`,
+      `${'2 ^ '.repeat(deep)}1`,
+      `${'abs('.repeat(deep)}1${')'.repeat(deep)}`,
+    ]) {
+      const t = Date.now();
+      expect(error(source).message).toBe(`Nested more than ${MAX_DEPTH} levels deep.`);
+      expect(Date.now() - t).toBeLessThan(1000);
+    }
+  });
+
+  it('still reads deep expressions inside the cap', () => {
+    const n = 100;
+    expect(value(`${'('.repeat(n)}1 + 2${')'.repeat(n)}`).value).toBe(3);
+    expect(value(`${'1 + '.repeat(n)}1`).value).toBe(n + 1);
   });
 });
 
