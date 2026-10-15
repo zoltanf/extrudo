@@ -1606,8 +1606,8 @@ export class Kernel {
     planeA: { origin: Vec3; normal: Vec3 },
     planeB?: { origin: Vec3; normal: Vec3 },
   ): Vec3[] {
-    this.#solid(a, 'Intersect');
-    if (b !== null) this.#solid(b, 'Intersect');
+    this.#solid(a, 'Point at Intersection');
+    if (b !== null) this.#solid(b, 'Point at Intersection');
     const cut = planeB ?? planeA;
     const f = this.#facade;
     const n = f.facesMeetPlane(
