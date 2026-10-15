@@ -21,7 +21,7 @@ remaining backlog** (the open items in `docs/03-roadmap.md`). Phase 6 has
 P6-08 (the desktop MCP server) and P6-04 (i18n, **deferred**: English only for
 now) left. Phase 7 (IK) is last, lowest priority. The
 owner's UI review 3 is done (`docs/plans/ui-review-2026-10-11.md`); tooltip
-clips for Construct, 3D Print and the Sketch tab follow in later batches.
+clips for 3D Print and the Sketch tab follow (R3-16's rest, ADR-0052's amendment of 2026-10-15).
 
 Releases: v0.4.0 was the first public one; v0.4.1, v0.5.0 (2026-10-10), v0.6.0,
 v0.6.1 (2026-10-12) and **v0.7.0** (2026-10-15) followed. **The owner tags** (`docs/release-checklist.md`;

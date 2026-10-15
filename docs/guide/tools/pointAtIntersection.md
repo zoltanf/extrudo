@@ -13,5 +13,7 @@ The point where two edges, an edge and a plane, or three planes meet.
 |---|---|
 | Construct › Points | None |
 
+<video src="demo:pointAtIntersection" muted loop autoplay playsinline aria-label="Point at Intersection demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

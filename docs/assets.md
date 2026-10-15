@@ -65,7 +65,7 @@ spec's selectors and traps are in `docs/agent/e2e-notes.md`.
 
 - Look at each changed picture or clip; the recordings succeed even when a
   dialog covers the view.
-- Sizes: tooltip clips fail a test above 150 kB each
+- Sizes: tooltip clips fail a test above 150 kB each, and above 4 MB in all
   (`apps/web/src/onboarding/demos.test.ts`); guide and tutorial PNGs are
   256-colour to stay near 150 kB; README WebPs are about 45–75 kB.
 - `pnpm check` must pass: it includes the staleness tests for the generated

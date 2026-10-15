@@ -331,7 +331,7 @@ async function record(page: Page, tool: string, clip: Clip, flow: () => Promise<
   } finally {
     await recorder.stop();
   }
-  // Under the tooltip's budget (`demos.test.ts`: 150 kB a clip, kept to 140 here, and 2 MB for
+  // Under the tooltip's budget (`demos.test.ts`: 150 kB a clip, kept to 140 here, and 4 MB for
   // all of them): 200 kbit/s looks the same as more at the tooltip's 236 px, and a long clip is
   // encoded again at a lower rate rather than cut short.
   const file = join(DEMOS, `${tool}.webm`);
@@ -1441,6 +1441,220 @@ test('demo: scale', async ({ page }) => {
     await previewed(dialog);
     await page.waitForTimeout(500);
     await commit(page, dialog);
+  });
+});
+
+// ---- Construct tab
+
+/** One pick of a construction scene: a world point and what the view hovers there. */
+type Pick = { at: Vec3; kind: RegExp; dy?: number } | { at: Vec3; plane: true };
+
+/**
+ * A Construct tool's scene: the design is shown in the home view, the tool opens, each pick is
+ * clicked in the view, `handle` (if any) is dragged to a world point, and Enter commits.
+ */
+function constructScene(
+  tool: string,
+  label: string,
+  bounds: [Vec3, Vec3],
+  picks: readonly Pick[],
+  options: { handle?: { field: string; to: Vec3 }; tab?: string; fill?: number } = {},
+) {
+  test(`demo: ${tool}`, async ({ page }) => {
+    await demoDesign(page, tool);
+    await turnView(page, 'Shift+1');
+    const { at, clip } = await frameWorld(page, boxPoints(...bounds), options.fill);
+    const p = pointer(page);
+    await p.jump({ x: clip.x + clip.width - 40, y: clip.y + clip.height - 30 });
+    const dialog = page.getByRole('region', { name: `${label} dialog` });
+    await record(page, tool, clip, async () => {
+      await page.waitForTimeout(300);
+      await runTool(page, tool, options.tab ?? 'construct');
+      await expect(dialog).toBeVisible();
+      await page.waitForTimeout(250);
+      for (const pick of picks) {
+        if ('plane' in pick) await clickSpot(page, p, at(pick.at));
+        else await pickModel(page, p, at, pick.at, pick.kind, { dy: pick.dy });
+        await page.waitForTimeout(200);
+      }
+      await previewed(dialog);
+      await page.waitForTimeout(400);
+      if (options.handle) {
+        await p.drag(await handleAt(page, options.handle.field), at(options.handle.to));
+      }
+      await commit(page, dialog);
+      // The pointer steps aside, so a small result (a point) is not under it.
+      await p.moveTo({ x: clip.x + clip.width - 40, y: clip.y + 40 }, 450);
+      await page.waitForTimeout(700);
+    });
+  });
+}
+
+const BOX_30: [Vec3, Vec3] = [
+  [-15, -10, 0],
+  [15, 10, 14],
+];
+
+constructScene(
+  'offsetPlane',
+  'Offset Plane',
+  [
+    [12, -63, 0],
+    [48, -23, 14],
+  ],
+  [{ at: [34, -47, 5], plane: true }],
+  { handle: { field: 'distance', to: [34, -61, 5] } },
+);
+
+constructScene(
+  'planeAtAngle',
+  'Plane at Angle',
+  [
+    [-18, -12, 0],
+    [18, 12, 26],
+  ],
+  [{ at: [-4, -12, 14], kind: /^edge:/, dy: 2 }],
+);
+
+constructScene(
+  'midplane',
+  'Midplane',
+  [
+    [22, -68, 0],
+    [38, -22, 24],
+  ],
+  [
+    { at: [30, -30, 8], plane: true },
+    { at: [30, -60, 24], plane: true },
+  ],
+);
+
+constructScene('planeThroughPoints', 'Plane Through 3 Points', BOX_30, [
+  { at: [-15, -10, 14], kind: /^vertex:/ },
+  { at: [15, -10, 0], kind: /^vertex:/ },
+  { at: [15, 10, 14], kind: /^vertex:/ },
+]);
+
+constructScene(
+  'tangentPlane',
+  'Tangent Plane',
+  [
+    [-16, -16, 0],
+    [16, 16, 16],
+  ],
+  [{ at: [8.5, -8.5, 8], kind: /^face:/ }],
+);
+
+constructScene('axisThroughPoints', 'Axis Through 2 Points', BOX_30, [
+  { at: [-15, -10, 0], kind: /^vertex:/ },
+  { at: [15, 10, 14], kind: /^vertex:/ },
+]);
+
+constructScene(
+  'axisThroughCylinder',
+  'Axis Through Cylinder',
+  [
+    [-16, -16, 0],
+    [16, 16, 16],
+  ],
+  [{ at: [8.5, -8.5, 8], kind: /^face:/ }],
+);
+
+constructScene('axisAlongEdge', 'Axis Along Edge', BOX_30, [
+  { at: [-4, -10, 14], kind: /^edge:/, dy: 2 },
+]);
+
+constructScene('constructionPoint', 'Point', BOX_30, [{ at: [-15, -10, 14], kind: /^vertex:/ }], {
+  fill: 0.85,
+});
+
+constructScene(
+  'pointOnPath',
+  'Point on Path',
+  BOX_30,
+  [{ at: [0, -10, 0], kind: /^edge:/, dy: 2 }],
+  { handle: { field: 'position', to: [8, -10, 0] }, fill: 0.85 },
+);
+
+constructScene(
+  'pointAtIntersection',
+  'Point at Intersection',
+  BOX_30,
+  [
+    { at: [0, -10, 14], kind: /^edge:/, dy: 2 },
+    { at: [15, -10, 7], kind: /^edge:/, dy: 2 },
+  ],
+  { fill: 0.85 },
+);
+
+constructScene(
+  'planeAlongPath',
+  'Plane Along Path',
+  [
+    [-25, -8, 0],
+    [25, 8, 24],
+  ],
+  [{ at: [0, 0, 24], kind: /^sketchEntity:/ }],
+  { fill: 0.85 },
+);
+
+constructScene(
+  'midplaneAngled',
+  'Angled Midplane',
+  [
+    [15, -45, 0],
+    [45, -25, 14],
+  ],
+  [
+    { at: [30, -45, 7], plane: true },
+    { at: [30, -35, 14], plane: true },
+  ],
+);
+
+test('demo: measure', async ({ page }) => {
+  await demoDesign(page, 'measure');
+  await turnView(page, 'Shift+1');
+  const { at, clip } = await frameWorld(page, boxPoints([-35, -10, 0], [31, 10, 14]));
+  const p = pointer(page);
+  await p.jump({ x: clip.x + 40, y: clip.y + clip.height - 30 });
+  await record(page, 'measure', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'measure', 'construct');
+    await page.waitForTimeout(400);
+    await pickModel(page, p, at, [-20, 0, 14], /^face:/);
+    await page.waitForTimeout(300);
+    const r = 6 / Math.SQRT2;
+    await pickModel(page, p, at, [25 + r, -r, 7], /^face:/);
+    await page.waitForTimeout(1200);
+  });
+});
+
+test('demo: section', async ({ page }) => {
+  await demoDesign(page, 'section');
+  await turnView(page, 'Shift+1');
+  const { at, clip } = await frameWorld(page, boxPoints([-18, -12, 0], [18, 12, 20]));
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 40, y: clip.y + clip.height - 30 });
+  const viewport = viewportOf(page);
+  await record(page, 'section', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'section', 'construct');
+    await page
+      .getByRole('region', { name: 'Section Analysis' })
+      .getByRole('button', { name: 'XY plane' })
+      .dispatchEvent('click');
+    await expect(viewport).toHaveAttribute('data-section', /on$/);
+    await page.waitForTimeout(700);
+    const handle = viewport.locator('[data-section-handle]');
+    await expect(handle).toHaveCount(1);
+    const box = await viewport.boundingBox();
+    const from = {
+      x: (box?.x ?? 0) + Number(await handle.getAttribute('cx')),
+      y: (box?.y ?? 0) + Number(await handle.getAttribute('cy')),
+    };
+    await p.drag(from, { x: from.x, y: from.y - 30 }, 800);
+    await page.waitForTimeout(900);
+    void at;
   });
 });
 

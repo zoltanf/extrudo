@@ -13,9 +13,9 @@
  */
 
 /**
- * The tools that have a clip: the first batch of R3-16 is every tile of the Solid and Modify
- * tabs (in the tabs' order) and the sketch tools ADR-0052 recorded first, all recorded in the
- * current UI. Construct, 3D Print and the Sketch tab follow in later batches.
+ * The tools that have a clip: every tile of the Solid, Modify and Construct tabs (in the tabs'
+ * order) and the sketch tools ADR-0052 recorded first, all recorded in the current UI (R3-16).
+ * 3D Print and the Sketch tab follow in a later batch.
  */
 export const DEMO_TOOLS: readonly string[] = [
   // Solid › Create, Primitives, Features, Pattern, Program, Component.
@@ -53,6 +53,22 @@ export const DEMO_TOOLS: readonly string[] = [
   'combine',
   'splitBody',
   'scale',
+  // Construct › Planes, Axes, Points, Inspect.
+  'offsetPlane',
+  'planeAtAngle',
+  'midplane',
+  'tangentPlane',
+  'planeThroughPoints',
+  'planeAlongPath',
+  'midplaneAngled',
+  'axisThroughPoints',
+  'axisThroughCylinder',
+  'axisAlongEdge',
+  'constructionPoint',
+  'pointOnPath',
+  'pointAtIntersection',
+  'measure',
+  'section',
   // Sketch › Create.
   'line',
   'rectangle',

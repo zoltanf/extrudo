@@ -811,9 +811,9 @@ per-field Reset when they differ from the default.
 - **Every tool tooltip** (toolbar tiles and the constraint icons): name,
   shortcut, one sentence and a looping demo of 2 to 10 seconds (WebM,
   480 × 300, under 150 kB) that loads only when the tooltip opens. Every tile of
-  the Solid and Modify tabs has one (the owner's UI review 3, R3-16), as do
-  Line, Rectangle, Circle and Dimension; Construct, 3D Print and the rest of the
-  Sketch tab follow in later batches. A clip
+  the Solid, Modify and Construct tabs has one (the owner's UI review 3, R3-16), as do
+  Line, Rectangle, Circle and Dimension; 3D Print and the rest of the
+  Sketch tab follow in a later batch. A clip
   is framed round the action, so the pick, the handle and the geometry it
   changes fill the tooltip's 236 px; it shows no toolbar and needs no text. With
   reduced motion the clip doesn't play (its first frame is a still); offline,

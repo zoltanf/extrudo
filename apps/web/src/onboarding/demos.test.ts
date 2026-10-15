@@ -31,7 +31,7 @@ const WANTED = [
 ];
 
 /** The owner's UI review 3 (R3-16): every tile of these tabs has a clip. */
-const WHOLE_TABS = ['solid', 'modify'];
+const WHOLE_TABS = ['solid', 'modify', 'construct'];
 
 describe('tool demos', () => {
   it('lists exactly the clips on disk, each for a real tool', () => {
@@ -65,7 +65,7 @@ describe('tool demos', () => {
     );
     for (const { path, bytes } of sizes)
       expect({ path, ok: bytes <= 150_000 }).toEqual({ path, ok: true });
-    expect(sizes.reduce((sum, s) => sum + s.bytes, 0)).toBeLessThan(2_000_000);
+    expect(sizes.reduce((sum, s) => sum + s.bytes, 0)).toBeLessThan(4_000_000);
   });
 
   it('gives a URL only to tools that have a clip', () => {

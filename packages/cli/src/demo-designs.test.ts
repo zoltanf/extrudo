@@ -138,6 +138,62 @@ export const DEMO_DESIGNS: Record<string, (d: Design) => void> = {
   scale: (d) => {
     d.box({ length: '14 mm', width: '14 mm', height: '14 mm' });
   },
+  // The Construct tab's scenes: a body to build the plane, axis or point on.
+  // The plane-picking scenes keep their bodies in front of the origin planes (x > 0, y < 0), whose
+  // squares show while a field picks planes and would take the click.
+  offsetPlane: (d) => {
+    d.box({ x: '30 mm', y: '-35 mm', length: '36 mm', width: '24 mm', height: '10 mm' });
+  },
+  planeAtAngle: (d) => {
+    d.box({ length: '36 mm', width: '24 mm', height: '14 mm' });
+  },
+  // Two blocks of different heights: the midplane lies between their tops.
+  midplane: (d) => {
+    d.box({ x: '30 mm', y: '-30 mm', length: '16 mm', width: '16 mm', height: '8 mm' });
+    d.box({ x: '30 mm', y: '-60 mm', length: '16 mm', width: '16 mm', height: '24 mm' });
+  },
+  planeThroughPoints: (d) => {
+    d.box({ length: '30 mm', width: '20 mm', height: '14 mm' });
+  },
+  tangentPlane: (d) => {
+    d.cylinder({ diameter: '24 mm', height: '16 mm' });
+  },
+  axisThroughPoints: (d) => {
+    d.box({ length: '30 mm', width: '20 mm', height: '14 mm' });
+  },
+  axisThroughCylinder: (d) => {
+    d.cylinder({ diameter: '24 mm', height: '16 mm' });
+  },
+  axisAlongEdge: (d) => {
+    d.box({ length: '30 mm', width: '20 mm', height: '14 mm' });
+  },
+  constructionPoint: (d) => {
+    d.box({ length: '30 mm', width: '20 mm', height: '14 mm' });
+  },
+  pointOnPath: (d) => {
+    d.box({ length: '30 mm', width: '20 mm', height: '14 mm' });
+  },
+  pointAtIntersection: (d) => {
+    d.box({ length: '30 mm', width: '20 mm', height: '14 mm' });
+  },
+  // A plate and a half circle standing on it, on XZ: the plane stands square to the arc.
+  planeAlongPath: (d) => {
+    d.box({ length: '50 mm', width: '16 mm', height: '4 mm' });
+    d.sketch(d.origin.xz, (k) => k.arc([20, 4], [-20, 4], [0, 24]));
+  },
+  // A block and a peg beside it: Measure shows the distance between a face of each.
+  measure: (d) => {
+    d.box({ x: '-20 mm', length: '30 mm', width: '20 mm', height: '14 mm' });
+    d.cylinder({ x: '25 mm', diameter: '12 mm', height: '14 mm' });
+  },
+  // A block with a hole through it: the section shows the hole's inside.
+  section: (d) => {
+    d.box({ length: '36 mm', width: '24 mm', height: '20 mm' });
+    d.cylinder({ diameter: '10 mm', height: '20 mm', operation: 'cut' });
+  },
+  midplaneAngled: (d) => {
+    d.box({ x: '30 mm', y: '-35 mm', length: '30 mm', width: '20 mm', height: '14 mm' });
+  },
 };
 
 /** A design's timeline, with nothing that changes from run to run. */

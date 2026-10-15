@@ -256,3 +256,24 @@ Rejected:
 - Drawing each scene's setup on camera: it doubles every clip's length for what isn't the
   tool.
 - Shortening long clips by speeding them up: a drag at double speed reads as a jump.
+
+## Amendment (2026-10-15): a clip for every Construct, 3D Print and Sketch tile
+
+The rest of R3-16: the batch the first one left for later, in three pull requests' worth of
+slices (Construct, 3D Print, Sketch). The approach, sizes and checks are the Solid part's
+(above): a 400 × 250 px frame round the action, a small design from `fixtures/demos/`, 200
+kbit/s, still stretches cut to 400 ms, `WHOLE_TABS` in `demos.test.ts`.
+
+- **Construct** (15 tiles: Offset Plane, Plane at Angle, Midplane, Tangent Plane, 3-Point Plane,
+  Plane Along Path, Angled Midplane, 2-Point Axis, Cylinder Axis, Edge Axis, Point, Point on
+  Path, Point at Intersection, and Inspect's Measure and Section Analysis). Each scene opens the
+  tool on a visible body, picks in the view (`constructScene` in the recorder), drags the
+  handle where the tool has one, commits with Enter and moves the pointer aside so a small
+  result (a point) isn't under it. **A scene that picks planes keeps its bodies in front of the
+  origin planes (x > 0, y < 0 in the home view)**: while a Plane field picks, the three origin
+  planes' big squares show and take a click that would land on a face behind them. The point
+  tools' results are a few pixels (the app draws a point small), so their scenes frame the body
+  at 85 %.
+- **The total budget goes from 2 MB to 4 MB** (`demos.test.ts`): 56 clips of about 45 kB don't
+  fit 2 MB, and a clip loads only when its tooltip opens (not precached), so what a visitor
+  fetches is one clip of at most 150 kB.

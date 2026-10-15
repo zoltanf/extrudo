@@ -2,6 +2,10 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+## Next
+
+- 2026-10-15 · **Tooltip clips for the Construct, 3D Print and Sketch tabs** (R3-16's rest; ADR-0052's amendment): slice 1, Construct: all 15 tiles (the planes, axes, points, Measure and Section Analysis) have a clip, each framed round the pick and the handle on a small design in `fixtures/demos/`; `demos.test.ts` checks the tab's tiles.
+
 ## v0.7.0 (2026-10-15)
 
 - 2026-10-15 · **A ghost body shows only its nearest surface** (ADR-0030's amendment): a ghost draws a depth-only pass before its 30 % faces, so where its faces overlap on screen (a cylinder's back, inner walls, standoffs) the grey no longer stacks into darker patches and the inside no longer shows through; edges, sketches and construction behind a ghost still show through it, dimmed.

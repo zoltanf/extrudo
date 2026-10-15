@@ -13,5 +13,7 @@ A construction axis through two points, for revolves and patterns.
 |---|---|
 | Construct › Axes | Shift+A |
 
+<video src="demo:axisThroughPoints" muted loop autoplay playsinline aria-label="Axis Through 2 Points demo"></video>
+
 <!-- notes -->
 <!-- /notes -->
