@@ -80,6 +80,12 @@ const INFIX_POWER: Record<string, [left: number, right: number]> = {
   '^': [41, 40],
 };
 const PREFIX_POWER = 30;
+/**
+ * How deep an expression may nest (brackets, operators, calls). Far beyond
+ * anything typed, and well inside the stack, so a hostile file's
+ * `((((…))))` gets a clean error rather than a stack overflow.
+ */
+export const MAX_DEPTH = 256;
 
 export function parse(source: string): Node {
   const tokens = tokenize(source);
@@ -91,7 +97,30 @@ export function parse(source: string): Node {
     throw new ExprError('Enter a value or an expression.', { start: 0, end: source.length });
   }
 
+  // The parser's own nesting, and each node's height: a long `1+1+…` chain
+  // nests the tree without nesting the parser.
+  let nesting = 0;
+  const heights = new WeakMap<Node, number>();
+  const tooDeep = (span: Span): never => {
+    throw new ExprError(`Nested more than ${MAX_DEPTH} levels deep.`, span);
+  };
+  const grown = <T extends Node>(node: T, ...children: Node[]): T => {
+    const height = 1 + Math.max(0, ...children.map((c) => heights.get(c) ?? 1));
+    if (height > MAX_DEPTH) tooDeep(node.span);
+    heights.set(node, height);
+    return node;
+  };
+
   function expression(minPower: number): Node {
+    if (++nesting > MAX_DEPTH) tooDeep(peek());
+    try {
+      return infix(minPower);
+    } finally {
+      nesting--;
+    }
+  }
+
+  function infix(minPower: number): Node {
     let left = prefix();
     for (;;) {
       const token = peek();
@@ -105,13 +134,17 @@ export function parse(source: string): Node {
       if (leftPower < minPower) break;
       next();
       const right = expression(rightPower);
-      left = {
-        kind: 'binary',
-        op: token.text as '+' | '-' | '*' | '/' | '^',
+      left = grown(
+        {
+          kind: 'binary',
+          op: token.text as '+' | '-' | '*' | '/' | '^',
+          left,
+          right,
+          span: { start: left.span.start, end: right.span.end },
+        },
         left,
         right,
-        span: { start: left.span.start, end: right.span.end },
-      };
+      );
     }
     return left;
   }
@@ -129,16 +162,14 @@ export function parse(source: string): Node {
           end: close.kind === 'end' ? source.length : close.start,
         });
       }
-      return { ...inner, span: { start: token.start, end: close.end } };
+      return grown({ ...inner, span: { start: token.start, end: close.end } }, inner);
     }
     if (token.text === '-' || token.text === '+') {
       const arg = expression(PREFIX_POWER);
-      return {
-        kind: 'unary',
-        op: token.text,
+      return grown(
+        { kind: 'unary', op: token.text, arg, span: { start: token.start, end: arg.span.end } },
         arg,
-        span: { start: token.start, end: arg.span.end },
-      };
+      );
     }
     if (token.kind === 'end') {
       const previous = tokens[index - 2];
@@ -192,7 +223,10 @@ export function parse(source: string): Node {
         end: close.kind === 'end' ? source.length : close.start,
       });
     }
-    return { kind: 'call', name: token.text, args, span: { start: token.start, end: close.end } };
+    return grown(
+      { kind: 'call', name: token.text, args, span: { start: token.start, end: close.end } },
+      ...args,
+    );
   }
 
   const root = expression(0);

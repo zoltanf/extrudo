@@ -8,8 +8,8 @@
  * below is enforced before the bytes are inflated, and only the entries the
  * importer actually reads are decompressed at all.
  */
-import { inflateSync } from 'fflate';
-import { decompress as zstd } from 'fzstd';
+import { Inflate } from 'fflate';
+import { Decompress as ZstdDecompress } from 'fzstd';
 import { F3dFormatError } from './bytes';
 
 export type Entries = ReadonlyMap<string, Uint8Array>;
@@ -20,6 +20,16 @@ export const MAX_ENTRY_BYTES = 256 * 1024 * 1024;
 export const MAX_TOTAL_BYTES = 512 * 1024 * 1024;
 /** The most entries an archive may hold. */
 export const MAX_ENTRIES = 4096;
+/**
+ * The most an entry may declare per compressed byte. The files' entries
+ * unpack to at most 16 times their compressed size (MetaStream/BulkStream
+ * 15.8, B-rep streams 10.8); a bomb gets far past this.
+ */
+export const MAX_RATIO = 200;
+/** The largest Zstandard window a frame may ask for (the files use 2 MB). */
+export const MAX_ZSTD_WINDOW = 32 * 1024 * 1024;
+/** Compressed bytes fed to the inflater at a time: a deflate chunk unpacks to at most about 1,000 times its size. */
+const CHUNK = 4 * 1024;
 /** A thumbnail larger than this, or not a PNG, is ignored. */
 const MAX_PREVIEW_BYTES = 1024 * 1024;
 
@@ -35,14 +45,85 @@ const READ_ENTRY = /(?:^|\/)(?:MetaStream\.dat|BulkStream\.dat|small\.png)$|\.sm
 
 const mb = (bytes: number) => Math.round(bytes / (1024 * 1024));
 
+/**
+ * Decompresses one entry into a buffer of its declared size, streaming, so it
+ * stops as soon as the data runs past that size, and checks it fills it
+ * exactly. Nothing is allocated before the declared size is plausible for the
+ * compressed bytes.
+ */
 function inflate(data: Uint8Array, method: number, size: number, name: string): Uint8Array {
   if (method === 0) return data;
-  // Decompress into a buffer of the declared size: both fflate and fzstd
-  // truncate silently to it, so a bomb cannot allocate past this.
+  if (method !== 8 && method !== 93)
+    throw new F3dFormatError(`Unsupported ZIP compression method ${method} for ${name}.`);
+  if (size > data.length * MAX_RATIO + 4096)
+    throw new F3dFormatError(
+      `Bad ZIP: ${name} claims to unpack to ${size} bytes from ${data.length} (more than ${MAX_RATIO} to 1).`,
+    );
+  if (method === 93) zstdFrame(data, size, name);
   const out = new Uint8Array(size);
-  if (method === 8) return inflateSync(data, { out });
-  if (method === 93) return zstd(data, out);
-  throw new F3dFormatError(`Unsupported ZIP compression method ${method} for ${name}.`);
+  let at = 0;
+  const take = (chunk: Uint8Array) => {
+    if (at + chunk.length > size)
+      throw new F3dFormatError(`Bad ZIP: ${name} unpacks to more than its declared ${size} bytes.`);
+    out.set(chunk, at);
+    at += chunk.length;
+  };
+  try {
+    if (method === 8) {
+      const stream = new Inflate(take);
+      for (let i = 0; i === 0 || i < data.length; i += CHUNK)
+        stream.push(data.subarray(i, i + CHUNK), i + CHUNK >= data.length);
+    } else new ZstdDecompress(take).push(data, true);
+  } catch (error) {
+    if (error instanceof F3dFormatError) throw error;
+    throw new F3dFormatError(`Bad compressed data in ${name}: ${(error as Error).message}`);
+  }
+  if (at !== size) throw new F3dFormatError(`Wrong size after decompressing ${name}.`);
+  return out;
+}
+
+/**
+ * Checks a Zstandard entry is one frame, without a dictionary, whose window is
+ * at most `MAX_ZSTD_WINDOW` and whose content size (when given) is the declared
+ * one: the decoder allocates the window from the header's few bytes, and a
+ * further frame would allocate another unchecked. Walks the block headers.
+ */
+function zstdFrame(data: Uint8Array, size: number, name: string): void {
+  const bad = (why: string) => new F3dFormatError(`Bad Zstandard data in ${name}: ${why}.`);
+  const u = (at: number, n: number) => {
+    if (at + n > data.length) throw bad('it ends early');
+    let v = 0;
+    for (let i = 0; i < n; i++) v += (data[at + i] as number) * 2 ** (8 * i);
+    return v;
+  };
+  if (u(0, 4) !== 0xfd2fb528) throw bad('not a Zstandard frame');
+  const flags = u(4, 1);
+  const single = (flags >> 5) & 1;
+  const sizeBytes = flags >> 6 ? 1 << (flags >> 6) : single;
+  if (flags & 0x0b) throw bad('a dictionary or a reserved bit');
+  let p = 5;
+  let window = 0;
+  if (!single) {
+    const descriptor = u(p++, 1);
+    const base = 2 ** (10 + (descriptor >> 3));
+    window = base + (base / 8) * (descriptor & 7);
+  }
+  if (sizeBytes) {
+    const content = u(p, sizeBytes) + (sizeBytes === 2 ? 256 : 0);
+    if (content !== size) throw bad(`it holds ${content} bytes, not ${size}`);
+    if (single) window = content;
+    p += sizeBytes;
+  }
+  if (window > MAX_ZSTD_WINDOW) throw bad(`a ${window}-byte window`);
+  for (let last = 0; !last; ) {
+    const header = u(p, 3);
+    last = header & 1;
+    const type = (header >> 1) & 3;
+    if (type === 3) throw bad('a reserved block type');
+    p += 3 + (type === 1 ? 1 : header >> 3);
+  }
+  if (flags & 4) p += 4; // the checksum
+  if (p !== data.length) throw bad('more than one frame');
 }
 
 /** Every file entry the import reads, decompressed. Directories are skipped. */

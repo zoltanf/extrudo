@@ -30,7 +30,7 @@ export class Bytes {
     return this.u8(1).u64(id).u8(0).u8(0);
   }
   raw(bytes: number[]) {
-    this.out.push(...bytes);
+    for (const b of bytes) this.out.push(b);
     return this;
   }
 }

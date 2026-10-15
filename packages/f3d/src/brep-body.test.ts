@@ -1433,3 +1433,95 @@ describe('utf16StreamName', () => {
     expect(performance.now() - t0).toBeLessThan(2000);
   });
 });
+
+describe('shared records cost once', () => {
+  const count = (step: string | undefined, entity: string) =>
+    (step?.match(new RegExp(`${entity}\\(`, 'g')) ?? []).length;
+  /** A degree-1 grid of n × n points: one spline surface record. */
+  const grid = (n: number): SurfaceIn => ({
+    t: 'spline',
+    uDegree: 1,
+    vDegree: 1,
+    uKnots: Array.from({ length: n }, (_, i): [number, number] => [i, 1]),
+    vKnots: Array.from({ length: n }, (_, i): [number, number] => [i, 1]),
+    points: Array.from({ length: n * n }, (_, i): V => [i % n, Math.floor(i / n), 0]),
+  });
+
+  it('writes a spline surface many faces share once, not its points per face', () => {
+    // 1,000 faces on one 30 × 30 surface wrote 900,000 points.
+    const surface = grid(30);
+    const faces = Array.from(
+      { length: 1000 },
+      (_, i): FaceIn => ({
+        surface,
+        loops: [squareAt(2 * i)],
+      }),
+    );
+    const solid = firstSolid(solidStream(faces));
+    const t = performance.now();
+    const { step, reason } = solidStep(solid);
+    expect(performance.now() - t).toBeLessThan(1000);
+    expect(reason).toBeUndefined();
+    expect(count(step, 'B_SPLINE_SURFACE_WITH_KNOTS')).toBe(1);
+    expect(count(step, 'ADVANCED_FACE')).toBe(1000);
+    // The grid once, a vertex and a line point per edge.
+    expect(count(step, 'CARTESIAN_POINT')).toBe(900 + 4000 + 4000 + 1);
+  });
+
+  it('reads and writes a B-spline block many curve records name by reference once', () => {
+    // The first curve's block holds 1,000 points; 2,000 more curves name it.
+    const points = Array.from({ length: 1000 }, (_, i): V => [i, 0, 0]);
+    const block: SplineIn = {
+      t: 'spline',
+      degree: 1,
+      knots: points.map((_, i): [number, number] => [i, 1]),
+      points,
+    };
+    const at = (i: number): V => [i, 1, 0];
+    const edges: Occurrence[] = [{ curve: block, a: at(0), b: at(1), params: [0, 1] }];
+    for (let i = 1; i < 2000; i++)
+      edges.push({
+        // A distinct record each (the builder shares equal ones), all `{ ref 0 }`.
+        curve: { t: 'spline', degree: 1, knots: [], points: [[i, 0, 0]], ref: 0 },
+        a: at(i),
+        b: at(i + 1),
+        params: [0, 1],
+      });
+    edges.push(line(at(2000), at(0)));
+    const bytes = solidStream([{ surface: { t: 'plane', p: V0, n: [0, 0, 1] }, loops: [edges] }]);
+    const t = performance.now();
+    const solid = firstSolid(bytes);
+    const { step, reason } = solidStep(solid);
+    expect(performance.now() - t).toBeLessThan(1000);
+    expect(reason).toBeUndefined();
+    expect(count(step, 'B_SPLINE_CURVE_WITH_KNOTS')).toBe(1);
+    expect(count(step, 'EDGE_CURVE')).toBe(2001);
+  });
+
+  it('reads an edge many coedges name once', () => {
+    // 3,000 coedges on one edge whose curve holds 2,000 points.
+    const points = Array.from({ length: 2000 }, (_, i): V => [i, 0, 0]);
+    const curve: SplineIn = {
+      t: 'spline',
+      degree: 1,
+      knots: points.map((_, i): [number, number] => [i, 1]),
+      points,
+    };
+    const o: Occurrence = { curve, a: V0, b: V1, params: [0, 1] };
+    const bytes = solidStream([
+      { surface: { t: 'plane', p: V0, n: [0, 0, 1] }, loops: [new Array(3000).fill(o)] },
+    ]);
+    const records = readAsm(bytes);
+    const t = performance.now();
+    const coedges = (asmBodies(records)[0] as AsmBodySolid).faces[0]?.loops[0]?.coedges ?? [];
+    expect(performance.now() - t).toBeLessThan(1000);
+    expect(coedges).toHaveLength(3000);
+    expect(coedges[2999]?.edge).toBe(coedges[0]?.edge);
+  });
+
+  it('refuses a body whose STEP text passes the cap, with a reason', () => {
+    expect(solidStep(firstSolid(solidStream(boxFaces())), 1000).reason).toBe(
+      'unsupported geometry (a body of more than 1000 bytes of STEP)',
+    );
+  });
+});

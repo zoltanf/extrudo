@@ -137,9 +137,10 @@ work and its memory (the security review of PR #7). The rules:
   entry at most `MAX_ENTRY_BYTES` = 256 MB, and all entries together at most
   `MAX_TOTAL_BYTES` = 512 MB. Both are checked from the central directory's
   declared sizes **before** anything is inflated. Each entry inflates into a
-  buffer of its declared size (fflate's `out` option, fzstd's output buffer),
-  so a decompression bomb cannot allocate past it, and the **real** output —
-  never a header's claim — is counted against the total. Only the entries the
+  buffer of its declared size, streaming, and must fill it exactly (since the
+  2026-10-15 amendment, which also caps the ratio of declared to compressed
+  size), and the **real** output — never a header's claim — is counted
+  against the total. Only the entries the
   import reads are decompressed at all: the design streams (`MetaStream.dat`,
   `BulkStream.dat`), the B-rep `.smb`/`.smbh` streams and the preview. Every
   local header's name must match its central directory entry, and two central
@@ -1129,3 +1130,89 @@ of the design holding both modules), frozen 152 → 151, unchecked 26 → 26.
 Tests: `decode/torus.test.ts`, `sweep-faces.test.ts`,
 `decode/feature-records.test.ts`, and `map-more.test.ts` "makes a torus on the
 origin plane…" and "names a sweep's cap and side…".
+
+## Amendment, 2026-10-15: hostile files, round 2
+
+A second security review of the importer (the parser, the mapping and the
+B-rep writer) found no injection, but several ways a small crafted `.f3d`
+made the import take minutes, exhaust memory or loop forever. The import runs
+on the UI thread, so each froze or crashed the tab. Each is now bounded; the
+limits sit well above what the 250-file corpus needs (FORMAT.md has the
+measured figures).
+
+- **Arc angles** (`regions.ts` `angleOf`): an arc's angle was brought round
+  one turn at a time, which took seconds at 1e10 and never ended past 1e17. It
+  is a modulo now. Circles and arcs, points, lines, spline knots, poles and
+  weights are refused at decode when a number isn't finite, a radius isn't
+  positive or a weight isn't positive (`finite` in `bytes.ts`).
+- **The B-rep stream's memory** (`asm.ts` `readAsm`): one object per one-byte
+  value made a 16 MB stream cost 0.8 GB of heap (50 times its size), and a
+  64 KB archive could ask for about 4 GB. One-byte values and small integers
+  now share their objects, class names are kept once, a record needs a class
+  name, and a stream may hold at most one value per 4 bytes, one record per
+  16 bytes and 16 million values. Measured with `--expose-gc`: the corpus's
+  eight largest streams cost 6.0 to 6.5 times their size (6.6 to 7.3 before);
+  the dearest stream within the caps (two-character strings) 18 times; a
+  16 MB flood of one-byte values is refused in 0.13 s.
+- **The operation-table search** (`model.ts` `readOperationTable`) tries
+  every offset of its record; a crafted 256 kB record took 21 s. The entry
+  reads are budgeted at one million per segment, shared by its tables (the
+  corpus needs at most 1,280); past it the table is left out with a problem.
+  Record ids repeated in the type table or the timeline are read once, each
+  feature's scope is read once (`scopeOf`), and the faces a feature made are
+  indexed once (`madeBy`), so repeating an id costs nothing.
+- **Shared B-rep records**: a surface, curve or edge record many faces or
+  coedges name is read once per stream (`asm-body.ts`), and so is a B-spline
+  block several records name by `{ ref n }` (`asm-spline.ts`); the STEP writer
+  writes a B-spline surface or curve once however many faces or edges use it
+  (analytic surfaces and curves are still written per use: they are a few
+  entities, and sharing them would have changed the text of 140 corpus bodies
+  for nothing). A body's STEP text is capped at `MAX_STEP_BYTES` = 64 MB (the
+  corpus's largest is 4 MB, 85,000 entities); past it the body is refused
+  with a reason and stays unchecked like other refused bodies. The tag walk
+  (`asmFaceTags`) follows each attribute of a chain once, keeps each
+  attribute's and each chain's tags once per stream, and refuses a stream
+  whose faces would copy more than a million tags plus four per value; the
+  face-edge walk (`asmFaces`) refuses one whose faces would take more than a
+  million steps plus four per record (each face walks its own loops in the
+  files).
+- **Inflating** (`archive.ts`): fflate's one-shot inflate decoded a whole
+  stream past its output buffer (about 7 s per compressed MB of overflow) and
+  accepted the truncated result; the Zstandard path returned its buffer
+  unchecked, zero-padded; and the declared size (up to 256 MB) was allocated
+  from a few bytes of input. Entries now inflate streaming (`Inflate`, 4 kB
+  of input at a time; fzstd's `Decompress`), stop as soon as the output passes
+  the declared size and must fill it exactly; a declared size more than
+  `MAX_RATIO` = 200 times the compressed size (plus 4 kB) is refused before
+  anything is allocated (the corpus's entries stay under 16); a Zstandard
+  entry must be one frame, with no dictionary, a window of at most
+  `MAX_ZSTD_WINDOW` = 32 MB and, when the frame says, the declared content
+  size, checked by walking its block headers before decoding. The existing
+  entry-count, per-entry and total caps stay.
+- **Expression nesting** (`packages/core/src/expr/parser.ts`): no depth cap,
+  so `((((…))))` 100,000 deep overflowed the stack with a `RangeError` that
+  `parseSafely` rethrew. The parser now refuses an expression nested more than
+  `MAX_DEPTH` = 256 levels (brackets, operators and calls, including a long
+  `1 + 1 + …` chain, which nests the tree without nesting the parser) with an
+  `ExprError`. This is core's, so `.extrudo` files and typing benefit too.
+- **Finite numbers**: model planes and points (`decode/hole.ts`), a sketch's
+  placement matrix and parameter values (not text parameters) are refused when
+  a number isn't finite, and an axis line that isn't finite is no axis
+  (`readAxis`), so the feature is left out with a note instead of handing NaN
+  to the kernel.
+- **One bad record**: the `frame()` calls outside `tryDecode` (parameter
+  owners, body links, a sketch's placement, a hole's and a circular pattern's
+  operands, a revolve's axis) go through it now, so a record that can't be
+  framed leaves out what names it instead of aborting the import.
+
+The corpus gate (250 files): the replay's every verdict, skipped feature
+(75), failed feature, note and problem is unchanged, and its time summed over
+the designs went 1,146 s → 1,037 s; the body check is the same design by
+design (before 156 / after 225 within 0.5 %, 69 rescued, none harmed; bodies
+editable 211, frozen 143, unchecked 26; 354 written). Five bodies' STEP text
+got shorter (a shared B-spline written once) and measure the same.
+
+Still open, each a separate piece of work: decoding in a worker (the import
+still runs on the UI thread, so a slow legitimate file still blocks it), the
+all-pairs matching of profile-region curves (`regions.ts`), and retry budgets
+for the kernel's fillet diagnosis.

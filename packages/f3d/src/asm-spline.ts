@@ -285,8 +285,30 @@ export function asmSplineCurve(
   record: number,
 ): AsmBSplineCurve | undefined {
   const block = blockOf(records, table, record);
-  if (!block) return undefined;
-  const [vs, at] = block;
+  return block ? once(curves, block, () => blockCurve(block)) : undefined;
+}
+
+/**
+ * A block's B-spline, read once: the records that name one block by `{ ref n }`
+ * share the result (the STEP writer then writes it once).
+ */
+function once<T>(
+  memo: WeakMap<AsmValue[], Map<number, T | undefined>>,
+  [vs, at]: [AsmValue[], number],
+  read: () => T | undefined,
+): T | undefined {
+  let byAt = memo.get(vs);
+  if (!byAt) {
+    byAt = new Map();
+    memo.set(vs, byAt);
+  }
+  if (!byAt.has(at)) byAt.set(at, read());
+  return byAt.get(at);
+}
+const curves = new WeakMap<AsmValue[], Map<number, AsmBSplineCurve | undefined>>();
+const surfaces = new WeakMap<AsmValue[], Map<number, AsmBSplineSurface | undefined>>();
+
+function blockCurve([vs, at]: [AsmValue[], number]): AsmBSplineCurve | undefined {
   // `{ <x>_int_cur <version> 0 nubs|nurbs …`: the approximation comes first.
   if (!isName(vs[at + 1]) || vs[at + 2]?.t !== 'int') return undefined;
   const flag = vs[at + 3];
@@ -305,8 +327,10 @@ export function asmSplineSurface(
   record: number,
 ): AsmBSplineSurface | undefined {
   const block = blockOf(records, table, record);
-  if (!block) return undefined;
-  const [vs, at] = block;
+  return block ? once(surfaces, block, () => blockSurface(block)) : undefined;
+}
+
+function blockSurface([vs, at]: [AsmValue[], number]): AsmBSplineSurface | undefined {
   let depth = 0;
   for (let i = at; i < vs.length; i++) {
     const v = vs[i] as AsmValue;

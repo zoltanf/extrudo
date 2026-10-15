@@ -40,6 +40,23 @@ export interface AsmRecord {
 
 const latin1 = new TextDecoder('latin1');
 
+// One-byte values share one object each: a stream of them costs an array
+// slot per byte, not an object per byte (ADR-0083, hostile files round 2).
+const TRUE: AsmValue = Object.freeze({ t: 'bool', v: true });
+const FALSE: AsmValue = Object.freeze({ t: 'bool', v: false });
+const OPEN: AsmValue = Object.freeze({ t: 'open' });
+const CLOSE: AsmValue = Object.freeze({ t: 'close' });
+/**
+ * At most one value or class name per `BYTES_PER_VALUE` bytes, one record per
+ * `BYTES_PER_RECORD` and `MAX_VALUES` values in all. The files' streams have
+ * at least 8 bytes per value, 90 per record and 2.6 million values, and cost
+ * about 6.5 times their size in heap; a crafted stream within the caps costs
+ * at most about 18 times (2-character strings, an object each).
+ */
+const BYTES_PER_VALUE = 4;
+const BYTES_PER_RECORD = 16;
+const MAX_VALUES = 16_000_000;
+
 /** Every record of an ASM binary stream, in order (a pointer is an index into it). */
 export function readAsm(bytes: Uint8Array): AsmRecord[] {
   const magic = latin1.decode(bytes.subarray(0, 15));
@@ -69,6 +86,20 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
     } else throw new F3dFormatError(`ASM header: tag ${t} at ${p - 1}.`);
   }
   const records: AsmRecord[] = [];
+  const maxValues = Math.min(Math.ceil(bytes.length / BYTES_PER_VALUE), MAX_VALUES);
+  const maxRecords = Math.ceil(bytes.length / BYTES_PER_RECORD);
+  let valueCount = 0;
+  // Class names and small integers, one copy each.
+  const types = new Map<string, string>();
+  const smallInts = new Map<number, AsmValue>();
+  const smallInt = (v: number): AsmValue => {
+    let out = smallInts.get(v);
+    if (!out) {
+      out = Object.freeze({ t: 'int', v });
+      smallInts.set(v, out);
+    }
+    return out;
+  };
   let values: AsmValue[] = [];
   let names: string[] = [];
   let type = '';
@@ -79,6 +110,8 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
   const str = (len: number, at: number) => latin1.decode(bytes.subarray(at, at + len));
   while (p < bytes.length) {
     const t = bytes[p++] as number;
+    if (t !== 0x11 && ++valueCount > maxValues)
+      throw new F3dFormatError(`ASM: more than ${maxValues} values in ${bytes.length} bytes.`);
     switch (t) {
       case 0x0d:
       case 0x0e: {
@@ -89,7 +122,9 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
         if (depth > 0) values.push({ t: 'name', v: str(n, p + 1) });
         p += 1 + n;
         if (t === 0x0d) {
-          type = names.join('-');
+          const joined = names.join('-');
+          type = types.get(joined) ?? joined;
+          types.set(type, type);
           // The first class name is the record's own type; later names are its
           // base classes (`intcurve`, `curve`, `spring_int_cur`, … `nullbs`).
           if (derived === '') derived = type;
@@ -98,6 +133,11 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
         break;
       }
       case 0x11:
+        if (type === '') throw new F3dFormatError(`ASM: a record without a class at ${p - 1}.`);
+        if (records.length >= maxRecords)
+          throw new F3dFormatError(
+            `ASM: more than ${maxRecords} records in ${bytes.length} bytes.`,
+          );
         records.push({ type, derived: derived || type, values });
         if (type === 'End-of-ASM-data') return records;
         values = [];
@@ -169,17 +209,17 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
         break;
       }
       case 0x0a:
-        values.push({ t: 'bool', v: true });
+        values.push(TRUE);
         break;
       case 0x0b:
-        values.push({ t: 'bool', v: false });
+        values.push(FALSE);
         break;
       case 0x0f:
-        values.push({ t: 'open' });
+        values.push(OPEN);
         depth++;
         break;
       case 0x10:
-        values.push({ t: 'close' });
+        values.push(CLOSE);
         depth--;
         break;
       case 0x05:
@@ -189,12 +229,12 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
         break;
       case 0x03:
         need(2);
-        values.push({ t: 'int', v: view.getInt16(p, true) });
+        values.push(smallInt(view.getInt16(p, true)));
         p += 2;
         break;
       case 0x02:
         need(1);
-        values.push({ t: 'int', v: bytes[p] as number });
+        values.push(smallInt(bytes[p] as number));
         p += 1;
         break;
       default:
@@ -401,6 +441,7 @@ function faceEdges(
   records: AsmRecord[],
   face: number[],
   tagsOfFace: (index: number) => { token: string; design: number }[],
+  step: () => void,
 ): AsmEdge[] {
   // A type or a subtype of it (`tedge-edge`, `tvertex-vertex`).
   const is = (p: number, type: string) => {
@@ -414,10 +455,12 @@ function faceEdges(
   let loop = of(face, 'loop');
   while (loop >= 0 && !seen.has(loop)) {
     seen.add(loop);
+    step();
     const lp = pointers(records[loop]);
     let coedge = of(lp, 'coedge');
     while (coedge >= 0 && !seen.has(coedge)) {
       seen.add(coedge);
+      step();
       const cp = pointers(records[coedge]);
       const coedges = cp.filter((p) => is(p, 'coedge'));
       const edge = of(cp, 'edge');
@@ -450,25 +493,67 @@ function faceEdges(
   return out;
 }
 
+type Tag = { token: string; design: number };
+
+/**
+ * Per stream: each attribute's own tags and each attribute chain's tags, read
+ * once, and the tags handed out so far against a budget. Faces that share an
+ * attribute or a chain then cost nothing more, and a stream whose chains would
+ * copy more tags than a few times its values is refused.
+ */
+interface TagCache {
+  own: Map<number, Tag[]>;
+  chains: Map<number, Tag[]>;
+  spent: number;
+  budget: number;
+}
+const tagCaches = new WeakMap<AsmRecord[], TagCache>();
+
+function tagCache(records: AsmRecord[]): TagCache {
+  let cache = tagCaches.get(records);
+  if (!cache) {
+    let values = 0;
+    for (const r of records) values += r.values.length;
+    cache = { own: new Map(), chains: new Map(), spent: 0, budget: (1 << 20) + 4 * values };
+    tagCaches.set(records, cache);
+  }
+  return cache;
+}
+
 /**
  * The (token, design record) tags of one face record, from its attribute
- * chain (at most 64 attributes are followed).
+ * chain (at most 64 attributes are followed, each once). The array is shared
+ * by the faces whose chains start at the same attribute: don't change it.
  */
-export function asmFaceTags(
-  records: AsmRecord[],
-  face: number,
-): { token: string; design: number }[] {
-  const tags: { token: string; design: number }[] = [];
-  let a = pointers(records[face])[0] ?? -1;
-  for (let guard = 0; a >= 0 && guard < 64; guard++) {
+export function asmFaceTags(records: AsmRecord[], face: number): Tag[] {
+  const cache = tagCache(records);
+  const start = pointers(records[face])[0] ?? -1;
+  const known = cache.chains.get(start);
+  if (known) return known;
+  const tags: Tag[] = [];
+  const seen = new Set<number>();
+  let a = start;
+  for (let guard = 0; a >= 0 && guard < 64 && !seen.has(a); guard++) {
+    seen.add(a);
     const ar = records[a];
     if (!ar) break;
-    if (ar.type.startsWith('ATTRIB_CUSTOM')) tags.push(...tagsOf(ar));
+    if (ar.type.startsWith('ATTRIB_CUSTOM')) {
+      let own = cache.own.get(a);
+      if (!own) {
+        own = tagsOf(ar);
+        cache.own.set(a, own);
+      }
+      cache.spent += own.length;
+      if (cache.spent > cache.budget)
+        throw new F3dFormatError('ASM tag: the faces share more tags than the stream holds.');
+      for (const tag of own) tags.push(tag);
+    }
     // attrib: owner-side pointers come after the attribute and history slots;
     // the next attribute is the second pointer.
     const ap = ar.values.filter((v) => v.t === 'ptr').map((v) => (v as { v: number }).v);
     a = ap[1] ?? -1;
   }
+  cache.chains.set(start, tags);
   return tags;
 }
 
@@ -485,8 +570,20 @@ export function asmFaces(records: AsmRecord[]): AsmFace[] {
     faces.push({ index, surface: surfaceOf(records[surfacePtr]), tags, edges: [] });
     tagsAt.set(index, tags);
   });
+  // Faces that share loops would walk them again: the walks together may take
+  // a few steps per record (each face walks its own loops in the files).
+  let steps = (1 << 20) + 4 * records.length;
+  const step = () => {
+    if (--steps < 0)
+      throw new F3dFormatError('ASM: the faces share more loops than the stream holds.');
+  };
   for (const face of faces)
-    face.edges = faceEdges(records, pointers(records[face.index]), (i) => tagsAt.get(i) ?? []);
+    face.edges = faceEdges(
+      records,
+      pointers(records[face.index]),
+      (i) => tagsAt.get(i) ?? [],
+      step,
+    );
   return faces;
 }
 
