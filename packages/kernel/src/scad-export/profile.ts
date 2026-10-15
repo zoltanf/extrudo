@@ -24,11 +24,11 @@ import {
   type ProfileEdge,
   type ProfileLoop,
 } from '@extrudo/sketch/profiles';
+import type { SketchOutputData } from '../features/sketch';
+import { add, dot, scale, sub } from '../features/vec';
 import { KernelError } from '../kernel';
 import { LostReferenceError } from '../naming/resolve';
 import type { PlanarCurve } from '../planar';
-import type { SketchOutputData } from '../features/sketch';
-import { add, dot, scale, sub } from '../features/vec';
 import type { CsgContext } from './context';
 import type { CsgNode } from './ir';
 
@@ -53,16 +53,14 @@ type Arc = Extract<PlanarCurve, { kind: 'arc' }>;
  * `null` when a face is picked (`ctx.unsupported`). A missing region throws a
  * `KernelError`, so the version walk falls back to a mesh.
  */
-export function resolveProfiles(
-  ctx: CsgContext,
-  refs: readonly GeomRef[],
-): ProfileRef[] | null {
+export function resolveProfiles(ctx: CsgContext, refs: readonly GeomRef[]): ProfileRef[] | null {
   const found: ProfileRef[] = [];
   for (const ref of refs) {
     if (ref.kind === 'face') return ctx.unsupported('faces as profiles');
     if (ref.kind === 'profile') {
       const parsed = parseProfileRefId(ref.id);
-      if (!parsed) throw new KernelError("One of its profiles isn't a sketch profile. Pick it again.");
+      if (!parsed)
+        throw new KernelError("One of its profiles isn't a sketch profile. Pick it again.");
       const data = sketchOutput(ctx, parsed.feature);
       found.push({
         profile: regionOf(data, parsed.profile, ref),
@@ -73,15 +71,21 @@ export function resolveProfiles(
     }
     if (ref.kind === 'sketchEntity') {
       const parsed = parseSketchEntityRefId(ref.id);
-      if (!parsed) throw new KernelError("One of its profiles isn't a sketch profile. Pick it again.");
+      if (!parsed)
+        throw new KernelError("One of its profiles isn't a sketch profile. Pick it again.");
       const data = sketchOutput(ctx, parsed.feature);
       // A whole text (P4-03, ADR-0058 §5): every ink region of that text.
-      if (!data.texts?.includes(parsed.entity)) throw new KernelError('The text has no letters to sweep.');
+      if (!data.texts?.includes(parsed.entity))
+        throw new KernelError('The text has no letters to sweep.');
       let any = false;
       for (const info of data.profiles) {
         if (info.text !== parsed.entity) continue;
         any = true;
-        found.push({ profile: regionOf(data, info.id, ref), frame: data.frame, exact: data.exact ?? {} });
+        found.push({
+          profile: regionOf(data, info.id, ref),
+          frame: data.frame,
+          exact: data.exact ?? {},
+        });
       }
       if (!any) throw new KernelError('The text has no letters to sweep.');
       continue;
@@ -92,11 +96,7 @@ export function resolveProfiles(
 }
 
 /** Every region of `refs` as one 2D node (their union), placed in `to2d`'s coordinates. */
-export function merged2d(
-  ctx: CsgContext,
-  refs: readonly ProfileRef[],
-  to2d: To2d,
-): CsgNode {
+export function merged2d(ctx: CsgContext, refs: readonly ProfileRef[], to2d: To2d): CsgNode {
   const nodes = refs.map((ref) => regionNode(ctx, ref, to2d));
   return nodes.length === 1 ? (nodes[0] as CsgNode) : { kind: 'union', children: nodes };
 }
@@ -127,7 +127,9 @@ function regionNode(ctx: CsgContext, ref: ProfileRef, to2d: To2d): CsgNode {
   const outer: CsgNode = outerCircle
     ? circleNode(outerCircle, frame, to2d)
     : polygonNode(ctx, profile.outer, polygonHoles, ref, to2d);
-  const subs: CsgNode[] = circleHoles.map((h) => circleNode(circleOf(h, exact) as Arc, frame, to2d));
+  const subs: CsgNode[] = circleHoles.map((h) =>
+    circleNode(circleOf(h, exact) as Arc, frame, to2d),
+  );
   // A polygon hole can only be a `paths` entry under a polygon outer loop;
   // under a circular one it is a `difference` too.
   if (outerCircle) for (const h of polygonHoles) subs.push(polygonNode(ctx, h, [], ref, to2d));
@@ -166,12 +168,7 @@ function polygonNode(
 }
 
 /** A loop's points in the loop's order, without the closing duplicate. */
-function loopPoints(
-  ctx: CsgContext,
-  loop: ProfileLoop,
-  ref: ProfileRef,
-  to2d: To2d,
-): Vec2[] {
+function loopPoints(ctx: CsgContext, loop: ProfileLoop, ref: ProfileRef, to2d: To2d): Vec2[] {
   const points: Vec2[] = [];
   for (const edge of loop.edges) {
     for (const p of edgePoints(ctx, edge, ref.exact)) {
@@ -201,7 +198,11 @@ function loopPoints(
  * sweep, at least one), anything else (spline, ellipse, conic, text glyph)
  * the polyline `detectProfiles` already sampled, finer than the deflection.
  */
-function edgePoints(ctx: CsgContext, edge: ProfileEdge, exact: Record<string, PlanarCurve>): Vec2[] {
+function edgePoints(
+  ctx: CsgContext,
+  edge: ProfileEdge,
+  exact: Record<string, PlanarCurve>,
+): Vec2[] {
   const curve = exact[edge.curve];
   if (curve?.kind === 'line') return edge.reversed ? [curve.b, curve.a] : [curve.a, curve.b];
   if (curve?.kind === 'arc') {

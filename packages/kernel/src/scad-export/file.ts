@@ -193,11 +193,7 @@ export function writeScad(source: ScadSource, options: ScadExportOptions): strin
       lines.push(`//   ${versionName(at)}: ${commentText(version.reason)}`);
     }
   }
-  lines.push(
-    '',
-    `$fa = ${scadNumber(fa)};`,
-    `$fs = ${scadNumber(fs)};`,
-  );
+  lines.push('', `$fa = ${scadNumber(fa)};`, `$fs = ${scadNumber(fs)};`);
 
   // The parameter block (ADR-0086 §5, §9) goes here: slice 2 passes it in.
   const parameters = options.parameters?.trim() ?? '';

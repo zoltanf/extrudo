@@ -2368,4 +2368,15 @@ satisfies (it has `bodies` and `bodyId`), and Move's `moveMotion`, Scale's
 `splitSkip`, and `torusFrame` serve both; a primitive's frame comes from its
 output. Placements are numbers (`placed`, `frameMatrix`, `about` in `ir.ts`),
 sizes, distances, angles and factors `ctx.scalar` (through `half`, `negate`,
-`absolute`); pattern instances are unrolled.
+`absolute`); pattern instances are unrolled. Slice 4a added hooks for Extrude
+and Revolve. **A profile becomes 2D nodes from the sketch's own
+`detectProfiles`** (`scad-export/profile.ts`, `SketchOutputData.sketch`): a
+`polygon(points, paths)` per region (outer loop and holes), a whole-circle
+loop a `circle`, lines two points, arcs sampled with
+**`CsgContext.fragments(radius)`** (OpenSCAD's `$fa`/`$fs` circle count,
+`writeScad` builds it into `ScadSource.fragments`), other curves the detected
+polyline. Extrude is a `linear_extrude` per side placed by the sketch frame,
+its distances `ctx.scalar` signed with `absolute`/`negate`/`half` and a
+`translate`; `through-all` (cut/intersect) reaches past `ctx.bounds()`.
+Revolve is a `rotate_extrude` in (radius, axis) with the axis as OpenSCAD's
+Z; `flip` reverses the axis; the shared `axisOf` takes a `GeometryReader`.

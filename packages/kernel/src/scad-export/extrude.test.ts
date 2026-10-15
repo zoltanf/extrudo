@@ -9,16 +9,16 @@ import {
   type CombineOperation,
   circularPatternInputs,
   combineInputs,
+  type ExtrudeInputOptions,
   type ExtrudoDocument,
   extrudeInputs,
-  type ExtrudeInputOptions,
   type Feature,
   type GeomRef,
   originAxisRef,
   originPlaneRef,
   type PrimitiveInputOptions,
-  primitiveInputs,
   type PrimitiveType,
+  primitiveInputs,
   type RevolveInputOptions,
   revolveInputs,
   type SketchData,
@@ -491,10 +491,7 @@ describe('revolve', () => {
     c.line(0, 6, 0, 0);
     const coneData = c.sketch;
     const cone = await run(
-      testDocument([
-        sketch('Sc', coneData),
-        revolve('V', [profile('Sc', coneData)], Y_AXIS),
-      ]),
+      testDocument([sketch('Sc', coneData), revolve('V', [profile('Sc', coneData)], Y_AXIS)]),
     );
     const ids = bodiesOf(cone);
     expect(measured(kernel, engine, ids).volume).toBeCloseTo((Math.PI * 25 * 6) / 3, 1);
