@@ -2,7 +2,7 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
-## Unreleased
+## v0.7.0 (2026-10-15)
 
 - 2026-10-15 · **Import .f3d: hostile files can't freeze or crash the tab** (ADR-0083's amendment "hostile files, round 2"): a crafted file can no longer make the import loop forever on an arc angle, blow the B-rep stream up to 50 times its size in memory (a stream now costs at most about 18 times, the files' about 6), search an operation table in quadratic time, re-read records it names many times, write a shared spline's points once per face, or inflate an entry past its declared size; archive entries must unpack to exactly their declared size, at most 200 times their compressed size; numbers that aren't finite leave their record out with a note. On the 250-file corpus nothing changes: the same verdicts, skipped features and body check.
 - 2026-10-15 · **Expressions nest at most 256 levels deep** (ADR-0083's amendment): a deeper expression (`((((…))))`, or a very long `1 + 1 + …` chain) gets "Nested more than 256 levels deep." instead of a stack overflow, in a file or typed.

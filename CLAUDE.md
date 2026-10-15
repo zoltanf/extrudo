@@ -23,8 +23,8 @@ now) left. Phase 7 (IK) is last, lowest priority. The
 owner's UI review 3 is done (`docs/plans/ui-review-2026-10-11.md`); tooltip
 clips for Construct, 3D Print and the Sketch tab follow in later batches.
 
-Releases: v0.4.0 was the first public one; v0.4.1, v0.5.0 (2026-10-10), v0.6.0
-and **v0.6.1** (2026-10-12) followed. **The owner tags** (`docs/release-checklist.md`;
+Releases: v0.4.0 was the first public one; v0.4.1, v0.5.0 (2026-10-10), v0.6.0,
+v0.6.1 (2026-10-12) and **v0.7.0** (2026-10-15) followed. **The owner tags** (`docs/release-checklist.md`;
 never tag yourself). Tasks may run in parallel on separate branches and
 worktrees, merged to main one at a time.
 
