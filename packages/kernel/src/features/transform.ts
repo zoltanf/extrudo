@@ -337,14 +337,15 @@ function moveCsg(ctx: CsgContext<MoveInputs>): CsgResult {
   let place: (node: CsgNode) => CsgNode;
   switch (motion.mode) {
     case 'free': {
+      // A zero is left out only as a number: an expression that is 0 now stays live.
       const turns = [scalar('rx'), scalar('ry'), scalar('rz')] as const;
       const by = [scalar('dx'), scalar('dy'), scalar('dz')] as const;
       const turned = (node: CsgNode): CsgNode =>
-        motion.turns.every((t) => t === 0)
+        turns.every((t) => t === 0)
           ? node
           : about(motion.pivot, (child) => ({ kind: 'rotate', a: turns, children: [child] }), node);
       place = (node) =>
-        motion.by.every((d) => d === 0)
+        by.every((d) => d === 0)
           ? turned(node)
           : { kind: 'translate', v: by, children: [turned(node)] };
       break;

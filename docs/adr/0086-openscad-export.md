@@ -243,3 +243,82 @@ frame); several new bodies from one solid (a new-body extrude whose profile
 gives two solids) can't be told apart in OpenSCAD — leave them out of the
 map. A cut or join decides its bodies by comparing `before`/`after`, never
 from the inputs. A hook must release any shape it makes.
+
+## Results, slice 3 (2026-10-15)
+
+Built: the §7 hooks for **Box, Cylinder, Sphere, Torus** (every operation),
+**Move** (free, rotate, point-to-point, copy), **Mirror** (bodies, copy,
+join; features fall back), **Scale** (uniform and non-uniform, about a point
+or the centre, copy) and the **Rectangular and Circular Patterns** of bodies
+(copies, join, skip; features fall back). Path Pattern has no hook yet.
+
+**The operation helper.** `scad-export/operation.ts`:
+`operationCsg(ctx, operation, tool)` is `operate`'s counterpart, read from
+`ctx.changed`/`ctx.removed` only: one new body is the tool (several, a solid
+that fell apart, are `unsupported` and so meshes); join is
+`union(version, the versions it merged in, tool)`; cut and intersect a
+`difference`/`intersection` of each changed body's version and the tool,
+which goes through `ctx.tool` when two or more bodies use it; a body a cut
+removed is gone. It knows nothing of primitives, so Extrude and Revolve
+reuse it.
+
+**Placement math is the evaluators', not a copy.** Each hook calls the same
+functions its evaluator does:
+
+- `lineOf`, `planeOf`, `pointOf` take a `GeometryReader`
+  (`Pick<EvalContext, 'kernel' | 'resolve' | 'describe' | 'output'>`), which
+  `CsgContext` satisfies; `centreOf`, `existing` and `existingBodies` take
+  `Pick<EvalContext, 'kernel' | 'bodies'>` / `'bodies' | 'feature'`.
+- `CsgContext` gained `bodies` (the same map as `before`, under
+  `EvalContext`'s name) and `bodyId(n)` (`<feature>:<n>`, as the evaluator
+  numbered its new bodies), so copies get the IDs `transformBodies` and
+  `patternBodies` gave them.
+- Move's matrix is now built in two steps, `moveMotion` (mode, pivot, turns,
+  distances, axis, points) then `motionMatrix`; the hook writes the motion.
+  Scale's centre is `scaleCentre`. The patterns' inputs are read by
+  `rectangularRows` and `circularTurns`, and the hook lays out the instances
+  with `rectangularPlacements`/`circularPlacements` and drops the skipped ones
+  with `splitSkip`. The torus's frame is `torusFrame`. A primitive's own frame
+  and numbers come from its output (`PrimitiveOutputData`).
+
+The evaluators do the same arithmetic in the same order; every kernel test
+passes unchanged and the recompute does no new work.
+
+**IR helpers** (`ir.ts`): `half`, `negate`, `absolute` (a number for a
+number, `(a) / 2`, `-(a)`, `abs(a)` for an expression, brackets only where
+needed); `frameMatrix(frame)`; `placed(matrix, child)` (nothing for the
+identity, `translate` for a move alone, else `multmatrix`, with rounding
+noise below 1e-12 as 0); `about(point, transform, child)`
+(`translate(p) T translate(-p)`).
+
+**Deviations and choices:**
+
+- A Box and a Cylinder are written centred, `translate([0, 0, h / 2])
+  cube([l, w, abs(h)], center = true)`: OpenSCAD's sizes take no sign, and this
+  way one file is right for a negative height and for a parameter that changes
+  sign in the Customizer.
+- Placements are numbers, as §4 says: a primitive's x, y, offset and rotation
+  are in its `multmatrix`, a pattern's instances unrolled (no `for` in the IR),
+  so a pattern's count and spacing are not live in OpenSCAD. Sizes, Move's
+  distances and angles, Rotate's angle and Scale's factors are scalars. Move
+  leaves out a zero only when it is a number.
+- A Mirror join tells its touching copies (a union with the original) from
+  the ones that stayed apart (new bodies, numbered in order) by which sources
+  changed, not by measuring again.
+- Tests: the shared render and measure helpers are `scad-export/testing.ts`.
+  Their box is now the box of a fine mesh of the kernel's body (OCCT's own box
+  is loose around trimmed spheres and B-splines; it was off by 1.6 mm), the
+  volume still the exact one. `export.test.ts` runs with the primitives' hooks
+  taken off (`featuresWithoutHooks`), so it still tests the fallback it was
+  written for. `hooks.test.ts` exports at the Fine resolution: at Medium
+  OpenSCAD's 24-sided circles lose 1.1 % of a cylinder's volume, more than
+  the 0.5 % tolerance.
+
+**For slice 4 (Extrude, Revolve, wiring the translator):** build the tool in
+place (`placed(frameMatrix(sketch frame), linear_extrude(…))`) and hand it to
+`operationCsg`; read inputs with `ctx.input(name) ? ctx.scalar(name) :
+default` so absent inputs stay numbers. Once `ScadSource.scalar` is the
+translator, every scalar above becomes live without a change to the hooks;
+check that `half`/`negate`/`absolute` keep their brackets right around the
+translator's output. Patterns and Mirror of features need a hook that can
+replay another feature's tool (its hook's node), which none returns yet.
