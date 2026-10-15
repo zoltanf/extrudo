@@ -1,12 +1,20 @@
 import { Design } from '@extrudo/api';
-import type { ExtrudoDocument } from '@extrudo/core';
+import { type ExtrudoDocument, renameFeature } from '@extrudo/core';
 import type { ProjectSummary } from '@extrudo/storage';
 import { describe, expect, it } from 'vitest';
 import type { AgentReply } from '../platform/agent';
 import type { AgentHost } from './host';
 import { TOOL_NAMES, toolDefinitions } from './schemas';
 import { fakeContext, fakeHost } from './testing';
-import { type AgentContext, BUSY, createPacer, NO_DESIGN, plainInput, runTool } from './tools';
+import {
+  type AgentContext,
+  BUSY,
+  createPacer,
+  NO_DESIGN,
+  NOT_FOR_AGENTS,
+  plainInput,
+  runTool,
+} from './tools';
 
 function plate(): ExtrudoDocument {
   const d = Design.create({ name: 'Plate' });
@@ -249,6 +257,56 @@ describe('the agent tools (ADR-0087 §5)', () => {
     expect(textOf(await runTool('run_command', { id: 'undo' }, context(host)))).toBe(
       'Use the undo tool for that.',
     );
+  });
+
+  it("runs a command that opens a dialog outside the agent's step", async () => {
+    const { host, store } = plateHost();
+    const extrude = store.getState().doc.features[1];
+    const commands = host.commands;
+    host.commands = () => [
+      ...commands(),
+      {
+        id: 'extrude',
+        label: 'Extrude',
+        group: 'Solid',
+        // A feature dialog: it begins its own step and leaves it open.
+        run: () => {
+          store.getState().beginTransaction('Edit Extrude1');
+          store.getState().dispatch(renameFeature({ id: extrude?.id as never, name: 'Draft' }));
+        },
+      },
+    ];
+    const reply = await runTool('run_command', { id: 'extrude' }, context(host));
+    expect(reply.result.isError).toBeUndefined();
+    expect(jsonOf(reply)).toMatchObject({ command: 'extrude', opened: 'Extrude' });
+    expect(jsonOf(reply).message).toBe(
+      'Extrude opened in the app: finish it there, or ask the person to; change tools are refused until then.',
+    );
+    // Only the dialog's own level is open, and change tools wait for it.
+    expect(store.getState().transactionDepth).toBe(1);
+    expect(textOf(await runTool('rename', { id: 'Draft', name: 'x' }, context(host)))).toBe(BUSY);
+    store.getState().commitTransaction();
+    expect(store.getState().transactionDepth).toBe(0);
+    expect(store.getState().undoLabel).toBe('Edit Extrude1');
+  });
+
+  it('keeps app-level commands from agents', async () => {
+    const { host, ran } = plateHost();
+    const commands = host.commands;
+    host.commands = () => [
+      ...commands(),
+      { id: 'quit', label: 'Quit', group: 'App', run: () => ran.push('quit') },
+      { id: 'openRecent:0', label: 'a.extrudo', group: 'Recent', run: () => ran.push('recent') },
+      { id: 'openSettings', label: 'Settings…', group: 'App', run: () => ran.push('settings') },
+    ];
+    const listed = jsonOf(await runTool('list_commands', {}, context(host))).map(
+      (c: { id: string }) => c.id,
+    );
+    expect(listed).toEqual(['fitView', 'shell']);
+    for (const id of ['quit', 'openRecent:0', 'openSettings', 'clearRecent']) {
+      expect(textOf(await runTool('run_command', { id }, context(host)))).toBe(NOT_FOR_AGENTS);
+    }
+    expect(ran).toEqual([]);
   });
 
   it('suppresses, renames and removes, each one step', async () => {

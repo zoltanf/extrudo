@@ -2381,7 +2381,11 @@ open_design first." as `isError`, never a throw; screenshots are paced to one a
 second and exports to one per 2 s (`createPacer`); the renderer never names a
 path (an export's bytes go to main). `add_sketch` draws shapes (dimensioned
 rectangles, circles with a diameter dimension, lines, polylines, arcs, slots) and
-answers the profiles; `{ edgeBetween: [face, face] }` is the one input shorthand
+answers the profiles; **`run_command` runs outside any agent transaction** (a
+command that opens a dialog or a sketch answers `{ command, opened }` and change
+tools wait for it), refuses `undo`/`redo`, and **`AGENT_DENIED_COMMANDS`** (quit,
+native dialogs and pickers, outside pages, app settings; plus `openRecent*`) is
+left out of `list_commands` and answers "Not available to agents."; `{ edgeBetween: [face, face] }` is the one input shorthand
 (`expandShorthands`, the API's `edgeName`). The top bar's `AgentIndicator`
 ("Agent connected", `data-agent-clients`) shows while `clients > 0`; Settings ›
 Desktop › Agents has the switch, a plain numeric port field (an app setting, not

@@ -664,7 +664,12 @@ function DesktopPage({
 export function agentStateText(status: AgentStatus | undefined, enabled: boolean): string {
   if (!enabled) return 'Off.';
   if (!status) return 'Starting…';
-  if (status.error) return status.error;
+  if (status.error) {
+    // Something else holds the port: if it answered a client, it has seen the token.
+    return /in use/.test(status.error)
+      ? `${status.error} If another program answered on this port, regenerate the token.`
+      : status.error;
+  }
   if (!status.listening) return 'Starting…';
   return `Listening on ${status.url}`;
 }

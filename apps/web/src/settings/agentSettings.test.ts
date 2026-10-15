@@ -20,7 +20,15 @@ describe('Settings › Desktop › Agents (ADR-0087 §6)', () => {
         { ...status, listening: false, error: 'Port 7474 is in use by another program.' },
         true,
       ),
-    ).toBe('Port 7474 is in use by another program.');
+    ).toBe(
+      'Port 7474 is in use by another program. If another program answered on this port, regenerate the token.',
+    );
+    expect(
+      agentStateText(
+        { ...status, listening: false, error: "Couldn't listen on port 7474: EACCES" },
+        true,
+      ),
+    ).toBe("Couldn't listen on port 7474: EACCES");
   });
 
   it('takes a port from 1024 to 65535', () => {

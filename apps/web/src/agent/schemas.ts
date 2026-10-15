@@ -167,7 +167,8 @@ export const TOOL_SCHEMAS = {
     input: z.object({ id: id('The feature id.') }),
   },
   run_command: {
-    description: "Runs one of the app's commands by id (list_commands lists them).",
+    description:
+      "Runs one of the app's commands by id (list_commands lists them). One that opens a dialog or a sketch answers `opened`: it is finished in the app, and change tools are refused until then.",
     input: z.object({ id: id('The command id.') }),
   },
   undo: { description: 'Undoes the last change (an agent change is one step).', input: empty },

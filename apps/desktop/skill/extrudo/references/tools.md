@@ -174,7 +174,7 @@ Deletes a feature; refused while another feature uses it. One undo step.
 
 **Changes the design.**
 
-Runs one of the app's commands by id (list_commands lists them).
+Runs one of the app's commands by id (list_commands lists them). One that opens a dialog or a sketch answers `opened`: it is finished in the app, and change tools are refused until then.
 
 | Input | Type | Required | What it is |
 | --- | --- | --- | --- |

@@ -50,6 +50,42 @@ import { type SketchShape, TOOL_SCHEMAS, type ToolInput, type ToolName } from '.
 /** Commands `run_command` leaves to their own tools. */
 const UNDO_COMMANDS: ReadonlySet<string> = new Set(['undo', 'redo']);
 
+/**
+ * App-level commands an agent may not run or see (ADR-0087 §5): what quits,
+ * shows a native dialog or a file picker, opens a page outside the app, or
+ * changes the app's own settings. Ids from the command registry
+ * (`shell/commands.tsx`, `FILE_COMMANDS`); Open Recent's entries are a prefix.
+ */
+export const AGENT_DENIED_COMMANDS: ReadonlySet<string> = new Set([
+  'quit',
+  'clearRecent',
+  'openFile',
+  'saveAs',
+  'saveToLinkedFolder',
+  'exportProject',
+  'exportScript',
+  'exportSketch',
+  'importProject',
+  'importBody',
+  'importDrawing',
+  'checkForUpdates',
+  'openSettings',
+  'customizeMarkingMenu',
+  'plugins',
+  'about',
+  'help',
+  'docsGuide',
+  'docsTools',
+  'docsTutorials',
+  'docsExamples',
+]);
+
+export const NOT_FOR_AGENTS = 'Not available to agents.';
+
+/** Whether an agent may see and run the command `id`. */
+export const agentMayRun = (id: string): boolean =>
+  !AGENT_DENIED_COMMANDS.has(id) && !id.startsWith('openRecent');
+
 export const NO_DESIGN = 'No design is open: call open_design first.';
 export const BUSY =
   'Finish the sketch or close the open dialog in Extrudo first: a change now would join it.';
@@ -409,6 +445,7 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
     json(
       need(host)
         .commands()
+        .filter(({ id }) => agentMayRun(id))
         .map(({ id, label, group, unavailable }) => ({
           id,
           label,
@@ -531,16 +568,34 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
       return { id: feature.id, name: feature.name };
     });
   },
-  run_command: ({ id }, ctx, host) => {
+  run_command: async ({ id }, ctx, host) => {
     const h = need(host);
+    if (!agentMayRun(id)) return failure(NOT_FOR_AGENTS);
     const command = h.commands().find((c) => c.id === id);
     if (!command) return failure(`There is no command "${id}": list_commands lists them.`);
     if (command.unavailable) return failure(`${command.label}: ${command.unavailable}`);
-    // Inside the agent's own step they would undo nothing: the undo and redo tools do it.
+    // The agent's own step would undo nothing: the undo and redo tools do it.
     if (UNDO_COMMANDS.has(command.id)) return failure(`Use the ${command.id} tool for that.`);
-    return change(ctx, h, command.label, () => {
-      command.run();
-      return { command: command.id };
+    const { store, session } = h;
+    if (store.getState().transactionDepth > 0 || session.getState().mode === 'sketch') {
+      return failure(BUSY);
+    }
+    await h.ready();
+    // Outside any agent transaction: a command is undoable on its own, and one that
+    // opens a dialog or a sketch begins its own step, which an agent step around it
+    // would swallow (UndoHistory commits the innermost level).
+    command.run();
+    if (store.getState().transactionDepth > 0 || session.getState().mode === 'sketch') {
+      return json({
+        command: command.id,
+        opened: command.label,
+        message: `${command.label} opened in the app: finish it there, or ask the person to; change tools are refused until then.`,
+      });
+    }
+    await settled(h, ctx.settleMs);
+    return json({
+      done: command.label,
+      problems: timeline(h).filter((f) => f.status === 'error' || f.status === 'warning'),
     });
   },
   undo: async (_input, ctx, host) => {
