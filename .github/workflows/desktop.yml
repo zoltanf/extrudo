@@ -82,6 +82,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # git describe in the build needs the tags and history
 
       - uses: pnpm/action-setup@v6 # version comes from "packageManager" in package.json
 
@@ -101,6 +103,8 @@ jobs:
         run: node apps/desktop/node_modules/electron/install.js
 
       - name: Build the app
+        env:
+          EXTRUDO_CHANNEL: ${{ startsWith(github.ref, 'refs/tags/v') && 'stable' || '' }}
         run: pnpm --filter @extrudo/desktop build
 
       - name: Package (workflow artifacts only)

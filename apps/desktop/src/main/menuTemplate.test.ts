@@ -121,7 +121,7 @@ describe('buildMenuTemplate (P6-01 slice 2)', () => {
     expect(mac[0]?.label).toBe('Extrudo');
     const app = submenu(mac[0]);
     expect(app.map((entry) => entry.role ?? entry.label ?? entry.type)).toEqual([
-      'about',
+      'About Extrudo',
       'separator',
       'services',
       'separator',
@@ -167,7 +167,7 @@ describe('buildMenuTemplate (P6-01 slice 2)', () => {
     const mac = buildMenuTemplate(withPanels, options({ handlers: spy }));
     const app = submenu(mac[0]);
     expect(app.map((entry) => entry.role ?? entry.label ?? entry.type).slice(0, 5)).toEqual([
-      'about',
+      'About Extrudo',
       'separator',
       'Settings…',
       'Plugins…',
@@ -181,10 +181,25 @@ describe('buildMenuTemplate (P6-01 slice 2)', () => {
     // Without them the app menu is as before.
     const plain = submenu(buildMenuTemplate(model, options())[0]);
     expect(plain.map((entry) => entry.role ?? entry.label ?? entry.type).slice(0, 3)).toEqual([
-      'about',
+      'About Extrudo',
       'separator',
       'services',
     ]);
+  });
+
+  it('opens About through the renderer, and not twice (ADR-0085)', () => {
+    const spy = handlers();
+    const withAbout = [
+      ...model,
+      { label: 'Help', items: [{ id: 'about', label: 'About Extrudo' }] },
+    ];
+    const mac = buildMenuTemplate(withAbout, options({ handlers: spy }));
+    const app = submenu(mac[0]);
+    expect(app[0]?.role).toBeUndefined();
+    click(app[0] as MenuItemConstructorOptions);
+    expect(spy.run).toHaveBeenCalledWith('about');
+    const help = submenu(mac.find((m) => m.label === 'Help'));
+    expect(help.some((entry) => entry.label === 'About Extrudo')).toBe(false);
   });
 
   it('builds no menu at all on Windows and Linux (ADR-0075, 2026-10-09)', () => {

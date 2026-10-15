@@ -237,6 +237,14 @@ describe('preload bridge (ADR-0075 §1)', () => {
     ]);
   });
 
+  it('sends a link over link:open (ADR-0085)', () => {
+    const { ipc, calls } = fakeIpc();
+    createApi(ipc).links.open('https://extrudo.org/');
+    expect(calls).toEqual([
+      { channel: CHANNELS.linkOpen, args: ['https://extrudo.org/'], kind: 'send' },
+    ]);
+  });
+
   it('sends a site link name over site:open', () => {
     const { ipc, calls } = fakeIpc();
     createApi(ipc).docs.openSite('repo');

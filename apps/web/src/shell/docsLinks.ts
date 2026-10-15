@@ -30,7 +30,6 @@ export function docsUrl(page: DocsPage): string {
   return DOCS_URL + docsPath(page);
 }
 
-/** The source code, and the landing site the About link opens; a fork sets its own at build time. */
+/** The source code the GitHub link opens; a fork sets its own at build time. */
 export const REPO_URL: string =
   import.meta.env.VITE_REPO_URL || 'https://github.com/zoltanf/extrudo';
-export const ABOUT_URL: string = import.meta.env.VITE_ABOUT_URL || 'https://extrudo.org';

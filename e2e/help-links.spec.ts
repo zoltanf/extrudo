@@ -121,7 +121,7 @@ test('Help › Source on GitHub opens the repository in a popup', async ({ page 
   expect(url).toBe('https://github.com/zoltanf/extrudo');
 });
 
-test("the home screen's About, Docs and GitHub open in popups", async ({ page }) => {
+test("the home bar's Docs and GitHub open in popups", async ({ page }) => {
   for (const host of [`${DOCS}/**`, 'https://github.com/**']) {
     await page
       .context()
@@ -130,7 +130,6 @@ test("the home screen's About, Docs and GitHub open in popups", async ({ page })
   await page.goto('./');
   const nav = page.getByRole('navigation', { name: 'Extrudo' });
   for (const [name, expected] of [
-    ['About', `${DOCS}/`],
     ['Docs', `${DOCS}/docs/`],
     ['GitHub', 'https://github.com/zoltanf/extrudo'],
   ] as const) {
@@ -139,4 +138,15 @@ test("the home screen's About, Docs and GitHub open in popups", async ({ page })
   }
   // The home screen stays where it was.
   await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
+});
+
+test('Help ends with Source on GitHub and then About Extrudo', async ({ page }) => {
+  await open(page);
+  await page.getByRole('button', { name: 'Help' }).click();
+  const labels = await page.getByRole('menu').getByRole('menuitem').allInnerTexts();
+  const source = labels.findIndex((label) => label.includes('Source on GitHub'));
+  const about = labels.findIndex((label) => label.includes('About Extrudo'));
+  expect(source).toBeGreaterThanOrEqual(0);
+  expect(about).toBe(source + 1);
+  expect(about).toBe(labels.length - 1);
 });

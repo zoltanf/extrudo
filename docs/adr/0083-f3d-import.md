@@ -990,3 +990,71 @@ error. Body check (all 250): after-check matches 225 → 225, harmed 0; bodies
 editable 195 → 198, frozen 159 → 156 (made differently 114 → 111), unchecked
 26 → 26 with the same reasons; the two designs above and a table base's body
 turn from frozen to editable.
+
+## Amendment, 2026-10-14: features the import skipped
+
+143 timeline features of the 250-file corpus were skipped (suppressed ones not
+counted), and in 23 designs a skipped feature was the first place the replay
+departed from the file (job C's divergence report), so everything after it
+started from the wrong body. An inventory by kind and reason showed five causes
+the import can fix, each checked on the designs it touches:
+
+1. **Closed round edges named by a negative token.** In 11 edge recipes (7
+   designs) the first face's token is negative (`-1@301`, `-143@304`): no face
+   of the body has it. In all 11 exactly one face follows the second, and the
+   edge runs between the second face and that one — a circle where a cylinder
+   meets its cap or a plane (FORMAT.md). `edgeFaces` reads them so; all 11 are
+   now named, each with a circle shape.
+2. **Holes placed by distances or on a body face.** A hole placed by its
+   distances to two edges stores no centre point; its centres are now where
+   the axes of the cylinders it made (its own B-rep faces of radius
+   `HoleDiameter`/2, not a pattern's copies) meet the start face
+   (`centresFromCylinders`). A hole whose start face is a body face (a face
+   recipe, not a model plane) takes the point and normal its placement record
+   holds, when the recipe's B-rep face is that plane. 5 holes in 4 designs.
+3. **An extrude head after a typed reference.** 8 extrudes in 3 files failed to
+   decode ("operation block not found"): their leading reference carries its
+   target's type GUID, which moves the operation block to payload offset 57.
+4. **A profile region not found.** A region whose curves were deleted, trimmed
+   or doubled after the pick, and that neither its pieces nor its curves nor the
+   stale-region fallback find, no longer skips the whole extrude: it is left out
+   with a note when the operand's other regions are found. 3 extrudes.
+5. **A round none of whose edges passed.** A fillet or chamfer whose every edge
+   the weak-edge rule (the edges amendment above) left out gets a second try that
+   also takes an edge named by both its faces where one name is a guessed round
+   face's and no line or circle backs it, by that name alone (no fingerprint), and
+   `skipLostEdges` drops the ones not found. 26 rounds in 10 designs: 4 build,
+   the rest now fail ("Can't find an edge to fillet any more") instead of being
+   skipped, because the guessed face is not there (the earlier round failed, or
+   the token guess picks the wrong edge: in one design all 8 edges named one
+   chamfer face). Such a round is in the timeline with its sizes, for Fix
+   References, where it used to be missing; the body is the same either way.
+
+Left skipped, with the reason found: offset faces on a thread's crest (the file
+resizes the cylinder; Extrudo models the thread, so the face is gone), lofts
+whose sections have holes (ADR-0055 refuses them), a torus primitive (Extrudo
+has one; the record's placement and operation are not decoded yet), sweep faces
+(not named yet), faces of a second, off-timeline record of a feature (a copied
+component's), base features, a mesh conversion, and moves and copies of bodies.
+
+Replay-only corpus (with the solver): skipped features 143 → 84 (fillets 42 →
+11, chamfers 21 → 12, extrudes 18 → 5, holes 5 → 0, circular patterns 4 → 3);
+of the 59 brought in, 30 build (with warnings for 7) and 29 fail. Designs within
+0.5 % volume and 0.05 mm box 147 → 152, none leaves it; a cover pin, a cap
+cover, a hammer cover, a holder end and a wrench holder (29.8 % → 0.15 %) reach
+it. Of the 23 designs, the first departure moves later in 7 (3 have none left)
+and the skipped feature is in the timeline in 5 more. Volume error moves away
+from the reference in five designs that did not match before, by the features
+now built: a hinge part with a skipped body move (2.9 % → 3.7 %), two chair
+stabilisers whose new hole is on the file's own surfaces (16.44 % → 16.47 %,
+1.10 % → 1.16 %), a drawer insert broken before and after (88 % → 99 %) and an
+adapter (12.16 % → 12.17 %).
+Body check (ADR-0084, all 250): the replay matches 147 → 152 designs and the
+result after the check stays 225, none harmed; bodies editable 195 → 202,
+frozen 159 → 152 (made differently 114 → 109, made nothing 45 → 43), unchecked
+26 → 26. Bodies that turn editable: a cover pin, a cap cover, a hammer cover, a
+holder end, a wrench holder, an earbuds case's second body and one of a hinge
+part's four.
+Tests: `edges.test.ts`, `hole.test.ts`, `extrude.test.ts`, and `map.test.ts`
+"rounds an edge by its two faces' names…" and "leaves out a profile region it
+cannot match…".

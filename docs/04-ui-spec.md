@@ -57,7 +57,13 @@ brief, voice) is in **`05-brand.md`**. In short:
   over a dimmed page; Ctrl+K; R3-05), undo and redo. The project name and the save
   state (a dot and its word) sit together, centred between redo and the
   right-hand buttons: version history, settings and help (menu: Search…,
-  Tutorial, P3-12). Settings holds Settings…, Plugins… (R3-12), General
+  Tutorial, P3-12). There is no Help menu on the home screen; its bar's About
+  opens the dialog instead (ADR-0085).
+  **Help › About Extrudo** (ADR-0085, also Ctrl+K "About Extrudo", the home
+  bar's About and the macOS app
+  menu) opens a dialog: the logo (click to replay it being sketched and extruded),
+  the version and channel, then Build, Running on and Engines, Copy details, links
+  and the credits. Settings holds Settings…, Plugins… (R3-12), General
   (auto-project, the Radial right-click menu, Customize Marking Menu…, and **Mouse
   controls ▸**, a submenu of the presets with each one's bindings under its name, R3-03)
   and the Theme (System by default, Light, Dark). The tab labels
@@ -777,9 +783,11 @@ per-field Reset when they differ from the default.
   own name (a copy, never the template's file) with its picture on the card;
   "Import" (`.extrudo`, STEP, STL, SVG).
 - The top bar is a design's (ADR-0079 round 5): the logo, then **About**
-  (extrudo.org), **Docs** and **GitHub** styled as tabs, each opening in a new tab
+  (opens the About dialog, ADR-0085), **Docs** and **GitHub** styled as tabs,
+  Docs and GitHub each opening in a new tab
   (the desktop's browser), and on the right the storage badge and the same app menu
   (four squares) as in a design, without Customize Marking Menu… and Close design.
+  There is no Help menu on the home screen.
 - Search and sort. A trash view with restore.
 - The storage indicator warns if persistent storage is not granted.
 

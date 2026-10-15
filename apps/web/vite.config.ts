@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
+import pkg from './package.json' with { type: 'json' };
+import { buildInfo } from './pwa/build-info.ts';
 import { parseHeaders } from './pwa/headers.ts';
 import { precachePlugin } from './pwa/precache-plugin.ts';
 import { sitePlugin } from './pwa/site.ts';
@@ -15,6 +17,8 @@ const globalHeaders = parseHeaders(
 export default defineConfig({
   // Relative asset URLs so the same build loads from file:// inside Electron.
   base: './',
+  // The build's version, channel and commit, for the About dialog (`src/version.ts`).
+  define: { __EXTRUDO_BUILD__: JSON.stringify(buildInfo(pkg.version)) },
   plugins: [react(), tailwindcss(), sitePlugin(), precachePlugin()],
   preview: {
     headers: Object.fromEntries(globalHeaders?.headers.map((h) => [h.name, h.value]) ?? []),

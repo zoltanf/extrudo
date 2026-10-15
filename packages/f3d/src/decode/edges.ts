@@ -8,7 +8,8 @@
  * (the same pair the B-rep's `generic_tag_attrib_def` carries on the face),
  * then `edge_recipe_data` and a small program saying how those faces bound
  * the edge. The first two faces are the edge's own (its support faces); later
- * ones bound its ends.
+ * ones bound its ends — except where the first face's token is negative
+ * (`edgeFaces`).
  */
 import { F3dFormatError } from '../bytes';
 import type { Segment } from '../segment';
@@ -66,4 +67,22 @@ export function readEdgeRecipe(seg: Segment, id: number): EdgeRecipe {
     faces.push({ tags });
   }
   return { id, faces };
+}
+
+/**
+ * An edge recipe's two support faces and the faces bounding its ends. A recipe whose first
+ * face has a negative token (`-1@301`, `-143@304`) names no face of the body there: in every
+ * such recipe of the files seen (11, all closed edges, a circle where a cylinder meets a cap or
+ * a plane) exactly one face follows the second, and the edge runs between the second face and
+ * that one (the B-rep holds an edge between those two). Undefined when it names fewer than two.
+ */
+export function edgeFaces(
+  faces: FaceRef[],
+): { support: [FaceRef, FaceRef]; bounds: FaceRef[] } | undefined {
+  const [a, b, ...rest] = faces;
+  if (!a || !b) return undefined;
+  const c = rest[0];
+  if (rest.length === 1 && c && a.tags[0]?.token.startsWith('-'))
+    return { support: [b, c], bounds: [] };
+  return { support: [a, b], bounds: rest };
 }

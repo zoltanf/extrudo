@@ -49,8 +49,11 @@ const DIRECTIONS: Record<number, ExtrudeDirection> = {
 };
 const STARTS = ['profile-plane', 'offset-plane', 'face'] as const;
 
-/** Payload offsets the operation block has been seen at, most common first. */
-const HEAD_OFFSETS = [9, 8, 7, 19, 18, 17, 20];
+/**
+ * Payload offsets the operation block has been seen at, most common first. 57: after a
+ * leading reference that carries its target's type GUID (19 plus the GUID's 38 bytes).
+ */
+const HEAD_OFFSETS = [9, 8, 7, 19, 18, 17, 20, 57];
 
 export function readExtrudeHead(seg: Segment, scope: Scope): ExtrudeHead {
   for (const at of HEAD_OFFSETS) {

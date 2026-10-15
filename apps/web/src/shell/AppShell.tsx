@@ -188,6 +188,7 @@ import type { SketchDrawing } from '../viewport/sketchGeometry';
 import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker, SketchInput } from '../viewport/Viewport';
 import { ViewportBoundary } from '../viewport/ViewportBoundary';
+import { AboutDialog } from './AboutDialog';
 import { AppBar, type FileActions } from './AppBar';
 import { BROWSER_ID, BrowserPanel } from './BrowserPanel';
 import {
@@ -278,7 +279,14 @@ export interface AppShellProps {
     MeasureKernel &
     Partial<PluginCommandKernel> &
     Partial<Pick<JointDialogKernel, 'resolveJoint'>> &
-    Partial<JointCheckKernel>;
+    Partial<JointCheckKernel> &
+    Partial<{
+      readonly client: {
+        heap(): Promise<{ top: number; size: number }>;
+        readonly status: string;
+        readonly restarts: number;
+      };
+    }>;
 }
 
 /** The app's feature dialogs (`features/registry.ts`). */
@@ -1067,6 +1075,19 @@ export function AppShell({
   );
   const [markingDialog, setMarkingDialog] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  // The About dialog reads the kernel worker's status and WASM heap (the Recomputer's client).
+  const kernelClient = kernel?.client;
+  const kernelInfo = useMemo(
+    () =>
+      kernelClient &&
+      (async () => ({
+        status: kernelClient.status,
+        restarts: kernelClient.restarts,
+        heap: await kernelClient.heap(),
+      })),
+    [kernelClient],
+  );
   const displayAccess = useMemo(() => storeAccess(viewport), [viewport]);
   // `listing` builds a mode's commands for the Customize Marking Menu dialog: what the mode
   // offers whatever is selected now (Delete, Repeat last and the construction toggle included).
@@ -1159,6 +1180,7 @@ export function AppShell({
           notifications: { open: () => toasts.history?.getState().setOpen(true) },
         }),
         tutorial: { start: () => startTutorialRef.current() },
+        about: () => setAboutOpen(true),
         docs: { open: (page: DocsPage) => platform.openDocs(docsPath(page)) },
         macro: { recording: recording !== undefined },
         componentCount: doc.components?.length ?? 0,
@@ -2203,6 +2225,7 @@ export function AppShell({
         display={displayAccess}
         onCustomizeMarking={() => setMarkingDialog(true)}
         onSettings={() => setSettingsOpen(true)}
+        onAbout={() => setAboutOpen(true)}
         onSource={() => platform.openSite('repo')}
         onQuit={platform.menus ? () => void quitApp() : undefined}
         onCloseDesign={platform.menus ? undefined : fileActions.home}
@@ -2693,6 +2716,13 @@ export function AppShell({
         onCustomizeMarking={() => setMarkingDialog(true)}
         desktop={platform.desktop !== undefined}
         installedSlicers={platform.installedSlicers}
+      />
+      <AboutDialog
+        open={aboutOpen}
+        onOpenChange={setAboutOpen}
+        desktop={platform.desktop !== undefined}
+        kernelInfo={kernelInfo}
+        openLink={platform.openLink}
       />
       <CustomizeMarkingMenu
         open={markingDialog}

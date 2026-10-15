@@ -66,6 +66,8 @@ export const CHANNELS = {
   updateRelease: 'extrudo:update:release',
   // The docs pages (P6-06 S9): a `docsPath` result, the URL main builds itself.
   docsOpen: 'extrudo:docs:open',
+  // The About dialog's links (ADR-0085): a URL main checks against its allow-list.
+  linkOpen: 'extrudo:link:open',
   // The landing site and the source (the top bar's About and GitHub): a name, the URL main's own.
   siteOpen: 'extrudo:site:open',
 } as const;
@@ -287,8 +289,12 @@ export interface ExtrudoApi {
      * renderer can't make main open a page of its choosing.
      */
     open(path: string): void;
-    /** Opens the landing site or the source repository by name; main holds the URLs. */
-    openSite(link: 'about' | 'repo'): void;
+    /** Opens the source repository by name; main holds the URL. */
+    openSite(link: 'repo'): void;
+  };
+  readonly links: {
+    /** Opens a link in the system browser (ADR-0085): main allows only its own list of addresses. */
+    open(url: string): void;
   };
   readonly rescue: {
     /** Keeps the raw document JSON before returning; false if the file couldn't be written. */

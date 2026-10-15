@@ -160,6 +160,12 @@ only in Cloudflare, never in this repository. Set up 2026-10-02:
 
 ## How the workflow behaves
 
+**Versions (ADR-0085).** The build's version comes from the last `v*` tag
+(`git describe`, so both app builds check out the full history): stable shows
+`0.6.1`, edge `0.6.1+edge.17` (17 commits after the tag), a local build
+`0.6.1+dev.17`. The workflow sets `EXTRUDO_CHANNEL` (`edge` or `stable`) from
+the matrix; the About dialog shows version, channel and commit.
+
 `.github/workflows/deploy.yml`:
 
 - **Triggers:** the `CI` workflow finishing for a push to `main` (`workflow_run`),

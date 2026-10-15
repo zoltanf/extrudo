@@ -333,11 +333,15 @@ test('the home screen has the same bar: About, Docs, GitHub and the app menu', a
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('./');
   const nav = page.getByRole('navigation', { name: 'Extrudo' });
-  await expect(nav.getByRole('link')).toHaveText(['About', 'Docs', 'GitHub']);
+  await expect(nav.getByRole('link')).toHaveText(['Docs', 'GitHub']);
   await expect(nav.getByRole('link', { name: 'GitHub' })).toHaveAttribute(
     'href',
     'https://github.com/zoltanf/extrudo',
   );
+  // About is a button that opens the dialog, not a link to the landing site (ADR-0085).
+  await nav.getByRole('button', { name: 'About' }).click();
+  await expect(page.getByRole('dialog', { name: /about/ })).toBeVisible();
+  await page.keyboard.press('Escape');
   // The bar is as tall as a design's, and the old Settings and Theme buttons are gone.
   expect((await header(page).boundingBox())?.height).toBe(40);
   await expect(header(page).getByRole('button', { name: 'Settings', exact: true })).toHaveCount(0);
