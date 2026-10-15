@@ -136,6 +136,7 @@ function bind(service: KernelService) {
     smoothFaces: service.smoothFaces.bind(service),
     exportMeshes: service.exportMeshes.bind(service),
     exportStep: service.exportStep.bind(service),
+    exportScad: service.exportScad.bind(service),
     inspect: service.inspect.bind(service),
     resolveJoint: service.resolveJoint.bind(service),
     checkJoint: service.checkJoint.bind(service),

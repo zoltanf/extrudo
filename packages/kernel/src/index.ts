@@ -191,6 +191,15 @@ export type {
   RecomputeStats,
 } from './recompute/types';
 export { type Preview, Recomputer, type RecomputerOptions } from './recomputer';
+export type { CsgContext, CsgInput, CsgResult } from './scad-export/context';
+export {
+  fragmentSize,
+  type ScadBody,
+  type ScadExportOptions,
+  scadIdentifier,
+} from './scad-export/file';
+export type { CsgNode, Matrix, ScadExpression, Scalar } from './scad-export/ir';
+export { scadNumber } from './scad-export/number';
 export {
   NO_SCRIPT_HOST,
   type ScriptHost,
