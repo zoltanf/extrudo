@@ -115,6 +115,20 @@ jobs:
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: pnpm --filter @extrudo/desktop exec electron-builder --${{ matrix.os }} --publish onTag
 
+      # The Agent Skill the MCP server serves (P6-08, ADR-0087 §7), as a folder
+      # for clients that load skills from disk: once, from the Linux job.
+      - name: Zip the Extrudo skill
+        if: ${{ matrix.os == 'linux' }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          mkdir -p apps/desktop/release
+          (cd apps/desktop/skill && zip -r -X "../release/extrudo-skill-$version.zip" extrudo)
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            gh release upload "$GITHUB_REF_NAME" "apps/desktop/release/extrudo-skill-$version.zip" \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          fi
+
       - name: Installers
         run: ls -l apps/desktop/release
 
@@ -128,6 +142,7 @@ jobs:
             apps/desktop/release/*.dmg
             apps/desktop/release/*-mac-*.zip
             apps/desktop/release/latest*.yml
+            apps/desktop/release/extrudo-skill-*.zip
           if-no-files-found: error
           retention-days: 30
 

@@ -2733,6 +2733,7 @@ export function AppShell({
         onCustomizeMarking={() => setMarkingDialog(true)}
         desktop={platform.desktop !== undefined}
         installedSlicers={platform.installedSlicers}
+        agent={platform.agent}
       />
       <AboutDialog
         open={aboutOpen}

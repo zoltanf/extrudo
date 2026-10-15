@@ -125,10 +125,12 @@ interface), and the host the shell implements. Names are snake_case:
   API's plain values), `screenshot` (the viewport as an MCP `image` block,
   PNG).
 - **Change:** `set_parameter(name, expression)` (through the shell's `apply`,
-  so sketches re-solve), `apply_configuration`, `add_feature(type, inputs)` and
+  so sketches re-solve; it creates the parameter when the name is new),
+  `apply_configuration`, `add_sketch(plane, shapes)`, `add_feature(type, inputs)` and
   `edit_feature(id, inputs)`, `suppress(id, on)`, `rename(id, name)`,
   `remove(id)`, `run_command(id)` and `list_commands`, `undo`, `redo`.
-- **Files:** `open_design(id)`, `save`, `export(format: stl|3mf|step)`.
+- **Files:** `list_designs`, `new_design(name?)`, `open_design(id)`, `save`,
+  `export(format: stl|3mf|step)`.
 - **`get_skill`**: the skill's `SKILL.md` text.
 
 `add_feature`/`edit_feature` take the `@extrudo/api` method's plain values: the
@@ -192,7 +194,31 @@ index) was the SEP as drafted; the Final SEP replaced the index with
 zipped by `.github/workflows/desktop.yml` as `extrudo-skill-<version>.zip`
 next to the installers, for clients that load skills from disk.
 
-### 8. Out of scope
+### 8. Decided while implementing
+
+- **`add_sketch`** (not in the task's list): an extrude needs a profile, and a
+  sketch's content is a builder callback in the API, which a tool call can't
+  carry. It takes a plane (`'xy'`, `'xz'`, `'yz'` or a face reference) and a
+  list of shapes (rectangles with optional width and height dimensions, circles
+  with a diameter dimension, lines, polylines, arcs, slots), runs the API's
+  `d.sketch` and answers the sketch's profile references.
+- **`new_design`**: with no design open there is nothing for `open_design` to
+  open on a fresh install, and the commands of `run_command` exist only inside a
+  design.
+- **`{ edgeBetween: [face, face] }`**: an edge's name is its two faces' names
+  sorted (`e[a|b]`), which an agent can't sort reliably when the names hold
+  random feature IDs; the shorthand is expanded with the API's `edgeName`.
+- **`get_skill` is answered by main**, which holds the skill for the resources;
+  the renderer lists the tool like the others.
+- **Copy client config works while the server is off**: it gives the URL the
+  server would listen on.
+- **A change is refused while a sketch is being edited or a dialog's
+  transaction is open** ("Finish the sketch or close the open dialog in
+  Extrudo first."): the agent's step would otherwise join the person's.
+- **Headless runs need a display.** Chromium's headless Ozone platform crashes
+  Electron 44's main process, so the acceptance client runs under `xvfb-run -a`.
+
+### 9. Out of scope
 
 A headless `extrudo mcp` over stdio in the CLI (a later task if wanted), LAN or
 remote access, OAuth, and MCP resources for the document (the tools are

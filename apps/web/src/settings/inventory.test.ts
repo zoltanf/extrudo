@@ -49,7 +49,14 @@ describe('the settings inventory', () => {
     const keys = [...readKeys()].sort();
     // The scan sees what it should: a few keys it must find.
     expect(keys).toEqual(
-      expect.arrayContaining(['theme', 'print.material', 'export.model', 'slicers.paths']),
+      expect.arrayContaining([
+        'theme',
+        'print.material',
+        'export.model',
+        'slicers.paths',
+        'mcp.enabled',
+        'mcp.port',
+      ]),
     );
     const unplaced = keys.filter((k) => !sectionOf(k) && !isExcluded(k));
     expect(unplaced).toEqual([]);
