@@ -1013,8 +1013,13 @@ end to end, faster than in established desktop CAD.
     second amendment): the facade's `sketchConic` stages the rational
     quadratic, so an extruded conic's volume and area are exact (the cubic
     route was up to 7.5e-6 out) and STEP carries the true curve; mass
-    properties follow a rational edge. **Still open:** extending a spline,
-    end-tangent handles, degree choice.
+    properties follow a rational edge. ~~End-tangent handles, degree
+    choice~~ **done 2026-10-16** (ADR-0063's third amendment): an open fit
+    spline's `tangents` (end derivatives, set by dragging the grip at each end
+    or freed with the panel's Free ends) and a control spline's `degree` (1 to
+    5, the panel's Degree field; degree 4 and 5 export as cubics within
+    1e-3 mm). Extending a spline is **rejected**: a B-spline has no natural
+    continuation past its end (ADR-0063's amendment, A3).
   - Content policy: `'unsafe-eval'` dropped from `script-src` in
     `apps/web/public/_headers`. **Done 2026-10-04** (ADR-0067 §H1): both WASM
     builds are made with dynamic execution off (`DYNAMIC_EXECUTION: 0`, beside

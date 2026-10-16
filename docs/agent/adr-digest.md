@@ -1300,6 +1300,18 @@ go face by face (bounded on a plane with a rational edge) and a rational
 edge's length `GCPnts_AbscissaPoint` (`edgeLength`; `LinearProperties` has no
 error bound); a shape with no rational edge integrates as before. Native
 harness `spikes/p4-12-conics/` (`run.sh`, `run.sh probe`, `run.sh leaks 300`).
+**P4-12's third amendment (2026-10-16)**: an **open fit spline** may store
+`tangents: { start?, end? }`, its end **derivative vectors** (mm per unit of the
+0..1 parameter; `fitSpline(points, tangents)` adds a pole and a Piegl & Tiller
+§9.2.2 row per end, and **without tangents runs the old code bit for bit**), and
+a **control spline** a `degree` 1 to 5 (not closed, at least `degree + 1`
+points; stored `knots` are checked by `knotProblem(…, degree)` and dropped by
+`setSplineDegree`); closing drops both, transforms turn `tangents` by their
+linear part, trim/break drop them and keep `degree`, degree 4/5 export as cubics
+within 1e-3 mm (`cubicApproximation`). The grips (`apps/web/src/sketch/splineEnds.ts`,
+at `start + D0/3` and `end − Dn/3`) are **not solver points**: the host drags
+them in a cancelled transaction and applies one `setSplineTangent`. Extending a
+spline stays rejected (A3).
 ADR-0064 (P4-10, slice 1) added the **rib**: a thin wall from one sketch
 **line** to the body beside it (a gusset, a web; the stiffening triangle in a
 bracket's corner). Core holds the definition (`curve`, `thickness`, `side`,

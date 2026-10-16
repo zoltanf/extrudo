@@ -14,4 +14,5 @@ A smooth curve through the points you click. Enter to finish.
 | Sketch › Create | None |
 
 <!-- notes -->
+Select a fit point spline and drag the small square at either end to set the curve's direction and pull there; **Free ends** in the selection panel lets the ends go again.
 <!-- /notes -->
