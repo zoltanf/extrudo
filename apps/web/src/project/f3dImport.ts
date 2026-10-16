@@ -45,6 +45,8 @@ export type F3dWorkerLike = Pick<Worker, 'postMessage' | 'terminate' | 'onmessag
 
 export const F3D_TIMEOUT_TEXT =
   'The import took too long and was stopped. The file may be too complex for Extrudo to read.';
+export const F3D_MEMORY_TEXT =
+  'This .f3d file needs more memory than the browser gives the importer.';
 export const F3D_CRASH_TEXT =
   'The importer stopped unexpectedly while reading this file (it may have run out of memory).';
 

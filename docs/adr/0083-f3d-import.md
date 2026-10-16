@@ -1216,3 +1216,52 @@ Still open, each a separate piece of work: decoding in a worker (the import
 still runs on the UI thread, so a slow legitimate file still blocks it), the
 all-pairs matching of profile-region curves (`regions.ts`), and retry budgets
 for the kernel's fillet diagnosis.
+
+## Amendment, 2026-10-16: import in a worker
+
+The import no longer runs on the UI thread. `importF3dFile`
+(`apps/web/src/project/actions.ts`) reads the file's bytes and hands them to
+an `ImportRunner`; the app's runner (`f3dImport.ts`, `workerImportRunner`)
+starts a module worker (`f3dWorker.ts`, named `extrudo-f3d`) for each import,
+transfers the `ArrayBuffer` with the name and the document's ID and app
+version, and the worker loads `@extrudo/f3d` and the sketch solver
+(`@extrudo/sketch/browser`) itself, runs `importF3d` with `{ bodies: true }`
+and answers once, `{ result }` or `{ error }` (the thrown error's message),
+after which the client terminates it. The `Design` is a class, so it crosses
+as its document (`design.toJSON()`) and the client rebuilds it with
+`Design.from`; the report, preview, body links and STEP steps are plain data
+and `Uint8Array` and cross as they are. `importF3d` itself stays synchronous
+and exported (Node tools and tests call it). While the worker runs the busy
+toast says "Reading the .f3d file…" (`READING_TEXT`); the body check's toast
+(`CHECKING_TEXT`) follows it. Errors go the same way as before: the caller's
+"Import failed: …" toast.
+
+- **Time budget**: `F3D_IMPORT_TIMEOUT_MS` = 30 s, after which the worker is
+  terminated and the import fails with "The import took too long and was
+  stopped." On the 250-file corpus `importF3d` alone (unzip, decode, map and
+  the B-rep writer, with the solver; timed in Node on the Ubuntu dev machine)
+  took at most 5.2 s, 95th percentile 0.8 s, median 49 ms: the budget is about
+  six times the slowest. (The replay's `ms` column in the hardening run counts
+  the kernel recompute too, so it was not used.)
+- **Out of memory, measured** (Chrome stable under Playwright on the Ubuntu dev
+  machine, a crossOriginIsolated page with COOP/COEP as the app has, module
+  workers): a worker that runs out of **ArrayBuffer** memory gets a
+  `RangeError: Array buffer allocation failed` (about 10 s in); uncaught it
+  is the worker's `error` event, caught it is an ordinary exception, and the
+  page stays alive either way. A string over the length limit is a
+  `RangeError` the same way. A worker that runs out of **JavaScript heap**
+  (many small objects) gets **no** error event: it kept allocating, the page's
+  main thread stopped answering after about 60 s, and the renderer crashed
+  ("Target crashed") at about 165 s, taking the tab with it. Terminating that
+  worker at 30 s left the page answering. So the worker turns the first kind
+  into a message (an allocation `RangeError` reads "This .f3d file needs more
+  memory than the browser gives the importer."; an `error` event reads "The
+  importer stopped unexpectedly…"), and the time budget is what stops the
+  second, provided the heap fills more slowly than 30 s; one that fills
+  faster can still crash the tab. `MAX_F3D_BYTES` (100 MB, M1) and the
+  archive's caps keep the import's inputs small enough that no corpus file
+  comes near either.
+
+Still open: the all-pairs matching of profile-region curves (`regions.ts`)
+and retry budgets for the kernel's fillet diagnosis. The Deferred item
+"decoding in a worker" is done.

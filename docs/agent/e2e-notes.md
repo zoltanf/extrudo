@@ -919,6 +919,16 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   pressed with E, and `data-bodies` gives `40,20,5`; with Scale 2, `80,40,5`;
   and `square-inches.dxf` ($INSUNITS 1) gives 25.4 × 25.4 mm.
 
+### `e2e/import-f3d.spec.ts`
+
+- **The `.f3d` import in its worker** (ADR-0083, 2026-10-16): the file is built in the spec
+  (`storedZip` of stored entries, no CRCs, around the empty design segment `metaStream`, the
+  same as `packages/f3d`'s archive tests), never a sample, and fed to the home screen's
+  **Import…** with `chooser.setFiles({ name, mimeType, buffer })`. That the worker ran is
+  `page.on('worker')` seeing a URL with `f3dWorker` (the worker's `name` isn't exposed). The
+  empty design's notice is "Imported from the .f3d file: 0 of 0 timeline features."; a bad
+  file's error is the home screen's `alert` toast "Import failed: …".
+
 ### `e2e/import-mesh.spec.ts`
 
 - **Import mesh e2e** (`e2e/import-mesh.spec.ts`, P4-06 slices 3 and 4): the

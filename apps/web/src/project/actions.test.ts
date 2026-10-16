@@ -234,7 +234,7 @@ describe('saveF3dImport: the body check (ADR-0084)', () => {
     expect(seen[1]).not.toContain(READING_TEXT);
     expect(toasts()).not.toContain(CHECKING_TEXT);
     expect(calls).toEqual(['save:1', 'attachment', 'save:3']);
-    expect(takeOpenNotices(id)[0]).toMatch(/^Imported from the .f3d file/);
+    expect(id && takeOpenNotices(id)[0]).toMatch(/^Imported from the .f3d file/);
   });
 
   it('takes the reading toast down when the import fails', async () => {
