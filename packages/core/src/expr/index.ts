@@ -24,6 +24,7 @@ export {
   type ParameterOwner,
   parameterNames,
   renameReferences,
+  valuesByName,
 } from './parameters';
 export { type Node, parse, references, type Span, tokenize } from './parser';
 export {
@@ -39,4 +40,5 @@ export {
   UNITLESS,
   UNITS,
   type Unit,
+  unitNamed,
 } from './units';

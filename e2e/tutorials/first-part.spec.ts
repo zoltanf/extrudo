@@ -21,6 +21,7 @@ import {
   mapping,
   newSketchOnXY,
   openProject,
+  parameterExpression,
   selectTab,
 } from '../helpers';
 import { tutorial } from './step';
@@ -66,11 +67,9 @@ test('Tutorial 1: a plate with four holes', async ({ page }) => {
       await addParameter(page, 'thickness', '5 mm');
     },
     async () => {
-      await expect(
-        page
-          .getByRole('dialog', { name: 'Parameters' })
-          .getByRole('textbox', { name: 'Expression of margin', exact: true }),
-      ).toHaveAccessibleDescription('= 20.00 mm');
+      await expect(await parameterExpression(page, 'margin')).toHaveAccessibleDescription(
+        '= 20.00 mm',
+      );
     },
   );
 

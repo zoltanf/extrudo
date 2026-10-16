@@ -24,8 +24,9 @@ On the home screen press **New design**. Press the name at the top, type
 `Name tag` and press `Enter`. Then open the **Home** tab and press
 **Parameters**.
 
-In the row at the bottom type a **name**, leave the unit on **Length**, type an
-expression and press **Add**. Add these five:
+The dialog opens on the **New parameter** form. Type a **name**, leave the unit
+on **Length**, type an expression and press **Add** (or `Enter`). For the next
+one, press **New parameter** in the list on the left. Add these five:
 
 | Name | Expression |
 |---|---|

@@ -3,7 +3,7 @@
  * values, plain numbers in mm, degrees or as they are, frozen so a script can
  * only read them.
  */
-import { type ExtrudoDocument, evaluateParameters } from '@extrudo/core';
+import { type ExtrudoDocument, evaluateParameters, valuesByName } from '@extrudo/core';
 
 /**
  * Every parameter of the document by name, in mm for a length, degrees for an
@@ -12,9 +12,5 @@ import { type ExtrudoDocument, evaluateParameters } from '@extrudo/core';
  * leaves it undefined.
  */
 export function parameterValues(doc: ExtrudoDocument): Record<string, number> {
-  const values: Record<string, number> = {};
-  for (const [name, parameter] of evaluateParameters(doc).parameters) {
-    if (parameter.result.ok) values[name] = parameter.result.value;
-  }
-  return values;
+  return valuesByName(evaluateParameters(doc));
 }

@@ -36,7 +36,7 @@ describe('migrations', () => {
     );
   });
 
-  it('migrate the v0 fixture to a valid v1 document', () => {
+  it('migrate the v0 fixture to a valid current document', () => {
     const { doc, loadedVersion, migrated } = loadDocument(v0Bracket, {
       newId: counterIds(),
       now: '2026-09-25T12:00:00.000Z',
@@ -45,7 +45,7 @@ describe('migrations', () => {
     expect(migrated).toBe(true);
     expect(doc).toMatchObject({
       format: 'extrudo',
-      formatVersion: 1,
+      formatVersion: FORMAT_VERSION,
       id: 'id-1',
       name: 'Wall bracket',
       settings: { units: 'mm', precision: 2 },
@@ -178,7 +178,7 @@ describe('reading what a newer Extrudo wrote (P3-13)', () => {
     const plain = loadDocument({ ...sampleDocument(), formatVersion: FORMAT_VERSION + 1 });
     expect(plain.doc).toEqual(sampleDocument());
     expect(loadNotice(plain, 'drops')).toMatch(
-      /newer Extrudo \(file format 2; this version reads 1\)\. Everything in it is known here\. Saving here writes it in this version’s format\.$/,
+      /newer Extrudo \(file format 3; this version reads 2\)\. Everything in it is known here\. Saving here writes it in this version’s format\.$/,
     );
   });
 
@@ -192,6 +192,58 @@ describe('reading what a newer Extrudo wrote (P3-13)', () => {
     const error = loadError(raw);
     expect(error.code).toBe('invalid');
     expect(error.issues.map((i) => i.path.join('.'))).toEqual(['timelineMarker']);
+  });
+});
+
+describe('format 1 to 2 (ADR-0086)', () => {
+  it('turns customizer numbers into expressions in the base unit and moves the group', () => {
+    const v1 = {
+      ...JSON.parse(JSON.stringify(sampleDocument())),
+      formatVersion: 1,
+      settings: { units: 'in', precision: 2 },
+      parameters: [
+        {
+          id: 'p1',
+          name: 'width',
+          expression: '2 in',
+          unit: 'length',
+          customizer: { min: 25.4, max: 101.6, step: 0.5, group: 'Size' },
+        },
+        {
+          id: 'p2',
+          name: 'tilt',
+          expression: '15 deg',
+          unit: 'angle',
+          customizer: { min: 0, max: 30 },
+        },
+        { id: 'p3', name: 'holes', expression: '2', unit: 'unitless', customizer: { step: 1 } },
+        { id: 'p4', name: 'gap', expression: '1 mm', unit: 'length' },
+      ],
+    };
+    const { doc, loadedVersion, migrated } = loadDocument(v1);
+    expect(loadedVersion).toBe(1);
+    expect(migrated).toBe(true);
+    expect(doc.formatVersion).toBe(2);
+    expect(doc.parameters).toEqual([
+      {
+        id: 'p1',
+        name: 'width',
+        expression: '2 in',
+        unit: 'length',
+        group: 'Size',
+        // Millimetres stay millimetres in an inch design.
+        customizer: { min: '25.4 mm', max: '101.6 mm', step: '0.5 mm' },
+      },
+      {
+        id: 'p2',
+        name: 'tilt',
+        expression: '15 deg',
+        unit: 'angle',
+        customizer: { min: '0 deg', max: '30 deg' },
+      },
+      { id: 'p3', name: 'holes', expression: '2', unit: 'unitless', customizer: { step: '1' } },
+      { id: 'p4', name: 'gap', expression: '1 mm', unit: 'length' },
+    ]);
   });
 });
 

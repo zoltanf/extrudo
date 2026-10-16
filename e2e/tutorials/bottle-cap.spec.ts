@@ -23,7 +23,14 @@ import {
   viewportOf,
   zoomOutTo,
 } from '../benchmark-helpers';
-import { clicker, kernelReady, openProject, pickTool, projector } from '../helpers';
+import {
+  clicker,
+  kernelReady,
+  openProject,
+  parameterExpression,
+  pickTool,
+  projector,
+} from '../helpers';
 import { tutorial } from './step';
 
 // Tutorial 4, docs/guide/tutorials/bottle-cap.md: a threaded bottle cap and the adapter that
@@ -66,11 +73,9 @@ test('Tutorial 4: a threaded bottle cap', async ({ page }) => {
       await addParameter(page, 'stepHeight', '10 mm');
     },
     async () => {
-      await expect(
-        page
-          .getByRole('dialog', { name: 'Parameters' })
-          .getByRole('textbox', { name: 'Expression of stepHeight', exact: true }),
-      ).toHaveAccessibleDescription('= 10.00 mm');
+      await expect(await parameterExpression(page, 'stepHeight')).toHaveAccessibleDescription(
+        '= 10.00 mm',
+      );
     },
   );
 

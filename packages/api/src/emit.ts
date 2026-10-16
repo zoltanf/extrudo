@@ -39,7 +39,6 @@ import {
   comment,
   constant,
   type Expr,
-  num,
   obj,
   printProgram,
   raw,
@@ -440,6 +439,7 @@ function parameterArguments(parameter: ExtrudoDocument['parameters'][number]): E
   if (parameter.unit !== inferUnit(parameter.expression))
     options.push(['unit', str(parameter.unit)]);
   if (parameter.comment !== undefined) options.push(['comment', str(parameter.comment)]);
+  if (parameter.group !== undefined) options.push(['group', str(parameter.group)]);
   if (parameter.customizer) options.push(['customizer', customizerExpr(parameter.customizer)]);
   if (options.length > 0) args.push(obj(options));
   return args;
@@ -449,10 +449,9 @@ function customizerExpr(
   customizer: NonNullable<ExtrudoDocument['parameters'][number]['customizer']>,
 ): Expr {
   const props: [string, Expr][] = [];
-  if (customizer.min !== undefined) props.push(['min', num(customizer.min)]);
-  if (customizer.max !== undefined) props.push(['max', num(customizer.max)]);
-  if (customizer.step !== undefined) props.push(['step', num(customizer.step)]);
-  if (customizer.group !== undefined) props.push(['group', str(customizer.group)]);
+  if (customizer.min !== undefined) props.push(['min', str(customizer.min)]);
+  if (customizer.max !== undefined) props.push(['max', str(customizer.max)]);
+  if (customizer.step !== undefined) props.push(['step', str(customizer.step)]);
   return obj(props);
 }
 

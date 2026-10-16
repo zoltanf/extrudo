@@ -3,6 +3,9 @@
 - **Status:** Accepted, 2026-10-03; implemented (on `p4-07-customizer`)
 - **Task:** P4-07 (FR-PAR-05 "favourite / exposed parameters form a customizer
   panel with sliders and ranges", FR-PAR-06 "named configurations, switchable").
+- **Amended by ADR-0086 (2026-10-15):** the range (`min`, `max`, `step`) is
+  expressions kept as typed, the group moved onto the parameter
+  (`parameter.group`), and the dialog is a list and an inspector.
 
 ## Context
 

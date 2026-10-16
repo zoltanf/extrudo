@@ -122,6 +122,7 @@ function canonical(doc: ExtrudoDocument, map: ReadonlyMap<string, string>): unkn
         name: parameter.name,
         expression: parameter.expression,
         unit: parameter.unit,
+        group: parameter.group ?? null,
         customizer: parameter.customizer ?? null,
       })),
     features: doc.features.map((feature) => ({

@@ -30,19 +30,24 @@ export function parametricBox(): Design {
   // the range is the slider's range, not a limit on the value (ADR-0059).
   const width = d.parameter('width', '120 mm', {
     comment: 'Along X',
-    customizer: { min: 60, max: 300, step: 10, group: 'Size' },
+    group: 'Size',
+    customizer: { min: '60 mm', max: '300 mm', step: '10 mm' },
   });
   const depth = d.parameter('depth', '80 mm', {
     comment: 'Along Y',
-    customizer: { min: 40, max: 200, step: 10, group: 'Size' },
+    group: 'Size',
+    customizer: { min: '40 mm', max: '200 mm', step: '10 mm' },
   });
   const height = d.parameter('height', '40 mm', {
     comment: 'Along Z',
-    customizer: { min: 20, max: 150, step: 5, group: 'Size' },
+    group: 'Size',
+    customizer: { min: '20 mm', max: '150 mm', step: '5 mm' },
   });
   const wall = d.parameter('wall', '2.4 mm', {
     comment: 'The walls',
-    customizer: { min: 0.8, max: 6, step: 0.2, group: 'Walls' },
+    group: 'Walls',
+    // A range can be a formula of other parameters (ADR-0086).
+    customizer: { min: '0.8 mm', max: 'width / 20', step: '0.2 mm' },
   });
   const spacing = d.parameter('spacing', '70 mm', { comment: 'Between the screw holes' });
 

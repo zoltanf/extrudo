@@ -354,3 +354,57 @@ export async function chooseInMenu(
   await menu.getByRole(role, { name, exact: role === 'menuitemradio' }).focus();
   await menu.page().keyboard.press('Enter');
 }
+
+/** The Parameters dialog (ADR-0086: a list on the left, the selected parameter on the right). */
+export const parametersDialog = (page: Page) => page.getByRole('dialog', { name: 'Parameters' });
+
+/**
+ * Selects a parameter in the Parameters dialog's list, so its fields show on
+ * the right; a model parameter opens the collapsed Model parameters first.
+ */
+export async function selectParameter(page: Page, name: string) {
+  const dialog = parametersDialog(page);
+  const row = dialog.locator(`[data-parameter-row="${name}"]`);
+  if ((await row.count()) === 0) {
+    await dialog.getByRole('button', { name: /^Model parameters/ }).click();
+  }
+  await row.click();
+  await expect(row).toHaveAttribute('aria-current', 'true');
+}
+
+/** A parameter's expression field in the Parameters dialog, with the parameter selected. */
+export async function parameterExpression(page: Page, name: string): Promise<Locator> {
+  await selectParameter(page, name);
+  return parametersDialog(page).getByRole('textbox', {
+    name: `Expression of ${name}`,
+    exact: true,
+  });
+}
+
+/**
+ * Adds a user parameter through the New parameter form, which then selects it.
+ * The form shows by itself in a design without parameters.
+ */
+export async function addUserParameter(
+  page: Page,
+  name: string,
+  expression: string,
+  unit: 'length' | 'angle' | 'unitless' = 'length',
+) {
+  const dialog = parametersDialog(page);
+  const nameField = dialog.getByRole('textbox', { name: 'New parameter name' });
+  if (!(await nameField.isVisible())) {
+    await dialog.getByRole('button', { name: 'New parameter', exact: true }).click();
+  }
+  await nameField.fill(name);
+  const label = { length: 'Length', angle: 'Angle', unitless: 'Number' }[unit];
+  // The radio itself is visually hidden: a person clicks its label, the segment.
+  const units = dialog.getByRole('group', { name: 'New parameter unit' });
+  await units.getByText(label, { exact: true }).click();
+  await expect(units.getByRole('radio', { name: label })).toBeChecked();
+  await dialog.getByRole('textbox', { name: 'New parameter expression' }).fill(expression);
+  await dialog.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(
+    dialog.getByRole('textbox', { name: `Expression of ${name}`, exact: true }),
+  ).toHaveValue(expression);
+}

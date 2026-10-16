@@ -6,9 +6,9 @@ import {
   primitive,
   viewportOf,
 } from './benchmark-helpers';
-import { kernelReady, openProject, pickTool, startFromTemplate } from './helpers';
+import { kernelReady, openProject, pickTool, selectParameter, startFromTemplate } from './helpers';
 
-// P4-07 (FR-PAR-05 and FR-PAR-06): the Customizer panel. A starred parameter
+// P4-07 (FR-PAR-05 and FR-PAR-06): the Customizer panel. An exposed parameter
 // gets a slider, the model follows it, one undo takes the drag back, and named
 // configurations switch a set of values at once. A template opens with its main
 // parameters exposed already.
@@ -50,7 +50,8 @@ async function closeCustomizer(page: Page) {
 async function expose(page: Page, name: string, min: string, max: string) {
   await openParameters(page);
   const dialog = page.getByRole('dialog', { name: 'Parameters' });
-  await dialog.getByRole('button', { name: `Show ${name} in customizer` }).click();
+  await selectParameter(page, name);
+  await dialog.getByRole('switch', { name: `Show ${name} in customizer` }).click();
   await expect(dialog.getByRole('textbox', { name: `Min of ${name}`, exact: true })).toBeVisible();
   for (const [field, text] of [
     ['Min', min],
@@ -235,7 +236,7 @@ test('an empty design says so, and has a way to the Parameters dialog', async ({
   await kernelReady(page);
   await openCustomizer(page);
   await expect(panel(page)).toHaveAttribute('data-customizer-state', 'empty');
-  await expect(panel(page)).toContainText('Star a parameter in the Parameters dialog');
+  await expect(panel(page)).toContainText('turn on Customizer for a parameter');
   await panel(page).getByRole('button', { name: 'Open Parameters' }).click();
   await expect(page.getByRole('dialog', { name: 'Parameters' })).toBeVisible();
 });

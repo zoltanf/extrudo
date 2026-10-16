@@ -10,7 +10,7 @@
  * A unit may follow a number literal only: `10 mm`, `2.5in`, `1e-3 m`.
  */
 import { ExprError } from './errors';
-import { UNIT_NAMES, UNITS } from './units';
+import { UNIT_NAMES, unitNamed } from './units';
 
 /** Half-open source range [start, end), for error underlines. */
 export interface Span {
@@ -184,13 +184,13 @@ export function parse(source: string): Node {
   function number(token: Token): Node {
     const value = Number(token.text);
     const unitToken = peek();
-    if (unitToken.kind === 'name' && unitToken.start === token.end && !UNITS[unitToken.text]) {
+    if (unitToken.kind === 'name' && unitToken.start === token.end && !unitNamed(unitToken.text)) {
       throw new ExprError(
         `\`${unitToken.text}\` isn't a unit. Units: ${UNIT_NAMES.join(', ')}.`,
         unitToken,
       );
     }
-    if (unitToken.kind === 'name' && UNITS[unitToken.text]) {
+    if (unitToken.kind === 'name' && unitNamed(unitToken.text)) {
       next();
       return {
         kind: 'num',
@@ -203,7 +203,7 @@ export function parse(source: string): Node {
   }
 
   function nameOrCall(token: Token): Node {
-    if (UNITS[token.text]) {
+    if (unitNamed(token.text)) {
       throw new ExprError(`A unit needs a number before it, like \`1 ${token.text}\`.`, token);
     }
     if (peek().text !== '(') return { kind: 'ref', name: token.text, span: token };

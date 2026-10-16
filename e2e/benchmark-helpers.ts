@@ -9,7 +9,14 @@ import {
   readStl,
   type TriangleMesh,
 } from '../packages/io/src/index';
-import { fileAction, kernelReady, pickTool, projector } from './helpers';
+import {
+  addUserParameter,
+  fileAction,
+  kernelReady,
+  parameterExpression,
+  pickTool,
+  projector,
+} from './helpers';
 
 // Shared steps of the benchmark specs (B2, B3: requirements §7): user
 // parameters, sketch views that clear the palette, camera settling, and the
@@ -22,8 +29,6 @@ export const chip = (page: Page, name: string) =>
     .getByRole('button', { name: new RegExp(`^${name}`) });
 export const toolPrompt = (page: Page) => page.getByRole('status', { name: 'Tool prompt' });
 const parameters = (page: Page) => page.getByRole('dialog', { name: 'Parameters' });
-const expression = (page: Page, name: string) =>
-  parameters(page).getByRole('textbox', { name: `Expression of ${name}`, exact: true });
 
 /** Selects bodies by name in the browser's Bodies folder: a click, then Shift-clicks for the rest. */
 export async function selectBodies(page: Page, names: readonly string[]) {
@@ -54,26 +59,23 @@ export async function closeParameters(page: Page) {
   await expect(parameters(page)).toHaveCount(0);
 }
 
-/** Adds a user parameter; its unit (the New parameter row's select) is Length unless `unit` says so. */
+/** Adds a user parameter through the New parameter form; Length unless `unit` says so. */
 export async function addParameter(
   page: Page,
   name: string,
   value: string,
   unit: 'length' | 'angle' | 'unitless' = 'length',
 ) {
-  await parameters(page).getByRole('textbox', { name: 'New parameter name' }).fill(name);
-  await parameters(page).getByRole('combobox', { name: 'New parameter unit' }).selectOption(unit);
-  await parameters(page).getByRole('textbox', { name: 'New parameter expression' }).fill(value);
-  await parameters(page).getByRole('button', { name: 'Add', exact: true }).click();
-  await expect(expression(page, name)).toHaveValue(value);
+  await addUserParameter(page, name, value, unit);
 }
 
 /** Changes user parameters in the dialog, then closes it. */
 export async function setParameters(page: Page, values: Record<string, string>) {
   await openParameters(page);
   for (const [name, value] of Object.entries(values)) {
-    await expression(page, name).fill(value);
-    await expression(page, name).press('Enter');
+    const field = await parameterExpression(page, name);
+    await field.fill(value);
+    await field.press('Enter');
   }
   await closeParameters(page);
 }

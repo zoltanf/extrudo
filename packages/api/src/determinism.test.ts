@@ -25,7 +25,7 @@ describe('determinism', () => {
   it('gives the same bytes for the same calls', () => {
     const build = () => {
       const d = Design.create({ name: 'Bracket', units: 'mm', ...FIXED });
-      const wall = d.parameter('wall', '3 mm', { customizer: { min: 1, max: 10 } });
+      const wall = d.parameter('wall', '3 mm', { customizer: { min: '1 mm', max: '10 mm' } });
       const plate = d.box({ length: '40 mm', width: '20 mm', height: `${wall}` });
       const hole = d.cylinder({ diameter: '6 mm', height: '8 mm', operation: 'cut' });
       const edge = plate.edge([plate.faceName('cap:end'), plate.faceName('side:front')]);

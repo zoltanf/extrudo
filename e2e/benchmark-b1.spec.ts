@@ -2,11 +2,13 @@ import { readFile } from 'node:fs/promises';
 import { type Download, expect, type Page, test } from '@playwright/test';
 import { dimension, exportProject, renameProject } from './benchmark-helpers';
 import {
+  addUserParameter,
   clicker,
   counts,
   mapping,
   newSketchOnXY,
   openProject,
+  parameterExpression,
   pickTool,
   saveStatus,
   selectTab,
@@ -32,8 +34,6 @@ test.afterEach(() => {
 });
 
 const parameters = (page: Page) => page.getByRole('dialog', { name: 'Parameters' });
-const expression = (page: Page, name: string) =>
-  parameters(page).getByRole('textbox', { name: `Expression of ${name}`, exact: true });
 const palette = (page: Page) => page.getByRole('region', { name: 'Sketch palette' });
 const dof = (page: Page) => palette(page).locator('[data-constraint-state]');
 const labels = (page: Page) => page.locator('[data-dimension]');
@@ -45,16 +45,10 @@ async function openParameters(page: Page) {
   await expect(parameters(page)).toBeVisible();
 }
 
-async function addParameter(page: Page, name: string, value: string) {
-  await parameters(page).getByRole('textbox', { name: 'New parameter name' }).fill(name);
-  await parameters(page).getByRole('textbox', { name: 'New parameter expression' }).fill(value);
-  await parameters(page).getByRole('button', { name: 'Add', exact: true }).click();
-  await expect(expression(page, name)).toHaveValue(value);
-}
-
 async function setParameter(page: Page, name: string, value: string) {
-  await expression(page, name).fill(value);
-  await expression(page, name).press('Enter');
+  const field = await parameterExpression(page, name);
+  await field.fill(value);
+  await field.press('Enter');
 }
 
 async function exportSvg(page: Page): Promise<string> {
@@ -94,12 +88,12 @@ test('B1: a parametric plate with four corner holes', async ({ page }) => {
 
   // The user parameters first; `margin` keeps the holes centred.
   await openParameters(page);
-  await addParameter(page, 'width', '100 mm');
-  await addParameter(page, 'depth', '80 mm');
-  await addParameter(page, 'spacing', '60 mm');
-  await addParameter(page, 'hole', '6 mm');
-  await addParameter(page, 'margin', '(width - spacing) / 2');
-  await expect(expression(page, 'margin')).toHaveAccessibleDescription('= 20.00 mm');
+  await addUserParameter(page, 'width', '100 mm');
+  await addUserParameter(page, 'depth', '80 mm');
+  await addUserParameter(page, 'spacing', '60 mm');
+  await addUserParameter(page, 'hole', '6 mm');
+  await addUserParameter(page, 'margin', '(width - spacing) / 2');
+  await expect(await parameterExpression(page, 'margin')).toHaveAccessibleDescription('= 20.00 mm');
   await page.keyboard.press('Escape');
   await expect(parameters(page)).toHaveCount(0);
 
@@ -255,7 +249,7 @@ test('B1: a parametric plate with four corner holes', async ({ page }) => {
   // once, the plate stays.
   await openParameters(page);
   await setParameter(page, 'spacing', '70 mm');
-  await expect(expression(page, 'margin')).toHaveAccessibleDescription('= 15.00 mm');
+  await expect(await parameterExpression(page, 'margin')).toHaveAccessibleDescription('= 15.00 mm');
   await page.keyboard.press('Escape');
   await expect(parameters(page)).toHaveCount(0);
   await expect(labels(page)).toHaveText([
@@ -273,7 +267,7 @@ test('B1: a parametric plate with four corner holes', async ({ page }) => {
   await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
   await openParameters(page);
   await setParameter(page, 'width', '120 mm');
-  await expect(expression(page, 'margin')).toHaveAccessibleDescription('= 25.00 mm');
+  await expect(await parameterExpression(page, 'margin')).toHaveAccessibleDescription('= 25.00 mm');
   await page.keyboard.press('Escape');
   await expect(parameters(page)).toHaveCount(0);
 
@@ -282,8 +276,8 @@ test('B1: a parametric plate with four corner holes', async ({ page }) => {
   await page.reload();
   await expect(viewport).toHaveAttribute('data-ready', 'true');
   await openParameters(page);
-  await expect(expression(page, 'width')).toHaveValue('120 mm');
-  await expect(expression(page, 'spacing')).toHaveValue('70 mm');
+  await expect(await parameterExpression(page, 'width')).toHaveValue('120 mm');
+  await expect(await parameterExpression(page, 'spacing')).toHaveValue('70 mm');
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Edit Sketch1' }).click();
   await expect(labels(page)).toHaveText([

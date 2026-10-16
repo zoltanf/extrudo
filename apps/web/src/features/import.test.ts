@@ -317,7 +317,7 @@ function contextOf(
 function emptyDocument(): ExtrudoDocument {
   return {
     format: 'extrudo',
-    formatVersion: 1,
+    formatVersion: 2,
     id: 'd1' as ExtrudoDocument['id'],
     name: 'Design',
     settings: { units: 'mm', precision: 2 },

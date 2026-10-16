@@ -167,6 +167,19 @@ describe('params', () => {
     });
   });
 
+  it('holds parameters named like Object.prototype members as their values', () => {
+    const design = emptyDesign();
+    design.parameter('constructor', '2 mm');
+    design.parameter('toString', '3 mm');
+    design.parameter('__proto__', '4 mm');
+    const { result } = run(
+      'console.log(params.constructor, params.toString, params.__proto__, Object.keys(params).join(" "));',
+      { design },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.log).toEqual(['2 3 4 constructor toString __proto__']);
+  });
+
   it('takes the values the caller passes, over the document’s own', () => {
     const design = emptyDesign();
     design.parameter('width', '40 mm');
@@ -589,7 +602,13 @@ describe('QuickJS itself', () => {
     const once = (code: string) => {
       const bridge = new Bridge(ctx, 'script.ts');
       try {
-        bridge.set(ctx.global, 'params', bridge.toValue({ width: 40 }));
+        // `__proto__` is the one key the bridge defines rather than sets.
+        const params = Object.fromEntries([
+          ['width', 40],
+          ['__proto__', { depth: 3 }],
+        ]);
+        bridge.set(ctx.global, 'params', bridge.toValue(params));
+        bridge.set(ctx.global, 'frozen', bridge.freezeDeep(params));
         const result = ctx.evalCode(code, 'script.ts', { type: 'global', strict: true });
         if (isFail(result)) result.error.dispose();
         else result.value.dispose();

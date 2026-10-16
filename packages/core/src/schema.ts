@@ -39,22 +39,24 @@ export const UnitKindSchema = z.enum(['length', 'angle', 'unitless']);
 export type UnitKind = z.infer<typeof UnitKindSchema>;
 
 /**
- * How an exposed parameter shows in the customizer panel (P4-07, ADR-0059 §1):
- * the object being present is what exposes it. `min`, `max` and `step` are the
- * slider's range in the parameter's **base unit** (mm, degrees, or plain), not
- * a constraint: a value outside `[min, max]` is allowed and the panel warns
- * about it. `group` is a heading in the panel; without one the parameter sits
- * at the top, and ungrouped parameters come before the groups (which are in
- * order of first appearance).
+ * How an exposed parameter shows in the customizer panel (P4-07, ADR-0059 §1,
+ * ADR-0086 §2): the object being present is what exposes it. `min`, `max` and
+ * `step` are **expressions** in the parameter's unit, like the parameter's own
+ * (`40 mm`, `10 * wall`): the slider's range, not a constraint. A value
+ * outside `[min, max]` is allowed and the panel warns about it. A range may
+ * use other parameters but not one that depends on this one (the panel
+ * reports that as an error instead of a moving range).
  */
 export const CustomizerSchema = z.strictObject({
-  min: z.number().optional(),
-  max: z.number().optional(),
-  /** Slider step in the base unit; must be positive. */
-  step: z.number().positive().optional(),
-  group: z.string().min(1).max(40).optional(),
+  min: z.string().optional(),
+  max: z.string().optional(),
+  /** The slider's step; must evaluate to a positive value. */
+  step: z.string().optional(),
 });
 export type Customizer = z.infer<typeof CustomizerSchema>;
+
+/** A parameter group's name (ADR-0086 §1): 1 to 40 characters. */
+export const ParameterGroupSchema = z.string().min(1).max(40);
 
 export const ParameterSchema = z.strictObject({
   id: ParameterIdSchema,
@@ -62,6 +64,11 @@ export const ParameterSchema = z.strictObject({
   expression: z.string(),
   unit: UnitKindSchema,
   comment: z.string().optional(),
+  /**
+   * The group the parameter sits in (ADR-0086 §1): a section of the Parameters
+   * dialog and a heading in the customizer panel. Absent = no group.
+   */
+  group: ParameterGroupSchema.optional(),
   /** Present = the parameter is shown in the customizer panel (P4-07). */
   customizer: CustomizerSchema.optional(),
 });
@@ -440,17 +447,6 @@ export const DocumentSchema = z
     reportGroups(ctx, doc);
     reportComponentRefs(ctx, doc);
     reportJoints(ctx, doc);
-    // A slider range isn't a constraint (ADR-0059 §1), but min above max is a
-    // mistake rather than a choice, so the document says so.
-    doc.parameters.forEach((p, index) => {
-      const { min, max } = p.customizer ?? {};
-      if (min === undefined || max === undefined || min <= max) return;
-      ctx.addIssue({
-        code: 'custom',
-        path: ['parameters', index, 'customizer'],
-        message: `min is ${min}, above max ${max}`,
-      });
-    });
     reportFonts(ctx, doc);
     reportFiles(ctx, doc);
   });

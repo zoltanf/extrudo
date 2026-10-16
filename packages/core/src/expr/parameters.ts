@@ -304,7 +304,8 @@ function run(fn: () => Quantity): EvaluateResult {
   }
 }
 
-function findRef(node: Node, name: string): Span | undefined {
+/** Where an expression first refers to `name`, if it does. */
+export function findRef(node: Node, name: string): Span | undefined {
   switch (node.kind) {
     case 'ref':
       return node.name === name ? node.span : undefined;
@@ -336,6 +337,20 @@ export function nextModelParameterName(doc: ExtrudoDocument): string {
 /** Every parameter name in use, user and model. */
 export function parameterNames(doc: ExtrudoDocument): Set<string> {
   return new Set(sourcesOf(doc).map((s) => s.name));
+}
+
+/**
+ * Every parameter that evaluates, by name, in base units: what a script's or
+ * plugin's `params` holds (ADR-0070 §2). The object has no prototype, so a
+ * parameter named `__proto__` is a value like any other and a name the design
+ * doesn't have (`constructor`) reads as undefined.
+ */
+export function valuesByName(evaluation: ParameterEvaluation): Record<string, number> {
+  const values: Record<string, number> = Object.create(null);
+  for (const [name, parameter] of evaluation.parameters) {
+    if (parameter.result.ok) values[name] = parameter.result.value;
+  }
+  return values;
 }
 
 const nameAt = (name: string) =>

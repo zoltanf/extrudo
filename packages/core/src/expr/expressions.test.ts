@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LengthUnit, UnitKind } from '../schema';
-import { evaluateExpression, type Quantity } from './evaluate';
+import { evaluateExpression, isReservedName, type Quantity } from './evaluate';
 import { formatQuantity } from './format';
 import { evaluateInline, type InlineParameter, inlineParameter } from './inline';
 import { MAX_DEPTH, parse, references, tokenize } from './parser';
@@ -344,6 +344,40 @@ describe('nesting depth', () => {
     const n = 100;
     expect(value(`${'('.repeat(n)}1 + 2${')'.repeat(n)}`).value).toBe(3);
     expect(value(`${'1 + '.repeat(n)}1`).value).toBe(n + 1);
+  });
+});
+
+describe('names on Object.prototype', () => {
+  // Units, functions and constants are plain objects: looking a name up must
+  // not find `constructor`, `toString` or `__proto__` through the prototype.
+  it.each<[string, string, [number, number]]>([
+    ['1 constructor', 'Missing an operator before `constructor`.', [2, 13]],
+    ['2 toString', 'Missing an operator before `toString`.', [2, 10]],
+    ['2toString', "`toString` isn't a unit. Units: mm, cm, m, in, ft, deg, rad.", [1, 9]],
+    ['constructor(1)', 'Unknown function `constructor`.', [0, 14]],
+    ['hasOwnProperty(1)', 'Unknown function `hasOwnProperty`.', [0, 17]],
+    ['__proto__', 'Unknown name `__proto__`.', [0, 9]],
+    ['width * __proto__', 'Unknown name `__proto__`.', [8, 17]],
+    ['toString', 'Unknown name `toString`.', [0, 8]],
+  ])('%j', (source, message, [start, end]) => {
+    const e = error(source);
+    expect(e.message).toBe(message);
+    expect(e.span).toEqual({ start, end });
+  });
+
+  it('are free for parameters', () => {
+    for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf']) {
+      expect(isReservedName(name)).toBe(false);
+    }
+    for (const name of ['mm', 'sin', 'pi']) expect(isReservedName(name)).toBe(true);
+    const values = new Map<string, Quantity>([
+      ['constructor', { value: 2, dim: LENGTH }],
+      ['__proto__', { value: 3, dim: LENGTH }],
+    ]);
+    expect(evaluateExpression('constructor * 2 + __proto__', { values })).toMatchObject({
+      ok: true,
+      value: 7,
+    });
   });
 });
 

@@ -7,7 +7,7 @@ describe('format constants', () => {
     expect(FILE_EXTENSION).toBe(`.${FORMAT_NAME}`);
   });
 
-  it('start at format version 1', () => {
-    expect(FORMAT_VERSION).toBe(1);
+  it('are at format version 2', () => {
+    expect(FORMAT_VERSION).toBe(2);
   });
 });

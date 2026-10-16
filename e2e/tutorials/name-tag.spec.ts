@@ -27,6 +27,7 @@ import {
   kernelReady,
   mapping,
   openProject,
+  parameterExpression,
   pickTool,
   projector,
   selectTab,
@@ -77,11 +78,7 @@ test('Tutorial 3: a name tag', async ({ page }) => {
       await addParameter(page, 'letters', '1 mm');
     },
     async () => {
-      await expect(
-        page
-          .getByRole('dialog', { name: 'Parameters' })
-          .getByRole('textbox', { name: 'Expression of letters', exact: true }),
-      ).toHaveValue('1 mm');
+      await expect(await parameterExpression(page, 'letters')).toHaveValue('1 mm');
     },
   );
 

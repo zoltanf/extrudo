@@ -136,8 +136,9 @@ describe('template customizers (P4-07)', () => {
       // Every listed name is a parameter the template really has.
       for (const row of exposed) {
         expect(names, `${t.id}: ${row.name}`).toContain(row.name);
-        expect(row.max).toBeGreaterThan(row.min);
-        expect(row.step ?? (row.max - row.min) / 100).toBeGreaterThan(0);
+        // Plain values with a unit; the opened design checks they evaluate (below).
+        expect(Number.parseFloat(row.max)).toBeGreaterThan(Number.parseFloat(row.min));
+        expect(Number.parseFloat(row.step ?? '1')).toBeGreaterThan(0);
       }
       // Two saved configurations, neither of them the size the template opens at.
       expect((t.configurations ?? []).length).toBe(2);
@@ -149,7 +150,7 @@ describe('template customizers (P4-07)', () => {
     async (_, t) => {
       const doc = await opened(t);
       expect(DocumentSchema.safeParse(doc).error?.issues ?? []).toEqual([]);
-      const rows = customizerRows(doc, evaluateParameters(doc).parameters);
+      const rows = customizerRows(doc, evaluateParameters(doc));
       // The panel's order: ungrouped first, then each group by first appearance.
       expect(rows.map((r) => r.name)).toEqual((t.exposed ?? []).map((r) => r.name));
       // Every exposed row has both ends of a slider range and a plain value.
@@ -180,7 +181,7 @@ describe('template customizers (P4-07)', () => {
     { timeout: 180_000 },
     async (_, t) => {
       const doc = await opened(t);
-      const rows = customizerRows(doc, evaluateParameters(doc).parameters);
+      const rows = customizerRows(doc, evaluateParameters(doc));
       for (const configuration of doc.configurations ?? []) {
         const applied = applyCommand(
           doc,
@@ -204,14 +205,14 @@ describe('template customizers (P4-07)', () => {
     if (!template) throw new Error('no template');
     const doc = await opened(template);
     const customizer = withTemplateCustomizer(doc, {
-      exposed: [{ name: 'width', min: 40, max: 200, step: 1 }],
+      exposed: [{ name: 'width', min: '40 mm', max: '200 mm', step: '1 mm' }],
       configurations: [{ name: 'Ghost', values: { gone: '1 mm' } }],
     });
     // The exposed parameter is set as asked; the unknown one changes nothing.
     expect(customizer.parameters.find((p) => p.name === 'width')?.customizer).toEqual({
-      min: 40,
-      max: 200,
-      step: 1,
+      min: '40 mm',
+      max: '200 mm',
+      step: '1 mm',
     });
     expect(customizer.configurations).toEqual(doc.configurations);
   });

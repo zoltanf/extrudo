@@ -864,3 +864,139 @@ describe('the P4-12 test gaps', { timeout: 120_000 }, () => {
     expect(status(apart, 'X').message).toContain("doesn't meet the face");
   });
 });
+
+// ------------------------- a point where curved faces and a plane meet (P4-12)
+
+describe('a point where curved faces and a plane meet (P4-12)', { timeout: 120_000 }, () => {
+  const cylinder = (id: string, plane?: GeomRef) =>
+    feature(
+      id,
+      'cylinder',
+      primitiveInputs('cylinder', {
+        ...(plane ? { plane } : {}),
+        numbers: { diameter: '20 mm', height: '20 mm' },
+      }),
+    );
+  const offset = (id: string, plane: GeomRef, distance: string) =>
+    feature(id, 'offsetPlane', { plane: refs([plane]), distance: length(distance) });
+  const curvedFace = (picked: Done, body: string, type: string) =>
+    pick(picked, body, 'face', (i, shape) => kernel.surfaceGeometry(shape, i).type === type);
+
+  it('two curved faces and a construction plane', async () => {
+    const alongZ = cylinder('C1');
+    const alongX = cylinder('C2', YZ);
+    const plane = offset('A', XZ, '6 mm');
+    const picked = await withShapes([alongZ, alongX]);
+    const sideA = curvedFace(picked, 'C1:0', 'cylinder');
+    const sideB = curvedFace(picked, 'C2:0', 'cylinder');
+    ok(
+      await fresh([
+        alongZ,
+        alongX,
+        plane,
+        feature('X', 'pointAtIntersection', {
+          entities: refs([sideA, sideB, { kind: 'plane', id: 'A' }]),
+        }),
+      ]),
+    );
+    // C1 (x²+y²=100) and C2 (y²+z²=100) meet where x=z; the plane y=−6 gives x=z=√64=8.
+    const p = report('X', 'point').point;
+    expect(near(p, 8, -6, 8, 1e-3)).toBe(true);
+  });
+
+  it('a curved face, a flat face and a construction plane', async () => {
+    const cyl = cylinder('C');
+    const box = feature(
+      'K',
+      'box',
+      primitiveInputs('box', {
+        numbers: { length: '40 mm', width: '40 mm', height: '10 mm', x: '22 mm' },
+      }),
+    );
+    const picked = await withShapes([cyl, box]);
+    const side = curvedFace(picked, 'C:0', 'cylinder');
+    // The box's top face: z = 10, x from 2 to 42 (its side face is at x = 2).
+    const top = pick(picked, 'K:0', 'face', (i, shape) => {
+      const f = kernel.describe(shape).faces[i];
+      return (
+        f?.type === 'plane' && near(f.direction ?? [], 0, 0, 1) && near(f.centroid, 22, 0, 10, 1)
+      );
+    });
+    ok(
+      await fresh([
+        cyl,
+        box,
+        feature('X', 'pointAtIntersection', { entities: refs([side, top, XZ]) }),
+      ]),
+    );
+    // The cylinder's side meets the top plane in a circle x²+y²=100 at z=10; the
+    // arc inside the box keeps x=+10, and XZ (y=0) picks (√(100−0), 0, 10).
+    const p = report('X', 'point').point;
+    expect(near(p, Math.sqrt(100), 0, 10, 1e-3)).toBe(true);
+  });
+
+  it('three curved faces are refused', async () => {
+    const a = cylinder('C1');
+    const b = cylinder('C2', YZ);
+    const c = cylinder('C3', XZ);
+    const picked = await withShapes([a, b, c]);
+    const faces = [
+      curvedFace(picked, 'C1:0', 'cylinder'),
+      curvedFace(picked, 'C2:0', 'cylinder'),
+      curvedFace(picked, 'C3:0', 'cylinder'),
+    ];
+    const result = await fresh([
+      a,
+      b,
+      c,
+      feature('X', 'pointAtIntersection', { entities: refs(faces) }),
+    ]);
+    expect(status(result, 'X').status).toBe('error');
+    expect(status(result, 'X').message).toContain(
+      'At least one of the three must be a plane or a flat face.',
+    );
+  });
+
+  it("a curved face and two planes that never cross says they don't meet", async () => {
+    const cyl = cylinder('C');
+    const picked = await withShapes([cyl]);
+    const side = curvedFace(picked, 'C:0', 'cylinder');
+    const result = await fresh([
+      cyl,
+      offset('A', XZ, '5 mm'),
+      feature('X', 'pointAtIntersection', {
+        entities: refs([side, XZ, { kind: 'plane', id: 'A' }]),
+      }),
+    ]);
+    // The section of the cylinder with XZ (y=0) is two lines at x = ±10; the
+    // parallel cut plane y = −5 never crosses them.
+    expect(status(result, 'X').status).toBe('error');
+    expect(status(result, 'X').message).toContain("don't meet");
+  });
+
+  it('several crossings: takes the one nearest the plane, with a warning', async () => {
+    // A sphere of radius 10 centred at (5, 0, 0): its great circle in XY is
+    // centred there, so XZ (y = 0) cuts it at (−5, 0, 0) and (15, 0, 0).
+    const place = offset('P', YZ, '5 mm');
+    const sphere = feature(
+      'S',
+      'sphere',
+      primitiveInputs('sphere', {
+        plane: { kind: 'plane', id: 'P' },
+        numbers: { diameter: '20 mm' },
+      }),
+    );
+    const picked = await withShapes([place, sphere]);
+    const surface = curvedFace(picked, 'S:0', 'sphere');
+    const result = await fresh([
+      place,
+      sphere,
+      feature('X', 'pointAtIntersection', { entities: refs([surface, XY, XZ]) }),
+    ]);
+    expect(status(result, 'X').status).toBe('warning');
+    expect(status(result, 'X').message).toContain('nearest the plane');
+    // XZ's anchor is the world origin: (−5, 0, 0) is nearer than (15, 0, 0).
+    const p = report('X', 'point').point;
+    expect(near(p, -5, 0, 0, 1e-3)).toBe(true);
+  });
+});

@@ -892,8 +892,10 @@ end to end, faster than in established desktop CAD.
     `pickBox` taking construction planes, axes and points under the
     construction filter (origin axes excepted). No facade change. ~~A cone's
     nearest tangency point~~ and ~~a point where an edge meets a curved face~~
-    are **done 2026-10-07** (ADR-0040's addendum); a point where two curved
-    faces and a plane meet is still open.
+    are **done 2026-10-07** (ADR-0040's addendum); ~~a point where two curved
+    faces and a plane meet~~ is **done 2026-10-15** (ADR-0040's addendum: the
+    facade's `facesMeetPlane` and `pointAtIntersection` taking three references
+    with curved faces — the amendment's first facade change).
   - ~~Extrude to object on curved faces and bodies, with an offset; revolve
     "to"~~; ~~symmetric half-length~~ (ADR-0028, -0029; done 2026-10-06 —
     the first two in the amendment, the half-length as `symmetricMeasure`

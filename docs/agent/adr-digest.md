@@ -574,7 +574,7 @@ mesh, `basis: 'mesh'` in the report); a point/plane report also carries
 `path` (`from`/`tangent`/`length`/`straight`) so the app draws a distance
 handle from the path's start along a straight path. `pickBox` takes
 construction planes/axes/points as a `construction` kind last in `BOX_ORDER`.
-No facade change. **2026-10-07 addendum**: `tangentPlane`'s `point` on a cone is the exact foot on the nearest generatrix (the apex past it; a point on the axis warns and follows the angle), and `pointAtIntersection` takes an edge and a **curved** face (`edgeMeetsFace`, closest points within 1 µm); a point where two curved faces and a plane meet stays open (it needs a face-face section the facade lacks).
+No facade change. **2026-10-07 addendum**: `tangentPlane`'s `point` on a cone is the exact foot on the nearest generatrix (the apex past it; a point on the axis warns and follows the angle), and `pointAtIntersection` takes an edge and a **curved** face (`edgeMeetsFace`, closest points within 1 µm). **2026-10-15 addendum (facade change)**: `pointAtIntersection`'s three-reference case also takes curved faces — the facade's `facesMeetPlane` sections the two faces (or a face and a plane) and cuts the curve with a plane (`planeOf`'s origin/normal; two curved faces cut with the flat's plane, one curved face and a flat face sectioned with the flat face and cut with the other flat, one curved face and two planes sectioned with the first and cut with the second), 0 points is "The faces don't meet on that plane.", several crossings take the point nearest the plane's `anchor` and warn "`n` points meet there; the one nearest the plane's centre was taken.", and three curved faces are refused with "At least one of the three must be a plane or a flat face."
 ADR-0042 (P3-11) added the right-click marking menu:
 `design-system/MarkingMenu.tsx` draws eight wedges, alone, or one list in the list
 style (R3-08, ADR-0042's 2026-10-11 amendment: the ring has no list under it, and the
@@ -1165,7 +1165,8 @@ for changing, and a design holds named value sets (`configurations[]`). Core is
 `isPlainValue`; `removeParameter` drops a deleted parameter from every
 configuration). The app is `apps/web/src/customizer/` (the panel, its
 controller) plus the Parameters dialog's star and its Min/Max/Step/Group row with
-a Clear button each. **Every parameter write goes through the shell's `apply`**,
+a Clear button each (since ADR-0086: an inspector with a Customizer switch, ranges as
+expressions, the group on the parameter). **Every parameter write goes through the shell's `apply`**,
 applying a configuration included (so the sketches whose dimensions use a
 parameter are re-solved in the same undo step, ADR-0016); **no stored active
 configuration** — one goes stale after any edit or undo, so the panel shows the
@@ -2340,60 +2341,30 @@ and both link mechanisms stay — `openSite(name)` for the fixed named pages
 (only `repo` now) and `openLink(url)` for the dialog's URLs that carry a
 hash; folding them into one was rejected for now.** No schema change.
 
-ADR-0088 (P6-09, slice 1 2026-10-15) added **the OpenSCAD export**:
-`packages/kernel/src/scad-export/` (`ir.ts`, `print.ts`, `context.ts`,
-`versions.ts`, `mesh.ts`, `file.ts`, `number.ts`), `RecomputeEngine.exportScad`
-over `AtMarker.steps`, `exportScad` on `KernelService`/`KernelApi`/`Recomputer`,
-and `extrudo export --format scad`. Rules a change must keep: **the recompute
-only records** (`steps` holds references to each write feature's inputs,
-values and body maps, on the recompute channel); hooks and meshing run at
-export time only. **A feature's `csg(ctx)` hook** returns a node per body of
-`ctx.changed` built from `ctx.body(id)` (earlier versions) and numbers or
-`ctx.scalar(name)`, or `null`/`ctx.unsupported(reason)`; it changes nothing,
-releases what it makes and decides bodies from `before`/`after`, not the
-inputs. **Fallback to a polyhedron** (a mesh version, listed in the header
-with its reason): no hook, `null`, a body left out, a body broken into pieces
-(`origins` from a body that existed before: source and pieces), or a
-`KernelError` from the hook; later features build on it with CSG again. Only
-versions the exported bodies reach are written and meshed; a tool used twice
-or more is a `<Feature>_tool` module. **Deterministic**: every number through
-`scadNumber`, polyhedron points rounded to 1e-4 mm in first-use order with
-faces clockwise from outside, module names from body/feature names in
-timeline order (`<Body>_v<n>`), no date. Scalars are `number | { expr, value,
-refs }` (slice 4b): the engine passes `liveScalar` (a named model input's
-variable, else `translateExpression`, else the value) and `scadParameters` as
-`ScadSource.scalar`/`parameters`; `writeScad` writes `parameterBlock` after
-`$fa`/`$fs` from the refs in the written nodes (`used`) and `parameterUse`'s
-`fixed`. **A hook reads every live scalar through `ctx.scalar(name)`** and
-builds on it only with the IR helpers (`half`, `negate`, `absolute`, `sum`:
-they keep `refs` and brackets); an expression input it doesn't read that way,
-every input of a mesh version's feature, and the expressions of body-less
-features they build on (sketch dimensions, construction planes) count as
-held fixed and get the Customizer note. A script's features write values.
-Slice 3 added hooks for the primitives,
-Move, Mirror, Scale and the rectangular and circular patterns of bodies.
-**A solid feature's hook builds its tool in place and hands it to
-`operationCsg(ctx, operation, tool)`** (`scad-export/operation.ts`, read from
-`changed`/`removed`). **Hooks reuse the evaluators' placement math, never a
-copy of it:** `lineOf`/`planeOf`/`pointOf` take a `GeometryReader`,
-`centreOf`/`existing` a `Pick` of `EvalContext` that `CsgContext` also
-satisfies (it has `bodies` and `bodyId`), and Move's `moveMotion`, Scale's
-`scaleCentre`, the patterns' `rectangularRows`/`circularTurns` plus
-`splitSkip`, and `torusFrame` serve both; a primitive's frame comes from its
-output. Placements are numbers (`placed`, `frameMatrix`, `about` in `ir.ts`),
-sizes, distances, angles and factors `ctx.scalar` (through `half`, `negate`,
-`absolute`); pattern instances are unrolled. Slice 4a added hooks for Extrude
-and Revolve. **A profile becomes 2D nodes from the sketch's own
-`detectProfiles`** (`scad-export/profile.ts`, `SketchOutputData.sketch`): a
-`polygon(points, paths)` per region (outer loop and holes), a whole-circle
-loop a `circle`, lines two points, arcs sampled with
-**`CsgContext.fragments(radius)`** (OpenSCAD's `$fa`/`$fs` circle count,
-`writeScad` builds it into `ScadSource.fragments`), other curves the detected
-polyline. Extrude is a `linear_extrude` per side placed by the sketch frame,
-its distances `ctx.scalar` signed with `absolute`/`negate`/`half` and a
-`translate`; `through-all` (cut/intersect) reaches past `ctx.bounds()`.
-Revolve is a `rotate_extrude` in (radius, axis) with the axis as OpenSCAD's
-Z; `flip` reverses the axis; the shared `axisOf` takes a `GeometryReader`. Accepted 2026-10-16; the acceptance tests live in `scad-export/acceptance.test.ts` and the CLI's "AC 5" test (`packages/cli/src/headless.test.ts`).
+ADR-0086 (the owner, 2026-10-15) **makes the Parameters dialog a list and an inspector,
+puts groups on parameters and keeps slider ranges as formulas** (format **2**, the first
+bump). Files: core `schema.ts` (`Parameter.group`, `CustomizerSchema` of strings, no
+min/max check), `customizer.ts` (`evaluateRange`, `setParameterGroup`, `moveParameter`,
+`RANGE_FIELDS`; `customizerRows(doc, evaluation)` takes the whole evaluation),
+`document-commands.ts` (`parameterUsers`, `refuseIfUsed` built on it, renames reach
+ranges), `migrations.ts` (`v1ToV2`), `format.ts`; the app's `parameters/ParametersDialog.tsx`
+(list, drag), `ParameterInspector.tsx`, `list.ts` (`listSections`, `dropIndex`,
+`stepIndex`, `labelOfUse`, `starCommand`). Rules: **`min`/`max`/`step` are expressions
+in the parameter's unit, stored as typed**; a range may use other parameters but **never
+the parameter or one of its dependents** (`evaluateRange` refuses; `customizerRows`
+leaves out an end that stopped evaluating, and both ends when min > max, so no slider
+rather than a wrong one); **the group is the parameter's** (`parameter.group`, 1–40
+characters, also for unexposed parameters) and the panel and the dialog group by it
+(no group first, "General" in the dialog, then groups by first appearance; flat list
+while no parameter has a group); **`doc.parameters` order is the dialog's and the
+panel's order** (`moveParameter` = one undo step, a group change included; order never
+changes a value; the macro emitter keeps dependency order); **"Used by" and the delete
+refusal come from the same `parameterUsers`** (ranges count as users); a formula
+parameter has no range fields. A migration from format 1 spells out the base unit
+(`25.4` → `25.4 mm`, `30` → `30 deg`) and moves `customizer.group`. e2e: rows are
+`[data-parameter-row="<name>"]` (`aria-current` when selected), sections
+`[data-parameter-section]`; select a row before its fields exist (`selectParameter`,
+`parameterExpression`, `addUserParameter` in `e2e/helpers.ts`).
 
 ADR-0087 (P6-08, 2026-10-15) added **the desktop MCP server and its skill** (no
 schema or file-format change). **Main** hosts it (`apps/desktop/src/main/mcp/`):
@@ -2463,3 +2434,58 @@ custom handlers, `instructions` "Read skill://extrudo/SKILL.md before modelling.
 tag's draft release). `apps/desktop/scripts/mcp-client.mjs --launch` (under
 `xvfb-run -a`; Chromium's headless Ozone crashes Electron's main) is the
 acceptance client, `--examples` runs the worked examples in the real kernel.
+
+ADR-0088 (P6-09, slice 1 2026-10-15) added **the OpenSCAD export**:
+`packages/kernel/src/scad-export/` (`ir.ts`, `print.ts`, `context.ts`,
+`versions.ts`, `mesh.ts`, `file.ts`, `number.ts`), `RecomputeEngine.exportScad`
+over `AtMarker.steps`, `exportScad` on `KernelService`/`KernelApi`/`Recomputer`,
+and `extrudo export --format scad`. Rules a change must keep: **the recompute
+only records** (`steps` holds references to each write feature's inputs,
+values and body maps, on the recompute channel); hooks and meshing run at
+export time only. **A feature's `csg(ctx)` hook** returns a node per body of
+`ctx.changed` built from `ctx.body(id)` (earlier versions) and numbers or
+`ctx.scalar(name)`, or `null`/`ctx.unsupported(reason)`; it changes nothing,
+releases what it makes and decides bodies from `before`/`after`, not the
+inputs. **Fallback to a polyhedron** (a mesh version, listed in the header
+with its reason): no hook, `null`, a body left out, a body broken into pieces
+(`origins` from a body that existed before: source and pieces), or a
+`KernelError` from the hook; later features build on it with CSG again. Only
+versions the exported bodies reach are written and meshed; a tool used twice
+or more is a `<Feature>_tool` module. **Deterministic**: every number through
+`scadNumber`, polyhedron points rounded to 1e-4 mm in first-use order with
+faces clockwise from outside, module names from body/feature names in
+timeline order (`<Body>_v<n>`), no date. Scalars are `number | { expr, value,
+refs }` (slice 4b): the engine passes `liveScalar` (a named model input's
+variable, else `translateExpression`, else the value) and `scadParameters` as
+`ScadSource.scalar`/`parameters`; `writeScad` writes `parameterBlock` after
+`$fa`/`$fs` from the refs in the written nodes (`used`) and `parameterUse`'s
+`fixed`. **A hook reads every live scalar through `ctx.scalar(name)`** and
+builds on it only with the IR helpers (`half`, `negate`, `absolute`, `sum`:
+they keep `refs` and brackets); an expression input it doesn't read that way,
+every input of a mesh version's feature, and the expressions of body-less
+features they build on (sketch dimensions, construction planes) count as
+held fixed and get the Customizer note. A script's features write values.
+Slice 3 added hooks for the primitives,
+Move, Mirror, Scale and the rectangular and circular patterns of bodies.
+**A solid feature's hook builds its tool in place and hands it to
+`operationCsg(ctx, operation, tool)`** (`scad-export/operation.ts`, read from
+`changed`/`removed`). **Hooks reuse the evaluators' placement math, never a
+copy of it:** `lineOf`/`planeOf`/`pointOf` take a `GeometryReader`,
+`centreOf`/`existing` a `Pick` of `EvalContext` that `CsgContext` also
+satisfies (it has `bodies` and `bodyId`), and Move's `moveMotion`, Scale's
+`scaleCentre`, the patterns' `rectangularRows`/`circularTurns` plus
+`splitSkip`, and `torusFrame` serve both; a primitive's frame comes from its
+output. Placements are numbers (`placed`, `frameMatrix`, `about` in `ir.ts`),
+sizes, distances, angles and factors `ctx.scalar` (through `half`, `negate`,
+`absolute`); pattern instances are unrolled. Slice 4a added hooks for Extrude
+and Revolve. **A profile becomes 2D nodes from the sketch's own
+`detectProfiles`** (`scad-export/profile.ts`, `SketchOutputData.sketch`): a
+`polygon(points, paths)` per region (outer loop and holes), a whole-circle
+loop a `circle`, lines two points, arcs sampled with
+**`CsgContext.fragments(radius)`** (OpenSCAD's `$fa`/`$fs` circle count,
+`writeScad` builds it into `ScadSource.fragments`), other curves the detected
+polyline. Extrude is a `linear_extrude` per side placed by the sketch frame,
+its distances `ctx.scalar` signed with `absolute`/`negate`/`half` and a
+`translate`; `through-all` (cut/intersect) reaches past `ctx.bounds()`.
+Revolve is a `rotate_extrude` in (radius, axis) with the axis as OpenSCAD's
+Z; `flip` reverses the axis; the shared `axisOf` takes a `GeometryReader`. Accepted 2026-10-16; the acceptance tests live in `scad-export/acceptance.test.ts` and the CLI's "AC 5" test (`packages/cli/src/headless.test.ts`).
