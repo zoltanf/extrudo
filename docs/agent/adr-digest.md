@@ -2034,7 +2034,11 @@ workflow's `homebrew` job renders `apps/desktop/homebrew/extrudo.rb.template`
 from the arm64 mac zip with `render.mjs` and pushes `Casks/extrudo.rb` to the
 `zoltanf/homebrew-extrudo` tap (`HOMEBREW_TAP_TOKEN`, skipped cleanly without
 it), which is macOS's install and update path since the updater only notifies
-there.
+there. **The cask's `postflight_steps` removes `com.apple.quarantine` from
+`{{appdir}}/Extrudo.app`** after every install and upgrade (2026-10-16
+amendment); `{{appdir}}` is Homebrew's token, so `render.mjs` must keep filling
+only the upper-case placeholders, and stanzas stay in `brew style` order
+(`caveats` last).
 
 **ADR-0075's amendment (2026-10-09)**: **Windows and Linux have no menu bar** (`hasApplicationMenu`: `buildMenuTemplate` is `[]` off macOS, main sets `Menu.setApplicationMenu(null)`, removes the window's menu and ignores `menu:set`; macOS keeps the native menu). What only the menu had is in the app, desktop only: Open File… (`Ctrl+O`) and Save As… (`Ctrl+Shift+S`) are Home › Design tiles (`openFile` is a `FILE_COMMANDS` entry hidden where `FileActions.openFile` is absent), Open Recent is the Design group's ▾ (`Toolbar`'s `recentFiles`; `recent:names`/`recent:open` take an index and a name, main's `recentPathAt` looks the path up itself), Check for Updates… is in Help (`Platform.updates.check`) and Quit (`Ctrl+Q`) a command that saves first; `Platform.desktop` (`DesktopApp`, `nativeMenu` true on macOS) is the seam, and **on macOS the renderer binds no key for them and `NATIVE_MENU_OWN` keeps their commands out of the menu projection**. `main/updateErrors.ts` classifies a failed update check (`no-release`, `offline`, `other`): an automatic check is silent for the first two, a manual one answers in a sentence, anything else is the error's first line (140 characters), never headers.
 

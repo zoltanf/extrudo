@@ -121,10 +121,10 @@ brew install --cask zoltanf/extrudo/extrudo
 ```
 
 The app is signed ad hoc, with no Apple certificate (ADR-0075's amendments), so
-macOS asks before the first open: open the app, and when it says it can't
-verify it, go to **System Settings › Privacy & Security** and choose **Open
-Anyway**. For the v0.4.1 build, which says "damaged", run once in Terminal:
-`xattr -dr com.apple.quarantine /Applications/Extrudo.app`. Since the app's own updater only notifies on macOS (the
+Gatekeeper blocks it while it is quarantined; the cask removes the quarantine
+attribute after every install and upgrade, so it opens with no prompt. A
+download from the release page still needs **System Settings › Privacy &
+Security › Open Anyway** once. Since the app's own updater only notifies on macOS (the
 table above), **`brew upgrade` is the update path there**. One-time setup and
 the per-release check are in `docs/release-checklist.md`.
 If a tag's cask was not pushed, `gh workflow run desktop.yml --ref main -f

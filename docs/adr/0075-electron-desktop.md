@@ -771,7 +771,8 @@ used through `mac.icon`.
 **Homebrew.** The cask needed no change but its caveats text (now: Open
 Anyway). Homebrew applies the quarantine too, and with a valid ad-hoc signature
 "Open Anyway" works as for a direct download; `--no-quarantine` is deprecated
-and not advised.
+and not advised. (Superseded for the cask by the 2026-10-16 amendment: it now
+removes the quarantine itself.)
 
 The first run on the macOS runner also showed that the top-level
 `executableName: extrudo` named the bundle `extrudo.app` (the zip's top-level
@@ -800,3 +801,25 @@ relaunch) had every write-back refused, and each refusal was a new toast.
 Rejected: dropping the check for `external` links (the renderer would name any
 path again), and re-issuing a path when the renderer reopens a project (the
 renderer would be the one naming it).
+
+### Amendment, 2026-10-16: the cask removes the quarantine
+
+On macOS 26.7.1 with Homebrew 7.0.9, Extrudo 0.6.1 from the tap kept
+`com.apple.quarantine` on every file of the bundle, `spctl` rejected it, and
+every `brew upgrade` put the quarantine back, so "Open Anyway" was needed after
+each update. Homebrew 7 no longer has `--no-quarantine`, and homebrew/cask
+stopped supporting casks that fail Gatekeeper from 2026-09-01; our own tap is
+the only place this can be solved short of notarisation.
+
+- The cask has a `postflight_steps` block (Homebrew 7's steps DSL; `postflight`
+  is deprecated) that runs `/usr/bin/xattr -dr com.apple.quarantine
+  {{appdir}}/Extrudo.app` after every install and upgrade. `{{appdir}}` is
+  Homebrew's step token, expanded at install time; `render.mjs` fills only the
+  upper-case `{{VERSION}}` and `{{SHA256}}` and leaves it verbatim.
+- The caveats no longer describe "Open Anyway": they say the cask removes the
+  quarantine attribute and to install only if you trust the tap.
+- `caveats` moved after `zap`, the stanza order `brew style` expects.
+
+Rejected: telling users to run `xattr` by hand (every upgrade again), and a Ruby
+`postflight` block (deprecated). Developer ID signing plus notarisation is still
+the real fix and still deferred (slice 5).
