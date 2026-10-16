@@ -63,6 +63,7 @@ import {
   torus,
 } from './map-more';
 import type {
+  F3dBody,
   F3dCircularPattern,
   F3dDesign,
   F3dEdgeFeature,
@@ -213,6 +214,12 @@ interface ImportedExtrude {
   oneSided: boolean;
   /** Which way its side 1 runs along the file's sketch normal: 1 or −1. */
   side1: number;
+  /**
+   * Of a new-body extrude whose profile has several region groups: the
+   * Extrudo body (`${id}:k`) each group became, in the file's group order
+   * (`bodyOrder`).
+   */
+  bodies?: number[];
 }
 
 /**
@@ -449,18 +456,29 @@ export function f3dToDesign(
   };
   /** f3d feature record → the Extrudo feature a pattern can replay for it. */
   const replayable = new Map<number, { id: string; name: string }>();
-  // Extrudo names a body after the feature that made it — and, of several, by
-  // an order the file's need not share — so an f3d body is known here only as
-  // the only body of an imported feature.
+  // Extrudo names a body after the feature that made it, `${id}:k`: the only
+  // body of a feature is `:0`; of several, only an extrude's are known, by
+  // the order its region groups became bodies (`bodyOrder`). The file numbers
+  // a creator's bodies in its group order.
   const bodyRecords = new Map(f3d.bodies.map((b) => [b.id, b]));
-  const madeBy = new Map<number, number>();
+  const madeBy = new Map<number, F3dBody[]>();
   for (const body of f3d.bodies)
-    if (body.creator !== undefined) madeBy.set(body.creator, (madeBy.get(body.creator) ?? 0) + 1);
+    if (body.creator !== undefined)
+      madeBy.set(body.creator, [...(madeBy.get(body.creator) ?? []), body]);
+  for (const list of madeBy.values()) list.sort((a, b) => a.index - b.index);
   const bodyOf = (record: number): { id: BodyId; index: number; by: string } | undefined => {
     const body = bodyRecords.get(components.aliases.get(record) ?? record);
-    if (body?.creator === undefined || madeBy.get(body.creator) !== 1) return undefined;
+    if (body?.creator === undefined) return undefined;
     const made = replayable.get(body.creator);
-    return made ? { id: `${made.id}:0` as BodyId, index: body.index, by: made.name } : undefined;
+    const siblings = madeBy.get(body.creator) ?? [];
+    if (!made) return undefined;
+    let k = 0;
+    if (siblings.length > 1) {
+      const order = extrudes.get(body.creator)?.bodies;
+      if (order?.length !== siblings.length) return undefined;
+      k = order[siblings.indexOf(body)] as number;
+    }
+    return { id: `${made.id}:${k}` as BodyId, index: body.index, by: made.name };
   };
   /** A feature's participant bodies as Extrudo references, when every one is known. */
   const participants = (records: number[]): GeomRef[] | undefined => {
@@ -1271,6 +1289,8 @@ function extrude(
   const startFace = f.start === 'face' ? f.faces[0] : undefined;
   const toFace = param('Side1Offset') ? f.faces[startFace ? 1 : 0] : undefined;
   let faceNote = false;
+  /** Some of the file's regions were left out. */
+  let partial = false;
   const shiftFor = (own: SketchEntry): number => {
     let cm = offset ? offset.value : 0;
     if (startFace) {
@@ -1289,7 +1309,10 @@ function extrude(
       const sketch = shift ? movedSketch(own, shift, `${f.name} start`) : own;
       return sketch ?? 'its offset start plane is not along an origin axis';
     },
-    (text) => report.notes.push(`${f.name}: ${text}`),
+    (text) => {
+      partial = true;
+      report.notes.push(`${f.name}: ${text}`);
+    },
   );
   if (typeof selected === 'string') return selected;
   const { profiles, entry } = selected;
@@ -1382,13 +1405,91 @@ function extrude(
   const bodies = f.operation === 'new-body' ? undefined : participants(f.participants);
   if (bodies) inputs.bodies = bodies;
   const made = d.extrude(inputs as Parameters<Design['extrude']>[0], { name: f.name });
+  // Several bodies only from a new body; every side the same length (a
+  // distance, through everything, or up to a plane taken as a distance).
+  const even =
+    f.operation === 'new-body' &&
+    !partial &&
+    inputs.extent !== 'to-object' &&
+    inputs.extent2 !== 'to-object';
+  const order = even ? bodyOrder(f, entry) : undefined;
   return {
     id: made.id,
     sketch: entry,
     curves: regionCurves(entry, profiles),
     oneSided: f.direction === 'one-side',
     side1: f.reversed !== negative ? -1 : 1,
+    ...(order ? { bodies: order } : {}),
   };
+}
+
+/**
+ * Two box centres closer than this (mm) along the axis that orders them may
+ * come out either way in the kernel's measure (a spline's box is loose).
+ */
+const ORDER_SLACK = 0.01;
+/** The kernel's own tolerance for a tie along an axis (mm, `compareGeometry`). */
+const ORDER_TIE = 1e-4;
+
+/**
+ * Which Extrudo body each region group of a new-body extrude becomes. Extrudo
+ * numbers the separate solids of an extrude by the centre of each one's box,
+ * x first, then y, then z (`newBodies`); the file numbers the bodies in the
+ * order of its profile's region groups (each group is one body). The sides
+ * of every body run equally far along the normal, so the centres compare as
+ * the boxes of the groups' outlines do. Undefined when that can't be told
+ * for certain: one operand of regions only, every region's outline found,
+ * and no two centres close enough to swap.
+ */
+function bodyOrder(f: F3dExtrude, entry: SketchEntry): number[] | undefined {
+  const operand = f.profiles[0];
+  if (f.profiles.length !== 1 || !operand?.regions || operand.text !== undefined) return undefined;
+  entry.pieces ??= sketchPieces(entry.source, entry.profileCurves);
+  const boxes = new Map<number, number[]>();
+  for (const region of operand.regions) {
+    if (region.outline) continue;
+    const lines = regionPieces(entry.pieces, region.outerPieces);
+    if (!lines) return undefined;
+    const group = region.group ?? 0;
+    const box = boxes.get(group) ?? [
+      Number.POSITIVE_INFINITY,
+      Number.POSITIVE_INFINITY,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+    ];
+    for (const line of lines)
+      for (const [u, v] of line) {
+        const p = toModel(entry.source.frame, [u, v, 0]);
+        for (let i = 0; i < 3; i++) {
+          box[i] = Math.min(box[i] as number, (p[i] as number) * 10);
+          box[i + 3] = Math.max(box[i + 3] as number, (p[i] as number) * 10);
+        }
+      }
+    boxes.set(group, box);
+  }
+  if (boxes.size < 2) return undefined;
+  const groups = [...boxes.keys()].sort((a, b) => a - b);
+  const centre = (g: number) => {
+    const b = boxes.get(g) as number[];
+    return [0, 1, 2].map((i) => ((b[i] as number) + (b[i + 3] as number)) / 2);
+  };
+  let unsure = false;
+  const compare = (a: number, b: number): number => {
+    const p = centre(a);
+    const q = centre(b);
+    for (let i = 0; i < 3; i++) {
+      const delta = (p[i] as number) - (q[i] as number);
+      if (Math.abs(delta) <= ORDER_TIE) continue;
+      if (Math.abs(delta) < ORDER_SLACK) unsure = true;
+      return delta;
+    }
+    unsure = true;
+    return 0;
+  };
+  const sorted = [...groups].sort(compare);
+  return unsure ? undefined : groups.map((g) => sorted.indexOf(g));
 }
 
 /**

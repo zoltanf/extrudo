@@ -913,4 +913,127 @@ describe('f3dToDesign', () => {
       { name: 'Extrude1', reason: "its profile couldn't be matched to Sketch1's curves" },
     ]);
   });
+
+  describe('the bodies of an extrude that makes several', () => {
+    /** A circle of radius 1 cm at (x, 0), cm. */
+    const disc = (id: number, tag: bigint, x: number) => {
+      const c = circle(id, tag, 1);
+      c.point.at = [x, 0, 0];
+      c.circle.center = [x, 0, 0];
+      return c;
+    };
+    /**
+     * Two discs 10 mm high, the file's first region group at x = +3 cm and the
+     * second at x = −3 cm (Extrudo numbers its bodies from −x), then a 4 mm
+     * deep cut through both that names only the file's `Body<cutIndex>`.
+     */
+    function twoDiscs(cutIndex: number): F3dDesign {
+      const right = disc(10, 201n, 3);
+      const left = disc(20, 202n, -3);
+      const cutter = disc(40, 203n, 0);
+      cutter.circle.radius = 5;
+      const sketch = (id: number, record: number, c: (typeof right)[], z: number) =>
+        ({
+          type: 'sketch',
+          id,
+          kind: 'Sketch',
+          name: `Sketch${id}`,
+          suppressed: false,
+          parameters: [],
+          sketch: {
+            id: record,
+            frame: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, z, 0, 0, 0, 1],
+            points: c.map((x) => x.point),
+            lines: [],
+            circulars: c.map((x) => x.circle),
+            splines: [],
+            texts: [],
+          },
+        }) as F3dSketchFeature;
+      const extrude = (p: Partial<F3dExtrude> & Pick<F3dExtrude, 'id' | 'name'>): F3dExtrude => ({
+        type: 'extrude',
+        kind: 'Extrude',
+        suppressed: false,
+        parameters: [parameter({ name: 'd1', kind: 'AlongDistance', value: 1 })],
+        operation: 'new-body',
+        direction: 'one-side',
+        reversed: false,
+        solid: true,
+        start: 'profile-plane',
+        profiles: [],
+        faces: [],
+        participants: [],
+        ...p,
+      });
+      return {
+        parameters: [],
+        userParameters: [],
+        features: [
+          sketch(1, 5, [right, left], 0),
+          extrude({
+            id: 2,
+            name: 'Extrude1',
+            profiles: [
+              {
+                id: 30,
+                sketch: 5,
+                regions: [
+                  { ...region([[201n]]), group: 0 },
+                  { ...region([[202n]]), group: 1 },
+                ],
+              },
+            ],
+          }),
+          sketch(3, 6, [cutter], 1),
+          extrude({
+            id: 4,
+            name: 'Extrude2',
+            operation: 'cut',
+            reversed: true,
+            parameters: [parameter({ name: 'd2', kind: 'AlongDistance', value: 0.4 })],
+            profiles: [{ id: 31, sketch: 6, regions: [region([[203n]])] }],
+            participants: [cutIndex === 1 ? 50 : 51],
+          }),
+        ],
+        bodies: [
+          { id: 50, index: 1, visible: true, creator: 2 },
+          { id: 51, index: 2, visible: true, creator: 2 },
+        ],
+        problems: [],
+      };
+    }
+    const DISC = Math.PI * 10 ** 2;
+
+    it("cuts only the body the file names: its region group's place in Extrudo's order", async () => {
+      const { design } = f3dToDesign(twoDiscs(1), 'Discs');
+      const cut = design.toJSON().features.find((f) => f.name === 'Extrude2');
+      const made = design.toJSON().features.find((f) => f.name === 'Extrude1');
+      // Body1 is the first group, at +x: Extrudo's second body.
+      expect(cut?.inputs.bodies).toMatchObject({ refs: [{ kind: 'body', id: `${made?.id}:1` }] });
+      const shapes = await measures(twoDiscs(1));
+      // Extrudo's body 0 (−x, the file's Body2) keeps its 10 mm; body 1 loses 4 mm.
+      expect(shapes.map((m) => m.volume)).toEqual([
+        expect.closeTo(DISC * 10, 3),
+        expect.closeTo(DISC * 6, 3),
+      ]);
+      expect(shapes[0]?.bbox.min[0]).toBeCloseTo(-40, 6);
+      const other = await measures(twoDiscs(2));
+      expect(other.map((m) => m.volume)).toEqual([
+        expect.closeTo(DISC * 6, 3),
+        expect.closeTo(DISC * 10, 3),
+      ]);
+    });
+
+    it('leaves the targets to Extrudo when the groups could come out in either order', () => {
+      const f3d = twoDiscs(1);
+      // Both discs on one centre: no order to tell them by.
+      const sk = f3d.features[0] as F3dSketchFeature;
+      for (const c of sk.sketch.circulars) c.center = [0, 0, 0];
+      for (const p of sk.sketch.points) p.at = [0, 0, 0];
+      (sk.sketch.circulars[1] as { radius: number }).radius = 0.5;
+      const { design } = f3dToDesign(f3d, 'Discs');
+      const cut = design.toJSON().features.find((f) => f.name === 'Extrude2');
+      expect(cut?.inputs.bodies).toBeUndefined();
+    });
+  });
 });
