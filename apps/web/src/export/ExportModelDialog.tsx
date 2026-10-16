@@ -384,7 +384,12 @@ export function ExportModelForm({
       return await stepFile(kernel as ModelExporter, selected, doc.name, groupComponents);
     }
     if (settings.format === 'scad') {
-      return await scadFile(kernel as ModelExporter, selected, tessellation as MeshOptions, doc.name);
+      return await scadFile(
+        kernel as ModelExporter,
+        selected,
+        tessellation as MeshOptions,
+        doc.name,
+      );
     }
     return meshFile(ready as MeshedBodies, settings.format, doc.name, groupComponents);
   };
