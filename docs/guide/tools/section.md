@@ -13,5 +13,7 @@ Cut the view through a plane, with the cut filled in. Look inside without changi
 |---|---|
 | Construct › Inspect | Shift+S |
 
+<video src="demo:section" muted loop autoplay playsinline aria-label="Section Analysis demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

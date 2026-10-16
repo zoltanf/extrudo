@@ -13,5 +13,7 @@ Make lines parallel.
 |---|---|
 | Sketch › Constraints | None |
 
+<video src="demo:parallel" muted loop autoplay playsinline aria-label="Parallel demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

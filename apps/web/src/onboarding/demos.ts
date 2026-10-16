@@ -13,9 +13,9 @@
  */
 
 /**
- * The tools that have a clip: the first batch of R3-16 is every tile of the Solid and Modify
- * tabs (in the tabs' order) and the sketch tools ADR-0052 recorded first, all recorded in the
- * current UI. Construct, 3D Print and the Sketch tab follow in later batches.
+ * The tools that have a clip: every tile of the Solid, Modify, Construct, 3D Print and
+ * Sketch tabs (in the tabs' order), all recorded in the current UI (R3-16). The Sketch tab's
+ * tiles are the ribbon's; the tools in its "more" menus have none.
  */
 export const DEMO_TOOLS: readonly string[] = [
   // Solid › Create, Primitives, Features, Pattern, Program, Component.
@@ -53,11 +53,54 @@ export const DEMO_TOOLS: readonly string[] = [
   'combine',
   'splitBody',
   'scale',
-  // Sketch › Create.
+  // Construct › Planes, Axes, Points, Inspect.
+  'offsetPlane',
+  'planeAtAngle',
+  'midplane',
+  'tangentPlane',
+  'planeThroughPoints',
+  'planeAlongPath',
+  'midplaneAngled',
+  'axisThroughPoints',
+  'axisThroughCylinder',
+  'axisAlongEdge',
+  'constructionPoint',
+  'pointOnPath',
+  'pointAtIntersection',
+  'measure',
+  'section',
+  // 3D Print › Prepare, Output (Measure is Construct's).
+  'placeOnBed',
+  'printInfo',
+  'tolerance',
+  'overhang',
+  'wallThickness',
+  'export',
+  'slicer',
+  // Sketch › Create, Modify, Constraints, Export.
   'line',
   'rectangle',
   'circle',
+  'arc',
   'dimension',
+  'sketchFillet',
+  'trim',
+  'sketchOffset',
+  'parameters',
+  'coincident',
+  'collinear',
+  'concentric',
+  'midpoint',
+  'fix',
+  'parallel',
+  'perpendicular',
+  'horizontal',
+  'vertical',
+  'tangent',
+  'smooth',
+  'equal',
+  'symmetric',
+  'exportSketch',
 ];
 
 /** Where a tool's clip is, or `undefined` if it has none. */

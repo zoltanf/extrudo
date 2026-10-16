@@ -13,5 +13,7 @@ Turn a flat face down onto the print bed: the body turns with it.
 |---|---|
 | 3D Print › Prepare | None |
 
+<video src="demo:placeOnBed" muted loop autoplay playsinline aria-label="Place on Bed demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

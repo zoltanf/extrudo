@@ -13,5 +13,7 @@ Round the corner between two lines. Type the radius.
 |---|---|
 | Sketch › Modify | F |
 
+<video src="demo:sketchFillet" muted loop autoplay playsinline aria-label="Sketch Fillet demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

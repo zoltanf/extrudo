@@ -13,5 +13,7 @@ The point where two edges, an edge and a plane or face, two curved faces and a p
 |---|---|
 | Construct › Points | None |
 
+<video src="demo:pointAtIntersection" muted loop autoplay playsinline aria-label="Point at Intersection demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

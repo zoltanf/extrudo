@@ -13,5 +13,7 @@ Make two lines meet at a right angle.
 |---|---|
 | Sketch › Constraints | None |
 
+<video src="demo:perpendicular" muted loop autoplay playsinline aria-label="Perpendicular demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

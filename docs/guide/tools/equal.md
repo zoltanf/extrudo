@@ -13,5 +13,7 @@ Give lines the same length, or circles the same radius.
 |---|---|
 | Sketch › Constraints | None |
 
+<video src="demo:equal" muted loop autoplay playsinline aria-label="Equal demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

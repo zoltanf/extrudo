@@ -13,6 +13,8 @@ STL, 3MF, STEP or OpenSCAD code for printing and sharing.
 |---|---|
 | Home › Export (as Export Model) · 3D Print › Output | None |
 
+<video src="demo:export" muted loop autoplay playsinline aria-label="Export demo"></video>
+
 <!-- notes -->
 The format list ends with OpenSCAD (`.scad`): your design as editable code. See
 [OpenSCAD export](../openscad.md).

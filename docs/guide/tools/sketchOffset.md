@@ -13,5 +13,7 @@ Copy a chain of curves at a distance. Type the distance.
 |---|---|
 | Sketch › Modify | O |
 
+<video src="demo:sketchOffset" muted loop autoplay playsinline aria-label="Offset demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

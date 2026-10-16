@@ -1017,9 +1017,9 @@ under a new ID with its checked-in `home/templates/*.png` as thumbnail).
 `public/demos/<toolId>.webm`, rendered only while the tooltip is open, a still
 under reduced motion, removed on a load error); **demos are not precached**
 (`SKIPPED` in `precache-plugin.ts`, and `sw.js` leaves `/demos/` to the
-network); `DEMO_TOOLS` in `demos.ts` lists the tools that have one (every Solid
-and Modify tile and four sketch tools since the owner's UI review 3, R3-16;
-`WHOLE_TABS` in `demos.test.ts` checks it per tab) and `demos.test.ts` checks it against the files (150 kB each). **`pnpm demos`**
+network); `DEMO_TOOLS` in `demos.ts` lists the tools that have one (every tile of the Solid, Modify, Construct, 3D Print and
+Sketch tabs since the owner's UI review 3, R3-16; `WHOLE_TABS` in `demos.test.ts` checks it per
+tab) and `demos.test.ts` checks it against the files (150 kB each, 4 MB in all). **`pnpm demos`**
 (`scripts/record-demos.mjs` → `e2e/record-assets.spec.ts`, which skips itself
 without `RECORD_ASSETS=1`; `-g "demo: extrude$"` records one) records the clips and the template pictures through
 the real app: a screenshot loop (`e2e/demo-recorder.ts`) piped into Playwright's
@@ -1031,8 +1031,12 @@ filters), a drawn cursor in the page. **A clip is framed round the action**
 design from `fixtures/demos/<tool>.extrudo` (written through `@extrudo/api` by
 `packages/cli/src/demo-designs.test.ts`, `WRITE_FIXTURES=1`), pans with the nav bar's
 Pan tool and a left drag (a right drag opens the marking menu), and is encoded again
-at a lower bitrate when it is over 140 kB (200 kbit/s first, which keeps every clip within the 2 MB total). Look at three frames of every clip at 236 px before
-committing it.
+at a lower bitrate when it is over 140 kB (200 kbit/s first). Look at three frames of every clip at 236 px before
+committing it. **A scene that picks planes keeps its bodies in front of the origin planes**
+(x > 0, y < 0 in the home view): their squares show while a field picks planes and take the
+click (`constructScene`); a sketch scene draws its shapes with Ctrl held so nothing is
+inferred (`sketchScene`); Send to Slicer's clip is the Export dialog, because the web build
+that records has no slicer (ADR-0052's amendment of 2026-10-15).
 ADR-0054 (P3-15) prepared the public release: **hosting is Cloudflare Pages**,
 deployed by `.github/workflows/deploy.yml` (after CI succeeds on main; skips
 cleanly without the secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`;
@@ -2030,7 +2034,11 @@ workflow's `homebrew` job renders `apps/desktop/homebrew/extrudo.rb.template`
 from the arm64 mac zip with `render.mjs` and pushes `Casks/extrudo.rb` to the
 `zoltanf/homebrew-extrudo` tap (`HOMEBREW_TAP_TOKEN`, skipped cleanly without
 it), which is macOS's install and update path since the updater only notifies
-there.
+there. **The cask's `postflight_steps` removes `com.apple.quarantine` from
+`{{appdir}}/Extrudo.app`** after every install and upgrade (2026-10-16
+amendment); `{{appdir}}` is Homebrew's token, so `render.mjs` must keep filling
+only the upper-case placeholders, and stanzas stay in `brew style` order
+(`caveats` last).
 
 **ADR-0075's amendment (2026-10-09)**: **Windows and Linux have no menu bar** (`hasApplicationMenu`: `buildMenuTemplate` is `[]` off macOS, main sets `Menu.setApplicationMenu(null)`, removes the window's menu and ignores `menu:set`; macOS keeps the native menu). What only the menu had is in the app, desktop only: Open File… (`Ctrl+O`) and Save As… (`Ctrl+Shift+S`) are Home › Design tiles (`openFile` is a `FILE_COMMANDS` entry hidden where `FileActions.openFile` is absent), Open Recent is the Design group's ▾ (`Toolbar`'s `recentFiles`; `recent:names`/`recent:open` take an index and a name, main's `recentPathAt` looks the path up itself), Check for Updates… is in Help (`Platform.updates.check`) and Quit (`Ctrl+Q`) a command that saves first; `Platform.desktop` (`DesktopApp`, `nativeMenu` true on macOS) is the seam, and **on macOS the renderer binds no key for them and `NATIVE_MENU_OWN` keeps their commands out of the menu projection**. `main/updateErrors.ts` classifies a failed update check (`no-release`, `offline`, `other`): an automatic check is silent for the first two, a manual one answers in a sentence, anything else is the error's first line (140 characters), never headers.
 
@@ -2489,3 +2497,22 @@ its distances `ctx.scalar` signed with `absolute`/`negate`/`half` and a
 `translate`; `through-all` (cut/intersect) reaches past `ctx.bounds()`.
 Revolve is a `rotate_extrude` in (radius, axis) with the axis as OpenSCAD's
 Z; `flip` reverses the axis; the shared `axisOf` takes a `GeometryReader`. Ranges come from core's `customizerRows` (evaluated, base units; none when a range doesn't evaluate or min > max) and the section from `parameter.group` (ADR-0086). Accepted 2026-10-16; the acceptance tests live in `scad-export/acceptance.test.ts` and the CLI's "AC 5" test (`packages/cli/src/headless.test.ts`).
+
+ADR-0089 (2026-10-16) added **changelog fragments**: a change describes itself
+in its own one-line file under **`docs/changelog.d/`** instead of a line in
+`docs/CHANGELOG.md`, so concurrent pull requests never conflict there (they used
+to, every PR touching the top of `## Unreleased`). **`scripts/changelog-collect.mjs`**
+(`pnpm changelog`, release step) folds the fragments above the lines already
+under `## Unreleased` (newest first by the date in the line, ties by file name)
+and deletes them; it creates the section above the first `## v` heading when a
+release renamed it. **`scripts/check-changelog.mjs`** runs in `pnpm lint` and
+CI's check job (`--base "origin/<base_ref>"` on pull requests; the check job's
+checkout is `fetch-depth: 0` so the three-dot diff has the merge base).
+**Rules a change must keep:** a fragment is `YYYY-MM-DD-<slug>.md` (the date the
+change was finished, a kebab-case slug; `README.md` in the folder is the
+permanent explainer and is never collected) and its content is exactly one line
+matching `- \d{4}-\d{2}-\d{2} · **[^*]+**…` — no heading, no blank lines, no
+second paragraph; **a pull request never edits `docs/CHANGELOG.md`** (CI refuses
+it; the release commit's rename in `docs/release-checklist.md` step 2 is the one
+edit, made after `pnpm changelog`), and a fragment whose line is already in the
+changelog is refused, so a folded-in line is not duplicated by re-adding it.

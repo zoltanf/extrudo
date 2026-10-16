@@ -256,3 +256,47 @@ Rejected:
 - Drawing each scene's setup on camera: it doubles every clip's length for what isn't the
   tool.
 - Shortening long clips by speeding them up: a drag at double speed reads as a jump.
+
+## Amendment (2026-10-15): a clip for every Construct, 3D Print and Sketch tile
+
+The rest of R3-16: the batch the first one left for later, in three pull requests' worth of
+slices (Construct, 3D Print, Sketch). The approach, sizes and checks are the Solid part's
+(above): a 400 × 250 px frame round the action, a small design from `fixtures/demos/`, 200
+kbit/s, still stretches cut to 400 ms, `WHOLE_TABS` in `demos.test.ts`.
+
+- **Construct** (15 tiles: Offset Plane, Plane at Angle, Midplane, Tangent Plane, 3-Point Plane,
+  Plane Along Path, Angled Midplane, 2-Point Axis, Cylinder Axis, Edge Axis, Point, Point on
+  Path, Point at Intersection, and Inspect's Measure and Section Analysis). Each scene opens the
+  tool on a visible body, picks in the view (`constructScene` in the recorder), drags the
+  handle where the tool has one, commits with Enter and moves the pointer aside so a small
+  result (a point) isn't under it. **A scene that picks planes keeps its bodies in front of the
+  origin planes (x > 0, y < 0 in the home view)**: while a Plane field picks, the three origin
+  planes' big squares show and take a click that would land on a face behind them. The point
+  tools' results are a few pixels (the app draws a point small), so their scenes frame the body
+  at 85 %.
+- **3D Print** (Measure is Construct's clip; seven new: Place on Bed, Print Info, Tolerance,
+  Overhang Analysis, Wall Thickness, Export, Send to Slicer). Place on Bed picks the wedge's
+  sloping face and the body turns down. Overhang Analysis is recorded from below (Shift+3): an
+  overhang faces down, so from above nothing shows; the cap's underside turns red. Wall
+  Thickness shows two plates, the 0.6 mm one shaded. **Print Info, Tolerance and the two
+  Export tiles live in a panel or a dialog, so their frames are a fixed region of the page**
+  (`PANEL_FRAME`, the dialog's middle) with the model beside it, not a `frameWorld`: Print
+  Info scrolls to its numbers and types an infill (the weight follows), Tolerance clicks the
+  Normal preset. **Send to Slicer is the desktop app's tile**: the web build, which records the
+  clips, leaves the tile unavailable (`platform.openInSlicer`), so its clip is the Export
+  dialog the tile opens there, with 3MF ("for slicers") picked; the slicer buttons themselves
+  are not in it. Re-record it from the desktop build if that ever matters.
+- **Sketch** (19 new: Arc, Sketch Fillet, Trim, Offset, Parameters, the thirteen constraints
+  and Export Sketch; Line, Rectangle, Circle and Dimension keep their clips, which pass the
+  look check). A scene opens a new sketch on XY, zooms it (`sketchFrame`), draws what the
+  tool works on with Ctrl held (inference off, so no constraint is added by the drawing) and
+  then runs the tile and clicks the picks in sketch millimetres (`sketchScene`). Each
+  constraint scene picks what its prompt asks for and the solver moves the geometry. Sketch
+  Fillet takes its radius **before** the corner is picked (the box follows the pointer; typing
+  after the pick changes nothing). Parameters and Export Sketch are dialogs, framed on their
+  fields like the Export dialog. Tools in the tab's "more" menus (the other arcs, shapes,
+  Extend, Break…) have no clip: the batch is the ribbon's tiles, the ones `WHOLE_TABS`
+  checks.
+- **The total budget goes from 2 MB to 4 MB** (`demos.test.ts`): 78 clips of about 45 kB (3.5 MB) don't
+  fit 2 MB, and a clip loads only when its tooltip opens (not precached), so what a visitor
+  fetches is one clip of at most 150 kB.
