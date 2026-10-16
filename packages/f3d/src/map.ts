@@ -480,36 +480,26 @@ export function f3dToDesign(
     }
     return { id: `${made.id}:${k}` as BodyId, index: body.index, by: made.name };
   };
-  // Extrudo's join fuses every body it names into the first; the file's keeps
-  // apart bodies its tool doesn't bridge. So a body joined into another here
-  // is that other body from then on.
-  const joinedInto = new Map<BodyId, BodyId>();
-  /** Bodies a join here fused others into. */
-  const kept = new Set<BodyId>();
-  const current = (id: BodyId): BodyId => {
-    let at = id;
-    for (let i = 0; i < joinedInto.size && joinedInto.has(at); i++)
-      at = joinedInto.get(at) as BodyId;
-    return at;
-  };
+  // After a join of several bodies Extrudo keeps the pieces its tool doesn't
+  // bridge apart, the largest under the first one's ID and the rest under the
+  // join's own (`splitSolids`): which ID is which body from then on can't be
+  // told here, so later features that name one of them are left to Extrudo's
+  // default (every body they meet), and none of them is hidden.
+  const unsure = new Set<BodyId>();
   /** A feature's participant bodies as Extrudo references, when every one is known. */
   const participants = (records: number[], operation?: string): GeomRef[] | undefined => {
     const ids = records.map((r) => bodyOf(r)?.id);
-    if (ids.length === 0 || ids.some((id) => id === undefined)) return undefined;
-    const now = [...new Set(ids.map((id) => current(id as BodyId)))];
-    // A join keeps the body Extrudo's own would (the earliest made): the
-    // names of the faces it fuses follow from that.
+    if (ids.length === 0 || ids.some((id) => id === undefined || unsure.has(id))) return undefined;
+    const now = [...new Set(ids as BodyId[])];
     if (operation === 'join' && now.length > 1) {
+      // In the order Extrudo's default would join them (the earliest made first).
       const at = new Map(d.doc.features.map((f, i) => [f.id as string, i]));
       const key = (id: BodyId) => {
         const [feature, k] = id.split(':');
         return (at.get(feature as string) ?? 0) * 1e6 + Number(k);
       };
       now.sort((a, b) => key(a) - key(b));
-    }
-    if (operation === 'join' && now.length > 1) {
-      kept.add(now[0] as BodyId);
-      for (const id of now.slice(1)) joinedInto.set(id, now[0] as BodyId);
+      for (const id of now) unsure.add(id);
     }
     return now.map((id) => ({ kind: 'body', id }));
   };
@@ -795,8 +785,8 @@ export function f3dToDesign(
   for (const body of shownElsewhere ? [] : f3d.bodies) {
     const known = components.shown(body) ? undefined : bodyOf(body.id);
     if (!known || (order.get(known.id.split(':')[0] as string) ?? 0) < lastOpenJoin) continue;
-    // Joined with another body here (either way): hiding it would hide that one.
-    if (joinedInto.has(known.id) || kept.has(known.id)) continue;
+    // Joined with others here: it may be another body by now.
+    if (unsure.has(known.id)) continue;
     d.state.dispatch(
       updateBody({ id: known.id, changes: { name: `Body${known.index}`, visible: false } }),
     );
@@ -810,8 +800,7 @@ export function f3dToDesign(
   for (const body of f3d.bodies) {
     if (!body.visible) continue;
     const component = components.of(body.component)?.id;
-    const known = bodyOf(body.id)?.id;
-    const hint = known && current(known);
+    const hint = bodyOf(body.id)?.id;
     bodies.push({
       record: body.id,
       name: `Body${body.index}`,

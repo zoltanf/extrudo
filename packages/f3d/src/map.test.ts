@@ -1024,13 +1024,12 @@ describe('f3dToDesign', () => {
       ]);
     });
 
-    it('names the body a join merged a target into, and leaves it shown', () => {
+    it("leaves a join's bodies to Extrudo afterwards, and shown", () => {
       const f3d = twoDiscs(1);
       const cut = f3d.features.pop() as F3dExtrude;
-      // A join naming both discs (Extrudo fuses both into the first it names),
-      // then the cut naming Body1, which the file keeps; Body2 it hides.
+      // A join naming both discs, then the cut naming Body1; Body2 the file hides.
       f3d.features.push(
-        { ...cut, id: 5, name: 'Extrude3', operation: 'join', participants: [50, 51] },
+        { ...cut, id: 5, name: 'Extrude3', operation: 'join', participants: [51, 50] },
         cut,
       );
       (f3d.bodies[1] as { visible: boolean }).visible = false;
@@ -1038,14 +1037,15 @@ describe('f3dToDesign', () => {
       const doc = design.toJSON();
       const made = doc.features.find((f) => f.name === 'Extrude1')?.id;
       const named = (name: string) => doc.features.find((f) => f.name === name)?.inputs.bodies;
-      // The join keeps the earliest body, as Extrudo's own would.
+      // The join names them in the order Extrudo's default would join them.
       expect(named('Extrude3')).toMatchObject({
         refs: [
           { kind: 'body', id: `${made}:0` },
           { kind: 'body', id: `${made}:1` },
         ],
       });
-      expect(named('Extrude2')).toMatchObject({ refs: [{ kind: 'body', id: `${made}:0` }] });
+      // Which ID is which body after it is Extrudo's to say.
+      expect(named('Extrude2')).toBeUndefined();
       expect(Object.values(doc.bodies ?? {}).some((b) => b.visible === false)).toBe(false);
     });
 
