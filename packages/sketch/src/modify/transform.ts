@@ -148,7 +148,7 @@ export function copyObjects(
     if (copy.type === 'point') {
       const [x, y] = placement.map([copy.x, copy.y]);
       b.entities[id(old)] = { type: 'point', x, y };
-    } else b.entities[id(old)] = copy;
+    } else b.entities[id(old)] = turnTangents(copy, placement.map);
   }
   const inside = (refs: SketchEntityId[]) => refs.every((r) => set.has(r));
   for (const c of Object.values(data.constraints)) {
@@ -185,6 +185,25 @@ function copyEntity(e: SketchEntity, id: (old: SketchEntityId) => SketchEntityId
     case 'text':
       return { ...e, anchor: id(e.anchor), top: id(e.top) };
   }
+}
+
+/**
+ * A fit spline's end tangents (ADR-0063's third amendment) under a transform
+ * whose point map is `map`: derivatives are directions, so they take the
+ * map's linear part (no translation). Anything else comes back as it is.
+ */
+function turnTangents(e: SketchEntity, map: (p: Vec2) => Vec2): SketchEntity {
+  if (e.type !== 'spline' || !e.tangents) return e;
+  const origin = map([0, 0]);
+  const turn = (v: Vec2): [number, number] => {
+    const q = map(v);
+    return [q[0] - origin[0], q[1] - origin[1]];
+  };
+  const { start, end } = e.tangents;
+  return {
+    ...e,
+    tangents: { ...(start ? { start: turn(start) } : {}), ...(end ? { end: turn(end) } : {}) },
+  };
 }
 
 function mapConstraint(
@@ -371,7 +390,7 @@ export function mirror(
     }
     // A mirrored arc turns the other way round: swap its ends.
     if (copy.type === 'arc') copy = { ...copy, start: copy.end, end: copy.start };
-    b.entities[id(old)] = copy;
+    b.entities[id(old)] = turnTangents(copy, (p) => reflect(a0, a1, p));
   }
   for (const old of picked) {
     const e = data.entities[old] as SketchEntity;
@@ -442,6 +461,15 @@ export function scale(
       b.move(id, to);
       if (dist(to, [e.x, e.y]) > 1e-9) moved.push(id);
     } else if (e?.type === 'circle') b.set(id, { ...e, radius: e.radius * factor });
+    else if (e?.type === 'spline' && e.tangents) {
+      b.set(
+        id,
+        turnTangents(e, (p) => [
+          base[0] + (p[0] - base[0]) * factor,
+          base[1] + (p[1] - base[1]) * factor,
+        ]),
+      );
+    }
   }
   // A fix holds whatever position it finds, so the solve can't catch it: refuse here.
   for (const c of Object.values(data.constraints)) {

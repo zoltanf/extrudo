@@ -69,8 +69,8 @@ its points and its curves.
 | `k.polygon(center, corner, sides, options?)` | A regular polygon, `{ mode: 'circumscribed' }` for a nut's wrench size | `edges`, `corners`, `circle` |
 | `k.polygonOnEdge(a, b, side, sides)` | A polygon on one side of an edge | as above |
 | `k.slot(a, b, width, options?)` | A slot of that width between two points, `{ mode: 'overall' }` for its ends | `lines`, `arcs`, `centerline` |
-| `k.spline(points, options?)` | A fit-point spline through its points, `{ closed: true }` for a loop back to the first | `points`, `closed` |
-| `k.splineControl(points, options?)` | A control-point spline through its poles, `{ closed }` for the periodic one, `{ knots }` for its own knot vector (`points.length + 4` values, four 0s first and four 1s last) | `points`, `closed`, `knots` |
+| `k.spline(points, options?)` | A fit-point spline through its points, `{ closed: true }` for a loop back to the first, `{ tangents: { start?, end? } }` for an open one's end derivatives (`[x, y]` in mm per unit of the curve's 0..1 parameter: direction and length) | `points`, `closed`, `tangents` |
+| `k.splineControl(points, options?)` | A control-point spline through its poles, `{ closed }` for the periodic one, `{ degree }` for its own degree (1 to 5, at most `points.length − 1`; not closed), `{ knots }` for its own knot vector (`points.length + degree + 1` values, `degree + 1` 0s first and as many 1s last; degree 3 without one) | `points`, `closed`, `knots`, `degree` |
 | `k.conic(start, shoulder, end, rho)` | A conic through three points, `rho` between 0 and 1 | `points` |
 | `k.text(anchor, top, content)` | Text: `{ text, font, align? }`, where the font is a bundled ID (`inter-regular@1`) or `attachment:<id>` | `anchor`, `top` |
 

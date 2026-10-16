@@ -25,7 +25,7 @@ import {
 } from '@extrudo/core';
 import type { Contour, Drawing, Layer, Point, Segment } from '@extrudo/io';
 import type { Profile, ProfileEdge, ProfileLoop } from '../profiles';
-import { bezierPieces, bezierRange, splineParam } from './bezier';
+import { bezierPieces, bezierRange, cubicApproximation, splineParam } from './bezier';
 
 const TAU = 2 * Math.PI;
 
@@ -162,7 +162,7 @@ function curveContour(data: SketchData, entity: SketchEntity): Contour | undefin
       // A closed spline (P4-12) is written as the clamped curve that is exactly
       // its loop, ending on its first point.
       const closed = entity.closed === true && entity.mode !== 'conic' && points.length >= 3;
-      return start && { start, segments: beziers.map(bezierSegment), closed };
+      return start && { start, segments: beziers.flatMap(bezierSegments), closed };
     }
     case 'text':
       // A text is many curves: `sketchDrawing` expands it with `placeText`.
@@ -185,7 +185,16 @@ function textCurveContour(curve: TextCurve): Contour | undefined {
   return { start: first, segments: [segment], closed: false };
 }
 
-/** One Bézier piece (its first point is the current point) as a segment. */
+/**
+ * One Bézier piece (its first point is the current point) as segments: one for
+ * degree 1 to 3, cubics within `CUBIC_TOLERANCE` for degree 4 or 5 (ADR-0063's
+ * third amendment), which SVG and DXF have no segment for.
+ */
+function bezierSegments(points: readonly Vec2[]): Segment[] {
+  return cubicApproximation(points).map(bezierSegment);
+}
+
+/** A Bézier of degree 1 to 3 as one segment. */
 function bezierSegment(points: readonly Vec2[]): Segment {
   const to = points[points.length - 1] as Vec2;
   if (points.length === 4) {
@@ -269,7 +278,7 @@ function edgeSegments(data: SketchData, edge: ProfileEdge): Segment[] {
       const spline = splineCurve(entity, poles as Vec2[]);
       const [from, to] = splineRange(spline, points);
       const beziers = bezierRange(bezierPieces(spline), from, to);
-      const segments = beziers.map(bezierSegment);
+      const segments = beziers.flatMap(bezierSegments);
       const last = segments[segments.length - 1];
       if (last) last.to = end;
       return segments;
@@ -310,7 +319,7 @@ function textCurveSegments(
   // A single-span clamped B-spline's poles are the Bézier's control points.
   const spline: BSpline = { degree: sub.degree, poles: sub.poles, knots: sub.knots };
   const [from, to] = splineRange(spline, points);
-  const segments = bezierRange(bezierPieces(spline), from, to).map(bezierSegment);
+  const segments = bezierRange(bezierPieces(spline), from, to).flatMap(bezierSegments);
   const last = segments[segments.length - 1];
   if (last) last.to = end;
   return segments;

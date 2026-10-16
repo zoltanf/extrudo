@@ -3,7 +3,9 @@
  * (`Q`/`C` commands) rather than a polyline. Knot insertion (Boehm) raises
  * every interior knot to the degree's multiplicity; each knot span is then
  * one Bézier. Pieces of a spline between two parameters are cut with de
- * Casteljau.
+ * Casteljau. A piece of degree 4 or 5 (a control spline's own degree,
+ * ADR-0063's third amendment), which SVG and DXF can't write, is given as
+ * cubics within `CUBIC_TOLERANCE` (`cubicApproximation`).
  */
 import type { BSpline, Vec2 } from '@extrudo/core';
 import { splinePoint } from '@extrudo/core';
@@ -123,4 +125,69 @@ export function splineParam(spline: BSpline, p: Vec2): number {
     else a = c;
   }
   return (a + b) / 2;
+}
+
+/**
+ * How close the cubics that stand in for a degree-4 or 5 Bézier stay to it, mm
+ * (ADR-0063's third amendment, B2): the offset's `OFFSET_TOLERANCE`.
+ */
+export const CUBIC_TOLERANCE = 1e-3;
+/** The most halvings of a piece's parameter range (2⁸ cubics per piece). */
+const CUBIC_MAX_DEPTH = 8;
+
+/** A Bézier's point and derivative at `t` (de Casteljau's last two points). */
+function pointAndDerivative(points: readonly Vec2[], t: number): [Vec2, Vec2] {
+  let row = points.slice();
+  while (row.length > 2) {
+    const next: Vec2[] = [];
+    for (let i = 1; i < row.length; i++) {
+      const a = row[i - 1] as Vec2;
+      const b = row[i] as Vec2;
+      next.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+    }
+    row = next;
+  }
+  const [a, b] = row as [Vec2, Vec2];
+  const d = points.length - 1;
+  return [
+    [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t],
+    [d * (b[0] - a[0]), d * (b[1] - a[1])],
+  ];
+}
+
+/**
+ * A Bézier of any degree as cubic Béziers within `tolerance` (mm): the cubic
+ * Hermite of each part's ends and end derivatives, checked against the Bézier
+ * at its quarter points and halved until it holds. A cubic or lower comes back
+ * as it is.
+ */
+export function cubicApproximation(points: readonly Vec2[], tolerance = CUBIC_TOLERANCE): Vec2[][] {
+  if (points.length <= 4) return [points.slice()];
+  const out: Vec2[][] = [];
+  const part = (t0: number, t1: number, depth: number) => {
+    const [p0, d0] = pointAndDerivative(points, t0);
+    const [p1, d1] = pointAndDerivative(points, t1);
+    const h = (t1 - t0) / 3;
+    const cubic: Vec2[] = [
+      p0,
+      [p0[0] + h * d0[0], p0[1] + h * d0[1]],
+      [p1[0] - h * d1[0], p1[1] - h * d1[1]],
+      p1,
+    ];
+    const off = [0.25, 0.5, 0.75].some((s) => {
+      const [q] = pointAndDerivative(points, t0 + s * (t1 - t0));
+      const [c] = pointAndDerivative(cubic, s);
+      return Math.hypot(q[0] - c[0], q[1] - c[1]) > tolerance;
+    });
+    if (off && depth < CUBIC_MAX_DEPTH) {
+      const mid = (t0 + t1) / 2;
+      part(t0, mid, depth + 1);
+      part(mid, t1, depth + 1);
+    } else out.push(cubic);
+  };
+  part(0, 1, 0);
+  // The ends are the piece's own, exactly.
+  (out[0] as Vec2[])[0] = points[0] as Vec2;
+  (out[out.length - 1] as Vec2[])[3] = points[points.length - 1] as Vec2;
+  return out;
 }

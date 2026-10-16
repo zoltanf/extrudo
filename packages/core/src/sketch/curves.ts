@@ -461,7 +461,7 @@ export function normalizeSpline(spline: BSpline): BSpline {
 }
 
 /**
- * A clamped cubic split at `u` (strictly inside) into the curve before and
+ * A clamped B-spline split at `u` (strictly inside) into the curve before and
  * after it, each still over its own part of the knots (normalise them with
  * `normalizeSpline`). Knot insertion to multiplicity 3 makes the point at `u`
  * a pole, so the two pieces are exactly the curve.
@@ -486,12 +486,16 @@ export function splitSpline(spline: BSpline, u: number): [BSpline, BSpline] {
 }
 
 /**
- * The part of a clamped cubic between the parameters `from` < `to`, over 0..1.
- * A part that wraps round a closed spline's seam (`to` > 1) is the piece from
- * `from` to the end joined to the piece from the start to `to − 1`.
+ * The part of a clamped B-spline between the parameters `from` < `to`, over
+ * 0..1. A part that wraps round a closed spline's seam (`to` > 1, always a
+ * cubic) is the piece from `from` to the end joined to the piece from the
+ * start to `to − 1`.
  */
 export function splineRange(spline: BSpline, from: number, to: number): BSpline {
-  const cubic = cubicOf(spline);
+  // A single Bézier below degree 3 is raised (A3); a stored degree (the third
+  // amendment) is kept, since knot insertion works at any degree.
+  const cubic =
+    spline.degree < 3 && spline.poles.length === spline.degree + 1 ? cubicOf(spline) : spline;
   const tol = 1e-12;
   const part = (a: number, b: number): BSpline => {
     let s = cubic;
