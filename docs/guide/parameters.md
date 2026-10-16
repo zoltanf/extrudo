@@ -63,17 +63,31 @@ parameters), or search for it with `Ctrl+K`.
 
 ![The Parameters dialog of the Wall bracket, with its user parameters and model parameters](./images/parameters/dialog.png)
 
-**User parameters** are yours. To add one, fill in the row at the bottom: a name, a **Unit**
-(**Length**, **Angle** or **Number**), an expression and, if you like, a comment, then press
-**Add**. Names can't be a unit, a function or `pi`. Parameters can use each other:
-`inner = width - 2 * wall`. If they end up depending on themselves, Extrudo refuses and shows
-the loop: "`wall` refers to itself: wall → lid_gap → wall."
+The dialog has a list on the left and the selected parameter on the right.
 
-**Model parameters** are the values in the design that already have names, listed under the
-feature they belong to. A dimension you placed in a sketch is `d1`, `d2` and so on, and so are
-the values in feature dialogs. You can edit them here, and use them in other expressions. Rename
-a dimension by typing `name = value` in its editor, as described in
-[sketching](./sketching.md).
+**User parameters** are yours. To add one, press **New parameter** under the list and fill in
+a name, a **Unit** (**Length**, **Angle** or **Number**), an expression and, if you like, a
+comment, then press **Add**. Names can't be a unit, a function or `pi`. Parameters can use each
+other: `inner = width - 2 * wall`, and the list marks such a formula with **ƒx**. If they end up
+depending on themselves, Extrudo refuses and shows the loop: "`wall` refers to itself: wall →
+lid_gap → wall."
+
+**Groups** keep a longer list tidy. Pick a group for the selected parameter under **Group**, or
+press **New group** and type a name. While no parameter has a group the list is one flat list;
+once one has, the list is sorted into sections, with the parameters without a group first under
+**General**. Groups are also the headings in the Customizer.
+
+**Order**: drag a row by its grip to move it, or into another group's section; with a row
+selected, `Alt+↑` and `Alt+↓` move it within its group. The order is also the Customizer's.
+
+**Used by** lists what uses the selected parameter: other parameters, slider ranges, features
+and sketch dimensions. Click a parameter there to go to it.
+
+**Model parameters** are the values in the design that already have names, in the collapsed
+section below the list, each with the feature it belongs to. A dimension you placed in a sketch
+is `d1`, `d2` and so on, and so are the values in feature dialogs. You can edit them here, and
+use them in other expressions. Rename a dimension by typing `name = value` in its editor, as
+described in [sketching](./sketching.md).
 
 Changing a parameter is one undo step, however many sketches and features it moves. Deleting one
 that something uses is refused, and the message lists what uses it.
@@ -83,11 +97,14 @@ that something uses is refused, and the message lists what uses it.
 The Customizer is a panel of sliders for the few parameters someone changing your design would
 reach for, and none of the rest. It is how a design becomes a small configurable product.
 
-To put a parameter there, click its star in the Parameters dialog. Under the row you can set a
-**Min**, a **Max**, a **Step** and a **Group**. A parameter with a range and a plain value gets a
-slider. Parameters with the same group are shown together, such as *Size* and *Walls*. The ranges
-are only the slider's range: you can type a value outside it, and the panel warns that it is
-outside.
+To put a parameter there, turn on the **Customizer** switch for it in the Parameters dialog (the
+list shows a filled star). Then set a **Min**, a **Step** and a **Max**. They are expressions like
+any other and are kept as you type them, so a range can follow other parameters: a wall's
+**Max** can be `width / 20`. A range can't use the parameter itself, or one that changes with it,
+since the slider would move its own ends. A parameter with a range and a plain value gets a
+slider; a formula shows its value read-only. Parameters with the same group are shown together,
+such as *Size* and *Walls*. The ranges are only the slider's range: you can type a value outside
+it, and the panel warns that it is outside.
 
 Open the panel from **Home › Customizer**. Dragging a slider moves the model live, and the whole
 drag is one undo step.

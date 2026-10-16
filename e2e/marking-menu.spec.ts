@@ -541,13 +541,12 @@ test('folders, origin rows, parameter rows and design cards have context menus',
   await expect(page.getByRole('menuitem', { name: /all origin/i })).toBeVisible();
   await page.keyboard.press('Escape');
 
-  // A user parameter's row in the Parameters dialog: Delete and Undo; text fields keep the
-  // browser's menu.
+  // A user parameter's row in the Parameters dialog's list: Delete and Undo.
   await pickTool(page, 'Parameters');
   const dialog = page.getByRole('dialog', { name: 'Parameters' });
   await expect(dialog).toBeVisible();
-  const row = dialog.locator('tbody tr').first();
-  await row.locator('td').last().click({ button: 'right' });
+  const row = dialog.locator('[data-parameter-row]').first();
+  await row.click({ button: 'right' });
   await expect(page.getByRole('menuitem', { name: /^Delete / })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: /^Undo/ })).toBeVisible();
   await page.keyboard.press('Escape');

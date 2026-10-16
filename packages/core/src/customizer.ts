@@ -4,10 +4,11 @@
  * sets to switch between.
  *
  * **Exposed parameters.** A parameter with a `customizer` object is shown in
- * the panel, in document order, grouped by `group` (groups in order of first
- * appearance, ungrouped parameters first): `customizerRows`. `min`, `max` and
- * `step` are the slider's range in the parameter's **base unit**, not a
- * constraint; a value outside it is allowed and the row says so.
+ * the panel, in document order, grouped by the parameter's `group` (groups in
+ * order of first appearance, ungrouped parameters first): `customizerRows`.
+ * `min`, `max` and `step` are expressions in the parameter's unit (ADR-0086
+ * §2), evaluated by `evaluateRange`: the slider's range, not a constraint; a
+ * value outside it is allowed and the row says so.
  *
  * **Configurations.** A configuration is a name and a set of parameter
  * expressions. Applying one goes through the app's parameter-change path, so
@@ -23,15 +24,31 @@
  */
 import type { z } from 'zod';
 import { CommandError, type DocumentDraft, defineCommand } from './commands';
-import type { EvaluatedParameter } from './expr/parameters';
-import { type Node, parse } from './expr/parser';
+import { ExprError } from './expr/errors';
+import { type EvaluateResult, isReservedName } from './expr/evaluate';
+import { evaluateParameters, findRef, type ParameterEvaluation } from './expr/parameters';
+import { type Node, parse, references } from './expr/parser';
 import type { ConfigurationId, ParameterId } from './ids';
-import type { Configuration, Customizer, ExtrudoDocument, UnitKind } from './schema';
-import { ConfigurationValuesSchema, CustomizerSchema, sameConfigurationName } from './schema';
+import type { Configuration, Customizer, ExtrudoDocument, Parameter, UnitKind } from './schema';
+import {
+  ConfigurationValuesSchema,
+  CustomizerSchema,
+  ParameterGroupSchema,
+  sameConfigurationName,
+} from './schema';
+
+/** The parts of a slider range, in the order the dialog shows them. */
+export const RANGE_FIELDS = ['min', 'step', 'max'] as const;
+export type RangeField = (typeof RANGE_FIELDS)[number];
+
+const RANGE_LABELS: Record<RangeField, string> = { min: 'Min', max: 'Max', step: 'Step' };
 
 /**
  * Exposes a parameter in the customizer, or takes it out again by leaving
- * `customizer` out (ADR-0059 §1). One undo step.
+ * `customizer` out (ADR-0059 §1). One undo step. Each range field is an
+ * expression in the parameter's unit (ADR-0086 §2); an empty one is left out.
+ * Refused: a field that doesn't evaluate, that uses the parameter or one that
+ * depends on it, a step that isn't positive, and a min above the max.
  */
 export const setParameterCustomizer = defineCommand<{
   id: ParameterId;
@@ -43,11 +60,102 @@ export const setParameterCustomizer = defineCommand<{
     delete parameter.customizer;
     return;
   }
-  const range = validate(CustomizerSchema, customizer, 'The customizer settings are not valid:');
-  if (range.min !== undefined && range.max !== undefined && range.min > range.max) {
+  const given = validate(CustomizerSchema, customizer, 'The customizer settings are not valid:');
+  const range: Customizer = {};
+  for (const field of RANGE_FIELDS) {
+    const text = given[field]?.trim();
+    if (text) range[field] = text;
+  }
+  const evaluation = evaluateParameters(draft as ExtrudoDocument);
+  const values: Partial<Record<RangeField, number>> = {};
+  for (const field of RANGE_FIELDS) {
+    const text = range[field];
+    if (text === undefined) continue;
+    const result = evaluateRange(evaluation, parameter, field, text);
+    if (!result.ok) throw new CommandError(`${RANGE_LABELS[field]}: ${result.error.message}`);
+    values[field] = result.value;
+  }
+  if (values.min !== undefined && values.max !== undefined && values.min > values.max) {
     throw new CommandError(`Min ${range.min} can't be above max ${range.max}.`);
   }
   parameter.customizer = range;
+});
+
+/**
+ * What a slider range field evaluates to (ADR-0086 §2): the expression in the
+ * parameter's unit, against the other parameters' current values. Beyond the
+ * expression's own errors, a range must not use the parameter or a parameter
+ * that depends on it (dragging the slider would move the range), and a step
+ * must be positive.
+ */
+export function evaluateRange(
+  evaluation: ParameterEvaluation,
+  parameter: Pick<Parameter, 'name' | 'unit'>,
+  field: RangeField,
+  expression: string,
+): EvaluateResult {
+  const result = evaluation.evaluate(expression, parameter.unit);
+  if (!result.ok) return result;
+  const node = parse(expression);
+  const moving = evaluation.dependents([parameter.name]);
+  moving.add(parameter.name);
+  for (const name of references(node)) {
+    if (isReservedName(name) || !moving.has(name)) continue;
+    const span = findRef(node, name) ?? node.span;
+    const message =
+      name === parameter.name
+        ? `The range can't use \`${name}\` itself.`
+        : `The range can't use \`${name}\`: it changes with \`${parameter.name}\`.`;
+    return { ok: false, error: new ExprError(message, span) };
+  }
+  if (field === 'step' && result.value <= 0) {
+    return { ok: false, error: new ExprError('The step must be above 0.', node.span) };
+  }
+  return result;
+}
+
+/**
+ * Puts a parameter in a group, or takes it out of its group with an empty or
+ * absent `group` (ADR-0086 §1). One undo step. The name is trimmed, 1 to 40
+ * characters.
+ */
+export const setParameterGroup = defineCommand<{ id: ParameterId; group?: string }>(
+  'parameter.group',
+  'Change group',
+  (draft, { id, group }) => {
+    const parameter = findParameter(draft, id);
+    const name = group?.trim();
+    if (!name) {
+      delete parameter.group;
+      return;
+    }
+    parameter.group = validate(ParameterGroupSchema, name, 'The group name is not valid:');
+  },
+);
+
+/**
+ * Moves a parameter to `index` in the list (ADR-0086 §3), the position it ends
+ * up at, and with `group` also into that group (`null` takes it out of its
+ * group): what a drag in the Parameters dialog does, in one undo step. The
+ * order is the dialog's order and the customizer panel's; it never changes
+ * what an expression evaluates to.
+ */
+export const moveParameter = defineCommand<{
+  id: ParameterId;
+  index: number;
+  group?: string | null;
+}>('parameter.move', 'Move parameter', (draft, { id, index, group }) => {
+  const parameter = findParameter(draft, id);
+  if (!Number.isInteger(index) || index < 0 || index >= draft.parameters.length) {
+    throw new CommandError(`There is no position ${index} in the parameter list.`);
+  }
+  if (group === null) delete parameter.group;
+  else if (group !== undefined) {
+    parameter.group = validate(ParameterGroupSchema, group.trim(), 'The group name is not valid:');
+  }
+  const from = draft.parameters.findIndex((p) => p.id === id);
+  const [moved] = draft.parameters.splice(from, 1);
+  draft.parameters.splice(index, 0, moved as Parameter);
 });
 
 /**
@@ -170,33 +278,45 @@ export interface CustomizerRow {
  * first, then each group in order of first appearance, each group in document
  * order.
  *
- * `values` is the per-name evaluation of the document's parameters, so the app
- * passes `evaluateParameters(doc).parameters`: a parameter with no entry there,
- * or one whose expression has an error, has no value.
+ * `evaluation` is the document's (`evaluateParameters(doc)`): a parameter
+ * whose expression has an error has no value. A range field that doesn't
+ * evaluate (`evaluateRange`) is left out, and so are both ends when the min is
+ * above the max, so the row has no slider rather than a wrong one.
  */
 export function customizerRows(
   doc: ExtrudoDocument,
-  values: ReadonlyMap<string, EvaluatedParameter>,
+  evaluation: ParameterEvaluation,
 ): CustomizerRow[] {
   const rows: CustomizerRow[] = [];
   for (const parameter of doc.parameters) {
     const customizer = parameter.customizer;
     if (!customizer) continue;
-    const result = values.get(parameter.name)?.result;
+    const result = evaluation.parameters.get(parameter.name)?.result;
     const value = result?.ok === true ? result.value : undefined;
-    const { min, max, step } = customizer;
+    const range: Partial<Record<RangeField, number>> = {};
+    for (const field of RANGE_FIELDS) {
+      const text = customizer[field];
+      if (text === undefined) continue;
+      const end = evaluateRange(evaluation, parameter, field, text);
+      if (end.ok) range[field] = end.value;
+    }
+    if (range.min !== undefined && range.max !== undefined && range.min > range.max) {
+      delete range.min;
+      delete range.max;
+    }
+    const { min, max, step } = range;
     rows.push({
       id: parameter.id,
       name: parameter.name,
       comment: parameter.comment,
-      group: customizer.group,
+      group: parameter.group,
       unit: parameter.unit,
       expression: parameter.expression,
       value,
       plain: isPlainValue(parameter.expression),
-      min,
-      max,
-      step,
+      ...(min === undefined ? {} : { min }),
+      ...(max === undefined ? {} : { max }),
+      ...(step === undefined ? {} : { step }),
       outOfRange:
         value !== undefined &&
         ((min !== undefined && value < min) || (max !== undefined && value > max)),

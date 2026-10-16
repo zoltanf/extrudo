@@ -6,13 +6,21 @@ import {
   configurationChanges,
   currentConfigurations,
   customizerRows,
+  evaluateRange,
   isPlainValue,
+  moveParameter,
   removeConfiguration,
   setParameterCustomizer,
   setParameterExpressions,
+  setParameterGroup,
   updateConfiguration,
 } from './customizer';
-import { addParameter, removeParameter, updateParameter } from './document-commands';
+import {
+  addParameter,
+  parameterUsers,
+  removeParameter,
+  updateParameter,
+} from './document-commands';
 import { evaluateParameters } from './expr/parameters';
 import { UndoHistory } from './history';
 import type { ConfigurationId, ParameterId } from './ids';
@@ -21,7 +29,7 @@ import { parameter, pid, sampleDocument } from './testing';
 
 const cid = (id: string) => id as ConfigurationId;
 const apply = (doc: ExtrudoDocument, command: Command<unknown>) => applyCommand(doc, command).doc;
-const rows = (doc: ExtrudoDocument) => customizerRows(doc, evaluateParameters(doc).parameters);
+const rows = (doc: ExtrudoDocument) => customizerRows(doc, evaluateParameters(doc));
 
 /** Sets several parameter expressions, as applying a configuration does. */
 const setExpressions = defineCommand<Record<ParameterId, string>>(
@@ -40,10 +48,14 @@ const setExpressions = defineCommand<Record<ParameterId, string>>(
 function exposedDocument(): ExtrudoDocument {
   let doc = apply(
     sampleDocument(),
-    setParameterCustomizer({ id: pid('p1'), customizer: { min: 10, max: 80, step: 1 } }),
+    setParameterCustomizer({
+      id: pid('p1'),
+      customizer: { min: '10 mm', max: '80 mm', step: '1 mm' },
+    }),
   );
   doc = apply(doc, addParameter({ parameter: parameter('p3', 'height', '30 mm') }));
-  doc = apply(doc, setParameterCustomizer({ id: pid('p3'), customizer: { group: 'Size' } }));
+  doc = apply(doc, setParameterGroup({ id: pid('p3'), group: 'Size' }));
+  doc = apply(doc, setParameterCustomizer({ id: pid('p3'), customizer: {} }));
   return doc;
 }
 
@@ -90,17 +102,28 @@ describe('isPlainValue', () => {
 });
 
 describe('setParameterCustomizer', () => {
-  it('exposes a parameter, changes its range and group, and takes it out again', () => {
+  it('exposes a parameter, changes its range, and takes it out again', () => {
     let doc = apply(sampleDocument(), setParameterCustomizer({ id: pid('p1'), customizer: {} }));
     expect(doc.parameters[0]).toMatchObject({ name: 'width', customizer: {} });
     doc = apply(
       doc,
       setParameterCustomizer({
         id: pid('p1'),
-        customizer: { min: 10, max: 80, step: 0.5, group: 'Size' },
+        customizer: { min: ' 10 mm ', max: '20 * wall', step: '0.5 mm' },
       }),
     );
-    expect(doc.parameters[0]?.customizer).toEqual({ min: 10, max: 80, step: 0.5, group: 'Size' });
+    // Expressions are kept as typed (trimmed), formulas included (ADR-0086 §2).
+    expect(doc.parameters[0]?.customizer).toEqual({
+      min: '10 mm',
+      max: '20 * wall',
+      step: '0.5 mm',
+    });
+    // An empty field is left out.
+    doc = apply(
+      doc,
+      setParameterCustomizer({ id: pid('p1'), customizer: { min: '10 mm', max: ' ' } }),
+    );
+    expect(doc.parameters[0]?.customizer).toEqual({ min: '10 mm' });
     doc = apply(doc, setParameterCustomizer({ id: pid('p1') }));
     expect(doc.parameters[0]).not.toHaveProperty('customizer');
     expect(DocumentSchema.safeParse(doc).success).toBe(true);
@@ -112,24 +135,101 @@ describe('setParameterCustomizer', () => {
       "Parameter nope doesn't exist.",
     );
     expect(() =>
-      apply(doc, setParameterCustomizer({ id: pid('p1'), customizer: { min: 80, max: 10 } })),
-    ).toThrow("Min 80 can't be above max 10.");
+      apply(
+        doc,
+        setParameterCustomizer({ id: pid('p1'), customizer: { min: '80 mm', max: '10 mm' } }),
+      ),
+    ).toThrow("Min 80 mm can't be above max 10 mm.");
+  });
+
+  it('refuses a field that does not evaluate, a non-positive step and a moving range', () => {
+    const doc = apply(
+      sampleDocument(),
+      addParameter({ parameter: parameter('p3', 'half', 'width / 2') }),
+    );
+    const refused = (customizer: Record<string, string>) => () =>
+      apply(doc, setParameterCustomizer({ id: pid('p1'), customizer }));
+    expect(refused({ min: '10 deg' })).toThrow(/^Min: /);
+    expect(refused({ max: 'nothing + 1' })).toThrow(/^Max: /);
+    expect(refused({ step: '0 mm' })).toThrow('Step: The step must be above 0.');
+    expect(refused({ max: '2 * width' })).toThrow("Max: The range can't use `width` itself.");
+    expect(refused({ max: 'half + 10 mm' })).toThrow(
+      "Max: The range can't use `half`: it changes with `width`.",
+    );
   });
 
   it('refuses what the schema would refuse, naming the field', () => {
     const doc = sampleDocument();
     expect(() =>
-      apply(doc, setParameterCustomizer({ id: pid('p1'), customizer: { min: '10 mm' } } as never)),
+      apply(doc, setParameterCustomizer({ id: pid('p1'), customizer: { min: 10 } } as never)),
     ).toThrow(/The customizer settings are not valid: `min`/);
     expect(() =>
-      apply(doc, setParameterCustomizer({ id: pid('p1'), customizer: { step: 0 } })),
-    ).toThrow(/`step`/);
-    expect(() =>
-      apply(doc, setParameterCustomizer({ id: pid('p1'), customizer: { group: '' } })),
-    ).toThrow(/`group`/);
+      apply(doc, setParameterCustomizer({ id: pid('p1'), customizer: { group: 'Size' } } as never)),
+    ).toThrow(/Unrecognized key: "group"/);
     expect(() =>
       apply(doc, setParameterCustomizer({ id: pid('p1'), customizer: { extra: 1 } } as never)),
     ).toThrow(/Unrecognized key: "extra"/);
+  });
+});
+
+describe('evaluateRange', () => {
+  it('evaluates in the parameter unit against the other parameters', () => {
+    const doc = apply(
+      sampleDocument(),
+      addParameter({ parameter: parameter('p3', 'half', 'width / 2') }),
+    );
+    const evaluation = evaluateParameters(doc);
+    const wall = { name: 'wall', unit: 'length' } as const;
+    expect(evaluateRange(evaluation, wall, 'max', 'width / 10')).toMatchObject({
+      ok: true,
+      value: 4,
+    });
+    expect(evaluateRange(evaluation, wall, 'max', 'half')).toMatchObject({ ok: true, value: 20 });
+    const own = evaluateRange(evaluation, { name: 'width', unit: 'length' }, 'min', '1 mm + half');
+    expect(own.ok).toBe(false);
+    if (!own.ok) expect(own.error.span).toEqual({ start: 7, end: 11 });
+    expect(evaluateRange(evaluation, wall, 'step', '-1 mm').ok).toBe(false);
+    expect(evaluateRange(evaluation, wall, 'min', '-1 mm').ok).toBe(true);
+  });
+});
+
+describe('setParameterGroup', () => {
+  it('puts a parameter in a trimmed group and takes it out again', () => {
+    let doc = apply(sampleDocument(), setParameterGroup({ id: pid('p2'), group: ' Walls ' }));
+    expect(doc.parameters[1]?.group).toBe('Walls');
+    doc = apply(doc, setParameterGroup({ id: pid('p2'), group: '' }));
+    expect(doc.parameters[1]).not.toHaveProperty('group');
+    doc = apply(doc, setParameterGroup({ id: pid('p2'), group: 'Walls' }));
+    doc = apply(doc, setParameterGroup({ id: pid('p2') }));
+    expect(doc.parameters[1]).not.toHaveProperty('group');
+    expect(() => apply(doc, setParameterGroup({ id: pid('p2'), group: 'x'.repeat(41) }))).toThrow(
+      /The group name is not valid/,
+    );
+  });
+});
+
+describe('moveParameter', () => {
+  it('moves a parameter to a position, into a group or out of one, in one step', () => {
+    let doc = apply(
+      sampleDocument(),
+      addParameter({ parameter: parameter('p3', 'height', '30 mm') }),
+    );
+    const names = (d: ExtrudoDocument) => d.parameters.map((p) => p.name);
+    expect(names(doc)).toEqual(['width', 'wall', 'height']);
+    doc = apply(doc, moveParameter({ id: pid('p3'), index: 0 }));
+    expect(names(doc)).toEqual(['height', 'width', 'wall']);
+    doc = apply(doc, moveParameter({ id: pid('p3'), index: 2, group: 'Size' }));
+    expect(names(doc)).toEqual(['width', 'wall', 'height']);
+    expect(doc.parameters[2]?.group).toBe('Size');
+    doc = apply(doc, moveParameter({ id: pid('p3'), index: 2, group: null }));
+    expect(doc.parameters[2]).not.toHaveProperty('group');
+    expect(() => apply(doc, moveParameter({ id: pid('p3'), index: 3 }))).toThrow(
+      'There is no position 3 in the parameter list.',
+    );
+    // Order never changes a value: `wall` still evaluates after moving above `width`.
+    doc = apply(doc, updateParameter({ id: pid('p2'), changes: { expression: 'width / 10' } }));
+    doc = apply(doc, moveParameter({ id: pid('p2'), index: 0 }));
+    expect(evaluateParameters(doc).parameters.get('wall')?.result).toMatchObject({ value: 4 });
   });
 });
 
@@ -236,30 +336,30 @@ describe('configurations', () => {
 describe('customizerRows', () => {
   it('lists the exposed parameters in panel order: ungrouped, then groups by first appearance', () => {
     let doc = exposedDocument();
-    // width (Size), height (Size), and two more: an ungrouped one and a second group.
+    // width, height (Size), and two more: an ungrouped one and a second group.
     doc = apply(doc, addParameter({ parameter: parameter('p4', 'corner', '2 mm') }));
+    doc = apply(doc, setParameterGroup({ id: pid('p4'), group: 'Walls' }));
     doc = apply(
       doc,
-      setParameterCustomizer({ id: pid('p4'), customizer: { min: 0.5, max: 5, group: 'Walls' } }),
+      setParameterCustomizer({ id: pid('p4'), customizer: { min: '0.5 mm', max: '5 mm' } }),
     );
     doc = apply(doc, addParameter({ parameter: parameter('p5', 'label', '8 mm') }));
     doc = apply(doc, setParameterCustomizer({ id: pid('p5'), customizer: {} }));
-    doc = apply(
-      doc,
-      setParameterCustomizer({ id: pid('p3'), customizer: { group: 'Size', max: 100 } }),
-    );
+    // A group alone doesn't expose a parameter: wall is grouped, not exposed.
+    doc = apply(doc, setParameterGroup({ id: pid('p2'), group: 'Walls' }));
     const listed = rows(doc);
     expect(listed.map((row) => row.name)).toEqual(['width', 'label', 'height', 'corner']);
     expect(listed.map((row) => row.group)).toEqual([undefined, undefined, 'Size', 'Walls']);
     expect(listed.map((row) => row.id)).toEqual([pid('p1'), pid('p5'), pid('p3'), pid('p4')]);
-    // `wall` is not exposed, so it is not here.
-    expect(listed.map((row) => row.name)).not.toContain('wall');
   });
 
   it('carries the value, the expression and whether a slider is possible', () => {
     let doc = exposedDocument();
     doc = apply(doc, addParameter({ parameter: parameter('p4', 'half', 'width / 2') }));
-    doc = apply(doc, setParameterCustomizer({ id: pid('p4'), customizer: { min: 1, max: 40 } }));
+    doc = apply(
+      doc,
+      setParameterCustomizer({ id: pid('p4'), customizer: { min: '1 mm', max: '40 mm' } }),
+    );
     const [width, half, height] = rows(doc);
     expect(width).toEqual({
       id: pid('p1'),
@@ -283,19 +383,58 @@ describe('customizerRows', () => {
     expect(half).toMatchObject({ name: 'half', expression: 'width / 2', value: 20, plain: false });
   });
 
+  it('evaluates a formula range, in the document unit, and follows its parameters', () => {
+    let doc = apply(
+      sampleDocument(),
+      setParameterCustomizer({ id: pid('p2'), customizer: { min: '1 mm', max: 'width / 10' } }),
+    );
+    expect(rows(doc)[0]).toMatchObject({ name: 'wall', min: 1, max: 4 });
+    doc = apply(doc, updateParameter({ id: pid('p1'), changes: { expression: '60 mm' } }));
+    expect(rows(doc)[0]).toMatchObject({ min: 1, max: 6 });
+    // A plain number is in the document's length unit, like any expression.
+    doc = apply(
+      { ...doc, settings: { ...doc.settings, units: 'in' } },
+      setParameterCustomizer({ id: pid('p2'), customizer: { min: '0', max: '1' } }),
+    );
+    expect(rows(doc)[0]).toMatchObject({ min: 0, max: 25.4 });
+  });
+
+  it('leaves out a range end that stopped evaluating, and a range that runs backwards', () => {
+    let doc = apply(sampleDocument(), addParameter({ parameter: parameter('p3', 'gap', '1 mm') }));
+    doc = apply(
+      doc,
+      setParameterCustomizer({ id: pid('p1'), customizer: { min: 'gap * 10', max: '100 mm' } }),
+    );
+    expect(rows(doc)[0]).toMatchObject({ min: 10, max: 100 });
+    // gap now depends on width: width's min would move while dragging.
+    doc = apply(doc, updateParameter({ id: pid('p3'), changes: { expression: 'width / 40' } }));
+    expect(rows(doc)[0]).not.toHaveProperty('min');
+    expect(rows(doc)[0]).toMatchObject({ max: 100 });
+    // gap back to a value, but now its min is above the max: no slider.
+    doc = apply(doc, updateParameter({ id: pid('p3'), changes: { expression: '20 mm' } }));
+    expect(rows(doc)[0]).not.toHaveProperty('min');
+    expect(rows(doc)[0]).not.toHaveProperty('max');
+  });
+
   it('warns about a value outside the range, and leaves the rest alone', () => {
     let doc = apply(
       sampleDocument(),
-      setParameterCustomizer({ id: pid('p1'), customizer: { min: 10, max: 80 } }),
+      setParameterCustomizer({ id: pid('p1'), customizer: { min: '10 mm', max: '80 mm' } }),
     );
-    doc = apply(doc, setParameterCustomizer({ id: pid('p2'), customizer: { min: 1, max: 2 } }));
+    doc = apply(
+      doc,
+      setParameterCustomizer({ id: pid('p2'), customizer: { min: '1 mm', max: '2 mm' } }),
+    );
     const [width, wall] = rows(doc);
     expect(width?.outOfRange).toBe(false);
     // The range is a slider range, not a constraint: wall is 3 mm with max 2.
     expect(wall).toMatchObject({ value: 3, min: 1, max: 2, outOfRange: true });
     // A parameter whose expression has an error has no value to be out of.
     doc = apply(doc, addParameter({ parameter: parameter('p4', 'broken', 'width +') }));
-    doc = apply(doc, setParameterCustomizer({ id: pid('p4'), customizer: { min: 1, max: 2 } }));
+    doc = apply(
+      doc,
+      setParameterCustomizer({ id: pid('p4'), customizer: { min: '1 mm', max: '2 mm' } }),
+    );
     expect(rows(doc).at(-1)).toMatchObject({
       name: 'broken',
       value: undefined,
@@ -477,11 +616,13 @@ describe('capturedValues', () => {
 
 describe('undo', () => {
   const cases: [name: string, command: Command<unknown>][] = [
-    ['expose a parameter', setParameterCustomizer({ id: pid('p1'), customizer: { min: 1 } })],
+    ['expose a parameter', setParameterCustomizer({ id: pid('p1'), customizer: { min: '1 mm' } })],
     [
       'expose a second parameter',
-      setParameterCustomizer({ id: pid('p2'), customizer: { min: 1 } }),
+      setParameterCustomizer({ id: pid('p2'), customizer: { min: '1 mm' } }),
     ],
+    ['group a parameter', setParameterGroup({ id: pid('p2'), group: 'Walls' })],
+    ['move a parameter', moveParameter({ id: pid('p2'), index: 0, group: 'Walls' })],
     [
       'save a configuration',
       addConfiguration({
@@ -511,5 +652,54 @@ describe('undo', () => {
     expect(undone).toEqual(original);
     expect(history.redo(undone)).toEqual(result.doc);
     expect(history.undo(history.redo(undone))).toEqual(original);
+  });
+});
+
+describe('parameterUsers (ADR-0086 §4)', () => {
+  /** width used by wall, by wall's slider max, by Extrude1's distance (`d1`) and a plain input. */
+  function usedDocument(): ExtrudoDocument {
+    let doc = sampleDocument();
+    doc = {
+      ...doc,
+      features: doc.features.map((f) =>
+        f.name === 'Extrude1'
+          ? {
+              ...f,
+              inputs: {
+                distance: { kind: 'expr', expr: 'width / 4', paramName: 'd1' },
+                taper: { kind: 'expr', expr: 'width / 40', unit: 'unitless' },
+              },
+            }
+          : f,
+      ),
+    };
+    doc = apply(doc, updateParameter({ id: pid('p2'), changes: { expression: 'width / 10' } }));
+    doc = apply(doc, addParameter({ parameter: parameter('p3', 'lip', '2 mm') }));
+    return apply(
+      doc,
+      setParameterCustomizer({ id: pid('p3'), customizer: { min: '1 mm', max: 'width / 8' } }),
+    );
+  }
+
+  it('lists every expression that names the parameter, in document order', () => {
+    expect(parameterUsers(usedDocument(), 'width')).toEqual([
+      { kind: 'parameter', id: pid('p2'), name: 'wall' },
+      { kind: 'range', id: pid('p3'), name: 'lip', field: 'max' },
+      { kind: 'feature', featureId: 'f2', feature: 'Extrude1', paramName: 'd1', dimension: false },
+      { kind: 'feature', featureId: 'f2', feature: 'Extrude1', dimension: false },
+    ]);
+    // A model parameter has users by its name too, and isn't its own.
+    expect(parameterUsers(usedDocument(), 'd1')).toEqual([]);
+    expect(parameterUsers(usedDocument(), 'lip')).toEqual([]);
+  });
+
+  it('renames inside slider ranges, and refuses deleting a parameter a range uses', () => {
+    let doc = apply(usedDocument(), updateParameter({ id: pid('p1'), changes: { name: 'span' } }));
+    expect(doc.parameters[2]?.customizer).toEqual({ min: '1 mm', max: 'span / 8' });
+    doc = apply(doc, updateParameter({ id: pid('p2'), changes: { expression: '3 mm' } }));
+    doc = { ...doc, features: sampleDocument().features };
+    expect(() => apply(doc, removeParameter({ id: pid('p1') }))).toThrow(
+      '`span` is used by the slider range of `lip`. Change that first.',
+    );
   });
 });

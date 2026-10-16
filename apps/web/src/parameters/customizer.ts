@@ -1,26 +1,20 @@
 /**
- * The customizer's numbers as text (P4-07, ADR-0059 §1).
+ * The customizer's numbers (P4-07, ADR-0059 §1, ADR-0086 §2).
  *
- * A parameter's slider range is stored in the parameter's **base unit** (mm,
- * degrees, plain), while the fields that edit it and the ones that show it
- * speak the document's length unit. Both sides go through the two functions
- * here, so `1 in` becomes `25.4` in the document and shows as `25.40 mm` in an
- * mm document: one place decides how a number reads.
+ * A parameter's slider range is stored as expressions in its unit, as typed;
+ * a slider's value is written back as a plain value in the document's length
+ * unit (`valueExpression`), so one place decides how a number reads.
  */
 import {
   type Customizer,
   dimOfKind,
-  type EvaluateResult,
   type ExtrudoDocument,
   formatQuantity,
+  type RangeField,
   type UnitKind,
 } from '@extrudo/core';
 
 export type Settings = ExtrudoDocument['settings'];
-
-/** The editable parts of a `Customizer`: the range and its step. */
-export const CUSTOMIZER_FIELDS = ['min', 'max', 'step'] as const;
-export type CustomizerField = (typeof CUSTOMIZER_FIELDS)[number];
 
 /**
  * A plain value in the parameter's unit as an expression the field can read
@@ -33,46 +27,18 @@ export function valueExpression(unit: UnitKind, value: number, settings: Setting
   return unit === 'angle' ? `${rounded} deg` : formatQuantity(value, dimOfKind(unit), settings);
 }
 
-/** What a range field shows: its value as an expression, or empty when unset. */
-export function rangeText(unit: UnitKind, value: number | undefined, settings: Settings): string {
-  return value === undefined ? '' : valueExpression(unit, value, settings);
-}
-
 /**
- * The customizer settings with `field` set to what `text` evaluates to in the
- * parameter's unit (an empty field takes the range end away). The number is the
- * evaluated base-unit value, so the document holds one unit and the field can
- * be written in any.
+ * The customizer settings with `field` set to `text`, kept as typed; an empty
+ * field takes that end of the range away (the command trims and drops it).
  */
 export function withRangeField(
   current: Customizer | undefined,
-  field: CustomizerField,
+  field: RangeField,
   text: string,
-  evaluate: (expression: string) => EvaluateResult,
 ): Customizer {
   const next: Customizer = { ...current };
-  if (text.trim() === '') {
-    delete next[field];
-    return next;
-  }
-  const result = evaluate(text);
-  // An expression that doesn't evaluate is never committed (ExpressionInput).
-  if (result.ok) next[field] = Number(result.value.toFixed(6));
-  return next;
-}
-
-/**
- * The settings without one range field, which is what the details row's
- * "Clear Min/Max/Step" buttons write (P4-07): a parameter whose range runs
- * backwards can only be fixed by taking an end away, and clearing all three
- * leaves the parameter exposed with no slider at all.
- */
-export function withoutRangeField(
-  current: Customizer | undefined,
-  field: CustomizerField,
-): Customizer {
-  const next: Customizer = { ...current };
-  delete next[field];
+  if (text.trim() === '') delete next[field];
+  else next[field] = text;
   return next;
 }
 

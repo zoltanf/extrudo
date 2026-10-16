@@ -353,3 +353,50 @@ Two items from the amendment's "still open" list, both in TypeScript, no facade 
   `edgeMeetsPlane`.
 - **Still open:** a point where two curved faces and a plane meet, which needs a
   face-face section the facade doesn't have.
+
+### Addendum, 2026-10-15
+
+The last open item of P4-12's construction backlog: a point where two curved
+faces and a plane meet. This is the amendment's first **facade change**.
+
+- **`pointAtIntersection` takes three references of which some are curved
+  faces.** The `refs.length === 3` branch splits the picks into **curved**
+  (faces whose surface is not a plane, `isFlatFace`) and **flats** (construction
+  planes and flat faces). No curved face → `threePlanesMeet` as before; all
+  three curved → refused, "At least one of the three must be a plane or a flat
+  face." The other mixes are solved by the new facade method, with a plane's
+  origin and normal from `planeOf` (a construction plane's frame, a flat face's
+  `faceSketchFrame`):
+  - **two curved faces**: the curve is the section of the two faces; the **cut
+    plane is the flat's plane** (a plane's own frame).
+  - **one curved face and a flat face**: the curve is the curved face sectioned
+    with the flat face's sub-shape; the **cut plane is the other flat's plane**
+    (whether that other flat is a construction plane or a second flat face).
+  - **one curved face and two construction planes**: the curve is the curved
+    face sectioned with the **first** plane; the **cut plane is the second**.
+  - A face's centre, a construction plane's origin: the plane's `anchor`.
+- **The facade method `facesMeetPlane`.** `faceB >= 0` builds the curve with
+  `BRepAlgoAPI_Section(faceA, faceB)` and cuts with plane A; `faceB < 0` builds
+  it with `BRepAlgoAPI_Section(faceA, gp_Pln A)` (as `sectionWithPlane`) and
+  cuts with plane B. The curve's non-degenerate edges go into a
+  `TopoDS_Compound`, and `BRepAlgoAPI_Section(compound, cutPlane)` gives the
+  vertices (`TopExp::MapShapes(…, TopAbs_VERTEX)`), deduplicated within
+  `Precision::Confusion()`. It returns the count, `0` when the first section has
+  no edge, `-1` (with `lastError()`) on failure. No OCCT type in its signature,
+  no new shape stored in the table; every OCCT object is a local.
+- **Several crossings.** A full section crosses the cut plane in more than one
+  point; the evaluator takes the point **nearest the cut plane's `anchor`** (a
+  face's centre, a construction plane's origin) and warns "`n` points meet
+  there; the one nearest the plane's centre was taken." No point at all is the
+  error "The faces don't meet on that plane."
+- **Rejected: walking a polyline in TypeScript.** The face-face curve could be
+  sampled with `edgeGeometry`/`sectionWithPlane` and crossed with the plane in
+  TypeScript, but a face-face section has no curve to sample without the facade
+  (the boundary faces alone don't give it), and the result would be only as
+  exact as the samples. The facade's `BRepAlgoAPI_Section` gives the planar
+  sections' vertices exactly, as `sectionWithPlane` already does.
+- **No file-format change:** `pointAtIntersection`'s inputs (`entities`, up to
+  three references) are unchanged; a face reference is picked and stored as
+  before.
+- **A point where two curved faces and a plane meet is no longer open.**
+

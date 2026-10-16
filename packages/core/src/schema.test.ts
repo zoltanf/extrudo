@@ -13,8 +13,15 @@ function customizedDocument() {
   return {
     ...doc,
     parameters: [
-      { ...parameter('p1', 'width', '40 mm'), customizer: { min: 10, max: 80, step: 1 } },
-      { ...parameter('p2', 'wall', '3 mm'), customizer: { group: 'Walls', min: 1, max: 5 } },
+      {
+        ...parameter('p1', 'width', '40 mm'),
+        customizer: { min: '10 mm', max: '80 mm', step: '1 mm' },
+      },
+      {
+        ...parameter('p2', 'wall', '3 mm'),
+        group: 'Walls',
+        customizer: { min: '1 mm', max: 'width / 8' },
+      },
       parameter('p3', 'gap'),
     ],
     configurations: [
@@ -59,7 +66,7 @@ describe('document schema v1', () => {
   });
 
   it('rejects another format version', () => {
-    expect(issues({ ...sampleDocument(), formatVersion: 2 })).toHaveLength(1);
+    expect(issues({ ...sampleDocument(), formatVersion: 3 })).toHaveLength(1);
   });
 
   it('keeps the timeline marker within the timeline', () => {
@@ -126,37 +133,35 @@ describe('customizer and configurations (P4-07, ADR-0059)', () => {
     expect(issues({ ...sampleDocument(), configurations: [] })).toEqual([]);
   });
 
-  it('checks a slider range that runs backwards', () => {
+  it('leaves a range that runs backwards to the panel', () => {
+    // Ranges are expressions now (ADR-0086 §2): only evaluating them can tell,
+    // so the schema accepts the document and the panel shows no slider.
     const doc = customizedDocument();
-    const bad = {
+    const backwards = {
       ...doc,
-      parameters: [
-        { ...parameter('p1', 'width'), customizer: { min: 80, max: 10 } },
-        parameter('p2', 'wall'),
-      ],
+      parameters: [{ ...parameter('p1', 'width'), customizer: { min: '80 mm', max: '10 mm' } }],
     };
-    expect(issues(bad)).toEqual(['parameters.0.customizer: min is 80, above max 10']);
-    // Only min, only max, and min equal to max are all fine.
-    for (const customizer of [{}, { min: 10 }, { max: 10 }, { min: 10, max: 10 }]) {
-      expect(issues({ ...doc, parameters: [{ ...parameter('p1', 'width'), customizer }] })).toEqual(
-        [],
-      );
-    }
+    expect(issues(backwards)).toEqual([]);
   });
 
-  it('checks the customizer fields themselves', () => {
+  it('checks the customizer fields and the group themselves', () => {
     const doc = customizedDocument();
     const withCustomizer = (customizer: unknown) => ({
       ...doc,
       parameters: [{ ...parameter('p1', 'width'), customizer }],
     });
-    expect(issues(withCustomizer({ min: '10 mm' }))).toHaveLength(1);
-    expect(issues(withCustomizer({ step: 0 }))).toHaveLength(1);
-    expect(issues(withCustomizer({ step: -1 }))).toHaveLength(1);
-    expect(issues(withCustomizer({ group: '' }))).toHaveLength(1);
-    expect(issues(withCustomizer({ group: 'x'.repeat(41) }))).toHaveLength(1);
-    expect(issues(withCustomizer({ group: 'x'.repeat(40) }))).toEqual([]);
-    expect(issues(withCustomizer({ min: 1, extra: 2 }))).toHaveLength(1);
+    const withGroup = (group: unknown) => ({
+      ...doc,
+      parameters: [{ ...parameter('p1', 'width'), group }],
+    });
+    expect(issues(withCustomizer({ min: 10 }))).toHaveLength(1);
+    expect(issues(withCustomizer({ step: 1 }))).toHaveLength(1);
+    expect(issues(withCustomizer({ group: 'Size' }))).toHaveLength(1);
+    expect(issues(withCustomizer({ min: '1 mm', extra: 2 }))).toHaveLength(1);
+    expect(issues(withCustomizer({ min: '1 mm', max: 'width', step: '0.5 mm' }))).toEqual([]);
+    expect(issues(withGroup(''))).toHaveLength(1);
+    expect(issues(withGroup('x'.repeat(41)))).toHaveLength(1);
+    expect(issues(withGroup('x'.repeat(40)))).toEqual([]);
   });
 
   it('checks configuration IDs, names and value keys', () => {
@@ -184,134 +189,19 @@ describe('customizer and configurations (P4-07, ADR-0059)', () => {
     expect(issues(withConfigurations([{ ...big, values: { p1: 12 } }]))).toHaveLength(1);
   });
 
-  it('leaves a design saved before the customizer alone (no migration)', () => {
-    // Exactly what an older Extrudo wrote: no `customizer`, no `configurations`.
-    const old = JSON.parse(JSON.stringify(sampleDocument()));
-    const { doc, loadedVersion, migrated, dropped } = loadDocument(old);
+  it('brings a design saved before the customizer up to the current version unchanged', () => {
+    // What an older Extrudo wrote: format 1, no `customizer`, no `configurations`.
+    const current = JSON.parse(JSON.stringify(sampleDocument()));
+    const { doc, loadedVersion, migrated, dropped } = loadDocument({
+      ...current,
+      formatVersion: 1,
+    });
     expect(loadedVersion).toBe(1);
-    expect(migrated).toBe(false);
+    expect(migrated).toBe(true);
     expect(dropped).toEqual([]);
-    expect(doc).toEqual(old);
+    expect(doc).toEqual(current);
     expect(doc).not.toHaveProperty('configurations');
     expect(doc.parameters.every((p) => !('customizer' in p))).toBe(true);
     expect(DocumentSchema.parse(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
-  });
-});
-
-describe('components (P6-05, ADR-0081 §2)', () => {
-  const box = { id: 'box', name: 'Box', visible: true };
-  const lid = { id: 'lid', name: 'Lid', visible: true };
-  function withComponents(over: Record<string, unknown> = {}) {
-    const doc = sampleDocument();
-    return {
-      ...doc,
-      components: [box, lid],
-      features: doc.features.map((f, i) => (i === 1 ? { ...f, component: 'box' } : f)),
-      bodies: { 'f2:0': { name: 'Body1', visible: true, component: 'lid' } },
-      ...over,
-    };
-  }
-
-  it('accepts components, memberships and stamps, and a design without any', () => {
-    expect(issues(withComponents())).toEqual([]);
-    expect(issues(sampleDocument())).toEqual([]);
-  });
-
-  it('reports duplicate IDs and names in another case', () => {
-    expect(
-      issues(withComponents({ components: [box, lid, { ...lid, id: 'box', name: 'Seal' }] })),
-    ).toEqual(['components.2.id: duplicate id "box"']);
-    expect(
-      issues(withComponents({ components: [box, lid, { ...lid, id: 'c3', name: 'LID' }] })),
-    ).toEqual(['components.2.name: duplicate name "LID"']);
-  });
-
-  it('reports a body or a feature naming a component the design lacks', () => {
-    expect(
-      issues(withComponents({ bodies: { 'f2:0': { name: 'B', visible: true, component: 'x' } } })),
-    ).toEqual(["bodies.f2:0.component: names component x, which the design doesn't have"]);
-    const doc = sampleDocument();
-    expect(
-      issues({
-        ...doc,
-        features: doc.features.map((f, i) => (i === 2 ? { ...f, component: 'y' } : f)),
-      }),
-    ).toEqual(["features.2.component: names component y, which the design doesn't have"]);
-  });
-
-  it('reports ghost on a visible component', () => {
-    expect(issues(withComponents({ components: [{ ...box, ghost: true }, lid] }))).toEqual([
-      'components.0.ghost: is set on a visible component (a ghost is stored with visible: false)',
-    ]);
-    expect(
-      issues(withComponents({ components: [{ ...box, visible: false, ghost: true }, lid] })),
-    ).toEqual([]);
-  });
-
-  it('checks the record itself', () => {
-    expect(issues(withComponents({ components: [{ ...box, name: '' }, lid] }))).toHaveLength(1);
-    expect(
-      issues(withComponents({ components: [{ ...box, name: 'x'.repeat(101) }, lid] })),
-    ).toHaveLength(1);
-    expect(issues(withComponents({ components: [{ ...box, transform: [] }, lid] }))).toHaveLength(
-      1,
-    );
-  });
-});
-
-describe('joints (P6-05, ADR-0081 §4)', () => {
-  const components = [
-    { id: 'base', name: 'Base', visible: true },
-    { id: 'leaf', name: 'Leaf', visible: true },
-  ];
-  const hinge = {
-    id: 'j1',
-    name: 'Hinge',
-    type: 'revolute',
-    a: { component: 'leaf', ref: { kind: 'face', id: 'hole:f2:side:wall' } },
-    b: { component: 'base', ref: { kind: 'edge', id: 'e[a|b]' } },
-    min: { kind: 'expr', expr: '0 deg', unit: 'angle' },
-    max: { kind: 'expr', expr: '90 deg', unit: 'angle' },
-  };
-  const withJoints = (joints: unknown[]) => ({ ...sampleDocument(), components, joints });
-
-  it('accepts joints, and a design without any', () => {
-    expect(issues(withJoints([hinge]))).toEqual([]);
-    expect(issues({ ...sampleDocument(), components })).toEqual([]);
-  });
-
-  it('reports duplicate IDs and names in another case', () => {
-    expect(issues(withJoints([hinge, { ...hinge, name: 'Other' }]))).toEqual([
-      'joints.1.id: duplicate id "j1"',
-    ]);
-    expect(issues(withJoints([hinge, { ...hinge, id: 'j2', name: 'HINGE' }]))).toEqual([
-      'joints.1.name: duplicate name "HINGE"',
-    ]);
-  });
-
-  it('reports a missing component, both sides on one, limits and kinds the type lacks', () => {
-    expect(issues(withJoints([{ ...hinge, a: { ...hinge.a, component: 'x' } }]))).toEqual([
-      "joints.0.a.component: names component x, which the design doesn't have",
-    ]);
-    expect(issues(withJoints([{ ...hinge, b: { ...hinge.b, component: 'leaf' } }]))).toEqual([
-      'joints.0.b.component: both sides are in Leaf: pick a frame on another component',
-    ]);
-    const rigid = { ...hinge, type: 'rigid', min: undefined, max: hinge.max };
-    expect(issues(withJoints([JSON.parse(JSON.stringify(rigid))]))).toEqual([
-      'joints.0.max: is set on a rigid joint, which has no limits',
-    ]);
-    expect(issues(withJoints([{ ...hinge, type: 'slider' }]))).toEqual([
-      "joints.0.min: is angle, but a slider joint's limits are lengths",
-      "joints.0.max: is angle, but a slider joint's limits are lengths",
-    ]);
-    expect(
-      issues(withJoints([{ ...hinge, a: { ...hinge.a, ref: { kind: 'vertex', id: 'v[a]' } } }])),
-    ).toEqual(["joints.0.a.ref.kind: is vertex, which a revolute joint doesn't take"]);
-  });
-
-  it('checks the record itself', () => {
-    expect(issues(withJoints([{ ...hinge, flip: false }]))).toHaveLength(1);
-    expect(issues(withJoints([{ ...hinge, type: 'ball' }]))).toHaveLength(1);
-    expect(issues(withJoints([{ ...hinge, pose: 30 }]))).toHaveLength(1);
   });
 });

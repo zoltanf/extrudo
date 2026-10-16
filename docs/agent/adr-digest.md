@@ -574,7 +574,7 @@ mesh, `basis: 'mesh'` in the report); a point/plane report also carries
 `path` (`from`/`tangent`/`length`/`straight`) so the app draws a distance
 handle from the path's start along a straight path. `pickBox` takes
 construction planes/axes/points as a `construction` kind last in `BOX_ORDER`.
-No facade change. **2026-10-07 addendum**: `tangentPlane`'s `point` on a cone is the exact foot on the nearest generatrix (the apex past it; a point on the axis warns and follows the angle), and `pointAtIntersection` takes an edge and a **curved** face (`edgeMeetsFace`, closest points within 1 µm); a point where two curved faces and a plane meet stays open (it needs a face-face section the facade lacks).
+No facade change. **2026-10-07 addendum**: `tangentPlane`'s `point` on a cone is the exact foot on the nearest generatrix (the apex past it; a point on the axis warns and follows the angle), and `pointAtIntersection` takes an edge and a **curved** face (`edgeMeetsFace`, closest points within 1 µm). **2026-10-15 addendum (facade change)**: `pointAtIntersection`'s three-reference case also takes curved faces — the facade's `facesMeetPlane` sections the two faces (or a face and a plane) and cuts the curve with a plane (`planeOf`'s origin/normal; two curved faces cut with the flat's plane, one curved face and a flat face sectioned with the flat face and cut with the other flat, one curved face and two planes sectioned with the first and cut with the second), 0 points is "The faces don't meet on that plane.", several crossings take the point nearest the plane's `anchor` and warn "`n` points meet there; the one nearest the plane's centre was taken.", and three curved faces are refused with "At least one of the three must be a plane or a flat face."
 ADR-0042 (P3-11) added the right-click marking menu:
 `design-system/MarkingMenu.tsx` draws eight wedges, alone, or one list in the list
 style (R3-08, ADR-0042's 2026-10-11 amendment: the ring has no list under it, and the
@@ -1165,7 +1165,8 @@ for changing, and a design holds named value sets (`configurations[]`). Core is
 `isPlainValue`; `removeParameter` drops a deleted parameter from every
 configuration). The app is `apps/web/src/customizer/` (the panel, its
 controller) plus the Parameters dialog's star and its Min/Max/Step/Group row with
-a Clear button each. **Every parameter write goes through the shell's `apply`**,
+a Clear button each (since ADR-0086: an inspector with a Customizer switch, ranges as
+expressions, the group on the parameter). **Every parameter write goes through the shell's `apply`**,
 applying a configuration included (so the sketches whose dimensions use a
 parameter are re-solved in the same undo step, ADR-0016); **no stored active
 configuration** — one goes stale after any edit or undo, so the panel shows the
@@ -2339,6 +2340,31 @@ menu on the home screen (its `menu:run` listener stays for the macOS About),
 and both link mechanisms stay — `openSite(name)` for the fixed named pages
 (only `repo` now) and `openLink(url)` for the dialog's URLs that carry a
 hash; folding them into one was rejected for now.** No schema change.
+
+ADR-0086 (the owner, 2026-10-15) **makes the Parameters dialog a list and an inspector,
+puts groups on parameters and keeps slider ranges as formulas** (format **2**, the first
+bump). Files: core `schema.ts` (`Parameter.group`, `CustomizerSchema` of strings, no
+min/max check), `customizer.ts` (`evaluateRange`, `setParameterGroup`, `moveParameter`,
+`RANGE_FIELDS`; `customizerRows(doc, evaluation)` takes the whole evaluation),
+`document-commands.ts` (`parameterUsers`, `refuseIfUsed` built on it, renames reach
+ranges), `migrations.ts` (`v1ToV2`), `format.ts`; the app's `parameters/ParametersDialog.tsx`
+(list, drag), `ParameterInspector.tsx`, `list.ts` (`listSections`, `dropIndex`,
+`stepIndex`, `labelOfUse`, `starCommand`). Rules: **`min`/`max`/`step` are expressions
+in the parameter's unit, stored as typed**; a range may use other parameters but **never
+the parameter or one of its dependents** (`evaluateRange` refuses; `customizerRows`
+leaves out an end that stopped evaluating, and both ends when min > max, so no slider
+rather than a wrong one); **the group is the parameter's** (`parameter.group`, 1–40
+characters, also for unexposed parameters) and the panel and the dialog group by it
+(no group first, "General" in the dialog, then groups by first appearance; flat list
+while no parameter has a group); **`doc.parameters` order is the dialog's and the
+panel's order** (`moveParameter` = one undo step, a group change included; order never
+changes a value; the macro emitter keeps dependency order); **"Used by" and the delete
+refusal come from the same `parameterUsers`** (ranges count as users); a formula
+parameter has no range fields. A migration from format 1 spells out the base unit
+(`25.4` → `25.4 mm`, `30` → `30 deg`) and moves `customizer.group`. e2e: rows are
+`[data-parameter-row="<name>"]` (`aria-current` when selected), sections
+`[data-parameter-section]`; select a row before its fields exist (`selectParameter`,
+`parameterExpression`, `addUserParameter` in `e2e/helpers.ts`).
 
 ADR-0087 (P6-08, 2026-10-15) added **the desktop MCP server and its skill** (no
 schema or file-format change). **Main** hosts it (`apps/desktop/src/main/mcp/`):

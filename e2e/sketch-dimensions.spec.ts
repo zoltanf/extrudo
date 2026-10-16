@@ -1,5 +1,13 @@
 import { expect, type Page, test } from '@playwright/test';
-import { clicker, mapping, pickTool, sketchOnXY } from './helpers';
+import {
+  addUserParameter,
+  clicker,
+  mapping,
+  parameterExpression,
+  pickTool,
+  selectParameter,
+  sketchOnXY,
+} from './helpers';
 
 // P1-07: the Sketch Dimension tool (D), editing values in place, dragging
 // labels, driven dimensions, and dimensions as parameters.
@@ -168,19 +176,18 @@ test('a dimension is a parameter: the Parameters dialog edits it, and it takes e
 
   await pickTool(page, 'Parameters');
   const dialog = page.getByRole('dialog', { name: 'Parameters' });
-  const row = dialog.getByRole('row').filter({ hasText: 'd1' });
-  await expect(row).toContainText('Sketch1');
-  const d1 = dialog.getByRole('textbox', { name: 'Expression of d1' });
+  const d1 = await parameterExpression(page, 'd1');
+  await expect(dialog.locator('[data-parameter-row="d1"]')).toContainText('Sketch1');
   await expect(d1).toHaveValue('40');
 
   // A user parameter, then d1 from it.
-  await dialog.getByRole('textbox', { name: 'New parameter name' }).fill('w');
-  await dialog.getByRole('textbox', { name: 'New parameter expression' }).fill('12');
-  await dialog.getByRole('button', { name: 'Add' }).click();
-  await d1.fill('w * 2');
-  await d1.press('Enter');
+  await addUserParameter(page, 'w', '12');
+  const fromW = await parameterExpression(page, 'd1');
+  await fromW.fill('w * 2');
+  await fromW.press('Enter');
   await expect(dialog.getByRole('alert')).toHaveText('');
   // Deleting `w` is refused while d1 uses it.
+  await selectParameter(page, 'w');
   await dialog.getByRole('button', { name: 'Delete w' }).click();
   await expect(dialog.getByRole('alert')).toHaveText('w is used by d1. Change that first.');
   await dialog.getByRole('textbox', { name: 'Expression of w' }).fill('15');

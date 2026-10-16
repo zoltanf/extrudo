@@ -60,7 +60,8 @@ describe('benchmark fixtures', () => {
     ],
   ])('%s opens as it was saved', (name, file, features) => {
     const archive = readArchive(bytesOf(file));
-    expect(archive.migrated).toBe(false);
+    // The fixtures were saved at format 1; they open through the 1 → 2 migration.
+    expect(archive.migrated).toBe(true);
     expect(archive.doc.name).toBe(name);
     expect(archive.doc.features.map((f) => f.name)).toEqual(features);
     expect(archive.doc.timelineMarker).toBe(features.length);
@@ -69,8 +70,8 @@ describe('benchmark fixtures', () => {
   });
 
   // P4-07 added `parameters[].customizer` and `configurations[]` as optional
-  // keys: a design saved before them (formatVersion stays 1) must load
-  // unchanged and survive a save.
+  // keys: a design saved before them (format 1) must load unchanged, and be
+  // saved at the current format (2, ADR-0086).
   it('opens a design saved before the customizer and round-trips it', () => {
     const archive = readArchive(bytesOf(b1));
     expect(archive.doc).not.toHaveProperty('configurations');
@@ -80,6 +81,6 @@ describe('benchmark fixtures', () => {
     expect(saved.migrated).toBe(false);
     expect(saved.dropped).toEqual([]);
     expect(saved.doc).toEqual(archive.doc);
-    expect(saved.doc.formatVersion).toBe(1);
+    expect(saved.doc.formatVersion).toBe(2);
   });
 });

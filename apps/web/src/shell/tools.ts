@@ -736,7 +736,7 @@ export const TOOLS = {
     short: 'Intersection Point',
     icon: 'point',
     category: 'construct',
-    hint: 'The point where two edges, an edge and a plane, or three planes meet.',
+    hint: 'The point where two edges, an edge and a plane or face, two curved faces and a plane, or three planes or faces meet.',
   },
   planeAlongPath: {
     id: 'planeAlongPath',

@@ -24,6 +24,7 @@ import {
   mapping,
   newSketchOnXY,
   openProject,
+  parameterExpression,
   pickTool,
   projector,
   selectTab,
@@ -56,7 +57,6 @@ const boxVolume = (w: number, d: number, h: number, wall: number, bottom: number
 test('Tutorial 2: a storage box', async ({ page }) => {
   const { step } = tutorial(page, 'storage-box');
   const viewport = viewportOf(page);
-  const parameters = page.getByRole('dialog', { name: 'Parameters' });
   const palette = page.getByRole('region', { name: 'Sketch palette' });
   const extrudeDialog = page.getByRole('region', { name: 'Extrude dialog' });
   let click: (x: number, y: number) => Promise<void> = async () => {};
@@ -77,12 +77,8 @@ test('Tutorial 2: a storage box', async ({ page }) => {
       await addParameter(page, 'bottom', '4 mm');
     },
     async () => {
-      await expect(
-        parameters.getByRole('textbox', { name: 'Expression of wall', exact: true }),
-      ).toHaveValue('3 mm');
-      await expect(
-        parameters.getByRole('textbox', { name: 'Expression of bottom', exact: true }),
-      ).toHaveValue('4 mm');
+      await expect(await parameterExpression(page, 'wall')).toHaveValue('3 mm');
+      await expect(await parameterExpression(page, 'bottom')).toHaveValue('4 mm');
     },
   );
 

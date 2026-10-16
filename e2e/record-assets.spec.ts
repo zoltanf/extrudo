@@ -27,6 +27,7 @@ import {
   openProject,
   pickTool,
   projector,
+  selectParameter,
   startFromTemplate,
 } from './helpers';
 
@@ -1992,7 +1993,8 @@ test("walkthrough: the landing page's steps", async ({ page }) => {
   // Step 9: change one number, and the whole part follows.
   await openParameters(page);
   const params = page.getByRole('dialog', { name: 'Parameters' });
-  await params.getByRole('button', { name: 'Show width in customizer' }).click();
+  await selectParameter(page, 'width');
+  await params.getByRole('switch', { name: 'Show width in customizer' }).click();
   await closeParameters(page);
   await pickTool(page, 'Customizer');
   const customizer = page.getByRole('region', { name: 'Customizer' });

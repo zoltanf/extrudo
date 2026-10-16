@@ -1751,6 +1751,116 @@ public:
   }
 
   /**
+   * Where two faces meet a plane (P4-12, a point at the intersection of two
+   * curved faces and a plane: ADR-0040's addendum). With `faceB >= 0` the
+   * curve is BRepAlgoAPI_Section of the two faces and the cut is the plane
+   * through (aox, aoy, aoz) square to (anx, any, anz) (plane B is ignored);
+   * with `faceB < 0` the curve is the section of faceA with plane A and the
+   * cut is plane B. The curve's edges go into a compound and every vertex
+   * where the compound meets the cut plane comes back, deduplicated within
+   * Precision::Confusion(). geometryNumbers: the points xyz. Returns the
+   * number of points (0 when the first section has no edge), or -1.
+   */
+  int facesMeetPlane(int faceA, int faceB, double aox, double aoy, double aoz, double anx, double any,
+                     double anz, double box, double boy, double boz, double bnx, double bny,
+                     double bnz) {
+    beginOp();
+    geometry_.clear();
+    const TopoDS_Shape* a = find(faceA);
+    if (a == nullptr) {
+      fail("Unknown shape.");
+      return -1;
+    }
+    try {
+      const gp_Vec normalA(anx, any, anz);
+      if (normalA.Magnitude() <= Precision::Confusion()) {
+        fail("The plane's normal has no length.");
+        return -1;
+      }
+      const gp_Vec normalB(bnx, bny, bnz);
+      if (normalB.Magnitude() <= Precision::Confusion()) {
+        fail("The plane's normal has no length.");
+        return -1;
+      }
+      const gp_Pln planeA(gp_Pnt(aox, aoy, aoz), gp_Dir(normalA));
+      const gp_Pln planeB(gp_Pnt(box, boy, boz), gp_Dir(normalB));
+      TopoDS_Shape curve;
+      if (faceB >= 0) {
+        const TopoDS_Shape* b = find(faceB);
+        if (b == nullptr) {
+          fail("Unknown shape.");
+          return -1;
+        }
+        BRepAlgoAPI_Section section(*a, *b, false);
+        section.Approximation(false);
+        section.ComputePCurveOn1(false);
+        section.ComputePCurveOn2(false);
+        section.Build();
+        if (!section.IsDone()) {
+          fail("The faces don't meet.");
+          return -1;
+        }
+        curve = section.Shape();
+      } else {
+        BRepAlgoAPI_Section section(*a, planeA, false);
+        section.Approximation(false);
+        section.ComputePCurveOn1(false);
+        section.Build();
+        if (!section.IsDone()) {
+          fail("The section failed.");
+          return -1;
+        }
+        curve = section.Shape();
+      }
+      // The curve may be several edges: put them in a compound and cut it.
+      TopoDS_Compound compound;
+      BRep_Builder builder;
+      builder.MakeCompound(compound);
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> curveEdges;
+      TopExp::MapShapes(curve, TopAbs_EDGE, curveEdges);
+      int edges = 0;
+      for (int i = 1; i <= curveEdges.Extent(); ++i) {
+        const TopoDS_Edge e = TopoDS::Edge(curveEdges(i));
+        if (BRep_Tool::Degenerated(e)) continue;
+        builder.Add(compound, e);
+        ++edges;
+      }
+      if (edges == 0) return 0;
+      const gp_Pln& cut = faceB >= 0 ? planeA : planeB;
+      BRepAlgoAPI_Section section(compound, cut, false);
+      section.Approximation(false);
+      section.ComputePCurveOn1(false);
+      section.Build();
+      if (!section.IsDone()) {
+        fail("The section failed.");
+        return -1;
+      }
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> vertices;
+      TopExp::MapShapes(section.Shape(), TopAbs_VERTEX, vertices);
+      int count = 0;
+      for (int i = 1; i <= vertices.Extent(); ++i) {
+        const gp_Pnt p = BRep_Tool::Pnt(TopoDS::Vertex(vertices(i)));
+        bool seen = false;
+        for (int k = 0; k < count; ++k) {
+          const gp_Pnt q(geometry_[3 * k], geometry_[3 * k + 1], geometry_[3 * k + 2]);
+          if (p.Distance(q) <= Precision::Confusion()) {
+            seen = true;
+            break;
+          }
+        }
+        if (seen) continue;
+        pushPoint(p);
+        ++count;
+      }
+      return count;
+    } catch (...) {
+      geometry_.clear();
+      failFromException("Section failed");
+      return -1;
+    }
+  }
+
+  /**
    * Which edges of a shape are seen along (dx, dy, dz) (P4-12, projecting a
    * body: ADR-0031's amendment), through OCCT's hidden-line removal
    * (HLRBRep_Algo) looking from the side the vector points to, so a sketch's

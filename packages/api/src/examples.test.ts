@@ -157,8 +157,11 @@ describe('the parametric box', () => {
     expect(d.validate()).toEqual([]);
     expect(d.doc.configurations?.map((c) => c.name)).toEqual(['Small', 'Large']);
     // The customizer ranges came out with the parameters (ADR-0059).
-    const width = d.getParameter('width').parameter?.customizer;
-    expect(width).toMatchObject({ min: 60, max: 300, step: 10, group: 'Size' });
+    const width = d.getParameter('width').parameter;
+    expect(width).toMatchObject({
+      group: 'Size',
+      customizer: { min: '60 mm', max: '300 mm', step: '10 mm' },
+    });
   });
 
   it('switches between its configurations in one step', () => {

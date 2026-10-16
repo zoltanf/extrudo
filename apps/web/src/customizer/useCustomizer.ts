@@ -103,7 +103,7 @@ export function useCustomizer({ store, apply }: CustomizerOptions): CustomizerTo
 
   const groups = useMemo<CustomizerGroup[]>(() => {
     const out: CustomizerGroup[] = [];
-    for (const row of customizerRows(doc, evaluation.parameters)) {
+    for (const row of customizerRows(doc, evaluation)) {
       const last = out.at(-1);
       if (last && last.group === row.group) last.rows.push(row);
       else out.push({ group: row.group, rows: [row] });

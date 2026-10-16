@@ -304,7 +304,8 @@ function run(fn: () => Quantity): EvaluateResult {
   }
 }
 
-function findRef(node: Node, name: string): Span | undefined {
+/** Where an expression first refers to `name`, if it does. */
+export function findRef(node: Node, name: string): Span | undefined {
   switch (node.kind) {
     case 'ref':
       return node.name === name ? node.span : undefined;

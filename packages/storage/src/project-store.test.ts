@@ -58,13 +58,13 @@ describe('ProjectStore', () => {
     const stored = JSON.parse(new TextDecoder().decode(await files.read(path)));
     await files.write(
       path,
-      new TextEncoder().encode(JSON.stringify({ ...stored, formatVersion: 2, grid: { step: 5 } })),
+      new TextEncoder().encode(JSON.stringify({ ...stored, formatVersion: 3, grid: { step: 5 } })),
     );
     const notices: string[] = [];
     const loaded = await store.load(d.id, { onNotice: (m) => notices.push(m) });
     expect(loaded.name).toBe('Bracket');
     expect(notices).toEqual([
-      "This design was saved by a newer Extrudo (file format 2; this version reads 1). 1 setting this version doesn't know was left out. Saving here loses them; reload to update Extrudo first if you need them.",
+      "This design was saved by a newer Extrudo (file format 3; this version reads 2). 1 setting this version doesn't know was left out. Saving here loses them; reload to update Extrudo first if you need them.",
     ]);
     // An ordinary load says nothing.
     await store.save(loaded);
@@ -74,10 +74,10 @@ describe('ProjectStore', () => {
 
   it('imports a newer file, and says the file itself is unchanged', async () => {
     const { store } = setup();
-    const d = { ...doc('Bracket'), formatVersion: 2, grid: { step: 5 } };
+    const d = { ...doc('Bracket'), formatVersion: 3, grid: { step: 5 } };
     const file = new Blob([
       zipSync({
-        'manifest.json': strToU8('{"format":"extrudo","formatVersion":2}'),
+        'manifest.json': strToU8('{"format":"extrudo","formatVersion":3}'),
         'document.json': strToU8(JSON.stringify(d)),
       }) as Uint8Array<ArrayBuffer>,
     ]);

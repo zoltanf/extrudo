@@ -1,64 +1,39 @@
 import {
-  addParameter,
   type Command,
   CommandError,
-  type Customizer,
   type DocumentStore,
-  type EvaluateResult,
+  type EvaluatedParameter,
   type ExtrudoDocument,
   evaluateParameters,
-  type FeatureId,
   formatQuantity,
-  newId,
+  isPlainValue,
+  moveParameter,
+  type ParameterEvaluation,
   type ParameterId,
   removeParameter,
-  setParameterCustomizer,
-  type UnitKind,
-  updateFeatureInputs,
-  updateParameter,
-  updateSketchDimension,
 } from '@extrudo/core';
-import { Eraser, Redo2, Star, Trash2, Undo2, X } from 'lucide-react';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { ChevronRight, GripVertical, Plus, Redo2, Star, Trash2, Undo2, X } from 'lucide-react';
+import { type DragEvent, type ReactElement, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
-import { isEditable, shortcutLabel } from '../commands/shortcuts';
+import { shortcutLabel } from '../commands/shortcuts';
 import {
-  Button,
   ContextMenu,
   Dialog,
   DialogClose,
   IconButton,
   MenuItem,
   MenuSeparator,
-  Select,
-  TextInput,
 } from '../design-system';
-import {
-  CUSTOMIZER_FIELDS,
-  type CustomizerField,
-  rangeText,
-  withoutRangeField,
-  withRangeField,
-} from './customizer';
-import { withDimensionExpr } from './drafts';
-import { ExpressionInput } from './ExpressionInput';
+import { dropIndex, featureName, listSections, starCommand, stepIndex } from './list';
 import { Message } from './Message';
+import {
+  ModelInspector,
+  NewParameterForm,
+  type Selection,
+  UserInspector,
+} from './ParameterInspector';
 
-const UNIT_LABELS: Record<UnitKind, string> = {
-  length: 'Length',
-  angle: 'Angle',
-  unitless: 'Number',
-};
-
-/**
- * What a row's star writes (P4-07, ADR-0059 §1): an empty `customizer` object
- * exposes the parameter, taking the star off leaves it out again (one command,
- * one undo step). Exposed and unexposed are different settings, so starring a
- * parameter that was in the panel before starts its range afresh.
- */
-export function starCommand(id: ParameterId, starred: boolean): Command<unknown> {
-  return setParameterCustomizer({ id, customizer: starred ? undefined : {} });
-}
+export { starCommand } from './list';
 
 export interface ParametersDialogProps {
   store: DocumentStore;
@@ -71,26 +46,31 @@ export interface ParametersDialogProps {
   onOpenChange(open: boolean): void;
 }
 
-const th = 'px-1.5 pb-1 text-left text-sm font-medium text-muted';
-const td = 'px-1.5 py-1 align-top';
+/** The drag data type of a parameter row, so other drags (files) are left alone. */
+const DRAG_TYPE = 'application/x-extrudo-parameter';
+
+/** Where a dragged row would land: before a row, or at the end of a section. */
+interface DropTarget {
+  before?: ParameterId;
+  group: string | undefined;
+}
 
 /**
- * The Parameters dialog (P0-07, FR-PAR-01): user parameters (add, edit,
- * delete, comment) and the model parameters of features, each with its live
- * value and inline errors. Every change is one command, so undoable.
+ * The Parameters dialog (P0-07, FR-PAR-01, ADR-0086): a list of the
+ * parameters on the left and the selected one's settings on the right.
  *
- * A user parameter can be starred for the Customizer panel (P4-07, ADR-0059 §1):
- * the star is one command, and the row then shows the slider's range, its step
- * and the heading the row gets there. The range is in the parameter's base unit;
- * the fields speak its unit.
+ * The list holds the user parameters, in sections by group once any parameter
+ * has one ("General" first for the rest), and below them the model parameters
+ * of features and sketch dimensions. A row is dragged to reorder or into
+ * another group, or moved with Alt+↑ and Alt+↓; the order is the customizer
+ * panel's order too. Every change is one command, so undoable.
  */
 export function ParametersDialog({ store, apply, open, onOpenChange }: ParametersDialogProps) {
   const doc = useStore(store, (s) => s.doc);
   const { canUndo, canRedo, undoLabel, redoLabel, undo, redo } = useStore(store);
   const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
   const [message, setMessage] = useState('');
-  // A right-click in a text field of a row keeps the browser's own menu (copy, paste).
-  const [nativeRow, setNativeRow] = useState<string>();
+  const [chosen, setChosen] = useState<Selection>();
 
   /** Dispatches a command; a rejected one shows its message instead of throwing. */
   const run = (command: Command<unknown>): boolean => {
@@ -106,11 +86,56 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
     }
   };
 
-  const all = [...evaluation.parameters.values()];
-  const user = all.flatMap((p) => (p.owner.type === 'user' ? [{ p, id: p.owner.id }] : []));
-  // Feature inputs and sketch dimensions (P1-07), in timeline order.
-  const model = all.flatMap((p) => (p.owner.type !== 'user' ? [{ p, owner: p.owner }] : []));
-  const featureName = (id: FeatureId) => doc.features.find((f) => f.id === id)?.name ?? '';
+  const model = [...evaluation.parameters.values()].filter((p) => p.owner.type !== 'user');
+  const selection = resolveSelection(chosen, doc, model);
+  const select = (next: Selection) => {
+    setChosen(next);
+    setMessage('');
+  };
+  /** Moves a user parameter past its neighbour in its group (Move up, Move down, Alt+arrows). */
+  const step = (id: ParameterId, direction: -1 | 1) => {
+    const index = stepIndex(doc.parameters, id, direction);
+    if (index !== undefined) run(moveParameter({ id, index }));
+  };
+  const history = { canUndo, canRedo, undoLabel, redoLabel, undo, redo };
+
+  let inspector: ReactElement | null;
+  if (selection.kind === 'user') {
+    const parameter = doc.parameters.find((p) => p.id === selection.id);
+    inspector = parameter ? (
+      <UserInspector
+        key={parameter.id}
+        doc={doc}
+        evaluation={evaluation}
+        parameter={parameter}
+        run={run}
+        onSelect={select}
+        canMoveUp={stepIndex(doc.parameters, parameter.id, -1) !== undefined}
+        canMoveDown={stepIndex(doc.parameters, parameter.id, 1) !== undefined}
+        onMove={(direction) => step(parameter.id, direction)}
+      />
+    ) : null;
+  } else if (selection.kind === 'model') {
+    const evaluated = evaluation.parameters.get(selection.name);
+    inspector = evaluated ? (
+      <ModelInspector
+        key={evaluated.name}
+        doc={doc}
+        evaluated={evaluated}
+        run={run}
+        onSelect={select}
+      />
+    ) : null;
+  } else {
+    inspector = (
+      <NewParameterForm
+        doc={doc}
+        evaluation={evaluation}
+        run={run}
+        onAdded={(id) => select({ kind: 'user', id })}
+      />
+    );
+  }
 
   return (
     <Dialog
@@ -149,464 +174,365 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
         </>
       }
     >
-      <p className="mb-2 min-h-5 text-sm text-error" role="alert">
-        <Message text={message} />
-      </p>
-
-      <div className="overflow-x-auto">
-        <table className="mb-5 w-full min-w-[640px] table-fixed border-collapse">
-          <caption className="pb-1.5 text-left font-semibold">User parameters</caption>
-          <thead>
-            <tr>
-              <th scope="col" className={`${th} w-36`}>
-                Name
-              </th>
-              <th scope="col" className={`${th} w-32`}>
-                Unit
-              </th>
-              <th scope="col" className={th}>
-                Expression and value
-              </th>
-              <th scope="col" className={`${th} w-[28%]`}>
-                Comment
-              </th>
-              <th scope="col" className={`${th} w-16`}>
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {user.map(({ p, id }) => {
-              const parameter = doc.parameters.find((q) => q.id === id);
-              const comment = parameter?.comment ?? '';
-              const customizer = parameter?.customizer;
-              const row = (
-                <tr
-                  key={id}
-                  onPointerDownCapture={(e) => setNativeRow(isEditable(e.target) ? id : undefined)}
-                >
-                  <td className={td}>
-                    <TextField
-                      label={`Name of ${p.name}`}
-                      value={p.name}
-                      className="font-mono text-field"
-                      onCommit={(name) => run(updateParameter({ id, changes: { name } }))}
-                    />
-                  </td>
-                  <td className={td}>
-                    <Select
-                      aria-label={`Unit of ${p.name}`}
-                      value={p.unit}
-                      onChange={(e) =>
-                        run(updateParameter({ id, changes: { unit: e.target.value as UnitKind } }))
-                      }
-                    >
-                      {Object.entries(UNIT_LABELS).map(([kind, text]) => (
-                        <option key={kind} value={kind}>
-                          {text}
-                        </option>
-                      ))}
-                    </Select>
-                  </td>
-                  <td className={td}>
-                    <ExpressionInput
-                      label={`Expression of ${p.name}`}
-                      value={p.expression}
-                      evaluate={(expression) =>
-                        evaluateDraft(doc, p.name, (d) => ({
-                          ...d,
-                          parameters: d.parameters.map((q) =>
-                            q.id === id ? { ...q, expression } : q,
-                          ),
-                        }))
-                      }
-                      format={(r) => formatQuantity(r.value, r.dim, doc.settings)}
-                      onCommit={(expression) =>
-                        run(updateParameter({ id, changes: { expression } }))
-                      }
-                    />
-                  </td>
-                  <td className={td}>
-                    <TextField
-                      label={`Comment on ${p.name}`}
-                      value={comment}
-                      onCommit={(text) =>
-                        run(updateParameter({ id, changes: { comment: text || undefined } }))
-                      }
-                    />
-                  </td>
-                  <td className={`${td} whitespace-nowrap`}>
-                    <IconButton
-                      label={`Show ${p.name} in customizer`}
-                      hint={
-                        customizer
-                          ? 'In the Customizer panel. The star takes it out again.'
-                          : 'Show this parameter in the Customizer panel.'
-                      }
-                      pressed={customizer !== undefined}
-                      onClick={() => run(starCommand(id, customizer !== undefined))}
-                    >
-                      <Star
-                        size={16}
-                        strokeWidth={1.75}
-                        className={customizer ? 'fill-current text-warning' : undefined}
-                      />
-                    </IconButton>
-                    <IconButton
-                      label={`Delete ${p.name}`}
-                      onClick={() => run(removeParameter({ id }))}
-                    >
-                      <Trash2 size={16} strokeWidth={1.75} />
-                    </IconButton>
-                  </td>
-                </tr>
-              );
-              return (
-                <Fragment key={id}>
-                  <ContextMenu label={`${p.name} menu`} disabled={nativeRow === id} trigger={row}>
-                    <MenuItem
-                      icon={<Star size={14} />}
-                      onSelect={() => run(starCommand(id, customizer !== undefined))}
-                    >
-                      {customizer
-                        ? `Hide ${p.name} from customizer`
-                        : `Show ${p.name} in customizer`}
-                    </MenuItem>
-                    <MenuItem
-                      icon={<Trash2 size={14} />}
-                      onSelect={() => run(removeParameter({ id }))}
-                    >
-                      Delete {p.name}
-                    </MenuItem>
-                    <MenuSeparator />
-                    <MenuItem icon={<Undo2 size={14} />} disabled={!canUndo} onSelect={undo}>
-                      {undoLabel ? `Undo ${undoLabel}` : 'Undo'}
-                    </MenuItem>
-                    <MenuItem icon={<Redo2 size={14} />} disabled={!canRedo} onSelect={redo}>
-                      {redoLabel ? `Redo ${redoLabel}` : 'Redo'}
-                    </MenuItem>
-                  </ContextMenu>
-                  {customizer && (
-                    <CustomizerFields
-                      name={p.name}
-                      unit={p.unit}
-                      customizer={customizer}
-                      settings={doc.settings}
-                      evaluate={(text) => evaluation.evaluate(text, p.unit)}
-                      format={(r) => formatQuantity(r.value, r.dim, doc.settings)}
-                      onChange={(next) => run(setParameterCustomizer({ id, customizer: next }))}
-                    />
-                  )}
-                </Fragment>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <AddParameterRow doc={doc} onAdd={run} />
-          </tfoot>
-        </table>
-
-        {model.length > 0 && (
-          <table className="w-full min-w-[640px] table-fixed border-collapse">
-            <caption className="pb-1.5 text-left font-semibold">Model parameters</caption>
-            <thead>
-              <tr>
-                <th scope="col" className={`${th} w-36`}>
-                  Name
-                </th>
-                <th scope="col" className={`${th} w-32`}>
-                  Feature
-                </th>
-                <th scope="col" className={th}>
-                  Expression and value
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {model.map(({ p, owner }) => {
-                const { featureId, input } = owner;
-                const draft = (expression: string) =>
-                  owner.type === 'dimension'
-                    ? withDimensionExpr(doc, featureId, input, owner.dimension, expression)
-                    : {
-                        ...doc,
-                        features: doc.features.map((f) =>
-                          f.id === featureId
-                            ? {
-                                ...f,
-                                inputs: {
-                                  ...f.inputs,
-                                  [input]: {
-                                    kind: 'expr' as const,
-                                    expr: expression,
-                                    paramName: p.name,
-                                    unit: p.unit,
-                                  },
-                                },
-                              }
-                            : f,
-                        ),
-                      };
-                return (
-                  <tr key={p.name}>
-                    <td className={`${td} pt-2.5 font-mono text-field`}>{p.name}</td>
-                    <td className={`${td} pt-2.5`}>{featureName(featureId)}</td>
-                    <td className={td}>
-                      <ExpressionInput
-                        label={`Expression of ${p.name}`}
-                        value={p.expression}
-                        evaluate={(expression) =>
-                          evaluateDraft(doc, p.name, () => draft(expression))
-                        }
-                        format={(r) => formatQuantity(r.value, r.dim, doc.settings)}
-                        onCommit={(expr) =>
-                          run(
-                            owner.type === 'dimension'
-                              ? updateSketchDimension({
-                                  feature: featureId,
-                                  id: owner.dimension,
-                                  changes: { expr },
-                                })
-                              : updateFeatureInputs({
-                                  id: featureId,
-                                  inputs: {
-                                    [input]: {
-                                      kind: 'expr',
-                                      expr,
-                                      paramName: p.name,
-                                      unit: p.unit,
-                                    },
-                                  },
-                                }),
-                          )
-                        }
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
+      <div className="-mx-6 -my-4 grid h-[min(660px,calc(100vh-150px))] grid-cols-[minmax(220px,300px)_minmax(0,1fr)]">
+        <ParameterList
+          doc={doc}
+          evaluation={evaluation}
+          model={model}
+          selection={selection}
+          run={run}
+          onSelect={select}
+          onStep={step}
+          history={history}
+        />
+        <div className="flex min-h-0 flex-col overflow-y-auto px-6 py-4">
+          <p className={message ? 'mb-3 text-sm text-error' : ''} role="alert">
+            <Message text={message} />
+          </p>
+          {inspector}
+        </div>
       </div>
     </Dialog>
   );
 }
 
-const RANGE_LABELS: Record<CustomizerField, string> = { min: 'Min', max: 'Max', step: 'Step' };
-
 /**
- * The customizer settings of a starred parameter, under its row (P4-07,
- * ADR-0059 §1): the slider's range and step (expressions in the parameter's
- * unit, stored in its base unit) and the panel heading the row sits under. A
- * range that runs backwards is refused by the command, and the dialog's message
- * line says so.
+ * The selection the dialog shows: the chosen parameter while it exists (an
+ * undo can take it away), else the first row of the list, else the New
+ * parameter form.
  */
-function CustomizerFields({
-  name,
-  unit,
-  customizer,
-  settings,
-  evaluate,
-  format,
-  onChange,
-}: {
-  name: string;
-  unit: UnitKind;
-  customizer: Customizer;
-  settings: ExtrudoDocument['settings'];
-  evaluate(expression: string): EvaluateResult;
-  format(result: Extract<EvaluateResult, { ok: true }>): string;
-  onChange(customizer: Customizer): void;
-}) {
-  return (
-    <tr data-customizer-fields={name}>
-      <td colSpan={5} className="pb-3">
-        <div className="grid grid-cols-[72px_minmax(0,1fr)] items-center gap-x-2 gap-y-1 rounded-control bg-raised p-2">
-          <span className="text-sm font-semibold">Customizer</span>
-          <p className="text-sm text-muted">
-            The slider this parameter gets in the Customizer panel. A value outside the range is
-            allowed; the panel warns about it.
-          </p>
-          {CUSTOMIZER_FIELDS.map((field) => (
-            <Fragment key={field}>
-              <span className="text-sm text-muted">{RANGE_LABELS[field]}</span>
-              <div className="flex min-w-0 items-start gap-1">
-                <ExpressionInput
-                  className="min-w-0 flex-1"
-                  label={`${RANGE_LABELS[field]} of ${name}`}
-                  placeholder="not set"
-                  value={rangeText(unit, customizer[field], settings)}
-                  evaluate={evaluate}
-                  format={format}
-                  onCommit={(text) => onChange(withRangeField(customizer, field, text, evaluate))}
-                />
-                {customizer[field] !== undefined && (
-                  <IconButton
-                    label={`Clear ${RANGE_LABELS[field]} of ${name}`}
-                    hint={`Take the ${RANGE_LABELS[field].toLowerCase()} away.`}
-                    onClick={() => onChange(withoutRangeField(customizer, field))}
-                  >
-                    <Eraser size={14} strokeWidth={1.75} />
-                  </IconButton>
-                )}
-              </div>
-            </Fragment>
-          ))}
-          <span className="text-sm text-muted">Group</span>
-          <TextField
-            label={`Group of ${name}`}
-            value={customizer.group ?? ''}
-            placeholder="no group"
-            onCommit={(text) => {
-              onChange({ ...customizer, group: text.trim() || undefined });
-              return true;
-            }}
-          />
-        </div>
-      </td>
-    </tr>
-  );
-}
-
-/**
- * Evaluates a parameter as if its expression were already changed, so the
- * field sees cycles and the effect on units before anything is committed.
- */
-function evaluateDraft(
+function resolveSelection(
+  chosen: Selection | undefined,
   doc: ExtrudoDocument,
-  name: string,
-  change: (doc: ExtrudoDocument) => ExtrudoDocument,
-): EvaluateResult {
-  const result = evaluateParameters(change(doc)).parameters.get(name)?.result;
-  return result ?? { ok: true, value: 0, dim: { length: 0, angle: 0 } };
+  model: readonly EvaluatedParameter[],
+): Selection {
+  if (chosen?.kind === 'new') return chosen;
+  if (chosen?.kind === 'user' && doc.parameters.some((p) => p.id === chosen.id)) return chosen;
+  if (chosen?.kind === 'model' && model.some((p) => p.name === chosen.name)) return chosen;
+  const first = listSections(doc.parameters)[0]?.ids[0];
+  return first ? { kind: 'user', id: first } : { kind: 'new' };
 }
 
-function AddParameterRow({
+interface History {
+  canUndo: boolean;
+  canRedo: boolean;
+  undoLabel: string | undefined;
+  redoLabel: string | undefined;
+  undo(): void;
+  redo(): void;
+}
+
+/** The list on the left: user parameters by section, New parameter, model parameters. */
+function ParameterList({
   doc,
-  onAdd,
+  evaluation,
+  model,
+  selection,
+  run,
+  onSelect,
+  onStep,
+  history,
 }: {
   doc: ExtrudoDocument;
-  onAdd(command: Command<unknown>): boolean;
+  evaluation: ParameterEvaluation;
+  model: readonly EvaluatedParameter[];
+  selection: Selection;
+  run(command: Command<unknown>): boolean;
+  onSelect(selection: Selection): void;
+  onStep(id: ParameterId, direction: -1 | 1): void;
+  history: History;
 }) {
-  const [name, setName] = useState('');
-  const [unit, setUnit] = useState<UnitKind>('length');
-  const [expression, setExpression] = useState('');
-  const [comment, setComment] = useState('');
-  const [valid, setValid] = useState(false);
-  // Remounts the expression field after an add, which clears it.
-  const [resets, setResets] = useState(0);
-  const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
+  const [dragging, setDragging] = useState<ParameterId>();
+  const [drop, setDrop] = useState<DropTarget>();
+  const [modelOpen, setModelOpen] = useState(false);
+  const showModel = modelOpen || selection.kind === 'model';
+  const sections = listSections(doc.parameters, dragging !== undefined);
+  const grouped = sections.length > 1 || sections[0]?.title !== 'User parameters';
+  const settings = doc.settings;
 
-  const add = () => {
-    const added = onAdd(
-      addParameter({
-        parameter: {
-          id: newId<ParameterId>(),
-          name: name.trim(),
-          expression,
-          unit,
-          ...(comment ? { comment } : {}),
-        },
-      }),
-    );
-    if (added) {
-      setName('');
-      setExpression('');
-      setComment('');
-      setValid(false);
-      setResets((n) => n + 1);
-    }
+  const endDrag = () => {
+    setDragging(undefined);
+    setDrop(undefined);
+  };
+  const onDrop = (event: DragEvent) => {
+    event.preventDefault();
+    const id = dragging;
+    const target = drop;
+    endDrag();
+    if (id === undefined || target === undefined) return;
+    const parameter = doc.parameters.find((p) => p.id === id);
+    if (!parameter) return;
+    const index = dropIndex(doc.parameters, id, target);
+    const regroup = grouped && target.group !== parameter.group;
+    if (!regroup && index === doc.parameters.indexOf(parameter)) return;
+    run(moveParameter({ id, index, ...(regroup ? { group: target.group ?? null } : {}) }));
+  };
+  /** The drop target under the pointer on a row: its top half is before it, the bottom half after. */
+  const overRow = (
+    event: DragEvent,
+    ids: readonly ParameterId[],
+    index: number,
+    group?: string,
+  ) => {
+    if (dragging === undefined) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    const box = event.currentTarget.getBoundingClientRect();
+    const after = event.clientY > box.top + box.height / 2;
+    const before = after ? ids[index + 1] : ids[index];
+    setDrop(before === undefined ? { group } : { before, group });
   };
 
   return (
-    <tr>
-      <td className={td}>
-        <TextInput
-          aria-label="New parameter name"
-          placeholder="name"
-          className="font-mono text-field"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-      </td>
-      <td className={td}>
-        <Select
-          aria-label="New parameter unit"
-          value={unit}
-          onChange={(e) => setUnit(e.target.value as UnitKind)}
+    <div className="flex min-h-0 flex-col border-r border-line bg-panel">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
+        {sections.map((section) => {
+          const atEnd =
+            drop !== undefined && drop.before === undefined && drop.group === section.group;
+          return (
+            <section
+              key={section.title}
+              aria-label={section.title}
+              data-parameter-section={section.title}
+              className="mb-2"
+              onDragOver={(event) => {
+                if (dragging === undefined || section.ids.length > 0) return;
+                event.preventDefault();
+                setDrop({ group: section.group });
+              }}
+              onDrop={onDrop}
+            >
+              <h3 className="flex items-center gap-1.5 px-2 pt-1 pb-1 text-xs font-semibold tracking-[0.08em] text-muted uppercase">
+                {grouped && <ChevronRight size={12} className="rotate-90" aria-hidden />}
+                {section.title}
+                <span className="font-normal tracking-normal">{section.ids.length}</span>
+              </h3>
+              {section.ids.length === 0 && (
+                <div
+                  className={`mx-1 rounded-control border border-dashed px-2 py-1.5 text-sm text-muted ${atEnd ? 'border-accent' : 'border-line'}`}
+                >
+                  Drop here for no group
+                </div>
+              )}
+              <ul>
+                {section.ids.map((id, index) => {
+                  const parameter = doc.parameters.find((p) => p.id === id);
+                  if (!parameter) return null;
+                  const evaluated = evaluation.parameters.get(parameter.name);
+                  const exposed = parameter.customizer !== undefined;
+                  const line =
+                    drop?.before === id
+                      ? 'top'
+                      : atEnd && index === section.ids.length - 1
+                        ? 'bottom'
+                        : undefined;
+                  const selected = selection.kind === 'user' && selection.id === id;
+                  // The drag starts on the row, not the button: Firefox doesn't drag a button.
+                  const row = (
+                    <li
+                      draggable
+                      onDragStart={(event) => {
+                        event.dataTransfer.setData(DRAG_TYPE, id);
+                        event.dataTransfer.effectAllowed = 'move';
+                        setDragging(id);
+                      }}
+                      onDragEnd={endDrag}
+                      onDragOver={(event) => overRow(event, section.ids, index, section.group)}
+                      onDrop={onDrop}
+                      className={`group relative grid h-8 grid-cols-[16px_minmax(0,1fr)] items-center rounded-control pl-1 ${dragging === id ? 'opacity-40' : ''} ${selected ? 'bg-accent-soft' : 'hover:bg-line/50'}`}
+                    >
+                      {line && (
+                        <span
+                          aria-hidden
+                          className={`absolute inset-x-1 h-0.5 rounded-full bg-accent ${line === 'top' ? '-top-px' : '-bottom-px'}`}
+                        />
+                      )}
+                      <GripVertical
+                        size={12}
+                        aria-hidden
+                        className="cursor-grab text-muted opacity-40 group-hover:opacity-100"
+                      />
+                      <button
+                        type="button"
+                        data-parameter-row={parameter.name}
+                        aria-current={selected ? 'true' : undefined}
+                        onClick={() => onSelect({ kind: 'user', id })}
+                        onKeyDown={(event) => {
+                          if (
+                            !event.altKey ||
+                            (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')
+                          )
+                            return;
+                          event.preventDefault();
+                          onStep(id, event.key === 'ArrowUp' ? -1 : 1);
+                        }}
+                        className="group grid h-8 w-full grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-2 pr-2.5 text-left font-mono text-field text-ink"
+                      >
+                        <Star
+                          size={13}
+                          strokeWidth={1.75}
+                          aria-hidden
+                          className={exposed ? 'fill-current text-accent' : 'text-muted opacity-40'}
+                        />
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate">{parameter.name}</span>
+                          {!isPlainValue(parameter.expression) && <FormulaMark />}
+                          {exposed && <span className="sr-only">(in the customizer)</span>}
+                        </span>
+                        <ValueText evaluated={evaluated} settings={settings} />
+                      </button>
+                    </li>
+                  );
+                  return (
+                    <ContextMenu key={id} label={`${parameter.name} menu`} trigger={row}>
+                      <MenuItem
+                        icon={<Star size={14} />}
+                        onSelect={() => run(starCommand(id, exposed))}
+                      >
+                        {exposed
+                          ? `Hide ${parameter.name} from customizer`
+                          : `Show ${parameter.name} in customizer`}
+                      </MenuItem>
+                      <MenuItem
+                        disabled={stepIndex(doc.parameters, id, -1) === undefined}
+                        onSelect={() => onStep(id, -1)}
+                      >
+                        Move up
+                      </MenuItem>
+                      <MenuItem
+                        disabled={stepIndex(doc.parameters, id, 1) === undefined}
+                        onSelect={() => onStep(id, 1)}
+                      >
+                        Move down
+                      </MenuItem>
+                      <MenuItem
+                        icon={<Trash2 size={14} />}
+                        onSelect={() => run(removeParameter({ id }))}
+                      >
+                        Delete {parameter.name}
+                      </MenuItem>
+                      <MenuSeparator />
+                      <MenuItem
+                        icon={<Undo2 size={14} />}
+                        disabled={!history.canUndo}
+                        onSelect={history.undo}
+                      >
+                        {history.undoLabel ? `Undo ${history.undoLabel}` : 'Undo'}
+                      </MenuItem>
+                      <MenuItem
+                        icon={<Redo2 size={14} />}
+                        disabled={!history.canRedo}
+                        onSelect={history.redo}
+                      >
+                        {history.redoLabel ? `Redo ${history.redoLabel}` : 'Redo'}
+                      </MenuItem>
+                    </ContextMenu>
+                  );
+                })}
+              </ul>
+            </section>
+          );
+        })}
+
+        <button
+          type="button"
+          aria-current={selection.kind === 'new' ? 'true' : undefined}
+          onClick={() => onSelect({ kind: 'new' })}
+          className="flex h-8 w-full items-center gap-2 rounded-control px-2 text-base text-muted hover:bg-line/50 hover:text-ink aria-[current]:bg-accent-soft aria-[current]:hover:bg-accent-soft aria-[current]:text-ink"
         >
-          {Object.entries(UNIT_LABELS).map(([kind, text]) => (
-            <option key={kind} value={kind}>
-              {text}
-            </option>
-          ))}
-        </Select>
-      </td>
-      <td className={td}>
-        <ExpressionInput
-          label="New parameter expression"
-          placeholder="e.g. 10 mm"
-          value=""
-          evaluate={(draft) => evaluation.evaluate(draft, unit)}
-          format={(r) => formatQuantity(r.value, r.dim, doc.settings)}
-          onDraftChange={(draft, valid) => {
-            setExpression(draft);
-            setValid(valid);
-          }}
-          onCommit={() => {}}
-          key={resets}
-        />
-      </td>
-      <td className={td}>
-        <TextInput
-          aria-label="New parameter comment"
-          placeholder="comment"
-          value={comment}
-          onChange={(e) => setComment(e.target.value)}
-        />
-      </td>
-      <td className={td}>
-        <Button variant="primary" disabled={!name.trim() || !valid} onClick={add}>
-          Add
-        </Button>
-      </td>
-    </tr>
+          <Plus size={14} aria-hidden />
+          New parameter
+        </button>
+        {doc.parameters.length > 1 && (
+          <p className="px-2 pt-1 text-sm text-muted">
+            Drag to reorder, or into another group. The order is the Customizer's order too.
+          </p>
+        )}
+
+        {model.length > 0 && (
+          <section aria-label="Model parameters" className="mt-3 border-t border-line pt-2">
+            <button
+              type="button"
+              aria-expanded={showModel}
+              onClick={() => setModelOpen(!showModel)}
+              className="flex h-8 w-full items-center justify-between rounded-control px-2 text-base text-muted hover:bg-line/50 hover:text-ink"
+            >
+              <span className="flex items-center gap-1.5">
+                <ChevronRight
+                  size={14}
+                  aria-hidden
+                  className={showModel ? 'rotate-90 transition-transform' : 'transition-transform'}
+                />
+                Model parameters
+              </span>
+              <span>{model.length}</span>
+            </button>
+            {showModel && (
+              <ul>
+                {model.map((p) => (
+                  <li key={p.name}>
+                    <button
+                      type="button"
+                      data-parameter-row={p.name}
+                      aria-current={
+                        selection.kind === 'model' && selection.name === p.name ? 'true' : undefined
+                      }
+                      onClick={() => onSelect({ kind: 'model', name: p.name })}
+                      className="group grid h-8 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-control pr-2.5 pl-7 text-left hover:bg-line/50 aria-[current]:bg-accent-soft aria-[current]:hover:bg-accent-soft"
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="font-mono text-field">{p.name}</span>
+                        {!isPlainValue(p.expression) && <FormulaMark />}
+                        <span className="truncate text-sm text-muted group-aria-[current]:text-ink">
+                          {featureName(doc, p)}
+                        </span>
+                      </span>
+                      <ValueText evaluated={p} settings={settings} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+      </div>
+    </div>
   );
 }
 
-/** A text field that commits on Enter or blur and reverts on Esc. */
-function TextField({
-  label,
-  value,
-  placeholder,
-  className,
-  onCommit,
-}: {
-  label: string;
-  value: string;
-  placeholder?: string;
-  className?: string;
-  onCommit(value: string): boolean;
-}) {
-  const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
-  const commit = () => {
-    if (draft !== value && !onCommit(draft)) setDraft(value);
-  };
+/** The small "ƒx" a formula gets in the list: its value follows other parameters. */
+export function FormulaMark() {
   return (
-    <TextInput
-      aria-label={label}
-      className={className}
-      placeholder={placeholder}
-      value={draft}
-      data-keep-escape={draft !== value || undefined}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur();
-        if (e.key === 'Escape' && draft !== value) setDraft(value);
-      }}
-    />
+    <span
+      title="A formula"
+      className="shrink-0 rounded-[4px] border border-sketch/60 px-1 font-mono text-xs text-ink italic"
+    >
+      ƒx
+    </span>
+  );
+}
+
+/** A row's value, or what is wrong: "loop" for a cycle, "error" for anything else. */
+function ValueText({
+  evaluated,
+  settings,
+}: {
+  evaluated: EvaluatedParameter | undefined;
+  settings: ExtrudoDocument['settings'];
+}) {
+  const result = evaluated?.result;
+  if (!result) return null;
+  if (result.ok) {
+    return (
+      <span className="font-mono text-field text-muted tabular-nums group-aria-[current]:text-ink">
+        {formatQuantity(result.value, result.dim, settings)}
+      </span>
+    );
+  }
+  const loop = result.error.message.includes('refers to itself');
+  return (
+    <span className="font-mono text-field font-medium text-error" title={result.error.message}>
+      {loop ? 'loop' : 'error'}
+    </span>
   );
 }
