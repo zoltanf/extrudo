@@ -25,6 +25,8 @@ These pages are the written guide:
   working with several bodies or imported meshes.
 - [Getting it printed](./printing.md): exporting STL, 3MF and STEP, and the checks that help a
   print succeed.
+- [OpenSCAD export](./openscad.md): your design as editable OpenSCAD code, what turns into code and
+  what turns into a mesh.
 - [Files, versions and where your work lives](./files.md): autosave, `.extrudo` files, imports,
   version history, linked folders, offline use and the examples.
 - [The desktop app](./desktop.md): installing it and what it adds.

@@ -25,6 +25,8 @@ import { Choice, Hint, Radio } from '../sketch/ExportSketchDialog';
 import {
   ANGLE_RANGE,
   DEFLECTION_RANGE,
+  DIALOG_FORMATS,
+  type DialogFormat,
   type ExportBody,
   formatBytes,
   handToSlicer,
@@ -37,6 +39,7 @@ import {
   openBodies,
   RESOLUTIONS,
   type Resolution,
+  scadFile,
   stepFile,
   stlBytes,
 } from './modelExport';
@@ -76,7 +79,7 @@ export interface ExportModelDialogProps {
 
 /** What the dialog remembers between exports (preference `export.model`). */
 interface Remembered {
-  format: ModelFormat;
+  format: DialogFormat;
   resolution: Resolution;
   /** Custom deviation and angle, as typed. */
   deviation: string;
@@ -95,10 +98,18 @@ const DEFAULTS: Remembered = {
   angle: '15 deg',
   groupComponents: true,
 };
+/** Why the OpenSCAD hint says it: the file is code, and some features are meshes in it. */
+const SCAD_HINT = 'Editable OpenSCAD code. Fillets, shells and the like come out as meshes.';
 const RESOLUTION_LABELS: Record<Exclude<Resolution, 'custom'>, string> = {
   coarse: 'Coarse',
   medium: 'Medium',
   fine: 'Fine',
+};
+const EXPORT_LABELS: Record<DialogFormat, string> = {
+  '3mf': '3MF',
+  stl: 'STL',
+  step: 'STEP',
+  scad: 'OpenSCAD',
 };
 const DEGREE = Math.PI / 180;
 
@@ -122,7 +133,7 @@ export function ExportModelDialog(props: ExportModelDialogProps) {
       }}
       size="small"
       title="Export model"
-      description="Bodies as 3MF, STL or STEP, in millimetres."
+      description="Bodies as 3MF, STL, STEP or OpenSCAD, in millimetres."
       actions={
         <DialogClose asChild>
           <IconButton label="Close">
@@ -156,10 +167,11 @@ export function ExportModelForm({
   const computedDoc = useStore(model, (s) => s.doc);
   const open = request !== undefined;
 
-  const [settings, setSettings] = useState<Remembered>(() => ({
-    ...DEFAULTS,
-    ...preferences.get<Partial<Remembered>>(PREFERENCE, {}),
-  }));
+  const [settings, setSettings] = useState<Remembered>(() => {
+    const stored = { ...DEFAULTS, ...preferences.get<Partial<Remembered>>(PREFERENCE, {}) };
+    // An unknown stored format falls back to the default.
+    return DIALOG_FORMATS.includes(stored.format) ? stored : { ...stored, format: DEFAULTS.format };
+  });
   const update = (change: Partial<Remembered>) =>
     setSettings((current) => {
       const next = { ...current, ...change };
@@ -244,7 +256,9 @@ export function ExportModelForm({
   /** Whether a body can go into the chosen format at all. */
   const exportable = (body: ExportBody) => settings.format !== 'step' || !body.mesh;
   const current = status === 'ready' && computedDoc === doc;
-  const meshFormat = settings.format !== 'step';
+  // 3MF and STL are meshed up front; STEP and OpenSCAD are written by the kernel on Export.
+  const meshFormat = settings.format === '3mf' || settings.format === 'stl';
+  const inScad = settings.format === 'scad';
 
   // Mesh formats are meshed as soon as the choice settles: the summary counts triangles and
   // checks every mesh, and Export saves the same meshes.
@@ -308,7 +322,7 @@ export function ExportModelForm({
   // ", 2 components" while the export keeps components together (P6-05,
   // ADR-0081 §7); STL holds no structure, so it says nothing there.
   const componentsNote =
-    groupComponents && componentCount > 0 && settings.format !== 'stl'
+    groupComponents && componentCount > 0 && settings.format !== 'stl' && !inScad
       ? `, ${componentCount} component${componentCount === 1 ? '' : 's'}`
       : '';
   let summary: { text: string; tone: 'muted' | 'error' | 'warning' };
@@ -319,7 +333,11 @@ export function ExportModelForm({
   else if (problem) summary = { text: problem, tone: 'error' };
   else if (!current)
     summary = { text: 'Waiting for the model to finish computing…', tone: 'muted' };
-  else if (!meshFormat) {
+  else if (inScad) {
+    summary = !tessellation
+      ? { text: 'Fix the custom resolution.', tone: 'error' }
+      : { text: `${count} as OpenSCAD code`, tone: 'muted' };
+  } else if (!meshFormat) {
     summary =
       selected.length === bodies.length
         ? {
@@ -358,13 +376,23 @@ export function ExportModelForm({
     current &&
     !busy &&
     !problem &&
-    (meshFormat ? ready !== undefined : true);
+    (meshFormat ? ready !== undefined : !inScad || tessellation !== undefined);
 
   /** The file the choices describe, as Export writes it. */
-  const build = async () =>
-    settings.format === 'step'
-      ? await stepFile(kernel as ModelExporter, selected, doc.name, groupComponents)
-      : meshFile(ready as MeshedBodies, settings.format, doc.name, groupComponents);
+  const build = async () => {
+    if (settings.format === 'step') {
+      return await stepFile(kernel as ModelExporter, selected, doc.name, groupComponents);
+    }
+    if (settings.format === 'scad') {
+      return await scadFile(
+        kernel as ModelExporter,
+        selected,
+        tessellation as MeshOptions,
+        doc.name,
+      );
+    }
+    return meshFile(ready as MeshedBodies, settings.format, doc.name, groupComponents);
+  };
 
   const save = async () => {
     if (!canExport || !kernel) return;
@@ -389,7 +417,12 @@ export function ExportModelForm({
     if (!canExport || !kernel || !openInSlicer || noSlicer) return;
     setBusy(true);
     try {
-      const message = await handToSlicer(openInSlicer, await build(), settings.format, slicer);
+      const message = await handToSlicer(
+        openInSlicer,
+        await build(),
+        settings.format as ModelFormat,
+        slicer,
+      );
       if (message === undefined) update({ slicer });
       setProblem(message);
     } catch (error) {
@@ -400,7 +433,7 @@ export function ExportModelForm({
   };
 
   const noSlicer = installed !== undefined && installed.length === 0;
-  const slicerFirst = request?.slicer === true && openInSlicer !== undefined;
+  const slicerFirst = request?.slicer === true && openInSlicer !== undefined && !inScad;
 
   const toggle = (id: BodyId) =>
     setChosen((current) => {
@@ -506,7 +539,7 @@ export function ExportModelForm({
             All bodies
           </label>
         )}
-        {anyComponent && (
+        {anyComponent && !inScad && (
           <label className="flex h-7 cursor-pointer items-center gap-2 px-1 text-sm text-muted">
             <input
               type="checkbox"
@@ -546,9 +579,21 @@ export function ExportModelForm({
         >
           STEP <Hint>exact geometry for CAD</Hint>
         </Radio>
+        <Radio
+          name="model-format"
+          checked={settings.format === 'scad'}
+          onChange={() => update({ format: 'scad' })}
+        >
+          OpenSCAD <Hint>.scad code you can edit</Hint>
+        </Radio>
       </Choice>
+      {inScad && (
+        <p className="-mt-2 text-sm text-muted" data-export-hint>
+          {SCAD_HINT}
+        </p>
+      )}
 
-      {meshFormat && (
+      {settings.format !== 'step' && (
         <Choice legend="Resolution">
           {(Object.keys(RESOLUTION_LABELS) as (keyof typeof RESOLUTION_LABELS)[]).map((r) => (
             <Radio
@@ -611,7 +656,7 @@ export function ExportModelForm({
         </span>
       </p>
 
-      {openInSlicer && (
+      {openInSlicer && !inScad && (
         <SlicerRow
           installed={installed}
           selected={slicer}
@@ -625,7 +670,7 @@ export function ExportModelForm({
       <div className="flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>
         <Button type="submit" variant={slicerFirst ? 'secondary' : 'primary'} disabled={!canExport}>
-          Export {settings.format === '3mf' ? '3MF' : settings.format.toUpperCase()}
+          Export {EXPORT_LABELS[settings.format]}
         </Button>
       </div>
     </form>

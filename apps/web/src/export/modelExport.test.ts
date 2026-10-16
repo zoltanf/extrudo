@@ -13,6 +13,7 @@ import {
   modelFileName,
   openBodies,
   RESOLUTIONS,
+  scadFile,
   stepFile,
   stlBytes,
 } from './modelExport';
@@ -53,6 +54,10 @@ function fakeKernel(meshes: Record<string, TriangleMesh>) {
     async exportStep(bodies) {
       calls.push(['step', bodies]);
       return `ISO-10303-21;\n${bodies.map((b) => `PRODUCT('${b.name}')`).join('\n')}\nEND-ISO-10303-21;\n`;
+    },
+    async exportScad(options) {
+      calls.push(['scad', options]);
+      return '// header\ncube(1);\n';
     },
   };
   return { kernel, calls };
@@ -172,7 +177,42 @@ describe('model files', () => {
     ]);
   });
 
+  it('writes an OpenSCAD file through the kernel with names, colours and the app version (P6-09)', async () => {
+    const calls: unknown[] = [];
+    const kernel: ModelExporter = {
+      ...fakeKernel({}).kernel,
+      async exportScad(options) {
+        calls.push(options);
+        return '// header\ncube(1);\n';
+      },
+    };
+    const lid = { id: 'c1' as ComponentId, name: 'Lid' };
+    const file = await scadFile(
+      kernel,
+      [{ ...body('Cap', { color: '#ff0000' }), component: lid }, body('Pin')],
+      RESOLUTIONS.fine,
+      'Shelf',
+    );
+    expect(file.name).toBe('Shelf.scad');
+    expect(file.blob.type).toBe('text/x-openscad');
+    expect(await file.blob.text()).toBe('// header\ncube(1);\n');
+    expect(calls).toMatchObject([
+      {
+        bodies: [
+          { id: id('E1:Cap'), name: 'Cap', color: '#ff0000', component: 'Lid' },
+          { id: id('E1:Pin'), name: 'Pin' },
+        ],
+        tessellation: RESOLUTIONS.fine,
+        project: 'Shelf',
+      },
+    ]);
+    const first = (calls[0] as { bodies: object[]; version: string }).bodies[1];
+    expect(first).not.toHaveProperty('color');
+    expect((calls[0] as { version: string }).version).toMatch(/\d/);
+  });
+
   it('names files after the project, and the body when there is one', () => {
+    expect(modelFileName('Wall bracket', [pin], 'scad')).toBe('Wall bracket - Pin.scad');
     expect(modelFileName('Wall bracket', bodies, '3mf')).toBe('Wall bracket.3mf');
     expect(modelFileName('Wall bracket', [pin], 'stl')).toBe('Wall bracket - Pin.stl');
     expect(modelFileName('a/b', [], 'step')).toBe('a b.step');
