@@ -175,7 +175,7 @@ const Z_AXIS: GeomRef = { kind: 'axis', id: 'origin:z' };
 // ------------------------------------------------------------------ scalars
 
 describe('live scalars', () => {
-  const width = param('width', '40 mm', 'length', { min: 10, max: 100, step: 1 });
+  const width = param('width', '40 mm', 'length', { min: '10 mm', max: '100 mm', step: '1 mm' });
 
   it('writes a Customizer parameter and a hidden one, and follows an override', async () => {
     const doc = docOf(
@@ -403,7 +403,7 @@ describe('determinism', () => {
     const doc = docOf(
       [box('B', { length: 'width', height: 'wall * 5' })],
       [
-        param('width', '40 mm', 'length', { min: 10, max: 100, step: 1 }),
+        param('width', '40 mm', 'length', { min: '10 mm', max: '100 mm', step: '1 mm' }),
         param('wall', 'width / 10'),
       ],
     );

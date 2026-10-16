@@ -50,9 +50,9 @@ describe('parameterBlock', () => {
     const doc = docOf([
       param('width', '40 mm', {
         comment: 'Outer width',
-        customizer: { min: 10, max: 100, step: 1 },
+        customizer: { min: '10 mm', max: '100 mm', step: '1 mm' },
       }),
-      param('height', '25 mm', { customizer: { group: 'Size', min: 5, max: 50 } }),
+      param('height', '25 mm', { group: 'Size', customizer: { min: '5 mm', max: '50 mm' } }),
       param('wall', 'width / 10'),
     ]);
     const block = blockOf(doc, { used: ['wall', 'height'] });
@@ -137,6 +137,26 @@ cube_ = 2;
     );
   });
 
+  it('writes a range given as an expression of another parameter, evaluated', () => {
+    const doc = docOf([
+      param('width', '40 mm'),
+      param('height', '25 mm', { customizer: { min: '5 mm', max: '2 * width' } }),
+    ]);
+    expect(blockOf(doc, { used: ['height'] }).code).toBe('height = 25; // [5:80]\n');
+  });
+
+  it('writes no range comment when the min is above the max', () => {
+    const doc = docOf([
+      param('height', '25 mm', { customizer: { min: '50 mm', max: '5 mm', step: '1 mm' } }),
+    ]);
+    expect(blockOf(doc, { used: ['height'] }).code).toBe('height = 25;\n');
+  });
+
+  it('opens no section for a group on a parameter without a customizer', () => {
+    const doc = docOf([param('wall', '3 mm', { group: 'Size' })]);
+    expect(blockOf(doc, { used: ['wall'] }).code).toBe('/* [Hidden] */\nwall = 3;\n');
+  });
+
   it('leaves the block empty when nothing is written', () => {
     const doc = docOf([param('width', '40 mm')]);
     expect(blockOf(doc, { used: [] })).toEqual({ code: '', written: [] });
@@ -147,9 +167,9 @@ cube_ = 2;
       const doc = docOf([
         param('width', '40 mm', {
           comment: 'Outer width',
-          customizer: { min: 10, max: 100, step: 1 },
+          customizer: { min: '10 mm', max: '100 mm', step: '1 mm' },
         }),
-        param('height', '25 mm', { customizer: { group: 'Size', min: 5, max: 50 } }),
+        param('height', '25 mm', { group: 'Size', customizer: { min: '5 mm', max: '50 mm' } }),
         param('wall', 'width / 10'),
       ]);
       const ctx = ctxOf(doc);

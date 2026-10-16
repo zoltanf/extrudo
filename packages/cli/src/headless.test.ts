@@ -559,7 +559,7 @@ describe('an OpenSCAD export (P6-09, ADR-0088)', () => {
             name: 'baseHeight',
             expression: '20 mm',
             unit: 'length',
-            customizer: { min: 10, max: 30, step: 0.5 },
+            customizer: { min: '10 mm', max: '30 mm', step: '0.5 mm' },
           },
         ],
         features: base.features.map((f) =>

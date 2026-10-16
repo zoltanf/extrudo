@@ -4,7 +4,7 @@
  * Customizer — exposed parameters with their ranges and groups, the rest
  * hidden, everything in an order OpenSCAD can run.
  */
-import type { Customizer, EvaluatedParameter, ExtrudoDocument } from '@extrudo/core';
+import { customizerRows, type EvaluatedParameter, type ExtrudoDocument } from '@extrudo/core';
 import { type ExprContext, translateExpression } from './expr';
 import { scadNumber } from './number';
 
@@ -29,18 +29,19 @@ export function parameterBlock(
 ): ParameterBlock {
   const evaluation = ctx.evaluation;
   const byName = evaluation.parameters;
+  const rows = new Map(customizerRows(doc, evaluation).map((r) => [r.name, r]));
 
   /** What the written line for a parameter is, and which written names it refers to. */
   const lineOf = new Map<string, { line: string; refs: string[] }>();
   const lineWithRefs = (p: EvaluatedParameter): { line: string; refs: string[] } => {
     let done = lineOf.get(p.name);
     if (done) return done;
-    const customizer = doc.parameters.find((q) => q.name === p.name)?.customizer;
+    const row = rows.get(p.name);
     const name = ctx.names.get(p.name) ?? p.name;
     if (p.result.ok) {
-      if (customizer) {
+      if (row) {
         // OpenSCAD's Customizer only shows literals, so a value, not an expression.
-        done = { line: `${name} = ${scadNumber(p.result.value)};${range(customizer)}`, refs: [] };
+        done = { line: `${name} = ${scadNumber(p.result.value)};${range(row)}`, refs: [] };
       } else {
         const t = translateExpression(p.expression, p.unit, ctx);
         done = {
@@ -72,7 +73,7 @@ export function parameterBlock(
   for (const p of doc.parameters) {
     if (!written.has(p.name) || !p.customizer || emitted.has(p.name)) continue;
     emitted.add(p.name);
-    const group = p.customizer.group;
+    const group = p.group;
     if (!group) sections[0]?.names.push(p.name);
     else {
       const at = seenGroup.get(group);
@@ -138,8 +139,8 @@ export function parameterBlock(
 }
 
 /** The Customizer's range comment, in base units: `// [min:step:max]` or `// [min:max]`. */
-function range(customizer: Customizer): string {
-  const { min, max, step } = customizer;
+function range(row: { min?: number; max?: number; step?: number }): string {
+  const { min, max, step } = row;
   if (min === undefined || max === undefined) return '';
   return step === undefined
     ? ` // [${scadNumber(min)}:${scadNumber(max)}]`

@@ -82,6 +82,12 @@ stay exact for the rest.
    OpenSCAD identifiers or clash with its keywords and built-ins get a `_`
    suffix. Configurations are not exported.
 
+   Since ADR-0086 (the Parameters dialog), slider ranges are expressions and
+   the group sits on the parameter. The export writes each range's evaluated
+   value in base units (core's `customizerRows`) and takes the section from
+   `parameter.group`; a range that doesn't evaluate, or a min above the max,
+   writes no range comment.
+
 6. **Expression translation** (`@extrudo/core`'s parser, base units):
    a number with a unit becomes `value * factor` folded to one number; a
    bare number in a length context takes the document's length unit; `^`

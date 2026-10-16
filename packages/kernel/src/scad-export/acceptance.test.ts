@@ -121,6 +121,7 @@ function param(
   expression: string,
   unit: UnitKind = 'length',
   customizer?: Parameter['customizer'],
+  group?: string,
 ): Parameter {
   return {
     id: `p-${name}` as ParameterId,
@@ -128,6 +129,7 @@ function param(
     expression,
     unit,
     ...(customizer && { customizer }),
+    ...(group && { group }),
   };
 }
 
@@ -290,7 +292,7 @@ describe('the roadmap AC (parameters)', () => {
     const data = b.sketch;
     return docOf(
       [sketch('S', data), extrude('A', [profile('S', data)], { distance: 'height' })],
-      [param('height', '20 mm', 'length', { min: 5, max: 50, step: 1, group: 'Size' })],
+      [param('height', '20 mm', 'length', { min: '5 mm', max: '50 mm', step: '1 mm' }, 'Size')],
     );
   }
 
