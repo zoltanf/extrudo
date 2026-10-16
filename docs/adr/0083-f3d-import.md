@@ -1280,7 +1280,9 @@ after): match 153 → 157 (a door vent, a connector, a hinge, a spool roller),
 mismatch 55 → 51, partial 27 → 27, no design worse; features left out 75 →
 75. Box errors of 4 to 70 mm went to 0 in three more designs that still
 mismatch for other reasons (their profile regions; one's volume error moves
-from 34 % to 54 % now that the part sits where the file has it). Body check:
+from 34 % to 54 % now that the part sits where the file has it), and in a case
+whose join had pulled in an unrelated body the volume error fell from 345 % to
+3.9 %. Body check:
 editable 211 → 225, frozen 143 → 129, unchecked 26 → 26 (same reasons); no
 body went from editable to anything else. A name tag's two bodies, one merged
 body before, now come out apart but stay frozen (about 1 % off each: their
