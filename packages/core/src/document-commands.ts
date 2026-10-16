@@ -94,6 +94,17 @@ export const updateParameter = defineCommand<{
         p.expression = renameReferences(p.expression, oldName, newName);
       }
     }
+    // Slider ranges too (ADR-0086 §2).
+    for (const p of draft.parameters) {
+      const range = p.customizer;
+      if (!range) continue;
+      for (const field of ['min', 'step', 'max'] as const) {
+        const text = range[field];
+        if (text !== undefined && mentions(text, oldName)) {
+          range[field] = renameReferences(text, oldName, newName);
+        }
+      }
+    }
     for (const { holder } of featureExpressions(draft)) {
       if (mentions(holder.expr, oldName))
         holder.expr = renameReferences(holder.expr, oldName, newName);
@@ -480,7 +491,7 @@ function checkParameterName(draft: DocumentDraft, name: string): void {
 }
 
 /** Every expression inside features: `expr` inputs and sketch dimensions. */
-function* featureExpressions(draft: DocumentDraft): Generator<{
+function* featureExpressions(draft: ExtrudoDocument | DocumentDraft): Generator<{
   feature: Feature;
   holder: { expr: string; paramName?: string; driven?: boolean };
   dimension: boolean;
@@ -498,6 +509,80 @@ function* featureExpressions(draft: DocumentDraft): Generator<{
 }
 
 /**
+ * Something whose expression names a parameter (ADR-0086 §4): what the
+ * Parameters dialog lists as "Used by", and what deleting the parameter is
+ * refused over.
+ */
+export type ParameterUse =
+  /** A user parameter's expression. */
+  | { kind: 'parameter'; id: ParameterId; name: string }
+  /** A user parameter's slider range (ADR-0086 §2). */
+  | { kind: 'range'; id: ParameterId; name: string; field: 'min' | 'max' | 'step' }
+  /**
+   * A feature input or a sketch dimension; `paramName` is its model parameter
+   * (`d4`) when it has one, and `dimension` says it is a sketch dimension.
+   */
+  | {
+      kind: 'feature';
+      featureId: FeatureId;
+      feature: string;
+      paramName?: string;
+      dimension: boolean;
+    }
+  /** A joint's limit (ADR-0081 §4). */
+  | { kind: 'joint'; joint: string; end: 'min' | 'max'; quantity: 'travel' | 'angle' };
+
+/**
+ * Everything whose expression names the parameter `name`, in document order:
+ * user parameters (their expression, then their slider ranges), feature
+ * inputs and sketch dimensions, joint limits. A driven dimension only records
+ * what it measured, and the model parameter `name` itself isn't its own user.
+ */
+export function parameterUsers(doc: ExtrudoDocument | DocumentDraft, name: string): ParameterUse[] {
+  return [...usesOf(doc, name, new Set())];
+}
+
+function* usesOf(
+  doc: ExtrudoDocument | DocumentDraft,
+  name: string,
+  except: ReadonlySet<object>,
+): Generator<ParameterUse> {
+  for (const p of doc.parameters) {
+    if (p.name !== name && mentions(p.expression, name)) {
+      yield { kind: 'parameter', id: p.id, name: p.name };
+    }
+  }
+  for (const p of doc.parameters) {
+    for (const field of ['min', 'step', 'max'] as const) {
+      const text = p.customizer?.[field];
+      if (text !== undefined && mentions(text, name)) {
+        yield { kind: 'range', id: p.id, name: p.name, field };
+      }
+    }
+  }
+  for (const { feature, holder, dimension } of featureExpressions(doc)) {
+    if (except.has(holder) || holder.driven || holder.paramName === name) continue;
+    if (!mentions(holder.expr, name)) continue;
+    yield {
+      kind: 'feature',
+      featureId: feature.id,
+      feature: feature.name,
+      ...(holder.paramName === undefined ? {} : { paramName: holder.paramName }),
+      dimension,
+    };
+  }
+  for (const joint of doc.joints ?? []) {
+    const quantity = joint.type === 'slider' ? 'travel' : 'angle';
+    if (joint.min && mentions(joint.min.expr, name)) {
+      yield { kind: 'joint', joint: joint.name, end: 'min', quantity };
+    }
+    if (joint.max && mentions(joint.max.expr, name)) {
+      yield { kind: 'joint', joint: joint.name, end: 'max', quantity };
+    }
+  }
+}
+
+/**
  * Refuses, with a message naming them, if any expression outside `except`
  * refers to the parameter `name` (before deleting it, or the dimensions
  * that carry it). Parameters and named sketch dimensions are listed by
@@ -509,20 +594,14 @@ export function refuseIfUsed(
   except: ReadonlySet<object> = new Set(),
 ): void {
   const users = new Set<string>();
-  for (const p of draft.parameters) {
-    if (p.name !== name && mentions(p.expression, name)) users.add(`\`${p.name}\``);
-  }
-  for (const { feature, holder, dimension } of featureExpressions(draft)) {
-    // A driven dimension's expression only records what it measured.
-    if (except.has(holder) || holder.driven || holder.paramName === name) continue;
-    if (!mentions(holder.expr, name)) continue;
-    users.add(dimension && holder.paramName ? `\`${holder.paramName}\`` : feature.name);
-  }
-  // A joint's limits are expression owners too, never named (ADR-0081 §4).
-  for (const joint of draft.joints ?? []) {
-    const unit = joint.type === 'slider' ? 'travel' : 'angle';
-    if (joint.min && mentions(joint.min.expr, name)) users.add(`${joint.name}'s minimum ${unit}`);
-    if (joint.max && mentions(joint.max.expr, name)) users.add(`${joint.name}'s maximum ${unit}`);
+  for (const use of usesOf(draft, name, except)) {
+    if (use.kind === 'parameter') users.add(`\`${use.name}\``);
+    else if (use.kind === 'range') users.add(`the slider range of \`${use.name}\``);
+    else if (use.kind === 'feature') {
+      users.add(use.dimension && use.paramName ? `\`${use.paramName}\`` : use.feature);
+    } else {
+      users.add(`${use.joint}'s ${use.end === 'min' ? 'minimum' : 'maximum'} ${use.quantity}`);
+    }
   }
   if (users.size > 0) {
     const list = [...users];

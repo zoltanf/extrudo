@@ -1594,6 +1594,48 @@ export class Kernel {
   }
 
   /**
+   * The points where two faces meet a plane (P4-12, ADR-0040's addendum): the
+   * curve of the two faces (`b`, both sub-shapes) or of `a` with `planeA`
+   * when `b` is null, crossed with the cut plane (`planeB` when `b` is null,
+   * else `planeA`). Points within 1e-7 mm of each other come back once. An
+   * empty list means the curve and the cut plane don't meet.
+   */
+  facesMeetPlane(
+    a: ShapeHandle,
+    b: ShapeHandle | null,
+    planeA: { origin: Vec3; normal: Vec3 },
+    planeB?: { origin: Vec3; normal: Vec3 },
+  ): Vec3[] {
+    this.#solid(a, 'Point at Intersection');
+    if (b !== null) this.#solid(b, 'Point at Intersection');
+    const cut = planeB ?? planeA;
+    const f = this.#facade;
+    const n = f.facesMeetPlane(
+      a,
+      b ?? -1,
+      planeA.origin[0],
+      planeA.origin[1],
+      planeA.origin[2],
+      planeA.normal[0],
+      planeA.normal[1],
+      planeA.normal[2],
+      cut.origin[0],
+      cut.origin[1],
+      cut.origin[2],
+      cut.normal[0],
+      cut.normal[1],
+      cut.normal[2],
+    );
+    if (n < 0) throw new KernelError(f.lastError() || 'The section failed.');
+    const v = this.#copy(Float64Array, f.geometryPtr(), f.geometrySize());
+    const out: Vec3[] = [];
+    for (let i = 0; i < n; i++) {
+      out.push([v[3 * i] as number, v[3 * i + 1] as number, v[3 * i + 2] as number]);
+    }
+    return out;
+  }
+
+  /**
    * How each edge of a shape (sub-shape order) looks seen from the side
    * `direction` points to, through OCCT's hidden-line removal (P4-12,
    * projecting a body): whether some of it is visible, whether it is an

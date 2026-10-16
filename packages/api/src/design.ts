@@ -121,7 +121,15 @@ export interface ParameterOptions {
   unit?: Parameter['unit'];
   /** A note beside it in the Parameters dialog. */
   comment?: string;
-  /** How the customizer shows it (ADR-0059): its slider's range, step and group. */
+  /**
+   * The group it sits in (ADR-0086 §1): a section of the Parameters dialog and
+   * a heading in the customizer.
+   */
+  group?: string;
+  /**
+   * Shows it in the customizer (ADR-0059), with its slider's range and step as
+   * expressions in its unit: `{ min: '1 mm', max: 'width / 4', step: '0.5 mm' }`.
+   */
   customizer?: Customizer;
   /** The parameter's ID; the design's counter hands one out otherwise. */
   id?: string;
@@ -277,6 +285,7 @@ export class Design {
       expression,
       unit: options.unit ?? inferUnit(expression),
       ...(options.comment ? { comment: options.comment } : {}),
+      ...(options.group ? { group: options.group } : {}),
       ...(options.customizer ? { customizer: options.customizer } : {}),
     };
     this.#dispatch(addParameter({ parameter }));
@@ -288,7 +297,7 @@ export class Design {
     return new ParameterHandle(this, this.#parameterOf(parameter).id);
   }
 
-  /** Changes a parameter's expression (and its unit, comment or customizer range). */
+  /** Changes a parameter's expression (and its unit, comment, group or customizer range). */
   setParameter(
     parameter: ParameterLike,
     expression: string,
@@ -302,6 +311,7 @@ export class Design {
           expression,
           ...(options.unit ? { unit: options.unit } : {}),
           ...(options.comment !== undefined ? { comment: options.comment } : {}),
+          ...(options.group !== undefined ? { group: options.group } : {}),
           ...(options.customizer ? { customizer: options.customizer } : {}),
         },
       }),

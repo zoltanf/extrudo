@@ -137,8 +137,46 @@ function unitKindOfSymbol(symbol: unknown): string {
   return 'length';
 }
 
+/**
+ * Format version 1 → 2 (ADR-0086): a parameter's customizer range becomes
+ * expressions and its group moves onto the parameter.
+ * - `customizer.min`, `max` and `step` were numbers in the parameter's base
+ *   unit; they become expressions that say the unit (`40 mm`, `15 deg`, `2`),
+ *   so a design in inches still reads them as millimetres.
+ * - `customizer.group` becomes the parameter's own `group`, which a parameter
+ *   can have without being in the customizer.
+ */
+const v1ToV2: Migration = {
+  from: 1,
+  description: 'customizer ranges as expressions, parameter groups',
+  migrate(doc) {
+    return {
+      ...doc,
+      formatVersion: 2,
+      parameters: asArray(doc.parameters).map((raw) => {
+        const parameter = asObject(raw);
+        if (!isObject(parameter.customizer)) return parameter;
+        const { group, ...range } = parameter.customizer;
+        const suffix =
+          parameter.unit === 'angle' ? ' deg' : parameter.unit === 'unitless' ? '' : ' mm';
+        const customizer = Object.fromEntries(
+          Object.entries(range).map(([key, value]) => [
+            key,
+            typeof value === 'number' ? `${value}${suffix}` : value,
+          ]),
+        );
+        return {
+          ...parameter,
+          ...(typeof group === 'string' && parameter.group === undefined ? { group } : {}),
+          customizer,
+        };
+      }),
+    };
+  },
+};
+
 /** Every migration, in order. The last one must produce `FORMAT_VERSION`. */
-export const MIGRATIONS: readonly Migration[] = [v0ToV1];
+export const MIGRATIONS: readonly Migration[] = [v0ToV1, v1ToV2];
 
 /** At most this many rounds of dropping unknown keys (each round finds every one it can see). */
 const LENIENT_ROUNDS = 4;

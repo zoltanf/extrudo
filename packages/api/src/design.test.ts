@@ -60,7 +60,8 @@ describe('parameters', () => {
     const d = Design.create(FIXED);
     const wall = d.parameter('wall', '3 mm', {
       comment: 'the plate',
-      customizer: { min: 1, max: 10, step: 0.5, group: 'Walls' },
+      group: 'Walls',
+      customizer: { min: '1 mm', max: '10 mm', step: '0.5 mm' },
     });
     expect(d.doc.parameters).toEqual([
       {
@@ -69,7 +70,8 @@ describe('parameters', () => {
         expression: '3 mm',
         unit: 'length',
         comment: 'the plate',
-        customizer: { min: 1, max: 10, step: 0.5, group: 'Walls' },
+        group: 'Walls',
+        customizer: { min: '1 mm', max: '10 mm', step: '0.5 mm' },
       },
     ]);
     expect(wall.expression).toBe('3 mm');
@@ -82,6 +84,8 @@ describe('parameters', () => {
     expect(d.parameter('tilt', '45 deg').unit).toBe('angle');
     expect(d.parameter('half', '20 mm').unit).toBe('length');
     expect(d.parameter('copies', '3', { unit: 'unitless' }).unit).toBe('unitless');
+    // A name on Object.prototype isn't a unit.
+    expect(d.parameter('odd', '2 toString').unit).toBe('length');
   });
 
   it('sets an expression by name or handle, and keeps the others', () => {

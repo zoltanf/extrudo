@@ -146,6 +146,22 @@ export interface FacadeBinding {
     nz: number,
     deflection: number,
   ): number;
+  facesMeetPlane(
+    faceA: number,
+    faceB: number,
+    aox: number,
+    aoy: number,
+    aoz: number,
+    anx: number,
+    any: number,
+    anz: number,
+    box: number,
+    boy: number,
+    boz: number,
+    bnx: number,
+    bny: number,
+    bnz: number,
+  ): number;
   edgeVisibility(shape: number, dx: number, dy: number, dz: number): number;
   geometryPtr(): number;
   geometrySize(): number;

@@ -16,7 +16,7 @@ type Pending = 'save' | 'rename' | 'delete' | undefined;
 
 export interface CustomizerPanelProps {
   tool: CustomizerTool;
-  /** Opens the Parameters dialog, where a parameter is starred. */
+  /** Opens the Parameters dialog, where a parameter is put in the customizer. */
   onOpenParameters(): void;
   onClose(): void;
 }
@@ -206,8 +206,8 @@ export function CustomizerPanel({ tool, onOpenParameters, onClose }: CustomizerP
         {rows.length === 0 ? (
           <div className="flex flex-col items-start gap-2">
             <p className="text-sm text-muted">
-              No parameters in the customizer yet. Star a parameter in the Parameters dialog to show
-              it here.
+              No parameters in the customizer yet. In the Parameters dialog, turn on Customizer for
+              a parameter to show it here.
             </p>
             <Button variant="secondary" onClick={onOpenParameters}>
               Open Parameters

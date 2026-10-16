@@ -17,10 +17,12 @@ import {
   isUnitless,
   lengthFactor,
   mulDim,
+  ownEntry,
   sameDim,
   scaleDim,
   UNITLESS,
   UNITS,
+  unitNamed,
 } from './units';
 
 /** A value in base units (mm, deg) with its dimension. */
@@ -131,7 +133,9 @@ export const FUNCTION_NAMES = Object.keys(FUNCTIONS);
 
 /** Names a parameter can't have: units, functions, constants. */
 export function isReservedName(name: string): boolean {
-  return name in UNITS || name in FUNCTIONS || name in CONSTANTS;
+  return (
+    Object.hasOwn(UNITS, name) || Object.hasOwn(FUNCTIONS, name) || Object.hasOwn(CONSTANTS, name)
+  );
 }
 
 /** Base units per display unit of `dim` for a plain number: the document unit for lengths, degrees. */
@@ -164,7 +168,7 @@ function evaluateUnchecked(node: Node, scope: Scope): Quantity {
     case 'num': {
       if (node.unit === undefined) return { value: node.value, dim: UNITLESS, bare: true };
       // biome-ignore lint/style/noNonNullAssertion: the parser only accepts known units.
-      const unit = UNITS[node.unit]!;
+      const unit = unitNamed(node.unit)!;
       return { value: node.value * unit.factor, dim: unit.dim };
     }
     case 'ref':
@@ -181,11 +185,11 @@ function evaluateUnchecked(node: Node, scope: Scope): Quantity {
 }
 
 function lookup(name: string, span: Span, scope: Scope): Quantity {
-  const constant = CONSTANTS[name];
+  const constant = ownEntry(CONSTANTS, name);
   if (constant) return constant;
   const value = scope.lookup(name, span);
   if (value) return value;
-  if (name in FUNCTIONS) {
+  if (Object.hasOwn(FUNCTIONS, name)) {
     throw new ExprError(`\`${name}\` is a function: write \`${name}(…)\`.`, span);
   }
   const suggestion = closest(name, scope.names());
@@ -245,9 +249,9 @@ function binary(node: Extract<Node, { kind: 'binary' }>, scope: Scope): Quantity
 }
 
 function call(node: Extract<Node, { kind: 'call' }>, scope: Scope): Quantity {
-  const fn = FUNCTIONS[node.name];
+  const fn = ownEntry(FUNCTIONS, node.name);
   if (!fn) {
-    const known = [...scope.names()].includes(node.name) || node.name in CONSTANTS;
+    const known = [...scope.names()].includes(node.name) || Object.hasOwn(CONSTANTS, node.name);
     const suggestion = known ? undefined : closest(node.name, FUNCTION_NAMES);
     throw new ExprError(
       known

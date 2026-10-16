@@ -25,6 +25,7 @@ import {
   newId,
   type ParameterId,
   setParameterCustomizer,
+  setParameterGroup,
 } from '@extrudo/core';
 import { readArchive } from '@extrudo/storage';
 import b2 from '../../../../fixtures/benchmarks/b2-storage-box.extrudo?url';
@@ -40,12 +41,12 @@ import wallBracketThumbnail from './templates/wall-bracket.png?url';
 export interface Exposed {
   /** The parameter's name in the template's document; skipped when it has none. */
   name: string;
-  /** The slider's range in the parameter's base unit (a range, not a limit). */
-  min: number;
-  max: number;
-  /** The slider's step in the same unit; a hundredth of the range by default. */
-  step?: number;
-  /** The panel heading the row sits under. */
+  /** The slider's range, expressions in the parameter's unit (a range, not a limit). */
+  min: string;
+  max: string;
+  /** The slider's step; a hundredth of the range by default. */
+  step?: string;
+  /** The parameter's group (ADR-0086 §1), which the panel heading shows. */
   group?: string;
 }
 
@@ -104,6 +105,9 @@ export function withTemplateCustomizer(
   for (const row of template.exposed ?? []) {
     const parameter = copy.parameters.find((p) => p.name === row.name);
     if (!parameter) continue;
+    if (row.group) {
+      copy = applyCommand(copy, setParameterGroup({ id: parameter.id, group: row.group })).doc;
+    }
     copy = applyCommand(
       copy,
       setParameterCustomizer({
@@ -112,7 +116,6 @@ export function withTemplateCustomizer(
           min: row.min,
           max: row.max,
           ...(row.step === undefined ? {} : { step: row.step }),
-          ...(row.group ? { group: row.group } : {}),
         },
       }),
     ).doc;
@@ -167,9 +170,9 @@ export const TEMPLATES: readonly Template[] = [
     thumbnail: wallBracketThumbnail,
     build: wallBracket,
     exposed: [
-      { name: 'width', min: 40, max: 200, step: 1, group: 'Size' },
-      { name: 'wall', min: 1.2, max: 4, step: 0.2, group: 'Walls' },
-      { name: 'tilt', min: 0, max: 30, step: 1, group: 'Holes' },
+      { name: 'width', min: '40 mm', max: '200 mm', step: '1 mm', group: 'Size' },
+      { name: 'wall', min: '1.2 mm', max: '4 mm', step: '0.2 mm', group: 'Walls' },
+      { name: 'tilt', min: '0 deg', max: '30 deg', step: '1 deg', group: 'Holes' },
     ],
     configurations: [
       { name: 'Wide', values: { width: '160 mm', wall: '3 mm', tilt: '10 deg' } },
@@ -183,10 +186,10 @@ export const TEMPLATES: readonly Template[] = [
     thumbnail: storageBoxThumbnail,
     file: b2,
     exposed: [
-      { name: 'width', min: 40, max: 200, step: 1, group: 'Size' },
-      { name: 'depth', min: 30, max: 200, step: 1, group: 'Size' },
-      { name: 'height', min: 20, max: 150, step: 1, group: 'Size' },
-      { name: 'wall', min: 1.2, max: 4, step: 0.2, group: 'Walls' },
+      { name: 'width', min: '40 mm', max: '200 mm', step: '1 mm', group: 'Size' },
+      { name: 'depth', min: '30 mm', max: '200 mm', step: '1 mm', group: 'Size' },
+      { name: 'height', min: '20 mm', max: '150 mm', step: '1 mm', group: 'Size' },
+      { name: 'wall', min: '1.2 mm', max: '4 mm', step: '0.2 mm', group: 'Walls' },
     ],
     configurations: [
       { name: 'Small', values: { width: '50 mm', depth: '35 mm', height: '25 mm', wall: '2 mm' } },
@@ -203,10 +206,10 @@ export const TEMPLATES: readonly Template[] = [
     thumbnail: boxWithLidThumbnail,
     file: b4,
     exposed: [
-      { name: 'length', min: 40, max: 200, step: 1, group: 'Size' },
-      { name: 'width', min: 30, max: 200, step: 1, group: 'Size' },
-      { name: 'height', min: 20, max: 150, step: 1, group: 'Size' },
-      { name: 'wall', min: 1.2, max: 4, step: 0.2, group: 'Walls' },
+      { name: 'length', min: '40 mm', max: '200 mm', step: '1 mm', group: 'Size' },
+      { name: 'width', min: '30 mm', max: '200 mm', step: '1 mm', group: 'Size' },
+      { name: 'height', min: '20 mm', max: '150 mm', step: '1 mm', group: 'Size' },
+      { name: 'wall', min: '1.2 mm', max: '4 mm', step: '0.2 mm', group: 'Walls' },
     ],
     configurations: [
       {
@@ -226,10 +229,10 @@ export const TEMPLATES: readonly Template[] = [
     thumbnail: pcbEnclosureThumbnail,
     file: b5,
     exposed: [
-      { name: 'length', min: 40, max: 200, step: 1, group: 'Size' },
-      { name: 'width', min: 30, max: 200, step: 1, group: 'Size' },
-      { name: 'height', min: 15, max: 100, step: 1, group: 'Size' },
-      { name: 'wall', min: 1.2, max: 4, step: 0.2, group: 'Walls' },
+      { name: 'length', min: '40 mm', max: '200 mm', step: '1 mm', group: 'Size' },
+      { name: 'width', min: '30 mm', max: '200 mm', step: '1 mm', group: 'Size' },
+      { name: 'height', min: '15 mm', max: '100 mm', step: '1 mm', group: 'Size' },
+      { name: 'wall', min: '1.2 mm', max: '4 mm', step: '0.2 mm', group: 'Walls' },
     ],
     configurations: [
       {

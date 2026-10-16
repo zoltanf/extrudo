@@ -648,6 +648,30 @@ Crank or Glide. Since the right button drags, the right-click marking menu
   separate pieces makes one body per piece; the largest keeps the body's
   name, colour and references, the others are new bodies.
 
+### 3.5 The Parameters dialog (ADR-0086)
+
+A list on the left, the selected parameter on the right.
+
+- **List.** User parameters, one flat "User parameters" section until a
+  parameter has a group, then a section per group with "General" (no group)
+  first; below them "New parameter" and a collapsed "Model parameters"
+  section. A row: a drag grip, a star (filled = in the Customizer), the name
+  in mono, `ƒx` for a formula, the value right-aligned (red "loop" for a
+  cycle, "error" otherwise). The selected row is `accent-soft`. Dragging a
+  row shows a 2 px accent line where it lands and moves it, into another
+  section too (an empty General shows as a drop target while dragging);
+  `Alt+↑`/`Alt+↓` move the focused row within its group; right-click opens
+  the row's menu (Customizer, Move up/down, Delete, Undo, Redo).
+- **Inspector.** Name and Unit (Length / Angle / Number as a segmented
+  control), Expression, Comment, Group as chips (No group, each group in use,
+  "+ New group" typed in place), "Used by" chips (a parameter's chip selects
+  it), the Customizer card (a switch; for a plain value a slider preview and
+  Min / Step / Max expression fields that keep formulas; a formula gets a
+  read-only note instead), and a footer with Move up/down and Delete.
+- **New parameter.** The same fields as a form; Add or `Enter` adds it and
+  selects it. A design without parameters opens on the form.
+- A refused change shows its message at the top of the inspector.
+
 ## 4. Sketch mode
 
 - Enter by: Create Sketch → pick a plane or face; double-click a sketch in the

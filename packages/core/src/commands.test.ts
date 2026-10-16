@@ -353,7 +353,7 @@ const EACH_COMMAND: Command<unknown>[] = [
   moveTimelineMarker({ index: 1 }),
   updateBody({ id: bid('b1'), changes: { name: 'Body1' } }),
   nameBodies({ bodies: { [bid('b1')]: { name: 'Body1', visible: true } } }),
-  setParameterCustomizer({ id: pid('p1'), customizer: { min: 10, max: 80, group: 'Size' } }),
+  setParameterCustomizer({ id: pid('p1'), customizer: { min: '10 mm', max: '80 mm' } }),
   addConfiguration({
     configuration: { id: cid('c1'), name: 'Big', values: { [pid('p1')]: '60 mm' } },
   }),
@@ -473,7 +473,7 @@ function randomCommand(
           ? setParameterCustomizer({ id: aParameter.id })
           : setParameterCustomizer({
               id: aParameter.id,
-              customizer: { min: 0, max: 100, group: `Group ${n % 3}` },
+              customizer: { min: '0 mm', max: '100 mm' },
             }))
       );
     default: {

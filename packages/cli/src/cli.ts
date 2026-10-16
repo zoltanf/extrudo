@@ -102,7 +102,7 @@ export interface Options {
   design: string;
   format?: string;
   out?: string;
-  params: Record<string, string>;
+  params: ReadonlyMap<string, string>;
   config?: string;
   bodies?: string[];
   components?: string[];
@@ -133,8 +133,8 @@ const PARSE_OPTIONS = {
 } as const;
 
 /** `name=expr` pairs of `--param`, in the order they were given. */
-function parametersOf(values: readonly string[]): Record<string, string> {
-  const out: Record<string, string> = {};
+function parametersOf(values: readonly string[]): Map<string, string> {
+  const out = new Map<string, string>();
   for (const pair of values) {
     const at = pair.indexOf('=');
     if (at < 1) {
@@ -149,10 +149,10 @@ function parametersOf(values: readonly string[]): Record<string, string> {
         `--param takes name=expression, as in --param width=60mm ("${pair}" doesn't).`,
       );
     }
-    if (out[name] !== undefined) {
+    if (out.has(name)) {
       throw new UsageError(`--param ${name} was given twice.`);
     }
-    out[name] = expression;
+    out.set(name, expression);
   }
   return out;
 }
@@ -294,7 +294,7 @@ function resolutionOf(text: string | undefined): 'coarse' | 'medium' | 'fine' | 
 async function opened(options: Options): Promise<DesignJob> {
   const { job, notices } = await openDesign(options.design);
   try {
-    for (const [name, expression] of Object.entries(options.params)) {
+    for (const [name, expression] of options.params) {
       await job.setParameters({ [name]: expression });
     }
     if (options.config) await job.applyConfiguration(options.config);

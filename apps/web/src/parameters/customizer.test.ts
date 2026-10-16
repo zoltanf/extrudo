@@ -5,7 +5,6 @@ import {
   createDocumentStore,
   customizerRows,
   type EvaluateResult,
-  ExprError,
   type ExtrudoDocument,
   evaluateParameters,
   type ParameterId,
@@ -13,18 +12,12 @@ import {
   type UnitKind,
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
-import {
-  rangeText,
-  rangeValue,
-  sliderStep,
-  valueExpression,
-  withoutRangeField,
-  withRangeField,
-} from './customizer';
+import { rangeValue, sliderStep, valueExpression, withRangeField } from './customizer';
 import { starCommand } from './ParametersDialog';
 
 /**
- * P4-07, ADR-0059 §1: the Parameters dialog's star and the range it then shows.
+ * P4-07, ADR-0059 §1, ADR-0086 §2: the Parameters dialog's Customizer switch and
+ * the range it then shows.
  * The dialog itself draws in a portal (Radix `Dialog`), which a static render
  * leaves empty, so what is tested here is what the star and the fields write.
  */
@@ -78,103 +71,58 @@ describe('valueExpression', () => {
   });
 });
 
-describe('rangeText', () => {
-  it("is empty while a range end is unset, and reads in the document's unit", () => {
-    expect(rangeText('length', undefined, MM)).toBe('');
-    expect(rangeText('length', 10, MM)).toBe('10.00 mm');
-    expect(rangeText('length', 25.4, INCH)).toBe('1.00 in');
-    expect(rangeText('angle', undefined, MM)).toBe('');
-  });
-});
-
 describe('withRangeField', () => {
-  const evaluateIn = (doc: ExtrudoDocument, expression: string, unit: UnitKind = 'length') =>
-    evaluateParameters(doc).evaluate(expression, unit);
-
-  it('stores the evaluated base-unit number, whichever unit the field is written in', () => {
-    const doc = withParameter();
-    expect(withRangeField({}, 'min', '1 in', (t) => evaluateIn(doc, t))).toEqual({ min: 25.4 });
-    expect(withRangeField({}, 'max', '80 mm', (t) => evaluateIn(doc, t))).toEqual({ max: 80 });
-  });
-
-  it('keeps the other settings, and an empty field takes its range end away', () => {
-    const current: Customizer = { min: 10, max: 80, group: 'Size' };
-    expect(
-      withRangeField(current, 'step', '0.5 mm', () => ({
-        ok: true,
-        value: 0.5,
-        dim: { length: 1, angle: 0 },
-      })),
-    ).toEqual({ min: 10, max: 80, step: 0.5, group: 'Size' });
-    expect(
-      withRangeField(current, 'min', '', () => ({
-        ok: true,
-        value: 0,
-        dim: { length: 1, angle: 0 },
-      })),
-    ).toEqual({
-      max: 80,
-      group: 'Size',
-    });
-  });
-
-  it("leaves the range as it was when the text doesn't evaluate", () => {
-    const bad: EvaluateResult = {
-      ok: false,
-      error: new ExprError('That is not a length.', { start: 0, end: 3 }),
-    };
-    expect(withRangeField({ min: 10 }, 'min', 'ten mm', () => bad)).toEqual({ min: 10 });
-  });
-});
-
-describe('withoutRangeField', () => {
-  /** What a "Clear Min/Max/Step" button writes through the command. */
-  const clear = (doc: ExtrudoDocument, field: 'min' | 'max' | 'step') =>
+  /** What a Min, Max or Step field writes through the command. */
+  const write = (doc: ExtrudoDocument, field: 'min' | 'max' | 'step', text: string) =>
     applyCommand(
       doc,
       setParameterCustomizer({
         id: pid('p1'),
-        customizer: withoutRangeField(doc.parameters[0]?.customizer, field),
+        customizer: withRangeField(doc.parameters[0]?.customizer, field, text),
       }),
     ).doc;
 
-  it('takes away that one value and leaves the others', () => {
-    const doc = withParameter({ customizer: { min: 10, max: 80, step: 5, group: 'Size' } });
-    expect(clear(doc, 'max').parameters[0]?.customizer).toEqual({
-      min: 10,
-      step: 5,
-      group: 'Size',
+  it('keeps the text as typed, formulas included, and leaves the other fields', () => {
+    const doc = withParameter({ customizer: { min: '10 mm', max: '80 mm' } });
+    expect(withRangeField({ min: '10 mm' }, 'max', 'width * 2')).toEqual({
+      min: '10 mm',
+      max: 'width * 2',
     });
-    expect(clear(doc, 'step').parameters[0]?.customizer).toEqual({
-      min: 10,
-      max: 80,
-      group: 'Size',
+    expect(write(doc, 'step', '0.5 mm').parameters[0]?.customizer).toEqual({
+      min: '10 mm',
+      max: '80 mm',
+      step: '0.5 mm',
     });
-    // One undo step each.
+  });
+
+  it('takes an end away when its field is emptied, one undo step each', () => {
+    const doc = withParameter({ customizer: { min: '10 mm', max: '80 mm', step: '5 mm' } });
+    expect(write(doc, 'max', ' ').parameters[0]?.customizer).toEqual({
+      min: '10 mm',
+      step: '5 mm',
+    });
     const store = createDocumentStore(doc);
     store.getState().dispatch(
       setParameterCustomizer({
         id: pid('p1'),
-        customizer: withoutRangeField({ min: 10, max: 80 }, 'min'),
+        customizer: withRangeField(doc.parameters[0]?.customizer, 'min', ''),
       }),
     );
-    expect(store.getState().doc.parameters[0]?.customizer).toEqual({ max: 80 });
-    // One undo step brings the whole range back.
+    expect(store.getState().doc.parameters[0]?.customizer).toEqual({ max: '80 mm', step: '5 mm' });
     store.getState().undo();
     expect(store.getState().doc.parameters[0]?.customizer).toEqual({
-      min: 10,
-      max: 80,
-      step: 5,
-      group: 'Size',
+      min: '10 mm',
+      max: '80 mm',
+      step: '5 mm',
     });
   });
 
   it('leaves the parameter exposed with no range when all three are gone', () => {
-    let doc = withParameter({ customizer: { min: 10, max: 80, step: 5 } });
-    for (const field of ['min', 'max', 'step'] as const) doc = clear(doc, field);
+    let doc = withParameter({ customizer: { min: '10 mm', max: '80 mm', step: '5 mm' } });
+    for (const field of ['min', 'max', 'step'] as const) doc = write(doc, field, '');
     expect(doc.parameters[0]?.customizer).toEqual({});
     // Exposed, so the panel still lists it (it just has no slider).
-    expect(customizerRows(doc, evaluateParameters(doc).parameters)).toHaveLength(1);
+    expect(customizerRows(doc, evaluateParameters(doc))).toHaveLength(1);
   });
 });
 
@@ -197,8 +145,10 @@ describe('the slider', () => {
 
 describe('the settings the dialog reads', () => {
   it("come from the store, and the evaluation is the document's", () => {
-    const store = createDocumentStore(withParameter({ customizer: { min: 10, max: 80 } }));
-    expect(store.getState().doc.parameters[0]?.customizer).toEqual({ min: 10, max: 80 });
+    const store = createDocumentStore(
+      withParameter({ customizer: { min: '10 mm', max: '80 mm' } }),
+    );
+    expect(store.getState().doc.parameters[0]?.customizer).toEqual({ min: '10 mm', max: '80 mm' });
     store.getState().dispatch(starCommand(pid('p1'), true));
     expect(store.getState().doc.parameters[0]?.customizer).toBeUndefined();
     expect(evaluate(withParameter()).value).toBe(25.4);

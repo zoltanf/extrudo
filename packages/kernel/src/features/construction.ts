@@ -697,6 +697,84 @@ function threePlanesMeet(ctx: EvalContext, refs: readonly GeomRef[]): Vec3 {
   );
 }
 
+/**
+ * Three planes, flat faces or curved faces meeting at one point (P4-12,
+ * ADR-0040's addendum): the three are split into curved faces and flat
+ * planes/faces. Three flats are solved in TypeScript (`threePlanesMeet`); any
+ * curved face needs a face-face (or face-plane) section crossed with a plane,
+ * solved in the facade. Two curved faces plus a plane, a curved face plus a
+ * flat face and a plane, a curved face plus two planes; three curved faces
+ * have no single point and are refused.
+ */
+function mixedMeet(ctx: EvalContext, refs: readonly GeomRef[]): Vec3 {
+  const curved: GeomRef[] = [];
+  const flats: GeomRef[] = [];
+  for (const ref of refs) {
+    if (ref.kind === 'face' && !isFlatFace(ctx, ref)) curved.push(ref);
+    else flats.push(ref);
+  }
+  if (curved.length === 0) return threePlanesMeet(ctx, refs);
+  if (curved.length === 3) {
+    throw new KernelError('At least one of the three must be a plane or a flat face.');
+  }
+  using scope = ctx.kernel.scope();
+  const faceShape = (ref: GeomRef, label: string): ShapeHandle => {
+    const hit = ctx.resolve(ref, { label });
+    return scope.track(ctx.kernel.subShape(hit.shape, 'face', hit.index));
+  };
+  const planeAt = (ref: GeomRef, label: string) => {
+    const { frame, anchor } = planeOf(ctx, ref, label);
+    return { origin: frame.origin, normal: frame.normal, anchor };
+  };
+  let points: Vec3[];
+  // The plane the crossings are measured against: the one doing the final cut.
+  let anchor: Vec3;
+  if (curved.length === 2) {
+    const cut = planeAt(flats[0] as GeomRef, 'the plane');
+    points = ctx.kernel.facesMeetPlane(
+      faceShape(curved[0] as GeomRef, 'the first face'),
+      faceShape(curved[1] as GeomRef, 'the second face'),
+      cut,
+    );
+    anchor = cut.anchor;
+  } else {
+    const flatFace = flats.find((ref) => ref.kind === 'face');
+    if (flatFace) {
+      const cut = planeAt(flats.find((ref) => ref !== flatFace) as GeomRef, 'the plane');
+      points = ctx.kernel.facesMeetPlane(
+        faceShape(curved[0] as GeomRef, 'the curved face'),
+        faceShape(flatFace, 'the flat face'),
+        cut,
+      );
+      anchor = cut.anchor;
+    } else {
+      const a = planeAt(flats[0] as GeomRef, 'the first plane');
+      const b = planeAt(flats[1] as GeomRef, 'the second plane');
+      points = ctx.kernel.facesMeetPlane(
+        faceShape(curved[0] as GeomRef, 'the curved face'),
+        null,
+        a,
+        b,
+      );
+      anchor = b.anchor;
+    }
+  }
+  if (points.length === 0) throw new KernelError("The faces don't meet on that plane.");
+  if (points.length === 1) return points[0] as Vec3;
+  // Several crossings: take the one nearest the plane's centre (its anchor).
+  let best = points[0] as Vec3;
+  let nearest = length(sub(best, anchor));
+  for (const point of points) {
+    const distance = length(sub(point, anchor));
+    if (distance < nearest) {
+      best = point;
+      nearest = distance;
+    }
+  }
+  ctx.warn(`${points.length} points meet there; the one nearest the plane's centre was taken.`);
+  return best;
+}
+
 /** Two edges, an edge and a plane, or three planes meeting at one point (P4-12). */
 export const kernelPointAtIntersection = define(POINT_AT_INTERSECTION_TYPE, (ctx) => {
   const refs = inputs<PointAtIntersectionInputs>(ctx).entities?.refs ?? [];
@@ -713,7 +791,7 @@ export const kernelPointAtIntersection = define(POINT_AT_INTERSECTION_TYPE, (ctx
     return { kind: 'point', point: edgeMeetsPlane(ctx, edges[0] as GeomRef, only) };
   }
   if (refs.length === 3 && planes.length === 3) {
-    return { kind: 'point', point: threePlanesMeet(ctx, refs) };
+    return { kind: 'point', point: mixedMeet(ctx, refs) };
   }
   throw new KernelError('Pick two edges, an edge and a plane or face, or three planes.');
 });

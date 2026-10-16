@@ -14,6 +14,7 @@ import {
   mentions,
   nextModelParameterName,
   renameReferences,
+  valuesByName,
 } from './parameters';
 import { ANGLE, LENGTH, UNITLESS } from './units';
 
@@ -213,6 +214,20 @@ describe('names', () => {
       't + walls * max(t, d1) + my_wall',
     );
   });
+
+  it('gives values by name with no prototype, so `__proto__` is a value like any other', () => {
+    const values = valuesByName(
+      evaluateParameters(
+        doc([param('__proto__', '4 mm'), param('toString', '__proto__ / 2'), param('bad', 'x')]),
+      ),
+    );
+    expect(Object.entries(values)).toEqual([
+      ['__proto__', 4],
+      ['toString', 2],
+    ]);
+    expect(values.constructor).toBeUndefined();
+    expect(Object.getPrototypeOf(values)).toBeNull();
+  });
 });
 
 describe('parameter commands', () => {
@@ -245,5 +260,10 @@ describe('parameter commands', () => {
 
   it.each(['mm', 'sin', 'pi', 'd1', 'width'])('reject the name %s', (name) => {
     expect(() => applyCommand(base, addParameter({ parameter: param(name, '1') }))).toThrow();
+  });
+
+  it.each(['constructor', 'toString', '__proto__'])('take the name %s', (name) => {
+    const added = applyCommand(base, addParameter({ parameter: param(name, '1') })).doc;
+    expect(added.parameters.at(-1)?.name).toBe(name);
   });
 });

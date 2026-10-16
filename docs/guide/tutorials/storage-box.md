@@ -23,8 +23,8 @@ Open the app at [{{APP_URL}}]({{APP_URL}}/).
 On the home screen press **New design**. Press the name at the top, type
 `Storage box` and press `Enter`. Open the **Home** tab and press **Parameters**.
 
-Add these five, the same way as before (a name, the unit on **Length**, an
-expression, **Add**):
+Add these five, the same way as before (**New parameter**, a name, the unit on
+**Length**, an expression, **Add**):
 
 | Name | Expression |
 |---|---|

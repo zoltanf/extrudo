@@ -112,7 +112,7 @@ describe('mediaTypeOf', () => {
 describe('a file input in the document', () => {
   const doc = (file: unknown, mediaType = 'model/step') => ({
     format: 'extrudo',
-    formatVersion: 1,
+    formatVersion: 2,
     id: 'd1',
     name: 'Design',
     settings: { units: 'mm', precision: 2 },

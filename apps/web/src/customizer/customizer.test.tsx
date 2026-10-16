@@ -36,21 +36,23 @@ function design(changes: Record<string, Partial<Parameter>> = {}): ExtrudoDocume
           name: 'width',
           expression: '40 mm',
           unit: 'length',
-          customizer: { min: 10, max: 80, step: 1, group: 'Size' },
+          group: 'Size',
+          customizer: { min: '10 mm', max: '80 mm', step: '1 mm' },
         },
         {
           id: pid('p2'),
           name: 'wall',
           expression: '3 mm',
           unit: 'length',
-          customizer: { min: 1, max: 5, step: 0.5 },
+          customizer: { min: '1 mm', max: '5 mm', step: '0.5 mm' },
         },
         {
           id: pid('p3'),
           name: 'half',
           expression: 'width / 2',
           unit: 'length',
-          customizer: { group: 'Size' },
+          group: 'Size',
+          customizer: {},
         },
         { id: pid('p4'), name: 'quiet', expression: '1 mm', unit: 'length' },
         {
@@ -58,7 +60,7 @@ function design(changes: Record<string, Partial<Parameter>> = {}): ExtrudoDocume
           name: 'tilt',
           expression: '30 deg',
           unit: 'angle',
-          customizer: { min: 0, max: 90, step: 5 },
+          customizer: { min: '0 deg', max: '90 deg', step: '5 deg' },
         },
       ] satisfies Parameter[]
     ).map((p) => ({ ...p, ...changes[p.name] })),
@@ -163,7 +165,7 @@ describe('the Customizer panel', () => {
     const p = panel(createDocument());
     expect(p.html).toContain('data-customizer-state="empty"');
     expect(p.html).toContain(
-      'No parameters in the customizer yet. Star a parameter in the Parameters dialog to show it here.',
+      'No parameters in the customizer yet. In the Parameters dialog, turn on Customizer for a parameter to show it here.',
     );
     expect(p.html).toContain('Open Parameters');
     expect(p.html).not.toContain('data-customizer-row');

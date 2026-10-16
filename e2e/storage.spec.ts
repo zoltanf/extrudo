@@ -1,7 +1,14 @@
 import { expect, type Page, test } from '@playwright/test';
 import { readArchive } from '../packages/storage/src/archive';
 import { exportProject, renameProject } from './benchmark-helpers';
-import { fileAction, kernelReady, openProject, pickTool, saveStatus } from './helpers';
+import {
+  fileAction,
+  kernelReady,
+  openProject,
+  parameterExpression,
+  pickTool,
+  saveStatus,
+} from './helpers';
 
 // P0-08: projects live in the browser (OPFS + IndexedDB), autosave with a
 // visible state, the home screen, `.extrudo` export and import, and the
@@ -160,9 +167,7 @@ test('export and import round-trip a project as an .extrudo file', async ({ page
   await expect(chips).toHaveCount(timeline.length);
   expect(await chips.allTextContents()).toEqual(timeline);
   await pickTool(page, 'Parameters');
-  await expect(page.getByRole('textbox', { name: 'Expression of wall', exact: true })).toHaveValue(
-    '2.4 mm',
-  );
+  await expect(await parameterExpression(page, 'wall')).toHaveValue('2.4 mm');
 });
 
 test('opens a design a newer Extrudo saved, and says what it left out (P3-13)', async ({
@@ -178,7 +183,7 @@ test('opens a design a newer Extrudo saved, and says what it left out (P3-13)', 
     const dir = await (await root.getDirectoryHandle('projects')).getDirectoryHandle(${JSON.stringify(id)});
     const handle = await dir.getFileHandle('document.json');
     const doc = JSON.parse(await (await handle.getFile()).text());
-    doc.formatVersion = 2;
+    doc.formatVersion = 3;
     doc.lighting = 'studio';
     const writable = await handle.createWritable();
     await writable.write(JSON.stringify(doc));
@@ -191,7 +196,7 @@ test('opens a design a newer Extrudo saved, and says what it left out (P3-13)', 
     page.getByRole('button', { name: 'Project name: From the future. Rename' }),
   ).toBeVisible();
   await expect(
-    page.getByRole('status').filter({ hasText: 'saved by a newer Extrudo (file format 2' }),
+    page.getByRole('status').filter({ hasText: 'saved by a newer Extrudo (file format 3' }),
   ).toContainText("1 setting this version doesn't know was left out.");
 });
 
