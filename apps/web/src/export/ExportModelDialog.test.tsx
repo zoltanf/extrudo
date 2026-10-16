@@ -38,6 +38,9 @@ function props(over: Partial<ExportModelDialogProps> = {}): ExportModelDialogPro
     async exportStep() {
       return 'ISO-10303-21;\n';
     },
+    async exportScad() {
+      return '// header\ncube(1);\n';
+    },
   };
   const bodies: BodyEntry[] = [
     {

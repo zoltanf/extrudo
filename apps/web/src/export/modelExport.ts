@@ -20,7 +20,6 @@ import {
   type ModelFormat,
   meshBytes,
   modelFileName,
-  type ScadExportOptions,
   stepBody,
 } from '@extrudo/kernel';
 import { SLICERS, type SlicerFile, type SlicerId } from '../platform/slicer';
@@ -67,11 +66,6 @@ export interface ModelFile {
 
 /** The formats the dialog offers: the kernel's three and an OpenSCAD file (P6-09, ADR-0086 §9). */
 export type DialogFormat = ModelFormat | 'scad';
-
-/** What writes the `.scad` file: the kernel's `exportScad`, which a dialog's kernel may lack. */
-export interface ScadExporter {
-  exportScad(options: ScadExportOptions): Promise<string>;
-}
 
 export const DIALOG_FORMATS: readonly DialogFormat[] = ['3mf', 'stl', 'step', 'scad'];
 
@@ -123,7 +117,7 @@ export async function stepFile(
  * are tessellated at `tessellation` and written as polyhedra.
  */
 export async function scadFile(
-  kernel: ScadExporter,
+  kernel: ModelExporter,
   bodies: readonly ExportBody[],
   tessellation: MeshOptions,
   project: string,

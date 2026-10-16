@@ -37,7 +37,7 @@ The same design and settings always give the same file, so it diffs and versions
 | Extrude of a sketch profile (and text) | `linear_extrude` of a `polygon`; a distance on every side; Through all for Cut and Intersect |
 | Revolve of a sketch profile | `rotate_extrude`, for an axis in the profile's plane |
 | Combine, Remove | `union`, `difference`, `intersection`; Remove writes nothing |
-| Move, Scale, Mirror | `multmatrix`, `scale`, `mirror`; copies stay |
+| Move, Scale, Mirror | `translate`, `rotate`, `scale`, `mirror`; copies stay |
 | Rectangular and Circular Pattern | the copies, as repeated transforms |
 
 ## What becomes a polyhedron
@@ -54,15 +54,21 @@ mesh, and a coarser one a smaller file.
 
 ## Parameters
 
-Parameters the file's code uses become variables at the top, in your order, so you can change
-them in OpenSCAD. Parameters with a Customizer group (see [Parameters](./parameters.md)) keep
-their group and range in OpenSCAD's Customizer panel; the rest sit in a hidden section. Names
-OpenSCAD can't take are given a trailing `_`.
+Parameters the file's code uses become variables at the top, so you can change them in
+OpenSCAD. Parameters with a Customizer group (see [Parameters](./parameters.md)) keep their
+group and range in OpenSCAD's Customizer panel; the rest sit in a hidden section, each after
+the ones it uses. Names OpenSCAD can't take get a trailing `_`.
 
-Some parameters are **held fixed**: a sketch's dimensions are solved by Extrudo's constraint
-solver, which OpenSCAD doesn't have, and a polyhedron is a mesh of one value. Changing such a
-parameter in the `.scad` file changes nothing. The file says so in a comment at the parameter,
-naming the features that use it. Change those in Extrudo and export again.
+**What follows a change:** sizes, distances, angles and scale factors (a Box's length, an
+Extrude's distance, a Move's angle) are written as expressions over the parameters, so the
+shape follows when you change one.
+
+**What is held fixed:** sketch geometry (Extrudo's constraint solver placed it, and OpenSCAD
+has none), placements (where a feature sits: its plane, axis or pivot), a pattern's count and
+spacing, and every polyhedron. When a parameter also sets one of these, changing it in
+OpenSCAD changes only the live parts, and a comment at the parameter names the features it
+doesn't follow. A parameter that only fixed things use isn't written. To change those,
+change the parameter in Extrudo and export again.
 
 ## From the command line
 

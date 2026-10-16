@@ -221,6 +221,7 @@ test('OpenSCAD exports a box with a hole as code (P6-09, ADR-0086 §9)', async (
   expect(text).toMatch(/Extrudo/);
   expect(text).toContain('$fa = ');
   expect(text).toMatch(/^module Body1_v\d+\(\) \{/m);
-  // Once the primitive hooks land (ADR-0086 §7), the box and its cut are code, not a mesh:
-  // expect `difference()` and `cube(`, and no `polyhedron(`.
+  expect(text).toContain('difference()');
+  expect(text).toContain('cube(');
+  expect(text).not.toContain('polyhedron(');
 });

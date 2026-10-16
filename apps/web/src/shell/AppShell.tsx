@@ -57,7 +57,7 @@ import {
   useTheme,
 } from '../design-system';
 import { ExportModelDialog, type ModelExportRequest } from '../export/ExportModelDialog';
-import type { ModelExporter, ScadExporter } from '../export/modelExport';
+import type { ModelExporter } from '../export/modelExport';
 import { calibrationStore, pickCanvasFile } from '../features/canvas';
 import { DialogOverlay } from '../features/DialogOverlay';
 import { type DialogKernel, dialogBodies, viewPreview } from '../features/dialog';
@@ -276,7 +276,6 @@ export interface AppShellProps {
   pendingBodies?: readonly string[];
   kernel?: DialogKernel &
     ModelExporter &
-    Partial<ScadExporter> &
     MeasureKernel &
     Partial<PluginCommandKernel> &
     Partial<Pick<JointDialogKernel, 'resolveJoint'>> &

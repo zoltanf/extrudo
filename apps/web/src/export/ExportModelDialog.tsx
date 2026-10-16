@@ -39,7 +39,6 @@ import {
   openBodies,
   RESOLUTIONS,
   type Resolution,
-  type ScadExporter,
   scadFile,
   stepFile,
   stlBytes,
@@ -59,7 +58,7 @@ export interface ExportModelDialogProps {
   /** The model's live bodies, in browser order. */
   bodies: readonly BodyEntry[];
   /** The project's kernel; without one nothing can be exported. */
-  kernel: (ModelExporter & Partial<ScadExporter>) | undefined;
+  kernel: ModelExporter | undefined;
   request: ModelExportRequest | undefined;
   files: FileAccess;
   preferences: Preferences;
@@ -385,9 +384,7 @@ export function ExportModelForm({
       return await stepFile(kernel as ModelExporter, selected, doc.name, groupComponents);
     }
     if (settings.format === 'scad') {
-      if (!kernel?.exportScad || !tessellation)
-        throw new Error("This kernel can't write OpenSCAD.");
-      return await scadFile(kernel as ScadExporter, selected, tessellation, doc.name);
+      return await scadFile(kernel as ModelExporter, selected, tessellation as MeshOptions, doc.name);
     }
     return meshFile(ready as MeshedBodies, settings.format, doc.name, groupComponents);
   };

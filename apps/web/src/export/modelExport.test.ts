@@ -55,6 +55,10 @@ function fakeKernel(meshes: Record<string, TriangleMesh>) {
       calls.push(['step', bodies]);
       return `ISO-10303-21;\n${bodies.map((b) => `PRODUCT('${b.name}')`).join('\n')}\nEND-ISO-10303-21;\n`;
     },
+    async exportScad(options) {
+      calls.push(['scad', options]);
+      return '// header\ncube(1);\n';
+    },
   };
   return { kernel, calls };
 }
@@ -175,8 +179,9 @@ describe('model files', () => {
 
   it('writes an OpenSCAD file through the kernel with names, colours and the app version (P6-09)', async () => {
     const calls: unknown[] = [];
-    const kernel = {
-      async exportScad(options: unknown) {
+    const kernel: ModelExporter = {
+      ...fakeKernel({}).kernel,
+      async exportScad(options) {
         calls.push(options);
         return '// header\ncube(1);\n';
       },
