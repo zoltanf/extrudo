@@ -16,7 +16,7 @@ them. Notes further down that name a machine apply to that machine only.
 | Node, pnpm | Node 26 + pnpm 12 from mise (`~/.config/mise/config.toml`) | Node 24 + pnpm 12 from nvm (no mise) |
 | Docker | Yes (`docker` group; socket-activated daemon) | Yes since 2026-09-29 (`docker.io` from Ubuntu; `docker` group). Until the next login, run it through `sg docker -c '…'` (`sg`/`newgrp` come from `util-linux-extra`). No emscripten outside the image, no sudo for agents |
 | OCCT / planegcs WASM | `pnpm occt build` / `pnpm planegcs build` locally, or CI | Prefer CI (`gh workflow run ci.yml --ref <branch>`, below): a local build competes for the 4 cores. Local builds are possible but not tried yet |
-| Facade checks | `em++ -fsyntax-only` and the native harness in the image | Same, through `sg docker -c`: the pinned image `ghcr.io/taucad/opencascade.js:3.0.2-single-threaded` is pulled; the syntax check takes about 8 s |
+| Facade checks | `em++ -fsyntax-only` and the native harness in the image | Same, through `sg docker -c`: the pinned image `ghcr.io/taucad/opencascade.js:3.1.0-single-threaded` (the toolchain's version) is pulled; the syntax check takes about 8 s |
 | Playwright browser | Playwright's own Chromium (`pnpm e2e:install`) | System Chrome: `PLAYWRIGHT_CHROMIUM_PATH=/usr/bin/google-chrome-stable` |
 | Screenshot baselines | Regenerate, then check in the Playwright Ubuntu docker image | Some shots fail locally (Chrome renders differently; they pass in CI): `shell.spec.ts:35` dark/light, `sketch.spec.ts:140`, the home screen in `storage.spec.ts` dark/light, and `print-aids.spec.ts`'s overhang shading (about 1 % of pixels). New baselines: take them from CI's `playwright-report-1`/`-2` artifacts (one per e2e shard; `gh run download <id>`) |
 | E2E load | Full parallel run fine | Only one full e2e at a time, `--workers=2`; under load timeouts give false failures. Prefer single specs locally and the full suite through CI on the branch. With its NVIDIA GPU, `E2E_GPU=1` makes viewport-heavy specs 17-39 % faster (screenshot specs excluded: they need SwiftShader) |
@@ -58,8 +58,9 @@ them. Notes further down that name a machine apply to that machine only.
   `malloc`-address probe was tried and is too noisy; `OSD_MemInfo` and
   embind's instance counters aren't exported. Reported upstream as
   [taucad/opencascade.js#40](https://github.com/taucad/opencascade.js/issues/40), fixed in
-  libcascade 3.1.0 (2026-10-13); we still build with toolchain 3.0.2, where it
-  remains (ADR-0001's amendment of 2026-10-15).
+  libcascade 3.1.0 (2026-10-13); we build with toolchain 3.1.0 since
+  2026-10-16 (ADR-0001's addendum), where `delete()` frees the C++ object, so
+  deleting one OCCT still references is a use-after-free.
 - **brepjs `*WithEvolution` returns empty maps unless the input faces carry
   metadata** (for example `tagFaces`): brepjs only sends face hashes to the
   kernel when there is something to propagate.
@@ -276,7 +277,7 @@ them. Notes further down that name a machine apply to that machine only.
 - **Facade checks with Docker on the Ubuntu machine** (since 2026-09-29;
   `sg docker -c '…'` until the shell has the group): `em++
   -fsyntax-only` and the native harness both run in
-  `ghcr.io/taucad/opencascade.js:3.0.2-single-threaded` (`--user 0`, harness
+  `ghcr.io/taucad/opencascade.js:3.1.0-single-threaded` (`--user 0`, harness
   in the scratchpad, `-sERROR_ON_UNDEFINED_SYMBOLS=0` and `TKDESTEP TKXSBase
   TKDE` among the libs so the whole facade links). Real OCCT 8.0.1 headers
   are also at `https://raw.githubusercontent.com/Open-Cascade-SAS/OCCT/b8f597c677811d1f9f4d8a97f5ae2825c0353a42/src/…`

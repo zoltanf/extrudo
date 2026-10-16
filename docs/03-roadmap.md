@@ -92,7 +92,7 @@ in the browser.
   rebuilds on a small initial heap, plus a leak control that must fail), CI
   that can build the WASM (Docker). Upstream leak report:
   [taucad/opencascade.js#40](https://github.com/taucad/opencascade.js/issues/40) (fixed in
-  libcascade 3.1.0 on 2026-10-13; the upgrade is a P4-12 item).
+  libcascade 3.1.0 on 2026-10-13; we build with it since 2026-10-16).
   *AC:* NFR-03 crash test (forced abort → worker restarts, app survives);
   memory test green.
   **Done 2026-09-25:** `packages/kernel` with the facade in `occt/facade/`,
@@ -1025,7 +1025,7 @@ end to end, faster than in established desktop CAD.
     drag and the B1-B5 recomputes measured within noise (ADR-0067 §Results).
     `e2e/hosting.spec.ts` asserts the served `script-src` and walks a whole
     session under it with no violation. No further work here.
-  - OCCT toolchain: `@libcascade/toolchain` 3.0.2 → **3.1.0**, which fixes
+  - ~~OCCT toolchain: `@libcascade/toolchain` 3.0.2 → **3.1.0**, which fixes
     taucad/opencascade.js#40 (ADR-0001's amendment of 2026-10-15). Bump the
     pin in `packages/kernel/package.json`, rebuild (new input hash: `pnpm occt
     build` on the Arch workstation, or CI), then run `pnpm check` with the
@@ -1036,7 +1036,8 @@ end to end, faster than in established desktop CAD.
     other changes it brings (opencascade.js #47, #48, #49). Then update the
     #40 mentions in `libcascade.config.ts`, `facade/extrudo_facade.cpp`,
     `src/occt/scope.ts` and `memory.test.ts` (the first two are hash inputs,
-    so do it in the same rebuild).
+    so do it in the same rebuild).~~ **Done 2026-10-16** (ADR-0001's addendum): built with 3.1.0,
+    same OCCT and emsdk; memory test, check and CI green, no golden changed.
 
 ---
 
