@@ -21,10 +21,11 @@ import {
   splinePoint,
   splinePolyline,
   splineRange,
+  splineTangentAt,
   splitSpline,
 } from './curves';
 import type { Vec2 } from './planes';
-import type { SketchData, SketchSpline } from './schema';
+import { knotProblem, type SketchData, type SketchSpline } from './schema';
 
 const dist = (a: Vec2, b: Vec2) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const close = (a: Vec2, b: Vec2, eps = 1e-9) => {
@@ -698,5 +699,192 @@ describe('knot insertion and splitting', () => {
       const t = i / 50;
       expect(gap(splinePoint(part, t), splinePoint(quadratic, 0.25 + t / 2))).toBeLessThan(1e-12);
     }
+  });
+});
+
+describe('end tangents and degree (ADR-0063, third amendment)', () => {
+  const wave: Vec2[] = [
+    [0, 0],
+    [10, 8],
+    [25, -3],
+    [33, 12],
+    [50, 4],
+  ];
+  /** The derivative at an end, u = 0 or 1, by a second-order one-sided difference (h = 1e-6). */
+  const numeric = (s: BSpline, u: number, h = 1e-6): Vec2 => {
+    const dir = u === 0 ? 1 : -1;
+    const f0 = splinePoint(s, u);
+    const f1 = splinePoint(s, u + dir * h);
+    const f2 = splinePoint(s, u + 2 * dir * h);
+    const d = (k: 0 | 1) => (dir * (-3 * f0[k] + 4 * f1[k] - f2[k])) / (2 * h);
+    return [d(0), d(1)];
+  };
+  const relClose = (a: Vec2, b: Vec2, rel: number) => {
+    expect(dist(a, b)).toBeLessThan(rel * Math.hypot(b[0], b[1]));
+  };
+  /** Where the fit passes each point: the parameter of its nearest polyline sample. */
+  const passesThrough = (s: BSpline, points: readonly Vec2[]) => {
+    const samples = 20000;
+    for (const p of points) {
+      let best = Number.POSITIVE_INFINITY;
+      let at = 0;
+      for (let i = 0; i <= samples; i++) {
+        const d = dist(splinePoint(s, i / samples), p);
+        if (d < best) {
+          best = d;
+          at = i / samples;
+        }
+      }
+      // Refine by golden section around the best sample.
+      let lo = Math.max(0, at - 1 / samples);
+      let hi = Math.min(1, at + 1 / samples);
+      for (let k = 0; k < 80; k++) {
+        const c = hi - 0.618 * (hi - lo);
+        const d = lo + 0.618 * (hi - lo);
+        if (dist(splinePoint(s, c), p) < dist(splinePoint(s, d), p)) hi = d;
+        else lo = c;
+      }
+      expect(dist(splinePoint(s, (lo + hi) / 2), p)).toBeLessThan(1e-9);
+    }
+  };
+
+  it('leaves a fit spline without tangents exactly as it was', () => {
+    // Frozen from fitSpline before the amendment (JSON keeps every bit).
+    expect(fitSpline(wave)).toEqual({
+      degree: 3,
+      poles: [
+        [0, 0],
+        [6.342833560400409, 21.987308859463685],
+        [32.42599752916391, -34.16453399043327],
+        [31.814110077565783, 35.44846324116619],
+        [50, 4],
+      ],
+      knots: [0, 0, 0, 0, 0.45945900808525275, 1, 1, 1, 1],
+    });
+    expect(fitSpline(wave, {})).toEqual(fitSpline(wave));
+    expect(
+      fitSpline([
+        [0, 0],
+        [10, 5],
+        [20, 0],
+      ]),
+    ).toEqual({
+      degree: 2,
+      poles: [
+        [0, 0],
+        [10, 10],
+        [20, 0],
+      ],
+      knots: [0, 0, 0, 1, 1, 1],
+    });
+  });
+
+  it('passes through every point and leaves and arrives with both tangents', () => {
+    const start: Vec2 = [0, 60];
+    const end: Vec2 = [40, -30];
+    const s = fitSpline(wave, { start, end });
+    expect(s.degree).toBe(3);
+    expect(s.poles).toHaveLength(wave.length + 2);
+    expect(s.knots).toHaveLength(s.poles.length + 4);
+    close(splinePoint(s, 0), wave[0] as Vec2);
+    close(splinePoint(s, 1), wave[4] as Vec2);
+    passesThrough(s, wave);
+    relClose(numeric(s, 0), start, 1e-6);
+    relClose(numeric(s, 1), end, 1e-6);
+    relClose(splineTangentAt(s, 0), start, 1e-9);
+    relClose(splineTangentAt(s, 1), end, 1e-9);
+  });
+
+  it('takes one tangent only, at either end', () => {
+    for (const end of ['start', 'end'] as const) {
+      const t: Vec2 = [30, 30];
+      const s = fitSpline(wave, { [end]: t });
+      expect(s.degree).toBe(3);
+      expect(s.poles).toHaveLength(wave.length + 1);
+      passesThrough(s, wave);
+      relClose(numeric(s, end === 'start' ? 0 : 1), t, 1e-6);
+      // Inner knots strictly inside and non-decreasing.
+      const inner = s.knots.slice(4, -4);
+      for (const k of inner) expect(k > 0 && k < 1).toBe(true);
+      for (let i = 1; i < s.knots.length; i++)
+        expect(s.knots[i] as number).toBeGreaterThanOrEqual(s.knots[i - 1] as number);
+    }
+  });
+
+  it('makes two points with both tangents a Hermite cubic, with one a quadratic', () => {
+    const a: Vec2 = [0, 0];
+    const b: Vec2 = [20, 0];
+    const s = fitSpline([a, b], { start: [0, 30], end: [0, -30] });
+    expect(s.degree).toBe(3);
+    expect(s.poles).toEqual([a, [0, 10], [20, 10], b]);
+    const q = fitSpline([a, b], { start: [0, 30] });
+    expect(q.degree).toBe(2);
+    relClose(splineTangentAt(q, 0), [0, 30], 1e-12);
+    close(splinePoint(q, 1), b);
+  });
+
+  it('reads the tangents of an open fit spline entity, not of a closed one', () => {
+    const entity = {
+      type: 'spline',
+      points: [],
+      tangents: { end: [10, 0] },
+      construction: false,
+    } as unknown as SketchSpline;
+    relClose(splineTangentAt(splineCurve(entity, wave), 1), [10, 0], 1e-9);
+    const closed = { ...entity, closed: true } as SketchSpline;
+    expect(splineCurve(closed, wave)).toEqual(closedFitSpline(wave));
+  });
+
+  it('builds a control spline of degree 1, 2, 4 and 5', () => {
+    const poles: Vec2[] = [
+      [0, 0],
+      [10, 20],
+      [20, -10],
+      [30, 25],
+      [40, -5],
+      [50, 10],
+      [60, 0],
+    ];
+    for (const degree of [1, 2, 4, 5]) {
+      const s = controlSpline(poles, undefined, degree);
+      expect(s.degree).toBe(degree);
+      expect(s.knots).toHaveLength(poles.length + degree + 1);
+      expect(knotProblem(s.knots, poles.length, degree)).toBeUndefined();
+      close(splinePoint(s, 0), poles[0] as Vec2);
+      close(splinePoint(s, 1), poles[6] as Vec2);
+      // Tangent to the control polygon at both ends.
+      const d0 = splineTangentAt(s, 0);
+      const d1 = splineTangentAt(s, 1);
+      const p0 = poles[0] as Vec2;
+      const p1 = poles[1] as Vec2;
+      const p5 = poles[5] as Vec2;
+      const p6 = poles[6] as Vec2;
+      expect(Math.abs(d0[0] * (p1[1] - p0[1]) - d0[1] * (p1[0] - p0[0]))).toBeLessThan(1e-9);
+      expect(Math.abs(d1[0] * (p6[1] - p5[1]) - d1[1] * (p6[0] - p5[0]))).toBeLessThan(1e-9);
+      expect(d0[0] * (p1[0] - p0[0]) + d0[1] * (p1[1] - p0[1])).toBeGreaterThan(0);
+    }
+    // No degree: today's min(3, n − 1), unchanged.
+    expect(controlSpline(poles)).toEqual(controlSpline(poles, undefined, 3));
+    expect(controlSpline(poles.slice(0, 3)).degree).toBe(2);
+    // A degree the poles can't carry is held to n − 1.
+    expect(controlSpline(poles.slice(0, 3), undefined, 5).degree).toBe(2);
+  });
+
+  it('checks stored knots against the degree', () => {
+    expect(knotProblem([0, 0, 0, 0.5, 1, 1, 1], 4, 2)).toBeUndefined();
+    expect(knotProblem([0, 0, 0, 0.5, 1, 1, 1], 4)).toBe('4 control points take 8 knots, not 7');
+    expect(knotProblem([0, 0, 0.1, 0.5, 1, 1, 1], 4, 2)).toBe(
+      'the first three knots must be 0 and the last three 1',
+    );
+    expect(knotProblem([0, 0, 0, 0.5, 0.5, 0.5, 1, 1, 1], 6, 2)).toBe(
+      'an inner knot may repeat at most two times',
+    );
+    const five = [0, 0, 0, 0, 0, 0, 0.5, 1, 1, 1, 1, 1, 1];
+    expect(knotProblem(five, 7, 5)).toBeUndefined();
+    expect(knotProblem(five, 7, 3)).toBe('7 control points take 11 knots, not 13');
+    expect(knotProblem([0, 0, 0, 0, 0, 0.5, 1, 1, 1, 1, 1, 1], 6, 5)).toBe(
+      'the first six knots must be 0 and the last six 1',
+    );
+    expect(knotProblem([0, 0, 0.5, 0.5, 1, 1], 4, 1)).toBe('an inner knot may repeat at most once');
   });
 });

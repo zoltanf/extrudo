@@ -8,11 +8,15 @@ import { createDocumentStore } from '../stores';
 import { sampleDocument } from '../testing';
 import {
   addToSketch,
+  clearSplineTangents,
   createSketch,
   entityRemoval,
   removeFromSketch,
   setSketchConstruction,
+  setSplineClosed,
+  setSplineDegree,
   setSplineRho,
+  setSplineTangent,
   setText,
 } from './commands';
 import {
@@ -395,6 +399,69 @@ describe('sketch schema', () => {
       'entities.count.knots: 4 control points take 8 knots, not 7',
       'entities.down.knots: the knots must not decrease',
     ]);
+
+    // The third amendment: tangents on an open fit spline, a degree on a control spline.
+    const ends = {
+      ...entities,
+      ...points([...k4('ta'), ...k4('tb'), ...k4('tc'), ...k4('td'), ...k4('de'), ...k4('df')]),
+      ...points([...k4('dg'), ...k4('dh'), ...k4('di'), ...k4('tf')]),
+    };
+    const good = {
+      ...ends,
+      tangent: spline('ta', { tangents: { start: [1, 2], end: [3, 4] } }),
+      oneEnd: spline('tb', { mode: 'fit', tangents: { end: [3, 4] } }),
+      deg2: spline('de', {
+        points: k4('de'),
+        mode: 'control',
+        degree: 2,
+        knots: [0, 0, 0, 0.5, 1, 1, 1],
+      }),
+      deg3: spline('df', { points: k4('df'), mode: 'control', degree: 3 }),
+    };
+    expect(issues({ ...r, entities: good })).toEqual([]);
+    expect(
+      issues({
+        ...r,
+        entities: {
+          ...good,
+          ctrlT: spline('tc', { mode: 'control', tangents: { end: [1, 0] } }),
+          shutT: spline('td', { closed: true, tangents: { end: [1, 0] } }),
+          zeroT: spline('dg', { tangents: { start: [0, 0] } }),
+          fitD: spline('dh', { degree: 2 }),
+          shutD: spline('di', { points: k4('di'), mode: 'control', closed: true, degree: 2 }),
+          fewD: spline('tf', { points: k4('tf'), mode: 'control', degree: 4 }),
+        },
+      }),
+    ).toEqual([
+      'entities.ctrlT.tangents: only an open fit spline has tangents',
+      'entities.shutT.tangents: only an open fit spline has tangents',
+      'entities.zeroT.tangents.start: a tangent must be a non-zero vector',
+      'entities.fitD.degree: only a control spline has a degree',
+      'entities.shutD.degree: a closed control spline is cubic',
+      'entities.fewD.points: a degree-4 spline needs at least 5 points',
+    ]);
+    for (const degree of [0, 6, 2.5]) {
+      expect(
+        issues({
+          ...r,
+          entities: { ...ends, d: spline('dg', { points: k4('dg'), mode: 'control', degree }) },
+        }),
+      ).toContainEqual(expect.stringMatching(/^entities\.d\.degree: /));
+    }
+    expect(
+      issues({
+        ...r,
+        entities: {
+          ...ends,
+          d: spline('dg', {
+            points: k4('dg'),
+            mode: 'control',
+            degree: 2,
+            knots: [0, 0, 0, 0, 1, 1, 1, 1],
+          }),
+        },
+      }),
+    ).toEqual(['entities.d.knots: 4 control points take 7 knots, not 8']);
   });
 
   it('takes ellipses and fit-point splines (P1-05)', () => {
@@ -796,6 +863,144 @@ describe('setSplineRho', () => {
         applyCommand(doc, setSplineRho({ feature: fid('s1'), id: eid('conic'), rho })),
       ).toThrow(CommandError);
     }
+  });
+});
+
+describe('spline end tangents and degree (ADR-0063, third amendment)', () => {
+  const eid = (id: string) => id as SketchEntityId;
+  const ids = (prefix: string, n: number) =>
+    Array.from({ length: n }, (_, i) => eid(`${prefix}${i}`));
+  /** A fit spline of four points and a control spline of five. */
+  const withSketch = () => {
+    const doc = applyCommand(
+      createDocument(),
+      createSketch({ id: fid('s1'), plane: originPlaneRef('origin:xy') }),
+    ).doc;
+    const entities: Record<string, unknown> = {};
+    for (const [i, id] of ids('f', 4).entries())
+      entities[id] = { type: 'point', x: 10 * i, y: i % 2 };
+    for (const [i, id] of ids('c', 5).entries())
+      entities[id] = { type: 'point', x: 10 * i, y: 20 + (i % 2) * 5 };
+    entities.fit = { type: 'spline', points: ids('f', 4), construction: false };
+    entities.ctrl = {
+      type: 'spline',
+      points: ids('c', 5),
+      mode: 'control',
+      knots: [0, 0, 0, 0, 0.5, 1, 1, 1, 1],
+      construction: false,
+    };
+    return applyCommand(doc, addToSketch({ feature: fid('s1'), entities: entities as never })).doc;
+  };
+  const spline = (doc: ReturnType<typeof withSketch>, id: string) => {
+    const e = readSketch(doc.features[0] as never)?.data.entities[eid(id)];
+    if (e?.type !== 'spline') throw new Error('no spline');
+    return e;
+  };
+  const run = (
+    doc: ReturnType<typeof withSketch>,
+    ...commands: Parameters<typeof applyCommand>[1][]
+  ) => commands.reduce((d, c) => applyCommand(d, c).doc, doc);
+  const s1 = fid('s1');
+
+  it('sets and removes end tangents, one undo step each', () => {
+    const store = createDocumentStore(withSketch());
+    const set = (end: 'start' | 'end', tangent: [number, number] | undefined) =>
+      store.getState().dispatch(setSplineTangent({ feature: s1, id: eid('fit'), end, tangent }));
+    set('end', [5, 6]);
+    expect(spline(store.getState().doc, 'fit').tangents).toEqual({ end: [5, 6] });
+    expect(store.getState().undoLabel).toBe('Spline tangent');
+    set('start', [1, 2]);
+    expect(spline(store.getState().doc, 'fit').tangents).toEqual({ start: [1, 2], end: [5, 6] });
+    set('end', undefined);
+    expect(spline(store.getState().doc, 'fit').tangents).toEqual({ start: [1, 2] });
+    set('start', undefined);
+    expect(spline(store.getState().doc, 'fit')).not.toHaveProperty('tangents');
+    store.getState().undo();
+    expect(spline(store.getState().doc, 'fit').tangents).toEqual({ start: [1, 2] });
+  });
+
+  it('frees both ends in one step', () => {
+    const store = createDocumentStore(
+      run(
+        withSketch(),
+        setSplineTangent({ feature: s1, id: eid('fit'), end: 'start', tangent: [1, 2] }),
+        setSplineTangent({ feature: s1, id: eid('fit'), end: 'end', tangent: [3, 4] }),
+      ),
+    );
+    store.getState().dispatch(clearSplineTangents({ feature: s1, id: eid('fit') }));
+    expect(spline(store.getState().doc, 'fit')).not.toHaveProperty('tangents');
+    expect(store.getState().undoLabel).toBe('Free spline ends');
+    store.getState().undo();
+    expect(spline(store.getState().doc, 'fit').tangents).toEqual({ start: [1, 2], end: [3, 4] });
+  });
+
+  it('refuses tangents on anything but an open fit spline, and a zero vector', () => {
+    const doc = withSketch();
+    expect(() =>
+      run(doc, setSplineTangent({ feature: s1, id: eid('ctrl'), end: 'end', tangent: [1, 0] })),
+    ).toThrow(new CommandError('Only an open fit spline has end tangents.'));
+    expect(() =>
+      run(doc, setSplineTangent({ feature: s1, id: eid('fit'), end: 'end', tangent: [0, 0] })),
+    ).toThrow(new CommandError('A tangent must be a non-zero vector.'));
+    const shut = run(doc, setSplineClosed({ feature: s1, id: eid('fit'), closed: true }));
+    expect(() =>
+      run(shut, setSplineTangent({ feature: s1, id: eid('fit'), end: 'end', tangent: [1, 0] })),
+    ).toThrow(new CommandError('Only an open fit spline has end tangents.'));
+  });
+
+  it("sets a control spline's degree and drops its knots", () => {
+    const store = createDocumentStore(withSketch());
+    store.getState().dispatch(setSplineDegree({ feature: s1, id: eid('ctrl'), degree: 2 }));
+    const e = spline(store.getState().doc, 'ctrl');
+    expect(e.degree).toBe(2);
+    expect(e).not.toHaveProperty('knots');
+    expect(store.getState().undoLabel).toBe('Spline degree');
+    store.getState().undo();
+    expect(spline(store.getState().doc, 'ctrl')).not.toHaveProperty('degree');
+    expect(spline(store.getState().doc, 'ctrl').knots).toHaveLength(9);
+  });
+
+  it('refuses a degree outside 1 to 5, too few points, a fit spline and a closed one', () => {
+    const doc = withSketch();
+    const degree = (id: string, d: number) => () =>
+      run(doc, setSplineDegree({ feature: s1, id: eid(id), degree: d }));
+    for (const d of [0, 6, 2.5])
+      expect(degree('ctrl', d)).toThrow(
+        new CommandError('Degree has to be a whole number from 1 to 5.'),
+      );
+    expect(() =>
+      run(
+        doc,
+        removeFromSketch({ feature: s1, entities: [eid('c4')] }),
+        setSplineDegree({ feature: s1, id: eid('ctrl'), degree: 4 }),
+      ),
+    ).toThrow(new CommandError('A degree-4 spline needs at least 5 points.'));
+    expect(degree('fit', 2)).toThrow(new CommandError('Only a control spline has a degree.'));
+    const shut = run(doc, setSplineClosed({ feature: s1, id: eid('ctrl'), closed: true }));
+    expect(() => run(shut, setSplineDegree({ feature: s1, id: eid('ctrl'), degree: 2 }))).toThrow(
+      new CommandError('A closed control spline is cubic.'),
+    );
+  });
+
+  it('drops tangents and degree when a spline closes, and a degree its points lose', () => {
+    const doc = run(
+      withSketch(),
+      setSplineTangent({ feature: s1, id: eid('fit'), end: 'end', tangent: [3, 4] }),
+      setSplineDegree({ feature: s1, id: eid('ctrl'), degree: 4 }),
+    );
+    const shut = run(
+      doc,
+      setSplineClosed({ feature: s1, id: eid('fit'), closed: true }),
+      setSplineClosed({ feature: s1, id: eid('ctrl'), closed: true }),
+    );
+    expect(spline(shut, 'fit')).not.toHaveProperty('tangents');
+    expect(spline(shut, 'ctrl')).not.toHaveProperty('degree');
+    // Opening again keeps what an open spline may carry.
+    const open = run(doc, setSplineClosed({ feature: s1, id: eid('fit'), closed: false }));
+    expect(spline(open, 'fit').tangents).toEqual({ end: [3, 4] });
+    const fewer = run(doc, removeFromSketch({ feature: s1, entities: [eid('c4')] }));
+    expect(spline(fewer, 'ctrl')).not.toHaveProperty('degree');
+    expect(spline(fewer, 'ctrl').points).toHaveLength(4);
   });
 });
 
