@@ -789,7 +789,7 @@ export const TOOLS = {
     label: 'Export',
     icon: 'export',
     category: 'export',
-    hint: 'STL, 3MF or STEP for printing and sharing.',
+    hint: 'STL, 3MF, STEP or OpenSCAD code for printing and sharing.',
   },
   exportSketch: {
     id: 'exportSketch',

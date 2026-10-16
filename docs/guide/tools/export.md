@@ -7,11 +7,13 @@ order: 12
 
 # Export
 
-STL, 3MF or STEP for printing and sharing.
+STL, 3MF, STEP or OpenSCAD code for printing and sharing.
 
 | Where | Shortcut |
 |---|---|
 | Home › Export (as Export Model) · 3D Print › Output | None |
 
 <!-- notes -->
+The format list ends with OpenSCAD (`.scad`): your design as editable code. See
+[OpenSCAD export](../openscad.md).
 <!-- /notes -->

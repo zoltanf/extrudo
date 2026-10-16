@@ -217,3 +217,56 @@ describe('a mesh body in the Export dialog (P4-06, ADR-0066 §3)', () => {
     expect(out).toContain('<input type="checkbox" class="accent-(--x-accent)"/>');
   });
 });
+
+describe('the OpenSCAD format in the Export dialog (P6-09, ADR-0086 §9)', () => {
+  const remembered = (value: unknown) => {
+    const p = memoryPreferences();
+    p.set('export.model', value);
+    return p;
+  };
+  const scad = () =>
+    html({
+      openInSlicer: async () => true,
+      preferences: remembered({ format: 'scad', resolution: 'medium', deviation: '', angle: '' }),
+    });
+
+  it('is the fourth format, after STEP', () => {
+    const out = html();
+    expect(out.indexOf('STEP')).toBeLessThan(out.indexOf('OpenSCAD'));
+  });
+
+  it('says what the file is and has no meshing, slicer or components', () => {
+    const out = scad();
+    expect(out).toContain(
+      'Editable OpenSCAD code. Fillets, shells and the like come out as meshes.',
+    );
+    expect(out).toContain('Export OpenSCAD');
+    expect(out).toContain('Resolution');
+    expect(out).not.toContain('Meshing');
+    expect(out).not.toContain('Open in slicer');
+    expect(out).not.toContain('Keep components together');
+  });
+
+  it('keeps a mesh body, which becomes a polyhedron', () => {
+    const out = html({
+      bodies: [
+        {
+          id: 'Import1:0' as never,
+          meta: { name: 'Bracket', visible: true },
+          stored: true,
+          display: 'shown',
+          mesh: true,
+        },
+      ],
+      preferences: remembered({ format: 'scad', resolution: 'medium', deviation: '', angle: '' }),
+    });
+    expect(out).not.toContain('STEP file');
+    expect(out).not.toContain('<input type="checkbox" disabled=""');
+  });
+
+  it('falls back to 3MF for an unknown stored format', () => {
+    const out = html({ preferences: remembered({ format: 'obj' }) });
+    expect(out).toContain('Export 3MF');
+    expect(out).not.toContain('Editable OpenSCAD code');
+  });
+});

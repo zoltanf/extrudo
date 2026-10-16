@@ -50,6 +50,8 @@ bodies built in Extrudo. It happens with an imported mesh that was already broke
 
 **Export 3MF** (the button follows the format) downloads the file.
 
+The fourth format, OpenSCAD, is code rather than a mesh: see [OpenSCAD export](./openscad.md).
+
 ## Lay it flat: Place on Bed
 
 Most prints need a flat face on the bed. [Place on Bed](./tools/placeOnBed.md) turns a body so
