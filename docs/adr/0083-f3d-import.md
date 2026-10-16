@@ -1216,3 +1216,74 @@ Still open, each a separate piece of work: decoding in a worker (the import
 still runs on the UI thread, so a slow legitimate file still blocks it), the
 all-pairs matching of profile-region curves (`regions.ts`), and retry budgets
 for the kernel's fillet diagnosis.
+
+## Amendment, 2026-10-16: target bodies and extrude extents
+
+**Join and cut targets among several bodies of one feature.** A join or cut
+names the bodies it acts on, and the import passed them on only when every one
+was the only body of its feature: one body of a feature that made several
+(`Body<n>` of an extrude of separate regions) dropped the list, and the feature
+then acted on every body it met (in one design a join pulled a large unrelated
+body in, +594 %). The rule that pairs them: the file numbers a feature's bodies
+in the order of its profile's region groups (`group`, from 0); Extrudo numbers
+the separate solids of an extrude by the centre of each one's box, x, then y,
+then z (`newBodies`). So body i (by index) of a new-body extrude is Extrudo's
+`<feature>:k`, k being the rank of group i's centre, worked out from the
+group's outline in model space (`bodyOrder` in `map.ts`; every side of the
+extrude runs equally far, so the outlines' boxes order the solids as their
+boxes do). Evidence: of the 28 features in the corpus that make several bodies
+with a shown one, 26 are such extrudes; on the 22 bodies of 10 of them (5
+designs) that no later feature changed, each file body's box (its B-rep
+through the writer) is that of the replayed solid the rule names, 22 of 22,
+including a 5-body extrude whose bodies the file numbers out of order in x, y
+and z alike. Where the order can't be told the list is dropped as before (the
+feature then acts on what it meets): another kind of feature (a pattern, a text
+extrude: 2), more than one profile operand, a region whose outline is not
+found or left out, an extent up to a named face, or two centres within 0.01 mm
+on the axis that orders them.
+
+Extrudo's join of several bodies keeps the pieces its tool doesn't bridge
+apart, the largest under the first body's ID and the others under the join's
+own (`splitSolids`), so after such a join the import can't tell which ID is
+which file body: a later feature naming one of them is left to Extrudo's
+default, and none of them is hidden even where the file hides it. The bodies
+of such a join are named in the order Extrudo's default would join them (the
+earliest made first): naming them in the file's order changed which faces kept
+their names in three designs, and a chamfer after the join lost edges. Tried
+and dropped: leaving every join of several bodies to Extrudo's default (three
+bodies, two of them in designs that had matched, came out made differently).
+
+**Extrude extents from a start face.** Measured on the corpus (FORMAT.md
+"Start from a face"):
+
+- `ProfileOffset` from a start face runs along the face's normal. Before, it
+  ran along the sketch normal, which is the other way for 12 extrudes (a face
+  looking against the sketch); none of their designs matched.
+- A start on an origin or construction plane is read from the geometry
+  operand that holds it (6 extrudes in 4 designs had no start at all).
+- A cut from a plane face slanted to its sketch (one in the corpus) starts on
+  a copy of the sketch moved past the face (to where the whole profile lies on
+  the face's outer side) and runs up to the face's plane moved by its
+  distance, which is where the file's cut ends. The wedge between the copy and
+  the face is outside the body as long as nothing of it stands over the face
+  there; a join or any other slanted start keeps the note it had.
+- An up-to-face offset of an extrude that starts from a face counts the other
+  way (positive ends short of the face).
+- Up to a face parallel to the start stays a distance. The corpus has 76 such
+  extrudes in 37 designs, 74 with a face the import can name; with the named
+  face (`to-object`) instead, no design changed its verdict, three moved
+  further from the reference (one from 1.05 % to 3.5 % volume error), and 20
+  extrudes warned that their face had been split.
+
+**Numbers** (replay corpus, within 0.5 % volume and 0.05 mm box, before →
+after): match 153 → 157 (a door vent, a connector, a hinge, a spool roller),
+mismatch 55 → 51, partial 27 → 27, no design worse; features left out 75 →
+75. Box errors of 4 to 70 mm went to 0 in three more designs that still
+mismatch for other reasons (their profile regions; one's volume error moves
+from 34 % to 54 % now that the part sits where the file has it). Body check:
+editable 211 → 225, frozen 143 → 129, unchecked 26 → 26 (same reasons); no
+body went from editable to anything else. A name tag's two bodies, one merged
+body before, now come out apart but stay frozen (about 1 % off each: their
+text cuts are drawn in a substitute font). Tests: `map.test.ts`
+"the bodies of an extrude that makes several" and "extrude extents from a
+start face".
