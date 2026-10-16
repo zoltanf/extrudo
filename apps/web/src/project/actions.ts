@@ -20,6 +20,7 @@ import { type OpenedFile, type Platform, safeFileName } from '../platform';
 import { navigate, projectHref } from '../routes';
 import { APP_VERSION } from '../version';
 import type { BodyCheck, BodyCheckResult } from './f3dCheck';
+import type { ImportRunner } from './f3dImport';
 
 /**
  * Saves a new project (blank, or the given document, with a picture for its card
@@ -107,51 +108,50 @@ export async function importAnyFile(
 /** What an `.f3d` file is picked as. */
 export const F3D_ACCEPT = '.f3d';
 
-/** The most a `.f3d` file may be before it is read (M1). */
+/**
+ * The most a `.f3d` file may be before it is read (M1): the import holds the
+ * bytes, the unzipped entries and their decoded records in its worker's memory
+ * at once, within the caps in `@extrudo/f3d`'s `archive.ts`.
+ */
 export const MAX_F3D_BYTES = 100 * 1024 * 1024;
 
 /**
  * Lets the user pick an `.f3d` file and imports it as a new
- * design; `undefined` if they cancel. The importer loads only now (its own
- * chunk). What it could not bring over is left for the design's page.
- * `check` stands in for the body check in tests (ADR-0084).
+ * design; `undefined` if they cancel. The importer loads only now, in its own
+ * worker (`f3dImport.ts`). What it could not bring over is left for the
+ * design's page. `check` stands in for the body check in tests (ADR-0084),
+ * `run` for the worker.
  */
 export async function importF3dFile(
   platform: Platform,
   picked?: File,
   check?: BodyCheck,
+  run?: ImportRunner,
 ): Promise<ProjectId | undefined> {
   const file = picked ?? (await platform.files.pick(F3D_ACCEPT));
   if (!file) return undefined;
-  // Reading and decoding run on the UI thread, so refuse a huge file first (M1).
   if (file.size > MAX_F3D_BYTES)
     throw new Error(
       `This .f3d file is too large to import (the limit is ${MAX_F3D_BYTES / (1024 * 1024)} MB).`,
     );
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const { importF3d } = await import('@extrudo/f3d');
-  // The solver vets the file's sketch constraints and dimensions; without it
-  // the sketches still come over, unconstrained.
-  const solver = await import('@extrudo/sketch/browser')
-    .then((m) => m.loadSketchSolver())
-    .catch(() => undefined);
   const name = file.name.replace(/\.f3d$/i, '') || 'Imported design';
+  const notifications = appNotifications.getState();
+  const toast = notifications.push('info', READING_TEXT, { lifetime: 120_000 });
   let imported: ImportResult;
   try {
-    imported = importF3d(bytes, name, {
+    imported = await (run ?? (await import('./f3dImport')).workerImportRunner())(bytes, name, {
       id: crypto.randomUUID(),
       appVersion: APP_VERSION,
-      bodies: true,
-      ...(solver ? { solver } : {}),
     });
   } finally {
-    // A solver that failed may fail to dispose too: that must not lose the import.
-    try {
-      solver?.dispose();
-    } catch {}
+    notifications.dismiss(toast);
   }
   return saveF3dImport(platform, imported, check ?? (await import('./f3dCheck')).checkF3dBodies);
 }
+
+/** What the busy toast says while the importer reads the file. */
+export const READING_TEXT = 'Reading the .f3d file…';
 
 /** What the busy toast says while the body check runs. */
 export const CHECKING_TEXT = 'Checking the bodies against the file…';
