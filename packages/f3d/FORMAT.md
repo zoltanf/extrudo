@@ -142,6 +142,36 @@ distance, `Side1Offset` (and a face operand) for up to an object, none for
 through all; `ProfileOffset` is the start offset, from the profile plane or
 from the start face.
 
+Start from a face (start u8 2), checked against the replay and the reference
+STEP (2026-10-16):
+
+- The start is a body face named by a face operand, or an origin or
+  construction plane: then the scope holds no face operand but a geometry
+  operand (`5A1BF548…`) with the plane in model space (`CC54ECAD…`; normal
+  x × y). 6 such extrudes in 4 designs; in one the body starts 2 mm off the
+  sketch, where that plane is.
+- `ProfileOffset` from a start face runs along the face's normal, so against
+  the sketch normal where the face looks the other way: 12 extrudes of the
+  corpus have such a face and an offset, and none of their designs matched
+  while it was taken along the sketch normal; taken along the face's normal,
+  their box errors of 4 to 70 mm went to 0.
+- A start face slanted to the sketch (one extrude, a cut): the sweep still
+  runs along the sketch normal (the direction vector above), from where the
+  profile meets the face, and ends on the face's plane moved by the distance
+  along the sweep; replayed that way the design matches its STEP to 4e-11.
+- An up-to-face offset (`Side1Offset`) of an extrude that starts from a face
+  counts the other way: positive ends short of the face. The 5 such extrudes
+  with an offset (4 designs) end short (a body's end face 1 mm before the
+  target in the file's own B-rep); the 6 designs whose extrudes start on the
+  profile plane with an offset match with positive past the face.
+
+Bodies a feature makes several of (an extrude of separate region groups) are
+numbered (`Body<n>`, ascending) in the order of its profile's region groups
+(`group`, from 0), not in any order of where they are: on 22 bodies of 10
+such extrudes (5 designs) whose shape no later feature changed, each body
+paired by its box with the replayed solid of its group, a 5-body extrude among
+them whose bodies are numbered out of order in x, y and z alike.
+
 A symmetric extrude's `AlongDistance` is each side's length, not the whole
 length: the file's own cap faces (the B-rep faces tagged by the feature's
 operations, normal along the direction vector above) lie that distance either

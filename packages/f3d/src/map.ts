@@ -484,6 +484,8 @@ export function f3dToDesign(
   // apart bodies its tool doesn't bridge. So a body joined into another here
   // is that other body from then on.
   const joinedInto = new Map<BodyId, BodyId>();
+  /** Bodies a join here fused others into. */
+  const kept = new Set<BodyId>();
   const current = (id: BodyId): BodyId => {
     let at = id;
     for (let i = 0; i < joinedInto.size && joinedInto.has(at); i++)
@@ -495,7 +497,20 @@ export function f3dToDesign(
     const ids = records.map((r) => bodyOf(r)?.id);
     if (ids.length === 0 || ids.some((id) => id === undefined)) return undefined;
     const now = [...new Set(ids.map((id) => current(id as BodyId)))];
-    if (operation === 'join') for (const id of now.slice(1)) joinedInto.set(id, now[0] as BodyId);
+    // A join keeps the body Extrudo's own would (the earliest made): the
+    // names of the faces it fuses follow from that.
+    if (operation === 'join' && now.length > 1) {
+      const at = new Map(d.doc.features.map((f, i) => [f.id as string, i]));
+      const key = (id: BodyId) => {
+        const [feature, k] = id.split(':');
+        return (at.get(feature as string) ?? 0) * 1e6 + Number(k);
+      };
+      now.sort((a, b) => key(a) - key(b));
+    }
+    if (operation === 'join' && now.length > 1) {
+      kept.add(now[0] as BodyId);
+      for (const id of now.slice(1)) joinedInto.set(id, now[0] as BodyId);
+    }
     return now.map((id) => ({ kind: 'body', id }));
   };
   // Curves the file's own profiles run along are never construction geometry,
@@ -780,8 +795,8 @@ export function f3dToDesign(
   for (const body of shownElsewhere ? [] : f3d.bodies) {
     const known = components.shown(body) ? undefined : bodyOf(body.id);
     if (!known || (order.get(known.id.split(':')[0] as string) ?? 0) < lastOpenJoin) continue;
-    // Joined into another body here: hiding it would hide that one.
-    if (joinedInto.has(known.id)) continue;
+    // Joined with another body here (either way): hiding it would hide that one.
+    if (joinedInto.has(known.id) || kept.has(known.id)) continue;
     d.state.dispatch(
       updateBody({ id: known.id, changes: { name: `Body${known.index}`, visible: false } }),
     );
