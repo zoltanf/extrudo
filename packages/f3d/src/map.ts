@@ -480,11 +480,23 @@ export function f3dToDesign(
     }
     return { id: `${made.id}:${k}` as BodyId, index: body.index, by: made.name };
   };
+  // Extrudo's join fuses every body it names into the first; the file's keeps
+  // apart bodies its tool doesn't bridge. So a body joined into another here
+  // is that other body from then on.
+  const joinedInto = new Map<BodyId, BodyId>();
+  const current = (id: BodyId): BodyId => {
+    let at = id;
+    for (let i = 0; i < joinedInto.size && joinedInto.has(at); i++)
+      at = joinedInto.get(at) as BodyId;
+    return at;
+  };
   /** A feature's participant bodies as Extrudo references, when every one is known. */
-  const participants = (records: number[]): GeomRef[] | undefined => {
+  const participants = (records: number[], operation?: string): GeomRef[] | undefined => {
     const ids = records.map((r) => bodyOf(r)?.id);
     if (ids.length === 0 || ids.some((id) => id === undefined)) return undefined;
-    return ids.map((id) => ({ kind: 'body', id: id as string }));
+    const now = [...new Set(ids.map((id) => current(id as BodyId)))];
+    if (operation === 'join') for (const id of now.slice(1)) joinedInto.set(id, now[0] as BodyId);
+    return now.map((id) => ({ kind: 'body', id }));
   };
   // Curves the file's own profiles run along are never construction geometry,
   // whatever the flag reading says.
@@ -768,6 +780,8 @@ export function f3dToDesign(
   for (const body of shownElsewhere ? [] : f3d.bodies) {
     const known = components.shown(body) ? undefined : bodyOf(body.id);
     if (!known || (order.get(known.id.split(':')[0] as string) ?? 0) < lastOpenJoin) continue;
+    // Joined into another body here: hiding it would hide that one.
+    if (joinedInto.has(known.id)) continue;
     d.state.dispatch(
       updateBody({ id: known.id, changes: { name: `Body${known.index}`, visible: false } }),
     );
@@ -781,7 +795,8 @@ export function f3dToDesign(
   for (const body of f3d.bodies) {
     if (!body.visible) continue;
     const component = components.of(body.component)?.id;
-    const hint = bodyOf(body.id)?.id;
+    const known = bodyOf(body.id)?.id;
+    const hint = known && current(known);
     bodies.push({
       record: body.id,
       name: `Body${body.index}`,
@@ -1276,7 +1291,7 @@ function extrude(
   naming: FaceNaming,
   expressionOf: (p: ParameterValue, negate?: boolean) => string,
   movedSketch: (entry: SketchEntry, cm: number, name: string) => SketchEntry | undefined,
-  participants: (records: number[]) => GeomRef[] | undefined,
+  participants: (records: number[], operation?: string) => GeomRef[] | undefined,
   report: ImportReport,
 ): string | ImportedExtrude {
   if (!f.solid) return 'surface extrudes are not supported';
@@ -1484,7 +1499,7 @@ function extrude(
   if (taper && Math.abs(taper.value) > 1e-12) inputs.taper = expressionOf(taper);
   if (flip && !(f.direction === 'one-side' && toFace)) inputs.flip = true;
   // The bodies the file joined, cut or intersected; Extrudo's default is every one it meets.
-  const bodies = f.operation === 'new-body' ? undefined : participants(f.participants);
+  const bodies = f.operation === 'new-body' ? undefined : participants(f.participants, f.operation);
   if (bodies) inputs.bodies = bodies;
   const made = d.extrude(inputs as Parameters<Design['extrude']>[0], { name: f.name });
   // Several bodies only from a new body; every side the same length (a
@@ -1584,7 +1599,7 @@ function faceExtrude(
   f: F3dExtrude,
   naming: FaceNaming,
   expressionOf: (p: ParameterValue, negate?: boolean) => string,
-  participants: (records: number[]) => GeomRef[] | undefined,
+  participants: (records: number[], operation?: string) => GeomRef[] | undefined,
   report: ImportReport,
 ): string | { id: string } {
   if (!f.solid) return 'surface extrudes are not supported';
@@ -1606,7 +1621,7 @@ function faceExtrude(
   else inputs.extent = 'through-all';
   if (taper && Math.abs(taper.value) > 1e-12) inputs.taper = expressionOf(taper);
   if (f.reversed !== negative) inputs.flip = true;
-  const bodies = f.operation === 'new-body' ? undefined : participants(f.participants);
+  const bodies = f.operation === 'new-body' ? undefined : participants(f.participants, f.operation);
   if (bodies) inputs.bodies = bodies;
   const made = d.extrude(inputs as Parameters<Design['extrude']>[0], { name: f.name });
   return { id: made.id };
@@ -1912,7 +1927,7 @@ function revolve(
   f: F3dRevolve,
   sketches: Map<number, SketchEntry>,
   expressionOf: (p: ParameterValue, negate?: boolean) => string,
-  participants: (records: number[]) => GeomRef[] | undefined,
+  participants: (records: number[], operation?: string) => GeomRef[] | undefined,
   report: ImportReport,
 ): string | ImportedRevolve {
   if (!f.axis) return 'its axis was not found';
@@ -1938,7 +1953,7 @@ function revolve(
   const inputs: Record<string, unknown> = { profiles, axis: axis.ref, operation: f.operation };
   if (along) inputs.angle = expressionOf(along, negative);
   if (axis.sign < 0 !== negative) inputs.flip = true;
-  const bodies = f.operation === 'new-body' ? undefined : participants(f.participants);
+  const bodies = f.operation === 'new-body' ? undefined : participants(f.participants, f.operation);
   if (bodies) inputs.bodies = bodies;
   const made = d.revolve(inputs as Parameters<Design['revolve']>[0], { name: f.name });
   return {
