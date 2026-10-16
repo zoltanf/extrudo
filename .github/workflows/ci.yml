@@ -136,7 +136,15 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
+      # Full history so the changelog check's `--base origin/<base_ref>` three-dot
+      # diff has the merge base (ADR-0089); the other jobs keep the shallow default.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: A pull request must not edit docs/CHANGELOG.md (ADR-0089)
+        if: github.event_name == 'pull_request'
+        run: node scripts/check-changelog.mjs --base "origin/${{ github.base_ref }}"
 
       - uses: pnpm/action-setup@v6 # version comes from "packageManager" in package.json
 

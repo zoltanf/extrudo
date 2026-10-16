@@ -55,6 +55,7 @@ pnpm dev          # app at http://localhost:5173
 pnpm check        # typecheck + Biome + package boundaries + license allow-list + Vitest. Must pass.
 pnpm e2e          # build + Playwright (run `pnpm e2e:install` once)
 pnpm format       # Biome auto-fix
+pnpm changelog    # fold docs/changelog.d/ into docs/CHANGELOG.md (release step)
 pnpm wasm         # download the OCCT, planegcs and OpenSCAD WASM for the current inputs (check/dev/build do this)
 pnpm occt build   # build OCCT locally with Docker (~11 min; Arch workstation only); see packages/kernel/occt/README.md
 pnpm planegcs build  # build planegcs locally with Docker (~2 min; Arch workstation only)
@@ -124,9 +125,10 @@ Vitest + Playwright · Biome.
    specs you will touch.
 3. Implement it with tests. `pnpm check` must pass, plus `pnpm e2e` (or the
    affected specs, and CI) if UI flows changed.
-4. Tick the task in the roadmap, add a line to `docs/CHANGELOG.md`, write an ADR
-   for any significant decision (rejected approaches too), and add its rules to
-   `docs/agent/adr-digest.md`.
+4. Tick the task in the roadmap, add a one-line file under `docs/changelog.d/`
+   (`pnpm changelog` folds them into `docs/CHANGELOG.md` at release; never edit
+   the changelog in a PR), write an ADR for any significant decision (rejected
+   approaches too), and add its rules to `docs/agent/adr-digest.md`.
 
 ## Environment, in brief
 

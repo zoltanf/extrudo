@@ -2434,3 +2434,22 @@ custom handlers, `instructions` "Read skill://extrudo/SKILL.md before modelling.
 tag's draft release). `apps/desktop/scripts/mcp-client.mjs --launch` (under
 `xvfb-run -a`; Chromium's headless Ozone crashes Electron's main) is the
 acceptance client, `--examples` runs the worked examples in the real kernel.
+
+ADR-0089 (2026-10-16) added **changelog fragments**: a change describes itself
+in its own one-line file under **`docs/changelog.d/`** instead of a line in
+`docs/CHANGELOG.md`, so concurrent pull requests never conflict there (they used
+to, every PR touching the top of `## Unreleased`). **`scripts/changelog-collect.mjs`**
+(`pnpm changelog`, release step) folds the fragments above the lines already
+under `## Unreleased` (newest first by the date in the line, ties by file name)
+and deletes them; it creates the section above the first `## v` heading when a
+release renamed it. **`scripts/check-changelog.mjs`** runs in `pnpm lint` and
+CI's check job (`--base "origin/<base_ref>"` on pull requests; the check job's
+checkout is `fetch-depth: 0` so the three-dot diff has the merge base).
+**Rules a change must keep:** a fragment is `YYYY-MM-DD-<slug>.md` (the date the
+change was finished, a kebab-case slug; `README.md` in the folder is the
+permanent explainer and is never collected) and its content is exactly one line
+matching `- \d{4}-\d{2}-\d{2} · **[^*]+**…` — no heading, no blank lines, no
+second paragraph; **a pull request never edits `docs/CHANGELOG.md`** (CI refuses
+it; the release commit's rename in `docs/release-checklist.md` step 2 is the one
+edit, made after `pnpm changelog`), and a fragment whose line is already in the
+changelog is refused, so a folded-in line is not duplicated by re-adding it.
