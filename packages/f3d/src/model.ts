@@ -749,6 +749,24 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
           if (first) named.push(faceOf(first.tags, faces, featureOf, instances));
         }
       }
+      // A start on a plane (an origin or construction plane) rather than a body
+      // face: a geometry operand holding the plane in model space.
+      const upTo = base.parameters.some((p) => /^Side[12]Offset$/.test(p.kind));
+      if (head.start === 'face' && named.length === 0 && !upTo) {
+        const plane = scope.refs
+          .filter((ref) => seg.typeOf(ref)?.guid === GEOMETRY_OPERAND)
+          .flatMap((ref) => refsOf(ref))
+          .find((q) => seg.typeOf(q)?.guid === MODEL_PLANE);
+        const at =
+          plane !== undefined
+            ? tryDecode(`extrude start plane #${plane}`, () => readModelPlane(seg, plane))
+            : undefined;
+        if (at)
+          named.push({
+            tags: [],
+            surface: { kind: 'plane', point: at.origin, normal: planeNormal(at) },
+          });
+      }
       features.push({
         type: 'extrude',
         ...base,
@@ -1313,4 +1331,15 @@ function readEdgeSets(
     if (size2) set.size2 = size2;
     return set;
   });
+}
+
+/** A model plane's unit normal, x × y. */
+function planeNormal({ x, y }: ModelPlane): [number, number, number] {
+  const n: [number, number, number] = [
+    x[1] * y[2] - x[2] * y[1],
+    x[2] * y[0] - x[0] * y[2],
+    x[0] * y[1] - x[1] * y[0],
+  ];
+  const l = Math.hypot(...n) || 1;
+  return [n[0] / l, n[1] / l, n[2] / l];
 }

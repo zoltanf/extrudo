@@ -1291,12 +1291,86 @@ function extrude(
   let faceNote = false;
   /** Some of the file's regions were left out. */
   let partial = false;
+  // Side 1 runs along the file's sketch normal (1) or against it (−1).
+  const negative = (param('AlongDistance')?.value ?? 0) < 0;
+  const side1 = f.reversed !== negative ? -1 : 1;
+  /**
+   * A cut from a plane face slanted to its sketch: the file sweeps the
+   * profile from where it meets the face on along the normal, so the cut
+   * ends on that face's plane moved by its distance. It starts here from a
+   * copy of the sketch moved to where the whole profile is on the face's
+   * outer side (that wedge is outside the body, as long as nothing of the
+   * body stands over the face there), up to the moved plane.
+   */
+  let slanted: { plane: GeomRef } | undefined;
+  const slantedShift = (own: SketchEntry): number | undefined => {
+    const s = startFace?.surface;
+    if (
+      s?.kind !== 'plane' ||
+      f.operation !== 'cut' ||
+      f.direction !== 'one-side' ||
+      toFace ||
+      !param('AlongDistance') ||
+      offset?.value
+    )
+      return undefined;
+    const m = own.source.frame;
+    const sweep = scale([m[2] as number, m[6] as number, m[10] as number], side1);
+    const into = dot(sweep, s.normal);
+    if (into > -1e-6) return undefined;
+    const operand = f.profiles[0];
+    if (f.profiles.length !== 1 || !operand?.regions) return undefined;
+    own.pieces ??= sketchPieces(own.source, own.profileCurves);
+    let first = Number.POSITIVE_INFINITY;
+    for (const region of operand.regions) {
+      const lines = regionPieces(own.pieces, region.outerPieces);
+      if (!lines) return undefined;
+      for (const line of lines)
+        for (const [u, v] of line) {
+          // How far along the sweep this profile point meets the face's plane.
+          const p = toModel(m, [u, v, 0]);
+          first = Math.min(first, dot(sub(s.point, p), s.normal) / into);
+        }
+    }
+    if (!Number.isFinite(first)) return undefined;
+    const n = s.normal;
+    const x =
+      norm(cross(n, [1, 0, 0])) > 0.1 ? unit(cross(n, [1, 0, 0])) : unit(cross(n, [0, 1, 0]));
+    const y = cross(n, x);
+    const frame: Matrix = [
+      x[0],
+      y[0],
+      n[0],
+      s.point[0],
+      x[1],
+      y[1],
+      n[1],
+      s.point[1],
+      x[2],
+      y[2],
+      n[2],
+      s.point[2],
+      0,
+      0,
+      0,
+      1,
+    ];
+    const placed = placeSketch(d, frame, report, `${f.name} start face`);
+    if (!placed) return undefined;
+    slanted = { plane: placed.plane };
+    // A millimetre further back: Extrudo wants the plane wholly beyond the profile.
+    return (first - 0.1) * side1;
+  };
   const shiftFor = (own: SketchEntry): number => {
     let cm = offset ? offset.value : 0;
     if (startFace) {
       const at = planeOffset(startFace, own.source.frame);
-      if (at === undefined) faceNote = true;
-      else cm += at;
+      const across = at === undefined ? slantedShift(own) : undefined;
+      if (across !== undefined) cm = across;
+      else if (at === undefined) faceNote = true;
+      // The offset runs along the face's normal, against the sketch's when
+      // the face looks the other way.
+      else cm = at + cm * facing(startFace, own.source.frame);
     }
     return Math.abs(cm) > 1e-9 ? cm : 0;
   };
@@ -1328,10 +1402,16 @@ function extrude(
 
   // Side 1 runs along the file's sketch normal, reversed by the flag or a
   // negative distance; Extrudo's runs along its plane's normal unless flipped.
-  const negative = (along?.value ?? 0) < 0;
   const flip = placement.opposite !== (f.reversed !== negative);
   const inputs: Record<string, unknown> = { profiles, operation: f.operation };
-  if (f.direction === 'one-side' && toFace) {
+  if (slanted && along) {
+    inputs.extent = 'to-object';
+    inputs.toObject = slanted.plane;
+    inputs.offset = expressionOf(along, negative);
+    report.notes.push(
+      `${f.name}: starts from a face slanted to its sketch; cut from beyond the face to its plane moved by the distance.`,
+    );
+  } else if (f.direction === 'one-side' && toFace) {
     // Up to a face: a plane parallel to the start becomes the distance to it
     // (past it by the offset); another face is named if it can be.
     const past = param('Side1Offset')?.value ?? 0;
@@ -1924,6 +2004,13 @@ function planeOffset(face: F3dFace, m: Matrix): number | undefined {
   return dot(sub(s.point, O), N);
 }
 
+/** 1 when a plane face looks along a sketch's normal, −1 against it. */
+function facing(face: F3dFace, m: Matrix): number {
+  const s = face.surface;
+  if (s?.kind !== 'plane') return 1;
+  return dot(s.normal, [m[2] as number, m[6] as number, m[10] as number]) < 0 ? -1 : 1;
+}
+
 /**
  * An up-to-face offset (cm) as Extrudo measures it, along the sweep: the file
  * measures it along a target plane's normal, so a plane slanted to the sketch
@@ -1945,6 +2032,7 @@ const cross = (a: Vec3, b: Vec3): Vec3 => [
   a[0] * b[1] - a[1] * b[0],
 ];
 const norm = (a: Vec3) => Math.hypot(a[0], a[1], a[2]);
+const unit = (a: Vec3): Vec3 => scale(a, 1 / norm(a));
 
 /** An f3d sketch point (cm, sketch frame) in model space (cm). */
 function toModel(m: Matrix, p: Vec3): Vec3 {
