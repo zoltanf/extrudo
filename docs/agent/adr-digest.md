@@ -51,8 +51,11 @@ ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
-debug page at `#/debug/kernel`). ADR-0002 chose planegcs from our own WASM
-build, one solver system per independent sketch component
+debug page at `#/debug/kernel`). The `delete()` leak behind the facade
+(taucad/opencascade.js#40) is fixed in libcascade 3.1.0; we still build with
+3.0.2, and the upgrade is a P4-12 item (ADR-0001's amendment of 2026-10-15).
+After it, `delete()` frees for real: never delete a handle OCCT still
+references. ADR-0002 chose planegcs from our own WASM build, one solver system per independent sketch component
 (`docs/adr/0002-sketch-solver.md`). ADR-0003 (P0-06) set the document model in
 `packages/core`: strict zod schema, migrations on raw JSON, deterministic
 commands with Immer patches, nested undo transactions, vanilla Zustand stores.
@@ -2294,6 +2297,8 @@ detail). A skipped feature's `reason` is plain words for people (at most `MAX_RE
 characters, never a list in braces: `skippedFeature`, R3-18) and `detail` the technical text. **Amendments of 2026-10-11 and 2026-10-12** closed most of the original gaps: components (each a component of the design, ADR-0081), mirrors, rectangular and path patterns, sweeps, splits, modeled threads, naming a copied face, sketch constraints and dimensions, elliptical arcs as exact conics, fillet and chamfer edges read where the file has them, `skipLostEdges` on every round and chamfer (ADR-0038's and ADR-0043's amendments) and reading the segment under the `[Active]` folder (`activeDesignSegment` in `model.ts`). What still does not come across is in the ADR's Consequences (for example faces given as an extrude's profile that cannot be named).
 **Amendment of 2026-10-14 (skipped features):** an edge recipe whose first face has a negative token runs between its second face and the single one after it (`edgeFaces`, `decode/edges.ts`); a fillet/chamfer none of whose edges passes the weak-edge rule gets one second try (`loose`) by its two faces' names alone, no fingerprint, relying on `skipLostEdges`; a profile region nothing finds is left out with a note only while the operand's other regions are found (else the extrude is skipped as before); a hole without centre points takes them from its own cylinders' axes (`centresFromCylinders`, at most `MAX_FOUND_CENTRES`, never a pattern's copies), and a hole on a body face takes its placement's point and normal only when the recipe's B-rep plane agrees (`readHolePlacement`, `planeThrough`); an extrude head is also looked for at offset 57, after every other offset.
 
+**Amendment of 2026-10-15 (hostile files, round 2):** every reader stays linear in its input. `readAsm` shares one-byte values and small ints (frozen objects: never mutate an `AsmValue`), needs a class per record and caps values (1 per 4 bytes, 16 M), records (1 per 16 bytes); `asmFaceTags` returns a per-stream shared array (don't mutate it) and, like `asmFaces`' loop walk, spends a per-stream budget; `asm-body` reads each surface, curve and edge record once per stream (`Walk.surfaces/curves/edges`), `asm-spline` each B-spline block once (WeakMap by values array), and `brep-step` writes a B-spline once per body (`shared`, keyed by the spline object; analytic geometry per use) within `MAX_STEP_BYTES`. `archive.ts` inflates streaming into the declared size and must fill it, refuses a declared size over `MAX_RATIO` × compressed + 4 kB before allocating, and walks a Zstandard frame's headers first (one frame, no dictionary, window ≤ `MAX_ZSTD_WINDOW`). `readSegment`: `readOperationTable` spends one budget per segment; timeline items and type-table ids are deduplicated; `scopeOf` memoises `readScope`; `madeBy` is indexed; `refsOf` frames a record under `tryDecode`. Numbers from the file go through `finite` (`bytes.ts`) at decode. Core's expression parser refuses nesting past `MAX_DEPTH` = 256 (parser depth and node height). A new reader keeps to this: no per-byte objects, no walk repeated per referrer, a budget where a search tries every offset.
+
 **Amendment of 2026-10-14 (torus, sweep faces, further records):** a torus primitive's matrix is in its plane's frame (`decode/torus.ts`: centre = matrix origin, axis = matrix Z, through the geometry operand's model plane); `readTorus` refuses it when the B-rep keeps a torus the feature made elsewhere; it maps only onto the origin plane square to its axis. Sweep faces are told by geometry, never by token (`sweep-faces.ts`): only for a path that chains, is flat and crosses the profile's plane square to it, at most `MAX_PATH_PIECES` pieces; along a spline only a plane at one height; `cap:start` is the cap at the path end nearer the profile. A feature's further records in other components (`decode/feature-records.ts`, `12D00AC0…`) map faces to the timeline feature only through that list (`timelineFeature`), never by a shared name; their bodies are added to a join/cut that names bodies (`allParticipants`), and a feature naming none keeps none.
 
 ADR-0084 (the owner, 2026-10-14) **checks each body an `.f3d` import rebuilt against the
@@ -2389,3 +2394,72 @@ its distances `ctx.scalar` signed with `absolute`/`negate`/`half` and a
 `translate`; `through-all` (cut/intersect) reaches past `ctx.bounds()`.
 Revolve is a `rotate_extrude` in (radius, axis) with the axis as OpenSCAD's
 Z; `flip` reverses the axis; the shared `axisOf` takes a `GeometryReader`. Accepted 2026-10-16; the acceptance tests live in `scad-export/acceptance.test.ts` and the CLI's "AC 5" test (`packages/cli/src/headless.test.ts`).
+
+ADR-0087 (P6-08, 2026-10-15) added **the desktop MCP server and its skill** (no
+schema or file-format change). **Main** hosts it (`apps/desktop/src/main/mcp/`):
+`server.ts`'s `createMcpServer` (Node `http` bound to the literal `127.0.0.1`,
+default port 7474, path `/mcp`, the SDK's `StreamableHTTPServerTransport` in front
+of a low-level `Server` per session, at most 16), `admit.ts`'s pure `admit` (in
+this order: **403** for a `Host` other than `127.0.0.1:<port>`/`localhost:<port>`
+or an `Origin` other than `http://127.0.0.1[:port]`/`http://localhost[:port]`,
+**413** over 1 MB, **401** `{"error":"Unauthorized."}` without the bearer token,
+compared in constant time), `token.ts` (`userData/mcp-token`, 64 hex, mode 0600,
+read on every request so Regenerate applies at once), `service.ts` (the
+preferences `mcp.enabled` (true) and `mcp.port` (7474, 1024–65535) read by main
+itself; a `prefs:write` of an `mcp.*` key reconfigures: **off closes the port**;
+one change at a time; a bind error is the status's `error`), `exports.ts`
+(`userData/agent-exports/<stem>-<n>.<ext>`, never overwriting, 20 MB cap) and
+`skill.ts`/`skillFiles.ts` (the skill bundled with `import.meta.glob` `?raw`).
+**Main never touches the document and knows no tool**: the renderer sends the
+tool list (`extrudo:mcp:tools`), each call is `extrudo:mcp:request` → renderer →
+`extrudo:mcp:respond` (checked by `shared/mcp.ts`'s `isToolDefinitionList`/
+`isToolResponse`; text and PNG image content only; 60 s timeout; "Extrudo's window
+isn't open." while no page has said `app:ready` since its last full navigation —
+a hash route keeps it), status goes out over `extrudo:mcp:status` (`{ enabled,
+port, url, listening, clients, error? }`, `clients` = sessions with a stream open
+or a request in the last 30 s), `status-read`, `config` and `regenerate-token` are
+invokes; the one exception is `get_skill`, answered by main from the skill it
+serves. **Only `apps/desktop/src/main` and `apps/desktop/scripts` may import the
+SDK** (`check-boundaries.mjs`); it is a devDependency bundled into `out/main`,
+and `check-licenses.mjs`'s `BUNDLED_DEV` walks its dependency tree (NOTICE §4).
+**The tools are the web app's** (`apps/web/src/agent/`): `schemas.ts` (one zod
+schema per tool through core's `z`; `toolDefinitions()` via `z.toJSONSchema`),
+`tools.ts`'s `runTool` over an `AgentContext` and the open design's `AgentHost`
+(`host.ts`; `AppShell` registers it with `useAgentHost` while mounted, desktop
+only; `useAgentBridge` in `App` answers calls and sends the list), so
+`list_designs`, `new_design`, `open_design` work from the home screen. Rules a
+change must keep: **every change is one undo transaction `Agent: <what>`**
+(refused with `BUSY` while a transaction is open or a sketch is being edited, so
+it never joins the person's), **parameter writes go through the shell's
+`apply`**, **features come from `@extrudo/api`** run on `Design.from(document)`
+and go in at the marker after `remintFeatures` and `withActiveComponent`, through
+`apply` (`insertFromApi`; a name the agent asked for is kept when free), a bad
+input answers `ApiError`'s `path: message` and changes nothing, a change waits for
+the recompute (`settled`) and answers the features in error or warning
+(`problems`), with no design open a design tool answers "No design is open: call
+open_design first." as `isError`, never a throw; screenshots are paced to one a
+second and exports to one per 2 s (`createPacer`); the renderer never names a
+path (an export's bytes go to main). `add_sketch` draws shapes (dimensioned
+rectangles, circles with a diameter dimension, lines, polylines, arcs, slots) and
+answers the profiles; **`run_command` runs outside any agent transaction** (a
+command that opens a dialog or a sketch answers `{ command, opened }` and change
+tools wait for it), refuses `undo`/`redo`, and **`AGENT_DENIED_COMMANDS`** (quit,
+native dialogs and pickers, outside pages, app settings; plus `openRecent*`) is
+left out of `list_commands` and answers "Not available to agents."; `{ edgeBetween: [face, face] }` is the one input shorthand
+(`expandShorthands`, the API's `edgeName`). The top bar's `AgentIndicator`
+("Agent connected", `data-agent-clients`) shows while `clients > 0`; Settings ›
+Desktop › Agents has the switch, a plain numeric port field (an app setting, not
+a model value), the state line ("Listening on …", "Off.", the bind error), Copy
+client config (`clientConfig`) and Regenerate token. **The skill** is
+`apps/desktop/skill/extrudo/` (`SKILL.md` with `name: extrudo`; `references/api.md`
+from `pnpm api:generate`'s `skillPages()` and `references/tools.md` from
+`apps/web/src/agent/toolsPage.ts`, both stale-checked; `examples.md` hand-written,
+its JSON calls parsed, checked against the schemas and run through the tools by
+`skill.test.ts`), served per **SEP-2640 (Final)**: `capabilities.extensions
+["io.modelcontextprotocol/skills"] = { directoryRead: true }`, `skills/list`,
+`skills/get`, `skill://extrudo/<path>` resources and `resources/directory/read` as
+custom handlers, `instructions` "Read skill://extrudo/SKILL.md before modelling.".
+`desktop.yml`'s Linux job zips it as `extrudo-skill-<version>.zip` (attached to a
+tag's draft release). `apps/desktop/scripts/mcp-client.mjs --launch` (under
+`xvfb-run -a`; Chromium's headless Ozone crashes Electron's main) is the
+acceptance client, `--examples` runs the worked examples in the real kernel.

@@ -145,15 +145,36 @@ function entryFor(entries: Entries, file: string): Uint8Array | undefined {
   return undefined;
 }
 
+/**
+ * The most STEP text one body may come to. The files' largest body is 4 MB
+ * (85,000 entities); a crafted stream past this is refused rather than
+ * written out on the UI thread.
+ */
+export const MAX_STEP_BYTES = 64 * 1024 * 1024;
+
 /** The solid as AP214 STEP text (mm). Throws `UnsupportedGeometry` on a surface or curve it does not carry. */
-export function solidToStep(solid: AsmBodySolid): string {
+export function solidToStep(solid: AsmBodySolid, maxBytes = MAX_STEP_BYTES): string {
   // A lump with several shells whose outside is not known would come out wrong.
   if (solid.unknownOuter)
     throw new UnsupportedGeometry('a solid with voids whose outer shell is not known');
-  const w = new StepWriter();
+  const w = new StepWriter(maxBytes);
   const ctx = header(w);
   const vertexAt = new Map<string, number>();
   const edgeAt = new Map<number, number[]>();
+  // A B-spline several faces or edges share (one record, or one block several
+  // records name) is written once: its points would otherwise be written per
+  // face or edge. Other geometry is a few entities, written per use as before.
+  const geometryAt = new Map<object, number>();
+  const shared = <T extends AsmSurface | AsmCurve>(g: T, write: (g: T) => number): number => {
+    if (g.kind !== 'bspline') return write(g);
+    const key = g.spline;
+    let at = geometryAt.get(key);
+    if (at === undefined) {
+      at = write(g);
+      geometryAt.set(key, at);
+    }
+    return at;
+  };
   const vertex = (p: [number, number, number]): number => {
     const key = p.map((x) => x.toFixed(7)).join(',');
     const cached = vertexAt.get(key);
@@ -177,7 +198,7 @@ export function solidToStep(solid: AsmBodySolid): string {
     // A closed edge (a full circle) may name one vertex; both ends are that point.
     const start = vertex(e.start);
     const end = vertex(e.end ?? e.start);
-    const curve = w.curve(e.curve);
+    const curve = shared(e.curve, (c) => w.curve(c));
     // The edge runs against its curve when the edge record's sense is true, so
     // `EDGE_CURVE`'s same-sense is the opposite of the edge's own sense.
     const same = e.reversed ? 'F' : 'T';
@@ -240,7 +261,7 @@ export function solidToStep(solid: AsmBodySolid): string {
       const surface =
         face.surface.kind === 'torus' && degenerateTorus(face.surface)
           ? w.bsplineSurface(torusSpline(face.surface, seamAngle(face)))
-          : w.surface(face.surface);
+          : shared(face.surface, (s) => w.surface(s));
       faceRefs.push(
         w.add("ADVANCED_FACE('',({}),#{},.{}.)", [
           bounds.map((x) => `#${x}`).join(','),
@@ -519,21 +540,29 @@ function g(v: number): string {
 class StepWriter {
   #lines: string[] = [];
   #n = 0;
+  #bytes = 0;
+  readonly #maxBytes: number;
   productDefinitionShape = 0;
+
+  constructor(maxBytes: number) {
+    this.#maxBytes = maxBytes;
+  }
 
   add(text: string, refs: (number | string)[] = []): number {
     this.#n += 1;
     let i = 0;
-    this.#lines.push(
-      `#${this.#n}=${
-        refs.length
-          ? text.replace(/\{\}/g, () => {
-              const v = refs[i++];
-              return typeof v === 'number' ? g(v) : String(v);
-            })
-          : text
-      };`,
-    );
+    const line = `#${this.#n}=${
+      refs.length
+        ? text.replace(/\{\}/g, () => {
+            const v = refs[i++];
+            return typeof v === 'number' ? g(v) : String(v);
+          })
+        : text
+    };`;
+    this.#bytes += line.length + 1;
+    if (this.#bytes > this.#maxBytes)
+      throw new UnsupportedGeometry(`a body of more than ${this.#maxBytes} bytes of STEP`);
+    this.#lines.push(line);
     return this.#n;
   }
 
@@ -681,9 +710,12 @@ class StepWriter {
 }
 
 /** The solid as STEP, or the reason it cannot be written. */
-export function solidStep(solid: AsmBodySolid): { step?: string; reason?: string } {
+export function solidStep(
+  solid: AsmBodySolid,
+  maxBytes = MAX_STEP_BYTES,
+): { step?: string; reason?: string } {
   try {
-    return { step: solidToStep(solid) };
+    return { step: solidToStep(solid, maxBytes) };
   } catch (error) {
     return {
       reason:

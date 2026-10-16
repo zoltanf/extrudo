@@ -57,7 +57,9 @@ them. Notes further down that name a machine apply to that machine only.
   for ≥ 1000 iterations, with a leak control that must fail. A
   `malloc`-address probe was tried and is too noisy; `OSD_MemInfo` and
   embind's instance counters aren't exported. Reported upstream as
-  [taucad/opencascade.js#40](https://github.com/taucad/opencascade.js/issues/40); check it before P0-09.
+  [taucad/opencascade.js#40](https://github.com/taucad/opencascade.js/issues/40), fixed in
+  libcascade 3.1.0 (2026-10-13); we still build with toolchain 3.0.2, where it
+  remains (ADR-0001's amendment of 2026-10-15).
 - **brepjs `*WithEvolution` returns empty maps unless the input faces carry
   metadata** (for example `tagFaces`): brepjs only sends face hashes to the
   kernel when there is something to propagate.

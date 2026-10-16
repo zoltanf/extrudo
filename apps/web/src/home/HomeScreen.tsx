@@ -225,6 +225,7 @@ export function HomeScreen({ platform }: { platform: Platform }) {
         onMarkingRadial={marking.toggle}
         desktop={platform.desktop !== undefined}
         installedSlicers={platform.installedSlicers}
+        agent={platform.agent}
       />
       <main className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-[1180px] flex-col gap-8 px-6 py-8">

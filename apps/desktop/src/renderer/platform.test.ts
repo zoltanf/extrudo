@@ -67,6 +67,17 @@ function fakeApi(overrides: Partial<ExtrudoApi> = {}) {
       offChanged: () => {},
     },
     slicer: { list: async () => [], open: async () => false },
+    agent: {
+      onRequest: () => {},
+      offRequest: () => {},
+      respond: () => {},
+      setTools: () => {},
+      onStatus: () => {},
+      offStatus: () => {},
+      status: async () => ({ enabled: false, port: 7474, url: '', listening: false, clients: 0 }),
+      config: async () => ({ url: '', token: '' }),
+      regenerateToken: async () => ({ url: '', token: '' }),
+    },
     app: { ready: () => {}, quit: () => {} },
     updates: {
       onStatus: () => {},
@@ -176,6 +187,7 @@ describe('desktopPlatform (ADR-0075 §3)', () => {
   it('assembles the whole Platform, recovering no rescue copies', async () => {
     const platform = await desktopPlatform(fakeApi());
     expect(Object.keys(platform).sort()).toEqual([
+      'agent',
       'desktop',
       'externalFiles',
       'files',

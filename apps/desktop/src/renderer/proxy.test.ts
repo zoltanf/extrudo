@@ -75,6 +75,17 @@ function fakeApi(answers: Partial<Record<string, unknown>> = {}) {
       offChanged: () => {},
     },
     slicer: { list: async () => [], open: async () => false },
+    agent: {
+      onRequest: () => {},
+      offRequest: () => {},
+      respond: () => {},
+      setTools: () => {},
+      onStatus: () => {},
+      offStatus: () => {},
+      status: async () => ({ enabled: false, port: 7474, url: '', listening: false, clients: 0 }),
+      config: async () => ({ url: '', token: '' }),
+      regenerateToken: async () => ({ url: '', token: '' }),
+    },
     app: { ready: () => {}, quit: () => {} },
     updates: {
       onStatus: () => {},

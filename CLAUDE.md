@@ -17,9 +17,9 @@ spec's selectors into `docs/agent/e2e-notes.md`).
 ## Status
 
 Phases 0, 1, 2, 3 and 5 are complete. Phase 4 is complete apart from **P4-12's
-remaining backlog** (the open items in `docs/03-roadmap.md`). Phase 6 has
-P6-08 (the desktop MCP server) and P6-04 (i18n, **deferred**: English only for
-now) left. Phase 7 (IK) is last, lowest priority. The
+remaining backlog** (the open items in `docs/03-roadmap.md`). Phase 6 is
+complete apart from P6-04 (i18n, **deferred**: English only for now); P6-08,
+the desktop MCP server and its skill (ADR-0087), is done. Phase 7 (IK) is last, lowest priority. The
 owner's UI review 3 is done (`docs/plans/ui-review-2026-10-11.md`); tooltip
 clips for Construct, 3D Print and the Sketch tab follow in later batches.
 

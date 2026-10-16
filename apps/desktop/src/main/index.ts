@@ -25,6 +25,8 @@ import { createFolders } from './folders';
 import { HEADERS } from './headers';
 import { registerIpcHandlers } from './ipc';
 import { createLinks } from './links';
+import { createMcpService } from './mcp/service';
+import { extrudoSkill, SKILL_INSTRUCTIONS } from './mcp/skillFiles';
 import {
   buildMenuTemplate,
   hasApplicationMenu,
@@ -91,8 +93,26 @@ function main(): void {
 
   let window: BrowserWindow | null = null;
   const getWindow = () => window;
+  /** The renderer said `app:ready` and hasn't reloaded since: it can answer tool calls. */
+  let rendererUp = false;
   const send = (channel: string, ...args: unknown[]) => window?.webContents.send(channel, ...args);
   const notifyRecentChanged = () => send(CHANNELS.recentChanged);
+
+  // The MCP server (P6-08, ADR-0087): on by default on 127.0.0.1; main reads
+  // its preferences itself, so it listens before the renderer is up.
+  const mcp = createMcpService({
+    preferences: () => preferences.read(),
+    tokenFile: join(userData, 'mcp-token'),
+    exportsDir: join(userData, 'agent-exports'),
+    version: app.getVersion(),
+    skill: extrudoSkill(),
+    instructions: SKILL_INSTRUCTIONS,
+    send: (channel, payload) => {
+      if (!window || !rendererUp) return false;
+      window.webContents.send(channel, payload);
+      return true;
+    },
+  });
 
   // Auto-update (P6-01 slice 4). `autoUpdater` is a lazy getter in
   // electron-updater, so a dev run (never started) doesn't construct one.
@@ -284,6 +304,8 @@ function main(): void {
       },
       recentChanged: () => recentChanged(),
       rendererReady: () => {
+        rendererUp = true;
+        mcp.rendererReset();
         openQueue.ready();
         // A reloaded renderer starts with no update state: say what main knows.
         if (updates.status.state !== 'idle') send(CHANNELS.updateStatus, updates.status);
@@ -301,7 +323,9 @@ function main(): void {
       },
       docs: createDocs((url) => void shell.openExternal(url)),
       links: createLinks((url) => void shell.openExternal(url)),
+      mcp,
     });
+    void mcp.configure();
     createWindow();
     // Before the first menu, so Help › Check for Updates… knows whether it runs.
     updates.start();
@@ -320,6 +344,7 @@ function main(): void {
 
   app.on('before-quit', () => {
     updates.dispose();
+    void mcp.dispose();
     preferences.flush();
   });
 
@@ -352,6 +377,17 @@ function main(): void {
     window.on('focus', () => updates.focused());
     window.on('closed', () => {
       window = null;
+      rendererUp = false;
+    });
+    // A reload: tool calls wait for the new page's `app:ready`. `did-navigate`
+    // fires only for a committed cross-document navigation (a hash route, or one
+    // `will-navigate` blocked, keeps the renderer up); a crashed renderer can't answer.
+    window.webContents.on('did-navigate', () => {
+      rendererUp = false;
+    });
+    window.webContents.on('render-process-gone', () => {
+      rendererUp = false;
+      mcp.rendererReset();
     });
 
     // A compromised renderer must not turn this window into a browser: no

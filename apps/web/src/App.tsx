@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react';
+import { useAgentBridge } from './agent/useAgentBridge';
 import { ExampleOpener } from './home/ExampleOpener';
 import { HomeScreen } from './home/HomeScreen';
 import type { Platform } from './platform';
@@ -19,6 +20,8 @@ const DialogDebug = lazy(() =>
 /** Hash routes (Electron-safe, architecture §8): home, a project, debug pages. */
 export function App({ platform }: { platform: Platform }) {
   const route = useRoute();
+  // The desktop MCP server's tool calls (P6-08, ADR-0087): none on the web.
+  useAgentBridge(platform);
   switch (route.page) {
     case 'home':
       return <HomeScreen platform={platform} />;

@@ -13,11 +13,14 @@ import {
   type FolderEntry,
   isPluginMethod,
   isStoreMethod,
+  type McpConfig,
+  type McpStatus,
   type OpenedFile,
   type RecentEntry,
   type SavedFile,
   type UpdateStatus,
 } from './ipc';
+import type { McpRequest } from './mcp';
 
 /** The slice of Electron's `ipcRenderer` this bridge needs. */
 export interface IpcRendererLike {
@@ -36,6 +39,8 @@ export function createApi(ipc: IpcRendererLike): ExtrudoApi {
   let openListener: ((event: unknown, file: unknown) => void) | undefined;
   let changedListener: ((event: unknown) => void) | undefined;
   let statusListener: ((event: unknown, status: unknown) => void) | undefined;
+  let mcpRequestListener: ((event: unknown, request: unknown) => void) | undefined;
+  let mcpStatusListener: ((event: unknown, status: unknown) => void) | undefined;
 
   return {
     prefs: {
@@ -151,6 +156,31 @@ export function createApi(ipc: IpcRendererLike): ExtrudoApi {
     app: {
       ready: () => ipc.send(CHANNELS.appReady),
       quit: () => ipc.send(CHANNELS.appQuit),
+    },
+    agent: {
+      onRequest: (handler) => {
+        if (mcpRequestListener) ipc.removeListener(CHANNELS.mcpRequest, mcpRequestListener);
+        mcpRequestListener = (_event, request) => handler(request as McpRequest);
+        ipc.on(CHANNELS.mcpRequest, mcpRequestListener);
+      },
+      offRequest: () => {
+        if (mcpRequestListener) ipc.removeListener(CHANNELS.mcpRequest, mcpRequestListener);
+        mcpRequestListener = undefined;
+      },
+      respond: (response) => ipc.send(CHANNELS.mcpRespond, response),
+      setTools: (tools) => ipc.send(CHANNELS.mcpTools, tools),
+      onStatus: (handler) => {
+        if (mcpStatusListener) ipc.removeListener(CHANNELS.mcpStatus, mcpStatusListener);
+        mcpStatusListener = (_event, status) => handler(status as McpStatus);
+        ipc.on(CHANNELS.mcpStatus, mcpStatusListener);
+      },
+      offStatus: () => {
+        if (mcpStatusListener) ipc.removeListener(CHANNELS.mcpStatus, mcpStatusListener);
+        mcpStatusListener = undefined;
+      },
+      status: () => ipc.invoke(CHANNELS.mcpStatusRead) as Promise<McpStatus>,
+      config: () => ipc.invoke(CHANNELS.mcpConfig) as Promise<McpConfig>,
+      regenerateToken: () => ipc.invoke(CHANNELS.mcpRegenerateToken) as Promise<McpConfig>,
     },
     updates: {
       onStatus: (handler) => {
