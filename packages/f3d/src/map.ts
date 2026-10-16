@@ -1414,7 +1414,9 @@ function extrude(
   } else if (f.direction === 'one-side' && toFace) {
     // Up to a face: a plane parallel to the start becomes the distance to it
     // (past it by the offset); another face is named if it can be.
-    const past = param('Side1Offset')?.value ?? 0;
+    // From a start face, the file's offset counts the other way: short of the
+    // face where positive.
+    const past = (param('Side1Offset')?.value ?? 0) * (startFace ? -1 : 1);
     const to = planeOffset(toFace, entry.source.frame);
     if (to !== undefined) {
       const total = to + Math.sign(to) * past;
