@@ -1036,4 +1036,91 @@ describe('f3dToDesign', () => {
       expect(cut?.inputs.bodies).toBeUndefined();
     });
   });
+
+  describe('extrude extents from a start face', () => {
+    /** A 1 mm disc's sketch (record 6) at (3.8, 0) mm in the given frame, over the ring. */
+    function withDisc(frame: number[], extrude: Partial<F3dExtrude>): F3dDesign {
+      const f3d = washer();
+      const disc = circle(40, 301n, 0.1);
+      disc.point.at = [0.38, 0, 0];
+      disc.circle.center = [0.38, 0, 0];
+      f3d.features.push(
+        {
+          type: 'sketch',
+          id: 3,
+          kind: 'Sketch',
+          name: 'Sketch2',
+          suppressed: false,
+          parameters: [],
+          sketch: {
+            id: 6,
+            frame,
+            points: [disc.point],
+            lines: [],
+            circulars: [disc.circle],
+            splines: [],
+            texts: [],
+          },
+        },
+        {
+          ...(f3d.features[1] as F3dExtrude),
+          id: 4,
+          name: 'Extrude2',
+          start: 'face',
+          profiles: [{ id: 33, sketch: 6, regions: [region([[301n]])] }],
+          ...extrude,
+        },
+      );
+      return f3d;
+    }
+    const plane = (z: number, nz: number) => ({
+      tags: [],
+      surface: { kind: 'plane', point: [0, 0, z], normal: [0, 0, nz] } as AsmSurface,
+    });
+
+    it("moves the start by its offset along the face's normal, which may face the other way", async () => {
+      // The ring's bottom (normal −z) with an offset of −1 mm: the start is 1 mm up.
+      const f3d = withDisc([...IDENTITY], {
+        parameters: [
+          parameter({ name: 'd5', kind: 'ProfileOffset', value: -0.1 }),
+          parameter({ name: 'd6', kind: 'AlongDistance', value: 0.2 }),
+        ],
+        faces: [plane(0, -1)],
+      });
+      const [, disc] = await measures(f3d);
+      expect(disc?.bbox.min[2]).toBeCloseTo(1, 2);
+      expect(disc?.bbox.max[2]).toBeCloseTo(3, 2);
+    });
+
+    it('cuts from a face slanted to its sketch down to that face moved by the distance', async () => {
+      // Sketch normal (0, ½, √3/2), drawn below the ring; the cut starts on the
+      // ring's top (z 0.8 mm) and runs 0.5 mm along the normal into it.
+      const c = Math.sqrt(3) / 2;
+      const f3d = withDisc([1, 0, 0, 0, 0, c, 0.5, -0.6235, 0, -0.5, c, -1, 0, 0, 0, 1], {
+        operation: 'cut',
+        parameters: [parameter({ name: 'd5', kind: 'AlongDistance', value: -0.05 })],
+        faces: [plane(0.08, 1)],
+      });
+      const { report } = f3dToDesign(f3d, 'Washer');
+      expect(report.notes).toContain(
+        'Extrude2: starts from a face slanted to its sketch; cut from beyond the face to its plane moved by the distance.',
+      );
+      // An oblique prism: its volume is the profile's area times its length.
+      expect(await volumes(f3d)).toEqual([expect.closeTo(RING - Math.PI * 0.5, 3)]);
+    });
+
+    it('ends short of the face it goes up to by a positive offset when it starts from a face', async () => {
+      const f3d = withDisc([...IDENTITY], {
+        parameters: [
+          parameter({ name: 'd5', kind: 'ProfileOffset', value: 0 }),
+          parameter({ name: 'd6', kind: 'Side1Offset', value: 0.1 }),
+        ],
+        // From the ring's top, up to a plane 5 mm up, 1 mm short of it.
+        faces: [plane(0.08, 1), plane(0.5, 1)],
+      });
+      const [, disc] = await measures(f3d);
+      expect(disc?.bbox.min[2]).toBeCloseTo(0.8, 2);
+      expect(disc?.bbox.max[2]).toBeCloseTo(4, 2);
+    });
+  });
 });
