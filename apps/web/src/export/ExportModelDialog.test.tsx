@@ -221,7 +221,7 @@ describe('a mesh body in the Export dialog (P4-06, ADR-0066 §3)', () => {
   });
 });
 
-describe('the OpenSCAD format in the Export dialog (P6-09, ADR-0086 §9)', () => {
+describe('the OpenSCAD format in the Export dialog (P6-09, ADR-0088 §9)', () => {
   const remembered = (value: unknown) => {
     const p = memoryPreferences();
     p.set('export.model', value);

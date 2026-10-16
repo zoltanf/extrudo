@@ -1,18 +1,18 @@
 /**
- * The OpenSCAD export's intermediate form (P6-09, ADR-0086 §3): what a
+ * The OpenSCAD export's intermediate form (P6-09, ADR-0088 §3): what a
  * feature's `csg` hook returns and what the printer (`print.ts`) writes. A
  * small tree of OpenSCAD's own operations, plus references to the body
  * versions and shared tools the version walk (`versions.ts`) names.
  *
  * Plain data, no kernel types: a hook builds it from numbers it read off the
- * resolved geometry (ADR-0086 §4).
+ * resolved geometry (ADR-0088 §4).
  */
 import type { BodyId } from '@extrudo/core';
 import { scadNumber } from './number';
 
 /**
  * A scalar the file writes: a number, or an OpenSCAD expression over the
- * parameter variables (ADR-0086 §4, §6) with the value it has now. The
+ * parameter variables (ADR-0088 §4, §6) with the value it has now. The
  * printer writes `expr` when there is one, else the value through
  * `scadNumber`.
  */
@@ -105,7 +105,7 @@ export function boolean(
 }
 
 /**
- * A torus about Z through the origin (ADR-0086 §3): a circle of radius `tube`
+ * A torus about Z through the origin (ADR-0088 §3): a circle of radius `tube`
  * at `ring` from the axis, turned once around.
  */
 export function torus(ring: Scalar, tube: Scalar): CsgNode {

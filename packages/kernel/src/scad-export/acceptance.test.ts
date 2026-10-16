@@ -1,4 +1,4 @@
-// The OpenSCAD export's roadmap acceptance tests (P6-09, ADR-0086 §11): one
+// The OpenSCAD export's roadmap acceptance tests (P6-09, ADR-0088 §11): one
 // `it` per AC bullet, each rendering the real file with OpenSCAD's WASM
 // compiler and comparing every exported body's volume and box with the
 // kernel's, at the Fine resolution. Real OCCT, `strictLeaks`.

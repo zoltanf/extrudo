@@ -129,7 +129,7 @@ function primitive<I extends PrimitiveInputs>(
 }
 
 /**
- * A primitive in OpenSCAD (ADR-0086 §7): the solid placed by the frame its
+ * A primitive in OpenSCAD (ADR-0088 §7): the solid placed by the frame its
  * output holds (`multmatrix`), its sizes the inputs' scalars, then the body
  * operation (`operationCsg`).
  */

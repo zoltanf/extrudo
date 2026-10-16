@@ -1,5 +1,5 @@
 /**
- * The IR as OpenSCAD source (P6-09, ADR-0086): two-space indent, one
+ * The IR as OpenSCAD source (P6-09, ADR-0088): two-space indent, one
  * statement per line, every number through `scadNumber`, so the same tree
  * always prints the same text.
  *

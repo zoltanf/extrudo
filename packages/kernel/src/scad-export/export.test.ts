@@ -1,4 +1,4 @@
-// The OpenSCAD export (P6-09 slice 1, ADR-0086): body versions from the last
+// The OpenSCAD export (P6-09 slice 1, ADR-0088): body versions from the last
 // recompute, Combine and Remove as CSG, everything else as polyhedra. Each
 // file is rendered by OpenSCAD's real WASM (`@extrudo/openscad`'s Node
 // compiler) and its result measured against the kernel's body: volume and

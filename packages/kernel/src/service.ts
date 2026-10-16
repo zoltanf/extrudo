@@ -172,7 +172,7 @@ export interface KernelApi {
   exportStep(bodies: readonly StepBody[]): Promise<string>;
   /**
    * Bodies of the last finished recompute as an OpenSCAD file (P6-09,
-   * ADR-0086): OpenSCAD code where the features translate, polyhedra at the
+   * ADR-0088): OpenSCAD code where the features translate, polyhedra at the
    * options' tessellation where they don't. Rejects if a body is no longer
    * in the model.
    */

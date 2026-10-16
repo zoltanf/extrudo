@@ -1,5 +1,5 @@
 /**
- * The parameter block of an exported `.scad` file (P6-09, ADR-0086 §5): the
+ * The parameter block of an exported `.scad` file (P6-09, ADR-0088 §5): the
  * top-level variables the written code needs, laid out for OpenSCAD's
  * Customizer — exposed parameters with their ranges and groups, the rest
  * hidden, everything in an order OpenSCAD can run.

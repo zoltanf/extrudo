@@ -1,5 +1,5 @@
 /**
- * Mesh versions (P6-09, ADR-0086 §8): a shape as OpenSCAD's `polyhedron`,
+ * Mesh versions (P6-09, ADR-0088 §8): a shape as OpenSCAD's `polyhedron`,
  * from the welded export mesh: points rounded to 1e-4 mm and merged, faces
  * clockwise seen from outside (the export mesh's are counter-clockwise), and
  * triangles that rounding collapses left out.

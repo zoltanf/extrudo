@@ -81,7 +81,7 @@ export const kernelRevolve: KernelFeatureDefinition<RevolveInputs> = {
 };
 
 /**
- * A revolve in OpenSCAD (ADR-0086 §7): the picked profiles as 2D nodes in
+ * A revolve in OpenSCAD (ADR-0088 §7): the picked profiles as 2D nodes in
  * (distance from the axis, position along it), `rotate_extrude`n about Z and
  * placed so OpenSCAD's Z is the revolve axis and its X points from the axis
  * into the profile's half — which keeps OpenSCAD 2021.01's x ≥ 0 rule — then

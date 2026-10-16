@@ -1,5 +1,5 @@
 // The OpenSCAD export's hooks for Extrude and Revolve (P6-09 slice 4a,
-// ADR-0086 §7). Each file is rendered by OpenSCAD's real WASM and every
+// ADR-0088 §7). Each file is rendered by OpenSCAD's real WASM and every
 // exported body measured against the kernel's: volume and box within the
 // mesh's tolerance, and no polyhedron where the hooks translate everything.
 // A profile's arcs facet with `ctx.fragments`; a full-circle loop is a

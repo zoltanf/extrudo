@@ -64,7 +64,7 @@ export interface ModelFile {
   name: string;
 }
 
-/** The formats the dialog offers: the kernel's three and an OpenSCAD file (P6-09, ADR-0086 §9). */
+/** The formats the dialog offers: the kernel's three and an OpenSCAD file (P6-09, ADR-0088 §9). */
 export type DialogFormat = ModelFormat | 'scad';
 
 export const DIALOG_FORMATS: readonly DialogFormat[] = ['3mf', 'stl', 'step', 'scad'];
@@ -112,7 +112,7 @@ export async function stepFile(
 }
 
 /**
- * An OpenSCAD file of the bodies (P6-09, ADR-0086 §9): code the kernel
+ * An OpenSCAD file of the bodies (P6-09, ADR-0088 §9): code the kernel
  * writes from the document, each body in its name and colour; mesh versions
  * are tessellated at `tessellation` and written as polyhedra.
  */

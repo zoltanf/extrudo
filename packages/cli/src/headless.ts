@@ -214,7 +214,7 @@ export interface StatusResult {
 }
 
 export interface ExportOptions {
-  /** `scad`: an OpenSCAD file (P6-09, ADR-0086). */
+  /** `scad`: an OpenSCAD file (P6-09, ADR-0088). */
   format: ModelFormat | 'scad';
   /**
    * The bodies to export, by name or ID (`--bodies`); every live body when
@@ -588,7 +588,7 @@ export class DesignJob {
     });
     let chosen = pickExport(bodies, this.doc, options, this.#origins);
     // OpenSCAD leaves hidden bodies out unless they are asked for, as the app's
-    // Export Model does (ADR-0086 §9); with none shown, every body.
+    // Export Model does (ADR-0088 §9); with none shown, every body.
     if (options.format === 'scad' && !options.bodies && !options.components) {
       const shown = chosen.filter((body) => this.doc.bodies[body.id]?.visible !== false);
       if (shown.length > 0) chosen = shown;

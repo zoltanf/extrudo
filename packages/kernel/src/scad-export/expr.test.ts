@@ -1,5 +1,5 @@
 // The expression translator against the real OpenSCAD compiler (P6-09,
-// ADR-0086 §6): every successful row must echo, in OpenSCAD, the value
+// ADR-0088 §6): every successful row must echo, in OpenSCAD, the value
 // Extrudo evaluates.
 import {
   createDocument,

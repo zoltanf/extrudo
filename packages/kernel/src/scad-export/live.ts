@@ -1,5 +1,5 @@
 /**
- * Live parameters in the exported file (P6-09, ADR-0086 §4–§6): a feature's
+ * Live parameters in the exported file (P6-09, ADR-0088 §4–§6): a feature's
  * scalar inputs as OpenSCAD expressions over the parameter variables, and
  * which parameters the written code uses or holds fixed, for the parameter
  * block (`params.ts`).
@@ -128,7 +128,7 @@ export interface WrittenStep {
 
 /**
  * Which parameters the written code uses (`used`: every expression's refs)
- * and which it holds fixed (ADR-0086 §5): those an expression of a mesh
+ * and which it holds fixed (ADR-0088 §5): those an expression of a mesh
  * version's feature, an input a hook didn't read as a scalar, or a body-less
  * feature the written features build on (a sketch, a plane) refers to,
  * directly or through other parameters. Each with its features in timeline

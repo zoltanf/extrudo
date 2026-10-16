@@ -1,4 +1,4 @@
-// The parameter block of a `.scad` export (P6-09, ADR-0086 §5): the example
+// The parameter block of a `.scad` export (P6-09, ADR-0088 §5): the example
 // of the decision, ordering, closure, and the Customizer list OpenSCAD reads.
 import {
   createDocument,

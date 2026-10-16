@@ -1,4 +1,4 @@
-// The OpenSCAD export's printer, names and polyhedra (P6-09, ADR-0086):
+// The OpenSCAD export's printer, names and polyhedra (P6-09, ADR-0088):
 // every IR node printed as OpenSCAD reads it (the file below is rendered by
 // OpenSCAD's real WASM), module names that are identifiers, and a mesh turned
 // clockwise with its points rounded and merged.

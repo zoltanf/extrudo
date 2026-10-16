@@ -93,7 +93,7 @@ function scaleCentre(
 }
 
 /**
- * A scale in OpenSCAD (ADR-0086 §7): `scale([fx, fy, fz])` about the centre,
+ * A scale in OpenSCAD (ADR-0088 §7): `scale([fx, fy, fz])` about the centre,
  * the factors the inputs' scalars.
  */
 function scaleCsg(ctx: CsgContext<ScaleInputs>): CsgResult {

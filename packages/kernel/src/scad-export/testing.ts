@@ -1,5 +1,5 @@
 /**
- * What the OpenSCAD export's tests share (P6-09, ADR-0086 §11): OpenSCAD's
+ * What the OpenSCAD export's tests share (P6-09, ADR-0088 §11): OpenSCAD's
  * real WASM compiler in Node, and the volume and box of what it renders,
  * compared with the kernel's bodies within the mesh's tolerance.
  */

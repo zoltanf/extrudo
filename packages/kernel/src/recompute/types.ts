@@ -92,7 +92,7 @@ export interface KernelFeatureDefinition<I extends FeatureInputs = FeatureInputs
    */
   prepare?(ctx: PrepareContext<I>): Promise<unknown>;
   /**
-   * The feature as OpenSCAD code (P6-09, ADR-0086 §3), run at export time only,
+   * The feature as OpenSCAD code (P6-09, ADR-0088 §3), run at export time only,
    * against the last recompute at the feature's place: a node per body it made
    * or changed, built from the versions before it (`ctx.body`), or `null`
    * (`ctx.unsupported`) when these inputs have no OpenSCAD equivalent. Without

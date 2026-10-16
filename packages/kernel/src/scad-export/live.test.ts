@@ -1,4 +1,4 @@
-// The OpenSCAD export's live parameters (P6-09 slice 4b, ADR-0086 §4–§6):
+// The OpenSCAD export's live parameters (P6-09 slice 4b, ADR-0088 §4–§6):
 // scalars written as expressions over the parameter variables, and the
 // parameter block collected from the walk. Most tests render the file twice,
 // as exported and with a parameter overridden (OpenSCAD's `-D`), and compare

@@ -766,7 +766,7 @@ export const kernelCircularPattern: KernelFeatureDefinition<CircularPatternInput
 // --------------------------------------------------------------- OpenSCAD
 
 /**
- * A pattern of bodies in OpenSCAD (ADR-0086 §7): each instance the evaluator
+ * A pattern of bodies in OpenSCAD (ADR-0088 §7): each instance the evaluator
  * makes (`splitSkip` leaves out the skipped ones) is a `multmatrix` (or `translate`) of its
  * placement around the source's version, unrolled; a copy is the new body
  * `patternBodies` numbered, a join the union of the source and its copies.

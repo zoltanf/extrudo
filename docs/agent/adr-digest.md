@@ -2340,7 +2340,7 @@ and both link mechanisms stay — `openSite(name)` for the fixed named pages
 (only `repo` now) and `openLink(url)` for the dialog's URLs that carry a
 hash; folding them into one was rejected for now.** No schema change.
 
-ADR-0086 (P6-09, slice 1 2026-10-15) added **the OpenSCAD export**:
+ADR-0088 (P6-09, slice 1 2026-10-15) added **the OpenSCAD export**:
 `packages/kernel/src/scad-export/` (`ir.ts`, `print.ts`, `context.ts`,
 `versions.ts`, `mesh.ts`, `file.ts`, `number.ts`), `RecomputeEngine.exportScad`
 over `AtMarker.steps`, `exportScad` on `KernelService`/`KernelApi`/`Recomputer`,

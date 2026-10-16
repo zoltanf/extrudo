@@ -541,7 +541,7 @@ describe('components (P6-05 S8, ADR-0081 §9)', () => {
   });
 });
 
-describe('an OpenSCAD export (P6-09, ADR-0086)', () => {
+describe('an OpenSCAD export (P6-09, ADR-0088)', () => {
   it('writes what the kernel service exports for the same bodies, parameters included', {
     timeout: 180_000,
   }, async () => {

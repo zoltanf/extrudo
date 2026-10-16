@@ -1,5 +1,5 @@
 /**
- * Numbers as OpenSCAD source (P6-09, ADR-0086): at most 12 significant digits,
+ * Numbers as OpenSCAD source (P6-09, ADR-0088): at most 12 significant digits,
  * so `0.1 + 0.2` is written `0.3`, and never `-0`. OpenSCAD reads JavaScript's
  * exponent form (`1e-7`) as it is.
  */

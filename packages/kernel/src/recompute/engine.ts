@@ -150,7 +150,7 @@ interface AtMarker {
   featureName(id: FeatureId): string | undefined;
   /**
    * The features that wrote the body set, in walk order, with the bodies
-   * before them (P6-09, ADR-0086 §2): what the OpenSCAD export replays.
+   * before them (P6-09, ADR-0088 §2): what the OpenSCAD export replays.
    * References only, kept as the walk passes; nothing is computed for it.
    */
   steps: readonly ScadStep[];
@@ -318,7 +318,7 @@ export class RecomputeEngine {
 
   /**
    * Bodies of the last finished recompute as an OpenSCAD file (P6-09,
-   * ADR-0086): the timeline replayed as body versions through the features'
+   * ADR-0088): the timeline replayed as body versions through the features'
    * `csg` hooks, polyhedra where they can't follow. Synchronous, so the
    * shapes it reads stay the cache's throughout; nothing is cached. Scalars
    * are live over the marker's parameters (`liveScalar`) unless `scalar`

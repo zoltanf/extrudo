@@ -96,7 +96,7 @@ extrudo export box.extrudo --format scad --out box.scad
   ID); with `--bodies` both are combined. A 3MF or STEP keeps a component's
   bodies together as one object of parts (ADR-0081 §7); `--flat` writes one
   object per body instead, as a design without components.
-- An OpenSCAD file (`--format scad`, P6-09, ADR-0086) rebuilds the bodies as
+- An OpenSCAD file (`--format scad`, P6-09, ADR-0088) rebuilds the bodies as
   OpenSCAD code where the features translate and as `polyhedron`s of the shape
   where they don't (the header lists each with the feature that made it). It is
   one file; without `--bodies` or `--component` it holds the shown bodies, as

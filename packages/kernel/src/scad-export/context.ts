@@ -1,5 +1,5 @@
 /**
- * What a feature's `csg` hook reads (P6-09, ADR-0086 §3): the feature as the
+ * What a feature's `csg` hook reads (P6-09, ADR-0088 §3): the feature as the
  * last recompute evaluated it, at its place in the timeline. The hook runs at
  * export time only, never during a recompute, and changes nothing.
  */
@@ -10,7 +10,7 @@ import type { ResolvedRef, ResolveOptions } from '../naming/resolve';
 import type { FeatureOutput } from '../recompute/types';
 import type { CsgNode, Scalar } from './ir';
 
-/** An `expr` input as the hook sees it: what a translator needs (ADR-0086 §6). */
+/** An `expr` input as the hook sees it: what a translator needs (ADR-0088 §6). */
 export interface CsgInput {
   /** Its value in mm, degrees or plain units, as the recompute had it. */
   value: number;
@@ -24,7 +24,7 @@ export interface CsgInput {
  * What a hook gives back: the OpenSCAD node of each body the feature made or
  * changed (`CsgContext.changed`), or `null` when these inputs have no
  * OpenSCAD equivalent. A changed body the map leaves out, and every one on
- * `null`, becomes a mesh version (ADR-0086 §2).
+ * `null`, becomes a mesh version (ADR-0088 §2).
  */
 export type CsgResult = ReadonlyMap<BodyId, CsgNode> | null;
 
@@ -38,7 +38,7 @@ export interface CsgContext<I extends FeatureInputs = FeatureInputs> {
   input(name: string): CsgInput | undefined;
   /**
    * An `expr` input as the file writes it: an OpenSCAD expression over the
-   * parameters when its Extrudo expression translates (ADR-0086 §6), else its
+   * parameters when its Extrudo expression translates (ADR-0088 §6), else its
    * value. Throws for an input the feature doesn't have.
    */
   scalar(name: string): Scalar;
@@ -46,7 +46,7 @@ export interface CsgContext<I extends FeatureInputs = FeatureInputs> {
   value(name: string): number;
   /**
    * How many segments OpenSCAD draws a full circle of `radius` (mm) with,
-   * from the same `$fa`/`$fs` the file writes (ADR-0086 §7): a profile's
+   * from the same `$fa`/`$fs` the file writes (ADR-0088 §7): a profile's
    * arcs facet exactly as OpenSCAD's own circles and cylinders do.
    */
   fragments(radius: number): number;

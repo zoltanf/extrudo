@@ -1,5 +1,5 @@
 /**
- * Sketch profiles as OpenSCAD 2D nodes (P6-09, ADR-0086 §4, §7): what the
+ * Sketch profiles as OpenSCAD 2D nodes (P6-09, ADR-0088 §4, §7): what the
  * Extrude and Revolve hooks sweep. A picked profile or text becomes one
  * `polygon` per region (its outer loop and holes as paths, filled even-odd),
  * a loop that is one full circle a `circle`, and every other curve a

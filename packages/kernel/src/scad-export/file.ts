@@ -1,8 +1,8 @@
 /**
- * The `.scad` file (P6-09, ADR-0086 §9): header comment, `$fa`/`$fs`, the
+ * The `.scad` file (P6-09, ADR-0088 §9): header comment, `$fa`/`$fs`, the
  * parameter block, a module per written body version and shared tool, then
  * each exported body in its colour. Only what the exported bodies reach is
- * written, and only those mesh versions are meshed (ADR-0086 §2).
+ * written, and only those mesh versions are meshed (ADR-0088 §2).
  *
  * Deterministic: the same document and options give the same bytes. Module
  * names come from body and feature names in timeline order, never from IDs
@@ -80,7 +80,7 @@ export function fragmentSize(linearDeflection: number): number {
 
 /**
  * Segments OpenSCAD draws a full circle of `radius` with, from the file's
- * `$fa`/`$fs`, its own rule with `$fn = 0` (ADR-0086 §7):
+ * `$fa`/`$fs`, its own rule with `$fn = 0` (ADR-0088 §7):
  * `max(min(360 / $fa, radius * 2π / $fs), 5)`, rounded up.
  */
 export function fragmentsFor(fa: number, fs: number, radius: number): number {
@@ -203,7 +203,7 @@ export function writeScad(source: ScadSource, options: ScadExportOptions): strin
   }
   lines.push('', `$fa = ${scadNumber(fa)};`, `$fs = ${scadNumber(fs)};`);
 
-  // The parameter block (ADR-0086 §5, §9): what the written code uses, and
+  // The parameter block (ADR-0088 §5, §9): what the written code uses, and
   // what the written versions' features hold fixed.
   if (source.parameters) {
     const steps = new Map<number, WrittenStep>();

@@ -1,5 +1,5 @@
 /**
- * What a solid feature does with its tool, in OpenSCAD (P6-09, ADR-0086):
+ * What a solid feature does with its tool, in OpenSCAD (P6-09, ADR-0088):
  * the counterpart of the evaluators' `operate` (`features/operation.ts`),
  * shared by every feature that makes a tool and joins, cuts or intersects
  * with it (the primitives, extrude, revolve). It reads what the operation did

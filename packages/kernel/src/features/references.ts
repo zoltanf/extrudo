@@ -26,7 +26,7 @@ import { length, sub, unit } from './vec';
 
 /**
  * What reading a plane, line or point needs of a context: an evaluator's
- * (`EvalContext`) or an OpenSCAD export hook's (`CsgContext`, ADR-0086), so
+ * (`EvalContext`) or an OpenSCAD export hook's (`CsgContext`, ADR-0088), so
  * both read the same geometry.
  */
 export type GeometryReader = Pick<EvalContext, 'kernel' | 'resolve' | 'describe' | 'output'>;

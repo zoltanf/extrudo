@@ -306,7 +306,7 @@ function evaluateMirror(ctx: EvalContext<MirrorInputs>): FeatureOutput {
 // ----------------------------------------------------------------- OpenSCAD
 
 /**
- * The bodies a move, mirror or scale writes (ADR-0086 §7): each source's
+ * The bodies a move, mirror or scale writes (ADR-0088 §7): each source's
  * version under `place`, as the source itself or, for a copy, as the new
  * body `transformBodies` gave it (the source keeps its version).
  */

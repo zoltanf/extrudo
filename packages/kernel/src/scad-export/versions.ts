@@ -1,5 +1,5 @@
 /**
- * Body versions (P6-09, ADR-0086 §2): the last recompute's walk, replayed
+ * Body versions (P6-09, ADR-0088 §2): the last recompute's walk, replayed
  * without evaluating anything. Each time a feature gives a body a new shape,
  * the body gets a new version, made by the feature's `csg` hook from earlier
  * versions (csg) or, where that can't be done, a polyhedron of the shape at
@@ -61,13 +61,13 @@ export interface ScadSource {
    */
   scalar?(input: CsgInput, at: InputOf): Scalar;
   /**
-   * The document's parameters, for the parameter block (ADR-0086 §5); none
+   * The document's parameters, for the parameter block (ADR-0088 §5); none
    * (tests that build a source by hand) writes no block.
    */
   parameters?: ScadParameters;
   /**
    * Segments for a full circle of a radius, from the file's `$fa`/`$fs`
-   * (ADR-0086 §7); `writeScad` sets it from the export's tessellation. A hook
+   * (ADR-0088 §7); `writeScad` sets it from the export's tessellation. A hook
    * samples a profile's arcs with `CsgContext.fragments`.
    */
   fragments?(radius: number): number;

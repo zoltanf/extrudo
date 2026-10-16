@@ -1,5 +1,5 @@
 /**
- * An Extrudo expression as OpenSCAD code (P6-09, ADR-0086 §6): base units
+ * An Extrudo expression as OpenSCAD code (P6-09, ADR-0088 §6): base units
  * (mm, degrees), the document's length unit for bare numbers, parameters as
  * variables. The walk mirrors core's evaluator exactly, so a translated
  * expression evaluates to the same number here and in OpenSCAD; anything the

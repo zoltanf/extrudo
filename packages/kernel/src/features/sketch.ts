@@ -64,7 +64,7 @@ export interface SketchOutputData {
    */
   frame: SketchFrame;
   /**
-   * The sketch's own data (P6-09, ADR-0086): what `detectProfiles` walks to
+   * The sketch's own data (P6-09, ADR-0088): what `detectProfiles` walks to
    * give a profile's loops, so an OpenSCAD hook converts a picked profile to
    * `polygon`/`circle` without a copy of the arrangement.
    */

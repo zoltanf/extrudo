@@ -1,5 +1,5 @@
 // The OpenSCAD export's hooks for the primitives, Move, Mirror, Scale and the
-// rectangular and circular patterns (P6-09 slice 3, ADR-0086 §7). Each file is
+// rectangular and circular patterns (P6-09 slice 3, ADR-0088 §7). Each file is
 // rendered by OpenSCAD's real WASM and every exported body measured against
 // the kernel's: volume and box within the mesh's tolerance, and no
 // polyhedron where the hooks translate everything. Real OCCT, `strictLeaks`.

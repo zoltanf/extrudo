@@ -412,7 +412,7 @@ export class Recomputer {
     return this.client.call((api) => api.exportStep(bodies));
   }
 
-  /** Bodies the model store shows as an OpenSCAD file (P6-09, ADR-0086). */
+  /** Bodies the model store shows as an OpenSCAD file (P6-09, ADR-0088). */
   exportScad(options: ScadExportOptions): Promise<string> {
     return this.client.call((api) => api.exportScad(options));
   }

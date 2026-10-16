@@ -35,7 +35,7 @@ export const kernelCombine: KernelFeatureDefinition<CombineInputs> = {
 };
 
 /**
- * The OpenSCAD of a combine (P6-09, ADR-0086 §3): the target's version joined
+ * The OpenSCAD of a combine (P6-09, ADR-0088 §3): the target's version joined
  * with, cut by or intersected with the tools' (all of them together).
  */
 function combineCsg(ctx: CsgContext<CombineInputs>): CsgResult {

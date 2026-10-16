@@ -194,7 +194,7 @@ test('3MF keeps a component’s bodies together (P6-05, ADR-0081 §7)', async ({
   expect(read3mf(flat.bytes).items.map((item) => item.meshes.length)).toEqual([1, 1, 1]);
 });
 
-test('OpenSCAD exports a box with a hole as code (P6-09, ADR-0086 §9)', async ({ page }) => {
+test('OpenSCAD exports a box with a hole as code (P6-09, ADR-0088 §9)', async ({ page }) => {
   test.setTimeout(90_000);
   await openProject(page);
   await primitive(page, 'Box', {});

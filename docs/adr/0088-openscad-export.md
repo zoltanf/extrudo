@@ -1,4 +1,4 @@
-# ADR-0086: OpenSCAD export
+# ADR-0088: OpenSCAD export
 
 - **Status:** Accepted, 2026-10-16 (proposed 2026-10-15; owner chose "real OpenSCAD code with a
   mesh fallback" over a mesh-only file).

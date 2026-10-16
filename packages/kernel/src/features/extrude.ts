@@ -96,7 +96,7 @@ export const kernelExtrude: KernelFeatureDefinition<ExtrudeInputs> = {
 };
 
 /**
- * An extrude in OpenSCAD (ADR-0086 §7): the picked profiles as 2D nodes
+ * An extrude in OpenSCAD (ADR-0088 §7): the picked profiles as 2D nodes
  * (`profile.ts`), swept by `linear_extrude` per side — a signed distance a
  * `ctx.scalar`, its sign and side an `absolute`/`negate` and a `translate`
  * along the plane's normal — placed by the sketch frame, then the body
@@ -182,7 +182,7 @@ function sidesNode(
 /**
  * A side as OpenSCAD: a `linear_extrude` centred on the plane, its height the
  * length's size and a `translate` along Z by half its signed value, so a
- * negative distance and a flipped side both come out right (ADR-0086 §7).
+ * negative distance and a flipped side both come out right (ADR-0088 §7).
  */
 function slab(node2d: CsgNode, sign: number, length: Scalar): CsgNode {
   const signed = sign === 1 ? length : negate(length);
