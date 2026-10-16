@@ -12,8 +12,10 @@ import type { BodyId } from '@extrudo/core';
 import { KernelError } from '../kernel';
 import type { MeshOptions } from '../mesh';
 import type { CsgNode } from './ir';
+import { parameterUse, type WrittenStep } from './live';
 import { polyhedronOf } from './mesh';
 import { scadNumber } from './number';
+import { parameterBlock } from './params';
 import { type PrintRefs, printModule, printNode } from './print';
 import { type ScadSource, type Version, walkVersions } from './versions';
 
@@ -35,11 +37,6 @@ export interface ScadExportOptions {
   project: string;
   /** Extrudo's version, for the header. */
   version: string;
-  /**
-   * The parameter block (ADR-0086 §5), written after `$fa`/`$fs`: top-level
-   * variables and their Customizer sections. Empty until slice 2 writes it.
-   */
-  parameters?: string;
 }
 
 const RESERVED = new Set([
@@ -81,8 +78,23 @@ export function fragmentSize(linearDeflection: number): number {
   return Number(Math.sqrt(8 * linearDeflection).toPrecision(2));
 }
 
+/**
+ * Segments OpenSCAD draws a full circle of `radius` with, from the file's
+ * `$fa`/`$fs`, its own rule with `$fn = 0` (ADR-0086 §7):
+ * `max(min(360 / $fa, radius * 2π / $fs), 5)`, rounded up.
+ */
+export function fragmentsFor(fa: number, fs: number, radius: number): number {
+  return Math.ceil(Math.max(Math.min(360 / fa, (radius * 2 * Math.PI) / fs), 5));
+}
+
 export function writeScad(source: ScadSource, options: ScadExportOptions): string {
-  const walk = walkVersions(source);
+  const { angularDeflection, linearDeflection } = options.tessellation;
+  const fa = Number(((angularDeflection * 180) / Math.PI).toPrecision(3));
+  const fs = fragmentSize(linearDeflection);
+  const walk = walkVersions({
+    ...source,
+    ...(!source.fragments && { fragments: (radius: number) => fragmentsFor(fa, fs, radius) }),
+  });
   const { versions, tools } = walk;
 
   // The exported bodies' last versions.
@@ -95,10 +107,21 @@ export function writeScad(source: ScadSource, options: ScadExportOptions): strin
     return at;
   });
 
-  // What they reach, and how often each tool is used there.
+  // What they reach, how often each tool is used there, and the parameters
+  // their scalars use.
   const reached = new Set<number>();
   const toolUses = new Map<number, number>();
+  const used = new Set<string>();
+  const scan = (value: unknown): void => {
+    if (Array.isArray(value)) for (const v of value) scan(v);
+    else if (typeof value === 'object' && value !== null && 'refs' in value) {
+      for (const ref of (value as { refs: readonly string[] }).refs) used.add(ref);
+    }
+  };
   const visit = (node: CsgNode): void => {
+    if (node.kind !== 'polygon' && node.kind !== 'polyhedron') {
+      for (const [key, value] of Object.entries(node)) if (key !== 'children') scan(value);
+    }
     if (node.kind === 'version') {
       reach(node.version);
       return;
@@ -178,16 +201,31 @@ export function writeScad(source: ScadSource, options: ScadExportOptions): strin
       lines.push(`//   ${versionName(at)}: ${commentText(version.reason)}`);
     }
   }
-  const { angularDeflection, linearDeflection } = options.tessellation;
-  lines.push(
-    '',
-    `$fa = ${scadNumber(Number(((angularDeflection * 180) / Math.PI).toPrecision(3)))};`,
-    `$fs = ${scadNumber(fragmentSize(linearDeflection))};`,
-  );
+  lines.push('', `$fa = ${scadNumber(fa)};`, `$fs = ${scadNumber(fs)};`);
 
-  // The parameter block (ADR-0086 §5, §9) goes here: slice 2 passes it in.
-  const parameters = options.parameters?.trim() ?? '';
-  if (parameters !== '') lines.push('', parameters);
+  // The parameter block (ADR-0086 §5, §9): what the written code uses, and
+  // what the written versions' features hold fixed.
+  if (source.parameters) {
+    const steps = new Map<number, WrittenStep>();
+    for (const at of written) {
+      const version = versions[at] as Version;
+      const step = steps.get(version.step);
+      if (step) step.mesh ||= version.kind === 'mesh';
+      else {
+        steps.set(version.step, {
+          feature: (source.steps[version.step] as { feature: WrittenStep['feature'] }).feature,
+          name: walk.stepNames[version.step] as string,
+          mesh: version.kind === 'mesh',
+          read: walk.reads[version.step] as ReadonlySet<string>,
+          at: version.step,
+        });
+      }
+    }
+    const makers = new Set(source.steps.map((s) => s.feature.id));
+    const use = parameterUse(source.parameters, used, [...steps.values()], makers);
+    const block = parameterBlock(source.parameters.doc, source.parameters.expr, use).code.trim();
+    if (block !== '') lines.push('', block);
+  }
 
   // The modules, in timeline order: tools with the versions of their step.
   const tooled = [...toolName.keys()];

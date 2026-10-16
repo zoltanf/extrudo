@@ -39,7 +39,9 @@ describe('printNode', () => {
     expect(print({ kind: 'cylinder', h: 10, r1: 2, r2: 1, center: true })).toBe(
       'cylinder(h = 10, r1 = 2, r2 = 1, center = true);',
     );
-    expect(print({ kind: 'sphere', r: { expr: 'd / 2', value: 5 } })).toBe('sphere(r = d / 2);');
+    expect(print({ kind: 'sphere', r: { expr: 'd / 2', value: 5, refs: ['d'] } })).toBe(
+      'sphere(r = d / 2);',
+    );
     expect(
       print({ kind: 'rotate', a: 90, v: [0, 0, 1], children: [{ kind: 'sphere', r: 1 }] }),
     ).toBe('rotate(a = 90, v = [0, 0, 1])\n  sphere(r = 1);');
