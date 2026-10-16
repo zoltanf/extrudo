@@ -13,5 +13,7 @@ Mirror two things about a line.
 |---|---|
 | Sketch › Constraints | None |
 
+<video src="demo:symmetric" muted loop autoplay playsinline aria-label="Symmetric demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

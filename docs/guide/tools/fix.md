@@ -13,5 +13,7 @@ Lock something in place, or free it again.
 |---|---|
 | Sketch › Constraints | None |
 
+<video src="demo:fix" muted loop autoplay playsinline aria-label="Fix/Unfix demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

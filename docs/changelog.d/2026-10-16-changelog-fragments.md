@@ -1,0 +1,1 @@
+- 2026-10-16 · **Changelog fragments** (ADR-0089): a change describes itself in a one-line file under `docs/changelog.d/`; `pnpm changelog` folds the fragments into `docs/CHANGELOG.md` at release time, and CI refuses a pull request that edits the changelog directly, so concurrent pull requests no longer conflict there.

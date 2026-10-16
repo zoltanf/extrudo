@@ -13,5 +13,7 @@ A plane parallel to a plane or a flat face, a distance away.
 |---|---|
 | Construct › Planes | Shift+P |
 
+<video src="demo:offsetPlane" muted loop autoplay playsinline aria-label="Offset Plane demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

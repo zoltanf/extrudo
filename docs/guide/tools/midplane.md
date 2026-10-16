@@ -13,5 +13,7 @@ The plane halfway between two parallel planes or faces.
 |---|---|
 | Construct › Planes | None |
 
+<video src="demo:midplane" muted loop autoplay playsinline aria-label="Midplane demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

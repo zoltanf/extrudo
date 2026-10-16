@@ -20,8 +20,8 @@ Phases 0, 1, 2, 3 and 5 are complete. Phase 4 is complete apart from **P4-12's
 remaining backlog** (the open items in `docs/03-roadmap.md`). Phase 6 is
 complete apart from P6-04 (i18n, **deferred**: English only for now); P6-08,
 the desktop MCP server and its skill (ADR-0087), is done. Phase 7 (IK) is last, lowest priority. The
-owner's UI review 3 is done (`docs/plans/ui-review-2026-10-11.md`); tooltip
-clips for Construct, 3D Print and the Sketch tab follow in later batches.
+owner's UI review 3 is done (`docs/plans/ui-review-2026-10-11.md`), tooltip
+clips included: every tile of the Solid, Modify, Construct, 3D Print and Sketch tabs has one.
 
 Releases: v0.4.0 was the first public one; v0.4.1, v0.5.0 (2026-10-10), v0.6.0,
 v0.6.1 (2026-10-12) and **v0.7.0** (2026-10-15) followed. **The owner tags** (`docs/release-checklist.md`;
@@ -55,6 +55,7 @@ pnpm dev          # app at http://localhost:5173
 pnpm check        # typecheck + Biome + package boundaries + license allow-list + Vitest. Must pass.
 pnpm e2e          # build + Playwright (run `pnpm e2e:install` once)
 pnpm format       # Biome auto-fix
+pnpm changelog    # fold docs/changelog.d/ into docs/CHANGELOG.md (release step)
 pnpm wasm         # download the OCCT, planegcs and OpenSCAD WASM for the current inputs (check/dev/build do this)
 pnpm occt build   # build OCCT locally with Docker (~11 min; Arch workstation only); see packages/kernel/occt/README.md
 pnpm planegcs build  # build planegcs locally with Docker (~2 min; Arch workstation only)
@@ -124,9 +125,10 @@ Vitest + Playwright · Biome.
    specs you will touch.
 3. Implement it with tests. `pnpm check` must pass, plus `pnpm e2e` (or the
    affected specs, and CI) if UI flows changed.
-4. Tick the task in the roadmap, add a line to `docs/CHANGELOG.md`, write an ADR
-   for any significant decision (rejected approaches too), and add its rules to
-   `docs/agent/adr-digest.md`.
+4. Tick the task in the roadmap, add a one-line file under `docs/changelog.d/`
+   (`pnpm changelog` folds them into `docs/CHANGELOG.md` at release; never edit
+   the changelog in a PR), write an ADR for any significant decision (rejected
+   approaches too), and add its rules to `docs/agent/adr-digest.md`.
 
 ## Environment, in brief
 

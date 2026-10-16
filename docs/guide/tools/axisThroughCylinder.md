@@ -13,5 +13,7 @@ The axis of a cylindrical, conical or toroidal face.
 |---|---|
 | Construct › Axes | None |
 
+<video src="demo:axisThroughCylinder" muted loop autoplay playsinline aria-label="Axis Through Cylinder demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

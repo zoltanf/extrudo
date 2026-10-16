@@ -13,5 +13,7 @@ Cut curves back to where they cross.
 |---|---|
 | Sketch › Modify | T |
 
+<video src="demo:trim" muted loop autoplay playsinline aria-label="Trim demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

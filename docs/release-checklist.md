@@ -14,8 +14,10 @@ published. Versions come from `git describe` of the last `v*` tag: stable shows
 1. **Test on edge.** Every green CI run on main deploys
    <https://edge.extrudo.org> (`docs/deploy.md`). Release only a main commit
    you have tried there.
-2. **Release commit** (the agent), one commit "Version X.Y.Z": every
-   `package.json` version (not the spikes, which stay at 0.0.0), the
+2. **Release commit** (the agent), one commit "Version X.Y.Z": first
+   `pnpm changelog` (folds every `docs/changelog.d/` fragment into the
+   CHANGELOG's `## Unreleased` section and deletes the files), then the rest:
+   every `package.json` version (not the spikes, which stay at 0.0.0), the
    CHANGELOG's `## Unreleased` heading to `## vX.Y.Z (YYYY-MM-DD)`, and the
    release line in `CLAUDE.md`. In the same commit, take the "Latest build"
    tags (`<span class="tag">`) off `apps/site/features/index.html` for the

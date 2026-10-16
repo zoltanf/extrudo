@@ -13,5 +13,7 @@ How much room a printed fit gets: hole presets and threads add it to their sizes
 |---|---|
 | 3D Print › Prepare | None |
 
+<video src="demo:tolerance" muted loop autoplay playsinline aria-label="Tolerance demo"></video>
+
 <!-- notes -->
 <!-- /notes -->
