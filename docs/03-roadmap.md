@@ -1234,7 +1234,7 @@ end to end, faster than in established desktop CAD.
     (`claude mcp add --transport http …`).
   - Split into slices before starting.
 
-- [ ] **P6-09 OpenSCAD export** (owner, 2026-10-15). FR-IO-09, ADR-0086.
+- [x] **P6-09 OpenSCAD export** (owner, 2026-10-15). FR-IO-09, ADR-0086.
   Export Model gains "OpenSCAD (.scad)", and the CLI `export --format scad`:
   the design written as OpenSCAD code, body by body. Features with a CSG hook
   (primitives, sketch extrudes and revolves, combine, remove, move, mirror,

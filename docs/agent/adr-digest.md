@@ -2388,4 +2388,4 @@ polyline. Extrude is a `linear_extrude` per side placed by the sketch frame,
 its distances `ctx.scalar` signed with `absolute`/`negate`/`half` and a
 `translate`; `through-all` (cut/intersect) reaches past `ctx.bounds()`.
 Revolve is a `rotate_extrude` in (radius, axis) with the axis as OpenSCAD's
-Z; `flip` reverses the axis; the shared `axisOf` takes a `GeometryReader`.
+Z; `flip` reverses the axis; the shared `axisOf` takes a `GeometryReader`. Accepted 2026-10-16; the acceptance tests live in `scad-export/acceptance.test.ts` and the CLI's "AC 5" test (`packages/cli/src/headless.test.ts`).

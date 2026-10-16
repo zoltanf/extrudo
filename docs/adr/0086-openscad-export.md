@@ -1,6 +1,6 @@
 # ADR-0086: OpenSCAD export
 
-- **Status:** Proposed, 2026-10-15 (owner chose "real OpenSCAD code with a
+- **Status:** Accepted, 2026-10-16 (proposed 2026-10-15; owner chose "real OpenSCAD code with a
   mesh fallback" over a mesh-only file).
 - **Task:** P6-09, FR-IO-09.
 - **Builds on:** ADR-0030 (bodies, one body per solid), ADR-0034 (model
