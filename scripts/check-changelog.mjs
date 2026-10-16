@@ -70,6 +70,7 @@ if (baseAt >= 0) {
         cwd: root,
         encoding: 'utf8',
         maxBuffer: 16 * 1024 * 1024,
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
       const touched = diff.split('\n').map((path) => path.trim());
       if (touched.includes('docs/CHANGELOG.md')) {

@@ -56,6 +56,8 @@ function run(
     const stdout = execFileSync(process.execPath, [script, ...args], {
       cwd: dir,
       encoding: 'utf8',
+      // Without an explicit stdio the child's stderr prints on the test run.
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
     return { status: 0, stdout, stderr: '' };
   } catch (error) {
