@@ -138,6 +138,86 @@ export const DEMO_DESIGNS: Record<string, (d: Design) => void> = {
   scale: (d) => {
     d.box({ length: '14 mm', width: '14 mm', height: '14 mm' });
   },
+  // The Construct tab's scenes: a body to build the plane, axis or point on.
+  // The plane-picking scenes keep their bodies in front of the origin planes (x > 0, y < 0), whose
+  // squares show while a field picks planes and would take the click.
+  offsetPlane: (d) => {
+    d.box({ x: '30 mm', y: '-35 mm', length: '36 mm', width: '24 mm', height: '10 mm' });
+  },
+  planeAtAngle: (d) => {
+    d.box({ length: '36 mm', width: '24 mm', height: '14 mm' });
+  },
+  // Two blocks of different heights: the midplane lies between their tops.
+  midplane: (d) => {
+    d.box({ x: '30 mm', y: '-30 mm', length: '16 mm', width: '16 mm', height: '8 mm' });
+    d.box({ x: '30 mm', y: '-60 mm', length: '16 mm', width: '16 mm', height: '24 mm' });
+  },
+  planeThroughPoints: (d) => {
+    d.box({ length: '30 mm', width: '20 mm', height: '14 mm' });
+  },
+  tangentPlane: (d) => {
+    d.cylinder({ diameter: '24 mm', height: '16 mm' });
+  },
+  axisThroughPoints: (d) => {
+    d.box({ length: '30 mm', width: '20 mm', height: '14 mm' });
+  },
+  axisThroughCylinder: (d) => {
+    d.cylinder({ diameter: '24 mm', height: '16 mm' });
+  },
+  axisAlongEdge: (d) => {
+    d.box({ length: '30 mm', width: '20 mm', height: '14 mm' });
+  },
+  constructionPoint: (d) => {
+    d.box({ length: '30 mm', width: '20 mm', height: '14 mm' });
+  },
+  pointOnPath: (d) => {
+    d.box({ length: '30 mm', width: '20 mm', height: '14 mm' });
+  },
+  pointAtIntersection: (d) => {
+    d.box({ length: '30 mm', width: '20 mm', height: '14 mm' });
+  },
+  // A plate and a half circle standing on it, on XZ: the plane stands square to the arc.
+  planeAlongPath: (d) => {
+    d.box({ length: '50 mm', width: '16 mm', height: '4 mm' });
+    d.sketch(d.origin.xz, (k) => k.arc([20, 4], [-20, 4], [0, 24]));
+  },
+  // A block and a peg beside it: Measure shows the distance between a face of each.
+  measure: (d) => {
+    d.box({ x: '-20 mm', length: '30 mm', width: '20 mm', height: '14 mm' });
+    d.cylinder({ x: '25 mm', diameter: '12 mm', height: '14 mm' });
+  },
+  // A block with a hole through it: the section shows the hole's inside.
+  section: (d) => {
+    d.box({ length: '36 mm', width: '24 mm', height: '20 mm' });
+    d.cylinder({ diameter: '10 mm', height: '20 mm', operation: 'cut' });
+  },
+  // The 3D Print tab's scenes. A wedge: its sloping face is the one to turn down.
+  placeOnBed: (d) => {
+    const side = d.sketch(d.origin.xz, (k) =>
+      k.polyline([
+        [0, 0],
+        [40, 0],
+        [40, 8],
+        [14, 28],
+        [0, 28],
+        [0, 0],
+      ]),
+    );
+    d.extrude({ profiles: side.profiles(), direction: 'symmetric', distance: '24 mm' });
+  },
+  // A post with a wide cap: the cap's underside leans out and shows as an overhang.
+  overhang: (d) => {
+    d.cylinder({ diameter: '10 mm', height: '16 mm' });
+    d.box({ length: '36 mm', width: '36 mm', height: '6 mm', offset: '16 mm', operation: 'join' });
+  },
+  // Two plates, 0.6 and 3 mm thick: the thin one is under the 0.9 mm minimum.
+  wallThickness: (d) => {
+    d.box({ y: '5 mm', length: '30 mm', width: '0.6 mm', height: '18 mm' });
+    d.box({ y: '-5 mm', length: '30 mm', width: '3 mm', height: '18 mm' });
+  },
+  midplaneAngled: (d) => {
+    d.box({ x: '30 mm', y: '-35 mm', length: '30 mm', width: '20 mm', height: '14 mm' });
+  },
 };
 
 /** A design's timeline, with nothing that changes from run to run. */

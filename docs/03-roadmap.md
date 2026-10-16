@@ -1302,7 +1302,7 @@ to 3 of 2026-10-08 are ADR-0079's.
   f3d import's messages), with slices and the owner's decisions of the same day
   (presets renamed Spindle, Crank and Glide; ten pins in two rows; the ring
   alone when radial; a first batch of tooltip clips, Solid and Modify, and every
-  clip re-recorded), in
+  clip re-recorded; the Construct, 3D Print and Sketch tabs' clips followed on 2026-10-15), in
   [`docs/plans/ui-review-2026-10-11.md`](plans/ui-review-2026-10-11.md).
 
 ---

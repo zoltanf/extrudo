@@ -13,5 +13,7 @@ A plane through three points.
 |---|---|
 | Construct › Planes | None |
 
+<video src="demo:planeThroughPoints" muted loop autoplay playsinline aria-label="Plane Through 3 Points demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

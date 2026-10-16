@@ -332,7 +332,7 @@ async function record(page: Page, tool: string, clip: Clip, flow: () => Promise<
   } finally {
     await recorder.stop();
   }
-  // Under the tooltip's budget (`demos.test.ts`: 150 kB a clip, kept to 140 here, and 2 MB for
+  // Under the tooltip's budget (`demos.test.ts`: 150 kB a clip, kept to 140 here, and 4 MB for
   // all of them): 200 kbit/s looks the same as more at the tooltip's 236 px, and a long clip is
   // encoded again at a lower rate rather than cut short.
   const file = join(DEMOS, `${tool}.webm`);
@@ -1442,6 +1442,831 @@ test('demo: scale', async ({ page }) => {
     await previewed(dialog);
     await page.waitForTimeout(500);
     await commit(page, dialog);
+  });
+});
+
+// ---- Construct tab
+
+/** One pick of a construction scene: a world point and what the view hovers there. */
+type Pick = { at: Vec3; kind: RegExp; dy?: number } | { at: Vec3; plane: true };
+
+/**
+ * A Construct tool's scene: the design is shown in the home view, the tool opens, each pick is
+ * clicked in the view, `handle` (if any) is dragged to a world point, and Enter commits.
+ */
+function constructScene(
+  tool: string,
+  label: string,
+  bounds: [Vec3, Vec3],
+  picks: readonly Pick[],
+  options: { handle?: { field: string; to: Vec3 }; tab?: string; fill?: number } = {},
+) {
+  test(`demo: ${tool}`, async ({ page }) => {
+    await demoDesign(page, tool);
+    await turnView(page, 'Shift+1');
+    const { at, clip } = await frameWorld(page, boxPoints(...bounds), options.fill);
+    const p = pointer(page);
+    await p.jump({ x: clip.x + clip.width - 40, y: clip.y + clip.height - 30 });
+    const dialog = page.getByRole('region', { name: `${label} dialog` });
+    await record(page, tool, clip, async () => {
+      await page.waitForTimeout(300);
+      await runTool(page, tool, options.tab ?? 'construct');
+      await expect(dialog).toBeVisible();
+      await page.waitForTimeout(250);
+      for (const pick of picks) {
+        if ('plane' in pick) await clickSpot(page, p, at(pick.at));
+        else await pickModel(page, p, at, pick.at, pick.kind, { dy: pick.dy });
+        await page.waitForTimeout(200);
+      }
+      await previewed(dialog);
+      await page.waitForTimeout(400);
+      if (options.handle) {
+        await p.drag(await handleAt(page, options.handle.field), at(options.handle.to));
+      }
+      await commit(page, dialog);
+      // The pointer steps aside, so a small result (a point) is not under it.
+      await p.moveTo({ x: clip.x + clip.width - 40, y: clip.y + 40 }, 450);
+      await page.waitForTimeout(1000);
+    });
+  });
+}
+
+const BOX_30: [Vec3, Vec3] = [
+  [-15, -10, 0],
+  [15, 10, 14],
+];
+
+constructScene(
+  'offsetPlane',
+  'Offset Plane',
+  [
+    [12, -63, 0],
+    [48, -23, 14],
+  ],
+  [{ at: [34, -47, 5], plane: true }],
+  { handle: { field: 'distance', to: [34, -61, 5] } },
+);
+
+constructScene(
+  'planeAtAngle',
+  'Plane at Angle',
+  [
+    [-18, -12, 0],
+    [18, 12, 26],
+  ],
+  [{ at: [-4, -12, 14], kind: /^edge:/, dy: 2 }],
+);
+
+constructScene(
+  'midplane',
+  'Midplane',
+  [
+    [22, -68, 0],
+    [38, -22, 24],
+  ],
+  [
+    { at: [30, -30, 8], plane: true },
+    { at: [30, -60, 24], plane: true },
+  ],
+);
+
+constructScene('planeThroughPoints', 'Plane Through 3 Points', BOX_30, [
+  { at: [-15, -10, 14], kind: /^vertex:/ },
+  { at: [15, -10, 0], kind: /^vertex:/ },
+  { at: [15, 10, 14], kind: /^vertex:/ },
+]);
+
+constructScene(
+  'tangentPlane',
+  'Tangent Plane',
+  [
+    [-16, -16, 0],
+    [16, 16, 16],
+  ],
+  [{ at: [8.5, -8.5, 8], kind: /^face:/ }],
+);
+
+constructScene('axisThroughPoints', 'Axis Through 2 Points', BOX_30, [
+  { at: [-15, -10, 0], kind: /^vertex:/ },
+  { at: [15, 10, 14], kind: /^vertex:/ },
+]);
+
+constructScene(
+  'axisThroughCylinder',
+  'Axis Through Cylinder',
+  [
+    [-16, -16, 0],
+    [16, 16, 16],
+  ],
+  [{ at: [8.5, -8.5, 8], kind: /^face:/ }],
+);
+
+constructScene('axisAlongEdge', 'Axis Along Edge', BOX_30, [
+  { at: [-4, -10, 14], kind: /^edge:/, dy: 2 },
+]);
+
+constructScene('constructionPoint', 'Point', BOX_30, [{ at: [-15, -10, 14], kind: /^vertex:/ }], {
+  fill: 0.85,
+});
+
+constructScene(
+  'pointOnPath',
+  'Point on Path',
+  BOX_30,
+  [{ at: [0, -10, 0], kind: /^edge:/, dy: 2 }],
+  { handle: { field: 'position', to: [8, -10, 0] }, fill: 0.85 },
+);
+
+constructScene(
+  'pointAtIntersection',
+  'Point at Intersection',
+  // Framed close on the corner the two edges meet at, so the point reads.
+  [
+    [-2, -12, 2],
+    [17, 2, 16],
+  ],
+  [
+    { at: [0, -10, 14], kind: /^edge:/, dy: 2 },
+    { at: [15, -10, 7], kind: /^edge:/, dy: 2 },
+  ],
+  { fill: 0.85 },
+);
+
+constructScene(
+  'planeAlongPath',
+  'Plane Along Path',
+  [
+    [-25, -8, 0],
+    [25, 8, 24],
+  ],
+  [{ at: [0, 0, 24], kind: /^sketchEntity:/ }],
+  { fill: 0.85 },
+);
+
+constructScene(
+  'midplaneAngled',
+  'Angled Midplane',
+  [
+    [15, -45, 0],
+    [45, -25, 14],
+  ],
+  [
+    { at: [30, -45, 7], plane: true },
+    { at: [30, -35, 14], plane: true },
+  ],
+);
+
+test('demo: measure', async ({ page }) => {
+  await demoDesign(page, 'measure');
+  await turnView(page, 'Shift+1');
+  const { at, clip } = await frameWorld(page, boxPoints([-35, -10, 0], [31, 10, 14]));
+  const p = pointer(page);
+  await p.jump({ x: clip.x + 40, y: clip.y + clip.height - 30 });
+  await record(page, 'measure', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'measure', 'construct');
+    await page.waitForTimeout(400);
+    await pickModel(page, p, at, [-20, 0, 14], /^face:/);
+    await page.waitForTimeout(300);
+    const r = 6 / Math.SQRT2;
+    await pickModel(page, p, at, [25 + r, -r, 7], /^face:/);
+    await page.waitForTimeout(1200);
+  });
+});
+
+test('demo: section', async ({ page }) => {
+  await demoDesign(page, 'section');
+  await turnView(page, 'Shift+1');
+  const { at, clip } = await frameWorld(page, boxPoints([-18, -12, 0], [18, 12, 20]));
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 40, y: clip.y + clip.height - 30 });
+  const viewport = viewportOf(page);
+  await record(page, 'section', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'section', 'construct');
+    await page
+      .getByRole('region', { name: 'Section Analysis' })
+      .getByRole('button', { name: 'XY plane' })
+      .dispatchEvent('click');
+    await expect(viewport).toHaveAttribute('data-section', /on$/);
+    await page.waitForTimeout(700);
+    const handle = viewport.locator('[data-section-handle]');
+    await expect(handle).toHaveCount(1);
+    const box = await viewport.boundingBox();
+    const from = {
+      x: (box?.x ?? 0) + Number(await handle.getAttribute('cx')),
+      y: (box?.y ?? 0) + Number(await handle.getAttribute('cy')),
+    };
+    await p.drag(from, { x: from.x, y: from.y - 30 }, 800);
+    await page.waitForTimeout(900);
+    void at;
+  });
+});
+
+// ---- 3D Print tab
+
+test('demo: placeOnBed', async ({ page }) => {
+  await demoDesign(page, 'placeOnBed');
+  await turnView(page, 'Shift+1');
+  const { at, clip } = await frameWorld(page, boxPoints([-4, -14, -4], [44, 14, 36]), 0.6);
+  const p = pointer(page);
+  await p.jump({ x: clip.x + 40, y: clip.y + clip.height - 30 });
+  const dialog = page.getByRole('region', { name: 'Place on Bed dialog' });
+  await record(page, 'placeOnBed', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'placeOnBed', 'print');
+    await expect(dialog).toBeVisible();
+    await page.waitForTimeout(300);
+    await pickModel(page, p, at, [27, -6, 18], /^face:/);
+    await previewed(dialog);
+    await page.waitForTimeout(500);
+    await commit(page, dialog);
+    // The pointer steps aside and the placed body is held.
+    await p.moveTo({ x: clip.x + clip.width - 40, y: clip.y + 40 }, 450);
+    await page.waitForTimeout(1000);
+  });
+});
+
+test('demo: overhang', async ({ page }) => {
+  await demoDesign(page, 'overhang');
+  // Seen from below (Shift+3), where the cap's underside is the shaded part.
+  await turnView(page, 'Shift+3');
+  const { clip } = await frameWorld(page, boxPoints([-18, -18, 0], [18, 18, 22]), 0.75);
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 40, y: clip.y + clip.height - 30 });
+  const viewport = viewportOf(page);
+  await record(page, 'overhang', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'overhang', 'print');
+    await expect(viewport).toHaveAttribute('data-overhang', /faces=[1-9]/, { timeout: 30_000 });
+    await page.waitForTimeout(900);
+  });
+});
+
+test('demo: wallThickness', async ({ page }) => {
+  await demoDesign(page, 'wallThickness');
+  await turnView(page, 'Shift+1');
+  const { clip } = await frameWorld(page, boxPoints([-15, -6.5, 0], [15, 5.3, 18]), 0.7);
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 40, y: clip.y + clip.height - 30 });
+  const viewport = viewportOf(page);
+  await record(page, 'wallThickness', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'wallThickness', 'print');
+    await expect(viewport).toHaveAttribute('data-thickness', /thin=[1-9]/, { timeout: 30_000 });
+    await page.waitForTimeout(900);
+  });
+});
+
+/** The frame of the panel a print tool opens in the right column, with the view beside it. */
+const PANEL_FRAME = { x: 1030, y: 283, width: 400, height: 250 } as const;
+
+test('demo: printInfo', async ({ page }) => {
+  await demoDesign(page, 'section');
+  await turnView(page, 'Shift+1');
+  const p = pointer(page);
+  await p.jump({ x: 1090, y: 520 });
+  const panel = page.getByRole('region', { name: 'Print Info' });
+  await record(page, 'printInfo', { ...PANEL_FRAME, y: 455 }, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'printInfo', 'print');
+    await expect(panel).toHaveAttribute('data-print-state', 'ready', { timeout: 30_000 });
+    await page.waitForTimeout(500);
+    // The numbers are at the foot of the panel: scroll to them.
+    // The panel's own list scrolls: to its foot.
+    await panel.evaluate((el) => {
+      const view = el.ownerDocument.defaultView;
+      for (const c of el.querySelectorAll('*')) {
+        const scrolls = /auto|scroll/.test(view?.getComputedStyle(c).overflowY ?? '');
+        if (scrolls && c.scrollHeight > c.clientHeight + 4) c.scrollTop = c.scrollHeight;
+      }
+    });
+    await page.waitForTimeout(600);
+    // Infill, 15 → 40 %: the weight below follows.
+    const infill = panel.getByRole('textbox', { name: 'Infill', exact: true });
+    await p.moveTo(await centreOf(infill), 450);
+    await typeQuietly(page, infill, '40');
+    await page.waitForTimeout(900);
+  });
+});
+
+test('demo: tolerance', async ({ page }) => {
+  await demoDesign(page, 'section');
+  await turnView(page, 'Shift+1');
+  const p = pointer(page);
+  await p.jump({ x: 1090, y: 330 });
+  const panel = page.getByRole('region', { name: 'Print tolerance' });
+  await record(page, 'tolerance', PANEL_FRAME, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'tolerance', 'print');
+    await expect(panel).toBeVisible();
+    await page.waitForTimeout(500);
+    await p.click(await centreOf(panel.getByRole('button', { name: /^Normal/ })), 600);
+    await expect(panel).toHaveAttribute('data-tolerance', 'set');
+    await page.waitForTimeout(1000);
+  });
+});
+
+/** The page point at the middle of an element. */
+async function centreOf(target: ReturnType<Page['locator']>) {
+  const box = await target.boundingBox();
+  if (!box) throw new Error('no box');
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+/** The export dialog, opened from the tile, with a format picked. */
+function exportScene(tool: string, format: RegExp) {
+  test(`demo: ${tool}`, async ({ page }) => {
+    await demoDesign(page, 'section');
+    await turnView(page, 'Shift+1');
+    const p = pointer(page);
+    await p.jump({ x: 960, y: 290 });
+    const dialog = page.getByRole('dialog', { name: /Export/ });
+    await record(page, tool, { x: 520, y: 250, width: 400, height: 250 }, async () => {
+      await page.waitForTimeout(300);
+      // The slicer tile is the desktop app's: the web build has the dialog it opens, so both
+      // clips are recorded from it.
+      await runTool(page, 'export', 'print');
+      await expect(dialog).toBeVisible();
+      await page.waitForTimeout(600);
+      await p.click(await centreOf(dialog.getByRole('radio', { name: format })), 600);
+      await page.waitForTimeout(1000);
+    });
+  });
+}
+exportScene('export', /^STL/);
+exportScene('slicer', /^3MF/);
+
+// ---- Sketch tab
+
+type Pt = readonly [number, number];
+type SketchAt = Awaited<ReturnType<typeof mapping>>;
+
+/** Draws what a sketch scene starts from, quietly: Ctrl keeps the inference from adding constraints. */
+async function drawQuietly(
+  page: Page,
+  at: SketchAt,
+  shapes: readonly (
+    | { line: readonly Pt[] }
+    | { circle: Pt; to: Pt }
+    | { arc: [Pt, Pt, Pt] }
+    | { rect: [Pt, Pt] }
+  )[],
+) {
+  const click = async ([x, y]: Pt) => {
+    const q = at(x, y);
+    await page.mouse.move(q.x, q.y);
+    await page.mouse.click(q.x, q.y);
+  };
+  for (const shape of shapes) {
+    const key = 'line' in shape ? 'l' : 'circle' in shape ? 'c' : 'arc' in shape ? 'a' : 'r';
+    await page.keyboard.press(key);
+    await page.keyboard.down('Control');
+    if ('line' in shape) {
+      for (const q of shape.line) await click(q);
+    } else if ('circle' in shape) {
+      await click(shape.circle);
+      await click(shape.to);
+    } else if ('arc' in shape) {
+      for (const q of shape.arc) await click(q);
+    } else {
+      await click(shape.rect[0]);
+      await click(shape.rect[1]);
+    }
+    await page.keyboard.up('Control');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(150);
+  }
+}
+
+/**
+ * A Sketch tab tool's scene: the shapes are drawn first (not recorded), then the tile runs and
+ * `picks` are clicked, in sketch millimetres; `then` adds what follows (a typed value).
+ */
+function sketchScene(
+  tool: string,
+  shapes: Parameters<typeof drawQuietly>[2],
+  picks: readonly Pt[],
+  options: {
+    width?: number;
+    extra?: (page: Page, p: Glide, at: SketchAt) => Promise<void>;
+    hover?: Pt;
+  } = {},
+) {
+  test(`demo: ${tool}`, async ({ page }) => {
+    await demoProject(page);
+    const view = await sketchView(page);
+    const { at, clip } = await sketchFrame(page, view, options.width ?? 80);
+    await drawQuietly(page, at, shapes);
+    const p = pointer(page);
+    const start = at(...(options.hover ?? [-36, 20]));
+    await p.jump(start);
+    await record(page, tool, clip, async () => {
+      await page.waitForTimeout(300);
+      await runTool(page, tool, 'sketch');
+      await page.waitForTimeout(350);
+      for (const pick of picks) {
+        await p.click(at(...pick), 450);
+        if (process.env.DEBUG_PROMPT) {
+          const prompt = await toolPrompt(page)
+            .innerText()
+            .catch(() => '(none)');
+          console.log(`PROMPT ${tool} @${pick}: ${prompt}`);
+        }
+        await page.waitForTimeout(250);
+      }
+      await options.extra?.(page, p, at);
+      await page.waitForTimeout(700);
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(500);
+    });
+  });
+}
+
+sketchScene('arc', [], [], {
+  extra: async (page, p, at) => {
+    await page.keyboard.press('a');
+    await p.click(at(-26, -8), 420);
+    await p.click(at(26, -8), 480);
+    await p.click(at(0, 16), 520);
+  },
+});
+
+sketchScene(
+  'coincident',
+  [
+    {
+      line: [
+        [-32, -14],
+        [-4, 6],
+      ],
+    },
+    {
+      line: [
+        [8, -8],
+        [34, 14],
+      ],
+    },
+  ],
+  [
+    [-4, 6],
+    [8, -8],
+  ],
+);
+
+sketchScene(
+  'collinear',
+  [
+    {
+      line: [
+        [-34, -10],
+        [-6, -2],
+      ],
+    },
+    {
+      line: [
+        [6, 8],
+        [34, 0],
+      ],
+    },
+  ],
+  [
+    [-20, -6],
+    [20, 4],
+  ],
+);
+
+sketchScene(
+  'concentric',
+  [
+    { circle: [-14, 0], to: [2, 0] },
+    { circle: [18, 2], to: [27, 2] },
+  ],
+  [
+    [2, 0],
+    [27, 2],
+  ],
+);
+
+sketchScene(
+  'midpoint',
+  [
+    {
+      line: [
+        [-34, -8],
+        [34, -8],
+      ],
+    },
+    {
+      line: [
+        [4, 6],
+        [14, 18],
+      ],
+    },
+  ],
+  [
+    [4, 6],
+    [-20, -8],
+  ],
+);
+
+sketchScene(
+  'fix',
+  [
+    {
+      line: [
+        [-22, -10],
+        [22, 8],
+      ],
+    },
+  ],
+  [[0, -1]],
+);
+
+sketchScene(
+  'parallel',
+  [
+    {
+      line: [
+        [-34, -14],
+        [8, -6],
+      ],
+    },
+    {
+      line: [
+        [-26, 20],
+        [24, 6],
+      ],
+    },
+  ],
+  [
+    [-13, -10],
+    [-1, 13],
+  ],
+);
+
+sketchScene(
+  'perpendicular',
+  [
+    {
+      line: [
+        [-34, -4],
+        [10, -12],
+      ],
+    },
+    {
+      line: [
+        [-10, 8],
+        [24, 16],
+      ],
+    },
+  ],
+  [
+    [-12, -8],
+    [7, 12],
+  ],
+);
+
+sketchScene(
+  'horizontal',
+  [
+    {
+      line: [
+        [-26, -10],
+        [26, 12],
+      ],
+    },
+  ],
+  [[0, 1]],
+);
+
+sketchScene(
+  'vertical',
+  [
+    {
+      line: [
+        [-18, -16],
+        [18, 16],
+      ],
+    },
+  ],
+  [[0, 0]],
+);
+
+sketchScene(
+  'tangent',
+  [
+    { circle: [0, 2], to: [14, 2] },
+    {
+      line: [
+        [-34, -20],
+        [34, -6],
+      ],
+    },
+  ],
+  [
+    [-24, -17.9],
+    [0, 16],
+  ],
+);
+
+sketchScene(
+  'smooth',
+  [
+    {
+      line: [
+        [-34, -10],
+        [-10, -10],
+      ],
+    },
+    {
+      arc: [
+        [-10, -10],
+        [14, 14],
+        [6, -2],
+      ],
+    },
+  ],
+  [
+    [-22, -10],
+    [8, -2],
+  ],
+);
+
+sketchScene(
+  'equal',
+  [
+    {
+      line: [
+        [-34, -12],
+        [-8, -12],
+      ],
+    },
+    {
+      line: [
+        [6, 6],
+        [34, 18],
+      ],
+    },
+  ],
+  [
+    [-21, -12],
+    [20, 12],
+  ],
+);
+
+sketchScene(
+  'symmetric',
+  [
+    {
+      line: [
+        [0, -20],
+        [0, 20],
+      ],
+    },
+    {
+      line: [
+        [-30, -8],
+        [-14, 6],
+      ],
+    },
+    {
+      line: [
+        [14, 10],
+        [32, -6],
+      ],
+    },
+  ],
+  [
+    [-22, -1],
+    [23, 2],
+    [0, 12],
+  ],
+);
+
+// Type the radius, then pick the corner; the pointer then steps aside to show the arc.
+sketchScene(
+  'sketchFillet',
+  [
+    {
+      line: [
+        [-20, -8],
+        [4, -8],
+        [4, 14],
+      ],
+    },
+  ],
+  [],
+  {
+    width: 50,
+    hover: [-20, 12],
+    extra: async (page, p, at) => {
+      await page.keyboard.type('8', { delay: 200 });
+      await p.click(at(4, -8), 500);
+      await p.moveTo(at(24, 12), 500);
+    },
+  },
+);
+
+sketchScene(
+  'trim',
+  [
+    {
+      line: [
+        [-34, -6],
+        [34, -6],
+      ],
+    },
+    {
+      line: [
+        [6, -20],
+        [6, 20],
+      ],
+    },
+  ],
+  [[-20, -6]],
+);
+
+sketchScene(
+  'sketchOffset',
+  [
+    {
+      rect: [
+        [-26, -12],
+        [26, 12],
+      ],
+    },
+  ],
+  [[0, -12]],
+  {
+    extra: async (page) => {
+      if (process.env.DEBUG_PROMPT) {
+        console.log(
+          `PROMPT offset after: ${await toolPrompt(page)
+            .innerText()
+            .catch(() => '(none)')}`,
+        );
+      }
+      await page.keyboard.type('6', { delay: 200 });
+      await page.waitForTimeout(300);
+      await page.keyboard.press('Enter');
+    },
+  },
+);
+
+test('demo: parameters', async ({ page }) => {
+  await demoProject(page);
+  const view = await sketchView(page);
+  const { at } = await sketchFrame(page, view, 80);
+  await drawQuietly(page, at, [
+    {
+      rect: [
+        [-26, -12],
+        [26, 12],
+      ],
+    },
+  ]);
+  const p = pointer(page);
+  await p.jump({ x: 600, y: 420 });
+  const dialog = page.getByRole('dialog', { name: 'Parameters' });
+  await record(page, 'parameters', { x: 215, y: 430, width: 400, height: 250 }, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'parameters', 'sketch');
+    await expect(dialog).toBeVisible();
+    await page.waitForTimeout(500);
+    await p.click(await centreOf(dialog.getByRole('textbox', { name: /name/i })), 450);
+    await page.keyboard.type('width', { delay: 150 });
+    const expression = dialog.getByPlaceholder(/10 mm/);
+    await p.click(await centreOf(expression), 450);
+    await page.keyboard.type('24 mm', { delay: 150 });
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(900);
+  });
+});
+
+test('demo: exportSketch', async ({ page }) => {
+  await demoProject(page);
+  const view = await sketchView(page);
+  const { at } = await sketchFrame(page, view, 80);
+  await drawQuietly(page, at, [
+    {
+      rect: [
+        [-26, -12],
+        [26, 12],
+      ],
+    },
+  ]);
+  const p = pointer(page);
+  await p.jump({ x: 960, y: 330 });
+  const dialog = page.getByRole('dialog', { name: /Export sketch/ });
+  await record(page, 'exportSketch', { x: 520, y: 330, width: 400, height: 250 }, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'exportSketch', 'sketch');
+    await expect(dialog).toBeVisible();
+    await page.waitForTimeout(600);
+    await p.click(await centreOf(dialog.getByRole('radio', { name: /^DXF/ })), 600);
+    await page.waitForTimeout(1000);
   });
 });
 

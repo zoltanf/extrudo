@@ -13,5 +13,7 @@ Make a line horizontal, or line up two points.
 |---|---|
 | Sketch › Constraints | None |
 
+<video src="demo:horizontal" muted loop autoplay playsinline aria-label="Horizontal demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

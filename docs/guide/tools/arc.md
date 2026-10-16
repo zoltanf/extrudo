@@ -13,5 +13,7 @@ Start, end, then a point it passes through.
 |---|---|
 | Sketch › Create | A |
 
+<video src="demo:arc" muted loop autoplay playsinline aria-label="3-Point Arc demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

@@ -13,5 +13,7 @@ Save the sketch or its profiles as SVG or DXF, at 1 unit = 1 mm.
 |---|---|
 | Sketch › Export | None |
 
+<video src="demo:exportSketch" muted loop autoplay playsinline aria-label="Export Sketch demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

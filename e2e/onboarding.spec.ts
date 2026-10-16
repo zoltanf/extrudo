@@ -125,12 +125,12 @@ test('a toolbar tooltip has the name, the key, a sentence and a looping demo', a
   );
   await page.mouse.move(700, 500, { steps: 5 });
   await expect(tooltip).toHaveCount(0);
-  // Construct's tools get their clips in a later batch (R3-16).
-  await selectTab(page, 'Construct');
+  // The Home tab's tiles have no clip (R3-16 covers the tool tabs).
+  await selectTab(page, 'Home');
   await page.mouse.move(700, 500, { steps: 5 });
   await expect(tooltip).toHaveCount(0);
-  await page.getByRole('button', { name: 'Offset Plane', exact: true }).hover();
-  await expect(tooltip).toContainText('Offset Plane');
+  await page.getByRole('button', { name: 'Save Version', exact: true }).hover();
+  await expect(tooltip).toContainText('Keep this state of the design');
   await expect(tooltip.locator('video')).toHaveCount(0);
 });
 
