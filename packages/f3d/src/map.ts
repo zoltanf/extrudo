@@ -1513,10 +1513,13 @@ function extrude(
   if (bodies) inputs.bodies = bodies;
   const made = d.extrude(inputs as Parameters<Design['extrude']>[0], { name: f.name });
   // Several bodies only from a new body; every side the same length (a
-  // distance, through everything, or up to a plane taken as a distance).
+  // distance, through everything, or up to a plane taken as a distance), no taper.
   const even =
     f.operation === 'new-body' &&
     !partial &&
+    // A taper widens each outline about itself, not about the centre of its box.
+    !inputs.taper &&
+    !inputs.taper2 &&
     inputs.extent !== 'to-object' &&
     inputs.extent2 !== 'to-object';
   const order = even ? bodyOrder(f, entry) : undefined;
@@ -1531,12 +1534,17 @@ function extrude(
 }
 
 /**
- * Two box centres closer than this (mm) along the axis that orders them may
- * come out either way in the kernel's measure (a spline's box is loose).
+ * Along the axis that orders two solids, the kernel calls centres no further
+ * apart than this (mm) a tie and goes on to the next axis (`ORDER_TOLERANCE`
+ * in the kernel's `naming/names.ts`).
+ */
+const ORDER_TIE = 1e-6;
+/**
+ * Centres further apart than the tie but closer than this (mm) on the axis
+ * that orders them may come out either way in the kernel's measure (its box
+ * of a curved outline is not exact): such an order is not trusted.
  */
 const ORDER_SLACK = 0.01;
-/** The kernel's own tolerance for a tie along an axis (mm, `compareGeometry`). */
-const ORDER_TIE = 1e-4;
 
 /**
  * Which Extrudo body each region group of a new-body extrude becomes. Extrudo
@@ -1546,18 +1554,29 @@ const ORDER_TIE = 1e-4;
  * of every body run equally far along the normal, so the centres compare as
  * the boxes of the groups' outlines do. Undefined when that can't be told
  * for certain: one operand of regions only, every region's outline found,
- * and no two centres close enough to swap.
+ * every centre finite, and no two neighbours in that order closer than
+ * `ORDER_SLACK` on the axis that orders them. A tie on an axis passes to the
+ * next only for outlines of lines and arcs: a spline's or an ellipse's box is
+ * loose in the kernel, so a tie there could be broken either way.
  */
 function bodyOrder(f: F3dExtrude, entry: SketchEntry): number[] | undefined {
   const operand = f.profiles[0];
   if (f.profiles.length !== 1 || !operand?.regions || operand.text !== undefined) return undefined;
   entry.pieces ??= sketchPieces(entry.source, entry.profileCurves);
+  const curved = new Set(
+    [...entry.source.splines, ...(entry.source.ellipses ?? [])]
+      .map((c) => c.tag)
+      .filter((t): t is bigint => t !== undefined)
+      .map(String),
+  );
   const boxes = new Map<number, number[]>();
+  const loose = new Set<number>();
   for (const region of operand.regions) {
     if (region.outline) continue;
     const lines = regionPieces(entry.pieces, region.outerPieces);
     if (!lines) return undefined;
     const group = region.group ?? 0;
+    if (region.outerPieces.flat().some((piece) => curved.has(String(piece.tag)))) loose.add(group);
     const box = boxes.get(group) ?? [
       Number.POSITIVE_INFINITY,
       Number.POSITIVE_INFINITY,
@@ -1577,26 +1596,41 @@ function bodyOrder(f: F3dExtrude, entry: SketchEntry): number[] | undefined {
     boxes.set(group, box);
   }
   if (boxes.size < 2) return undefined;
+  const centres = new Map<number, number[]>();
+  for (const [group, b] of boxes) {
+    const c = [0, 1, 2].map((i) => ((b[i] as number) + (b[i + 3] as number)) / 2);
+    // An empty group (no outline points) has no centre to order by.
+    if (!c.every(Number.isFinite)) return undefined;
+    centres.set(group, c);
+  }
   const groups = [...boxes.keys()].sort((a, b) => a - b);
-  const centre = (g: number) => {
-    const b = boxes.get(g) as number[];
-    return [0, 1, 2].map((i) => ((b[i] as number) + (b[i + 3] as number)) / 2);
-  };
-  let unsure = false;
-  const compare = (a: number, b: number): number => {
-    const p = centre(a);
-    const q = centre(b);
+  const delta = (a: number, b: number, i: number) =>
+    ((centres.get(a) as number[])[i] as number) - ((centres.get(b) as number[])[i] as number);
+  const sorted = [...groups].sort((a, b) => {
     for (let i = 0; i < 3; i++) {
-      const delta = (p[i] as number) - (q[i] as number);
-      if (Math.abs(delta) <= ORDER_TIE) continue;
-      if (Math.abs(delta) < ORDER_SLACK) unsure = true;
-      return delta;
+      const d = delta(a, b, i);
+      if (Math.abs(d) > ORDER_TIE) return d;
     }
-    unsure = true;
     return 0;
-  };
-  const sorted = [...groups].sort(compare);
-  return unsure ? undefined : groups.map((g) => sorted.indexOf(g));
+  });
+  // Each neighbour pair of that order: the axis that decides it, and how surely.
+  for (let n = 1; n < sorted.length; n++) {
+    const a = sorted[n - 1] as number;
+    const b = sorted[n] as number;
+    let decided = false;
+    for (let i = 0; i < 3 && !decided; i++) {
+      const d = Math.abs(delta(a, b, i));
+      if (d <= ORDER_TIE) {
+        if (loose.has(a) || loose.has(b)) return undefined;
+        continue;
+      }
+      if (d < ORDER_SLACK) return undefined;
+      decided = true;
+    }
+    if (!decided) return undefined;
+  }
+  const rank = new Map(sorted.map((g, i) => [g, i]));
+  return groups.map((g) => rank.get(g) as number);
 }
 
 /**
