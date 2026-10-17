@@ -1,0 +1,1 @@
+- 2026-10-17 · **Desktop on Windows**: creating, saving, renaming and trashing a design failed with "EPERM: operation not permitted, fsync" (v0.7.0); the project index is now flushed through its writable handle.

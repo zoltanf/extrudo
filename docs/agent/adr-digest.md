@@ -2043,6 +2043,7 @@ side **`Platform.updates?: PlatformUpdates`** (`store` with `waiting`/`version`,
 `appUpdates`, `useUpdateNotice(push, platform)` reads it, and the desktop's
 `renderer/updates.ts` follows `update:status` (Restart, the notify toast once
 per version, a quiet error). The `desktop` workflow uploads `latest*.yml`.
+The atomic writer (`writeAtomic`) flushes the temp file through the **writable** handle it wrote with; an fsync through a read-only handle fails with EPERM on Windows (2026-10-17).
 **The Homebrew cask (P6-01's amendment, 2026-10-07)**: on a tag the `desktop`
 workflow's `homebrew` job renders `apps/desktop/homebrew/extrudo.rb.template`
 from the arm64 mac zip with `render.mjs` and pushes `Casks/extrudo.rb` to the
