@@ -124,11 +124,13 @@ export class ComponentMapping {
    * A "Body to Component": imported when Extrudo knows every body it takes
    * (the membership itself is set by {@link finish}); else why not.
    */
-  bodyMove(feature: F3dFeature, bodyOf: BodyOf): string | undefined {
+  bodyMove(feature: F3dFeature, bodyOf: BodyOf, unsure?: BodyOf): string | undefined {
     const move = this.#moves.get(feature.id);
     if (!move || move.sources.length === 0) return 'the bodies it moves were not found';
     if (move.target === undefined) return 'the component it moves them to was not found';
     if (move.sources.some((b) => !bodyOf(b))) return 'a body it moves was not imported';
+    if (unsure && move.sources.some((b) => unsure(b)))
+      return "a body it moves was joined with others first; which one it is can't be told";
     return undefined;
   }
 

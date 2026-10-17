@@ -190,7 +190,7 @@ export function sweep(
   f: F3dSweep,
   sketches: Map<number, SketchEntry>,
   expressionOf: (p: ParameterValue, negate?: boolean) => string,
-  participants: (records: number[], operation?: string) => GeomRef[] | undefined,
+  participants: (records: number[], operation?: string, name?: string) => GeomRef[] | undefined,
   report: ImportReport,
 ): string | { id: string; faces?: SweptFaces } {
   if (f.profiles.length === 0) return 'its profile is a face, not a sketch profile';
@@ -226,7 +226,8 @@ export function sweep(
   };
   const twist = f.parameters.find((p) => p.kind === 'TwistAngle');
   if (twist && Math.abs(twist.value) > 1e-12) inputs.twist = expressionOf(twist);
-  const bodies = f.operation === 'new-body' ? undefined : participants(f.participants, f.operation);
+  const bodies =
+    f.operation === 'new-body' ? undefined : participants(f.participants, f.operation, f.name);
   if (bodies) inputs.bodies = bodies;
   const id = d.sweep(inputs as Parameters<Design['sweep']>[0], { name: f.name }).id;
   const faces = sweepFaces(f.paths[0] ?? [], sketches, selected.entry, selected.profiles);
@@ -441,7 +442,7 @@ export function torus(
   d: Design,
   f: F3dTorus,
   expressionOf: (p: ParameterValue) => string,
-  participants: (records: number[], operation?: string) => GeomRef[] | undefined,
+  participants: (records: number[], operation?: string, name?: string) => GeomRef[] | undefined,
 ): string | { id: string } {
   const major = f.parameters.find((p) => p.kind === 'MajorDiameter');
   const minor = f.parameters.find((p) => p.kind === 'MinorDiameter');
@@ -464,7 +465,8 @@ export function torus(
     tube: expressionOf(minor),
     operation: f.operation,
   };
-  const bodies = f.operation === 'new-body' ? undefined : participants(f.participants, f.operation);
+  const bodies =
+    f.operation === 'new-body' ? undefined : participants(f.participants, f.operation, f.name);
   if (bodies) inputs.bodies = bodies;
   return { id: d.torus(inputs as Parameters<Design['torus']>[0], { name: f.name }).id };
 }
