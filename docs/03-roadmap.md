@@ -1255,6 +1255,20 @@ end to end, faster than in established desktop CAD.
     (`claude mcp add --transport http …`).
   - Split into slices before starting.
 
+- [ ] **P6-10 One app menu** (owner, 2026-10-17; ADR-0090). The Help menu
+  folds into the app menu: one 480 px panel behind the four-squares button
+  with a rail of icon controls on top (mouse presets Crank, Spindle, Glide,
+  Blender, Slicer (disabled until built), Trackpad; the three toggles; Theme
+  at the right edge, every one with a tooltip), two columns always (App:
+  Search…, Settings…, About, Close design/Quit; Learn: Help for \<tool\>
+  when a tool was hovered, User Guide, Tutorial, Online Tutorials, Examples,
+  Tool Reference) and a version strip (update state, version, Check now on
+  the desktop, GitHub). Plugins… becomes a Settings section; Customize
+  Marking Menu… stays in Settings › General only; the Help button leaves the
+  top bar. Acceptance: `pnpm check`, the e2e specs that open either menu
+  updated and green on CI, the docs named in ADR-0090 updated, the mockup
+  in `docs/plans/app-menu-prototypes.html`.
+
 ## Phase 7 — Later (lowest priority, after everything else)
 
 **Owner, 2026-10-14: the last work on the roadmap.** Don't pick a task here

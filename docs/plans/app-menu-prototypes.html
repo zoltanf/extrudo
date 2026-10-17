@@ -1,0 +1,733 @@
+<title>Extrudo Menu Prototypes</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a reading column of notes on the left, the app-bar mockup with its open menu on the right; one row per prototype, stacking on phones.
+   Colours are Extrudo's own tokens (docs/05-brand.md); the mockups re-declare them per card so each one's Theme control works on its own. */
+:root {
+  --bg: #FFFFFF; --panel: #F3F5F9; --raised: #FFFFFF; --line: #E0E4EC;
+  --ink: #111318; --muted: #5B6375;
+  --accent: #E08A1E; --accent-soft: rgba(224,138,30,.16); --on-accent: #15171C;
+  --sketch: #2F86F0; --success: #1B9E5E;
+  --glow: radial-gradient(90% 80% at 45% 42%, #FFFFFF 0%, #EEF1F5 52%, #DCE1E9 100%);
+  --shadow: 0 10px 30px rgba(17,19,24,.14), 0 1px 2px rgba(17,19,24,.08);
+  --font-ui: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r-input: 6px; --r-control: 8px; --r-dialog: 12px; --r-card: 16px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #1B1F27; --panel: #20252F; --raised: #282E3A; --line: #343B4A;
+  --ink: #E9EDF3; --muted: #939CAD;
+  --accent: #FFB23E; --accent-soft: rgba(255,178,62,.18);
+  --sketch: #5AA9FF; --success: #3DD68C;
+  --glow: radial-gradient(90% 80% at 45% 42%, #46557A 0%, #29313F 50%, #15181F 100%);
+  --shadow: 0 10px 30px rgba(0,0,0,.45), 0 1px 2px rgba(0,0,0,.4);
+  color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #1B1F27; --panel: #20252F; --raised: #282E3A; --line: #343B4A;
+  --ink: #E9EDF3; --muted: #939CAD;
+  --accent: #FFB23E; --accent-soft: rgba(255,178,62,.18);
+  --sketch: #5AA9FF; --success: #3DD68C;
+  --glow: radial-gradient(90% 80% at 45% 42%, #46557A 0%, #29313F 50%, #15181F 100%);
+  --shadow: 0 10px 30px rgba(0,0,0,.45), 0 1px 2px rgba(0,0,0,.4);
+  color-scheme: dark;
+}
+/* Each mockup carries its own theme, set by the Theme control inside its menu. */
+.mock[data-mock="light"] {
+  --bg: #FFFFFF; --panel: #F3F5F9; --raised: #FFFFFF; --line: #E0E4EC;
+  --ink: #111318; --muted: #5B6375;
+  --accent: #E08A1E; --accent-soft: rgba(224,138,30,.16);
+  --sketch: #2F86F0; --success: #1B9E5E;
+  --glow: radial-gradient(90% 80% at 45% 42%, #FFFFFF 0%, #EEF1F5 52%, #DCE1E9 100%);
+  --shadow: 0 10px 30px rgba(17,19,24,.14), 0 1px 2px rgba(17,19,24,.08);
+  color-scheme: light;
+}
+.mock[data-mock="dark"] {
+  --bg: #1B1F27; --panel: #20252F; --raised: #282E3A; --line: #343B4A;
+  --ink: #E9EDF3; --muted: #939CAD;
+  --accent: #FFB23E; --accent-soft: rgba(255,178,62,.18);
+  --sketch: #5AA9FF; --success: #3DD68C;
+  --glow: radial-gradient(90% 80% at 45% 42%, #46557A 0%, #29313F 50%, #15181F 100%);
+  --shadow: 0 10px 30px rgba(0,0,0,.45), 0 1px 2px rgba(0,0,0,.4);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.5 var(--font-ui);
+  padding-block: 40px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 56px; }
+h1 { font-size: 28px; font-weight: 700; letter-spacing: -.01em; margin: 0 0 8px; text-wrap: balance; }
+h2 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: -.005em; text-wrap: balance; }
+p { margin: 0; max-width: 62ch; }
+.lede { color: var(--muted); }
+.eyebrow { font: 600 11px/1 var(--font-ui); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.inventory { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px 24px; padding: 16px 20px; background: var(--panel); border-radius: var(--r-dialog); }
+.inventory ul { margin: 6px 0 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
+.inventory li { margin: 2px 0; }
+.tag { display: inline-block; font: 500 10px/1 var(--font-mono); letter-spacing: .04em; padding: 3px 5px; border-radius: 4px; background: var(--accent-soft); color: var(--ink); vertical-align: middle; }
+
+.proto { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 28px 40px; align-items: start; }
+.proto > .notes { display: grid; gap: 14px; }
+.notes .num { font: 500 13px/1 var(--font-mono); color: var(--accent); }
+.notes ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; }
+.notes li::marker { color: var(--muted); }
+.notes .verdict { font-size: 14px; color: var(--muted); border-left: 2px solid var(--line); padding-left: 12px; }
+@media (max-width: 860px) { .proto { grid-template-columns: 1fr; } }
+
+/* ---------- the app-bar mockup ---------- */
+.mock { min-width: 0; }
+.frame { background: var(--glow); border: 1px solid var(--line); border-radius: var(--r-dialog); overflow: hidden; color: var(--ink); font-size: 14px; container-type: inline-size; }
+.bar { display: flex; align-items: center; gap: 4px; height: 40px; padding: 0 8px; background: var(--bg); border-bottom: 1px solid var(--line); }
+.logo { display: flex; align-items: center; gap: 8px; padding: 2px 4px; border-radius: var(--r-control); }
+.logo svg { width: 20px; height: 20px; }
+.wordmark { font-weight: 700; font-size: 16px; letter-spacing: -.01em; }
+.tabs { display: flex; gap: 2px; margin-left: 6px; min-width: 0; overflow: hidden; }
+.tab { padding: 3px 8px; border-radius: var(--r-input); color: var(--muted); white-space: nowrap; font-weight: 500; }
+.tab[aria-current] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent); border-radius: 0; }
+.sep { width: 1px; height: 20px; background: var(--line); margin: 0 6px; flex: none; }
+.ib { display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--r-control); color: var(--ink); flex: none; }
+.ib.dim { color: var(--muted); opacity: .6; }
+.ib.open { background: var(--accent-soft); }
+.ib svg { width: 18px; height: 18px; }
+.title { flex: 1; min-width: 0; display: flex; justify-content: center; align-items: center; gap: 6px; overflow: hidden; padding: 0 6px; }
+.title b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.saved { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; white-space: nowrap; flex: none; }
+.saved i { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+.stage { display: flex; justify-content: flex-end; padding: 4px 8px 28px; }
+/* The real bar drops the wordmark below 1024 px and the save word when the title doesn't fit (ADR-0079). */
+@container (max-width: 900px) { .wordmark { display: none; } .saved span { display: none; } }
+@container (max-width: 720px) { .tabs .tab:nth-child(n+6) { display: none; } }
+@container (max-width: 560px) { .tabs .tab:nth-child(n+4) { display: none; } }
+
+/* ---------- menu primitives (mirrors design-system/Menu.tsx) ---------- */
+.menu { background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-control); box-shadow: var(--shadow); padding: 4px; max-width: 100%; }
+.item { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: var(--r-input); white-space: nowrap; cursor: default; }
+.item:hover { background: var(--accent-soft); }
+.item .ic { width: 16px; display: grid; place-items: center; color: var(--muted); flex: none; }
+.item .ic svg { width: 14px; height: 14px; }
+.item .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.item kbd, .k { font: 12px var(--font-mono); color: var(--muted); }
+.item .val { color: var(--muted); font-size: 13px; }
+.item .chev { color: var(--muted); display: grid; } .item .chev svg { width: 14px; height: 14px; }
+.item .pill { font: 500 10px/1 var(--font-mono); letter-spacing: .04em; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }
+.hr { height: 1px; background: var(--line); margin: 4px 0; }
+.lab { padding: 6px 8px 4px; font: 600 11px/1 var(--font-ui); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+svg.i { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+
+/* segmented control */
+.seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-control); padding: 2px; gap: 2px; }
+.seg button { all: unset; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: var(--r-input); color: var(--muted); font: 500 13px var(--font-ui); cursor: pointer; }
+.seg button svg { width: 14px; height: 14px; }
+.seg button[aria-checked="true"] { background: var(--raised); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.18); }
+.seg.icons button { padding: 0 8px; }
+.seg.grow { display: flex; } .seg.grow button { flex: 1; }
+.seg button:focus-visible, .chip:focus-visible, .tog:focus-visible, .sw:focus-visible, .tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* toggle chips and icon toggles */
+.chip { all: unset; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font: 500 13px var(--font-ui); cursor: pointer; white-space: nowrap; }
+.chip svg { width: 14px; height: 14px; }
+.chip[aria-pressed="true"], .chip[aria-checked="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
+.tog { all: unset; display: grid; place-items: center; width: 30px; height: 28px; border-radius: var(--r-input); color: var(--muted); border: 1px solid transparent; cursor: pointer; }
+.tog svg { width: 16px; height: 16px; }
+.tog[aria-pressed="true"] { background: var(--accent-soft); color: var(--ink); border-color: var(--accent); }
+
+/* switch */
+.sw { all: unset; display: inline-block; width: 30px; height: 18px; border-radius: 999px; background: var(--line); position: relative; cursor: pointer; flex: none; transition: background .15s; }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--raised); box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform .15s; }
+.sw[aria-checked="true"] { background: var(--accent); }
+.sw[aria-checked="true"]::after { transform: translateX(12px); }
+
+/* check mark for radio rows */
+.rad .ic { color: var(--accent); }
+.rad[aria-checked="false"] .ic svg { visibility: hidden; }
+
+/* ---------- 1: one list, toggles on top ---------- */
+.m1 { width: 300px; }
+.strip { display: grid; gap: 6px; padding: 6px 4px 8px; }
+.strip .row { display: flex; gap: 6px; }
+.strip .row .chip { flex: 1; justify-content: center; padding: 0 6px; }
+.sub { position: relative; }
+.flyout { position: absolute; right: calc(100% - 2px); top: -6px; width: 260px; }
+.flyout .item { height: auto; min-height: 32px; align-items: flex-start; padding: 6px 8px; white-space: normal; }
+.flyout .item .ic { margin-top: 2px; }
+.flyout .lbl small { display: block; color: var(--muted); font-size: 12px; line-height: 1.35; }
+@container (max-width: 640px) { .flyout { display: none; } }
+
+/* ---------- 2: two columns ---------- */
+.m2 { width: 480px; padding: 0; overflow: hidden; }
+.rail { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.rail .grp { display: inline-flex; align-items: center; gap: 2px; }
+.rail .vsep { width: 1px; height: 20px; background: var(--line); }
+.rail .spacer { flex: 1; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0; padding: 4px; }
+.cols > div { padding: 2px; min-width: 0; }
+.cols > div + div { border-left: 1px solid var(--line); }
+.foot { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: var(--panel); border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+.foot .ver { font-family: var(--font-mono); font-size: 12px; }
+.foot .spacer { flex: 1; }
+.foot a { color: var(--ink); text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }
+.foot a svg { width: 13px; height: 13px; }
+@container (max-width: 560px) { .cols { grid-template-columns: 1fr; } .cols > div + div { border-left: 0; border-top: 1px solid var(--line); margin-top: 4px; padding-top: 6px; } }
+
+/* ---------- 2b: the refined wide panel ---------- */
+.m2b { width: 480px; padding: 0; }
+.m2b .rail { flex-wrap: nowrap; }
+.m2b .cols { grid-template-columns: 1fr 1fr; }
+.m2b .cols > div + div { border-left: 1px solid var(--line); border-top: 0; margin-top: 0; padding-top: 2px; }
+.m2b .about { margin: 0 4px 4px; }
+.m2b .pill.ghost { border: 0; padding: 0; }
+.seg button, .tog { position: relative; }
+.seg, .rail, .grp { overflow: visible; }
+.seg button svg.lg { width: 18px; height: 18px; }
+.seg button:has(svg.lg) { padding: 0 7px; }
+/* tooltip: the app's Tooltip (label, hint, key) */
+.tip { position: absolute; top: calc(100% + 8px); right: 0; width: 236px; padding: 7px 10px 8px; background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-control); box-shadow: var(--shadow); color: var(--ink); font: 12px/1.4 var(--font-ui); text-align: left; white-space: normal; opacity: 0; pointer-events: none; transition: opacity .12s; z-index: 5; }
+.tip.l { left: 0; right: auto; }
+.tip b { display: block; font-weight: 600; font-size: 13px; margin-bottom: 1px; }
+.tip span { color: var(--muted); }
+button:hover > .tip, button:focus-visible > .tip, button.demo > .tip { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .tip { transition: none; } }
+.starts { display: grid; gap: 4px; padding-top: 24px; border-top: 1px solid var(--line); }
+
+/* ---------- 3: inline, no submenus ---------- */
+.m3 { width: 340px; }
+.m3 .item.pref { height: 36px; }
+.m3 .item.pref .lbl { white-space: normal; line-height: 1.2; }
+.m3 .seg.mini button { height: 22px; padding: 0 8px; font-size: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 8px 6px; }
+.chips .chip { height: 24px; padding: 0 9px; font-size: 12px; }
+.hint { padding: 0 8px 6px; color: var(--muted); font-size: 12px; line-height: 1.4; white-space: normal; }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; }
+.tile { all: unset; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--r-input); background: var(--panel); border: 1px solid var(--line); cursor: pointer; font: 500 13px var(--font-ui); color: var(--ink); min-width: 0; }
+.tile:hover { border-color: var(--accent); }
+.tile svg { width: 15px; height: 15px; color: var(--muted); flex: none; }
+.tile .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- 4: control centre ---------- */
+.m4 { width: 360px; }
+.sbox { display: flex; align-items: center; gap: 8px; height: 34px; margin: 4px 4px 6px; padding: 0 10px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-control); color: var(--muted); }
+.sbox svg { width: 15px; height: 15px; }
+.sbox span { flex: 1; }
+.qs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 0 4px 6px; }
+.q { all: unset; display: grid; justify-items: center; gap: 4px; padding: 9px 4px 7px; border-radius: var(--r-control); border: 1px solid var(--line); background: var(--panel); cursor: pointer; text-align: center; min-width: 0; }
+.q svg { width: 18px; height: 18px; color: var(--muted); }
+.q .n { font: 500 11px/1.2 var(--font-ui); color: var(--ink); }
+.q .v { font: 11px/1 var(--font-ui); color: var(--muted); }
+.q[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.q[aria-pressed="true"] svg { color: var(--accent); }
+.q[aria-pressed="true"] .v { color: var(--ink); }
+.mouse { display: flex; align-items: center; gap: 6px; padding: 2px 8px 8px; }
+.mouse .ic { color: var(--muted); display: grid; } .mouse .ic svg { width: 14px; height: 14px; }
+.mouse .seg { flex: 1; }
+.mouse .seg button { padding: 0 4px; font-size: 12px; flex: 1; }
+.two { display: grid; grid-template-columns: 1fr 1fr; }
+.two .item { padding-right: 4px; }
+.about { display: flex; align-items: center; gap: 8px; margin: 4px; padding: 8px 10px; border-radius: var(--r-input); background: var(--panel); font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.about b { color: var(--ink); font-weight: 600; font-family: var(--font-mono); font-size: 12px; }
+.about .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+.about .spacer { flex: 1; }
+.about a { color: var(--ink); text-decoration: none; }
+@container (max-width: 560px) { .two { grid-template-columns: 1fr; } }
+
+@media (prefers-reduced-motion: reduce) { .sw, .sw::after { transition: none; } }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-puzzle" viewBox="0 0 24 24"><path d="M15.4 20.6 13.8 22a1 1 0 0 1-1.4 0l-1.8-1.8a1.1 1.1 0 0 0-1.5 0 2 2 0 1 1-2.8-2.8 1.1 1.1 0 0 0 0-1.5L4.4 14a1 1 0 0 1 0-1.4L6.2 11a1 1 0 0 1 1.4 0 2 2 0 1 0 2.8-2.8 1 1 0 0 1 0-1.4L12.2 5a1 1 0 0 1 1.4 0l1.6 1.6a1.1 1.1 0 0 0 1.5 0 2 2 0 1 1 2.8 2.8 1.1 1.1 0 0 0 0 1.5l1.6 1.6a1 1 0 0 1 0 1.4l-1.6 1.6a1 1 0 0 1-1.4 0 2 2 0 1 0-2.8 2.8 1 1 0 0 1 0 1.4z"/></symbol>
+  <symbol id="i-mouse" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="7"/><path d="M12 6v4"/></symbol>
+  <symbol id="i-palette" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r=".6"/><circle cx="17.5" cy="10.5" r=".6"/><circle cx="8.5" cy="7.5" r=".6"/><circle cx="6.5" cy="12.5" r=".6"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-grad" viewBox="0 0 24 24"><path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></symbol>
+  <symbol id="i-shapes" viewBox="0 0 24 24"><path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"/><rect x="3" y="14" width="7" height="7" rx="1"/><circle cx="17.5" cy="17.5" r="3.5"/></symbol>
+  <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-quit" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11"/></symbol>
+  <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5 5.5 5.5 0 0 0 9.5 20H13"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></symbol>
+  <symbol id="i-dash" viewBox="0 0 24 24"><path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1M9 21h1M14 3h1M14 21h1M3 9v1M21 9v1M3 14v1M21 14v1"/></symbol>
+  <symbol id="i-ring" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="5"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M21 4h-3M14 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3"/><path d="M14 2v4M8 10v4M16 18v4"/></symbol>
+  <symbol id="i-ms-spindle" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="6"/><path d="M6 10h12M12 3v7"/><rect x="11" y="5.5" width="2" height="3.5" rx="1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-ms-crank" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="6"/><path d="M6 10h12M12 3v7"/><path d="M12 3a6 6 0 0 1 6 6v1h-6z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-ms-glide" viewBox="0 0 24 24"><rect x="2.5" y="3" width="10" height="18" rx="5"/><path d="M2.5 10h10"/><rect x="6.75" y="5.5" width="1.5" height="3.5" rx=".75" fill="currentColor" stroke="none"/><path d="M18.5 12.5v8M14.5 16.5h8M17 14l1.5-1.5L20 14M17 19l1.5 1.5L20 19M16 15l-1.5 1.5L16 18M21 15l1.5 1.5L21 18"/></symbol>
+  <symbol id="i-ms-blender" viewBox="0 0 24 24"><rect x="2.5" y="3" width="10" height="18" rx="5"/><path d="M2.5 10h10"/><rect x="6.75" y="5.5" width="1.5" height="3.5" rx=".75" fill="currentColor" stroke="none"/><rect x="14" y="13" width="8.5" height="7.5" rx="1.5"/><path d="m16.25 17.75 2-2 2 2"/></symbol>
+  <symbol id="i-ms-slicer" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="6"/><path d="M6 10h12M12 3v7"/><path d="M12 3a6 6 0 0 0-6 6v1h6z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-ms-trackpad" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15h18M12 15v4"/><circle cx="10" cy="10" r="1.1" fill="currentColor" stroke="none"/><circle cx="14" cy="10" r="1.1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-mark" viewBox="0 0 64 64"><path d="M10 24 24 10H52L38 24Z" fill="#FFC76A"/><path d="M38 24 52 10V38L38 52Z" fill="#E0922A"/><rect x="10" y="24" width="28" height="28" rx="1" fill="rgba(90,169,255,0.16)" stroke="#5AA9FF" stroke-width="2" stroke-dasharray="3.2 2.6"/><circle cx="10" cy="24" r="2.2" fill="#5AA9FF"/><circle cx="38" cy="24" r="2.2" fill="#5AA9FF"/><circle cx="10" cy="52" r="2.2" fill="#5AA9FF"/><circle cx="38" cy="52" r="2.2" fill="#5AA9FF"/></symbol>
+</svg>
+
+<div class="wrap">
+  <header style="display:grid;gap:14px">
+    <div>
+      <div class="eyebrow">Extrudo · app bar</div>
+      <h1>One menu instead of two</h1>
+      <p class="lede">The Help menu folded into the app menu, with the quick toggles on its root. The refined direction comes first; the four starting points follow. The mockups are clickable: toggles flip, the Theme control re-themes its own mockup, the rail's controls show their tooltips on hover.</p>
+    </div>
+    <div class="inventory">
+      <div><div class="eyebrow">Everything that has to fit</div><ul>
+        <li>Settings… <span class="k">Ctrl+,</span> (Plugins… and Customize Marking Menu… move inside it)</li>
+        <li>Toggles: auto-project body edges, auto-project face outline, radial right-click menu</li>
+        <li>Mouse controls (Spindle, Crank, Glide, Blender, Trackpad, and Slicer <span class="tag">planned</span>)</li>
+        <li>Theme: System, Light, Dark</li>
+      </ul></div>
+      <div><div class="eyebrow">From the Help menu</div><ul>
+        <li>Search… <span class="k">Ctrl+K</span> · Tutorial · Help for This Tool <span class="k">F1</span></li>
+        <li>User Guide, Online Tutorials (was "Tutorials"), Examples, Tool Reference (docs on the landing site)</li>
+        <li>Check for Updates… <span class="tag">desktop</span> · Source on GitHub · About Extrudo</li>
+        <li>Close design (web) / Quit <span class="k">Ctrl+Q</span> <span class="tag">desktop</span></li>
+      </ul></div>
+    </div>
+  </header>
+
+  <!-- ============ 2b: refined ============ -->
+  <section class="proto" id="p2b">
+    <div class="notes">
+      <div><div class="num">Direction</div><h2>Wide panel, refined</h2></div>
+      <p>Prototype 2 with the owner's changes. The rail is one line of icon switchers: the mouse preset first as a six-way segmented control, the three toggles, and Theme at the right edge. Each control carries the app's tooltip, with the preset's bindings as the hint, so the icons never have to explain themselves. The columns are fixed at two. Search… leads the App column, About Extrudo sits under Settings…, and the footer is the version strip: update state at a glance, the update check and GitHub as links.</p>
+      <ul>
+        <li>Rail: Mouse (6) · toggles (3) · Theme (3). Hover any of them for its tooltip: name on top, the bindings or state as the hint.</li>
+        <li>Mouse presets in order: Crank, Spindle (the default, checked), Glide, Blender, then the new <b>Slicer</b> (left-drag orbits, right-drag pans, Shift+left-drag selects; menu entry only for now, the behaviour comes later) and Trackpad.</li>
+        <li>App column: Search…, Settings…, About Extrudo, then Close design and Quit.</li>
+        <li>Learn column: <b>Help for &lt;tool&gt;</b> first, named after the tool last hovered or active (here Extrude) and absent when there is none; then User Guide, Tutorial (the built-in five steps), Online Tutorials, Examples, Tool Reference.</li>
+        <li>Version strip: dot and word for the update state (never colour alone), Check now on the desktop app only, GitHub everywhere.</li>
+      </ul>
+      <p class="verdict">Open points, by number:<br>1. Preset icons: a mouse with the orbit button filled (middle for Spindle, right for Crank, left for Slicer), pan arrows for Glide, a modifier key for Blender, a pad for Trackpad. Keep, or label the active one with its name?<br>2. Quit and Close design: keep both in the App column, or move them to the strip's right end as a last resort?<br>3. The strip's "Up to date" needs the updater's state on the desktop; the web build shows the version alone.</p>
+    </div>
+    <div class="mock" data-choice="system">
+      <div class="frame">
+        <div class="bar">
+          <div class="logo"><svg class="i" style="stroke:none"><use href="#i-mark"/></svg><span class="wordmark">Extrudo</span></div>
+          <div class="tabs"><span class="tab">Home</span><span class="tab" aria-current="page">Solid</span><span class="tab">Modify</span><span class="tab">Construct</span><span class="tab">Inspect</span><span class="tab">Insert</span><span class="tab">3D Print</span></div>
+          <span class="sep"></span>
+          <span class="ib"><svg class="i"><use href="#i-search"/></svg></span><span class="ib"><svg class="i"><use href="#i-undo"/></svg></span><span class="ib dim"><svg class="i"><use href="#i-redo"/></svg></span>
+          <div class="title"><b>Hinge bracket</b><span class="saved"><i></i><span>Saved</span></span></div>
+          <span class="ib"><svg class="i"><use href="#i-history"/></svg></span>
+          <span class="ib open"><svg class="i"><use href="#i-grid"/></svg></span>
+        </div>
+        <div class="stage">
+          <div class="menu m2b" role="menu" aria-label="Menu">
+            <div class="rail" data-rail>
+              <div class="seg icons" role="radiogroup" aria-label="Mouse controls" data-group="mouse2b">
+                <button role="radio" aria-checked="false" data-radio><svg class="i lg"><use href="#i-ms-crank"/></svg><span class="tip l"><b>Mouse controls: Crank</b><span>Right-drag orbits, middle-drag pans; Shift swaps them. The wheel zooms.</span></span></button>
+                <button role="radio" aria-checked="true" data-radio><svg class="i lg"><use href="#i-ms-spindle"/></svg><span class="tip l"><b>Mouse controls: Spindle</b><span>Middle-drag orbits, right-drag pans; Shift swaps them. The wheel zooms.</span></span></button>
+                <button role="radio" aria-checked="false" data-radio><svg class="i lg"><use href="#i-ms-glide"/></svg><span class="tip l"><b>Mouse controls: Glide</b><span>Middle-drag pans, Shift+middle-drag orbits. The wheel zooms.</span></span></button>
+                <button role="radio" aria-checked="false" data-radio><svg class="i lg"><use href="#i-ms-blender"/></svg><span class="tip l"><b>Mouse controls: Blender</b><span>Middle-drag orbits, Shift+middle-drag pans, Ctrl+middle-drag zooms. The wheel zooms.</span></span></button>
+                <button role="radio" aria-checked="false" data-radio><svg class="i lg"><use href="#i-ms-slicer"/></svg><span class="tip l"><b>Mouse controls: Slicer</b><span>Left-drag orbits, right-drag pans; Shift+left-drag selects. The wheel zooms.</span></span></button>
+                <button role="radio" aria-checked="false" data-radio><svg class="i lg"><use href="#i-ms-trackpad"/></svg><span class="tip l"><b>Mouse controls: Trackpad</b><span>Two-finger scroll pans, pinch zooms, Alt+drag orbits (with Shift, pans).</span></span></button>
+              </div>
+              <span class="vsep"></span>
+              <div class="grp">
+                <button class="tog" data-toggle aria-pressed="true"><svg class="i"><use href="#i-box"/></svg><span class="tip l"><b>Auto-project body edges</b><span><em data-onoff style="font-style:normal">On</em>. Also in Settings › General.</span></span></button>
+                <button class="tog" data-toggle aria-pressed="true"><svg class="i"><use href="#i-dash"/></svg><span class="tip l"><b>Auto-project face outline</b><span><em data-onoff style="font-style:normal">On</em>. Also in Settings › General.</span></span></button>
+                <button class="tog" data-toggle aria-pressed="false"><svg class="i"><use href="#i-ring"/></svg><span class="tip l"><b>Radial right-click menu</b><span><em data-onoff style="font-style:normal">Off</em>: the right-click menu is a list.</span></span></button>
+              </div>
+              <span class="spacer"></span>
+              <div class="seg icons" role="radiogroup" aria-label="Theme">
+                <button data-theme-pick="system" role="radio" aria-checked="true"><svg class="i"><use href="#i-monitor"/></svg><span class="tip"><b>Theme: System</b><span>Follows the operating system.</span></span></button>
+                <button data-theme-pick="light" role="radio" aria-checked="false"><svg class="i"><use href="#i-sun"/></svg><span class="tip"><b>Theme: Light</b></span></button>
+                <button data-theme-pick="dark" role="radio" aria-checked="false"><svg class="i"><use href="#i-moon"/></svg><span class="tip"><b>Theme: Dark</b></span></button>
+              </div>
+            </div>
+            <div class="cols">
+              <div>
+                <div class="lab">App</div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-search"/></svg></span><span class="lbl">Search…</span><kbd>Ctrl+K</kbd></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-settings"/></svg></span><span class="lbl">Settings…</span><kbd>Ctrl+,</kbd></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-info"/></svg></span><span class="lbl">About Extrudo</span></div>
+                <div class="hr"></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-x"/></svg></span><span class="lbl">Close design</span></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-quit"/></svg></span><span class="lbl">Quit</span><kbd>Ctrl+Q</kbd></div>
+              </div>
+              <div>
+                <div class="lab">Learn</div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-help"/></svg></span><span class="lbl">Help for Extrude</span><kbd>F1</kbd></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-book"/></svg></span><span class="lbl">User Guide</span></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-grad"/></svg></span><span class="lbl">Tutorial</span></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-list"/></svg></span><span class="lbl">Online Tutorials</span></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-shapes"/></svg></span><span class="lbl">Examples</span></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-wrench"/></svg></span><span class="lbl">Tool Reference</span></div>
+              </div>
+            </div>
+            <div class="about">
+              <span class="dot"></span><b>0.7.0</b><span>Up to date</span>
+              <span class="spacer"></span>
+              <a href="#p2b" title="Check for Updates… (desktop only)">Check now</a><span>·</span><a href="#p2b">GitHub</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="starts"><div class="eyebrow">The four starting points</div><p class="lede">Kept for comparison. Prototype 2 is the one the direction above grew from.</p></div>
+
+  <!-- ============ 1 ============ -->
+  <section class="proto" id="p1">
+    <div class="notes">
+      <div><div class="num">1</div><h2>One list, toggle strip on top</h2></div>
+      <p>The smallest change. The two menus become one list in the familiar width. Theme and the three behaviour toggles leave their submenus and sit horizontally at the top, where a flick of the eye reads their state. Mouse controls keeps its submenu because each preset needs its description line. Settings… is the only dialog item left, with Plugins and the marking menu inside it.</p>
+      <ul>
+        <li>Keeps every existing menu primitive, so it is cheap to build.</li>
+        <li>State visible without opening anything: the strip is the status.</li>
+        <li>Long: 15 rows plus the strip, about 600 px. Fits a 768 px tall window.</li>
+      </ul>
+      <p class="verdict">Lowest risk. If the length bothers you, prototype 2 or 4 trades it for width.</p>
+    </div>
+    <div class="mock" data-choice="system">
+      <div class="frame">
+        <div class="bar">
+          <div class="logo"><svg class="i" style="stroke:none"><use href="#i-mark"/></svg><span class="wordmark">Extrudo</span></div>
+          <div class="tabs"><span class="tab">Home</span><span class="tab" aria-current="page">Solid</span><span class="tab">Modify</span><span class="tab">Construct</span><span class="tab">Inspect</span><span class="tab">Insert</span><span class="tab">3D Print</span></div>
+          <span class="sep"></span>
+          <span class="ib"><svg class="i"><use href="#i-search"/></svg></span><span class="ib"><svg class="i"><use href="#i-undo"/></svg></span><span class="ib dim"><svg class="i"><use href="#i-redo"/></svg></span>
+          <div class="title"><b>Hinge bracket</b><span class="saved"><i></i><span>Saved</span></span></div>
+          <span class="ib"><svg class="i"><use href="#i-history"/></svg></span>
+          <span class="ib open"><svg class="i"><use href="#i-grid"/></svg></span>
+        </div>
+        <div class="stage">
+          <div class="menu m1" role="menu" aria-label="Menu">
+            <div class="strip">
+              <div class="seg grow" role="radiogroup" aria-label="Theme">
+                <button data-theme-pick="system" role="radio" aria-checked="true"><svg class="i"><use href="#i-monitor"/></svg>System</button>
+                <button data-theme-pick="light" role="radio" aria-checked="false"><svg class="i"><use href="#i-sun"/></svg>Light</button>
+                <button data-theme-pick="dark" role="radio" aria-checked="false"><svg class="i"><use href="#i-moon"/></svg>Dark</button>
+              </div>
+              <div class="row">
+                <button class="chip" data-toggle aria-pressed="true" title="Auto-project body edges"><svg class="i"><use href="#i-box"/></svg>Edges</button>
+                <button class="chip" data-toggle aria-pressed="true" title="Auto-project face outline"><svg class="i"><use href="#i-dash"/></svg>Outline</button>
+                <button class="chip" data-toggle aria-pressed="false" title="Radial right-click menu"><svg class="i"><use href="#i-ring"/></svg>Radial</button>
+              </div>
+            </div>
+            <div class="hr"></div>
+            <div class="item"><span class="ic"><svg class="i"><use href="#i-settings"/></svg></span><span class="lbl">Settings…</span><kbd>Ctrl+,</kbd></div>
+            <div class="sub">
+              <div class="item" style="background:var(--accent-soft)"><span class="ic"><svg class="i"><use href="#i-mouse"/></svg></span><span class="lbl">Mouse controls</span><span class="val">Spindle</span><span class="chev"><svg class="i"><use href="#i-chev"/></svg></span></div>
+              <div class="menu flyout" role="menu" aria-label="Mouse controls">
+                <div class="item rad" role="menuitemradio" aria-checked="true" data-radio><span class="ic"><svg class="i"><use href="#i-check"/></svg></span><span class="lbl">Spindle<small>Middle-drag orbits, right-drag pans; Shift swaps them. The wheel zooms.</small></span></div>
+                <div class="item rad" role="menuitemradio" aria-checked="false" data-radio><span class="ic"><svg class="i"><use href="#i-check"/></svg></span><span class="lbl">Crank<small>Right-drag orbits, middle-drag pans; Shift swaps them. The wheel zooms.</small></span></div>
+                <div class="item rad" role="menuitemradio" aria-checked="false" data-radio><span class="ic"><svg class="i"><use href="#i-check"/></svg></span><span class="lbl">Glide<small>Middle-drag pans, Shift+middle-drag orbits. The wheel zooms.</small></span></div>
+                <div class="item rad" role="menuitemradio" aria-checked="false" data-radio><span class="ic"><svg class="i"><use href="#i-check"/></svg></span><span class="lbl">Blender<small>Middle-drag orbits, Shift+middle-drag pans, Ctrl+middle-drag zooms.</small></span></div>
+                <div class="item rad" role="menuitemradio" aria-checked="false" data-radio><span class="ic"><svg class="i"><use href="#i-check"/></svg></span><span class="lbl">Trackpad<small>Two-finger scroll pans, pinch zooms, Alt+drag orbits (with Shift, pans).</small></span></div>
+              </div>
+            </div>
+            <div class="hr"></div>
+            <div class="lab">Learn</div>
+            <div class="item"><span class="ic"><svg class="i"><use href="#i-search"/></svg></span><span class="lbl">Search…</span><kbd>Ctrl+K</kbd></div>
+            <div class="item"><span class="ic"><svg class="i"><use href="#i-grad"/></svg></span><span class="lbl">Tutorial</span></div>
+            <div class="item"><span class="ic"><svg class="i"><use href="#i-help"/></svg></span><span class="lbl">Help for This Tool</span><kbd>F1</kbd></div>
+            <div class="item"><span class="ic"><svg class="i"><use href="#i-book"/></svg></span><span class="lbl">User Guide</span></div>
+            <div class="item"><span class="ic"><svg class="i"><use href="#i-list"/></svg></span><span class="lbl">Tutorials</span></div>
+            <div class="item"><span class="ic"><svg class="i"><use href="#i-shapes"/></svg></span><span class="lbl">Examples</span></div>
+            <div class="item"><span class="ic"><svg class="i"><use href="#i-wrench"/></svg></span><span class="lbl">Tool Reference</span></div>
+            <div class="hr"></div>
+            <div class="item"><span class="ic"><svg class="i"><use href="#i-refresh"/></svg></span><span class="lbl">Check for Updates…</span><span class="pill">desktop</span></div>
+            <div class="item"><span class="ic"><svg class="i"><use href="#i-code"/></svg></span><span class="lbl">Source on GitHub</span></div>
+            <div class="item"><span class="ic"><svg class="i"><use href="#i-info"/></svg></span><span class="lbl">About Extrudo</span><span class="val k">0.7.0</span></div>
+            <div class="hr"></div>
+            <div class="item"><span class="ic"><svg class="i"><use href="#i-quit"/></svg></span><span class="lbl">Quit</span><kbd>Ctrl+Q</kbd></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2 ============ -->
+  <section class="proto" id="p2">
+    <div class="notes">
+      <div><div class="num">2</div><h2>Wide panel, two columns</h2></div>
+      <p>The menu grows into a 480 px panel. A rail across the top holds every quick setting in one horizontal line: Theme as three icons, the three toggles as icon buttons, the mouse preset as a chip that opens its chooser. Below, the app's own items on the left and everything you learn from on the right. A grey footer carries the version, updates, GitHub and About, the way an About box would.</p>
+      <ul>
+        <li>Short: nothing scrolls, nothing nests except the mouse chooser.</li>
+        <li>App and Learn read as two clear groups without a second menu.</li>
+        <li>Icon-only toggles need tooltips; the rail is tight below 520 px.</li>
+      </ul>
+      <p class="verdict">Best overview per click. New panel component (Radix popover rather than a dropdown menu), so a bit more work.</p>
+    </div>
+    <div class="mock" data-choice="system">
+      <div class="frame">
+        <div class="bar">
+          <div class="logo"><svg class="i" style="stroke:none"><use href="#i-mark"/></svg><span class="wordmark">Extrudo</span></div>
+          <div class="tabs"><span class="tab">Home</span><span class="tab" aria-current="page">Solid</span><span class="tab">Modify</span><span class="tab">Construct</span><span class="tab">Inspect</span><span class="tab">Insert</span><span class="tab">3D Print</span></div>
+          <span class="sep"></span>
+          <span class="ib"><svg class="i"><use href="#i-search"/></svg></span><span class="ib"><svg class="i"><use href="#i-undo"/></svg></span><span class="ib dim"><svg class="i"><use href="#i-redo"/></svg></span>
+          <div class="title"><b>Hinge bracket</b><span class="saved"><i></i><span>Saved</span></span></div>
+          <span class="ib"><svg class="i"><use href="#i-history"/></svg></span>
+          <span class="ib open"><svg class="i"><use href="#i-grid"/></svg></span>
+        </div>
+        <div class="stage">
+          <div class="menu m2" role="menu" aria-label="Menu">
+            <div class="rail">
+              <div class="seg icons" role="radiogroup" aria-label="Theme">
+                <button data-theme-pick="system" role="radio" aria-checked="true" title="System theme"><svg class="i"><use href="#i-monitor"/></svg></button>
+                <button data-theme-pick="light" role="radio" aria-checked="false" title="Light"><svg class="i"><use href="#i-sun"/></svg></button>
+                <button data-theme-pick="dark" role="radio" aria-checked="false" title="Dark"><svg class="i"><use href="#i-moon"/></svg></button>
+              </div>
+              <span class="vsep"></span>
+              <div class="grp">
+                <button class="tog" data-toggle aria-pressed="true" title="Auto-project body edges"><svg class="i"><use href="#i-box"/></svg></button>
+                <button class="tog" data-toggle aria-pressed="true" title="Auto-project face outline"><svg class="i"><use href="#i-dash"/></svg></button>
+                <button class="tog" data-toggle aria-pressed="false" title="Radial right-click menu"><svg class="i"><use href="#i-ring"/></svg></button>
+              </div>
+              <span class="spacer"></span>
+              <button class="chip" title="Mouse controls"><svg class="i"><use href="#i-mouse"/></svg>Spindle<svg class="i"><use href="#i-down"/></svg></button>
+            </div>
+            <div class="cols">
+              <div>
+                <div class="lab">App</div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-settings"/></svg></span><span class="lbl">Settings…</span><kbd>Ctrl+,</kbd></div>
+                        <div class="hr"></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-x"/></svg></span><span class="lbl">Close design</span></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-quit"/></svg></span><span class="lbl">Quit</span><kbd>Ctrl+Q</kbd></div>
+              </div>
+              <div>
+                <div class="lab">Learn</div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-search"/></svg></span><span class="lbl">Search…</span><kbd>Ctrl+K</kbd></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-grad"/></svg></span><span class="lbl">Tutorial</span></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-help"/></svg></span><span class="lbl">Help for This Tool</span><kbd>F1</kbd></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-book"/></svg></span><span class="lbl">User Guide</span></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-list"/></svg></span><span class="lbl">Tutorials</span></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-shapes"/></svg></span><span class="lbl">Examples</span></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-wrench"/></svg></span><span class="lbl">Tool Reference</span></div>
+              </div>
+            </div>
+            <div class="foot">
+              <span class="ver">Extrudo 0.7.0</span><span>·</span><span>Up to date</span>
+              <span class="spacer"></span>
+              <a href="#p2"><svg class="i"><use href="#i-refresh"/></svg>Check for updates</a>
+              <a href="#p2"><svg class="i"><use href="#i-code"/></svg>GitHub</a>
+              <a href="#p2"><svg class="i"><use href="#i-info"/></svg>About</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 3 ============ -->
+  <section class="proto" id="p3">
+    <div class="notes">
+      <div><div class="num">3</div><h2>Everything inline, no submenus</h2></div>
+      <p>A settings-sheet feel inside a menu. Each preference is a row with its control on the right: a switch per toggle, a compact segmented control for Theme. Mouse controls becomes a horizontal row of chips with the chosen preset's bindings underneath, so the description you get in a submenu today is still there. Help turns into a two-by-two grid of doc tiles, which reads faster than four look-alike rows.</p>
+      <ul>
+        <li>No fly-outs at all: every state is set and seen in one place.</li>
+        <li>The chip row teaches the presets: the hint changes as you click.</li>
+        <li>Mixed control kinds in one menu need care with keyboard focus (Radix menus want menu items, not switches).</li>
+      </ul>
+      <p class="verdict">Richest at rest, most work to make accessible. Good fit if the owner wants the menu to feel like quick settings.</p>
+    </div>
+    <div class="mock" data-choice="system">
+      <div class="frame">
+        <div class="bar">
+          <div class="logo"><svg class="i" style="stroke:none"><use href="#i-mark"/></svg><span class="wordmark">Extrudo</span></div>
+          <div class="tabs"><span class="tab">Home</span><span class="tab" aria-current="page">Solid</span><span class="tab">Modify</span><span class="tab">Construct</span><span class="tab">Inspect</span><span class="tab">Insert</span><span class="tab">3D Print</span></div>
+          <span class="sep"></span>
+          <span class="ib"><svg class="i"><use href="#i-search"/></svg></span><span class="ib"><svg class="i"><use href="#i-undo"/></svg></span><span class="ib dim"><svg class="i"><use href="#i-redo"/></svg></span>
+          <div class="title"><b>Hinge bracket</b><span class="saved"><i></i><span>Saved</span></span></div>
+          <span class="ib"><svg class="i"><use href="#i-history"/></svg></span>
+          <span class="ib open"><svg class="i"><use href="#i-grid"/></svg></span>
+        </div>
+        <div class="stage">
+          <div class="menu m3" role="menu" aria-label="Menu">
+            <div class="item"><span class="ic"><svg class="i"><use href="#i-settings"/></svg></span><span class="lbl">Settings…</span><kbd>Ctrl+,</kbd></div>
+            <div class="hr"></div>
+            <div class="lab">Preferences</div>
+            <div class="item pref"><span class="ic"><svg class="i"><use href="#i-palette"/></svg></span><span class="lbl">Theme</span>
+              <div class="seg mini" role="radiogroup" aria-label="Theme">
+                <button data-theme-pick="system" role="radio" aria-checked="true">System</button>
+                <button data-theme-pick="light" role="radio" aria-checked="false">Light</button>
+                <button data-theme-pick="dark" role="radio" aria-checked="false">Dark</button>
+              </div>
+            </div>
+            <div class="item pref"><span class="ic"><svg class="i"><use href="#i-box"/></svg></span><span class="lbl">Auto-project body edges</span><button class="sw" role="switch" aria-checked="true" data-toggle aria-label="Auto-project body edges"></button></div>
+            <div class="item pref"><span class="ic"><svg class="i"><use href="#i-dash"/></svg></span><span class="lbl">Auto-project face outline</span><button class="sw" role="switch" aria-checked="true" data-toggle aria-label="Auto-project face outline"></button></div>
+            <div class="item pref"><span class="ic"><svg class="i"><use href="#i-ring"/></svg></span><span class="lbl">Radial right-click menu</span><button class="sw" role="switch" aria-checked="false" data-toggle aria-label="Radial right-click menu"></button></div>
+            <div class="item pref" style="height:28px"><span class="ic"><svg class="i"><use href="#i-mouse"/></svg></span><span class="lbl">Mouse controls</span></div>
+            <div class="chips" role="radiogroup" aria-label="Mouse controls" data-group="mouse">
+              <button class="chip" role="radio" aria-checked="true" data-radio data-summary="Middle-drag orbits, right-drag pans; Shift swaps them. The wheel zooms.">Spindle</button>
+              <button class="chip" role="radio" aria-checked="false" data-radio data-summary="Right-drag orbits, middle-drag pans; Shift swaps them. The wheel zooms.">Crank</button>
+              <button class="chip" role="radio" aria-checked="false" data-radio data-summary="Middle-drag pans, Shift+middle-drag orbits. The wheel zooms.">Glide</button>
+              <button class="chip" role="radio" aria-checked="false" data-radio data-summary="Middle-drag orbits, Shift+middle-drag pans, Ctrl+middle-drag zooms. The wheel zooms.">Blender</button>
+              <button class="chip" role="radio" aria-checked="false" data-radio data-summary="Two-finger scroll pans, pinch zooms, Alt+drag orbits (with Shift, pans).">Trackpad</button>
+            </div>
+            <div class="hint" data-hint-for="mouse">Middle-drag orbits, right-drag pans; Shift swaps them. The wheel zooms.</div>
+            <div class="hr"></div>
+            <div class="lab">Help</div>
+            <div class="item"><span class="ic"><svg class="i"><use href="#i-search"/></svg></span><span class="lbl">Search…</span><kbd>Ctrl+K</kbd></div>
+            <div class="item"><span class="ic"><svg class="i"><use href="#i-help"/></svg></span><span class="lbl">Help for This Tool</span><kbd>F1</kbd></div>
+            <div class="item"><span class="ic"><svg class="i"><use href="#i-grad"/></svg></span><span class="lbl">Tutorial</span></div>
+            <div class="tiles">
+              <button class="tile"><svg class="i"><use href="#i-book"/></svg><span class="lbl">User Guide</span></button>
+              <button class="tile"><svg class="i"><use href="#i-list"/></svg><span class="lbl">Tutorials</span></button>
+              <button class="tile"><svg class="i"><use href="#i-shapes"/></svg><span class="lbl">Examples</span></button>
+              <button class="tile"><svg class="i"><use href="#i-wrench"/></svg><span class="lbl">Tool Reference</span></button>
+            </div>
+            <div class="hr"></div>
+            <div class="item"><span class="ic"><svg class="i"><use href="#i-info"/></svg></span><span class="lbl">About Extrudo</span><span class="val k">0.7.0</span></div>
+            <div class="item"><span class="ic"><svg class="i"><use href="#i-refresh"/></svg></span><span class="lbl">Check for Updates…</span><span class="pill">desktop</span></div>
+            <div class="item"><span class="ic"><svg class="i"><use href="#i-code"/></svg></span><span class="lbl">Source on GitHub</span></div>
+            <div class="hr"></div>
+            <div class="item"><span class="ic"><svg class="i"><use href="#i-quit"/></svg></span><span class="lbl">Quit</span><kbd>Ctrl+Q</kbd></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 4 ============ -->
+  <section class="proto" id="p4">
+    <div class="notes">
+      <div><div class="num">4</div><h2>Control centre with search on top</h2></div>
+      <p>The menu opens like a phone's quick-settings sheet. A search box is the first thing in it and takes over the Help menu's Search… item: typing finds commands and help pages alike, and the Ctrl+K dialog stays as it is. Under it, four tiles show Theme and the three toggles with their current value; Theme cycles on click. The mouse presets are a segmented row. Then the plain items in two short columns, and a version strip at the bottom with update state, GitHub and About.</p>
+      <ul>
+        <li>Tiles make state readable from across the room; the whole thing fits in 460 px of height.</li>
+        <li>Search as the first row makes the menu the one place to go when lost.</li>
+        <li>Visually the furthest from a menu; the four-squares icon would want a new tooltip ("Menu and help").</li>
+      </ul>
+      <p class="verdict">Most playful, closest to the brand's "modern UI" line. Clear winner if help discoverability is the goal.</p>
+    </div>
+    <div class="mock" data-choice="system">
+      <div class="frame">
+        <div class="bar">
+          <div class="logo"><svg class="i" style="stroke:none"><use href="#i-mark"/></svg><span class="wordmark">Extrudo</span></div>
+          <div class="tabs"><span class="tab">Home</span><span class="tab" aria-current="page">Solid</span><span class="tab">Modify</span><span class="tab">Construct</span><span class="tab">Inspect</span><span class="tab">Insert</span><span class="tab">3D Print</span></div>
+          <span class="sep"></span>
+          <span class="ib"><svg class="i"><use href="#i-search"/></svg></span><span class="ib"><svg class="i"><use href="#i-undo"/></svg></span><span class="ib dim"><svg class="i"><use href="#i-redo"/></svg></span>
+          <div class="title"><b>Hinge bracket</b><span class="saved"><i></i><span>Saved</span></span></div>
+          <span class="ib"><svg class="i"><use href="#i-history"/></svg></span>
+          <span class="ib open"><svg class="i"><use href="#i-grid"/></svg></span>
+        </div>
+        <div class="stage">
+          <div class="menu m4" role="menu" aria-label="Menu and help">
+            <div class="sbox"><svg class="i"><use href="#i-search"/></svg><span>Search commands and help…</span><kbd class="k">Ctrl+K</kbd></div>
+            <div class="qs">
+              <button class="q" data-theme-cycle aria-label="Theme"><svg class="i" data-theme-icon><use href="#i-monitor"/></svg><span class="n">Theme</span><span class="v" data-theme-value>System</span></button>
+              <button class="q" data-toggle aria-pressed="true"><svg class="i"><use href="#i-box"/></svg><span class="n">Body edges</span><span class="v" data-onoff>On</span></button>
+              <button class="q" data-toggle aria-pressed="true"><svg class="i"><use href="#i-dash"/></svg><span class="n">Face outline</span><span class="v" data-onoff>On</span></button>
+              <button class="q" data-toggle aria-pressed="false"><svg class="i"><use href="#i-ring"/></svg><span class="n">Radial menu</span><span class="v" data-onoff>Off</span></button>
+            </div>
+            <div class="mouse">
+              <span class="ic" title="Mouse controls"><svg class="i"><use href="#i-mouse"/></svg></span>
+              <div class="seg" role="radiogroup" aria-label="Mouse controls" data-group="mouse4">
+                <button role="radio" aria-checked="true" data-radio>Spindle</button>
+                <button role="radio" aria-checked="false" data-radio>Crank</button>
+                <button role="radio" aria-checked="false" data-radio>Glide</button>
+                <button role="radio" aria-checked="false" data-radio>Blender</button>
+                <button role="radio" aria-checked="false" data-radio>Trackpad</button>
+              </div>
+            </div>
+            <div class="hr"></div>
+            <div class="two">
+              <div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-settings"/></svg></span><span class="lbl">Settings…</span><kbd>Ctrl+,</kbd></div>
+                    <div class="item"><span class="ic"><svg class="i"><use href="#i-x"/></svg></span><span class="lbl">Close design</span></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-quit"/></svg></span><span class="lbl">Quit</span><kbd>Ctrl+Q</kbd></div>
+              </div>
+              <div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-grad"/></svg></span><span class="lbl">Tutorial</span></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-help"/></svg></span><span class="lbl">Help for This Tool</span><kbd>F1</kbd></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-book"/></svg></span><span class="lbl">User Guide</span></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-list"/></svg></span><span class="lbl">Tutorials</span></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-shapes"/></svg></span><span class="lbl">Examples</span></div>
+                <div class="item"><span class="ic"><svg class="i"><use href="#i-wrench"/></svg></span><span class="lbl">Tool Reference</span></div>
+              </div>
+            </div>
+            <div class="about">
+              <span class="dot"></span><b>0.7.0</b><span>Up to date</span>
+              <span class="spacer"></span>
+              <a href="#p4" title="Check for Updates… (desktop)">Check now</a><span>·</span><a href="#p4">GitHub</a><span>·</span><a href="#p4">About</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer style="color:var(--muted);font-size:13px;max-width:70ch">
+    Shared in all four: the Help button leaves the app bar, so the right-hand cluster is version history and one menu. Plugins… and Customize Marking Menu… are sections of the Settings dialog. The home screen gets the same menu minus Close design. Desktop-only items (Check for Updates…, Quit) are shown; the web build hides them and shows Close design.
+  </footer>
+</div>
+
+<script>
+(function () {
+  var sysDark = matchMedia('(prefers-color-scheme: dark)');
+  function pageTheme() {
+    var t = document.documentElement.getAttribute('data-theme');
+    return t || (sysDark.matches ? 'dark' : 'light');
+  }
+  var icons = { system: '#i-monitor', light: '#i-sun', dark: '#i-moon' };
+  var names = { system: 'System', light: 'Light', dark: 'Dark' };
+  function apply(mock) {
+    var choice = mock.getAttribute('data-choice') || 'system';
+    mock.setAttribute('data-mock', choice === 'system' ? pageTheme() : choice);
+    mock.querySelectorAll('[data-theme-pick]').forEach(function (b) {
+      b.setAttribute('aria-checked', String(b.getAttribute('data-theme-pick') === choice));
+    });
+    var ic = mock.querySelector('[data-theme-icon] use');
+    if (ic) ic.setAttribute('href', icons[choice]);
+    var v = mock.querySelector('[data-theme-value]');
+    if (v) v.textContent = names[choice];
+  }
+  var mocks = document.querySelectorAll('.mock');
+  mocks.forEach(apply);
+  sysDark.addEventListener('change', function () { mocks.forEach(apply); });
+  new MutationObserver(function () { mocks.forEach(apply); })
+    .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  // The pinned demo tooltip goes once the pointer reaches the rail.
+  document.querySelectorAll('[data-rail]').forEach(function (rail) {
+    rail.addEventListener('pointerenter', function () {
+      rail.querySelectorAll('.demo').forEach(function (b) { b.classList.remove('demo'); });
+    }, { once: true });
+  });
+
+  document.addEventListener('click', function (e) {
+    var el = e.target.closest('[data-theme-pick],[data-theme-cycle],[data-toggle],[data-radio],a[href^="#p"]');
+    if (!el) return;
+    if (el.tagName === 'A') { e.preventDefault(); return; }
+    var mock = el.closest('.mock');
+    if (el.hasAttribute('data-theme-pick')) {
+      mock.setAttribute('data-choice', el.getAttribute('data-theme-pick'));
+      apply(mock);
+    } else if (el.hasAttribute('data-theme-cycle')) {
+      var order = ['system', 'light', 'dark'];
+      var cur = mock.getAttribute('data-choice') || 'system';
+      mock.setAttribute('data-choice', order[(order.indexOf(cur) + 1) % 3]);
+      apply(mock);
+    } else if (el.hasAttribute('data-toggle')) {
+      var attr = el.getAttribute('role') === 'switch' ? 'aria-checked' : 'aria-pressed';
+      var on = el.getAttribute(attr) !== 'true';
+      el.setAttribute(attr, String(on));
+      var oo = el.querySelector('[data-onoff]');
+      if (oo) oo.textContent = on ? 'On' : 'Off';
+    } else if (el.hasAttribute('data-radio')) {
+      var group = el.closest('[data-group], [role="radiogroup"], [role="menu"]');
+      group.querySelectorAll('[data-radio]').forEach(function (r) { r.setAttribute('aria-checked', String(r === el)); });
+      var key = group.getAttribute('data-group');
+      var hint = key && mock.querySelector('[data-hint-for="' + key + '"]');
+      if (hint && el.getAttribute('data-summary')) hint.textContent = el.getAttribute('data-summary');
+    }
+  });
+})();
+</script>
