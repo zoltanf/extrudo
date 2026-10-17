@@ -462,9 +462,12 @@ export function f3dToDesign(
   // a creator's bodies in its group order.
   const bodyRecords = new Map(f3d.bodies.map((b) => [b.id, b]));
   const madeBy = new Map<number, F3dBody[]>();
-  for (const body of f3d.bodies)
-    if (body.creator !== undefined)
-      madeBy.set(body.creator, [...(madeBy.get(body.creator) ?? []), body]);
+  for (const body of f3d.bodies) {
+    if (body.creator === undefined) continue;
+    const list = madeBy.get(body.creator);
+    if (list) list.push(body);
+    else madeBy.set(body.creator, [body]);
+  }
   for (const list of madeBy.values()) list.sort((a, b) => a.index - b.index);
   const bodyOf = (record: number): { id: BodyId; index: number; by: string } | undefined => {
     const body = bodyRecords.get(components.aliases.get(record) ?? record);
@@ -472,10 +475,13 @@ export function f3dToDesign(
     const made = replayable.get(body.creator);
     const siblings = madeBy.get(body.creator) ?? [];
     if (!made) return undefined;
+    // An extrude whose groups became several bodies, of which the file lists
+    // another number (some joined away or deleted): which is which is unknown.
+    const order = extrudes.get(body.creator)?.bodies;
+    if (order && order.length !== siblings.length) return undefined;
     let k = 0;
     if (siblings.length > 1) {
-      const order = extrudes.get(body.creator)?.bodies;
-      if (order?.length !== siblings.length) return undefined;
+      if (!order) return undefined;
       k = order[siblings.indexOf(body)] as number;
     }
     return { id: `${made.id}:${k}` as BodyId, index: body.index, by: made.name };
