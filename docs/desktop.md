@@ -87,7 +87,8 @@ the script points at a temporary directory. Both need a display (`xvfb-run -a`).
 The packaged app checks the **published** GitHub releases of `zoltanf/extrudo`
 with `electron-updater` (ADR-0075's slice 4 amendment): 10 s after it starts,
 every six hours, when the window gets focus more than an hour after the last
-check, and from Help › Check for Updates…. A draft release is invisible to it,
+check, and from Check for Updates… (the Menu strip's Check now, Ctrl+K, or
+the macOS Help menu). A draft release is invisible to it,
 so publishing the release is what ships an update. Prereleases are ignored.
 
 | Install | What happens |

@@ -40,8 +40,8 @@ published. Versions come from `git describe` of the last `v*` tag: stable shows
    asks before the first open (`docs/desktop.md` has the steps), Windows shows
    SmartScreen ("More info" > "Run anyway").
 7. **Publish = update.** Publishing ships the version to every installed app:
-   AppImage and Windows download it within six hours (or at once from Help ›
-   Check for Updates…); deb and macOS get "Extrudo <version> is available."
+   AppImage and Windows download it within six hours (or at once from the Menu
+   strip's Check now); deb and macOS get "Extrudo <version> is available."
    with a link to the release page. Never publish a release you would not
    want every installed app to take.
 8. **After publishing**, check:

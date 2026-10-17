@@ -839,28 +839,29 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   request leaves the machine; `route.abort()` would replace the popup's URL
   with `chrome-error://chromewebdata/`) and each step takes the popup with
   `context.waitForEvent('page')` beside the action, then reads `popup.url()`:
-  Help › User Guide → `…/docs/`, F1 on a hovered Extrude tile →
+  the Menu's Learn › User Guide → `…/docs/`, F1 on a hovered Extrude tile →
   `…/docs/tools/extrude/`, F1 with nothing hovered → `…/docs/`, Ctrl+K "Tool
   Reference" → `…/docs/tools/`; the Extrude tile's tooltip shows "F1 for more"
-  and holds no `a`/`button`. "Help › Source on GitHub" opens the repository in a
-  popup, and a test checks the menu's last items are Source on GitHub then About
-  Extrudo (About last). The Help menu's "Tutorials" item also matches a
-  plain 'Tutorial' name, so specs pick the tour's item with `/^Tutorial$/`. The
+  and holds no `a`/`button`. The strip's button "GitHub" opens the repository in a
+  popup; the App column is Search…, Settings…, About Extrudo, Close design, and
+  the web strip's only button is GitHub. The Learn column on a fresh page is User
+  Guide, Tutorial, Online Tutorials, Examples, Tool Reference; after hovering the
+  Extrude tile it starts with "Help for Extrude" + F1 (its text `Help for ExtrudeF1`),
+  which opens `…/docs/tools/extrude/`. The
   home bar's Docs and GitHub are links that open in popups; its About is a button
   that opens the dialog (ADR-0085).
 
 ### `e2e/about.spec.ts`
 
-- **About e2e** (`e2e/about.spec.ts`, ADR-0085): Help (button "Help") › menu
-  item "About Extrudo" opens a `dialog` named /about/ (title "extrudo —
+- **About e2e** (`e2e/about.spec.ts`, ADR-0085): `pickMenuItem(page, 'App', 'About
+  Extrudo')` opens a `dialog` named /about/ (title "extrudo —
   about"). Rows are `dt`/`dd` pairs under the headings "Build", "Running on"
   and "Engines"; the version chip is the first text matching `/^\d+\.\d+\.\d+/`;
   "Copy details" is a button, disabled until the system rows load; the logo
   is the button "Extrudo logo" (replays, dialog stays open). Links keep their
   `href` and open through `Platform.openLink` (a popup on the web): the
   github.com host is answered locally with `context.route`, as in
-  help-links. The home bar's About button opens the same dialog (there is no Help
-  menu on the home screen).
+  help-links. The home bar's About button opens the same dialog.
 
 ### `e2e/hole.spec.ts`
 
@@ -1107,8 +1108,9 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 ### `e2e/marking-menu.spec.ts`
 
-- **Marking menu e2e** (`e2e/marking-menu.spec.ts`; P4-12: Ctrl+K "customize marking" opens the
-  region "Customize Marking Menu" with tabs Model/Sketch, wedge buttons
+- **Marking menu e2e** (`e2e/marking-menu.spec.ts`; P4-12: Ctrl+K "customize marking" opens
+  Settings at `[data-settings-page="marking"]` (ADR-0090 §2), holding the checkbox "Radial
+  right-click menu" and the region "Customize Marking Menu" with tabs Model/Sketch, wedge buttons
   `[data-slot-button="model:2"]` (`data-slot-command`, `data-slot-custom`), the
   combobox "Search commands", options by label and "Reset all"): right-click without
   movement opens `menu` "Marking menu" (`data-marking-menu="radial|list"`)
@@ -1289,10 +1291,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 ### `e2e/plugins.spec.ts`
 
-- P6-03 (ADR-0077): the Plugins dialog (`dialog` "Plugins") opens from the
-  app menu's "Plugins…" (R3-12). The example plugin
+- P6-03 (ADR-0077): Ctrl+K "Plugins…" opens the `dialog` "Settings" at
+  `[data-settings-page="plugins"]` (ADR-0090 §2). The example plugin
   (`examples/plugins/name-plate/`) is packed here with `writePluginFile` and
-  installed through the dialog's own "Install…" file chooser
+  installed through the section's own "Install…" file chooser
   (`name-plate.extrudo-plugin`, `application/zip`).
 
 - The `status` "Plugins status" reports installs, refusals (same version) and
@@ -1556,8 +1558,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 ### `e2e/settings.spec.ts`
 
 - **Settings e2e** (`e2e/settings.spec.ts`, ADR-0082): Ctrl+, opens `dialog`
-  "Settings" (also the app menu's menuitem "Settings…", whose accessible name ends with
-  the key); sections are `[data-settings-section="general|view|sketch|printing|export|desktop"]`
+  "Settings" (also the Menu's App item "Settings…", whose accessible name ends with
+  the key); sections are `[data-settings-section="general|plugins|marking|view|sketch|printing|export|desktop"]`
+  (the Radial right-click menu checkbox is on `marking`; the last section is remembered,
+  so a test that reopens the dialog clicks the section it needs)
   (buttons in `[data-settings-nav]`; at under 640 px a combobox "Section" instead) and the
   page is `[data-settings-page="<id>"]`. Fields are named after what they are: textboxes
   "PLA density", "PETG density", "ABS density", "TPU density", "Custom density" (`exact`:
@@ -1599,8 +1603,8 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 - P0-04, the app shell: full-page screenshots
   `shell-dark.png`/`shell-light.png` (`animations: 'disabled'`, `caret:
   'hide'`) with `document.fonts.ready` awaited as a string. The theme follows
-  the system (dark) by default; choosing Light in the app menu
-  (menuitemradio) survives a reload.
+  the system (dark) by default; choosing Light in the Menu's rail (radio "Light")
+  survives a reload.
 
 - The browser panel resizes: the `separator` "Resize browser" (width 248)
   responds to ArrowRight (280), Home (180) and End (480) and to a mouse drag
@@ -2172,12 +2176,21 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   Construct, 3D Print (Solid selected by default), there is no File menu and
   no Insert tab, and `header` holds Search, Undo and Redo. The chrome above
   the view is ≤ 134 px (top bar 40 + toolbar row 92 + border).
-- The app menu (round 5): `appMenu(page)` is the header's button "Menu";
-  `appSubmenu(page, 'Behaviour' | 'Mouse controls' | 'Theme')` opens a submenu and
-  returns the `menu` of that name, and `chooseInMenu(menu, role, name)` picks an item
-  by focus + Enter (a Playwright click jumping from the trigger closes a Radix
-  submenu). Escape in a submenu closes the whole menu. On the web the root menu's
-  items are Settings…, Plugins…, Behaviour, Mouse controls, Theme, Close design.
+- The app menu (ADR-0090): `appMenu(page)` is the header's button "Menu" (the right side
+  is Version history and Menu; no Help button). `openAppMenu(page)` opens (or finds) the
+  panel, the `dialog` "Menu"; `pickPreset(page, 'Crank')` focuses the radio in the
+  `radiogroup` "Mouse controls" and presses Space (the panel stays open);
+  `railToggle(page, name)` returns a rail toggle (`aria-pressed`);
+  `pickMenuItem(page, 'App' | 'Learn', label)` clicks a column item by its label
+  (`menuItemName`: the accessible name is the label then the key, e.g. "Settings…Ctrl+,",
+  so names are matched as `^label(?![a-z])`) and the panel closes. Rail controls leave
+  the panel open; Escape closes it and focuses the Menu button. On open the panel itself
+  has the focus. **Tooltips:** the first Escape closes an open rail tooltip, not the
+  panel; a pointer moving from one rail control to another may keep the first tooltip
+  open (Radix's grace area), so a test presses Escape before hovering the next one. A
+  click on a tooltip trigger keeps its tooltip shut until the pointer leaves, so hover
+  before clicking. Slicer is `aria-disabled` (Playwright's `toBeDisabled` sees it; a click
+  needs `force: true`).
   Home's `navigation` "Extrudo" has the links Docs and GitHub and an About button
   (opens the dialog, ADR-0085);
   `help-links.spec.ts` routes `https://github.com/**` like the docs host.
@@ -2197,11 +2210,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   Construct's four groups are checked by tool id (`R3-09`/`R3-10`/`R3-12`),
   and a real sketch shows only Home and Sketch (`R3-11`).
 
-- The app menu holds "Auto-project body edges"/"Auto-project face
-  outline" (menuitemcheckboxes, shared with a sketch's palette), the theme
-  radios and "Customize Marking Menu…"; its "Radial right-click menu" checkbox
-  is in step with the `Right-Click Menu: Use the Ring` command. The web build
-  has no Open File / Save As / Quit / Check for Updates.
+- The Menu's rail holds "Auto-project body edges"/"Auto-project face
+  outline" (toggles, shared with a sketch's palette), the theme radios and
+  "Radial right-click menu", in step with the `Right-Click Menu: Use the Ring`
+  command. The panel is as wide as its rail (the Mouse controls and Theme groups
+  sit within 16 px of its edges), App and Learn side by side. The web build has no
+  Open File / Save As / Quit and no Check now.
 
 ### `e2e/tutorial.spec.ts`
 
@@ -2249,12 +2263,11 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   and turn arrows; `status` "Current view" names the view (home is `Top Front
   Right view`, direction `-0.577,0.577,-0.577`).
 
-- Mouse presets live in the app menu's "Mouse controls" submenu
-  (`menuitemradio` Spindle/Crank/Glide/Blender/Trackpad, each with an
-  accessible description; Spindle default) and in the Settings dialog's
-  combobox "Mouse buttons" (R3-03). A Radix submenu closes when a pointer
-  jumps straight to an item, so `choosePreset` focuses the radio and presses
-  Enter.
+- Mouse presets live in the Menu rail's `radiogroup` "Mouse controls"
+  (radios Crank, Spindle, Glide, Blender, Slicer (disabled), Trackpad; Spindle
+  default; each tooltip "Mouse controls: <name>" with the bindings as hint) and
+  in the Settings dialog's combobox "Mouse buttons" (R3-03). `choosePreset`
+  uses `pickPreset`, then Escape.
 
 - Spindle: middle-drag orbits, right-drag pans, left-drag neither; Shift swaps
   them (R3-04). Glide: middle-drag pans, Shift+middle orbits, wheel zooms, F6

@@ -72,7 +72,7 @@ hours. What happens next depends on how you installed it:
 | AppImage, Windows installer | It downloads in the background, then tells you it is ready. Press **Restart**, or let it install the next time you quit. It saves open designs first. |
 | `.deb`, macOS | It tells you a new version is available, with a button for the release page. Your package manager or Homebrew (`brew upgrade`) does the update. |
 
-**Help › Check for Updates…** checks right away.
+**Check now** in the Menu's bottom strip (or Ctrl+K "Check for Updates…") checks right away.
 
 ## Where your designs are kept
 

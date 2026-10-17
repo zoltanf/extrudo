@@ -6,18 +6,20 @@ order: 9
 
 # Settings
 
-Open **Settings** from the app menu (four squares) in the top bar (Settings…), with **Ctrl+,**, from Ctrl+K
-("Settings…") or from the app menu on the home screen. The dialog gathers your preferences in one
+Open **Settings** from the Menu (four squares) in the top bar (Settings…), with **Ctrl+,**, from Ctrl+K
+("Settings…") or from the Menu on the home screen. The dialog gathers your preferences in one
 place. They belong to this browser or this computer, never to a design, so a design you send
 someone doesn't carry them.
 
-Everything in it is the same setting you can change where you work: the app menu's checkboxes, the
+Everything in it is the same setting you can change where you work: the Menu's toggles, the
 sketch palette, the Print Info panel and the Export dialog stay as they are, and a change in
 either place shows in the other at once. A reload keeps them.
 
 | Section | What is in it |
 |---|---|
-| **General** | Theme (System, Dark, Light), the radial right-click menu, Customize Marking Menu… |
+| **General** | Theme (System, Dark, Light) |
+| **Plugins** | Install, enable and remove plugins (also Ctrl+K "Plugins…") |
+| **Marking menu** | The radial right-click menu on or off, and the command on each wedge of the ring (also Ctrl+K "Customize Marking Menu…") |
 | **View and navigation** | The mouse buttons preset, projection, visual style, the grid |
 | **Sketch** | Snap to grid, auto-project edges and face outlines, what a sketch shows, Slice |
 | **3D printing** | Material densities, filament diameter, walls, line width, infill, price per kg |

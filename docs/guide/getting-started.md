@@ -115,16 +115,18 @@ There are four ways to a tool, and you will use all of them:
   pointer, with a list under it that depends on what you clicked. In a model the ring has Sketch,
   Extrude, Fillet, Move, Press Pull, Undo, Repeat last and Delete; in a sketch it has Line,
   Rectangle, Circle, Dimension, Trim, Undo, Construction and Finish Sketch. A right-drag still
-  pans. You can remap the wedges under **Settings › Customize Marking Menu…**.
+  pans. You can remap the wedges under **Settings › Marking menu**.
 - **Search** finds every command. `Ctrl+K` opens it in the middle of the window, `S` opens it
   where the pointer is, and the **Search** button in the top bar opens it under the button. Type a
   few letters of a name and press `Enter`. Your pinned commands sit at the top as tiles, up to
   ten; `Shift+Enter` on a result pins or unpins it.
 
-Every tool has its own page in the [tool reference](./tools/index.md). The **Help** menu in the
-top bar links to these pages: **User Guide**, **Tutorials**, **Examples** and **Tool Reference**
-open on the docs site, and **Tutorial** starts the in-app tour. `F1` opens the page of the tool
-under the pointer (hover a toolbar tile first), or the guide when the pointer is over nothing.
+Every tool has its own page in the [tool reference](./tools/index.md). The **Menu** (four squares)
+in the top bar links to these pages in its Learn column: **User Guide**, **Online Tutorials**,
+**Examples** and **Tool Reference** open on the docs site, **Tutorial** starts the in-app tour,
+and **Help for** a tool opens the page of the toolbar tile you hovered last. `F1` opens the page of
+the tool under the pointer (hover a toolbar tile first), or the guide when the pointer is over
+nothing.
 
 ## Undo covers everything
 

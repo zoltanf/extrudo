@@ -56,20 +56,28 @@ brief, voice) is in **`05-brand.md`**. In short:
   the toolbar's tabs, a separator, then search (the search drops from the button
   over a dimmed page; Ctrl+K; R3-05), undo and redo. The project name and the save
   state (a dot and its word) sit together, centred between redo and the
-  right-hand buttons: version history, settings and help (menu: Search…,
-  Tutorial, P3-12). There is no Help menu on the home screen; its bar's About
-  opens the dialog instead (ADR-0085).
-  **Help › About Extrudo** (ADR-0085, also Ctrl+K "About Extrudo", the home
+  right-hand buttons: version history and the **Menu** (four squares; ADR-0090).
+  The Menu opens one panel, as wide as its rail, in three bands:
+  **the rail**, one row of icon controls with a tooltip each — Mouse controls
+  (a segmented control: Crank, Spindle, Glide, Blender, Slicer, Trackpad; the
+  tooltip's hint is the preset's bindings, R3-03; Slicer is disabled until its
+  behaviour lands), a divider, the toggles Auto-project body edges,
+  Auto-project face outline and Radial right-click menu, a second divider and
+  the Theme (System by default, Light, Dark); **two columns**, App (Search…,
+  Settings…, About Extrudo, then Close design on the web or Quit on the
+  desktop) and Learn (Help for \<tool\>, User Guide, Tutorial, Online
+  Tutorials, Examples, Tool Reference); and **the version strip** (a dot and a
+  word for the update state, the version, Check now on the desktop and GitHub).
+  Rail controls leave the panel open; an item runs and closes it. Arrow keys
+  move within a rail group or a column, Tab between them, Escape closes.
+  **About Extrudo** (ADR-0085, also Ctrl+K "About Extrudo", the home
   bar's About and the macOS app
   menu) opens a dialog: the logo (click to replay it being sketched and extruded),
   the version and channel, then Build, Running on and Engines, Copy details, links
-  and the credits. Settings holds Settings…, Plugins… (R3-12), General
-  (auto-project, the Radial right-click menu, Customize Marking Menu…, and **Mouse
-  controls ▸**, a submenu of the presets with each one's bindings under its name, R3-03)
-  and the Theme (System by default, Light, Dark). The tab labels
+  and the credits. The tab labels
   sit on the wordmark's baseline. There is no File menu: its items are the Home
-  tab (on the desktop app also Open File, Save As and Open Recent, and Help has
-  Check for Updates…); Windows and Linux have no native menu bar either, macOS
+  tab (on the desktop app also Open File, Save As and Open Recent, and the Menu's
+  strip has Check now); Windows and Linux have no native menu bar either, macOS
   keeps the system one (ADR-0075). Below 1024 px the wordmark goes; when the title group doesn't fit, the save
   word goes first (the dot stays), then the name truncates (ADR-0079, round 2). Tool tiles are a fixed 64 px wide, an icon over a label of up to two 11 px lines that shows the tool's full
   name when it fits and its short name otherwise (ADR-0079, round 3); a tool has a
@@ -423,8 +431,8 @@ Crank or Glide. Since the right button drags, the right-click marking menu
   (named for a constraint or dimension), Look At Sketch, Fit, Redo,
   Repeat.
 - **Search (P1-14; one dialog since the owner's UI review 3, R3-05):** the
-  dialog "Search", 480 px wide, opens three ways: **Ctrl+K** (and Help ›
-  Search…) at the top centre of the window over a dimmed page, **S** at the
+  dialog "Search", 480 px wide, opens three ways: **Ctrl+K** (and the
+  Menu's Search…) at the top centre of the window over a dimmed page, **S** at the
   pointer with the page left clear, and the top bar's **Search** button
   dropped from the button's bottom-left corner over a dimmed page. It is
   the same everywhere: the search field, the **pinned commands** as tiles,
@@ -789,8 +797,11 @@ or sketch, closing the panel, or the joint going away puts everything back.
 Ctrl+, opens the Settings dialog from anywhere (the app menu's first item, Ctrl+K
 "Settings…", the home screen's app menu). A modal dialog, sections in a list on the
 left and the selected page on the right (below 640 px one column with a select);
-General, View and navigation, Sketch, 3D printing, Export and, on the desktop,
-Desktop. The last section is remembered. Controls are the same state as the
+General, Plugins (install, enable and remove plugins, P6-03; Ctrl+K "Plugins…" opens
+it), Marking menu (the Radial right-click menu switch above the ring editor: a ring
+per mode, a wedge, then the command it runs; Ctrl+K "Customize Marking Menu…" opens
+it), View and navigation, Sketch, 3D printing, Export and, on the desktop,
+Desktop (ADR-0090 §2). The last section is remembered. Controls are the same state as the
 quick ones elsewhere (app menu, sketch palette, Print Info, Export dialog), so
 the dialog never disagrees with them; numbers are `<ExpressionInput>`s with a
 per-field Reset when they differ from the default.
@@ -809,9 +820,9 @@ per-field Reset when they differ from the default.
 - The top bar is a design's (ADR-0079 round 5): the logo, then **About**
   (opens the About dialog, ADR-0085), **Docs** and **GitHub** styled as tabs,
   Docs and GitHub each opening in a new tab
-  (the desktop's browser), and on the right the storage badge and the same app menu
-  (four squares) as in a design, without Customize Marking Menu… and Close design.
-  There is no Help menu on the home screen.
+  (the desktop's browser), and on the right the storage badge and the same Menu
+  panel as in a design, without Search…, Close design and Help for \<tool\>
+  (ADR-0090); its Tutorial starts the tour in a new design.
 - Search and sort. A trash view with restore.
 - The storage indicator warns if persistent storage is not granted.
 
@@ -824,7 +835,7 @@ per-field Reset when they differ from the default.
 - **First run:** an optional tutorial of five steps that build a box: sketch
   on the XY plane, a rectangle, a dimension, extrude, fillet (or shell). It is
   offered by the home screen's "Take the tour" card (once), and started later
-  from Help › Tutorial or Ctrl+K "Tutorial". It runs on an empty design (a design
+  from the Menu's Tutorial or Ctrl+K "Tutorial". It runs on an empty design (a design
   with features gets a new one). A small card hangs under the toolbar control
   to use, which has an accent ring: "Step 2 of 5", a title, one or two
   sentences, Skip step and a close button; Esc closes it while focus is in it.
@@ -843,13 +854,15 @@ per-field Reset when they differ from the default.
   or if the file is missing, the tooltip has its words alone. A toolbar tile's
   tooltip ends with a muted "F1 for more" line (plain text: a tooltip holds no
   link or button; P6-06 S9).
-- **Help menu and F1 (P6-06 S9):** below Tutorial, four items open the docs on
-  the landing site through `Platform.openDocs` — User Guide (shown with the
-  F1 key), Tutorials, Examples and Tool Reference; they are commands too
+- **The Menu panel's Learn column and F1 (P6-06 S9, ADR-0090):** four items
+  open the docs on the landing site through `Platform.openDocs` — User Guide,
+  Online Tutorials, Examples and Tool Reference; they are commands too
   (`docsGuide`, `docsTutorials`, `docsExamples`, `docsTools`), so Ctrl+K and
-  the desktop's Help menu list the same. **F1** (`keymap.help`) opens the docs
-  page of the tool whose toolbar tile was hovered or focused last, or the user
-  guide when none was.
+  the macOS Help menu list the same. The column starts with **Help for
+  \<tool\>** (with F1), named after the tool whose toolbar tile was hovered
+  or focused last, and absent when there is none. **F1** (`keymap.help`) opens
+  the docs page of the tool whose tile is hovered or focused, or the user
+  guide when none is.
 
 ### 7.1 Preparing the design (ADR-0078)
 

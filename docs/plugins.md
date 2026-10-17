@@ -153,7 +153,7 @@ feature, with the plugin's name and version in its tooltip.
 
 ## Installing and using
 
-**Settings (the gear) › Plugins…** (or Ctrl+K "Plugins…"; on macOS also the app menu): *Install…* picks a `.extrudo-plugin`
+**Settings › Plugins** (or Ctrl+K "Plugins…"; on macOS also the app menu's Plugins…): *Install…* picks a `.extrudo-plugin`
 file; the dialog shows its README and license as plain text, and the checkbox
 **Enabled** turns it on or off. Plugins live in the browser's storage (OPFS) or,
 in the desktop app, the user data folder — never in a design. An enabled plugin
@@ -169,7 +169,7 @@ adds:
 A design carries its own copy of every plugin file it uses (an attachment of
 media type `application/x-extrudo-plugin`, named "Name plate 1.0.0"), so it opens
 and recomputes where the plugin is not installed, and editing a feature opens the
-dialog the design's copy describes. In the Plugins dialog, **In this design**
+dialog the design's copy describes. In Settings › Plugins, **In this design**
 lists plugins a design carries that are not installed (*Install*) and plugins
 whose installed version is newer than the design's copy (*Update to 1.2.0*): that
 points every feature of the plugin at the installed file as one undo step. Old

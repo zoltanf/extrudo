@@ -600,7 +600,8 @@ each, `MarkingOverrides`; `useMarkingSlots`) is the third argument of
 `resolveSlots`, where an override takes the command's own label and icon and an
 ID the mode doesn't offer stays dimmed with the ID as its label; the command
 `customizeMarkingMenu` ("Customize Marking Menu…", Panels, no key) opens
-`shell/CustomizeMarkingMenu.tsx` (a ring per mode, a wedge opens the mode's
+Settings › Marking menu, which renders `shell/MarkingMenuEditor.tsx` inline
+(ADR-0090 §2; a ring per mode, a wedge opens the mode's
 command search, Reset wedge / Reset all, written at once; its command lists
 come from `buildCommands` with the `listing` flag in `AppShell`).
 ADR-0043 (P3-02) added chamfer: `packages/core/src/chamfer.ts`
@@ -1005,7 +1006,7 @@ floor, so undo steps it back and any route works; **a new step needs a
 modal, takes no focus, is an `aria-live` region and hangs under the toolbar
 tile `[data-tool="<id>"]` (every tile has `data-tool`; `useTargetBox` polls
 it), Esc closes it while focus is in it. It runs on an empty design: the home
-card, Help › Tutorial and the Ctrl+K command `tutorial` start it (a design
+card, the Menu's Tutorial and the Ctrl+K command `tutorial` start it (a design
 with features gets a new one: `FileActions.startTutorial`, `requestTutorial`
 taken once by `useTutorial`); the `onboarding.tour` preference (`new` shows
 the home card, `started`, `dismissed`, `done`) is all it remembers. An
@@ -2035,7 +2036,7 @@ check 10 s after start, every 6 h and on focus after an hour; **an AppImage
 macOS only `notify`** (version + the release page main builds from the tag;
 never `downloadUpdate`/`quitAndInstall`). Status goes over `update:status`;
 `update:check`, `update:apply` (refused unless `ready`) and `update:release`
-(main opens **its own** URL) take no argument. Help › Check for Updates… is
+(main opens **its own** URL) take no argument. Check for Updates… (the Menu strip's Check now since ADR-0090) is
 main's (`menuTemplate.ts`, disabled where the updater isn't running) and a
 manual check within a minute answers "Extrudo is up to date.". On the renderer
 side **`Platform.updates?: PlatformUpdates`** (`store` with `waiting`/`version`,
@@ -2120,8 +2121,8 @@ design or the file format**. `Platform.plugins` is required: the web's over
 `createPluginProxy` over **one channel `plugin:call`** with the whitelist
 **`PLUGIN_METHODS`** (`list`, `install`, `remove`, `setEnabled`, `bytes`, `read`)
 in `shared/ipc.ts`, answered by `main/plugin-call.ts` (arguments checked, errors
-as data). The **Plugins dialog** (`apps/web/src/plugins/PluginsDialog.tsx`, the
-`dialog` "Plugins", command `plugins` "Plugins…" in File and Ctrl+K; session state
+as data). **Settings › Plugins** (`apps/web/src/plugins/PluginsList.tsx`, `PluginsSection` in the
+`dialog` "Settings" since ADR-0090 §2; command `plugins` "Plugins…" in Ctrl+K opens it; session state
 `createPluginsStore`) installs (`files.pick('.extrudo-plugin')`, a refusal in the
 status line "Plugins status"), enables ("Enabled: <name>"), removes (`alertdialog`
 "Remove <name>?"), shows README/LICENSE **as plain text** and lists a design's
@@ -2218,7 +2219,8 @@ checkboxes, Radial right-click menu, Customize Marking Menu… where a design is
 **Mouse controls ▸**, **Theme ▸**, and last **Quit** (Ctrl+Q, desktop only, `platform.menus`)
 or **Close design** (the web, in a design: back to Home; a page can't close its tab). It reads
 and writes the display settings through `DisplayAccess` (`storeAccess` in a design,
-`preferencesAccess` on Home). `ThemeMenu` is gone. Help ends with **Source on GitHub**. The
+`preferencesAccess` on Home). `ThemeMenu` is gone. (ADR-0090 replaced the dropdown and
+the Help menu with one panel; see its paragraph.) Help ends with **Source on GitHub**. The
 home bar is a design's (h-10, logo 20, wordmark 16 px) with Docs and GitHub as tab-styled
 links that open through the platform (`Platform.openSite`, `openDocs`): the desktop sends
 only the name over `site:open` and main holds the URLs (`SITE_URLS` in `main/docs.ts`), as
@@ -2244,7 +2246,7 @@ S2** added the generated tool reference: `pnpm docs:generate`
 `DEMO_TOOLS`, **notes between the `<!-- notes -->` markers survive
 regeneration**, and `toolDocs.test.ts` fails with "run pnpm docs:generate" when
 the pages are stale. **Slice S9** put the links in the app: the Help menu's
-four docs items and the `help` command (**F1**, the hovered or focused
+(the Menu panel's Learn column since ADR-0090) four docs items and the `help` command (**F1**, the hovered or focused
 toolbar tile's tool page, else the guide) go through **`Platform.openDocs`
 **(required; `shell/docsLinks.ts` builds the `docsPath` results, `VITE_DOCS_URL`
 overridable at build time), and on the desktop over the channel `docs:open`,
@@ -2346,7 +2348,7 @@ stays unchecked; missing bodies are counted, never named. No schema change.
 
 ADR-0085 (the owner, 2026-10-14) **gives every build a version and an About dialog**
 (`apps/web/pwa/build-info.ts`, `src/version.ts`, `src/shell/AboutDialog.tsx`,
-`systemInfo.ts`, `aboutLinks.ts`, `HelpMenu.tsx`, `apps/desktop/src/main/links.ts`).
+`systemInfo.ts`, `aboutLinks.ts`, `AppMenu.tsx` (was `HelpMenu.tsx`), `apps/desktop/src/main/links.ts`).
 Rules: the version is `git describe` from the last `v*` tag: plain `0.6.1` at the
 tag or on stable, `+edge.N` / `+dev.N` build metadata otherwise (never a
 pre-release suffix); `EXTRUDO_CHANNEL` (`edge` | `stable`, else `dev`) is set by the
@@ -2356,8 +2358,8 @@ display only, **documents keep `APP_VERSION`** (the package version, `meta.appVe
 main's allow-list (a test fails otherwise); **links on the desktop go only through
 `Platform.openLink`** (`link:open`, main checks https, no credentials or port, host
 and path prefix); the dialog adds no cross-origin load and no string evaluation; the
-Help menu is `HelpMenu` with optional handlers (an item shows only when its handler is
-given); macOS's About runs the `about` command in the renderer. **Amendment
+Help menu was `HelpMenu` with optional handlers (since ADR-0090 the Menu panel's About
+Extrudo item); macOS's About runs the `about` command in the renderer. **Amendment
 (2026-10-14, merged with ADR-0079 round 5): the home bar's About is a button
 that opens the dialog (the `TopLink` look, `TopLinkButton`), there is no Help
 menu on the home screen (its `menu:run` listener stays for the macOS About),
@@ -2477,3 +2479,39 @@ second paragraph; **a pull request never edits `docs/CHANGELOG.md`** (CI refuses
 it; the release commit's rename in `docs/release-checklist.md` step 2 is the one
 edit, made after `pnpm changelog`), and a fragment whose line is already in the
 changelog is refused, so a folded-in line is not duplicated by re-adding it.
+
+ADR-0090 (P6-10, the owner, 2026-10-17, amended the same day) made **one app menu**:
+`apps/web/src/shell/AppMenu.tsx` (the Radix Popover `dialog` "Menu" behind the
+four-squares `IconButton` "Menu"; `MenuPanel` is the content, rendered alone by
+`AppMenu.test.tsx`), `shell/mouseIcons.tsx` (the preset and ring glyphs), used by
+`AppBar.tsx` and `home/HomeScreen.tsx`; `HelpMenu.tsx` is gone and the bar has no Help
+button. **Rules a change must keep:** one panel, as wide as its rail (`w-max`, capped at
+the window minus 16 px; the columns and the strip are `w-0 min-w-full` so they never
+widen it); three bands: the **rail** (`inline-flex gap-3`: the `radiogroup` "Mouse
+controls" in the order **Crank, Spindle, Glide, Blender, Slicer, Trackpad** — its own
+order, not `NAV_PRESETS`'; Spindle stays the default —, a divider, the three toggles
+Auto-project body edges / face outline / Radial right-click menu with `aria-pressed`, a
+second divider, the `radiogroup` "Theme"), every rail control with a `Tooltip` (label
+"Mouse controls: Crank", hint the preset's `summary` or the toggle's state and Settings
+hint); **Slicer is disabled** (`aria-disabled`, still focusable so its tooltip shows) and
+is **not a `NavPreset`** until its behaviour lands; **two columns always**, `menu`s "App"
+(Search… where commands exist, Settings…, About Extrudo, then Close design on the web /
+Quit on the desktop) and "Learn" (**Help for \<tool\>** first, from
+`lastHoveredTool()` in `Toolbar.tsx` — the last tile hovered or focused, kept after the
+pointer leaves, unlike F1's `toolUnderPointer()` — and the command label, absent when no
+tile was hovered; then User Guide, Tutorial, **Online Tutorials** (the `docsTutorials`
+label everywhere), Examples, Tool Reference); the **strip** `[data-update-strip]`
+(`data-update-word`: "Update ready: <v>" / "Checking…" / "Up to date" / nothing, from
+`UpdateState.waiting` and the new `UpdateState.check` the desktop's `desktopUpdates`
+sets; a dot colour plus the word, never colour alone), the version, **Check now**
+(desktop only, stays open) and **GitHub**. Rail controls change preferences through
+`display.set`, `onThemeChange` and the marking toggle and leave the panel open; an item
+closes it and keeps the focus where it went (`onCloseAutoFocus`); Escape returns it to
+the Menu button. On open the panel itself takes the focus (no tooltip opens); arrows
+move within a group (`rove`, `data-rove`), Tab between groups. The home screen's panel
+has no Search…, Close design or Help for \<tool\>. **§2:** Settings gained the sections
+**Plugins** (`PluginsSection`; Ctrl+K "Plugins…" and macOS's Plugins… open it,
+`SettingsDialog`'s `section` prop) and **Marking menu** (the Radial switch above
+`MarkingMenuEditor`; Ctrl+K "Customize Marking Menu…" opens it; on the home screen the
+editor is replaced by a line, there are no commands); `PluginsDialog` and the
+`CustomizeMarkingMenu` dialog are gone, and General keeps the theme alone.
