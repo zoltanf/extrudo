@@ -753,19 +753,8 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       // face: a geometry operand holding the plane in model space.
       const upTo = base.parameters.some((p) => /^Side[12]Offset$/.test(p.kind));
       if (head.start === 'face' && named.length === 0 && !upTo) {
-        const plane = scope.refs
-          .filter((ref) => seg.typeOf(ref)?.guid === GEOMETRY_OPERAND)
-          .flatMap((ref) => refsOf(ref))
-          .find((q) => seg.typeOf(q)?.guid === MODEL_PLANE);
-        const at =
-          plane !== undefined
-            ? tryDecode(`extrude start plane #${plane}`, () => readModelPlane(seg, plane))
-            : undefined;
-        if (at)
-          named.push({
-            tags: [],
-            surface: { kind: 'plane', point: at.origin, normal: planeNormal(at) },
-          });
+        const plane = tryDecode(`extrude start plane #${id}`, () => startPlane(seg, scope.refs));
+        if (plane) named.push(plane);
       }
       features.push({
         type: 'extrude',
@@ -1333,13 +1322,32 @@ function readEdgeSets(
   });
 }
 
-/** A model plane's unit normal, x × y. */
-function planeNormal({ x, y }: ModelPlane): [number, number, number] {
+/**
+ * An extrude's start plane (an origin or construction plane, not a body face):
+ * the plane in model space a geometry operand among its references holds, as a
+ * face with no tags; undefined when there is none or its axes span no plane.
+ */
+export function startPlane(seg: Segment, refs: number[]): F3dFace | undefined {
+  for (const ref of refs) {
+    if (seg.typeOf(ref)?.guid !== GEOMETRY_OPERAND) continue;
+    const f = seg.frame(ref);
+    const plane = refsIn(seg, f.start, f.end).find((q) => seg.typeOf(q)?.guid === MODEL_PLANE);
+    if (plane === undefined) continue;
+    const at = readModelPlane(seg, plane);
+    const normal = planeNormal(at);
+    return normal ? { tags: [], surface: { kind: 'plane', point: at.origin, normal } } : undefined;
+  }
+  return undefined;
+}
+
+/** A model plane's unit normal, x × y; undefined when its axes span no plane. */
+function planeNormal({ x, y }: ModelPlane): [number, number, number] | undefined {
   const n: [number, number, number] = [
     x[1] * y[2] - x[2] * y[1],
     x[2] * y[0] - x[0] * y[2],
     x[0] * y[1] - x[1] * y[0],
   ];
-  const l = Math.hypot(...n) || 1;
+  const l = Math.hypot(...n);
+  if (!(l > 1e-9)) return undefined;
   return [n[0] / l, n[1] / l, n[2] / l];
 }
