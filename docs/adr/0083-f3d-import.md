@@ -1236,17 +1236,28 @@ with a shown one, 26 are such extrudes; on the 22 bodies of 10 of them (5
 designs) that no later feature changed, each file body's box (its B-rep
 through the writer) is that of the replayed solid the rule names, 22 of 22,
 including a 5-body extrude whose bodies the file numbers out of order in x, y
-and z alike. Where the order can't be told the list is dropped as before (the
-feature then acts on what it meets): another kind of feature (a pattern, a text
-extrude: 2), more than one profile operand, a region whose outline is not
-found or left out, an extent up to a named face, or two centres within 0.01 mm
-on the axis that orders them.
+and z alike. Two centres are a tie on an axis when they are at most 1e-6 mm
+apart (the kernel's own `ORDER_TOLERANCE`), and the next axis decides; on the
+deciding axis, a gap above that but under 0.01 mm (`ORDER_SLACK`: the kernel's
+box of a curved outline is not exact) leaves the order unknown, and so does a
+tie between outlines that run along a spline or an ellipse (their kernel boxes
+are loose, so the kernel may break the tie either way). The order is checked
+on neighbours after sorting. Where the order can't be told the list is dropped
+as before (the feature then acts on what it meets, with a note): another kind
+of feature (a pattern, a text extrude: 2), more than one profile operand, a
+region whose outline is not found or left out, a group with no outline, a
+taper (a tapered outline's box does not move with its centre), an extent up to
+a named face, the order unknown as above, or a file that lists another number
+of bodies for the extrude than its groups (some joined away or deleted: even
+the one left can't be told).
 
 Extrudo's join of several bodies keeps the pieces its tool doesn't bridge
 apart, the largest under the first body's ID and the others under the join's
 own (`splitSolids`), so after such a join the import can't tell which ID is
 which file body: a later feature naming one of them is left to Extrudo's
-default, and none of them is hidden even where the file hides it. The bodies
+default, none of them is hidden even where the file hides it, a "Body to
+Component" that moves one is left out, it stays in the component of the
+feature that made it, and its body link carries no hint. The bodies
 of such a join are named in the order Extrudo's default would join them (the
 earliest made first): naming them in the file's order changed which faces kept
 their names in three designs, and a chamfer after the join lost edges. Tried
@@ -1260,15 +1271,22 @@ bodies, two of them in designs that had matched, came out made differently).
   ran along the sketch normal, which is the other way for 12 extrudes (a face
   looking against the sketch); none of their designs matched.
 - A start on an origin or construction plane is read from the geometry
-  operand that holds it (6 extrudes in 4 designs had no start at all).
+  operand that holds it (6 extrudes in 4 designs had no start at all), only
+  where the extrude names no face and goes up to none (an up-to face would
+  take the operand's place), and not when the plane's axes span no plane. A
+  plane has no outside and its stored axes may face either way, so its
+  `ProfileOffset` runs along the sketch's normal; the corpus can't tell (all
+  6 plane starts have no offset).
 - A cut from a plane face slanted to its sketch (one in the corpus) starts on
   a copy of the sketch moved past the face (to where the whole profile lies on
   the face's outer side) and runs up to the face's plane moved by its
   distance, which is where the file's cut ends. The wedge between the copy and
   the face is outside the body as long as nothing of it stands over the face
-  there; a join or any other slanted start keeps the note it had.
-- An up-to-face offset of an extrude that starts from a face counts the other
-  way (positive ends short of the face).
+  there; a join, a curved face or a slanted start plane keeps the note it
+  had. Its stop plane is made only with the extrude.
+- An up-to-face offset of a one-sided extrude that starts from a face counts
+  the other way (positive ends short of the face). Two-sided extrudes keep the
+  file's sign: none in the corpus starts from a face, so nothing measured it.
 - Up to a face parallel to the start stays a distance. The corpus has 76 such
   extrudes in 37 designs, 74 with a face the import can name; with the named
   face (`to-object`) instead, no design changed its verdict, three moved
@@ -1288,4 +1306,4 @@ body went from editable to anything else. A name tag's two bodies, one merged
 body before, now come out apart but stay frozen (about 1 % off each: their
 text cuts are drawn in a substitute font). Tests: `map.test.ts`
 "the bodies of an extrude that makes several" and "extrude extents from a
-start face".
+start face"; `extrude-start.test.ts` (the start plane).

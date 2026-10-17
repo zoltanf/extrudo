@@ -148,8 +148,10 @@ STEP (2026-10-16):
 - The start is a body face named by a face operand, or an origin or
   construction plane: then the scope holds no face operand but a geometry
   operand (`5A1BF548…`) with the plane in model space (`CC54ECAD…`; normal
-  x × y). 6 such extrudes in 4 designs; in one the body starts 2 mm off the
-  sketch, where that plane is.
+  x × y). 6 such extrudes in 4 designs, none going up to a face; in one the
+  body starts 2 mm off the sketch, where that plane is. None of the 6 has a
+  `ProfileOffset`, so which way a plane's offset runs is not known (the
+  import takes the sketch normal: a plane's stored x × y may face either way).
 - `ProfileOffset` from a start face runs along the face's normal, so against
   the sketch normal where the face looks the other way: 12 extrudes of the
   corpus have such a face and an offset, and none of their designs matched
@@ -159,8 +161,9 @@ STEP (2026-10-16):
   runs along the sketch normal (the direction vector above), from where the
   profile meets the face, and ends on the face's plane moved by the distance
   along the sweep; replayed that way the design matches its STEP to 4e-11.
-- An up-to-face offset (`Side1Offset`) of an extrude that starts from a face
-  counts the other way: positive ends short of the face. The 5 such extrudes
+- An up-to-face offset (`Side1Offset`) of a one-sided extrude that starts
+  from a face counts the other way: positive ends short of the face (no
+  two-sided extrude in the corpus starts from a face). The 5 such extrudes
   with an offset (4 designs) end short (a body's end face 1 mm before the
   target in the file's own B-rep); the 6 designs whose extrudes start on the
   profile plane with an offset match with positive past the face.
