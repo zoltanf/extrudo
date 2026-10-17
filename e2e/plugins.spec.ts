@@ -3,11 +3,11 @@ import { expect, type Page, test } from '@playwright/test';
 import { readArchive } from '../packages/storage/src/archive';
 import { writePluginFile } from '../packages/storage/src/plugin-file';
 import { chip, exportProject, primitive } from './benchmark-helpers';
-import { appMenu, kernelReady, openProject, projector, selectTab } from './helpers';
+import { kernelReady, openProject, projector, selectTab } from './helpers';
 
 // Installed plugins and plugin commands (P6-03 slice 2, ADR-0077 §4-§5): the
 // example plugin (`examples/plugins/name-plate/`) packed here, installed
-// through the Plugins dialog, disabled and enabled, and its "Three holes"
+// through Settings › Plugins, disabled and enabled, and its "Three holes"
 // command run from Ctrl+K on a Box: the handler runs in the kernel worker's
 // sandbox and its two features (a sketch and a cut) go in as one undo step.
 
@@ -23,14 +23,17 @@ const pluginFile = () =>
     }),
   );
 
-const dialog = (page: Page) => page.getByRole('dialog', { name: 'Plugins' });
+const dialog = (page: Page) => page.getByRole('dialog', { name: 'Settings' });
 const palette = (page: Page) => page.getByRole('dialog', { name: 'Search', exact: true });
 
-/** Opens the Plugins dialog from the app menu (R3-12: it left the Home tab). */
+/** Ctrl+K "Plugins…" opens Settings at its Plugins section (ADR-0090 §2). */
 async function openPlugins(page: Page) {
-  await appMenu(page).click();
-  await page.getByRole('menuitem', { name: 'Plugins…' }).click();
+  await search(page, 'plugins');
+  await palette(page)
+    .getByRole('option', { name: /^Plugins…/ })
+    .click();
   await expect(dialog(page)).toBeVisible();
+  await expect(dialog(page).locator('[data-settings-page="plugins"]')).toBeVisible();
 }
 
 /** The palette's options for a search, by accessible name. */

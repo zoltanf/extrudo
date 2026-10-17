@@ -30,7 +30,6 @@ import {
 } from '../design-system';
 import { requestTutorial, tourOffered, writeTour } from '../onboarding/state';
 import type { Persistence, Platform } from '../platform';
-import { PluginsDialog } from '../plugins/PluginsDialog';
 import { createPluginsStore } from '../plugins/plugins';
 import {
   createProject,
@@ -41,6 +40,7 @@ import {
 } from '../project/actions';
 import { exampleHref, navigate, projectHref } from '../routes';
 import { preferencesAccess } from '../settings/displaySettings';
+import type { SectionId } from '../settings/inventory';
 import { SettingsDialog } from '../settings/SettingsDialog';
 import { AboutDialog } from '../shell/AboutDialog';
 import { AppMenu } from '../shell/AppMenu';
@@ -62,12 +62,19 @@ type Sort = 'modified' | 'name';
 export function HomeScreen({ platform }: { platform: Platform }) {
   const { choice, setChoice } = useTheme(platform.preferences);
   const marking = useMarkingStyle(platform.preferences);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState<boolean | SectionId>(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   // macOS's application menu › About Extrudo runs the `about` command in the renderer; the
   // home screen has no commands, so it answers that one id (ADR-0085).
-  useEffect(() => platform.menus?.onRun((id) => id === 'about' && setAboutOpen(true)), [platform]);
-  const [pluginsOpen, setPluginsOpen] = useState(false);
+  // Plugins… there opens Settings at its Plugins section (ADR-0090 §2).
+  useEffect(
+    () =>
+      platform.menus?.onRun((id) => {
+        if (id === 'about') setAboutOpen(true);
+        if (id === 'plugins') setSettingsOpen('plugins');
+      }),
+    [platform],
+  );
   const plugins = useMemo(() => createPluginsStore(platform.plugins), [platform]);
   const display = preferencesAccess(platform.preferences);
   const shortcuts = useMemo(
@@ -193,19 +200,10 @@ export function HomeScreen({ platform }: { platform: Platform }) {
               if (radial !== marking.radial) marking.toggle();
             }}
             onSettings={() => setSettingsOpen(true)}
-            onPlugins={() => setPluginsOpen(true)}
             onQuit={platform.menus ? () => platform.menus?.quit() : undefined}
           />
         </div>
       </header>
-      <PluginsDialog
-        open={pluginsOpen}
-        onOpenChange={setPluginsOpen}
-        plugins={plugins}
-        files={platform.files}
-        inDesign={noDesignPlugins}
-        onUpdate={noDesignPlugins}
-      />
 
       <AboutDialog
         open={aboutOpen}
@@ -215,8 +213,15 @@ export function HomeScreen({ platform }: { platform: Platform }) {
       />
 
       <SettingsDialog
-        open={settingsOpen}
+        open={settingsOpen !== false}
         onOpenChange={setSettingsOpen}
+        section={typeof settingsOpen === 'string' ? settingsOpen : undefined}
+        plugins={{
+          plugins,
+          files: platform.files,
+          inDesign: noDesignPlugins,
+          onUpdate: noDesignPlugins,
+        }}
         preferences={platform.preferences}
         display={display}
         theme={choice}

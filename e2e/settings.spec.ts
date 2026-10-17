@@ -16,6 +16,8 @@ test('Ctrl+, opens Settings and every section opens', async ({ page }) => {
   await expect(page.locator('[data-settings-page="general"]')).toBeVisible();
 
   for (const [id, heading] of [
+    ['plugins', 'Plugins'],
+    ['marking', 'Marking menu'],
     ['view', 'View and navigation'],
     ['sketch', 'Sketch'],
     ['printing', '3D printing'],
@@ -37,6 +39,29 @@ test('Ctrl+, opens Settings and every section opens', async ({ page }) => {
   await appMenu(page).click();
   await page.getByRole('menuitem', { name: /^Settings…/ }).click();
   await expect(page.locator('[data-settings-page="sketch"]')).toBeVisible();
+});
+
+test('Plugins… and Customize Marking Menu… open their Settings sections', async ({ page }) => {
+  await openProject(page);
+  await kernelReady(page);
+  await page.keyboard.press('Control+k');
+  await page.getByRole('combobox', { name: 'Search commands' }).fill('plugins');
+  await page.getByRole('option', { name: /^Plugins…/ }).click();
+  await expect(page.locator('[data-settings-page="plugins"]')).toBeVisible();
+  await expect(dialog(page).getByRole('button', { name: 'Install…' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog(page)).toBeHidden();
+
+  // The ring editor is inline on the Marking menu page, under the Radial switch.
+  await page.keyboard.press('Control+k');
+  await page.getByRole('combobox', { name: 'Search commands' }).fill('customize marking');
+  await page.getByRole('option', { name: /^Customize Marking Menu/ }).click();
+  const marking = page.locator('[data-settings-page="marking"]');
+  await expect(marking).toBeVisible();
+  await expect(marking.getByRole('checkbox', { name: 'Radial right-click menu' })).toBeChecked();
+  await expect(marking.getByRole('region', { name: 'Customize Marking Menu' })).toBeVisible();
+  await section(page, 'general').click();
+  await expect(dialog(page).getByRole('button', { name: /Customize Marking Menu/ })).toHaveCount(0);
 });
 
 test('PLA density: a tweak shows in Print Info and the weight, Reset brings 1.24 back', async ({
@@ -92,6 +117,7 @@ test('Radial right-click menu matches the gear menu; the theme applies at once',
   await openProject(page);
   await kernelReady(page);
   await page.keyboard.press('Control+,');
+  await section(page, 'marking').click();
   const radial = dialog(page).getByRole('checkbox', { name: 'Radial right-click menu' });
   await expect(radial).toBeChecked();
   await radial.uncheck();
@@ -104,6 +130,7 @@ test('Radial right-click menu matches the gear menu; the theme applies at once',
   await page.keyboard.press('Escape');
 
   await page.keyboard.press('Control+,');
+  await section(page, 'general').click();
   await dialog(page).getByRole('radio', { name: 'Light' }).check();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await dialog(page).getByRole('radio', { name: 'Dark' }).check();

@@ -58,7 +58,7 @@ export interface FileActions {
   saveToLinkedFolder?(): void;
   /** Opens a new design with the tutorial running (P3-12), for a design that isn't empty. */
   startTutorial?(): void;
-  /** Opens the Plugins dialog: install, enable, remove (P6-03 slice 2, ADR-0077 §6). */
+  /** Opens Settings › Plugins: install, enable, remove (P6-03 slice 2, ADR-0090 §2). */
   plugins?(): void;
 }
 
@@ -77,8 +77,6 @@ export interface AppBarProps {
   onSearch(at?: { x: number; y: number }): void;
   /** The view's display settings: the app menu's General and Mouse controls read and write them. */
   display: DisplayAccess;
-  /** Opens "Customize Marking Menu…". */
-  onCustomizeMarking(): void;
   /** Starts the tutorial (P3-12). */
   onTutorial(): void;
   /** Opens a docs page (P6-06 S9): the Help menu's items, through the platform. */
@@ -135,7 +133,6 @@ export function AppBar({
   markingRadial,
   onMarkingRadial,
   display,
-  onCustomizeMarking,
   onSettings,
   onSource,
   onQuit,
@@ -200,11 +197,9 @@ export function AppBar({
           display={display}
           theme={theme}
           onThemeChange={onThemeChange}
-          onCustomizeMarking={onCustomizeMarking}
           markingRadial={markingRadial}
           onMarkingRadial={onMarkingRadial}
           onSettings={onSettings}
-          onPlugins={file.plugins}
           onQuit={onQuit}
           onCloseDesign={onCloseDesign}
         />

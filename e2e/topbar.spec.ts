@@ -246,14 +246,7 @@ test('the app menu: Settings, Plugins, the submenus, then Close design on the we
   const names = await items.evaluateAll((els) =>
     els.map((el) => (el.textContent ?? '').replace(/Ctrl.*$|▸/g, '').trim()),
   );
-  expect(names).toEqual([
-    'Settings…',
-    'Plugins…',
-    'Behaviour',
-    'Mouse controls',
-    'Theme',
-    'Close design',
-  ]);
+  expect(names).toEqual(['Settings…', 'Behaviour', 'Mouse controls', 'Theme', 'Close design']);
   await expect(page.getByRole('menuitem', { name: /^Quit/ })).toHaveCount(0);
   await page.getByRole('menuitem', { name: 'Close design' }).click();
   await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
@@ -267,7 +260,7 @@ test('Behaviour holds the general options, Theme the theme', async ({ page }) =>
   const face = menu.getByRole('menuitemcheckbox', { name: 'Auto-project face outline' });
   await expect(body).toBeChecked();
   await expect(face).not.toBeChecked();
-  await expect(menu.getByRole('menuitem', { name: 'Customize Marking Menu…' })).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: 'Customize Marking Menu…' })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('menu')).toHaveCount(0);
 
@@ -293,10 +286,6 @@ test('Behaviour holds the general options, Theme the theme', async ({ page }) =>
   await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.getByRole('checkbox', { name: 'Auto-project', exact: true })).toBeChecked();
   await expect(page.getByRole('checkbox', { name: 'Auto-project face outline' })).toBeChecked();
-
-  menu = await appSubmenu(page, 'Behaviour');
-  await chooseInMenu(menu, 'menuitem', 'Customize Marking Menu…');
-  await expect(page.getByRole('region', { name: 'Customize Marking Menu' })).toBeVisible();
 });
 
 test('Behaviour has the Radial right-click menu, in step with the command', async ({ page }) => {
@@ -304,13 +293,7 @@ test('Behaviour has the Radial right-click menu, in step with the command', asyn
   await openProject(page);
   let menu = await appSubmenu(page, 'Behaviour');
   const radial = menu.getByRole('menuitemcheckbox', { name: 'Radial right-click menu' });
-  const customize = menu.getByRole('menuitem', { name: 'Customize Marking Menu…' });
   await expect(radial).toBeChecked();
-  // It sits just above Customize Marking Menu….
-  const above = (await radial.boundingBox()) as { y: number; height: number };
-  const below = (await customize.boundingBox()) as { y: number };
-  expect(below.y).toBeGreaterThan(above.y);
-  expect(below.y - (above.y + above.height)).toBeLessThan(12);
 
   // The checkbox changes what the command offers…
   await chooseInMenu(menu, 'menuitemcheckbox', 'Radial right-click menu');
@@ -348,12 +331,8 @@ test('the home screen has the same bar: About, Docs, GitHub and the app menu', a
   await expect(header(page).getByRole('button', { name: 'Theme', exact: true })).toHaveCount(0);
   await appMenu(page).click();
   await expect(page.getByRole('menuitem', { name: /^Settings…/ })).toBeVisible();
-  await expect(page.getByRole('menuitem', { name: 'Plugins…' })).toBeVisible();
-  // Nothing to close here, and no design's commands to customize.
+  // Nothing to close here.
   await expect(page.getByRole('menuitem', { name: 'Close design' })).toHaveCount(0);
-  await page.keyboard.press('Escape');
-  const menu = await appSubmenu(page, 'Behaviour');
-  await expect(menu.getByRole('menuitem', { name: 'Customize Marking Menu…' })).toHaveCount(0);
   await page.keyboard.press('Escape');
 });
 

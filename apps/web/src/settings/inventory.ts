@@ -6,7 +6,15 @@
  * The `viewport` preference is one object of display settings; its fields are listed as
  * `viewport.<field>`.
  */
-export type SectionId = 'general' | 'view' | 'sketch' | 'printing' | 'export' | 'desktop';
+export type SectionId =
+  | 'general'
+  | 'plugins'
+  | 'marking'
+  | 'view'
+  | 'sketch'
+  | 'printing'
+  | 'export'
+  | 'desktop';
 
 export interface SectionInfo {
   id: SectionId;
@@ -23,8 +31,21 @@ export const SECTIONS: readonly SectionInfo[] = [
   {
     id: 'general',
     label: 'General',
-    summary: 'Appearance and the right-click menu.',
-    keys: ['theme', 'marking.radial', 'marking.slots'],
+    summary: 'Appearance.',
+    keys: ['theme'],
+  },
+  {
+    // Installed plugins live in the platform's plugin store, not in preferences (ADR-0090 §2).
+    id: 'plugins',
+    label: 'Plugins',
+    summary: 'Install, enable and remove plugins.',
+    keys: [],
+  },
+  {
+    id: 'marking',
+    label: 'Marking menu',
+    summary: 'The right-click menu: a ring or a list, and the command on each wedge.',
+    keys: ['marking.radial', 'marking.slots'],
   },
   {
     id: 'view',

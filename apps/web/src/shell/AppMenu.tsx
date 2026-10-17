@@ -1,13 +1,4 @@
-import {
-  LayoutGrid,
-  LogOut,
-  Mouse,
-  Palette,
-  Puzzle,
-  Settings,
-  SlidersHorizontal,
-  X,
-} from 'lucide-react';
+import { LayoutGrid, LogOut, Mouse, Palette, Settings, SlidersHorizontal, X } from 'lucide-react';
 import { keysFor } from '../commands/keymap';
 import { shortcutLabel } from '../commands/shortcuts';
 import {
@@ -33,10 +24,6 @@ export interface AppMenuProps {
   onMarkingRadial(radial: boolean): void;
   /** Opens the Settings dialog (ADR-0082). */
   onSettings(): void;
-  /** Opens the Plugins dialog (R3-12). */
-  onPlugins?: (() => void) | undefined;
-  /** Opens "Customize Marking Menu…"; absent where no commands exist (the home screen). */
-  onCustomizeMarking?: (() => void) | undefined;
   /** Desktop only: saves everything, then quits. */
   onQuit?: (() => void) | undefined;
   /** The web's stand-in for Quit inside a design (a page can't close its tab): back to Home. */
@@ -60,8 +47,6 @@ export function AppMenu({
   markingRadial,
   onMarkingRadial,
   onSettings,
-  onPlugins,
-  onCustomizeMarking,
   onQuit,
   onCloseDesign,
 }: AppMenuProps) {
@@ -83,11 +68,6 @@ export function AppMenu({
       >
         Settings…
       </MenuItem>
-      {onPlugins && (
-        <MenuItem icon={<Puzzle size={14} />} onSelect={onPlugins}>
-          Plugins…
-        </MenuItem>
-      )}
       <MenuSeparator />
       <MenuSub label="Behaviour" icon={<SlidersHorizontal size={14} />}>
         <MenuCheckboxItem checked={autoProject} onChange={(v) => display.set({ autoProject: v })}>
@@ -102,9 +82,6 @@ export function AppMenu({
         <MenuCheckboxItem checked={markingRadial} onChange={onMarkingRadial}>
           Radial right-click menu
         </MenuCheckboxItem>
-        {onCustomizeMarking && (
-          <MenuItem onSelect={onCustomizeMarking}>Customize Marking Menu…</MenuItem>
-        )}
       </MenuSub>
       {/* Each preset says what it binds before it is chosen (R3-03). The Settings
           dialog's "Mouse buttons" is the same preference. */}

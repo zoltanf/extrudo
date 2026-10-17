@@ -603,6 +603,8 @@ test('a wedge can be given another command, kept across a reload and reset (P4-1
   await page.keyboard.press('Control+k');
   await page.getByRole('combobox', { name: 'Search commands' }).fill('customize marking');
   await page.getByRole('option', { name: /^Customize Marking Menu/ }).click();
+  // Settings › Marking menu (ADR-0090 §2): the editor is inline on the section's page.
+  await expect(page.locator('[data-settings-page="marking"]')).toBeVisible();
   const dialog = page.getByRole('region', { name: 'Customize Marking Menu' });
   await expect(dialog).toBeVisible();
 

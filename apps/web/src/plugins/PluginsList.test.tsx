@@ -1,9 +1,9 @@
-// The Plugins dialog's list (P6-03 slice 2), rendered without stores.
+// Settings › Plugins' list (P6-03 slice 2), rendered without stores.
 import { readPluginFile } from '@extrudo/storage';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '../design-system';
-import { PluginsList, type PluginsListProps } from './PluginsDialog';
+import { PluginsList, type PluginsListProps } from './PluginsList';
 import type { DesignPlugin, PluginEntry } from './plugins';
 import { pluginBytes } from './testing';
 
@@ -38,7 +38,7 @@ const markup = (over: Partial<PluginsListProps> = {}) =>
     </TooltipProvider>,
   );
 
-describe('the Plugins dialog', () => {
+describe('Settings › Plugins', () => {
   it('lists a plugin with its version, description, Enabled and Remove', () => {
     const html = markup();
     expect(html).toContain('aria-label="Installed plugins"');

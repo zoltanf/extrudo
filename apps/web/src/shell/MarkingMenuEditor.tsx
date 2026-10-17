@@ -7,7 +7,6 @@ import {
   SKETCH_SLOTS,
 } from '../commands/marking';
 import { searchCommands } from '../commands/search';
-import { FloatingDialog } from '../design-system';
 import {
   RING_INNER,
   RING_OUTER,
@@ -17,7 +16,8 @@ import {
 } from '../design-system/marking';
 import type { AppCommand } from './commands';
 
-type Mode = 'model' | 'sketch';
+export type MarkingMode = 'model' | 'sketch';
+type Mode = MarkingMode;
 
 const MODES: readonly { mode: Mode; label: string }[] = [
   { mode: 'model', label: 'Model' },
@@ -28,9 +28,7 @@ const TABLES = { model: MODEL_SLOTS, sketch: SKETCH_SLOTS } as const;
 const BUTTON = { width: 92, height: 44 };
 const RADIUS = (RING_INNER + RING_OUTER) / 2;
 
-export interface CustomizeMarkingMenuProps {
-  open: boolean;
-  onClose(): void;
+export interface MarkingMenuEditorProps {
   overrides: MarkingOverrides;
   /** The commands each mode offers (`buildCommands` for that mode). */
   commands: Readonly<Record<Mode, readonly AppCommand[]>>;
@@ -41,28 +39,17 @@ export interface CustomizeMarkingMenuProps {
 }
 
 /**
- * Customize Marking Menu (P4-12, ADR-0042's amendment): a ring for each mode
- * with the current command of every wedge. Click a wedge, search the commands
- * the mode offers, pick one: the preference changes at once, there is no OK.
+ * Customize Marking Menu (P4-12, ADR-0042's amendment; Settings › Marking menu since
+ * ADR-0090): a ring for each mode with the current command of every wedge. Click a wedge,
+ * search the commands the mode offers, pick one: the preference changes at once, there is
+ * no OK.
  */
-export function CustomizeMarkingMenu(props: CustomizeMarkingMenuProps) {
-  return (
-    <FloatingDialog
-      open={props.open}
-      onOpenChange={(next) => {
-        if (!next) props.onClose();
-      }}
-      title="Customize Marking Menu"
-      width={600}
-      maxHeight={640}
-      dim
-    >
-      {props.open && <Body {...props} />}
-    </FloatingDialog>
-  );
-}
-
-function Body({ overrides, commands, assign, resetAll }: CustomizeMarkingMenuProps) {
+export function MarkingMenuEditor({
+  overrides,
+  commands,
+  assign,
+  resetAll,
+}: MarkingMenuEditorProps) {
   const [mode, setMode] = useState<Mode>('model');
   const [picking, setPicking] = useState<number>();
   const resolved = useMemo(

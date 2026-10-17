@@ -3,7 +3,7 @@
  * session state over the platform's `PluginStore` — the list with each
  * plugin's file read (its manifest, README and license), refreshed after every
  * change — and the plugins a design carries that aren't installed ("Install
- * from this design"). The Plugins dialog draws it, and the shell builds the
+ * from this design"). Settings › Plugins draws it, and the shell builds the
  * plugin commands from the enabled ones' manifests.
  */
 import {

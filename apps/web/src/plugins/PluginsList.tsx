@@ -1,7 +1,7 @@
 import { Download, Trash2, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useStore } from 'zustand';
-import { Button, ConfirmDialog, Dialog, IconButton } from '../design-system';
+import { Button, ConfirmDialog, IconButton } from '../design-system';
 import type { FileAccess } from '../platform';
 import type { DesignPlugin, PluginEntry, PluginsStore } from './plugins';
 
@@ -22,7 +22,7 @@ export interface PluginsListProps {
 }
 
 /**
- * The Plugins dialog's body (P6-03 slice 2, ADR-0077 §6): Install…, a status
+ * Settings › Plugins' body (P6-03 slice 2, ADR-0077 §6, ADR-0090 §2): Install…, a status
  * line, the installed plugins — name, version, description, the "Enabled"
  * checkbox, Remove and their details (the README as **plain text**, the
  * commands and features with their labels and hints, the license) — and the
@@ -237,30 +237,21 @@ function InstalledRow({
   );
 }
 
-export interface PluginsDialogProps {
-  open: boolean;
-  onOpenChange(open: boolean): void;
+export interface PluginsSectionProps {
   plugins: PluginsStore;
   files: FileAccess;
-  /** The plugins the open design carries that aren't installed, asked when the dialog opens. */
+  /** The plugins the open design carries that aren't installed, asked when the section shows. */
   inDesign(): Promise<DesignPlugin[]>;
   /** "Update to <version>": points the design's features at the installed file (one undo step). */
   onUpdate(plugin: DesignPlugin): Promise<string>;
 }
 
 /**
- * The Plugins dialog (P6-03 slice 2): File › Plugins… and Ctrl+K "Plugins…".
- * Installing picks a `.extrudo-plugin` file; a refused file says why in the
+ * Settings › Plugins (P6-03 slice 2, ADR-0090 §2): the Plugins section's page, Ctrl+K
+ * "Plugins…". Installing picks a `.extrudo-plugin` file; a refused file says why in the
  * status line (a toast would sit behind the modal dialog). Remove asks first.
  */
-export function PluginsDialog({
-  open,
-  onOpenChange,
-  plugins,
-  files,
-  inDesign,
-  onUpdate,
-}: PluginsDialogProps) {
+export function PluginsSection({ plugins, files, inDesign, onUpdate }: PluginsSectionProps) {
   const installed = useStore(plugins, (s) => s.installed);
   const status = useStore(plugins, (s) => s.status);
   const refused = useStore(plugins, (s) => s.refused);
@@ -270,7 +261,7 @@ export function PluginsDialog({
 
   // What the design carries depends on what is installed: ask again after every change.
   useEffect(() => {
-    if (!open || installed === undefined) return;
+    if (installed === undefined) return;
     let current = true;
     inDesign().then(
       (list) => current && setDesign(list),
@@ -279,11 +270,9 @@ export function PluginsDialog({
     return () => {
       current = false;
     };
-  }, [open, installed, inDesign]);
+  }, [installed, inDesign]);
 
-  useEffect(() => {
-    if (open) void plugins.getState().refresh();
-  }, [open, plugins]);
+  useEffect(() => void plugins.getState().refresh(), [plugins]);
 
   const run = async (task: () => Promise<unknown>) => {
     if (busy) return;
@@ -296,13 +285,11 @@ export function PluginsDialog({
   };
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title="Plugins"
-      description="Plugins add commands that build features in your design. They run sandboxed and can only add features."
-      size="medium"
-    >
+    <>
+      <p className="mb-3 text-sm text-muted">
+        Plugins add commands that build features in your design. They run sandboxed and can only add
+        features.
+      </p>
       <PluginsList
         installed={installed}
         inDesign={design}
@@ -342,6 +329,6 @@ export function PluginsDialog({
           if (id) void run(() => plugins.getState().remove(id));
         }}
       />
-    </Dialog>
+    </>
   );
 }

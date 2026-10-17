@@ -13,6 +13,7 @@ import {
   type Preferences,
 } from '../platform';
 import { SLICERS, type SlicerId } from '../platform/slicer';
+import { PluginsSection, type PluginsSectionProps } from '../plugins/PluginsList';
 import {
   checkPrintField,
   DEFAULT_MATERIAL,
@@ -26,6 +27,7 @@ import {
   withoutDensity,
 } from '../print/material';
 import { materialStore, useMaterialChoice } from '../print/materialStore';
+import { MarkingMenuEditor, type MarkingMenuEditorProps } from '../shell/MarkingMenuEditor';
 import { NAV_PRESETS } from '../viewport/navigation';
 import { VISUAL_STYLES, type ViewportSettings } from '../viewport/store';
 import { type DisplayAccess, useDisplaySettings } from './displaySettings';
@@ -57,13 +59,17 @@ export interface SettingsDialogProps {
   onThemeChange(choice: ThemeChoice): void;
   markingRadial: boolean;
   onMarkingRadial(): void;
-  /** Absent where there is no marking menu to customize (the home screen). */
-  onCustomizeMarking?: () => void;
+  /** The ring editor's state; absent where there are no commands to put on it (the home screen). */
+  marking?: MarkingMenuEditorProps | undefined;
   /** The desktop build: shows the Desktop section. */
   desktop: boolean;
   installedSlicers?: Platform['installedSlicers'];
   /** The desktop MCP server (P6-08): its switch, port, status and client config. */
   agent?: AgentBridge | undefined;
+  /** The Plugins section's stores and handlers (ADR-0090 §2). */
+  plugins: PluginsSectionProps;
+  /** A section to show each time the dialog opens (Ctrl+K "Plugins…"); else the last one. */
+  section?: SectionId | undefined;
 }
 
 /**
@@ -86,6 +92,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
     setSection(id);
     preferences.set(SECTION_KEY, id);
   };
+  const requested = props.section;
+  useEffect(() => {
+    if (open && requested) setSection(requested);
+  }, [open, requested]);
   const current = sections.find((s) => s.id === section) ?? (sections[0] as SectionInfo);
   return (
     <Dialog
@@ -143,20 +153,21 @@ export function SettingsDialog(props: SettingsDialogProps) {
         >
           <h3 className="text-base font-semibold">{current.label}</h3>
           <p className="mb-4 text-sm text-muted">{current.summary}</p>
-          <Page id={current.id} {...props} onClose={() => onOpenChange(false)} />
+          <Page id={current.id} {...props} />
         </section>
       </div>
     </Dialog>
   );
 }
 
-function Page({
-  id,
-  ...props
-}: SettingsDialogProps & { id: SectionId; onClose(): void }): ReactNode {
+function Page({ id, ...props }: SettingsDialogProps & { id: SectionId }): ReactNode {
   switch (id) {
     case 'general':
       return <General {...props} />;
+    case 'plugins':
+      return <PluginsSection {...props.plugins} />;
+    case 'marking':
+      return <MarkingPage {...props} />;
     case 'view':
       return <View display={props.display} />;
     case 'sketch':
@@ -227,14 +238,7 @@ function Heading({ children }: { children: ReactNode }) {
 
 // ------------------------------------------------------------------ pages
 
-function General({
-  theme,
-  onThemeChange,
-  markingRadial,
-  onMarkingRadial,
-  onCustomizeMarking,
-  onClose,
-}: SettingsDialogProps & { onClose(): void }) {
+function General({ theme, onThemeChange }: SettingsDialogProps) {
   return (
     <>
       <Heading>Appearance</Heading>
@@ -261,24 +265,27 @@ function General({
           ))}
         </fieldset>
       </Row>
-      <Heading>Right-click menu</Heading>
+    </>
+  );
+}
+
+/** The switch, then the ring editor inline (ADR-0090 §2: it was a dialog of its own). */
+function MarkingPage({ markingRadial, onMarkingRadial, marking }: SettingsDialogProps) {
+  return (
+    <>
       <Check
         label="Radial right-click menu"
         checked={markingRadial}
         onChange={() => onMarkingRadial()}
         hint="A ring of eight commands around the pointer. Off draws one plain list."
       />
-      {onCustomizeMarking && (
-        <div className="py-1.5">
-          <Button
-            onClick={() => {
-              onClose();
-              onCustomizeMarking();
-            }}
-          >
-            Customize Marking Menu…
-          </Button>
+      <Heading>Commands on the ring</Heading>
+      {marking ? (
+        <div className="flex h-[440px] flex-col rounded-control border border-line">
+          <MarkingMenuEditor {...marking} />
         </div>
+      ) : (
+        <p className="text-sm text-muted">Open a design to choose the command on each wedge.</p>
       )}
     </>
   );
