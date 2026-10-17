@@ -25,8 +25,10 @@ a button.
 
 The four-squares button ("Menu") opens a **panel** instead of a dropdown list.
 The Help button leaves the top bar. The panel is a Radix Popover anchored to the
-button (`align="end"`), `role="dialog"` named "Menu", 480 px wide (never wider
-than the window minus 16 px), with three bands from top to bottom:
+button (`align="end"`), `role="dialog"` named "Menu", **as wide as its rail**:
+the rail's controls and dividers set the width (about 460 px; the columns and
+the strip take that width, and it never exceeds the window minus 16 px), with
+three bands from top to bottom:
 
 1. **The rail**: one horizontal line of icon controls, left to right:
    - **Mouse controls**, a segmented control (`radiogroup` "Mouse controls",
@@ -43,9 +45,10 @@ than the window minus 16 px), with three bands from top to bottom:
    - A divider, then the three **toggles** as icon buttons with `aria-pressed`:
      Auto-project body edges, Auto-project face outline, Radial right-click
      menu (the same state as today's checkboxes and commands).
-   - Space, then **Theme** at the right edge: a segmented control
-     (`radiogroup` "Theme", radios System, Light, Dark; icons monitor, sun,
-     moon).
+   - A second divider, the same as the first, then **Theme** at the right
+     edge: a segmented control (`radiogroup` "Theme", radios System, Light,
+     Dark; icons monitor, sun, moon). The three groups and two dividers sit
+     with even gaps; nothing stretches.
    Every rail control has the app's `Tooltip`: the control's name as the label
    ("Mouse controls: Crank", "Auto-project body edges", "Theme: Dark") and a
    hint (the preset's bindings from `NAV_PRESETS[].summary`; the toggle's
@@ -80,8 +83,12 @@ keyboard and named for a screen reader.
   General, rendering the existing `PluginsList`). The `plugins` command, Ctrl+K
   "Plugins…" and the macOS app menu's Plugins… open Settings at that section;
   the standalone `PluginsDialog` goes.
-- **Customize Marking Menu…** is the Settings › General button alone (it
-  already exists); the menu item goes.
+- **Customize Marking Menu…** becomes a Settings section too ("Marking menu",
+  after Plugins): the ring editor and its command list render inline on the
+  section's page, with the "Radial right-click menu" switch above them (it
+  leaves General). The menu item and General's button go; the
+  `customizeMarking` command (Ctrl+K) opens Settings at that section; the
+  standalone dialog goes.
 - The **Help button** goes from the top bar. The home screen's header keeps its
   About, Docs and GitHub tabs and gets the same panel (no Close design, no Help
   for \<tool\>).
@@ -107,6 +114,9 @@ keyboard and named for a screen reader.
   furthest from a menu; the owner kept only its version strip.
 - **Stacking the two columns on narrow windows:** the owner wants the two
   columns always; the panel shrinks to the window instead.
+- **A fixed 480 px panel with the Theme group pushed to the edge by empty
+  space:** the owner wants the width to come from the rail, so the controls
+  read as one even row with a divider on each side of the toggles.
 - **Making Slicer selectable before it works** (mapping it to Spindle's
   bindings): a preset that does not do what its tooltip says is worse than a
   disabled one.
@@ -119,6 +129,13 @@ keyboard and named for a screen reader.
   `chooseInMenu` give way to helpers that pick a rail radio, press a rail toggle
   or pick a column item (`docs/agent/e2e-notes.md`). Screenshot baselines that
   show the top bar change (the Help button is gone).
-- Docs: `docs/04-ui-spec.md` §2 (top bar), §5.1 (Settings: the Plugins
-  section), §6 (home screen) and the "Help menu and F1" paragraph; the user
-  guide where it says "Help ›"; `docs/agent/adr-digest.md`.
+- Docs: `docs/04-ui-spec.md` §2 (top bar), §5.1 (Settings: the Plugins and
+  Marking menu sections), §6 (home screen) and the "Help menu and F1"
+  paragraph; the user guide where it says "Help ›"; `docs/agent/adr-digest.md`.
+
+## Amendment, 2026-10-17 (the owner, same day)
+
+Two changes after the first brief went out: Customize Marking Menu is a
+Settings section rather than General's button, and the panel's width comes
+from the rail, with a divider on each side of the toggles. Written into the
+text above.

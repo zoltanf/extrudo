@@ -176,8 +176,8 @@ svg.i { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width:
 @container (max-width: 560px) { .cols { grid-template-columns: 1fr; } .cols > div + div { border-left: 0; border-top: 1px solid var(--line); margin-top: 4px; padding-top: 6px; } }
 
 /* ---------- 2b: the refined wide panel ---------- */
-.m2b { width: 480px; padding: 0; }
-.m2b .rail { flex-wrap: nowrap; }
+.m2b { width: max-content; padding: 0; }
+.m2b .rail { flex-wrap: nowrap; gap: 12px; padding: 8px 12px; }
 .m2b .cols { grid-template-columns: 1fr 1fr; }
 .m2b .cols > div + div { border-left: 1px solid var(--line); border-top: 0; margin-top: 0; padding-top: 2px; }
 .m2b .about { margin: 0 4px 4px; }
@@ -287,7 +287,7 @@ button:hover > .tip, button:focus-visible > .tip, button.demo > .tip { opacity: 
     </div>
     <div class="inventory">
       <div><div class="eyebrow">Everything that has to fit</div><ul>
-        <li>Settings… <span class="k">Ctrl+,</span> (Plugins… and Customize Marking Menu… move inside it)</li>
+        <li>Settings… <span class="k">Ctrl+,</span> (Plugins and Marking menu become sections of it)</li>
         <li>Toggles: auto-project body edges, auto-project face outline, radial right-click menu</li>
         <li>Mouse controls (Spindle, Crank, Glide, Blender, Trackpad, and Slicer <span class="tag">planned</span>)</li>
         <li>Theme: System, Light, Dark</li>
@@ -305,7 +305,7 @@ button:hover > .tip, button:focus-visible > .tip, button.demo > .tip { opacity: 
   <section class="proto" id="p2b">
     <div class="notes">
       <div><div class="num">Direction</div><h2>Wide panel, refined</h2></div>
-      <p>Prototype 2 with the owner's changes. The rail is one line of icon switchers: the mouse preset first as a six-way segmented control, the three toggles, and Theme at the right edge. Each control carries the app's tooltip, with the preset's bindings as the hint, so the icons never have to explain themselves. The columns are fixed at two. Search… leads the App column, About Extrudo sits under Settings…, and the footer is the version strip: update state at a glance, the update check and GitHub as links.</p>
+      <p>Prototype 2 with the owner's changes. The rail is one line of icon switchers: the mouse preset first as a six-way segmented control, a divider, the three toggles, a divider, and Theme. The rail sets the panel's width; nothing stretches. Each control carries the app's tooltip, with the preset's bindings as the hint, so the icons never have to explain themselves. The columns are fixed at two. Search… leads the App column, About Extrudo sits under Settings…, and the footer is the version strip: update state at a glance, the update check and GitHub as links.</p>
       <ul>
         <li>Rail: Mouse (6) · toggles (3) · Theme (3). Hover any of them for its tooltip: name on top, the bindings or state as the hint.</li>
         <li>Mouse presets in order: Crank, Spindle (the default, checked), Glide, Blender, then the new <b>Slicer</b> (left-drag orbits, right-drag pans, Shift+left-drag selects; menu entry only for now, the behaviour comes later) and Trackpad.</li>
@@ -343,7 +343,7 @@ button:hover > .tip, button:focus-visible > .tip, button.demo > .tip { opacity: 
                 <button class="tog" data-toggle aria-pressed="true"><svg class="i"><use href="#i-dash"/></svg><span class="tip l"><b>Auto-project face outline</b><span><em data-onoff style="font-style:normal">On</em>. Also in Settings › General.</span></span></button>
                 <button class="tog" data-toggle aria-pressed="false"><svg class="i"><use href="#i-ring"/></svg><span class="tip l"><b>Radial right-click menu</b><span><em data-onoff style="font-style:normal">Off</em>: the right-click menu is a list.</span></span></button>
               </div>
-              <span class="spacer"></span>
+              <span class="vsep"></span>
               <div class="seg icons" role="radiogroup" aria-label="Theme">
                 <button data-theme-pick="system" role="radio" aria-checked="true"><svg class="i"><use href="#i-monitor"/></svg><span class="tip"><b>Theme: System</b><span>Follows the operating system.</span></span></button>
                 <button data-theme-pick="light" role="radio" aria-checked="false"><svg class="i"><use href="#i-sun"/></svg><span class="tip"><b>Theme: Light</b></span></button>
