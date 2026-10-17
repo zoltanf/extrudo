@@ -9,7 +9,8 @@
  * `--app <path>` launches a **packaged** binary instead (the AppImage the
  * `desktop` workflow builds, P6-01 slice 3): with `--appimage-extract-and-run`
  * (no FUSE needed) and `--no-sandbox` (CI runners forbid the SUID sandbox on an
- * extracted image), software WebGL (SwiftShader), a throwaway data directory (`EXTRUDO_USER_DATA`, read by
+ * extracted image; both flags only off Windows, where `--app` takes the
+ * installed `Extrudo.exe`), software WebGL (SwiftShader), a throwaway data directory (`EXTRUDO_USER_DATA`, read by
  * main before anything else) and `EXTRUDO_DISABLE_UPDATES=1` (a CI run never
  * asks GitHub for an update, P6-01 slice 4), and it also fails on any renderer console error
  * or uncaught page error.
@@ -47,7 +48,7 @@ if (!packagedApp && !existsSync(join(appDir, 'out', 'main', 'index.cjs'))) {
   bail('no build found; run `pnpm --filter @extrudo/desktop build` first.');
 }
 
-if (!process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+if (process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
   const xvfb = spawnSync('command', ['-v', 'xvfb-run'], { shell: true, encoding: 'utf8' });
   if (xvfb.status !== 0) {
     bail(
@@ -91,8 +92,7 @@ const openPath = process.env.SMOKE_OPEN;
 function launch() {
   if (packagedApp) {
     const args = [
-      '--appimage-extract-and-run',
-      '--no-sandbox',
+      ...(process.platform !== 'win32' ? ['--appimage-extract-and-run', '--no-sandbox'] : []),
       // A CI runner has no GPU, and Chromium blocklists its software GL for
       // WebGL2: ask for SwiftShader, as the Playwright e2e specs run.
       '--use-gl=angle',
@@ -188,7 +188,9 @@ try {
   await browser?.close().catch(() => {});
   if (packagedApp && child.pid) {
     try {
-      process.kill(-child.pid);
+      if (process.platform === 'win32') {
+        spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F']);
+      } else process.kill(-child.pid);
     } catch {}
   } else child.kill();
   await new Promise((resolve) => {

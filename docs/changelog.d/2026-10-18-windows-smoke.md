@@ -1,0 +1,1 @@
+- 2026-10-18 · **Desktop release check**: the Windows installer is now installed and the app smoke-tested (open a design, first recompute, autosave) on every release tag, like the AppImage on Linux.

@@ -2018,7 +2018,7 @@ AppImage + deb, NSIS, dmg + zip, `extrudo-<version>-<os>-<arch>.<ext>`, asar wit
 nothing unpacked) and `.github/workflows/desktop.yml` (a `v*` tag or a manual
 run, never per push: three OS runners; a tag attaches the installers to a
 **draft** release; the Linux job smoke-tests the AppImage with `smoke.mjs --app`,
-`EXTRUDO_USER_DATA` being main's throwaway data directory). Rules a change must
+`EXTRUDO_USER_DATA` being main's throwaway data directory; on a release tag (or a manual run with `windows_smoke`), the Windows packaging job installs the NSIS installer silently and runs `smoke.mjs --app` against the installed exe (2026-10-18)). Rules a change must
 keep: the desktop's workspace packages are `devDependencies` and **`electron`
 stays explicitly external** in main and preload, **no two files may differ only by
 case** (macOS and Windows builds resolve `./Grid` to `grid.ts`), checked by scripts/check-boundaries.mjs since v0.4.1 (ADR-0078's `modelProgress.ts` beside `ModelProgress.tsx` broke the v0.4.0 desktop build; the rules are `viewport/progressRules.ts`), and signing is

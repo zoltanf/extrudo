@@ -31,7 +31,7 @@ published. Versions come from `git describe` of the last `v*` tag: stable shows
    macOS (dmg, zip) installers into a **draft** GitHub release, then pushes the
    Homebrew cask.
 5. **Check the draft.** The Linux job's smoke test passed (its step prints
-   `smoke: OK`; GPU errors under xvfb in the same log are expected). The draft
+   `smoke: OK`; GPU errors under xvfb in the same log are expected), and so did the Windows job's (it installs the NSIS installer and smoke-tests the installed app). The draft
    holds the installers and `latest.yml`, `latest-mac.yml` and
    `latest-linux.yml`: the updater reads them, and without them nobody updates.
 6. **Release notes** on the draft: a short highlights list, then the

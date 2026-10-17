@@ -29,6 +29,11 @@ on:
         type: string
         default: ''
         required: false
+      windows_smoke:
+        description: "Also run the Windows smoke test on this manual run"
+        type: boolean
+        default: false
+        required: false
   push:
     tags: ['v*']
 
@@ -183,7 +188,7 @@ jobs:
             echo "the app exited within 15 s:"; cat "$work/launch.log"; exit 1
           fi
 
-      # Windows only builds here.
+      # Windows is smoke-tested below, on release tags only.
       - name: Smoke-test the AppImage
         if: ${{ matrix.os == 'linux' }}
         run: |
@@ -191,6 +196,23 @@ jobs:
           sudo apt-get install -y xvfb libgbm1 libasound2t64 libgtk-3-0t64 libnss3
           chmod +x apps/desktop/release/*.AppImage
           xvfb-run -a node apps/desktop/scripts/smoke.mjs --app apps/desktop/release/extrudo-*.AppImage
+
+      # Release only (and a manual run that asks for it): install the NSIS
+      # installer silently and run the smoke script against the installed
+      # app, as the Linux job does with the AppImage. v0.7.0 shipped unable
+      # to create a design on Windows (EPERM on fsync, PR #56). Both package
+      # steps leave the installer in apps/desktop/release.
+      - name: Smoke-test the Windows installer
+        if: ${{ matrix.os == 'win' && (startsWith(github.ref, 'refs/tags/v') || inputs.windows_smoke) }}
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem apps/desktop/release/*.exe | Where-Object { $_.Name -notmatch 'blockmap' } | Select-Object -First 1
+          if (-not $installer) { throw "no installer in apps/desktop/release" }
+          $p = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "installer exited with $($p.ExitCode)" }
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\Extrudo\Extrudo.exe'
+          if (-not (Test-Path $exe)) { Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Programs') -Recurse -Filter *.exe | Select-Object FullName; throw "installed exe not found at $exe" }
+          node apps/desktop/scripts/smoke.mjs --app "$exe"
 
   homebrew:
     # Render the cask from the arm64 mac zip and push it to the tap (P6-01,

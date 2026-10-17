@@ -80,7 +80,7 @@ volume against it; `--examples` runs the skill's worked examples.
 `apps/desktop/scripts/smoke.mjs` launches the app and waits for the kernel to
 compute a new design. `--app <path>` launches a packaged AppImage instead; main
 reads the environment variable `EXTRUDO_USER_DATA` as its data directory, which
-the script points at a temporary directory. Both need a display (`xvfb-run -a`).
+the script points at a temporary directory. Both need a display (`xvfb-run -a` on Linux). On a release tag (or a manual run with `windows_smoke`), the Windows job installs the NSIS installer silently and runs it against the installed `Extrudo.exe`.
 
 ## Updates
 
