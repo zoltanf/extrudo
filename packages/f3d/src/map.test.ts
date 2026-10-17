@@ -15,7 +15,7 @@ import type { AsmSurface } from './asm';
 import type { ProfileRegion } from './decode/extrude';
 import type { ParameterValue } from './decode/parameters';
 import type { Vec3 } from './decode/sketch-geometry';
-import { alongSweep, f3dToDesign } from './map';
+import { alongSweep, bodyOrder, f3dToDesign } from './map';
 import { type F3dDesign, type F3dExtrude, type F3dSketchFeature, IDENTITY } from './model';
 
 /** A region of whole curves (each one piece of one), as the decoder gives it. */
@@ -915,21 +915,26 @@ describe('f3dToDesign', () => {
   });
 
   describe('the bodies of an extrude that makes several', () => {
-    /** A circle of radius 1 cm at (x, 0), cm. */
-    const disc = (id: number, tag: bigint, x: number) => {
+    /** A circle of radius 1 cm at (x, y), cm. */
+    const disc = (id: number, tag: bigint, x: number, y = 0) => {
       const c = circle(id, tag, 1);
-      c.point.at = [x, 0, 0];
-      c.circle.center = [x, 0, 0];
+      c.point.at = [x, y, 0];
+      c.circle.center = [x, y, 0];
       return c;
     };
     /**
      * Two discs 10 mm high, the file's first region group at x = +3 cm and the
-     * second at x = −3 cm (Extrudo numbers its bodies from −x), then a 4 mm
-     * deep cut through both that names only the file's `Body<cutIndex>`.
+     * second at x = −3 cm (Extrudo numbers its bodies from −x) unless placed
+     * elsewhere (cm), then a 4 mm deep cut through both that names only the
+     * file's `Body<cutIndex>`.
      */
-    function twoDiscs(cutIndex: number): F3dDesign {
-      const right = disc(10, 201n, 3);
-      const left = disc(20, 202n, -3);
+    function twoDiscs(
+      cutIndex: number,
+      first: [number, number] = [3, 0],
+      second: [number, number] = [-3, 0],
+    ): F3dDesign {
+      const right = disc(10, 201n, ...first);
+      const left = disc(20, 202n, ...second);
       const cutter = disc(40, 203n, 0);
       cutter.circle.radius = 5;
       const sketch = (id: number, record: number, c: (typeof right)[], z: number) =>
@@ -1029,7 +1034,7 @@ describe('f3dToDesign', () => {
       const cut = f3d.features.pop() as F3dExtrude;
       // A join naming both discs, then the cut naming Body1; Body2 the file hides.
       f3d.features.push(
-        { ...cut, id: 5, name: 'Extrude3', operation: 'join', participants: [51, 50] },
+        { ...cut, id: 5, name: 'Extrude3', operation: 'join', participants: [50, 51] },
         cut,
       );
       (f3d.bodies[1] as { visible: boolean }).visible = false;
@@ -1037,7 +1042,8 @@ describe('f3dToDesign', () => {
       const doc = design.toJSON();
       const made = doc.features.find((f) => f.name === 'Extrude1')?.id;
       const named = (name: string) => doc.features.find((f) => f.name === name)?.inputs.bodies;
-      // The join names them in the order Extrudo's default would join them.
+      // The join names them in the order Extrudo's default would join them,
+      // not the file's (Body1 first, Extrudo's second body).
       expect(named('Extrude3')).toMatchObject({
         refs: [
           { kind: 'body', id: `${made}:0` },
@@ -1049,16 +1055,89 @@ describe('f3dToDesign', () => {
       expect(Object.values(doc.bodies ?? {}).some((b) => b.visible === false)).toBe(false);
     });
 
-    it('leaves the targets to Extrudo when the groups could come out in either order', () => {
+    const cutTargets = (f3d: F3dDesign) => {
+      const { design, report } = f3dToDesign(f3d, 'Discs');
+      const doc = design.toJSON();
+      const made = doc.features.find((f) => f.name === 'Extrude1')?.id;
+      const cut = doc.features.find((f) => f.name === 'Extrude2');
+      return { made, bodies: cut?.inputs.bodies, notes: report.notes };
+    };
+    const DROPPED =
+      "Extrude2: which of the bodies it names is which couldn't be told; it acts on every body it meets.";
+
+    it('orders groups at one x by y, whatever order the file lists its bodies in', () => {
+      // Group 0 at y = +3 cm, group 1 at y = −3 cm: the tie on x passes to y.
+      const f3d = twoDiscs(1, [0, 3], [0, -3]);
+      const { made, bodies, notes } = cutTargets(f3d);
+      expect(bodies).toMatchObject({ refs: [{ kind: 'body', id: `${made}:1` }] });
+      // Nothing about the extrudes: no region left out, no target dropped.
+      expect(notes.filter((n) => n.startsWith('Extrude'))).toEqual([]);
+      f3d.bodies.reverse();
+      expect(cutTargets(f3d).bodies).toMatchObject({ refs: [{ kind: 'body', id: `${made}:1` }] });
+    });
+
+    it('drops the targets when two centres are closer than the kernel can be trusted to tell', () => {
+      // 0.0005 mm apart along x, which orders them: past the kernel's tie, inside the slack.
+      const { bodies, notes } = cutTargets(twoDiscs(1, [3, 0], [3.00005, 2.5]));
+      expect(bodies).toBeUndefined();
+      expect(notes).toContain(DROPPED);
+    });
+
+    it('drops the targets when the groups could come out in either order', () => {
       const f3d = twoDiscs(1);
       // Both discs on one centre: no order to tell them by.
       const sk = f3d.features[0] as F3dSketchFeature;
       for (const c of sk.sketch.circulars) c.center = [0, 0, 0];
       for (const p of sk.sketch.points) p.at = [0, 0, 0];
       (sk.sketch.circulars[1] as { radius: number }).radius = 0.5;
-      const { design } = f3dToDesign(f3d, 'Discs');
-      const cut = design.toJSON().features.find((f) => f.name === 'Extrude2');
-      expect(cut?.inputs.bodies).toBeUndefined();
+      const { bodies, notes } = cutTargets(f3d);
+      expect(bodies).toBeUndefined();
+      expect(notes).toContain(DROPPED);
+    });
+
+    it('drops the targets for several operands, a taper, regions left out or a body count the file differs on', () => {
+      const operands = twoDiscs(1);
+      const e1 = operands.features[1] as F3dExtrude;
+      const [g0, g1] = e1.profiles[0]?.regions ?? [];
+      e1.profiles = [
+        { id: 30, sketch: 5, regions: [g0 as ProfileRegion] },
+        { id: 32, sketch: 5, regions: [{ ...(g1 as ProfileRegion), group: 0 }] },
+      ];
+      const tapered = twoDiscs(1);
+      (tapered.features[1] as F3dExtrude).parameters.push(
+        parameter({ name: 'd9', kind: 'TaperAngle', value: 0.05, unit: 'deg' }),
+      );
+      const partial = twoDiscs(1);
+      (partial.features[1] as F3dExtrude).profiles[0]?.regions?.push({
+        ...region([[999n]]),
+        group: 2,
+      });
+      const fewer = twoDiscs(1);
+      // The file lists only Body1 of the extrude's two.
+      fewer.bodies.pop();
+      for (const f3d of [operands, tapered, partial, fewer]) {
+        const { bodies, notes } = cutTargets(f3d);
+        expect(bodies).toBeUndefined();
+        expect(notes).toContain(DROPPED);
+      }
+    });
+
+    it('drops the order of a group with no outline, and stays linear in bodies of one creator', () => {
+      const f = twoDiscs(1).features[1] as F3dExtrude;
+      for (const r of f.profiles[0]?.regions ?? []) r.outerPieces = [];
+      const entry = {
+        source: { frame: IDENTITY, splines: [], ellipses: [] },
+        profileCurves: new Set<string>(),
+        pieces: { byKey: new Map() },
+      } as unknown as Parameters<typeof bodyOrder>[1];
+      expect(bodyOrder(f, entry)).toBeUndefined();
+
+      const many = twoDiscs(1);
+      for (let i = 0; i < 50_000; i++)
+        many.bodies.push({ id: 1000 + i, index: 3 + i, visible: true, creator: 2 });
+      const started = performance.now();
+      expect(cutTargets(many).bodies).toBeUndefined();
+      expect(performance.now() - started).toBeLessThan(3000);
     });
   });
 
@@ -1098,10 +1177,31 @@ describe('f3dToDesign', () => {
       );
       return f3d;
     }
-    const plane = (z: number, nz: number) => ({
-      tags: [],
+    /** A face of the ring (made by Extrude1, record 2) on the plane z (cm); a start plane with no tags when `datum`. */
+    const plane = (z: number, nz: number, datum = false) => ({
+      tags: datum ? [] : [{ token: nz > 0 ? '2' : '1', designs: [2] }],
+      ...(datum ? {} : { feature: 2 }),
       surface: { kind: 'plane', point: [0, 0, z], normal: [0, 0, nz] } as AsmSurface,
     });
+    const SLANTED = [
+      1,
+      0,
+      0,
+      0,
+      0,
+      Math.sqrt(3) / 2,
+      0.5,
+      -0.6235,
+      0,
+      -0.5,
+      Math.sqrt(3) / 2,
+      -1,
+      0,
+      0,
+      0,
+      1,
+    ];
+    const FROM_PLANE = 'Extrude2: starts from a face; imported from the profile plane.';
 
     it("moves the start by its offset along the face's normal, which may face the other way", async () => {
       // The ring's bottom (normal −z) with an offset of −1 mm: the start is 1 mm up.
@@ -1132,6 +1232,72 @@ describe('f3dToDesign', () => {
       );
       // An oblique prism: its volume is the profile's area times its length.
       expect(await volumes(f3d)).toEqual([expect.closeTo(RING - Math.PI * 0.5, 3)]);
+    });
+
+    it('moves the start from a start plane by its offset along the sketch normal', async () => {
+      // An origin or construction plane at z = 0 whose stored axes face −z: no outside to go by.
+      const f3d = withDisc([...IDENTITY], {
+        parameters: [
+          parameter({ name: 'd5', kind: 'ProfileOffset', value: -0.1 }),
+          parameter({ name: 'd6', kind: 'AlongDistance', value: 0.2 }),
+        ],
+        faces: [plane(0, -1, true)],
+      });
+      const [, disc] = await measures(f3d);
+      expect(disc?.bbox.min[2]).toBeCloseTo(-1, 2);
+      expect(disc?.bbox.max[2]).toBeCloseTo(1, 2);
+    });
+
+    it('keeps the profile plane for a slanted join, a curved start face or a slanted start plane', () => {
+      const slanted = (extrude: Partial<F3dExtrude>) => {
+        const { design, report } = f3dToDesign(
+          withDisc(SLANTED, {
+            operation: 'cut',
+            parameters: [parameter({ name: 'd5', kind: 'AlongDistance', value: -0.05 })],
+            faces: [plane(0.08, 1)],
+            ...extrude,
+          }),
+          'Washer',
+        );
+        return { notes: report.notes, names: design.toJSON().features.map((f) => f.name) };
+      };
+      const cone: AsmSurface = {
+        kind: 'cone',
+        center: [0, 0, 0],
+        axis: [0, 0, 1],
+        radius: 0.55,
+        cylinder: true,
+        slope: 0,
+      };
+      for (const case_ of [
+        slanted({ operation: 'join' }),
+        slanted({ faces: [{ ...plane(0.08, 1), surface: cone }] }),
+        slanted({ faces: [plane(0.08, 1, true)] }),
+      ]) {
+        expect(case_.notes).toContain(FROM_PLANE);
+        // No plane made for a stop it doesn't use.
+        expect(case_.names).not.toContain('Extrude2 start face plane');
+      }
+      expect(slanted({}).names).toContain('Extrude2 start face plane');
+    });
+
+    it("keeps the file sign of side 1's up-to offset in a two-sided extrude from a face", () => {
+      // The negation was measured on one-sided extrudes only; no two-sided one starts from a face.
+      const { design } = f3dToDesign(
+        withDisc([...IDENTITY], {
+          direction: 'two-sides',
+          parameters: [
+            parameter({ name: 'd5', kind: 'ProfileOffset', value: 0 }),
+            parameter({ name: 'd6', kind: 'Side1Offset', value: 0.1 }),
+            parameter({ name: 'd7', kind: 'AgainstDistance', value: 0.1 }),
+          ],
+          faces: [plane(0, -1), plane(0.08, 1)],
+        }),
+        'Washer',
+      );
+      const e2 = design.toJSON().features.find((f) => f.name === 'Extrude2');
+      expect(e2?.inputs.extent).toMatchObject({ value: 'to-object' });
+      expect(e2?.inputs.offset).toMatchObject({ expr: '1 mm' });
     });
 
     it('ends short of the face it goes up to by a positive offset when it starts from a face', async () => {
