@@ -1,5 +1,13 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { kernelReady, openProject, pickTool, projector, sketchOnXY } from './helpers';
+import {
+  kernelReady,
+  openAppMenu,
+  openProject,
+  pickMenuItem,
+  pickTool,
+  projector,
+  sketchOnXY,
+} from './helpers';
 
 // P1-14: the shortcut registry and the search, one dialog since the owner's UI review 3
 // (R3-05): Ctrl+K centred, S at the pointer, the top bar's Search button below itself.
@@ -175,7 +183,7 @@ test('shortcuts: tools that come later say so, Shift+digits turn the view', asyn
   await expect(page.getByRole('menuitem', { name: /^Text Shift\+T$/ })).toBeVisible();
 });
 
-test('the Search button drops the search from itself; Help has one Search item', async ({
+test('the Search button drops the search from itself; the app menu has one Search item', async ({
   page,
 }) => {
   await openProject(page);
@@ -195,9 +203,9 @@ test('the Search button drops the search from itself; Help has one Search item',
   await page.keyboard.press('Escape');
   await expect(search(page)).toBeHidden();
 
-  await header.getByRole('button', { name: 'Help' }).click();
-  await expect(page.getByRole('menuitem', { name: /^(Toolbox|Search commands)/ })).toHaveCount(0);
-  await page.getByRole('menuitem', { name: /^Search…/ }).click();
+  const panel = await openAppMenu(page);
+  await expect(panel.getByRole('menuitem', { name: /^(Toolbox|Search commands)/ })).toHaveCount(0);
+  await pickMenuItem(page, 'App', 'Search…');
   await expect(search(page).getByRole('combobox')).toBeFocused();
   await page.keyboard.type('top view');
   await page.keyboard.press('Enter');

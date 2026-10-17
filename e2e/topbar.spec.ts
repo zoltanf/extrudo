@@ -2,10 +2,11 @@ import { expect, type Page, test } from '@playwright/test';
 import { type FitGroup, fitToolbar } from '../apps/web/src/shell/toolbarFit';
 import {
   appMenu,
-  appSubmenu,
-  chooseInMenu,
   newSketchOnXY,
+  openAppMenu,
   openProject,
+  pickMenuItem,
+  railToggle,
   saveStatus,
 } from './helpers';
 
@@ -225,90 +226,129 @@ test('the cluster is Search, Undo, Redo; no Toolbox or theme button (R3-05)', as
   await expect(header(page).getByRole('button', { name: 'Search commands' })).toHaveCount(0);
 });
 
-test('the right side is Version history, Menu, Help', async ({ page }) => {
+test('the right side is Version history and Menu; no Help button (ADR-0090)', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
   const history = await box(page, 'Version history');
   const menu = await box(page, 'Menu');
-  const help = await box(page, 'Help');
   expect(history.x).toBeLessThan(menu.x);
-  expect(menu.x).toBeLessThan(help.x);
+  await expect(header(page).getByRole('button', { name: 'Help', exact: true })).toHaveCount(0);
   await expect(header(page).getByRole('button', { name: 'Settings', exact: true })).toHaveCount(0);
 });
 
-test('the app menu: Settings, Plugins, the submenus, then Close design on the web', async ({
-  page,
-}) => {
+test('the app menu panel: the rail, the App and Learn columns and the strip', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
-  await appMenu(page).click();
-  const items = page.getByRole('menu', { name: 'Menu' }).getByRole('menuitem');
-  const names = await items.evaluateAll((els) =>
-    els.map((el) => (el.textContent ?? '').replace(/Ctrl.*$|▸/g, '').trim()),
-  );
-  expect(names).toEqual(['Settings…', 'Behaviour', 'Mouse controls', 'Theme', 'Close design']);
-  await expect(page.getByRole('menuitem', { name: /^Quit/ })).toHaveCount(0);
-  await page.getByRole('menuitem', { name: 'Close design' }).click();
+  const panel = await openAppMenu(page);
+  // The rail: mouse controls, the toggles between two dividers, the theme.
+  await expect(
+    panel.getByRole('radiogroup', { name: 'Mouse controls' }).getByRole('radio'),
+  ).toHaveCount(6);
+  await expect(panel.getByRole('radiogroup', { name: 'Theme' }).getByRole('radio')).toHaveText([
+    '',
+    '',
+    '',
+  ]);
+  // Two columns side by side, whatever the window.
+  const app = (await panel.getByRole('menu', { name: 'App' }).boundingBox()) as {
+    x: number;
+    y: number;
+  };
+  const learn = (await panel.getByRole('menu', { name: 'Learn' }).boundingBox()) as {
+    x: number;
+    y: number;
+  };
+  expect(learn.x).toBeGreaterThan(app.x);
+  expect(Math.abs(learn.y - app.y)).toBeLessThan(2);
+  await expect(panel.getByRole('menu', { name: 'App' }).getByRole('menuitem')).toHaveText([
+    /^Search…/,
+    /^Settings…/,
+    'About Extrudo',
+    'Close design',
+  ]);
+  await expect(panel.getByRole('menuitem', { name: /^Quit/ })).toHaveCount(0);
+  await expect(panel.getByRole('menuitem', { name: 'Online Tutorials' })).toBeVisible();
+  // The panel is as wide as its rail.
+  const rail = (await panel.getByRole('radiogroup', { name: 'Mouse controls' }).boundingBox()) as {
+    x: number;
+  };
+  const theme = (await panel.getByRole('radiogroup', { name: 'Theme' }).boundingBox()) as {
+    x: number;
+    width: number;
+  };
+  const whole = (await panel.boundingBox()) as { x: number; width: number };
+  expect(rail.x - whole.x).toBeLessThan(16);
+  expect(whole.x + whole.width - (theme.x + theme.width)).toBeLessThan(16);
+  await pickMenuItem(page, 'App', 'Close design');
   await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
 });
 
-test('Behaviour holds the general options, Theme the theme', async ({ page }) => {
+test('rail toggles and the theme change preferences and leave the panel open', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
-  let menu = await appSubmenu(page, 'Behaviour');
-  const body = menu.getByRole('menuitemcheckbox', { name: 'Auto-project body edges' });
-  const face = menu.getByRole('menuitemcheckbox', { name: 'Auto-project face outline' });
-  await expect(body).toBeChecked();
-  await expect(face).not.toBeChecked();
-  await expect(menu.getByRole('menuitem', { name: 'Customize Marking Menu…' })).toHaveCount(0);
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('menu')).toHaveCount(0);
-
-  menu = await appSubmenu(page, 'Theme');
-  for (const theme of ['System', 'Light', 'Dark']) {
-    await expect(menu.getByRole('menuitemradio', { name: theme })).toBeVisible();
-  }
-  await chooseInMenu(menu, 'menuitemradio', 'Light');
+  const body = await railToggle(page, 'Auto-project body edges');
+  const face = await railToggle(page, 'Auto-project face outline');
+  await expect(body).toHaveAttribute('aria-pressed', 'true');
+  await expect(face).toHaveAttribute('aria-pressed', 'false');
+  const panel = await openAppMenu(page);
+  await panel.getByRole('radio', { name: 'Light', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(panel).toBeVisible();
 
-  // The menu and a sketch's palette share the preferences.
-  menu = await appSubmenu(page, 'Behaviour');
-  await chooseInMenu(menu, 'menuitemcheckbox', 'Auto-project body edges');
-  await chooseInMenu(menu, 'menuitemcheckbox', 'Auto-project face outline');
+  // The panel and a sketch's palette share the preferences.
+  await body.click();
+  await face.click();
+  await expect(body).toHaveAttribute('aria-pressed', 'false');
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(panel).toHaveCount(0);
+  await expect(appMenu(page)).toBeFocused();
   await newSketchOnXY(page);
   await expect(page.getByRole('checkbox', { name: 'Auto-project', exact: true })).not.toBeChecked();
-  menu = await appSubmenu(page, 'Behaviour');
-  await chooseInMenu(menu, 'menuitemcheckbox', 'Auto-project body edges');
+  await (await railToggle(page, 'Auto-project body edges')).click();
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.getByRole('checkbox', { name: 'Auto-project', exact: true })).toBeChecked();
   await expect(page.getByRole('checkbox', { name: 'Auto-project face outline' })).toBeChecked();
 });
 
-test('Behaviour has the Radial right-click menu, in step with the command', async ({ page }) => {
+test('the arrow keys move within a rail group or a column, Tab between them', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
-  let menu = await appSubmenu(page, 'Behaviour');
-  const radial = menu.getByRole('menuitemcheckbox', { name: 'Radial right-click menu' });
-  await expect(radial).toBeChecked();
+  const panel = await openAppMenu(page);
+  const spindle = panel.getByRole('radio', { name: 'Spindle', exact: true });
+  await spindle.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(panel.getByRole('radio', { name: 'Glide', exact: true })).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(panel.getByRole('radio', { name: 'Trackpad', exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(panel.getByRole('button', { name: 'Auto-project body edges' })).toBeFocused();
+  await panel.getByRole('menu', { name: 'Learn' }).getByRole('menuitem').first().focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(panel.getByRole('menuitem', { name: 'Tutorial', exact: true })).toBeFocused();
+  // Nothing changed by moving: Spindle is still the preset.
+  await expect(spindle).toHaveAttribute('aria-checked', 'true');
+});
 
-  // The checkbox changes what the command offers…
-  await chooseInMenu(menu, 'menuitemcheckbox', 'Radial right-click menu');
+test('the Radial toggle is in step with the command', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openProject(page);
+  const radial = await railToggle(page, 'Radial right-click menu');
+  await expect(radial).toHaveAttribute('aria-pressed', 'true');
+  await expect(radial).toHaveAccessibleName('Radial right-click menu');
+
+  // The toggle changes what the command offers…
+  await radial.click();
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('menu')).toHaveCount(0);
   await page.keyboard.press('Control+k');
   await page.getByRole('combobox', { name: 'Search commands' }).fill('right-click menu');
   await expect(page.getByRole('option', { name: /^Right-Click Menu: Use the Ring/ })).toBeVisible();
 
-  // …and the command changes the checkbox.
+  // …and the command changes the toggle.
   await page.getByRole('option', { name: /^Right-Click Menu: Use the Ring/ }).click();
-  menu = await appSubmenu(page, 'Behaviour');
-  await expect(
-    menu.getByRole('menuitemcheckbox', { name: 'Radial right-click menu' }),
-  ).toBeChecked();
+  await expect(await railToggle(page, 'Radial right-click menu')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await page.keyboard.press('Escape');
 });
 
@@ -329,23 +369,28 @@ test('the home screen has the same bar: About, Docs, GitHub and the app menu', a
   expect((await header(page).boundingBox())?.height).toBe(40);
   await expect(header(page).getByRole('button', { name: 'Settings', exact: true })).toHaveCount(0);
   await expect(header(page).getByRole('button', { name: 'Theme', exact: true })).toHaveCount(0);
-  await appMenu(page).click();
-  await expect(page.getByRole('menuitem', { name: /^Settings…/ })).toBeVisible();
-  // Nothing to close here.
-  await expect(page.getByRole('menuitem', { name: 'Close design' })).toHaveCount(0);
+  const panel = await openAppMenu(page);
+  // Nothing to close and no command search here, and no tool to help with.
+  await expect(panel.getByRole('menu', { name: 'App' }).getByRole('menuitem')).toHaveText([
+    /^Settings…/,
+    'About Extrudo',
+  ]);
+  await expect(panel.getByRole('menu', { name: 'Learn' }).getByRole('menuitem').first()).toHaveText(
+    'User Guide',
+  );
   await page.keyboard.press('Escape');
 });
 
-test('the web build has no desktop-only commands in Home or Help', async ({ page }) => {
+test('the web build has no desktop-only commands in Home or the app menu', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
   await page.getByRole('tab', { name: 'Home' }).click();
   for (const name of ['Open File', 'Save As', 'Quit']) {
     await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
   }
-  await header(page).getByRole('button', { name: 'Help', exact: true }).click();
-  await expect(page.getByRole('menuitem', { name: 'Tutorials' })).toBeVisible();
-  await expect(page.getByRole('menuitem', { name: /Check for Updates/ })).toHaveCount(0);
+  const panel = await openAppMenu(page);
+  await expect(panel.getByRole('menuitem', { name: 'Online Tutorials' })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Check now' })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await page.keyboard.press('Control+k');
   const search = page.getByRole('combobox', { name: 'Search commands' });

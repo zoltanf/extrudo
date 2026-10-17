@@ -492,14 +492,14 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
         keywords: 'Help F1 docs tool reference guide learn documentation',
       },
     );
-    // The Help menu's four docs items (P6-06 S9); the same commands in Ctrl+K
+    // The app menu's four docs items (P6-06 S9, ADR-0090); the same commands in Ctrl+K
     // and the desktop's Help menu. F1 is the `help` command's key alone, so
     // the desktop Help menu doesn't list it twice.
     plain('docsGuide', 'User Guide', 'Help', () => open('guide'), {
       icon: icon(BookOpen),
       keywords: 'Help docs user guide manual learn documentation',
     });
-    plain('docsTutorials', 'Tutorials', 'Help', () => open('tutorials'), {
+    plain('docsTutorials', 'Online Tutorials', 'Help', () => open('tutorials'), {
       icon: icon(ListChecks),
       keywords: 'Help docs tutorials walkthroughs lessons learn',
     });

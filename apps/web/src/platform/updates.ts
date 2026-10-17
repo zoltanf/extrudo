@@ -14,6 +14,11 @@ export interface UpdateState {
   waiting: boolean;
   /** The waiting version, where the platform knows it (the desktop's updater does). */
   version?: string;
+  /**
+   * The desktop's last check (ADR-0090 §1, the app menu's version strip): running, or
+   * finished with nothing newer. Absent before any check, and on the web.
+   */
+  check?: 'checking' | 'current';
 }
 
 export type UpdateStore = StoreApi<UpdateState>;

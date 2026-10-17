@@ -16,12 +16,12 @@ import {
   Wordmark,
 } from '../design-system';
 import type { AgentBridge } from '../platform';
+import type { PlatformUpdates } from '../platform/updates';
 import type { Autosaver } from '../project/autosave';
 import { HOME_HREF } from '../routes';
 import type { DisplayAccess } from '../settings/displaySettings';
-import { AppMenu } from './AppMenu';
+import { AppMenu, type HelpTool } from './AppMenu';
 import type { DocsPage } from './docsLinks';
-import { HelpMenu } from './HelpMenu';
 import { TITLE_GAP, type TitleFit, titleFit } from './titleFit';
 
 /** The design's file actions (the Home tab's commands, ADR-0079); the project page implements them. */
@@ -72,27 +72,30 @@ export interface AppBarProps {
   onThemeChange(theme: ThemeChoice): void;
   /**
    * Opens the search (P1-14, R3-05): dropped from the Search button's bottom-left corner
-   * `at`, or centred when absent (the Help menu).
+   * `at`, or centred when absent (the app menu).
    */
   onSearch(at?: { x: number; y: number }): void;
   /** The view's display settings: the app menu's General and Mouse controls read and write them. */
   display: DisplayAccess;
   /** Starts the tutorial (P3-12). */
   onTutorial(): void;
-  /** Opens a docs page (P6-06 S9): the Help menu's items, through the platform. */
+  /** Opens a docs page (P6-06 S9): the app menu's Learn items, through the platform. */
   onDocs(page: DocsPage): void;
-  /** Runs the `help` command: the page of the tool last hovered, else the guide. */
-  onHelp(): void;
-  /** Help › Check for Updates… (desktop only, ADR-0075's 2026-10-09 amendment); absent on the web. */
+  /** The panel's "Help for <tool>": asked when it opens (ADR-0090 §1). */
+  helpTool(): HelpTool | undefined;
+  /** The strip's Check now (desktop only, ADR-0075's 2026-10-09 amendment); absent on the web. */
   onCheckUpdates?(): void;
-  /** Help › About Extrudo. */
+  /** About Extrudo. */
   onAbout(): void;
+  /** The build's version and the update state, in the panel's strip. */
+  version: string;
+  updates?: PlatformUpdates | undefined;
   /** Settings › General › Radial right-click menu: the same state as the command that toggles it. */
   markingRadial: boolean;
   onMarkingRadial(radial: boolean): void;
   /** Opens the Settings dialog (ADR-0082). */
   onSettings(): void;
-  /** Help › Source on GitHub. */
+  /** The strip's GitHub (Source on GitHub). */
   onSource(): void;
   /** The app menu's Quit (desktop only); absent on the web. */
   onQuit?: (() => void) | undefined;
@@ -114,8 +117,8 @@ const Separator = () => <div className="mx-1.5 h-5 w-px shrink-0 bg-line" aria-h
 /**
  * The top bar (UI spec §2, ADR-0079): the logo, the toolbar's tabs, search, undo,
  * redo (UI review 3, R3-05), the design's name and save state centred
- * between them and the right-hand buttons: version history, the app menu
- * (`AppMenu`) and help. The File menu it once had is the Home tab.
+ * between them and the right-hand buttons: version history and the app menu
+ * (`AppMenu`, ADR-0090). The File menu it once had is the Home tab.
  */
 export function AppBar({
   store,
@@ -127,8 +130,10 @@ export function AppBar({
   onSearch,
   onTutorial,
   onDocs,
-  onHelp,
+  helpTool,
   onCheckUpdates,
+  version,
+  updates,
   onAbout,
   markingRadial,
   onMarkingRadial,
@@ -200,17 +205,17 @@ export function AppBar({
           markingRadial={markingRadial}
           onMarkingRadial={onMarkingRadial}
           onSettings={onSettings}
-          onQuit={onQuit}
-          onCloseDesign={onCloseDesign}
-        />
-        <HelpMenu
           onSearch={() => onSearch()}
+          onAbout={onAbout}
           onTutorial={onTutorial}
           onDocs={onDocs}
-          onHelp={onHelp}
+          helpTool={helpTool}
+          version={version}
+          updates={updates}
           onCheckUpdates={onCheckUpdates}
           onSource={onSource}
-          onAbout={onAbout}
+          onQuit={onQuit}
+          onCloseDesign={onCloseDesign}
         />
       </div>
     </header>

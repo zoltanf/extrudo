@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { primitive } from './benchmark-helpers';
-import { fileAction, kernelReady, openProject, pickTool } from './helpers';
+import { fileAction, kernelReady, openProject, pickMenuItem, pickTool } from './helpers';
 
 // P3-13 (NFR-07): an axe audit of the main screens. Each screen is checked
 // against WCAG 2.1 A and AA; the test fails on any violation not listed in
@@ -62,9 +62,7 @@ for (const theme of ['dark', 'light'] as const) {
       await kernelReady(page);
       await audit(page, `${theme} empty design`);
 
-      await page.getByRole('button', { name: 'Help' }).click();
-      // "Tutorials" (the docs page) also matches a plain 'Tutorial'.
-      await page.getByRole('menuitem', { name: /^Tutorial$/ }).click();
+      await pickMenuItem(page, 'Learn', 'Tutorial');
       await expect(page.getByRole('region', { name: 'Tutorial' })).toBeVisible();
       await audit(page, `${theme} tutorial card`);
       await page.getByRole('button', { name: 'Close tutorial' }).click();

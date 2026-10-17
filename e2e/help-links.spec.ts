@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openProject, pickTool } from './helpers';
+import { openAppMenu, openProject, pickMenuItem, pickTool } from './helpers';
 
-// P6-06 S9: the Help menu's docs items and a tool tile's F1 open the landing
+// P6-06 S9, ADR-0090: the app menu's Learn items and a tool tile's F1 open the landing
 // site's /docs/ pages through `Platform.openDocs`. The external host is
 // answered locally (nothing leaves the machine); the popup's URL is the
 // assertion.
@@ -34,24 +34,35 @@ async function popupUrl(page: Page, step: () => Promise<void>): Promise<string> 
   return popup.url();
 }
 
-test('Help lists User Guide without a key and Help for This Tool with F1 (P6-06 S10)', async ({
+test('Learn: Help for <tool> with F1 after a tile was hovered, absent before (ADR-0090)', async ({
   page,
 }) => {
   await open(page);
-  await page.getByRole('button', { name: 'Help' }).click();
-  await expect(page.getByRole('menuitem', { name: 'User Guide', exact: true })).toBeVisible();
-  const help = page.getByRole('menuitem', { name: /^Help for This Tool/ });
-  await expect(help).toContainText('F1');
+  let learn = (await openAppMenu(page)).getByRole('menu', { name: 'Learn' });
+  // A fresh page: no tile hovered yet, so the column starts with User Guide.
+  await expect(learn.getByRole('menuitem')).toHaveText([
+    'User Guide',
+    'Tutorial',
+    'Online Tutorials',
+    'Examples',
+    'Tool Reference',
+  ]);
+  await expect(learn.getByRole('menuitem', { name: /^Help for/ })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Menu' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Extrude' }).hover();
+  learn = (await openAppMenu(page)).getByRole('menu', { name: 'Learn' });
+  const help = learn.getByRole('menuitem').first();
+  await expect(help).toHaveText(/^Help for ExtrudeF1$/);
   const url = await popupUrl(page, () => help.click());
-  // The pointer is on the menu, so no tile is hovered: the guide.
-  expect(url).toBe(`${DOCS}/docs/`);
+  expect(url).toBe(`${DOCS}/docs/tools/extrude/`);
 });
 
-test('Help › User Guide opens the docs guide in a popup (P6-06 S9)', async ({ page }) => {
+test('Menu › User Guide opens the docs guide in a popup (P6-06 S9)', async ({ page }) => {
   await open(page);
   const url = await popupUrl(page, async () => {
-    await page.getByRole('button', { name: 'Help' }).click();
-    await page.getByRole('menuitem', { name: 'User Guide' }).click();
+    await pickMenuItem(page, 'Learn', 'User Guide');
   });
   expect(url).toBe(`${DOCS}/docs/`);
 });
@@ -107,7 +118,7 @@ test("the Extrude tile's tooltip shows F1 for more (P6-06 S9)", async ({ page })
   await expect(tooltip.locator('a, button')).toHaveCount(0);
 });
 
-test('Help › Source on GitHub opens the repository in a popup', async ({ page }) => {
+test("the Menu strip's GitHub opens the repository in a popup", async ({ page }) => {
   await open(page);
   await page
     .context()
@@ -115,8 +126,8 @@ test('Help › Source on GitHub opens the repository in a popup', async ({ page 
       route.fulfill({ status: 200, contentType: 'text/html', body: '' }),
     );
   const url = await popupUrl(page, async () => {
-    await page.getByRole('button', { name: 'Help' }).click();
-    await page.getByRole('menuitem', { name: 'Source on GitHub' }).click();
+    const panel = await openAppMenu(page);
+    await panel.locator('[data-update-strip]').getByRole('button', { name: 'GitHub' }).click();
   });
   expect(url).toBe('https://github.com/zoltanf/extrudo');
 });
@@ -140,13 +151,15 @@ test("the home bar's Docs and GitHub open in popups", async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
 });
 
-test('Help ends with Source on GitHub and then About Extrudo', async ({ page }) => {
+test('the App column holds About Extrudo; the strip shows the version and GitHub', async ({
+  page,
+}) => {
   await open(page);
-  await page.getByRole('button', { name: 'Help' }).click();
-  const labels = await page.getByRole('menu').getByRole('menuitem').allInnerTexts();
-  const source = labels.findIndex((label) => label.includes('Source on GitHub'));
-  const about = labels.findIndex((label) => label.includes('About Extrudo'));
-  expect(source).toBeGreaterThanOrEqual(0);
-  expect(about).toBe(source + 1);
-  expect(about).toBe(labels.length - 1);
+  const panel = await openAppMenu(page);
+  const app = panel.getByRole('menu', { name: 'App' }).getByRole('menuitem');
+  await expect(app).toHaveText([/^Search…/, /^Settings…/, 'About Extrudo', 'Close design']);
+  const strip = panel.locator('[data-update-strip]');
+  await expect(strip).toContainText(/\d+\.\d+\.\d+/);
+  // The web build has no Check now: its worker checks by itself.
+  await expect(strip.getByRole('button')).toHaveText(['GitHub']);
 });

@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { appMenu, appSubmenu, kernelReady, openProject, pickTool } from './helpers';
+import { kernelReady, openProject, pickMenuItem, pickTool, railToggle } from './helpers';
 
 // ADR-0082: the Settings dialog. Preferences are per browser (localStorage), so each test
 // starts from the defaults and a reload keeps what it changed.
@@ -36,8 +36,7 @@ test('Ctrl+, opens Settings and every section opens', async ({ page }) => {
   await section(page, 'sketch').click();
   await page.keyboard.press('Escape');
   await expect(dialog(page)).toBeHidden();
-  await appMenu(page).click();
-  await page.getByRole('menuitem', { name: /^Settings…/ }).click();
+  await pickMenuItem(page, 'App', 'Settings…');
   await expect(page.locator('[data-settings-page="sketch"]')).toBeVisible();
 });
 
@@ -111,7 +110,7 @@ test('PLA density: a tweak shows in Print Info and the weight, Reset brings 1.24
   await expect(panel.getByRole('textbox', { name: 'Density' })).toHaveValue('1.24');
 });
 
-test('Radial right-click menu matches the gear menu; the theme applies at once', async ({
+test("Radial right-click menu matches the app menu's toggle; the theme applies at once", async ({
   page,
 }) => {
   await openProject(page);
@@ -123,10 +122,10 @@ test('Radial right-click menu matches the gear menu; the theme applies at once',
   await radial.uncheck();
   await page.keyboard.press('Escape');
 
-  const menu = await appSubmenu(page, 'Behaviour');
-  await expect(
-    menu.getByRole('menuitemcheckbox', { name: 'Radial right-click menu' }),
-  ).toHaveAttribute('aria-checked', 'false');
+  await expect(await railToggle(page, 'Radial right-click menu')).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
   await page.keyboard.press('Escape');
 
   await page.keyboard.press('Control+,');
@@ -168,8 +167,7 @@ test('settings survive a reload, and a sketch setting is the palette’s', async
 
 test('the home screen has the same dialog', async ({ page }) => {
   await page.goto('./');
-  await appMenu(page).click();
-  await page.getByRole('menuitem', { name: /^Settings…/ }).click();
+  await pickMenuItem(page, 'App', 'Settings…');
   await expect(dialog(page)).toBeVisible();
   await section(page, 'view').click();
   await dialog(page).getByRole('combobox', { name: 'Projection' }).selectOption('orthographic');

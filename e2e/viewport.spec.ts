@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { appSubmenu, clicker, openProject, pickTool, sketchOnXY } from './helpers';
+import { clicker, openAppMenu, openProject, pickPreset, pickTool, sketchOnXY } from './helpers';
 
 // P0-05: the viewport. The camera state is mirrored on the viewport element
 // as data attributes (direction, up, target, size), so these tests check
@@ -81,22 +81,18 @@ test('ViewCube edges, turn arrows and roll arrows', async ({ page }) => {
   await expect(viewport).toHaveAttribute('data-camera-up', '0,0,1');
 });
 
-/** Opens the app menu's Mouse controls submenu (R3-03: it left the nav bar). */
-const mouseControls = (page: Page) => appSubmenu(page, 'Mouse controls');
+/** The app menu rail's Mouse controls (R3-03: it left the nav bar; ADR-0090: a radiogroup). */
+const mouseControls = async (page: Page) =>
+  (await openAppMenu(page)).getByRole('radiogroup', { name: 'Mouse controls' });
 
-/**
- * Chooses a mouse preset in the Settings menu, by keyboard: a pointer jumping straight from the
- * submenu's trigger to an item (as Playwright's click moves it) closes a Radix submenu, which a
- * real pointer, moving through the space between, doesn't.
- */
+/** Chooses a mouse preset in the app menu's rail, then closes the panel. */
 async function choosePreset(page: Page, name: string) {
-  const menu = await mouseControls(page);
-  await menu.getByRole('menuitemradio', { name, exact: true }).focus();
-  await page.keyboard.press('Enter');
-  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(await pickPreset(page, name)).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Menu' })).toHaveCount(0);
 }
 
-test('Spindle is the first preset and the default, and each says what it binds', async ({
+test('the rail lists six presets, Spindle the default, Slicer disabled; each says what it binds', async ({
   page,
 }) => {
   await open(page);
@@ -107,21 +103,31 @@ test('Spindle is the first preset and the default, and each says what it binds',
     }),
   ).toHaveCount(0);
   const menu = await mouseControls(page);
-  const presets = menu.getByRole('menuitemradio');
-  await expect(presets).toHaveCount(5);
-  for (const [i, name] of ['Spindle', 'Crank', 'Glide', 'Blender', 'Trackpad'].entries())
-    await expect(presets.nth(i)).toHaveAccessibleName(name);
-  await expect(presets.first()).toHaveAttribute('aria-checked', 'true');
-  // Every preset's bindings are readable before choosing it (R3-03).
-  await expect(presets.first()).toHaveAccessibleDescription(
+  const presets = menu.getByRole('radio');
+  const names = ['Crank', 'Spindle', 'Glide', 'Blender', 'Slicer', 'Trackpad'];
+  await expect(presets).toHaveCount(6);
+  for (const [i, name] of names.entries()) await expect(presets.nth(i)).toHaveAccessibleName(name);
+  await expect(presets.nth(1)).toHaveAttribute('aria-checked', 'true');
+  // Slicer is announced, not chosen yet (ADR-0090 §1).
+  await expect(presets.nth(4)).toBeDisabled();
+  // Every preset's bindings are readable before choosing it (R3-03): its tooltip's hint.
+  await presets.nth(1).hover();
+  await expect(page.getByRole('tooltip')).toContainText('Mouse controls: Spindle');
+  await expect(page.getByRole('tooltip')).toContainText(
     'Middle-drag orbits, right-drag pans; Shift swaps them. The wheel zooms.',
   );
-  for (let i = 0; i < 5; i++)
-    await expect(presets.nth(i)).toHaveAccessibleDescription(/orbit.*pan|pan.*orbit/);
+  // Escape closes the open tooltip first (a pointer moving on from it may keep it open).
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Menu' })).toBeVisible();
+  await presets.nth(4).hover();
+  await expect(page.getByRole('tooltip')).toContainText('Shift+left-drag selects');
+  await presets.nth(4).click({ force: true });
+  await expect(presets.nth(1)).toHaveAttribute('aria-checked', 'true');
   await page.keyboard.press('Escape');
 });
 
-test('the Settings menu and the Settings dialog set the same preset (R3-03)', async ({ page }) => {
+test('the app menu and the Settings dialog set the same preset (R3-03)', async ({ page }) => {
   await open(page);
   await choosePreset(page, 'Crank');
   await page.keyboard.press('Control+,');
@@ -133,7 +139,7 @@ test('the Settings menu and the Settings dialog set the same preset (R3-03)', as
   await field.selectOption('glide');
   await page.keyboard.press('Escape');
   const menu = await mouseControls(page);
-  await expect(menu.getByRole('menuitemradio', { name: 'Glide', exact: true })).toHaveAttribute(
+  await expect(menu.getByRole('radio', { name: 'Glide', exact: true })).toHaveAttribute(
     'aria-checked',
     'true',
   );

@@ -242,6 +242,18 @@ describe('desktopPlatform (ADR-0075 §3)', () => {
       expect(apply).toHaveBeenCalledOnce();
     });
 
+    it("tells the app menu's strip a check runs, then that nothing newer was found", () => {
+      const { emit, updates } = setup();
+      emit({ state: 'idle' });
+      expect(updates.store.getState()).toEqual({ waiting: false });
+      emit({ state: 'checking' });
+      expect(updates.store.getState().check).toBe('checking');
+      emit({ state: 'idle' });
+      expect(updates.store.getState()).toEqual({ waiting: false, check: 'current' });
+      emit({ state: 'error', message: 'offline' });
+      expect(updates.store.getState().check).toBeUndefined();
+    });
+
     it('the ready toast says the version and restarts after saving', async () => {
       const { emit, apply, notifications, updates } = setup();
       emit({ state: 'ready', version: '0.5.0' });

@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { chip, clickEdge, turnView, viewportOf } from './benchmark-helpers';
-import { clicker, kernelReady, mapping, pickTool } from './helpers';
+import { clicker, kernelReady, mapping, pickMenuItem, pickTool } from './helpers';
 
 // P3-12: the first-run tutorial (ADR-0052). The home screen offers it once;
 // the card follows the real design (a sketch, four lines, a dimension, an
@@ -34,16 +34,14 @@ test('offers the tour on the home screen once, and Help restarts it', async ({ p
   await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Take the tour' })).toHaveCount(0);
 
-  // A new design shows no hint (R3-15); Help › Tutorial starts the tour in it, at once.
+  // A new design shows no hint (R3-15); Menu › Tutorial starts the tour in it, at once.
   await page.getByRole('button', { name: 'New design' }).click();
   await expect(page.getByRole('region', { name: 'Viewport' })).toHaveAttribute(
     'data-ready',
     'true',
   );
   await expect(page.getByRole('note', { name: 'How to start' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Help' }).click();
-  // "Tutorials" (the docs page, P6-06 S9) also matches a plain 'Tutorial'.
-  await page.getByRole('menuitem', { name: /^Tutorial$/ }).click();
+  await pickMenuItem(page, 'Learn', 'Tutorial');
   await expect(card(page)).toBeVisible();
   await expect(card(page)).toContainText('Step 1 of 5');
   // The card points at Create Sketch.

@@ -177,6 +177,7 @@ import { textDraftStore } from '../sketch/textDraft';
 import type { ToolHost } from '../sketch/tools/host';
 import { isPickingTool, isSketchTool } from '../sketch/tools/ids';
 import { IMPORT_DRAWING_TOOL } from '../sketch/tools/importDrawing';
+import { BUILD } from '../version';
 import { boundsOf } from '../viewport/bodyGeometry';
 import { canvasDrawings } from '../viewport/canvasGeometry';
 import { forgetCanvasImages } from '../viewport/canvasImages';
@@ -216,7 +217,7 @@ import { createViewActions } from './namedViews';
 import { Splitter, usePanel } from './panels';
 import { watchRecomputeErrors } from './recomputeErrors';
 import { Timeline } from './Timeline';
-import { Toolbar, ToolbarTabs, useToolbarTab } from './Toolbar';
+import { lastHoveredTool, Toolbar, ToolbarTabs, useToolbarTab } from './Toolbar';
 import {
   createTimelineSelectionStore,
   hoveredFeatureIds,
@@ -2236,7 +2237,15 @@ export function AppShell({
         onSearch={(at) => setSearch(at ? { from: 'button', at } : { from: 'centre' })}
         onTutorial={startTutorial}
         onDocs={(page) => platform.openDocs(docsPath(page))}
-        onHelp={() => commands.find((c) => c.id === 'help')?.run()}
+        helpTool={() => {
+          const tool = lastHoveredTool();
+          const label = tool && commands.find((c) => c.id === tool)?.label;
+          return label
+            ? { label, onHelp: () => platform.openDocs(docsPath({ tool: tool as string })) }
+            : undefined;
+        }}
+        version={BUILD.version}
+        updates={platform.updates}
         {...(platform.updates?.check && { onCheckUpdates: () => platform.updates?.check?.() })}
         markingRadial={markingStyle.radial}
         onMarkingRadial={(radial) => {

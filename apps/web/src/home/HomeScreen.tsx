@@ -47,6 +47,7 @@ import { AppMenu } from '../shell/AppMenu';
 import { docsPath, docsUrl, REPO_URL } from '../shell/docsLinks';
 import { useUpdateNotice } from '../shell/useUpdateNotice';
 import { useMarkingStyle } from '../shell/viewMenu';
+import { BUILD } from '../version';
 import { EXAMPLES } from './examples';
 import { TEMPLATES, type Template } from './gallery';
 import { usePersistence, useProjects } from './hooks';
@@ -200,6 +201,15 @@ export function HomeScreen({ platform }: { platform: Platform }) {
               if (radial !== marking.radial) marking.toggle();
             }}
             onSettings={() => setSettingsOpen(true)}
+            onAbout={() => setAboutOpen(true)}
+            onTutorial={startTour}
+            onDocs={(page) => platform.openDocs(docsPath(page))}
+            version={BUILD.version}
+            updates={platform.updates}
+            {...(platform.updates?.check && {
+              onCheckUpdates: () => platform.updates?.check?.(),
+            })}
+            onSource={() => platform.openSite('repo')}
             onQuit={platform.menus ? () => platform.menus?.quit() : undefined}
           />
         </div>

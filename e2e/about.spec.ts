@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openProject } from './helpers';
+import { openProject, pickMenuItem } from './helpers';
 
-// ADR-0085: Help › About Extrudo shows the build's version, where the app
+// ADR-0085: Menu › About Extrudo shows the build's version, where the app
 // runs and the engines; its links open through `Platform.openLink`. The
 // external host is answered locally (nothing leaves the machine).
 
@@ -17,13 +17,12 @@ async function routeGithub(page: Page) {
     );
 }
 
-test('Help › About Extrudo shows the build, links and closes with Esc', async ({ page }) => {
+test('Menu › About Extrudo shows the build, links and closes with Esc', async ({ page }) => {
   const errors: Error[] = [];
   page.on('pageerror', (e) => errors.push(e));
   await openProject(page);
   await routeGithub(page);
-  await page.getByRole('button', { name: 'Help' }).click();
-  await page.getByRole('menuitem', { name: 'About Extrudo' }).click();
+  await pickMenuItem(page, 'App', 'About Extrudo');
   const about = dialog(page);
   await expect(about).toBeVisible();
   await expect(about.getByText(/^\d+\.\d+\.\d+/).first()).toBeVisible();

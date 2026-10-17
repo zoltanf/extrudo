@@ -332,27 +332,42 @@ export async function projector(viewport: Locator) {
 export const appMenu = (page: Page) =>
   page.locator('header').getByRole('button', { name: 'Menu', exact: true });
 
-/** Opens one of the app menu's submenus (Behaviour, Mouse controls, Theme) and returns it. */
-export async function appSubmenu(page: Page, name: 'Behaviour' | 'Mouse controls' | 'Theme') {
-  await appMenu(page).click();
-  await page.getByRole('menuitem', { name, exact: true }).click();
-  const menu = page.getByRole('menu', { name, exact: true });
-  await expect(menu).toBeVisible();
-  return menu;
+/** Opens the app menu's panel (ADR-0090) and returns it: the `dialog` "Menu". */
+export async function openAppMenu(page: Page) {
+  const panel = page.getByRole('dialog', { name: 'Menu', exact: true });
+  if (!(await panel.isVisible())) await appMenu(page).click();
+  await expect(panel).toBeVisible();
+  return panel;
 }
 
-/**
- * Chooses an item in an open submenu by keyboard: a pointer jumping straight from the
- * submenu's trigger to an item (as Playwright's click moves it) closes a Radix submenu.
- */
-export async function chooseInMenu(
-  menu: Locator,
-  role: 'menuitemradio' | 'menuitemcheckbox' | 'menuitem',
-  name: string,
-) {
-  // A checked checkbox's name starts with its ✓, so only a radio is matched exactly.
-  await menu.getByRole(role, { name, exact: role === 'menuitemradio' }).focus();
-  await menu.page().keyboard.press('Enter');
+/** Picks a mouse preset in the panel's rail by keyboard (focus, Space); the panel stays open. */
+export async function pickPreset(page: Page, name: string) {
+  const panel = await openAppMenu(page);
+  const radio = panel
+    .getByRole('radiogroup', { name: 'Mouse controls' })
+    .getByRole('radio', { name, exact: true });
+  await radio.focus();
+  await page.keyboard.press('Space');
+  return radio;
+}
+
+/** One of the rail's three toggles (`aria-pressed`), with the panel open. */
+export async function railToggle(page: Page, name: string) {
+  const panel = await openAppMenu(page);
+  return panel.getByRole('button', { name, exact: true });
+}
+
+/** A column item's accessible name: its label, then its shortcut if it has one. */
+export const menuItemName = (label: string) =>
+  new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![a-z])`);
+
+/** Runs an item of the panel's App or Learn column by its label; the panel closes. */
+export async function pickMenuItem(page: Page, column: 'App' | 'Learn', label: string) {
+  const panel = await openAppMenu(page);
+  await panel
+    .getByRole('menu', { name: column })
+    .getByRole('menuitem', { name: menuItemName(label) })
+    .click();
 }
 
 /** The Parameters dialog (ADR-0086: a list on the left, the selected parameter on the right). */

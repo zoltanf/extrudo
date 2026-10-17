@@ -84,15 +84,26 @@ export interface PluginItem {
  * at the moment F1 runs; the `help` command needs nothing else from React.
  */
 let hoveredTool: string | undefined;
+/** The last tile hovered or focused, kept after the pointer leaves (the app menu's Help item). */
+let lastTool: string | undefined;
 
-/** The tool whose toolbar tile was hovered or focused last, if any. */
+/** The tool whose toolbar tile is hovered or focused now, if any. */
 export function toolUnderPointer(): string | undefined {
   return hoveredTool;
+}
+
+/**
+ * The tool whose tile was hovered or focused last, even if the pointer has left it since:
+ * the app menu's "Help for <tool>" (ADR-0090 §1), opened by a click elsewhere.
+ */
+export function lastHoveredTool(): string | undefined {
+  return lastTool;
 }
 
 /** Sets the tracked tool (the tiles' pointer/focus handlers; exported for tests). */
 export function setHoveredTool(tool: string | undefined): void {
   hoveredTool = tool;
+  if (tool) lastTool = tool;
 }
 
 /**

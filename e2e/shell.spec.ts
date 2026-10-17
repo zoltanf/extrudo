@@ -1,12 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import {
-  appSubmenu,
-  chooseInMenu,
-  kernelReady,
-  openProject,
-  rollMarker,
-  saveStatus,
-} from './helpers';
+import { kernelReady, openAppMenu, openProject, rollMarker, saveStatus } from './helpers';
 
 // P0-04: the app shell. Screenshots in both themes, and panels that resize,
 // collapse and remember their state.
@@ -54,7 +47,8 @@ test('the theme follows the (dark) system by default, and the theme choice survi
 }) => {
   await open(page);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await chooseInMenu(await appSubmenu(page, 'Theme'), 'menuitemradio', 'Light');
+  await (await openAppMenu(page)).getByRole('radio', { name: 'Light', exact: true }).click();
+  await page.keyboard.press('Escape');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
