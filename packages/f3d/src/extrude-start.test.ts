@@ -12,7 +12,7 @@ import { startPlane } from './model';
 /** Three bytes, then origin, x and y (9 f64), as `readModelPlane` reads them. */
 function planeBody(origin: number[], x: number[], y: number[]): number[] {
   const f = new DataView(new ArrayBuffer(72));
-  [...origin, ...x, ...y].forEach((v, i) => f.setFloat64(8 * i, v, true));
+  for (const [i, v] of [...origin, ...x, ...y].entries()) f.setFloat64(8 * i, v, true);
   return [0, 0, 0, ...new Uint8Array(f.buffer)];
 }
 
