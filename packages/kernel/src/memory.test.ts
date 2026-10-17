@@ -5,9 +5,10 @@
 // request. A leak-free loop plateaus after warm-up; a leak moves it steadily.
 // It is finer than the WASM memory size, which hides small leaks in its slack.
 //
-// The control runs a loop that leaks on purpose (raw BRepAlgoAPI_Cut deleted
-// without Clear(), taucad/opencascade.js#40) and must trip the same limit, so
-// a probe that stops seeing leaks fails this test instead of passing it.
+// The controls run loops that leak on purpose inside the facade (results never
+// released) and must trip the same limit, so a probe that stops seeing leaks
+// fails this test instead of passing it. They don't depend on libcascade's
+// `delete()` (taucad/opencascade.js#40, fixed in toolchain 3.1.0).
 
 import {
   type BodyId,

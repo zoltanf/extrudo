@@ -21,7 +21,7 @@ import type { Feature, GeomRef } from '../schema';
 import { checkNewReferences } from '../timeline';
 import { dimensionRefs } from './dimensions';
 import { SKETCH_TYPE, sketchFeature, sketchInputs } from './feature';
-import { originPlane } from './planes';
+import { originPlane, type Vec2 } from './planes';
 import {
   constraintRefs,
   type FontId,
@@ -299,6 +299,7 @@ export const removeFromSketch = defineCommand<RemoveFromSketchPayload>(
         // Stored knots counted the old poles, and a loop needs three points (P4-12).
         delete spline.knots;
         if (points.length < 3) delete spline.closed;
+        if (spline.degree !== undefined && points.length <= spline.degree) delete spline.degree;
       }
     }
     for (const id of removal.entities) delete data.entities[id];
@@ -481,10 +482,83 @@ export const setSplineClosed = defineCommand<{
   if (closed && e.points.length < 3) {
     throw new CommandError('A closed spline needs at least three points.');
   }
-  const { closed: _closed, knots, ...rest } = e;
+  // A closed spline has no ends (so no end tangents) and is cubic (so no degree).
+  const { closed: _closed, knots, tangents, degree, ...rest } = e;
   data.entities[id] = closed
     ? { ...rest, closed: true }
-    : { ...rest, ...(knots === undefined ? {} : { knots }) };
+    : {
+        ...rest,
+        ...(knots === undefined ? {} : { knots }),
+        ...(tangents === undefined ? {} : { tangents }),
+        ...(degree === undefined ? {} : { degree }),
+      };
+});
+
+/**
+ * Sets or removes one end tangent of an open fit spline (ADR-0063's third
+ * amendment, B1): the end's derivative vector, mm per unit parameter. The
+ * tangent grips write it on release, one undo step. `undefined` frees that
+ * end; freeing the last one drops the key. The solver has nothing to do.
+ */
+export const setSplineTangent = defineCommand<{
+  feature: FeatureId;
+  id: SketchEntityId;
+  end: 'start' | 'end';
+  tangent: Vec2 | undefined;
+}>('sketch.splineTangent', 'Spline tangent', (draft, { feature, id, end, tangent }) => {
+  const data = sketchDraft(draft, feature);
+  const e = data.entities[id];
+  if (e?.type !== 'spline') throw new CommandError(`"${id}" isn't a spline of this sketch.`);
+  if ((e.mode ?? 'fit') !== 'fit' || e.closed === true) {
+    throw new CommandError('Only an open fit spline has end tangents.');
+  }
+  if (tangent && !(Number.isFinite(tangent[0]) && Number.isFinite(tangent[1]))) {
+    throw new CommandError('A tangent must be a vector of numbers.');
+  }
+  if (tangent && Math.hypot(tangent[0], tangent[1]) === 0) {
+    throw new CommandError('A tangent must be a non-zero vector.');
+  }
+  const { tangents, ...rest } = e;
+  const { [end]: _old, ...others } = tangents ?? {};
+  const next = tangent ? { ...others, [end]: [tangent[0], tangent[1]] as Vec2 } : others;
+  data.entities[id] = Object.keys(next).length > 0 ? { ...rest, tangents: next } : rest;
+});
+
+/** Frees both end tangents of a fit spline (the panel's Free ends, one undo step). */
+export const clearSplineTangents = defineCommand<{
+  feature: FeatureId;
+  id: SketchEntityId;
+}>('sketch.splineFreeEnds', 'Free spline ends', (draft, { feature, id }) => {
+  const data = sketchDraft(draft, feature);
+  const e = data.entities[id];
+  if (e?.type !== 'spline') throw new CommandError(`"${id}" isn't a spline of this sketch.`);
+  delete e.tangents;
+});
+
+/**
+ * Sets a control spline's degree (ADR-0063's third amendment, B2): the panel's
+ * Degree field, one undo step. Stored knots no longer fit the new degree, so
+ * they go. Refused for any other spline, for a closed one (cubic), for a degree
+ * outside 1 to 5 and for one its points can't carry.
+ */
+export const setSplineDegree = defineCommand<{
+  feature: FeatureId;
+  id: SketchEntityId;
+  degree: number;
+}>('sketch.splineDegree', 'Spline degree', (draft, { feature, id, degree }) => {
+  const data = sketchDraft(draft, feature);
+  const e = data.entities[id];
+  if (e?.type !== 'spline') throw new CommandError(`"${id}" isn't a spline of this sketch.`);
+  if (e.mode !== 'control') throw new CommandError('Only a control spline has a degree.');
+  if (e.closed === true) throw new CommandError('A closed control spline is cubic.');
+  if (!Number.isInteger(degree) || degree < 1 || degree > 5) {
+    throw new CommandError('Degree has to be a whole number from 1 to 5.');
+  }
+  if (e.points.length < degree + 1) {
+    throw new CommandError(`A degree-${degree} spline needs at least ${degree + 1} points.`);
+  }
+  const { knots: _knots, ...rest } = e;
+  data.entities[id] = { ...rest, degree };
 });
 
 /** Solved geometry for existing entities, as `addToSketch` takes it. */

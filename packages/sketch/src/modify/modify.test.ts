@@ -810,6 +810,37 @@ describe('mirror, copy, patterns and scale', () => {
     }
   });
 
+  it("turns a fit spline's end tangents with the transform's linear part (ADR-0063, third amendment)", () => {
+    const b = new SketchBuilder();
+    const axis = b.line(-20, 0, 20, 0, true);
+    b.constrain({ type: 'fix', entity: axis.start });
+    b.constrain({ type: 'fix', entity: axis.end });
+    const s = b.spline(
+      [
+        [0, 5],
+        [10, 12],
+        [20, 6],
+      ],
+      { tangents: { start: [3, 4], end: [10, -2] } },
+    );
+    const before = data(b);
+    const made = (after: SketchData) =>
+      Object.entries(after.entities)
+        .filter(([key, e]) => e.type === 'spline' && !(key in before.entities))
+        .map(([, e]) => e);
+    // A copy is a translation: the vectors stay as they are.
+    expect(made(apply(before, copy(before, [id(s.id)], [40, 0], newId)))).toEqual([
+      expect.objectContaining({ tangents: { start: [3, 4], end: [10, -2] } }),
+    ]);
+    // A mirror about the x axis flips their y.
+    expect(
+      made(apply(before, mirror(before, [id(s.id), id(axis.id)], id(axis.id), newId))),
+    ).toEqual([expect.objectContaining({ tangents: { start: [3, -4], end: [10, 2] } })]);
+    // Scaling by 2 doubles them.
+    const scaled = apply(before, scale(before, [id(s.id)], [0, 0], 2, newId).result);
+    expect(scaled.entities[id(s.id)]).toMatchObject({ tangents: { start: [6, 8], end: [20, -4] } });
+  });
+
   it('copies geometry with its constraints and dimensions', () => {
     const { b, bottom, right, top, left } = rectangle();
     const before = data(b);

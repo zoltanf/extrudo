@@ -1,0 +1,1 @@
+- 2026-10-16 · **Spline end tangents and degree** (P4-12, ADR-0063's third amendment): a fit spline's two ends have tangent grips (direction and length, stored as `tangents`), and a control spline takes a `degree` from 1 to 5 in its panel; extending a spline stays refused.

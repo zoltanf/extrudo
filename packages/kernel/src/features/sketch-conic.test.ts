@@ -12,7 +12,10 @@ import {
   originPlaneRef,
   type SketchData,
   type SketchEntityId,
+  type SketchSpline,
   sketchInputs,
+  splineCurve,
+  splinePolyline,
   type Vec2,
 } from '@extrudo/core';
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
@@ -284,5 +287,78 @@ describe('exact conics in the kernel (P4-12)', () => {
     } finally {
       kernel.release(...result.faces.map((f) => f.shape));
     }
+  });
+});
+
+// ADR-0063's third amendment: a control spline's own degree and a fit spline's
+// end tangents reach the kernel as their B-splines through `sketchSpline`.
+describe("a spline's degree and end tangents in the kernel (P4-12)", () => {
+  /** Extrudes the one profile of `data` 5 mm: its body and volume. */
+  async function extrudeOne(data: SketchData) {
+    const profiles = detectProfiles(data);
+    expect(profiles).toHaveLength(1);
+    const result = await run(
+      testDocument([
+        sketchFeature('SK', data),
+        extrude('E', `SK/${(profiles[0] as { id: string }).id}`),
+      ]),
+    );
+    expect(result.bodies).toHaveLength(1);
+    const [body] = result.bodies;
+    if (!body) throw new Error('no body');
+    const shape = engine.latestBody(body.id) as ShapeHandle;
+    expect(kernel.isValid(shape)).toBe(true);
+    return { volume: kernel.measure(shape).volume };
+  }
+
+  /** The area between a spline and the chord from its last point to its first, from a fine polyline. */
+  function fineArea(data: SketchData): number {
+    const entity = Object.values(data.entities).find((e) => e.type === 'spline') as SketchSpline;
+    const at = (id: SketchEntityId) => {
+      const p = data.entities[id] as { x: number; y: number };
+      return [p.x, p.y] as Vec2;
+    };
+    const line = splinePolyline(splineCurve(entity, entity.points.map(at)), 1024);
+    let twice = 0;
+    line.forEach((p, i) => {
+      const q = line[(i + 1) % line.length] as Vec2;
+      twice += p[0] * q[1] - q[0] * p[1];
+    });
+    return Math.abs(twice) / 2;
+  }
+
+  it('extrudes a degree-2 control spline and a fit spline with tangents, each closed by a line', async () => {
+    const quadratic = new SketchBuilder();
+    const poles: [number, number][] = [
+      [0, 0],
+      [5, 15],
+      [15, 18],
+      [25, 12],
+      [30, 0],
+    ];
+    quadratic.spline(poles, { mode: 'control', degree: 2 });
+    quadratic.line(30, 0, 0, 0);
+    const staged = planarCurves(quadratic.sketch).curves.find((c) => c.kind === 'spline');
+    expect(staged).toMatchObject({ kind: 'spline', degree: 2 });
+    const a = await extrudeOne(quadratic.sketch);
+    expect(a.volume).toBeGreaterThan(0);
+    // The solid is the curve's own: its volume is about the fine polyline's area
+    // × 5 (OCCT's fixed-order mass integral is ~1e-4 out on a prism with B-spline
+    // walls, ADR-0067 §H3, as the P4-12 amendment's Results say; 3e-4 here).
+    expect(Math.abs(a.volume / (5 * fineArea(quadratic.sketch)) - 1)).toBeLessThan(1e-3);
+
+    const tangent = new SketchBuilder();
+    tangent.spline(
+      [
+        [0, 0],
+        [15, 12],
+        [30, 0],
+      ],
+      { tangents: { start: [0, 40], end: [0, -40] } },
+    );
+    tangent.line(30, 0, 0, 0);
+    const b = await extrudeOne(tangent.sketch);
+    expect(b.volume).toBeGreaterThan(0);
+    expect(Math.abs(b.volume / (5 * fineArea(tangent.sketch)) - 1)).toBeLessThan(1e-3);
   });
 });

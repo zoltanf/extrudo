@@ -172,6 +172,7 @@ import { pickDrawing } from '../sketch/pickDrawing';
 import { profileIdsIn, sketchProfiles } from '../sketch/profiles';
 import { INTERSECT_TOOL, isProjectTool, PROJECT_TOOL, useProjectTool } from '../sketch/project';
 import { deleteSelection } from '../sketch/selection';
+import { gripSplineOf } from '../sketch/splineEnds';
 import { textDraftStore } from '../sketch/textDraft';
 import type { ToolHost } from '../sketch/tools/host';
 import { isPickingTool, isSketchTool } from '../sketch/tools/ids';
@@ -2042,6 +2043,8 @@ export function AppShell({
             hoverEntity: sketchEntityIdsIn([hover], feature.id)[0],
             selectedEntities: sketchEntityIdsIn(shownSelection, feature.id),
           }),
+          // One selected open fit spline shows its tangent grips (ADR-0063's third amendment).
+          ...(active && { gripSpline: gripSplineOf(sketch.data, selection) }),
           ...(showProfiles && {
             profiles: sketchProfiles(sketch.data, fontsVersion),
             hoverProfile: profileIdsIn([hover], feature.id)[0],
@@ -2060,6 +2063,7 @@ export function AppShell({
     hover,
     hoveredFeatures,
     shownSelection,
+    selection,
     pickingSketchPoints,
     sketchReports,
     constructionReports,

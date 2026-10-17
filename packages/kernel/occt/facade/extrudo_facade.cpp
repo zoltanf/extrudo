@@ -3,11 +3,14 @@
 // Extrudo's C++ facade over OpenCascade, compiled into our OCCT WASM build
 // (see ../libcascade.config.ts and docs/adr/0001-geometry-kernel.md).
 //
-// Why it exists: libcascade's `delete()` from JS does not reliably release the
-// memory an OCCT object owns (taucad/opencascade.js#40). So every operation
-// that allocates heavily runs here, with its builder on the C++ stack, and JS
-// only ever holds integer handles into an arena of shapes. Results, history and
-// meshes come back as flat arrays that JS copies out of the WASM heap.
+// Why it exists: every operation that allocates heavily runs here, with its
+// builder on the C++ stack, and JS only ever holds integer handles into an
+// arena of shapes. Results, history and meshes come back as flat arrays that JS
+// copies out of the WASM heap once, and no OCCT type crosses the bindings
+// (ADR-0037). It began as the way around libcascade 3.0.x's `delete()`, which
+// did not release the memory an OCCT object owns (taucad/opencascade.js#40,
+// fixed in toolchain 3.1.0); in 3.1.0 `delete()` frees, which only matters
+// here for the facade object itself.
 //
 // The libcascade toolchain parses this file and generates the embind bindings
 // for every class declared in it, so it contains exactly one class. Helpers

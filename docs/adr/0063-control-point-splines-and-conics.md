@@ -2,7 +2,9 @@
 
 - **Status:** Implemented, 2026-10-04 (branch `p4-05-splines`); see Results.
   Amended 2026-10-06 (P4-12: stored knots, closed splines, trim, break and
-  offset; branch `p4-12-splines`)
+  offset; branch `p4-12-splines`), 2026-10-07 (P4-12: exact conics in the
+  kernel) and 2026-10-16 (P4-12: end tangents and degree; branch
+  `claude/p4-12-spline-ends`)
 - **Task:** P4-05 (FR-SK-03: "Spline (fit-point and control-point), conic").
 - **Builds on:** ADR-0010 (points are entities), ADR-0014 (fit-point splines:
   the curve is derived from points, the solver sees only the points),
@@ -515,3 +517,145 @@ Size: OCCT input hash `cf0bb43b2ade` (release `occt-cf0bb43b2ade`); the WASM
 is 20.57 MB raw, 6.66 MB gzip, 4.63 MB brotli (Node's zlib at its best
 settings; 20.50 / 6.62 / 4.60 MB before: +75 kB raw, +34 kB brotli, mostly
 `GCPnts_AbscissaPoint` and the Gauss–Kronrod integrator).
+
+## Amendment, 2026-10-16 — P4-12: end tangents and degree
+
+The two Deferred items left in P4-12's spline backlog: **end-tangent handles**
+on a fit spline and **degree choice** on a control spline. The third,
+extending a spline, stays refused for the reason A3 gives (no natural
+continuation past a B-spline's end). **No facade change** (`sketchSpline`
+takes any degree ≥ 1 with the full knot vector) and `formatVersion` stays 2:
+two optional keys on the `spline` entity.
+
+### B1. End tangents of a fit spline
+
+- **Stored** as `tangents?: { start?: [x, y]; end?: [x, y] }`, only on an
+  open fit spline (`mode` absent or `'fit'`, no `closed`): `sketchIssues` says
+  "only an open fit spline has tangents", and a zero vector "a tangent must be
+  a non-zero vector". Each vector is the curve's **derivative** at that end,
+  in mm of sketch space per unit of the curve's parameter (0..1): its
+  direction is the end tangent, its length how far the curve keeps it. With
+  chord-length parameters a free fit's end derivative is about as long as the
+  points' total chord length.
+- **The curve**: `fitSpline(points, tangents?)` adds one pole per given end
+  derivative and its equation (Piegl & Tiller §9.2.2): `P1 − P0 =
+  (u_{p+1} / p) · D0` at the start, `P_N − P_{N−1} = ((1 − u_{m−p−1}) / p) ·
+  Dn` at the end. The knots are averages of `p` consecutive chord-length
+  parameters, as without tangents, with one window more per given end (at
+  that end; with both, eq. 9.22). The degree is `min(3, poles − 1)`: **3 as
+  soon as there are three points, or two points with both tangents** (a
+  Hermite cubic, not a line); two points with one tangent are the quadratic
+  that has it (three conditions can't fix a cubic). **Without tangents
+  nothing changes, bit for bit** (the same code path; a test keeps a literal
+  of today's output). `splineCurve` passes `entity.tangents` for an open fit
+  spline; closed, control and conic splines have none.
+- **Commands**: `setSplineTangent({ feature, id, end, tangent })` sets or
+  (with `undefined`) removes one end's (removing the last drops the key);
+  `clearSplineTangents({ feature, id })` frees both ends in one step (the
+  panel's button: the host applies one command per undo step).
+  `setSplineClosed(true)` drops `tangents` (a closed spline has no ends).
+- **Transforms** apply the transform's **linear part** to the vectors (no
+  translation): mirror flips them with the geometry, scale multiplies them,
+  copies and patterns turn them. **Trim and break** turn a fit spline into a
+  control spline (A3), whose poles and knots carry the shape, so `tangents`
+  go. Offset samples the derived curve (A4) and is unchanged.
+- **UI**: with one open fit spline selected in sketch mode, each end has a
+  **tangent grip**: a thin dashed line from the end point to the grip and a
+  small square there, drawn like the control polygon. The grip sits a third
+  of the derivative from the end, **on the curve's side** — at `start + D0/3`
+  and `end − Dn/3`, where a cubic Bézier's inner control points are (the
+  brief had `end + tangent / 3` at both ends; at the end that would put the
+  grip past the curve, so the Bézier convention is followed at both). Dragging
+  it previews the curve live and on release applies one `setSplineTangent`
+  through `ToolHost.apply` (one undo step; Esc during the drag puts it back).
+  With no tangent stored, the grip sits where the free fit's own end
+  derivative puts it, and a press without a move changes nothing. The grips
+  are not solver points: `PARAM_COUNT.spline` stays 0, `mapping.ts` is
+  untouched. The panel shows **Free ends** for a fit spline with a stored
+  tangent.
+
+### B2. Degree of a control spline
+
+- **Stored** as `degree?: number`, an integer from **1 to 5**, only with
+  `mode: 'control'`, and not with `closed`: "only a control spline has a
+  degree", "a closed control spline is cubic" (the periodic unwrap, A2, is
+  cubic), "a degree-d spline needs at least d+1 points". Absent means §1's
+  `min(3, n − 1)` exactly.
+- `controlSpline(poles, knots?, degree?)`: the clamped uniform knots of that
+  degree (`n − degree` spans). Stored `knots` are checked against the stored
+  degree: `knotProblem(knots, poles, degree = 3)` wants `poles + degree + 1`
+  values, the first and last `degree + 1` of them 0 and 1, an inner knot at
+  most `degree` times. Trim and break of a control spline keep its degree
+  (`replaceSpline` writes `degree` when it isn't 3; `insertKnot` and
+  `splitSpline` are generic, and only a single Bézier below degree 3 is still
+  raised to a cubic first, as A3 did). `setSplineDegree({ feature, id, degree
+  })` writes it as given (3 included) and **drops stored knots**, which no
+  longer fit; `setSplineClosed(true)` drops `degree` as it drops `knots`, and
+  removing points below `degree + 1` drops it.
+- **Export**: degree 1 pieces are lines, 2 quadratic, 3 cubic segments as
+  before. SVG and DXF have no quartic or quintic segment, so a degree-4 or 5
+  Bézier piece goes out as **cubics within `OFFSET_TOLERANCE` (1e-3 mm)**:
+  the cubic Hermite of the piece's ends and end derivatives, checked against
+  the piece at its quarter points and split at the middle until it holds
+  (at most 2⁸ cubics per piece). The exporter had no curve fallback but one
+  line per piece (`bezierSegment` turned anything past four points into a
+  straight segment), so this is new; cubics keep the files small.
+- **UI**: the panel's **Degree** field (unitless `ExpressionInput`) for a
+  control spline: outside 1..5 or not whole it notifies "Degree has to be a
+  whole number from 1 to 5.", too few points "A degree-4 spline needs at least
+  5 points." The control polygon is drawn as before for any degree.
+
+### B3. API, macros and docs
+
+`SketchBuilder.spline(points, { closed, tangents })` and `splineControl(points,
+{ knots, closed, degree })`; `SplineHandle.tangents` and `.degree`; the macro
+emitter writes both when present.
+
+### Rejected
+
+- **Tangent handles as solver parameters** (two unknowns per end, so a
+  dimension or a tangency could drive them): nothing can constrain them yet,
+  and the solver would re-solve the sketch on every grip move. The grips write
+  the stored vector; a later task can make it a parameter without a file
+  change.
+- **A degree on closed splines**: the periodic unwrap (A2) is cubic, and a
+  periodic curve of another degree needs its own wrap and seam rule.
+- **Extending a spline**: A3.
+- **Higher degrees for fit splines**: the interpolant's C2 cubic is what users
+  expect from fit points, and a higher one wiggles.
+
+### Results (2026-10-16)
+
+Everything in B1–B3 is in; no facade change, `formatVersion` stays 2 (two
+optional keys, file format §7.1).
+
+| File | What |
+|---|---|
+| `packages/core/src/sketch/schema.ts` | `tangents`, `degree`; `knotProblem(knots, poles, degree = 3)`; the rules in `sketchIssues` |
+| `packages/core/src/sketch/curves.ts` | `fitSpline(points, tangents?)` (`tangentFit`, `SplineTangents`), `controlSpline(poles, knots?, degree = 3)`, `splineTangentAt`; `splineCurve` passes both; `splineRange` keeps a stored degree |
+| `packages/core/src/sketch/commands.ts` | `setSplineTangent`, `clearSplineTangents`, `setSplineDegree`; `setSplineClosed` drops both keys; removing points below `degree + 1` drops the degree |
+| `packages/sketch/src/modify/transform.ts`, `split.ts` | `turnTangents` (copy, patterns, mirror, scale); `replaceSpline` writes `degree` |
+| `packages/sketch/src/export/bezier.ts`, `export.ts` | `cubicApproximation`, `CUBIC_TOLERANCE`; `bezierSegments` |
+| `packages/sketch/src/build/add.ts`, `packages/api/src/sketch.ts`, `emit/sketch.ts` | `addSpline`'s `tangents` and `degree`; `SplineOptions.tangents`, `ControlSplineOptions.degree`, `SplineHandle.tangents`/`.degree`, `SplineTangents`; the emitter writes them |
+| `apps/web/src/sketch/splineEnds.ts` | `tangentGrips`, `tangentAt`, `selectedGrips`, `gripSplineOf` |
+| `apps/web/src/sketch/tools/host.ts` | a press on a grip of the selected spline drags it (`gripAt`, `dragGrip`, `endGrip`): the preview runs in a transaction that is cancelled on release, then one `host.apply` |
+| `apps/web/src/viewport/sketchGeometry.ts`, `Sketches.tsx`, `Viewport.tsx`, `shell/AppShell.tsx` | `SketchDrawing.gripSpline`, `SketchSegments.grips`: the dashed lines in the control polygons' layer, square points for the grips, `data-tangent-grips` |
+| `apps/web/src/sketch/panels.tsx` | `SplineDegreeField`; Free ends (`data-spline-tangents`) |
+
+Measured (the tests): with both tangents, a five-point fit spline passes
+through its points to 1e-9 mm and its end derivatives (second-order one-sided
+differences, h = 1e-6) match the stored vectors to 1e-6 relative; without
+tangents the arrays are bit-identical to a literal of the old output. Degree-4
+and degree-5 control splines of seven poles export as 40 and 29 cubics (3 and
+2 Bézier pieces), at worst 4.8e-4 and 8.7e-4 mm from the curve. A degree-2
+control spline and a fit spline with tangents, each closed by a line and
+extruded 5 mm, are one valid body each, their volumes within 3e-4 of a
+1024-segment polyline's area × 5 (OCCT's fixed-order mass integral, ADR-0067
+§H3, as in the P4-12 amendment's Results).
+
+Deviations from the brief: the end grip sits at `end − Dn / 3` (the Bézier
+convention at that end, B1); two points with one tangent are a quadratic;
+Free ends is one `clearSplineTangents` command (one label for one step); a
+press on a grip without a move stores nothing and keeps the selection;
+`data-tangent-grips` on the viewport and `data-spline-tangents` /
+`data-spline-degree` in the panel let e2e read the document.

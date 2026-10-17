@@ -919,6 +919,16 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   pressed with E, and `data-bodies` gives `40,20,5`; with Scale 2, `80,40,5`;
   and `square-inches.dxf` ($INSUNITS 1) gives 25.4 × 25.4 mm.
 
+### `e2e/import-f3d.spec.ts`
+
+- **The `.f3d` import in its worker** (ADR-0083, 2026-10-16): the file is built in the spec
+  (`storedZip` of stored entries, no CRCs, around the empty design segment `metaStream`, the
+  same as `packages/f3d`'s archive tests), never a sample, and fed to the home screen's
+  **Import…** with `chooser.setFiles({ name, mimeType, buffer })`. That the worker ran is
+  `page.on('worker')` seeing a URL with `f3dWorker` (the worker's `name` isn't exposed). The
+  empty design's notice is "Imported from the .f3d file: 0 of 0 timeline features."; a bad
+  file's error is the home screen's `alert` toast "Import failed: …".
+
 ### `e2e/import-mesh.spec.ts`
 
 - **Import mesh e2e** (`e2e/import-mesh.spec.ts`, P4-06 slices 3 and 4): the
@@ -1973,7 +1983,17 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   same: the piece has as many poles as the fit had points), and a click at a
   fit point after Ctrl+Z selects the **point** (points win the pick); `o` on
   the wave at (−20, 20), the pointer above and `2` makes `splines: 2` with no
-  dimension.
+  dimension. **Third amendment**: a fit spline through (−30, 0) (0, 20)
+  (30, 0) is selected at (−15, 15) (on its quadratic, not a fit point); the
+  viewport's `data-tangent-grips` then reads `start:x,y end:x,y` in sketch mm
+  (only for one selected open fit spline in the open sketch). A drag
+  (`mouse.down`, 5-step move, `mouse.up`) from the end grip 20 px up stores
+  the end's tangent: the panel's **Free ends** button appears with
+  `data-spline-tangents="end"`. A control spline through (−40, 0) (−20, 40)
+  (0, 20) (20, 40) (40, 0) is selected at its crown (0, 30); the panel's
+  `textbox` "Degree" reads `3`, `5` is refused with "A degree-5 spline needs
+  at least 6 points.", `2` sets `data-spline-degree="2"` on the field's row.
+  Both close with a line and extrude into one body (`extrudeAt`).
 
 ### `e2e/split-body.spec.ts`
 

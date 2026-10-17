@@ -183,6 +183,16 @@ function sketchBody(data: SketchData, ctx: EmitContext): Body {
           if (entity.knots && entity.mode === 'control') {
             shape.push(['knots', arr(entity.knots.map((k) => num(k)))]);
           }
+          // An open fit spline's end tangents and a control spline's degree (the third amendment).
+          if (entity.degree !== undefined && entity.mode === 'control') {
+            shape.push(['degree', num(entity.degree)]);
+          }
+          if (entity.tangents && entity.mode !== 'control' && !entity.closed) {
+            const ends: [string, ReturnType<typeof num>][] = [];
+            if (entity.tangents.start) ends.push(['start', vec(entity.tangents.start)]);
+            if (entity.tangents.end) ends.push(['end', vec(entity.tangents.end)]);
+            shape.push(['tangents', obj(ends)]);
+          }
           body.push(
             constant(variable, call(method, shape.length > 0 ? [points, obj(shape)] : [points])),
           );

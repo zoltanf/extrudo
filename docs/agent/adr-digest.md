@@ -52,10 +52,12 @@ our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
 debug page at `#/debug/kernel`). The `delete()` leak behind the facade
-(taucad/opencascade.js#40) is fixed in libcascade 3.1.0; we still build with
-3.0.2, and the upgrade is a P4-12 item (ADR-0001's amendment of 2026-10-15).
-After it, `delete()` frees for real: never delete a handle OCCT still
-references. ADR-0002 chose planegcs from our own WASM build, one solver system per independent sketch component
+(taucad/opencascade.js#40) is fixed in libcascade 3.1.0, and we build with
+toolchain 3.1.0 since 2026-10-16 (ADR-0001's addendum of that day): `delete()`
+frees for real, so never delete a handle OCCT still references. The facade
+stays the only binding (ADR-0037); the only OCCT `delete()` in
+`packages/kernel/src` is the facade's own in `Kernel.dispose()`, after
+`releaseAll()`. ADR-0002 chose planegcs from our own WASM build, one solver system per independent sketch component
 (`docs/adr/0002-sketch-solver.md`). ADR-0003 (P0-06) set the document model in
 `packages/core`: strict zod schema, migrations on raw JSON, deterministic
 commands with Immer patches, nested undo transactions, vanilla Zustand stores.
@@ -1300,6 +1302,18 @@ go face by face (bounded on a plane with a rational edge) and a rational
 edge's length `GCPnts_AbscissaPoint` (`edgeLength`; `LinearProperties` has no
 error bound); a shape with no rational edge integrates as before. Native
 harness `spikes/p4-12-conics/` (`run.sh`, `run.sh probe`, `run.sh leaks 300`).
+**P4-12's third amendment (2026-10-16)**: an **open fit spline** may store
+`tangents: { start?, end? }`, its end **derivative vectors** (mm per unit of the
+0..1 parameter; `fitSpline(points, tangents)` adds a pole and a Piegl & Tiller
+§9.2.2 row per end, and **without tangents runs the old code bit for bit**), and
+a **control spline** a `degree` 1 to 5 (not closed, at least `degree + 1`
+points; stored `knots` are checked by `knotProblem(…, degree)` and dropped by
+`setSplineDegree`); closing drops both, transforms turn `tangents` by their
+linear part, trim/break drop them and keep `degree`, degree 4/5 export as cubics
+within 1e-3 mm (`cubicApproximation`). The grips (`apps/web/src/sketch/splineEnds.ts`,
+at `start + D0/3` and `end − Dn/3`) are **not solver points**: the host drags
+them in a cancelled transaction and applies one `setSplineTangent`. Extending a
+spline stays rejected (A3).
 ADR-0064 (P4-10, slice 1) added the **rib**: a thin wall from one sketch
 **line** to the body beside it (a gusset, a web; the stiffening triangle in a
 bracket's corner). Core holds the definition (`curve`, `thickness`, `side`,
@@ -2307,6 +2321,8 @@ characters, never a list in braces: `skippedFeature`, R3-18) and `detail` the te
 **Amendment of 2026-10-14 (skipped features):** an edge recipe whose first face has a negative token runs between its second face and the single one after it (`edgeFaces`, `decode/edges.ts`); a fillet/chamfer none of whose edges passes the weak-edge rule gets one second try (`loose`) by its two faces' names alone, no fingerprint, relying on `skipLostEdges`; a profile region nothing finds is left out with a note only while the operand's other regions are found (else the extrude is skipped as before); a hole without centre points takes them from its own cylinders' axes (`centresFromCylinders`, at most `MAX_FOUND_CENTRES`, never a pattern's copies), and a hole on a body face takes its placement's point and normal only when the recipe's B-rep plane agrees (`readHolePlacement`, `planeThrough`); an extrude head is also looked for at offset 57, after every other offset.
 
 **Amendment of 2026-10-15 (hostile files, round 2):** every reader stays linear in its input. `readAsm` shares one-byte values and small ints (frozen objects: never mutate an `AsmValue`), needs a class per record and caps values (1 per 4 bytes, 16 M), records (1 per 16 bytes); `asmFaceTags` returns a per-stream shared array (don't mutate it) and, like `asmFaces`' loop walk, spends a per-stream budget; `asm-body` reads each surface, curve and edge record once per stream (`Walk.surfaces/curves/edges`), `asm-spline` each B-spline block once (WeakMap by values array), and `brep-step` writes a B-spline once per body (`shared`, keyed by the spline object; analytic geometry per use) within `MAX_STEP_BYTES`. `archive.ts` inflates streaming into the declared size and must fill it, refuses a declared size over `MAX_RATIO` × compressed + 4 kB before allocating, and walks a Zstandard frame's headers first (one frame, no dictionary, window ≤ `MAX_ZSTD_WINDOW`). `readSegment`: `readOperationTable` spends one budget per segment; timeline items and type-table ids are deduplicated; `scopeOf` memoises `readScope`; `madeBy` is indexed; `refsOf` frames a record under `tryDecode`. Numbers from the file go through `finite` (`bytes.ts`) at decode. Core's expression parser refuses nesting past `MAX_DEPTH` = 256 (parser depth and node height). A new reader keeps to this: no per-byte objects, no walk repeated per referrer, a budget where a search tries every offset.
+
+**Amendment of 2026-10-16 (import in a worker):** the app never calls `importF3d` on the UI thread: `importF3dFile` takes an `ImportRunner` (`project/f3dImport.ts`; tests pass one that runs inline), and the default starts `f3dWorker.ts` per import, transfers the bytes, gets `{ result }` with the design as its document (rebuilt with `Design.from`) or `{ error }`, and terminates the worker on answer, `error` event or `F3D_IMPORT_TIMEOUT_MS` (30 s, about 6× the corpus's slowest import). Anything added to `ImportResult` must stay structured-cloneable, or be converted at that boundary. A JS-heap OOM in a worker crashes the renderer without an error event (measured): only the time budget stops it.
 
 **Amendment of 2026-10-14 (torus, sweep faces, further records):** a torus primitive's matrix is in its plane's frame (`decode/torus.ts`: centre = matrix origin, axis = matrix Z, through the geometry operand's model plane); `readTorus` refuses it when the B-rep keeps a torus the feature made elsewhere; it maps only onto the origin plane square to its axis. Sweep faces are told by geometry, never by token (`sweep-faces.ts`): only for a path that chains, is flat and crosses the profile's plane square to it, at most `MAX_PATH_PIECES` pieces; along a spline only a plane at one height; `cap:start` is the cap at the path end nearer the profile. A feature's further records in other components (`decode/feature-records.ts`, `12D00AC0…`) map faces to the timeline feature only through that list (`timelineFeature`), never by a shared name; their bodies are added to a join/cut that names bodies (`allParticipants`), and a feature naming none keeps none.
 

@@ -5,10 +5,12 @@
 // inputs. See packages/kernel/occt/README.md.
 //
 // `bindings` lists only our C++ facade (facade/extrudo_facade.cpp). It owns all
-// OCCT memory and does all the work (taucad/opencascade.js#40), and its public
-// methods take and return ints, doubles and pointers, never OCCT types, so no
-// raw OCCT class needs an embind binding (ADR-0037). The facade includes
-// OCCT headers directly and links the static libraries.
+// OCCT memory and does all the work: results, history and meshes are copied out
+// once as flat arrays, and its public methods take and return ints, doubles and
+// pointers, never OCCT types, so no raw OCCT class needs an embind binding
+// (ADR-0037). The facade includes OCCT headers directly and links the static
+// libraries. (It began as the way around 3.0.x's `delete()` leak,
+// taucad/opencascade.js#40, fixed in toolchain 3.1.0.)
 import { defineBuild } from '@libcascade/toolchain';
 
 export default defineBuild({

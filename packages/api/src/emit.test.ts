@@ -29,6 +29,7 @@ import { readArchive } from '@extrudo/storage';
 import { describe, expect, it } from 'vitest';
 import { Design } from './design';
 import { emitScript } from './emit';
+import type { SplineHandle } from './sketch';
 
 const ROOT = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
 
@@ -295,6 +296,8 @@ function canonicalEntity(entity: SketchEntity, id: (value: string) => string): u
         rho: entity.rho ?? null,
         knots: entity.knots ?? null,
         closed: entity.closed ?? false,
+        tangents: entity.tangents ?? null,
+        degree: entity.degree ?? null,
         construction: entity.construction,
       };
     case 'text':
@@ -725,6 +728,52 @@ describe('emitScript', () => {
     const code = emitScript(original);
     expect(code).toContain('{ closed: true }');
     expect(code).toContain('knots: [0, 0, 0, 0, 0.4, 0.4, 0.4, 1, 1, 1, 1]');
+    expect(biomeFormat(code)).toBe(code);
+    const recreated = run(code, original);
+    const map = idMap(original, recreated);
+    expect(canonical(recreated, map)).toEqual(canonical(original, map));
+  });
+
+  it("emits a fit spline's end tangents and a control spline's degree (ADR-0063, third amendment)", () => {
+    const design = Design.create();
+    let handles: { fit?: SplineHandle; one?: SplineHandle; ctrl?: SplineHandle } = {};
+    design.sketch(design.origin.xy, (k) => {
+      handles = {
+        fit: k.spline(
+          [
+            [0, 0],
+            [20, 10],
+            [40, 0],
+          ],
+          { tangents: { start: [0, 30], end: [25.5, -10] } },
+        ),
+        one: k.spline(
+          [
+            [0, 20],
+            [20, 30],
+          ],
+          { tangents: { end: [10, 0] } },
+        ),
+        ctrl: k.splineControl(
+          [
+            [0, 40],
+            [10, 50],
+            [20, 42],
+            [30, 48],
+            [40, 40],
+          ],
+          { degree: 2, knots: [0, 0, 0, 0.25, 0.75, 1, 1, 1] },
+        ),
+      };
+    });
+    expect(handles.fit?.tangents).toEqual({ start: [0, 30], end: [25.5, -10] });
+    expect(handles.fit?.degree).toBeUndefined();
+    expect(handles.ctrl?.degree).toBe(2);
+    const original = design.toJSON();
+    const code = emitScript(original);
+    expect(code).toContain('tangents: { start: [0, 30], end: [25.5, -10] }');
+    expect(code).toContain('tangents: { end: [10, 0] }');
+    expect(code).toContain('degree: 2');
     expect(biomeFormat(code)).toBe(code);
     const recreated = run(code, original);
     const map = idMap(original, recreated);

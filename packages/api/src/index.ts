@@ -110,6 +110,7 @@ export {
   SlotHandle,
   SplineHandle,
   type SplineOptions,
+  type SplineTangents,
   type TextContent,
   TextHandle,
 } from './sketch';

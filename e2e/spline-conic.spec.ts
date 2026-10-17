@@ -5,7 +5,9 @@ import { clicker, counts, kernelReady, pickTool, sketchOnXY } from './helpers';
 // Create menu, a control spline closed by a line as a profile, and a conic with
 // a typed rho, finished and extruded into one body. P4-12 (ADR-0063's
 // amendment): a closed control spline drawn back to its first point and
-// extruded, a fit spline trimmed against a line, and a spline offset.
+// extruded, a fit spline trimmed against a line, and a spline offset. P4-12
+// (the third amendment): a fit spline's end tangent set by dragging its grip,
+// and a control spline's degree set in the panel, each extruded.
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -303,4 +305,117 @@ test('a spline offset 2 mm is a second spline', async ({ page }) => {
   const after = await counts(page);
   expect(after.dimensions).toBe(0);
   expect(after.lines).toBe(0);
+});
+
+/** The open sketch's tangent grips, from the viewport's `data-tangent-grips` (sketch mm). */
+async function grips(page: Page): Promise<Record<string, [number, number]>> {
+  const text = (await viewport(page).getAttribute('data-tangent-grips')) ?? '';
+  return Object.fromEntries(
+    text
+      .split(' ')
+      .filter(Boolean)
+      .map((entry) => {
+        const [end, xy] = entry.split(':');
+        const [x, y] = (xy ?? '').split(',').map(Number);
+        return [end, [x, y]];
+      }),
+  );
+}
+
+test("a fit spline's end grip sets its tangent, and it still extrudes", async ({ page }) => {
+  const at = await sketchOnXY(page);
+  const click = clicker(page, at);
+
+  await pickTool(page, 'Fit Point Spline');
+  await click(-30, 0);
+  await click(0, 20);
+  await click(30, 0);
+  await page.keyboard.press('Enter');
+  await expect.poll(() => counts(page)).toMatchObject({ splines: 1, points: 3 });
+  await page.keyboard.press('Escape');
+  await expect(toolPrompt(page)).toHaveCount(0);
+
+  // Selected (at (−15, 15), where the curve runs between its fit points), it shows two grips.
+  const onCurve = at(-15, 15);
+  await page.mouse.move(onCurve.x, onCurve.y);
+  await page.mouse.click(onCurve.x, onCurve.y);
+  await expect(selection(page).locator('[data-selection-title]')).toHaveText('Spline');
+  await expect.poll(async () => Object.keys(await grips(page)).sort()).toEqual(['end', 'start']);
+  // No tangent is stored yet, so there is nothing to free.
+  await expect(selection(page).getByRole('button', { name: 'Free ends' })).toHaveCount(0);
+
+  // Drag the end grip 20 px up: one undo step, and the end's tangent is stored.
+  const end = (await grips(page)).end as [number, number];
+  const from = at(...end);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x, from.y - 20, { steps: 5 });
+  await page.mouse.up();
+  const free = selection(page).getByRole('button', { name: 'Free ends' });
+  await expect(free).toHaveAttribute('data-spline-tangents', 'end');
+  // The grip followed the pointer up.
+  expect(((await grips(page)).end as [number, number])[1]).toBeGreaterThan(end[1] + 1);
+
+  // A line from the end back to the start closes it; it extrudes into one body.
+  await page.keyboard.press('l');
+  await click(30, 0);
+  await click(-30, 0);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await expect(toolPrompt(page)).toHaveCount(0);
+  await expect(viewport(page)).toHaveAttribute('data-sketch-profiles', 'profiles=1 holes=0');
+  await extrudeAt(page, at, [0, 5]);
+  const drawn = await bodies(page);
+  expect(drawn).toHaveLength(1);
+  expect(drawn[0]?.size[2]).toBe(5);
+});
+
+test("a control spline's degree set in the panel, and it still extrudes", async ({ page }) => {
+  const at = await sketchOnXY(page);
+  const click = clicker(page, at);
+
+  await pickTool(page, 'Control Point Spline');
+  for (const [x, y] of [
+    [-40, 0],
+    [-20, 40],
+    [0, 20],
+    [20, 40],
+    [40, 0],
+  ] as const)
+    await click(x, y);
+  await page.keyboard.press('Enter');
+  await expect.poll(() => counts(page)).toMatchObject({ splines: 1, points: 5 });
+  await page.keyboard.press('Escape');
+  await expect(toolPrompt(page)).toHaveCount(0);
+
+  // The cubic runs through (0, 30) between its poles: select it there.
+  const crown = at(0, 30);
+  await page.mouse.move(crown.x, crown.y);
+  await page.mouse.click(crown.x, crown.y);
+  await expect(selection(page).locator('[data-selection-title]')).toHaveText('Spline');
+  const degree = selection(page).getByRole('textbox', { name: 'Degree' });
+  await expect(degree).toHaveValue('3');
+  // Too high for five points: refused, with a message.
+  await degree.fill('5');
+  await degree.press('Enter');
+  await expect(page.getByText('A degree-5 spline needs at least 6 points.')).toBeVisible();
+  await degree.fill('2');
+  await degree.press('Enter');
+  await expect(selection(page).locator('[data-spline-degree]')).toHaveAttribute(
+    'data-spline-degree',
+    '2',
+  );
+
+  await page.keyboard.press('l');
+  await click(40, 0);
+  await click(-40, 0);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await expect(toolPrompt(page)).toHaveCount(0);
+  await expect(viewport(page)).toHaveAttribute('data-sketch-profiles', 'profiles=1 holes=0');
+  await extrudeAt(page, at, [0, 10]);
+  const drawn = await bodies(page);
+  expect(drawn).toHaveLength(1);
+  expect(drawn[0]?.size[0]).toBe(80);
+  expect(drawn[0]?.size[2]).toBe(5);
 });

@@ -110,6 +110,18 @@ export const SketchSplineSchema = z.strictObject({
   knots: z.array(z.number()).optional(),
   /** A closed (periodic) fit or control spline: the curve runs back round to its first point. */
   closed: z.boolean().optional(),
+  /**
+   * An open fit spline's end derivatives (ADR-0063's third amendment, B1), mm of
+   * sketch space per unit of the curve's parameter: direction and length.
+   */
+  tangents: z
+    .strictObject({
+      start: z.tuple([z.number(), z.number()]).optional(),
+      end: z.tuple([z.number(), z.number()]).optional(),
+    })
+    .optional(),
+  /** A control spline's degree, 1 to 5 (ADR-0063's third amendment, B2); absent: `min(3, n − 1)`. */
+  degree: z.number().int().min(1).max(5).optional(),
   construction: z.boolean(),
 });
 
@@ -383,32 +395,42 @@ const ON_CURVE: Kinds = ['line', 'circle', 'arc', 'ellipse'];
 const SYMMETRIC: Kinds = ['point', 'line', 'circle', 'arc'];
 /**
  * What is wrong with a control spline's stored knots, if anything (ADR-0063's
- * P4-12 amendment): `poles + 4` values, non-decreasing, the first four 0 and the
- * last four 1, no interior knot more than three times.
+ * P4-12 amendment, and the third amendment's degree): `poles + degree + 1`
+ * values, non-decreasing, the first and last `degree + 1` 0 and 1, no interior
+ * knot more than `degree` times.
  */
-export function knotProblem(knots: readonly number[], poles: number): string | undefined {
-  if (knots.length !== poles + 4) {
-    return `${poles} control points take ${poles + 4} knots, not ${knots.length}`;
+export function knotProblem(
+  knots: readonly number[],
+  poles: number,
+  degree = 3,
+): string | undefined {
+  const ends = degree + 1;
+  if (knots.length !== poles + ends) {
+    return `${poles} control points take ${poles + ends} knots, not ${knots.length}`;
   }
   for (let i = 0; i < knots.length; i++) {
     const k = knots[i] as number;
     if (!Number.isFinite(k)) return 'the knots must be numbers';
     if (i > 0 && k < (knots[i - 1] as number)) return 'the knots must not decrease';
   }
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < ends; i++) {
     if (knots[i] !== 0 || knots[knots.length - 1 - i] !== 1) {
-      return 'the first four knots must be 0 and the last four 1';
+      return `the first ${COUNT[ends]} knots must be 0 and the last ${COUNT[ends]} 1`;
     }
   }
-  for (let i = 4; i < knots.length - 4; i++) {
+  for (let i = ends; i < knots.length - ends; i++) {
     const k = knots[i] as number;
     if (k <= 0 || k >= 1) return 'the inner knots must lie between 0 and 1';
   }
-  for (let i = 4; i + 3 < knots.length - 4; i++) {
-    if (knots[i] === knots[i + 3]) return 'an inner knot may repeat at most three times';
+  for (let i = ends; i + degree < knots.length - ends; i++) {
+    if (knots[i] === knots[i + degree]) {
+      return `an inner knot may repeat at most ${degree === 1 ? 'once' : `${COUNT[degree]} times`}`;
+    }
   }
   return undefined;
 }
+
+const COUNT = ['zero', 'one', 'two', 'three', 'four', 'five', 'six'];
 
 const ANY: Kinds = ['point', 'line', 'circle', 'arc', 'ellipse', 'spline'];
 
@@ -547,8 +569,44 @@ export function sketchIssues(sketch: {
             });
           }
         }
+        // The third amendment: tangents are an open fit spline's, a degree a control spline's.
+        if (entity.tangents !== undefined) {
+          if ((entity.mode ?? 'fit') !== 'fit' || entity.closed === true) {
+            issues.push({
+              path: ['entities', id, 'tangents'],
+              message: 'only an open fit spline has tangents',
+            });
+          }
+          for (const end of ['start', 'end'] as const) {
+            const t = entity.tangents[end];
+            if (t && !(Math.hypot(t[0], t[1]) > 0)) {
+              issues.push({
+                path: ['entities', id, 'tangents', end],
+                message: 'a tangent must be a non-zero vector',
+              });
+            }
+          }
+        }
+        if (entity.degree !== undefined) {
+          if (entity.mode !== 'control') {
+            issues.push({
+              path: ['entities', id, 'degree'],
+              message: 'only a control spline has a degree',
+            });
+          } else if (entity.closed === true) {
+            issues.push({
+              path: ['entities', id, 'degree'],
+              message: 'a closed control spline is cubic',
+            });
+          } else if (entity.points.length < entity.degree + 1) {
+            issues.push({
+              path: ['entities', id, 'points'],
+              message: `a degree-${entity.degree} spline needs at least ${entity.degree + 1} points`,
+            });
+          }
+        }
         if (entity.knots !== undefined) {
-          const problem = knotProblem(entity.knots, entity.points.length);
+          const problem = knotProblem(entity.knots, entity.points.length, entity.degree ?? 3);
           if (entity.mode !== 'control') {
             issues.push({
               path: ['entities', id, 'knots'],

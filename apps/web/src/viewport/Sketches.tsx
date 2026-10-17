@@ -7,6 +7,7 @@ import {
   DoubleSide,
   MeshBasicMaterial,
   type Plane,
+  PointsMaterial,
 } from 'three';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
@@ -120,9 +121,10 @@ function Sketch({
 }) {
   const { data, frame, active, status, profiles, hoverProfile, selectedProfiles } = drawing;
   // Control polygons show while the sketch is open (P4-05, ADR-0063 §4).
+  const gripSpline = active ? drawing.gripSpline : undefined;
   const segments = useMemo(
-    () => sketchSegments(data, frame, status, active),
-    [data, frame, status, active],
+    () => sketchSegments(data, frame, status, active, gripSpline),
+    [data, frame, status, active, gripSpline],
   );
 
   const fills = useMemo(() => {
@@ -180,7 +182,10 @@ function Sketch({
     if (segments.controlPolygons.length > 0) polygonLines.setPositions(segments.controlPolygons);
     const projectedLines = new LineSegmentsGeometry();
     if (segments.projected.length > 0) projectedLines.setPositions(segments.projected);
+    const grips = new BufferGeometry();
+    grips.setAttribute('position', new BufferAttribute(segments.grips, 3));
     return {
+      grips,
       polygons: polygonLines,
       projected: projectedLines,
       status: Object.fromEntries(STATUSES.map((s) => [s, byStatus(s)])) as Record<
@@ -208,6 +213,13 @@ function Sketch({
       dashed: new LineMaterial({ linewidth: 1.25, transparent: true, dashed: true }),
       // A control polygon (P4-05) draws thinner than construction geometry.
       polygons: new LineMaterial({ linewidth: 1, transparent: true, dashed: true }),
+      // A tangent grip (ADR-0063's third amendment): a small square, its size in pixels.
+      grips: new PointsMaterial({
+        size: 7,
+        sizeAttenuation: false,
+        transparent: true,
+        depthTest: false,
+      }),
       projected: new LineMaterial({ linewidth: 1.75, transparent: true }),
     }),
     [],
@@ -235,6 +247,7 @@ function Sketch({
   useEffect(
     () => () => {
       geometries.dashed.dispose();
+      geometries.grips.dispose();
       geometries.polygons.dispose();
       geometries.projected.dispose();
       for (const g of Object.values(geometries.status)) {
@@ -247,6 +260,7 @@ function Sketch({
   useEffect(
     () => () => {
       materials.dashed.dispose();
+      materials.grips.dispose();
       materials.polygons.dispose();
       materials.projected.dispose();
       for (const m of Object.values(materials.status)) {
@@ -276,6 +290,8 @@ function Sketch({
   materials.dashed.opacity = construction.a * alpha;
   materials.polygons.color = color(construction);
   materials.polygons.opacity = construction.a * alpha * 0.8;
+  materials.grips.color = color(construction);
+  materials.grips.opacity = construction.a * alpha;
   materials.projected.color = color(projected);
   materials.projected.opacity = projected.a * alpha;
   materials.projected.clippingPlanes = clip;
@@ -311,6 +327,14 @@ function Sketch({
       )}
       {segments.construction.length > 0 && <primitive object={lines.dashed} />}
       {segments.controlPolygons.length > 0 && <primitive object={lines.polygons} />}
+      {segments.grips.length > 0 && (
+        <points
+          geometry={geometries.grips}
+          material={materials.grips}
+          renderOrder={5}
+          frustumCulled={false}
+        />
+      )}
       {segments.projected.length > 0 && <primitive object={lines.projected} />}
       <CurveMarks
         data={data}

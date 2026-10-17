@@ -3,14 +3,17 @@ import { type BodyId, createDocument } from '@extrudo/core';
 import type { BodyPlan, BodyStep, ImportResult } from '@extrudo/f3d';
 import { memoryProjectStore, writeArchive } from '@extrudo/storage';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { appNotifications } from '../design-system/notifications';
 import { takeModelImport } from '../features/import';
 import type { Platform } from '../platform';
 import {
+  CHECKING_TEXT,
   importAnyFile,
   importF3dFile,
   importNotices,
   MAX_F3D_BYTES,
   openExternalFile,
+  READING_TEXT,
   saveF3dImport,
   takeOpenNotices,
 } from './actions';
@@ -203,6 +206,46 @@ describe('saveF3dImport: the body check (ADR-0084)', () => {
     const id = await saveF3dImport(platform, result, async () => frozenPlan(result.box));
     expect(calls).toEqual(['save:1']);
     expect(takeOpenNotices(id).at(-1)).toMatch(/couldn't be checked .*too large/);
+  });
+
+  it('runs the import through `run`, saying it is reading, then checking', async () => {
+    const result = imported();
+    const { platform, calls } = recording();
+    const toasts = () => appNotifications.getState().toasts.map((t) => t.text);
+    const seen: string[][] = [];
+    const file = new File([new Uint8Array([1, 2])], 'Bracket.f3d');
+    const id = await importF3dFile(
+      platform,
+      file,
+      async () => {
+        seen.push(toasts());
+        return frozenPlan(result.box);
+      },
+      async (bytes, name, options) => {
+        seen.push(toasts());
+        expect([...bytes]).toEqual([1, 2]);
+        expect(name).toBe('Bracket');
+        expect(options.id).toEqual(expect.any(String));
+        return result;
+      },
+    );
+    expect(seen[0]).toContain(READING_TEXT);
+    expect(seen[1]).toContain(CHECKING_TEXT);
+    expect(seen[1]).not.toContain(READING_TEXT);
+    expect(toasts()).not.toContain(CHECKING_TEXT);
+    expect(calls).toEqual(['save:1', 'attachment', 'save:3']);
+    expect(id && takeOpenNotices(id)[0]).toMatch(/^Imported from the .f3d file/);
+  });
+
+  it('takes the reading toast down when the import fails', async () => {
+    const { platform } = recording();
+    const file = new File([new Uint8Array([1])], 'Bad.f3d');
+    await expect(
+      importF3dFile(platform, file, undefined, async () => {
+        throw new Error('Not a ZIP archive (no end of central directory).');
+      }),
+    ).rejects.toThrow('Not a ZIP archive');
+    expect(appNotifications.getState().toasts.map((t) => t.text)).not.toContain(READING_TEXT);
   });
 
   it('does not run the check when the writer wrote no body', async () => {

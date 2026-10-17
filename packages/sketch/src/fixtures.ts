@@ -98,7 +98,13 @@ export class SketchBuilder {
    */
   spline(
     points: [number, number][],
-    options: { mode?: 'fit' | 'control' | 'conic'; rho?: number; closed?: boolean } = {},
+    options: {
+      mode?: 'fit' | 'control' | 'conic';
+      rho?: number;
+      closed?: boolean;
+      tangents?: { start?: [number, number]; end?: [number, number] };
+      degree?: number;
+    } = {},
   ) {
     const ids = points.map(([x, y]) => this.point(x, y));
     const id = this.id('s');
@@ -108,6 +114,8 @@ export class SketchBuilder {
       ...(options.mode ? { mode: options.mode } : {}),
       ...(options.rho === undefined ? {} : { rho: options.rho }),
       ...(options.closed ? { closed: true } : {}),
+      ...(options.tangents ? { tangents: options.tangents } : {}),
+      ...(options.degree === undefined ? {} : { degree: options.degree }),
       construction: false,
     };
     return { id, points: ids };

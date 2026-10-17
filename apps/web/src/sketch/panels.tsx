@@ -3,6 +3,7 @@ import {
   attachmentFontId,
   type Command,
   CommandError,
+  clearSplineTangents,
   type Dim,
   type DimensionId,
   type DocumentStore,
@@ -23,6 +24,7 @@ import {
   type SketchEntityId,
   setSketchConstruction,
   setSplineClosed,
+  setSplineDegree,
   setSplineRho,
   UNITS,
   updateSketchDimension,
@@ -597,6 +599,21 @@ export function SelectionPanel({
           String(entity.points.length),
         ),
       );
+      // ADR-0063's third amendment: an open control spline's degree.
+      if (entity.mode === 'control' && entity.closed !== true) {
+        rows.push(
+          <SplineDegreeField
+            key="degree"
+            store={store}
+            id={single}
+            spline={entity}
+            sketchId={sketchId}
+            doc={doc}
+            host={host}
+            notify={notify}
+          />,
+        );
+      }
       // P4-12: a fit or control spline can run back round to its first point.
       rows.push(
         <PaletteToggle
@@ -616,6 +633,30 @@ export function SelectionPanel({
           Closed
         </PaletteToggle>,
       );
+      // A fit spline with a stored end tangent can be let go again (its grips set them).
+      if ((entity.mode ?? 'fit') === 'fit' && entity.tangents) {
+        const ends = (['start', 'end'] as const).filter((end) => entity.tangents?.[end]);
+        rows.push(
+          <Button
+            key="free"
+            variant="ghost"
+            className="self-start"
+            data-spline-tangents={ends.join(' ')}
+            onClick={() => {
+              try {
+                const command = clearSplineTangents({ feature: sketchId, id: single });
+                if (host) host.apply(command);
+                else store.getState().dispatch(command);
+              } catch (error) {
+                if (!(error instanceof CommandError)) throw error;
+                notify('error', error.message);
+              }
+            }}
+          >
+            Free ends
+          </Button>,
+        );
+      }
     }
   } else if (entity?.type === 'text' && single) {
     rows.push(
@@ -849,6 +890,69 @@ export function SplineFields({
             return;
           }
           apply(result.value);
+        }}
+      />
+    </div>
+  );
+}
+
+/**
+ * A control spline's Degree field (P4-12, ADR-0063's third amendment): a
+ * whole number from 1 to 5, at most one less than its points, applied as one
+ * undo step through `setSplineDegree` (which drops stored knots).
+ */
+export function SplineDegreeField({
+  store,
+  id,
+  spline,
+  sketchId,
+  doc,
+  host,
+  notify,
+}: {
+  store: DocumentStore;
+  id: SketchEntityId;
+  spline: SketchEntity;
+  sketchId: FeatureId;
+  doc: ExtrudoDocument;
+  host: ToolHost | undefined;
+  notify(tone: 'info' | 'error', text: string): void;
+}) {
+  const points = spline.type === 'spline' ? spline.points.length : 0;
+  const degree = spline.type === 'spline' ? (spline.degree ?? Math.min(3, points - 1)) : 3;
+  const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
+  return (
+    <div
+      className="grid grid-cols-[52px_minmax(0,1fr)] items-start gap-2"
+      data-spline-degree={spline.type === 'spline' ? spline.degree : undefined}
+    >
+      <span className="pt-1 text-sm text-muted">Degree</span>
+      <ExpressionInput
+        label="Degree"
+        value={String(degree)}
+        // A plain number is a unitless quantity, which is what a degree is.
+        evaluate={(expr) => evaluation.evaluate(expr)}
+        format={(result) => String(Number(result.value.toFixed(4)))}
+        onCommit={(expr) => {
+          const result = evaluation.evaluate(expr);
+          if (!result.ok) return;
+          const d = result.value;
+          if (!Number.isInteger(d) || d < 1 || d > 5) {
+            notify('error', 'Degree has to be a whole number from 1 to 5.');
+            return;
+          }
+          if (points < d + 1) {
+            notify('error', `A degree-${d} spline needs at least ${d + 1} points.`);
+            return;
+          }
+          try {
+            const command = setSplineDegree({ feature: sketchId, id, degree: d });
+            if (host) host.apply(command);
+            else store.getState().dispatch(command);
+          } catch (error) {
+            if (!(error instanceof CommandError)) throw error;
+            notify('error', error.message);
+          }
         }}
       />
     </div>

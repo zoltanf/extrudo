@@ -5,6 +5,7 @@ import {
   ORIGIN_AXES,
   projectedEntities,
   type SelectionItem,
+  type SketchEntityId,
   type SketchFrame,
   type Vec2,
   type Vec3,
@@ -57,6 +58,7 @@ import {
 } from '../selection/pick';
 import { autoProjectSnap } from '../sketch/autoProject';
 import { sketchTargetAt } from '../sketch/facePick';
+import { tangentGrips } from '../sketch/splineEnds';
 import type { PlanePointer, SketchBox } from '../sketch/tools/host';
 import { applyView } from './applyView';
 import { Bodies, clipPlanes } from './Bodies';
@@ -599,6 +601,7 @@ export function Viewport({
       data-camera-projection={projection}
       data-sketch-status={sketchStatusSummary(sketches)}
       data-sketch-profiles={sketchProfilesSummary(sketches)}
+      data-tangent-grips={tangentGripsSummary(sketches)}
       data-sketches={sketches.map((s) => s.id).join(' ')}
       data-sketch-frames={sketchFramesSummary(sketches)}
       data-sketch-projected={sketchProjectedSummary(sketches)}
@@ -1774,6 +1777,16 @@ function sketchProjectedSummary(sketches: readonly SketchDrawing[]): string | un
  * a status.
  */
 /** "profiles=3 holes=1" for the sketch being edited (e2e tests read it), while profiles show. */
+/** The open sketch's tangent grips (ADR-0063's third amendment), "start:x,y end:x,y" in sketch mm. */
+function tangentGripsSummary(sketches: readonly SketchDrawing[]): string | undefined {
+  const sketch = sketches.find((s) => s.active && s.gripSpline);
+  if (!sketch?.gripSpline) return undefined;
+  const round = (v: number) => Math.round(v * 1000) / 1000;
+  return tangentGrips(sketch.data, sketch.gripSpline as SketchEntityId)
+    .map((g) => `${g.end}:${round(g.at[0])},${round(g.at[1])}`)
+    .join(' ');
+}
+
 function sketchProfilesSummary(sketches: readonly SketchDrawing[]): string | undefined {
   const profiles = sketches.find((s) => s.active)?.profiles;
   if (!profiles) return undefined;

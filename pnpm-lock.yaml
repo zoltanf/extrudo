@@ -469,8 +469,8 @@ importers:
         specifier: workspace:*
         version: link:../fonts
       '@libcascade/toolchain':
-        specifier: 3.0.2
-        version: 3.0.2
+        specifier: 3.1.0
+        version: 3.1.0
       fflate:
         specifier: ^0.8.3
         version: 0.8.3
@@ -1151,8 +1151,8 @@ packages:
   '@lezer/lr@1.4.10':
     resolution: {integrity: sha512-rnCpTIBafOx4mRp43xOxDJbFipJm/c0cia/V5TiGlhmMa+wsSdoGmUN3w5Bqrks/09Q/D4tNAmWaT8p6NRi77A==}
 
-  '@libcascade/toolchain@3.0.2':
-    resolution: {integrity: sha512-ko2ZS9vJ2xX6Rjc5+8NRyTL5Vr1COH6S3SyCHkxrUQpJ6BO1gVRH5N/3v/tLWIkXBsR+1WwCFLUVxJojWg+6Tg==}
+  '@libcascade/toolchain@3.1.0':
+    resolution: {integrity: sha512-zZBjsxLUUIP+A2d1LIHU22IUrNTv/XbFHzYfLLWpjifWnLA0bRvSuxgLTncDLOcNoDy7PKQdOobJ0U/wF8o7+g==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -4825,7 +4825,7 @@ snapshots:
     dependencies:
       '@lezer/common': 1.5.3
 
-  '@libcascade/toolchain@3.0.2':
+  '@libcascade/toolchain@3.1.0':
     dependencies:
       jiti: 2.7.0
       yaml: 2.9.1

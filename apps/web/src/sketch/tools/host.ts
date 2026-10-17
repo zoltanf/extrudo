@@ -81,6 +81,7 @@ import {
   type SketchProjection,
   type SketchReport,
   setSketchGeometry,
+  setSplineTangent,
   syncProjections,
   UNITS,
   type Vec2,
@@ -107,6 +108,7 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import { gridStep } from '../../viewport/grid';
 import type { ViewportStore } from '../../viewport/store';
 import { sketchProfiles } from '../profiles';
+import { selectedGrips, type TangentGrip, tangentAt } from '../splineEnds';
 import { focusTextField, resetTextDraft } from '../textDraft';
 import { ARC_CENTER_TOOL, ARC_TANGENT_TOOL, ARC_TOOL, ArcTool } from './arc';
 import { CIRCLE_2POINT_TOOL, CIRCLE_3POINT_TOOL, CIRCLE_TOOL, CircleTool } from './circle';
@@ -417,7 +419,15 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
    * drag on a circle's rim, the radius follows the pointer's distance from the centre.
    */
   let move:
-    | { from: Vec2; rim?: { circle: SketchEntityId; center: Vec2; radius: number } }
+    | {
+        from: Vec2;
+        rim?: { circle: SketchEntityId; center: Vec2; radius: number };
+        /**
+         * A fit spline's tangent grip (ADR-0063's third amendment): the drag
+         * previews in a transaction and is applied as one `setSplineTangent`.
+         */
+        grip?: { grip: TangentGrip; feature: FeatureId; tangent?: Vec2 };
+      }
     | undefined;
   /** The document and sketch the status was last worked out for. */
   let statusFor:
@@ -967,6 +977,71 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     return sketch && pickEntity(sketch.data, pointer.point, SNAP_PIXELS * pointer.perPixel);
   };
 
+  /** The tangent grip of the selected fit spline under the pointer, if any. */
+  const gripAt = (pointer: PlanePointer): TangentGrip | undefined => {
+    const sketch = session.getState().mode === 'sketch' ? activeSketch() : undefined;
+    if (!sketch) return undefined;
+    const reach = SNAP_PIXELS * pointer.perPixel;
+    return selectedGrips(sketch.data, selectedEntities(sketch.data)).find(
+      (g) => Math.hypot(g.at[0] - pointer.point[0], g.at[1] - pointer.point[1]) <= reach,
+    );
+  };
+
+  /** Moves a tangent grip with the pointer: the tangent previews in the open transaction. */
+  const dragGrip = (pointer: PlanePointer) => {
+    const g = move?.grip;
+    if (!move || !g) return;
+    // A press that hasn't moved leaves the curve as it is (a free end stays free).
+    if (pointer.point[0] === move.from[0] && pointer.point[1] === move.from[1]) return;
+    const at: Vec2 = [
+      g.grip.at[0] + pointer.point[0] - move.from[0],
+      g.grip.at[1] + pointer.point[1] - move.from[1],
+    ];
+    const tangent = tangentAt(g.grip, at);
+    if (Math.hypot(tangent[0], tangent[1]) === 0) return;
+    const was = committing;
+    committing = true;
+    try {
+      store
+        .getState()
+        .dispatch(
+          setSplineTangent({ feature: g.feature, id: g.grip.spline, end: g.grip.end, tangent }),
+        );
+      g.tangent = tangent;
+    } finally {
+      committing = was;
+    }
+  };
+
+  /**
+   * Ends a grip drag: the preview goes, and a kept drag that moved the grip is
+   * applied as one undo step (ADR-0063's third amendment).
+   */
+  const endGrip = (keep: boolean) => {
+    const g = move?.grip;
+    if (!g) return false;
+    move = undefined;
+    store.getState().cancelTransaction();
+    bump({ moving: false });
+    if (keep && g.tangent) {
+      try {
+        host.apply(
+          setSplineTangent({
+            feature: g.feature,
+            id: g.grip.spline,
+            end: g.grip.end,
+            tangent: g.tangent,
+          }),
+        );
+      } catch (error) {
+        if (!(error instanceof CommandError)) throw error;
+        state.setState({ error: error.message });
+      }
+    }
+    refreshStatus();
+    return true;
+  };
+
   /** What a click with no tool takes: the entity under the pointer, else the profile. */
   const pickItem = (pointer: PlanePointer): SelectionItem | undefined => {
     const hit = pickAt(pointer);
@@ -1057,6 +1132,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
 
   const endMove = (keep: boolean) => {
     if (!move) return false;
+    if (move.grip) return endGrip(keep);
     move = undefined;
     solver?.endDrag();
     if (keep) store.getState().commitTransaction();
@@ -1336,6 +1412,10 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       bump({ tool: undefined, pointer: undefined, dragging: false });
     },
     move(pointer) {
+      if (move?.grip) {
+        dragGrip(pointer);
+        return;
+      }
       if (move) {
         const { from, rim } = move;
         // A rim keeps the pointer's offset from it: the radius changes as much as the
@@ -1370,6 +1450,8 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     click(pointer) {
       if (!state.getState().tool) {
         if (session.getState().mode !== 'sketch') return;
+        // A press on a tangent grip that didn't drag keeps the spline selected.
+        if (gripAt(pointer)) return;
         const item = pickItem(pointer);
         const s = session.getState();
         if (item) s.select([item], pointer.toggle ? 'toggle' : 'replace');
@@ -1400,6 +1482,15 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         return taken;
       }
       const sketch = session.getState().mode === 'sketch' ? activeSketch() : undefined;
+      // The selected fit spline's tangent grips come before the geometry under them.
+      const grip = sketch && !move ? gripAt(pointer) : undefined;
+      if (sketch && grip) {
+        move = { from: pointer.point, grip: { grip, feature: sketch.id } };
+        store.getState().beginTransaction('Spline tangent');
+        session.getState().setHover(undefined);
+        bump({ moving: true });
+        return true;
+      }
       const hit = pickAt(pointer);
       if (!sketch || !hit) return false;
       // Geometry can't move before the solver is in; the press is still the entity's.

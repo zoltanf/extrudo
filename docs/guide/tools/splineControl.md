@@ -14,4 +14,5 @@ A smooth curve guided by the points you click. Enter to finish.
 | Sketch › Create | None |
 
 <!-- notes -->
+A selected control point spline has a **Degree** field from 1 (straight lines between the points) to 5; it needs at least one point more than its degree.
 <!-- /notes -->

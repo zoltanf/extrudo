@@ -12,6 +12,7 @@ import {
 import type { EntityStatus } from '@extrudo/sketch/inference';
 import type { Profile } from '@extrudo/sketch/profiles';
 import { ShapeUtils, Vector2 } from 'three';
+import { tangentGrips } from '../sketch/splineEnds';
 import type { Vec3 } from './camera';
 import type { Bounds } from './store';
 
@@ -39,6 +40,11 @@ export interface SketchDrawing {
   hoverEntity?: string;
   /** Curves and points selected in model mode (entity IDs). */
   selectedEntities?: readonly string[];
+  /**
+   * The sketch being edited has one open fit spline selected: its entity ID,
+   * whose tangent grips are drawn (ADR-0063's third amendment).
+   */
+  gripSpline?: string;
   /**
    * Draw the sketch's points although it isn't being edited: a feature
    * dialog's field is picking sketch points (a hole's, P3-04).
@@ -99,6 +105,8 @@ export interface SketchSegments {
   construction: Float32Array;
   /** Line-segment pairs of control polygons (drawn thin and dashed, ADR-0063 §4). */
   controlPolygons: Float32Array;
+  /** One xyz per tangent grip of the selected fit spline (ADR-0063's third amendment). */
+  grips: Float32Array;
   /** Line-segment pairs of projected curves (P2-09, drawn in the construct colour). */
   projected: Float32Array;
   /** One xyz per sketch point, by constraint status. */
@@ -120,13 +128,16 @@ export { CIRCLE_SEGMENTS };
  *
  * With `controlPolygons` (P4-05, ADR-0063 §4) a control-point spline's or a
  * conic's poles are joined by thin dashed lines, as construction geometry:
- * the sketch being open is what shows them.
+ * the sketch being open is what shows them. With `gripSpline`, a fit
+ * spline's tangent grips (ADR-0063's third amendment) are drawn the same way:
+ * a dashed line from each end to its grip, the grip itself in `grips`.
  */
 export function sketchSegments(
   data: SketchData,
   frame: SketchFrame,
   status?: Readonly<Record<string, EntityStatus>>,
   controlPolygons = false,
+  gripSpline?: string,
 ): SketchSegments {
   const solid: Record<EntityStatus, number[]> = { free: [], fixed: [], conflict: [] };
   const construction: number[] = [];
@@ -174,6 +185,14 @@ export function sketchSegments(
     }
   }
 
+  const grips: number[] = [];
+  if (gripSpline) {
+    for (const grip of tangentGrips(data, gripSpline as SketchEntityId)) {
+      polygons.push(...sketchToWorld(frame, grip.anchor), ...sketchToWorld(frame, grip.at));
+      grips.push(...sketchToWorld(frame, grip.at));
+    }
+  }
+
   // Placed dimension labels count for "Fit" too, so a dimension set off from its
   // geometry stays in view (a label at its default spot sits a few pixels away).
   const labels: number[] = [];
@@ -193,6 +212,7 @@ export function sketchSegments(
     curves: floats(solid),
     construction: new Float32Array(construction),
     controlPolygons: new Float32Array(polygons),
+    grips: new Float32Array(grips),
     projected: new Float32Array(projected),
     points: floats(points),
     bounds: boundsOfPositions([

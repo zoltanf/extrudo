@@ -157,7 +157,12 @@ export function addSpline(
   points: readonly Vec2[],
   mode?: 'fit' | 'control' | 'conic',
   rho?: number,
-  shape: { closed?: boolean; knots?: readonly number[] } = {},
+  shape: {
+    closed?: boolean;
+    knots?: readonly number[];
+    tangents?: { start?: Vec2; end?: Vec2 };
+    degree?: number;
+  } = {},
 ): { id: SketchEntityId; points: SketchEntityId[] } {
   const refs = points.map((p) => addPoint(edit, ids, p));
   const id = ids.newId() as SketchEntityId;
@@ -168,9 +173,22 @@ export function addSpline(
     ...(rho === undefined ? {} : { rho }),
     ...(shape.knots ? { knots: [...shape.knots] } : {}),
     ...(shape.closed ? { closed: true } : {}),
+    ...(shape.tangents ? { tangents: copyTangents(shape.tangents) } : {}),
+    ...(shape.degree === undefined ? {} : { degree: shape.degree }),
     construction: ids.construction(),
   };
   return { id, points: refs };
+}
+
+/** End tangents as fresh tuples (ADR-0063's third amendment). */
+function copyTangents(t: { start?: Vec2; end?: Vec2 }): {
+  start?: [number, number];
+  end?: [number, number];
+} {
+  return {
+    ...(t.start ? { start: [t.start[0], t.start[1]] } : {}),
+    ...(t.end ? { end: [t.end[0], t.end[1]] } : {}),
+  };
 }
 
 /** What a text needs besides its two points (ADR-0058): the string, font and alignment. */

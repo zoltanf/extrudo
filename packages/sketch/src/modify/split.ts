@@ -976,6 +976,9 @@ function replaceSpline(b: ChangeBuilder, span: SplineSpan, pieces: Piece[], join
       points,
       mode: 'control',
       knots: curve.knots,
+      // A control spline's own degree (ADR-0063's third amendment) carries on;
+      // a fit spline's end tangents don't: the poles and knots hold the shape.
+      ...(curve.degree === 3 ? {} : { degree: curve.degree }),
       construction: e.construction,
     };
     let id = span.id;

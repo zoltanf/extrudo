@@ -3,7 +3,14 @@
  * drawings for the SVG and DXF writers. No WASM: the app imports this entry
  * like `@extrudo/sketch/profiles`.
  */
-export { type BezierPiece, bezierPieces, bezierRange, splineParam } from './bezier';
+export {
+  type BezierPiece,
+  bezierPieces,
+  bezierRange,
+  CUBIC_TOLERANCE,
+  cubicApproximation,
+  splineParam,
+} from './bezier';
 export {
   CONSTRUCTION_LAYER,
   PROFILE_LAYER,

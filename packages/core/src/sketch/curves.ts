@@ -56,15 +56,26 @@ export interface BSpline {
   knots: number[];
 }
 
+/** A fit spline's end derivatives (ADR-0063's third amendment, B1), mm per unit parameter. */
+export interface SplineTangents {
+  start?: Vec2;
+  end?: Vec2;
+}
+
 /**
  * The cubic B-spline through `points` in order (global interpolation with
  * chord-length parameters and averaged knots, Piegl & Tiller §9.2.1). Two
  * points give a line, three a parabola. The curve passes through every
  * point and is C2 inside.
+ *
+ * `tangents` are end derivatives (ADR-0063's third amendment, B1): each adds a
+ * pole and its equation (Piegl & Tiller §9.2.2), so the curve leaves its first
+ * point with `start` and arrives at its last with `end` as derivative vectors.
  */
-export function fitSpline(points: readonly Vec2[]): BSpline {
+export function fitSpline(points: readonly Vec2[], tangents?: SplineTangents): BSpline {
   const n = points.length - 1;
   if (n < 1) throw new Error('fitSpline: needs at least two points');
+  if (tangents?.start || tangents?.end) return tangentFit(points, tangents);
   const degree = Math.min(3, n);
 
   // Chord-length parameters. Coincident neighbours would make the system
@@ -111,6 +122,84 @@ export function fitSpline(points: readonly Vec2[]): BSpline {
 
 /** Fit splines with more points than this are solved in their band (ADR-0063's P4-12 amendment). */
 const BANDED_FIT = 32;
+
+/** Chord-length parameters of a fit spline (`fitSpline`'s), every step at least a small share. */
+function fitParams(points: readonly Vec2[]): number[] {
+  const n = points.length - 1;
+  const lengths = points
+    .slice(1)
+    .map((p, i) => Math.hypot(p[0] - (points[i] as Vec2)[0], p[1] - (points[i] as Vec2)[1]));
+  const total = lengths.reduce((s, l) => s + l, 0);
+  const floor = total > 0 ? (1e-6 * total) / n : 1;
+  const steps = lengths.map((l) => Math.max(l, floor));
+  const sum = steps.reduce((s, l) => s + l, 0);
+  const params = [0];
+  for (const step of steps) params.push((params[params.length - 1] as number) + step / sum);
+  params[n] = 1;
+  return params;
+}
+
+/**
+ * `fitSpline` with end derivatives (Piegl & Tiller §9.2.2): one pole more per
+ * given end, its row `P1 − P0 = (u_{p+1} / p) · D0` or `P_N − P_{N−1} =
+ * ((1 − u_{m−p−1}) / p) · Dn`. The knots average `p` consecutive parameters,
+ * with one window more at each end that has a derivative (both ends: eq. 9.22).
+ */
+function tangentFit(points: readonly Vec2[], tangents: SplineTangents): BSpline {
+  const n = points.length - 1;
+  const { start, end } = tangents;
+  const last = n + (start ? 1 : 0) + (end ? 1 : 0); // the last pole's index
+  const degree = Math.min(3, last);
+  const params = fitParams(points);
+  const knots: number[] = [];
+  for (let i = 0; i <= degree; i++) knots.push(0);
+  // Windows of `degree` parameters starting at `first`, one per inner knot.
+  const first = start ? 0 : 1;
+  for (let j = 0; j < last - degree; j++) {
+    let s = 0;
+    for (let i = first + j; i < first + j + degree; i++) s += params[i] as number;
+    knots.push(s / degree);
+  }
+  for (let i = 0; i <= degree; i++) knots.push(1);
+
+  const pointRow = (u: number) => {
+    const row = new Array<number>(last + 1).fill(0);
+    const span = findSpan(last, degree, u, knots);
+    basis(span, u, degree, knots).forEach((value, k) => {
+      row[span - degree + k] = value;
+    });
+    return row;
+  };
+  const matrix: number[][] = [];
+  const rhs: number[][] = [];
+  points.forEach((p, k) => {
+    if (k === n && end) {
+      const row = new Array<number>(last + 1).fill(0);
+      row[last - 1] = -1;
+      row[last] = 1;
+      const f = (1 - (knots[last] as number)) / degree;
+      matrix.push(row);
+      rhs.push([f * end[0], f * end[1]]);
+    }
+    matrix.push(pointRow(params[k] as number));
+    rhs.push([p[0], p[1]]);
+    if (k === 0 && start) {
+      const row = new Array<number>(last + 1).fill(0);
+      row[0] = -1;
+      row[1] = 1;
+      const f = (knots[degree + 1] as number) / degree;
+      matrix.push(row);
+      rhs.push([f * start[0], f * start[1]]);
+    }
+  });
+  const solved = matrix.length > BANDED_FIT ? solveBanded(matrix, rhs) : solve(matrix, rhs);
+  return { degree, poles: solved.map((r) => [r[0], r[1]] as Vec2), knots };
+}
+
+/** A B-spline's derivative vector at `u` (per unit parameter). */
+export function splineTangentAt(spline: BSpline, u: number): Vec2 {
+  return splinePoint(splineDerivative(spline), u);
+}
 
 /** The point of a B-spline at `u` in [0, 1]. */
 export function splinePoint(spline: BSpline, u: number): Vec2 {
@@ -170,23 +259,34 @@ export type SplineMode = 'fit' | 'control' | 'conic';
  * control polygon at both. Two poles give a line, three a quadratic Bézier.
  *
  * `knots` is a stored knot vector (ADR-0063's P4-12 amendment, A1): the full
- * clamped vector of the poles' cubic, `poles + 4` values. A trimmed spline
- * carries one; one of the wrong length is ignored (the schema refuses it).
+ * clamped vector of the poles' curve, `poles + degree + 1` values. A trimmed
+ * spline carries one; one of the wrong length is ignored (the schema refuses it).
+ * `degree` is a stored degree (ADR-0063's third amendment, B2, 1 to 5), held to
+ * `poles − 1`; without one it is 3, which two or three poles bring down.
  */
-export function controlSpline(poles: readonly Vec2[], knots?: readonly number[]): BSpline {
+export function controlSpline(
+  poles: readonly Vec2[],
+  knots?: readonly number[],
+  degree = 3,
+): BSpline {
   if (poles.length < 2) throw new Error('controlSpline: needs at least two points');
   const copy = poles.map((p) => [p[0], p[1]] as Vec2);
-  if (knots && knots.length === poles.length + 4) {
-    return { degree: 3, poles: copy, knots: [...knots] };
+  const d = Math.max(1, Math.min(Math.round(degree), poles.length - 1));
+  if (knots && knots.length === poles.length + d + 1) {
+    return { degree: d, poles: copy, knots: [...knots] };
   }
-  const degree = Math.min(3, poles.length - 1);
+  return { degree: d, poles: copy, knots: uniformKnots(poles.length, d) };
+}
+
+/** The clamped uniform knot vector of `poles` poles of degree `degree`. */
+function uniformKnots(poles: number, degree: number): number[] {
   // Uniform interior knots, one per knot span after the first.
-  const spans = poles.length - degree;
+  const spans = poles - degree;
   const uniform: number[] = [];
   for (let i = 0; i <= degree; i++) uniform.push(0);
   for (let j = 1; j < spans; j++) uniform.push(j / spans);
   for (let i = 0; i <= degree; i++) uniform.push(1);
-  return { degree, poles: copy, knots: uniform };
+  return uniform;
 }
 
 // Closed splines (ADR-0063's P4-12 amendment, A2) -------------------------------
@@ -361,7 +461,7 @@ export function normalizeSpline(spline: BSpline): BSpline {
 }
 
 /**
- * A clamped cubic split at `u` (strictly inside) into the curve before and
+ * A clamped B-spline split at `u` (strictly inside) into the curve before and
  * after it, each still over its own part of the knots (normalise them with
  * `normalizeSpline`). Knot insertion to multiplicity 3 makes the point at `u`
  * a pole, so the two pieces are exactly the curve.
@@ -386,12 +486,16 @@ export function splitSpline(spline: BSpline, u: number): [BSpline, BSpline] {
 }
 
 /**
- * The part of a clamped cubic between the parameters `from` < `to`, over 0..1.
- * A part that wraps round a closed spline's seam (`to` > 1) is the piece from
- * `from` to the end joined to the piece from the start to `to − 1`.
+ * The part of a clamped B-spline between the parameters `from` < `to`, over
+ * 0..1. A part that wraps round a closed spline's seam (`to` > 1, always a
+ * cubic) is the piece from `from` to the end joined to the piece from the
+ * start to `to − 1`.
  */
 export function splineRange(spline: BSpline, from: number, to: number): BSpline {
-  const cubic = cubicOf(spline);
+  // A single Bézier below degree 3 is raised (A3); a stored degree (the third
+  // amendment) is kept, since knot insertion works at any degree.
+  const cubic =
+    spline.degree < 3 && spline.poles.length === spline.degree + 1 ? cubicOf(spline) : spline;
   const tol = 1e-12;
   const part = (a: number, b: number): BSpline => {
     let s = cubic;
@@ -811,12 +915,12 @@ export function splineCurve(entity: SketchSpline, points: Vec2[]): BSpline {
   if (entity.closed && entity.mode !== 'conic' && points.length >= 3) {
     return entity.mode === 'control' ? closedControlSpline(points) : closedFitSpline(points);
   }
-  if (entity.mode === 'control') return controlSpline(points, entity.knots);
+  if (entity.mode === 'control') return controlSpline(points, entity.knots, entity.degree);
   if (entity.mode === 'conic' && entity.rho !== undefined && points.length === 3) {
     const [start, shoulder, end] = points as [Vec2, Vec2, Vec2];
     return conicSpline(start, shoulder, end, entity.rho);
   }
-  return fitSpline(points);
+  return fitSpline(points, entity.closed || entity.mode === 'conic' ? undefined : entity.tangents);
 }
 
 // Polylines --------------------------------------------------------------------

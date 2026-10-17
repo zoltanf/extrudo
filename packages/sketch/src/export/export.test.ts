@@ -1,10 +1,10 @@
 import { readFileSync, writeFileSync } from 'node:fs';
-import { fitSpline, splinePoint, type Vec2 } from '@extrudo/core';
+import { controlSpline, fitSpline, splinePoint, type Vec2 } from '@extrudo/core';
 import { drawingBounds, flattenContour, writeDxf, writeSvg } from '@extrudo/io';
 import { describe, expect, it } from 'vitest';
 import { SketchBuilder } from '../fixtures';
 import { detectProfiles } from '../profiles';
-import { bezierPieces, bezierRange, splineParam } from './bezier';
+import { bezierPieces, bezierRange, CUBIC_TOLERANCE, splineParam } from './bezier';
 import { profileDrawing, sketchDrawing } from './export';
 
 /**
@@ -184,6 +184,57 @@ describe('sketchDrawing', () => {
     const q = splinePoint(curve, 0.6);
     expect(joint[0]).toBeCloseTo(q[0], 9);
     expect(joint[1]).toBeCloseTo(q[1], 9);
+  });
+
+  it("writes a control spline of its own degree: lines, quadratics, cubics for 4 and 5 (ADR-0063's third amendment)", () => {
+    const poles: [number, number][] = [
+      [0, 0],
+      [10, 30],
+      [25, -20],
+      [40, 35],
+      [55, -15],
+      [70, 25],
+      [80, 0],
+    ];
+    const contour = (degree: number) => {
+      const b = new SketchBuilder();
+      b.spline(poles, { mode: 'control', degree });
+      return sketchDrawing(b.sketch).shapes[0]?.contours[0];
+    };
+    const spans = (degree: number) => poles.length - degree;
+    expect(contour(1)?.segments.map((s) => s.type)).toEqual(new Array(spans(1)).fill('line'));
+    expect(contour(2)?.segments.map((s) => s.type)).toEqual(new Array(spans(2)).fill('quadratic'));
+    for (const degree of [4, 5]) {
+      const c = contour(degree);
+      const segments = c?.segments ?? [];
+      expect(segments.length).toBeGreaterThanOrEqual(spans(degree));
+      expect(segments.every((s) => s.type === 'cubic')).toBe(true);
+      // Sampled along every cubic: within the tolerance of the spline itself.
+      const curve = controlSpline(poles, undefined, degree);
+      let from = c?.start as Vec2;
+      let worst = 0;
+      for (const s of segments as { c1: Vec2; c2: Vec2; to: Vec2 }[]) {
+        for (let i = 0; i <= 20; i++) {
+          const t = i / 20;
+          const m = 1 - t;
+          const p: Vec2 = [
+            m * m * m * from[0] +
+              3 * m * m * t * s.c1[0] +
+              3 * m * t * t * s.c2[0] +
+              t * t * t * s.to[0],
+            m * m * m * from[1] +
+              3 * m * m * t * s.c1[1] +
+              3 * m * t * t * s.c2[1] +
+              t * t * t * s.to[1],
+          ];
+          const q = splinePoint(curve, splineParam(curve, p));
+          worst = Math.max(worst, Math.hypot(p[0] - q[0], p[1] - q[1]));
+        }
+        from = s.to;
+      }
+      expect(worst).toBeLessThan(CUBIC_TOLERANCE);
+      expect(from).toEqual(poles[6]);
+    }
   });
 
   it('bounds a rotated ellipse and a spline by their curves', () => {

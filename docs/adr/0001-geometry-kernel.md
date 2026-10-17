@@ -357,3 +357,54 @@ where the leak remains, and the facade stays. It owns OCCT memory for other
 reasons as well (one copy out for results, history and meshes; no OCCT type in
 the bindings, ADR-0037). Moving to 3.1.0 is a P4-12 backlog item. Raw bindings
 come back only if a concrete need appears, and then only after the upgrade.
+
+## Addendum 2026-10-16: toolchain 3.1.0
+
+P4-12 moved the OCCT build to **`@libcascade/toolchain` 3.1.0** (the pin in
+`packages/kernel/package.json`; new input hash `f7acccc7f7d0`, was
+`b1b95c40c902`; CI built and published `occt-f7acccc7f7d0`).
+
+**What changed upstream** (release notes of 3.0.3 and 3.1.0, opencascade.js
+#40, #47, #48, #49, #50):
+
+- #50 (fixes #40): `delete()` and `using` free the C++ object for every class,
+  and handles from raw-pointer returns are borrowed. Deleting an object OCCT
+  still references is now a use-after-free.
+- #49: custom builds that leave `STACK_SIZE` unset link with 8 MB instead of
+  64 kB, and the `.js.symbols` map matches the shipped `.wasm`. We set
+  `STACK_SIZE: '8MB'` ourselves (amendment of 2026-10-11) and ship no symbols
+  map, so no change for us.
+- #48: `BRepOffset_MakeOffset` results no longer depend on heap history, and
+  `BRepBuilderAPI_NurbsConvert` no longer traps on meshed B-spline faces;
+  arc-join offsets may list their faces in another order (same geometry). Our
+  offsets, shells and offset faces use the facade's own naming, and the unit,
+  fuzz and e2e suites (screenshot goldens included) pass unchanged.
+- #47: `std::optional<T>` is registered where it is used. The facade has no
+  optional parameter.
+- 3.0.3: build-cache and image fixes, and STEP material densities written in
+  g·cm⁻³ (we write no material density).
+- Same OCCT commit (`b8f597c`, 8.0.1) and the same emsdk 6.0.5 as 3.0.2; the
+  build's emcc flags (provenance file) are identical. No change to our
+  `settings`, `compilerFlags`, `customBindings` or `variants` was needed, and
+  the generator accepted the facade as it is. The Docker image is now
+  `ghcr.io/taucad/opencascade.js:3.1.0-single-threaded`.
+
+**Audit.** No raw OCCT class is bound (ADR-0037), so the only OCCT `delete()`
+in `packages/kernel/src` is `Kernel.dispose()` deleting the facade after
+`releaseAll()`: with 3.1.0 that runs the facade's destructor (upstream: every
+class), which frees its already empty arena; nothing uses the facade after it. The other `.delete()` calls are manifold-3d's or
+JavaScript `Map`/`Set`s. `OcctScope` is exported but used only by its own unit
+test with fake objects. The facade's public surface is ints, doubles,
+`uintptr_t`, `bool` and one `const char*`, no overloads.
+
+**Results.** The memory test passes with all four leak controls tripping (they
+leak inside the facade). `pnpm check` passes locally and CI (unit, memory,
+e2e, screenshot goldens) is green. The `.wasm` grew from 20,745,459 to
+20,748,221 bytes (+2.7 kB; gzip -9 6,679,585 → 6,679,960), the glue from
+53,481 to 53,527 bytes. `pnpm vitest run packages/kernel/src/features/extrude`
+took 27.6 s (old) and 29.4 s / 31.8 s (new) on the loaded 4-core Ubuntu
+machine: within noise.
+
+**Decision.** Unchanged: the facade keeps owning OCCT memory (one copy out, no
+OCCT type in the bindings). Raw bindings come back only for a concrete need,
+and then a handle must never be deleted while OCCT still references it.

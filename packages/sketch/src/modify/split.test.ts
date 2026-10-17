@@ -142,6 +142,42 @@ describe('trim on splines', () => {
     );
   });
 
+  it("keeps a control spline's degree and drops a fit spline's tangents (ADR-0063, third amendment)", () => {
+    const b = new SketchBuilder();
+    const poles: [number, number][] = [
+      [0, 0],
+      [10, 20],
+      [20, -10],
+      [30, 20],
+      [40, -10],
+      [50, 20],
+      [60, 0],
+    ];
+    const s = b.spline(poles, { mode: 'control', degree: 2 });
+    b.line(45, -20, 45, 30);
+    const before = data(b);
+    const whole = curveOf(before, s.id);
+    expect(whole.degree).toBe(2);
+    // `apply` checks the result against the schema, the knots' rules included.
+    const after = apply(before, trim(before, id(s.id), [55, 5], newId));
+    const [[key, kept]] = splines(after) as [[string, SketchSpline]];
+    expect(kept).toMatchObject({ mode: 'control', degree: 2 });
+    expect(kept.knots).toHaveLength(kept.points.length + 3);
+    expect(curveOf(after, key).degree).toBe(2);
+    expect(offCurve(curveOf(after, key), whole)).toBeLessThan(1e-9);
+
+    const f = new SketchBuilder();
+    const fit = f.spline(wave, { tangents: { start: [0, 40], end: [40, 0] } });
+    f.line(25, -10, 25, 20);
+    const fitBefore = data(f);
+    const fitWhole = curveOf(fitBefore, fit.id);
+    const fitAfter = apply(fitBefore, trim(fitBefore, id(fit.id), [35, 8], newId));
+    const [[fitKey, fitKept]] = splines(fitAfter) as [[string, SketchSpline]];
+    expect(fitKept).not.toHaveProperty('tangents');
+    expect(fitKept).not.toHaveProperty('degree');
+    expect(offCurve(curveOf(fitAfter, fitKey), fitWhole)).toBeLessThan(1e-9);
+  });
+
   it('opens a closed spline: the piece left runs round the seam', () => {
     const b = new SketchBuilder();
     const s = b.spline(

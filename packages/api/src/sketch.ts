@@ -209,24 +209,47 @@ export class SplineHandle extends SketchEntityHandle {
   readonly closed: boolean;
   /** A control spline's own knot vector, if it was given one. */
   readonly knots: readonly number[] | undefined;
+  /** A fit spline's end tangents, if it was given any (ADR-0063's third amendment). */
+  readonly tangents: SplineTangents | undefined;
+  /** A control spline's own degree, if it was given one (ADR-0063's third amendment). */
+  readonly degree: number | undefined;
 
   constructor(
     sketch: SketchHandle,
     id: SketchEntityId,
     points: PointHandle[],
-    shape: { closed?: boolean; knots?: readonly number[] } = {},
+    shape: {
+      closed?: boolean;
+      knots?: readonly number[];
+      tangents?: SplineTangents;
+      degree?: number;
+    } = {},
   ) {
     super(sketch, id);
     this.points = points;
     this.closed = shape.closed === true;
     this.knots = shape.knots ? [...shape.knots] : undefined;
+    this.tangents = shape.tangents ? { ...shape.tangents } : undefined;
+    this.degree = shape.degree;
   }
+}
+
+/**
+ * A fit spline's end tangents (ADR-0063's third amendment): each the curve's
+ * derivative at that end, mm per unit of its parameter (0 to 1), so its length
+ * says how far the curve keeps the direction. Either end may be left free.
+ */
+export interface SplineTangents {
+  start?: Vec2;
+  end?: Vec2;
 }
 
 /** How a fit spline runs (ADR-0063's P4-12 amendment). */
 export interface SplineOptions {
   /** Back round to the first point: a closed loop, C2 everywhere (at least three points). */
   closed?: boolean;
+  /** End tangents of an open fit spline (not with `closed`). */
+  tangents?: SplineTangents;
 }
 
 /** How a control spline runs (ADR-0063's P4-12 amendment). */
@@ -234,9 +257,16 @@ export interface ControlSplineOptions extends SplineOptions {
   /**
    * The full clamped knot vector of the poles' cubic: `points.length + 4`
    * values from 0 to 1, the first four 0 and the last four 1. Without it the
-   * inner knots are uniform. Not with `closed`.
+   * inner knots are uniform. Not with `closed`. With a `degree`, the counts
+   * follow it: `points.length + degree + 1` values, `degree + 1` zeros and ones.
    */
   knots?: readonly number[];
+  /**
+   * The degree, 1 (the control polygon) to 5, at most `points.length − 1`
+   * (ADR-0063's third amendment). Without it: 3, or `points.length − 1` below
+   * four points. Not with `closed`.
+   */
+  degree?: number;
 }
 
 /** A text (ADR-0058): the anchor on its baseline and the point a height above it. */
@@ -762,7 +792,8 @@ export class SketchBuilder {
 
   /**
    * A spline through `points` (ADR-0014): a smooth curve through every one;
-   * `{ closed: true }` runs it back round to the first.
+   * `{ closed: true }` runs it back round to the first, and `tangents` set
+   * the open curve's end derivatives (ADR-0063's third amendment).
    */
   spline(points: readonly Vec2[], options: SplineOptions = {}): SplineHandle {
     return this.#spline(points, 'fit', undefined, options);
@@ -770,7 +801,8 @@ export class SketchBuilder {
 
   /**
    * A spline guided by its points as B-spline poles (ADR-0063); `closed` makes
-   * it the periodic B-spline of the poles, `knots` gives it its own knot vector.
+   * it the periodic B-spline of the poles, `knots` gives it its own knot vector
+   * and `degree` its own degree, 1 to 5 (ADR-0063's third amendment).
    */
   splineControl(points: readonly Vec2[], options: ControlSplineOptions = {}): SplineHandle {
     return this.#spline(points, 'control', undefined, options);
@@ -1052,7 +1084,7 @@ export class SketchBuilder {
     points: readonly Vec2[],
     mode: 'fit' | 'control' | 'conic',
     rho?: number,
-    shape: ControlSplineOptions = {},
+    shape: ControlSplineOptions & { tangents?: SplineTangents } = {},
   ): SplineHandle {
     const made = addSpline(this.#edit, this.#ids, points, mode, rho, shape);
     return new SplineHandle(
