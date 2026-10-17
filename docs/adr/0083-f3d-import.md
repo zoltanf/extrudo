@@ -1255,9 +1255,9 @@ Extrudo's join of several bodies keeps the pieces its tool doesn't bridge
 apart, the largest under the first body's ID and the others under the join's
 own (`splitSolids`), so after such a join the import can't tell which ID is
 which file body: a later feature naming one of them is left to Extrudo's
-default, none of them is hidden even where the file hides it, a "Body to
-Component" that moves one is left out, it stays in the component of the
-feature that made it, and its body link carries no hint. The bodies
+default, none of them is hidden even where the file hides it, it stays in
+the component of the feature that made it (a "Body to Component" that moves
+one notes that), and its body link carries no hint. The bodies
 of such a join are named in the order Extrudo's default would join them (the
 earliest made first): naming them in the file's order changed which faces kept
 their names in three designs, and a chamfer after the join lost edges. Tried
