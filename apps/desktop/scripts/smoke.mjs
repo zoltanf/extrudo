@@ -183,6 +183,16 @@ try {
   console.log(`smoke: OK in ${((Date.now() - started) / 1000).toFixed(1)} s`);
 } catch (error) {
   console.error(`smoke: could not drive the app: ${error.message}`);
+  // What the renderer said and showed, to tell a stuck kernel from a bad launch.
+  for (const line of errors) console.error(`smoke: ${line}`);
+  try {
+    const page = browser?.contexts()[0]?.pages()[0];
+    const text = await page?.evaluate(() => document.body.innerText.slice(0, 600));
+    const state = await page?.evaluate(() =>
+      [...document.querySelectorAll('[data-model-status]')].map((e) => e.dataset.modelStatus),
+    );
+    console.error(`smoke: url ${page?.url()} status ${JSON.stringify(state)}\n${text}`);
+  } catch {}
   process.exitCode = 1;
 } finally {
   await browser?.close().catch(() => {});
