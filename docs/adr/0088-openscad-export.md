@@ -80,7 +80,10 @@ stay exact for the rest.
    geometry the file holds fixed (a sketch dimension, a mesh version's
    feature) gets a comment saying so, naming the features. Names that aren't
    OpenSCAD identifiers or clash with its keywords and built-ins get a `_`
-   suffix. Configurations are not exported.
+   suffix. Configurations are not exported. Document text that lands in a comment (a
+   comment, a feature name) is written on one line, and a group header has
+   `*/` broken up (`* /`) and brackets turned into parentheses, so none of it
+   can end the comment.
 
    Since ADR-0086 (the Parameters dialog), slider ranges are expressions and
    the group sits on the parameter. The export writes each range's evaluated

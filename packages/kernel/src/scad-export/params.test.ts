@@ -43,6 +43,8 @@ function ctxOf(doc: ExtrudoDocument): ExprContext {
   return { evaluation, lengthUnit: doc.settings.units, names: scadNames(evaluation) };
 }
 
+const wallInGroup = (group: string) =>
+  param('wall', '3 mm', { group, customizer: { min: '1 mm', max: '9 mm' } });
 const blockOf = (doc: ExtrudoDocument, use: ParameterUse) => parameterBlock(doc, ctxOf(doc), use);
 
 describe('parameterBlock', () => {
@@ -99,6 +101,32 @@ a = b * 2;
 width = 40;
 `,
     );
+  });
+
+  it('keeps a feature name with a line break inside the description comment', () => {
+    const doc = docOf([param('width', '40 mm', { comment: 'Outer\nwidth' })]);
+    const block = blockOf(doc, {
+      used: ['width'],
+      fixed: new Map([['width', ['S\ninclude <x.scad>\n//', 'Fillet2']]]),
+    });
+    expect(block.code).toBe(
+      `/* [Hidden] */
+// Outer width. Also sets S include <x.scad> // and Fillet2, which this file holds fixed.
+width = 40;
+`,
+    );
+  });
+
+  it('breaks up a comment end and brackets in a group header', () => {
+    const doc = docOf([wallInGroup('*/include<x.scad>/* [a]')]);
+    expect(blockOf(doc, { used: ['wall'] }).code).toBe(
+      '/* [* /include<x.scad>/* (a)] */\nwall = 3; // [1:9]\n',
+    );
+  });
+
+  it('puts a parameter whose group is only spaces with the ungrouped ones', () => {
+    const doc = docOf([wallInGroup('   ')]);
+    expect(blockOf(doc, { used: ['wall'] }).code).toBe('wall = 3; // [1:9]\n');
   });
 
   it('writes the value of an expression that does not translate', () => {
@@ -163,6 +191,18 @@ cube_ = 2;
   });
 
   describe('with the real OpenSCAD compiler', { timeout: 120_000 }, () => {
+    it('reads a cleaned group header as one group', async () => {
+      const doc = docOf([wallInGroup('*/include<x.scad>/* [a]')]);
+      const block = parameterBlock(doc, ctxOf(doc), { used: ['wall'] });
+      const source = new TextEncoder().encode(`${block.code}cube(wall);\n`);
+      const listed = await compiler.parameters({ fileName: 'block.scad', source });
+      expect(listed.ok).toBe(true);
+      if (!listed.ok) return;
+      expect(listed.parameters.map((p) => [p.name, p.group])).toEqual([
+        ['wall', '* /include<x.scad>/* (a)'],
+      ]);
+    });
+
     it('lists the customizer parameters of the example', async () => {
       const doc = docOf([
         param('width', '40 mm', {

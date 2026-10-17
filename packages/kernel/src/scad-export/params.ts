@@ -7,6 +7,7 @@
 import { customizerRows, type EvaluatedParameter, type ExtrudoDocument } from '@extrudo/core';
 import { type ExprContext, translateExpression } from './expr';
 import { scadNumber } from './number';
+import { commentText } from './print';
 
 export interface ParameterUse {
   /** Extrudo parameter names the written code refers to directly. */
@@ -20,6 +21,11 @@ export interface ParameterBlock {
   code: string;
   /** Extrudo names written, in written order. */
   written: string[];
+}
+
+/** A group's name for its `/* [name] *\/` Customizer header: one line, no comment end, no brackets. */
+function groupName(group: string): string {
+  return commentText(group).replace(/\*\//g, '* /').replace(/\[/g, '(').replace(/\]/g, ')');
 }
 
 export function parameterBlock(
@@ -73,7 +79,7 @@ export function parameterBlock(
   for (const p of doc.parameters) {
     if (!written.has(p.name) || !p.customizer || emitted.has(p.name)) continue;
     emitted.add(p.name);
-    const group = p.group;
+    const group = p.group === undefined ? '' : groupName(p.group);
     if (!group) sections[0]?.names.push(p.name);
     else {
       const at = seenGroup.get(group);
@@ -109,8 +115,8 @@ export function parameterBlock(
   const description = (name: string): string | undefined => {
     const parts: string[] = [];
     const comment = doc.parameters.find((q) => q.name === name)?.comment;
-    if (comment) parts.push(comment.replace(/\r?\n/g, ' '));
-    const fixed = [...(use.fixed?.get(name) ?? [])];
+    if (comment) parts.push(commentText(comment));
+    const fixed = [...(use.fixed?.get(name) ?? [])].map(commentText);
     if (fixed.length > 0) {
       parts.push(
         `Also sets ${fixed.slice(0, -1).join(', ')}${fixed.length > 1 ? ' and ' : ''}${fixed.at(-1)}, which this file holds fixed.`,

@@ -16,7 +16,7 @@ import { parameterUse, type WrittenStep } from './live';
 import { polyhedronOf } from './mesh';
 import { scadNumber } from './number';
 import { parameterBlock } from './params';
-import { type PrintRefs, printModule, printNode } from './print';
+import { commentText, type PrintRefs, printModule, printNode } from './print';
 import { type ScadSource, type Version, walkVersions } from './versions';
 
 /** A body the export writes, as Export Model chose it. */
@@ -66,11 +66,6 @@ export function scadIdentifier(name: string): string {
   if (id === '') id = 'Body';
   if (/^[0-9]/.test(id)) id = `_${id}`;
   return RESERVED.has(id) ? `${id}_` : id;
-}
-
-/** One line of a comment, without line breaks. */
-function commentText(text: string): string {
-  return text.replace(/[\r\n]+/g, ' ').trim();
 }
 
 /** `$fs`: the chord a deflection allows on a 1 mm radius, so small holes are as fine as Export Model's mesh. */

@@ -186,3 +186,8 @@ export function printNode(node: CsgNode, refs: PrintRefs, depth = 0): string[] {
 export function printModule(name: string, node: CsgNode, refs: PrintRefs): string[] {
   return [`module ${name}() {`, ...printNode(node, refs, 1), '}'];
 }
+
+/** One line of a comment, without line breaks. */
+export function commentText(text: string): string {
+  return text.replace(/[\r\n]+/g, ' ').trim();
+}

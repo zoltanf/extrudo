@@ -2472,7 +2472,8 @@ builds on it only with the IR helpers (`half`, `negate`, `absolute`, `sum`:
 they keep `refs` and brackets); an expression input it doesn't read that way,
 every input of a mesh version's feature, and the expressions of body-less
 features they build on (sketch dimensions, construction planes) count as
-held fixed and get the Customizer note. A script's features write values.
+held fixed and get the Customizer note. **Document text that lands in a comment goes through `commentText`
+(print.ts); group headers through `groupName` (params.ts).** A script's features write values.
 Slice 3 added hooks for the primitives,
 Move, Mirror, Scale and the rectangular and circular patterns of bodies.
 **A solid feature's hook builds its tool in place and hands it to
