@@ -787,9 +787,14 @@ export function f3dToDesign(
         // An Extrudo component already stands for it; its features follow on this timeline.
         report.imported.push(feature.name);
       } else if (components.isBodyMove(feature)) {
-        const reason = components.bodyMove(feature, bodyOf, unsureBody);
+        const reason = components.bodyMove(feature, bodyOf);
         if (reason) report.skipped.push(skippedFeature(feature.name, feature.kind, reason));
         else report.imported.push(feature.name);
+        // `finish` leaves such a body where the feature that made it put it.
+        if (!reason && components.moves(feature).some((b) => unsureBody(b)))
+          report.notes.push(
+            `${feature.name}: a body it moves was joined with others first; it stays in the component that made it.`,
+          );
       } else {
         report.skipped.push({
           name: feature.name,
