@@ -620,9 +620,11 @@ test('P4-12 fourth amendment: a curved edge reads both face directions, so a cyl
   expect(Number.parseFloat(await distance.inputValue()), 'Distance').toBeGreaterThan(3);
   await expect(second).toHaveValue('3 mm');
 
-  // And Second distance's head grows the wall-side value.
+  // And Second distance's head grows the wall-side value. Its head is read
+  // again: at 3 mm the two heads can land within LIFT_NEAR px, which lifts this
+  // one off its shaft, and the lift goes once Distance's head has moved away.
   await second.blur();
-  await dragBy(page, big.b, armB.x, armB.y);
+  await dragBy(page, await handleAt(viewport, 'distanceB'), armB.x, armB.y);
   await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
   await second.blur();
   expect(Number.parseFloat(await second.inputValue()), 'Second distance').toBeGreaterThan(3);
