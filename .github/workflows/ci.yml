@@ -161,6 +161,26 @@ jobs:
       - name: Typecheck, lint, package boundaries, bindings, unit and memory tests
         run: pnpm check
 
+  storage-windows:
+    name: Storage tests (Windows)
+    # The Node-fs store runs on every desktop OS; fsync through a read-only
+    # handle failed with EPERM on Windows (v0.7.0), unseen on Linux. The
+    # desktop workflow repeats these tests at packaging time.
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6 # version comes from "packageManager" in package.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm vitest run packages/storage/src/node
+
   e2e:
     # The runner gives Playwright one worker, and one job ran the whole suite in
     # about 20 minutes by P3-14 (178 tests; the job with `pnpm check` before it

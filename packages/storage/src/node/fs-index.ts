@@ -115,22 +115,22 @@ export async function writeAtomic(
 ): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   const temp = `${path}.${process.pid}.tmp`;
-  // One writable handle: write, flush, close. Flushing through a read-only
-  // handle fails with EPERM on Windows (FlushFileBuffers needs write access),
-  // which broke every index write of v0.7.0 there. The rename is the commit,
-  // and a power loss must never leave it pointing at a partial file.
-  const handle = await open(temp, 'w');
   try {
-    await handle.writeFile(text, 'utf8');
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  await beforeRename?.();
-  try {
+    // One writable handle: write, flush, close. Flushing through a read-only
+    // handle fails with EPERM on Windows (FlushFileBuffers needs write access),
+    // which broke every index write of v0.7.0 there. The rename is the commit,
+    // and a power loss must never leave it pointing at a partial file.
+    const handle = await open(temp, 'w');
+    try {
+      await handle.writeFile(text, 'utf8');
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await beforeRename?.();
     await rename(temp, path);
   } catch (error) {
-    // A failed rename must not leave the temp file behind for ever.
+    // A failed write, flush or rename must not leave the temp file behind for ever.
     await rm(temp, { force: true });
     throw error;
   }

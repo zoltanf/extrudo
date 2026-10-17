@@ -6,7 +6,7 @@
  * write of v0.7.0 there.
  */
 
-import { mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -44,7 +44,6 @@ describe('writeAtomic', () => {
   it('replaces the content of an existing file', async () => {
     const dir = await tempDir();
     const path = join(dir, 'index.json');
-    await mkdir(dir, { recursive: true });
     await writeAtomic(path, 'old\n');
 
     await writeAtomic(path, 'new\n');
@@ -63,9 +62,22 @@ describe('writeAtomic', () => {
     const opens = vi.mocked(open).mock.calls.filter(([file]) => String(file).endsWith('.tmp'));
     expect(opens.length).toBeGreaterThan(0);
     for (const call of opens) {
-      const flags = call[1];
-      expect(flags).toBeDefined();
-      expect(flags).not.toBe('r');
+      expect(call[1]).toBe('w');
     }
+  });
+
+  it('removes the temp file when the write does not reach the rename', async () => {
+    const dir = await tempDir();
+    const path = join(dir, 'index.json');
+    await writeAtomic(path, 'old\n');
+
+    await expect(
+      writeAtomic(path, 'new\n', () => {
+        throw new Error('power loss');
+      }),
+    ).rejects.toThrow('power loss');
+
+    expect(await readFile(path, 'utf8')).toBe('old\n');
+    expect(await readdir(dir)).toEqual(['index.json']);
   });
 });
