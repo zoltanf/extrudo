@@ -79,48 +79,29 @@ export interface PluginItem {
 }
 
 /**
- * The tile under the pointer or the focus (P6-06 S9): F1 opens the docs page
- * of the tool it was on, or the user guide when none was. Module state, read
- * at the moment F1 runs; the `help` command needs nothing else from React.
+ * The tile hovered or focused last (P6-06 S9, ADR-0090): F1 and the app menu's
+ * "Help for <tool>" open the docs page of its tool, or the user guide before any
+ * tile was hovered. It is kept after the pointer leaves (the Menu is opened by a
+ * click elsewhere). Module state, read when F1 runs or the panel opens; the
+ * `help` command needs nothing else from React.
  */
-let hoveredTool: string | undefined;
-/** The last tile hovered or focused, kept after the pointer leaves (the app menu's Help item). */
 let lastTool: string | undefined;
 
-/** The tool whose toolbar tile is hovered or focused now, if any. */
-export function toolUnderPointer(): string | undefined {
-  return hoveredTool;
-}
-
-/**
- * The tool whose tile was hovered or focused last, even if the pointer has left it since:
- * the app menu's "Help for <tool>" (ADR-0090 §1), opened by a click elsewhere.
- */
+/** The tool whose toolbar tile was hovered or focused last, if any. */
 export function lastHoveredTool(): string | undefined {
   return lastTool;
 }
 
-/** Sets the tracked tool (the tiles' pointer/focus handlers; exported for tests). */
+/** Sets the remembered tool (the tiles' pointer/focus handlers; exported for tests). */
 export function setHoveredTool(tool: string | undefined): void {
-  hoveredTool = tool;
-  if (tool) lastTool = tool;
+  lastTool = tool;
 }
 
-/**
- * Forgets `tool` if it is the tracked one. A tile that unmounts while hovered
- * (a tab switch) sends no pointerleave, so its cleanup calls this (P6-06 S10).
- */
-export function releaseTool(tool: string): void {
-  if (toolUnderPointer() === tool) setHoveredTool(undefined);
-}
-
-/** Pointer/focus tracking for one tile: in on enter/focus, out on leave/blur. */
+/** Pointer/focus tracking for one tile: remembered on enter and on focus. */
 function trackTool(id: string) {
   return {
     onPointerEnter: () => setHoveredTool(id),
-    onPointerLeave: () => releaseTool(id),
     onFocus: () => setHoveredTool(id),
-    onBlur: () => releaseTool(id),
   };
 }
 
@@ -209,9 +190,7 @@ export function Toolbar({
 }: ToolbarProps) {
   const tabs = visibleTabs(mode);
   const active = tabs.find((t) => t.id === tab) ?? tabs[0];
-  const showsFinish = active?.id === 'sketch';
   useFontsReady();
-  useEffect(() => (showsFinish ? () => releaseTool('finishSketch') : undefined), [showsFinish]);
   const groups: ToolGroup[] = (active?.groups ?? []).map((g) => ({
     ...g,
     tools: g.tools.filter((id) => !hidden?.has(id)),
@@ -484,7 +463,6 @@ function ToolButton({
   compact?: boolean;
 }) {
   const unavailable = !ready;
-  useEffect(() => () => releaseTool(tool.id), [tool.id]);
   const tooltip = {
     label: label ?? tool.label,
     shortcut,

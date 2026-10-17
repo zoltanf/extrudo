@@ -163,7 +163,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
 function Page({ id, ...props }: SettingsDialogProps & { id: SectionId }): ReactNode {
   switch (id) {
     case 'general':
-      return <General {...props} />;
+      return <Appearance {...props} />;
     case 'plugins':
       return <PluginsSection {...props.plugins} />;
     case 'marking':
@@ -238,10 +238,9 @@ function Heading({ children }: { children: ReactNode }) {
 
 // ------------------------------------------------------------------ pages
 
-function General({ theme, onThemeChange }: SettingsDialogProps) {
+function Appearance({ theme, onThemeChange }: SettingsDialogProps) {
   return (
     <>
-      <Heading>Appearance</Heading>
       <Row label="Theme">
         <fieldset className="m-0 flex gap-4 border-0 p-0">
           <legend className="sr-only">Theme</legend>

@@ -44,7 +44,7 @@ import type { ViewportStore } from '../viewport/store';
 import { FACES, type FaceName } from '../viewport/viewcube';
 import type { FileActions } from './AppBar';
 import type { DocsPage } from './docsLinks';
-import { toolUnderPointer } from './Toolbar';
+import { lastHoveredTool } from './Toolbar';
 import {
   FILE_COMMANDS,
   type FileCommandId,
@@ -477,13 +477,14 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
   if (ctx.docs) {
     const open = (page: DocsPage) => ctx.docs?.open(page);
     // F1 (P6-06 S9): the docs page of the tool whose tile was hovered or
-    // focused last, or the user guide when none was.
+    // focused last (the app menu's "Help for <tool>" reads the same,
+    // ADR-0090), or the user guide before any tile was.
     plain(
       'help',
       'Help for this tool',
       'Help',
       () => {
-        const tool = toolUnderPointer();
+        const tool = lastHoveredTool();
         open(tool ? { tool } : 'guide');
       },
       {

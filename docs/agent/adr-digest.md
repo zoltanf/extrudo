@@ -2258,8 +2258,8 @@ whose scheme isn't relative, `#`, https, http or mailto (a `link` renderer in
 `docs.ts`; `<file>: link scheme not allowed: <href>`), the `.md`-link and
 no-script tests walk every collection and hostile fixtures, a malformed `%`
 in `#/p/…` or `#/example/…` is `not-found`, **F1 is `inFields`** (the `help`
-command's `AppCommand.inFields`), a tile that unmounts while hovered releases
-`toolUnderPointer` (`releaseTool`), the Help menu's **Help for This Tool** carries
+command's `AppCommand.inFields`), a tile that unmounts while hovered released
+`toolUnderPointer` (`releaseTool`; both gone since ADR-0090's review: F1 reads `lastHoveredTool()`), the Help menu's **Help for This Tool** carries
 F1 (User Guide has no key), the guide's pictures are recorded by `pnpm demos
 -g guide` (`e2e/guide-shots.spec.ts`, like `-g tutorials`) and the tutorials are
 numbered 1 first-part, 2 storage-box, 3 name-tag, 4 bottle-cap.
@@ -2267,7 +2267,7 @@ numbered 1 first-part, 2 storage-box, 3 name-tag, 4 bottle-cap.
 ADR-0082 (2026-10-10) added **the Settings screen** (`apps/web/src/settings/`, no
 kernel, schema or file-format change): the dialog "Settings" (`SettingsDialog`;
 app menu › Settings…, **Ctrl+,** `openSettings` in `commands/keymap.ts`, the Ctrl+K command,
-the home screen's app menu) with sections General, View and navigation, Sketch, 3D
+the home screen's app menu) with sections General (Appearance since ADR-0090), View and navigation, Sketch, 3D
 printing, Export and Desktop (`desktop` shown only where `platform.desktop`
 exists; remembered in `settings.section`). Rules a change must keep: **every
 preference key lives in one section of `settings/inventory.ts` or in
@@ -2498,7 +2498,8 @@ is **not a `NavPreset`** until its behaviour lands; **two columns always**, `men
 (Search… where commands exist, Settings…, About Extrudo, then Close design on the web /
 Quit on the desktop) and "Learn" (**Help for \<tool\>** first, from
 `lastHoveredTool()` in `Toolbar.tsx` — the last tile hovered or focused, kept after the
-pointer leaves, unlike F1's `toolUnderPointer()` — and the command label, absent when no
+pointer leaves; **F1 (the `help` command) reads the same**, so both name one tool and the
+guide opens only before any tile was hovered — and the command label, absent when no
 tile was hovered; then User Guide, Tutorial, **Online Tutorials** (the `docsTutorials`
 label everywhere), Examples, Tool Reference); the **strip** `[data-update-strip]`
 (`data-update-word`: "Update ready: <v>" / "Checking…" / "Up to date" / nothing, from
@@ -2514,4 +2515,5 @@ has no Search…, Close design or Help for \<tool\>. **§2:** Settings gained th
 `SettingsDialog`'s `section` prop) and **Marking menu** (the Radial switch above
 `MarkingMenuEditor`; Ctrl+K "Customize Marking Menu…" opens it; on the home screen the
 editor is replaced by a line, there are no commands); `PluginsDialog` and the
-`CustomizeMarkingMenu` dialog are gone, and General keeps the theme alone.
+`CustomizeMarkingMenu` dialog are gone, and General (id `general`, labelled
+**Appearance**, summary "Theme.") keeps the theme alone.

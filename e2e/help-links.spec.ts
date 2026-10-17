@@ -90,7 +90,9 @@ test('F1 works while a dialog field has focus (P6-06 S10)', async ({ page }) => 
   expect(url).toBe(`${DOCS}/docs/tools/revolve/`);
 });
 
-test('F1 with nothing hovered opens the user guide (P6-06 S9)', async ({ page }) => {
+test('F1 before any tile was hovered opens the user guide (P6-06 S9, ADR-0090)', async ({
+  page,
+}) => {
   await open(page);
   const url = await popupUrl(page, () => page.keyboard.press('F1'));
   expect(url).toBe(`${DOCS}/docs/`);

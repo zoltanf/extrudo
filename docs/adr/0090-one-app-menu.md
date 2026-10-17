@@ -139,3 +139,7 @@ Two changes after the first brief went out: Customize Marking Menu is a
 Settings section rather than General's button, and the panel's width comes
 from the rail, with a divider on each side of the toggles. Written into the
 text above.
+
+After the implementation review: F1 and the panel's Help item share
+`lastHoveredTool()`, and Settings › General is labelled Appearance (its id
+stays `general`).

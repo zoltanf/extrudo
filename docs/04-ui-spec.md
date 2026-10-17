@@ -797,7 +797,7 @@ or sketch, closing the panel, or the joint going away puts everything back.
 Ctrl+, opens the Settings dialog from anywhere (the app menu's first item, Ctrl+K
 "Settings…", the home screen's app menu). A modal dialog, sections in a list on the
 left and the selected page on the right (below 640 px one column with a select);
-General, Plugins (install, enable and remove plugins, P6-03; Ctrl+K "Plugins…" opens
+Appearance (the theme), Plugins (install, enable and remove plugins, P6-03; Ctrl+K "Plugins…" opens
 it), Marking menu (the Radial right-click menu switch above the ring editor: a ring
 per mode, a wedge, then the command it runs; Ctrl+K "Customize Marking Menu…" opens
 it), View and navigation, Sketch, 3D printing, Export and, on the desktop,
@@ -861,8 +861,8 @@ per-field Reset when they differ from the default.
   the macOS Help menu list the same. The column starts with **Help for
   \<tool\>** (with F1), named after the tool whose toolbar tile was hovered
   or focused last, and absent when there is none. **F1** (`keymap.help`) opens
-  the docs page of the tool whose tile is hovered or focused, or the user
-  guide when none is.
+  the docs page of the same tool (both read `lastHoveredTool()`), or the user
+  guide before any tile was hovered.
 
 ### 7.1 Preparing the design (ADR-0078)
 

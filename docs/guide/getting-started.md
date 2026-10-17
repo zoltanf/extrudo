@@ -124,9 +124,8 @@ There are four ways to a tool, and you will use all of them:
 Every tool has its own page in the [tool reference](./tools/index.md). The **Menu** (four squares)
 in the top bar links to these pages in its Learn column: **User Guide**, **Online Tutorials**,
 **Examples** and **Tool Reference** open on the docs site, **Tutorial** starts the in-app tour,
-and **Help for** a tool opens the page of the toolbar tile you hovered last. `F1` opens the page of
-the tool under the pointer (hover a toolbar tile first), or the guide when the pointer is over
-nothing.
+and **Help for** a tool opens the page of the toolbar tile you hovered last. `F1` opens the same page:
+the tool whose toolbar tile you hovered last, or the guide if you haven't hovered one yet.
 
 ## Undo covers everything
 

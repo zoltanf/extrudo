@@ -17,7 +17,7 @@ either place shows in the other at once. A reload keeps them.
 
 | Section | What is in it |
 |---|---|
-| **General** | Theme (System, Dark, Light) |
+| **Appearance** | Theme (System, Dark, Light) |
 | **Plugins** | Install, enable and remove plugins (also Ctrl+K "Plugins…") |
 | **Marking menu** | The radial right-click menu on or off, and the command on each wedge of the ring (also Ctrl+K "Customize Marking Menu…") |
 | **View and navigation** | The mouse buttons preset, projection, visual style, the grid |

@@ -30,8 +30,8 @@ export interface SectionInfo {
 export const SECTIONS: readonly SectionInfo[] = [
   {
     id: 'general',
-    label: 'General',
-    summary: 'Appearance.',
+    label: 'Appearance',
+    summary: 'Theme.',
     keys: ['theme'],
   },
   {

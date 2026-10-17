@@ -4,7 +4,7 @@ import { memoryPreferences } from '../platform/preferences';
 import { createViewportStore } from '../viewport/store';
 import { buildCommands, type CommandContext, commandShortcuts } from './commands';
 import { menuModel, NATIVE_MENU_OWN } from './menuModel';
-import { releaseTool, setHoveredTool, toolUnderPointer } from './Toolbar';
+import { lastHoveredTool, setHoveredTool } from './Toolbar';
 
 function context(mode: 'model' | 'sketch', over: Partial<CommandContext> = {}): CommandContext {
   return {
@@ -396,12 +396,12 @@ describe('buildCommands', () => {
     expect(keys.find((s) => s.keys === 'E')?.inFields).toBeFalsy();
   });
 
-  it('forgets a hovered tool whose tile unmounted, only if it is that tile (P6-06 S10)', () => {
+  it('remembers the last hovered tool until another is hovered (ADR-0090)', () => {
     setHoveredTool('extrude');
-    releaseTool('fillet');
-    expect(toolUnderPointer()).toBe('extrude');
-    releaseTool('extrude');
-    expect(toolUnderPointer()).toBeUndefined();
+    expect(lastHoveredTool()).toBe('extrude');
+    setHoveredTool('fillet');
+    expect(lastHoveredTool()).toBe('fillet');
+    setHoveredTool(undefined);
   });
 
   it('opens the docs through the platform: F1, and the four Help items (P6-06 S9)', () => {
@@ -428,7 +428,7 @@ describe('buildCommands', () => {
     expect(open).toHaveBeenNthCalledWith(3, 'tutorials');
     expect(open).toHaveBeenNthCalledWith(4, 'examples');
     expect(open).toHaveBeenNthCalledWith(5, 'tools');
-    // F1 with nothing hovered is the guide; a hovered tile's tool has its page.
+    // F1 before any tile was hovered is the guide; the last hovered tile's tool has its page.
     setHoveredTool(undefined);
     model.get('help')?.run();
     expect(open).toHaveBeenLastCalledWith('guide');

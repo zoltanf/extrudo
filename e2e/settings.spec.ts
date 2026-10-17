@@ -22,7 +22,7 @@ test('Ctrl+, opens Settings and every section opens', async ({ page }) => {
     ['sketch', 'Sketch'],
     ['printing', '3D printing'],
     ['export', 'Export'],
-    ['general', 'General'],
+    ['general', 'Appearance'],
   ] as const) {
     await section(page, id).click();
     const content = page.locator(`[data-settings-page="${id}"]`);

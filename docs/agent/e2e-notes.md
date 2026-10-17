@@ -840,7 +840,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   with `chrome-error://chromewebdata/`) and each step takes the popup with
   `context.waitForEvent('page')` beside the action, then reads `popup.url()`:
   the Menu's Learn › User Guide → `…/docs/`, F1 on a hovered Extrude tile →
-  `…/docs/tools/extrude/`, F1 with nothing hovered → `…/docs/`, Ctrl+K "Tool
+  `…/docs/tools/extrude/`, F1 before any tile was hovered → `…/docs/` (F1 and the panel's Help item share `lastHoveredTool()`), Ctrl+K "Tool
   Reference" → `…/docs/tools/`; the Extrude tile's tooltip shows "F1 for more"
   and holds no `a`/`button`. The strip's button "GitHub" opens the repository in a
   popup; the App column is Search…, Settings…, About Extrudo, Close design, and
