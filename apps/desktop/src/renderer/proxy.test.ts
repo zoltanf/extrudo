@@ -85,6 +85,8 @@ function fakeApi(answers: Partial<Record<string, unknown>> = {}) {
       status: async () => ({ enabled: false, port: 7474, url: '', listening: false, clients: 0 }),
       config: async () => ({ url: '', token: '' }),
       regenerateToken: async () => ({ url: '', token: '' }),
+      skillState: async () => undefined,
+      installSkill: async () => undefined,
     },
     app: { ready: () => {}, quit: () => {} },
     updates: {

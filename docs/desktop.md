@@ -76,6 +76,14 @@ popular agent, every one holding the URL and the token, with **Copy**:
 they get the new text. The texts are read-only fields, so they can be selected
 and copied by hand too.
 
+The page's **Skill** row says whether the Extrudo skill is in the agent's global
+skills folder (Claude Code `~/.claude/skills`, Codex CLI `~/.codex/skills`,
+opencode `~/.config/opencode/skills`) and whether it is this version's;
+**Install skill** (or **Update skill**) opens a folder dialog at that folder and
+writes `extrudo/` there; for Other and Tell the agent, **Save skill to…** lets
+you pick the folder. Codex sees the skill once skills are enabled and it is
+restarted.
+
 The server serves the **Extrudo skill** (`apps/desktop/skill/extrudo/`), which
 teaches an agent how to model here: read the design first, use parameters,
 name faces and edges, check each change. Clients that read skills over MCP find

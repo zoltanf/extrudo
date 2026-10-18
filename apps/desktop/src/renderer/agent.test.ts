@@ -24,6 +24,8 @@ function fakeAgentApi() {
     status: async () => ({ enabled: true, port: 7474, url: 'u', listening: true, clients: 0 }),
     config: async () => ({ url: 'u', token: 't' }),
     regenerateToken: async () => ({ url: 'u', token: 't2' }),
+    skillState: async () => undefined,
+    installSkill: async () => undefined,
   };
   return {
     api: { agent } as ExtrudoApi,

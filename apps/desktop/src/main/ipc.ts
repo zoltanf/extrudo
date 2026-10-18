@@ -16,6 +16,7 @@ import type { DialogFiles } from './dialogs';
 import type { ExternalFiles } from './externalFiles';
 import type { Folders } from './folders';
 import type { McpService } from './mcp/service';
+import type { SkillInstaller } from './mcp/skillInstall';
 import { pluginCall } from './plugin-call';
 import type { PreferencesFile } from './preferences';
 import { type RecentFile, recentPathAt } from './recent';
@@ -73,6 +74,8 @@ export interface IpcDependencies {
   links: { open(url: unknown): void };
   /** The MCP server (P6-08, ADR-0087): the renderer's tools and answers, Settings' asks. */
   mcp: McpService;
+  /** Installing the skill into an agent's folder (ADR-0087 amendment 2026-10-18). */
+  skills: SkillInstaller;
 }
 
 export function registerIpcHandlers(deps: IpcDependencies): void {
@@ -228,4 +231,8 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   ipcMain.handle(CHANNELS.mcpStatusRead, () => deps.mcp.status());
   ipcMain.handle(CHANNELS.mcpConfig, () => deps.mcp.config());
   ipcMain.handle(CHANNELS.mcpRegenerateToken, () => deps.mcp.regenerateToken());
+  ipcMain.handle(CHANNELS.mcpSkillState, (_event, target: unknown) => deps.skills.state(target));
+  ipcMain.handle(CHANNELS.mcpSkillInstall, (_event, target: unknown) =>
+    deps.skills.install(target),
+  );
 }

@@ -315,3 +315,33 @@ Decided:
   computer, and a text without the token would be useless; the page says that
   anyone who can read it can change the designs, and Regenerate locks them out.
 
+### Installing the skill into the agent (same amendment, later the same day)
+
+Serving the skill over MCP is not enough on its own: no client is known yet to
+load SEP-2640 skills by itself, so the resource and `get_skill` depend on the
+agent reading them on its own initiative, while a skill on disk loads at session
+start and triggers on its description. Each agent has a global skills folder:
+Claude Code `~/.claude/skills/<name>/SKILL.md`, Codex CLI `~/.codex/skills/`,
+opencode `~/.config/opencode/skills/` (it reads `~/.claude/skills` too).
+
+- `main/mcp/skillInstall.ts` (Electron-free, tested): `skillsHome(agent, home)`
+  for those three, `skillRoot(dir)` (`<dir>/extrudo`, or `dir` when the person
+  picked the skill's own folder), `skillState(dir, files)` (`missing`, `stale`
+  when any file's sha256 differs from this build's, `current`),
+  `installSkill(dir, files)` (writes every file, replacing what is there), and
+  `createSkillInstaller({ files, home, chooseFolder })` behind the invokes
+  `extrudo:mcp:skill-state` and `extrudo:mcp:skill-install` (`McpSkillTarget`:
+  `{ dir, state }`, the home directory shown as `~`).
+- **Main writes only where a dialog said** (ADR-0075 §3): Install skill opens a
+  folder dialog (`dialogs.ts`'s `createFolderPicker`: "Install the Extrudo skill
+  into", button "Install here", `createDirectory`) preset to the agent's folder,
+  or to home for an agent the app doesn't know, and writes under the folder
+  picked. No path is written unasked, and the renderer never names one.
+- The Agents page shows a **Skill** row per agent ("Not installed…", "Installed
+  in …, up to date", "Installed in …: an older version") and the button
+  **Install skill** / **Update skill** (stale), or **Save skill to…** for Other
+  and Tell the agent; `AgentSetup.skillTarget` marks the agents with a known
+  folder and `skillNote` what they need (Codex: skills enabled, a restart). The
+  bridge methods are optional on `AgentBridge`, so the web build and tests
+  without them are unaffected.
+

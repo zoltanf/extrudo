@@ -14,6 +14,7 @@ import {
   isPluginMethod,
   isStoreMethod,
   type McpConfig,
+  type McpSkillTarget,
   type McpStatus,
   type OpenedFile,
   type RecentEntry,
@@ -181,6 +182,10 @@ export function createApi(ipc: IpcRendererLike): ExtrudoApi {
       status: () => ipc.invoke(CHANNELS.mcpStatusRead) as Promise<McpStatus>,
       config: () => ipc.invoke(CHANNELS.mcpConfig) as Promise<McpConfig>,
       regenerateToken: () => ipc.invoke(CHANNELS.mcpRegenerateToken) as Promise<McpConfig>,
+      skillState: (target) =>
+        ipc.invoke(CHANNELS.mcpSkillState, target) as Promise<McpSkillTarget | undefined>,
+      installSkill: (target) =>
+        ipc.invoke(CHANNELS.mcpSkillInstall, target) as Promise<McpSkillTarget | undefined>,
     },
     updates: {
       onStatus: (handler) => {

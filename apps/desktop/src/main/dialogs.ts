@@ -69,3 +69,27 @@ export function createDialogFiles(getWindow: () => BrowserWindow | null): Dialog
     },
   };
 }
+
+/**
+ * A folder dialog for installing the skill (ADR-0087 amendment 2026-10-18): starts
+ * at `defaultPath` (the agent's skills folder, made on the way if the person keeps
+ * it) and answers the folder picked, or undefined when cancelled.
+ */
+export function createFolderPicker(
+  getWindow: () => BrowserWindow | null,
+): (defaultPath: string) => Promise<string | undefined> {
+  return async (defaultPath) => {
+    const options: OpenDialogOptions = {
+      title: 'Install the Extrudo skill into',
+      buttonLabel: 'Install here',
+      defaultPath,
+      properties: ['openDirectory', 'createDirectory'],
+    };
+    const win = getWindow();
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options);
+    const path = result.filePaths[0];
+    return result.canceled || !path ? undefined : path;
+  };
+}

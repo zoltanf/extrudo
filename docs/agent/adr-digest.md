@@ -2425,7 +2425,11 @@ serves. **Settings › Agents (MCP)** (its own section since the amendment of 20
 `agent/clientSetup.ts`'s pure `agentSetups({ url, token })` gives the text per agent:
 Claude Code, Codex CLI, opencode, the `mcpServers` JSON, a sentence for the agent;
 add a new agent there with a test, never in the dialog) shows them in a read-only
-textbox with Copy and Regenerate token. **Main allows the renderer one permission,
+textbox with Copy and Regenerate token, and a Skill row with **Install skill / Update
+skill** (`main/mcp/skillInstall.ts`: `skillsHome` per agent, `skillState` by sha256 of every
+file, `installSkill` under `<dir>/extrudo`; **always through the folder dialog**
+`createFolderPicker`, preset to the agent's folder, never a path written unasked) or
+**Save skill to…** for agents without a known folder. **Main allows the renderer one permission,
 `clipboard-sanitized-write`** (`main/permissions.ts`; every Copy button needs it) and
 denies every other. **Only `apps/desktop/src/main` and `apps/desktop/scripts` may import the
 SDK** (`check-boundaries.mjs`); it is a devDependency bundled into `out/main`,

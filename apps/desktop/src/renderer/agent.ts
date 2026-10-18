@@ -50,5 +50,7 @@ export function desktopAgent(api: ExtrudoApi): AgentBridge {
     },
     config: () => api.agent.config(),
     regenerateToken: () => api.agent.regenerateToken(),
+    skillState: (target) => api.agent.skillState(target),
+    installSkill: (target) => api.agent.installSkill(target),
   };
 }

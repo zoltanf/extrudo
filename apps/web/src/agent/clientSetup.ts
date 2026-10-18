@@ -16,6 +16,10 @@ export interface AgentSetup {
   how: string;
   /** The text to copy. */
   text: string;
+  /** The agent has a global skills folder main knows: Install skill goes there. */
+  skillTarget?: boolean;
+  /** What the agent needs before it sees an installed skill. */
+  skillNote?: string;
 }
 
 const bearer = (token: string) => `Bearer ${token}`;
@@ -42,6 +46,7 @@ export function agentSetups(config: AgentConfig): readonly AgentSetup[] {
       label: 'Claude Code',
       how: 'Run this in a terminal (add --scope project to share it with a project).',
       text: `claude mcp add --transport http extrudo ${url} --header "Authorization: ${bearer(token)}"`,
+      skillTarget: true,
     },
     {
       id: 'codex',
@@ -52,6 +57,8 @@ export function agentSetups(config: AgentConfig): readonly AgentSetup[] {
         `url = ${JSON.stringify(url)}`,
         `http_headers = { "Authorization" = ${JSON.stringify(bearer(token))} }`,
       ].join('\n'),
+      skillTarget: true,
+      skillNote: 'Codex sees the skill once skills are enabled and it is restarted.',
     },
     {
       id: 'opencode',
@@ -72,6 +79,7 @@ export function agentSetups(config: AgentConfig): readonly AgentSetup[] {
         null,
         2,
       ),
+      skillTarget: true,
     },
     {
       id: 'json',

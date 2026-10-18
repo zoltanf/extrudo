@@ -257,6 +257,7 @@ export type {
   AgentContent,
   AgentExportFormat,
   AgentReply,
+  AgentSkillTarget,
   AgentStatus,
   AgentToolDefinition,
   AgentToolResult,

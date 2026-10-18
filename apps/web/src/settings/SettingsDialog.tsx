@@ -6,7 +6,14 @@ import { useAgentStatus } from '../agent/useAgentBridge';
 import type { ThemeChoice } from '../design-system';
 import { Button, Dialog, DialogClose, IconButton, Select, TextInput } from '../design-system';
 import { ExpressionInput } from '../parameters/ExpressionInput';
-import type { AgentBridge, AgentConfig, AgentStatus, Platform, Preferences } from '../platform';
+import type {
+  AgentBridge,
+  AgentConfig,
+  AgentSkillTarget,
+  AgentStatus,
+  Platform,
+  Preferences,
+} from '../platform';
 import { SLICERS, type SlicerId } from '../platform/slicer';
 import { PluginsSection, type PluginsSectionProps } from '../plugins/PluginsList';
 import {
@@ -674,15 +681,29 @@ export const validPort = (text: string): number | undefined => {
   return Number.isInteger(port) && port >= 1024 && port <= 65535 ? port : undefined;
 };
 
+/** The skill's state in the agent's folder, in one line (undefined while unknown). */
+export function skillStateText(skill: AgentSkillTarget | undefined, known: boolean): string {
+  if (!known)
+    return "The skill teaches the agent how to model here: save it into the agent's skills folder.";
+  if (!skill) return 'Looking…';
+  if (skill.state === 'missing') return `Not installed. Install skill puts it in ${skill.dir}.`;
+  if (skill.state === 'stale')
+    return `Installed in ${skill.dir}: an older version. Update skill replaces it.`;
+  return `Installed in ${skill.dir}, up to date.`;
+}
+
 /**
  * Settings › Agents (MCP) (P6-08, ADR-0087 §6 and its amendment of 2026-10-18):
  * the server's switch, its port (a plain number: a setting of the app, not a
  * model value, so no expression) and state, then the setup for each popular
- * agent as a text to copy, every one holding the URL and the token.
+ * agent as a text to copy, every one holding the URL and the token, and the
+ * skill's state in the agent's folder with Install skill / Update skill (or
+ * Save skill to… for an agent with no known folder).
  *
  * Test hooks: the page `[data-settings-page="agents"]`, combobox "Agent", the
- * textbox "Setup for <agent>" (`[data-agent-setup="<id>"]`, read-only), buttons
- * "Copy" and "Regenerate token", and the `status` with the note.
+ * textbox "Setup for <agent>" (`[data-agent-setup="<id>"]`, read-only), the `status`
+ * "Skill state", buttons "Copy", "Install skill" / "Update skill" / "Save skill to…" and
+ * "Regenerate token", and the `status` with the note.
  */
 function AgentsPage({
   preferences,
@@ -725,6 +746,38 @@ function AgentSettings({ preferences, agent }: { preferences: Preferences; agent
   };
   const setups = config ? agentSetups(config) : [];
   const setup = setups.find((s) => s.id === setupId) ?? setups[0];
+  // The skill in the picked agent's folder (ADR-0087 amendment 2026-10-18, skills).
+  const [skill, setSkill] = useState<AgentSkillTarget>();
+  const [installing, setInstalling] = useState(false);
+  const target = setup?.skillTarget ? setup.id : undefined;
+  useEffect(() => {
+    setSkill(undefined);
+    if (!target || !agent.skillState) return;
+    let current = true;
+    agent.skillState(target).then(
+      (next) => current && setSkill(next),
+      () => undefined,
+    );
+    return () => {
+      current = false;
+    };
+  }, [agent, target]);
+  const install = () => {
+    if (!agent.installSkill || !setup) return;
+    setInstalling(true);
+    agent.installSkill(target).then(
+      (next) => {
+        setInstalling(false);
+        if (!next) return;
+        if (target) setSkill(next);
+        setNote(`Skill installed in ${next.dir}.${setup.skillNote ? ` ${setup.skillNote}` : ''}`);
+      },
+      () => {
+        setInstalling(false);
+        setNote("Couldn't install the skill.");
+      },
+    );
+  };
   const copy = () => {
     if (!setup) return;
     navigator.clipboard.writeText(setup.text).then(
@@ -807,10 +860,26 @@ function AgentSettings({ preferences, agent }: { preferences: Preferences; agent
           value={setup.text}
         />
       )}
+      {setup && (
+        <Row label="Skill" hint={target ? setup.skillNote : undefined}>
+          <p role="status" aria-label="Skill state" className="pt-1 text-sm">
+            {skillStateText(target ? skill : undefined, target !== undefined)}
+          </p>
+        </Row>
+      )}
       <div className="flex flex-wrap gap-2 py-1.5">
         <Button variant="primary" onClick={copy} disabled={!setup}>
           Copy
         </Button>
+        {agent.installSkill && (
+          <Button onClick={install} disabled={!setup || installing}>
+            {target
+              ? skill?.state === 'stale'
+                ? 'Update skill'
+                : 'Install skill'
+              : 'Save skill to…'}
+          </Button>
+        )}
         <Button onClick={regenerate}>Regenerate token</Button>
       </div>
       {note && (

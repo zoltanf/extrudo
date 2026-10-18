@@ -1616,7 +1616,8 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   the key); sections are `[data-settings-section="general|plugins|marking|view|sketch|printing|export|desktop|agents"]`
   (`desktop` and `agents` only in the desktop build: the web build has neither; the Agents
   page has combobox "Agent", the read-only textbox "Setup for <agent>" `[data-agent-setup="<id>"]`,
-  buttons "Copy" and "Regenerate token")
+  the `status` "Skill state", buttons "Copy", "Install skill" / "Update skill" / "Save skill to…"
+  and "Regenerate token")
   (the Radial right-click menu checkbox is on `marking`; the last section is remembered,
   so a test that reopens the dialog clicks the section it needs)
   (buttons in `[data-settings-nav]`; at under 640 px a combobox "Section" instead) and the

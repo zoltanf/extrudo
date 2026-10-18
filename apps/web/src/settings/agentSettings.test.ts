@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { agentSetups, clientConfig } from '../agent/clientSetup';
-import { agentStateText, validPort } from './SettingsDialog';
+import { agentStateText, skillStateText, validPort } from './SettingsDialog';
 
 const status = {
   enabled: true,
@@ -80,6 +80,25 @@ describe('Settings › Agents (MCP) (ADR-0087 §6, amendment 2026-10-18)', () =>
       },
     });
     expect(byId.json).toBe(clientConfig(config));
+    expect(setups.filter((s) => s.skillTarget).map((s) => s.id)).toEqual([
+      'claude-code',
+      'codex',
+      'opencode',
+    ]);
     expect(byId.prompt).toContain('skill://extrudo/SKILL.md');
+  });
+
+  it('says where the skill is', () => {
+    expect(skillStateText(undefined, false)).toMatch(/save it into the agent's skills folder/);
+    expect(skillStateText(undefined, true)).toBe('Looking…');
+    expect(skillStateText({ dir: '~/.claude/skills/extrudo', state: 'missing' }, true)).toBe(
+      'Not installed. Install skill puts it in ~/.claude/skills/extrudo.',
+    );
+    expect(skillStateText({ dir: '~/.codex/skills/extrudo', state: 'stale' }, true)).toBe(
+      'Installed in ~/.codex/skills/extrudo: an older version. Update skill replaces it.',
+    );
+    expect(skillStateText({ dir: '~/.codex/skills/extrudo', state: 'current' }, true)).toBe(
+      'Installed in ~/.codex/skills/extrudo, up to date.',
+    );
   });
 });

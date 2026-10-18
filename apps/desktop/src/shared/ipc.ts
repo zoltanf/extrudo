@@ -80,6 +80,8 @@ export const CHANNELS = {
   mcpStatusRead: 'extrudo:mcp:status-read',
   mcpConfig: 'extrudo:mcp:config',
   mcpRegenerateToken: 'extrudo:mcp:regenerate-token',
+  mcpSkillState: 'extrudo:mcp:skill-state',
+  mcpSkillInstall: 'extrudo:mcp:skill-install',
 } as const;
 
 export type Channel = (typeof CHANNELS)[keyof typeof CHANNELS];
@@ -224,6 +226,12 @@ export interface McpConfig {
   token: string;
 }
 
+/** The skill's folder for an agent (home as `~`) and whether this build's skill is there. */
+export interface McpSkillTarget {
+  dir: string;
+  state: 'missing' | 'stale' | 'current';
+}
+
 /**
  * The API `contextBridge.exposeInMainWorld('extrudo', …)` publishes. The
  * renderer's `desktopPlatform()` is written against exactly this.
@@ -338,6 +346,10 @@ export interface ExtrudoApi {
     status(): Promise<McpStatus>;
     config(): Promise<McpConfig>;
     regenerateToken(): Promise<McpConfig>;
+    /** The agent's skills folder and the skill's state there; undefined for an agent with no known folder. */
+    skillState(target: string): Promise<McpSkillTarget | undefined>;
+    /** A folder dialog (at the agent's folder, or home), then the skill written there; undefined when cancelled. */
+    installSkill(target?: string): Promise<McpSkillTarget | undefined>;
   };
   readonly rescue: {
     /** Keeps the raw document JSON before returning; false if the file couldn't be written. */

@@ -47,6 +47,12 @@ export interface AgentConfig {
   token: string;
 }
 
+/** An agent's skill folder (home as `~`) and whether this build's skill is there. */
+export interface AgentSkillTarget {
+  dir: string;
+  state: 'missing' | 'stale' | 'current';
+}
+
 export interface AgentBridge {
   /** Answers main's tool calls; one handler at a time. Returns the unsubscribe. */
   onRequest(
@@ -60,4 +66,8 @@ export interface AgentBridge {
   subscribe(listener: () => void): () => void;
   config(): Promise<AgentConfig>;
   regenerateToken(): Promise<AgentConfig>;
+  /** The skill's state in the agent's global skills folder; undefined for an agent with no known folder. */
+  skillState?(target: string): Promise<AgentSkillTarget | undefined>;
+  /** A folder dialog (the agent's folder, or home), then the skill written there; undefined when cancelled. */
+  installSkill?(target?: string): Promise<AgentSkillTarget | undefined>;
 }
