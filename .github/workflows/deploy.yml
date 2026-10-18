@@ -16,6 +16,12 @@ name: Deploy
 # A commit that fails its checks or end-to-end tests is never deployed. Nothing
 # runs, and it says so, until the owner has added the repository secrets
 # CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID, so a fork skips cleanly.
+#
+# The Docker image of the app (ADR-0091) goes to ghcr.io/<owner>/extrudo on the
+# same triggers: "edge" after a green CI run on main; "X.Y.Z", "X.Y" and "latest"
+# for a release (a tag, or the manual stable target). It needs no Cloudflare
+# secrets, so a fork publishes its image too.
+#
 # Addresses come from the optional repository variables SITE_URL, APP_URL and
 # EDGE_URL (defaults: extrudo.org, app.extrudo.org, edge.extrudo.org).
 
@@ -176,6 +182,99 @@ jobs:
         run: >-
           $WRANGLER pages deploy apps/web/dist
           --project-name=extrudo --branch="$PAGES_BRANCH" --commit-hash="$SHA"
+
+  docker:
+    name: Docker image
+    needs: plan
+    # Not gated on `enabled`: the image needs the GITHUB_TOKEN only (ADR-0091 §4).
+    if: needs.plan.outputs.sha != '' && (needs.plan.outputs.edge == 'true' || needs.plan.outputs.stable == 'true')
+    runs-on: ${{ vars.RUNS_ON && fromJSON(vars.RUNS_ON) || 'ubuntu-latest' }}
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
+    env:
+      SHA: ${{ needs.plan.outputs.sha }}
+      STABLE: ${{ needs.plan.outputs.stable }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SHA }}
+          fetch-depth: 0 # git describe in the build needs the tags and history
+
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # The same app build as the Pages deploy; the image names the public app as canonical.
+      - name: Build the app (downloads the published WASM first)
+        env:
+          EXTRUDO_CHANNEL: ${{ needs.plan.outputs.stable == 'true' && 'stable' || 'edge' }}
+        run: |
+          pnpm wasm
+          SITE_URL="$APP_URL" pnpm --filter @extrudo/web build
+
+      # Stable: the version of the release tag at this commit; edge: the "edge" tag.
+      - name: Work out the image tags
+        id: tags
+        run: |
+          {
+            echo 'list<<EOF'
+            if [ "$STABLE" = true ]; then
+              version=$(git describe --tags --abbrev=0 --match 'v*' "$SHA")
+              version="${version#v}"
+              echo "type=raw,value=$version"
+              echo "type=raw,value=${version%.*}"
+              echo "type=raw,value=latest"
+            else
+              echo "type=raw,value=edge"
+            fi
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # Tags (lower-cased owner) and the OCI labels: source, revision, version, licence.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: ${{ steps.tags.outputs.list }}
+
+      # Build for this runner's architecture first and smoke-test it before anything is pushed.
+      - name: Build the image for this runner
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: extrudo:smoke
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Serve the image and check its responses
+        run: |
+          docker run -d --rm --name extrudo-smoke -p 8080:80 extrudo:smoke
+          scripts/docker-smoke.sh
+          docker stop extrudo-smoke
+
+      - name: Push for amd64 and arm64
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   site:
     name: Landing page

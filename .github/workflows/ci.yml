@@ -161,6 +161,43 @@ jobs:
       - name: Typecheck, lint, package boundaries, bindings, unit and memory tests
         run: pnpm check
 
+  docker:
+    # The Docker image (ADR-0091): builds it from a fresh app build for the
+    # runner's architecture, starts it and runs the smoke test. Pushes nothing;
+    # the deploy workflow publishes.
+    name: Docker image
+    needs: [occt, planegcs, openscad]
+    runs-on: ${{ vars.RUNS_ON && fromJSON(vars.RUNS_ON) || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # git describe in the build needs the tags and history
+
+      - uses: pnpm/action-setup@v6 # version comes from "packageManager" in package.json
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Download the OCCT, planegcs and OpenSCAD WASM
+        run: pnpm wasm
+
+      - run: pnpm --filter @extrudo/web build
+
+      - run: docker build -t extrudo:ci .
+
+      - name: Serve the image and check its responses
+        run: |
+          docker run -d --rm --name extrudo-ci -p 8080:80 extrudo:ci
+          scripts/docker-smoke.sh
+          docker stop extrudo-ci
+
   storage-windows:
     name: Storage tests (Windows)
     # The Node-fs store runs on every desktop OS; fsync through a read-only
