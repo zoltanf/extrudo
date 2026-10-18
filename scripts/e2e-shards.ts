@@ -99,7 +99,7 @@ if (command === 'browsers') {
   if (files.includes(WEBKIT_SPEC)) process.stdout.write('webkit\n');
 } else if (command === 'plan') {
   const shard = parseShard(process.env.E2E_SHARD);
-  const total = shard?.total ?? Number(process.argv[3] ?? 3);
+  const total = shard?.total ?? Number(process.argv[3] ?? 4);
   const plan = planShards(specFiles(), readTimings(), total);
   plan.forEach((entry, i) => {
     const minutes = (entry.seconds / 60).toFixed(1);

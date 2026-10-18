@@ -182,22 +182,22 @@ jobs:
       - run: pnpm vitest run packages/storage/src/node
 
   e2e:
-    # Three shards beside the check job, each on its own runner. The shards are
+    # Four shards beside the check job, each on its own runner. The shards are
     # cut by duration, not by test count: scripts/e2e-shards.ts deals the spec
     # files from e2e/timings.json (E2E_SHARD below; Playwright's own --shard put
     # the long benchmark specs together, 22.7 min against 8.5 on 2026-10-18).
     # Change the count in all three places: the name, the matrix and E2E_SHARD.
-    name: E2E tests (${{ matrix.shard }}/3)
+    name: E2E tests (${{ matrix.shard }}/4)
     needs: [occt, planegcs, openscad]
     runs-on: ${{ vars.RUNS_ON && fromJSON(vars.RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
     env:
       GH_TOKEN: ${{ github.token }}
-      E2E_SHARD: ${{ matrix.shard }}/3
+      E2E_SHARD: ${{ matrix.shard }}/4
     steps:
       - uses: actions/checkout@v5
 
