@@ -6,6 +6,7 @@ import {
   FILE_EXTENSION,
   mediaTypeOf,
   modelKind,
+  randomUuid,
 } from '@extrudo/core';
 import type { ImportReport, ImportResult } from '@extrudo/f3d';
 import {
@@ -141,7 +142,7 @@ export async function importF3dFile(
   let imported: ImportResult;
   try {
     imported = await (run ?? (await import('./f3dImport')).workerImportRunner())(bytes, name, {
-      id: crypto.randomUUID(),
+      id: randomUuid(),
       appVersion: APP_VERSION,
     });
   } finally {

@@ -8,8 +8,11 @@
 import { z } from './zod';
 
 // `crypto` is global in browsers, workers and Node ≥ 19. Core compiles without
-// the DOM and Node type libraries, so declare the one method we use.
-declare const crypto: { randomUUID(): string };
+// the DOM and Node type libraries, so declare the methods we use.
+declare const crypto: {
+  randomUUID?: () => string;
+  getRandomValues<T extends ArrayBufferView>(array: T): T;
+};
 
 const id = z.string().min(1);
 
@@ -67,10 +70,24 @@ type AnyId =
   | JointId;
 
 /**
+ * A random UUID v4. `crypto.randomUUID` exists only in secure contexts (HTTPS,
+ * localhost); over plain HTTP on a LAN address it is missing, so fall back to
+ * `crypto.getRandomValues`, which is everywhere (issue #57).
+ */
+export function randomUuid(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/**
  * A new random ID. Call it where an entity is created (a command's caller),
  * never inside a command recipe: commands must be deterministic so undo, redo
  * and replay produce the same document.
  */
 export function newId<T extends AnyId>(): T {
-  return crypto.randomUUID() as T;
+  return randomUuid() as T;
 }
