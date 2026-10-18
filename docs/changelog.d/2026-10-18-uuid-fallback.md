@@ -1,0 +1,1 @@
+- 2026-10-18 · **New design over plain HTTP**: the web app served from a LAN address without HTTPS failed on New design with "crypto.randomUUID is not a function"; IDs now fall back to `crypto.getRandomValues`, and a new e2e spec runs the app without the secure-context APIs (#57).

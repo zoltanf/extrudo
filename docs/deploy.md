@@ -51,6 +51,15 @@ canonical. The landing page reads `SITE_URL`, `APP_URL` and `EDGE_URL`
 (`apps/site/addresses.ts`). Set the repository variables of those names only to
 use other addresses (a fork, a staging site).
 
+## Serving the app yourself
+
+`apps/web/dist` is static and any web server can serve it. `apps/web/public/_headers`
+carries the COOP/COEP and CSP headers for Cloudflare Pages; other servers should
+send the same. Over **plain HTTP on a LAN address** the app runs (since v0.7.1), but
+the browser gives it no secure context: there is no service worker (no offline use,
+no install as a PWA) and designs are kept in IndexedDB instead of OPFS
+(`e2e/insecure-context.spec.ts`).
+
 ## One-time setup (owner)
 
 1. **Create a Cloudflare account** (free) if there is none.

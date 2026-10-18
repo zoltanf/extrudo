@@ -902,6 +902,19 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   violation in the page is also a console error. The build must be fresh
   (`pnpm build`): the specs read `apps/web/dist`.
 
+### `e2e/insecure-context.spec.ts`
+
+- **Insecure context e2e** (`e2e/insecure-context.spec.ts`, issue #57): a plain-HTTP
+  LAN origin has no `crypto.randomUUID` and no `navigator.storage` (so no OPFS). Playwright
+  can't make a non-secure origin on localhost, so an init script deletes
+  `Crypto.prototype.randomUUID` and defines `navigator.storage` as `undefined`
+  before the first navigation; the spec asserts both are gone right after `goto`.
+  Then: **New design**, viewport `data-ready="true"`, `primitive(page, 'Box', ...)`,
+  `data-bodies` `Body1:6:20,20,20`, `saveStatus` contains "Saved"; after a reload the
+  heading "Your designs" and exactly one `listitem` in the list "Designs" (the
+  IndexedDB file store worked). Fails on a `pageerror`. Served by `vite preview` like
+  the other specs.
+
 ### `e2e/import-drawing.spec.ts`
 
 - **Import drawing e2e** (`e2e/import-drawing.spec.ts`, P4-06 slice 1): the tool
