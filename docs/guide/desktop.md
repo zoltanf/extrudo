@@ -83,7 +83,7 @@ sketches and features, undo and export — and each change lands as one undo ste
 "Agent: …", so Ctrl+Z takes the last one back. While an agent is connected, the top bar says
 **Agent connected**.
 
-Turn the server on or off in Settings › Desktop › Agents: there you find the switch, a line
+Turn the server on or off in Settings › Agents: there you find the switch, a line
 saying whether the server listens, and **Copy client config**, which copies what you paste into
 the agent to connect it. The server is on to begin with. The web app has none of this. A skill
 for Claude Code comes with every release (`extrudo-skill-<version>.zip` on the releases page)
