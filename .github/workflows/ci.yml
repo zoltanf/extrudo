@@ -190,8 +190,9 @@ jobs:
       - name: Download the OCCT, planegcs and OpenSCAD WASM
         run: pnpm wasm
 
-      - name: Install Playwright Chromium
-        run: pnpm exec playwright install --with-deps chromium
+      # WebKit runs only e2e/webkit-smoke.spec.ts (the `webkit` project).
+      - name: Install Playwright Chromium and WebKit
+        run: pnpm exec playwright install --with-deps chromium webkit
 
       - name: Build
         run: pnpm build

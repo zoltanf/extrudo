@@ -1,6 +1,7 @@
 /**
- * Explicit resource management for engines that lack it (Safari, Firefox
- * before 141, Chrome before 125). Vite lowers a `using` declaration (the
+ * Explicit resource management for engines that lack it (Safari and iOS
+ * browsers until the WebKit 26 cycle: 26.0 lacks the symbol, 26.6 has it;
+ * Firefox before 141, Chrome before 125). Vite lowers a `using` declaration (the
  * kernel's `using scope = kernel.scope()`) to Babel's `usingCtx` helper, which
  * looks the disposer up under `Symbol.dispose || Symbol.for('Symbol.dispose')`,
  * but leaves the classes and object literals that define `[Symbol.dispose]`

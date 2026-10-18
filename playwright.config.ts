@@ -47,6 +47,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      testIgnore: /webkit-smoke\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         // Opt-in GPU rendering for local runs on a machine with a GPU
@@ -62,6 +63,18 @@ export default defineConfig({
             : {}),
         },
       },
+    },
+    {
+      // Safari's engine: one smoke spec, rectangle → extrude, the flow that
+      // broke there before the Symbol.dispose polyfill (`@extrudo/core/polyfills`).
+      // A canary for WebKit as a whole (WASM threads, COOP/COEP, WebGL), not a
+      // test of the polyfill: Playwright's WebKit 26.6 has Symbol.dispose
+      // (26.0 lacked it; see docs/agent/e2e-notes.md for a real repro). Run it
+      // with `pnpm e2e --project webkit` after `pnpm exec playwright install
+      // --with-deps webkit`.
+      name: 'webkit',
+      testMatch: /webkit-smoke\.spec\.ts/,
+      use: { ...devices['Desktop Safari'] },
     },
   ],
   webServer: {

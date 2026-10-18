@@ -24,6 +24,24 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   docker` (after `pnpm build`). Arch and Ubuntu differ by about 12 pixels per
   shot; the tolerance is 0.1 %.
 
+- **WebKit** (the `webkit` project, `e2e/webkit-smoke.spec.ts` only; CI
+  installs it with `playwright install --with-deps chromium webkit`): on the
+  Arch workstation `pnpm exec playwright install webkit` downloads the Ubuntu
+  build, which cannot start there (`libicu74`, `libxml2.so.2`, `libflite1`
+  are missing); run it in the Playwright image as for the baselines, with
+  `--project webkit`. Playwright 1.63's WebKit is 26.6 and **has
+  `Symbol.dispose`**, so it cannot reproduce the "Object is not disposable."
+  bug the polyfill fixes. To test that path for real, use WebKit 26.0: in the
+  image, `npm i playwright@1.56.0` in a scratch folder, `PLAYWRIGHT_BROWSERS_PATH=<scratch>/browsers
+  npx playwright install webkit`, and drive the app from a plain script with
+  that `playwright` package (the test runner's helpers need the repo's newer
+  one). Checked 2026-10-18: unfixed main (app.extrudo.org) in 26.0 shows
+  `profiles=1 holes=0` after the rectangle (profile detection runs on the UI
+  thread) but the kernel logs `TypeError: Object is not disposable.` twice,
+  Sketch1 gets an error badge, and Extrude says "Needs Sketch1, which has an
+  error."; the branch build gives `data-bodies="Body1:6:40,30,10"` with no
+  console error. No toast appears either way.
+
 - **E2E tests start on the home screen with empty storage** (each test has
   its own browser context). Open a project with `openProject(page)` or
   `openProject(page, 'wall-bracket')` from `e2e/helpers.ts`; reloads reopen
@@ -2290,6 +2308,18 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   spec logs the Wall bracket's time from click to counts for ADR-0072's
   Results and fails on any console error (the shading is a shader patch: a
   broken one shows there, not in the counts).
+
+### `e2e/webkit-smoke.spec.ts`
+
+- The only spec of the `webkit` project (`testMatch` in the config; the
+  chromium project ignores it). One test: `sketchOnXY`, `r`, two clicks
+  (0,0)–(40,30), Escape → `data-sketch-profiles="profiles=1 holes=0"`, Finish
+  Sketch, pick the profile at (20,15), `e`, Distance `10`,
+  `data-preview-status="ok"` (30 s: WebKit draws WebGL in software and
+  compiles the WASM without a cache), OK → `data-bodies="Body1:6:40,30,10"`;
+  no `role="alert"` toast and no page error. WebKit 26.6 ran it in 12 s in the
+  Playwright image. Its console shows the same warnings as Chromium (service
+  worker blocked, THREE.Clock deprecated) and nothing WebKit-only.
 
 ### `e2e/webgl-fallback-nogl.spec.ts`
 
