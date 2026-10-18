@@ -214,7 +214,8 @@ export interface StatusResult {
 }
 
 export interface ExportOptions {
-  format: ModelFormat;
+  /** `scad`: an OpenSCAD file (P6-09, ADR-0088). */
+  format: ModelFormat | 'scad';
   /**
    * The bodies to export, by name or ID (`--bodies`); every live body when
    * left out. A name the design doesn't have is an error.
@@ -585,9 +586,41 @@ export class DesignJob {
           : {}),
       };
     });
-    const chosen = pickExport(bodies, this.doc, options, this.#origins);
+    let chosen = pickExport(bodies, this.doc, options, this.#origins);
+    // OpenSCAD leaves hidden bodies out unless they are asked for, as the app's
+    // Export Model does (ADR-0088 §9); with none shown, every body.
+    if (options.format === 'scad' && !options.bodies && !options.components) {
+      const shown = chosen.filter((body) => this.doc.bodies[body.id]?.visible !== false);
+      if (shown.length > 0) chosen = shown;
+    }
     if (chosen.length === 0) {
       throw new HeadlessError('This design has no bodies to export.');
+    }
+    if (options.format === 'scad') {
+      const text = await service.exportScad({
+        bodies: chosen.map((body) => ({
+          id: body.id,
+          name: body.name,
+          ...(body.color !== undefined && { color: body.color }),
+          ...(body.component !== undefined && { component: body.component.name }),
+        })),
+        tessellation: tessellationOf(options.resolution),
+        project: this.doc.name,
+        version: EXTRUDO_VERSION,
+      });
+      return [
+        {
+          name: modelFileName(
+            this.doc.name,
+            chosen.map((b) => exportBody(b, true)),
+            'scad',
+          ),
+          bytes: new TextEncoder().encode(text),
+          bodies: chosen.map((b) => b.name),
+          triangles: 0,
+          closed: true,
+        },
+      ];
     }
     // A 3MF or STEP keeps each component's bodies together unless `--flat`.
     const group = options.flat !== true;

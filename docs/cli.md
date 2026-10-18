@@ -25,7 +25,7 @@ After `npm install -g @extrudo/cli` (Phase 6) the command is simply
 
 ```
 extrudo info   <design.extrudo> [--json]
-extrudo export <design.extrudo> --format stl|3mf|step [--out <path>]
+extrudo export <design.extrudo> --format stl|3mf|step|scad [--out <path>]
                [--param name=expr]… [--config <name>] [--bodies a,b]
                [--component <name>]… [--flat]
                [--resolution coarse|medium|fine|<deviation mm>] [--json]
@@ -70,12 +70,13 @@ Bodies:
 the volumes are the kernel's exact mass properties (see
 [Times](#times)).
 
-### `export` — STL, 3MF or STEP
+### `export` — STL, 3MF, STEP or OpenSCAD
 
 ```sh
 extrudo export box.extrudo --format 3mf --param clearance=0.4mm
 extrudo export box.extrudo --format stl --param width=80mm --bodies Lid --out lid.stl
 extrudo export box.extrudo --format step --resolution fine --out box.step
+extrudo export box.extrudo --format scad --out box.scad
 ```
 
 - A 3MF keeps each body's name and colour, and a STEP file makes each body a
@@ -95,6 +96,17 @@ extrudo export box.extrudo --format step --resolution fine --out box.step
   ID); with `--bodies` both are combined. A 3MF or STEP keeps a component's
   bodies together as one object of parts (ADR-0081 §7); `--flat` writes one
   object per body instead, as a design without components.
+- An OpenSCAD file (`--format scad`, P6-09, ADR-0088) rebuilds the bodies as
+  OpenSCAD code where the features translate and as `polyhedron`s of the shape
+  where they don't (the header lists each with the feature that made it). It is
+  one file; without `--bodies` or `--component` it holds the shown bodies, as
+  the app's Export Model chooses them (every body when none is shown), each in
+  its colour under a comment naming its component. `--resolution` sets the
+  polyhedra's mesh and the file's `$fa`/`$fs`. Sizes, distances, angles and
+  factors stay expressions over the design's parameters, which the file
+  declares at the top for OpenSCAD's Customizer (a parameter that also sets
+  geometry the file holds fixed, such as a sketch dimension, says so). The
+  same design and options give the same bytes.
 - `--resolution` is `coarse` (0.1 mm), `medium` (0.02 mm, the default), `fine`
   (0.005 mm) or a deflection in millimetres.
 - With `--json` it prints `{ "files": [{ "path", "name", "bytes", "bodies",
@@ -169,7 +181,7 @@ run it against a [`Design`](api/README.md).
 | `--min-gap <expr>` | For `check --joints`: the minimum gap the check allows (the design's `tolerance` by default). |
 | `--features a..b` | For `script`: emit only this run of the timeline (feature indices or IDs). |
 | `--out <path>` | The file to write: the export's, or the new design for `set`. Missing folders are made. |
-| `--resolution …` | `coarse`, `medium`, `fine` or a deflection in mm. |
+| `--resolution …` | `coarse`, `medium`, `fine` or a deflection in mm (for `scad`: its polyhedra and `$fa`/`$fs`). |
 | `--json` | One JSON object on stdout instead of the text report. |
 | `--help`, `--version` | The usage, and the version. |
 

@@ -19,6 +19,7 @@ import {
   writeStl,
 } from '@extrudo/io';
 import type { MeshOptions } from './mesh';
+import type { ScadExportOptions } from './scad-export/file';
 import type { BodyExportMesh, ExportProgress } from './service';
 
 export type ModelFormat = 'stl' | '3mf' | 'step';
@@ -49,6 +50,7 @@ export interface ModelExporter {
     onProgress?: ExportProgress,
   ): Promise<BodyExportMesh[]>;
   exportStep(bodies: readonly StepBody[]): Promise<string>;
+  exportScad(options: ScadExportOptions): Promise<string>;
 }
 
 /**
@@ -171,7 +173,7 @@ export function safeFileName(name: string, extension: string): string {
 export function modelFileName(
   project: string,
   bodies: readonly ExportBody[],
-  format: ModelFormat,
+  format: ModelFormat | 'scad',
 ): string {
   const [only] = bodies;
   const component = only?.component;

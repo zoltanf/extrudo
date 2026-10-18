@@ -10,17 +10,20 @@
  * factor. A copy's faces get names of their own, as Move's copies do
  * (`scale:<feature>:from:(<name>)`, ADR-0044).
  */
-import { type ScaleInputs, scaleFeature, scaleSettings } from '@extrudo/core';
+import { type BodyId, type ScaleInputs, scaleFeature, scaleSettings } from '@extrudo/core';
 import { KernelError, type ShapeHandle, type Vec3 } from '../kernel';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
+import type { CsgContext, CsgResult } from '../scad-export/context';
+import { about } from '../scad-export/ir';
 import { transformedNames } from './mesh-bodies';
-import { pointOf } from './references';
-import { centreOf, existing, type Image, withImages } from './transform';
+import { type GeometryReader, pointOf } from './references';
+import { centreOf, existing, type Image, imagesCsg, withImages } from './transform';
 
 export const kernelScale: KernelFeatureDefinition<ScaleInputs> = {
   ...scaleFeature,
   bodyAccess: () => 'write',
   evaluate: evaluateScale,
+  csg: scaleCsg,
 };
 
 function evaluateScale(ctx: EvalContext<ScaleInputs>): FeatureOutput {
@@ -35,9 +38,7 @@ function evaluateScale(ctx: EvalContext<ScaleInputs>): FeatureOutput {
         : 'Nothing changes size: every factor is 1.',
     );
   }
-  const centre = settings.point
-    ? pointOf(ctx, settings.point, 'the point to scale about')
-    : centreOf(ctx, ids);
+  const centre = scaleCentre(ctx, settings, ids);
 
   using scope = kernel.scope();
   const images: Image[] = ids.map((source, i) => {
@@ -79,3 +80,32 @@ function factorsOf(ctx: EvalContext<ScaleInputs>, mode: 'uniform' | 'non-uniform
 
 const formatNumber = (value: number) =>
   Number.isFinite(value) ? Number.parseFloat(value.toFixed(4)).toString() : String(value);
+
+/** The point a scale is about: the one picked, or the centre of the bodies' box. */
+function scaleCentre(
+  ctx: Pick<EvalContext, 'bodies'> & GeometryReader,
+  settings: ReturnType<typeof scaleSettings>,
+  ids: readonly BodyId[],
+): Vec3 {
+  return settings.point
+    ? pointOf(ctx, settings.point, 'the point to scale about')
+    : centreOf(ctx, ids);
+}
+
+/**
+ * A scale in OpenSCAD (ADR-0088 §7): `scale([fx, fy, fz])` about the centre,
+ * the factors the inputs' scalars.
+ */
+function scaleCsg(ctx: CsgContext<ScaleInputs>): CsgResult {
+  const settings = scaleSettings(ctx.inputs);
+  const ids = existing(ctx, settings.bodies, 'scale');
+  const centre = scaleCentre(ctx, settings, ids);
+  const factor = (name: 'factor' | 'x' | 'y' | 'z') => (ctx.input(name) ? ctx.scalar(name) : 1);
+  const v =
+    settings.mode === 'uniform'
+      ? ([factor('factor'), factor('factor'), factor('factor')] as const)
+      : ([factor('x'), factor('y'), factor('z')] as const);
+  return imagesCsg(ctx, ids, settings.copy, (node) =>
+    about(centre, (child) => ({ kind: 'scale', v, children: [child] }), node),
+  );
+}

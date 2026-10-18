@@ -24,6 +24,13 @@ import type { EvalContext } from '../recompute/types';
 import type { SketchOutputData } from './sketch';
 import { length, sub, unit } from './vec';
 
+/**
+ * What reading a plane, line or point needs of a context: an evaluator's
+ * (`EvalContext`) or an OpenSCAD export hook's (`CsgContext`, ADR-0088), so
+ * both read the same geometry.
+ */
+export type GeometryReader = Pick<EvalContext, 'kernel' | 'resolve' | 'describe' | 'output'>;
+
 /** A plane with a place to draw it: its frame (`faceSketchFrame`) and a point of it near what it came from. */
 export interface PlaneOf {
   frame: SketchFrame;
@@ -63,7 +70,7 @@ function constructionOf(
  * `label` says what it is for in messages ("the plane the box sits on").
  */
 export function planeOf(
-  ctx: EvalContext,
+  ctx: GeometryReader,
   ref: GeomRef,
   label: string,
   /** The message when the plane can't be found (default: "Can't find <label>. Pick it again."). */
@@ -92,7 +99,7 @@ export function planeOf(
  * The line a `axis` reference names (an origin axis or a construction axis),
  * a straight `edge` (its middle and direction) or a sketch line (`<sketch>/<line>`).
  */
-export function lineOf(ctx: EvalContext, ref: GeomRef, label: string): LineOf {
+export function lineOf(ctx: GeometryReader, ref: GeomRef, label: string): LineOf {
   switch (ref.kind) {
     case 'axis': {
       const origin = originAxis(ref.id);
@@ -118,7 +125,7 @@ export function lineOf(ctx: EvalContext, ref: GeomRef, label: string): LineOf {
   }
 }
 
-function sketchLine(ctx: EvalContext, ref: GeomRef, label: string): LineOf {
+function sketchLine(ctx: GeometryReader, ref: GeomRef, label: string): LineOf {
   const parsed = parseSketchEntityRefId(ref.id);
   if (!parsed) throw new KernelError(`${capitalize(label)} isn't a sketch line. Pick it again.`);
   let data: Partial<SketchOutputData> | undefined;
@@ -145,7 +152,7 @@ function sketchLine(ctx: EvalContext, ref: GeomRef, label: string): LineOf {
  * A construction point's place, a body vertex's, or the world origin
  * (`origin:point`, the origin planes' and axes' naming: ADR-0068 §4).
  */
-export function pointOf(ctx: EvalContext, ref: GeomRef, label: string): Vec3 {
+export function pointOf(ctx: GeometryReader, ref: GeomRef, label: string): Vec3 {
   if (ref.kind === 'vertex') {
     const hit = ctx.resolve(ref, { label });
     const vertex = ctx.describe(hit.shape).vertices[hit.index];

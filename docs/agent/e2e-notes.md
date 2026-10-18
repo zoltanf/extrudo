@@ -681,7 +681,9 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 - **Export e2e** (`e2e/export-3d.spec.ts`): the dialog is `dialog`
   "Export model"; bodies are checkboxes by name, formats radios
-  (`/^3MF/`, `/^STL/`, `/^STEP/`), resolutions `/^Coarse/`…`/^Custom/`
+  (`/^3MF/`, `/^STL/`, `/^STEP/`, `/^OpenSCAD/`; OpenSCAD hides "Keep
+  components together" and "Open in slicer", shows `[data-export-hint]` and
+  the summary `1 body as OpenSCAD code`, its button is "Export OpenSCAD"), resolutions `/^Coarse/`…`/^Custom/`
   with textboxes "Deviation" and "Angle". The summary's
   `data-export-summary` reads "1 body, 620 triangles, watertight" once
   meshed (poll it before Export). e2e imports `../packages/io/src/index`

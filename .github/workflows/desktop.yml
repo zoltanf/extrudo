@@ -94,6 +94,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # The Node-fs store runs on every desktop OS; fsync through a read-only
+      # handle failed with EPERM on Windows (v0.7.0), unseen by Linux-only CI.
+      - name: Storage tests on this OS
+        run: pnpm vitest run packages/storage/src/node
+
       - name: Download the OCCT, planegcs and OpenSCAD WASM
         run: pnpm wasm
 

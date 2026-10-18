@@ -137,4 +137,6 @@ export const kernelRemove: KernelFeatureDefinition<RemoveInputs> = {
     for (const id of ids) bodies.delete(id);
     return { bodies };
   },
+  // Takes bodies out and changes none: nothing to write (ADR-0088 §3).
+  csg: () => new Map(),
 };

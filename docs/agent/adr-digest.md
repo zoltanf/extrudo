@@ -2044,6 +2044,7 @@ side **`Platform.updates?: PlatformUpdates`** (`store` with `waiting`/`version`,
 `appUpdates`, `useUpdateNotice(push, platform)` reads it, and the desktop's
 `renderer/updates.ts` follows `update:status` (Restart, the notify toast once
 per version, a quiet error). The `desktop` workflow uploads `latest*.yml`.
+The atomic writer (`writeAtomic`) flushes the temp file through the **writable** handle it wrote with; an fsync through a read-only handle fails with EPERM on Windows (2026-10-17).
 **The Homebrew cask (P6-01's amendment, 2026-10-07)**: on a tag the `desktop`
 workflow's `homebrew` job renders `apps/desktop/homebrew/extrudo.rb.template`
 from the arm64 mac zip with `render.mjs` and pushes `Casks/extrudo.rb` to the
@@ -2460,6 +2461,62 @@ custom handlers, `instructions` "Read skill://extrudo/SKILL.md before modelling.
 tag's draft release). `apps/desktop/scripts/mcp-client.mjs --launch` (under
 `xvfb-run -a`; Chromium's headless Ozone crashes Electron's main) is the
 acceptance client, `--examples` runs the worked examples in the real kernel.
+
+ADR-0088 (P6-09, slice 1 2026-10-15) added **the OpenSCAD export**:
+`packages/kernel/src/scad-export/` (`ir.ts`, `print.ts`, `context.ts`,
+`versions.ts`, `mesh.ts`, `file.ts`, `number.ts`), `RecomputeEngine.exportScad`
+over `AtMarker.steps`, `exportScad` on `KernelService`/`KernelApi`/`Recomputer`,
+and `extrudo export --format scad`. Rules a change must keep: **the recompute
+only records** (`steps` holds references to each write feature's inputs,
+values and body maps, on the recompute channel); hooks and meshing run at
+export time only. **A feature's `csg(ctx)` hook** returns a node per body of
+`ctx.changed` built from `ctx.body(id)` (earlier versions) and numbers or
+`ctx.scalar(name)`, or `null`/`ctx.unsupported(reason)`; it changes nothing,
+releases what it makes and decides bodies from `before`/`after`, not the
+inputs. **Fallback to a polyhedron** (a mesh version, listed in the header
+with its reason): no hook, `null`, a body left out, a body broken into pieces
+(`origins` from a body that existed before: source and pieces), or a
+`KernelError` from the hook; later features build on it with CSG again. Only
+versions the exported bodies reach are written and meshed; a tool used twice
+or more is a `<Feature>_tool` module. **Deterministic**: every number through
+`scadNumber`, polyhedron points rounded to 1e-4 mm in first-use order with
+faces clockwise from outside, module names from body/feature names in
+timeline order (`<Body>_v<n>`), no date. Scalars are `number | { expr, value,
+refs }` (slice 4b): the engine passes `liveScalar` (a named model input's
+variable, else `translateExpression`, else the value) and `scadParameters` as
+`ScadSource.scalar`/`parameters`; `writeScad` writes `parameterBlock` after
+`$fa`/`$fs` from the refs in the written nodes (`used`) and `parameterUse`'s
+`fixed`. **A hook reads every live scalar through `ctx.scalar(name)`** and
+builds on it only with the IR helpers (`half`, `negate`, `absolute`, `sum`:
+they keep `refs` and brackets); an expression input it doesn't read that way,
+every input of a mesh version's feature, and the expressions of body-less
+features they build on (sketch dimensions, construction planes) count as
+held fixed and get the Customizer note. **Document text that lands in a comment goes through `commentText`
+(print.ts); group headers through `groupName` (params.ts).** A script's features write values.
+Slice 3 added hooks for the primitives,
+Move, Mirror, Scale and the rectangular and circular patterns of bodies.
+**A solid feature's hook builds its tool in place and hands it to
+`operationCsg(ctx, operation, tool)`** (`scad-export/operation.ts`, read from
+`changed`/`removed`). **Hooks reuse the evaluators' placement math, never a
+copy of it:** `lineOf`/`planeOf`/`pointOf` take a `GeometryReader`,
+`centreOf`/`existing` a `Pick` of `EvalContext` that `CsgContext` also
+satisfies (it has `bodies` and `bodyId`), and Move's `moveMotion`, Scale's
+`scaleCentre`, the patterns' `rectangularRows`/`circularTurns` plus
+`splitSkip`, and `torusFrame` serve both; a primitive's frame comes from its
+output. Placements are numbers (`placed`, `frameMatrix`, `about` in `ir.ts`),
+sizes, distances, angles and factors `ctx.scalar` (through `half`, `negate`,
+`absolute`); pattern instances are unrolled. Slice 4a added hooks for Extrude
+and Revolve. **A profile becomes 2D nodes from the sketch's own
+`detectProfiles`** (`scad-export/profile.ts`, `SketchOutputData.sketch`): a
+`polygon(points, paths)` per region (outer loop and holes), a whole-circle
+loop a `circle`, lines two points, arcs sampled with
+**`CsgContext.fragments(radius)`** (OpenSCAD's `$fa`/`$fs` circle count,
+`writeScad` builds it into `ScadSource.fragments`), other curves the detected
+polyline. Extrude is a `linear_extrude` per side placed by the sketch frame,
+its distances `ctx.scalar` signed with `absolute`/`negate`/`half` and a
+`translate`; `through-all` (cut/intersect) reaches past `ctx.bounds()`.
+Revolve is a `rotate_extrude` in (radius, axis) with the axis as OpenSCAD's
+Z; `flip` reverses the axis; the shared `axisOf` takes a `GeometryReader`. Ranges come from core's `customizerRows` (evaluated, base units; none when a range doesn't evaluate or min > max) and the section from `parameter.group` (ADR-0086). Accepted 2026-10-16; the acceptance tests live in `scad-export/acceptance.test.ts` and the CLI's "AC 5" test (`packages/cli/src/headless.test.ts`).
 
 ADR-0089 (2026-10-16) added **changelog fragments**: a change describes itself
 in its own one-line file under **`docs/changelog.d/`** instead of a line in

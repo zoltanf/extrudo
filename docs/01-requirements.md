@@ -176,6 +176,7 @@ for the phase's release, **S** = should, **C** = could.
 | FR-IO-06 | STL, 3MF and OBJ import as mesh bodies that can be used in booleans. | S | 4 |
 | FR-IO-07 | Canvas: a reference image on a plane, calibrated to real scale. | S | 4 |
 | FR-IO-08 | OpenSCAD `.scad` import as a mesh body (through openscad-wasm). | C | 5 |
+| FR-IO-09 | OpenSCAD `.scad` export: the design as OpenSCAD code (CSG, parameters as Customizer variables), with polyhedra where OpenSCAD can't follow. | C | 6 |
 
 ### 5.9 Programmatic design (FR-PRG), later phases
 

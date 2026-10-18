@@ -50,6 +50,9 @@ import {
   type ResolveOptions,
   resolveRef,
 } from '../naming/resolve';
+import { type ScadExportOptions, writeScad } from '../scad-export/file';
+import { liveScalar, scadParameters } from '../scad-export/live';
+import type { ScadSource, ScadStep } from '../scad-export/versions';
 import { type ScriptHost, ScriptRunError } from '../script-host';
 import { hashOf } from './hash';
 import {
@@ -146,6 +149,12 @@ interface AtMarker {
   bodies: ReadonlyMap<BodyId, ShapeHandle>;
   outputs: ReadonlyMap<FeatureId, FeatureOutput>;
   featureName(id: FeatureId): string | undefined;
+  /**
+   * The features that wrote the body set, in walk order, with the bodies
+   * before them (P6-09, ADR-0088 §2): what the OpenSCAD export replays.
+   * References only, kept as the walk passes; nothing is computed for it.
+   */
+  steps: readonly ScadStep[];
 }
 
 export class RecomputeEngine {
@@ -309,6 +318,35 @@ export class RecomputeEngine {
   }
 
   /**
+   * Bodies of the last finished recompute as an OpenSCAD file (P6-09,
+   * ADR-0088): the timeline replayed as body versions through the features'
+   * `csg` hooks, polyhedra where they can't follow. Synchronous, so the
+   * shapes it reads stay the cache's throughout; nothing is cached. Scalars
+   * are live over the marker's parameters (`liveScalar`) unless `scalar`
+   * (tests) says otherwise.
+   */
+  exportScad(options: ScadExportOptions, scalar?: ScadSource['scalar']): string {
+    const at = this.#atMarker;
+    if (!at) throw new KernelError('The model is still being computed. Try again.');
+    const parameters = scadParameters(at.doc);
+    return writeScad(
+      {
+        kernel: this.#kernel,
+        steps: at.steps,
+        bodies: at.bodies,
+        resolver: (feature, bodies) => this.#references(feature, bodies).resolve,
+        output: (id) => at.outputs.get(id),
+        describe: (shape) => this.#describe(shape),
+        featureName: at.featureName,
+        bodyName: (id) => at.doc.bodies[id]?.name,
+        scalar: scalar ?? liveScalar(parameters),
+        parameters,
+      },
+      options,
+    );
+  }
+
+  /**
    * The shape of a body of the last finished recompute (what the model
    * store shows), for export. It stays the cache's: don't release it.
    */
@@ -403,6 +441,7 @@ export class RecomputeEngine {
     // Where each piece came from (P6-05, ADR-0081 §2), collected from every
     // feature's output as the walk passes it; never pruned within a walk.
     const origins = new Map<BodyId, BodyId>();
+    const steps: ScadStep[] = [];
 
     /** The bodies before the draft (previews). */
     let base: ReadonlyMap<BodyId, ShapeHandle> | undefined;
@@ -567,6 +606,18 @@ export class RecomputeEngine {
       }
       if (entry.output.report !== undefined) reports[feature.id] = entry.output.report;
       if (access === 'write' && entry.output.bodies) {
+        if (channel === 'recompute') {
+          steps.push({
+            feature,
+            definition,
+            inputs: parsed.data,
+            values,
+            before: bodies,
+            after: entry.output.bodies,
+            output: entry.output,
+            ...(script !== undefined && { script }),
+          });
+        }
         bodies = entry.output.bodies;
         bodiesKey = key;
       }
@@ -584,7 +635,7 @@ export class RecomputeEngine {
       for (const [id, p] of passed) {
         if (p.state === 'done' && p.entry.output) outputs.set(id, p.entry.output);
       }
-      this.#atMarker = { doc, bodies, outputs, featureName: (id) => byId.get(id)?.name };
+      this.#atMarker = { doc, bodies, outputs, featureName: (id) => byId.get(id)?.name, steps };
       joints = {};
       for (const joint of doc.joints ?? []) {
         if (!joint.suppressed) joints[joint.id] = this.#joint(joint, this.#atMarker);

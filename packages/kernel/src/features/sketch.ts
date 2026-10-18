@@ -63,6 +63,12 @@ export interface SketchOutputData {
    * P2-09), which follows the face through recompute.
    */
   frame: SketchFrame;
+  /**
+   * The sketch's own data (P6-09, ADR-0088): what `detectProfiles` walks to
+   * give a profile's loops, so an OpenSCAD hook converts a picked profile to
+   * `polygon`/`circle` without a copy of the arrangement.
+   */
+  sketch: SketchData;
   /** Largest first. */
   profiles: SketchProfileInfo[];
   /**
@@ -159,6 +165,7 @@ export const kernelSketch: KernelFeatureDefinition<SketchInputs> = {
     const texts = textsOf(data);
     const output: SketchOutputData = {
       frame,
+      sketch: data,
       profiles,
       lines: sketchLines(data),
       curves: sketchCurves(data),

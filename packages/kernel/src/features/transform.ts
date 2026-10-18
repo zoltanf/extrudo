@@ -25,18 +25,24 @@ import type { TopoNames } from '../naming/names';
 import { type NamedShape, namedBoolean } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
+import type { CsgContext, CsgResult } from '../scad-export/context';
+import { about, type CsgNode } from '../scad-export/ir';
 import { splitSolids } from './bodies';
 import { compose, IDENTITY, type Matrix12, mirror, rotation, translation } from './matrix';
 import { nameMeshBodies, transformedNames, warnIfBecameMesh } from './mesh-bodies';
 import { bodiesTouch } from './operation';
 import { replayFeatures } from './pattern';
 import type { Placement } from './pattern-layout';
-import { lineOf, planeOf, pointOf } from './references';
+import { type GeometryReader, type LineOf, lineOf, planeOf, pointOf } from './references';
 
 const RADIANS = Math.PI / 180;
 
 /** The bodies a feature works on, by ID: the ones that exist, else a lost reference. */
-export function existing(ctx: EvalContext, refs: readonly GeomRef[], what: string): BodyId[] {
+export function existing(
+  ctx: Pick<EvalContext, 'bodies' | 'feature'>,
+  refs: readonly GeomRef[],
+  what: string,
+): BodyId[] {
   if (refs.length === 0) throw new KernelError(`Pick the bodies to ${what}.`);
   return refs.map((ref) => {
     if (!ctx.bodies.has(ref.id as BodyId)) {
@@ -106,12 +112,13 @@ export const kernelMove: KernelFeatureDefinition<MoveInputs> = {
   ...moveBodiesFeature,
   bodyAccess: () => 'write',
   evaluate: evaluateMove,
+  csg: moveCsg,
 };
 
 function evaluateMove(ctx: EvalContext<MoveInputs>): FeatureOutput {
   const settings = moveSettings(ctx.inputs);
   const ids = existing(ctx, settings.bodies, 'move');
-  const matrix = moveMatrix(ctx, settings, ids);
+  const matrix = motionMatrix(moveMotion(ctx, settings, ids));
   if (isIdentity(matrix)) {
     ctx.warn(
       settings.copy
@@ -124,44 +131,76 @@ function evaluateMove(ctx: EvalContext<MoveInputs>): FeatureOutput {
   return withImages(ctx, scope, images);
 }
 
-/** The matrix of a move: what its mode and inputs say. */
-function moveMatrix(
-  ctx: EvalContext<MoveInputs>,
+/** What a move's context needs: its inputs and the geometry they name. */
+type MoveReader = Pick<EvalContext<MoveInputs>, 'inputs' | 'value' | 'bodies'> & GeometryReader;
+
+/**
+ * A move as its mode and inputs say (the evaluator makes its matrix of it,
+ * the OpenSCAD export its transforms): angles in degrees.
+ */
+export type Motion =
+  /** Turned about the world axes through `pivot`, X then Y then Z, then moved by `by`. */
+  | { mode: 'free'; pivot: Vec3; turns: Vec3; by: Vec3 }
+  | { mode: 'rotate'; axis: LineOf; angle: number }
+  | { mode: 'point-to-point'; by: Vec3 };
+
+export function moveMotion(
+  ctx: MoveReader,
   settings: ReturnType<typeof moveSettings>,
   ids: readonly BodyId[],
-): Matrix12 {
+): Motion {
   const { inputs } = ctx;
   const number = (name: 'dx' | 'dy' | 'dz' | 'rx' | 'ry' | 'rz' | 'angle') =>
     inputs[name] ? ctx.value(name) : 0;
   switch (settings.mode) {
-    case 'free': {
-      // Turn about the world axes through the bodies' box centre (X, then Y, then Z), then move.
-      const pivot = centreOf(ctx, ids);
-      const turn = (axis: Vec3, degrees: number): Matrix12 =>
-        degrees === 0 ? IDENTITY : rotation(pivot, axis, degrees * RADIANS);
-      const turned = compose(
-        turn([0, 0, 1], number('rz')),
-        compose(turn([0, 1, 0], number('ry')), turn([1, 0, 0], number('rx'))),
-      );
-      return compose(translation([number('dx'), number('dy'), number('dz')]), turned);
-    }
+    case 'free':
+      // The pivot is the bodies' box centre.
+      return {
+        mode: 'free',
+        pivot: centreOf(ctx, ids),
+        turns: [number('rx'), number('ry'), number('rz')],
+        by: [number('dx'), number('dy'), number('dz')],
+      };
     case 'rotate': {
       if (!settings.axis) throw new KernelError('Pick the axis to turn about.');
-      const line = lineOf(ctx, settings.axis, 'the axis to turn about');
-      return rotation(line.origin, line.direction, number('angle') * RADIANS);
+      const axis = lineOf(ctx, settings.axis, 'the axis to turn about');
+      return { mode: 'rotate', axis, angle: number('angle') };
     }
     case 'point-to-point': {
       if (!settings.from) throw new KernelError('Pick the point to move from.');
       if (!settings.to) throw new KernelError('Pick the point to move to.');
       const from = pointOf(ctx, settings.from, 'the point to move from');
       const to = pointOf(ctx, settings.to, 'the point to move to');
-      return translation([to[0] - from[0], to[1] - from[1], to[2] - from[2]]);
+      return { mode: 'point-to-point', by: [to[0] - from[0], to[1] - from[1], to[2] - from[2]] };
     }
   }
 }
 
+/** The matrix of a move. */
+export function motionMatrix(motion: Motion): Matrix12 {
+  switch (motion.mode) {
+    case 'free': {
+      const { pivot, turns } = motion;
+      const turn = (axis: Vec3, degrees: number): Matrix12 =>
+        degrees === 0 ? IDENTITY : rotation(pivot, axis, degrees * RADIANS);
+      const turned = compose(
+        turn([0, 0, 1], turns[2]),
+        compose(turn([0, 1, 0], turns[1]), turn([1, 0, 0], turns[0])),
+      );
+      return compose(translation(motion.by), turned);
+    }
+    case 'rotate':
+      return rotation(motion.axis.origin, motion.axis.direction, motion.angle * RADIANS);
+    case 'point-to-point':
+      return translation(motion.by);
+  }
+}
+
 /** The centre of the box that holds the bodies (the exact, tight boxes). */
-export function centreOf(ctx: EvalContext, ids: readonly BodyId[]): Vec3 {
+export function centreOf(
+  ctx: Pick<EvalContext, 'kernel' | 'bodies'>,
+  ids: readonly BodyId[],
+): Vec3 {
   const min = [Infinity, Infinity, Infinity];
   const max = [-Infinity, -Infinity, -Infinity];
   for (const id of ids) {
@@ -180,6 +219,7 @@ export const kernelMirror: KernelFeatureDefinition<MirrorInputs> = {
   ...mirrorFeature,
   bodyAccess: () => 'write',
   evaluate: evaluateMirror,
+  csg: mirrorCsg,
 };
 
 /**
@@ -261,4 +301,98 @@ function evaluateMirror(ctx: EvalContext<MirrorInputs>): FeatureOutput {
     );
   }
   return nameMeshBodies(ctx, splitSolids(ctx, scope, { bodies, names }));
+}
+
+// ----------------------------------------------------------------- OpenSCAD
+
+/**
+ * The bodies a move, mirror or scale writes (ADR-0088 §7): each source's
+ * version under `place`, as the source itself or, for a copy, as the new
+ * body `transformBodies` gave it (the source keeps its version).
+ */
+export function imagesCsg(
+  ctx: CsgContext,
+  ids: readonly BodyId[],
+  copy: boolean,
+  place: (node: CsgNode) => CsgNode,
+): CsgResult {
+  return new Map(
+    ids.map((source, i) => [copy ? ctx.bodyId(i) : source, place(ctx.body(source))] as const),
+  );
+}
+
+/**
+ * A move in OpenSCAD: free is `translate(by)` of the turns about the pivot
+ * (`rotate([rx, ry, rz])` turns about X, then Y, then Z, as the evaluator
+ * does), rotate a `rotate(a, v)` about the axis point, point-to-point a
+ * `translate`. Distances and angles are the inputs' scalars, the pivot, axis
+ * and points numbers.
+ */
+function moveCsg(ctx: CsgContext<MoveInputs>): CsgResult {
+  const settings = moveSettings(ctx.inputs);
+  const ids = existing(ctx, settings.bodies, 'move');
+  const motion = moveMotion(ctx, settings, ids);
+  const scalar = (name: 'dx' | 'dy' | 'dz' | 'rx' | 'ry' | 'rz' | 'angle') =>
+    ctx.input(name) ? ctx.scalar(name) : 0;
+  let place: (node: CsgNode) => CsgNode;
+  switch (motion.mode) {
+    case 'free': {
+      // A zero is left out only as a number: an expression that is 0 now stays live.
+      const turns = [scalar('rx'), scalar('ry'), scalar('rz')] as const;
+      const by = [scalar('dx'), scalar('dy'), scalar('dz')] as const;
+      const turned = (node: CsgNode): CsgNode =>
+        turns.every((t) => t === 0)
+          ? node
+          : about(motion.pivot, (child) => ({ kind: 'rotate', a: turns, children: [child] }), node);
+      place = (node) =>
+        by.every((d) => d === 0)
+          ? turned(node)
+          : { kind: 'translate', v: by, children: [turned(node)] };
+      break;
+    }
+    case 'rotate': {
+      const { origin, direction } = motion.axis;
+      const angle = scalar('angle');
+      place = (node) =>
+        about(
+          origin,
+          (child) => ({ kind: 'rotate', a: angle, v: direction, children: [child] }),
+          node,
+        );
+      break;
+    }
+    case 'point-to-point':
+      place = (node) => ({ kind: 'translate', v: motion.by, children: [node] });
+      break;
+  }
+  return imagesCsg(ctx, ids, settings.copy, place);
+}
+
+/**
+ * A mirror of bodies in OpenSCAD: `mirror(normal)` about the plane's point,
+ * the source's version or a copy; with join, each copy that touched its
+ * original is a union with it, and one that didn't is a new body, as
+ * `evaluateMirror` numbered them (told apart by which sources changed).
+ * Mirroring features replays their tools, which has no hook yet.
+ */
+function mirrorCsg(ctx: CsgContext<MirrorInputs>): CsgResult {
+  const settings = mirrorSettings(ctx.inputs);
+  if (settings.objects === 'features') return ctx.unsupported('mirroring features');
+  const ids = existing(ctx, settings.bodies, 'mirror');
+  if (!settings.plane) throw new KernelError('Pick the plane to mirror in.');
+  const { frame } = planeOf(ctx, settings.plane, 'the mirror plane');
+  const flip = (node: CsgNode) =>
+    about(frame.origin, (child) => ({ kind: 'mirror', v: frame.normal, children: [child] }), node);
+  if (!settings.join) return imagesCsg(ctx, ids, settings.copy, flip);
+  const out = new Map<BodyId, CsgNode>();
+  let extra = 0;
+  for (const source of ids) {
+    const original = ctx.body(source);
+    if (ctx.changed.includes(source)) {
+      out.set(source, { kind: 'union', children: [original, flip(original)] });
+    } else {
+      out.set(ctx.bodyId(extra++), flip(original));
+    }
+  }
+  return out;
 }

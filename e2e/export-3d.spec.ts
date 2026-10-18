@@ -193,3 +193,35 @@ test('3MF keeps a component’s bodies together (P6-05, ADR-0081 §7)', async ({
   const flat = await save(page, 'Export 3MF');
   expect(read3mf(flat.bytes).items.map((item) => item.meshes.length)).toEqual([1, 1, 1]);
 });
+
+test('OpenSCAD exports a box with a hole as code (P6-09, ADR-0088 §9)', async ({ page }) => {
+  test.setTimeout(90_000);
+  await openProject(page);
+  await primitive(page, 'Box', {});
+  await primitive(page, 'Cylinder', { Diameter: '4 mm', Height: '40 mm', Offset: '-10 mm' }, 'cut');
+  await kernelReady(page);
+
+  await openExport(page);
+  await dialog(page)
+    .getByRole('radio', { name: /^OpenSCAD/ })
+    .check();
+  await expect(dialog(page).locator('[data-export-hint]')).toContainText('Editable OpenSCAD code');
+  await expect(
+    dialog(page).getByRole('checkbox', { name: 'Keep components together' }),
+  ).toBeHidden();
+  await expect(dialog(page).getByRole('button', { name: 'Open in slicer' })).toBeHidden();
+  await expect(summary(page)).toHaveAttribute('data-export-summary', '1 body as OpenSCAD code', {
+    timeout: 20_000,
+  });
+  const file = await save(page, 'Export OpenSCAD');
+  await expect(dialog(page)).toBeHidden();
+  expect(file.name).toMatch(/\.scad$/);
+  const text = file.bytes.toString('utf8');
+  expect(text.startsWith('//')).toBe(true);
+  expect(text).toMatch(/Extrudo/);
+  expect(text).toContain('$fa = ');
+  expect(text).toMatch(/^module Body1_v\d+\(\) \{/m);
+  expect(text).toContain('difference()');
+  expect(text).toContain('cube(');
+  expect(text).not.toContain('polyhedron(');
+});

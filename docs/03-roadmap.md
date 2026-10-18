@@ -1255,6 +1255,28 @@ end to end, faster than in established desktop CAD.
     (`claude mcp add --transport http …`).
   - Split into slices before starting.
 
+- [x] **P6-09 OpenSCAD export** (owner, 2026-10-15). FR-IO-09, ADR-0088.
+  Export Model gains "OpenSCAD (.scad)", and the CLI `export --format scad`:
+  the design written as OpenSCAD code, body by body. Features with a CSG hook
+  (primitives, sketch extrudes and revolves, combine, remove, move, mirror,
+  scale, rectangular and circular patterns) become `linear_extrude`,
+  `difference` and so on; every other body version becomes a `polyhedron` of
+  its shape at that point, and later features build on it with CSG again.
+  Parameters the code uses become Customizer variables. *Deps:* P2-12,
+  P5-04. *Slices:* (1) body versions, mesh fallback, printer, CLI;
+  (2) expression translator and Customizer header; (3) hooks for
+  primitives, combine, remove, move, mirror, scale, patterns; (4) extrude and
+  revolve hooks; (5) the app's format, guide page, docs.
+  *AC:*
+  - A box with a sketch-extruded pocket and a circular pattern of holes
+    exports with no `polyhedron`; OpenSCAD (`@extrudo/openscad`) renders it
+    to the kernel's volume and bounding box within the mesh tolerance.
+  - The same part with a fillet before the holes exports the filleted body
+    as a `polyhedron` and the holes as `difference`; volume matches.
+  - A customizer parameter driving an extrude's distance shows in its group
+    with its range; changing it in OpenSCAD changes the height.
+  - Exporting the same document twice gives the same bytes.
+  - `extrudo export --format scad` writes the same file as the app.
 - [x] **P6-10 One app menu** (owner, 2026-10-17; ADR-0090). Done 2026-10-17
   (`ca0507cc` Settings sections, `108e9464` the panel). The Help menu
   folds into the app menu: one panel, as wide as its rail, behind the four-squares button

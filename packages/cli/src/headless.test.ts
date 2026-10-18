@@ -11,14 +11,36 @@ import {
   type AttachmentId,
   addAttachment,
   type BodyId,
+  type BodyMeta,
+  circularPatternInputs,
+  combineInputs,
+  componentOfBody,
+  createDocument,
+  type DocumentId,
+  type ExprInput,
+  type ExtrudoDocument,
   evaluateParameters,
+  extrudeInputs,
+  type Feature,
+  type GeomRef,
+  newBodyNames,
+  originAxisRef,
+  originPlaneRef,
+  type ParameterId,
+  primitiveInputs,
   readSketch,
   type SketchData,
+  sketchInputs,
   updateBody,
 } from '@extrudo/core';
 import { checkManifold, read3mf, readStl } from '@extrudo/io';
+import { RESOLUTIONS } from '@extrudo/kernel';
+import { KernelService, loadOcct } from '@extrudo/kernel/node';
+import { SketchBuilder } from '@extrudo/sketch/fixtures';
+import { detectProfiles } from '@extrudo/sketch/profiles';
+import { readArchive, writeArchive } from '@extrudo/storage';
 import { afterAll, describe, expect, it } from 'vitest';
-import { type DesignJob, type HeadlessError, openDesign } from './headless';
+import { type DesignJob, EXTRUDO_VERSION, type HeadlessError, openDesign } from './headless';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const fixture = (name: string) => `${ROOT}fixtures/${name}`;
@@ -516,6 +538,199 @@ describe('components (P6-05 S8, ADR-0081 §9)', () => {
     expect(hinge?.status).toBe('ok');
     expect(hinge?.check?.collisions.length).toBe(0);
     expect(hinge?.check?.tightest?.gap).toBeCloseTo(0.3, 2);
+  });
+});
+
+describe('an OpenSCAD export (P6-09, ADR-0088)', () => {
+  it('writes what the kernel service exports for the same bodies, parameters included', {
+    timeout: 180_000,
+  }, async () => {
+    // The lid box with its base's height a Customizer parameter (the lid is
+    // split off, so a polyhedron).
+    const { doc: base } = readArchive(await readFile(fixture('components/lid-box.extrudo')));
+    const box = base.features.find((f) => f.name === 'Base') as Feature;
+    const height = box.inputs.height as ExprInput;
+    const job = await openBytes(
+      writeArchive({
+        ...base,
+        parameters: [
+          {
+            id: 'p-lid' as ParameterId,
+            name: 'baseHeight',
+            expression: '20 mm',
+            unit: 'length',
+            customizer: { min: '10 mm', max: '30 mm', step: '0.5 mm' },
+          },
+        ],
+        features: base.features.map((f) =>
+          f === box
+            ? { ...f, inputs: { ...f.inputs, height: { ...height, expr: 'baseHeight' } } }
+            : f,
+        ),
+      }),
+    );
+    const [file] = await job.export({ format: 'scad' });
+    const text = new TextDecoder().decode(file?.bytes);
+    expect(file?.name).toMatch(/\.scad$/);
+    expect(text).toContain('(component Lid)');
+    expect(text).toContain('\nbaseHeight = 20; // [10:0.5:30]\n');
+    expect(text).toContain('cube(size = [60, 40, abs(baseHeight)], center = true)');
+
+    // The same export straight from a kernel service of its own.
+    const service = new KernelService(() => loadOcct());
+    try {
+      const result = await service.recompute({ doc: job.doc });
+      if (result.status !== 'done') throw new Error('cancelled');
+      const doc = job.doc;
+      // A body the design hasn't named yet gets the name the app would give it.
+      const unnamed = newBodyNames(
+        doc,
+        result.bodies.map(({ id }) => id).filter((id) => !doc.bodies[id]),
+      );
+      const direct = await service.exportScad({
+        bodies: result.bodies.map(({ id }) => {
+          const meta = doc.bodies[id];
+          const component = componentOfBody(doc, id, result.origins);
+          const name = (doc.components ?? []).find((c) => c.id === component)?.name;
+          return {
+            id,
+            name: meta?.name ?? unnamed[id] ?? id,
+            ...(meta?.color !== undefined && { color: meta.color }),
+            ...(name !== undefined && { component: name }),
+          };
+        }),
+        tessellation: RESOLUTIONS.medium,
+        project: doc.name,
+        version: EXTRUDO_VERSION,
+      });
+      expect(text).toBe(direct);
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  it('leaves hidden bodies out unless they are asked for', { timeout: 180_000 }, async () => {
+    const archive = readArchive(await readFile(fixture('benchmarks/b4-box-with-lid.extrudo')));
+    const doc = archive.doc;
+    const lid = Object.entries(doc.bodies).find(([, meta]) => meta.name === 'Lid')?.[0] as BodyId;
+    doc.bodies = { ...doc.bodies, [lid]: { ...(doc.bodies[lid] as BodyMeta), visible: false } };
+    const job = await openBytes(writeArchive(doc));
+    const shown = new TextDecoder().decode((await job.export({ format: 'scad' }))[0]?.bytes);
+    expect(shown).toContain('// Box\n');
+    expect(shown).not.toContain('// Lid');
+    const asked = await job.export({ format: 'scad', bodies: ['Lid'] });
+    expect(new TextDecoder().decode(asked[0]?.bytes)).toContain('// Lid\n');
+  });
+
+  it('AC 5: writes the same text as the kernel service for the AC 1 part', {
+    timeout: 180_000,
+  }, async () => {
+    // The AC 1 document: a 60 × 40 × 15 box (a sketch rectangle extruded), a
+    // pocket cut into its top by a sketch on its top face and a circular
+    // pattern of six holes cut from it — all CSG, no polyhedron.
+    const boxSketch = new SketchBuilder();
+    const box = (b: SketchBuilder, x: number, y: number, w: number, h: number) => [
+      b.line(x, y, x + w, y).id,
+      b.line(x + w, y, x + w, y + h).id,
+      b.line(x + w, y + h, x, y + h).id,
+      b.line(x, y + h, x, y).id,
+    ];
+    box(boxSketch, -30, -20, 60, 40);
+    const boxData = boxSketch.sketch;
+    const pocketSketch = new SketchBuilder();
+    box(pocketSketch, -10, -5, 20, 10);
+    const pocketData = pocketSketch.sketch;
+    const profileOf = (sketchId: string, data: SketchData): GeomRef => {
+      const found = detectProfiles(data).sort((a, b) => b.area - a.area)[0];
+      if (!found) throw new Error('no profile');
+      return { kind: 'profile', id: `${sketchId}/${found.id}` };
+    };
+    // The box's top face, by its topological name (the extrude's far cap).
+    const top: GeomRef = { kind: 'face', id: 'extrude:A:cap:end' };
+    const feature = (id: string, type: string, inputs: Feature['inputs']): Feature => ({
+      id: id as Feature['id'],
+      type,
+      name: id,
+      suppressed: false,
+      inputs,
+    });
+    const features: Feature[] = [
+      feature('S', 'sketch', sketchInputs(originPlaneRef('origin:xy'), boxData)),
+      feature('A', 'extrude', extrudeInputs([profileOf('S', boxData)], { distance: '15 mm' })),
+      feature('P', 'sketch', sketchInputs(top, pocketData)),
+      feature(
+        'Pkt',
+        'extrude',
+        extrudeInputs([profileOf('P', pocketData)], {
+          distance: '6 mm',
+          flip: true,
+          operation: 'cut',
+        }),
+      ),
+      feature(
+        'C',
+        'cylinder',
+        primitiveInputs('cylinder', {
+          numbers: { diameter: '8 mm', height: '40 mm', offset: '-12 mm', x: '3 mm' },
+        }),
+      ),
+      feature(
+        'Cp',
+        'circularPattern',
+        circularPatternInputs({
+          bodies: ['C:0'],
+          axis: originAxisRef('origin:z'),
+          count: '6',
+          join: true,
+        }),
+      ),
+      feature('Cut', 'combine', combineInputs('A:0', ['C:0'], { operation: 'cut' })),
+    ];
+    const doc: ExtrudoDocument = {
+      ...createDocument({
+        id: 'doc-ac1' as DocumentId,
+        name: 'Ac1',
+        now: '2026-10-16T00:00:00.000Z',
+      }),
+      features,
+      timelineMarker: features.length,
+    };
+
+    const job = await openBytes(writeArchive(doc));
+    const [file] = await job.export({ format: 'scad' });
+    const text = new TextDecoder().decode(file?.bytes);
+    expect(file?.name).toMatch(/\.scad$/);
+    expect(text).not.toContain('polyhedron(');
+    expect(text).toContain('difference()');
+
+    const service = new KernelService(() => loadOcct());
+    try {
+      const result = await service.recompute({ doc: job.doc });
+      if (result.status !== 'done') throw new Error('cancelled');
+      const unnamed = newBodyNames(
+        job.doc,
+        result.bodies.map(({ id }) => id).filter((id) => !job.doc.bodies[id]),
+      );
+      const direct = await service.exportScad({
+        bodies: result.bodies.map(({ id }) => {
+          const meta = job.doc.bodies[id];
+          const component = componentOfBody(job.doc, id, result.origins);
+          const name = (job.doc.components ?? []).find((c) => c.id === component)?.name;
+          return {
+            id,
+            name: meta?.name ?? unnamed[id] ?? id,
+            ...(meta?.color !== undefined && { color: meta.color }),
+            ...(name !== undefined && { component: name }),
+          };
+        }),
+        tessellation: RESOLUTIONS.medium,
+        project: job.doc.name,
+        version: EXTRUDO_VERSION,
+      });
+      expect(text).toBe(direct);
+    } finally {
+      await service.dispose();
+    }
   });
 });
 

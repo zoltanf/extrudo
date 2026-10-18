@@ -21,6 +21,8 @@ import type { TopoNames } from '../naming/names';
 import { type NamedShape, namedBoolean } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
+import type { CsgContext, CsgResult } from '../scad-export/context';
+import { boolean, type CsgNode } from '../scad-export/ir';
 import { splitSolids } from './bodies';
 import { nameMeshBodies, warnIfBecameMesh } from './mesh-bodies';
 import { bodiesTouch } from './operation';
@@ -29,7 +31,26 @@ export const kernelCombine: KernelFeatureDefinition<CombineInputs> = {
   ...combineFeature,
   bodyAccess: () => 'write',
   evaluate: evaluateCombine,
+  csg: combineCsg,
 };
+
+/**
+ * The OpenSCAD of a combine (P6-09, ADR-0088 §3): the target's version joined
+ * with, cut by or intersected with the tools' (all of them together).
+ */
+function combineCsg(ctx: CsgContext<CombineInputs>): CsgResult {
+  const settings = combineSettings(ctx.inputs);
+  if (!settings.target) return null;
+  const target = settings.target.id as BodyId;
+  const tools = settings.tools.map((ref) => ctx.body(ref.id as BodyId));
+  const node: CsgNode =
+    settings.operation === 'join'
+      ? boolean('union', [ctx.body(target), ...tools])
+      : settings.operation === 'cut'
+        ? boolean('difference', [ctx.body(target), ...tools])
+        : boolean('intersection', [ctx.body(target), boolean('union', tools)]);
+  return new Map([[target, node]]);
+}
 
 function evaluateCombine(ctx: EvalContext<CombineInputs>): FeatureOutput {
   const { kernel } = ctx;

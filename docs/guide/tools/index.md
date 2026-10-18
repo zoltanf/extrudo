@@ -32,7 +32,7 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 ### Export
 
 - [Export .extrudo](./exportProject.md) — Download the whole design as an .extrudo file, with its versions and attachments.
-- [Export](./export.md) — STL, 3MF or STEP for printing and sharing.
+- [Export](./export.md) — STL, 3MF, STEP or OpenSCAD code for printing and sharing.
 - [Export Design as Script](./exportScript.md) — Download the design as TypeScript that makes it again with the document API.
 - [Save to Linked Folder](./saveToLinkedFolder.md) — Keep this design as an .extrudo file in the linked folder on disk.
 
@@ -210,4 +210,4 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 
 ### Output
 
-- [Export](./export.md) — STL, 3MF or STEP for printing and sharing.
+- [Export](./export.md) — STL, 3MF, STEP or OpenSCAD code for printing and sharing.

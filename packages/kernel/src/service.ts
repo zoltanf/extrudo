@@ -31,6 +31,7 @@ import type {
   RecomputeRequest,
   RecomputeResult,
 } from './recompute/types';
+import type { ScadExportOptions } from './scad-export/file';
 import { NO_SCRIPT_HOST, type ScriptHost, type ScriptHostLoader } from './script-host';
 import { makeTestPart, type TestPart } from './test-part';
 
@@ -169,6 +170,13 @@ export interface KernelApi {
   ): Promise<BodyExportMesh[]>;
   /** Bodies of the last finished recompute as one STEP AP242 file, each a named product. */
   exportStep(bodies: readonly StepBody[]): Promise<string>;
+  /**
+   * Bodies of the last finished recompute as an OpenSCAD file (P6-09,
+   * ADR-0088): OpenSCAD code where the features translate, polyhedra at the
+   * options' tessellation where they don't. Rejects if a body is no longer
+   * in the model.
+   */
+  exportScad(options: ScadExportOptions): Promise<string>;
   /**
    * Measures bodies, faces, edges and vertices of the last finished
    * recompute (P2-13, ADR-0035): each item's properties, the box around
@@ -483,6 +491,10 @@ export class KernelService implements KernelApi {
         groups,
       ),
     );
+  }
+
+  exportScad(options: ScadExportOptions): Promise<string> {
+    return this.#run(() => this.#engineOf().exportScad(options));
   }
 
   inspect(targets: readonly InspectTarget[]): Promise<Inspection> {

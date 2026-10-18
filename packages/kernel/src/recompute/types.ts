@@ -17,6 +17,7 @@ import type { BodyMesh, MeshOptions } from '../mesh';
 import type { ShapeDescription } from '../naming/description';
 import type { TopoNames } from '../naming/names';
 import type { ResolvedRef, ResolveOptions } from '../naming/resolve';
+import type { CsgContext, CsgResult } from '../scad-export/context';
 import type { ScriptHost } from '../script-host';
 
 /**
@@ -90,6 +91,15 @@ export interface KernelFeatureDefinition<I extends FeatureInputs = FeatureInputs
    * Evaluation reads the result as `ctx.prepared`, or reports a thrown error.
    */
   prepare?(ctx: PrepareContext<I>): Promise<unknown>;
+  /**
+   * The feature as OpenSCAD code (P6-09, ADR-0088 §3), run at export time only,
+   * against the last recompute at the feature's place: a node per body it made
+   * or changed, built from the versions before it (`ctx.body`), or `null`
+   * (`ctx.unsupported`) when these inputs have no OpenSCAD equivalent. Without
+   * it, or for a body it leaves out, the body's new version is a polyhedron.
+   * Must not change anything; a `KernelError` it throws means `null`.
+   */
+  csg?(ctx: CsgContext<I>): CsgResult;
 }
 
 /** What `expand` is given. */

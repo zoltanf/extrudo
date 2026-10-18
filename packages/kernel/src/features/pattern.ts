@@ -37,6 +37,7 @@ import {
   circularPatternFeature,
   circularSettings,
   type FeatureId,
+  type FeatureInputs,
   type GeomRef,
   isOriginalLabel,
   type PathPatternInputs,
@@ -61,6 +62,8 @@ import type {
   KernelFeatureDefinition,
   PreviewTool,
 } from '../recompute/types';
+import type { CsgContext, CsgResult } from '../scad-export/context';
+import { boolean, type CsgNode, matrixOf, placed } from '../scad-export/ir';
 import { splitSolids } from './bodies';
 import { nameMeshBodies, transformedNames, warnIfBecameMesh } from './mesh-bodies';
 import {
@@ -87,7 +90,7 @@ import {
   wholeCount,
 } from './pattern-layout';
 import { pathFromRefs } from './pattern-path';
-import { lineOf } from './references';
+import { type GeometryReader, type LineOf, lineOf } from './references';
 
 const RADIANS = Math.PI / 180;
 
@@ -375,7 +378,11 @@ function fuseTree(
 // ---------------------------------------------------------------- bodies
 
 /** The bodies a pattern or mirror works on, by ID; a body that is gone is a lost reference. */
-export function existingBodies(ctx: EvalContext, refs: readonly GeomRef[], what: string): BodyId[] {
+export function existingBodies(
+  ctx: Pick<EvalContext, 'bodies' | 'feature'>,
+  refs: readonly GeomRef[],
+  what: string,
+): BodyId[] {
   if (refs.length === 0) throw new KernelError(`Pick the bodies to ${what}.`);
   return refs.map((ref) => {
     if (!ctx.bodies.has(ref.id as BodyId)) {
@@ -656,35 +663,49 @@ export function distinctPlacements(placements: readonly Placement[]): Placement[
 }
 
 /** An expression input's value, or `fallback` when the input isn't there. */
-const valueOr = (ctx: EvalContext, name: string, fallback: number): number =>
-  (ctx.inputs as Record<string, unknown>)[name] ? ctx.value(name) : fallback;
+const valueOr = (
+  ctx: Pick<EvalContext, 'inputs' | 'value'>,
+  name: string,
+  fallback: number,
+): number => ((ctx.inputs as Record<string, unknown>)[name] ? ctx.value(name) : fallback);
 
 // ------------------------------------------------------------ rectangular
+
+/** What a pattern's layout needs of a context: its inputs and the lines they name. */
+type LayoutReader<I extends FeatureInputs> = Pick<EvalContext<I>, 'inputs' | 'value'> &
+  GeometryReader;
+
+/** A rectangular pattern's directions, as its inputs say. */
+function rectangularRows(
+  ctx: LayoutReader<RectangularPatternInputs>,
+  settings: ReturnType<typeof rectangularSettings>,
+): { first: Row; second?: Row } {
+  if (!settings.direction1) throw new KernelError('Pick the direction to repeat along.');
+  const count1 = wholeCount(valueOr(ctx, 'count1', 2), 'Count');
+  const first: Row = {
+    line: lineOf(ctx, settings.direction1, 'the first direction'),
+    count: count1,
+    step: rowStep(count1, valueOr(ctx, 'distance1', 20), settings.measure1),
+    symmetric: settings.symmetric1,
+  };
+  if (!settings.direction2) return { first };
+  const count2 = wholeCount(valueOr(ctx, 'count2', 2), 'Count 2');
+  const second: Row = {
+    line: lineOf(ctx, settings.direction2, 'the second direction'),
+    count: count2,
+    step: rowStep(count2, valueOr(ctx, 'distance2', 20), settings.measure2),
+    symmetric: settings.symmetric2,
+  };
+  return { first, second };
+}
 
 export const kernelRectangularPattern: KernelFeatureDefinition<RectangularPatternInputs> = {
   ...rectangularPatternFeature,
   bodyAccess: () => 'write',
   evaluate(ctx) {
     const settings = rectangularSettings(ctx.inputs);
-    if (!settings.direction1) throw new KernelError('Pick the direction to repeat along.');
-    const count1 = wholeCount(valueOr(ctx, 'count1', 2), 'Count');
-    const first: Row = {
-      line: lineOf(ctx, settings.direction1, 'the first direction'),
-      count: count1,
-      step: rowStep(count1, valueOr(ctx, 'distance1', 20), settings.measure1),
-      symmetric: settings.symmetric1,
-    };
-    let second: Row | undefined;
-    if (settings.direction2) {
-      const count2 = wholeCount(valueOr(ctx, 'count2', 2), 'Count 2');
-      second = {
-        line: lineOf(ctx, settings.direction2, 'the second direction'),
-        count: count2,
-        step: rowStep(count2, valueOr(ctx, 'distance2', 20), settings.measure2),
-        symmetric: settings.symmetric2,
-      };
-    }
-    limitInstances(count1 * (second?.count ?? 1));
+    const { first, second } = rectangularRows(ctx, settings);
+    limitInstances(first.count * (second?.count ?? 1));
     const centre = sourceCentre(ctx, settings);
     return run(
       ctx,
@@ -694,20 +715,34 @@ export const kernelRectangularPattern: KernelFeatureDefinition<RectangularPatter
       centre,
     );
   },
+  csg(ctx) {
+    const settings = rectangularSettings(ctx.inputs);
+    const { first, second } = rectangularRows(ctx, settings);
+    return patternCsg(ctx, settings, rectangularPlacements(first, second, true));
+  },
 };
 
 // --------------------------------------------------------------- circular
+
+/** A circular pattern's axis, count and whole angle (radians), as its inputs say. */
+function circularTurns(
+  ctx: LayoutReader<CircularPatternInputs>,
+  settings: ReturnType<typeof circularSettings>,
+): { axis: LineOf; count: number; angle: number } {
+  if (!settings.axis) throw new KernelError('Pick the axis to turn about.');
+  const count = wholeCount(valueOr(ctx, 'count', 3), 'Count');
+  limitInstances(count);
+  const axis = lineOf(ctx, settings.axis, 'the axis to turn about');
+  const angle = valueOr(ctx, 'angle', 360) * RADIANS;
+  return { axis, count, angle };
+}
 
 export const kernelCircularPattern: KernelFeatureDefinition<CircularPatternInputs> = {
   ...circularPatternFeature,
   bodyAccess: () => 'write',
   evaluate(ctx) {
     const settings = circularSettings(ctx.inputs);
-    if (!settings.axis) throw new KernelError('Pick the axis to turn about.');
-    const count = wholeCount(valueOr(ctx, 'count', 3), 'Count');
-    limitInstances(count);
-    const axis = lineOf(ctx, settings.axis, 'the axis to turn about');
-    const angle = valueOr(ctx, 'angle', 360) * RADIANS;
+    const { axis, count, angle } = circularTurns(ctx, settings);
     const centre = sourceCentre(ctx, settings);
     return run(
       ctx,
@@ -717,7 +752,49 @@ export const kernelCircularPattern: KernelFeatureDefinition<CircularPatternInput
       centre,
     );
   },
+  csg(ctx) {
+    const settings = circularSettings(ctx.inputs);
+    const { axis, count, angle } = circularTurns(ctx, settings);
+    return patternCsg(
+      ctx,
+      settings,
+      circularPlacements(axis, count, angle, settings.measure, settings.symmetric, true),
+    );
+  },
 };
+
+// --------------------------------------------------------------- OpenSCAD
+
+/**
+ * A pattern of bodies in OpenSCAD (ADR-0088 §7): each instance the evaluator
+ * makes (`splitSkip` leaves out the skipped ones) is a `multmatrix` (or `translate`) of its
+ * placement around the source's version, unrolled; a copy is the new body
+ * `patternBodies` numbered, a join the union of the source and its copies.
+ * Patterns of features replay their tools, which has no hook yet.
+ */
+function patternCsg(
+  ctx: CsgContext,
+  settings: PatternSettings,
+  all: readonly Placement[],
+): CsgResult {
+  if (settings.objects === 'features') return ctx.unsupported('patterning features');
+  const ids = existingBodies(ctx, settings.bodies, 'pattern');
+  const { placements } = splitSkip(settings.skip, all);
+  const at = (placement: Placement, node: CsgNode): CsgNode =>
+    placed(matrixOf(placement.matrix), node);
+  const out = new Map<BodyId, CsgNode>();
+  ids.forEach((id, bodyIndex) => {
+    const original = ctx.body(id);
+    if (!settings.join) {
+      for (const placement of placements) {
+        out.set(ctx.bodyId(pairSlots(placement.slot, bodyIndex)), at(placement, original));
+      }
+    } else if (placements.length > 0) {
+      out.set(id, boolean('union', [original, ...placements.map((p) => at(p, original))]));
+    }
+  });
+  return out;
+}
 
 // ------------------------------------------------------------------- path
 

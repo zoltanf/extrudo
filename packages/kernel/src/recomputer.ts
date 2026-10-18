@@ -59,6 +59,7 @@ import type { BodyMesh, MeshOptions } from './mesh';
 import type { StepBody } from './model-export';
 import { type PluginCommandResult, pluginCommandFileId } from './plugin-command';
 import type { BodyResult, PreviewToolMesh, RecomputeResult } from './recompute/types';
+import type { ScadExportOptions } from './scad-export/file';
 import {
   type BodyExportMesh,
   type CheckProgress,
@@ -409,6 +410,11 @@ export class Recomputer {
   /** Bodies the model store shows as one STEP AP242 file, each a product with its name. */
   exportStep(bodies: readonly StepBody[]): Promise<string> {
     return this.client.call((api) => api.exportStep(bodies));
+  }
+
+  /** Bodies the model store shows as an OpenSCAD file (P6-09, ADR-0088). */
+  exportScad(options: ScadExportOptions): Promise<string> {
+    return this.client.call((api) => api.exportScad(options));
   }
 
   /**

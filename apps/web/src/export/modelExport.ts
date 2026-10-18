@@ -15,6 +15,7 @@ import type { BodyId, BodyMeta, SelectionItem } from '@extrudo/core';
 import {
   type ExportBody,
   type MeshedBodies,
+  type MeshOptions,
   type ModelExporter,
   type ModelFormat,
   meshBytes,
@@ -63,10 +64,16 @@ export interface ModelFile {
   name: string;
 }
 
-const TYPES: Record<ModelFormat, string> = {
+/** The formats the dialog offers: the kernel's three and an OpenSCAD file (P6-09, ADR-0088 §9). */
+export type DialogFormat = ModelFormat | 'scad';
+
+export const DIALOG_FORMATS: readonly DialogFormat[] = ['3mf', 'stl', 'step', 'scad'];
+
+const TYPES: Record<DialogFormat, string> = {
   stl: 'model/stl',
   '3mf': 'model/3mf',
   step: 'model/step',
+  scad: 'text/x-openscad',
 };
 
 /** An STL (all bodies' triangles in one list) or a 3MF (an object per body, named and coloured). */
@@ -101,6 +108,34 @@ export async function stepFile(
   return {
     blob: new Blob([text], { type: TYPES.step }),
     name: modelFileName(project, bodies, 'step'),
+  };
+}
+
+/**
+ * An OpenSCAD file of the bodies (P6-09, ADR-0088 §9): code the kernel
+ * writes from the document, each body in its name and colour; mesh versions
+ * are tessellated at `tessellation` and written as polyhedra.
+ */
+export async function scadFile(
+  kernel: ModelExporter,
+  bodies: readonly ExportBody[],
+  tessellation: MeshOptions,
+  project: string,
+): Promise<ModelFile> {
+  const text = await kernel.exportScad({
+    bodies: bodies.map((body) => ({
+      id: body.id,
+      name: body.meta.name,
+      ...(body.meta.color !== undefined && { color: body.meta.color }),
+      ...(body.component !== undefined && { component: body.component.name }),
+    })),
+    tessellation,
+    project,
+    version: APP_VERSION,
+  });
+  return {
+    blob: new Blob([text], { type: TYPES.scad }),
+    name: modelFileName(project, bodies, 'scad'),
   };
 }
 

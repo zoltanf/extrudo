@@ -7,19 +7,32 @@ import {
   type RevolveSettings,
   revolveFeature,
   revolveSettings,
+  type SketchFrame,
   sketchToWorld,
 } from '@extrudo/core';
 import { type Axis, KernelError, type ShapeHandle, type ShapeScope, type Vec3 } from '../kernel';
 import { type NamedShape, namedRevolve, type SweepSource } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
+import type { CsgContext, CsgResult } from '../scad-export/context';
+import {
+  absolute,
+  type CsgNode,
+  frameMatrix,
+  half,
+  negate,
+  placed,
+  type Scalar,
+} from '../scad-export/ir';
+import { operationCsg } from '../scad-export/operation';
+import { merged2d, type ProfileRef, resolveProfiles, type To2d } from '../scad-export/profile';
 import { splitSolids } from './bodies';
 import { explicitBodies, type OperationWords, operate } from './operation';
-import { lineOf } from './references';
+import { type GeometryReader, lineOf } from './references';
 import type { SketchOutputData } from './sketch';
 import { type Base, centroidOf, PARALLEL_EPS, type Plane, partsOf, uniteParts } from './sources';
 import { trimSweep, trimTarget } from './to-object';
-import { add, dot, length, scale, sub, unit } from './vec';
+import { add, cross, dot, length, scale, sub, unit } from './vec';
 
 /**
  * The `data` of a revolve's output: where it sits, for later features and
@@ -64,7 +77,123 @@ export const kernelRevolve: KernelFeatureDefinition<RevolveInputs> = {
   ...revolveFeature,
   bodyAccess: () => 'write',
   evaluate: evaluateRevolve,
+  csg: revolveCsg,
 };
+
+/**
+ * A revolve in OpenSCAD (ADR-0088 §7): the picked profiles as 2D nodes in
+ * (distance from the axis, position along it), `rotate_extrude`n about Z and
+ * placed so OpenSCAD's Z is the revolve axis and its X points from the axis
+ * into the profile's half — which keeps OpenSCAD 2021.01's x ≥ 0 rule — then
+ * the body operation (`operationCsg`).
+ *
+ * Every angle extent the evaluator takes: one side, symmetric (whole and
+ * half), two sides and the sign; a full turn is `rotate_extrude()` without an
+ * `angle`. A partial side that doesn't start at the profile is the sector
+ * turned about the axis by its start.
+ */
+function revolveCsg(ctx: CsgContext<RevolveInputs>): CsgResult {
+  const settings = revolveSettings(ctx.inputs);
+  if (!settings.axis) return ctx.unsupported('no axis');
+  if (settings.extent === 'to-object' || settings.toObject) {
+    return ctx.unsupported('a revolve to an object');
+  }
+  const axisOfRef = axisOf(ctx, settings.axis);
+  // `flip` turns side 1 the other way round: reverse the axis, as the evaluator does.
+  const axis: Axis = settings.flip
+    ? { origin: axisOfRef.origin, direction: scale(axisOfRef.direction, -1) }
+    : axisOfRef;
+  const refs = resolveProfiles(ctx, settings.profiles);
+  if (!refs || refs.length === 0) return null;
+  const base = (refs[0] as ProfileRef).frame;
+  if (!inPlane(axis, { point: base.origin, normal: base.normal })) {
+    return ctx.unsupported('an axis out of the profile plane');
+  }
+  const radial = radialDirection(refs, axis);
+  if (!radial) return ctx.unsupported('a profile on both sides of the axis');
+  const to2d: To2d = (frame, p) => {
+    const world = add(frame.origin, add(scale(frame.x, p[0]), scale(frame.y, p[1])));
+    const rel = sub(world, axis.origin);
+    // Clamp the rounding of a point on the axis (OpenSCAD needs x ≥ 0).
+    return [Math.max(0, dot(rel, radial)), dot(rel, axis.direction)];
+  };
+  const frame: SketchFrame = {
+    origin: axis.origin,
+    x: radial,
+    y: cross(axis.direction, radial),
+    normal: axis.direction,
+  };
+  const tool = placed(frameMatrix(frame), revolveNode(ctx, settings, merged2d(ctx, refs, to2d)));
+  return operationCsg(ctx, settings.operation, tool);
+}
+
+/**
+ * The turned tool: one `rotate_extrude` per side (unioned), an angle's sign
+ * and a side's start a `rotate` about the axis (the placement's local Z), a
+ * full turn left without an `angle`, matching the evaluator's `anglesOf`.
+ */
+function revolveNode(
+  ctx: CsgContext<RevolveInputs>,
+  settings: RevolveSettings,
+  node2d: CsgNode,
+): CsgNode {
+  const angle = settings.angle ? ctx.scalar('angle') : (360 as Scalar);
+  const angle2 = settings.angle2 ? ctx.scalar('angle2') : (0 as Scalar);
+  const value = (s: Scalar): number => (typeof s === 'number' ? s : s.value);
+  const full = (sweep: Scalar): boolean => Math.abs(value(sweep)) >= 360 - ANGLE_EPS;
+  const sector = (start: Scalar, sweep: Scalar): CsgNode => {
+    const body: CsgNode = { kind: 'rotate_extrude', angle: sweep, children: [node2d] };
+    // In the placement's local frame the axis is Z, so a side that doesn't
+    // start at the profile is the sector turned about Z by its start.
+    return value(start) === 0 ? body : { kind: 'rotate', a: start, v: [0, 0, 1], children: [body] };
+  };
+  const whole = (): CsgNode => ({ kind: 'rotate_extrude', children: [node2d] });
+  switch (settings.direction) {
+    case 'one-side':
+      return full(angle) ? whole() : sector(0, angle);
+    case 'symmetric': {
+      const per = absolute(angle);
+      const each = settings.symmetricMeasure === 'half' ? per : half(per);
+      if (full(each)) return whole();
+      return { kind: 'union', children: [sector(0, each), sector(negate(each), each)] };
+    }
+    case 'two-sides': {
+      if (full(angle)) return whole();
+      const nodes = [sector(0, angle)];
+      if (value(angle2) !== 0) nodes.push(sector(negate(angle2), angle2));
+      return nodes.length === 1 ? (nodes[0] as CsgNode) : { kind: 'union', children: nodes };
+    }
+  }
+}
+
+/**
+ * The world direction from the axis into the profile's half of the plane: the
+ * perpendicular of the plane point farthest from the axis. `undefined` when
+ * every point is on the axis.
+ */
+function radialDirection(refs: readonly ProfileRef[], axis: Axis): Vec3 | undefined {
+  let best: Vec3 | undefined;
+  let bestLength = 0;
+  for (const ref of refs) {
+    for (const loop of [ref.profile.outer, ...ref.profile.holes]) {
+      for (const p of loop.polygon) {
+        const world = add(
+          ref.frame.origin,
+          add(scale(ref.frame.x, p[0]), scale(ref.frame.y, p[1])),
+        );
+        const rel = sub(world, axis.origin);
+        const axial = dot(rel, axis.direction);
+        const perp = sub(rel, scale(axis.direction, axial));
+        const len = length(perp);
+        if (len > bestLength) {
+          bestLength = len;
+          best = perp;
+        }
+      }
+    }
+  }
+  return bestLength > 1e-6 ? unit(best as Vec3) : undefined;
+}
 
 function evaluateRevolve(ctx: EvalContext<RevolveInputs>): FeatureOutput {
   const settings = revolveSettings(ctx.inputs);
@@ -110,13 +239,13 @@ function evaluateRevolve(ctx: EvalContext<RevolveInputs>): FeatureOutput {
 // ------------------------------------------------------------------ the axis
 
 /** The axis a reference names, in world mm: a point on it and its unit direction. */
-function axisOf(ctx: EvalContext<RevolveInputs>, ref: GeomRef): Axis {
+export function axisOf(ctx: GeometryReader, ref: GeomRef): Axis {
   switch (ref.kind) {
     case 'axis': {
       const found = originAxis(ref.id);
       if (found) return { origin: found.origin, direction: found.direction };
       // A construction axis (P3-05).
-      const line = lineOf(ctx as unknown as EvalContext, ref, 'the axis to revolve about');
+      const line = lineOf(ctx, ref, 'the axis to revolve about');
       return { origin: line.origin, direction: line.direction };
     }
     case 'sketchEntity':
@@ -143,7 +272,7 @@ function axisOf(ctx: EvalContext<RevolveInputs>, ref: GeomRef): Axis {
  * sketch on a face works as well as one on an origin plane), from its start
  * to its end.
  */
-function sketchLineAxis(ctx: EvalContext<RevolveInputs>, ref: GeomRef): Axis {
+function sketchLineAxis(ctx: GeometryReader, ref: GeomRef): Axis {
   const parsed = parseSketchEntityRefId(ref.id);
   if (!parsed) throw new KernelError("The axis isn't a sketch line. Pick it again.");
   const data = ctx.output(parsed.feature as FeatureId).data as

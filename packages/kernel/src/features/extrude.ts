@@ -7,10 +7,23 @@ import {
   extrudeSettings,
   type GeomRef,
   originPlane,
+  type SketchFrame,
 } from '@extrudo/core';
 import { KernelError, type ShapeHandle, type ShapeScope, type Vec3 } from '../kernel';
 import { type NamedShape, namedBoolean, namedPrism, type SweepSource } from '../naming/ops';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
+import type { CsgContext, CsgResult } from '../scad-export/context';
+import {
+  absolute,
+  type CsgNode,
+  frameMatrix,
+  half,
+  negate,
+  placed,
+  type Scalar,
+} from '../scad-export/ir';
+import { operationCsg } from '../scad-export/operation';
+import { framePoint, merged2d, resolveProfiles } from '../scad-export/profile';
 import { splitSolids } from './bodies';
 import { explicitBodies, type OperationWords, operate } from './operation';
 import { planeOf } from './references';
@@ -79,7 +92,132 @@ export const kernelExtrude: KernelFeatureDefinition<ExtrudeInputs> = {
   ...extrudeFeature,
   bodyAccess: () => 'write',
   evaluate: evaluateExtrude,
+  csg: extrudeCsg,
 };
+
+/**
+ * An extrude in OpenSCAD (ADR-0088 §7): the picked profiles as 2D nodes
+ * (`profile.ts`), swept by `linear_extrude` per side — a signed distance a
+ * `ctx.scalar`, its sign and side an `absolute`/`negate` and a `translate`
+ * along the plane's normal — placed by the sketch frame, then the body
+ * operation (`operationCsg`).
+ *
+ * A taper, `to-object` and a face profile have no equivalent; a `through-all`
+ * reaches a number past `ctx.bounds()` and only makes sense for a cut or an
+ * intersect.
+ */
+function extrudeCsg(ctx: CsgContext<ExtrudeInputs>): CsgResult {
+  const settings = extrudeSettings(ctx.inputs);
+  if (settings.profiles.length === 0) return ctx.unsupported('no profiles');
+  if (settings.sides.some((side) => side.extent === 'to-object' || side.toObject)) {
+    return ctx.unsupported('an extrude to an object');
+  }
+  if (settings.sides.some((side) => side.taper && ctx.value(side.taper) !== 0)) {
+    return ctx.unsupported('a taper');
+  }
+  if (
+    settings.sides.some((side) => side.extent === 'through-all') &&
+    (settings.operation === 'new-body' || settings.operation === 'join')
+  ) {
+    return ctx.unsupported('an extrude through everything for a new body or join');
+  }
+  const refs = resolveProfiles(ctx, settings.profiles);
+  if (!refs || refs.length === 0) return null;
+  const base = (refs[0] as { frame: SketchFrame }).frame;
+  const node2d = merged2d(ctx, refs, (frame, p) => framePoint(frame, base, p));
+  const n = settings.flip ? scale(base.normal, -1) : base.normal;
+  const tool = placed(frameMatrix(base), sidesNode(ctx, settings, base, n, node2d));
+  return operationCsg(ctx, settings.operation, tool);
+}
+
+/** The swept tool: one `linear_extrude` per side, their union. */
+function sidesNode(
+  ctx: CsgContext<ExtrudeInputs>,
+  settings: ExtrudeSettings,
+  base: SketchFrame,
+  n: Vec3,
+  node2d: CsgNode,
+): CsgNode {
+  const sign = dot(n, base.normal);
+  const nodes: CsgNode[] = [];
+  const side = (which: ExtrudeSide | undefined, s: number): void => {
+    if (!which) return;
+    const length =
+      which.extent === 'through-all'
+        ? throughLength(ctx, base.origin, scale(n, s))
+        : distanceScalar(ctx, which);
+    nodes.push(slab(node2d, s, length));
+  };
+  switch (settings.direction) {
+    case 'one-side':
+      side(settings.sides[0], sign);
+      break;
+    case 'symmetric': {
+      const side = settings.sides[0] as ExtrudeSide;
+      let each: Scalar;
+      if (side.extent === 'through-all') {
+        // Both sides reach the same length, the larger of the two `through-all`
+        // lengths: the evaluator's `max(through(n), through(scale(n, -1)))`.
+        const whole = Math.max(
+          reachLength(ctx, base.origin, n),
+          reachLength(ctx, base.origin, scale(n, -1)),
+        );
+        if (whole <= LENGTH_EPS) throw nothingToGoThrough();
+        each = whole;
+      } else {
+        const whole = absolute(distanceScalar(ctx, side));
+        each = settings.symmetricMeasure === 'half' ? whole : half(whole);
+      }
+      nodes.push(slab(node2d, sign, each), slab(node2d, -sign, each));
+      break;
+    }
+    case 'two-sides':
+      side(settings.sides[0], sign);
+      side(settings.sides[1], -sign);
+      break;
+  }
+  return nodes.length === 1 ? (nodes[0] as CsgNode) : { kind: 'union', children: nodes };
+}
+
+/**
+ * A side as OpenSCAD: a `linear_extrude` centred on the plane, its height the
+ * length's size and a `translate` along Z by half its signed value, so a
+ * negative distance and a flipped side both come out right (ADR-0088 §7).
+ */
+function slab(node2d: CsgNode, sign: number, length: Scalar): CsgNode {
+  const signed = sign === 1 ? length : negate(length);
+  return {
+    kind: 'translate',
+    v: [0, 0, half(signed)],
+    children: [
+      { kind: 'linear_extrude', height: absolute(length), center: true, children: [node2d] },
+    ],
+  };
+}
+
+/** A side's distance scalar; a distance extent always has one when the kernel ran. */
+function distanceScalar(ctx: CsgContext<ExtrudeInputs>, side: ExtrudeSide): Scalar {
+  if (!side.distance) throw new KernelError('Enter a distance.');
+  return ctx.scalar(side.distance);
+}
+
+/** How far a side reaches past the plane in one direction (0 when nothing is there), plus the margin. */
+function reachLength(ctx: CsgContext<ExtrudeInputs>, point: Vec3, along: Vec3): number {
+  const bounds = ctx.bounds();
+  if (!bounds) {
+    throw new KernelError('There are no bodies to go through. Enter a distance instead.');
+  }
+  let far = 0;
+  for (const c of corners(bounds.min, bounds.max)) far = Math.max(far, dot(sub(c, point), along));
+  return far <= LENGTH_EPS ? 0 : far + Math.max(1, 0.05 * far);
+}
+
+/** How far a side reaches past the plane for `through-all` (mm), plus the kernel's margin. */
+function throughLength(ctx: CsgContext<ExtrudeInputs>, point: Vec3, along: Vec3): number {
+  const far = reachLength(ctx, point, along);
+  if (far <= LENGTH_EPS) throw nothingToGoThrough();
+  return far;
+}
 
 function evaluateExtrude(ctx: EvalContext<ExtrudeInputs>): FeatureOutput {
   const { kernel } = ctx;
