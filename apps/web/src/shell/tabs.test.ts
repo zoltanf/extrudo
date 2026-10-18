@@ -43,8 +43,8 @@ describe('visibleTabs (ADR-0079 §2)', () => {
     expect(group('Import')).toEqual(['importProject', 'importBody', 'importDrawing', 'canvas']);
     expect(group('Export')).toEqual([
       'exportProject',
-      'export',
       'exportScript',
+      'export',
       'saveToLinkedFolder',
     ]);
   });

@@ -980,7 +980,7 @@ export const TABS: Tab[] = [
       { label: 'Import', tools: ['importProject', 'importBody', 'importDrawing', 'canvas'] },
       {
         label: 'Export',
-        tools: ['exportProject', 'export', 'exportScript', 'saveToLinkedFolder'],
+        tools: ['exportProject', 'exportScript', 'export', 'saveToLinkedFolder'],
         labels: { export: 'Export Model' },
       },
       // What a design exposes is a few of its parameters (P4-07).

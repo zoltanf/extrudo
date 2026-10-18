@@ -2,7 +2,7 @@
 title: Export Design as Script
 section: Tools
 category: Home
-order: 13
+order: 12
 ---
 
 # Export Design as Script

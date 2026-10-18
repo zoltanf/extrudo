@@ -512,7 +512,7 @@ test('Home and Construct show every tool as a tile at 1440 px, each 64 px wide',
   // R3-09: Import and Export instead of one Files group; no Extend group (R3-12).
   expect(await group('Import')).toBe('importProject,importBody,importDrawing,canvas');
   expect(await group('Export')).toMatch(
-    /^exportProject,export,exportScript(,saveToLinkedFolder)?$/,
+    /^exportProject,exportScript,export(,saveToLinkedFolder)?$/,
   );
   await expect(toolbar.locator('[data-toolbar-group="Files"]')).toHaveCount(0);
   await expect(toolbar.locator('[data-toolbar-group="Extend"]')).toHaveCount(0);

@@ -2181,8 +2181,8 @@ and Search commands, then the design's name, version history, save state, settin
 help and theme — and `shell/Toolbar.tsx` the selected tab's groups below it (the tab is
 `useToolbarTab(mode)` in `AppShell`). **The File menu is gone**: its items are the
 **Home** tab's tiles (Design, Versions, **Import** — Import .extrudo, Import Model,
-Import Drawing, Canvas — and **Export** — Export .extrudo, Export Model, Export as
-Script, Save to Linked Folder — since R3-09, Parameters with Customizer); **Plugins…
+Import Drawing, Canvas — and **Export** — Export .extrudo, Export as Script, Export
+Model, Save to Linked Folder — since R3-09, in that order since 2026-10-18, Parameters with Customizer); **Plugins…
 is in the app menu** and Ctrl+K (R3-12; on macOS the app menu, beside
 Settings…: `APP_MENU_IDS` in `apps/desktop/src/main/menuTemplate.ts`); the tabs are
 **Home, Solid (Create, Primitives, Features, Pattern, Program, Component), Modify

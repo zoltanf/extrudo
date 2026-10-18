@@ -541,6 +541,9 @@ unchanged; the two are different doors to the same `scadFile`.
 - **Shared code.** `apps/web/src/export/exportFields.tsx` holds `BodiesField`,
   `ResolutionField` and the hooks (`useBodyRows`, `useChosenBodies`,
   `useResolutionEvaluate`, `useTessellation`); both dialogs use them.
+- **Order.** In the Home tab's Export group, Export as Script moves next to Export
+  .extrudo, ahead of Export Model (owner, 2026-10-18): the two whole-design exports
+  come first. `topbar.spec.ts` checks the order.
 
 **Rejected.** Moving OpenSCAD out of Export Model (the owner wants both); a second
 file-type step in the save dialog (the choice belongs before the file is written,
