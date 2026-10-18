@@ -1,0 +1,1 @@
+- 2026-10-18 · **Site: Docker on the download page**: `/download/` ends with "On your own server, with Docker" (the `docker run` line, the `latest`/`0.8.0`/`edge` tags, the plain-HTTP limit, a link to `docs/deploy.md`), with a Docker entry in the page's jump links.

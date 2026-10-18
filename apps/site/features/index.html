@@ -336,15 +336,16 @@
           <li>
             <h3>Export and send</h3>
             <p>
-              3MF with names, colours and units, STL, or STEP for other CAD programs. The desktop
-              app hands the model straight to PrusaSlicer, OrcaSlicer, Bambu Studio or Cura.
+              3MF with names, colours and units, STL, STEP for other CAD programs, or OpenSCAD
+              code. The desktop app hands the model straight to PrusaSlicer, OrcaSlicer, Bambu
+              Studio or Cura.
             </p>
           </li>
           <li>
             <h3>Templates and examples</h3>
             <p>
-              Start from a wall bracket, a storage box, a box with a lid or a circuit board
-              enclosure, and change their parameters.
+              Start from a wall bracket, a storage box, a box with a lid or a PCB enclosure, and
+              change their parameters.
             </p>
           </li>
         </ul>
@@ -402,11 +403,11 @@
               <tr>
                 <th scope="row">OpenSCAD <span class="ext">.scad</span></th>
                 <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>Compiled in your browser into a mesh body. Its customizer variables become fields you can change.</td>
-                <td class="no"><span class="mark" aria-hidden="true">–</span><span class="sr-only">No</span></td>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>The chosen bodies as real OpenSCAD code: primitives, extrusions, transforms and booleans where they translate, a polyhedron where they don't, with your parameters as Customizer variables. Export Design as Script writes the whole design as OpenSCAD too.</td>
               </tr>
               <tr>
                 <th scope="row">f3d design <span class="ext">.f3d</span></th>
-                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>A new design with the file's parameters, sketches, extrudes, fillets and chamfers. A report lists what was left out.</td>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>A new design with the file's parameters, sketches with their constraints, extrudes, revolves, holes, threads, fillets, chamfers, patterns, mirrors, sweeps, splits, offset faces and components. A body the timeline can't rebuild comes in as the file's own shape, and a report lists what was left out.</td>
                 <td class="no"><span class="mark" aria-hidden="true">–</span><span class="sr-only">No</span></td>
               </tr>
               <tr>
@@ -432,7 +433,7 @@
               <tr>
                 <th scope="row">TypeScript <span class="ext">.ts</span></th>
                 <td class="no"><span class="mark" aria-hidden="true">–</span><span class="sr-only">No</span></td>
-                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>The code that builds the design again, through Export as Script.</td>
+                <td class="yes"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">Yes: </span>The code that builds the design again, through Export Design as Script (which can write OpenSCAD instead).</td>
               </tr>
               <tr>
                 <th scope="row">Plugins <span class="ext">.extrudo-plugin</span></th>
@@ -479,7 +480,8 @@
             <h3>Record a macro</h3>
             <p>
               Record what you do and get it back as a script, to reuse it or to replace the steps
-              it recorded. Export as Script does the same for a whole design.
+              it recorded. Export Design as Script does the same for a whole design, as TypeScript
+              or as OpenSCAD, with a preview and Copy.
             </p>
           </li>
           <li>
@@ -500,7 +502,15 @@
             <h3>Command line</h3>
             <p>
               From the source repository, <code>extrudo</code> opens a design without a browser,
-              sets its parameters and exports STL, 3MF or STEP.
+              sets its parameters and exports STL, 3MF, STEP or OpenSCAD.
+            </p>
+          </li>
+          <li>
+            <h3>Agents on the desktop</h3>
+            <p>
+              The desktop app can serve the open design to Claude Code and other MCP clients on
+              your own computer: they read it, set parameters, add features and export, each
+              change one undo step. Turn it on or off in Settings › Desktop › Agents.
             </p>
           </li>
         </ul>
@@ -541,8 +551,8 @@
             <h3>Desktop app</h3>
             <p>
               For Linux, Windows and macOS: <code>.extrudo</code> files open from your file
-              manager, and Send to Slicer hands a model to your slicer.
-              <a href="/download/">Download it</a>.
+              manager, Send to Slicer hands a model to your slicer, and agents can work on the
+              open design. <a href="/download/">Download it</a>.
             </p>
           </li>
           <li>
@@ -555,8 +565,8 @@
           <li>
             <h3>Help where you need it</h3>
             <p>
-              A five-step tour for your first part, short clips in the main tools' tooltips, and
-              F1 for the guide's page on the tool under the pointer.
+              A five-step tour for your first part, short clips in every tool's tooltip, and F1 or
+              the app menu's Help for the guide's page on the tool under the pointer.
             </p>
           </li>
         </ul>

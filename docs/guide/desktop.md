@@ -75,6 +75,20 @@ hours. What happens next depends on how you installed it:
 
 **Check now** in the Menu's bottom strip (or Ctrl+K "Check for Updates…") checks right away.
 
+## Connecting an agent
+
+While the desktop app runs, it can serve the open design to AI agents such as Claude Code over
+MCP. This happens on your computer only: an agent can read the design, set parameters, add
+sketches and features, undo and export — and each change lands as one undo step named
+"Agent: …", so Ctrl+Z takes the last one back. While an agent is connected, the top bar says
+**Agent connected**.
+
+Turn the server on or off in Settings › Desktop › Agents: there you find the switch, a line
+saying whether the server listens, and **Copy client config**, which copies what you paste into
+the agent to connect it. The server is on to begin with. The web app has none of this. A skill
+for Claude Code comes with every release (`extrudo-skill-<version>.zip` on the releases page)
+and teaches the agent how to model in Extrudo.
+
 ## Where your designs are kept
 
 Designs are stored as files in a `projects` folder inside the app's user-data directory, which

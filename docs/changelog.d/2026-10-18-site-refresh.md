@@ -1,0 +1,1 @@
+- 2026-10-18 · **Site and README refreshed for v0.8.0**: OpenSCAD export, Export Design as Script, the wider .f3d import, the portable Windows app, Homebrew without a Gatekeeper prompt and the desktop's agents (MCP) are on the features, download and FAQ pages, in the README and in the guide's desktop page; the nav's "New" pill is gone.

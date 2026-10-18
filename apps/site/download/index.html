@@ -47,6 +47,7 @@
           <a class="cat-sketch" href="#windows">Windows</a>
           <a class="cat-solid" href="#macos">macOS</a>
           <a class="cat-print" href="#linux">Linux</a>
+          <a class="cat-files" href="#docker">Docker</a>
         </nav>
         <p class="actions">
           <a class="button big" href="https://github.com/zoltanf/extrudo/releases/latest" data-latest-release>
@@ -79,11 +80,19 @@
             </li>
             <li>Start Extrudo from the Start menu.</li>
           </ol>
+          <h3>Or the portable app</h3>
+          <p>
+            Download the file ending in <code>win-x64-portable.exe</code> instead and run it from
+            any folder, a USB stick included. It installs nothing and keeps your designs in an
+            <code>Extrudo-data</code> folder next to it; it takes a few seconds to start, since it
+            unpacks itself each time.
+          </p>
           <h3>Updates</h3>
           <p>
             Extrudo downloads a new version in the background and tells you when it is ready.
             Press <b>Restart</b>, or let it install the next time you quit. Your open designs are
-            saved first.
+            saved first. The portable app only tells you a version is out: download the new exe
+            and keep your <code>Extrudo-data</code> folder beside it.
           </p>
         </section>
 
@@ -103,9 +112,10 @@
           </ol>
           <h3>The first start</h3>
           <p>
-            Extrudo is not signed with an Apple certificate yet, so macOS says it can't be opened.
-            Open <b>System Settings › Privacy &amp; Security</b> and choose <b>Open Anyway</b>
-            next to Extrudo. You do this once for each install.
+            Extrudo is not signed with an Apple certificate yet. Installed with Homebrew it opens
+            straight away, because the cask clears the quarantine flag. A dmg downloaded by hand
+            makes macOS say it can't be opened: open <b>System Settings › Privacy &amp; Security</b>
+            and choose <b>Open Anyway</b> next to Extrudo, once.
           </p>
           <h3>Updates</h3>
           <p>
@@ -147,6 +157,26 @@
           <code>.extrudo</code> file in the desktop app.
         </p>
         <p class="more"><a href="/docs/desktop/">The desktop app in the guide <span aria-hidden="true">→</span></a></p>
+      </section>
+
+      <section id="docker" class="topic" aria-labelledby="docker-title">
+        <h2 id="docker-title">On your own server, with Docker</h2>
+        <p class="topic-text">
+          The browser app as a container: nginx with the same build as app.extrudo.org, for
+          x86-64 and ARM (a Raspberry Pi or an ARM NAS). Nothing leaves it: no telemetry, no
+          outbound requests, no internet needed once pulled.
+        </p>
+        <pre><code>docker run -d -p 8080:80 ghcr.io/zoltanf/extrudo:latest</code></pre>
+        <p class="topic-text">
+          Then open <code>http://localhost:8080</code>. <code>latest</code> is the last release;
+          <code>0.8.0</code> pins a version; <code>edge</code> is the latest build of main.
+        </p>
+        <p class="topic-text">
+          Over plain HTTP on a LAN address browsers hold back the offline mode and the install as
+          an app; put it behind a reverse proxy with HTTPS and everything works as on
+          app.extrudo.org.
+        </p>
+        <p class="more"><a href="https://github.com/zoltanf/extrudo/blob/main/docs/deploy.md#self-hosting-with-docker">Tags, Compose and the limits in detail <span aria-hidden="true">→</span></a></p>
       </section>
 
       <section class="page-end" aria-labelledby="end-title">

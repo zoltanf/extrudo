@@ -377,7 +377,7 @@
               No. Extrudo has no server that keeps designs, so nothing you make is uploaded or
               seen by anyone else. A design only leaves your computer when you send it yourself:
               export it with Home › Export Design and share the <code>.extrudo</code> file, or
-              export a 3MF, STL or STEP file of the model.
+              export a 3MF, STL, STEP or OpenSCAD file of the model.
             </p>
           </details>
           <details>
@@ -409,8 +409,10 @@
             <summary>Can I automate a design?</summary>
             <p>
               Yes. A Script feature runs TypeScript inside the design, a recorded macro gives you
-              the code for what you just did, and plugins add features of their own. The
-              <a href="/docs/api/">API docs</a> cover all three.
+              the code for what you just did, Export Design as Script writes a whole design as
+              TypeScript or OpenSCAD, and plugins add features of their own. On the desktop, agents
+              such as Claude Code can work on the open design over MCP (Settings › Desktop ›
+              Agents). The <a href="/docs/api/">API docs</a> cover the code side.
             </p>
           </details>
           <details>
