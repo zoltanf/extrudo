@@ -1,21 +1,9 @@
-import {
-  type BodyId,
-  type Component,
-  type DocumentStore,
-  type EvaluateResult,
-  ExprError,
-  evaluateParameters,
-  formatQuantity,
-  LENGTH,
-  type ModelStore,
-  type SessionStore,
-} from '@extrudo/core';
+import type { BodyId, DocumentStore, ModelStore, SessionStore } from '@extrudo/core';
 import { isExportCancelled, type MeshOptions } from '@extrudo/kernel';
 import { X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
 import { Button, Dialog, DialogClose, IconButton, Select } from '../design-system';
-import { ExpressionInput } from '../parameters/ExpressionInput';
 import type { FileAccess } from '../platform/files';
 import type { Preferences } from '../platform/preferences';
 import type { OpenInSlicer, SlicerId } from '../platform/slicer';
@@ -23,21 +11,25 @@ import { SLICERS } from '../platform/slicer';
 import type { BodyEntry } from '../shell/bodies';
 import { Choice, Hint, Radio } from '../sketch/ExportSketchDialog';
 import {
-  ANGLE_RANGE,
-  DEFLECTION_RANGE,
+  BodiesField,
+  ResolutionField,
+  useBodyRows,
+  useChosenBodies,
+  useResolutionEvaluate,
+  useTessellation,
+} from './exportFields';
+import {
   DIALOG_FORMATS,
   type DialogFormat,
   type ExportBody,
   formatBytes,
   handToSlicer,
-  initialBodies,
   type MeshedBodies,
   type ModelExporter,
   type ModelFormat,
   meshBodies,
   meshFile,
   openBodies,
-  RESOLUTIONS,
   type Resolution,
   scadFile,
   stepFile,
@@ -100,18 +92,12 @@ const DEFAULTS: Remembered = {
 };
 /** Why the OpenSCAD hint says it: the file is code, and some features are meshes in it. */
 const SCAD_HINT = 'Editable OpenSCAD code. Fillets, shells and the like come out as meshes.';
-const RESOLUTION_LABELS: Record<Exclude<Resolution, 'custom'>, string> = {
-  coarse: 'Coarse',
-  medium: 'Medium',
-  fine: 'Fine',
-};
 const EXPORT_LABELS: Record<DialogFormat, string> = {
   '3mf': '3MF',
   stl: 'STL',
   step: 'STEP',
   scad: 'OpenSCAD',
 };
-const DEGREE = Math.PI / 180;
 
 /**
  * Export (P2-12, FR-IO-02..04): bodies as 3MF (objects with names, colours
@@ -180,40 +166,9 @@ export function ExportModelForm({
     });
 
   // Each request starts from its bodies, the selection, or every shown body.
-  const [chosen, setChosen] = useState<ReadonlySet<BodyId>>(new Set());
-  const bodiesRef = useRef(bodies);
-  bodiesRef.current = bodies;
-  useEffect(() => {
-    if (!request) return;
-    const selection = session.getState().selection;
-    setChosen(new Set(initialBodies(bodiesRef.current, selection, request.bodies)));
-  }, [request, session]);
-
-  const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
-  const docSettings = doc.settings;
-  const evaluate = useCallback(
-    (expression: string, unit: 'length' | 'angle'): EvaluateResult => {
-      const result = evaluation.evaluate(expression, unit);
-      if (!result.ok) return result;
-      const [min, max] =
-        unit === 'length'
-          ? [DEFLECTION_RANGE.min, DEFLECTION_RANGE.max]
-          : [ANGLE_RANGE.min / DEGREE, ANGLE_RANGE.max / DEGREE];
-      if (result.value >= min && result.value <= max) return result;
-      const text = (v: number) => formatQuantity(v, result.dim, { ...docSettings, precision: 3 });
-      const span = { start: 0, end: expression.length };
-      return { ok: false, error: new ExprError(`Between ${text(min)} and ${text(max)}.`, span) };
-    },
-    [evaluation, docSettings],
-  );
-
-  const tessellation = useMemo<MeshOptions | undefined>(() => {
-    if (settings.resolution !== 'custom') return RESOLUTIONS[settings.resolution];
-    const deviation = evaluate(settings.deviation, 'length');
-    const angle = evaluate(settings.angle, 'angle');
-    if (!deviation.ok || !angle.ok) return undefined;
-    return { linearDeflection: deviation.value, angularDeflection: angle.value * DEGREE };
-  }, [settings, evaluate]);
+  const { chosen, toggle, toggleMany } = useChosenBodies(bodies, session, request);
+  const evaluate = useResolutionEvaluate(doc);
+  const tessellation = useTessellation(settings, evaluate);
 
   // A STEP file holds exact geometry, so a mesh body is out of it (P4-06,
   // ADR-0066 §3): its checkbox is off and disabled while STEP is the format,
@@ -221,29 +176,7 @@ export function ExportModelForm({
   const inStep = settings.format === 'step';
   // The entries carry their component's name so the file can group them
   // (P6-05, ADR-0081 §7).
-  const rows = useMemo(() => {
-    const names = new Map((doc.components ?? []).map((c) => [c.id, c.name]));
-    const groups: { component: Component; bodies: ExportBody[] }[] = (doc.components ?? []).map(
-      (component) => ({ component, bodies: [] }),
-    );
-    const byId = new Map(groups.map((g) => [g.component.id, g]));
-    const loose: ExportBody[] = [];
-    const all: ExportBody[] = bodies.map((body) => {
-      const name = body.component === undefined ? undefined : names.get(body.component);
-      const entry: ExportBody = {
-        id: body.id,
-        meta: body.meta,
-        ...(body.mesh !== undefined && { mesh: body.mesh }),
-        ...(body.component !== undefined &&
-          name !== undefined && { component: { id: body.component, name } }),
-      };
-      const group = body.component === undefined ? undefined : byId.get(body.component);
-      if (group) group.bodies.push(entry);
-      else loose.push(entry);
-      return entry;
-    });
-    return { all, groups: groups.filter((g) => g.bodies.length > 0), loose };
-  }, [bodies, doc.components]);
+  const rows = useBodyRows(bodies, doc.components);
   const allBodies = rows.all;
   const componentCount = new Set(
     allBodies.filter((b) => chosen.has(b.id) && b.component).map((b) => b.component?.id),
@@ -435,55 +368,6 @@ export function ExportModelForm({
   const noSlicer = installed !== undefined && installed.length === 0;
   const slicerFirst = request?.slicer === true && openInSlicer !== undefined && !inScad;
 
-  const toggle = (id: BodyId) =>
-    setChosen((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  const toggleMany = (ids: readonly BodyId[], on: boolean) =>
-    setChosen((current) => {
-      const next = new Set(current);
-      for (const id of ids) {
-        if (on) next.add(id);
-        else next.delete(id);
-      }
-      return next;
-    });
-  const groupState = (list: readonly ExportBody[]) => {
-    const on = list.filter((b) => chosen.has(b.id) && exportable(b)).length;
-    if (on === 0) return 'false' as const;
-    return on === list.length ? ('true' as const) : ('mixed' as const);
-  };
-  const bodyRow = (body: ExportBody) => (
-    <label
-      key={body.id}
-      className={`flex h-7 shrink-0 items-center gap-2 rounded-input px-1 ${
-        inStep && body.mesh ? 'opacity-60' : 'cursor-pointer hover:bg-accent-soft'
-      }`}
-    >
-      <input
-        type="checkbox"
-        checked={chosen.has(body.id) && exportable(body)}
-        disabled={!exportable(body)}
-        onChange={() => toggle(body.id)}
-        className="accent-(--x-accent)"
-      />
-      <span
-        aria-hidden
-        className="size-2.5 shrink-0 rounded-full border border-line"
-        style={{ background: body.meta.color ?? 'var(--x-body-default)' }}
-      />
-      <span className={`truncate ${body.meta.visible ? '' : 'text-muted'}`}>{body.meta.name}</span>
-      {!body.meta.visible && <Hint>hidden</Hint>}
-      {!exportable(body) && <Hint>Meshes can't go into a STEP file</Hint>}
-    </label>
-  );
-  const all = allBodies.length > 0 && allBodies.every((b) => chosen.has(b.id));
-  const anyComponent = selected.some((b) => b.component !== undefined);
-  const lengthSettings = { ...doc.settings, precision: Math.max(doc.settings.precision, 3) };
-
   return (
     <form
       className="flex flex-col gap-4"
@@ -493,69 +377,24 @@ export function ExportModelForm({
         else void save();
       }}
     >
-      <fieldset className="flex flex-col gap-1">
-        <legend className="mb-1 flex w-full items-center justify-between font-semibold">
-          Bodies
-        </legend>
-        <div className="flex max-h-40 flex-col overflow-y-auto" data-export-bodies>
-          {rows.groups.map((group) => (
-            <div
-              key={group.component.id}
-              className="flex flex-col"
-              data-export-component={group.component.name}
-            >
-              <label className="flex h-7 shrink-0 items-center gap-2 rounded-input px-1 font-medium">
-                <input
-                  type="checkbox"
-                  aria-label={`${group.component.name} (component)`}
-                  aria-checked={groupState(group.bodies)}
-                  checked={groupState(group.bodies) === 'true'}
-                  ref={(el) => {
-                    if (el) el.indeterminate = groupState(group.bodies) === 'mixed';
-                  }}
-                  onChange={() =>
-                    toggleMany(
-                      group.bodies.map((b) => b.id),
-                      groupState(group.bodies) !== 'true',
-                    )
-                  }
-                  className="accent-(--x-accent)"
-                />
-                <span className="truncate">{group.component.name}</span>
-              </label>
-              <div className="flex flex-col pl-5">{group.bodies.map(bodyRow)}</div>
-            </div>
-          ))}
-          {rows.loose.map(bodyRow)}
-        </div>
-        {allBodies.length > 1 && (
-          <label className="flex h-7 cursor-pointer items-center gap-2 px-1 text-sm text-muted">
-            <input
-              type="checkbox"
-              checked={all}
-              onChange={() => setChosen(all ? new Set() : new Set(allBodies.map((b) => b.id)))}
-              className="accent-(--x-accent)"
-            />
-            All bodies
-          </label>
-        )}
-        {anyComponent && !inScad && (
-          <label className="flex h-7 cursor-pointer items-center gap-2 px-1 text-sm text-muted">
-            <input
-              type="checkbox"
-              checked={groupComponents}
-              onChange={() => update({ groupComponents: !groupComponents })}
-              className="accent-(--x-accent)"
-            />
-            Keep components together
-          </label>
-        )}
-        {inStep && bodies.some((b) => b.mesh) && (
-          <p className="text-sm text-muted">
-            Mesh bodies go into STL and 3MF, not into a STEP file.
-          </p>
-        )}
-      </fieldset>
+      <BodiesField
+        rows={rows}
+        chosen={chosen}
+        toggle={toggle}
+        toggleMany={toggleMany}
+        exportable={exportable}
+        {...(!inScad && {
+          keepTogether: {
+            checked: groupComponents,
+            onChange: () => update({ groupComponents: !groupComponents }),
+          },
+        })}
+        note={
+          inStep && bodies.some((b) => b.mesh)
+            ? 'Mesh bodies go into STL and 3MF, not into a STEP file.'
+            : undefined
+        }
+      />
 
       <Choice legend="Format">
         <Radio
@@ -594,49 +433,15 @@ export function ExportModelForm({
       )}
 
       {settings.format !== 'step' && (
-        <Choice legend="Resolution">
-          {(Object.keys(RESOLUTION_LABELS) as (keyof typeof RESOLUTION_LABELS)[]).map((r) => (
-            <Radio
-              key={r}
-              name="model-resolution"
-              checked={settings.resolution === r}
-              onChange={() => update({ resolution: r })}
-            >
-              {RESOLUTION_LABELS[r]}{' '}
-              <Hint>
-                {formatQuantity(RESOLUTIONS[r].linearDeflection, LENGTH, lengthSettings)},{' '}
-                {Math.round(RESOLUTIONS[r].angularDeflection / DEGREE)}°
-              </Hint>
-            </Radio>
-          ))}
-          <Radio
-            name="model-resolution"
-            checked={settings.resolution === 'custom'}
-            onChange={() => update({ resolution: 'custom' })}
-          >
-            Custom
-          </Radio>
-          {settings.resolution === 'custom' && (
-            <div className="ml-7 grid grid-cols-[72px_minmax(0,1fr)] items-start gap-2">
-              <span className="pt-1 text-sm text-muted">Deviation</span>
-              <ExpressionInput
-                label="Deviation"
-                value={settings.deviation}
-                evaluate={(expr) => evaluate(expr, 'length')}
-                format={(r) => formatQuantity(r.value, r.dim, lengthSettings)}
-                onCommit={(deviation) => update({ deviation })}
-              />
-              <span className="pt-1 text-sm text-muted">Angle</span>
-              <ExpressionInput
-                label="Angle"
-                value={settings.angle}
-                evaluate={(expr) => evaluate(expr, 'angle')}
-                format={(r) => formatQuantity(r.value, r.dim, doc.settings)}
-                onCommit={(angle) => update({ angle })}
-              />
-            </div>
-          )}
-        </Choice>
+        <ResolutionField
+          doc={doc}
+          evaluate={evaluate}
+          name="model-resolution"
+          resolution={settings.resolution}
+          deviation={settings.deviation}
+          angle={settings.angle}
+          onChange={update}
+        />
       )}
 
       {meshFormat && !ready && !problem && current && tessellation && selected.length > 0 && (
