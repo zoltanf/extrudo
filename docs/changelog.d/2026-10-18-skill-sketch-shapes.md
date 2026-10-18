@@ -1,0 +1,1 @@
+- 2026-10-18 · **MCP skill**: `references/tools.md` and SKILL.md show sketch shapes as the objects they are, with the `shape` discriminator (`{ "shape": "polyline", … }`).

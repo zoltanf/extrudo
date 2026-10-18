@@ -43,6 +43,10 @@ input is refused with the input's path, and nothing changes.
   plane's origin at `x`, `y`; `offset` lifts them off the plane).
 - From a sketch: `add_sketch` draws on `'xy'`, `'xz'`, `'yz'` or a flat face
   and answers the sketch's `profiles`; pass them to `extrude`, `revolve`, ….
+  Each shape names its kind in `shape`:
+  `{ "shape": "circle", "center": [0, 0], "diameter": "20 mm" }`,
+  `{ "shape": "polyline", "points": [[0, 0], [30, 0], [15, 20]], "closed": true }`
+  (`references/tools.md` lists them all).
 - Changing bodies: `shell`, `fillet`, `chamfer`, `hole`, `draft`, `combine`,
   `mirror`, the patterns, `move`.
 - `operation` on a solid: `'new-body'` (default), `'join'`, `'cut'`,

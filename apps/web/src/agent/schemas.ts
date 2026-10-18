@@ -133,7 +133,10 @@ export const TOOL_SCHEMAS = {
       plane: z
         .union([z.enum(['xy', 'xz', 'yz']), geomRef])
         .describe("'xy', 'xz' or 'yz' (the origin planes), or a planar face reference."),
-      shapes: z.array(shape).min(1).describe('What to draw.'),
+      shapes: z
+        .array(shape)
+        .min(1)
+        .describe('What to draw: objects whose `shape` names the kind (rectangle, circle, …).'),
       name: z.string().optional().describe('A name for the sketch.'),
     }),
   },

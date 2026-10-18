@@ -54,9 +54,10 @@ function shapes(schema: JsonSchema): string[] {
       .filter(([field]) => field !== 'shape')
       .map(
         ([field, inner]) =>
-          `\`${field}${shape.required?.includes(field) ? '' : '?'}\` ${typeOf(inner)}`,
+          `"${field}"${shape.required?.includes(field) ? '' : '?'}: ${typeOf(inner)}`,
       );
-    return `- \`${String(name)}\`: ${fields.join(', ')}. ${shape.description ?? ''}`.trimEnd();
+    const object = `{ "shape": ${JSON.stringify(name)}, ${fields.join(', ')} }`;
+    return `- \`${object}\`${shape.description ? ` — ${shape.description}` : ''}`;
   });
 }
 
@@ -98,7 +99,12 @@ export function toolsPage(): string {
     lines.push('');
     const shapeSchema = schema.properties?.shapes?.items;
     if (shapeSchema && !Array.isArray(shapeSchema)) {
-      lines.push('Each shape is one of:', '', ...shapes(shapeSchema), '');
+      lines.push(
+        "Each shape is an object whose `shape` names its kind, with that kind's fields:",
+        '',
+        ...shapes(shapeSchema),
+        '',
+      );
     }
   }
   return `${lines.join('\n').trimEnd()}\n`;
