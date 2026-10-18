@@ -11,7 +11,7 @@ Give circles and arcs the same center.
 
 | Where | Shortcut |
 |---|---|
-| Sketch › Constraints | None |
+| Sketch › Constraints | K O |
 
 <video src="demo:concentric" muted loop autoplay playsinline aria-label="Concentric demo"></video>
 

@@ -3,10 +3,13 @@
  * declared once, in `keymap.ts`; this module matches key events against
  * them. Context keys (Esc, Enter) are registered here directly.
  */
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export interface Shortcut {
-  /** `Mod` is Ctrl, or ⌘ on macOS: "Mod+Z", "Mod+Shift+Z", "F6", "E". */
+  /**
+   * `Mod` is Ctrl, or ⌘ on macOS: "Mod+Z", "Mod+Shift+Z", "F6", "E". A chord is two
+   * combos separated by one space: "K H" (ADR-0023, amendment 2026-10-18).
+   */
   keys: string;
   run(): void;
   /** Also fire while typing in a text field. Off by default, so fields keep their own undo. */
@@ -30,8 +33,43 @@ export function eventKeys(event: KeyboardEvent, mac = isMac()): string {
 
 /** How a shortcut reads in a tooltip on this platform: "Ctrl+Z" or "⌘Z". */
 export function shortcutLabel(keys: string, mac = isMac()): string {
-  return mac ? keys.replace('Mod+', '⌘').replace('Shift+', '⇧') : keys.replace('Mod', 'Ctrl');
+  const one = (combo: string) =>
+    mac ? combo.replace('Mod+', '⌘').replace('Shift+', '⇧') : combo.replace('Mod', 'Ctrl');
+  return keys.split(' ').map(one).join(' ');
 }
+
+/** What a key does to a chord in progress (`pending` is the first combo, once typed). */
+export type ChordResult =
+  | { kind: 'run'; shortcut: Shortcut }
+  | { kind: 'pending'; prefix: string }
+  | { kind: 'cancel' }
+  | { kind: 'none' };
+
+/** Whether any offered chord starts with this combo. */
+export function hasChord(shortcuts: readonly Shortcut[], prefix: string): boolean {
+  return shortcuts.some((s) => s.keys.startsWith(`${prefix} `));
+}
+
+/**
+ * Matches one key combo against the shortcuts, with the chord in progress, if any.
+ * Without one: a single-combo shortcut runs, else the first combo of a chord is `pending`.
+ * With one: the second combo runs the chord; anything else cancels it (Escape too).
+ */
+export function matchChord(
+  pending: string | undefined,
+  keys: string,
+  shortcuts: readonly Shortcut[],
+): ChordResult {
+  if (pending !== undefined) {
+    const shortcut = shortcuts.find((s) => s.keys === `${pending} ${keys}`);
+    return shortcut ? { kind: 'run', shortcut } : { kind: 'cancel' };
+  }
+  const shortcut = shortcuts.find((s) => s.keys === keys);
+  if (shortcut) return { kind: 'run', shortcut };
+  return hasChord(shortcuts, keys) ? { kind: 'pending', prefix: keys } : { kind: 'none' };
+}
+
+const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta']);
 
 /** A text field: shortcuts leave its keys alone, and the browser's menu (copy, paste) stays. */
 export function isEditable(target: EventTarget | null): boolean {
@@ -66,18 +104,57 @@ export function ownsKeys(target: EventTarget | null): boolean {
   return false;
 }
 
-/** Registers shortcuts on the window while the component is mounted. */
-export function useShortcuts(shortcuts: readonly Shortcut[]): void {
+/**
+ * Registers shortcuts on the window while the component is mounted. Returns the first
+ * combo of a chord in progress ("K"), for a hint to show, or `undefined`.
+ */
+export function useShortcuts(shortcuts: readonly Shortcut[]): string | undefined {
+  const [pending, setPending] = useState<string | undefined>(undefined);
+  const pendingRef = useRef<string | undefined>(undefined);
   useEffect(() => {
+    const set = (prefix: string | undefined) => {
+      pendingRef.current = prefix;
+      setPending(prefix);
+    };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing) return;
+      if (pendingRef.current !== undefined && MODIFIER_KEYS.has(event.key)) return;
       const keys = eventKeys(event);
-      const match = shortcuts.find((s) => s.keys === keys);
-      if (!match || (!match.inFields && ownsKeys(event.target))) return;
+      const result = matchChord(pendingRef.current, keys, shortcuts);
+      if (result.kind === 'none') return;
+      if (result.kind === 'cancel') {
+        set(undefined);
+        // A key that goes to a field after the chord began is the field's.
+        if (ownsKeys(event.target)) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
+      if (result.kind === 'pending') {
+        if (ownsKeys(event.target)) return;
+        event.preventDefault();
+        set(result.prefix);
+        return;
+      }
+      const { shortcut } = result;
+      if (!shortcut.inFields && ownsKeys(event.target)) return;
       event.preventDefault();
-      match.run();
+      set(undefined);
+      shortcut.run();
     };
+    const end = () => {
+      if (pendingRef.current !== undefined) set(undefined);
+    };
+    // The chord ends when the shortcuts no longer offer it (leaving the sketch).
+    if (pendingRef.current !== undefined && !hasChord(shortcuts, pendingRef.current)) end();
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener('blur', end);
+    window.addEventListener('pointerdown', end, true);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('blur', end);
+      window.removeEventListener('pointerdown', end, true);
+    };
   }, [shortcuts]);
+  return pending;
 }

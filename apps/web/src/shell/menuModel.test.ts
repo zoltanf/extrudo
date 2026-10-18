@@ -37,6 +37,16 @@ describe('toAccelerator (P6-01 slice 2)', () => {
     }
   });
 
+  it('leaves chords out: a native accelerator is one combo', () => {
+    const items = menuModel(
+      [command('horizontal', 'Horizontal', 'Sketch › Constraints', ['K H'])],
+      'sketch',
+    ).flatMap((m) => m.items);
+    const item = items.find((i) => 'id' in i && i.id === 'horizontal');
+    expect(item).toBeDefined();
+    expect(item).not.toHaveProperty('accelerator');
+  });
+
   it('rejects malformed accelerators', () => {
     expect(isElectronAccelerator('Mod+K')).toBe(false);
     expect(isElectronAccelerator('CmdOrCtrl+')).toBe(false);

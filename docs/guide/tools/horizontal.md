@@ -11,7 +11,7 @@ Make a line horizontal, or line up two points.
 
 | Where | Shortcut |
 |---|---|
-| Sketch › Constraints | None |
+| Sketch › Constraints | K H |
 
 <video src="demo:horizontal" muted loop autoplay playsinline aria-label="Horizontal demo"></video>
 

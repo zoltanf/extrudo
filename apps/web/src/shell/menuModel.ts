@@ -92,6 +92,9 @@ export function toAccelerator(keys: string): string {
   return [...modifiers, key].join('+');
 }
 
+/** A native accelerator is one combo; a chord ("K H", ADR-0023) has none. */
+const isSingle = (keys: string) => !keys.includes(' ');
+
 const MODIFIERS = new Set(['CmdOrCtrl', 'Cmd', 'Ctrl', 'Alt', 'AltGr', 'Shift', 'Super']);
 const NAMED_KEYS = new Set([
   'Delete',
@@ -125,11 +128,11 @@ export function isElectronAccelerator(value: string): boolean {
 
 /** Every accelerator the real keymap produces, for the test that walks it. */
 export function keymapAccelerators(): string[] {
-  return Object.values(DEFAULT_KEYMAP).flat().map(toAccelerator);
+  return Object.values(DEFAULT_KEYMAP).flat().filter(isSingle).map(toAccelerator);
 }
 
 const toItem = (command: AppCommand): MenuItemModel => {
-  const accelerator = command.keys[0];
+  const accelerator = command.keys.find(isSingle);
   return {
     id: command.id,
     label: command.label,

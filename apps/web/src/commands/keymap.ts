@@ -41,6 +41,21 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   // Intersect (P4-12): Offset Plane's key, which is only offered on the model.
   intersect: ['Shift+P'],
   construction: ['X'],
+  // Constraints: mainstream CAD has no usual keys for them, so K is the prefix ("K H" is
+  // Horizontal; ADR-0023, amendment 2026-10-18). K is no other command's key.
+  coincident: ['K C'],
+  collinear: ['K L'],
+  concentric: ['K O'],
+  midpoint: ['K M'],
+  fix: ['K F'],
+  parallel: ['K P'],
+  perpendicular: ['K N'],
+  horizontal: ['K H'],
+  vertical: ['K V'],
+  tangent: ['K T'],
+  smooth: ['K G'],
+  equal: ['K E'],
+  symmetric: ['K S'],
   // Solid (these tools arrive in Phases 2 and 3)
   extrude: ['E'],
   fillet: ['F'],

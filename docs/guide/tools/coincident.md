@@ -11,7 +11,7 @@ Join two points, or put a point on a curve.
 
 | Where | Shortcut |
 |---|---|
-| Sketch › Constraints | None |
+| Sketch › Constraints | K C |
 
 <video src="demo:coincident" muted loop autoplay playsinline aria-label="Coincident demo"></video>
 

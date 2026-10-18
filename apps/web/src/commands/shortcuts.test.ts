@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { eventKeys, ownsKeys, shortcutLabel } from './shortcuts';
+import { eventKeys, matchChord, ownsKeys, type Shortcut, shortcutLabel } from './shortcuts';
 
 const key = (k: string, mods: Partial<KeyboardEvent> = {}) =>
   ({
@@ -35,6 +35,12 @@ describe('shortcutLabel', () => {
     expect(shortcutLabel('Mod+Shift+Z', true)).toBe('⌘⇧Z');
     expect(shortcutLabel('E', true)).toBe('E');
   });
+
+  it('reads each part of a chord', () => {
+    expect(shortcutLabel('K H', false)).toBe('K H');
+    expect(shortcutLabel('Mod+K Mod+S', false)).toBe('Ctrl+K Ctrl+S');
+    expect(shortcutLabel('Mod+K Mod+S', true)).toBe('⌘K ⌘S');
+  });
 });
 
 describe('ownsKeys', () => {
@@ -67,5 +73,33 @@ describe('ownsKeys', () => {
     expect(ownsKeys({} as EventTarget)).toBe(false);
     expect(ownsKeys(element('DIV'))).toBe(false);
     expect(ownsKeys(element('BUTTON'))).toBe(false);
+  });
+});
+
+describe('matchChord', () => {
+  const h = { keys: 'K H', run: () => {} };
+  const v = { keys: 'K V', run: () => {} };
+  const l = { keys: 'L', run: () => {} };
+  const all: Shortcut[] = [h, v, l];
+
+  it('runs a single key as before', () => {
+    expect(matchChord(undefined, 'L', all)).toEqual({ kind: 'run', shortcut: l });
+  });
+  it('takes the first key of a chord as pending', () => {
+    expect(matchChord(undefined, 'K', all)).toEqual({ kind: 'pending', prefix: 'K' });
+  });
+  it('runs the chord on its second key', () => {
+    expect(matchChord('K', 'H', all)).toEqual({ kind: 'run', shortcut: h });
+  });
+  it('cancels on Escape and on a key that is no chord', () => {
+    expect(matchChord('K', 'Escape', all)).toEqual({ kind: 'cancel' });
+    expect(matchChord('K', 'L', all)).toEqual({ kind: 'cancel' });
+    expect(matchChord('K', 'Shift+H', all)).toEqual({ kind: 'cancel' });
+  });
+  it('has no pending state when no chord is offered', () => {
+    expect(matchChord(undefined, 'K', [l])).toEqual({ kind: 'none' });
+  });
+  it('leaves other keys alone', () => {
+    expect(matchChord(undefined, 'Z', all)).toEqual({ kind: 'none' });
   });
 });

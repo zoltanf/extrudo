@@ -11,7 +11,7 @@ Put two lines on one straight line.
 
 | Where | Shortcut |
 |---|---|
-| Sketch › Constraints | None |
+| Sketch › Constraints | K L |
 
 <video src="demo:collinear" muted loop autoplay playsinline aria-label="Collinear demo"></video>
 

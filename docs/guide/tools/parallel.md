@@ -11,7 +11,7 @@ Make lines parallel.
 
 | Where | Shortcut |
 |---|---|
-| Sketch › Constraints | None |
+| Sketch › Constraints | K P |
 
 <video src="demo:parallel" muted loop autoplay playsinline aria-label="Parallel demo"></video>
 

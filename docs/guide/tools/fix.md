@@ -11,7 +11,7 @@ Lock something in place, or free it again.
 
 | Where | Shortcut |
 |---|---|
-| Sketch › Constraints | None |
+| Sketch › Constraints | K F |
 
 <video src="demo:fix" muted loop autoplay playsinline aria-label="Fix/Unfix demo"></video>
 

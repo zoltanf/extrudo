@@ -107,6 +107,24 @@ describe('buildCommands', () => {
     expect(keys.length).toBeGreaterThan(10);
   });
 
+  it.each(['model', 'sketch'] as const)(
+    'gives no chord a prefix that is a single key offered in %s mode',
+    (mode) => {
+      const keys = commandShortcuts(buildCommands(context(mode))).map((s) => s.keys);
+      const prefixes = new Set(keys.filter((k) => k.includes(' ')).map((k) => k.split(' ')[0]));
+      expect(keys.filter((k) => prefixes.has(k))).toEqual([]);
+    },
+  );
+
+  it('offers the constraint chords in a sketch only', () => {
+    const chords = (mode: 'model' | 'sketch') =>
+      commandShortcuts(buildCommands(context(mode)))
+        .map((s) => s.keys)
+        .filter((k) => k.startsWith('K '));
+    expect(chords('sketch')).toHaveLength(13);
+    expect(chords('model')).toEqual([]);
+  });
+
   it('offers every command in the keymap in some mode', () => {
     const ids = new Set([
       ...buildCommands(context('model')).map((c) => c.id),

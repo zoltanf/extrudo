@@ -11,7 +11,7 @@ Make two lines meet at a right angle.
 
 | Where | Shortcut |
 |---|---|
-| Sketch › Constraints | None |
+| Sketch › Constraints | K N |
 
 <video src="demo:perpendicular" muted loop autoplay playsinline aria-label="Perpendicular demo"></video>
 

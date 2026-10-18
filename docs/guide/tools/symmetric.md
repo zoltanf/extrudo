@@ -11,7 +11,7 @@ Mirror two things about a line.
 
 | Where | Shortcut |
 |---|---|
-| Sketch › Constraints | None |
+| Sketch › Constraints | K S |
 
 <video src="demo:symmetric" muted loop autoplay playsinline aria-label="Symmetric demo"></video>
 

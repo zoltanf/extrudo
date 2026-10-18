@@ -11,7 +11,7 @@ Join curves with no jump in curvature (G2).
 
 | Where | Shortcut |
 |---|---|
-| Sketch › Constraints | None |
+| Sketch › Constraints | K G |
 
 <video src="demo:smooth" muted loop autoplay playsinline aria-label="Smooth demo"></video>
 

@@ -11,7 +11,7 @@ Put a point at the middle of a line or an arc.
 
 | Where | Shortcut |
 |---|---|
-| Sketch › Constraints | None |
+| Sketch › Constraints | K M |
 
 <video src="demo:midpoint" muted loop autoplay playsinline aria-label="Midpoint demo"></video>
 

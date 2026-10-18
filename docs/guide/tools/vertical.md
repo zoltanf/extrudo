@@ -11,7 +11,7 @@ Make a line vertical, or line up two points.
 
 | Where | Shortcut |
 |---|---|
-| Sketch › Constraints | None |
+| Sketch › Constraints | K V |
 
 <video src="demo:vertical" muted loop autoplay playsinline aria-label="Vertical demo"></video>
 
