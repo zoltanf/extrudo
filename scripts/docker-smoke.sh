@@ -12,6 +12,9 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 dist="$root/apps/web/dist"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
+# A container that has just started needs a moment before it accepts connections.
+for _ in $(seq 30); do curl -sS -o /dev/null "$base/" 2>/dev/null && break; sleep 1; done
+
 # Fetches a path, leaving the status in $status and the lower-cased headers in $headers.
 fetch() {
   local path="$1"; shift
