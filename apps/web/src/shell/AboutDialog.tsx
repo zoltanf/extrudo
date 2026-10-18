@@ -150,7 +150,9 @@ export function AboutDialog({
               <span className="sr-only"> — about</span>
             </Radix.Title>
             <p className="text-base text-muted">
-              Parametric CAD for 3D printing, right in your browser.
+              {desktop
+                ? 'Parametric CAD for 3D printing, right on your desktop.'
+                : 'Parametric CAD for 3D printing, right in your browser.'}
             </p>
             <div className="mt-1 flex items-center gap-2">
               <span className="rounded-full border border-line bg-panel px-2.5 py-0.5 font-mono text-sm">
