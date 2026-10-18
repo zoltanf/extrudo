@@ -24,8 +24,23 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   docker` (after `pnpm build`). Arch and Ubuntu differ by about 12 pixels per
   shot; the tolerance is 0.1 %.
 
+- **CI shards by duration.** `E2E_SHARD=<current>/<total>` (set by `ci.yml`,
+  three shards) makes `playwright.config.ts` give each project only that
+  shard's spec files: `scripts/e2e-shards.ts` deals the files longest first to
+  the least loaded shard, using the per-file seconds in `e2e/timings.json`
+  (a file not listed there counts as the median). Playwright's own `--shard`
+  splits by test count in file order, which put the benchmarks together
+  (22.7 min against 8.5, 2026-10-18). `node scripts/e2e-shards.ts plan` shows
+  the split. When a shard runs much longer than the others, or a heavy spec is
+  new, regenerate the timings from a CI run's `playwright-results-<shard>`
+  artifacts: `node scripts/e2e-timings.mjs <run-id>` and commit the JSON.
+  Locally, without `E2E_SHARD`, nothing changes; `E2E_SHARD=1/3 … test --list`
+  shows one shard. The `webkit` project's spec is one of the files, and only
+  the shard that gets it installs WebKit (`node scripts/e2e-shards.ts browsers`).
+
 - **WebKit** (the `webkit` project, `e2e/webkit-smoke.spec.ts` only; CI
-  installs it with `playwright install --with-deps chromium webkit`): on the
+  installs it with `playwright install --with-deps chromium webkit` in the
+  shard that has the spec): on the
   Arch workstation `pnpm exec playwright install webkit` downloads the Ubuntu
   build, which cannot start there (`libicu74`, `libxml2.so.2`, `libflite1`
   are missing); run it in the Playwright image as for the baselines, with
