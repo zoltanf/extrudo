@@ -1291,6 +1291,12 @@ end to end, faster than in established desktop CAD.
   top bar. Acceptance: `pnpm check`, the e2e specs that open either menu
   updated and green on CI, the docs named in ADR-0090 updated, the mockup
   in `docs/plans/app-menu-prototypes.html`.
+- [x] **P6-11 Docker image** (owner, 2026-10-18; ADR-0091). Done 2026-10-18
+  (`Dockerfile`: nginx and `apps/web/dist`, no `RUN` step; `docker/nginx/`
+  generated from `_headers` by `pnpm docker:headers` with a drift test;
+  `scripts/docker-smoke.sh`; a CI job builds and smoke-tests the image, the
+  deploy workflow publishes `edge`, `X.Y.Z`, `X.Y` and `latest` to
+  `ghcr.io/zoltanf/extrudo` for amd64 and arm64; docs in `docs/deploy.md`).
 
 ## Phase 7 — Later (lowest priority, after everything else)
 

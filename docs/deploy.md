@@ -60,6 +60,48 @@ the browser gives it no secure context: there is no service worker (no offline u
 no install as a PWA) and designs are kept in IndexedDB instead of OPFS
 (`e2e/insecure-context.spec.ts`).
 
+## Self-hosting with Docker
+
+The image (ADR-0091) is nginx with the built app, on port 80 inside the container:
+
+```sh
+docker run -d -p 8080:80 ghcr.io/zoltanf/extrudo
+```
+
+Then open `http://localhost:8080` (or `http://<host>:8080`). `docker/compose.yml`
+is the same as a Compose file: `docker compose -f docker/compose.yml up -d`.
+
+- **Tags:** `latest` (the last release), `X.Y.Z` and `X.Y` (a release), `edge`
+  (the latest build of `main`; it can break). Both `linux/amd64` and
+  `linux/arm64` (Raspberry Pi, ARM NAS boxes, Apple Silicon).
+- **What it is:** `nginx:1.30-alpine` plus `apps/web/dist`, the same build as
+  app.extrudo.org, and nothing else (not the landing page). The `Dockerfile` has
+  no `RUN` step. The response headers are those of `apps/web/public/_headers`,
+  turned into nginx configuration by `pnpm docker:headers` (`docker/nginx/`,
+  committed; a unit test fails when it is out of date). Change `_headers`, run
+  that, commit both.
+- **CI and publishing:** the CI job "Docker image" builds the image from a fresh
+  app build and runs `scripts/docker-smoke.sh` against it (status, headers,
+  content types, the unknown-path fallback, gzip); it pushes nothing. The deploy
+  workflow's job "Docker image" publishes to `ghcr.io/<owner>/extrudo` with the
+  built-in token: `edge` after a green CI run on main, `X.Y.Z`, `X.Y` and
+  `latest` for a release. It does not need the Cloudflare secrets.
+- **Build it yourself:** `pnpm build && docker build -t extrudo .`, then
+  `docker run -d -p 8080:80 extrudo` and `scripts/docker-smoke.sh` (needs `curl`).
+
+Limits (see "Serving the app yourself" above):
+
+- Over **plain HTTP on a LAN address** there is no secure context: no service
+  worker (no offline use, no install as an app) and designs go to IndexedDB
+  instead of OPFS. `http://localhost:8080` counts as secure. Behind a TLS reverse
+  proxy (Caddy, Traefik, Nginx Proxy Manager) everything works as at
+  app.extrudo.org; the proxy must pass the response headers through (they all do
+  by default).
+- Designs live in the browser's storage **per address**, as with the hosted app;
+  to move between addresses, export `.extrudo` files.
+- No telemetry and no outbound requests: the CSP allows the image's own origin
+  only, so it works without internet once pulled.
+
 ## One-time setup (owner)
 
 1. **Create a Cloudflare account** (free) if there is none.
@@ -83,6 +125,11 @@ no install as a PWA) and designs are kept in IndexedDB instead of OPFS
 7. **Check it**: open the site (`extrudo.pages.dev` until the domain is attached); in the browser's developer tools the Console
    should be free of red lines, `crossOriginIsolated` should be `true`, and the
    Network tab should show `sw.js` with `cache-control: no-cache`.
+8. **Docker image package** (ADR-0091 §1): after the first publish, open the
+   owner's Packages page > `extrudo` > Package settings and check that the
+   package is **public** and linked to the repository (a workflow of a public
+   repository should make it so; verify once). `docker pull ghcr.io/zoltanf/extrudo`
+   must work without logging in.
 
 ### Three addresses: the landing page, app. and edge. (owner, ADR-0057)
 

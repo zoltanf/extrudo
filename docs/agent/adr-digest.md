@@ -2576,3 +2576,17 @@ has no Search…, Close design or Help for \<tool\>. **§2:** Settings gained th
 editor is replaced by a line, there are no commands); `PluginsDialog` and the
 `CustomizeMarkingMenu` dialog are gone, and General (id `general`, labelled
 **Appearance**, summary "Theme.") keeps the theme alone.
+
+ADR-0091 (P6-11, the owner, 2026-10-18) made **a Docker image of the app**, published to
+`ghcr.io/<owner>/extrudo`. Files: `Dockerfile` (nginx alpine, `COPY` only, **no `RUN`**),
+`.dockerignore`, `docker/nginx/` (`default.conf` by hand; `maps.conf`, `headers.conf`
+generated), `docker/compose.yml`, `scripts/nginx-headers.mjs` (+ its test, `pnpm docker:headers`),
+`scripts/docker-smoke.sh`, the `docker` jobs in `ci.yml` and `deploy.yml`. **Rules:**
+`apps/web/public/_headers` is the only source of the response headers: after changing it run
+`pnpm docker:headers` and commit `docker/nginx/` (the test fails otherwise). **No `add_header`
+inside a `location`** (it replaces the server-level ones, dropping the security headers): path
+rules are `map $uri` entries sent by one `add_header … always`. The Dockerfile has no `RUN`, so
+the second architecture needs no emulation; the app is built outside (`pnpm build`), the image
+is **the app only**, not the landing page. CI's job builds and smoke-tests, pushes nothing;
+deploy's job publishes (`edge`; `X.Y.Z`, `X.Y`, `latest` from `git describe`) and is **not gated
+on the Cloudflare secrets**. Pin nginx to a minor, bump by hand.

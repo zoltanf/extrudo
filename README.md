@@ -59,6 +59,9 @@ desktop from the browser's menu if you want it as an app. The newest features
 arrive first at **<https://edge.extrudo.org>**, the latest build of `main` (it can
 break). <https://extrudo.org> has an introduction and a short video.
 
+To run it yourself, `docker run -d -p 8080:80 ghcr.io/zoltanf/extrudo` serves the app
+on <http://localhost:8080> ([`docs/deploy.md`](docs/deploy.md), "Self-hosting with Docker").
+
 ## What it does
 
 **Sketching.** Lines, rectangles, circles, arcs, polygons, slots, ellipses and

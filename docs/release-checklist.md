@@ -38,7 +38,8 @@ published. Versions come from `git describe` of the last `v*` tag: stable shows
    CHANGELOG's section for the version. Say the installers are unsigned
    (signing is deferred until the app has users; owner, 2026-10-07): macOS
    asks before the first open (`docs/desktop.md` has the steps), Windows shows
-   SmartScreen ("More info" > "Run anyway").
+   SmartScreen ("More info" > "Run anyway"). Add the Docker image:
+   `docker pull ghcr.io/zoltanf/extrudo:X.Y.Z` (published by the deploy workflow).
 7. **Publish = update.** Publishing ships the version to every installed app:
    AppImage and Windows download it within six hours (or at once from the Menu
    strip's Check now); deb, the portable Windows exe and macOS get "Extrudo <version> is available."
@@ -52,6 +53,8 @@ published. Versions come from `git describe` of the last `v*` tag: stable shows
      (`Casks/extrudo.rb`). If it is missing (the `homebrew` job failed),
      `gh workflow run desktop.yml --ref main -f cask_tag=vX.Y.Z` runs only that
      job, with the zip from the tag's release;
+   - `docker run --rm -p 8080:80 ghcr.io/zoltanf/extrudo:X.Y.Z` serves the app and
+     its About dialog shows X.Y.Z;
    - optionally, on a Mac: `brew upgrade` (or
      `brew install --cask zoltanf/extrudo/extrudo`), open the app, sketch a box.
 

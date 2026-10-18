@@ -1,0 +1,1 @@
+- 2026-10-18 · **Docker image**: `docker run -p 8080:80 ghcr.io/zoltanf/extrudo` serves the app on your own machine (`latest`, `X.Y.Z`, `edge`; amd64 and arm64).
