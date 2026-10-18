@@ -85,7 +85,9 @@ handles, and patterns that skip single instances.
 **Import.** STEP files as solid bodies; STL, 3MF and OBJ meshes as
 bodies you can still cut, join, move and split; pictures on a plane to trace
 over. OpenSCAD files (`.scad`), compiled in the browser,
-whose customizer variables can follow your design's parameters.
+whose customizer variables can follow your design's parameters. `.f3d` designs open
+as editable designs: parameters, sketches, extrudes, holes, fillets, patterns and
+more, with the file's own body where a feature can't be rebuilt.
 
 **Construction geometry.** Offset, angled, mid and three-point planes, tangent
 planes, axes through points, cylinders or edges, and points.
@@ -97,7 +99,7 @@ pointed at is gone. Faces and edges keep their names through edits (topological
 naming), so changing an early feature rarely breaks a later one. A
 customizer with sliders and named configurations, and timeline groups.
 
-**For printing.** Export STL, 3MF (with colours) and STEP; checked for
+**For printing.** Export STL, 3MF (with colours), STEP and OpenSCAD code; checked for
 watertightness. Place on Bed, overhang analysis, weight and filament length
 for your material, and section analysis. Measure distances, angles, areas and
 volumes exactly. One print tolerance that hole presets and threads
@@ -121,8 +123,9 @@ CodeMirror editor, parameter completion, inline errors and console output.
 Programs run in a bounded QuickJS sandbox inside the geometry worker; the bodies
 they make are ordinary bodies you can fillet, measure and export.
 See the [script guide](docs/api/scripts.md). **Record Macro** turns what you
-make by hand into the same kind of script, and **Export design as script** writes a
-whole design as code.
+make by hand into the same kind of script, and **Export Design as Script** writes a
+whole design as TypeScript or OpenSCAD. On the desktop, agents such as Claude Code
+can work on the open design over MCP (`docs/desktop.md`).
 
 ## Build from source
 
