@@ -41,7 +41,7 @@ it does not know.
 **Home › Export › Export as Script** opens a dialog where you pick the language. **TypeScript**
 rebuilds the whole design, which is useful if you want to turn a design into a program (see the
 [API reference](../api/README.md)); **OpenSCAD** writes a `.scad` file (see
-[OpenSCAD export](./openscad.md)). The dialog previews the first lines, and Copy puts the whole
+[OpenSCAD export](./openscad.md)). The dialog previews the code, and Copy puts the whole
 file on the clipboard.
 
 ## Bringing things in

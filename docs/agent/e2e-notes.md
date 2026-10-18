@@ -1108,11 +1108,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `twice = d1 * 2`. Export Design as Script is Home › "Export as Script" (`fileAction(page,
   'Export Design as Script…')`, ADR-0079), which opens the **Export as script** dialog
   (`getByRole('dialog').filter({ hasText: 'Export as script' })`): radios `TypeScript` /
-  `OpenSCAD`, the preview `[data-script-preview]` (first 10 lines), `[data-export-summary]`,
+  `OpenSCAD`, the preview `[data-script-preview]` (the file, up to 400 lines, in a scrolling box), `[data-export-summary]`,
   buttons Copy and `Export TypeScript` / `Export OpenSCAD`. "Downloads the design with its
   parameters" checks the preview, Copy against the downloaded file, then Export; "offers
-  OpenSCAD" picks OpenSCAD, waits for the header (`as OpenSCAD`, `… N more lines`; the preview is only
-  10 lines, so `cube(` is checked in the download; kernel write, up to 20 s) and the toast. 5 tests.
+  OpenSCAD" picks OpenSCAD, waits for `cube(` in the preview (kernel write, up to 20 s), then checks the `.scad` download and the toast. 5 tests.
 
 ### `e2e/marking-menu.spec.ts`
 

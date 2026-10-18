@@ -252,10 +252,8 @@ test('Export Design as Script offers OpenSCAD', async ({ page }) => {
   await fileAction(page, 'Export Design as Script…');
   const panel = scriptDialog(page);
   await panel.getByRole('radio', { name: /^OpenSCAD/ }).check();
-  // The preview is the file's first 10 lines (its header); the code follows in the download.
   const preview = panel.locator('[data-script-preview]');
-  await expect(preview).toContainText('as OpenSCAD', { timeout: 20_000 });
-  await expect(preview).toContainText(/… \d+ more lines/);
+  await expect(preview).toContainText('cube(', { timeout: 20_000 });
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     panel.getByRole('button', { name: 'Export OpenSCAD' }).click(),

@@ -64,7 +64,7 @@ const LANGUAGES: Record<Language, { label: string; ext: string; text: string }> 
     text: 'Editable OpenSCAD code with a Customizer. Fillets, shells and the like come out as meshes.',
   },
 };
-const PREVIEW_LINES = 10;
+const PREVIEW_MAX_LINES = 400;
 
 /** The file Export writes, as the preview shows it. */
 interface ScriptFile {
@@ -78,7 +78,7 @@ interface ScriptFile {
 /**
  * Export Design as Script… (ADR-0088 §9, ADR-0073): the design as code you can run or edit,
  * in TypeScript (the whole design through the document API) or OpenSCAD (the P6-09 export of
- * the chosen bodies). The preview shows the first lines of the exact file Export writes, and
+ * the chosen bodies). The preview shows (up to 400 lines of) the exact file Export writes, and
  * Copy puts all of it on the clipboard.
  */
 export function ExportScriptDialog(props: ExportScriptDialogProps) {
@@ -200,7 +200,10 @@ export function ExportScriptForm({
     if (!file) return undefined;
     const all = file.text.split('\n');
     if (all[all.length - 1] === '') all.pop();
-    return { shown: all.slice(0, PREVIEW_LINES), more: Math.max(0, all.length - PREVIEW_LINES) };
+    return {
+      shown: all.slice(0, PREVIEW_MAX_LINES),
+      more: Math.max(0, all.length - PREVIEW_MAX_LINES),
+    };
   }, [file]);
 
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -294,22 +297,24 @@ export function ExportScriptForm({
         </>
       )}
 
-      <div className="flex flex-col gap-1">
-        <span className="font-semibold">Preview</span>
-        {lines ? (
-          <pre
-            data-script-preview
-            className="overflow-x-hidden whitespace-pre rounded-input border border-line p-2 font-mono text-xs"
-          >
-            {lines.shown.join('\n')}
-            {lines.more > 0 && (
-              <span className="block text-muted">{`… ${lines.more} more line${lines.more === 1 ? '' : 's'}`}</span>
-            )}
-          </pre>
-        ) : (
-          <p className="text-sm text-muted">Writing the preview…</p>
-        )}
-      </div>
+      {(lines || (writable && !problem)) && (
+        <div className="flex flex-col gap-1">
+          <span className="font-semibold">Preview</span>
+          {lines ? (
+            <pre
+              data-script-preview
+              className="max-h-60 overflow-auto whitespace-pre rounded-input border border-line p-2 font-mono text-xs"
+            >
+              {lines.shown.join('\n')}
+              {lines.more > 0 && (
+                <span className="block text-muted">{`… ${lines.more} more line${lines.more === 1 ? '' : 's'}`}</span>
+              )}
+            </pre>
+          ) : (
+            <p className="text-sm text-muted">Writing the preview…</p>
+          )}
+        </div>
+      )}
 
       <p className="min-h-5 text-sm" aria-live="polite" data-export-summary={summary.text}>
         <span className={summary.tone === 'error' ? 'text-error' : 'text-muted'}>

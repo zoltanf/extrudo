@@ -528,8 +528,10 @@ unchanged; the two are different doors to the same `scadFile`.
   OpenSCAD only, Bodies (the Export Model list, without "Keep components
   together") and Resolution (same control and validation). The bodies start from
   `initialBodies(bodies, selection, undefined)` on every opening.
-- **Preview and Copy.** The first 10 lines of the exact text Export would write,
-  then `… N more lines`. The text is written 120 ms after a choice changes, and a
+- **Preview and Copy.** The exact text Export would write, up to 400 lines, in
+  a scrolling box (`max-h-60`, both axes), then `… N more lines` only when the file is
+  longer. With OpenSCAD unwritable (no kernel, no body chosen, model not current, bad
+  custom resolution) there is no box: the summary says why. The text is written 120 ms after a choice changes, and a
   result a newer choice or closing has superseded is dropped (Export Model's
   meshing pattern). Export downloads that same text, never a second write; Copy
   puts all of it on the clipboard. Both are disabled while there is no current
