@@ -1,0 +1,1 @@
+- 2026-10-18 · **Constraint keys**: the 13 sketch constraints have keys, K then a letter (K H Horizontal, K V Vertical, K P Parallel…); a small panel lists the letters after K, and Esc cancels.

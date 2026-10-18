@@ -191,7 +191,16 @@ UI review 3 R3-05: `shell/CommandSearch.tsx` on the design system's
 `FloatingDialog`, opened centred by Ctrl+K (`search`), at the pointer by S
 (`searchAtPointer`) or dropped from the top bar's Search button; fuzzy scorer
 in `commands/search.ts`; pins in the `toolbox.pins` preference, at most ten
-shown, `shell/searchPins.ts`). A new command goes in `buildCommands`. ADR-0024 (P2-01) added
+shown, `shell/searchPins.ts`). A new command goes in `buildCommands`. **Chords** (ADR-0023's
+amendment, 2026-10-18): a keymap entry may be two combos, `'K H'`; the 13 constraints are
+K plus a letter. `commands/shortcuts.ts` `matchChord` (pure) and `useShortcuts` (returns
+the pending prefix): Escape or any other key cancels and is swallowed, bare modifiers
+are ignored, blur / pointerdown / the chord no longer offered also end it, no timeout;
+`shell/ChordHint.tsx` (`data-chord-hint`) lists the second keys from the offered
+commands. A chord runs the tile's command (a pick tool; tiles ignore a preselection).
+Rules: a chord's prefix may not be a single key offered in the same mode
+(`commands.test.ts`); `menuModel` gives chords no native accelerator; labels go through
+`shortcutLabel`, which maps each part. ADR-0024 (P2-01) added
 the recompute engine (`packages/kernel/src/recompute/engine.ts`): a
 feature is a `KernelFeatureDefinition` (core's definition + `evaluate` +
 `bodyAccess`) registered in `kernelFeatures()` (`src/features/`; the

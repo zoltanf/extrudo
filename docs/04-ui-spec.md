@@ -774,6 +774,14 @@ sketch (P4-12; Offset Plane on the model); Shift+S is Section
 Analysis (P3-09); Q is Press/Pull (P3-08) and J the Joint dialog (P6-05,
 ADR-0081 §4).
 
+The sketch constraints have no usual keys in mainstream CAD, so they are **K, then a
+letter** (a chord; ADR-0023's amendment of 2026-10-18): K C Coincident, K L Collinear,
+K O Concentric, K M Midpoint, K F Fix, K P Parallel, K N Perpendicular (normal), K H
+Horizontal, K V Vertical, K T Tangent, K G Smooth (G2), K E Equal, K S Symmetric. After
+K a small panel above the view navigation lists the letters; the next key runs the
+command, Esc or any other key cancels, and a click or leaving the window does too. Like
+the tiles, a chord starts the constraint's pick tool. Outside a sketch K does nothing.
+
 ### 5.0 Posing a joint (P6-05 J2, ADR-0081 §4, §6)
 
 A joint row's **Pose…** (or Ctrl+K "Pose Joint": the hovered row's joint, else the

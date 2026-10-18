@@ -167,3 +167,44 @@ Rejected: keeping two sizes (360 px at the pointer, 560 px centred): the owner a
 one dialog, and one width keeps the pins' grid the same wherever it opens. Placing the
 centred dialog at the vertical middle: its height changes as the list filters, so it would
 jump while typing; it stays at 12 % from the top, horizontally centred.
+
+## Amendment, 2026-10-18: constraint keys, K then a letter (user feedback)
+
+The owner heard from a user that, apart from Dimension, no sketch constraint has a key.
+Mainstream CAD has no usual keys for them either, so the owner chose a prefix key and a
+letter for all 13.
+
+- **A chord is two combos separated by one space** in the keymap and in `Shortcut.keys`:
+  `'K H'`. A single combo is unchanged. `shortcutLabel` maps each part ("K H",
+  `Mod+K Mod+S` reads `⌘K ⌘S` on macOS).
+- **The bindings**: coincident `K C`, collinear `K L`, concentric `K O`, midpoint `K M`,
+  fix `K F`, parallel `K P`, perpendicular `K N` (normal), horizontal `K H`, vertical
+  `K V`, tangent `K T`, smooth `K G` (G2), equal `K E`, symmetric `K S`. K is bound to
+  nothing else; the commands are offered only in a sketch, so elsewhere K does nothing
+  (no pending state).
+- **The handler** (`useShortcuts`, with the pure `matchChord(pending, keys, shortcuts)` →
+  `run | pending | cancel | none`): a single-combo shortcut wins; else a combo that starts
+  an offered chord is **pending** (`preventDefault`). While pending, the second combo runs
+  the chord; Escape cancels and is swallowed (it doesn't also clear the selection); any
+  other key cancels, swallowed, and runs nothing; bare Shift/Control/Alt/Meta are not a key.
+  Pending also ends on window `blur`, a pointerdown, and when the shortcut list no longer
+  offers the chord (leaving the sketch). No timeout. The `inFields`/`ownsKeys` rule applies
+  to the first key; a field that owns the second key keeps it (the chord just ends).
+  `useShortcuts` returns the pending prefix.
+- **The hint**: `shell/ChordHint.tsx`, a non-modal `role="status"` panel (`data-chord-hint`)
+  above the view navigation, bottom centre, with the prefix and a two-column grid of each
+  second key and its command label. It is built from the offered commands whose keys start
+  with the prefix, in keymap order (the tile order); nothing is hard-coded.
+- **A chord does what its tile does.** The constraint tiles start a pick tool and ignore a
+  preselection, so `K H` with a line selected starts the Horizontal tool (the prompt "Pick
+  a line to make horizontal…"), it doesn't constrain the selection at once. (The brief
+  assumed the latter; following the code.)
+- **Native menus**: an Electron accelerator is one combo, so `menuModel` gives a chord
+  command no accelerator (`isSingle`) and `keymapAccelerators` skips chords.
+- **Conflicts**: `commands.test.ts` checks that no chord's prefix is also a single key
+  offered in the same mode, and that the 13 chords are offered in a sketch only.
+
+Rejected: single letters for a few constraints only (Horizontal, Vertical…): the free
+letters run out, and the rest would stay keyless; a prefix covers all 13 with one rule.
+A timeout on the pending key: it would cancel under a slow reader of the hint, and the
+hint, Escape and any other key already end it.
