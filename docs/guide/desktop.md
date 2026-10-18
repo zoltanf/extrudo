@@ -19,7 +19,7 @@ Installers are attached to each release on the project's
 | System | What you download |
 |---|---|
 | Linux | An AppImage (make it executable and run it) or a `.deb` |
-| Windows | An installer (`.exe`) |
+| Windows | An installer (`.exe`), or the portable `…-portable.exe`: nothing to install, keep it in a folder or on a USB stick, and your designs stay in an `Extrudo-data` folder next to it. It takes a few seconds to start, since it unpacks itself each time |
 | macOS | A `.dmg`, or a `.zip` |
 
 On Arch-based systems (Arch, Omarchy, Manjaro) an AppImage needs `fuse2`
@@ -71,13 +71,15 @@ hours. What happens next depends on how you installed it:
 |---|---|
 | AppImage, Windows installer | It downloads in the background, then tells you it is ready. Press **Restart**, or let it install the next time you quit. It saves open designs first. |
 | `.deb`, macOS | It tells you a new version is available, with a button for the release page. Your package manager or Homebrew (`brew upgrade`) does the update. |
+| Windows portable | It tells you a new version is available, with a button for the release page. Download the new exe and keep your `Extrudo-data` folder next to it. |
 
 **Check now** in the Menu's bottom strip (or Ctrl+K "Check for Updates…") checks right away.
 
 ## Where your designs are kept
 
 Designs are stored as files in a `projects` folder inside the app's user-data directory, which
-your system decides (under your profile, not next to the program). They do not share storage
+your system decides (under your profile, not next to the program). The portable Windows exe is
+the exception: its user data is the `Extrudo-data` folder next to the exe. They do not share storage
 with the web app, so a design you made at the website is not in the desktop app until you
 export it from one and import it into the other.
 

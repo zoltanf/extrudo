@@ -1,0 +1,1 @@
+- 2026-10-18 · **Portable Windows build**: every release now also has `extrudo-<version>-win-x64-portable.exe`, which installs nothing and keeps its data in an `Extrudo-data` folder beside the exe; it tells you about new versions instead of installing them.

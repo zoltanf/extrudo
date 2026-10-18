@@ -1112,7 +1112,7 @@ end to end, faster than in established desktop CAD.
   written back through paths main issued. *Slice 3 done 2026-10-07 (ADR-0075's second amendment):* unsigned
   installers (AppImage/deb, NSIS, dmg/zip) by `electron-builder` in the `desktop`
   workflow (a `v*` tag attaches them to a draft release), the Linux AppImage
-  smoke-tested in CI. *Slice 4 done 2026-10-07 (ADR-0075's third amendment):*
+  smoke-tested in CI; a portable Windows exe since 2026-10-18 (ADR-0075's amendment). *Slice 4 done 2026-10-07 (ADR-0075's third amendment):*
   auto-update with `electron-updater` against the published GitHub releases (an
   AppImage and the Windows installer download in the background and install on
   quit or Restart; a deb and macOS only say a version is out, with its release

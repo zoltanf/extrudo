@@ -13,9 +13,16 @@ pnpm --filter @extrudo/desktop package:linux   # also :win and :mac
 ## Packaging
 
 `package` writes installers (macOS ad-hoc signed, nothing notarised) to `apps/desktop/release/` (gitignored):
-AppImage and deb on Linux, an NSIS installer on Windows, a dmg and a zip on
-macOS, named `extrudo-<version>-<os>-<arch>.<ext>`. The configuration is
-`apps/desktop/electron-builder.yml`. On Arch-based systems (Arch, Omarchy,
+AppImage and deb on Linux, an NSIS installer and a portable exe on Windows, a dmg and a zip on
+macOS, named `extrudo-<version>-<os>-<arch>.<ext>` (the portable exe
+`extrudo-<version>-win-<arch>-portable.exe`). The configuration is
+`apps/desktop/electron-builder.yml`. The portable exe installs nothing and
+writes nothing to the registry: it unpacks the app into `%TEMP%` at each start
+(a few seconds), removes it on exit, and keeps the user data in an
+`Extrudo-data` folder beside the exe (main reads `PORTABLE_EXECUTABLE_DIR`,
+which electron-builder's portable launcher sets), so the exe and that folder
+are all there is. It doesn't register `.extrudo` files and only notifies of
+updates. On Arch-based systems (Arch, Omarchy,
 Manjaro) an AppImage needs `fuse2` (`sudo pacman -S fuse2`), or run it with
 `--appimage-extract-and-run`; with the latter, the in-app update may not replace
 the file. Building for another OS than the one you
@@ -80,7 +87,7 @@ volume against it; `--examples` runs the skill's worked examples.
 `apps/desktop/scripts/smoke.mjs` launches the app and waits for the kernel to
 compute a new design. `--app <path>` launches a packaged AppImage instead; main
 reads the environment variable `EXTRUDO_USER_DATA` as its data directory, which
-the script points at a temporary directory. Both need a display (`xvfb-run -a` on Linux). On a release tag (or a manual run with `windows_smoke`), the Windows job installs the NSIS installer silently and runs it against the installed `Extrudo.exe`.
+the script points at a temporary directory. Both need a display (`xvfb-run -a` on Linux). On a release tag (or a manual run with `windows_smoke`), the Windows job installs the NSIS installer silently and runs it against the installed `Extrudo.exe`, then against the portable exe (which passes the arguments and the environment on to the app it unpacks).
 
 ## Updates
 
@@ -95,6 +102,7 @@ so publishing the release is what ships an update. Prereleases are ignored.
 |---|---|
 | Linux AppImage | downloads in the background; "Extrudo 0.5.0 is ready." with **Restart** (saves every open design, then installs and relaunches), or installs on the next quit |
 | Windows (NSIS) | the same |
+| Windows portable exe | the same as a deb: there is no installer to run, so it says a version is out and offers the release page; download the new exe and keep the `Extrudo-data` folder beside it |
 | Linux deb | "Extrudo 0.5.0 is available." with **Open the release page**: the package manager owns a deb, so nothing is downloaded |
 | macOS | the same as a deb: Squirrel.Mac refuses an ad-hoc signed app, and a certificate is deferred until the app has users (owner, 2026-10-07) |
 

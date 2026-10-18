@@ -823,3 +823,32 @@ the only place this can be solved short of notarisation.
 Rejected: telling users to run `xattr` by hand (every upgrade again), and a Ruby
 `postflight` block (deprecated). Developer ID signing plus notarisation is still
 the real fix and still deferred (slice 5).
+
+### Amendment, 2026-10-18: a portable Windows build
+
+A first public user asked for a Windows build that can be tried without
+installing anything (an installer leaves registry entries that an uninstall
+does not fully remove). Each release now also carries
+`extrudo-<version>-win-<arch>-portable.exe`, electron-builder's `portable`
+target beside the NSIS installer.
+
+- One exe. It unpacks the app into `%TEMP%` at each start (a few seconds for
+  this app's size) and removes it on exit; nothing is installed and nothing is
+  written to the registry. `.extrudo` files are not associated: that is the
+  installer's job.
+- **Data beside the exe.** The portable launcher sets
+  `PORTABLE_EXECUTABLE_DIR`; main puts `userData` and `sessionData` in
+  `Extrudo-data` next to the exe (`EXTRUDO_USER_DATA` still wins, for the smoke
+  test), so the exe and that folder are all there is, on a USB stick too.
+- **Updates only notify.** `selfUpdating` is false for it (`portable: true` in
+  `createUpdates`): like a deb, it says a version is out and offers the release
+  page; downloading the installer into a portable setup would install the app.
+- The `desktop` workflow smoke-tests it after the installed app (the launcher
+  passes the arguments and the environment on, so `smoke.mjs --app` works
+  unchanged; a second `SMOKE_PORT`), and its smoke step for the installer skips
+  `-portable.exe` by name, which sorts before `.exe`.
+
+Rejected: a zip of the unpacked app (instant start and no `%TEMP%` copy, but
+electron-builder marks nothing in it, so "I am portable" would need a marker
+file from an `afterPack` hook or a heuristic such as the missing uninstaller);
+keeping the data under the profile (what the request was against).

@@ -2015,11 +2015,11 @@ fake bridge — CI downloads no Electron binary (`pnpm-workspace.yaml`'s
 `allowBuilds` keeps `electron: false`). On a headless machine the smoke script
 needs `xvfb-run -a`.
 **Slice 3 (packaging, unsigned)** adds `electron-builder` (`electron-builder.yml`:
-AppImage + deb, NSIS, dmg + zip, `extrudo-<version>-<os>-<arch>.<ext>`, asar with
+AppImage + deb, NSIS + a **portable exe** (`…-win-<arch>-portable.exe`, 2026-10-18 amendment: electron-builder's `portable` target sets `PORTABLE_EXECUTABLE_DIR`, which main reads to put `userData`/`sessionData` in `Extrudo-data` beside the exe and to pass `portable: true` to `createUpdates`; `EXTRUDO_USER_DATA` still wins), dmg + zip, `extrudo-<version>-<os>-<arch>.<ext>`, asar with
 nothing unpacked) and `.github/workflows/desktop.yml` (a `v*` tag or a manual
 run, never per push: three OS runners; a tag attaches the installers to a
 **draft** release; the Linux job smoke-tests the AppImage with `smoke.mjs --app`,
-`EXTRUDO_USER_DATA` being main's throwaway data directory; on a release tag (or a manual run with `windows_smoke`), the Windows packaging job installs the NSIS installer silently and runs `smoke.mjs --app` against the installed exe (2026-10-18)). Rules a change must
+`EXTRUDO_USER_DATA` being main's throwaway data directory; on a release tag (or a manual run with `windows_smoke`), the Windows packaging job installs the NSIS installer silently and runs `smoke.mjs --app` against the installed exe, then against the portable exe on `SMOKE_PORT=9334` (2026-10-18)). Rules a change must
 keep: the desktop's workspace packages are `devDependencies` and **`electron`
 stays explicitly external** in main and preload, **no two files may differ only by
 case** (macOS and Windows builds resolve `./Grid` to `grid.ts`), checked by scripts/check-boundaries.mjs since v0.4.1 (ADR-0078's `modelProgress.ts` beside `ModelProgress.tsx` broke the v0.4.0 desktop build; the rules are `viewport/progressRules.ts`), and signing is
@@ -2032,8 +2032,8 @@ publishing ships the update; no prereleases). `main/updates.ts`'s
 `createUpdates` is pure over an injected `UpdaterLike`: started only when
 `app.isPackaged` and `EXTRUDO_DISABLE_UPDATES` is unset (the smoke sets it), a
 check 10 s after start, every 6 h and on focus after an hour; **an AppImage
-(`process.env.APPIMAGE`) and NSIS download and install on quit**, **a deb and
-macOS only `notify`** (version + the release page main builds from the tag;
+(`process.env.APPIMAGE`) and NSIS download and install on quit**, **a deb,
+the portable Windows exe and macOS only `notify`** (version + the release page main builds from the tag;
 never `downloadUpdate`/`quitAndInstall`). Status goes over `update:status`;
 `update:check`, `update:apply` (refused unless `ready`) and `update:release`
 (main opens **its own** URL) take no argument. Check for Updates… (the Menu strip's Check now since ADR-0090) is

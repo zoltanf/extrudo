@@ -33,6 +33,7 @@ function setup(over: Partial<UpdatesOptions> = {}) {
     updater: make,
     platform: 'win32',
     isAppImage: false,
+    portable: false,
     packaged: true,
     disabled: false,
     send: (status) => sent.push(status),
@@ -52,6 +53,7 @@ describe('auto-update in main (P6-01 slice 4)', () => {
 
   it('knows which installs update themselves', () => {
     expect(selfUpdating('win32', false)).toBe(true);
+    expect(selfUpdating('win32', false, true)).toBe(false);
     expect(selfUpdating('linux', true)).toBe(true);
     expect(selfUpdating('linux', false)).toBe(false);
     expect(selfUpdating('darwin', false)).toBe(false);
@@ -140,10 +142,11 @@ describe('auto-update in main (P6-01 slice 4)', () => {
   });
 
   it.each([
-    ['a deb install', 'linux' as const],
-    ['macOS (unsigned)', 'darwin' as const],
-  ])('only notifies on %s: no download, no install', (_name, platform) => {
-    const { updater, updates, sent } = setup({ platform, isAppImage: false });
+    ['a deb install', 'linux' as const, false],
+    ['macOS (unsigned)', 'darwin' as const, false],
+    ['the portable Windows exe', 'win32' as const, true],
+  ])('only notifies on %s: no download, no install', (_name, platform, portable) => {
+    const { updater, updates, sent } = setup({ platform, isAppImage: false, portable });
     updates.start();
     expect(updater.autoDownload).toBe(false);
     expect(updater.autoInstallOnAppQuit).toBe(false);

@@ -19,8 +19,8 @@ nothing to install and no account. After the first visit the app is kept in your
 it also opens without a connection.
 
 There is a desktop app too, with the same screens: an AppImage or deb on Linux, an installer
-on Windows and a dmg on macOS (also `brew install --cask zoltanf/extrudo/extrudo`). It opens
-`.extrudo` files from your file manager and updates itself, except as a deb or on macOS.
+or a portable exe on Windows and a dmg on macOS (also `brew install --cask zoltanf/extrudo/extrudo`). It opens
+`.extrudo` files from your file manager and updates itself, except as a deb, as the portable exe or on macOS.
 
 ## The home screen
 

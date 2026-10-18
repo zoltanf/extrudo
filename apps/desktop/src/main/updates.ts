@@ -7,9 +7,10 @@
  * Linux AppImage and Windows NSIS update themselves: the update downloads in
  * the background and installs when the app quits, or at once when the person
  * presses Restart (the renderer saves everything first, then sends
- * `update:apply`). A deb install belongs to the package manager and an unsigned
- * macOS app is refused by Squirrel.Mac, so there the updater only *checks* and
- * the renderer offers the release page (`notify`); nothing is downloaded.
+ * `update:apply`). A deb install belongs to the package manager, an unsigned
+ * macOS app is refused by Squirrel.Mac, and the portable Windows exe has no
+ * installer to run, so there the updater only *checks* and the renderer offers
+ * the release page (`notify`); nothing is downloaded.
  *
  * Pure over an injected `UpdaterLike` (the slice of `AppUpdater` used here), so
  * `updates.test.ts` drives it with a fake emitter and fake timers. Every updater
@@ -53,6 +54,8 @@ export interface UpdatesOptions {
   platform: NodeJS.Platform;
   /** `process.env.APPIMAGE` is set (the AppImage runtime sets it). */
   isAppImage: boolean;
+  /** `process.env.PORTABLE_EXECUTABLE_DIR` is set (the portable Windows build). */
+  portable: boolean;
   /** `app.isPackaged`: a dev run has no `app-update.yml` and nothing to update. */
   packaged: boolean;
   /** `EXTRUDO_DISABLE_UPDATES` is set (the smoke test, a managed install). */
@@ -79,9 +82,16 @@ export interface Updates {
   dispose(): void;
 }
 
-/** Whether this install updates itself: an AppImage on Linux, NSIS on Windows. */
-export function selfUpdating(platform: NodeJS.Platform, isAppImage: boolean): boolean {
-  if (platform === 'win32') return true;
+/**
+ * Whether this install updates itself: an AppImage on Linux, NSIS on Windows
+ * (not the portable exe, which only notifies, like a deb).
+ */
+export function selfUpdating(
+  platform: NodeJS.Platform,
+  isAppImage: boolean,
+  portable = false,
+): boolean {
+  if (platform === 'win32') return !portable;
   if (platform === 'linux') return isAppImage;
   return false;
 }
@@ -105,7 +115,7 @@ const versionOf = (info: unknown): string | undefined => {
 
 export function createUpdates(options: UpdatesOptions): Updates {
   const now = options.now ?? Date.now;
-  const selfUpdates = selfUpdating(options.platform, options.isAppImage);
+  const selfUpdates = selfUpdating(options.platform, options.isAppImage, options.portable);
   let updater: UpdaterLike | undefined;
   let status: UpdateStatus = { state: 'idle' };
   let lastCheck = 0;

@@ -49,11 +49,21 @@ linux:
 win:
   target:
     - nsis
+    - portable
 
 nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
+
+# The portable build (ADR-0075's 2026-10-18 amendment): one exe, nothing
+# installed and nothing in the registry. It unpacks the app into %TEMP% at each
+# start and removes it on exit, and sets PORTABLE_EXECUTABLE_DIR, which main
+# reads to keep the user data beside the exe (`Extrudo-data`) and to only
+# notify of updates. Its own name: the installer is `…-win-x64.exe`, and the
+# smoke step of the `desktop` workflow tells them apart by `-portable`.
+portable:
+  artifactName: extrudo-${version}-${os}-${arch}-portable.${ext}
 
 mac:
   category: public.app-category.graphics-design

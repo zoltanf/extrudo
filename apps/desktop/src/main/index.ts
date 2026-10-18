@@ -57,9 +57,18 @@ registerAppScheme();
   if (plan.disableHardwareAcceleration) app.disableHardwareAcceleration();
 }
 
-// A throwaway data directory for the packaged-app smoke test (and nothing
-// else): it must be set before the single-instance lock, which lives in it.
-if (process.env.EXTRUDO_USER_DATA) app.setPath('userData', process.env.EXTRUDO_USER_DATA);
+// The data directory, before the single-instance lock, which lives in it:
+// a throwaway one for the packaged-app smoke test (`EXTRUDO_USER_DATA`), or,
+// in the portable Windows build (electron-builder's `portable` target sets
+// `PORTABLE_EXECUTABLE_DIR` to the exe's folder; ADR-0075's 2026-10-18
+// amendment), `Extrudo-data` beside the exe, so a USB stick or a folder holds
+// everything and nothing lands under the profile.
+const portableDir = process.env.PORTABLE_EXECUTABLE_DIR;
+const dataDir = process.env.EXTRUDO_USER_DATA ?? (portableDir && join(portableDir, 'Extrudo-data'));
+if (dataDir) {
+  app.setPath('userData', dataDir);
+  app.setPath('sessionData', dataDir);
+}
 
 /** A `.extrudo` larger than this is refused before it is read (finding 5). */
 const MAX_OPEN_BYTES = 100 * 1024 * 1024;
@@ -120,6 +129,7 @@ function main(): void {
     updater: () => autoUpdater as unknown as UpdaterLike,
     platform: process.platform,
     isAppImage: Boolean(process.env.APPIMAGE),
+    portable: Boolean(portableDir),
     packaged: app.isPackaged,
     disabled: Boolean(process.env.EXTRUDO_DISABLE_UPDATES),
     send: (status) => send(CHANNELS.updateStatus, status),

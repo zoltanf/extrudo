@@ -206,18 +206,32 @@ jobs:
       # installer silently and run the smoke script against the installed
       # app, as the Linux job does with the AppImage. v0.7.0 shipped unable
       # to create a design on Windows (EPERM on fsync, PR #56). Both package
-      # steps leave the installer in apps/desktop/release.
+      # steps leave the installer in apps/desktop/release, beside the portable
+      # exe (`-portable.exe`), which the next step smoke-tests.
       - name: Smoke-test the Windows installer
         if: ${{ matrix.os == 'win' && (startsWith(github.ref, 'refs/tags/v') || inputs.windows_smoke) }}
         shell: pwsh
         run: |
-          $installer = Get-ChildItem apps/desktop/release/*.exe | Where-Object { $_.Name -notmatch 'blockmap' } | Select-Object -First 1
+          $installer = Get-ChildItem apps/desktop/release/*.exe | Where-Object { $_.Name -notmatch 'blockmap|portable' } | Select-Object -First 1
           if (-not $installer) { throw "no installer in apps/desktop/release" }
           $p = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "installer exited with $($p.ExitCode)" }
           $exe = Join-Path $env:LOCALAPPDATA 'Programs\Extrudo\Extrudo.exe'
           if (-not (Test-Path $exe)) { Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Programs') -Recurse -Filter *.exe | Select-Object FullName; throw "installed exe not found at $exe" }
           node apps/desktop/scripts/smoke.mjs --app "$exe"
+
+      # The portable exe unpacks the app into %TEMP% and runs it with the same
+      # arguments and environment, so the smoke script drives it as it does
+      # the installed app (SMOKE_PORT: the installed app may still hold 9333).
+      - name: Smoke-test the portable Windows exe
+        if: ${{ matrix.os == 'win' && (startsWith(github.ref, 'refs/tags/v') || inputs.windows_smoke) }}
+        shell: pwsh
+        env:
+          SMOKE_PORT: '9334'
+        run: |
+          $portable = Get-ChildItem apps/desktop/release/*-portable.exe | Select-Object -First 1
+          if (-not $portable) { throw "no portable exe in apps/desktop/release" }
+          node apps/desktop/scripts/smoke.mjs --app $portable.FullName
 
   homebrew:
     # Render the cask from the arm64 mac zip and push it to the tap (P6-01,
