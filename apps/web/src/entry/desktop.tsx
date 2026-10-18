@@ -5,6 +5,7 @@
  * platform factory and the synchronous desktop preferences (the theme is
  * applied before the platform resolves).
  */
+import '@extrudo/core/polyfills';
 import './styles';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

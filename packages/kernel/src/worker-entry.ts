@@ -5,6 +5,7 @@
  * `@extrudo/kernel` may not import, as a loader that runs the first time a
  * design with a script recomputes.
  */
+import '@extrudo/core/polyfills';
 import * as Comlink from 'comlink';
 // manifold-3d's WASM (P4-06, ADR-0066 §3), a build asset: only a design with a
 // mesh body downloads it (the app calls `enableMeshes` before that recompute).

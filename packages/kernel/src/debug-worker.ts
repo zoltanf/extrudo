@@ -3,6 +3,7 @@
 // so the feature dialog framework can be tried and tested end to end before
 // any real feature has a dialog. Spawned by spawnDebugKernel() (browser.ts);
 // the app's own worker never registers these types.
+import '@extrudo/core/polyfills';
 import * as Comlink from 'comlink';
 import manifoldWasmUrl from 'manifold-3d/manifold.wasm?url';
 import wasmUrl from '../occt/dist/extrudo_occt_single.wasm?url';

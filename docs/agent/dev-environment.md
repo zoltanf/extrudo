@@ -37,6 +37,15 @@ them. Notes further down that name a machine apply to that machine only.
   (`minimumReleaseAge`). If an install adds a `minimumReleaseAgeExclude` entry
   to `pnpm-workspace.yaml`, don't keep it: relax the version range (e.g.
   `^8.3.0` instead of `^8.3.1`) so pnpm picks an older release.
+- **Vite lowers `using` declarations** (Vite 8 / rolldown, target
+  `baseline-widely-available`) to Babel's `usingCtx` helper, which looks the
+  disposer up under `Symbol.dispose || Symbol.for('Symbol.dispose')` and does
+  not rewrite the `[Symbol.dispose]` keys of classes and object literals. An
+  engine without the symbol (Safari, Firefox < 141, Chrome < 125) therefore
+  throws "Object is not disposable." on the first `using`.
+  `@extrudo/core/polyfills` defines the symbols from the registry; it must stay
+  the **first import** of every entry (web and desktop entries, the kernel's
+  index and workers), and a new entry that reaches the kernel needs it too.
 - **`biome migrate` rewrote `"recommended": true` into `"preset": "none"`**,
   which silently disables all rules. The config uses `"preset": "recommended"`.
 - Don't use `pkill -f <pattern>` in a compound shell command: the pattern

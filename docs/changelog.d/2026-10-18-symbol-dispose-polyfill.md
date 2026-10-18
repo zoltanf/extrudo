@@ -1,0 +1,1 @@
+- 2026-10-18 · **Sketches work in Safari and older browsers again:** drawing a closed loop (a rectangle, say) failed with "Object is not disposable." in Safari, iOS browsers, Firefox before 141 and Chrome before 125, so nothing could be extruded; a `Symbol.dispose` polyfill, loaded first in every entry, fixes it.

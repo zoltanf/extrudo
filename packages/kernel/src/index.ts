@@ -6,6 +6,9 @@
  * `@extrudo/kernel/node`.
  */
 
+// First: Symbol.dispose for engines without it, before any disposer is defined.
+import '@extrudo/core/polyfills';
+
 /** An OpenSCAD file's customizer variables (P5-04, ADR-0071): the Import dialog's rows. */
 export type { ScadParameter, ScadParametersResult } from '@extrudo/openscad';
 export { connectKernelWorker, spawnBrowserKernel, spawnDebugKernel } from './browser';

@@ -3,6 +3,7 @@
  * `webPlatform()` and registers the service worker (a web build only; the
  * Electron build's `entry/desktop.tsx` never does).
  */
+import '@extrudo/core/polyfills';
 import './styles';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
