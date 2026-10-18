@@ -38,9 +38,9 @@ describe('the shared pieces of the site', () => {
     expect(header('download').split('aria-current')).toHaveLength(2);
   });
 
-  it('lists Apps, with its New pill, before Features', () => {
+  it('lists Apps before Features', () => {
     const html = header('home');
-    expect(html).toContain('<a href="/download/">Apps <b class="new">New</b></a>');
+    expect(html).toContain('<a href="/download/">Apps</a>');
     expect(html.indexOf('>Apps')).toBeLessThan(html.indexOf('>Features'));
   });
 

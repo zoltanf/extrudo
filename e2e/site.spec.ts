@@ -352,7 +352,7 @@ test('the page has a Changelog link and says the desktop app is available', asyn
   await page.goto(`${host.url}/`);
   const nav = page.getByRole('navigation', { name: 'Site' });
   await expect(nav.getByRole('link')).toHaveText([
-    'Apps New',
+    'Apps',
     'Features',
     'Changelog',
     'Docs',
@@ -360,10 +360,9 @@ test('the page has a Changelog link and says the desktop app is available', asyn
     'Open Extrudo',
   ]);
   await expect(nav.getByRole('link', { name: 'Features' })).toHaveAttribute('href', '/features/');
-  // Apps leads to the desktop app's download page, with a "New" pill.
-  const apps = nav.getByRole('link', { name: /^Apps/ });
+  // Apps leads to the desktop app's download page.
+  const apps = nav.getByRole('link', { name: 'Apps' });
   await expect(apps).toHaveAttribute('href', '/download/');
-  await expect(apps.locator('.new')).toHaveText('New');
   await expect(nav.getByRole('link', { name: 'Changelog' })).toHaveAttribute(
     'href',
     'https://github.com/zoltanf/extrudo/blob/main/docs/CHANGELOG.md',

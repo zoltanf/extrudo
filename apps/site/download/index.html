@@ -79,11 +79,19 @@
             </li>
             <li>Start Extrudo from the Start menu.</li>
           </ol>
+          <h3>Or the portable app</h3>
+          <p>
+            Download the file ending in <code>win-x64-portable.exe</code> instead and run it from
+            any folder, a USB stick included. It installs nothing and keeps your designs in an
+            <code>Extrudo-data</code> folder next to it; it takes a few seconds to start, since it
+            unpacks itself each time.
+          </p>
           <h3>Updates</h3>
           <p>
             Extrudo downloads a new version in the background and tells you when it is ready.
             Press <b>Restart</b>, or let it install the next time you quit. Your open designs are
-            saved first.
+            saved first. The portable app only tells you a version is out: download the new exe
+            and keep your <code>Extrudo-data</code> folder beside it.
           </p>
         </section>
 
@@ -103,9 +111,10 @@
           </ol>
           <h3>The first start</h3>
           <p>
-            Extrudo is not signed with an Apple certificate yet, so macOS says it can't be opened.
-            Open <b>System Settings › Privacy &amp; Security</b> and choose <b>Open Anyway</b>
-            next to Extrudo. You do this once for each install.
+            Extrudo is not signed with an Apple certificate yet. Installed with Homebrew it opens
+            straight away, because the cask clears the quarantine flag. A dmg downloaded by hand
+            makes macOS say it can't be opened: open <b>System Settings › Privacy &amp; Security</b>
+            and choose <b>Open Anyway</b> next to Extrudo, once.
           </p>
           <h3>Updates</h3>
           <p>

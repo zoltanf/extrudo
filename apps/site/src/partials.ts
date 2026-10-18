@@ -33,8 +33,7 @@ export const SPRITE = `<svg class="sprite" aria-hidden="true" focusable="false">
       <symbol id="i-fillet" viewBox="0 0 24 24"><path class="f" d="M4 4H20V12.5A7.5 7.5 0 0 1 12.5 20H4Z" /><path d="M20 16V20H16" stroke-dasharray="1.6 2.2" /></symbol>
     </svg>`;
 
-/** The top bar: the logo (home) and the site's nav, with the current page marked.
- * Apps (the desktop app's download page) carries a "New" pill while the app is new. */
+/** The top bar: the logo (home) and the site's nav, with the current page marked. */
 export function header(page: SitePage): string {
   const current = (p: SitePage) => (page === p ? ' aria-current="page"' : '');
   return `<header class="top">
@@ -51,7 +50,7 @@ export function header(page: SitePage): string {
         <span class="wordmark">extrudo</span>
       </a>
       <nav aria-label="Site">
-        <a href="/download/"${current('download')}>Apps <b class="new">New</b></a>
+        <a href="/download/"${current('download')}>Apps</a>
         <a href="/features/"${current('features')}>Features</a>
         <a href="https://github.com/zoltanf/extrudo/blob/main/docs/CHANGELOG.md">Changelog</a>
         <a href="/docs/">Docs</a>
