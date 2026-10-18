@@ -36,6 +36,7 @@ import {
 } from './menuTemplate';
 import { isAllowedNavigation } from './navigation';
 import { createOpenQueue, extrudoPathFromArgv, isExtrudoPath } from './openPaths';
+import { allowPermission } from './permissions';
 import { createPreferencesFile } from './preferences';
 import { APP_URL, handleAppProtocol, registerAppScheme } from './protocol';
 import { createRecentFile } from './recent';
@@ -272,10 +273,10 @@ function main(): void {
       }
       callback({ responseHeaders });
     });
-    // Nothing in the app needs a camera, a microphone, a location or a device:
-    // deny every permission request rather than leave the default.
-    session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) =>
-      callback(false),
+    // Only the clipboard write the Copy buttons need; every other request
+    // (camera, microphone, location, devices) is denied (permissions.ts).
+    session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) =>
+      callback(allowPermission(permission)),
     );
 
     registerIpcHandlers({

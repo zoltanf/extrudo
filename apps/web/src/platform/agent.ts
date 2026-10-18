@@ -61,16 +61,3 @@ export interface AgentBridge {
   config(): Promise<AgentConfig>;
   regenerateToken(): Promise<AgentConfig>;
 }
-
-/** A client config for `mcpServers` (Claude Code, Claude Desktop and others). */
-export function clientConfig({ url, token }: AgentConfig): string {
-  return JSON.stringify(
-    {
-      mcpServers: {
-        extrudo: { type: 'http', url, headers: { Authorization: `Bearer ${token}` } },
-      },
-    },
-    null,
-    2,
-  );
-}

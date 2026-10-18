@@ -280,3 +280,38 @@ enough for now).
   `pnpm api:generate` for `tools.md`.
 - The SDK (and its dependency tree) is in the desktop installer; the web
   bundle is unchanged.
+
+## Amendment, 2026-10-18: Agents (MCP) is its own Settings section, with the setup per agent
+
+Trying the server from Claude Code on the owner's laptop found two things.
+**Copy client config failed** ("Couldn't copy the client config."): main's
+`setPermissionRequestHandler` denied every permission, and Chromium gates
+`navigator.clipboard.writeText` behind `clipboard-sanitized-write`, so every
+Copy button in the desktop app (About's details, macros, scripts included) was
+refused. `main/permissions.ts`'s `allowPermission` now allows that one
+permission and nothing else (reading the clipboard stays denied), with a test.
+And the setup was **crammed into the Desktop section** with no help on where
+the config goes: a person has to know their agent's config format.
+
+Decided:
+
+- **`agents` is a section of its own** in `settings/inventory.ts` ("Agents
+  (MCP)", desktop only, the keys `mcp.enabled` and `mcp.port`); Desktop keeps
+  the slicers. §6's "Settings › Desktop" reads Settings › Agents (MCP).
+- **The page gives the setup per agent** (`apps/web/src/agent/clientSetup.ts`,
+  `agentSetups({ url, token })`, pure and tested): a combobox "Agent" picks
+  Claude Code (`claude mcp add --transport http … --header "Authorization:
+  Bearer …"`), Codex CLI (a `[mcp_servers.extrudo]` table with `url` and
+  `http_headers` for `~/.codex/config.toml`), opencode (an `mcp.extrudo` entry
+  of type `remote` with `headers` for `opencode.json`), Other (the `mcpServers`
+  JSON that Claude Desktop, Cursor and others take; `clientConfig` moved here
+  from `platform/agent.ts`) and Tell the agent (one sentence with the URL, the
+  header and the skill to read, for an agent that configures itself). The text
+  is a read-only textbox "Setup for <agent>" that selects itself on focus, so it
+  can be copied by hand when the clipboard can't be written; **Copy** puts it on
+  the clipboard, and **Regenerate token** rewrites every text. The texts follow
+  the port: the dialog reads the config again when the status's URL changes.
+- The texts show the token. They are the person's own settings on their own
+  computer, and a text without the token would be useless; the page says that
+  anyone who can read it can change the designs, and Regenerate locks them out.
+

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clientConfig } from '../platform';
+import { agentSetups, clientConfig } from '../agent/clientSetup';
 import { agentStateText, validPort } from './SettingsDialog';
 
 const status = {
@@ -10,7 +10,7 @@ const status = {
   clients: 0,
 };
 
-describe('Settings › Desktop › Agents (ADR-0087 §6)', () => {
+describe('Settings › Agents (MCP) (ADR-0087 §6, amendment 2026-10-18)', () => {
   it('says what the server does', () => {
     expect(agentStateText(status, true)).toBe('Listening on http://127.0.0.1:7474/mcp');
     expect(agentStateText(status, false)).toBe('Off.');
@@ -50,5 +50,36 @@ describe('Settings › Desktop › Agents (ADR-0087 §6)', () => {
         },
       },
     });
+  });
+
+  it('writes a setup per agent, each holding the URL and the token', () => {
+    const config = { url: 'http://127.0.0.1:7474/mcp', token: 'abc123' };
+    const setups = agentSetups(config);
+    expect(setups.map((s) => s.id)).toEqual(['claude-code', 'codex', 'opencode', 'json', 'prompt']);
+    for (const s of setups) {
+      expect(s.text).toContain(config.url);
+      expect(s.text).toContain('Bearer abc123');
+      expect(s.how.length).toBeGreaterThan(10);
+    }
+    const byId = Object.fromEntries(setups.map((s) => [s.id, s.text]));
+    expect(byId['claude-code']).toBe(
+      'claude mcp add --transport http extrudo http://127.0.0.1:7474/mcp --header "Authorization: Bearer abc123"',
+    );
+    expect(byId.codex).toBe(
+      '[mcp_servers.extrudo]\nurl = "http://127.0.0.1:7474/mcp"\nhttp_headers = { "Authorization" = "Bearer abc123" }',
+    );
+    expect(JSON.parse(byId.opencode as string)).toEqual({
+      $schema: 'https://opencode.ai/config.json',
+      mcp: {
+        extrudo: {
+          type: 'remote',
+          url: config.url,
+          enabled: true,
+          headers: { Authorization: 'Bearer abc123' },
+        },
+      },
+    });
+    expect(byId.json).toBe(clientConfig(config));
+    expect(byId.prompt).toContain('skill://extrudo/SKILL.md');
   });
 });

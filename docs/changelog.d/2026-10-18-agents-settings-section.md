@@ -1,0 +1,1 @@
+- 2026-10-18 · **Settings › Agents (MCP)**: the MCP server has its own Settings section with the setup text per agent (Claude Code, Codex CLI, opencode, `mcpServers` JSON, or a sentence to give the agent) and a working Copy: the desktop app now allows the clipboard write every Copy button needs (ADR-0087 amendment).

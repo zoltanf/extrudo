@@ -59,15 +59,22 @@ screenshot, and changes through the document API, each one undo step named
 `Agent: …`. The top bar shows **Agent connected** while one is.
 
 The server listens on `http://127.0.0.1:7474/mcp` (this computer only) and
-needs the install's token. Settings › Desktop › Agents shows its state, turns
-it off (the port closes at once), changes the port, and has **Copy client
-config**, which copies a ready-to-paste `mcpServers` entry with the URL and the
-token. **Regenerate token** makes a new one; clients with the old one are
-refused. For Claude Code:
+needs the install's token (`userData/mcp-token`, made on first start). Settings ›
+**Agents (MCP)** shows its state, turns it off (the port closes at once), changes
+the port, and under **Add it to your agent** gives the setup text for each
+popular agent, every one holding the URL and the token, with **Copy**:
 
-```sh
-claude mcp add --transport http extrudo http://127.0.0.1:7474/mcp --header "Authorization: Bearer <token>"
-```
+| Agent | The text | Where it goes |
+|---|---|---|
+| Claude Code | `claude mcp add --transport http extrudo http://127.0.0.1:7474/mcp --header "Authorization: Bearer <token>"` | a terminal (`--scope project` shares it with a project) |
+| Codex CLI | `[mcp_servers.extrudo]` with `url` and `http_headers = { "Authorization" = "Bearer <token>" }` | `~/.codex/config.toml` |
+| opencode | `"mcp": { "extrudo": { "type": "remote", "url": …, "enabled": true, "headers": { "Authorization": "Bearer <token>" } } }` | `opencode.json` |
+| Other (mcpServers JSON) | `{"mcpServers":{"extrudo":{"type":"http","url":…,"headers":{"Authorization":"Bearer <token>"}}}}` | the client's MCP settings (Claude Desktop, Cursor and others) |
+| Tell the agent | a sentence with the URL, the header and the skill to read | the agent's prompt: it adds the server itself |
+
+**Regenerate token** makes a new one; agents with the old one are refused until
+they get the new text. The texts are read-only fields, so they can be selected
+and copied by hand too.
 
 The server serves the **Extrudo skill** (`apps/desktop/skill/extrudo/`), which
 teaches an agent how to model here: read the design first, use parameters,

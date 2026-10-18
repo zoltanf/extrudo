@@ -71,8 +71,12 @@ describe('the settings inventory', () => {
     for (const e of NOT_IN_SETTINGS) expect(e.reason.length).toBeGreaterThan(10);
   });
 
-  it('shows the desktop section only on the desktop', () => {
-    expect(visibleSections(false).map((s) => s.id)).not.toContain('desktop');
-    expect(visibleSections(true).map((s) => s.id)).toContain('desktop');
+  it('shows the desktop and agents sections only on the desktop', () => {
+    for (const id of ['desktop', 'agents']) {
+      expect(visibleSections(false).map((s) => s.id)).not.toContain(id);
+      expect(visibleSections(true).map((s) => s.id)).toContain(id);
+    }
+    expect(sectionOf('mcp.port')?.id).toBe('agents');
+    expect(sectionOf('slicers.paths')?.id).toBe('desktop');
   });
 });

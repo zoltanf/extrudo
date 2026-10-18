@@ -14,7 +14,8 @@ export type SectionId =
   | 'sketch'
   | 'printing'
   | 'export'
-  | 'desktop';
+  | 'desktop'
+  | 'agents';
 
 export interface SectionInfo {
   id: SectionId;
@@ -83,8 +84,16 @@ export const SECTIONS: readonly SectionInfo[] = [
   {
     id: 'desktop',
     label: 'Desktop',
-    summary: 'Slicers on this computer, and agents (MCP).',
-    keys: ['slicers.paths', 'mcp.enabled', 'mcp.port'],
+    summary: 'Slicers on this computer.',
+    keys: ['slicers.paths'],
+    desktopOnly: true,
+  },
+  {
+    // The MCP server (ADR-0087 amendment 2026-10-18): its own page, with the setup per agent.
+    id: 'agents',
+    label: 'Agents (MCP)',
+    summary: 'Let AI agents such as Claude Code read and change the open design.',
+    keys: ['mcp.enabled', 'mcp.port'],
     desktopOnly: true,
   },
 ];

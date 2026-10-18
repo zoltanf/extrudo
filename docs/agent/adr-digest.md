@@ -2271,8 +2271,8 @@ ADR-0082 (2026-10-10) added **the Settings screen** (`apps/web/src/settings/`, n
 kernel, schema or file-format change): the dialog "Settings" (`SettingsDialog`;
 app menu › Settings…, **Ctrl+,** `openSettings` in `commands/keymap.ts`, the Ctrl+K command,
 the home screen's app menu) with sections General (Appearance since ADR-0090), View and navigation, Sketch, 3D
-printing, Export and Desktop (`desktop` shown only where `platform.desktop`
-exists; remembered in `settings.section`). Rules a change must keep: **every
+printing, Export, Desktop and Agents (MCP) (`desktop` and `agents` shown only where
+`platform.desktop` exists; remembered in `settings.section`). Rules a change must keep: **every
 preference key lives in one section of `settings/inventory.ts` or in
 `NOT_IN_SETTINGS` with a reason** (`inventory.test.ts` scans the source for keys,
 `viewport` expanding to its `DEFAULT_SETTINGS` fields, and fails on one that is in
@@ -2421,7 +2421,13 @@ a hash route keeps it), status goes out over `extrudo:mcp:status` (`{ enabled,
 port, url, listening, clients, error? }`, `clients` = sessions with a stream open
 or a request in the last 30 s), `status-read`, `config` and `regenerate-token` are
 invokes; the one exception is `get_skill`, answered by main from the skill it
-serves. **Only `apps/desktop/src/main` and `apps/desktop/scripts` may import the
+serves. **Settings › Agents (MCP)** (its own section since the amendment of 2026-10-18;
+`agent/clientSetup.ts`'s pure `agentSetups({ url, token })` gives the text per agent:
+Claude Code, Codex CLI, opencode, the `mcpServers` JSON, a sentence for the agent;
+add a new agent there with a test, never in the dialog) shows them in a read-only
+textbox with Copy and Regenerate token. **Main allows the renderer one permission,
+`clipboard-sanitized-write`** (`main/permissions.ts`; every Copy button needs it) and
+denies every other. **Only `apps/desktop/src/main` and `apps/desktop/scripts` may import the
 SDK** (`check-boundaries.mjs`); it is a devDependency bundled into `out/main`,
 and `check-licenses.mjs`'s `BUNDLED_DEV` walks its dependency tree (NOTICE §4).
 **The tools are the web app's** (`apps/web/src/agent/`): `schemas.ts` (one zod

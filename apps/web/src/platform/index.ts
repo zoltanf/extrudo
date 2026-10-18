@@ -251,16 +251,15 @@ export async function webPlatform(): Promise<Platform> {
   };
 }
 
-export {
-  type AgentBridge,
-  type AgentConfig,
-  type AgentContent,
-  type AgentExportFormat,
-  type AgentReply,
-  type AgentStatus,
-  type AgentToolDefinition,
-  type AgentToolResult,
-  clientConfig,
+export type {
+  AgentBridge,
+  AgentConfig,
+  AgentContent,
+  AgentExportFormat,
+  AgentReply,
+  AgentStatus,
+  AgentToolDefinition,
+  AgentToolResult,
 } from './agent';
 export {
   BLOCKED_TEXT,

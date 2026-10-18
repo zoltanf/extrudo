@@ -29,8 +29,9 @@ test('Ctrl+, opens Settings and every section opens', async ({ page }) => {
     await expect(content).toBeVisible();
     await expect(content.getByRole('heading', { name: heading, exact: true })).toBeVisible();
   }
-  // The web build has no Desktop section.
+  // The web build has no Desktop or Agents (MCP) section.
   await expect(section(page, 'desktop')).toHaveCount(0);
+  await expect(section(page, 'agents')).toHaveCount(0);
 
   // The last section is remembered.
   await section(page, 'sketch').click();
