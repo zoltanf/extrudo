@@ -1,0 +1,12 @@
+# Extrudo on your own machine: `docker compose -f docker/compose.yml up -d`, then
+# open http://localhost:8080 (docs/deploy.md, "Self-hosting with Docker").
+#
+# `latest` is the last release; `edge` tracks main and can break. Behind a TLS
+# reverse proxy (Caddy, Traefik, Nginx Proxy Manager) the app gets a secure
+# context: offline use and "install as app" then work too.
+services:
+  extrudo:
+    image: ghcr.io/zoltanf/extrudo:latest
+    ports:
+      - "8080:80"
+    restart: unless-stopped
