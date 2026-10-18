@@ -47,6 +47,7 @@
           <a class="cat-sketch" href="#windows">Windows</a>
           <a class="cat-solid" href="#macos">macOS</a>
           <a class="cat-print" href="#linux">Linux</a>
+          <a class="cat-files" href="#docker">Docker</a>
         </nav>
         <p class="actions">
           <a class="button big" href="https://github.com/zoltanf/extrudo/releases/latest" data-latest-release>
@@ -147,6 +148,26 @@
           <code>.extrudo</code> file in the desktop app.
         </p>
         <p class="more"><a href="/docs/desktop/">The desktop app in the guide <span aria-hidden="true">→</span></a></p>
+      </section>
+
+      <section id="docker" class="topic" aria-labelledby="docker-title">
+        <h2 id="docker-title">On your own server, with Docker</h2>
+        <p class="topic-text">
+          The browser app as a container: nginx with the same build as app.extrudo.org, for
+          x86-64 and ARM (a Raspberry Pi or an ARM NAS). Nothing leaves it: no telemetry, no
+          outbound requests, no internet needed once pulled.
+        </p>
+        <pre><code>docker run -d -p 8080:80 ghcr.io/zoltanf/extrudo:latest</code></pre>
+        <p class="topic-text">
+          Then open <code>http://localhost:8080</code>. <code>latest</code> is the last release;
+          <code>0.8.0</code> pins a version; <code>edge</code> is the latest build of main.
+        </p>
+        <p class="topic-text">
+          Over plain HTTP on a LAN address browsers hold back the offline mode and the install as
+          an app; put it behind a reverse proxy with HTTPS and everything works as on
+          app.extrudo.org.
+        </p>
+        <p class="more"><a href="https://github.com/zoltanf/extrudo/blob/main/docs/deploy.md#self-hosting-with-docker">Tags, Compose and the limits in detail <span aria-hidden="true">→</span></a></p>
       </section>
 
       <section class="page-end" aria-labelledby="end-title">

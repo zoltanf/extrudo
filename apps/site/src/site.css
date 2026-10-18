@@ -1406,7 +1406,8 @@ h2 {
 }
 
 /* A command to copy: wraps rather than scrolls, so it needs no focus of its own. */
-.platforms .platform pre {
+.platforms .platform pre,
+.subpage .topic pre {
   margin: 8px 0 12px;
   padding: 12px 14px;
   border-radius: 10px;
@@ -1416,7 +1417,8 @@ h2 {
   overflow-wrap: anywhere;
 }
 
-.platforms .platform pre code {
+.platforms .platform pre code,
+.subpage .topic pre code {
   padding: 0;
   border: 0;
   background: none;
@@ -1428,6 +1430,10 @@ h2 {
   max-width: 46em;
   margin: 0;
   color: var(--x-muted);
+}
+
+.topic-text + .topic-text {
+  margin-top: 12px;
 }
 
 /* ---- The landing page's FAQ: <details>, no script ---------------------------- */
