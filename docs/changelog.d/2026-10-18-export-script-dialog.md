@@ -1,0 +1,1 @@
+- 2026-10-18 · **Export as script**: Export Design as Script opens a dialog with TypeScript or OpenSCAD, a preview and Copy.

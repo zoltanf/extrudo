@@ -225,7 +225,7 @@ const FILE_KEYWORDS: Record<FileCommandId, string> = {
   saveVersion: 'file save version snapshot history checkpoint',
   versionHistory: 'file versions restore revert history',
   exportProject: 'file download save project backup extrudo',
-  exportScript: 'file download code typescript macro api program',
+  exportScript: 'file download code typescript macro api program openscad scad',
   importProject: 'file open upload project extrudo',
   saveToLinkedFolder: 'file folder disk sync save project extrudo linked external',
   plugins: 'file plugins extensions add-ons install enable remove extrudo-plugin',

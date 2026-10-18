@@ -283,7 +283,8 @@ The app records, stops and keeps macros (`apps/web/src/macro/`; `e2e/macro.spec.
   `twice = d1 * 2`), and the e2e covers that; the feature case is a unit test.
 - **Export Design as Script…** (File menu, Ctrl+K, model mode) emits the whole
   design with its parameters and downloads `<design name>.ts` through
-  `platform.files`, with a toast naming the file.
+  `platform.files`, with a toast naming the file. It now opens the Export as
+  script dialog, TypeScript by default (ADR-0088 amendment 2026-10-18).
 - **Tools and icons.** `recordMacro` and `stopMacro` are tools in Solid › Create's
   menu (two new icons, `record-macro`, `stop-macro`); the toolbar menu and
   `buildCommands` show Record while idle and Stop while recording

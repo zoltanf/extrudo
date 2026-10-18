@@ -516,3 +516,30 @@ a symmetric extrude with `through-all` (cut or intersect): it went through
 `through-all` lengths, through the non-throwing `reachLength`, throwing only
 when neither direction reaches anything (a new `extrude.test.ts` case cuts a
 mid-plane box symmetrically through everything with no `polyhedron`).
+
+## Amendment: Export as script offers OpenSCAD (2026-10-18)
+
+**Decision.** *Export Design as Script…* is the code export and opens a dialog,
+**Export as script**: TypeScript (today's export of the whole design through the
+document API) or OpenSCAD (the §9 export). Export Model keeps its OpenSCAD format
+unchanged; the two are different doors to the same `scadFile`.
+
+- **Fields.** Language (each option with its description always shown); for
+  OpenSCAD only, Bodies (the Export Model list, without "Keep components
+  together") and Resolution (same control and validation). The bodies start from
+  `initialBodies(bodies, selection, undefined)` on every opening.
+- **Preview and Copy.** The first 10 lines of the exact text Export would write,
+  then `… N more lines`. The text is written 120 ms after a choice changes, and a
+  result a newer choice or closing has superseded is dropped (Export Model's
+  meshing pattern). Export downloads that same text, never a second write; Copy
+  puts all of it on the clipboard. Both are disabled while there is no current
+  file (OpenSCAD only writes when the model is current).
+- **Preference** `export.script`: `{ language: 'ts' | 'scad', resolution,
+  deviation, angle }`, TypeScript by default; an unknown language falls back to it.
+- **Shared code.** `apps/web/src/export/exportFields.tsx` holds `BodiesField`,
+  `ResolutionField` and the hooks (`useBodyRows`, `useChosenBodies`,
+  `useResolutionEvaluate`, `useTessellation`); both dialogs use them.
+
+**Rejected.** Moving OpenSCAD out of Export Model (the owner wants both); a second
+file-type step in the save dialog (the choice belongs before the file is written,
+where the preview can show it).

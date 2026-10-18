@@ -6,6 +6,9 @@ order: 6.5
 
 # OpenSCAD export
 
+There are two ways in: **Export as Script › OpenSCAD** (with a preview of the code and a Copy
+button) and **Export model › OpenSCAD**. Both write the same file.
+
 **Export model › OpenSCAD** saves your design as a `.scad` file: code you can open in OpenSCAD,
 read, edit and re-render. Where a feature has an OpenSCAD equivalent the file holds it as code;
 where it has none, the file holds the shape as a mesh.

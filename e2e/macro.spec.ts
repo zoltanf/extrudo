@@ -222,18 +222,43 @@ test('Stop with nothing recorded says so, and an undo past the start ends the re
   ).toBeVisible();
 });
 
+const scriptDialog = (page: Page) =>
+  page.getByRole('dialog').filter({ hasText: 'Export as script' });
+
 test('Export Design as Script downloads the design with its parameters', async ({ page }) => {
   await openParameters(page);
   await addParameter(page, 'width', '40 mm');
   await closeParameters(page);
   await primitive(page, 'Box', { Length: 'width' }, 'new-body');
+  await fileAction(page, 'Export Design as Script…');
+  const panel = scriptDialog(page);
+  await expect(panel.getByRole('radio', { name: /^TypeScript/ })).toBeChecked();
+  await expect(panel.locator('[data-script-preview]')).toContainText('design.parameter(');
+  await panel.getByRole('button', { name: 'Copy' }).click();
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    fileAction(page, 'Export Design as Script…'),
+    panel.getByRole('button', { name: 'Export TypeScript' }).click(),
   ]);
   expect(download.suggestedFilename()).toMatch(/\.ts$/);
   const text = await (await import('node:fs/promises')).readFile(await download.path(), 'utf8');
   expect(text).toContain('design.parameter(');
   expect(text).toContain('design.box(');
+  expect(await page.evaluate('navigator.clipboard.readText()')).toBe(text);
+  await expect(page.getByText(`Exported ${download.suggestedFilename()}.`)).toBeVisible();
+});
+
+test('Export Design as Script offers OpenSCAD', async ({ page }) => {
+  await primitive(page, 'Box', {}, 'new-body');
+  await fileAction(page, 'Export Design as Script…');
+  const panel = scriptDialog(page);
+  await panel.getByRole('radio', { name: /^OpenSCAD/ }).check();
+  await expect(panel.locator('[data-script-preview]')).toContainText('cube(', { timeout: 20_000 });
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    panel.getByRole('button', { name: 'Export OpenSCAD' }).click(),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/\.scad$/);
+  const text = await (await import('node:fs/promises')).readFile(await download.path(), 'utf8');
+  expect(text).toContain('cube(');
   await expect(page.getByText(`Exported ${download.suggestedFilename()}.`)).toBeVisible();
 });

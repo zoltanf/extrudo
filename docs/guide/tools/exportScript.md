@@ -7,7 +7,7 @@ order: 13
 
 # Export Design as Script
 
-Download the design as TypeScript that makes it again with the document API.
+Download the design as code: TypeScript for the document API, or OpenSCAD.
 
 | Where | Shortcut |
 |---|---|

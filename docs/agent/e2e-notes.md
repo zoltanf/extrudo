@@ -1106,7 +1106,13 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   gives "Script2" suppressed (unsuppress from the chip's right-click menu). The
   refusal test records a sketch with a dimension (`d1`) and adds the parameter
   `twice = d1 * 2`. Export Design as Script is Home › "Export as Script" (`fileAction(page,
-  'Export Design as Script…')`, ADR-0079). 4 tests, 2.4-9.4 s each.
+  'Export Design as Script…')`, ADR-0079), which opens the **Export as script** dialog
+  (`getByRole('dialog').filter({ hasText: 'Export as script' })`): radios `TypeScript` /
+  `OpenSCAD`, the preview `[data-script-preview]` (first 10 lines), `[data-export-summary]`,
+  buttons Copy and `Export TypeScript` / `Export OpenSCAD`. "Downloads the design with its
+  parameters" checks the preview, Copy against the downloaded file, then Export; "offers
+  OpenSCAD" picks OpenSCAD, waits for `cube(` in the preview (kernel write, up to 20 s) and
+  checks the `.scad` download and the toast. 5 tests.
 
 ### `e2e/marking-menu.spec.ts`
 

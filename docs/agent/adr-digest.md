@@ -1913,7 +1913,9 @@ one transaction** (insert the Script at the first recorded feature, then
 `removeFeature` last to first, `cancelTransaction` and the reason on any
 `CommandError`); **Keep both** appends the Script suppressed. A feature using a
 recorded one is always inside the run, so only an expression outside it (a user
-parameter reading a recorded sketch's `d1`) refuses a Replace in the UI.
+parameter reading a recorded sketch's `d1`) refuses a Replace in the UI. *Export Design
+as Script…* (amendment ADR-0088, 2026-10-18) opens `export/ExportScriptDialog.tsx`,
+TypeScript by default (`designCode(doc)` for the whole design); the rules are in ADR-0088.
 
 ADR-0074 (P6-07) added **auto-project** (a body edge a sketch tool snaps to is
 projected into the sketch as reference): while a drawing, constraint or
@@ -2516,7 +2518,7 @@ polyline. Extrude is a `linear_extrude` per side placed by the sketch frame,
 its distances `ctx.scalar` signed with `absolute`/`negate`/`half` and a
 `translate`; `through-all` (cut/intersect) reaches past `ctx.bounds()`.
 Revolve is a `rotate_extrude` in (radius, axis) with the axis as OpenSCAD's
-Z; `flip` reverses the axis; the shared `axisOf` takes a `GeometryReader`. Ranges come from core's `customizerRows` (evaluated, base units; none when a range doesn't evaluate or min > max) and the section from `parameter.group` (ADR-0086). Accepted 2026-10-16; the acceptance tests live in `scad-export/acceptance.test.ts` and the CLI's "AC 5" test (`packages/cli/src/headless.test.ts`).
+Z; `flip` reverses the axis; the shared `axisOf` takes a `GeometryReader`. Ranges come from core's `customizerRows` (evaluated, base units; none when a range doesn't evaluate or min > max) and the section from `parameter.group` (ADR-0086). Accepted 2026-10-16; the acceptance tests live in `scad-export/acceptance.test.ts` and the CLI's "AC 5" test (`packages/cli/src/headless.test.ts`). Amendment 2026-10-18: **Export Design as Script…** is a dialog (`export/ExportScriptDialog.tsx`, `ExportScriptForm` for the unit test), TypeScript or OpenSCAD. Rules a change must keep: **the preview text is the exported text** (written once, 120 ms after a choice, a superseded result dropped; Export downloads that file, Copy copies all of it, both disabled without one); OpenSCAD writes only while the model is current; the dialog remembers `export.script` (`{ language, resolution, deviation, angle }`, an unknown language is TypeScript); **the shared fields live in `export/exportFields.tsx`** (`BodiesField`, `ResolutionField`, `useBodyRows`, `useChosenBodies`, `useResolutionEvaluate`, `useTessellation`), used by Export Model and Export as script: change a field there, not in a dialog.
 
 ADR-0089 (2026-10-16) added **changelog fragments**: a change describes itself
 in its own one-line file under **`docs/changelog.d/`** instead of a line in

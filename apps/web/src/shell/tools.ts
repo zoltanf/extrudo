@@ -908,7 +908,7 @@ export const TOOLS = {
     short: 'Export as Script',
     icon: 'export-script',
     category: 'file',
-    hint: 'Download the design as TypeScript that makes it again with the document API.',
+    hint: 'Download the design as code: TypeScript for the document API, or OpenSCAD.',
   },
   importProject: {
     id: 'importProject',

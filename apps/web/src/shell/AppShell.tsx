@@ -58,6 +58,7 @@ import {
   useTheme,
 } from '../design-system';
 import { ExportModelDialog, type ModelExportRequest } from '../export/ExportModelDialog';
+import { ExportScriptDialog } from '../export/ExportScriptDialog';
 import type { ModelExporter } from '../export/modelExport';
 import { calibrationStore, pickCanvasFile } from '../features/canvas';
 import { DialogOverlay } from '../features/DialogOverlay';
@@ -83,14 +84,7 @@ import { clampPose, posedBodies, poseMatrix } from '../joints/pose';
 import { type JointCheckKernel, useJointCheck } from '../joints/useJointCheck';
 import { useJointDialog } from '../joints/useJointDialog';
 import { MacroDialog } from '../macro/MacroDialog';
-import {
-  createMacroStore,
-  designCode,
-  endedByUndo,
-  macroCode,
-  type Recorded,
-  scriptFileName,
-} from '../macro/macro';
+import { createMacroStore, endedByUndo, macroCode, type Recorded } from '../macro/macro';
 import { analyticItem } from '../measure/analytic';
 import { sizeText } from '../measure/format';
 import {
@@ -336,6 +330,7 @@ export function AppShell({
   const [parametersOpen, setParametersOpen] = useState(false);
   const [exportRequest, setExportRequest] = useState<ExportRequest>();
   const [modelExport, setModelExport] = useState<ModelExportRequest>();
+  const [scriptExportOpen, setScriptExportOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
   // The person's installed plugins (P6-03 slice 2, ADR-0077 §4): session state over the
   // platform's store, read once here and again after every change the dialog makes.
@@ -1680,14 +1675,7 @@ export function AppShell({
   // P4-06: Import picks a model file, stores its bytes with the design and opens
   // the dialog, which previews what the file holds (ADR-0066 §0, §2). An `.f3d`
   // opens as a new design instead (ADR-0083 §4).
-  exportScriptRef.current = () => {
-    const { doc: current } = store.getState();
-    void designCode(current).then((code) => {
-      const name = scriptFileName(current.name);
-      platform.files.download(new Blob([code], { type: 'text/plain' }), name);
-      notify('success', `Exported ${name}.`);
-    });
-  };
+  exportScriptRef.current = () => setScriptExportOpen(true);
   startImportRef.current = (picked) => {
     if (mode !== 'model') return;
     if (picking) cancelCreateSketch(stores);
@@ -2783,6 +2771,18 @@ export function AppShell({
         installedSlicers={platform.installedSlicers}
         notify={notify}
         onClose={() => setModelExport(undefined)}
+      />
+      <ExportScriptDialog
+        store={store}
+        session={session}
+        model={model}
+        bodies={bodyList}
+        kernel={kernel}
+        open={scriptExportOpen}
+        files={platform.files}
+        preferences={platform.preferences}
+        notify={notify}
+        onClose={() => setScriptExportOpen(false)}
       />
       <ExportSketchDialog
         store={store}
