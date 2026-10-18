@@ -128,3 +128,48 @@ test('constraint tools pick geometry, add solved constraints and refuse redundan
   await page.keyboard.press('Delete');
   await expect(glyphs(page)).toHaveCount(0);
 });
+
+// ADR-0023 (amendment 2026-10-18): K, then a letter, runs a constraint tool like its tile does.
+const chordHint = (page: Page) => page.locator('[data-chord-hint]');
+
+async function slantedLine(page: Page) {
+  const at = await sketchOnXY(page);
+  const click = clicker(page, at);
+  await page.keyboard.press('l');
+  // Ctrl turns inference off, so the line stays slanted.
+  await page.keyboard.down('Control');
+  await click(-30, -10);
+  await click(30, 20);
+  await page.keyboard.up('Control');
+  // The first Esc drops the next segment, the second leaves the tool.
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await expect(toolPrompt(page)).toHaveCount(0);
+  expect((await counts(page)).constraints).toBe(0);
+  return click;
+}
+
+test('K, then H starts the Horizontal tool, with a hint in between', async ({ page }) => {
+  const click = await slantedLine(page);
+  await page.keyboard.press('k');
+  await expect(chordHint(page)).toBeVisible();
+  await expect(chordHint(page)).toContainText('Horizontal');
+  await page.keyboard.press('h');
+  await expect(chordHint(page)).toHaveCount(0);
+  await expect(toolPrompt(page)).toContainText('Pick a line to make horizontal');
+  await click(0, 5);
+  await expect(glyph(page, 'Horizontal')).toHaveCount(1);
+});
+
+test('K, then Escape cancels the chord and keeps the selection', async ({ page }) => {
+  const click = await slantedLine(page);
+  await click(0, 5);
+  await expect(page.locator('[data-selected-entities]')).toHaveCount(1);
+  await page.keyboard.press('k');
+  await expect(chordHint(page)).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(chordHint(page)).toHaveCount(0);
+  await expect(toolPrompt(page)).toHaveCount(0);
+  expect((await counts(page)).constraints).toBe(0);
+  await expect(page.locator('[data-selected-entities]')).toHaveCount(1);
+});

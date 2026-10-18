@@ -195,6 +195,7 @@ import {
   followBodyNames,
   pendingBodyEntries,
 } from './bodies';
+import { ChordHint } from './ChordHint';
 import { CommandSearch, type SearchOpen } from './CommandSearch';
 import {
   type AppCommand,
@@ -1434,7 +1435,7 @@ export function AppShell({
       jointDialog,
     ],
   );
-  useShortcuts(shortcuts);
+  const chordPrefix = useShortcuts(shortcuts);
 
   /** Opens the Section Analysis panel on the section as it is (the browser's row). */
   const openSection = () => {
@@ -2443,6 +2444,7 @@ export function AppShell({
                 },
               })}
             >
+              {chordPrefix !== undefined && <ChordHint prefix={chordPrefix} commands={commands} />}
               {dialogOpen && dialog && (
                 <DialogOverlay
                   controller={dialog}

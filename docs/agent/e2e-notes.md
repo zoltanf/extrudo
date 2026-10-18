@@ -1766,6 +1766,14 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   the sketch already holds it."). Holding Ctrl while drawing turns inference
   off, so nothing is inferred.
 
+- Constraint chords (ADR-0023, amendment 2026-10-18): `k` shows
+  `[data-chord-hint]` (`role="status"`, lists "Horizontal"…); the second key
+  (`h`) ends it and starts that **tile's tool** (the tiles ignore a
+  preselection, so `toolPrompt` reads "Pick a line to make horizontal…" and a
+  click on the line adds the glyph). Esc ends the hint and is swallowed: the
+  selection (`[data-selected-entities]`) stays. A line drawn with Ctrl held
+  needs **two Esc** (next segment, then the tool) before `toolPrompt` is gone.
+
 ### `e2e/sketch-dimensions.spec.ts`
 
 - P1-07: labels are `[data-dimension]`, the in-place editor
