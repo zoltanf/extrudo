@@ -48,3 +48,4 @@ spikes/*/build/
 
 # Packaged installers (P6-01 slice 3)
 apps/desktop/release/
+playwright-results.json
