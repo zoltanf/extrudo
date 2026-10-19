@@ -2644,7 +2644,7 @@ cylinder height, primitive X/Y/Offset, Move's free arrows and rotate-mode angle.
 while dragging was rejected (saves 4–8 ms of ~34).
 
 ADR-0092 (P6-12, the owner, 2026-10-19) added **Help › Report a Bug…** (command `reportBug`,
-before About; the app menu's App column has "Report a bug" after About Extrudo; the About
+before About; the app menu's App column has "Report a bug" before About Extrudo (owner, 2026-10-19); the About
 footer's "Report a bug" button (when `onReportBug` is given) closes About and opens the same
 dialog): the opener (`AppShell`, `HomeScreen`) captures the screenshot **before** opening, so
 the dialog is not in it (the viewport's `snapshot(1600)`; on the desktop

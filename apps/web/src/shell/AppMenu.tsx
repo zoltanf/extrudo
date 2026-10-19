@@ -398,14 +398,14 @@ export function MenuPanel({
           >
             Settings…
           </Item>
-          <Item icon={<Info />} onClick={choose(onAbout)}>
-            About Extrudo
-          </Item>
           {onReportBug && (
             <Item icon={<Bug />} onClick={choose(onReportBug)}>
               Report a bug
             </Item>
           )}
+          <Item icon={<Info />} onClick={choose(onAbout)}>
+            About Extrudo
+          </Item>
           {(onCloseDesign || onQuit) && <hr className="mx-0 my-1 h-px border-0 bg-line" />}
           {onCloseDesign && (
             <Item icon={<X />} onClick={choose(onCloseDesign)}>

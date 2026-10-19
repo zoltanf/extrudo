@@ -77,8 +77,8 @@ describe('the app menu panel', () => {
     expect(itemTexts(html, 'App')).toEqual([
       'Search…',
       'Settings…',
-      'About Extrudo',
       'Report a bug',
+      'About Extrudo',
     ]);
     expect(itemTexts(html, 'Learn')).toEqual([
       'User Guide',
@@ -95,8 +95,8 @@ describe('the app menu panel', () => {
     expect(itemTexts(html, 'Learn')[0]).toBe('Help for Extrude');
     expect(itemTexts(html, 'App')).toEqual([
       'Settings…',
-      'About Extrudo',
       'Report a bug',
+      'About Extrudo',
       'Close design',
     ]);
     expect(markup({ onQuit: vi.fn() })).toContain('>Quit<');

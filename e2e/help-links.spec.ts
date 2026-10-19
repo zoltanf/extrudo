@@ -162,8 +162,8 @@ test('the App column holds About Extrudo; the strip shows the version and GitHub
   await expect(app).toHaveText([
     /^Search…/,
     /^Settings…/,
-    'About Extrudo',
     'Report a bug',
+    'About Extrudo',
     'Close design',
   ]);
   const strip = panel.locator('[data-update-strip]');
