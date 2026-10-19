@@ -2674,4 +2674,8 @@ resolve them in the kernel): the host takes a `constructionDatums` getter (`Datu
 from current state at every pick), and `constructionDatumSources` in `datums.ts` offers only the
 features **before the active sketch in the timeline**, before the marker, not suppressed and
 shown, whose report is an axis or a point — a later one would make the sketch depend on a later
-feature.
+feature. Owner's test (2026-10-19): a datum **axis** with a parallel line or a point commits at
+the second pick (`DimensionTool.#datumCursor`; label via `lineAxisCursor`/`pointAxisCursor` in
+`dimensionLayout.ts`), with no placement click; origin/datum points and angles keep it.
+`sketchSegments` skips the entities of datum projections (and their points) unless `datums`
+(`curveSegments`, the hover/selection overlay, passes it).

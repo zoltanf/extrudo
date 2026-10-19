@@ -108,7 +108,7 @@ put the label decides whether it is horizontal (label above or below), vertical 
 
 The origin point and the X, Y and Z axes count as things to click too, for dimensions and for the
 constraint tools: a line to the Y axis gives its distance from it (pick the axis first for an angle to a line
-across it), a point to the origin its distance from there, and Coincident puts a point on the origin or on an axis. Construction axes
+across it), a point to the origin its distance from there (a line to a parallel axis, or a point to an axis, is dimensioned at once, with no click to place it; the projected datum isn't drawn, the axis you see is the datum itself), and Coincident puts a point on the origin or on an axis. Construction axes
 and points made before the sketch count as well, as long as they are shown and not suppressed. The picked axis,
 point or origin comes into the sketch as fixed construction geometry that follows it. A datum you hid in
 the browser can't be picked.

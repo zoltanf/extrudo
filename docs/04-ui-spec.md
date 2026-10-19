@@ -755,7 +755,11 @@ A list on the left, the selected parameter on the right.
   fixed construction geometry: an axis a 100 mm line, an axis seen end-on a
   point. After a line, a click on the origin or on an axis parallel to it is
   the second pick, not the label's place; an axis across the line is left for
-  the label (pick the axis first for their angle).
+  the label (pick the axis first for their angle). A line and its parallel
+  axis, or a point and an axis, make the dimension at the second pick (the value
+  field opens at once, the label past the line's end); a point and the origin
+  still wait for the placement click. Datum projections are not drawn; they show
+  while hovered or selected.
 
 ## 5. Default keyboard shortcuts
 

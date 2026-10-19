@@ -102,6 +102,11 @@ as before. To place a length near an axis, click away from the axis.
   origin stays pickable where projected axes cross it.
 - **Slice 2:** construction axes and points before the sketch in the timeline,
   shown and not suppressed, are offered like the origin's (`constructionDatums`).
+- **No placement click for a datum distance** (owner's test, 2026-10-19): line ↔
+  parallel axis and point ↔ axis commit on the second pick with the label past the
+  line's end; point ↔ point and angles keep the placement click.
+- **Datum projections are not drawn** (the view draws the datum); they show while
+  hovered or selected.
 
 ## Consequences
 
