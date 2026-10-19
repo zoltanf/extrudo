@@ -7,6 +7,7 @@
  * everything else becomes a fit-point spline through its projected samples.
  */
 import {
+  DATUM_SPAN,
   fitControlPoles,
   type ProjectedCurve,
   type SketchFrame,
@@ -186,6 +187,24 @@ function thinned(points: Vec2[], max: number): Vec2[] {
   for (let i = 0; i < max; i++)
     out.push(points[Math.round((i * (points.length - 1)) / (max - 1))] as Vec2);
   return out;
+}
+
+/**
+ * An axis projected into the plane (ADR-0093): a point when it runs along
+ * the normal, else a `DATUM_SPAN` line centred on its origin's projection.
+ */
+export function projectAxis(origin: Vec3, direction: Vec3, frame: SketchFrame): ProjectedCurve {
+  const d = unit(direction);
+  if (Math.abs(dot(d, frame.normal)) >= PARALLEL) return projectPoint(origin, frame);
+  const c = worldToSketch(frame, origin);
+  const e = worldToSketch(frame, add(origin, d));
+  const u = unit([e[0] - c[0], e[1] - c[1], 0]);
+  const h = DATUM_SPAN / 2;
+  return {
+    type: 'line',
+    a: tidy([c[0] - h * u[0], c[1] - h * u[1]]),
+    b: tidy([c[0] + h * u[0], c[1] + h * u[1]]),
+  };
 }
 
 /** A vertex projected into the plane. */

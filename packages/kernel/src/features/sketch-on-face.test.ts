@@ -10,7 +10,9 @@ import {
   FeatureRegistry,
   type GeomRef,
   newId,
+  originAxisRef,
   originPlaneRef,
+  originPointRef,
   type ProjectionId,
   projectionSync,
   type SketchData,
@@ -368,6 +370,62 @@ describe('projection', () => {
       status: 'warning',
       message: expect.stringMatching(/^Lost a projected edge/),
       refs: [{ ref: { kind: 'edge', id: 'e[extrude:nothing:cap:end]' }, state: 'lost' }],
+    });
+    expect(report(result, 'S3').projections?.['P0' as ProjectionId]).toEqual({ lost: true });
+  });
+
+  it('projects the origin point and axes (ADR-0093)', async () => {
+    const doc = testDocument([
+      projecting('S3', [
+        originPointRef(),
+        originAxisRef('origin:y'),
+        originAxisRef('origin:z'),
+        originAxisRef('origin:x'),
+      ]),
+    ]);
+    const projections = report(ok(await run(doc)), 'S3').projections ?? {};
+    const curves = (i: number) => projections[`P${i}` as ProjectionId]?.curves;
+    expect(curves(0)).toEqual({ point: { type: 'point', at: [0, 0] } });
+    expect(curves(1)).toEqual({ axis: { type: 'line', a: [0, -50], b: [0, 50] } });
+    // The Z axis runs along an XY sketch's normal: a point.
+    expect(curves(2)).toEqual({ point: { type: 'point', at: [0, 0] } });
+    expect(curves(3)).toEqual({ axis: { type: 'line', a: [-50, 0], b: [50, 0] } });
+  });
+
+  it("projects the axes into a face's frame", async () => {
+    const { features, data } = box();
+    const first = ok(await run(testDocument(features, { h: '15 mm' })));
+    // The side face at y = 0, in the Front view frame (x along X, y along Z).
+    const bottomLine = Object.keys(data.entities).find((id) => id.startsWith('l')) as string;
+    const side = refTo(first, 'face', `extrude:${BOX}:side:${bottomLine}`);
+    const top = refTo(first, 'face', `extrude:${BOX}:cap:end`);
+    const refs = [originAxisRef('origin:x'), originAxisRef('origin:z'), originAxisRef('origin:y')];
+    const sketch = (id: string, plane: GeomRef) =>
+      sketchOn(id, plane, {
+        entities: {},
+        constraints: {},
+        dimensions: {},
+        projections: Object.fromEntries(refs.map((ref, i) => [`P${i}`, { ref, curves: {} }])),
+      } as SketchData);
+    const result = ok(
+      await run(testDocument([...features, sketch('S2', side), sketch('S3', top)], { h: '15 mm' })),
+    );
+    const curves = (id: string, i: number) =>
+      report(result, id).projections?.[`P${i}` as ProjectionId]?.curves;
+    expect(curves('S2', 0)).toEqual({ axis: { type: 'line', a: [-50, 0], b: [50, 0] } });
+    expect(curves('S2', 1)).toEqual({ axis: { type: 'line', a: [0, -50], b: [0, 50] } });
+    expect(curves('S2', 2)).toEqual({ point: { type: 'point', at: [0, 0] } });
+    // The top face at z = 15: the X axis 15 mm below still lands on its x axis.
+    expect(curves('S3', 0)).toEqual({ axis: { type: 'line', a: [-50, 0], b: [50, 0] } });
+    expect(curves('S3', 1)).toEqual({ point: { type: 'point', at: [0, 0] } });
+  });
+
+  it('warns when a projected construction axis is gone', async () => {
+    const axis: GeomRef = { kind: 'axis', id: 'nothing' };
+    const result = await run(testDocument([projecting('S3', [axis])]));
+    expect(result.features['S3' as FeatureId]).toEqual({
+      status: 'warning',
+      message: expect.stringMatching(/^Lost a projected axis/),
     });
     expect(report(result, 'S3').projections?.['P0' as ProjectionId]).toEqual({ lost: true });
   });

@@ -30,8 +30,14 @@ import { KernelError, MeshBodyError, type ShapeHandle } from '../kernel';
 import { LostReferenceError } from '../naming/resolve';
 import type { PlanarCurve, PlanarFace } from '../planar';
 import type { EvalContext, KernelFeatureDefinition } from '../recompute/types';
-import { projectEdge, projectPieces, projectPoint, withoutRepeats } from './projection';
-import { planeOf } from './references';
+import {
+  projectAxis,
+  projectEdge,
+  projectPieces,
+  projectPoint,
+  withoutRepeats,
+} from './projection';
+import { lineOf, planeOf, pointOf } from './references';
 
 /** A profile of a sketch as later features see it (`SketchOutputData.profiles`). */
 export interface SketchProfileInfo {
@@ -248,9 +254,15 @@ const SOURCE_NOUN: Partial<Record<GeomRef['kind'], string>> = {
   face: 'face',
   vertex: 'vertex',
   body: 'body',
+  axis: 'axis',
+  point: 'point',
 };
 
-/** The curves of one projected edge, face, vertex or body, by key. */
+/**
+ * The curves of one projected edge, face, vertex or body, by key; an origin
+ * or construction axis or point (ADR-0093) as a line keyed `axis`, or a
+ * point keyed `point` (an axis along the normal too).
+ */
 function projectSource(
   ctx: EvalContext<SketchInputs>,
   ref: GeomRef,
@@ -272,6 +284,15 @@ function projectSource(
     return curves;
   }
   if (ref.kind === 'body') return projectBody(ctx, ref, frame);
+  const reader = ctx as unknown as EvalContext;
+  if (ref.kind === 'point') {
+    return { point: projectPoint(pointOf(reader, ref, 'the projected point'), frame) };
+  }
+  if (ref.kind === 'axis') {
+    const axis = lineOf(reader, ref, 'the projected axis');
+    const curve = projectAxis(axis.origin, axis.direction, frame);
+    return curve.type === 'point' ? { point: curve } : { axis: curve };
+  }
   const hit = ctx.resolve(ref, { label: 'the projected face' });
   const description = ctx.describe(hit.shape);
   const names = ctx.names(hit.body).edges;

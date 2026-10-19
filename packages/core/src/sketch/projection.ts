@@ -2,7 +2,8 @@
  * Projected model geometry in a sketch (P2-09, FR-SK-12, ADR-0031).
  *
  * The Project tool adds a projection record (`addProjection`): a persistent
- * reference to a body edge or face. The kernel resolves it on every
+ * reference to a body edge or face; a dimension or constraint tool adds one
+ * for a picked origin or construction axis or point (ADR-0093). The kernel resolves it on every
  * recompute and reports the curves it makes in the sketch plane
  * (`SketchReport`). The app then brings the sketch in line with the report
  * (`projectionSync` → `syncProjections`): it adds the curves the first
@@ -96,15 +97,29 @@ export function projectionOf(
   return undefined;
 }
 
-/** What the Project tool can project, and what Intersect can cut (P4-12). */
+/**
+ * The length (mm) of the line an axis projects to (ADR-0093), centred on the
+ * projection of the axis's origin. Only for display: dimensions and
+ * constraints treat a line as infinite.
+ */
+export const DATUM_SPAN = 100;
+
+/** Whether a projection source is a datum (an axis or a point, ADR-0093). */
+export const isDatumRef = (ref: GeomRef) => ref.kind === 'axis' || ref.kind === 'point';
+
+/**
+ * What can be projected (the Project tool's bodies, faces, edges and
+ * vertices; the dimension and constraint tools' axes and points, ADR-0093),
+ * and what Intersect can cut (P4-12).
+ */
 const PROJECTABLE: Record<'project' | 'intersect', readonly GeomRef['kind'][]> = {
-  project: ['edge', 'face', 'vertex', 'body'],
+  project: ['edge', 'face', 'vertex', 'body', 'axis', 'point'],
   intersect: ['face', 'body'],
 };
 
 /**
  * Projects a body edge, face, vertex or whole body into a sketch (the
- * Project tool), or with `mode: 'intersect'` the curves where a face or body
+ * Project tool), an origin or construction axis or point (ADR-0093), or with `mode: 'intersect'` the curves where a face or body
  * meets the sketch plane (Intersect, P4-12). The record starts without
  * curves: the kernel reports them on the next recompute and the app adds them
  * (`syncProjections`), in the same undo step. With `linked: false` (an
@@ -123,7 +138,7 @@ export const addProjection = defineCommand<{
     throw new CommandError(
       mode === 'intersect'
         ? 'Only faces and bodies can be intersected with the sketch plane.'
-        : 'Only body edges, faces, vertices and bodies can be projected.',
+        : 'Only body edges, faces, vertices, bodies, axes and points can be projected.',
     );
   }
   const already = Object.values(data.projections ?? {}).some(
@@ -311,7 +326,13 @@ export function projectionSync(
     }
     for (const key of Object.keys(reported.curves).sort()) {
       if (key in projection.curves) continue;
-      curves[key] = addCurve(reported.curves[key] as ProjectedCurve, newId, sync, false);
+      // A datum's line is construction geometry: it never splits a profile (ADR-0093).
+      curves[key] = addCurve(
+        reported.curves[key] as ProjectedCurve,
+        newId,
+        sync,
+        isDatumRef(projection.ref),
+      );
       mapChanged = true;
     }
     if (mapChanged) {
