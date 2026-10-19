@@ -44,6 +44,7 @@ export {
   pairMeasure,
   unionBox,
 } from './inspect';
+export { type Interference, interferences } from './interference';
 export {
   CancelledError,
   isCheckCancelled,

@@ -98,6 +98,18 @@ export const TOOL_SCHEMAS = {
       'The bodies at the timeline marker: [{ id, name, color?, opacity?, volume (mm³), box ({ min, max } in mm), visible }]. The id (<feature id>:<n>) is what a body reference takes.',
     input: empty,
   },
+  check_interference: {
+    description:
+      "Finds bodies that overlap: [{ a, b, volume (mm³), box ({ min, max } mm) }], one entry per pair that shares volume; [] when none do. Touching faces don't count. Run it before finishing a model of several bodies: overlapping bodies print badly. Changes nothing.",
+    input: z.object({
+      bodies: z
+        .array(geomRef)
+        .optional()
+        .describe(
+          'The bodies to check against each other (references); all visible bodies when left out.',
+        ),
+    }),
+  },
   get_selection: {
     description: 'What the person has selected in the app: [{ kind, id }].',
     input: empty,

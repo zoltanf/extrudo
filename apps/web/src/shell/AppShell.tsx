@@ -25,7 +25,7 @@ import {
   type SessionStore,
   type ViewId,
 } from '@extrudo/core';
-import type { BodyMesh } from '@extrudo/kernel';
+import type { BodyMesh, Recomputer } from '@extrudo/kernel';
 import type { Matrix12 } from '@extrudo/kernel/matrix';
 import {
   type ComponentProps,
@@ -291,6 +291,7 @@ export interface AppShellProps {
     Partial<PluginCommandKernel> &
     Partial<Pick<JointDialogKernel, 'resolveJoint'>> &
     Partial<JointCheckKernel> &
+    Partial<Pick<Recomputer, 'interference'>> &
     Partial<{
       readonly client: {
         heap(): Promise<{ top: number; size: number }>;

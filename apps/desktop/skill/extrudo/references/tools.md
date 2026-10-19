@@ -54,6 +54,14 @@ The bodies at the timeline marker: [{ id, name, color?, opacity?, volume (mm³),
 
 No inputs.
 
+## `check_interference`
+
+Finds bodies that overlap: [{ a, b, volume (mm³), box ({ min, max } mm) }], one entry per pair that shares volume; [] when none do. Touching faces don't count. Run it before finishing a model of several bodies: overlapping bodies print badly. Changes nothing.
+
+| Input | Type | Required | What it is |
+| --- | --- | --- | --- |
+| `bodies` | `({ kind: string, id: string })[]` | no | The bodies to check against each other (references); all visible bodies when left out. |
+
 ## `get_selection`
 
 What the person has selected in the app: [{ kind, id }].

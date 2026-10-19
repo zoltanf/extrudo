@@ -1,0 +1,1 @@
+- 2026-10-19 · **Agents find overlapping bodies**: the MCP tool `check_interference` answers every pair of bodies that shares volume, with that volume and its box; touching bodies don't count (#89).

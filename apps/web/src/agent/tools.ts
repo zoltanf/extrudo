@@ -246,7 +246,7 @@ export function regionsOf(sketch: SketchHandle, shapeCurves?: readonly (readonly
     const curvesOf = (loop: typeof region.outer) => [...new Set(loop.edges.map((e) => e.curve))];
     const outer = curvesOf(region.outer);
     const holes = region.holes.map(curvesOf);
-    const bounding = new Set([...outer, ...holes.flat()]);
+    const bounding = new Set<string>([...outer, ...holes.flat()]);
     const shapes = shapeCurves
       ?.map((curves, index) => (curves.some((c) => bounding.has(c)) ? index : -1))
       .filter((index) => index >= 0);
@@ -581,6 +581,29 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
   get_bodies: async (_input, ctx, host) => {
     await settled(need(host), ctx.settleMs);
     return json(await need(host).bodies());
+  },
+  check_interference: async ({ bodies }, ctx, host) => {
+    const h = need(host);
+    await settled(h, ctx.settleMs);
+    const live = liveBodies(h);
+    if (!live) return failure("The model isn't computed: check get_design's problems first.");
+    const { doc } = h.store.getState();
+    const model = h.model.getState();
+    const ids = bodies
+      ? (resolveBodyRefs({ bodies }, live, doc) as { bodies: GeomRef[] }).bodies.map((b) => b.id)
+      : bodyEntries(doc, model.bodies, model.origins)
+          .filter((e) => e.display !== 'hidden')
+          .map((e) => e.id);
+    const found = await h.interference([...new Set(ids)]);
+    const r = (v: readonly number[]) => v.map(round3);
+    return json(
+      found.map(({ a, b, volume, box }) => ({
+        a,
+        b,
+        volume: round3(volume),
+        box: { min: r(box.min), max: r(box.max) },
+      })),
+    );
   },
   get_selection: (_input, _ctx, host) => json(need(host).session.getState().selection),
   screenshot: async (_input, ctx, host) => {

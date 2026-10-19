@@ -29,7 +29,10 @@ parameter names: `'40 mm'`, `'width / 2'`, `'2 * wall + 0.4 mm'`.
 4. **Check after each change.** Read `problems`; call `get_design` when unsure,
    and `screenshot` to see the part. `get_bodies` gives each body's volume and
    bounding box, which is the quickest way to confirm a size.
-5. **Fix, don't pile on.** A feature in `error` makes everything after it
+5. **With several bodies, run `check_interference` before finishing.** It
+   lists every pair that overlaps with the shared volume; overlapping bodies
+   print badly. Fix each with a `combine` cut, or move or resize one.
+6. **Fix, don't pile on.** A feature in `error` makes everything after it
    suspect. Fix it (`edit_feature`, or `undo`) before adding more.
 
 ## Features

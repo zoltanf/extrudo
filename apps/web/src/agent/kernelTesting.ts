@@ -5,9 +5,9 @@
  * construction reports), so the tools see the kernel's body IDs and frames.
  * Test-only: it loads OCCT.
  */
-import type { ExtrudoDocument, FeatureId, SketchReport } from '@extrudo/core';
+import type { BodyId, ExtrudoDocument, FeatureId, SketchReport } from '@extrudo/core';
 import { isConstructionType } from '@extrudo/core';
-import { Kernel } from '@extrudo/kernel';
+import { interferences, Kernel } from '@extrudo/kernel';
 import { kernelFeatures, loadOcct, RecomputeEngine } from '@extrudo/kernel/node';
 import { bodyEntries } from '../shell/bodies';
 import type { AgentBody } from './host';
@@ -72,6 +72,16 @@ export async function kernelHost(doc: ExtrudoDocument, designId = doc.id) {
       };
     });
   };
+
+  host.interference = async (ids) =>
+    interferences(
+      kernel,
+      ids.map((id) => {
+        const shape = engine.latestBody(id as BodyId);
+        if (shape === undefined) throw new Error(`no body ${id}`);
+        return { id: id as BodyId, shape };
+      }),
+    );
 
   return { ...fake, dispose: () => engine.clear() };
 }

@@ -35,6 +35,7 @@ export function workerApi(service: KernelService): KernelApi {
     exportStep: (bodies) => service.exportStep(bodies),
     exportScad: (options) => service.exportScad(options),
     inspect: (targets) => service.inspect(targets),
+    interference: (bodies) => service.interference(bodies),
     resolveJoint: (joint) => service.resolveJoint(joint),
     checkJoint: (request, onProgress) => service.checkJoint(request, onProgress),
     cancelCheck: () => service.cancelCheck(),

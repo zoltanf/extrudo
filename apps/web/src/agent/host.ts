@@ -23,6 +23,16 @@ export interface AgentBody {
   visible: boolean;
 }
 
+/** Two bodies that share volume, as `check_interference` answers them. */
+export interface AgentInterference {
+  a: string;
+  b: string;
+  /** mm³ */
+  volume: number;
+  /** mm */
+  box: { min: readonly [number, number, number]; max: readonly [number, number, number] };
+}
+
 /** One of the app's commands, as `list_commands` lists it. */
 export interface AgentCommand {
   id: string;
@@ -44,6 +54,8 @@ export interface AgentHost {
   ready(): Promise<void>;
   /** The bodies at the marker with their measures (the kernel's, as Print Info's). */
   bodies(): Promise<AgentBody[]>;
+  /** The pairs of these bodies (at the marker) that share volume; touching ones aren't. */
+  interference(bodies: readonly string[]): Promise<AgentInterference[]>;
   /** A square PNG of the model, `size` px; null when the view isn't drawn. */
   snapshot(size: number): Promise<Blob | null>;
   commands(): readonly AgentCommand[];

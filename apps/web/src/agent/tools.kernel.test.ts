@@ -226,4 +226,38 @@ describe('the agent tools on the real kernel', { timeout: 60_000 }, () => {
     expect(bodies.at(-1).volume).toBeCloseTo(Math.PI * (100 - 25) * 10, 0);
     dispose();
   });
+  it('finds overlapping bodies, not touching ones (#89)', async () => {
+    const { call, dispose } = await open();
+    const cube = async (x: number) =>
+      jsonOf(
+        await call('add_feature', {
+          type: 'box',
+          inputs: { length: '20 mm', width: '20 mm', height: '20 mm', x: `${x} mm` },
+        }),
+      ).result[0].id as string;
+    const a = await cube(0);
+    const b = await cube(10);
+    const c = await cube(40);
+    const d = await cube(60);
+    expect(jsonOf(await call('check_interference'))).toEqual([
+      {
+        a: `${a}:0`,
+        b: `${b}:0`,
+        volume: 4000,
+        box: { min: [0, -10, 0], max: [10, 10, 20] },
+      },
+    ]);
+    // Only the two that touch face to face: nothing.
+    expect(
+      jsonOf(
+        await call('check_interference', {
+          bodies: [
+            { kind: 'body', id: c },
+            { kind: 'body', id: `${d}:0` },
+          ],
+        }),
+      ),
+    ).toEqual([]);
+    dispose();
+  });
 });
