@@ -1308,7 +1308,7 @@ end to end, faster than in established desktop CAD.
   `scripts/docker-smoke.sh`; a CI job builds and smoke-tests the image, the
   deploy workflow publishes `edge`, `X.Y.Z`, `X.Y` and `latest` to
   `ghcr.io/zoltanf/extrudo` for amd64 and arm64; docs in `docs/deploy.md`).
-- [ ] **P6-12 Report a Bug** (owner, 2026-10-19; ADR-0092). `Help › Report a
+- [x] **P6-12 Report a Bug** (owner, 2026-10-19; ADR-0092). Done 2026-10-19. `Help › Report a
   Bug…` captures a screenshot (the viewport; the whole window on the desktop),
   gathers the version, the "Running on" rows and the last error messages,
   lets the person describe what happened and the steps, and opens GitHub's
