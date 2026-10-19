@@ -225,6 +225,15 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   ipcMain.on(CHANNELS.linkOpen, (_event, url: unknown) => deps.links.open(url));
   ipcMain.on(CHANNELS.siteOpen, (_event, link: unknown) => deps.docs.openSite(link));
 
+  // The Report a Bug dialog's window capture (P6-12, ADR-0092 §3): the whole
+  // window as PNG bytes; null when there is no window.
+  ipcMain.handle(CHANNELS.windowCapture, async () => {
+    const window = deps.getWindow();
+    if (!window) return null;
+    const image = await window.webContents.capturePage();
+    return new Uint8Array(image.toPNG());
+  });
+
   // The MCP server (P6-08, ADR-0087 §4): the payloads are checked in the service.
   ipcMain.on(CHANNELS.mcpTools, (_event, tools: unknown) => deps.mcp.setTools(tools));
   ipcMain.on(CHANNELS.mcpRespond, (_event, response: unknown) => deps.mcp.respond(response));

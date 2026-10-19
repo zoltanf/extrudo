@@ -31,6 +31,7 @@ function fakeApi(overrides: Partial<ExtrudoApi> = {}) {
       requestPersistence: async () => 'persistent',
     },
     docs: { open: () => {}, openSite: () => {} },
+    window: { capture: async () => null },
     links: { open: () => {} },
     rescue: { put: () => true, clear: () => {}, list: () => [] },
     folders: {
@@ -369,6 +370,30 @@ describe('the desktop app commands (ADR-0075, 2026-10-09)', () => {
     await app.clearRecent();
     expect(clear).toHaveBeenCalledOnce();
     expect(desktopApp(api, 'MacIntel').nativeMenu).toBe(true);
+  });
+
+  it('captures the window as a PNG blob, and null without one or on a failure (P6-12, ADR-0092 §3)', async () => {
+    const png = desktopApp(
+      fakeApi({ window: { capture: async () => new Uint8Array([137, 80, 78, 71]) } }),
+    );
+    const blob = await png.capturePage();
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob?.type).toBe('image/png');
+    expect(blob?.size).toBe(4);
+    expect(
+      await desktopApp(fakeApi({ window: { capture: async () => null } })).capturePage(),
+    ).toBeNull();
+    expect(
+      await desktopApp(
+        fakeApi({
+          window: {
+            capture: async () => {
+              throw new Error('boom');
+            },
+          },
+        }),
+      ).capturePage(),
+    ).toBeNull();
   });
 
   it('is part of the platform, and so is a manual update check', async () => {
