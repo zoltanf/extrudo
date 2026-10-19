@@ -1,0 +1,1 @@
+- 2026-10-19 · **Agents tell profiles apart**: `add_sketch` and `get_feature` answer each profile's area, box, centroid, loop curves and (for `add_sketch`) the shapes that bound it, so an agent picks a ring or a room without guessing (#85).

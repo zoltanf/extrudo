@@ -42,7 +42,7 @@ No inputs.
 
 ## `get_feature`
 
-One feature: its type, name, status and inputs as the API's plain values (what add_feature and edit_feature take); a sketch lists its plane, profiles and curves (an extrude's side face of curve <c> is side:<c>).
+One feature: its type, name, status and inputs as the API's plain values (what add_feature and edit_feature take); a sketch lists its plane, profiles, regions (each profile's area, box, centroid and loops, as add_sketch answers them) and curves (an extrude's side face of curve <c> is side:<c>).
 
 | Input | Type | Required | What it is |
 | --- | --- | --- | --- |
@@ -97,7 +97,7 @@ Applies a configuration (by id or name): its parameters take the configuration's
 
 **Changes the design.**
 
-Adds a sketch on a plane with the shapes given and answers its id and profiles (the references an extrude's profiles take). Plane: 'xy', 'xz', 'yz' or a face reference. One undo step.
+Adds a sketch on a plane with the shapes given and answers its id, its profiles (the references an extrude's profiles take) and regions: per profile, in the same order, { profile, area (mm²), box and centroid (sketch mm), outer and holes (curve ids), shapes (indices of the shapes bounding it) }, to tell a ring from the hole inside it. Plane: 'xy', 'xz', 'yz' or a face reference. One undo step.
 
 | Input | Type | Required | What it is |
 | --- | --- | --- | --- |

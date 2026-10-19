@@ -212,6 +212,56 @@ export function plainInput(input: FeatureInputs[string]): unknown {
   }
 }
 
+const round3 = (n: number) => Math.round(n * 1000) / 1000 + 0;
+
+/**
+ * Each of a sketch's profiles as an agent tells them apart (#85), in the order
+ * of `profiles()`: its reference, area (mm²), box and centroid in sketch
+ * coordinates, the curves of its outer loop and of each hole, and, for a sketch
+ * `add_sketch` just drew, the indices of the shapes whose curves bound it.
+ */
+export function regionsOf(sketch: SketchHandle, shapeCurves?: readonly (readonly string[])[]) {
+  const refs = sketch.profiles();
+  return sketch.regions.map((region, i) => {
+    const xs = region.outer.polygon.map((p) => p[0]);
+    const ys = region.outer.polygon.map((p) => p[1]);
+    // The centroid of the outer loop less the holes: their signed areas weigh them.
+    let area = 0;
+    let cx = 0;
+    let cy = 0;
+    for (const loop of [region.outer, ...region.holes]) {
+      const pts = loop.polygon;
+      for (let j = 0; j < pts.length; j++) {
+        const [x0, y0] = pts[j] as readonly [number, number];
+        const [x1, y1] = pts[(j + 1) % pts.length] as readonly [number, number];
+        const cross = x0 * y1 - x1 * y0;
+        area += cross / 2;
+        cx += ((x0 + x1) * cross) / 6;
+        cy += ((y0 + y1) * cross) / 6;
+      }
+    }
+    const curvesOf = (loop: typeof region.outer) => [...new Set(loop.edges.map((e) => e.curve))];
+    const outer = curvesOf(region.outer);
+    const holes = region.holes.map(curvesOf);
+    const bounding = new Set([...outer, ...holes.flat()]);
+    const shapes = shapeCurves
+      ?.map((curves, index) => (curves.some((c) => bounding.has(c)) ? index : -1))
+      .filter((index) => index >= 0);
+    return {
+      profile: refs[i] as GeomRef,
+      area: round3(region.area),
+      box: {
+        min: [round3(Math.min(...xs)), round3(Math.min(...ys))],
+        max: [round3(Math.max(...xs)), round3(Math.max(...ys))],
+      },
+      ...(area !== 0 && { centroid: [round3(cx / area), round3(cy / area)] }),
+      outer,
+      holes,
+      ...(shapes && { shapes }),
+    };
+  });
+}
+
 function featureDetail(host: AgentHost, id: string) {
   const { doc } = host.store.getState();
   const feature = doc.features.find((f) => f.id === id);
@@ -230,7 +280,13 @@ function featureDetail(host: AgentHost, id: string) {
     const curves = Object.entries(sketch.data.entities)
       .filter(([, entity]) => entity.type !== 'point')
       .map(([curve, entity]) => ({ id: curve, type: entity.type }));
-    return { ...base, plane: sketch.plane, profiles: sketch.profiles(), curves };
+    return {
+      ...base,
+      plane: sketch.plane,
+      profiles: sketch.profiles(),
+      regions: regionsOf(sketch),
+      curves,
+    };
   }
   return {
     ...base,
@@ -544,19 +600,34 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
   add_sketch: ({ plane, shapes, name }, ctx, host) => {
     const h = need(host);
     return change(ctx, h, `Add ${name ?? 'sketch'}`, () => {
+      // The curves each shape drew, to say which shapes bound each profile.
+      const shapeCurves: string[][] = [];
       const [id] = insertFromApi(
         h,
         (d) => {
           const on = typeof plane === 'string' ? d.origin[plane] : (plane as GeomRef);
           const draw = (k: SketchBuilder) => {
-            for (const shape of shapes) drawShape(k, shape);
+            for (const shape of shapes) {
+              const before = new Set(Object.keys(k.data.entities));
+              drawShape(k, shape);
+              shapeCurves.push(
+                Object.entries(k.data.entities)
+                  .filter(([curve, entity]) => !before.has(curve) && entity.type !== 'point')
+                  .map(([curve]) => curve),
+              );
+            }
           };
           d.sketch(on, draw, name ? { name } : {});
         },
         name,
       );
       const sketch = Design.from(h.store.getState().doc).feature(id as FeatureId) as SketchHandle;
-      return { id, name: nameOf(h, id as FeatureId), profiles: sketch.profiles() };
+      return {
+        id,
+        name: nameOf(h, id as FeatureId),
+        profiles: sketch.profiles(),
+        regions: regionsOf(sketch, shapeCurves),
+      };
     });
   },
   add_feature: async ({ type, inputs, name }, ctx, host) => {

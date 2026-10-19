@@ -141,4 +141,41 @@ describe('the agent tools on the real kernel', { timeout: 60_000 }, () => {
     );
     dispose();
   });
+  it('tells a ring from the hole inside it by area, holes and shapes (#85)', async () => {
+    const { call, dispose } = await open();
+    const sketch = jsonOf(
+      await call('add_sketch', {
+        plane: 'xy',
+        shapes: [
+          { shape: 'rectangle', from: [0, 0], to: [40, 30] },
+          { shape: 'rectangle', from: [10, 10], to: [30, 20] },
+        ],
+      }),
+    ).result;
+    expect(sketch.regions).toHaveLength(2);
+    expect(sketch.regions.map((r: { profile: unknown }) => r.profile)).toEqual(sketch.profiles);
+    const ring = sketch.regions.find((r: { holes: unknown[] }) => r.holes.length === 1);
+    const inner = sketch.regions.find((r: { holes: unknown[] }) => r.holes.length === 0);
+    expect(ring).toMatchObject({
+      area: 40 * 30 - 20 * 10,
+      box: { min: [0, 0], max: [40, 30] },
+      centroid: [20, 15],
+      shapes: [0, 1],
+    });
+    expect(ring.outer).toHaveLength(4);
+    expect(inner).toMatchObject({ area: 200, box: { min: [10, 10], max: [30, 20] }, shapes: [1] });
+    // get_feature answers the same regions, without shapes.
+    const detail = jsonOf(await call('get_feature', { id: sketch.id }));
+    expect(detail.regions.map((r: { area: number }) => r.area)).toEqual(
+      sketch.regions.map((r: { area: number }) => r.area),
+    );
+    expect(detail.regions[0].shapes).toBeUndefined();
+    // Extruding the ring alone makes the hollow frame.
+    await call('add_feature', {
+      type: 'extrude',
+      inputs: { profiles: [ring.profile], distance: '5 mm' },
+    });
+    expect(jsonOf(await call('get_bodies'))[0].volume).toBeCloseTo(1000 * 5, 3);
+    dispose();
+  });
 });

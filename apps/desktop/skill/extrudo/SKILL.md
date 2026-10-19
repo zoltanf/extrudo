@@ -69,7 +69,11 @@ names, never from an index or a position:
 - An edge: `{ "edgeBetween": ["<face name>", "<face name>"] }`, the edge where
   two named faces meet.
 - A profile: copy it from `add_sketch`'s answer (or `get_feature` on the
-  sketch).
+  sketch). Profiles don't follow the order of `shapes`: pick one by its entry
+  in `regions` (same order as `profiles`): `area`, `box`, `centroid`, its
+  `holes`, and `shapes`, the indices of the shapes that bound it. A rectangle
+  inside another gives two profiles: the ring (one hole, `shapes: [0, 1]`)
+  and the inner rectangle (no hole, `shapes: [1]`).
 - Origin planes and axes: `{ "kind": "plane", "id": "origin:xy" }` (`xz`,
   `yz`), `{ "kind": "axis", "id": "origin:z" }` (`x`, `y`).
 
