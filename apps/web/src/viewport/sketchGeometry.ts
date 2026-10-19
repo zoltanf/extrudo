@@ -1,7 +1,9 @@
 import {
   CIRCLE_SEGMENTS,
   dimensionAnchor,
+  entityPoints,
   entityPolylines,
+  isDatumRef,
   projectedEntities,
   type SketchData,
   type SketchEntityId,
@@ -81,7 +83,7 @@ export function curveSegments(
       entities[id as keyof SketchData['entities']] = entity;
     }
   }
-  const segments = sketchSegments({ ...data, entities }, frame);
+  const segments = sketchSegments({ ...data, entities }, frame, undefined, false, undefined, true);
   const parts = [
     ...STATUSES.map((s) => segments.curves[s]),
     segments.construction,
@@ -131,6 +133,11 @@ export { CIRCLE_SEGMENTS };
  * the sketch being open is what shows them. With `gripSpline`, a fit
  * spline's tangent grips (ADR-0063's third amendment) are drawn the same way:
  * a dashed line from each end to its grip, the grip itself in `grips`.
+ *
+ * The curves of a datum projection (ADR-0093) are not drawn, nor counted for
+ * Fit, unless `datums`: the view draws the origin and the axes itself. The
+ * hover and selection overlays (`curveSegments`) pass it, so a datum still
+ * shows when it is hovered or selected.
  */
 export function sketchSegments(
   data: SketchData,
@@ -138,14 +145,28 @@ export function sketchSegments(
   status?: Readonly<Record<string, EntityStatus>>,
   controlPolygons = false,
   gripSpline?: string,
+  datums = false,
 ): SketchSegments {
   const solid: Record<EntityStatus, number[]> = { free: [], fixed: [], conflict: [] };
   const construction: number[] = [];
   const polygons: number[] = [];
   const projected: number[] = [];
   const isProjected = projectedEntities(data);
+  const hidden = new Set<string>();
+  if (!datums) {
+    for (const projection of Object.values(data.projections ?? {})) {
+      if (!isDatumRef(projection.ref)) continue;
+      for (const curve of Object.values(projection.curves)) {
+        const e = curve === null ? undefined : data.entities[curve];
+        if (!e || curve === null) continue;
+        hidden.add(curve);
+        for (const p of entityPoints(e)) hidden.add(p);
+      }
+    }
+  }
   const points: Record<EntityStatus, number[]> = { free: [], fixed: [], conflict: [] };
   for (const [id, entity] of Object.entries(data.entities)) {
+    if (hidden.has(id)) continue;
     const group = status?.[id] ?? 'free';
     if (entity.type === 'point') {
       points[group].push(...sketchToWorld(frame, [entity.x, entity.y]));
