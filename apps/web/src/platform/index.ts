@@ -107,6 +107,11 @@ export interface DesktopApp {
   clearRecent(): Promise<void>;
   /** Calls back when main's list changed; returns the unsubscribe. */
   onRecentChanged(handler: () => void): () => void;
+  /**
+   * A PNG of the whole window for the Report a Bug dialog (P6-12, ADR-0092 §3),
+   * or null when main has no window or the capture failed.
+   */
+  capturePage(): Promise<Blob | null>;
 }
 
 export interface Platform {

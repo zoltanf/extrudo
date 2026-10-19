@@ -67,6 +67,8 @@ export const CHANNELS = {
   updateRelease: 'extrudo:update:release',
   // The docs pages (P6-06 S9): a `docsPath` result, the URL main builds itself.
   docsOpen: 'extrudo:docs:open',
+  // The Report a Bug dialog's window capture (P6-12, ADR-0092 §3).
+  windowCapture: 'extrudo:window:capture',
   // The About dialog's links (ADR-0085): a URL main checks against its allow-list.
   linkOpen: 'extrudo:link:open',
   // The landing site and the source (the top bar's About and GitHub): a name, the URL main's own.
@@ -328,6 +330,11 @@ export interface ExtrudoApi {
     open(path: string): void;
     /** Opens the source repository by name; main holds the URL. */
     openSite(link: 'repo'): void;
+  };
+  // The Report a Bug dialog's window capture (P6-12, ADR-0092 §3).
+  readonly window: {
+    /** A PNG of the whole window (`webContents.capturePage()`), or null without a window. */
+    capture(): Promise<Uint8Array | null>;
   };
   readonly links: {
     /** Opens a link in the system browser (ADR-0085): main allows only its own list of addresses. */
