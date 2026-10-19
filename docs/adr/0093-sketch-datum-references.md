@@ -89,6 +89,20 @@ as the second pick (line to axis: the distance between parallel lines, or the
 angle; line to point: the distance). A body edge or vertex there is still refused,
 as before. To place a length near an axis, click away from the axis.
 
+### Amendment (slice 1 review, 2026-10-19)
+
+- **Pick order:** sketch geometry, then datum points, then **body vertices**, then
+  datum axes, then body edges: a body vertex lying on an axis (a box corner on X)
+  stays a vertex.
+- **§4 refined:** after a sketch line, the origin, a datum point and an axis
+  **parallel** to the line are taken as the second pick; an axis **across** the
+  line is left for the label (a centred line's label lands on the other axis). For
+  the angle to a crossing axis, pick the axis first.
+- **A projected axis line gives way to a datum point** under the pointer, so the
+  origin stays pickable where projected axes cross it.
+- **Slice 2:** construction axes and points before the sketch in the timeline,
+  shown and not suppressed, are offered like the origin's (`constructionDatums`).
+
 ## Consequences
 
 - Dimensions and constraints to the origin and the axes work in every sketch,

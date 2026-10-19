@@ -109,11 +109,11 @@ describe('constructionDatumSources (ADR-0093 slice 2)', () => {
     inputs: {},
     ...over,
   });
-  const reports: ConstructionReports = {
+  const reports = {
     ax: { kind: 'axis', origin: [0, 10, 0], direction: [1, 0, 0] },
     cp: { kind: 'point', point: [3, 4, 0] },
     pl: { kind: 'plane', frame: plane('origin:xy'), anchor: [0, 0, 0] },
-  };
+  } as ConstructionReports;
 
   it('takes the construction features before the sketch, shown and live', () => {
     const doc = {
@@ -143,7 +143,13 @@ describe('constructionDatumSources (ADR-0093 slice 2)', () => {
       ],
       timelineMarker: 4, // the plane at the marker is rolled back
     };
-    expect(constructionDatumSources(doc, { ax2: reports.ax }, 'sk' as FeatureId)).toEqual([
+    expect(
+      constructionDatumSources(
+        doc,
+        { ax2: reports['ax' as FeatureId] } as ConstructionReports,
+        'sk' as FeatureId,
+      ),
+    ).toEqual([
       { ref: { kind: 'axis', id: 'ax2' }, kind: 'axis', origin: [0, 10, 0], direction: [1, 0, 0] },
     ]);
     expect(

@@ -859,6 +859,15 @@ describe('construction datums through the host (ADR-0093 slice 2)', () => {
       h1: { type: 'point', x: 20, y: 5 },
       h: { type: 'line', start: 'h0', end: 'h1', construction: false },
     });
+  /** The only projection, and the kernel's report of it on the next recompute. */
+  const project = (t: T, curves: Record<string, unknown>) => {
+    const [pid] = Object.keys(t.data().projections ?? {}) as ProjectionId[];
+    if (!pid) throw new Error('no projection');
+    t.host.syncProjections({
+      [t.id]: { frame: XY, projections: { [pid]: { curves } as never } },
+    });
+    return { pid, projection: t.data().projections?.[pid] };
+  };
 
   it('dimensions a line to a parallel construction axis, projected as construction', async () => {
     const t = await setup({
@@ -872,16 +881,9 @@ describe('construction datums through the host (ADR-0093 slice 2)', () => {
     t.host.click(at(5, 10.1)); // the construction axis at y = 10
     t.host.click(at(5, 8)); // the label between them
     expect(t.data().dimensions).toEqual({});
-    const [pid] = Object.keys(t.data().projections ?? {}) as ProjectionId[];
-    t.host.syncProjections({
-      [t.id]: {
-        frame: XY,
-        projections: {
-          [pid]: { curves: { axis: { type: 'line', a: [-50, 10], b: [50, 10] } } } as never,
-        },
-      },
+    const { projection } = project(t, {
+      axis: { type: 'line', a: [-50, 10], b: [50, 10] },
     });
-    const projection = t.data().projections?.[pid];
     expect(projection?.ref).toEqual({ kind: 'axis', id: 'cx' });
     const axis = projection?.curves.axis as SketchEntityId;
     expect(t.data().entities[axis]).toMatchObject({ type: 'line', construction: true });
@@ -900,14 +902,7 @@ describe('construction datums through the host (ADR-0093 slice 2)', () => {
     draw(t, { p: { type: 'point', x: 0, y: 0 } });
     t.host.click(at(0, 0.1)); // the sketch point
     t.host.click(at(5.1, 3)); // the construction point
-    const [pid] = Object.keys(t.data().projections ?? {}) as ProjectionId[];
-    t.host.syncProjections({
-      [t.id]: {
-        frame: XY,
-        projections: { [pid]: { curves: { point: { type: 'point', at: [5, 3] } } } as never },
-      },
-    });
-    const projection = t.data().projections?.[pid];
+    const { projection } = project(t, { point: { type: 'point', at: [5, 3] } });
     expect(projection?.ref).toEqual({ kind: 'point', id: 'cp' });
     expect(Object.values(t.data().constraints)).toEqual([
       { type: 'coincident', a: 'p', b: projection?.curves.point },
@@ -922,21 +917,19 @@ describe('construction datums through the host (ADR-0093 slice 2)', () => {
       ],
     });
     // The construction axis, projected first: its line runs through the origin.
-    t.store
-      .getState()
-      .dispatch(
-        addProjection({
-          feature: t.id,
-          id: 'pcx' as ProjectionId,
-          ref: { kind: 'axis', id: 'cx' },
-        }),
-      );
+    t.store.getState().dispatch(
+      addProjection({
+        feature: t.id,
+        id: 'pcx' as ProjectionId,
+        ref: { kind: 'axis', id: 'cx' },
+      }),
+    );
     t.host.syncProjections({
       [t.id]: {
         frame: XY,
         projections: {
-          pcx: { curves: { axis: { type: 'line', a: [-50, 0], b: [50, 0] } } } as never,
-        },
+          pcx: { curves: { axis: { type: 'line', a: [-50, 0], b: [50, 0] } } },
+        } as never,
       },
     });
     draw(t, { p: { type: 'point', x: 3, y: 4 } });
@@ -947,12 +940,13 @@ describe('construction datums through the host (ADR-0093 slice 2)', () => {
       (id) => projections[id]?.ref.id === 'origin:point',
     );
     expect(opid).toBeDefined();
+    if (!opid) throw new Error('no origin projection');
     // The origin point lands, not the construction axis's line.
     t.host.syncProjections({
       [t.id]: {
         frame: XY,
         projections: {
-          [opid as ProjectionId]: { curves: { point: { type: 'point', at: [0, 0] } } } as never,
+          [opid]: { curves: { point: { type: 'point', at: [0, 0] } } } as never,
         },
       },
     });
@@ -960,7 +954,7 @@ describe('construction datums through the host (ADR-0093 slice 2)', () => {
       {
         type: 'coincident',
         a: 'p',
-        b: t.data().projections?.[opid as ProjectionId]?.curves.point,
+        b: t.data().projections?.[opid]?.curves.point,
       },
     ]);
   });

@@ -386,7 +386,7 @@ test('a point where a box edge meets a cylinder wall (an edge and a curved face)
   // The box's front top edge runs along X at y = −2, z = 10 and crosses the cylinder's
   // wall at x = √96 ≈ 9.8.
   await clickEdge(page, at, [15, -2, 10]);
-  await clickWhere(page, at, [10 * 0.707, -10 * 0.707, 15], /^face:/);
+  await clickWhere(page, at, [10 * Math.SQRT1_2, -10 * Math.SQRT1_2, 15], /^face:/);
   await expect(dialog.getByRole('button', { name: 'Entities', exact: true })).toHaveText(/edge/);
   await expect(viewport).toHaveAttribute(
     'data-construction',

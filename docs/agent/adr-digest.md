@@ -2670,4 +2670,8 @@ there still place the length (a centred line's label lands on the other axis: th
 ADR's §4, which also took a crossing axis for an angle; pick the axis first for that). The frame comes from the
 pointer (`PlanePointer.frame`, set by the view), falling back to the origin plane's
 (`planeFrame`) in tests. Slice 2 adds construction axes and points (`lineOf`/`pointOf` already
-resolve them in the kernel).
+resolve them in the kernel): the host takes a `constructionDatums` getter (`DatumSource`s, read
+from current state at every pick), and `constructionDatumSources` in `datums.ts` offers only the
+features **before the active sketch in the timeline**, before the marker, not suppressed and
+shown, whose report is an axis or a point — a later one would make the sketch depend on a later
+feature.

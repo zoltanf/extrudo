@@ -20,8 +20,8 @@ import { loadPlanegcs, type PlanegcsModule, SketchSolver } from '@extrudo/sketch
 import { dimensionValues } from '@extrudo/sketch/inference';
 import { memoryPreferences } from '../../platform';
 import { createViewportStore } from '../../viewport/store';
+import type { DatumSource } from '../datums';
 import { createSketchOn } from '../mode';
-import type { DatumSource } from './datums';
 import { createToolHost, type PlanePointer, type ToolHost } from './host';
 import { LINE_TOOL } from './line';
 
