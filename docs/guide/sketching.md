@@ -106,6 +106,12 @@ gives its length, two lines their angle (or their distance, if parallel), a circ
 an arc its radius, two points their distance. Then click where the label should sit. For a length or a distance between points, where you
 put the label decides whether it is horizontal (label above or below), vertical (label beside) or aligned.
 
+The origin point and the X, Y and Z axes count as things to click too, for dimensions and for the
+constraint tools: a line to the Y axis gives its distance from it, a point to the origin its
+distance from there, and Coincident puts a point on the origin or on an axis. The picked axis or
+origin comes into the sketch as fixed construction geometry that follows it. An axis you hid in
+the browser can't be picked.
+
 The new dimension is **driving**: it starts at the current size and from then on it holds the
 shape to that value. The value opens for editing as soon as you place it. To change it later,
 double-click the label and type a number or an [expression](./parameters.md). The box has a

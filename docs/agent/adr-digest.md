@@ -2642,3 +2642,30 @@ refused**. Marked: one-side and symmetric extrude distance, box length/width/hei
 cylinder height, primitive X/Y/Offset, Move's free arrows and rotate-mode angle. Not marked
 (wrong as a rigid change): two-sided extrude, diameters, Move's free rings. Coarse meshing
 while dragging was rejected (saves 4–8 ms of ~34).
+
+ADR-0093 (issue #61, 2026-10-19) lets **the dimension and constraint tools pick the origin and
+axes**. Files: `packages/core/src/sketch/projection.ts` (`PROJECTABLE`, `DATUM_SPAN`,
+`isDatumRef`, `syncProjections`' construction flag), `sketch/schema.ts` (`PROJECTABLE`,
+`POINT_SOURCES`), `packages/kernel/src/features/sketch.ts` (`projectSource`, `SOURCE_NOUN`),
+`features/projection.ts` (`projectAxis`), `apps/web/src/sketch/datums.ts` (`datumSnapsAt`),
+`sketch/tools/host.ts` (`pickModel`, `datumsAt`, `pickSketch`, `PlanePointer.frame`),
+`tools/tool.ts` (`modelStandIn`), `tools/dimension.ts` (`#pickAt`),
+`@extrudo/sketch/inference` (`ModelSnapKind`, `isPointSnap`). **Rules:** a projection's `ref` may
+be kind `axis` or `point` in `project` mode only (never `intersect`); the kernel projects a point
+to key `point`, an axis to a **`DATUM_SPAN` (100 mm) line keyed `axis` centred on the projection
+of the axis's origin**, or to key `point` when it runs along the normal (|cos| ≥ `PARALLEL`); the
+web stand-in must match that line exactly. Curves of `axis`/`point` projections are added
+**construction** (never split a profile); edge/face curves stay as before. A `ModelSnap`'s
+`kind` is also its projection's curve key (`vertex`, `edge`, `point`, `axis`), so the host
+looks curves up by `kind`, and point kinds (`isPointSnap`) make `coincident`, the others
+`pointOnCurve`. `pickModel` order: the sketch's own geometry, datum points, **body vertices**,
+datum axes, body edges (a vertex on an axis stays a vertex: this refines the ADR's "datums
+before body geometry"); datums come with auto-project off too, never when the browser's eye
+hides them (`viewport.origin`), and are measured against the infinite axis. A projected axis's
+line **gives way to a datum point** under the pointer (`pickSketch`), so the origin stays
+pickable after an axis was projected. Datums reach only the picking tools (`pickModel`), not
+the drawing tools' inference. In Dimension, after a sketch line a **datum** model pick is the
+second pick; body edges and vertices there still place the length. The frame comes from the
+pointer (`PlanePointer.frame`, set by the view), falling back to the origin plane's
+(`planeFrame`) in tests. Slice 2 adds construction axes and points (`lineOf`/`pointOf` already
+resolve them in the kernel).

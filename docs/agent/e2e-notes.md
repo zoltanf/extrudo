@@ -1814,6 +1814,21 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   becomes `d1 = len`). Deleting a parameter in use is refused ("w is used by
   d1. Change that first."); reopening the sketch fits the view again.
 
+### `e2e/sketch-datums.spec.ts`
+
+- ADR-0093 (#61): `sketchOnXY`, a Line (30,-10)-(30,10) (inference makes it
+  vertical; one Esc leaves the tool's next segment, the prompt stays), then
+  `d`: the line at (30,5), the **Y axis at (0,25)** (a datum pick, not the
+  label), the label at (15,30). The dimension lands only after the kernel
+  reports the projected axis, then opens "Value of d1" (wait up to 60 s for
+  focus); `20` + Enter moves the line to x = 20 (`[data-dimension]` reads
+  `20.00`, the last `[data-dimension-graphic] line` is 20 mm). The active
+  sketch's `data-sketch-projected` reads `…:curves=1:x=0..0:y=-50..50` (the
+  100 mm construction line; the origin point adds no curve). Then the line's
+  top end (20,10), the **origin (0,0)** (the projected axis gives way to the
+  origin there) and a label at (-8,5), left of both: a vertical distance,
+  "Value of d2" = `10`.
+
 ### `e2e/sketch-drawing.spec.ts`
 
 - P1-04: `clicker` + `counts` + `sketchOnXY` draw and count what lands in the
