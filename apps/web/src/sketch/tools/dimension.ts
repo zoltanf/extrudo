@@ -19,9 +19,11 @@
  */
 import {
   type DimensionId,
+  isDatumRef,
   lineCrossing,
   lineEnds,
   measureDimension,
+  projectionOf,
   type SketchData,
   type SketchDimension,
   type SketchEntity,
@@ -157,10 +159,21 @@ export class DimensionTool implements SketchTool {
   #pickAt(cursor: Vec2): Pick | undefined {
     const sketch = this.context.sketch();
     const taken = new Set(this.#picked.map((p) => p.id));
-    const firstType = this.#picked[0]?.entity.type;
+    const first = this.#picked[0];
+    const firstType = first?.entity.type;
+    // After a sketch line, an axis across it is left for the label (ADR-0093 §4: a
+    // centred line's label lands on the other axis); only a parallel one is taken.
+    const firstLine =
+      first && firstType === 'line' && !first.model ? lineEnds(sketch, first.id) : undefined;
+    const across = (line: readonly [Vec2, Vec2] | undefined) =>
+      firstLine !== undefined && (!line || !parallel(firstLine, line));
     const accept = (entity: SketchEntity, id: SketchEntityId) => {
       if (taken.has(id)) return false;
       if (!firstType) return ['point', 'line', 'circle', 'arc'].includes(entity.type);
+      if (entity.type === 'line' && firstLine) {
+        const source = projectionOf(sketch, id)?.projection.ref;
+        if (source && isDatumRef(source) && across(lineEnds(sketch, id))) return false;
+      }
       return entity.type === 'point' || entity.type === 'line';
     };
     const id = this.context.pick(cursor, accept);
@@ -171,13 +184,12 @@ export class DimensionTool implements SketchTool {
     // After a sketch line the next click may place the label, so a body edge
     // or vertex under it must not be taken as a second pick (P6-07 slice 2;
     // a model edge first pick still takes one, so two body edges can be
-    // dimensioned against each other). The origin and an axis are taken
-    // (ADR-0093 §4): to place a length near one, click away from it.
-    const first = this.#picked[0];
-    const afterLine = first?.entity.type === 'line' && !first.model;
+    // dimensioned against each other). The origin and a parallel axis are
+    // taken (ADR-0093 §4): to place a length on one, click away from it.
     const model = this.context.pickModel(cursor);
     if (!model) return undefined;
-    if (afterLine && model.kind !== 'point' && model.kind !== 'axis') return undefined;
+    if (firstLine && model.kind !== 'point' && model.kind !== 'axis') return undefined;
+    if (firstLine && model.kind === 'axis' && across(model.line)) return undefined;
     if (model.entityId) {
       const entity = sketch.entities[model.entityId];
       if (entity && accept(entity, model.entityId)) return { id: model.entityId, entity };

@@ -2,6 +2,7 @@ import {
   addProjection,
   addToSketch,
   type GeomRef,
+  originAxisRef,
   type ProjectionId,
   removeFromSketch,
   type SketchData,
@@ -771,6 +772,45 @@ describe('constraint and dimension tools pick the origin and axes (ADR-0093)', (
     u.host.click(at(0.1, 5));
     const y = project(u, yAxis).projection?.curves.axis;
     expect(Object.values(u.data().constraints)).toEqual([{ type: 'parallel', a: 'a', b: y }]);
+  });
+
+  it('leaves an axis across a picked line for the label; picked first, it makes an angle', async () => {
+    const t = await setup({ tool: 'dimension' });
+    // A horizontal line centred on the Y axis: its label goes on the axis.
+    draw(t, {
+      h0: { type: 'point', x: -20, y: 5 },
+      h1: { type: 'point', x: 20, y: 5 },
+      h: { type: 'line', start: 'h0', end: 'h1', construction: false },
+    });
+    t.host.click(at(5, 5.1));
+    t.host.click(at(0.1, 12));
+    expect(Object.values(t.data().dimensions)).toEqual([
+      expect.objectContaining({ type: 'distance', a: 'h', expr: '40' }),
+    ]);
+    expect(t.data().projections ?? {}).toEqual({});
+    t.store.getState().undo();
+    // Once the axis is projected its line is left for the label too.
+    t.store
+      .getState()
+      .dispatch(
+        addProjection({ feature: t.id, id: 'py' as ProjectionId, ref: originAxisRef('origin:y') }),
+      );
+    project(t, yAxis);
+    const axis = t.data().projections?.['py' as ProjectionId]?.curves.axis;
+    t.host.click(at(-5, 5.1));
+    t.host.click(at(0.1, -12));
+    expect(Object.values(t.data().dimensions)).toEqual([
+      expect.objectContaining({ type: 'distance', a: 'h', expr: '40' }),
+    ]);
+    t.store.getState().undo();
+    expect(t.data().dimensions).toEqual({});
+    // The axis first, then the line: their angle.
+    t.host.click(at(0.1, 30));
+    t.host.click(at(5, 5.1));
+    t.host.click(at(6, 12));
+    expect(Object.values(t.data().dimensions)).toEqual([
+      expect.objectContaining({ type: 'angle', a: axis, b: 'h', expr: '90' }),
+    ]);
   });
 
   it('skips a datum hidden in the browser', async () => {

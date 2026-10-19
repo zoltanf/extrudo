@@ -298,6 +298,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   82], volume `standVolume` ±0. Fixture via
   `exportProject(page,'b3-phone-stand.extrudo')` (`WRITE_FIXTURES=1`).
 
+- ADR-0093: the `rest` label goes at (55,-6), below the world Y axis: after a
+  horizontal line, a click on that parallel axis is now a second pick (a
+  dimension to the axis), not the label's place.
+
 ### `e2e/benchmark-b4.spec.ts`
 
 - **Benchmarks B4–B7** (`e2e/benchmark-b4.spec.ts`, `-b5`, `-b6`, `-b7`,

@@ -2664,8 +2664,10 @@ before body geometry"); datums come with auto-project off too, never when the br
 hides them (`viewport.origin`), and are measured against the infinite axis. A projected axis's
 line **gives way to a datum point** under the pointer (`pickSketch`), so the origin stays
 pickable after an axis was projected. Datums reach only the picking tools (`pickModel`), not
-the drawing tools' inference. In Dimension, after a sketch line a **datum** model pick is the
-second pick; body edges and vertices there still place the length. The frame comes from the
+the drawing tools' inference. In Dimension, after a sketch line a datum point or a **parallel** datum
+axis is the second pick (projected or not); an axis **across** the line, body edges and vertices
+there still place the length (a centred line's label lands on the other axis: this narrows the
+ADR's §4, which also took a crossing axis for an angle; pick the axis first for that). The frame comes from the
 pointer (`PlanePointer.frame`, set by the view), falling back to the origin plane's
 (`planeFrame`) in tests. Slice 2 adds construction axes and points (`lineOf`/`pointOf` already
 resolve them in the kernel).

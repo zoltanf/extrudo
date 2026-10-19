@@ -107,8 +107,8 @@ an arc its radius, two points their distance. Then click where the label should 
 put the label decides whether it is horizontal (label above or below), vertical (label beside) or aligned.
 
 The origin point and the X, Y and Z axes count as things to click too, for dimensions and for the
-constraint tools: a line to the Y axis gives its distance from it, a point to the origin its
-distance from there, and Coincident puts a point on the origin or on an axis. The picked axis or
+constraint tools: a line to the Y axis gives its distance from it (pick the axis first for an angle to a line
+across it), a point to the origin its distance from there, and Coincident puts a point on the origin or on an axis. The picked axis or
 origin comes into the sketch as fixed construction geometry that follows it. An axis you hid in
 the browser can't be picked.
 

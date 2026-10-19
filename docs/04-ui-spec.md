@@ -751,8 +751,10 @@ A list on the left, the selected parameter on the right.
   tools also pick the origin point and the origin axes the browser shows
   (after the sketch's own geometry, before body edges; a body vertex on an
   axis stays a vertex). A pick projects it as fixed construction geometry: an
-  axis a 100 mm line, an axis seen end-on a point. After a line, a click on an
-  axis or the origin is the second pick, not the label's place.
+  axis a 100 mm line, an axis seen end-on a point. After a line, a click on the
+  origin or on an axis parallel to it is the second pick, not the label's
+  place; an axis across the line is left for the label (pick the axis first
+  for their angle).
 
 ## 5. Default keyboard shortcuts
 
