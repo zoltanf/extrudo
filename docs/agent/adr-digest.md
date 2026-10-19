@@ -2642,3 +2642,23 @@ refused**. Marked: one-side and symmetric extrude distance, box length/width/hei
 cylinder height, primitive X/Y/Offset, Move's free arrows and rotate-mode angle. Not marked
 (wrong as a rigid change): two-sided extrude, diameters, Move's free rings. Coarse meshing
 while dragging was rejected (saves 4–8 ms of ~34).
+
+ADR-0092 (P6-12, the owner, 2026-10-19) added **Help › Report a Bug…** (command `reportBug`,
+before About; the About footer's "Report a bug" opens the same dialog): `BugReportDialog.tsx`
+captures a screenshot on open (the viewport's `snapshot(1600)`; on the desktop
+`desktop.capturePage()`, the whole window, falling back to the viewport), gathers
+`systemInfo()`'s "Running on" rows, `BUILD` and the shell's error ring buffer, and drafts the
+report. **Rules:** the pure parts (`bugReport.ts`: `buildReport`, `issueFields`, `issueUrl`,
+the error buffer, `timelineSummary`) stay DOM-free and tested. **No backend, no token, no
+GitHub API call:** "Open GitHub draft" copies the PNG to the clipboard and opens
+`ISSUES_URL?template=bug_report.yml&title=…&what=…&steps=…&version=…&browser=…&os=…&console=…`
+through `platform.openLink`; the person pastes the image and submits. `issueUrl` keeps the URL
+under 8,000 characters by cutting `console`, then `steps`, then `what` (never the others), each
+cut ending "… (cut: see the copied report)"; "Copy report" carries the full Markdown. The
+report carries the "Running on" rows (not "Memory and storage"), the last 10 error **messages**
+(feature errors and uncaught `error`/`unhandledrejection`; **no stack traces**, which name
+`file://` paths on the desktop) and, only with the "Include the timeline" box ticked (off by
+default), feature names and types. Never file paths, the design's name, parameter values or
+the document. The issue form's field ids are an interface: `bugReport.test.ts` reads
+`.github/ISSUE_TEMPLATE/bug_report.yml` and checks the ids it uses exist. The prefilled URL is
+on the desktop allow-list by its path (`links.test.ts` has a case with a query string).
