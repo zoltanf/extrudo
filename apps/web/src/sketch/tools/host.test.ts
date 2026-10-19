@@ -985,3 +985,170 @@ describe('construction datums through the host (ADR-0093 slice 2)', () => {
     ]);
   });
 });
+
+describe('constraint tools refuse a datum axis line (ADR-0093)', () => {
+  const XY = {
+    origin: [0, 0, 0] as [number, number, number],
+    normal: [0, 0, 1] as [number, number, number],
+    x: [1, 0, 0] as [number, number, number],
+    y: [0, 1, 0] as [number, number, number],
+  };
+  type T = Awaited<ReturnType<typeof setup>>;
+  const draw = (t: T, entities: Record<string, unknown>) =>
+    t.store.getState().dispatch(addToSketch({ feature: t.id, entities: entities as never }));
+  /** A vertical line at x = 20 from y = -10 to 10. */
+  const drawLine = (t: T) =>
+    draw(t, {
+      a0: { type: 'point', x: 20, y: -10 },
+      a1: { type: 'point', x: 20, y: 10 },
+      a: { type: 'line', start: 'a0', end: 'a1', construction: false },
+    });
+  /** The only projection, and the kernel's report of it on the next recompute. */
+  const project = (t: T, curves: Record<string, unknown>) => {
+    const [pid] = Object.keys(t.data().projections ?? {}) as ProjectionId[];
+    if (!pid) throw new Error('no projection');
+    t.host.syncProjections({ [t.id]: { frame: XY, projections: { [pid]: { curves } } as never } });
+    return { pid, projection: t.data().projections?.[pid] };
+  };
+  const yAxis = { axis: { type: 'line', a: [0, -50], b: [0, 50] } };
+  const xAxis = { axis: { type: 'line', a: [-50, 0], b: [50, 0] } };
+  const origin = { point: { type: 'point', at: [0, 0] } };
+  const HINT = 'An axis has no length or middle; pick a sketch line.';
+
+  it('Equal refuses the Y axis as the second pick', async () => {
+    const t = await setup({ tool: 'equal' });
+    drawLine(t);
+    t.host.click(at(20.1, 0)); // the line
+    t.host.click(at(0.1, 5)); // the Y axis
+    expect(t.host.state.getState().error).toBe(HINT);
+    expect(t.data().constraints).toEqual({});
+    expect(t.data().projections ?? {}).toEqual({});
+    expect(t.host.state.getState().tool?.preview().picked).toEqual(['a']);
+  });
+
+  it('Midpoint refuses the X axis as the line', async () => {
+    const t = await setup({ tool: 'midpoint' });
+    draw(t, { p: { type: 'point', x: 3, y: 4 } });
+    t.host.click(at(3, 4.1)); // the point
+    t.host.click(at(5, 0.1)); // the X axis, away from the origin
+    expect(t.host.state.getState().error).toBe(HINT);
+    expect(t.data().constraints).toEqual({});
+    expect(t.data().projections ?? {}).toEqual({});
+    expect(t.host.state.getState().tool?.preview().picked).toEqual(['p']);
+  });
+
+  it('Horizontal refuses the X axis as the first pick', async () => {
+    const t = await setup({ tool: 'horizontal' });
+    t.host.click(at(5, 0.1)); // the X axis
+    expect(t.host.state.getState().error).toBe(HINT);
+    expect(t.data().constraints).toEqual({});
+    expect(t.data().projections ?? {}).toEqual({});
+    expect(t.host.state.getState().tool?.preview().picked ?? []).toEqual([]);
+  });
+
+  it('Vertical refuses an already projected Y axis', async () => {
+    const t = await setup({ tool: 'dimension' });
+    drawLine(t);
+    t.host.click(at(20.1, 0)); // the line
+    t.host.click(at(0.1, 5)); // the Y axis: the dimension commits
+    const { projection } = project(t, yAxis);
+    const axis = projection?.curves.axis as SketchEntityId;
+    expect(t.data().entities[axis]).toMatchObject({ type: 'line', construction: true });
+    t.host.start('vertical');
+    t.host.click(at(0.1, -30)); // on the projected axis line, away from the origin
+    expect(t.host.state.getState().error).toBe(HINT);
+    expect(t.data().constraints).toEqual({});
+    expect(Object.values(t.data().dimensions)).toHaveLength(1);
+    expect(Object.keys(t.data().projections ?? {})).toHaveLength(1);
+  });
+
+  it('Collinear puts a line on the Y axis', async () => {
+    const t = await setup({ tool: 'collinear' });
+    drawLine(t);
+    t.host.click(at(20.1, 0)); // the line
+    t.host.click(at(0.1, 5)); // the Y axis
+    const { projection } = project(t, yAxis);
+    const axis = projection?.curves.axis as SketchEntityId;
+    expect(Object.values(t.data().constraints)).toEqual([{ type: 'collinear', a: 'a', b: axis }]);
+    expect(t.point('a0' as SketchEntityId)[0]).toBeCloseTo(0, 6);
+    expect(t.point('a1' as SketchEntityId)[0]).toBeCloseTo(0, 6);
+    expect(t.point('a0' as SketchEntityId)[1]).toBeCloseTo(-10, 6);
+    expect(t.point('a1' as SketchEntityId)[1]).toBeCloseTo(10, 6);
+  });
+
+  it('Perpendicular makes a slanted line vertical to the X axis', async () => {
+    const t = await setup({ tool: 'perpendicular' });
+    draw(t, {
+      b0: { type: 'point', x: 5, y: -10 },
+      b1: { type: 'point', x: 15, y: 10 },
+      b: { type: 'line', start: 'b0', end: 'b1', construction: false },
+    });
+    t.host.click(at(10.1, 0.2)); // the line
+    t.host.click(at(5, 0.1)); // the X axis
+    const { projection } = project(t, xAxis);
+    const axis = projection?.curves.axis as SketchEntityId;
+    expect(Object.values(t.data().constraints)).toEqual([
+      { type: 'perpendicular', a: 'b', b: axis },
+    ]);
+    const start = t.point('b0' as SketchEntityId);
+    const end = t.point('b1' as SketchEntityId);
+    expect(Math.abs(start[0] - end[0])).toBeCloseTo(0, 6);
+  });
+
+  it('Symmetric mirrors two points about the Y axis', async () => {
+    const t = await setup({ tool: 'symmetric' });
+    draw(t, { p: { type: 'point', x: 3, y: 4 }, q: { type: 'point', x: 8, y: 9 } });
+    t.host.click(at(3, 4.1)); // p
+    t.host.click(at(8, 9.1)); // q
+    t.host.click(at(0.1, 5)); // the Y axis
+    const { projection } = project(t, yAxis);
+    const axis = projection?.curves.axis as SketchEntityId;
+    expect(Object.values(t.data().constraints)).toEqual([
+      { type: 'symmetric', a: 'p', b: 'q', axis },
+    ]);
+    const p = t.point('p' as SketchEntityId);
+    const q = t.point('q' as SketchEntityId);
+    expect(p[0] + q[0]).toBeCloseTo(0, 6);
+    expect(p[1] - q[1]).toBeCloseTo(0, 6);
+  });
+
+  it('Tangent makes a circle touch the X axis', async () => {
+    const t = await setup({ tool: 'tangent' });
+    draw(t, { c0: { type: 'point', x: 5, y: 8 }, c: { type: 'circle', center: 'c0', radius: 3 } });
+    t.host.click(at(5, 11.1)); // the circle's rim
+    t.host.click(at(5, 0.1)); // the X axis
+    const { projection } = project(t, xAxis);
+    const axis = projection?.curves.axis as SketchEntityId;
+    expect(Object.values(t.data().constraints)).toEqual([{ type: 'tangent', a: 'c', b: axis }]);
+    // The radius is free, so the solve shares the move: the circle touches the axis.
+    const circle = t.data().entities['c' as SketchEntityId];
+    if (circle?.type !== 'circle') throw new Error('no circle');
+    expect(Math.abs(t.point('c0' as SketchEntityId)[1])).toBeCloseTo(circle.radius, 6);
+  });
+
+  it('Midpoint puts the middle of a line on the origin point', async () => {
+    const t = await setup({ tool: 'midpoint' });
+    drawLine(t);
+    t.host.click(at(0.1, 0.1)); // the origin point
+    t.host.click(at(20.1, 0)); // the line
+    const { projection } = project(t, origin);
+    const pt = projection?.curves.point as SketchEntityId;
+    expect(Object.values(t.data().constraints)).toEqual([{ type: 'midpoint', point: pt, of: 'a' }]);
+    expect(t.point('a0' as SketchEntityId)[0]).toBeCloseTo(0, 6);
+    expect(t.point('a1' as SketchEntityId)[0]).toBeCloseTo(0, 6);
+    expect(t.point('a0' as SketchEntityId)[1]).toBeCloseTo(-10, 6);
+    expect(t.point('a1' as SketchEntityId)[1]).toBeCloseTo(10, 6);
+  });
+
+  it('Horizontal lines a sketch point up with the origin', async () => {
+    const t = await setup({ tool: 'horizontal' });
+    draw(t, { p: { type: 'point', x: 3, y: 4 } });
+    t.host.click(at(3, 4.1)); // the point
+    t.host.click(at(0.1, 0.1)); // the origin point
+    const { projection } = project(t, origin);
+    const pt = projection?.curves.point as SketchEntityId;
+    expect(Object.values(t.data().constraints)).toEqual([{ type: 'horizontal', a: 'p', b: pt }]);
+    expect(t.point('p' as SketchEntityId)[1]).toBeCloseTo(0, 6);
+    expect(t.point('p' as SketchEntityId)[0]).toBeCloseTo(3, 6);
+  });
+});
