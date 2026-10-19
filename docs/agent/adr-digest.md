@@ -2497,6 +2497,26 @@ tag's draft release). `apps/desktop/scripts/mcp-client.mjs --launch` (under
 `xvfb-run -a`; Chromium's headless Ozone crashes Electron's main) is the
 acceptance client, `--examples` runs the worked examples in the real kernel.
 
+ADR-0087's amendment of 2026-10-19 (#83–#89): **body references are
+`<feature id>:<n>`** (the API's `handle.body()` is `<feature>:0`); the tools'
+`resolveBodyRefs` checks every body reference in `add_feature`/`edit_feature`
+inputs against the computed bodies (a bare feature id for its one body, an
+unknown or ambiguous one refused with its input path, unchecked only while
+the model isn't computed). New tools: `set_body_appearance` (one
+`updateBody` step) and `check_interference` (kernel `interferences()`,
+`KernelService.interference`, `AgentHost.interference`; touching pairs aren't
+listed). `add_sketch`/`get_feature` answer `regions` in `profiles`' order and
+the sketch's `frame`; curves carry their `sketchEntity` ref. `screenshot`
+options go through `SnapshotOptions` (`viewport/snapshotView.ts`): own camera
+and render target, body groups named `body:<id>`, sketches and construction
+inside `snapshot-overlay` groups (keep new overlays there), a section is a
+renderer clipping plane with faces double-sided for the shot; with no options
+the snapshot path is the thumbnail's, unchanged. Tests:
+`agent/tools.kernel.test.ts` runs the tools on the real kernel
+(`agent/kernelTesting.ts`); add a case there for anything that depends on
+body ids, profiles or frames. A join's picked bodies that the tool doesn't
+touch stay separate with a warning (`operate`, #87).
+
 ADR-0088 (P6-09, slice 1 2026-10-15) added **the OpenSCAD export**:
 `packages/kernel/src/scad-export/` (`ir.ts`, `print.ts`, `context.ts`,
 `versions.ts`, `mesh.ts`, `file.ts`, `number.ts`), `RecomputeEngine.exportScad`

@@ -345,3 +345,53 @@ opencode `~/.config/opencode/skills/` (it reads `~/.claude/skills` too).
   bridge methods are optional on `AgentBridge`, so the web build and tests
   without them are unaffected.
 
+
+## Amendment, 2026-10-19: what agents found missing (#83–#89)
+
+An agent session that built a multi-body model (a house with a garden) filed
+what it had to work out by trial. Decided:
+
+- **Body references are the kernel's, `<feature id>:<n>`** (ADR-0030). The
+  API's `FeatureHandle.body()` gave the bare feature id, which no body ever
+  has; it gives `<feature>:0` now, and `bodies()` starts with it. The tools
+  check every `{ kind: 'body' }` in `add_feature`/`edit_feature` inputs
+  against the computed bodies (`resolveBodyRefs`, after `settled`): a bare
+  feature id or name stands for the one body that feature made, a feature
+  with several is refused listing them, and an unknown body is refused with
+  the input's path, so nothing changes. While the model isn't computed (no
+  kernel, a failed recompute) references pass unchecked and the feature's
+  status says what is wrong. *Rejected:* using all of a multi-body feature's
+  bodies for a bare id: right for a list, wrong for a single target, and the
+  agent can't tell which it got.
+- **`set_body_appearance`** runs `updateBody` (colour, opacity, name,
+  visibility) as one step `Agent: Change <body>`; `get_bodies` answers `color`
+  and `opacity`.
+- **`add_sketch` and `get_feature` answer `regions`** next to `profiles`, in
+  the same order: area, box, centroid, the outer loop's and holes' curve ids,
+  and (`add_sketch` only) the indices of the shapes bounding each profile.
+  `profiles` stays a list of plain references, so an answer still goes
+  straight into an extrude. Both answer the sketch's **`frame`** (`origin`,
+  `xDir`, `yDir`, `normal`, world mm), from the kernel's `SketchReport` or the
+  plane's own frame; `get_feature`'s curves carry their `sketchEntity`
+  reference (`<sketch>/<curve>`). `change()` takes an `after` step for what
+  is known only once the model is computed.
+- **`check_interference`** (read-only): the kernel's `interferences()`
+  (`packages/kernel/src/interference.ts`) runs `common` per pair whose boxes
+  meet, on the last finished recompute (`KernelService.interference`,
+  `Recomputer.interference`); a pair that shares more than
+  `INTERFERENCE_VOLUME` is listed with that volume and its box. Default: the
+  visible bodies.
+- **`screenshot` takes `view`, `bodies`, `section`, `overlays`, `size`**
+  (`viewport/snapshotView.ts`). It draws as a thumbnail does, through a camera
+  and render target of its own, so the person's view never moves. `bodies`
+  shows only those groups (`body:<id>`) and frames on them; `section` is a
+  renderer clipping plane that keeps the side away from the normal, with the
+  faces drawn double-sided for the shot so the cut reads filled; `overlays:
+  false` hides the `snapshot-overlay` groups (sketches, construction).
+  **`overlays` defaults to true**, unlike the issue's table, so a screenshot
+  without inputs is the picture it always was. *Rejected:* the section view's
+  caps (`SectionCap`): they belong to the person's section state and its
+  stencil slots; the double-sided faces are enough to read a plan.
+- A join whose picked bodies the tool doesn't touch (ADR-0029's `operate`)
+  keeps them as they are and warns, instead of fusing them into a compound
+  that `splitSolids` then split into a silent new body (#87).
