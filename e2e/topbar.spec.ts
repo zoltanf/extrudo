@@ -264,6 +264,7 @@ test('the app menu panel: the rail, the App and Learn columns and the strip', as
     /^Search…/,
     /^Settings…/,
     'About Extrudo',
+    'Report a bug',
     'Close design',
   ]);
   await expect(panel.getByRole('menuitem', { name: /^Quit/ })).toHaveCount(0);
@@ -374,6 +375,7 @@ test('the home screen has the same bar: About, Docs, GitHub and the app menu', a
   await expect(panel.getByRole('menu', { name: 'App' }).getByRole('menuitem')).toHaveText([
     /^Settings…/,
     'About Extrudo',
+    'Report a bug',
   ]);
   await expect(panel.getByRole('menu', { name: 'Learn' }).getByRole('menuitem').first()).toHaveText(
     'User Guide',
