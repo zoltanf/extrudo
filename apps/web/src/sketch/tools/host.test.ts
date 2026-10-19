@@ -697,10 +697,10 @@ describe('constraint and dimension tools pick the origin and axes (ADR-0093)', (
     const t = await setup({ tool: 'dimension' });
     drawLine(t);
     t.host.click(at(20.1, 0)); // the line
-    t.host.click(at(0.1, 5)); // the Y axis, not the label
-    t.host.click(at(10, 15)); // the label
+    t.host.click(at(0.1, 5)); // the Y axis: commits, no placement click
     expect(t.data().dimensions).toEqual({});
     const { projection } = project(t, yAxis);
+    expect(t.host.state.getState().editing).toBeDefined(); // the value field
     expect(projection?.ref).toEqual({ kind: 'axis', id: 'origin:y' });
     const axis = projection?.curves.axis as SketchEntityId;
     expect(t.data().entities[axis]).toMatchObject({ type: 'line', construction: true });
@@ -710,9 +710,35 @@ describe('constraint and dimension tools pick the origin and axes (ADR-0093)', (
     // At the origin the projected axis gives way to the origin point.
     t.host.click(at(20, 10.1)); // the line's top end
     t.host.click(at(0.1, 0.1));
-    t.host.click(at(10, 12));
+    t.host.click(at(10, 12)); // the origin point still waits for a placement
     const refs = Object.values(t.data().projections ?? {}).map((p) => p.ref.id);
     expect(refs).toEqual(['origin:y', 'origin:point']);
+  });
+
+  it('dimensions a point to the X axis on the second pick', async () => {
+    const t = await setup({ tool: 'dimension' });
+    draw(t, { p: { type: 'point', x: 3, y: 4 } });
+    t.host.click(at(3, 4.1));
+    t.host.click(at(10, 0.1)); // the X axis: no placement click
+    const { projection } = project(t, { axis: { type: 'line', a: [-50, 0], b: [50, 0] } });
+    expect(Object.values(t.data().dimensions)).toEqual([
+      expect.objectContaining({
+        type: 'distance',
+        a: 'p',
+        b: projection?.curves.axis,
+        expr: '4',
+      }),
+    ]);
+    expect(t.host.state.getState().editing).toBeDefined();
+  });
+
+  it('waits for a placement click for a point and the origin', async () => {
+    const t = await setup({ tool: 'dimension' });
+    draw(t, { p: { type: 'point', x: 3, y: 4 } });
+    t.host.click(at(3, 4.1));
+    t.host.click(at(0.1, 0.1));
+    expect(t.host.state.getState().editing).toBeUndefined();
+    expect(t.data().projections ?? {}).toEqual({});
   });
 
   it('dimensions a point to the origin, vertically', async () => {

@@ -198,6 +198,56 @@ export function labelOffset(
   return anchor && { x: cursor[0] - anchor[0], y: cursor[1] - anchor[1] };
 }
 
+/** `axis`'s direction, turned to point along +Y (along +X if it is horizontal). */
+function upward(axis: readonly [Vec2, Vec2]): Vec2 | undefined {
+  const d = unit(sub(axis[1], axis[0]));
+  if (!d) return undefined;
+  return d[1] < -1e-9 || (Math.abs(d[1]) <= 1e-9 && d[0] < 0) ? [-d[0], -d[1]] : d;
+}
+
+/** The foot of the perpendicular from `p` on the infinite line through `axis`. */
+function foot(p: Vec2, axis: readonly [Vec2, Vec2]): Vec2 | undefined {
+  const d = unit(sub(axis[1], axis[0]));
+  return d && add(axis[0], scale(d, dot(sub(p, axis[0]), d)));
+}
+
+/**
+ * Where the label of a line's distance to a parallel datum axis goes when
+ * it is placed for the user (ADR-0093): just past the line's end that is
+ * farther along +Y (+X if the line is horizontal), `step` mm beyond the
+ * middle of the span between that end and its foot on the axis.
+ */
+export function lineAxisCursor(
+  line: readonly [Vec2, Vec2],
+  axis: readonly [Vec2, Vec2],
+  step: number,
+): Vec2 | undefined {
+  const [a, b] = line;
+  const end = a[1] - b[1] > 1e-9 || (Math.abs(a[1] - b[1]) <= 1e-9 && a[0] > b[0]) ? a : b;
+  const f = foot(end, axis);
+  if (!f) return undefined;
+  const mid: Vec2 = [(end[0] + f[0]) / 2, (end[1] + f[1]) / 2];
+  const centre: Vec2 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const away = unit(sub(end, centre));
+  return away ? add(mid, scale(away, step)) : mid;
+}
+
+/**
+ * Where the label of a point's distance to a datum axis goes when it is
+ * placed for the user: `step` mm along the axis (+Y, or +X if it is
+ * horizontal) from the middle of the span between the point and its foot.
+ */
+export function pointAxisCursor(
+  point: Vec2,
+  axis: readonly [Vec2, Vec2],
+  step: number,
+): Vec2 | undefined {
+  const f = foot(point, axis);
+  const d = upward(axis);
+  if (!f || !d) return undefined;
+  return add([(point[0] + f[0]) / 2, (point[1] + f[1]) / 2], scale(d, step));
+}
+
 const PLAIN_NUMBER = /^\s*[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?\s*(mm|cm|m|in|ft|deg|°)?\s*$/i;
 
 /**

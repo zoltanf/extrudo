@@ -5,7 +5,8 @@
  *
  * - a line: its length (click on empty space to place it); a second line
  *   makes an angle, or the distance if the lines are parallel; a point makes
- *   the point's distance to the line;
+ *   the point's distance to the line; a datum axis with a parallel line or a
+ *   point (ADR-0093) is placed by the second pick, with no placement click;
  * - a circle: its diameter; an arc: its radius;
  * - two points: their distance.
  *
@@ -32,7 +33,7 @@ import {
   type Vec2,
 } from '@extrudo/core';
 import type { Inference, ModelSnap } from '@extrudo/sketch/inference';
-import { labelOffset } from './dimensionLayout';
+import { labelOffset, lineAxisCursor, pointAxisCursor } from './dimensionLayout';
 import {
   EMPTY_PREVIEW,
   emptyEdit,
@@ -96,12 +97,20 @@ export class DimensionTool implements SketchTool {
       if (pick) {
         this.#picked.push(pick);
         this.#hover = undefined;
-        return undefined;
+        // A datum distance has nothing left to decide: no placement click.
+        const auto = this.#datumCursor();
+        if (!auto) return undefined;
+        return this.#commit(auto);
       }
       // Empty space after a line places its length; otherwise a click needs a pick.
       if (this.#picked[0]?.entity.type !== 'line') return undefined;
     }
-    const dimension = this.#candidate(pointer.cursor);
+    return this.#commit(pointer.cursor);
+  }
+
+  /** Commits the picks' dimension with its label at `cursor`. */
+  #commit(cursor: Vec2): SketchEdit | undefined {
+    const dimension = this.#candidate(cursor);
     const picks = this.#picked;
     this.#picked = [];
     this.#hover = undefined;
@@ -111,7 +120,7 @@ export class DimensionTool implements SketchTool {
     edit.dimensions[id] = dimension;
     edit.verify = [id];
     edit.editDimension = id;
-    edit.cursor = pointer.cursor;
+    edit.cursor = cursor;
     const models = modelAttachments(picks);
     if (models.length > 0) edit.models = models;
     return edit;
@@ -154,6 +163,32 @@ export class DimensionTool implements SketchTool {
   #placing(): boolean {
     const [first, second] = this.#picked;
     return second !== undefined || first?.entity.type === 'circle' || first?.entity.type === 'arc';
+  }
+
+  /**
+   * The label position when the two picks are a datum axis and a point, or a
+   * line parallel to it (ADR-0093): the distance needs no placement click.
+   */
+  #datumCursor(): Vec2 | undefined {
+    const [first, second] = this.#picked;
+    if (!first || !second || this.#picked.length !== 2) return undefined;
+    const view = this.#view(this.context.sketch());
+    const isAxis = (p: Pick) => {
+      if (p.entity.type !== 'line') return false;
+      if (p.model) return p.model.kind === 'axis';
+      const ref = projectionOf(view, p.id)?.projection.ref;
+      return ref !== undefined && isDatumRef(ref);
+    };
+    const [axis, other] = isAxis(second) && !isAxis(first) ? [second, first] : [first, second];
+    if (!isAxis(axis) || isAxis(other)) return undefined;
+    const axisEnds = lineEnds(view, axis.id);
+    if (!axisEnds) return undefined;
+    const step = 3 * (this.context.snapDistance?.() ?? 1);
+    if (other.entity.type === 'point') {
+      return pointAxisCursor([other.entity.x, other.entity.y], axisEnds, step);
+    }
+    const ends = lineEnds(view, other.id);
+    return ends && parallel(ends, axisEnds) ? lineAxisCursor(ends, axisEnds, step) : undefined;
   }
 
   #pickAt(cursor: Vec2): Pick | undefined {
