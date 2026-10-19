@@ -1,5 +1,5 @@
 import { Design } from '@extrudo/api';
-import { type ExtrudoDocument, renameFeature } from '@extrudo/core';
+import { type BodyId, type ExtrudoDocument, renameFeature } from '@extrudo/core';
 import type { ProjectSummary } from '@extrudo/storage';
 import { describe, expect, it } from 'vitest';
 import type { AgentReply } from '../platform/agent';
@@ -474,7 +474,7 @@ describe('the agent tools, the rest (coverage)', () => {
     const body = `${extrude?.id}:0`;
     model.getState().computed({
       features: {},
-      bodies: { [body]: {}, 'x:0': {} },
+      bodies: { [body]: {}, 'x:0': {} } as Record<BodyId, unknown>,
       doc: store.getState().doc,
     });
     const asked: string[][] = [];
