@@ -1,7 +1,7 @@
 import type { GeomRef, SketchData, SketchEntityId, Vec2 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import { SketchBuilder } from '../fixtures';
-import { alignmentConstraints, snapConstraints } from './constraints';
+import { alignmentConstraints, lineAlong, snapConstraints } from './constraints';
 import { intersectCurves, nearestOnCurve, sketchCurves } from './geometry';
 import { type Inference, infer } from './inference';
 
@@ -285,5 +285,60 @@ describe('auto-constraints', () => {
       { type: 'horizontal', a: p, b: 's' },
     ]);
     expect(alignmentConstraints([h], p)).toEqual([]);
+  });
+
+  describe('collinear for aligned edges (ADR-0094)', () => {
+    /** A 20 × 10 rectangle with corners joined, a slanted line and a circle. */
+    const b = new SketchBuilder();
+    const bottom = b.line(0, 0, 20, 0);
+    const right = b.line(20, 0, 20, 10);
+    b.constraints.j1 = { type: 'coincident', a: eid(bottom.end), b: eid(right.start) };
+    const slanted = b.line(40, 0, 50, 7);
+    const circle = b.circle(40, 20, 3);
+    const sketch = b.sketch;
+    const p = eid('new');
+    const along = { horizontal: eid('nh'), vertical: eid('nv') };
+    const h = (id: string) =>
+      ({ axis: 'horizontal', source: { kind: 'point', id }, from: [0, 0] }) as const;
+    const v = (id: string) =>
+      ({ axis: 'vertical', source: { kind: 'point', id }, from: [0, 0] }) as const;
+
+    it('finds the level line a point ends, through coincident corner points', () => {
+      expect(lineAlong(sketch, eid(bottom.start), 'horizontal')).toBe(bottom.id);
+      expect(lineAlong(sketch, eid(bottom.start), 'vertical')).toBeUndefined();
+      // The corner's other point belongs to the vertical edge, but is joined to the bottom's.
+      expect(lineAlong(sketch, eid(right.start), 'horizontal')).toBe(bottom.id);
+      expect(lineAlong(sketch, eid(right.start), 'vertical')).toBe(right.id);
+      expect(lineAlong(sketch, eid(slanted.end), 'horizontal')).toBeUndefined();
+      expect(lineAlong(sketch, eid(circle.center), 'horizontal')).toBeUndefined();
+    });
+
+    it('makes the new edge collinear with the level line the source point ends', () => {
+      expect(alignmentConstraints([h(bottom.start)], p, { along }, sketch)).toEqual([
+        { type: 'collinear', a: 'nh', b: bottom.id },
+      ]);
+      expect(alignmentConstraints([v(right.end)], p, { along }, sketch)).toEqual([
+        { type: 'collinear', a: 'nv', b: right.id },
+      ]);
+      // Either of the corner's two points gives the same answer.
+      expect(alignmentConstraints([h(right.start)], p, { along }, sketch)).toEqual([
+        { type: 'collinear', a: 'nh', b: bottom.id },
+      ]);
+    });
+
+    it('keeps the point pair for a circle centre, a slanted line or without a new edge', () => {
+      expect(alignmentConstraints([h(circle.center)], p, { along }, sketch)).toEqual([
+        { type: 'horizontal', a: p, b: circle.center },
+      ]);
+      expect(alignmentConstraints([h(slanted.end)], p, { along }, sketch)).toEqual([
+        { type: 'horizontal', a: p, b: slanted.end },
+      ]);
+      expect(
+        alignmentConstraints([h(bottom.start)], p, { along: { vertical: eid('nv') } }, sketch),
+      ).toEqual([{ type: 'horizontal', a: p, b: bottom.start }]);
+      expect(alignmentConstraints([h(bottom.start)], p, { along })).toEqual([
+        { type: 'horizontal', a: p, b: bottom.start },
+      ]);
+    });
   });
 });

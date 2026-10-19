@@ -11,7 +11,13 @@ export {
   unmetDimensions,
 } from '../solver/status';
 export { tangentReversed } from '../solver/tangent';
-export { type AnchorEntities, alignmentConstraints, snapConstraints } from './constraints';
+export {
+  type AnchorEntities,
+  type Axis,
+  alignmentConstraints,
+  lineAlong,
+  snapConstraints,
+} from './constraints';
 export {
   type ArcShape,
   arcAround,

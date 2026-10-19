@@ -1,8 +1,9 @@
-import type { SketchArc, Vec2 } from '@extrudo/core';
+import type { SketchArc, SketchEntityId, Vec2 } from '@extrudo/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { finishSketch } from '../mode';
 import { ARC_CENTER_TOOL, ARC_TANGENT_TOOL, ARC_TOOL } from './arc';
 import { CIRCLE_2POINT_TOOL, CIRCLE_3POINT_TOOL, CIRCLE_TOOL } from './circle';
+import { LINE_TOOL } from './line';
 import { POINT_TOOL } from './point';
 import { RECTANGLE_3POINT_TOOL, RECTANGLE_CENTER_TOOL, RECTANGLE_TOOL } from './rectangle';
 import { at, disposeHosts, setup } from './testing';
@@ -42,6 +43,91 @@ describe('rectangle tool', () => {
     );
     // Ready for the next rectangle.
     expect(t.host.state.getState().tool?.fields()).toEqual([]);
+  });
+
+  it('makes aligned edges collinear instead of tying the corner points (ADR-0094)', async () => {
+    const t = await setup({ tool: RECTANGLE_TOOL });
+    t.host.click(at(5, 5));
+    t.host.click(at(25, 15));
+    // A second rectangle beside the first, its bottom corner level with the first's.
+    t.host.click(at(35, 20));
+    t.host.move(at(50, 5.3));
+    const pointer = t.host.state.getState().pointer;
+    expect(pointer?.alignments.map((a) => [a.axis, a.source.kind])).toEqual([
+      ['horizontal', 'point'],
+    ]);
+    t.host.click(at(50, 5.3));
+    expect(t.byType('line')).toHaveLength(8);
+    const all = t.constraints();
+    // One Collinear between the two bottom edges; no point pair; the new bottom
+    // edge has no Horizontal of its own: 3 instead of 4.
+    expect(all.filter((c) => c.startsWith('collinear'))).toEqual(['collinear line line']);
+    expect(all.filter((c) => c.startsWith('horizontal'))).toEqual([
+      'horizontal line',
+      'horizontal line',
+      'horizontal line',
+    ]);
+    expect(all.filter((c) => c.startsWith('vertical'))).toHaveLength(4);
+    const collinear = Object.values(t.data().constraints).find((c) => c.type === 'collinear');
+    if (collinear?.type !== 'collinear') throw new Error('no collinear');
+    const line = (id: SketchEntityId) => {
+      const l = t.data().entities[id];
+      if (l?.type !== 'line') throw new Error('not a line');
+      return [t.point(l.start), t.point(l.end)];
+    };
+    // Both lines run along y = 5: the first's bottom and the new one's.
+    for (const p of [...line(collinear.a), ...line(collinear.b)]) expect(p[1]).toBeCloseTo(5, 6);
+    const r = t.report();
+    expect(r.ok).toBe(true);
+    expect(r.redundant).toEqual([]);
+    expect(r.conflicting).toEqual([]);
+    // Geometry unchanged by the solve: the clicked corner stays where it snapped.
+    expect(all).toContain('coincident (50,5) (50,5)');
+    expect(all).toContain('coincident (35,20) (35,20)');
+    // Undo removes the second rectangle in one step.
+    t.store.getState().undo();
+    expect(t.byType('line')).toHaveLength(4);
+    expect(t.constraints().filter((c) => c.startsWith('collinear'))).toEqual([]);
+  });
+
+  it('makes side edges collinear on a vertical alignment, and keeps the point pair otherwise', async () => {
+    const t = await setup({ tool: RECTANGLE_TOOL });
+    t.host.click(at(5, 5));
+    t.host.click(at(25, 15));
+    // Above the first: its left corner plumb with the first's left side.
+    t.host.click(at(5.3, 30));
+    t.host.click(at(20, 40));
+    let all = t.constraints();
+    expect(all.filter((c) => c.startsWith('collinear'))).toEqual(['collinear line line']);
+    expect(all.filter((c) => c.startsWith('vertical'))).toHaveLength(3);
+    expect(all.filter((c) => c.startsWith('horizontal'))).toHaveLength(4);
+    expect(t.report().redundant).toEqual([]);
+
+    // A corner level with a circle centre: the point pair, as before.
+    t.host.start(CIRCLE_TOOL);
+    t.host.click(at(60, 60));
+    t.host.click(at(63, 60));
+    t.host.start(RECTANGLE_TOOL);
+    t.host.click(at(80, 60.3));
+    t.host.click(at(95, 75));
+    all = t.constraints();
+    expect(all.filter((c) => c.startsWith('collinear'))).toHaveLength(1);
+    expect(all).toContain('horizontal (80,60) (60,60)');
+    expect(all.filter((c) => c.startsWith('horizontal') && c.endsWith('line'))).toHaveLength(6);
+  });
+
+  it('keeps the point pair when the aligned line is slanted', async () => {
+    const t = await setup({ tool: LINE_TOOL });
+    t.host.click(at(0.5, 5));
+    t.host.click(at(20, 12));
+    t.host.escape();
+    t.host.start(RECTANGLE_TOOL);
+    t.host.click(at(40, 12.3)); // level with the slanted line's end
+    t.host.click(at(60, 30));
+    const all = t.constraints();
+    expect(all.filter((c) => c.startsWith('collinear'))).toEqual([]);
+    expect(all).toContain('horizontal (40,12) (20,12)');
+    expect(all.filter((c) => c === 'horizontal line')).toHaveLength(2);
   });
 
   it('takes a typed width and height as dimensions, drawn toward the pointer', async () => {

@@ -1784,7 +1784,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   (`exact`), in the overlay not the palette; helpers `clicker`, `counts`,
   `sketchOnXY`. A rectangle gives 8 glyphs (4 Coincident, 2 Horizontal, 2
   Vertical); hovering one highlights its line through `[data-highlight]
-  [data-highlight-entity]`.
+  [data-highlight-entity]`. A Horizontal/Vertical **between two points**
+  (a corner level with a circle centre) is one glyph halfway between them,
+  named "Horizontal (points) constraint" (ADR-0094), so an `exact`
+  "Horizontal constraint" locator doesn't count it; a corner level with the
+  end of a level line gives a "Collinear constraint" glyph on each edge and
+  no own Horizontal on the new edge.
 
 - Click selects (`aria-pressed`), Shift-click adds (`modifiers: ['Shift']`),
   Esc clears and Delete removes (Ctrl+Z restores); an empty-space click

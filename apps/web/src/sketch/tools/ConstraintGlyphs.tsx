@@ -1,5 +1,4 @@
 import {
-  CONSTRAINT_LABELS,
   type ConstraintId,
   constraintRefs,
   curvePolyline,
@@ -7,7 +6,6 @@ import {
   type FeatureId,
   readSketch,
   type SessionStore,
-  type SketchConstraintType,
   type SketchData,
   type SketchFrame,
   sketchToWorld,
@@ -15,7 +13,7 @@ import {
 } from '@extrudo/core';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
-import { type IconName, ToolIcon } from '../../design-system';
+import { ToolIcon } from '../../design-system';
 import { viewProject } from '../../viewport/camera';
 import type { ViewportStore } from '../../viewport/store';
 import { useAnnotationMenu } from './annotationMenu';
@@ -34,24 +32,6 @@ export interface ConstraintGlyphsProps {
   /** Deletes the selection: the right-click menu's Delete (P3-17). */
   onDelete?(): void;
 }
-
-/** The icon of each constraint type; a point on a curve is a coincidence. */
-const ICONS: Record<SketchConstraintType, IconName> = {
-  coincident: 'coincident',
-  pointOnCurve: 'coincident',
-  collinear: 'collinear',
-  concentric: 'concentric',
-  midpoint: 'midpoint',
-  fix: 'fix',
-  parallel: 'parallel',
-  perpendicular: 'perpendicular',
-  horizontal: 'horizontal',
-  vertical: 'vertical',
-  tangent: 'tangent',
-  smooth: 'smooth',
-  equal: 'equal',
-  symmetric: 'symmetric',
-};
 
 /**
  * The constraint glyphs of the open sketch (P1-06, FR-SK-07, UI spec §4):
@@ -140,7 +120,7 @@ export function ConstraintGlyphs({
         const isSelected = selected.has(g.constraint);
         const lit = g.constraint === hovered;
         const wrong = bad.has(g.constraint);
-        const label = `${CONSTRAINT_LABELS[g.type]} constraint`;
+        const label = `${g.label} constraint`;
         return (
           <button
             key={`${g.constraint}:${nth}`}
@@ -148,7 +128,7 @@ export function ConstraintGlyphs({
             tabIndex={-1}
             aria-label={label}
             aria-pressed={isSelected}
-            title={CONSTRAINT_LABELS[g.type]}
+            title={g.label}
             data-constraint={g.constraint}
             data-constraint-type={g.type}
             data-over={wrong || undefined}
@@ -178,7 +158,7 @@ export function ConstraintGlyphs({
             }}
           >
             <ToolIcon
-              name={ICONS[g.type]}
+              name={g.icon}
               category="sketch"
               size={14}
               color={

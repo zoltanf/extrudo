@@ -1,0 +1,1 @@
+- 2026-10-19 · **Aligned edges tie together**: a rectangle corner drawn level with the end of a level line makes the two edges Collinear (not a Horizontal between the corner points), and a Horizontal or Vertical between two points shows one glyph halfway between them, with its own dotted icon.

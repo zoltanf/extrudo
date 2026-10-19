@@ -744,7 +744,10 @@ A list on the left, the selected parameter on the right.
   sketch asks first: add it as driven (it measures) or cancel.
 - **Drawing feedback:** inference guides as dashed lines with small snap
   glyphs; a live length/angle heads-up; auto-constraint glyphs flash when
-  applied.
+  applied. A rectangle corner placed level with the end of a level line makes
+  the two edges **Collinear** (ADR-0094); a Horizontal or Vertical between two
+  points (a corner level with a circle centre) shows one glyph halfway between
+  them, with a dotted icon and the label "Horizontal (points)".
 - Pressing a dimension tool on a selection places the most likely dimension
   type.
 

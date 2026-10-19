@@ -2687,3 +2687,19 @@ default), feature names and types. Never file paths, the design's name, paramete
 the document. The issue form's field ids are an interface: `bugReport.test.ts` reads
 `.github/ISSUE_TEMPLATE/bug_report.yml` and checks the ids it uses exist. The prefilled URL is
 on the desktop allow-list by its path (`links.test.ts` has a case with a query string).
+
+ADR-0094 (the owner's test, 2026-10-19): **aligned edges infer Collinear**. `AnchorEntities.along`
+(`packages/sketch/src/inference/constraints.ts`) names the new lines leaving a placed point along
+each axis; `alignmentConstraints(alignments, point, anchor, sketch)` makes an alignment with a
+sketch point **Collinear between the new line and the line the source point ends** when both run
+along the guide's axis (`lineAlong`: geometry within 1e-6 relative, the source's coincident points
+count), and `place` (`packages/sketch/src/build/inference.ts`) then **drops the new line's own
+Horizontal/Vertical from the edit** (the Collinear implies it; both would be redundant). Point
+pairs stay for a circle centre, a lone point, an arc end, a slanted line's end, or no new
+axis-parallel line. **Rules:** only the Rectangle tool's axis-aligned modes pass `along` (edges 0
+and 2 horizontal, 1 and 3 vertical at each corner; never the 3-point mode); `alignmentConstraints`
+stays pure and the host's test-solve (`SketchSolver.check`) stays. A Horizontal/Vertical **between
+two points** (`b` set) shows **one glyph halfway between them** (a point-style anchor, `entity` its
+`a`) with the icons `horizontal-points`/`vertical-points` and the label "Horizontal (points)" /
+"Vertical (points)"; `glyphFace(c)` in `apps/web/src/sketch/tools/glyphs.ts` is the only place
+that picks a glyph's icon and label (`ConstraintGlyphs.tsx` draws `PlacedGlyph.icon`/`label`).

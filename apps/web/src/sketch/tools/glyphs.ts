@@ -7,13 +7,15 @@
  *    middle, a circle or an ellipse at 45°, a spline's middle. A coincidence
  *    and a point on a curve show once, at the point; a tangent between
  *    curves that are joined shows once, at the joint; a symmetry shows on its
- *    two entities, not the axis.
+ *    two entities, not the axis; a horizontal or vertical between two points
+ *    shows once, halfway between them, with its own icon (ADR-0094).
  * 2. `layoutGlyphs` projects the anchors to the screen and moves each glyph
  *    off its entity: along the outward normal for curves (the upper side of a
  *    line), up and right for points. Glyphs on the same spot line up in a
  *    row across that direction, in constraint order.
  */
 import {
+  CONSTRAINT_LABELS,
   type ConstraintId,
   curvePolyline,
   type SketchConstraint,
@@ -22,8 +24,16 @@ import {
   type SketchEntityId,
   type Vec2,
 } from '@extrudo/core';
+import type { IconName } from '../../design-system';
 
-export interface GlyphAnchor {
+/** What a glyph shows: the icon and the label of its constraint. */
+export interface GlyphFace {
+  icon: IconName;
+  /** "Horizontal", or "Horizontal (points)" for a pair of points. */
+  label: string;
+}
+
+export interface GlyphAnchor extends GlyphFace {
   constraint: ConstraintId;
   type: SketchConstraintType;
   /** The entity the glyph sits on. */
@@ -34,7 +44,7 @@ export interface GlyphAnchor {
   normal?: Vec2;
 }
 
-export interface PlacedGlyph {
+export interface PlacedGlyph extends GlyphFace {
   constraint: ConstraintId;
   type: SketchConstraintType;
   /** The glyph's center, screen pixels. */
@@ -48,16 +58,73 @@ const GAP = 2;
 /** How far a glyph's center sits from its curve, px. */
 const OFFSET = 14;
 
+/** The icon of each constraint type; a point on a curve is a coincidence. */
+const ICONS: Record<SketchConstraintType, IconName> = {
+  coincident: 'coincident',
+  pointOnCurve: 'coincident',
+  collinear: 'collinear',
+  concentric: 'concentric',
+  midpoint: 'midpoint',
+  fix: 'fix',
+  parallel: 'parallel',
+  perpendicular: 'perpendicular',
+  horizontal: 'horizontal',
+  vertical: 'vertical',
+  tangent: 'tangent',
+  smooth: 'smooth',
+  equal: 'equal',
+  symmetric: 'symmetric',
+};
+
+/** A horizontal or vertical that ties two points rather than holding a line. */
+function isPointPair(
+  c: SketchConstraint,
+): c is SketchConstraint & { type: 'horizontal' | 'vertical'; b: SketchEntityId } {
+  return (c.type === 'horizontal' || c.type === 'vertical') && c.b !== undefined;
+}
+
+/** The icon and label a constraint's glyph shows. */
+export function glyphFace(c: SketchConstraint): GlyphFace {
+  if (isPointPair(c)) {
+    return {
+      icon: c.type === 'horizontal' ? 'horizontal-points' : 'vertical-points',
+      label: `${CONSTRAINT_LABELS[c.type]} (points)`,
+    };
+  }
+  return { icon: ICONS[c.type], label: CONSTRAINT_LABELS[c.type] };
+}
+
 export function glyphAnchors(sketch: SketchData): GlyphAnchor[] {
   const out: GlyphAnchor[] = [];
   for (const [key, c] of Object.entries(sketch.constraints)) {
     const constraint = key as ConstraintId;
+    const face = glyphFace(c);
+    if (isPointPair(c)) {
+      // Once, halfway between the two points: the tie is between them, not on either.
+      const a = pointAt(sketch, c.a);
+      const b = pointAt(sketch, c.b);
+      if (a && b) {
+        out.push({
+          constraint,
+          type: c.type,
+          ...face,
+          entity: c.a,
+          at: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2],
+        });
+      }
+      continue;
+    }
     for (const entity of glyphEntities(sketch, c)) {
       const spot = spotOn(sketch, entity);
-      if (spot) out.push({ constraint, type: c.type, entity, ...spot });
+      if (spot) out.push({ constraint, type: c.type, ...face, entity, ...spot });
     }
   }
   return out;
+}
+
+function pointAt(sketch: SketchData, id: SketchEntityId): Vec2 | undefined {
+  const p = sketch.entities[id];
+  return p?.type === 'point' ? [p.x, p.y] : undefined;
 }
 
 /** The entities that carry a constraint's glyphs. */
@@ -221,6 +288,8 @@ export function layoutGlyphs(
       placed.push({
         constraint: g.constraint,
         type: g.type,
+        icon: g.icon,
+        label: g.label,
         x: cx + along[0] * s,
         y: cy + along[1] * s,
       });

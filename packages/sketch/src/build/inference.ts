@@ -119,17 +119,29 @@ export function tangentJoin(
   );
 }
 
-/** Inferred constraints for a point placed where the pointer snapped and aligned. */
+/**
+ * Inferred constraints for a point placed where the pointer snapped and
+ * aligned. With `anchor.along` and the `sketch`, an alignment with the end of
+ * a line along the same axis makes the new line collinear with it, and the
+ * new line's own horizontal or vertical leaves the edit (the collinear
+ * implies it; both would be redundant, and the test-solve might drop the
+ * collinear instead) (ADR-0094).
+ */
 export function place(
   edit: SketchAdd,
   ids: BuildIds,
   pointer: Inference | undefined,
   point: SketchEntityId,
   anchor: AnchorEntities = {},
+  sketch?: SketchData,
 ): void {
   if (!pointer) return;
   constrain(edit, ids, snapConstraints(pointer.snap, point), true);
-  constrain(edit, ids, alignmentConstraints(pointer.alignments, point, anchor), true);
+  const aligned = alignmentConstraints(pointer.alignments, point, anchor, sketch);
+  constrain(edit, ids, aligned, true);
+  for (const c of aligned) {
+    if (c.type === 'collinear') dropAxisConstraint(edit, c.a);
+  }
   // A model snap (auto-project, P6-07): the host projects the ref and holds
   // the point on the projected vertex or curve in the same edit.
   const model = pointer.snap?.model;
@@ -140,6 +152,17 @@ export function place(
       ref: model,
       kind: pointer.snap?.kind === 'onCurve' ? 'edge' : 'vertex',
     });
+  }
+}
+
+/** Removes `line`'s own horizontal or vertical from the edit (a collinear now holds it). */
+function dropAxisConstraint(edit: SketchAdd, line: SketchEntityId): void {
+  for (const [key, c] of Object.entries(edit.constraints)) {
+    const id = key as ConstraintId;
+    if ((c.type === 'horizontal' || c.type === 'vertical') && c.a === line && c.b === undefined) {
+      delete edit.constraints[id];
+      if (edit.auto) edit.auto = edit.auto.filter((a) => a !== id);
+    }
   }
 }
 
