@@ -148,7 +148,12 @@ export class DimensionTool implements SketchTool {
       .map((p) => p.model)
       .filter((m): m is ModelSnap => m !== undefined);
     if (this.#picked.length === 0 && !this.#hover) return EMPTY_PREVIEW;
-    const dimension = this.#cursor && this.#candidate(this.#cursor);
+    // A line's length preview hides while a second pick is under the cursor
+    // (ADR-0093): its label sits there and would cover the hover marker.
+    const [first] = this.#picked;
+    const second =
+      this.#picked.length === 1 && first?.entity.type === 'line' && this.#hover !== undefined;
+    const dimension = this.#cursor && !second ? this.#candidate(this.#cursor) : undefined;
     return {
       ...EMPTY_PREVIEW,
       picked: this.#picked.map((p) => p.id),

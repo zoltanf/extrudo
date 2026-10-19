@@ -6,7 +6,6 @@ import {
   type DimensionId,
   type DocumentStore,
   dimensionAnchor,
-  dimensionRefs,
   type EvaluateResult,
   type ExtrudoDocument,
   evaluateInline,
@@ -37,7 +36,12 @@ import { rayPlane, viewProject, viewRay } from '../../viewport/camera';
 import type { ViewportStore } from '../../viewport/store';
 import { useAnnotationMenu } from './annotationMenu';
 import { EntityHighlight } from './ConstraintGlyphs';
-import { type DimensionShape, dimensionShape, dimensionText } from './dimensionLayout';
+import {
+  type DimensionShape,
+  dimensionShape,
+  dimensionText,
+  highlightRefs,
+} from './dimensionLayout';
 import type { ToolHost } from './host';
 
 export interface DimensionLabelsProps {
@@ -226,7 +230,7 @@ export function DimensionLabels({
         aria-hidden="true"
       >
         {hovered &&
-          dimensionRefs(data.dimensions[hovered] as SketchDimension).map((ref) => (
+          highlightRefs(data, data.dimensions[hovered] as SketchDimension).map((ref) => (
             <EntityHighlight key={ref} data={data} id={ref} toScreen={toScreen} />
           ))}
         {items.map(({ id, d, shape }) => (

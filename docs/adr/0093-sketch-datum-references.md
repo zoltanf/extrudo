@@ -113,6 +113,9 @@ as before. To place a length near an axis, click away from the axis.
 - **A line's distance to an axis hangs on the line:** the dimension runs from the
   sketch line's middle to its foot on the axis, whichever was picked first (an axis's
   middle is arbitrary).
+- **The Dimension tool keeps the hovered pick visible:** with a line picked, its
+  length preview is hidden while a second pick is under the cursor; a dimension's
+  highlighted refs leave out datum axis lines.
 
 ## Consequences
 

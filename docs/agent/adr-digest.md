@@ -2685,4 +2685,4 @@ line that is a datum projection's curve (`isDatumLine`, `NO_DATUM_LINE`), on all
 paths — with the message "An axis has no length or middle; pick a sketch line." through the
 `SketchEdit.error` path; the origin point is still accepted by all of them, and Collinear,
 Perpendicular, Symmetric and Tangent take an axis line.
-A line's distance to an axis hangs on the line: `distanceEnds` runs from the sketch line's middle to its foot on the axis whichever was picked first (an axis's middle is arbitrary).
+A line's distance to an axis hangs on the line: `distanceEnds` runs from the sketch line's middle to its foot on the axis whichever was picked first (an axis's middle is arbitrary). The Dimension tool keeps the hovered pick visible: with a line picked, `preview()` hides the length dimension while a second pick is under the cursor (`tools/dimension.ts`), and a dimension's highlighted refs (`highlightRefs` in `tools/dimensionLayout.ts`, used by `DimensionLabels.tsx`) leave out datum axis lines — a datum point still highlights.
