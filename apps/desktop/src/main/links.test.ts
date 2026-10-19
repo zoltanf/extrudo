@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ABOUT_LINKS } from '../../../web/src/shell/aboutLinks';
+import { ABOUT_LINKS, ISSUES_URL } from '../../../web/src/shell/aboutLinks';
 import { createLinks } from './links';
 
 function run(...urls: unknown[]): string[] {
@@ -24,6 +24,11 @@ describe('links', () => {
   it('opens every URL the About dialog links to', () => {
     expect(ABOUT_LINKS.length).toBeGreaterThan(8);
     expect(run(...ABOUT_LINKS)).toEqual([...ABOUT_LINKS]);
+  });
+
+  it('opens the prefilled issue-form URL: the query parameters are not the path', () => {
+    const url = `${ISSUES_URL}?template=bug_report.yml&title=Crash&what=It+broke`;
+    expect(run(url)).toEqual([url]);
   });
 
   it('refuses http, other hosts, lookalike paths, credentials, ports and non-strings', () => {
