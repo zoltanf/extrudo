@@ -171,11 +171,13 @@ export class DimensionTool implements SketchTool {
     // After a sketch line the next click may place the label, so a body edge
     // or vertex under it must not be taken as a second pick (P6-07 slice 2;
     // a model edge first pick still takes one, so two body edges can be
-    // dimensioned against each other).
+    // dimensioned against each other). The origin and an axis are taken
+    // (ADR-0093 §4): to place a length near one, click away from it.
     const first = this.#picked[0];
-    if (first && first.entity.type === 'line' && !first.model) return undefined;
+    const afterLine = first?.entity.type === 'line' && !first.model;
     const model = this.context.pickModel(cursor);
     if (!model) return undefined;
+    if (afterLine && model.kind !== 'point' && model.kind !== 'axis') return undefined;
     if (model.entityId) {
       const entity = sketch.entities[model.entityId];
       if (entity && accept(entity, model.entityId)) return { id: model.entityId, entity };

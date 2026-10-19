@@ -19,7 +19,13 @@ import {
   type Vec2,
 } from '@extrudo/core';
 import type { Typed } from '@extrudo/sketch/build';
-import type { Inference, ModelAttachment, ModelSnap, PickFilter } from '@extrudo/sketch/inference';
+import {
+  type Inference,
+  isPointSnap,
+  type ModelAttachment,
+  type ModelSnap,
+  type PickFilter,
+} from '@extrudo/sketch/inference';
 
 export type { Typed };
 
@@ -157,9 +163,10 @@ export interface ToolContext {
   model(): ModelSnap | undefined;
   /**
    * The body edge or vertex `cursor` is over, offered to a picking tool
-   * (auto-project, P6-07 slice 2). `undefined` with the preference off, when
-   * a sketch entity is within the snap distance (the sketch's own geometry
-   * always wins), or when no body edge or vertex is near. `entityId` is the
+   * (auto-project, P6-07 slice 2), or the origin point or an origin axis
+   * shown in the view (ADR-0093; before body geometry, and with auto-project
+   * off too). `undefined` when a sketch entity is within the snap distance
+   * (the sketch's own geometry always wins), or when nothing is near. `entityId` is the
    * projected entity when the sketch already projects that ref.
    */
   pickModel(cursor: Vec2): ModelPick | undefined;
@@ -240,11 +247,13 @@ export interface ModelStandIn {
  * its display polyline's ends (P6-07 slice 2): enough for a picking tool to
  * tell the kinds apart and choose a dimension, until the kernel reports the
  * exact curve. A curved edge's stand-in is approximate; the value is
- * measured again once the projection lands.
+ * measured again once the projection lands. A datum point (the origin, an
+ * axis seen end-on) stands in as a point, an axis as its `DATUM_SPAN` line
+ * (ADR-0093): both exactly what the kernel will report.
  */
 export function modelStandIn(context: ToolContext, snap: ModelSnap): ModelStandIn {
   const id = context.newId() as SketchEntityId;
-  if (snap.kind === 'vertex') {
+  if (isPointSnap(snap.kind)) {
     const entity: SketchEntity = { type: 'point', x: snap.point[0], y: snap.point[1] };
     return { id, entity, synthetic: { [id]: entity } };
   }
@@ -259,7 +268,7 @@ export function modelStandIn(context: ToolContext, snap: ModelSnap): ModelStandI
   return { id, entity: synthetic[id] as SketchEntity, synthetic };
 }
 
-/** The model attachments for the picks a tool made (only those on body geometry). */
+/** The model attachments for the picks a tool made (only those on body geometry or datums). */
 export function modelAttachments(
   picks: readonly { id: SketchEntityId; model?: ModelSnap }[],
 ): ModelAttachment[] {

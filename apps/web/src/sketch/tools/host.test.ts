@@ -526,35 +526,36 @@ describe('constraint and dimension tools pick body geometry (P6-07 slice 2)', ()
     const t = await setup({ tool: 'dimension' });
     const e1: ModelSnap = {
       ref: { kind: 'edge', id: 'e1' },
-      point: [10, 0],
+      point: [10, 5],
       kind: 'edge',
       straight: true,
       line: [
-        [0, 0],
-        [20, 0],
+        [0, 5],
+        [20, 5],
       ],
     };
     const e2: ModelSnap = {
       ref: { kind: 'edge', id: 'e2' },
-      point: [10, 10],
+      point: [10, 15],
       kind: 'edge',
       straight: true,
       line: [
-        [0, 10],
-        [20, 10],
+        [0, 15],
+        [20, 15],
       ],
     };
-    t.host.click({ ...at(10, 0.1), model: e1 });
-    t.host.click({ ...at(10, 10.1), model: e2 });
+    // Off the X axis: a datum axis wins over a body edge under the pointer (ADR-0093).
+    t.host.click({ ...at(10, 5.1), model: e1 });
+    t.host.click({ ...at(10, 15.1), model: e2 });
     t.host.click(at(-5, 5)); // place the label
     const projections = t.data().projections ?? {};
     const ids = Object.keys(projections) as ProjectionId[];
     expect(ids).toHaveLength(2);
     // Report both edges; the distance measures 10.
     const reports = Object.fromEntries(
-      ids.map((id) => [id, { curves: { edge: { type: 'line', a: [0, 0], b: [20, 0] } } }]),
+      ids.map((id) => [id, { curves: { edge: { type: 'line', a: [0, 5], b: [20, 5] } } }]),
     );
-    reports[ids[1] as string] = { curves: { edge: { type: 'line', a: [0, 10], b: [20, 10] } } };
+    reports[ids[1] as string] = { curves: { edge: { type: 'line', a: [0, 15], b: [20, 15] } } };
     t.host.syncProjections({
       [t.id]: { frame, projections: reports as never },
     });
@@ -661,5 +662,142 @@ describe('constraint and dimension tools pick body geometry (P6-07 slice 2)', ()
     ).not.toThrow();
     expect(t.host.state.getState().error).toBe("Couldn't hold Collinear on the body geometry.");
     expect(t.data().constraints).toEqual({});
+  });
+});
+
+describe('constraint and dimension tools pick the origin and axes (ADR-0093)', () => {
+  const XY = {
+    origin: [0, 0, 0] as [number, number, number],
+    normal: [0, 0, 1] as [number, number, number],
+    x: [1, 0, 0] as [number, number, number],
+    y: [0, 1, 0] as [number, number, number],
+  };
+  type T = Awaited<ReturnType<typeof setup>>;
+  const draw = (t: T, entities: Record<string, unknown>) =>
+    t.store.getState().dispatch(addToSketch({ feature: t.id, entities: entities as never }));
+  /** A vertical line at x = 20 from y = -10 to 10. */
+  const drawLine = (t: T) =>
+    draw(t, {
+      a0: { type: 'point', x: 20, y: -10 },
+      a1: { type: 'point', x: 20, y: 10 },
+      a: { type: 'line', start: 'a0', end: 'a1', construction: false },
+    });
+  /** The only projection, and the kernel's report of it on the next recompute. */
+  const project = (t: T, curves: Record<string, unknown>) => {
+    const [pid] = Object.keys(t.data().projections ?? {}) as ProjectionId[];
+    if (!pid) throw new Error('no projection');
+    t.host.syncProjections({ [t.id]: { frame: XY, projections: { [pid]: { curves } } as never } });
+    return { pid, projection: t.data().projections?.[pid] };
+  };
+  const yAxis = { axis: { type: 'line', a: [0, -50], b: [0, 50] } };
+  const origin = { point: { type: 'point', at: [0, 0] } };
+
+  it('dimensions a line to the Y axis, which lands as a construction line', async () => {
+    const t = await setup({ tool: 'dimension' });
+    drawLine(t);
+    t.host.click(at(20.1, 0)); // the line
+    t.host.click(at(0.1, 5)); // the Y axis, not the label
+    t.host.click(at(10, 15)); // the label
+    expect(t.data().dimensions).toEqual({});
+    const { projection } = project(t, yAxis);
+    expect(projection?.ref).toEqual({ kind: 'axis', id: 'origin:y' });
+    const axis = projection?.curves.axis as SketchEntityId;
+    expect(t.data().entities[axis]).toMatchObject({ type: 'line', construction: true });
+    expect(Object.values(t.data().dimensions)).toEqual([
+      expect.objectContaining({ type: 'distance', a: 'a', b: axis, expr: '20' }),
+    ]);
+    // At the origin the projected axis gives way to the origin point.
+    t.host.click(at(20, 10.1)); // the line's top end
+    t.host.click(at(0.1, 0.1));
+    t.host.click(at(10, 12));
+    const refs = Object.values(t.data().projections ?? {}).map((p) => p.ref.id);
+    expect(refs).toEqual(['origin:y', 'origin:point']);
+  });
+
+  it('dimensions a point to the origin, vertically', async () => {
+    const t = await setup({ tool: 'dimension' });
+    draw(t, { p: { type: 'point', x: 3, y: 4 } });
+    t.host.click(at(3, 4.1));
+    t.host.click(at(0.1, 0.1)); // the origin
+    t.host.click(at(-3.5, 2)); // left of both: the vertical distance
+    const { projection } = project(t, origin);
+    expect(projection?.ref).toEqual({ kind: 'point', id: 'origin:point' });
+    expect(Object.values(t.data().dimensions)).toEqual([
+      expect.objectContaining({
+        type: 'distance',
+        orientation: 'vertical',
+        a: 'p',
+        b: projection?.curves.point,
+        expr: '4',
+      }),
+    ]);
+  });
+
+  it('makes a point coincident with the origin, with auto-project off too', async () => {
+    const t = await setup({ tool: 'coincident' });
+    t.viewport.getState().setAutoProject(false);
+    draw(t, { p: { type: 'point', x: 3, y: 4 } });
+    t.host.click(at(3, 4.1));
+    t.host.click({ ...at(0.1, 0.1), frame: XY });
+    const { projection } = project(t, origin);
+    expect(Object.values(t.data().constraints)).toEqual([
+      { type: 'coincident', a: 'p', b: projection?.curves.point },
+    ]);
+    expect(t.point('p' as SketchEntityId).map((v) => Math.round(v * 1e6) / 1e6 + 0)).toEqual([
+      0, 0,
+    ]);
+  });
+
+  it('puts a point on the X axis and a line parallel to the Y axis', async () => {
+    // Coincident between a point and a curve is a point on the curve.
+    const t = await setup({ tool: 'coincident' });
+    draw(t, { p: { type: 'point', x: 3, y: 4 } });
+    t.host.click(at(3, 4.1));
+    t.host.click(at(10, 0.1)); // the X axis
+    const { projection } = project(t, { axis: { type: 'line', a: [-50, 0], b: [50, 0] } });
+    expect(projection?.ref).toEqual({ kind: 'axis', id: 'origin:x' });
+    expect(Object.values(t.data().constraints)).toEqual([
+      { type: 'pointOnCurve', point: 'p', curve: projection?.curves.axis },
+    ]);
+    expect(t.point('p' as SketchEntityId)[1]).toBeCloseTo(0, 6);
+
+    const u = await setup({ tool: 'parallel' });
+    draw(u, {
+      a0: { type: 'point', x: 20, y: -10 },
+      a1: { type: 'point', x: 22, y: 10 },
+      a: { type: 'line', start: 'a0', end: 'a1', construction: false },
+    });
+    u.host.click(at(21, 0.2));
+    u.host.click(at(0.1, 5));
+    const y = project(u, yAxis).projection?.curves.axis;
+    expect(Object.values(u.data().constraints)).toEqual([{ type: 'parallel', a: 'a', b: y }]);
+  });
+
+  it('skips a datum hidden in the browser', async () => {
+    const t = await setup({ tool: 'dimension' });
+    t.viewport.getState().setOrigin('y', false);
+    drawLine(t);
+    t.host.click(at(20.1, 0));
+    t.host.click(at(0.1, 5)); // on the hidden Y axis: places the length
+    expect(Object.values(t.data().dimensions)).toEqual([
+      expect.objectContaining({ type: 'distance', a: 'a', expr: '20' }),
+    ]);
+    expect(t.data().dimensions).not.toHaveProperty('b');
+    expect(t.data().projections ?? {}).toEqual({});
+  });
+
+  it('prefers a body vertex on an axis to the axis', async () => {
+    const t = await setup({ tool: 'dimension' });
+    draw(t, { p: { type: 'point', x: 3, y: 4 } });
+    const vertex: ModelSnap = {
+      ref: { kind: 'vertex', id: 'v' },
+      point: [10, 0],
+      kind: 'vertex',
+      straight: true,
+    };
+    t.host.click(at(3, 4.1));
+    t.host.click({ ...at(10, 0.1), model: vertex });
+    t.host.click(at(6, 6));
+    expect(Object.values(t.data().projections ?? {}).map((p) => p.ref)).toEqual([vertex.ref]);
   });
 });

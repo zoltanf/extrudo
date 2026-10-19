@@ -61,15 +61,25 @@ export interface Snap {
 }
 
 /**
+ * What a model snap is: a body vertex or edge (P6-07), or the origin point or
+ * an origin or construction axis (ADR-0093; offered to the picking tools only).
+ * An axis seen end-on is a `point`. A projection keys its curve by this kind.
+ */
+export type ModelSnapKind = 'vertex' | 'edge' | 'point' | 'axis';
+
+/** Whether a model snap is a point (a vertex, or a datum point). */
+export const isPointSnap = (kind: ModelSnapKind) => kind === 'vertex' || kind === 'point';
+
+/**
  * A body edge or vertex the view offers a sketch tool to snap to while it
- * draws (auto-project, P6-07): the persistent reference, the snap point in
+ * draws (auto-project, P6-07), or a datum a picking tool may pick (ADR-0093): the persistent reference, the snap point in
  * sketch coordinates (a vertex projected onto the plane, or the nearest point
  * of an edge's display polyline projected onto it) and which of the two it is.
  */
 export interface ModelSnap {
   ref: GeomRef;
   point: Vec2;
-  kind: 'vertex' | 'edge';
+  kind: ModelSnapKind;
   /**
    * Whether an edge's display polyline is straight (P6-07 slice 2's review):
    * a picking tool may only type a straight edge as a line, so a curved edge
@@ -97,7 +107,7 @@ export interface ModelAttachment {
    */
   placeholder?: SketchEntityId;
   ref: GeomRef;
-  kind: 'vertex' | 'edge';
+  kind: ModelSnapKind;
 }
 
 /** Where an alignment guide starts: the tool's own last point, or a sketch point. */
@@ -284,7 +294,7 @@ export function infer(sketch: SketchData, cursor: Vec2, options: InferenceOption
   const model = options.model;
   if (model && dist(model.point, cursor) <= tolerance) {
     return result(model.point, {
-      kind: model.kind === 'vertex' ? 'point' : 'onCurve',
+      kind: isPointSnap(model.kind) ? 'point' : 'onCurve',
       point: model.point,
       ids: [],
       model: model.ref,
