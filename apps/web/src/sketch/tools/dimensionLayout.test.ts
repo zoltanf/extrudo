@@ -9,7 +9,6 @@ import { describe, expect, it } from 'vitest';
 import {
   dimensionShape,
   dimensionText,
-  highlightRefs,
   labelOffset,
   lineAxisCursor,
   pointAxisCursor,
@@ -248,43 +247,5 @@ describe('datum distance label cursors', () => {
         2,
       ),
     ).toEqual([5, 2]);
-  });
-});
-
-describe('highlightRefs', () => {
-  it('leaves a datum axis line out, keeping the sketch line', () => {
-    const sk = {
-      entities: {
-        l0: { type: 'point', x: -60, y: 41 },
-        l1: { type: 'point', x: -30, y: 41 },
-        ln: { type: 'line', start: e('l0'), end: e('l1'), construction: false },
-        x0: { type: 'point', x: -50, y: 0 },
-        x1: { type: 'point', x: 50, y: 0 },
-        ax: { type: 'line', start: e('x0'), end: e('x1'), construction: true },
-      },
-      constraints: {},
-      dimensions: {},
-      projections: { p1: { ref: { kind: 'axis', id: 'origin:x' }, curves: { axis: e('ax') } } },
-    } as unknown as SketchData;
-    expect(
-      highlightRefs(sk, dim({ type: 'distance', orientation: 'aligned', a: e('ln'), b: e('ax') })),
-    ).toEqual([e('ln')]);
-  });
-
-  it('highlights a point-to-origin distance in full', () => {
-    const sk = {
-      entities: {
-        p: { type: 'point', x: 3, y: 4 },
-        o: { type: 'point', x: 0, y: 0 },
-      },
-      constraints: {},
-      dimensions: {},
-      projections: {
-        p1: { ref: { kind: 'point', id: 'origin:point' }, curves: { point: e('o') } },
-      },
-    } as unknown as SketchData;
-    expect(
-      highlightRefs(sk, dim({ type: 'distance', orientation: 'aligned', a: e('p'), b: e('o') })),
-    ).toEqual([e('p'), e('o')]);
   });
 });

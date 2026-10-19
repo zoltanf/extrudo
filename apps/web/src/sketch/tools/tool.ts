@@ -8,7 +8,10 @@
 import {
   type ConstraintId,
   type DimensionId,
+  isDatumLine,
   type LengthUnit,
+  lineEnds,
+  projectionOf,
   type SketchChange,
   type SketchConstraint,
   type SketchData,
@@ -227,6 +230,32 @@ export const EMPTY_PREVIEW: ToolPreview = { lines: [], points: [] };
  */
 export interface ModelPick extends ModelSnap {
   entityId?: SketchEntityId;
+}
+
+/**
+ * The marker a tool draws for a stored datum axis line under `at` (ADR-0093):
+ * the same snap a fresh axis pick gives, at the foot of `at` on the line, so
+ * the stored 100 mm segment is never highlighted. `undefined` for any other
+ * entity.
+ */
+export function storedDatumMarker(
+  sketch: SketchData,
+  id: SketchEntityId,
+  at: Vec2,
+): ModelSnap | undefined {
+  const ref = projectionOf(sketch, id)?.projection.ref;
+  const ends = isDatumLine(sketch, id) ? lineEnds(sketch, id) : undefined;
+  if (!ref || !ends) return undefined;
+  const [a, b] = ends;
+  const d: Vec2 = [b[0] - a[0], b[1] - a[1]];
+  const t = ((at[0] - a[0]) * d[0] + (at[1] - a[1]) * d[1]) / (d[0] ** 2 + d[1] ** 2 || 1);
+  return {
+    ref,
+    kind: 'axis',
+    straight: true,
+    line: ends,
+    point: [a[0] + t * d[0], a[1] + t * d[1]],
+  };
 }
 
 export function emptyEdit(): SketchEdit {

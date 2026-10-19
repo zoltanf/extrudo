@@ -13,17 +13,13 @@
 import {
   CIRCLE_SEGMENTS,
   dimensionAnchor,
-  dimensionRefs,
   distanceEnds,
-  isDatumRef,
   type LengthUnit,
   lineCrossing,
   lineEnds,
-  projectionOf,
   radiusOf,
   type SketchData,
   type SketchDimension,
-  type SketchEntityId,
   UNITS,
   type Vec2,
 } from '@extrudo/core';
@@ -274,19 +270,6 @@ export function dimensionText(
   else if (d.type === 'angle') text = `${text}°`;
   if (d.driven) return `(${text})`;
   return PLAIN_NUMBER.test(d.expr) ? text : `fx: ${text}`;
-}
-
-/**
- * A dimension's refs to highlight when its label is hovered (ADR-0093): a
- * datum axis line is not drawn, so highlighting it would flash the hidden
- * segment over the axis; a datum point (the origin) still shows.
- */
-export function highlightRefs(sketch: SketchData, d: SketchDimension): SketchEntityId[] {
-  return dimensionRefs(d).filter((id) => {
-    if (sketch.entities[id]?.type !== 'line') return true;
-    const ref = projectionOf(sketch, id)?.projection.ref;
-    return ref === undefined || !isDatumRef(ref);
-  });
 }
 
 /** Coordinates of `v` in the basis (a, b). */

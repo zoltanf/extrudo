@@ -42,6 +42,7 @@ import {
   modelStandIn,
   type SketchEdit,
   type SketchTool,
+  storedDatumMarker,
   type ToolContext,
   type ToolPreview,
 } from './tool';
@@ -55,6 +56,8 @@ interface Pick {
   model?: ModelSnap;
   /** The stand-in entities a model pick needs to be measured before it is projected. */
   synthetic?: Record<SketchEntityId, SketchEntity>;
+  /** The marker for a stored datum axis line (ADR-0093), drawn like a fresh axis pick. */
+  marker?: ModelSnap;
 }
 
 /** Lines closer to parallel than this (sine of the angle) get a distance, not an angle. */
@@ -145,7 +148,7 @@ export class DimensionTool implements SketchTool {
 
   preview(): ToolPreview {
     const modelPicked = this.#picked
-      .map((p) => p.model)
+      .map((p) => p.model ?? p.marker)
       .filter((m): m is ModelSnap => m !== undefined);
     if (this.#picked.length === 0 && !this.#hover) return EMPTY_PREVIEW;
     // A line's length preview hides while a second pick is under the cursor
@@ -159,7 +162,9 @@ export class DimensionTool implements SketchTool {
       picked: this.#picked.map((p) => p.id),
       hover: this.#hover?.id,
       dimension,
-      ...(this.#hover?.model && { modelHover: this.#hover.model }),
+      ...((this.#hover?.model ?? this.#hover?.marker) && {
+        modelHover: this.#hover?.model ?? this.#hover?.marker,
+      }),
       ...(modelPicked.length > 0 && { modelPicked }),
     };
   }
@@ -219,7 +224,7 @@ export class DimensionTool implements SketchTool {
     const id = this.context.pick(cursor, accept);
     if (id) {
       const entity = sketch.entities[id];
-      if (entity) return { id, entity };
+      if (entity) return { id, entity, marker: storedDatumMarker(sketch, id, cursor) };
     }
     // After a sketch line the next click may place the label, so a body edge
     // or vertex under it must not be taken as a second pick (P6-07 slice 2;
@@ -232,7 +237,13 @@ export class DimensionTool implements SketchTool {
     if (firstLine && model.kind === 'axis' && across(model.line)) return undefined;
     if (model.entityId) {
       const entity = sketch.entities[model.entityId];
-      if (entity && accept(entity, model.entityId)) return { id: model.entityId, entity };
+      if (entity && accept(entity, model.entityId)) {
+        return {
+          id: model.entityId,
+          entity,
+          marker: storedDatumMarker(sketch, model.entityId, cursor),
+        };
+      }
       return undefined;
     }
     const stand = modelStandIn(this.context, model);

@@ -70,7 +70,8 @@ export function pointPositions(
 
 /**
  * Line-segment pairs of some of a sketch's curves (model-mode highlights,
- * P2-03), construction or not. Points and other curves are left out.
+ * P2-03), construction or not. Points and other curves are left out, and so
+ * is a datum axis's line (ADR-0093): a stored axis is never drawn as a segment.
  */
 export function curveSegments(
   data: SketchData,
@@ -83,7 +84,7 @@ export function curveSegments(
       entities[id as keyof SketchData['entities']] = entity;
     }
   }
-  const segments = sketchSegments({ ...data, entities }, frame, undefined, false, undefined, true);
+  const segments = sketchSegments({ ...data, entities }, frame);
   const parts = [
     ...STATUSES.map((s) => segments.curves[s]),
     segments.construction,
@@ -135,9 +136,8 @@ export { CIRCLE_SEGMENTS };
  * a dashed line from each end to its grip, the grip itself in `grips`.
  *
  * The curves of a datum projection (ADR-0093) are not drawn, nor counted for
- * Fit, unless `datums`: the view draws the origin and the axes itself. The
- * hover and selection overlays (`curveSegments`) pass it, so a datum still
- * shows when it is hovered or selected.
+ * Fit, and not highlighted either (`curveSegments`): the view draws the
+ * origin and the axes itself.
  */
 export function sketchSegments(
   data: SketchData,
@@ -145,7 +145,6 @@ export function sketchSegments(
   status?: Readonly<Record<string, EntityStatus>>,
   controlPolygons = false,
   gripSpline?: string,
-  datums = false,
 ): SketchSegments {
   const solid: Record<EntityStatus, number[]> = { free: [], fixed: [], conflict: [] };
   const construction: number[] = [];
@@ -153,15 +152,13 @@ export function sketchSegments(
   const projected: number[] = [];
   const isProjected = projectedEntities(data);
   const hidden = new Set<string>();
-  if (!datums) {
-    for (const projection of Object.values(data.projections ?? {})) {
-      if (!isDatumRef(projection.ref)) continue;
-      for (const curve of Object.values(projection.curves)) {
-        const e = curve === null ? undefined : data.entities[curve];
-        if (!e || curve === null) continue;
-        hidden.add(curve);
-        for (const p of entityPoints(e)) hidden.add(p);
-      }
+  for (const projection of Object.values(data.projections ?? {})) {
+    if (!isDatumRef(projection.ref)) continue;
+    for (const curve of Object.values(projection.curves)) {
+      const e = curve === null ? undefined : data.entities[curve];
+      if (!e || curve === null) continue;
+      hidden.add(curve);
+      for (const p of entityPoints(e)) hidden.add(p);
     }
   }
   const points: Record<EntityStatus, number[]> = { free: [], fixed: [], conflict: [] };

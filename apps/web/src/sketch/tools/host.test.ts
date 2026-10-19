@@ -1076,6 +1076,25 @@ describe('constraint tools refuse a datum axis line (ADR-0093)', () => {
     expect(t.point('a1' as SketchEntityId)[1]).toBeCloseTo(10, 6);
   });
 
+  it('a stored axis shows the fresh-axis marker, not its segment, while hovered (ADR-0093 slice 7)', async () => {
+    const t = await setup({ tool: 'parallel' });
+    drawLine(t);
+    t.host.click(at(20.1, 0));
+    t.host.click(at(0.1, 5)); // projects the Y axis
+    project(t, yAxis);
+    draw(t, {
+      b0: { type: 'point', x: 30, y: -10 },
+      b1: { type: 'point', x: 30, y: 10 },
+      b: { type: 'line', start: 'b0', end: 'b1', construction: false },
+    });
+    t.host.click(at(30.1, 0));
+    t.host.move(at(0.2, 7)); // the stored axis
+    const preview = t.host.state.getState().tool?.preview();
+    expect(preview?.modelHover?.kind).toBe('axis');
+    expect(preview?.modelHover?.point[0]).toBeCloseTo(0, 6);
+    expect(preview?.modelHover?.point[1]).toBeCloseTo(7, 6);
+  });
+
   it('Perpendicular makes a slanted line vertical to the X axis', async () => {
     const t = await setup({ tool: 'perpendicular' });
     draw(t, {

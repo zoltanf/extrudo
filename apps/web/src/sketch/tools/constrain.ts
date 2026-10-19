@@ -29,6 +29,7 @@ import {
   modelStandIn,
   type SketchEdit,
   type SketchTool,
+  storedDatumMarker,
   type ToolContext,
   type ToolPreview,
 } from './tool';
@@ -56,6 +57,8 @@ interface Pick {
   entity: SketchEntity;
   /** Set when the pick is a body edge or vertex (auto-project, P6-07 slice 2). */
   model?: ModelSnap;
+  /** The marker for a stored datum axis line (ADR-0093), drawn like a fresh axis pick. */
+  marker?: ModelSnap;
 }
 
 /**
@@ -311,14 +314,16 @@ export class ConstraintTool implements SketchTool {
 
   preview(): ToolPreview {
     const modelPicked = this.#picked
-      .map((p) => p.model)
+      .map((p) => p.model ?? p.marker)
       .filter((m): m is ModelSnap => m !== undefined);
     if (this.#picked.length === 0 && !this.#hover) return EMPTY_PREVIEW;
     return {
       ...EMPTY_PREVIEW,
       picked: this.#picked.map((p) => p.id),
       hover: this.#hover?.id,
-      ...(this.#hover?.model && { modelHover: this.#hover.model }),
+      ...((this.#hover?.model ?? this.#hover?.marker) && {
+        modelHover: this.#hover?.model ?? this.#hover?.marker,
+      }),
       ...(modelPicked.length > 0 && { modelPicked }),
     };
   }
@@ -342,7 +347,7 @@ export class ConstraintTool implements SketchTool {
     );
     if (id) {
       const entity = sketch.entities[id];
-      if (entity) return { id, entity };
+      if (entity) return { id, entity, marker: storedDatumMarker(sketch, id, cursor) };
     }
     const model = this.context.pickModel(cursor);
     if (!model) return undefined;
@@ -355,7 +360,11 @@ export class ConstraintTool implements SketchTool {
         !refused(model.entityId, model) &&
         accepted(entity)
       ) {
-        return { id: model.entityId, entity };
+        return {
+          id: model.entityId,
+          entity,
+          marker: storedDatumMarker(sketch, model.entityId, cursor),
+        };
       }
       return undefined;
     }

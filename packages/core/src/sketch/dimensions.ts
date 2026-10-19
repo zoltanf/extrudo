@@ -38,8 +38,10 @@ export function dimensionRefs(d: SketchDimension): SketchEntityId[] {
 
 type Distance = Extract<SketchDimension, { type: 'distance' }>;
 
-function isDatumLine(sketch: SketchData, id: SketchEntityId | undefined): boolean {
-  const ref = id === undefined ? undefined : projectionOf(sketch, id)?.projection.ref;
+/** Whether `id` is a line that is a datum axis's stored projection (ADR-0093). */
+export function isDatumLine(sketch: SketchData, id: SketchEntityId | undefined): boolean {
+  if (id === undefined || sketch.entities[id]?.type !== 'line') return false;
+  const ref = projectionOf(sketch, id)?.projection.ref;
   return ref !== undefined && isDatumRef(ref);
 }
 

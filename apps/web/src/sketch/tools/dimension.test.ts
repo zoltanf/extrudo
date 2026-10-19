@@ -264,9 +264,19 @@ describe('Dimension tool', () => {
     const preview = () => t.host.state.getState().tool?.preview();
     expect(preview()?.dimension).toBeUndefined();
     expect(preview()?.hover).toBe(axis);
+    // A stored axis shows the marker a fresh axis pick gives, at the foot of the cursor.
+    expect(preview()?.modelHover?.kind).toBe('axis');
+    expect(preview()?.modelHover?.point[0]).toBeCloseTo(5, 6);
+    expect(preview()?.modelHover?.point[1]).toBeCloseTo(0, 6);
     t.host.move(at(10, 8)); // empty space: the length preview follows the cursor again
     expect(preview()?.dimension).toMatchObject({ type: 'distance', a: 'a', expr: '20' });
     expect(preview()?.hover).toBeUndefined();
+    expect(preview()?.modelHover).toBeUndefined();
+    // Picked first, it stays a marker at the click's foot.
+    t.host.escape();
+    t.host.click(at(-7, 0.1));
+    expect(preview()?.modelPicked?.map((m) => m.kind)).toEqual(['axis']);
+    expect(preview()?.modelPicked?.[0]?.point[0]).toBeCloseTo(-7, 6);
   });
 });
 

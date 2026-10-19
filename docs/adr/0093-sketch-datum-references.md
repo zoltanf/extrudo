@@ -105,8 +105,10 @@ as before. To place a length near an axis, click away from the axis.
 - **No placement click for a datum distance** (owner's test, 2026-10-19): line ↔
   parallel axis and point ↔ axis commit on the second pick with the label past the
   line's end; point ↔ point and angles keep the placement click.
-- **Datum projections are not drawn** (the view draws the datum); they show while
-  hovered or selected.
+- **Datum projections are not drawn** (the view draws the datum).
+- **A stored axis is never drawn as a segment**, not even highlighted; a tool
+  hovering or picking it shows the same marker as an axis not yet stored; the origin
+  keeps its point highlight.
 - **An axis has no length or middle:** Equal, Midpoint and Horizontal/Vertical
   refuse a datum axis line (its stored 100 mm span is display only); the origin
   point is still accepted by all of them.
@@ -114,8 +116,8 @@ as before. To place a length near an axis, click away from the axis.
   sketch line's middle to its foot on the axis, whichever was picked first (an axis's
   middle is arbitrary).
 - **The Dimension tool keeps the hovered pick visible:** with a line picked, its
-  length preview is hidden while a second pick is under the cursor; a dimension's
-  highlighted refs leave out datum axis lines.
+  length preview is hidden while a second pick is under the cursor, so the hover
+  marker stays visible.
 
 ## Consequences
 

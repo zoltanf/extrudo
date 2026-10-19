@@ -401,10 +401,11 @@ describe('datum projections (ADR-0093)', () => {
     expect(s.bounds?.box).toEqual({ min: [20, 0, 0], max: [20, 10, 0] });
   });
 
-  it('are drawn as a highlight when hovered or selected', () => {
-    expect(pairs(curveSegments(data, frame('origin:xy'), ['axis']))).toEqual([
-      [0, -50, 0],
-      [0, 50, 0],
+  it('are never highlighted as a segment, a sketch line still is', () => {
+    expect(curveSegments(data, frame('origin:xy'), ['axis'])).toHaveLength(0);
+    expect(pairs(curveSegments(data, frame('origin:xy'), ['mine']))).toEqual([
+      [20, 0, 0],
+      [20, 10, 0],
     ]);
   });
 });
