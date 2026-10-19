@@ -42,7 +42,7 @@ No inputs.
 
 ## `get_feature`
 
-One feature: its type, name, status and inputs as the API's plain values (what add_feature and edit_feature take); a sketch lists its plane, profiles, regions (each profile's area, box, centroid and loops, as add_sketch answers them) and curves (an extrude's side face of curve <c> is side:<c>).
+One feature: its type, name, status and inputs as the API's plain values (what add_feature and edit_feature take); a sketch lists its plane, frame (world mm), profiles, regions (each profile's area, box, centroid and loops, as add_sketch answers them) and curves with their reference { kind: 'sketchEntity', id: '<sketch id>/<curve id>' } (a revolve's axis takes one; an extrude's side face of curve <c> is side:<c>).
 
 | Input | Type | Required | What it is |
 | --- | --- | --- | --- |
@@ -97,11 +97,11 @@ Applies a configuration (by id or name): its parameters take the configuration's
 
 **Changes the design.**
 
-Adds a sketch on a plane with the shapes given and answers its id, its profiles (the references an extrude's profiles take) and regions: per profile, in the same order, { profile, area (mm²), box and centroid (sketch mm), outer and holes (curve ids), shapes (indices of the shapes bounding it) }, to tell a ring from the hole inside it. Plane: 'xy', 'xz', 'yz' or a face reference. One undo step.
+Adds a sketch on a plane with the shapes given and answers its id, its profiles (the references an extrude's profiles take) and regions: per profile, in the same order, { profile, area (mm²), box and centroid (sketch mm), outer and holes (curve ids), shapes (indices of the shapes bounding it) }, to tell a ring from the hole inside it, and frame: { origin, xDir, yDir, normal } in world mm, where sketch x and y go (a one-side extrude goes along normal). Plane: 'xy', 'xz', 'yz', a construction plane { kind: 'plane', id: '<feature id>' } or a planar face reference. One undo step.
 
 | Input | Type | Required | What it is |
 | --- | --- | --- | --- |
-| `plane` | `"xy" \| "xz" \| "yz" \| { kind: string, id: string }` | yes | 'xy', 'xz' or 'yz' (the origin planes), or a planar face reference. |
+| `plane` | `"xy" \| "xz" \| "yz" \| { kind: string, id: string }` | yes | 'xy', 'xz' or 'yz' (the origin planes), a construction plane { kind: 'plane', id: '<feature id>' } (offsetPlane, …) or a planar face reference. |
 | `shapes` | `shape[]` | yes | What to draw: objects whose `shape` names the kind (rectangle, circle, …). |
 | `name` | `string` | no | A name for the sketch. |
 

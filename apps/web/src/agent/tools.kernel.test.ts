@@ -178,4 +178,52 @@ describe('the agent tools on the real kernel', { timeout: 60_000 }, () => {
     expect(jsonOf(await call('get_bodies'))[0].volume).toBeCloseTo(1000 * 5, 3);
     dispose();
   });
+  it("answers a sketch's frame, on origin and construction planes, and curve references (#86)", async () => {
+    const { call, dispose } = await open();
+    const front = jsonOf(
+      await call('add_sketch', {
+        plane: 'xz',
+        shapes: [{ shape: 'rectangle', from: [0, 0], to: [10, 10] }],
+      }),
+    ).result;
+    expect(front.frame).toEqual({
+      origin: [0, 0, 0],
+      xDir: [1, 0, 0],
+      yDir: [0, 0, 1],
+      normal: [0, -1, 0],
+    });
+    const [plane] = jsonOf(
+      await call('add_feature', {
+        type: 'offsetPlane',
+        inputs: { plane: { kind: 'plane', id: 'origin:xz' }, distance: '-60 mm' },
+      }),
+    ).result;
+    const onPlane = jsonOf(
+      await call('add_sketch', {
+        plane: { kind: 'plane', id: plane.id },
+        shapes: [
+          { shape: 'rectangle', from: [5, 0], to: [10, 10] },
+          { shape: 'line', from: [0, 0], to: [0, 10] },
+        ],
+      }),
+    );
+    expect(onPlane.problems).toEqual([]);
+    expect(onPlane.result.frame.origin).toEqual([0, 60, 0]);
+    expect(onPlane.result.frame.normal).toEqual([0, -1, 0]);
+    const detail = jsonOf(await call('get_feature', { id: onPlane.result.id }));
+    expect(detail.frame).toEqual(onPlane.result.frame);
+    const axis = detail.curves.at(-1);
+    expect(axis.ref).toEqual({ kind: 'sketchEntity', id: `${onPlane.result.id}/${axis.id}` });
+    // A revolve about that line: a tube 10 mm tall from r = 5 to r = 10.
+    const revolved = jsonOf(
+      await call('add_feature', {
+        type: 'revolve',
+        inputs: { profiles: onPlane.result.profiles, axis: axis.ref },
+      }),
+    );
+    expect(revolved.problems).toEqual([]);
+    const bodies = jsonOf(await call('get_bodies'));
+    expect(bodies.at(-1).volume).toBeCloseTo(Math.PI * (100 - 25) * 10, 0);
+    dispose();
+  });
 });

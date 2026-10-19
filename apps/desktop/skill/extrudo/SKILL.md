@@ -47,6 +47,19 @@ input is refused with the input's path, and nothing changes.
   `{ "shape": "circle", "center": [0, 0], "diameter": "20 mm" }`,
   `{ "shape": "polyline", "points": [[0, 0], [30, 0], [15, 20]], "closed": true }`
   (`references/tools.md` lists them all).
+- Where a sketch lies: `add_sketch` answers its `frame` (`origin`, `xDir`,
+  `yDir`, `normal`, world mm); a one-side extrude goes along `normal`. World
+  Z is up. The origin planes:
+
+  | plane | sketch x | sketch y | normal |
+  | --- | --- | --- | --- |
+  | `xy` | +X | +Y | +Z |
+  | `xz` | +X | +Z | −Y |
+  | `yz` | +Y | +Z | +X |
+
+  So an `offsetPlane` on `origin:xz` at `-60 mm` lies at Y = +60. To sketch
+  off the origin, add an `offsetPlane` (or another construction plane) and
+  pass `{ "kind": "plane", "id": "<its feature id>" }` as the sketch's plane.
 - Changing bodies: `shell`, `fillet`, `chamfer`, `hole`, `draft`, `combine`,
   `mirror`, the patterns, `move`.
 - `operation` on a solid: `'new-body'` (default), `'join'`, `'cut'`,
@@ -74,6 +87,8 @@ names, never from an index or a position:
   `holes`, and `shapes`, the indices of the shapes that bound it. A rectangle
   inside another gives two profiles: the ring (one hole, `shapes: [0, 1]`)
   and the inner rectangle (no hole, `shapes: [1]`).
+- A sketch curve (a revolve's axis, a sweep's path): its `ref` from
+  `get_feature`'s `curves`, `{ "kind": "sketchEntity", "id": "<sketch id>/<curve id>" }`.
 - Origin planes and axes: `{ "kind": "plane", "id": "origin:xy" }` (`xz`,
   `yz`), `{ "kind": "axis", "id": "origin:z" }` (`x`, `y`).
 

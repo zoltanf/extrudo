@@ -34,11 +34,14 @@ import {
   type GeomRef,
   insertFeature,
   newId,
+  planeFrame,
   remintFeatures,
   removeFeature,
   renameFeature,
+  type SketchEntityId,
   setFeatureSuppressed,
   setParameterExpressions,
+  sketchEntityRefId,
   updateBody,
   updateFeatureInputs,
   updateParameter,
@@ -262,6 +265,20 @@ export function regionsOf(sketch: SketchHandle, shapeCurves?: readonly (readonly
   });
 }
 
+/**
+ * A sketch's frame in world coordinates (mm), as the kernel reported it on the
+ * last recompute (a face's frame follows the face), or the plane's own frame
+ * when it can be known without the kernel; `undefined` while neither is (#86).
+ */
+function sketchFrame(host: AgentHost, id: FeatureId, plane: GeomRef | undefined) {
+  const model = host.model.getState();
+  const frame =
+    model.sketches[id]?.frame ?? (plane ? planeFrame(plane, model.construction) : undefined);
+  if (!frame) return undefined;
+  const r = (v: readonly number[]) => v.map(round3);
+  return { origin: r(frame.origin), xDir: r(frame.x), yDir: r(frame.y), normal: r(frame.normal) };
+}
+
 function featureDetail(host: AgentHost, id: string) {
   const { doc } = host.store.getState();
   const feature = doc.features.find((f) => f.id === id);
@@ -279,10 +296,20 @@ function featureDetail(host: AgentHost, id: string) {
     const sketch = Design.from(doc).feature(feature.id) as SketchHandle;
     const curves = Object.entries(sketch.data.entities)
       .filter(([, entity]) => entity.type !== 'point')
-      .map(([curve, entity]) => ({ id: curve, type: entity.type }));
+      .map(([curve, entity]) => ({
+        id: curve,
+        type: entity.type,
+        // What a revolve's axis or any curve input takes.
+        ref: {
+          kind: 'sketchEntity',
+          id: sketchEntityRefId(feature.id, curve as SketchEntityId),
+        },
+      }));
+    const frame = sketchFrame(host, feature.id, sketch.plane);
     return {
       ...base,
       plane: sketch.plane,
+      ...(frame && { frame }),
       profiles: sketch.profiles(),
       regions: regionsOf(sketch),
       curves,
@@ -319,6 +346,8 @@ async function change(
   host: AgentHost,
   label: string,
   body: () => unknown,
+  /** Adds to the summary what is known only once the model is computed. */
+  after?: (summary: unknown) => unknown,
 ): Promise<AgentReply> {
   const { store, session } = host;
   if (store.getState().transactionDepth > 0 || session.getState().mode === 'sketch') {
@@ -340,6 +369,7 @@ async function change(
     throw error;
   }
   await settled(host, ctx.settleMs);
+  if (after) summary = after(summary);
   const problems = timeline(host).filter((f) => f.status === 'error' || f.status === 'warning');
   const model = host.model.getState();
   return json({
@@ -599,36 +629,48 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
   },
   add_sketch: ({ plane, shapes, name }, ctx, host) => {
     const h = need(host);
-    return change(ctx, h, `Add ${name ?? 'sketch'}`, () => {
-      // The curves each shape drew, to say which shapes bound each profile.
-      const shapeCurves: string[][] = [];
-      const [id] = insertFromApi(
-        h,
-        (d) => {
-          const on = typeof plane === 'string' ? d.origin[plane] : (plane as GeomRef);
-          const draw = (k: SketchBuilder) => {
-            for (const shape of shapes) {
-              const before = new Set(Object.keys(k.data.entities));
-              drawShape(k, shape);
-              shapeCurves.push(
-                Object.entries(k.data.entities)
-                  .filter(([curve, entity]) => !before.has(curve) && entity.type !== 'point')
-                  .map(([curve]) => curve),
-              );
-            }
-          };
-          d.sketch(on, draw, name ? { name } : {});
-        },
-        name,
-      );
-      const sketch = Design.from(h.store.getState().doc).feature(id as FeatureId) as SketchHandle;
-      return {
-        id,
-        name: nameOf(h, id as FeatureId),
-        profiles: sketch.profiles(),
-        regions: regionsOf(sketch, shapeCurves),
-      };
-    });
+    return change(
+      ctx,
+      h,
+      `Add ${name ?? 'sketch'}`,
+      () => {
+        // The curves each shape drew, to say which shapes bound each profile.
+        const shapeCurves: string[][] = [];
+        const [id] = insertFromApi(
+          h,
+          (d) => {
+            const on = typeof plane === 'string' ? d.origin[plane] : (plane as GeomRef);
+            const draw = (k: SketchBuilder) => {
+              for (const shape of shapes) {
+                const before = new Set(Object.keys(k.data.entities));
+                drawShape(k, shape);
+                shapeCurves.push(
+                  Object.entries(k.data.entities)
+                    .filter(([curve, entity]) => !before.has(curve) && entity.type !== 'point')
+                    .map(([curve]) => curve),
+                );
+              }
+            };
+            d.sketch(on, draw, name ? { name } : {});
+          },
+          name,
+        );
+        const sketch = Design.from(h.store.getState().doc).feature(id as FeatureId) as SketchHandle;
+        return {
+          id,
+          name: nameOf(h, id as FeatureId),
+          profiles: sketch.profiles(),
+          regions: regionsOf(sketch, shapeCurves),
+        };
+      },
+      (summary) => {
+        // The frame, from the recompute: where sketch x and y go in the world.
+        const { id } = summary as { id: FeatureId };
+        const sketch = Design.from(h.store.getState().doc).feature(id) as SketchHandle;
+        const frame = sketchFrame(h, id, sketch.plane);
+        return { ...(summary as object), ...(frame && { frame }) };
+      },
+    );
   },
   add_feature: async ({ type, inputs, name }, ctx, host) => {
     const h = need(host);
