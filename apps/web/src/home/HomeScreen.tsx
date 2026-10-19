@@ -80,17 +80,17 @@ export function HomeScreen({ platform }: { platform: Platform }) {
     }
   };
   useEffect(() => watchWindowErrors(errorLog), []);
+  // Two frames before a capture: the menu just closed (or the dialog, on a retake) is gone.
   const openBugReport = async () => {
-    const screenshot = await capture();
-    setBugReport({ open: true, screenshot });
-  };
-  const retakeBugReport = async () => {
-    setBugReport((s) => ({ ...s, open: false }));
     await new Promise<void>((done) =>
       requestAnimationFrame(() => requestAnimationFrame(() => done())),
     );
     const screenshot = await capture();
     setBugReport({ open: true, screenshot });
+  };
+  const retakeBugReport = async () => {
+    setBugReport((s) => ({ ...s, open: false }));
+    await openBugReport();
   };
   // macOS's application menu › About Extrudo runs the `about` command in the renderer; the
   // home screen has no commands, so it answers that one id (ADR-0085).

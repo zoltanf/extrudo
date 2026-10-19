@@ -325,6 +325,10 @@ function keepNativeMenuOut(event: MouseEvent) {
 }
 
 /** The app shell (P0-04, UI spec §2): app bar, toolbar, browser, viewport, timeline. */
+/** Resolves after two animation frames: what just closed has left the screen (ADR-0092 §3). */
+const twoFrames = () =>
+  new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())));
+
 export function AppShell({
   store,
   session,
@@ -1114,18 +1118,16 @@ export function AppShell({
       return null;
     }
   }, [platform.desktop, viewport]);
+  // Two frames before a capture, so the menu that was just closed (or the dialog and its
+  // overlay on a retake) are gone from the window capture.
   const openBugReport = useCallback(async () => {
+    await twoFrames();
     const screenshot = await capture();
     setBugReport({ open: true, screenshot });
   }, [capture]);
   const retakeBugReport = async () => {
     setBugReport((s) => ({ ...s, open: false }));
-    // Two frames, so the dialog and its overlay are gone from the window capture.
-    await new Promise<void>((done) =>
-      requestAnimationFrame(() => requestAnimationFrame(() => done())),
-    );
-    const screenshot = await capture();
-    setBugReport({ open: true, screenshot });
+    await openBugReport();
   };
   useEffect(() => watchWindowErrors(errorLog), []);
   // The About dialog reads the kernel worker's status and WASM heap (the Recomputer's client).
