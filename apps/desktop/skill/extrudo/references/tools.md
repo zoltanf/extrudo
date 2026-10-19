@@ -50,7 +50,7 @@ One feature: its type, name, status and inputs as the API's plain values (what a
 
 ## `get_bodies`
 
-The bodies at the timeline marker: [{ id, name, volume (mm³), box ({ min, max } in mm), visible }].
+The bodies at the timeline marker: [{ id, name, color?, opacity?, volume (mm³), box ({ min, max } in mm), visible }]. The id (<feature id>:<n>) is what a body reference takes.
 
 No inputs.
 
@@ -137,6 +137,20 @@ Changes some inputs of a feature (the API's plain values, as add_feature). Input
 | --- | --- | --- | --- |
 | `id` | `string` | yes | The feature id. |
 | `inputs` | `object` | yes | The inputs to change. |
+
+## `set_body_appearance`
+
+**Changes the design.**
+
+Changes how a body looks: its colour, opacity, name and whether it is shown. Inputs not given keep their values. One undo step.
+
+| Input | Type | Required | What it is |
+| --- | --- | --- | --- |
+| `id` | `string` | yes | The body's id from get_bodies (<feature id>:<n>), or a feature id that made one body. |
+| `color` | `string` | no | Its colour, '#rrggbb'. |
+| `opacity` | `number` | no | 0.1 (nearly clear) to 1 (opaque). |
+| `name` | `string` | no | The body's name. |
+| `visible` | `boolean` | no | Shown (true) or hidden (false). |
 
 ## `suppress`
 

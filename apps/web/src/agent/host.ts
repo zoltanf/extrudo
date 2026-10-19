@@ -12,6 +12,10 @@ import type { AgentExportFormat } from '../platform/agent';
 export interface AgentBody {
   id: string;
   name: string;
+  /** `#rrggbb`; absent: the theme's default body colour. */
+  color?: string;
+  /** 0.1–1; absent: opaque. */
+  opacity?: number;
   /** mm³ */
   volume: number;
   /** mm */

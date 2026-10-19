@@ -96,6 +96,8 @@ function createShellHost(designId: string, current: { current: AgentShell }): Ag
         return {
           id: entry.id,
           name: entry.meta.name,
+          ...(entry.meta.color !== undefined && { color: entry.meta.color }),
+          ...(entry.meta.opacity !== undefined && { opacity: entry.meta.opacity }),
           volume: body ? Math.round(body.volume * 1000) / 1000 : Number.NaN,
           box: body ? { min: [...body.bbox.min], max: [...body.bbox.max] } : undefined,
           visible: entry.display !== 'hidden',

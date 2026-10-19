@@ -76,6 +76,13 @@ names, never from an index or a position:
 Feature ids come from the answers (`add_feature` returns `[{ id, name }]`) and
 from `get_design`'s timeline.
 
+## How bodies look
+
+`set_body_appearance` gives a body (its id from `get_bodies`) a colour
+(`"#8b5a2b"`), an opacity (0.1–1), a name, or hides it (`visible: false`),
+one undo step per call. Colour each part of a multi-body model, and name the
+bodies after what they are (`Trunk`, `Crown`).
+
 ## Files
 
 `save` saves now (the app also saves on its own). `export` writes STL, 3MF or

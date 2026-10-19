@@ -23,11 +23,12 @@ async function open() {
 async function plate(
   call: (name: string, args?: Record<string, unknown>) => Promise<AgentReply>,
   inputs: Record<string, unknown> = {},
+  at: [number, number] = [0, 0],
 ) {
   const sketch = jsonOf(
     await call('add_sketch', {
       plane: 'xy',
-      shapes: [{ shape: 'rectangle', from: [0, 0], to: [40, 20] }],
+      shapes: [{ shape: 'rectangle', from: at, to: [at[0] + 40, at[1] + 20] }],
     }),
   ).result;
   const added = jsonOf(
@@ -110,6 +111,33 @@ describe('the agent tools on the real kernel', { timeout: 60_000 }, () => {
     });
     expect(textOf(refused)).toBe(
       `bodies.0: ${two.name} made 2 bodies: name one, ${two.id}:0, ${two.id}:1.`,
+    );
+    dispose();
+  });
+  it('colours two bodies, each one undo step (#83)', async () => {
+    const { call, dispose } = await open();
+    const a = await plate(call);
+    const b = await plate(call, {}, [50, 0]);
+    const red = jsonOf(await call('set_body_appearance', { id: `${a}:0`, color: '#FF0000' }));
+    expect(red.done).toMatch(/^Agent: Change Body\d+$/);
+    expect(red.result).toMatchObject({ id: `${a}:0`, color: '#ff0000', visible: true });
+    await call('set_body_appearance', { id: b, color: '#00ff00', opacity: 0.5, name: 'Lid' });
+    const bodies = jsonOf(await call('get_bodies'));
+    expect(bodies.map((x: Record<string, unknown>) => [x.id, x.name, x.color, x.opacity])).toEqual([
+      [`${a}:0`, expect.stringMatching(/^Body/), '#ff0000', undefined],
+      [`${b}:0`, 'Lid', '#00ff00', 0.5],
+    ]);
+    expect(jsonOf(await call('undo')).undone).toMatch(/^Agent: Change Body\d+$/);
+    const undone = jsonOf(await call('get_bodies'));
+    expect(undone[1].color).toBeUndefined();
+    expect(undone[0].color).toBe('#ff0000');
+    const hidden = jsonOf(await call('set_body_appearance', { id: `${a}:0`, visible: false }));
+    expect(hidden.result.visible).toBe(false);
+    expect(textOf(await call('set_body_appearance', { id: 'x:0', color: '#000000' }))).toMatch(
+      /^id: There is no body "x:0"/,
+    );
+    expect(textOf(await call('set_body_appearance', { id: `${a}:0`, color: 'red' }))).toBe(
+      'color: A colour is #rrggbb.',
     );
     dispose();
   });

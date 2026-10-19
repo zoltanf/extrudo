@@ -95,7 +95,7 @@ export const TOOL_SCHEMAS = {
   },
   get_bodies: {
     description:
-      'The bodies at the timeline marker: [{ id, name, volume (mm³), box ({ min, max } in mm), visible }].',
+      'The bodies at the timeline marker: [{ id, name, color?, opacity?, volume (mm³), box ({ min, max } in mm), visible }]. The id (<feature id>:<n>) is what a body reference takes.',
     input: empty,
   },
   get_selection: {
@@ -157,6 +157,23 @@ export const TOOL_SCHEMAS = {
       inputs: z.record(z.string(), z.unknown()).describe('The inputs to change.'),
     }),
   },
+  set_body_appearance: {
+    description:
+      'Changes how a body looks: its colour, opacity, name and whether it is shown. Inputs not given keep their values. One undo step.',
+    input: z.object({
+      id: id(
+        "The body's id from get_bodies (<feature id>:<n>), or a feature id that made one body.",
+      ),
+      color: z
+        .string()
+        .regex(/^#[0-9a-f]{6}$/i, 'A colour is #rrggbb.')
+        .optional()
+        .describe("Its colour, '#rrggbb'."),
+      opacity: z.number().min(0.1).max(1).optional().describe('0.1 (nearly clear) to 1 (opaque).'),
+      name: z.string().trim().min(1).optional().describe("The body's name."),
+      visible: z.boolean().optional().describe('Shown (true) or hidden (false).'),
+    }),
+  },
   suppress: {
     description: 'Suppresses a feature (on: true) or brings it back (on: false). One undo step.',
     input: z.object({ id: id('The feature id.'), on: z.boolean().default(true) }),
@@ -200,6 +217,7 @@ export const CHANGE_TOOLS: ReadonlySet<ToolName> = new Set([
   'add_sketch',
   'add_feature',
   'edit_feature',
+  'set_body_appearance',
   'suppress',
   'rename',
   'remove',

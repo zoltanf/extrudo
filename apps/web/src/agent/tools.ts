@@ -22,6 +22,7 @@ import {
 } from '@extrudo/api';
 import {
   addParameter,
+  type ClearableBodyField,
   type Command,
   CommandError,
   type ConfigurationId,
@@ -38,12 +39,14 @@ import {
   renameFeature,
   setFeatureSuppressed,
   setParameterExpressions,
+  updateBody,
   updateFeatureInputs,
   updateParameter,
 } from '@extrudo/core';
 import type { ProjectSummary } from '@extrudo/storage';
 import { withActiveComponent } from '../components/active';
 import type { AgentExportFormat, AgentReply } from '../platform/agent';
+import { bodyEntries } from '../shell/bodies';
 import { type AgentHost, settled } from './host';
 import { type SketchShape, TOOL_SCHEMAS, type ToolInput, type ToolName } from './schemas';
 
@@ -603,6 +606,41 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
         updateFeatureInputs({ id: feature.id, inputs: checked, replace: true }) as Command<unknown>,
       ]);
       return { id: feature.id, name: feature.name };
+    });
+  },
+  set_body_appearance: async ({ id, color, opacity, name, visible }, ctx, host) => {
+    const h = need(host);
+    await settled(h, ctx.settleMs);
+    const live = liveBodies(h);
+    if (!live) return failure("The model isn't computed: check get_design's problems first.");
+    const { doc } = h.store.getState();
+    // Keyed `id`, so a refusal reads "id: There is no body …".
+    const { id: body } = resolveBodyRefs({ id: { kind: 'body', id } }, live, doc) as {
+      id: GeomRef;
+    };
+    const model = h.model.getState();
+    const entry = bodyEntries(doc, model.bodies, model.origins).find((e) => e.id === body.id);
+    if (!entry) return failure(`There is no body "${id}": get_bodies lists them.`);
+    return change(ctx, h, `Change ${entry.meta.name}`, () => {
+      const clear: ClearableBodyField[] = [];
+      if (opacity !== undefined && opacity >= 1) clear.push('opacity');
+      if (visible === false) clear.push('ghost');
+      h.store.getState().dispatch(
+        updateBody({
+          id: entry.id,
+          changes: {
+            // A body with no stored metadata yet gets the name it shows.
+            ...(!entry.stored && { name: entry.meta.name }),
+            ...(name !== undefined && { name }),
+            ...(color !== undefined && { color: color.toLowerCase() }),
+            ...(opacity !== undefined && opacity < 1 && { opacity }),
+            ...(visible !== undefined && { visible }),
+          },
+          clear,
+        }),
+      );
+      const meta = h.store.getState().doc.bodies[entry.id];
+      return { id: entry.id, ...meta };
     });
   },
   suppress: ({ id, on }, ctx, host) => {
