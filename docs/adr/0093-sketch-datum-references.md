@@ -107,6 +107,9 @@ as before. To place a length near an axis, click away from the axis.
   line's end; point ↔ point and angles keep the placement click.
 - **Datum projections are not drawn** (the view draws the datum); they show while
   hovered or selected.
+- **An axis has no length or middle:** Equal, Midpoint and Horizontal/Vertical
+  refuse a datum axis line (its stored 100 mm span is display only); the origin
+  point is still accepted by all of them.
 
 ## Consequences
 

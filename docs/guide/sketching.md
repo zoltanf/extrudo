@@ -110,7 +110,9 @@ The origin point and the X, Y and Z axes count as things to click too, for dimen
 constraint tools: a line to the Y axis gives its distance from it (pick the axis first for an angle to a line
 across it), a point to the origin its distance from there (a line to a parallel axis, or a point to an axis, is dimensioned at once, with no click to place it; the projected datum isn't drawn, the axis you see is the datum itself), and Coincident puts a point on the origin or on an axis. Construction axes
 and points made before the sketch count as well, as long as they are shown and not suppressed. The picked axis,
-point or origin comes into the sketch as fixed construction geometry that follows it. A datum you hid in
+point or origin comes into the sketch as fixed construction geometry that follows it. An axis has no length or
+middle, so Equal, Midpoint and Horizontal/Vertical refuse an axis line; the origin point works with all of them.
+A datum you hid in
 the browser can't be picked.
 
 The new dimension is **driving**: it starts at the current size and from then on it holds the

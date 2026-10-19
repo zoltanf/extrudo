@@ -2678,4 +2678,10 @@ feature. Owner's test (2026-10-19): a datum **axis** with a parallel line or a p
 the second pick (`DimensionTool.#datumCursor`; label via `lineAxisCursor`/`pointAxisCursor` in
 `dimensionLayout.ts`), with no placement click; origin/datum points and angles keep it.
 `sketchSegments` skips the entities of datum projections (and their points) unless `datums`
-(`curveSegments`, the hover/selection overlay, passes it).
+(`curveSegments`, the hover/selection overlay, passes it). In the constraint tools
+(`tools/constrain.ts`), an axis has no length or middle: **Equal, Midpoint and
+Horizontal/Vertical refuse a datum axis line** — a fresh `kind: 'axis'` model pick or a sketch
+line that is a datum projection's curve (`isDatumLine`, `NO_DATUM_LINE`), on all three `#pickAt`
+paths — with the message "An axis has no length or middle; pick a sketch line." through the
+`SketchEdit.error` path; the origin point is still accepted by all of them, and Collinear,
+Perpendicular, Symmetric and Tangent take an axis line.
