@@ -57,8 +57,11 @@ input is refused with the input's path, and nothing changes.
 Faces, edges and bodies are named, not numbered. Build references from the
 names, never from an index or a position:
 
-- A body: `{ "kind": "body", "id": "<feature id>" }` (the body a feature made
-  is named after it).
+- A body: `{ "kind": "body", "id": "<feature id>:<n>" }`, as `get_bodies`
+  lists them: a feature's bodies are numbered from `:0` (an extrude of two
+  separate profiles makes `:0` and `:1`). A bare `<feature id>` works when
+  that feature made one body; an unknown body is refused and nothing changes.
+  Body names (`Body1`, …) are for people, not references.
 - A face: `{ "kind": "face", "id": "<type>:<feature id>:<role>" }`, the role
   from the feature type's faces in `references/api.md`: the top of a box is
   `box:<id>:cap:end`, an extrude's far face `extrude:<id>:cap:end`, a side of

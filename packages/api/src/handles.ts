@@ -88,22 +88,27 @@ export class FeatureHandle<T extends string = string> {
     return { kind: constructionKindOf(this.type as ConstructionType), id: this.id };
   }
 
-  /** This feature's own body (`<feature>`), the one a new solid feature makes. */
+  /**
+   * This feature's first body (`<feature>:0`), the one a new solid feature
+   * makes: the kernel names a feature's bodies `<feature>:<n>` (ADR-0030).
+   */
   body(): GeomRef {
-    return { kind: 'body', id: this.id };
+    return { kind: 'body', id: `${this.id}:0` };
   }
 
   /**
-   * The bodies this feature made, as the document knows them: its own and any
-   * `<feature>:<n>` of a feature that made several (ADR-0030). Without a
-   * recompute this is the bodies stored for it, which is every body the
-   * document has ever had; the kernel's `splitSolids` names the rest.
+   * The bodies this feature made, as the document knows them: its first
+   * (`<feature>:0`) and any other `<feature>:<n>` of a feature that made
+   * several (ADR-0030). Without a recompute this is the bodies stored for it,
+   * which is every body the document has ever had; the kernel's `splitSolids`
+   * names the rest.
    */
   bodies(): GeomRef[] {
     const prefix = `${this.id}:`;
+    const first = `${prefix}0`;
     const ids = [
-      this.id,
-      ...Object.keys(this.#design.doc.bodies).filter((b) => b.startsWith(prefix)),
+      first,
+      ...Object.keys(this.#design.doc.bodies).filter((b) => b.startsWith(prefix) && b !== first),
     ];
     return ids.map((id) => ({ kind: 'body', id }));
   }

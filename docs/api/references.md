@@ -56,11 +56,12 @@ d.moveBodies({ bodies: [one], dx: '10 mm' });
 console.log(all.length);
 ```
 
-A body is named after the feature that made it, so `plate.body()` is
-`{ kind: 'body', id: 'f1' }` for the first feature of a design. A feature that
-makes several (a Mirror's copies, a pattern's instances) names the rest
-`<feature>:2`, `<feature>:3`, …; `bodies()` lists the ones the document knows
-without a recompute, and the kernel's `splitSolids` names any others.
+A body is named `<feature>:<n>` after the feature that made it, so
+`plate.body()` is `{ kind: 'body', id: 'f1:0' }` for the first feature of a
+design. A feature that makes several (a Mirror's copies, a pattern's
+instances, an extrude of separate profiles) names the rest `<feature>:1`,
+`<feature>:2`, …; `bodies()` lists the ones the document knows without a
+recompute, and the kernel's `splitSolids` names any others.
 
 ## Faces, edges and vertices
 

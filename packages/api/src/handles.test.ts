@@ -98,13 +98,13 @@ describe('feature handles', () => {
   it('name their own body and the bodies they made', () => {
     const design = d();
     const box = design.box();
-    expect(box.body()).toEqual({ kind: 'body', id: 'f1' });
-    expect(box.bodies()).toEqual([{ kind: 'body', id: 'f1' }]);
+    expect(box.body()).toEqual({ kind: 'body', id: 'f1:0' });
+    expect(box.bodies()).toEqual([{ kind: 'body', id: 'f1:0' }]);
     // A feature the kernel split into several named its bodies `f1:1`, `f1:2`;
     // those come from the document's own body metadata, as far as they are known.
     const split = design.splitBody({ bodies: [box.body()], plane: design.origin.yz });
-    expect(split.body()).toEqual({ kind: 'body', id: 'f2' });
-    expect(box.bodies()).toEqual([{ kind: 'body', id: 'f1' }]);
+    expect(split.body()).toEqual({ kind: 'body', id: 'f2:0' });
+    expect(box.bodies()).toEqual([{ kind: 'body', id: 'f1:0' }]);
   });
 });
 

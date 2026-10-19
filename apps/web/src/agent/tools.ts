@@ -390,6 +390,64 @@ export function expandShorthands(value: unknown): unknown {
   return Object.fromEntries(entries.map(([key, inner]) => [key, expandShorthands(inner)]));
 }
 
+/**
+ * The bodies at the marker, once the model is computed for the document as it
+ * is; `undefined` while it isn't (no kernel, a failed recompute), when body
+ * references go to the feature unchecked and its status says what is wrong.
+ */
+function liveBodies(host: AgentHost): ReadonlySet<string> | undefined {
+  const model = host.model.getState();
+  if (model.status !== 'ready' || model.doc !== host.store.getState().doc) return undefined;
+  return new Set(Object.keys(model.bodies));
+}
+
+/**
+ * Body references as the kernel names bodies, `<feature id>:<n>` (ADR-0030):
+ * a bare feature id (or name) stands for the one body that feature made, and
+ * a body that isn't there is refused with the input's path, so a mistaken
+ * reference changes nothing instead of adding a feature in error (#84).
+ */
+export function resolveBodyRefs(
+  value: unknown,
+  live: ReadonlySet<string>,
+  doc: ExtrudoDocument,
+  path: readonly (string | number)[] = [],
+): unknown {
+  if (Array.isArray(value)) return value.map((v, i) => resolveBodyRefs(v, live, doc, [...path, i]));
+  if (value === null || typeof value !== 'object') return value;
+  const ref = value as { kind?: unknown; id?: unknown };
+  if (ref.kind === 'body' && typeof ref.id === 'string') {
+    if (live.has(ref.id)) return value;
+    const at = path.length > 0 ? `${path.join('.')}: ` : '';
+    const feature = doc.features.find((f) => f.id === ref.id || f.name === ref.id);
+    const made = feature ? [...live].filter((b) => b.startsWith(`${feature.id}:`)) : [];
+    if (made.length === 1) return { ...value, id: made[0] };
+    if (made.length > 1) {
+      throw new CommandError(
+        `${at}${feature?.name} made ${made.length} bodies: name one, ${made.join(', ')}.`,
+      );
+    }
+    throw new CommandError(
+      `${at}There is no body "${ref.id}": bodies are named <feature id>:<n>, and get_bodies lists them.`,
+    );
+  }
+  return Object.fromEntries(
+    Object.entries(value).map(([key, inner]) => [
+      key,
+      resolveBodyRefs(inner, live, doc, [...path, key]),
+    ]),
+  );
+}
+
+/** An agent's inputs as the API takes them: shorthands expanded, body references checked. */
+function agentInputs(host: AgentHost, inputs: Record<string, unknown>): Record<string, unknown> {
+  const expanded = expandShorthands(inputs) as Record<string, unknown>;
+  const live = liveBodies(host);
+  return live
+    ? (resolveBodyRefs(expanded, live, host.store.getState().doc) as Record<string, unknown>)
+    : expanded;
+}
+
 const nameOf = (host: AgentHost, id: FeatureId) =>
   host.store.getState().doc.features.find((f) => f.id === id)?.name;
 
@@ -498,22 +556,25 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
       return { id, name: nameOf(h, id as FeatureId), profiles: sketch.profiles() };
     });
   },
-  add_feature: ({ type, inputs, name }, ctx, host) => {
+  add_feature: async ({ type, inputs, name }, ctx, host) => {
     const h = need(host);
     if (type === 'sketch') return failure('Use add_sketch to add a sketch.');
+    // Body references are checked against the bodies the model has now.
+    await settled(h, ctx.settleMs);
     return change(ctx, h, `Add ${type}`, () => {
       const ids = insertFromApi(
         h,
         (d) => {
-          d.add(type, expandShorthands(inputs) as never, name ? { name } : {});
+          d.add(type, agentInputs(h, inputs) as never, name ? { name } : {});
         },
         name,
       );
       return ids.map((id) => ({ id, name: nameOf(h, id) }));
     });
   },
-  edit_feature: ({ id, inputs }, ctx, host) => {
+  edit_feature: async ({ id, inputs }, ctx, host) => {
     const h = need(host);
+    await settled(h, ctx.settleMs);
     const { doc } = h.store.getState();
     const feature = doc.features.find((f) => f.id === id);
     if (!feature) return failure(`There is no feature "${id}".`);
@@ -525,7 +586,7 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
       const scratch = Design.from(doc);
       // An expression input that names a model parameter (`d17`) keeps the name, so
       // whatever reads it still resolves.
-      const changed = expandShorthands(inputs) as Record<string, unknown>;
+      const changed = agentInputs(h, inputs);
       const merged: Record<string, unknown> = { ...feature.inputs, ...changed };
       for (const [key, value] of Object.entries(changed)) {
         const old = feature.inputs[key];

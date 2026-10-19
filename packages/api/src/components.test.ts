@@ -23,7 +23,7 @@ describe('components', () => {
     const lid = design.component('Lid', { bodies: [box.body()] });
     expect(lid.id).toBe('cmp1');
     expect(lid.name).toBe('Lid');
-    expect(lid.bodies()).toEqual(['f1']);
+    expect(lid.bodies()).toEqual(['f1:0']);
     expect(design.doc.components).toEqual([{ id: 'cmp1', name: 'Lid', visible: true }]);
     expect(Object.values(design.doc.bodies)[0]?.component).toBe('cmp1');
   });
@@ -33,9 +33,9 @@ describe('components', () => {
     const lid = design.component('Lid');
     const box = design.box();
     lid.add(box.body());
-    expect(lid.bodies()).toEqual(['f1']);
+    expect(lid.bodies()).toEqual(['f1:0']);
     lid.add(box.body());
-    expect(lid.bodies()).toEqual(['f1']);
+    expect(lid.bodies()).toEqual(['f1:0']);
   });
 
   it('stamps every feature added inside a build callback', () => {

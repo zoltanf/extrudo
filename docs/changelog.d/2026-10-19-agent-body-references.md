@@ -1,0 +1,1 @@
+- 2026-10-19 · **Agent body references**: agents name a body `<feature id>:<n>` as `get_bodies` lists it, or by a feature id that made one body; an unknown body is refused with its input path instead of adding a step in error. The document API's `handle.body()` now gives the kernel's body id (`<feature>:0`) (#84).
