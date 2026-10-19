@@ -112,7 +112,7 @@ import { profileAt } from '@extrudo/sketch/profiles';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { gridStep } from '../../viewport/grid';
 import type { ViewportStore } from '../../viewport/store';
-import { datumSnapsAt } from '../datums';
+import { type DatumSource, datumSnapsAt } from '../datums';
 import { sketchProfiles } from '../profiles';
 import { selectedGrips, type TangentGrip, tangentAt } from '../splineEnds';
 import { focusTextField, resetTextDraft } from '../textDraft';
@@ -281,6 +281,12 @@ export interface ToolHostOptions {
   loadSolver?: () => Promise<SketchSolver>;
   /** IDs for new geometry; random UUIDs by default. */
   newId?: () => string;
+  /**
+   * The shown construction axes and points the tools may pick (ADR-0093
+   * slice 2), each with its reference and the world geometry the kernel
+   * reported. Read at every pick, so the current document is seen.
+   */
+  constructionDatums?: () => readonly DatumSource[];
 }
 
 export interface ToolHost {
@@ -505,11 +511,19 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     return id && view ? { id, data: view.data, plane: view.plane } : undefined;
   };
 
-  /** The origin point and axes under `cursor` (ADR-0093), in the last pointer's plane. */
+  /** The origin's, the axes' and the shown construction datums under `cursor` (ADR-0093), in the last pointer's plane. */
   const datumsAt = (cursor: Vec2, tolerance: number) => {
     const sketch = activeSketch();
     const frame = lastFrame ?? (sketch && planeFrame(sketch.plane));
-    return frame ? datumSnapsAt(frame, cursor, tolerance, viewport.getState().origin) : {};
+    return frame
+      ? datumSnapsAt(
+          frame,
+          cursor,
+          tolerance,
+          viewport.getState().origin,
+          options.constructionDatums?.() ?? [],
+        )
+      : {};
   };
 
   /**

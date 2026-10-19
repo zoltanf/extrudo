@@ -841,3 +841,127 @@ describe('constraint and dimension tools pick the origin and axes (ADR-0093)', (
     expect(Object.values(t.data().projections ?? {}).map((p) => p.ref)).toEqual([vertex.ref]);
   });
 });
+
+describe('construction datums through the host (ADR-0093 slice 2)', () => {
+  const XY = {
+    origin: [0, 0, 0] as [number, number, number],
+    normal: [0, 0, 1] as [number, number, number],
+    x: [1, 0, 0] as [number, number, number],
+    y: [0, 1, 0] as [number, number, number],
+  };
+  type T = Awaited<ReturnType<typeof setup>>;
+  const draw = (t: T, entities: Record<string, unknown>) =>
+    t.store.getState().dispatch(addToSketch({ feature: t.id, entities: entities as never }));
+  /** A horizontal line at y = 5. */
+  const drawLine = (t: T) =>
+    draw(t, {
+      h0: { type: 'point', x: -20, y: 5 },
+      h1: { type: 'point', x: 20, y: 5 },
+      h: { type: 'line', start: 'h0', end: 'h1', construction: false },
+    });
+
+  it('dimensions a line to a parallel construction axis, projected as construction', async () => {
+    const t = await setup({
+      tool: 'dimension',
+      constructionDatums: () => [
+        { ref: { kind: 'axis', id: 'cx' }, kind: 'axis', origin: [0, 10, 0], direction: [1, 0, 0] },
+      ],
+    });
+    drawLine(t);
+    t.host.click(at(5, 5.1)); // the line
+    t.host.click(at(5, 10.1)); // the construction axis at y = 10
+    t.host.click(at(5, 8)); // the label between them
+    expect(t.data().dimensions).toEqual({});
+    const [pid] = Object.keys(t.data().projections ?? {}) as ProjectionId[];
+    t.host.syncProjections({
+      [t.id]: {
+        frame: XY,
+        projections: {
+          [pid]: { curves: { axis: { type: 'line', a: [-50, 10], b: [50, 10] } } } as never,
+        },
+      },
+    });
+    const projection = t.data().projections?.[pid];
+    expect(projection?.ref).toEqual({ kind: 'axis', id: 'cx' });
+    const axis = projection?.curves.axis as SketchEntityId;
+    expect(t.data().entities[axis]).toMatchObject({ type: 'line', construction: true });
+    expect(Object.values(t.data().dimensions)).toEqual([
+      expect.objectContaining({ type: 'distance', a: 'h', b: axis, expr: '5' }),
+    ]);
+  });
+
+  it('makes a point coincident with a construction point', async () => {
+    const t = await setup({
+      tool: 'coincident',
+      constructionDatums: () => [
+        { ref: { kind: 'point', id: 'cp' }, kind: 'point', point: [5, 3, 0] },
+      ],
+    });
+    draw(t, { p: { type: 'point', x: 0, y: 0 } });
+    t.host.click(at(0, 0.1)); // the sketch point
+    t.host.click(at(5.1, 3)); // the construction point
+    const [pid] = Object.keys(t.data().projections ?? {}) as ProjectionId[];
+    t.host.syncProjections({
+      [t.id]: {
+        frame: XY,
+        projections: { [pid]: { curves: { point: { type: 'point', at: [5, 3] } } } as never },
+      },
+    });
+    const projection = t.data().projections?.[pid];
+    expect(projection?.ref).toEqual({ kind: 'point', id: 'cp' });
+    expect(Object.values(t.data().constraints)).toEqual([
+      { type: 'coincident', a: 'p', b: projection?.curves.point },
+    ]);
+  });
+
+  it('a projected construction axis line gives way to a datum point', async () => {
+    const t = await setup({
+      tool: 'coincident',
+      constructionDatums: () => [
+        { ref: { kind: 'axis', id: 'cx' }, kind: 'axis', origin: [0, 0, 0], direction: [1, 0, 0] },
+      ],
+    });
+    // The construction axis, projected first: its line runs through the origin.
+    t.store
+      .getState()
+      .dispatch(
+        addProjection({
+          feature: t.id,
+          id: 'pcx' as ProjectionId,
+          ref: { kind: 'axis', id: 'cx' },
+        }),
+      );
+    t.host.syncProjections({
+      [t.id]: {
+        frame: XY,
+        projections: {
+          pcx: { curves: { axis: { type: 'line', a: [-50, 0], b: [50, 0] } } } as never,
+        },
+      },
+    });
+    draw(t, { p: { type: 'point', x: 3, y: 4 } });
+    t.host.click(at(3, 4.1)); // the sketch point
+    t.host.click(at(0.1, 0.1)); // on the projected axis line, but the origin point is there
+    const projections = t.data().projections ?? {};
+    const opid = (Object.keys(projections) as ProjectionId[]).find(
+      (id) => projections[id]?.ref.id === 'origin:point',
+    );
+    expect(opid).toBeDefined();
+    // The origin point lands, not the construction axis's line.
+    t.host.syncProjections({
+      [t.id]: {
+        frame: XY,
+        projections: {
+          [opid as ProjectionId]: { curves: { point: { type: 'point', at: [0, 0] } } } as never,
+        },
+      },
+    });
+    expect(Object.values(t.data().constraints)).toEqual([
+      {
+        type: 'coincident',
+        a: 'p',
+        b: t.data().projections?.[opid as ProjectionId]?.curves.point,
+      },
+    ]);
+  });
+});
