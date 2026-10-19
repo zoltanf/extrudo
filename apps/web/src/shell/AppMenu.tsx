@@ -1,6 +1,7 @@
 import {
   BookOpen,
   Box,
+  Bug,
   CircleHelp,
   GraduationCap,
   Info,
@@ -58,6 +59,8 @@ export interface AppMenuProps {
   onSearch?: (() => void) | undefined;
   /** About Extrudo (ADR-0085). */
   onAbout(): void;
+  /** Report a bug (ADR-0092). */
+  onReportBug?: (() => void) | undefined;
   /** Starts the tutorial (P3-12). */
   onTutorial(): void;
   /** Opens a docs page (P6-06 S9): User Guide, Online Tutorials, Examples, Tool Reference. */
@@ -271,6 +274,7 @@ export function MenuPanel({
   onSettings,
   onSearch,
   onAbout,
+  onReportBug,
   onTutorial,
   onDocs,
   version,
@@ -397,6 +401,11 @@ export function MenuPanel({
           <Item icon={<Info />} onClick={choose(onAbout)}>
             About Extrudo
           </Item>
+          {onReportBug && (
+            <Item icon={<Bug />} onClick={choose(onReportBug)}>
+              Report a bug
+            </Item>
+          )}
           {(onCloseDesign || onQuit) && <hr className="mx-0 my-1 h-px border-0 bg-line" />}
           {onCloseDesign && (
             <Item icon={<X />} onClick={choose(onCloseDesign)}>

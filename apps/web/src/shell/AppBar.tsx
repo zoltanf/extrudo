@@ -87,6 +87,8 @@ export interface AppBarProps {
   onCheckUpdates?(): void;
   /** About Extrudo. */
   onAbout(): void;
+  /** Report a bug (ADR-0092). */
+  onReportBug?: (() => void) | undefined;
   /** The build's version and the update state, in the panel's strip. */
   version: string;
   updates?: PlatformUpdates | undefined;
@@ -135,6 +137,7 @@ export function AppBar({
   version,
   updates,
   onAbout,
+  onReportBug,
   markingRadial,
   onMarkingRadial,
   display,
@@ -207,6 +210,7 @@ export function AppBar({
           onSettings={onSettings}
           onSearch={() => onSearch()}
           onAbout={onAbout}
+          onReportBug={onReportBug}
           onTutorial={onTutorial}
           onDocs={onDocs}
           helpTool={helpTool}

@@ -190,6 +190,7 @@ import { ViewportBoundary } from '../viewport/ViewportBoundary';
 import { AboutDialog } from './AboutDialog';
 import { AppBar, type FileActions } from './AppBar';
 import { BROWSER_ID, BrowserPanel } from './BrowserPanel';
+import { BugReportDialog } from './BugReportDialog';
 import {
   bodyEntries,
   bodyMetaOf,
@@ -197,6 +198,7 @@ import {
   followBodyNames,
   pendingBodyEntries,
 } from './bodies';
+import { errorLog, watchWindowErrors } from './bugReport';
 import { ChordHint } from './ChordHint';
 import { CommandSearch, type SearchOpen } from './CommandSearch';
 import {
@@ -1096,6 +1098,36 @@ export function AppShell({
     [desktop, recentNames],
   );
   const [aboutOpen, setAboutOpen] = useState(false);
+  // Report a Bug (ADR-0092): the screenshot is taken before the dialog opens, so it is not in it.
+  const [bugReport, setBugReport] = useState<{ open: boolean; screenshot: Blob | null }>({
+    open: false,
+    screenshot: null,
+  });
+  const capture = useCallback(async (): Promise<Blob | null> => {
+    try {
+      return (
+        (await platform.desktop?.capturePage()) ??
+        (await viewport.getState().snapshot?.(1600)) ??
+        null
+      );
+    } catch {
+      return null;
+    }
+  }, [platform.desktop, viewport]);
+  const openBugReport = useCallback(async () => {
+    const screenshot = await capture();
+    setBugReport({ open: true, screenshot });
+  }, [capture]);
+  const retakeBugReport = async () => {
+    setBugReport((s) => ({ ...s, open: false }));
+    // Two frames, so the dialog and its overlay are gone from the window capture.
+    await new Promise<void>((done) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => done())),
+    );
+    const screenshot = await capture();
+    setBugReport({ open: true, screenshot });
+  };
+  useEffect(() => watchWindowErrors(errorLog), []);
   // The About dialog reads the kernel worker's status and WASM heap (the Recomputer's client).
   const kernelClient = kernel?.client;
   const kernelInfo = useMemo(
@@ -1201,6 +1233,7 @@ export function AppShell({
         }),
         tutorial: { start: () => startTutorialRef.current() },
         about: () => setAboutOpen(true),
+        reportBug: () => void openBugReport(),
         docs: { open: (page: DocsPage) => platform.openDocs(docsPath(page)) },
         macro: { recording: recording !== undefined },
         componentCount: doc.components?.length ?? 0,
@@ -1286,6 +1319,7 @@ export function AppShell({
       markingStyle.radial,
       markingStyle.toggle,
       platform,
+      openBugReport,
       doc.components?.length,
       doc.joints,
       poseCommand,
@@ -1875,7 +1909,10 @@ export function AppShell({
       watchRecomputeErrors({
         store,
         model,
-        notify,
+        notify: (tone, text, options) => {
+          errorLog.record(text);
+          notify(tone, text, options);
+        },
         edit: (id) => featureActionsRef.current.edit(id),
         canEdit: (id) => {
           const { features, timelineMarker } = store.getState().doc;
@@ -2268,6 +2305,7 @@ export function AppShell({
         display={displayAccess}
         onSettings={() => setSettingsOpen(true)}
         onAbout={() => setAboutOpen(true)}
+        onReportBug={() => void openBugReport()}
         onSource={() => platform.openSite('repo')}
         onQuit={platform.menus ? () => void quitApp() : undefined}
         onCloseDesign={platform.menus ? undefined : fileActions.home}
@@ -2780,6 +2818,19 @@ export function AppShell({
         desktop={platform.desktop !== undefined}
         kernelInfo={kernelInfo}
         openLink={platform.openLink}
+        onReportBug={() => void openBugReport()}
+      />
+      <BugReportDialog
+        open={bugReport.open}
+        onOpenChange={(open) => setBugReport((s) => ({ ...s, open }))}
+        screenshot={bugReport.screenshot}
+        onRetake={retakeBugReport}
+        desktop={platform.desktop !== undefined}
+        kernelInfo={kernelInfo}
+        openLink={platform.openLink}
+        download={platform.files.download}
+        doc={doc}
+        notify={notify}
       />
       <CommandSearch
         open={search}
