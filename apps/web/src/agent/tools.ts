@@ -50,6 +50,7 @@ import type { ProjectSummary } from '@extrudo/storage';
 import { withActiveComponent } from '../components/active';
 import type { AgentExportFormat, AgentReply } from '../platform/agent';
 import { bodyEntries } from '../shell/bodies';
+import type { SnapshotOptions } from '../viewport/snapshotView';
 import { type AgentHost, settled } from './host';
 import { type SketchShape, TOOL_SCHEMAS, type ToolInput, type ToolName } from './schemas';
 
@@ -323,9 +324,19 @@ function featureDetail(host: AgentHost, id: string) {
   };
 }
 
-async function screenshot(host: AgentHost): Promise<AgentReply> {
-  const png = await host.snapshot(768);
-  if (!png) return failure("The 3D view isn't drawn yet: try again in a moment.");
+async function screenshot(
+  host: AgentHost,
+  size = 768,
+  options?: SnapshotOptions,
+): Promise<AgentReply> {
+  const png = await host.snapshot(size, options);
+  if (!png) {
+    return failure(
+      options?.bodies
+        ? 'None of those bodies is shown: get_bodies says which are visible.'
+        : "The 3D view isn't drawn yet: try again in a moment.",
+    );
+  }
   const bytes = new Uint8Array(await png.arrayBuffer());
   let binary = '';
   for (let i = 0; i < bytes.length; i += 0x8000) {
@@ -385,6 +396,13 @@ function featureOf(doc: ExtrudoDocument, id: string): Feature {
   const feature = doc.features.find((f) => f.id === id || f.name === id);
   if (!feature) throw new CommandError(`There is no feature "${id}".`);
   return feature;
+}
+
+/** A length given as a number of mm or '<n> mm'; undefined for anything else. */
+function millimetres(value: string | number): number | undefined {
+  if (typeof value === 'number') return value;
+  const plain = /^\s*(-?\d+(?:\.\d+)?)\s*(mm)?\s*$/.exec(value);
+  return plain?.[1] ? Number(plain[1]) : undefined;
 }
 
 /** A shape's text-to-mm guess for drawing; the dimension sets the real size. */
@@ -606,10 +624,43 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
     );
   },
   get_selection: (_input, _ctx, host) => json(need(host).session.getState().selection),
-  screenshot: async (_input, ctx, host) => {
+  screenshot: async ({ view, bodies, section, overlays, size }, ctx, host) => {
+    const h = need(host);
     await ctx.screenshotTurn();
-    await settled(need(host), ctx.settleMs);
-    return screenshot(need(host));
+    await settled(h, ctx.settleMs);
+    const options: SnapshotOptions = {
+      ...(view !== undefined && { view }),
+      ...(overlays !== undefined && { overlays }),
+    };
+    if (bodies) {
+      const live = liveBodies(h);
+      if (!live) return failure("The model isn't computed: check get_design's problems first.");
+      const { doc } = h.store.getState();
+      options.bodies = (resolveBodyRefs({ bodies }, live, doc) as { bodies: GeomRef[] }).bodies.map(
+        (b) => b.id,
+      );
+    }
+    if (section) {
+      const ref: GeomRef =
+        typeof section.plane === 'string'
+          ? { kind: 'plane', id: `origin:${section.plane}` }
+          : (section.plane as GeomRef);
+      const frame = planeFrame(ref, h.model.getState().construction);
+      if (!frame) return failure('section.plane: give an origin plane or a construction plane.');
+      const offset = millimetres(section.offset ?? 0);
+      if (offset === undefined) return failure("section.offset: a number of mm or '10 mm'.");
+      const n = frame.normal;
+      options.section = {
+        origin: [
+          frame.origin[0] + n[0] * offset,
+          frame.origin[1] + n[1] * offset,
+          frame.origin[2] + n[2] * offset,
+        ],
+        normal: n,
+      };
+    }
+    const plain = Object.keys(options).length === 0;
+    return screenshot(h, size, plain ? undefined : options);
   },
   list_commands: (_input, _ctx, host) =>
     json(

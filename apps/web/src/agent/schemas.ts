@@ -6,6 +6,7 @@
  */
 import { z } from '@extrudo/core';
 import type { AgentToolDefinition } from '../platform/agent';
+import { SNAPSHOT_VIEWS } from '../viewport/snapshotView';
 
 const id = (what: string) => z.string().min(1).describe(what);
 const vec2 = z
@@ -115,8 +116,45 @@ export const TOOL_SCHEMAS = {
     input: empty,
   },
   screenshot: {
-    description: 'A picture of the model as a PNG, framed on the bodies. At most one per second.',
-    input: empty,
+    description:
+      "A picture of the model as a PNG, framed on the bodies, drawn apart from the person's view (which doesn't move). Without inputs: the app's current view direction, sketches and construction shown, 768 px. Inputs pick another side, only some bodies (framed on them), a section that cuts away what lies past a plane (a floor plan: view 'top', section on 'xy' at the floor's height), and the size. Sizes come from get_bodies, not pictures. At most one per second.",
+    input: z.object({
+      view: z
+        .union([z.enum(SNAPSHOT_VIEWS), z.tuple([z.number(), z.number(), z.number()])])
+        .optional()
+        .describe(
+          "Where to look from: 'iso', 'top', 'bottom', 'front', 'back', 'left', 'right', or [x, y, z], the direction from the model to the camera.",
+        ),
+      bodies: z
+        .array(geomRef)
+        .optional()
+        .describe('Only these bodies (references, ids from get_bodies), framed on them.'),
+      section: z
+        .object({
+          plane: z
+            .union([z.enum(['xy', 'xz', 'yz']), geomRef])
+            .describe("'xy', 'xz', 'yz' or a construction plane { kind: 'plane', id }."),
+          offset: z
+            .union([z.number(), z.string()])
+            .optional()
+            .describe("Along the plane's normal: a number of mm or '10 mm'. Default 0."),
+        })
+        .optional()
+        .describe(
+          "Cuts away everything on the side the plane's normal points to (above an 'xy' plane).",
+        ),
+      overlays: z
+        .boolean()
+        .optional()
+        .describe('Sketches and construction geometry; default true.'),
+      size: z
+        .number()
+        .int()
+        .min(512)
+        .max(1536)
+        .optional()
+        .describe('Width and height in px; default 768.'),
+    }),
   },
   list_commands: {
     description: "The app's commands run_command takes: [{ id, label, group, unavailable? }].",

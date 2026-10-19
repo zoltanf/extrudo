@@ -260,4 +260,43 @@ describe('the agent tools on the real kernel', { timeout: 60_000 }, () => {
     ).toEqual([]);
     dispose();
   });
+  it('takes a floor plan: one body from the top, cut at z = 10, apart from the view (#88)', async () => {
+    const { call, host, dispose } = await open();
+    const asked: unknown[][] = [];
+    host.snapshot = async (...args) => {
+      asked.push(args);
+      return new Blob([new Uint8Array([137, 80, 78, 71])], { type: 'image/png' });
+    };
+    const box = jsonOf(
+      await call('add_feature', {
+        type: 'box',
+        inputs: { length: '20 mm', width: '20 mm', height: '20 mm' },
+      }),
+    ).result[0].id;
+    // No inputs: as before.
+    expect((await call('screenshot')).result.content[0]?.type).toBe('image');
+    await call('screenshot', {
+      view: 'top',
+      bodies: [{ kind: 'body', id: box }],
+      section: { plane: 'xy', offset: '10 mm' },
+      overlays: false,
+      size: 1024,
+    });
+    expect(asked).toEqual([
+      [768, undefined],
+      [
+        1024,
+        {
+          view: 'top',
+          overlays: false,
+          bodies: [`${box}:0`],
+          section: { origin: [0, 0, 10], normal: [0, 0, 1] },
+        },
+      ],
+    ]);
+    const refused = await call('screenshot', { section: { plane: 'xy', offset: 'ten' } });
+    expect(textOf(refused)).toBe("section.offset: a number of mm or '10 mm'.");
+    expect(textOf(await call('screenshot', { size: 100 }))).toMatch(/^size: /);
+    dispose();
+  });
 });

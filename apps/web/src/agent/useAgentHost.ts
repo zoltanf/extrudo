@@ -121,7 +121,8 @@ function createShellHost(designId: string, current: { current: AgentShell }): Ag
       }
       await shell().toolHost?.whenSolverReady();
     },
-    snapshot: (size) => shell().viewport.getState().snapshot?.(size) ?? Promise.resolve(null),
+    snapshot: (size, options) =>
+      shell().viewport.getState().snapshot?.(size, options) ?? Promise.resolve(null),
     commands: () =>
       shell().commands.map(({ id, label, group, unavailable, run }) => ({
         id,

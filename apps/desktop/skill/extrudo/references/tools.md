@@ -70,9 +70,15 @@ No inputs.
 
 ## `screenshot`
 
-A picture of the model as a PNG, framed on the bodies. At most one per second.
+A picture of the model as a PNG, framed on the bodies, drawn apart from the person's view (which doesn't move). Without inputs: the app's current view direction, sketches and construction shown, 768 px. Inputs pick another side, only some bodies (framed on them), a section that cuts away what lies past a plane (a floor plan: view 'top', section on 'xy' at the floor's height), and the size. Sizes come from get_bodies, not pictures. At most one per second.
 
-No inputs.
+| Input | Type | Required | What it is |
+| --- | --- | --- | --- |
+| `view` | `"iso" \| "top" \| "bottom" \| "front" \| "back" \| "left" \| "right" \| [number, number, number]` | no | Where to look from: 'iso', 'top', 'bottom', 'front', 'back', 'left', 'right', or [x, y, z], the direction from the model to the camera. |
+| `bodies` | `({ kind: string, id: string })[]` | no | Only these bodies (references, ids from get_bodies), framed on them. |
+| `section` | `{ plane: "xy" \| "xz" \| "yz" \| { kind: string, id: string }, offset?: number \| string }` | no | Cuts away everything on the side the plane's normal points to (above an 'xy' plane). |
+| `overlays` | `boolean` | no | Sketches and construction geometry; default true. |
+| `size` | `integer` | no | Width and height in px; default 768. |
 
 ## `list_commands`
 

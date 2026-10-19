@@ -7,6 +7,7 @@
 import type { Command, DocumentStore, ModelStore, SessionStore } from '@extrudo/core';
 import { createStore } from 'zustand/vanilla';
 import type { AgentExportFormat } from '../platform/agent';
+import type { SnapshotOptions } from '../viewport/snapshotView';
 
 /** A body as `get_bodies` answers it. */
 export interface AgentBody {
@@ -56,8 +57,12 @@ export interface AgentHost {
   bodies(): Promise<AgentBody[]>;
   /** The pairs of these bodies (at the marker) that share volume; touching ones aren't. */
   interference(bodies: readonly string[]): Promise<AgentInterference[]>;
-  /** A square PNG of the model, `size` px; null when the view isn't drawn. */
-  snapshot(size: number): Promise<Blob | null>;
+  /**
+   * A square PNG of the model, `size` px, through a camera of its own (the
+   * person's view doesn't move); null when the view isn't drawn or none of
+   * `options.bodies` is shown.
+   */
+  snapshot(size: number, options?: SnapshotOptions): Promise<Blob | null>;
   commands(): readonly AgentCommand[];
   undo(): void;
   redo(): void;

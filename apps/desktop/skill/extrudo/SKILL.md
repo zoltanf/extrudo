@@ -28,7 +28,12 @@ parameter names: `'40 mm'`, `'width / 2'`, `'2 * wall + 0.4 mm'`.
    the features whose status is `error` or `warning` after the recompute.
 4. **Check after each change.** Read `problems`; call `get_design` when unsure,
    and `screenshot` to see the part. `get_bodies` gives each body's volume and
-   bounding box, which is the quickest way to confirm a size.
+   bounding box, which is the quickest way to confirm a size; pictures are for
+   shape, not size. Check with targeted views: `screenshot` takes a `view`
+   (`'top'`, `'front'`, … or a direction), `bodies` to show only some, a
+   `section` to look inside (`{ "plane": "xy", "offset": "10 mm" }` with
+   `view: "top"` is a floor plan), `overlays: false` and a `size` up to 1536.
+   The person's own view doesn't move.
 5. **With several bodies, run `check_interference` before finishing.** It
    lists every pair that overlaps with the shared volume; overlapping bodies
    print badly. Fix each with a `combine` cut, or move or resize one.

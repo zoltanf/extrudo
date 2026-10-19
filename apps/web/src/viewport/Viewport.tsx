@@ -26,8 +26,15 @@ import {
 } from 'react';
 import type { DirectionalLight, Object3D, Scene as ThreeScene } from 'three';
 import {
+  Box3,
+  DoubleSide,
+  FrontSide,
+  type Material,
+  type Mesh,
   OrthographicCamera,
   PerspectiveCamera,
+  type Plane,
+  type Side,
   SRGBColorSpace,
   WebGLRenderer,
   WebGLRenderTarget,
@@ -70,6 +77,7 @@ import {
   basis,
   FOV,
   orbit,
+  orientationFor,
   type Projection,
   pan,
   rayPlane,
@@ -115,6 +123,13 @@ import {
   textBoundsSummary,
   unionBounds,
 } from './sketchGeometry';
+import {
+  bodyObjectName,
+  SNAPSHOT_OVERLAY,
+  type SnapshotOptions,
+  sectionPlane,
+  snapshotDirection,
+} from './snapshotView';
 import {
   type Bounds,
   type OriginItem,
@@ -940,8 +955,15 @@ function Scene({
   const thumbnailBoxRef = useRef(thumbnailBox);
   thumbnailBoxRef.current = thumbnailBox;
   useEffect(() => {
-    viewport.getState().setSnapshot((size = THUMBNAIL_SIZE) => {
+    viewport.getState().setSnapshot((size = THUMBNAIL_SIZE, options: SnapshotOptions = {}) => {
       const { gl, scene, camera } = get();
+      const plain =
+        options.view === undefined &&
+        options.bodies === undefined &&
+        options.section === undefined &&
+        options.overlays !== false;
+      if (!plain)
+        return snapshotWith(gl, scene, viewport.getState(), thumbnailBoxRef.current, size, options);
       const box = thumbnailBoxRef.current;
       if (!box) {
         // Draw now: without preserveDrawingBuffer the canvas is only readable
@@ -1026,17 +1048,19 @@ function Scene({
       {sectionBox && <SectionBoxWire box={sectionBox} color={colors.section} />}
       <CalibrationMarks points={calibration} color={{ ...colors.preselect, a: 1 }} />
       <PreviewShapes preview={preview} colors={colors} planes={previewPlanes} />
-      <Sketches
-        store={viewport}
-        sketches={sketches}
-        colors={sketchColors}
-        construction={colors.sketchConstruction}
-        showPoints={sketchPoints}
-        profileColors={profileColors}
-        highlight={colors.preselect}
-        projected={colors.sketchProjected}
-        clip={previewPlanes}
-      />
+      <group name={SNAPSHOT_OVERLAY}>
+        <Sketches
+          store={viewport}
+          sketches={sketches}
+          colors={sketchColors}
+          construction={colors.sketchConstruction}
+          showPoints={sketchPoints}
+          profileColors={profileColors}
+          highlight={colors.preselect}
+          projected={colors.sketchProjected}
+          clip={previewPlanes}
+        />
+      </group>
       <Grid
         store={viewport}
         frame={gridFrame}
@@ -1064,14 +1088,16 @@ function Scene({
         onPick={planePicker?.faces ? undefined : planePicker?.onPick}
         axisHighlights={axisHighlights(hover, selection)}
       />
-      <Construction
-        store={viewport}
-        items={construction}
-        color={colors.construct}
-        highlight={{ ...colors.preselect, a: 1 }}
-        preview={{ ...colors.preview, a: 1 }}
-        states={constructionStates}
-      />
+      <group name={SNAPSHOT_OVERLAY}>
+        <Construction
+          store={viewport}
+          items={construction}
+          color={colors.construct}
+          highlight={{ ...colors.preselect, a: 1 }}
+          preview={{ ...colors.preview, a: 1 }}
+          states={constructionStates}
+        />
+      </group>
       <Ghosts store={viewport} ghosts={ghosts} color={{ ...colors.sketchConflict, a: 1 }} />
       <Joints store={viewport} joints={jointAxes} color={{ ...colors.construct, a: 1 }} />
     </>
@@ -1115,6 +1141,43 @@ function worldAxis(
   return { color, show: origin[name] };
 }
 
+/**
+ * A snapshot with options (#88): from another side, of some bodies only
+ * (framed on them), cut by a section, without the sketches and construction
+ * geometry. Like a thumbnail it draws through a camera of its own.
+ */
+function snapshotWith(
+  gl: WebGLRenderer,
+  scene: ThreeScene,
+  state: { view: View; projection: Projection },
+  modelBox: { min: Vec3; max: Vec3 } | undefined,
+  size: number,
+  options: SnapshotOptions,
+): Promise<Blob | null> {
+  const keep = options.bodies && new Set(options.bodies.map(bodyObjectName));
+  let box = modelBox;
+  if (keep) {
+    const around = new Box3();
+    for (const name of keep) {
+      const object = scene.getObjectByName(name);
+      if (object) around.expandByObject(object);
+    }
+    if (around.isEmpty()) return Promise.resolve(null);
+    box = { min: around.min.toArray(), max: around.max.toArray() };
+  }
+  if (!box) return Promise.resolve(null);
+  const { view, projection } = state;
+  const looking = options.view
+    ? { ...view, orientation: orientationFor(snapshotDirection(options.view)) }
+    : view;
+  return thumbnailFromBox(gl, scene, thumbnailView(looking, box, projection), projection, size, {
+    hide: (object) =>
+      (options.overlays === false && object.name === SNAPSHOT_OVERLAY) ||
+      (keep !== undefined && object.name.startsWith('body:') && !keep.has(object.name)),
+    ...(options.section && { clip: sectionPlane(options.section) }),
+  });
+}
+
 /** Thumbnail size in px (docs/02-architecture.md §6.2). */
 export const THUMBNAIL_SIZE = 256;
 
@@ -1129,6 +1192,7 @@ function thumbnailFromBox(
   view: View,
   projection: Projection,
   size = THUMBNAIL_SIZE,
+  extra: { hide?(object: Object3D): boolean; clip?: Plane } = {},
 ): Promise<Blob | null> {
   const out = document.createElement('canvas');
   out.width = size;
@@ -1144,16 +1208,39 @@ function thumbnailFromBox(
   const previousTarget = gl.getRenderTarget();
   const hidden: { object: Object3D; visible: boolean }[] = [];
   scene.traverse((object) => {
-    if (object.name === THUMBNAIL_HIDDEN) hidden.push({ object, visible: object.visible });
+    if (object.name === THUMBNAIL_HIDDEN || extra.hide?.(object)) {
+      hidden.push({ object, visible: object.visible });
+    }
   });
+  const previousClips = gl.clippingPlanes;
+  // A section shows the inside of what it cuts: the faces' back sides fill the cut.
+  const turned: { material: Material; side: Side }[] = [];
+  if (extra.clip) {
+    scene.traverse((object) => {
+      const { material } = object as Mesh;
+      if (!(object as Mesh).isMesh || !material || Array.isArray(material)) return;
+      if (material.side !== FrontSide) return;
+      turned.push({ material, side: material.side });
+    });
+  }
   try {
     for (const { object } of hidden) object.visible = false;
+    if (extra.clip) gl.clippingPlanes = [extra.clip];
+    for (const { material } of turned) {
+      material.side = DoubleSide;
+      material.needsUpdate = true;
+    }
     gl.setRenderTarget(target);
     gl.clear();
     gl.render(scene, camera);
     gl.readRenderTargetPixels(target, 0, 0, size, size, pixels);
   } finally {
     for (const { object, visible } of hidden) object.visible = visible;
+    gl.clippingPlanes = previousClips;
+    for (const { material, side } of turned) {
+      material.side = side;
+      material.needsUpdate = true;
+    }
     gl.setRenderTarget(previousTarget);
     target.dispose();
   }
