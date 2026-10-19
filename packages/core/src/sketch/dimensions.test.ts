@@ -132,6 +132,46 @@ describe('dimension anchors and ends', () => {
     ]);
   });
 
+  it('hangs a line-to-axis distance on the sketch line, whichever is picked first', () => {
+    const base = geometry();
+    const entities: Record<string, SketchEntity> = {
+      ...base.entities,
+      l0: { type: 'point', x: -60, y: 41 },
+      l1: { type: 'point', x: -30, y: 41 },
+      ln: { type: 'line', start: e('l0'), end: e('l1'), construction: false },
+      x0: { type: 'point', x: -50, y: 0 },
+      x1: { type: 'point', x: 50, y: 0 },
+      ax: { type: 'line', start: e('x0'), end: e('x1'), construction: true },
+    };
+    const withAxis = {
+      ...base,
+      entities,
+      projections: {
+        p1: { ref: { kind: 'axis', id: 'origin:x' }, curves: { axis: e('ax') } },
+      },
+    } as unknown as SketchData;
+    const ends = (a: string, b: string) =>
+      distanceEnds(
+        withAxis,
+        dim({ type: 'distance', orientation: 'aligned', a: e(a), b: e(b) }) as Extract<
+          SketchDimension,
+          { type: 'distance' }
+        >,
+      );
+    const expected = [
+      [-45, 41],
+      [-45, 0],
+    ];
+    expect(ends('ln', 'ax')).toEqual(expected);
+    expect(ends('ax', 'ln')).toEqual(expected);
+    expect(
+      dimensionAnchor(
+        withAxis,
+        dim({ type: 'distance', orientation: 'aligned', a: e('ln'), b: e('ax') }),
+      ),
+    ).toEqual([-45, 20.5]);
+  });
+
   it('finds where lines cross, and nothing for parallel ones', () => {
     expect(
       lineCrossing(

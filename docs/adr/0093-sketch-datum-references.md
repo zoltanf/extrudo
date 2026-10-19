@@ -110,6 +110,9 @@ as before. To place a length near an axis, click away from the axis.
 - **An axis has no length or middle:** Equal, Midpoint and Horizontal/Vertical
   refuse a datum axis line (its stored 100 mm span is display only); the origin
   point is still accepted by all of them.
+- **A line's distance to an axis hangs on the line:** the dimension runs from the
+  sketch line's middle to its foot on the axis, whichever was picked first (an axis's
+  middle is arbitrary).
 
 ## Consequences
 

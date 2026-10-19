@@ -76,6 +76,46 @@ describe('dimensionShape', () => {
     close(shape?.lines[2]?.[1], [45, 50]);
   });
 
+  it('hangs a line-to-axis distance on the line, not on the axis middle', () => {
+    const sk = {
+      entities: {
+        l0: { type: 'point', x: -60, y: 41 },
+        l1: { type: 'point', x: -30, y: 41 },
+        ln: { type: 'line', start: e('l0'), end: e('l1'), construction: false },
+        x0: { type: 'point', x: -50, y: 0 },
+        x1: { type: 'point', x: 50, y: 0 },
+        ax: { type: 'line', start: e('x0'), end: e('x1'), construction: true },
+      },
+      constraints: {},
+      dimensions: {},
+      projections: { p1: { ref: { kind: 'axis', id: 'origin:x' }, curves: { axis: e('ax') } } },
+    } as unknown as SketchData;
+    const cursor = lineAxisCursor(
+      [
+        [-60, 41],
+        [-30, 41],
+      ],
+      [
+        [-50, 0],
+        [50, 0],
+      ],
+      4,
+    ) as Vec2;
+    const shape = dimensionShape(
+      sk,
+      dim({
+        type: 'distance',
+        orientation: 'aligned',
+        a: e('ln'),
+        b: e('ax'),
+        label: { x: cursor[0] + 45, y: cursor[1] - 20.5 },
+      }),
+      4,
+    );
+    expect(shape?.lines[0]?.[0][0]).toBeCloseTo(-45);
+    expect(shape?.lines[1]?.[0][0]).toBeCloseTo(-45);
+  });
+
   it('draws a diameter through the center towards the label', () => {
     const shape = dimensionShape(
       sketch(),

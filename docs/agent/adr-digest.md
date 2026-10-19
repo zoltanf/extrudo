@@ -2685,3 +2685,4 @@ line that is a datum projection's curve (`isDatumLine`, `NO_DATUM_LINE`), on all
 paths — with the message "An axis has no length or middle; pick a sketch line." through the
 `SketchEdit.error` path; the origin point is still accepted by all of them, and Collinear,
 Perpendicular, Symmetric and Tangent take an axis line.
+A line's distance to an axis hangs on the line: `distanceEnds` runs from the sketch line's middle to its foot on the axis whichever was picked first (an axis's middle is arbitrary).
