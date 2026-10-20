@@ -41,8 +41,10 @@ export const parameterValue: RecordDecoder<ParameterValue> = {
   name: 'parameter value',
   decode: (seg: Segment, id: number) =>
     decodeLevel(seg, id, 'parameter value', (r, _props, version) => {
-      if (version < 5 || version > 7) unsupported('parameter value', version);
+      if (version < 5 || version > 9 || version === 8) unsupported('parameter value', version); // 8 never seen
       r.u8();
+      // Version 9 only: a u32 that is 0 in the one file seen (2026-10-20); meaning unknown.
+      if (version >= 9) r.u32();
       if (version >= 6) r.u32(); // 4 or 5 for a dimension's or feature's parameter, 0 for a user parameter
       const comment = r.wstr();
       if (version >= 7) r.u8();
@@ -51,8 +53,9 @@ export const parameterValue: RecordDecoder<ParameterValue> = {
       const expression = r.wstr();
       // Since version 7: 0 for a number, 1 for a text parameter.
       const text = version >= 7 && r.u32() === 1;
-      // Five flags; the last is set on user parameters.
-      const flags = r.take(5);
+      // Five flags (six since version 9); the fifth is set on user parameters.
+      // Unknown whether the user flag moved in version 9: the sample has no user parameters.
+      const flags = r.take(version >= 9 ? 6 : 5);
       const kind = r.wstr();
       const textValue = version >= 7 ? r.wstr() : '';
       const unit = r.wstr();

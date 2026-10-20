@@ -86,7 +86,7 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | Type GUID | What | Layout (after the prologue) |
 |---|---|---|
 | `2F4C1849…` | Timeline | ref context, u32 n, n refs: the features in order |
-| `7A6A3D31…` | Parameter value (v5–7) | u8, [v6+ u32], wstr comment, [v7 u8], u32 n (the n of `dn`), ref owner, wstr expression, [v7 u32 value type], 5 flags (last: user parameter), wstr kind, [v7 wstr text], wstr unit, wstr name, f64 value, u8, ref table |
+| `7A6A3D31…` | Parameter value (v5–7, v9) | u8, [v9 u32, 0 in the one file seen, meaning unknown], [v6+ u32], wstr comment, [v7 u8], u32 n (the n of `dn`), ref owner, wstr expression, [v7 u32 value type], 5 flags (6 in v9; the fifth: user parameter, unverified for v9: the sample has no user parameters), wstr kind, [v7 wstr text], wstr unit, wstr name, f64 value, u8, ref table |
 | `D91D429C…` | Parameter owner | its first reference is the feature that owns the parameter |
 | `C2CEDAE7…` | Sketch point (v0/8/10/11) | ref incidence, 7–8 flags, 3 f64 (u, v, w), u64, u8, 8–12 zero, 2 f32, 5 bytes, ref, owner backlink |
 | `DCA267ED…` | Sketch line | [wrapper ref], start, displacement, direction (3 f64 each), [normal], ref end point, ref start point, flags, owner backlink |
