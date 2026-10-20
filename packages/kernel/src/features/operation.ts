@@ -110,7 +110,10 @@ export interface ToolSet extends NamedShape {
 
 /** What a solid feature's operation found (its `FeatureOutput.report`): the dialog's smarter Bodies default (ADR-0095). */
 export interface OperationReport {
-  /** The bodies the tool touches (`touchingBodies`), in creation order: the automatic participants. Empty for a new body. */
+  /**
+   * The bodies the tool touches (`touchingBodies`), in creation order: the automatic participants.
+   * Empty for a new body, and for picked bodies cut or intersected (not asked).
+   */
   touching: BodyId[];
 }
 
@@ -132,7 +135,10 @@ export function operate(
     return { ...newBodies(ctx, scope, tool, words), report: { touching: [] } };
   }
 
-  const touching = touchingBodies(ctx, scope, tool.shape);
+  // A cut or intersection of picked bodies doesn't need the question (the exact
+  // distance is slow for a thread's heavy tools, ADR-0067 §H2): its report has none.
+  const touching =
+    participants && operation !== 'join' ? [] : touchingBodies(ctx, scope, tool.shape);
   const report: OperationReport = { touching };
   const targets = participants ?? touching;
   const set = 'passes' in tool && tool.interferes ? tool : undefined;

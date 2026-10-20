@@ -49,6 +49,7 @@ import {
 } from '@extrudo/core';
 import type {
   BodyMesh,
+  OperationReport,
   Preview,
   ScadParametersResult,
   SmoothFaces,
@@ -151,6 +152,8 @@ export interface DialogPreview {
   pattern?: PatternReport;
   /** The draft's emboss report from the latest preview (P4-12): the method it took. */
   emboss?: EmbossReport;
+  /** The bodies the draft's tool touches, from the latest preview (ADR-0095): the Bodies proposal's input. */
+  operation?: OperationReport;
   /** The draft's thread report from the latest preview (P4-12): each face's designation. */
   thread?: ThreadReport;
   /** The draft's sweep report from the latest preview (P4-12): where the profile sits. */
@@ -388,6 +391,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
     const pattern = open.preview?.pattern;
     const draftConstruction = open.preview?.drawing?.construction;
     const draftEmboss = open.preview?.emboss;
+    const draftOperation = open.preview?.operation;
     const draftThread = open.preview?.thread;
     const draftSweep = open.preview?.sweep;
     return {
@@ -399,6 +403,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       ...(pattern && { pattern }),
       ...(draftConstruction && { draftConstruction }),
       ...(draftEmboss && { draftEmboss }),
+      ...(draftOperation && { draftOperation }),
       ...(draftThread && { draftThread }),
       ...(draftSweep && { draftSweep }),
       ...(feature && { feature }),
@@ -524,6 +529,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
               ? open.preview.drawing
               : previewDrawing(result, bodies, style);
           const pattern = result.pattern;
+          const operation = result.operation ?? open.preview.operation;
           const kept = status?.status === 'error' ? open.preview.hints : hints;
           state.setState({
             open: {
@@ -537,6 +543,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
                   ...(pattern && { pattern }),
                   ...(!pattern && open.preview.pattern && { pattern: open.preview.pattern }),
                   ...(result.emboss && { emboss: result.emboss }),
+                  ...(operation && { operation }),
                   ...(result.thread && { thread: result.thread }),
                   ...(result.sweep && { sweep: result.sweep }),
                 },
@@ -552,6 +559,15 @@ export function createDialogController(options: DialogControllerOptions): Dialog
               }),
             },
           });
+          // A new report of the bodies the tool reaches may change the proposal
+          // (ADR-0095); `refresh` asks for a preview only when the draft changed.
+          const now = get();
+          if (
+            now?.spec.propose &&
+            JSON.stringify(operation) !== JSON.stringify(open.preview.operation)
+          ) {
+            refresh(now);
+          }
         })
         .catch(() => {});
     };

@@ -51,8 +51,8 @@ import {
   type KernelStatus,
   type SpawnKernel,
 } from './client';
-import { isOperationReport, type OperationReport } from './features/operation';
 import type { SmoothFaces } from './features/offset-face';
+import { isOperationReport, type OperationReport } from './features/operation';
 import type { SmoothKind, SubShapeKind } from './history';
 import type { Inspection, InspectTarget } from './inspect';
 import type { Interference } from './interference';

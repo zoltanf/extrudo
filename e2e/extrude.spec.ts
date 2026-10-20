@@ -484,3 +484,81 @@ test('tapers an ellipse profile (P4-12: a ruled loft, no more refusal)', async (
   const narrowVolume = solidFacts(narrowed).volume;
   expect(Math.abs(narrowVolume - narrowExact) / narrowExact).toBeLessThan(0.02);
 });
+
+test('joins only the shown bodies when a hidden one is in the way (ADR-0095)', async ({ page }) => {
+  const at = await sketchOnXY(page);
+  const viewport = viewportOf(page);
+  const browser = page.getByRole('complementary', { name: 'Browser' });
+  const click = clicker(page, at);
+  // Two 30 × 20 plates, 20 mm apart, around the origin; both profiles at once.
+  await page.keyboard.press('r');
+  await click(-40, -10);
+  await click(-10, 10);
+  await page.keyboard.press('r');
+  await click(10, -10);
+  await click(40, 10);
+  await page.keyboard.press('Escape');
+  await expect(prompt(page)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await expect(chip(page, 'Sketch1')).toBeVisible();
+  for (const [x, shift] of [
+    [-25, false],
+    [25, true],
+  ] as const) {
+    const p = at(x, 0);
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.click(p.x, p.y, shift ? { modifiers: ['Shift'] } : {});
+  }
+  await page.keyboard.press('e');
+  const dialog = page.getByRole('region', { name: 'Extrude dialog' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('textbox', { name: 'Distance' }).fill('10 mm');
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).toBeHidden();
+  await kernelReady(page);
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:30,20,10 Body2:6:30,20,10');
+
+  await browser.getByRole('button', { name: 'Hide Body2' }).click();
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:30,20,10');
+
+  // A bridge across the gap reaches both plates; Join takes the shown one only.
+  const home = await newSketchOnXY(page);
+  const bridge = clicker(page, home);
+  await page.keyboard.press('r');
+  await bridge(-30, -5);
+  await bridge(30, 5);
+  await page.keyboard.press('Escape');
+  await expect(prompt(page)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await expect(chip(page, 'Sketch2')).toBeVisible();
+  const gap = home(0, 0);
+  await page.mouse.move(gap.x, gap.y);
+  await page.mouse.click(gap.x, gap.y);
+  await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^profile:/);
+  await page.keyboard.press('e');
+  const join = page.getByRole('region', { name: 'Extrude dialog' });
+  await expect(join).toBeVisible();
+  await join.getByRole('combobox', { name: 'Operation' }).selectOption('join');
+  await join.getByRole('textbox', { name: 'Distance' }).fill('5 mm');
+  await expect(join).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  // The proposal names the shown body instead of "Automatic".
+  await expect(join.getByRole('button', { name: /^Bodies/ })).toContainText('Body1');
+  await expect(join).toHaveAttribute('data-dialog-valid', 'true');
+
+  // With both hidden, nothing shown is in the way: the dialog says so, OK waits.
+  await browser.getByRole('button', { name: 'Hide Body1' }).click();
+  await expect(join).toHaveAttribute('data-dialog-valid', 'false');
+  await expect(join).toContainText('Every body the extrude reaches is hidden.');
+  await expect(join.getByRole('button', { name: 'OK' })).toBeDisabled();
+  await browser.getByRole('button', { name: 'Show Body1' }).click();
+  await expect(join).toHaveAttribute('data-dialog-valid', 'true');
+  await expect(join.getByRole('button', { name: /^Bodies/ })).toContainText('Body1');
+  await join.getByRole('button', { name: 'OK' }).click();
+  await expect(join).toBeHidden();
+  await kernelReady(page);
+  // Body1 grew to the bridge's far end; Body2 is still hidden and unchanged.
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:70,20,10');
+  await browser.getByRole('button', { name: 'Show Body2' }).click();
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:70,20,10 Body2:6:30,20,10');
+});
