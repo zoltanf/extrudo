@@ -222,8 +222,12 @@ function FieldRow({
   controller: DialogController;
   settings: ExtrudoDocument['settings'];
 }) {
-  // An empty selection field already asks for its pick.
-  const empty = field.kind === 'selection' && (open.values.refs[field.name]?.length ?? 0) === 0;
+  // An empty selection field already asks for its pick, unless the pick is optional
+  // (Bodies: an issue there is the spec's own, ADR-0095).
+  const empty =
+    field.kind === 'selection' &&
+    (field.min ?? 1) > 0 &&
+    (open.values.refs[field.name]?.length ?? 0) === 0;
   const issue = empty ? undefined : open.checked.fields[field.name];
   let control: ReactNode;
   switch (field.kind) {

@@ -24,6 +24,7 @@ import type { PreviewToolStyle } from '@extrudo/kernel';
 import { type Frame, faceFrame, meanFrame, profileFrame } from './geometry';
 import { along, cross } from './manipulate';
 import { proposeSweep, type Travel } from './operation';
+import { allHidden, proposeWithBodies } from './operationBodies';
 import {
   type DialogContext,
   type DialogValues,
@@ -201,18 +202,18 @@ export const extrudeDialog = defineFeatureDialog({
       accepts: ['body'],
       min: 0,
       prompt: 'Automatic',
-      hint: 'The bodies to join, cut or intersect. Empty: every body the extrude reaches.',
+      hint: 'The bodies to join, cut or intersect: click them in the view or their rows in the browser. Empty: every shown body the extrude reaches.',
       shown: (v) => (v.choices.operation ?? 'new-body') !== 'new-body',
     },
   ],
-  validate(values) {
+  validate(values, ctx) {
     if (values.choices.direction === 'symmetric' && extentOf(values, 1) === 'to-object') {
       return {
         field: 'extent',
         message: "A symmetric extrude can't end at an object. Use two sides instead.",
       };
     }
-    return undefined;
+    return allHidden(values, ctx, 'extrude');
   },
   // The symmetric measure is stored only when it isn't the default (P4-12's
   // amendment), so a whole-length extrude's file reads as it always did.
@@ -221,7 +222,7 @@ export const extrudeDialog = defineFeatureDialog({
     if (values.choices.symmetricMeasure !== 'half') delete inputs.symmetricMeasure;
     return inputs;
   },
-  propose: (values, ctx) => proposeOperation(values, ctx),
+  propose: (values, ctx) => proposeWithBodies(proposeOperation(values, ctx), values, ctx),
   manipulators: (values, ctx) => extrudeManipulators(values, ctx),
   previewStyle: (values) =>
     PREVIEW_STYLE[(values.choices.operation ?? 'new-body') as ExtrudeOperation] ?? 'new',

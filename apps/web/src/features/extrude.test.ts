@@ -1,4 +1,5 @@
 import {
+  type BodyId,
   EXTRUDE_DIRECTIONS,
   EXTRUDE_EXTENTS,
   EXTRUDE_OPERATIONS,
@@ -13,6 +14,7 @@ import {
   type SketchEntityId,
   setFeatureVisibility,
   sketchInputs,
+  updateBody,
   type Vec3,
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
@@ -20,6 +22,7 @@ import { outline, profilesOf } from '../project/templates';
 import { textSketch } from '../sketch/textTesting';
 import { HIDDEN_TOAST_MS, hiddenMessage, type OpenDialog } from './dialog';
 import { extrudeDialog, extrudeManipulators, proposeOperation } from './extrude';
+import { proposeBodies } from './operationBodies';
 import { featureDialogs, specForCommand } from './registry';
 import type { DialogContext, DialogValues, Manipulator, ManipulatorContext } from './spec';
 import { BOX, faceItem, namedBoxMesh, settle, setupDialogs } from './testing';
@@ -542,5 +545,92 @@ describe('the press-pull proposal', () => {
     expect(op()).toBe('join');
     t.controller.setExpr('distance', '-2 mm');
     expect(op()).toBe('cut');
+  });
+});
+
+describe('the hidden-body proposal', () => {
+  const A = 'A:0' as BodyId;
+  const B = 'B:0' as BodyId;
+  const ref = (id: BodyId): GeomRef => ({ kind: 'body', id });
+  const withHidden = (hidden: BodyId[]) => {
+    const t = setupDialogs([extrudeDialog]);
+    for (const id of [A, B]) {
+      t.store
+        .getState()
+        .dispatch(updateBody({ id, changes: { name: id, visible: !hidden.includes(id) } }));
+    }
+    return t;
+  };
+  const join = (bodies: BodyId[] = []) =>
+    values({ choices: { operation: 'join' }, refs: { bodies: bodies.map(ref) } });
+  const reach = (touching: BodyId[], hidden: BodyId[], over: Partial<DialogContext> = {}) => ({
+    ...context({ doc: withHidden(hidden).store.getState().doc }),
+    draftOperation: { touching },
+    ...over,
+  });
+
+  it('proposes the shown bodies when a hidden one is reached, unless the operation was chosen', () => {
+    const ctx = reach([A, B], [B]);
+    expect(proposeBodies(join(), ctx)?.refs?.bodies).toEqual([ref(A)]);
+    expect(proposeBodies(values({ choices: { operation: 'new-body' } }), ctx)).toBeUndefined();
+    expect(proposeBodies(join(), { ...ctx, operation: 'new-body' })).toBeUndefined();
+  });
+
+  it('goes back to automatic only from a non-empty pick', () => {
+    const ctx = reach([A, B], []);
+    expect(proposeBodies(join([A]), ctx)).toEqual({ refs: { bodies: [] } });
+    expect(proposeBodies(join(), ctx)).toBeUndefined();
+  });
+
+  it('refuses when every body reached is hidden, until one is picked', () => {
+    const ctx = reach([B], [B]);
+    const issue = extrudeDialog.validate?.(join(), ctx);
+    expect(issue).toEqual({
+      field: 'bodies',
+      message:
+        'Every body the extrude reaches is hidden. Show one, pick it under Bodies, or make a new body.',
+    });
+    expect(extrudeDialog.validate?.(join([B]), ctx)).toBeUndefined();
+  });
+
+  it('proposes nothing without a report', () => {
+    const ctx = { ...context({ doc: withHidden([B]).store.getState().doc }) };
+    expect(proposeBodies(join(), ctx)).toBeUndefined();
+    expect(extrudeDialog.validate?.(join(), ctx)).toBeUndefined();
+  });
+
+  it('follows the report in the dialog, and keeps an edited feature’s picks', async () => {
+    const t = withHidden([B]);
+    t.session.getState().select([faceItem(1)]);
+    t.controller.start('extrude');
+    const bodies = () => (t.open() as OpenDialog).values.refs.bodies?.map((r) => r.id);
+    expect(bodies()).toEqual([]);
+    t.kernel.previews.at(-1)?.resolve({
+      features: {},
+      bodies: {},
+      tools: [],
+      operation: { touching: [A, B] },
+    });
+    await settle();
+    expect(bodies()).toEqual([A]);
+    expect(t.open()?.draft.inputs.bodies).toMatchObject({ refs: [{ kind: 'body', id: A }] });
+
+    // A stored pick is kept, whatever the report says.
+    t.controller.ok();
+    const feature = t.store.getState().doc.features.at(-1) as Feature;
+    t.store.getState().dispatch(
+      insertFeature({
+        feature: { ...feature, id: 'Stored' as FeatureId, inputs: { ...feature.inputs } },
+      }),
+    );
+    t.controller.edit('Stored' as FeatureId);
+    t.kernel.previews.at(-1)?.resolve({
+      features: {},
+      bodies: {},
+      tools: [],
+      operation: { touching: [A, B] },
+    });
+    await settle();
+    expect(bodies()).toEqual([A]);
   });
 });

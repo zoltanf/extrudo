@@ -108,6 +108,18 @@ export interface ToolSet extends NamedShape {
   interferes: boolean;
 }
 
+/** What a solid feature's operation found (its `FeatureOutput.report`): the dialog's smarter Bodies default (ADR-0095). */
+export interface OperationReport {
+  /**
+   * The bodies the tool touches (`touchingBodies`), in creation order: the automatic participants.
+   * Empty for a new body, and for picked bodies cut or intersected (not asked).
+   */
+  touching: BodyId[];
+}
+
+export const isOperationReport = (x: unknown): x is OperationReport =>
+  Array.isArray((x as { touching?: unknown } | null | undefined)?.touching);
+
 export function operate(
   ctx: EvalContext,
   scope: ShapeScope,
@@ -116,12 +128,19 @@ export function operate(
   participants: BodyId[] | undefined,
   warnings: string[],
   words: OperationWords,
-): Pick<FeatureOutput, 'bodies' | 'names' | 'previewTools'> {
+): Pick<FeatureOutput, 'bodies' | 'names' | 'previewTools'> & { report: OperationReport } {
   const { kernel } = ctx;
   const operation = settings.operation;
-  if (operation === 'new-body') return newBodies(ctx, scope, tool, words);
+  if (operation === 'new-body') {
+    return { ...newBodies(ctx, scope, tool, words), report: { touching: [] } };
+  }
 
-  const targets = participants ?? touchingBodies(ctx, scope, tool.shape);
+  // A cut or intersection of picked bodies doesn't need the question (the exact
+  // distance is slow for a thread's heavy tools, ADR-0067 §H2): its report has none.
+  const touching =
+    participants && operation !== 'join' ? [] : touchingBodies(ctx, scope, tool.shape);
+  const report: OperationReport = { touching };
+  const targets = participants ?? touching;
   const set = 'passes' in tool && tool.interferes ? tool : undefined;
   // Kept only on success: a failure below must release the tool with the scope.
   const preview = (): PreviewTool[] => [
@@ -144,13 +163,13 @@ export function operate(
     // make the tool a new body without a word (#87).
     let joining = targets;
     if (participants) {
-      const touching = new Set(touchingBodies(ctx, scope, tool.shape));
-      joining = participants.filter((id) => touching.has(id));
+      const reached = new Set(touching);
+      joining = participants.filter((id) => reached.has(id));
       const apart = participants.length - joining.length;
       if (joining.length === 0) {
         const them = participants.length === 1 ? 'the body' : 'any of the bodies';
         warnings.push(`It doesn't touch ${them} it joins, so the ${words.noun} made a new body.`);
-        return { ...newBodies(ctx, scope, tool, words), previewTools: preview() };
+        return { ...newBodies(ctx, scope, tool, words), previewTools: preview(), report };
       }
       if (apart > 0) {
         warnings.push(
@@ -161,7 +180,7 @@ export function operate(
     const [first, ...rest] = joining;
     if (first === undefined) {
       warnings.push(`Nothing to join to, so the ${words.noun} made a new body.`);
-      return { ...newBodies(ctx, scope, tool, words), previewTools: preview() };
+      return { ...newBodies(ctx, scope, tool, words), previewTools: preview(), report };
     }
     // (A tool set of overlapping instances is only made for cuts: joins fuse them first.)
     if (set) throw new KernelError(`Overlapping instances can't be joined in passes.`);
@@ -178,6 +197,7 @@ export function operate(
       bodies,
       names: new Map([[first, joined.names]]),
       previewTools: preview(),
+      report,
     });
   }
 
@@ -244,7 +264,7 @@ export function operate(
     bodies.set(id, scope.keep(result.shape));
     names.set(id, result.names);
   }
-  return nameMeshBodies(ctx, { bodies, names, previewTools: preview() });
+  return nameMeshBodies(ctx, { bodies, names, previewTools: preview(), report });
 }
 
 /** A box as `Kernel.measure` gives it (loose: it never cuts into the shape). */

@@ -30,6 +30,7 @@ import { extrudeFrame } from './extrude';
 import { type AxisLine, axisLine } from './geometry';
 import { cross } from './manipulate';
 import { proposeSweep, type Travel } from './operation';
+import { allHidden, proposeWithBodies } from './operationBodies';
 import {
   type DialogContext,
   type DialogValues,
@@ -164,7 +165,7 @@ export const revolveDialog = defineFeatureDialog({
       accepts: ['body'],
       min: 0,
       prompt: 'Automatic',
-      hint: 'The bodies to join, cut or intersect. Empty: every body the revolve reaches.',
+      hint: 'The bodies to join, cut or intersect: click them in the view or their rows in the browser. Empty: every shown body the revolve reaches.',
       shown: (v) => (v.choices.operation ?? 'new-body') !== 'new-body',
     },
   ],
@@ -173,7 +174,7 @@ export const revolveDialog = defineFeatureDialog({
     if (axis?.kind === 'sketchEntity' && !isSketchLine(ctx.doc, axis)) {
       return { field: 'axis', message: 'Pick a straight line for the axis.' };
     }
-    return undefined;
+    return allHidden(values, ctx, 'revolve');
   },
   // The symmetric measure is stored only when it isn't the default (P4-12's
   // amendment), so a whole-angle revolve's file reads as it always did.
@@ -182,7 +183,7 @@ export const revolveDialog = defineFeatureDialog({
     if (values.choices.symmetricMeasure !== 'half') delete inputs.symmetricMeasure;
     return inputs;
   },
-  propose: (values, ctx) => proposeRevolveOperation(values, ctx),
+  propose: (values, ctx) => proposeWithBodies(proposeRevolveOperation(values, ctx), values, ctx),
   manipulators: (values, ctx) => revolveManipulators(values, ctx),
   previewStyle: (values) =>
     PREVIEW_STYLE[(values.choices.operation ?? 'new-body') as RevolveOperation] ?? 'new',

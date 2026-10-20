@@ -754,7 +754,15 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   face"). In the Top view the extrude arrow points at the camera and
   can't be dragged: type into the heads-up box, or press Shift+1 (home
   view) and wait for the camera to settle before dragging or picking
-  faces with `projector`.
+  faces with `projector`. ADR-0095's test "joins only the shown bodies when a hidden
+  one is in the way" draws two 30 × 20 rectangles on XY (x −40…−10 and 10…40), picks
+  both profiles (second with Shift), extrudes 10 mm (`Body1`, `Body2`), hides `Body2` in the
+  Browser (`Hide Body2`), sketches a bridge (−12…12 × −5…5: the camera of a new sketch over bodies is close, ±21 mm,
+  so `settled` then `mapping`; click its profile in the gap at 0,0) and joins 5 mm: the "Bodies" button shows
+  `Body1`, not "Automatic"; `Hide Body1` while the dialog is open gives the issue "Every body
+  the extrude reaches is hidden." with OK disabled; after OK `data-bodies` is
+  `Body1:<n>:52,20,10` and, with `Show Body2`, `… Body2:6:30,20,10`. The eye cycles shown →
+  ghost → hidden, so hiding is two clicks (`Show as ghost X`, then `Hide X`).
 
 ### `e2e/feature-dialog.spec.ts`
 

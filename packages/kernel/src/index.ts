@@ -21,6 +21,7 @@ export {
 } from './client';
 export type { ExtrudeOutputData } from './features/extrude';
 export type { SmoothFaces } from './features/offset-face';
+export type { OperationReport } from './features/operation';
 export type { PrimitiveOutputData } from './features/primitives';
 export type { RevolveOutputData } from './features/revolve';
 export type { SketchOutputData, SketchProfileInfo } from './features/sketch';

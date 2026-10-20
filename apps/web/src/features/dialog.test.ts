@@ -3,7 +3,7 @@ import type { Preview } from '@extrudo/kernel';
 import { describe, expect, it } from 'vitest';
 import { boxMesh } from '../selection/testing';
 import { canCommit, dialogBodies, type OpenDialog, viewPreview } from './dialog';
-import { BOX, FACE_IDS, faceItem, namedBoxMesh, settle, setupDialogs } from './testing';
+import { BOX, FACE_IDS, faceItem, fakeSpec, namedBoxMesh, settle, setupDialogs } from './testing';
 
 function preview(over: Partial<Preview> = {}): Preview {
   return { features: {}, bodies: {}, tools: [], ...over };
@@ -443,3 +443,27 @@ function transform(m: readonly number[], p: readonly number[]): number[] {
     (i) => (m[i] ?? 0) * x + (m[4 + i] ?? 0) * y + (m[8 + i] ?? 0) * z + (m[12 + i] ?? 0),
   );
 }
+
+describe('re-proposing when a report lands (ADR-0095)', () => {
+  it('runs propose again for a new operation report, not for an identical one', async () => {
+    let calls = 0;
+    const spec = { ...fakeSpec, propose: () => (calls++, undefined) };
+    const t = setupDialogs([spec]);
+    t.controller.start('fake-press');
+    t.controller.select.onClick(faceItem(1), false);
+    await settle();
+    const answer = (touching: string[]) =>
+      t.kernel.previews.at(-1)?.resolve(preview({ operation: { touching: touching as BodyId[] } }));
+    const before = calls;
+    answer(['A:0']);
+    await settle();
+    expect(calls).toBe(before + 1);
+    // The same report again: nothing to re-propose.
+    t.controller.setExpr('distance', '6 mm');
+    await settle();
+    const mid = calls;
+    answer(['A:0']);
+    await settle();
+    expect(calls).toBe(mid);
+  });
+});

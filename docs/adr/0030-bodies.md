@@ -396,3 +396,10 @@ still showed faintly; sorting the ghost's triangles back to front each frame (co
 still stacks).
 
 `e2e/bodies.spec.ts` "a ghost body looks right" keeps the baseline `ghost-body`, redone.
+
+## Amendment (2026-10-20, ADR-0095): a ghost and booleans
+
+A ghost (like a hidden body) still takes part in an extrude's or revolve's
+automatic join, cut and intersect: the kernel doesn't see visibility. The dialog's
+proposal (ADR-0095) leaves it out by naming the shown bodies under Bodies, and
+refuses when every body the tool reaches is hidden or a ghost.
