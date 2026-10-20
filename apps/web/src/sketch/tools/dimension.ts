@@ -5,7 +5,8 @@
  *
  * - a line: its length (click on empty space to place it); a second line
  *   makes an angle, or the distance if the lines are parallel; a point makes
- *   the point's distance to the line;
+ *   the point's distance to the line; a datum axis with a parallel line or a
+ *   point (ADR-0093) is placed by the second pick, with no placement click;
  * - a circle: its diameter; an arc: its radius;
  * - two points: their distance.
  *
@@ -19,9 +20,12 @@
  */
 import {
   type DimensionId,
+  isDatumRef,
   lineCrossing,
   lineEnds,
   measureDimension,
+  type ProjectionId,
+  projectionOf,
   type SketchData,
   type SketchDimension,
   type SketchEntity,
@@ -30,7 +34,7 @@ import {
   type Vec2,
 } from '@extrudo/core';
 import type { Inference, ModelSnap } from '@extrudo/sketch/inference';
-import { labelOffset } from './dimensionLayout';
+import { labelOffset, lineAxisCursor, pointAxisCursor } from './dimensionLayout';
 import {
   EMPTY_PREVIEW,
   emptyEdit,
@@ -39,6 +43,7 @@ import {
   modelStandIn,
   type SketchEdit,
   type SketchTool,
+  storedDatumMarker,
   type ToolContext,
   type ToolPreview,
 } from './tool';
@@ -52,6 +57,8 @@ interface Pick {
   model?: ModelSnap;
   /** The stand-in entities a model pick needs to be measured before it is projected. */
   synthetic?: Record<SketchEntityId, SketchEntity>;
+  /** The marker for a stored datum axis line (ADR-0093), drawn like a fresh axis pick. */
+  marker?: ModelSnap;
 }
 
 /** Lines closer to parallel than this (sine of the angle) get a distance, not an angle. */
@@ -94,12 +101,20 @@ export class DimensionTool implements SketchTool {
       if (pick) {
         this.#picked.push(pick);
         this.#hover = undefined;
-        return undefined;
+        // A datum distance has nothing left to decide: no placement click.
+        const auto = this.#datumCursor();
+        if (!auto) return undefined;
+        return this.#commit(auto);
       }
       // Empty space after a line places its length; otherwise a click needs a pick.
       if (this.#picked[0]?.entity.type !== 'line') return undefined;
     }
-    const dimension = this.#candidate(pointer.cursor);
+    return this.#commit(pointer.cursor);
+  }
+
+  /** Commits the picks' dimension with its label at `cursor`. */
+  #commit(cursor: Vec2): SketchEdit | undefined {
+    const dimension = this.#candidate(cursor);
     const picks = this.#picked;
     this.#picked = [];
     this.#hover = undefined;
@@ -109,7 +124,7 @@ export class DimensionTool implements SketchTool {
     edit.dimensions[id] = dimension;
     edit.verify = [id];
     edit.editDimension = id;
-    edit.cursor = pointer.cursor;
+    edit.cursor = cursor;
     const models = modelAttachments(picks);
     if (models.length > 0) edit.models = models;
     return edit;
@@ -134,16 +149,23 @@ export class DimensionTool implements SketchTool {
 
   preview(): ToolPreview {
     const modelPicked = this.#picked
-      .map((p) => p.model)
+      .map((p) => p.model ?? p.marker)
       .filter((m): m is ModelSnap => m !== undefined);
     if (this.#picked.length === 0 && !this.#hover) return EMPTY_PREVIEW;
-    const dimension = this.#cursor && this.#candidate(this.#cursor);
+    // A line's length preview hides while a second pick is under the cursor
+    // (ADR-0093): its label sits there and would cover the hover marker.
+    const [first] = this.#picked;
+    const second =
+      this.#picked.length === 1 && first?.entity.type === 'line' && this.#hover !== undefined;
+    const dimension = this.#cursor && !second ? this.#candidate(this.#cursor) : undefined;
     return {
       ...EMPTY_PREVIEW,
       picked: this.#picked.map((p) => p.id),
       hover: this.#hover?.id,
       dimension,
-      ...(this.#hover?.model && { modelHover: this.#hover.model }),
+      ...((this.#hover?.model ?? this.#hover?.marker) && {
+        modelHover: this.#hover?.model ?? this.#hover?.marker,
+      }),
       ...(modelPicked.length > 0 && { modelPicked }),
     };
   }
@@ -154,31 +176,75 @@ export class DimensionTool implements SketchTool {
     return second !== undefined || first?.entity.type === 'circle' || first?.entity.type === 'arc';
   }
 
+  /**
+   * The label position when the two picks are a datum axis and a point, or a
+   * line parallel to it (ADR-0093): the distance needs no placement click.
+   */
+  #datumCursor(): Vec2 | undefined {
+    const [first, second] = this.#picked;
+    if (!first || !second || this.#picked.length !== 2) return undefined;
+    const view = this.#view(this.context.sketch());
+    const isAxis = (p: Pick) => {
+      if (p.entity.type !== 'line') return false;
+      if (p.model) return p.model.kind === 'axis';
+      const ref = projectionOf(view, p.id)?.projection.ref;
+      return ref !== undefined && isDatumRef(ref);
+    };
+    const [axis, other] = isAxis(second) && !isAxis(first) ? [second, first] : [first, second];
+    if (!isAxis(axis) || isAxis(other)) return undefined;
+    const axisEnds = lineEnds(view, axis.id);
+    if (!axisEnds) return undefined;
+    const step = 3 * (this.context.snapDistance?.() ?? 1);
+    if (other.entity.type === 'point') {
+      return pointAxisCursor([other.entity.x, other.entity.y], axisEnds, step);
+    }
+    const ends = lineEnds(view, other.id);
+    return ends && parallel(ends, axisEnds) ? lineAxisCursor(ends, axisEnds, step) : undefined;
+  }
+
   #pickAt(cursor: Vec2): Pick | undefined {
     const sketch = this.context.sketch();
     const taken = new Set(this.#picked.map((p) => p.id));
-    const firstType = this.#picked[0]?.entity.type;
+    const first = this.#picked[0];
+    const firstType = first?.entity.type;
+    // After a sketch line, an axis across it is left for the label (ADR-0093 §4: a
+    // centred line's label lands on the other axis); only a parallel one is taken.
+    const firstLine =
+      first && firstType === 'line' && !first.model ? lineEnds(sketch, first.id) : undefined;
+    const across = (line: readonly [Vec2, Vec2] | undefined) =>
+      firstLine !== undefined && (!line || !parallel(firstLine, line));
     const accept = (entity: SketchEntity, id: SketchEntityId) => {
       if (taken.has(id)) return false;
       if (!firstType) return ['point', 'line', 'circle', 'arc'].includes(entity.type);
+      if (entity.type === 'line' && firstLine) {
+        const source = projectionOf(sketch, id)?.projection.ref;
+        if (source && isDatumRef(source) && across(lineEnds(sketch, id))) return false;
+      }
       return entity.type === 'point' || entity.type === 'line';
     };
     const id = this.context.pick(cursor, accept);
     if (id) {
       const entity = sketch.entities[id];
-      if (entity) return { id, entity };
+      if (entity) return { id, entity, marker: storedDatumMarker(sketch, id, cursor) };
     }
     // After a sketch line the next click may place the label, so a body edge
     // or vertex under it must not be taken as a second pick (P6-07 slice 2;
     // a model edge first pick still takes one, so two body edges can be
-    // dimensioned against each other).
-    const first = this.#picked[0];
-    if (first && first.entity.type === 'line' && !first.model) return undefined;
+    // dimensioned against each other). The origin and a parallel axis are
+    // taken (ADR-0093 §4): to place a length on one, click away from it.
     const model = this.context.pickModel(cursor);
     if (!model) return undefined;
+    if (firstLine && model.kind !== 'point' && model.kind !== 'axis') return undefined;
+    if (firstLine && model.kind === 'axis' && across(model.line)) return undefined;
     if (model.entityId) {
       const entity = sketch.entities[model.entityId];
-      if (entity && accept(entity, model.entityId)) return { id: model.entityId, entity };
+      if (entity && accept(entity, model.entityId)) {
+        return {
+          id: model.entityId,
+          entity,
+          marker: storedDatumMarker(sketch, model.entityId, cursor),
+        };
+      }
       return undefined;
     }
     const stand = modelStandIn(this.context, model);
@@ -191,12 +257,27 @@ export class DimensionTool implements SketchTool {
   #view(sketch: SketchData): SketchData {
     const picks = this.#hover ? [...this.#picked, this.#hover] : this.#picked;
     const extra: Record<string, SketchEntity> = {};
+    let projections: SketchData['projections'];
     for (const pick of picks) {
-      if (pick.synthetic) Object.assign(extra, pick.synthetic);
+      if (pick.synthetic) {
+        Object.assign(extra, pick.synthetic);
+        // A fresh datum pick stands in exactly for its projection (ADR-0093):
+        // anchor and measure it like the stored axis it will become.
+        if (pick.model && pick.entity.type === 'line' && isDatumRef(pick.model.ref)) {
+          projections ??= { ...sketch.projections };
+          projections[`view:${pick.id}` as ProjectionId] = {
+            ref: pick.model.ref,
+            curves: { axis: pick.id },
+          };
+        }
+      }
     }
-    return Object.keys(extra).length === 0
-      ? sketch
-      : { ...sketch, entities: { ...sketch.entities, ...extra } };
+    if (Object.keys(extra).length === 0) return sketch;
+    return {
+      ...sketch,
+      entities: { ...sketch.entities, ...extra },
+      ...(projections && { projections }),
+    };
   }
 
   /** The dimension the picks make with its label at `cursor`, at its measured value. */

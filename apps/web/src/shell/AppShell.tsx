@@ -140,6 +140,7 @@ import type { SectionId } from '../settings/inventory';
 import { SettingsDialog } from '../settings/SettingsDialog';
 import type { FontPicker } from '../sketch/addFont';
 import { useBodiesBefore } from '../sketch/baseBodies';
+import { constructionDatumSources } from '../sketch/datums';
 import { type ExportRequest, ExportSketchDialog } from '../sketch/ExportSketchDialog';
 import { attachmentBytes, fontsStore } from '../sketch/fonts';
 import { sketchFrame } from '../sketch/frame';
@@ -546,6 +547,14 @@ export function AppShell({
           session,
           viewport,
           loadSolver: () => import('@extrudo/sketch/browser').then((m) => m.loadSketchSolver()),
+          // The shown construction axes and points before the sketch (ADR-0093
+          // slice 2), read at every pick from the current state.
+          constructionDatums: () =>
+            constructionDatumSources(
+              store.getState().doc,
+              model.getState().construction,
+              session.getState().activeSketchId,
+            ),
         });
         setTools({
           host: h,
@@ -560,7 +569,7 @@ export function AppShell({
       cancelled = true;
       h?.dispose();
     };
-  }, [store, session, viewport]);
+  }, [store, session, viewport, model]);
 
   // Projected geometry follows the model (P2-09): after each recompute of the current
   // document, the host brings the sketches in line with the kernel's reports.

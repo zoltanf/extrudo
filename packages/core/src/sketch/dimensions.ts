@@ -7,6 +7,7 @@
 import type { SketchEntityId } from '../ids';
 import type { UnitKind } from '../schema';
 import type { Vec2 } from './planes';
+import { isDatumRef, projectionOf } from './projection';
 import type { SketchData, SketchDimension, SketchDimensionType } from './schema';
 
 /** The name the UI gives each dimension type. */
@@ -37,10 +38,19 @@ export function dimensionRefs(d: SketchDimension): SketchEntityId[] {
 
 type Distance = Extract<SketchDimension, { type: 'distance' }>;
 
+/** Whether `id` is a line that is a datum axis's stored projection (ADR-0093). */
+export function isDatumLine(sketch: SketchData, id: SketchEntityId | undefined): boolean {
+  if (id === undefined || sketch.entities[id]?.type !== 'line') return false;
+  const ref = projectionOf(sketch, id)?.projection.ref;
+  return ref !== undefined && isDatumRef(ref);
+}
+
 /**
  * The two points a distance runs between: a line's ends, two points, a
  * point and its foot on a line, or (two lines) the middle of the second and
- * its foot on the first. Undefined if an entity is missing.
+ * its foot on the first. If only the second line is a datum axis projection
+ * (ADR-0093), the two swap: its middle is arbitrary, so the distance hangs on
+ * the sketch line. Undefined if an entity is missing.
  */
 export function distanceEnds(sketch: SketchData, d: Distance): [Vec2, Vec2] | undefined {
   const a = sketch.entities[d.a];
@@ -51,7 +61,14 @@ export function distanceEnds(sketch: SketchData, d: Distance): [Vec2, Vec2] | un
       [a.x, a.y],
       [b.x, b.y],
     ];
-  const [pointId, lineId] = a?.type === 'line' ? [d.b, d.a] : [d.a, d.b];
+  let [pointId, lineId] = a?.type === 'line' ? [d.b, d.a] : [d.a, d.b];
+  if (
+    a?.type === 'line' &&
+    b?.type === 'line' &&
+    isDatumLine(sketch, d.b) &&
+    !isDatumLine(sketch, d.a)
+  )
+    [pointId, lineId] = [d.a, d.b];
   const on = lineId === undefined ? undefined : lineEnds(sketch, lineId);
   if (!on || pointId === undefined) return undefined;
   const other = sketch.entities[pointId];
@@ -112,7 +129,8 @@ export function measureDimension(sketch: SketchData, d: SketchDimension): number
 /**
  * The point a dimension's label offset (`label`) is measured from: the
  * middle of a distance, the center of a circle or arc, where an angle's
- * lines cross (between their middles if they are parallel).
+ * lines cross (between their middles if they are parallel). A distance
+ * follows `distanceEnds`, so a line's distance to an axis hangs on the line.
  */
 export function dimensionAnchor(sketch: SketchData, d: SketchDimension): Vec2 | undefined {
   switch (d.type) {

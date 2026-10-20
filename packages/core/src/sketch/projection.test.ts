@@ -154,7 +154,7 @@ describe('projections', () => {
           ref: { kind: 'plane', id: 'origin:xy' },
         }),
       ),
-    ).toThrow(/edges, faces, vertices and bodies/);
+    ).toThrow(/edges, faces, vertices, bodies, axes and points/);
     expect(DocumentSchema.safeParse(d).success).toBe(true);
   });
 
@@ -330,7 +330,7 @@ describe('projections', () => {
     };
     const messages = sketchIssues(bad as never).map((i) => `${i.path.join('.')} ${i.message}`);
     expect(messages).toEqual([
-      'projections.x must project an edge, a face, a vertex or a body, not a plane',
+      'projections.x must project an edge, a face, a vertex, a body, an axis or a point, not a plane',
       'projections.x.curves.a must be a curve, not a point',
       'projections.x.curves.b refers to missing entity "missing"',
       'projections.p ID is also used in entities',
@@ -402,6 +402,46 @@ describe('projections', () => {
     d = sync(d, report({ [P]: { curves: { vertex: { type: 'point', at: [5, 4] } } } }));
     expect(data(d).projections?.[P]?.curves.vertex).toBe(point);
     expect(data(d).entities[point]).toEqual({ type: 'point', x: 5, y: 4 });
+  });
+
+  it('take origin and construction axes and points as construction geometry (ADR-0093)', () => {
+    const axisRef = { kind: 'axis' as const, id: 'origin:y' };
+    const pointRef = { kind: 'point' as const, id: 'origin:point' };
+    let d = doc();
+    d = applyCommand(d, addProjection({ feature: F, id: P, ref: axisRef })).doc;
+    d = applyCommand(
+      d,
+      addProjection({ feature: F, id: 'pr2' as ProjectionId, ref: pointRef }),
+    ).doc;
+    // Not as intersections.
+    expect(() =>
+      applyCommand(
+        d,
+        addProjection({ feature: F, id: 'pr3' as ProjectionId, ref: axisRef, mode: 'intersect' }),
+      ),
+    ).toThrow(/faces and bodies/);
+    d = sync(
+      d,
+      report({
+        [P]: { curves: { axis: { type: 'line', a: [0, -50], b: [0, 50] } } },
+        ['pr2' as ProjectionId]: { curves: { point: { type: 'point', at: [0, 0] } } },
+      }),
+    );
+    const line = data(d).projections?.[P]?.curves.axis as SketchEntityId;
+    expect(data(d).entities[line]).toMatchObject({ type: 'line', construction: true });
+    const point = data(d).projections?.['pr2' as ProjectionId]?.curves.point as SketchEntityId;
+    expect(data(d).entities[point]).toEqual({ type: 'point', x: 0, y: 0 });
+    expect(DocumentSchema.safeParse(d).error?.issues).toBeUndefined();
+    // An edge's curves stay ordinary geometry.
+    d = applyCommand(d, addProjection({ feature: F, id: 'pr4' as ProjectionId, ref: edgeRef })).doc;
+    d = sync(
+      d,
+      report({
+        ['pr4' as ProjectionId]: { curves: { edge: { type: 'line', a: [0, 0], b: [9, 0] } } },
+      }),
+    );
+    const edge = data(d).projections?.['pr4' as ProjectionId]?.curves.edge as SketchEntityId;
+    expect(data(d).entities[edge]).toMatchObject({ type: 'line', construction: false });
   });
 
   it('include curves without a link: plain entities, no record (P4-12)', () => {

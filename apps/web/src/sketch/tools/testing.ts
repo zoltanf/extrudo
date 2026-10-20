@@ -20,6 +20,7 @@ import { loadPlanegcs, type PlanegcsModule, SketchSolver } from '@extrudo/sketch
 import { dimensionValues } from '@extrudo/sketch/inference';
 import { memoryPreferences } from '../../platform';
 import { createViewportStore } from '../../viewport/store';
+import type { DatumSource } from '../datums';
 import { createSketchOn } from '../mode';
 import { createToolHost, type PlanePointer, type ToolHost } from './host';
 import { LINE_TOOL } from './line';
@@ -45,9 +46,11 @@ export interface Setup {
   solver?: 'real' | 'none' | Pick<SketchSolver, 'check' | 'solve' | 'dispose'>;
   /** The tool to start; the Line tool by default. */
   tool?: string;
+  /** The construction datums the host offers (ADR-0093 slice 2). */
+  constructionDatums?: () => readonly DatumSource[];
 }
 
-export async function setup({ solver = 'real', tool = LINE_TOOL }: Setup = {}) {
+export async function setup({ solver = 'real', tool = LINE_TOOL, constructionDatums }: Setup = {}) {
   module ??= loadPlanegcs();
   const planegcs = await module;
   const stores = {
@@ -61,6 +64,7 @@ export async function setup({ solver = 'real', tool = LINE_TOOL }: Setup = {}) {
   const host = createToolHost({
     ...stores,
     newId: () => `n${n++}`,
+    ...(constructionDatums && { constructionDatums }),
     loadSolver:
       solver === 'none'
         ? undefined

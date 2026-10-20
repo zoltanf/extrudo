@@ -1,11 +1,14 @@
 import {
   addParameter,
+  addProjection,
   addToSketch,
   CommandError,
   type ConstraintId,
   type DimensionId,
   evaluateParameters,
+  originAxisRef,
   type ParameterId,
+  type ProjectionId,
   type SketchConstraint,
   type SketchDimension,
   type SketchEntity,
@@ -228,6 +231,52 @@ describe('Dimension tool', () => {
     expect(t.host.state.getState().tool).toBeDefined();
     t.host.escape();
     expect(t.host.state.getState().tool).toBeUndefined();
+  });
+
+  it('hides the length preview while a datum axis is hovered, shows it elsewhere (ADR-0093)', async () => {
+    const t = await setup({ tool: DIMENSION_TOOL });
+    draw(t, { a0: pt(0, 5), a1: pt(20, 5), a: line('a0', 'a1') });
+    // The X axis, already projected.
+    t.store
+      .getState()
+      .dispatch(
+        addProjection({ feature: t.id, id: 'px' as ProjectionId, ref: originAxisRef('origin:x') }),
+      );
+    t.host.syncProjections({
+      [t.id]: {
+        frame: {
+          origin: [0, 0, 0],
+          normal: [0, 0, 1],
+          x: [1, 0, 0],
+          y: [0, 1, 0],
+        },
+        projections: {
+          ['px' as ProjectionId]: {
+            curves: { axis: { type: 'line', a: [-50, 0], b: [50, 0] } },
+          } as never,
+        },
+      },
+    });
+    const axis = t.data().projections?.['px' as ProjectionId]?.curves.axis;
+    expect(axis).toBeDefined();
+    t.host.click(at(10, 5.1)); // the line
+    t.host.move(at(5, 0.1)); // onto the X axis: a valid second pick
+    const preview = () => t.host.state.getState().tool?.preview();
+    expect(preview()?.dimension).toBeUndefined();
+    expect(preview()?.hover).toBe(axis);
+    // A stored axis shows the marker a fresh axis pick gives, at the foot of the cursor.
+    expect(preview()?.modelHover?.kind).toBe('axis');
+    expect(preview()?.modelHover?.point[0]).toBeCloseTo(5, 6);
+    expect(preview()?.modelHover?.point[1]).toBeCloseTo(0, 6);
+    t.host.move(at(10, 8)); // empty space: the length preview follows the cursor again
+    expect(preview()?.dimension).toMatchObject({ type: 'distance', a: 'a', expr: '20' });
+    expect(preview()?.hover).toBeUndefined();
+    expect(preview()?.modelHover).toBeUndefined();
+    // Picked first, it stays a marker at the click's foot.
+    t.host.escape();
+    t.host.click(at(-7, 0.1));
+    expect(preview()?.modelPicked?.map((m) => m.kind)).toEqual(['axis']);
+    expect(preview()?.modelPicked?.[0]?.point[0]).toBeCloseTo(-7, 6);
   });
 });
 

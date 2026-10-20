@@ -1,7 +1,9 @@
 import {
   CIRCLE_SEGMENTS,
   dimensionAnchor,
+  entityPoints,
   entityPolylines,
+  isDatumRef,
   projectedEntities,
   type SketchData,
   type SketchEntityId,
@@ -68,7 +70,8 @@ export function pointPositions(
 
 /**
  * Line-segment pairs of some of a sketch's curves (model-mode highlights,
- * P2-03), construction or not. Points and other curves are left out.
+ * P2-03), construction or not. Points and other curves are left out, and so
+ * is a datum axis's line (ADR-0093): a stored axis is never drawn as a segment.
  */
 export function curveSegments(
   data: SketchData,
@@ -131,6 +134,10 @@ export { CIRCLE_SEGMENTS };
  * the sketch being open is what shows them. With `gripSpline`, a fit
  * spline's tangent grips (ADR-0063's third amendment) are drawn the same way:
  * a dashed line from each end to its grip, the grip itself in `grips`.
+ *
+ * The curves of a datum projection (ADR-0093) are not drawn, nor counted for
+ * Fit, and not highlighted either (`curveSegments`): the view draws the
+ * origin and the axes itself.
  */
 export function sketchSegments(
   data: SketchData,
@@ -144,8 +151,19 @@ export function sketchSegments(
   const polygons: number[] = [];
   const projected: number[] = [];
   const isProjected = projectedEntities(data);
+  const hidden = new Set<string>();
+  for (const projection of Object.values(data.projections ?? {})) {
+    if (!isDatumRef(projection.ref)) continue;
+    for (const curve of Object.values(projection.curves)) {
+      const e = curve === null ? undefined : data.entities[curve];
+      if (!e || curve === null) continue;
+      hidden.add(curve);
+      for (const p of entityPoints(e)) hidden.add(p);
+    }
+  }
   const points: Record<EntityStatus, number[]> = { free: [], fixed: [], conflict: [] };
   for (const [id, entity] of Object.entries(data.entities)) {
+    if (hidden.has(id)) continue;
     const group = status?.[id] ?? 'free';
     if (entity.type === 'point') {
       points[group].push(...sketchToWorld(frame, [entity.x, entity.y]));

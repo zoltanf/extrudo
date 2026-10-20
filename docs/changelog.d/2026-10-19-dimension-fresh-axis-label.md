@@ -1,0 +1,1 @@
+- 2026-10-19 · **A dimension's label to a fresh axis stays put** (ADR-0093, #61): dimensioning a line to an axis not yet projected no longer shifts the label up by the line's offset from the axis middle once the axis lands.

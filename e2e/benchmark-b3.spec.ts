@@ -210,11 +210,12 @@ test('B3: a phone stand of two bodies, combined', async ({ page }) => {
     ],
     'base',
   );
+  // The label below the Y axis: a click on the axis would pick it (ADR-0093 §4).
   await dimension(
     clickYZ,
     [
       [55, 10],
-      [55, 0],
+      [55, -6],
     ],
     'rest',
   );

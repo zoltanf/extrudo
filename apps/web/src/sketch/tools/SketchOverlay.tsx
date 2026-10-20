@@ -14,7 +14,12 @@ import {
   type UnitKind,
   type Vec2,
 } from '@extrudo/core';
-import { arcPolyline, type SnapKind } from '@extrudo/sketch/inference';
+import {
+  arcPolyline,
+  isPointSnap,
+  type ModelSnapKind,
+  type SnapKind,
+} from '@extrudo/sketch/inference';
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
@@ -376,9 +381,9 @@ const SNAP_NAMES: Record<SnapKind, string> = {
   grid: 'Grid',
 };
 
-/** The snap glyph a model pick draws as (a vertex a point, an edge an on-curve circle). */
-function modelGlyphKind(kind: 'vertex' | 'edge'): SnapKind {
-  return kind === 'vertex' ? 'point' : 'onCurve';
+/** The snap glyph a model pick draws as (a vertex or datum point a point, an edge or axis an on-curve circle). */
+function modelGlyphKind(kind: ModelSnapKind): SnapKind {
+  return isPointSnap(kind) ? 'point' : 'onCurve';
 }
 
 /** A small glyph at the snap point, one shape per kind (UI spec §4). */

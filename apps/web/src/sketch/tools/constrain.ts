@@ -9,13 +9,16 @@
  * Coincident makes `coincident` (two points) or `pointOnCurve` (a point and
  * a curve, either order). Fix on something already fixed frees it.
  */
-import type {
-  ConstraintId,
-  SketchConstraint,
-  SketchEntity,
-  SketchEntityId,
-  SketchEntityType,
-  Vec2,
+import {
+  type ConstraintId,
+  isDatumRef,
+  projectionOf,
+  type SketchConstraint,
+  type SketchData,
+  type SketchEntity,
+  type SketchEntityId,
+  type SketchEntityType,
+  type Vec2,
 } from '@extrudo/core';
 import { type Inference, type ModelSnap, tangentReversed } from '@extrudo/sketch/inference';
 import {
@@ -26,6 +29,7 @@ import {
   modelStandIn,
   type SketchEdit,
   type SketchTool,
+  storedDatumMarker,
   type ToolContext,
   type ToolPreview,
 } from './tool';
@@ -53,7 +57,36 @@ interface Pick {
   entity: SketchEntity;
   /** Set when the pick is a body edge or vertex (auto-project, P6-07 slice 2). */
   model?: ModelSnap;
+  /** The marker for a stored datum axis line (ADR-0093), drawn like a fresh axis pick. */
+  marker?: ModelSnap;
 }
+
+/**
+ * The tools that refuse a datum axis line (ADR-0093): an axis has no length
+ * or middle, so Equal, Midpoint and Horizontal/Vertical can't use one. The
+ * origin point is not a line and stays allowed everywhere.
+ */
+const NO_DATUM_LINE: ReadonlySet<ConstraintToolId> = new Set([
+  'equal',
+  'midpoint',
+  'horizontal',
+  'vertical',
+]);
+
+/** Why a click on a datum axis's line changes nothing. */
+const DATUM_LINE_HINT = 'An axis has no length or middle; pick a sketch line.';
+
+/**
+ * Whether a pick is a datum axis's line (ADR-0093): a fresh model pick of
+ * kind `axis`, or a sketch line that is a datum projection's curve. The
+ * line's stored `DATUM_SPAN` length and middle are display only.
+ */
+const isDatumLine = (sketch: SketchData, id: SketchEntityId, model?: ModelSnap): boolean => {
+  if (model) return model.kind === 'axis';
+  if (sketch.entities[id]?.type !== 'line') return false;
+  const ref = projectionOf(sketch, id)?.projection.ref;
+  return ref !== undefined && isDatumRef(ref);
+};
 
 /** What a tool accepts and makes. */
 interface Rule {
@@ -223,6 +256,8 @@ export class ConstraintTool implements SketchTool {
   readonly #rule: Rule;
   #picked: Pick[] = [];
   #hover: Pick | undefined;
+  /** The last `#pickAt` refused a datum axis's line (ADR-0093). */
+  #datumLine = false;
 
   constructor(
     private readonly context: ToolContext,
@@ -245,7 +280,10 @@ export class ConstraintTool implements SketchTool {
 
   click(pointer: Inference): SketchEdit | undefined {
     const pick = this.#pickAt(pointer.cursor);
-    if (!pick) return undefined;
+    if (!pick) {
+      if (this.#datumLine) return { ...emptyEdit(), error: DATUM_LINE_HINT };
+      return undefined;
+    }
     this.#picked.push(pick);
     const constraint = this.#rule.make(this.#picked, this.context);
     if (!constraint) {
@@ -276,38 +314,62 @@ export class ConstraintTool implements SketchTool {
 
   preview(): ToolPreview {
     const modelPicked = this.#picked
-      .map((p) => p.model)
+      .map((p) => p.model ?? p.marker)
       .filter((m): m is ModelSnap => m !== undefined);
     if (this.#picked.length === 0 && !this.#hover) return EMPTY_PREVIEW;
     return {
       ...EMPTY_PREVIEW,
       picked: this.#picked.map((p) => p.id),
       hover: this.#hover?.id,
-      ...(this.#hover?.model && { modelHover: this.#hover.model }),
+      ...((this.#hover?.model ?? this.#hover?.marker) && {
+        modelHover: this.#hover?.model ?? this.#hover?.marker,
+      }),
       ...(modelPicked.length > 0 && { modelPicked }),
     };
   }
 
   #pickAt(cursor: Vec2): Pick | undefined {
+    this.#datumLine = false;
     const sketch = this.context.sketch();
     const taken = new Set(this.#picked.map((p) => p.id));
     const accepted = (entity: SketchEntity) => this.#rule.accepts(this.#picked, entity);
-    const id = this.context.pick(cursor, (entity, id) => !taken.has(id) && accepted(entity));
+    // A datum axis's line has no length or middle (ADR-0093): the tools that
+    // need one refuse it, and a click on one says why.
+    const noDatumLine = NO_DATUM_LINE.has(this.id);
+    const refused = (id: SketchEntityId, model?: ModelSnap): boolean => {
+      if (!noDatumLine || !isDatumLine(sketch, id, model)) return false;
+      this.#datumLine = true;
+      return true;
+    };
+    const id = this.context.pick(
+      cursor,
+      (entity, id) => !taken.has(id) && !refused(id) && accepted(entity),
+    );
     if (id) {
       const entity = sketch.entities[id];
-      if (entity) return { id, entity };
+      if (entity) return { id, entity, marker: storedDatumMarker(sketch, id, cursor) };
     }
     const model = this.context.pickModel(cursor);
     if (!model) return undefined;
     // Already projected: pick the fixed sketch entity like any other.
     if (model.entityId) {
       const entity = sketch.entities[model.entityId];
-      if (entity && !taken.has(model.entityId) && accepted(entity)) {
-        return { id: model.entityId, entity };
+      if (
+        entity &&
+        !taken.has(model.entityId) &&
+        !refused(model.entityId, model) &&
+        accepted(entity)
+      ) {
+        return {
+          id: model.entityId,
+          entity,
+          marker: storedDatumMarker(sketch, model.entityId, cursor),
+        };
       }
       return undefined;
     }
     const stand = modelStandIn(this.context, model);
+    if (refused(stand.id, model)) return undefined;
     return accepted(stand.entity) ? { id: stand.id, entity: stand.entity, model } : undefined;
   }
 

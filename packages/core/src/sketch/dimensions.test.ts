@@ -17,6 +17,7 @@ import {
   dimensionAnchor,
   dimensionRefs,
   distanceEnds,
+  isDatumLine,
   lineCrossing,
   measureDimension,
 } from './dimensions';
@@ -130,6 +131,46 @@ describe('dimension anchors and ends', () => {
       [10, 20],
       [10, 0],
     ]);
+  });
+
+  it('hangs a line-to-axis distance on the sketch line, whichever is picked first', () => {
+    const base = geometry();
+    const entities: Record<string, SketchEntity> = {
+      ...base.entities,
+      l0: { type: 'point', x: -60, y: 41 },
+      l1: { type: 'point', x: -30, y: 41 },
+      ln: { type: 'line', start: e('l0'), end: e('l1'), construction: false },
+      x0: { type: 'point', x: -50, y: 0 },
+      x1: { type: 'point', x: 50, y: 0 },
+      ax: { type: 'line', start: e('x0'), end: e('x1'), construction: true },
+    };
+    const withAxis = {
+      ...base,
+      entities,
+      projections: {
+        p1: { ref: { kind: 'axis', id: 'origin:x' }, curves: { axis: e('ax') } },
+      },
+    } as unknown as SketchData;
+    const ends = (a: string, b: string) =>
+      distanceEnds(
+        withAxis,
+        dim({ type: 'distance', orientation: 'aligned', a: e(a), b: e(b) }) as Extract<
+          SketchDimension,
+          { type: 'distance' }
+        >,
+      );
+    const expected = [
+      [-45, 41],
+      [-45, 0],
+    ];
+    expect(ends('ln', 'ax')).toEqual(expected);
+    expect(ends('ax', 'ln')).toEqual(expected);
+    expect(
+      dimensionAnchor(
+        withAxis,
+        dim({ type: 'distance', orientation: 'aligned', a: e('ln'), b: e('ax') }),
+      ),
+    ).toEqual([-45, 20.5]);
   });
 
   it('finds where lines cross, and nothing for parallel ones', () => {
@@ -374,5 +415,31 @@ describe('removing dimensions and applying solves', () => {
     expect(() =>
       applyCommand(doc, setSketchGeometry({ feature: S1, radii: { [e('arc')]: 7 } })),
     ).toThrow('"arc" isn\'t a circle of this sketch.');
+  });
+});
+
+describe('isDatumLine (ADR-0093)', () => {
+  const sk = {
+    entities: {
+      x0: { type: 'point', x: -50, y: 0 },
+      x1: { type: 'point', x: 50, y: 0 },
+      ax: { type: 'line', start: 'x0', end: 'x1', construction: true },
+      o: { type: 'point', x: 0, y: 0 },
+      c0: { type: 'point', x: 1, y: 1 },
+      c1: { type: 'point', x: 5, y: 1 },
+      ln: { type: 'line', start: 'c0', end: 'c1', construction: false },
+    },
+    constraints: {},
+    dimensions: {},
+    projections: {
+      p1: { ref: { kind: 'axis', id: 'origin:x' }, curves: { axis: 'ax' } },
+      p2: { ref: { kind: 'point', id: 'origin:point' }, curves: { point: 'o' } },
+    },
+  } as unknown as SketchData;
+  it('is true for a stored axis line only', () => {
+    expect(isDatumLine(sk, 'ax' as SketchEntityId)).toBe(true);
+    expect(isDatumLine(sk, 'ln' as SketchEntityId)).toBe(false);
+    expect(isDatumLine(sk, 'o' as SketchEntityId)).toBe(false);
+    expect(isDatumLine(sk, undefined)).toBe(false);
   });
 });

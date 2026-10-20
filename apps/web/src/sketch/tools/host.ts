@@ -66,6 +66,7 @@ import {
   modifySketch,
   nextModelParameterName,
   type ProjectionId,
+  planeFrame,
   profileRefId,
   projectionSync,
   radiusOf,
@@ -78,6 +79,7 @@ import {
   type SketchData,
   type SketchDimension,
   type SketchEntityId,
+  type SketchFrame,
   type SketchProjection,
   type SketchReport,
   setSketchGeometry,
@@ -94,7 +96,10 @@ import {
   dimensionValues,
   type Inference,
   infer,
+  isPointSnap,
   type ModelSnap,
+  type ModelSnapKind,
+  type PickFilter,
   pickEntity,
   type SketchSettleChange,
   SketchSettleError,
@@ -107,6 +112,7 @@ import { profileAt } from '@extrudo/sketch/profiles';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { gridStep } from '../../viewport/grid';
 import type { ViewportStore } from '../../viewport/store';
+import { type DatumSource, datumSnapsAt } from '../datums';
 import { sketchProfiles } from '../profiles';
 import { selectedGrips, type TangentGrip, tangentAt } from '../splineEnds';
 import { focusTextField, resetTextDraft } from '../textDraft';
@@ -233,6 +239,12 @@ export interface ToolHostState {
 export interface PlanePointer {
   /** Sketch coordinates, mm. */
   point: Vec2;
+  /**
+   * The sketch plane the pointer was projected onto (the view's): where the
+   * origin and axes lie in the sketch (ADR-0093). Absent, an origin plane's
+   * frame is used.
+   */
+  frame?: SketchFrame;
   /** mm per screen pixel at that point. */
   perPixel: number;
   /** Viewport pixels. */
@@ -269,6 +281,12 @@ export interface ToolHostOptions {
   loadSolver?: () => Promise<SketchSolver>;
   /** IDs for new geometry; random UUIDs by default. */
   newId?: () => string;
+  /**
+   * The shown construction axes and points the tools may pick (ADR-0093
+   * slice 2), each with its reference and the world geometry the kernel
+   * reported. Read at every pick, so the current document is seen.
+   */
+  constructionDatums?: () => readonly DatumSource[];
 }
 
 export interface ToolHost {
@@ -352,7 +370,7 @@ interface PendingModelConstraint {
   feature: FeatureId;
   projection: ProjectionId;
   point: SketchEntityId;
-  kind: 'vertex' | 'edge';
+  kind: ModelSnapKind;
   /** The undo step that added the projection (P6-07): its constraint joins it there. */
   step?: number;
 }
@@ -365,7 +383,8 @@ interface PendingModelConstraint {
  */
 interface PendingModelEdit {
   feature: FeatureId;
-  bindings: { placeholder: SketchEntityId; projection: ProjectionId; kind: 'vertex' | 'edge' }[];
+  /** `kind` is the projection's curve key too (`vertex`, `edge`, `point`, `axis`). */
+  bindings: { placeholder: SketchEntityId; projection: ProjectionId; kind: ModelSnapKind }[];
   constraints: Record<ConstraintId, SketchConstraint>;
   dimensions: { id: DimensionId; shape: SketchDimension }[];
   /** The Dimension tool's new dimension to open for editing once it lands. */
@@ -403,6 +422,8 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
   let perPixel = 1;
   /** The body edge or vertex under the last pointer (auto-project, P6-07). */
   let lastModel: ModelSnap | undefined;
+  /** The sketch plane the last pointer lay on: where the datums are (ADR-0093). */
+  let lastFrame: SketchFrame | undefined;
   /** The edit waiting for `resolveOverConstrained`. */
   let waiting: SketchEdit | undefined;
   /**
@@ -483,11 +504,51 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
   const bump = (patch: Partial<ToolHostState> = {}) =>
     state.setState((s) => ({ ...patch, revision: s.revision + 1 }));
 
-  const activeSketch = (): { id: FeatureId; data: SketchData } | undefined => {
+  const activeSketch = (): { id: FeatureId; data: SketchData; plane: GeomRef } | undefined => {
     const id = session.getState().activeSketchId;
     const feature = id && store.getState().doc.features.find((f) => f.id === id);
     const view = feature ? readSketch(feature) : undefined;
-    return id && view ? { id, data: view.data } : undefined;
+    return id && view ? { id, data: view.data, plane: view.plane } : undefined;
+  };
+
+  /** The origin's, the axes' and the shown construction datums under `cursor` (ADR-0093), in the last pointer's plane. */
+  const datumsAt = (cursor: Vec2, tolerance: number) => {
+    const sketch = activeSketch();
+    const frame = lastFrame ?? (sketch && planeFrame(sketch.plane));
+    return frame
+      ? datumSnapsAt(
+          frame,
+          cursor,
+          tolerance,
+          viewport.getState().origin,
+          options.constructionDatums?.() ?? [],
+        )
+      : {};
+  };
+
+  /**
+   * The sketch entity under `cursor` (`pickEntity`), except that a projected
+   * axis's line gives way to the origin point (or an axis seen end-on) under
+   * the pointer: the axes cross there (ADR-0093).
+   */
+  const pickSketch = (
+    data: SketchData,
+    cursor: Vec2,
+    tolerance: number,
+    accept: PickFilter = () => true,
+  ) => {
+    if (!datumsAt(cursor, tolerance).point) return pickEntity(data, cursor, tolerance, accept);
+    const axes = new Set<string>();
+    for (const projection of Object.values(data.projections ?? {})) {
+      if (projection.ref.kind !== 'axis') continue;
+      for (const id of Object.values(projection.curves)) if (id) axes.add(id);
+    }
+    return pickEntity(
+      data,
+      cursor,
+      tolerance,
+      (entity, id) => !(entity.type === 'line' && axes.has(id)) && accept(entity, id),
+    );
   };
 
   const context: ToolContext = {
@@ -495,7 +556,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     newId,
     construction: () => state.getState().construction,
     settings: () => store.getState().doc.settings,
-    pick: (cursor, accept) => pickEntity(context.sketch(), cursor, SNAP_PIXELS * perPixel, accept),
+    pick: (cursor, accept) => pickSketch(context.sketch(), cursor, SNAP_PIXELS * perPixel, accept),
     selection: () => {
       const data = activeSketch()?.data;
       return data ? selectedEntities(data) : [];
@@ -503,15 +564,24 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     snapDistance: () => SNAP_PIXELS * perPixel,
     model: () => lastModel,
     pickModel: (cursor) => {
-      const data = activeSketch()?.data;
-      const snap = lastModel;
-      if (!data || !snap || !viewport.getState().autoProject) return undefined;
+      const sketch = activeSketch();
+      if (!sketch) return undefined;
+      const { data } = sketch;
       const tolerance = SNAP_PIXELS * perPixel;
       // The sketch's own geometry always wins, even one the tool wouldn't accept.
-      if (pickEntity(data, cursor, tolerance)) return undefined;
-      if (Math.hypot(snap.point[0] - cursor[0], snap.point[1] - cursor[1]) > tolerance) {
-        return undefined;
-      }
+      if (pickSketch(data, cursor, tolerance)) return undefined;
+      // The origin point and axes the view shows, auto-project or not (ADR-0093):
+      // points before lines, so a body vertex on an axis stays a vertex.
+      const datums = datumsAt(cursor, tolerance);
+      const body =
+        viewport.getState().autoProject &&
+        lastModel &&
+        Math.hypot(lastModel.point[0] - cursor[0], lastModel.point[1] - cursor[1]) <= tolerance
+          ? lastModel
+          : undefined;
+      const snap =
+        datums.point ?? (body?.kind === 'vertex' ? body : undefined) ?? datums.axis ?? body;
+      if (!snap) return undefined;
       // A curved edge's stand-in would be a line, so a picking tool must not
       // take it (P6-07 slice 2's review): a drawing tool still places a point
       // on it through `infer`, which the exact curve supports.
@@ -519,9 +589,8 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         state.setState({ error: 'Pick a straight edge, or project the edge first (P).' });
         return undefined;
       }
-      const key = snap.kind === 'vertex' ? 'vertex' : 'edge';
       const existing = projectionFor(data, snap.ref);
-      const curve = existing?.[1].curves[key];
+      const curve = existing?.[1].curves[snap.kind];
       return { ...snap, ...(typeof curve === 'string' ? { entityId: curve } : {}) };
     },
   };
@@ -563,6 +632,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     const data = context.sketch();
     perPixel = pointer.perPixel;
     lastModel = viewport.getState().autoProject ? pointer.model : undefined;
+    lastFrame = pointer.frame;
     const model = !tool.picks ? lastModel : undefined;
     return infer(data, pointer.point, {
       tolerance: SNAP_PIXELS * pointer.perPixel,
@@ -670,7 +740,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     /** The projection a ref got in this commit: a second attachment reuses it. */
     const minted = new Map<string, ProjectionId>();
     for (const m of edit.models ?? []) {
-      const key = m.kind === 'vertex' ? 'vertex' : 'edge';
+      const key = m.kind;
       const existing = projectionFor(sketch.data, m.ref);
       const deleted =
         existing !== undefined && key in existing[1].curves && existing[1].curves[key] === null;
@@ -682,10 +752,9 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         if (m.placeholder) substitute.set(m.placeholder, projected);
         if (m.point) {
           const cid = newId() as ConstraintId;
-          edit.constraints[cid] =
-            m.kind === 'vertex'
-              ? { type: 'coincident', a: m.point, b: projected }
-              : { type: 'pointOnCurve', point: m.point, curve: projected };
+          edit.constraints[cid] = isPointSnap(m.kind)
+            ? { type: 'coincident', a: m.point, b: projected }
+            : { type: 'pointOnCurve', point: m.point, curve: projected };
           edit.auto = [...(edit.auto ?? []), cid];
         }
         continue;
@@ -1190,16 +1259,14 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         pendingModels.splice(i, 1);
         continue;
       }
-      const key = pending.kind === 'vertex' ? 'vertex' : 'edge';
-      const curve = projection.curves[key];
+      const curve = projection.curves[pending.kind];
       if (curve === undefined) continue;
       pendingModels.splice(i, 1);
       if (curve === null) continue;
       const cid = newId() as ConstraintId;
-      const constraint: SketchConstraint =
-        pending.kind === 'vertex'
-          ? { type: 'coincident', a: pending.point, b: curve }
-          : { type: 'pointOnCurve', point: pending.point, curve };
+      const constraint: SketchConstraint = isPointSnap(pending.kind)
+        ? { type: 'coincident', a: pending.point, b: curve }
+        : { type: 'pointOnCurve', point: pending.point, curve };
       try {
         const trial: SketchData = {
           entities: data.entities,
@@ -1253,7 +1320,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
           status = 'drop';
           break;
         }
-        const curve = projection.curves[binding.kind === 'vertex' ? 'vertex' : 'edge'];
+        const curve = projection.curves[binding.kind];
         if (curve === undefined) {
           status = 'waiting';
           break;
@@ -1288,10 +1355,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     const settings = doc.settings;
     const map = new Map<SketchEntityId, SketchEntityId>();
     for (const binding of pending.bindings) {
-      const curve =
-        data.projections?.[binding.projection]?.curves[
-          binding.kind === 'vertex' ? 'vertex' : 'edge'
-        ];
+      const curve = data.projections?.[binding.projection]?.curves[binding.kind];
       if (curve === undefined || curve === null) return;
       map.set(binding.placeholder, curve);
     }
@@ -1327,6 +1391,10 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         entities: data.entities,
         constraints: { ...data.constraints, ...constraints },
         dimensions: { ...data.dimensions, ...dimensions },
+        // The label re-anchors where rendering will (ADR-0093): a datum axis
+        // projection's curves make `distanceEnds` hang the distance on the
+        // sketch line, not on the axis's arbitrary middle.
+        projections: data.projections,
       };
       const value = measureDimension(view, mapped);
       if (value === undefined) continue;

@@ -373,6 +373,43 @@ describe('projected curves (P2-09)', () => {
   });
 });
 
+describe('datum projections (ADR-0093)', () => {
+  const data = {
+    ...sketch({
+      a: { type: 'point', x: 0, y: -50 },
+      b: { type: 'point', x: 0, y: 50 },
+      axis: { type: 'line', start: 'a', end: 'b', construction: true },
+      o: { type: 'point', x: 0, y: 0 },
+      c: { type: 'point', x: 20, y: 0 },
+      d: { type: 'point', x: 20, y: 10 },
+      mine: { type: 'line', start: 'c', end: 'd', construction: false },
+    }),
+    projections: {
+      p: { ref: { kind: 'axis', id: 'origin:y' }, curves: { axis: 'axis' } },
+      q: { ref: { kind: 'point', id: 'origin:point' }, curves: { point: 'o' } },
+    },
+  } as SketchData;
+
+  it('are not drawn, nor counted for Fit, but the sketch still is', () => {
+    const s = sketchSegments(data, frame('origin:xy'));
+    expect(s.construction).toHaveLength(0);
+    expect(s.projected).toHaveLength(0);
+    expect(pairs(s.points.free)).toEqual([
+      [20, 0, 0],
+      [20, 10, 0],
+    ]);
+    expect(s.bounds?.box).toEqual({ min: [20, 0, 0], max: [20, 10, 0] });
+  });
+
+  it('are never highlighted as a segment, a sketch line still is', () => {
+    expect(curveSegments(data, frame('origin:xy'), ['axis'])).toHaveLength(0);
+    expect(pairs(curveSegments(data, frame('origin:xy'), ['mine']))).toEqual([
+      [20, 0, 0],
+      [20, 10, 0],
+    ]);
+  });
+});
+
 describe('textBoundsSummary (P4-03)', () => {
   const drawing = (data: SketchData) => [
     { id: 's1', frame: frame('origin:xy'), data, active: true },

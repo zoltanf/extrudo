@@ -2703,6 +2703,49 @@ two points** (`b` set) shows **one glyph halfway between them** (a point-style a
 `a`) with the icons `horizontal-points`/`vertical-points` and the label "Horizontal (points)" /
 "Vertical (points)"; `glyphFace(c)` in `apps/web/src/sketch/tools/glyphs.ts` is the only place
 that picks a glyph's icon and label (`ConstraintGlyphs.tsx` draws `PlacedGlyph.icon`/`label`).
+ADR-0093 (issue #61, 2026-10-19) lets **the dimension and constraint tools pick the origin and
+axes**. Files: `packages/core/src/sketch/projection.ts` (`PROJECTABLE`, `DATUM_SPAN`,
+`isDatumRef`, `syncProjections`' construction flag), `sketch/schema.ts` (`PROJECTABLE`,
+`POINT_SOURCES`), `packages/kernel/src/features/sketch.ts` (`projectSource`, `SOURCE_NOUN`),
+`features/projection.ts` (`projectAxis`), `apps/web/src/sketch/datums.ts` (`datumSnapsAt`),
+`sketch/tools/host.ts` (`pickModel`, `datumsAt`, `pickSketch`, `PlanePointer.frame`),
+`tools/tool.ts` (`modelStandIn`), `tools/dimension.ts` (`#pickAt`),
+`@extrudo/sketch/inference` (`ModelSnapKind`, `isPointSnap`). **Rules:** a projection's `ref` may
+be kind `axis` or `point` in `project` mode only (never `intersect`); the kernel projects a point
+to key `point`, an axis to a **`DATUM_SPAN` (100 mm) line keyed `axis` centred on the projection
+of the axis's origin**, or to key `point` when it runs along the normal (|cos| ≥ `PARALLEL`); the
+web stand-in must match that line exactly. Curves of `axis`/`point` projections are added
+**construction** (never split a profile); edge/face curves stay as before. A `ModelSnap`'s
+`kind` is also its projection's curve key (`vertex`, `edge`, `point`, `axis`), so the host
+looks curves up by `kind`, and point kinds (`isPointSnap`) make `coincident`, the others
+`pointOnCurve`. `pickModel` order: the sketch's own geometry, datum points, **body vertices**,
+datum axes, body edges (a vertex on an axis stays a vertex: this refines the ADR's "datums
+before body geometry"); datums come with auto-project off too, never when the browser's eye
+hides them (`viewport.origin`), and are measured against the infinite axis. A projected axis's
+line **gives way to a datum point** under the pointer (`pickSketch`), so the origin stays
+pickable after an axis was projected. Datums reach only the picking tools (`pickModel`), not
+the drawing tools' inference. In Dimension, after a sketch line a datum point or a **parallel** datum
+axis is the second pick (projected or not); an axis **across** the line, body edges and vertices
+there still place the length (a centred line's label lands on the other axis: this narrows the
+ADR's §4, which also took a crossing axis for an angle; pick the axis first for that). The frame comes from the
+pointer (`PlanePointer.frame`, set by the view), falling back to the origin plane's
+(`planeFrame`) in tests. Slice 2 adds construction axes and points (`lineOf`/`pointOf` already
+resolve them in the kernel): the host takes a `constructionDatums` getter (`DatumSource`s, read
+from current state at every pick), and `constructionDatumSources` in `datums.ts` offers only the
+features **before the active sketch in the timeline**, before the marker, not suppressed and
+shown, whose report is an axis or a point — a later one would make the sketch depend on a later
+feature. Owner's test (2026-10-19): a datum **axis** with a parallel line or a point commits at
+the second pick (`DimensionTool.#datumCursor`; label via `lineAxisCursor`/`pointAxisCursor` in
+`dimensionLayout.ts`), with no placement click; origin/datum points and angles keep it.
+`sketchSegments` skips the entities of datum projections (and their points) unless `datums`
+(`curveSegments`, the hover/selection overlay, passes it). In the constraint tools
+(`tools/constrain.ts`), an axis has no length or middle: **Equal, Midpoint and
+Horizontal/Vertical refuse a datum axis line** — a fresh `kind: 'axis'` model pick or a sketch
+line that is a datum projection's curve (`isDatumLine`, `NO_DATUM_LINE`), on all three `#pickAt`
+paths — with the message "An axis has no length or middle; pick a sketch line." through the
+`SketchEdit.error` path; the origin point is still accepted by all of them, and Collinear,
+Perpendicular, Symmetric and Tangent take an axis line.
+A line's distance to an axis hangs on the line: `distanceEnds` runs from the sketch line's middle to its foot on the axis whichever was picked first (an axis's middle is arbitrary). The Dimension tool keeps the hovered pick visible: with a line picked, `preview()` hides the length dimension while a second pick is under the cursor (`tools/dimension.ts`). A fresh axis pick counts as a datum in the tool's view: `DimensionTool.#view` adds a stand-in projection (`view:<pick id>` → `{ ref, curves: { axis } }`) for a synthetic line pick whose model is a datum, so its stand-in line is treated like the stored axis (anchor, measure) and the label placed for it stays put once the axis is stored; the host's pending-dimension re-measure keeps `projections` in its view for the same reason (`tools/host.ts` `resolveEdit`). A stored datum axis line is never drawn as a segment, even highlighted: `EntityHighlight` skips `isDatumLine(sketch, id)` (core, `dimensions.ts`) and `curveSegments` hides datum lines; Dimension and Constraint tools show the fresh-axis marker instead (`storedDatumMarker` in `tools/tool.ts`, `Pick.marker` → `modelHover`/`modelPicked`); the origin keeps its point highlight.
 
 ADR-0095 (2026-10-20) keeps **hidden and ghost bodies out of an extrude's or revolve's
 automatic join, cut and intersect** without teaching the kernel about visibility.

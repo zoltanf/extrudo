@@ -4,9 +4,11 @@ import {
   curvePolyline,
   type DocumentStore,
   type FeatureId,
+  isDatumLine,
   readSketch,
   type SessionStore,
   type SketchData,
+  type SketchEntityId,
   type SketchFrame,
   sketchToWorld,
   type Vec2,
@@ -236,6 +238,8 @@ export function EntityHighlight({
       )
     );
   }
+  // A stored datum axis is never drawn as a segment (ADR-0093).
+  if (isDatumLine(data, id as SketchEntityId)) return null;
   const points = (curvePolyline(data, entity) ?? []).map(toScreen);
   if (points.length < 2 || points.some((p) => !p)) return null;
   return (

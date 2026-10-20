@@ -345,7 +345,9 @@ export type SketchDimensionType = SketchDimension['type'];
  * which the app turns into plain entities and drops the record with.
  */
 export const SketchProjectionSchema = z.strictObject({
-  ref: GeomRefSchema.describe('The projected edge, face, vertex or body (a persistent reference).'),
+  ref: GeomRefSchema.describe(
+    'The projected edge, face, vertex or body (a persistent reference), or an origin or construction axis or point.',
+  ),
   curves: z
     .record(z.string(), SketchEntityIdSchema.nullable())
     .describe("Each curve's source key to its sketch entity, or null once deleted."),
@@ -383,8 +385,9 @@ export type SketchData = z.infer<typeof SketchDataSchema>;
 
 // Reference checks -----------------------------------------------------------
 
-const PROJECTABLE: readonly string[] = ['edge', 'face', 'vertex', 'body'];
+const PROJECTABLE: readonly string[] = ['edge', 'face', 'vertex', 'body', 'axis', 'point'];
 const INTERSECTABLE: readonly string[] = ['face', 'body'];
+const POINT_SOURCES: readonly string[] = ['vertex', 'point', 'axis'];
 
 type Kinds = readonly SketchEntityType[];
 const POINT: Kinds = ['point'];
@@ -732,7 +735,8 @@ export function sketchIssues(sketch: {
   }
 
   // Each curve belongs to at most one projection; projections are of edges, faces,
-  // vertices and bodies (P4-12), intersections of faces and bodies.
+  // vertices and bodies (P4-12), axes and points (ADR-0093), intersections of faces
+  // and bodies.
   const projectedBy = new Map<string, string>();
   for (const [id, projection] of Object.entries(sketch.projections ?? {})) {
     const kinds = projection.mode === 'intersect' ? INTERSECTABLE : PROJECTABLE;
@@ -742,7 +746,7 @@ export function sketchIssues(sketch: {
         id,
         projection.mode === 'intersect'
           ? `must intersect a face or a body, not a ${projection.ref.kind}`
-          : `must project an edge, a face, a vertex or a body, not a ${projection.ref.kind}`,
+          : `must project an edge, a face, a vertex, a body, an axis or a point, not a ${projection.ref.kind}`,
       );
     }
     for (const [key, curve] of Object.entries(projection.curves)) {
@@ -750,7 +754,11 @@ export function sketchIssues(sketch: {
       const path = ['projections', id, 'curves', key];
       const kind = kindOf(curve);
       if (!kind) issues.push({ path, message: `refers to missing entity "${curve}"` });
-      else if ((kind === 'point' && projection.ref.kind !== 'vertex') || kind === 'text') {
+      // Vertices, points and axes along the normal (ADR-0093) project to points.
+      else if (
+        (kind === 'point' && !POINT_SOURCES.includes(projection.ref.kind)) ||
+        kind === 'text'
+      ) {
         issues.push({
           path,
           message: kind === 'point' ? 'must be a curve, not a point' : 'must be a curve, not text',

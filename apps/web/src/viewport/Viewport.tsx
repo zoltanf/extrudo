@@ -1339,6 +1339,7 @@ function useSketchInput(
       const model = input.modelSnap && pick ? pick(p, frame, point) : undefined;
       return {
         point,
+        frame,
         perPixel: worldPerPixel(view, projection, p.height, world),
         screen: [p.x, p.y],
         infer: p.infer,

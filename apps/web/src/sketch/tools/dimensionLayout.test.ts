@@ -6,7 +6,13 @@ import type {
   Vec2,
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
-import { dimensionShape, dimensionText, labelOffset } from './dimensionLayout';
+import {
+  dimensionShape,
+  dimensionText,
+  labelOffset,
+  lineAxisCursor,
+  pointAxisCursor,
+} from './dimensionLayout';
 
 const e = (id: string) => id as SketchEntityId;
 
@@ -68,6 +74,46 @@ describe('dimensionShape', () => {
     // The dimension line reaches the label at x = 45.
     close(shape?.lines[2]?.[0], [0, 50]);
     close(shape?.lines[2]?.[1], [45, 50]);
+  });
+
+  it('hangs a line-to-axis distance on the line, not on the axis middle', () => {
+    const sk = {
+      entities: {
+        l0: { type: 'point', x: -60, y: 41 },
+        l1: { type: 'point', x: -30, y: 41 },
+        ln: { type: 'line', start: e('l0'), end: e('l1'), construction: false },
+        x0: { type: 'point', x: -50, y: 0 },
+        x1: { type: 'point', x: 50, y: 0 },
+        ax: { type: 'line', start: e('x0'), end: e('x1'), construction: true },
+      },
+      constraints: {},
+      dimensions: {},
+      projections: { p1: { ref: { kind: 'axis', id: 'origin:x' }, curves: { axis: e('ax') } } },
+    } as unknown as SketchData;
+    const cursor = lineAxisCursor(
+      [
+        [-60, 41],
+        [-30, 41],
+      ],
+      [
+        [-50, 0],
+        [50, 0],
+      ],
+      4,
+    ) as Vec2;
+    const shape = dimensionShape(
+      sk,
+      dim({
+        type: 'distance',
+        orientation: 'aligned',
+        a: e('ln'),
+        b: e('ax'),
+        label: { x: cursor[0] + 45, y: cursor[1] - 20.5 },
+      }),
+      4,
+    );
+    expect(shape?.lines[0]?.[0][0]).toBeCloseTo(-45);
+    expect(shape?.lines[1]?.[0][0]).toBeCloseTo(-45);
   });
 
   it('draws a diameter through the center towards the label', () => {
@@ -140,5 +186,66 @@ describe('dimensionText', () => {
       '1.000',
     );
     expect(dimensionText(length, undefined, settings)).toBe('?');
+  });
+});
+
+describe('datum distance label cursors', () => {
+  const yAxis: [Vec2, Vec2] = [
+    [0, -50],
+    [0, 50],
+  ];
+  it('puts a line-to-axis label just past the line end that is higher', () => {
+    // x = 20 from y = -10 to 10: the top end, half way to the axis, 3 further up.
+    const c = lineAxisCursor(
+      [
+        [20, -10],
+        [20, 10],
+      ],
+      yAxis,
+      3,
+    );
+    expect(c?.[0]).toBeCloseTo(10);
+    expect(c?.[1]).toBeCloseTo(13);
+    expect(
+      lineAxisCursor(
+        [
+          [20, 10],
+          [20, -10],
+        ],
+        yAxis,
+        3,
+      ),
+    ).toEqual(c);
+  });
+  it('uses the +X end of a horizontal line', () => {
+    const xAxis: [Vec2, Vec2] = [
+      [-50, 0],
+      [50, 0],
+    ];
+    const c = lineAxisCursor(
+      [
+        [-10, 20],
+        [10, 20],
+      ],
+      xAxis,
+      2,
+    );
+    expect(c?.[0]).toBeCloseTo(12);
+    expect(c?.[1]).toBeCloseTo(10);
+  });
+  it('puts a point-to-axis label along +Y of the span middle', () => {
+    expect(pointAxisCursor([3, 4], yAxis, 2)).toEqual([1.5, 6]);
+    // The axis direction does not matter.
+    expect(pointAxisCursor([3, 4], [yAxis[1], yAxis[0]], 2)).toEqual([1.5, 6]);
+    expect(
+      pointAxisCursor(
+        [3, 4],
+        [
+          [-5, 0],
+          [5, 0],
+        ],
+        2,
+      ),
+    ).toEqual([5, 2]);
   });
 });
