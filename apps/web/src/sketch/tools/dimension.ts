@@ -24,6 +24,7 @@ import {
   lineCrossing,
   lineEnds,
   measureDimension,
+  type ProjectionId,
   projectionOf,
   type SketchData,
   type SketchDimension,
@@ -256,12 +257,27 @@ export class DimensionTool implements SketchTool {
   #view(sketch: SketchData): SketchData {
     const picks = this.#hover ? [...this.#picked, this.#hover] : this.#picked;
     const extra: Record<string, SketchEntity> = {};
+    let projections: SketchData['projections'];
     for (const pick of picks) {
-      if (pick.synthetic) Object.assign(extra, pick.synthetic);
+      if (pick.synthetic) {
+        Object.assign(extra, pick.synthetic);
+        // A fresh datum pick stands in exactly for its projection (ADR-0093):
+        // anchor and measure it like the stored axis it will become.
+        if (pick.model && pick.entity.type === 'line' && isDatumRef(pick.model.ref)) {
+          projections ??= { ...sketch.projections };
+          projections[`view:${pick.id}` as ProjectionId] = {
+            ref: pick.model.ref,
+            curves: { axis: pick.id },
+          };
+        }
+      }
     }
-    return Object.keys(extra).length === 0
-      ? sketch
-      : { ...sketch, entities: { ...sketch.entities, ...extra } };
+    if (Object.keys(extra).length === 0) return sketch;
+    return {
+      ...sketch,
+      entities: { ...sketch.entities, ...extra },
+      ...(projections && { projections }),
+    };
   }
 
   /** The dimension the picks make with its label at `cursor`, at its measured value. */

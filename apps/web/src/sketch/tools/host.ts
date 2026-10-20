@@ -1391,6 +1391,10 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         entities: data.entities,
         constraints: { ...data.constraints, ...constraints },
         dimensions: { ...data.dimensions, ...dimensions },
+        // The label re-anchors where rendering will (ADR-0093): a datum axis
+        // projection's curves make `distanceEnds` hang the distance on the
+        // sketch line, not on the axis's arbitrary middle.
+        projections: data.projections,
       };
       const value = measureDimension(view, mapped);
       if (value === undefined) continue;

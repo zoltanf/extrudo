@@ -1,22 +1,26 @@
 import {
   addProjection,
   addToSketch,
+  dimensionAnchor,
   type GeomRef,
   originAxisRef,
   type ProjectionId,
   removeFromSketch,
   type SketchData,
+  type SketchDimension,
   type SketchEntityId,
+  type Vec2,
 } from '@extrudo/core';
 import type { ModelSnap } from '@extrudo/sketch/inference';
 import { afterEach, describe, expect, it } from 'vitest';
 import { TOOLS } from '../../shell/tools';
 import { finishSketch } from '../mode';
 import { CONSTRAINT_TOOLS } from './constrain';
-import { HOST_TOOL_IDS } from './host';
+import { lineAxisCursor } from './dimensionLayout';
+import { HOST_TOOL_IDS, SNAP_PIXELS } from './host';
 import { CONSTRAINT_TOOL_IDS, isConstraintTool, isSketchTool, SKETCH_TOOL_IDS } from './ids';
 import { LINE_TOOL } from './line';
-import { at, disposeHosts, setup } from './testing';
+import { at, disposeHosts, PER_PIXEL, setup } from './testing';
 
 afterEach(disposeHosts);
 
@@ -713,6 +717,64 @@ describe('constraint and dimension tools pick the origin and axes (ADR-0093)', (
     t.host.click(at(10, 12)); // the origin point still waits for a placement
     const refs = Object.values(t.data().projections ?? {}).map((p) => p.ref.id);
     expect(refs).toEqual(['origin:y', 'origin:point']);
+  });
+
+  /** The stored dimension's label sits where `lineAxisCursor` placed it (an off-centre line). */
+  const expectLabelAtCursor = (t: T, d: SketchDimension) => {
+    const ends: [Vec2, Vec2] = [
+      [20, 20],
+      [20, 40],
+    ];
+    const axisEnds: [Vec2, Vec2] = [
+      [0, -50],
+      [0, 50],
+    ];
+    const want = lineAxisCursor(ends, axisEnds, 3 * SNAP_PIXELS * PER_PIXEL);
+    if (!want) throw new Error('no cursor');
+    const anchor = dimensionAnchor(t.data(), d);
+    if (!anchor) throw new Error('no anchor');
+    expect(anchor[0] + (d.label?.x ?? Number.NaN)).toBeCloseTo(want[0], 6);
+    expect(anchor[1] + (d.label?.y ?? Number.NaN)).toBeCloseTo(want[1], 6);
+  };
+  /** A vertical line at x = 20 from y = 20 to 40, off the axis span's middle. */
+  const drawOffCentreLine = (t: T) =>
+    draw(t, {
+      a0: { type: 'point', x: 20, y: 20 },
+      a1: { type: 'point', x: 20, y: 40 },
+      a: { type: 'line', start: 'a0', end: 'a1', construction: false },
+    });
+
+  it('keeps a fresh axis dimension label where it placed it, off-centre line', async () => {
+    const t = await setup({ tool: 'dimension' });
+    drawOffCentreLine(t);
+    t.host.click(at(20.1, 30)); // the line
+    t.host.click(at(0.1, 30)); // the Y axis, not stored yet: commits, no placement click
+    expect(t.data().dimensions).toEqual({});
+    const { projection } = project(t, yAxis);
+    const axis = projection?.curves.axis as SketchEntityId;
+    expect(t.data().entities[axis]).toMatchObject({ type: 'line', construction: true });
+    const [d] = Object.values(t.data().dimensions);
+    expect(d).toMatchObject({ type: 'distance', a: 'a', b: axis, expr: '20' });
+    if (!d) throw new Error('no dimension');
+    expectLabelAtCursor(t, d);
+  });
+
+  it('places the same label for an already stored Y axis', async () => {
+    const t = await setup({ tool: 'dimension' });
+    drawOffCentreLine(t);
+    t.store
+      .getState()
+      .dispatch(
+        addProjection({ feature: t.id, id: 'py' as ProjectionId, ref: originAxisRef('origin:y') }),
+      );
+    project(t, yAxis);
+    const axis = t.data().projections?.['py' as ProjectionId]?.curves.axis as SketchEntityId;
+    t.host.click(at(20.1, 30)); // the line
+    t.host.click(at(0.1, 30)); // the stored Y axis: commits, no placement click
+    const [d] = Object.values(t.data().dimensions);
+    expect(d).toMatchObject({ type: 'distance', a: 'a', b: axis, expr: '20' });
+    if (!d) throw new Error('no dimension');
+    expectLabelAtCursor(t, d);
   });
 
   it('dimensions a point to the X axis on the second pick', async () => {

@@ -118,6 +118,9 @@ as before. To place a length near an axis, click away from the axis.
 - **The Dimension tool keeps the hovered pick visible:** with a line picked, its
   length preview is hidden while a second pick is under the cursor, so the hover
   marker stays visible.
+- **A fresh axis pick counts as a datum in the tool's view:** its stand-in line is
+  treated like the stored axis, so the label placed for it stays put once the axis is
+  stored.
 
 ## Consequences
 
