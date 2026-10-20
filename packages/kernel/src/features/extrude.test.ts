@@ -701,6 +701,34 @@ describe('extrude', { timeout: 120_000 }, () => {
     close(measure(joined, 'B:0').volume, 1000 + 20 * 6 * 8 - 2 * 5 * 6 * 5);
   });
 
+  it('reports the bodies the tool touches, picked or automatic', async () => {
+    const b1 = new SketchBuilder();
+    rect(b1, 0, 0, 10, 10);
+    rect(b1, 20, 0, 10, 10);
+    const two = [
+      sketch('S1', b1.sketch),
+      extrude('B', [profile('S1', b1.sketch, near(5, 5)), profile('S1', b1.sketch, near(25, 5))], {
+        distance: '5 mm',
+      }),
+    ];
+    const tool = new SketchBuilder();
+    rect(tool, 2, 2, 4, 4);
+    const doc = (settings: Record<string, unknown>) =>
+      testDocument([
+        ...two,
+        sketch('S2', tool.sketch),
+        extrude('E', [profile('S2', tool.sketch)], { distance: '8 mm', ...settings }),
+      ]);
+    const reported = async (settings: Record<string, unknown>) => {
+      await fresh(doc(settings));
+      return seen.get('E')?.report;
+    };
+    expect(await reported({ operation: 'join' })).toEqual({ touching: ['B:0'] });
+    // The report is about the tool, not the pick (which warns, #87).
+    expect(await reported({ operation: 'join', bodies: ['B:1'] })).toEqual({ touching: ['B:0'] });
+    expect(await reported({ operation: 'new-body' })).toEqual({ touching: [] });
+  });
+
   it("warns when a join doesn't touch the bodies picked for it, and leaves them be (#87)", async () => {
     const base = block();
     const far = circle('SC', 100, 100);

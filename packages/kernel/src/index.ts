@@ -20,6 +20,7 @@ export {
   type SpawnKernel,
 } from './client';
 export type { ExtrudeOutputData } from './features/extrude';
+export type { OperationReport } from './features/operation';
 export type { SmoothFaces } from './features/offset-face';
 export type { PrimitiveOutputData } from './features/primitives';
 export type { RevolveOutputData } from './features/revolve';
