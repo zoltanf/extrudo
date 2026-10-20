@@ -202,7 +202,7 @@ export const extrudeDialog = defineFeatureDialog({
       accepts: ['body'],
       min: 0,
       prompt: 'Automatic',
-      hint: 'The bodies to join, cut or intersect: click their rows in the browser. Empty: every shown body the extrude reaches.',
+      hint: 'The bodies to join, cut or intersect: click them in the view or their rows in the browser. Empty: every shown body the extrude reaches.',
       shown: (v) => (v.choices.operation ?? 'new-body') !== 'new-body',
     },
   ],
