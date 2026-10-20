@@ -1,0 +1,1 @@
+- 2026-10-19 · **Agents colour bodies**: the MCP tool `set_body_appearance` sets a body's colour, opacity, name and visibility as one undo step, and `get_bodies` answers each body's colour and opacity (#83).

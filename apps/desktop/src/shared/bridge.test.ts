@@ -263,6 +263,13 @@ describe('preload bridge (ADR-0075 §1)', () => {
       { channel: CHANNELS.recentOpen, args: [0, 'a.extrudo'], kind: 'send' },
     ]);
   });
+
+  it('captures the window as PNG bytes over window:capture (P6-12, ADR-0092 §3)', async () => {
+    const { ipc, calls } = fakeIpc({ [CHANNELS.windowCapture]: () => new Uint8Array([1, 2, 3]) });
+    const api = createApi(ipc);
+    expect(await api.window.capture()).toEqual(new Uint8Array([1, 2, 3]));
+    expect(calls).toEqual([{ channel: CHANNELS.windowCapture, args: [], kind: 'invoke' }]);
+  });
 });
 
 describe('the MCP channels (P6-08, ADR-0087 §4)', () => {

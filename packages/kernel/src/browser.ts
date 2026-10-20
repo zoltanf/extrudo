@@ -57,6 +57,7 @@ function connect(worker: Worker): KernelConnection {
     exportStep: (bodies) => api.exportStep(bodies),
     exportScad: (options) => api.exportScad(options),
     inspect: (targets) => api.inspect(targets),
+    interference: (bodies) => api.interference(bodies),
     resolveJoint: (joint) => api.resolveJoint(joint),
     checkJoint: (request, onProgress) =>
       api.checkJoint(request, onProgress && Comlink.proxy(onProgress)),

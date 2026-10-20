@@ -40,6 +40,8 @@ export interface AboutDialogProps {
   kernelInfo?: KernelInfo;
   /** Opens a link in the system browser (`Platform.openLink`). */
   openLink(url: string): void;
+  /** Opens Help › Report a Bug… (ADR-0092); without it the footer links to the blank issue form. */
+  onReportBug?: () => void;
 }
 
 /**
@@ -54,6 +56,7 @@ export function AboutDialog({
   desktop,
   kernelInfo,
   openLink,
+  onReportBug,
 }: AboutDialogProps) {
   const [rows, setRows] = useState<{ running: InfoRow[]; storage: InfoRow[] }>();
   const [copied, setCopied] = useState(false);
@@ -231,9 +234,23 @@ export function AboutDialog({
             <LinkButton href={REPO} onOpen={opener} icon={<FolderGit2 size={14} />}>
               GitHub
             </LinkButton>
-            <LinkButton href={ISSUES_URL} onOpen={opener} icon={<Bug size={14} />}>
-              Report an issue
-            </LinkButton>
+            {onReportBug ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenChange(false);
+                  onReportBug();
+                }}
+                className={FOOTER_ITEM}
+              >
+                <Bug size={14} />
+                Report a bug
+              </button>
+            ) : (
+              <LinkButton href={ISSUES_URL} onOpen={opener} icon={<Bug size={14} />}>
+                Report an issue
+              </LinkButton>
+            )}
             <button type="button" onClick={copy} disabled={!rows} className={FOOTER_ITEM}>
               {copied ? <Check size={14} /> : <Copy size={14} />}
               {copied ? 'Copied' : 'Copy details'}

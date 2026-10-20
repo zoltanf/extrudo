@@ -139,7 +139,26 @@ export function operate(
   const options = { feature: ctx.feature.id, op: words.noun };
 
   if (operation === 'join') {
-    const [first, ...rest] = targets;
+    // Bodies picked to join that the tool doesn't touch stay as they are: a
+    // fuse would only gather them with the tool, and the split after it would
+    // make the tool a new body without a word (#87).
+    let joining = targets;
+    if (participants) {
+      const touching = new Set(touchingBodies(ctx, scope, tool.shape));
+      joining = participants.filter((id) => touching.has(id));
+      const apart = participants.length - joining.length;
+      if (joining.length === 0) {
+        const them = participants.length === 1 ? 'the body' : 'any of the bodies';
+        warnings.push(`It doesn't touch ${them} it joins, so the ${words.noun} made a new body.`);
+        return { ...newBodies(ctx, scope, tool, words), previewTools: preview() };
+      }
+      if (apart > 0) {
+        warnings.push(
+          `It doesn't touch ${apart} of the bodies it joins: ${apart === 1 ? 'that one stays' : 'they stay'} separate.`,
+        );
+      }
+    }
+    const [first, ...rest] = joining;
     if (first === undefined) {
       warnings.push(`Nothing to join to, so the ${words.noun} made a new body.`);
       return { ...newBodies(ctx, scope, tool, words), previewTools: preview() };

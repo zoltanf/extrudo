@@ -179,6 +179,14 @@ export function desktopApp(
     recentFiles: async () => (await api.recent.names()).map((name) => ({ name })),
     openRecent: (index, name) => api.recent.open(index, name),
     clearRecent: () => api.recent.clear(),
+    capturePage: async () => {
+      try {
+        const bytes = await api.window.capture();
+        return bytes ? new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'image/png' }) : null;
+      } catch {
+        return null;
+      }
+    },
     onRecentChanged(handler) {
       api.recent.onChanged(handler);
       return () => api.recent.offChanged();

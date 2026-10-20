@@ -263,6 +263,7 @@ test('the app menu panel: the rail, the App and Learn columns and the strip', as
   await expect(panel.getByRole('menu', { name: 'App' }).getByRole('menuitem')).toHaveText([
     /^Search…/,
     /^Settings…/,
+    'Report a bug',
     'About Extrudo',
     'Close design',
   ]);
@@ -373,6 +374,7 @@ test('the home screen has the same bar: About, Docs, GitHub and the app menu', a
   // Nothing to close and no command search here, and no tool to help with.
   await expect(panel.getByRole('menu', { name: 'App' }).getByRole('menuitem')).toHaveText([
     /^Settings…/,
+    'Report a bug',
     'About Extrudo',
   ]);
   await expect(panel.getByRole('menu', { name: 'Learn' }).getByRole('menuitem').first()).toHaveText(

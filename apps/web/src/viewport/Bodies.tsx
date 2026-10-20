@@ -41,6 +41,7 @@ import {
   silhouettePlan,
   silhouetteSegments,
 } from './silhouette';
+import { bodyObjectName } from './snapshotView';
 import type { Bounds, VisualStyle } from './store';
 import { createThicknessShading } from './thicknessShading';
 
@@ -278,7 +279,7 @@ function Body({
   const hiddenLines = useMemo(() => new LineSegments2(edges, hiddenEdges), [edges, hiddenEdges]);
 
   return (
-    <group ref={group}>
+    <group ref={group} name={bodyObjectName(id)}>
       {showFaces && (
         <mesh geometry={faces}>
           <meshStandardMaterial

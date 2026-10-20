@@ -27,6 +27,8 @@ const sketch = {
     joint: { type: 'tangent', a: 'right', b: 'arc' },
     loose: { type: 'tangent', a: 'bottom', b: 'circle' },
     joined: { type: 'coincident', a: 'q3', b: 'as' },
+    level: { type: 'horizontal', a: 'p1', b: 'cc' },
+    plumb: { type: 'vertical', a: 'q2', b: 'q3' },
   },
   dimensions: {},
 } as unknown as SketchData;
@@ -59,6 +61,18 @@ describe('glyphAnchors', () => {
     expect(of('joint')).toEqual([['q3', [20, 10], undefined]]);
     expect(of('loose').map(([e]) => e)).toEqual(['bottom', 'circle']);
   });
+
+  it('shows a horizontal or vertical between two points once, halfway, with its own icon', () => {
+    expect(of('level')).toEqual([['p1', [25, 0], undefined]]);
+    expect(of('plumb')).toEqual([['q2', [20, 5], undefined]]);
+    const face = (id: string) =>
+      anchors.filter((a) => a.constraint === id).map((a) => [a.icon, a.label]);
+    expect(face('level')).toEqual([['horizontal-points', 'Horizontal (points)']]);
+    expect(face('plumb')).toEqual([['vertical-points', 'Vertical (points)']]);
+    expect(face('h')).toEqual([['horizontal', 'Horizontal']]);
+    expect(face('v')).toEqual([['vertical', 'Vertical']]);
+    expect(face('corner')).toEqual([['coincident', 'Coincident']]);
+  });
 });
 
 describe('layoutGlyphs', () => {
@@ -88,6 +102,14 @@ describe('layoutGlyphs', () => {
     expect(at('joint')[0]?.[1]).toBeCloseTo(y);
     expect(at('joined')[0]?.[0]).toBeCloseTo(x + pitch);
     expect(at('joined')[0]?.[1]).toBeCloseTo(y);
+  });
+
+  it("puts a point pair's glyph up and right of the midpoint, carrying its face", () => {
+    const [g] = placed.filter((p) => p.constraint === 'level');
+    expect(g?.x).toBeCloseTo(350 + 14 * Math.SQRT1_2);
+    expect(g?.y).toBeCloseTo(300 - 14 * Math.SQRT1_2);
+    expect([g?.icon, g?.label]).toEqual(['horizontal-points', 'Horizontal (points)']);
+    expect(at('plumb')).toHaveLength(1);
   });
 
   it('leaves out anchors that do not project', () => {

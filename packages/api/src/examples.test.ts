@@ -17,7 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { b1 } from '../../../docs/api/examples/b1';
 import { parametricBox } from '../../../docs/api/examples/parametric-box';
 import { wallBracket } from '../../../docs/api/examples/wall-bracket';
-import type { Design } from './design';
+import { Design } from './design';
 import { ApiError } from './error';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../../fixtures/benchmarks');
@@ -188,6 +188,18 @@ describe('the parametric box', () => {
 });
 
 /** A design as `JSON.stringify` writes it, without the timestamps a clock gives. */
+describe('body references', () => {
+  it("name the bodies the kernel makes: a box's body() joins another box", async () => {
+    const d = Design.create({ name: 'Two boxes' });
+    const a = d.box({ length: '20 mm', width: '20 mm', height: '10 mm' });
+    const b = d.box({ length: '20 mm', width: '20 mm', height: '10 mm', x: '10 mm' });
+    d.combine({ target: a.body(), tools: [b.body()], operation: 'join' });
+    const bodies = await compute(d);
+    expect(bodies.map((body) => body.id)).toEqual([a.body().id]);
+    expect(bodies[0]?.volume).toBeCloseTo(30 * 20 * 10, 3);
+  });
+});
+
 function bytes(d: Design): string {
   return JSON.stringify({ ...d.toJSON(), meta: undefined });
 }

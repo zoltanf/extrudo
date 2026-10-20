@@ -159,7 +159,13 @@ test('the App column holds About Extrudo; the strip shows the version and GitHub
   await open(page);
   const panel = await openAppMenu(page);
   const app = panel.getByRole('menu', { name: 'App' }).getByRole('menuitem');
-  await expect(app).toHaveText([/^Search…/, /^Settings…/, 'About Extrudo', 'Close design']);
+  await expect(app).toHaveText([
+    /^Search…/,
+    /^Settings…/,
+    'Report a bug',
+    'About Extrudo',
+    'Close design',
+  ]);
   const strip = panel.locator('[data-update-strip]');
   await expect(strip).toContainText(/\d+\.\d+\.\d+/);
   // The web build has no Check now: its worker checks by itself.

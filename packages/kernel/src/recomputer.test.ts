@@ -147,6 +147,7 @@ function bind(service: KernelService) {
     exportStep: service.exportStep.bind(service),
     exportScad: service.exportScad.bind(service),
     inspect: service.inspect.bind(service),
+    interference: service.interference.bind(service),
     resolveJoint: service.resolveJoint.bind(service),
     checkJoint: service.checkJoint.bind(service),
     cancelCheck: () => service.cancelCheck(),

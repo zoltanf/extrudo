@@ -1,5 +1,5 @@
 import { Design } from '@extrudo/api';
-import { type ExtrudoDocument, renameFeature } from '@extrudo/core';
+import { type BodyId, type ExtrudoDocument, renameFeature } from '@extrudo/core';
 import type { ProjectSummary } from '@extrudo/storage';
 import { describe, expect, it } from 'vitest';
 import type { AgentReply } from '../platform/agent';
@@ -10,9 +10,11 @@ import {
   type AgentContext,
   BUSY,
   createPacer,
+  expandShorthands,
   NO_DESIGN,
   NOT_FOR_AGENTS,
   plainInput,
+  resolveBodyRefs,
   runTool,
 } from './tools';
 
@@ -373,6 +375,119 @@ describe('the agent tools (ADR-0087 §5)', () => {
       format: 'stl',
       bytes: new Uint8Array([1, 2, 3]),
     });
+  });
+});
+
+describe('the agent tools, the rest (coverage)', () => {
+  it('makes a new design and opens it, and gives the whole document', async () => {
+    const ctx = context(undefined);
+    const made = jsonOf(await runTool('new_design', { name: 'Fresh' }, ctx));
+    expect(made).toMatchObject({ name: 'Fresh', timeline: [], parameters: [] });
+    expect(ctx.current()?.designId).toBe(made.id);
+    const doc = jsonOf(await runTool('get_document', {}, ctx));
+    expect(doc.name).toBe('Fresh');
+    expect(doc.features).toEqual([]);
+  });
+
+  it('saves, and answers that undo and redo have nothing to do', async () => {
+    const { host } = plateHost();
+    expect(textOf(await runTool('save', {}, context(host)))).toBe('Saved Plate.');
+    expect(textOf(await runTool('undo', {}, context(host)))).toBe('There is nothing to undo.');
+    expect(textOf(await runTool('redo', {}, context(host)))).toBe('There is nothing to redo.');
+  });
+
+  it('leaves get_skill to the desktop app', async () => {
+    const reply = await runTool('get_skill', {}, context(undefined));
+    expect(reply.result.isError).toBe(true);
+  });
+
+  it('expands { edgeBetween } anywhere in the inputs, and nothing else', () => {
+    const faces = ['box:B:cap:end', 'box:B:side:front'];
+    const expanded = expandShorthands({ edges: [{ edgeBetween: faces }], distance: '1 mm' });
+    expect(expanded).toEqual({
+      edges: [{ kind: 'edge', id: expect.stringContaining('box:B:cap:end') }],
+      distance: '1 mm',
+    });
+    expect(expandShorthands({ edgeBetween: ['one'] })).toEqual({ edgeBetween: ['one'] });
+    expect(expandShorthands({ edgeBetween: faces, other: 1 })).toEqual({
+      edgeBetween: faces,
+      other: 1,
+    });
+  });
+
+  it('resolves body references by the bodies the model has (#84)', () => {
+    const doc = plate();
+    const [, extrude] = doc.features;
+    const id = extrude?.id as string;
+    const live = new Set([`${id}:0`, 'other:0', 'other:1']);
+    // Kept as given, a bare feature id or name for its one body, and refusals with paths.
+    expect(resolveBodyRefs({ kind: 'body', id: 'other:1' }, live, doc)).toEqual({
+      kind: 'body',
+      id: 'other:1',
+    });
+    expect(resolveBodyRefs([{ kind: 'body', id }], live, doc)).toEqual([
+      { kind: 'body', id: `${id}:0` },
+    ]);
+    expect(resolveBodyRefs({ target: { kind: 'body', id: 'Extrude1' } }, live, doc)).toEqual({
+      target: { kind: 'body', id: `${id}:0` },
+    });
+    expect(() => resolveBodyRefs({ a: [{ kind: 'body', id: 'gone:0' }] }, live, doc)).toThrow(
+      /^a\.0: There is no body "gone:0"/,
+    );
+    // Other references pass through.
+    expect(resolveBodyRefs({ kind: 'face', id: 'x' }, live, doc)).toEqual({
+      kind: 'face',
+      id: 'x',
+    });
+  });
+
+  it('passes body references unchecked while the model is not computed', async () => {
+    const { host, store } = plateHost();
+    const reply = await runTool(
+      'add_feature',
+      {
+        type: 'shell',
+        inputs: { bodies: [{ kind: 'body', id: 'unknown:0' }], thickness: '1 mm' },
+      },
+      context(host),
+    );
+    expect(reply.result.isError).toBeUndefined();
+    expect(store.getState().doc.features.at(-1)?.type).toBe('shell');
+  });
+
+  it('refuses body tools while the model is not computed', async () => {
+    const { host } = plateHost();
+    for (const [tool, args] of [
+      ['set_body_appearance', { id: 'b1', color: '#000000' }],
+      ['check_interference', {}],
+      ['screenshot', { bodies: [{ kind: 'body', id: 'b1' }] }],
+    ] as const) {
+      const reply = await runTool(tool, args, context(host));
+      expect(reply.result.isError, tool).toBe(true);
+      expect(textOf(reply)).toMatch(/isn't computed/);
+    }
+  });
+
+  it('checks the interference of the visible bodies once computed', async () => {
+    const { host, model, store } = plateHost();
+    const [, extrude] = store.getState().doc.features;
+    const body = `${extrude?.id}:0`;
+    model.getState().computed({
+      features: {},
+      bodies: { [body]: {}, 'x:0': {} } as Record<BodyId, unknown>,
+      doc: store.getState().doc,
+    });
+    const asked: string[][] = [];
+    host.interference = async (ids) => {
+      asked.push([...ids]);
+      return [
+        { a: body, b: 'x:0', volume: 12.34567, box: { min: [0, 0, 0], max: [1, 2, 3.00004] } },
+      ];
+    };
+    expect(jsonOf(await runTool('check_interference', {}, context(host)))).toEqual([
+      { a: body, b: 'x:0', volume: 12.346, box: { min: [0, 0, 0], max: [1, 2, 3] } },
+    ]);
+    expect(asked).toEqual([[body, 'x:0']]);
   });
 });
 

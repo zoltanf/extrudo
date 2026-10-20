@@ -2497,6 +2497,26 @@ tag's draft release). `apps/desktop/scripts/mcp-client.mjs --launch` (under
 `xvfb-run -a`; Chromium's headless Ozone crashes Electron's main) is the
 acceptance client, `--examples` runs the worked examples in the real kernel.
 
+ADR-0087's amendment of 2026-10-19 (#83–#89): **body references are
+`<feature id>:<n>`** (the API's `handle.body()` is `<feature>:0`); the tools'
+`resolveBodyRefs` checks every body reference in `add_feature`/`edit_feature`
+inputs against the computed bodies (a bare feature id for its one body, an
+unknown or ambiguous one refused with its input path, unchecked only while
+the model isn't computed). New tools: `set_body_appearance` (one
+`updateBody` step) and `check_interference` (kernel `interferences()`,
+`KernelService.interference`, `AgentHost.interference`; touching pairs aren't
+listed). `add_sketch`/`get_feature` answer `regions` in `profiles`' order and
+the sketch's `frame`; curves carry their `sketchEntity` ref. `screenshot`
+options go through `SnapshotOptions` (`viewport/snapshotView.ts`): own camera
+and render target, body groups named `body:<id>`, sketches and construction
+inside `snapshot-overlay` groups (keep new overlays there), a section is a
+renderer clipping plane with faces double-sided for the shot; with no options
+the snapshot path is the thumbnail's, unchanged. Tests:
+`agent/tools.kernel.test.ts` runs the tools on the real kernel
+(`agent/kernelTesting.ts`); add a case there for anything that depends on
+body ids, profiles or frames. A join's picked bodies that the tool doesn't
+touch stay separate with a warning (`operate`, #87).
+
 ADR-0088 (P6-09, slice 1 2026-10-15) added **the OpenSCAD export**:
 `packages/kernel/src/scad-export/` (`ir.ts`, `print.ts`, `context.ts`,
 `versions.ts`, `mesh.ts`, `file.ts`, `number.ts`), `RecomputeEngine.exportScad`
@@ -2643,6 +2663,46 @@ cylinder height, primitive X/Y/Offset, Move's free arrows and rotate-mode angle.
 (wrong as a rigid change): two-sided extrude, diameters, Move's free rings. Coarse meshing
 while dragging was rejected (saves 4–8 ms of ~34).
 
+ADR-0092 (P6-12, the owner, 2026-10-19) added **Help › Report a Bug…** (command `reportBug`,
+before About; the app menu's App column has "Report a bug" before About Extrudo (owner, 2026-10-19); the About
+footer's "Report a bug" button (when `onReportBug` is given) closes About and opens the same
+dialog): the opener (`AppShell`, `HomeScreen`) captures the screenshot **before** opening, so
+the dialog is not in it (the viewport's `snapshot(1600)`; on the desktop
+`desktop.capturePage()`, the whole window, falling back to the viewport; the home screen has
+only the desktop capture). **Retake** closes the dialog, waits two animation frames, captures
+and reopens; the field state lives in `BugReportDialog` (always mounted) and resets only when
+the dialog reports closed. `BugReportDialog.tsx` gathers
+`systemInfo()`'s "Running on" rows, `BUILD` and the shell's error ring buffer, and drafts the
+report. **Rules:** the pure parts (`bugReport.ts`: `buildReport`, `issueFields`, `issueUrl`,
+the error buffer, `timelineSummary`) stay DOM-free and tested. **No backend, no token, no
+GitHub API call:** "Open GitHub draft" copies the PNG to the clipboard and opens
+`ISSUES_URL?template=bug_report.yml&title=…&what=…&steps=…&version=…&browser=…&os=…&console=…`
+through `platform.openLink`; the person pastes the image and submits. `issueUrl` keeps the URL
+under 8,000 characters by cutting `console`, then `steps`, then `what` (never the others), each
+cut ending "… (cut: see the copied report)"; "Copy report" carries the full Markdown. The
+report carries the "Running on" rows (not "Memory and storage"), the last 10 error **messages**
+(feature errors and uncaught `error`/`unhandledrejection`; **no stack traces**, which name
+`file://` paths on the desktop) and, only with the "Include the timeline" box ticked (off by
+default), feature names and types. Never file paths, the design's name, parameter values or
+the document. The issue form's field ids are an interface: `bugReport.test.ts` reads
+`.github/ISSUE_TEMPLATE/bug_report.yml` and checks the ids it uses exist. The prefilled URL is
+on the desktop allow-list by its path (`links.test.ts` has a case with a query string).
+
+ADR-0094 (the owner's test, 2026-10-19): **aligned edges infer Collinear**. `AnchorEntities.along`
+(`packages/sketch/src/inference/constraints.ts`) names the new lines leaving a placed point along
+each axis; `alignmentConstraints(alignments, point, anchor, sketch)` makes an alignment with a
+sketch point **Collinear between the new line and the line the source point ends** when both run
+along the guide's axis (`lineAlong`: geometry within 1e-6 relative, the source's coincident points
+count), and `place` (`packages/sketch/src/build/inference.ts`) then **drops the new line's own
+Horizontal/Vertical from the edit** (the Collinear implies it; both would be redundant). Point
+pairs stay for a circle centre, a lone point, an arc end, a slanted line's end, or no new
+axis-parallel line. **Rules:** only the Rectangle tool's axis-aligned modes pass `along` (edges 0
+and 2 horizontal, 1 and 3 vertical at each corner; never the 3-point mode); `alignmentConstraints`
+stays pure and the host's test-solve (`SketchSolver.check`) stays. A Horizontal/Vertical **between
+two points** (`b` set) shows **one glyph halfway between them** (a point-style anchor, `entity` its
+`a`) with the icons `horizontal-points`/`vertical-points` and the label "Horizontal (points)" /
+"Vertical (points)"; `glyphFace(c)` in `apps/web/src/sketch/tools/glyphs.ts` is the only place
+that picks a glyph's icon and label (`ConstraintGlyphs.tsx` draws `PlacedGlyph.icon`/`label`).
 ADR-0093 (issue #61, 2026-10-19) lets **the dimension and constraint tools pick the origin and
 axes**. Files: `packages/core/src/sketch/projection.ts` (`PROJECTABLE`, `DATUM_SPAN`,
 `isDatumRef`, `syncProjections`' construction flag), `sketch/schema.ts` (`PROJECTABLE`,

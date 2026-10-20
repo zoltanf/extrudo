@@ -170,6 +170,43 @@ async function run(url, token) {
   );
   const shot = await client.callTool({ name: 'screenshot', arguments: {} });
   check(shot.content[0]?.type === 'image', 'screenshot is a PNG image block');
+  // A floor plan of the plate alone: from the top, cut at z = 2 mm, 1024 px (#88).
+  const plate = `${added.result[0].id}:0`;
+  await sleep(1000);
+  const plan = await client.callTool({
+    name: 'screenshot',
+    arguments: {
+      view: 'top',
+      bodies: [{ kind: 'body', id: plate }],
+      section: { plane: 'xy', offset: '2 mm' },
+      overlays: false,
+      size: 1024,
+    },
+  });
+  check(plan.content[0]?.type === 'image', 'a top view of one body, cut, is a PNG image block');
+  const shots = arg('--shots');
+  if (shots) {
+    writeFileSync(join(shots, 'default.png'), Buffer.from(shot.content[0].data, 'base64'));
+    writeFileSync(join(shots, 'plan.png'), Buffer.from(plan.content[0].data, 'base64'));
+  }
+  // The peg and the plate don't overlap; a box through the plate does (#89).
+  check((await callJson(client, 'check_interference')).length === 0, 'no bodies overlap');
+  await callJson(client, 'add_feature', {
+    type: 'box',
+    inputs: { length: '10 mm', width: '10 mm', height: '10 mm', x: '20 mm', y: '10 mm' },
+  });
+  const overlaps = await callJson(client, 'check_interference');
+  check(
+    overlaps.length === 1 && Math.abs(overlaps[0].volume - 500) < 0.01,
+    `a box through the plate overlaps it by ${overlaps[0]?.volume} mm³`,
+  );
+  // An agent colours a body (#83).
+  const coloured = await callJson(client, 'set_body_appearance', { id: plate, color: '#d04020' });
+  check(coloured.result.color === '#d04020', `${coloured.done}`);
+  check(
+    (await callJson(client, 'get_bodies')).find((b) => b.id === plate)?.color === '#d04020',
+    'get_bodies shows the colour',
+  );
   await client.close();
 }
 

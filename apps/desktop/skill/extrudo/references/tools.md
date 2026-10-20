@@ -42,7 +42,7 @@ No inputs.
 
 ## `get_feature`
 
-One feature: its type, name, status and inputs as the API's plain values (what add_feature and edit_feature take); a sketch lists its plane, profiles and curves (an extrude's side face of curve <c> is side:<c>).
+One feature: its type, name, status and inputs as the API's plain values (what add_feature and edit_feature take); a sketch lists its plane, frame (world mm), profiles, regions (each profile's area, box, centroid and loops, as add_sketch answers them) and curves with their reference { kind: 'sketchEntity', id: '<sketch id>/<curve id>' } (a revolve's axis takes one; an extrude's side face of curve <c> is side:<c>).
 
 | Input | Type | Required | What it is |
 | --- | --- | --- | --- |
@@ -50,9 +50,17 @@ One feature: its type, name, status and inputs as the API's plain values (what a
 
 ## `get_bodies`
 
-The bodies at the timeline marker: [{ id, name, volume (mm³), box ({ min, max } in mm), visible }].
+The bodies at the timeline marker: [{ id, name, color?, opacity?, volume (mm³), box ({ min, max } in mm), visible }]. The id (<feature id>:<n>) is what a body reference takes.
 
 No inputs.
+
+## `check_interference`
+
+Finds bodies that overlap: [{ a, b, volume (mm³), box ({ min, max } mm) }], one entry per pair that shares volume; [] when none do. Touching faces don't count. Run it before finishing a model of several bodies: overlapping bodies print badly. Changes nothing.
+
+| Input | Type | Required | What it is |
+| --- | --- | --- | --- |
+| `bodies` | `({ kind: string, id: string })[]` | no | The bodies to check against each other (references); all visible bodies when left out. |
 
 ## `get_selection`
 
@@ -62,9 +70,15 @@ No inputs.
 
 ## `screenshot`
 
-A picture of the model as a PNG, framed on the bodies. At most one per second.
+A picture of the model as a PNG, framed on the bodies, drawn apart from the person's view (which doesn't move). Without inputs: the app's current view direction, sketches and construction shown, 768 px. Inputs pick another side, only some bodies (framed on them), a section that cuts away what lies past a plane (a floor plan: view 'top', section on 'xy' at the floor's height), and the size. Sizes come from get_bodies, not pictures. At most one per second.
 
-No inputs.
+| Input | Type | Required | What it is |
+| --- | --- | --- | --- |
+| `view` | `"iso" \| "top" \| "bottom" \| "front" \| "back" \| "left" \| "right" \| [number, number, number]` | no | Where to look from: 'iso', 'top', 'bottom', 'front', 'back', 'left', 'right', or [x, y, z], the direction from the model to the camera. |
+| `bodies` | `({ kind: string, id: string })[]` | no | Only these bodies (references, ids from get_bodies), framed on them. |
+| `section` | `{ plane: "xy" \| "xz" \| "yz" \| { kind: string, id: string }, offset?: number \| string }` | no | Cuts away everything on the side the plane's normal points to (above an 'xy' plane). |
+| `overlays` | `boolean` | no | Sketches and construction geometry; default true. |
+| `size` | `integer` | no | Width and height in px; default 768. |
 
 ## `list_commands`
 
@@ -97,11 +111,11 @@ Applies a configuration (by id or name): its parameters take the configuration's
 
 **Changes the design.**
 
-Adds a sketch on a plane with the shapes given and answers its id and profiles (the references an extrude's profiles take). Plane: 'xy', 'xz', 'yz' or a face reference. One undo step.
+Adds a sketch on a plane with the shapes given and answers its id, its profiles (the references an extrude's profiles take) and regions: per profile, in the same order, { profile, area (mm²), box and centroid (sketch mm), outer and holes (curve ids), shapes (indices of the shapes bounding it) }, to tell a ring from the hole inside it, and frame: { origin, xDir, yDir, normal } in world mm, where sketch x and y go (a one-side extrude goes along normal). Plane: 'xy', 'xz', 'yz', a construction plane { kind: 'plane', id: '<feature id>' } or a planar face reference. One undo step.
 
 | Input | Type | Required | What it is |
 | --- | --- | --- | --- |
-| `plane` | `"xy" \| "xz" \| "yz" \| { kind: string, id: string }` | yes | 'xy', 'xz' or 'yz' (the origin planes), or a planar face reference. |
+| `plane` | `"xy" \| "xz" \| "yz" \| { kind: string, id: string }` | yes | 'xy', 'xz' or 'yz' (the origin planes), a construction plane { kind: 'plane', id: '<feature id>' } (offsetPlane, …) or a planar face reference. |
 | `shapes` | `shape[]` | yes | What to draw: objects whose `shape` names the kind (rectangle, circle, …). |
 | `name` | `string` | no | A name for the sketch. |
 
@@ -137,6 +151,20 @@ Changes some inputs of a feature (the API's plain values, as add_feature). Input
 | --- | --- | --- | --- |
 | `id` | `string` | yes | The feature id. |
 | `inputs` | `object` | yes | The inputs to change. |
+
+## `set_body_appearance`
+
+**Changes the design.**
+
+Changes how a body looks: its colour, opacity, name and whether it is shown. Inputs not given keep their values. One undo step.
+
+| Input | Type | Required | What it is |
+| --- | --- | --- | --- |
+| `id` | `string` | yes | The body's id from get_bodies (<feature id>:<n>), or a feature id that made one body. |
+| `color` | `string` | no | Its colour, '#rrggbb'. |
+| `opacity` | `number` | no | 0.1 (nearly clear) to 1 (opaque). |
+| `name` | `string` | no | The body's name. |
+| `visible` | `boolean` | no | Shown (true) or hidden (false). |
 
 ## `suppress`
 

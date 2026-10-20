@@ -701,6 +701,47 @@ describe('extrude', { timeout: 120_000 }, () => {
     close(measure(joined, 'B:0').volume, 1000 + 20 * 6 * 8 - 2 * 5 * 6 * 5);
   });
 
+  it("warns when a join doesn't touch the bodies picked for it, and leaves them be (#87)", async () => {
+    const base = block();
+    const far = circle('SC', 100, 100);
+    const result = await run(
+      testDocument([
+        ...base.features,
+        far.feature,
+        extrude('E', [profile('SC', far.data)], {
+          distance: '2 mm',
+          operation: 'join',
+          bodies: ['B:0'],
+        }),
+      ]),
+    );
+    expect(status(result, 'E')).toEqual({
+      status: 'warning',
+      message: "It doesn't touch the body it joins, so the extrude made a new body.",
+    });
+    expect(result.bodies.map((b) => b.id)).toEqual(['B:0', 'E:0']);
+    // One of two picked bodies touches: the join takes it, the other stays.
+    const near = circle('SN', 10, 10);
+    const partly = await run(
+      testDocument([
+        ...base.features,
+        far.feature,
+        extrude('F', [profile('SC', far.data)], { distance: '2 mm' }),
+        near.feature,
+        extrude('E', [profile('SN', near.data)], {
+          distance: '15 mm',
+          operation: 'join',
+          bodies: ['B:0', 'F:0'],
+        }),
+      ]),
+    );
+    expect(status(partly, 'E')).toEqual({
+      status: 'warning',
+      message: "It doesn't touch 1 of the bodies it joins: that one stays separate.",
+    });
+    expect(partly.bodies.map((b) => b.id)).toEqual(['B:0', 'F:0']);
+  });
+
   it('warns when a join has nothing to join, and offers the tool for previews', async () => {
     const c = circle();
     const doc = testDocument([

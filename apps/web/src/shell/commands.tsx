@@ -11,6 +11,7 @@ import {
   Bell,
   BookOpen,
   Box,
+  Bug,
   Circle,
   GraduationCap,
   House,
@@ -93,6 +94,8 @@ export interface CommandContext {
   notifications?: { open(): void };
   /** The first-run tutorial (P3-12). */
   tutorial?: { start(): void };
+  /** Opens Help › Report a Bug… (ADR-0092). */
+  reportBug?: () => void;
   /** Opens Help › About Extrudo: version, channel, where the app runs. */
   about?: () => void;
   /**
@@ -511,6 +514,12 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     plain('docsTools', 'Tool Reference', 'Help', () => open('tools'), {
       icon: icon(Wrench),
       keywords: 'Help docs tool reference every tool learn',
+    });
+  }
+  if (ctx.reportBug) {
+    plain('reportBug', 'Report a Bug…', 'Help', ctx.reportBug, {
+      icon: icon(Bug),
+      keywords: 'Help bug report issue problem crash github feedback screenshot',
     });
   }
   if (ctx.about) {

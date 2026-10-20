@@ -54,6 +54,7 @@ import {
 import type { SmoothFaces } from './features/offset-face';
 import type { SmoothKind, SubShapeKind } from './history';
 import type { Inspection, InspectTarget } from './inspect';
+import type { Interference } from './interference';
 import type { JointCheck, JointCheckRequest } from './joints/check';
 import type { BodyMesh, MeshOptions } from './mesh';
 import type { StepBody } from './model-export';
@@ -451,6 +452,11 @@ export class Recomputer {
    */
   inspect(targets: readonly InspectTarget[]): Promise<Inspection> {
     return this.client.call((api) => api.inspect(targets));
+  }
+
+  /** The overlapping pairs among `bodies` (#89), on the last finished recompute. */
+  interference(bodies: readonly BodyId[]): Promise<Interference[]> {
+    return this.client.call((api) => api.interference(bodies));
   }
 
   /**

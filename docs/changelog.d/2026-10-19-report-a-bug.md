@@ -1,0 +1,1 @@
+- 2026-10-19 · **Report a bug** (Help › Report a Bug…, the app menu, the About footer): a screenshot, the version, where the app runs and the last error messages go into a draft GitHub issue; you paste the picture and press Submit. Nothing is sent until then.

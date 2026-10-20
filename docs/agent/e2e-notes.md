@@ -903,6 +903,18 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   github.com host is answered locally with `context.route`, as in
   help-links. The home bar's About button opens the same dialog.
 
+### `e2e/bug-report.spec.ts`
+
+- **Report a bug e2e** (`e2e/bug-report.spec.ts`, ADR-0092): `pickMenuItem(page, 'App',
+  'Report a bug')` opens the `dialog` "Report a bug" (also from About's footer button and the
+  home screen's app menu). Fields by label: "Title", "What happened?", "Steps to reproduce",
+  "Include the timeline" (a checkbox, absent on the home screen). The screenshot is
+  `img` "Screenshot" (the viewport snapshot; Remove, then "No screenshot" and the button "Take
+  screenshot"); the report preview is `getByTestId('bug-report-preview')`. "Copy report" turns
+  into "Copied" for 1.6 s; "Open GitHub draft" opens a popup on the prefilled issue URL
+  (github.com answered locally with `context.route`). Trap: grant `clipboard-read` and
+  `clipboard-write`; the PNG is not read back, only the text copy and the popup URL.
+
 ### `e2e/hole.spec.ts`
 
 - **Hole e2e** (`e2e/hole.spec.ts`, P3-04): press `h` (after Shift+1 and a
@@ -1776,7 +1788,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   (`exact`), in the overlay not the palette; helpers `clicker`, `counts`,
   `sketchOnXY`. A rectangle gives 8 glyphs (4 Coincident, 2 Horizontal, 2
   Vertical); hovering one highlights its line through `[data-highlight]
-  [data-highlight-entity]`.
+  [data-highlight-entity]`. A Horizontal/Vertical **between two points**
+  (a corner level with a circle centre) is one glyph halfway between them,
+  named "Horizontal (points) constraint" (ADR-0094), so an `exact`
+  "Horizontal constraint" locator doesn't count it; a corner level with the
+  end of a level line gives a "Collinear constraint" glyph on each edge and
+  no own Horizontal on the new edge.
 
 - Click selects (`aria-pressed`), Shift-click adds (`modifiers: ['Shift']`),
   Esc clears and Delete removes (Ctrl+Z restores); an empty-space click

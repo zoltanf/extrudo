@@ -58,6 +58,8 @@ export const ICON_NAMES = [
   'fix',
   'horizontal',
   'vertical',
+  'horizontal-points',
+  'vertical-points',
   'smooth',
   'equal',
   'symmetric',

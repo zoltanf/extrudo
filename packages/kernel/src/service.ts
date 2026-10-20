@@ -11,6 +11,7 @@ import { kernelFeatures } from './features';
 import type { SmoothFaces } from './features/offset-face';
 import type { SmoothKind, SubShapeKind } from './history';
 import { type Inspection, type InspectTarget, inspectShapes } from './inspect';
+import { type Interference, interferences } from './interference';
 import { checkJoint, type JointCheck, type JointCheckRequest } from './joints/check';
 import { type HeapUsage, Kernel, KernelError, type KernelStats, type ShapeHandle } from './kernel';
 import { loadManifold, type ManifoldLoadOptions } from './manifold';
@@ -184,6 +185,12 @@ export interface KernelApi {
    * longer in the model.
    */
   inspect(targets: readonly InspectTarget[]): Promise<Inspection>;
+  /**
+   * The pairs of the given bodies of the last finished recompute that share
+   * volume, with that volume and its box (#89); touching pairs aren't listed.
+   * Rejects if a body is no longer in the model.
+   */
+  interference(bodies: readonly BodyId[]): Promise<Interference[]>;
   /**
    * A joint's frames resolved against the last finished recompute (P6-05,
    * ADR-0081 §4), for the Joint dialog's live readout. Evaluates nothing.
@@ -506,6 +513,15 @@ export class KernelService implements KernelApi {
     );
   }
 
+  interference(bodies: readonly BodyId[]): Promise<Interference[]> {
+    return this.#run((kernel) =>
+      interferences(
+        kernel,
+        bodies.map((id) => ({ id, shape: this.#bodyShape(id, 'check') })),
+      ),
+    );
+  }
+
   resolveJoint(joint: Joint): Promise<JointReport> {
     return this.#run(() => this.#engineOf().resolveJoint(joint));
   }
@@ -581,7 +597,7 @@ export class KernelService implements KernelApi {
   }
 
   /** A body of the last recompute. Only called inside #run. */
-  #bodyShape(id: BodyId, purpose: 'export' | 'measure' = 'export') {
+  #bodyShape(id: BodyId, purpose: 'export' | 'measure' | 'check' = 'export') {
     const shape = this.#engineOf().latestBody(id);
     if (shape === undefined) {
       throw new KernelError(`A body to ${purpose} is no longer in the model. Try again.`);

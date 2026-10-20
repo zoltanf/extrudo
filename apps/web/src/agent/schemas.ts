@@ -6,6 +6,7 @@
  */
 import { z } from '@extrudo/core';
 import type { AgentToolDefinition } from '../platform/agent';
+import { SNAPSHOT_VIEWS } from '../viewport/snapshotView';
 
 const id = (what: string) => z.string().min(1).describe(what);
 const vec2 = z
@@ -90,21 +91,70 @@ export const TOOL_SCHEMAS = {
   },
   get_feature: {
     description:
-      "One feature: its type, name, status and inputs as the API's plain values (what add_feature and edit_feature take); a sketch lists its plane, profiles and curves (an extrude's side face of curve <c> is side:<c>).",
+      "One feature: its type, name, status and inputs as the API's plain values (what add_feature and edit_feature take); a sketch lists its plane, frame (world mm), profiles, regions (each profile's area, box, centroid and loops, as add_sketch answers them) and curves with their reference { kind: 'sketchEntity', id: '<sketch id>/<curve id>' } (a revolve's axis takes one; an extrude's side face of curve <c> is side:<c>).",
     input: z.object({ id: id('The feature id.') }),
   },
   get_bodies: {
     description:
-      'The bodies at the timeline marker: [{ id, name, volume (mm³), box ({ min, max } in mm), visible }].',
+      'The bodies at the timeline marker: [{ id, name, color?, opacity?, volume (mm³), box ({ min, max } in mm), visible }]. The id (<feature id>:<n>) is what a body reference takes.',
     input: empty,
+  },
+  check_interference: {
+    description:
+      "Finds bodies that overlap: [{ a, b, volume (mm³), box ({ min, max } mm) }], one entry per pair that shares volume; [] when none do. Touching faces don't count. Run it before finishing a model of several bodies: overlapping bodies print badly. Changes nothing.",
+    input: z.object({
+      bodies: z
+        .array(geomRef)
+        .optional()
+        .describe(
+          'The bodies to check against each other (references); all visible bodies when left out.',
+        ),
+    }),
   },
   get_selection: {
     description: 'What the person has selected in the app: [{ kind, id }].',
     input: empty,
   },
   screenshot: {
-    description: 'A picture of the model as a PNG, framed on the bodies. At most one per second.',
-    input: empty,
+    description:
+      "A picture of the model as a PNG, framed on the bodies, drawn apart from the person's view (which doesn't move). Without inputs: the app's current view direction, sketches and construction shown, 768 px. Inputs pick another side, only some bodies (framed on them), a section that cuts away what lies past a plane (a floor plan: view 'top', section on 'xy' at the floor's height), and the size. Sizes come from get_bodies, not pictures. At most one per second.",
+    input: z.object({
+      view: z
+        .union([z.enum(SNAPSHOT_VIEWS), z.tuple([z.number(), z.number(), z.number()])])
+        .optional()
+        .describe(
+          "Where to look from: 'iso', 'top', 'bottom', 'front', 'back', 'left', 'right', or [x, y, z], the direction from the model to the camera.",
+        ),
+      bodies: z
+        .array(geomRef)
+        .optional()
+        .describe('Only these bodies (references, ids from get_bodies), framed on them.'),
+      section: z
+        .object({
+          plane: z
+            .union([z.enum(['xy', 'xz', 'yz']), geomRef])
+            .describe("'xy', 'xz', 'yz' or a construction plane { kind: 'plane', id }."),
+          offset: z
+            .union([z.number(), z.string()])
+            .optional()
+            .describe("Along the plane's normal: a number of mm or '10 mm'. Default 0."),
+        })
+        .optional()
+        .describe(
+          "Cuts away everything on the side the plane's normal points to (above an 'xy' plane).",
+        ),
+      overlays: z
+        .boolean()
+        .optional()
+        .describe('Sketches and construction geometry; default true.'),
+      size: z
+        .number()
+        .int()
+        .min(512)
+        .max(1536)
+        .optional()
+        .describe('Width and height in px; default 768.'),
+    }),
   },
   list_commands: {
     description: "The app's commands run_command takes: [{ id, label, group, unavailable? }].",
@@ -128,11 +178,13 @@ export const TOOL_SCHEMAS = {
   },
   add_sketch: {
     description:
-      "Adds a sketch on a plane with the shapes given and answers its id and profiles (the references an extrude's profiles take). Plane: 'xy', 'xz', 'yz' or a face reference. One undo step.",
+      "Adds a sketch on a plane with the shapes given and answers its id, its profiles (the references an extrude's profiles take) and regions: per profile, in the same order, { profile, area (mm²), box and centroid (sketch mm), outer and holes (curve ids), shapes (indices of the shapes bounding it) }, to tell a ring from the hole inside it, and frame: { origin, xDir, yDir, normal } in world mm, where sketch x and y go (a one-side extrude goes along normal). Plane: 'xy', 'xz', 'yz', a construction plane { kind: 'plane', id: '<feature id>' } or a planar face reference. One undo step.",
     input: z.object({
       plane: z
         .union([z.enum(['xy', 'xz', 'yz']), geomRef])
-        .describe("'xy', 'xz' or 'yz' (the origin planes), or a planar face reference."),
+        .describe(
+          "'xy', 'xz' or 'yz' (the origin planes), a construction plane { kind: 'plane', id: '<feature id>' } (offsetPlane, …) or a planar face reference.",
+        ),
       shapes: z
         .array(shape)
         .min(1)
@@ -155,6 +207,23 @@ export const TOOL_SCHEMAS = {
     input: z.object({
       id: id('The feature id.'),
       inputs: z.record(z.string(), z.unknown()).describe('The inputs to change.'),
+    }),
+  },
+  set_body_appearance: {
+    description:
+      'Changes how a body looks: its colour, opacity, name and whether it is shown. Inputs not given keep their values. One undo step.',
+    input: z.object({
+      id: id(
+        "The body's id from get_bodies (<feature id>:<n>), or a feature id that made one body.",
+      ),
+      color: z
+        .string()
+        .regex(/^#[0-9a-f]{6}$/i, 'A colour is #rrggbb.')
+        .optional()
+        .describe("Its colour, '#rrggbb'."),
+      opacity: z.number().min(0.1).max(1).optional().describe('0.1 (nearly clear) to 1 (opaque).'),
+      name: z.string().trim().min(1).optional().describe("The body's name."),
+      visible: z.boolean().optional().describe('Shown (true) or hidden (false).'),
     }),
   },
   suppress: {
@@ -200,6 +269,7 @@ export const CHANGE_TOOLS: ReadonlySet<ToolName> = new Set([
   'add_sketch',
   'add_feature',
   'edit_feature',
+  'set_body_appearance',
   'suppress',
   'rename',
   'remove',

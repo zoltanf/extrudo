@@ -13,7 +13,7 @@
  */
 import type { DimensionId, SketchEntityId, Vec2 } from '@extrudo/core';
 import { axisOf, constrain, place, rectangleEdit, typedEnd } from '@extrudo/sketch/build';
-import type { Inference } from '@extrudo/sketch/inference';
+import type { AnchorEntities, Inference } from '@extrudo/sketch/inference';
 import {
   EMPTY_PREVIEW,
   emptyEdit,
@@ -291,9 +291,22 @@ export class RectangleTool implements SketchTool {
 
     // Corners the user placed keep what they snapped to.
     // A 3-point rectangle's second corner aligned with its first makes edge 0 level.
+    // An axis-aligned rectangle's corner level with the end of a level line makes
+    // the edges collinear instead (ADR-0094): edges 0 and 2 run horizontal, 1 and 3 vertical.
     r.placed.forEach((inference, i) => {
-      if (inference)
-        place(edit, ctx, inference, edge(i).start, i === 1 ? { line: edge(0).id } : {});
+      if (!inference) return;
+      const anchor: AnchorEntities =
+        mode === 'perpendicular'
+          ? i === 1
+            ? { line: edge(0).id }
+            : {}
+          : {
+              along: {
+                horizontal: edge(i % 2 === 0 ? i : i - 1).id,
+                vertical: edge(i % 2 === 1 ? i : (i + 3) % 4).id,
+              },
+            };
+      place(edit, ctx, inference, edge(i).start, anchor, ctx.sketch());
     });
 
     if (mode === 'centre') {

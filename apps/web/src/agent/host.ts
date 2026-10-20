@@ -7,16 +7,31 @@
 import type { Command, DocumentStore, ModelStore, SessionStore } from '@extrudo/core';
 import { createStore } from 'zustand/vanilla';
 import type { AgentExportFormat } from '../platform/agent';
+import type { SnapshotOptions } from '../viewport/snapshotView';
 
 /** A body as `get_bodies` answers it. */
 export interface AgentBody {
   id: string;
   name: string;
+  /** `#rrggbb`; absent: the theme's default body colour. */
+  color?: string;
+  /** 0.1–1; absent: opaque. */
+  opacity?: number;
   /** mm³ */
   volume: number;
   /** mm */
   box: { min: [number, number, number]; max: [number, number, number] } | undefined;
   visible: boolean;
+}
+
+/** Two bodies that share volume, as `check_interference` answers them. */
+export interface AgentInterference {
+  a: string;
+  b: string;
+  /** mm³ */
+  volume: number;
+  /** mm */
+  box: { min: readonly [number, number, number]; max: readonly [number, number, number] };
 }
 
 /** One of the app's commands, as `list_commands` lists it. */
@@ -40,8 +55,14 @@ export interface AgentHost {
   ready(): Promise<void>;
   /** The bodies at the marker with their measures (the kernel's, as Print Info's). */
   bodies(): Promise<AgentBody[]>;
-  /** A square PNG of the model, `size` px; null when the view isn't drawn. */
-  snapshot(size: number): Promise<Blob | null>;
+  /** The pairs of these bodies (at the marker) that share volume; touching ones aren't. */
+  interference(bodies: readonly string[]): Promise<AgentInterference[]>;
+  /**
+   * A square PNG of the model, `size` px, through a camera of its own (the
+   * person's view doesn't move); null when the view isn't drawn or none of
+   * `options.bodies` is shown.
+   */
+  snapshot(size: number, options?: SnapshotOptions): Promise<Blob | null>;
   commands(): readonly AgentCommand[];
   undo(): void;
   redo(): void;

@@ -27,6 +27,7 @@ import {
 } from './camera';
 import { NAV_PRESETS, type NavAction, type NavPreset, RENAMED_PRESETS } from './navigation';
 import type { RenderStats } from './renderMeter';
+import type { SnapshotOptions } from './snapshotView';
 
 /** A joint posed in the view (P6-05 J2, ADR-0081 §4): degrees for a revolute, mm for a slider. */
 export interface JointPose {
@@ -157,7 +158,7 @@ export interface ViewportState extends ViewportSettings {
   /** The nav-bar tool that turns a left-drag into orbit, pan or zoom. */
   tool: NavAction | undefined;
   /** Renders the view to a thumbnail PNG; set while the canvas is mounted. */
-  snapshot: ((size?: number) => Promise<Blob | null>) | undefined;
+  snapshot: ((size?: number, options?: SnapshotOptions) => Promise<Blob | null>) | undefined;
   /** Frames per second and frame time while the canvas is mounted (the status bar shows them). */
   renderStats: RenderStats | undefined;
   /**
@@ -252,7 +253,9 @@ export interface ViewportState extends ViewportSettings {
   setAutoProjectFace(autoProjectFace: boolean): void;
   /** Turns the sketch palette's Slice on or off (P4-12). */
   setSketchSlice(sketchSlice: boolean): void;
-  setSnapshot(snapshot: ((size?: number) => Promise<Blob | null>) | undefined): void;
+  setSnapshot(
+    snapshot: ((size?: number, options?: SnapshotOptions) => Promise<Blob | null>) | undefined,
+  ): void;
   setRenderStats(stats: RenderStats | undefined): void;
   setSelectionFilter(kind: FilterKind, on: boolean): void;
   resetSelectionFilter(): void;

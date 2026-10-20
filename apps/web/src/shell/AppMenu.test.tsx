@@ -24,6 +24,7 @@ const markup = (over: Partial<MenuPanelProps> = {}) =>
         onSettings={vi.fn()}
         onSearch={vi.fn()}
         onAbout={vi.fn()}
+        onReportBug={vi.fn()}
         onTutorial={vi.fn()}
         onDocs={vi.fn()}
         version="0.7.0"
@@ -73,7 +74,12 @@ describe('the app menu panel', () => {
 
   it('has the App and Learn columns in order; Help for <tool> only with a tool', () => {
     let html = markup();
-    expect(itemTexts(html, 'App')).toEqual(['Search…', 'Settings…', 'About Extrudo']);
+    expect(itemTexts(html, 'App')).toEqual([
+      'Search…',
+      'Settings…',
+      'Report a bug',
+      'About Extrudo',
+    ]);
     expect(itemTexts(html, 'Learn')).toEqual([
       'User Guide',
       'Tutorial',
@@ -87,7 +93,12 @@ describe('the app menu panel', () => {
       onSearch: undefined,
     });
     expect(itemTexts(html, 'Learn')[0]).toBe('Help for Extrude');
-    expect(itemTexts(html, 'App')).toEqual(['Settings…', 'About Extrudo', 'Close design']);
+    expect(itemTexts(html, 'App')).toEqual([
+      'Settings…',
+      'Report a bug',
+      'About Extrudo',
+      'Close design',
+    ]);
     expect(markup({ onQuit: vi.fn() })).toContain('>Quit<');
   });
 

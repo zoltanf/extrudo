@@ -51,8 +51,10 @@ change what you drew; their constraints and dimensions come along.
 As you draw, the pointer snaps to existing points, midpoints, crossings, curves, and the
 horizontal or vertical line through the last point. A snap is also a constraint: end a line on
 another line's end and the two points are **coincident**; start on a curve and the point is held
-on it; keep a line exactly horizontal and it is **horizontal**. A small glyph near the pointer
-shows which snap you are on.
+on it; keep a line exactly horizontal and it is **horizontal**. Draw a rectangle corner level with
+the end of another level edge and the two edges are **collinear**; level with a lone point or a
+circle centre, the two points are tied instead (one glyph halfway between them). A small glyph near
+the pointer shows which snap you are on.
 
 Hold `Ctrl` to draw without snapping. The grid snaps too, and **Snap to grid** in the sketch
 palette turns that off.

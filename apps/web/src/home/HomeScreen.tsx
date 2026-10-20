@@ -44,6 +44,8 @@ import type { SectionId } from '../settings/inventory';
 import { SettingsDialog } from '../settings/SettingsDialog';
 import { AboutDialog } from '../shell/AboutDialog';
 import { AppMenu } from '../shell/AppMenu';
+import { BugReportDialog } from '../shell/BugReportDialog';
+import { errorLog, watchWindowErrors } from '../shell/bugReport';
 import { docsPath, docsUrl, REPO_URL } from '../shell/docsLinks';
 import { useUpdateNotice } from '../shell/useUpdateNotice';
 import { useMarkingStyle } from '../shell/viewMenu';
@@ -65,6 +67,31 @@ export function HomeScreen({ platform }: { platform: Platform }) {
   const marking = useMarkingStyle(platform.preferences);
   const [settingsOpen, setSettingsOpen] = useState<boolean | SectionId>(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [bugReport, setBugReport] = useState<{ open: boolean; screenshot: Blob | null }>({
+    open: false,
+    screenshot: null,
+  });
+  // ADR-0092: only the desktop can capture here (the window); the web has no viewport.
+  const capture = async (): Promise<Blob | null> => {
+    try {
+      return (await platform.desktop?.capturePage()) ?? null;
+    } catch {
+      return null;
+    }
+  };
+  useEffect(() => watchWindowErrors(errorLog), []);
+  // Two frames before a capture: the menu just closed (or the dialog, on a retake) is gone.
+  const openBugReport = async () => {
+    await new Promise<void>((done) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => done())),
+    );
+    const screenshot = await capture();
+    setBugReport({ open: true, screenshot });
+  };
+  const retakeBugReport = async () => {
+    setBugReport((s) => ({ ...s, open: false }));
+    await openBugReport();
+  };
   // macOS's application menu › About Extrudo runs the `about` command in the renderer; the
   // home screen has no commands, so it answers that one id (ADR-0085).
   // Plugins… there opens Settings at its Plugins section (ADR-0090 §2).
@@ -202,6 +229,7 @@ export function HomeScreen({ platform }: { platform: Platform }) {
             }}
             onSettings={() => setSettingsOpen(true)}
             onAbout={() => setAboutOpen(true)}
+            onReportBug={() => void openBugReport()}
             onTutorial={startTour}
             onDocs={(page) => platform.openDocs(docsPath(page))}
             version={BUILD.version}
@@ -220,6 +248,17 @@ export function HomeScreen({ platform }: { platform: Platform }) {
         onOpenChange={setAboutOpen}
         desktop={platform.desktop !== undefined}
         openLink={platform.openLink}
+        onReportBug={() => void openBugReport()}
+      />
+      <BugReportDialog
+        open={bugReport.open}
+        onOpenChange={(open) => setBugReport((s) => ({ ...s, open }))}
+        screenshot={bugReport.screenshot}
+        {...(platform.desktop && { onRetake: retakeBugReport })}
+        desktop={platform.desktop !== undefined}
+        openLink={platform.openLink}
+        download={platform.files.download}
+        notify={(tone, text) => push(tone, text)}
       />
 
       <SettingsDialog
