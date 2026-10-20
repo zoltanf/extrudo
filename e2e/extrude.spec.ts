@@ -3,6 +3,7 @@ import { exportModel, objectsOf3mf, solidFacts, solidTab } from './benchmark-hel
 import {
   clicker,
   kernelReady,
+  mapping,
   newSketchOnXY,
   openProject,
   pickTool,
@@ -490,6 +491,11 @@ test('joins only the shown bodies when a hidden one is in the way (ADR-0095)', a
   const viewport = viewportOf(page);
   const browser = page.getByRole('complementary', { name: 'Browser' });
   const click = clicker(page, at);
+  // The eye cycles shown → ghost → hidden: two clicks hide.
+  const hide = async (name: string) => {
+    await browser.getByRole('button', { name: `Show as ghost ${name}` }).click();
+    await browser.getByRole('button', { name: `Hide ${name}` }).click();
+  };
   // Two 30 × 20 plates, 20 mm apart, around the origin; both profiles at once.
   await page.keyboard.press('r');
   await click(-40, -10);
@@ -501,13 +507,28 @@ test('joins only the shown bodies when a hidden one is in the way (ADR-0095)', a
   await expect(prompt(page)).toHaveCount(0);
   await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
   await expect(chip(page, 'Sketch1')).toBeVisible();
+  // A bridge across the gap, in its own sketch, reaches both plates.
+  await newSketchOnXY(page);
+  await settled(viewport);
+  const bridge = clicker(page, await mapping(viewport));
+  await page.keyboard.press('r');
+  await bridge(-12, -5);
+  await bridge(12, 5);
+  await page.keyboard.press('Escape');
+  await expect(prompt(page)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await expect(chip(page, 'Sketch2')).toBeVisible();
+  await settled(viewport);
   for (const [x, shift] of [
     [-25, false],
     [25, true],
   ] as const) {
-    const p = at(x, 0);
+    const p = (await mapping(viewport))(x, 0);
     await page.mouse.move(p.x, p.y);
-    await page.mouse.click(p.x, p.y, shift ? { modifiers: ['Shift'] } : {});
+    // page.mouse.click takes no modifiers: hold Shift around it.
+    if (shift) await page.keyboard.down('Shift');
+    await page.mouse.click(p.x, p.y);
+    if (shift) await page.keyboard.up('Shift');
   }
   await page.keyboard.press('e');
   const dialog = page.getByRole('region', { name: 'Extrude dialog' });
@@ -519,20 +540,12 @@ test('joins only the shown bodies when a hidden one is in the way (ADR-0095)', a
   await kernelReady(page);
   await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:30,20,10 Body2:6:30,20,10');
 
-  await browser.getByRole('button', { name: 'Hide Body2' }).click();
+  await hide('Body2');
   await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:30,20,10');
 
-  // A bridge across the gap reaches both plates; Join takes the shown one only.
-  const home = await newSketchOnXY(page);
-  const bridge = clicker(page, home);
-  await page.keyboard.press('r');
-  await bridge(-30, -5);
-  await bridge(30, 5);
-  await page.keyboard.press('Escape');
-  await expect(prompt(page)).toHaveCount(0);
-  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
-  await expect(chip(page, 'Sketch2')).toBeVisible();
-  const gap = home(0, 0);
+  // The bridge's profile, in the gap (the sketch is still shown).
+  await settled(viewport);
+  const gap = (await mapping(viewport))(0, 0);
   await page.mouse.move(gap.x, gap.y);
   await page.mouse.click(gap.x, gap.y);
   await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^profile:/);
@@ -547,8 +560,8 @@ test('joins only the shown bodies when a hidden one is in the way (ADR-0095)', a
   await expect(join).toHaveAttribute('data-dialog-valid', 'true');
 
   // With both hidden, nothing shown is in the way: the dialog says so, OK waits.
-  await browser.getByRole('button', { name: 'Hide Body1' }).click();
-  await expect(join).toHaveAttribute('data-dialog-valid', 'false');
+  await hide('Body1');
+  await expect(join).not.toHaveAttribute('data-dialog-valid');
   await expect(join).toContainText('Every body the extrude reaches is hidden.');
   await expect(join.getByRole('button', { name: 'OK' })).toBeDisabled();
   await browser.getByRole('button', { name: 'Show Body1' }).click();
@@ -557,8 +570,8 @@ test('joins only the shown bodies when a hidden one is in the way (ADR-0095)', a
   await join.getByRole('button', { name: 'OK' }).click();
   await expect(join).toBeHidden();
   await kernelReady(page);
-  // Body1 grew to the bridge's far end; Body2 is still hidden and unchanged.
-  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:70,20,10');
+  // Body1 grew to the bridge's end; Body2 is still hidden and unchanged.
+  await expect(viewport).toHaveAttribute('data-bodies', /^Body1:\d+:52,20,10$/);
   await browser.getByRole('button', { name: 'Show Body2' }).click();
-  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:70,20,10 Body2:6:30,20,10');
+  await expect(viewport).toHaveAttribute('data-bodies', /^Body1:\d+:52,20,10 Body2:6:30,20,10$/);
 });

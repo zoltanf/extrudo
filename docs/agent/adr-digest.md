@@ -2703,3 +2703,23 @@ two points** (`b` set) shows **one glyph halfway between them** (a point-style a
 `a`) with the icons `horizontal-points`/`vertical-points` and the label "Horizontal (points)" /
 "Vertical (points)"; `glyphFace(c)` in `apps/web/src/sketch/tools/glyphs.ts` is the only place
 that picks a glyph's icon and label (`ConstraintGlyphs.tsx` draws `PlacedGlyph.icon`/`label`).
+
+ADR-0095 (2026-10-20) keeps **hidden and ghost bodies out of an extrude's or revolve's
+automatic join, cut and intersect** without teaching the kernel about visibility.
+`operate()` (`packages/kernel/src/features/operation.ts`) **always reports**
+`OperationReport.touching` (the bodies the tool touches; `[]` for a new body, and for
+picked bodies cut or intersected, which skips the distance query); extrude and revolve
+pass it as `FeatureOutput.report`, `PreviewResult.operation` carries it, and
+`dialog.ts` keeps it in `DialogPreview.operation` and gives it to `propose`/`validate` as
+`DialogContext.draftOperation`; a preview whose report differs re-runs `refresh` once.
+`apps/web/src/features/operationBodies.ts` (`proposeBodies`, `proposeWithBodies`,
+`allHidden`) is shared by extrude and revolve. **Rules:** the kernel stays visibility-blind
+(an eye toggle never changes a recompute); the proposal never overrides a chosen pick
+(`chosen('operation')` decides which operation it reads; an edited feature that stores
+picks proposes nothing); with a hidden body among `touching` and at least one shown, it
+proposes the shown ones; otherwise it proposes "automatic" (`bodies: []`) **only when the
+current pick is non-empty**, else `undefined` (`changedFields` compares by JSON, and
+`undefined` against `[]` would count as a change, marking an edited feature's empty pick
+as chosen); an empty `touching` proposes nothing; `validate` refuses (field `bodies`)
+when the operation isn't a new body, the pick is empty and every touching body is hidden.
+A ghost is stored with `visible: false`, so it counts as hidden.
