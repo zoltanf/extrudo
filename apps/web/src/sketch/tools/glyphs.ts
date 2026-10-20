@@ -267,6 +267,23 @@ function distanceToCurves(p: readonly [number, number], lines: readonly (readonl
   return best;
 }
 
+/** The polylines in screen pixels: points that don't project are left out. */
+function projectCurves(
+  curves: readonly (readonly Vec2[])[],
+  project: (p: Vec2) => readonly [number, number] | undefined,
+): Vec2[][] {
+  const out: Vec2[][] = [];
+  for (const line of curves) {
+    const screen: Vec2[] = [];
+    for (const p of line) {
+      const s = project(p);
+      if (s) screen.push([s[0], s[1]]);
+    }
+    out.push(screen);
+  }
+  return out;
+}
+
 const dist = (a: Vec2, b: Vec2) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
 function unit(v: Vec2): Vec2 | undefined {
@@ -290,6 +307,7 @@ export function layoutGlyphs(
     glyphs: GlyphAnchor[];
   }
   const rows = new Map<string, Row>();
+  let screenCurves: Vec2[][] | undefined;
   for (const anchor of anchors) {
     const origin = project(anchor.at);
     if (!origin) continue;
@@ -306,10 +324,8 @@ export function layoutGlyphs(
     }
     if (anchor.pair && curves?.length) {
       // Keep the normal's side unless a curve is too close there and the other side is clearer.
-      const screen = curves.map((line) => line.flatMap((p) => project(p) ?? []));
-      const lines = screen.map((flat) =>
-        Array.from({ length: flat.length / 2 }, (_, i) => [flat[2 * i], flat[2 * i + 1]] as Vec2),
-      );
+      if (screenCurves === undefined) screenCurves = projectCurves(curves, project);
+      const lines = screenCurves;
       const side = (k: number) =>
         distanceToCurves([origin[0] + k * out[0] * OFFSET, origin[1] + k * out[1] * OFFSET], lines);
       const plus = side(1);
