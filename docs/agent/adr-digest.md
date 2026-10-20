@@ -2766,3 +2766,21 @@ current pick is non-empty**, else `undefined` (`changedFields` compares by JSON,
 as chosen); an empty `touching` proposes nothing; `validate` refuses (field `bodies`)
 when the operation isn't a new body, the pick is empty and every touching body is hidden.
 A ghost is stored with `visible: false`, so it counts as hidden.
+
+ADR-0096 (2026-10-20, #77) adds **parameter name completion to `<ExpressionInput>`**.
+`ExpressionNamesProvider` (`apps/web/src/parameters/expressionNames.tsx`) wraps `AppShell`
+and provides a getter of the document's parameters (name, `formatQuantity` value),
+cached per document; `completion.ts` has `wordAt` (the identifier around the caret, none
+inside a number or in a unit's place after one) and `matching` (contains, ignoring case:
+exact, then prefix, then the rest, in document order). **Rules:** a field filters names by
+**its own `evaluate`**: offered unless `evaluate(name)` fails with `ExprError.code`
+`'unknown-name'` or `'cycle'` (a unit mismatch stays in scope), cached per name per focus;
+keep those codes on the evaluator's "Unknown name" and the graph's "refers to itself"
+errors; no call site passes names. Enter without an arrow pick commits as before; Tab
+inserts the pick or the first name (not when nothing is picked and the word is already the
+first name); Esc closes the list before it reverts the field, and is stopped there;
+Ctrl+Space opens the list on an empty word. The list is a Radix Popover (portalled,
+`role="listbox"` named `Parameters for <label>`, options `role="option"` with
+`aria-selected`, `onEscapeKeyDown` prevented, no auto focus); the field keeps the
+`textbox` role with `aria-autocomplete`, `aria-controls`, `aria-activedescendant`, and
+`data-keep-escape` while the list is open.

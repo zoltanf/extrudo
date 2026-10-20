@@ -96,6 +96,8 @@ describe('evaluateParameters', () => {
     );
     expect(errorFor(d, 'depth').message).toBe('Uses `wall`, which has an error.');
     expect(valueFor(d, 'ok').value).toBe(5);
+    expect(errorFor(d, 'wall').code).toBe('cycle');
+    expect(errorFor(d, 'depth').code).toBeUndefined();
   });
 
   it('underlines the reference that closes the cycle', () => {

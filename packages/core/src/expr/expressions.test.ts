@@ -287,6 +287,13 @@ describe('name errors', () => {
   ])('%s', (source, message) => {
     expect(error(source).message).toBe(message);
   });
+
+  it('marks an unknown name with a code, and only that', () => {
+    expect(error('depth').code).toBe('unknown-name');
+    expect(error('sin').code).toBeUndefined();
+    expect(error('foo(1)').code).toBeUndefined();
+    expect(error('1 +').code).toBeUndefined();
+  });
 });
 
 describe('syntax errors', () => {

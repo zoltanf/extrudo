@@ -110,6 +110,47 @@ test('reports a circular reference with its path', async ({ page }) => {
   await expect(width).toHaveValue('80 mm');
 });
 
+test('completes parameter names, without the ones that use the field (ADR-0096)', async ({
+  page,
+}) => {
+  const wall = await parameterExpression(page, 'wall');
+  const list = page.getByRole('listbox', { name: 'Parameters for Expression of wall' });
+  const options = list.getByRole('option');
+
+  // A part of the name, in any case; the list shows each value.
+  await wall.fill('');
+  await wall.pressSequentially('2 * WID');
+  await expect(options.first()).toHaveText('width = 80.00 mm');
+  await wall.press('ArrowDown');
+  await expect(wall).toHaveAttribute('aria-activedescendant', /.+/);
+  await expect(options.first()).toHaveAttribute('aria-selected', 'true');
+  await wall.press('Enter');
+  await expect(wall).toHaveValue('2 * width');
+  await expect(list).toBeHidden();
+
+  // `inner` is `width - 2 * wall`: offering it here would make a cycle.
+  await wall.pressSequentially(' - i');
+  await expect(options.first()).toBeVisible();
+  expect(await options.allInnerTexts()).not.toContainEqual(expect.stringMatching(/^inner/));
+
+  // Esc closes the list first, then reverts the field; the dialog stays open.
+  await wall.press('Escape');
+  await expect(list).toBeHidden();
+  await expect(wall).toHaveValue('2 * width - i');
+  await wall.press('Escape');
+  await expect(wall).toHaveValue('2.4 mm');
+  await expect(parametersDialog(page)).toBeVisible();
+
+  // Ctrl+Space lists every name in scope; Tab inserts the first.
+  await wall.fill('');
+  await wall.press('Control+Space');
+  await expect(options.first()).toBeVisible();
+  await wall.press('Tab');
+  await expect(wall).toBeFocused();
+  await expect(wall).not.toHaveValue('');
+  await expect(list).toBeHidden();
+});
+
 test('adds, renames and deletes parameters', async ({ page }) => {
   const dialog = parametersDialog(page);
   await dialog.getByRole('button', { name: 'New parameter', exact: true }).click();

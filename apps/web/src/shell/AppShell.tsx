@@ -100,6 +100,7 @@ import { MeasureOverlay } from '../measure/MeasureOverlay';
 import { MeasurePanel } from '../measure/MeasurePanel';
 import { TutorialCard } from '../onboarding/TutorialCard';
 import { useTutorial } from '../onboarding/useTutorial';
+import { ExpressionNamesProvider } from '../parameters/expressionNames';
 import { ParametersDialog } from '../parameters/ParametersDialog';
 import type { Platform } from '../platform';
 import {
@@ -331,7 +332,16 @@ function keepNativeMenuOut(event: MouseEvent) {
 const twoFrames = () =>
   new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())));
 
-export function AppShell({
+/** The shell, with the document's parameter names for every expression field (ADR-0096). */
+export function AppShell(props: AppShellProps) {
+  return (
+    <ExpressionNamesProvider store={props.store}>
+      <Shell {...props} />
+    </ExpressionNamesProvider>
+  );
+}
+
+function Shell({
   store,
   session,
   model,

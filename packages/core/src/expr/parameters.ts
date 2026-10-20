@@ -164,6 +164,7 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
               ? `\`${member}\` refers to itself.`
               : `\`${member}\` refers to itself: ${path.join(' → ')}.`,
             span,
+            'cycle',
           ),
         );
       });

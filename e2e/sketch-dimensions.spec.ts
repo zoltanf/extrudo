@@ -158,6 +158,45 @@ test('labels select, drag, edit, turn driven and delete', async ({ page }) => {
   await expect(labels(page)).toHaveCount(1);
 });
 
+test('the editor completes parameter names; Esc closes the list, then the editor (ADR-0096)', async ({
+  page,
+}) => {
+  const at = await sketchOnXY(page);
+  const click = clicker(page, at);
+  await page.keyboard.press('c');
+  await click(0, 0);
+  await click(10, 0);
+  await click(40, 0);
+  await click(50, 0);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('d');
+  await click(10, 0);
+  await click(18, 18);
+  await page.keyboard.press('Escape');
+  await click(50, 0);
+  await click(58, 18);
+
+  // d2's own name isn't offered: it would refer to itself.
+  const value = page.getByRole('textbox', { name: 'Value of d2' });
+  await expect(value).toBeFocused();
+  await value.fill('');
+  await value.pressSequentially('2 * D');
+  const list = page.getByRole('listbox', { name: 'Parameters for Value of d2' });
+  await expect(list.getByRole('option')).toHaveText(['d1 = 20.00 mm']);
+  await page.keyboard.press('Escape');
+  await expect(list).toBeHidden();
+  await expect(editor(page)).toHaveCount(1);
+
+  // A click on a name inserts it and keeps the editor open.
+  await value.press('Control+Space');
+  await list.getByRole('option', { name: /^d1/ }).click();
+  await expect(value).toHaveValue('2 * d1');
+  await expect(value).toBeFocused();
+  await value.press('Enter');
+  await expect(editor(page)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Diameter d2 fx: ⌀40.00' })).toBeVisible();
+});
+
 test('a dimension is a parameter: the Parameters dialog edits it, and it takes expressions', async ({
   page,
 }) => {

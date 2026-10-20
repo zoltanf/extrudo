@@ -463,6 +463,13 @@ Crank or Glide. Since the right button drags, the right-click marking menu
   box and accepts expressions.
 - Invalid input: the field shows a red underline and the message; the preview
   keeps the last valid result, dimmed.
+- **Name completion (ADR-0096), in every expression field:** typing part of
+  a name lists the parameters in that field's scope that contain it, ignoring
+  case (exact and prefix matches first), each with its value ("cut_height =
+  12.00 mm"), in a list under the field. ↑/↓ pick, Tab or Enter inserts (Enter
+  without a pick commits as usual), Esc closes the list before it reverts the
+  field, Ctrl+Space opens it on an empty field. A parameter that would make a
+  cycle (the one being edited, or one that uses it) isn't offered.
 - OK commits one undoable step and adds (or updates) the timeline chip.
   A new feature that used sketch profiles hides those sketches in the same
   step (as is usual in CAD), so a used profile doesn't float in front of the

@@ -1,5 +1,5 @@
 /** Expressions and parameters (architecture §4.3, FR-PAR). */
-export { ExprError } from './errors';
+export { ExprError, type ExprErrorCode } from './errors';
 export {
   CONSTANTS,
   closest,

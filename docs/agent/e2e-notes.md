@@ -1329,6 +1329,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   dialog open, a second Esc closes it. A cycle (`inner + 1 mm` on `width`)
   reports "width refers to itself: width → inner → width.", a range using
   `inner` on width "The range can't use inner: it changes with width."
+- Name completion (ADR-0096): the list is the `listbox` "Parameters for
+  Expression of <name>" (portalled, outside the dialog), its rows `option`s
+  ("width = 80.00 mm", `aria-selected` on the arrow pick). It opens on
+  typed input only: use `pressSequentially`, `fill` with a name opens it too
+  (an `input` event) but then Tab inserts the first match. On `wall`,
+  `inner` is never offered (it uses `wall`).
 - **Drag is real**: `row.dragTo(target, { targetPosition: { x: 40, y: 4 } })`
   (the top half of a row = before it); `Alt+ArrowDown` on a focused row
   moves it; each is one undo step.
@@ -1842,6 +1848,13 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   editor creates a parameter and uses it (FR-PAR-03, the label's `title`
   becomes `d1 = len`). Deleting a parameter in use is refused ("w is used by
   d1. Change that first."); reopening the sketch fits the view again.
+
+- Name completion (ADR-0096): circles (0,0)-(10,0) and (40,0)-(50,0), `d`
+  at (10,0)/(18,18), Esc, then (50,0)/(58,18) opens "Value of d2"; its
+  `listbox` "Parameters for Value of d2" offers only `d1 = 20.00 mm` (not
+  d2 itself). Esc closes the list and keeps the editor; a click on an
+  option inserts and keeps the focus; `2 * d1` gives the label "Diameter d2
+  fx: ⌀40.00".
 
 ### `e2e/sketch-datums.spec.ts`
 

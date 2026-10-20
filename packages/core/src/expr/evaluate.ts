@@ -196,6 +196,7 @@ function lookup(name: string, span: Span, scope: Scope): Quantity {
   throw new ExprError(
     `Unknown name \`${name}\`.${suggestion ? ` Did you mean \`${suggestion}\`?` : ''}`,
     span,
+    'unknown-name',
   );
 }
 

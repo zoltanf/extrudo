@@ -1,0 +1,1 @@
+- 2026-10-20 · **Parameter names complete as you type**: in any expression field, part of a name lists the parameters that contain it with their values (`cut` finds `cut_height = 12 mm`); ↑/↓ pick, Tab or Enter inserts, Esc closes the list, Ctrl+Space opens it (#77).
