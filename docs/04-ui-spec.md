@@ -747,7 +747,7 @@ A list on the left, the selected parameter on the right.
   applied. A rectangle corner placed level with the end of a level line makes
   the two edges **Collinear** (ADR-0094); a Horizontal or Vertical between two
   points (a corner level with a circle centre) shows one glyph halfway between
-  them, with a dotted icon and the label "Horizontal (points)".
+  them, on the side away from any curve that passes close to it, with a dotted icon and the label "Horizontal (points)".
 - Pressing a dimension tool on a selection places the most likely dimension
   type.
 - **The origin and axes as picks** (ADR-0093): the dimension and constraint

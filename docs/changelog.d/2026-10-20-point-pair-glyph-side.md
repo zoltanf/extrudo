@@ -1,0 +1,1 @@
+- 2026-10-20 · **Level/plumb point glyphs step off curves**: the glyph of a Horizontal or Vertical between two points sits beside the line between them, on the side away from a curve that passes close by, so clicking the curve no longer picks the glyph.

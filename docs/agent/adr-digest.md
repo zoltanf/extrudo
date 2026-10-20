@@ -2703,6 +2703,10 @@ two points** (`b` set) shows **one glyph halfway between them** (a point-style a
 `a`) with the icons `horizontal-points`/`vertical-points` and the label "Horizontal (points)" /
 "Vertical (points)"; `glyphFace(c)` in `apps/web/src/sketch/tools/glyphs.ts` is the only place
 that picks a glyph's icon and label (`ConstraintGlyphs.tsx` draws `PlacedGlyph.icon`/`label`).
+Amendment 2026-10-20: a pair anchor carries a `normal` (up for level, right for plumb) and `pair: true`;
+`layoutGlyphs(anchors, project, curves)` takes the normal's side unless a curve from `glyphCurves(sketch)`
+(non-point entities, construction lines in, datum axes out) is closer than `GLYPH_SIZE / 2 + 2` px and the
+other side is clearer; a pair has its own row key `m:<midpoint>`; other glyphs place as before.
 ADR-0093 (issue #61, 2026-10-19) lets **the dimension and constraint tools pick the origin and
 axes**. Files: `packages/core/src/sketch/projection.ts` (`PROJECTABLE`, `DATUM_SPAN`,
 `isDatumRef`, `syncProjections`' construction flag), `sketch/schema.ts` (`PROJECTABLE`,

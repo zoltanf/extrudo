@@ -62,6 +62,23 @@ accessible name. Hovering it still highlights both points. `glyphs.ts` decides
 the icon and label (`glyphFace`), so the choice is unit-tested with the
 placement; the component only draws what it is given.
 
+## Amendment (2026-10-20)
+
+A point-pair glyph sat 14 px up and right of the midpoint, like a glyph beside
+a point. When a curve ran just past the midpoint (a closed control-point spline
+whose two lower poles are level), the glyph landed on the curve and took the
+click meant for it. Now a pair anchor has a `normal` (perpendicular to the
+line between its points: up for a level pair, right for a plumb one) and
+`pair: true`. `layoutGlyphs(anchors, project, curves)` puts it on the normal's
+side, or on the other side when a drawn curve (`glyphCurves`: every non-point
+entity, construction lines included, datum axis projections left out) is
+nearer than `GLYPH_SIZE / 2 + 2` px there and the other side is clearer. A pair
+has its own row, keyed by its projected midpoint, so two pairs sharing a point
+stay apart. Other glyphs are unchanged.
+
+Rejected: general collision avoidance for every glyph. Broader, and the glyphs
+on curves already move along their own normal.
+
 ## Rejected
 
 - **Only a new glyph** (keep the point pair, draw it once in the middle with

@@ -11,13 +11,16 @@
  *    shows once, halfway between them, with its own icon (ADR-0094).
  * 2. `layoutGlyphs` projects the anchors to the screen and moves each glyph
  *    off its entity: along the outward normal for curves (the upper side of a
- *    line), up and right for points. Glyphs on the same spot line up in a
- *    row across that direction, in constraint order.
+ *    line), up and right for points. A point-pair glyph moves off the line
+ *    between its points, to the side of its normal (up, or right for a
+ *    vertical pair) unless a curve is in the way. Glyphs on the same spot
+ *    line up in a row across that direction, in constraint order.
  */
 import {
   CONSTRAINT_LABELS,
   type ConstraintId,
   curvePolyline,
+  isDatumLine,
   type SketchConstraint,
   type SketchConstraintType,
   type SketchData,
@@ -42,6 +45,8 @@ export interface GlyphAnchor extends GlyphFace {
   at: Vec2;
   /** Which way the glyph moves off a curve (unit, sketch space); none for points. */
   normal?: Vec2;
+  /** A Horizontal/Vertical between two points: steps to the clearer side of the line between them. */
+  pair?: true;
 }
 
 export interface PlacedGlyph extends GlyphFace {
@@ -57,6 +62,8 @@ export const GLYPH_SIZE = 18;
 const GAP = 2;
 /** How far a glyph's center sits from its curve, px. */
 const OFFSET = 14;
+/** A pair glyph keeps its side while this far (px) from every curve. */
+const CLEAR = GLYPH_SIZE / 2 + 2;
 
 /** The icon of each constraint type; a point on a curve is a coincidence. */
 const ICONS: Record<SketchConstraintType, IconName> = {
@@ -104,12 +111,18 @@ export function glyphAnchors(sketch: SketchData): GlyphAnchor[] {
       const a = pointAt(sketch, c.a);
       const b = pointAt(sketch, c.b);
       if (a && b) {
+        // Up for a level pair, right for a plumb one (perpendicular to b - a).
+        let normal = unit([a[1] - b[1], b[0] - a[0]]);
+        if (normal && (normal[1] < -1e-9 || (Math.abs(normal[1]) <= 1e-9 && normal[0] < 0))) {
+          normal = [-normal[0], -normal[1]];
+        }
         out.push({
           constraint,
           type: c.type,
           ...face,
           entity: c.a,
           at: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2],
+          ...(normal && { normal, pair: true as const }),
         });
       }
       continue;
@@ -120,6 +133,17 @@ export function glyphAnchors(sketch: SketchData): GlyphAnchor[] {
     }
   }
   return out;
+}
+
+/** The sketch's drawn curves as polylines (sketch mm): what a point-pair glyph keeps clear of. */
+export function glyphCurves(sketch: SketchData): Vec2[][] {
+  const curves: Vec2[][] = [];
+  for (const [id, entity] of Object.entries(sketch.entities)) {
+    if (entity.type === 'point' || isDatumLine(sketch, id as SketchEntityId)) continue;
+    const line = curvePolyline(sketch, entity);
+    if (line && line.length >= 2) curves.push([...line]);
+  }
+  return curves;
 }
 
 function pointAt(sketch: SketchData, id: SketchEntityId): Vec2 | undefined {
@@ -225,6 +249,24 @@ function middle(line: readonly Vec2[]): { at: Vec2; dir: Vec2 } {
   return { at: line[0] as Vec2, dir: [1, 0] };
 }
 
+/** Screen distance from `p` to the nearest of the polylines. */
+function distanceToCurves(p: readonly [number, number], lines: readonly (readonly Vec2[])[]) {
+  let best = Number.POSITIVE_INFINITY;
+  for (const line of lines) {
+    for (let i = 1; i < line.length; i++) {
+      const a = line[i - 1] as Vec2;
+      const b = line[i] as Vec2;
+      const dx = b[0] - a[0];
+      const dy = b[1] - a[1];
+      const len2 = dx * dx + dy * dy;
+      const t =
+        len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2));
+      best = Math.min(best, Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy));
+    }
+  }
+  return best;
+}
+
 const dist = (a: Vec2, b: Vec2) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
 function unit(v: Vec2): Vec2 | undefined {
@@ -239,6 +281,7 @@ function unit(v: Vec2): Vec2 | undefined {
 export function layoutGlyphs(
   anchors: readonly GlyphAnchor[],
   project: (p: Vec2) => readonly [number, number] | undefined,
+  curves?: readonly (readonly Vec2[])[],
 ): PlacedGlyph[] {
   interface Row {
     origin: readonly [number, number];
@@ -261,10 +304,23 @@ export function layoutGlyphs(
       const len = d ? Math.hypot(d[0], d[1]) : 0;
       if (d && len > 1e-9) out = [d[0] / len, d[1] / len];
     }
+    if (anchor.pair && curves?.length) {
+      // Keep the normal's side unless a curve is too close there and the other side is clearer.
+      const screen = curves.map((line) => line.flatMap((p) => project(p) ?? []));
+      const lines = screen.map((flat) =>
+        Array.from({ length: flat.length / 2 }, (_, i) => [flat[2 * i], flat[2 * i + 1]] as Vec2),
+      );
+      const side = (k: number) =>
+        distanceToCurves([origin[0] + k * out[0] * OFFSET, origin[1] + k * out[1] * OFFSET], lines);
+      const plus = side(1);
+      if (plus < CLEAR && side(-1) > plus) out = [-out[0], -out[1]];
+    }
     // Points on the same spot share a row whichever point entity they name.
-    const key = anchor.normal
-      ? `e:${anchor.entity}`
-      : `p:${Math.round(origin[0])},${Math.round(origin[1])}`;
+    const key = anchor.pair
+      ? `m:${Math.round(origin[0])},${Math.round(origin[1])}`
+      : anchor.normal
+        ? `e:${anchor.entity}`
+        : `p:${Math.round(origin[0])},${Math.round(origin[1])}`;
     const row = rows.get(key);
     if (row) row.glyphs.push(anchor);
     else rows.set(key, { origin, out, glyphs: [anchor] });

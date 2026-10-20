@@ -19,7 +19,7 @@ import { ToolIcon } from '../../design-system';
 import { viewProject } from '../../viewport/camera';
 import type { ViewportStore } from '../../viewport/store';
 import { useAnnotationMenu } from './annotationMenu';
-import { GLYPH_SIZE, glyphAnchors, layoutGlyphs } from './glyphs';
+import { GLYPH_SIZE, glyphAnchors, glyphCurves, layoutGlyphs } from './glyphs';
 
 export interface ConstraintGlyphsProps {
   store: DocumentStore;
@@ -79,6 +79,7 @@ export function ConstraintGlyphs({
   });
   const [hover, setHover] = useState<ConstraintId>();
   const anchors = useMemo(() => (data ? glyphAnchors(data) : []), [data]);
+  const curves = useMemo(() => (data ? glyphCurves(data) : []), [data]);
 
   // The constraints there when the layer opened don't flash; later ones do.
   const initial = useRef<Set<string>>(undefined);
@@ -90,7 +91,7 @@ export function ConstraintGlyphs({
     const ndc = viewProject(view, projection, width / height, sketchToWorld(frame, p));
     return ndc && [((ndc[0] + 1) / 2) * width, ((1 - ndc[1]) / 2) * height];
   };
-  const placed = layoutGlyphs(anchors, toScreen);
+  const placed = layoutGlyphs(anchors, toScreen, curves);
   const selected = new Set(selection.filter((s) => s.kind === 'constraint').map((s) => s.id));
   const bad = new Set(over);
   // A hovered constraint that has gone (undo) highlights nothing.

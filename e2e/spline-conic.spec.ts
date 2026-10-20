@@ -225,12 +225,11 @@ test('a control-point spline drawn back to its first point is closed, and extrud
   await expect(viewport(page)).toHaveAttribute('data-sketch-profiles', 'profiles=1 holes=0');
 
   // Selected, the panel says it is closed. Between the two lower poles the
-  // closed curve runs at y = −8.33 ((P3 + 23 P0 + 23 P1 + P2) / 48); click the
-  // curve at the left-middle, clear of the inferred Horizontal's point-pair
-  // glyph that ADR-0094 draws there.
-  const left = at(-27.5, 10);
-  await page.mouse.move(left.x, left.y);
-  await page.mouse.click(left.x, left.y);
+  // closed curve runs at y = −8.33 ((P3 + 23 P0 + 23 P1 + P2) / 48). The
+  // poles' Horizontal glyph steps below the line, off the curve (ADR-0094).
+  const bottom = at(0, -25 / 3);
+  await page.mouse.move(bottom.x, bottom.y);
+  await page.mouse.click(bottom.x, bottom.y);
   await expect(selection(page).locator('[data-selection-title]')).toHaveText('Spline');
   await expect(selection(page).getByRole('checkbox', { name: 'Closed' })).toBeChecked();
 

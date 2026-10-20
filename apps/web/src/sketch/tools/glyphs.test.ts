@@ -1,6 +1,6 @@
 import type { SketchData, Vec2 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
-import { GLYPH_SIZE, glyphAnchors, layoutGlyphs } from './glyphs';
+import { GLYPH_SIZE, glyphAnchors, glyphCurves, layoutGlyphs } from './glyphs';
 
 /** A 20 × 10 rectangle whose corners are joined, with a circle and an arc tangent to the top. */
 const sketch = {
@@ -63,8 +63,8 @@ describe('glyphAnchors', () => {
   });
 
   it('shows a horizontal or vertical between two points once, halfway, with its own icon', () => {
-    expect(of('level')).toEqual([['p1', [25, 0], undefined]]);
-    expect(of('plumb')).toEqual([['q2', [20, 5], undefined]]);
+    expect(of('level')).toEqual([['p1', [25, 0], [0, 1]]]);
+    expect(of('plumb')).toEqual([['q2', [20, 5], [1, -0]]]);
     const face = (id: string) =>
       anchors.filter((a) => a.constraint === id).map((a) => [a.icon, a.label]);
     expect(face('level')).toEqual([['horizontal-points', 'Horizontal (points)']]);
@@ -104,15 +104,102 @@ describe('layoutGlyphs', () => {
     expect(at('joined')[0]?.[1]).toBeCloseTo(y);
   });
 
-  it("puts a point pair's glyph up and right of the midpoint, carrying its face", () => {
+  it("puts a point pair's glyph above the midpoint, carrying its face", () => {
     const [g] = placed.filter((p) => p.constraint === 'level');
-    expect(g?.x).toBeCloseTo(350 + 14 * Math.SQRT1_2);
-    expect(g?.y).toBeCloseTo(300 - 14 * Math.SQRT1_2);
+    expect(g?.x).toBeCloseTo(350);
+    expect(g?.y).toBeCloseTo(300 - 14);
     expect([g?.icon, g?.label]).toEqual(['horizontal-points', 'Horizontal (points)']);
-    expect(at('plumb')).toHaveLength(1);
+    // A vertical pair's glyph sits to the right of its midpoint (20, 5).
+    expect(at('plumb')).toEqual([[300 + 14, 250]]);
   });
 
   it('leaves out anchors that do not project', () => {
     expect(layoutGlyphs(glyphAnchors(sketch), () => undefined)).toEqual([]);
+  });
+});
+
+describe('a point pair next to curves', () => {
+  const project = (p: Vec2) => [p[0] * 10, -p[1] * 10] as const;
+  const pair = (type: 'horizontal' | 'vertical', pts: Record<string, Vec2>, b = 'b') =>
+    ({
+      entities: Object.fromEntries(
+        Object.entries(pts).map(([k, [x, y]]) => [k, { type: 'point', x, y }]),
+      ),
+      constraints: { c: { type, a: 'a', b } },
+      dimensions: {},
+    }) as unknown as SketchData;
+  const horizontal = pair('horizontal', { a: [-30, -10], b: [30, -10] });
+
+  it('puts a Horizontal pair straight above the midpoint', () => {
+    const [g] = layoutGlyphs(glyphAnchors(horizontal), project, []);
+    expect([g?.x, g?.y]).toEqual([0, 100 - 14]);
+  });
+
+  it('steps below the line when a curve passes just above the midpoint', () => {
+    const curve: Vec2[] = [
+      [-30, -9],
+      [30, -9],
+    ];
+    const [g] = layoutGlyphs(glyphAnchors(horizontal), project, [curve]);
+    expect([g?.x, g?.y]).toEqual([0, 100 + 14]);
+  });
+
+  it('keeps the normal side when the curve is clear', () => {
+    const curve: Vec2[] = [
+      [-30, 10],
+      [30, 10],
+    ];
+    const [g] = layoutGlyphs(glyphAnchors(horizontal), project, [curve]);
+    expect(g?.y).toBe(100 - 14);
+  });
+
+  it('puts a Vertical pair to the right', () => {
+    const v = pair('vertical', { a: [0, 0], b: [0, 20] });
+    const [g] = layoutGlyphs(glyphAnchors(v), project, []);
+    expect([g?.x, g?.y]).toEqual([14, -100]);
+  });
+
+  it('gives two pairs that share a point their own glyphs', () => {
+    const s = {
+      entities: {
+        a: { type: 'point', x: 0, y: 0 },
+        b: { type: 'point', x: 20, y: 0 },
+        c: { type: 'point', x: 0, y: 20 },
+      },
+      constraints: {
+        h: { type: 'horizontal', a: 'a', b: 'b' },
+        v: { type: 'vertical', a: 'a', b: 'c' },
+      },
+      dimensions: {},
+    } as unknown as SketchData;
+    const placed = layoutGlyphs(glyphAnchors(s), project, []);
+    expect(placed.map((g) => [g.x, g.y])).toEqual([
+      [100, -14],
+      [14, -100],
+    ]);
+  });
+});
+
+describe('glyphCurves', () => {
+  it('skips points and a datum axis, keeps a construction line', () => {
+    const s = {
+      entities: {
+        p1: { type: 'point', x: 0, y: 0 },
+        p2: { type: 'point', x: 10, y: 0 },
+        p3: { type: 'point', x: 0, y: 5 },
+        p4: { type: 'point', x: 10, y: 5 },
+        guide: { type: 'line', start: 'p1', end: 'p2', construction: true },
+        axis: { type: 'line', start: 'p3', end: 'p4', construction: true },
+      },
+      constraints: {},
+      dimensions: {},
+      projections: { p1: { ref: { kind: 'axis', id: 'origin:x' }, curves: { axis: 'axis' } } },
+    } as unknown as SketchData;
+    expect(glyphCurves(s)).toEqual([
+      [
+        [0, 0],
+        [10, 0],
+      ],
+    ]);
   });
 });
