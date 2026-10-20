@@ -81,6 +81,7 @@ function washer(): F3dDesign {
     features: [sketch, extrude] as F3dFeature[],
     bodies: [],
     problems: [],
+    unreadParameters: 0,
   };
 }
 

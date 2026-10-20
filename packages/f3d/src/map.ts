@@ -99,6 +99,8 @@ export interface ImportReport {
   skipped: SkippedFeature[];
   /** Smaller things that were approximated. */
   notes: string[];
+  /** Records the decoder could not read, verbatim (bug reports, `corpus.test.ts`). */
+  problems: string[];
   /** Sketch constraints and dimensions brought over (only with a solver, `ImportOptions.solver`). */
   constraints?: ConstraintTally;
   /** The file's visible bodies, checked against the file's own shapes (set by the body check). */
@@ -355,7 +357,12 @@ export function f3dToDesign(
   name: string,
   options: ImportOptions = {},
 ): ImportResult {
-  const report: ImportReport = { imported: [], skipped: [], notes: [] };
+  const report: ImportReport = {
+    imported: [],
+    skipped: [],
+    notes: [],
+    problems: [...f3d.problems],
+  };
   const d = Design.create({
     name,
     units: 'mm',
@@ -654,7 +661,15 @@ export function f3dToDesign(
         !feature.parameters.some((p) => p.kind === 'Side1Offset')
       ) {
         // Faces as the profile (press-pull).
-        const made = faceExtrude(d, feature, naming, expressionOf, participants, report);
+        const made = faceExtrude(
+          d,
+          feature,
+          naming,
+          expressionOf,
+          participants,
+          report,
+          f3d.unreadParameters,
+        );
         if (typeof made === 'string')
           report.skipped.push(skippedFeature(feature.name, 'Extrude', made));
         else {
@@ -671,6 +686,7 @@ export function f3dToDesign(
           movedSketch,
           participants,
           report,
+          f3d.unreadParameters,
         );
         if (typeof made === 'string')
           report.skipped.push(skippedFeature(feature.name, 'Extrude', made));
@@ -1343,6 +1359,18 @@ function splineShape(c: SketchSpline, placement: Placement): SplineShape {
 
 const keyOf = (tags: bigint[]) => [...new Set(tags.map(String))].sort().join(',');
 
+/**
+ * The extent of an extrude with no distance: through everything. When parameter records could
+ * not be read, that is a guess, and the report says so.
+ */
+function throughAll(report: ImportReport, f: F3dExtrude, unread: number): 'through-all' {
+  if (unread > 0)
+    report.notes.push(
+      `${f.name}: its distance could not be read from the file (${unread} parameter record${unread === 1 ? '' : 's'} of an unknown version); imported as through everything.`,
+    );
+  return 'through-all';
+}
+
 /** Adds an extrude; returns why not when it cannot. */
 function extrude(
   d: Design,
@@ -1353,6 +1381,7 @@ function extrude(
   movedSketch: (entry: SketchEntry, cm: number, name: string) => SketchEntry | undefined,
   participants: (records: number[], operation?: string, name?: string) => GeomRef[] | undefined,
   report: ImportReport,
+  unread: number,
 ): string | ImportedExtrude {
   if (!f.solid) return 'surface extrudes are not supported';
   if (f.profiles.length === 0) return 'its profile is a face, not a sketch profile';
@@ -1515,7 +1544,7 @@ function extrude(
     }
   } else if (f.direction === 'one-side') {
     if (along) inputs.distance = expressionOf(along, negative);
-    else inputs.extent = 'through-all';
+    else inputs.extent = throughAll(report, f, unread);
   } else if (f.direction === 'two-sides') {
     inputs.direction = 'two-sides';
     // Each side: a distance, up to a face (its offset parameter and the next
@@ -1548,13 +1577,13 @@ function extrude(
         inputs[toObject] = { kind: 'face', id: name };
         const along = side.past ? alongSweep(side.past.value, side.face, entry.source.frame) : 0;
         if (Math.abs(along) > 1e-12) inputs[past] = numberExpression(along, 'cm');
-      } else inputs[extent] = 'through-all';
+      } else inputs[extent] = throughAll(report, f, unread);
     }
     if (taper2 && Math.abs(taper2.value) > 1e-12) inputs.taper2 = expressionOf(taper2);
   } else {
     inputs.direction = 'symmetric';
     const dist = symmetric ?? along;
-    if (!dist) inputs.extent = 'through-all';
+    if (!dist) inputs.extent = throughAll(report, f, unread);
     else {
       // The file's distance is each side's: every symmetric extrude of the
       // corpus has its caps that far either side of the profile (FORMAT.md).
@@ -1702,6 +1731,7 @@ function faceExtrude(
   expressionOf: (p: ParameterValue, negate?: boolean) => string,
   participants: (records: number[], operation?: string, name?: string) => GeomRef[] | undefined,
   report: ImportReport,
+  unread: number,
 ): string | { id: string } {
   if (!f.solid) return 'surface extrudes are not supported';
   if (f.direction !== 'one-side') return `a ${f.direction} extrude of faces is not supported yet`;
@@ -1719,7 +1749,7 @@ function faceExtrude(
   const negative = (along?.value ?? 0) < 0;
   const inputs: Record<string, unknown> = { profiles, operation: f.operation };
   if (along) inputs.distance = expressionOf(along, negative);
-  else inputs.extent = 'through-all';
+  else inputs.extent = throughAll(report, f, unread);
   if (taper && Math.abs(taper.value) > 1e-12) inputs.taper = expressionOf(taper);
   if (f.reversed !== negative) inputs.flip = true;
   const bodies =

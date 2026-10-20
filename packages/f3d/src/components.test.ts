@@ -137,6 +137,7 @@ function boxAndLid(lid: Partial<F3dComponent> = {}): F3dDesign {
     components: components(lid),
     bodyMoves: [],
     problems: [],
+    unreadParameters: 0,
   };
 }
 

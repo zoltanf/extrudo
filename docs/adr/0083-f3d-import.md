@@ -1356,3 +1356,17 @@ body before, now come out apart but stay frozen (about 1 % off each: their
 text cuts are drawn in a substitute font). Tests: `map.test.ts`
 "the bodies of an extrude that makes several" and "extrude extents from a
 start face"; `extrude-start.test.ts` (the start plane).
+
+## Amendment, 2026-10-20: parameter value v9, records that could not be read (#93)
+
+A file written with parameter value class version 9 (version 7 plus a u32 after the first
+byte and six flag bytes) lost every parameter: the decoder only knew 5–7, the failures went
+into `F3dDesign.problems`, which nothing read, and an extrude without its `AlongDistance`
+was imported as "through everything" (a first feature then failed with "no bodies to go
+through"). Now `parameterValue` reads v9 (`FORMAT.md`; version 8 was never seen and stays
+unsupported). The decoder's problems also reach `ImportReport.problems` (verbatim, for bug
+reports and `corpus.test.ts`) and `importNotices` says in one plain line how many records
+could not be read. `F3dDesign.unreadParameters` counts the parameter records that failed;
+when it is above zero, each through-all fallback for a missing distance adds a note saying it
+is a guess. Tests: `decode/parameters.test.ts`; `map.test.ts` "says when a missing distance
+is a guess"; `actions.test.ts` "says how many records could not be read".

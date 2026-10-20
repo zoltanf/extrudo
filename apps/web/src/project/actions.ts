@@ -224,7 +224,10 @@ function listed(items: string[]): string {
  * replayed bodies out with "Remove rebuilt bodies".
  */
 export function importNotices(
-  report: Pick<ImportReport, 'imported' | 'skipped' | 'constraints' | 'bodies' | 'bodyCheck'>,
+  report: Pick<
+    ImportReport,
+    'imported' | 'skipped' | 'problems' | 'constraints' | 'bodies' | 'bodyCheck'
+  >,
   removed = false,
 ): string[] {
   const skipped = report.skipped.filter((s) => s.reason !== 'suppressed in the file');
@@ -234,6 +237,11 @@ export function importNotices(
   ];
   if (skipped.length > 0)
     out.push(`Not imported: ${listed(skipped.map((s) => `${s.name} (${s.reason})`))}.`);
+  const unread = report.problems.length;
+  if (unread > 0)
+    out.push(
+      `${unread} record${unread === 1 ? '' : 's'} in the file could not be read (a format Extrudo doesn't know yet); features that depend on them may be wrong. Please report it with the file at github.com/zoltanf/extrudo/issues.`,
+    );
   const c = report.constraints;
   const left = c ? Object.values(c.leftOut).reduce((a, b) => a + b, 0) : 0;
   if (c && c.constraints + c.dimensions + left > 0)

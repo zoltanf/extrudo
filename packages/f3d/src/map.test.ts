@@ -115,6 +115,7 @@ function washer(frame = IDENTITY): F3dDesign {
     features: [sketch, extrude],
     bodies: [],
     problems: [],
+    unreadParameters: 0,
   };
 }
 
@@ -145,6 +146,21 @@ async function measures(f3d: F3dDesign): Promise<Measure[]> {
 const RING = Math.PI * (5.5 ** 2 - 2.1 ** 2) * 0.8;
 
 describe('f3dToDesign', () => {
+  it('says when a missing distance is a guess because parameter records were unreadable', () => {
+    const noDistance = (unreadParameters: number) => {
+      const f3d = washer();
+      (f3d.features[1] as F3dExtrude).parameters = [];
+      return f3dToDesign({ ...f3d, unreadParameters, problems: ['parameter #5: x'] }, 'W');
+    };
+    const guessed = noDistance(1);
+    expect(guessed.report.notes).toContain(
+      'Extrude1: its distance could not be read from the file (1 parameter record of an unknown version); imported as through everything.',
+    );
+    expect(guessed.report.problems).toEqual(['parameter #5: x']);
+    expect(JSON.stringify(guessed.design.toJSON())).toContain('through-all');
+    expect(noDistance(0).report.notes.filter((n) => n.includes('distance could not'))).toEqual([]);
+  });
+
   it("extrudes a body's face along its outward normal (press-pull)", async () => {
     const f3d = washer();
     f3d.features.push({
@@ -1005,6 +1021,7 @@ describe('f3dToDesign', () => {
           { id: 51, index: 2, visible: true, creator: 2 },
         ],
         problems: [],
+        unreadParameters: 0,
       };
     }
     const DISC = Math.PI * 10 ** 2;

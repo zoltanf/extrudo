@@ -154,6 +154,7 @@ function plate(
     features: [sketch, extrude],
     bodies: [],
     problems: [],
+    unreadParameters: 0,
   };
 }
 

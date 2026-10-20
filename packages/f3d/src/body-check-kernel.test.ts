@@ -232,6 +232,7 @@ function squareDesign(): F3dDesign {
     features: [sketch, extrude],
     bodies: [],
     problems: [],
+    unreadParameters: 0,
   };
 }
 

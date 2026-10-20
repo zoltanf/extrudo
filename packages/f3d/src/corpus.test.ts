@@ -47,6 +47,7 @@ describe.skipIf(!root)('a folder of real .f3d files', () => {
         if (problems.length > 0) failures.push(`${file}: ${JSON.stringify(problems[0])}`);
         for (const s of report.skipped)
           lines.push(`${file}\t${s.name}\t${s.kind}\t${s.reason}\t${s.detail ?? ''}`);
+        for (const line of report.problems) lines.push(`${file}\t\t\t\t${line}`);
         const moved = report.constraints?.maxDisplacement ?? 0;
         if (moved > 1e-6) failures.push(`${file}: a sketch moved ${moved} mm`);
       } catch (error) {

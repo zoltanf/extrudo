@@ -83,7 +83,7 @@ function planeRef(
   const { origin: O, x: X, y: Y } = plane;
   const N: Vec3 = [X[1] * Y[2] - X[2] * Y[1], X[2] * Y[0] - X[0] * Y[2], X[0] * Y[1] - X[1] * Y[0]];
   const m = [X[0], Y[0], N[0], O[0], X[1], Y[1], N[1], O[1], X[2], Y[2], N[2], O[2], 0, 0, 0, 1];
-  const notes: ImportReport = { imported: [], skipped: [], notes: [] };
+  const notes: ImportReport = { imported: [], skipped: [], notes: [], problems: [] };
   const placed = placeSketch(d, m, notes, name);
   for (const note of notes.notes) report.notes.push(note.replace(': drawn on ', `: ${verb} `));
   return placed?.plane;

@@ -51,7 +51,7 @@ describe('the .f3d import worker client (ADR-0083, 2026-10-16)', () => {
     worker.reply({
       result: {
         doc,
-        report: { imported: ['Box1'], skipped: [], notes: [] },
+        report: { imported: ['Box1'], skipped: [], notes: [], problems: [] },
         preview,
         steps: [{ record: 1, name: 'Body1', step: 'ISO-10303-21;' }],
         bodies: [{ record: 1, name: 'Body1' }],

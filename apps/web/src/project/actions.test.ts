@@ -125,7 +125,7 @@ describe('saveF3dImport: the body check (ADR-0084)', () => {
     const box = `${design.box({ length: '10 mm' }).id}:0` as BodyId;
     return {
       design,
-      report: { imported: ['Box1'], skipped: [], notes: [] },
+      report: { imported: ['Box1'], skipped: [], notes: [], problems: [] },
       steps: withSteps,
       bodies: [{ record: 1, name: 'Body1', hint: box }],
       box,
@@ -265,7 +265,7 @@ describe('saveF3dImport: the body check (ADR-0084)', () => {
 });
 
 describe('importNotices: the bodies', () => {
-  const base = { imported: [], skipped: [] };
+  const base = { imported: [], skipped: [], problems: [] };
   const body = (
     name: string,
     outcome: 'editable' | 'frozen' | 'unchecked' | 'missing',
@@ -274,6 +274,13 @@ describe('importNotices: the bodies', () => {
     name,
     outcome,
     ...extra,
+  });
+
+  it('says how many records could not be read', () => {
+    expect(importNotices({ ...base, problems: ['a', 'b'] })).toContain(
+      "2 records in the file could not be read (a format Extrudo doesn't know yet); features that depend on them may be wrong. Please report it with the file at github.com/zoltanf/extrudo/issues.",
+    );
+    expect(importNotices(base).some((n) => n.includes('could not be read'))).toBe(false);
   });
 
   it('says every body matches only when every body was checked', () => {

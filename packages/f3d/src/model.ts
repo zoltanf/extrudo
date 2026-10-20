@@ -376,6 +376,8 @@ export interface F3dDesign {
   bodyMoves?: F3dBodyMove[];
   /** Records the reader could not decode, with why. */
   problems: string[];
+  /** How many parameter value records failed to decode (their features fall back to defaults). */
+  unreadParameters: number;
 }
 
 /** Every local reference found in a byte range (by shape, left to right). */
@@ -510,9 +512,11 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
 
   // Parameters, and which feature owns each (owner record → its first reference).
   const parameters: ParameterValue[] = [];
+  let unreadParameters = 0;
   for (const id of seg.idsOf(PARAMETER_VALUE)) {
     const p = tryDecode(`parameter #${id}`, () => parameterValue.decode(seg, id));
     if (p) parameters.push(p);
+    else unreadParameters++;
   }
   const scopeOfOwner = new Map<number, number>();
   for (const id of seg.idsOf(PARAMETER_OWNER)) {
@@ -1054,6 +1058,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     ...(tree ? { components: tree.components } : {}),
     bodyMoves,
     problems,
+    unreadParameters,
   };
 }
 

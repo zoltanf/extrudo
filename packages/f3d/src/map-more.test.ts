@@ -124,6 +124,7 @@ function washerWithHole(): F3dDesign {
     ],
     bodies: [],
     problems: [],
+    unreadParameters: 0,
   };
 }
 
@@ -217,6 +218,7 @@ function rod(): F3dDesign {
     ],
     bodies: [],
     problems: [],
+    unreadParameters: 0,
   };
 }
 
@@ -477,6 +479,7 @@ describe('f3dToDesign: copying features', () => {
       ],
       bodies: [],
       problems: [],
+      unreadParameters: 0,
     };
     const { design, report } = f3dToDesign(f3d, 'Rod');
     expect(report.imported).toContain('Thread1');
@@ -816,6 +819,7 @@ describe('f3dToDesign: copying features', () => {
       ],
       bodies: [],
       problems: [],
+      unreadParameters: 0,
     };
     const { report } = f3dToDesign(f3d, 'Plate');
     expect(report.imported).toContain('OffsetFaces1');
@@ -902,6 +906,7 @@ describe('f3dToDesign: copying features', () => {
       ],
       bodies: [],
       problems: [],
+      unreadParameters: 0,
     };
     const { design, report } = f3dToDesign(f3d, 'Ring');
     expect(report.imported).toEqual(['TorusPrimitive1', 'OffsetFaces1']);
@@ -924,6 +929,7 @@ describe('f3dToDesign: copying features', () => {
       features: [ring(1, 2.4, 0.8, [0.6, 0.8, 0]), ring(2, 2.4, 2.4, [0, 0, 1])],
       bodies: [],
       problems: [],
+      unreadParameters: 0,
     };
     expect(f3dToDesign(f3d, 'Ring').report.skipped).toEqual([
       {
