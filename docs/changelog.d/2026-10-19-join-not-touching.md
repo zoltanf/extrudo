@@ -1,1 +1,0 @@
-- 2026-10-19 · **A join that misses says so**: an extrude, revolve or other join whose picked bodies it doesn't touch gets a warning ("It doesn't touch the body it joins, so the extrude made a new body.") instead of quietly making a new body; picked bodies it misses stay separate (#87).

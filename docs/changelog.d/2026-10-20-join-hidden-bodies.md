@@ -1,1 +1,0 @@
-- 2026-10-20 · **Extrude and Revolve leave hidden bodies alone**: when a hidden or ghost body is among the ones an extrude or revolve reaches, the dialog picks the shown ones for Join, Cut and Intersect, and says so when every one of them is hidden (user feedback).

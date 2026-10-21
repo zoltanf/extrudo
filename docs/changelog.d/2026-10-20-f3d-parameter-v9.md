@@ -1,1 +1,0 @@
-- 2026-10-20 · **.f3d import**: files whose parameter records are of a newer version (9) now keep their dimensions and extrude distances, and records Extrudo cannot read are reported in the import notices instead of passing silently (#93).

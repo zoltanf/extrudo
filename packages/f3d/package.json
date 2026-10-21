@@ -1,6 +1,6 @@
 {
   "name": "@extrudo/f3d",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "private": true,
   "description": "Reads .f3d archives (container, design records, sketches, features, parameters) and maps them onto an Extrudo design through @extrudo/api.",
   "license": "GPL-3.0-or-later",

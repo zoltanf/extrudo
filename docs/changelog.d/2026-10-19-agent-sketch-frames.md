@@ -1,1 +1,0 @@
-- 2026-10-19 · **Agents know where a sketch lies**: `add_sketch` and `get_feature` answer the sketch's frame in world coordinates, `get_feature` gives each curve's `sketchEntity` reference, and the skill documents the origin planes' frames and sketching on a construction plane (#86).

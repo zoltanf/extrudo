@@ -2,6 +2,24 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+## v0.8.2 (2026-10-21)
+
+- 2026-10-20 · **.f3d import**: files whose parameter records are of a newer version (9) now keep their dimensions and extrude distances, and records Extrudo cannot read are reported in the import notices instead of passing silently (#93).
+- 2026-10-20 · **Extrude and Revolve leave hidden bodies alone**: when a hidden or ghost body is among the ones an extrude or revolve reaches, the dialog picks the shown ones for Join, Cut and Intersect, and says so when every one of them is hidden (user feedback).
+- 2026-10-20 · **Parameter names complete as you type**: in any expression field, part of a name lists the parameters that contain it with their values (`cut` finds `cut_height = 12 mm`); ↑/↓ pick, Tab or Enter inserts, Esc closes the list, Ctrl+Space opens it (#77).
+- 2026-10-20 · **Level/plumb point glyphs step off curves**: the glyph of a Horizontal or Vertical between two points sits beside the line between them, on the side away from a curve that passes close by, so clicking the curve no longer picks the glyph.
+- 2026-10-19 · **Agents colour bodies**: the MCP tool `set_body_appearance` sets a body's colour, opacity, name and visibility as one undo step, and `get_bodies` answers each body's colour and opacity (#83).
+- 2026-10-19 · **Agent body references**: agents name a body `<feature id>:<n>` as `get_bodies` lists it, or by a feature id that made one body; an unknown body is refused with its input path instead of adding a step in error. The document API's `handle.body()` now gives the kernel's body id (`<feature>:0`) (#84).
+- 2026-10-19 · **Agents find overlapping bodies**: the MCP tool `check_interference` answers every pair of bodies that shares volume, with that volume and its box; touching bodies don't count (#89).
+- 2026-10-19 · **Agents tell profiles apart**: `add_sketch` and `get_feature` answer each profile's area, box, centroid, loop curves and (for `add_sketch`) the shapes that bound it, so an agent picks a ring or a room without guessing (#85).
+- 2026-10-19 · **Agents look from any side**: the MCP `screenshot` takes a view (top, front, … or a direction), the bodies to show (framed on them), a section that cuts away what lies past a plane, whether sketches and construction geometry show, and a size of 512–1536 px; it draws apart from the person's view, and without inputs it gives the same picture as before (#88).
+- 2026-10-19 · **Agents know where a sketch lies**: `add_sketch` and `get_feature` answer the sketch's frame in world coordinates, `get_feature` gives each curve's `sketchEntity` reference, and the skill documents the origin planes' frames and sketching on a construction plane (#86).
+- 2026-10-19 · **Aligned edges tie together**: a rectangle corner drawn level with the end of a level line makes the two edges Collinear (not a Horizontal between the corner points), and a Horizontal or Vertical between two points shows one glyph halfway between them, with its own dotted icon.
+- 2026-10-19 · **A dimension's label to a fresh axis stays put** (ADR-0093, #61): dimensioning a line to an axis not yet projected no longer shifts the label up by the line's offset from the axis middle once the axis lands.
+- 2026-10-19 · **A join that misses says so**: an extrude, revolve or other join whose picked bodies it doesn't touch gets a warning ("It doesn't touch the body it joins, so the extrude made a new body.") instead of quietly making a new body; picked bodies it misses stay separate (#87).
+- 2026-10-19 · **Report a bug** (Help › Report a Bug…, the app menu, the About footer): a screenshot, the version, where the app runs and the last error messages go into a draft GitHub issue; you paste the picture and press Submit. Nothing is sent until then.
+- 2026-10-19 · **Dimensions and constraints to the origin, axes and construction datums** (ADR-0093, #61): the Sketch Dimension tool and the constraint tools pick the origin point, the X, Y and Z axes, and the construction axes and points made before the sketch, so a line can be dimensioned to the Y axis or a point made coincident with the origin; the picked datum comes in as fixed construction geometry that follows it, in sketches on faces and offset planes too.
+
 ## v0.8.1 (2026-10-18)
 
 - 2026-10-18 · **About, desktop**: the tagline says "right on your desktop" in the desktop app instead of "right in your browser".

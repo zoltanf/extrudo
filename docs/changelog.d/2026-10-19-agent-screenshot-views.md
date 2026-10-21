@@ -1,1 +1,0 @@
-- 2026-10-19 · **Agents look from any side**: the MCP `screenshot` takes a view (top, front, … or a direction), the bodies to show (framed on them), a section that cuts away what lies past a plane, whether sketches and construction geometry show, and a size of 512–1536 px; it draws apart from the person's view, and without inputs it gives the same picture as before (#88).
