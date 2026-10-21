@@ -347,9 +347,9 @@ const DIN_CONDENSED: TextFont = {
  * The file's families with a bundled stand-in of (about) the same widths, by
  * lower-case name, regular and bold. Measured on the box widths the file
  * stores for its texts (the ink's width at the font size): Arimo has Arial's
- * widths; Archivo Narrow is within 0.5 % of Arial Narrow (median) and Sofia
- * Sans Extra Condensed Bold within 2.5 % of DIN Condensed, a bold face itself,
- * whose Cyrillic it also has (ADR-0083).
+ * widths; Archivo Narrow comes within 0.7 % of Arial Narrow; Sofia Sans
+ * Extra Condensed Bold is 2.3 % narrower than DIN Condensed (median, at most
+ * 4.6 %), a bold face itself, whose Cyrillic it also has (ADR-0083).
  */
 const STAND_INS: Record<string, { regular: TextFont; bold: TextFont }> = {
   arial: {

@@ -337,8 +337,8 @@ usual pin and subset (§3):
 | ID | Family, style | Stands in for |
 |---|---|---|
 | `arimo-regular@1`, `arimo-bold@1` | Arimo Regular, Bold (`wght` 400, 700) | Arial: the same widths |
-| `archivo-narrow-regular@1`, `archivo-narrow-bold@1` | Archivo Narrow Regular, Bold | Arial Narrow: within 0.5 % (median) |
-| `sofia-sans-extra-condensed-bold@1` | Sofia Sans Extra Condensed Bold (`wght` 700) | DIN Condensed, a bold face: within 2.5 %; with Cyrillic |
+| `archivo-narrow-regular@1`, `archivo-narrow-bold@1` | Archivo Narrow Regular, Bold | Arial Narrow: within 0.7 % |
+| `sofia-sans-extra-condensed-bold@1` | Sofia Sans Extra Condensed Bold (`wght` 700) | DIN Condensed, a bold face: 2.3 % narrower (median); with Cyrillic |
 
 The Sofia Sans subset also keeps Cyrillic (`U+0400-045F`), because imported
 text in that family uses it; the others keep §3's ranges. Each file is 26 to
