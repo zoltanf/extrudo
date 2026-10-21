@@ -231,6 +231,8 @@ import { useMarkingSlots, useMarkingStyle, useViewMenu } from './viewMenu';
 /** The search's pins until the user changes them (P1-14, R3-05). */
 const DEFAULT_PINS = ['sketch', 'line', 'rectangle', 'circle', 'dimension', 'trim', 'parameters'];
 const PINS_KEY = 'toolbox.pins';
+/** `false` once the browser's assembly hint was closed (#74): it never shows again. */
+const ASSEMBLY_HINT_KEY = 'browser.assemblyHint';
 const RECENT = 8;
 /** How long the selection stays still before the status bar asks for its size (P3-17), ms. */
 const SIZE_DELAY_MS = 150;
@@ -1042,6 +1044,13 @@ function Shell({
   const [pinned, setPinned] = useState<string[]>(() =>
     platform.preferences.get<string[]>(PINS_KEY, DEFAULT_PINS),
   );
+  const [assemblyHint, setAssemblyHint] = useState(() =>
+    platform.preferences.get<boolean>(ASSEMBLY_HINT_KEY, true),
+  );
+  const dismissAssemblyHint = () => {
+    platform.preferences.set(ASSEMBLY_HINT_KEY, false);
+    setAssemblyHint(false);
+  };
   const togglePin = (id: string) =>
     setPinned((pins) => {
       const next = pins.includes(id) ? pins.filter((p) => p !== id) : [...pins, id];
@@ -2392,6 +2401,13 @@ function Shell({
             activeComponent={activeComponent}
             isolatedComponent={isolatedComponent}
             placementActions={placementActions}
+            {...(assemblyHint &&
+              mode === 'model' && {
+                assemblyHint: {
+                  onNewComponent: () => run('newComponent'),
+                  onDismiss: dismissAssemblyHint,
+                },
+              })}
             selectedBodies={selectedBodies}
             statuses={featureStatuses}
             recomputeFinished={recomputeFinished}

@@ -1,10 +1,10 @@
 ---
-title: Components and joints
+title: "Assemblies: components and joints"
 section: Guide
 order: 5.5
 ---
 
-# Components and joints
+# Assemblies: components and joints
 
 A **component** is a named set of bodies: a lid, a base, a hinge leaf. Components organise a
 design with more than one part, hide and show a part as a unit, export it as one piece and carry
@@ -14,9 +14,26 @@ another.
 
 A component stores **no position**. Where its bodies are is where the timeline put them.
 
+## Where is the assembly?
+
+There is no separate assembly file or workspace. A design whose parts are components is the
+assembly: the parts are modelled, placed and moved in its one timeline, and **joints** say how
+they move against each other. The tools are in the Solid tab's **Assemble** group:
+
+1. Model the parts in one design, where they fit together. A part made elsewhere comes in
+   through Home › Import › **Import Model** (a STEP file or a mesh) as bodies in this design,
+   see [Files](./files.md).
+2. Select the bodies of one part and choose **New Component**. Do the same for each part.
+3. Choose **Joint** (`J`) to connect two parts with a hinge, a slide or a rigid link, then pose
+   it and check its clearance (the Joints section below).
+
+While a design has two or more bodies and no component, the end of the browser's Bodies folder
+says so, with a **New Component** button that does what the tile does. Its close button hides
+the hint for good.
+
 ## Making and using components
 
-Solid › Component has **New Component**. With bodies selected it gathers them into a component
+Solid › Assemble has **New Component**. With bodies selected it gathers them into a component
 named `Component1`, `Component2` and so on. With none selected it makes an empty one. A body's
 right-click menu has **Move to Component** (a component, a new one, or none), and in the
 [browser](./bodies.md) a body row can be dragged onto a component row, or onto the Bodies
@@ -102,7 +119,7 @@ where they already are, and nothing moves. There are three types:
 
 ### Making one
 
-**Joint** (`J`, Solid › Component) opens the dialog. Choose the Type, pick the **Moving part** and
+**Joint** (`J`, Solid › Assemble) opens the dialog. Choose the Type, pick the **Moving part** and
 the **Fixed part** (a cylindrical or conical face, a circular edge, a straight edge, an axis or a
 sketch line for a revolute; a flat face, an edge, an axis or a sketch line for a slider), and set
 the limits. Pick a body that is in no component and the dialog tells you to put it in one first.
@@ -158,3 +175,5 @@ On a 130-face hinge the whole turn takes about 16 s, with progress and a Cancel 
 - Joint types beyond rigid, revolute and slider (cylindrical, ball, planar, pin-slot).
 - Joints inside a nested component, and components inside components.
 - An automatic plate layout. Use the "Print layout" group above.
+- Inserting another Extrudo design as a component. Model the parts in one design, or bring a
+  part in as STEP.

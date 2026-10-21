@@ -107,6 +107,12 @@ for (const theme of ['dark', 'light'] as const) {
       await audit(page, `${theme} macro dialog`);
       await page.getByRole('button', { name: 'Close', exact: true }).click();
 
+      // The browser's assembly hint (#74): the bracket and the box, no component yet.
+      await expect(
+        page.getByRole('complementary', { name: 'Browser' }).locator('[data-assembly-hint]'),
+      ).toBeVisible();
+      await audit(page, `${theme} browser with the assembly hint`);
+
       // The browser with a component holding a body (P6-05).
       await page
         .getByRole('complementary', { name: 'Browser' })

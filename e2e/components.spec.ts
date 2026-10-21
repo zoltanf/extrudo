@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { primitive, selectBodies, turnView } from './benchmark-helpers';
-import { kernelReady, openProject, pickTool } from './helpers';
+import { kernelReady, openProject, pickTool, saveStatus } from './helpers';
 
 // P6-05 S3 (ADR-0081): components in the browser. A component is a named set of bodies
 // (metadata on the body): New Component, rename, drag a body in and out, the body menu's
@@ -171,6 +171,41 @@ test('an active component takes new bodies, isolation shows only it', async ({ p
     .click();
   await expect(viewport).not.toHaveAttribute('data-isolated');
   await expect(viewport).toHaveAttribute('data-bodies', /Body1:.*Body2:.*Body3:/);
+});
+
+test('the browser suggests an assembly until there is a component or the hint is closed (#74)', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await openProject(page);
+  await primitive(page, 'Box', {});
+  await kernelReady(page);
+  const viewport = viewportOf(page);
+  const hint = browserOf(page).locator('[data-assembly-hint]');
+  // One body is no assembly.
+  await expect(bodyLeaf(page, 'Body1')).toBeVisible();
+  await expect(hint).toHaveCount(0);
+  await primitive(page, 'Box', { X: '60 mm' });
+  await kernelReady(page);
+  await expect(hint).toBeVisible();
+
+  // Its New Component does what the tile does: the selected bodies become Component1.
+  await selectBodies(page, ['Body1', 'Body2']);
+  await hint.getByRole('button', { name: 'New Component', exact: true }).click();
+  await expect(viewport).toHaveAttribute('data-components', 'Component1:Body1,Body2');
+  await expect(hint).toHaveCount(0);
+
+  // Undo brings it back; closed, it stays away, a reload too.
+  await page.keyboard.press('Control+z');
+  await expect(viewport).not.toHaveAttribute('data-components');
+  await expect(hint).toBeVisible();
+  await hint.getByRole('button', { name: 'Hide this hint' }).click();
+  await expect(hint).toHaveCount(0);
+  await expect(saveStatus(page)).toHaveText('Saved');
+  await page.reload();
+  await kernelReady(page);
+  await expect(bodyLeaf(page, 'Body2')).toBeVisible();
+  await expect(hint).toHaveCount(0);
 });
 
 test('undoing New Component clears the active marker', async ({ page }) => {

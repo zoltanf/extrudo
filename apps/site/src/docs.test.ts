@@ -92,6 +92,12 @@ describe('the docs pages', () => {
     expect(pageAt('features/extrude.md').title).toBe('Extrude');
   });
 
+  it('read a quoted title without its quotes', () => {
+    const title = (url: string) => allPages.find((page) => page.url === url)?.title;
+    expect(title('/docs/tutorials/first-part/')).toBe('Your first part: a plate with four holes');
+    expect(title('/docs/components/')).toBe('Assemblies: components and joints');
+  });
+
   it('render their tables and code blocks, reachable by keyboard', () => {
     const extrude = pageAt('features/extrude.md');
     expect(extrude.html).toContain('<table tabindex="0">');

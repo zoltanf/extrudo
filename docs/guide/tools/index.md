@@ -77,7 +77,7 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 - [Record Macro](./recordMacro.md) — Start recording: what you make from here on becomes code you can keep as a Script.
 - [Stop Macro](./stopMacro.md) — Stop recording and see the code for what you made.
 
-### Component
+### Assemble
 
 - [New Component](./newComponent.md) — Gather the selected bodies into a named component, to show, hide and export as one part.
 - [Joint](./joint.md) — Join two components where they are: a hinge, a slide or a rigid link, to pose and check.

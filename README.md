@@ -39,8 +39,8 @@ inspired by that workflow and shares no code or artwork with any such product.
 <tr><td><a href="docs/images/readme/sketch-light.webp"><img src="docs/images/readme/sketch-light.webp" alt="Sketch on a model, light theme"></a></td><td><a href="docs/images/readme/sketch-dark.webp"><img src="docs/images/readme/sketch-dark.webp" alt="Sketch on a model, dark theme"></a></td></tr>
 <tr><td colspan="2"><b>Feature dialogs</b>: A fillet with its radius set by expressions and a live preview</td></tr>
 <tr><td><a href="docs/images/readme/fillet-light.webp"><img src="docs/images/readme/fillet-light.webp" alt="Feature dialogs, light theme"></a></td><td><a href="docs/images/readme/fillet-dark.webp"><img src="docs/images/readme/fillet-dark.webp" alt="Feature dialogs, dark theme"></a></td></tr>
-<tr><td colspan="2"><b>Components and joints</b>: A hinge, two components joined by a revolute joint</td></tr>
-<tr><td><a href="docs/images/readme/assembly-light.webp"><img src="docs/images/readme/assembly-light.webp" alt="Components and joints, light theme"></a></td><td><a href="docs/images/readme/assembly-dark.webp"><img src="docs/images/readme/assembly-dark.webp" alt="Components and joints, dark theme"></a></td></tr>
+<tr><td colspan="2"><b>Assemblies</b>: A hinge, two components joined by a revolute joint</td></tr>
+<tr><td><a href="docs/images/readme/assembly-light.webp"><img src="docs/images/readme/assembly-light.webp" alt="An assembly, light theme"></a></td><td><a href="docs/images/readme/assembly-dark.webp"><img src="docs/images/readme/assembly-dark.webp" alt="An assembly, dark theme"></a></td></tr>
 <tr><td colspan="2"><b>3D printing</b>: Print Info: weight, filament and cost for the chosen material</td></tr>
 <tr><td><a href="docs/images/readme/print-light.webp"><img src="docs/images/readme/print-light.webp" alt="3D printing, light theme"></a></td><td><a href="docs/images/readme/print-dark.webp"><img src="docs/images/readme/print-dark.webp" alt="3D printing, dark theme"></a></td></tr>
 <tr><td colspan="2"><b>Customizer</b>: Sliders for a template's main parameters</td></tr>
@@ -81,6 +81,11 @@ Sweep, loft and coil, modeled threads (ISO metric, UNC, UNF) that fit
 the hole or shaft they are put on, emboss and deboss onto flat and round faces,
 ribs, variable-radius fillets, up to 32 fillet and chamfer sets with in-view
 handles, and patterns that skip single instances.
+
+**Assemblies.** Components gather bodies into the parts of an assembly, in the
+same design and timeline. Rigid, revolute and slider joints connect the parts:
+pose a joint in the view and check its clearance over its whole range, for a
+print-in-place hinge. 3MF and STEP exports keep each component together.
 
 **Import.** STEP files as solid bodies; STL, 3MF and OBJ meshes as
 bodies you can still cut, join, move and split; pictures on a plane to trace

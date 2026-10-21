@@ -18,7 +18,7 @@
  * tiles are the ribbon's; the tools in its "more" menus have none.
  */
 export const DEMO_TOOLS: readonly string[] = [
-  // Solid › Create, Primitives, Features, Pattern, Program, Component.
+  // Solid › Create, Primitives, Features, Pattern, Program, Assemble.
   'sketch',
   'extrude',
   'revolve',

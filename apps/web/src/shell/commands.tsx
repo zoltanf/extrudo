@@ -211,13 +211,19 @@ function toolCommand(id: ToolId, group: string, ctx: CommandContext): AppCommand
     label: tool.label,
     ...(tool.short && { short: tool.short }),
     group,
-    keywords: `${group} ${tool.hint}`,
+    keywords: `${group} ${TOOL_KEYWORDS[id] ?? ''} ${tool.hint}`,
     icon: <ToolIcon name={tool.icon} category={tool.category} size={16} />,
     keys: keysFor(id),
     ...(unavailable && { unavailable }),
     run: unavailable ? () => ctx.notify('info', reason) : () => ctx.runTool(id),
   };
 }
+
+/** Words search also finds a tool by, beyond its group and hint: what people call it (#74). */
+const TOOL_KEYWORDS: Partial<Record<ToolId, string>> = {
+  newComponent: 'assembly part',
+  joint: 'assembly hinge slider rigid revolute',
+};
 
 /** Words search also finds a file command by (ADR-0079), beyond its group and hint. */
 const FILE_KEYWORDS: Record<FileCommandId, string> = {
@@ -339,22 +345,23 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
   }
   if (ctx.mode === 'model' && ctx.joints) {
     const { checkClearance, unavailable } = ctx.joints;
-    plain('checkJointClearance', 'Check Joint Clearance', 'Solid › Component', checkClearance, {
-      keywords: 'Solid Component joint hinge slider clearance gap collision print in place',
+    plain('checkJointClearance', 'Check Joint Clearance', 'Solid › Assemble', checkClearance, {
+      keywords:
+        'Solid Assemble assembly component joint hinge slider clearance gap collision print in place',
       ...(unavailable && { unavailable }),
     });
   }
   if (ctx.mode === 'model' && ctx.components) {
     const c = ctx.components;
-    const group = 'Solid › Component';
+    const group = 'Solid › Assemble';
     const needs = c.selected ? undefined : 'Select the bodies of one component first.';
     plain('activateComponent', 'Activate Component', group, c.activate, {
-      keywords: 'component active new features go into',
+      keywords: 'Solid Assemble assembly component active new features go into',
       ...(needs && { unavailable: needs }),
     });
     if (c.active) plain('deactivateComponent', 'Deactivate Component', group, c.deactivate);
     plain('isolateComponent', 'Isolate Component', group, c.isolate, {
-      keywords: 'component show only',
+      keywords: 'Solid Assemble assembly component show only',
       ...(needs && { unavailable: needs }),
     });
     if (c.isolated) plain('exitIsolation', 'Exit Isolation', group, c.exitIsolation);
@@ -423,9 +430,10 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     });
   }
   if (ctx.pose && ctx.mode === 'model' && (ctx.componentCount ?? 0) >= 2) {
-    plain('poseJoint', 'Pose Joint', 'Solid › Component', ctx.pose.run, {
+    plain('poseJoint', 'Pose Joint', 'Solid › Assemble', ctx.pose.run, {
       icon: icon(Circle),
-      keywords: 'Solid component joint pose move swing slide preview hinge slider revolute',
+      keywords:
+        'Solid Assemble assembly component joint pose move swing slide preview hinge slider revolute',
     });
   }
   if (ctx.markingMenu) {

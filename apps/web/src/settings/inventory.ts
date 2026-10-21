@@ -119,6 +119,7 @@ export const NOT_IN_SETTINGS: readonly { key: string; reason: string }[] = [
     key: 'render.softwareNotice',
     reason: 'A dismissal: the notice about software rendering was seen.',
   },
+  { key: 'browser.assemblyHint', reason: "A dismissal: the browser's assembly hint was closed." },
   {
     key: 'viewport.origin',
     reason: "Per item, in the browser's Origin folder, where the planes and axes are listed.",

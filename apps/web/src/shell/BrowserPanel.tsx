@@ -32,6 +32,7 @@ import {
   TextCursorInput,
   Trash2,
   Video,
+  X,
 } from 'lucide-react';
 import {
   type DragEvent,
@@ -45,7 +46,7 @@ import {
 } from 'react';
 import { useStore } from 'zustand';
 import type { ComponentActions } from '../components/componentActions';
-import { type ComponentRow, componentRows } from '../components/componentRows';
+import { type ComponentRow, componentRows, offersAssembly } from '../components/componentRows';
 import type { PlacementActions } from '../components/placement';
 import {
   ContextMenu,
@@ -119,6 +120,11 @@ export interface BrowserPanelProps {
   isolatedComponent?: ComponentId;
   /** Move, copy and place a component as one (P6-05 S5, ADR-0081 §3). */
   placementActions?: PlacementActions;
+  /**
+   * The assembly hint (#74): with two or more bodies and no component, the Bodies folder ends
+   * with a line on how to make an assembly. Absent: no hint (dismissed, or not in this mode).
+   */
+  assemblyHint?: AssemblyHintActions;
   /** Bodies in the model selection: their rows show selected. */
   selectedBodies?: ReadonlySet<string>;
   /**
@@ -146,6 +152,12 @@ export interface BrowserPanelProps {
   recomputeFinished?: boolean;
   /** Restore, update, rename and delete the named views (ADR-0008's amendment, 2026-10-10). */
   viewActions: ViewActions;
+}
+
+/** The assembly hint's two buttons: New Component (the tile's action) and close for good. */
+export interface AssemblyHintActions {
+  onNewComponent(): void;
+  onDismiss(): void;
 }
 
 /** One row of the Analysis folder: a view analysis with its eye, its panel and its removal. */
@@ -186,6 +198,7 @@ export function BrowserPanel({
   activeComponent,
   isolatedComponent,
   placementActions,
+  assemblyHint,
   selectedBodies = NO_BODIES,
   onPickBody,
   onHoverBody,
@@ -550,6 +563,9 @@ export function BrowserPanel({
                         onHover={onHoverBody}
                       />
                     ),
+                  )}
+                  {assemblyHint && offersAssembly(doc, bodies) && (
+                    <AssemblyHint actions={assemblyHint} />
                   )}
                 </>
               )}
@@ -1150,6 +1166,35 @@ function BodyEyeToggle({
 
 /** What a body row drag carries: a JSON list of body IDs (P6-05 S3). */
 const BODIES_MIME = 'application/x-extrudo-bodies';
+
+/**
+ * The end of the Bodies folder while a design has several bodies and no component (#74,
+ * ADR-0081's amendment of 2026-10-21): people look for an assembly, and this says that one is
+ * made of components. Its button runs New Component on the selection, as the tile does.
+ */
+function AssemblyHint({ actions }: { actions: AssemblyHintActions }) {
+  return (
+    <li
+      data-assembly-hint
+      className="mt-1 mr-1 ml-[46px] flex items-start gap-1 rounded-input border border-line border-dashed py-1 pl-2 text-muted text-xs"
+    >
+      <p className="min-w-0 flex-1 py-0.5">
+        Building an assembly? Select one part's bodies, then{' '}
+        <button
+          type="button"
+          onClick={actions.onNewComponent}
+          className="rounded-control font-medium text-accent hover:underline focus-visible:outline-2 focus-visible:outline-accent"
+        >
+          New Component
+        </button>
+        . Joints then connect the parts.
+      </p>
+      <IconButton label="Hide this hint" className="size-6 shrink-0" onClick={actions.onDismiss}>
+        <X size={12} strokeWidth={1.75} />
+      </IconButton>
+    </li>
+  );
+}
 
 /** A component in the Bodies folder (ADR-0081 §6): a nested folder of its live bodies. */
 function ComponentFolder({

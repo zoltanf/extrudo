@@ -2328,7 +2328,12 @@ after the walk (`ModelState.joints`, uncached); **the pose is view state**
 clearance check is `KernelApi.checkJoint` on existing kernel calls
 (`packages/kernel/src/joints/`, ADR-0081's Results). The API has `d.component` and
 `d.joint` (a suppressed joint stored only as `true`), the emitter writes them
-and the CLI has `check --joints`. Guide: `docs/guide/components.md`.
+and the CLI has `check --joints`. Guide: `docs/guide/components.md`. **Amendment
+2026-10-21 (#74):** the Solid tab's group is **Assemble** (tiles, IDs and keys unchanged; Ctrl+K
+group "Solid › Assemble"; search finds them by "assembly" through `TOOL_KEYWORDS`), and the Bodies
+folder ends with the **assembly hint** (`[data-assembly-hint]`) while `offersAssembly` holds (two or
+more non-pending bodies, no component), model mode only, closed for good through the preference
+`browser.assemblyHint` (in `NOT_IN_SETTINGS`).
 
 ADR-0083 (the owner, 2026-10-10) added **`.f3d` import**, `packages/f3d`
 (`@extrudo/f3d`, pure TS; deps `@extrudo/api`, core, sketch, `fflate`,

@@ -1,7 +1,12 @@
 import type { BodyId, Component, ComponentId } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import type { BodyEntry } from '../shell/bodies';
-import { componentDisplay, componentRows, componentsSummary } from './componentRows';
+import {
+  componentDisplay,
+  componentRows,
+  componentsSummary,
+  offersAssembly,
+} from './componentRows';
 
 const cid = (id: string) => id as ComponentId;
 const entry = (id: string, name: string, component?: string): BodyEntry => ({
@@ -50,5 +55,19 @@ describe('componentsSummary', () => {
       entry('A:1', 'Body 2', 'c1'),
     ]);
     expect(componentsSummary(rows)).toBe('Lid:Body1,Body_2;Box_part:');
+  });
+});
+
+describe('offersAssembly', () => {
+  it('offers an assembly with two or more live bodies and no component (#74)', () => {
+    const two = [entry('A:0', 'Body1'), entry('B:0', 'Body2')];
+    expect(offersAssembly({}, two)).toBe(true);
+    expect(offersAssembly({ components: [] }, two)).toBe(true);
+    expect(offersAssembly({}, [entry('A:0', 'Body1')])).toBe(false);
+    expect(offersAssembly({ components: [lid] }, two)).toBe(false);
+    // A body still being computed doesn't count yet.
+    expect(
+      offersAssembly({}, [entry('A:0', 'Body1'), { ...entry('B:0', 'Body2'), pending: true }]),
+    ).toBe(false);
   });
 });

@@ -91,8 +91,8 @@ What does not come across:
   parameters and no feature steps to edit. A body that arrives this way has one step, the
   Import that made it.
 - **No assemblies as assemblies.** Each part of an assembly becomes a body of its own; the
-  assembly structure (which part sits in which group) is not rebuilt. Use components to group
-  the bodies yourself if you want them.
+  assembly structure (which part sits in which group) is not rebuilt. Use
+  [components](./components.md) to group the bodies yourself if you want them.
 
 That is still plenty: an imported body behaves like any other. Move it, Combine it with another,
 round its edges with Fillet or Chamfer, hollow it with Shell, or push and pull a face with

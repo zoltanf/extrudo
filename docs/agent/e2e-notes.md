@@ -611,6 +611,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   isolation bar is `[data-isolation-bar]`; Print Info's per-component rows are
   `[data-print-component="<name>"]` (`print-aids.spec.ts`, "Loose bodies" for
   the rest).
+- **The assembly hint** (#74): `[data-assembly-hint]` at the end of the Bodies
+  folder while the design has two or more bodies and no component (model mode),
+  with the buttons "New Component" (scope it to the hint: the tile has the same
+  name) and "Hide this hint". A fresh context shows it, so a spec or a recording
+  with two loose bodies in view gets one more line in the browser; closing it
+  sets `extrudo.browser.assemblyHint` to `false` in localStorage.
 
 ### `e2e/construction.spec.ts`
 
