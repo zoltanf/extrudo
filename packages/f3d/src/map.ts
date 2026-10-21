@@ -1217,7 +1217,7 @@ function drawSketch(
     const up = [-base[1], base[0]] as const;
     if (t.old) {
       const at = oldTextAnchor(t);
-      const font = fontFor(t.font);
+      const font = fontFor(t.font, t.bold);
       const flip = t.old.mirrored ? -1 : 1;
       // The file's height is Arial's capitals: a stand-in keeps the font size.
       const cap = font.cap ? (t.height / CAP_HEIGHT) * font.cap : t.height;

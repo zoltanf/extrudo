@@ -672,7 +672,7 @@ describe('f3dToDesign', () => {
   });
 
   it('picks the stand-in with the same widths for the families files use most', () => {
-    const fontOf = (family: string, bold = false) => {
+    const fontOf = (family: string, bold = false, old = false) => {
       const f3d = washer();
       f3d.features.push({
         type: 'sketch',
@@ -696,8 +696,9 @@ describe('f3dToDesign', () => {
               height: 1,
               angle: 0,
               at: [2, 0],
-              width: 1.4,
+              width: old ? 0 : 1.4,
               ...(bold ? { bold } : {}),
+              ...(old ? { old: { mirrored: false, horizontal: 1, vertical: 1, box: [2, 1] } } : {}),
             },
           ],
         },
@@ -714,6 +715,8 @@ describe('f3dToDesign', () => {
     expect(fontOf('Arial')).toBe('arimo-regular@1');
     expect(fontOf('arial ')).toBe('arimo-regular@1');
     expect(fontOf('Arial', true)).toBe('arimo-bold@1');
+    expect(fontOf('Arial', true, true)).toBe('arimo-bold@1');
+    expect(fontOf('Arial', false, true)).toBe('arimo-regular@1');
     expect(fontOf('Arial Narrow', true)).toBe('archivo-narrow-bold@1');
     expect(fontOf('DIN Condensed', true)).toBe('sofia-sans-extra-condensed-bold@1');
     expect(fontOf('Arial Narrow')).toBe('archivo-narrow-regular@1');
