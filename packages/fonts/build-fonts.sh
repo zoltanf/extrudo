@@ -75,7 +75,9 @@ subset "$(pin 'Fredoka.ttf' wght=600 wdth=100)" 'fredoka-semibold.ttf'
 # same widths as the usual sans; the condensed face also gets Cyrillic, which
 # imported text in that family uses.
 subset "$(pin 'Arimo.ttf' wght=400)" 'arimo-regular.ttf'
+subset "$(pin 'Arimo.ttf' wght=700)" 'arimo-bold.ttf'
 subset "$(pin 'ArchivoNarrow.ttf' wght=400)" 'archivo-narrow-regular.ttf'
+subset "$(pin 'ArchivoNarrow.ttf' wght=700)" 'archivo-narrow-bold.ttf'
 subset "$(pin 'SofiaSansExtraCondensed.ttf' wght=700)" 'sofia-sans-extra-condensed-bold.ttf' 'U+0400-045F'
 
 # Report: family, upstream version (name table), size; and the pinned fonts

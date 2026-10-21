@@ -23,7 +23,9 @@ import { useEffect } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import allertaStencil from '../../../../packages/fonts/fonts/allerta-stencil-regular.ttf?url';
+import archivoNarrowBold from '../../../../packages/fonts/fonts/archivo-narrow-bold.ttf?url';
 import archivoNarrow from '../../../../packages/fonts/fonts/archivo-narrow-regular.ttf?url';
+import arimoBold from '../../../../packages/fonts/fonts/arimo-bold.ttf?url';
 import arimo from '../../../../packages/fonts/fonts/arimo-regular.ttf?url';
 import fredoka from '../../../../packages/fonts/fonts/fredoka-semibold.ttf?url';
 import interBold from '../../../../packages/fonts/fonts/inter-bold.ttf?url';
@@ -41,7 +43,9 @@ export const fontUrls: Readonly<Record<BundledFontId, string>> = {
   'allerta-stencil-regular@1': allertaStencil,
   'fredoka-semibold@1': fredoka,
   'arimo-regular@1': arimo,
+  'arimo-bold@1': arimoBold,
   'archivo-narrow-regular@1': archivoNarrow,
+  'archivo-narrow-bold@1': archivoNarrowBold,
   'sofia-sans-extra-condensed-bold@1': sofiaSansExtraCondensed,
 };
 

@@ -335,40 +335,55 @@ const FONTS = {
   stencil: { id: 'allerta-stencil-regular@1', family: 'Allerta Stencil' },
 } satisfies Record<string, TextFont>;
 
+/** DIN Condensed's stand-in: a bold face, like the family itself. */
+const DIN_CONDENSED: TextFont = {
+  id: 'sofia-sans-extra-condensed-bold@1',
+  family: 'Sofia Sans Extra Condensed Bold',
+  cap: 0.655,
+  widths: 'about the same',
+};
+
 /**
  * The file's families with a bundled stand-in of (about) the same widths, by
- * lower-case name. Measured on the box widths the file stores for its texts
- * (the ink's width at the font size): Arimo has Arial's widths; Archivo Narrow
- * is within 0.5 % of Arial Narrow (median) and Sofia Sans Extra Condensed Bold
- * within 2.5 % of DIN Condensed, whose Cyrillic it also has (ADR-0083).
+ * lower-case name, regular and bold. Measured on the box widths the file
+ * stores for its texts (the ink's width at the font size): Arimo has Arial's
+ * widths; Archivo Narrow is within 0.5 % of Arial Narrow (median) and Sofia
+ * Sans Extra Condensed Bold within 2.5 % of DIN Condensed, a bold face itself,
+ * whose Cyrillic it also has (ADR-0083).
  */
-const STAND_INS: Record<string, TextFont> = {
-  arial: { id: 'arimo-regular@1', family: 'Arimo', cap: 1409 / 2048, widths: 'same' },
+const STAND_INS: Record<string, { regular: TextFont; bold: TextFont }> = {
+  arial: {
+    regular: { id: 'arimo-regular@1', family: 'Arimo', cap: 1409 / 2048, widths: 'same' },
+    bold: { id: 'arimo-bold@1', family: 'Arimo Bold', cap: 1409 / 2048, widths: 'same' },
+  },
   'arial narrow': {
-    id: 'archivo-narrow-regular@1',
-    family: 'Archivo Narrow',
-    cap: 0.686,
-    widths: 'about the same',
+    regular: {
+      id: 'archivo-narrow-regular@1',
+      family: 'Archivo Narrow',
+      cap: 0.686,
+      widths: 'about the same',
+    },
+    bold: {
+      id: 'archivo-narrow-bold@1',
+      family: 'Archivo Narrow Bold',
+      cap: 0.686,
+      widths: 'about the same',
+    },
   },
-  'din condensed': {
-    id: 'sofia-sans-extra-condensed-bold@1',
-    family: 'Sofia Sans Extra Condensed Bold',
-    cap: 0.655,
-    widths: 'about the same',
-  },
+  'din condensed': { regular: DIN_CONDENSED, bold: DIN_CONDENSED },
 };
 
 /** Capital height over font size: Arial's, the usual font in .f3d files (and near most sans faces). */
 const CAP_HEIGHT = 0.716;
 
 /**
- * The bundled font for an f3d font family: its stand-in when it has one,
- * else Inter unless it is a serif, mono or stencil face.
+ * The bundled font for an f3d font family: its stand-in when it has one (in
+ * bold when the text is), else Inter unless it is a serif, mono or stencil face.
  */
-function fontFor(family: string): TextFont {
+function fontFor(family: string, bold = false): TextFont {
   const f = family.trim().toLowerCase();
   const standIn = STAND_INS[f];
-  if (standIn) return standIn;
+  if (standIn) return bold ? standIn.bold : standIn.regular;
   if (/mono|courier|consol|menlo/.test(f)) return FONTS.mono;
   if (/stencil/.test(f)) return FONTS.stencil;
   if (/times|georgia|garamond|cambria|serif/.test(f) && !/sans/.test(f)) return FONTS.serif;
@@ -1225,7 +1240,7 @@ function drawSketch(
     // ink closer than starting it at the box's corner (measured, ADR-0083).
     const u = t.at[0] + (base[0] * t.width) / 2;
     const v = t.at[1] + (base[1] * t.width) / 2;
-    const font = fontFor(t.font);
+    const font = fontFor(t.font, t.bold);
     const cap = t.height * (font.cap ?? CAP_HEIGHT);
     const h = k.text(
       placement.map(u, v),

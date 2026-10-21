@@ -4,7 +4,7 @@
  * `EA3B930A…`, a sketch-line subclass: a
  * reference to the text, then start and displacement as a line's); then the
  * property block (`txt_tag`, `txt_tag_base`) and the members: f64 angle of
- * the baseline from the sketch's x axis, a byte, four bytes, 12 zero bytes,
+ * the baseline from the sketch's x axis, a byte (1 bold, 0 regular), four bytes, 12 zero bytes,
  * f32 1, wstr font family ("Arial", "Arial Narrow", "DIN Condensed"…), f64
  * height (cm), two bytes, the box corner the baseline starts from (2 f64),
  * zeros (and in version 4 three more bytes), wstr text, the box lines again,
@@ -53,6 +53,8 @@ export interface SketchText {
   at: [number, number];
   /** The box's length along the baseline, cm. */
   width: number;
+  /** A newer text set in bold. */
+  bold?: boolean;
   /**
    * An older text (`E0618268…`): `at` is its box's corner and `angle` its
    * frame's (`width` 0), `height` the capitals'; `mirrored` when the frame
@@ -78,7 +80,8 @@ export const sketchText: RecordDecoder<SketchText> = {
     }
     readProps(r);
     const angle = r.f64();
-    r.skip(5);
+    const bold = r.u8() === 1;
+    r.skip(4);
     r.zeros(12);
     r.skip(4);
     const font = r.wstr(200);
@@ -102,6 +105,7 @@ export const sketchText: RecordDecoder<SketchText> = {
       angle,
       at,
       width,
+      ...(bold ? { bold } : {}),
       ...(owner !== undefined ? { owner } : {}),
     };
   },

@@ -13,7 +13,9 @@ per family). `src/index.ts` is the manifest the app and tests read.
 | `allerta-stencil-regular@1` | Allerta Stencil | Regular | [ofl/allertastencil](https://github.com/google/fonts/tree/main/ofl/allertastencil) (static `AllertaStencil-Regular.ttf`) | 1.02 | 14,940 B |
 | `fredoka-semibold@1` | Fredoka | SemiBold | [ofl/fredoka](https://github.com/google/fonts/tree/main/ofl/fredoka) (variable `Fredoka[wdth,wght].ttf`, pinned `wght=600 wdth=100`) | 2.001 | 35,216 B |
 | `arimo-regular@1` | Arimo | Regular | [ofl/arimo](https://github.com/google/fonts/tree/main/ofl/arimo) (variable `Arimo[wght].ttf`, pinned `wght=400`) | 1.341 | 25,904 B |
+| `arimo-bold@1` | Arimo | Bold | [ofl/arimo](https://github.com/google/fonts/tree/main/ofl/arimo) (variable `Arimo[wght].ttf`, pinned `wght=700`) | 1.341 | 26,424 B |
 | `archivo-narrow-regular@1` | Archivo Narrow | Regular | [ofl/archivonarrow](https://github.com/google/fonts/tree/main/ofl/archivonarrow) (variable `ArchivoNarrow[wght].ttf`, pinned `wght=400`) | 3.002 | 27,620 B |
+| `archivo-narrow-bold@1` | Archivo Narrow | Bold | [ofl/archivonarrow](https://github.com/google/fonts/tree/main/ofl/archivonarrow) (variable `ArchivoNarrow[wght].ttf`, pinned `wght=700`) | 3.002 | 27,304 B |
 | `sofia-sans-extra-condensed-bold@1` | Sofia Sans Extra Condensed | Bold | [ofl/sofiasansextracondensed](https://github.com/google/fonts/tree/main/ofl/sofiasansextracondensed) (variable `SofiaSansExtraCondensed[wght].ttf`, pinned `wght=700`; with Cyrillic `U+0400-045F`) | 4.101 | 63,400 B |
 
 **A file never changes under an ID** (ADR-0058 §3): a saved design keeps its
@@ -45,10 +47,10 @@ sg docker -c 'docker run --rm -v "$PWD":/w -w /w --user "$(id -u):$(id -g)" \
 (Use plain `docker run …` instead of `sg docker -c '…'` where the user is
 already in the `docker` group.) The script is idempotent: re-running it
 re-derives `fonts/` from the same upstream inputs. Do **not** commit `.work/`.
-A newer fontTools or a moved upstream file gives the older fonts different
-bytes (seen in 2026-10 when the Arimo, Archivo Narrow and Sofia Sans files
-were added): keep the committed files (`git checkout -- packages/fonts/fonts/<file>`)
-and commit only the new ones.
+Each run gives the pinned fonts new bytes all the same (the instancer stamps
+the build time into them, and fontTools versions differ): when adding a font,
+keep the committed files (`git checkout -- packages/fonts/fonts/`) and commit
+only the new ones.
 
 Subsetting a font by hand, outside the script:
 

@@ -7,7 +7,9 @@ export type BundledFontId =
   | 'allerta-stencil-regular@1'
   | 'fredoka-semibold@1'
   | 'arimo-regular@1'
+  | 'arimo-bold@1'
   | 'archivo-narrow-regular@1'
+  | 'archivo-narrow-bold@1'
   | 'sofia-sans-extra-condensed-bold@1';
 
 export interface BundledFont {
@@ -42,11 +44,18 @@ export const BUNDLED_FONTS: readonly BundledFont[] = [
   },
   { id: 'fredoka-semibold@1', family: 'Fredoka', style: 'SemiBold', file: 'fredoka-semibold.ttf' },
   { id: 'arimo-regular@1', family: 'Arimo', style: 'Regular', file: 'arimo-regular.ttf' },
+  { id: 'arimo-bold@1', family: 'Arimo', style: 'Bold', file: 'arimo-bold.ttf' },
   {
     id: 'archivo-narrow-regular@1',
     family: 'Archivo Narrow',
     style: 'Regular',
     file: 'archivo-narrow-regular.ttf',
+  },
+  {
+    id: 'archivo-narrow-bold@1',
+    family: 'Archivo Narrow',
+    style: 'Bold',
+    file: 'archivo-narrow-bold.ttf',
   },
   {
     id: 'sofia-sans-extra-condensed-bold@1',
