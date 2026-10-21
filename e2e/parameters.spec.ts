@@ -127,6 +127,11 @@ test('completes parameter names, without the ones that use the field (ADR-0096)'
   await wall.press('Enter');
   await expect(wall).toHaveValue('2 * width');
   await expect(list).toBeHidden();
+  // A name typed out in full, with nothing longer, shows no list.
+  await wall.press('Backspace');
+  await expect(options.first()).toHaveText('width = 80.00 mm');
+  await wall.press('h');
+  await expect(list).toBeHidden();
 
   // `inner` is `width - 2 * wall`: offering it here would make a cycle.
   await wall.pressSequentially(' - i');

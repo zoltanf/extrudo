@@ -2776,7 +2776,8 @@ exact, then prefix, then the rest, in document order). **Rules:** a field filter
 **its own `evaluate`**: offered unless `evaluate(name)` fails with `ExprError.code`
 `'unknown-name'` or `'cycle'` (a unit mismatch stays in scope), cached per name per focus;
 keep those codes on the evaluator's "Unknown name" and the graph's "refers to itself"
-errors; no call site passes names. Enter without an arrow pick commits as before; Tab
+errors; no call site passes names. No list opens by typing when its only entry is the
+word itself (it would cover the dialog's OK button; B5's `2 * py`). Enter without an arrow pick commits as before; Tab
 inserts the pick or the first name (not when nothing is picked and the word is already the
 first name); Esc closes the list before it reverts the field, and is stopped there;
 Ctrl+Space opens the list on an empty word. The list is a Radix Popover (portalled,

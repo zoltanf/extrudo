@@ -97,7 +97,9 @@ export function ExpressionInput({
       word && (asked || word.text !== '')
         ? matching(word.text, names()).filter((entry) => usable(entry.name))
         : [];
-    setCompletion(word && items.length > 0 ? { word, items, active: -1 } : undefined);
+    // A name typed out in full, with nothing longer to offer, needs no list.
+    const done = !asked && items.length === 1 && items[0]?.name === word?.text;
+    setCompletion(word && items.length > 0 && !done ? { word, items, active: -1 } : undefined);
   };
 
   const change = (next: string) => {

@@ -466,7 +466,8 @@ Crank or Glide. Since the right button drags, the right-click marking menu
 - **Name completion (ADR-0096), in every expression field:** typing part of
   a name lists the parameters in that field's scope that contain it, ignoring
   case (exact and prefix matches first), each with its value ("cut_height =
-  12.00 mm"), in a list under the field. ↑/↓ pick, Tab or Enter inserts (Enter
+  12.00 mm"), in a list under the field (none for a name typed out in full
+  with nothing longer). ↑/↓ pick, Tab or Enter inserts (Enter
   without a pick commits as usual), Esc closes the list before it reverts the
   field, Ctrl+Space opens it on an empty field. A parameter that would make a
   cycle (the one being edited, or one that uses it) isn't offered.

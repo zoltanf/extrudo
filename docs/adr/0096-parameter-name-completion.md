@@ -38,7 +38,9 @@ the Parameters dialog leaves out the parameter itself and what depends on it
    around the caret (`wordAt`), none inside a number or where a unit follows a
    number (`10 m`); names that contain it ignoring case, the exact name first,
    then prefix matches, then the rest, each in document order (`matching`).
-4. **Keys.** Typing a word opens the list; ↑/↓ pick (none is picked at first);
+4. **Keys.** Typing a word opens the list, unless its only entry is the word
+   itself (a name typed out in full: the list would only cover what is under
+   it, such as a dialog's OK button); ↑/↓ pick (none is picked at first);
    Enter inserts the picked name, and without a pick commits as before, so
    specs that type a value and press Enter don't change; Tab inserts the picked
    name or the first, except when nothing is picked and the word already is the
