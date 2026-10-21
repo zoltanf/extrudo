@@ -357,6 +357,33 @@ describe('fonts and files of a design', () => {
     expect(total).toBeLessThan(40 * 20 * 4);
   });
 
+  it('reads a bundled stand-in font from the package (ADR-0083)', async () => {
+    // Arimo Bold, one of the fonts imported .f3d text is drawn in: the kernel
+    // gets it from packages/fonts like any bundled font.
+    const { loadFont } = await import('@extrudo/sketch/text');
+    loadFont('arimo-bold@1', new Uint8Array(await readFile(fontFile('arimo-bold.ttf'))));
+    const design = Design.create({ name: 'Name plate' });
+    const plate = design.box({ length: '40 mm', width: '20 mm', height: '3 mm' });
+    const sketch = design.sketch(design.origin.xy, (k) => {
+      k.text([5, 10], [5, 18], { text: 'Hi', font: 'arimo-bold@1' });
+    });
+    expect(sketch.profiles().length).toBe(3);
+    design.emboss({
+      profiles: sketch.profiles(),
+      face: [plate.face('cap:end')],
+      depth: '0.5 mm',
+      mode: 'emboss',
+    });
+    const { writeArchive } = await import('@extrudo/storage');
+    const job = await openBytes(writeArchive(design.doc));
+    const result = await job.compute();
+    expect(result.errors).toBe(0);
+    expect(result.features.filter((f) => f.status === 'warning')).toEqual([]);
+    const total = result.bodies.reduce((sum, body) => sum + body.volume, 0);
+    expect(total).toBeGreaterThan(40 * 20 * 3);
+    expect(total).toBeLessThan(40 * 20 * 4);
+  });
+
   it('reads a STEP file out of the design (P4-06)', async () => {
     const step = new Uint8Array(await readFile(fixture('imports/b3.step')));
     const { sha256Hex, writeArchive } = await import('@extrudo/storage');
