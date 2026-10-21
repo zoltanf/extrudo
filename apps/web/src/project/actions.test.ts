@@ -278,7 +278,7 @@ describe('importNotices: the bodies', () => {
 
   it('says how many records could not be read', () => {
     expect(importNotices({ ...base, problems: ['a', 'b'] })).toContain(
-      "2 records in the file could not be read (a format Extrudo doesn't know yet); features that depend on them may be wrong. Please report it with the file at github.com/zoltanf/extrudo/issues.",
+      "2 records in the file could not be read (a format Extrudo doesn't know yet); features that depend on them may be wrong. Please report it with the file: Help › Report a Bug…",
     );
     expect(importNotices(base).some((n) => n.includes('could not be read'))).toBe(false);
   });

@@ -240,7 +240,7 @@ export function importNotices(
   const unread = report.problems.length;
   if (unread > 0)
     out.push(
-      `${unread} record${unread === 1 ? '' : 's'} in the file could not be read (a format Extrudo doesn't know yet); features that depend on them may be wrong. Please report it with the file at github.com/zoltanf/extrudo/issues.`,
+      `${unread} record${unread === 1 ? '' : 's'} in the file could not be read (a format Extrudo doesn't know yet); features that depend on them may be wrong. Please report it with the file: Help › Report a Bug…`,
     );
   const c = report.constraints;
   const left = c ? Object.values(c.leftOut).reduce((a, b) => a + b, 0) : 0;
