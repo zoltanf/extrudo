@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { BUNDLED_FONTS, DEFAULT_FONT } from './index.js';
@@ -14,6 +14,16 @@ describe('bundled fonts', () => {
 
   it('has a default that is listed first', () => {
     expect(BUNDLED_FONTS[0]?.id).toBe(DEFAULT_FONT);
+  });
+
+  it('lists every file in fonts/, each once, with its license text', () => {
+    const files = readdirSync(DIR).filter((name) => name.endsWith('.ttf'));
+    expect(BUNDLED_FONTS.map((font) => font.file).sort()).toEqual(files.sort());
+    const licenses = readdirSync(join(__dirname, '..')).filter((name) => name.startsWith('OFL-'));
+    for (const font of BUNDLED_FONTS) {
+      const family = `OFL-${font.family.toLowerCase().replace(/[^a-z]/g, '')}.txt`;
+      expect(licenses).toContain(family);
+    }
   });
 
   for (const font of BUNDLED_FONTS) {
