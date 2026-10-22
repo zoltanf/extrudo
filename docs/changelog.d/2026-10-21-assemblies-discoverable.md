@@ -1,0 +1,1 @@
+- 2026-10-21 · **Assemblies are easier to find** (#74): the Solid tab's Component group is now Assemble, search finds New Component and Joint by "assembly", the browser suggests New Component when a design has several bodies and no component, and the guide page is "Assemblies: components and joints" with a "Where is the assembly?" section.

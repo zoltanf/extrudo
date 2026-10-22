@@ -29,10 +29,11 @@ let kernel: Kernel;
 
 beforeAll(async () => {
   kernel = new Kernel(await loadOcct());
-  loadFont(
-    'inter-regular@1',
-    readFileSync(new URL('../../fonts/fonts/inter-regular.ttf', import.meta.url)),
-  );
+  for (const [id, file] of [
+    ['inter-regular@1', 'inter-regular.ttf'],
+    ['arimo-regular@1', 'arimo-regular.ttf'],
+  ] as const)
+    loadFont(id, readFileSync(new URL(`../../fonts/fonts/${file}`, import.meta.url)));
 });
 
 afterAll(() => {
@@ -579,7 +580,7 @@ describe('f3dToDesign', () => {
     expect(await volumes(f3d)).toEqual([expect.closeTo(RING - 4 * Math.PI * 0.5 ** 2 * 0.8, 3)]);
   });
 
-  it("draws a text in its box, at the file's size as capital height, and extrudes its letters", async () => {
+  it("draws a text in its box, at the file's font size, and extrudes its letters", async () => {
     const f3d = washer();
     // "H" at 10 mm font size in Arial: a box 7.22 mm wide from (20, 0) mm.
     f3d.features.push(
@@ -612,12 +613,116 @@ describe('f3dToDesign', () => {
     );
     const { report } = f3dToDesign(f3d, 'Washer');
     expect(report.imported).toContain('Extrude2');
-    expect(report.notes.join('\n')).toContain('text "H" in Arial is drawn in Inter');
+    expect(report.notes.join('\n')).toContain('text "H" in Arial is drawn in Arimo (same widths)');
+    const [, letter] = await measures(f3d);
+    // Centred in the box, standing on its bottom edge, at 10 mm font size:
+    // Arimo's capitals are 0.688 of it.
+    expect(((letter?.bbox.min[0] ?? 0) + (letter?.bbox.max[0] ?? 0)) / 2).toBeCloseTo(23.61, 0);
+    expect(letter?.bbox.min[1]).toBeCloseTo(0, 1);
+    expect(letter?.bbox.max[1]).toBeCloseTo(6.88, 1);
+  });
+
+  it("draws a family without a stand-in in Inter, with Arial's capital height", async () => {
+    const f3d = washer();
+    // "H" at 10 mm font size in a family with no stand-in: a box 7.22 mm wide from (20, 0) mm.
+    f3d.features.push(
+      {
+        type: 'sketch',
+        id: 3,
+        kind: 'Sketch',
+        name: 'Sketch2',
+        suppressed: false,
+        parameters: [],
+        sketch: {
+          id: 6,
+          frame: IDENTITY,
+          points: [],
+          lines: [],
+          circulars: [],
+          splines: [],
+          texts: [
+            {
+              id: 50,
+              text: 'H',
+              font: 'Some Display Face',
+              height: 1,
+              angle: 0,
+              at: [2, 0],
+              width: 0.722,
+            },
+          ],
+        },
+      },
+      {
+        ...(f3d.features[1] as F3dExtrude),
+        id: 4,
+        name: 'Extrude2',
+        parameters: [parameter({ name: 'd5', kind: 'AlongDistance', value: 0.2 })],
+        profiles: [{ id: 32, sketch: 6, text: 50 }],
+      },
+    );
+    const { report } = f3dToDesign(f3d, 'Washer');
+    expect(report.imported).toContain('Extrude2');
+    expect(report.notes.join('\n')).toContain('text "H" in Some Display Face is drawn in Inter.');
     const [, letter] = await measures(f3d);
     // Centred in the box, standing on its bottom edge, capitals 7.16 mm high.
     expect(((letter?.bbox.min[0] ?? 0) + (letter?.bbox.max[0] ?? 0)) / 2).toBeCloseTo(23.61, 0);
     expect(letter?.bbox.min[1]).toBeCloseTo(0, 1);
     expect(letter?.bbox.max[1]).toBeCloseTo(7.16, 1);
+  });
+
+  it('picks the stand-in with the same widths for the families files use most', () => {
+    const fontOf = (family: string, bold = false, old = false) => {
+      const f3d = washer();
+      f3d.features.push({
+        type: 'sketch',
+        id: 3,
+        kind: 'Sketch',
+        name: 'Sketch2',
+        suppressed: false,
+        parameters: [],
+        sketch: {
+          id: 6,
+          frame: IDENTITY,
+          points: [],
+          lines: [],
+          circulars: [],
+          splines: [],
+          texts: [
+            {
+              id: 50,
+              text: 'AB',
+              font: family,
+              height: 1,
+              angle: 0,
+              at: [2, 0],
+              width: old ? 0 : 1.4,
+              ...(bold ? { bold } : {}),
+              ...(old ? { old: { mirrored: false, horizontal: 1, vertical: 1, box: [2, 1] } } : {}),
+            },
+          ],
+        },
+      });
+      const texts = f3dToDesign(f3d, 'Washer')
+        .design.toJSON()
+        .features.flatMap((f) => {
+          const input = f.inputs.sketch as unknown as { sketch: SketchData } | undefined;
+          return Object.values(input?.sketch?.entities ?? {});
+        });
+      const text = texts.find((e) => e.type === 'text');
+      return text && 'font' in text ? text.font : undefined;
+    };
+    expect(fontOf('Arial')).toBe('arimo-regular@1');
+    expect(fontOf('arial ')).toBe('arimo-regular@1');
+    expect(fontOf('Arial', true)).toBe('arimo-bold@1');
+    expect(fontOf('Arial', true, true)).toBe('arimo-bold@1');
+    expect(fontOf('Arial', false, true)).toBe('arimo-regular@1');
+    expect(fontOf('Arial Narrow', true)).toBe('archivo-narrow-bold@1');
+    expect(fontOf('DIN Condensed', true)).toBe('sofia-sans-extra-condensed-bold@1');
+    expect(fontOf('Arial Narrow')).toBe('archivo-narrow-regular@1');
+    expect(fontOf('DIN Condensed')).toBe('sofia-sans-extra-condensed-bold@1');
+    expect(fontOf('Some Display Face')).toBe('inter-regular@1');
+    expect(fontOf('Courier New')).toBe('jetbrains-mono-regular@1');
   });
 
   it('places an older text in its box by its alignment, its height the capitals', async () => {
@@ -664,8 +769,9 @@ describe('f3dToDesign', () => {
     expect(report.imported).toContain('Extrude2');
     const [, letter] = await measures(f3d);
     expect(((letter?.bbox.min[0] ?? 0) + (letter?.bbox.max[0] ?? 0)) / 2).toBeCloseTo(30, 0);
+    // Arial's capitals 5 mm high: Arimo at the same font size, its capitals 4.80 mm.
     expect(letter?.bbox.min[1]).toBeCloseTo(2.5, 1);
-    expect(letter?.bbox.max[1]).toBeCloseTo(7.5, 1);
+    expect(letter?.bbox.max[1]).toBeCloseTo(7.3, 1);
   });
 
   it("moves an extrude's face along its outward normal", async () => {

@@ -419,7 +419,8 @@ function urlFor(collection: Collection, path: string): string {
 
 /**
  * The front matter of a page: the `key: value` lines between the first two `---`
- * fences, and the rest of the file. A file with no front matter is all body.
+ * fences, and the rest of the file. A file with no front matter is all body. A
+ * quoted value (YAML needs it for a title with a colon) is read without its quotes.
  */
 function frontMatter(source: string): { meta: Record<string, string>; body: string } {
   const match = /^---\n([\s\S]*?)\n---\n?/.exec(source);
@@ -427,7 +428,8 @@ function frontMatter(source: string): { meta: Record<string, string>; body: stri
   const meta: Record<string, string> = {};
   for (const line of (match[1] ?? '').split('\n')) {
     const [key, ...rest] = line.split(':');
-    if (key) meta[key.trim()] = rest.join(':').trim();
+    const value = rest.join(':').trim();
+    if (key) meta[key.trim()] = /^(["']).*\1$/.test(value) ? value.slice(1, -1) : value;
   }
   return { meta, body: source.slice(match[0].length) };
 }

@@ -1,7 +1,7 @@
 # @extrudo/fonts
 
 The fonts bundled for sketch text (ADR-0058 §3): static TTFs, subsetted to the
-Latin ranges, all under the SIL Open Font License 1.1 (one `OFL-<family>.txt`
+Latin ranges (one also to Cyrillic), all under the SIL Open Font License 1.1 (one `OFL-<family>.txt`
 per family). `src/index.ts` is the manifest the app and tests read.
 
 | ID | Family | Style | Source (github.com/google/fonts) | Upstream version | Size |
@@ -12,6 +12,11 @@ per family). `src/index.ts` is the manifest the app and tests read.
 | `jetbrains-mono-regular@1` | JetBrains Mono | Regular | [ofl/jetbrainsmono](https://github.com/google/fonts/tree/main/ofl/jetbrainsmono) (variable `JetBrainsMono[wght].ttf`, pinned `wght=400`) | 2.211 | 24,548 B |
 | `allerta-stencil-regular@1` | Allerta Stencil | Regular | [ofl/allertastencil](https://github.com/google/fonts/tree/main/ofl/allertastencil) (static `AllertaStencil-Regular.ttf`) | 1.02 | 14,940 B |
 | `fredoka-semibold@1` | Fredoka | SemiBold | [ofl/fredoka](https://github.com/google/fonts/tree/main/ofl/fredoka) (variable `Fredoka[wdth,wght].ttf`, pinned `wght=600 wdth=100`) | 2.001 | 35,216 B |
+| `arimo-regular@1` | Arimo | Regular | [ofl/arimo](https://github.com/google/fonts/tree/main/ofl/arimo) (variable `Arimo[wght].ttf`, pinned `wght=400`) | 1.341 | 25,904 B |
+| `arimo-bold@1` | Arimo | Bold | [ofl/arimo](https://github.com/google/fonts/tree/main/ofl/arimo) (variable `Arimo[wght].ttf`, pinned `wght=700`) | 1.341 | 26,424 B |
+| `archivo-narrow-regular@1` | Archivo Narrow | Regular | [ofl/archivonarrow](https://github.com/google/fonts/tree/main/ofl/archivonarrow) (variable `ArchivoNarrow[wght].ttf`, pinned `wght=400`) | 3.002 | 27,620 B |
+| `archivo-narrow-bold@1` | Archivo Narrow | Bold | [ofl/archivonarrow](https://github.com/google/fonts/tree/main/ofl/archivonarrow) (variable `ArchivoNarrow[wght].ttf`, pinned `wght=700`) | 3.002 | 27,304 B |
+| `sofia-sans-extra-condensed-bold@1` | Sofia Sans Extra Condensed | Bold | [ofl/sofiasansextracondensed](https://github.com/google/fonts/tree/main/ofl/sofiasansextracondensed) (variable `SofiaSansExtraCondensed[wght].ttf`, pinned `wght=700`; with Cyrillic `U+0400-045F`) | 4.101 | 63,400 B |
 
 **A file never changes under an ID** (ADR-0058 §3): a saved design keeps its
 exact shape. A newer upstream version, a different subset or any other change
@@ -26,7 +31,9 @@ skia-pathops) and subsets each font with `pyftsubset` to
 `U+0020-007E, U+00A0-017F, U+2010-2027, U+2030-203A, U+20AC, U+2122,
 U+2190-2193`, keeping the `kern` and `liga` layout features, without hinting,
 with the `.notdef` outline kept (`--notdef-outline`: a character the font has
-no glyph for draws the tofu box).
+no glyph for draws the tofu box). Sofia Sans Extra Condensed also keeps
+Cyrillic (`U+0400-045F`): text imported from .f3d files in the condensed
+family it stands in for uses it (ADR-0083).
 
 fontTools runs in a container so that no Python setup is needed on the host.
 From the repo root:
@@ -40,6 +47,10 @@ sg docker -c 'docker run --rm -v "$PWD":/w -w /w --user "$(id -u):$(id -g)" \
 (Use plain `docker run …` instead of `sg docker -c '…'` where the user is
 already in the `docker` group.) The script is idempotent: re-running it
 re-derives `fonts/` from the same upstream inputs. Do **not** commit `.work/`.
+Each run gives the pinned fonts new bytes all the same (the instancer stamps
+the build time into them, and fontTools versions differ): when adding a font,
+keep the committed files (`git checkout -- packages/fonts/fonts/`) and commit
+only the new ones.
 
 Subsetting a font by hand, outside the script:
 

@@ -998,8 +998,9 @@ export const TABS: Tab[] = [
       { label: 'Pattern', tools: ['rectangularPattern', 'circularPattern', 'pathPattern'] },
       // Record and Stop show one at a time (P5-05).
       { label: 'Program', tools: ['script', 'recordMacro', 'stopMacro'] },
-      // Components organise bodies into parts (P6-05, ADR-0081).
-      { label: 'Component', tools: ['newComponent', 'joint'] },
+      // Components organise bodies into the parts of an assembly (P6-05, ADR-0081; named
+      // Assemble since #74, where people look for assemblies).
+      { label: 'Assemble', tools: ['newComponent', 'joint'] },
     ],
   },
   {

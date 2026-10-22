@@ -11,7 +11,7 @@ Join two components where they are: a hinge, a slide or a rigid link, to pose an
 
 | Where | Shortcut |
 |---|---|
-| Solid › Component | J |
+| Solid › Assemble | J |
 
 <video src="demo:joint" muted loop autoplay playsinline aria-label="Joint demo"></video>
 

@@ -182,9 +182,13 @@ brief, voice) is in **`05-brand.md`**. In short:
   at once); the preview shows the body turned so the face lies on the bed
   (z = 0); a warning says when part of the body would end up below it. Also
   "Place on Bed" in the context list of a flat face.
-- **Components** (P6-05 S3–S5, S9, ADR-0081 §6). Solid › **Component** group:
-  New Component (no key; the selected bodies, or an empty one, which it
-  activates) and Joint (`J`). In the browser the Bodies folder lists a nested
+- **Components** (P6-05 S3–S5, S9, ADR-0081 §6). Solid › **Assemble** group
+  (named Component until #74): New Component (no key; the selected bodies, or
+  an empty one, which it activates) and Joint (`J`); search finds both by
+  "assembly" too. With two or more bodies and no component, the Bodies folder
+  ends with the **assembly hint** (`[data-assembly-hint]`: one line, a New
+  Component button and a close button that sets `browser.assemblyHint` to
+  false for good; model mode only). In the browser the Bodies folder lists a nested
   row per component first (count badge, eye shown → ghost → hidden, `F2`
   rename, a filled marker while active), its bodies and the joints whose moving
   side it is under it; loose bodies follow at the folder's own level. A click

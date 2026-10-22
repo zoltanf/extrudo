@@ -773,6 +773,33 @@ Every slice landed as §2–§9 describe; what each added beyond the text:
   (the options object became the inputs); an empty inputs object now holds its place. A joint's
   `suppressed` flag round-trips through `d.joint`, the emitter and `emit.test.ts`.
 
+## Amendment, 2026-10-21: the Assemble group and the assembly hint (#74)
+
+A tester could make components but found "no means to create an assembly": nothing in the UI
+said "assembly", the word people coming from other CAD look for. The model is unchanged
+(components are sets of bodies in one design, §1, so that design is the assembly); only a
+name, the search words, one hint and the docs change.
+
+- **The Solid tab's group is "Assemble"** (was "Component"), with the same two tiles, New
+  Component and Joint, and the same IDs, keys and clips. Ctrl+K lists the component commands
+  under "Solid › Assemble", and search finds New Component, Joint and the component commands by
+  "assembly" (`TOOL_KEYWORDS` in `shell/commands.tsx` for the two tools).
+- **The assembly hint**: while the design has two or more live bodies (pending ones don't count)
+  and no component (`offersAssembly` in `components/componentRows.ts`), the Bodies folder ends
+  with one line, "Building an assembly? Select one part's bodies, then New Component. Joints
+  then connect the parts.", its New Component a button that runs the tool on the selection as
+  the tile does, and a close button. Closing it sets the preference `browser.assemblyHint` to
+  `false` and it never shows again; it shows in model mode only, and making a component ends it.
+  The owner's UI review 3 removed a hint over the view (R3-15) for appearing out of nowhere;
+  this one sits in the browser's own list, under the rows it is about, and can be closed for
+  good.
+- **The guide page** is "Assemblies: components and joints" (same address,
+  `docs/guide/components.md`) with a "Where is the assembly?" section; the README and the
+  site's feature list say "Assemblies".
+- **Rejected:** renaming the component itself (the file format, the API, the browser and the
+  exports all call it that, so a rename would reach far for a word only the group needed); an
+  Assembly tab of its own (two tiles do not fill a tab).
+
 ## Slices
 
 Twelve slices, in `docs/plans/p6-05-components.md`: S1 core model ∥ S2 kernel

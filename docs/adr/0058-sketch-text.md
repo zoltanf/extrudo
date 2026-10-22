@@ -325,3 +325,30 @@ chunk is untouched until a document has text.
   format change.
 - Text on a path, letter spacing, bold/italic synthesis, complex-script shaping
   (HarfBuzz), exploding text into editable curves, variable-font axes.
+
+## Amendment, 2026-10-21: stand-ins for the fonts of imported files
+
+Text imported from a `.f3d` file names a font family Extrudo can't ship (Arial,
+Arial Narrow, DIN Condensed); drawn in Inter, a text's width and letter shapes
+differed, so its cut did (ADR-0083's amendment of the same day). Five more
+bundled fonts, all SIL OFL 1.1 from google/fonts, unmodified apart from the
+usual pin and subset (§3):
+
+| ID | Family, style | Stands in for |
+|---|---|---|
+| `arimo-regular@1`, `arimo-bold@1` | Arimo Regular, Bold (`wght` 400, 700) | Arial: the same widths |
+| `archivo-narrow-regular@1`, `archivo-narrow-bold@1` | Archivo Narrow Regular, Bold | Arial Narrow: within 0.7 % |
+| `sofia-sans-extra-condensed-bold@1` | Sofia Sans Extra Condensed Bold (`wght` 700) | DIN Condensed, a bold face: 2.3 % narrower (median); with Cyrillic |
+
+The Sofia Sans subset also keeps Cyrillic (`U+0400-045F`), because imported
+text in that family uses it; the others keep §3's ranges. Each file is 26 to
+64 kB. They are ordinary bundled fonts: the font picker lists them, the CLI
+reads them, the precache and the desktop package carry them like the others.
+
+Rejected: Liberation Sans Narrow (as close to Arial Narrow as Archivo Narrow,
+but GPL with a font exception, not OFL); Barlow Condensed for DIN Condensed
+(widths spread 0.92–1.21 and no Cyrillic); scaling an outline to fit (a
+derived font). Re-running `build-fonts.sh` gives every pinned font new bytes
+(the instancer stamps the time), so only the new files were committed and the
+old ones kept, as §3 requires.
+

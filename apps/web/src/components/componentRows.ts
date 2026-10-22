@@ -43,6 +43,17 @@ export function componentRows(
 }
 
 /**
+ * Whether the Bodies folder shows the assembly hint (#74, ADR-0081's amendment of
+ * 2026-10-21): two or more live bodies and no component yet.
+ */
+export function offersAssembly(
+  doc: Pick<ExtrudoDocument, 'components'>,
+  entries: readonly BodyEntry[],
+): boolean {
+  return (doc.components ?? []).length === 0 && entries.filter((e) => !e.pending).length >= 2;
+}
+
+/**
  * The Viewport's `data-components` for tests: `Lid:Body1,Body2;Box:Body3` — component name,
  * its live body names, `;` between components in browser order, spaces as `_`. Absent
  * (`undefined`) with no components.

@@ -40,10 +40,10 @@ pin() { # <source file> <output file> <axis=value> …
     echo "$dst"
 }
 
-subset() { # <source file> <output file>
+subset() { # <source file> <output file> [extra ranges]
     # --notdef-outline keeps the .notdef box, so a character the font has no
     # glyph for still draws something (ADR-0058 §4).
-    pyftsubset "$1" --unicodes="$UNICODES" \
+    pyftsubset "$1" --unicodes="$UNICODES${3:+,$3}" \
         --layout-features="kern,liga" --no-hinting --desubroutinize --notdef-outline \
         --output-file="$OUT/$2"
 }
@@ -53,11 +53,17 @@ download 'NotoSerif.ttf' notoserif 'NotoSerif[wdth,wght].ttf'
 download 'JetBrainsMono.ttf' jetbrainsmono 'JetBrainsMono[wght].ttf'
 download 'AllertaStencil-Regular.ttf' allertastencil 'AllertaStencil-Regular.ttf'
 download 'Fredoka.ttf' fredoka 'Fredoka[wdth,wght].ttf'
+download 'Arimo.ttf' arimo 'Arimo[wght].ttf'
+download 'ArchivoNarrow.ttf' archivonarrow 'ArchivoNarrow[wght].ttf'
+download 'SofiaSansExtraCondensed.ttf' sofiasansextracondensed 'SofiaSansExtraCondensed[wght].ttf'
 download 'OFL-inter.txt' inter 'OFL.txt'
 download 'OFL-notoserif.txt' notoserif 'OFL.txt'
 download 'OFL-jetbrainsmono.txt' jetbrainsmono 'OFL.txt'
 download 'OFL-allertastencil.txt' allertastencil 'OFL.txt'
 download 'OFL-fredoka.txt' fredoka 'OFL.txt'
+download 'OFL-arimo.txt' arimo 'OFL.txt'
+download 'OFL-archivonarrow.txt' archivonarrow 'OFL.txt'
+download 'OFL-sofiasansextracondensed.txt' sofiasansextracondensed 'OFL.txt'
 
 subset "$(pin 'Inter.ttf' wght=400 opsz=14)" 'inter-regular.ttf'
 subset "$(pin 'Inter.ttf' wght=700 opsz=14)" 'inter-bold.ttf'
@@ -65,6 +71,14 @@ subset "$(pin 'NotoSerif.ttf' wght=400 wdth=100)" 'noto-serif-regular.ttf'
 subset "$(pin 'JetBrainsMono.ttf' wght=400)" 'jetbrains-mono-regular.ttf'
 subset "$WORK/AllertaStencil-Regular.ttf" 'allerta-stencil-regular.ttf'
 subset "$(pin 'Fredoka.ttf' wght=600 wdth=100)" 'fredoka-semibold.ttf'
+# Stand-ins for the families .f3d files name most (ADR-0083): Arimo has the
+# same widths as the usual sans; the condensed face also gets Cyrillic, which
+# imported text in that family uses.
+subset "$(pin 'Arimo.ttf' wght=400)" 'arimo-regular.ttf'
+subset "$(pin 'Arimo.ttf' wght=700)" 'arimo-bold.ttf'
+subset "$(pin 'ArchivoNarrow.ttf' wght=400)" 'archivo-narrow-regular.ttf'
+subset "$(pin 'ArchivoNarrow.ttf' wght=700)" 'archivo-narrow-bold.ttf'
+subset "$(pin 'SofiaSansExtraCondensed.ttf' wght=700)" 'sofia-sans-extra-condensed-bold.ttf' 'U+0400-045F'
 
 # Report: family, upstream version (name table), size; and the pinned fonts
 # must be static (no fvar left).

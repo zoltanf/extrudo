@@ -4,7 +4,7 @@
  * `EA3B930A…`, a sketch-line subclass: a
  * reference to the text, then start and displacement as a line's); then the
  * property block (`txt_tag`, `txt_tag_base`) and the members: f64 angle of
- * the baseline from the sketch's x axis, a byte, four bytes, 12 zero bytes,
+ * the baseline from the sketch's x axis, a byte (1 bold, 0 regular), four bytes, 12 zero bytes,
  * f32 1, wstr font family ("Arial", "Arial Narrow", "DIN Condensed"…), f64
  * height (cm), two bytes, the box corner the baseline starts from (2 f64),
  * zeros (and in version 4 three more bytes), wstr text, the box lines again,
@@ -20,7 +20,8 @@
  * capitals'), and a reference to its parameter when it has one; u32
  * horizontal alignment (1 left, 3 centre) and three zero bytes; wstr text
  * (lines split by `\n`); a byte, the vertical alignment (1 top, 3 middle),
- * u32 weight (500, 750) or other fields; then a 4 × 4 row-major matrix from
+ * a u32 (mostly 0) and the u32 weight (500 regular, 750 bold; 0 where the
+ * first is set); then a 4 × 4 row-major matrix from
  * the text's frame into the sketch's (cm), its origin the lower left corner
  * of the text's box; a trailer and the owner backlink. The box is four sketch
  * lines (`16DEFC4D…`, a line subclass: start and displacement in the base
@@ -53,6 +54,8 @@ export interface SketchText {
   at: [number, number];
   /** The box's length along the baseline, cm. */
   width: number;
+  /** Set in bold (an older text: its weight is 700 or more). */
+  bold?: boolean;
   /**
    * An older text (`E0618268…`): `at` is its box's corner and `angle` its
    * frame's (`width` 0), `height` the capitals'; `mirrored` when the frame
@@ -78,7 +81,8 @@ export const sketchText: RecordDecoder<SketchText> = {
     }
     readProps(r);
     const angle = r.f64();
-    r.skip(5);
+    const bold = r.u8() === 1;
+    r.skip(4);
     r.zeros(12);
     r.skip(4);
     const font = r.wstr(200);
@@ -102,6 +106,7 @@ export const sketchText: RecordDecoder<SketchText> = {
       angle,
       at,
       width,
+      ...(bold ? { bold } : {}),
       ...(owner !== undefined ? { owner } : {}),
     };
   },
@@ -157,6 +162,7 @@ export const sketchTextOld: RecordDecoder<SketchText> = {
     const text = wideStringNear(r, end);
     if (text === undefined) throw new F3dFormatError(`Sketch text #${id}: no text.`);
     const vertical = r.u8();
+    const bold = (r.peekU32(4) ?? 0) >= 700;
     const m = matrixNear(r, end);
     if (!m) throw new F3dFormatError(`Sketch text #${id}: no frame.`);
     const owner = ownerAtEnd(seg, r);
@@ -168,6 +174,7 @@ export const sketchTextOld: RecordDecoder<SketchText> = {
       angle: Math.atan2(m[4] as number, m[0] as number),
       at: [m[3] as number, m[7] as number],
       width: 0,
+      ...(bold ? { bold } : {}),
       old: {
         mirrored: (m[0] as number) * (m[5] as number) - (m[1] as number) * (m[4] as number) < 0,
         horizontal,
