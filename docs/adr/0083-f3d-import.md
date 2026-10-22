@@ -1370,3 +1370,59 @@ could not be read. `F3dDesign.unreadParameters` counts the parameter records tha
 when it is above zero, each through-all fallback for a missing distance adds a note saying it
 is a guess. Tests: `decode/parameters.test.ts`; `map.test.ts` "says when a missing distance
 is a guess"; `actions.test.ts` "says how many records could not be read".
+
+## Amendment, 2026-10-22: 32-bit B-rep streams, Combine, Move, a deleted sketch (#93)
+
+The second file of #93 (a bumper: an oval base with fillets, two lobes, a
+column) imported with its base thinner than in the file. Four causes:
+
+- **32-bit B-rep streams.** Files saved since October 2026 write their
+  streams as `ASM BinaryFile4`: ints, enums and pointers are 4 bytes, the
+  header's counts two u32 (FORMAT.md, "ASM B-rep"). `readAsm` took only
+  BinaryFile8, so no face or edge of such a file could be named (14 fillets
+  and 6 offsets of the bumper left out) and the body check had no file body.
+  It now reads both with one width variable; the hostile-file bounds are
+  unchanged (the 4-byte form only needs fewer bytes per value). The long
+  string lengths (`0x09`, `0x12`) occur in none of the four streams seen, so
+  they stay 8 bytes, unverified. On the bumper 11 of the 14 fillets and 2 of
+  the 6 offsets are now imported (8 → 21 features).
+- **Combine** (`2A94257F…`) maps to `combine`: the target and the tools come
+  from the record's own lists (FORMAT.md). Both combines seen are joins that
+  consumed their tools, and the bytes that would hold a cut, an intersect or
+  "keep tools" are not located: a combine is imported as a join only where
+  those bytes are zero, and is otherwise left out with "its operation could
+  not be read". A tool it consumed is not reported as "hidden, as in the
+  file". Before, the bumper's pad (a separate body the combine joins into
+  the base) stayed hidden, so the base's bottom was 2.5 mm short.
+- **Move** (`64E40C8E…`) maps to `moveBodies` in free mode when its matrix
+  (`84E6245F…`, row-major, cm) only translates; a move that turns is left out
+  ("it turns the bodies"): Extrudo's free mode turns about the bodies' box
+  centre and its rotate mode needs an axis the import does not make. The
+  matrix reading was checked on the corpus's two such moves: both designs'
+  boxes now equal their exports' (20 mm and 70 mm off before).
+- **An extrude whose sketch was deleted.** A profile operand can name a
+  sketch record the file no longer holds. That was a decoding problem and the
+  skip said "its profile is a face"; now the profile reader tells it apart
+  (`SketchGoneError`), no problem is recorded, and the extrude is skipped with
+  "the sketch its profile came from is no longer in the file".
+
+Face deletions (`DeleteFace`, 28 in the bumper) stay unsupported.
+
+**Numbers** (replay corpus, before → after): match 157 → 158 (the corpus's
+move of a frame part, box 70 mm → 0), mismatch 51 → 52, partial 27 → 25,
+features left out 75 → 73. The one design that went from partial to
+mismatch has nothing left out now; its volume error is the same (3.7 %, a text
+cut in a substitute font) and its box error went from 20 mm to 0. The
+corpus's other combine and a move that turns stay left out, with the new
+reasons. Body check: editable 225 → 226 (the moved frame part, frozen
+before), frozen 129 → 128, unchecked 26 → 26 (same reasons); no body worse.
+The bumper: 23 features imported, 39 left out
+(28 face deletions, 3 extrudes of the deleted sketch, 3 fillets and 4 offsets
+whose faces can't be named, a suppressed removal), no decoding problem; its
+body is frozen from the file (the timeline makes it differently without the
+face deletions), and the replay's base under the column runs from −5.5 to
+2 mm as the file's does. The issue's first file (one sketch, one extrude) now
+has its stream read and its body matched (editable). Tests: `asm.test.ts`
+"readAsm, BinaryFile4"; `brep-body.test.ts` "reads the 32-bit stream
+variant"; `decode/combine.test.ts`; `decode/extrude.test.ts`
+"readProfileOperand"; `map-more.test.ts` "features on whole bodies".
