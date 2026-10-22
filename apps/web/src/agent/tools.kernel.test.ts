@@ -11,6 +11,11 @@ import { runTool } from './tools';
 
 const textOf = (reply: AgentReply) => (reply.result.content[0] as { text: string }).text;
 const jsonOf = (reply: AgentReply) => JSON.parse(textOf(reply));
+/** A box to 0.01 mm (an arc's extent comes from its tessellation; `+ 0` turns -0 into 0). */
+const roundBox = ({ box }: { box: { min: number[]; max: number[] } }) => ({
+  min: box.min.map((v) => Math.round(v * 100) / 100 + 0),
+  max: box.max.map((v) => Math.round(v * 100) / 100 + 0),
+});
 
 async function open() {
   const k = await kernelHost(Design.create({ name: 'Agent' }).toJSON());
@@ -297,6 +302,83 @@ describe('the agent tools on the real kernel', { timeout: 60_000 }, () => {
     const refused = await call('screenshot', { section: { plane: 'xy', offset: 'ten' } });
     expect(textOf(refused)).toBe("section.offset: a number of mm or '10 mm'.");
     expect(textOf(await call('screenshot', { size: 100 }))).toMatch(/^size: /);
+    dispose();
+  });
+
+  it('keeps expression coordinates as dimensions, so the sketch follows a parameter (#103)', async () => {
+    const { call, dispose } = await open();
+    await call('set_parameter', { name: 'wall_t', expression: '3 mm' });
+    const sketch = jsonOf(
+      await call('add_sketch', {
+        plane: 'xy',
+        shapes: [
+          { shape: 'rectangle', from: ['-40 mm + wall_t', '-5 mm + wall_t'], to: [37, 52] },
+          { shape: 'circle', center: [100, 'wall_t'], diameter: 4 },
+          {
+            shape: 'polyline',
+            points: [
+              ['150 mm + wall_t', 0],
+              [170, 0],
+              [170, 20],
+            ],
+            closed: true,
+          },
+          { shape: 'slot', from: [200, 0], to: [220, 0], width: '2 * wall_t' },
+        ],
+      }),
+    ).result;
+    const byX = (regions: { box: { min: number[]; max: number[] } }[]) =>
+      regions.map(roundBox).sort((a, b) => (a.min[0] as number) - (b.min[0] as number));
+    expect(byX(sketch.regions)).toEqual([
+      { min: [-37, -2], max: [37, 52] },
+      { min: [98, 1], max: [102, 5] },
+      { min: [153, 0], max: [170, 20] },
+      { min: [197, -3], max: [223, 3] },
+    ]);
+    const extrude = jsonOf(
+      await call('add_feature', {
+        type: 'extrude',
+        inputs: { profiles: [sketch.profiles[0]], distance: '5 mm' },
+      }),
+    );
+    expect(extrude.problems).toEqual([]);
+    const box = async () => roundBox(jsonOf(await call('get_bodies'))[0]);
+    expect(await box()).toEqual({ min: [-37, -2, 0], max: [37, 52, 5] });
+
+    const changed = jsonOf(await call('set_parameter', { name: 'wall_t', expression: '5 mm' }));
+    expect(changed.problems).toEqual([]);
+    expect(await box()).toEqual({ min: [-35, 0, 0], max: [37, 52, 5] });
+    // The other shapes followed too, and the polyline stayed closed.
+    const after = jsonOf(await call('get_feature', { id: sketch.id }));
+    expect(byX(after.regions)).toEqual([
+      { min: [-35, 0], max: [37, 52] },
+      { min: [98, 3], max: [102, 7] },
+      { min: [155, 0], max: [170, 20] },
+      { min: [195, -5], max: [225, 5] },
+    ]);
+    dispose();
+  });
+
+  it("draws an arc on its through point's side, whichever side that is (#104)", async () => {
+    const { call, dispose } = await open();
+    const sketch = jsonOf(
+      await call('add_sketch', {
+        plane: 'xz',
+        shapes: [
+          { shape: 'arc', start: [-72, 20], end: [-72, 52], through: [-88, 36] },
+          { shape: 'line', from: [-72, 52], to: [-72, 20] },
+          { shape: 'arc', start: [70, 20], end: [70, 52], through: [86, 36] },
+          { shape: 'line', from: [70, 52], to: [70, 20] },
+        ],
+      }),
+    ).result;
+    const boxes = sketch.regions.map(roundBox);
+    expect(boxes).toEqual(
+      expect.arrayContaining([
+        { min: [-88, 20], max: [-72, 52] },
+        { min: [70, 20], max: [86, 52] },
+      ]),
+    );
     dispose();
   });
 });

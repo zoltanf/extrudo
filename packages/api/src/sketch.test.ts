@@ -12,7 +12,7 @@ import { readArchive } from '@extrudo/storage';
 import { describe, expect, it } from 'vitest';
 import { Design } from './design';
 import { ApiError } from './error';
-import type { CircleHandle } from './sketch';
+import type { ArcHandle, CircleHandle } from './sketch';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../../fixtures/benchmarks');
 const FIXED = { now: '2026-10-05T00:00:00.000Z' };
@@ -177,6 +177,31 @@ describe('sketch entities', () => {
       expect.objectContaining({ mode: 'conic', rho: 0.5 }),
     ]);
     expect(d.validate()).toEqual([]);
+  });
+
+  it('draws a three-point arc on the side of its through point (#104)', () => {
+    const d = Design.create(FIXED);
+    // The midpoint of the stored counter-clockwise sweep, which `through` must share a side with.
+    const mid = (data: SketchData, arc: ArcHandle) => {
+      const e = data.entities[arc.id] as Extract<SketchEntity, { type: 'arc' }>;
+      const at = (id: SketchEntityId) =>
+        data.entities[id] as Extract<SketchEntity, { type: 'point' }>;
+      const [c, s, t] = [at(e.center), at(e.start), at(e.end)];
+      const a0 = Math.atan2(s.y - c.y, s.x - c.x);
+      let a1 = Math.atan2(t.y - c.y, t.x - c.x);
+      if (a1 < a0) a1 += 2 * Math.PI;
+      const r = Math.hypot(s.x - c.x, s.y - c.y);
+      return [c.x + r * Math.cos((a0 + a1) / 2), c.y + r * Math.sin((a0 + a1) / 2)];
+    };
+    d.sketch(d.origin.xy, (k) => {
+      const left = k.arc([-72, 20], [-72, 52], [-88, 36]);
+      const right = k.arc([70, 20], [70, 52], [86, 36]);
+      expect(mid(k.data, left)[0]).toBeCloseTo(-88, 6);
+      expect(mid(k.data, right)[0]).toBeCloseTo(86, 6);
+      // The handle's ends are still the ones given, whichever way it runs.
+      expect(left.start.at()).toEqual([-72, 20].map((v) => expect.closeTo(v, 9)));
+      expect(left.end.at()).toEqual([-72, 52].map((v) => expect.closeTo(v, 9)));
+    });
   });
 
   it('stores an arc, an ellipse and a polyline the way the tools do', () => {

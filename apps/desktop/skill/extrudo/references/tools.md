@@ -28,6 +28,16 @@ Opens a design by id (from list_designs) and waits until it is ready.
 | --- | --- | --- | --- |
 | `id` | `string` | yes | The design id. |
 
+## `rename_design`
+
+**Changes the design.**
+
+Renames the open design (get_design and list_designs show the new name) and saves it. One undo step.
+
+| Input | Type | Required | What it is |
+| --- | --- | --- | --- |
+| `name` | `string` | yes | The design's new name. |
+
 ## `get_design`
 
 The open design: id, name, parameters, configurations, and the timeline as [{ id, type, name, status, message?, suppressed }]. Read it first, and after every change: status 'error' or 'warning' says what went wrong.
@@ -121,13 +131,13 @@ Adds a sketch on a plane with the shapes given and answers its id, its profiles 
 
 Each shape is an object whose `shape` names its kind, with that kind's fields:
 
-- `{ "shape": "rectangle", "from": [number, number], "to": [number, number], "width"?: string | number, "height"?: string | number }` — A rectangle from two opposite corners, optionally dimensioned.
-- `{ "shape": "centeredRectangle", "center": [number, number], "corner": [number, number], "width"?: string | number, "height"?: string | number }` — A rectangle from its centre and one corner, optionally dimensioned.
-- `{ "shape": "circle", "center": [number, number], "diameter": string | number }` — A circle with a diameter dimension.
-- `{ "shape": "line", "from": [number, number], "to": [number, number] }` — A line.
-- `{ "shape": "polyline", "points": ([number, number])[], "closed"?: boolean }` — Lines joined end to end; closed joins the last point to the first.
-- `{ "shape": "arc", "start": [number, number], "end": [number, number], "through": [number, number] }` — An arc from start to end through a third point.
-- `{ "shape": "slot", "from": [number, number], "to": [number, number], "width": number }` — A slot between two centres, width in mm.
+- `{ "shape": "rectangle", "from": [number | string, number | string], "to": [number | string, number | string], "width"?: string | number, "height"?: string | number }` — A rectangle from two opposite corners, optionally dimensioned.
+- `{ "shape": "centeredRectangle", "center": [number | string, number | string], "corner": [number | string, number | string], "width"?: string | number, "height"?: string | number }` — A rectangle from its centre and one corner, optionally dimensioned.
+- `{ "shape": "circle", "center": [number | string, number | string], "diameter": string | number }` — A circle with a diameter dimension.
+- `{ "shape": "line", "from": [number | string, number | string], "to": [number | string, number | string] }` — A line.
+- `{ "shape": "polyline", "points": ([number | string, number | string])[], "closed"?: boolean }` — Lines joined end to end; closed joins the last point to the first.
+- `{ "shape": "arc", "start": [number | string, number | string], "end": [number | string, number | string], "through": [number | string, number | string] }` — An arc from start to end through a third point, on its side; through only places it (no dimension is kept for it).
+- `{ "shape": "slot", "from": [number | string, number | string], "to": [number | string, number | string], "width": string | number }` — A slot between two centres; an expression width is kept as a dimension.
 
 ## `add_feature`
 

@@ -1,0 +1,1 @@
+- 2026-10-22 · **Agents (MCP)**: sketch points and slot widths take expressions, kept as dimensions so the shapes follow their parameters (#103); a three-point arc is drawn on its through point's side, which also fixes the document API's `arc` (#104); new `rename_design` tool names the open design (#105).

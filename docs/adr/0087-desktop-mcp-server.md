@@ -395,3 +395,28 @@ what it had to work out by trial. Decided:
 - A join whose picked bodies the tool doesn't touch (ADR-0029's `operate`)
   keeps them as they are and warns, instead of fusing them into a compound
   that `splitSolids` then split into a silent new body (#87).
+
+## Amendment, 2026-10-22: parametric sketch points, arcs, renaming (#103–#105)
+
+- **Sketch points take expressions** (#103). Every `add_sketch` coordinate,
+  and a slot's `width`, takes a number of mm, `'12 mm'` or an expression. The
+  expression is evaluated against the document's parameters to draw the
+  shape; then each coordinate that isn't a plain length becomes a horizontal
+  or vertical distance dimension from **one fixed point at the sketch origin**
+  (`k.point([0, 0])` + `fix`, added with the first) to the shape's first new
+  point drawn there, so `apply` re-solves it when a parameter changes.
+  Dimensions are unsigned, so a negative coordinate is kept as `-(<expr>)`
+  and the solver keeps the side it was drawn on. An arc's `through` only
+  places the arc. A closed polyline now joins its last end to its first start
+  with a coincident, so it stays closed when a point moves. *Rejected:*
+  expressions in the document API's `Vec2` (every sketch method and its
+  generated docs would change for an agent-only need) and a projected origin
+  point (ADR-0093: a projection needs the kernel's report before its point
+  exists).
+- **`SketchBuilder.arc` honours `through`** (#104): the arc runs
+  counter-clockwise from `start` to `end` when `through` lies on that sweep,
+  else it is stored reversed (from `end` to `start`, the handle's `start` and
+  `end` still the ones given). Before, it always ran counter-clockwise, so an
+  arc whose `through` lay clockwise was drawn on the other side.
+- **`rename_design`** (#105): `renameDocument` in one `Agent: Rename design`
+  step, then `save`, so `list_designs` (the saved designs) shows the name.

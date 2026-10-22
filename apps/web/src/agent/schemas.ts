@@ -9,13 +9,15 @@ import type { AgentToolDefinition } from '../platform/agent';
 import { SNAPSHOT_VIEWS } from '../viewport/snapshotView';
 
 const id = (what: string) => z.string().min(1).describe(what);
-const vec2 = z
-  .tuple([z.number(), z.number()])
-  .describe('A point in the sketch plane, [x, y] in mm.');
 const expr = (what: string) =>
   z
     .union([z.string(), z.number()])
     .describe(`${what}: an expression ('20 mm', 'width / 2') or a number of mm.`);
+const vec2 = z
+  .tuple([z.union([z.number(), z.string()]), z.union([z.number(), z.string()])])
+  .describe(
+    "A point in the sketch plane, [x, y]: numbers of mm, or expressions ('wall_t', '-width / 2 + 3 mm') kept as dimensions from the sketch origin, so the point moves when a parameter changes.",
+  );
 const geomRef = z
   .object({ kind: z.string(), id: z.string() })
   .describe("A reference: { kind, id }, e.g. { kind: 'face', id: 'extrude:<feature>:cap:end' }.");
@@ -56,10 +58,12 @@ const shape = z.discriminatedUnion('shape', [
     .describe('Lines joined end to end; closed joins the last point to the first.'),
   z
     .object({ shape: z.literal('arc'), start: vec2, end: vec2, through: vec2 })
-    .describe('An arc from start to end through a third point.'),
+    .describe(
+      'An arc from start to end through a third point, on its side; through only places it (no dimension is kept for it).',
+    ),
   z
-    .object({ shape: z.literal('slot'), from: vec2, to: vec2, width: z.number().positive() })
-    .describe('A slot between two centres, width in mm.'),
+    .object({ shape: z.literal('slot'), from: vec2, to: vec2, width: expr('Its width') })
+    .describe('A slot between two centres; an expression width is kept as a dimension.'),
 ]);
 
 export type SketchShape = z.infer<typeof shape>;
@@ -79,6 +83,11 @@ export const TOOL_SCHEMAS = {
   open_design: {
     description: 'Opens a design by id (from list_designs) and waits until it is ready.',
     input: z.object({ id: id('The design id.') }),
+  },
+  rename_design: {
+    description:
+      'Renames the open design (get_design and list_designs show the new name) and saves it. One undo step.',
+    input: z.object({ name: z.string().trim().min(1).describe("The design's new name.") }),
   },
   get_design: {
     description:
@@ -264,6 +273,7 @@ export const TOOL_NAMES = Object.keys(TOOL_SCHEMAS) as ToolName[];
 
 /** The tools that change the open design: refused while none is open. */
 export const CHANGE_TOOLS: ReadonlySet<ToolName> = new Set([
+  'rename_design',
   'set_parameter',
   'apply_configuration',
   'add_sketch',

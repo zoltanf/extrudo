@@ -665,19 +665,20 @@ export class SketchBuilder {
   }
 
   /**
-   * An arc through three points, `start` to `end` counter-clockwise about the
-   * circle they lie on (the 3-point tool). The three must not be collinear.
+   * An arc through three points, `start` to `end` on the side of `through`
+   * (the 3-point tool): counter-clockwise, or clockwise when `through` lies the
+   * other way round (stored reversed). The three must not be collinear.
    */
   arc(start: Vec2, end: Vec2, through: Vec2): ArcHandle {
     const circle = circleThrough(start, end, through);
     if (!circle) throw new ApiError('An arc through three points: these three have no circle.');
-    return this.#arc(
-      circle.center,
-      circle.radius,
-      angleOf(circle.center, start),
-      angleOf(circle.center, end),
-      false,
-    );
+    const from = angleOf(circle.center, start);
+    const to = angleOf(circle.center, end);
+    const ccw =
+      counterClockwise(from, angleOf(circle.center, through)) < counterClockwise(from, to);
+    return ccw
+      ? this.#arc(circle.center, circle.radius, from, to, false)
+      : this.#arc(circle.center, circle.radius, to, from, true);
   }
 
   /**

@@ -16,9 +16,11 @@ import {
   Design,
   edgeName,
   type FeatureHandle,
+  type PointHandle,
   type RectangleHandle,
   type SketchBuilder,
   type SketchHandle,
+  type Vec2,
 } from '@extrudo/api';
 import {
   addParameter,
@@ -28,6 +30,7 @@ import {
   type ConfigurationId,
   configurationChanges,
   type ExtrudoDocument,
+  evaluateParameters,
   type Feature,
   type FeatureId,
   type FeatureInputs,
@@ -37,6 +40,7 @@ import {
   planeFrame,
   remintFeatures,
   removeFeature,
+  renameDocument,
   renameFeature,
   type SketchEntityId,
   setFeatureSuppressed,
@@ -405,43 +409,118 @@ function millimetres(value: string | number): number | undefined {
   return plain?.[1] ? Number(plain[1]) : undefined;
 }
 
-/** A shape's text-to-mm guess for drawing; the dimension sets the real size. */
-function drawnSize(value: string | number, fallback: number): number {
-  if (typeof value === 'number') return value;
-  const plain = /^\s*(\d+(?:\.\d+)?)\s*(mm)?\s*$/.exec(value);
-  return plain?.[1] ? Number(plain[1]) : fallback;
+/**
+ * Draws `add_sketch`'s shapes. A coordinate or size given as an expression is
+ * evaluated to draw, then kept as a dimension, so it follows its parameters
+ * (#103): a coordinate as a horizontal or vertical distance from a fixed point
+ * at the sketch origin, added with the first one. Plain numbers stay as drawn.
+ */
+function shapeDrawer(k: SketchBuilder, doc: ExtrudoDocument) {
+  const evaluation = evaluateParameters(doc);
+  let origin: PointHandle | undefined;
+  const length = (value: string | number, path: string): number => {
+    const plain = millimetres(value);
+    if (plain !== undefined) return plain;
+    const result = evaluation.evaluate(String(value), 'length');
+    if (!result.ok) throw new ApiError(result.error.message, { path });
+    return result.value;
+  };
+  return (shape: SketchShape, index: number): void => {
+    // An input's path for a refusal, e.g. shapes.0.from.1.
+    const path = (...parts: (string | number)[]) => ['shapes', index, ...parts].join('.');
+    const kept: { at: Vec2; axis: 0 | 1; expr: string }[] = [];
+    /** A point to draw at; `keep` keeps its expressions as dimensions. */
+    const at = (p: SketchPoint, name: Name, keep = true): Vec2 => {
+      const point: Vec2 = [
+        length(p[0], path(...[name].flat(), 0)),
+        length(p[1], path(...[name].flat(), 1)),
+      ];
+      for (const axis of [0, 1] as const) {
+        if (keep && millimetres(p[axis]) === undefined) {
+          kept.push({ at: point, axis, expr: String(p[axis]) });
+        }
+      }
+      return point;
+    };
+    const before = new Set(Object.keys(k.data.entities));
+    drawShape(k, shape, at, (value, name) => length(value, path(name)));
+    // Each kept coordinate dimensions the shape's first new point drawn there.
+    const done = new Set<string>();
+    for (const { at: p, axis, expr } of kept) {
+      const point = Object.entries(k.data.entities).find(
+        ([id, e]) =>
+          !before.has(id) &&
+          e.type === 'point' &&
+          Math.abs(e.x - p[0]) < 1e-6 &&
+          Math.abs(e.y - p[1]) < 1e-6,
+      )?.[0];
+      if (!point || done.has(`${point}:${axis}`)) continue;
+      done.add(`${point}:${axis}`);
+      if (!origin) {
+        origin = k.point([0, 0]);
+        k.fix(origin);
+      }
+      // Dimensions are unsigned: the side comes from where the point is drawn.
+      k.distance([origin, point], p[axis] < 0 ? `-(${expr})` : expr, {
+        orientation: axis === 0 ? 'horizontal' : 'vertical',
+      });
+    }
+  };
 }
 
-function drawShape(k: SketchBuilder, shape: SketchShape): void {
+type SketchPoint = readonly [string | number, string | number];
+/** Where an input sits in a shape: `'from'`, or `['points', 2]`. */
+type Name = string | readonly (string | number)[];
+
+function drawShape(
+  k: SketchBuilder,
+  shape: SketchShape,
+  at: (p: SketchPoint, name: Name, keep?: boolean) => Vec2,
+  length: (value: string | number, name: string) => number,
+): void {
   const dimensionRect = (r: RectangleHandle, width?: string | number, height?: string | number) => {
     if (width !== undefined) k.dimension(r.bottom, width);
     if (height !== undefined) k.dimension(r.edges[1], height);
   };
   switch (shape.shape) {
     case 'rectangle':
-      dimensionRect(k.rectangle(shape.from, shape.to), shape.width, shape.height);
+      dimensionRect(
+        k.rectangle(at(shape.from, 'from'), at(shape.to, 'to')),
+        shape.width,
+        shape.height,
+      );
       return;
     case 'centeredRectangle':
-      dimensionRect(k.rectangleCentered(shape.center, shape.corner), shape.width, shape.height);
+      dimensionRect(
+        k.rectangleCentered(at(shape.center, 'center'), at(shape.corner, 'corner')),
+        shape.width,
+        shape.height,
+      );
       return;
     case 'circle': {
-      const circle = k.circle(shape.center, drawnSize(shape.diameter, 10) / 2);
+      const circle = k.circle(at(shape.center, 'center'), length(shape.diameter, 'diameter') / 2);
       k.dimension(circle, shape.diameter);
       return;
     }
     case 'line':
-      k.line(shape.from, shape.to);
+      k.line(at(shape.from, 'from'), at(shape.to, 'to'));
       return;
-    case 'polyline':
-      k.polyline(
-        shape.closed ? [...shape.points, shape.points[0] as [number, number]] : shape.points,
-      );
+    case 'polyline': {
+      const points = shape.points.map((p, i) => at(p, ['points', i]));
+      const chain = k.polyline(shape.closed ? [...points, points[0] as Vec2] : points);
+      // Closed for good: the last end stays on the first start when they move.
+      if (shape.closed) {
+        k.coincident(chain.lines.at(-1)?.end as PointHandle, chain.points[0] as PointHandle);
+      }
       return;
+    }
     case 'arc':
-      k.arc(shape.start, shape.end, shape.through);
+      k.arc(at(shape.start, 'start'), at(shape.end, 'end'), at(shape.through, 'through', false));
       return;
-    case 'slot':
-      k.slot(shape.from, shape.to, shape.width);
+    case 'slot': {
+      const slot = k.slot(at(shape.from, 'from'), at(shape.to, 'to'), length(shape.width, 'width'));
+      if (millimetres(shape.width) === undefined) k.distance(slot.lines, shape.width);
+    }
   }
 }
 
@@ -590,6 +669,16 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
     const host = await ctx.open(id);
     return json(designSummary(host));
   },
+  rename_design: async ({ name }, ctx, host) => {
+    const h = need(host);
+    const reply = await change(ctx, h, 'Rename design', () => {
+      h.store.getState().dispatch(renameDocument({ name }));
+      return { name: h.store.getState().doc.name };
+    });
+    // Saved now, so list_designs (the saved designs) shows the new name.
+    if (!reply.result.isError) await h.save();
+    return reply;
+  },
   get_design: (_input, _ctx, host) => json(designSummary(need(host))),
   get_document: (_input, _ctx, host) => json(need(host).store.getState().doc),
   get_feature: ({ id }, _ctx, host) => {
@@ -710,14 +799,16 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
       () => {
         // The curves each shape drew, to say which shapes bound each profile.
         const shapeCurves: string[][] = [];
+        const { doc } = h.store.getState();
         const [id] = insertFromApi(
           h,
           (d) => {
             const on = typeof plane === 'string' ? d.origin[plane] : (plane as GeomRef);
             const draw = (k: SketchBuilder) => {
-              for (const shape of shapes) {
+              const drawOne = shapeDrawer(k, doc);
+              for (const [index, shape] of shapes.entries()) {
                 const before = new Set(Object.keys(k.data.entities));
-                drawShape(k, shape);
+                drawOne(shape, index);
                 shapeCurves.push(
                   Object.entries(k.data.entities)
                     .filter(([curve, entity]) => !before.has(curve) && entity.type !== 'point')

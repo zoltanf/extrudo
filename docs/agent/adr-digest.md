@@ -2533,6 +2533,18 @@ the snapshot path is the thumbnail's, unchanged. Tests:
 body ids, profiles or frames. A join's picked bodies that the tool doesn't
 touch stay separate with a warning (`operate`, #87).
 
+ADR-0087's amendment of 2026-10-22 (#103–#105): **`add_sketch` coordinates
+(and a slot's `width`) take expressions**; `shapeDrawer` in `agent/tools.ts`
+evaluates them (`evaluateParameters`) to draw, then dimensions each
+non-plain coordinate horizontally or vertically from one fixed point at the
+sketch origin (`-(<expr>)` when negative; dimensions are unsigned). Plain
+numbers stay undimensioned; an arc's `through` only places it; a closed
+polyline gets a closing coincident. **The API's `arc(start, end, through)`
+runs on `through`'s side** (stored reversed when that is clockwise). New tool
+`rename_design` (one step, then `save`). `kernelTesting.ts`'s `apply`
+re-solves sketches as the shell's does (`settleSketches`), so a kernel test
+can change a parameter and see the geometry follow.
+
 ADR-0088 (P6-09, slice 1 2026-10-15) added **the OpenSCAD export**:
 `packages/kernel/src/scad-export/` (`ir.ts`, `print.ts`, `context.ts`,
 `versions.ts`, `mesh.ts`, `file.ts`, `number.ts`), `RecomputeEngine.exportScad`

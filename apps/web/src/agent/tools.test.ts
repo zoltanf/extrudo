@@ -1,5 +1,5 @@
 import { Design } from '@extrudo/api';
-import { type BodyId, type ExtrudoDocument, renameFeature } from '@extrudo/core';
+import { type BodyId, type ExtrudoDocument, renameFeature, type SketchData } from '@extrudo/core';
 import type { ProjectSummary } from '@extrudo/storage';
 import { describe, expect, it } from 'vitest';
 import type { AgentReply } from '../platform/agent';
@@ -186,6 +186,68 @@ describe('the agent tools (ADR-0087 §5)', () => {
     store.getState().undo();
     expect(store.getState().doc.features).toHaveLength(3);
     expect(store.getState().undoLabel).toBe('Agent: Add Peg');
+  });
+
+  it('keeps a sketch coordinate given as an expression as a dimension from a fixed origin (#103)', async () => {
+    const { host, store } = plateHost();
+    const sketch = jsonOf(
+      await runTool(
+        'add_sketch',
+        {
+          plane: 'xy',
+          shapes: [
+            { shape: 'line', from: ['-thickness', 0], to: [10, '2 * thickness'] },
+            { shape: 'line', from: ['-thickness', 5], to: [10, 5] },
+          ],
+        },
+        context(host),
+      ),
+    ).result;
+    const added = store.getState().doc.features.find((f) => f.id === sketch.id);
+    const data = (added?.inputs.sketch as { sketch: SketchData } | undefined)?.sketch;
+    const dims = Object.values(data?.dimensions ?? {}).map((d) => ({
+      orientation: (d as { orientation: string }).orientation,
+      expr: d.expr,
+    }));
+    // A negative coordinate is kept as its distance, on the side it is drawn.
+    expect(dims).toEqual([
+      { orientation: 'horizontal', expr: '-(-thickness)' },
+      { orientation: 'vertical', expr: '2 * thickness' },
+      { orientation: 'horizontal', expr: '-(-thickness)' },
+    ]);
+    // One fixed point at the origin serves every shape.
+    const fixed = Object.values(data?.constraints ?? {}).filter((c) => c.type === 'fix');
+    expect(fixed).toHaveLength(1);
+  });
+
+  it('refuses a sketch coordinate it cannot evaluate with its path and changes nothing', async () => {
+    const { host, store } = plateHost();
+    const before = store.getState().doc;
+    const reply = await runTool(
+      'add_sketch',
+      { plane: 'xy', shapes: [{ shape: 'circle', center: [0, 'nothing / 2'], diameter: 4 }] },
+      context(host),
+    );
+    expect(reply.result.isError).toBe(true);
+    expect(textOf(reply)).toMatch(/^shapes\.0\.center\.1: .*nothing/);
+    expect(store.getState().doc).toBe(before);
+  });
+
+  it('renames the open design in one step and saves it (#105)', async () => {
+    const { host, store } = plateHost();
+    let saved = 0;
+    host.save = async () => {
+      saved++;
+    };
+    const reply = jsonOf(await runTool('rename_design', { name: ' House ' }, context(host)));
+    expect(reply.result).toEqual({ name: 'House' });
+    expect(store.getState().doc.name).toBe('House');
+    expect(store.getState().undoLabel).toBe('Agent: Rename design');
+    expect(saved).toBe(1);
+    expect(jsonOf(await runTool('get_design', {}, context(host))).name).toBe('House');
+    const empty = await runTool('rename_design', { name: '  ' }, context(host));
+    expect(empty.result.isError).toBe(true);
+    expect(saved).toBe(1);
   });
 
   it('refuses a bad feature input with its path and changes nothing', async () => {

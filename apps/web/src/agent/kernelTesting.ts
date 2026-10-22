@@ -2,13 +2,16 @@
  * A test host for the agent tools over the real kernel (Node): every change to
  * the document is recomputed by a `RecomputeEngine`, and the model store gets
  * what the app's `Recomputer` gives it (statuses, bodies, sketch and
- * construction reports), so the tools see the kernel's body IDs and frames.
- * Test-only: it loads OCCT.
+ * construction reports), so the tools see the kernel's body IDs and frames;
+ * `apply` re-solves the sketches as the shell's does (a parameter that drives a
+ * dimension moves the geometry). Test-only: it loads OCCT and planegcs.
  */
-import type { BodyId, ExtrudoDocument, FeatureId, SketchReport } from '@extrudo/core';
-import { isConstructionType } from '@extrudo/core';
+import type { BodyId, Command, ExtrudoDocument, FeatureId, SketchReport } from '@extrudo/core';
+import { isConstructionType, setSketchGeometry } from '@extrudo/core';
 import { interferences, Kernel } from '@extrudo/kernel';
 import { kernelFeatures, loadOcct, RecomputeEngine } from '@extrudo/kernel/node';
+import { loadPlanegcs, SketchSolver } from '@extrudo/sketch';
+import { settleSketches } from '@extrudo/sketch/inference';
 import { bodyEntries } from '../shell/bodies';
 import type { AgentBody } from './host';
 import { fakeHost } from './testing';
@@ -26,6 +29,21 @@ export async function kernelHost(doc: ExtrudoDocument, designId = doc.id) {
   const engine = new RecomputeEngine(kernel, kernelFeatures());
   const fake = fakeHost(doc, designId);
   const { store, model, host } = fake;
+  const solver = new SketchSolver(await loadPlanegcs());
+
+  host.apply = (commands: readonly Command<unknown>[]) => {
+    const before = store.getState().doc;
+    store.getState().beginTransaction(commands[0]?.label ?? '');
+    for (const command of commands) store.getState().dispatch(command);
+    for (const { feature, points, radii } of settleSketches({
+      solver,
+      before,
+      after: store.getState().doc,
+    })) {
+      store.getState().dispatch(setSketchGeometry({ feature, points, radii }));
+    }
+    store.getState().commitTransaction();
+  };
 
   const recompute = async () => {
     const current = store.getState().doc;

@@ -18,11 +18,13 @@ parameter names: `'40 mm'`, `'width / 2'`, `'2 * wall + 0.4 mm'`.
 
 1. **Read first.** Call `get_design`: its parameters, configurations and the
    timeline with every feature's `status`. With no design open, call
-   `list_designs` and `open_design`, or `new_design`.
+   `list_designs` and `open_design`, or `new_design`. A design the person
+   made in the app is "Untitled": name it with `rename_design`.
 2. **Prefer parameters to raw numbers.** Make every size that matters a
    parameter (`set_parameter` creates one when the name is new) and use its
-   name in the inputs. The person can then change the part from the Parameters
-   panel, and so can you.
+   name in the inputs, sketch points included (`["-width / 2", "wall_t"]`
+   keeps the point at that place when a parameter changes). The person can
+   then change the part from the Parameters panel, and so can you.
 3. **Make one change per call.** `add_sketch`, `add_feature`, `edit_feature`,
    `set_parameter`, `suppress`, `rename`, `remove`. Each answers `problems`:
    the features whose status is `error` or `warning` after the recompute.
