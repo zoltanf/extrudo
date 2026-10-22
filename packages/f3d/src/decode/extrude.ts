@@ -118,6 +118,13 @@ export interface ProfileOperand {
   text?: number;
 }
 
+/** A profile operand naming a sketch record the file no longer holds (the sketch was deleted). */
+export class SketchGoneError extends F3dFormatError {
+  constructor(operand: number, sketch: number) {
+    super(`Profile operand #${operand}: sketch #${sketch} is not in the file.`);
+  }
+}
+
 export function readProfileOperand(seg: Segment, id: number): ProfileOperand {
   // The sketch is named by its record number as decimal UTF-16 text, after
   // the asset GUID: find the last short all-digit wide string.
@@ -142,8 +149,8 @@ export function readProfileOperand(seg: Segment, id: number): ProfileOperand {
     }
     if (digits) sketch = Number(digits);
   }
-  if (sketch === undefined || !seg.has(sketch))
-    throw new F3dFormatError(`Profile operand #${id}: no sketch.`);
+  if (sketch === undefined) throw new F3dFormatError(`Profile operand #${id}: no sketch.`);
+  if (!seg.has(sketch)) throw new SketchGoneError(id, sketch);
   const out: ProfileOperand = { id, sketch };
   const sel = id + 3;
   if (seg.has(sel) && seg.typeOf(sel)?.guid === PROFILE_REGIONS) {

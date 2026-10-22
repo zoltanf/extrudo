@@ -20,8 +20,10 @@ import {
   selectProfiles,
 } from './map';
 import type {
+  F3dCombine,
   F3dFace,
   F3dMirror,
+  F3dMove,
   F3dPathPattern,
   F3dRectangularPattern,
   F3dSplit,
@@ -315,6 +317,43 @@ export function splitBody(d: Design, f: F3dSplit, context: CopyContext): string 
   const plane = planeRef(d, f.plane, f.name, context.report, 'splits on');
   if (!plane) return 'its plane is not along an origin axis';
   d.splitBody({ bodies, plane } as Parameters<Design['splitBody']>[0], { name: f.name });
+  return undefined;
+}
+
+/** A combine of bodies: the file's target, its tools joined into it and consumed. */
+export function combineBodies(d: Design, f: F3dCombine, context: CopyContext): string | undefined {
+  if (!f.operation) return 'its operation could not be read (only joins are known)';
+  const target = context.bodies([f.target])?.[0];
+  const tools = context.bodies(f.tools);
+  if (!target || !tools) return 'a body it combines was not imported as one body of one feature';
+  d.combine({ target, tools, operation: 'join' } as Parameters<Design['combine']>[0], {
+    name: f.name,
+  });
+  return undefined;
+}
+
+/** The matrix entries of a turn (the 3 × 3 part) and the last row, which a move along a line keeps at the identity's. */
+const TURN_AND_ROW = [0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, 15] as const;
+const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+
+/** A move of bodies along a line: the translation of the file's matrix (cm), free mode. */
+export function moveBodies(d: Design, f: F3dMove, context: CopyContext): string | undefined {
+  const m = f.matrix;
+  if (TURN_AND_ROW.some((i) => Math.abs((m[i] as number) - (IDENTITY[i] as number)) > 1e-9))
+    return 'it turns the bodies (only moves along a line are imported)';
+  if (f.bodies.length === 0) return 'the bodies it moves were not found';
+  const bodies = context.bodies(f.bodies);
+  if (!bodies) return 'a body it moves was not imported as one body of one feature';
+  const mm = (cm: number) => `${Number((cm * 10).toFixed(9))} mm`;
+  d.moveBodies(
+    {
+      bodies,
+      dx: mm(m[3] as number),
+      dy: mm(m[7] as number),
+      dz: mm(m[11] as number),
+    } as Parameters<Design['moveBodies']>[0],
+    { name: f.name },
+  );
   return undefined;
 }
 

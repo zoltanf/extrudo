@@ -53,8 +53,10 @@ import type { SketchText } from './decode/text';
 import { continues, type EdgeShape, edgeShape } from './edge-shape';
 import {
   type CopyContext,
+  combineBodies,
   type MadeCopies,
   mirror,
+  moveBodies,
   pathPattern,
   rectangularPattern,
   splitBody,
@@ -499,6 +501,8 @@ export function f3dToDesign(
   // told here, so later features that name one of them are left to Extrudo's
   // default (every body they meet), and none of them is hidden.
   const unsure = new Set<BodyId>();
+  /** Bodies an imported combine consumed. */
+  const consumed = new Set<BodyId>();
   /** A body that a join of several named (`unsure`), as Extrudo knows it; else undefined. */
   const unsureBody = (record: number) => {
     const known = bodyOf(record);
@@ -656,6 +660,7 @@ export function f3dToDesign(
       } else if (
         feature.type === 'extrude' &&
         feature.profiles.length === 0 &&
+        !feature.sketchGone &&
         feature.faces.length > 0 &&
         feature.start !== 'face' &&
         !feature.parameters.some((p) => p.kind === 'Side1Offset')
@@ -760,6 +765,28 @@ export function f3dToDesign(
           replayable.set(feature.id, { id: made.id, name: feature.name });
           report.imported.push(feature.name);
         }
+      } else if (feature.type === 'combine' || feature.type === 'move') {
+        const context: CopyContext = {
+          made: replayable,
+          sketches,
+          expressionOf,
+          bodies: participants,
+          report,
+        };
+        const reason =
+          feature.type === 'combine'
+            ? combineBodies(d, feature, context)
+            : moveBodies(d, feature, context);
+        if (reason) report.skipped.push(skippedFeature(feature.name, feature.kind, reason));
+        else {
+          // A combine's tools are gone: not hidden, but consumed.
+          if (feature.type === 'combine')
+            for (const tool of feature.tools) {
+              const id = bodyOf(tool)?.id;
+              if (id) consumed.add(id);
+            }
+          report.imported.push(feature.name);
+        }
       } else if (
         feature.type === 'mirror' ||
         feature.type === 'rectangular-pattern' ||
@@ -848,7 +875,7 @@ export function f3dToDesign(
     const known = components.shown(body) ? undefined : bodyOf(body.id);
     if (!known || (order.get(known.id.split(':')[0] as string) ?? 0) < lastOpenJoin) continue;
     // Joined with others here: it may be another body by now.
-    if (unsure.has(known.id)) continue;
+    if (unsure.has(known.id) || consumed.has(known.id)) continue;
     d.state.dispatch(
       updateBody({ id: known.id, changes: { name: `Body${known.index}`, visible: false } }),
     );
@@ -1384,7 +1411,10 @@ function extrude(
   unread: number,
 ): string | ImportedExtrude {
   if (!f.solid) return 'surface extrudes are not supported';
-  if (f.profiles.length === 0) return 'its profile is a face, not a sketch profile';
+  if (f.profiles.length === 0)
+    return f.sketchGone
+      ? 'the sketch its profile came from is no longer in the file'
+      : 'its profile is a face, not a sketch profile';
   const param = (kind: string) => f.parameters.find((p) => p.kind === kind);
   // Extrudo's extrude starts on its sketch: a start offset, or a start face
   // parallel to the sketch, takes the profiles from a copy of their sketch

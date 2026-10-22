@@ -1,4 +1,5 @@
 /** Every record decoder, keyed by the type GUID it reads. */
+import { COMBINE, MOVE } from './combine';
 import type { RecordDecoder } from './common';
 import { PARAMETER_VALUE, parameterValue } from './parameters';
 import { readScope } from './scope';
@@ -32,6 +33,8 @@ export const FEATURE_TYPES: Record<string, string> = {
   '584D9526-EF22-4F6F-9FE1-5FCF1F3CE575': 'Thread',
   'B0B3D9E5-1C25-47BC-ABCD-E723F193DF1B': 'PathPattern',
   '13BE0EF0-467B-4F5A-BFFB-E0976171B678': 'TorusPrimitive',
+  [COMBINE]: 'Combine',
+  [MOVE]: 'Move',
 };
 
 const scopeDecoder: RecordDecoder<unknown> = { name: 'feature scope', decode: readScope };

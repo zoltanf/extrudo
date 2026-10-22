@@ -8,6 +8,7 @@ import { designSegments, type Entries, type SegmentFiles, unzip } from './archiv
 import { type AsmCurve, type AsmFace, type AsmSurface, asmFaces, readAsm } from './asm';
 import { F3dFormatError, finite, Reader } from './bytes';
 import { BODY, type BodyFlags, readBody } from './decode/body';
+import { type CombineRead, type MoveRead, readCombine, readMove } from './decode/combine';
 import {
   BODY_MOVES,
   componentOfBody,
@@ -50,6 +51,7 @@ import {
   readExtrudeHead,
   readProfileOperand,
   SKETCH_PROFILE_OPERAND,
+  SketchGoneError,
 } from './decode/extrude';
 import {
   allParticipants,
@@ -186,6 +188,8 @@ export interface F3dExtrude extends FeatureBase, ExtrudeHead {
   faces: F3dFace[];
   /** The bodies it joins, cuts or intersects (body records); empty: none named. */
   participants: number[];
+  /** A profile operand names a sketch the file no longer holds (deleted after the extrude). */
+  sketchGone?: true;
 }
 
 /** A face an edge lies on: its tags, and what the B-rep says it is. */
@@ -328,6 +332,14 @@ export interface F3dTorus extends FeatureBase {
   participants: number[];
 }
 
+export interface F3dCombine extends FeatureBase, CombineRead {
+  type: 'combine';
+}
+
+export interface F3dMove extends FeatureBase, MoveRead {
+  type: 'move';
+}
+
 export interface F3dOther extends FeatureBase {
   type: 'other';
 }
@@ -347,6 +359,8 @@ export type F3dFeature =
   | F3dPathPattern
   | F3dThread
   | F3dTorus
+  | F3dCombine
+  | F3dMove
   | F3dOther;
 
 /** A body of the design: its number, whether it is shown, the feature that made it. */
@@ -734,10 +748,20 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         continue;
       }
       const profiles: ProfileOperand[] = [];
+      let sketchGone = false;
       for (const ref of scope.refs) {
         const t = seg.typeOf(ref)?.guid;
         if (t === SKETCH_PROFILE_OPERAND) {
-          const p = tryDecode(`profile #${ref}`, () => readProfileOperand(seg, ref));
+          // A deleted sketch is no decoding problem: the extrude is skipped for it.
+          const p = tryDecode(`profile #${ref}`, () => {
+            try {
+              return readProfileOperand(seg, ref);
+            } catch (error) {
+              if (!(error instanceof SketchGoneError)) throw error;
+              sketchGone = true;
+              return undefined;
+            }
+          });
           if (p) profiles.push(p);
         } else if (t === TEXT_PROFILE_OPERAND) {
           const p = tryDecode(`text profile #${ref}`, () => readTextOperand(seg, ref));
@@ -767,6 +791,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         profiles,
         faces: named,
         participants: participantsAll(scope),
+        ...(sketchGone ? { sketchGone: true as const } : {}),
       });
     } else if (FEATURE_TYPES[type.guid] === 'Revolve') {
       const operation = tryDecode(`revolve #${id}`, () => readRevolveOperation(seg, scope));
@@ -992,6 +1017,14 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         const made = madeBy(id);
         features.push({ type: kind, ...base, sets, ...(made.length > 0 ? { made } : {}) });
       }
+    } else if (FEATURE_TYPES[type.guid] === 'Combine') {
+      const combine = tryDecode(`combine #${id}`, () => readCombine(seg, scope, insideOnce));
+      features.push(
+        combine ? { type: 'combine', ...base, ...combine } : { type: 'other', ...base },
+      );
+    } else if (FEATURE_TYPES[type.guid] === 'Move') {
+      const move = tryDecode(`move #${id}`, () => readMove(seg, scope, insideOnce));
+      features.push(move ? { type: 'move', ...base, ...move } : { type: 'other', ...base });
     } else if (FEATURE_TYPES[type.guid] === 'TorusPrimitive') {
       const torus = tryDecode(`torus #${id}`, () =>
         readTorus(seg, scope, madeBy(id), insideOnce, participantsAll(scope)),
