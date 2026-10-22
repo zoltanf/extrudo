@@ -945,3 +945,115 @@ describe('f3dToDesign: copying features', () => {
     ]);
   });
 });
+
+describe('f3dToDesign: features on whole bodies', () => {
+  /** The washer (no hole), and a Ø2 × 0.8 mm disc at (3.8, 0) mm as a body of its own. */
+  function washerAndDisc(): F3dDesign {
+    const f3d = washerWithHole();
+    f3d.features = [
+      ...(f3d.features.slice(0, 2) as F3dFeature[]),
+      sketch(3, 6, 'Sketch2', [circle(40, 401n, 0.1, 0.38)]),
+      extrude(4, 'Extrude2', 6, 'new-body', 401n),
+    ];
+    f3d.bodies = [
+      { id: 50, index: 1, visible: true, creator: 2 },
+      // Hidden in the file: the combine below consumed it.
+      { id: 60, index: 2, visible: false, creator: 4 },
+    ];
+    return f3d;
+  }
+  const RAISE = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0.08, 0, 0, 0, 1];
+  const DISC = Math.PI * 1 ** 2 * 0.8;
+
+  it('moves the disc onto the washer and joins it in, its tool consumed', async () => {
+    const f3d = washerAndDisc();
+    f3d.features.push(
+      { ...base, type: 'move', id: 7, kind: 'Move', name: 'Move1', bodies: [60], matrix: RAISE },
+      {
+        ...base,
+        type: 'combine',
+        id: 8,
+        kind: 'Combine',
+        name: 'Combine1',
+        target: 50,
+        tools: [60],
+        operation: 'join',
+      },
+    );
+    const { design, report } = f3dToDesign(f3d, 'Washer');
+    expect(report.imported).toEqual(expect.arrayContaining(['Move1', 'Combine1']));
+    const [, washer, , disc] = design.toJSON().features;
+    const move = design.toJSON().features.find((f) => f.name === 'Move1');
+    expect(move?.inputs).toMatchObject({
+      bodies: { refs: [{ kind: 'body', id: `${disc?.id}:0` }] },
+      dx: { expr: '0 mm' },
+      dz: { expr: '0.8 mm' },
+    });
+    const combine = design.toJSON().features.find((f) => f.name === 'Combine1');
+    expect(combine?.inputs).toMatchObject({
+      target: { refs: [{ kind: 'body', id: `${washer?.id}:0` }] },
+      tools: { refs: [{ kind: 'body', id: `${disc?.id}:0` }] },
+      operation: { value: 'join' },
+    });
+    // The consumed tool is not "hidden, as in the file": it is gone.
+    expect(report.notes.filter((n) => n.includes('hidden'))).toEqual([]);
+    // On top of the washer the disc adds its whole volume (in place it would overlap it).
+    expect(await volumes(f3d)).toEqual([expect.closeTo(RING + DISC, 3)]);
+  });
+
+  it('leaves out a move that turns, and a combine whose operation is not known, saying why', () => {
+    const f3d = washerAndDisc();
+    const c = Math.cos(Math.PI / 6);
+    const s = Math.sin(Math.PI / 6);
+    f3d.features.push(
+      {
+        ...base,
+        type: 'move',
+        id: 7,
+        kind: 'Move',
+        name: 'Move1',
+        bodies: [60],
+        matrix: [c, -s, 0, 0, s, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      },
+      {
+        ...base,
+        type: 'combine',
+        id: 8,
+        kind: 'Combine',
+        name: 'Combine1',
+        target: 50,
+        tools: [60],
+      },
+    );
+    const { report } = f3dToDesign(f3d, 'Washer');
+    expect(report.skipped).toEqual([
+      {
+        name: 'Move1',
+        kind: 'Move',
+        reason: 'it turns the bodies (only moves along a line are imported)',
+      },
+      {
+        name: 'Combine1',
+        kind: 'Combine',
+        reason: 'its operation could not be read (only joins are known)',
+      },
+    ]);
+  });
+
+  it('leaves out an extrude whose sketch was deleted, with that reason', () => {
+    const f3d = washerWithHole();
+    f3d.features.push({
+      ...extrude(7, 'Extrude3', 9, 'new-body', 901n),
+      profiles: [],
+      sketchGone: true,
+    });
+    const { report } = f3dToDesign(f3d, 'Washer');
+    expect(report.skipped).toEqual([
+      {
+        name: 'Extrude3',
+        kind: 'Extrude',
+        reason: 'the sketch its profile came from is no longer in the file',
+      },
+    ]);
+  });
+});

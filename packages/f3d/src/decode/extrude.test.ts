@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Segment } from '../segment';
-import { readExtrudeHead } from './extrude';
+import { readExtrudeHead, readProfileOperand, SketchGoneError } from './extrude';
 import type { Scope } from './scope';
 
 describe('readExtrudeHead', () => {
@@ -28,5 +28,29 @@ describe('readExtrudeHead', () => {
 
   it('still reads the block right after a null reference', () => {
     expect(head([0]).operation).toBe('new-body');
+  });
+});
+
+describe('readProfileOperand', () => {
+  /** A profile operand naming sketch `n` by its number as wide text; `has` the records present. */
+  const operand = (n: string, has: number[]) => {
+    const wide = [...n].flatMap((c) => [c.charCodeAt(0), 0]);
+    const bulk = new Uint8Array([0, 0, n.length, 0, 0, 0, ...wide, 0, 0]);
+    const seg = {
+      bulk,
+      frame: () => ({ start: 0, end: bulk.length }),
+      has: (id: number) => has.includes(id),
+      typeOf: () => undefined,
+    } as unknown as Segment;
+    return () => readProfileOperand(seg, 7);
+  };
+
+  it('reads the sketch it names', () => {
+    expect(operand('178', [178])()).toEqual({ id: 7, sketch: 178 });
+  });
+
+  it('tells a deleted sketch (its record is not in the file) from an operand with none', () => {
+    expect(operand('178', [])).toThrow(SketchGoneError);
+    expect(operand('', [])).toThrow(/no sketch/);
   });
 });
