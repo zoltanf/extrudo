@@ -91,6 +91,94 @@ describe('readAsm', () => {
   });
 });
 
+describe('readAsm, BinaryFile4', () => {
+  // The 32-bit variant: u64 version, two u32 after it, and 4-byte ints,
+  // enums and pointers; everything else as in BinaryFile8.
+  const i32 = (v: number): number[] => {
+    const b = new Uint8Array(4);
+    new DataView(b.buffer).setInt32(0, v, true);
+    return [...b];
+  };
+  const header4 = (): number[] => [
+    ...enc.encode('ASM BinaryFile4'),
+    ...i64(23200),
+    ...i32(4),
+    ...i32(2),
+    ...str7('product'),
+    ...str7('kernel'),
+    ...str7('date'),
+    ...new Array<number>(3).fill(0).flatMap(() => [0x06, ...new Array<number>(8).fill(0)]),
+  ];
+  const stream4 = (...records: number[][]) => new Uint8Array([...header4(), ...records.flat()]);
+
+  it('reads 4-byte ints, enums and pointers, signed', () => {
+    const [r] = readAsm(
+      stream4([
+        ...className('face'),
+        0x0c,
+        ...i32(-1),
+        0x04,
+        ...i32(7),
+        0x15,
+        ...i32(2),
+        0x0c,
+        ...i32(3),
+        0x11,
+      ]),
+    );
+    expect(r?.type).toBe('face');
+    expect(r?.values).toEqual([
+      { t: 'ptr', v: -1 },
+      { t: 'int', v: 7 },
+      { t: 'int', v: 2 },
+      { t: 'ptr', v: 3 },
+    ]);
+  });
+
+  it('reads the same faces and tags as the 64-bit stream', () => {
+    const tagged = (w: (v: number) => number[]) => [
+      [...className('face'), 0x0c, ...w(1), 0x11],
+      [
+        ...className('ATTRIB_CUSTOM-attrib'),
+        ...str7('generic_tag_attrib_def '),
+        ...[1, 0].flatMap((v) => [0x04, ...w(v)]),
+        ...str7('tok'),
+        ...[0, 1, 5].flatMap((v) => [0x04, ...w(v)]),
+        0x11,
+      ],
+    ];
+    const four = asmFaces(readAsm(stream4(...tagged(i32))));
+    expect(four[0]?.tags).toEqual([{ token: 'tok', design: 5 }]);
+    expect(four).toEqual(asmFaces(readAsm(stream(...tagged(i64)))));
+  });
+
+  it('rejects a short header and an unknown magic', () => {
+    expect(() => readAsm(new Uint8Array(header4().slice(0, 40)))).toThrow(F3dFormatError);
+    expect(() => readAsm(enc.encode('ASM BinaryFile4'))).toThrow(F3dFormatError);
+    const five = header4();
+    five[14] = '5'.charCodeAt(0);
+    expect(() => readAsm(new Uint8Array(five))).toThrow(/Not an ASM BinaryFile8 or 4 stream/);
+  });
+
+  it('rejects a 4-byte value cut off at the end', () => {
+    expect(() => readAsm(stream4([...className('a'), 0x0c, 1, 2]))).toThrow(F3dFormatError);
+  });
+
+  it('leaves a pointer past the record count unfollowed', () => {
+    // A face whose attribute and loop pointers name records that don't exist.
+    const records = readAsm(
+      stream4([
+        ...className('face'),
+        ...[0x7fffffff, 0, -1, -1, 1000, -1, -1, 99].flatMap((v) => [0x0c, ...i32(v)]),
+        0x11,
+      ]),
+    );
+    const [face] = asmFaces(records);
+    expect(face?.tags).toEqual([]);
+    expect(face?.edges).toEqual([]);
+  });
+});
+
 describe('asmFaces tags', () => {
   /** A face record (index 0) whose attribute chain points at record 1. */
   const face = [...className('face'), ...ptr(1), 0x11];

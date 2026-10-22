@@ -32,7 +32,7 @@ A ZIP archive. Entries are stored, deflated, or (since 2025) Zstandard (method 9
   (`…DesignSegmentType1/` since 2025; `…ACTSegmentType1/` beside it is the
   component tree).
 - `…/Breps.BlobParts/BREP.<uuid>.smb` (solved B-rep) and `.smbh` (B-rep with
-  history): ASM ("ASM BinaryFile8"), see below.
+  history): ASM ("ASM BinaryFile8", or "ASM BinaryFile4" in newer files), see below.
 - `…/Previews/small.png` — the preview.
 
 Sizes seen over the 250-file corpus (2026-10-15, read from each central
@@ -324,6 +324,24 @@ name, `0x0E` base class, `0x11` end of record, `0x13`/`0x14` three doubles…).
 Every record has a class name. Over the corpus's 666 streams (2026-10-15) a
 stream has at most one value per 8.5 bytes, at least 90 bytes per record and at
 most 2.6 million values; no record holds more than 167 one-byte values.
+
+**The 32-bit variant, `ASM BinaryFile4`.** Files saved from October 2026
+(kernel string "232.5.0.65535"; the corpus's streams are all BinaryFile8,
+224.4 … 231.5) write this instead. The header is the magic, a u64 version
+(23200; the corpus's BinaryFile8 streams 22800 and up), then two u32 where
+BinaryFile8 has u64 0 and two u64. The last of those is 2 in a `.smb` and 3 in
+a `.smbh` in both variants; the other (0x51 and 4 here, 0x1F in a
+BinaryFile8 stream) is not a record count and its meaning is unknown. Then the
+same three strings and three doubles. In the records, ints (`0x04`), enums
+(`0x15`) and pointers (`0x0C`), and `0x17` by the same rule (not seen yet), are
+4 bytes, signed (−1 is `FF FF FF FF`); every other tag is unchanged. Verified
+on the two files of an outside user's report (four streams, 105 to 7,995
+records): every stream reads to `End-of-ASM-data` at its last byte (in both
+variants the stream ends with that record's names and no `0x11`), and the
+solved stream's face tags name the edges of 11 of the bumper's 14 fillets and
+the faces of 2 of its 6 offset-face features (none before). None of those streams holds a `0x08`, `0x09`, `0x12` or `0x17`,
+so the width of the long string lengths in this variant is unverified; the
+reader keeps 8 bytes for them (2026-10-22).
 
 A record writes its own class and then its base classes, each with a `0x0D`
 tag: a straight curve is `intcurve`, `curve` (joined `intcurve-curve`), a

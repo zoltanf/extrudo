@@ -101,8 +101,16 @@ const cls = (s: string): number[] => {
   const b = [...enc.encode(s)];
   return [0x0d, b.length, ...b];
 };
-const ptr = (v: number): number[] => [0x0c, ...i64(v)];
-const int = (v: number): number[] => [0x04, ...i64(v)];
+/** The width of ints and pointers: 8 (BinaryFile8) or 4 (BinaryFile4). */
+let width: 4 | 8 = 8;
+const word = (v: number): number[] => {
+  if (width === 8) return i64(v);
+  const b = new Uint8Array(4);
+  new DataView(b.buffer).setInt32(0, v, true);
+  return [...b];
+};
+const ptr = (v: number): number[] => [0x0c, ...word(v)];
+const int = (v: number): number[] => [0x04, ...word(v)];
 const dbl = (x: number): number[] => {
   const b = new Uint8Array(8);
   new DataView(b.buffer).setFloat64(0, x, true);
@@ -191,8 +199,8 @@ const splineSurface = (s: Extract<SurfaceIn, { t: 'spline' }>): number[] =>
     boolean(false),
   );
 const header = (): number[] => [
-  ...enc.encode('ASM BinaryFile8'),
-  ...new Array<number>(32).fill(0),
+  ...enc.encode(`ASM BinaryFile${width}`),
+  ...new Array<number>(width === 8 ? 32 : 16).fill(0),
   ...new Array<number>(6).fill(0).flatMap(() => [0x06, ...new Array<number>(8).fill(0)]),
 ];
 const stream = (...records: number[][]): Uint8Array =>
@@ -639,6 +647,18 @@ describe('asmBodies', () => {
     expect(loops).toHaveLength(2);
     expect(loops?.[0]?.outer).toBe(true);
     expect(loops?.[1]?.outer).toBe(false);
+  });
+
+  it('reads the 32-bit stream variant (BinaryFile4) as the 64-bit one', () => {
+    const wide = asmBodies(readAsm(solidStream(boxFaces())));
+    expect(wide[0]?.faces).toHaveLength(6);
+    width = 4;
+    try {
+      const narrow = readAsm(solidStream(boxFaces()));
+      expect(asmBodies(narrow)).toEqual(wide);
+    } finally {
+      width = 8;
+    }
   });
 
   it('throws on a crafted face chain that repeats instead of looping', () => {

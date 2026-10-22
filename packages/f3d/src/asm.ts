@@ -1,15 +1,15 @@
 /**
  * The ASM B-rep streams (`BREP.<uuid>.smb` / `.smbh`): the
  * binary form of SAT with 8-byte integers and pointers ("ASM
- * BinaryFile8"). Only what the importer needs is read: the faces, their
+ * BinaryFile8") or, in newer files, 4-byte ones ("ASM BinaryFile4"). Only what the importer needs is read: the faces, their
  * surfaces, and the tags the file attaches to them (`generic_tag_attrib_def`:
  * a token and the design record the face was made by), which is how a
  * fillet's or chamfer's edges name the faces they lie between.
  *
  * Every record is a sequence of tagged values ending in 0x11. Tags:
- * 02 char, 03 short, 04 int (8 bytes here), 05 float, 06 double, 07/08/09 a
+ * 02 char, 03 short, 04 int (8 bytes, 4 in BinaryFile4), 05 float, 06 double, 07/08/09 a
  * string with a 1/2/8-byte length, 0A/0B true/false, 0C pointer (record
- * index, −1 for none), 0D a record's class name, 0E a base-class name in
+ * index, −1 for none; 8 or 4 bytes like 04), 0D a record's class name, 0E a base-class name in
  * front of it, 0F/10 subtype brackets, 12 literal string (8-byte length),
  * 13 position and 14 vector (three doubles), 15 enum (8 bytes), 16 uv (two
  * doubles), 17 int64. Lengths are in centimetres.
@@ -60,11 +60,18 @@ const MAX_VALUES = 16_000_000;
 /** Every record of an ASM binary stream, in order (a pointer is an index into it). */
 export function readAsm(bytes: Uint8Array): AsmRecord[] {
   const magic = latin1.decode(bytes.subarray(0, 15));
-  if (magic !== 'ASM BinaryFile8')
-    throw new F3dFormatError(`Not an ASM BinaryFile8 stream (${magic}).`);
+  // The width of ints, enums and pointers: 8 bytes in BinaryFile8, 4 in
+  // BinaryFile4 (FORMAT.md, "ASM B-rep"). Nothing else differs.
+  const width = magic === 'ASM BinaryFile8' ? 8 : magic === 'ASM BinaryFile4' ? 4 : 0;
+  if (width === 0) throw new F3dFormatError(`Not an ASM BinaryFile8 or 4 stream (${magic}).`);
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  let p = 15 + 32; // version, record count, entity count, flags
-  const i64 = (at: number) => Number(view.getBigInt64(at, true));
+  // BinaryFile8: u64 version, then three u64 (counts and flags); BinaryFile4:
+  // u64 version, then two u32.
+  let p = 15 + (width === 8 ? 32 : 16);
+  const int =
+    width === 8
+      ? (at: number) => Number(view.getBigInt64(at, true))
+      : (at: number) => view.getInt32(at, true);
   // Every read below goes through this: a crafted stream must not read past
   // its own end (the ASM reader is given untrusted file bytes).
   const need = (n: number): void => {
@@ -148,14 +155,14 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
       case 0x04:
       case 0x15:
       case 0x17:
-        need(8);
-        values.push({ t: 'int', v: i64(p) });
-        p += 8;
+        need(width);
+        values.push({ t: 'int', v: int(p) });
+        p += width;
         break;
       case 0x0c:
-        need(8);
-        values.push({ t: 'ptr', v: i64(p) });
-        p += 8;
+        need(width);
+        values.push({ t: 'ptr', v: int(p) });
+        p += width;
         break;
       case 0x06:
         need(8);
@@ -199,7 +206,7 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
       case 0x09:
       case 0x12: {
         need(8);
-        const n = i64(p);
+        const n = Number(view.getBigInt64(p, true));
         // A negative length would walk the cursor backwards and loop forever
         // on the same tag; a length past the end reads junk.
         if (n < 0 || 8 + n > bytes.length - p)
