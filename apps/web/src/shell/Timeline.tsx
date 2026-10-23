@@ -38,7 +38,7 @@ import {
 } from '../design-system';
 import { type MacroStore, recordedCount } from '../macro/macro';
 import { selectionSummary } from '../selection/items';
-import { formatRenderStats } from '../viewport/renderMeter';
+import { formatLongTasks, formatRenderStats } from '../viewport/renderMeter';
 import { SoftwareRendering } from '../viewport/SoftwareRendering';
 import type { ViewportStore } from '../viewport/store';
 import { webglSupport } from '../viewport/webglSupport';
@@ -1240,20 +1240,29 @@ function DropIndicator({ drag }: { drag: ChipDrag }) {
 /**
  * The viewport's frame rate and frame time. The view draws only when
  * something changes, so a still view reads "idle"; orbit or drag to measure.
+ * Development builds also count main-thread tasks over 50 ms (the dev
+ * long-task observer, ADR-0100 §2) after the frame time.
  */
 function RenderRate({ viewport }: { viewport: ViewportStore }) {
   const stats = useStore(viewport, (s) => s.renderStats);
+  const longTasks = useStore(viewport, (s) => s.longTaskCount);
   return (
     <Tooltip
       label="Rendering"
-      hint="Frames drawn in the last second, and the mean time to draw one. The view only redraws when something changes, so a still view is idle."
+      hint={`Frames drawn in the last second, and the mean time to draw one. The view only redraws when something changes, so a still view is idle.${
+        import.meta.env.DEV
+          ? ' Long: main-thread tasks over 50 ms since the design opened, development builds only.'
+          : ''
+      }`}
     >
       <output
         aria-label="Rendering"
         data-render-stats
+        data-long-tasks={import.meta.env.DEV && longTasks > 0 ? longTasks : undefined}
         className="-ml-1 font-mono text-[11px] whitespace-nowrap text-muted tabular-nums"
       >
         · {formatRenderStats(stats)}
+        {import.meta.env.DEV ? formatLongTasks(longTasks) : ''}
       </output>
     </Tooltip>
   );

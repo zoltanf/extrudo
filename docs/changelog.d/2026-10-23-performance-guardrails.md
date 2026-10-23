@@ -1,0 +1,1 @@
+- 2026-10-23 · **Performance guardrails**: a CI spec keeps opening, orbiting and editing within main-thread budgets; development builds count long tasks in the status bar; the startup measurement runs per release (ADR-0100).

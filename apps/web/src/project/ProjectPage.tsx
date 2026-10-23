@@ -9,6 +9,7 @@ import {
 import type { BodyMesh } from '@extrudo/kernel';
 import type { ProjectId } from '@extrudo/storage';
 import { useEffect, useMemo, useState } from 'react';
+import { startLongTaskObserver } from '../debug/longTasks';
 import { Button, LogoMark, useToasts } from '../design-system';
 import { requestTutorial } from '../onboarding/state';
 import { type Platform, safeFileName } from '../platform';
@@ -118,6 +119,14 @@ function ProjectEditor({
     () => createViewportStore({ preferences: platform.preferences }),
     [platform],
   );
+  // The long-task counter feeds the status bar in development builds only
+  // (P6-13, ADR-0100 §2): reset when the project opens, observed while it is
+  // open. In a production build the branch is dead code and the module is
+  // tree-shaken away.
+  useEffect(() => {
+    viewport.getState().resetLongTasks();
+    return import.meta.env.DEV ? startLongTaskObserver(viewport) : undefined;
+  }, [viewport]);
   const autosave = useAutosave(store, viewport, platform);
   const { toasts, push, dismiss, keep, notifications } = useToasts();
   useUpdateNotice(push, platform);

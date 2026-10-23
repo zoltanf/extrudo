@@ -1379,6 +1379,84 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   (`toBeCloseTo(v, -1)` for a cylinder hole). A copy body is "Body2" and so
   on in creation order.
 
+### `e2e/perf.spec.ts`
+
+- **Performance e2e** (`e2e/perf.spec.ts`, P6-13, ADR-0100 §1 and §4):
+  main-thread budgets for opening, orbiting, editing and hovering, driven
+  through the two example designs `#/example/pcb-enclosure` (B5) and
+  `#/example/knurled-knob` (B7), one test each (no serial mode: both report
+  even when one fails; 180 s timeout). What it measures: a
+  `page.addInitScript` installs `window.__perf` (`long`, `events`, `frames`)
+  with a `PerformanceObserver` for `longtask` entries, one for `event` entries
+  (`durationThreshold: 16`, so quick events are not listed — both `observe`
+  calls wrapped in try/catch for shells without the entry type) and a
+  `requestAnimationFrame` counter; the same init script sets
+  `window.__extrudoRenderLog = []`, and the app's `RenderMeterProbe`
+  (`apps/web/src/viewport/Viewport.tsx`) pushes every `renderer.render` call's
+  `{ start, ms }` into it **only when that array exists** — a normal visit
+  never logs renders. A `sample()` helper reads, between two
+  `performance.now()` values read through `page.evaluate` right before and
+  after each step (open, orbit, edit, undo, hover+click): the counts, total
+  and max of the window's long tasks, per task the render log's time inside
+  it (`render`: log entries whose `start` lies in
+  `[task.start, task.start + task.dur]`) and the **app's own JS inside it**
+  (`app`), budgeted as `appMax`/`appTotal` (ADR-0100 §4). The app time is the
+  merged union of the `long-animation-frame` observer's script durations
+  (LoAF, Chromium 123+: the frame's JS — module evaluation, worker message
+  handlers, rAF callbacks, timers — each with its exact duration), the render
+  log entries and the event handlers' own spans, so work covered twice (a
+  render call inside its rAF callback's script) counts once. This matters
+  because a SwiftShader frame's long task is 97 %+ **native** GPU-process
+  wait (CPU profile: 45 % `(program)`, 0–3 % JS; the render log covers only
+  2–8 % of the task) — no duration-minus-render subtraction can remove that,
+  so the budget binds the JS and the rasteriser's wait passes unmeasured.
+  Also per window: `renderTotal`, `jsTotal` (all the window's app JS,
+  sub-50 ms work included) and the frame rate. The worst event is the
+  `event` entry with the largest **handler time** (`proc = processingEnd −
+  processingStart`, which the next paint does not inflate), reported with both
+  `dur` and `proc`. The round trips subtract their window's `jsTotal` too
+  (`roundTripAppMs = roundTripMs − jsTotal(window)`, `roundTripMs` kept
+  for the record). The renderer string is read once per test
+  (`WEBGL_debug_renderer_info`, `UNMASKED_RENDERER_WEBGL`, on a throwaway
+  canvas) and lands in `perf.json`: when it contains `SwiftShader` or
+  `llvmpipe` the fps floor is skipped and a `software rendering` annotation
+  carries the string; the fps itself is still recorded. The round-trip
+  observer is armed with `page.evaluate` **before**
+  the edit — the expression field applies while typing, so an observer armed
+  after `fill` sees nothing — and stores its Promise on `window.__perf.roundTrip`
+  (`evaluateHandle` would wait for the Promise at arm time, defeating
+  arm-then-act; `page.evaluate` awaits it at read time instead). One
+  `MutationObserver` on `document.documentElement` (`subtree`,
+  `attributeFilter: ['data-model-status', 'data-bodies']`) re-queries
+  `[data-model-status]` and `[data-bodies]` on every callback (React may
+  replace the nodes); it marks "changed" when the status is anything but
+  `ready` or `data-bodies` mutates (a fast round trip can flip ready → busy →
+  ready between two callbacks) and resolves with the elapsed ms once changed
+  and the status is `ready`, or -1 after 30 s (an edit's -1 fails with a
+  message saying the observer is wrong, not the app). Budgets (ADR-0100 §1,
+  on app time since §4): open appMax < 400, appTotal < 1200, B5 < 8 s / B7 <
+  10 s; orbit appMax < 100 and ≥ 20 fps (GPU only); edit appMax < 500
+  (widened from §1's 150 against the measurement: the B7 grooves edit's
+  kernel-message and autosave handlers cost 248–499 ms of JS locally and
+  CI's raw edit longMax was 234–396 — the `top` invokers in a failing
+  `perf.json` say which script ran), undo appMax < 150, roundTripAppMs B5 <
+  1.5 s / B7 < 5 s with roundTripMs > 0; hover+click
+  worst event's proc < 250 ms. The raw numbers are attached to the
+  report as `perf.json` before the assertions, so a failure still carries
+  them. The hover and the orbit start at the projection of the camera target
+  (`projector(viewport)(target)`), the model's centre in the part of the view
+  the browser panel leaves open — the region's box centre is not on the model
+  (ADR-0007's amendment). The open window starts right before
+  `page.goto('./#/example/<id>')`: the home screen is loaded first
+  (`page.goto('./')`, wait for `New design`), and a hash navigation keeps the
+  document (and its clock), with a fallback to 0 if a full navigation resets
+  `performance.now()`. With a real GPU (`E2E_GPU=1`) a long task is app work
+  and the budgets bind it directly; under SwiftShader `longTotal` and the fps
+  are the rasteriser's and the budgets look at `appMax`/`appTotal` (the JS)
+  instead — if an app budget fails, look at the failing task's `app` and the
+  LoAF scripts in the trace before touching anything: a task with `app` ≈ 0
+  is the rasteriser's, not the app's.
+
 ### `e2e/plugins.spec.ts`
 
 - P6-03 (ADR-0077): Ctrl+K "Plugins…" opens the `dialog` "Settings" at

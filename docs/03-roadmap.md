@@ -1341,6 +1341,20 @@ end to end, faster than in established desktop CAD.
   and stays under 8 kB; "Copy report" copies the full Markdown; the timeline
   is left out unless ticked; `bugReport.test.ts` and `e2e/bug-report.spec.ts`
   pass; the desktop allow-list test covers the query string.
+- [ ] **P6-13 Performance guardrails** (owner, 2026-10-23; ADR-0100; slice A of
+  `docs/plans/perf-baseline-2026-10-23.md`; slices 1–4 done 2026-10-23, the
+  owner ticks after the merge). The app's snappiness must survive
+  new features: `e2e/perf.spec.ts` drives B5 and B7 (open, orbit, parameter
+  edit and undo, hover and click) with a `PerformanceObserver` and asserts
+  main-thread budgets on the app's own time — a long task minus the render
+  time inside it (ADR-0100 §1 and §4) — attaching the raw numbers to the
+  report;
+  a dev-only long-task observer counts tasks over 50 ms in the status bar next
+  to the render meter (§2); `scripts/measure-startup.mjs` handles the folded
+  template gallery, gets `--json`, and the release checklist runs it (§3).
+  Acceptance: `pnpm check`; the spec green on CI three runs in a row; the
+  production bundle has no observer code; the startup script's three visits
+  print on a machine with a stored design.
 
 ## Phase 7 — Later (lowest priority, after everything else)
 

@@ -329,3 +329,21 @@ describe('joint pose (P6-05 J2)', () => {
     expect(JSON.stringify(preferences.get('viewport', {}))).not.toContain('jointPose');
   });
 });
+
+describe('long-task count (P6-13, dev builds only)', () => {
+  it('counts long tasks and resets when a project opens', () => {
+    const { store } = setup();
+    expect(store.getState().longTaskCount).toBe(0);
+    store.getState().noteLongTask();
+    store.getState().noteLongTask();
+    expect(store.getState().longTaskCount).toBe(2);
+    store.getState().resetLongTasks();
+    expect(store.getState().longTaskCount).toBe(0);
+  });
+
+  it('is not part of the saved preferences', () => {
+    const { store, preferences } = setup();
+    store.getState().noteLongTask();
+    expect(JSON.stringify(preferences.get('viewport', {}))).not.toContain('longTaskCount');
+  });
+});

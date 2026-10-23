@@ -23,29 +23,32 @@ published. Versions come from `git describe` of the last `v*` tag: stable shows
    tags (`<span class="tag">`) off `apps/site/features/index.html` for the
    features the release ships: the site deploys from main, so they mark what
    app.extrudo.org doesn't have yet (ADR-0057's amendment of 2026-10-11).
-3. **Wait for CI on main** for that commit (`gh run list -c <full sha>`; a
+3. **Startup numbers** (ADR-0100): `pnpm build && node
+   scripts/measure-startup.mjs`; compare with ADR-0100's baseline (a jump is
+   a release blocker to investigate, a drift is noted in the release notes).
+4. **Wait for CI on main** for that commit (`gh run list -c <full sha>`; a
    short SHA finds nothing). Only tag a commit whose CI passed.
-4. **Tag:** `git tag -a vX.Y.Z -m "vX.Y.Z" <commit> && git push origin vX.Y.Z`.
+5. **Tag:** `git tag -a vX.Y.Z -m "vX.Y.Z" <commit> && git push origin vX.Y.Z`.
    The tag deploys the stable app at <https://app.extrudo.org> (ADR-0057), and
    the `desktop` workflow builds the Linux (AppImage, deb), Windows (NSIS and
    the portable exe) and macOS (dmg, zip) installers into a **draft** GitHub
    release, then pushes the Homebrew cask.
-5. **Check the draft.** The Linux job's smoke test passed (its step prints
+6. **Check the draft.** The Linux job's smoke test passed (its step prints
    `smoke: OK`; GPU errors under xvfb in the same log are expected), and so did the Windows job's two (it installs the NSIS installer and smoke-tests the installed app, then the portable exe). The draft
    holds the installers and `latest.yml`, `latest-mac.yml` and
    `latest-linux.yml`: the updater reads them, and without them nobody updates.
-6. **Release notes** on the draft: a short highlights list, then the
+7. **Release notes** on the draft: a short highlights list, then the
    CHANGELOG's section for the version. Say the installers are unsigned
    (signing is deferred until the app has users; owner, 2026-10-07): macOS
    asks before the first open (`docs/desktop.md` has the steps), Windows shows
    SmartScreen ("More info" > "Run anyway"). Add the Docker image:
    `docker pull ghcr.io/zoltanf/extrudo:X.Y.Z` (published by the deploy workflow).
-7. **Publish = update.** Publishing ships the version to every installed app:
+8. **Publish = update.** Publishing ships the version to every installed app:
    AppImage and Windows download it within six hours (or at once from the Menu
    strip's Check now); deb, the portable Windows exe and macOS get "Extrudo <version> is available."
    with a link to the release page. Never publish a release you would not
    want every installed app to take.
-8. **After publishing**, check:
+9. **After publishing**, check:
    - <https://app.extrudo.org> shows the new version;
    - `curl -sL https://github.com/zoltanf/extrudo/releases/latest/download/latest-linux.yml`
      says `version: X.Y.Z`;
