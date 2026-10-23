@@ -17,6 +17,8 @@ const ALLOWED: readonly { host: string; pathPrefix: string }[] = [
   { host: 'github.com', pathPrefix: '/mrdoob/three.js' },
   { host: 'github.com', pathPrefix: '/electron/electron' },
   { host: 'github.com', pathPrefix: '/facebook/react' },
+  // The Render dialog's "install Blender" link (ADR-0101, `apps/web/src/platform/render.ts`).
+  { host: 'www.blender.org', pathPrefix: '/download' },
 ];
 
 /** Whether `url` is an https address on the list: the prefix is the path itself or a parent of it. */

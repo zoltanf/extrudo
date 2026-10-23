@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BLENDER_DOWNLOAD_URL } from '../../../web/src/platform/render';
 import { ABOUT_LINKS, ISSUES_URL } from '../../../web/src/shell/aboutLinks';
 import { createLinks } from './links';
 
@@ -24,6 +25,11 @@ describe('links', () => {
   it('opens every URL the About dialog links to', () => {
     expect(ABOUT_LINKS.length).toBeGreaterThan(8);
     expect(run(...ABOUT_LINKS)).toEqual([...ABOUT_LINKS]);
+  });
+
+  it("opens the Render dialog's Blender download link, and only that path (ADR-0101)", () => {
+    expect(run(BLENDER_DOWNLOAD_URL)).toEqual([BLENDER_DOWNLOAD_URL]);
+    expect(run('https://www.blender.org/', 'https://blender.org/download/')).toEqual([]);
   });
 
   it('opens the prefilled issue-form URL: the query parameters are not the path', () => {
