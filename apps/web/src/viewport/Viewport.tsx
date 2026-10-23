@@ -62,6 +62,7 @@ import {
   pickBox,
   pickStack,
   pickTop,
+  warmPickIndex,
 } from '../selection/pick';
 import { autoProjectSnap } from '../sketch/autoProject';
 import { sketchTargetAt } from '../sketch/facePick';
@@ -1456,6 +1457,13 @@ function useModelInput(
   // The latest scene without re-binding the listeners on every change.
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
+  // The picking index of new meshes, built in idle time before the first hover (ADR-0102 §2).
+  const pickBodies = scene.bodies;
+  useEffect(() => {
+    const abort = new AbortController();
+    warmPickIndex(Object.values(pickBodies), abort.signal);
+    return () => abort.abort();
+  }, [pickBodies]);
   const handlers = useMemo<PointerHandlers | undefined>(() => {
     if (!select) return undefined;
     const context = (p: ScreenPointer) => {
