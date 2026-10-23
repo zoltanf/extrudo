@@ -18,6 +18,7 @@ import { kernelCircularPattern, kernelPathPattern, kernelRectangularPattern } fr
 import { kernelPlaceOnBed } from './place-on-bed';
 import { kernelPlugin } from './plugin';
 import { KERNEL_PRIMITIVES } from './primitives';
+import { kernelRemoveFaces } from './remove-faces';
 import { kernelRevolve } from './revolve';
 import { kernelRib } from './rib';
 import { kernelScale } from './scale';
@@ -63,6 +64,8 @@ export function kernelFeatures(): FeatureRegistry<KernelFeatureDefinition> {
   registry.register(kernelHole as unknown as KernelFeatureDefinition);
   // Offset Face (P3-08, ADR-0051).
   registry.register(kernelOffsetFace as unknown as KernelFeatureDefinition);
+  // Remove Faces (ADR-0099).
+  registry.register(kernelRemoveFaces as unknown as KernelFeatureDefinition);
   // Split Body, Scale and Draft (P3-08, second half).
   registry
     .register(kernelSplitBody as unknown as KernelFeatureDefinition)

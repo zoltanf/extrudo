@@ -427,6 +427,22 @@ export class Recomputer {
       return undefined;
     }
   }
+  /**
+   * The faces the Remove Faces dialog and Delete take for clicks on `faces`
+   * of a body the model store shows: a hole whole, a round's smooth run,
+   * else the face (ADR-0099 §5). Undefined if the kernel can't say.
+   */
+  async removeFacesPick(
+    body: BodyId,
+    faces: readonly number[],
+    base = false,
+  ): Promise<number[] | undefined> {
+    try {
+      return await this.client.call((api) => api.removeFacesPick(body, faces, base));
+    } catch {
+      return undefined;
+    }
+  }
 
   /**
    * Bodies the model store shows, tessellated for STL and 3MF (P2-12):

@@ -53,6 +53,7 @@ What changes the bodies a design already has.
 - [Circular Pattern](circularPattern.md) — `d.circularPattern(inputs?, options?)`
 - [Path Pattern](pathPattern.md) — `d.pathPattern(inputs?, options?)`
 - [Offset Face](offsetFace.md) — `d.offsetFace(inputs, options?)`
+- [Remove Faces](removeFaces.md) — `d.removeFaces(inputs, options?)`
 - [Split Body](splitBody.md) — `d.splitBody(inputs, options?)`
 - [Scale](scale.md) — `d.scale(inputs, options?)`
 - [Draft](draft.md) — `d.draft(inputs, options?)`

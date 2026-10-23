@@ -3,7 +3,7 @@ title: Scale
 type: scale
 section: Features
 category: modify
-order: 34
+order: 35
 ---
 
 # Scale

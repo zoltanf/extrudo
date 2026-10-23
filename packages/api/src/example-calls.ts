@@ -117,6 +117,7 @@ const EXAMPLE_INPUTS: Readonly<Record<string, string>> = {
   pathPattern: `{ objects: 'bodies', bodies: [body], path: line, count: 3 }`,
   rectangularPattern: `{ objects: 'bodies', bodies: [body], direction1: d.origin.x, count1: 3, distance1: '20 mm' }`,
   remove: `{ bodies: [body] }`,
+  removeFaces: `{ faces: face }`,
   revolve: `{ profiles: profile, axis: d.origin.y, angle: '90 deg' }`,
   rib: `{ curve: line, thickness: '3 mm' }`,
   scale: `{ bodies: [body], factor: 1.5 }`,

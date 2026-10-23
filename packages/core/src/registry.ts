@@ -31,6 +31,7 @@ import { placeOnBedFeature } from './place-on-bed';
 import { pluginFeature } from './plugin-feature';
 import { PRIMITIVE_FEATURES, PRIMITIVE_TYPES } from './primitives';
 import { removeBodiesFeature } from './remove';
+import { removeFacesFeature } from './remove-faces';
 import { revolveFeature } from './revolve';
 import { ribFeature } from './rib';
 import { scaleFeature } from './scale';
@@ -75,6 +76,8 @@ export function documentFeatures(): FeatureRegistry<FeatureDefinition> {
   registry.register(holeFeature);
   // Offset Face (P3-08, ADR-0051).
   registry.register(offsetFaceFeature);
+  // Remove Faces (ADR-0099).
+  registry.register(removeFacesFeature);
   // Split Body, Scale and Draft (P3-08, second half).
   registry.register(splitBodyFeature).register(scaleFeature).register(draftFeature);
   // Sweep, loft and coil (P4-01, ADR-0055).

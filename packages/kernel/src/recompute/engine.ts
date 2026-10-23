@@ -37,6 +37,7 @@ import {
 import type { ScadCompiler } from '@extrudo/openscad';
 import type { z } from 'zod';
 import { type SmoothFaces, smoothFaces } from '../features/offset-face';
+import { kernelSurface, removeFacesPick } from '../features/remove-faces';
 import type { SmoothKind, SubShapeKind } from '../history';
 import { resolveJoint } from '../joints/frames';
 import { type Kernel, KernelError, type ShapeHandle } from '../kernel';
@@ -303,6 +304,27 @@ export class RecomputeEngine {
       (face) => this.#kernel.tangentFaces(shape, face),
       () => this.#describe(shape),
       keepRounds,
+    );
+  }
+
+  /**
+   * The faces the Remove Faces dialog and Delete take for a click on each of
+   * `faces` of a body of the last finished recompute (or with `base` of the
+   * last preview's base): a hole whole, a round's smooth run, else the face
+   * (`removeFacesPick`, ADR-0099 §5). Undefined if there is no such body or
+   * face, or the body is a mesh.
+   */
+  removeFacesPick(body: BodyId, faces: readonly number[], base = false): number[] | undefined {
+    const shape = (base ? this.#previewBase : this.#latest).get(body);
+    if (shape === undefined || this.#kernel.isMesh(shape)) return undefined;
+    const count = this.#kernel.count(shape, 'face');
+    if (faces.length === 0 || faces.some((f) => f < 0 || f >= count)) return undefined;
+    const description = this.#describe(shape);
+    return removeFacesPick(
+      faces,
+      description,
+      kernelSurface(this.#kernel, shape, description),
+      (face) => this.#kernel.tangentFaces(shape, face),
     );
   }
 
