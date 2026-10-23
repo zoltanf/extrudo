@@ -68,6 +68,21 @@ describe('TopoId grammar', () => {
     expect(faceRelation('a:(x#1)', 'a:(x#2)')).toBe(0);
   });
 
+  it('relates the round of an edge to the round of a piece of it', () => {
+    const round = 'fillet:F:from:(e[cap|fillet:G:from:(e[s12|s28])])';
+    const piece = 'fillet:F:from:(e[cap|fillet:G:from:(e[s12|s28#2])])';
+    expect(faceRelation(round, piece)).toBe(1);
+    expect(faceRelation(piece, round)).toBe(1);
+    expect(faceRelation(`${round}#1`, piece)).toBe(1);
+    // Another feature's round, another edge, or other pieces: unrelated.
+    expect(faceRelation(round, piece.replace('fillet:F', 'fillet:H'))).toBe(0);
+    expect(faceRelation(round, 'fillet:F:from:(e[cap|fillet:G:from:(e[s12|s30])])')).toBe(0);
+    expect(faceRelation(`${round}#1`, `${piece}#2`)).toBe(0);
+    expect(faceRelation('fillet:F:from:(e[a#1|b])', 'fillet:F:from:(e[a#2|b])')).toBe(0);
+    // A round of a vertex relates to a round of a vertex only.
+    expect(faceRelation('fillet:F:from:(v[a|b|c])', 'fillet:F:from:(e[a|b])')).toBe(0);
+  });
+
   it('relates edges whose faces pair up, preferring more equal faces', () => {
     expect(nameRelation('e[a|b]', 'e[a|b]')).toBe(Number.POSITIVE_INFINITY);
     expect(nameRelation('e[a|b]', 'e[a#1|b]')).toBe(3); // 1 + one equal face + same (no) index

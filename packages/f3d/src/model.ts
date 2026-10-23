@@ -206,6 +206,12 @@ export interface F3dFace {
   instance?: { pattern: number; code: number };
   /** A copy's own surface, where the copy is (`surface` is the copied face's). */
   own?: AsmSurface;
+  /**
+   * The face's other surfaces in the states of the body the B-rep streams
+   * keep (an offset moved it before or after the feature picked it), nearest
+   * that state first; none when every state has `surface`.
+   */
+  states?: AsmSurface[];
 }
 
 /** An edge, as the two faces it runs between and the faces that end it. */
@@ -1298,9 +1304,45 @@ function faceOf(
     if (own) out.own = own.surface;
     return out;
   }
-  const found = candidates[0];
+  const states = statesOf(tags, candidates);
+  const [found] = states;
   if (found) out.surface = found.surface;
+  const seen = new Set(found ? [JSON.stringify(found.surface)] : []);
+  const others: AsmSurface[] = [];
+  for (const state of states) {
+    const key = JSON.stringify(state.surface);
+    if (state.surface.kind === 'other' || seen.has(key)) continue;
+    seen.add(key);
+    others.push(state.surface);
+  }
+  if (others.length > 0) out.states = others;
   return out;
+}
+
+/**
+ * A face's states the B-rep streams hold, the one a reference means first. A
+ * face keeps a tag per operation that made or later changed it (an offset, a
+ * deletion beside it); a recipe's tags list those the face had when the
+ * feature picked it, and the streams keep earlier states of the body next to
+ * the solved one. The state whose tags differ least from the recipe's is the
+ * face as the feature saw it (a later offset may have moved the solved one);
+ * on a tie the first, the solved body's. States with a surface this reader
+ * knows come first.
+ */
+function statesOf(tags: FaceTag[], candidates: AsmFace[]): AsmFace[] {
+  if (candidates.length < 2) return candidates;
+  const want = new Set(tags.flatMap((t) => t.designs.map((d) => `${t.token}@${d}`)));
+  const apart = (c: AsmFace) => {
+    const have = new Set(c.tags.map((t) => `${t.token}@${t.design}`));
+    let n = c.surface.kind === 'other' ? candidates.length * 1e6 : 0;
+    for (const k of have) if (!want.has(k)) n++;
+    for (const k of want) if (!have.has(k)) n++;
+    return n;
+  };
+  return candidates
+    .map((c, i) => ({ c, i, n: apart(c) }))
+    .sort((a, b) => a.n - b.n || a.i - b.i)
+    .map(({ c }) => c);
 }
 
 function nameOf(scope: Scope): string {

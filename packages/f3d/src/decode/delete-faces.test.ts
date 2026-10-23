@@ -4,6 +4,7 @@
  * Offset faces does (FORMAT.md). The records are synthetic; no real file's bytes.
  */
 import { describe, expect, it } from 'vitest';
+import type { AsmFace } from '../asm';
 import { readSegment } from '../model';
 import { EDGE_OPERAND, EDGE_RECIPE, OPERAND_GROUP } from './edges';
 import { Bytes, segment } from './test-segment';
@@ -88,6 +89,35 @@ describe('Delete faces', () => {
       { tags: [{ token: '3', designs: [318] }] },
       { tags: [{ token: '2', designs: [318] }] },
     ]);
+  });
+
+  it('takes the state of the face the recipe names, keeping the others', () => {
+    // The B-rep streams keep three states of face 3@318: as made (x = 5 cm),
+    // after operation 324 moved it, and solved, after 324 and 325 (x = 4.9).
+    const state = (x: number, designs: number[], index: number): AsmFace => ({
+      index,
+      surface: { kind: 'plane', point: [x, 0, 0], normal: [-1, 0, 0] },
+      tags: designs.map((design) => ({ token: '3', design })),
+      edges: [],
+    });
+    const solved = state(4.9, [318, -324, -325], 1);
+    const moved = state(4.95, [318, -324], 2);
+    const made = state(5, [318], 3);
+    const faces = new Map([['3@318', [solved, moved, made]]]);
+    const surfaces = (designs: number[]) => {
+      const design = readSegment(deleteSegment([recipeBody([{ token: '3', designs }])]), faces);
+      const feature = design.features.find((f) => f.type === 'delete-faces');
+      const [face] = feature && feature.type === 'delete-faces' ? feature.faces : [];
+      return [face?.surface, ...(face?.states ?? [])].map((s) =>
+        s?.kind === 'plane' ? s.point[0] : s,
+      );
+    };
+    // Picked before any move, after the first, after both.
+    expect(surfaces([318])).toEqual([5, 4.95, 4.9]);
+    expect(surfaces([318, -324])).toEqual([4.95, 4.9, 5]);
+    expect(surfaces([318, -324, -325])).toEqual([4.9, 4.95, 5]);
+    // A state no stream kept: the nearest one (one tag apart).
+    expect(surfaces([318, -324, -325, -330])[0]).toBe(4.9);
   });
 
   it('treats a truncated recipe as a decoding problem, not a crash', () => {

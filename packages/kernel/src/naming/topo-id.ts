@@ -136,16 +136,42 @@ function splitTopLevel(text: string): string[] {
 /**
  * How closely two face names relate: 2 if equal, 1 if one is a piece of
  * the other (same stem, one split chain a prefix of the other: `a` and
- * `a#2`, `a#2` and `a#2#1`), else 0.
+ * `a#2`, `a#2` and `a#2#1`), else 0. Stems made from a nested name relate
+ * when the nested names do: the round of an edge, `fillet:F:from:(e[a|b])`,
+ * and the round of a piece of it, `fillet:F:from:(e[a#2|b])`.
  */
 export function faceRelation(a: string, b: string): number {
   if (a === b) return 2;
   const pa = parseFace(a);
   const pb = parseFace(b);
-  if (pa.stem !== pb.stem) return 0;
+  if (pa.stem !== pb.stem && !nestedRelated(pa.stem, pb.stem)) return 0;
   const n = Math.min(pa.splits.length, pb.splits.length);
   for (let i = 0; i < n; i++) if (pa.splits[i] !== pb.splits[i]) return 0;
   return 1;
+}
+
+/** Two stems `head(x)` and `head(y)` with the same head and related nested names. */
+function nestedRelated(a: string, b: string): boolean {
+  const na = nestedSource(a);
+  const nb = nestedSource(b);
+  return !!na && !!nb && na.head === nb.head && nameRelation(na.inner, nb.inner) > 0;
+}
+
+/** A stem ending in a nested name, `head(inner)`: its two parts. */
+function nestedSource(stem: string): { head: string; inner: string } | undefined {
+  if (!stem.endsWith(')')) return undefined;
+  let depth = 0;
+  for (let i = stem.length - 1; i >= 0; i--) {
+    const c = stem[i];
+    if (c === ')' || c === ']') depth++;
+    else if (c === '(' || c === '[') {
+      depth--;
+      if (depth === 0) {
+        return c === '(' ? { head: stem.slice(0, i), inner: stem.slice(i + 1, -1) } : undefined;
+      }
+    }
+  }
+  return undefined;
 }
 
 /**
