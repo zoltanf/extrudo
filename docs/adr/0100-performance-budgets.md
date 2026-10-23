@@ -57,6 +57,9 @@ re-read at every release.
    | parameter edit, undo | no long task over 150 ms; B5 round trip under 1.5 s, B7 under 5 s |
    | hover, click | no input event (`event` entry duration) over 250 ms |
 
+   (§4 below moves these budgets onto the **app's own main-thread time** —
+   same sizes, with the edit budget widened against measurement.)
+
    The budgets are deliberately loose against today's numbers (section 1.4 of
    the plan: the laptop's worst long task while opening is 160 ms, while
    interacting 51 ms, the worst event 112 ms): they catch a step change, not
@@ -90,6 +93,79 @@ the Wall bracket on a first visit, 1.2 s on a repeat. In the browser, headed
 with a GPU: open → ready B2 1.1 s, B5 1.5 s, B7 2.0 s, B8 2.0 s, B10 1.5 s,
 B9 8.5 s; orbit 50 fps at 0.4–0.6 ms of render per frame with no long task;
 parameter round trip B5 170–190 ms, B8 320–330 ms, B7 1.05–1.1 s, B10 30–40 ms.
+
+## §4. Amendment 2026-10-23: the budgets bind the app's JS, not the rasteriser
+
+CI run 39957952394 (commit `d71efddf`) failed the spec on B5. On CI's
+SwiftShader every drawn frame is a 100–600 ms task on the main thread, so the
+long-task budgets measured the software rasteriser, not the app: CI's numbers
+for B5 (two attempts) were open 13 long tasks, total 2165 ms, max 598/532 ms;
+orbit 24 long tasks, max 250 ms, 28–33 fps; edit max 234–396 ms, worst event
+264–592 ms, round trip 1757–2206 ms; undo 5–7 fps; hover worst event
+184–224 ms. With a GPU the same windows have no long task at all.
+
+Investigating the SwiftShader tasks (locally, both Google Chrome stable and
+Playwright's Chromium — both report `ANGLE (… SwiftShader …)` as the WebGL
+renderer) with a CPU profiler showed what those tasks are: **native time**.
+The main thread's JS is 0–3 % of the samples (45 % `(program)`, 41 % idle);
+a frame's long task is the renderer's wait for the slow GPU process — frame
+pacing — with a few milliseconds of JS at its edge. The render log proves the
+same thing from inside the app: `RenderMeterProbe` (which already wraps every
+`renderer.render` call) covers only 2–8 % of the long-task time under
+SwiftShader, because the raster wait is not inside `render.call`'s JS. A
+duration-minus-render subtraction therefore still measures the rasteriser.
+
+What *is* the app's is its **JS execution time**, and the page can measure
+it: the Long Animation Frame API (`long-animation-frame`, Chromium 123+) lists
+every script that ran in a frame window with its exact duration — module
+evaluation, worker message handlers, rAF callbacks, timers — and the Event
+Timing API gives each input event's handler time (`processingEnd −
+processingStart`), which the next paint does not inflate. So the amendment:
+
+- **`RenderMeterProbe` (`apps/web/src/viewport/Viewport.tsx`) gets one more
+  line**: when `window.__extrudoRenderLog` is an array, it also pushes
+  `{ start, ms }` per render call (`start` = `performance.now()` before the
+  call). Nothing else changes in the app: without that array — every normal
+  visit — the probe behaves as before. The spec's init script sets the array
+  and keeps the log in `perf.json` (per task the render time inside it), so a
+  slow *render call* is still visible where a script-based metric would smear
+  it into the rAF callback.
+- **`e2e/perf.spec.ts` budgets the app's JS**: a task's app time is the
+  merged union of the long-animation-frame's script durations, the render log
+  entries and the event handlers' own spans that started inside the task
+  (merged so work covered twice — a render call inside its rAF callback —
+  counts once), reported per task as `app` and per window as `appMax`/
+  `appTotal` (long tasks only) and `jsTotal` (all JS in the window, sub-50 ms
+  work included). The raw `longMax`/`longTotal` and the window's
+  `renderTotal` stay in `perf.json` for the record. The round trips subtract
+  their window's `jsTotal` too (`roundTripAppMs = roundTripMs −
+  jsTotal(window)`, `roundTripMs` kept).
+- **The §1 budgets apply to the app values** — unchanged in size where the
+  measurements allow: open `appMax` < 400, `appTotal` < 1200; orbit `appMax`
+  < 100 (measured 1–29); **edit `appMax` < 500** — the one widened budget,
+  and widened against measurement, not noise: the B7 grooves edit's
+  kernel-message and autosave (`IDBTransaction.oncomplete`) handlers cost
+  248–499 ms of JS on a 4-core desktop, and CI's raw edit `longMax` was
+  234–396 ms, so §1's 150 would fail on the app's real work; undo `appMax` <
+  150 (measured 1); `roundTripAppMs` within the example's budget and
+  `roundTripMs` > 0; hover and click worst handler time < 250. On a GPU
+  machine a long task is app work, so these bind what §1's budgets bound;
+  under SwiftShader they keep binding it while the rasteriser's native
+  passes through unmeasured.
+- **The frame-rate floor (≥ 20 fps while orbiting) only holds with a GPU**:
+  the spec reads the WebGL renderer string once (`WEBGL_debug_renderer_info`,
+  `UNMASKED_RENDERER_WEBGL`) and, when it contains `SwiftShader` or
+  `llvmpipe`, records the fps and skips that one assertion, with a
+  `software rendering` annotation carrying the renderer string. The renderer
+  string goes into `perf.json`.
+- **The spec no longer runs serially**: both examples report even when one
+  fails.
+
+Rejected here: widening the raw long-task budgets to CI's SwiftShader numbers
+(open ≈ 700, orbit ≈ 300, edit ≈ 500) — they would swallow the noise they
+were meant to catch and stop guarding anything; and subtracting per task with
+the render log alone — it covers 2–8 % of a SwiftShader task, so the budget
+would still be the rasteriser's.
 
 ## Rejected
 

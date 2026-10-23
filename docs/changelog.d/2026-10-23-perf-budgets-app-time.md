@@ -1,0 +1,1 @@
+- 2026-10-23 · **Perf budgets hold under SwiftShader**: the perf spec budgets the app's own JS inside each long task (LoAF scripts, the render log and input handlers, merged) — a SwiftShader frame's long task is native GPU-process wait — and skips the fps floor when the browser draws in software (ADR-0100 §4).

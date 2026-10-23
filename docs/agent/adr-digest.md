@@ -2824,10 +2824,28 @@ pcb-enclosure (B5) and knurled-knob (B7) examples through opening, orbiting, a
 parameter edit and its undo, and the first hover and click, with a
 `PerformanceObserver` (`longtask`; `event` with `durationThreshold: 16`) and a
 `requestAnimationFrame` counter installed by `page.addInitScript`, and asserts
-ADR-0100 §1's budgets, attaching the raw numbers to the report as `perf.json`;
-an edit's round trip is one `MutationObserver` over both
-`[data-model-status]` and `[data-bodies]`, armed **before** the edit (the
-expression field applies while typing). Development builds count long tasks:
+ADR-0100's budgets, attaching the raw numbers (and the WebGL renderer string)
+to the report as `perf.json`; an edit's round trip is one `MutationObserver`
+over both `[data-model-status]` and `[data-bodies]`, armed **before** the edit
+(the expression field applies while typing). §4 (2026-10-23, after CI's SwiftShader run measured the rasteriser, not the
+app — a CPU profile shows a SwiftShader frame's long task is 97 %+ native
+GPU-process wait) moved the budgets onto the **app's own main-thread time**:
+`RenderMeterProbe` (`apps/web/src/viewport/Viewport.tsx`) pushes every render
+call's `{ start, ms }` into `window.__extrudoRenderLog` when that array
+exists — the spec's init script sets it, a normal visit never does — and
+`e2e/perf.spec.ts` computes per long task the **JS time inside it**: the
+merged union of the `long-animation-frame` observer's script durations (the
+frame's JS: module evaluation, worker message handlers, rAF callbacks,
+timers), the render log and the event handlers' own spans
+(`processingStart…processingEnd`), budgeted as `appMax`/`appTotal`
+(`longMax`/`longTotal` and the window's `renderTotal`/`jsTotal` kept for the
+record); the round trips subtract their window's JS total (`roundTripAppMs`);
+the worst input event is the one with the largest handler time, budgeted
+instead of the paint-inflated duration; the fps floor (≥ 20) only holds with
+a GPU — on a renderer string containing `SwiftShader` or `llvmpipe` the spec
+records the fps and skips it with a `software rendering` annotation. The spec
+no longer runs serially (both examples report even when one fails).
+Development builds count long tasks:
 `apps/web/src/debug/longTasks.ts` (`startLongTaskObserver`), the viewport
 store's `longTaskCount`/`noteLongTask`/`resetLongTasks`, `formatLongTasks` in
 `viewport/renderMeter.ts` shown by `RenderRate` (`shell/Timeline.tsx`,
@@ -2836,7 +2854,16 @@ store's `longTaskCount`/`noteLongTask`/`resetLongTasks`, `formatLongTasks` in
 `--json`; the release checklist runs it (step 3). Files also:
 `e2e/timings.json`, `docs/release-checklist.md`.
 **Rules:** the budgets live in `e2e/perf.spec.ts` and are widened only with a
-CI number in the commit message; the long-task observer never ships in
+measurement in the commit message, and they bind the app's own main-thread
+time (ADR-0100 §4): the JS inside each long task (LoAF scripts ∪ render log ∪
+event-handler spans, merged), an input event's handler time instead of its
+duration — sizes: open appMax < 400 and appTotal < 1200, orbit appMax < 100,
+**edit appMax < 500** (widened from §1's 150 against the measured 248–499 ms
+grooves-edit kernel-message/autosave handlers), undo appMax < 150, hover and
+click worst handler time < 250; `__extrudoRenderLog` must be set only by the spec's init script — a
+normal visit never logs renders; the fps floor is skipped only when the
+renderer string says software (the annotation names it). The long-task
+observer never ships in
 production — dev builds only (`import.meta.env.DEV`), and `grep -c longtask
 apps/web/dist/assets/*.js` after `pnpm build` must sum to 0 — and the status
 bar's `· n long` is dev builds only; `measure-startup.mjs` runs per release

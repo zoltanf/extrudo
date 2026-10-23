@@ -820,6 +820,17 @@ function ViewStatus({ viewport }: { viewport: ViewportStore }) {
 }
 
 /**
+ * Set by `e2e/perf.spec.ts` (ADR-0100 §4): every render call's `{ start, ms }`
+ * so the spec can subtract the renderer's time from its long-task budgets.
+ * Never set in a normal visit.
+ */
+declare global {
+  interface Window {
+    __extrudoRenderLog?: { start: number; ms: number }[];
+  }
+}
+
+/**
  * Counts and times the frames the renderer draws (every `renderer.render`
  * call, wrapped while mounted) and publishes the stats to the viewport store
  * twice a second, only when they change, for the status bar.
@@ -832,7 +843,9 @@ function RenderMeterProbe({ viewport }: { viewport: ViewportStore }) {
     gl.render = (scene, camera) => {
       const start = performance.now();
       render.call(gl, scene, camera);
-      meter.frame(start, performance.now() - start);
+      const ms = performance.now() - start;
+      meter.frame(start, ms);
+      if (Array.isArray(window.__extrudoRenderLog)) window.__extrudoRenderLog.push({ start, ms });
     };
     const timer = setInterval(() => {
       const next = meter.sample(performance.now());
