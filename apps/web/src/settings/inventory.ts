@@ -91,8 +91,8 @@ export const SECTIONS: readonly SectionInfo[] = [
   {
     id: 'desktop',
     label: 'Desktop',
-    summary: 'Slicers on this computer.',
-    keys: ['slicers.paths'],
+    summary: 'Slicers and Blender on this computer.',
+    keys: ['slicers.paths', 'blender.path'],
     desktopOnly: true,
   },
   {
