@@ -1379,6 +1379,51 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   (`toBeCloseTo(v, -1)` for a cylinder hole). A copy body is "Body2" and so
   on in creation order.
 
+### `e2e/perf.spec.ts`
+
+- **Performance e2e** (`e2e/perf.spec.ts`, P6-13, ADR-0100 §1): main-thread
+  budgets for opening, orbiting, editing and hovering, driven through the two
+  example designs `#/example/pcb-enclosure` (B5) and `#/example/knurled-knob`
+  (B7), one test each (`test.describe.configure({ mode: 'serial' })`, 180 s
+  timeout). What it measures: a `page.addInitScript` installs `window.__perf`
+  (`long`, `events`, `frames`) with a `PerformanceObserver` for `longtask`
+  entries, one for `event` entries (`durationThreshold: 16`, so quick events
+  are not listed — both `observe` calls wrapped in try/catch for shells
+  without the entry type) and a `requestAnimationFrame` counter; a `sample()`
+  helper reads the counts, total and max of the window's long tasks, the worst
+  event and the frame rate between two `performance.now()` values read through
+  `page.evaluate` right before and after each step (open, orbit, edit, undo,
+  hover+click). The round-trip observer is armed with `page.evaluate` **before**
+  the edit — the expression field applies while typing, so an observer armed
+  after `fill` sees nothing — and stores its Promise on `window.__perf.roundTrip`
+  (`evaluateHandle` would wait for the Promise at arm time, defeating
+  arm-then-act; `page.evaluate` awaits it at read time instead). One
+  `MutationObserver` on `document.documentElement` (`subtree`,
+  `attributeFilter: ['data-model-status', 'data-bodies']`) re-queries
+  `[data-model-status]` and `[data-bodies]` on every callback (React may
+  replace the nodes); it marks "changed" when the status is anything but
+  `ready` or `data-bodies` mutates (a fast round trip can flip ready → busy →
+  ready between two callbacks) and resolves with the elapsed ms once changed
+  and the status is `ready`, or -1 after 30 s (an edit's -1 fails with a
+  message saying the observer is wrong, not the app). Budgets (ADR-0100 §1):
+  open longMax < 400, longTotal < 1200, B5 < 8 s / B7 < 10 s; orbit longMax <
+  100 and ≥ 20 fps; edit and undo longMax < 150, round trip B5 < 1.5 s / B7 <
+  5 s; hover+click worst event < 250 ms. The raw numbers are attached to the
+  report as `perf.json` before the assertions, so a failure still carries
+  them. The hover and the orbit start at the projection of the camera target
+  (`projector(viewport)(target)`), the model's centre in the part of the view
+  the browser panel leaves open — the region's box centre is not on the model
+  (ADR-0007's amendment). The open window starts right before
+  `page.goto('./#/example/<id>')`: the home screen is loaded first
+  (`page.goto('./')`, wait for `New design`), and a hash navigation keeps the
+  document (and its clock), with a fallback to 0 if a full navigation resets
+  `performance.now()`. Locally on the Ubuntu machine the budgets only hold
+  with a real GPU (`E2E_GPU=1`, as in the baseline §1.4 they are set
+  against): under SwiftShader every rendered frame is a 100–700 ms
+  main-thread task, so opening alone collects ~20 long tasks and the orbit's
+  fps drops toward 20 — CI's SwiftShader runners are the ones that decide the
+  budgets.
+
 ### `e2e/plugins.spec.ts`
 
 - P6-03 (ADR-0077): Ctrl+K "Plugins…" opens the `dialog` "Settings" at

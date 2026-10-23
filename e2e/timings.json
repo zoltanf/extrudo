@@ -50,6 +50,7 @@
   "onboarding.spec.ts": 17.2,
   "parameters.spec.ts": 28,
   "pattern.spec.ts": 57,
+  "perf.spec.ts": 60,
   "plugins.spec.ts": 10.3,
   "press-pull.spec.ts": 24.5,
   "primitives.spec.ts": 28.9,
