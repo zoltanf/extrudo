@@ -1066,9 +1066,9 @@ end to end, faster than in established desktop CAD.
     wall takes the hole (bottom, counterbore, countersink, drill point)
   - [x] A clear refusal when OCCT can't close the gap, saying what to add to
     the pick
-  - [ ] Dialog with live preview, tooltip clip, guide (`features-and-timeline.md`:
+  - [x] Dialog with live preview, tooltip clip, guide (`features-and-timeline.md`:
     when to delete the feature, when to use Remove Faces), tool page
-  - [ ] Delete on selected faces makes the feature in one step
+  - [x] Delete on selected faces makes the feature in one step
   - [ ] `.f3d` import: face deletions become Remove Faces (ADR-0083's next
     amendment, with the corpus numbers)
 

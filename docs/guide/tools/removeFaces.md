@@ -13,5 +13,7 @@ Remove faces of a body; the faces around them grow to close the gap. A click tak
 |---|---|
 | Modify › Modify | None |
 
+<video src="demo:removeFaces" muted loop autoplay playsinline aria-label="Remove Faces demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

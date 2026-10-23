@@ -2838,4 +2838,14 @@ refusal names how many faces to add (unpicked faces of the failed faces' chains 
 by `pushArg`, works on a copy and on refusal lists the failed features' faces (0-based) in the
 lookup buffer (`RemoveFacesError.failed`); the evaluator refuses an empty pick and a pick of
 every face before OCCT runs. The engine's `removeFacesPick(body, faces, base)` goes through the
-service, `KernelApi` and `Recomputer` like `smoothFaces`.
+service, `KernelApi` and `Recomputer` like `smoothFaces`. The dialog is
+`apps/web/src/features/remove-faces.ts` (Solid › Modify, after Offset Face; the tile in
+`apps/web/src/shell/tools.ts` with search words "defeature", "delete face", "remove fillet",
+"remove hole", "simplify"): one multi-pick face field whose **`pick: 'removeFaces'` option**
+(`apps/web/src/features/spec.ts`) routes its picks through `removeFacesPick` the way
+`keepRounds` routes through `smoothFaces` — a field's value is the union, without duplicates,
+and its info line counts what the pick holds. Delete's face path is `createFaceActions` in
+`apps/web/src/shell/bodies.ts` beside `createBodyActions` (sketch mode refuses like deleting a
+body; the removed faces leave the selection and the hover); mesh bodies' faces never apply. The
+tooltip clip's scene starts from `fixtures/demos/removeFaces.extrudo`
+(`packages/cli/src/demo-designs.test.ts`).
