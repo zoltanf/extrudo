@@ -54,6 +54,7 @@ describe('the settings inventory', () => {
         'print.material',
         'export.model',
         'slicers.paths',
+        'blender.path',
         'mcp.enabled',
         'mcp.port',
       ]),
@@ -78,5 +79,6 @@ describe('the settings inventory', () => {
     }
     expect(sectionOf('mcp.port')?.id).toBe('agents');
     expect(sectionOf('slicers.paths')?.id).toBe('desktop');
+    expect(sectionOf('blender.path')?.id).toBe('desktop');
   });
 });

@@ -115,6 +115,7 @@ export const ICON_NAMES = [
   'overhang',
   'wall-thickness',
   'send-to-slicer',
+  'render-picture',
   'new-design',
   'all-designs',
   'save-version',

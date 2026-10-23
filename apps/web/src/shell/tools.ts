@@ -846,6 +846,16 @@ export const TOOLS = {
     unavailable:
       'Sending to a slicer needs the desktop app. In the browser, export a 3MF and open it in your slicer.',
   },
+  render: {
+    id: 'render',
+    label: 'Render Picture',
+    icon: 'render-picture',
+    category: 'export',
+    hint: 'Render a presentable picture of the design in Blender.',
+    // Ready where the platform has `render`: the desktop app with Blender installed (ADR-0101).
+    comesWith: 'the desktop app',
+    unavailable: 'Rendering needs the desktop app and Blender (free, blender.org).',
+  },
   // The Home tab's file actions (ADR-0079): commands, run through the page's `FileActions`
   // (`FILE_COMMANDS`), not tools; listed here for their tiles, icons and hints.
   newDesign: {
@@ -1106,7 +1116,7 @@ export const TABS: Tab[] = [
         label: 'Prepare',
         tools: ['placeOnBed', 'measure', 'printInfo', 'tolerance', 'overhang', 'wallThickness'],
       },
-      { label: 'Output', tools: ['export', 'slicer'] },
+      { label: 'Output', tools: ['export', 'slicer', 'render'] },
     ],
   },
 ];

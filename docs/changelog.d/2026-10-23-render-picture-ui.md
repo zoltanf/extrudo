@@ -1,0 +1,1 @@
+- 2026-10-23 · **Render Picture tile and dialog**: 3D Print › Output has a Render Picture tile (desktop app with Blender) with scene presets, a finish per body, camera, size and quality, progress with Cancel, and Save/Copy of the PNG; Settings › Desktop sets the Blender path.

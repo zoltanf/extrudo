@@ -1797,6 +1797,26 @@ function exportScene(tool: string, format: RegExp) {
 exportScene('export', /^STL/);
 exportScene('slicer', /^3MF/);
 
+/**
+ * Render Picture (ADR-0101) needs Blender and the desktop app, so the web build can't show its
+ * dialog: the clip shows the tile in the ribbon, which is all the web build has of it.
+ */
+test('demo: render', async ({ page }) => {
+  await demoDesign(page, 'section');
+  const p = pointer(page);
+  await page.locator('[role="tab"][data-tab="print"]').click();
+  const tile = page.locator('[data-tool="render"]').first();
+  await expect(tile).toBeVisible();
+  const at = await centreOf(tile);
+  const clip = { x: Math.max(0, at.x - 230), y: Math.max(0, at.y - 60), width: 400, height: 250 };
+  await p.jump({ x: at.x + 120, y: at.y + 120 });
+  await record(page, 'render', clip, async () => {
+    await page.waitForTimeout(400);
+    await p.moveTo(at, 600);
+    await page.waitForTimeout(1500);
+  });
+});
+
 // ---- Sketch tab
 
 type Pt = readonly [number, number];

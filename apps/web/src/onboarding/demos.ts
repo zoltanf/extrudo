@@ -77,6 +77,7 @@ export const DEMO_TOOLS: readonly string[] = [
   'wallThickness',
   'export',
   'slicer',
+  'render',
   // Sketch › Create, Modify, Constraints, Export.
   'line',
   'rectangle',

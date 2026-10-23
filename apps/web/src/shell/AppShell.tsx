@@ -129,6 +129,7 @@ import { type Autosaver, saveEverything } from '../project/autosave';
 import { setRestoreGuard } from '../project/restoreGuard';
 import { VersionsDialog } from '../project/VersionsDialog';
 import type { VersionContext } from '../project/versions';
+import { RenderDialog, type RenderRequest } from '../render/RenderDialog';
 import { navigate, projectHref } from '../routes';
 import { SectionOverlay } from '../section/SectionOverlay';
 import { SectionPanel } from '../section/SectionPanel';
@@ -184,6 +185,7 @@ import { ghostsOf } from '../viewport/ghostGeometry';
 import { JointHandle } from '../viewport/JointHandle';
 import type { JointDrawing } from '../viewport/jointGeometry';
 import { ModelProgress, useRecomputeFinished } from '../viewport/ModelProgress';
+import { viewToCamera } from '../viewport/namedView';
 import { namedViewSaveStore } from '../viewport/namedViewSave';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
 import type { ViewportStore } from '../viewport/store';
@@ -365,6 +367,7 @@ function Shell({
   const [parametersOpen, setParametersOpen] = useState(false);
   const [exportRequest, setExportRequest] = useState<ExportRequest>();
   const [modelExport, setModelExport] = useState<ModelExportRequest>();
+  const [renderRequest, setRenderRequest] = useState<RenderRequest>();
   const [scriptExportOpen, setScriptExportOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
   // The person's installed plugins (P6-03 slice 2, ADR-0077 §4): session state over the
@@ -956,6 +959,7 @@ function Shell({
   // Its marks at the pose shown: as built (0) until the pose preview (J2) can show another.
   const dialogItems = useDialogItems(dialogOpen, shownBodies);
   const canSlicer = platform.openInSlicer !== undefined;
+  const canRender = platform.render !== undefined;
   const ready = useMemo(() => {
     const tools = new Set<string>(
       dialogs
@@ -965,8 +969,10 @@ function Shell({
     );
     // Send to Slicer (P6-02) is ready where the platform can launch one.
     if (canSlicer) tools.add('slicer');
+    // Render Picture (P6-13) is ready where the platform can run Blender.
+    if (canRender) tools.add('render');
     return tools;
-  }, [dialogs, canSlicer]);
+  }, [dialogs, canSlicer, canRender]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `keymap` stands for `keysFor`'s overrides
   const dialogCommands = useMemo(
     () =>
@@ -1702,6 +1708,8 @@ function Shell({
     else if (tool === 'export') setModelExport({});
     else if (tool === 'slicer') {
       if (platform.openInSlicer) setModelExport({ slicer: true });
+    } else if (tool === 'render') {
+      if (platform.render) setRenderRequest({});
     } else if (tool === MEASURE_TOOL) {
       if (mode !== 'model') return;
       if (measuring) session.getState().setTool(undefined);
@@ -2897,6 +2905,25 @@ function Shell({
         notify={notify}
         onClose={() => setModelExport(undefined)}
       />
+      {platform.render && (
+        <RenderDialog
+          store={store}
+          session={session}
+          model={model}
+          bodies={bodyList}
+          kernel={kernel}
+          request={renderRequest}
+          files={platform.files}
+          render={platform.render}
+          viewportCamera={() => {
+            const { view, projection } = viewport.getState();
+            return viewToCamera(view, projection);
+          }}
+          openLink={platform.openLink}
+          notify={notify}
+          onClose={() => setRenderRequest(undefined)}
+        />
+      )}
       <ExportScriptDialog
         store={store}
         session={session}

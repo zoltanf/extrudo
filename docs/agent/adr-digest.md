@@ -2841,3 +2841,17 @@ settings are the document's optional `render` section (`RenderSettingsSchema`: `
 command only when they changed; the picture is never stored. `Platform.render?`
 (`apps/web/src/platform/render.ts`) is absent on the web, where the `render` tile shows its
 "needs the desktop app" hint like `slicer`.
+
+ADR-0101, slice 3 (the UI, 2026-10-23): `apps/web/src/render/renderJob.ts` holds the pure
+helpers (`currentRenderSettings`, `finishOf`, `withFinish`, `settingsChanged`, `jobCamera`,
+`buildRenderJob`, `renderFileName`); `RenderDialog.tsx` is the dialog (`RenderForm` is its body,
+tested in jsdom with Testing Library over a fake `BlenderRenderer`). **Rules:** the `render` tool
+is ready only where `platform.render` exists (`AppShell`'s `canRender`), and the dialog is only
+mounted then; Render dispatches `setRenderSettings` only when `settingsChanged` (one undo step),
+meshes every **shown** body at `RESOLUTIONS.medium`, builds the job with `writeObj` and hands it
+to `platform.render.render`; closing is refused while meshing or rendering (Esc and overlay
+included), Cancel stops it and unmounting the form cancels a running render. The picture is an
+object URL revoked on Render again and on close; Save uses `files.download`. The Blender path
+is the string preference `blender.path` (Settings › Desktop; empty means search). The blender.org
+link goes through `platform.openLink`, so the desktop allow-list (`apps/desktop/src/main/links.ts`)
+must contain `www.blender.org`.

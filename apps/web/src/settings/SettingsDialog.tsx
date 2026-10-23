@@ -39,6 +39,8 @@ import { KeyboardPage } from './KeyboardPage';
 const SECTION_KEY = 'settings.section';
 const EXPORT_KEY = 'export.model';
 const SLICER_PATHS_KEY = 'slicers.paths';
+// Where Blender is, for Render Picture (P6-13); empty: main searches.
+const BLENDER_PATH_KEY = 'blender.path';
 // The desktop MCP server (P6-08, ADR-0087 §3): main reads both itself.
 const MCP_ENABLED_KEY = 'mcp.enabled';
 const MCP_PORT_KEY = 'mcp.port';
@@ -630,6 +632,9 @@ function DesktopPage({
   const [paths, setPaths] = useState(() =>
     preferences.get<Partial<Record<SlicerId, string>>>(SLICER_PATHS_KEY, {}),
   );
+  const [blenderPath, setBlenderPath] = useState(() =>
+    preferences.get<string>(BLENDER_PATH_KEY, ''),
+  );
   const [found, setFound] = useState<readonly SlicerId[]>();
   useEffect(() => {
     let current = true;
@@ -668,6 +673,22 @@ function DesktopPage({
           />
         </Row>
       ))}
+      <Heading>Blender</Heading>
+      <Row
+        label="Blender"
+        hint="The program's path, the .app on macOS, or org.blender.Blender for the Flatpak."
+      >
+        <SlicerPath
+          label="Blender path"
+          placeholder="Found automatically"
+          value={blenderPath}
+          onCommit={(path) => {
+            const next = path.trim();
+            preferences.set(BLENDER_PATH_KEY, next);
+            setBlenderPath(next);
+          }}
+        />
+      </Row>
     </>
   );
 }
@@ -905,10 +926,12 @@ function AgentSettings({ preferences, agent }: { preferences: Preferences; agent
 function SlicerPath({
   label,
   value,
+  placeholder = 'Detected automatically',
   onCommit,
 }: {
   label: string;
   value: string;
+  placeholder?: string;
   onCommit(path: string): void;
 }) {
   const [draft, setDraft] = useState(value);
@@ -916,7 +939,7 @@ function SlicerPath({
   return (
     <TextInput
       aria-label={label}
-      placeholder="Detected automatically"
+      placeholder={placeholder}
       value={draft}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={() => draft !== value && onCommit(draft)}

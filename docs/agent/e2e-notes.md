@@ -1547,6 +1547,15 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 - See `e2e/onboarding.spec.ts`: `RECORD_ASSETS=1` only, the demo recorder.
 
+### `e2e/render-tile.spec.ts`
+
+- **Render Picture tile** (P6-13, ADR-0101), web build: the 3D Print tab's Output
+  group has the button "Render Picture" (`exact`), `aria-disabled="true"`; its
+  tooltip reads "Rendering needs the desktop app and Blender (free, blender.org)."
+  (Playwright can't click it: it is not enabled). The dialog needs `platform.render`, which the web
+  build lacks; it is covered by `RenderDialog.test.tsx` (jsdom + Testing Library
+  with a fake renderer). `E2E_PORT=4454`.
+
 ### `e2e/revolve.spec.ts`
 
 - **Revolve e2e** (`e2e/revolve.spec.ts`): the dialog is the region
