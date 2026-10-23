@@ -1,0 +1,1 @@
+- 2026-10-23 · **Render Picture (desktop)**: 3D Print › Output renders a presentable picture of the design with an installed Blender (4.2 or newer): four scene presets, a finish per body, camera, size and quality, progress with Cancel, Save PNG or Copy; the settings are saved in the design, Settings › Desktop takes the Blender path.

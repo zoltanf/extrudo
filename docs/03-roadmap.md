@@ -1321,7 +1321,7 @@ end to end, faster than in established desktop CAD.
   is left out unless ticked; `bugReport.test.ts` and `e2e/bug-report.spec.ts`
   pass; the desktop allow-list test covers the query string.
 
-- [ ] **P6-13 Render Picture with Blender** (owner, 2026-10-23; ADR-0101).
+- [x] **P6-13 Render Picture with Blender** (owner, 2026-10-23; ADR-0101). Done 2026-10-23.
   FR-3DP-08. A Render Picture tile (3D Print › Output, desktop only) opens a
   dialog with scene presets (studio, table, workbench, outdoor), a finish per
   body (the body's colour stays the base colour), the camera (automatic,
@@ -1338,7 +1338,7 @@ end to end, faster than in established desktop CAD.
   progress parsing and cancel; the guide page exists. *Deps:* P6-01, P6-02.
   *Slices:* (1) OBJ writer, enums, schema, command, platform types; (2) main:
   detection, launch, `render.py` scenes and finishes, channels; (3) the tile,
-  dialog, progress, result, Settings row; (4) docs, preset tuning.
+  dialog, progress, result, Settings row; (4) docs.
 
 ## Phase 7 — Later (lowest priority, after everything else)
 

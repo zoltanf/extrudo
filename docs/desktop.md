@@ -50,6 +50,82 @@ It finds PrusaSlicer, OrcaSlicer, Bambu Studio and Cura on `PATH` or as a flatpa
 (slicer IDs: `prusaslicer`, `orcaslicer`, `bambustudio`, `cura`; there is no UI
 for it yet). Flatpak slicers get the file through the document portal.
 
+## Rendering with Blender
+
+The Render Picture dialog (3D Print › Output, ADR-0101) renders the design
+with a Blender installed by the person. `apps/desktop/src/main/blender.ts`
+does the finding and running, pure over an injected environment like
+`slicers.ts`, so detection on all three OSes and the whole render flow are
+unit-tested on Linux (`blender.test.ts`).
+
+**Finding Blender.** `findBlender` tries, in order: the `blender.path`
+preference (a program path; a macOS `.app` is used through its
+`Contents/MacOS/Blender`; or the Flatpak ID `org.blender.Blender`), then
+`blender` on `PATH`, then the usual places per OS — on Linux the Flatpak
+`org.blender.Blender` (`flatpak info` decides), `/snap/bin/blender` and Steam
+(`~/.steam/steam/…` and `~/.local/share/Steam/…`); on Windows
+`Program Files\Blender Foundation\Blender *\blender.exe` with the highest
+version first and Steam under `Program Files (x86)`; on macOS
+`/Applications/Blender.app`, `~/Applications/Blender.app` and Steam's app.
+**The version gate:** `blender --version` (10 s timeout) must say 4.2 or
+newer (`BLENDER_MIN_VERSION`); a Blender that cannot report a version counts
+as missing. The preference is the **Blender path** row in Settings › Desktop
+(`blender.path` in `preferences.json`; empty means search). Flatpak users
+enter `org.blender.Blender`; the Flatpak gets the job directory with
+`flatpak run --filesystem=<dir>`, since its sandbox has a private `/tmp`.
+
+**One render at a time.** `blenderService.ts` validates every field of the
+job that crosses IPC (names and lengths, colours, the preset, quality, finish
+and size enums from `@extrudo/core`, the camera through `ViewCameraSchema`,
+sides 256–8192) before anything is written, refuses a second render while one
+runs, and re-reads the environment per call, so a Blender installed while the
+app runs is found. Cancel kills the process (the whole tree on Windows).
+
+**The job directory.** A render writes `<temp>/extrudo-render-<8 hex>` (a
+direct child of the temp directory, created with mode 0700; an existing
+directory or a symlink there fails the run): `model.obj`, `model.mtl`,
+`job.json` and `render.py`, then the picture `out.png` is read back and the
+directory is removed whatever happened. Leftover directories are removed on
+quit (`cleanupRenderFiles`).
+
+**The command.** With the job directory as its working directory:
+
+```sh
+blender -b --factory-startup -noaudio --python render.py -- job.json out.png
+```
+
+`--factory-startup` keeps the person's add-ons and start-up file out of the
+run. The script's only stdout is its `EXTRUDO <phase>` lines (importing,
+scene, rendering, saving), `EXTRUDO note <text>` for version differences it
+worked around, and `EXTRUDO ERROR <one sentence>` before exit code 2 on a
+failure; progress comes from Cycles' `Sample n/m` and EEVEE's
+`Rendering n / m samples` lines, and EEVEE is only the draft engine (Cycles
+at 32 samples when EEVEE cannot start without a display).
+
+**The script.** `apps/desktop/blender/render.py` builds the scenes, materials
+and camera in Python — no `.blend` or texture files in the repository — and
+is bundled into main as text (`?raw` via `apps/desktop/src/main/renderScript.ts`,
+so the installer carries no loose files) and written into the job directory
+at render time. Blender renames a few things between 4.2 LTS and 5.x, so the
+script tries both names where they differ: the EEVEE engine id
+(`BLENDER_EEVEE_NEXT`, then `BLENDER_EEVEE`) and the Nishita sky
+(`MULTIPLE_SCATTERING`, then `NISHITA`); a material input whose name moved is
+set by the first name the node has, and a name that is not there is a note,
+not an error.
+
+**Running the script by hand** (for debugging; the docstring says the desktop
+app runs it, never a person): make a directory holding `model.obj`,
+`model.mtl`, `job.json` and `render.py`, and run the command above from it.
+`job.json` is the job without the model texts — `project`, `obj`, `objects`
+(name, finish, colour), `preset`, `camera`, `width`, `height`, `quality`, as
+the docstring shows.
+
+**The integration test.** `apps/desktop/src/main/blender.integration.test.ts`
+renders a cube in every preset at draft quality and once at standard, through
+the real `nodeBlenderEnv`. It runs only with `EXTRUDO_BLENDER=1` and a
+`blender` on `PATH` (`EXTRUDO_BLENDER_PATH` points at a program instead);
+the pictures stay in `<tmp>/extrudo-pictures/` for a look.
+
 ## Connecting an agent (MCP)
 
 While the app runs it hosts an MCP server (ADR-0087) that AI agents such as

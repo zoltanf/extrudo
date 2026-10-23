@@ -2823,11 +2823,12 @@ ADR-0101 (P6-13, proposed 2026-10-23) adds **Render Picture with Blender** (desk
 `findBlender` (the `blender.path` preference wins; then PATH, Flatpak `org.blender.Blender`,
 Snap, Steam, Windows `Blender Foundation` folders newest first, `/Applications/Blender.app`),
 `blenderVersion` (**4.2 or newer**), `renderInBlender` (writes `model.obj`, `model.mtl`,
-`job.json` and the bundled `render.py` under `<temp>/extrudo-render/<job>/`, runs `blender -b
---factory-startup -noaudio --python render.py -- job.json out.png`, parses `Sample n/m` from
-stdout for progress, reads the PNG back, removes the folder; one render at a time; Cancel
+`job.json` and the bundled `render.py` under `<temp>/extrudo-render-<8 hex>`, a direct child of
+temp, runs `blender -b --factory-startup -noaudio --python render.py -- job.json out.png`, parses
+progress from stdout (its own `EXTRUDO <phase>` lines, Cycles' `Sample n/m`, EEVEE's
+`Rendering n / m samples`), reads the PNG back, removes the folder; one render at a time; Cancel
 kills the process). `blenderService.ts` validates every job field before anything is written;
-channels `render:status`/`render:start`/`render:cancel`/`render:progress`. **Rules:** the
+channels `extrudo:render:status`/`extrudo:render:start`/`extrudo:render:cancel`/`extrudo:render:progress`. **Rules:** the
 scenes (`studio`, `table`, `workbench`, `outdoor`) and finishes (`matte`, `glossy`,
 `translucent`, `resin`, `metal`, `wood`) are **built by `render.py` in Python**, no `.blend`
 or texture files in the repository; the base colour is always the body's colour; the enums
