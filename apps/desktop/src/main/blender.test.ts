@@ -238,6 +238,18 @@ describe('progressOf', () => {
     });
     expect(progressOf('Fra:1 | Rendering 8 / 16 samples')?.fraction).toBeCloseTo(0.525);
     expect(progressOf('Fra:1 | Sample 128/128')?.fraction).toBe(0.95);
+    expect(
+      progressOf(
+        '00:01.378  render           | Fra: 1 | Remaining: 00:12.30 | Mem: 83M | Sample 1/128',
+      )?.fraction,
+    ).toBeCloseTo(0.1066);
+    expect(progressOf('00:09.604  render           | Fra: 1 | Mem: 83M | Finished')).toEqual({
+      fraction: 0.97,
+      phase: 'saving',
+    });
+    expect(progressOf("00:09.777  render           | Saved: '/tmp/x/out1.png'")?.phase).toBe(
+      'saving',
+    );
     expect(progressOf('EXTRUDO note cycles on CPU')).toBeUndefined();
     expect(progressOf('Blender 5.2.2 LTS')).toBeUndefined();
   });
@@ -313,6 +325,15 @@ describe('renderInBlender', () => {
       ['saving', 0.97],
     ]);
     expect(f.removed).toEqual([dir]);
+  });
+
+  it('lets Blender render the slow qualities itself and reads its numbered frame', async () => {
+    const f = fake({ readFile: (p) => (p.endsWith('/out1.png') ? PNG : undefined) });
+    const { promise, process } = start(f, { ...JOB, quality: 'standard' });
+    expect(f.spawned[0]?.args).toContain('-f');
+    expect(f.spawned[0]?.args.slice(-5)).toEqual(['-f', '1', '--', 'job.json', 'out.png']);
+    process.emit('exit', 0);
+    expect(await promise).toEqual({ ok: true, png: PNG });
   });
 
   it('keeps a camera in job.json and the script renders it', () => {

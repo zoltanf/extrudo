@@ -21,9 +21,15 @@ home direction, and the picture is written to the output path.
 
 The only output on stdout is ``EXTRUDO <phase>`` lines (importing, scene,
 rendering, saving, done), ``EXTRUDO note <text>`` for things it worked around,
-and ``EXTRUDO ERROR <one sentence>`` before exit code 2 on a failure. Blender
-itself prints the render's ``Sample n/m`` progress. ``bpy`` only, Python 3.11+,
-no network, no files outside the job directory.
+and ``EXTRUDO ERROR <one sentence>`` before exit code 2 on a failure.
+
+A render started from a script prints no progress, so for the slow qualities
+the app adds ``-f 1`` before ``--``: the script then only builds the scene and
+Blender's own command-line render follows, printing ``Sample n/m`` lines as it
+goes and saving ``out1.png`` next to the job (the frame number is Blender's).
+Without ``-f`` the script renders itself to the given path, with the draft
+quality's fallback from EEVEE to Cycles. ``bpy`` only, Python 3.11+, no
+network, no files outside the job directory.
 """
 
 import json
@@ -235,7 +241,7 @@ def place_model(objects):
     size = max(hi - lo)
     centre = Vector((0, 0, (hi.z - lo.z) / 2))
     radius = max((hi - lo).length / 2, 1e-4)
-    return offset, centre, radius, size
+    return offset, centre, radius, size, (hi - lo) / 2
 
 
 # ---------------------------------------------------------------- materials
@@ -317,13 +323,19 @@ def assign(obj, mat):
 
 
 def scene_studio(s, target):
-    w = 25 * s
-    verts = [(-w, -20 * s, 0), (w, -20 * s, 0), (-w, 10 * s, 0), (w, 10 * s, 0),
-             (-w, 12 * s, 2 * s), (w, 12 * s, 2 * s), (-w, 12 * s, 22 * s), (w, 12 * s, 22 * s)]
-    faces = [(0, 1, 3, 2), (2, 3, 5, 4), (4, 5, 7, 6)]
+    # A sweep: a floor wide enough that no edge is ever in the frame (the camera
+    # looks down at 35° from about three model sizes away), bending up into a
+    # wall through a real arc of vertices (a subdivision modifier would bulge
+    # the floor up and swallow the model).
+    w, back, bend, height = 100 * s, 10 * s, 2 * s, 40 * s
+    profile = [(-100 * s, 0.0), (back, 0.0)]
+    for k in range(1, 9):
+        angle = -math.pi / 2 + (math.pi / 2) * k / 8
+        profile.append((back + bend * math.cos(angle) + bend - bend, bend + bend * math.sin(angle)))
+    profile.append((back + bend, height))
+    verts = [(x, y, z) for y, z in profile for x in (-w, w)]
+    faces = [(2 * k, 2 * k + 1, 2 * k + 3, 2 * k + 2) for k in range(len(profile) - 1)]
     sweep = new_mesh_object("Sweep", verts, faces, smooth=True)
-    sweep.modifiers.new("Smooth", "SUBSURF").levels = 2
-    sweep.modifiers["Smooth"].render_levels = 2
     sweep.rotation_euler.z = math.radians(45)
     mat, bsdf = principled("Sweep", hex_to_linear("#f2f2f2"))
     set_input(bsdf, 0.7, "Roughness")
@@ -335,7 +347,7 @@ def scene_studio(s, target):
 
 
 def scene_table(s, target):
-    table = box("Table", 30 * s, 20 * s, 0.03, 0)
+    table = box("Table", 200 * s, 200 * s, 0.03, 0)
     base = hex_to_linear("#8b5a2b")
     mat, bsdf = principled("Table", base)
     wood_nodes(mat, bsdf, base, hex_to_linear("#5a3a1a"), 1.2 / s, 0)
@@ -347,7 +359,7 @@ def scene_table(s, target):
 
 
 def scene_workbench(s, target):
-    top = box("Worktop", 30 * s, 20 * s, 0.04, 0)
+    top = box("Worktop", 200 * s, 200 * s, 0.04, 0)
     mat, bsdf = principled("Worktop", hex_to_linear("#2e2e32"))
     nodes, links = mat.node_tree.nodes, mat.node_tree.links
     coords = nodes.new("ShaderNodeTexCoord")
@@ -371,7 +383,7 @@ def scene_workbench(s, target):
 
 
 def scene_outdoor(s, target):
-    ground = plane("Ground", 60 * s)
+    ground = plane("Ground", 400 * s)
     mat, bsdf = principled("Ground", hex_to_linear("#6b7a5a"))
     set_input(bsdf, 0.9, "Roughness")
     assign(ground, mat)
@@ -411,7 +423,25 @@ SCENES = {"studio": scene_studio, "table": scene_table, "workbench": scene_workb
 # ---------------------------------------------------------------- camera and render
 
 
-def setup_camera(scene, job_camera, aspect, offset, centre, radius):
+def fit_distance(centre, extent, direction, aspect):
+    """How far back along `direction` the camera sits so every corner of the box
+    (centre ± extent) is inside the view with a 10% margin."""
+    forward = -direction
+    right = forward.cross(Vector((0, 0, 1))).normalized()
+    up = right.cross(forward)
+    tan_y = math.tan(FOV_Y / 2)
+    tan_x = aspect * tan_y
+    distance = 0.0
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            for sz in (-1, 1):
+                q = Vector((sx * extent.x, sy * extent.y, sz * extent.z))
+                need = max(abs(q.dot(right)) / tan_x, abs(q.dot(up)) / tan_y) * 1.1 + q.dot(direction)
+                distance = max(distance, need)
+    return max(distance, 1e-3)
+
+
+def setup_camera(scene, job_camera, aspect, offset, centre, radius, extent):
     data = bpy.data.cameras.new("Camera")
     data.sensor_fit = "VERTICAL"
     data.angle_y = FOV_Y
@@ -428,8 +458,7 @@ def setup_camera(scene, job_camera, aspect, offset, centre, radius):
             data.type = "ORTHO"
             data.ortho_scale = float(job_camera.get("size") or (2 * radius * 1000)) * 0.001
         return
-    fov_x = 2 * math.atan(aspect * math.tan(FOV_Y / 2))
-    distance = radius * 1.1 / math.sin(min(FOV_Y, fov_x) / 2)
+    distance = fit_distance(centre, extent, HOME_DIRECTION, aspect)
     look_at(cam, centre + HOME_DIRECTION * distance, centre)
 
 
@@ -510,15 +539,23 @@ def main():
     log("importing")
     scene = reset_scene()
     imported = import_model(scene, job["obj"])
-    offset, centre, radius, size = place_model(imported)
+    offset, centre, radius, size, extent = place_model(imported)
     s = max(size, 0.05)
     for index, (obj, entry) in enumerate(match_objects(imported, job.get("objects", []))):
         finish = entry.get("finish", "matte")
         assign(obj, finish_material(f"Body{index + 1}", finish, entry.get("color"), size))
     log("scene")
     SCENES[job["preset"]](s, centre)
-    setup_camera(scene, job.get("camera"), job["width"] / job["height"], offset, centre, radius)
+    setup_camera(
+        scene, job.get("camera"), job["width"] / job["height"], offset, centre, radius, extent
+    )
     setup_render(scene, job, out)
+    if "-f" in sys.argv:
+        # Blender renders after this script (`-f 1`): the frame number lands in
+        # the name, so `out.png` becomes `out1.png`.
+        scene.render.filepath = f"{os.path.splitext(out)[0]}#"
+        log("rendering")
+        return
     log("rendering")
     render_still(scene, job)
     log("saving")

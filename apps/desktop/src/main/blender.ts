@@ -7,11 +7,13 @@
  * A render is a job directory `<temp>/extrudo-render-<8 hex>`, a direct child
  * of the (sticky) temp directory so no one else can rename it: the model as
  * OBJ + MTL, the job as JSON and the bundled `render.py`, then
- * `blender -b --factory-startup -noaudio --python render.py -- job.json out.png`
- * with that directory as its working directory. Progress is read from stdout
- * (the script's own `EXTRUDO <phase>` lines and Cycles' `Sample n/m`), the
- * result is `out.png`, and the directory is removed afterwards whatever
- * happened.
+ * `blender -b --factory-startup -noaudio --python render.py [-f 1] -- job.json out.png`
+ * with that directory as its working directory. Progress is read from stdout:
+ * the script's own `EXTRUDO <phase>` lines, and Blender's `Sample n/m` lines,
+ * which only its command-line render (`-f 1`, used for the slow qualities)
+ * prints: a render started from the script is silent. The result is
+ * `out.png` (or `out1.png` after `-f 1`), and the directory is removed
+ * afterwards whatever happened.
  */
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -237,7 +239,11 @@ export function progressOf(line: string): RenderProgress | undefined {
         return { fraction: 0.97, phase: 'saving' };
     }
   }
-  // Cycles: "Fra:1 … | Sample 12/128"; EEVEE: "… | Rendering 12 / 64 samples".
+  // Blender's own render, after `-f 1`: "… | Fra: 1 | … | Sample 12/128", then
+  // "… | Finished" and "Saved: '…'".
+  if (/\| Finished$/.test(line) || /^.*Saved: '/.test(line)) {
+    return { fraction: 0.97, phase: 'saving' };
+  }
   const sample = /Sample (\d+)\/(\d+)/.exec(line) ?? /Rendering (\d+) \/ (\d+) samples/.exec(line);
   if (sample) {
     const n = Number(sample[1]);
@@ -283,9 +289,10 @@ export async function renderInBlender(
     env.writeFile(path.join(dir, 'job.json'), JSON.stringify(jobFile(job)));
     env.writeFile(path.join(dir, 'render.py'), renderScript);
     if (signal.cancelled) return cancelled();
-    const result = await run(env, found, dir, onProgress, signal, now);
+    const result = await run(env, found, dir, job, onProgress, signal, now);
     if (!result.ok) return result;
-    const png = env.readFile(path.join(dir, 'out.png'));
+    // The script writes `out.png`; Blender's own render (`-f 1`) names the frame.
+    const png = env.readFile(path.join(dir, 'out.png')) ?? env.readFile(path.join(dir, 'out1.png'));
     if (!png || png.byteLength === 0) {
       return { ok: false, message: 'Blender finished without writing the picture.' };
     }
@@ -317,11 +324,15 @@ function run(
   env: BlenderEnv,
   found: FoundBlender,
   dir: string,
+  job: RenderJob,
   onProgress: (progress: RenderProgress) => void,
   signal: RenderSignal,
   now: () => number,
 ): Promise<RenderResult> {
   return new Promise((resolve) => {
+    // Draft renders in the script (seconds, with its EEVEE → Cycles fallback);
+    // the slow qualities let Blender render after the script so it prints progress.
+    const own = job.quality === 'draft' ? [] : ['-f', '1'];
     const [command, args] = launchCommand(
       found,
       [
@@ -330,6 +341,7 @@ function run(
         '-noaudio',
         '--python',
         (env.platform === 'win32' ? win32 : posix).join(dir, 'render.py'),
+        ...own,
         '--',
         'job.json',
         'out.png',
