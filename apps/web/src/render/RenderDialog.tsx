@@ -33,12 +33,14 @@ import type { BodyEntry } from '../shell/bodies';
 import { Choice, Hint, Radio } from '../sketch/ExportSketchDialog';
 import {
   buildRenderJob,
+  commonFinish,
   currentRenderSettings,
   finishOf,
   jobCamera,
   renderFileName,
   settingsChanged,
   withFinish,
+  withFinishForAll,
 } from './renderJob';
 
 /** Opens the dialog (no options yet). */
@@ -175,6 +177,12 @@ export function RenderForm({
   );
 
   const shown = useMemo(() => bodies.filter((b) => b.display === 'shown' && !b.pending), [bodies]);
+  const shownIds = useMemo(() => shown.map((b) => b.id), [shown]);
+  // One finish for every body is the usual case; the per-body list is opened on
+  // request, and stays open while the finishes differ.
+  const common = commonFinish(chosen, shownIds);
+  const [perBody, setPerBody] = useState(false);
+  const listOpen = perBody || common === undefined;
   // Saving the render settings changes the document without changing any body, so only a
   // running recompute makes the model wait.
   const current = status === 'ready';
@@ -339,30 +347,55 @@ export function RenderForm({
       <fieldset className="flex flex-col gap-1" disabled={busy}>
         <legend className="mb-1 font-semibold">Bodies</legend>
         {shown.length === 0 && <p className="text-sm text-muted">No bodies are shown.</p>}
-        {shown.map((body) => (
-          <div key={body.id} className="flex items-center gap-2 text-sm">
-            <span
-              aria-hidden
-              className="size-2.5 shrink-0 rounded-full border border-line"
-              style={{ background: body.meta.color ?? 'var(--x-body-default)' }}
-            />
-            <span className="min-w-0 flex-1 truncate">{body.meta.name}</span>
-            <Select
-              aria-label={`Finish of ${body.meta.name}`}
-              className="w-36"
-              value={finishOf(chosen, body.id)}
-              onChange={(event) =>
-                setChosen((c) => withFinish(c, body.id, event.target.value as RenderFinish))
-              }
-            >
-              {RENDER_FINISHES.map((finish) => (
-                <option key={finish} value={finish} title={RENDER_FINISH_INFO[finish].hint}>
-                  {RENDER_FINISH_INFO[finish].label}
-                </option>
-              ))}
-            </Select>
-          </div>
-        ))}
+        {shown.length === 1 && shown[0] && (
+          <FinishRow body={shown[0]} chosen={chosen} setChosen={setChosen} />
+        )}
+        {shown.length > 1 && (
+          <>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="min-w-0 flex-1 truncate">All {shown.length} bodies</span>
+              <div className="w-36 shrink-0">
+                <Select
+                  aria-label="Finish of all bodies"
+                  value={common ?? 'mixed'}
+                  onChange={(event) =>
+                    setChosen((c) =>
+                      withFinishForAll(c, shownIds, event.target.value as RenderFinish),
+                    )
+                  }
+                >
+                  {common === undefined && (
+                    <option value="mixed" disabled>
+                      Mixed
+                    </option>
+                  )}
+                  {RENDER_FINISHES.map((finish) => (
+                    <option key={finish} value={finish} title={RENDER_FINISH_INFO[finish].hint}>
+                      {RENDER_FINISH_INFO[finish].label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+            {common !== undefined && (
+              <button
+                type="button"
+                className="self-start text-sm text-accent underline-offset-2 hover:underline"
+                aria-expanded={listOpen}
+                onClick={() => setPerBody(!listOpen)}
+              >
+                {listOpen ? 'Hide the list' : 'Set per body…'}
+              </button>
+            )}
+            {listOpen && (
+              <div className="flex max-h-52 flex-col gap-1 overflow-y-auto pr-1">
+                {shown.map((body) => (
+                  <FinishRow key={body.id} body={body} chosen={chosen} setChosen={setChosen} />
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </fieldset>
 
       <fieldset className="grid grid-cols-2 gap-3 text-sm" disabled={busy}>
@@ -456,6 +489,44 @@ export function RenderForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/** One body: its colour dot, its name and its finish. */
+function FinishRow({
+  body,
+  chosen,
+  setChosen,
+}: {
+  body: BodyEntry;
+  chosen: RenderSettings;
+  setChosen: (update: (c: RenderSettings) => RenderSettings) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <span
+        aria-hidden
+        className="size-2.5 shrink-0 rounded-full border border-line"
+        style={{ background: body.meta.color ?? 'var(--x-body-default)' }}
+      />
+      <span className="min-w-0 flex-1 truncate">{body.meta.name}</span>
+      {/* The select is `w-full` by itself: a box of its own keeps the name's room. */}
+      <div className="w-36 shrink-0">
+        <Select
+          aria-label={`Finish of ${body.meta.name}`}
+          value={finishOf(chosen, body.id)}
+          onChange={(event) =>
+            setChosen((c) => withFinish(c, body.id, event.target.value as RenderFinish))
+          }
+        >
+          {RENDER_FINISHES.map((finish) => (
+            <option key={finish} value={finish} title={RENDER_FINISH_INFO[finish].hint}>
+              {RENDER_FINISH_INFO[finish].label}
+            </option>
+          ))}
+        </Select>
+      </div>
+    </div>
   );
 }
 

@@ -43,6 +43,25 @@ export function withFinish(
   return Object.keys(next).length > 0 ? { ...rest, finishes: next } : rest;
 }
 
+/** The finish every one of `bodies` has, or undefined when they differ (matte for none). */
+export function commonFinish(
+  settings: RenderSettings,
+  bodies: readonly BodyId[],
+): RenderFinish | undefined {
+  const [first, ...rest] = bodies.map((body) => finishOf(settings, body));
+  if (first === undefined) return DEFAULT_FINISH;
+  return rest.every((finish) => finish === first) ? first : undefined;
+}
+
+/** Settings with every one of `bodies` set to `finish`. */
+export function withFinishForAll(
+  settings: RenderSettings,
+  bodies: readonly BodyId[],
+  finish: RenderFinish,
+): RenderSettings {
+  return bodies.reduce((next, body) => withFinish(next, body, finish), settings);
+}
+
 const sortedFinishes = (settings: RenderSettings) =>
   Object.entries(settings.finishes ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
 

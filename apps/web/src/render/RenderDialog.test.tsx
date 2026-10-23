@@ -157,6 +157,52 @@ describe('the scene cards', () => {
   });
 });
 
+describe('many bodies', () => {
+  const B = 'E2:Lid' as never;
+  const two = (): BodyEntry[] => [
+    {
+      id: A,
+      meta: { name: 'Bracket', visible: true, color: '#3366ff' },
+      stored: true,
+      display: 'shown',
+    },
+    { id: B, meta: { name: 'Lid', visible: true }, stored: true, display: 'shown' },
+  ];
+
+  it('offers one finish for all bodies, and the per-body list on request', () => {
+    setup({ bodies: two() });
+    const all = screen.getByLabelText('Finish of all bodies') as HTMLSelectElement;
+    expect(all.value).toBe('matte');
+    expect(screen.queryByLabelText('Finish of Lid')).toBeNull();
+    fireEvent.change(all, { target: { value: 'glossy' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Set per body…' }));
+    expect((screen.getByLabelText('Finish of Bracket') as HTMLSelectElement).value).toBe('glossy');
+    expect((screen.getByLabelText('Finish of Lid') as HTMLSelectElement).value).toBe('glossy');
+    fireEvent.change(screen.getByLabelText('Finish of Lid'), { target: { value: 'wood' } });
+    // Mixed now: the list stays open and the toggle is gone.
+    expect(all.value).toBe('mixed');
+    expect(screen.queryByRole('button', { name: 'Hide the list' })).toBeNull();
+    fireEvent.change(all, { target: { value: 'metal' } });
+    expect((screen.getByLabelText('Finish of Lid') as HTMLSelectElement).value).toBe('metal');
+    fireEvent.click(screen.getByRole('button', { name: 'Hide the list' }));
+    expect(screen.queryByLabelText('Finish of Lid')).toBeNull();
+  });
+
+  it('opens the list by itself when the stored finishes differ', () => {
+    const store = createDocumentStore(createDocument());
+    store
+      .getState()
+      .dispatch(
+        setRenderSettings({ render: { ...DEFAULT_RENDER_SETTINGS, finishes: { [A]: 'resin' } } }),
+      );
+    setup({ store, bodies: two() });
+    expect((screen.getByLabelText('Finish of all bodies') as HTMLSelectElement).value).toBe(
+      'mixed',
+    );
+    expect((screen.getByLabelText('Finish of Bracket') as HTMLSelectElement).value).toBe('resin');
+  });
+});
+
 describe('rendering', () => {
   const ready = async () => {
     await screen.findByText('Blender 4.5.1 found.');

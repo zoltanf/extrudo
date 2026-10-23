@@ -12,12 +12,14 @@ import { describe, expect, it } from 'vitest';
 import type { MeshedBodies } from '../export/modelExport';
 import {
   buildRenderJob,
+  commonFinish,
   currentRenderSettings,
   finishOf,
   jobCamera,
   renderFileName,
   settingsChanged,
   withFinish,
+  withFinishForAll,
 } from './renderJob';
 
 const A = 'E1:A' as never;
@@ -48,6 +50,17 @@ describe('render settings helpers', () => {
     expect('finishes' in withFinish(metal, A, 'matte')).toBe(false);
     // The input is not changed.
     expect(metal.finishes).toEqual({ [A]: 'metal' });
+  });
+
+  it('commonFinish is the one finish all bodies share, matte for none, undefined when mixed', () => {
+    expect(commonFinish(base, [])).toBe('matte');
+    expect(commonFinish(base, [A, B])).toBe('matte');
+    const metal = withFinishForAll(base, [A, B], 'metal');
+    expect(metal.finishes).toEqual({ [A]: 'metal', [B]: 'metal' });
+    expect(commonFinish(metal, [A, B])).toBe('metal');
+    expect(commonFinish(withFinish(metal, B, 'wood'), [A, B])).toBeUndefined();
+    // Back to matte drops the entries.
+    expect('finishes' in withFinishForAll(metal, [A, B], 'matte')).toBe(false);
   });
 
   it('settingsChanged ignores the key order of finishes', () => {
