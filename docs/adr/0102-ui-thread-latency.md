@@ -128,3 +128,79 @@ Each change is one commit with its before/after numbers in the message.
   (`eslint-plugin-react-compiler`'s rules through Biome where available, or a
   one-off `npx react-compiler-healthcheck`) reports them, and the amendment
   lists the ones found.
+
+## §5. Amendment 2026-10-24: the compiler decision
+
+**Kept: the React Compiler, through `@vitejs/plugin-react`'s native
+`compiler` option** (`react({ compiler: { target: '19' } })` in
+`apps/web/vite.config.ts`, with `oxc-transform-react` 0.145, MIT, a
+devDependency of `@extrudo/web`). The decision text above names
+`babel-plugin-react-compiler` through `babel.plugins`; the app's
+`@vitejs/plugin-react` 6.1 no longer has a `babel` option, and offers two
+routes instead, both measured against the gate (Ubuntu desktop, 4 cores,
+three builds each, `pnpm --filter @extrudo/web build`):
+
+| | `vite build` | app JS raw | app JS brotli |
+|---|---|---|---|
+| no compiler | 2.20 / 2.16 / 2.17 s | 5.78 MB | 1.48 MB |
+| Babel (`babel-plugin-react-compiler` 1.0 via `@rolldown/plugin-babel` 0.2 and `reactCompilerPreset`) | 15.74 / 15.79 / 15.95 s (7.2×) | 5.94 MB (+2.8 %) | 1.53 MB (+3.4 %) |
+| native (`oxc-transform-react` 0.145) | 2.65 / 2.69 / 2.64 s (1.22×) | 5.99 MB (+3.6 %) | 1.54 MB (+4.1 %) |
+
+The Babel route fails the build-time gate (≤ 1.5×) by far; the native one
+passes it and the size gate (≤ +5 %). plugin-react's README calls the native
+port experimental and pins its peer to `^0.145.0`: an upgrade of either is a
+re-run of this gate.
+
+The perf spec, GPU, three runs each (window `jsTotal` / the worst input
+handler's `proc`, ms; "before" is change 2's build, "after" the compiler
+with the hover subscription moved, below):
+
+| Window | B5 before | B5 after | B7 before | B7 after |
+|---|---|---|---|---|
+| edit | 124–132 / 42–45 | 100–104 / 39–40 | 111–113 / 35–40 | 94–106 / 33–35 |
+| undo | 15–18 / 13–15 | 11–12 / 9 | 14–16 / 13–14 | 10–11 / 8 |
+| hover | 38–40 / 23 | 10–24 / 8–13 | 37–40 / 22–26 | 23 / 12–13 |
+
+(B7's hover after is the Escape keydown crossing the spec's 16 ms event
+threshold, which adds its handler to `jsTotal`; with the compiler alone it was
+10–11 / 7.) A CPU profile of a 60-move hover sweep over the model (unminified
+builds, GPU, two runs) is the clearer number: B5 284–288 → 92 ms of JS, B7
+407–423 → 108–114 ms. Before, the sweep was React re-rendering the shell
+(`renderWithHooks`, Radix's `mergeProps`/`cloneElement`); picking was ~15 ms
+of it.
+
+**`Shell` no longer reads `session.hover`.** `DialogViewport`
+(`shell/AppShell.tsx`) subscribes to it and adds it to what the shell builds
+without it: the sketch drawings (`shell/hoverDrawings.ts`,
+`sketchesWithHover`: `highlight`, `hoverEntity`, `hoverProfile`), the ghosts
+(`ghostsFor(hoveredFeatures)`, a callback the shell memoises on everything
+else) and the view's `hover`. `PlanePicker` lost its `hover` field: the view
+derives the hovered plane from its own `hover`, so `dialogPlanePicker`,
+`useSection` and Create Sketch's picker no longer take one.
+
+**What the compiler leaves alone.** Its diagnostics (203, in 56 functions)
+are bail-outs, safe by design: the function runs as before. The ones that
+matter: `Shell` (34 reads of refs during render, the `latest.current = …`
+pattern), `Viewport`, `Scene`, `Body`, `Silhouettes`, `EdgeMarks`,
+`VertexMarks`, `Sketch` and the other three.js leaves (they mutate three
+objects in render), Timeline's `Chip`, `GroupChip` and `Marker`,
+`DialogOverlay`, and the hooks `useSection`, `useThickness`, `useOverhang`,
+`useJointCheck`, `useFeatureDialogs`. Toolbar, BrowserPanel, Timeline and
+ParametersDialog compile. List them again with the compiler's
+`logDiagnostics: true` or `oxc-transform-react`'s `transformSync` per file.
+
+**What the compiler broke, and the rule.** It assumes a component's output
+depends only on its props, state and context. Two components read mutable
+state during render through an object whose identity doesn't change, and
+went stale: the notification history's actions (`action.available()`,
+`notifications.spec.ts`) and the Joint dialog's frame fields
+(`controller.frameText(side)`, `joints.spec.ts`). They, and the feature
+dialog's components that read `controller.context()` while drawing
+(`features/FeatureDialog.tsx` and `features/ScadOverrides.tsx` as whole
+modules, `CanvasCalibrate`), now start with `'use no memo'`. The rule: a
+component that reads state through a method, a getter or `getState()` while
+it draws must take that state as props or say `'use no memo'`.
+
+Rejected: `memo` on the panels by hand — the gate passed, and the compiler
+covers every component rather than five; the Babel route — 7× the build
+time.

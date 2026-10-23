@@ -214,6 +214,7 @@ import type { DocsPage } from './docsLinks';
 import { docsPath } from './docsLinks';
 import { createFeatureActions } from './featureActions';
 import { createGroupActions } from './groupActions';
+import { sketchesWithHover } from './hoverDrawings';
 import { menuModel, NATIVE_MENU_OWN, QUIT_ID, SAVE_AS_ID } from './menuModel';
 import { createViewActions } from './namedViews';
 import { Splitter, usePanel } from './panels';
@@ -243,15 +244,40 @@ const TOPOLOGY_NOUNS = { face: 'Face', edge: 'Edge', vertex: 'Vertex' } as const
 const Viewport = lazy(() => import('../viewport/Viewport').then((m) => ({ default: m.Viewport })));
 
 /**
- * The view with the open dialog's preview, read here: a new preview renders
- * the view, not the whole shell (a handle drag, issue #76).
+ * The view with the open dialog's preview and the session's hover, read here:
+ * a new preview (a handle drag, issue #76) or a hover (ADR-0102 §3) renders
+ * the view, not the whole shell. The shell hands over the sketches without
+ * the hover and the ghosts as a function of the hovered features.
  */
 function DialogViewport({
   dialog,
+  session,
+  doc,
+  sketches,
+  ghostsFor,
   ...props
-}: Omit<ComponentProps<typeof Viewport>, 'preview'> & { dialog: DialogController | undefined }) {
+}: Omit<ComponentProps<typeof Viewport>, 'preview' | 'hover' | 'sketches' | 'ghosts'> & {
+  dialog: DialogController | undefined;
+  session: SessionStore;
+  doc: Parameters<typeof hoveredFeatureIds>[0];
+  sketches: readonly SketchDrawing[];
+  ghostsFor: (hovered: ReadonlySet<FeatureId>) => ReturnType<typeof ghostsOf>;
+}) {
   const preview = useViewPreview(dialog);
-  return <Viewport {...props} preview={preview} />;
+  const hover = useStore(session, (s) => s.hover);
+  // The pointer on a group chip's row highlights every member (P4-09, ADR-0065 §2); the
+  // session holds one hover, so a hovered member highlights its whole group.
+  const hovered = useMemo(() => hoveredFeatureIds(doc, hover), [doc, hover]);
+  const hoveredKey = [...hovered].join();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the key stands for `hovered`'s members.
+  const ghosts = useMemo(() => ghostsFor(hovered), [ghostsFor, hoveredKey]);
+  const shownSketches = useMemo(
+    () => sketchesWithHover(sketches, hover, hovered),
+    [sketches, hover, hovered],
+  );
+  return (
+    <Viewport {...props} preview={preview} hover={hover} sketches={shownSketches} ghosts={ghosts} />
+  );
 }
 /** The drawing tools: their own chunk, loaded as soon as a project opens (ADR-0014). */
 interface DrawingTools {
@@ -503,7 +529,6 @@ function Shell({
   const [toolbarTab, setToolbarTab] = useToolbarTab(mode);
   const activeSketchId = useStore(session, (s) => s.activeSketchId);
   const activeTool = useStore(session, (s) => s.activeTool);
-  const hover = useStore(session, (s) => s.hover);
   const picking = activeTool === CREATE_SKETCH;
   const drawing = mode === 'sketch' && isSketchTool(activeTool);
   const projecting = mode === 'sketch' && isProjectTool(activeTool);
@@ -706,7 +731,6 @@ function Shell({
     active: sectioning,
     model: mode === 'model',
     slice,
-    hover,
   });
   // 3D-print aids (P3-10): weight and filament estimates, and the overhang shading (view state
   // in the viewport store, like the section).
@@ -2009,17 +2033,15 @@ function Shell({
     const field = dialogOpen?.spec.fields.find((f) => f.name === dialogOpen.pickField);
     return field?.kind === 'selection' && field.sketchPoints === true;
   }, [dialogOpen]);
-  // The pointer on a group chip's row highlights every member (P4-09, ADR-0065 §2); the session
-  // holds one hover, so a hovered member highlights its whole group.
-  const hoveredFeatures = useMemo(() => hoveredFeatureIds(doc, hover), [doc, hover]);
   // The ghosts of lost geometry (P4-12): of the hovered chip, the feature whose Fix References
   // dialog is open and the feature picked in the timeline; not of every feature at once.
   const pickedChips = useStore(timelineSelection, (s) => s.chips);
   // A sketch's Fix References is the Redefine Plane prompt.
   const fixingId =
     dialogOpen?.mode === 'edit' && dialogOpen.note !== undefined ? dialogOpen.id : redefining;
-  const ghosts = useMemo(
-    () =>
+  // `DialogViewport` passes the hovered chip's features (ADR-0102 §3).
+  const ghostsFor = useCallback(
+    (hoveredFeatures: ReadonlySet<FeatureId>) =>
       ghostsOf(doc.features, featureStatuses, [
         ...hoveredFeatures,
         ...(fixingId ? [fixingId] : []),
@@ -2041,7 +2063,6 @@ function Shell({
       doc.joints,
       featureStatuses,
       jointReports,
-      hoveredFeatures,
       fixingId,
       pickedChips,
       hoveredJoint,
@@ -2142,19 +2163,17 @@ function Shell({
           frame,
           data: sketch.data,
           active,
-          highlight: hoveredFeatures.has(feature.id),
+          // The hover (`highlight`, `hoverEntity`, `hoverProfile`) is added by `DialogViewport`.
           status: active ? status?.entities : undefined,
           // Curves picked in model mode (P2-03).
           ...(!active && pickingSketchPoints && { showPoints: true }),
           ...(!active && {
-            hoverEntity: sketchEntityIdsIn([hover], feature.id)[0],
             selectedEntities: sketchEntityIdsIn(shownSelection, feature.id),
           }),
           // One selected open fit spline shows its tangent grips (ADR-0063's third amendment).
           ...(active && { gripSpline: gripSplineOf(sketch.data, selection) }),
           ...(showProfiles && {
             profiles: sketchProfiles(sketch.data, fontsVersion),
-            hoverProfile: profileIdsIn([hover], feature.id)[0],
             selectedProfiles: profileIdsIn(shownSelection, feature.id),
           }),
         });
@@ -2167,8 +2186,6 @@ function Shell({
     activeSketchId,
     status,
     showProfiles,
-    hover,
-    hoveredFeatures,
     shownSelection,
     selection,
     pickingSketchPoints,
@@ -2296,16 +2313,13 @@ function Shell({
   // A feature dialog's Plane field (P2-10) picks origin planes and flat faces the same way.
   const dialogPlanes = useMemo(
     () =>
-      mode === 'model' && !picking
-        ? dialogPlanePicker(dialog, dialogOpen, session, hover)
-        : undefined,
-    [mode, picking, dialog, dialogOpen, session, hover],
+      mode === 'model' && !picking ? dialogPlanePicker(dialog, dialogOpen, session) : undefined,
+    [mode, picking, dialog, dialogOpen, session],
   );
   const planePicker = useMemo<PlanePicker | undefined>(
     () =>
       picking
         ? {
-            hover: hover?.kind === 'plane' ? hover.id : undefined,
             onHover: (plane) => session.getState().setHover({ kind: 'plane', id: plane }),
             onLeave: (plane) => {
               const current = session.getState().hover;
@@ -2329,7 +2343,7 @@ function Shell({
             }),
           }
         : (section.planePicker ?? dialogPlanes),
-    [picking, hover, session, kernel, dialogPlanes, section.planePicker],
+    [picking, session, kernel, dialogPlanes, section.planePicker],
   );
 
   return (
@@ -2540,17 +2554,18 @@ function Shell({
               activeComponent={doc.components?.find((c) => c.id === activeComponent)?.name}
               isolatedComponent={doc.components?.find((c) => c.id === isolatedComponent)?.name}
               onExitIsolation={() => session.getState().isolateComponent(undefined)}
+              session={session}
+              doc={doc}
               sketches={sketches}
               sketchPlane={sketchPlane}
               planePicker={planePicker}
               construction={constructionDrawings}
-              ghosts={ghosts}
+              ghostsFor={ghostsFor}
               canvases={canvasList}
               calibration={calibration}
               sketchInput={sketchInput}
               commandRunning={drawing || picking || projecting || measuring || section.choosing}
               onStopCommand={stopCommand}
-              hover={hover}
               selection={jointItems ?? dialogItems ?? selection}
               modelSelect={modelSelect}
               viewMenu={viewMenu}

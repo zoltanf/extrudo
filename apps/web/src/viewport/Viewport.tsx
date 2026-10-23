@@ -286,9 +286,12 @@ export interface SketchInput {
  */
 export const VIEW_PASSTHROUGH = 'data-view-passthrough';
 
+/**
+ * Picking a plane (and maybe a face). The plane under the pointer is the
+ * view's `hover` when that is a plane: an origin plane (`origin:xy`) or a
+ * construction plane (its feature's ID, P3-05).
+ */
 export interface PlanePicker {
-  /** An origin plane (`origin:xy`) or a construction plane (its feature's ID, P3-05). */
-  hover: string | undefined;
   /** The planes already picked (a feature dialog's Plane field, P2-10): drawn highlighted. */
   selected?: readonly string[];
   onHover(plane: string): void;
@@ -591,7 +594,7 @@ export function Viewport({
     setOtherMenu,
     hasViewMenu ? openViewMenu : undefined,
   );
-  useSketchTargetInput(surface, viewport, planePicker, modelScene, setBox);
+  useSketchTargetInput(surface, viewport, planePicker, hover, modelScene, setBox);
   // The menu belongs to model mode: it closes when that ends (a sketch opens, a tool starts).
   useEffect(() => {
     if (!modelSelect) setOtherMenu(undefined);
@@ -603,7 +606,7 @@ export function Viewport({
     ? navCursor(dragging, true)
     : tool
       ? navCursor(tool, false)
-      : planePicker?.hover || (planePicker?.faces && hover?.kind === 'face')
+      : (planePicker && hover?.kind === 'plane') || (planePicker?.faces && hover?.kind === 'face')
         ? 'pointer'
         : sketchInput && sketchInput.cursor !== 'default'
           ? 'crosshair'
@@ -1094,7 +1097,7 @@ function Scene({
         axisZ={colors.axisZ}
         construct={colors.construct}
         picking={planePicker !== undefined}
-        hover={planePicker?.hover}
+        hover={planePicker && hover?.kind === 'plane' ? hover.id : undefined}
         selected={planePicker?.selected}
         highlight={{ ...colors.preselect, a: 1 }}
         onHover={planePicker?.faces ? undefined : planePicker?.onHover}
@@ -1537,6 +1540,7 @@ function useSketchTargetInput(
   surface: RefObject<HTMLDivElement | null>,
   viewport: ViewportStore,
   picker: PlanePicker | undefined,
+  hover: SelectionItem | undefined,
   scene: ModelScene,
   onBoxChange: (box: ScreenBox | undefined) => void,
 ) {
@@ -1544,6 +1548,9 @@ function useSketchTargetInput(
   sceneRef.current = scene;
   const pickerRef = useRef(picker);
   pickerRef.current = picker;
+  // The plane under the pointer, to leave when a face takes over.
+  const hoverRef = useRef(hover);
+  hoverRef.current = hover;
   const faces = picker?.faces !== undefined;
   const handlers = useMemo<PointerHandlers | undefined>(() => {
     if (!faces) return undefined;
@@ -1566,7 +1573,8 @@ function useSketchTargetInput(
         current.onHover(t.plane);
         return;
       }
-      if (current.hover) current.onLeave(current.hover);
+      const was = hoverRef.current;
+      if (was?.kind === 'plane') current.onLeave(was.id);
       current.faces.onHover(t?.item);
     };
     return {

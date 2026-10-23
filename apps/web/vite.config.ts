@@ -19,7 +19,8 @@ export default defineConfig({
   base: './',
   // The build's version, channel and commit, for the About dialog (`src/version.ts`).
   define: { __EXTRUDO_BUILD__: JSON.stringify(buildInfo(pkg.version)) },
-  plugins: [react(), tailwindcss(), sitePlugin(), precachePlugin()],
+  // The React Compiler memoises every component and hook (ADR-0102 §3).
+  plugins: [react({ compiler: { target: '19' } }), tailwindcss(), sitePlugin(), precachePlugin()],
   preview: {
     headers: Object.fromEntries(globalHeaders?.headers.map((h) => [h.name, h.value]) ?? []),
   },

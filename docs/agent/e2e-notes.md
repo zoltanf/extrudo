@@ -24,6 +24,16 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   docker` (after `pnpm build`). Arch and Ubuntu differ by about 12 pixels per
   shot; the tolerance is 0.1 %.
 
+- **Hover is reported on the next animation frame** (ADR-0102 §2,
+  `viewport/pointer.ts`): a `page.mouse.move` over the view updates
+  `data-model-hover` (and a sketch tool's preview) one frame later, not
+  synchronously. Read it with a polling assertion (`toHaveAttribute`,
+  `expect.poll`), as `clickWhere` does; a press, a release or the pointer
+  leaving the view flushes the pending report first, so a click always acts
+  on the hover at its own position. The autosave's thumbnail is taken in idle
+  time after a save and never while a pointer button is down; an export or
+  anything else that calls `autosave.flush()` takes a pending one at once.
+
 - **CI shards by duration.** `E2E_SHARD=<current>/<total>` (set by `ci.yml`,
   four shards) makes `playwright.config.ts` give each project only that
   shard's spec files: `scripts/e2e-shards.ts` deals the files longest first to

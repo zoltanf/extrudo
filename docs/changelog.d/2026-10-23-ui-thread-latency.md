@@ -1,1 +1,1 @@
-- 2026-10-23 · **Snappier after edits**: the design's thumbnail is taken when the app is idle, without stalling on the GPU, so it no longer slows the moment after a change (ADR-0102).
+- 2026-10-23 · **Snappier editing and hovering**: the design's thumbnail is taken when the app is idle, hovering picks once per frame and no longer redraws every panel, and the app is built with the React Compiler (ADR-0102).

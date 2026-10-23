@@ -94,6 +94,9 @@ export function HistoryPanel({
   store: NotificationStore;
   history: readonly Notification[];
 }) {
+  // Whether an action applies is read when this draws, so the React Compiler must not
+  // memoise the drawing (ADR-0102 §5).
+  'use no memo';
   // Whether an action applies is read when this draws; running one draws again, and so does
   // a document change while the panel is open (`recheck`, P3-17).
   const [, redraw] = useState(0);
@@ -139,6 +142,7 @@ function Group({
   items: readonly Notification[];
   onRun(action: ToastAction): void;
 }) {
+  'use no memo';
   if (items.length === 0) return null;
   return (
     <section aria-label={title ?? 'Notifications'} className="mb-2 last:mb-0">

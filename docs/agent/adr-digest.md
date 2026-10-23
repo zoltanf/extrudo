@@ -2902,3 +2902,36 @@ apps/web/dist/assets/*.js` after `pnpm build` must sum to 0 — and the status
 bar's `· n long` is dev builds only; `measure-startup.mjs` runs per release
 and is compared with the ADR's baseline: a jump is a release blocker to
 investigate, a drift is noted in the release notes.
+
+ADR-0102 (P6-14, the owner, 2026-10-23) took **UI-thread work off the
+interaction paths**, measured with ADR-0100's `e2e/perf.spec.ts`. §1: the
+autosave's thumbnail (`project/autosave.ts`, `createThumbnailer`) is taken in
+idle time (`src/idle.ts`, `whenIdle`: `requestIdleCallback` with a 2 s
+timeout, `setTimeout` 200 without), waits while `thumbnailReady` says no (a
+recompute `computing`/`idle`, a pointer button down: `ProjectPage.tsx` tracks
+`buttons` on the window), is skipped when `thumbnailKey` (the document, view,
+projection, visual style) is identical to the last thumbnail's, and is taken
+at once by `flush()`; the readback is `readRenderTargetPixelsAsync`
+(`viewport/Viewport.tsx`, `thumbnailFromBox`). §2: `selection/highlight.ts`'s
+`createHighlightMemo`/`highlightKeys` give `Bodies` one `BodyHighlight` per
+body while its mesh, the items naming it and its colliding faces stay the
+same; `selection/pick.ts`'s `warmPickIndex` builds the BVH one mesh per idle
+callback when the model's bodies change (`useModelInput`); `viewport/
+pointer.ts` (`attachPointerInput`) reports the pointer once per animation
+frame and flushes a pending report on pointerdown, pointerup, pointercancel
+and pointerleave. §3/§5: the React Compiler runs through plugin-react's
+native `compiler` option (`oxc-transform-react` 0.145; the Babel plugin was
+7× the build time); `Shell` does not subscribe to `session.hover` —
+`DialogViewport` does and adds it to the sketches (`shell/hoverDrawings.ts`),
+the ghosts (`ghostsFor`) and the view; `PlanePicker` has no `hover` (the view
+derives it). **Rules:** no thumbnail work on the edit path (never synchronous
+after `projects.save`, never a synchronous pixel readback); picking at most
+once per frame, with a flush before anything that acts on the hover (a press,
+a release, a leave); a body's highlight object changes only when something
+naming that body changes; `Shell` must not read `session.hover` (read it in
+the leaf that shows it); a component that reads state through a method, a
+getter or `getState()` while drawing takes that state as props or starts
+with `'use no memo'` (the compiler memoises on props and would serve stale
+output — it did for `NotificationHistory` and `JointDialog`); upgrading
+`oxc-transform-react` or `@vitejs/plugin-react` re-runs §5's gate (build ≤
+1.5×, app JS ≤ +5 %, check and the full e2e suite).
