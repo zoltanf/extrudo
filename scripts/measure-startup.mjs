@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Measures Extrudo's download size and startup against NFR-02 (ADR-0037).
 //
-//   pnpm build && node scripts/measure-startup.mjs [--no-browser] [--mbit 50]
+//   pnpm build && node scripts/measure-startup.mjs [--no-browser] [--mbit 50] [--json <file>]
 //
 // 1. Sizes: raw and brotli (quality 11) of every file in apps/web/dist, grouped.
 // 2. Timing (needs Chromium: Playwright's, or PLAYWRIGHT_CHROMIUM_PATH): serves
@@ -13,8 +13,12 @@
 //        precached the app: the same two times, and again with the network off.
 //    The precache's own downloads happen inside the service worker, which the
 //    page's network log doesn't show: read that cost from the size table.
+//    Once a design is stored the home screen folds the template gallery, so
+//    the Wall bracket card is opened through "Start from a template" first.
+// --json <file> writes { sizes: { groups, precacheRaw, precacheBr }, visits }
+// (with --no-browser, the sizes only) for ADR-0100's per-release comparison.
 // Numbers vary with the machine: run it a few times and take the median.
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +27,7 @@ import { brotliCompressSync, constants } from 'node:zlib';
 const DIST = join(fileURLToPath(new URL('..', import.meta.url)), 'apps/web/dist');
 const args = process.argv.slice(2);
 const mbit = args.includes('--mbit') ? Number(args[args.indexOf('--mbit') + 1]) : 50;
+const jsonPath = args.includes('--json') ? args[args.indexOf('--json') + 1] : undefined;
 const fmt = (n) => `${(n / 1e6).toFixed(2)} MB`;
 
 const walk = (dir) =>
@@ -80,6 +85,19 @@ for (const f of files) {
 // WASM when a design imports a `.scad` file (ADR-0071 §4): neither is precached.
 const precached = files.filter((f) => !notPrecached(f.name));
 const sum = (key) => precached.reduce((n, f) => n + f[key], 0);
+const sizes = () => ({
+  groups: Object.fromEntries(groups),
+  precacheRaw: sum('raw'),
+  precacheBr: sum('br'),
+});
+const visits = [];
+const writeJson = () => {
+  if (!jsonPath) return;
+  const payload = { sizes: sizes() };
+  if (visits.length > 0) payload.visits = visits;
+  writeFileSync(jsonPath, `${JSON.stringify(payload, null, 2)}\n`);
+  console.log(`\nWrote ${jsonPath}`);
+};
 console.log(`Sizes of apps/web/dist (${files.length} files)\n`);
 console.log('group'.padEnd(26), 'raw'.padStart(12), 'brotli'.padStart(12));
 for (const [g, v] of [...groups].sort((a, b) => b[1].br - a[1].br))
@@ -88,7 +106,10 @@ console.log('precache total'.padEnd(26), fmt(sum('raw')).padStart(12), fmt(sum('
 console.log(
   `\nAt ${mbit} Mbit, the whole precache takes ${((sum('br') * 8) / (mbit * 1e6)).toFixed(1)} s`,
 );
-if (args.includes('--no-browser')) process.exit(0);
+if (args.includes('--no-browser')) {
+  writeJson();
+  process.exit(0);
+}
 
 // ---- timing ----------------------------------------------------------------
 const { chromium } = await import('@playwright/test');
@@ -150,12 +171,22 @@ async function visit(label, { offline = false } = {}) {
   await page.getByRole('button', { name: 'New design' }).waitFor();
   const home = performance.now() - t0;
   const t1 = performance.now();
-  await page.getByRole('button', { name: 'Start from the Wall bracket template' }).click();
+  // Once a design is stored the gallery folds under "Start from a template"
+  // (as e2e/helpers.ts's startFromTemplate): open it, again if the list's
+  // first load folded it under the click.
+  const card = page.getByRole('button', { name: 'Start from the Wall bracket template' });
+  for (let tries = 0; tries <= 20; tries++) {
+    if (await card.isVisible()) break;
+    await page.getByRole('button', { name: 'Start from a template', exact: true }).click();
+    await card.waitFor({ timeout: 1000 }).catch(() => {});
+  }
+  await card.click();
   await page
     .getByRole('status', { name: 'Kernel' })
     .and(page.locator('[data-model-status="ready"]'))
     .waitFor({ timeout: 60_000 });
   const kernel = performance.now() - t1;
+  visits.push({ label, homeMs: Math.round(home), kernelMs: Math.round(kernel) });
   console.log(
     `${label.padEnd(34)} home ${(home / 1e3).toFixed(2)} s   kernel ready ${(kernel / 1e3).toFixed(2)} s after opening`,
   );
@@ -173,3 +204,4 @@ await visit('repeat visit (service worker)');
 await visit('repeat visit, offline', { offline: true });
 await browser.close();
 server.close();
+writeJson();

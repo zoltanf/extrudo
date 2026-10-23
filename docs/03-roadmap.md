@@ -1321,7 +1321,8 @@ end to end, faster than in established desktop CAD.
   is left out unless ticked; `bugReport.test.ts` and `e2e/bug-report.spec.ts`
   pass; the desktop allow-list test covers the query string.
 - [ ] **P6-13 Performance guardrails** (owner, 2026-10-23; ADR-0100; slice A of
-  `docs/plans/perf-baseline-2026-10-23.md`). The app's snappiness must survive
+  `docs/plans/perf-baseline-2026-10-23.md`; slices 1–3 done 2026-10-23, the
+  owner ticks after the merge). The app's snappiness must survive
   new features: `e2e/perf.spec.ts` drives B5 and B7 (open, orbit, parameter
   edit and undo, hover and click) with a `PerformanceObserver` and asserts
   main-thread budgets (ADR-0100 §1), attaching the raw numbers to the report;

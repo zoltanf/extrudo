@@ -45,3 +45,8 @@ export function formatRenderStats(stats: RenderStats | undefined): string {
   const ms = `${stats.frameMs < 10 ? stats.frameMs.toFixed(1) : Math.round(stats.frameMs)} ms`;
   return `${stats.fps === 0 ? 'idle' : `${stats.fps} fps`} · ${ms}`;
 }
+
+/** " · 3 long": the dev long-task count after the frame time, empty at zero (ADR-0100 §2). */
+export function formatLongTasks(count: number): string {
+  return count > 0 ? ` · ${count} long` : '';
+}

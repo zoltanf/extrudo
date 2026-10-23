@@ -2817,3 +2817,28 @@ Ctrl+Space opens the list on an empty word. The list is a Radix Popover (portall
 `aria-selected`, `onEscapeKeyDown` prevented, no auto focus); the field keeps the
 `textbox` role with `aria-autocomplete`, `aria-controls`, `aria-activedescendant`, and
 `data-keep-escape` while the list is open.
+
+ADR-0100 (P6-13, the owner, 2026-10-23) set **performance budgets for the main
+thread and the guardrails that keep them**. `e2e/perf.spec.ts` drives the
+pcb-enclosure (B5) and knurled-knob (B7) examples through opening, orbiting, a
+parameter edit and its undo, and the first hover and click, with a
+`PerformanceObserver` (`longtask`; `event` with `durationThreshold: 16`) and a
+`requestAnimationFrame` counter installed by `page.addInitScript`, and asserts
+ADR-0100 §1's budgets, attaching the raw numbers to the report as `perf.json`;
+an edit's round trip is one `MutationObserver` over both
+`[data-model-status]` and `[data-bodies]`, armed **before** the edit (the
+expression field applies while typing). Development builds count long tasks:
+`apps/web/src/debug/longTasks.ts` (`startLongTaskObserver`), the viewport
+store's `longTaskCount`/`noteLongTask`/`resetLongTasks`, `formatLongTasks` in
+`viewport/renderMeter.ts` shown by `RenderRate` (`shell/Timeline.tsx`,
+`· n long`), started and reset in `project/ProjectPage.tsx`.
+`scripts/measure-startup.mjs` opens the folded template gallery and writes
+`--json`; the release checklist runs it (step 3). Files also:
+`e2e/timings.json`, `docs/release-checklist.md`.
+**Rules:** the budgets live in `e2e/perf.spec.ts` and are widened only with a
+CI number in the commit message; the long-task observer never ships in
+production — dev builds only (`import.meta.env.DEV`), and `grep -c longtask
+apps/web/dist/assets/*.js` after `pnpm build` must sum to 0 — and the status
+bar's `· n long` is dev builds only; `measure-startup.mjs` runs per release
+and is compared with the ADR's baseline: a jump is a release blocker to
+investigate, a drift is noted in the release notes.
