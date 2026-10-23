@@ -72,6 +72,7 @@ import type {
   F3dExtrude,
   F3dFace,
   F3dHole,
+  F3dDeleteFaces,
   F3dOffsetFaces,
   F3dRevolve,
   F3dSketch,
@@ -785,15 +786,9 @@ export function f3dToDesign(
         if (reason) report.skipped.push(skippedFeature(feature.name, feature.kind, reason));
         else report.imported.push(feature.name);
       } else if (feature.type === 'delete-faces') {
-        // Decoded (ADR-0083's amendment of 2026-10-23) but not mapped yet: Extrudo's
-        // Remove Faces is not in the document API, so phase 2 replays it.
-        const named = feature.faces.filter((face) => faceName(face, naming)).length;
-        report.skipped.push({
-          name: feature.name,
-          kind: feature.kind,
-          reason: 'face deletions are not imported yet',
-          detail: `${named} of its ${feature.faces.length} faces could be named`,
-        });
+        const reason = deleteFaces(d, feature, naming);
+        if (reason) report.skipped.push(skippedFeature(feature.name, feature.kind, reason));
+        else report.imported.push(feature.name);
       } else if (feature.type === 'circular-pattern') {
         const made = circularPattern(d, feature, replayable, sketches, expressionOf, report);
         if (typeof made === 'string')
@@ -2545,6 +2540,28 @@ function revolveFaceName(s: AsmSurface, rev: ImportedRevolve): string | undefine
     }
   }
   return miss(`revolve: ${s.kind === 'other' ? s.type : s.kind} side: no curve`);
+}
+
+/**
+ * Replays a face deletion as Remove Faces: all or nothing, as Remove Faces is
+ * (a round or hole needs all its faces); returns why not when it can't.
+ */
+function deleteFaces(d: Design, f: F3dDeleteFaces, naming: FaceNaming): string | undefined {
+  if (f.faces.some((face) => face.instance))
+    return 'it deletes faces a pattern or mirror copied (not imported yet)';
+  const faces: GeomRef[] = [];
+  let named = 0;
+  for (const face of f.faces) {
+    const id = faceName(face, naming);
+    if (!id) continue;
+    named++;
+    if (!faces.some((r) => r.id === id)) faces.push({ kind: 'face', id });
+  }
+  if (named === 0) return `none of its ${f.faces.length} faces could be named`;
+  if (named < f.faces.length)
+    return `${f.faces.length - named} of its ${f.faces.length} faces could not be named`;
+  d.removeFaces({ faces } as Parameters<Design['removeFaces']>[0], { name: f.name });
+  return undefined;
 }
 
 /**
