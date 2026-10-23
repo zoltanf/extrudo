@@ -84,23 +84,28 @@ app runs is found. Cancel kills the process (the whole tree on Windows).
 **The job directory.** A render writes `<temp>/extrudo-render-<8 hex>` (a
 direct child of the temp directory, created with mode 0700; an existing
 directory or a symlink there fails the run): `model.obj`, `model.mtl`,
-`job.json` and `render.py`, then the picture `out.png` is read back and the
-directory is removed whatever happened. Leftover directories are removed on
+`job.json` and `render.py`, then the picture (`out.png`, or `out1.png` after
+Blender's own render, below) is read back and the directory is removed
+whatever happened. Leftover directories are removed on
 quit (`cleanupRenderFiles`).
 
 **The command.** With the job directory as its working directory:
 
 ```sh
-blender -b --factory-startup -noaudio --python render.py -- job.json out.png
+blender -b --factory-startup -noaudio --python render.py [-f 1] -- job.json out.png
 ```
 
 `--factory-startup` keeps the person's add-ons and start-up file out of the
 run. The script's only stdout is its `EXTRUDO <phase>` lines (importing,
 scene, rendering, saving), `EXTRUDO note <text>` for version differences it
 worked around, and `EXTRUDO ERROR <one sentence>` before exit code 2 on a
-failure; progress comes from Cycles' `Sample n/m` and EEVEE's
-`Rendering n / m samples` lines, and EEVEE is only the draft engine (Cycles
-at 32 samples when EEVEE cannot start without a display).
+failure. A render started from a script prints no progress in Blender 5.x,
+so for Standard and High main adds `-f 1` before `--`: the script then only
+builds the scene, and Blender's own command-line render follows, printing
+`Sample n/m` lines (the progress bar) and saving the numbered frame
+`out1.png`. Draft has no `-f 1`: the script renders itself (seconds; its bar
+stands still) so it can fall back from EEVEE to Cycles at 32 samples when
+EEVEE cannot start without a display.
 
 **The script.** `apps/desktop/blender/render.py` builds the scenes, materials
 and camera in Python — no `.blend` or texture files in the repository — and
@@ -115,7 +120,8 @@ not an error.
 
 **Running the script by hand** (for debugging; the docstring says the desktop
 app runs it, never a person): make a directory holding `model.obj`,
-`model.mtl`, `job.json` and `render.py`, and run the command above from it.
+`model.mtl`, `job.json` and `render.py`, and run the command above from it
+(with `-f 1` the picture is `out1.png`).
 `job.json` is the job without the model texts — `project`, `obj`, `objects`
 (name, finish, colour), `preset`, `camera`, `width`, `height`, `quality`, as
 the docstring shows.

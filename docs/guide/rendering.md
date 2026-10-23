@@ -36,9 +36,10 @@ stays a program of yours.
 - **Workbench** — a dark worktop and cooler light.
 - **Outdoor** — on the ground under a sunny sky.
 
-**Bodies.** Every body you see in the browser gets a **finish**, with its name and colour shown
-beside it. Your body's own colour stays the base colour — a finish is only the surface, so a
-design needs nothing set to render. The finishes:
+**Bodies.** One **finish** for all the bodies you see in the browser; **Set per body…** opens
+the list of bodies, each with its name, colour and its own finish, for the exceptions (the list
+stays open while the finishes differ). Your body's own colour stays the base colour — a finish is
+only the surface, so a design needs nothing set to render. The finishes:
 
 - **Matte** — matte PLA.
 - **Glossy** — glossy PLA or PETG.
@@ -49,8 +50,8 @@ design needs nothing set to render. The finishes:
 
 Hidden bodies are not rendered.
 
-**Camera.** **Automatic** frames the whole design, seen from the home direction (the `Shift+1`
-view). **Current view**
+**Camera.** **Automatic** frames the whole design to the picture's edges, seen from the home
+direction (the `Shift+1` view). **Current view**
 renders from the viewport's camera at the moment you press Render. Or pick one of your saved
 [named views](./getting-started.md) — each is a choice in the list, and the picture comes from
 exactly that camera.
@@ -67,8 +68,8 @@ Blender's fast EEVEE.
 **Render** saves the settings into the design first (one undo step, and only when they changed),
 so the next render of that design starts from them. Then the app prepares the model ("Preparing
 the model… 2/3"), starts Blender and follows its progress: **Importing…**, **Rendering… 43 %**,
-**Saving…**, on a progress bar. **Cancel** stops a render; the dialog refuses to close while one
-runs — Cancel it first.
+**Saving…**, on a progress bar (a Draft render is over in seconds, and its bar doesn't count).
+**Cancel** stops a render; the dialog refuses to close while one runs — Cancel it first.
 
 When it is done the picture is shown, with three buttons: **Save PNG…** saves it (the default
 name is `<design> - <scene>.png`, e.g. `Pen holder - Wooden table.png`), **Copy** puts it on the

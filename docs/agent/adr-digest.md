@@ -2824,10 +2824,13 @@ ADR-0101 (P6-13, proposed 2026-10-23) adds **Render Picture with Blender** (desk
 Snap, Steam, Windows `Blender Foundation` folders newest first, `/Applications/Blender.app`),
 `blenderVersion` (**4.2 or newer**), `renderInBlender` (writes `model.obj`, `model.mtl`,
 `job.json` and the bundled `render.py` under `<temp>/extrudo-render-<8 hex>`, a direct child of
-temp, runs `blender -b --factory-startup -noaudio --python render.py -- job.json out.png`, parses
-progress from stdout (its own `EXTRUDO <phase>` lines, Cycles' `Sample n/m`, EEVEE's
-`Rendering n / m samples`), reads the PNG back, removes the folder; one render at a time; Cancel
-kills the process). `blenderService.ts` validates every job field before anything is written;
+temp, runs `blender -b --factory-startup -noaudio --python render.py [-f 1] -- job.json out.png`
+(`-f 1` for Standard and High: a script-started render prints no progress in Blender 5.x, so the
+script only builds the scene and Blender's own render follows, saving `out1.png`; Draft renders in
+the script, keeping its EEVEE → Cycles fallback), parses progress from stdout (its own `EXTRUDO
+<phase>` lines, `Sample n/m`, `Finished`/`Saved:`), reads the PNG back, removes the folder; one
+render at a time; Cancel kills the process). The automatic camera fits the model's box corners to
+the frame along the home direction; every floor is far bigger than the frame reaches. `blenderService.ts` validates every job field before anything is written;
 channels `extrudo:render:status`/`extrudo:render:start`/`extrudo:render:cancel`/`extrudo:render:progress`. **Rules:** the
 scenes (`studio`, `table`, `workbench`, `outdoor`) and finishes (`matte`, `glossy`,
 `translucent`, `resin`, `metal`, `wood`) are **built by `render.py` in Python**, no `.blend`
