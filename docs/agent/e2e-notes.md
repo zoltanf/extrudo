@@ -1432,8 +1432,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `llvmpipe` the fps floor is skipped and a `software rendering` annotation
   carries the string; the fps itself is still recorded. The round-trip
   observer is armed with `page.evaluate` **before**
-  the edit — the expression field applies while typing, so an observer armed
-  after `fill` sees nothing — and stores its Promise on `window.__perf.roundTrip`
+  the edit and after the Parameters dialog's field is visible (ADR-0102 §7:
+  armed before the dialog opened, it also timed opening it, half of B5's
+  round trip) — the expression field applies while typing, so an observer
+  armed after `fill` sees nothing — and stores its Promise on `window.__perf.roundTrip`
   (`evaluateHandle` would wait for the Promise at arm time, defeating
   arm-then-act; `page.evaluate` awaits it at read time instead). One
   `MutationObserver` on `document.documentElement` (`subtree`,

@@ -2927,7 +2927,9 @@ the ghosts (`ghostsFor`) and the view; `PlanePicker` has no `hover` (the view
 derives it). §6: the open's largest JS of ours was ADR-0076's WebGL probe in
 the view's first render; the home screen now runs it right after its first
 paint (`afterPaint` in `src/idle.ts`, `home/HomeScreen.tsx`), B5's open
-`appMax` 252–267 → 115–135 ms. **Rules:** no thumbnail work on the edit path (never synchronous
+`appMax` 252–267 → 115–135 ms. §7: `e2e/perf.spec.ts` arms the edit's
+round-trip observer once the Parameters field is visible (before, it also
+timed opening the dialog, which failed B5's budget on CI). **Rules:** no thumbnail work on the edit path (never synchronous
 after `projects.save`, never a synchronous pixel readback); picking at most
 once per frame, with a flush before anything that acts on the hover (a press,
 a release, a leave); a body's highlight object changes only when something

@@ -307,12 +307,15 @@ async function runExample(page: Page, ex: (typeof EXAMPLES)[number]) {
     elapsedMs: Math.round(orbitTo - orbitFrom),
   };
 
-  // 3. edit: the observer is armed BEFORE the dialog opens — the expression
-  // field applies while typing, so an observer armed after `fill` sees nothing.
+  // 3. edit: the observer is armed once the field is there and BEFORE typing —
+  // the expression field applies while typing, so an observer armed after
+  // `fill` sees nothing; armed before the dialog opened, the round trip also
+  // timed opening it (ADR-0102 §7).
   const editFrom = await nowOf(page);
-  await page.evaluate(ROUND_TRIP);
   await pickTool(page, 'Parameters');
   const field = await parameterExpression(page, ex.parameter);
+  await expect(field).toBeVisible();
+  await page.evaluate(ROUND_TRIP);
   await field.fill(ex.value);
   await field.press('Enter');
   const editRoundTrip = (await page.evaluate('window.__perf.roundTrip')) as number;

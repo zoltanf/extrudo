@@ -248,3 +248,17 @@ context — it is how ADR-0076 tells a blocklisted GPU, a behaviour change for
 another ADR; probing from a worker with `OffscreenCanvas` — `webglSupport()`
 is synchronous for its callers, a larger change for ~100 ms; spreading the
 bodies' derived geometry over idle time — not where the time goes.
+
+## §7. Amendment 2026-10-24: the perf spec's round trip starts at the edit
+
+CI (SwiftShader) failed `e2e/perf.spec.ts` on B5's parameter round trip on
+this branch (`roundTripAppMs` 1861 / 1581 for change 1, 1988 / 1766 for
+change 3; budget 1500) and on main too (1945 in run 40018954732, 2592 in
+40000512395), with the app's own JS in that window 80–150 ms. The observer
+was armed before the Parameters dialog opened, so the round trip also timed
+the click that opens it, the dialog's first SwiftShader frames and finding
+the field — not the document edit → worker → meshes → view that ADR-0100 §1
+defines. It is now armed once the parameter's expression field is visible,
+still before typing (the field applies while typing). Measured locally,
+before → after: SwiftShader B5 906 → 426 / 446 ms, B7 1727 → 1350 / 1379;
+GPU B5 663 → 377, B7 1617 → 1295. The budgets are unchanged.
