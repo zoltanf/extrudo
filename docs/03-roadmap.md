@@ -1057,14 +1057,14 @@ end to end, faster than in established desktop CAD.
 - [ ] **P4-13 Remove Faces (defeaturing; #78).** ADR-0099. Added 2026-10-23
   (the owner). A rounded or drilled imported body loses a round or a hole in
   one click; the `.f3d` import replays the file's face deletions.
-  - [ ] Feature `removeFaces` (Solid › Modify): the picked faces are removed
+  - [x] Feature `removeFaces` (Solid › Modify): the picked faces are removed
     and their neighbours extended to close the gap, all or nothing; facade
     `removeFaces`, persistent face references (removed faces become lost
     references, extended neighbours keep their names), API method and docs
     (`pnpm api:generate`)
-  - [ ] Picks: a click on a round takes its smooth run, a click on a hole's
+  - [x] Picks: a click on a round takes its smooth run, a click on a hole's
     wall takes the hole (bottom, counterbore, countersink, drill point)
-  - [ ] A clear refusal when OCCT can't close the gap, saying what to add to
+  - [x] A clear refusal when OCCT can't close the gap, saying what to add to
     the pick
   - [ ] Dialog with live preview, tooltip clip, guide (`features-and-timeline.md`:
     when to delete the feature, when to use Remove Faces), tool page

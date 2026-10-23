@@ -140,3 +140,25 @@ from a shaft (`threadFace`'s and `coneFace`'s `inside`).
   fails the step and keeps every body as it was.
 - Simplify for print (#79: every small round and hole at once) can build on
   this feature and the pick rule.
+
+## Amendment (2026-10-23, the kernel slice): the hole's radius
+
+Decision 5's hole rule, read literally, grows the radius only as walls are
+added one by one, so a click on a counterbore's narrow wall or a
+countersunk hole's cylinder stops at the step or the cone (its outer edge
+lies past the narrow wall's radius, and the wide wall or the cone is
+reached only through it). The kernel slice reads it in two passes instead:
+first the faces connected to the clicked wall across shared edges that are
+on its axis (a coaxial cylinder, cone or torus, a plane square to the axis:
+the tolerances of 5), then **the hole's radius is the largest distance from
+the axis of an inside cylinder or cone among them**, and the pick is the
+faces of that set within the radius (+1e-4 mm) that are still connected to
+the wall. The face the hole opens onto stays out (its outer edges lie
+further out); a click on any wall of a stepped hole takes the whole hole.
+A hole drilled into the floor of a coaxial round pocket is read as a
+counterbore (the two can't be told apart from the geometry).
+"Inside" and "all the way round" come from `threadFace`, which answers for
+cones too; the axis from the surface's geometry (`surfaceGeometry`).
+
+A refusal for one failed face says "this face leaves" rather than "these 1
+faces leave".

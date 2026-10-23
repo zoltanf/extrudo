@@ -37,6 +37,7 @@ import {
   FilletError,
   Kernel,
   OffsetFaceError,
+  RemoveFacesError,
   type ShapeHandle,
   ShellError,
 } from './kernel';
@@ -889,6 +890,49 @@ describe('memory', () => {
           if (!(error instanceof OffsetFaceError)) throw error;
         }
       }
+    };
+    for (let i = 0; i < WARM_UP; i++) rebuild(i);
+    const before = kernel.stats();
+    for (let i = 0; i < OFFSET_REBUILDS; i++) rebuild(i);
+    const after = kernel.stats();
+
+    expect(after.liveShapes).toBe(before.liveShapes);
+    expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
+  });
+
+  it(`removing faces ${OFFSET_REBUILDS} times, refused ones included, does not grow the heap`, {
+    timeout: 300_000,
+  }, () => {
+    // ADR-0099: a through hole and a rounded edge removed, a blind hole's wall
+    // alone (OCCT can't close it), every face and a bad index refused: the
+    // defeaturing builder lives on the facade's stack and works on a copy.
+    const cylinderFace = (shape: ShapeHandle) =>
+      kernel.describe(shape).faces.findIndex((face) => face.type === 'cylinder');
+    const rebuild = (i: number) => {
+      using scope = kernel.scope();
+      const plate = scope.track(kernel.box([40, 30, 10 + (i % 3) / 10]));
+      const drill = scope.track(kernel.cylinder(3, 20, [20, 15, -5]));
+      const drilled = scope.track(kernel.cut(plate, drill));
+      scope.track(kernel.removeFaces(drilled.shape, [cylinderFace(drilled.shape)]));
+      const rounded = scope.track(kernel.fillet(plate, [0], [2]));
+      scope.track(kernel.removeFaces(rounded.shape, [cylinderFace(rounded.shape)]));
+      const blind = scope.track(kernel.cylinder(3, 5, [20, 15, 6]));
+      const pocket = scope.track(kernel.cut(plate, blind));
+      const failing = (run: () => unknown, what: string) => {
+        try {
+          run();
+        } catch (error) {
+          if (error instanceof RemoveFacesError) return;
+          throw error;
+        }
+        throw new Error(`${what} should fail`);
+      };
+      failing(
+        () => kernel.removeFaces(pocket.shape, [cylinderFace(pocket.shape)]),
+        "a blind hole's wall alone",
+      );
+      failing(() => kernel.removeFaces(plate, [0, 1, 2, 3, 4, 5]), 'every face');
+      failing(() => kernel.removeFaces(plate, [6]), 'a face that is not there');
     };
     for (let i = 0; i < WARM_UP; i++) rebuild(i);
     const before = kernel.stats();

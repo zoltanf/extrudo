@@ -215,6 +215,7 @@ describe('the whole registry', () => {
       offsetFace: { faces: design.ref('face', 'f1:face#1'), distance: '1 mm' },
       placeOnBed: { face: design.ref('face', 'f1:face#1') },
       remove: { bodies: [design.ref('body', 'f1')] },
+      removeFaces: { faces: design.ref('face', 'f1:face#1') },
       scale: { bodies: [design.ref('body', 'f1')] },
       shell: { thickness: '2 mm' },
       splitBody: { bodies: [design.ref('body', 'f1')], plane: design.origin.yz },

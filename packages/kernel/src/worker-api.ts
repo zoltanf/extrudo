@@ -25,6 +25,7 @@ export function workerApi(service: KernelService): KernelApi {
     tangentChain: (body, index, base, kind) => service.tangentChain(body, index, base, kind),
     smoothFaces: (body, faces, base, keepRounds) =>
       service.smoothFaces(body, faces, base, keepRounds),
+    removeFacesPick: (body, faces, base) => service.removeFacesPick(body, faces, base),
     exportMeshes: async (bodies, tessellation, onProgress) => {
       const meshes = await service.exportMeshes(bodies, tessellation, onProgress);
       return Comlink.transfer(

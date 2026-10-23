@@ -2826,9 +2826,16 @@ solid that differs from the input; **no `UnifySameDomain`** after it (it renames
 removed faces' names are gone (a later reference is a `LostReferenceError`), **extended
 neighbours keep their names** (history `modified`); a pick of every face is refused before OCCT
 runs. Picks (`removeFacesPick`, TypeScript over the shape description, `threadFace` and
-`coneFace`; no facade query): a hole wall takes the coaxial faces within its largest radius
-(bottom, counterbore, countersink, drill point), a round takes its smooth chain through
+`coneFace`; no facade query): a hole wall takes the coaxial faces within the hole's radius
+(bottom, counterbore, countersink, drill point; **the amendment, 2026-10-23: two passes**, the
+faces on the axis connected to the wall, then the radius from every inside cylinder or cone among
+them, so a click on a counterbore's narrow wall takes the step and the wide wall; pure function
+`removeFacesPick(starts, description, surface, chain)`, tested without WASM), a round takes its smooth chain through
 non-planar faces only, anything else is itself; the feature stores the faces it got. Delete on
 a selection of only solid-body faces makes the feature in one step (`Remove Faces N`). The
 refusal names how many faces to add (unpicked faces of the failed faces' chains or holes).
-`.f3d` face deletions map to it (ADR-0083's amendment).
+`.f3d` face deletions map to it (ADR-0083's amendment). Facade `removeFaces(shape)` takes the faces
+by `pushArg`, works on a copy and on refusal lists the failed features' faces (0-based) in the
+lookup buffer (`RemoveFacesError.failed`); the evaluator refuses an empty pick and a pick of
+every face before OCCT runs. The engine's `removeFacesPick(body, faces, base)` goes through the
+service, `KernelApi` and `Recomputer` like `smoothFaces`.
