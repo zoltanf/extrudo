@@ -197,7 +197,10 @@ export interface F3dFace {
   tags: FaceTag[];
   /** The timeline feature that made the face (from its first tag). */
   feature?: number;
-  /** The face's surface in model space, cm, when the B-rep still has it. */
+  /**
+   * The face's surface in model space, cm, when the B-rep still has it: in
+   * the state the feature picked it in, as near as the streams keep it.
+   */
   surface?: AsmSurface;
   /**
    * A face a mirror or pattern copied: the copying feature (record) and the
@@ -212,6 +215,8 @@ export interface F3dFace {
    * that state first; none when every state has `surface`.
    */
   states?: AsmSurface[];
+  /** The solved body's surface of the face, where `surface` is another state's. */
+  solved?: AsmSurface;
 }
 
 /** An edge, as the two faces it runs between and the faces that end it. */
@@ -1307,6 +1312,8 @@ function faceOf(
   const states = statesOf(tags, candidates);
   const [found] = states;
   if (found) out.surface = found.surface;
+  const solved = candidates[0];
+  if (solved && solved !== found) out.solved = solved.surface;
   const seen = new Set(found ? [JSON.stringify(found.surface)] : []);
   const others: AsmSurface[] = [];
   for (const state of states) {

@@ -100,24 +100,35 @@ describe('Delete faces', () => {
       tags: designs.map((design) => ({ token: '3', design })),
       edges: [],
     });
-    const solved = state(4.9, [318, -324, -325], 1);
+    const final = state(4.9, [318, -324, -325], 1);
     const moved = state(4.95, [318, -324], 2);
     const made = state(5, [318], 3);
-    const faces = new Map([['3@318', [solved, moved, made]]]);
-    const surfaces = (designs: number[]) => {
+    const faces = new Map([['3@318', [final, moved, made]]]);
+    const faceOf = (designs: number[]) => {
       const design = readSegment(deleteSegment([recipeBody([{ token: '3', designs }])]), faces);
       const feature = design.features.find((f) => f.type === 'delete-faces');
-      const [face] = feature && feature.type === 'delete-faces' ? feature.faces : [];
+      return (feature && feature.type === 'delete-faces' ? feature.faces : [])[0];
+    };
+    const solved = (designs: number[]) => {
+      const s = faceOf(designs)?.solved;
+      return s?.kind === 'plane' ? s.point[0] : s;
+    };
+    const surfaces = (designs: number[]) => {
+      const face = faceOf(designs);
       return [face?.surface, ...(face?.states ?? [])].map((s) =>
         s?.kind === 'plane' ? s.point[0] : s,
       );
     };
-    // Picked before any move, after the first, after both.
+    // Picked before any move, after the first, after both: that state is
+    // the face's surface, the others follow, nearest first.
     expect(surfaces([318])).toEqual([5, 4.95, 4.9]);
     expect(surfaces([318, -324])).toEqual([4.95, 4.9, 5]);
     expect(surfaces([318, -324, -325])).toEqual([4.9, 4.95, 5]);
-    // A state no stream kept: the nearest one (one tag apart).
-    expect(surfaces([318, -324, -325, -330])[0]).toBe(4.9);
+    // A state no stream kept: the nearest (as made, one tag apart).
+    expect(surfaces([318, -330])).toEqual([5, 4.95, 4.9]);
+    // The solved state is kept apart where it is not the face's surface.
+    expect(solved([318])).toBe(4.9);
+    expect(solved([318, -324, -325])).toBeUndefined();
   });
 
   it('treats a truncated recipe as a decoding problem, not a crash', () => {

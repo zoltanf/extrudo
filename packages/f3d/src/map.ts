@@ -2689,11 +2689,13 @@ function offsetFaces(
     return 'it moves faces a pattern or mirror copied (not imported yet)';
   if (Math.abs(f.distance.value) < 1e-12)
     return 'its distance is 0 (Extrudo refuses an offset that moves nothing)';
-  // A face named only through another of its states moved off its sketch
-  // curve, by an earlier offset: offsetting such a face again ran for over
-  // 15 minutes in the kernel on a design seen (OCCT's offset and its
-  // diagnosis), so it stays left out until Offset Face is bounded.
-  const nameOf = (face: F3dFace) => faceName({ ...face, states: [] }, naming);
+  // Named by the face's solved state only, as before the states were read.
+  // The faces other states name had moved, mostly by an earlier offset:
+  // offsetting one again ran the kernel's Offset Face for over 15 minutes on
+  // one design seen, and on another a thread after the offset then refused
+  // the wider hole. Left out until Offset Face is bounded.
+  const nameOf = (face: F3dFace) =>
+    faceName({ ...face, surface: face.solved ?? face.surface, states: [] }, naming);
   const faces: GeomRef[] = [];
   for (const face of f.faces) {
     const id = nameOf(face);

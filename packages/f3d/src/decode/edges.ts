@@ -22,7 +22,11 @@ export const EDGE_RECIPE = '7ACC2A03-0261-4879-A14A-A93D661A5BDC';
 /** One tag a face carries: a token and the design records it was made by. */
 export interface FaceTag {
   token: string;
-  /** Signed design references (a negative one is the same record, reversed). */
+  /**
+   * Signed operation ids: the one that made the face, then, negative, those
+   * that changed it later without remaking it (an offset, a deletion beside
+   * it) up to when the feature picked it (FORMAT.md).
+   */
   designs: number[];
 }
 
