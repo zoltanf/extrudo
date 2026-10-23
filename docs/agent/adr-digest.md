@@ -2924,7 +2924,10 @@ native `compiler` option (`oxc-transform-react` 0.145; the Babel plugin was
 7× the build time); `Shell` does not subscribe to `session.hover` —
 `DialogViewport` does and adds it to the sketches (`shell/hoverDrawings.ts`),
 the ghosts (`ghostsFor`) and the view; `PlanePicker` has no `hover` (the view
-derives it). **Rules:** no thumbnail work on the edit path (never synchronous
+derives it). §6: the open's largest JS of ours was ADR-0076's WebGL probe in
+the view's first render; the home screen now runs it right after its first
+paint (`afterPaint` in `src/idle.ts`, `home/HomeScreen.tsx`), B5's open
+`appMax` 252–267 → 115–135 ms. **Rules:** no thumbnail work on the edit path (never synchronous
 after `projects.save`, never a synchronous pixel readback); picking at most
 once per frame, with a flush before anything that acts on the hover (a press,
 a release, a leave); a body's highlight object changes only when something
@@ -2934,4 +2937,5 @@ getter or `getState()` while drawing takes that state as props or starts
 with `'use no memo'` (the compiler memoises on props and would serve stale
 output — it did for `NotificationHistory` and `JointDialog`); upgrading
 `oxc-transform-react` or `@vitejs/plugin-react` re-runs §5's gate (build ≤
-1.5×, app JS ≤ +5 %, check and the full e2e suite).
+1.5×, app JS ≤ +5 %, check and the full e2e suite); nothing that makes a
+WebGL context runs in the view's first render when it can run earlier.

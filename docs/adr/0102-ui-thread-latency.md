@@ -204,3 +204,47 @@ it draws must take that state as props or say `'use no memo'`.
 Rejected: `memo` on the panels by hand — the gate passed, and the compiler
 covers every component rather than five; the Babel route — 7× the build
 time.
+
+## §6. Amendment 2026-10-24: what project open spent, and the fix
+
+The perf spec's `open` window (GPU, three runs before any change) names only
+entry points: B5's three largest long tasks were `MessagePort.onmessage`
+306 / 259 / 262 ms, then 159–166 ms (`Worker.onmessage` or
+`MessagePort.onmessage`), then 102–120 ms; B7's 94–158, 58–126 and
+63–65 ms. `MessagePort.onmessage` is React's scheduler (it runs renders and
+commits from a `MessageChannel`), so the largest task is a React render — but
+not the first geometry build §4 expected. A CPU profile of the open
+(unminified builds, GPU, `Profiler` at 100 µs, two runs per example) names
+the functions: the largest single cost of ours was **ADR-0076's WebGL probe**
+(`viewport/webglSupport.ts`, `detectWebgl`, called from `Viewport`'s first
+render): `rendererOf` 50–201 ms, `lose` 5–206 ms, `tryContext` 12–17 ms per
+open — two throwaway contexts made and lost while the GPU process is busy
+starting the view. Then three's own context start (`getExtension`, 6–209 ms,
+the first context of a cold GPU process pays it), then React
+(`renderWithHooks` ~20 ms, `measure` ~15–24 ms). `Bodies.tsx`'s geometry,
+`edgeSegments` and `silhouettePlan` were not among the 15 largest functions
+for either example, so §4's idle-time geometry is not done: it would move
+little and change what the view draws first.
+
+**The fix:** the home screen runs the (cached, per-page) probe right after
+its first paint (`home/HomeScreen.tsx`, `afterPaint` in `src/idle.ts`), where
+it costs 40–90 ms with the GPU idle (measured on the home page in Chrome with
+a GPU: context 13–16 ms, renderer string 1–52, lose 2–16, the strict context
+12–20, lose 1–7). Opening a design from the home screen then finds it done.
+A design opened by a direct link still probes in the view's first render, as
+before. Measured with the perf spec (GPU, three runs; before = change 3):
+
+| | B5 open `appMax` | B5 `appTotal` | B5 open → ready | B7 open `appMax` |
+|---|---|---|---|---|
+| before | 252–267 ms | 598–620 ms | 2.46–2.49 s | 89–97 ms |
+| after | 115–135 ms | 277–333 ms | 2.15–2.18 s | 90–94 ms |
+
+(B7's test runs second in the same browser, whose GPU process is already
+warm, so its probe was cheap before too.) The CPU profile agrees: the open's
+JS, B5 878–985 → 588–663 ms.
+
+Rejected here: dropping the second (`failIfMajorPerformanceCaveat`) probe
+context — it is how ADR-0076 tells a blocklisted GPU, a behaviour change for
+another ADR; probing from a worker with `OffscreenCanvas` — `webglSupport()`
+is synchronous for its callers, a larger change for ~100 ms; spreading the
+bodies' derived geometry over idle time — not where the time goes.
