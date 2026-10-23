@@ -205,6 +205,18 @@ Rejected: `memo` on the panels by hand — the gate passed, and the compiler
 covers every component rather than five; the Babel route — 7× the build
 time.
 
+**Dev server, 2026-10-24 (coordinator's review).** The compiler option
+makes `@vitejs/plugin-react` transform every file its filter matches, and in
+`pnpm dev` that transform adds the Fast Refresh wrapper (`$RefreshReg$`), so
+the kernel worker's modules got it too and the worker died on start ("The
+kernel stopped: Uncaught ReferenceError: $RefreshReg$ is not defined"); no CI
+run sees it since e2e tests production builds. `react()` now takes
+`exclude: [/\/node_modules\//, /\/packages\//, /[wW]orker\.ts$/]`, which the
+plugin's own documentation names for worker code: only `apps/web` has React,
+so nothing compiled is lost. Checked in the dev server: the knurled knob
+opens with the kernel ready. Rule in the digest: `pnpm dev` is checked after
+any change to the plugin's options.
+
 ## §6. Amendment 2026-10-24: what project open spent, and the fix
 
 The perf spec's `open` window (GPU, three runs before any change) names only

@@ -2939,5 +2939,10 @@ getter or `getState()` while drawing takes that state as props or starts
 with `'use no memo'` (the compiler memoises on props and would serve stale
 output — it did for `NotificationHistory` and `JointDialog`); upgrading
 `oxc-transform-react` or `@vitejs/plugin-react` re-runs §5's gate (build ≤
-1.5×, app JS ≤ +5 %, check and the full e2e suite); nothing that makes a
+1.5×, app JS ≤ +5 %, check and the full e2e suite); `react()`'s `exclude`
+keeps `packages/` and every `*Worker.ts`/`*worker.ts` entry out of the
+compiler and Fast Refresh (only the app has React; the dev server's refresh
+wrapper in worker code kills the kernel worker with `$RefreshReg$ is not
+defined`, which no CI run sees: e2e uses production builds, so check
+`pnpm dev` after touching the plugin's options); nothing that makes a
 WebGL context runs in the view's first render when it can run earlier.
