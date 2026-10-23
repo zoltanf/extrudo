@@ -2840,7 +2840,7 @@ and the schema, the dialog and main's validation all import them. The renderer b
 itself with `@extrudo/io`'s `writeObj` (one `o` per body, MTL `Kd` from the colour,
 millimetres, Z up; the script imports at `global_scale=0.001`) and never sees a path. The
 settings are the document's optional `render` section (`RenderSettingsSchema`: `preset`,
-`finishes` only for bodies changed from `matte`, `camera` `{kind: 'auto' | 'current'}` or
+`finishes` only for bodies changed from `matte`, `camera` `{kind: 'auto' | 'current'}` (default `current`) or
 `{kind: 'view', id}`, `width`/`height` 256–8192, `quality`), written by the `render.set`
 command only when they changed; the picture is never stored. `Platform.render?`
 (`apps/web/src/platform/render.ts`) is absent on the web, where the `render` tile shows its

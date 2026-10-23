@@ -406,8 +406,8 @@ export function RenderForm({
             value={cameraValue}
             onChange={(event) => onCamera(event.target.value)}
           >
-            <option value="auto">Automatic</option>
             <option value="current">Current view</option>
+            <option value="auto">Automatic</option>
             {views.map((view) => (
               <option key={view.id} value={`view:${view.id}`}>
                 {view.name}

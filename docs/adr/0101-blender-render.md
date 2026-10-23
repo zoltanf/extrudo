@@ -47,8 +47,9 @@ opens the **Render dialog**:
   `translucent` (clear PETG/resin), `resin` (smooth, slightly waxy), `metal`
   (brushed), `wood`. The **base colour is the body's own colour** (ADR-0030);
   a finish is only the surface, so a design needs nothing set to render;
-- the **camera**: automatic (framed from the bounding box, from the
-  viewport's home direction), the current viewport camera, or a named view;
+- the **camera**: the current viewport camera (the default: the picture shows
+  what the viewport shows; owner, 2026-10-23), automatic (framed from the
+  bounding box, from the viewport's home direction), or a named view;
 - the **picture size** (1280×720, 1920×1080, 2560×1440, 1080×1080) and
   **quality** (`draft`, `standard`, `high`);
 - a status line about Blender (found with its version; missing, with an

@@ -50,9 +50,9 @@ only the surface, so a design needs nothing set to render. The finishes:
 
 Hidden bodies are not rendered.
 
-**Camera.** **Automatic** frames the whole design to the picture's edges, seen from the home
-direction (the `Shift+1` view). **Current view**
-renders from the viewport's camera at the moment you press Render. Or pick one of your saved
+**Camera.** **Current view** (the default) renders from the viewport's camera at the moment you
+press Render: the picture shows what you see. **Automatic** frames the whole design to the
+picture's edges, seen from the home direction (the `Shift+1` view). Or pick one of your saved
 [named views](./getting-started.md) — each is a choice in the list, and the picture comes from
 exactly that camera.
 

@@ -34,10 +34,10 @@ export const RENDER_MAX_SIDE = 8192;
 /** The finish of a body the `finishes` record doesn't name. */
 export const DEFAULT_FINISH: RenderFinish = 'matte';
 
-/** What a design without a `render` section renders with. */
+/** What a design without a `render` section renders with: what the viewport shows (owner, 2026-10-23). */
 export const DEFAULT_RENDER_SETTINGS: RenderSettings = {
   preset: 'studio',
-  camera: { kind: 'auto' },
+  camera: { kind: 'current' },
   width: 1920,
   height: 1080,
   quality: 'standard',
