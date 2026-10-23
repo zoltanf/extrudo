@@ -6,6 +6,7 @@
  * `invoke`, that only the rescue copy and its list are `sendSync`, and that the
  * menu/recent/open-file listeners register and unregister (P6-01 slice 2).
  */
+import type { BlenderStatus, RenderProgress, RenderResult } from '@extrudo/web/platform/render';
 import type { SlicerId } from '@extrudo/web/platform/slicer';
 import {
   CHANNELS,
@@ -42,6 +43,7 @@ export function createApi(ipc: IpcRendererLike): ExtrudoApi {
   let statusListener: ((event: unknown, status: unknown) => void) | undefined;
   let mcpRequestListener: ((event: unknown, request: unknown) => void) | undefined;
   let mcpStatusListener: ((event: unknown, status: unknown) => void) | undefined;
+  let progressListener: ((event: unknown, progress: unknown) => void) | undefined;
 
   return {
     prefs: {
@@ -156,6 +158,20 @@ export function createApi(ipc: IpcRendererLike): ExtrudoApi {
     slicer: {
       list: () => ipc.invoke(CHANNELS.slicerList) as Promise<{ id: SlicerId; path: string }[]>,
       open: (file, id) => ipc.invoke(CHANNELS.slicerOpen, file, id) as Promise<boolean>,
+    },
+    render: {
+      status: () => ipc.invoke(CHANNELS.renderStatus) as Promise<BlenderStatus>,
+      start: (job) => ipc.invoke(CHANNELS.renderStart, job) as Promise<RenderResult>,
+      cancel: () => ipc.send(CHANNELS.renderCancel),
+      onProgress: (handler) => {
+        if (progressListener) ipc.removeListener(CHANNELS.renderProgress, progressListener);
+        progressListener = (_event, progress) => handler(progress as RenderProgress);
+        ipc.on(CHANNELS.renderProgress, progressListener);
+      },
+      offProgress: () => {
+        if (progressListener) ipc.removeListener(CHANNELS.renderProgress, progressListener);
+        progressListener = undefined;
+      },
     },
     app: {
       ready: () => ipc.send(CHANNELS.appReady),

@@ -147,7 +147,10 @@ export function writeObj(
   objects: readonly MeshObject[],
   options: ObjOptions = {},
 ): { obj: string; mtl: string } {
-  const header = `# ${[options.application, options.project].filter(Boolean).join(' — ') || 'OBJ'}`;
+  const parts = [options.application, options.project]
+    .filter((text): text is string => !!text)
+    .map(oneLine);
+  const header = `# ${parts.join(' — ') || 'OBJ'}`;
   const obj: string[] = [header, `mtllib ${options.mtlName ?? 'model.mtl'}`];
   const mtl: string[] = [header];
   let offset = 0;
@@ -180,10 +183,12 @@ export function writeObj(
   return { obj: `${obj.join('\n')}\n`, mtl: `${mtl.join('\n')}\n` };
 }
 
+/** Text on one line: a line break would start a directive of its own. */
+const oneLine = (text: string) => text.replace(/[\r\n]+/g, ' ').trim();
+
 /** One line, never empty: an unnamed object is `Body<n>`. */
 function objectName(name: string, index: number): string {
-  const line = name.replace(/[\r\n]+/g, ' ').trim();
-  return line || `Body${index + 1}`;
+  return oneLine(name) || `Body${index + 1}`;
 }
 
 /** `#rrggbb` or `#rrggbbaa` as sRGB components 0–1; undefined for no or an unreadable colour. */

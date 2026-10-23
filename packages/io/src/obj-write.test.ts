@@ -96,10 +96,14 @@ describe('writeObj', () => {
     );
   });
 
-  it('keeps names on one line and names the unnamed', () => {
-    const { obj } = writeObj([triangle(' Two\r\nlines '), triangle('')]);
+  it('keeps names and the header on one line, and names the unnamed', () => {
+    const { obj, mtl } = writeObj([triangle(' Two\r\nlines '), triangle('')], {
+      project: 'Evil\nmtllib /etc/passwd',
+    });
     expect(obj).toContain('o Two lines\n');
     expect(obj).toContain('o Body2\n');
+    expect(obj.startsWith('# Evil mtllib /etc/passwd\nmtllib model.mtl\n')).toBe(true);
+    expect(mtl.startsWith('# Evil mtllib /etc/passwd\nnewmtl m0\n')).toBe(true);
   });
 
   it('is deterministic', () => {

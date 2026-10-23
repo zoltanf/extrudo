@@ -205,6 +205,41 @@ describe('preload bridge (ADR-0075 §1)', () => {
     ]);
   });
 
+  it('routes the render status, start and cancel, and subscribes to progress once (P6-13)', async () => {
+    const job = {
+      project: 'A',
+      obj: '',
+      mtl: '',
+      objects: [],
+      preset: 'studio',
+      width: 320,
+      height: 180,
+      quality: 'draft',
+    };
+    const { ipc, calls, emit, listeners } = fakeIpc({
+      [CHANNELS.renderStatus]: () => ({ state: 'missing' }),
+      [CHANNELS.renderStart]: () => ({ ok: false, message: 'no' }),
+    });
+    const api = createApi(ipc);
+    expect(await api.render.status()).toEqual({ state: 'missing' });
+    expect(await api.render.start(job as never)).toEqual({ ok: false, message: 'no' });
+    api.render.cancel();
+    expect(calls).toEqual([
+      { channel: CHANNELS.renderStatus, args: [], kind: 'invoke' },
+      { channel: CHANNELS.renderStart, args: [job], kind: 'invoke' },
+      { channel: CHANNELS.renderCancel, args: [], kind: 'send' },
+    ]);
+    const seen: unknown[] = [];
+    api.render.onProgress((p) => seen.push(p));
+    api.render.onProgress((p) => seen.push(p));
+    expect(listeners.get(CHANNELS.renderProgress)).toHaveLength(1);
+    emit(CHANNELS.renderProgress, { fraction: 0.5, phase: 'rendering' });
+    expect(seen).toEqual([{ fraction: 0.5, phase: 'rendering' }]);
+    api.render.offProgress();
+    emit(CHANNELS.renderProgress, { fraction: 0.9, phase: 'saving' });
+    expect(seen).toHaveLength(1);
+  });
+
   it('subscribes to update:status once and sends check, apply and release (P6-01 slice 4)', () => {
     const { ipc, calls, emit, listeners } = fakeIpc();
     const api = createApi(ipc);

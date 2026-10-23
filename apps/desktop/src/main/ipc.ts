@@ -12,6 +12,7 @@ import { type BrowserWindow, dialog, ipcMain, type OpenDialogOptions } from 'ele
 import { type ErrorEnvelope, serializeError } from '../shared/errors';
 import { CHANNELS, isPluginMethod, isStoreMethod, type StoreMethod } from '../shared/ipc';
 import { isMenuModel } from '../shared/menuModel';
+import type { BlenderService } from './blenderService';
 import type { DialogFiles } from './dialogs';
 import type { ExternalFiles } from './externalFiles';
 import type { Folders } from './folders';
@@ -65,6 +66,8 @@ export interface IpcDependencies {
   quit(): void;
   /** Slicer detection and launch (P6-02). */
   slicers: SlicerService;
+  /** Render Picture with Blender (P6-13, ADR-0101): status, one render at a time, cancel. */
+  blender: BlenderService;
   getWindow: () => BrowserWindow | null;
   /** Auto-update (P6-01 slice 4): a check, an install, and the release page main built. */
   updates: { check(): void; apply(): boolean; openRelease(): void };
@@ -208,6 +211,13 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   ipcMain.handle(CHANNELS.slicerOpen, (_event, file: unknown, id: unknown) =>
     guarded(() => deps.slicers.open(file, id)),
   );
+  // Render Picture (P6-13): the job is checked in the service; a malformed one
+  // crosses as the error envelope, a failed render as `{ ok: false }` data.
+  ipcMain.handle(CHANNELS.renderStatus, () => guarded(() => deps.blender.status()));
+  ipcMain.handle(CHANNELS.renderStart, (_event, job: unknown) =>
+    guarded(() => deps.blender.render(job)),
+  );
+  ipcMain.on(CHANNELS.renderCancel, () => deps.blender.cancel());
   ipcMain.on(CHANNELS.appReady, () => deps.rendererReady());
   ipcMain.on(CHANNELS.appQuit, () => deps.quit());
 

@@ -68,6 +68,13 @@ function fakeApi(overrides: Partial<ExtrudoApi> = {}) {
       offChanged: () => {},
     },
     slicer: { list: async () => [], open: async () => false },
+    render: {
+      status: async () => ({ state: 'missing' }),
+      start: async () => ({ ok: false, message: 'no' }),
+      cancel: () => {},
+      onProgress: () => {},
+      offProgress: () => {},
+    },
     agent: {
       onRequest: () => {},
       offRequest: () => {},
@@ -204,6 +211,7 @@ describe('desktopPlatform (ADR-0075 §3)', () => {
       'plugins',
       'preferences',
       'projects',
+      'render',
       'rescue',
       'storage',
       'updates',

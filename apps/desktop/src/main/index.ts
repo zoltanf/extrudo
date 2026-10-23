@@ -18,6 +18,7 @@ import type { MenuModel } from '@extrudo/web/menu-model';
 import { app, BrowserWindow, dialog, Menu, type OpenDialogOptions, session, shell } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { CHANNELS } from '../shared/ipc';
+import { nodeBlenderService } from './blenderService';
 import { createDialogFiles, createFolderPicker } from './dialogs';
 import { createDocs } from './docs';
 import { createExternalFiles, createExternalPaths } from './externalFiles';
@@ -107,6 +108,12 @@ function main(): void {
   /** The renderer said `app:ready` and hasn't reloaded since: it can answer tool calls. */
   let rendererUp = false;
   const send = (channel: string, ...args: unknown[]) => window?.webContents.send(channel, ...args);
+  // Render Picture (P6-13, ADR-0101): Blender in a child process, progress to the renderer.
+  const blender = nodeBlenderService(
+    app.getPath('temp'),
+    () => preferences.read()['blender.path'],
+    (progress) => send(CHANNELS.renderProgress, progress),
+  );
   const notifyRecentChanged = () => send(CHANNELS.recentChanged);
 
   // The MCP server (P6-08, ADR-0087): on by default on 127.0.0.1; main reads
@@ -329,6 +336,7 @@ function main(): void {
       },
       quit: () => app.quit(),
       slicers,
+      blender,
       getWindow,
       updates: {
         check: () => updates.check(),
@@ -365,8 +373,12 @@ function main(): void {
     preferences.flush();
   });
 
-  // The exported files handed to slicers: removed on the way out, best effort.
-  app.on('will-quit', () => slicers.cleanup());
+  // The exported files handed to slicers and the render jobs: removed on the
+  // way out, best effort (a running render is killed first).
+  app.on('will-quit', () => {
+    slicers.cleanup();
+    blender.cleanup();
+  });
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();

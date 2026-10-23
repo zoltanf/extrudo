@@ -76,6 +76,13 @@ function fakeApi(answers: Partial<Record<string, unknown>> = {}) {
       offChanged: () => {},
     },
     slicer: { list: async () => [], open: async () => false },
+    render: {
+      status: async () => ({ state: 'missing' }),
+      start: async () => ({ ok: false, message: 'no' }),
+      cancel: () => {},
+      onProgress: () => {},
+      offProgress: () => {},
+    },
     agent: {
       onRequest: () => {},
       offRequest: () => {},

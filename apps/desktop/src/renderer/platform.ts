@@ -161,6 +161,24 @@ export function desktopSlicer(
   };
 }
 
+/** Render Picture (P6-13, ADR-0101): main runs Blender; progress comes back over its channel. */
+export function desktopRender(api: ExtrudoApi): Pick<Platform, 'render'> {
+  return {
+    render: {
+      status: async () => unwrap(await api.render.status()),
+      async render(job, onProgress) {
+        api.render.onProgress(onProgress);
+        try {
+          return unwrap(await api.render.start(job));
+        } finally {
+          api.render.offProgress();
+        }
+      },
+      cancel: () => api.render.cancel(),
+    },
+  };
+}
+
 /**
  * Whether the platform keeps a native menu bar: macOS only (ADR-0075's 2026-10-09
  * amendment). Its accelerators run Open…, Save As… and Quit there, so the renderer
@@ -212,6 +230,7 @@ export async function desktopPlatform(api: ExtrudoApi = window.extrudo): Promise
     desktop: desktopApp(api),
     agent: desktopAgent(api),
     ...desktopSlicer(api),
+    ...desktopRender(api),
     updates: desktopUpdates(api, appNotifications.getState().push),
     // The docs pages (P6-06 S9): main builds the URL from the whitelisted path.
     openDocs: (path) => api.docs.open(path),
