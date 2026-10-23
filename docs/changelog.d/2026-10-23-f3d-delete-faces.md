@@ -1,0 +1,1 @@
+- 2026-10-23 · **.f3d import**: face deletions are replayed as Remove Faces steps, where the faces they name can be found (#93).

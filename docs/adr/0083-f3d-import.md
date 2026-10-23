@@ -1534,3 +1534,30 @@ separate change.
   (two faces; a truncated recipe is a problem; an absurd face count is
   bounded) and `map-more.test.ts` "leaves out a deletion of faces, saying why
   (phase 1 decodes it only)".
+
+**Phase 2 (same day): the deletions are replayed.** `map.ts`'s `deleteFaces`
+(next to `offsetFaces`) names every face with `faceName` and adds one
+`removeFaces` feature per deletion, all or nothing as Remove Faces is. It
+leaves a deletion out when a face was copied by a pattern or mirror ("it
+deletes faces a pattern or mirror copied (not imported yet)"), when none can
+be named ("none of its N faces could be named") or when some can't ("M of its N
+faces could not be named"). Kernel refusals need no special case: a feature
+that fails in the replay keeps its place in the timeline with an error status
+and the body goes on from before it, as for a failing fillet or offset; the
+body check then compares the final replayed body with the file's.
+
+Numbers, the issue's second file (the corpus report's other lines are
+unchanged, 0 differing): 20 of the 28 deletions are imported (the 8 left out
+name no face: "none of its 1 faces could be named"). In the replay **none of the
+20 takes effect**: 19 end with "Can't find a face to remove any more" because
+the faces they name are rounds of fillets that themselves fail in the replay
+(Fillet5, Fillet6, Fillet9, Fillet10, Fillet11 are refused by OCCT before any
+deletion runs), and 1 (DeleteFace20) is refused by Remove Faces ("can't close
+the gap this face leaves ... 23 more faces"). So the replayed body is
+unchanged: 7110.5 mm³, box z top 13.5 mm, against the file's 6361.5 mm³ and
+12 mm; the body check still freezes it ("the timeline made it differently").
+The deletions will matter once the fillets under them are replayed; they are
+not the cause of the bumper's mismatch on their own. Tests: `map-more.test.ts`
+(a named face makes one `removeFaces`, and a washer with a drilled hole whose
+wall is deleted replays to the full washer's volume; an unnamed face and a
+copied face are skipped with their reasons).

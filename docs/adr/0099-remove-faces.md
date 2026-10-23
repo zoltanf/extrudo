@@ -106,7 +106,7 @@ from a shaft (`threadFace`'s and `coneFace`'s `inside`).
    on its own branch): the record's face operands go through the importer's
    face naming like a fillet's or an offset's, and a deletion whose faces
    can't all be named is left out with that reason. Its numbers go into
-   ADR-0083's next amendment.
+   ADR-0083's next amendment. Done 2026-10-23 (ADR-0083's amendment).
 9. **The document API and MCP** get the feature through `pnpm
    api:generate` (ADR-0068); `faces` has a `.describe()`. No face roles: the
    feature makes no body.

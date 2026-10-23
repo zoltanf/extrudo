@@ -1069,7 +1069,7 @@ end to end, faster than in established desktop CAD.
   - [ ] Dialog with live preview, tooltip clip, guide (`features-and-timeline.md`:
     when to delete the feature, when to use Remove Faces), tool page
   - [ ] Delete on selected faces makes the feature in one step
-  - [ ] `.f3d` import: face deletions become Remove Faces (ADR-0083's next
+  - [x] `.f3d` import: face deletions become Remove Faces (ADR-0083's next
     amendment, with the corpus numbers)
 
 ---

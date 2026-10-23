@@ -880,7 +880,7 @@ describe('f3dToDesign: copying features', () => {
     expect(report.imported).toContain('DeleteFace1');
     const step = design.toJSON().features.find((f) => f.name === 'DeleteFace1');
     expect(step?.type).toBe('removeFaces');
-    expect((step?.inputs.faces as { refs: unknown[] }).refs).toHaveLength(1);
+    expect((step?.inputs.faces as { refs: unknown[] } | undefined)?.refs).toHaveLength(1);
     // The hole's wall removed, the washer closes up again.
     expect(await volumes(f3d)).toEqual([expect.closeTo(RING, 3)]);
   });
@@ -911,7 +911,9 @@ describe('f3dToDesign: copying features', () => {
   it('leaves out a deletion of faces a pattern copied, saying why', () => {
     const f3d = washerWithHole();
     f3d.features.push(
-      deletion([{ tags: [{ token: '3', designs: [4] }], feature: 4, instance: { pattern: 7, code: 2 } }]),
+      deletion([
+        { tags: [{ token: '3', designs: [4] }], feature: 4, instance: { pattern: 7, code: 2 } },
+      ]),
     );
     const { report } = f3dToDesign(f3d, 'Washer');
     expect(report.skipped).toContainEqual(

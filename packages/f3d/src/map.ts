@@ -67,12 +67,12 @@ import {
 import type {
   F3dBody,
   F3dCircularPattern,
+  F3dDeleteFaces,
   F3dDesign,
   F3dEdgeFeature,
   F3dExtrude,
   F3dFace,
   F3dHole,
-  F3dDeleteFaces,
   F3dOffsetFaces,
   F3dRevolve,
   F3dSketch,
