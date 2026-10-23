@@ -11,17 +11,21 @@ import {
   type FeatureId,
   insertFeature,
   type ModelStore,
+  REMOVE_FACES_TYPE,
   REMOVE_TYPE,
   removedBodies,
   renameDocument,
   updateBody,
 } from '@extrudo/core';
+import type { BodyMesh } from '@extrudo/kernel';
 import { describe, expect, it } from 'vitest';
+import { boxMesh } from '../selection/testing';
 import {
   bodiesEmptyState,
   bodyEntries,
   bodyMetaOf,
   createBodyActions,
+  createFaceActions,
   followBodyNames,
   importedColors,
   importedNames,
@@ -373,6 +377,94 @@ describe('body actions', () => {
     t.session.getState().enterSketch('A' as FeatureId);
     expect(t.a.remove([bid('B:0')])).toBeUndefined();
     expect(t.messages).toEqual(['info: Finish the sketch first.']);
+  });
+});
+
+describe('face actions: Delete on selected faces (P4-13, ADR-0099 §7)', () => {
+  const faceIds = (prefix: string) =>
+    ['bottom', 'top', 'front', 'back', 'left', 'right'].map((f) => `${prefix}:${f}`);
+  const mesh = (prefix: string, meshBody = false): BodyMesh => ({
+    ...boxMesh(),
+    faceIds: faceIds(prefix),
+    ...(meshBody && { mesh: true }),
+  });
+  const faceItem = (body: string, index: number) => ({
+    kind: 'face' as const,
+    id: `${body}:${index}`,
+  });
+
+  function actions() {
+    const t = setup();
+    const messages: string[] = [];
+    const meshes: Record<string, BodyMesh> = {
+      'A:0': mesh('box'),
+      'B:0': mesh('lid'),
+      'M:0': mesh('tris', true),
+    };
+    const a = createFaceActions(
+      t,
+      {
+        removeFacesPick: async (_body, faces) => {
+          // A click on face 2 (the round) takes face 3 with it.
+          const out = new Set<number>(faces);
+          if (faces.includes(2)) out.add(3);
+          return [...out];
+        },
+      },
+      () => meshes,
+      (tone, text) => messages.push(`${tone}: ${text}`),
+    );
+    return { ...t, a, messages, meshes };
+  }
+
+  it('makes one Remove Faces feature of the picked faces and drops them from the selection', async () => {
+    const t = actions();
+    t.session.getState().select([faceItem('A:0', 2), faceItem('B:0', 4)]);
+    const id = await t.a.remove(t.session.getState().selection);
+    expect(id).toBeTypeOf('string');
+    const added = t.store.getState().doc.features.at(-1);
+    expect(added).toMatchObject({ id, type: REMOVE_FACES_TYPE, name: 'Remove Faces1' });
+    // The kernel's answer: face 2 brought face 3; the other body's face 4 stays itself.
+    const inputs = added?.inputs as {
+      faces: { kind: string; refs: { kind: string; id: string }[] };
+    };
+    expect(inputs.faces).toMatchObject({
+      kind: 'ref',
+      refs: [
+        { kind: 'face', id: 'box:front' },
+        { kind: 'face', id: 'box:back' },
+        { kind: 'face', id: 'lid:left' },
+      ],
+    });
+    expect(t.session.getState().selection).toEqual([]);
+    expect(t.store.getState().undoLabel).toBe('Add feature');
+  });
+
+  it('a mesh body has no Remove Faces material', async () => {
+    const t = actions();
+    t.session.getState().select([faceItem('M:0', 1)]);
+    expect(t.a.applies(t.session.getState().selection)).toBe(false);
+    expect(await t.a.remove(t.session.getState().selection)).toBeUndefined();
+  });
+
+  it('keeps a mixed selection and its hover alone', async () => {
+    const t = actions();
+    t.session.getState().select([faceItem('A:0', 2), { kind: 'body', id: 'B:0' }]);
+    t.session.getState().setHover(faceItem('A:0', 2));
+    expect(t.a.applies(t.session.getState().selection)).toBe(false);
+    expect(await t.a.remove(t.session.getState().selection)).toBeUndefined();
+    expect(t.store.getState().doc.features).toHaveLength(2);
+    expect(t.messages).toEqual([]);
+    expect(t.session.getState().selection).toHaveLength(2);
+  });
+
+  it('refuses in sketch mode like deleting a body', async () => {
+    const t = actions();
+    t.session.getState().enterSketch('A' as FeatureId);
+    t.session.getState().select([faceItem('A:0', 2)]);
+    expect(await t.a.remove(t.session.getState().selection)).toBeUndefined();
+    expect(t.messages).toEqual(['info: Finish the sketch first.']);
+    expect(t.store.getState().doc.features).toHaveLength(2);
   });
 });
 

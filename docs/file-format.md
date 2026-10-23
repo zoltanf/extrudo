@@ -1520,6 +1520,25 @@ With more than one start each start's tooth faces carry `s<j>.` in their
 role: `thread:<id>:side:f0.s1.crest` (the lead-in and end faces are unchanged;
 with one start the names are exactly as before).
 
+### 6.34 `removeFaces`
+
+Takes faces out of a solid and extends or trims the faces around them until
+they meet (ADR-0099, defeaturing), so a hole closes up and a round becomes a
+sharp edge again; it works on imported bodies too. No new keys: a feature with
+one `ref` input.
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `faces` | `ref` | yes | Refs of kind `face` (persistent face names, section 8): the faces to remove, at least one. May lie on several bodies, each of which is changed on its own. A round or a hole needs all its faces |
+
+**All or nothing**: when the gap one picked face leaves can't be closed, the
+feature fails and changes no body; the message says how many faces of the
+round or hole to add. A pick of every face of a body is an error (use
+`remove`, 6.7). The removed faces' names are gone; **a face that was extended
+or trimmed keeps its name**, so later features that refer to it keep finding
+it. The app's pick takes a hole's or a round's faces together; the feature
+stores the faces it got.
+
 ---
 
 ## 7. Sketch data (`sketchData`)

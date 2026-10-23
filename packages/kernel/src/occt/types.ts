@@ -36,6 +36,7 @@ export interface FacadeBinding {
   shellFaces(shape: number, thickness: number, outside: boolean): number;
   offsetFaces(shape: number, distance: number): number;
   tangentFaces(shape: number, face: number): number;
+  removeFaces(shape: number): number;
   boolean(op: number, a: number, b: number, simplify: boolean): number;
   extendFace(shape: number, face: number, size: number): number;
   transform(shape: number): number;

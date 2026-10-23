@@ -77,6 +77,7 @@ export {
   OffsetFaceError,
   type OffsetFaceProblem,
   type OperationResult,
+  RemoveFacesError,
   rgbToHex,
   type ShapeHandle,
   type ShapeProperties,

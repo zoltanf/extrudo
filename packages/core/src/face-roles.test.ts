@@ -23,6 +23,7 @@ import { documentFeatures } from './registry';
 const NAMES_NO_FACE: Readonly<Record<string, string>> = {
   sketch: 'a sketch makes no body',
   remove: 'Remove takes bodies away',
+  removeFaces: 'it makes no face: removed faces go, extended ones keep their names (ADR-0099)',
   offsetFace: 'every face keeps the name it had (ADR-0051)',
   draft: 'every face keeps the name it had (ADR-0053)',
   placeOnBed: 'it is a transform, so every face keeps its name (ADR-0048)',

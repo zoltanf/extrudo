@@ -3,7 +3,7 @@ title: Canvas
 type: canvas
 section: Features
 category: create
-order: 43
+order: 44
 ---
 
 # Canvas

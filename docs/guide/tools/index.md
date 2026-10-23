@@ -91,6 +91,7 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 - [Chamfer](./chamfer.md) — Bevel the selected edges.
 - [Shell](./shell.md) — Hollow out a body, leaving walls.
 - [Offset Face](./offsetFace.md) — Move faces along their normals; the faces next to them follow. A curved wall changes its radius.
+- [Remove Faces](./removeFaces.md) — Remove faces of a body; the faces around them grow to close the gap. A click takes a whole round or hole.
 - [Draft](./draft.md) — Tilt faces by a few degrees about a plane, so the part comes off the bed or out of a mould.
 - [Thread](./thread.md) — A real, printable screw thread on a shaft or in a hole: ISO metric or inch, with a print clearance.
 

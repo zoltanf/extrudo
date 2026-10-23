@@ -75,6 +75,7 @@ export * from './primitives';
 export { documentFeatures } from './registry';
 export * from './remint';
 export * from './remove';
+export * from './remove-faces';
 export * from './revolve';
 export * from './rib';
 export * from './scale';

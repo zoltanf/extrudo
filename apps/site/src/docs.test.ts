@@ -49,8 +49,8 @@ describe('the docs pages', () => {
       'sketch.md',
     ]);
     expect(paths).toContain('features/README.md');
-    // One page per feature type (46 since P6-03's plugin feature) and their index.
-    expect(paths.filter((path) => path.startsWith('features/'))).toHaveLength(47);
+    // One page per feature type (47 since ADR-0099's Remove Faces) and their index.
+    expect(paths.filter((path) => path.startsWith('features/'))).toHaveLength(48);
   });
 
   it('are at the address their links point to', () => {

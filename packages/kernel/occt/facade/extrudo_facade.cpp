@@ -30,6 +30,8 @@
 #include <BOPAlgo_BuilderFace.hxx>
 #include <BRepAlgoAPI_Common.hxx>
 #include <BRepAlgoAPI_Defeaturing.hxx>
+#include <BOPAlgo_Alerts.hxx>
+#include <TopoDS_AlertWithShape.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
 #include <BRepAlgoAPI_Splitter.hxx>
@@ -978,6 +980,80 @@ public:
       lookup_.clear();
       lookup_.push_back(face);
       return 1;
+    }
+  }
+
+  /**
+   * Removes faces from a solid (ADR-0099, Remove Faces): the faces staged
+   * with pushArg (0-based indices, duplicates ignored) go, and their
+   * neighbours are extended or trimmed until they meet
+   * (BRepAlgoAPI_Defeaturing), so a hole closes up and a round becomes a
+   * sharp edge. All or nothing: any warning refuses the step, never a part
+   * of the pick. The result must be one valid solid without any picked face.
+   * No UnifySameDomain afterwards: it would rename the faces. History for
+   * input 0 is the builder's: picked faces deleted, neighbours modified.
+   *
+   * On failure it returns 0 with a message in lastError(), and lookupPtr /
+   * lookupSize list the picked faces (indices) of the features OCCT could
+   * not remove (BOPAlgo_AlertUnableToRemoveTheFeature), empty when it
+   * didn't say.
+   */
+  int removeFaces(int shape) {
+    beginOp();
+    lookup_.clear();
+    const TopoDS_Shape* input = find(shape);
+    if (input == nullptr) return fail("Remove Faces failed: unknown input shape.");
+    try {
+      // A copy, as in offsetFaces(): the boolean tools may repair their input in place.
+      const TopoDS_Shape copy = BRepBuilderAPI_Copy(*input, true, false).Shape();
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+      TopExp::MapShapes(copy, TopAbs_FACE, faces);
+      std::vector<int> picked;
+      for (int index : args_) {
+        if (index < 0 || index >= faces.Extent()) return fail("Remove Faces failed: face index out of range.");
+        if (std::find(picked.begin(), picked.end(), index) == picked.end()) picked.push_back(index);
+      }
+      if (picked.empty()) return fail("Remove Faces failed: no face to remove.");
+      if (static_cast<int>(picked.size()) >= faces.Extent()) return fail("Remove Faces failed: that is every face.");
+      BRepAlgoAPI_Defeaturing builder;
+      builder.SetShape(copy);
+      for (int index : picked) builder.AddFaceToRemove(faces(index + 1));
+      builder.SetToFillHistory(true);
+      builder.SetRunParallel(false);
+      builder.Build();
+      if (builder.HasWarnings()) {
+        for (const Handle(Message_Alert)& alert : builder.GetReport()->GetAlerts(Message_Warning)) {
+          if (!alert->IsKind(STANDARD_TYPE(BOPAlgo_AlertUnableToRemoveTheFeature))) continue;
+          const Handle(TopoDS_AlertWithShape) withShape = Handle(TopoDS_AlertWithShape)::DownCast(alert);
+          if (withShape.IsNull()) continue;
+          for (TopExp_Explorer it(withShape->GetShape(), TopAbs_FACE); it.More(); it.Next()) {
+            const int index = faces.FindIndex(it.Current()) - 1;
+            if (index >= 0 && std::find(lookup_.begin(), lookup_.end(), index) == lookup_.end()) {
+              lookup_.push_back(index);
+            }
+          }
+        }
+        return fail("Remove Faces failed: OCCT could not close the gap the faces leave.");
+      }
+      if (!builder.IsDone() || builder.HasErrors()) {
+        return fail("Remove Faces failed: OCCT could not remove the faces.");
+      }
+      int solids = 0;
+      for (TopExp_Explorer it(builder.Shape(), TopAbs_SOLID); it.More(); it.Next()) ++solids;
+      const TopoDS_Shape result = solids == 1 ? asSolid(builder.Shape()) : TopoDS_Shape();
+      if (result.IsNull() || !BRepCheck_Analyzer(result).IsValid()) {
+        return fail("Remove Faces failed: the result isn't one sound solid.");
+      }
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> after;
+      TopExp::MapShapes(result, TopAbs_FACE, after);
+      for (int index : picked) {
+        if (after.Contains(faces(index + 1))) return fail("Remove Faces failed: a face stayed.");
+      }
+      recordHistory(builder, copy, 0, result);
+      return store(result);
+    } catch (...) {
+      lookup_.clear();
+      return failFromException("Remove Faces failed");
     }
   }
 

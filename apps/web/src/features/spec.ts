@@ -103,6 +103,14 @@ export interface SelectionField extends FieldBase {
    */
   keepRounds?: string;
   /**
+   * A click is taken through the kernel's pick rule of this name instead of
+   * the plain pick or a smooth chain (`removeFacesPick`, ADR-0099 §5): a
+   * click on a hole's wall takes the whole hole, on a round its smooth run,
+   * on anything else the face. Unpicking takes the group out. The field's
+   * value is the union, no duplicates.
+   */
+  pick?: 'removeFaces';
+  /**
    * The field takes sketch points (`sketchEntity` references to points) and
    * no curves (a hole's Points, P3-04): the view draws the points of the
    * shown sketches and picks them.

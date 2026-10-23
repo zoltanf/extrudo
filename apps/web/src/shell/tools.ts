@@ -582,6 +582,13 @@ export const TOOLS = {
     category: 'modify',
     hint: 'Move faces along their normals; the faces next to them follow. A curved wall changes its radius.',
   },
+  removeFaces: {
+    id: 'removeFaces',
+    label: 'Remove Faces',
+    icon: 'remove-faces',
+    category: 'modify',
+    hint: 'Remove faces of a body; the faces around them grow to close the gap. A click takes a whole round or hole.',
+  },
   splitBody: {
     id: 'splitBody',
     label: 'Split Body',
@@ -1009,7 +1016,16 @@ export const TABS: Tab[] = [
     groups: [
       {
         label: 'Modify',
-        tools: ['pressPull', 'fillet', 'chamfer', 'shell', 'offsetFace', 'draft', 'thread'],
+        tools: [
+          'pressPull',
+          'fillet',
+          'chamfer',
+          'shell',
+          'offsetFace',
+          'removeFaces',
+          'draft',
+          'thread',
+        ],
       },
       { label: 'Transform', tools: ['move', 'mirror', 'combine', 'splitBody', 'scale'] },
     ],

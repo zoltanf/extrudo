@@ -156,6 +156,17 @@ export interface KernelApi {
     keepRounds?: boolean,
   ): Promise<SmoothFaces | undefined>;
   /**
+   * The faces the Remove Faces dialog and Delete take for a click on each of
+   * `faces` of a body: a hole whole, a round's smooth run, else the face
+   * (ADR-0099 §5). `base` as for `reference`. Undefined if the body or a
+   * face is gone.
+   */
+  removeFacesPick(
+    body: BodyId,
+    faces: readonly number[],
+    base?: boolean,
+  ): Promise<number[] | undefined>;
+  /**
    * Bodies of the last finished recompute tessellated for STL and 3MF
    * (P2-12, ADR-0034): welded meshes at `tessellation`, in the order
    * asked. Rejects if a body is no longer in the model. Meshes one body at
@@ -454,6 +465,14 @@ export class KernelService implements KernelApi {
     keepRounds = false,
   ): Promise<SmoothFaces | undefined> {
     return this.#run(() => this.#engineOf().smoothFaces(body, faces, base, keepRounds));
+  }
+
+  removeFacesPick(
+    body: BodyId,
+    faces: readonly number[],
+    base = false,
+  ): Promise<number[] | undefined> {
+    return this.#run(() => this.#engineOf().removeFacesPick(body, faces, base));
   }
 
   exportMeshes(

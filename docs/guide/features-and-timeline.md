@@ -54,6 +54,26 @@ goes into the material cuts it. Change it if the guess is wrong.
 Each solid is its own body, listed in the browser. If a cut splits a part in two, you get two
 bodies, and the larger keeps the name and colour.
 
+## Removing faces
+
+[Remove Faces](./tools/removeFaces.md) takes faces off a body and lets the faces around them
+grow to close the gap. It is for material you can't remove by deleting a chip: rounds and holes
+that came from a boolean, a pattern or an imported file. A round or hole made in Extrudo is a
+feature — delete or suppress that feature instead, and the timeline stays clean.
+
+Remove Faces is in the **Modify** tab. Its one field takes faces, and a click takes a whole
+round or hole: click one face of a fillet and the whole fillet run is picked, click a hole's
+wall and the hole goes (a counterbore, a countersink and a drill point come along).
+
+Select faces in the view and press `Delete` and Extrudo makes the Remove Faces feature for you,
+the same picks included. A selection that mixes faces with bodies or sketches keeps Delete's
+own behaviour.
+
+The feature is all or nothing: if the faces around a pick can't grow far enough to meet, the
+whole feature is refused and the message says which faces were the trouble and what usually
+helps — pick the rest of the round, or fewer faces. A pick that would take every face of a body
+is refused too; use Remove on the body instead.
+
 ## Editing a feature
 
 Double-click its chip, or right-click it and choose **Edit Feature**. The dialog opens with the

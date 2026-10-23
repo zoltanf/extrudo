@@ -1283,6 +1283,34 @@ test('demo: offsetFace', async ({ page }) => {
   });
 });
 
+test('demo: removeFaces', async ({ page }) => {
+  await demoDesign(page, 'removeFaces');
+  await turnView(page, 'Shift+1');
+  const { at, clip } = await frameWorld(page, boxPoints([-18, -12, 0], [18, 12, 10]));
+  // The hole's far wall faces the camera; the pick takes the whole hole.
+  const wall = await spot(
+    page,
+    at,
+    [
+      [-4.2, 4.2, 6],
+      [-2, 5.6, 6],
+      [-5.6, 2, 6],
+    ],
+    /^face:/,
+  );
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 50, y: clip.y + clip.height - 30 });
+  const dialog = page.getByRole('region', { name: 'Remove Faces dialog' });
+  await record(page, 'removeFaces', clip, async () => {
+    await clickSpot(page, p, wall);
+    await runTool(page, 'removeFaces', 'modify');
+    await previewed(dialog);
+    await page.waitForTimeout(700);
+    await commit(page, dialog);
+    await page.waitForTimeout(500);
+  });
+});
+
 test('demo: draft', async ({ page }) => {
   await demoDesign(page, 'draft');
   await turnView(page, 'Shift+1');
