@@ -223,6 +223,7 @@ function toolCommand(id: ToolId, group: string, ctx: CommandContext): AppCommand
 const TOOL_KEYWORDS: Partial<Record<ToolId, string>> = {
   newComponent: 'assembly part',
   joint: 'assembly hinge slider rigid revolute',
+  removeFaces: 'defeature delete face remove fillet remove hole simplify',
 };
 
 /** Words search also finds a file command by (ADR-0079), beyond its group and hint. */

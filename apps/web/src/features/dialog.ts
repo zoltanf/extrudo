@@ -131,6 +131,16 @@ export interface DialogKernel {
     keepRounds?: boolean,
   ): Promise<SmoothFaces | undefined>;
   /**
+   * The faces the Remove Faces dialog's `pick: 'removeFaces'` field takes for
+   * clicks on `faces` of a body: a hole whole, a round's smooth run, else the
+   * face (ADR-0099 §5). `base` as for `reference`. Absent: `tangentChain`.
+   */
+  removeFacesPick?(
+    body: BodyId,
+    faces: readonly number[],
+    base?: boolean,
+  ): Promise<number[] | undefined>;
+  /**
    * The customizer variables of a `.scad` file (P5-04 slice 2, ADR-0071 §5):
    * the Import dialog's rows. Absent: the dialog shows only stored overrides.
    */
@@ -674,15 +684,16 @@ export function createDialogController(options: DialogControllerOptions): Dialog
     // A pick is the user's choice: `propose` leaves that field alone from now on.
     refresh(choose({ ...open, pickField }, field.name), values);
     for (const item of picked) fingerprint(item);
-    if (field.tangentChain)
+    if (field.tangentChain || field.pick)
       for (const { item, mode } of chained) followChain(field.name, item, mode);
   };
 
   /**
    * A picked edge brings its tangent chain (OCCT rounds the whole chain,
    * so a set is made of whole chains), a picked face the faces that run
-   * smoothly into it (an offset moves them together, P3-08); unpicking one
-   * takes the chain out.
+   * smoothly into it (an offset moves them together, P3-08) or, on a field
+   * with `pick: 'removeFaces'`, the pick rule's group (a hole whole, a
+   * round's run, else the face; ADR-0099); unpicking one takes the group out.
    */
   const followChain = (field: string, item: SelectionItem, mode: 'add' | 'remove') => {
     const topology = readTopology(item);
@@ -694,14 +705,17 @@ export function createDialogController(options: DialogControllerOptions): Dialog
     // A field that keeps rounds asks for the chain up to them (or the whole one while off).
     const toggle = keepRoundsToggle(start, field);
     const smooth = kind === 'face' && toggle !== undefined ? kernel?.smoothFaces : undefined;
-    const chain = smooth
-      ? smooth(
-          topology.body,
-          [topology.index],
-          base,
-          start?.values.toggles[toggle ?? ''] === true,
-        ).then((found) => found?.faces)
-      : kernel?.tangentChain?.(topology.body, topology.index, base, kind);
+    const rule = kind === 'face' ? removeFacesPickOf(start, field) : undefined;
+    const chain = rule
+      ? rule(topology.body, [topology.index], base)
+      : smooth
+        ? smooth(
+            topology.body,
+            [topology.index],
+            base,
+            start?.values.toggles[toggle ?? ''] === true,
+          ).then((found) => found?.faces)
+        : kernel?.tangentChain?.(topology.body, topology.index, base, kind);
     if (!chain) return;
     chain
       .then((indices) => {
@@ -745,6 +759,14 @@ export function createDialogController(options: DialogControllerOptions): Dialog
   const keepRoundsToggle = (open: OpenDialog | undefined, field: string) => {
     const spec = open && fieldOf(open, field);
     return spec?.kind === 'selection' && spec.tangentChain ? spec.keepRounds : undefined;
+  };
+
+  /** The kernel's pick rule for a field with `pick: 'removeFaces'`, if it has one. */
+  const removeFacesPickOf = (open: OpenDialog | undefined, field: string) => {
+    const spec = open && fieldOf(open, field);
+    return spec?.kind === 'selection' && spec.pick === 'removeFaces'
+      ? kernel?.removeFacesPick
+      : undefined;
   };
 
   /**
