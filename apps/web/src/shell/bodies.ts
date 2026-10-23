@@ -27,6 +27,7 @@ import {
   type ExtrudoDocument,
   effectiveBodyDisplay,
   type FeatureId,
+  type GeomRef,
   insertFeature,
   type ModelState,
   type ModelStore,
@@ -35,12 +36,16 @@ import {
   newId,
   nextFeatureName,
   removeBodiesFeatureOf,
+  removeFacesFeatureOf,
+  type SelectionItem,
   type SessionStore,
   setBodyComponent,
   updateBody,
 } from '@extrudo/core';
+import type { BodyMesh } from '@extrudo/kernel';
 
 import { withActiveComponent } from '../components/active';
+import { readTopology, topologyRef } from '../selection/items';
 
 /** How a body is shown (ADR-0030's amendment, 2026-10-09): shown, ghost or hidden. */
 export type BodyDisplay = 'shown' | 'ghost' | 'hidden';
@@ -432,6 +437,102 @@ export function createBodyActions(
       return id;
     },
   };
+}
+
+/** What the delete of faces needs of the kernel: the pick rule (ADR-0099 §5). */
+interface PickKernel {
+  removeFacesPick?(
+    body: BodyId,
+    faces: readonly number[],
+    base?: boolean,
+  ): Promise<number[] | undefined>;
+}
+
+/**
+ * Delete on a selection that is only faces of solid bodies (P4-13, ADR-0099
+ * §7), as deleting bodies makes a Remove (P2-08): the pick rule runs first
+ * (a click on one fillet face removes the whole round, a hole's wall the
+ * hole), then one Remove Faces feature at the timeline marker, one undo
+ * step. Refused in sketch mode like deleting a body. The faces leave the
+ * selection and the hover. A selection that mixes faces with other kinds
+ * keeps Delete's own behaviour (`applies` says so).
+ */
+export interface FaceActions {
+  /** Whether Delete on this selection makes a Remove Faces feature: only faces of solid bodies. */
+  applies(selection: readonly SelectionItem[]): boolean;
+  /** Makes the feature for the selection's faces; returns its ID, or `undefined` if refused. */
+  remove(selection: readonly SelectionItem[]): Promise<FeatureId | undefined>;
+}
+
+export function createFaceActions(
+  stores: { store: DocumentStore; session: SessionStore },
+  kernel: PickKernel | undefined,
+  meshes: () => Readonly<Record<BodyId, BodyMesh>>,
+  notify: (tone: 'info' | 'error', text: string) => void,
+): FaceActions {
+  const { store, session } = stores;
+  const run = (command: Command<unknown>): boolean => {
+    try {
+      store.getState().dispatch(command);
+      return true;
+    } catch (error) {
+      if (!(error instanceof CommandError)) throw error;
+      notify('error', error.message);
+      return false;
+    }
+  };
+  const faceOf = (item: SelectionItem) => {
+    if (item.kind !== 'face') return undefined;
+    const topology = readTopology(item);
+    const mesh = topology && meshes()[topology.body];
+    return topology && mesh && !mesh.mesh ? topology : undefined;
+  };
+  const applies = (selection: readonly SelectionItem[]) =>
+    selection.length > 0 && selection.every((item) => faceOf(item) !== undefined);
+  const remove = async (selection: readonly SelectionItem[]) => {
+    if (!applies(selection)) return undefined;
+    if (session.getState().mode === 'sketch') {
+      notify('info', 'Finish the sketch first.');
+      return undefined;
+    }
+    // A click on one fillet face takes the whole round, a hole's wall the hole;
+    // without the kernel the clicked faces are the pick.
+    const byBody = new Map<BodyId, number[]>();
+    for (const item of selection) {
+      const face = faceOf(item);
+      if (face) byBody.set(face.body, [...(byBody.get(face.body) ?? []), face.index]);
+    }
+    const record = meshes();
+    const answers = await Promise.all(
+      [...byBody].map(async ([body, faces]) => {
+        const picked = (await kernel?.removeFacesPick?.(body, faces)) ?? faces;
+        return { body, faces: picked };
+      }),
+    );
+    const refs: GeomRef[] = [];
+    for (const { body, faces } of answers) {
+      for (const index of faces) {
+        const ref = topologyRef({ kind: 'face', body, index }, record);
+        if (ref && !refs.some((r) => r.id === ref.id)) refs.push(ref);
+      }
+    }
+    if (refs.length === 0) return undefined;
+    const id = newId<FeatureId>();
+    const feature = removeFacesFeatureOf(
+      id,
+      nextFeatureName(store.getState().doc, 'Remove Faces'),
+      refs,
+    );
+    if (!run(insertFeature({ feature: withActiveComponent(feature, session) }))) return undefined;
+    // The removed faces leave the selection and the hover.
+    const s = session.getState();
+    const gone = new Set(answers.flatMap(({ body, faces }) => faces.map((f) => `${body}:${f}`)));
+    const kept = s.selection.filter((item) => item.kind !== 'face' || !gone.has(item.id));
+    if (kept.length !== s.selection.length) s.select(kept, 'replace');
+    if (s.hover?.kind === 'face' && gone.has(s.hover.id)) s.setHover(undefined);
+    return id;
+  };
+  return { applies, remove };
 }
 
 /**
