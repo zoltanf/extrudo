@@ -784,6 +784,16 @@ export function f3dToDesign(
         const reason = offsetFaces(d, feature, naming, expressionOf, report);
         if (reason) report.skipped.push(skippedFeature(feature.name, feature.kind, reason));
         else report.imported.push(feature.name);
+      } else if (feature.type === 'delete-faces') {
+        // Decoded (ADR-0083's amendment of 2026-10-23) but not mapped yet: Extrudo's
+        // Remove Faces is not in the document API, so phase 2 replays it.
+        const named = feature.faces.filter((face) => faceName(face, naming)).length;
+        report.skipped.push({
+          name: feature.name,
+          kind: feature.kind,
+          reason: 'face deletions are not imported yet',
+          detail: `${named} of its ${feature.faces.length} faces could be named`,
+        });
       } else if (feature.type === 'circular-pattern') {
         const made = circularPattern(d, feature, replayable, sketches, expressionOf, report);
         if (typeof made === 'string')

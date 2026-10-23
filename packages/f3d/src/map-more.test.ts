@@ -852,6 +852,32 @@ describe('f3dToDesign: copying features', () => {
     });
   });
 
+  it('leaves out a deletion of faces, saying why (phase 1 decodes it only)', () => {
+    const f3d = washerWithHole();
+    f3d.features.push({
+      ...base,
+      type: 'delete-faces',
+      id: 8,
+      kind: 'DeleteFace',
+      name: 'DeleteFace1',
+      faces: [
+        {
+          tags: [{ token: '3', designs: [2] }],
+          feature: 2,
+          surface: { kind: 'plane', point: [0, 0, 0.08], normal: [0, 0, 1] },
+        },
+      ],
+    });
+    const { report } = f3dToDesign(f3d, 'Washer');
+    expect(report.skipped).toContainEqual(
+      expect.objectContaining({
+        name: 'DeleteFace1',
+        kind: 'DeleteFace',
+        reason: 'face deletions are not imported yet',
+      }),
+    );
+  });
+
   /** A torus (ring 24 mm, tube 8 mm) on the YZ plane, 75 mm up: as the file places it. */
   const ring = (
     id: number,

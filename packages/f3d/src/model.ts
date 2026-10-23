@@ -276,6 +276,12 @@ export interface F3dOffsetFaces extends FeatureBase {
   distance?: ParameterValue;
 }
 
+export interface F3dDeleteFaces extends FeatureBase {
+  type: 'delete-faces';
+  /** The faces it deletes, each named by its recipe's first face. */
+  faces: F3dFace[];
+}
+
 export interface F3dMirror extends FeatureBase, CopiedObjects {
   type: 'mirror';
   /** The mirror plane, model space. */
@@ -352,6 +358,7 @@ export type F3dFeature =
   | F3dEdgeFeature
   | F3dCircularPattern
   | F3dOffsetFaces
+  | F3dDeleteFaces
   | F3dMirror
   | F3dRectangularPattern
   | F3dSweep
@@ -660,6 +667,19 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         return other ? participantsOf(seg, other) : [];
       }),
     );
+  // The body faces a feature names through its operand groups: each face
+  // operand's recipe lists the face first, then its neighbours.
+  const faceOperands = (scope: Scope): F3dFace[] => {
+    const out: F3dFace[] = [];
+    for (const group of scope.refs) {
+      if (seg.typeOf(group)?.guid !== OPERAND_GROUP) continue;
+      for (const recipe of recipesIn(seg, group)) {
+        const first = tryDecode(`face #${recipe}`, () => readEdgeRecipe(seg, recipe))?.faces[0];
+        if (first) out.push(faceOf(first.tags, faces, featureOf, instances));
+      }
+    }
+    return out;
+  };
   // Feature record → the surfaces of the B-rep faces tagged with its operations.
   // `own`: not the copies a mirror or pattern made of them.
   // Indexed once (record → operations, operation → faces), so each call costs
@@ -901,21 +921,17 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       });
     } else if (FEATURE_TYPES[type.guid] === 'OffsetFaces') {
       // Its face operands sit in an operand group; each recipe names the face first.
-      const moved: F3dFace[] = [];
-      for (const group of scope.refs) {
-        if (seg.typeOf(group)?.guid !== OPERAND_GROUP) continue;
-        for (const recipe of recipesIn(seg, group)) {
-          const first = tryDecode(`face #${recipe}`, () => readEdgeRecipe(seg, recipe))?.faces[0];
-          if (first) moved.push(faceOf(first.tags, faces, featureOf, instances));
-        }
-      }
       const distance = base.parameters.find((p) => p.kind === 'distance');
       features.push({
         type: 'offset-faces',
         ...base,
-        faces: moved,
+        faces: faceOperands(scope),
         ...(distance ? { distance } : {}),
       });
+    } else if (FEATURE_TYPES[type.guid] === 'DeleteFaces') {
+      // Like Offset faces: an operand group of face operands, each recipe naming
+      // the face first. No distance (nothing else understood: FORMAT.md).
+      features.push({ type: 'delete-faces', ...base, faces: faceOperands(scope) });
     } else if (FEATURE_TYPES[type.guid] === 'Mirror') {
       const inside = insideOnce;
       const copied = tryDecode(`mirror #${id}`, () => readCopied(seg, scope, inside));

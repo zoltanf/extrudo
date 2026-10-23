@@ -1492,3 +1492,45 @@ has its stream read and its body matched (editable). Tests: `asm.test.ts`
 "readAsm, BinaryFile4"; `brep-body.test.ts` "reads the 32-bit stream
 variant"; `decode/combine.test.ts`; `decode/extrude.test.ts`
 "readProfileOperand"; `map-more.test.ts` "features on whole bodies".
+
+## Amendment, 2026-10-23: face deletions decoded
+
+The source app has a timeline step that deletes faces from a body. Its record
+type was unknown, so the importer left it out as `other`; the 28 such steps of
+the issue's second file (a bumper) are why its replayed body kept material the
+file's body has not. **This amendment decodes the record only** — mapping it
+waits for Extrudo's Remove Faces (`removeFaces`, ADR-0099), the subject of a
+separate change.
+
+- **The record.** `29EF07D3-7BAF-4FA1-A28A-43A36279EA6D`, class version 0, its
+  scope tail's `kind` the localized `DeleteFace`. Its feature-specific part is
+  Offset faces' (`D087EFE5…`) without the distance parameter: an operand group
+  (`2CA5A1CD…`) of face operands (`5662F619…`), each recipe (`7ACC2A03…`)
+  naming its face first, exactly as Offset faces reads them (FORMAT.md). Where
+  Offset faces writes an eleven-byte reference to its `distance` parameter
+  owner and a `u32 1`, this writes twelve zero bytes and a `u32 1` before the
+  group reference. Nothing else in the record is understood: no heal mode or
+  other flag was found, and the twelve zero bytes are not decoded. The
+  feature-specific part was compared across the 28 records of the bumper,
+  which are identical byte for byte apart from the record references.
+- **Counts.** The corpus run over the samples holds 28 of these records, all in
+  the issue's second file (the bumper), one deleted face each; no other design
+  has the type. Twenty of the 28 name, through the existing face naming
+  (`faceName`, as `offsetFaces` uses it), every face they delete — what phase 2
+  can replay. The other 8 name faces of features the import itself left out
+  (an extrude of a deleted sketch, a fillet or offset whose faces can't be
+  named).
+- **Decode and map.** `FEATURE_TYPES` gains `29EF07D3…` → `DeleteFaces`;
+  `model.ts` reads a `delete-faces` feature's faces through a shared
+  `faceOperands` helper (factored out of the Offset faces branch, which now
+  uses it too), each recipe's first face taken with `tryDecode`, so a record
+  that can't be read is a decoding problem, never a crash. `map.ts` leaves the
+  feature out with the plain reason "face deletions are not imported yet" and,
+  for the corpus report, a technical detail counting the faces it could name.
+- **No change to what is imported.** The corpus report is identical before and
+  after apart from the 28 deletions' reason (was "not supported yet", now the
+  new one); every other line, and the count of lines (324), is unchanged. No
+  file-format or document-schema change. Tests: `decode/delete-faces.test.ts`
+  (two faces; a truncated recipe is a problem; an absurd face count is
+  bounded) and `map-more.test.ts` "leaves out a deletion of faces, saying why
+  (phase 1 decodes it only)".
