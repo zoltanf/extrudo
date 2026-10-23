@@ -241,7 +241,7 @@ stats; two `performance.measure` marks (preview, script host load); the
 
 ## 5. Suggested order
 
-- **Slice A (guardrails):** options 1, 4, 5. One job, about half a day on home-pc;
+- **Slice A (guardrails):** options 1, 4, 5. One job, about half a day on the Ubuntu machine;
   the spec is the yardstick for the next slices.
 - **Slice B (latency):** options 7, 8, 9, measured before and after with slice A's
   spec. Facade untouched; the risky part is the compiler's correctness, so a full
