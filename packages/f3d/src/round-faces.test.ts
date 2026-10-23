@@ -239,4 +239,29 @@ describe('naming a face an offset moved', () => {
     expect(out.DeleteFace1).toEqual([expect.stringMatching(/^extrude:f2:side:/)]);
     expect(out.DeleteFace2).toBe('none of its 1 faces could be named');
   });
+
+  it('does not offset again a face only its other states name', () => {
+    const f3d = box([corner(0)]);
+    const moved: F3dFace = {
+      ...side(3),
+      surface: plane([-0.1, 0, 0], [-1, 0, 0]),
+      states: [plane([0, 0, 0], [-1, 0, 0])],
+    };
+    f3d.features.push({
+      ...base,
+      type: 'offset-faces',
+      id: 60,
+      kind: 'OffsetFaces',
+      name: 'OffsetFaces1',
+      faces: [moved],
+      distance: parameter({ name: 'd9', kind: 'Distance', value: -0.01 }),
+    });
+    const { report } = f3dToDesign(f3d, 'Box');
+    expect(report.skipped).toContainEqual(
+      expect.objectContaining({
+        name: 'OffsetFaces1',
+        reason: 'none of its 1 faces could be named',
+      }),
+    );
+  });
 });

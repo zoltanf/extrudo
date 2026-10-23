@@ -2689,14 +2689,19 @@ function offsetFaces(
     return 'it moves faces a pattern or mirror copied (not imported yet)';
   if (Math.abs(f.distance.value) < 1e-12)
     return 'its distance is 0 (Extrudo refuses an offset that moves nothing)';
+  // A face named only through another of its states moved off its sketch
+  // curve, by an earlier offset: offsetting such a face again ran for over
+  // 15 minutes in the kernel on a design seen (OCCT's offset and its
+  // diagnosis), so it stays left out until Offset Face is bounded.
+  const nameOf = (face: F3dFace) => faceName({ ...face, states: [] }, naming);
   const faces: GeomRef[] = [];
   for (const face of f.faces) {
-    const id = faceName(face, naming);
+    const id = nameOf(face);
     if (id && !faces.some((r) => r.id === id)) faces.push({ kind: 'face', id });
   }
   if (faces.length === 0)
     return f.faces.length === 0 ? 'no faces' : `none of its ${f.faces.length} faces could be named`;
-  const named = f.faces.filter((face) => faceName(face, naming)).length;
+  const named = f.faces.filter((face) => nameOf(face)).length;
   if (named < f.faces.length)
     report.notes.push(
       `${f.name}: ${f.faces.length - named} of ${f.faces.length} faces left out (not made by an imported extrude, fillet or chamfer).`,
