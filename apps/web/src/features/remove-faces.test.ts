@@ -1,7 +1,7 @@
 import { RemoveFacesInputsSchema } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
-import { pickedFacesText, removeFacesDialog } from './remove-faces';
 import { featureDialogs, specForCommand } from './registry';
+import { pickedFacesText, removeFacesDialog } from './remove-faces';
 import { BOX, FACE_IDS, settle, setupDialogs } from './testing';
 import { defaultValues, mergeValues } from './values';
 

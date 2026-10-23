@@ -2,7 +2,7 @@
 title: Midpoint
 section: Tools
 category: Sketch
-order: 104
+order: 105
 ---
 
 # Midpoint
