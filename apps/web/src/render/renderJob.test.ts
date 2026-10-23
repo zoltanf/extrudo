@@ -70,7 +70,7 @@ describe('render settings helpers', () => {
     expect(settingsChanged(x, { ...y, quality: 'high' })).toBe(true);
     expect(settingsChanged(base, { ...base, width: 1280, height: 720 })).toBe(true);
     expect(settingsChanged(base, { ...base, finishes: { [A]: 'glossy' } })).toBe(true);
-    expect(settingsChanged(base, { ...base, camera: { kind: 'current' } })).toBe(true);
+    expect(settingsChanged(base, { ...base, camera: { kind: 'auto' } })).toBe(true);
   });
 });
 
@@ -80,10 +80,9 @@ describe('jobCamera', () => {
 
   it('is undefined for auto, live for current, the named view for view', () => {
     const live = () => ({ ...camera, position: [1, 2, 3] as [number, number, number] });
-    expect(jobCamera(base, doc, live)).toBeUndefined();
-    expect(jobCamera({ ...base, camera: { kind: 'current' } }, doc, live)?.position).toEqual([
-      1, 2, 3,
-    ]);
+    expect(jobCamera({ ...base, camera: { kind: 'auto' } }, doc, live)).toBeUndefined();
+    // The default is the current view.
+    expect(jobCamera(base, doc, live)?.position).toEqual([1, 2, 3]);
     expect(jobCamera({ ...base, camera: { kind: 'view', id } }, doc, live)).toEqual(camera);
   });
 
