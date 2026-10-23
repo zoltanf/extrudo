@@ -346,11 +346,10 @@ describe('remove faces', { timeout: 120_000 }, () => {
       'hole:H:side:floor',
       'hole:H:side:wall',
     ]);
+    const wallRef = faceRef(before, 'hole:H:side:wall');
     await removesToBlock(features, ['hole:H:side:floor', 'hole:H:side:wall']);
 
-    const alone = await run(
-      testDocument([...features, removeFaces('R', [faceRef(before, 'hole:H:side:wall')])]),
-    );
+    const alone = await run(testDocument([...features, removeFaces('R', [wallRef])]));
     expect(status(alone, 'R')).toMatchObject({
       status: 'error',
       message:
