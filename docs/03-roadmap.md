@@ -1071,6 +1071,10 @@ end to end, faster than in established desktop CAD.
   - [ ] Delete on selected faces makes the feature in one step
   - [x] `.f3d` import: face deletions become Remove Faces (ADR-0083's next
     amendment, with the corpus numbers)
+  - [x] `.f3d` import: the faces they delete named right (rounds by geometry,
+    moved faces by their earlier state; ADR-0083's amendment of 2026-10-23);
+    on the bumper 5 of 28 take effect, the rest stop on OCCT limits (Offset
+    Face's sharp-corner guard, Remove Faces on one face of a round loop)
 
 ---
 

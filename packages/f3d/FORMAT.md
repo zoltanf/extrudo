@@ -370,6 +370,24 @@ pattern or mirror carries tags with several operation ids: the source
 feature's, the pattern's and the instance's (`[5@309/311/328]`); the face it
 copies is the one with the source's tag and not the pattern's.
 
+A face a later feature changed without remaking it (an offset moved it, a
+face deletion beside it extended it) keeps its tag and gains that feature's
+operation id, negative: `4@311` becomes `4@311 4@-324 4@-325`. A recipe's
+tag lists the operation ids the face had when the feature picked it
+(`[311, -324, -325]`), and the `.smbh` stream keeps earlier states of the
+body, so the face can be read as the feature saw it: the stored face whose
+tags differ least from the recipe's (`statesOf` in `model.ts`; the importer
+names faces by it, offsets excepted). Verified on
+the issue-93 bumper against the operation table: the negative ids are the
+offsets and face deletions that came after the face's feature, in timeline
+order (-324 an offset, -325 the next offset, -327 to -330 four face
+deletions); the side `4@311` is stored at x = 5 cm as made (`[311]`, and
+`[311, -324]` after the first offset lowered the top face and so shortened it) and at 4.9 cm solved,
+after the second offset; a fillet after the first offset names it `[311]`,
+one after the second `[311, -324, -325, -328, -329, -330]`. A state no
+stream kept (a recipe of four ids where the streams hold two and nine) is
+read as the nearest.
+
 A copying feature's data record (the first record its members name:
 `C444E6AD…` for a mirror, `EA0E146E…` for a rectangular pattern,
 `7493A99D…` for a circular one) lists its instances: `u8 1, u32 n, n ×

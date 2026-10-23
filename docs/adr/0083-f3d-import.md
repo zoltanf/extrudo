@@ -1561,3 +1561,125 @@ not the cause of the bumper's mismatch on their own. Tests: `map-more.test.ts`
 (a named face makes one `removeFaces`, and a washer with a drilled hole whose
 wall is deleted replays to the full washer's volume; an unnamed face and a
 copied face are skipped with their reasons).
+
+## Amendment, 2026-10-23: round faces and moved faces named by geometry and state
+
+The face deletions above took no effect on the issue's second file (the
+bumper) because the fillets whose faces they delete (Fillet5, Fillet6,
+Fillet9, Fillet10, Fillet11) failed in the replay. Each was asked for the
+wrong edges. Three causes, all in naming, none in the kernel's fillet:
+
+- **A round face took a neighbour's name.** A fillet on an earlier fillet's
+  face names that face after the edge it rounds. `nearestEdge` picked the
+  edge nearest a point of the edge being named but skipped edges the import
+  could not name, so a round face of such an edge took the name of the
+  nearest edge that had one. The file's Fillet4 rounds eight edges: four of
+  the base slab, four of the part above it, whose sides it could not name
+  (next cause). Fillet5 and Fillet6, which round the foot and the top of that
+  part, so asked for edges on the base slab's corner rounds; OCCT refused
+  them ("can't be rounded with radius 2 mm, or with any smaller one",
+  "radius 1 mm is too large, max ≈ 0.85 mm"). The point was not much better
+  where the edge's shape is a whole circle (no bounding face cut it): its
+  midpoint lies anywhere on the circle. The face's token, the fallback,
+  counts other faces too (Fillet4's faces at its 6th and 8th edges carry 5
+  and 6). **Now** the edge whose points lie nearest the round face's own
+  surface wins (cylinder, cone, sphere, torus: a round lies a fixed distance
+  off the sharp edge it replaced, the round's other edges well off it); a
+  tie (a face merged from several edges' rounds) goes to the nearest edge,
+  then the token; every edge with a shape takes part, so a face of an
+  unnamed edge has no name rather than a wrong one. Chamfer faces (planes)
+  and variable rounds keep the old rule.
+- **A side an offset moved matched no sketch curve.** The importer named a
+  face by its surface in the solved body. Offsets later in the timeline had
+  moved the upper part's sides 1 mm out (x = 49 mm where the sketch line is
+  at 50), so they could not be named, nor Fillet4's four edges between them
+  and their end arcs. A recipe's tags list the operations the face had when
+  it was picked (the making one, then, negative, those that changed it), and
+  the `.smbh` stream keeps the body's earlier states (FORMAT.md). **Now**
+  `model.ts` reads the stored state whose tags differ least from the
+  recipe's (`statesOf`), and keeps the face's other states in
+  `F3dFace.states`; `faceName` tries them when the chosen state names
+  nothing (an offset keeps a face's name, here and in Extrudo).
+  The face's `surface` is that state (edge shapes and fingerprints are
+  worked out from it, consistent with the faces around it); the solved one
+  is kept in `F3dFace.solved` where it differs. **Except offsets:** an
+  Offset faces step names its faces by the solved state alone, exactly as
+  before. Named by the picked state, two corpus designs imported an offset
+  they had left out, and both went wrong in the replay: on a box lid the new
+  offset (−0.1 mm on a side an earlier offset moved) ran the kernel's Offset
+  Face for over 15 minutes (the design replays in 25 s without it), which
+  would hang the import; on a filament guide an offset that widens a hole
+  by 0.6 mm made the thread cut into it next refuse the hole (Extrudo's
+  thread needs a hole narrower than the thread; the file's re-forms the
+  wall), which turned a match into a 1.2 % miss. They stay out until Offset
+  Face is bounded.
+- **A round of a split edge lost its name.** Extrudo names a side a join
+  split `s28#2`; the importer, which can't know of the split, names the round
+  face of its edge `fillet:F:from:(e[…|s28])`. The kernel's `faceRelation`
+  compared stems literally, so a deletion of that face found nothing.
+  **Now** two stems made from a nested name relate when the nested names do
+  (`topo-id.ts` `nestedRelated`): the round of an edge and the round of a
+  piece of it, so resolution takes the piece as a related name (with the
+  usual "split by an earlier change" warning when several pieces match).
+
+**DeleteFace20.** It deletes Fillet8's round of the slab's bottom edge at one
+corner, a torus. The token (6) pointed at Fillet8's sixth edge, the long
+straight bottom edge, so the replay asked Remove Faces for that edge's round,
+a cylinder in one smooth loop of 24 faces: "Pick the rest of the round …
+(23 more faces)". Now it names the torus, and Remove Faces refuses it: "the
+faces around them can't be extended to meet" (OCCT's defeaturing returns no
+failed face). Its twelve undecoded zero bytes are identical in all 28
+records, so nothing in the corpus tells a mode apart; the file's own body
+shows the deletion healed the gap, which is what Remove Faces does.
+
+**What still fails, and why.** These are the kernel's limits, not the
+mapping:
+
+- OffsetFaces1 lowers the part's top 1.5 mm (13.5 → 12 mm, the bumper's
+  height gap) and is refused by Offset Face's guard ("rounded edges that
+  meet at a sharp corner", `sharp-chain`, where OCCT's offset corrupts its
+  memory): Fillet7's and Fillet8's rounds together trip it (a replay without
+  either passes the guard). Behind the guard OCCT refuses the step anyway:
+  the top can't move in 1.5 mm past Fillet6's 1 mm round on its edges ("too
+  far for this body, max ≈ 0.99 mm"); the file keeps that round and deletes
+  it later (DeleteFace9–12). With the top left at
+  13.5 mm, Extrude7's cut, which starts at 12 mm, becomes a sealed pocket:
+  Fillet10 then rounds the pocket's edges by fingerprint, Fillet11 and the
+  deletions of Fillet10's faces find nothing, OffsetFaces4 and 5 refuse a
+  body with a cavity.
+- Remove Faces can't delete one face of a round that runs on in a loop: of
+  the deletions that undo Fillet5 (four steps, one face each) the two
+  straight faces go, the two corner tori are refused; merging the four into
+  one step is refused too (OCCT can't close the loop). Fillet9 rounds the
+  edges those deletions would have made sharp again and so finds smooth ones
+  ("isn't a sharp edge"). The same holds for Fillet6's deletions and for
+  most of DeleteFace17–28 (Fillet8's loop).
+
+Numbers, the bumper: 28 of 28 deletions now import (were 20; the 8 others
+went by their token to a round's edge without a name, or lay along a side an
+offset moved), 5 take effect
+(DeleteFace1, 2, 9, 11, 18; were 0). Fillet5, Fillet6 and Fillet10 build
+(Fillet10 on the sealed pocket's edges, above); Fillet9 and Fillet11 fail as
+said. Replayed body 7095.8 mm³, box z −5.5 … 13.5 mm (was 7110.5 mm³, same
+box), the file's 6361.5 mm³ and 12 mm: the body check still freezes it.
+The corpus (252 designs, replay and body check, before → after): verdicts
+unchanged (161 match, 49 mismatch, 25 partial, 3 match despite skips, 9 with
+no reference, 5 with no bodies); features left out 91 → 80, all in the
+bumper (its 8 deletions and three of its offsets). Three volumes moved, no
+verdict: two match closer (0.012 → 0.000 %, and a mismatch 0.065 → 0.047 %)
+because a chamfer's cone face now goes to the whole circle it chamfers (the
+old rule took only edges with ends; the file's token agrees with the new
+pick); one mismatch 58.769 → 58.818 %, where a fillet's edge now lies on its
+face as picked (a plane, its tags matching the recipe's exactly) rather than
+on the solved body's cylinder. Bodies: 231 editable, 125 frozen, 26
+unchecked, the same body by body (the before run's probe of one design, which
+imports no feature, timed out under load; its 17 bodies are frozen in the
+after run, as in earlier runs).
+Tests: `round-faces.test.ts` (a round face named by the edge it lies along
+against a misleading token; a round face of an unnamed edge left unnamed;
+a moved side named through its earlier state; an offset of such a face left
+out), `decode/delete-faces.test.ts` (the state a recipe's tags name, its
+others kept, the solved one apart, a state no stream kept read as the
+nearest), `topo-id.test.ts`
+(the round of an edge relates to the round of a piece of it, not to another
+edge's, feature's or piece's).
