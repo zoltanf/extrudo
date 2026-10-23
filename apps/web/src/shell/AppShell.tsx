@@ -197,6 +197,7 @@ import {
   bodyEntries,
   bodyMetaOf,
   createBodyActions,
+  createFaceActions,
   followBodyNames,
   pendingBodyEntries,
 } from './bodies';
@@ -757,6 +758,13 @@ function Shell({
     }),
     [store, session, notify],
   );
+  // Delete with only faces of solid bodies selected makes a Remove Faces
+  // feature in one step (P4-13, ADR-0099 §7); the pick rule takes a whole
+  // round or hole for one clicked face.
+  const faceActions = useMemo(
+    () => createFaceActions({ store, session }, kernel, () => bodies, notify),
+    [store, session, kernel, bodies, notify],
+  );
   // The named views (ADR-0008's amendment): the browser's rows, the nav bar's
   // menu and the commands' shared actions.
   const viewActions = useMemo(
@@ -866,6 +874,12 @@ function Shell({
   const selectedBodyIds = useMemo(
     () => selection.filter((item) => item.kind === 'body').map((item) => item.id as BodyId),
     [selection],
+  );
+  // Delete on a selection that is only faces of solid bodies (P4-13, ADR-0099 §7);
+  // a selection that mixes faces with other kinds keeps Delete's own behaviour.
+  const facesRemovable = useMemo(
+    () => selectedBodyIds.length === 0 && faceActions.applies(selection),
+    [selectedBodyIds, faceActions, selection],
   );
   // The component all the selected bodies share, if they share one (activate and isolate act on it).
   const selectedComponent = useMemo(() => {
@@ -1197,11 +1211,20 @@ function Shell({
           store.getState().redo();
         },
         ...(listing ? { remove: () => {} } : m === 'sketch' && !drawing && { remove }),
-        // Delete with bodies selected in the model removes them (a Remove feature, P2-08).
+        // Delete with bodies selected in the model removes them (a Remove feature, P2-08);
+        // with only faces of solid bodies it makes a Remove Faces feature (P4-13, ADR-0099 §7).
         ...(!listing &&
           m === 'model' &&
           !dialogOpen &&
           selectedBodyIds.length > 0 && { remove: () => bodyActions.remove(selectedBodyIds) }),
+        ...(!listing &&
+          m === 'model' &&
+          !dialogOpen &&
+          facesRemovable && {
+            remove: () => {
+              void faceActions.remove(selection);
+            },
+          }),
         ...(m === 'sketch' &&
           (listing || host) && {
             construction:
@@ -1328,6 +1351,7 @@ function Shell({
       remove,
       dialogOpen,
       selectedBodyIds,
+      facesRemovable,
       selectedComponent,
       selectedComponentName,
       activeComponent,
@@ -1335,6 +1359,7 @@ function Shell({
       session,
       selection,
       bodyActions,
+      faceActions,
       viewActions,
       doc.views,
       construction,

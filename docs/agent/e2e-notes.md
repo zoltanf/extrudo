@@ -1547,6 +1547,24 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 - See `e2e/onboarding.spec.ts`: `RECORD_ASSETS=1` only, the demo recorder.
 
+### `e2e/remove-faces.spec.ts`
+
+- **Remove Faces e2e** (`e2e/remove-faces.spec.ts`, P4-13): the dialog is the region
+  "Remove Faces dialog", its one field the button "Faces" (`exact: true`, prompt "Pick faces",
+  "1 face" once picked) and the count the read-only line `[data-info="picked"]` ("1 face" /
+  "N faces", the pick rule's union, so it can lag the click a moment: poll it). The hole's
+  wall of a Ø12 through hole at (5, −6) in the 40 cube hovers as `face:` at about
+  (0.8, −1.8, 34) in the home view (the far side of the wall, its upper band: deeper than
+  ~17 mm below the rim the wall is out of sight at that angle); the pick is the wall alone
+  (the caps grow to meet it), so the info line says "1 face". After OK the cube is
+  `Body1:6:40,40,40` again and the 3MF's volume is the plain box's (planar faces tessellate
+  exactly). `data-model-hover`/`-selection` name bodies by their **UUID**, not "Body1".
+  Delete on a selected face makes the feature (a fillet round's face at (0, −19.1, 39.1)
+  after a 3 mm fillet on the top front edge at (0, −20, 40)): one chip "Remove Faces2"
+  (no space before the count) and the sharp edge back. The tooltip clip's scene starts from
+  `fixtures/demos/removeFaces.extrudo` (the offset-face plate with its hole, rebuilt by
+  `packages/cli/src/demo-designs.test.ts`).
+
 ### `e2e/revolve.spec.ts`
 
 - **Revolve e2e** (`e2e/revolve.spec.ts`): the dialog is the region
