@@ -1365,8 +1365,10 @@ end to end, faster than in established desktop CAD.
   derived geometry (edge segments, silhouette plan, pick index) into idle
   time. Acceptance: `pnpm check`, the full e2e suite green on CI, the perf
   spec's numbers before and after in each commit, ADR-0102's amendment with
-  the compiler decision. Changes 1–4 done 2026-10-24 (ADR-0102 §5, §6); open:
-  CI green on the branch.
+  the compiler decision. Changes 1–4 done 2026-10-24 (ADR-0102 §5–§7: the
+  React Compiler kept through plugin-react's native option; project open's
+  largest cost was the WebGL probe, now run on the home screen, not the
+  bodies' geometry); left unticked for the owner's review.
 
 ## Phase 7 — Later (lowest priority, after everything else)
 
