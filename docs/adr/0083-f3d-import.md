@@ -1683,3 +1683,28 @@ others kept, the solved one apart, a state no stream kept read as the
 nearest), `topo-id.test.ts`
 (the round of an edge relates to the round of a piece of it, not to another
 edge's, feature's or piece's).
+
+**Amendment of 2026-10-23 (failed face deletions leave the timeline):** a face
+deletion is a Remove Faces step whenever its faces can be named, but on a file
+with many chained deletions most of them fail in the replay ("Can't find a face
+to remove any more…", or a Remove Faces refusal on one face of a round loop),
+and a timeline full of errored steps is noise. The body check's runner
+(`f3dCheck.ts`, with `failedDeletions` in `body-check.ts`) now looks at the
+probe's recompute: every `removeFaces` step of the replay that finished in
+error is **taken out of the design** (`BodyPlan.dropped`, removed first in
+`applyBodyPlan`'s undo step) and listed in the import notice as a left-out
+feature, kind `DeleteFace`, reason `Extrudo couldn't remove its faces: <the
+kernel's message, first sentence>` (`saveF3dImport` moves it from imported to
+skipped). Only face deletions: the import makes `removeFaces` from nothing
+else, and every other failing feature stays as it was. A failed feature changes
+no body, so the plan is the same with and without the removal (asserted in
+`body-check-kernel.test.ts`: the volumes, the plan and the other steps'
+statuses). Without a written body no check runs, and the deletions stay.
+The corpus (252 designs, replay and body check): identical to the round-faces
+amendment's numbers, 161 match, 49 mismatch, 25 partial, 3 match despite skips,
+9 with no reference, 5 with no bodies; features left out in the replay 80;
+bodies 231 editable, 125 frozen, 26 unchecked. The one design with face
+deletions that fail (the bumper) goes from 28 deletions in the timeline, 23 of
+them errored, to 5 in the timeline and 23 listed in the notice; its replayed
+volume stays 7095.8 mm³ and its body stays frozen. No other design drops a
+step.
