@@ -1435,11 +1435,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   and the status is `ready`, or -1 after 30 s (an edit's -1 fails with a
   message saying the observer is wrong, not the app). Budgets (ADR-0100 §1,
   on app time since §4): open appMax < 400, appTotal < 1200, B5 < 8 s / B7 <
-  10 s; orbit appMax < 100 and ≥ 20 fps (GPU only); edit appMax < 500
-  (widened from §1's 150 against the measurement: the B7 grooves edit's
-  kernel-message and autosave handlers cost 248–499 ms of JS locally and
-  CI's raw edit longMax was 234–396 — the `top` invokers in a failing
-  `perf.json` say which script ran), undo appMax < 150, roundTripAppMs B5 <
+  10 s; orbit appMax < 100 and ≥ 20 fps (GPU only); edit appMax < 150
+  (§1's size again since ADR-0102 §1: it had been widened to 500 because the
+  autosave's thumbnail — an `IDBTransaction.oncomplete` task of 106–216 ms
+  under SwiftShader — ran on the edit's path; it now runs in idle time with
+  an async readback — the `top` invokers in a failing `perf.json` say which
+  script ran), undo appMax < 150, roundTripAppMs B5 <
   1.5 s / B7 < 5 s with roundTripMs > 0; hover+click
   worst event's proc < 250 ms. The raw numbers are attached to the
   report as `perf.json` before the assertions, so a failure still carries

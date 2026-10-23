@@ -2890,8 +2890,9 @@ measurement in the commit message, and they bind the app's own main-thread
 time (ADR-0100 §4): the JS inside each long task (LoAF scripts ∪ render log ∪
 event-handler spans, merged), an input event's handler time instead of its
 duration — sizes: open appMax < 400 and appTotal < 1200, orbit appMax < 100,
-**edit appMax < 500** (widened from §1's 150 against the measured 248–499 ms
-grooves-edit kernel-message/autosave handlers), undo appMax < 150, hover and
+**edit appMax < 150** (widened to 500 against the measured 248–499 ms
+grooves-edit kernel-message/autosave handlers, back to 150 since ADR-0102 §1
+took the thumbnail off the edit's path), undo appMax < 150, hover and
 click worst handler time < 250; `__extrudoRenderLog` must be set only by the spec's init script — a
 normal visit never logs renders; the fps floor is skipped only when the
 renderer string says software (the annotation names it). The long-task

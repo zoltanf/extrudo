@@ -5,6 +5,7 @@ import {
   type DocumentStore,
   type ExtrudoDocument,
   FILE_EXTENSION,
+  type ModelStore,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import type { ProjectId } from '@extrudo/storage';
@@ -127,7 +128,7 @@ function ProjectEditor({
     viewport.getState().resetLongTasks();
     return import.meta.env.DEV ? startLongTaskObserver(viewport) : undefined;
   }, [viewport]);
-  const autosave = useAutosave(store, viewport, platform);
+  const autosave = useAutosave(store, viewport, model, platform);
   const { toasts, push, dismiss, keep, notifications } = useToasts();
   useUpdateNotice(push, platform);
   useSoftwareNotice(push, platform);
@@ -237,13 +238,34 @@ function ProjectEditor({
  * unsaved changes also go into a rescue copy first, which the next start
  * recovers (`platform.rescue`). A save that leaves nothing unsaved clears it.
  */
-function useAutosave(store: DocumentStore, viewport: ViewportStore, platform: Platform) {
+function useAutosave(
+  store: DocumentStore,
+  viewport: ViewportStore,
+  model: ModelStore<BodyMesh>,
+  platform: Platform,
+) {
   const [autosave, setAutosave] = useState<Autosaver>();
   useEffect(() => {
+    // A pointer button held anywhere (a drag, an orbit): the thumbnail waits (ADR-0102 §1).
+    let buttons = 0;
+    const onPointer = (e: PointerEvent) => {
+      buttons = e.buttons;
+    };
+    for (const type of ['pointerdown', 'pointerup', 'pointercancel'] as const) {
+      window.addEventListener(type, onPointer, true);
+    }
     const autosaver = createAutosaver({
       store,
       projects: platform.projects,
       thumbnail: () => viewport.getState().snapshot?.() ?? Promise.resolve(null),
+      thumbnailKey: () => {
+        const { view, projection, visualStyle } = viewport.getState();
+        return [store.getState().doc, view, projection, visualStyle];
+      },
+      thumbnailReady: () => {
+        const { status } = model.getState();
+        return buttons === 0 && status !== 'computing' && status !== 'idle';
+      },
     });
     setAutosave(autosaver);
     const rescue = () => {
@@ -263,12 +285,15 @@ function useAutosave(store: DocumentStore, viewport: ViewportStore, platform: Pl
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('pagehide', flush);
     return () => {
+      for (const type of ['pointerdown', 'pointerup', 'pointercancel'] as const) {
+        window.removeEventListener(type, onPointer, true);
+      }
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', flush);
       rescue();
       closeAutosaver(autosaver);
     };
-  }, [store, viewport, platform]);
+  }, [store, viewport, model, platform]);
   return autosave;
 }
 

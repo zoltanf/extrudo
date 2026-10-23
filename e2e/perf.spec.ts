@@ -413,8 +413,8 @@ async function runExample(page: Page, ex: (typeof EXAMPLES)[number]) {
 
   expect(
     windows.edit.appMax,
-    `longest task's app time while editing ${ex.parameter} in ${ex.label} (ms, budget 500; measured 248–499 locally on a 4-core desktop — the B7 grooves edit's kernel-message and autosave handlers — and CI's raw edit longMax was 234–396): ${show(windows.edit)}`,
-  ).toBeLessThan(500);
+    `longest task's app time while editing ${ex.parameter} in ${ex.label} (ms, budget 150; ADR-0102 §1 moved the autosave's thumbnail, 106–216 ms of it under SwiftShader, off the edit's path): ${show(windows.edit)}`,
+  ).toBeLessThan(150);
   expect(
     windows.edit.roundTripMs,
     `parameter round trip for ${ex.label} (ms): ${show(windows.edit)}`,

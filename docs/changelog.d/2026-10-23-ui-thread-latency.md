@@ -1,0 +1,1 @@
+- 2026-10-23 · **Snappier after edits**: the design's thumbnail is taken when the app is idle, without stalling on the GPU, so it no longer slows the moment after a change (ADR-0102).

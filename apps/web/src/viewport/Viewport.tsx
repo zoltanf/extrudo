@@ -1199,7 +1199,7 @@ export const THUMBNAIL_SIZE = 256;
  * camera of its own, drawn into a render target so the screen is untouched.
  * The background stays transparent.
  */
-function thumbnailFromBox(
+async function thumbnailFromBox(
   gl: WebGLRenderer,
   scene: ThreeScene,
   view: View,
@@ -1211,7 +1211,7 @@ function thumbnailFromBox(
   out.width = size;
   out.height = size;
   const ctx = out.getContext('2d');
-  if (!ctx) return Promise.resolve(null);
+  if (!ctx) return null;
   const camera =
     projection === 'perspective' ? new PerspectiveCamera(FOV) : new OrthographicCamera();
   applyView(camera, view, projection, 1);
@@ -1226,6 +1226,7 @@ function thumbnailFromBox(
     }
   });
   const previousClips = gl.clippingPlanes;
+  let read: Promise<unknown> | undefined;
   // A section shows the inside of what it cuts: the faces' back sides fill the cut.
   const turned: { material: Material; side: Side }[] = [];
   if (extra.clip) {
@@ -1246,7 +1247,8 @@ function thumbnailFromBox(
     gl.setRenderTarget(target);
     gl.clear();
     gl.render(scene, camera);
-    gl.readRenderTargetPixels(target, 0, 0, size, size, pixels);
+    // Queued now, read when the GPU is done: the main thread doesn't stall on it (ADR-0102 §1).
+    read = gl.readRenderTargetPixelsAsync(target, 0, 0, size, size, pixels);
   } finally {
     for (const { object, visible } of hidden) object.visible = visible;
     gl.clippingPlanes = previousClips;
@@ -1255,6 +1257,11 @@ function thumbnailFromBox(
       material.needsUpdate = true;
     }
     gl.setRenderTarget(previousTarget);
+    if (!read) target.dispose();
+  }
+  try {
+    await read;
+  } finally {
     target.dispose();
   }
   // Rows come bottom-up and premultiplied; ImageData wants top-down and straight.
@@ -1273,7 +1280,7 @@ function thumbnailFromBox(
     }
   }
   ctx.putImageData(image, 0, 0);
-  return new Promise((resolve) => out.toBlob(resolve, 'image/png'));
+  return new Promise<Blob | null>((resolve) => out.toBlob(resolve, 'image/png'));
 }
 
 /**
