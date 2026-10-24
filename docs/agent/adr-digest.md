@@ -2918,7 +2918,7 @@ close, edit mode waits for the base. While regions exist the view draws the
 body's de-indexed coloured copy (`regionGeometry`) **in place of** its faces
 and of the drawing, coloured from the tokens (`--x-cat-create` planes,
 `--x-cat-sketch` curved, `--x-error` unfit), never literals. **Hardening
-slice A** (hardening slice A amendment): every region is on exactly one surface
+slice A** (its amendment): every region is on exactly one surface
 after `segmentMesh` (`splitComponent` refits any piece that lost or gained a
 region; the rebuild refuses a region on none rather than index with -1);
 the rebuild after `segmentMesh` has `PRISMATIC_REBUILD_BUDGET_MS` (30 s)
@@ -2937,7 +2937,7 @@ models never go into the repository) and, with `STL_DIR=<folder>` (`TOL`,
 `FILE`, `MESH_OUT`), every STL of a folder, where only a trap fails;
 `pnpm check` doesn't need `STL_DIR`. Harness: `f`/`F` cases, `SAN=1`
 (AddressSanitizer), `TIMES=1` (spike README). **Hardening slice C**
-(hardening slice C amendment): unfit regions covering at most
+(its amendment): unfit regions covering at most
 `PRISMATIC_UNFIT_ALLOWED` (0.02) of the surface area in total **don't
 refuse**: they stay kind −1 surfaces with no face (skip them in every
 rebuild loop: merge, snap check, faces, samples; their nodes are skipped by
