@@ -20,7 +20,7 @@ import type {
   RenderResult,
 } from '../platform/render';
 import type { BodyEntry } from '../shell/bodies';
-import { type RenderDialogProps, RenderForm } from './RenderDialog';
+import { phaseText, type RenderDialogProps, RenderForm } from './RenderDialog';
 
 const A = 'E1:Bracket' as never;
 const tri = {
@@ -440,5 +440,16 @@ describe('the stored settings', () => {
     expect((screen.getByLabelText('Size') as HTMLSelectElement).value).toBe('1280x720');
     expect((screen.getByLabelText('Finish of Bracket') as HTMLSelectElement).value).toBe('glossy');
     expect((screen.getByLabelText(/Draft/) as HTMLInputElement).checked).toBe(true);
+  });
+});
+
+describe('phaseText', () => {
+  it('names the phase, adds the percent while rendering and the time left once known', () => {
+    expect(phaseText(undefined, 'blender')).toBe('Starting Blender…');
+    expect(phaseText({ phase: 'importing', fraction: 0.05 })).toBe('Importing…');
+    expect(phaseText({ phase: 'rendering', fraction: 0.43 })).toBe('Rendering… 43 %');
+    expect(phaseText({ phase: 'rendering', fraction: 0.43 }, 'app', 'about 2 min left')).toBe(
+      'Rendering… 43 % · about 2 min left',
+    );
   });
 });

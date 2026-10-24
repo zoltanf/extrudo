@@ -88,8 +88,10 @@ slower. Where you have Blender, its picture is the better one: its materials and
 **Render** saves the settings into the design first (one undo step, and only when they changed),
 so the next render of that design starts from them. Then the app prepares the model ("Preparing
 the model… 2/3") and shows the progress on a bar: **Starting…**, **Importing…**, **Rendering…
-43 %**, **Saving…** (with Blender, **Starting Blender…** first). A Draft render is over in
-seconds, and its bar doesn't count.
+43 %**, **Saving…** (with Blender, **Starting Blender…** first). Once a render has run for a few
+seconds, the line also says about how long is left ("Rendering… 43 % · about 2 min left"),
+from how fast the bar has moved so far. A Draft render is over in seconds, and its bar doesn't
+count.
 **Cancel** stops a render; the dialog refuses to close while one runs — Cancel it first.
 In the app, Standard and High render only while the app is on screen: in a browser tab you
 switch away from, or a minimised window, the render waits and carries on when you come back.

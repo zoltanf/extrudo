@@ -41,6 +41,7 @@ import {
   type RenderProgress,
 } from '../platform/render';
 import type { BodyEntry } from '../shell/bodies';
+import { type EtaStart, etaText, remainingSeconds } from './eta';
 import {
   buildAppJob,
   buildRenderJob,
@@ -116,7 +117,7 @@ export function RenderDialog(props: RenderDialogProps) {
 type Stage =
   | { kind: 'form' }
   | { kind: 'meshing'; done: number; total: number }
-  | { kind: 'rendering'; progress: RenderProgress | undefined }
+  | { kind: 'rendering'; progress: RenderProgress | undefined; eta?: string }
   | { kind: 'result'; blob: Blob; url: string };
 
 const PHASES: Record<RenderProgress['phase'], string> = {
@@ -139,11 +140,13 @@ const QUALITY_LABELS: Record<RenderQuality, string> = {
 export function phaseText(
   progress: RenderProgress | undefined,
   engine: RenderEngine = 'app',
+  eta?: string,
 ): string {
   const phase = progress?.phase ?? 'starting';
   if (phase === 'starting' && engine === 'blender') return 'Starting Blender…';
   if (progress?.phase !== 'rendering') return PHASES[phase];
-  return `Rendering… ${Math.round(progress.fraction * 100)} %`;
+  const percent = `Rendering… ${Math.round(progress.fraction * 100)} %`;
+  return eta ? `${percent} · ${eta}` : percent;
 }
 
 const sizeValue = (w: number, h: number) => `${w}x${h}`;
@@ -302,7 +305,17 @@ export function RenderForm({
       }
       setStage({ kind: 'rendering', progress: undefined });
       const camera = jobCamera(chosen, doc, viewportCamera);
-      const onProgress = (progress: RenderProgress) => setStage({ kind: 'rendering', progress });
+      let etaStart: EtaStart | undefined;
+      const onProgress = (progress: RenderProgress) => {
+        let eta: string | undefined;
+        if (progress.phase === 'rendering') {
+          const now = performance.now();
+          etaStart ??= { at: now, fraction: progress.fraction };
+          const seconds = remainingSeconds(etaStart, now, progress.fraction);
+          if (seconds !== undefined) eta = etaText(seconds);
+        }
+        setStage({ kind: 'rendering', progress, ...(eta && { eta }) });
+      };
       const result =
         engineRunning === render
           ? await render.render(buildRenderJob(doc.name, meshed, chosen, camera), onProgress)
@@ -573,7 +586,11 @@ export function RenderForm({
       {stage.kind === 'rendering' && (
         <Progress
           label="Rendering"
-          text={phaseText(stage.progress, running.current === render ? 'blender' : 'app')}
+          text={phaseText(
+            stage.progress,
+            running.current === render ? 'blender' : 'app',
+            stage.eta,
+          )}
           fraction={stage.progress?.fraction}
         />
       )}
