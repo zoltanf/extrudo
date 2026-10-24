@@ -32,7 +32,8 @@ import {
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { WebGLPathTracer } from 'three-gpu-pathtracer';
+import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
+import { DenoiseMaterial, WebGLPathTracer } from 'three-gpu-pathtracer';
 import type {
   AppRenderJob,
   PictureRenderer,
@@ -41,7 +42,7 @@ import type {
 } from '../../platform/render';
 import { viewToThreeCamera } from './camera';
 import { woodTexture, worktopTexture } from './finishes';
-import { BOUNCES, SAMPLES, type TracerLike, tracePicture } from './pathTrace';
+import { BOUNCES, DENOISE, SAMPLES, type TracerLike, tracePicture } from './pathTrace';
 import { buildScene, type EnvironmentKind, type RenderMode } from './scenes';
 
 export interface AppRenderer extends PictureRenderer {
@@ -307,7 +308,11 @@ async function drawTraced(
     'trace',
   );
   const out = new WebGLRenderTarget(width, height);
+  const smooth = new WebGLRenderTarget(width, height);
   const output = new OutputPass();
+  const denoise = new DenoiseMaterial({ map: out.texture, ...DENOISE });
+  denoise.toneMapped = false;
+  const quad = new FullScreenQuad(denoise);
   const tracer = getTracer(renderer);
   try {
     onProgress({ phase: 'importing', fraction: 0.05 });
@@ -339,9 +344,14 @@ async function drawTraced(
     if (!done) return undefined;
     // The tracer's target is linear HDR: ACES and sRGB apply through OutputPass, as in Draft.
     output.render(renderer, out, tracer.target, 0, false);
+    // Then one edge-preserving blur on those display values (the threshold is a colour
+    // difference as seen): both targets are 8-bit with no colour space, so neither tone
+    // mapping nor an sRGB conversion happens twice.
+    renderer.setRenderTarget(smooth);
+    quad.render(renderer);
     renderer.setRenderTarget(null);
     const pixels = new Uint8Array(width * height * 4);
-    await renderer.readRenderTargetPixelsAsync(out, 0, 0, width, height, pixels);
+    await renderer.readRenderTargetPixelsAsync(smooth, 0, 0, width, height, pixels);
     onProgress({ phase: 'rendering', fraction: 0.95 });
     if (cancelled()) return undefined;
     onProgress({ phase: 'saving', fraction: 0.97 });
@@ -351,6 +361,9 @@ async function drawTraced(
     renderer.setRenderTarget(null);
     renderer.setSize(1, 1, false);
     output.dispose();
+    quad.dispose();
+    denoise.dispose();
+    smooth.dispose();
     out.dispose();
     built.dispose();
     renderer.renderLists.dispose();

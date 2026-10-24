@@ -3340,3 +3340,4 @@ Slice 3: the guide page `docs/guide/rendering.md` (two engines, quality per engi
 refusal, the app-engine troubleshooting) and the tile's clip (`e2e/record-assets.spec.ts`, test
 `'demo: render'`: opens the dialog, picks Wooden table and Draft, renders; the clip frames the
 dialog's top, 400 × 250). Keep both in step with the engine's rules above.
+Denoise: Standard and High only, **after** the output pass: `DenoiseMaterial` (a `FullScreenQuad`, `toneMapped = false`) reads the 8-bit `out` target (ACES + sRGB already applied, no colour space on either target, so nothing applies twice) into a second 8-bit target, which is what is read back; `DENOISE` in `pathTrace.ts` (sigma 5, kSigma 1, threshold 0.03, the library's defaults, one set for both). Draft never. Quad, material and target are disposed in the same `finally`. NOTICE credits glslSmartDeNoise.

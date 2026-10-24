@@ -208,7 +208,9 @@ The **Render Picture tile is ready everywhere**: the web build loses its
   progressive, one `renderSample()` per animation frame so the UI thread
   stays responsive; 128 samples for Standard and 512 for High (Blender's
   numbers, §3), 5 bounces, tiles so that one frame's work stays under ~50 ms
-  at 1080p. There is no denoiser; High's samples are the answer. Progress is
+  at 1080p. A denoise pass (owner, 2026-10-24) follows the output pass: the library's
+  `DenoiseMaterial` (an edge-preserving blur, sigma 5, threshold 0.03) runs on the
+  8-bit display values, so the threshold means a colour difference as seen. Progress is
   `samples / target`; Cancel stops the loop. Translucent bodies use
   `transmission`, which the path tracer honours.
 - The picture is rendered off screen into a `WebGLRenderTarget` of the
@@ -265,7 +267,7 @@ there again.
 - The web build gets the feature for real, and the tile's hint goes.
 - Standard and High depend on the GPU: minutes on an integrated one, a
   software renderer (CI, a VM) is far slower, so e2e renders a draft only.
-- The app's Standard shows grain (no denoiser, owner 2026-10-24); High is
-  the clean one, and Blender stays the better picture.
+- Standard is denoised and High is the cleanest; very fine detail can soften at
+  Standard, and Blender stays the better picture.
 - `three-gpu-pathtracer` is a new dependency (MIT, in the allow-list), listed
   in `NOTICE`.

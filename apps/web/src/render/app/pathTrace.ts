@@ -15,6 +15,13 @@ export const SAMPLES: Record<Exclude<RenderQuality, 'draft'>, number> = {
   high: 512,
 };
 
+/**
+ * The denoise pass's settings (DenoiseMaterial's own defaults): a blur of radius `kSigma · sigma`
+ * pixels that leaves out neighbours whose colour differs by more than `threshold` (0..1, on
+ * display values).
+ */
+export const DENOISE = { sigma: 5, kSigma: 1, threshold: 0.03 };
+
 /** How deep a path goes. */
 export const BOUNCES = 5;
 

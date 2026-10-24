@@ -1,6 +1,22 @@
 /** The path tracer's loop (ADR-0101 §6.2): the tiling, the fraction and the per-frame loop, with a fake tracer. */
 import { describe, expect, it, vi } from 'vitest';
-import { adaptTiles, chooseTiles, FRAME_BUDGET_MS, traceFraction, tracePicture } from './pathTrace';
+import {
+  adaptTiles,
+  chooseTiles,
+  DENOISE,
+  FRAME_BUDGET_MS,
+  traceFraction,
+  tracePicture,
+} from './pathTrace';
+
+describe('DENOISE', () => {
+  it('keeps its settings in range: a radius of a few pixels, a threshold below an edge', () => {
+    expect(DENOISE.sigma).toBeGreaterThan(0);
+    expect(DENOISE.sigma * DENOISE.kSigma).toBeLessThanOrEqual(8);
+    expect(DENOISE.threshold).toBeGreaterThan(0);
+    expect(DENOISE.threshold).toBeLessThan(0.2);
+  });
+});
 
 describe('chooseTiles', () => {
   it('splits 1080p 2×2, 4K 3×3 and above 4×4', () => {

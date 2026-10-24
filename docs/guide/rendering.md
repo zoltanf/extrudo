@@ -70,8 +70,9 @@ size larger than your graphics card can render and names the card's limit; pick 
 
 - **Draft** is one quick frame (seconds) with soft shadow maps.
 - **Standard** (128 samples) and **High** (512) trace light paths on the graphics card. The
-  picture refines on the progress bar, and Cancel stops it. There is no denoiser, so Standard
-  shows some grain; High is the clean one.
+  picture refines on the progress bar, and Cancel stops it. A denoise pass then smooths the
+  grain and keeps the edges, so the picture comes out clean. Very fine detail can soften a
+  little at Standard; High keeps the most.
 - On a mid-range graphics card at 1280 × 720, Standard takes 20 seconds to a minute (the studio's
   white sweep is the slowest) and High two to three minutes. Integrated graphics are far slower,
   and a computer without a graphics card (a virtual machine) is very slow.
@@ -111,7 +112,8 @@ picture itself is never stored in the design — it is a file you save where you
 - **Translucent bodies look best in Standard or High.** Draft's EEVEE renders glass only roughly.
 *In the app:*
 
-- **The picture is grainy** (In the app, Standard). Use **High**, or Blender where you have it.
+- **A little speckle is left, or fine detail looks soft** (In the app, Standard; mostly in glass and
+  its shadows). Use **High**, or Blender where you have it.
 - **The render is very slow** (In the app). Try **Draft** first, or a smaller size; Standard and
   High need a real graphics card.
 - **"This size is too large for this computer's graphics: up to 8192 × 8192."** The number is
