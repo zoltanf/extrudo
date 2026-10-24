@@ -1,5 +1,5 @@
 /**
- * Render Picture (P6-13, ADR-0101): the choices the Render dialog offers and
+ * Render Picture (P6-15, ADR-0101): the choices the Render dialog offers and
  * a design's `render` section stores. Core owns the words (labels and hints)
  * so the dialog, the CLI and the docs say the same thing.
  */

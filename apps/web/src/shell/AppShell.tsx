@@ -199,6 +199,7 @@ import {
   bodyEntries,
   bodyMetaOf,
   createBodyActions,
+  createFaceActions,
   followBodyNames,
   pendingBodyEntries,
 } from './bodies';
@@ -215,6 +216,7 @@ import type { DocsPage } from './docsLinks';
 import { docsPath } from './docsLinks';
 import { createFeatureActions } from './featureActions';
 import { createGroupActions } from './groupActions';
+import { sketchesWithHover } from './hoverDrawings';
 import { menuModel, NATIVE_MENU_OWN, QUIT_ID, SAVE_AS_ID } from './menuModel';
 import { createViewActions } from './namedViews';
 import { Splitter, usePanel } from './panels';
@@ -244,15 +246,40 @@ const TOPOLOGY_NOUNS = { face: 'Face', edge: 'Edge', vertex: 'Vertex' } as const
 const Viewport = lazy(() => import('../viewport/Viewport').then((m) => ({ default: m.Viewport })));
 
 /**
- * The view with the open dialog's preview, read here: a new preview renders
- * the view, not the whole shell (a handle drag, issue #76).
+ * The view with the open dialog's preview and the session's hover, read here:
+ * a new preview (a handle drag, issue #76) or a hover (ADR-0102 §3) renders
+ * the view, not the whole shell. The shell hands over the sketches without
+ * the hover and the ghosts as a function of the hovered features.
  */
 function DialogViewport({
   dialog,
+  session,
+  doc,
+  sketches,
+  ghostsFor,
   ...props
-}: Omit<ComponentProps<typeof Viewport>, 'preview'> & { dialog: DialogController | undefined }) {
+}: Omit<ComponentProps<typeof Viewport>, 'preview' | 'hover' | 'sketches' | 'ghosts'> & {
+  dialog: DialogController | undefined;
+  session: SessionStore;
+  doc: Parameters<typeof hoveredFeatureIds>[0];
+  sketches: readonly SketchDrawing[];
+  ghostsFor: (hovered: ReadonlySet<FeatureId>) => ReturnType<typeof ghostsOf>;
+}) {
   const preview = useViewPreview(dialog);
-  return <Viewport {...props} preview={preview} />;
+  const hover = useStore(session, (s) => s.hover);
+  // The pointer on a group chip's row highlights every member (P4-09, ADR-0065 §2); the
+  // session holds one hover, so a hovered member highlights its whole group.
+  const hovered = useMemo(() => hoveredFeatureIds(doc, hover), [doc, hover]);
+  const hoveredKey = [...hovered].join();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the key stands for `hovered`'s members.
+  const ghosts = useMemo(() => ghostsFor(hovered), [ghostsFor, hoveredKey]);
+  const shownSketches = useMemo(
+    () => sketchesWithHover(sketches, hover, hovered),
+    [sketches, hover, hovered],
+  );
+  return (
+    <Viewport {...props} preview={preview} hover={hover} sketches={shownSketches} ghosts={ghosts} />
+  );
 }
 /** The drawing tools: their own chunk, loaded as soon as a project opens (ADR-0014). */
 interface DrawingTools {
@@ -505,7 +532,6 @@ function Shell({
   const [toolbarTab, setToolbarTab] = useToolbarTab(mode);
   const activeSketchId = useStore(session, (s) => s.activeSketchId);
   const activeTool = useStore(session, (s) => s.activeTool);
-  const hover = useStore(session, (s) => s.hover);
   const picking = activeTool === CREATE_SKETCH;
   const drawing = mode === 'sketch' && isSketchTool(activeTool);
   const projecting = mode === 'sketch' && isProjectTool(activeTool);
@@ -708,7 +734,6 @@ function Shell({
     active: sectioning,
     model: mode === 'model',
     slice,
-    hover,
   });
   // 3D-print aids (P3-10): weight and filament estimates, and the overhang shading (view state
   // in the viewport store, like the section).
@@ -759,6 +784,13 @@ function Shell({
       exportBodies: (ids: readonly BodyId[]) => setModelExport({ bodies: ids }),
     }),
     [store, session, notify],
+  );
+  // Delete with only faces of solid bodies selected makes a Remove Faces
+  // feature in one step (P4-13, ADR-0099 §7); the pick rule takes a whole
+  // round or hole for one clicked face.
+  const faceActions = useMemo(
+    () => createFaceActions({ store, session }, kernel, () => bodies, notify),
+    [store, session, kernel, bodies, notify],
   );
   // The named views (ADR-0008's amendment): the browser's rows, the nav bar's
   // menu and the commands' shared actions.
@@ -870,6 +902,12 @@ function Shell({
     () => selection.filter((item) => item.kind === 'body').map((item) => item.id as BodyId),
     [selection],
   );
+  // Delete on a selection that is only faces of solid bodies (P4-13, ADR-0099 §7);
+  // a selection that mixes faces with other kinds keeps Delete's own behaviour.
+  const facesRemovable = useMemo(
+    () => selectedBodyIds.length === 0 && faceActions.applies(selection),
+    [selectedBodyIds, faceActions, selection],
+  );
   // The component all the selected bodies share, if they share one (activate and isolate act on it).
   const selectedComponent = useMemo(() => {
     if (selectedBodyIds.length === 0) return undefined;
@@ -969,7 +1007,7 @@ function Shell({
     );
     // Send to Slicer (P6-02) is ready where the platform can launch one.
     if (canSlicer) tools.add('slicer');
-    // Render Picture (P6-13) is ready where the platform can run Blender.
+    // Render Picture (P6-15) is ready where the platform can run Blender.
     if (canRender) tools.add('render');
     return tools;
   }, [dialogs, canSlicer, canRender]);
@@ -1203,11 +1241,20 @@ function Shell({
           store.getState().redo();
         },
         ...(listing ? { remove: () => {} } : m === 'sketch' && !drawing && { remove }),
-        // Delete with bodies selected in the model removes them (a Remove feature, P2-08).
+        // Delete with bodies selected in the model removes them (a Remove feature, P2-08);
+        // with only faces of solid bodies it makes a Remove Faces feature (P4-13, ADR-0099 §7).
         ...(!listing &&
           m === 'model' &&
           !dialogOpen &&
           selectedBodyIds.length > 0 && { remove: () => bodyActions.remove(selectedBodyIds) }),
+        ...(!listing &&
+          m === 'model' &&
+          !dialogOpen &&
+          facesRemovable && {
+            remove: () => {
+              void faceActions.remove(selection);
+            },
+          }),
         ...(m === 'sketch' &&
           (listing || host) && {
             construction:
@@ -1334,6 +1381,7 @@ function Shell({
       remove,
       dialogOpen,
       selectedBodyIds,
+      facesRemovable,
       selectedComponent,
       selectedComponentName,
       activeComponent,
@@ -1341,6 +1389,7 @@ function Shell({
       session,
       selection,
       bodyActions,
+      faceActions,
       viewActions,
       doc.views,
       construction,
@@ -1992,17 +2041,15 @@ function Shell({
     const field = dialogOpen?.spec.fields.find((f) => f.name === dialogOpen.pickField);
     return field?.kind === 'selection' && field.sketchPoints === true;
   }, [dialogOpen]);
-  // The pointer on a group chip's row highlights every member (P4-09, ADR-0065 §2); the session
-  // holds one hover, so a hovered member highlights its whole group.
-  const hoveredFeatures = useMemo(() => hoveredFeatureIds(doc, hover), [doc, hover]);
   // The ghosts of lost geometry (P4-12): of the hovered chip, the feature whose Fix References
   // dialog is open and the feature picked in the timeline; not of every feature at once.
   const pickedChips = useStore(timelineSelection, (s) => s.chips);
   // A sketch's Fix References is the Redefine Plane prompt.
   const fixingId =
     dialogOpen?.mode === 'edit' && dialogOpen.note !== undefined ? dialogOpen.id : redefining;
-  const ghosts = useMemo(
-    () =>
+  // `DialogViewport` passes the hovered chip's features (ADR-0102 §3).
+  const ghostsFor = useCallback(
+    (hoveredFeatures: ReadonlySet<FeatureId>) =>
       ghostsOf(doc.features, featureStatuses, [
         ...hoveredFeatures,
         ...(fixingId ? [fixingId] : []),
@@ -2024,7 +2071,6 @@ function Shell({
       doc.joints,
       featureStatuses,
       jointReports,
-      hoveredFeatures,
       fixingId,
       pickedChips,
       hoveredJoint,
@@ -2125,19 +2171,17 @@ function Shell({
           frame,
           data: sketch.data,
           active,
-          highlight: hoveredFeatures.has(feature.id),
+          // The hover (`highlight`, `hoverEntity`, `hoverProfile`) is added by `DialogViewport`.
           status: active ? status?.entities : undefined,
           // Curves picked in model mode (P2-03).
           ...(!active && pickingSketchPoints && { showPoints: true }),
           ...(!active && {
-            hoverEntity: sketchEntityIdsIn([hover], feature.id)[0],
             selectedEntities: sketchEntityIdsIn(shownSelection, feature.id),
           }),
           // One selected open fit spline shows its tangent grips (ADR-0063's third amendment).
           ...(active && { gripSpline: gripSplineOf(sketch.data, selection) }),
           ...(showProfiles && {
             profiles: sketchProfiles(sketch.data, fontsVersion),
-            hoverProfile: profileIdsIn([hover], feature.id)[0],
             selectedProfiles: profileIdsIn(shownSelection, feature.id),
           }),
         });
@@ -2150,8 +2194,6 @@ function Shell({
     activeSketchId,
     status,
     showProfiles,
-    hover,
-    hoveredFeatures,
     shownSelection,
     selection,
     pickingSketchPoints,
@@ -2279,16 +2321,13 @@ function Shell({
   // A feature dialog's Plane field (P2-10) picks origin planes and flat faces the same way.
   const dialogPlanes = useMemo(
     () =>
-      mode === 'model' && !picking
-        ? dialogPlanePicker(dialog, dialogOpen, session, hover)
-        : undefined,
-    [mode, picking, dialog, dialogOpen, session, hover],
+      mode === 'model' && !picking ? dialogPlanePicker(dialog, dialogOpen, session) : undefined,
+    [mode, picking, dialog, dialogOpen, session],
   );
   const planePicker = useMemo<PlanePicker | undefined>(
     () =>
       picking
         ? {
-            hover: hover?.kind === 'plane' ? hover.id : undefined,
             onHover: (plane) => session.getState().setHover({ kind: 'plane', id: plane }),
             onLeave: (plane) => {
               const current = session.getState().hover;
@@ -2312,7 +2351,7 @@ function Shell({
             }),
           }
         : (section.planePicker ?? dialogPlanes),
-    [picking, hover, session, kernel, dialogPlanes, section.planePicker],
+    [picking, session, kernel, dialogPlanes, section.planePicker],
   );
 
   return (
@@ -2523,17 +2562,18 @@ function Shell({
               activeComponent={doc.components?.find((c) => c.id === activeComponent)?.name}
               isolatedComponent={doc.components?.find((c) => c.id === isolatedComponent)?.name}
               onExitIsolation={() => session.getState().isolateComponent(undefined)}
+              session={session}
+              doc={doc}
               sketches={sketches}
               sketchPlane={sketchPlane}
               planePicker={planePicker}
               construction={constructionDrawings}
-              ghosts={ghosts}
+              ghostsFor={ghostsFor}
               canvases={canvasList}
               calibration={calibration}
               sketchInput={sketchInput}
               commandRunning={drawing || picking || projecting || measuring || section.choosing}
               onStopCommand={stopCommand}
-              hover={hover}
               selection={jointItems ?? dialogItems ?? selection}
               modelSelect={modelSelect}
               viewMenu={viewMenu}

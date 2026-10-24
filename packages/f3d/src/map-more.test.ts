@@ -9,7 +9,7 @@ import { kernelFeatures, loadOcct, RecomputeEngine } from '@extrudo/kernel/node'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ParameterValue } from './decode/parameters';
 import { f3dToDesign } from './map';
-import { type F3dDesign, type F3dExtrude, type F3dFeature, IDENTITY } from './model';
+import { type F3dDesign, type F3dExtrude, type F3dFace, type F3dFeature, IDENTITY } from './model';
 
 let kernel: KernelType;
 beforeAll(async () => {
@@ -850,6 +850,78 @@ describe('f3dToDesign: copying features', () => {
       kind: 'OffsetFaces',
       reason: 'it moves faces a pattern or mirror copied (not imported yet)',
     });
+  });
+
+  /** A deletion of Extrude2's hole wall (a cylinder, 0.5 mm radius round (3.8, 0) mm), as the file records it. */
+  const holeWall = (): F3dFace => ({
+    tags: [{ token: '3', designs: [4] }],
+    feature: 4,
+    surface: {
+      kind: 'cone',
+      center: [0.38, 0, 0],
+      axis: [0, 0, 1],
+      radius: 0.05,
+      slope: 0,
+    } as F3dFace['surface'],
+  });
+  const deletion = (faces: F3dFace[]): F3dFeature => ({
+    ...base,
+    type: 'delete-faces',
+    id: 8,
+    kind: 'DeleteFace',
+    name: 'DeleteFace1',
+    faces,
+  });
+
+  it('replays a deletion of a named face as a Remove Faces step', async () => {
+    const f3d = washerWithHole();
+    f3d.features.push(deletion([holeWall()]));
+    const { design, report } = f3dToDesign(f3d, 'Washer');
+    expect(report.imported).toContain('DeleteFace1');
+    const step = design.toJSON().features.find((f) => f.name === 'DeleteFace1');
+    expect(step?.type).toBe('removeFaces');
+    expect((step?.inputs.faces as { refs: unknown[] } | undefined)?.refs).toHaveLength(1);
+    // The hole's wall removed, the washer closes up again.
+    expect(await volumes(f3d)).toEqual([expect.closeTo(RING, 3)]);
+  });
+
+  it('leaves out a deletion with a face that cannot be named, all or nothing', () => {
+    const f3d = washerWithHole();
+    const stray: F3dFace = {
+      tags: [{ token: '3', designs: [99] }],
+      feature: 99,
+      surface: { kind: 'plane', point: [0, 0, 0.08], normal: [0, 0, 1] },
+    };
+    f3d.features.push(deletion([holeWall(), stray]));
+    const { report } = f3dToDesign(f3d, 'Washer');
+    expect(report.imported).not.toContain('DeleteFace1');
+    expect(report.skipped).toContainEqual(
+      expect.objectContaining({
+        name: 'DeleteFace1',
+        reason: '1 of its 2 faces could not be named',
+      }),
+    );
+    const g = washerWithHole();
+    g.features.push(deletion([stray]));
+    expect(f3dToDesign(g, 'Washer').report.skipped).toContainEqual(
+      expect.objectContaining({ reason: 'none of its 1 faces could be named' }),
+    );
+  });
+
+  it('leaves out a deletion of faces a pattern copied, saying why', () => {
+    const f3d = washerWithHole();
+    f3d.features.push(
+      deletion([
+        { tags: [{ token: '3', designs: [4] }], feature: 4, instance: { pattern: 7, code: 2 } },
+      ]),
+    );
+    const { report } = f3dToDesign(f3d, 'Washer');
+    expect(report.skipped).toContainEqual(
+      expect.objectContaining({
+        name: 'DeleteFace1',
+        reason: 'it deletes faces a pattern or mirror copied (not imported yet)',
+      }),
+    );
   });
 
   /** A torus (ring 24 mm, tube 8 mm) on the YZ plane, 75 mm up: as the file places it. */

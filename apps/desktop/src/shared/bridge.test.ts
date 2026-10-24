@@ -205,7 +205,7 @@ describe('preload bridge (ADR-0075 §1)', () => {
     ]);
   });
 
-  it('routes the render status, start and cancel, and subscribes to progress once (P6-13)', async () => {
+  it('routes the render status, start and cancel, and subscribes to progress once (P6-15)', async () => {
     const job = {
       project: 'A',
       obj: '',

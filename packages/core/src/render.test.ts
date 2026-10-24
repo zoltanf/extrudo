@@ -1,5 +1,5 @@
 /**
- * The `render` section and its command (P6-13, ADR-0101 §4): what the schema
+ * The `render` section and its command (P6-15, ADR-0101 §4): what the schema
  * accepts, and that `render.set` validates, replaces and undoes cleanly.
  */
 import { describe, expect, it } from 'vitest';

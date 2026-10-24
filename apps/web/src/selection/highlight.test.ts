@@ -1,11 +1,14 @@
-import type { BodyId } from '@extrudo/core';
+import type { BodyId, SelectionItem } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import {
   bodyHighlight,
+  COLLIDE,
+  createHighlightMemo,
   edgeSegmentsOf,
   type FacePalette,
   faceColor,
   HOVER,
+  highlightKeys,
   paintFaces,
   SELECTED,
   vertexPositions,
@@ -15,6 +18,48 @@ import { boxMesh } from './testing';
 const A = 'a' as BodyId;
 const mesh = boxMesh();
 const palette: FacePalette = { base: [0, 0, 0], accent: [1, 1, 1] };
+
+describe('the highlight memo (ADR-0102 §2)', () => {
+  const B = 'b' as BodyId;
+  const meshB = boxMesh();
+  const marksOf = (
+    memo: ReturnType<typeof createHighlightMemo>,
+    hover: SelectionItem | undefined,
+    selection: SelectionItem[] = [],
+    collide?: readonly number[],
+  ) => {
+    const keys = highlightKeys(hover, selection);
+    return {
+      a: memo.marks(A, mesh, keys, hover, selection, collide),
+      b: memo.marks(B, meshB, keys, hover, selection, undefined),
+    };
+  };
+
+  it('a hover on body A leaves body B its marks object', () => {
+    const memo = createHighlightMemo();
+    const selection: SelectionItem[] = [{ kind: 'face', id: 'b:2' }];
+    const first = marksOf(memo, { kind: 'face', id: 'a:1' }, selection);
+    // A fresh selection array with the same items, the hover on another face of A.
+    const second = marksOf(memo, { kind: 'face', id: 'a:3' }, [{ kind: 'face', id: 'b:2' }]);
+    expect(second.b).toBe(first.b);
+    expect(second.a).not.toBe(first.a);
+    expect([...second.a.faces]).toEqual([0, 0, 0, HOVER, 0, 0]);
+    expect([...second.b.faces]).toEqual([0, 0, SELECTED, 0, 0, 0]);
+    // The same hover again, as a new item object: nothing changes.
+    expect(marksOf(memo, { kind: 'face', id: 'a:3' }, selection).a).toBe(second.a);
+  });
+
+  it('recomputes when the mesh or the colliding faces change', () => {
+    const memo = createHighlightMemo();
+    const keys = highlightKeys(undefined, []);
+    const first = memo.marks(A, mesh, keys, undefined, [], undefined);
+    expect(memo.marks(A, boxMesh(), keys, undefined, [], undefined)).not.toBe(first);
+    const collided = memo.marks(A, mesh, keys, undefined, [], [5]);
+    expect(collided.faces[5]).toBe(COLLIDE);
+    memo.prune(new Set());
+    expect(memo.marks(A, mesh, keys, undefined, [], [5])).not.toBe(collided);
+  });
+});
 
 describe('bodyHighlight', () => {
   it('marks the faces, edges and vertices of its body', () => {

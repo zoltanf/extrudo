@@ -1,4 +1,4 @@
-"""Render Picture: Extrudo's headless Blender script (P6-13, ADR-0101 §3).
+"""Render Picture: Extrudo's headless Blender script (P6-15, ADR-0101 §3).
 
 Run by the desktop app's main process (never by hand in normal use) as
 

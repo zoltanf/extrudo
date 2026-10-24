@@ -2,7 +2,7 @@
 title: Wall Thickness
 section: Tools
 category: 3D Print
-order: 119
+order: 120
 ---
 
 # Wall Thickness

@@ -39,7 +39,7 @@ import { KeyboardPage } from './KeyboardPage';
 const SECTION_KEY = 'settings.section';
 const EXPORT_KEY = 'export.model';
 const SLICER_PATHS_KEY = 'slicers.paths';
-// Where Blender is, for Render Picture (P6-13); empty: main searches.
+// Where Blender is, for Render Picture (P6-15); empty: main searches.
 const BLENDER_PATH_KEY = 'blender.path';
 // The desktop MCP server (P6-08, ADR-0087 §3): main reads both itself.
 const MCP_ENABLED_KEY = 'mcp.enabled';

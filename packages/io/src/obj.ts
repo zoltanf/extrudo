@@ -12,7 +12,7 @@
  * Extrudo reads them as millimetres unless the user says otherwise) and no
  * up axis, so an OBJ from a Y-up tool needs the import's `up` setting.
  *
- * `writeObj` (P6-13, ADR-0101 §2) is the other direction: the bodies as an
+ * `writeObj` (P6-15, ADR-0101 §2) is the other direction: the bodies as an
  * OBJ plus an MTL with one coloured material per body, which Render Picture
  * hands to Blender.
  */

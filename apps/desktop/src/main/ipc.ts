@@ -66,7 +66,7 @@ export interface IpcDependencies {
   quit(): void;
   /** Slicer detection and launch (P6-02). */
   slicers: SlicerService;
-  /** Render Picture with Blender (P6-13, ADR-0101): status, one render at a time, cancel. */
+  /** Render Picture with Blender (P6-15, ADR-0101): status, one render at a time, cancel. */
   blender: BlenderService;
   getWindow: () => BrowserWindow | null;
   /** Auto-update (P6-01 slice 4): a check, an install, and the release page main built. */
@@ -211,7 +211,7 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   ipcMain.handle(CHANNELS.slicerOpen, (_event, file: unknown, id: unknown) =>
     guarded(() => deps.slicers.open(file, id)),
   );
-  // Render Picture (P6-13): the job is checked in the service; a malformed one
+  // Render Picture (P6-15): the job is checked in the service; a malformed one
   // crosses as the error envelope, a failed render as `{ ok: false }` data.
   ipcMain.handle(CHANNELS.renderStatus, () => guarded(() => deps.blender.status()));
   ipcMain.handle(CHANNELS.renderStart, (_event, job: unknown) =>

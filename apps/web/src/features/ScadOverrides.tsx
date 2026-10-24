@@ -12,6 +12,10 @@
  * rows' order is `labels.scad`, which this component brings in line with the
  * list when it arrives (the pairs are packed in that order: `scadOverrides.ts`).
  */
+
+// The components here read the dialog controller's state through its methods
+// (`context()`) while drawing: the React Compiler must not memoise them (ADR-0102 §5).
+'use no memo';
 import { type AttachmentId, formatQuantity, isScadMediaType } from '@extrudo/core';
 import type { ScadParameter } from '@extrudo/kernel';
 import { CircleAlert } from 'lucide-react';

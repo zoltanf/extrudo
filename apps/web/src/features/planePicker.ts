@@ -40,7 +40,6 @@ export function dialogPlanePicker(
   controller: DialogController | undefined,
   open: DialogShell | undefined,
   session: SessionStore,
-  hover: SelectionItem | undefined,
 ): PlanePicker | undefined {
   const field = planeField(open);
   if (!controller || !field) return undefined;
@@ -49,7 +48,6 @@ export function dialogPlanePicker(
     .filter((r) => r.kind === 'plane')
     .map((r) => r.id);
   return {
-    hover: hover?.kind === 'plane' ? hover.id : undefined,
     ...(selected.length > 0 && { selected }),
     onHover: (plane) => select.onHover({ kind: 'plane', id: plane }),
     onLeave: (plane) => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createRenderMeter, formatRenderStats } from './renderMeter';
+import { createRenderMeter, formatLongTasks, formatRenderStats } from './renderMeter';
 
 describe('render meter', () => {
   it('counts the frames of the last second and averages their time', () => {
@@ -22,5 +22,10 @@ describe('render meter', () => {
     expect(formatRenderStats(undefined)).toBe('render —');
     expect(formatRenderStats({ fps: 58, frameMs: 1.44 })).toBe('58 fps · 1.4 ms');
     expect(formatRenderStats({ fps: 0, frameMs: 23.6 })).toBe('idle · 24 ms');
+  });
+
+  it('appends the long-task count only when there is one', () => {
+    expect(formatLongTasks(0)).toBe('');
+    expect(formatLongTasks(3)).toBe(' · 3 long');
   });
 });

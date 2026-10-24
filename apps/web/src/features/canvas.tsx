@@ -416,6 +416,8 @@ export function formatSize(bytes: number): string {
  * Esc cancels the calibration rather than the dialog.
  */
 export function CanvasCalibrate({ open, controller }: DialogExtraProps) {
+  // `controller.context()` is read while drawing: not memoised (ADR-0102 §5).
+  'use no memo';
   const state = useStore(calibrationStore);
   const [real, setReal] = useState(DEFAULT_REAL_DISTANCE);
   const ctx = controller.context();

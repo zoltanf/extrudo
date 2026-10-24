@@ -24,6 +24,16 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   docker` (after `pnpm build`). Arch and Ubuntu differ by about 12 pixels per
   shot; the tolerance is 0.1 %.
 
+- **Hover is reported on the next animation frame** (ADR-0102 §2,
+  `viewport/pointer.ts`): a `page.mouse.move` over the view updates
+  `data-model-hover` (and a sketch tool's preview) one frame later, not
+  synchronously. Read it with a polling assertion (`toHaveAttribute`,
+  `expect.poll`), as `clickWhere` does; a press, a release or the pointer
+  leaving the view flushes the pending report first, so a click always acts
+  on the hover at its own position. The autosave's thumbnail is taken in idle
+  time after a save and never while a pointer button is down; an export or
+  anything else that calls `autosave.flush()` takes a pending one at once.
+
 - **CI shards by duration.** `E2E_SHARD=<current>/<total>` (set by `ci.yml`,
   four shards) makes `playwright.config.ts` give each project only that
   shard's spec files: `scripts/e2e-shards.ts` deals the files longest first to
@@ -1379,6 +1389,87 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   (`toBeCloseTo(v, -1)` for a cylinder hole). A copy body is "Body2" and so
   on in creation order.
 
+### `e2e/perf.spec.ts`
+
+- **Performance e2e** (`e2e/perf.spec.ts`, P6-13, ADR-0100 §1 and §4):
+  main-thread budgets for opening, orbiting, editing and hovering, driven
+  through the two example designs `#/example/pcb-enclosure` (B5) and
+  `#/example/knurled-knob` (B7), one test each (no serial mode: both report
+  even when one fails; 180 s timeout). What it measures: a
+  `page.addInitScript` installs `window.__perf` (`long`, `events`, `frames`)
+  with a `PerformanceObserver` for `longtask` entries, one for `event` entries
+  (`durationThreshold: 16`, so quick events are not listed — both `observe`
+  calls wrapped in try/catch for shells without the entry type) and a
+  `requestAnimationFrame` counter; the same init script sets
+  `window.__extrudoRenderLog = []`, and the app's `RenderMeterProbe`
+  (`apps/web/src/viewport/Viewport.tsx`) pushes every `renderer.render` call's
+  `{ start, ms }` into it **only when that array exists** — a normal visit
+  never logs renders. A `sample()` helper reads, between two
+  `performance.now()` values read through `page.evaluate` right before and
+  after each step (open, orbit, edit, undo, hover+click): the counts, total
+  and max of the window's long tasks, per task the render log's time inside
+  it (`render`: log entries whose `start` lies in
+  `[task.start, task.start + task.dur]`) and the **app's own JS inside it**
+  (`app`), budgeted as `appMax`/`appTotal` (ADR-0100 §4). The app time is the
+  merged union of the `long-animation-frame` observer's script durations
+  (LoAF, Chromium 123+: the frame's JS — module evaluation, worker message
+  handlers, rAF callbacks, timers — each with its exact duration), the render
+  log entries and the event handlers' own spans, so work covered twice (a
+  render call inside its rAF callback's script) counts once. This matters
+  because a SwiftShader frame's long task is 97 %+ **native** GPU-process
+  wait (CPU profile: 45 % `(program)`, 0–3 % JS; the render log covers only
+  2–8 % of the task) — no duration-minus-render subtraction can remove that,
+  so the budget binds the JS and the rasteriser's wait passes unmeasured.
+  Also per window: `renderTotal`, `jsTotal` (all the window's app JS,
+  sub-50 ms work included) and the frame rate. The worst event is the
+  `event` entry with the largest **handler time** (`proc = processingEnd −
+  processingStart`, which the next paint does not inflate), reported with both
+  `dur` and `proc`. The round trips subtract their window's `jsTotal` too
+  (`roundTripAppMs = roundTripMs − jsTotal(window)`, `roundTripMs` kept
+  for the record). The renderer string is read once per test
+  (`WEBGL_debug_renderer_info`, `UNMASKED_RENDERER_WEBGL`, on a throwaway
+  canvas) and lands in `perf.json`: when it contains `SwiftShader` or
+  `llvmpipe` the fps floor is skipped and a `software rendering` annotation
+  carries the string; the fps itself is still recorded. The round-trip
+  observer is armed with `page.evaluate` **before**
+  the edit and after the Parameters dialog's field is visible (ADR-0102 §7:
+  armed before the dialog opened, it also timed opening it, half of B5's
+  round trip) — the expression field applies while typing, so an observer
+  armed after `fill` sees nothing — and stores its Promise on `window.__perf.roundTrip`
+  (`evaluateHandle` would wait for the Promise at arm time, defeating
+  arm-then-act; `page.evaluate` awaits it at read time instead). One
+  `MutationObserver` on `document.documentElement` (`subtree`,
+  `attributeFilter: ['data-model-status', 'data-bodies']`) re-queries
+  `[data-model-status]` and `[data-bodies]` on every callback (React may
+  replace the nodes); it marks "changed" when the status is anything but
+  `ready` or `data-bodies` mutates (a fast round trip can flip ready → busy →
+  ready between two callbacks) and resolves with the elapsed ms once changed
+  and the status is `ready`, or -1 after 30 s (an edit's -1 fails with a
+  message saying the observer is wrong, not the app). Budgets (ADR-0100 §1,
+  on app time since §4): open appMax < 400, appTotal < 1200, B5 < 8 s / B7 <
+  10 s; orbit appMax < 100 and ≥ 20 fps (GPU only); edit appMax < 150
+  (§1's size again since ADR-0102 §1: it had been widened to 500 because the
+  autosave's thumbnail — an `IDBTransaction.oncomplete` task of 106–216 ms
+  under SwiftShader — ran on the edit's path; it now runs in idle time with
+  an async readback — the `top` invokers in a failing `perf.json` say which
+  script ran), undo appMax < 150, roundTripAppMs B5 <
+  1.5 s / B7 < 5 s with roundTripMs > 0; hover+click
+  worst event's proc < 250 ms. The raw numbers are attached to the
+  report as `perf.json` before the assertions, so a failure still carries
+  them. The hover and the orbit start at the projection of the camera target
+  (`projector(viewport)(target)`), the model's centre in the part of the view
+  the browser panel leaves open — the region's box centre is not on the model
+  (ADR-0007's amendment). The open window starts right before
+  `page.goto('./#/example/<id>')`: the home screen is loaded first
+  (`page.goto('./')`, wait for `New design`), and a hash navigation keeps the
+  document (and its clock), with a fallback to 0 if a full navigation resets
+  `performance.now()`. With a real GPU (`E2E_GPU=1`) a long task is app work
+  and the budgets bind it directly; under SwiftShader `longTotal` and the fps
+  are the rasteriser's and the budgets look at `appMax`/`appTotal` (the JS)
+  instead — if an app budget fails, look at the failing task's `app` and the
+  LoAF scripts in the trace before touching anything: a task with `app` ≈ 0
+  is the rasteriser's, not the app's.
+
 ### `e2e/plugins.spec.ts`
 
 - P6-03 (ADR-0077): Ctrl+K "Plugins…" opens the `dialog` "Settings" at
@@ -1549,12 +1640,30 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 ### `e2e/render-tile.spec.ts`
 
-- **Render Picture tile** (P6-13, ADR-0101), web build: the 3D Print tab's Output
+- **Render Picture tile** (P6-15, ADR-0101), web build: the 3D Print tab's Output
   group has the button "Render Picture" (`exact`), `aria-disabled="true"`; its
   tooltip reads "Rendering needs the desktop app and Blender (free, blender.org)."
   (Playwright can't click it: it is not enabled). The dialog needs `platform.render`, which the web
   build lacks; it is covered by `RenderDialog.test.tsx` (jsdom + Testing Library
   with a fake renderer). `E2E_PORT=4454`.
+
+### `e2e/remove-faces.spec.ts`
+
+- **Remove Faces e2e** (`e2e/remove-faces.spec.ts`, P4-13): the dialog is the region
+  "Remove Faces dialog", its one field the button "Faces" (`exact: true`, prompt "Pick faces",
+  "1 face" once picked) and the count the read-only line `[data-info="picked"]` ("1 face" /
+  "N faces", the pick rule's union, so it can lag the click a moment: poll it). The hole's
+  wall of a Ø12 through hole at (5, −6) in the 40 cube hovers as `face:` at about
+  (0.8, −1.8, 34) in the home view (the far side of the wall, its upper band: deeper than
+  ~17 mm below the rim the wall is out of sight at that angle); the pick is the wall alone
+  (the caps grow to meet it), so the info line says "1 face". After OK the cube is
+  `Body1:6:40,40,40` again and the 3MF's volume is the plain box's (planar faces tessellate
+  exactly). `data-model-hover`/`-selection` name bodies by their **UUID**, not "Body1".
+  Delete on a selected face makes the feature (a fillet round's face at (0, −19.1, 39.1)
+  after a 3 mm fillet on the top front edge at (0, −20, 40)): one chip "Remove Faces2"
+  (no space before the count) and the sharp edge back. The tooltip clip's scene starts from
+  `fixtures/demos/removeFaces.extrudo` (the offset-face plate with its hole, rebuilt by
+  `packages/cli/src/demo-designs.test.ts`).
 
 ### `e2e/revolve.spec.ts`
 

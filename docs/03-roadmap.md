@@ -1054,6 +1054,27 @@ end to end, faster than in established desktop CAD.
     command or all at once; a toolbar tile's right-click "Change shortcut…" and a
     key button on each Search row open it. The preference `keymap.overrides`
     holds only the changes.
+- [ ] **P4-13 Remove Faces (defeaturing; #78).** ADR-0099. Added 2026-10-23
+  (the owner). A rounded or drilled imported body loses a round or a hole in
+  one click; the `.f3d` import replays the file's face deletions.
+  - [x] Feature `removeFaces` (Solid › Modify): the picked faces are removed
+    and their neighbours extended to close the gap, all or nothing; facade
+    `removeFaces`, persistent face references (removed faces become lost
+    references, extended neighbours keep their names), API method and docs
+    (`pnpm api:generate`)
+  - [x] Picks: a click on a round takes its smooth run, a click on a hole's
+    wall takes the hole (bottom, counterbore, countersink, drill point)
+  - [x] A clear refusal when OCCT can't close the gap, saying what to add to
+    the pick
+  - [x] Dialog with live preview, tooltip clip, guide (`features-and-timeline.md`:
+    when to delete the feature, when to use Remove Faces), tool page
+  - [x] Delete on selected faces makes the feature in one step
+  - [x] `.f3d` import: face deletions become Remove Faces (ADR-0083's next
+    amendment, with the corpus numbers)
+  - [x] `.f3d` import: the faces they delete named right (rounds by geometry,
+    moved faces by their earlier state; ADR-0083's amendment of 2026-10-23);
+    on the bumper 5 of 28 take effect, the rest stop on OCCT limits (Offset
+    Face's sharp-corner guard, Remove Faces on one face of a round loop)
 
 ---
 
@@ -1320,8 +1341,40 @@ end to end, faster than in established desktop CAD.
   and stays under 8 kB; "Copy report" copies the full Markdown; the timeline
   is left out unless ticked; `bugReport.test.ts` and `e2e/bug-report.spec.ts`
   pass; the desktop allow-list test covers the query string.
+- [ ] **P6-13 Performance guardrails** (owner, 2026-10-23; ADR-0100; slice A of
+  `docs/plans/perf-baseline-2026-10-23.md`; slices 1–4 done 2026-10-23, the
+  owner ticks after the merge). The app's snappiness must survive
+  new features: `e2e/perf.spec.ts` drives B5 and B7 (open, orbit, parameter
+  edit and undo, hover and click) with a `PerformanceObserver` and asserts
+  main-thread budgets on the app's own time — a long task minus the render
+  time inside it (ADR-0100 §1 and §4) — attaching the raw numbers to the
+  report;
+  a dev-only long-task observer counts tasks over 50 ms in the status bar next
+  to the render meter (§2); `scripts/measure-startup.mjs` handles the folded
+  template gallery, gets `--json`, and the release checklist runs it (§3).
+  Acceptance: `pnpm check`; the spec green on CI three runs in a row; the
+  production bundle has no observer code; the startup script's three visits
+  print on a machine with a stored design.
+- [ ] **P6-14 UI-thread latency** (owner, 2026-10-23; ADR-0102; slice B of
+  `docs/plans/perf-baseline-2026-10-23.md`). Four measured changes, each a
+  commit with its before/after numbers from `e2e/perf.spec.ts`: the autosave
+  thumbnail leaves the edit's critical path (skipped when nothing changed,
+  idle-scheduled, async pixel readback; the spec's edit budget returns to
+  150 ms); hover is O(changed) (per-body highlight memo, the pick index built
+  in idle time after a recompute, picking once per animation frame with a
+  synchronous flush before a click); the shell stops re-rendering on every
+  edit and hover (React Compiler behind a gate, else `memo` on the panels
+  and the hover subscription moved into the leaves); project open measured
+  from `perf.json`'s `top` scripts and the largest of ours fixed by moving
+  derived geometry (edge segments, silhouette plan, pick index) into idle
+  time. Acceptance: `pnpm check`, the full e2e suite green on CI, the perf
+  spec's numbers before and after in each commit, ADR-0102's amendment with
+  the compiler decision. Changes 1–4 done 2026-10-24 (ADR-0102 §5–§7: the
+  React Compiler kept through plugin-react's native option; project open's
+  largest cost was the WebGL probe, now run on the home screen, not the
+  bodies' geometry); left unticked for the owner's review.
 
-- [x] **P6-13 Render Picture with Blender** (owner, 2026-10-23; ADR-0101). Done 2026-10-23.
+- [x] **P6-15 Render Picture with Blender** (owner, 2026-10-23; ADR-0101). Done 2026-10-23.
   FR-3DP-08. A Render Picture tile (3D Print › Output, desktop only) opens a
   dialog with scene presets (studio, table, workbench, outdoor), a finish per
   body (the body's colour stays the base colour), the camera (automatic,

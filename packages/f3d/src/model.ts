@@ -197,7 +197,10 @@ export interface F3dFace {
   tags: FaceTag[];
   /** The timeline feature that made the face (from its first tag). */
   feature?: number;
-  /** The face's surface in model space, cm, when the B-rep still has it. */
+  /**
+   * The face's surface in model space, cm, when the B-rep still has it: in
+   * the state the feature picked it in, as near as the streams keep it.
+   */
   surface?: AsmSurface;
   /**
    * A face a mirror or pattern copied: the copying feature (record) and the
@@ -206,6 +209,14 @@ export interface F3dFace {
   instance?: { pattern: number; code: number };
   /** A copy's own surface, where the copy is (`surface` is the copied face's). */
   own?: AsmSurface;
+  /**
+   * The face's other surfaces in the states of the body the B-rep streams
+   * keep (an offset moved it before or after the feature picked it), nearest
+   * that state first; none when every state has `surface`.
+   */
+  states?: AsmSurface[];
+  /** The solved body's surface of the face, where `surface` is another state's. */
+  solved?: AsmSurface;
 }
 
 /** An edge, as the two faces it runs between and the faces that end it. */
@@ -274,6 +285,12 @@ export interface F3dOffsetFaces extends FeatureBase {
   /** The faces it moves, each named by its recipe's first face. */
   faces: F3dFace[];
   distance?: ParameterValue;
+}
+
+export interface F3dDeleteFaces extends FeatureBase {
+  type: 'delete-faces';
+  /** The faces it deletes, each named by its recipe's first face. */
+  faces: F3dFace[];
 }
 
 export interface F3dMirror extends FeatureBase, CopiedObjects {
@@ -352,6 +369,7 @@ export type F3dFeature =
   | F3dEdgeFeature
   | F3dCircularPattern
   | F3dOffsetFaces
+  | F3dDeleteFaces
   | F3dMirror
   | F3dRectangularPattern
   | F3dSweep
@@ -660,6 +678,19 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         return other ? participantsOf(seg, other) : [];
       }),
     );
+  // The body faces a feature names through its operand groups: each face
+  // operand's recipe lists the face first, then its neighbours.
+  const faceOperands = (scope: Scope): F3dFace[] => {
+    const out: F3dFace[] = [];
+    for (const group of scope.refs) {
+      if (seg.typeOf(group)?.guid !== OPERAND_GROUP) continue;
+      for (const recipe of recipesIn(seg, group)) {
+        const first = tryDecode(`face #${recipe}`, () => readEdgeRecipe(seg, recipe))?.faces[0];
+        if (first) out.push(faceOf(first.tags, faces, featureOf, instances));
+      }
+    }
+    return out;
+  };
   // Feature record → the surfaces of the B-rep faces tagged with its operations.
   // `own`: not the copies a mirror or pattern made of them.
   // Indexed once (record → operations, operation → faces), so each call costs
@@ -901,21 +932,17 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       });
     } else if (FEATURE_TYPES[type.guid] === 'OffsetFaces') {
       // Its face operands sit in an operand group; each recipe names the face first.
-      const moved: F3dFace[] = [];
-      for (const group of scope.refs) {
-        if (seg.typeOf(group)?.guid !== OPERAND_GROUP) continue;
-        for (const recipe of recipesIn(seg, group)) {
-          const first = tryDecode(`face #${recipe}`, () => readEdgeRecipe(seg, recipe))?.faces[0];
-          if (first) moved.push(faceOf(first.tags, faces, featureOf, instances));
-        }
-      }
       const distance = base.parameters.find((p) => p.kind === 'distance');
       features.push({
         type: 'offset-faces',
         ...base,
-        faces: moved,
+        faces: faceOperands(scope),
         ...(distance ? { distance } : {}),
       });
+    } else if (FEATURE_TYPES[type.guid] === 'DeleteFaces') {
+      // Like Offset faces: an operand group of face operands, each recipe naming
+      // the face first. No distance (nothing else understood: FORMAT.md).
+      features.push({ type: 'delete-faces', ...base, faces: faceOperands(scope) });
     } else if (FEATURE_TYPES[type.guid] === 'Mirror') {
       const inside = insideOnce;
       const copied = tryDecode(`mirror #${id}`, () => readCopied(seg, scope, inside));
@@ -1282,9 +1309,47 @@ function faceOf(
     if (own) out.own = own.surface;
     return out;
   }
-  const found = candidates[0];
+  const states = statesOf(tags, candidates);
+  const [found] = states;
   if (found) out.surface = found.surface;
+  const solved = candidates[0];
+  if (solved && solved !== found) out.solved = solved.surface;
+  const seen = new Set(found ? [JSON.stringify(found.surface)] : []);
+  const others: AsmSurface[] = [];
+  for (const state of states) {
+    const key = JSON.stringify(state.surface);
+    if (state.surface.kind === 'other' || seen.has(key)) continue;
+    seen.add(key);
+    others.push(state.surface);
+  }
+  if (others.length > 0) out.states = others;
   return out;
+}
+
+/**
+ * A face's states the B-rep streams hold, the one a reference means first. A
+ * face keeps a tag per operation that made or later changed it (an offset, a
+ * deletion beside it); a recipe's tags list those the face had when the
+ * feature picked it, and the streams keep earlier states of the body next to
+ * the solved one. The state whose tags differ least from the recipe's is the
+ * face as the feature saw it (a later offset may have moved the solved one);
+ * on a tie the first, the solved body's. States with a surface this reader
+ * knows come first.
+ */
+function statesOf(tags: FaceTag[], candidates: AsmFace[]): AsmFace[] {
+  if (candidates.length < 2) return candidates;
+  const want = new Set(tags.flatMap((t) => t.designs.map((d) => `${t.token}@${d}`)));
+  const apart = (c: AsmFace) => {
+    const have = new Set(c.tags.map((t) => `${t.token}@${t.design}`));
+    let n = c.surface.kind === 'other' ? candidates.length * 1e6 : 0;
+    for (const k of have) if (!want.has(k)) n++;
+    for (const k of want) if (!have.has(k)) n++;
+    return n;
+  };
+  return candidates
+    .map((c, i) => ({ c, i, n: apart(c) }))
+    .sort((a, b) => a.n - b.n || a.i - b.i)
+    .map(({ c }) => c);
 }
 
 function nameOf(scope: Scope): string {

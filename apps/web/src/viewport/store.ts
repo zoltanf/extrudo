@@ -162,6 +162,12 @@ export interface ViewportState extends ViewportSettings {
   /** Frames per second and frame time while the canvas is mounted (the status bar shows them). */
   renderStats: RenderStats | undefined;
   /**
+   * Main-thread tasks over 50 ms since the design opened (P6-13, ADR-0100 §2),
+   * counted by the dev-only long-task observer; the status bar's render meter
+   * shows it next to the frame time in development builds.
+   */
+  longTaskCount: number;
+  /**
    * What model-mode picking may take (P2-03, the nav bar's Select menu).
    * For the session only: not a saved preference.
    */
@@ -257,6 +263,10 @@ export interface ViewportState extends ViewportSettings {
     snapshot: ((size?: number, options?: SnapshotOptions) => Promise<Blob | null>) | undefined,
   ): void;
   setRenderStats(stats: RenderStats | undefined): void;
+  /** Counts one long task (the dev-only observer; P6-13, ADR-0100 §2). */
+  noteLongTask(): void;
+  /** Clears the long-task count (a project opening). */
+  resetLongTasks(): void;
   setSelectionFilter(kind: FilterKind, on: boolean): void;
   resetSelectionFilter(): void;
   setFieldFilter(filter: SelectionFilter | undefined): void;
@@ -351,6 +361,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       tool: undefined,
       snapshot: undefined,
       renderStats: undefined,
+      longTaskCount: 0,
       selectionFilter: DEFAULT_FILTER,
       fieldFilter: undefined,
       pickAxes: false,
@@ -466,6 +477,12 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       },
       setRenderStats(renderStats) {
         set({ renderStats });
+      },
+      noteLongTask() {
+        set({ longTaskCount: get().longTaskCount + 1 });
+      },
+      resetLongTasks() {
+        if (get().longTaskCount !== 0) set({ longTaskCount: 0 });
       },
       setSelectionFilter(kind, on) {
         set({ selectionFilter: { ...get().selectionFilter, [kind]: on } });

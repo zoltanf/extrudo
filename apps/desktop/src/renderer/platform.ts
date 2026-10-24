@@ -161,7 +161,7 @@ export function desktopSlicer(
   };
 }
 
-/** Render Picture (P6-13, ADR-0101): main runs Blender; progress comes back over its channel. */
+/** Render Picture (P6-15, ADR-0101): main runs Blender; progress comes back over its channel. */
 export function desktopRender(api: ExtrudoApi): Pick<Platform, 'render'> {
   return {
     render: {

@@ -203,6 +203,10 @@ export async function saveF3dImport(
       }
       if (doc !== replay) await platform.projects.save(doc);
       report.bodies = bodyOutcomes(plan, design);
+      for (const d of plan.dropped ?? []) {
+        report.imported = report.imported.filter((n) => n !== d.name);
+        report.skipped.push({ name: d.name, kind: 'DeleteFace', reason: d.reason });
+      }
       removed = plan.remove.length > 0;
     } catch (error) {
       report.bodyCheck = { error: describeError(error) };

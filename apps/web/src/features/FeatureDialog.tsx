@@ -1,3 +1,7 @@
+// The components here read the dialog controller's state through its methods
+// (`context()`) while drawing: the React Compiler must not memoise them (ADR-0102 §5).
+'use no memo';
+
 import { type ExtrudoDocument, formatQuantity } from '@extrudo/core';
 import { CircleAlert, X } from 'lucide-react';
 import { type KeyboardEvent, type PointerEvent, type ReactNode, useRef, useState } from 'react';

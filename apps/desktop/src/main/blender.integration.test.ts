@@ -1,5 +1,5 @@
 /**
- * Render Picture against a real Blender (P6-13, ADR-0101): a cube in every
+ * Render Picture against a real Blender (P6-15, ADR-0101): a cube in every
  * preset at draft quality and once at standard, through `nodeBlenderEnv`.
  * Runs only with `EXTRUDO_BLENDER=1` and a `blender` on PATH; the pictures
  * stay in `<tmp>/extrudo-pictures/` for a look.

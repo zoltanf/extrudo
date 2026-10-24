@@ -283,6 +283,17 @@ export class OffsetFaceError extends KernelError {
   }
 }
 
+/** A face removal OCCT couldn't build (ADR-0099). */
+export class RemoveFacesError extends KernelError {
+  override name = 'RemoveFacesError';
+  /** The picked faces (indices) of the features OCCT couldn't remove; empty when it didn't say. */
+  readonly failed: readonly number[];
+  constructor(message: string, failed: readonly number[]) {
+    super(message);
+    this.failed = failed;
+  }
+}
+
 /** Why tilting faces failed (P3-08, draft): the facade's diagnosis. */
 export type DraftProblem =
   /** The angle is too steep for the body; `max` is the largest that works (degrees, a magnitude). */
@@ -826,6 +837,30 @@ export class Kernel {
     const f = this.#facade;
     if (f.tangentFaces(shape, face) < 0) throw new KernelError(f.lastError() || 'Unknown face.');
     return Array.from(this.#copy(Int32Array, f.lookupPtr(), f.lookupSize()));
+  }
+
+  /**
+   * Removes faces of a solid (ADR-0099, Remove Faces): each of `faces`
+   * (indices into the shape's face list) goes, and the faces next to them
+   * are extended or trimmed until they meet, so a hole closes up and a
+   * round becomes a sharp edge. All or nothing: when OCCT can't close the
+   * gap of any of them, nothing is removed and a `RemoveFacesError` lists
+   * the picked faces of the features it couldn't remove. History: input 0;
+   * the removed faces are deleted, an extended neighbour is modified.
+   */
+  removeFaces(shape: ShapeHandle, faces: readonly number[]): OperationResult {
+    this.#solid(shape, 'Remove Faces');
+    const f = this.#facade;
+    f.clearArgs();
+    for (const face of faces) f.pushArg(face);
+    const handle = f.removeFaces(shape);
+    if (handle === 0) {
+      throw new RemoveFacesError(
+        f.lastError() || 'Remove Faces failed.',
+        Array.from(this.#copy(Int32Array, f.lookupPtr(), f.lookupSize())),
+      );
+    }
+    return this.#withHistory(handle);
   }
 
   /** `target` minus `tool`. History: input 0 is the target, 1 the tool. */

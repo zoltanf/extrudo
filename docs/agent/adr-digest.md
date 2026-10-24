@@ -244,8 +244,10 @@ OCCT history, edges and vertices `e[faces]`/`v[faces]` plus `@n`;
 evaluators return `FeatureOutput.names` built with `namedPrism`,
 `namedRevolve`, `namedBoolean`, `withHistory`, and **resolve every face,
 edge or vertex reference with `ctx.resolve`** (exact name, related name,
-fingerprint with a warning, else an error); `KernelApi.reference` turns a
-pick into a `GeomRef` with a fingerprint. ADR-0027 (P2-05) added feature
+fingerprint with a warning, else an error; a related face is a piece of it
+or, since 2026-10-23, a name made from a related nested name: the round of an
+edge and the round of a piece of it, `topo-id.ts` `nestedRelated`);
+`KernelApi.reference` turns a pick into a `GeomRef` with a fingerprint. ADR-0027 (P2-05) added feature
 dialogs: a declarative `FeatureDialogSpec` (`apps/web/src/features/`:
 selection/expression/choice/toggle fields, `toInputs`/`fromInputs`,
 `validate`, `manipulators`, `previewStyle`) registered in
@@ -2370,6 +2372,12 @@ Parameter value records are read in class versions 5–7 and 9 (2026-10-20, #93)
 
 **Amendment of 2026-10-21 (text in fonts that fit the file's):** `fontFor` (`map.ts`) draws a family that has a stand-in in it (`STAND_INS`: Arial → Arimo, Arial Narrow → Archivo Narrow, regular and bold; DIN Condensed → Sofia Sans Extra Condensed Bold), anything else as before (Inter, or the serif, mono, stencil face). A stand-in is drawn at the file's font size: Extrudo's height (the capitals') is the size × the stand-in's own cap height over its em (`TextFont.cap`, from its OS/2 `sCapHeight`; an older text's height is Arial's capitals, so its font size is that / `CAP_HEIGHT`); without a stand-in the capitals are the size × `CAP_HEIGHT` (Arial's 0.716). A newer text record's byte after the angle is its bold flag, an older record's weight ≥ 700 is bold (`decode/text.ts`, `SketchText.bold`). Newer texts stay centred in the file's box (the box is the ink's width; centring lands closer than the box corner). A new stand-in needs the width measurement of the ADR's amendment and must be a bundled font (ADR-0058 §3: unmodified, its own ID).
 
+**Amendment of 2026-10-23 (face deletions decoded):** the timeline record `29EF07D3…` is the source app's face deletion (its scope `kind` is `DeleteFace`), decoded as `DeleteFaces`/`delete-faces` but mapped by phase 2 (`map.ts` `deleteFaces` makes a `removeFaces` step; left out when a face is copied by a pattern/mirror or not all faces can be named; on the bumper 20 of 28 import but none takes effect in the replay, their fillets fail first). Its layout is Offset faces' (`D087EFE5…`) without the distance: an operand group (`2CA5A1CD…`) of face operands (`5662F619…`), each recipe naming its face first; twelve zero bytes and a `u32 1` sit where Offset faces writes its distance reference and a `u32 1`. `model.ts` reads the faces through a shared `faceOperands` helper (Offset faces uses it too), each recipe with `tryDecode`. Phase 2 maps it once `removeFaces` (ADR-0099) lands; of the corpus's 28 such records (all in the issue's second file, one face each), 20 name every face through `faceName`.
+
+**Amendment of 2026-10-23 (round faces and moved faces):** a round's face (`faceName` → `nearestEdge`, `map.ts`) goes to the round's edge whose points (ends and midpoint, or eight around a whole circle) lie nearest the face's own surface (`surfaceGap`: cylinder, cone, sphere, torus; planes and splines keep the hint rule); ties within `GAP_TIE` go to the edge nearest the hint, then the token; **every edge with a shape takes part, named or not**, so a face of an unnamed edge is a miss, never a neighbour's name. A face's tags in a recipe are the operations it had when picked (making id, then negative ids of later changes); `model.ts` `statesOf` takes the stored state (`.smb` and `.smbh`) whose tags differ least from the recipe's (states with a known surface first, ties to the solved body) as `surface`, keeps the others, distinct, in `F3dFace.states` and the solved one in `F3dFace.solved` where it differs; `faceName` retries the states when `surface` names nothing — **except `offsetFaces`**, which names by `solved ?? surface` with no states, exactly as before (offsets newly named that way hung Offset Face for 15+ minutes on one design and broke a thread on another). Kernel: `faceRelation` (`topo-id.ts`) relates two stems `head(x)`/`head(y)` with the same head whose nested names relate (`nestedRelated`), so the round of an edge resolves to the round of a piece of it. On the bumper all 28 deletions import, 5 take effect; the rest fail on kernel limits (Offset Face's `sharp-chain` guard and "too far", Remove Faces on one face of a round loop).
+
+**Amendment of 2026-10-23 (failed face deletions leave the timeline):** after the probe's recompute, `failedDeletions(design, features)` (`body-check.ts`) lists the `removeFaces` steps that ended in error; `checkF3dBodies` puts them in `BodyPlan.dropped`, `applyBodyPlan` removes them first and `saveF3dImport` moves them from `imported` to `skipped` (kind `DeleteFace`, reason `Extrudo couldn't remove its faces: <kernel message, first sentence>`). Only face deletions; no geometry changes, so the plan must stay identical with and without (test). No written body, no check, deletions stay.
+
 ADR-0084 (the owner, 2026-10-14) **checks each body an `.f3d` import rebuilt against the
 file's own B-rep body** and brings the file's shape in where the replay misses. Pure parts in
 `packages/f3d/src/body-check.ts` (`probeDocument`, `measureProbe`, `fileBodies`, `planBodies`,
@@ -2818,7 +2826,138 @@ Ctrl+Space opens the list on an empty word. The list is a Radix Popover (portall
 `textbox` role with `aria-autocomplete`, `aria-controls`, `aria-activedescendant`, and
 `data-keep-escape` while the list is open.
 
-ADR-0101 (P6-13, proposed 2026-10-23) adds **Render Picture with Blender** (desktop only).
+ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
+`packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
+facade `removeFaces` with `BRepAlgoAPI_Defeaturing`). Rules: **all or nothing** (any
+"unable to remove" warning refuses the step; never a partial removal); the result is one valid
+solid that differs from the input; **no `UnifySameDomain`** after it (it renames faces);
+removed faces' names are gone (a later reference is a `LostReferenceError`), **extended
+neighbours keep their names** (history `modified`); a pick of every face is refused before OCCT
+runs. Picks (`removeFacesPick`, TypeScript over the shape description, `threadFace` and
+`coneFace`; no facade query): a hole wall takes the coaxial faces within the hole's radius
+(bottom, counterbore, countersink, drill point; **the amendment, 2026-10-23: two passes**, the
+faces on the axis connected to the wall, then the radius from every inside cylinder or cone among
+them, so a click on a counterbore's narrow wall takes the step and the wide wall; pure function
+`removeFacesPick(starts, description, surface, chain)`, tested without WASM), a round takes its smooth chain through
+non-planar faces only, anything else is itself; the feature stores the faces it got. Delete on
+a selection of only solid-body faces makes the feature in one step (`Remove Faces N`). The
+refusal names how many faces to add (unpicked faces of the failed faces' chains or holes).
+`.f3d` face deletions map to it (ADR-0083's amendment; `map.ts` `deleteFaces`, all faces named or the deletion is skipped; a deletion the kernel refuses stays in the timeline as an errored feature). Facade `removeFaces(shape)` takes the faces
+by `pushArg`, works on a copy and on refusal lists the failed features' faces (0-based) in the
+lookup buffer (`RemoveFacesError.failed`); the evaluator refuses an empty pick and a pick of
+every face before OCCT runs. The engine's `removeFacesPick(body, faces, base)` goes through the
+service, `KernelApi` and `Recomputer` like `smoothFaces`. The dialog is
+`apps/web/src/features/remove-faces.ts` (Solid › Modify, after Offset Face; the tile in
+`apps/web/src/shell/tools.ts` with search words "defeature", "delete face", "remove fillet",
+"remove hole", "simplify"): one multi-pick face field whose **`pick: 'removeFaces'` option**
+(`apps/web/src/features/spec.ts`) routes its picks through `removeFacesPick` the way
+`keepRounds` routes through `smoothFaces` — a field's value is the union, without duplicates,
+and its info line counts what the pick holds. Delete's face path is `createFaceActions` in
+`apps/web/src/shell/bodies.ts` beside `createBodyActions` (sketch mode refuses like deleting a
+body; the removed faces leave the selection and the hover); mesh bodies' faces never apply. The
+tooltip clip's scene starts from `fixtures/demos/removeFaces.extrudo`
+(`packages/cli/src/demo-designs.test.ts`).
+
+ADR-0100 (P6-13, the owner, 2026-10-23) set **performance budgets for the main
+thread and the guardrails that keep them**. `e2e/perf.spec.ts` drives the
+pcb-enclosure (B5) and knurled-knob (B7) examples through opening, orbiting, a
+parameter edit and its undo, and the first hover and click, with a
+`PerformanceObserver` (`longtask`; `event` with `durationThreshold: 16`) and a
+`requestAnimationFrame` counter installed by `page.addInitScript`, and asserts
+ADR-0100's budgets, attaching the raw numbers (and the WebGL renderer string)
+to the report as `perf.json`; an edit's round trip is one `MutationObserver`
+over both `[data-model-status]` and `[data-bodies]`, armed **before** the edit
+(the expression field applies while typing). §4 (2026-10-23, after CI's SwiftShader run measured the rasteriser, not the
+app — a CPU profile shows a SwiftShader frame's long task is 97 %+ native
+GPU-process wait) moved the budgets onto the **app's own main-thread time**:
+`RenderMeterProbe` (`apps/web/src/viewport/Viewport.tsx`) pushes every render
+call's `{ start, ms }` into `window.__extrudoRenderLog` when that array
+exists — the spec's init script sets it, a normal visit never does — and
+`e2e/perf.spec.ts` computes per long task the **JS time inside it**: the
+merged union of the `long-animation-frame` observer's script durations (the
+frame's JS: module evaluation, worker message handlers, rAF callbacks,
+timers), the render log and the event handlers' own spans
+(`processingStart…processingEnd`), budgeted as `appMax`/`appTotal`
+(`longMax`/`longTotal` and the window's `renderTotal`/`jsTotal` kept for the
+record); the round trips subtract their window's JS total (`roundTripAppMs`);
+the worst input event is the one with the largest handler time, budgeted
+instead of the paint-inflated duration; the fps floor (≥ 20) only holds with
+a GPU — on a renderer string containing `SwiftShader` or `llvmpipe` the spec
+records the fps and skips it with a `software rendering` annotation. The spec
+no longer runs serially (both examples report even when one fails).
+Development builds count long tasks:
+`apps/web/src/debug/longTasks.ts` (`startLongTaskObserver`), the viewport
+store's `longTaskCount`/`noteLongTask`/`resetLongTasks`, `formatLongTasks` in
+`viewport/renderMeter.ts` shown by `RenderRate` (`shell/Timeline.tsx`,
+`· n long`), started and reset in `project/ProjectPage.tsx`.
+`scripts/measure-startup.mjs` opens the folded template gallery and writes
+`--json`; the release checklist runs it (step 3). Files also:
+`e2e/timings.json`, `docs/release-checklist.md`.
+**Rules:** the budgets live in `e2e/perf.spec.ts` and are widened only with a
+measurement in the commit message, and they bind the app's own main-thread
+time (ADR-0100 §4): the JS inside each long task (LoAF scripts ∪ render log ∪
+event-handler spans, merged), an input event's handler time instead of its
+duration — sizes: open appMax < 400 and appTotal < 1200, orbit appMax < 100,
+**edit appMax < 150** (widened to 500 against the measured 248–499 ms
+grooves-edit kernel-message/autosave handlers, back to 150 since ADR-0102 §1
+took the thumbnail off the edit's path), undo appMax < 150, hover and
+click worst handler time < 250; `__extrudoRenderLog` must be set only by the spec's init script — a
+normal visit never logs renders; the fps floor is skipped only when the
+renderer string says software (the annotation names it). The long-task
+observer never ships in
+production — dev builds only (`import.meta.env.DEV`), and `grep -c longtask
+apps/web/dist/assets/*.js` after `pnpm build` must sum to 0 — and the status
+bar's `· n long` is dev builds only; `measure-startup.mjs` runs per release
+and is compared with the ADR's baseline: a jump is a release blocker to
+investigate, a drift is noted in the release notes.
+
+ADR-0102 (P6-14, the owner, 2026-10-23) took **UI-thread work off the
+interaction paths**, measured with ADR-0100's `e2e/perf.spec.ts`. §1: the
+autosave's thumbnail (`project/autosave.ts`, `createThumbnailer`) is taken in
+idle time (`src/idle.ts`, `whenIdle`: `requestIdleCallback` with a 2 s
+timeout, `setTimeout` 200 without), waits while `thumbnailReady` says no (a
+recompute `computing`/`idle`, a pointer button down: `ProjectPage.tsx` tracks
+`buttons` on the window), is skipped when `thumbnailKey` (the document, view,
+projection, visual style) is identical to the last thumbnail's, and is taken
+at once by `flush()`; the readback is `readRenderTargetPixelsAsync`
+(`viewport/Viewport.tsx`, `thumbnailFromBox`). §2: `selection/highlight.ts`'s
+`createHighlightMemo`/`highlightKeys` give `Bodies` one `BodyHighlight` per
+body while its mesh, the items naming it and its colliding faces stay the
+same; `selection/pick.ts`'s `warmPickIndex` builds the BVH one mesh per idle
+callback when the model's bodies change (`useModelInput`); `viewport/
+pointer.ts` (`attachPointerInput`) reports the pointer once per animation
+frame and flushes a pending report on pointerdown, pointerup, pointercancel
+and pointerleave. §3/§5: the React Compiler runs through plugin-react's
+native `compiler` option (`oxc-transform-react` 0.145; the Babel plugin was
+7× the build time); `Shell` does not subscribe to `session.hover` —
+`DialogViewport` does and adds it to the sketches (`shell/hoverDrawings.ts`),
+the ghosts (`ghostsFor`) and the view; `PlanePicker` has no `hover` (the view
+derives it). §6: the open's largest JS of ours was ADR-0076's WebGL probe in
+the view's first render; the home screen now runs it right after its first
+paint (`afterPaint` in `src/idle.ts`, `home/HomeScreen.tsx`), B5's open
+`appMax` 252–267 → 115–135 ms. §7: `e2e/perf.spec.ts` arms the edit's
+round-trip observer once the Parameters field is visible (before, it also
+timed opening the dialog, which failed B5's budget on CI). **Rules:** no thumbnail work on the edit path (never synchronous
+after `projects.save`, never a synchronous pixel readback); picking at most
+once per frame, with a flush before anything that acts on the hover (a press,
+a release, a leave); a body's highlight object changes only when something
+naming that body changes; `Shell` must not read `session.hover` (read it in
+the leaf that shows it); a component that reads state through a method, a
+getter, `getState()` or a module variable while drawing takes that state
+through a hook (`useSyncExternalStore`: a key label in render comes from
+`useKeysFor()`, never a bare `keysFor(id)`) or as props, or starts
+with `'use no memo'` (the compiler memoises on props and would serve stale
+output — it did for `NotificationHistory` and `JointDialog`); upgrading
+`oxc-transform-react` or `@vitejs/plugin-react` re-runs §5's gate (build ≤
+1.5×, app JS ≤ +5 %, check and the full e2e suite); `react()`'s `exclude`
+keeps `packages/` and every `*Worker.ts`/`*worker.ts` entry out of the
+compiler and Fast Refresh (only the app has React; the dev server's refresh
+wrapper in worker code kills the kernel worker with `$RefreshReg$ is not
+defined`, which no CI run sees: e2e uses production builds, so check
+`pnpm dev` after touching the plugin's options); nothing that makes a
+WebGL context runs in the view's first render when it can run earlier.
+
+ADR-0101 (P6-15, proposed 2026-10-23) adds **Render Picture with Blender** (desktop only).
 `apps/desktop/src/main/blender.ts` is pure over an injected environment like `slicers.ts`:
 `findBlender` (the `blender.path` preference wins; then PATH, Flatpak `org.blender.Blender`,
 Snap, Steam, Windows `Blender Foundation` folders newest first, `/Applications/Blender.app`),

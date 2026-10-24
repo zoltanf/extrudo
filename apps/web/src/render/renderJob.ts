@@ -1,5 +1,5 @@
 /**
- * Render Picture (P6-13, ADR-0101): the pure parts of the dialog. The stored
+ * Render Picture (P6-15, ADR-0101): the pure parts of the dialog. The stored
  * settings and the choices on screen, the camera a job carries, the job
  * itself (OBJ over the meshed bodies) and the picture's file name.
  */

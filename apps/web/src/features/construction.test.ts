@@ -215,11 +215,11 @@ describe('picking planes into a construction dialog', () => {
     const open = () => t.open();
     expect(open()?.pickField).toBe('plane');
     expect(dialogPlanePick(t.controller, open())).toBe(true);
-    const picker = dialogPlanePicker(t.controller, open(), t.session, undefined);
+    const picker = dialogPlanePicker(t.controller, open(), t.session);
     expect(picker?.faces).toBeDefined();
     picker?.onPick('OP');
     expect(open()?.values.refs.plane).toEqual([{ kind: 'plane', id: 'OP' }]);
-    expect(dialogPlanePicker(t.controller, open(), t.session, undefined)?.selected).toEqual(['OP']);
+    expect(dialogPlanePicker(t.controller, open(), t.session)?.selected).toEqual(['OP']);
     picker?.onPick('origin:xz');
     expect(open()?.values.refs.plane).toEqual([originPlaneRef('origin:xz')]);
     picker?.faces?.onPick(faceItem(1));
@@ -229,13 +229,13 @@ describe('picking planes into a construction dialog', () => {
   it('a midplane collects two planes, then takes no more', () => {
     const t = setupDialogs([midplaneDialog]);
     t.controller.start('midplane');
-    const picker = dialogPlanePicker(t.controller, t.open(), t.session, undefined);
+    const picker = dialogPlanePicker(t.controller, t.open(), t.session);
     picker?.onPick('origin:xy');
     picker?.onPick('OP');
     expect(t.open()?.values.refs.planes).toEqual([XY, OP]);
     picker?.onPick('origin:yz');
     expect(t.open()?.values.refs.planes).toHaveLength(2);
-    expect(dialogPlanePicker(t.controller, t.open(), t.session, undefined)?.selected).toEqual([
+    expect(dialogPlanePicker(t.controller, t.open(), t.session)?.selected).toEqual([
       'origin:xy',
       'OP',
     ]);
@@ -248,7 +248,7 @@ describe('picking planes into a construction dialog', () => {
     // The plane picker would offer planes and faces alone, so an edge could
     // never be picked; the model picker handles all three kinds.
     expect(dialogPlanePick(t.controller, t.open())).toBe(false);
-    expect(dialogPlanePicker(t.controller, t.open(), t.session, undefined)).toBeUndefined();
+    expect(dialogPlanePicker(t.controller, t.open(), t.session)).toBeUndefined();
   });
 });
 

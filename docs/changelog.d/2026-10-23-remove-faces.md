@@ -1,0 +1,1 @@
+- 2026-10-23 · **Remove Faces** (#78): take faces out of a body and let the faces around them close the gap, so a hole or a fillet goes away even on an imported body; Solid › Modify › Remove Faces, Delete on selected faces makes the feature in one step, and a removal that can't be closed changes nothing and says how many faces of the round or hole to add.

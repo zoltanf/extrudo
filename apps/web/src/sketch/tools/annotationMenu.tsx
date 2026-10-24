@@ -8,7 +8,7 @@
 import type { SelectionItem, SessionStore } from '@extrudo/core';
 import { Pencil, Trash2 } from 'lucide-react';
 import { type PointerEvent, useEffect, useRef, useState } from 'react';
-import { keysFor } from '../../commands/keymap';
+import { useKeysFor } from '../../commands/keymapStore';
 import { MenuItem, PointMenu } from '../../design-system';
 import { CLICK_SLOP } from '../../viewport/pointer';
 
@@ -63,6 +63,7 @@ export function useAnnotationMenu({
   onDelete,
   onEdit,
 }: AnnotationMenuOptions) {
+  const keysFor = useKeysFor();
   const [open, setOpen] = useState<OpenMenu>();
   const listener = useRef<(e: globalThis.PointerEvent) => void>(undefined);
   const stop = () => stopListening(listener);

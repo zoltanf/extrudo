@@ -61,6 +61,87 @@ export function bodyHighlight(
   return out;
 }
 
+/** Marks a check's colliding faces (`COLLIDE`) on a body's highlight. */
+export function withCollisions(
+  marks: BodyHighlight,
+  faces: readonly number[] | undefined,
+): BodyHighlight {
+  if (!faces) return marks;
+  for (const f of faces) {
+    if (f < marks.faces.length) marks.faces[f] = (marks.faces[f] ?? 0) | COLLIDE;
+  }
+  return marks;
+}
+
+/**
+ * Per body, which hover and selection items name it, as a string
+ * (`h`/`s`, the kind, the index): equal strings mean equal highlights.
+ * One pass over the selection for all bodies.
+ */
+export function highlightKeys(
+  hover: SelectionItem | undefined,
+  selection: readonly SelectionItem[],
+): Map<BodyId, string> {
+  const keys = new Map<BodyId, string>();
+  const add = (item: SelectionItem, tag: string) => {
+    const t = readTopology(item);
+    if (!t) return;
+    keys.set(t.body, `${keys.get(t.body) ?? ''}${tag}${t.kind}${t.index};`);
+  };
+  for (const item of selection) add(item, 's');
+  if (hover) add(hover, 'h');
+  return keys;
+}
+
+/**
+ * `bodyHighlight` with collisions, remembered per body (ADR-0102 §2): while
+ * the mesh, the items naming the body and its colliding faces stay the same,
+ * the body keeps the same `BodyHighlight` object, so a hover elsewhere
+ * repaints nothing on it. Call `keys` once per render, then `marks` per body;
+ * `prune` forgets bodies no longer shown.
+ */
+export function createHighlightMemo() {
+  const memo = new Map<
+    BodyId,
+    { mesh: BodyMesh; key: string; collide: readonly number[] | undefined; marks: BodyHighlight }
+  >();
+  return {
+    marks(
+      id: BodyId,
+      mesh: BodyMesh,
+      keys: Map<BodyId, string>,
+      hover: SelectionItem | undefined,
+      selection: readonly SelectionItem[],
+      collide: readonly number[] | undefined,
+    ): BodyHighlight {
+      const key = keys.get(id) ?? '';
+      const last = memo.get(id);
+      if (last && last.mesh === mesh && last.key === key && last.collide === collide) {
+        return last.marks;
+      }
+      const marks = withCollisions(
+        key ? bodyHighlight(id, mesh, hover, selection) : emptyHighlight(mesh),
+        collide,
+      );
+      memo.set(id, { mesh, key, collide, marks });
+      return marks;
+    },
+    prune(shown: ReadonlySet<BodyId>) {
+      for (const id of memo.keys()) if (!shown.has(id)) memo.delete(id);
+    },
+  };
+}
+
+function emptyHighlight(mesh: BodyMesh): BodyHighlight {
+  return {
+    faces: new Uint8Array(mesh.faceRanges.length >> 1),
+    hoverEdges: [],
+    selectedEdges: [],
+    hoverVertices: [],
+    selectedVertices: [],
+  };
+}
+
 export type Rgb = readonly [number, number, number];
 
 export interface FacePalette {

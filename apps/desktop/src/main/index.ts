@@ -108,7 +108,7 @@ function main(): void {
   /** The renderer said `app:ready` and hasn't reloaded since: it can answer tool calls. */
   let rendererUp = false;
   const send = (channel: string, ...args: unknown[]) => window?.webContents.send(channel, ...args);
-  // Render Picture (P6-13, ADR-0101): Blender in a child process, progress to the renderer.
+  // Render Picture (P6-15, ADR-0101): Blender in a child process, progress to the renderer.
   const blender = nodeBlenderService(
     app.getPath('temp'),
     () => preferences.read()['blender.path'],

@@ -2,7 +2,7 @@ import type { BodyId, BodyMeta, SelectionItem } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import type { Matrix12 } from '@extrudo/kernel/matrix';
 import { useFrame, useThree } from '@react-three/fiber';
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   BufferAttribute,
   BufferGeometry,
@@ -21,10 +21,10 @@ import type { OverhangView } from '../print/overhang';
 import type { SectionClip } from '../section/clip';
 import {
   type BodyHighlight,
-  bodyHighlight,
-  COLLIDE,
+  createHighlightMemo,
   edgeSegmentsOf,
   type FacePalette,
+  highlightKeys,
   paintFaces,
   vertexPositions,
 } from '../selection/highlight';
@@ -136,6 +136,10 @@ export function Bodies({
   useEffect(() => onBounds(bounds), [bounds, onBounds]);
   const clips = section?.clips;
   const planes = useMemo(() => clipPlanes(clips), [clips]);
+  // One highlight per body, kept while nothing that names the body changes (ADR-0102 §2).
+  const [highlights] = useState(createHighlightMemo);
+  const keys = highlightKeys(hover, selection);
+  useEffect(() => highlights.prune(new Set(shown.map(([id]) => id))), [highlights, shown]);
 
   return shown.map(([id, mesh], index) => (
     <Body
@@ -147,7 +151,7 @@ export function Bodies({
       opacity={meta[id]?.opacity ?? 1}
       edge={edge}
       accent={highlight}
-      marks={withCollisions(bodyHighlight(id, mesh, hover, selection), collisions?.faces[id])}
+      marks={highlights.marks(id, mesh, keys, hover, selection, collisions?.faces[id])}
       {...(collisions && { error: collisions.color })}
       onSilhouettes={onSilhouettes}
       {...(posed?.[id] && { pose: posed[id] })}
@@ -159,18 +163,17 @@ export function Bodies({
   ));
 }
 
-/** Marks a check's colliding faces on a body's highlight. */
-function withCollisions(marks: BodyHighlight, faces: readonly number[] | undefined): BodyHighlight {
-  if (!faces) return marks;
-  for (const f of faces) {
-    if (f < marks.faces.length) marks.faces[f] = (marks.faces[f] ?? 0) | COLLIDE;
-  }
-  return marks;
-}
+/** One object per colour, so a body's colour keeps its identity across renders (`useFaceColors`). */
+const hexes = new Map<string, Rgba>();
 
 function hex(value: string): Rgba {
-  const n = Number.parseInt(value.slice(1), 16);
-  return { r: ((n >> 16) & 255) / 255, g: ((n >> 8) & 255) / 255, b: (n & 255) / 255, a: 1 };
+  let rgba = hexes.get(value);
+  if (!rgba) {
+    const n = Number.parseInt(value.slice(1), 16);
+    rgba = { r: ((n >> 16) & 255) / 255, g: ((n >> 8) & 255) / 255, b: (n & 255) / 255, a: 1 };
+    hexes.set(value, rgba);
+  }
+  return rgba;
 }
 
 function Body({

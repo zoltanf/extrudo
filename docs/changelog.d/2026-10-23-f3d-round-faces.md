@@ -1,0 +1,1 @@
+- 2026-10-23 · **.f3d import**: a fillet on an earlier fillet's faces, and a face an offset moved, are named by the edge and the state the file means, so more fillets and face deletions replay on the right edges and faces (#93).

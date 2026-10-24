@@ -70,8 +70,6 @@ export interface SectionOptions {
    * planes. Undefined outside sketch mode and while the frame is unknown.
    */
   slice?: SketchFrame | undefined;
-  /** The session's hover: the plane picker shows the plane under the pointer. */
-  hover: SelectionItem | undefined;
 }
 
 /** One plane of the section as the panel and the view see it. */
@@ -188,7 +186,6 @@ export function useSection({
   active,
   model,
   slice,
-  hover,
 }: SectionOptions): SectionTool {
   const sections = useStore(viewport, (s) => s.section);
   const boxState = useStore(viewport, (s) => s.sectionBox);
@@ -339,7 +336,6 @@ export function useSection({
   const planePicker = useMemo<PlanePicker | undefined>(() => {
     if (!choosing) return undefined;
     return {
-      hover: hover?.kind === 'plane' ? hover.id : undefined,
       ...(sections.length > 0 && { selected: sections.map((s) => s.plane.id) }),
       onHover: (plane) => session.getState().setHover({ kind: 'plane', id: plane }),
       onLeave: (plane) => {
@@ -359,7 +355,7 @@ export function useSection({
         },
       },
     };
-  }, [choosing, hover, sections, session, pickPlane, pickFace]);
+  }, [choosing, sections, session, pickPlane, pickFace]);
 
   // The pointer's hover goes when the plane pick ends.
   useEffect(() => {

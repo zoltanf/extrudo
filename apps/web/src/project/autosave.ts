@@ -3,10 +3,16 @@
  * edits stop, with a status the app bar shows. Undo and redo are changes
  * too. A save that fails keeps the status at `error` until the next change
  * or `retry()` succeeds; a change made during a save is saved right after.
+ *
+ * The thumbnail a save leads to stays off the edit's critical path
+ * (ADR-0102 §1): it is taken in idle time, waits while the app is busy (a
+ * recompute, a pointer button down), is skipped when what it would show is
+ * unchanged, and `flush()` takes a pending one at once.
  */
 import type { DocumentStore } from '@extrudo/core';
-import type { ProjectStore } from '@extrudo/storage';
+import type { ProjectId, ProjectStore } from '@extrudo/storage';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import { whenIdle } from '../idle';
 
 export type SaveStatus = 'saved' | 'unsaved' | 'saving' | 'error';
 
@@ -30,8 +36,15 @@ export interface AutosaveOptions {
   projects: ProjectStore;
   /** Quiet time after the last change before saving, in ms. */
   delay?: number;
-  /** A fresh thumbnail after each save; failures are ignored. */
+  /** A fresh thumbnail after each save, in idle time; failures are ignored. */
   thumbnail?: () => Promise<Blob | null>;
+  /**
+   * What the thumbnail would show (the document, the camera): when every item
+   * is identical (`===`) to the last thumbnail's, none is taken.
+   */
+  thumbnailKey?: () => readonly unknown[];
+  /** False while the app is busy (a recompute, a pointer button down): the thumbnail waits. */
+  thumbnailReady?: () => boolean;
 }
 
 export const AUTOSAVE_DELAY = 800;
@@ -40,7 +53,7 @@ export const AUTOSAVE_DELAY = 800;
 const live = new Set<Autosaver>();
 
 export function createAutosaver(options: AutosaveOptions): Autosaver {
-  const { store, projects, thumbnail } = options;
+  const { store, projects } = options;
   const delay = options.delay ?? AUTOSAVE_DELAY;
   const state = createStore<AutosaveState>()(() => ({
     status: 'saved',
@@ -68,10 +81,7 @@ export function createAutosaver(options: AutosaveOptions): Autosaver {
       state.setState({ status: 'saving' });
       try {
         const summary = await projects.save(store.getState().doc);
-        if (thumbnail) {
-          const png = await thumbnail().catch(() => null);
-          if (png) await projects.setThumbnail(summary.id, png).catch(() => {});
-        }
+        thumbnails.request(summary.id);
         state.setState({
           status: dirty ? 'unsaved' : 'saved',
           error: undefined,
@@ -89,6 +99,8 @@ export function createAutosaver(options: AutosaveOptions): Autosaver {
     return running;
   };
 
+  const thumbnails = createThumbnailer(options);
+
   const unsubscribe = store.subscribe((s, prev) => {
     if (s.doc === prev.doc || disposed) return;
     dirty = true;
@@ -101,17 +113,90 @@ export function createAutosaver(options: AutosaveOptions): Autosaver {
     async flush() {
       await running;
       await save();
+      await thumbnails.flush();
     },
     retry: () => save(),
     dispose() {
       disposed = true;
       clearTimeout(timer);
+      thumbnails.cancel();
       unsubscribe();
       live.delete(autosaver);
     },
   });
   live.add(autosaver);
   return autosaver;
+}
+
+/** Whether two thumbnail keys show the same picture: every item identical. */
+export function sameThumbnailKey(
+  a: readonly unknown[] | undefined,
+  b: readonly unknown[],
+): boolean {
+  return a !== undefined && a.length === b.length && a.every((item, i) => item === b[i]);
+}
+
+/**
+ * The autosaver's thumbnails: one pending request at a time (a later save
+ * replaces it), taken in idle time once `thumbnailReady` allows.
+ */
+function createThumbnailer({ projects, thumbnail, thumbnailKey, thumbnailReady }: AutosaveOptions) {
+  let pending: ProjectId | undefined;
+  let cancelIdle: (() => void) | undefined;
+  let taking: Promise<void> | undefined;
+  let lastKey: readonly unknown[] | undefined;
+
+  const take = (id: ProjectId): Promise<void> => {
+    const key = thumbnailKey?.();
+    if (key && sameThumbnailKey(lastKey, key)) return Promise.resolve();
+    taking = (async () => {
+      const png = await thumbnail?.().catch(() => null);
+      if (png) {
+        await projects.setThumbnail(id, png).catch(() => {});
+        lastKey = key;
+      }
+    })().finally(() => {
+      taking = undefined;
+      if (pending) schedule();
+    });
+    return taking;
+  };
+
+  const run = () => {
+    cancelIdle = undefined;
+    if (!pending || taking) return;
+    if (thumbnailReady && !thumbnailReady()) return schedule();
+    const id = pending;
+    pending = undefined;
+    void take(id);
+  };
+
+  const schedule = () => {
+    if (!cancelIdle) cancelIdle = whenIdle(run);
+  };
+
+  return {
+    request(id: ProjectId) {
+      if (!thumbnail) return;
+      pending = id;
+      if (!taking) schedule();
+    },
+    /** Takes a pending thumbnail now, busy or not, and waits for any being taken. */
+    async flush() {
+      await taking;
+      if (!pending) return;
+      cancelIdle?.();
+      cancelIdle = undefined;
+      const id = pending;
+      pending = undefined;
+      await take(id);
+    },
+    cancel() {
+      cancelIdle?.();
+      cancelIdle = undefined;
+      pending = undefined;
+    },
+  };
 }
 
 function messageOf(error: unknown): string {

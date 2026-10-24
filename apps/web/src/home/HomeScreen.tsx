@@ -28,6 +28,7 @@ import {
   useToasts,
   Wordmark,
 } from '../design-system';
+import { afterPaint } from '../idle';
 import { requestTutorial, tourOffered, writeTour } from '../onboarding/state';
 import type { Persistence, Platform } from '../platform';
 import { createPluginsStore } from '../plugins/plugins';
@@ -50,6 +51,7 @@ import { docsPath, docsUrl, REPO_URL } from '../shell/docsLinks';
 import { useUpdateNotice } from '../shell/useUpdateNotice';
 import { useMarkingStyle } from '../shell/viewMenu';
 import { BUILD } from '../version';
+import { webglSupport } from '../viewport/webglSupport';
 import { EXAMPLES } from './examples';
 import { TEMPLATES, type Template } from './gallery';
 import { usePersistence, useProjects } from './hooks';
@@ -80,6 +82,9 @@ export function HomeScreen({ platform }: { platform: Platform }) {
     }
   };
   useEffect(() => watchWindowErrors(errorLog), []);
+  // The view's WebGL probe (cached per page) right after the home screen's first paint, so
+  // opening a design doesn't pay it in the view's first frame (ADR-0102 §4).
+  useEffect(() => afterPaint(() => webglSupport()), []);
   // Two frames before a capture: the menu just closed (or the dialog, on a retake) is gone.
   const openBugReport = async () => {
     await new Promise<void>((done) =>

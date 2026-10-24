@@ -104,7 +104,7 @@ describe('blenderOverride', () => {
   });
 });
 
-describe('the render channels (P6-13)', () => {
+describe('the render channels (P6-15)', () => {
   it('reports the status and refuses a malformed job', async () => {
     const service = createBlenderService(
       () => env(),

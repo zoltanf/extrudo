@@ -130,6 +130,39 @@ export interface BodyPlan {
   remove: BodyId[];
   /** One outcome per visible file body, in file order. */
   outcomes: PlannedBody[];
+  /** The Remove Faces steps the kernel refused, to take out of the design ({@link failedDeletions}). */
+  dropped?: DroppedFeature[];
+}
+
+/** A face deletion's Remove Faces step that failed in the replay, and why, in words for people. */
+export interface DroppedFeature {
+  id: string;
+  name: string;
+  reason: string;
+}
+
+/**
+ * The Remove Faces steps of a replayed design that the kernel refused. The import makes them
+ * only from the file's face deletions; one that fails changes no body, so taking it out of the
+ * design changes no geometry and no outcome of the plan. `features` is a recompute's feature
+ * statuses.
+ */
+export function failedDeletions(
+  design: Design,
+  features: ProbeOutput['features'],
+): DroppedFeature[] {
+  const out: DroppedFeature[] = [];
+  for (const f of design.doc.features) {
+    const status = features[f.id];
+    if (f.type !== 'removeFaces' || status?.status !== 'error') continue;
+    const first = (status.message ?? 'the kernel refused').split(/(?<=[.!?])\s/)[0] as string;
+    out.push({
+      id: f.id,
+      name: f.name,
+      reason: `Extrudo couldn't remove its faces: ${first.replace(/\.$/, '')}`,
+    });
+  }
+  return out;
 }
 
 /** The byte length of a STEP text, as it will be stored (ASCII). */
@@ -437,6 +470,7 @@ function counterpartOf(
 export function applyBodyPlan(design: Design, plan: BodyPlan, steps: readonly BodyStep[]): void {
   const byRecord = new Map(steps.map((s) => [s.record, s]));
   design.transaction('Bring in the file bodies', () => {
+    for (const d of plan.dropped ?? []) design.remove(d.id as never);
     if (plan.remove.length > 0) {
       design.add(
         'remove',

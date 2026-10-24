@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { kernelReady, openProject, saveStatus } from './helpers';
 
-// P6-13 (ADR-0101): in the web build the Render Picture tile is there but says
+// P6-15 (ADR-0101): in the web build the Render Picture tile is there but says
 // what it needs. The dialog itself is covered by RenderDialog.test.tsx.
 
 test.use({ viewport: { width: 1440, height: 900 } });

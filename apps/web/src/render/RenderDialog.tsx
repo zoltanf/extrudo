@@ -74,7 +74,7 @@ export interface RenderDialogProps {
 }
 
 /**
- * Render Picture (P6-13, ADR-0101 §1): a presentable picture of the design,
+ * Render Picture (P6-15, ADR-0101 §1): a presentable picture of the design,
  * rendered by Blender on this computer. Choices are kept in the design's
  * `render` section when they changed; the picture is not stored.
  */

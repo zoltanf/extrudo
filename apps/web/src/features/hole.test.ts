@@ -343,7 +343,7 @@ describe('placing the hole', () => {
     t.controller.start('hole');
     expect(t.open()?.values.refs.plane).toEqual([XY]);
     expect(t.open()?.values.exprs).toMatchObject({ x: '0 mm', y: '0 mm' });
-    dialogPlanePicker(t.controller, t.open(), t.session, undefined)?.faces?.onPick(faceItem(1));
+    dialogPlanePicker(t.controller, t.open(), t.session)?.faces?.onPick(faceItem(1));
     expect(t.open()?.values.refs.plane).toEqual([TOP]);
     expect(t.open()?.values.exprs).toMatchObject({ x: '5 mm', y: '5 mm' });
   });
@@ -359,7 +359,7 @@ describe('placing the hole', () => {
   it('a click on a face puts the hole where it landed, and again moves it', () => {
     const t = setupDialogs([holeDialog]);
     t.controller.start('hole');
-    const picker = () => dialogPlanePicker(t.controller, t.open(), t.session, undefined);
+    const picker = () => dialogPlanePicker(t.controller, t.open(), t.session);
     picker()?.faces?.onPick(faceItem(1), [2, 7.5, 10]);
     expect(t.open()?.values.refs.plane).toEqual([TOP]);
     expect(t.open()?.values.exprs).toMatchObject({ x: '2 mm', y: '7.5 mm' });

@@ -1,5 +1,5 @@
 /**
- * `writeObj` (P6-13, ADR-0101 §2): the OBJ and MTL texts Render Picture hands
+ * `writeObj` (P6-15, ADR-0101 §2): the OBJ and MTL texts Render Picture hands
  * to Blender, exact and deterministic.
  */
 import { describe, expect, it } from 'vitest';

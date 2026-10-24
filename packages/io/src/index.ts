@@ -5,7 +5,7 @@
  * P1-13: a 2D `Drawing` (contours of exact segments on layers) and its SVG
  * and DXF R12 writers. P2-12: triangle meshes, binary STL, 3MF and a
  * manifold check. P4-06: the SVG and DXF readers drawings are imported from,
- * and the ASCII STL and OBJ readers mesh bodies are imported from. P6-13: the
+ * and the ASCII STL and OBJ readers mesh bodies are imported from. P6-15: the
  * OBJ + MTL writer Render Picture hands to Blender.
  */
 export {

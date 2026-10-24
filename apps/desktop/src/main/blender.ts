@@ -1,5 +1,5 @@
 /**
- * Finding and running Blender for Render Picture (P6-13, ADR-0101 §3). Pure
+ * Finding and running Blender for Render Picture (P6-15, ADR-0101 §3). Pure
  * over an injected environment like `slicers.ts`, so every OS's candidates and
  * the whole render flow are unit-tested on Linux; the real environment is
  * `nodeBlenderEnv` at the bottom.

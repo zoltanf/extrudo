@@ -118,6 +118,7 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `CC54ECAD…` | Model plane | 3 bytes, origin, x direction, y direction (9 f64) |
 | `1C037A07…` | Hole | see below |
 | `D087EFE5…` | Offset faces | the distance is a parameter it owns (`distance`, along the outward normal); an operand group of face operands (`5662F619…`), each recipe naming its face first |
+| `29EF07D3…` | Delete faces | Offset faces without the distance: an operand group of face operands (`5662F619…`), each recipe naming its face first. Where Offset faces writes an eleven-byte reference to its `distance` parameter owner and `u32 1`, this writes twelve zero bytes and `u32 1` before the group reference; nothing else in the record is understood. Seen only in the issue's second file (2026-10-23): 28 records, one face each. Its class tag says version 0; the `kind` tail says `DeleteFace` |
 | `FCBB1707…` | Sweep | op u32 at payload offset 6 (after an empty property block; as an extrude's: 1 join, 2 cut, 3 intersect, 4 new body); an operand group with the sketch-profile operand; an operand group of geometry operands, the path, each naming a sketch curve (`E2CEFD18…`) beside the curve in model space; a body operand per body it joins or cuts. Parameters it owns: `AlongDistance` and `AgainstDistance` (how much of the path it follows from the profile, one way and back, as fractions), `TwistAngle`, `TaperAngle`, and `AlongRailDistance`/`AgainstRailDistance` for a guide rail. The profile need not touch the path |
 | `B0B3D9E5…` | Path pattern | what it copies as a mirror's; a count record (`countU`); the distance a parameter it owns (`PathPatternDelta`); the path an operand group of geometry operands, each naming a sketch curve. Its data record (`BE1FB171…`): u8, u32 2 (extent, as a rectangular pattern's), the count record, 4 zero bytes, the distance's parameter owner, 5 zero bytes, the original's reference point (3 f64, cm), four flag bytes (`01 00 01 00` in both files: the first is 1 where the copies turn with the path, which the copied faces in the B-rep confirm), the path group, the distance again (f64, cm), the start group and the instance list. The start group (`69EE2FA7…`, an operand-group subtype): 19 bytes, the start point on the path (3 f64, cm), a geometry operand naming the path's first curve. A copy is the original moved by the way the path went from the start point to the point the distance along it, and turned with it about the start point; its instance code is 1 |
 | `65CA3206…` | Split body | an operand group with a body operand per body it splits; an operand group with the splitting tool: a geometry operand naming a plane (record reference) beside the plane in model space (`CC54ECAD…`), as a mirror's. Both sides are kept |
@@ -368,6 +369,24 @@ two sides of operation 303 and faces of 305 and 307. A face copied by a
 pattern or mirror carries tags with several operation ids: the source
 feature's, the pattern's and the instance's (`[5@309/311/328]`); the face it
 copies is the one with the source's tag and not the pattern's.
+
+A face a later feature changed without remaking it (an offset moved it, a
+face deletion beside it extended it) keeps its tag and gains that feature's
+operation id, negative: `4@311` becomes `4@311 4@-324 4@-325`. A recipe's
+tag lists the operation ids the face had when the feature picked it
+(`[311, -324, -325]`), and the `.smbh` stream keeps earlier states of the
+body, so the face can be read as the feature saw it: the stored face whose
+tags differ least from the recipe's (`statesOf` in `model.ts`; the importer
+names faces by it, offsets excepted). Verified on
+the issue-93 bumper against the operation table: the negative ids are the
+offsets and face deletions that came after the face's feature, in timeline
+order (-324 an offset, -325 the next offset, -327 to -330 four face
+deletions); the side `4@311` is stored at x = 5 cm as made (`[311]`, and
+`[311, -324]` after the first offset lowered the top face and so shortened it) and at 4.9 cm solved,
+after the second offset; a fillet after the first offset names it `[311]`,
+one after the second `[311, -324, -325, -328, -329, -330]`. A state no
+stream kept (a recipe of four ids where the streams hold two and nine) is
+read as the nearest.
 
 A copying feature's data record (the first record its members name:
 `C444E6AD…` for a mirror, `EA0E146E…` for a rectangular pattern,

@@ -17,6 +17,7 @@ import {
   type BodyMeasure,
   type BodyPlan,
   type BodyStep,
+  failedDeletions,
   fileBodies,
   measureProbe,
   planBodies,
@@ -109,7 +110,9 @@ export async function checkF3dBodies(
       { features: state.features, bodies: Object.keys(state.bodies) as BodyId[] },
       measure,
     );
-    return planBodies({ replayed, file: fileBodies(steps, links, measured) });
+    const plan = planBodies({ replayed, file: fileBodies(steps, links, measured) });
+    const dropped = failedDeletions(replay, state.features);
+    return dropped.length > 0 ? { ...plan, dropped } : plan;
   };
   const timeoutMs = options.timeoutMs ?? CHECK_TIMEOUT_MS;
   const timeout = new Promise<BodyCheckResult>((resolve) => {

@@ -66,7 +66,7 @@ export const CHANNELS = {
   // Opening an export in a slicer (P6-02, ADR-0062's amendment).
   slicerList: 'extrudo:slicer:list',
   slicerOpen: 'extrudo:slicer:open',
-  // Render Picture with Blender (P6-13, ADR-0101 §3): renderer → main the job and
+  // Render Picture with Blender (P6-15, ADR-0101 §3): renderer → main the job and
   // the cancel, main → renderer the progress.
   renderStatus: 'extrudo:render:status',
   renderStart: 'extrudo:render:start',

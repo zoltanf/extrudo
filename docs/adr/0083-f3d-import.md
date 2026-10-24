@@ -1492,3 +1492,219 @@ has its stream read and its body matched (editable). Tests: `asm.test.ts`
 "readAsm, BinaryFile4"; `brep-body.test.ts` "reads the 32-bit stream
 variant"; `decode/combine.test.ts`; `decode/extrude.test.ts`
 "readProfileOperand"; `map-more.test.ts` "features on whole bodies".
+
+## Amendment, 2026-10-23: face deletions decoded
+
+The source app has a timeline step that deletes faces from a body. Its record
+type was unknown, so the importer left it out as `other`; the 28 such steps of
+the issue's second file (a bumper) are why its replayed body kept material the
+file's body has not. **This amendment decodes the record only** — mapping it
+waits for Extrudo's Remove Faces (`removeFaces`, ADR-0099), the subject of a
+separate change.
+
+- **The record.** `29EF07D3-7BAF-4FA1-A28A-43A36279EA6D`, class version 0, its
+  scope tail's `kind` the localized `DeleteFace`. Its feature-specific part is
+  Offset faces' (`D087EFE5…`) without the distance parameter: an operand group
+  (`2CA5A1CD…`) of face operands (`5662F619…`), each recipe (`7ACC2A03…`)
+  naming its face first, exactly as Offset faces reads them (FORMAT.md). Where
+  Offset faces writes an eleven-byte reference to its `distance` parameter
+  owner and a `u32 1`, this writes twelve zero bytes and a `u32 1` before the
+  group reference. Nothing else in the record is understood: no heal mode or
+  other flag was found, and the twelve zero bytes are not decoded. The
+  feature-specific part was compared across the 28 records of the bumper,
+  which are identical byte for byte apart from the record references.
+- **Counts.** The corpus run over the samples holds 28 of these records, all in
+  the issue's second file (the bumper), one deleted face each; no other design
+  has the type. Twenty of the 28 name, through the existing face naming
+  (`faceName`, as `offsetFaces` uses it), every face they delete — what phase 2
+  can replay. The other 8 name faces of features the import itself left out
+  (an extrude of a deleted sketch, a fillet or offset whose faces can't be
+  named).
+- **Decode and map.** `FEATURE_TYPES` gains `29EF07D3…` → `DeleteFaces`;
+  `model.ts` reads a `delete-faces` feature's faces through a shared
+  `faceOperands` helper (factored out of the Offset faces branch, which now
+  uses it too), each recipe's first face taken with `tryDecode`, so a record
+  that can't be read is a decoding problem, never a crash. `map.ts` leaves the
+  feature out with the plain reason "face deletions are not imported yet" and,
+  for the corpus report, a technical detail counting the faces it could name.
+- **No change to what is imported.** The corpus report is identical before and
+  after apart from the 28 deletions' reason (was "not supported yet", now the
+  new one); every other line, and the count of lines (324), is unchanged. No
+  file-format or document-schema change. Tests: `decode/delete-faces.test.ts`
+  (two faces; a truncated recipe is a problem; an absurd face count is
+  bounded) and `map-more.test.ts` "leaves out a deletion of faces, saying why
+  (phase 1 decodes it only)".
+
+**Phase 2 (same day): the deletions are replayed.** `map.ts`'s `deleteFaces`
+(next to `offsetFaces`) names every face with `faceName` and adds one
+`removeFaces` feature per deletion, all or nothing as Remove Faces is. It
+leaves a deletion out when a face was copied by a pattern or mirror ("it
+deletes faces a pattern or mirror copied (not imported yet)"), when none can
+be named ("none of its N faces could be named") or when some can't ("M of its N
+faces could not be named"). Kernel refusals need no special case: a feature
+that fails in the replay keeps its place in the timeline with an error status
+and the body goes on from before it, as for a failing fillet or offset; the
+body check then compares the final replayed body with the file's.
+
+Numbers, the issue's second file (the corpus report's other lines are
+unchanged, 0 differing): 20 of the 28 deletions are imported (the 8 left out
+name no face: "none of its 1 faces could be named"). In the replay **none of the
+20 takes effect**: 19 end with "Can't find a face to remove any more" because
+the faces they name are rounds of fillets that themselves fail in the replay
+(Fillet5, Fillet6, Fillet9, Fillet10, Fillet11 are refused by OCCT before any
+deletion runs), and 1 (DeleteFace20) is refused by Remove Faces ("can't close
+the gap this face leaves ... 23 more faces"). So the replayed body is
+unchanged: 7110.5 mm³, box z top 13.5 mm, against the file's 6361.5 mm³ and
+12 mm; the body check still freezes it ("the timeline made it differently").
+The deletions will matter once the fillets under them are replayed; they are
+not the cause of the bumper's mismatch on their own. Tests: `map-more.test.ts`
+(a named face makes one `removeFaces`, and a washer with a drilled hole whose
+wall is deleted replays to the full washer's volume; an unnamed face and a
+copied face are skipped with their reasons).
+
+## Amendment, 2026-10-23: round faces and moved faces named by geometry and state
+
+The face deletions above took no effect on the issue's second file (the
+bumper) because the fillets whose faces they delete (Fillet5, Fillet6,
+Fillet9, Fillet10, Fillet11) failed in the replay. Each was asked for the
+wrong edges. Three causes, all in naming, none in the kernel's fillet:
+
+- **A round face took a neighbour's name.** A fillet on an earlier fillet's
+  face names that face after the edge it rounds. `nearestEdge` picked the
+  edge nearest a point of the edge being named but skipped edges the import
+  could not name, so a round face of such an edge took the name of the
+  nearest edge that had one. The file's Fillet4 rounds eight edges: four of
+  the base slab, four of the part above it, whose sides it could not name
+  (next cause). Fillet5 and Fillet6, which round the foot and the top of that
+  part, so asked for edges on the base slab's corner rounds; OCCT refused
+  them ("can't be rounded with radius 2 mm, or with any smaller one",
+  "radius 1 mm is too large, max ≈ 0.85 mm"). The point was not much better
+  where the edge's shape is a whole circle (no bounding face cut it): its
+  midpoint lies anywhere on the circle. The face's token, the fallback,
+  counts other faces too (Fillet4's faces at its 6th and 8th edges carry 5
+  and 6). **Now** the edge whose points lie nearest the round face's own
+  surface wins (cylinder, cone, sphere, torus: a round lies a fixed distance
+  off the sharp edge it replaced, the round's other edges well off it); a
+  tie (a face merged from several edges' rounds) goes to the nearest edge,
+  then the token; every edge with a shape takes part, so a face of an
+  unnamed edge has no name rather than a wrong one. Chamfer faces (planes)
+  and variable rounds keep the old rule.
+- **A side an offset moved matched no sketch curve.** The importer named a
+  face by its surface in the solved body. Offsets later in the timeline had
+  moved the upper part's sides 1 mm out (x = 49 mm where the sketch line is
+  at 50), so they could not be named, nor Fillet4's four edges between them
+  and their end arcs. A recipe's tags list the operations the face had when
+  it was picked (the making one, then, negative, those that changed it), and
+  the `.smbh` stream keeps the body's earlier states (FORMAT.md). **Now**
+  `model.ts` reads the stored state whose tags differ least from the
+  recipe's (`statesOf`), and keeps the face's other states in
+  `F3dFace.states`; `faceName` tries them when the chosen state names
+  nothing (an offset keeps a face's name, here and in Extrudo).
+  The face's `surface` is that state (edge shapes and fingerprints are
+  worked out from it, consistent with the faces around it); the solved one
+  is kept in `F3dFace.solved` where it differs. **Except offsets:** an
+  Offset faces step names its faces by the solved state alone, exactly as
+  before. Named by the picked state, two corpus designs imported an offset
+  they had left out, and both went wrong in the replay: on a box lid the new
+  offset (−0.1 mm on a side an earlier offset moved) ran the kernel's Offset
+  Face for over 15 minutes (the design replays in 25 s without it), which
+  would hang the import; on a filament guide an offset that widens a hole
+  by 0.6 mm made the thread cut into it next refuse the hole (Extrudo's
+  thread needs a hole narrower than the thread; the file's re-forms the
+  wall), which turned a match into a 1.2 % miss. They stay out until Offset
+  Face is bounded.
+- **A round of a split edge lost its name.** Extrudo names a side a join
+  split `s28#2`; the importer, which can't know of the split, names the round
+  face of its edge `fillet:F:from:(e[…|s28])`. The kernel's `faceRelation`
+  compared stems literally, so a deletion of that face found nothing.
+  **Now** two stems made from a nested name relate when the nested names do
+  (`topo-id.ts` `nestedRelated`): the round of an edge and the round of a
+  piece of it, so resolution takes the piece as a related name (with the
+  usual "split by an earlier change" warning when several pieces match).
+
+**DeleteFace20.** It deletes Fillet8's round of the slab's bottom edge at one
+corner, a torus. The token (6) pointed at Fillet8's sixth edge, the long
+straight bottom edge, so the replay asked Remove Faces for that edge's round,
+a cylinder in one smooth loop of 24 faces: "Pick the rest of the round …
+(23 more faces)". Now it names the torus, and Remove Faces refuses it: "the
+faces around them can't be extended to meet" (OCCT's defeaturing returns no
+failed face). Its twelve undecoded zero bytes are identical in all 28
+records, so nothing in the corpus tells a mode apart; the file's own body
+shows the deletion healed the gap, which is what Remove Faces does.
+
+**What still fails, and why.** These are the kernel's limits, not the
+mapping:
+
+- OffsetFaces1 lowers the part's top 1.5 mm (13.5 → 12 mm, the bumper's
+  height gap) and is refused by Offset Face's guard ("rounded edges that
+  meet at a sharp corner", `sharp-chain`, where OCCT's offset corrupts its
+  memory): Fillet7's and Fillet8's rounds together trip it (a replay without
+  either passes the guard). Behind the guard OCCT refuses the step anyway:
+  the top can't move in 1.5 mm past Fillet6's 1 mm round on its edges ("too
+  far for this body, max ≈ 0.99 mm"); the file keeps that round and deletes
+  it later (DeleteFace9–12). With the top left at
+  13.5 mm, Extrude7's cut, which starts at 12 mm, becomes a sealed pocket:
+  Fillet10 then rounds the pocket's edges by fingerprint, Fillet11 and the
+  deletions of Fillet10's faces find nothing, OffsetFaces4 and 5 refuse a
+  body with a cavity.
+- Remove Faces can't delete one face of a round that runs on in a loop: of
+  the deletions that undo Fillet5 (four steps, one face each) the two
+  straight faces go, the two corner tori are refused; merging the four into
+  one step is refused too (OCCT can't close the loop). Fillet9 rounds the
+  edges those deletions would have made sharp again and so finds smooth ones
+  ("isn't a sharp edge"). The same holds for Fillet6's deletions and for
+  most of DeleteFace17–28 (Fillet8's loop).
+
+Numbers, the bumper: 28 of 28 deletions now import (were 20; the 8 others
+went by their token to a round's edge without a name, or lay along a side an
+offset moved), 5 take effect
+(DeleteFace1, 2, 9, 11, 18; were 0). Fillet5, Fillet6 and Fillet10 build
+(Fillet10 on the sealed pocket's edges, above); Fillet9 and Fillet11 fail as
+said. Replayed body 7095.8 mm³, box z −5.5 … 13.5 mm (was 7110.5 mm³, same
+box), the file's 6361.5 mm³ and 12 mm: the body check still freezes it.
+The corpus (252 designs, replay and body check, before → after): verdicts
+unchanged (161 match, 49 mismatch, 25 partial, 3 match despite skips, 9 with
+no reference, 5 with no bodies); features left out 91 → 80, all in the
+bumper (its 8 deletions and three of its offsets). Three volumes moved, no
+verdict: two match closer (0.012 → 0.000 %, and a mismatch 0.065 → 0.047 %)
+because a chamfer's cone face now goes to the whole circle it chamfers (the
+old rule took only edges with ends; the file's token agrees with the new
+pick); one mismatch 58.769 → 58.818 %, where a fillet's edge now lies on its
+face as picked (a plane, its tags matching the recipe's exactly) rather than
+on the solved body's cylinder. Bodies: 231 editable, 125 frozen, 26
+unchecked, the same body by body (the before run's probe of one design, which
+imports no feature, timed out under load; its 17 bodies are frozen in the
+after run, as in earlier runs).
+Tests: `round-faces.test.ts` (a round face named by the edge it lies along
+against a misleading token; a round face of an unnamed edge left unnamed;
+a moved side named through its earlier state; an offset of such a face left
+out), `decode/delete-faces.test.ts` (the state a recipe's tags name, its
+others kept, the solved one apart, a state no stream kept read as the
+nearest), `topo-id.test.ts`
+(the round of an edge relates to the round of a piece of it, not to another
+edge's, feature's or piece's).
+
+**Amendment of 2026-10-23 (failed face deletions leave the timeline):** a face
+deletion is a Remove Faces step whenever its faces can be named, but on a file
+with many chained deletions most of them fail in the replay ("Can't find a face
+to remove any more…", or a Remove Faces refusal on one face of a round loop),
+and a timeline full of errored steps is noise. The body check's runner
+(`f3dCheck.ts`, with `failedDeletions` in `body-check.ts`) now looks at the
+probe's recompute: every `removeFaces` step of the replay that finished in
+error is **taken out of the design** (`BodyPlan.dropped`, removed first in
+`applyBodyPlan`'s undo step) and listed in the import notice as a left-out
+feature, kind `DeleteFace`, reason `Extrudo couldn't remove its faces: <the
+kernel's message, first sentence>` (`saveF3dImport` moves it from imported to
+skipped). Only face deletions: the import makes `removeFaces` from nothing
+else, and every other failing feature stays as it was. A failed feature changes
+no body, so the plan is the same with and without the removal (asserted in
+`body-check-kernel.test.ts`: the volumes, the plan and the other steps'
+statuses). Without a written body no check runs, and the deletions stay.
+The corpus (252 designs, replay and body check): identical to the round-faces
+amendment's numbers, 161 match, 49 mismatch, 25 partial, 3 match despite skips,
+9 with no reference, 5 with no bodies; features left out in the replay 80;
+bodies 231 editable, 125 frozen, 26 unchecked. The one design with face
+deletions that fail (the bumper) goes from 28 deletions in the timeline, 23 of
+them errored, to 5 in the timeline and 23 listed in the notice; its replayed
+volume stays 7095.8 mm³ and its body stays frozen. No other design drops a
+step.

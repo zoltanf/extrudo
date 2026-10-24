@@ -112,6 +112,11 @@ export const DEMO_DESIGNS: Record<string, (d: Design) => void> = {
     d.box({ length: '36 mm', width: '24 mm', height: '10 mm' });
     d.cylinder({ diameter: '12 mm', height: '10 mm', operation: 'cut' });
   },
+  // The same plate with its hole: the remove faces scene takes the hole out.
+  removeFaces: (d) => {
+    d.box({ length: '36 mm', width: '24 mm', height: '10 mm' });
+    d.cylinder({ diameter: '12 mm', height: '10 mm', operation: 'cut' });
+  },
   draft: (d) => {
     d.box({ length: '20 mm', width: '20 mm', height: '20 mm' });
   },

@@ -46,6 +46,7 @@ export const DEMO_TOOLS: readonly string[] = [
   'chamfer',
   'shell',
   'offsetFace',
+  'removeFaces',
   'draft',
   'thread',
   'move',

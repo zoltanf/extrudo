@@ -46,6 +46,7 @@ import type {
   PointAtIntersectionInputs,
   PointOnPathInputs,
   RectangularPatternInputs,
+  RemoveFacesInputs,
   RemoveInputs,
   RevolveInputs,
   RibInputs,
@@ -99,6 +100,7 @@ export const FEATURE_TYPES = [
   'pathPattern',
   'hole',
   'offsetFace',
+  'removeFaces',
   'splitBody',
   'scale',
   'draft',
@@ -151,6 +153,7 @@ export const FEATURE_METHOD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   pathPattern: 'Path Pattern (modify): one feature of the timeline.',
   hole: 'Hole (create): one feature of the timeline.',
   offsetFace: 'Offset Face (modify): one feature of the timeline.',
+  removeFaces: 'Remove Faces (modify): one feature of the timeline.',
   splitBody: 'Split Body (modify): one feature of the timeline.',
   scale: 'Scale (modify): one feature of the timeline.',
   draft: 'Draft (modify): one feature of the timeline.',
@@ -1088,6 +1091,15 @@ export interface FeatureMethods {
     options?: FeatureOptions,
   ): FeatureHandle<'offsetFace'>;
   /**
+   * Remove Faces (modify): one feature of the timeline.
+   *
+   * @param inputs.faces The faces to remove; their neighbours are extended to close the gap. A round or a hole needs all its faces. Required.
+   */
+  removeFaces(
+    inputs: PlainInputs<RemoveFacesInputs>,
+    options?: FeatureOptions,
+  ): FeatureHandle<'removeFaces'>;
+  /**
    * Split Body (modify): one feature of the timeline.
    *
    * @param inputs.bodies The bodies to split. Required.
@@ -1419,6 +1431,8 @@ export function featureMethods(design: FeatureMethodTarget): FeatureMethods {
       design.add('hole', inputs, options) as FeatureHandle<'hole'>,
     offsetFace: (inputs, options?: FeatureOptions) =>
       design.add('offsetFace', inputs, options) as FeatureHandle<'offsetFace'>,
+    removeFaces: (inputs, options?: FeatureOptions) =>
+      design.add('removeFaces', inputs, options) as FeatureHandle<'removeFaces'>,
     splitBody: (inputs, options?: FeatureOptions) =>
       design.add('splitBody', inputs, options) as FeatureHandle<'splitBody'>,
     scale: (inputs, options?: FeatureOptions) =>
@@ -1579,6 +1593,9 @@ export function featureExamples(d: Design): void {
 
   // Offset Face.
   d.offsetFace({ faces: face, distance: '2 mm' });
+
+  // Remove Faces.
+  d.removeFaces({ faces: face });
 
   // Split Body.
   d.splitBody({ bodies: [body], plane: d.origin.yz });

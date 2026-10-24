@@ -3,7 +3,7 @@
 - **Status:** Proposed, 2026-10-23 (owner asked for the feature and chose the
   shape: presets that hide Blender, materials per body, settings saved in the
   design, one button, the picture shown in the app).
-- **Task:** P6-13, FR-3DP-08.
+- **Task:** P6-15, FR-3DP-08.
 - **Builds on:** ADR-0062's P6-02 amendment (the slicer launch: detection per
   OS, a temp file, a detached program, `Platform.openInSlicer`), ADR-0075 (the
   Electron app, IPC channels, preferences main reads), ADR-0030 (bodies and

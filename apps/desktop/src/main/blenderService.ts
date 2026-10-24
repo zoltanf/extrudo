@@ -1,5 +1,5 @@
 /**
- * What the `render:*` channels answer (P6-13, ADR-0101 §3): Blender's status
+ * What the `render:*` channels answer (P6-15, ADR-0101 §3): Blender's status
  * and one render at a time over a fresh environment per call (so a Blender
  * installed while the app runs, or an edited `blender.path` preference, is
  * seen), with the renderer's job checked field by field first. Free of

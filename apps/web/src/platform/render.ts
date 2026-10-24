@@ -1,5 +1,5 @@
 /**
- * Render Picture (P6-13, ADR-0101): the desktop app hands a job to main,
+ * Render Picture (P6-15, ADR-0101): the desktop app hands a job to main,
  * which runs Blender headless and returns the PNG. Absent on the web, where
  * nothing can start a program; the `render` tile then shows its "needs the
  * desktop app" hint.

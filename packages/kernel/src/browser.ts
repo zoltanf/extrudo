@@ -52,6 +52,7 @@ function connect(worker: Worker): KernelConnection {
     reference: (body, kind, index, base) => api.reference(body, kind, index, base),
     tangentChain: (body, index, base, kind) => api.tangentChain(body, index, base, kind),
     smoothFaces: (body, faces, base, keepRounds) => api.smoothFaces(body, faces, base, keepRounds),
+    removeFacesPick: (body, faces, base) => api.removeFacesPick(body, faces, base),
     exportMeshes: (bodies, tessellation, onProgress) =>
       api.exportMeshes(bodies, tessellation, onProgress && Comlink.proxy(onProgress)),
     exportStep: (bodies) => api.exportStep(bodies),
