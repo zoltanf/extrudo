@@ -88,6 +88,29 @@ describe.skipIf(!found)('Blender renders a cube', () => {
     });
   }
 
+  it('from below in the workbench preset, without the floor', { timeout: 120_000 }, async () => {
+    // ADR-0101 §6.6: a camera below z = 0 leaves out the worktop, the mat and its numbers.
+    const result = await renderInBlender(
+      env,
+      found as NonNullable<typeof found>,
+      job({
+        preset: 'workbench',
+        camera: {
+          projection: 'perspective',
+          position: [60, -60, -40],
+          target: [0, 0, 10],
+          up: [0, 0, 1],
+        },
+      }),
+      () => {},
+      { cancelled: false },
+    );
+    if (!result.ok) throw new Error(result.message);
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(join(outDir, 'workbench-below-draft.png'), result.png);
+    expect([...result.png.slice(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+  });
+
   it('in the table preset at standard quality with a wood finish and a named view', {
     timeout: 300_000,
   }, async () => {

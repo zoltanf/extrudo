@@ -2984,6 +2984,7 @@ function Shell({
           const { view, projection } = viewport.getState();
           return viewToCamera(view, projection);
         }}
+        groundLevel={() => viewport.getState().bounds?.box?.min[2]}
         openLink={platform.openLink}
         notify={notify}
         onClose={() => setRenderRequest(undefined)}

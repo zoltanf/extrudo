@@ -270,6 +270,21 @@ major lines are numbered. The dark worktop stays beyond the mat. The app draws
 it to a canvas (`mat.ts`); `render.py` builds the grid as shader maths on the
 world position and the numbers as text objects (bpy only: no image, no numpy).
 
+#### 6.6 A camera below the ground (owner, 2026-10-24)
+
+A view from below (Current view or a named view whose camera is below z = 0
+once the model is placed) used to render the underside of the preset's
+ground: a grey picture with a sliver of the model. Now both engines leave the
+ground out (sweep, table, worktop, mat and its numbers, outdoor ground) and
+keep the lights, environment and background: `cameraBelowGround` in
+`scenes.ts`, `camera_below_ground` in `render.py` (which removes every
+non-light object the preset added, so a body named "Table" stays). The
+automatic camera is never below. The dialog warns under Camera ("This view
+looks from below, so the picture leaves out the floor.", `data-render-below`)
+when the chosen camera is below the bottom of the viewport's bounds.
+Rejected: a one-sided ground (the Draft from below is identical, and Cycles
+can't hide back faces cleanly).
+
 ### Rejected (the amendment)
 
 - **A WebGPU path tracer**: not in Safari's stable channel for everyone yet

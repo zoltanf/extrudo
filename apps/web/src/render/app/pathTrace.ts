@@ -121,12 +121,22 @@ export function tracePicture(tracer: TracerLike, options: TraceOptions): Promise
     tiles = adaptTiles(tiles, ms);
     tracer.tiles.set(tiles[0], tiles[1]);
   };
-  return new Promise<boolean>((resolve) => {
+  return new Promise<boolean>((resolve, reject) => {
     const finish = (value: boolean) => {
       fence?.dispose();
       resolve(value);
     };
+    // A frame that throws fails the render (the renderer turns it into a message) instead of
+    // leaving the bar at "Rendering… n %" with no next frame.
     const step = () => {
+      try {
+        frameStep();
+      } catch (error) {
+        fence?.dispose();
+        reject(error);
+      }
+    };
+    const frameStep = () => {
       if (options.cancelled()) {
         finish(false);
         return;

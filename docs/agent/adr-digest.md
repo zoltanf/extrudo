@@ -3364,6 +3364,16 @@ numbers every step up to 30 cells, else every major (5 · step), in the border a
 Blender: bpy only, no image files and no numpy (shader maths for the grid, FONT objects for the
 numbers).
 
+ADR-0101 §6.6 (2026-10-24): **a camera below the ground.** `scenes.ts`'s `cameraBelowGround(camera,
+placement)` (`camera.position[2] + placement.offset.z < 0`; the automatic camera never) makes
+`buildScene` drop the preset's ground meshes (disposed, not added) and the workbench's mat;
+`render.py`'s `camera_below_ground` removes every non-light object the preset added (matched by
+"added by the preset", never by name: a body may be called "Table"). Lights, environment and
+background stay. `RenderDialog`'s `viewFromBelow(camera, ground)` shows the warning under Camera
+(`data-render-below`) against the shell's `groundLevel` (the viewport's `bounds.box.min[2]`).
+Also: `tracePicture` rejects when a frame throws (the renderer turns it into a message) instead of
+leaving the bar at "Rendering… n %".
+
 ADR-0105 (P6-17, the owner, 2026-10-24) makes **every kernel wait visible and a long recompute
 determinate**. The `Recomputer` (`packages/kernel/src/recomputer.ts`) runs every worker call
 except `recompute`/`preview` through one private `#wait(label, options, work)`: it lists

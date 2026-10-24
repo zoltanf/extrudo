@@ -4,7 +4,7 @@ import { Box3, DirectionalLight, Mesh, RectAreaLight, type Scene, Texture } from
 import { describe, expect, it } from 'vitest';
 import type { AppRenderJob } from '../../platform/render';
 import { MAT_THICKNESS } from './mat';
-import { buildScene, placeModel, sweepGeometry, WATTS_TO_AREA } from './scenes';
+import { buildScene, cameraBelowGround, placeModel, sweepGeometry, WATTS_TO_AREA } from './scenes';
 
 /** A box from (10, 20, 5) to (50, 40, 25) mm: 40 × 20 × 20. */
 function boxMesh() {
@@ -197,5 +197,51 @@ describe('buildScene', () => {
       expect(freed).toBe(1);
       expect(disposed).toBeGreaterThanOrEqual(2);
     }
+  });
+});
+
+describe('a camera below the ground', () => {
+  const GROUND = ['Sweep', 'Table', 'Worktop', 'Ground', 'Cutting mat'];
+  const camera = (z: number) => ({
+    projection: 'perspective' as const,
+    position: [80, -80, z] as [number, number, number],
+    target: [30, 30, 5] as [number, number, number],
+    up: [0, 0, 1] as [number, number, number],
+  });
+  const grounds = (scene: Scene) => GROUND.filter((name) => scene.getObjectByName(name));
+
+  it("leaves out every preset's ground, keeping the model and the lights", () => {
+    // The box's bottom is at design z = 5: a camera at z = 4 is below it.
+    for (const preset of ['studio', 'table', 'workbench', 'outdoor'] as const) {
+      const { scene } = buildScene({ ...job(preset), camera: camera(4) }, undefined, deps);
+      expect(grounds(scene)).toEqual([]);
+      expect(scene.getObjectByName('Box')).toBeDefined();
+      let lights = 0;
+      scene.traverse((object) => {
+        if (object instanceof DirectionalLight) lights += 1;
+      });
+      expect(lights).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps the ground for a camera above it, and for the automatic camera', () => {
+    for (const preset of ['studio', 'table', 'workbench', 'outdoor'] as const) {
+      for (const view of [camera(6), undefined]) {
+        const { scene } = buildScene(
+          { ...job(preset), ...(view && { camera: view }) },
+          undefined,
+          deps,
+        );
+        expect(grounds(scene).length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("is measured from the placed model's bottom, not the design origin", () => {
+    const placement = placeModel(job('studio').bodies);
+    // The box's bottom is design z = 5; offset.z (−5) moves it to the ground.
+    expect(cameraBelowGround(camera(4.5), placement)).toBe(true);
+    expect(cameraBelowGround(camera(5.5), placement)).toBe(false);
+    expect(cameraBelowGround(undefined, placement)).toBe(false);
   });
 });

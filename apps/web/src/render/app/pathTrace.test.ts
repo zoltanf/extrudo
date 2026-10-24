@@ -253,6 +253,32 @@ describe('tracePicture', () => {
     expect(tracer.sets.length).toBeGreaterThan(1);
   });
 
+  it('fails the render when a frame throws, instead of waiting forever', async () => {
+    const tracer = fakeTracer([2, 2]);
+    tracer.renderSample = () => {
+      throw new Error('context lost');
+    };
+    let disposed = 0;
+    await expect(
+      tracePicture(tracer, {
+        target: 1,
+        width: 1280,
+        height: 720,
+        onProgress: () => {},
+        cancelled: () => false,
+        frame: (callback) => callback(),
+        fence: {
+          place: () => {},
+          passed: () => true,
+          dispose: () => {
+            disposed += 1;
+          },
+        },
+      }),
+    ).rejects.toThrow('context lost');
+    expect(disposed).toBe(1);
+  });
+
   it('disposes the fence when cancelled while it waits', async () => {
     const tracer = fakeTracer([2, 2]);
     let cancel = false;

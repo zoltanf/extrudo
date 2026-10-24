@@ -61,7 +61,8 @@ Hidden bodies are not rendered.
 press Render: the picture shows what you see. **Automatic** frames the whole design to the
 picture's edges, seen from the home direction (the `Shift+1` view). Or pick one of your saved
 [named views](./getting-started.md) — each is a choice in the list, and the picture comes from
-exactly that camera.
+exactly that camera. A view from below the design renders it without the floor (the table, the
+mat, the ground), floating on the scene's background; the dialog says so under Camera.
 
 **Size.** 1280 × 720, 1920 × 1080, 2560 × 1440 or 1080 × 1080 pixels. The app engine refuses a
 size larger than your graphics card can render and names the card's limit; pick a smaller size.
