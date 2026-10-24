@@ -76,6 +76,8 @@ export interface RenderDialogProps {
   render?: BlenderRenderer;
   /** The viewport's camera now, as a named view's camera. */
   viewportCamera: () => ViewCamera;
+  /** The bottom of the visible bodies (z, mm), for the "from below" warning; undefined when unknown. */
+  groundLevel?: () => number | undefined;
   /** Opens a link in the system browser (`Platform.openLink`). */
   openLink?(url: string): void;
   onClose(): void;
@@ -137,6 +139,11 @@ const QUALITY_LABELS: Record<RenderQuality, string> = {
   high: 'High',
 };
 
+/** Whether `camera` looks from below `ground` (the model's bottom, mm); never for the automatic camera (pure). */
+export function viewFromBelow(camera: ViewCamera | undefined, ground: number | undefined): boolean {
+  return camera !== undefined && ground !== undefined && camera.position[2] < ground;
+}
+
 export function phaseText(
   progress: RenderProgress | undefined,
   engine: RenderEngine = 'app',
@@ -163,6 +170,7 @@ export function RenderForm({
   appRender,
   render,
   viewportCamera,
+  groundLevel,
   openLink,
   onClose,
   onBusy,
@@ -408,6 +416,8 @@ export function RenderForm({
         ? `view:${chosen.camera.id}`
         : 'auto'
       : chosen.camera.kind;
+  // A camera below the model's bottom renders without the floor (ADR-0101 §6.6): say so first.
+  const fromBelow = viewFromBelow(jobCamera(chosen, doc, viewportCamera), groundLevel?.());
   const onCamera = (value: string) =>
     update({
       camera:
@@ -475,6 +485,11 @@ export function RenderForm({
                 </option>
               ))}
             </Select>
+            {fromBelow && (
+              <p className="text-xs text-muted" data-render-below>
+                This view looks from below, so the picture leaves out the floor.
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-muted">Size</span>

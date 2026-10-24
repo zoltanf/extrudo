@@ -584,6 +584,13 @@ def fit_distance(centre, extent, direction, aspect):
     return max(distance, 1e-3)
 
 
+def camera_below_ground(job_camera, offset):
+    """Whether the job's camera (millimetres) is below z = 0 once the model is placed; never for the automatic one."""
+    if not job_camera:
+        return False
+    return job_camera["position"][2] * 0.001 + offset.z < 0
+
+
 def setup_camera(scene, job_camera, aspect, offset, centre, radius, extent):
     data = bpy.data.cameras.new("Camera")
     data.sensor_fit = "VERTICAL"
@@ -693,10 +700,17 @@ def main():
         assign(obj, finish_material(f"Body{index + 1}", finish, entry.get("color"), size))
     log("scene")
     preset = job["preset"]
+    before = set(scene.objects)
     if preset == "workbench":
         scene_workbench(s, centre, (offset, extent, size))
     else:
         SCENES[preset](s, centre)
+    if camera_below_ground(job.get("camera"), offset):
+        # Seen from below, the ground only hides the model: leave out everything the
+        # preset added but its lights (owner, 2026-10-24; the app's `cameraBelowGround`).
+        for obj in set(scene.objects) - before:
+            if obj.type != "LIGHT":
+                bpy.data.objects.remove(obj, do_unlink=True)
     setup_camera(
         scene, job.get("camera"), job["width"] / job["height"], offset, centre, radius, extent
     )

@@ -20,7 +20,7 @@ import type {
   RenderResult,
 } from '../platform/render';
 import type { BodyEntry } from '../shell/bodies';
-import { phaseText, type RenderDialogProps, RenderForm } from './RenderDialog';
+import { phaseText, type RenderDialogProps, RenderForm, viewFromBelow } from './RenderDialog';
 
 const A = 'E1:Bracket' as never;
 const tri = {
@@ -451,5 +451,38 @@ describe('phaseText', () => {
     expect(phaseText({ phase: 'rendering', fraction: 0.43 }, 'app', 'about 2 min left')).toBe(
       'Rendering… 43 % · about 2 min left',
     );
+  });
+});
+
+describe('a view from below', () => {
+  const below = {
+    projection: 'perspective' as const,
+    position: [40, -40, -60] as [number, number, number],
+    target: [0, 0, 0] as [number, number, number],
+    up: [0, 0, 1] as [number, number, number],
+  };
+
+  it('warns under Camera while the chosen camera is below the model, not for Automatic', () => {
+    setup({ viewportCamera: () => below, groundLevel: () => 0 });
+    expect(document.querySelector('[data-render-below]')?.textContent).toBe(
+      'This view looks from below, so the picture leaves out the floor.',
+    );
+    fireEvent.change(screen.getByLabelText('Camera'), { target: { value: 'auto' } });
+    expect(document.querySelector('[data-render-below]')).toBeNull();
+  });
+
+  it('stays quiet for a view from above or when the model has no bounds yet', () => {
+    setup({ groundLevel: () => 0 });
+    expect(document.querySelector('[data-render-below]')).toBeNull();
+    cleanup();
+    setup({ viewportCamera: () => below });
+    expect(document.querySelector('[data-render-below]')).toBeNull();
+  });
+
+  it('compares the camera with the bottom of the model (pure)', () => {
+    expect(viewFromBelow(below, 0)).toBe(true);
+    expect(viewFromBelow(below, -80)).toBe(false);
+    expect(viewFromBelow(undefined, 0)).toBe(false);
+    expect(viewFromBelow(below, undefined)).toBe(false);
   });
 });
