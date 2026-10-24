@@ -3291,3 +3291,28 @@ object URL revoked on Render again and on close; Save uses `files.download`. The
 is the string preference `blender.path` (Settings › Desktop; empty means search). The blender.org
 link goes through `platform.openLink`, so the desktop allow-list (`apps/desktop/src/main/links.ts`)
 must contain `www.blender.org`.
+
+ADR-0105 (P6-15, the owner, 2026-10-24) makes **every kernel wait visible and a long recompute
+determinate**. The `Recomputer` (`packages/kernel/src/recomputer.ts`) runs every worker call
+except `recompute`/`preview` through one private `#wait(label, options, work)`: it lists
+`{ id, label, since, quiet }` in `waits` (an external store, `get()` returning the same array
+until one changes) while the promise runs and drops it when it settles either way. Each method
+has a default label and a trailing `{ label?, quiet? }`; the `ModelExporter` interface
+(`packages/kernel/src/model-export.ts`) carries it on `exportMeshes`/`exportStep`/`exportScad`.
+The recompute turns the engine's `onFeature` into `ModelState.progress`
+(`packages/core/src/stores.ts`, `setProgress`; `computing()` resets it, a result or failure
+clears it): the active features (`activeFeatures` in `packages/core/src/timeline.ts`, shared with
+the app's `activeFeatureCount`) are the steps, the reported feature's position is `done`,
+throttled to one call per `requestAnimationFrame` (a 16 ms timer in Node).
+`apps/web/src/viewport/progressRules.ts` adds `WAITING_AFTER_MS` (300) and the `waiting` mode
+(a recompute's `preparing`/`updating` wins), plus `progressBar`; `ModelProgress.tsx` shows the
+label, "and n more", the determinate bar and subscribes through `useKernelWaits`
+(`useSyncExternalStore`); `shell/AppShell.tsx` sets `data-kernel-busy` (the busy cursor, rules in
+`design-system/theme.css`), `shell/kernelText.ts` reads "computing 4/7" and the timeline chip of
+the computed feature pulses. **Rules:** a new kernel call on the `Recomputer` goes through
+`#wait` and gets a plain-words label; `{ quiet: true }` only where the caller's own panel already
+shows the wait (Measure, the clearance check, the export dialog, the OpenSCAD list); progress is
+throttled to a frame and never survives a result or a failure; the wait notice shows only after
+300 ms, the recompute notice wins over it, and a quiet wait shows neither notice nor cursor; the
+notice keeps `pointer-events: none` and `aria-live="polite"`. e2e:
+`e2e/kernel-waits.spec.ts`.

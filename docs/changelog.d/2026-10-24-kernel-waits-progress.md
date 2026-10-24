@@ -1,0 +1,1 @@
+- 2026-10-24 · **Kernel waits and progress**: every kernel call the user starts (a pick, a measure, an export…) is named and shown after 300 ms, with the busy cursor, and a long recompute shows a determinate bar ("Thread1 · 4 of 7"), "computing 4/7" in the status bar and a soft pulse on the computing chip (ADR-0105).

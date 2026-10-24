@@ -1311,6 +1311,27 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   recompute, fire and forget) before reloading. Under reduced motion
   `getAnimations({ subtree: true })` on the icon is empty (pass it as a string).
 
+### `e2e/kernel-waits.spec.ts`
+
+- **Kernel waits e2e** (`e2e/kernel-waits.spec.ts`, P6-15, ADR-0105): opens
+  `#/example/bottle-cap` (B9, an ~8 s recompute) and changes the `capDia`
+  parameter to `34 mm` (the stored value is `32 mm`; it invalidates the first
+  sketch, so every feature re-evaluates in order and the bar advances — a
+  `wall` edit re-evaluates only the later features, which the bar reaches at
+  once; `expect.poll` only, the window is the recompute's ~8 s). The notice is
+  `[data-model-progress="updating"]` with a `<progress>` whose `value` grows and
+  a detail line matching `/\d+ of \d+/`. A queued kernel call: a plain click on
+  the model centre (`projector(viewport)(camera-target)`) selects a face (a
+  plain click picks the body, not the construction planes — a Section click
+  would pick an origin plane and call no reference), then
+  `pickTool(page, 'Section Analysis')` calls `Recomputer.reference` (non-quiet)
+  with that face at once; the recompute notice wins the pill, so assert the
+  wait through `[data-kernel-busy]` on the shell root instead, moving the
+  pointer off the model first so the view sets no pick cursor, then
+  `getComputedStyle(viewport).cursor === 'progress'`. Once
+  `[data-model-status]` is `ready`, no `[data-model-progress]` and no
+  `[data-kernel-busy]`.
+
 ### `e2e/model-select.spec.ts`
 
 - **Model-selection e2e** (P2-03) reads the Viewport region's

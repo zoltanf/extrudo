@@ -1432,7 +1432,8 @@ end to end, faster than in established desktop CAD.
   in the notice and the status bar, with the computing feature's chip marked.
   Acceptance: `pnpm check`; `e2e/kernel-waits.spec.ts` (a pick queued behind
   B9's recompute shows the wait; the bar grows) and `e2e/model-progress.spec.ts`
-  green on CI; the perf spec's edit and undo app time unchanged.
+  green on CI; the perf spec's edit and undo app time unchanged. Slices 1–3 done
+  2026-10-24.
 
 ## Phase 7 — Later (lowest priority, after everything else)
 
