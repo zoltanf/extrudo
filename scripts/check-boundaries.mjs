@@ -100,7 +100,7 @@ const workspaceDirs = ['apps', 'packages'].flatMap((group) =>
 
 function* sourceFiles(dir) {
   for (const entry of readdirSync(dir)) {
-    if (entry === 'node_modules' || entry === 'dist') continue;
+    if (entry === 'node_modules' || entry === 'dist' || entry === 'out') continue;
     const path = join(dir, entry);
     if (statSync(path).isDirectory()) yield* sourceFiles(path);
     else if (/\.(ts|tsx|js|mjs)$/.test(entry)) yield path;
