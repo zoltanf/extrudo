@@ -42,7 +42,14 @@ import type {
 } from '../../platform/render';
 import { viewToThreeCamera } from './camera';
 import { woodTexture, worktopTexture } from './finishes';
-import { BOUNCES, DENOISE, SAMPLES, type TracerLike, tracePicture } from './pathTrace';
+import {
+  BOUNCES,
+  DENOISE,
+  type GpuFence,
+  SAMPLES,
+  type TracerLike,
+  tracePicture,
+} from './pathTrace';
 import { buildScene, type EnvironmentKind, type RenderMode } from './scenes';
 
 export interface AppRenderer extends PictureRenderer {
@@ -340,6 +347,7 @@ async function drawTraced(
       height,
       onProgress: (fraction) => onProgress({ phase: 'rendering', fraction }),
       cancelled,
+      fence: webglFence(renderer.getContext() as WebGL2RenderingContext),
     });
     if (!done) return undefined;
     // The tracer's target is linear HDR: ACES and sRGB apply through OutputPass, as in Draft.
@@ -388,4 +396,32 @@ async function encodePng(pixels: Uint8Array, width: number, height: number): Pro
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error("The picture couldn't be encoded as PNG.");
   return new Uint8Array(await blob.arrayBuffer());
+}
+
+/**
+ * A WebGL2 fence for the trace loop: placed after a tile's commands (and
+ * flushed, so the GPU starts on them), polled without waiting.
+ */
+export function webglFence(gl: WebGL2RenderingContext): GpuFence {
+  let sync: WebGLSync | null = null;
+  const clear = () => {
+    if (sync) gl.deleteSync(sync);
+    sync = null;
+  };
+  return {
+    place() {
+      clear();
+      sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+      gl.flush();
+    },
+    passed() {
+      if (!sync) return true;
+      const status = gl.clientWaitSync(sync, 0, 0);
+      if (status === gl.TIMEOUT_EXPIRED) return false;
+      // ALREADY_SIGNALED, CONDITION_SATISFIED, or WAIT_FAILED (a lost context): go on.
+      clear();
+      return true;
+    },
+    dispose: clear,
+  };
 }

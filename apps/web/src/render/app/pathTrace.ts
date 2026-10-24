@@ -3,7 +3,11 @@
  * three-gpu-pathtracer's `renderSample()`. Standard and High trace the same
  * scene Draft rasterises; the loop renders one tile per animation frame, so
  * the main thread stays responsive, reports `samples / target` as progress and
- * stops the moment Cancel is pressed. The library is the authority on how
+ * stops the moment Cancel is pressed. A GPU fence after each tile holds the
+ * next one back until the GPU has finished it: `renderSample()` only queues
+ * commands, so timing the call measures nothing, and queued tiles pile up into
+ * GPU work long enough to stall the desktop's compositor (a frozen cursor) or
+ * to make the driver reset the context. The library is the authority on how
  * samples grow: one `renderSample()` adds `1 / (tiles.x · tiles.y)`, and
  * changing `tiles` does not reset what is accumulated.
  */
@@ -27,11 +31,11 @@ export const DENOISE = { sigma: 5, kSigma: 1, threshold: 0.12 };
 /** How deep a path goes. */
 export const BOUNCES = 5;
 
-/** One frame's work should stay under this; tiles are raised until it does. */
-export const FRAME_BUDGET_MS = 50;
+/** One tile's GPU time should stay under this; tiles are raised until it does. */
+export const FRAME_BUDGET_MS = 40;
 
-/** The most tiles per axis: more splits a frame thinner but the BVH overhead grows. */
-const MAX_TILES = 8;
+/** The most tiles per axis: integrated graphics need many; each tile is one draw. */
+const MAX_TILES = 16;
 
 /** 2×2 up to 1920×1080, 3×3 up to 4K, 4×4 above (pure). */
 export function chooseTiles(width: number, height: number): [number, number] {
@@ -41,10 +45,15 @@ export function chooseTiles(width: number, height: number): [number, number] {
   return [4, 4];
 }
 
-/** The next tiling when a tile took `ms`: one more per axis above the budget, at most 8×8 (pure). */
+/**
+ * The next tiling when a tile took `ms`: above the budget, each axis grows by
+ * √(ms / budget) (so the area shrinks in proportion), at least by one, at most 16×16 (pure).
+ */
 export function adaptTiles(tiles: [number, number], ms: number): [number, number] {
   if (ms <= FRAME_BUDGET_MS) return tiles;
-  return [Math.min(tiles[0] + 1, MAX_TILES), Math.min(tiles[1] + 1, MAX_TILES)];
+  const factor = Math.sqrt(ms / FRAME_BUDGET_MS);
+  const grow = (n: number) => Math.min(MAX_TILES, Math.max(n + 1, Math.ceil(n * factor)));
+  return [grow(tiles[0]), grow(tiles[1])];
 }
 
 /** 0.1 … 0.95 as `samples / target` (pure; the phases around it are the renderer's). */
@@ -61,6 +70,13 @@ export interface TracerLike {
   readonly isCompiling: boolean;
 }
 
+/** A GPU fence: `place()` after a tile's commands, `passed()` once the GPU has run them. */
+export interface GpuFence {
+  place(): void;
+  passed(): boolean;
+  dispose(): void;
+}
+
 export interface TraceOptions {
   target: number;
   width: number;
@@ -70,32 +86,62 @@ export interface TraceOptions {
   /** requestAnimationFrame by default; tests inject one that runs at once. */
   frame?(callback: () => void): void;
   now?(): number;
+  /**
+   * The renderer's fence; without one (tests) a tile's time is the call's own,
+   * which on a real GPU is only the time to queue it.
+   */
+  fence?: GpuFence;
 }
 
-/** Runs renderSample per frame until `samples >= target` (resolves true) or cancelled (false). */
+/**
+ * Runs one tile per frame until `samples >= target` (resolves true) or cancelled
+ * (false). With a fence, the next tile waits until the GPU has finished the last
+ * one, and the time from placing the fence to seeing it pass is the tile's time.
+ */
 export function tracePicture(tracer: TracerLike, options: TraceOptions): Promise<boolean> {
   const frame = options.frame ?? ((callback) => requestAnimationFrame(callback));
   const now = options.now ?? (() => performance.now());
+  const fence = options.fence;
   let tiles = chooseTiles(options.width, options.height);
   tracer.tiles.set(tiles[0], tiles[1]);
+  /** When the fence after the last tile was placed; undefined when none is pending. */
+  let placed: number | undefined;
+  const timed = (ms: number) => {
+    if (ms <= FRAME_BUDGET_MS) return;
+    tiles = adaptTiles(tiles, ms);
+    tracer.tiles.set(tiles[0], tiles[1]);
+  };
   return new Promise<boolean>((resolve) => {
+    const finish = (value: boolean) => {
+      fence?.dispose();
+      resolve(value);
+    };
     const step = () => {
       if (options.cancelled()) {
-        resolve(false);
+        finish(false);
         return;
+      }
+      if (placed !== undefined) {
+        if (!fence?.passed()) {
+          frame(step);
+          return;
+        }
+        timed(now() - placed);
+        placed = undefined;
       }
       if (tracer.samples >= options.target) {
         options.onProgress(traceFraction(tracer.samples, options.target));
-        resolve(true);
+        finish(true);
         return;
       }
       if (!tracer.isCompiling) {
         const start = now();
         tracer.renderSample();
-        const ms = now() - start;
-        if (ms > FRAME_BUDGET_MS) {
-          tiles = adaptTiles(tiles, ms);
-          tracer.tiles.set(tiles[0], tiles[1]);
+        if (fence) {
+          fence.place();
+          placed = start;
+        } else {
+          timed(now() - start);
         }
       }
       options.onProgress(traceFraction(tracer.samples, options.target));

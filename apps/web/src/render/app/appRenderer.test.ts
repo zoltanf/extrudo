@@ -1,7 +1,7 @@
 /** The app's picture renderer (ADR-0101 §6): its refusals, without WebGL (a fake renderer and drawing). */
 import { describe, expect, it, vi } from 'vitest';
 import type { AppRenderJob } from '../../platform/render';
-import { createAppRenderer } from './appRenderer';
+import { createAppRenderer, webglFence } from './appRenderer';
 
 const job: AppRenderJob = {
   project: 'Box',
@@ -80,5 +80,54 @@ describe('createAppRenderer', () => {
       expect.any(Function),
       expect.any(Function),
     );
+  });
+});
+
+describe('webglFence', () => {
+  function fakeGl(statuses: number[]) {
+    const gl = {
+      SYNC_GPU_COMMANDS_COMPLETE: 0x9117,
+      TIMEOUT_EXPIRED: 0x911b,
+      ALREADY_SIGNALED: 0x911a,
+      made: 0,
+      deleted: 0,
+      flushed: 0,
+      fenceSync: () => {
+        gl.made += 1;
+        return {};
+      },
+      flush: () => {
+        gl.flushed += 1;
+      },
+      clientWaitSync: () => statuses.shift() ?? 0x911a,
+      deleteSync: () => {
+        gl.deleted += 1;
+      },
+    };
+    return gl;
+  }
+
+  it('passes with nothing placed, waits on TIMEOUT_EXPIRED and frees the sync once passed', () => {
+    const gl = fakeGl([0x911b, 0x911b, 0x911a]);
+    const fence = webglFence(gl as unknown as WebGL2RenderingContext);
+    expect(fence.passed()).toBe(true);
+    fence.place();
+    expect(gl.flushed).toBe(1);
+    expect(fence.passed()).toBe(false);
+    expect(fence.passed()).toBe(false);
+    expect(fence.passed()).toBe(true);
+    expect(gl.deleted).toBe(1);
+    expect(fence.passed()).toBe(true);
+  });
+
+  it('frees a pending sync on dispose and when placed again', () => {
+    const gl = fakeGl([]);
+    const fence = webglFence(gl as unknown as WebGL2RenderingContext);
+    fence.place();
+    fence.place();
+    expect(gl.deleted).toBe(1);
+    fence.dispose();
+    expect(gl.deleted).toBe(2);
+    expect(gl.made).toBe(2);
   });
 });

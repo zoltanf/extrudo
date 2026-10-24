@@ -28,15 +28,18 @@ describe('chooseTiles', () => {
 });
 
 describe('adaptTiles', () => {
-  it('keeps the tiling under budget and raises both axes by one above it', () => {
+  it('keeps the tiling under budget and grows each axis by √(ms / budget) above it', () => {
     expect(adaptTiles([2, 2], FRAME_BUDGET_MS)).toEqual([2, 2]);
-    expect(adaptTiles([2, 2], 80)).toEqual([3, 3]);
-    expect(adaptTiles([3, 3], 500)).toEqual([4, 4]);
+    // Just over: at least one more per axis.
+    expect(adaptTiles([2, 2], FRAME_BUDGET_MS + 1)).toEqual([3, 3]);
+    // 16× over: 4× per axis, a tile a sixteenth the size.
+    expect(adaptTiles([2, 2], FRAME_BUDGET_MS * 16)).toEqual([8, 8]);
   });
 
-  it('never goes past 8×8', () => {
-    expect(adaptTiles([8, 8], 500)).toEqual([8, 8]);
-    expect(adaptTiles([8, 8], 1)).toEqual([8, 8]);
+  it('never goes past 16×16', () => {
+    expect(adaptTiles([8, 8], FRAME_BUDGET_MS * 100)).toEqual([16, 16]);
+    expect(adaptTiles([16, 16], FRAME_BUDGET_MS * 2)).toEqual([16, 16]);
+    expect(adaptTiles([16, 16], 1)).toEqual([16, 16]);
   });
 });
 
@@ -122,7 +125,97 @@ describe('tracePicture', () => {
     expect(done).toBe(true);
     expect(tracer.sets[0]).toEqual([2, 2]);
     expect(tracer.sets.some(([x]) => x > 2)).toBe(true);
-    expect(Math.max(...tracer.sets.flat())).toBeLessThanOrEqual(8);
+    expect(Math.max(...tracer.sets.flat())).toBeLessThanOrEqual(16);
+  });
+
+  it('with a fence, holds the next tile until the GPU has finished the last', async () => {
+    const tracer = fakeTracer([2, 2]);
+    let pending = 0;
+    let disposed = 0;
+    const fence = {
+      place: () => {
+        pending = 3;
+      },
+      // Passes on the third poll after it was placed.
+      passed: () => --pending <= 0,
+      dispose: () => {
+        disposed += 1;
+      },
+    };
+    let frames = 0;
+    const done = await tracePicture(tracer, {
+      target: 1,
+      width: 1280,
+      height: 720,
+      onProgress: () => {},
+      cancelled: () => false,
+      frame: (callback) => {
+        frames += 1;
+        callback();
+      },
+      fence,
+    });
+    expect(done).toBe(true);
+    expect(tracer.calls).toBe(4);
+    // Each tile: its own frame, then two frames waiting, then the one where the fence passes.
+    expect(frames).toBeGreaterThanOrEqual(4 * 3);
+    expect(disposed).toBe(1);
+  });
+
+  it('with a fence, sizes the tiles by the time until the fence passes', async () => {
+    const tracer = fakeTracer([2, 2]);
+    let clock = 0;
+    const done = await tracePicture(tracer, {
+      target: 1,
+      width: 1280,
+      height: 720,
+      onProgress: () => {},
+      cancelled: () => false,
+      // A frame is 16 ms; the call itself takes no time, as on a real GPU.
+      frame: (callback) => {
+        clock += 16;
+        callback();
+      },
+      now: () => clock,
+      fence: {
+        place: () => {},
+        // The GPU takes 10 frames (160 ms) per tile: polls before that fail.
+        passed: (() => {
+          let polls = 0;
+          return () => ++polls % 10 === 0;
+        })(),
+        dispose: () => {},
+      },
+    });
+    expect(done).toBe(true);
+    // 160 ms is 4× the budget: each axis doubles at once.
+    expect(tracer.sets[1]).toEqual([4, 4]);
+  });
+
+  it('disposes the fence when cancelled while it waits', async () => {
+    const tracer = fakeTracer([2, 2]);
+    let cancel = false;
+    let disposed = 0;
+    const done = await tracePicture(tracer, {
+      target: 4,
+      width: 1280,
+      height: 720,
+      onProgress: () => {},
+      cancelled: () => cancel,
+      frame: (callback) => callback(),
+      fence: {
+        place: () => {
+          cancel = true;
+        },
+        passed: () => false,
+        dispose: () => {
+          disposed += 1;
+        },
+      },
+    });
+    expect(done).toBe(false);
+    expect(tracer.calls).toBe(1);
+    expect(disposed).toBe(1);
   });
 
   it('stops at once when cancelled, without sampling', async () => {

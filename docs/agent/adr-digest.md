@@ -3319,11 +3319,16 @@ one frame into a 4× MSAA HalfFloat target, then `OutputPass` (ACES, sRGB) into 
 PNG via a 2D canvas. Sizes above `capabilities.maxTextureSize` are refused naming the limit;
 a second render while one runs is refused. Numbers follow `render.py` (sizes ×s, light
 positions, `fit_distance`); light watts × `WATTS_TO_THREE`. `pathTrace.ts` holds the trace loop and
-its pure parts: `chooseTiles` (2×2 up to 1080p, 3×3 up to 4K, 4×4 above), `adaptTiles` (one more
-per axis when a sample's tile goes over `FRAME_BUDGET_MS` = 50 ms, at most 8×8; changing tiles does
-not reset samples), `traceFraction` (`samples / target` onto 0.1–0.95), and `tracePicture` (one
-`renderSample()` per frame until `samples >= target` or `cancelled()`, reporting progress every
-frame, `frame`/`now` injectable). **Rules:** Standard and High path-trace the same scene with
+its pure parts: `chooseTiles` (2×2 up to 1080p, 3×3 up to 4K, 4×4 above), `adaptTiles` (each axis
+× √(ms / budget), at least +1, when a tile's GPU time goes over `FRAME_BUDGET_MS` = 40 ms, at most
+16×16; changing tiles does not reset samples), `traceFraction` (`samples / target` onto 0.1–0.95),
+and `tracePicture` (one `renderSample()` per frame until `samples >= target` or `cancelled()`,
+reporting progress every frame, `frame`/`now`/`fence` injectable). **A tile's time is GPU time,
+from a fence:** `renderSample()` only queues commands, so timing the call measures nothing;
+`appRenderer.ts`'s `webglFence` (`fenceSync` + flush, polled with `clientWaitSync(…, 0)`) is placed
+after each tile, and the next tile waits until it passes. Without it, tiles piled up into GPU work
+that froze the desktop's cursor and made Electron's driver reset the context on integrated
+graphics (owner, 2026-10-24). **Rules:** Standard and High path-trace the same scene with
 `three-gpu-pathtracer` (`WebGLPathTracer`; MIT, in the allow-list and NOTICE) on the same hidden
 `WebGLRenderer`: **one tracer per renderer**, made on the first traced render and freed in
 `dispose()` (its deprecation warning prints once), `renderToCanvas = false`, then the tracer's
