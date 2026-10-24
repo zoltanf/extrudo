@@ -8,7 +8,8 @@
  *    and a point on a curve show once, at the point; a tangent between
  *    curves that are joined shows once, at the joint; a symmetry shows on its
  *    two entities, not the axis; a horizontal or vertical between two points
- *    shows once, halfway between them, with its own icon (ADR-0094).
+ *    shows once, halfway between them, with its own icon (ADR-0094), or
+ *    beside the free point when the other is fixed (projected or Fix).
  * 2. `layoutGlyphs` projects the anchors to the screen and moves each glyph
  *    off its entity: along the outward normal for curves (the upper side of a
  *    line), up and right for points. A point-pair glyph moves off the line
@@ -20,7 +21,9 @@ import {
   CONSTRAINT_LABELS,
   type ConstraintId,
   curvePolyline,
+  entityPoints,
   isDatumLine,
+  projectedEntities,
   type SketchConstraint,
   type SketchConstraintType,
   type SketchData,
@@ -103,13 +106,21 @@ export function glyphFace(c: SketchConstraint): GlyphFace {
 
 export function glyphAnchors(sketch: SketchData): GlyphAnchor[] {
   const out: GlyphAnchor[] = [];
+  const fixed = fixedPoints(sketch);
   for (const [key, c] of Object.entries(sketch.constraints)) {
     const constraint = key as ConstraintId;
     const face = glyphFace(c);
     if (isPointPair(c)) {
-      // Once, halfway between the two points: the tie is between them, not on either.
       const a = pointAt(sketch, c.a);
       const b = pointAt(sketch, c.b);
+      // One end fixed (often far away, on the model's outline): beside the point that moves.
+      const fixedA = fixed.has(c.a);
+      if (a && b && fixedA !== fixed.has(c.b)) {
+        const [entity, at] = fixedA ? [c.b, b] : [c.a, a];
+        out.push({ constraint, type: c.type, ...face, entity, at });
+        continue;
+      }
+      // Otherwise once, halfway between the two points: the tie is between them, not on either.
       if (a && b) {
         // Up for a level pair, right for a plumb one (perpendicular to b - a).
         let normal = unit([a[1] - b[1], b[0] - a[0]]);
@@ -144,6 +155,18 @@ export function glyphCurves(sketch: SketchData): Vec2[][] {
     if (line && line.length >= 2) curves.push([...line]);
   }
   return curves;
+}
+
+/** Points that can't move: projected ones and those a Fix holds (on the point or its curve). */
+function fixedPoints(sketch: SketchData): Set<SketchEntityId> {
+  const out = new Set(projectedEntities(sketch));
+  for (const c of Object.values(sketch.constraints)) {
+    if (c.type !== 'fix') continue;
+    const e = sketch.entities[c.entity];
+    out.add(c.entity);
+    if (e) for (const p of entityPoints(e)) out.add(p);
+  }
+  return out;
 }
 
 function pointAt(sketch: SketchData, id: SketchEntityId): Vec2 | undefined {

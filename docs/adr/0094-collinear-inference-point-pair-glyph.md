@@ -79,6 +79,16 @@ stay apart. Other glyphs are unchanged.
 Rejected: general collision avoidance for every glyph. Broader, and the glyphs
 on curves already move along their own normal.
 
+## Amendment (2026-10-24)
+
+A pair with one fixed end (a projected point, or a point a Fix holds directly
+or through its curve) puts its glyph **beside the free point**, like a point
+glyph (up and right, sharing that point's row), not halfway. The owner hit
+it: a rectangle corner tied Vertical to the far end of a projected outline
+edge had its glyph 33 mm above the rectangle, off screen, so nothing on the
+rectangle showed why its edge was held. With both ends free or both fixed,
+the midpoint stays.
+
 ## Rejected
 
 - **Only a new glyph** (keep the point pair, draw it once in the middle with
