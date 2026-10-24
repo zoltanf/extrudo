@@ -29,7 +29,7 @@ stays a program of yours.
 
 ## The dialog
 
-**Scene.** Four choices, each a little scene built around your model:
+**Scene.** The group holds the scene, the camera, the size and the quality; click its heading to fold it to one line that sums up the choices. Four scenes, each a little set built around your model:
 
 - **Studio** — a white sweep and soft light: clean product shot.
 - **Wooden table** — on a wooden table top, warm light from the side.

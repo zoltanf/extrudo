@@ -188,6 +188,28 @@ describe('many bodies', () => {
     expect(screen.queryByLabelText('Finish of Lid')).toBeNull();
   });
 
+  it('folds the Scene group to one line that sums up the choices', () => {
+    setup({ bodies: two() });
+    fireEvent.click(screen.getByRole('radio', { name: /Workbench/ }));
+    fireEvent.change(screen.getByLabelText('Size'), { target: { value: '1280x720' } });
+    fireEvent.click(screen.getByLabelText(/High/));
+    expect(screen.getByText('Several minutes, finest')).toBeTruthy();
+    const scene = screen.getByRole('button', { name: /^Scene/ });
+    expect(scene.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(scene);
+    expect(scene.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('radio', { name: /Workbench/ })).toBeNull();
+    expect(screen.queryByLabelText('Camera')).toBeNull();
+    expect(scene.textContent).toContain('Workbench · Current view · 1280 × 720 · High');
+    // The Bodies group stays.
+    expect(screen.getByLabelText('Finish of all bodies')).toBeTruthy();
+    fireEvent.click(scene);
+    expect(screen.getByRole('radio', { name: /Workbench/ }).getAttribute('aria-checked')).toBe(
+      'true',
+    );
+    expect((screen.getByLabelText(/High/) as HTMLInputElement).checked).toBe(true);
+  });
+
   it('opens the list by itself when the stored finishes differ', () => {
     const store = createDocumentStore(createDocument());
     store

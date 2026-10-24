@@ -16,8 +16,8 @@ import {
   type ViewCamera,
 } from '@extrudo/core';
 import { isExportCancelled, RESOLUTIONS } from '@extrudo/kernel';
-import { X } from 'lucide-react';
-import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, ChevronRight, X } from 'lucide-react';
+import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { Button, Dialog, DialogClose, IconButton, Select } from '../design-system';
 import { type MeshedBodies, type ModelExporter, meshBodies } from '../export/modelExport';
@@ -30,7 +30,6 @@ import {
   type RenderProgress,
 } from '../platform/render';
 import type { BodyEntry } from '../shell/bodies';
-import { Choice, Hint, Radio } from '../sketch/ExportSketchDialog';
 import {
   buildRenderJob,
   commonFinish,
@@ -183,6 +182,7 @@ export function RenderForm({
   const common = commonFinish(chosen, shownIds);
   const [perBody, setPerBody] = useState(false);
   const listOpen = perBody || common === undefined;
+  const [sceneOpen, setSceneOpen] = useState(true);
   // Saving the render settings changes the document without changing any body, so only a
   // running recompute makes the model wait.
   const current = status === 'ready';
@@ -328,6 +328,18 @@ export function RenderForm({
   const sizes = RENDER_SIZES.some(([w, h]) => w === chosen.width && h === chosen.height)
     ? RENDER_SIZES
     : [...RENDER_SIZES, [chosen.width, chosen.height] as const];
+  const cameraLabel =
+    chosen.camera.kind === 'view'
+      ? (views.find((v) => v.id === (chosen.camera as { id: string }).id)?.name ?? 'Automatic')
+      : chosen.camera.kind === 'current'
+        ? 'Current view'
+        : 'Automatic';
+  const sceneSummary = [
+    RENDER_PRESET_INFO[chosen.preset].label,
+    cameraLabel,
+    sizeLabel(chosen.width, chosen.height),
+    QUALITY_LABELS[chosen.quality],
+  ].join(' · ');
 
   return (
     <form
@@ -339,10 +351,75 @@ export function RenderForm({
     >
       <BlenderLine status={blender} openLink={openLink} />
 
-      <fieldset className="flex flex-col gap-1" disabled={busy}>
-        <legend className="mb-1 font-semibold">Scene</legend>
+      <Section
+        label="Scene"
+        open={sceneOpen}
+        onToggle={() => setSceneOpen(!sceneOpen)}
+        summary={sceneSummary}
+        disabled={busy}
+      >
         <PresetCards value={chosen.preset} onChange={(preset) => update({ preset })} />
-      </fieldset>
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="flex flex-col gap-1">
+            <span className="text-muted">Camera</span>
+            <Select
+              aria-label="Camera"
+              value={cameraValue}
+              onChange={(event) => onCamera(event.target.value)}
+            >
+              <option value="current">Current view</option>
+              <option value="auto">Automatic</option>
+              {views.map((view) => (
+                <option key={view.id} value={`view:${view.id}`}>
+                  {view.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-muted">Size</span>
+            <Select
+              aria-label="Size"
+              value={sizeValue(chosen.width, chosen.height)}
+              onChange={(event) => {
+                const [w, h] = event.target.value.split('x').map(Number);
+                update({ width: w as number, height: h as number });
+              }}
+            >
+              {sizes.map(([w, h]) => (
+                <option key={sizeValue(w, h)} value={sizeValue(w, h)}>
+                  {sizeLabel(w, h)}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </div>
+        <div
+          role="radiogroup"
+          aria-label="Quality"
+          className="flex flex-wrap items-center gap-x-1 gap-y-0 text-sm"
+        >
+          <span className="mr-1 text-muted">Quality</span>
+          {RENDER_QUALITIES.map((quality) => (
+            <label
+              key={quality}
+              className="flex h-7 cursor-pointer items-center gap-1.5 rounded-input px-1 hover:bg-accent-soft"
+            >
+              <input
+                type="radio"
+                name="render-quality"
+                checked={chosen.quality === quality}
+                onChange={() => update({ quality })}
+                className="accent-(--x-accent)"
+              />
+              {QUALITY_LABELS[quality]}
+            </label>
+          ))}
+          <span className="ml-auto text-muted" data-quality-hint>
+            {QUALITY_HINTS[chosen.quality]}
+          </span>
+        </div>
+      </Section>
 
       <fieldset className="flex flex-col gap-1" disabled={busy}>
         <legend className="mb-1 font-semibold">Bodies</legend>
@@ -380,10 +457,11 @@ export function RenderForm({
             {common !== undefined && (
               <button
                 type="button"
-                className="self-start text-sm text-accent underline-offset-2 hover:underline"
+                className="flex h-7 items-center gap-1 self-start rounded-input pr-1 text-sm text-muted hover:bg-accent-soft"
                 aria-expanded={listOpen}
                 onClick={() => setPerBody(!listOpen)}
               >
+                {listOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 {listOpen ? 'Hide the list' : 'Set per body…'}
               </button>
             )}
@@ -396,57 +474,6 @@ export function RenderForm({
             )}
           </>
         )}
-      </fieldset>
-
-      <fieldset className="grid grid-cols-2 gap-3 text-sm" disabled={busy}>
-        <div className="flex flex-col gap-1">
-          <span className="text-muted">Camera</span>
-          <Select
-            aria-label="Camera"
-            value={cameraValue}
-            onChange={(event) => onCamera(event.target.value)}
-          >
-            <option value="current">Current view</option>
-            <option value="auto">Automatic</option>
-            {views.map((view) => (
-              <option key={view.id} value={`view:${view.id}`}>
-                {view.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-muted">Size</span>
-          <Select
-            aria-label="Size"
-            value={sizeValue(chosen.width, chosen.height)}
-            onChange={(event) => {
-              const [w, h] = event.target.value.split('x').map(Number);
-              update({ width: w as number, height: h as number });
-            }}
-          >
-            {sizes.map(([w, h]) => (
-              <option key={sizeValue(w, h)} value={sizeValue(w, h)}>
-                {sizeLabel(w, h)}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </fieldset>
-
-      <fieldset disabled={busy}>
-        <Choice legend="Quality">
-          {RENDER_QUALITIES.map((quality) => (
-            <Radio
-              key={quality}
-              name="render-quality"
-              checked={chosen.quality === quality}
-              onChange={() => update({ quality })}
-            >
-              {QUALITY_LABELS[quality]} <Hint>{QUALITY_HINTS[quality]}</Hint>
-            </Radio>
-          ))}
-        </Choice>
       </fieldset>
 
       {stage.kind === 'meshing' && (
@@ -489,6 +516,43 @@ export function RenderForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/** A collapsible group: its heading is the toggle; collapsed, a summary stands in. */
+function Section({
+  label,
+  open,
+  onToggle,
+  summary,
+  disabled,
+  children,
+}: {
+  label: string;
+  open: boolean;
+  onToggle(): void;
+  summary: string;
+  disabled: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-2" data-section={label.toLowerCase()}>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={onToggle}
+        className="-ml-1 flex h-7 items-center gap-1 self-start rounded-input px-1 text-left font-semibold hover:bg-accent-soft"
+      >
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        {label}
+        {!open && <span className="ml-2 truncate font-normal text-sm text-muted">{summary}</span>}
+      </button>
+      {open && (
+        <fieldset className="flex flex-col gap-3" aria-label={label} disabled={disabled}>
+          {children}
+        </fieldset>
+      )}
+    </div>
   );
 }
 
