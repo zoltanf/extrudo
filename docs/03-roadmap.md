@@ -1422,6 +1422,17 @@ end to end, faster than in established desktop CAD.
   *Slices:* (1) OBJ writer, enums, schema, command, platform types; (2) main:
   detection, launch, `render.py` scenes and finishes, channels; (3) the tile,
   dialog, progress, result, Settings row; (4) docs.
+- [ ] **P6-15 Kernel waits and recompute progress** (owner, 2026-10-24;
+  ADR-0105; slice C of `docs/plans/perf-baseline-2026-10-23.md`). Every
+  kernel call the app makes besides the recompute runs through the
+  `Recomputer`'s wait counter with a plain-words label; the view's progress
+  notice shows the oldest wait after 300 ms with a busy cursor (a caller whose
+  panel already shows the wait passes `quiet`); a long recompute turns the
+  kernel's per-feature callback into a determinate bar ("Thread1 · 4 of 7")
+  in the notice and the status bar, with the computing feature's chip marked.
+  Acceptance: `pnpm check`; `e2e/kernel-waits.spec.ts` (a pick queued behind
+  B9's recompute shows the wait; the bar grows) and `e2e/model-progress.spec.ts`
+  green on CI; the perf spec's edit and undo app time unchanged.
 
 ## Phase 7 — Later (lowest priority, after everything else)
 
