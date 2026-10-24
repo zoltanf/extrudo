@@ -91,6 +91,8 @@ the model… 2/3") and shows the progress on a bar: **Starting…**, **Importing
 43 %**, **Saving…** (with Blender, **Starting Blender…** first). A Draft render is over in
 seconds, and its bar doesn't count.
 **Cancel** stops a render; the dialog refuses to close while one runs — Cancel it first.
+In the app, Standard and High render only while the app is on screen: in a browser tab you
+switch away from, or a minimised window, the render waits and carries on when you come back.
 
 When it is done the picture is shown in a wider dialog; click it to see it at its real size (scroll to look around, click again to fit it). Three buttons: **Save PNG…** saves it (the default
 name is `<design> - <scene>.png`, e.g. `Pen holder - Wooden table.png`), **Copy** puts it on the
