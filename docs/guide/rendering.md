@@ -71,7 +71,7 @@ the model… 2/3"), starts Blender and follows its progress: **Importing…**, *
 **Saving…**, on a progress bar (a Draft render is over in seconds, and its bar doesn't count).
 **Cancel** stops a render; the dialog refuses to close while one runs — Cancel it first.
 
-When it is done the picture is shown, with three buttons: **Save PNG…** saves it (the default
+When it is done the picture is shown in a wider dialog; click it to see it at its real size (scroll to look around, click again to fit it). Three buttons: **Save PNG…** saves it (the default
 name is `<design> - <scene>.png`, e.g. `Pen holder - Wooden table.png`), **Copy** puts it on the
 clipboard for pasting into a chat or forum post, and **Render again** returns to the form. The
 picture itself is never stored in the design — it is a file you save where you want it.

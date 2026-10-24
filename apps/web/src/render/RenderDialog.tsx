@@ -72,13 +72,15 @@ export interface RenderDialogProps {
 export function RenderDialog(props: RenderDialogProps) {
   // Closing is refused while a render runs (Esc and the overlay included): Cancel stops it.
   const [busy, setBusy] = useState(false);
+  // The form is narrow; the picture gets a wide dialog.
+  const [picture, setPicture] = useState(false);
   return (
     <Dialog
       open={props.request !== undefined}
       onOpenChange={(value) => {
         if (!value && !busy) props.onClose();
       }}
-      size="small"
+      size={picture ? 'large' : 'small'}
       title="Render picture"
       description="A picture of the design, rendered by Blender on this computer."
       actions={
@@ -89,7 +91,7 @@ export function RenderDialog(props: RenderDialogProps) {
         </DialogClose>
       }
     >
-      <RenderForm {...props} onBusy={setBusy} />
+      <RenderForm {...props} onBusy={setBusy} onPicture={setPicture} />
     </Dialog>
   );
 }
@@ -139,8 +141,9 @@ export function RenderForm({
   openLink,
   onClose,
   onBusy,
+  onPicture,
   notify = () => {},
-}: RenderDialogProps & { onBusy?(busy: boolean): void }) {
+}: RenderDialogProps & { onBusy?(busy: boolean): void; onPicture?(shown: boolean): void }) {
   const doc = useStore(store, (s) => s.doc);
   const status = useStore(model, (s) => s.status);
   const open = request !== undefined;
@@ -149,6 +152,8 @@ export function RenderForm({
   const [blender, setBlender] = useState<BlenderStatus>();
   const [stage, setStage] = useState<Stage>({ kind: 'form' });
   const [message, setMessage] = useState<{ tone: 'info' | 'error'; text: string }>();
+  // The picture fits the dialog, or shows at its real size (scroll to pan).
+  const [zoomed, setZoomed] = useState(false);
   const cancelled = useRef(false);
   const running = useRef(false);
   const url = useRef<string | undefined>(undefined);
@@ -183,7 +188,6 @@ export function RenderForm({
   const [perBody, setPerBody] = useState(false);
   const listOpen = perBody || common === undefined;
   const [sceneOpen, setSceneOpen] = useState(true);
-  const [bodiesOpen, setBodiesOpen] = useState(true);
   // Saving the render settings changes the document without changing any body, so only a
   // running recompute makes the model wait.
   const current = status === 'ready';
@@ -192,6 +196,11 @@ export function RenderForm({
     onBusy?.(busy);
     return () => onBusy?.(false);
   }, [busy, onBusy]);
+  const picture = stage.kind === 'result';
+  useEffect(() => {
+    onPicture?.(picture);
+    return () => onPicture?.(false);
+  }, [picture, onPicture]);
 
   let blocker: string | undefined;
   if (!kernel) blocker = "The kernel isn't running.";
@@ -276,6 +285,7 @@ export function RenderForm({
     if (url.current) URL.revokeObjectURL(url.current);
     url.current = undefined;
     setMessage(undefined);
+    setZoomed(false);
     setStage({ kind: 'form' });
   };
 
@@ -293,11 +303,24 @@ export function RenderForm({
     };
     return (
       <div className="flex flex-col gap-4">
-        <img
-          src={src}
-          alt={altText}
-          className="max-h-[60vh] w-full rounded-input border border-line object-contain"
-        />
+        <button
+          type="button"
+          aria-pressed={zoomed}
+          aria-label={
+            zoomed
+              ? 'Zoom out: fit the picture to the window'
+              : 'Zoom in: show the picture at its real size'
+          }
+          title={zoomed ? 'Zoom out' : 'Zoom in'}
+          onClick={() => setZoomed(!zoomed)}
+          className={`max-h-[75vh] overflow-auto rounded-input border border-line ${zoomed ? 'cursor-zoom-out' : 'cursor-zoom-in'}`}
+        >
+          <img
+            src={src}
+            alt={altText}
+            className={zoomed ? 'max-w-none' : 'max-h-[75vh] w-full object-contain'}
+          />
+        </button>
         <div className="flex justify-end gap-2">
           <Button onClick={again}>Render again</Button>
           <Button onClick={() => void copy()}>Copy</Button>
@@ -422,49 +445,39 @@ export function RenderForm({
         </div>
       </Section>
 
-      <Section
-        label="Bodies"
-        open={bodiesOpen}
-        onToggle={() => setBodiesOpen(!bodiesOpen)}
-        disabled={busy}
-        always={
-          <>
-            {shown.length === 0 && <p className="text-sm text-muted">No bodies are shown.</p>}
-            {shown.length === 1 && shown[0] && (
-              <FinishRow body={shown[0]} chosen={chosen} setChosen={setChosen} />
-            )}
-            {shown.length > 1 && (
-              <div className="flex items-center gap-2 text-sm">
-                <span className="min-w-0 flex-1 truncate">All {shown.length} bodies</span>
-                <div className="w-36 shrink-0">
-                  <Select
-                    aria-label="Finish of all bodies"
-                    value={common ?? 'mixed'}
-                    onChange={(event) =>
-                      setChosen((c) =>
-                        withFinishForAll(c, shownIds, event.target.value as RenderFinish),
-                      )
-                    }
-                  >
-                    {common === undefined && (
-                      <option value="mixed" disabled>
-                        Mixed
-                      </option>
-                    )}
-                    {RENDER_FINISHES.map((finish) => (
-                      <option key={finish} value={finish} title={RENDER_FINISH_INFO[finish].hint}>
-                        {RENDER_FINISH_INFO[finish].label}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-              </div>
-            )}
-          </>
-        }
-      >
+      <fieldset className="flex flex-col gap-1" disabled={busy}>
+        <legend className="mb-1 font-semibold">Bodies</legend>
+        {shown.length === 0 && <p className="text-sm text-muted">No bodies are shown.</p>}
+        {shown.length === 1 && shown[0] && (
+          <FinishRow body={shown[0]} chosen={chosen} setChosen={setChosen} />
+        )}
         {shown.length > 1 && (
           <>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="min-w-0 flex-1 truncate">All {shown.length} bodies</span>
+              <div className="w-36 shrink-0">
+                <Select
+                  aria-label="Finish of all bodies"
+                  value={common ?? 'mixed'}
+                  onChange={(event) =>
+                    setChosen((c) =>
+                      withFinishForAll(c, shownIds, event.target.value as RenderFinish),
+                    )
+                  }
+                >
+                  {common === undefined && (
+                    <option value="mixed" disabled>
+                      Mixed
+                    </option>
+                  )}
+                  {RENDER_FINISHES.map((finish) => (
+                    <option key={finish} value={finish} title={RENDER_FINISH_INFO[finish].hint}>
+                      {RENDER_FINISH_INFO[finish].label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </div>
             {common !== undefined && (
               <button
                 type="button"
@@ -485,7 +498,7 @@ export function RenderForm({
             )}
           </>
         )}
-      </Section>
+      </fieldset>
 
       {stage.kind === 'meshing' && (
         <Progress
@@ -536,7 +549,6 @@ function Section({
   open,
   onToggle,
   summary,
-  always,
   disabled,
   children,
 }: {
@@ -544,9 +556,7 @@ function Section({
   open: boolean;
   onToggle(): void;
   /** Collapsed, this line stands in for the children. */
-  summary?: string;
-  /** Shown under the heading whether open or not. */
-  always?: ReactNode;
+  summary: string;
   disabled: boolean;
   children: ReactNode;
 }) {
@@ -560,14 +570,13 @@ function Section({
       >
         {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         {label}
-        {!open && summary && (
-          <span className="ml-2 truncate font-normal text-sm text-muted">{summary}</span>
-        )}
+        {!open && <span className="ml-2 truncate font-normal text-sm text-muted">{summary}</span>}
       </button>
-      <fieldset className="flex flex-col gap-2" aria-label={label} disabled={disabled}>
-        {always}
-        {open && children}
-      </fieldset>
+      {open && (
+        <fieldset className="flex flex-col gap-3" aria-label={label} disabled={disabled}>
+          {children}
+        </fieldset>
+      )}
     </div>
   );
 }
