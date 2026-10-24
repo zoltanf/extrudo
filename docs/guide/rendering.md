@@ -61,7 +61,8 @@ exactly that camera.
 **Quality.** Draft (seconds, rough), Standard (a minute or two) or High (several minutes,
 finest) — rough times; they grow with the picture size and depend on your computer. Standard and
 High use Cycles with the denoiser, and speed up on a graphics card when there is one. Draft uses
-Blender's fast EEVEE.
+Blender's fast EEVEE; where that can't run (no usable graphics card: a virtual machine, a remote
+desktop) the app renders the draft with Cycles instead, a little slower.
 
 ## Render, progress, the picture
 

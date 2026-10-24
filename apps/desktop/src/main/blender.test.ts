@@ -353,14 +353,25 @@ describe('renderInBlender', () => {
     a.process.emit('exit', 2);
     expect(await a.promise).toEqual({ ok: false, message: 'Unknown preset "x".' });
 
-    const b = start(fake());
+    // (Slow qualities: a crashed draft is tried again, below.)
+    const slow = { ...JOB, quality: 'standard' as const };
+    const b = start(fake(), slow);
     b.process.stderr('Segmentation fault\n');
     b.process.emit('exit', 139);
     expect(await b.promise).toEqual({ ok: false, message: 'Segmentation fault' });
 
-    const c = start(fake());
+    const c = start(fake(), slow);
     c.process.emit('exit', 1);
     expect(await c.promise).toEqual({ ok: false, message: 'Blender exited with code 1.' });
+
+    // Blender's own crash handler (Windows): say it crashed, not "Thread : 1bc4".
+    const e = start(fake(), slow);
+    e.process.stderr('Error   : EXCEPTION_ACCESS_VIOLATION\nAddress : 0x1\nThread  : 00001bc4\n');
+    e.process.emit('exit', 3221225477);
+    expect(await e.promise).toEqual({
+      ok: false,
+      message: 'Blender crashed (exit code 3221225477).',
+    });
 
     // Exit 0 but no picture: say so rather than hand out nothing.
     const d = start(fake());
@@ -369,6 +380,36 @@ describe('renderInBlender', () => {
       ok: false,
       message: expect.stringContaining('without writing'),
     });
+  });
+
+  it('renders a draft again with Cycles when Blender crashed', async () => {
+    const f = fake({ png: PNG });
+    const a = start(f);
+    a.process.stdout('EXTRUDO importing\nEXTRUDO scene\nEXTRUDO rendering\n');
+    a.process.stderr('Thread  : 00001bc4\n');
+    a.process.emit('exit', 3221225477);
+    await Promise.resolve();
+    const second = f.spawned[1]?.process as FakeProcess;
+    expect(second).toBeTruthy();
+    const dir = f.dirs[0] as string;
+    expect(JSON.parse(f.files.get(`${dir}/job.json`) as string)).toMatchObject({ eevee: false });
+    second.stdout('EXTRUDO note eevee skipped; using Cycles\nEXTRUDO rendering\nEXTRUDO done\n');
+    second.emit('exit', 0);
+    expect(await a.promise).toEqual({ ok: true, png: PNG });
+    expect(a.seen.map((p) => p.phase)).toContain('starting');
+
+    // Not for the script's own errors, not for the slow qualities, not when cancelled.
+    const g = fake();
+    const b = start(g);
+    b.process.stdout('EXTRUDO ERROR Unknown preset "x".\n');
+    b.process.emit('exit', 2);
+    expect(await b.promise).toMatchObject({ ok: false });
+    expect(g.spawned).toHaveLength(1);
+    const h = fake();
+    const c = start(h, { ...JOB, quality: 'high' });
+    c.process.emit('exit', 1);
+    await c.promise;
+    expect(h.spawned).toHaveLength(1);
   });
 
   it('is cancelled by the signal and reports it', async () => {

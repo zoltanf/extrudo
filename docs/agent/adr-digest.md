@@ -2827,7 +2827,7 @@ Snap, Steam, Windows `Blender Foundation` folders newest first, `/Applications/B
 temp, runs `blender -b --factory-startup -noaudio --python render.py [-f 1] -- job.json out.png`
 (`-f 1` for Standard and High: a script-started render prints no progress in Blender 5.x, so the
 script only builds the scene and Blender's own render follows, saving `out1.png`; Draft renders in
-the script, keeping its EEVEE → Cycles fallback), parses progress from stdout (its own `EXTRUDO
+the script, keeping its EEVEE → Cycles fallback; a draft whose Blender crashed without the script's `EXTRUDO ERROR` line, the Windows crash handler's `Thread : …` lines included, runs once more with `"eevee": false` in job.json, so a machine without a usable GPU still gets its draft from Cycles), parses progress from stdout (its own `EXTRUDO
 <phase>` lines, `Sample n/m`, `Finished`/`Saved:`), reads the PNG back, removes the folder; one
 render at a time; Cancel kills the process). The automatic camera fits the model's box corners to
 the frame along the home direction; every floor is far bigger than the frame reaches. `blenderService.ts` validates every job field before anything is written;

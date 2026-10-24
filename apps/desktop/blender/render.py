@@ -28,8 +28,9 @@ the app adds ``-f 1`` before ``--``: the script then only builds the scene and
 Blender's own command-line render follows, printing ``Sample n/m`` lines as it
 goes and saving ``out1.png`` next to the job (the frame number is Blender's).
 Without ``-f`` the script renders itself to the given path, with the draft
-quality's fallback from EEVEE to Cycles. ``bpy`` only, Python 3.11+, no
-network, no files outside the job directory.
+quality's fallback from EEVEE to Cycles; ``"eevee": false`` in the job (the
+app's second try after EEVEE crashed Blender) takes Cycles from the start.
+``bpy`` only, Python 3.11+, no network, no files outside the job directory.
 """
 
 import json
@@ -509,7 +510,11 @@ def setup_render(scene, job, out):
         log("note", "neither AgX nor Filmic; keeping the default view transform")
     first_of(lambda v: setattr(scene.view_settings, "look", v), "None")
     quality = job["quality"]
-    if quality == "draft":
+    if quality == "draft" and not job.get("eevee", True):
+        # The app's second try after EEVEE crashed Blender (no usable GPU).
+        log("note", "eevee skipped; using Cycles")
+        use_cycles(scene, 32)
+    elif quality == "draft":
         try:
             use_eevee(scene, 16)
         except Exception as error:  # noqa: BLE001

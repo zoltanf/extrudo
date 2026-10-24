@@ -211,7 +211,7 @@ export function blenderStatus(env: BlenderEnv): BlenderStatus {
 }
 
 /** What `job.json` holds: the job without the texts, which are files beside it. */
-export function jobFile(job: RenderJob): Record<string, unknown> {
+export function jobFile(job: RenderJob, eevee = true): Record<string, unknown> {
   return {
     project: job.project,
     obj: 'model.obj',
@@ -221,8 +221,13 @@ export function jobFile(job: RenderJob): Record<string, unknown> {
     width: job.width,
     height: job.height,
     quality: job.quality,
+    // False after a crash: the draft takes Cycles (EEVEE needs a working GPU).
+    ...(eevee ? {} : { eevee: false }),
   };
 }
+
+/** Blender's own crash handler ("Error : EXCEPTION_ACCESS_VIOLATION", "Thread : 1bc4"). */
+const CRASH_LINE = /^(Error|Address|Module|Thread)\s*:\s/;
 
 /** The progress a stdout line means, if any. */
 export function progressOf(line: string): RenderProgress | undefined {
@@ -289,8 +294,17 @@ export async function renderInBlender(
     env.writeFile(path.join(dir, 'job.json'), JSON.stringify(jobFile(job)));
     env.writeFile(path.join(dir, 'render.py'), renderScript);
     if (signal.cancelled) return cancelled();
-    const result = await run(env, found, dir, job, onProgress, signal, now);
-    if (!result.ok) return result;
+    let result = await run(env, found, dir, job, onProgress, signal, now);
+    if (!result.ok && result.crashed && job.quality === 'draft' && !signal.cancelled) {
+      // EEVEE crashes Blender where there is no usable GPU (virtual machines,
+      // remote desktops); the draft is rendered again with Cycles.
+      env.writeFile(path.join(dir, 'job.json'), JSON.stringify(jobFile(job, false)));
+      result = await run(env, found, dir, job, onProgress, signal, now);
+    }
+    if (!result.ok) {
+      const { crashed: _, ...plain } = result;
+      return plain;
+    }
     // The script writes `out.png`; Blender's own render (`-f 1`) names the frame.
     const png = env.readFile(path.join(dir, 'out.png')) ?? env.readFile(path.join(dir, 'out1.png'));
     if (!png || png.byteLength === 0) {
@@ -319,6 +333,9 @@ function describe(error: unknown): string {
   return message ? `Couldn't render: ${message}` : "Couldn't render.";
 }
 
+/** `crashed`: Blender died without the script's own error line. */
+type RunResult = RenderResult & { crashed?: boolean };
+
 /** Runs Blender in `dir` and resolves when it exits; `ok` means exit 0. */
 function run(
   env: BlenderEnv,
@@ -328,7 +345,7 @@ function run(
   onProgress: (progress: RenderProgress) => void,
   signal: RenderSignal,
   now: () => number,
-): Promise<RenderResult> {
+): Promise<RunResult> {
   return new Promise((resolve) => {
     // Draft renders in the script (seconds, with its EEVEE → Cycles fallback);
     // the slow qualities let Blender render after the script so it prints progress.
@@ -382,7 +399,7 @@ function run(
       }),
     );
     let done = false;
-    const finish = (result: RenderResult) => {
+    const finish = (result: RunResult) => {
       if (done) return;
       done = true;
       signal.process = undefined;
@@ -392,8 +409,12 @@ function run(
     child.on('exit', (code) => {
       if (signal.cancelled) return finish(cancelled());
       if (code === 0) return finish({ ok: true, png: new Uint8Array() });
-      const message = scriptError ?? lastStderr.slice(0, 300) ?? '';
-      finish({ ok: false, message: message || `Blender exited with code ${code ?? 'unknown'}.` });
+      if (scriptError) return finish({ ok: false, message: scriptError });
+      const exit = `code ${code ?? 'unknown'}`;
+      const message = CRASH_LINE.test(lastStderr)
+        ? `Blender crashed (exit ${exit}).`
+        : lastStderr.slice(0, 300) || `Blender exited with ${exit}.`;
+      finish({ ok: false, message, crashed: true });
     });
   });
 }
