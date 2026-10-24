@@ -93,10 +93,16 @@ export interface TraceOptions {
   fence?: GpuFence;
 }
 
+/** The most tiles sent in one frame; the batch doubles while the GPU keeps up. */
+const MAX_BATCH = 64;
+
 /**
- * Runs one tile per frame until `samples >= target` (resolves true) or cancelled
- * (false). With a fence, the next tile waits until the GPU has finished the last
- * one, and the time from placing the fence to seeing it pass is the tile's time.
+ * Runs the tracer until `samples >= target` (resolves true) or cancelled
+ * (false). With a fence, each frame sends a batch of tiles and places one
+ * fence after it; the next batch waits until the fence passes. A batch the
+ * GPU finished by the next frame doubles (a fast GPU is never held to one
+ * tile a frame); one over the budget halves, and at one tile the tiles shrink
+ * instead (`adaptTiles`), so a slow GPU never gets more than ~40 ms at once.
  */
 export function tracePicture(tracer: TracerLike, options: TraceOptions): Promise<boolean> {
   const frame = options.frame ?? ((callback) => requestAnimationFrame(callback));
@@ -104,9 +110,13 @@ export function tracePicture(tracer: TracerLike, options: TraceOptions): Promise
   const fence = options.fence;
   let tiles = chooseTiles(options.width, options.height);
   tracer.tiles.set(tiles[0], tiles[1]);
-  /** When the fence after the last tile was placed; undefined when none is pending. */
+  /** Tiles per frame. */
+  let batch = 1;
+  /** When the fence after the last batch was placed; undefined when none is pending. */
   let placed: number | undefined;
-  const timed = (ms: number) => {
+  /** Frames polled since then. */
+  let polls = 0;
+  const grow = (ms: number) => {
     if (ms <= FRAME_BUDGET_MS) return;
     tiles = adaptTiles(tiles, ms);
     tracer.tiles.set(tiles[0], tiles[1]);
@@ -122,11 +132,18 @@ export function tracePicture(tracer: TracerLike, options: TraceOptions): Promise
         return;
       }
       if (placed !== undefined) {
+        polls += 1;
         if (!fence?.passed()) {
           frame(step);
           return;
         }
-        timed(now() - placed);
+        const ms = now() - placed;
+        if (ms > FRAME_BUDGET_MS) {
+          if (batch > 1) batch = Math.max(1, Math.floor(batch / 2));
+          else grow(ms);
+        } else if (polls === 1) {
+          batch = Math.min(MAX_BATCH, batch * 2);
+        }
         placed = undefined;
       }
       if (tracer.samples >= options.target) {
@@ -136,12 +153,13 @@ export function tracePicture(tracer: TracerLike, options: TraceOptions): Promise
       }
       if (!tracer.isCompiling) {
         const start = now();
-        tracer.renderSample();
+        for (let i = 0; i < batch && tracer.samples < options.target; i++) tracer.renderSample();
         if (fence) {
           fence.place();
           placed = start;
+          polls = 0;
         } else {
-          timed(now() - start);
+          grow(now() - start);
         }
       }
       options.onProgress(traceFraction(tracer.samples, options.target));

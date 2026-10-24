@@ -192,6 +192,67 @@ describe('tracePicture', () => {
     expect(tracer.sets[1]).toEqual([4, 4]);
   });
 
+  it('with a fence, doubles the tiles per frame while the GPU keeps up', async () => {
+    const tracer = fakeTracer([2, 2]);
+    const perFrame: number[] = [];
+    let before = 0;
+    let clock = 0;
+    const done = await tracePicture(tracer, {
+      target: 8,
+      width: 1280,
+      height: 720,
+      onProgress: () => {},
+      cancelled: () => false,
+      frame: (callback) => {
+        perFrame.push(tracer.calls - before);
+        before = tracer.calls;
+        clock += 16;
+        callback();
+      },
+      now: () => clock,
+      // The GPU is done by the next frame, every time.
+      fence: { place: () => {}, passed: () => true, dispose: () => {} },
+    });
+    expect(done).toBe(true);
+    // 1, 2, 4, 8, 16 tiles: 32 quarter-samples in 5 frames, not 32.
+    expect(perFrame.filter((n) => n > 0).slice(0, 5)).toEqual([1, 2, 4, 8, 16]);
+    expect(tracer.sets).toEqual([[2, 2]]);
+  });
+
+  it('with a fence, halves a batch over the budget before it grows the tiles', async () => {
+    const tracer = fakeTracer([2, 2]);
+    let clock = 0;
+    let polls = 0;
+    const batches: number[] = [];
+    let before = 0;
+    const done = await tracePicture(tracer, {
+      target: 6,
+      width: 1280,
+      height: 720,
+      onProgress: () => {},
+      cancelled: () => false,
+      frame: (callback) => {
+        clock += 16;
+        callback();
+      },
+      now: () => clock,
+      fence: {
+        place: () => {
+          batches.push(tracer.calls - before);
+          before = tracer.calls;
+          polls = 0;
+        },
+        // The first three batches finish by the next frame; later ones take 4 frames (64 ms).
+        passed: () => batches.length <= 3 || ++polls >= 4,
+        dispose: () => {},
+      },
+    });
+    expect(done).toBe(true);
+    // 1, 2, 4 fit; 8 goes over and halves to 4, then 2, then 1, then the tiles grow.
+    expect(batches.slice(0, 7)).toEqual([1, 2, 4, 8, 4, 2, 1]);
+    expect(tracer.sets.length).toBeGreaterThan(1);
+  });
+
   it('disposes the fence when cancelled while it waits', async () => {
     const tracer = fakeTracer([2, 2]);
     let cancel = false;

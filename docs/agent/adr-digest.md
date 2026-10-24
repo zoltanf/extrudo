@@ -3326,7 +3326,10 @@ and `tracePicture` (one `renderSample()` per frame until `samples >= target` or 
 reporting progress every frame, `frame`/`now`/`fence` injectable). **A tile's time is GPU time,
 from a fence:** `renderSample()` only queues commands, so timing the call measures nothing;
 `appRenderer.ts`'s `webglFence` (`fenceSync` + flush, polled with `clientWaitSync(…, 0)`) is placed
-after each tile, and the next tile waits until it passes. Without it, tiles piled up into GPU work
+after each frame's batch of tiles, and the next batch waits until it passes. **Batches, not one tile
+a frame:** a batch that passed by the next frame doubles (up to 64), one over the budget halves, and
+only at one tile do the tiles grow; one tile a frame made Standard 7× slower on a fast GPU (137 s
+against 20 s on a GTX 1050 Ti, 2026-10-24). Without it, tiles piled up into GPU work
 that froze the desktop's cursor and made Electron's driver reset the context on integrated
 graphics (owner, 2026-10-24). **Rules:** Standard and High path-trace the same scene with
 `three-gpu-pathtracer` (`WebGLPathTracer`; MIT, in the allow-list and NOTICE) on the same hidden

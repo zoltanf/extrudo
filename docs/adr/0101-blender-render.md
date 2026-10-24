@@ -208,8 +208,11 @@ The **Render Picture tile is ready everywhere**: the web build loses its
   progressive, one `renderSample()` per animation frame so the UI thread
   stays responsive; 128 samples for Standard and 512 for High (Blender's
   numbers, §3), 5 bounces, tiles so that one tile's GPU time stays under ~40 ms
-  (measured with a fence after each tile, the next tile waiting for it, so
-  work never piles up on the GPU the desktop shares). A denoise pass (owner, 2026-10-24) follows the output pass: the library's
+  (measured with a fence after each frame's batch of tiles, the next batch
+  waiting for it, so work never piles up on the GPU the desktop shares). A
+  batch the GPU finished by the next frame doubles, one over the budget
+  halves: a fast GPU is not held to one tile a frame (that cost 7×: 137 s
+  against 20 s for Standard on a GTX 1050 Ti), a slow one gets one small tile. A denoise pass (owner, 2026-10-24) follows the output pass: the library's
   `DenoiseMaterial` (an edge-preserving blur, sigma 5, threshold 0.12) runs on the
   8-bit display values, so the threshold means a colour difference as seen. The
   library's default threshold, 0.03, is below Standard's grain and left it in place. Progress is
