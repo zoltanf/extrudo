@@ -62,6 +62,7 @@ import {
   pickBox,
   pickStack,
   pickTop,
+  warmPickIndex,
 } from '../selection/pick';
 import { autoProjectSnap } from '../sketch/autoProject';
 import { sketchTargetAt } from '../sketch/facePick';
@@ -285,9 +286,12 @@ export interface SketchInput {
  */
 export const VIEW_PASSTHROUGH = 'data-view-passthrough';
 
+/**
+ * Picking a plane (and maybe a face). The plane under the pointer is the
+ * view's `hover` when that is a plane: an origin plane (`origin:xy`) or a
+ * construction plane (its feature's ID, P3-05).
+ */
 export interface PlanePicker {
-  /** An origin plane (`origin:xy`) or a construction plane (its feature's ID, P3-05). */
-  hover: string | undefined;
   /** The planes already picked (a feature dialog's Plane field, P2-10): drawn highlighted. */
   selected?: readonly string[];
   onHover(plane: string): void;
@@ -590,7 +594,7 @@ export function Viewport({
     setOtherMenu,
     hasViewMenu ? openViewMenu : undefined,
   );
-  useSketchTargetInput(surface, viewport, planePicker, modelScene, setBox);
+  useSketchTargetInput(surface, viewport, planePicker, hover, modelScene, setBox);
   // The menu belongs to model mode: it closes when that ends (a sketch opens, a tool starts).
   useEffect(() => {
     if (!modelSelect) setOtherMenu(undefined);
@@ -602,7 +606,7 @@ export function Viewport({
     ? navCursor(dragging, true)
     : tool
       ? navCursor(tool, false)
-      : planePicker?.hover || (planePicker?.faces && hover?.kind === 'face')
+      : (planePicker && hover?.kind === 'plane') || (planePicker?.faces && hover?.kind === 'face')
         ? 'pointer'
         : sketchInput && sketchInput.cursor !== 'default'
           ? 'crosshair'
@@ -1102,7 +1106,7 @@ function Scene({
         axisZ={colors.axisZ}
         construct={colors.construct}
         picking={planePicker !== undefined}
-        hover={planePicker?.hover}
+        hover={planePicker && hover?.kind === 'plane' ? hover.id : undefined}
         selected={planePicker?.selected}
         highlight={{ ...colors.preselect, a: 1 }}
         onHover={planePicker?.faces ? undefined : planePicker?.onHover}
@@ -1208,7 +1212,7 @@ export const THUMBNAIL_SIZE = 256;
  * camera of its own, drawn into a render target so the screen is untouched.
  * The background stays transparent.
  */
-function thumbnailFromBox(
+async function thumbnailFromBox(
   gl: WebGLRenderer,
   scene: ThreeScene,
   view: View,
@@ -1220,7 +1224,7 @@ function thumbnailFromBox(
   out.width = size;
   out.height = size;
   const ctx = out.getContext('2d');
-  if (!ctx) return Promise.resolve(null);
+  if (!ctx) return null;
   const camera =
     projection === 'perspective' ? new PerspectiveCamera(FOV) : new OrthographicCamera();
   applyView(camera, view, projection, 1);
@@ -1235,6 +1239,7 @@ function thumbnailFromBox(
     }
   });
   const previousClips = gl.clippingPlanes;
+  let read: Promise<unknown> | undefined;
   // A section shows the inside of what it cuts: the faces' back sides fill the cut.
   const turned: { material: Material; side: Side }[] = [];
   if (extra.clip) {
@@ -1255,7 +1260,8 @@ function thumbnailFromBox(
     gl.setRenderTarget(target);
     gl.clear();
     gl.render(scene, camera);
-    gl.readRenderTargetPixels(target, 0, 0, size, size, pixels);
+    // Queued now, read when the GPU is done: the main thread doesn't stall on it (ADR-0102 §1).
+    read = gl.readRenderTargetPixelsAsync(target, 0, 0, size, size, pixels);
   } finally {
     for (const { object, visible } of hidden) object.visible = visible;
     gl.clippingPlanes = previousClips;
@@ -1264,6 +1270,11 @@ function thumbnailFromBox(
       material.needsUpdate = true;
     }
     gl.setRenderTarget(previousTarget);
+    if (!read) target.dispose();
+  }
+  try {
+    await read;
+  } finally {
     target.dispose();
   }
   // Rows come bottom-up and premultiplied; ImageData wants top-down and straight.
@@ -1282,7 +1293,7 @@ function thumbnailFromBox(
     }
   }
   ctx.putImageData(image, 0, 0);
-  return new Promise((resolve) => out.toBlob(resolve, 'image/png'));
+  return new Promise<Blob | null>((resolve) => out.toBlob(resolve, 'image/png'));
 }
 
 /**
@@ -1458,6 +1469,13 @@ function useModelInput(
   // The latest scene without re-binding the listeners on every change.
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
+  // The picking index of new meshes, built in idle time before the first hover (ADR-0102 §2).
+  const pickBodies = scene.bodies;
+  useEffect(() => {
+    const abort = new AbortController();
+    warmPickIndex(Object.values(pickBodies), abort.signal);
+    return () => abort.abort();
+  }, [pickBodies]);
   const handlers = useMemo<PointerHandlers | undefined>(() => {
     if (!select) return undefined;
     const context = (p: ScreenPointer) => {
@@ -1531,6 +1549,7 @@ function useSketchTargetInput(
   surface: RefObject<HTMLDivElement | null>,
   viewport: ViewportStore,
   picker: PlanePicker | undefined,
+  hover: SelectionItem | undefined,
   scene: ModelScene,
   onBoxChange: (box: ScreenBox | undefined) => void,
 ) {
@@ -1538,6 +1557,9 @@ function useSketchTargetInput(
   sceneRef.current = scene;
   const pickerRef = useRef(picker);
   pickerRef.current = picker;
+  // The plane under the pointer, to leave when a face takes over.
+  const hoverRef = useRef(hover);
+  hoverRef.current = hover;
   const faces = picker?.faces !== undefined;
   const handlers = useMemo<PointerHandlers | undefined>(() => {
     if (!faces) return undefined;
@@ -1560,7 +1582,8 @@ function useSketchTargetInput(
         current.onHover(t.plane);
         return;
       }
-      if (current.hover) current.onLeave(current.hover);
+      const was = hoverRef.current;
+      if (was?.kind === 'plane') current.onLeave(was.id);
       current.faces.onHover(t?.item);
     };
     return {

@@ -146,7 +146,9 @@ processingStart`), which the next paint does not inflate. So the amendment:
   and widened against measurement, not noise: the B7 grooves edit's
   kernel-message and autosave (`IDBTransaction.oncomplete`) handlers cost
   248–499 ms of JS on a 4-core desktop, and CI's raw edit `longMax` was
-  234–396 ms, so §1's 150 would fail on the app's real work; undo `appMax` <
+  234–396 ms, so §1's 150 would fail on the app's real work (back to 150
+  since ADR-0102 §1: that work was the autosave's thumbnail, now taken in
+  idle time with an async readback); undo `appMax` <
   150 (measured 1); `roundTripAppMs` within the example's budget and
   `roundTripMs` > 0; hover and click worst handler time < 250. On a GPU
   machine a long task is app work, so these bind what §1's budgets bound;

@@ -19,7 +19,19 @@ export default defineConfig({
   base: './',
   // The build's version, channel and commit, for the About dialog (`src/version.ts`).
   define: { __EXTRUDO_BUILD__: JSON.stringify(buildInfo(pkg.version)) },
-  plugins: [react(), tailwindcss(), sitePlugin(), precachePlugin()],
+  // The React Compiler memoises every component and hook (ADR-0102 §3). Only the app has
+  // React: the packages and the worker entries are excluded, or the dev server's Fast
+  // Refresh wrapper lands in worker code, where `$RefreshReg$` doesn't exist and the
+  // kernel worker dies on start (ADR-0102 §5).
+  plugins: [
+    react({
+      compiler: { target: '19' },
+      exclude: [/\/node_modules\//, /\/packages\//, /[wW]orker\.ts$/],
+    }),
+    tailwindcss(),
+    sitePlugin(),
+    precachePlugin(),
+  ],
   preview: {
     headers: Object.fromEntries(globalHeaders?.headers.map((h) => [h.name, h.value]) ?? []),
   },

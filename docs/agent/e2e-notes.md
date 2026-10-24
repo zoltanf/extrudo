@@ -24,6 +24,16 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   docker` (after `pnpm build`). Arch and Ubuntu differ by about 12 pixels per
   shot; the tolerance is 0.1 %.
 
+- **Hover is reported on the next animation frame** (ADR-0102 §2,
+  `viewport/pointer.ts`): a `page.mouse.move` over the view updates
+  `data-model-hover` (and a sketch tool's preview) one frame later, not
+  synchronously. Read it with a polling assertion (`toHaveAttribute`,
+  `expect.poll`), as `clickWhere` does; a press, a release or the pointer
+  leaving the view flushes the pending report first, so a click always acts
+  on the hover at its own position. The autosave's thumbnail is taken in idle
+  time after a save and never while a pointer button is down; an export or
+  anything else that calls `autosave.flush()` takes a pending one at once.
+
 - **CI shards by duration.** `E2E_SHARD=<current>/<total>` (set by `ci.yml`,
   four shards) makes `playwright.config.ts` give each project only that
   shard's spec files: `scripts/e2e-shards.ts` deals the files longest first to
@@ -1483,8 +1493,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `llvmpipe` the fps floor is skipped and a `software rendering` annotation
   carries the string; the fps itself is still recorded. The round-trip
   observer is armed with `page.evaluate` **before**
-  the edit — the expression field applies while typing, so an observer armed
-  after `fill` sees nothing — and stores its Promise on `window.__perf.roundTrip`
+  the edit and after the Parameters dialog's field is visible (ADR-0102 §7:
+  armed before the dialog opened, it also timed opening it, half of B5's
+  round trip) — the expression field applies while typing, so an observer
+  armed after `fill` sees nothing — and stores its Promise on `window.__perf.roundTrip`
   (`evaluateHandle` would wait for the Promise at arm time, defeating
   arm-then-act; `page.evaluate` awaits it at read time instead). One
   `MutationObserver` on `document.documentElement` (`subtree`,
@@ -1496,11 +1508,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   and the status is `ready`, or -1 after 30 s (an edit's -1 fails with a
   message saying the observer is wrong, not the app). Budgets (ADR-0100 §1,
   on app time since §4): open appMax < 400, appTotal < 1200, B5 < 8 s / B7 <
-  10 s; orbit appMax < 100 and ≥ 20 fps (GPU only); edit appMax < 500
-  (widened from §1's 150 against the measurement: the B7 grooves edit's
-  kernel-message and autosave handlers cost 248–499 ms of JS locally and
-  CI's raw edit longMax was 234–396 — the `top` invokers in a failing
-  `perf.json` say which script ran), undo appMax < 150, roundTripAppMs B5 <
+  10 s; orbit appMax < 100 and ≥ 20 fps (GPU only); edit appMax < 150
+  (§1's size again since ADR-0102 §1: it had been widened to 500 because the
+  autosave's thumbnail — an `IDBTransaction.oncomplete` task of 106–216 ms
+  under SwiftShader — ran on the edit's path; it now runs in idle time with
+  an async readback — the `top` invokers in a failing `perf.json` say which
+  script ran), undo appMax < 150, roundTripAppMs B5 <
   1.5 s / B7 < 5 s with roundTripMs > 0; hover+click
   worst event's proc < 250 ms. The raw numbers are attached to the
   report as `perf.json` before the assertions, so a failure still carries

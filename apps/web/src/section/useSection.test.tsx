@@ -51,7 +51,6 @@ function Probe({
     active: false,
     model,
     slice,
-    hover: undefined,
   });
   return <p data-clips={clipsSummary(section.clips)} />;
 }

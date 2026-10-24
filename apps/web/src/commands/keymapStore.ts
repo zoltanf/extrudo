@@ -1,6 +1,14 @@
-import { useSyncExternalStore } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import type { Preferences } from '../platform';
-import { DEFAULT_KEYMAP, defaultKeysFor, type KeymapOverrides, setKeymapOverrides } from './keymap';
+import {
+  DEFAULT_KEYMAP,
+  defaultKeysFor,
+  type KeymapOverrides,
+  keymapOverrides,
+  keysFor,
+  setKeymapOverrides,
+  subscribeKeymap,
+} from './keymap';
 
 /** The person's own keys (ADR-0082's 2026-10-18 amendment): only what they changed. */
 export const KEYMAP_PREFERENCE = 'keymap.overrides';
@@ -75,6 +83,17 @@ export function keymapStore(preferences: Preferences): KeymapStore {
 export function useKeymap(preferences: Preferences): KeymapOverrides {
   const store = keymapStore(preferences);
   return useSyncExternalStore(store.subscribe, store.get, store.get);
+}
+
+/**
+ * `keysFor` for a component's render: a lookup that changes identity with the
+ * overrides, so a key label computed from it is recomputed after a change in
+ * Settings › Keyboard. Under the React Compiler (ADR-0102 §5) a plain `keysFor(id)`
+ * in render is memoised on `id` alone and goes stale until the page reloads.
+ */
+export function useKeysFor(): (id: string) => readonly string[] {
+  const overrides = useSyncExternalStore(subscribeKeymap, keymapOverrides, keymapOverrides);
+  return useCallback((id: string) => keysFor(id, overrides), [overrides]);
 }
 
 /**

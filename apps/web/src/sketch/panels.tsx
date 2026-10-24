@@ -34,7 +34,7 @@ import type { DrawingUnit } from '@extrudo/io';
 import { Crosshair, Trash2 } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
-import { keysFor } from '../commands/keymap';
+import { useKeysFor } from '../commands/keymapStore';
 import { Button, ConfirmDialog, ToolIcon, Tooltip } from '../design-system';
 import { ExpressionInput } from '../parameters/ExpressionInput';
 import type { ViewportStore } from '../viewport/store';
@@ -1381,6 +1381,7 @@ function PaletteButton({
 
 /** New curves become construction geometry (FR-SK-04); its key (`X`) flips it too. */
 function ConstructionToggle({ host }: { host: ToolHost }) {
+  const keysFor = useKeysFor();
   const construction = useStore(host.state, (s) => s.construction);
   return (
     <PaletteToggle

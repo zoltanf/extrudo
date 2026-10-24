@@ -21,7 +21,7 @@ import {
 import { Popover as Radix } from 'radix-ui';
 import { type KeyboardEvent, type ReactNode, useRef, useState } from 'react';
 import { useStore } from 'zustand';
-import { keysFor } from '../commands/keymap';
+import { useKeysFor } from '../commands/keymapStore';
 import { shortcutLabel } from '../commands/shortcuts';
 import { IconButton, type ThemeChoice, Tooltip } from '../design-system';
 import type { PlatformUpdates, UpdateState } from '../platform/updates';
@@ -84,11 +84,8 @@ export interface AppMenuProps {
   onCloseDesign?: (() => void) | undefined;
 }
 
-/** A command's first key as it reads here ("Ctrl+K"). */
-const keyLabel = (id: string) => {
-  const keys = keysFor(id)[0];
-  return keys && shortcutLabel(keys);
-};
+/** A command's first key as it reads here ("Ctrl+K"); `keys` from `useKeysFor` (live). */
+const keyLabel = (keys: readonly string[]) => keys[0] && shortcutLabel(keys[0]);
 
 /**
  * The rail's presets in their own order (ADR-0090 §1). Slicer isn't a `NavPreset` yet: its
@@ -284,6 +281,7 @@ export function MenuPanel({
   onQuit,
   onCloseDesign,
 }: MenuPanelProps) {
+  const keysFor = useKeysFor();
   const toggles = [
     {
       label: 'Auto-project body edges',
@@ -387,13 +385,17 @@ export function MenuPanel({
       <div className="grid w-0 min-w-full grid-cols-2 p-1">
         <Column label="App">
           {onSearch && (
-            <Item icon={<Search />} shortcut={keyLabel('search')} onClick={choose(onSearch)}>
+            <Item
+              icon={<Search />}
+              shortcut={keyLabel(keysFor('search'))}
+              onClick={choose(onSearch)}
+            >
               Search…
             </Item>
           )}
           <Item
             icon={<Settings />}
-            shortcut={keyLabel('openSettings')}
+            shortcut={keyLabel(keysFor('openSettings'))}
             onClick={choose(onSettings)}
           >
             Settings…
@@ -413,14 +415,18 @@ export function MenuPanel({
             </Item>
           )}
           {onQuit && (
-            <Item icon={<LogOut />} shortcut={keyLabel('quit')} onClick={choose(onQuit)}>
+            <Item icon={<LogOut />} shortcut={keyLabel(keysFor('quit'))} onClick={choose(onQuit)}>
               Quit
             </Item>
           )}
         </Column>
         <Column label="Learn" className="border-l border-line">
           {help && (
-            <Item icon={<CircleHelp />} shortcut={keyLabel('help')} onClick={choose(help.onHelp)}>
+            <Item
+              icon={<CircleHelp />}
+              shortcut={keyLabel(keysFor('help'))}
+              onClick={choose(help.onHelp)}
+            >
               {`Help for ${help.label}`}
             </Item>
           )}

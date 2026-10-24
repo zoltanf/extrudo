@@ -35,6 +35,7 @@ import { pickEntity } from '@extrudo/sketch/inference';
 import { type Profile, profileAt } from '@extrudo/sketch/profiles';
 import { BufferAttribute, BufferGeometry, DoubleSide, Ray, Vector3 } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
+import { whenIdle } from '../idle';
 import { clipDistance, isClipped, isClippedAny, type SectionClip } from '../section/clip';
 import {
   basis,
@@ -161,6 +162,37 @@ function indexOf(mesh: BodyMesh): MeshIndex {
     meshIndex.set(mesh, index);
   }
   return index;
+}
+
+/** Whether a mesh's picking index is built already. */
+export function hasPickIndex(mesh: BodyMesh): boolean {
+  return meshIndex.has(mesh);
+}
+
+/**
+ * Builds the picking index of `meshes` in idle time, one mesh per idle
+ * callback, so the first hover after a recompute doesn't pay for it
+ * (ADR-0102 §2). Stops when `signal` aborts (the meshes were replaced);
+ * `indexOf` still builds on demand whatever is missing.
+ */
+export function warmPickIndex(
+  meshes: Iterable<BodyMesh>,
+  signal?: AbortSignal,
+  idle: (run: () => void) => () => void = whenIdle,
+): void {
+  const queue = [...meshes].filter((mesh) => !meshIndex.has(mesh));
+  let cancel: (() => void) | undefined;
+  const next = () => {
+    cancel = undefined;
+    if (signal?.aborted) return;
+    const mesh = queue.shift();
+    if (!mesh) return;
+    indexOf(mesh);
+    if (queue.length > 0) cancel = idle(next);
+  };
+  if (queue.length === 0 || signal?.aborted) return;
+  cancel = idle(next);
+  signal?.addEventListener('abort', () => cancel?.(), { once: true });
 }
 
 /**

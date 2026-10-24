@@ -1385,6 +1385,24 @@ end to end, faster than in established desktop CAD.
   Acceptance: `pnpm check`; the spec green on CI three runs in a row; the
   production bundle has no observer code; the startup script's three visits
   print on a machine with a stored design.
+- [ ] **P6-14 UI-thread latency** (owner, 2026-10-23; ADR-0102; slice B of
+  `docs/plans/perf-baseline-2026-10-23.md`). Four measured changes, each a
+  commit with its before/after numbers from `e2e/perf.spec.ts`: the autosave
+  thumbnail leaves the edit's critical path (skipped when nothing changed,
+  idle-scheduled, async pixel readback; the spec's edit budget returns to
+  150 ms); hover is O(changed) (per-body highlight memo, the pick index built
+  in idle time after a recompute, picking once per animation frame with a
+  synchronous flush before a click); the shell stops re-rendering on every
+  edit and hover (React Compiler behind a gate, else `memo` on the panels
+  and the hover subscription moved into the leaves); project open measured
+  from `perf.json`'s `top` scripts and the largest of ours fixed by moving
+  derived geometry (edge segments, silhouette plan, pick index) into idle
+  time. Acceptance: `pnpm check`, the full e2e suite green on CI, the perf
+  spec's numbers before and after in each commit, ADR-0102's amendment with
+  the compiler decision. Changes 1–4 done 2026-10-24 (ADR-0102 §5–§7: the
+  React Compiler kept through plugin-react's native option; project open's
+  largest cost was the WebGL probe, now run on the home screen, not the
+  bodies' geometry); left unticked for the owner's review.
 
 ## Phase 7 — Later (lowest priority, after everything else)
 

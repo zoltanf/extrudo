@@ -488,7 +488,7 @@ describe('picking the plane', () => {
     expect(open()?.values.refs.plane).toEqual([originPlaneRef('origin:xy')]);
     expect(open()?.pickField).toBe('plane');
     expect(dialogPlanePick(t.controller, open())).toBe(true);
-    let picker = dialogPlanePicker(t.controller, open(), t.session, undefined);
+    let picker = dialogPlanePicker(t.controller, open(), t.session);
     expect(picker?.selected).toEqual(['origin:xy']);
     expect(picker?.faces).toBeDefined();
 
@@ -499,20 +499,20 @@ describe('picking the plane', () => {
 
     picker?.onPick('origin:xz');
     expect(open()?.values.refs.plane).toEqual([XZ]);
-    picker = dialogPlanePicker(t.controller, open(), t.session, { kind: 'plane', id: 'origin:yz' });
-    expect(picker).toMatchObject({ selected: ['origin:xz'], hover: 'origin:yz' });
+    picker = dialogPlanePicker(t.controller, open(), t.session);
+    expect(picker).toMatchObject({ selected: ['origin:xz'] });
 
     // The box's top face: the dialog centres on it and proposes a join.
     picker?.faces?.onPick(faceItem(1));
     expect(open()?.values.refs.plane).toEqual([TOP]);
     expect(open()?.values.exprs).toMatchObject({ x: '5 mm', y: '5 mm' });
     expect(open()?.values.choices.operation).toBe('join');
-    expect(dialogPlanePicker(t.controller, open(), t.session, undefined)?.selected).toBeUndefined();
+    expect(dialogPlanePicker(t.controller, open(), t.session)?.selected).toBeUndefined();
 
     // Another pick field (Bodies) picks in the model again.
     t.controller.pickInto('bodies');
     expect(dialogPlanePick(t.controller, open())).toBe(false);
-    expect(dialogPlanePicker(t.controller, open(), t.session, undefined)).toBeUndefined();
+    expect(dialogPlanePicker(t.controller, open(), t.session)).toBeUndefined();
   });
 
   it('keeps the user’s own X and operation when the plane changes', () => {
@@ -520,7 +520,7 @@ describe('picking the plane', () => {
     t.controller.start('box');
     t.controller.setExpr('x', '12 mm');
     t.controller.setChoice('operation', 'intersect');
-    dialogPlanePicker(t.controller, t.open(), t.session, undefined)?.faces?.onPick(faceItem(1));
+    dialogPlanePicker(t.controller, t.open(), t.session)?.faces?.onPick(faceItem(1));
     expect(t.open()?.values.exprs).toMatchObject({ x: '12 mm', y: '5 mm' });
     expect(t.open()?.values.choices.operation).toBe('intersect');
   });

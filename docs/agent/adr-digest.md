@@ -3189,8 +3189,9 @@ measurement in the commit message, and they bind the app's own main-thread
 time (ADR-0100 §4): the JS inside each long task (LoAF scripts ∪ render log ∪
 event-handler spans, merged), an input event's handler time instead of its
 duration — sizes: open appMax < 400 and appTotal < 1200, orbit appMax < 100,
-**edit appMax < 500** (widened from §1's 150 against the measured 248–499 ms
-grooves-edit kernel-message/autosave handlers), undo appMax < 150, hover and
+**edit appMax < 150** (widened to 500 against the measured 248–499 ms
+grooves-edit kernel-message/autosave handlers, back to 150 since ADR-0102 §1
+took the thumbnail off the edit's path), undo appMax < 150, hover and
 click worst handler time < 250; `__extrudoRenderLog` must be set only by the spec's init script — a
 normal visit never logs renders; the fps floor is skipped only when the
 renderer string says software (the annotation names it). The long-task
@@ -3200,3 +3201,49 @@ apps/web/dist/assets/*.js` after `pnpm build` must sum to 0 — and the status
 bar's `· n long` is dev builds only; `measure-startup.mjs` runs per release
 and is compared with the ADR's baseline: a jump is a release blocker to
 investigate, a drift is noted in the release notes.
+
+ADR-0102 (P6-14, the owner, 2026-10-23) took **UI-thread work off the
+interaction paths**, measured with ADR-0100's `e2e/perf.spec.ts`. §1: the
+autosave's thumbnail (`project/autosave.ts`, `createThumbnailer`) is taken in
+idle time (`src/idle.ts`, `whenIdle`: `requestIdleCallback` with a 2 s
+timeout, `setTimeout` 200 without), waits while `thumbnailReady` says no (a
+recompute `computing`/`idle`, a pointer button down: `ProjectPage.tsx` tracks
+`buttons` on the window), is skipped when `thumbnailKey` (the document, view,
+projection, visual style) is identical to the last thumbnail's, and is taken
+at once by `flush()`; the readback is `readRenderTargetPixelsAsync`
+(`viewport/Viewport.tsx`, `thumbnailFromBox`). §2: `selection/highlight.ts`'s
+`createHighlightMemo`/`highlightKeys` give `Bodies` one `BodyHighlight` per
+body while its mesh, the items naming it and its colliding faces stay the
+same; `selection/pick.ts`'s `warmPickIndex` builds the BVH one mesh per idle
+callback when the model's bodies change (`useModelInput`); `viewport/
+pointer.ts` (`attachPointerInput`) reports the pointer once per animation
+frame and flushes a pending report on pointerdown, pointerup, pointercancel
+and pointerleave. §3/§5: the React Compiler runs through plugin-react's
+native `compiler` option (`oxc-transform-react` 0.145; the Babel plugin was
+7× the build time); `Shell` does not subscribe to `session.hover` —
+`DialogViewport` does and adds it to the sketches (`shell/hoverDrawings.ts`),
+the ghosts (`ghostsFor`) and the view; `PlanePicker` has no `hover` (the view
+derives it). §6: the open's largest JS of ours was ADR-0076's WebGL probe in
+the view's first render; the home screen now runs it right after its first
+paint (`afterPaint` in `src/idle.ts`, `home/HomeScreen.tsx`), B5's open
+`appMax` 252–267 → 115–135 ms. §7: `e2e/perf.spec.ts` arms the edit's
+round-trip observer once the Parameters field is visible (before, it also
+timed opening the dialog, which failed B5's budget on CI). **Rules:** no thumbnail work on the edit path (never synchronous
+after `projects.save`, never a synchronous pixel readback); picking at most
+once per frame, with a flush before anything that acts on the hover (a press,
+a release, a leave); a body's highlight object changes only when something
+naming that body changes; `Shell` must not read `session.hover` (read it in
+the leaf that shows it); a component that reads state through a method, a
+getter, `getState()` or a module variable while drawing takes that state
+through a hook (`useSyncExternalStore`: a key label in render comes from
+`useKeysFor()`, never a bare `keysFor(id)`) or as props, or starts
+with `'use no memo'` (the compiler memoises on props and would serve stale
+output — it did for `NotificationHistory` and `JointDialog`); upgrading
+`oxc-transform-react` or `@vitejs/plugin-react` re-runs §5's gate (build ≤
+1.5×, app JS ≤ +5 %, check and the full e2e suite); `react()`'s `exclude`
+keeps `packages/` and every `*Worker.ts`/`*worker.ts` entry out of the
+compiler and Fast Refresh (only the app has React; the dev server's refresh
+wrapper in worker code kills the kernel worker with `$RefreshReg$ is not
+defined`, which no CI run sees: e2e uses production builds, so check
+`pnpm dev` after touching the plugin's options); nothing that makes a
+WebGL context runs in the view's first render when it can run earlier.

@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { keysFor } from '../commands/keymap';
+import { useKeysFor } from '../commands/keymapStore';
 import { shortcutLabel } from '../commands/shortcuts';
 import {
   ContextMenu,
@@ -200,6 +200,7 @@ export function Toolbar({
   pluginItems,
   recentFiles,
 }: ToolbarProps) {
+  const keysFor = useKeysFor();
   const tabs = visibleTabs(mode);
   const active = tabs.find((t) => t.id === tab) ?? tabs[0];
   useFontsReady();
@@ -312,7 +313,7 @@ export function Toolbar({
                         key={id}
                         tool={TOOLS[id]}
                         ready={isToolReady(TOOLS[id], ready)}
-                        shortcut={shortcutFor(id)}
+                        shortcut={shortcutOf(keysFor(id))}
                         pressed={activeTool === id}
                         onRun={() => onRun(id)}
                         onChangeShortcut={onChangeShortcut && (() => onChangeShortcut(id))}
@@ -328,7 +329,7 @@ export function Toolbar({
                         tool={TOOLS[id]}
                         label={group.labels?.[id]}
                         ready={isToolReady(TOOLS[id], ready)}
-                        shortcut={shortcutFor(id)}
+                        shortcut={shortcutOf(keysFor(id))}
                         pressed={activeTool === id}
                         onRun={() => onRun(id)}
                         onChangeShortcut={onChangeShortcut && (() => onChangeShortcut(id))}
@@ -358,7 +359,7 @@ export function Toolbar({
                         <MenuItem
                           key={id}
                           disabled={!isToolReady(tool, ready)}
-                          shortcut={shortcutFor(id)}
+                          shortcut={shortcutOf(keysFor(id))}
                           icon={<ToolIcon name={tool.icon} category={tool.category} size={16} />}
                           onSelect={() => onRun(id)}
                         >
@@ -451,10 +452,9 @@ export function Toolbar({
 const LABEL =
   'mt-auto inline-flex items-center gap-0.5 whitespace-nowrap px-1.5 text-[9.5px] font-semibold tracking-[0.08em] text-muted uppercase';
 
-/** A tool's first key, as it reads on this platform. */
-function shortcutFor(id: ToolId): string | undefined {
-  const keys = keysFor(id)[0];
-  return keys && shortcutLabel(keys);
+/** A tool's first key, as it reads on this platform; `keys` from `useKeysFor` (live). */
+function shortcutOf(keys: readonly string[]): string | undefined {
+  return keys[0] && shortcutLabel(keys[0]);
 }
 
 function ToolButton({

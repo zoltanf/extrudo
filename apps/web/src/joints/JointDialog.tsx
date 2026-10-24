@@ -50,6 +50,8 @@ export function JointDialogPanel({
   controller,
   doc,
 }: JointDialogProps & { open: OpenJoint }) {
+  // The controller's getters (`problem`, `frameText`) read its state: not memoised (ADR-0102 §5).
+  'use no memo';
   const problem = controller.problem();
   const valid = problem === undefined;
   const unit = open.type === 'slider' ? 'travel' : 'angle';
@@ -204,6 +206,7 @@ function FrameRow({
   open: OpenJoint;
   controller: JointDialogController;
 }) {
+  'use no memo';
   const label = SIDE_LABELS[side];
   const frame = open.frames[side];
   const active = open.pickField === side;
