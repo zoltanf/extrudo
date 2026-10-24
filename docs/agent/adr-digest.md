@@ -244,8 +244,10 @@ OCCT history, edges and vertices `e[faces]`/`v[faces]` plus `@n`;
 evaluators return `FeatureOutput.names` built with `namedPrism`,
 `namedRevolve`, `namedBoolean`, `withHistory`, and **resolve every face,
 edge or vertex reference with `ctx.resolve`** (exact name, related name,
-fingerprint with a warning, else an error); `KernelApi.reference` turns a
-pick into a `GeomRef` with a fingerprint. ADR-0027 (P2-05) added feature
+fingerprint with a warning, else an error; a related face is a piece of it
+or, since 2026-10-23, a name made from a related nested name: the round of an
+edge and the round of a piece of it, `topo-id.ts` `nestedRelated`);
+`KernelApi.reference` turns a pick into a `GeomRef` with a fingerprint. ADR-0027 (P2-05) added feature
 dialogs: a declarative `FeatureDialogSpec` (`apps/web/src/features/`:
 selection/expression/choice/toggle fields, `toInputs`/`fromInputs`,
 `validate`, `manipulators`, `previewStyle`) registered in
@@ -2370,6 +2372,12 @@ Parameter value records are read in class versions 5–7 and 9 (2026-10-20, #93)
 
 **Amendment of 2026-10-21 (text in fonts that fit the file's):** `fontFor` (`map.ts`) draws a family that has a stand-in in it (`STAND_INS`: Arial → Arimo, Arial Narrow → Archivo Narrow, regular and bold; DIN Condensed → Sofia Sans Extra Condensed Bold), anything else as before (Inter, or the serif, mono, stencil face). A stand-in is drawn at the file's font size: Extrudo's height (the capitals') is the size × the stand-in's own cap height over its em (`TextFont.cap`, from its OS/2 `sCapHeight`; an older text's height is Arial's capitals, so its font size is that / `CAP_HEIGHT`); without a stand-in the capitals are the size × `CAP_HEIGHT` (Arial's 0.716). A newer text record's byte after the angle is its bold flag, an older record's weight ≥ 700 is bold (`decode/text.ts`, `SketchText.bold`). Newer texts stay centred in the file's box (the box is the ink's width; centring lands closer than the box corner). A new stand-in needs the width measurement of the ADR's amendment and must be a bundled font (ADR-0058 §3: unmodified, its own ID).
 
+**Amendment of 2026-10-23 (face deletions decoded):** the timeline record `29EF07D3…` is the source app's face deletion (its scope `kind` is `DeleteFace`), decoded as `DeleteFaces`/`delete-faces` but mapped by phase 2 (`map.ts` `deleteFaces` makes a `removeFaces` step; left out when a face is copied by a pattern/mirror or not all faces can be named; on the bumper 20 of 28 import but none takes effect in the replay, their fillets fail first). Its layout is Offset faces' (`D087EFE5…`) without the distance: an operand group (`2CA5A1CD…`) of face operands (`5662F619…`), each recipe naming its face first; twelve zero bytes and a `u32 1` sit where Offset faces writes its distance reference and a `u32 1`. `model.ts` reads the faces through a shared `faceOperands` helper (Offset faces uses it too), each recipe with `tryDecode`. Phase 2 maps it once `removeFaces` (ADR-0099) lands; of the corpus's 28 such records (all in the issue's second file, one face each), 20 name every face through `faceName`.
+
+**Amendment of 2026-10-23 (round faces and moved faces):** a round's face (`faceName` → `nearestEdge`, `map.ts`) goes to the round's edge whose points (ends and midpoint, or eight around a whole circle) lie nearest the face's own surface (`surfaceGap`: cylinder, cone, sphere, torus; planes and splines keep the hint rule); ties within `GAP_TIE` go to the edge nearest the hint, then the token; **every edge with a shape takes part, named or not**, so a face of an unnamed edge is a miss, never a neighbour's name. A face's tags in a recipe are the operations it had when picked (making id, then negative ids of later changes); `model.ts` `statesOf` takes the stored state (`.smb` and `.smbh`) whose tags differ least from the recipe's (states with a known surface first, ties to the solved body) as `surface`, keeps the others, distinct, in `F3dFace.states` and the solved one in `F3dFace.solved` where it differs; `faceName` retries the states when `surface` names nothing — **except `offsetFaces`**, which names by `solved ?? surface` with no states, exactly as before (offsets newly named that way hung Offset Face for 15+ minutes on one design and broke a thread on another). Kernel: `faceRelation` (`topo-id.ts`) relates two stems `head(x)`/`head(y)` with the same head whose nested names relate (`nestedRelated`), so the round of an edge resolves to the round of a piece of it. On the bumper all 28 deletions import, 5 take effect; the rest fail on kernel limits (Offset Face's `sharp-chain` guard and "too far", Remove Faces on one face of a round loop).
+
+**Amendment of 2026-10-23 (failed face deletions leave the timeline):** after the probe's recompute, `failedDeletions(design, features)` (`body-check.ts`) lists the `removeFaces` steps that ended in error; `checkF3dBodies` puts them in `BodyPlan.dropped`, `applyBodyPlan` removes them first and `saveF3dImport` moves them from `imported` to `skipped` (kind `DeleteFace`, reason `Extrudo couldn't remove its faces: <kernel message, first sentence>`). Only face deletions; no geometry changes, so the plan must stay identical with and without (test). No written body, no check, deletions stay.
+
 ADR-0084 (the owner, 2026-10-14) **checks each body an `.f3d` import rebuilt against the
 file's own B-rep body** and brings the file's shape in where the replay misses. Pure parts in
 `packages/f3d/src/body-check.ts` (`probeDocument`, `measureProbe`, `fileBodies`, `planBodies`,
@@ -2834,7 +2842,7 @@ them, so a click on a counterbore's narrow wall takes the step and the wide wall
 non-planar faces only, anything else is itself; the feature stores the faces it got. Delete on
 a selection of only solid-body faces makes the feature in one step (`Remove Faces N`). The
 refusal names how many faces to add (unpicked faces of the failed faces' chains or holes).
-`.f3d` face deletions map to it (ADR-0083's amendment). Facade `removeFaces(shape)` takes the faces
+`.f3d` face deletions map to it (ADR-0083's amendment; `map.ts` `deleteFaces`, all faces named or the deletion is skipped; a deletion the kernel refuses stays in the timeline as an errored feature). Facade `removeFaces(shape)` takes the faces
 by `pushArg`, works on a copy and on refusal lists the failed features' faces (0-based) in the
 lookup buffer (`RemoveFacesError.failed`); the evaluator refuses an empty pick and a pick of
 every face before OCCT runs. The engine's `removeFacesPick(body, faces, base)` goes through the

@@ -1,0 +1,1 @@
+- 2026-10-23 · **.f3d import**: face deletions are replayed as Remove Faces steps where the faces they name can be found; the ones Extrudo can't carry out are left out of the timeline and listed in the import notice instead (#93).

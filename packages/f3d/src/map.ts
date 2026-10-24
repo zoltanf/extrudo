@@ -67,6 +67,7 @@ import {
 import type {
   F3dBody,
   F3dCircularPattern,
+  F3dDeleteFaces,
   F3dDesign,
   F3dEdgeFeature,
   F3dExtrude,
@@ -782,6 +783,10 @@ export function f3dToDesign(
         }
       } else if (feature.type === 'offset-faces') {
         const reason = offsetFaces(d, feature, naming, expressionOf, report);
+        if (reason) report.skipped.push(skippedFeature(feature.name, feature.kind, reason));
+        else report.imported.push(feature.name);
+      } else if (feature.type === 'delete-faces') {
+        const reason = deleteFaces(d, feature, naming);
         if (reason) report.skipped.push(skippedFeature(feature.name, feature.kind, reason));
         else report.imported.push(feature.name);
       } else if (feature.type === 'circular-pattern') {
@@ -2310,12 +2315,33 @@ const miss = (why: string): undefined => {
 
 /**
  * The Extrudo name of a face an imported feature made. A fillet's or
- * chamfer's face: from the edge it rounds, by the face's token. An extrude's:
+ * chamfer's face: from the edge it rounds (`nearestEdge`). An extrude's:
  * an end cap (parallel to the sketch, at the profile plane or not) or the
  * side swept from one of the curves around the extruded regions (a plane
  * through a line's two ends, a cylinder about a circle's or arc's centre).
  */
 function faceName(
+  face: F3dFace,
+  naming: FaceNaming,
+  hint?: Vec3,
+  crest?: { radius: number; slack: number },
+): string | undefined {
+  const name = faceNameIn(face, naming, hint, crest);
+  if (name !== undefined || !face.states) return name;
+  // The surface the reference means names nothing (an offset moved the
+  // face off its sketch curve): its other states, nearest first. An offset
+  // keeps a face's name, in the file and in Extrudo.
+  const why = lastMiss;
+  for (const surface of face.states) {
+    const other = faceNameIn({ ...face, surface }, naming, hint, crest);
+    if (other !== undefined) return other;
+  }
+  lastMiss = why;
+  return undefined;
+}
+
+/** `faceName` for the face's one surface. */
+function faceNameIn(
   face: F3dFace,
   naming: FaceNaming,
   hint?: Vec3,
@@ -2339,7 +2365,7 @@ function faceName(
   const round = naming.rounds.get(face.feature);
   if (round) {
     const k = Number(face.tags[0]?.token);
-    const near = hint ? nearestEdge(round, hint) : undefined;
+    const near = nearestEdge(round, hint, face.surface, k - 1);
     const edge =
       near !== undefined ? round.edges[near] : Number.isInteger(k) ? round.edges[k - 1] : undefined;
     if (!edge) return miss(`${round.op} face: its edge has no name`);
@@ -2452,23 +2478,108 @@ function sideRadius(name: string, naming: FaceNaming): number | undefined {
   return undefined;
 }
 
-function nearestEdge(round: ImportedRound, p: Vec3): number | undefined {
+/** cm: rounds whose edges lie this close alike to a face are a tie (a face merged from several). */
+const GAP_TIE = 1e-4;
+
+/**
+ * Which of a round's edges made a face of it. A round face lies along the
+ * edge it replaced, its surface (cylinder, cone, sphere or torus) a fixed
+ * distance off the sharp edge, while the round's other edges lie well off
+ * it: the edge whose points lie nearest the face's surface wins. A tie (a
+ * face merged from several edges' rounds), or a surface of another kind,
+ * goes to the edge nearest `hint` (a point of the edge being named), then
+ * to the face's token (`token`, 0-based: often, not always, the edge's
+ * place in the list). Every edge with a shape takes part, named or not: a
+ * face nearest an edge that could not be named has no name, not its
+ * neighbour's.
+ */
+function nearestEdge(
+  round: ImportedRound,
+  hint: Vec3 | undefined,
+  surface: AsmSurface | undefined,
+  token: number,
+): number | undefined {
+  const gapOf = surface ? surfaceGap(surface) : undefined;
+  if (!gapOf && !hint) return undefined;
   let best: number | undefined;
+  let bestGap = Number.POSITIVE_INFINITY;
   let bestDistance = Number.POSITIVE_INFINITY;
   round.shapes.forEach((shape, i) => {
-    if (!shape?.ends || !round.edges[i]) return;
-    const [a, b] = shape.ends;
-    let d: number;
-    if (shape.type === 'line') {
-      const ab = sub(b, a);
-      const t = Math.max(0, Math.min(1, dot(sub(p, a), ab) / dot(ab, ab)));
-      d = norm(sub(p, [a[0] + ab[0] * t, a[1] + ab[1] * t, a[2] + ab[2] * t]));
-    } else {
-      d = Math.min(norm(sub(p, a)), norm(sub(p, b)), norm(sub(p, shape.mid)));
-    }
-    if (d < bestDistance) [best, bestDistance] = [i, d];
+    if (!shape || (!gapOf && !shape.ends)) return;
+    const gap = gapOf ? Math.max(...edgePoints(shape).map(gapOf)) : 0;
+    const distance = hint && shape.ends ? hintDistance(shape, hint) : Number.POSITIVE_INFINITY;
+    const better =
+      best === undefined ||
+      gap < bestGap - GAP_TIE ||
+      (gap <= bestGap + GAP_TIE &&
+        (distance < bestDistance || (distance === bestDistance && i === token)));
+    if (better) [best, bestGap, bestDistance] = [i, gap, distance];
   });
   return best;
+}
+
+/** How far `p` lies from the edge (its ends' segment, or nearest of its ends and midpoint). */
+function hintDistance(shape: EdgeShape, p: Vec3): number {
+  const [a, b] = shape.ends as [Vec3, Vec3];
+  if (shape.type === 'line') {
+    const ab = sub(b, a);
+    const t = Math.max(0, Math.min(1, dot(sub(p, a), ab) / dot(ab, ab)));
+    return norm(sub(p, [a[0] + ab[0] * t, a[1] + ab[1] * t, a[2] + ab[2] * t]));
+  }
+  return Math.min(norm(sub(p, a)), norm(sub(p, b)), norm(sub(p, shape.mid)));
+}
+
+/** Points along an edge: its ends and midpoint, or eight around a whole circle. */
+function edgePoints(shape: EdgeShape): Vec3[] {
+  if (shape.ends) return [shape.ends[0], shape.ends[1], shape.mid];
+  const c = shape.circle;
+  if (!c) return [shape.mid];
+  const axis = c.axis;
+  const seed: Vec3 = Math.abs(axis[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const u = cross(axis, seed);
+  const lu = norm(u);
+  if (!(lu > 1e-12)) return [shape.mid];
+  const x: Vec3 = [u[0] / lu, u[1] / lu, u[2] / lu];
+  const y = cross(axis, x);
+  return Array.from({ length: 8 }, (_, k) => {
+    const t = (k * Math.PI) / 4;
+    const [cs, sn] = [Math.cos(t) * c.radius, Math.sin(t) * c.radius];
+    return [
+      c.center[0] + x[0] * cs + y[0] * sn,
+      c.center[1] + x[1] * cs + y[1] * sn,
+      c.center[2] + x[2] * cs + y[2] * sn,
+    ] as Vec3;
+  });
+}
+
+/**
+ * The distance from a point to a round's surface (cm): a cylinder, cone,
+ * sphere or torus. Undefined for other surfaces (a chamfer's plane runs on
+ * past other edges; a variable round's spline is not followed).
+ */
+function surfaceGap(s: AsmSurface): ((p: Vec3) => number) | undefined {
+  if (s.kind === 'sphere') return (p) => Math.abs(norm(sub(p, s.center)) - s.radius);
+  if (s.kind !== 'cone' && s.kind !== 'torus') return undefined;
+  const length = norm(s.axis);
+  if (!(length > 1e-12)) return undefined;
+  const a: Vec3 = [s.axis[0] / length, s.axis[1] / length, s.axis[2] / length];
+  const split = (p: Vec3) => {
+    const d = sub(p, s.center);
+    const along = dot(d, a);
+    return { along, out: norm(sub(d, [a[0] * along, a[1] * along, a[2] * along])) };
+  };
+  if (s.kind === 'cone') {
+    const cos = 1 / Math.hypot(1, s.slope);
+    return (p) => {
+      const { along, out } = split(p);
+      return Math.abs(out - (s.radius + s.slope * along)) * cos;
+    };
+  }
+  const major = Math.abs(s.major);
+  return (p) => {
+    const { along, out } = split(p);
+    return Math.abs(Math.hypot(out - major, along) - s.minor);
+  };
 }
 
 /**
@@ -2538,6 +2649,28 @@ function revolveFaceName(s: AsmSurface, rev: ImportedRevolve): string | undefine
 }
 
 /**
+ * Replays a face deletion as Remove Faces: all or nothing, as Remove Faces is
+ * (a round or hole needs all its faces); returns why not when it can't.
+ */
+function deleteFaces(d: Design, f: F3dDeleteFaces, naming: FaceNaming): string | undefined {
+  if (f.faces.some((face) => face.instance))
+    return 'it deletes faces a pattern or mirror copied (not imported yet)';
+  const faces: GeomRef[] = [];
+  let named = 0;
+  for (const face of f.faces) {
+    const id = faceName(face, naming);
+    if (!id) continue;
+    named++;
+    if (!faces.some((r) => r.id === id)) faces.push({ kind: 'face', id });
+  }
+  if (named === 0) return `none of its ${f.faces.length} faces could be named`;
+  if (named < f.faces.length)
+    return `${f.faces.length - named} of its ${f.faces.length} faces could not be named`;
+  d.removeFaces({ faces } as Parameters<Design['removeFaces']>[0], { name: f.name });
+  return undefined;
+}
+
+/**
  * Moves the faces that can be named (those an imported extrude made) along
  * their outward normals; returns why not when none can. The file's distance
  * is along the outward normal too.
@@ -2556,14 +2689,21 @@ function offsetFaces(
     return 'it moves faces a pattern or mirror copied (not imported yet)';
   if (Math.abs(f.distance.value) < 1e-12)
     return 'its distance is 0 (Extrudo refuses an offset that moves nothing)';
+  // Named by the face's solved state only, as before the states were read.
+  // The faces other states name had moved, mostly by an earlier offset:
+  // offsetting one again ran the kernel's Offset Face for over 15 minutes on
+  // one design seen, and on another a thread after the offset then refused
+  // the wider hole. Left out until Offset Face is bounded.
+  const nameOf = (face: F3dFace) =>
+    faceName({ ...face, surface: face.solved ?? face.surface, states: [] }, naming);
   const faces: GeomRef[] = [];
   for (const face of f.faces) {
-    const id = faceName(face, naming);
+    const id = nameOf(face);
     if (id && !faces.some((r) => r.id === id)) faces.push({ kind: 'face', id });
   }
   if (faces.length === 0)
     return f.faces.length === 0 ? 'no faces' : `none of its ${f.faces.length} faces could be named`;
-  const named = f.faces.filter((face) => faceName(face, naming)).length;
+  const named = f.faces.filter((face) => nameOf(face)).length;
   if (named < f.faces.length)
     report.notes.push(
       `${f.name}: ${f.faces.length - named} of ${f.faces.length} faces left out (not made by an imported extrude, fillet or chamfer).`,

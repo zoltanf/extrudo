@@ -5,8 +5,8 @@
  * samples, no `.f3d` bytes: the replay fixture is hand-built and the STEP comes
  * from `solidStep`.
  */
-import type { Design } from '@extrudo/api';
-import type { AttachmentId, BodyId } from '@extrudo/core';
+import { Design } from '@extrudo/api';
+import type { AttachmentId, BodyId, GeomRef } from '@extrudo/core';
 import { Kernel } from '@extrudo/kernel';
 import { kernelFeatures, loadOcct, RecomputeEngine } from '@extrudo/kernel/node';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -21,6 +21,7 @@ import {
   applyBodyPlan,
   type BodyMeasure,
   bodyFiles,
+  failedDeletions,
   fileBodies,
   planBodies,
   probeDocument,
@@ -380,5 +381,80 @@ describe('body check with a kernel', () => {
     const measure = [...after.values()][0] as BodyMeasure;
     // The 15 mm box: 3.375 cm³ → 3375 mm³.
     expect(measure.volume).toBeCloseTo(3375, 3);
+  });
+
+  it('takes a face deletion the kernel refused out of the design, and changes nothing else', async () => {
+    // A 20 mm cube with a through hole. The hole's wall is deleted (works: the cube
+    // is whole again), then a face that is gone (refused).
+    const design = Design.create({ name: 'Cube' });
+    const cube = design.box({ length: '20 mm', width: '20 mm', height: '20 mm' });
+    design.hole({
+      plane: cube.face('cap:end'),
+      x: '10 mm',
+      y: '10 mm',
+      diameter: '4 mm',
+      extent: 'through',
+    });
+    const engine = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
+    let wall: GeomRef | undefined;
+    try {
+      const first = await engine.recompute({ doc: design.toJSON() });
+      if (first.status !== 'done') throw new Error(first.status);
+      const body = first.bodies[0];
+      const index = body?.mesh?.faceIds?.findIndex((n) => n.startsWith('hole:')) ?? -1;
+      expect(index).toBeGreaterThanOrEqual(0);
+      wall = engine.reference(body?.id as BodyId, 'face', index);
+    } finally {
+      engine.clear();
+    }
+    if (!wall) throw new Error('no hole wall');
+    design.removeFaces({ faces: wall } as never, { name: 'Works' });
+    design.removeFaces({ faces: { kind: 'face', id: 'hole:gone' } } as never, { name: 'Gone' });
+    const run = async (d: Design) => {
+      const e = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
+      try {
+        const r = await e.recompute({ doc: d.toJSON() });
+        if (r.status !== 'done') throw new Error(r.status);
+        const bodies: { id: BodyId; measure: BodyMeasure }[] = [];
+        for (const b of r.bodies) {
+          const shape = e.latestBody(b.id);
+          if (!shape) continue;
+          const { volume, bbox } = kernel.properties(shape);
+          bodies.push({
+            id: b.id,
+            measure: { volume, box: [...bbox.min, ...bbox.max] as BodyMeasure['box'] },
+          });
+        }
+        return { features: r.features, bodies };
+      } finally {
+        e.clear();
+      }
+    };
+    const before = await run(design);
+    const dropped = failedDeletions(design, before.features);
+    expect(dropped.map((d) => d.name)).toEqual(['Gone']);
+    expect(dropped[0]?.reason).toMatch(/^Extrudo couldn't remove its faces: \S/);
+    // The hole's wall deletion works: the whole 20 mm cube.
+    expect(before.bodies[0]?.measure.volume).toBeCloseTo(8000, 3);
+    const steps: BodyStep[] = [
+      { record: 1, name: 'Body1', step: solidStep(boxSolid(2)).step as string },
+    ];
+    const planOf = (r: typeof before) => {
+      const measure = r.bodies[0]?.measure as BodyMeasure;
+      return planBodies({
+        replayed: r.bodies,
+        file: fileBodies(steps, [], new Map([[1, measure]])),
+      });
+    };
+    const planBefore = planOf(before);
+    expect(planBefore.matched).toHaveLength(1);
+    applyBodyPlan(design, { ...planBefore, dropped }, steps);
+    const names = design.doc.features.map((f) => f.name);
+    expect(names).toContain('Works');
+    expect(names).not.toContain('Gone');
+    const after = await run(design);
+    expect(Object.values(after.features).every((f) => f.status === 'ok')).toBe(true);
+    expect(after.bodies).toEqual(before.bodies);
+    expect(planOf(after)).toEqual(planBefore);
   });
 });
