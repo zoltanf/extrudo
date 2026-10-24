@@ -27,6 +27,12 @@ test("a tile's Change shortcut… records its key, and the key runs it after a r
   await expect(row(page, 'hole').getByRole('button', { name: 'Hole: Shift+O' })).toBeVisible();
   await expect(row(page, 'hole')).toHaveAttribute('data-keymap-changed', 'true');
   expect(await stored(page)).toEqual({ hole: ['Shift+O'] });
+  // The tile's tooltip shows the new key at once, no reload (ADR-0102 §5: the key labels
+  // read the keymap through `useKeysFor`, which the React Compiler can't memoise away).
+  await page.keyboard.press('Escape');
+  await expect(keyboard(page)).toBeHidden();
+  await page.locator('[data-tool="hole"]').hover();
+  await expect(page.getByRole('tooltip').locator('kbd').first()).toHaveText('Shift+O');
 
   await page.reload();
   await kernelReady(page);

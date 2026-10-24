@@ -92,15 +92,32 @@ const NONE: readonly string[] = [];
 export type KeymapOverrides = Readonly<Record<string, readonly string[]>>;
 
 let overrides: KeymapOverrides = {};
+const listeners = new Set<() => void>();
 
 /** Replaces the overrides `keysFor` reads; `commands/keymapStore.ts` is the one caller. */
 export function setKeymapOverrides(next: KeymapOverrides): void {
   overrides = next;
+  for (const listener of listeners) listener();
 }
 
-/** A command's keys, first the one to show in tooltips and menus: the person's, else the default. */
-export function keysFor(id: string): readonly string[] {
-  return overrides[id] ?? DEFAULT_KEYMAP[id] ?? NONE;
+/** The overrides `keysFor` reads now (a new object after every change). */
+export function keymapOverrides(): KeymapOverrides {
+  return overrides;
+}
+
+/** Calls `listener` after every `setKeymapOverrides`; returns the unsubscribe. */
+export function subscribeKeymap(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => void listeners.delete(listener);
+}
+
+/**
+ * A command's keys, first the one to show in tooltips and menus: the person's, else the
+ * default. `from` is the overrides to read (a render reads the live ones through
+ * `useKeysFor`); by default the current ones.
+ */
+export function keysFor(id: string, from: KeymapOverrides = overrides): readonly string[] {
+  return from[id] ?? DEFAULT_KEYMAP[id] ?? NONE;
 }
 
 /** A command's default keys, for what must not follow one person's choice (generated docs). */

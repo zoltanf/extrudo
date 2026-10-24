@@ -2935,7 +2935,9 @@ once per frame, with a flush before anything that acts on the hover (a press,
 a release, a leave); a body's highlight object changes only when something
 naming that body changes; `Shell` must not read `session.hover` (read it in
 the leaf that shows it); a component that reads state through a method, a
-getter or `getState()` while drawing takes that state as props or starts
+getter, `getState()` or a module variable while drawing takes that state
+through a hook (`useSyncExternalStore`: a key label in render comes from
+`useKeysFor()`, never a bare `keysFor(id)`) or as props, or starts
 with `'use no memo'` (the compiler memoises on props and would serve stale
 output — it did for `NotificationHistory` and `JointDialog`); upgrading
 `oxc-transform-react` or `@vitejs/plugin-react` re-runs §5's gate (build ≤

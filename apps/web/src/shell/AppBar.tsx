@@ -3,7 +3,7 @@ import { History, Redo2, Search, Undo2 } from 'lucide-react';
 import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { AgentIndicator } from '../agent/AgentIndicator';
-import { keysFor } from '../commands/keymap';
+import { useKeysFor } from '../commands/keymapStore';
 import { shortcutLabel } from '../commands/shortcuts';
 import {
   Button,
@@ -107,11 +107,8 @@ export interface AppBarProps {
   agent?: AgentBridge | undefined;
 }
 
-/** A command's first key as it reads here ("Ctrl+K"). */
-const keyLabel = (id: string) => {
-  const keys = keysFor(id)[0];
-  return keys && shortcutLabel(keys);
-};
+/** A command's first key as it reads here ("Ctrl+K"); `keys` from `useKeysFor` (live). */
+const keyLabel = (keys: readonly string[]) => keys[0] && shortcutLabel(keys[0]);
 
 /** A thin divider between the bar's clusters. */
 const Separator = () => <div className="mx-1.5 h-5 w-px shrink-0 bg-line" aria-hidden="true" />;
@@ -147,6 +144,7 @@ export function AppBar({
   onCloseDesign,
   agent,
 }: AppBarProps) {
+  const keysFor = useKeysFor();
   const name = useStore(store, (s) => s.doc.name);
   const { canUndo, canRedo, undoLabel, redoLabel, undo, redo } = useStore(store);
 
@@ -170,7 +168,7 @@ export function AppBar({
         <SearchButton onSearch={onSearch} />
         <IconButton
           label="Undo"
-          shortcut={keyLabel('undo')}
+          shortcut={keyLabel(keysFor('undo'))}
           hint={undoLabel ? `Undo “${undoLabel}”.` : 'Nothing to undo.'}
           disabled={!canUndo}
           onClick={undo}
@@ -179,7 +177,7 @@ export function AppBar({
         </IconButton>
         <IconButton
           label="Redo"
-          shortcut={keyLabel('redo')}
+          shortcut={keyLabel(keysFor('redo'))}
           hint={redoLabel ? `Redo “${redoLabel}”.` : 'Nothing to redo.'}
           disabled={!canRedo}
           onClick={redo}
@@ -231,12 +229,13 @@ export function AppBar({
  * centred and S at the pointer. Its tooltip names Ctrl+K.
  */
 function SearchButton({ onSearch }: Pick<AppBarProps, 'onSearch'>) {
+  const keysFor = useKeysFor();
   const ref = useRef<HTMLSpanElement>(null);
   return (
     <span ref={ref} className="inline-flex">
       <IconButton
         label="Search"
-        shortcut={keyLabel('search')}
+        shortcut={keyLabel(keysFor('search'))}
         hint="Your pinned commands, and every command by name. S opens it at the pointer."
         onClick={() => {
           const r = ref.current?.getBoundingClientRect();

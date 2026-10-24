@@ -217,6 +217,33 @@ so nothing compiled is lost. Checked in the dev server: the knurled knob
 opens with the kernel ready. Rule in the digest: `pnpm dev` is checked after
 any change to the plugin's options.
 
+**Audit, 2026-10-24 (coordinator's review).** An independent pass ran the
+compiler over every file and read the compiled output of each function that
+reads mutable state in render. One regression beyond the five marked
+components: the key labels. `keysFor(id)` reads a module variable
+(`commands/keymap.ts`), and the design relied on `App`'s `useKeymap` re-render
+to refresh every label after a change in Settings › Keyboard; compiled, the
+labels were memoised on `id` alone and stayed stale until a reload (the
+Undo, Redo and Search tooltips in `shell/AppBar.tsx`, the app menu's items,
+the toolbar tiles, the sketch palette's Construction key, the annotation
+menu's Delete). Fix: `useKeysFor()` (`commands/keymapStore.ts`) subscribes to
+the keymap with `useSyncExternalStore` and returns a lookup bound to the
+live overrides, so a label computed from it has the overrides as a
+dependency; the five sites use it, `keysFor` outside render is unchanged.
+`e2e/settings-keyboard.spec.ts` now checks the tile's tooltip shows the new
+key before the reload. Known and accepted, each rare and small: the status
+bar's `SoftwareRendering` keeps the probe result from before a WebGL retry
+(`shell/Timeline.tsx`); a clearance section's "= x mm" readout follows a
+parameter edit only when its text changes (`joints/ClearanceSection.tsx`);
+a feature context menu opened during a recompute keeps its issue count
+until reopened (`shell/FeatureMenu.tsx`); a floating dialog re-clamps its
+position on the next move after a window resize
+(`design-system/FloatingDialog.tsx`); a profile readout follows a font that
+finishes loading on the next selection (`sketch/panels.tsx`). The rule
+stands: state read through a method, a getter, `getState()` or a module
+variable in render is taken through a hook (`useSyncExternalStore`) or as
+props, or the component says `'use no memo'`.
+
 ## §6. Amendment 2026-10-24: what project open spent, and the fix
 
 The perf spec's `open` window (GPU, three runs before any change) names only

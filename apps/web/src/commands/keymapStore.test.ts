@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { memoryPreferences } from '../platform/preferences';
-import { keysFor, setKeymapOverrides } from './keymap';
+import { keymapOverrides, keysFor, setKeymapOverrides, subscribeKeymap } from './keymap';
 import {
   cleanOverrides,
   conflictsFor,
@@ -13,6 +13,20 @@ import {
 afterEach(() => setKeymapOverrides({}));
 
 describe('keymap overrides', () => {
+  it('tells its subscribers after every change, with a new overrides object (ADR-0102 §5)', () => {
+    const store = keymapStore(memoryPreferences());
+    const seen: ReturnType<typeof keymapOverrides>[] = [];
+    const unsubscribe = subscribeKeymap(() => seen.push(keymapOverrides()));
+    const before = keymapOverrides();
+    store.set('trim', ['Shift+R']);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).not.toBe(before);
+    expect(seen[0]?.trim).toEqual(['Shift+R']);
+    unsubscribe();
+    store.reset('trim');
+    expect(seen).toHaveLength(1);
+  });
+
   it('keysFor follows an override, else the default', () => {
     const store = keymapStore(memoryPreferences());
     expect(keysFor('trim')).toEqual(['T']);
