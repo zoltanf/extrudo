@@ -436,19 +436,20 @@ inactive.
 
 ### 4.9 `render` (RenderSettings)
 
-What the Render Picture dialog last used (desktop app, ADR-0101; added
-2026-10-23). The dialog writes it when a render starts, so the next render of
+What the Render Picture dialog last used (ADR-0101; added 2026-10-23,
+`engine` added 2026-10-24 with ADR-0101 §6). The dialog writes it when a render starts, so the next render of
 the design starts from the same choices. **The picture itself is never
 stored**: it is derived, and the user saves or copies it from the dialog.
 
 | Field | Type | Required | Meaning |
 |---|---|---|---|
-| `preset` | string | yes | The scene: `studio` (a white sweep), `table` (a wooden table top), `workbench` (a dark worktop) or `outdoor` (the ground under a sunny sky). |
+| `preset` | string | yes | The scene: `studio` (a white sweep), `table` (a wooden table top), `workbench` (a cutting mat with a 10 mm grid) or `outdoor` (the ground under a sunny sky). |
 | `finishes` | object | no | Record from body ID (section 4.2) to a finish: `matte`, `glossy`, `translucent`, `resin`, `metal` or `wood`. Only bodies whose finish isn't `matte` (the default) are listed; an entry for a body that no longer exists is ignored. |
 | `camera` | object (RenderCamera) | yes | Which camera the picture uses, by `kind`: `auto` (the renderer frames the model itself), `current` (the viewport's camera when the render starts) or `view` with the `id` of a saved view (section 4.3). |
 | `width` | integer | yes | Picture width in pixels, 256 to 8192. |
 | `height` | integer | yes | Picture height in pixels, 256 to 8192. |
 | `quality` | string | yes | `draft`, `standard` or `high`: how long the renderer takes. |
+| `engine` | string | no | Who renders: `app` (the app itself, in the browser or the desktop app) or `blender` (Blender on a desktop, when it is installed). Absent means `app`. A design that says `blender` renders in the app where Blender isn't there, and keeps the value. |
 
 ```json
 "render": {
@@ -457,7 +458,8 @@ stored**: it is derived, and the user saves or copies it from the dialog.
   "camera": { "kind": "auto" },
   "width": 1920,
   "height": 1080,
-  "quality": "standard"
+  "quality": "standard",
+  "engine": "blender"
 }
 ```
 

@@ -163,3 +163,130 @@ same settings writes nothing (no empty undo step).
   readers drop it (the section is optional; `strictObject` rejects unknown
   keys inside it, so a future field is a new ADR amendment).
 - `render.py` runs inside Blender under Blender's GPL, like the app itself.
+
+## Amendment, 2026-10-24: an in-app renderer, and the engine choice (P6-16)
+
+- **Status:** Proposed, 2026-10-24 (the owner asked for a fallback that works
+  in the browser too, and chose the shape: three.js in the app with a path
+  tracer for the slow qualities, the engine chosen in the dialog).
+- **Task:** P6-16. **Schema change:** `render.engine` (§6.4).
+
+### 6. The second engine: the app itself
+
+§1–§5 need Blender on a desktop. Most people open Extrudo in a browser, and
+many desktop users never install Blender. The app already has a WebGL
+renderer (three.js through @react-three/fiber) and a BVH library
+(three-mesh-bvh), so it can render the same four scenes and six finishes
+itself, in the browser and the desktop app alike. Blender stays the better
+picture: its materials, lights and denoiser are a cut above, so where it is
+found the person chooses.
+
+#### 6.1 Two engines, one dialog
+
+`render.engine` is `app` (the default) or `blender`. The dialog gets a
+**Render with** row above Scene: **In the app** and **Blender**. The row is
+shown only where the platform has `render` (the desktop app); on the web the
+app engine is the only one and the row is absent. With Blender missing or too
+old, the Blender choice is disabled and §1's status line (install link,
+Settings path) stands under the row. The rest of the dialog (scene, bodies,
+camera, size, quality) is the same for both engines, so a design renders the
+same picture, as far as each engine can, whichever is chosen.
+
+The **Render Picture tile is ready everywhere**: the web build loses its
+"needs the desktop app" hint (`tools.ts`: no `comesWith`, no `unavailable`).
+
+#### 6.2 Draft: a plain three.js render; Standard and High: a path tracer
+
+- **Draft** renders with three.js's rasteriser: `MeshPhysicalMaterial` per
+  finish, PCF soft shadow maps from the key light, an environment map from
+  three's `RoomEnvironment` through `PMREMGenerator` (no texture files),
+  ACES filmic tone mapping. It takes well under two seconds at 1920×1080 on
+  an integrated GPU, and is what the web e2e checks.
+- **Standard and High** render with **three-gpu-pathtracer** (MIT,
+  `WebGLPathTracer`, needs three ≥ 0.185 and three-mesh-bvh, both already in
+  the app): physically based light transport in a WebGL2 fragment shader,
+  progressive, one `renderSample()` per animation frame so the UI thread
+  stays responsive; 128 samples for Standard and 512 for High (Blender's
+  numbers, §3), 5 bounces, tiles so that one tile's GPU time stays under ~40 ms
+  (measured with a fence after each frame's batch of tiles, the next batch
+  waiting for it, so work never piles up on the GPU the desktop shares). A
+  batch the GPU finished by the next frame doubles, one over the budget
+  halves: a fast GPU is not held to one tile a frame (that cost 7×: 137 s
+  against 20 s for Standard on a GTX 1050 Ti), a slow one gets one small tile. A denoise pass (owner, 2026-10-24) follows the output pass: the library's
+  `DenoiseMaterial` (an edge-preserving blur, sigma 5, threshold 0.12) runs on the
+  8-bit display values, so the threshold means a colour difference as seen. The
+  library's default threshold, 0.03, is below Standard's grain and left it in place. Progress is
+  `samples / target`; Cancel stops the loop. Translucent bodies use
+  `transmission`, which the path tracer honours.
+- The picture is rendered off screen into a `WebGLRenderTarget` of the
+  requested size (a hidden canvas with its own `WebGLRenderer`, created on
+  the first render, disposed with the dialog), read back with
+  `readRenderTargetPixelsAsync`, flipped, drawn to a 2D canvas and encoded
+  with `toBlob('image/png')` into the same `RenderResult` as Blender's. A
+  size above the GPU's maximum render-target side is refused with a message
+  naming the limit (the size list stays; `RENDER_MAX_SIDE` is Blender's).
+
+#### 6.3 The scenes and finishes, again, in three.js
+
+`apps/web/src/render/app/` holds the engine: `appRenderer.ts`
+(`createAppRenderer(): PictureRenderer`), `scenes.ts` (the four presets built
+from the model's bounding box exactly like `render.py`'s: the studio's
+sweep from the same arc, the table's and workbench's slabs, the outdoor
+ground under three's `Sky` baked to the environment, the same light
+positions and strengths scaled to the model), `finishes.ts` (one material
+per finish, the body's colour as the base colour, wood's grain and the
+workbench's texture drawn to a `CanvasTexture` at runtime), `camera.ts`
+(a `ViewCamera` in millimetres to a three camera; the automatic camera fits
+the box corners like `fit_distance`), `pathTrace.ts` (§6.2's loop). No
+`.blend`, no image files: everything is code, as §3 ruled for Python.
+
+The renderer's job is the meshed bodies (`MeshedBodies`, the same
+`RESOLUTIONS.medium` meshes the OBJ is written from), the preset, the
+finishes, the camera, the size and the quality: `AppRenderJob` in
+`apps/web/src/platform/render.ts` next to `RenderJob`, with the shared
+`RenderProgress` and `RenderResult`; `PictureRenderer` is the common
+interface (`render(job, onProgress)`, `cancel()`), which `BlenderRenderer`
+extends with `status()`.
+
+#### 6.4 The setting
+
+`RenderSettingsSchema` gains `engine: z.enum(['app', 'blender']).optional()`
+(absent means `app`); `docs/file-format.md` §4.9 documents it. A design
+rendered with Blender on a desktop opens on the web with the row hidden and
+the app engine used; the stored `blender` is kept until the person renders
+there again.
+
+#### 6.5 The workbench's cutting mat (owner, 2026-10-24)
+
+The workbench gets a green cutting mat under the model, in both engines:
+light lines every 10 mm, brighter every 50 mm, numbers in a plain border
+along the two edges that face the automatic camera (front, −y, and right,
++x), counting millimetres from the design's origin. The grid lies on the
+design's coordinates (the placement's offset maps them into the scene), so a
+line runs through the origin. The mat covers the footprint plus
+max(15 mm, ¼ of the model's size), snapped outward to the grid; above 60 cells
+across, the step goes 10 → 50 → 100 → 500 mm, and above 30 cells only the
+major lines are numbered. The dark worktop stays beyond the mat. The app draws
+it to a canvas (`mat.ts`); `render.py` builds the grid as shader maths on the
+world position and the numbers as text objects (bpy only: no image, no numpy).
+
+### Rejected (the amendment)
+
+- **A WebGPU path tracer**: not in Safari's stable channel for everyone yet
+  and a second code path; three-gpu-pathtracer runs on WebGL2 everywhere
+  the app does.
+- **Rendering in a Web Worker with `OffscreenCanvas`**: the path tracer is
+  progressive per frame, so the main thread stays responsive without it;
+  a worker would double the three.js scene code.
+- **A server-side render**: the app has no server and the model is private.
+- **Dropping Blender**: it stays the better picture where it exists.
+
+### Consequences (the amendment)
+
+- The web build gets the feature for real, and the tile's hint goes.
+- Standard and High depend on the GPU: minutes on an integrated one, a
+  software renderer (CI, a VM) is far slower, so e2e renders a draft only.
+- Standard is denoised and High is the cleanest; very fine detail can soften at
+  Standard, and Blender stays the better picture.
+- `three-gpu-pathtracer` is a new dependency (MIT, in the allow-list), listed
+  in `NOTICE`.

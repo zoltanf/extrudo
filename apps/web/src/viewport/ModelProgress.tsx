@@ -24,7 +24,7 @@ export function useRecomputeFinished(model: ModelStore<unknown>): boolean {
 }
 
 /**
- * The kernel calls the user is waiting on (P6-15, ADR-0105 §1), as an
+ * The kernel calls the user is waiting on (P6-17, ADR-0105 §1), as an
  * external store so a change redraws whoever shows it.
  */
 export function useKernelWaits(waits: KernelWaits | undefined): readonly Wait[] {
@@ -75,7 +75,7 @@ export function ModelProgress({
 }: {
   model: ModelStore<unknown>;
   store: DocumentStore;
-  /** The kernel's live waits (P6-15); the notice shows them once they last. */
+  /** The kernel's live waits (P6-17); the notice shows them once they last. */
   waits?: KernelWaits;
   /** The browser is folded away: its "Show browser" tab then sits at the view's corner. */
   collapsed: boolean;

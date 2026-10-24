@@ -12,13 +12,15 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ModelExporter } from '../export/modelExport';
 import type {
-  BlenderRenderer,
+  AppRenderJob,
   BlenderStatus,
+  PictureRenderer,
+  RenderJob,
   RenderProgress,
   RenderResult,
 } from '../platform/render';
 import type { BodyEntry } from '../shell/bodies';
-import { type RenderDialogProps, RenderForm } from './RenderDialog';
+import { phaseText, type RenderDialogProps, RenderForm } from './RenderDialog';
 
 const A = 'E1:Bracket' as never;
 const tri = {
@@ -26,17 +28,17 @@ const tri = {
   indices: Uint32Array.from([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]),
 };
 
-interface Fake extends BlenderRenderer {
-  jobs: Parameters<BlenderRenderer['render']>[0][];
+interface Fake<Job> extends PictureRenderer<Job> {
+  jobs: Job[];
   progress?: (p: RenderProgress) => void;
   finish(result: RenderResult): void;
 }
 
-function fakeRender(status: BlenderStatus = { state: 'found', version: '4.5.1', path: '/b' }) {
+/** A renderer whose render runs until `finish`. */
+function fakeEngine<Job>(): Fake<Job> {
   let resolve: (r: RenderResult) => void = () => {};
-  const fake: Fake = {
+  const fake: Fake<Job> = {
     jobs: [],
-    status: async () => status,
     render(job, onProgress) {
       fake.jobs.push(job);
       fake.progress = onProgress;
@@ -50,7 +52,16 @@ function fakeRender(status: BlenderStatus = { state: 'found', version: '4.5.1', 
   return fake;
 }
 
-function setup(over: Partial<RenderDialogProps> = {}, status?: BlenderStatus) {
+function fakeRender(status: BlenderStatus = { state: 'found', version: '4.5.1', path: '/b' }) {
+  return Object.assign(fakeEngine<RenderJob>(), { status: async () => status });
+}
+
+/** `web: true` leaves Blender out, as the web build does. */
+function setup(
+  over: Partial<RenderDialogProps> = {},
+  status?: BlenderStatus,
+  { web = false }: { web?: boolean } = {},
+) {
   const model = createModelStore<BodyMesh>();
   const store = createDocumentStore(createDocument());
   model.getState().computed({ features: {}, bodies: {} });
@@ -68,6 +79,7 @@ function setup(over: Partial<RenderDialogProps> = {}, status?: BlenderStatus) {
     },
   ];
   const renderer = fakeRender(status);
+  const app = fakeEngine<AppRenderJob>();
   const download = vi.fn();
   const notify = vi.fn();
   const onClose = vi.fn();
@@ -79,7 +91,8 @@ function setup(over: Partial<RenderDialogProps> = {}, status?: BlenderStatus) {
     kernel,
     request: {},
     files: { download, pick: async () => undefined },
-    render: renderer,
+    appRender: app,
+    ...(!web && { render: renderer }),
     viewportCamera: () => ({
       projection: 'perspective',
       position: [5, 5, 5],
@@ -91,7 +104,7 @@ function setup(over: Partial<RenderDialogProps> = {}, status?: BlenderStatus) {
     ...over,
   };
   const view = render(<RenderForm {...props} />);
-  return { ...props, renderer, download, notify, onClose, view, store };
+  return { ...props, renderer, app, download, notify, onClose, view, store };
 }
 
 const renderButton = () => screen.getByRole('button', { name: 'Render' });
@@ -115,11 +128,12 @@ describe('the Blender status line', () => {
     await waitFor(() => expect((renderButton() as HTMLButtonElement).disabled).toBe(false));
   });
 
-  it('points to blender.org and disables Render when it is missing', async () => {
+  it('points to blender.org and disables the Blender choice when it is missing', async () => {
     const openLink = vi.fn();
     setup({ openLink }, { state: 'missing' });
     expect(await screen.findByText(/Blender isn't installed/)).toBeTruthy();
-    expect((renderButton() as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText('Blender') as HTMLInputElement).disabled).toBe(true);
+    expect((renderButton() as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(screen.getByRole('link', { name: 'blender.org' }));
     expect(openLink).toHaveBeenCalledWith('https://www.blender.org/download/');
   });
@@ -129,7 +143,7 @@ describe('the Blender status line', () => {
     expect(
       await screen.findByText(/Blender 3\.6\.0 is too old: 4\.2 or newer is needed\./),
     ).toBeTruthy();
-    expect((renderButton() as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText('Blender') as HTMLInputElement).disabled).toBe(true);
   });
 
   it('disables Render when every body is hidden', async () => {
@@ -240,7 +254,8 @@ describe('rendering', () => {
     fireEvent.click(screen.getByLabelText(/High/));
     fireEvent.click(renderButton());
 
-    await waitFor(() => expect(ctx.renderer.jobs).toHaveLength(1));
+    await waitFor(() => expect(ctx.app.jobs).toHaveLength(1));
+    expect(ctx.renderer.jobs).toHaveLength(0);
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(ctx.store.getState().doc.render).toMatchObject({
       preset: 'table',
@@ -248,18 +263,22 @@ describe('rendering', () => {
       finishes: { [A]: 'metal' },
       camera: { kind: 'current' },
     });
-    const job = ctx.renderer.jobs[0];
+    // The app is the default: no `engine` key.
+    expect(ctx.store.getState().doc.render).not.toHaveProperty('engine');
+    const job = ctx.app.jobs[0];
     expect(job).toMatchObject({
       preset: 'table',
       quality: 'high',
       camera: { position: [5, 5, 5] },
     });
-    expect(job?.objects).toEqual([{ name: 'Bracket', finish: 'metal', color: '#3366ff' }]);
+    expect(job?.bodies).toEqual([
+      { name: 'Bracket', mesh: tri, finish: 'metal', color: '#3366ff' },
+    ]);
 
-    act(() => ctx.renderer.progress?.({ phase: 'rendering', fraction: 0.43 }));
+    act(() => ctx.app.progress?.({ phase: 'rendering', fraction: 0.43 }));
     expect(screen.getByText('Rendering… 43 %')).toBeTruthy();
     expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('43');
-    act(() => ctx.renderer.progress?.({ phase: 'saving', fraction: 1 }));
+    act(() => ctx.app.progress?.({ phase: 'saving', fraction: 1 }));
     expect(screen.getByText('Saving…')).toBeTruthy();
   });
 
@@ -268,7 +287,7 @@ describe('rendering', () => {
     const dispatch = dispatchSpy(ctx.store);
     await ready();
     fireEvent.click(renderButton());
-    await waitFor(() => expect(ctx.renderer.jobs).toHaveLength(1));
+    await waitFor(() => expect(ctx.app.jobs).toHaveLength(1));
     expect(dispatch).not.toHaveBeenCalled();
     expect(ctx.store.getState().doc.render).toBeUndefined();
   });
@@ -277,11 +296,11 @@ describe('rendering', () => {
     const ctx = setup();
     await ready();
     fireEvent.click(renderButton());
-    await waitFor(() => expect(ctx.renderer.jobs).toHaveLength(1));
-    await screen.findByText('Starting Blender…');
+    await waitFor(() => expect(ctx.app.jobs).toHaveLength(1));
+    await screen.findByText('Starting…');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(ctx.renderer.cancel).toHaveBeenCalledTimes(1);
-    act(() => ctx.renderer.finish({ ok: false, message: 'stopped', cancelled: true }));
+    expect(ctx.app.cancel).toHaveBeenCalledTimes(1);
+    act(() => ctx.app.finish({ ok: false, message: 'stopped', cancelled: true }));
     expect(await screen.findByText('Render cancelled.')).toBeTruthy();
     expect(renderButton()).toBeTruthy();
   });
@@ -298,8 +317,8 @@ describe('rendering', () => {
     const ctx = setup();
     await ready();
     fireEvent.click(renderButton());
-    await waitFor(() => expect(ctx.renderer.jobs).toHaveLength(1));
-    act(() => ctx.renderer.finish({ ok: true, png: Uint8Array.from([137, 80, 78, 71]) }));
+    await waitFor(() => expect(ctx.app.jobs).toHaveLength(1));
+    act(() => ctx.app.finish({ ok: true, png: Uint8Array.from([137, 80, 78, 71]) }));
     const img = (await screen.findByRole('img')) as HTMLImageElement;
     expect(img.alt).toBe('Rendered picture of Untitled');
     expect(img.src).toBe('blob:picture');
@@ -330,8 +349,8 @@ describe('rendering', () => {
     const ctx = setup();
     await ready();
     fireEvent.click(renderButton());
-    await waitFor(() => expect(ctx.renderer.jobs).toHaveLength(1));
-    act(() => ctx.renderer.finish({ ok: false, message: 'Blender stopped with an error.' }));
+    await waitFor(() => expect(ctx.app.jobs).toHaveLength(1));
+    act(() => ctx.app.finish({ ok: false, message: 'Blender stopped with an error.' }));
     expect(await screen.findByText('Blender stopped with an error.')).toBeTruthy();
     expect(renderButton()).toBeTruthy();
   });
@@ -340,9 +359,62 @@ describe('rendering', () => {
     const ctx = setup();
     await ready();
     fireEvent.click(renderButton());
-    await waitFor(() => expect(ctx.renderer.jobs).toHaveLength(1));
+    await waitFor(() => expect(ctx.app.jobs).toHaveLength(1));
     ctx.view.unmount();
-    expect(ctx.renderer.cancel).toHaveBeenCalled();
+    expect(ctx.app.cancel).toHaveBeenCalled();
+  });
+});
+
+describe('the engine choice (ADR-0101 §6)', () => {
+  it('has no "Render with" row on the web, and the app renders', async () => {
+    const ctx = setup({}, undefined, { web: true });
+    expect(screen.queryByRole('radiogroup', { name: 'Render with' })).toBeNull();
+    expect(screen.queryByText(/Blender/)).toBeNull();
+    await waitFor(() => expect((renderButton() as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(renderButton());
+    await waitFor(() => expect(ctx.app.jobs).toHaveLength(1));
+    expect(ctx.app.jobs[0]?.bodies.map((b) => [b.name, b.finish])).toEqual([['Bracket', 'matte']]);
+    act(() => ctx.app.finish({ ok: true, png: Uint8Array.from([137, 80, 78, 71]) }));
+    expect((await screen.findByRole('img')).getAttribute('alt')).toBe(
+      'Rendered picture of Untitled',
+    );
+  });
+
+  it('renders with Blender when it is chosen and found, and keeps the choice', async () => {
+    const ctx = setup();
+    await screen.findByText('Blender 4.5.1 found.');
+    const row = screen.getByRole('radiogroup', { name: 'Render with' });
+    expect(row).toBeTruthy();
+    expect((screen.getByLabelText('In the app') as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByLabelText('Blender'));
+    expect((screen.getByLabelText('Blender') as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(renderButton());
+    await waitFor(() => expect(ctx.renderer.jobs).toHaveLength(1));
+    expect(ctx.app.jobs).toHaveLength(0);
+    expect(ctx.renderer.jobs[0]?.objects).toEqual([
+      { name: 'Bracket', finish: 'matte', color: '#3366ff' },
+    ]);
+    expect(ctx.store.getState().doc.render?.engine).toBe('blender');
+    expect(await screen.findByText('Starting Blender…')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(ctx.renderer.cancel).toHaveBeenCalledTimes(1);
+    expect(ctx.app.cancel).not.toHaveBeenCalled();
+  });
+
+  it('renders in the app when the stored Blender is missing', async () => {
+    const store = createDocumentStore(createDocument());
+    store
+      .getState()
+      .dispatch(setRenderSettings({ render: { ...DEFAULT_RENDER_SETTINGS, engine: 'blender' } }));
+    const ctx = setup({ store }, { state: 'missing' });
+    await screen.findByText(/Blender isn't installed/);
+    expect((screen.getByLabelText('Blender') as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText('In the app') as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(renderButton());
+    await waitFor(() => expect(ctx.app.jobs).toHaveLength(1));
+    expect(ctx.renderer.jobs).toHaveLength(0);
+    // The stored choice is kept for a computer that has Blender.
+    expect(store.getState().doc.render?.engine).toBe('blender');
   });
 });
 
@@ -368,5 +440,16 @@ describe('the stored settings', () => {
     expect((screen.getByLabelText('Size') as HTMLSelectElement).value).toBe('1280x720');
     expect((screen.getByLabelText('Finish of Bracket') as HTMLSelectElement).value).toBe('glossy');
     expect((screen.getByLabelText(/Draft/) as HTMLInputElement).checked).toBe(true);
+  });
+});
+
+describe('phaseText', () => {
+  it('names the phase, adds the percent while rendering and the time left once known', () => {
+    expect(phaseText(undefined, 'blender')).toBe('Starting Blender…');
+    expect(phaseText({ phase: 'importing', fraction: 0.05 })).toBe('Importing…');
+    expect(phaseText({ phase: 'rendering', fraction: 0.43 })).toBe('Rendering… 43 %');
+    expect(phaseText({ phase: 'rendering', fraction: 0.43 }, 'app', 'about 2 min left')).toBe(
+      'Rendering… 43 % · about 2 min left',
+    );
   });
 });

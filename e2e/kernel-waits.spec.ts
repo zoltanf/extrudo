@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { kernelReady, parameterExpression, parametersDialog, pickTool, projector } from './helpers';
 
-// P6-15, ADR-0105: on the bottle cap (B9, an ~8 s recompute) a parameter
+// P6-17, ADR-0105: on the bottle cap (B9, an ~8 s recompute) a parameter
 // change shows the determinate "Updating the model…" notice, whose progress
 // bar grows; a kernel call made while it still computes queues behind it and
 // the shell shows the busy cursor; once the kernel is ready, neither the

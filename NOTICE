@@ -157,7 +157,9 @@ Regenerate the list with `pnpm licenses list --prod`.
     quickjs-emscripten-core, @jitl/quickjs-wasmfile-release-sync,
     @jitl/quickjs-ffi-types (the QuickJS build a script runs in; section 1),
     sucrase (strips TypeScript to JavaScript for a script, types only)
-    three (three.js authors), three-mesh-bvh
+    three (three.js authors), three-mesh-bvh, three-gpu-pathtracer
+      (its denoise shader is glslSmartDeNoise, Copyright (c) 2018-2019 Michele Morrone,
+      BSD-2-Clause, https://github.com/BrutPitt/glslSmartDeNoise)
     @react-three/fiber, its-fine, react-use-measure, suspend-react (Poimandres)
     zustand, use-sync-external-store
     immer

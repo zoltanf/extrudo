@@ -1861,21 +1861,34 @@ exportScene('export', /^STL/);
 exportScene('slicer', /^3MF/);
 
 /**
- * Render Picture (ADR-0101) needs Blender and the desktop app, so the web build can't show its
- * dialog: the clip shows the tile in the ribbon, which is all the web build has of it.
+ * Render Picture (ADR-0101 §6): the dialog is opened before the recording; the clip shows the
+ * pointer choosing a scene and Draft, pressing Render, and the picture appearing.
  */
 test('demo: render', async ({ page }) => {
+  test.setTimeout(120_000);
   await demoDesign(page, 'section');
+  await runTool(page, 'render', 'print');
+  const dialog = page.getByRole('dialog', { name: 'Render picture' });
+  await expect(dialog).toBeVisible();
+  const box = await dialog.boundingBox();
+  if (!box) throw new Error('no dialog');
+  console.log(`render dialog box ${JSON.stringify(box)}`);
+  const clip = {
+    x: Math.round(box.x + (box.width - 400) / 2),
+    y: Math.round(box.y + Number(process.env.RENDER_CLIP_DY ?? 0)),
+    width: 400,
+    height: 250,
+  };
   const p = pointer(page);
-  await page.locator('[role="tab"][data-tab="print"]').click();
-  const tile = page.locator('[data-tool="render"]').first();
-  await expect(tile).toBeVisible();
-  const at = await centreOf(tile);
-  const clip = { x: Math.max(0, at.x - 230), y: Math.max(0, at.y - 60), width: 400, height: 250 };
-  await p.jump({ x: at.x + 120, y: at.y + 120 });
+  await p.jump({ x: clip.x + 300, y: clip.y + 200 });
   await record(page, 'render', clip, async () => {
     await page.waitForTimeout(400);
-    await p.moveTo(at, 600);
+    await p.click(await centreOf(dialog.getByRole('radio', { name: /Wooden table/ })), 600);
+    await p.click(await centreOf(dialog.getByLabel('Draft')), 600);
+    await p.click(await centreOf(dialog.getByRole('button', { name: 'Render', exact: true })), 600);
+    await expect(dialog.getByRole('img', { name: /Rendered picture/ })).toBeVisible({
+      timeout: 60_000,
+    });
     await page.waitForTimeout(1500);
   });
 });

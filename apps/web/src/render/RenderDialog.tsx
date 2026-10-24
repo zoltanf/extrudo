@@ -7,6 +7,7 @@ import {
   RENDER_PRESETS,
   RENDER_QUALITIES,
   RENDER_SIZES,
+  type RenderEngine,
   type RenderFinish,
   type RenderPreset,
   type RenderQuality,
@@ -36,17 +37,22 @@ import {
   BLENDER_MIN_VERSION,
   type BlenderRenderer,
   type BlenderStatus,
+  type PictureRenderer,
   type RenderProgress,
 } from '../platform/render';
 import type { BodyEntry } from '../shell/bodies';
+import { type EtaStart, etaText, remainingSeconds } from './eta';
 import {
+  buildAppJob,
   buildRenderJob,
   commonFinish,
   currentRenderSettings,
+  engineOf,
   finishOf,
   jobCamera,
   renderFileName,
   settingsChanged,
+  withEngine,
   withFinish,
   withFinishForAll,
 } from './renderJob';
@@ -64,7 +70,10 @@ export interface RenderDialogProps {
   kernel: ModelExporter | undefined;
   request: RenderRequest | undefined;
   files: FileAccess;
-  render: BlenderRenderer;
+  /** The app's own renderer (ADR-0101 §6): always there, the default engine. */
+  appRender: PictureRenderer;
+  /** Blender, where the platform can run it (the desktop app); absent on the web. */
+  render?: BlenderRenderer;
   /** The viewport's camera now, as a named view's camera. */
   viewportCamera: () => ViewCamera;
   /** Opens a link in the system browser (`Platform.openLink`). */
@@ -74,8 +83,8 @@ export interface RenderDialogProps {
 }
 
 /**
- * Render Picture (P6-15, ADR-0101 §1): a presentable picture of the design,
- * rendered by Blender on this computer. Choices are kept in the design's
+ * Render Picture (P6-15, ADR-0101 §1, §6): a presentable picture of the design,
+ * rendered by the app itself or, on the desktop by choice, by Blender. Choices are kept in the design's
  * `render` section when they changed; the picture is not stored.
  */
 export function RenderDialog(props: RenderDialogProps) {
@@ -91,7 +100,7 @@ export function RenderDialog(props: RenderDialogProps) {
       }}
       size={picture ? 'large' : 'small'}
       title="Render picture"
-      description="A picture of the design, rendered by Blender on this computer."
+      description="A presentable picture of the design."
       actions={
         <DialogClose asChild>
           <IconButton label="Close" disabled={busy}>
@@ -108,11 +117,11 @@ export function RenderDialog(props: RenderDialogProps) {
 type Stage =
   | { kind: 'form' }
   | { kind: 'meshing'; done: number; total: number }
-  | { kind: 'rendering'; progress: RenderProgress | undefined }
+  | { kind: 'rendering'; progress: RenderProgress | undefined; eta?: string }
   | { kind: 'result'; blob: Blob; url: string };
 
 const PHASES: Record<RenderProgress['phase'], string> = {
-  starting: 'Starting Blender…',
+  starting: 'Starting…',
   importing: 'Importing…',
   rendering: 'Rendering…',
   saving: 'Saving…',
@@ -128,10 +137,16 @@ const QUALITY_LABELS: Record<RenderQuality, string> = {
   high: 'High',
 };
 
-export function phaseText(progress: RenderProgress | undefined): string {
-  if (!progress) return PHASES.starting;
-  if (progress.phase !== 'rendering') return PHASES[progress.phase];
-  return `Rendering… ${Math.round(progress.fraction * 100)} %`;
+export function phaseText(
+  progress: RenderProgress | undefined,
+  engine: RenderEngine = 'app',
+  eta?: string,
+): string {
+  const phase = progress?.phase ?? 'starting';
+  if (phase === 'starting' && engine === 'blender') return 'Starting Blender…';
+  if (progress?.phase !== 'rendering') return PHASES[phase];
+  const percent = `Rendering… ${Math.round(progress.fraction * 100)} %`;
+  return eta ? `${percent} · ${eta}` : percent;
 }
 
 const sizeValue = (w: number, h: number) => `${w}x${h}`;
@@ -145,6 +160,7 @@ export function RenderForm({
   kernel,
   request,
   files,
+  appRender,
   render,
   viewportCamera,
   openLink,
@@ -188,11 +204,12 @@ export function RenderForm({
     setZoomed(!zoomed);
   };
   const cancelled = useRef(false);
-  const running = useRef(false);
+  // The engine of the running render, for Cancel.
+  const running = useRef<PictureRenderer<never> | undefined>(undefined);
   const url = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !render) return;
     let current = true;
     render.status().then(
       (s) => current && setBlender(s),
@@ -206,11 +223,11 @@ export function RenderForm({
   // A closed dialog stops what runs and lets the picture go.
   useEffect(
     () => () => {
-      if (running.current) render.cancel();
+      running.current?.cancel();
       cancelled.current = true;
       if (url.current) URL.revokeObjectURL(url.current);
     },
-    [render],
+    [],
   );
 
   const shown = useMemo(() => bodies.filter((b) => b.display === 'shown' && !b.pending), [bodies]);
@@ -239,7 +256,9 @@ export function RenderForm({
   if (!kernel) blocker = "The kernel isn't running.";
   else if (shown.length === 0) blocker = 'Nothing to render: every body is hidden.';
   else if (!current) blocker = 'Waiting for the model to finish computing…';
-  const canRender = blender?.state === 'found' && blocker === undefined;
+  // Blender is only chosen when it was found, so the app or a found Blender renders.
+  const engine = engineOf(chosen, blender);
+  const canRender = blocker === undefined;
 
   const update = (change: Partial<RenderSettings>) => setChosen((c) => ({ ...c, ...change }));
 
@@ -251,7 +270,8 @@ export function RenderForm({
       store.getState().dispatch(setRenderSettings({ render: chosen }));
     }
     cancelled.current = false;
-    running.current = true;
+    const engineRunning = engine === 'blender' && render ? render : appRender;
+    running.current = engineRunning;
     setStage({ kind: 'meshing', done: 0, total: shown.length });
     try {
       let meshed: MeshedBodies;
@@ -284,10 +304,22 @@ export function RenderForm({
         return;
       }
       setStage({ kind: 'rendering', progress: undefined });
-      const job = buildRenderJob(doc.name, meshed, chosen, jobCamera(chosen, doc, viewportCamera));
-      const result = await render.render(job, (progress) =>
-        setStage({ kind: 'rendering', progress }),
-      );
+      const camera = jobCamera(chosen, doc, viewportCamera);
+      let etaStart: EtaStart | undefined;
+      const onProgress = (progress: RenderProgress) => {
+        let eta: string | undefined;
+        if (progress.phase === 'rendering') {
+          const now = performance.now();
+          etaStart ??= { at: now, fraction: progress.fraction };
+          const seconds = remainingSeconds(etaStart, now, progress.fraction);
+          if (seconds !== undefined) eta = etaText(seconds);
+        }
+        setStage({ kind: 'rendering', progress, ...(eta && { eta }) });
+      };
+      const result =
+        engineRunning === render
+          ? await render.render(buildRenderJob(doc.name, meshed, chosen, camera), onProgress)
+          : await appRender.render(buildAppJob(doc.name, meshed, chosen, camera), onProgress);
       if (result.ok) {
         const blob = new Blob([result.png as Uint8Array<ArrayBuffer>], { type: 'image/png' });
         const picture = URL.createObjectURL(blob);
@@ -305,13 +337,13 @@ export function RenderForm({
       setMessage({ tone: 'error', text: error instanceof Error ? error.message : String(error) });
       setStage({ kind: 'form' });
     } finally {
-      running.current = false;
+      running.current = undefined;
     }
   };
 
   const cancel = () => {
     cancelled.current = true;
-    if (stage.kind === 'rendering') render.cancel();
+    if (stage.kind === 'rendering') running.current?.cancel();
   };
 
   const again = () => {
@@ -407,7 +439,17 @@ export function RenderForm({
         void start();
       }}
     >
-      <BlenderLine status={blender} openLink={openLink} />
+      {render && (
+        <div className="flex flex-col gap-1">
+          <EngineChoice
+            value={engine}
+            blenderFound={blender?.state === 'found'}
+            disabled={busy}
+            onChange={(next) => setChosen((c) => withEngine(c, next))}
+          />
+          <BlenderLine status={blender} openLink={openLink} />
+        </div>
+      )}
 
       <Section
         label="Scene"
@@ -544,7 +586,11 @@ export function RenderForm({
       {stage.kind === 'rendering' && (
         <Progress
           label="Rendering"
-          text={phaseText(stage.progress)}
+          text={phaseText(
+            stage.progress,
+            running.current === render ? 'blender' : 'app',
+            stage.eta,
+          )}
           fraction={stage.progress?.fraction}
         />
       )}
@@ -649,6 +695,50 @@ function FinishRow({
           ))}
         </Select>
       </div>
+    </div>
+  );
+}
+
+const ENGINE_LABELS: Record<RenderEngine, string> = { app: 'In the app', blender: 'Blender' };
+
+/** "Render with": the app or Blender (ADR-0101 §6.1); Blender only when it was found. */
+function EngineChoice({
+  value,
+  blenderFound,
+  disabled,
+  onChange,
+}: {
+  value: RenderEngine;
+  blenderFound: boolean;
+  disabled: boolean;
+  onChange(engine: RenderEngine): void;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Render with"
+      className="flex flex-wrap items-center gap-x-1 gap-y-0 text-sm"
+    >
+      <span className="mr-1 font-semibold">Render with</span>
+      {(['app', 'blender'] as const).map((engine) => {
+        const off = disabled || (engine === 'blender' && !blenderFound);
+        return (
+          <label
+            key={engine}
+            className={`flex h-7 items-center gap-1.5 rounded-input px-1 ${off ? 'cursor-default opacity-60' : 'cursor-pointer hover:bg-accent-soft'}`}
+          >
+            <input
+              type="radio"
+              name="render-engine"
+              checked={value === engine}
+              disabled={off}
+              onChange={() => onChange(engine)}
+              className="accent-(--x-accent)"
+            />
+            {ENGINE_LABELS[engine]}
+          </label>
+        );
+      })}
     </div>
   );
 }

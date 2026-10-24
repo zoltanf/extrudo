@@ -21,7 +21,7 @@ const SEPARATORS = /[^A-Za-z0-9_.~-]+/;
 
 /**
  * The features that take part in a recompute: those before the timeline
- * marker, in timeline order, suppressed ones left out (P6-15, ADR-0105 §3).
+ * marker, in timeline order, suppressed ones left out (P6-17, ADR-0105 §3).
  * The kernel reports them one by one, so this is also the progress bar's
  * steps; the app's `activeFeatureCount` is its length.
  */

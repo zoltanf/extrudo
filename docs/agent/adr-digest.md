@@ -3281,9 +3281,8 @@ command only when they changed; the picture is never stored. `Platform.render?`
 ADR-0101, slice 3 (the UI, 2026-10-23): `apps/web/src/render/renderJob.ts` holds the pure
 helpers (`currentRenderSettings`, `finishOf`, `withFinish`, `settingsChanged`, `jobCamera`,
 `buildRenderJob`, `renderFileName`); `RenderDialog.tsx` is the dialog (`RenderForm` is its body,
-tested in jsdom with Testing Library over a fake `BlenderRenderer`). **Rules:** the `render` tool
-is ready only where `platform.render` exists (`AppShell`'s `canRender`), and the dialog is only
-mounted then; Render dispatches `setRenderSettings` only when `settingsChanged` (one undo step),
+tested in jsdom with Testing Library over a fake `BlenderRenderer`). **Rules:** (superseded by §6
+below: the tool is ready and the dialog mounted everywhere) Render dispatches `setRenderSettings` only when `settingsChanged` (one undo step),
 meshes every **shown** body at `RESOLUTIONS.medium`, builds the job with `writeObj` and hands it
 to `platform.render.render`; closing is refused while meshing or rendering (Esc and overlay
 included), Cancel stops it and unmounting the form cancels a running render. The picture is an
@@ -3292,7 +3291,80 @@ is the string preference `blender.path` (Settings › Desktop; empty means searc
 link goes through `platform.openLink`, so the desktop allow-list (`apps/desktop/src/main/links.ts`)
 must contain `www.blender.org`.
 
-ADR-0105 (P6-15, the owner, 2026-10-24) makes **every kernel wait visible and a long recompute
+ADR-0101 §6 (P6-16, slices 1–3, 2026-10-24): **the in-app renderer and the engine choice.** The
+engine lives in `apps/web/src/render/app/`: `appRenderer.ts` (`createAppRenderer()`, a
+`PictureRenderer` with `dispose()`; `makeRenderer`/`draw` injectable for tests), `scenes.ts`
+(`placeModel` = `place_model`, `buildScene` with the four presets, `sweepGeometry`,
+`bodyGeometry`), `finishes.ts` (`finishMaterial`, `woodTexture`, `worktopTexture`), `camera.ts`
+(`fitDistance` = `fit_distance`, `viewToThreeCamera`). Types in `platform/render.ts`:
+`PictureRenderer<Job>`, `BlenderRenderer extends PictureRenderer<RenderJob>`, `AppRenderJob`
+(the export meshes, `ExportMesh`: no normals, so `bodyGeometry` creases them at 30°).
+`renderJob.ts` adds `engineOf`, `withEngine`, `buildAppJob`. **Rules:** the Render Picture tile
+is ready everywhere (`tools.ts` has no `comesWith`/`unavailable`; `AppShell` mounts the dialog
+always with `appRender`, `render` only where `platform.render` exists). The "Render with" row
+exists only with `render`; its Blender radio is enabled only when `status()` says `found`, and
+`engineOf` picks Blender only when stored **and** found, else the app. `engine` is stored only
+as `blender` (`withEngine(…, 'app')` removes the key, `settingsChanged` reads absent as `app`), so
+a design that never chose stays unchanged; a stored `blender` is kept when the app renders it
+elsewhere. Render's scene is code: **no texture or image files** (wood and worktop are
+`CanvasTexture`s drawn at runtime; environments are `RoomEnvironment` through `PMREMGenerator`
+and three's `Sky` baked to a cube map). The render scene is millimetres, **Z up only inside
+it** (cameras get `up` (0, 0, 1); the Y-up environments are turned with
+`environmentRotation`/`backgroundRotation`); `Object3D.DEFAULT_UP` and the viewport are never
+touched. The engine draws on its **own hidden canvas** and `WebGLRenderer`, made on the first
+render and freed by `dispose()` when `AppShell` unmounts; **every render disposes** its targets,
+geometries, materials, textures, shadow maps and environment (`BuiltScene.dispose`). Draft =
+one frame into a 4× MSAA HalfFloat target, then `OutputPass` (ACES, sRGB) into an 8-bit target
+(three tone-maps only when drawing to the canvas), `readRenderTargetPixelsAsync`, flipped,
+PNG via a 2D canvas. Sizes above `capabilities.maxTextureSize` are refused naming the limit;
+a second render while one runs is refused. Numbers follow `render.py` (sizes ×s, light
+positions, `fit_distance`); light watts × `WATTS_TO_THREE`. `pathTrace.ts` holds the trace loop and
+its pure parts: `chooseTiles` (2×2 up to 1080p, 3×3 up to 4K, 4×4 above), `adaptTiles` (each axis
+× √(ms / budget), at least +1, when a tile's GPU time goes over `FRAME_BUDGET_MS` = 40 ms, at most
+16×16; changing tiles does not reset samples), `traceFraction` (`samples / target` onto 0.1–0.95),
+and `tracePicture` (one `renderSample()` per frame until `samples >= target` or `cancelled()`,
+reporting progress every frame, `frame`/`now`/`fence` injectable). **A tile's time is GPU time,
+from a fence:** `renderSample()` only queues commands, so timing the call measures nothing;
+`appRenderer.ts`'s `webglFence` (`fenceSync` + flush, polled with `clientWaitSync(…, 0)`) is placed
+after each frame's batch of tiles, and the next batch waits until it passes. **Batches, not one tile
+a frame:** a batch that passed by the next frame doubles (up to 64), one over the budget halves, and
+only at one tile do the tiles grow; one tile a frame made Standard 7× slower on a fast GPU (137 s
+against 20 s on a GTX 1050 Ti, 2026-10-24). Without it, tiles piled up into GPU work
+that froze the desktop's cursor and made Electron's driver reset the context on integrated
+graphics (owner, 2026-10-24). **Rules:** Standard and High path-trace the same scene with
+`three-gpu-pathtracer` (`WebGLPathTracer`; MIT, in the allow-list and NOTICE) on the same hidden
+`WebGLRenderer`: **one tracer per renderer**, made on the first traced render and freed in
+`dispose()` (its deprecation warning prints once), `renderToCanvas = false`, then the tracer's
+linear HDR target through the same `OutputPass` and read-back as Draft. Samples 128 (Standard) /
+512 (High), 5 bounces, `transmissiveBounces = 10`, `filterGlossyFactor = 0.5`. `buildScene` takes a
+`mode` (`raster`/`trace`): trace mode turns each script area light into a `RectAreaLight` at the
+script's position with `size × s` and `watts × WATTS_TO_AREA`, looks it at the model, skips the
+shadow maps, and keeps the outdoor sun a `DirectionalLight`; raster mode is unchanged. Both modes
+bake the environment into a `WebGLCubeRenderTarget` (256, HalfFloat) with a `CubeCamera`
+(`RoomEnvironment` or three's `Sky`): raster runs `PMREMGenerator.fromCubemap` (a PMREM texture is
+not supported by the tracer), trace assigns the cube texture directly to `environment` (and to
+`background` for the sky); rotations stay. The traced path sets `renderer.setPixelRatio(1)` and
+`setSize(width, height, false)` before `setScene` (the tracer sizes its target from the drawing
+buffer), and restores `setSize(1, 1, false)` in `finally`.
+Slice 3: the guide page `docs/guide/rendering.md` (two engines, quality per engine, the size
+refusal, the app-engine troubleshooting) and the tile's clip (`e2e/record-assets.spec.ts`, test
+`'demo: render'`: opens the dialog, picks Wooden table and Draft, renders; the clip frames the
+dialog's top, 400 × 250). Keep both in step with the engine's rules above.
+Denoise: Standard and High only, **after** the output pass: `DenoiseMaterial` (a `FullScreenQuad`, `toneMapped = false`) reads the 8-bit `out` target (ACES + sRGB already applied, no colour space on either target, so nothing applies twice) into a second 8-bit target, which is what is read back; `DENOISE` in `pathTrace.ts` (sigma 5, kSigma 1, threshold 0.12, one set for both; the library's default 0.03 is below Standard's grain and leaves it). Draft never. Quad, material and target are disposed in the same `finally`. NOTICE credits glslSmartDeNoise.
+
+ADR-0101 §6.5 (2026-10-24): **the workbench's cutting mat.** `apps/web/src/render/app/mat.ts`
+(`matLayout`, `gridStep`, `matCanvas`, `cuttingMat`) and `render.py`'s `mat_layout`, `mat_material`,
+`mat_numbers`, `cutting_mat`: the same layout in both engines, design millimetres. **Rules:** the grid
+is on the design's coordinates (scene = design + placement offset), so a line runs through the
+origin; the mat's top is z = 0 and the worktop sits `MAT_THICKNESS` (2 mm) lower; margin
+max(15, 0.25 · size) snapped out to the step; step 10/50/100/500 mm by `MAT_MAX_CELLS` (60);
+numbers every step up to 30 cells, else every major (5 · step), in the border along −y and +x
+(the edges facing the automatic camera), text 0.38 · label or 0.5 · border, a real minus sign
+(U+2212; Blender's built-in font has the glyph). Keep the two layouts and `MAT_COLORS` in step.
+Blender: bpy only, no image files and no numpy (shader maths for the grid, FONT objects for the
+numbers).
+
+ADR-0105 (P6-17, the owner, 2026-10-24) makes **every kernel wait visible and a long recompute
 determinate**. The `Recomputer` (`packages/kernel/src/recomputer.ts`) runs every worker call
 except `recompute`/`preview` through one private `#wait(label, options, work)`: it lists
 `{ id, label, since, quiet }` in `waits` (an external store, `get()` returning the same array

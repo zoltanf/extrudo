@@ -1,0 +1,1 @@
+- 2026-10-24 · **Workbench cutting mat**: the Workbench scene now has a green cutting mat with a 10 mm grid on the design's own coordinates, numbered in millimetres from its origin, in the app and in Blender.

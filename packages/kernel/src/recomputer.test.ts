@@ -71,9 +71,9 @@ function setup(
     files?: FileSource;
     /** Holds each preview in the kernel until it resolves. */
     previewGate?: () => Promise<void>;
-    /** Holds each `reference` in the kernel until it resolves (P6-15). */
+    /** Holds each `reference` in the kernel until it resolves (P6-17). */
     referenceGate?: () => Promise<void>;
-    /** Holds a recompute's result after its features reported (P6-15). */
+    /** Holds a recompute's result after its features reported (P6-17). */
     recomputeGate?: () => Promise<void>;
     /** Whether a reported feature is forwarded to the Recomputer's `onFeature`. */
     reportFeature?: (id: FeatureId) => boolean;

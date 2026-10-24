@@ -1313,7 +1313,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 ### `e2e/kernel-waits.spec.ts`
 
-- **Kernel waits e2e** (`e2e/kernel-waits.spec.ts`, P6-15, ADR-0105): opens
+- **Kernel waits e2e** (`e2e/kernel-waits.spec.ts`, P6-17, ADR-0105): opens
   `#/example/bottle-cap` (B9, an ~8 s recompute) and changes the `capDia`
   parameter to `34 mm` (the stored value is `32 mm`; it invalidates the first
   sketch, so every feature re-evaluates in order and the bar advances — a
@@ -1723,12 +1723,16 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 ### `e2e/render-tile.spec.ts`
 
-- **Render Picture tile** (P6-15, ADR-0101), web build: the 3D Print tab's Output
-  group has the button "Render Picture" (`exact`), `aria-disabled="true"`; its
-  tooltip reads "Rendering needs the desktop app and Blender (free, blender.org)."
-  (Playwright can't click it: it is not enabled). The dialog needs `platform.render`, which the web
-  build lacks; it is covered by `RenderDialog.test.tsx` (jsdom + Testing Library
-  with a fake renderer). `E2E_PORT=4454`.
+- **Render Picture in the browser** (P6-16, ADR-0101 §6): the 3D Print tab's Output
+  group has the button "Render Picture" (`exact`), enabled everywhere now. The dialog is
+  `getByRole('dialog', { name: 'Render picture' })`; on the web it has no radiogroup
+  "Render with" (that row needs `platform.render`, the desktop). Quality is a radio group
+  (`getByLabel('Draft')`), the size the select "Size" (values `1280x720`, …). The picture is
+  `img` "Rendered picture of Wall bracket" inside a button with `aria-pressed` (zoom). Only a
+  draft: CI's Chrome renders WebGL with SwiftShader; 1280 × 720 takes a few seconds there,
+  the spec waits 60 s and runs with a 120 s test timeout. The engine renders on its own hidden
+  canvas, so the viewport's canvas is untouched. Blender and the choice row are covered by
+  `RenderDialog.test.tsx` (jsdom, fake renderers). `E2E_PORT=4458`.
 
 ### `e2e/remove-faces.spec.ts`
 
@@ -2678,3 +2682,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `webgl`/`webgl2`; the region "3D view unavailable" has "Try again". A launch option forces
   a worker, so the `--disable-gpu --disable-software-rasterizer` test has its own file (`--disable-gpu --disable-software-rasterizer`, default `--enable-unsafe-swiftshader` ignored, does yield no WebGL in Chrome here; `--disable-gpu` alone does not). The root boundary is `#/debug/crash`; a context that fails after detection (probe canvases detached, the page's canvas null) reproduces three.js's "Error creating WebGL context"; a lost context
   is `WEBGL_lose_context` on the canvas, `[data-webgl="lost"]`.
+
+- **`demo: render` (record-assets):** the dialog (`getByRole('dialog', { name: 'Render picture' })`) is
+  440 px wide, about 480 tall; scenes are `role="radio"` cards, quality is `getByLabel('Draft')`.
+  The 400 × 250 clip frames the dialog's top: it shows the scene cards, then the picture (the
+  dialog re-lays out when the picture appears; the Draft and Render clicks are below the frame).
+  The dialog is opened before the recording starts. Playwright's ffmpeg cannot write PNGs: to look
+  at frames, play the webm in a page and screenshot at `currentTime` steps.

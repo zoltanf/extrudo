@@ -357,7 +357,7 @@ export interface ModelStats {
 }
 
 /**
- * Where a running recompute is (P6-15, ADR-0105 §3): the reported feature and
+ * Where a running recompute is (P6-17, ADR-0105 §3): the reported feature and
  * its position among the active features, for the notice's progress bar and
  * the status bar. Set by the `Recomputer` at most once per animation frame;
  * `computing()` resets it, a result or a failure clears it.
@@ -413,7 +413,7 @@ export interface ModelState<TBody> {
   /** What the last recompute found for each unsuppressed joint (P6-05, ADR-0081 §4). */
   joints: Record<JointId, JointReport>;
   stats: ModelStats | undefined;
-  /** Where a running recompute is; undefined unless one is running and reporting (P6-15). */
+  /** Where a running recompute is; undefined unless one is running and reporting (P6-17). */
   progress: ModelProgress | undefined;
   /**
    * The document `features` and `bodies` were computed from, when the
@@ -435,7 +435,7 @@ export interface ModelState<TBody> {
     doc?: ExtrudoDocument;
   }): void;
   failed(error: string): void;
-  /** Where a running recompute is, or undefined when it stopped reporting (P6-15). */
+  /** Where a running recompute is, or undefined when it stopped reporting (P6-17). */
   setProgress(progress: ModelProgress | undefined): void;
   reset(): void;
 }

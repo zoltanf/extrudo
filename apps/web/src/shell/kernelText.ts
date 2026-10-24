@@ -1,7 +1,7 @@
 import type { ModelProgress, ModelState } from '@extrudo/core';
 
 /**
- * What the kernel is doing (P6-15, ADR-0105 §3): starting, computing (with
+ * What the kernel is doing (P6-17, ADR-0105 §3): starting, computing (with
  * the running recompute's position when the model store has one), or how
  * long the last recompute took.
  */

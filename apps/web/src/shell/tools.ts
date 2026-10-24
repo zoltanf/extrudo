@@ -866,10 +866,7 @@ export const TOOLS = {
     label: 'Render Picture',
     icon: 'render-picture',
     category: 'export',
-    hint: 'Render a presentable picture of the design in Blender.',
-    // Ready where the platform has `render`: the desktop app with Blender installed (ADR-0101).
-    comesWith: 'the desktop app',
-    unavailable: 'Rendering needs the desktop app and Blender (free, blender.org).',
+    hint: 'Render a presentable picture of the design.',
   },
   // The Home tab's file actions (ADR-0079): commands, run through the page's `FileActions`
   // (`FILE_COMMANDS`), not tools; listed here for their tiles, icons and hints.

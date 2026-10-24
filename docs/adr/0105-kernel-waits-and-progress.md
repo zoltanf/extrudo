@@ -1,7 +1,7 @@
 # ADR-0105: Every kernel wait is visible, and a long recompute shows its progress
 
 - **Status:** Accepted, 2026-10-24
-- **Task:** P6-15 (slice C of `docs/plans/perf-baseline-2026-10-23.md`:
+- **Task:** P6-17 (slice C of `docs/plans/perf-baseline-2026-10-23.md`:
   options 13 and 14).
 - **Builds on:** ADR-0024 (the `Recomputer`: the app's one kernel object, a
   Comlink client in the UI thread), ADR-0078 (the progress notice

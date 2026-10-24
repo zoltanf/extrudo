@@ -9,6 +9,7 @@ import {
   DEFAULT_RENDER_SETTINGS,
   type ExtrudoDocument,
   RENDER_PRESET_INFO,
+  type RenderEngine,
   type RenderFinish,
   type RenderPreset,
   type RenderSettings,
@@ -17,7 +18,7 @@ import {
 import { type MeshObject, writeObj } from '@extrudo/io';
 import { safeFileName } from '@extrudo/kernel';
 import type { MeshedBodies } from '../export/modelExport';
-import type { RenderJob } from '../platform/render';
+import type { AppRenderJob, BlenderStatus, RenderJob } from '../platform/render';
 import { APP_VERSION } from '../version';
 
 /** The stored settings, or the defaults for a design without any. */
@@ -68,9 +69,36 @@ const sortedFinishes = (settings: RenderSettings) =>
 /** True when the two differ (deep equal on the schema's fields, `finishes` key order ignored). */
 export function settingsChanged(a: RenderSettings, b: RenderSettings): boolean {
   return (
-    JSON.stringify([a.preset, a.camera, a.width, a.height, a.quality, sortedFinishes(a)]) !==
-    JSON.stringify([b.preset, b.camera, b.width, b.height, b.quality, sortedFinishes(b)])
+    JSON.stringify([
+      a.preset,
+      a.camera,
+      a.width,
+      a.height,
+      a.quality,
+      a.engine ?? 'app',
+      sortedFinishes(a),
+    ]) !==
+    JSON.stringify([
+      b.preset,
+      b.camera,
+      b.width,
+      b.height,
+      b.quality,
+      b.engine ?? 'app',
+      sortedFinishes(b),
+    ])
   );
+}
+
+/** Who renders (ADR-0101 §6.1): Blender only when stored so and found; else the app. */
+export function engineOf(settings: RenderSettings, blender?: BlenderStatus): RenderEngine {
+  return settings.engine === 'blender' && blender?.state === 'found' ? 'blender' : 'app';
+}
+
+/** Settings with the engine chosen; `app` (the default) removes the key, so unchanged designs stay so. */
+export function withEngine(settings: RenderSettings, engine: RenderEngine): RenderSettings {
+  const { engine: _, ...rest } = settings;
+  return engine === 'app' ? rest : { ...rest, engine };
 }
 
 /**
@@ -113,6 +141,32 @@ export function buildRenderJob(
       finish: finishOf(settings, meshed.meshes[i]?.id as BodyId),
       ...(o.color !== undefined && { color: o.color }),
     })),
+    preset: settings.preset,
+    ...(camera !== undefined && { camera }),
+    width: settings.width,
+    height: settings.height,
+    quality: settings.quality,
+  };
+}
+
+/** The in-app renderer's job (ADR-0101 §6.3): `buildRenderJob` without the OBJ, the meshes as they are. */
+export function buildAppJob(
+  project: string,
+  meshed: MeshedBodies,
+  settings: RenderSettings,
+  camera: ViewCamera | undefined,
+): AppRenderJob {
+  return {
+    project,
+    bodies: meshed.meshes.map(({ id, mesh }, i) => {
+      const body = meshed.bodies[i];
+      return {
+        name: body?.meta.name ?? id,
+        mesh,
+        finish: finishOf(settings, id as BodyId),
+        ...(body?.meta.color !== undefined && { color: body.meta.color }),
+      };
+    }),
     preset: settings.preset,
     ...(camera !== undefined && { camera }),
     width: settings.width,

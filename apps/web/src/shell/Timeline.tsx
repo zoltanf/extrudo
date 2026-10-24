@@ -186,7 +186,7 @@ export function Timeline({
 }: TimelineProps) {
   const doc = useStore(store, (s) => s.doc);
   const statuses = useStore(model ?? NO_MODEL, (s) => s.features);
-  /** The feature the kernel is computing now (P6-15, ADR-0105 §3). */
+  /** The feature the kernel is computing now (P6-17, ADR-0105 §3). */
   const computing = useStore(model ?? NO_MODEL, (s) => s.progress?.feature);
   const errors = doc.features.filter(
     (f, i) => i < doc.timelineMarker && !f.suppressed && statuses[f.id]?.status === 'error',
@@ -585,7 +585,7 @@ function Chip({
   selected: boolean;
   /** What a drag of this chip moves: it, or the selected chips when it is one of them. */
   moving: readonly FeatureId[];
-  /** The kernel is computing this feature now (P6-15, ADR-0105 §3). */
+  /** The kernel is computing this feature now (P6-17, ADR-0105 §3). */
   computing?: boolean;
   onSelect(id: FeatureId, mode: 'replace' | 'toggle' | 'range'): void;
   /** Two chips or more are picked: the menu groups them (P4-09). */

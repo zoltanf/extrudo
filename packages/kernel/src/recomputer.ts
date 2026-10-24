@@ -160,7 +160,7 @@ export interface FileSource {
   fileName?(id: AttachmentId, doc: ExtrudoDocument): string | undefined;
 }
 
-/** A kernel call the user is waiting on (P6-15, ADR-0105 §1). */
+/** A kernel call the user is waiting on (P6-17, ADR-0105 §1). */
 export interface Wait {
   /** Unique while it runs, oldest first in `waits`. */
   id: number;
@@ -172,7 +172,7 @@ export interface Wait {
   quiet: boolean;
 }
 
-/** What a caller may say about its wait (P6-15, ADR-0105 §1). */
+/** What a caller may say about its wait (P6-17, ADR-0105 §1). */
 export interface WaitOptions {
   /** Overrides the method's default label. */
   label?: string;
@@ -180,7 +180,7 @@ export interface WaitOptions {
   quiet?: boolean;
 }
 
-/** The live waits, as an external store (P6-15, ADR-0105 §1). */
+/** The live waits, as an external store (P6-17, ADR-0105 §1). */
 export interface KernelWaits {
   /** The waits, oldest first; the same array identity until one changes. */
   get(): readonly Wait[];
@@ -275,13 +275,13 @@ export class Recomputer {
   #recycleArmed = true;
   readonly #heapRecycleBytes: number;
   readonly #onRecycle: (() => void) | undefined;
-  /** The waits the user is on, oldest first (P6-15, ADR-0105 §1). */
+  /** The waits the user is on, oldest first (P6-17, ADR-0105 §1). */
   #waitList: Wait[] = [];
   /** What `waits.get()` returns: a new array only when one changed (useSyncExternalStore needs it). */
   #waitSnapshot: readonly Wait[] = [];
   readonly #waitListeners = new Set<() => void>();
   #waitCounter = 0;
-  /** The progress last reported and not yet put on the model store (P6-15, ADR-0105 §3). */
+  /** The progress last reported and not yet put on the model store (P6-17, ADR-0105 §3). */
   #progress: ModelProgress | undefined;
   /** A frame is scheduled to put the progress on the store. */
   #progressScheduled = false;
@@ -341,7 +341,7 @@ export class Recomputer {
   }
 
   /**
-   * Runs one kernel call as a named wait (P6-15, ADR-0105 §1): it is listed
+   * Runs one kernel call as a named wait (P6-17, ADR-0105 §1): it is listed
    * while `work` runs and dropped when the promise settles either way. A
    * caller that knows better passes `{ label }`; one whose own panel shows the
    * wait passes `{ quiet: true }`.
@@ -375,7 +375,7 @@ export class Recomputer {
 
   /**
    * Reports how far a recompute is at most once per animation frame
-   * (P6-15, ADR-0105 §3). The last value always lands: a report while one is
+   * (P6-17, ADR-0105 §3). The last value always lands: a report while one is
    * scheduled replaces the pending one, and the frame puts the newest.
    */
   #reportProgress(progress: ModelProgress): void {
@@ -869,7 +869,7 @@ export class Recomputer {
     this.#model.getState().computing();
     this.#progress = undefined;
     const crashed = this.#stillCrashed(doc);
-    // Progress (P6-15, ADR-0105 §3): the active features are the steps; the
+    // Progress (P6-17, ADR-0105 §3): the active features are the steps; the
     // kernel reports each as it starts, and the reported feature's position
     // among them is how far it is. A script's generated feature isn't in the
     // list and keeps the last `done`.

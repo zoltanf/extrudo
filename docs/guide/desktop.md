@@ -65,10 +65,10 @@ dialog greys out the ones it cannot find. The file goes in a temporary folder th
 you quit. See [getting it printed](./printing.md).
 
 **Render Picture.** The Output group also has **Render Picture**: it renders a presentable picture
-of the design — studio, wooden table, workbench or outdoor — with a Blender installed on your
-machine (4.2 or newer; free from blender.org, and the app finds it). You pick the scene, a finish
-for each body, the camera, the size and the quality; the app runs Blender in the background and
-shows the picture to save or copy. See [rendering a picture](./rendering.md).
+of the design — studio, wooden table, workbench or outdoor. The dialog's **Render with** row
+chooses the engine: **In the app** (the default) or **Blender**, a Blender 4.2 or newer installed
+on your machine (free from blender.org; the app finds it). You pick the scene, a finish for each
+body, the camera, the size and the quality, and get the picture to save or copy. See [rendering a picture](./rendering.md).
 
 **Updates.** The app looks for a new release a few seconds after it starts, then every six
 hours. What happens next depends on how you installed it:

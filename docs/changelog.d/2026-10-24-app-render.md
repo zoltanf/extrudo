@@ -1,0 +1,1 @@
+- 2026-10-24 · **Render Picture in the browser**: the picture is rendered by the app itself when Blender isn't there — on the web, and in the desktop app by choice. Draft is one rasterised frame; Standard and High path-trace the same scene (three-gpu-pathtracer, 128/512 samples, 5 bounces, then an edge-preserving denoise pass) with progress and Cancel.
