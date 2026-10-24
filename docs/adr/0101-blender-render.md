@@ -209,8 +209,9 @@ The **Render Picture tile is ready everywhere**: the web build loses its
   stays responsive; 128 samples for Standard and 512 for High (Blender's
   numbers, §3), 5 bounces, tiles so that one frame's work stays under ~50 ms
   at 1080p. A denoise pass (owner, 2026-10-24) follows the output pass: the library's
-  `DenoiseMaterial` (an edge-preserving blur, sigma 5, threshold 0.03) runs on the
-  8-bit display values, so the threshold means a colour difference as seen. Progress is
+  `DenoiseMaterial` (an edge-preserving blur, sigma 5, threshold 0.12) runs on the
+  8-bit display values, so the threshold means a colour difference as seen. The
+  library's default threshold, 0.03, is below Standard's grain and left it in place. Progress is
   `samples / target`; Cancel stops the loop. Translucent bodies use
   `transmission`, which the path tracer honours.
 - The picture is rendered off screen into a `WebGLRenderTarget` of the

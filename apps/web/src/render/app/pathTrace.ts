@@ -16,11 +16,13 @@ export const SAMPLES: Record<Exclude<RenderQuality, 'draft'>, number> = {
 };
 
 /**
- * The denoise pass's settings (DenoiseMaterial's own defaults): a blur of radius `kSigma · sigma`
- * pixels that leaves out neighbours whose colour differs by more than `threshold` (0..1, on
- * display values).
+ * The denoise pass's settings: a blur of radius `kSigma · sigma` pixels that leaves out
+ * neighbours whose colour differs by more than about `threshold` (0..1, on display values).
+ * The library's default threshold (0.03) is below Standard's grain on a lit face (neighbours
+ * differ by ~0.1), so it kept the grain; 0.12 removes it and still keeps holes, edges and the
+ * wood's stripes; 0.18 starts to blur the stripes.
  */
-export const DENOISE = { sigma: 5, kSigma: 1, threshold: 0.03 };
+export const DENOISE = { sigma: 5, kSigma: 1, threshold: 0.12 };
 
 /** How deep a path goes. */
 export const BOUNCES = 5;
