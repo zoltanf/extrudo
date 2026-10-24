@@ -56,6 +56,7 @@ import type {
   ScadParametersResult,
   SmoothFaces,
   SubShapeKind,
+  WaitOptions,
 } from '@extrudo/kernel';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { withActiveComponent } from '../components/active';
@@ -147,7 +148,7 @@ export interface DialogKernel {
    * The customizer variables of a `.scad` file (P5-04 slice 2, ADR-0071 §5):
    * the Import dialog's rows. Absent: the dialog shows only stored overrides.
    */
-  scadParameters?(file: AttachmentId): Promise<ScadParametersResult>;
+  scadParameters?(file: AttachmentId, options?: WaitOptions): Promise<ScadParametersResult>;
   /**
    * Mesh to Solid's region preview of a mesh body (ADR-0097 §5), with `base`
    * of the last preview's base bodies: for specs with `regions`. Absent: no
@@ -1166,7 +1167,8 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       }
     },
     select,
-    scadParameters: (file) => kernel?.scadParameters?.(file) ?? Promise.resolve(undefined),
+    scadParameters: (file) =>
+      kernel?.scadParameters?.(file, { quiet: true }) ?? Promise.resolve(undefined),
     evaluate(field, expr) {
       const current = get();
       const doc = store.getState().doc;

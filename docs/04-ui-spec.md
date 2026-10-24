@@ -915,7 +915,7 @@ command (replacing its first key).
   the docs page of the same tool (both read `lastHoveredTool()`), or the user
   guide before any tile was hovered.
 
-### 7.1 Preparing the design (ADR-0078)
+### 7.1 Preparing the design (ADR-0078, ADR-0105)
 
 - **Progress notice:** at the top left of the view's open part (right of the
   browser) a small pill with an animated cube says "Preparing your design…"
@@ -923,6 +923,18 @@ command (replacing its first key).
   (a later recompute that runs longer than 800 ms), with "Computing 6 features"
   under it. The cube's faces fill in turn; with reduced motion it stands still.
   No buttons, and it never takes clicks. A failed kernel keeps its own message.
+- **Waiting on a kernel call (ADR-0105 §2):** a kernel call the user made (a
+  face pick, a measure, an export) that is still out after 300 ms gets the same
+  pill, saying what it is doing ("Reading the pick…", with "and n more" when
+  several run); a running recompute's notice wins when both apply. While any
+  such call is out the app shows the busy cursor, controls keeping the pointer.
+  A call whose own panel already says what it is doing (Measure, the clearance
+  check, the export dialog, the OpenSCAD list) shows no notice and no cursor.
+- **A long recompute is determinate (ADR-0105 §3):** the "Updating the model…"
+  pill adds a thin accent-coloured bar, its value the feature being computed of
+  the active features, and "Thread1 · 4 of 7" under it; the status bar's kernel
+  text reads "computing 4/7", and the timeline chip of that feature pulses
+  softly (not under reduced motion).
 - **Bodies before they are drawn:** the Bodies folder lists the bodies the last
   session made at once, as muted rows with a small cube where the count would be;
   the eye works, selection waits. The first finished recompute replaces them.

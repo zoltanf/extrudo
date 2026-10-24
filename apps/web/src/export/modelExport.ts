@@ -104,7 +104,7 @@ export async function stepFile(
   // Without grouping a body's component is dropped, so every body stays a
   // top-level product (P6-05, ADR-0081 §7).
   const parts = groupComponents ? bodies : bodies.map(({ component: _c, ...body }) => body);
-  const text = await kernel.exportStep(parts.map(stepBody));
+  const text = await kernel.exportStep(parts.map(stepBody), { quiet: true });
   return {
     blob: new Blob([text], { type: TYPES.step }),
     name: modelFileName(project, bodies, 'step'),
@@ -122,17 +122,20 @@ export async function scadFile(
   tessellation: MeshOptions,
   project: string,
 ): Promise<ModelFile> {
-  const text = await kernel.exportScad({
-    bodies: bodies.map((body) => ({
-      id: body.id,
-      name: body.meta.name,
-      ...(body.meta.color !== undefined && { color: body.meta.color }),
-      ...(body.component !== undefined && { component: body.component.name }),
-    })),
-    tessellation,
-    project,
-    version: APP_VERSION,
-  });
+  const text = await kernel.exportScad(
+    {
+      bodies: bodies.map((body) => ({
+        id: body.id,
+        name: body.meta.name,
+        ...(body.meta.color !== undefined && { color: body.meta.color }),
+        ...(body.component !== undefined && { component: body.component.name }),
+      })),
+      tessellation,
+      project,
+      version: APP_VERSION,
+    },
+    { quiet: true },
+  );
   return {
     blob: new Blob([text], { type: TYPES.scad }),
     name: modelFileName(project, bodies, 'scad'),

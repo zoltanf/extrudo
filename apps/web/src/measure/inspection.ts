@@ -14,6 +14,7 @@ import {
   type PairMeasure,
   pairMeasure,
   unionBox,
+  type WaitOptions,
 } from '@extrudo/kernel';
 import { useEffect, useMemo, useState } from 'react';
 import { readTopology, topologyCount } from '../selection/items';
@@ -22,7 +23,7 @@ import { closestBetween } from './analytic';
 
 /** The kernel side of measuring (the project's `Recomputer`). */
 export interface MeasureKernel {
-  inspect(targets: readonly InspectTarget[]): Promise<Inspection>;
+  inspect(targets: readonly InspectTarget[], options?: WaitOptions): Promise<Inspection>;
 }
 
 /** The Measure tool's ID: the session's `activeTool` while it runs. */
@@ -78,7 +79,7 @@ export function useInspection(
     let current = true;
     setState((s) => (s.targets === targets ? s : { targets }));
     const ask = () =>
-      kernel.inspect(targets).then(
+      kernel.inspect(targets, { quiet: true }).then(
         (inspection) => {
           if (current) setState({ targets, inspection });
         },
