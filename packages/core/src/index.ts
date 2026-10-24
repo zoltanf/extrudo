@@ -103,6 +103,7 @@ export {
   type FeatureStatus,
   type GeneratedFeatureStatus,
   type JointReport,
+  type ModelProgress,
   type ModelState,
   type ModelStats,
   type ModelStore,
