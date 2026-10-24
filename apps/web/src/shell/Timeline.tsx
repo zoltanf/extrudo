@@ -1274,8 +1274,11 @@ function RenderRate({ viewport }: { viewport: ViewportStore }) {
         data-long-tasks={import.meta.env.DEV && longTasks > 0 ? longTasks : undefined}
         className="-ml-1 font-mono text-[11px] whitespace-nowrap text-muted tabular-nums"
       >
-        · {formatRenderStats(stats)}
-        {import.meta.env.DEV ? formatLongTasks(longTasks) : ''}
+        ·{' '}
+        <span className={`inline-block ${import.meta.env.DEV ? 'min-w-[27ch]' : 'min-w-[16ch]'}`}>
+          {formatRenderStats(stats)}
+          {import.meta.env.DEV ? formatLongTasks(longTasks) : ''}
+        </span>
       </output>
     </Tooltip>
   );

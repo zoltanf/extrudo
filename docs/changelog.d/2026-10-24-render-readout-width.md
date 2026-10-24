@@ -1,0 +1,1 @@
+- 2026-10-24 · **Steady render readout**: the status-bar fps and frame-time text keeps a fixed width, so the items beside it no longer jump when the numbers gain or lose a digit.
