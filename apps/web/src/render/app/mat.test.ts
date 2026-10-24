@@ -35,7 +35,8 @@ describe('matLayout', () => {
     expect(layout.step).toBe(10);
     expect(layout.major).toBe(50);
     expect([layout.x0, layout.x1, layout.y0, layout.y1]).toEqual([-10, 60, -10, 40]);
-    for (const edge of [layout.x0, layout.x1, layout.y0, layout.y1]) expect(Math.abs(edge % 10)).toBe(0);
+    for (const edge of [layout.x0, layout.x1, layout.y0, layout.y1])
+      expect(Math.abs(edge % 10)).toBe(0);
     // A small mat numbers every line.
     expect(layout.label).toBe(10);
   });
