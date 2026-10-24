@@ -2743,6 +2743,8 @@ Amendment 2026-10-20: a pair anchor carries a `normal` (up for level, right for 
 `layoutGlyphs(anchors, project, curves)` takes the normal's side unless a curve from `glyphCurves(sketch)`
 (non-point entities, construction lines in, datum axes out) is closer than `GLYPH_SIZE / 2 + 2` px and the
 other side is clearer; a pair has its own row key `m:<midpoint>`; other glyphs place as before.
+Amendment 2026-10-24: when exactly one end is fixed (`projectedEntities`, or a Fix on the point or its
+curve), the pair anchors **at the free point** as a plain point anchor (no `normal`, no `pair`).
 ADR-0093 (issue #61, 2026-10-19) lets **the dimension and constraint tools pick the origin and
 axes**. Files: `packages/core/src/sketch/projection.ts` (`PROJECTABLE`, `DATUM_SPAN`,
 `isDatumRef`, `syncProjections`' construction flag), `sketch/schema.ts` (`PROJECTABLE`,

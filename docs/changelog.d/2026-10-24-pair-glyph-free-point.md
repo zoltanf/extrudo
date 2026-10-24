@@ -1,0 +1,1 @@
+- 2026-10-24 · **Pair glyphs by the moving point**: a Horizontal or Vertical between a sketch point and a projected or fixed point now shows its glyph beside the point that moves, instead of halfway to the fixed one, where it could be far off screen.

@@ -17,6 +17,8 @@ const sketch = {
     as: { type: 'point', x: 20, y: 10 },
     ae: { type: 'point', x: 40, y: 10 },
     arc: { type: 'arc', center: 'ac', start: 'ae', end: 'as', construction: false },
+    // On the circle's centre, but free: the Fix on the circle holds `cc`.
+    lone: { type: 'point', x: 50, y: 0 },
   },
   constraints: {
     h: { type: 'horizontal', a: 'bottom' },
@@ -27,7 +29,7 @@ const sketch = {
     joint: { type: 'tangent', a: 'right', b: 'arc' },
     loose: { type: 'tangent', a: 'bottom', b: 'circle' },
     joined: { type: 'coincident', a: 'q3', b: 'as' },
-    level: { type: 'horizontal', a: 'p1', b: 'cc' },
+    level: { type: 'horizontal', a: 'p1', b: 'lone' },
     plumb: { type: 'vertical', a: 'q2', b: 'q3' },
   },
   dimensions: {},
@@ -157,6 +159,50 @@ describe('a point pair next to curves', () => {
     const v = pair('vertical', { a: [0, 0], b: [0, 20] });
     const [g] = layoutGlyphs(glyphAnchors(v), project, []);
     expect([g?.x, g?.y]).toEqual([14, -100]);
+  });
+
+  it('sits beside the free point when the other end is projected', () => {
+    const s = {
+      entities: {
+        a: { type: 'point', x: 0, y: 0 },
+        b: { type: 'point', x: 0, y: 60 },
+        e: { type: 'point', x: 20, y: 60 },
+        l: { type: 'line', start: 'b', end: 'e' },
+      },
+      constraints: { c: { type: 'vertical', a: 'b', b: 'a' } },
+      dimensions: {},
+      projections: { p: { ref: { kind: 'face', id: 'f' }, curves: { k: 'l' } } },
+    } as unknown as SketchData;
+    const anchors = glyphAnchors(s);
+    const [anchor] = anchors;
+    expect([anchor?.entity, anchor?.at, anchor?.pair]).toEqual(['a', [0, 0], undefined]);
+    const [g] = layoutGlyphs(anchors, project, []);
+    expect([g?.x, g?.y]).toEqual([14 * Math.SQRT1_2, -14 * Math.SQRT1_2]);
+    expect(g?.icon).toBe('vertical-points');
+  });
+
+  it('sits beside the free point when a Fix holds the other', () => {
+    const s = {
+      entities: { a: { type: 'point', x: 0, y: 0 }, b: { type: 'point', x: 50, y: 0 } },
+      constraints: { c: { type: 'horizontal', a: 'a', b: 'b' }, f: { type: 'fix', entity: 'a' } },
+      dimensions: {},
+    } as unknown as SketchData;
+    const pairs = glyphAnchors(s).filter((g) => g.constraint === 'c');
+    expect(pairs.map((g) => [g.entity, g.at])).toEqual([['b', [50, 0]]]);
+  });
+
+  it('stays halfway when both ends are fixed', () => {
+    const s = {
+      entities: { a: { type: 'point', x: 0, y: 0 }, b: { type: 'point', x: 50, y: 0 } },
+      constraints: {
+        c: { type: 'horizontal', a: 'a', b: 'b' },
+        f: { type: 'fix', entity: 'a' },
+        g: { type: 'fix', entity: 'b' },
+      },
+      dimensions: {},
+    } as unknown as SketchData;
+    const pair = glyphAnchors(s).find((g) => g.constraint === 'c');
+    expect([pair?.at, pair?.pair]).toEqual([[25, 0], true]);
   });
 
   it('gives two pairs that share a point their own glyphs', () => {
