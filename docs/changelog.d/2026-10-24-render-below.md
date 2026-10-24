@@ -1,0 +1,1 @@
+- 2026-10-24 · **Render Picture from below**: a view from below the design renders it without the floor, floating on the scene's background, and the dialog says so under Camera; a render that fails mid-way now says so instead of stopping at its last percent.

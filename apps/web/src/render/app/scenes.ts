@@ -9,7 +9,7 @@
  * mode (Standard and High, ADR-0101 §6.2) keeps the script's area lights as
  * `RectAreaLight`s (soft shadows) with the script's sizes.
  */
-import type { RenderPreset } from '@extrudo/core';
+import type { RenderPreset, ViewCamera } from '@extrudo/core';
 import {
   BoxGeometry,
   BufferAttribute,
@@ -347,6 +347,22 @@ function scenery(
 }
 
 /**
+ * Whether the render camera is below the ground (z = 0 once the model is
+ * placed): then every preset leaves its ground out, in both engines
+ * (`render.py`'s `camera_below_ground`). The automatic camera never is.
+ */
+export function cameraBelowGround(camera: ViewCamera | undefined, placement: Placement): boolean {
+  return camera !== undefined && camera.position[2] + placement.offset.z < 0;
+}
+
+function disposeMesh(mesh: Mesh) {
+  mesh.geometry.dispose();
+  const material = mesh.material as MeshStandardMaterial;
+  material.map?.dispose();
+  material.dispose();
+}
+
+/**
  * The scene of a job: the bodies placed like `place_model`, the preset's
  * scenery and lights, and its environment through `deps.environment` (left
  * out without one, as in unit tests). `mode` picks the lights: soft area
@@ -377,11 +393,17 @@ export function buildScene(
     deps,
     mode,
   );
+  const below = cameraBelowGround(job.camera, placement);
   for (const object of objects) {
+    if (below && object instanceof Mesh) {
+      // Seen from below, the ground only hides the model: leave it out (owner, 2026-10-24).
+      disposeMesh(object);
+      continue;
+    }
     scene.add(object);
     if (object instanceof DirectionalLight) scene.add(object.target);
   }
-  if (job.preset === 'workbench') {
+  if (job.preset === 'workbench' && !below) {
     // The mat lies on the worktop, its top at z = 0, where the model stands.
     const layout = matLayout(placement);
     scene.add(cuttingMat(layout, (deps.mat ?? matTexture)(layout)));
