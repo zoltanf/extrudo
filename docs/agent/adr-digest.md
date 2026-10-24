@@ -3316,5 +3316,23 @@ one frame into a 4× MSAA HalfFloat target, then `OutputPass` (ACES, sRGB) into 
 (three tone-maps only when drawing to the canvas), `readRenderTargetPixelsAsync`, flipped,
 PNG via a 2D canvas. Sizes above `capabilities.maxTextureSize` are refused naming the limit;
 a second render while one runs is refused. Numbers follow `render.py` (sizes ×s, light
-positions, `fit_distance`); light watts × `WATTS_TO_THREE`. Standard and High render like
-Draft until slice 2 (`// slice 2: the path tracer`).
+positions, `fit_distance`); light watts × `WATTS_TO_THREE`. `pathTrace.ts` holds the trace loop and
+its pure parts: `chooseTiles` (2×2 up to 1080p, 3×3 up to 4K, 4×4 above), `adaptTiles` (one more
+per axis when a sample's tile goes over `FRAME_BUDGET_MS` = 50 ms, at most 8×8; changing tiles does
+not reset samples), `traceFraction` (`samples / target` onto 0.1–0.95), and `tracePicture` (one
+`renderSample()` per frame until `samples >= target` or `cancelled()`, reporting progress every
+frame, `frame`/`now` injectable). **Rules:** Standard and High path-trace the same scene with
+`three-gpu-pathtracer` (`WebGLPathTracer`; MIT, in the allow-list and NOTICE) on the same hidden
+`WebGLRenderer`: **one tracer per renderer**, made on the first traced render and freed in
+`dispose()` (its deprecation warning prints once), `renderToCanvas = false`, then the tracer's
+linear HDR target through the same `OutputPass` and read-back as Draft. Samples 128 (Standard) /
+512 (High), 5 bounces, `transmissiveBounces = 10`, `filterGlossyFactor = 0.5`. `buildScene` takes a
+`mode` (`raster`/`trace`): trace mode turns each script area light into a `RectAreaLight` at the
+script's position with `size × s` and `watts × WATTS_TO_AREA`, looks it at the model, skips the
+shadow maps, and keeps the outdoor sun a `DirectionalLight`; raster mode is unchanged. Both modes
+bake the environment into a `WebGLCubeRenderTarget` (256, HalfFloat) with a `CubeCamera`
+(`RoomEnvironment` or three's `Sky`): raster runs `PMREMGenerator.fromCubemap` (a PMREM texture is
+not supported by the tracer), trace assigns the cube texture directly to `environment` (and to
+`background` for the sky); rotations stay. The traced path sets `renderer.setPixelRatio(1)` and
+`setSize(width, height, false)` before `setScene` (the tracer sizes its target from the drawing
+buffer), and restores `setSize(1, 1, false)` in `finally`.
