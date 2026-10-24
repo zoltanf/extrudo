@@ -38,7 +38,9 @@ the app: Blender stays a program of yours.
 
 - **Studio** — a white sweep and soft light: clean product shot.
 - **Wooden table** — on a wooden table top, warm light from the side.
-- **Workbench** — a dark worktop and cooler light.
+- **Workbench** — a green cutting mat with a 10 mm grid and cooler light. The grid lies on
+  your design's own coordinates: a line runs through its origin, and the numbers along the mat's
+  two front edges count millimetres from it, so the picture shows the part's size at a glance.
 - **Outdoor** — on the ground under a sunny sky.
 
 **Bodies.** One **finish** for all the bodies you see in the browser; **Set per body…** opens

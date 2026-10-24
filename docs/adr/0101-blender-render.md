@@ -253,6 +253,20 @@ rendered with Blender on a desktop opens on the web with the row hidden and
 the app engine used; the stored `blender` is kept until the person renders
 there again.
 
+#### 6.5 The workbench's cutting mat (owner, 2026-10-24)
+
+The workbench gets a green cutting mat under the model, in both engines:
+light lines every 10 mm, brighter every 50 mm, numbers in a plain border
+along the two edges that face the automatic camera (front, −y, and right,
++x), counting millimetres from the design's origin. The grid lies on the
+design's coordinates (the placement's offset maps them into the scene), so a
+line runs through the origin. The mat covers the footprint plus
+max(15 mm, ¼ of the model's size), snapped outward to the grid; above 60 cells
+across, the step goes 10 → 50 → 100 → 500 mm, and above 30 cells only the
+major lines are numbered. The dark worktop stays beyond the mat. The app draws
+it to a canvas (`mat.ts`); `render.py` builds the grid as shader maths on the
+world position and the numbers as text objects (bpy only: no image, no numpy).
+
 ### Rejected (the amendment)
 
 - **A WebGPU path tracer**: not in Safari's stable channel for everyone yet

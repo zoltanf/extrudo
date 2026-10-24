@@ -3348,3 +3348,15 @@ refusal, the app-engine troubleshooting) and the tile's clip (`e2e/record-assets
 `'demo: render'`: opens the dialog, picks Wooden table and Draft, renders; the clip frames the
 dialog's top, 400 × 250). Keep both in step with the engine's rules above.
 Denoise: Standard and High only, **after** the output pass: `DenoiseMaterial` (a `FullScreenQuad`, `toneMapped = false`) reads the 8-bit `out` target (ACES + sRGB already applied, no colour space on either target, so nothing applies twice) into a second 8-bit target, which is what is read back; `DENOISE` in `pathTrace.ts` (sigma 5, kSigma 1, threshold 0.12, one set for both; the library's default 0.03 is below Standard's grain and leaves it). Draft never. Quad, material and target are disposed in the same `finally`. NOTICE credits glslSmartDeNoise.
+
+ADR-0101 §6.5 (2026-10-24): **the workbench's cutting mat.** `apps/web/src/render/app/mat.ts`
+(`matLayout`, `gridStep`, `matCanvas`, `cuttingMat`) and `render.py`'s `mat_layout`, `mat_material`,
+`mat_numbers`, `cutting_mat`: the same layout in both engines, design millimetres. **Rules:** the grid
+is on the design's coordinates (scene = design + placement offset), so a line runs through the
+origin; the mat's top is z = 0 and the worktop sits `MAT_THICKNESS` (2 mm) lower; margin
+max(15, 0.25 · size) snapped out to the step; step 10/50/100/500 mm by `MAT_MAX_CELLS` (60);
+numbers every step up to 30 cells, else every major (5 · step), in the border along −y and +x
+(the edges facing the automatic camera), text 0.38 · label or 0.5 · border, a real minus sign
+(U+2212; Blender's built-in font has the glyph). Keep the two layouts and `MAT_COLORS` in step.
+Blender: bpy only, no image files and no numpy (shader maths for the grid, FONT objects for the
+numbers).

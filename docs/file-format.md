@@ -443,7 +443,7 @@ stored**: it is derived, and the user saves or copies it from the dialog.
 
 | Field | Type | Required | Meaning |
 |---|---|---|---|
-| `preset` | string | yes | The scene: `studio` (a white sweep), `table` (a wooden table top), `workbench` (a dark worktop) or `outdoor` (the ground under a sunny sky). |
+| `preset` | string | yes | The scene: `studio` (a white sweep), `table` (a wooden table top), `workbench` (a cutting mat with a 10 mm grid) or `outdoor` (the ground under a sunny sky). |
 | `finishes` | object | no | Record from body ID (section 4.2) to a finish: `matte`, `glossy`, `translucent`, `resin`, `metal` or `wood`. Only bodies whose finish isn't `matte` (the default) are listed; an entry for a body that no longer exists is ignored. |
 | `camera` | object (RenderCamera) | yes | Which camera the picture uses, by `kind`: `auto` (the renderer frames the model itself), `current` (the viewport's camera when the render starts) or `view` with the `id` of a saved view (section 4.3). |
 | `width` | integer | yes | Picture width in pixels, 256 to 8192. |

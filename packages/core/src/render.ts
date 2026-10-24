@@ -51,7 +51,7 @@ export const DEFAULT_RENDER_SETTINGS: RenderSettings = {
 export const RENDER_PRESET_INFO: Record<RenderPreset, { label: string; hint: string }> = {
   studio: { label: 'Studio', hint: 'A white sweep and soft light: clean product shot.' },
   table: { label: 'Wooden table', hint: 'On a wooden table top, warm light from the side.' },
-  workbench: { label: 'Workbench', hint: 'A dark worktop and cooler light.' },
+  workbench: { label: 'Workbench', hint: 'A cutting mat with a 10 mm grid, cool light.' },
   outdoor: { label: 'Outdoor', hint: 'On the ground under a sunny sky.' },
 };
 
