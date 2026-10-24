@@ -3,7 +3,7 @@ import { closeParameters, openParameters, solidTab } from './benchmark-helpers';
 import { kernelReady, openProject, parameterExpression, pickTool, projector } from './helpers';
 
 // P4-08: the print tolerance (ADR-0062, FR-3DP-05). One document parameter
-// named `tolerance`, set from the 3D Print tab's Tolerance panel (one undo step
+// named `tolerance`, set from the Make tab's Tolerance panel (one undo step
 // per change), which hole presets add to every diameter they write:
 // "3.4 mm + 2 * tolerance". Without the parameter the presets write the
 // published ISO sizes, as before (P3-04, ADR-0049).
@@ -28,11 +28,11 @@ const field = (page: Page) => panel(page).getByRole('textbox', { name: 'Print to
 const usage = (page: Page) => panel(page).locator('[data-tolerance-usage]');
 const holeDialog = (page: Page) => page.getByRole('region', { name: 'Hole dialog' });
 
-/** The 3D Print tab's Tolerance tile, which opens the panel. */
+/** The Make tab's Tolerance tile, which opens the panel. */
 async function openTolerance(page: Page) {
   await page
     .getByRole('tablist', { name: 'Toolbar tabs' })
-    .getByRole('tab', { name: '3D Print' })
+    .getByRole('tab', { name: 'Make' })
     .click();
   await page.getByRole('button', { name: 'Tolerance', exact: true }).click();
   await expect(panel(page)).toBeVisible();

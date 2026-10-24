@@ -13,7 +13,7 @@
  */
 
 /**
- * The tools that have a clip: every tile of the Solid, Modify, Construct, 3D Print and
+ * The tools that have a clip: every tile of the Solid, Modify, Construct, Make and
  * Sketch tabs (in the tabs' order), all recorded in the current UI (R3-16). The Sketch tab's
  * tiles are the ribbon's; the tools in its "more" menus have none.
  */
@@ -71,7 +71,7 @@ export const DEMO_TOOLS: readonly string[] = [
   'pointAtIntersection',
   'measure',
   'section',
-  // 3D Print › Prepare, Output (Measure is Construct's).
+  // Make › Prepare, Output (Measure is Construct's).
   'placeOnBed',
   'printInfo',
   'tolerance',

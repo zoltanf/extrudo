@@ -315,7 +315,7 @@ test('Tutorial 2: a storage box', async ({ page }) => {
   await step(
     'export',
     async () => {
-      await selectTab(page, '3D Print');
+      await selectTab(page, 'Make');
       await page.getByRole('button', { name: 'Export', exact: true }).click();
       await exportDialog.getByRole('radio', { name: /^STL/ }).check();
     },

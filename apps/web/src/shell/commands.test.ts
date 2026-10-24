@@ -312,11 +312,11 @@ describe('buildCommands', () => {
     expect(ctx.runTool).toHaveBeenCalledWith('line');
   });
 
-  it('offers the Tolerance panel from the 3D Print tab, with no key (P4-08)', () => {
+  it('offers the Tolerance panel from the Make tab, with no key (P4-08)', () => {
     const ctx = context('model');
     expect(byId(ctx).get('tolerance')).toMatchObject({
       label: 'Tolerance',
-      group: '3D Print › Prepare',
+      group: 'Make › Prepare',
       keys: [],
     });
     expect(byId(ctx).get('tolerance')?.unavailable).toBeUndefined();

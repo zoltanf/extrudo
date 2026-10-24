@@ -162,7 +162,7 @@ and the colliding faces turn red.
    face, limits 0° to 180°.
 3. **Check clearance**. The result is the tightest gap along the swing. If it reads "Collides
    from 140.1°", the leaf's edge reaches the base plate there; give it room or limit the joint.
-4. Set a `tolerance` parameter (the 3D Print tab's Tolerance panel) and the check measures against
+4. Set a `tolerance` parameter (the Make tab's Tolerance panel) and the check measures against
    it, so a hinge that prints with a loose printer and one with a tight one are judged differently.
 
 On a 130-face hinge the whole turn takes about 16 s, with progress and a Cancel button.

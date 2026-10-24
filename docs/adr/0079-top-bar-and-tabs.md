@@ -317,3 +317,18 @@ sends only the name and main opens its own URL, the pattern `openDocs` set (ADR-
 and `openSite` keeps only `repo`. Rejected: letting the desktop's window-open handler
 pass an allow-list of URLs to `shell.openExternal` — it would take a URL from the
 renderer, which the docs opener avoids on purpose.
+
+**Amendment (owner, 2026-10-24): Search beside Menu.** The Search button moved from the
+cluster to the right side, just left of Menu (Version history, Search, Menu); the cluster
+is Undo, Redo. The search dialog drops right-aligned under the button (`at` is the
+button's bottom-right corner).
+
+**Amendment (owner, 2026-10-24): the 3D Print tab is Make.** It holds Render Picture and
+Export as well as the print aids, so its label is **Make** (the tab ID stays `print`).
+
+**Amendment (owner, 2026-10-24): Version history beside the save state.** The save badge
+is the Version history button: 32 px tall, the dot, the word and a 14 px history glyph,
+with a transparent button laid under them (so the word keeps its `role=status`); a click
+anywhere on it opens the versions. `titleFit` counts the glyph
+(`HISTORY_WIDTH`) in the `dot` width; the probe has it for `full`. Rejected: a separate
+icon button after the badge (a small target, and the badge looked clickable anyway). The right side is Search and Menu.

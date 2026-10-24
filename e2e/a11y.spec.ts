@@ -192,7 +192,7 @@ for (const theme of ['dark', 'light'] as const) {
       await section.getByRole('button', { name: 'Remove', exact: true }).click();
       await page
         .getByRole('tablist', { name: 'Toolbar tabs' })
-        .getByRole('tab', { name: '3D Print' })
+        .getByRole('tab', { name: 'Make' })
         .click();
       await page.getByRole('button', { name: 'Print Info' }).click();
       await expect(page.getByRole('region', { name: 'Print Info' })).toBeVisible();

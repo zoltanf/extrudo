@@ -1726,7 +1726,7 @@ test('demo: section', async ({ page }) => {
   });
 });
 
-// ---- 3D Print tab
+// ---- Make tab
 
 test('demo: placeOnBed', async ({ page }) => {
   await demoDesign(page, 'placeOnBed');

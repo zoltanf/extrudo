@@ -18,7 +18,7 @@ brief, voice) is in **`05-brand.md`**. In short:
   sketch blue for sketch geometry.
 - **Colour by tool category** (icons and timeline chips share it): Sketch =
   blue, Create = green, Modify = coral, Construct = violet, Inspect = teal,
-  Insert = pink, Export/3D Print = yellow, the Home tab's file actions = neutral
+  Insert = pink, Export/Make = yellow, the Home tab's file actions = neutral
   grey (`file`, ADR-0079). Status colours always pair with a
   glyph: ✓ ok, ⚠ warning, ✕ error.
 - **Icons:** a custom two-tone set (24 px grid, 1.75 px stroke, 22% fill in
@@ -92,7 +92,7 @@ brief, voice) is in **`05-brand.md`**. In short:
   first, "Before restoring V<n>", unless the newest version already
   holds it). Restore ends an open sketch or feature dialog first.
 - **No workspace switcher** (removed 2026-09-27): no second workspace is
-  planned, and a one-item dropdown did nothing. The 3D Print tab covers the
+  planned, and a one-item dropdown did nothing. The Make tab covers the
   printing "mode".
 - **Tabs** (ADR-0079): `HOME` (the design as a whole: New Design, All
   Designs; Save Version, Version History; **Import**: Import .extrudo, Import
@@ -117,7 +117,7 @@ brief, voice) is in **`05-brand.md`**. In short:
   earlier group), until the row fits; a group keeps one tile at least, and
   widening brings them back. A group's ▾ lists only what isn't a tile (moved
   tiles, tools that are never tiles, the Create group's plugin features).
-- **Export model** (P2-12, ADR-0034): 3D Print › Export, Home › Export
+- **Export model** (P2-12, ADR-0034): Make › Export, Home › Export
   Model, or a body's menu (that body). A small dialog: the
   bodies as checkboxes (the selection's bodies, else every shown body),
   the format (3MF first, "for slicers"; STL; STEP), and for meshes
@@ -125,7 +125,7 @@ brief, voice) is in **`05-brand.md`**. In short:
   summary line says what the file holds ("1 body, 620 triangles,
   watertight", or which bodies aren't closed) before Export saves it.
   Format and resolution are remembered.
-- **Measure** (P2-13, ADR-0035): Construct › Inspect › Measure or 3D Print › Prepare,
+- **Measure** (P2-13, ADR-0035): Construct › Inspect › Measure or Make › Prepare,
   key `I`. A panel where feature dialogs open, pressed like a tool
   (Esc or Close ends it; the selection stays). It measures the model
   selection: a plain click adds until two things are picked, the next
@@ -160,7 +160,7 @@ brief, voice) is in **`05-brand.md`**. In short:
   while the model is edited. The browser's Analysis folder lists it (click
   to edit; the eye turns it off and on; the menu removes it). Sketch mode
   draws the model without it.
-- **Print aids** (P3-10, ADR-0048), all in 3D Print › Prepare. *Print Info*:
+- **Print aids** (P3-10, ADR-0048), all in Make › Prepare. *Print Info*:
   a panel like Measure's. Material (PLA, PETG, ABS, TPU with their g/cm³, or
   Custom density as an expression field) and filament diameter (1.75 or
   2.85 mm) above, then the print itself — Walls, Line width, Infill and Price
@@ -833,15 +833,17 @@ or sketch, closing the panel, or the joint going away puts everything back.
 Ctrl+, opens the Settings dialog from anywhere (the app menu's first item, Ctrl+K
 "Settings…", the home screen's app menu). A modal dialog, sections in a list on the
 left and the selected page on the right (below 640 px one column with a select);
-Appearance (the theme), Plugins (install, enable and remove plugins, P6-03; Ctrl+K "Plugins…" opens
-it), Marking menu (the Radial right-click menu switch above the ring editor: a ring
+in this order (owner, 2026-10-24): View and navigation, Keyboard (every command's keys,
+below), Marking menu (the Radial right-click menu switch above the ring editor: a ring
 per mode, a wedge, then the command it runs; Ctrl+K "Customize Marking Menu…" opens
-it), Keyboard (every command's keys, below), View and navigation, Sketch, 3D printing,
-Export and, on the desktop, Desktop (slicers) and Agents (MCP) (the server's switch,
+it), Sketch, Appearance (the theme), 3D printing, Export, on the desktop Desktop
+(slicers) and Agents (MCP) (the server's switch,
 port and state, then the setup text per agent to copy: Claude Code, Codex CLI,
 opencode, other clients' `mcpServers` JSON, or a sentence for the agent, and the
 skill's state in the agent's skills folder with Install skill / Update skill / Save
-skill to…; ADR-0087's amendment of 2026-10-18). The last section is remembered. Controls are the same state as the
+skill to…; ADR-0087's amendment of 2026-10-18), and Plugins (install, enable and remove
+plugins, P6-03; Ctrl+K "Plugins…" opens it). The last section is remembered; the first
+opens when none is. Controls are the same state as the
 quick ones elsewhere (app menu, sketch palette, Print Info, Export dialog), so
 the dialog never disagrees with them; numbers are `<ExpressionInput>`s with a
 per-field Reset when they differ from the default.
@@ -897,7 +899,7 @@ command (replacing its first key).
 - **Every tool tooltip** (toolbar tiles and the constraint icons): name,
   shortcut, one sentence and a looping demo of 2 to 10 seconds (WebM,
   480 × 300, under 150 kB) that loads only when the tooltip opens. Every tile of
-  the Solid, Modify, Construct, 3D Print and Sketch tabs has one (the owner's UI review 3,
+  the Solid, Modify, Construct, Make and Sketch tabs has one (the owner's UI review 3,
   R3-16); the tools in the Sketch tab's "more" menus have none. A clip
   is framed round the action, so the pick, the handle and the geometry it
   changes fill the tooltip's 236 px; it shows no toolbar and needs no text. With

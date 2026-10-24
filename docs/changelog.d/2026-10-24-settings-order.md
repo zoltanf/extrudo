@@ -1,0 +1,1 @@
+- 2026-10-24 · **Settings order**: the Settings sections now run View and navigation, Keyboard, Marking menu, Sketch, Appearance, 3D printing, Export, then Plugins.

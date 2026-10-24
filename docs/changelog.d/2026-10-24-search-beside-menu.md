@@ -1,0 +1,1 @@
+- 2026-10-24 · **Top bar tidy-up**: Search sits on the right, just left of the Menu button, and the save state ("Saved" with a history icon) opens Version history.

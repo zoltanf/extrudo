@@ -29,25 +29,13 @@ export interface SectionInfo {
   desktopOnly?: boolean;
 }
 
+/** In the dialog's order (owner, 2026-10-24); the first opens when none is remembered. */
 export const SECTIONS: readonly SectionInfo[] = [
   {
-    id: 'general',
-    label: 'Appearance',
-    summary: 'Theme.',
-    keys: ['theme'],
-  },
-  {
-    // Installed plugins live in the platform's plugin store, not in preferences (ADR-0090 §2).
-    id: 'plugins',
-    label: 'Plugins',
-    summary: 'Install, enable and remove plugins.',
-    keys: [],
-  },
-  {
-    id: 'marking',
-    label: 'Marking menu',
-    summary: 'The right-click menu: a ring or a list, and the command on each wedge.',
-    keys: ['marking.radial', 'marking.slots'],
+    id: 'view',
+    label: 'View and navigation',
+    summary: 'How the mouse moves the camera, and how the model is drawn.',
+    keys: ['viewport.preset', 'viewport.projection', 'viewport.visualStyle', 'viewport.grid'],
   },
   {
     id: 'keyboard',
@@ -56,10 +44,10 @@ export const SECTIONS: readonly SectionInfo[] = [
     keys: ['keymap.overrides'],
   },
   {
-    id: 'view',
-    label: 'View and navigation',
-    summary: 'How the mouse moves the camera, and how the model is drawn.',
-    keys: ['viewport.preset', 'viewport.projection', 'viewport.visualStyle', 'viewport.grid'],
+    id: 'marking',
+    label: 'Marking menu',
+    summary: 'The right-click menu: a ring or a list, and the command on each wedge.',
+    keys: ['marking.radial', 'marking.slots'],
   },
   {
     id: 'sketch',
@@ -75,6 +63,12 @@ export const SECTIONS: readonly SectionInfo[] = [
       'viewport.autoProjectFace',
       'viewport.sketchSlice',
     ],
+  },
+  {
+    id: 'general',
+    label: 'Appearance',
+    summary: 'Theme.',
+    keys: ['theme'],
   },
   {
     id: 'printing',
@@ -102,6 +96,13 @@ export const SECTIONS: readonly SectionInfo[] = [
     summary: 'Let AI agents such as Claude Code read and change the open design.',
     keys: ['mcp.enabled', 'mcp.port'],
     desktopOnly: true,
+  },
+  {
+    // Installed plugins live in the platform's plugin store, not in preferences (ADR-0090 §2).
+    id: 'plugins',
+    label: 'Plugins',
+    summary: 'Install, enable and remove plugins.',
+    keys: [],
   },
 ];
 

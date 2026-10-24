@@ -1,7 +1,7 @@
 ---
 title: Print Info
 section: Tools
-category: 3D Print
+category: Make
 order: 118
 ---
 
@@ -11,7 +11,7 @@ Volume, weight and filament length for PLA, PETG, ABS, TPU or your own density.
 
 | Where | Shortcut |
 |---|---|
-| 3D Print › Prepare | None |
+| Make › Prepare | None |
 
 <video src="demo:printInfo" muted loop autoplay playsinline aria-label="Print Info demo"></video>
 

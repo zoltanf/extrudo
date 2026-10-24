@@ -196,7 +196,7 @@ export const DEMO_DESIGNS: Record<string, (d: Design) => void> = {
     d.box({ length: '36 mm', width: '24 mm', height: '20 mm' });
     d.cylinder({ diameter: '10 mm', height: '20 mm', operation: 'cut' });
   },
-  // The 3D Print tab's scenes. A wedge: its sloping face is the one to turn down.
+  // The Make tab's scenes. A wedge: its sloping face is the one to turn down.
   placeOnBed: (d) => {
     const side = d.sketch(d.origin.xz, (k) =>
       k.polyline([

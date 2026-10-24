@@ -6,7 +6,7 @@ order: 6.4
 
 # Rendering a picture
 
-The **Render Picture** tile sits in the 3D Print tab's Output group, in the browser and in the
+The **Render Picture** tile sits in the Make tab's Output group, in the browser and in the
 desktop app. It renders a presentable picture of your design — on a wooden table, in a clean
 studio, outdoors — the kind of picture for a model site, a forum post or a gift. You make the
 choices in one dialog and get the picture.

@@ -245,7 +245,7 @@ test('a mesh body exports as itself, and a STEP file leaves it out', async ({ pa
   ).toBeCloseTo(20 ** 3, 0);
 
   // Under STEP its checkbox is off and disabled, and the dialog says why.
-  await page.getByRole('tab', { name: '3D Print' }).click();
+  await page.getByRole('tab', { name: 'Make' }).click();
   await page.getByRole('button', { name: 'Export', exact: true }).click();
   const exportDialog = page.getByRole('dialog', { name: 'Export model' });
   await expect(exportDialog).toBeVisible();

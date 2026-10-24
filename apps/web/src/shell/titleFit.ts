@@ -4,7 +4,9 @@ export type TitleFit = 'full' | 'dot' | 'truncate';
 /** The space between the name and the save state's dot. */
 export const TITLE_GAP = 4;
 /** The save state's dot alone, with its padding. */
-export const DOT_WIDTH = 18;
+export const DOT_WIDTH = 22;
+/** The history glyph and its gap, added to the save state when it opens Version history. */
+export const HISTORY_WIDTH = 20;
 
 /**
  * What fits in `available` px: the name and the save state with its word (`full`);

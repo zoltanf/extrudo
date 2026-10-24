@@ -21,7 +21,7 @@ type Point = { x: number; y: number };
  * How the search was opened (UI review 3, R3-05): centred over a dimmed page
  * (Ctrl+K, the Help menu), at the pointer with the page left clear (S), or
  * dropped from the top bar's Search button over a dimmed page. `at` is the
- * pointer, or the button's bottom-left corner.
+ * pointer, or the button's bottom-right corner.
  */
 export type SearchOpen =
   | { from: 'centre' }
@@ -55,7 +55,7 @@ const BUTTON_GAP = 4;
 function placement(open: SearchOpen | undefined): Point | undefined {
   if (open?.from === 'pointer')
     return { x: open.at.x - POINTER_INSET, y: open.at.y - POINTER_INSET };
-  if (open?.from === 'button') return { x: open.at.x, y: open.at.y + BUTTON_GAP };
+  if (open?.from === 'button') return { x: open.at.x - WIDTH, y: open.at.y + BUTTON_GAP };
   return undefined;
 }
 

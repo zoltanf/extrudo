@@ -17,14 +17,16 @@ either place shows in the other at once. A reload keeps them.
 
 | Section | What is in it |
 |---|---|
-| **Appearance** | Theme (System, Dark, Light) |
-| **Plugins** | Install, enable and remove plugins (also Ctrl+K "Plugins…") |
-| **Marking menu** | The radial right-click menu on or off, and the command on each wedge of the ring (also Ctrl+K "Customize Marking Menu…") |
 | **View and navigation** | The mouse buttons preset, projection, visual style, the grid |
+| **Keyboard** | Every command's keys: change, add or remove them |
+| **Marking menu** | The radial right-click menu on or off, and the command on each wedge of the ring (also Ctrl+K "Customize Marking Menu…") |
 | **Sketch** | Snap to grid, auto-project edges and face outlines, what a sketch shows, Slice |
+| **Appearance** | Theme (System, Dark, Light) |
 | **3D printing** | Material densities, filament diameter, walls, line width, infill, price per kg |
 | **Export** | The format and resolution the Export dialog starts with |
-| **Desktop** | Slicer paths (desktop app only) |
+| **Desktop** | Slicer and Blender paths (desktop app only) |
+| **Agents (MCP)** | Let AI agents read and change the open design (desktop app only) |
+| **Plugins** | Install, enable and remove plugins (also Ctrl+K "Plugins…") |
 
 ## Material densities
 

@@ -6,7 +6,7 @@ order: 6
 
 # Getting it printed
 
-The **3D Print** tab collects what you need between a finished model and a slicer. It has two
+The **Make** tab collects what you need between a finished model and a slicer. It has two
 groups: **Prepare** (Place on Bed, Measure, Print Info, Tolerance, Overhangs, Wall Thickness) and
 **Output** (Export, Render Picture and, on the desktop app, Send to Slicer). None of the checks
 changes your model. They colour it or give you numbers, so you can run them as often as you like.

@@ -149,7 +149,7 @@ tall: 3 mm of plate plus 1 mm of letters.
 <!-- step: export-3mf -->
 ### 11. Export for printing
 
-Open the **3D Print** tab and press **Export**. Choose **3MF**. The summary says
+Open the **Make** tab and press **Export**. Choose **3MF**. The summary says
 the model is *watertight*, which means a slicer can read it without repair. Press
 **Export 3MF** and the file downloads.
 

@@ -24,7 +24,7 @@ test.afterEach(() => {
 });
 
 const printTab = (page: Page) =>
-  page.getByRole('tablist', { name: 'Toolbar tabs' }).getByRole('tab', { name: '3D Print' });
+  page.getByRole('tablist', { name: 'Toolbar tabs' }).getByRole('tab', { name: 'Make' });
 
 async function openPrintTab(page: Page) {
   await printTab(page).click();
@@ -386,7 +386,7 @@ test('Place on Bed: a face goes down as an undoable feature, and the export foll
   await page.mouse.click(point.x, point.y);
   await expect(viewport).toHaveAttribute('data-model-selection', /^face:/);
 
-  // The 3D Print tab's Place on Bed starts with the face picked; the preview is the result.
+  // The Make tab's Place on Bed starts with the face picked; the preview is the result.
   await openPrintTab(page);
   await page.getByRole('button', { name: /^Place on Bed/ }).click();
   const dialog = page.getByRole('region', { name: 'Place on Bed dialog' });

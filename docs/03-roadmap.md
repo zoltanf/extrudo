@@ -584,7 +584,7 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   folder; a selected flat face takes it at once ("Section Here" in the
   context list). Model mode only; a sketch is drawn without it.
 - [x] **P3-10 3D-print aids:** mass properties with filament presets, overhang
-  shading, place on bed. FR-3DP-02..04. Done 2026-09-30 (ADR-0048): 3D Print ›
+  shading, place on bed. FR-3DP-02..04. Done 2026-09-30 (ADR-0048): Make ›
   Prepare has Print Info (volume, weight and filament length of the selected or
   all shown bodies from the kernel's exact volumes; PLA 1.24, PETG 1.27, ABS 1.04,
   TPU 1.21 g/cm³ or a custom density expression; 1.75 or 2.85 mm filament; kept
@@ -820,7 +820,7 @@ end to end, faster than in established desktop CAD.
   2026-10-03 (ADR-0059).
 - [x] **P4-08 Tolerance helpers and slicer hand-off.** FR-3DP-05, -06. Done
   2026-10-03 (ADR-0062): the print tolerance is the user parameter
-  `tolerance`, set from the 3D Print tab's Tolerance panel (a field, the Tight
+  `tolerance`, set from the Make tab's Tolerance panel (a field, the Tight
   0.1 / Normal 0.2 / Loose 0.3 mm buttons and a usage count, one undo step
   each through the shell's parameter `apply`); hole presets add it to every
   diameter they write ("3.4 mm + 2 * tolerance") and the Preset dropdown
@@ -1405,7 +1405,7 @@ end to end, faster than in established desktop CAD.
   bodies' geometry); left unticked for the owner's review.
 
 - [x] **P6-15 Render Picture with Blender** (owner, 2026-10-23; ADR-0101). Done 2026-10-23.
-  FR-3DP-08. A Render Picture tile (3D Print › Output, desktop only) opens a
+  FR-3DP-08. A Render Picture tile (Make › Output, desktop only) opens a
   dialog with scene presets (studio, table, workbench, outdoor), a finish per
   body (the body's colour stays the base colour), the camera (automatic,
   current, a named view), size and quality; Render writes the settings into
@@ -1489,7 +1489,7 @@ to 3 of 2026-10-08 are ADR-0079's.
   f3d import's messages), with slices and the owner's decisions of the same day
   (presets renamed Spindle, Crank and Glide; ten pins in two rows; the ring
   alone when radial; a first batch of tooltip clips, Solid and Modify, and every
-  clip re-recorded; the Construct, 3D Print and Sketch tabs' clips followed on 2026-10-15), in
+  clip re-recorded; the Construct, Make and Sketch tabs' clips followed on 2026-10-15), in
   [`docs/plans/ui-review-2026-10-11.md`](plans/ui-review-2026-10-11.md).
 
 ---

@@ -10,8 +10,8 @@ import {
   saveStatus,
 } from './helpers';
 
-// The top bar (ADR-0079): one row with the logo, the tabs, undo/redo/search, the
-// design's name and the right-hand buttons; the selected tab's tools in the row below,
+// The top bar (ADR-0079): one row with the logo, the tabs, undo/redo, the
+// design's name, save state and Version history, and the right-hand buttons (Search, Menu); the selected tab's tools in the row below,
 // fitted to the window.
 
 const tabs = (page: Page) => page.getByRole('tablist', { name: 'Toolbar tabs' }).getByRole('tab');
@@ -56,7 +56,7 @@ test('one top bar: the tabs in order, no File menu, undo, redo and search work',
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
-  await expect(tabs(page)).toHaveText(['Home', 'Solid', 'Modify', 'Construct', '3D Print']);
+  await expect(tabs(page)).toHaveText(['Home', 'Solid', 'Modify', 'Construct', 'Make']);
   await expect(tabs(page).filter({ hasText: 'Solid' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('button', { name: /^File/ })).toHaveCount(0);
   await expect(page.getByRole('tab', { name: 'Insert' })).toHaveCount(0);
@@ -105,9 +105,9 @@ test('one top bar: the tabs in order, no File menu, undo, redo and search work',
 
 test('a sketch shows Home and Sketch only (R3-11)', async ({ page }) => {
   await openProject(page);
-  // Opened from the 3D Print tab, a sketch selects its own tab.
-  await tabs(page).filter({ hasText: '3D Print' }).click();
-  await expect(tabs(page).filter({ hasText: '3D Print' })).toHaveAttribute('aria-selected', 'true');
+  // Opened from the Make tab, a sketch selects its own tab.
+  await tabs(page).filter({ hasText: 'Make' }).click();
+  await expect(tabs(page).filter({ hasText: 'Make' })).toHaveAttribute('aria-selected', 'true');
   await page.keyboard.press('Control+k');
   await page.keyboard.type('Create Sketch');
   await page.keyboard.press('Enter');
@@ -119,7 +119,7 @@ test('a sketch shows Home and Sketch only (R3-11)', async ({ page }) => {
   await expect(tabs(page).filter({ hasText: 'Sketch' })).toHaveAttribute('aria-selected', 'true');
   // Finishing it brings the model's tabs back.
   await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
-  await expect(tabs(page)).toHaveText(['Home', 'Solid', 'Modify', 'Construct', '3D Print']);
+  await expect(tabs(page)).toHaveText(['Home', 'Solid', 'Modify', 'Construct', 'Make']);
   await expect(tabs(page).filter({ hasText: 'Solid' })).toHaveAttribute('aria-selected', 'true');
 });
 
@@ -208,11 +208,11 @@ const box = async (page: Page, name: string) => {
   return b;
 };
 
-test('the cluster is Search, Undo, Redo; no Toolbox or theme button (R3-05)', async ({ page }) => {
+test('the cluster is Undo, Redo; no Toolbox or theme button (R3-05)', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
   const xs: number[] = [];
-  for (const name of ['Search', 'Undo', 'Redo']) xs.push((await box(page, name)).x);
+  for (const name of ['Undo', 'Redo']) xs.push((await box(page, name)).x);
   expect([...xs].sort((a, b) => a - b)).toEqual(xs);
   const ys = await Promise.all(
     ['Search', 'Undo', 'Redo'].map(async (n) => {
@@ -226,12 +226,22 @@ test('the cluster is Search, Undo, Redo; no Toolbox or theme button (R3-05)', as
   await expect(header(page).getByRole('button', { name: 'Search commands' })).toHaveCount(0);
 });
 
-test('the right side is Version history and Menu; no Help button (ADR-0090)', async ({ page }) => {
+test('the right side is Search and Menu; the save state opens Version history', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
-  const history = await box(page, 'Version history');
+  const search = await box(page, 'Search');
   const menu = await box(page, 'Menu');
-  expect(history.x).toBeLessThan(menu.x);
+  expect(search.x).toBeLessThan(menu.x);
+  const group = page.locator('[data-title-group]');
+  await expect(group.getByRole('button', { name: 'Version history' })).toBeVisible();
+  // The whole badge is the button: a click on the word opens the versions.
+  const history = await box(page, 'Version history');
+  expect(history.height).toBeGreaterThanOrEqual(32);
+  // `force`: the word lets the pointer through to the button under it.
+  await saveStatus(page).click({ force: true });
+  await expect(page.getByRole('heading', { name: 'Saved versions' })).toBeVisible();
   await expect(header(page).getByRole('button', { name: 'Help', exact: true })).toHaveCount(0);
   await expect(header(page).getByRole('button', { name: 'Settings', exact: true })).toHaveCount(0);
 });
@@ -412,22 +422,20 @@ test.describe('with a light system theme and nothing stored', () => {
   });
 });
 
-/** The title group's centre against the middle of the gap between the cluster and the history button. */
+/** The title group's centre against the middle of the gap between the cluster and Search. */
 async function titleCentring(page: Page) {
-  // The cluster ends with Redo since R3-05 (Search, Undo, Redo).
+  // The cluster ends with Redo (Undo, Redo; Search moved to the right side).
   const last = await box(page, 'Redo');
-  const history = await box(page, 'Version history');
+  const search = await box(page, 'Search');
   const group = (await page.locator('[data-title-group]').boundingBox()) as {
     x: number;
     width: number;
   };
-  const gapMiddle = (last.x + last.width + history.x) / 2;
+  const gapMiddle = (last.x + last.width + search.x) / 2;
   return { offset: group.x + group.width / 2 - gapMiddle, group };
 }
 
-test('the title and save state are centred between the cluster and Version history', async ({
-  page,
-}) => {
+test('the title and save state are centred between the cluster and Search', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
   await expect(saveStatus(page)).toHaveText('Saved');

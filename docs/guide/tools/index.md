@@ -199,7 +199,7 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 
 - [Export Sketch](./exportSketch.md) — Save the sketch or its profiles as SVG or DXF, at 1 unit = 1 mm.
 
-## 3D Print
+## Make
 
 ### Prepare
 

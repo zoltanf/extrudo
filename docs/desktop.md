@@ -52,7 +52,7 @@ for it yet). Flatpak slicers get the file through the document portal.
 
 ## Rendering with Blender
 
-The Render Picture dialog (3D Print › Output, ADR-0101) renders the design
+The Render Picture dialog (Make › Output, ADR-0101) renders the design
 with a Blender installed by the person. `apps/desktop/src/main/blender.ts`
 does the finding and running, pure over an injected environment like
 `slicers.ts`, so detection on all three OSes and the whole render flow are

@@ -122,7 +122,7 @@ Printers don't make parts to the exact size you draw. A hole prints a little sma
 little large, so a part that has to fit another needs a clearance. Extrudo has one parameter for
 it, named `tolerance`.
 
-Set it in **3D Print › Prepare › Tolerance**: type a value, or press **Tight** (0.1 mm),
+Set it in **Make › Prepare › Tolerance**: type a value, or press **Tight** (0.1 mm),
 **Normal** (0.2 mm) or **Loose** (0.3 mm). The panel counts how many places use it. It is an
 ordinary parameter, so you can also use `tolerance` in your own expressions.
 

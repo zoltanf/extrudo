@@ -35,7 +35,7 @@ test.afterEach(() => {
 });
 
 const printTab = (page: Page) =>
-  page.getByRole('tablist', { name: 'Toolbar tabs' }).getByRole('tab', { name: '3D Print' });
+  page.getByRole('tablist', { name: 'Toolbar tabs' }).getByRole('tab', { name: 'Make' });
 
 async function openPrintTab(page: Page) {
   await printTab(page).click();
@@ -60,7 +60,7 @@ async function counts(view: Locator) {
 
 const minimum = (page: Page) => panel(page).getByRole('textbox', { name: 'Minimum', exact: true });
 
-/** Turns the check on with the panel open (3D Print › Wall Thickness). */
+/** Turns the check on with the panel open (Make › Wall Thickness). */
 async function openCheck(page: Page) {
   await openPrintTab(page);
   await page.getByRole('button', { name: /^Wall Thickness/ }).click();

@@ -98,15 +98,7 @@ const CATEGORY_ORDER = ['sketch', 'create', 'modify', 'construct', 'inspect'];
  * (ADR-0057), so the order is kept here; `toolDocs.test.ts` and the site's own
  * tests pin it against the generated pages.
  */
-const TOOL_CATEGORY_ORDER = [
-  'Home',
-  'Solid',
-  'Modify',
-  'Construct',
-  'Inspect',
-  'Sketch',
-  '3D Print',
-];
+const TOOL_CATEGORY_ORDER = ['Home', 'Solid', 'Modify', 'Construct', 'Inspect', 'Sketch', 'Make'];
 
 const IMAGE_TYPES = ['.png', '.jpg', '.webp', '.svg'];
 const VIDEO_TYPES = ['.webm', '.mp4'];
@@ -243,7 +235,7 @@ export function apiGroups(pages: readonly DocPage[]): SidebarEntry[] {
 /**
  * The Tools sub-groups: the pages without a category (the index) are listed by
  * the section itself, and the rest are grouped by the tab they first appear in,
- * in `TABS` order. Named like the tab, so the sidebar reads `Solid`, `3D Print`.
+ * in `TABS` order. Named like the tab, so the sidebar reads `Solid`, `Make`.
  */
 export function toolGroups(pages: readonly DocPage[]): SidebarEntry[] {
   const categorised = pages.filter((page) => page.category);

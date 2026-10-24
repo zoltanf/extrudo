@@ -15,7 +15,7 @@ test('Render Picture renders a draft of the wall bracket in the browser', async 
   await expect(saveStatus(page)).toHaveText('Saved');
   await kernelReady(page);
 
-  await page.getByRole('tab', { name: '3D Print' }).click();
+  await page.getByRole('tab', { name: 'Make' }).click();
   const tile = page.getByRole('button', { name: 'Render Picture', exact: true });
   await expect(tile).not.toHaveAttribute('aria-disabled', 'true');
   await tile.click();

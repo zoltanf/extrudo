@@ -415,7 +415,7 @@ colours rule). No schema change. `@extrudo/io` has
 `write3mf`/`read3mf` (fflate; colours as `m:colorgroup` with object
 `pid`/`pindex` and per-triangle `pid`/`p1`). The app's
 `apps/web/src/export/` (`ExportModelDialog`, `modelExport.ts`) opens from
-3D Print › Export, Home › Export Model (ADR-0079) and a body's menu. ADR-0033
+Make › Export, Home › Export Model (ADR-0079) and a body's menu. ADR-0033
 (P2-11) added timeline v2 (**P4-12 draws the ghost of lost geometry**: the
 fingerprint stored with a lost or guessed reference becomes dashed
 `--x-error` marks, `viewport/ghostGeometry.ts` pure and `Ghosts.tsx`, for the
@@ -790,7 +790,7 @@ home screen's bundle keeps out of three-mesh-bvh). The analysis is **view
 state** like the overhang's (`viewport.thickness`: `ThicknessState` = `min`
 length expression, `on`; the default minimum is two line widths of
 `print.material`, "0.9 mm" at 0.45 mm) and follows every recompute. The
-panel is 3D Print › Prepare › **Wall Thickness** (`wallThickness`, no key;
+panel is Make › Prepare › **Wall Thickness** (`wallThickness`, no key;
 `WallThicknessPanel`, `useThickness`): Minimum as an `<ExpressionInput>`, a
 "Show thin walls" checkbox, "Thinnest wall: 0.80 mm" and "Thin area: 226 mm²
 in 2 bodies" or "No wall is thinner than 0.9 mm.", Done and Remove. Thin
@@ -1031,7 +1031,7 @@ under a new ID with its checked-in `home/templates/*.png` as thumbnail).
 `public/demos/<toolId>.webm`, rendered only while the tooltip is open, a still
 under reduced motion, removed on a load error); **demos are not precached**
 (`SKIPPED` in `precache-plugin.ts`, and `sw.js` leaves `/demos/` to the
-network); `DEMO_TOOLS` in `demos.ts` lists the tools that have one (every tile of the Solid, Modify, Construct, 3D Print and
+network); `DEMO_TOOLS` in `demos.ts` lists the tools that have one (every tile of the Solid, Modify, Construct, Make and
 Sketch tabs since the owner's UI review 3, R3-16; `WHOLE_TABS` in `demos.test.ts` checks it per
 tab) and `demos.test.ts` checks it against the files (150 kB each, 4 MB in all). **`pnpm demos`**
 (`scripts/record-demos.mjs` → `e2e/record-assets.spec.ts`, which skips itself
@@ -1257,7 +1257,7 @@ anything). The Text tool's anchor click lives in `textDraft.ts`
 starts a tool afresh on any document change.
 ADR-0062's P6-02 amendment added **the slicer launch on desktop**: `apps/desktop/src/main/slicers.ts` (pure over an injected environment: `findSlicers` per OS, the `slicers.paths` preference override, `openInSlicer` writing `<temp>/extrudo-slicer/<sanitised name>` and spawning detached, true unless ENOENT or a non-zero exit within 1.5 s), channels `slicer:list`/`slicer:open`, `desktopPlatform` setting `openInSlicer` and the new optional `Platform.installedSlicers`, which the Export dialog uses to disable missing slicers; the Send to Slicer tile is ready where `openInSlicer` exists. ADR-0062 (P4-08) added **print tolerance**: the document parameter named
 `tolerance` (`TOLERANCE_PARAMETER`, thread's constant, re-exported from core's
-`tolerance.ts`), set from the 3D Print tab's Tolerance panel (a field, the
+`tolerance.ts`), set from the Make tab's Tolerance panel (a field, the
 Tight 0.1 / Normal 0.2 / Loose 0.3 mm buttons and a usage count from
 `toleranceUsage`); **every parameter write goes through the shell's `apply`**, so
 each change is one command and one undo step. **Hole presets add the tolerance
@@ -2206,8 +2206,8 @@ is in the app menu** and Ctrl+K (R3-12; on macOS the app menu, beside
 Settings…: `APP_MENU_IDS` in `apps/desktop/src/main/menuTemplate.ts`); the tabs are
 **Home, Solid (Create, Primitives, Features, Pattern, Program, Component), Modify
 (Modify, Transform), Construct (Planes, Axes, Points, Inspect — Measure and Section
-Analysis, R3-10: there is no Inspect tab), 3D Print** in the model and **Home,
-Sketch** in a sketch (3D Print went in the owner's UI review 3, R3-11; `visibleTabs`, `defaultTab`, `tabOfTool` in `shell/tools.ts`); there is no
+Analysis, R3-10: there is no Inspect tab), Make** in the model and **Home,
+Sketch** in a sketch (Make, called 3D Print until 2026-10-24, went in the owner's UI review 3, R3-11; `visibleTabs`, `defaultTab`, `tabOfTool` in `shell/tools.ts`); there is no
 Insert tab. **Home's file actions are commands, not tools**: `TOOLS` lists them (category
 `file`, token `--x-cat-file`, nine new icons) and `FILE_COMMANDS` names the
 `FileActions` method each runs (`AppShell.run` for a tile, `fileCommand` in
@@ -2228,10 +2228,13 @@ points at a tool's tab when its tile isn't shown (`toolOrTabSelector`). e2e:
 system theme and the baselines are dark), the gear is a **Settings menu**
 (`SettingsMenu` in `AppBar.tsx`: General — Auto-project body edges / face outline on the
 viewport store, **Radial right-click menu** (a checkbox on the same state as the `Right-Click Menu: Use a List / Use the Ring` command, `markingStyle`; 2026-10-09), Customize Marking Menu… — and Theme; the bar's theme button is gone,
-`ThemeMenu` remains on the home screen), the cluster is **Search, Undo, Redo** (R3-05:
-Search drops the one search from the button, `onSearch(at)`; no Toolbox button), the right
-side is Version history, Settings, Help, and the name plus the save dot are one `TitleGroup`
-centred between the cluster and Version history; the pure `titleFit`
+`ThemeMenu` remains on the home screen), the cluster is **Undo, Redo** (R3-05: one search, no Toolbox button; owner
+2026-10-24: Search moved to the right side, just left of Menu, and its dialog drops
+right-aligned under the button, `onSearch(at)` with the button's bottom-right corner), the right
+side is Search and Menu (ADR-0090), and the name and the save badge, which is also the
+Version history button (owner 2026-10-24: a button under the dot, the word and a history
+glyph, so `role=status` stays its own; `HISTORY_WIDTH` in `titleFit.ts`) are one
+`TitleGroup` centred between the cluster and Search; the pure `titleFit`
 (`shell/titleFit.ts`) drops the save word first (`data-title-fit="dot"`), then truncates
 the name (`truncate`, `title` = full name). The separator after the cluster is gone.
 **Round 5 (2026-10-14, the owner's recording)**: the gear is the **app menu**
