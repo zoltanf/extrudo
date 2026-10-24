@@ -17,7 +17,16 @@ import {
 } from '@extrudo/core';
 import { isExportCancelled, RESOLUTIONS } from '@extrudo/kernel';
 import { ChevronDown, ChevronRight, X } from 'lucide-react';
-import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useStore } from 'zustand';
 import { Button, Dialog, DialogClose, IconButton, Select } from '../design-system';
 import { type MeshedBodies, type ModelExporter, meshBodies } from '../export/modelExport';
@@ -154,6 +163,30 @@ export function RenderForm({
   const [message, setMessage] = useState<{ tone: 'info' | 'error'; text: string }>();
   // The picture fits the dialog, or shows at its real size (scroll to pan).
   const [zoomed, setZoomed] = useState(false);
+  // Where the click landed on the fitted picture (0–1): the zoomed one scrolls there.
+  const anchor = useRef<[number, number]>([0.5, 0.5]);
+  const frame = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    const el = frame.current;
+    const img = el?.querySelector('img');
+    if (!zoomed || !el || !img) return;
+    const [fx, fy] = anchor.current;
+    el.scrollLeft = fx * img.offsetWidth - el.clientWidth / 2;
+    el.scrollTop = fy * img.offsetHeight - el.clientHeight / 2;
+  }, [zoomed]);
+  const toggleZoom = (event: MouseEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.querySelector('img')?.getBoundingClientRect();
+    const unit = (v: number) => Math.min(1, Math.max(0, v));
+    // A keyboard activation has no position: the middle.
+    anchor.current =
+      !zoomed && event.detail > 0 && rect && rect.width > 0 && rect.height > 0
+        ? [
+            unit((event.clientX - rect.left) / rect.width),
+            unit((event.clientY - rect.top) / rect.height),
+          ]
+        : [0.5, 0.5];
+    setZoomed(!zoomed);
+  };
   const cancelled = useRef(false);
   const running = useRef(false);
   const url = useRef<string | undefined>(undefined);
@@ -312,7 +345,8 @@ export function RenderForm({
               : 'Zoom in: show the picture at its real size'
           }
           title={zoomed ? 'Zoom out' : 'Zoom in'}
-          onClick={() => setZoomed(!zoomed)}
+          ref={frame}
+          onClick={toggleZoom}
           className={`max-h-[75vh] overflow-auto rounded-input border border-line ${zoomed ? 'cursor-zoom-out' : 'cursor-zoom-in'}`}
         >
           <img
