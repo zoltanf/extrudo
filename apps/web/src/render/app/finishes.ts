@@ -89,24 +89,18 @@ export function woodTexture(): Texture {
 }
 
 /**
- * The workbench's worktop: fine dark noise with a thin lighter line every
- * 10 mm, like `render.py`'s cutting mat (#2e2e32, lines #4a4a52). One tile is
- * 50 mm; the slab sets the repeat from its size.
+ * The workbench's worktop around the cutting mat (`mat.ts`): fine dark noise
+ * (#2e2e32). One tile is 50 mm; the slab sets the repeat from its size.
  */
 export function worktopTexture(): Texture {
   const base = 0x2e / 255;
-  const line = 0x4a / 255;
   let seed = 7;
   const random = () => {
     seed = (seed * 16807) % 2147483647;
     return seed / 2147483647;
   };
   return repeating(
-    shadeCanvas((u, v) => {
-      const onLine = (w: number) => (w * 5) % 1 < 0.012;
-      if (onLine(u) || onLine(v)) return line;
-      return base * (0.85 + 0.3 * random());
-    }),
+    shadeCanvas(() => base * (0.85 + 0.3 * random())),
     1,
   );
 }

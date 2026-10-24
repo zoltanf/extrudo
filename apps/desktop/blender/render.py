@@ -359,25 +359,167 @@ def scene_table(s, target):
     world_background(hex_to_linear("#ffe9d2"), 0.6)
 
 
-def scene_workbench(s, target):
-    top = box("Worktop", 200 * s, 200 * s, 0.04, 0)
-    mat, bsdf = principled("Worktop", hex_to_linear("#2e2e32"))
+# The cutting mat (owner, 2026-10-24; the app's `mat.ts`): millimetres here, metres in the scene.
+MAT_COLORS = {"mat": "#1d6b52", "minor": "#4fbf9a", "major": "#8fe3c6", "text": "#b8f0dc"}
+MAT_THICKNESS = 0.002
+MAT_MAX_CELLS = 60
+
+
+def grid_step(span):
+    """10, 50, 100, 500, 1000 … mm: the first whose cells fit `span` in MAT_MAX_CELLS."""
+    step = 10
+    while span / step > MAT_MAX_CELLS:
+        step *= 5 if str(step).startswith("1") else 2
+    return step
+
+
+def mat_layout(offset, extent, size):
+    """The mat's grid in design millimetres, like `matLayout` (offset, extent, size in metres)."""
+    ox, oy = offset.x * 1000, offset.y * 1000
+    ex, ey = extent.x * 1000, extent.y * 1000
+    margin = max(15, 0.25 * size * 1000)
+    lo_x, lo_y = -ex - ox - margin, -ey - oy - margin
+    hi_x, hi_y = ex - ox + margin, ey - oy + margin
+    step = grid_step(max(hi_x - lo_x, hi_y - lo_y))
+    x0, x1 = math.floor(lo_x / step) * step, math.ceil(hi_x / step) * step
+    y0, y1 = math.floor(lo_y / step) * step, math.ceil(hi_y / step) * step
+    span = max(x1 - x0, y1 - y0)
+    return {
+        "x0": x0, "x1": x1, "y0": y0, "y1": y1,
+        "border": max(12, span / 25), "step": step, "major": step * 5,
+        "label": step if span / step <= 30 else step * 5, "dx": ox, "dy": oy,
+    }
+
+
+def mat_number(mm):
+    value = round(mm)
+    return f"\u2212{-value}" if value < 0 else f"{value}"
+
+
+def grid_mask(nodes, links, coord, step, half_width, lo, hi):
+    """1 on a line every `step` mm along `coord` (mm) within [lo, hi], else 0."""
+    def math_node(op, a, b=None):
+        node = nodes.new("ShaderNodeMath")
+        node.operation = op
+        for index, value in enumerate((a, b)):
+            if value is None:
+                continue
+            if isinstance(value, (int, float)):
+                node.inputs[index].default_value = value
+            else:
+                links.new(value, node.inputs[index])
+        return node.outputs[0]
+
+    wrap = nodes.new("ShaderNodeMath")
+    wrap.operation = "WRAP"
+    links.new(math_node("ADD", coord, step / 2), wrap.inputs[0])
+    wrap.inputs[1].default_value = step
+    wrap.inputs[2].default_value = 0.0
+    distance = math_node("ABSOLUTE", math_node("SUBTRACT", wrap.outputs[0], step / 2))
+    on_line = math_node("LESS_THAN", distance, half_width)
+    inside = math_node(
+        "MULTIPLY",
+        math_node("GREATER_THAN", coord, lo - half_width),
+        math_node("LESS_THAN", coord, hi + half_width),
+    )
+    return math_node("MULTIPLY", on_line, inside), inside
+
+
+def mat_material(layout):
+    """The grid as shader maths on the mat's world position (no image): design mm = (P - offset) · 1000."""
+    mat, bsdf = principled("Cutting mat", hex_to_linear(MAT_COLORS["mat"]))
     nodes, links = mat.node_tree.nodes, mat.node_tree.links
-    coords = nodes.new("ShaderNodeTexCoord")
-    wave = nodes.new("ShaderNodeTexWave")
-    wave.wave_type = "BANDS"
-    # One thin line every 10 mm, like a cutting mat (the mesh is in metres).
-    set_input(wave, 300.0, "Scale")
-    ramp = nodes.new("ShaderNodeValToRGB")
-    ramp.color_ramp.elements[0].color = hex_to_linear("#2e2e32")
-    ramp.color_ramp.elements[1].color = hex_to_linear("#4a4a52")
-    ramp.color_ramp.elements[0].position = 0.97
-    ramp.color_ramp.elements[1].position = 1.0
-    links.new(coords.outputs["Object"], wave.inputs["Vector"])
-    links.new(wave.outputs["Fac"], ramp.inputs["Fac"])
-    links.new(ramp.outputs["Color"], bsdf.inputs["Base Color"])
+    geometry = nodes.new("ShaderNodeNewGeometry")
+    xyz = nodes.new("ShaderNodeSeparateXYZ")
+    links.new(geometry.outputs["Position"], xyz.inputs[0])
+
+    def design(axis, shift):
+        node = nodes.new("ShaderNodeMath")
+        node.operation = "MULTIPLY_ADD"
+        links.new(xyz.outputs[axis], node.inputs[0])
+        node.inputs[1].default_value = 1000.0
+        node.inputs[2].default_value = -shift
+        return node.outputs[0]
+
+    x, y = design("X", layout["dx"]), design("Y", layout["dy"])
+    step, major = layout["step"], layout["major"]
+    lines = {}
+    for name, every, half in (("minor", step, step * 0.0125), ("major", major, step * 0.025)):
+        mx, inside_x = grid_mask(nodes, links, x, every, half, layout["x0"], layout["x1"])
+        my, inside_y = grid_mask(nodes, links, y, every, half, layout["y0"], layout["y1"])
+        # A line along one axis shows only where the other axis is inside the grid.
+        across = nodes.new("ShaderNodeMath")
+        across.operation = "MAXIMUM"
+        for a, b, i in ((mx, inside_y, 0), (my, inside_x, 1)):
+            both = nodes.new("ShaderNodeMath")
+            both.operation = "MULTIPLY"
+            links.new(a, both.inputs[0])
+            links.new(b, both.inputs[1])
+            links.new(both.outputs[0], across.inputs[i])
+        lines[name] = across.outputs[0]
+    color = bsdf.inputs["Base Color"].default_value[:]
+    for name in ("minor", "major"):
+        mix = nodes.new("ShaderNodeMix")
+        mix.data_type = "RGBA"
+        links.new(lines[name], mix.inputs["Factor"])
+        if isinstance(color, tuple):
+            mix.inputs["A"].default_value = color
+        else:
+            links.new(color, mix.inputs["A"])
+        mix.inputs["B"].default_value = hex_to_linear(MAT_COLORS[name])
+        color = mix.outputs["Result"]
+    links.new(color, bsdf.inputs["Base Color"])
+    set_input(bsdf, 0.75, "Roughness")
+    return mat
+
+
+def mat_numbers(layout):
+    """The numbers in the border: along the front edge (x) and the right edge (y), facing the camera."""
+    text = principled("Mat numbers", hex_to_linear(MAT_COLORS["text"]))[0]
+    size = min(layout["border"] * 0.5, layout["label"] * 0.38) / 1000
+    b, label = layout["border"], layout["label"]
+
+    def place(mm, at_x, at_y, turn):
+        curve = bpy.data.curves.new(f"Mat {mm}", "FONT")
+        curve.body = mat_number(mm)
+        curve.size = size
+        curve.align_x = "CENTER"
+        curve.align_y = "CENTER"
+        obj = bpy.data.objects.new(curve.name, curve)
+        bpy.context.scene.collection.objects.link(obj)
+        obj.location = ((at_x + layout["dx"]) / 1000, (at_y + layout["dy"]) / 1000, 0.00005)
+        obj.rotation_euler = (0, 0, turn)
+        obj.data.materials.append(text)
+
+    value = math.ceil(layout["x0"] / label) * label
+    while value <= layout["x1"] + 1e-6:
+        place(value, value, layout["y0"] - b / 2, 0)
+        value += label
+    value = math.ceil(layout["y0"] / label) * label
+    while value <= layout["y1"] + 1e-6:
+        place(value, layout["x1"] + b / 2, value, math.pi / 2)
+        value += label
+
+
+def cutting_mat(placed):
+    offset, extent, size = placed
+    layout = mat_layout(offset, extent, size)
+    b = layout["border"]
+    x0, x1, y0, y1 = layout["x0"] - b, layout["x1"] + b, layout["y0"] - b, layout["y1"] + b
+    mat = box("Cutting mat", (x1 - x0) / 1000, (y1 - y0) / 1000, MAT_THICKNESS, 0)
+    mat.location = ((x0 + x1) / 2000 + layout["dx"] / 1000, (y0 + y1) / 2000 + layout["dy"] / 1000, 0)
+    assign(mat, mat_material(layout))
+    mat_numbers(layout)
+    return layout
+
+
+def scene_workbench(s, target, placed):
+    # The dark worktop under the cutting mat (its top at the mat's underside).
+    top = box("Worktop", 200 * s, 200 * s, 0.04, -MAT_THICKNESS)
+    mat, bsdf = principled("Worktop", hex_to_linear("#2e2e32"))
     set_input(bsdf, 0.6, "Roughness")
     assign(top, mat)
+    cutting_mat(placed)
     area_light("Key", (5 * s, -7 * s, 8 * s), target, 1000 * s * s, 4 * s, (0.894, 0.925, 1.0))
     area_light("Rim", (-4 * s, 7 * s, 5 * s), target, 1400 * s * s, 3 * s)
     world_background(hex_to_linear("#404048"), 0.4)
@@ -550,7 +692,11 @@ def main():
         finish = entry.get("finish", "matte")
         assign(obj, finish_material(f"Body{index + 1}", finish, entry.get("color"), size))
     log("scene")
-    SCENES[job["preset"]](s, centre)
+    preset = job["preset"]
+    if preset == "workbench":
+        scene_workbench(s, centre, (offset, extent, size))
+    else:
+        SCENES[preset](s, centre)
     setup_camera(
         scene, job.get("camera"), job["width"] / job["height"], offset, centre, radius, extent
     )

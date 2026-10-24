@@ -31,6 +31,7 @@ import {
 import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { AppRenderBody, AppRenderJob } from '../../platform/render';
 import { bodyColor, finishMaterial, woodTexture, worktopTexture } from './finishes';
+import { cuttingMat, MAT_THICKNESS, type MatLayout, matLayout, matTexture } from './mat';
 
 /** Where the model stands and how big it is (`place_model`'s return), millimetres. */
 export interface Placement {
@@ -109,6 +110,8 @@ export type EnvironmentKind =
 export interface SceneDeps {
   wood(): Texture;
   worktop(): Texture;
+  /** The workbench's cutting mat; `matTexture` by default (tests pass a plain one). */
+  mat?(layout: MatLayout): Texture;
   /** Gives the scene its environment (and the sky's background); returns what to dispose. */
   environment?(scene: Scene, kind: EnvironmentKind, mode: RenderMode): () => void;
 }
@@ -300,9 +303,11 @@ function scenery(
     case 'workbench': {
       const material = new MeshStandardMaterial({ roughness: 0.6 });
       material.map = deps.worktop();
-      // One tile is 50 mm: a line every 10 mm.
+      // One tile is 50 mm of plain dark noise; the cutting mat on it has the grid.
       material.map.repeat.set((200 * s) / 50, (200 * s) / 50);
       const top = slab(200 * s, 40, material);
+      // Under the mat: its top at the mat's underside.
+      top.position.z -= MAT_THICKNESS;
       top.name = 'Worktop';
       objects.push(top);
       addLamp({
@@ -375,6 +380,11 @@ export function buildScene(
   for (const object of objects) {
     scene.add(object);
     if (object instanceof DirectionalLight) scene.add(object.target);
+  }
+  if (job.preset === 'workbench') {
+    // The mat lies on the worktop, its top at z = 0, where the model stands.
+    const layout = matLayout(placement);
+    scene.add(cuttingMat(layout, (deps.mat ?? matTexture)(layout)));
   }
   if (mode === 'raster' && key) castShadows(key, placement);
   if (background !== undefined)

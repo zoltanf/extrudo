@@ -3,6 +3,7 @@ import { RENDER_PRESETS } from '@extrudo/core';
 import { Box3, DirectionalLight, Mesh, RectAreaLight, type Scene, Texture } from 'three';
 import { describe, expect, it } from 'vitest';
 import type { AppRenderJob } from '../../platform/render';
+import { MAT_THICKNESS } from './mat';
 import { buildScene, placeModel, sweepGeometry, WATTS_TO_AREA } from './scenes';
 
 /** A box from (10, 20, 5) to (50, 40, 25) mm: 40 × 20 × 20. */
@@ -114,16 +115,25 @@ describe('buildScene', () => {
     expect(lights).toHaveLength(3);
   });
 
-  it('puts the table and the workbench on 200·s slabs whose top is z = 0', () => {
-    for (const [preset, name, thick] of [
-      ['table', 'Table', 30],
-      ['workbench', 'Worktop', 40],
+  it('puts the table and the workbench on 200·s slabs, the model and the mat on z = 0', () => {
+    for (const [preset, name, thick, top] of [
+      ['table', 'Table', 30, 0],
+      ['workbench', 'Worktop', 40, -MAT_THICKNESS],
     ] as const) {
       const { scene } = buildScene(job(preset), undefined, deps);
       const box = worldBox(named(scene, name));
-      expect(box.max.z).toBeCloseTo(0, 9);
-      expect(box.min.z).toBeCloseTo(-thick, 9);
+      expect(box.max.z).toBeCloseTo(top, 9);
+      expect(box.min.z).toBeCloseTo(top - thick, 9);
       expect(box.max.x - box.min.x).toBeCloseTo(200 * 50, 6);
+    }
+    const { scene } = buildScene(job('workbench'), undefined, deps);
+    expect(worldBox(named(scene, 'Cutting mat')).max.z).toBeCloseTo(0, 9);
+  });
+
+  it('lays the cutting mat on the workbench only', () => {
+    for (const preset of ['studio', 'table', 'outdoor'] as const) {
+      const { scene } = buildScene(job(preset), undefined, deps);
+      expect(scene.getObjectByName('Cutting mat')).toBeUndefined();
     }
   });
 
