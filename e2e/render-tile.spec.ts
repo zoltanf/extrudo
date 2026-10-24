@@ -31,10 +31,10 @@ test('Render Picture renders a draft of the wall bracket in the browser', async 
   const picture = dialog.getByRole('img', { name: 'Rendered picture of Wall bracket' });
   await expect(picture).toBeVisible({ timeout: 60_000 });
   // A real PNG of the chosen size.
-  const size = await picture.evaluate((img: HTMLImageElement) => [
-    img.naturalWidth,
-    img.naturalHeight,
-  ]);
+  const size = await picture.evaluate((img) => {
+    const { naturalWidth, naturalHeight } = img as { naturalWidth: number; naturalHeight: number };
+    return [naturalWidth, naturalHeight];
+  });
   expect(size).toEqual([1280, 720]);
   await picture.click();
   await expect(dialog.locator('button[aria-pressed="true"]')).toBeVisible();
