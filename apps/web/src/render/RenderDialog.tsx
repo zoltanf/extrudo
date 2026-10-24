@@ -183,6 +183,7 @@ export function RenderForm({
   const [perBody, setPerBody] = useState(false);
   const listOpen = perBody || common === undefined;
   const [sceneOpen, setSceneOpen] = useState(true);
+  const [bodiesOpen, setBodiesOpen] = useState(true);
   // Saving the render settings changes the document without changing any body, so only a
   // running recompute makes the model wait.
   const current = status === 'ready';
@@ -421,39 +422,49 @@ export function RenderForm({
         </div>
       </Section>
 
-      <fieldset className="flex flex-col gap-1" disabled={busy}>
-        <legend className="mb-1 font-semibold">Bodies</legend>
-        {shown.length === 0 && <p className="text-sm text-muted">No bodies are shown.</p>}
-        {shown.length === 1 && shown[0] && (
-          <FinishRow body={shown[0]} chosen={chosen} setChosen={setChosen} />
-        )}
+      <Section
+        label="Bodies"
+        open={bodiesOpen}
+        onToggle={() => setBodiesOpen(!bodiesOpen)}
+        disabled={busy}
+        always={
+          <>
+            {shown.length === 0 && <p className="text-sm text-muted">No bodies are shown.</p>}
+            {shown.length === 1 && shown[0] && (
+              <FinishRow body={shown[0]} chosen={chosen} setChosen={setChosen} />
+            )}
+            {shown.length > 1 && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="min-w-0 flex-1 truncate">All {shown.length} bodies</span>
+                <div className="w-36 shrink-0">
+                  <Select
+                    aria-label="Finish of all bodies"
+                    value={common ?? 'mixed'}
+                    onChange={(event) =>
+                      setChosen((c) =>
+                        withFinishForAll(c, shownIds, event.target.value as RenderFinish),
+                      )
+                    }
+                  >
+                    {common === undefined && (
+                      <option value="mixed" disabled>
+                        Mixed
+                      </option>
+                    )}
+                    {RENDER_FINISHES.map((finish) => (
+                      <option key={finish} value={finish} title={RENDER_FINISH_INFO[finish].hint}>
+                        {RENDER_FINISH_INFO[finish].label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+            )}
+          </>
+        }
+      >
         {shown.length > 1 && (
           <>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="min-w-0 flex-1 truncate">All {shown.length} bodies</span>
-              <div className="w-36 shrink-0">
-                <Select
-                  aria-label="Finish of all bodies"
-                  value={common ?? 'mixed'}
-                  onChange={(event) =>
-                    setChosen((c) =>
-                      withFinishForAll(c, shownIds, event.target.value as RenderFinish),
-                    )
-                  }
-                >
-                  {common === undefined && (
-                    <option value="mixed" disabled>
-                      Mixed
-                    </option>
-                  )}
-                  {RENDER_FINISHES.map((finish) => (
-                    <option key={finish} value={finish} title={RENDER_FINISH_INFO[finish].hint}>
-                      {RENDER_FINISH_INFO[finish].label}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </div>
             {common !== undefined && (
               <button
                 type="button"
@@ -474,7 +485,7 @@ export function RenderForm({
             )}
           </>
         )}
-      </fieldset>
+      </Section>
 
       {stage.kind === 'meshing' && (
         <Progress
@@ -525,13 +536,17 @@ function Section({
   open,
   onToggle,
   summary,
+  always,
   disabled,
   children,
 }: {
   label: string;
   open: boolean;
   onToggle(): void;
-  summary: string;
+  /** Collapsed, this line stands in for the children. */
+  summary?: string;
+  /** Shown under the heading whether open or not. */
+  always?: ReactNode;
   disabled: boolean;
   children: ReactNode;
 }) {
@@ -545,13 +560,14 @@ function Section({
       >
         {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         {label}
-        {!open && <span className="ml-2 truncate font-normal text-sm text-muted">{summary}</span>}
+        {!open && summary && (
+          <span className="ml-2 truncate font-normal text-sm text-muted">{summary}</span>
+        )}
       </button>
-      {open && (
-        <fieldset className="flex flex-col gap-3" aria-label={label} disabled={disabled}>
-          {children}
-        </fieldset>
-      )}
+      <fieldset className="flex flex-col gap-2" aria-label={label} disabled={disabled}>
+        {always}
+        {open && children}
+      </fieldset>
     </div>
   );
 }

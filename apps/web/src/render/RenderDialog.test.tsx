@@ -210,6 +210,21 @@ describe('many bodies', () => {
     expect((screen.getByLabelText(/High/) as HTMLInputElement).checked).toBe(true);
   });
 
+  it('folds the Bodies group under the all-bodies row', () => {
+    setup({ bodies: two() });
+    const heading = screen.getByRole('button', { name: /^Bodies/ });
+    expect(heading.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Set per body…' }));
+    expect(screen.getByLabelText('Finish of Lid')).toBeTruthy();
+    fireEvent.click(heading);
+    expect(heading.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.getByLabelText('Finish of all bodies')).toBeTruthy();
+    expect(screen.queryByLabelText('Finish of Lid')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Hide the list' })).toBeNull();
+    fireEvent.click(heading);
+    expect(screen.getByLabelText('Finish of Lid')).toBeTruthy();
+  });
+
   it('opens the list by itself when the stored finishes differ', () => {
     const store = createDocumentStore(createDocument());
     store
