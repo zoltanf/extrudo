@@ -3398,3 +3398,13 @@ throttled to a frame and never survives a result or a failure; the wait notice s
 300 ms, the recompute notice wins over it, and a quiet wait shows neither notice nor cursor; the
 notice keeps `pointer-events: none` and `aria-live="polite"`. e2e:
 `e2e/kernel-waits.spec.ts`.
+
+ADR-0101 §6.2 (2026-10-24, later): **the trace loop runs on a frame or a timer.** `pathTrace.ts`'s
+`nextFrame` runs the next step on the next animation frame or after `FRAME_FALLBACK_MS` (20 ms),
+whichever comes first (once; the other is cancelled). A covered or off-screen window gets no
+animation frames although `visibilityState` is "visible", so a frame-only loop crawled; timers keep
+running there. A hidden tab throttles both, and the render nearly stops until the tab is shown
+(the guide says so). Measured the same day: Standard 128/5 against 64/5, 64/3, 32/5 on a GTX
+1050 Ti; time scales with samples, 3 bounces saves 5–18 %, and below 128 samples the grain is
+above the denoise threshold (a sandy face), so Standard stays 128 samples, 5 bounces. On a
+laptop's integrated Radeon, Standard is 29 s (wooden table) to 84 s (studio) at 1280×720.

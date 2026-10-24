@@ -96,8 +96,9 @@ seconds, the line also says about how long is left ("Rendering… 43 % · about 
 from how fast the bar has moved so far. A Draft render is over in seconds, and its bar doesn't
 count.
 **Cancel** stops a render; the dialog refuses to close while one runs — Cancel it first.
-In the app, Standard and High render only while the app is on screen: in a browser tab you
-switch away from, or a minimised window, the render waits and carries on when you come back.
+In the app, Standard and High keep rendering while the window is covered by others, but in a
+browser tab you switch away from, or a minimised window, they nearly stop (the browser holds
+them back) and speed up again when you come back.
 
 When it is done the picture is shown in a wider dialog; click it to see it at its real size (scroll to look around, click again to fit it). Three buttons: **Save PNG…** saves it (the default
 name is `<design> - <scene>.png`, e.g. `Pen holder - Wooden table.png`), **Copy** puts it on the

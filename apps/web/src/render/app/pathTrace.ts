@@ -83,7 +83,7 @@ export interface TraceOptions {
   height: number;
   onProgress(fraction: number): void;
   cancelled(): boolean;
-  /** requestAnimationFrame by default; tests inject one that runs at once. */
+  /** `nextFrame` by default; tests inject one that runs at once. */
   frame?(callback: () => void): void;
   now?(): number;
   /**
@@ -91,6 +91,39 @@ export interface TraceOptions {
    * which on a real GPU is only the time to queue it.
    */
   fence?: GpuFence;
+}
+
+/** How long the loop waits for an animation frame before a timer runs it instead (ms). */
+export const FRAME_FALLBACK_MS = 20;
+
+/**
+ * Runs `callback` once, on the next animation frame or after
+ * `FRAME_FALLBACK_MS`, whichever comes first. A covered or off-screen window
+ * gets no animation frames although it counts as visible, so the render would
+ * crawl; timers keep running there. A hidden tab throttles both: the render
+ * then waits, as the guide says.
+ */
+export function nextFrame(
+  callback: () => void,
+  raf: (run: () => void) => number = (run) => requestAnimationFrame(run),
+  cancelRaf: (id: number) => void = (id) => cancelAnimationFrame(id),
+  timer: (run: () => void, ms: number) => unknown = (run, ms) => setTimeout(run, ms),
+  cancelTimer: (id: unknown) => void = (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
+): void {
+  let done = false;
+  let frameId = 0;
+  let timerId: unknown;
+  const once = (cancel: () => void) => () => {
+    if (done) return;
+    done = true;
+    cancel();
+    callback();
+  };
+  frameId = raf(once(() => cancelTimer(timerId)));
+  timerId = timer(
+    once(() => cancelRaf(frameId)),
+    FRAME_FALLBACK_MS,
+  );
 }
 
 /** The most tiles sent in one frame; the batch doubles while the GPU keeps up. */
@@ -105,7 +138,7 @@ const MAX_BATCH = 64;
  * instead (`adaptTiles`), so a slow GPU never gets more than ~40 ms at once.
  */
 export function tracePicture(tracer: TracerLike, options: TraceOptions): Promise<boolean> {
-  const frame = options.frame ?? ((callback) => requestAnimationFrame(callback));
+  const frame = options.frame ?? ((callback) => nextFrame(callback));
   const now = options.now ?? (() => performance.now());
   const fence = options.fence;
   let tiles = chooseTiles(options.width, options.height);
