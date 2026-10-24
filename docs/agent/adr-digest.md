@@ -3279,9 +3279,8 @@ command only when they changed; the picture is never stored. `Platform.render?`
 ADR-0101, slice 3 (the UI, 2026-10-23): `apps/web/src/render/renderJob.ts` holds the pure
 helpers (`currentRenderSettings`, `finishOf`, `withFinish`, `settingsChanged`, `jobCamera`,
 `buildRenderJob`, `renderFileName`); `RenderDialog.tsx` is the dialog (`RenderForm` is its body,
-tested in jsdom with Testing Library over a fake `BlenderRenderer`). **Rules:** the `render` tool
-is ready only where `platform.render` exists (`AppShell`'s `canRender`), and the dialog is only
-mounted then; Render dispatches `setRenderSettings` only when `settingsChanged` (one undo step),
+tested in jsdom with Testing Library over a fake `BlenderRenderer`). **Rules:** (superseded by §6
+below: the tool is ready and the dialog mounted everywhere) Render dispatches `setRenderSettings` only when `settingsChanged` (one undo step),
 meshes every **shown** body at `RESOLUTIONS.medium`, builds the job with `writeObj` and hands it
 to `platform.render.render`; closing is refused while meshing or rendering (Esc and overlay
 included), Cancel stops it and unmounting the form cancels a running render. The picture is an
@@ -3289,3 +3288,33 @@ object URL revoked on Render again and on close; Save uses `files.download`. The
 is the string preference `blender.path` (Settings › Desktop; empty means search). The blender.org
 link goes through `platform.openLink`, so the desktop allow-list (`apps/desktop/src/main/links.ts`)
 must contain `www.blender.org`.
+
+ADR-0101 §6 (P6-16, slice 1, 2026-10-24): **the in-app renderer and the engine choice.** The
+engine lives in `apps/web/src/render/app/`: `appRenderer.ts` (`createAppRenderer()`, a
+`PictureRenderer` with `dispose()`; `makeRenderer`/`draw` injectable for tests), `scenes.ts`
+(`placeModel` = `place_model`, `buildScene` with the four presets, `sweepGeometry`,
+`bodyGeometry`), `finishes.ts` (`finishMaterial`, `woodTexture`, `worktopTexture`), `camera.ts`
+(`fitDistance` = `fit_distance`, `viewToThreeCamera`). Types in `platform/render.ts`:
+`PictureRenderer<Job>`, `BlenderRenderer extends PictureRenderer<RenderJob>`, `AppRenderJob`
+(the export meshes, `ExportMesh`: no normals, so `bodyGeometry` creases them at 30°).
+`renderJob.ts` adds `engineOf`, `withEngine`, `buildAppJob`. **Rules:** the Render Picture tile
+is ready everywhere (`tools.ts` has no `comesWith`/`unavailable`; `AppShell` mounts the dialog
+always with `appRender`, `render` only where `platform.render` exists). The "Render with" row
+exists only with `render`; its Blender radio is enabled only when `status()` says `found`, and
+`engineOf` picks Blender only when stored **and** found, else the app. `engine` is stored only
+as `blender` (`withEngine(…, 'app')` removes the key, `settingsChanged` reads absent as `app`), so
+a design that never chose stays unchanged; a stored `blender` is kept when the app renders it
+elsewhere. Render's scene is code: **no texture or image files** (wood and worktop are
+`CanvasTexture`s drawn at runtime; environments are `RoomEnvironment` through `PMREMGenerator`
+and three's `Sky` baked to a cube map). The render scene is millimetres, **Z up only inside
+it** (cameras get `up` (0, 0, 1); the Y-up environments are turned with
+`environmentRotation`/`backgroundRotation`); `Object3D.DEFAULT_UP` and the viewport are never
+touched. The engine draws on its **own hidden canvas** and `WebGLRenderer`, made on the first
+render and freed by `dispose()` when `AppShell` unmounts; **every render disposes** its targets,
+geometries, materials, textures, shadow maps and environment (`BuiltScene.dispose`). Draft =
+one frame into a 4× MSAA HalfFloat target, then `OutputPass` (ACES, sRGB) into an 8-bit target
+(three tone-maps only when drawing to the canvas), `readRenderTargetPixelsAsync`, flipped,
+PNG via a 2D canvas. Sizes above `capabilities.maxTextureSize` are refused naming the limit;
+a second render while one runs is refused. Numbers follow `render.py` (sizes ×s, light
+positions, `fit_distance`); light watts × `WATTS_TO_THREE`. Standard and High render like
+Draft until slice 2 (`// slice 2: the path tracer`).

@@ -63,20 +63,28 @@ const wobble = (u: number, v: number) =>
   0.3 * Math.sin(TAU * (5 * u - 3 * v) + 1.3) +
   0.2 * Math.sin(TAU * (11 * u + 7 * v) + 0.7);
 
+/** Grain lines across one tile of `woodTexture`. */
+export const WOOD_LINES = 24;
+
 /**
- * Wood grain: stripes of sin(v + noise) running along u, from 0.4 (the dark
- * grain, `render.py`'s `darker(color, 0.4)`) to 1. Grey, so the material's
- * colour (the body's) tints it. Repeat 4.
+ * Wood grain: thin dark lines (sin(v + noise), the noise wobbling them) on
+ * lighter wood, from 0.4 (`render.py`'s `darker(color, 0.4)`) to 1. Grey, so
+ * the material's colour (the body's) tints it. A tile holds `WOOD_LINES`
+ * lines along u; repeat it more across the grain than along it (the script
+ * stretches its noise 8× along the grain).
  */
 export function woodTexture(): Texture {
   return repeating(
     shadeCanvas((u, v) => {
-      const t = 0.5 + 0.5 * Math.sin(TAU * 9 * v + 2.2 * wobble(u, v));
-      // Mostly light wood with narrower dark lines, like the script's ramp (0.42–0.58).
-      const k = Math.min(1, Math.max(0, (t - 0.25) / 0.5));
-      return 0.4 + 0.6 * k;
+      // Uneven spacing: the phase drifts with a slower wave across the grain.
+      const phase = TAU * WOOD_LINES * v + 2.5 * Math.sin(TAU * 5 * v) + 3 * wobble(u, v);
+      const t = 0.5 + 0.5 * Math.sin(phase);
+      // Mostly light wood; the dark lines are the top of each wave (the script's ramp, 0.42–0.58).
+      const line = Math.min(1, Math.max(0, (t - 0.8) / 0.2)) ** 2;
+      const tone = 0.8 + 0.2 * (0.5 + 0.5 * Math.sin(TAU * 7 * v + 2 * wobble(v, u)));
+      return 0.4 + (tone - 0.4) * (1 - 0.45 * line);
     }),
-    4,
+    1,
   );
 }
 
@@ -148,6 +156,8 @@ export function finishMaterial(
     case 'wood':
       material.roughness = 0.5;
       material.map = textures.wood();
+      // UVs are in model sizes (`bodyGeometry`): about ten lines across the model.
+      material.map.repeat.set(0.05, 0.4);
       break;
   }
   return material;

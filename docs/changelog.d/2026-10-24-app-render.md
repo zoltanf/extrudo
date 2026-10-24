@@ -1,0 +1,1 @@
+- 2026-10-24 · **Render Picture in the browser**: the picture is rendered by the app itself when Blender isn't there — on the web, and in the desktop app by choice.

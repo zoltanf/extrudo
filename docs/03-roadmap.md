@@ -1422,6 +1422,19 @@ end to end, faster than in established desktop CAD.
   *Slices:* (1) OBJ writer, enums, schema, command, platform types; (2) main:
   detection, launch, `render.py` scenes and finishes, channels; (3) the tile,
   dialog, progress, result, Settings row; (4) docs.
+- [ ] **P6-16 In-app rendering** (owner, 2026-10-24; ADR-0101 §6). The Render Picture tile
+  works in the browser and without Blender: the app renders the same scenes and finishes with
+  three.js (draft) and three-gpu-pathtracer (standard, high); the desktop dialog offers
+  "In the app" or "Blender". Acceptance: the tile is ready on the web and the desktop; on the
+  web the dialog has no "Render with" row and renders in the app, in each preset and finish,
+  at each size the GPU allows (a larger one is refused naming the limit); on the desktop the
+  row offers "In the app" and "Blender", Blender disabled unless found, and the choice is kept
+  in the design (`render.engine`, absent means `app`; `docs/file-format.md` §4.9); both engines
+  frame the same picture (the automatic camera and a view's camera, the scenes sized like
+  `render.py`'s); Standard and High trace paths with progress and Cancel; every render frees
+  its GPU objects; the web e2e renders a draft of the wall bracket; the guide page says what
+  each engine does. *Deps:* P6-15. *Slices:* (1) types, schema, the draft engine, the engine
+  choice, the web e2e; (2) the path tracer for Standard and High; (3) docs.
 
 ## Phase 7 — Later (lowest priority, after everything else)
 

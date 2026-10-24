@@ -84,7 +84,7 @@ export function placeModel(bodies: readonly AppRenderBody[]): Placement {
  * same at every model size) to three's units. Calibrated so a matte white
  * body facing the studio's key reads about 0.8 grey in a draft at exposure 1.
  */
-export const WATTS_TO_THREE = 1 / 800;
+export const WATTS_TO_THREE = 1 / 1200;
 /** The outdoor sun (the script's 6 W/m² Sun lamp) in three's units. */
 export const SUN_INTENSITY = 3;
 
@@ -235,15 +235,16 @@ function scenery(preset: RenderPreset, s: number, target: Vector3, deps: SceneDe
       key = light(v(6 * s, -6 * s, 8 * s), target, 2000);
       objects.push(sweep, key, light(v(-7 * s, -5 * s, 4 * s), target, 400));
       objects.push(light(v(-2 * s, 8 * s, 6 * s), target, 600));
-      environment = { kind: 'room', intensity: 0.8 };
+      // 0.5, not 0.8: brighter washes the white-on-white shot flat.
+      environment = { kind: 'room', intensity: 0.5 };
       background = 0xf2f2f2;
       break;
     }
     case 'table': {
       const material = new MeshStandardMaterial({ color: bodyColor('#8b5a2b'), roughness: 0.4 });
       material.map = deps.wood();
-      // The script's grain: 1.2 / s per metre, a few lines across the table.
-      material.map.repeat.set(12, 12);
+      // A grain line about every s/7 (the script's 1.2 / s noise scale), stretched along x.
+      material.map.repeat.set(6, 90);
       const table = slab(200 * s, 30, material);
       table.name = 'Table';
       key = light(v(-8 * s, -6 * s, 7 * s), target, 1500, bodyColor('#fff1e0'));
