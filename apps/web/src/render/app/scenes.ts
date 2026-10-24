@@ -3,9 +3,11 @@
  * the model exactly like `render.py`'s (`place_model`, `SCENES`), in
  * millimetres with Z up. The model stands on z = 0 centred on x/y; every size
  * and light position scales with `s`, the model's largest side (at least
- * 50 mm, the script's 0.05 m). Lights: three has no shadowed area lights, so
- * each of the script's area lights is a `DirectionalLight` from the same place
- * towards the model, and only the key casts shadows.
+ * 50 mm, the script's 0.05 m). Lights: raster mode (Draft) has no shadowed
+ * area lights, so each of the script's area lights is a `DirectionalLight`
+ * from the same place towards the model, and only the key casts shadows; trace
+ * mode (Standard and High, ADR-0101 §6.2) keeps the script's area lights as
+ * `RectAreaLight`s (soft shadows) with the script's sizes.
  */
 import type { RenderPreset } from '@extrudo/core';
 import {
@@ -21,6 +23,7 @@ import {
   MeshStandardMaterial,
   type Object3D,
   PlaneGeometry,
+  RectAreaLight,
   Scene,
   type Texture,
   Vector3,
@@ -85,8 +88,18 @@ export function placeModel(bodies: readonly AppRenderBody[]): Placement {
  * body facing the studio's key reads about 0.8 grey in a draft at exposure 1.
  */
 export const WATTS_TO_THREE = 1 / 1200;
+/**
+ * Area lights' watts to three's units (nits): a RectAreaLight's intensity is
+ * radiance, so this is a different scale from `WATTS_TO_THREE`. Calibrated so
+ * a Standard render of the studio has the matte white body about as bright as
+ * the draft (the same PNG comparison), independent of the light's size.
+ */
+export const WATTS_TO_AREA = 1 / 160;
 /** The outdoor sun (the script's 6 W/m² Sun lamp) in three's units. */
 export const SUN_INTENSITY = 3;
+
+/** How the scene is drawn: raster (Draft) or trace (Standard and High). */
+export type RenderMode = 'raster' | 'trace';
 
 /** How a preset's environment is lit; the renderer makes it (it needs the GL context). */
 export type EnvironmentKind =
@@ -97,15 +110,15 @@ export interface SceneDeps {
   wood(): Texture;
   worktop(): Texture;
   /** Gives the scene its environment (and the sky's background); returns what to dispose. */
-  environment?(scene: Scene, kind: EnvironmentKind): () => void;
+  environment?(scene: Scene, kind: EnvironmentKind, mode: RenderMode): () => void;
 }
 
 const DEFAULT_DEPS: SceneDeps = { wood: woodTexture, worktop: worktopTexture };
 
 export interface BuiltScene {
   scene: Scene;
-  /** The light that casts the shadows. */
-  key: DirectionalLight;
+  /** The light that casts the shadows (raster mode only; the tracer needs none). */
+  key?: DirectionalLight;
   placement: Placement;
   environment: EnvironmentKind;
   /** Frees every geometry, material and texture of the scene, and the environment. */
@@ -188,17 +201,28 @@ function slab(side: number, thick: number, material: MeshStandardMaterial | Mesh
   return mesh;
 }
 
-/** A light from `position` towards `target`, `watts` the script's energy. */
-function light(
-  position: Vector3,
-  target: Vector3,
-  watts: number,
-  color: Color | number = 0xffffff,
-) {
-  const lamp = new DirectionalLight(color, watts * WATTS_TO_THREE);
-  lamp.position.copy(position);
-  lamp.target.position.copy(target);
-  return lamp;
+/** A light from `position` towards `target`, `watts` the script's energy, `size` (mm) its side. */
+interface LampSpec {
+  position: Vector3;
+  watts: number;
+  /** The script's `area_light` size in millimetres; ignored by a directional lamp. */
+  size: number;
+  color?: Color | number;
+}
+
+/** One of the script's lights: a soft area light when tracing, a directional one when rasterising. */
+function lamp(spec: LampSpec, target: Vector3, mode: RenderMode): RectAreaLight | DirectionalLight {
+  const color = spec.color ?? 0xffffff;
+  if (mode === 'trace') {
+    const area = new RectAreaLight(color, spec.watts * WATTS_TO_AREA, spec.size, spec.size);
+    area.position.copy(spec.position);
+    area.lookAt(target);
+    return area;
+  }
+  const directional = new DirectionalLight(color, spec.watts * WATTS_TO_THREE);
+  directional.position.copy(spec.position);
+  directional.target.position.copy(target);
+  return directional;
 }
 
 /** The key casts the shadows: its shadow camera covers the model's box ×1.5. */
@@ -220,11 +244,24 @@ function castShadows(key: DirectionalLight, placement: Placement) {
   camera.updateProjectionMatrix();
 }
 
-function scenery(preset: RenderPreset, s: number, target: Vector3, deps: SceneDeps) {
+function scenery(
+  preset: RenderPreset,
+  s: number,
+  target: Vector3,
+  deps: SceneDeps,
+  mode: RenderMode,
+) {
   const objects: Object3D[] = [];
-  let key: DirectionalLight;
+  let key: DirectionalLight | undefined;
   let environment: EnvironmentKind;
   let background: number | undefined;
+  /** The first light of each preset is the key (it casts the shadows in raster mode). */
+  const addLamp = (spec: LampSpec) => {
+    const made = lamp(spec, target, mode);
+    if (made instanceof DirectionalLight && key === undefined) key = made;
+    objects.push(made);
+    return made;
+  };
   switch (preset) {
     case 'studio': {
       const material = new MeshStandardMaterial({ color: bodyColor('#f2f2f2'), roughness: 0.7 });
@@ -232,9 +269,10 @@ function scenery(preset: RenderPreset, s: number, target: Vector3, deps: SceneDe
       const sweep = new Mesh(sweepGeometry(s), material);
       sweep.name = 'Sweep';
       sweep.receiveShadow = true;
-      key = light(v(6 * s, -6 * s, 8 * s), target, 2000);
-      objects.push(sweep, key, light(v(-7 * s, -5 * s, 4 * s), target, 400));
-      objects.push(light(v(-2 * s, 8 * s, 6 * s), target, 600));
+      objects.push(sweep);
+      addLamp({ position: v(6 * s, -6 * s, 8 * s), watts: 2000, size: 4 * s });
+      addLamp({ position: v(-7 * s, -5 * s, 4 * s), watts: 400, size: 6 * s });
+      addLamp({ position: v(-2 * s, 8 * s, 6 * s), watts: 600, size: 3 * s });
       // 0.5, not 0.8: brighter washes the white-on-white shot flat.
       environment = { kind: 'room', intensity: 0.5 };
       background = 0xf2f2f2;
@@ -247,8 +285,14 @@ function scenery(preset: RenderPreset, s: number, target: Vector3, deps: SceneDe
       material.map.repeat.set(6, 90);
       const table = slab(200 * s, 30, material);
       table.name = 'Table';
-      key = light(v(-8 * s, -6 * s, 7 * s), target, 1500, bodyColor('#fff1e0'));
-      objects.push(table, key, light(v(6 * s, -4 * s, 3 * s), target, 250));
+      objects.push(table);
+      addLamp({
+        position: v(-8 * s, -6 * s, 7 * s),
+        watts: 1500,
+        size: 6 * s,
+        color: bodyColor('#fff1e0'),
+      });
+      addLamp({ position: v(6 * s, -4 * s, 3 * s), watts: 250, size: 5 * s });
       environment = { kind: 'room', intensity: 0.5 };
       background = 0x2a1d14;
       break;
@@ -260,8 +304,14 @@ function scenery(preset: RenderPreset, s: number, target: Vector3, deps: SceneDe
       material.map.repeat.set((200 * s) / 50, (200 * s) / 50);
       const top = slab(200 * s, 40, material);
       top.name = 'Worktop';
-      key = light(v(5 * s, -7 * s, 8 * s), target, 1000, bodyColor('#e4ecff'));
-      objects.push(top, key, light(v(-4 * s, 7 * s, 5 * s), target, 1400));
+      objects.push(top);
+      addLamp({
+        position: v(5 * s, -7 * s, 8 * s),
+        watts: 1000,
+        size: 4 * s,
+        color: bodyColor('#e4ecff'),
+      });
+      addLamp({ position: v(-4 * s, 7 * s, 5 * s), watts: 1400, size: 3 * s });
       environment = { kind: 'room', intensity: 0.35 };
       background = 0x1b1d21;
       break;
@@ -274,6 +324,7 @@ function scenery(preset: RenderPreset, s: number, target: Vector3, deps: SceneDe
       const elevation = (40 * Math.PI) / 180;
       const rotation = (300 * Math.PI) / 180;
       // The sky's sun sits at `elevation` above the horizon, `rotation` around Z.
+      // The sun is a DirectionalLight in both modes: the tracer takes one too.
       const direction = v(
         -Math.sin(rotation) * Math.cos(elevation),
         -Math.cos(rotation) * Math.cos(elevation),
@@ -293,12 +344,14 @@ function scenery(preset: RenderPreset, s: number, target: Vector3, deps: SceneDe
 /**
  * The scene of a job: the bodies placed like `place_model`, the preset's
  * scenery and lights, and its environment through `deps.environment` (left
- * out without one, as in unit tests).
+ * out without one, as in unit tests). `mode` picks the lights: soft area
+ * lights for the tracer, directional ones for the rasteriser.
  */
 export function buildScene(
   job: AppRenderJob,
   placement: Placement = placeModel(job.bodies),
   deps: SceneDeps = DEFAULT_DEPS,
+  mode: RenderMode = 'raster',
 ): BuiltScene {
   const scene = new Scene();
   for (const body of job.bodies) {
@@ -317,15 +370,16 @@ export function buildScene(
     placement.s,
     placement.centre,
     deps,
+    mode,
   );
   for (const object of objects) {
     scene.add(object);
     if (object instanceof DirectionalLight) scene.add(object.target);
   }
-  castShadows(key, placement);
+  if (mode === 'raster' && key) castShadows(key, placement);
   if (background !== undefined)
     scene.background = bodyColor(`#${background.toString(16).padStart(6, '0')}`);
-  const disposeEnvironment = deps.environment?.(scene, environment);
+  const disposeEnvironment = deps.environment?.(scene, environment, mode);
   scene.updateMatrixWorld(true);
   return {
     scene,

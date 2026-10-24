@@ -10,6 +10,11 @@
  * colour space only when it draws to the canvas, not to a render target.
  * Everything a render makes is disposed when it ends; the `WebGLRenderer`
  * lives until `dispose()`.
+ *
+ * Standard and High trace the same scene with three-gpu-pathtracer (§6.2): a
+ * `WebGLPathTracer` per renderer (made on the first traced render, kept until
+ * `dispose()`), one tile per animation frame, then the tracer's linear HDR
+ * target through the same `OutputPass` and read-back.
  */
 import {
   ACESFilmicToneMapping,
@@ -27,6 +32,7 @@ import {
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { WebGLPathTracer } from 'three-gpu-pathtracer';
 import type {
   AppRenderJob,
   PictureRenderer,
@@ -35,7 +41,8 @@ import type {
 } from '../../platform/render';
 import { viewToThreeCamera } from './camera';
 import { woodTexture, worktopTexture } from './finishes';
-import { buildScene, type EnvironmentKind } from './scenes';
+import { BOUNCES, SAMPLES, type TracerLike, tracePicture } from './pathTrace';
+import { buildScene, type EnvironmentKind, type RenderMode } from './scenes';
 
 export interface AppRenderer extends PictureRenderer {
   /** Frees the WebGL context (the dialog calls it when it goes away). */
@@ -62,6 +69,25 @@ export interface AppRendererOptions {
 }
 
 const BUSY = 'A render is already running.';
+
+// One WebGLPathTracer per renderer (it prints a deprecation warning when made,
+// and builds its BVH and uniforms): made on the first traced render, kept
+// across renders, freed with the renderer.
+const tracers = new WeakMap<object, WebGLPathTracer>();
+
+function getTracer(renderer: WebGLRenderer): WebGLPathTracer {
+  let tracer = tracers.get(renderer);
+  if (!tracer) {
+    tracer = new WebGLPathTracer(renderer);
+    tracers.set(renderer, tracer);
+  }
+  return tracer;
+}
+
+function disposeTracer(renderer: object): void {
+  tracers.get(renderer)?.dispose();
+  tracers.delete(renderer);
+}
 
 /** The engine behind the Render dialog's "In the app" (ADR-0101 §6.3). */
 export function createAppRenderer(options: AppRendererOptions = {}): AppRenderer {
@@ -99,7 +125,10 @@ export function createAppRenderer(options: AppRendererOptions = {}): AppRenderer
     },
     dispose() {
       cancelled = true;
-      renderer?.dispose();
+      if (renderer) {
+        disposeTracer(renderer);
+        renderer.dispose();
+      }
       renderer = undefined;
     },
   };
@@ -128,19 +157,32 @@ const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
  */
 const Z_UP_ROTATION = Math.PI / 2;
 
-/** Makes a preset's environment with this renderer; returns its disposer. */
+/**
+ * Makes a preset's environment with this renderer; returns its disposer. Both
+ * modes bake it into a `WebGLCubeRenderTarget` (256, HalfFloat) with a
+ * `CubeCamera`: the rasteriser turns the cube into a PMREM texture (three needs
+ * one for `MeshStandardMaterial`), the tracer takes the cube directly (a PMREM
+ * texture is not supported, ADR-0101 §6.2).
+ */
 function makeEnvironment(renderer: WebGLRenderer) {
-  return (scene: Scene, kind: EnvironmentKind) => {
-    const pmrem = new PMREMGenerator(renderer);
+  return (scene: Scene, kind: EnvironmentKind, mode: RenderMode) => {
     scene.environmentRotation.set(Z_UP_ROTATION, 0, 0);
     scene.backgroundRotation.set(Z_UP_ROTATION, 0, 0);
     if (kind.kind === 'room') {
       const room = new RoomEnvironment();
-      const target = pmrem.fromScene(room, 0.04);
+      const cube = new WebGLCubeRenderTarget(256, { type: HalfFloatType });
+      new CubeCamera(1, 10000, cube).update(renderer, room);
       room.dispose();
-      pmrem.dispose();
-      scene.environment = target.texture;
       scene.environmentIntensity = kind.intensity;
+      if (mode === 'trace') {
+        scene.environment = cube.texture;
+        return () => cube.dispose();
+      }
+      const pmrem = new PMREMGenerator(renderer);
+      const target = pmrem.fromCubemap(cube.texture);
+      pmrem.dispose();
+      cube.dispose();
+      scene.environment = target.texture;
       return () => target.dispose();
     }
     // Outdoor: three's sky (Preetham), baked once into a cube map, is the background and
@@ -164,12 +206,17 @@ function makeEnvironment(renderer: WebGLRenderer) {
     new CubeCamera(1, 10000, cube).update(renderer, skyScene);
     sky.geometry.dispose();
     sky.material.dispose();
-    const target = pmrem.fromCubemap(cube.texture);
-    pmrem.dispose();
     scene.background = cube.texture;
     scene.backgroundIntensity = SKY_BACKGROUND;
-    scene.environment = target.texture;
     scene.environmentIntensity = SKY_ENVIRONMENT;
+    if (mode === 'trace') {
+      scene.environment = cube.texture;
+      return () => cube.dispose();
+    }
+    const pmrem = new PMREMGenerator(renderer);
+    const target = pmrem.fromCubemap(cube.texture);
+    pmrem.dispose();
+    scene.environment = target.texture;
     return () => {
       target.dispose();
       cube.dispose();
@@ -182,6 +229,17 @@ const SKY_BACKGROUND = 0.5;
 const SKY_ENVIRONMENT = 0.3;
 
 async function drawPicture(
+  renderer: WebGLRenderer,
+  job: AppRenderJob,
+  onProgress: (progress: RenderProgress) => void,
+  cancelled: () => boolean,
+): Promise<Uint8Array | undefined> {
+  if (job.quality === 'draft') return drawDraft(renderer, job, onProgress, cancelled);
+  return drawTraced(renderer, job, onProgress, cancelled);
+}
+
+/** Draft: one rasterised frame (ADR-0101 §6.2). */
+async function drawDraft(
   renderer: WebGLRenderer,
   job: AppRenderJob,
   onProgress: (progress: RenderProgress) => void,
@@ -206,7 +264,6 @@ async function drawPicture(
     onProgress({ phase: 'rendering', fraction: 0.1 });
     await tick();
     if (cancelled()) return undefined;
-    // slice 2: the path tracer for Standard and High (ADR-0101 §6.2); until then they render like Draft.
     renderer.setRenderTarget(hdr);
     renderer.clear();
     renderer.render(built.scene, camera);
@@ -223,6 +280,77 @@ async function drawPicture(
     renderer.setRenderTarget(null);
     output.dispose();
     hdr.dispose();
+    out.dispose();
+    built.dispose();
+    renderer.renderLists.dispose();
+  }
+}
+
+/** Standard and High: the path tracer, one tile per frame (ADR-0101 §6.2). */
+async function drawTraced(
+  renderer: WebGLRenderer,
+  job: AppRenderJob,
+  onProgress: (progress: RenderProgress) => void,
+  cancelled: () => boolean,
+): Promise<Uint8Array | undefined> {
+  const { width, height } = job;
+  await tick();
+  if (cancelled()) return undefined;
+  const built = buildScene(
+    job,
+    undefined,
+    {
+      wood: woodTexture,
+      worktop: worktopTexture,
+      environment: makeEnvironment(renderer),
+    },
+    'trace',
+  );
+  const out = new WebGLRenderTarget(width, height);
+  const output = new OutputPass();
+  const tracer = getTracer(renderer);
+  try {
+    onProgress({ phase: 'importing', fraction: 0.05 });
+    await tick();
+    if (cancelled()) return undefined;
+    const camera = viewToThreeCamera(job.camera, built.placement, width / height);
+    // The tracer sizes its target from the drawing buffer, so the hidden canvas must
+    // already be the picture's size at pixel ratio 1.
+    renderer.setPixelRatio(1);
+    renderer.setSize(width, height, false);
+    tracer.renderToCanvas = false;
+    tracer.bounces = BOUNCES;
+    tracer.transmissiveBounces = 10;
+    tracer.filterGlossyFactor = 0.5;
+    tracer.minSamples = 1;
+    tracer.dynamicLowRes = false;
+    tracer.renderDelay = 0;
+    tracer.setScene(built.scene, camera);
+    onProgress({ phase: 'rendering', fraction: 0.1 });
+    await tick();
+    if (cancelled()) return undefined;
+    const done = await tracePicture(tracer as unknown as TracerLike, {
+      target: job.quality === 'high' ? SAMPLES.high : SAMPLES.standard,
+      width,
+      height,
+      onProgress: (fraction) => onProgress({ phase: 'rendering', fraction }),
+      cancelled,
+    });
+    if (!done) return undefined;
+    // The tracer's target is linear HDR: ACES and sRGB apply through OutputPass, as in Draft.
+    output.render(renderer, out, tracer.target, 0, false);
+    renderer.setRenderTarget(null);
+    const pixels = new Uint8Array(width * height * 4);
+    await renderer.readRenderTargetPixelsAsync(out, 0, 0, width, height, pixels);
+    onProgress({ phase: 'rendering', fraction: 0.95 });
+    if (cancelled()) return undefined;
+    onProgress({ phase: 'saving', fraction: 0.97 });
+    await tick();
+    return await encodePng(pixels, width, height);
+  } finally {
+    renderer.setRenderTarget(null);
+    renderer.setSize(1, 1, false);
+    output.dispose();
     out.dispose();
     built.dispose();
     renderer.renderLists.dispose();

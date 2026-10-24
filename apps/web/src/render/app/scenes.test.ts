@@ -1,9 +1,9 @@
 /** The in-app renderer's scenes (ADR-0101 §6.3): `place_model`'s placement and each preset's scenery, built without rendering. */
 import { RENDER_PRESETS } from '@extrudo/core';
-import { Box3, DirectionalLight, Mesh, type Scene, Texture } from 'three';
+import { Box3, DirectionalLight, Mesh, RectAreaLight, type Scene, Texture } from 'three';
 import { describe, expect, it } from 'vitest';
 import type { AppRenderJob } from '../../platform/render';
-import { buildScene, placeModel, sweepGeometry } from './scenes';
+import { buildScene, placeModel, sweepGeometry, WATTS_TO_AREA } from './scenes';
 
 /** A box from (10, 20, 5) to (50, 40, 25) mm: 40 × 20 × 20. */
 function boxMesh() {
@@ -103,13 +103,13 @@ describe('buildScene', () => {
     const { scene, key } = buildScene(job('studio'), undefined, deps);
     expect(named(scene, 'Sweep').receiveShadow).toBe(true);
     // The key at the script's (6s, −6s, 8s), aimed at the model's centre, shadows fitted ×1.5.
-    expect(key.position.toArray()).toEqual([6 * s, -6 * s, 8 * s]);
-    expect(key.target.position.toArray()).toEqual([0, 0, 10]);
-    expect(key.castShadow).toBe(true);
-    expect(key.shadow.mapSize.x).toBe(2048);
-    expect(key.shadow.bias).toBe(-0.0005);
+    expect(key?.position.toArray()).toEqual([6 * s, -6 * s, 8 * s]);
+    expect(key?.target.position.toArray()).toEqual([0, 0, 10]);
+    expect(key?.castShadow).toBe(true);
+    expect(key?.shadow.mapSize.x).toBe(2048);
+    expect(key?.shadow.bias).toBe(-0.0005);
     const r = placeModel(job('studio').bodies).radius;
-    expect(key.shadow.camera.right).toBeCloseTo(1.5 * r, 9);
+    expect(key?.shadow.camera.right).toBeCloseTo(1.5 * r, 9);
     const lights = scene.children.filter((c) => c instanceof DirectionalLight);
     expect(lights).toHaveLength(3);
   });
@@ -131,9 +131,40 @@ describe('buildScene', () => {
     const { scene, key, environment } = buildScene(job('outdoor'), undefined, deps);
     const box = worldBox(named(scene, 'Ground'));
     expect(box.max.x - box.min.x).toBeCloseTo(400 * 50, 6);
-    const direction = key.position.clone().sub(key.target.position).normalize();
-    expect(Math.asin(direction.z)).toBeCloseTo((40 * Math.PI) / 180, 9);
+    const direction = key?.position.clone().sub(key.target.position).normalize();
+    expect(Math.asin(direction?.z ?? 0)).toBeCloseTo((40 * Math.PI) / 180, 9);
     expect(environment.kind).toBe('sky');
+  });
+
+  it("trace mode uses the script's area lights with the script's sizes, raster mode is unchanged", () => {
+    const s = 50;
+    const trace = buildScene(job('studio'), undefined, deps, 'trace');
+    const areas = trace.scene.children.filter((c) => c instanceof RectAreaLight) as RectAreaLight[];
+    expect(areas).toHaveLength(3);
+    expect(trace.scene.children.filter((c) => c instanceof DirectionalLight)).toHaveLength(0);
+    expect(trace.key).toBeUndefined();
+    expect(areas.map((l) => l.position.toArray())).toEqual([
+      [6 * s, -6 * s, 8 * s],
+      [-7 * s, -5 * s, 4 * s],
+      [-2 * s, 8 * s, 6 * s],
+    ]);
+    expect(areas.map((l) => l.width)).toEqual([4 * s, 6 * s, 3 * s]);
+    expect(areas.every((l) => l.height === l.width)).toBe(true);
+    expect(areas[0]?.intensity).toBeCloseTo(2000 * WATTS_TO_AREA, 9);
+    trace.dispose();
+    const raster = buildScene(job('studio'), undefined, deps);
+    expect(raster.scene.children.filter((c) => c instanceof RectAreaLight)).toHaveLength(0);
+    expect(raster.scene.children.filter((c) => c instanceof DirectionalLight)).toHaveLength(3);
+    raster.dispose();
+  });
+
+  it('trace mode keeps the outdoor sun a DirectionalLight and has no area light', () => {
+    const { scene, key, dispose } = buildScene(job('outdoor'), undefined, deps, 'trace');
+    expect(scene.children.filter((c) => c instanceof RectAreaLight)).toHaveLength(0);
+    expect(scene.children.filter((c) => c instanceof DirectionalLight)).toHaveLength(1);
+    expect(key).toBeInstanceOf(DirectionalLight);
+    expect(key?.castShadow).toBe(false);
+    dispose();
   });
 
   it('hands each preset its environment and frees everything on dispose', () => {

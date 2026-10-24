@@ -65,4 +65,20 @@ describe('createAppRenderer', () => {
     });
     expect(await renderer.render(job, () => {})).toEqual({ ok: false, message: 'context lost' });
   });
+
+  it('hands a Standard job to the drawing seam like Draft', async () => {
+    const draw = vi.fn(async () => Uint8Array.from([1, 2, 3]));
+    const renderer = createAppRenderer({ makeRenderer: () => fakeRenderer(), draw });
+    const standard = { ...job, quality: 'standard' as const };
+    expect(await renderer.render(standard, () => {})).toEqual({
+      ok: true,
+      png: Uint8Array.from([1, 2, 3]),
+    });
+    expect(draw).toHaveBeenCalledWith(
+      expect.anything(),
+      standard,
+      expect.any(Function),
+      expect.any(Function),
+    );
+  });
 });
