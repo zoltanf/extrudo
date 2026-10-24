@@ -129,6 +129,7 @@ import { type Autosaver, saveEverything } from '../project/autosave';
 import { setRestoreGuard } from '../project/restoreGuard';
 import { VersionsDialog } from '../project/VersionsDialog';
 import type { VersionContext } from '../project/versions';
+import { createAppRenderer } from '../render/app/appRenderer';
 import { RenderDialog, type RenderRequest } from '../render/RenderDialog';
 import { navigate, projectHref } from '../routes';
 import { SectionOverlay } from '../section/SectionOverlay';
@@ -395,6 +396,9 @@ function Shell({
   const [exportRequest, setExportRequest] = useState<ExportRequest>();
   const [modelExport, setModelExport] = useState<ModelExportRequest>();
   const [renderRequest, setRenderRequest] = useState<RenderRequest>();
+  // Render Picture's own engine (ADR-0101 §6): one hidden WebGL canvas, made on the first render.
+  const appRenderer = useMemo(() => createAppRenderer(), []);
+  useEffect(() => () => appRenderer.dispose(), [appRenderer]);
   const [scriptExportOpen, setScriptExportOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
   // The person's installed plugins (P6-03 slice 2, ADR-0077 §4): session state over the
@@ -1002,7 +1006,6 @@ function Shell({
   // Its marks at the pose shown: as built (0) until the pose preview (J2) can show another.
   const dialogItems = useDialogItems(dialogOpen, shownBodies);
   const canSlicer = platform.openInSlicer !== undefined;
-  const canRender = platform.render !== undefined;
   const ready = useMemo(() => {
     const tools = new Set<string>(
       dialogs
@@ -1012,10 +1015,10 @@ function Shell({
     );
     // Send to Slicer (P6-02) is ready where the platform can launch one.
     if (canSlicer) tools.add('slicer');
-    // Render Picture (P6-15) is ready where the platform can run Blender.
-    if (canRender) tools.add('render');
+    // Render Picture is ready everywhere: the app renders itself (ADR-0101 §6).
+    tools.add('render');
     return tools;
-  }, [dialogs, canSlicer, canRender]);
+  }, [dialogs, canSlicer]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `keymap` stands for `keysFor`'s overrides
   const dialogCommands = useMemo(
     () =>
@@ -1762,9 +1765,8 @@ function Shell({
     else if (tool === 'export') setModelExport({});
     else if (tool === 'slicer') {
       if (platform.openInSlicer) setModelExport({ slicer: true });
-    } else if (tool === 'render') {
-      if (platform.render) setRenderRequest({});
-    } else if (tool === MEASURE_TOOL) {
+    } else if (tool === 'render') setRenderRequest({});
+    else if (tool === MEASURE_TOOL) {
       if (mode !== 'model') return;
       if (measuring) session.getState().setTool(undefined);
       else {
@@ -2957,25 +2959,24 @@ function Shell({
         notify={notify}
         onClose={() => setModelExport(undefined)}
       />
-      {platform.render && (
-        <RenderDialog
-          store={store}
-          session={session}
-          model={model}
-          bodies={bodyList}
-          kernel={kernel}
-          request={renderRequest}
-          files={platform.files}
-          render={platform.render}
-          viewportCamera={() => {
-            const { view, projection } = viewport.getState();
-            return viewToCamera(view, projection);
-          }}
-          openLink={platform.openLink}
-          notify={notify}
-          onClose={() => setRenderRequest(undefined)}
-        />
-      )}
+      <RenderDialog
+        store={store}
+        session={session}
+        model={model}
+        bodies={bodyList}
+        kernel={kernel}
+        request={renderRequest}
+        files={platform.files}
+        appRender={appRenderer}
+        {...(platform.render && { render: platform.render })}
+        viewportCamera={() => {
+          const { view, projection } = viewport.getState();
+          return viewToCamera(view, projection);
+        }}
+        openLink={platform.openLink}
+        notify={notify}
+        onClose={() => setRenderRequest(undefined)}
+      />
       <ExportScriptDialog
         store={store}
         session={session}

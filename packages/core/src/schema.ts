@@ -13,6 +13,7 @@ import { FILE_INPUT_MEDIA_TYPES, MEDIA_TYPES } from './media-types';
 import { PARAMETER_NAME } from './names';
 import { type GeomRefKind, GeomRefSchema, Vec3Schema } from './refs';
 import {
+  RENDER_ENGINES,
   RENDER_FINISHES,
   RENDER_MAX_SIDE,
   RENDER_MIN_SIDE,
@@ -285,6 +286,8 @@ export const RenderSettingsSchema = z.strictObject({
   width: z.int().min(RENDER_MIN_SIDE).max(RENDER_MAX_SIDE),
   height: z.int().min(RENDER_MIN_SIDE).max(RENDER_MAX_SIDE),
   quality: z.enum(RENDER_QUALITIES),
+  /** Who renders (ADR-0101 §6); absent means `app`. */
+  engine: z.enum(RENDER_ENGINES).optional(),
 });
 export type RenderSettings = z.infer<typeof RenderSettingsSchema>;
 

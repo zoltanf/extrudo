@@ -213,3 +213,4 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 ### Output
 
 - [Export](./export.md) — STL, 3MF, STEP or OpenSCAD code for printing and sharing.
+- [Render Picture](./render.md) — Render a presentable picture of the design.

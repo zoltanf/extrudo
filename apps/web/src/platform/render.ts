@@ -1,10 +1,12 @@
 /**
- * Render Picture (P6-15, ADR-0101): the desktop app hands a job to main,
- * which runs Blender headless and returns the PNG. Absent on the web, where
- * nothing can start a program; the `render` tile then shows its "needs the
- * desktop app" hint.
+ * Render Picture (P6-15, ADR-0101): two engines behind one interface. The app
+ * renders itself with three.js everywhere (`AppRenderJob`, ADR-0101 §6); the
+ * desktop app can also hand a job to main, which runs Blender headless and
+ * returns the PNG (`BlenderRenderer`, absent on the web, where nothing can
+ * start a program).
  */
 import type { RenderFinish, RenderPreset, RenderQuality, ViewCamera } from '@extrudo/core';
+import type { ExportMesh } from '@extrudo/kernel';
 
 /** One body of the job: its OBJ object and how it is finished. */
 export interface RenderObject {
@@ -30,6 +32,28 @@ export interface RenderJob {
   quality: RenderQuality;
 }
 
+/** One body of an in-app render: its mesh and how it is finished. */
+export interface AppRenderBody {
+  name: string;
+  /** The export mesh (`RESOLUTIONS.medium`, the OBJ's): millimetres, Z up, shared nodes, no normals. */
+  mesh: ExportMesh;
+  finish: RenderFinish;
+  /** `#rrggbb`; absent → the default grey. */
+  color?: string;
+}
+
+/** Everything the app's own renderer needs (ADR-0101 §6.3): `RenderJob` without the OBJ. */
+export interface AppRenderJob {
+  project: string;
+  bodies: AppRenderBody[];
+  preset: RenderPreset;
+  /** Absent: the renderer frames the model itself. Millimetres, Z up, as a named view. */
+  camera?: ViewCamera;
+  width: number;
+  height: number;
+  quality: RenderQuality;
+}
+
 /** Whether a usable Blender is installed (ADR-0101 §3). */
 export type BlenderStatus =
   | { state: 'found'; version: string; path: string }
@@ -46,11 +70,16 @@ export type RenderResult =
   | { ok: true; png: Uint8Array }
   | { ok: false; message: string; cancelled?: boolean };
 
-export interface BlenderRenderer {
-  status(): Promise<BlenderStatus>;
+/** What renders a picture: the app's engine or Blender (ADR-0101 §6.3). */
+export interface PictureRenderer<Job = AppRenderJob> {
   /** One at a time; a second call while one runs resolves `{ ok: false }`. */
-  render(job: RenderJob, onProgress: (progress: RenderProgress) => void): Promise<RenderResult>;
+  render(job: Job, onProgress: (progress: RenderProgress) => void): Promise<RenderResult>;
+  /** Stops the running render; it resolves `{ ok: false, cancelled: true }`. */
   cancel(): void;
+}
+
+export interface BlenderRenderer extends PictureRenderer<RenderJob> {
+  status(): Promise<BlenderStatus>;
 }
 
 /** The oldest Blender with the built-in OBJ importer the script uses. */

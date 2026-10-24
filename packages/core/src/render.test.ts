@@ -33,6 +33,13 @@ describe('RenderSettingsSchema', () => {
     ).toBe(true);
   });
 
+  it("takes the engine (ADR-0101 §6): 'app' or 'blender', absent by default", () => {
+    expect(RenderSettingsSchema.parse({ ...example, engine: 'blender' }).engine).toBe('blender');
+    expect(RenderSettingsSchema.parse({ ...example, engine: 'app' }).engine).toBe('app');
+    expect(RenderSettingsSchema.safeParse({ ...example, engine: 'x' }).success).toBe(false);
+    expect('engine' in DEFAULT_RENDER_SETTINGS).toBe(false);
+  });
+
   it('rejects an unknown preset, a tiny width, an unknown key and a view camera without id', () => {
     expect(RenderSettingsSchema.safeParse({ ...example, preset: 'kitchen' }).success).toBe(false);
     expect(RenderSettingsSchema.safeParse({ ...example, width: 100 }).success).toBe(false);

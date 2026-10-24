@@ -18,6 +18,10 @@ export const RENDER_FINISHES = [
 ] as const;
 export type RenderFinish = (typeof RENDER_FINISHES)[number];
 
+/** Who renders the picture (ADR-0101 §6): the app itself (the default; absent means `app`) or Blender. */
+export const RENDER_ENGINES = ['app', 'blender'] as const;
+export type RenderEngine = (typeof RENDER_ENGINES)[number];
+
 export const RENDER_QUALITIES = ['draft', 'standard', 'high'] as const;
 export type RenderQuality = (typeof RENDER_QUALITIES)[number];
 

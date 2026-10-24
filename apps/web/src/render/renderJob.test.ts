@@ -11,13 +11,16 @@ import {
 import { describe, expect, it } from 'vitest';
 import type { MeshedBodies } from '../export/modelExport';
 import {
+  buildAppJob,
   buildRenderJob,
   commonFinish,
   currentRenderSettings,
+  engineOf,
   finishOf,
   jobCamera,
   renderFileName,
   settingsChanged,
+  withEngine,
   withFinish,
   withFinishForAll,
 } from './renderJob';
@@ -137,6 +140,67 @@ describe('buildRenderJob', () => {
       camera,
     });
     expect('camera' in buildRenderJob('Box', meshed, base, undefined)).toBe(false);
+  });
+});
+
+describe('the engine (ADR-0101 §6)', () => {
+  const found = { state: 'found', version: '4.5.1', path: '/b' } as const;
+
+  it('is Blender only when stored so and found; else the app', () => {
+    expect(engineOf(base)).toBe('app');
+    expect(engineOf(base, found)).toBe('app');
+    expect(engineOf({ ...base, engine: 'blender' }, found)).toBe('blender');
+    expect(engineOf({ ...base, engine: 'blender' })).toBe('app');
+    expect(engineOf({ ...base, engine: 'blender' }, { state: 'missing' })).toBe('app');
+    expect(
+      engineOf({ ...base, engine: 'blender' }, { state: 'too-old', version: '3.6', path: '/b' }),
+    ).toBe('app');
+  });
+
+  it('is stored only when Blender: the app removes the key, and counts as a change', () => {
+    const blender = withEngine(base, 'blender');
+    expect(blender.engine).toBe('blender');
+    expect(withEngine(blender, 'app')).toEqual(base);
+    expect('engine' in withEngine(blender, 'app')).toBe(false);
+    expect(settingsChanged(base, blender)).toBe(true);
+    expect(settingsChanged(base, { ...base, engine: 'app' })).toBe(false);
+  });
+});
+
+describe('buildAppJob', () => {
+  const tri = {
+    positions: Float64Array.from([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+    indices: Uint32Array.from([0, 1, 2]),
+  };
+  const meshed = {
+    bodies: [
+      { id: A, meta: { name: 'Base', visible: true, color: '#ff0000' } },
+      { id: B, meta: { name: 'Lid', visible: true } },
+    ],
+    meshes: [
+      { id: A, mesh: tri },
+      { id: B, mesh: tri },
+    ],
+    reports: [],
+    triangles: 2,
+  } as unknown as MeshedBodies;
+
+  it('carries each body with its mesh, colour and finish, and the settings', () => {
+    const settings: RenderSettings = { ...base, preset: 'outdoor', finishes: { [A]: 'glossy' } };
+    const job = buildAppJob('Box', meshed, settings, camera);
+    expect(job.bodies).toEqual([
+      { name: 'Base', mesh: tri, finish: 'glossy', color: '#ff0000' },
+      { name: 'Lid', mesh: tri, finish: 'matte' },
+    ]);
+    expect(job).toMatchObject({
+      project: 'Box',
+      preset: 'outdoor',
+      quality: 'standard',
+      width: 1920,
+      height: 1080,
+      camera,
+    });
+    expect('camera' in buildAppJob('Box', meshed, base, undefined)).toBe(false);
   });
 });
 
