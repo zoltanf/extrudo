@@ -6,26 +6,31 @@ order: 6.4
 
 # Rendering a picture
 
-The **Render Picture** tile sits in the 3D Print tab's Output group (desktop app only). It renders
-a presentable picture of your design — on a wooden table, in a clean studio, outdoors — the kind
-of picture for a model site, a forum post or a gift. It does so with
-[Blender](https://www.blender.org/download/), free 3D software that is very good at such pictures.
-You never open Blender yourself: you make the choices in one dialog, and the app runs Blender in
-the background and hands you the picture. In the browser the tile is greyed out, because a web
-page cannot start programs — use the [desktop app](./desktop.md).
+The **Render Picture** tile sits in the 3D Print tab's Output group, in the browser and in the
+desktop app. It renders a presentable picture of your design — on a wooden table, in a clean
+studio, outdoors — the kind of picture for a model site, a forum post or a gift. You make the
+choices in one dialog and get the picture.
+
+Two engines can make it. **In the app**, Extrudo renders the picture itself, on your graphics
+card. In the browser this is the only engine. In the desktop app the dialog's **Render with** row
+offers **In the app** (the default) and **Blender**, free 3D software that is very good at such
+pictures; Blender is greyed out unless the app finds it. You never open Blender yourself: the app
+runs it in the background and hands you the picture. The choice is kept in the design. A design
+rendered with Blender opens on the web with the app engine.
 
 ## What you need
 
-- The desktop app.
-- [Blender 4.2 or newer](https://www.blender.org/download/), installed from blender.org. The app
+- **In the app:** nothing beyond a graphics card WebGL2 can use. That is any current computer.
+- **Blender**, only for the Blender engine, in the [desktop app](./desktop.md):
+  [Blender 4.2 or newer](https://www.blender.org/download/), installed from blender.org. The app
   looks for it in the usual places: on your `PATH`, as a Flatpak or a snap, in Steam, and in the
   standard install folders of Windows, macOS and Linux.
 - If the app doesn't find it, tell it where Blender is: **Settings › Desktop** has a **Blender
   path** field (leave it empty to search). Flatpak users enter `org.blender.Blender`.
 
-The dialog's first line says what was found ("Blender 4.5 found."), that the Blender is too old,
-or that none was found, with a link to blender.org. Nothing is downloaded by the app: Blender
-stays a program of yours.
+On the desktop the dialog's first line says what was found ("Blender 4.5 found."), that the
+Blender is too old, or that none was found, with a link to blender.org. Nothing is downloaded by
+the app: Blender stays a program of yours.
 
 ## The dialog
 
@@ -56,20 +61,34 @@ picture's edges, seen from the home direction (the `Shift+1` view). Or pick one 
 [named views](./getting-started.md) — each is a choice in the list, and the picture comes from
 exactly that camera.
 
-**Size.** 1280 × 720, 1920 × 1080, 2560 × 1440 or 1080 × 1080 pixels.
+**Size.** 1280 × 720, 1920 × 1080, 2560 × 1440 or 1080 × 1080 pixels. The app engine refuses a
+size larger than your graphics card can render and names the card's limit; pick a smaller size.
 
-**Quality.** Draft (seconds, rough), Standard (a minute or two) or High (several minutes,
-finest) — rough times; they grow with the picture size and depend on your computer. Standard and
-High use Cycles with the denoiser, and speed up on a graphics card when there is one. Draft uses
-Blender's fast EEVEE; where that can't run (no usable graphics card: a virtual machine, a remote
-desktop) the app renders the draft with Cycles instead, a little slower.
+**Quality.** Rough times; they grow with the picture size and depend on your computer.
+
+*In the app:*
+
+- **Draft** is one quick frame (seconds) with soft shadow maps.
+- **Standard** (128 samples) and **High** (512) trace light paths on the graphics card. The
+  picture refines on the progress bar, and Cancel stops it. There is no denoiser, so Standard
+  shows some grain; High is the clean one.
+- On a mid-range graphics card at 1280 × 720, Standard takes 20 seconds to a minute (the studio's
+  white sweep is the slowest) and High two to three minutes. Integrated graphics are far slower,
+  and a computer without a graphics card (a virtual machine) is very slow.
+
+*With Blender:* Draft (seconds, rough), Standard (a minute or two) or High (several minutes,
+finest). Standard and High use Cycles with the denoiser, and speed up on a graphics card when
+there is one. Draft uses Blender's fast EEVEE; where that can't run (no usable graphics card: a
+virtual machine, a remote desktop) the app renders the draft with Cycles instead, a little
+slower. Where you have Blender, its picture is the better one: its materials and its denoiser.
 
 ## Render, progress, the picture
 
 **Render** saves the settings into the design first (one undo step, and only when they changed),
 so the next render of that design starts from them. Then the app prepares the model ("Preparing
-the model… 2/3"), starts Blender and follows its progress: **Importing…**, **Rendering… 43 %**,
-**Saving…**, on a progress bar (a Draft render is over in seconds, and its bar doesn't count).
+the model… 2/3") and shows the progress on a bar: **Starting…**, **Importing…**, **Rendering…
+43 %**, **Saving…** (with Blender, **Starting Blender…** first). A Draft render is over in
+seconds, and its bar doesn't count.
 **Cancel** stops a render; the dialog refuses to close while one runs — Cancel it first.
 
 When it is done the picture is shown in a wider dialog; click it to see it at its real size (scroll to look around, click again to fit it). Three buttons: **Save PNG…** saves it (the default
@@ -78,6 +97,8 @@ clipboard for pasting into a chat or forum post, and **Render again** returns to
 picture itself is never stored in the design — it is a file you save where you want it.
 
 ## When it doesn't work
+
+*Blender engine:*
 
 - **"Blender isn't installed, or isn't where the app looks."** Install it from
   [blender.org](https://www.blender.org/download/), or set its path in Settings › Desktop.
@@ -88,4 +109,13 @@ picture itself is never stored in the design — it is a file you save where you
 - **A render takes longer than you like.** Try **Draft** first to check the scene and framing,
   then Standard. High is for the final picture.
 - **Translucent bodies look best in Standard or High.** Draft's EEVEE renders glass only roughly.
+*In the app:*
+
+- **The picture is grainy** (In the app, Standard). Use **High**, or Blender where you have it.
+- **The render is very slow** (In the app). Try **Draft** first, or a smaller size; Standard and
+  High need a real graphics card.
+- **"This size is too large for this computer's graphics: up to 8192 × 8192."** The number is
+  your card's limit. Pick a smaller size.
+- **Translucent bodies come out darker in the app's Standard and High than in Blender.** Glass
+  shadows what lies behind it in a path tracer.
 - **"Nothing to render: every body is hidden."** Show at least one body in the browser.

@@ -3289,7 +3289,7 @@ is the string preference `blender.path` (Settings › Desktop; empty means searc
 link goes through `platform.openLink`, so the desktop allow-list (`apps/desktop/src/main/links.ts`)
 must contain `www.blender.org`.
 
-ADR-0101 §6 (P6-16, slice 1, 2026-10-24): **the in-app renderer and the engine choice.** The
+ADR-0101 §6 (P6-16, slices 1–3, 2026-10-24): **the in-app renderer and the engine choice.** The
 engine lives in `apps/web/src/render/app/`: `appRenderer.ts` (`createAppRenderer()`, a
 `PictureRenderer` with `dispose()`; `makeRenderer`/`draw` injectable for tests), `scenes.ts`
 (`placeModel` = `place_model`, `buildScene` with the four presets, `sweepGeometry`,
@@ -3336,3 +3336,7 @@ not supported by the tracer), trace assigns the cube texture directly to `enviro
 `background` for the sky); rotations stay. The traced path sets `renderer.setPixelRatio(1)` and
 `setSize(width, height, false)` before `setScene` (the tracer sizes its target from the drawing
 buffer), and restores `setSize(1, 1, false)` in `finally`.
+Slice 3: the guide page `docs/guide/rendering.md` (two engines, quality per engine, the size
+refusal, the app-engine troubleshooting) and the tile's clip (`e2e/record-assets.spec.ts`, test
+`'demo: render'`: opens the dialog, picks Wooden table and Draft, renders; the clip frames the
+dialog's top, 400 × 250). Keep both in step with the engine's rules above.

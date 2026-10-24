@@ -2661,3 +2661,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `webgl`/`webgl2`; the region "3D view unavailable" has "Try again". A launch option forces
   a worker, so the `--disable-gpu --disable-software-rasterizer` test has its own file (`--disable-gpu --disable-software-rasterizer`, default `--enable-unsafe-swiftshader` ignored, does yield no WebGL in Chrome here; `--disable-gpu` alone does not). The root boundary is `#/debug/crash`; a context that fails after detection (probe canvases detached, the page's canvas null) reproduces three.js's "Error creating WebGL context"; a lost context
   is `WEBGL_lose_context` on the canvas, `[data-webgl="lost"]`.
+
+- **`demo: render` (record-assets):** the dialog (`getByRole('dialog', { name: 'Render picture' })`) is
+  440 px wide, about 480 tall; scenes are `role="radio"` cards, quality is `getByLabel('Draft')`.
+  The 400 × 250 clip frames the dialog's top: it shows the scene cards, then the picture (the
+  dialog re-lays out when the picture appears; the Draft and Render clicks are below the frame).
+  The dialog is opened before the recording starts. Playwright's ffmpeg cannot write PNGs: to look
+  at frames, play the webm in a page and screenshot at `currentTime` steps.

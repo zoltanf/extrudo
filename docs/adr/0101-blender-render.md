@@ -265,5 +265,7 @@ there again.
 - The web build gets the feature for real, and the tile's hint goes.
 - Standard and High depend on the GPU: minutes on an integrated one, a
   software renderer (CI, a VM) is far slower, so e2e renders a draft only.
+- The app's Standard shows grain (no denoiser, owner 2026-10-24); High is
+  the clean one, and Blender stays the better picture.
 - `three-gpu-pathtracer` is a new dependency (MIT, in the allow-list), listed
   in `NOTICE`.
