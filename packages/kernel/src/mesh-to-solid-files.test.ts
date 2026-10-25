@@ -483,6 +483,8 @@ describe.skipIf(!meshFile)(
       const mesh0 = readMeshFile(fs as NodeFs, meshFile as string);
       if (!mesh0) throw new Error(`no mesh in ${meshFile}`);
       const mesh = kernel.meshFrom(mesh0);
+      // MESH_OUT=<dir>: the staged mesh as <dir>/staged.mesh, for the spike harness (`.mesh` files).
+      if (env.MESH_OUT) writeStagedMesh(mesh, `${env.MESH_OUT}/staged.mesh`);
       let shape: ShapeHandle | undefined;
       try {
         const t0 = performance.now();

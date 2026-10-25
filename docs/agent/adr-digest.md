@@ -3135,24 +3135,41 @@ at all costs one build. This applies to **every** `largestThatWorks` caller
 diagnosis hooks** (raw facade in tests and the spike harness, as
 `meshLoopsDebug` is; **the app never calls them**): `shapeDiagnose(shape)` —
 max vertex/edge/face tolerance, sub-shape counts, not-SameParameter edges,
-faces sharing one analytic surface, free edges and how many are **dangling**
-(neither seam nor degenerate), over-shared edges, invalid faces/edges;
+faces sharing one analytic surface, free edges (one face: a seam counts),
+over-shared edges, invalid faces/edges;
 `offsetProbe(shape, face, distance)` — one plain `BRepOffset_MakeOffset`
 build: `IsDone`, `Error()`, the raw shape's kind, shell count and closed-shell
 count, and which of `offsetIsGood`'s checks the result fails; and
-`meshRefusalDebug()` — the last call's exact and hybrid refusals. **Measured
-on the gear:** tolerances small, 0 not-SameParameter, 0 invalid sub-shapes,
-but **5 dangling edges** (the shell is not watertight; `BRepCheck_Analyzer`
-misses it) and `BRepOffset_MakeOffset` returns `IsDone`/`Error() = 0` with an
-invalid ~0.0016 mm³ solid. The **assembled** hybrid solid has **0** dangling
-edges; `UnifySameDomain` adds the 5 (ConcatBSplines on or off), and sewing
-(≤1 mm, default and non-manifold) + `ShapeFix_Shape` + `ShapeFix_Wireframe`
-can't close them (no partner within 1 mm). Keeping the assembled solid (210
-faces, 6 on a shared surface) is closed but its offset is still ~0 volume, so
-coplanar/tangent split faces are a second trigger. **The fix is open.** The
+`meshRefusalDebug()` — the last call's exact and hybrid refusals. Its
+"5 dangling edges" on the gear were **wrong** (see 2026-10-25 below: the
+one-argument `BRep_Tool::IsClosed(edge)` counted seams). **The fix is open.** The
 local `MESH_FILE` test (`mesh-to-solid-files.test.ts`, skipped without the env
 var) converts a private .3mf/.stl prismatic Auto and runs Offset Face (2.6,
 0.5, −0.5 mm), Fillet, Shell and Press Pull on the top face.
+
+**ADR-0097 amendment (2026-10-25): the causes measured.** (1) **A seam is a
+seam of its face only with the two-argument `BRep_Tool::IsClosed(edge, face)`**;
+the one-argument form asks whether the edge is a closed loop. Use the
+two-argument form for any free/dangling-edge count. The gear's shell is
+closed (0 dangling); its 5 "dangling" edges were the seams of the full-turn
+faces unify made. (2) **Unify can keep a slanted seam**: the split edge it
+keeps as a merged periodic face's seam follows a mesh edge, a diagonal on a
+short band (gear: 2.0° and 1.0°). BRepCheck accepts it; **`BRepOffset_MakeOffset`
+returns an empty skin for any face of a body with a seam that is not an
+isoline** (synthetic cylinder: slant 0.001 rad already fails, the facade's
+seam retry too; Shell is unaffected); re-seaming on an isoline fixes it.
+(3) **Offset Face refuses native bodies with a partial cylinder meeting a
+plane at a sharp edge** (a box with a D bore: all 8 faces; a D pin; a convex
+half-cylinder bump), while round/square bores, a concave notch and rounded
+edges work. The gear has a D bore through its hub, so its Offset Face is
+blocked by (3) whatever the conversion does; fixing (3) is an Offset Face
+(ADR-0051) change for all bodies. (4) Shell 1 mm on the gear is refused as on
+a native box with r 0.4 rounds (thickness over the round's radius); 0.3 and
+0.2 mm fail too, cause not isolated. (5) `bossWithBump`'s hybrid result is a
+compound of 47 solids (46 zero-volume two-face shells). Measurements:
+the spike harness (the `MESH_FILE` test's `MESH_OUT=<dir>` writes the staged
+mesh as `<dir>/staged.mesh` for it); never commit the private file or
+anything derived from it.
 
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,

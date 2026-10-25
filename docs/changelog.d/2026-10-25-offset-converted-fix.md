@@ -1,0 +1,1 @@
+- 2026-10-25 · **Offset Face on a converted body, diagnosed**: the gear's converted shell is closed (the "dangling edges" were seams); Offset Face fails on it because unify keeps slanted seams on short bands and because Offset Face refuses any body, native too, with a D-shaped bore or pin (ADR-0097's 2026-10-25 amendment).
