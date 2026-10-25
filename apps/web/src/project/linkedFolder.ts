@@ -11,7 +11,12 @@
  * the project index and toasts.
  */
 import type { DocumentStore, ExtrudoDocument } from '@extrudo/core';
-import { type LinkedFile, type ProjectStore, readArchive } from '@extrudo/storage';
+import {
+  assertAttachmentBudget,
+  type LinkedFile,
+  type ProjectStore,
+  readArchive,
+} from '@extrudo/storage';
 import type { ToastOptions } from '../design-system';
 import type { ExternalFiles, FolderLink, LinkedFolders } from '../platform';
 import { describeError } from './actions';
@@ -184,7 +189,9 @@ export function createLinkedProject(ctx: LinkedContext): LinkedProject {
     try {
       const { bytes } = await readFile(current.file);
       const archive = readArchive(bytes);
-      // The bytes before the document that names them (ADR-0061 §2).
+      // The bytes before the document that names them (ADR-0061 §2), so
+      // their total is checked first.
+      assertAttachmentBudget(archive.doc, archive.attachments);
       for (const [sha256, file] of archive.attachments) {
         if (!(await ctx.projects.readAttachment(id, sha256))) {
           await ctx.projects.writeAttachment(id, sha256, file);

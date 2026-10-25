@@ -28,7 +28,7 @@ import {
   useToasts,
   Wordmark,
 } from '../design-system';
-import { afterPaint } from '../idle';
+import { afterPaint, whenIdle } from '../idle';
 import { requestTutorial, tourOffered, writeTour } from '../onboarding/state';
 import type { Persistence, Platform } from '../platform';
 import { createPluginsStore } from '../plugins/plugins';
@@ -39,6 +39,7 @@ import {
   exportProject,
   importAnyFile,
 } from '../project/actions';
+import { prewarmProjectKernel } from '../project/spawnKernel';
 import { exampleHref, navigate, projectHref } from '../routes';
 import { preferencesAccess } from '../settings/displaySettings';
 import type { SectionId } from '../settings/inventory';
@@ -85,6 +86,18 @@ export function HomeScreen({ platform }: { platform: Platform }) {
   // The view's WebGL probe (cached per page) right after the home screen's first paint, so
   // opening a design doesn't pay it in the view's first frame (ADR-0102 §4).
   useEffect(() => afterPaint(() => webglSupport()), []);
+  // The kernel worker starts here in idle time, so opening a design finds it
+  // running with the OCCT WASM compiled; the Viewport chunk warms alongside
+  // (the module AppShell's `lazy()` loads). A design opened by a direct link
+  // spawns cold, as before (ADR-0102 §8).
+  useEffect(
+    () =>
+      whenIdle(() => {
+        prewarmProjectKernel();
+        void import('../viewport/Viewport');
+      }),
+    [],
+  );
   // Two frames before a capture: the menu just closed (or the dialog, on a retake) is gone.
   const openBugReport = async () => {
     await new Promise<void>((done) =>

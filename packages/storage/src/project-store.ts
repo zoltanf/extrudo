@@ -111,7 +111,7 @@ function assertAttachmentTotal(total: number): void {
 }
 
 /** A batch has no stored document yet; count each file once in the incoming state. */
-function assertAttachmentBudget(
+export function assertAttachmentBudget(
   doc: ExtrudoDocument,
   attachments?: ReadonlyMap<string, Uint8Array>,
 ): void {

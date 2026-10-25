@@ -1,6 +1,19 @@
-import { createDocument, createDocumentStore, renameDocument } from '@extrudo/core';
-import { memoryProjectStore, readArchive, writeArchive } from '@extrudo/storage';
-import { describe, expect, it } from 'vitest';
+import {
+  type AttachmentId,
+  addAttachment,
+  applyCommand,
+  createDocument,
+  createDocumentStore,
+  renameDocument,
+} from '@extrudo/core';
+import {
+  MAX_ATTACHMENT_BYTES,
+  memoryProjectStore,
+  readArchive,
+  sha256Hex,
+  writeArchive,
+} from '@extrudo/storage';
+import { describe, expect, it, vi } from 'vitest';
 import type { ToastOptions } from '../design-system';
 import type { ExternalFiles, FolderFile, LinkedFolders } from '../platform';
 import { createLinkedProject, type LinkedProject } from './linkedFolder';
@@ -175,6 +188,49 @@ describe('a linked project (P4-09, ADR-0065 §3)', () => {
       text: 'Loaded Bracket.extrudo from the linked folder.',
     });
   });
+
+  it('Load from disk refuses a file over 100 MB of attachments, writing none (#128)', async () => {
+    const t = await setup();
+    await t.project.linkNow();
+    // Four files at the one-file limit make exactly 100 MB; one more byte tips it.
+    const files = [
+      ...[0, 1, 2, 3].map((seed) => new Uint8Array(MAX_ATTACHMENT_BYTES).fill(seed)),
+      new Uint8Array([4]),
+    ];
+    let heavy = createDocument({ name: 'Heavy' });
+    for (const [i, bytes] of files.entries()) {
+      heavy = applyCommand(
+        heavy,
+        addAttachment({
+          id: `f${i}` as AttachmentId,
+          attachment: {
+            name: `Font ${i}`,
+            fileName: `font-${i}.ttf`,
+            mediaType: 'font/ttf',
+            sha256: sha256Hex(bytes),
+            size: bytes.length,
+          },
+        }),
+      ).doc;
+    }
+    t.folder.files.set('Bracket.extrudo', {
+      bytes: writeArchive(heavy, undefined, [], new Map(files.map((b) => [sha256Hex(b), b]))),
+      modified: 9_999,
+    });
+    t.passThrottle();
+    await t.project.afterSave();
+    t.notifications.at(-1)?.options?.actions?.[0]?.run();
+    await vi.waitFor(
+      () => expect(t.notifications.at(-1)?.text).toContain('they may be at most 100 MB'),
+      30_000,
+    );
+    expect(t.notifications.at(-1)?.tone).toBe('error');
+    expect(t.restored).toHaveLength(0);
+    const id = t.store.getState().doc.id;
+    for (const bytes of files) {
+      expect(await t.projects.readAttachment(id, sha256Hex(bytes))).toBeUndefined();
+    }
+  }, 60_000);
 
   it('says a folder it may not write to, and keeps the browser copy', async () => {
     const t = await setup();
