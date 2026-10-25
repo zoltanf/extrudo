@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Measures Extrudo's download size and startup against NFR-02 (ADR-0037).
 //
-//   pnpm build && node scripts/measure-startup.mjs [--no-browser] [--mbit 50] [--json <file>]
+//   pnpm build && node scripts/measure-startup.mjs [--no-browser] [--mbit 50] [--json <file>] [--home-wait <ms>]
 //
 // 1. Sizes: raw and brotli (quality 11) of every file in apps/web/dist, grouped.
 // 2. Timing (needs Chromium: Playwright's, or PLAYWRIGHT_CHROMIUM_PATH): serves
@@ -11,6 +11,10 @@
 //        bracket template to the kernel's first finished recompute;
 //      - a repeat visit, in the same profile once the service worker has
 //        precached the app: the same two times, and again with the network off.
+//    --home-wait <ms> (default 0) waits that long on the home screen after
+//    "New design" shows, before the template click — time for the home
+//    screen's own work (the kernel prewarm, ADR-0102 §8) to run. It is
+//    excluded from the kernel-ready time.
 //    The precache's own downloads happen inside the service worker, which the
 //    page's network log doesn't show: read that cost from the size table.
 //    Once a design is stored the home screen folds the template gallery, so
@@ -28,6 +32,7 @@ const DIST = join(fileURLToPath(new URL('..', import.meta.url)), 'apps/web/dist'
 const args = process.argv.slice(2);
 const mbit = args.includes('--mbit') ? Number(args[args.indexOf('--mbit') + 1]) : 50;
 const jsonPath = args.includes('--json') ? args[args.indexOf('--json') + 1] : undefined;
+const homeWait = args.includes('--home-wait') ? Number(args[args.indexOf('--home-wait') + 1]) : 0;
 const fmt = (n) => `${(n / 1e6).toFixed(2)} MB`;
 
 const walk = (dir) =>
@@ -170,6 +175,7 @@ async function visit(label, { offline = false } = {}) {
   await page.goto(origin);
   await page.getByRole('button', { name: 'New design' }).waitFor();
   const home = performance.now() - t0;
+  if (homeWait > 0) await page.waitForTimeout(homeWait);
   const t1 = performance.now();
   // Once a design is stored the gallery folds under "Start from a template"
   // (as e2e/helpers.ts's startFromTemplate): open it, again if the list's
