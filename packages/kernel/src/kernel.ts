@@ -871,6 +871,15 @@ export class Kernel {
   }
 
   /**
+   * Test hook: make `offsetFaces` try the flat-face prism fallback first
+   * (before OCCT's own offset), so a test can exercise it on a body whose
+   * plain offset works. No product code calls this.
+   */
+  setPrismFallback(on: boolean): void {
+    this.#facade.setPrismFallback(on);
+  }
+
+  /**
    * The faces (indices) of the smooth chain around `face`, the face
    * included: the faces `offsetFaces` moves together with it.
    */
