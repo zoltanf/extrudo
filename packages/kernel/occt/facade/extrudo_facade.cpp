@@ -2740,7 +2740,8 @@ public:
       if (index >= static_cast<uint32_t>(nodeCount)) return -1;
     if (triangleCount == 0) return 0;
     const auto corner = [&](int t, int k) { return static_cast<int>(meshTriangles_[3 * t + k]); };
-    // Adjacency by shared edge, as segmentMesh does.
+    // Adjacency by shared edge, as segmentMesh does; a triangle on an edge that
+    // is not shared by exactly two is open (a boundary, or a non-manifold edge).
     std::vector<int> parent(static_cast<size_t>(triangleCount));
     for (int t = 0; t < triangleCount; ++t) parent[static_cast<size_t>(t)] = t;
     const auto find = [&parent](int x) {
@@ -2748,6 +2749,7 @@ public:
         x = parent[static_cast<size_t>(x)] = parent[static_cast<size_t>(parent[static_cast<size_t>(x)])];
       return x;
     };
+    std::vector<char> open(static_cast<size_t>(triangleCount), 0);
     {
       std::vector<std::pair<uint64_t, int>> edges(3 * static_cast<size_t>(triangleCount));
       for (int t = 0; t < triangleCount; ++t)
@@ -2764,6 +2766,8 @@ public:
           const int ra = find(static_cast<int>(edges[i].second / 3));
           const int rb = find(static_cast<int>(edges[i + 1].second / 3));
           if (ra != rb) parent[static_cast<size_t>(ra)] = rb;
+        } else {
+          for (size_t e = i; e < j; ++e) open[static_cast<size_t>(edges[e].second / 3)] = 1;
         }
         i = j;
       }
@@ -2781,14 +2785,21 @@ public:
     }
     const double threshold = 1e-6 * std::max(1.0, std::fabs(meshVolume));
     std::vector<char> keepRoot(static_cast<size_t>(triangleCount), 0);
+    std::vector<char> openRoot(static_cast<size_t>(triangleCount), 0);
     std::vector<char> decided(static_cast<size_t>(triangleCount), 0);
+    for (int t = 0; t < triangleCount; ++t)
+      if (open[static_cast<size_t>(t)] != 0)
+        openRoot[static_cast<size_t>(rootOf[static_cast<size_t>(t)])] = 1;
     int dropped = 0;
     for (int t = 0; t < triangleCount; ++t) {
       const size_t root = static_cast<size_t>(rootOf[static_cast<size_t>(t)]);
       if (decided[root] != 0) continue;
       decided[root] = 1;
-      // A NaN volume is no evidence of degeneracy: keep it (the path refuses).
-      if (std::fabs(componentVolume[root]) > threshold || componentVolume[root] != componentVolume[root])
+      // Only a closed zero-volume piece is a flap: an open one (a boundary, a
+      // non-manifold edge) is the path's to refuse, not this to drop. A NaN
+      // volume is no evidence of degeneracy either: keep it (the path refuses).
+      if (openRoot[root] != 0 || std::fabs(componentVolume[root]) > threshold ||
+          componentVolume[root] != componentVolume[root])
         keepRoot[root] = 1;
       else
         ++dropped;
