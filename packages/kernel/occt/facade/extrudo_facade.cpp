@@ -3086,6 +3086,13 @@ public:
     return 1;
   }
 
+  /** Debug (tests only): the last rebuild's stage times, one "name ms" line each. */
+  std::string takeStageTimes() {
+    std::string text;
+    for (const auto& [name, ms] : rebuildTimes_) text += name + " " + std::to_string(static_cast<long>(ms)) + "\n";
+    return text;
+  }
+
   /**
    * Probes one plain `BRepOffset_MakeOffset` build of `face` by `distance`
    * (tests and the spike harness only): geometry_ holds [built, IsDone,
