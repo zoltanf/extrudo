@@ -5959,8 +5959,8 @@ private:
    * surface with the seam on the isoline through the seam's first vertex,
    * the rim edge that isoline crosses split there (in both of its faces),
    * the other edges' pcurves moved by whole periods into the new range.
-   * Only a face with one seam, no degenerated edge and one crossing is
-   * re-seamed. Returns the solid with `history` (null when nothing changed),
+   * Only a face with one seam, no degenerated edge, a pcurve on every edge
+   * and one crossing is re-seamed; a face whose rebuild throws is skipped. Returns the solid with `history` (null when nothing changed),
    * or `solid` itself when the result isn't a valid solid of the same volume.
    */
   static TopoDS_Shape straightenSeams(const TopoDS_Shape& solid, Handle(BRepTools_History)& history) {
@@ -5972,223 +5972,236 @@ private:
     for (TopExp_Explorer fx(solid, TopAbs_FACE); fx.More(); fx.Next()) {
       const TopoDS_Face face = TopoDS::Face(fx.Current().Oriented(TopAbs_FORWARD));
       if (!seen.Add(face)) continue;
-      TopLoc_Location location;
-      const Handle(Geom_Surface) surface = BRep_Tool::Surface(face, location);
-      if (surface.IsNull()) continue;
-      // One seam, no degenerated edge.
-      TopoDS_Edge seam;
-      bool other = false;
-      for (TopExp_Explorer ex(face, TopAbs_EDGE); ex.More() && !other; ex.Next()) {
-        const TopoDS_Edge& edge = TopoDS::Edge(ex.Current());
-        if (BRep_Tool::Degenerated(edge)) other = true;
-        else if (BRep_Tool::IsClosed(edge, face)) {
-          if (!seam.IsNull() && !seam.IsSame(edge)) other = true;
-          seam = edge;
+      // A face that throws is left as it was: only the input or a checked result comes back.
+      try {
+        TopLoc_Location location;
+        const Handle(Geom_Surface) surface = BRep_Tool::Surface(face, location);
+        if (surface.IsNull()) continue;
+        // Every edge needs its pcurve on the face, checked before any edge
+        // is touched (UpdateEdge below changes shared edges).
+        bool pcurves = true;
+        for (TopExp_Explorer ex(face, TopAbs_EDGE); ex.More() && pcurves; ex.Next()) {
+          double pf = 0, pl = 0;
+          if (BRep_Tool::CurveOnSurface(TopoDS::Edge(ex.Current()), face, pf, pl).IsNull()) pcurves = false;
         }
-      }
-      if (other || seam.IsNull()) continue;
-      const TopoDS_Edge seamF = TopoDS::Edge(seam.Oriented(TopAbs_FORWARD));
-      if (!BRep_Tool::SameParameter(seamF) || !BRep_Tool::SameRange(seamF)) continue;
-      double f = 0, l = 0;
-      const Handle(Geom2d_Curve) c1 = BRep_Tool::CurveOnSurface(seamF, face, f, l);
-      const Handle(Geom2d_Curve) c2 = BRep_Tool::CurveOnSurface(TopoDS::Edge(seamF.Reversed()), face, f, l);
-      if (c1.IsNull() || c2.IsNull()) continue;
-      // The seam's direction of period: d = 0 (u) or 1 (v).
-      const gp_Vec2d across(c2->Value(0.5 * (f + l)), c1->Value(0.5 * (f + l)));
-      int d = -1;
-      double period = 0;
-      if (surface->IsUPeriodic() && std::fabs(std::fabs(across.X()) - surface->UPeriod()) < 1e-6) {
-        d = 0;
-        period = surface->UPeriod();
-      } else if (surface->IsVPeriodic() && std::fabs(std::fabs(across.Y()) - surface->VPeriod()) < 1e-6) {
-        d = 1;
-        period = surface->VPeriod();
-      }
-      if (d < 0) continue;
-      const auto along = [d](const gp_Pnt2d& p) { return p.Coord(1 + d); };
-      const auto acrossOf = [d](const gp_Pnt2d& p) { return p.Coord(2 - d); };
-      TopoDS_Vertex v1, v2;
-      TopExp::Vertices(seamF, v1, v2);
-      if (v1.IsSame(v2)) continue;
-      const double t1 = BRep_Tool::Parameter(v1, seamF), t2 = BRep_Tool::Parameter(v2, seamF);
-      const double target = along(c1->Value(t1));
-      if (std::fabs(along(c1->Value(t2)) - target) < 1e-9) continue;  // an isoline already
-      const double lo = std::min(target, along(c2->Value(t1))), hi = lo + period;
-      // The seam's wire in order, and its two runs between the seam's uses.
-      TopoDS_Wire seamWire;
-      for (TopExp_Explorer wx(face, TopAbs_WIRE); wx.More() && seamWire.IsNull(); wx.Next())
-        for (TopExp_Explorer ex(wx.Current(), TopAbs_EDGE); ex.More(); ex.Next())
-          if (ex.Current().IsSame(seam)) seamWire = TopoDS::Wire(wx.Current());
-      std::vector<TopoDS_Edge> ordered;
-      for (BRepTools_WireExplorer wx(seamWire, face); wx.More(); wx.Next()) ordered.push_back(wx.Current());
-      std::vector<size_t> uses;
-      for (size_t i = 0; i < ordered.size(); ++i)
-        if (ordered[i].IsSame(seam)) uses.push_back(i);
-      if (uses.size() != 2) continue;
-      std::vector<TopoDS_Edge> runs[2];
-      for (size_t i = uses[0] + 1; i < uses[1]; ++i) runs[0].push_back(ordered[i]);
-      for (size_t i = uses[1] + 1; i < uses[0] + ordered.size(); ++i) runs[1].push_back(ordered[i % ordered.size()]);
-      if (runs[0].empty() || runs[1].empty()) continue;
-      const auto touches = [](const std::vector<TopoDS_Edge>& run, const TopoDS_Vertex& v) {
-        for (const TopoDS_Edge& e : run)
-          for (TopExp_Explorer vx(e, TopAbs_VERTEX); vx.More(); vx.Next())
-            if (vx.Current().IsSame(v)) return true;
-        return false;
-      };
-      const int far = touches(runs[0], v2) && !touches(runs[0], v1)   ? 0
-                      : touches(runs[1], v2) && !touches(runs[1], v1) ? 1
-                                                                      : -1;
-      if (far < 0) continue;
-      // Where a run crosses the isoline through v1 (sampled, then bisected);
-      // edge index -1 when an edge has no pcurve on the face.
-      struct Crossing {
-        int edge;
-        double t;
-      };
-      const auto crossings = [&](const std::vector<TopoDS_Edge>& run) {
-        std::vector<Crossing> found;
-        for (size_t i = 0; i < run.size(); ++i) {
-          double a = 0, b = 0;
-          const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(run[i], face, a, b);
-          if (pc.IsNull()) return std::vector<Crossing>{{-1, 0}};
-          const auto offset = [&](double t) { return std::remainder(along(pc->Value(t)) - target, period); };
-          const int samples = 64;
-          double ta = a, ha = offset(a);
-          for (int s = 1; s <= samples; ++s) {
-            const double tb = a + (b - a) * s / samples, hb = offset(tb);
-            if ((ha < 0) != (hb < 0) && std::fabs(ha - hb) < 0.5 * period) {
-              double x = ta, y = tb, hx = ha;
-              for (int it = 0; it < 80; ++it) {
-                const double m = 0.5 * (x + y), hm = offset(m);
-                if ((hm < 0) == (hx < 0)) {
-                  x = m;
-                  hx = hm;
-                } else {
-                  y = m;
+        if (!pcurves) continue;
+        // One seam, no degenerated edge.
+        TopoDS_Edge seam;
+        bool other = false;
+        for (TopExp_Explorer ex(face, TopAbs_EDGE); ex.More() && !other; ex.Next()) {
+          const TopoDS_Edge& edge = TopoDS::Edge(ex.Current());
+          if (BRep_Tool::Degenerated(edge)) other = true;
+          else if (BRep_Tool::IsClosed(edge, face)) {
+            if (!seam.IsNull() && !seam.IsSame(edge)) other = true;
+            seam = edge;
+          }
+        }
+        if (other || seam.IsNull()) continue;
+        const TopoDS_Edge seamF = TopoDS::Edge(seam.Oriented(TopAbs_FORWARD));
+        if (!BRep_Tool::SameParameter(seamF) || !BRep_Tool::SameRange(seamF)) continue;
+        double f = 0, l = 0;
+        const Handle(Geom2d_Curve) c1 = BRep_Tool::CurveOnSurface(seamF, face, f, l);
+        const Handle(Geom2d_Curve) c2 = BRep_Tool::CurveOnSurface(TopoDS::Edge(seamF.Reversed()), face, f, l);
+        if (c1.IsNull() || c2.IsNull()) continue;
+        // The seam's direction of period: d = 0 (u) or 1 (v).
+        const gp_Vec2d across(c2->Value(0.5 * (f + l)), c1->Value(0.5 * (f + l)));
+        int d = -1;
+        double period = 0;
+        if (surface->IsUPeriodic() && std::fabs(std::fabs(across.X()) - surface->UPeriod()) < 1e-6) {
+          d = 0;
+          period = surface->UPeriod();
+        } else if (surface->IsVPeriodic() && std::fabs(std::fabs(across.Y()) - surface->VPeriod()) < 1e-6) {
+          d = 1;
+          period = surface->VPeriod();
+        }
+        if (d < 0) continue;
+        const auto along = [d](const gp_Pnt2d& p) { return p.Coord(1 + d); };
+        const auto acrossOf = [d](const gp_Pnt2d& p) { return p.Coord(2 - d); };
+        TopoDS_Vertex v1, v2;
+        TopExp::Vertices(seamF, v1, v2);
+        if (v1.IsSame(v2)) continue;
+        const double t1 = BRep_Tool::Parameter(v1, seamF), t2 = BRep_Tool::Parameter(v2, seamF);
+        const double target = along(c1->Value(t1));
+        if (std::fabs(along(c1->Value(t2)) - target) < 1e-9) continue;  // an isoline already
+        const double lo = std::min(target, along(c2->Value(t1))), hi = lo + period;
+        // The seam's wire in order, and its two runs between the seam's uses.
+        TopoDS_Wire seamWire;
+        for (TopExp_Explorer wx(face, TopAbs_WIRE); wx.More() && seamWire.IsNull(); wx.Next())
+          for (TopExp_Explorer ex(wx.Current(), TopAbs_EDGE); ex.More(); ex.Next())
+            if (ex.Current().IsSame(seam)) seamWire = TopoDS::Wire(wx.Current());
+        std::vector<TopoDS_Edge> ordered;
+        for (BRepTools_WireExplorer wx(seamWire, face); wx.More(); wx.Next()) ordered.push_back(wx.Current());
+        std::vector<size_t> uses;
+        for (size_t i = 0; i < ordered.size(); ++i)
+          if (ordered[i].IsSame(seam)) uses.push_back(i);
+        if (uses.size() != 2) continue;
+        std::vector<TopoDS_Edge> runs[2];
+        for (size_t i = uses[0] + 1; i < uses[1]; ++i) runs[0].push_back(ordered[i]);
+        for (size_t i = uses[1] + 1; i < uses[0] + ordered.size(); ++i) runs[1].push_back(ordered[i % ordered.size()]);
+        if (runs[0].empty() || runs[1].empty()) continue;
+        const auto touches = [](const std::vector<TopoDS_Edge>& run, const TopoDS_Vertex& v) {
+          for (const TopoDS_Edge& e : run)
+            for (TopExp_Explorer vx(e, TopAbs_VERTEX); vx.More(); vx.Next())
+              if (vx.Current().IsSame(v)) return true;
+          return false;
+        };
+        const int far = touches(runs[0], v2) && !touches(runs[0], v1)   ? 0
+                        : touches(runs[1], v2) && !touches(runs[1], v1) ? 1
+                                                                        : -1;
+        if (far < 0) continue;
+        // Where a run crosses the isoline through v1 (sampled, then bisected);
+        // edge index -1 when an edge has no pcurve on the face.
+        struct Crossing {
+          int edge;
+          double t;
+        };
+        const auto crossings = [&](const std::vector<TopoDS_Edge>& run) {
+          std::vector<Crossing> found;
+          for (size_t i = 0; i < run.size(); ++i) {
+            double a = 0, b = 0;
+            const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(run[i], face, a, b);
+            if (pc.IsNull()) return std::vector<Crossing>{{-1, 0}};
+            const auto offset = [&](double t) { return std::remainder(along(pc->Value(t)) - target, period); };
+            const int samples = 64;
+            double ta = a, ha = offset(a);
+            for (int s = 1; s <= samples; ++s) {
+              const double tb = a + (b - a) * s / samples, hb = offset(tb);
+              if ((ha < 0) != (hb < 0) && std::fabs(ha - hb) < 0.5 * period) {
+                double x = ta, y = tb, hx = ha;
+                for (int it = 0; it < 80; ++it) {
+                  const double m = 0.5 * (x + y), hm = offset(m);
+                  if ((hm < 0) == (hx < 0)) {
+                    x = m;
+                    hx = hm;
+                  } else {
+                    y = m;
+                  }
                 }
+                found.push_back({static_cast<int>(i), 0.5 * (x + y)});
               }
-              found.push_back({static_cast<int>(i), 0.5 * (x + y)});
+              ta = tb;
+              ha = hb;
             }
-            ta = tb;
-            ha = hb;
           }
+          return found;
+        };
+        // The far run crosses once, inside an edge; the near run only at v1.
+        const std::vector<Crossing> farCrossings = crossings(runs[far]);
+        if (farCrossings.size() != 1 || farCrossings[0].edge < 0) continue;
+        bool nearCrosses = false;
+        for (const Crossing& c : crossings(runs[1 - far])) {
+          if (c.edge < 0) {
+            nearCrosses = true;
+            break;
+          }
+          double a = 0, b = 0;
+          BRep_Tool::Range(runs[1 - far][c.edge], a, b);
+          if (std::fabs(c.t - a) > 1e-7 * (b - a) && std::fabs(c.t - b) > 1e-7 * (b - a)) nearCrosses = true;
         }
-        return found;
-      };
-      // The far run crosses once, inside an edge; the near run only at v1.
-      const std::vector<Crossing> farCrossings = crossings(runs[far]);
-      if (farCrossings.size() != 1 || farCrossings[0].edge < 0) continue;
-      bool nearCrosses = false;
-      for (const Crossing& c : crossings(runs[1 - far])) {
-        if (c.edge < 0) {
-          nearCrosses = true;
-          break;
-        }
+        if (nearCrosses) continue;
+        const size_t split = static_cast<size_t>(farCrossings[0].edge);
+        const TopoDS_Edge crossed = runs[far][split];
+        const TopoDS_Edge crossedF = TopoDS::Edge(crossed.Oriented(TopAbs_FORWARD));
+        if (!BRep_Tool::SameParameter(crossedF) || !BRep_Tool::SameRange(crossedF)) continue;
         double a = 0, b = 0;
-        BRep_Tool::Range(runs[1 - far][c.edge], a, b);
-        if (std::fabs(c.t - a) > 1e-7 * (b - a) && std::fabs(c.t - b) > 1e-7 * (b - a)) nearCrosses = true;
-      }
-      if (nearCrosses) continue;
-      const size_t split = static_cast<size_t>(farCrossings[0].edge);
-      const TopoDS_Edge crossed = runs[far][split];
-      const TopoDS_Edge crossedF = TopoDS::Edge(crossed.Oriented(TopAbs_FORWARD));
-      if (!BRep_Tool::SameParameter(crossedF) || !BRep_Tool::SameRange(crossedF)) continue;
-      double a = 0, b = 0;
-      const Handle(Geom_Curve) curve = BRep_Tool::Curve(crossedF, a, b);
-      double pa = 0, pb = 0;
-      const Handle(Geom2d_Curve) crossedPc = BRep_Tool::CurveOnSurface(crossedF, face, pa, pb);
-      if (curve.IsNull() || crossedPc.IsNull()) continue;
-      const double t = farCrossings[0].t;
-      if (t - a < 1e-9 * (b - a) || b - t < 1e-9 * (b - a)) continue;
-      // The new vertex, and the crossed edge's two pieces (each keeps every pcurve).
-      const gp_Pnt at = curve->Value(t);
-      const gp_Pnt2d atUV = crossedPc->Value(t);
-      const gp_Pnt onSurface = surface->Value(atUV.X(), atUV.Y()).Transformed(location.Transformation());
-      TopoDS_Vertex vn;
-      builder.MakeVertex(vn, at, std::max(BRep_Tool::Tolerance(crossedF), 1.001 * at.Distance(onSurface)));
-      TopoDS_Vertex e1, e2;
-      TopExp::Vertices(crossedF, e1, e2);
-      TopoDS_Edge piece1 = TopoDS::Edge(crossedF.EmptyCopied()), piece2 = TopoDS::Edge(crossedF.EmptyCopied());
-      builder.Add(piece1, e1.Oriented(TopAbs_FORWARD));
-      builder.Add(piece1, vn.Oriented(TopAbs_REVERSED));
-      builder.Range(piece1, a, t);
-      builder.Add(piece2, vn.Oriented(TopAbs_FORWARD));
-      builder.Add(piece2, e2.Oriented(TopAbs_REVERSED));
-      builder.Range(piece2, t, b);
-      // The rebuilt face, on a copy of the surface so no edge's old pcurve changes.
-      const Handle(Geom_Surface) copy = Handle(Geom_Surface)::DownCast(surface->Copy());
-      TopoDS_Face rebuilt;
-      builder.MakeFace(rebuilt, copy, location, BRep_Tool::Tolerance(face));
-      // An edge's pcurve on the face, moved by whole periods into [lo, hi), onto the copy.
-      const auto moveOnto = [&](const TopoDS_Edge& edge, const TopoDS_Edge& from) {
-        const TopoDS_Edge forward = TopoDS::Edge(from.Oriented(TopAbs_FORWARD));
-        double ea = 0, eb = 0, fa = 0, fb = 0;
-        BRep_Tool::Range(edge, ea, eb);
-        const Handle(Geom2d_Curve) pc =
-            Handle(Geom2d_Curve)::DownCast(BRep_Tool::CurveOnSurface(forward, face, fa, fb)->Copy());
-        const double k = std::floor((along(pc->Value(0.5 * (ea + eb))) - lo) / period);
-        if (k != 0) pc->Translate(d == 0 ? gp_Vec2d(-k * period, 0) : gp_Vec2d(0, -k * period));
-        builder.UpdateEdge(TopoDS::Edge(edge.Oriented(TopAbs_FORWARD)), pc, rebuilt, BRep_Tool::Tolerance(forward));
-        builder.Range(TopoDS::Edge(edge.Oriented(TopAbs_FORWARD)), ea, eb);
-      };
-      moveOnto(piece1, crossedF);
-      moveOnto(piece2, crossedF);
-      // The new seam: the isoline from v1 to vn, its forward use on the side
-      // that keeps the face's material on its left.
-      const double vStart = acrossOf(c1->Value(t1)), vEnd = acrossOf(atUV);
-      const bool rising = vEnd > vStart;
-      TopoDS_Edge newSeam;
-      builder.MakeEdge(newSeam, d == 0 ? copy->UIso(target) : copy->VIso(target), location, BRep_Tool::Tolerance(v1));
-      builder.Add(newSeam, (rising ? v1 : vn).Oriented(TopAbs_FORWARD));
-      builder.Add(newSeam, (rising ? vn : v1).Oriented(TopAbs_REVERSED));
-      const gp_Dir2d up = d == 0 ? gp_Dir2d(0, 1) : gp_Dir2d(1, 0);
-      const Handle(Geom2d_Line) atLo = new Geom2d_Line(d == 0 ? gp_Pnt2d(lo, 0) : gp_Pnt2d(0, lo), up);
-      const Handle(Geom2d_Line) atHi = new Geom2d_Line(d == 0 ? gp_Pnt2d(hi, 0) : gp_Pnt2d(0, hi), up);
-      if (d == 0) builder.UpdateEdge(newSeam, atHi, atLo, rebuilt, BRep_Tool::Tolerance(v1));
-      else builder.UpdateEdge(newSeam, atLo, atHi, rebuilt, BRep_Tool::Tolerance(v1));
-      builder.Range(newSeam, std::min(vStart, vEnd), std::max(vStart, vEnd));
-      for (TopExp_Explorer wx(face, TopAbs_WIRE); wx.More(); wx.Next()) {
-        TopoDS_Wire wire;
-        builder.MakeWire(wire);
-        if (!wx.Current().IsSame(seamWire)) {
-          // Another wire (a hole): the same edges, their pcurves onto the copy.
-          for (TopoDS_Iterator ex(wx.Current()); ex.More(); ex.Next()) {
-            moveOnto(TopoDS::Edge(ex.Value()), TopoDS::Edge(ex.Value()));
-            builder.Add(wire, ex.Value());
+        const Handle(Geom_Curve) curve = BRep_Tool::Curve(crossedF, a, b);
+        double pa = 0, pb = 0;
+        const Handle(Geom2d_Curve) crossedPc = BRep_Tool::CurveOnSurface(crossedF, face, pa, pb);
+        if (curve.IsNull() || crossedPc.IsNull()) continue;
+        const double t = farCrossings[0].t;
+        if (t - a < 1e-9 * (b - a) || b - t < 1e-9 * (b - a)) continue;
+        // The new vertex, and the crossed edge's two pieces (each keeps every pcurve).
+        const gp_Pnt at = curve->Value(t);
+        const gp_Pnt2d atUV = crossedPc->Value(t);
+        const gp_Pnt onSurface = surface->Value(atUV.X(), atUV.Y()).Transformed(location.Transformation());
+        TopoDS_Vertex vn;
+        builder.MakeVertex(vn, at, std::max(BRep_Tool::Tolerance(crossedF), 1.001 * at.Distance(onSurface)));
+        TopoDS_Vertex e1, e2;
+        TopExp::Vertices(crossedF, e1, e2);
+        TopoDS_Edge piece1 = TopoDS::Edge(crossedF.EmptyCopied()), piece2 = TopoDS::Edge(crossedF.EmptyCopied());
+        builder.Add(piece1, e1.Oriented(TopAbs_FORWARD));
+        builder.Add(piece1, vn.Oriented(TopAbs_REVERSED));
+        builder.Range(piece1, a, t);
+        builder.Add(piece2, vn.Oriented(TopAbs_FORWARD));
+        builder.Add(piece2, e2.Oriented(TopAbs_REVERSED));
+        builder.Range(piece2, t, b);
+        // The rebuilt face, on a copy of the surface so no edge's old pcurve changes.
+        const Handle(Geom_Surface) copy = Handle(Geom_Surface)::DownCast(surface->Copy());
+        TopoDS_Face rebuilt;
+        builder.MakeFace(rebuilt, copy, location, BRep_Tool::Tolerance(face));
+        // An edge's pcurve on the face, moved by whole periods into [lo, hi), onto the copy.
+        const auto moveOnto = [&](const TopoDS_Edge& edge, const TopoDS_Edge& from) {
+          const TopoDS_Edge forward = TopoDS::Edge(from.Oriented(TopAbs_FORWARD));
+          double ea = 0, eb = 0, fa = 0, fb = 0;
+          BRep_Tool::Range(edge, ea, eb);
+          const Handle(Geom2d_Curve) pc =
+              Handle(Geom2d_Curve)::DownCast(BRep_Tool::CurveOnSurface(forward, face, fa, fb)->Copy());
+          const double k = std::floor((along(pc->Value(0.5 * (ea + eb))) - lo) / period);
+          if (k != 0) pc->Translate(d == 0 ? gp_Vec2d(-k * period, 0) : gp_Vec2d(0, -k * period));
+          builder.UpdateEdge(TopoDS::Edge(edge.Oriented(TopAbs_FORWARD)), pc, rebuilt, BRep_Tool::Tolerance(forward));
+          builder.Range(TopoDS::Edge(edge.Oriented(TopAbs_FORWARD)), ea, eb);
+        };
+        moveOnto(piece1, crossedF);
+        moveOnto(piece2, crossedF);
+        // The new seam: the isoline from v1 to vn, its forward use on the side
+        // that keeps the face's material on its left.
+        const double vStart = acrossOf(c1->Value(t1)), vEnd = acrossOf(atUV);
+        const bool rising = vEnd > vStart;
+        TopoDS_Edge newSeam;
+        builder.MakeEdge(newSeam, d == 0 ? copy->UIso(target) : copy->VIso(target), location, BRep_Tool::Tolerance(v1));
+        builder.Add(newSeam, (rising ? v1 : vn).Oriented(TopAbs_FORWARD));
+        builder.Add(newSeam, (rising ? vn : v1).Oriented(TopAbs_REVERSED));
+        const gp_Dir2d up = d == 0 ? gp_Dir2d(0, 1) : gp_Dir2d(1, 0);
+        const Handle(Geom2d_Line) atLo = new Geom2d_Line(d == 0 ? gp_Pnt2d(lo, 0) : gp_Pnt2d(0, lo), up);
+        const Handle(Geom2d_Line) atHi = new Geom2d_Line(d == 0 ? gp_Pnt2d(hi, 0) : gp_Pnt2d(0, hi), up);
+        if (d == 0) builder.UpdateEdge(newSeam, atHi, atLo, rebuilt, BRep_Tool::Tolerance(v1));
+        else builder.UpdateEdge(newSeam, atLo, atHi, rebuilt, BRep_Tool::Tolerance(v1));
+        builder.Range(newSeam, std::min(vStart, vEnd), std::max(vStart, vEnd));
+        for (TopExp_Explorer wx(face, TopAbs_WIRE); wx.More(); wx.Next()) {
+          TopoDS_Wire wire;
+          builder.MakeWire(wire);
+          if (!wx.Current().IsSame(seamWire)) {
+            // Another wire (a hole): the same edges, their pcurves onto the copy.
+            for (TopoDS_Iterator ex(wx.Current()); ex.More(); ex.Next()) {
+              moveOnto(TopoDS::Edge(ex.Value()), TopoDS::Edge(ex.Value()));
+              builder.Add(wire, ex.Value());
+            }
+            wire.Orientation(wx.Current().Orientation());
+            builder.Add(rebuilt, wire);
+            continue;
           }
-          wire.Orientation(wx.Current().Orientation());
+          // From v1: the seam up, the far run from vn round to vn, the seam
+          // down, the near run from v1 round to v1.
+          const std::vector<TopoDS_Edge>& run = runs[far];
+          const bool forward = crossed.Orientation() == TopAbs_FORWARD;
+          std::vector<TopoDS_Edge> farRun;
+          farRun.push_back(forward ? piece2 : TopoDS::Edge(piece1.Reversed()));
+          for (size_t i = split + 1; i < run.size(); ++i) farRun.push_back(run[i]);
+          for (size_t i = 0; i < split; ++i) farRun.push_back(run[i]);
+          farRun.push_back(forward ? piece1 : TopoDS::Edge(piece2.Reversed()));
+          builder.Add(wire, newSeam.Oriented(rising ? TopAbs_FORWARD : TopAbs_REVERSED));
+          for (const TopoDS_Edge& e : farRun) {
+            if (!e.IsSame(piece1) && !e.IsSame(piece2)) moveOnto(e, e);
+            builder.Add(wire, e);
+          }
+          builder.Add(wire, newSeam.Oriented(rising ? TopAbs_REVERSED : TopAbs_FORWARD));
+          for (const TopoDS_Edge& e : runs[1 - far]) {
+            moveOnto(e, e);
+            builder.Add(wire, e);
+          }
+          wire.Closed(true);
           builder.Add(rebuilt, wire);
-          continue;
         }
-        // From v1: the seam up, the far run from vn round to vn, the seam
-        // down, the near run from v1 round to v1.
-        const std::vector<TopoDS_Edge>& run = runs[far];
-        const bool forward = crossed.Orientation() == TopAbs_FORWARD;
-        std::vector<TopoDS_Edge> farRun;
-        farRun.push_back(forward ? piece2 : TopoDS::Edge(piece1.Reversed()));
-        for (size_t i = split + 1; i < run.size(); ++i) farRun.push_back(run[i]);
-        for (size_t i = 0; i < split; ++i) farRun.push_back(run[i]);
-        farRun.push_back(forward ? piece1 : TopoDS::Edge(piece2.Reversed()));
-        builder.Add(wire, newSeam.Oriented(rising ? TopAbs_FORWARD : TopAbs_REVERSED));
-        for (const TopoDS_Edge& e : farRun) {
-          if (!e.IsSame(piece1) && !e.IsSame(piece2)) moveOnto(e, e);
-          builder.Add(wire, e);
-        }
-        builder.Add(wire, newSeam.Oriented(rising ? TopAbs_REVERSED : TopAbs_FORWARD));
-        for (const TopoDS_Edge& e : runs[1 - far]) {
-          moveOnto(e, e);
-          builder.Add(wire, e);
-        }
-        wire.Closed(true);
-        builder.Add(rebuilt, wire);
+        TopoDS_Wire pieces;
+        builder.MakeWire(pieces);
+        builder.Add(pieces, piece1);
+        builder.Add(pieces, piece2);
+        context->Replace(crossedF, pieces);
+        context->Replace(face, rebuilt);
+        ++straightened;
+      } catch (const Standard_Failure&) {
+        continue;
       }
-      TopoDS_Wire pieces;
-      builder.MakeWire(pieces);
-      builder.Add(pieces, piece1);
-      builder.Add(pieces, piece2);
-      context->Replace(crossedF, pieces);
-      context->Replace(face, rebuilt);
-      ++straightened;
     }
     if (straightened == 0) return solid;
     try {
