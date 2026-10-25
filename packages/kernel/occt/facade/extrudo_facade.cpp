@@ -2973,6 +2973,13 @@ public:
   uintptr_t meshLoopsPtr() const { return reinterpret_cast<uintptr_t>(meshLoops_.data()); }
   int meshLoopsSize() const { return static_cast<int>(meshLoops_.size()); }
 
+  /** Debug (tests only): the plane|cylinder pairs surfaceCurves examined since the last call. */
+  std::string takeTangentProbe() {
+    std::string text = tangentProbe();
+    tangentProbe().clear();
+    return text;
+  }
+
   /**
    * Diagnostics for a built shape (tests and the spike harness only; the app
    * never calls this). Fills geometry_ with, in order: the largest vertex,
@@ -8715,42 +8722,55 @@ private:
     }
     IntAna_QuadQuadGeo q;
     bool circlesOnly = true;
+    // A plane meant to be tangent to a cylinder — a flat face running into a
+    // fillet: the fitted surfaces are a little off, so IntAna gives nothing
+    // ("no curve: empty") or two near-coincident lines the chain's nodes miss,
+    // and the chain stays a polyline (869 such chains in the D3 sweep). Where
+    // the plane's normal is square to the axis within 1° and its distance
+    // from the axis is within 2 × the tolerance of the radius, build the
+    // cylinder's tangent line on the plane's side: through the axis point
+    // moved towards the plane by the radius, along the axis projected into
+    // the plane (a line, type 0). It is used only where IntAna yields no
+    // usable curve, so a pair IntAna already handles is left as it was; the
+    // fitted surfaces are not changed. `nearTangent` marks it, so a chain the
+    // node check rejects reads "no curve: near tangent, node off".
+    MeshChainCurve tangentFallback;
+    bool haveTangentFallback = false;
+    if (a.kind == 0 && b.kind == 1) {
+      const gp_XYZ n = a.direction.XYZ();
+      const gp_XYZ axis = b.direction.XYZ();
+      const double s = (b.origin.XYZ() - a.origin.XYZ()).Dot(n);
+      const double d = std::fabs(s);
+      {
+        char buf[192];
+        std::snprintf(buf, sizeof buf, "pc dot=%.5f d=%.5f r=%.5f diff=%.5f\n", std::fabs(n.Dot(axis)), d,
+                      b.radius, std::fabs(d - b.radius));
+        tangentProbe() += buf;
+      }
+      if (std::fabs(n.Dot(axis)) <= std::sin(angular) && std::fabs(d - b.radius) <= 2 * tolerance) {
+        gp_XYZ along = axis - axis.Dot(n) * n;
+        if (along.Modulus() > 1e-12) {
+          tangentFallback.type = 0;
+          tangentFallback.nearTangent = true;
+          tangentFallback.line = gp_Lin(gp_Pnt(b.origin.XYZ() - (s < 0 ? -1.0 : 1.0) * b.radius * n), gp_Dir(along));
+          haveTangentFallback = true;
+        }
+      }
+    }
+    // The fallback, when IntAna has no usable curve: `out` is it, with no
+    // `why` (so the sweep counts it as a collapsed line, not a reason kept).
+    const auto useTangentFallback = [&]() {
+      if (!haveTangentFallback) return false;
+      out.assign(1, tangentFallback);
+      why.clear();
+      return true;
+    };
     switch (a.kind * 5 + b.kind) {
       case 0:  // plane|plane
         q.Perform(meshPlane(a), meshPlane(b), Precision::Angular(), tolerance);
         circlesOnly = false;
         break;
       case 1:  // plane|cylinder
-      {
-        // A plane meant to be tangent to a cylinder — a flat face running
-        // into a fillet: the fitted plane is a little off, so IntAna gives
-        // nothing ("no curve: empty") or two near-coincident lines and the
-        // chain stays a polyline (869 such chains in the D3 sweep). Where
-        // the plane's normal is square to the axis within 1° and its
-        // distance from the axis is within 2 × the tolerance of the radius,
-        // give the cylinder's tangent line on the plane's side: it passes
-        // through the axis point moved towards the plane by the radius,
-        // along the axis projected into the plane (a line, type 0). The
-        // fitted surfaces are not changed; `chainCurve` accepts it only
-        // when every node is within 1.5 × the tolerance and the parameters
-        // run one way. `nearTangent` marks it, so a chain the node check
-        // rejects reads "no curve: near tangent, node off".
-        const gp_XYZ n = a.direction.XYZ();
-        const gp_XYZ axis = b.direction.XYZ();
-        const double s = (b.origin.XYZ() - a.origin.XYZ()).Dot(n);
-        const double d = std::fabs(s);
-        if (std::fabs(n.Dot(axis)) <= std::sin(angular) && std::fabs(d - b.radius) <= 2 * tolerance) {
-          gp_XYZ along = axis - axis.Dot(n) * n;
-          if (along.Modulus() > 1e-12) {
-            MeshChainCurve c;
-            c.type = 0;
-            c.nearTangent = true;
-            c.line = gp_Lin(gp_Pnt(b.origin.XYZ() - (s < 0 ? -1.0 : 1.0) * b.radius * n), gp_Dir(along));
-            out.push_back(c);
-            return out;
-          }
-        }
-      }
         q.Perform(meshPlane(a), meshCylinder(b), angular, tolerance);
         circlesOnly = false;
         break;
@@ -8800,11 +8820,13 @@ private:
         return out;
     }
     if (!q.IsDone()) {
+      if (useTangentFallback()) return out;
       why = "no curve: IntAna failed";
       return out;
     }
     const IntAna_ResultType type = q.TypeInter();
     if (type == IntAna_Empty || type == IntAna_Same || type == IntAna_NoGeometricSolution || type == IntAna_Point) {
+      if (useTangentFallback()) return out;
       why = type == IntAna_Empty  ? "no curve: empty"
             : type == IntAna_Same ? "no curve: same surface"
             : type == IntAna_Point ? "no curve: a point"
@@ -8812,6 +8834,7 @@ private:
       return out;
     }
     if ((type == IntAna_Parabola || type == IntAna_Hyperbola) || (circlesOnly && type != IntAna_Circle && type != IntAna_PointAndCircle)) {
+      if (useTangentFallback()) return out;
       why = type == IntAna_Parabola ? "no curve: parabola" : type == IntAna_Hyperbola ? "no curve: hyperbola" : "no curve: not a circle";
       return out;
     }
@@ -8834,9 +8857,11 @@ private:
       if (c.type >= 0) out.push_back(c);
     }
     if (out.size() > 2) {
+      if (useTangentFallback()) return out;
       why = "no curve: " + std::to_string(out.size()) + " curves";
       out.clear();
     } else if (out.empty()) {
+      if (useTangentFallback()) return out;
       why = "no curve";
     }
     return out;
@@ -10035,6 +10060,11 @@ private:
   std::string hybridRefusal_;
   /** The last hybrid build's chains (slice D3): "chains: 12 collapsed (…), 3 polylines", and why chains stayed polylines. */
   std::string hybridChains_, hybridChainsKept_;
+  /** Debug (tests only): see takeTangentProbe. */
+  static std::string& tangentProbe() {
+    static std::string probe;
+    return probe;
+  }
   /** Per recognised region of the last hybrid rebuild, when the spike harness asks (FACES=1). */
   bool keepHybridFaces_ = false;
   std::vector<std::string> hybridFaces_;
