@@ -1180,6 +1180,73 @@ describe('Mesh to Solid, the hybrid rebuild (ADR-0097 slice D1)', { timeout: 300
       kernel.release(shape);
     }
   });
+
+  it('re-seams a merged band whose split edge was a diagonal, so Offset Face works (2026-10-25)', () => {
+    // A 260-step staircase (521 planes: over the exact stage's 500-surface
+    // cap, so the hybrid rebuilds it, no facets) under a disc r 8 h 1.2 of
+    // 181 segments whose top ring is turned half a segment: no wall edge is
+    // vertical, so the split edge unify keeps as the merged wall's seam is a
+    // diagonal, π/181 off an isoline. OCCT's offset builds nothing on a body
+    // with such a seam; Mesh to Solid moves it onto an isoline.
+    const steps = 260;
+    const w = 0.15;
+    const outline: [number, number][] = [
+      [0, 0],
+      [steps * w, 0],
+    ];
+    for (let i = 0; i < steps; i++)
+      outline.push([(steps - i) * w, (i + 1) * w], [(steps - i - 1) * w, (i + 1) * w]);
+    const section = new manifold.CrossSection([outline]);
+    const stairs = section.extrude(4);
+    section.delete();
+    const n = 181;
+    const r = 8;
+    const centre = (steps * w * (2 - Math.SQRT2)) / 2; // the staircase's incircle
+    const nodes: number[] = [];
+    for (let ring = 0; ring < 2; ring++) {
+      for (let i = 0; i < n; i++) {
+        const a = (2 * Math.PI * (i + ring / 2)) / n;
+        nodes.push(centre + r * Math.cos(a), centre + r * Math.sin(a), 4 + 1.2 * ring);
+      }
+    }
+    nodes.push(centre, centre, 4, centre, centre, 5.2);
+    const triangles: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      triangles.push(i, j, n + i, j, n + j, n + i, 2 * n, j, i, 2 * n + 1, n + i, n + j);
+    }
+    const disc = new manifold.Manifold(
+      new manifold.Mesh({
+        numProp: 3,
+        vertProperties: Float32Array.from(nodes),
+        triVerts: Uint32Array.from(triangles),
+      }),
+    );
+    const part = stairs.add(disc);
+    stairs.delete();
+    disc.delete();
+    const { shape, report } = prismatic(meshOf(part), -1);
+    try {
+      expect(report).toMatchObject({ rebuild: 'hybrid', cylinders: 1, facets: 0 });
+      expect(kernel.isValid(shape)).toBe(true);
+      const faces = kernel.describe(shape).faces;
+      const top = faces.findIndex(
+        (f) => f.type === 'plane' && Math.abs((f.centroid[2] as number) - 5.2) < 1e-3,
+      );
+      expect(top).toBeGreaterThanOrEqual(0);
+      const before = kernel.properties(shape).volume;
+      const moved = kernel.offsetFaces(shape, [top], 1);
+      try {
+        expect(kernel.isValid(moved.shape)).toBe(true);
+        // The disc's top rises 1 mm: π r² more.
+        expect(kernel.properties(moved.shape).volume - before).toBeCloseTo(Math.PI * r * r, 0);
+      } finally {
+        kernel.release(moved.shape);
+      }
+    } finally {
+      kernel.release(shape);
+    }
+  });
 });
 
 describe('Mesh to Solid, the hybrid’s chains (ADR-0097 slice D3)', { timeout: 300_000 }, () => {
