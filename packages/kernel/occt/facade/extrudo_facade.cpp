@@ -8564,6 +8564,8 @@ private:
     gp_Lin line;
     gp_Circ circle;
     gp_Elips ellipse;
+    /** A near-tangent plane|cylinder line (slice D5), for the "node off" reason. */
+    bool nearTangent = false;
   };
 
   /** What chainCurve found for a chain: the curve trimmed to its nodes, or why not. */
@@ -8719,6 +8721,36 @@ private:
         circlesOnly = false;
         break;
       case 1:  // plane|cylinder
+      {
+        // A plane meant to be tangent to a cylinder — a flat face running
+        // into a fillet: the fitted plane is a little off, so IntAna gives
+        // nothing ("no curve: empty") or two near-coincident lines and the
+        // chain stays a polyline (869 such chains in the D3 sweep). Where
+        // the plane's normal is square to the axis within 1° and its
+        // distance from the axis is within 2 × the tolerance of the radius,
+        // give the cylinder's tangent line on the plane's side: it passes
+        // through the axis point moved towards the plane by the radius,
+        // along the axis projected into the plane (a line, type 0). The
+        // fitted surfaces are not changed; `chainCurve` accepts it only
+        // when every node is within 1.5 × the tolerance and the parameters
+        // run one way. `nearTangent` marks it, so a chain the node check
+        // rejects reads "no curve: near tangent, node off".
+        const gp_XYZ n = a.direction.XYZ();
+        const gp_XYZ axis = b.direction.XYZ();
+        const double s = (b.origin.XYZ() - a.origin.XYZ()).Dot(n);
+        const double d = std::fabs(s);
+        if (std::fabs(n.Dot(axis)) <= std::sin(angular) && std::fabs(d - b.radius) <= 2 * tolerance) {
+          gp_XYZ along = axis - axis.Dot(n) * n;
+          if (along.Modulus() > 1e-12) {
+            MeshChainCurve c;
+            c.type = 0;
+            c.nearTangent = true;
+            c.line = gp_Lin(gp_Pnt(b.origin.XYZ() - (s < 0 ? -1.0 : 1.0) * b.radius * n), gp_Dir(along));
+            out.push_back(c);
+            return out;
+          }
+        }
+      }
         q.Perform(meshPlane(a), meshCylinder(b), angular, tolerance);
         circlesOnly = false;
         break;
@@ -8922,9 +8954,13 @@ private:
         ts.push_back(curveParameter(fit.curve, gp_Pnt(meshNode(chain.nodes[i])), d));
         fit.off = std::max(fit.off, d);
         if (d > reach) {
-          char text[96];
-          std::snprintf(text, sizeof text, "node %zu off by %.4g", i, d);
-          fit.why = text;
+          if (fit.curve.nearTangent) {
+            fit.why = "no curve: near tangent, node off";
+          } else {
+            char text[96];
+            std::snprintf(text, sizeof text, "node %zu off by %.4g", i, d);
+            fit.why = text;
+          }
           return fit;
         }
       }
