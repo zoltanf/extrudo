@@ -8744,8 +8744,8 @@ private:
         }
       }
     }
-    // The fallback, when IntAna has no usable curve: `out` is it, with no
-    // `why` (so the sweep counts it as a collapsed line, not a reason kept).
+    // The fallback alone, when IntAna has no usable curve: `out` is it, with
+    // no `why` (so the sweep counts it as a collapsed line, not a reason kept).
     const auto useTangentFallback = [&]() {
       if (!haveTangentFallback) return false;
       out.assign(1, tangentFallback);
@@ -8847,9 +8847,13 @@ private:
       if (useTangentFallback()) return out;
       why = "no curve: " + std::to_string(out.size()) + " curves";
       out.clear();
-    } else if (out.empty()) {
-      if (useTangentFallback()) return out;
-      why = "no curve";
+    } else {
+      // Slice D5: keep IntAna's curves and add the near-tangent line as one
+      // more candidate. `chainCurve` tries IntAna's first, so a pair IntAna
+      // handles never moves; the fallback is used only where none of them
+      // fits the chain's nodes.
+      if (haveTangentFallback) out.push_back(tangentFallback);
+      if (out.empty()) why = "no curve";
     }
     return out;
   }
@@ -8943,75 +8947,108 @@ private:
       fit.why = cached->second.second.empty() ? "no curve" : cached->second.second;
       return fit;
     }
-    // The nearer curve (the sum of the nodes' distances).
-    double best = 1e300;
-    for (const MeshChainCurve& c : curves) {
-      double sum = 0, d = 0;
+    // Every node near a curve, its parameters one way along it, a circle's or
+    // ellipse's span under a turn; `why` says what failed.
+    const double reach = 1.5 * tolerance;
+    const auto evaluate = [&](const MeshChainCurve& start) {
+      MeshChainFit result;
+      result.curve = start;
+      for (int pass = 0; pass < 2; ++pass) {
+        std::vector<double> ts;
+        result.off = 0;
+        for (size_t i = 0; i < chain.nodes.size(); ++i) {
+          double d = 0;
+          ts.push_back(curveParameter(result.curve, gp_Pnt(meshNode(chain.nodes[i])), d));
+          result.off = std::max(result.off, d);
+          if (d > reach) {
+            if (result.curve.nearTangent) {
+              result.why = "no curve: near tangent, node off";
+            } else {
+              char text[96];
+              std::snprintf(text, sizeof text, "node %zu off by %.4g", i, d);
+              result.why = text;
+            }
+            return result;
+          }
+        }
+        const bool periodic = result.curve.type > 0;
+        std::vector<double> steps;
+        const size_t count = chain.closed ? ts.size() : ts.size() - 1;
+        for (size_t i = 0; i < count; ++i) {
+          double step = ts[(i + 1) % ts.size()] - ts[i];
+          if (periodic) step -= 2 * M_PI * std::round(step / (2 * M_PI));
+          steps.push_back(step);
+        }
+        const bool up = std::all_of(steps.begin(), steps.end(), [](double s) { return s > 0; });
+        const bool down = std::all_of(steps.begin(), steps.end(), [](double s) { return s < 0; });
+        if (!up && !down) {
+          result.why = "not monotone";
+          return result;
+        }
+        if (down) {
+          // Turn the curve to run with the chain, and measure again.
+          if (pass == 1) {
+            result.why = "not monotone";
+            return result;
+          }
+          auto flipped = [](const gp_Ax2& ax) { return gp_Ax2(ax.Location(), ax.Direction().Reversed(), ax.XDirection()); };
+          if (result.curve.type == 0) result.curve.line.Reverse();
+          else if (result.curve.type == 1) result.curve.circle.SetPosition(flipped(result.curve.circle.Position()));
+          else result.curve.ellipse.SetPosition(flipped(result.curve.ellipse.Position()));
+          continue;
+        }
+        double span = 0;
+        for (double s : steps) span += s;
+        if (periodic && (chain.closed ? std::fabs(span - 2 * M_PI) > 1e-6 : span >= 2 * M_PI - 1e-9)) {
+          result.why = "spans " + std::to_string(span / (2 * M_PI)) + " turns";
+          return result;
+        }
+        result.first = ts.front();
+        result.last = periodic ? ts.front() + span : ts.back();
+        return result;
+      }
+      return result;
+    };
+    // The candidates, the curves' own order: IntAna's (slice D3), the nearer
+    // first, then the near-tangent line (slice D5). IntAna's are tried first,
+    // so a chain one of them fits never moves; the fallback is reached only
+    // where none fits.
+    auto nodeDistance = [&](const MeshChainCurve& c) {
+      double total = 0, d = 0;
       for (int n : chain.nodes) {
         curveParameter(c, gp_Pnt(meshNode(n)), d);
-        sum += d;
+        total += d;
       }
-      if (sum < best) {
-        best = sum;
-        fit.curve = c;
+      return total;
+    };
+    std::vector<MeshChainCurve> candidates;
+    const MeshChainCurve* fallback = nullptr;
+    for (const MeshChainCurve& c : curves) {
+      if (c.nearTangent) fallback = &c;
+      else candidates.push_back(c);
+    }
+    std::stable_sort(candidates.begin(), candidates.end(),
+                     [&](const MeshChainCurve& x, const MeshChainCurve& y) { return nodeDistance(x) < nodeDistance(y); });
+    MeshChainFit firstFit;
+    bool haveFirst = false;
+    for (const MeshChainCurve& c : candidates) {
+      MeshChainFit result = evaluate(c);
+      if (result.why.empty()) return result;
+      if (!haveFirst) {
+        firstFit = result;
+        haveFirst = true;
       }
     }
-    // Every node near it, its parameters one way along it.
-    const double reach = 1.5 * tolerance;
-    for (int pass = 0; pass < 2; ++pass) {
-      std::vector<double> ts;
-      fit.off = 0;
-      for (size_t i = 0; i < chain.nodes.size(); ++i) {
-        double d = 0;
-        ts.push_back(curveParameter(fit.curve, gp_Pnt(meshNode(chain.nodes[i])), d));
-        fit.off = std::max(fit.off, d);
-        if (d > reach) {
-          if (fit.curve.nearTangent) {
-            fit.why = "no curve: near tangent, node off";
-          } else {
-            char text[96];
-            std::snprintf(text, sizeof text, "node %zu off by %.4g", i, d);
-            fit.why = text;
-          }
-          return fit;
-        }
+    if (fallback != nullptr) {
+      MeshChainFit result = evaluate(*fallback);
+      if (result.why.empty()) return result;
+      if (!haveFirst) {
+        firstFit = result;
+        haveFirst = true;
       }
-      const bool periodic = fit.curve.type > 0;
-      std::vector<double> steps;
-      const size_t count = chain.closed ? ts.size() : ts.size() - 1;
-      for (size_t i = 0; i < count; ++i) {
-        double step = ts[(i + 1) % ts.size()] - ts[i];
-        if (periodic) step -= 2 * M_PI * std::round(step / (2 * M_PI));
-        steps.push_back(step);
-      }
-      const bool up = std::all_of(steps.begin(), steps.end(), [](double s) { return s > 0; });
-      const bool down = std::all_of(steps.begin(), steps.end(), [](double s) { return s < 0; });
-      if (!up && !down) {
-        fit.why = "not monotone";
-        return fit;
-      }
-      if (down) {
-        // Turn the curve to run with the chain, and measure again.
-        if (pass == 1) {
-          fit.why = "not monotone";
-          return fit;
-        }
-        auto flipped = [](const gp_Ax2& ax) { return gp_Ax2(ax.Location(), ax.Direction().Reversed(), ax.XDirection()); };
-        if (fit.curve.type == 0) fit.curve.line.Reverse();
-        else if (fit.curve.type == 1) fit.curve.circle.SetPosition(flipped(fit.curve.circle.Position()));
-        else fit.curve.ellipse.SetPosition(flipped(fit.curve.ellipse.Position()));
-        continue;
-      }
-      double span = 0;
-      for (double s : steps) span += s;
-      if (periodic && (chain.closed ? std::fabs(span - 2 * M_PI) > 1e-6 : span >= 2 * M_PI - 1e-9)) {
-        fit.why = "spans " + std::to_string(span / (2 * M_PI)) + " turns";
-        return fit;
-      }
-      fit.first = ts.front();
-      fit.last = periodic ? ts.front() + span : ts.back();
-      return fit;
     }
+    if (haveFirst) return firstFit;
+    fit.why = cached->second.second.empty() ? "no curve" : cached->second.second;
     return fit;
   }
 
