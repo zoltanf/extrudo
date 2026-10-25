@@ -3194,6 +3194,39 @@ the spike harness (the `MESH_FILE` test's `MESH_OUT=<dir>` writes the staged
 mesh as `<dir>/staged.mesh` for it); never commit the private file or
 anything derived from it.
 
+**ADR-0097 amendment (2026-10-25b): the mesh's own degenerate components, and a
+flat face on a faceted body.** `mesh-to-solid.test.ts`'s `bossWithBump` (a box
+with a cylinder r 5 standing **coplanar** on its top, refined and warped) is,
+per `manifold-3d`, **47 connected mesh components**: the body (4,934 triangles)
+and **46 flat zero-volume components of 10 triangles** at z = 10 (the coplanar
+union's flaps), each 1e-32–5e-16 mm³. The hybrid and faceted build **one solid
+per component**, so the result is 47 solids (the body, 1,608 faces, 9,548.60
+mm³) and 46 two-face zero-volume shells; `isValid` and the ±1 % volume check
+pass, but `offsetFaces` refuses ("the solid has an inner void", status 4).
+**Rule: `dropDegenerateComponents()` runs at the top of `meshToSolid` (facade)
+and removes the staged triangles of every **closed** connected component (by
+shared edge; every edge of it shared by exactly two of its triangles) with
+|signed volume| ≤ 1e-6 × max(1, |mesh volume|), compacting nodes and
+triangles, so no path makes a degenerate solid/shell/facet and the hybrid's node
+check never sees a dropped component's nodes.** Keep a positive-volume (part),
+a negative-volume (cavity) and an **open** component (a boundary or a
+non-manifold edge: the path refuses it). Drop at the **mesh**, not the shells:
+dropping only the shells leaves their triangles staged, the node check marks
+their nodes off the (now smaller) result and the build refuses ("a node off its
+face"). The `meshRegions`/`meshLoopsDebug` preview still segments as staged (its
+per-triangle array must match the view mesh), so a flap still shows there.
+Second rule: with the inner void gone, `offsetFaces` on a converted body hits
+the **smooth-chain guard** (status 6, "rounded edges meet at a sharp corner") —
+the bump's 1,596 facets and 4 fitted cylinders are one 4°-chain of 115 faces
+with ~14° creases inside. The guard protects OCCT's offset (heap trap), which
+the **flat-face prism fallback `buildPrismOffset` never calls**, so `offsetFaces`
+now tries the fallback **for a sharp chain only** before keeping the refusal; it
+still declines where its gate fails (a slanted/cylindrical neighbour: the
+`kernel.test.ts` fillet-corner case and its status-6 expectation). Test: the
+conversion is one solid and one shell (a `shells` helper counts the STEP
+writer's `CLOSED_SHELL`s) and Offset Face moves the box's bottom by 1 mm for
++900 mm³ within 0.5 %. The `mesh-to-solid-files.test.ts` fixtures are unchanged.
+
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
 facade `removeFaces` with `BRepAlgoAPI_Defeaturing`). Rules: **all or nothing** (any
