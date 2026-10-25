@@ -1264,8 +1264,12 @@ that isn't there), **a text's `attachment:<id>` font must exist in
 command to "repair" it), **WOFF2 is refused** from the file name (opentype.js
 can't read it), **garbage collection runs only from `saveVersion` /
 `deleteVersions`** (`collectAttachments`, under the version lock — never per
-autosave), and **the size limits live in storage** (`writeAttachment`: 10 MB a
-file, 50 MB a design, plus "these bytes are not the file they claim to be").
+autosave), and **the size limits live in storage** (`writeAttachment`, plus
+preflight before an import or copy writes files; ADR-0066 raises the limits to
+25 MB a file, 100 MB a design). Preflight checks the document and each saved
+version separately, counting a hash once and using at least the bytes' actual
+size: valid history can retain more than 100 MB across different states.
+`writeAttachment` also refuses bytes that do not match their hash.
 On the app side `fontBytes` reads `attachment:<id>` through a project-scoped
 resolver that `ProjectPage` sets (`useFontAttachments`, the cache follows the
 project), so the UI thread and the `Recomputer` need no other change; both Font

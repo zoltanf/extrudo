@@ -102,6 +102,34 @@ const decoder = new TextDecoder();
 const MB = 1024 * 1024;
 const megabytes = (bytes: number) => `${Math.ceil((bytes / MB) * 10) / 10} MB`;
 
+function assertAttachmentTotal(total: number): void {
+  if (total > MAX_ATTACHMENTS_BYTES) {
+    throw new Error(
+      `This design's files would be ${megabytes(total)} altogether; they may be at most ${megabytes(MAX_ATTACHMENTS_BYTES)}.`,
+    );
+  }
+}
+
+/** A batch has no stored document yet; count each file once in the incoming state. */
+function assertAttachmentBudget(
+  doc: ExtrudoDocument,
+  attachments?: ReadonlyMap<string, Uint8Array>,
+): void {
+  const sizes = new Map<string, number>();
+  for (const record of Object.values(doc.attachments ?? {})) {
+    // Missing files still count by their record; understated records cannot hide bytes.
+    sizes.set(
+      record.sha256,
+      Math.max(
+        record.size,
+        attachments?.get(record.sha256)?.length ?? 0,
+        sizes.get(record.sha256) ?? 0,
+      ),
+    );
+  }
+  assertAttachmentTotal([...sizes.values()].reduce((sum, size) => sum + size, 0));
+}
+
 /**
  * The one shape a project id may have (P6-01, ADR-0075's review): `newId()`
  * makes a UUID, and the store's own tests use short ids like `p1`; both fit.
@@ -289,11 +317,7 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
     const total =
       bytes.length +
       [...sizes].reduce((sum, [hash, size]) => (hash === sha256 ? sum : sum + size), 0);
-    if (total > MAX_ATTACHMENTS_BYTES) {
-      throw new Error(
-        `This design's files would be ${megabytes(total)} altogether; they may be at most ${megabytes(MAX_ATTACHMENTS_BYTES)}.`,
-      );
-    }
+    assertAttachmentTotal(total);
     await files.write(attachmentPath(id, sha256), bytes);
   };
 
@@ -377,6 +401,7 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
     name: string,
     extra: { thumbnail?: Uint8Array; attachments?: ReadonlyMap<string, Uint8Array> } = {},
   ) => {
+    assertAttachmentBudget(doc, extra.attachments);
     const copy: ExtrudoDocument = {
       ...doc,
       id: makeId(),
@@ -533,6 +558,11 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
       if (notice) options?.onNotice?.(notice);
       for (const message of attachmentNotices(archive)) options?.onNotice?.(message);
       const { doc, thumbnail, versions, attachments } = archive;
+      // Each saved state has its own budget; history may retain different files.
+      // Check them all before writing even the first attachment or project entry.
+      for (const state of [doc, ...versions.map((version) => version.doc)]) {
+        assertAttachmentBudget(state, attachments);
+      }
       if (await index.get(doc.id)) {
         const copy = await saveCopy(doc, doc.name, { thumbnail, attachments });
         await writeVersions(copy.id, versions);
