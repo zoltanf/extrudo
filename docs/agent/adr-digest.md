@@ -3274,6 +3274,24 @@ the base (hash `occt-e1e731c1fd29`), no test, no changelog. The result is
 weld-sensitive (a 1e-6 weld converts in 10.8 s with 7 exploded regions).
 Measurements in ADR-0097's 2026-10-25d amendment.
 
+**ADR-0097 amendment (2026-10-25e): the preview drops what the conversion
+drops.** `dropDegenerateComponents` (facade) is split into
+`degenerateDropMask(keep, dropped)` (the per-triangle mask: 1 for a component
+that stays — positive volume a part, negative a cavity, open the path's to
+refuse — 0 for a flat closed zero-volume flap) and `compactStagedMesh(keep)`;
+`meshToSolid` runs both as before. `meshRegions` and `meshLoopsDebug` now
+compute the mask and segment the **compacted** mesh, so the dialog preview and
+the debug match the conversion (they previously segmented the flaps too:
+`bossWithBump` read 100 plane surfaces where the conversion makes 8).
+`meshRegions` builds the compacted copy with `origOf` (each kept triangle's
+original index), segments it, restores the staged buffers and maps each
+surface back; `meshRegionOf_` keeps the **original triangle count** (the view
+mesh lines up), a dropped triangle taking a kept neighbour's surface else -1.
+`meshLoopsDebug` compacts in place (region- and chain-level output). Test:
+`bossWithBump`'s preview `surfaceOf.length` = the view mesh's triangles,
+`unfit.regions` = the conversion's (1) and `planes`/`cylinders` = the
+report's (8/4; 100 planes on the base WASM). No schema change.
+
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
 facade `removeFaces` with `BRepAlgoAPI_Defeaturing`). Rules: **all or nothing** (any

@@ -1141,6 +1141,12 @@ end to end, faster than in established desktop CAD.
   safe earlier point reaches 15 s without risking other meshes, the facet
   estimate is 527–644 (under the cap) and the Auto ladder runs once
   (ADR-0097's 2026-10-25d amendment).
+  *2026-10-25e:* the region preview (`meshRegions`) and `meshLoopsDebug` now
+  drop a mesh's closed zero-volume flaps (`dropDegenerateComponents`' mask)
+  before segmenting, so the dialog shows what the conversion builds
+  (`bossWithBump`: 100 plane surfaces → 8, the conversion's) while the
+  per-triangle array keeps the view mesh's triangle count (ADR-0097's
+  2026-10-25e amendment).
 
 ## Phase 5 — Programmatic design (→ v0.6)
 

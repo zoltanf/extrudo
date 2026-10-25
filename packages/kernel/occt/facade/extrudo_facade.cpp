@@ -2726,25 +2726,21 @@ public:
   uintptr_t meshTrianglesPtr() const { return reinterpret_cast<uintptr_t>(meshTriangles_.data()); }
 
   /**
-   * Drops the triangles of every connected component of the staged mesh that
-   * encloses no volume (|V| <= 1e-6 x max(1, |mesh volume|)) and compacts the
-   * node and triangle buffers. A mesh's own boolean can leave flat zero-volume
-   * flaps as closed components of their own (a boss standing on a coplanar
-   * face: `mesh-to-solid.test.ts`'s `bossWithBump` has 46 of them); one solid
-   * per component would put that many degenerate shells beside the body, and
-   * Offset Face then refuses it ("the solid has an inner void", ADR-0097,
-   * amendment 2026-10-25b). A component with positive volume is a part, with
-   * negative volume a cavity: both stay. Drops at the mesh, not at the
-   * shells, so the node check never validates a node of a component that is
-   * gone. Returns the number of components dropped, or -1 for a bad mesh (a
-   * triangle index past the node count).
+   * The per-triangle keep mask of `dropDegenerateComponents`: `keep[t]` is 1
+   * for a triangle of a connected component (by shared edge) that stays
+   * (positive volume: a part; negative: a cavity; open: the path's to refuse)
+   * and 0 for a flat closed zero-volume flap, `dropped` counting the dropped
+   * components. Returns false for a bad mesh (a triangle index past the node
+   * count).
    */
-  int dropDegenerateComponents() {
+  bool degenerateDropMask(std::vector<char>& keep, int& dropped) const {
+    keep.clear();
+    dropped = 0;
     const int nodeCount = static_cast<int>(meshNodes_.size() / 3);
     const int triangleCount = static_cast<int>(meshTriangles_.size() / 3);
     for (uint32_t index : meshTriangles_)
-      if (index >= static_cast<uint32_t>(nodeCount)) return -1;
-    if (triangleCount == 0) return 0;
+      if (index >= static_cast<uint32_t>(nodeCount)) return false;
+    if (triangleCount == 0) return true;
     const auto corner = [&](int t, int k) { return static_cast<int>(meshTriangles_[3 * t + k]); };
     // Adjacency by shared edge, as segmentMesh does; a triangle on an edge that
     // is not shared by exactly two is open (a boundary, or a non-manifold edge).
@@ -2796,7 +2792,6 @@ public:
     for (int t = 0; t < triangleCount; ++t)
       if (open[static_cast<size_t>(t)] != 0)
         openRoot[static_cast<size_t>(rootOf[static_cast<size_t>(t)])] = 1;
-    int dropped = 0;
     for (int t = 0; t < triangleCount; ++t) {
       const size_t root = static_cast<size_t>(rootOf[static_cast<size_t>(t)]);
       if (decided[root] != 0) continue;
@@ -2810,17 +2805,32 @@ public:
       else
         ++dropped;
     }
-    if (dropped == 0) return 0;
-    // Compact the kept triangles and the nodes they use.
+    keep.assign(static_cast<size_t>(triangleCount), 0);
+    for (int t = 0; t < triangleCount; ++t)
+      keep[static_cast<size_t>(t)] = keepRoot[static_cast<size_t>(rootOf[static_cast<size_t>(t)])] != 0 ? 1 : 0;
+    return true;
+  }
+
+  /**
+   * The staged mesh with the triangles `keep` marks, into `nodes`/`triangles`,
+   * and `origOf`: each kept triangle's original index (slice D6, so `meshRegions`
+   * can map a surface back to the staged triangle order).
+   */
+  void compactedStagedMesh(const std::vector<char>& keep, std::vector<double>& nodes,
+                           std::vector<uint32_t>& triangles, std::vector<int>& origOf) const {
+    const int nodeCount = static_cast<int>(meshNodes_.size() / 3);
+    const int triangleCount = static_cast<int>(meshTriangles_.size() / 3);
     std::vector<int> remap(static_cast<size_t>(nodeCount), -1);
-    std::vector<double> nodes;
-    std::vector<uint32_t> triangles;
+    nodes.clear();
+    triangles.clear();
+    origOf.clear();
     nodes.reserve(meshNodes_.size());
     triangles.reserve(meshTriangles_.size());
     for (int t = 0; t < triangleCount; ++t) {
-      if (keepRoot[static_cast<size_t>(rootOf[static_cast<size_t>(t)])] == 0) continue;
+      if (keep[static_cast<size_t>(t)] == 0) continue;
+      origOf.push_back(t);
       for (int k = 0; k < 3; ++k) {
-        const int n = corner(t, k);
+        const int n = static_cast<int>(meshTriangles_[3 * t + k]);
         int& mapped = remap[static_cast<size_t>(n)];
         if (mapped < 0) {
           mapped = static_cast<int>(nodes.size() / 3);
@@ -2831,8 +2841,38 @@ public:
         triangles.push_back(static_cast<uint32_t>(mapped));
       }
     }
+  }
+
+  /** Compacts the staged mesh in place to the triangles `keep` marks. */
+  void compactStagedMesh(const std::vector<char>& keep) {
+    std::vector<double> nodes;
+    std::vector<uint32_t> triangles;
+    std::vector<int> origOf;
+    compactedStagedMesh(keep, nodes, triangles, origOf);
     meshNodes_ = std::move(nodes);
     meshTriangles_ = std::move(triangles);
+  }
+
+  /**
+   * Drops the triangles of every connected component of the staged mesh that
+   * encloses no volume (|V| <= 1e-6 x max(1, |mesh volume|)) and compacts the
+   * node and triangle buffers. A mesh's own boolean can leave flat zero-volume
+   * flaps as closed components of their own (a boss standing on a coplanar
+   * face: `mesh-to-solid.test.ts`'s `bossWithBump` has 46 of them); one solid
+   * per component would put that many degenerate shells beside the body, and
+   * Offset Face then refuses it ("the solid has an inner void", ADR-0097,
+   * amendment 2026-10-25b). A component with positive volume is a part, with
+   * negative volume a cavity: both stay. Drops at the mesh, not at the
+   * shells, so the node check never validates a node of a component that is
+   * gone. Returns the number of components dropped, or -1 for a bad mesh (a
+   * triangle index past the node count).
+   */
+  int dropDegenerateComponents() {
+    std::vector<char> keep;
+    int dropped = 0;
+    if (!degenerateDropMask(keep, dropped)) return -1;
+    if (dropped == 0) return 0;
+    compactStagedMesh(keep);
     return dropped;
   }
 
@@ -2861,15 +2901,18 @@ public:
   }
 
   /**
-   * Mesh to Solid's region preview (ADR-0097 §5 and its 2026-10-22
-   * amendment): prismatic's segmentation and fits over the staged mesh, no
-   * solid. Fills meshReport_ as a refusal would (faces 0), one surface index
-   * per triangle (meshRegionsPtr, int32, in the staged triangle order) and
-   * one kind per surface (meshRegionKindsPtr, int32: 0 plane, 1 cylinder,
-   * 2 cone, 3 sphere, 4 torus, -1 unfit). Frees the input buffers. Returns 1,
-   * or 0 with lastError for a bad tolerance or an empty or inconsistent
-   * mesh. The region buffers live until clearMeshRegions, the next
-   * meshNodes or the next meshRegions.
+   * Mesh to Solid's region preview (ADR-0097 §5 and its 2026-10-22 and
+   * 2026-10-25e amendments): prismatic's segmentation and fits over the staged
+   * mesh with its closed zero-volume flaps dropped (`dropDegenerateComponents`,
+   * so the preview matches the conversion), no solid. Fills meshReport_ as a
+   * refusal would (faces 0), one surface index per triangle (meshRegionsPtr,
+   * int32, in the staged triangle order — a dropped triangle takes a kept
+   * neighbour's surface, else -1) and one kind per surface
+   * (meshRegionKindsPtr, int32: 0 plane, 1 cylinder, 2 cone, 3 sphere,
+   * 4 torus, -1 unfit). Frees the input buffers. Returns 1, or 0 with
+   * lastError for a bad tolerance or an empty or inconsistent mesh. The region
+   * buffers live until clearMeshRegions, the next meshNodes or the next
+   * meshRegions.
    */
   int meshRegions(double tolerance) {
     beginOp();
@@ -2877,12 +2920,75 @@ public:
     clearMeshRegions();
     int ok = 0;
     try {
+      // Slice D6: the preview drops what the conversion drops, so its regions
+      // and counts match (`dropDegenerateComponents` runs in meshToSolid too).
+      std::vector<char> keep;
+      int dropped = 0;
+      if (!degenerateDropMask(keep, dropped)) dropped = 0;  // a bad mesh: segmentMesh reports it
       MeshSegmentation seg;
       double chosen = tolerance;
-      // A tolerance of 0 or less means Auto (ADR-0097, slice D2).
-      const bool segmented =
-          tolerance <= 0 ? meshAutoTolerance(chosen, seg) : segmentMesh(tolerance, seg);
-      if (segmented) {
+      bool segmented = false;
+      if (dropped == 0) {
+        // A tolerance of 0 or less means Auto (ADR-0097, slice D2).
+        segmented = tolerance <= 0 ? meshAutoTolerance(chosen, seg) : segmentMesh(tolerance, seg);
+      } else {
+        const int originalTriangles = static_cast<int>(meshTriangles_.size() / 3);
+        std::vector<double> savedNodes = meshNodes_;
+        std::vector<uint32_t> savedTriangles = meshTriangles_;
+        std::vector<double> compactNodes;
+        std::vector<uint32_t> compactTriangles;
+        std::vector<int> origOf;
+        compactedStagedMesh(keep, compactNodes, compactTriangles, origOf);
+        meshNodes_ = std::move(compactNodes);
+        meshTriangles_ = std::move(compactTriangles);
+        try {
+          segmented = tolerance <= 0 ? meshAutoTolerance(chosen, seg) : segmentMesh(tolerance, seg);
+        } catch (...) {
+          meshNodes_ = std::move(savedNodes);
+          meshTriangles_ = std::move(savedTriangles);
+          throw;
+        }
+        meshNodes_ = std::move(savedNodes);
+        meshTriangles_ = std::move(savedTriangles);
+        if (segmented) {
+          // Map the compacted surfaces back to the staged triangle order; a
+          // dropped triangle takes the surface of a kept triangle sharing a
+          // node with it (a flap's nodes are usually its own: -1 then).
+          meshRegionOf_.assign(static_cast<size_t>(originalTriangles), -1);
+          meshRegionKinds_.resize(seg.surfaces.size());
+          std::vector<int32_t> surfaceOfOriginal(static_cast<size_t>(originalTriangles), -1);
+          for (size_t s = 0; s < seg.surfaces.size(); ++s) {
+            meshRegionKinds_[s] = seg.surfaces[s].kind;
+            for (int r : seg.surfaces[s].regions)
+              for (int t : seg.regions[r].triangles) {
+                const int original = origOf[static_cast<size_t>(t)];
+                meshRegionOf_[original] = static_cast<int32_t>(s);
+                surfaceOfOriginal[static_cast<size_t>(original)] = static_cast<int32_t>(s);
+              }
+          }
+          const int nodeCount = static_cast<int>(meshNodes_.size() / 3);
+          std::vector<int32_t> nodeSurface(static_cast<size_t>(nodeCount), -1);
+          for (int t = 0; t < originalTriangles; ++t) {
+            if (surfaceOfOriginal[static_cast<size_t>(t)] < 0) continue;
+            for (int k = 0; k < 3; ++k) {
+              const int n = static_cast<int>(meshTriangles_[3 * t + k]);
+              if (nodeSurface[static_cast<size_t>(n)] < 0)
+                nodeSurface[static_cast<size_t>(n)] = surfaceOfOriginal[static_cast<size_t>(t)];
+            }
+          }
+          for (int t = 0; t < originalTriangles; ++t) {
+            if (meshRegionOf_[static_cast<size_t>(t)] >= 0) continue;
+            for (int k = 0; k < 3; ++k) {
+              const int n = static_cast<int>(meshTriangles_[3 * t + k]);
+              if (nodeSurface[static_cast<size_t>(n)] >= 0) {
+                meshRegionOf_[static_cast<size_t>(t)] = nodeSurface[static_cast<size_t>(n)];
+                break;
+              }
+            }
+          }
+        }
+      }
+      if (segmented && dropped == 0) {
         meshRegionOf_.assign(seg.regionOf.size(), -1);
         meshRegionKinds_.resize(seg.surfaces.size());
         for (size_t s = 0; s < seg.surfaces.size(); ++s) {
@@ -2890,8 +2996,8 @@ public:
           for (int r : seg.surfaces[s].regions)
             for (int t : seg.regions[r].triangles) meshRegionOf_[t] = static_cast<int32_t>(s);
         }
-        ok = 1;
       }
+      ok = segmented ? 1 : 0;
     } catch (...) {
       ok = failFromException("Mesh to Solid failed");
     }
@@ -2916,8 +3022,9 @@ public:
 
   /**
    * Mesh to Solid's loops for tests (ADR-0097, slice D1): prismatic's
-   * segmentation over the staged mesh, then the hybrid rebuild's regions and
-   * their boundary loops, no solid. Fills meshLoopsPtr/Size (int32): per
+   * segmentation over the staged mesh with its closed zero-volume flaps
+   * dropped (slice D6, as the conversion), then the hybrid rebuild's regions
+   * and their boundary loops, no solid. Fills meshLoopsPtr/Size (int32): per
    * region its kind (-1 unfit), its surface, its loop count (0 when it is
    * exploded or unfit), then each loop's edge count, the outer loop first;
    * then the boundary chains (slice D3): their count, and per chain its left
@@ -2932,6 +3039,11 @@ public:
     meshLoops_.clear();
     int count = 0;
     try {
+      // Slice D6: as meshRegions, over the mesh with its closed zero-volume
+      // flaps dropped, so the debug's regions and chains match the conversion.
+      std::vector<char> keep;
+      int dropped = 0;
+      if (degenerateDropMask(keep, dropped) && dropped > 0) compactStagedMesh(keep);
       MeshSegmentation seg;
       if (segmentMesh(tolerance, seg)) {
         std::vector<int> hybridOf;

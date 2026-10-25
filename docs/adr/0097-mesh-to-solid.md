@@ -2269,3 +2269,43 @@ invalid | exploded 0`; a 1e-6-rounding weld instead converts in 10.8 s with 7
 exploded regions, so the result is weld-sensitive — one more reason not to
 widen any rule here. The same numbers on the intermediate WASM
 `occt-234b03194dc6` (the `takeStageTimes` builds) and `occt-9c885cd89a84`.
+
+### Amendment, 2026-10-25e: the preview drops what the conversion drops (slice D6)
+
+The 2026-10-25b amendment's own note: `dropDegenerateComponents` runs at the
+top of `meshToSolid`, so the conversion never sees a mesh's flat zero-volume
+flaps, but `meshRegions` (the dialog's region preview) and `meshLoopsDebug`
+segmented the staged mesh as-is. On `bossWithBump` (a box with a cylinder r 5
+standing coplanar on its top: the body plus **46 flat zero-volume
+components**) the preview read **100 plane surfaces** where the conversion
+makes **8** — 92 of them the flaps' front and back — so the dialog showed and
+counted regions the conversion would not build.
+
+**Rule (facade).** `dropDegenerateComponents` is split into
+`degenerateDropMask(keep, dropped)` (the per-triangle keep mask: 1 for a
+triangle of a component that stays — positive volume a part, negative a
+cavity, open the path's to refuse — 0 for a flat closed zero-volume flap) and
+`compactStagedMesh(keep)` (the in-place compaction). `meshToSolid` runs both,
+unchanged. `meshRegions` and `meshLoopsDebug` now compute the mask first and
+segment the **compacted** mesh:
+
+- `meshRegions` keeps the staged buffers, builds the compacted copy
+  (`compactedStagedMesh`, with `origOf`: each kept triangle's original index),
+  segments that (its `meshReport_` counts, unfit share and suggested tolerance
+  are the conversion's), restores the staged buffers and maps each surface
+  back to the original triangle order. `meshRegionOf_` keeps the **original**
+  triangle count (the view mesh lines up with it); a dropped triangle takes
+  the surface of a kept triangle sharing a node with it, else -1 (a flap's
+  nodes are its own, so -1).
+- `meshLoopsDebug` compacts in place and segments that, so its regions, loops
+  and chains are the conversion's (its output is region- and chain-level, no
+  per-triangle array).
+
+The 2026-10-25b rejected option ("dropping only the shells") stays rejected:
+the drop is at the mesh, before any segmentation. No schema change.
+
+**Test** (`mesh-to-solid.test.ts`, `Kernel.meshRegions`): `bossWithBump`'s
+preview has `surfaceOf.length` = the view mesh's triangle count (5,218),
+`unfit.regions` = the conversion's report (1), and `planes`/`cylinders` = the
+report's (8/4, where the base WASM gave 100 planes). On the base WASM the
+test fails at `expected 100 to be 8`.
