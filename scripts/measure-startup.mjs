@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Measures Extrudo's download size and startup against NFR-02 (ADR-0037).
 //
-//   pnpm build && node scripts/measure-startup.mjs [--no-browser] [--mbit 50] [--json <file>] [--home-wait <ms>]
+//   pnpm build && node scripts/measure-startup.mjs [--no-browser] [--budget] [--mbit 50] [--json <file>]
+//     [--home-wait <ms>]
 //
 // 1. Sizes: raw and brotli (quality 11) of every file in apps/web/dist, grouped.
 // 2. Timing (needs Chromium: Playwright's, or PLAYWRIGHT_CHROMIUM_PATH): serves
@@ -21,6 +22,8 @@
 //    the Wall bracket card is opened through "Start from a template" first.
 // --json <file> writes { sizes: { groups, precacheRaw, precacheBr }, visits }
 // (with --no-browser, the sizes only) for ADR-0100's per-release comparison.
+// --budget exits 1 when the brotli sizes pass BUDGETS below (ADR-0100 §5; CI's
+// Docker job runs it with --no-browser after its build).
 // Numbers vary with the machine: run it a few times and take the median.
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -34,6 +37,8 @@ const mbit = args.includes('--mbit') ? Number(args[args.indexOf('--mbit') + 1]) 
 const jsonPath = args.includes('--json') ? args[args.indexOf('--json') + 1] : undefined;
 const homeWait = args.includes('--home-wait') ? Number(args[args.indexOf('--home-wait') + 1]) : 0;
 const fmt = (n) => `${(n / 1e6).toFixed(2)} MB`;
+/** Brotli ceilings, bytes (ADR-0100 §5; 2026-10-25: app JS 1.60 MB, precache 8.46 MB). */
+const BUDGETS = { 'app JS': 2e6, precache: 10e6 };
 
 const walk = (dir) =>
   readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
@@ -111,6 +116,16 @@ console.log('precache total'.padEnd(26), fmt(sum('raw')).padStart(12), fmt(sum('
 console.log(
   `\nAt ${mbit} Mbit, the whole precache takes ${((sum('br') * 8) / (mbit * 1e6)).toFixed(1)} s`,
 );
+if (args.includes('--budget')) {
+  const over = [
+    ['app JS', groups.get('app JS')?.br ?? 0],
+    ['precache', sum('br')],
+  ].filter(([name, br]) => br > BUDGETS[name]);
+  for (const [name, br] of over)
+    console.error(`\nOver budget: ${name} is ${fmt(br)} brotli, the budget ${fmt(BUDGETS[name])}`);
+  if (over.length > 0) process.exit(1);
+  console.log('\nWithin the size budgets');
+}
 if (args.includes('--no-browser')) {
   writeJson();
   process.exit(0);

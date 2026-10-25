@@ -1,5 +1,13 @@
+import { writeFile } from 'node:fs/promises';
 import { expect, type Page, test } from '@playwright/test';
-import { readArchive } from '../packages/storage/src/archive';
+import {
+  type AttachmentId,
+  createDocument,
+  type DocumentId,
+  type ExtrudoDocument,
+} from '../packages/core/src/index';
+import { readArchive, writeArchive } from '../packages/storage/src/archive';
+import { sha256Hex } from '../packages/storage/src/sha256';
 import { exportProject, renameProject } from './benchmark-helpers';
 import {
   fileAction,
@@ -216,6 +224,64 @@ test('import refuses a file that is not a project', async ({ page }) => {
   );
   await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
 });
+
+for (const mode of ['new project', 'existing ID'] as const) {
+  test(`an oversized attachment import leaves designs unchanged (${mode})`, async ({
+    page,
+  }, info) => {
+    test.setTimeout(90_000);
+    let id: DocumentId | undefined;
+    if (mode === 'existing ID') {
+      await openProject(page);
+      await rename(page, 'Keep this design');
+      id = page.url().split('/').pop() as DocumentId;
+    }
+    await page.goto('./');
+    const home = page.url();
+    const attachments = new Map<string, Uint8Array>();
+    const records: NonNullable<ExtrudoDocument['attachments']> = {};
+    for (let i = 0; i < 5; i++) {
+      const bytes = new Uint8Array(21 * 1024 * 1024).fill(i);
+      const sha256 = sha256Hex(bytes);
+      attachments.set(sha256, bytes);
+      records[`model-${i}` as AttachmentId] = {
+        name: `Model ${i}`,
+        fileName: `model-${i}.stl`,
+        mediaType: 'model/stl',
+        sha256,
+        size: bytes.length,
+      };
+    }
+    const doc = {
+      ...createDocument({ name: 'Over budget' }),
+      ...(id ? { id } : {}),
+      attachments: records,
+    };
+    const file = info.outputPath('over-budget.extrudo');
+    await writeFile(file, writeArchive(doc, undefined, [], attachments));
+    const [chooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      page.getByRole('button', { name: 'Import…', exact: true }).click(),
+    ]);
+    await chooser.setFiles(file);
+
+    await expect(page.getByRole('alert')).toContainText(
+      "Import failed: This design's files would be 105 MB altogether; they may be at most 100 MB.",
+    );
+    await expect(page).toHaveURL(home);
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
+    if (id) {
+      await expect(card(page, 'Keep this design')).toBeVisible();
+      await expect(page.getByRole('list', { name: 'Designs' }).getByRole('listitem')).toHaveCount(
+        1,
+      );
+    } else {
+      await expect(page.getByText('No designs yet.', { exact: false })).toBeVisible();
+    }
+    await expect(card(page, 'Over budget')).toHaveCount(0);
+  });
+}
 
 test('rename, duplicate, trash, restore and delete on the home screen', async ({ page }) => {
   await openProject(page);

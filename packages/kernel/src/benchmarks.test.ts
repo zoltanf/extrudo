@@ -66,11 +66,38 @@ afterAll(() => {
 
 type Done = Extract<RecomputeResult, { status: 'done' }>;
 
-/** Recomputes a document from scratch: every feature ok. */
+const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env;
+
+/**
+ * Ceilings on a recompute from scratch, ms (ADR-0100 §5): about three times
+ * the laptop's time in the baseline (`docs/plans/perf-baseline-2026-10-23.md`
+ * §1.2) and at least a second, so a slower evaluator fails `pnpm check` while
+ * a busy CI runner does not. Keyed by the document name's first word.
+ */
+const BUDGET_MS: Record<string, number> = {
+  B1: 1000,
+  B2: 1000,
+  B3: 1000,
+  B4: 1000,
+  B5: 1000,
+  B6: 1000,
+  B7: 3000,
+  B8: 1500,
+  B9: 30_000,
+  B10: 1000,
+};
+
+/** Recomputes a document from scratch, within its budget: every feature ok. */
 async function recompute(doc: ExtrudoDocument): Promise<Done> {
   engine?.clear();
   engine = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
+  const start = performance.now();
   const result = await engine.recompute({ doc });
+  const ms = Math.round(performance.now() - start);
+  if (env?.BENCH) console.log(`[bench] ${doc.name}: ${ms} ms`);
+  const budget = BUDGET_MS[doc.name.split(' ')[0] ?? ''];
+  if (budget === undefined) throw new Error(`no budget for ${doc.name}`);
+  expect(ms, `${doc.name} took ${ms} ms, over its ${budget} ms budget`).toBeLessThan(budget);
   if (result.status !== 'done') throw new Error(`recompute ${result.status}`);
   const problems = Object.entries(result.features).filter(([, s]) => s.status !== 'ok');
   expect(problems).toEqual([]);

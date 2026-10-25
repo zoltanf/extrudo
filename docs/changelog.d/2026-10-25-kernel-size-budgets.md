@@ -1,0 +1,1 @@
+- 2026-10-25 · **Kernel and download-size budgets**: the kernel benchmarks fail when a recompute takes about three times its usual time, and CI fails when the app's JS passes 2 MB or the precache 10 MB brotli (ADR-0100 §5).

@@ -1264,8 +1264,12 @@ that isn't there), **a text's `attachment:<id>` font must exist in
 command to "repair" it), **WOFF2 is refused** from the file name (opentype.js
 can't read it), **garbage collection runs only from `saveVersion` /
 `deleteVersions`** (`collectAttachments`, under the version lock — never per
-autosave), and **the size limits live in storage** (`writeAttachment`: 10 MB a
-file, 50 MB a design, plus "these bytes are not the file they claim to be").
+autosave), and **the size limits live in storage** (`writeAttachment`, plus
+preflight before an import or copy writes files; ADR-0066 raises the limits to
+25 MB a file, 100 MB a design). Preflight checks the document and each saved
+version separately, counting a hash once and using at least the bytes' actual
+size: valid history can retain more than 100 MB across different states.
+`writeAttachment` also refuses bytes that do not match their hash.
 On the app side `fontBytes` reads `attachment:<id>` through a project-scoped
 resolver that `ProjectPage` sets (`useFontAttachments`, the cache follows the
 project), so the UI thread and the `Recomputer` need no other change; both Font
@@ -3320,7 +3324,15 @@ production — dev builds only (`import.meta.env.DEV`), and `grep -c longtask
 apps/web/dist/assets/*.js` after `pnpm build` must sum to 0 — and the status
 bar's `· n long` is dev builds only; `measure-startup.mjs` runs per release
 and is compared with the ADR's baseline: a jump is a release blocker to
-investigate, a drift is noted in the release notes.
+investigate, a drift is noted in the release notes. §5 (2026-10-25) adds
+two ceilings: `packages/kernel/src/benchmarks.test.ts`'s `recompute` asserts
+every benchmark recompute against `BUDGET_MS` (about 3× the laptop, at least
+1 s: B1–B6 and B10 1 s, B8 1.5 s, B7 3 s, B9 30 s; `BENCH=1` prints the
+times), and `scripts/measure-startup.mjs --budget` fails when app JS passes
+2 MB or the precache 10 MB brotli, run by CI's Docker job
+after its build. **Rules:** a new benchmark document needs a `BUDGET_MS`
+entry (the helper throws without one); both sets of budgets are widened only
+with a measurement in the commit message.
 
 ADR-0102 (P6-14, the owner, 2026-10-23) took **UI-thread work off the
 interaction paths**, measured with ADR-0100's `e2e/perf.spec.ts`. §1: the
