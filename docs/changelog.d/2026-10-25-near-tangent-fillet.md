@@ -1,1 +1,0 @@
-- 2026-10-25 · **Mesh to Solid**: where a flat face runs into a fillet and the fitted surfaces miss tangency, the hybrid collapses the chain to the cylinder's tangent line (ADR-0097 slice D5).

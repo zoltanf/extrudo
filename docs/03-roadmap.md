@@ -1129,12 +1129,13 @@ end to end, faster than in established desktop CAD.
   smooth-chain refusal, so a converted body's planes move (ADR-0097's
   2026-10-25b amendment).
   *2026-10-25c:* where a flat face runs into a fillet and the fitted plane
-  misses tangency, the hybrid now collapses the plane|cylinder chain to the
-  cylinder's tangent line (a fallback used only where `IntAna_QuadQuadGeo`
-  gives no usable curve, so no pair it handles moves) — one file of the 37
-  (battery-power-adapter, 3,930 → 3,928 edges) (ADR-0097's 2026-10-25c
-  amendment; no synthetic test: the shared seam bounds the miss by the
-  tolerance IntAna snaps at).
+  misses tangency, the tangent line into the fitted cylinder was tried in
+  `surfaceCurves` (a fallback IntAna's curves are kept ahead of) but **not
+  kept**: over the 37 STLs at Auto only battery-power-adapter moved
+  (3,930 → 3,925 edges, same faces/facets/volume), below the three-file bar,
+  and it cannot be reached by a synthetic mesh (the shared seam bounds the
+  miss by the tolerance IntAna snaps at). Facade reverted to the base
+  (ADR-0097's 2026-10-25c amendment).
 
 ## Phase 5 — Programmatic design (→ v0.6)
 
