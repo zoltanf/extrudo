@@ -3241,6 +3241,27 @@ counts the STEP writer's `CLOSED_SHELL`s) and Offset Face moves the box's bottom
 by 1 mm for +900 mm³ within 0.5 %. The `mesh-to-solid-files.test.ts` fixtures are
 unchanged.
 
+**ADR-0097 slice D5 (2026-10-25c): the tangent line where a plane meets a
+fillet's cylinder.** In the facade's `surfaceCurves`, the plane|cylinder case:
+when the plane's normal is square to the cylinder's axis within 1°
+(`|n·A| ≤ sin 1°`) and the plane's distance from the axis is within `2 ×` the
+tolerance of the radius (`|d − r| ≤ 2 T`), build the cylinder's tangent line on
+the plane's side — through `O − sign(s)·r·n` (`s = (O − P0)·n`) along the axis
+projected into the plane, one line of type 0 — **used only where IntAna yields
+no usable curve** (not done, empty, same surface, a point, no geometric
+solution, a parabola/hyperbola, more than two curves, none). Where IntAna gives
+a curve, it is kept: replacing it unconditionally was a stop
+(puzzle-insert-circle gained 8 edges). `chainCurve`'s existing node reach
+(1.5 T), monotone and pcurve checks decide the rest; a chain the node check
+rejects reads `no curve: near tangent, node off` in the harness-only
+`hybridChainsKept_` "kept as polylines" line. The fitted surfaces and the
+undo/explode fallbacks are unchanged. Effect at Auto over the 37 STLs: only
+battery-power-adapter changed (3,930 → 3,928 edges, same 994 faces, 415 facets,
+volume). **No Vitest case**: the plane and cylinder share the chain's seam
+nodes, so `|d − r| ≤ T` for any such mesh and IntAna snaps it, while a miss
+over `T` makes a fit unfit — the rule fires only on real noisy meshes; a
+regression test needs a non-shared-node chain (open item).
+
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
 facade `removeFaces` with `BRepAlgoAPI_Defeaturing`). Rules: **all or nothing** (any

@@ -2148,3 +2148,68 @@ one solid and one shell (a `shells` helper reads the STEP writer's one
 `CLOSED_SHELL` per shell), and `offsetFaces` on the box's bottom by 1 mm gives
 +900 mm³ within 0.5 %. The `mesh-to-solid-files.test.ts` fixtures are unchanged.
 
+
+### Amendment, 2026-10-25c: the tangent line where a plane meets a fillet's cylinder (slice D5)
+
+The D3 sweep's own "what stays a polyline" list names it: 869 plane|cylinder
+chains, "a plane meant to be tangent to a fillet's cylinder, a little off", for
+which `surfaceCurves` returns `no curve: empty` (or two near-coincident lines
+the chain's nodes miss) and the chain stays the mesh polyline. stl2step builds
+the tangent line there (its `refit.hpp`, tier 1); so do we now.
+
+- **The rule** (facade `surfaceCurves`, the plane|cylinder case): when the
+  plane's normal is square to the cylinder's axis within 1° (`|n·A| ≤ sin 1°`)
+  and the plane's distance from the axis is within `2 ×` the tolerance of the
+  radius (`|d − r| ≤ 2 T`), build the cylinder's tangent line on the plane's
+  side — through `O − sign(s)·r·n` (the axis point moved towards the plane by
+  the radius, `s = (O − P0)·n`) along the axis projected into the plane
+  (`A − (A·n)n`, normalised), one line of type 0. The fitted surfaces are not
+  changed. It is a **fallback**: it is used only where IntAna yields no usable
+  curve (not done, empty, the same surface, a point, no geometric solution, a
+  parabola or hyperbola, more than two curves, or no curve at all). Where
+  IntAna does give a curve it is kept unchanged, so no pair IntAna already
+  handles moves: the first cut, which replaced IntAna whenever the condition
+  held, was a stop — puzzle-insert-circle at Auto gained 8 edges (a chain
+  IntAna had collapsed became a polyline). `chainCurve` then accepts the line
+  under its existing rules (every node within `1.5 T`, one-way parameters), and
+  a chain this rule produces but the node check rejects reads `no curve: near
+  tangent, node off` in the sweep's "kept as polylines" line, so how many of
+  the 869 remain is visible there. The existing per-region undo covers the
+  rest.
+- **The real files.** The kernel sweep over `STL_DIR` (`mesh-to-solid-files.test.ts`),
+  Auto, base WASM `occt-e1e731c1fd29` (D4's build) against the slice's
+  `occt-<hash>`, one process each on the Ubuntu machine:
+
+  | file | outcome | faces | facets | edges before → after | circles | volume | s |
+  |---|---|---|---|---|---|---|---|
+  | own/battery-power-adapter | hybrid | 994 | 415 | 3,930 → 3,928 | 37 | 1.0004 | 2.3 → 2.2 |
+
+  It is the only file of the 37 that changed: one plane|cylinder chain (a 3
+  mesh-edge seam at 0.1 mm, `Auto`'s pick for this file) collapsed to its
+  tangent line. Every other file's outcome, faces by kind, facets, volume
+  (within ±1 %) and time is unchanged; the fixture describes
+  (`mesh-to-solid-files.test.ts`'s committed STLs) are unchanged too.
+- **Why no synthetic test.** The brief asked for a rounded box whose fitted
+  plane misses tangency by 0.01–0.02 mm at 0.01 mm. It cannot be built: the
+  plane and the cylinder share the chain's seam nodes, each fit's deviation
+  from them is bounded by the same tolerance `T` that IntAna is given, so
+  `|d − r| ≤ T` for any such mesh, and IntAna snaps a plane within `T` of
+  tangency to the line where the chain's nodes lie. A mesh built to miss by
+  more than `T` makes the cylinder or the plane unfit instead (its own
+  deviation exceeds `T`). A sweep of 200 rounded-box perturbations (segment
+  count, `refine`, radial pull, sideways shift) found no configuration where
+  the rule changes the chain; the rule fires on real noisy meshes, where the
+  fits' binding nodes are not the chain's. The kernel's committed fixtures do
+  not change either, so slice D5 adds **no** Vitest case and this is an open
+  item: a regression test needs a mesh whose plane and cylinder do not share
+  the tangent edge.
+- **The reason line is harness-only.** `hybridChainsKept_` (the "kept as
+  polylines: … near tangent, node off …" line) is printed by the native
+  `spikes/stl-to-solid` harness, which needs the OCCT static libraries and is
+  built with Docker on the Arch workstation; on the Ubuntu machine the count
+  is not readable through the WASM facade, so the amendment reports the sweep's
+  edge deltas instead.
+
+**Not changed.** The fitted surfaces, `chainCurve`'s acceptance (node reach,
+monotone parameters, pcurve checks, the chord and sphere rules), and the
+undo/explode fallbacks.

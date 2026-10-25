@@ -2955,17 +2955,6 @@ public:
           if (chain.right >= 0 && regions[chain.right].kind >= 0 && regions[chain.right].why.empty()) {
             const MeshChainFit fit = chainCurve(chain, regions, seg, tolerance, cache, coaxial);
             curve = fit.why.empty() ? fit.curve.type : -1;
-            if ((regions[chain.left].kind == 0 && regions[chain.right].kind == 1) ||
-                (regions[chain.left].kind == 1 && regions[chain.right].kind == 0)) {
-              std::string line = "chain kind " + std::to_string(regions[chain.left].kind) + "|" +
-                                 std::to_string(regions[chain.right].kind) + " nodes " + std::to_string(chain.nodes.size()) +
-                                 " edges " + std::to_string(chain.closed ? chain.nodes.size() : chain.nodes.size() - 1) +
-                                 " curve " + std::to_string(fit.curve.type) + " why [" + fit.why + "] off " +
-                                 std::to_string(fit.off) + " n0 (" ;
-              for (int k = 0; k < 3; ++k)
-                line += std::to_string(meshNode(chain.nodes.front()).Coord(k + 1)) + (k < 2 ? "," : ")");
-              tangentProbe() += line + "\n";
-            }
           }
           meshLoops_.insert(meshLoops_.end(), {chain.left, chain.right, chain.closed ? 1 : 0,
                                                static_cast<int32_t>(chain.closed ? chain.nodes.size() : chain.nodes.size() - 1), curve});
@@ -2983,13 +2972,6 @@ public:
   }
   uintptr_t meshLoopsPtr() const { return reinterpret_cast<uintptr_t>(meshLoops_.data()); }
   int meshLoopsSize() const { return static_cast<int>(meshLoops_.size()); }
-
-  /** Debug (tests only): the plane|cylinder pairs surfaceCurves examined since the last call. */
-  std::string takeTangentProbe() {
-    std::string text = tangentProbe();
-    tangentProbe().clear();
-    return text;
-  }
 
   /**
    * Diagnostics for a built shape (tests and the spike harness only; the app
@@ -8752,12 +8734,6 @@ private:
       const gp_XYZ axis = b.direction.XYZ();
       const double s = (b.origin.XYZ() - a.origin.XYZ()).Dot(n);
       const double d = std::fabs(s);
-      {
-        char buf[192];
-        std::snprintf(buf, sizeof buf, "pc dot=%.5f d=%.5f r=%.5f diff=%.5f\n", std::fabs(n.Dot(axis)), d,
-                      b.radius, std::fabs(d - b.radius));
-        tangentProbe() += buf;
-      }
       if (std::fabs(n.Dot(axis)) <= std::sin(angular) && std::fabs(d - b.radius) <= 2 * tolerance) {
         gp_XYZ along = axis - axis.Dot(n) * n;
         if (along.Modulus() > 1e-12) {
@@ -10071,11 +10047,6 @@ private:
   std::string hybridRefusal_;
   /** The last hybrid build's chains (slice D3): "chains: 12 collapsed (…), 3 polylines", and why chains stayed polylines. */
   std::string hybridChains_, hybridChainsKept_;
-  /** Debug (tests only): see takeTangentProbe. */
-  static std::string& tangentProbe() {
-    static std::string probe;
-    return probe;
-  }
   /** Per recognised region of the last hybrid rebuild, when the spike harness asks (FACES=1). */
   bool keepHybridFaces_ = false;
   std::vector<std::string> hybridFaces_;
