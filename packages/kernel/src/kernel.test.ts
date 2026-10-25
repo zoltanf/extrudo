@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import { facesKeepNames } from './features/offset-face';
 import type { HistoryRecord } from './history';
 import {
   ChamferError,
@@ -10,6 +11,7 @@ import {
   ShellError,
 } from './kernel';
 import { EDGE_SEAM } from './mesh';
+import { positionalNames, propagateNames } from './naming/names';
 import { loadOcct } from './occt/load';
 import { OcctScope } from './occt/scope';
 import type { OcctModule } from './occt/types';
@@ -612,6 +614,124 @@ describe('errors and ownership', () => {
       expect(across).toEqual(outcomes(turned, distance));
       if (distance === -0.2) expect(across.every((o) => o.startsWith('ok'))).toBe(true);
     }
+  });
+
+  it('offsets a flat face where it meets a partial cylinder by sliding it along its walls (ADR-0051, 2026-10-25)', {
+    timeout: 120_000,
+  }, () => {
+    using scope = kernel.scope();
+    const problemOf = (run: () => unknown) => {
+      try {
+        run();
+      } catch (error) {
+        expect(error).toBeInstanceOf(OffsetFaceError);
+        return (error as OffsetFaceError).problems[0];
+      }
+      return expect.unreachable('the offset should have failed');
+    };
+    // A D shape: a cylinder r 8.6 cut flat at x = 6.3015, 6.6 high.
+    const dShape = () =>
+      scope.track(
+        kernel.common(
+          scope.track(kernel.cylinder(8.6, 6.6)),
+          scope.track(kernel.box([6.3015 + 10, 20, 6.6], [-10, -10, 0])),
+          { simplify: true },
+        ),
+      ).shape;
+    const plate = () => scope.track(kernel.box([30, 30, 6.6], [-15, -15, 0]));
+    const dBore = scope.track(kernel.cut(plate(), dShape(), { simplify: true })).shape;
+    const dPin = dShape();
+    // A convex half-cylinder bump r 5 on one side of the plate, its axis along Z.
+    const bump = scope.track(
+      kernel.fuse(plate(), scope.track(kernel.cylinder(5, 6.6, [15, 0, 0])), { simplify: true }),
+    ).shape;
+    const topOf = (body: ShapeHandle) =>
+      kernel
+        .describe(body)
+        .faces.findIndex(
+          (f) =>
+            f.type === 'plane' && Math.abs(f.centroid[2] - 6.6) < 1e-6 && f.direction?.[2] === 1,
+        );
+    expect(kernel.count(dBore, 'face')).toBe(8);
+    expect(kernel.count(dPin, 'face')).toBe(4);
+    for (const [body, distance] of [
+      [dBore, 2.6],
+      [dBore, -0.5],
+      [dPin, 2.6],
+      [dPin, -0.5],
+      [bump, 2.6],
+      [bump, -0.5],
+    ] as const) {
+      const top = topOf(body);
+      expect(top).toBeGreaterThanOrEqual(0);
+      const area = kernel.describe(body).faces[top]?.area ?? 0;
+      const volume = kernel.measure(body).volume;
+      const moved = scope.track(kernel.offsetFaces(body, [top], distance));
+      expect(kernel.isValid(moved.shape)).toBe(true);
+      const grown = kernel.measure(moved.shape).volume - volume;
+      expect(Math.abs(grown - area * distance)).toBeLessThan(0.005 * area * Math.abs(distance));
+      expect(kernel.measure(moved.shape).bbox.max[2]).toBeCloseTo(6.6 + distance, 6);
+      // The same faces, each one face again: the walls are extended or trimmed, not split.
+      const faces = kernel.count(body, 'face');
+      expect(kernel.count(moved.shape, 'face')).toBe(faces);
+      for (let face = 0; face < faces; face++) {
+        const images = moved.history
+          .filter((r) => r.input === 0 && r.from.kind === 'face' && r.from.index === face)
+          .filter((r) => r.relation !== 'deleted')
+          .flatMap((r) => r.to.filter((to) => to.kind === 'face'));
+        expect(images).toHaveLength(1);
+      }
+      // The top face generated its image, as OCCT's offset records it.
+      const record = find(moved.history, 0, 'face', top).find((r) => r.relation === 'generated');
+      expect(record?.to.map((to) => to.index)).toEqual([topOf(moved.shape)]);
+      // Every face keeps its name, the moved one included (as the evaluator names them).
+      const named = positionalNames('test', 't', kernel.describe(body));
+      const renamed = propagateNames({
+        op: 'offsetFace',
+        feature: 'o',
+        inputs: [named],
+        history: facesKeepNames(moved.history),
+        result: kernel.describe(moved.shape),
+      });
+      expect([...renamed.faces].sort()).toEqual([...named.faces].sort());
+      expect(renamed.faces[topOf(moved.shape)]).toBe(named.faces[top]);
+    }
+    // Every flat face of the D-bore plate slides along its walls but the bore's flat, whose
+    // neighbour, the partial cylinder, isn't one: OCCT and the slide both refuse it.
+    const described = kernel.describe(dBore);
+    for (let face = 0; face < 8; face++) {
+      const info = described.faces[face];
+      const flat =
+        info?.type === 'plane' && Math.abs(Math.abs(info.direction?.[0] ?? 0) - 1) < 1e-9;
+      const boreFlat = flat && Math.abs((info?.centroid[0] ?? 0) - 6.3015) < 1e-6;
+      if (info?.type !== 'plane' || boreFlat) {
+        expect(problemOf(() => kernel.offsetFaces(dBore, [face], 0.5))?.kind).toBe('unoffsettable');
+      } else {
+        expect(kernel.isValid(scope.track(kernel.offsetFaces(dBore, [face], 0.5)).shape)).toBe(
+          true,
+        );
+      }
+    }
+    // Pushed in past the plate's floor: too far, with the largest depth that works.
+    const far = problemOf(() => kernel.offsetFaces(dBore, [topOf(dBore)], -8));
+    expect(far?.kind).toBe('too-far');
+    if (far?.kind === 'too-far') {
+      expect(far.max).toBeGreaterThan(6);
+      expect(far.max).toBeLessThan(6.6);
+    }
+    // A tilted neighbour (a chamfer on an outer top edge) is no wall to slide along: refused.
+    const outer = kernel
+      .describe(dBore)
+      .edges.findIndex(
+        (e) => Math.abs(e.midpoint[2] - 6.6) < 1e-6 && Math.abs(e.midpoint[0] + 15) < 1e-6,
+      );
+    expect(outer).toBeGreaterThanOrEqual(0);
+    const chamfered = scope.track(
+      kernel.chamfer(dBore, [outer], { mode: 'equal', distance: 1 }),
+    ).shape;
+    expect(problemOf(() => kernel.offsetFaces(chamfered, [topOf(chamfered)], 2.6))?.kind).toBe(
+      'unoffsettable',
+    );
   });
 
   it('has the stack OCCT needs on B-spline faces: a chamfer and a STEP export after a non-uniform scale', () => {

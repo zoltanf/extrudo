@@ -33,6 +33,7 @@
 #include <BRepAlgoAPI_Defeaturing.hxx>
 #include <BOPAlgo_Alerts.hxx>
 #include <TopoDS_AlertWithShape.hxx>
+#include <BRepAlgoAPI_BooleanOperation.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
 #include <BRepAlgoAPI_Splitter.hxx>
@@ -957,6 +958,19 @@ public:
           TopoDS_Shape result;
           if (buildDividedOffset(divided, copy, copyFaces, picked, moving, distance, result)) {
             recordHistory(divided, copy, 0, result);
+            return store(result);
+          }
+        }
+      }
+      if (canSlide(*input, picked, moving)) {
+        const TopoDS_Shape copy = BRepBuilderAPI_Copy(*input, true, false).Shape();
+        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> copyFaces;
+        TopExp::MapShapes(copy, TopAbs_FACE, copyFaces);
+        if (copyFaces.Extent() == faces.Extent()) {
+          SlidOffset slid;
+          TopoDS_Shape result;
+          if (buildSlidOffset(slid, copy, copyFaces, picked, distance, result)) {
+            recordHistory(slid, copy, 0, result);
             return store(result);
           }
         }
@@ -12572,6 +12586,11 @@ private:
     }
   }
 
+  /** What a face of an offset's input became: OCCT's offset generates every face's image. */
+  static NCollection_List<TopoDS_Shape> offsetImages(BRepOffset_MakeOffset& builder, const TopoDS_Shape& face) {
+    return builder.Generated(face);
+  }
+
   /**
    * Whether `result` is a sound offset of `input`: a valid solid that has
    * grown where faces moved out and shrunk where they moved in, and whose
@@ -12580,7 +12599,8 @@ private:
    * face's axis (the offset cylinder turns inside out): the distance, and
    * the volume for the sphere and torus, show it.
    */
-  static bool offsetIsGood(BRepOffset_MakeOffset& builder, const TopoDS_Shape& input,
+  template <typename Builder>
+  static bool offsetIsGood(Builder& builder, const TopoDS_Shape& input,
                            const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
                            const std::vector<int>& moving, const TopoDS_Shape& result, double distance) {
     if (result.IsNull() || !TopExp_Explorer(result, TopAbs_SOLID).More()) return false;
@@ -12599,7 +12619,7 @@ private:
     bool any = false;
     for (int index : moving) {
       const TopoDS_Shape& face = faces(index + 1);
-      for (const TopoDS_Shape& made : builder.Generated(face)) {
+      for (const TopoDS_Shape& made : offsetImages(builder, face)) {
         if (made.ShapeType() != TopAbs_FACE) continue;
         compounds.Add(offsets, made);
         any = true;
@@ -12625,12 +12645,19 @@ private:
         offsetIsGood(builder, copy, faces, moving, result, distance)) {
       return true;
     }
-    if (!hasSeam(input)) return false;
-    const TopoDS_Shape again = BRepBuilderAPI_Copy(input, true, false).Shape();
-    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> againFaces;
-    TopExp::MapShapes(again, TopAbs_FACE, againFaces);
-    DividedOffset divided;
-    return buildDividedOffset(divided, again, againFaces, picked, moving, distance, result);
+    if (hasSeam(input)) {
+      const TopoDS_Shape again = BRepBuilderAPI_Copy(input, true, false).Shape();
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> againFaces;
+      TopExp::MapShapes(again, TopAbs_FACE, againFaces);
+      DividedOffset divided;
+      if (buildDividedOffset(divided, again, againFaces, picked, moving, distance, result)) return true;
+    }
+    if (!canSlide(input, picked, moving)) return false;
+    const TopoDS_Shape slide = BRepBuilderAPI_Copy(input, true, false).Shape();
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> slideFaces;
+    TopExp::MapShapes(slide, TopAbs_FACE, slideFaces);
+    SlidOffset slid;
+    return buildSlidOffset(slid, slide, slideFaces, picked, distance, result);
   }
 
   /**
@@ -12645,7 +12672,8 @@ private:
    * another height). Faces next to a moving one are extended or trimmed by
    * design, so they are not checked.
    */
-  static bool farFacesKept(BRepOffset_MakeOffset& builder, const TopoDS_Shape& input,
+  template <typename Builder>
+  static bool farFacesKept(Builder& builder, const TopoDS_Shape& input,
                            const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
                            const std::vector<int>& moving, const TopoDS_Shape& result) {
     NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> resultFaces;
@@ -12668,7 +12696,7 @@ private:
       GProp_GProps before;
       BRepGProp::SurfaceProperties(face, before);
       GProp_GProps after;
-      for (const TopoDS_Shape& made : builder.Generated(face)) {
+      for (const TopoDS_Shape& made : offsetImages(builder, face)) {
         if (made.ShapeType() != TopAbs_FACE || resultFaces.FindIndex(made) == 0) continue;
         BRepGProp::SurfaceProperties(made, after);
       }
@@ -13060,6 +13088,171 @@ private:
         made.remade.Bind(faces(remake[k] + 1), news);
       }
       return true;
+    } catch (...) {
+      result.Nullify();
+      return false;
+    }
+  }
+
+  /**
+   * The history of an offset built by sliding the picked faces along their
+   * walls (buildSlidOffset): the boolean's, except that a picked face
+   * generated the prism's far cap (its image), as OCCT's offset records a
+   * moved face, and each of its edges the prism's side face (named after
+   * the wall it extends when the two merge, ADR-0051's 2026-10-25 amendment).
+   */
+  struct SlidOffset {
+    BRepAlgoAPI_BooleanOperation op;
+    NCollection_DataMap<TopoDS_Shape, TopoDS_Shape, TopTools_ShapeMapHasher> caps;
+    NCollection_DataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher> sides;
+
+    /** What a shape of the input or the prisms became in the result. */
+    NCollection_List<TopoDS_Shape> Images(const TopoDS_Shape& sub) {
+      if (caps.IsBound(sub)) return Images(caps(sub));
+      const NCollection_List<TopoDS_Shape>& modified = op.Modified(sub);
+      if (!modified.IsEmpty()) return modified;
+      NCollection_List<TopoDS_Shape> out;
+      if (!op.IsDeleted(sub)) out.Append(sub);
+      return out;
+    }
+
+    NCollection_List<TopoDS_Shape> Modified(const TopoDS_Shape& sub) {
+      if (caps.IsBound(sub)) return NCollection_List<TopoDS_Shape>();
+      return op.Modified(sub);
+    }
+
+    NCollection_List<TopoDS_Shape> Generated(const TopoDS_Shape& sub) {
+      if (caps.IsBound(sub)) return Images(sub);
+      NCollection_List<TopoDS_Shape> out = op.Generated(sub);
+      if (!sides.IsBound(sub)) return out;
+      for (NCollection_List<TopoDS_Shape>::Iterator it(sides(sub)); it.More(); it.Next()) {
+        NCollection_List<TopoDS_Shape> made = Images(it.Value());
+        out.Append(made);
+      }
+      return out;
+    }
+
+    bool IsDeleted(const TopoDS_Shape& sub) {
+      if (caps.IsBound(sub)) return Images(sub).IsEmpty();
+      return op.IsDeleted(sub);
+    }
+  };
+
+  static NCollection_List<TopoDS_Shape> offsetImages(SlidOffset& slid, const TopoDS_Shape& face) {
+    return slid.Images(face);
+  }
+
+  /**
+   * Whether the picked faces can be offset by sliding them along their walls
+   * (ADR-0051's amendment, 2026-10-25): every picked face is a plane, moves
+   * alone (no smooth neighbour OCCT would move with it), and every face that
+   * shares an edge with it is a wall it slides along: not picked, its normal
+   * square to the face's everywhere (a plane standing on it, a cylinder or
+   * an extrusion along it), so moving the face along its normal is a pure
+   * translation that extends or trims the walls.
+   */
+  static bool canSlide(const TopoDS_Shape& input, const std::vector<int>& picked,
+                       const std::vector<int>& moving) {
+    if (moving.size() != picked.size()) return false;
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+    TopExp::MapShapes(input, TopAbs_FACE, faces);
+    NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> pickedFaces;
+    for (int index : picked) pickedFaces.Add(faces(index + 1));
+    NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher> edgeFaces;
+    TopExp::MapShapesAndUniqueAncestors(input, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+    for (int index : picked) {
+      const TopoDS_Face& face = TopoDS::Face(faces(index + 1));
+      gp_Dir normal;
+      if (!planeNormal(face, normal)) return false;
+      for (TopExp_Explorer e(face, TopAbs_EDGE); e.More(); e.Next()) {
+        const int at = edgeFaces.FindIndex(e.Current());
+        if (at == 0) return false;
+        for (NCollection_List<TopoDS_Shape>::Iterator f(edgeFaces(at)); f.More(); f.Next()) {
+          if (f.Value().IsSame(face)) continue;
+          if (pickedFaces.Contains(f.Value())) return false;
+          if (!slidesAlong(TopoDS::Face(f.Value()), normal)) return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  /** The outward normal of a planar face, or false for any other surface. */
+  static bool planeNormal(const TopoDS_Face& face, gp_Dir& normal) {
+    const BRepAdaptor_Surface surface(face, false);
+    if (surface.GetType() != GeomAbs_Plane) return false;
+    normal = surface.Plane().Axis().Direction();
+    if (face.Orientation() == TopAbs_REVERSED) normal.Reverse();
+    return true;
+  }
+
+  /**
+   * Whether `wall`'s normal is square to `direction` all over the face (5 × 5
+   * samples of its parameter range), within 1e-4 (0.006 degrees): a face a
+   * face moving along `direction` slides along.
+   */
+  static bool slidesAlong(const TopoDS_Face& wall, const gp_Dir& direction) {
+    const BRepAdaptor_Surface surface(wall, true);
+    double u0 = 0, u1 = 0, v0 = 0, v1 = 0;
+    BRepTools::UVBounds(wall, u0, u1, v0, v1);
+    for (int i = 0; i < 5; ++i) {
+      for (int j = 0; j < 5; ++j) {
+        BRepLProp_SLProps props(surface, u0 + (u1 - u0) * i / 4.0, v0 + (v1 - v0) * j / 4.0, 1,
+                                Precision::Confusion());
+        if (!props.IsNormalDefined()) continue;
+        if (std::fabs(props.Normal().Dot(direction)) > 1e-4) return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * The offset of `input` (a copy) built by sliding each picked face along
+   * its walls (canSlide must hold), into `result`, with `slid` holding the
+   * history (ADR-0051's amendment, 2026-10-25): the face swept along its
+   * outward normal by `distance` (a prism, as Press Pull's Extrude makes)
+   * and fused on, or cut away for a negative distance, then the faces that
+   * meet on one surface merged (a wall and its extension). OCCT's offset
+   * builds nothing where a flat face meets a partial cylinder (a D-shaped
+   * bore or pin), even when that face only slides; tried after it failed,
+   * with the same checks (offsetIsGood).
+   */
+  static bool buildSlidOffset(SlidOffset& slid, const TopoDS_Shape& input,
+                              const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
+                              const std::vector<int>& picked, double distance, TopoDS_Shape& result) {
+    try {
+      NCollection_List<TopoDS_Shape> arguments, tools;
+      arguments.Append(input);
+      for (int index : picked) {
+        const TopoDS_Face& face = TopoDS::Face(faces(index + 1));
+        gp_Dir normal;
+        if (!planeNormal(face, normal)) return false;
+        // Swept from a copy, so the prism shares no sub-shape with the body.
+        BRepBuilderAPI_Copy copied(face, true, false);
+        BRepPrimAPI_MakePrism prism(copied.Shape(), gp_Vec(normal) * distance);
+        if (!prism.IsDone()) return false;
+        slid.caps.Bind(face, prism.LastShape());
+        for (TopExp_Explorer e(face, TopAbs_EDGE); e.More(); e.Next()) {
+          if (slid.sides.IsBound(e.Current())) continue;
+          NCollection_List<TopoDS_Shape> made;
+          for (NCollection_List<TopoDS_Shape>::Iterator c(copied.Modified(e.Current())); c.More(); c.Next()) {
+            for (NCollection_List<TopoDS_Shape>::Iterator it(prism.Generated(c.Value())); it.More(); it.Next()) {
+              if (it.Value().ShapeType() == TopAbs_FACE) made.Append(it.Value());
+            }
+          }
+          slid.sides.Bind(e.Current(), made);
+        }
+        tools.Append(prism.Shape());
+      }
+      slid.op.SetOperation(distance > 0 ? BOPAlgo_FUSE : BOPAlgo_CUT);
+      slid.op.SetArguments(arguments);
+      slid.op.SetTools(tools);
+      slid.op.SetRunParallel(false);
+      slid.op.Build();
+      if (!slid.op.IsDone() || slid.op.HasErrors()) return false;
+      slid.op.SimplifyResult();
+      result = asSolid(slid.op.Shape());
+      return offsetIsGood(slid, input, faces, picked, result, distance);
     } catch (...) {
       result.Nullify();
       return false;
