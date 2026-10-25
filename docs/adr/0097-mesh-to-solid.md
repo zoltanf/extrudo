@@ -2022,6 +2022,40 @@ inward 1 mm offset turns a 0.4 mm round inside out. Shell 0.3 and 0.2 mm on
 the gear fail too, before and after re-seaming, while the hub cut off above
 z = 4 (5 faces, the D bore included) shells; that cause is not isolated.
 
+**The fix for cause 1** (`straightenSeams`, facade): after unify, in the
+hybrid (each solid, its history merged into unify's so the region map
+follows) and in the exact rebuild, every face with one seam, no degenerated
+edge and a seam whose ends differ along its period is rebuilt on a copy of
+its surface (so no shared edge's old pcurve changes) with the seam on the
+isoline through the old seam's first vertex: the far rim run must cross that
+isoline once, inside one edge, which is split there in both of its faces
+(`EmptyCopied` keeps every pcurve; `ShapeBuild_ReShape` replaces it by its
+two pieces in the neighbour); the near run must not cross it but at that
+vertex; the other edges' pcurves move by whole periods into the new range.
+The result is kept only when it is a valid solid of the same type and the
+same volume (1e-6 relative), else the unified solid stays as it was. On the
+gear both slanted seams are re-seamed (the same 204 faces and volume; 597 →
+599 edges and 204 → 206 circles, each split rim adding one) and none is
+left; its Offset Face still fails (cause 2), now after about 20 s per
+distance instead of 14 (not followed up). Of
+the fixtures, peg-perego-button (Auto, hybrid) has one slanted seam: 1,488 →
+1,489 edges, 21 → 22 circles; the others are unchanged. Test
+(`mesh-to-solid.test.ts`, the hybrid describe): a 260-step staircase (over
+the 500-surface cap, so hybrid with no facets) under a disc r 8 h 1.2 of 181
+segments whose top ring is turned half a segment (no vertical wall edge, so
+the kept seam is π/181 off an isoline); Offset Face of the disc's top by
+1 mm refuses on the old build ("OCCT can't offset these faces") and adds
+π r² with the fix.
+
+**Rejected** (2026-10-24 and here): sewing the "dangling" edges, ShapeFix
+on them, keeping the assembled (un-unified) solid, `ConcatBSplines` off —
+all aimed at an open shell that wasn't; sharing one `Geom_Surface` per
+fitted surface (`cbce064d`, refused by the hybrid's own checks; unify merges
+equal analytic surfaces anyway); and `ShapeFix_Face::FixMissingSeam` after
+removing the slanted seam, which puts the seam at the surface's own u origin
+and splits rim edges in that face only, leaving the neighbour with the
+unsplit edge (an invalid shell).
+
 **Also seen.** The hybrid conversion of `mesh-to-solid.test.ts`'s
 `bossWithBump` mesh is a compound of 47 solids: the body (72 faces of its
 first shell) and 46 two-face shells of zero volume; Offset Face refuses it

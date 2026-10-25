@@ -3157,7 +3157,16 @@ keeps as a merged periodic face's seam follows a mesh edge, a diagonal on a
 short band (gear: 2.0° and 1.0°). BRepCheck accepts it; **`BRepOffset_MakeOffset`
 returns an empty skin for any face of a body with a seam that is not an
 isoline** (synthetic cylinder: slant 0.001 rad already fails, the facade's
-seam retry too; Shell is unaffected); re-seaming on an isoline fixes it.
+seam retry too; Shell is unaffected). **Fix: `straightenSeams` (facade)
+runs after unify in the hybrid (its `BRepTools_History` merged into unify's,
+so the region/facet map follows) and the exact rebuild**: a face with one
+seam, no degenerated edge and a slanted seam is rebuilt on a **copy** of its
+surface (shared edges' old pcurves must not change) with the seam on the
+isoline through the old seam's first vertex, the far rim edge it crosses
+split in **both** faces (`EmptyCopied` + `ShapeBuild_ReShape` edge → wire of
+two pieces), other pcurves moved by whole periods; kept only if valid, same
+shape type and same volume (1e-6), else the unified solid stays. Test: the
+staircase-under-a-twisted-disc mesh in `mesh-to-solid.test.ts`.
 (3) **Offset Face refuses native bodies with a partial cylinder meeting a
 plane at a sharp edge** (a box with a D bore: all 8 faces; a D pin; a convex
 half-cylinder bump), while round/square bores, a concave notch and rounded

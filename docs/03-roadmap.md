@@ -1116,7 +1116,8 @@ end to end, faster than in established desktop CAD.
   open. *2026-10-25:* those 5 were seams (a wrong check); the shell is
   closed. Two causes measured (ADR-0097's 2026-10-25 amendment): unify keeps
   slanted seams on short bands, which `BRepOffset_MakeOffset` can't offset
-  (fixable in the conversion), and Offset Face refuses any body, native too,
+  (fixed: `straightenSeams` re-seams them on an isoline), and Offset Face
+  refuses any body, native too,
   with a partial cylinder meeting a plane — the gear's D bore — which is an
   Offset Face (ADR-0051) change, not done. Shell 1 mm is beyond the teeth's
   0.4 mm rounds.
