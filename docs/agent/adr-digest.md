@@ -957,6 +957,11 @@ cap and every other face through the Boolean's `Modified()` after
 `SimplifyResult` (the picked face is modified, not deleted, so it keeps its
 name). Do not extend the gate to slanting neighbours without handling their
 extension.
+**ADR-0051's amendment (2026-10-25b): the fallback before the smooth-chain
+refusal.** When `smoothChains` finds a crease inside a chain (status 6), `offsetFaces` first tries `buildPrismOffset` if **no crease is between two
+non-planar faces** (`curvedCrease`); a fillet corner (two curved faces at a
+crease) keeps the refusal, and OCCT's offset is never reached on a sharp chain.
+Details in ADR-0097's 2026-10-25b amendment.
 **ADR-0051's amendment (2026-10-14): a round next to a moved face keeps its
 radius.** The evaluator passes the unpicked fillet rounds (name `fillet:…` or a
 copy of one, cylinder or torus) of the picked faces' smooth chains

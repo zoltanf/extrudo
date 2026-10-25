@@ -1117,17 +1117,17 @@ end to end, faster than in established desktop CAD.
   closed. Two causes measured (ADR-0097's 2026-10-25 amendment): unify keeps
   slanted seams on short bands, which `BRepOffset_MakeOffset` can't offset
   (fixed: `straightenSeams` re-seams them on an isoline), and Offset Face
-   refuses any body, native too,
-   with a partial cylinder meeting a plane — the gear's D bore — which is an
-   Offset Face (ADR-0051) change, not done. Shell 1 mm is beyond the teeth's
-   0.4 mm rounds. *2026-10-25b:* the conversion made **one solid per connected
-   mesh component**, so a mesh whose own boolean left flat zero-volume flaps (a
-   boss standing coplanar on a face, `bossWithBump`) became a compound of 46
-   degenerate two-face shells and Offset Face refused the body ("the solid has
-   an inner void"). `dropDegenerateComponents` (facade) drops those components
-   at the mesh, and the flat-face prism fallback is tried before the
-   smooth-chain refusal, so a converted body's planes move (ADR-0097's
-   2026-10-25b amendment).
+  refuses any body, native too, with a partial cylinder meeting a plane — the
+  gear's D bore — which the flat-face fallback (#130, ADR-0051's 2026-10-25
+  amendment) now moves. Shell 1 mm is beyond the teeth's 0.4 mm rounds.
+  *2026-10-25b:* the conversion made **one solid per connected mesh
+  component**, so a mesh whose own boolean left flat zero-volume flaps (a boss
+  standing coplanar on a face, `bossWithBump`) became a compound of 46
+  degenerate two-face shells and Offset Face refused the body ("the solid has
+  an inner void"). `dropDegenerateComponents` (facade) drops those components
+  at the mesh, and the flat-face prism fallback is tried before the
+  smooth-chain refusal, so a converted body's planes move (ADR-0097's
+  2026-10-25b amendment).
 
 ## Phase 5 — Programmatic design (→ v0.6)
 
@@ -1392,9 +1392,9 @@ end to end, faster than in established desktop CAD.
   and stays under 8 kB; "Copy report" copies the full Markdown; the timeline
   is left out unless ticked; `bugReport.test.ts` and `e2e/bug-report.spec.ts`
   pass; the desktop allow-list test covers the query string.
-- [ ] **P6-13 Performance guardrails** (owner, 2026-10-23; ADR-0100; slice A of
-  `docs/plans/perf-baseline-2026-10-23.md`; slices 1–4 done 2026-10-23, the
-  owner ticks after the merge). The app's snappiness must survive
+- [x] **P6-13 Performance guardrails** (owner, 2026-10-23; ADR-0100; slice A of
+  `docs/plans/perf-baseline-2026-10-23.md`; slices 1–4 done 2026-10-23; the
+  owner ticked it 2026-10-25). The app's snappiness must survive
   new features: `e2e/perf.spec.ts` drives B5 and B7 (open, orbit, parameter
   edit and undo, hover and click) with a `PerformanceObserver` and asserts
   main-thread budgets on the app's own time — a long task minus the render
@@ -1406,7 +1406,7 @@ end to end, faster than in established desktop CAD.
   Acceptance: `pnpm check`; the spec green on CI three runs in a row; the
   production bundle has no observer code; the startup script's three visits
   print on a machine with a stored design.
-- [ ] **P6-14 UI-thread latency** (owner, 2026-10-23; ADR-0102; slice B of
+- [x] **P6-14 UI-thread latency** (owner, 2026-10-23; ADR-0102; slice B of
   `docs/plans/perf-baseline-2026-10-23.md`). Four measured changes, each a
   commit with its before/after numbers from `e2e/perf.spec.ts`: the autosave
   thumbnail leaves the edit's critical path (skipped when nothing changed,
@@ -1423,7 +1423,7 @@ end to end, faster than in established desktop CAD.
   the compiler decision. Changes 1–4 done 2026-10-24 (ADR-0102 §5–§7: the
   React Compiler kept through plugin-react's native option; project open's
   largest cost was the WebGL probe, now run on the home screen, not the
-  bodies' geometry); left unticked for the owner's review.
+  bodies' geometry); the owner ticked it 2026-10-25.
 
 - [x] **P6-15 Render Picture with Blender** (owner, 2026-10-23; ADR-0101). Done 2026-10-23.
   FR-3DP-08. A Render Picture tile (Make › Output, desktop only) opens a
@@ -1456,7 +1456,7 @@ end to end, faster than in established desktop CAD.
   its GPU objects; the web e2e renders a draft of the wall bracket; the guide page says what
   each engine does. *Deps:* P6-15. *Slices:* (1) types, schema, the draft engine, the engine
   choice, the web e2e; (2) the path tracer for Standard and High; (3) docs. All three slices done.
-- [ ] **P6-17 Kernel waits and recompute progress** (owner, 2026-10-24;
+- [x] **P6-17 Kernel waits and recompute progress** (owner, 2026-10-24;
   ADR-0105; slice C of `docs/plans/perf-baseline-2026-10-23.md`). Every
   kernel call the app makes besides the recompute runs through the
   `Recomputer`'s wait counter with a plain-words label; the view's progress
@@ -1467,7 +1467,7 @@ end to end, faster than in established desktop CAD.
   Acceptance: `pnpm check`; `e2e/kernel-waits.spec.ts` (a pick queued behind
   B9's recompute shows the wait; the bar grows) and `e2e/model-progress.spec.ts`
   green on CI; the perf spec's edit and undo app time unchanged. Slices 1–3 done
-  2026-10-24.
+  2026-10-24; the owner ticked it 2026-10-25.
 
 ## Phase 7 — Later (lowest priority, after everything else)
 
