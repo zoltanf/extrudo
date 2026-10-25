@@ -961,6 +961,21 @@ public:
           }
         }
       }
+      {
+        // A flat face OCCT's offset can't move (see buildPrismOffset): move it by
+        // extruding it and fusing (out) or cutting (in) the prism.
+        const TopoDS_Shape copy = BRepBuilderAPI_Copy(*input, true, false).Shape();
+        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> copyFaces;
+        TopExp::MapShapes(copy, TopAbs_FACE, copyFaces);
+        if (copyFaces.Extent() == faces.Extent()) {
+          PrismOffset prism;
+          TopoDS_Shape result;
+          if (buildPrismOffset(prism, copy, copyFaces, picked, moving, distance, result)) {
+            recordHistory(prism, copy, 0, result);
+            return store(result);
+          }
+        }
+      }
       return explainOffset(*input, picked, moving, distance);
     } catch (...) {
       pushShellStatus(5, 0);
@@ -12181,7 +12196,13 @@ private:
     NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> againFaces;
     TopExp::MapShapes(again, TopAbs_FACE, againFaces);
     DividedOffset divided;
-    return buildDividedOffset(divided, again, againFaces, picked, moving, distance, result);
+    if (buildDividedOffset(divided, again, againFaces, picked, moving, distance, result)) return true;
+    // The prism fallback, as offsetFaces() (a flat face moved by extruding it).
+    const TopoDS_Shape plain = BRepBuilderAPI_Copy(input, true, false).Shape();
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> plainFaces;
+    TopExp::MapShapes(plain, TopAbs_FACE, plainFaces);
+    PrismOffset prism;
+    return buildPrismOffset(prism, plain, plainFaces, picked, moving, distance, result);
   }
 
   /**
@@ -12610,6 +12631,162 @@ private:
         if (news.IsEmpty()) return false;
         made.remade.Bind(faces(remake[k] + 1), news);
       }
+      return true;
+    } catch (...) {
+      result.Nullify();
+      return false;
+    }
+  }
+
+  /**
+   * The history of a flat face moved by extruding it and fusing or cutting
+   * the prism (buildPrismOffset): the Boolean's relations for every face,
+   * with each picked face mapped to the prism's far cap, the face it becomes
+   * (a fuse removes the picked face, a cut removes it too, as the pocket's
+   * opening, so the Boolean would otherwise call it deleted).
+   */
+  struct PrismOffset {
+    std::unique_ptr<BRepAlgoAPI_Fuse> fuse;
+    std::unique_ptr<BRepAlgoAPI_Cut> cut;
+    NCollection_DataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher> pickedImages;
+    NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> picked;
+
+    bool IsDeleted(const TopoDS_Shape& sub) {
+      if (picked.Contains(sub)) return false;
+      return fuse ? fuse->IsDeleted(sub) : cut->IsDeleted(sub);
+    }
+
+    NCollection_List<TopoDS_Shape> Modified(const TopoDS_Shape& sub) {
+      if (pickedImages.IsBound(sub)) return NCollection_List<TopoDS_Shape>(pickedImages.Find(sub));
+      return fuse ? fuse->Modified(sub) : cut->Modified(sub);
+    }
+
+    NCollection_List<TopoDS_Shape> Generated(const TopoDS_Shape& sub) {
+      return fuse ? fuse->Generated(sub) : cut->Generated(sub);
+    }
+  };
+
+  /**
+   * Whether every picked face is flat and can be moved by extruding it into a
+   * prism and fusing (out) or cutting (in) that prism: every face sharing an
+   * edge with a picked one is a plane square to the picked face's normal
+   * (|dot| < 1e-6) or a cylinder parallel to it, so the prism's walls lie in
+   * the neighbours' planes and the body keeps its shape around the moved
+   * face. A slanted neighbour would be stepped over instead of extended as a
+   * real offset extends it, so it is refused. Returns false, changing
+   * nothing, when the shape doesn't answer.
+   */
+  static bool prismOffsetGate(const TopoDS_Shape& input,
+                              const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
+                              const std::vector<int>& picked) {
+    EdgeFaceMap edgeFaces;
+    TopExp::MapShapesAndUniqueAncestors(input, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+    for (int index : picked) {
+      const TopoDS_Face& face = TopoDS::Face(faces(index + 1));
+      BRepAdaptor_Surface surface(face, false);
+      if (surface.GetType() != GeomAbs_Plane) return false;
+      gp_Dir normal = surface.Plane().Axis().Direction();
+      if (face.Orientation() == TopAbs_REVERSED) normal.Reverse();
+      for (TopExp_Explorer e(face, TopAbs_EDGE); e.More(); e.Next()) {
+        const TopoDS_Edge edge = TopoDS::Edge(e.Current());
+        const int at = edgeFaces.FindIndex(edge);
+        if (at == 0) return false;
+        for (const TopoDS_Shape& other : edgeFaces(at)) {
+          if (other.IsSame(face)) continue;
+          BRepAdaptor_Surface neighbour(TopoDS::Face(other), false);
+          if (neighbour.GetType() == GeomAbs_Plane) {
+            gp_Dir across;
+            if (!edgeNormal(edge, TopoDS::Face(other), across)) return false;
+            if (std::fabs(across.Dot(normal)) >= 1e-6) return false;
+          } else if (neighbour.GetType() == GeomAbs_Cylinder) {
+            const gp_Dir axis = neighbour.Cylinder().Axis().Direction();
+            if (std::fabs(axis.Dot(normal)) < 1.0 - 1e-6) return false;
+          } else {
+            return false;
+          }
+        }
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Moves the flat picked faces of `input` (a copy) by `distance` by extruding
+   * each along its outward normal and fusing the prisms (distance > 0) or
+   * cutting them (distance < 0), with `SimplifyResult`. OCCT's own offset
+   * (buildOffset) reports success but returns an invalid solid for some
+   * imported bodies, on any face: extruding a flat face and fusing the prism
+   * moves it soundly instead. Used only behind the gate (flat picked faces,
+   * no smooth neighbours riding along, square or parallel-cylinder
+   * neighbours); into `result`, with `history` holding the faces' relations
+   * (each picked face mapped to the prism's far cap).
+   */
+  static bool buildPrismOffset(PrismOffset& history, const TopoDS_Shape& input,
+                               const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
+                               const std::vector<int>& picked, const std::vector<int>& moving, double distance,
+                               TopoDS_Shape& result) {
+    try {
+      if (picked.empty() || moving.size() != picked.size()) return false;
+      for (int index : picked) {
+        if (std::find(moving.begin(), moving.end(), index) == moving.end()) return false;
+      }
+      if (!prismOffsetGate(input, faces, picked)) return false;
+      NCollection_List<TopoDS_Shape> tools;
+      std::vector<TopoDS_Shape> caps;
+      for (int index : picked) {
+        const TopoDS_Face& face = TopoDS::Face(faces(index + 1));
+        BRepAdaptor_Surface surface(face, false);
+        gp_Dir normal = surface.Plane().Axis().Direction();
+        if (face.Orientation() == TopAbs_REVERSED) normal.Reverse();
+        BRepPrimAPI_MakePrism prism(face, gp_Vec(normal.XYZ() * distance));
+        if (!prism.IsDone()) return false;
+        const TopoDS_Shape cap = prism.LastShape();
+        if (cap.IsNull() || cap.ShapeType() != TopAbs_FACE) return false;
+        caps.push_back(cap);
+        tools.Append(prism.Shape());
+      }
+      NCollection_List<TopoDS_Shape> arguments;
+      arguments.Append(input);
+      if (distance > 0) history.fuse = std::unique_ptr<BRepAlgoAPI_Fuse>(new BRepAlgoAPI_Fuse());
+      else history.cut = std::unique_ptr<BRepAlgoAPI_Cut>(new BRepAlgoAPI_Cut());
+      BRepAlgoAPI_BooleanOperation& op =
+          history.fuse ? static_cast<BRepAlgoAPI_BooleanOperation&>(*history.fuse)
+                       : static_cast<BRepAlgoAPI_BooleanOperation&>(*history.cut);
+      op.SetArguments(arguments);
+      op.SetTools(tools);
+      op.SetRunParallel(false);
+      op.Build();
+      if (!op.IsDone() || op.HasErrors()) return false;
+      op.SimplifyResult();
+      const TopoDS_Shape solid = asSolid(op.Shape());
+      if (solid.IsNull() || !BRepCheck_Analyzer(solid).IsValid()) return false;
+      int solids = 0;
+      int shells = 0;
+      for (TopExp_Explorer it(solid, TopAbs_SOLID); it.More(); it.Next()) ++solids;
+      for (TopExp_Explorer it(solid, TopAbs_SHELL); it.More(); it.Next()) ++shells;
+      if (solids != 1 || shells != 1) return false;
+      // The moved faces must add or remove exactly their area times the distance.
+      double expected = exactVolume(input);
+      for (int index : picked) {
+        GProp_GProps props;
+        BRepGProp::SurfaceProperties(faces(index + 1), props);
+        expected += props.Mass() * distance;
+      }
+      const double got = exactVolume(solid);
+      if (std::fabs(got - expected) > 1e-6 * std::fabs(expected) + 1e-9) return false;
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> resultFaces;
+      TopExp::MapShapes(solid, TopAbs_FACE, resultFaces);
+      for (size_t k = 0; k < caps.size(); ++k) {
+        NCollection_List<TopoDS_Shape> images;
+        for (const TopoDS_Shape& made : op.Modified(caps[k])) {
+          if (made.ShapeType() == TopAbs_FACE && resultFaces.Contains(made)) images.Append(made);
+        }
+        if (images.IsEmpty() && resultFaces.Contains(caps[k])) images.Append(caps[k]);
+        if (images.IsEmpty()) return false;
+        history.pickedImages.Bind(faces(picked[k] + 1), images);
+        history.picked.Add(faces(picked[k] + 1));
+      }
+      result = solid;
       return true;
     } catch (...) {
       result.Nullify();
