@@ -2104,15 +2104,19 @@ fails on the **smooth-chain guard** (status 6, "rounded edges meet at a sharp
 corner") rather than the inner void: the bump's 1,596 facets and the 4 small
 cylinders the hybrid fits to its flanks are, in OCCT's 4° tangent test, **one
 smooth chain of 115 faces with creases inside it** (facets ~14° apart — dot
-0.969–0.973 — reached through < 4° steps, a facet to a cylinder at dot 0.27).
-That guard exists because `BRepOffset_MakeOffset` traps the wasm heap on such
-bodies; the **flat-face prism fallback** (`buildPrismOffset`) never calls OCCT's
-offset, so `offsetFaces` now tries it, **for a body with a sharp chain only**,
-before keeping the refusal. On `bossWithBump` its gate passes (the bottom face
-is a plane; its neighbours are the box's four side planes, square to it), and
-the box's bottom rises 1 mm for +900 mm³. On a body whose flat face the fallback
-cannot move (the `kernel.test.ts` fillet-corner case: a slanted/cylindrical
-neighbour) it declines and the status-6 refusal is unchanged.
+0.969–0.973 — reached through < 4° steps). That guard exists because
+`BRepOffset_MakeOffset` traps the wasm heap on a body where **two fillets meet
+at a corner**. The **flat-face prism fallback** (`buildPrismOffset`) never calls
+OCCT's offset, so `offsetFaces` now tries it, before keeping the refusal, when
+the chain's creases are **not between two non-planar faces** (a converted body's
+chain is plane/plane and plane/a fitted cylinder: `smoothChains` reports that in
+a `curvedCrease` out-parameter). On `bossWithBump` the gate passes (the bottom
+face is a plane; its neighbours are the box's four side planes, square to it),
+and the box's bottom rises 1 mm for +900 mm³. A fillet-corner body (two
+cylinders at a crease: `kernel.test.ts`'s and `offset-face.test.ts`'s rounded
+corners), a non-flat pick, or a gate the fallback can't pass all keep the
+status-6 refusal unchanged, and **OCCT's offset is never reached for any of
+them**, so the guard's protection is intact.
 
 **Rejected.**
 - *Dropping the degenerate **shells** after `BRepBuilderAPI_MakeSolid`, not the

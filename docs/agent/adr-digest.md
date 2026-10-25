@@ -3218,14 +3218,19 @@ per-triangle array must match the view mesh), so a flap still shows there.
 Second rule: with the inner void gone, `offsetFaces` on a converted body hits
 the **smooth-chain guard** (status 6, "rounded edges meet at a sharp corner") —
 the bump's 1,596 facets and 4 fitted cylinders are one 4°-chain of 115 faces
-with ~14° creases inside. The guard protects OCCT's offset (heap trap), which
-the **flat-face prism fallback `buildPrismOffset` never calls**, so `offsetFaces`
-now tries the fallback **for a sharp chain only** before keeping the refusal; it
-still declines where its gate fails (a slanted/cylindrical neighbour: the
-`kernel.test.ts` fillet-corner case and its status-6 expectation). Test: the
-conversion is one solid and one shell (a `shells` helper counts the STEP
-writer's `CLOSED_SHELL`s) and Offset Face moves the box's bottom by 1 mm for
-+900 mm³ within 0.5 %. The `mesh-to-solid-files.test.ts` fixtures are unchanged.
+with creases inside. The guard protects OCCT's offset (a heap trap where **two
+fillets meet at a corner**), which the **flat-face prism fallback
+`buildPrismOffset` never calls**, so `offsetFaces` now tries the fallback
+**before keeping the refusal when the chain's creases are not between two
+non-planar faces** (a converted body's chain is plane/plane and plane/a fitted
+cylinder; `smoothChains` reports that in its `curvedCrease` out-parameter). A
+fillet-corner body (two cylinders at a crease: the `kernel.test.ts` and
+`offset-face.test.ts` rounded corners), a non-flat pick or a gate the fallback
+can't pass keep the refusal, and **OCCT's offset is never reached for any of
+them**. Test: the conversion is one solid and one shell (a `shells` helper
+counts the STEP writer's `CLOSED_SHELL`s) and Offset Face moves the box's bottom
+by 1 mm for +900 mm³ within 0.5 %. The `mesh-to-solid-files.test.ts` fixtures are
+unchanged.
 
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,

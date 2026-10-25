@@ -928,7 +928,8 @@ public:
       // OCCT offsets a face's smooth neighbours with it: those are checked too. A chain with
       // a sharp edge inside it (fillets meeting at a corner) traps OCCT's offset: refused.
       std::vector<int> chain;
-      const bool sharpChain = smoothChains(*input, faces, chain);
+      bool curvedCrease = false;
+      const bool sharpChain = smoothChains(*input, faces, chain, &curvedCrease);
       const std::vector<int> moving = smoothClosure(chain, picked);
       // The flat-face prism fallback (see buildPrismOffset), built on a fresh copy.
       const auto storePrism = [&]() -> int {
@@ -948,11 +949,16 @@ public:
       }
       if (sharpChain) {
         // The fallback never calls OCCT's offset, so a flat picked face can still
-        // move on a body whose chain has a sharp edge: a converted body keeps its
-        // freeform facets in one smooth chain (ADR-0097, 2026-10-25b), and its
-        // planes are otherwise stuck. Only when it declines is the refusal kept.
-        const int withPrism = storePrism();
-        if (withPrism != 0) return withPrism;
+        // move. A converted body's faceted chain (plane to plane, plane to a
+        // fitted cylinder) is not the fillet-with-no-blend case the guard is
+        // for: try the safe fallback there (ADR-0097, 2026-10-25b). Two curved
+        // faces at a crease (a real fillet corner), a non-flat pick or a gate
+        // the fallback can't pass all keep the refusal, and OCCT's offset is
+        // never reached for any of them.
+        if (!curvedCrease) {
+          const int withPrism = storePrism();
+          if (withPrism != 0) return withPrism;
+        }
         pushShellStatus(6, 0);
         return fail("Offset failed: rounded edges meet at a sharp corner.");
       }
@@ -12611,11 +12617,14 @@ private:
    * offset corrupts the wasm heap on such bodies (a memory access trap at
    * some distances, an empty result at others), so they are refused.
    * Fills `chain` (per face: the lowest face index of its chain) and returns
-   * whether some chain has a sharp edge inside it.
+   * whether some chain has a sharp edge inside it. With `curvedCrease` given,
+   * sets it to whether such a crease is between two non-planar faces (the
+   * fillet-with-no-blend case); a converted body's faceted chain is
+   * plane/plane or plane/a fitted cylinder, not that.
    */
   static bool smoothChains(const TopoDS_Shape& body,
                            const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
-                           std::vector<int>& chain) {
+                           std::vector<int>& chain, bool* curvedCrease = nullptr) {
     EdgeFaceMap edgeFaces;
     TopExp::MapShapesAndUniqueAncestors(body, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
     const int count = faces.Extent();
@@ -12651,9 +12660,19 @@ private:
     }
     for (int i = 0; i < count; ++i) chain[static_cast<size_t>(i)] = root(i);
     bool sharpInside = false;
+    bool curvedInside = false;
     for (const auto& crease : creases) {
-      if (chain[static_cast<size_t>(crease.first)] == chain[static_cast<size_t>(crease.second)]) sharpInside = true;
+      if (chain[static_cast<size_t>(crease.first)] != chain[static_cast<size_t>(crease.second)]) continue;
+      sharpInside = true;
+      if (curvedCrease != nullptr) {
+        const GeomAbs_SurfaceType a =
+            BRepAdaptor_Surface(TopoDS::Face(faces(crease.first + 1)), false).GetType();
+        const GeomAbs_SurfaceType b =
+            BRepAdaptor_Surface(TopoDS::Face(faces(crease.second + 1)), false).GetType();
+        if (a != GeomAbs_Plane && b != GeomAbs_Plane) curvedInside = true;
+      }
     }
+    if (curvedCrease != nullptr) *curvedCrease = curvedInside;
     return sharpInside;
   }
 
