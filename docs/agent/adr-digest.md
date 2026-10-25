@@ -943,6 +943,20 @@ closed faces divided (`ShapeUpgrade_ShapeDivideClosed`) and merged back
 (`DividedOffset`), and `offsetIsGood` also asks `farFacesKept` (a face neither
 moving nor next to a moving one keeps its area and centre), which refuses the
 valid junk OCCT can make of a face pushed through the body.
+**ADR-0051's amendment (2026-10-25): a flat face OCCT can't offset is moved by
+extruding it and fusing or cutting the prism** (`buildPrismOffset`, tried after
+the plain offset and the seam-divided retry, and in `offsetWorks` for the
+bisection). It runs **only behind `prismOffsetGate`**: every picked face a plane
+and `moving == picked` (no smooth neighbour rides along), and every face sharing
+an edge with a picked one a plane square to its normal (|dot| < 1e-6) or a
+cylinder parallel to it — a slanted neighbour is refused (the prism would step
+over it instead of extending it). The result must be a valid single solid with
+one shell whose exact volume is the input's plus each moved face's area times the
+distance; its history (`PrismOffset`) maps each picked face to the prism's far
+cap and every other face through the Boolean's `Modified()` after
+`SimplifyResult` (the picked face is modified, not deleted, so it keeps its
+name). Do not extend the gate to slanting neighbours without handling their
+extension.
 **ADR-0051's amendment (2026-10-14): a round next to a moved face keeps its
 radius.** The evaluator passes the unpicked fillet rounds (name `fillet:…` or a
 copy of one, cylinder or torus) of the picked faces' smooth chains

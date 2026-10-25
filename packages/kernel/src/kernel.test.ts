@@ -563,6 +563,69 @@ describe('errors and ownership', () => {
     expect(() => kernel.tangentFaces(box, 99)).toThrow(/out of range/);
   });
 
+  it('moves a flat face OCCT cannot offset by extruding it and fusing or cutting the prism (ADR-0051, 2026-10-25)', () => {
+    using scope = kernel.scope();
+    // A block with a through hole: the moved face's neighbours are the four walls (planes
+    // square to it) and the hole's cylinder (parallel to its normal), so the fallback's gate
+    // passes. Forced on, the fallback builds the result itself: the same volume as OCCT's own
+    // offset, but the moved face is *modified* into its image (its name kept) rather than
+    // *generated*, which is how the fallback is told apart from the plain path.
+    const box = scope.track(kernel.box([40, 30, 20]));
+    const hole = scope.track(kernel.cylinder(5, 40, [20, 15, -10]));
+    const body = scope.track(kernel.cut(box, hole, { simplify: true })).shape;
+    const top = kernel
+      .describe(body)
+      .faces.findIndex((f) => f.type === 'plane' && Math.abs(f.centroid[2] - 20) < 1e-6);
+    expect(top).toBeGreaterThanOrEqual(0);
+    const area = kernel.describe(body).faces[top]?.area as number;
+    const before = kernel.measure(body).volume;
+    kernel.setPrismFallback(true);
+    try {
+      for (const distance of [5, -2]) {
+        const moved = scope.track(kernel.offsetFaces(body, [top], distance));
+        expect(kernel.isValid(moved.shape)).toBe(true);
+        expect(kernel.count(moved.shape, 'face')).toBe(7);
+        expect(kernel.measure(moved.shape).volume).toBeCloseTo(before + distance * area, 3);
+        const record = moved.history.find((r) => r.from.kind === 'face' && r.from.index === top);
+        expect(record?.relation).toBe('modified');
+        expect(record?.to).toHaveLength(1);
+        expect(record?.to[0]?.kind).toBe('face');
+      }
+    } finally {
+      kernel.setPrismFallback(false);
+    }
+    // A slanted neighbour is refused: the fallback declines and OCCT's own offset runs (the
+    // picked face stays *generated*, its name kept by the plain path's own history).
+    const chamferBox = scope.track(kernel.box([40, 30, 20]));
+    const topFront = kernel
+      .describe(chamferBox)
+      .edges.findIndex(
+        (e) =>
+          Math.abs(e.midpoint[2] - 20) < 1e-6 &&
+          Math.abs(e.midpoint[1] - 30) < 1e-6 &&
+          Math.abs(e.midpoint[0] - 20) < 1e-6,
+      );
+    expect(topFront).toBeGreaterThanOrEqual(0);
+    const chamfered = scope.track(
+      kernel.chamfer(chamferBox, [topFront], { mode: 'equal', distance: 3 }),
+    ).shape;
+    const chamferTop = kernel
+      .describe(chamfered)
+      .faces.findIndex((f) => f.type === 'plane' && Math.abs(f.centroid[2] - 20) < 1e-6);
+    expect(chamferTop).toBeGreaterThanOrEqual(0);
+    kernel.setPrismFallback(true);
+    try {
+      const moved = scope.track(kernel.offsetFaces(chamfered, [chamferTop], 5));
+      expect(kernel.isValid(moved.shape)).toBe(true);
+      const record = moved.history.find(
+        (r) => r.from.kind === 'face' && r.from.index === chamferTop,
+      );
+      expect(record?.relation).toBe('generated');
+    } finally {
+      kernel.setPrismFallback(false);
+    }
+  });
+
   it("offsets the faces of a notch across a cylinder's seam as it does anywhere else round the wall", {
     timeout: 120_000,
   }, () => {

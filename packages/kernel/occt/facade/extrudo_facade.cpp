@@ -933,6 +933,22 @@ public:
         return fail("Offset failed: rounded edges meet at a sharp corner.");
       }
       const std::vector<int> moving = smoothClosure(chain, picked);
+      // The flat-face prism fallback (see buildPrismOffset), built on a fresh copy.
+      const auto storePrism = [&]() -> int {
+        const TopoDS_Shape copy = BRepBuilderAPI_Copy(*input, true, false).Shape();
+        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> copyFaces;
+        TopExp::MapShapes(copy, TopAbs_FACE, copyFaces);
+        if (copyFaces.Extent() != faces.Extent()) return 0;
+        PrismOffset prism;
+        TopoDS_Shape result;
+        if (!buildPrismOffset(prism, copy, copyFaces, picked, moving, distance, result)) return 0;
+        recordHistory(prism, copy, 0, result);
+        return store(result);
+      };
+      if (forcePrismFallback_) {
+        const int forced = storePrism();
+        if (forced != 0) return forced;
+      }
       {
         // A copy for every build, as in shell(): OCCT repairs its input in place.
         const TopoDS_Shape copy = BRepBuilderAPI_Copy(*input, true, false).Shape();
@@ -964,17 +980,8 @@ public:
       {
         // A flat face OCCT's offset can't move (see buildPrismOffset): move it by
         // extruding it and fusing (out) or cutting (in) the prism.
-        const TopoDS_Shape copy = BRepBuilderAPI_Copy(*input, true, false).Shape();
-        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> copyFaces;
-        TopExp::MapShapes(copy, TopAbs_FACE, copyFaces);
-        if (copyFaces.Extent() == faces.Extent()) {
-          PrismOffset prism;
-          TopoDS_Shape result;
-          if (buildPrismOffset(prism, copy, copyFaces, picked, moving, distance, result)) {
-            recordHistory(prism, copy, 0, result);
-            return store(result);
-          }
-        }
+        const int withPrism = storePrism();
+        if (withPrism != 0) return withPrism;
       }
       return explainOffset(*input, picked, moving, distance);
     } catch (...) {
@@ -982,6 +989,13 @@ public:
       return failFromException("Offset failed");
     }
   }
+
+  /**
+   * Test hook: make offsetFaces() try the flat-face prism fallback
+   * (buildPrismOffset) first, before OCCT's own offset. Only for the tests
+   * that exercise the fallback: no product code calls it.
+   */
+  void setPrismFallback(bool on) { forcePrismFallback_ = on; }
 
   /**
    * The faces (indices, in lookupPtr/lookupSize) that run smoothly into
@@ -5350,6 +5364,8 @@ private:
   int nextHandle_;
   std::vector<int> args_;
   std::vector<int> blends_;
+  /** Test hook (setPrismFallback): try the flat-face prism fallback first in offsetFaces(). */
+  bool forcePrismFallback_ = false;
   std::vector<int32_t> history_;
   std::string lastError_;
   double measured_[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};

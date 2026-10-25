@@ -439,3 +439,61 @@ face…": the owner's example both ways; "picks a face's smooth chain up to its
 rounds…"; the slot's chain stays whole); app `offset-face.test.ts` ("keep
 rounds' radius"); e2e `e2e/press-pull.spec.ts` ("a wall of a rounded block
 keeps its rounds' radius; turned off…").
+
+## Amendment 2026-10-25: flat faces fall back to extrude and fuse
+
+A body imported from STEP (149 faces, a valid solid, 53 735 mm³) can't be
+offset on **any** flat face, at any distance: "Face 77 can't be offset, at any
+distance…" (status 2, `unoffsettable`). Measured in a native OCCT harness:
+`BRepOffset_MakeOffset` (skin mode, the call in `buildOffset`) reports done but
+returns an **invalid** solid — the faces far from the moved one (inner walls and
+the bottom) fail `BRepCheck_Analyzer` (volume 252 729 instead of ~115 700 for
++10 mm) — so `offsetIsGood` correctly rejects it and `explainOffset`'s
+bisection finds no distance that works. Other join types, `Intersection` on and
+off and `ShapeUpgrade_UnifySameDomain` first all give the same broken solid.
+The trigger is a small pocket (rounded inner corners, r 3.6, under a screw
+boss); a simple box with the same rounded pocket offsets fine, so no small
+fixture reproduces it. The same face moved by **extruding it and fusing the
+prism** is sound (harness: +10 → 115 735, −1 → 47 535, −1.5 → 44 435 mm³, 149
+faces, all valid).
+
+**Decision.**
+
+- **Extrude a flat face and fuse or cut the prism** (`buildPrismOffset`).
+  For each picked face, take its outward normal (the plane's, reversed when the
+  face is reversed) and `BRepPrimAPI_MakePrism(face, n · distance)`: `distance >
+  0` fuses the prism to a copy of the body, `distance < 0` cuts it (the prism
+  goes into the body along `n · distance`), with `SimplifyResult`. Several
+  picked faces make one prism each, fused or cut in one Boolean.
+- **Only behind a gate** (`prismOffsetGate`), else nothing changes: every
+  picked face is a plane **and** `moving == picked` (no smooth neighbour rides
+  along), and every face sharing an edge with a picked face is a plane whose
+  outward normal is square to the picked face's normal (|dot| < 1e-6) or a
+  cylinder whose axis is parallel to it. A **slanted neighbour is refused**: the
+  prism steps over it where a real offset extends it. A seam or a curved
+  neighbour that can't answer refuses too.
+- **Accept only a sound result**: a valid solid, one solid with one shell, whose
+  exact volume is the input's plus each moved face's area times the distance
+  (within 1e-6 relative).
+- **History** (`PrismOffset`): each picked face maps to the prism's **far cap**
+  (the face with the same plane shifted by d); every other face maps to what the
+  Boolean's `Modified()` gives after `SimplifyResult` (which merges the prism's
+  side faces with the coplanar neighbours). The picked face is reported as
+  modified, not deleted (a fuse, and a cut at the pocket's opening, remove it),
+  so it keeps its name (`facesKeepNames`).
+- **Wired after the existing attempts**: plain offset, the seam-divided retry,
+  then the prism fallback, before `explainOffset`; `offsetWorks` takes the same
+  attempt so the bisection agrees. The `keepRounds`/blends path is unchanged:
+  when it fails the code falls through to the plain path and so reaches the
+  fallback.
+
+**Rejected.** `GeomAbs_Arc` joins for the plain offset throw on this body; other
+`BRepOffset` settings, `Intersection` on/off and `ShapeUpgrade_UnifySameDomain`
+before the offset give the same invalid solid; filling the pocket and offsetting
+first made a void (it isn't a solution for an arbitrary imported body, and a
+void is refused).
+
+Local check (the owner's STEP, not committed): `offsetFaces` face 76 at +10,
+−1 and −1.5 gives 115 735, 47 535 and 44 435 mm³; three other planar faces at
++0.5 build too. Tests: `offset-face.test.ts`.
+
