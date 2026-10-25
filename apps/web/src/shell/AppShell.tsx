@@ -327,7 +327,7 @@ export interface AppShellProps {
     Partial<PluginCommandKernel> &
     Partial<Pick<JointDialogKernel, 'resolveJoint'>> &
     Partial<JointCheckKernel> &
-    Partial<Pick<Recomputer, 'interference' | 'waits'>> &
+    Partial<Pick<Recomputer, 'interference' | 'waits' | 'canRevertToShown' | 'revertToShown'>> &
     Partial<{
       readonly client: {
         heap(): Promise<{ top: number; size: number }>;
@@ -2554,6 +2554,19 @@ function Shell({
           store={store}
           waits={kernel?.waits}
           collapsed={browser.collapsed}
+          {...(kernel?.canRevertToShown &&
+            kernel.revertToShown && {
+              cancel: {
+                can: () => kernel.canRevertToShown?.() ?? false,
+                run: () => {
+                  if (kernel.revertToShown?.())
+                    notify(
+                      'info',
+                      'Update cancelled: your last changes were undone. Redo brings them back.',
+                    );
+                },
+              },
+            })}
         />
         <ViewportBoundary>
           <Suspense

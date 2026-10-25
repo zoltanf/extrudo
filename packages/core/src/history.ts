@@ -179,7 +179,8 @@ export class UndoHistory {
     const top = this.#top;
     const back = stepId === undefined || top.undo.some((e) => e.id === stepId);
     let result = doc;
-    if (back) while (top.undo.length > 0 && top.undo.at(-1)?.id !== stepId) result = this.undo(result);
+    if (back)
+      while (top.undo.length > 0 && top.undo.at(-1)?.id !== stepId) result = this.undo(result);
     else while (top.redo.length > 0 && top.undo.at(-1)?.id !== stepId) result = this.redo(result);
     return result;
   }

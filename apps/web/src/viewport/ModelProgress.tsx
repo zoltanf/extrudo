@@ -2,12 +2,14 @@ import type { DocumentStore, ModelStore } from '@extrudo/core';
 import type { KernelWaits, Wait } from '@extrudo/kernel';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useStore } from 'zustand';
+import { Button } from '../design-system/Button';
 import {
   activeFeatureCount,
   progressBar,
   progressDetail,
   progressMode,
   progressTitle,
+  showsCancel,
   UPDATING_AFTER_MS,
   WAITING_AFTER_MS,
   type WaitInput,
@@ -65,13 +67,15 @@ export function ProgressCube({ size = 20 }: { size?: number }) {
  * The notice at the view's top left while the design is being prepared, a
  * long recompute runs, or a kernel call the user made is still out (ADR-0078,
  * ADR-0105 §2). It never takes pointer events, so it can't block a pick; a
- * failed kernel keeps its own message (the status bar's).
+ * failed kernel keeps its own message (the status bar's). A long update offers
+ * Cancel (ADR-0111), the one part that takes the pointer.
  */
 export function ModelProgress({
   model,
   store,
   waits,
   collapsed,
+  cancel,
 }: {
   model: ModelStore<unknown>;
   store: DocumentStore;
@@ -79,11 +83,15 @@ export function ModelProgress({
   waits?: KernelWaits;
   /** The browser is folded away: its "Show browser" tab then sits at the view's corner. */
   collapsed: boolean;
+  /** Returns the document to the shown model's step (ADR-0111); read at render time. */
+  cancel?: { can(): boolean; run(): void };
 }) {
   const status = useStore(model, (s) => s.status);
   const finished = useRecomputeFinished(model);
   const progress = useStore(model, (s) => s.progress);
   const doc = useStore(store, (s) => s.doc);
+  // Opening a transaction hides Cancel (ADR-0111) without changing the document.
+  useStore(store, (s) => s.transactionDepth);
   const live = useKernelWaits(waits);
   const active = live.filter((wait) => !wait.quiet);
   const oldest = active[0];
@@ -146,7 +154,21 @@ export function ModelProgress({
     >
       <ProgressCube />
       <div className="flex flex-col leading-tight">
-        <span className="text-sm font-medium text-ink">{progressTitle(mode, wait)}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium text-ink">{progressTitle(mode, wait)}</span>
+          {cancel && showsCancel(mode, cancel.can) && (
+            <Button
+              variant="ghost"
+              data-model-cancel
+              title="Cancel: undo the changes since the last model"
+              aria-label="Cancel: undo the changes since the last model"
+              onClick={cancel.run}
+              className="pointer-events-auto -my-1 ml-auto h-6 px-2 text-sm"
+            >
+              Cancel
+            </Button>
+          )}
+        </div>
         {bar ? (
           <>
             <progress

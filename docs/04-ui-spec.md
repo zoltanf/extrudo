@@ -924,7 +924,8 @@ command (replacing its first key).
   (until the first recompute after opening has finished) or "Updating the model…"
   (a later recompute that runs longer than 800 ms), with "Computing 6 features"
   under it. The cube's faces fill in turn; with reduced motion it stands still.
-  No buttons, and it never takes clicks. A failed kernel keeps its own message.
+  It never takes clicks, apart from the Cancel button below. A failed kernel
+  keeps its own message.
 - **Waiting on a kernel call (ADR-0105 §2):** a kernel call the user made (a
   face pick, a measure, an export) that is still out after 300 ms gets the same
   pill, saying what it is doing ("Reading the pick…", with "and n more" when
@@ -937,6 +938,11 @@ command (replacing its first key).
   the active features, and "Thread1 · 4 of 7" under it; the status bar's kernel
   text reads "computing 4/7", and the timeline chip of that feature pulses
   softly (not under reduced motion).
+- **Cancel a long update (ADR-0111):** the "Updating the model…" pill has a
+  quiet **Cancel** button at the right of its title (the pill's only part that
+  takes clicks), shown once a model is on screen and no sketch or dialog is
+  open; it undoes the changes since the model on screen in one go, a toast says
+  so, and Redo brings them back. No keyboard shortcut.
 - **Bodies before they are drawn:** the Bodies folder lists the bodies the last
   session made at once, as muted rows with a small cube where the count would be;
   the eye works, selection waits. The first finished recompute replaces them.

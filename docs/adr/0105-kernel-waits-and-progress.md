@@ -91,7 +91,8 @@ only to remember the culprit of a crash (`recomputer.ts`, around line 731).
   be a facade change for little.
 - **Cancelling a wait from the notice.** Only export meshing supports cancel
   today (ADR-0050); a Cancel that works for one call in fourteen misleads.
-  Option 15 of the plan stays open.
+  Option 15 of the plan stays open. (A long recompute's Cancel landed in ADR-0111; other waits still have
+  none.)
 - **Showing the wait at once.** Most picks return in under 100 ms; a notice
   that flashes on every click is noise. 300 ms is the point where a person
   starts to wonder.
