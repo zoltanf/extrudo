@@ -1346,6 +1346,20 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   Parameters (`parameterExpression(…).toHaveValue`) and closing it with
   Escape before `Control+y` (Redo), so the key doesn't land in the field.
 
+### `e2e/kernel-prewarm.spec.ts`
+
+- **Kernel-prewarm e2e** (ADR-0102 §8): loads the home screen and polls
+  `page.workers()` until one worker's `url()` contains `kernelWorker` — in the
+  production build the worker asset is hashed (`assets/kernelWorker-<hash>.js`),
+  so match on the `kernelWorker` substring, as `e2e/script.spec.ts` does; the
+  home screen starts it in `requestIdleCallback` (2 s timeout), so poll for up
+  to 15 s. Then the Wall bracket template (via `startFromTemplate`) and
+  `kernelReady(page)`; the assertion is that there is still exactly **one**
+  `kernelWorker` worker: the spare was taken over, not a second one spawned.
+  Note `page.workers()` lists dedicated workers of the page only; the debug
+  kernel (`spawnDebugKernel`, `#/debug/*`) and the f3d check's throwaway are
+  separate pages.
+
 ### `e2e/model-select.spec.ts`
 
 - **Model-selection e2e** (P2-03) reads the Viewport region's

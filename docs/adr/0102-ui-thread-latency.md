@@ -301,3 +301,57 @@ defines. It is now armed once the parameter's expression field is visible,
 still before typing (the field applies while typing). Measured locally,
 before → after: SwiftShader B5 906 → 426 / 446 ms, B7 1727 → 1350 / 1379;
 GPU B5 663 → 377, B7 1617 → 1295. The budgets are unchanged.
+
+## §8. Amendment 2026-10-25: the kernel starts on the home screen
+
+Opening a design waited for the kernel from a cold start: worker start, the
+OCCT WASM's download and compile, then `init` — measured 1.2–2.2 s to
+"kernel ready" after clicking a template (the perf baseline plan, §1.1), and
+1.80–2.28 s here (`scripts/measure-startup.mjs`, first visit, two runs). All
+of it began only when a project opened (`useRecompute`'s `Recomputer` calls
+its `spawn`), while the home screen is usually shown for seconds first.
+
+**The fix:** a one-slot kernel pool (`apps/web/src/project/spawnKernel.ts`,
+`createKernelPool`/`prewarmProjectKernel`). The home screen starts one spare
+project kernel in idle time, beside the WebGL probe (`home/HomeScreen.tsx`),
+and the first `spawnProjectKernel()` takes it over; `prewarm()` also calls
+`api.init()` on it, so the WASM is downloaded, compiled and instantiated
+while the home screen shows. The same effect dynamically imports
+`../viewport/Viewport` — the module `AppShell`'s `lazy()` loads — so the
+viewport chunk evaluates during the dwell too. `whenIdle`, not `afterPaint`:
+the WebGL probe goes first. The measurement (`--home-wait 3000`, two runs
+each, 50 Mbit throttled):
+
+| | first visit | repeat visit (service worker) | repeat visit, offline |
+|---|---|---|---|
+| before (main) | 1.80 / 2.28 s | 1.11 / 1.12 s | 1.09 / 1.12 s |
+| after (branch, wait) | 0.81 / 0.81 s | 1.11 / 1.10 s | 1.09 / 1.10 s |
+| after (branch, no wait) | 1.91 / 2.55 s | 1.16 / 1.16 s | 1.15 / 1.16 s |
+
+The dwell is what buys the head start: with no wait, a click straight after
+the home screen shows is as cold as before (the idle callback may not have
+run, and the WASM needs its seconds anyway). The repeat visit's ~1.1 s floor
+is the template's recompute and first draw, not the kernel start, so it does
+not move — the prewarm pays where the plan measured it, the cold first open.
+
+The rules:
+
+- Only `spawnProjectKernel` hands out project kernels; `createKernelPool`
+  keeps at most one spare, and `prewarm()` is idempotent.
+- The spare registers `onFatal`: while it is still a spare, a death
+  terminates and drops it, and the next `spawn()` makes a fresh one; once it
+  is taken, that listener does nothing — the `KernelClient` registers its
+  own (it re-rejects pending calls and restarts).
+- `prewarm()` calls `api.init()` and swallows a rejection: the client's own
+  `init()` will see the same failure and report it as today.
+- No worker survives a project close: a disposed `Recomputer` terminates its
+  worker as before. Returning to the home screen prewarms again, which also
+  covers switching designs.
+- A design opened by a direct link (`#/project/…`, `#/example/…`) spawns
+  cold, as before; `prewarmProjectKernel()` is a no-op where `Worker` is
+  undefined (jsdom, Node — the unit tests, the CLI).
+
+Rejected: keeping a project's worker for the next design — its fonts, files
+and shape caches would each need a reset path, against one worker per open
+project (ADR-0024); prewarming on every route — a direct link spawns at once
+anyway, and the home screen is the only route that idles before opening.

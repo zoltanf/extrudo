@@ -3379,6 +3379,17 @@ wrapper in worker code kills the kernel worker with `$RefreshReg$ is not
 defined`, which no CI run sees: e2e uses production builds, so check
 `pnpm dev` after touching the plugin's options); nothing that makes a
 WebGL context runs in the view's first render when it can run earlier.
+§8: the kernel starts on the home screen — `spawnKernel.ts`'s
+`createKernelPool`/`prewarmProjectKernel` keep at most one spare project
+kernel, which `home/HomeScreen.tsx` starts in `whenIdle` (after the WebGL
+probe) together with a dynamic import of `../viewport/Viewport`; **Rules:**
+only `spawnProjectKernel` hands out project kernels, at most one spare, and
+the home screen is where it starts (`whenIdle`, never earlier — the probe
+goes first); the spare's `onFatal` terminates and drops it only while it is
+a spare, `prewarm()`'s `init()` rejection is swallowed (the client reports
+it), a project's worker dies with its `Recomputer` (no reuse across
+designs), and a direct link spawns cold; `e2e/kernel-prewarm.spec.ts` holds
+one worker from home through a template open.
 
 ADR-0101 (P6-15, proposed 2026-10-23) adds **Render Picture with Blender** (desktop only).
 `apps/desktop/src/main/blender.ts` is pure over an injected environment like `slicers.ts`:
