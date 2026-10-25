@@ -45,6 +45,7 @@ export {
   pluginPath,
 } from './plugins';
 export {
+  assertAttachmentsFit,
   createProjectStore,
   memoryProjectStore,
   type ProjectStoreOptions,

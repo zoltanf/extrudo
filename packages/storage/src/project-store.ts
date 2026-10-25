@@ -102,6 +102,28 @@ const decoder = new TextDecoder();
 const MB = 1024 * 1024;
 const megabytes = (bytes: number) => `${Math.ceil((bytes / MB) * 10) / 10} MB`;
 
+const tooManyBytes = (total: number) =>
+  new Error(
+    `This design's files would be ${megabytes(total)} altogether; they may be at most ${megabytes(MAX_ATTACHMENTS_BYTES)}.`,
+  );
+
+/**
+ * Refuses a document whose files, among `files` (bytes by SHA-256, as an
+ * archive holds them), come to more than `MAX_ATTACHMENTS_BYTES`. Callers
+ * that write a whole set of files before the document naming them (an
+ * import, a copy, a linked folder's file) check here first: `writeAttachment`
+ * only sees the sizes the *stored* document records, which doesn't name any
+ * of them yet (#128). Files only a version names don't count, as there.
+ */
+export function assertAttachmentsFit(
+  doc: Pick<ExtrudoDocument, 'attachments'>,
+  files: ReadonlyMap<string, Uint8Array>,
+): void {
+  let total = 0;
+  for (const hash of attachmentHashes(doc)) total += files.get(hash)?.length ?? 0;
+  if (total > MAX_ATTACHMENTS_BYTES) throw tooManyBytes(total);
+}
+
 /**
  * The one shape a project id may have (P6-01, ADR-0075's review): `newId()`
  * makes a UUID, and the store's own tests use short ids like `p1`; both fit.
@@ -289,11 +311,7 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
     const total =
       bytes.length +
       [...sizes].reduce((sum, [hash, size]) => (hash === sha256 ? sum : sum + size), 0);
-    if (total > MAX_ATTACHMENTS_BYTES) {
-      throw new Error(
-        `This design's files would be ${megabytes(total)} altogether; they may be at most ${megabytes(MAX_ATTACHMENTS_BYTES)}.`,
-      );
-    }
+    if (total > MAX_ATTACHMENTS_BYTES) throw tooManyBytes(total);
     await files.write(attachmentPath(id, sha256), bytes);
   };
 
@@ -383,6 +401,7 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
       name,
       meta: { ...doc.meta, created: now() },
     };
+    if (extra.attachments) assertAttachmentsFit(copy, extra.attachments);
     for (const [sha256, bytes] of extra.attachments ?? []) {
       await writeAttachment(copy.id, sha256, bytes);
     }
@@ -539,7 +558,8 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
         return copy;
       }
       // The bytes before the document: a design must never name a file that
-      // isn't stored, and the sizes the limit is checked against come with it.
+      // isn't stored. The total is checked first, as no file is named yet.
+      assertAttachmentsFit(doc, attachments);
       for (const [sha256, bytes] of attachments) await writeAttachment(doc.id, sha256, bytes);
       const summary = await save(doc);
       if (thumbnail) await writeThumbnail(doc.id, thumbnail);
