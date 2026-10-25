@@ -1107,6 +1107,13 @@ end to end, faster than in established desktop CAD.
   its budget 30 s → 12 s, Faceted's cap 2,000 → 5,000, and the browser-vs-node
   timings (Auto total over the 37 files 377.9 → 187.8 s). Next: fillet strips,
   tangent lines where a plane meets a fillet's cylinder.
+  *Follow-up, 2026-10-24:* Offset Face on a converted body (the owner's gear:
+  17,472 triangles, prismatic Auto → a valid 204-face hybrid body) fails at
+  every distance. The failure probe answers in one build now
+  (`largestThatWorks`), and the diagnosis (ADR-0097's 2026-10-24 amendment)
+  found the converted body has 5 dangling edges — `UnifySameDomain` opens the
+  assembled shell — and OCCT offsets a ~0-volume skin from it; the fix is
+  open.
 
 ## Phase 5 — Programmatic design (→ v0.6)
 

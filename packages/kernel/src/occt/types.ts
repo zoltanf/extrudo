@@ -250,6 +250,12 @@ export interface FacadeBinding {
   meshLoopsDebug(tolerance: number): number;
   meshLoopsPtr(): number;
   meshLoopsSize(): number;
+  /** Tests only (ADR-0097 amendment, 2026-10-24): tolerance/validity facts of a built shape; see the facade. */
+  shapeDiagnose(shape: number): number;
+  /** Tests only: one plain offset build's OCCT error code; see the facade. */
+  offsetProbe(shape: number, face: number, distance: number): number;
+  /** Tests only: the exact/hybrid refusals of the last Mesh to Solid call; see the facade. */
+  meshRefusalDebug(): number;
   readStepColors(text: string): number;
   readStepNames(text: string): number;
   clearExport(): void;

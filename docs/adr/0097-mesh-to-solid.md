@@ -1894,3 +1894,72 @@ stage runs only with no unfit region and at most 500 surfaces. drill-block's
 result, a hybrid with 388 faces and 208 facets, is preferred to the exact
 93-face result that left 3 small regions out: it is faithful, and the Result
 line says what stayed facets.
+
+### Amendment, 2026-10-24: Offset Face on a converted body (diagnosis; the fix is open)
+
+**The report.** The owner imported a gear (3MF, 17,472 triangles), converted it
+with Mesh to Solid (prismatic, tolerance Auto) and ran Offset Face on the
+flat top of the hub; the app stayed on "computing…" for minutes, then refused.
+Replayed in Node (`Kernel` + `loadOcct` + `loadManifold`): `read3mf` →
+`kernel.meshFrom` → `kernel.meshToSolid(mesh, { method: 'prismatic', tolerance: -1 })`
+(≈9.5 s) gives a **valid** 204-face body (102 planes, 100 cylinders, 2 cones,
+rebuild **hybrid**, 0 facets, 597 edges, volume 13,441.33 mm³) with the exact
+stage refusing first (`invalid after healing`). `kernel.offsetFaces(shape, [top], d)`
+then fails for d = 2.6, 0.5 and −0.5 with
+`OffsetFaceError: Offset failed: OCCT can't offset these faces.`, each after
+52–58 s (the plain build, then the seam retry, then `explainOffset`'s
+`largestThatWorks` bisection over seven more builds).
+
+**Slice 1, the fast failure** (`extrudo_facade.cpp`, `largestThatWorks`):
+probe `failing / 128` — the smallest value the seven-step bisection ever
+tests — before the loop. Under the loop's own monotonicity assumption a
+failure there means the same answer (0) at the cost of one build instead of
+seven; a success leaves the bisection exactly as it was, so every caller's
+result is unchanged. The gear's failed preview and commit drop to a couple of
+builds.
+
+**The harness-only diagnosis hooks.** Three facade methods (reached through
+the raw facade in tests and the spike harness, as `meshLoopsDebug` is; the app
+never calls them):
+- `shapeDiagnose(shape)`: the largest vertex/edge/face tolerance
+  (`BRep_Tool::Tolerance`), the sub-shape counts, the edges not
+  SameParameter, the faces that sit on a geometric surface another face also
+  has (one analytic surface split into several faces), the free edges (one
+  face), how many of those are **dangling** (neither a seam, `BRep_Tool::IsClosed`,
+  nor degenerate), the over-shared edges, and the invalid faces and edges.
+- `offsetProbe(shape, face, distance)`: one plain `BRepOffset_MakeOffset`
+  build, reporting `IsDone`, `Error()`, the raw builder shape's kind, its
+  shell count and how many shells close, and which of `offsetIsGood`'s checks
+  the `asSolid` result fails (validity, the volume against the input's,
+  `farFacesKept`).
+- `meshRefusalDebug()`: the last call's exact-stage and hybrid refusals.
+
+**What they measured on the gear.** Tolerances are small (max vertex and edge
+0.012 mm, face 1e-7 mm), 0 edges are not SameParameter and 0 sub-shapes are
+invalid — but the converted body has **5 dangling edges**: the shell is not
+watertight, even though `BRepCheck_Analyzer` reports the solid valid. A single
+plain `BRepOffset_MakeOffset` build from it returns `IsDone` with `Error() = 0`
+and a raw **solid** of ~0.0016 mm³ (invalid per `BRepCheck_Analyzer`), so
+`offsetIsGood` refuses it at every distance and Shell fails the same way.
+Every face fails, not only the top. The **assembled** (pre-unify) hybrid solid
+has **0** dangling edges; `UnifySameDomain` introduces the 5 (with
+`ConcatBSplines` on or off alike), and sewing the faces back — up to 1 mm, in
+the default and non-manifold modes, then `ShapeFix_Shape` and
+`ShapeFix_Wireframe` — does not close them (they have no partner within 1 mm).
+Keeping the assembled solid instead (210 faces: the split pieces unify would
+merge, 6 faces on a surface another face has, 0 dangling) is closed but
+`BRepOffset_MakeOffset` then still returns a solid of ~0 volume, so the
+conversion's coplanar/tangent split faces are a second trigger.
+
+**Slice 3, the local reproduction** (`mesh-to-solid-files.test.ts`, the
+`MESH_FILE` describe): with `MESH_FILE=<path to .3mf or .stl>` (skipped when
+absent, so CI never sees the private file) it converts prismatic Auto, then
+runs Offset Face at 2.6, 0.5 and −0.5 mm, Fillet (0.5 mm on an edge of the top
+face), Shell (top face removed, 1 mm) and Press Pull (2.6 mm) on the top face
+and logs each result and time. On the gear: Offset Face and Shell fail (as
+above), Fillet and Press Pull succeed.
+
+**Open.** The fix — merging the split analytic faces without opening the shell,
+or stopping OCCT's single-face offset from collapsing on a body with
+coplanar/tangent faces — is not done. The hooks above are what the next
+attempt starts from.

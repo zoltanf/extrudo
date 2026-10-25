@@ -3122,6 +3122,38 @@ hybrid alone). The before/after sweep tables (Auto total 377.9 → 187.8 s) and
 the browser/node ratio (median 3.5×, the fixed per-conversion overhead and a
 cold kernel, not the kernel call) are in the amendment.
 
+**ADR-0097 amendment (2026-10-24): Offset Face on a converted body.** A gear
+(17,472 triangles, prismatic Auto) converts to a valid 204-face hybrid body
+(rebuild hybrid), yet `offsetFaces` fails on it at every distance after
+52–58 s. Two things changed. (1) **The fast failure** (`largestThatWorks`,
+facade): probe `failing / 128` (the smallest value the seven-step bisection
+ever tests) first; a failure there returns 0 at once under the loop's own
+monotonicity assumption, a success leaves the bisection unchanged, so every
+caller's result is the same and a body that can't be offset/shelled/filleted
+at all costs one build. This applies to **every** `largestThatWorks` caller
+(offset, shell, fillet, chamfer, draft, shellFaces). (2) **Harness-only
+diagnosis hooks** (raw facade in tests and the spike harness, as
+`meshLoopsDebug` is; **the app never calls them**): `shapeDiagnose(shape)` —
+max vertex/edge/face tolerance, sub-shape counts, not-SameParameter edges,
+faces sharing one analytic surface, free edges and how many are **dangling**
+(neither seam nor degenerate), over-shared edges, invalid faces/edges;
+`offsetProbe(shape, face, distance)` — one plain `BRepOffset_MakeOffset`
+build: `IsDone`, `Error()`, the raw shape's kind, shell count and closed-shell
+count, and which of `offsetIsGood`'s checks the result fails; and
+`meshRefusalDebug()` — the last call's exact and hybrid refusals. **Measured
+on the gear:** tolerances small, 0 not-SameParameter, 0 invalid sub-shapes,
+but **5 dangling edges** (the shell is not watertight; `BRepCheck_Analyzer`
+misses it) and `BRepOffset_MakeOffset` returns `IsDone`/`Error() = 0` with an
+invalid ~0.0016 mm³ solid. The **assembled** hybrid solid has **0** dangling
+edges; `UnifySameDomain` adds the 5 (ConcatBSplines on or off), and sewing
+(≤1 mm, default and non-manifold) + `ShapeFix_Shape` + `ShapeFix_Wireframe`
+can't close them (no partner within 1 mm). Keeping the assembled solid (210
+faces, 6 on a shared surface) is closed but its offset is still ~0 volume, so
+coplanar/tangent split faces are a second trigger. **The fix is open.** The
+local `MESH_FILE` test (`mesh-to-solid-files.test.ts`, skipped without the env
+var) converts a private .3mf/.stl prismatic Auto and runs Offset Face (2.6,
+0.5, −0.5 mm), Fillet, Shell and Press Pull on the top face.
+
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
 facade `removeFaces` with `BRepAlgoAPI_Defeaturing`). Rules: **all or nothing** (any

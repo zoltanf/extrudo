@@ -474,6 +474,11 @@ describe('errors and ownership', () => {
       }
     }
     expect(wall).toBeGreaterThanOrEqual(0);
+    // The "none does" case: OCCT can't shell the cylinder's whole side at any
+    // thickness (largestThatWorks returns 0). Its result is unchanged by the
+    // failing-value probe added on 2026-10-24: still the unshellable status,
+    // no largest thickness.
+    expect(problemOf(() => kernel.shell(cylinder, [wall], 2))?.kind).toBe('unshellable');
     // A wall thicker than the radius is refused, not built inside out.
     const thick = problemOf(() => kernel.shell(cylinder, [1 + (wall === 1 ? 1 : 0)], 12));
     expect(thick?.kind).toBe('too-thick');

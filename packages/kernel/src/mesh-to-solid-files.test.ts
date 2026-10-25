@@ -2,7 +2,7 @@
 // the owner's fixtures in fixtures/imports/mesh-to-solid/, and, when STL_DIR
 // names a folder, every .stl under it (at TOL, default 0.01 mm), where only a
 // trap fails: a refusal is an answer, a WASM RuntimeError is a bug.
-import { readStl } from '@extrudo/io';
+import { read3mf, readStl } from '@extrudo/io';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import drillBlockStl from '../../../fixtures/imports/mesh-to-solid/drill-block.stl?url&inline';
 import holeFillerStl from '../../../fixtures/imports/mesh-to-solid/hole-filler-35mm.stl?url&inline';
@@ -30,7 +30,8 @@ interface NodeFs {
   writeFileSync(path: string, data: Uint8Array): void;
 }
 const nodeFs = 'node:fs';
-const fs = env.STL_DIR ? ((await import(/* @vite-ignore */ nodeFs)) as NodeFs) : undefined;
+const fs =
+  env.STL_DIR || env.MESH_FILE ? ((await import(/* @vite-ignore */ nodeFs)) as NodeFs) : undefined;
 
 let kernel: Kernel;
 
@@ -458,3 +459,127 @@ describe.skipIf(!stlDir)('Mesh to Solid over STL_DIR', { timeout: 3_600_000 }, (
     });
   }
 });
+
+// The offset bug on converted bodies (ADR-0097 amendment, 2026-10-24): a real
+// mesh the owner hit this with, converted prismatic Auto, then features on its
+// top face. Local only: MESH_FILE=<path to .3mf or .stl>, skipped otherwise
+// (the file is private; CI never sees it).
+const meshFile = env.MESH_FILE;
+
+/** The bytes of a mesh file as the kernel stages it: a 3MF's first item mesh, or an STL's. */
+function readMeshFile(fs: NodeFs, path: string) {
+  const bytes = new Uint8Array(fs.readFileSync(path));
+  if (/\.3mf$/i.test(path)) return read3mf(bytes).items[0]?.meshes[0]?.object.mesh;
+  return readStl(bytes).mesh;
+}
+
+describe.skipIf(!meshFile)(
+  'Mesh to Solid, then features, over MESH_FILE',
+  {
+    timeout: 3_600_000,
+  },
+  () => {
+    it(`${meshFile} converts and takes Offset Face, Fillet, Shell and Press Pull`, () => {
+      const mesh0 = readMeshFile(fs as NodeFs, meshFile as string);
+      if (!mesh0) throw new Error(`no mesh in ${meshFile}`);
+      const mesh = kernel.meshFrom(mesh0);
+      let shape: ShapeHandle | undefined;
+      try {
+        const t0 = performance.now();
+        const solid = kernel.meshToSolid(mesh, { method: 'prismatic', tolerance: -1 });
+        shape = solid.shape;
+        const { report } = solid;
+        console.log(
+          `MESH_FILE ${meshFile}: triangles ${mesh0.indices.length / 3}, ${report.faces} faces ` +
+            `(${report.planes}/${report.cylinders}/${report.cones}/${report.spheres}/${report.tori})` +
+            `${report.rebuild ? `, ${report.rebuild}` : ''}${report.facets ? `, ${report.facets} facets` : ''}` +
+            `${report.auto ? `, auto ${report.tolerance} mm` : ''}, ${edgeCounts(shape)}, valid ${kernel.isValid(shape)}` +
+            `, vol ${report ? kernel.properties(shape).volume.toFixed(2) : '?'} (${Math.round(performance.now() - t0)} ms)`,
+        );
+        const info = kernel.describe(shape).faces;
+        // The top face: the plane face with the highest centroid z.
+        let top = -1;
+        for (let i = 0; i < info.length; i++) {
+          const f = info[i];
+          if (f?.type !== 'plane') continue;
+          if (top < 0 || (f.centroid[2] as number) > (info[top]?.centroid[2] as number)) top = i;
+        }
+        expect(top).toBeGreaterThanOrEqual(0);
+        const topInfo = info[top];
+        console.log(
+          `  top face ${top}: centroid ${topInfo?.centroid.map((v) => v.toFixed(2)).join(',')}` +
+            `, tangent ${JSON.stringify(kernel.tangentFaces(shape, top))}`,
+        );
+        for (const d of [2.6, 0.5, -0.5]) {
+          const t = performance.now();
+          try {
+            const result = kernel.offsetFaces(shape, [top], d);
+            console.log(
+              `  Offset Face ${d} mm: ok, valid ${kernel.isValid(result.shape)}, ` +
+                `vol ${kernel.properties(result.shape).volume.toFixed(2)} (${Math.round(performance.now() - t)} ms)`,
+            );
+            kernel.release(result.shape);
+          } catch (error) {
+            console.log(
+              `  Offset Face ${d} mm: ✗ ${refusal(error)} (${Math.round(performance.now() - t)} ms)`,
+            );
+          }
+        }
+        const edges = kernel
+          .describe(shape)
+          .edges.map((e, i) => ({ i, z: e.midpoint[2] as number }))
+          .filter((e) => Math.abs(e.z - (topInfo?.centroid[2] as number)) < 1e-3)
+          .map((e) => e.i);
+        for (const edge of edges) {
+          const t = performance.now();
+          try {
+            const result = kernel.fillet(shape, [edge], 0.5);
+            console.log(
+              `  Fillet edge ${edge} 0.5 mm: ok, valid ${kernel.isValid(result.shape)} (${Math.round(performance.now() - t)} ms)`,
+            );
+            kernel.release(result.shape);
+            break;
+          } catch (error) {
+            console.log(
+              `  Fillet edge ${edge} 0.5 mm: ✗ ${refusal(error)} (${Math.round(performance.now() - t)} ms)`,
+            );
+          }
+        }
+        {
+          const t = performance.now();
+          try {
+            const result = kernel.shell(shape, [top], 1);
+            console.log(
+              `  Shell top 1 mm: ok, valid ${kernel.isValid(result.shape)} (${Math.round(performance.now() - t)} ms)`,
+            );
+            kernel.release(result.shape);
+          } catch (error) {
+            console.log(
+              `  Shell top 1 mm: ✗ ${refusal(error)} (${Math.round(performance.now() - t)} ms)`,
+            );
+          }
+        }
+        {
+          const face = kernel.subShape(shape, 'face', top);
+          const t = performance.now();
+          try {
+            const result = kernel.prism(face, [0, 0, 2.6]);
+            console.log(
+              `  Press Pull top 2.6 mm: ok, valid ${kernel.isValid(result.shape)} (${Math.round(performance.now() - t)} ms)`,
+            );
+            kernel.release(result.shape);
+          } catch (error) {
+            console.log(
+              `  Press Pull top 2.6 mm: ✗ ${refusal(error)} (${Math.round(performance.now() - t)} ms)`,
+            );
+          } finally {
+            kernel.release(face);
+          }
+        }
+      } finally {
+        if (shape) kernel.release(shape);
+        kernel.release(mesh);
+      }
+    });
+  },
+);
