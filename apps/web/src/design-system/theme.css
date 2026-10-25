@@ -168,3 +168,57 @@
     opacity: 1;
   }
 }
+
+/* A kernel call the user is waiting on: the shell root shows the busy cursor
+   (P6-17, ADR-0105 §2). Controls keep the pointer. */
+[data-kernel-busy] {
+  cursor: progress;
+}
+
+[data-kernel-busy] button,
+[data-kernel-busy] a {
+  cursor: pointer;
+}
+
+/* The recompute's determinate bar (P6-17, ADR-0105 §3): flat, in the accent
+   colour, in both themes. */
+[data-model-progress="updating"] progress {
+  appearance: none;
+  border: none;
+  border-radius: 9999px;
+  overflow: hidden;
+  background: var(--x-line);
+}
+
+[data-model-progress="updating"] progress::-webkit-progress-bar {
+  border-radius: 9999px;
+  background: var(--x-line);
+}
+
+[data-model-progress="updating"] progress::-webkit-progress-value {
+  border-radius: 9999px;
+  background: var(--x-accent);
+}
+
+[data-model-progress="updating"] progress::-moz-progress-bar {
+  border-radius: 9999px;
+  background: var(--x-accent);
+}
+
+/* The chip of the feature being computed pulses, softly, and not under
+   reduced motion (P6-17, ADR-0105 §3). */
+@media (prefers-reduced-motion: no-preference) {
+  [data-feature-computing] .x-tool-icon {
+    animation: x-feature-computing 1200ms ease-in-out infinite;
+  }
+}
+
+@keyframes x-feature-computing {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}

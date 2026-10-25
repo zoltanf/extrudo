@@ -283,7 +283,7 @@ test('Tutorial 3: a name tag', async ({ page }) => {
   await step(
     'export-3mf',
     async () => {
-      await selectTab(page, '3D Print');
+      await selectTab(page, 'Make');
       await page.getByRole('button', { name: 'Export', exact: true }).click();
       await exportDialog.getByRole('radio', { name: /^3MF/ }).check();
     },

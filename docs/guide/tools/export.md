@@ -11,7 +11,7 @@ STL, 3MF, STEP or OpenSCAD code for printing and sharing.
 
 | Where | Shortcut |
 |---|---|
-| Home › Export (as Export Model) · 3D Print › Output | None |
+| Home › Export (as Export Model) · Make › Output | None |
 
 <video src="demo:export" muted loop autoplay playsinline aria-label="Export demo"></video>
 

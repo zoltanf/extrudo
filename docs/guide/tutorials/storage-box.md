@@ -150,7 +150,7 @@ prefer the old size.
 <!-- step: export -->
 ### 12. Export for printing
 
-Open the **3D Print** tab and press **Export**. Choose **STL**. The summary says
+Open the **Make** tab and press **Export**. Choose **STL**. The summary says
 the model is *watertight*, which means a slicer can read it without repair.
 Press **Export STL** and the file downloads.
 

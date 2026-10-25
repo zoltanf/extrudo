@@ -15,7 +15,7 @@ import {
   type Joint,
   type JointId,
 } from '@extrudo/core';
-import type { CheckProgress, JointCheck, JointCheckRequest } from '@extrudo/kernel';
+import type { CheckProgress, JointCheck, JointCheckRequest, WaitOptions } from '@extrudo/kernel';
 import { isCheckCancelled } from '@extrudo/kernel';
 import { useEffect, useMemo, useRef } from 'react';
 import { useStore } from 'zustand';
@@ -34,7 +34,11 @@ import {
 
 /** What the check needs of the project's kernel (its `Recomputer`). */
 export interface JointCheckKernel {
-  checkJoint(request: JointCheckRequest, onProgress?: CheckProgress): Promise<JointCheck>;
+  checkJoint(
+    request: JointCheckRequest,
+    onProgress?: CheckProgress,
+    options?: WaitOptions,
+  ): Promise<JointCheck>;
   cancelCheck(): void;
 }
 
@@ -148,6 +152,7 @@ export function createJointCheck(deps: JointCheckDeps): JointCheckController {
           (done, of) => {
             if (id === sequence) run.setState({ progress: { done, of } });
           },
+          { quiet: true },
         );
         if (id !== sequence) return;
         run.setState({ status: 'ready', result, progress: undefined });

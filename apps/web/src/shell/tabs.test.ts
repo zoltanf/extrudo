@@ -8,14 +8,14 @@ import { defaultTab, FILE_COMMANDS, TABS, TOOLS, tabOfTool, visibleTabs } from '
 const labels = (mode: 'model' | 'sketch') => visibleTabs(mode).map((t) => t.label);
 
 describe('visibleTabs (ADR-0079 §2)', () => {
-  it('shows Home, Solid, Modify, Construct and 3D Print in the model (R3-10: no Inspect tab)', () => {
-    expect(labels('model')).toEqual(['Home', 'Solid', 'Modify', 'Construct', '3D Print']);
+  it('shows Home, Solid, Modify, Construct and Make in the model (R3-10: no Inspect tab)', () => {
+    expect(labels('model')).toEqual(['Home', 'Solid', 'Modify', 'Construct', 'Make']);
     const construct = TABS.find((t) => t.id === 'construct');
     expect(construct?.groups.map((g) => g.label)).toEqual(['Planes', 'Axes', 'Points', 'Inspect']);
     expect(construct?.groups.at(-1)?.tools).toEqual(['measure', 'section']);
   });
 
-  it('replaces the model tabs with Sketch while a sketch is open, 3D Print too (R3-11)', () => {
+  it('replaces the model tabs with Sketch while a sketch is open, Make too (R3-11)', () => {
     expect(labels('sketch')).toEqual(['Home', 'Sketch']);
     expect(tabOfTool('printInfo', 'sketch')).toBeUndefined();
     expect(tabOfTool('exportSketch', 'sketch')).toBe('sketch');

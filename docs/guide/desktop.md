@@ -58,7 +58,7 @@ stays linked to that file: every autosave writes the file as well. If the file c
 in the meantime, nothing is overwritten and you choose between loading the disk's version and
 overwriting it, just as with a [linked folder](./files.md).
 
-**Send to Slicer.** In the 3D Print tab's Output group, **Send to Slicer** (and the **Open in
+**Send to Slicer.** In the Make tab's Output group, **Send to Slicer** (and the **Open in
 slicer** button in the Export dialog) hands the model to PrusaSlicer, OrcaSlicer, Bambu Studio
 or Cura without a download step. Extrudo finds the slicers installed on your machine, and the
 dialog greys out the ones it cannot find. The file goes in a temporary folder that is emptied when

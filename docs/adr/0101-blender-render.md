@@ -1,6 +1,6 @@
 # ADR-0101: Rendering a picture of the design in Blender
 
-- **Status:** Proposed, 2026-10-23 (owner asked for the feature and chose the
+- **Status:** Accepted, 2026-10-24; proposed 2026-10-23 (owner asked for the feature and chose the
   shape: presets that hide Blender, materials per body, settings saved in the
   design, one button, the picture shown in the app).
 - **Task:** P6-15, FR-3DP-08.
@@ -166,7 +166,7 @@ same settings writes nothing (no empty undo step).
 
 ## Amendment, 2026-10-24: an in-app renderer, and the engine choice (P6-16)
 
-- **Status:** Proposed, 2026-10-24 (the owner asked for a fallback that works
+- **Status:** Accepted, 2026-10-24 (the owner asked for a fallback that works
   in the browser too, and chose the shape: three.js in the app with a path
   tracer for the slow qualities, the engine chosen in the dialog).
 - **Task:** P6-16. **Schema change:** `render.engine` (§6.4).
@@ -212,7 +212,10 @@ The **Render Picture tile is ready everywhere**: the web build loses its
   waiting for it, so work never piles up on the GPU the desktop shares). A
   batch the GPU finished by the next frame doubles, one over the budget
   halves: a fast GPU is not held to one tile a frame (that cost 7×: 137 s
-  against 20 s for Standard on a GTX 1050 Ti), a slow one gets one small tile. A denoise pass (owner, 2026-10-24) follows the output pass: the library's
+  against 20 s for Standard on a GTX 1050 Ti), a slow one gets one small tile.
+  The loop runs on the next animation frame or a 20 ms timer, whichever comes
+  first, so a covered window (no animation frames, still "visible") keeps
+  rendering. A denoise pass (owner, 2026-10-24) follows the output pass: the library's
   `DenoiseMaterial` (an edge-preserving blur, sigma 5, threshold 0.12) runs on the
   8-bit display values, so the threshold means a colour difference as seen. The
   library's default threshold, 0.03, is below Standard's grain and left it in place. Progress is

@@ -137,7 +137,7 @@ const scenes: Record<string, (page: Page) => Promise<void>> = {
   },
   async print(page) {
     await bracket(page);
-    await selectTab(page, '3D Print');
+    await selectTab(page, 'Make');
     await pickTool(page, 'Print Info');
     await expect(page.getByRole('region', { name: 'Print Info' })).toHaveAttribute(
       'data-print-state',

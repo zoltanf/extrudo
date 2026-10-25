@@ -185,7 +185,7 @@ export function usePrintInfo({
     if (!active || !k || ids.length === 0) return;
     let current = true;
     const targets: InspectTarget[] = ids.map((body) => ({ kind: 'body', body, index: 0 }));
-    k.inspect(targets).then(
+    k.inspect(targets, { quiet: true }).then(
       (inspection) => {
         if (current) setMeasured({ key, inspection });
       },

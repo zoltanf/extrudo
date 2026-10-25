@@ -157,7 +157,7 @@ export async function counts(page: Page) {
 /** The toolbar's tabs, in the top bar (ADR-0079). */
 export const toolbarTabs = (page: Page) => page.getByRole('tablist', { name: 'Toolbar tabs' });
 
-/** Selects a toolbar tab by its label ("Home", "Solid", "Modify", "3D Print"…). */
+/** Selects a toolbar tab by its label ("Home", "Solid", "Modify", "Make"…). */
 export async function selectTab(page: Page, name: string) {
   const tab = toolbarTabs(page).getByRole('tab', { name, exact: true });
   await tab.click();

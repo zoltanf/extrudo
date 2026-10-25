@@ -1,0 +1,1 @@
+- 2026-10-24 · **Render Picture keeps going in a covered window**: Standard and High in the app no longer slow to a crawl while the window is covered by others.

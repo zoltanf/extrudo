@@ -179,4 +179,21 @@ describe('model store', () => {
     store.getState().reset();
     expect(store.getState()).toMatchObject({ status: 'idle', features: {}, bodies: {} });
   });
+
+  it('tracks recompute progress, cleared by a result and by a failure (ADR-0105 §3)', () => {
+    const store = createModelStore<{ triangles: number }>();
+    const feature = fid('f1');
+    store.getState().computing();
+    expect(store.getState().progress).toBeUndefined();
+    store.getState().setProgress({ done: 1, total: 3, feature });
+    expect(store.getState().progress).toEqual({ done: 1, total: 3, feature });
+    store.getState().computed({ features: {}, bodies: {} });
+    expect(store.getState().progress).toBeUndefined();
+    store.getState().setProgress({ done: 2, total: 3, feature });
+    store.getState().failed('The geometry kernel crashed.');
+    expect(store.getState().progress).toBeUndefined();
+    store.getState().setProgress({ done: 2, total: 3, feature });
+    store.getState().reset();
+    expect(store.getState().progress).toBeUndefined();
+  });
 });

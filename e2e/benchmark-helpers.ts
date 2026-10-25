@@ -20,7 +20,7 @@ import {
 
 // Shared steps of the benchmark specs (B2, B3: requirements §7): user
 // parameters, sketch views that clear the palette, camera settling, and the
-// 3D Print export read back through `@extrudo/io`.
+// Make export read back through `@extrudo/io`.
 
 export const viewportOf = (page: Page) => page.getByRole('region', { name: 'Viewport' });
 export const chip = (page: Page, name: string) =>
@@ -127,11 +127,11 @@ export interface Exported {
   bytes: Buffer;
 }
 
-/** Exports the model from the 3D Print tab as `format` ("3MF" or "STL") with the dialog's defaults. */
+/** Exports the model from the Make tab as `format` ("3MF" or "STL") with the dialog's defaults. */
 export async function exportModel(page: Page, format: '3MF' | 'STL' | 'STEP'): Promise<Exported> {
   await page
     .getByRole('tablist', { name: 'Toolbar tabs' })
-    .getByRole('tab', { name: '3D Print' })
+    .getByRole('tab', { name: 'Make' })
     .click();
   await page.getByRole('button', { name: 'Export', exact: true }).click();
   const dialog = exportDialog(page);
@@ -360,7 +360,7 @@ export function extentOf(
   return { min, max, size };
 }
 
-/** Back to the Solid tab (a model export leaves the 3D Print tab open). */
+/** Back to the Solid tab (a model export leaves the Make tab open). */
 export async function solidTab(page: Page) {
   await page
     .getByRole('tablist', { name: 'Toolbar tabs' })

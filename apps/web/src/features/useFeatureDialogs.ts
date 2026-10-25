@@ -123,7 +123,7 @@ export function useFeatureDialogs({
         removeFacesPick: (body, faces, base) =>
           kernelRef.current?.removeFacesPick?.(body, faces, base) ?? Promise.resolve(undefined),
         scadParameters: (file) =>
-          kernelRef.current?.scadParameters?.(file) ??
+          kernelRef.current?.scadParameters?.(file, { quiet: true }) ??
           Promise.resolve({ ok: false, error: 'The kernel is not running.' }),
       },
       notify: (tone, text, options) => notifyRef.current(tone, text, options),

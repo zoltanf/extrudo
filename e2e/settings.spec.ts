@@ -13,17 +13,29 @@ test('Ctrl+, opens Settings and every section opens', async ({ page }) => {
   await kernelReady(page);
   await page.keyboard.press('Control+,');
   await expect(dialog(page)).toBeVisible();
-  await expect(page.locator('[data-settings-page="general"]')).toBeVisible();
+  // The first section opens when none is remembered.
+  await expect(page.locator('[data-settings-page="view"]')).toBeVisible();
+  // The list in its order (owner, 2026-10-24).
+  await expect(dialog(page).locator('[data-settings-section]')).toHaveText([
+    'View and navigation',
+    'Keyboard',
+    'Marking menu',
+    'Sketch',
+    'Appearance',
+    '3D printing',
+    'Export',
+    'Plugins',
+  ]);
 
   for (const [id, heading] of [
-    ['plugins', 'Plugins'],
-    ['marking', 'Marking menu'],
     ['keyboard', 'Keyboard'],
-    ['view', 'View and navigation'],
+    ['marking', 'Marking menu'],
     ['sketch', 'Sketch'],
+    ['general', 'Appearance'],
     ['printing', '3D printing'],
     ['export', 'Export'],
-    ['general', 'Appearance'],
+    ['plugins', 'Plugins'],
+    ['view', 'View and navigation'],
   ] as const) {
     await section(page, id).click();
     const content = page.locator(`[data-settings-page="${id}"]`);

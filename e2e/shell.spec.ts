@@ -133,7 +133,7 @@ test('the timeline marker moves with its keys, and Ctrl+Z undoes it', async ({ p
 
 test('tools that are not built yet say when they arrive', async ({ page }) => {
   await open(page);
-  await page.getByRole('tab', { name: '3D Print' }).click();
+  await page.getByRole('tab', { name: 'Make' }).click();
   await page.getByRole('button', { name: 'Send to Slicer', exact: true }).hover();
   // The web build has no slicer to launch: the tooltip says what to do instead (ADR-0062).
   await expect(page.getByRole('tooltip')).toContainText(

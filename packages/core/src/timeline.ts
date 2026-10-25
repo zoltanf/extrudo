@@ -19,6 +19,18 @@ import { scriptOfGenerated } from './script';
 /** Characters that separate the plain IDs inside a reference or a persistent name. */
 const SEPARATORS = /[^A-Za-z0-9_.~-]+/;
 
+/**
+ * The features that take part in a recompute: those before the timeline
+ * marker, in timeline order, suppressed ones left out (P6-17, ADR-0105 §3).
+ * The kernel reports them one by one, so this is also the progress bar's
+ * steps; the app's `activeFeatureCount` is its length.
+ */
+export function activeFeatures(
+  doc: Pick<ExtrudoDocument, 'features' | 'timelineMarker'>,
+): Feature[] {
+  return doc.features.slice(0, doc.timelineMarker).filter((f) => !f.suppressed);
+}
+
 /** Where a feature stores a reference. */
 export interface StoredRef {
   /** The input that holds it. */

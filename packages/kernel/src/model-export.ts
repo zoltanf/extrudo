@@ -19,6 +19,7 @@ import {
   writeStl,
 } from '@extrudo/io';
 import type { MeshOptions } from './mesh';
+import type { WaitOptions } from './recomputer';
 import type { ScadExportOptions } from './scad-export/file';
 import type { BodyExportMesh, ExportProgress } from './service';
 
@@ -48,9 +49,10 @@ export interface ModelExporter {
     bodies: readonly BodyId[],
     tessellation: MeshOptions,
     onProgress?: ExportProgress,
+    options?: WaitOptions,
   ): Promise<BodyExportMesh[]>;
-  exportStep(bodies: readonly StepBody[]): Promise<string>;
-  exportScad(options: ScadExportOptions): Promise<string>;
+  exportStep(bodies: readonly StepBody[], options?: WaitOptions): Promise<string>;
+  exportScad(request: ScadExportOptions, options?: WaitOptions): Promise<string>;
 }
 
 /**
@@ -139,6 +141,7 @@ export async function meshBodies(
     bodies.map((b) => b.id),
     tessellation,
     onProgress,
+    { quiet: true },
   );
   const reports = meshes.map(({ mesh }) => checkManifold(mesh));
   return {

@@ -207,7 +207,14 @@ export type {
   RecomputeResult,
   RecomputeStats,
 } from './recompute/types';
-export { type Preview, Recomputer, type RecomputerOptions } from './recomputer';
+export {
+  type KernelWaits,
+  type Preview,
+  Recomputer,
+  type RecomputerOptions,
+  type Wait,
+  type WaitOptions,
+} from './recomputer';
 export type { CsgContext, CsgInput, CsgResult } from './scad-export/context';
 export {
   fragmentSize,

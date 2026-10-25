@@ -10,6 +10,7 @@
  */
 import {
   type AttachmentId,
+  activeFeatures,
   type BodyId,
   type CanvasReport,
   type ConstructionReport,
@@ -36,6 +37,7 @@ import {
   type JointReport,
   type MeshToSolidReport,
   MODEL_MEDIA_TYPES,
+  type ModelProgress,
   type ModelStore,
   makesFeatures,
   type PatternReport,
@@ -158,6 +160,33 @@ export interface FileSource {
   fileName?(id: AttachmentId, doc: ExtrudoDocument): string | undefined;
 }
 
+/** A kernel call the user is waiting on (P6-17, ADR-0105 §1). */
+export interface Wait {
+  /** Unique while it runs, oldest first in `waits`. */
+  id: number;
+  /** In plain words, for the notice ("Reading the pick…"). */
+  label: string;
+  /** When the call was made (`Date.now()`). */
+  since: number;
+  /** A caller whose own panel shows the wait keeps the notice away (ADR-0105 §1). */
+  quiet: boolean;
+}
+
+/** What a caller may say about its wait (P6-17, ADR-0105 §1). */
+export interface WaitOptions {
+  /** Overrides the method's default label. */
+  label?: string;
+  /** Counts the wait but keeps the notice and the busy cursor away. */
+  quiet?: boolean;
+}
+
+/** The live waits, as an external store (P6-17, ADR-0105 §1). */
+export interface KernelWaits {
+  /** The waits, oldest first; the same array identity until one changes. */
+  get(): readonly Wait[];
+  subscribe(listener: () => void): () => void;
+}
+
 export interface Preview {
   features: Record<FeatureId, FeatureStatus>;
   /** The bodies after the draft. Unchanged ones are the model store's own meshes (same objects). */
@@ -246,6 +275,27 @@ export class Recomputer {
   #recycleArmed = true;
   readonly #heapRecycleBytes: number;
   readonly #onRecycle: (() => void) | undefined;
+  /** The waits the user is on, oldest first (P6-17, ADR-0105 §1). */
+  #waitList: Wait[] = [];
+  /** What `waits.get()` returns: a new array only when one changed (useSyncExternalStore needs it). */
+  #waitSnapshot: readonly Wait[] = [];
+  readonly #waitListeners = new Set<() => void>();
+  #waitCounter = 0;
+  /** The progress last reported and not yet put on the model store (P6-17, ADR-0105 §3). */
+  #progress: ModelProgress | undefined;
+  /** A frame is scheduled to put the progress on the store. */
+  #progressScheduled = false;
+
+  /** The kernel calls the user is waiting on, as the notice's external store (ADR-0105 §1). */
+  readonly waits: KernelWaits = {
+    get: () => this.#waitSnapshot,
+    subscribe: (listener) => {
+      this.#waitListeners.add(listener);
+      return () => {
+        this.#waitListeners.delete(listener);
+      };
+    },
+  };
 
   constructor(options: RecomputerOptions) {
     this.#document = options.document;
@@ -283,7 +333,63 @@ export class Recomputer {
     this.#unsubscribe?.();
     clearTimeout(this.#timer);
     this.#endPreview();
+    if (this.#waitList.length > 0) {
+      this.#waitList = [];
+      this.#notifyWaits();
+    }
     this.client.dispose();
+  }
+
+  /**
+   * Runs one kernel call as a named wait (P6-17, ADR-0105 §1): it is listed
+   * while `work` runs and dropped when the promise settles either way. A
+   * caller that knows better passes `{ label }`; one whose own panel shows the
+   * wait passes `{ quiet: true }`.
+   */
+  async #wait<T>(
+    label: string,
+    options: WaitOptions | undefined,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    const wait: Wait = {
+      id: ++this.#waitCounter,
+      label: options?.label ?? label,
+      since: Date.now(),
+      quiet: options?.quiet ?? false,
+    };
+    this.#waitList.push(wait);
+    this.#notifyWaits();
+    try {
+      return await work();
+    } finally {
+      const at = this.#waitList.indexOf(wait);
+      if (at >= 0) this.#waitList.splice(at, 1);
+      this.#notifyWaits();
+    }
+  }
+
+  #notifyWaits(): void {
+    this.#waitSnapshot = [...this.#waitList];
+    for (const listener of this.#waitListeners) listener();
+  }
+
+  /**
+   * Reports how far a recompute is at most once per animation frame
+   * (P6-17, ADR-0105 §3). The last value always lands: a report while one is
+   * scheduled replaces the pending one, and the frame puts the newest.
+   */
+  #reportProgress(progress: ModelProgress): void {
+    this.#progress = progress;
+    if (this.#progressScheduled) return;
+    this.#progressScheduled = true;
+    const flush = () => {
+      this.#progressScheduled = false;
+      const value = this.#progress;
+      this.#progress = undefined;
+      if (value) this.#model.getState().setProgress(value);
+    };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(flush);
+    else setTimeout(flush, 16);
   }
 
   /**
@@ -391,9 +497,12 @@ export class Recomputer {
     kind: SubShapeKind,
     index: number,
     base = false,
+    options?: WaitOptions,
   ): Promise<GeomRef | undefined> {
     try {
-      return await this.client.call((api) => api.reference(body, kind, index, base));
+      return await this.#wait('Reading the pick…', options, () =>
+        this.client.call((api) => api.reference(body, kind, index, base)),
+      );
     } catch {
       return undefined;
     }
@@ -409,9 +518,12 @@ export class Recomputer {
     index: number,
     base = false,
     kind: SmoothKind = 'edge',
+    options?: WaitOptions,
   ): Promise<number[] | undefined> {
     try {
-      return await this.client.call((api) => api.tangentChain(body, index, base, kind));
+      return await this.#wait('Following the tangent chain…', options, () =>
+        this.client.call((api) => api.tangentChain(body, index, base, kind)),
+      );
     } catch {
       return undefined;
     }
@@ -427,9 +539,12 @@ export class Recomputer {
     body: BodyId,
     tolerance: number,
     base = false,
+    options?: WaitOptions,
   ): Promise<MeshRegions | undefined> {
     try {
-      return await this.client.call((api) => api.meshRegions(body, tolerance, base));
+      return await this.#wait('Reading the mesh…', options, () =>
+        this.client.call((api) => api.meshRegions(body, tolerance, base)),
+      );
     } catch {
       return undefined;
     }
@@ -445,9 +560,12 @@ export class Recomputer {
     faces: readonly number[],
     base = false,
     keepRounds = false,
+    options?: WaitOptions,
   ): Promise<SmoothFaces | undefined> {
     try {
-      return await this.client.call((api) => api.smoothFaces(body, faces, base, keepRounds));
+      return await this.#wait('Reading the mesh…', options, () =>
+        this.client.call((api) => api.smoothFaces(body, faces, base, keepRounds)),
+      );
     } catch {
       return undefined;
     }
@@ -461,9 +579,12 @@ export class Recomputer {
     body: BodyId,
     faces: readonly number[],
     base = false,
+    options?: WaitOptions,
   ): Promise<number[] | undefined> {
     try {
-      return await this.client.call((api) => api.removeFacesPick(body, faces, base));
+      return await this.#wait('Reading the mesh…', options, () =>
+        this.client.call((api) => api.removeFacesPick(body, faces, base)),
+      );
     } catch {
       return undefined;
     }
@@ -477,40 +598,51 @@ export class Recomputer {
     bodies: readonly BodyId[],
     tessellation: MeshOptions,
     onProgress?: ExportProgress,
+    options?: WaitOptions,
   ): Promise<BodyExportMesh[]> {
-    return this.client.call((api) => api.exportMeshes(bodies, tessellation, onProgress));
+    return this.#wait('Meshing for export…', options, () =>
+      this.client.call((api) => api.exportMeshes(bodies, tessellation, onProgress)),
+    );
   }
 
   /** Bodies the model store shows as one STEP AP242 file, each a product with its name. */
-  exportStep(bodies: readonly StepBody[]): Promise<string> {
-    return this.client.call((api) => api.exportStep(bodies));
+  exportStep(bodies: readonly StepBody[], options?: WaitOptions): Promise<string> {
+    return this.#wait('Exporting STEP…', options, () =>
+      this.client.call((api) => api.exportStep(bodies)),
+    );
   }
 
   /** Bodies the model store shows as an OpenSCAD file (P6-09, ADR-0088). */
-  exportScad(options: ScadExportOptions): Promise<string> {
-    return this.client.call((api) => api.exportScad(options));
+  exportScad(request: ScadExportOptions, options?: WaitOptions): Promise<string> {
+    return this.#wait('Exporting OpenSCAD…', options, () =>
+      this.client.call((api) => api.exportScad(request)),
+    );
   }
 
   /**
    * Measures what the model store shows (P2-13): bodies, faces, edges and
    * vertices by mesh index. Rejects if the kernel can't do it.
    */
-  inspect(targets: readonly InspectTarget[]): Promise<Inspection> {
-    return this.client.call((api) => api.inspect(targets));
+  inspect(targets: readonly InspectTarget[], options?: WaitOptions): Promise<Inspection> {
+    return this.#wait('Measuring…', options, () => this.client.call((api) => api.inspect(targets)));
   }
 
   /** The overlapping pairs among `bodies` (#89), on the last finished recompute. */
-  interference(bodies: readonly BodyId[]): Promise<Interference[]> {
-    return this.client.call((api) => api.interference(bodies));
+  interference(bodies: readonly BodyId[], options?: WaitOptions): Promise<Interference[]> {
+    return this.#wait('Checking for interference…', options, () =>
+      this.client.call((api) => api.interference(bodies)),
+    );
   }
 
   /**
    * A joint's frames resolved against what the model store shows (P6-05,
    * ADR-0081 §4): the Joint dialog's readout. Undefined if the kernel can't say.
    */
-  async resolveJoint(joint: Joint): Promise<JointReport | undefined> {
+  async resolveJoint(joint: Joint, options?: WaitOptions): Promise<JointReport | undefined> {
     try {
-      return await this.client.call((api) => api.resolveJoint(joint));
+      return await this.#wait('Reading the joint…', options, () =>
+        this.client.call((api) => api.resolveJoint(joint)),
+      );
     } catch {
       return undefined;
     }
@@ -521,8 +653,14 @@ export class Recomputer {
    * (P6-05 J3, ADR-0081 §4). The next recompute, a newer check or
    * `cancelCheck` stops it (rejects with `isCheckCancelled`).
    */
-  checkJoint(request: JointCheckRequest, onProgress?: CheckProgress): Promise<JointCheck> {
-    return this.client.call((api) => api.checkJoint(request, onProgress));
+  checkJoint(
+    request: JointCheckRequest,
+    onProgress?: CheckProgress,
+    options?: WaitOptions,
+  ): Promise<JointCheck> {
+    return this.#wait('Checking the clearance…', options, () =>
+      this.client.call((api) => api.checkJoint(request, onProgress)),
+    );
   }
 
   /** Stops a running clearance check. */
@@ -643,18 +781,20 @@ export class Recomputer {
    * the Import dialog just picked (P5-04 slice 2, ADR-0071 §5): the file goes
    * to the kernel first, like a preview's, and OpenSCAD with it.
    */
-  async scadParameters(id: AttachmentId): Promise<ScadParametersResult> {
+  async scadParameters(id: AttachmentId, options?: WaitOptions): Promise<ScadParametersResult> {
     try {
-      const doc = this.#document.getState().doc;
-      const probe = {
-        id: 'scad-parameters',
-        type: IMPORT_TYPE,
-        name: 'Import',
-        suppressed: false,
-        inputs: { file: { kind: 'file', id } },
-      } as unknown as Feature;
-      await this.#sendResources(doc, [probe]);
-      return await this.client.call((api) => api.scadParameters(id));
+      return await this.#wait("Reading the file's variables…", options, async () => {
+        const doc = this.#document.getState().doc;
+        const probe = {
+          id: 'scad-parameters',
+          type: IMPORT_TYPE,
+          name: 'Import',
+          suppressed: false,
+          inputs: { file: { kind: 'file', id } },
+        } as unknown as Feature;
+        await this.#sendResources(doc, [probe]);
+        return await this.client.call((api) => api.scadParameters(id));
+      });
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
@@ -668,48 +808,53 @@ export class Recomputer {
    * gets it again with the next command. A crash or a refusal is a failed
    * result, worded, never a throw.
    */
-  async runPluginCommand(request: {
-    plugin: { id: string; name: string; version: string };
-    /** The installed file's bytes, asked only when this kernel doesn't have them yet. */
-    bytes(): Promise<Uint8Array>;
-    commandId: string;
-    selection: readonly GeomRef[];
-  }): Promise<PluginCommandResult> {
+  async runPluginCommand(
+    request: {
+      plugin: { id: string; name: string; version: string };
+      /** The installed file's bytes, asked only when this kernel doesn't have them yet. */
+      bytes(): Promise<Uint8Array>;
+      commandId: string;
+      selection: readonly GeomRef[];
+    },
+    options?: WaitOptions,
+  ): Promise<PluginCommandResult> {
     const { id, name, version } = request.plugin;
     const fileId = pluginCommandFileId(id, version);
     const key = `file:${fileId}`;
     try {
-      if (!this.#resources.has(key)) {
-        const bytes = await request.bytes();
-        const data = new Uint8Array(bytes.byteLength);
-        data.set(bytes);
-        await this.client.call((api) =>
-          api.addFile(
-            fileId as AttachmentId,
-            data.buffer,
-            PLUGIN_MEDIA_TYPE,
-            `${id}.extrudo-plugin`,
-          ),
+      return await this.#wait('Running the plugin…', options, async () => {
+        if (!this.#resources.has(key)) {
+          const bytes = await request.bytes();
+          const data = new Uint8Array(bytes.byteLength);
+          data.set(bytes);
+          await this.client.call((api) =>
+            api.addFile(
+              fileId as AttachmentId,
+              data.buffer,
+              PLUGIN_MEDIA_TYPE,
+              `${id}.extrudo-plugin`,
+            ),
+          );
+          this.#resources.add(key);
+        }
+        const full = this.#document.getState().doc;
+        const marker = full.timelineMarker;
+        const doc: ExtrudoDocument = {
+          ...full,
+          features: full.features.slice(0, marker),
+          timelineMarker: marker,
+          // A group may name features past the marker; a command can't group anyway.
+          groups: [],
+        };
+        return await this.client.call((api) =>
+          api.runPluginCommand({
+            fileId,
+            commandId: request.commandId,
+            doc,
+            selection: request.selection,
+          }),
         );
-        this.#resources.add(key);
-      }
-      const full = this.#document.getState().doc;
-      const marker = full.timelineMarker;
-      const doc: ExtrudoDocument = {
-        ...full,
-        features: full.features.slice(0, marker),
-        timelineMarker: marker,
-        // A group may name features past the marker; a command can't group anyway.
-        groups: [],
-      };
-      return await this.client.call((api) =>
-        api.runPluginCommand({
-          fileId,
-          commandId: request.commandId,
-          doc,
-          selection: request.selection,
-        }),
-      );
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { ok: false, error: { message: `${name} ${version}: ${message}` }, log: [] };
@@ -722,18 +867,31 @@ export class Recomputer {
     this.#sent = doc;
     const sequence = ++this.#sequence;
     this.#model.getState().computing();
+    this.#progress = undefined;
     const crashed = this.#stillCrashed(doc);
+    // Progress (P6-17, ADR-0105 §3): the active features are the steps; the
+    // kernel reports each as it starts, and the reported feature's position
+    // among them is how far it is. A script's generated feature isn't in the
+    // list and keeps the last `done`.
+    const steps = activeFeatures(doc);
+    const stepOf = new Map(steps.map((f, i) => [f.id, i]));
+    let done = 0;
     let result: RecomputeResult;
     try {
       await this.#sendResources(doc);
       if (sequence !== this.#sequence || this.#disposed) return;
       result = await this.client.call((api) =>
         api.recompute({ doc, have: this.#have(), crashed }, (id) => {
-          if (sequence === this.#sequence) this.#current = id;
+          if (sequence !== this.#sequence) return;
+          this.#current = id;
+          const at = stepOf.get(id);
+          if (at !== undefined) done = at;
+          this.#reportProgress({ done, total: steps.length, feature: id });
         }),
       );
     } catch (error) {
       if (sequence !== this.#sequence || this.#disposed) return;
+      this.#progress = undefined;
       if (isKernelCrash(error)) {
         const culprit = this.#current && doc.features.find((f) => f.id === this.#current);
         if (culprit) this.#crashed.set(culprit.id, culprit);
@@ -746,6 +904,7 @@ export class Recomputer {
       if (sequence === this.#sequence) this.#current = undefined;
     }
     if (sequence !== this.#sequence || result.status !== 'done' || this.#disposed) return;
+    this.#progress = undefined;
 
     const meshes = new Map<BodyId, { version: string; mesh: BodyMesh }>();
     let missing = false;

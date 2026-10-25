@@ -41,11 +41,11 @@ You start on the home screen:
 
 ![The app's layout, with numbers for the parts listed below](./images/getting-started/layout.png)
 
-1. **The top bar** has the logo (back to the home screen), the tabs, **Search**, **Undo** and
-   **Redo**, then the design's name with its save state, **Version history**, **Settings** and
-   **Help**.
+1. **The top bar** has the logo (back to the home screen), the tabs, **Undo** and **Redo**,
+   then the design's name and its save state (click it for **Version history**), then **Search** and the
+   **Menu**.
 2. **The toolbar** shows the groups of the selected tab. In a model the tabs are Home, Solid,
-   Modify, Construct and 3D Print; while a sketch is open they are Home and Sketch. Home holds
+   Modify, Construct and Make; while a sketch is open they are Home and Sketch. Home holds
    what concerns the whole design: importing and exporting files, versions and parameters.
    Plugins are in the **Settings** menu.
    When a group has more tools than fit, the rest are under its ▾ menu.

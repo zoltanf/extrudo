@@ -321,7 +321,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `projector`, `clickEdge`/`clickWhere` poll `data-model-hover` before the
   click, `pickAxis` tries points along an origin axis, `extentOf(mesh,
   keep)` measures the nodes that pass a filter (B4's lip and cavity), and
-  `solidTab(page)` returns after `exportModel` (which leaves the 3D Print tab
+  `solidTab(page)` returns after `exportModel` (which leaves the Make tab
   open); Parameters is a Home tile since ADR-0079, so `pickTool(page,
   'Parameters')` finds it from any tab. While a Hole's or primitive's
   Plane field picks, the view has no `data-model-hover`: `clickAt` with a
@@ -579,7 +579,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   with handles `[data-manipulator-handle="dx"]`; in the home view drag an
   arrow along the projected axis (the value snaps, so 80 px gave 4.6 mm
   there). Positions are read from the 3MF export (`exportModel` +
-  `objectsOf3mf` + `meshBounds`; it opens the 3D Print tab; `pickTool`
+  `objectsOf3mf` + `meshBounds`; it opens the Make tab; `pickTool`
   selects the Modify tab again). Picking the X axis for Rotate: try points along it until
   `data-model-hover` is `axis:origin:x` (the dialog covers the right
   edge). The plane picker for Mirror works as in the primitives spec
@@ -836,7 +836,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   n's carry the number, "End radius 2"); the toggle is no input, so opening a
   stored taper shows it on and unchecking it hides the other two. The
   variable test's volumes come from four `exportModel(page, '3MF')` calls
-  (each leaves the 3D Print tab open, so `solidTab(page)` before a dialog).
+  (each leaves the Make tab open, so `solidTab(page)` before a dialog).
   P4-12's second part: a second set's handle is `[data-manipulator-handle="radius2"]`
   (`data-manipulators="distance:radius distance:radius2"`), a variable set's are
   `radius` and `radiusEnd` (one per end of the edge; **Swap ends changes their
@@ -893,7 +893,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   makes its radius 10, so pick it at r 10) with three dimensions;
   `chip('Sketch1').dblclick()` and the
   Sketch palette, `chip('Fillet1').dblclick()` until `data-preview-status=ok`,
-  the hinge fixture imported then F6 (Fit), 3D Print › Print Info until
+  the hinge fixture imported then F6 (Fit), Make › Print Info until
   `data-print-state=ready`, Customizer until `data-customizer-state`.
 
 ### `e2e/help-links.spec.ts`
@@ -1311,6 +1311,27 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   recompute, fire and forget) before reloading. Under reduced motion
   `getAnimations({ subtree: true })` on the icon is empty (pass it as a string).
 
+### `e2e/kernel-waits.spec.ts`
+
+- **Kernel waits e2e** (`e2e/kernel-waits.spec.ts`, P6-17, ADR-0105): opens
+  `#/example/bottle-cap` (B9, an ~8 s recompute) and changes the `capDia`
+  parameter to `34 mm` (the stored value is `32 mm`; it invalidates the first
+  sketch, so every feature re-evaluates in order and the bar advances — a
+  `wall` edit re-evaluates only the later features, which the bar reaches at
+  once; `expect.poll` only, the window is the recompute's ~8 s). The notice is
+  `[data-model-progress="updating"]` with a `<progress>` whose `value` grows and
+  a detail line matching `/\d+ of \d+/`. A queued kernel call: a plain click on
+  the model centre (`projector(viewport)(camera-target)`) selects a face (a
+  plain click picks the body, not the construction planes — a Section click
+  would pick an origin plane and call no reference), then
+  `pickTool(page, 'Section Analysis')` calls `Recomputer.reference` (non-quiet)
+  with that face at once; the recompute notice wins the pill, so assert the
+  wait through `[data-kernel-busy]` on the shell root instead, moving the
+  pointer off the model first so the view sets no pick cursor, then
+  `getComputedStyle(viewport).cursor === 'progress'`. Once
+  `[data-model-status]` is `ready`, no `[data-model-progress]` and no
+  `[data-kernel-busy]`.
+
 ### `e2e/model-select.spec.ts`
 
 - **Model-selection e2e** (P2-03) reads the Viewport region's
@@ -1610,7 +1631,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 ### `e2e/print-aids.spec.ts`
 
-- **Print aids e2e** (`e2e/print-aids.spec.ts`, P3-10): the 3D Print tab's
+- **Print aids e2e** (`e2e/print-aids.spec.ts`, P3-10): the Make tab's
   Prepare group has the buttons "Place on Bed", "Print Info" and
   "Overhangs" (`/^Overhang/`). The Print Info panel is the region "Print
   Info" (`data-print-state` `empty`/`pending`/`ready`/`error`, rows
@@ -1702,7 +1723,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 ### `e2e/render-tile.spec.ts`
 
-- **Render Picture in the browser** (P6-16, ADR-0101 §6): the 3D Print tab's Output
+- **Render Picture in the browser** (P6-16, ADR-0101 §6): the Make tab's Output
   group has the button "Render Picture" (`exact`), enabled everywhere now. The dialog is
   `getByRole('dialog', { name: 'Render picture' })`; on the web it has no radiogroup
   "Render with" (that row needs `platform.render`, the desktop). Quality is a radio group
@@ -1833,7 +1854,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 - **Settings e2e** (`e2e/settings.spec.ts`, ADR-0082): Ctrl+, opens `dialog`
   "Settings" (also the Menu's App item "Settings…", whose accessible name ends with
-  the key); sections are `[data-settings-section="general|plugins|marking|keyboard|view|sketch|printing|export|desktop|agents"]`
+  the key); sections are `[data-settings-section="view|keyboard|marking|sketch|general|printing|export|desktop|agents|plugins"]`, in that order; `view` opens when none is remembered
   (`desktop` and `agents` only in the desktop build: the web build has neither; the Agents
   page has combobox "Agent", the read-only textbox "Setup for <agent>" `[data-agent-setup="<id>"]`,
   the `status` "Skill state", buttons "Copy", "Install skill" / "Update skill" / "Save skill to…"
@@ -2490,7 +2511,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   "Print tolerance" (`data-tolerance` `unset`/`set`, `data-tolerance-usage` for
   the count line) with the textbox "Print tolerance" and the `aria-pressed`
   buttons "Tight 0.1 mm", "Normal 0.2 mm", "Loose 0.3 mm"; the tile is
-  "Tolerance" (`exact`) in the 3D Print tab's Prepare group and **toggles** the
+  "Tolerance" (`exact`) in the Make tab's Prepare group and **toggles** the
   panel, so close it (Done) before another dialog covers it. The Parameters
   dialog is a **Home** tile since ADR-0079, so `pickTool(page, 'Parameters')`; there the row's field is "Expression of tolerance" and its value
   shows as "= 0.20 mm" under it. One Ctrl+Z per change (the panel's write is one
@@ -2504,11 +2525,13 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 ### `e2e/topbar.spec.ts`
 
 - ADR-0079's one top bar: `tablist` "Toolbar tabs" lists Home, Solid, Modify,
-  Construct, 3D Print (Solid selected by default), there is no File menu and
-  no Insert tab, and `header` holds Search, Undo and Redo. The chrome above
+  Construct, Make (Solid selected by default), there is no File menu and
+  no Insert tab, and `header` holds Undo, Redo and Search. The chrome above
   the view is ≤ 134 px (top bar 40 + toolbar row 92 + border).
 - The app menu (ADR-0090): `appMenu(page)` is the header's button "Menu" (the right side
-  is Version history and Menu; no Help button). `openAppMenu(page)` opens (or finds) the
+  is Search and Menu; no Help button; Version history is the save badge itself:
+  a 32 px button "Version history" under the dot, the word and a history glyph in
+  `[data-title-group]`; a click on `saveStatus(page)` opens it). `openAppMenu(page)` opens (or finds) the
   panel, the `dialog` "Menu"; `pickPreset(page, 'Crank')` focuses the radio in the
   `radiogroup` "Mouse controls" and presses Space (the panel stays open);
   `railToggle(page, name)` returns a rail toggle (`aria-pressed`);
@@ -2529,7 +2552,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 - Text baselines are measured through an injected zero-size inline-block
   probe; all five tabs share the wordmark's baseline (≤ 1 px) and the
   Search/Undo/Redo glyph centres line up. The title group
-  (`[data-title-group]`) is centred between Redo and "Version history" (≤ 2
+  (`[data-title-group]`) is centred between Redo and "Search" (≤ 2
   px), and under a narrow window its `data-title-fit` goes `full` → `dot` (the
   save word hides) → `truncate` (the name is ellipsised, with the full name in
   `title`).
@@ -2579,8 +2602,8 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   "Versions" with the textbox "Description" focused; the list is
   "Saved versions" (items carry `data-version`), buttons "Restore V1",
   "Open V1 as a copy"; toasts "Saved V1.", "Restored V1. What you had is
-  kept as V2…". The app bar has a "Version history" button beside the
-  name (it moved the centred name a little: shell/sketch baselines).
+  kept as V2…". The app bar's "Version history" button is the save badge,
+  inside the title group (2026-10-24; it moves the centred name: shell/sketch baselines).
 
 - **Versions e2e** (P3-13): per-row "Delete V3" buttons and "Delete older
   versions" (shown past 10) open an `alertdialog` "Delete V3?" / "Delete
@@ -2615,7 +2638,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 ### `e2e/wall-thickness.spec.ts`
 
-- **Wall thickness e2e** (`e2e/wall-thickness.spec.ts`, P5-06): the 3D Print
+- **Wall thickness e2e** (`e2e/wall-thickness.spec.ts`, P5-06): the Make
   tab's Prepare tile "Wall Thickness" opens the region **"Wall Thickness"**
   (`data-thickness-state` `on`/`off`): the textbox **"Minimum"** (`exact`,
   default "0.9 mm"), the checkbox "Show thin walls", the result lines in

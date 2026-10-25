@@ -52,6 +52,7 @@ import {
   scriptChipHint,
 } from './featureStatus';
 import type { GroupActions } from './groupActions';
+import { kernelText } from './kernelText';
 import { chipSelection, edgeScrollStep } from './timelineDrag';
 import {
   dropAt,
@@ -185,6 +186,8 @@ export function Timeline({
 }: TimelineProps) {
   const doc = useStore(store, (s) => s.doc);
   const statuses = useStore(model ?? NO_MODEL, (s) => s.features);
+  /** The feature the kernel is computing now (P6-17, ADR-0105 §3). */
+  const computing = useStore(model ?? NO_MODEL, (s) => s.progress?.feature);
   const errors = doc.features.filter(
     (f, i) => i < doc.timelineMarker && !f.suppressed && statuses[f.id]?.status === 'error',
   ).length;
@@ -301,6 +304,7 @@ export function Timeline({
                         onDrag={setChipDrag}
                         selected={live.includes(feature.id)}
                         moving={movingWith(feature.id)}
+                        computing={feature.id === computing}
                         onSelect={select}
                         // Two chips or more picked: the menu can group them (P4-09).
                         range={live.length > 1 ? live : undefined}
@@ -370,6 +374,7 @@ export function Timeline({
                           onDrag={setChipDrag}
                           selected={live.includes(feature.id) || pickedGroup === run.group.id}
                           moving={movingWith(feature.id)}
+                          computing={feature.id === computing}
                           onSelect={select}
                           range={live.length > 1 ? live : undefined}
                         />
@@ -550,6 +555,7 @@ function Chip({
   onDrag,
   selected,
   moving,
+  computing,
   onSelect,
   range,
 }: {
@@ -579,6 +585,8 @@ function Chip({
   selected: boolean;
   /** What a drag of this chip moves: it, or the selected chips when it is one of them. */
   moving: readonly FeatureId[];
+  /** The kernel is computing this feature now (P6-17, ADR-0105 §3). */
+  computing?: boolean;
   onSelect(id: FeatureId, mode: 'replace' | 'toggle' | 'range'): void;
   /** Two chips or more are picked: the menu groups them (P4-09). */
   range: readonly FeatureId[] | undefined;
@@ -622,6 +630,7 @@ function Chip({
       data-feature-from={index}
       data-feature-to={index + 1}
       data-feature-status={problem?.status}
+      data-feature-computing={computing ? '' : undefined}
       data-selected={selected || undefined}
       aria-pressed={selected}
       onClick={(event) => {
@@ -1015,6 +1024,7 @@ function MacroRecording({ macro, store }: { macro: MacroStore; store: DocumentSt
 function KernelState({ model }: { model: ModelStore<BodyMesh> }) {
   const status = useStore(model, (s) => s.status);
   const stats = useStore(model, (s) => s.stats);
+  const progress = useStore(model, (s) => s.progress);
   const error = useStore(model, (s) => s.error);
   return (
     <Tooltip label="Kernel" hint={kernelHint(status, error)}>
@@ -1024,18 +1034,10 @@ function KernelState({ model }: { model: ModelStore<BodyMesh> }) {
         data-kernel-state
         className={`-ml-1 font-mono text-[11px] whitespace-nowrap tabular-nums ${status === 'failed' ? 'text-error' : 'text-muted'}`}
       >
-        · {kernelText(status, stats)}
+        · {kernelText(status, stats, progress)}
       </output>
     </Tooltip>
   );
-}
-
-function kernelText(status: ModelState<unknown>['status'], stats: ModelState<unknown>['stats']) {
-  if (status === 'idle') return 'kernel starting';
-  if (status === 'computing') return 'computing…';
-  if (status === 'failed') return 'kernel stopped';
-  if (!stats) return 'computed';
-  return `computed in ${stats.ms < 10 ? stats.ms.toFixed(1) : Math.round(stats.ms)} ms`;
 }
 
 function kernelHint(status: ModelState<unknown>['status'], error: string | undefined) {

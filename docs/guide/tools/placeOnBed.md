@@ -1,7 +1,7 @@
 ---
 title: Place on Bed
 section: Tools
-category: 3D Print
+category: Make
 order: 117
 ---
 
@@ -11,7 +11,7 @@ Turn a flat face down onto the print bed: the body turns with it.
 
 | Where | Shortcut |
 |---|---|
-| 3D Print › Prepare | None |
+| Make › Prepare | None |
 
 <video src="demo:placeOnBed" muted loop autoplay playsinline aria-label="Place on Bed demo"></video>
 

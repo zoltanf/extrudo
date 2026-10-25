@@ -32,7 +32,7 @@ import { clicker, kernelReady, openProject, pickTool, projector } from './helper
 // swept with a small section, so the walls' centreline becomes the link's
 // frame; a cylinder is the pin at one end of it and a hole the pin's clearance
 // at the other, `pin + 2 * tolerance` wide; a rectangular pattern of the body
-// puts three links in a row. The tolerance comes from the 3D Print tab's
+// puts three links in a row. The tolerance comes from the Make tab's
 // panel, and changing it re-cuts the hole.
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -101,10 +101,10 @@ test('B10: a cable chain link, swept and patterned', async ({ page }) => {
   await addParameter(page, 'pin', '5 mm');
   await closeParameters(page);
 
-  // The print tolerance, from the 3D Print tab's panel (P4-08).
+  // The print tolerance, from the Make tab's panel (P4-08).
   await page
     .getByRole('tablist', { name: 'Toolbar tabs' })
-    .getByRole('tab', { name: '3D Print' })
+    .getByRole('tab', { name: 'Make' })
     .click();
   await page.getByRole('button', { name: 'Tolerance', exact: true }).click();
   const tolerance = page.getByRole('region', { name: 'Print tolerance' });
@@ -441,7 +441,7 @@ test('B10: a cable chain link, swept and patterned', async ({ page }) => {
   // links step further apart.
   await page
     .getByRole('tablist', { name: 'Toolbar tabs' })
-    .getByRole('tab', { name: '3D Print' })
+    .getByRole('tab', { name: 'Make' })
     .click();
   await page.getByRole('button', { name: 'Tolerance', exact: true }).click();
   await tolerance.getByRole('button', { name: 'Loose 0.3 mm' }).click();

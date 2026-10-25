@@ -5,6 +5,8 @@ import {
   chooseTiles,
   DENOISE,
   FRAME_BUDGET_MS,
+  FRAME_FALLBACK_MS,
+  nextFrame,
   traceFraction,
   tracePicture,
 } from './pathTrace';
@@ -344,5 +346,47 @@ describe('tracePicture', () => {
     expect(done).toBe(true);
     expect(tracer.calls).toBeGreaterThan(0);
     expect(compiling.every((value) => !value)).toBe(true);
+  });
+});
+
+describe('nextFrame', () => {
+  function clocks() {
+    const frames: (() => void)[] = [];
+    const timers: { run: () => void; ms: number }[] = [];
+    const cancelled = { frame: 0, timer: 0 };
+    return {
+      frames,
+      timers,
+      cancelled,
+      raf: (run: () => void) => frames.push(run),
+      cancelRaf: () => {
+        cancelled.frame += 1;
+      },
+      timer: (run: () => void, ms: number) => timers.push({ run, ms }),
+      cancelTimer: () => {
+        cancelled.timer += 1;
+      },
+    };
+  }
+
+  it('runs on the animation frame when it comes first, and drops the timer', () => {
+    const c = clocks();
+    const callback = vi.fn();
+    nextFrame(callback, c.raf, c.cancelRaf, c.timer, c.cancelTimer);
+    expect(c.timers[0]?.ms).toBe(FRAME_FALLBACK_MS);
+    c.frames[0]?.();
+    c.timers[0]?.run();
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(c.cancelled.timer).toBe(1);
+  });
+
+  it('runs on the timer when no animation frame comes (a covered window)', () => {
+    const c = clocks();
+    const callback = vi.fn();
+    nextFrame(callback, c.raf, c.cancelRaf, c.timer, c.cancelTimer);
+    c.timers[0]?.run();
+    c.frames[0]?.();
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(c.cancelled.frame).toBe(1);
   });
 });

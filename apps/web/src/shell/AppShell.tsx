@@ -185,7 +185,7 @@ import type { ConstructionDrawing } from '../viewport/constructionGeometry';
 import { ghostsOf } from '../viewport/ghostGeometry';
 import { JointHandle } from '../viewport/JointHandle';
 import type { JointDrawing } from '../viewport/jointGeometry';
-import { ModelProgress, useRecomputeFinished } from '../viewport/ModelProgress';
+import { ModelProgress, useKernelWaits, useRecomputeFinished } from '../viewport/ModelProgress';
 import { viewToCamera } from '../viewport/namedView';
 import { namedViewSaveStore } from '../viewport/namedViewSave';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
@@ -327,7 +327,7 @@ export interface AppShellProps {
     Partial<PluginCommandKernel> &
     Partial<Pick<JointDialogKernel, 'resolveJoint'>> &
     Partial<JointCheckKernel> &
-    Partial<Pick<Recomputer, 'interference'>> &
+    Partial<Pick<Recomputer, 'interference' | 'waits'>> &
     Partial<{
       readonly client: {
         heap(): Promise<{ top: number; size: number }>;
@@ -392,6 +392,9 @@ function Shell({
   // The browser floats over the view's left edge: fitting frames the part it leaves open.
   const browserCover = browser.collapsed ? 0 : browser.size;
   useEffect(() => viewport.getState().setCover(browserCover), [viewport, browserCover]);
+  // A kernel call the user is waiting on: the shell shows the busy cursor
+  // (P6-17, ADR-0105 §2). A quiet wait (a panel that shows its own) is left out.
+  const kernelBusy = useKernelWaits(kernel?.waits).some((wait) => !wait.quiet);
   const [parametersOpen, setParametersOpen] = useState(false);
   const [exportRequest, setExportRequest] = useState<ExportRequest>();
   const [modelExport, setModelExport] = useState<ModelExportRequest>();
@@ -2369,7 +2372,10 @@ function Shell({
   );
 
   return (
-    <div className="grid h-full grid-cols-[minmax(0,1fr)] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden bg-bg text-ink">
+    <div
+      className="grid h-full grid-cols-[minmax(0,1fr)] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden bg-bg text-ink"
+      data-kernel-busy={kernelBusy ? '' : undefined}
+    >
       <AppBar
         store={store}
         autosave={autosave}
@@ -2543,7 +2549,12 @@ function Shell({
             />
           )}
         </div>
-        <ModelProgress model={model} store={store} collapsed={browser.collapsed} />
+        <ModelProgress
+          model={model}
+          store={store}
+          waits={kernel?.waits}
+          collapsed={browser.collapsed}
+        />
         <ViewportBoundary>
           <Suspense
             fallback={

@@ -199,7 +199,7 @@ test('the browser with its folders', async ({ page }) => {
 test('the Export model dialog', async ({ page }) => {
   await openProject(page, 'wall-bracket');
   await kernelReady(page);
-  await selectTab(page, '3D Print');
+  await selectTab(page, 'Make');
   await page.getByRole('button', { name: 'Export', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Export model' });
   await expect(dialog).toBeVisible();

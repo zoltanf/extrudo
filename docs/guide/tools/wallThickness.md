@@ -1,7 +1,7 @@
 ---
 title: Wall Thickness
 section: Tools
-category: 3D Print
+category: Make
 order: 121
 ---
 
@@ -11,7 +11,7 @@ Shade the walls thinner than a minimum: they print weak or not at all.
 
 | Where | Shortcut |
 |---|---|
-| 3D Print › Prepare | None |
+| Make › Prepare | None |
 
 <video src="demo:wallThickness" muted loop autoplay playsinline aria-label="Wall Thickness demo"></video>
 

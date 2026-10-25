@@ -104,7 +104,7 @@ it directly and rebuilds its parameters, sketches and features.
 ## Version history
 
 A version is a named snapshot kept inside the design. Press `Ctrl+S`, or open **Home ›
-Versions › Version History** or the clock beside the design's name, to reach the **Versions**
+Versions › Version History** or click the save state beside the design's name, to reach the **Versions**
 dialog.
 
 ![The Versions dialog with two saved versions](./images/files/versions.png)

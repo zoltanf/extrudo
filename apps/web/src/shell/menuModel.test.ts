@@ -62,7 +62,7 @@ describe('menuModel (P6-01 slice 2)', () => {
     command('box', 'Box', 'Solid › Primitives', ['B']),
     command('fillet', 'Fillet', 'Modify › Modify', ['F']),
     command('importBody', 'Import', 'Home › Files'),
-    command('export', 'Export', '3D Print › Output', [], { unavailable: 'Arrives later.' }),
+    command('export', 'Export', 'Make › Output', [], { unavailable: 'Arrives later.' }),
     command('undo', 'Undo', 'Edit', ['Mod+Z']),
     command('redo', 'Redo', 'Edit', ['Mod+Y'], { unavailable: 'Nothing to redo.' }),
     command('fit', 'Fit', 'View', ['F6']),
@@ -82,7 +82,7 @@ describe('menuModel (P6-01 slice 2)', () => {
       'View',
       'Solid',
       'Modify',
-      '3D Print',
+      'Make',
       'Help',
     ]);
   });
@@ -121,7 +121,7 @@ describe('menuModel (P6-01 slice 2)', () => {
     ]);
     // "Create" and "Primitives" are two sub-groups: a separator between them.
     expect(solid?.items[2]).toEqual({ separator: true });
-    const print = menuModel(commands, 'model').find((m) => m.label === '3D Print');
+    const print = menuModel(commands, 'model').find((m) => m.label === 'Make');
     expect(print?.items).toEqual([{ id: 'export', label: 'Export', enabled: false }]);
     const edit = menuModel(commands, 'model').find((m) => m.label === 'Edit');
     expect(edit?.items).toEqual([

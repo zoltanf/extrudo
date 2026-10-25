@@ -37,6 +37,7 @@
   "import-scad.spec.ts": 16.4,
   "import-step.spec.ts": 32.6,
   "joints.spec.ts": 23.4,
+  "kernel-waits.spec.ts": 40,
   "kernel.spec.ts": 8.3,
   "linked-folder.spec.ts": 37.9,
   "macro.spec.ts": 27.7,

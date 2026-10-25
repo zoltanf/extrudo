@@ -984,7 +984,7 @@ export interface Tab {
  * whole (its files to import and export, versions and parameters: the old File
  * menu and the Insert tab); Solid makes geometry, Modify changes it, Construct
  * makes reference geometry and holds Inspect's two tools (the owner's UI review 3,
- * R3-10: a tab of two tools took precious room), and 3D Print prepares the
+ * R3-10: a tab of two tools took precious room), and Make prepares the
  * model's export. Plugins are in the app menu (R3-12). `sketch` shows only
  * while a sketch is open, in place of every tab but Home, whose tools don't
  * apply there; Finish Sketch sits after its groups.
@@ -1135,7 +1135,7 @@ export const TABS: Tab[] = [
   },
   {
     id: 'print',
-    label: '3D Print',
+    label: 'Make',
     groups: [
       {
         label: 'Prepare',
@@ -1148,13 +1148,13 @@ export const TABS: Tab[] = [
 
 /**
  * The tabs a sketch shows (ADR-0079 §2): Home and its own. The others' tools work
- * on bodies; 3D Print went from sketch mode in the owner's UI review 3 (R3-11),
+ * on bodies; Make went from sketch mode in the owner's UI review 3 (R3-11),
  * since the Sketch tab's Export covers what a sketch exports.
  */
 const SKETCH_TABS: ReadonlySet<TabId> = new Set(['home', 'sketch']);
 
 /**
- * The tabs shown in a mode, in order: Home, Solid, Modify, Construct and 3D Print
+ * The tabs shown in a mode, in order: Home, Solid, Modify, Construct and Make
  * in the model; Home and Sketch while a sketch is open.
  */
 export function visibleTabs(mode: 'model' | 'sketch'): Tab[] {

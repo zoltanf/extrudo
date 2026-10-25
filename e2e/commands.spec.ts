@@ -77,7 +77,7 @@ test('Ctrl+K opens the search centred; it finds commands by fuzzy search and run
   await expect(recent).toHaveCount(1);
   await expect(recent).toHaveAccessibleName(/^3-Point Rectangle/);
   // Only the Sketch tab's tools are offered in a sketch, and since the owner's UI review 3
-  // (R3-11) a sketch has no 3D Print tab, so its commands wait for the model too.
+  // (R3-11) a sketch has no Make tab, so its commands wait for the model too.
   await search(page).getByRole('combobox').fill('extrude');
   await expect(search(page).getByRole('option')).toHaveCount(0);
   await search(page).getByRole('combobox').fill('send to slicer');
@@ -159,7 +159,7 @@ test('S opens the search at the pointer, the page left clear, with the pins', as
 test('shortcuts: tools that come later say so, Shift+digits turn the view', async ({ page }) => {
   const viewport = await openProject(page);
   // No tool that is still to come has a key now (Hole's H runs since P3-04), so its tile says so.
-  await page.getByRole('tab', { name: '3D Print' }).click();
+  await page.getByRole('tab', { name: 'Make' }).click();
   await page.getByRole('button', { name: 'Send to Slicer', exact: true }).hover();
   await expect(page.getByRole('tooltip')).toContainText(
     'Sending to a slicer needs the desktop app. In the browser, export a 3MF and open it in your slicer.',
@@ -197,7 +197,8 @@ test('the Search button drops the search from itself; the app menu has one Searc
   await expect(search(page)).toHaveAttribute('data-dim', 'true');
   const box = await search(page).boundingBox();
   if (!from || !box) throw new Error('no boxes');
-  expect(Math.abs(box.x - from.x)).toBeLessThan(2);
+  // Right-aligned: the button sits at the bar's right end (ADR-0079).
+  expect(Math.abs(box.x + box.width - (from.x + from.width))).toBeLessThan(2);
   expect(box.y).toBeGreaterThanOrEqual(from.y + from.height);
   expect(box.y - (from.y + from.height)).toBeLessThan(8);
   await page.keyboard.press('Escape');

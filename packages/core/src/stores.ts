@@ -357,6 +357,21 @@ export interface ModelStats {
 }
 
 /**
+ * Where a running recompute is (P6-17, ADR-0105 §3): the reported feature and
+ * its position among the active features, for the notice's progress bar and
+ * the status bar. Set by the `Recomputer` at most once per animation frame;
+ * `computing()` resets it, a result or a failure clears it.
+ */
+export interface ModelProgress {
+  /** How many active features the kernel has reported so far. */
+  done: number;
+  /** The active features, before the marker and not suppressed. */
+  total: number;
+  /** The feature the kernel just reported. */
+  feature: FeatureId;
+}
+
+/**
  * `TBody` is the kernel's body mesh type; core doesn't depend on the kernel,
  * so the app picks it (`createModelStore<BodyMesh>()`). The features and
  * bodies stay while a new recompute runs, until its result replaces them.
@@ -398,6 +413,8 @@ export interface ModelState<TBody> {
   /** What the last recompute found for each unsuppressed joint (P6-05, ADR-0081 §4). */
   joints: Record<JointId, JointReport>;
   stats: ModelStats | undefined;
+  /** Where a running recompute is; undefined unless one is running and reporting (P6-17). */
+  progress: ModelProgress | undefined;
   /**
    * The document `features` and `bodies` were computed from, when the
    * producer says (the `Recomputer` does): lets followers tell a result for
@@ -418,6 +435,8 @@ export interface ModelState<TBody> {
     doc?: ExtrudoDocument;
   }): void;
   failed(error: string): void;
+  /** Where a running recompute is, or undefined when it stopped reporting (P6-17). */
+  setProgress(progress: ModelProgress | undefined): void;
   reset(): void;
 }
 
@@ -436,12 +455,13 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
     origins: {} as BodyOrigins,
     joints: {} as Record<JointId, JointReport>,
     stats: undefined,
+    progress: undefined as ModelProgress | undefined,
     doc: undefined,
   });
   return createStore<ModelState<TBody>>()((set) => ({
     ...empty(),
     computing() {
-      set({ status: 'computing', error: undefined });
+      set({ status: 'computing', error: undefined, progress: undefined });
     },
     computed({
       features,
@@ -467,11 +487,15 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
         origins: origins ?? s.origins,
         joints: joints ?? s.joints,
         stats,
+        progress: undefined,
         doc,
       }));
     },
     failed(error) {
-      set({ status: 'failed', error });
+      set({ status: 'failed', error, progress: undefined });
+    },
+    setProgress(progress) {
+      set({ progress });
     },
     reset() {
       set(empty());

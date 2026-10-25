@@ -5,7 +5,7 @@ import { primitive, selectBodies } from './benchmark-helpers';
 import { fileAction, kernelReady, openProject, pickTool } from './helpers';
 
 // P2-12: the model exports as 3MF (an object per body, named, in mm), binary
-// STL and STEP AP242 from the 3D Print tab's Export, the Home tab or a
+// STL and STEP AP242 from the Make tab's Export, the Home tab or a
 // body's menu. Mesh exports are tessellated in the kernel at a preset or
 // custom resolution; every exported STL here passes the manifold check.
 
@@ -28,7 +28,7 @@ const summary = (page: Page) => dialog(page).locator('[data-export-summary]');
 async function openExport(page: Page) {
   await page
     .getByRole('tablist', { name: 'Toolbar tabs' })
-    .getByRole('tab', { name: '3D Print' })
+    .getByRole('tab', { name: 'Make' })
     .click();
   await page.getByRole('button', { name: 'Export', exact: true }).click();
   await expect(dialog(page)).toBeVisible();

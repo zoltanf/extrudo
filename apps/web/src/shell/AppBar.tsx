@@ -22,7 +22,7 @@ import { HOME_HREF } from '../routes';
 import type { DisplayAccess } from '../settings/displaySettings';
 import { AppMenu, type HelpTool } from './AppMenu';
 import type { DocsPage } from './docsLinks';
-import { TITLE_GAP, type TitleFit, titleFit } from './titleFit';
+import { DOT_WIDTH, HISTORY_WIDTH, TITLE_GAP, type TitleFit, titleFit } from './titleFit';
 
 /** The design's file actions (the Home tab's commands, ADR-0079); the project page implements them. */
 export interface FileActions {
@@ -71,7 +71,7 @@ export interface AppBarProps {
   theme: ThemeChoice;
   onThemeChange(theme: ThemeChoice): void;
   /**
-   * Opens the search (P1-14, R3-05): dropped from the Search button's bottom-left corner
+   * Opens the search (P1-14, R3-05): dropped from the Search button's bottom-right corner
    * `at`, or centred when absent (the app menu).
    */
   onSearch(at?: { x: number; y: number }): void;
@@ -165,7 +165,6 @@ export function AppBar({
       {tabs}
       <div className="flex shrink-0 items-center">
         <Separator />
-        <SearchButton onSearch={onSearch} />
         <IconButton
           label="Undo"
           shortcut={keyLabel(keysFor('undo'))}
@@ -186,19 +185,16 @@ export function AppBar({
         </IconButton>
       </div>
 
-      <TitleGroup store={store} name={name} autosave={autosave} />
+      <TitleGroup
+        store={store}
+        name={name}
+        autosave={autosave}
+        onVersionHistory={file.versionHistory}
+      />
 
       <div className="flex shrink-0 items-center gap-1">
         <AgentIndicator agent={agent} />
-        {file.versionHistory && (
-          <IconButton
-            label="Version history"
-            hint="Saved versions of this design: save one, restore one, or open one as a copy."
-            onClick={file.versionHistory}
-          >
-            <History size={18} strokeWidth={1.75} />
-          </IconButton>
-        )}
+        <SearchButton onSearch={onSearch} />
         <AppMenu
           display={display}
           theme={theme}
@@ -239,7 +235,7 @@ function SearchButton({ onSearch }: Pick<AppBarProps, 'onSearch'>) {
         hint="Your pinned commands, and every command by name. S opens it at the pointer."
         onClick={() => {
           const r = ref.current?.getBoundingClientRect();
-          onSearch(r && { x: r.left, y: r.bottom });
+          onSearch(r && { x: r.right, y: r.bottom });
         }}
       >
         <Search size={18} strokeWidth={1.75} />
@@ -257,11 +253,15 @@ function TitleGroup({
   store,
   name,
   autosave,
+  onVersionHistory,
 }: {
   store: DocumentStore;
   name: string;
   autosave: Autosaver;
+  /** Opens Version history: the save state is its button (owner, 2026-10-24). */
+  onVersionHistory: (() => void) | undefined;
 }) {
+  const history = onVersionHistory ? HISTORY_WIDTH : 0;
   const area = useRef<HTMLDivElement>(null);
   const nameProbe = useRef<HTMLSpanElement>(null);
   const statusProbe = useRef<HTMLSpanElement>(null);
@@ -275,6 +275,7 @@ function TitleGroup({
           el.clientWidth,
           nameProbe.current?.offsetWidth ?? 0,
           statusProbe.current?.offsetWidth ?? 0,
+          DOT_WIDTH + history,
         ),
       );
     measure();
@@ -284,7 +285,7 @@ function TitleGroup({
     if (nameProbe.current) observer.observe(nameProbe.current);
     if (statusProbe.current) observer.observe(statusProbe.current);
     return () => observer.disconnect();
-  }, []);
+  }, [history]);
   return (
     <div ref={area} className="relative flex min-w-0 flex-1 items-center justify-center">
       <div
@@ -294,7 +295,11 @@ function TitleGroup({
         data-title-group=""
       >
         <ProjectName store={store} name={name} />
-        <SaveStatus autosave={autosave} compact={fit !== 'full'} />
+        <SaveStatus
+          autosave={autosave}
+          compact={fit !== 'full'}
+          onVersionHistory={onVersionHistory}
+        />
       </div>
       {/* Natural widths, never seen. */}
       <div
@@ -305,7 +310,7 @@ function TitleGroup({
           {name}
         </span>
         <span ref={statusProbe} className="inline-block">
-          <SaveStatus autosave={autosave} probe />
+          <SaveStatus autosave={autosave} onVersionHistory={onVersionHistory} probe />
         </span>
       </div>
     </div>
@@ -370,15 +375,18 @@ function SaveStatus({
   autosave,
   compact = false,
   probe = false,
+  onVersionHistory,
 }: {
   autosave: Autosaver;
+  /** Makes the whole badge, with a history glyph after the word, open Version history. */
+  onVersionHistory?: (() => void) | undefined;
   /** Only the dot is drawn; the word stays for screen readers and the tooltip. */
   compact?: boolean;
   /** The full-width copy the title measures: no tooltip, no role. */
   probe?: boolean;
 }) {
   const { status, error, savedAt } = useStore(autosave);
-  const badge = 'inline-flex items-center gap-1.5 rounded-input px-1.5 py-0.5 text-sm';
+  const badge = 'inline-flex h-8 items-center gap-1.5 rounded-input px-2 text-sm';
   if (status === 'error') {
     if (probe) {
       return (
@@ -412,11 +420,40 @@ function SaveStatus({
     saving: { text: 'Saving…', dot: 'bg-accent animate-pulse', hint: 'Saving in this browser.' },
     unsaved: { text: 'Edited', dot: 'bg-muted', hint: 'Saves automatically in a moment.' },
   }[status];
+  const glyph = onVersionHistory && <History size={14} strokeWidth={2} aria-hidden="true" />;
   if (probe) {
     return (
       <span className={`${badge} text-muted`}>
         <span className="size-1.5 rounded-full" />
         <span>{view.text}</span>
+        {glyph}
+      </span>
+    );
+  }
+  if (onVersionHistory) {
+    // One target: a button under the whole badge, so the status keeps its own role.
+    return (
+      <span className={`${badge} relative shrink-0 text-muted`}>
+        <Tooltip label="Version history" hint={`${view.hint} Click for saved versions.`}>
+          <button
+            type="button"
+            aria-label="Version history"
+            onClick={onVersionHistory}
+            className="absolute inset-0 rounded-input hover:bg-accent-soft"
+          />
+        </Tooltip>
+        <span
+          className={`pointer-events-none relative size-1.5 rounded-full ${view.dot}`}
+          aria-hidden="true"
+        />
+        <span
+          role="status"
+          aria-label="Save status"
+          className={`pointer-events-none relative ${compact ? 'sr-only' : ''}`}
+        >
+          {view.text}
+        </span>
+        <span className="pointer-events-none relative">{glyph}</span>
       </span>
     );
   }

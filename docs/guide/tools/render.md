@@ -1,7 +1,7 @@
 ---
 title: Render Picture
 section: Tools
-category: 3D Print
+category: Make
 order: 122
 ---
 
@@ -11,7 +11,7 @@ Render a presentable picture of the design.
 
 | Where | Shortcut |
 |---|---|
-| 3D Print › Output | None |
+| Make › Output | None |
 
 <video src="demo:render" muted loop autoplay playsinline aria-label="Render Picture demo"></video>
 

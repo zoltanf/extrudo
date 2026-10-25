@@ -24,7 +24,7 @@ import {
 } from '@extrudo/core';
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { detectProfiles } from '@extrudo/sketch/profiles';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import cubeStl from '../../../fixtures/imports/cube.stl?url&inline';
 import interRegular from '../fonts/fonts/inter-regular.ttf?url&inline';
 import type { KernelConnection } from './client';
@@ -50,6 +50,17 @@ const until = async (condition: () => boolean, ms = 20_000) => {
   }
 };
 
+/** A promise whose settling the test controls. */
+function deferred() {
+  let resolve!: () => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<void>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 let recomputer: Recomputer | undefined;
 afterEach(() => recomputer?.dispose());
 
@@ -60,6 +71,12 @@ function setup(
     files?: FileSource;
     /** Holds each preview in the kernel until it resolves. */
     previewGate?: () => Promise<void>;
+    /** Holds each `reference` in the kernel until it resolves (P6-17). */
+    referenceGate?: () => Promise<void>;
+    /** Holds a recompute's result after its features reported (P6-17). */
+    recomputeGate?: () => Promise<void>;
+    /** Whether a reported feature is forwarded to the Recomputer's `onFeature`. */
+    reportFeature?: (id: FeatureId) => boolean;
   } = {},
 ) {
   const requests: RecomputeRequest[] = [];
@@ -105,10 +122,24 @@ function setup(
           );
           return service.runPluginCommand(request);
         },
-        recompute: (request, onFeature) => {
+        reference: async (...args: Parameters<KernelService['reference']>) => {
+          await options.referenceGate?.();
+          return service.reference(...args);
+        },
+        recompute: async (request, onFeature) => {
           requests.push(request);
           events.push('recompute');
-          return service.recompute(request, onFeature);
+          const report = options.reportFeature;
+          const result = await service.recompute(
+            request,
+            report
+              ? (id) => {
+                  if (report(id)) onFeature?.(id);
+                }
+              : onFeature,
+          );
+          await options.recomputeGate?.();
+          return result;
         },
         preview: async (request, onFeature) => {
           events.push(`preview:${request.draft.id}`);
@@ -766,5 +797,89 @@ describe('Recomputer', () => {
     expect(Object.keys(model.getState().bodies).sort()).toEqual(['B:0', 'C:0']);
     // The cut broke a piece off B:0; the model store carries that for the app.
     expect(model.getState().origins).toEqual({ 'C:0': 'B:0' });
+  });
+
+  it('lists a wait while a kernel call runs, with its label, and drops it (ADR-0105 §1)', {
+    timeout: 30_000,
+  }, async () => {
+    const gate = deferred();
+    const { model } = setup(chainDocument(1), { referenceGate: () => gate.promise });
+    await until(() => ready(model));
+    const r = recomputer as Recomputer;
+    expect(r.waits.get()).toEqual([]);
+    const call = r.reference('f1:0' as BodyId, 'face', 0);
+    await until(() => r.waits.get().length === 1);
+    expect(r.waits.get()[0]).toMatchObject({ label: 'Reading the pick…', quiet: false });
+    gate.resolve();
+    await call;
+    expect(r.waits.get()).toEqual([]);
+  });
+
+  it('drops a wait when its call rejects (ADR-0105 §1)', async () => {
+    const gate = deferred();
+    const { model } = setup(chainDocument(1), { referenceGate: () => gate.promise });
+    await until(() => ready(model));
+    const r = recomputer as Recomputer;
+    const call = r.reference('f1:0' as BodyId, 'face', 0);
+    await until(() => r.waits.get().length === 1);
+    gate.reject(new Error('no'));
+    await expect(call).resolves.toBeUndefined();
+    expect(r.waits.get()).toEqual([]);
+  });
+
+  it('lets a caller override the label and quiet the wait (ADR-0105 §1)', async () => {
+    const gate = deferred();
+    const { model } = setup(chainDocument(1), { referenceGate: () => gate.promise });
+    await until(() => ready(model));
+    const r = recomputer as Recomputer;
+    const call = r.reference('f1:0' as BodyId, 'face', 0, false, {
+      label: 'Picking a face…',
+      quiet: true,
+    });
+    await until(() => r.waits.get().length === 1);
+    expect(r.waits.get()[0]).toMatchObject({ label: 'Picking a face…', quiet: true });
+    gate.resolve();
+    await call;
+  });
+
+  it('lists two concurrent waits, oldest first (ADR-0105 §1)', async () => {
+    const gates: Array<() => void> = [];
+    const { model } = setup(chainDocument(1), {
+      referenceGate: () => new Promise<void>((resolve) => gates.push(resolve)),
+    });
+    await until(() => ready(model));
+    const r = recomputer as Recomputer;
+    const a = r.reference('f1:0' as BodyId, 'face', 0);
+    const b = r.reference('f1:0' as BodyId, 'face', 1);
+    await until(() => r.waits.get().length === 2);
+    const [first, second] = r.waits.get();
+    expect(first?.id).toBeLessThan(second?.id ?? 0);
+    expect(r.waits.get().map((w) => w.label)).toEqual(['Reading the pick…', 'Reading the pick…']);
+    for (const resolve of gates) resolve();
+    await Promise.all([a, b]);
+    expect(r.waits.get()).toEqual([]);
+  });
+
+  it("reports a running recompute's progress and clears it with the result (ADR-0105 §3)", {
+    timeout: 30_000,
+  }, async () => {
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+    const gate = deferred();
+    try {
+      const { model } = setup(chainDocument(3), {
+        reportFeature: (id) => id === 'f2',
+        recomputeGate: () => gate.promise,
+      });
+      await until(() => model.getState().progress !== undefined);
+      expect(model.getState().progress).toEqual({ done: 1, total: 3, feature: 'f2' });
+      gate.resolve();
+      await until(() => ready(model));
+      expect(model.getState().progress).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
