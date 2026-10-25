@@ -226,6 +226,30 @@ function extrude(
 }
 
 describe('Recomputer', () => {
+  it('reverts the document to the step the shown model was computed at (ADR-0111)', {
+    timeout: 30_000,
+  }, async () => {
+    const { model, document, requests } = setup(chainDocument(3));
+    const rename = (name: string) =>
+      document.getState().dispatch(renameFeature({ id: 'f2' as FeatureId, name }));
+    rename('A');
+    // No recompute has finished yet: nothing to go back to.
+    expect(recomputer?.canRevertToShown()).toBe(false);
+    await until(() => ready(model));
+    const a = document.getState().lastStepId();
+    expect(recomputer?.canRevertToShown()).toBe(false);
+
+    rename('B');
+    expect(recomputer?.canRevertToShown()).toBe(true);
+    const sent = requests.length;
+    expect(recomputer?.revertToShown()).toBe(true);
+    expect(document.getState().lastStepId()).toBe(a);
+    expect(document.getState().canRedo).toBe(true);
+    await until(() => ready(model) && requests.length > sent);
+    expect(model.getState().doc?.features[1]?.name).toBe('A');
+    expect(recomputer?.canRevertToShown()).toBe(false);
+  });
+
   it('computes the document and fills the model store', { timeout: 30_000 }, async () => {
     const { model, document } = setup(chainDocument(3));
     expect(model.getState().status).toBe('idle');
