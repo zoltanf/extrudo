@@ -197,7 +197,8 @@ test('the Search button drops the search from itself; the app menu has one Searc
   await expect(search(page)).toHaveAttribute('data-dim', 'true');
   const box = await search(page).boundingBox();
   if (!from || !box) throw new Error('no boxes');
-  expect(Math.abs(box.x - from.x)).toBeLessThan(2);
+  // Right-aligned: the button sits at the bar's right end (ADR-0079).
+  expect(Math.abs(box.x + box.width - (from.x + from.width))).toBeLessThan(2);
   expect(box.y).toBeGreaterThanOrEqual(from.y + from.height);
   expect(box.y - (from.y + from.height)).toBeLessThan(8);
   await page.keyboard.press('Escape');
