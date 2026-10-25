@@ -1,0 +1,1 @@
+- 2026-10-25 · **Mesh to Solid**: the region preview in the Convert to Solid dialog now drops a mesh's flat zero-volume flaps, so it shows and counts the same regions the conversion builds.

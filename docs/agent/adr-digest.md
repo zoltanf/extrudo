@@ -3241,6 +3241,57 @@ counts the STEP writer's `CLOSED_SHELL`s) and Offset Face moves the box's bottom
 by 1 mm for +900 mm³ within 0.5 %. The `mesh-to-solid-files.test.ts` fixtures are
 unchanged.
 
+**ADR-0097 slice D5 (2026-10-25c): the tangent line where a plane meets a
+fillet's cylinder — tried, not kept.** The D3 sweep's 869 polyline
+plane|cylinder chains are a plane tangent to a fillet's cylinder with the
+fit a little off. Slice D5 built the cylinder's tangent line in
+`surfaceCurves` (condition `|n·A| ≤ sin 1°` and `|d − r| ≤ 2 T`; line through
+`O − sign(s)·r·n` along the axis projected into the plane), first replacing
+IntAna (regressed puzzle-insert-circle by 8 edges), then as a candidate
+`chainCurve` tries only when no IntAna curve passes its node/monotone/span
+checks. Over the 37 STLs at Auto exactly **one** file moved (battery-power-
+adapter, 3,930 → 3,925 edges, attempt 1: → 3,928), same faces/facets/volume,
+no regression; below the review's three-file bar, so the facade is **reverted
+to the base** (WASM input hash `occt-e1e731c1fd29` again), no test and no
+changelog fragment. A synthetic test cannot reach it: the plane and cylinder
+share the chain's seam nodes, so `|d − r| ≤ T` (the tolerance IntAna snaps
+at) and a miss over `T` makes a fit unfit; 200 rounded-box perturbations
+found no configuration. Details in ADR-0097's 2026-10-25c amendment.
+
+**ADR-0097 amendment (2026-10-25d): whiteboard-tray-v5's slow refusal —
+no safe early point.** At Auto (0.02 mm, 3 unfit regions) the file is refused
+in 42.8 s with the same message; the hybrid builds three times and the
+**`ShapeFix_Shape` heal is 26.6 s of it** (8.2 + 9.8 + 8.5 s; each attempt's
+`BRepCheck` fails, then the heal fails), then `refuse("invalid")` with
+`cellsValid 0 culprits 0` — the single solid (5,382 faces) never validates.
+The brief's early-refusal examples do not apply: the hybrid `facetEstimate()`
+is 527–644 (under the 5,000 cap; the early estimate refusal is above 7,500)
+and the Auto ladder runs 0.01, 0.02 once each (220 ms). No retry is provably
+futile (attempt 0 undoes a collapse, attempt 1 explodes a region — both real
+changes), and cutting the heal outright leaves 16.2 s (still over the 15 s
+bar) while risking files that rely on it. So **no change**: facade reverted to
+the base (hash `occt-e1e731c1fd29`), no test, no changelog. The result is
+weld-sensitive (a 1e-6 weld converts in 10.8 s with 7 exploded regions).
+Measurements in ADR-0097's 2026-10-25d amendment.
+
+**ADR-0097 amendment (2026-10-25e): the preview drops what the conversion
+drops.** `dropDegenerateComponents` (facade) is split into
+`degenerateDropMask(keep, dropped)` (the per-triangle mask: 1 for a component
+that stays — positive volume a part, negative a cavity, open the path's to
+refuse — 0 for a flat closed zero-volume flap) and `compactStagedMesh(keep)`;
+`meshToSolid` runs both as before. `meshRegions` and `meshLoopsDebug` now
+compute the mask and segment the **compacted** mesh, so the dialog preview and
+the debug match the conversion (they previously segmented the flaps too:
+`bossWithBump` read 100 plane surfaces where the conversion makes 8).
+`meshRegions` builds the compacted copy with `origOf` (each kept triangle's
+original index), segments it, restores the staged buffers and maps each
+surface back; `meshRegionOf_` keeps the **original triangle count** (the view
+mesh lines up), a dropped triangle taking a kept neighbour's surface else -1.
+`meshLoopsDebug` compacts in place (region- and chain-level output). Test:
+`bossWithBump`'s preview `surfaceOf.length` = the view mesh's triangles,
+`unfit.regions` = the conversion's (1) and `planes`/`cylinders` = the
+report's (8/4; 100 planes on the base WASM). No schema change.
+
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
 facade `removeFaces` with `BRepAlgoAPI_Defeaturing`). Rules: **all or nothing** (any

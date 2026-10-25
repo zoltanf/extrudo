@@ -1128,6 +1128,25 @@ end to end, faster than in established desktop CAD.
   at the mesh, and the flat-face prism fallback is tried before the
   smooth-chain refusal, so a converted body's planes move (ADR-0097's
   2026-10-25b amendment).
+  *2026-10-25c:* where a flat face runs into a fillet and the fitted plane
+  misses tangency, the tangent line into the fitted cylinder was tried in
+  `surfaceCurves` (a fallback IntAna's curves are kept ahead of) but **not
+  kept**: over the 37 STLs at Auto only battery-power-adapter moved
+  (3,930 → 3,925 edges, same faces/facets/volume), below the three-file bar,
+  and it cannot be reached by a synthetic mesh (the shared seam bounds the
+  miss by the tolerance IntAna snaps at). Facade reverted to the base
+  (ADR-0097's 2026-10-25c amendment).
+  *2026-10-25d:* whiteboard-tray-v5's slow refusal was measured (Auto 0.02 mm,
+  42.8 s; the `ShapeFix_Shape` heal is 26.6 s of it) and left as it is: no
+  safe earlier point reaches 15 s without risking other meshes, the facet
+  estimate is 527–644 (under the cap) and the Auto ladder runs once
+  (ADR-0097's 2026-10-25d amendment).
+  *2026-10-25e:* the region preview (`meshRegions`) and `meshLoopsDebug` now
+  drop a mesh's closed zero-volume flaps (`dropDegenerateComponents`' mask)
+  before segmenting, so the dialog shows what the conversion builds
+  (`bossWithBump`: 100 plane surfaces → 8, the conversion's) while the
+  per-triangle array keeps the view mesh's triangle count (ADR-0097's
+  2026-10-25e amendment).
 
 ## Phase 5 — Programmatic design (→ v0.6)
 

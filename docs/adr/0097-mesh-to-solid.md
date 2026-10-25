@@ -2148,3 +2148,164 @@ one solid and one shell (a `shells` helper reads the STEP writer's one
 `CLOSED_SHELL` per shell), and `offsetFaces` on the box's bottom by 1 mm gives
 +900 mm³ within 0.5 %. The `mesh-to-solid-files.test.ts` fixtures are unchanged.
 
+
+### Amendment, 2026-10-25c: the tangent line where a plane meets a fillet's cylinder — tried, not kept (slice D5)
+
+The D3 sweep's own "what stays a polyline" list names 869 plane|cylinder
+chains, "a plane meant to be tangent to a fillet's cylinder, a little off":
+`surfaceCurves` returns `no curve: empty` (or two near-coincident lines the
+chain's nodes miss) and the chain stays the mesh polyline. stl2step builds
+the tangent line there (its `refit.hpp`, tier 1); slice D5 tried it in two
+shapes and **did not keep it** — the numbers are below the bar.
+
+**What was built.** In the facade's `surfaceCurves`, the plane|cylinder
+case: when the plane's normal is square to the cylinder's axis within 1°
+(`|n·A| ≤ sin 1°`) and the plane's distance from the axis is within
+`2 ×` the tolerance of the radius (`|d − r| ≤ 2 T`), build the cylinder's
+tangent line on the plane's side — through `O − sign(s)·r·n`
+(`s = (O − P0)·n`) along the axis projected into the plane (`A − (A·n)n`,
+normalised), one line of type 0 — with the fitted surfaces unchanged.
+Two shapes were tried:
+
+1. **Replace IntAna.** Return the tangent line before calling IntAna,
+   whenever the condition holds. This changed the chain only where IntAna
+   yielded no curve; it also turned a chain IntAna had collapsed into a
+   polyline on **puzzle-insert-circle** at Auto (8 more edges), so it was
+   narrowed.
+2. **Add it as a candidate.** `surfaceCurves` appends the tangent line to
+   IntAna's curves, and `chainCurve` tries IntAna's curves first (nearer
+   first) and the tangent line only where none of them passes the node,
+   monotone and span checks — so a pair IntAna handles never moves, and the
+   869 are reached when their IntAna curve's nodes miss. This is the second
+   attempt the review asked for.
+
+**The numbers** (kernel sweep over `STL_DIR`, `mesh-to-solid-files.test.ts`,
+`TOL=auto`, the 37 convertible STLs, base WASM `occt-e1e731c1fd29` against
+attempt 2's `occt-59ba5782c2cd`, one process each on the Ubuntu machine):
+
+| file | outcome | faces | facets | edges before → after | circles | volume |
+|---|---|---|---|---|---|---|
+| own/battery-power-adapter | hybrid | 994 | 415 | 3,930 → 3,925 | 37 | 1.0004 |
+
+Exactly **one** file of the 37 moved (attempt 1's narrower rule: 3,930 →
+3,928); every other file's outcome, faces by kind, facets, circles, volume
+(within ±1 %) and validity is unchanged, and none got worse (no refusal, no
+extra facets, no volume drift). The committed fixtures
+(`mesh-to-solid-files.test.ts`'s eight STLs) are unchanged too. The brief's
+bar to keep the rule was edges down in at least three files; one file is
+below it, so the facade change is reverted entirely (the facade is back to
+the base, its WASM input hash `occt-e1e731c1fd29` again, so no new build)
+and no test or changelog change goes with it.
+
+**Why a synthetic test cannot reach it.** The brief asked for a rounded box
+whose fitted plane misses tangency by 0.01–0.02 mm at 0.01 mm. It cannot be
+built: the plane and the cylinder share the chain's seam nodes, each fit's
+deviation from them is bounded by the same tolerance `T` that IntAna is
+given, so `|d − r| ≤ T` for any such mesh, and IntAna snaps a plane within
+`T` of tangency to the line the chain's nodes lie on. A mesh built to miss
+by more than `T` makes the cylinder or the plane unfit instead (its own
+deviation exceeds `T`). A sweep of 200 rounded-box perturbations (segment
+count, `refine`, radial pull, sideways shift, whole-mesh noise) found no
+configuration where the rule changes the chain; it fires on real noisy
+meshes, where the fits' binding nodes are not the chain's.
+
+**Also harness-only.** `hybridChainsKept_` (the "kept as polylines: … near
+tangent, node off …" line) is printed by the native `spikes/stl-to-solid`
+harness, which needs the OCCT static libraries and is built with Docker on
+the Arch workstation; on the Ubuntu machine the count is not readable
+through the WASM facade, so the tables here report the sweep's edge deltas.
+
+### Amendment, 2026-10-25d: whiteboard-tray-v5's slow refusal measured — no safe early point
+
+The D4 amendment's open item: `own/whiteboard-tray-v5.stl` at Auto is refused
+after ~45 s (now 42.8 s) where the hybrid alone runs to its refusal. Slice 2
+measured it through the facade's `stage(...)` timings (a temporary
+`takeStageTimes()` accessor, removed again) and found **no safe point to
+refuse earlier**: the cost is the `ShapeFix_Shape` heal, which is
+load-bearing, and cutting it still leaves ~16 s, over the 15 s bar.
+
+**Where the 42.8 s goes.** Auto picks 0.02 mm (the ladder's second step:
+0.01 gives 58.9 % unfit, 0.02 gives 0.1 %; the whole ladder plus segmentation
+is 220 ms). The hybrid then builds three times (slice D1's three, plus the
+undo path): 0.02 mm, 3 unfit regions, one solid. Per attempt, in ms
+(`TIMES`-style `stage()` names):
+
+| attempt | chain curves | faces | solid | unified | **healed** | validity/next | estimate | heal valid? |
+|---|---|---|---|---|---|---|---|---|
+| 0 (undo 1 collapse) | 20 | 668 | 1,714 | 477 | **8,223** | 2,101 | 527 | no |
+| 1 (explode 1 region) | 21 | 301 | 1,789 | 503 | **9,845** | 2,159 | 622 | no |
+| 2 (refuse) | 21 | 273 | 1,858 | 520 | **8,507** | – | 644 | no |
+
+The last line: `cellsValid 0 culprits 0 solids 1 faces 5382` — the single
+solid fails `BRepCheck` after all three builds and there is no region left to
+explode, so `refuse("invalid")` (the user still sees the same message: `Mesh
+to Solid couldn't rebuild this mesh as an exact solid within 0.02 mm. Use
+Faceted, or simplify the mesh in your slicer.`). The **heal is 26.6 s of the
+42.8 s (62 %)**: `ShapeFix_Shape` on the assembled result, run whenever
+`BRepCheck` fails, which for this mesh is every attempt. `solid`
+(`MakeSolid` + `ShapeFix_Solid` + volume) is 5.4 s, `unified`
+(`UnifySameDomain` + `straightenSeams`) 1.5 s, `faces` 1.2 s, the validity
+passes (`BRepCheck` + the culprit map) 4.3 s.
+
+**Why no early point.** The brief's two examples do not apply: the hybrid's
+`facetEstimate()` is **527 / 622 / 644**, far under the 5,000 cap (the early
+estimate refusal fires above 7,500), and the Auto ladder runs each rung once
+(0.01, 0.02) and stops — no repeated rung. Nor is any retry provably futile:
+attempt 0 undoes a collapsed chain and attempt 1 explodes a region, both real
+changes (the D1–D3 retries exist for other meshes and would be needed for
+them), and attempt 2 only learns `culprits 0` by building again. Cutting the
+`ShapeFix_Shape` heal outright — not provably safe, since files where unify's
+moved edges only need their tolerances raised rely on it — leaves
+42.8 − 26.6 = **16.2 s**, still over the 15 s acceptance, and skipping a
+rebuild on top of that is not safe. So slice 2 records the measurement and
+makes **no change**: the facade is back to the base (input hash
+`occt-e1e731c1fd29`; no new build), no test and no changelog fragment.
+
+**Measured with** (`mesh-to-solid-files.test.ts` and a scratch harness over
+`STL_DIR`, at Auto on the Ubuntu machine): the kernel's `meshToSolid` refuses
+in 42,915 ms with the same message; the raw facade with the kernel's own
+(manifold) welding refuses in 42,278 ms, `meshRefusalDebug` reporting `hybrid:
+invalid | exploded 0`; a 1e-6-rounding weld instead converts in 10.8 s with 7
+exploded regions, so the result is weld-sensitive — one more reason not to
+widen any rule here. The same numbers on the intermediate WASM
+`occt-234b03194dc6` (the `takeStageTimes` builds) and `occt-9c885cd89a84`.
+
+### Amendment, 2026-10-25e: the preview drops what the conversion drops (slice D6)
+
+The 2026-10-25b amendment's own note: `dropDegenerateComponents` runs at the
+top of `meshToSolid`, so the conversion never sees a mesh's flat zero-volume
+flaps, but `meshRegions` (the dialog's region preview) and `meshLoopsDebug`
+segmented the staged mesh as-is. On `bossWithBump` (a box with a cylinder r 5
+standing coplanar on its top: the body plus **46 flat zero-volume
+components**) the preview read **100 plane surfaces** where the conversion
+makes **8** — 92 of them the flaps' front and back — so the dialog showed and
+counted regions the conversion would not build.
+
+**Rule (facade).** `dropDegenerateComponents` is split into
+`degenerateDropMask(keep, dropped)` (the per-triangle keep mask: 1 for a
+triangle of a component that stays — positive volume a part, negative a
+cavity, open the path's to refuse — 0 for a flat closed zero-volume flap) and
+`compactStagedMesh(keep)` (the in-place compaction). `meshToSolid` runs both,
+unchanged. `meshRegions` and `meshLoopsDebug` now compute the mask first and
+segment the **compacted** mesh:
+
+- `meshRegions` keeps the staged buffers, builds the compacted copy
+  (`compactedStagedMesh`, with `origOf`: each kept triangle's original index),
+  segments that (its `meshReport_` counts, unfit share and suggested tolerance
+  are the conversion's), restores the staged buffers and maps each surface
+  back to the original triangle order. `meshRegionOf_` keeps the **original**
+  triangle count (the view mesh lines up with it); a dropped triangle takes
+  the surface of a kept triangle sharing a node with it, else -1 (a flap's
+  nodes are its own, so -1).
+- `meshLoopsDebug` compacts in place and segments that, so its regions, loops
+  and chains are the conversion's (its output is region- and chain-level, no
+  per-triangle array).
+
+The 2026-10-25b rejected option ("dropping only the shells") stays rejected:
+the drop is at the mesh, before any segmentation. No schema change.
+
+**Test** (`mesh-to-solid.test.ts`, `Kernel.meshRegions`): `bossWithBump`'s
+preview has `surfaceOf.length` = the view mesh's triangle count (5,218),
+`unfit.regions` = the conversion's report (1), and `planes`/`cylinders` = the
+report's (8/4, where the base WASM gave 100 planes). On the base WASM the
+test fails at `expected 100 to be 8`.

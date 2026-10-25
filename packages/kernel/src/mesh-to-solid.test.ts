@@ -1558,4 +1558,30 @@ describe('Kernel.meshRegions', { timeout: 300_000 }, () => {
     expect(regions.planes).toBe(302);
     expect(report.faces).toBe(302);
   });
+
+  it('drops the mesh’s zero-volume flaps, so the preview matches the conversion (2026-10-25e)', () => {
+    // `bossWithBump`'s own boolean leaves the body plus 46 flat zero-volume
+    // components (the box top and the cylinder base are coplanar). The
+    // conversion drops them; the preview must too, so its regions and counts
+    // agree, and its per-triangle array stays in the staged triangle order.
+    const mesh = meshOf(bossWithBump());
+    try {
+      const view = kernel.mesh(mesh, { linearDeflection: 1, angularDeflection: 1 });
+      const triangles = view.indices.length / 3;
+      const preview = kernel.meshRegions(mesh, 0.01);
+      const { shape, report } = kernel.meshToSolid(mesh, { method: 'prismatic', tolerance: 0.01 });
+      try {
+        expect(preview.surfaceOf).toHaveLength(triangles);
+        expect(preview.unfit.regions).toBe(report.unfit.regions);
+        expect(preview.planes).toBe(report.planes);
+        expect(preview.cylinders).toBe(report.cylinders);
+        // Without the drop the flaps were 92 further plane surfaces (100).
+        expect(preview.planes).toBeLessThan(30);
+      } finally {
+        kernel.release(shape);
+      }
+    } finally {
+      kernel.release(mesh);
+    }
+  });
 });
