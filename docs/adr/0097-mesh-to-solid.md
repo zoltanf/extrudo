@@ -1963,3 +1963,188 @@ above), Fillet and Press Pull succeed.
 or stopping OCCT's single-face offset from collapsing on a body with
 coplanar/tangent faces — is not done. The hooks above are what the next
 attempt starts from.
+
+### Amendment, 2026-10-25: Offset Face on a converted body, the causes measured
+
+Measured with the spike harness (`spikes/stl-to-solid`, the facade natively in
+the pinned OCCT image, the gear's staged mesh written by the `MESH_FILE`
+test's `MESH_OUT`) and, for native bodies, with Vitest on the app's own WASM.
+
+**Correction: the gear's shell was never open.** The 2026-10-24 count called a
+free edge *dangling* unless `BRep_Tool::IsClosed(edge)` — the one-argument
+form, which asks whether the edge's two ends meet (a closed loop), not whether
+it is a seam of its face. Counted with `BRep_Tool::IsClosed(edge, face)`, the
+converted gear (204 faces, 597 edges) has **0** dangling edges, as has the
+assembled solid (210 faces, 619 edges). The 5 were the seams of the 5
+full-turn faces `UnifySameDomain` makes when it merges the split pieces back
+(3 cylinders, 2 cones): a seam has one face on both sides. Sewing, ShapeFix
+and keeping the assembled solid (the 2026-10-24 attempts) could not close
+what was not open.
+
+**Cause 1, in the conversion: seams that are not isolines.** Unify keeps one
+of the split edges between a surface's pieces as the merged face's seam.
+Those edges follow mesh edges, and on a short band of a cylinder or a cone
+the mesh edge is the quad's diagonal: on the gear, the flange's r 20 wall
+(1.2 mm tall) and its 45° chamfer get seams whose ends are 0.0347 rad (2.0°)
+and 0.0174 rad (1.0°) apart in u (a chord, edge tolerance 0.0033 mm; the
+other 3 seams are vertical). `BRepCheck_Analyzer` accepts such a face;
+`BRepOffset_MakeOffset` does not. On a synthetic valid cylinder (r 20, h 1.2,
+built with `BRep_Builder`) whose seam runs from u = 0 at the bottom to u = s
+at the top, Offset Face of the top face by 2.6 mm gives the 3-face,
+4,775.22 mm³ solid a `BRepPrimAPI_MakeCylinder` gives for s = 0, and an
+empty skin (`IsDone`, `Error()` 0, no face) for s = 0.001, 0.0347 and
+−0.0347, the seam a chord or an exact helix alike; the facade's whole
+`offsetFaces` (the seam retry included) refuses them. Shell works on all of
+them. Re-seaming the face on the isoline through one end of the old seam
+(the far rim edge split where that isoline meets it, in both of its faces)
+gives 4,775.22 mm³ for all three.
+
+**Cause 2, not in the conversion: a partial cylinder meeting a plane.** On
+the app's kernel, Offset Face refuses native bodies built from primitives
+and booleans: a 30 × 30 × 6.6 box with a D-shaped through bore (r 8.6, the
+flat at x = 6.3015) for **every** one of its 8 faces (the top at 2.6, 0.5 and
+−0.5 mm, the others at 1 mm); a D pin (a cylinder r 8.6 cut by a plane at
+x = 6.3015, 0 or −4); a box with a convex half-cylinder bump r 5. A round
+bore, a square bore and a concave half-cylinder notch work, and so does a box
+whose vertical edges are rounded (r 0.4 or 1.5: tangent faces). The plain
+build returns an empty skin, with OCCT's intersection flag on or off. The
+gear's hub has such a bore (r 8.6, its flat at x = 6.30, through the whole
+part), so every Offset Face on the gear hits cause 2: re-seaming the gear's
+two slanted seams (harness) still leaves the top face and the 3.8 mm
+shoulder refused. Making Offset Face handle these bodies is a change to
+Offset Face for every body (ADR-0051), not to Mesh to Solid.
+
+**Shell.** Shell 1 mm (top open) on the gear is refused before and after
+re-seaming. The gear's teeth have 48 convex rounds of r 0.4 mm, and on a
+native 20 × 20 × 10 box whose vertical edges are rounded r 0.4 the kernel
+refuses Shell 1 mm as well ("the thickness is too large"; r 1.5 shells): an
+inward 1 mm offset turns a 0.4 mm round inside out. Shell 0.3 and 0.2 mm on
+the gear fail too, before and after re-seaming, while the hub cut off above
+z = 4 (5 faces, the D bore included) shells; that cause is not isolated.
+
+**The fix for cause 1** (`straightenSeams`, facade): after unify, in the
+hybrid (each solid, its history merged into unify's so the region map
+follows) and in the exact rebuild, every face with one seam, no degenerated
+edge and a seam whose ends differ along its period is rebuilt on a copy of
+its surface (so no shared edge's old pcurve changes) with the seam on the
+isoline through the old seam's first vertex: the far rim run must cross that
+isoline once, inside one edge, which is split there in both of its faces
+(`EmptyCopied` keeps every pcurve; `ShapeBuild_ReShape` replaces it by its
+two pieces in the neighbour); the near run must not cross it but at that
+vertex; the other edges' pcurves move by whole periods into the new range.
+The result is kept only when it is a valid solid of the same type and the
+same volume (1e-6 relative), else the unified solid stays as it was. On the
+gear both slanted seams are re-seamed (the same 204 faces and volume; 597 →
+599 edges and 204 → 206 circles, each split rim adding one) and none is
+left; its Offset Face still fails (cause 2), now after about 20 s per
+distance instead of 14 (not followed up). Of
+the fixtures, peg-perego-button (Auto, hybrid) has one slanted seam: 1,488 →
+1,489 edges, 21 → 22 circles; the others are unchanged. Test
+(`mesh-to-solid.test.ts`, the hybrid describe): a 260-step staircase (over
+the 500-surface cap, so hybrid with no facets) under a disc r 8 h 1.2 of 181
+segments whose top ring is turned half a segment (no vertical wall edge, so
+the kept seam is π/181 off an isoline); Offset Face of the disc's top by
+1 mm refuses on the old build ("OCCT can't offset these faces") and adds
+π r² with the fix.
+
+**Rejected** (2026-10-24 and here): sewing the "dangling" edges, ShapeFix
+on them, keeping the assembled (un-unified) solid, `ConcatBSplines` off —
+all aimed at an open shell that wasn't; sharing one `Geom_Surface` per
+fitted surface (`cbce064d`, refused by the hybrid's own checks; unify merges
+equal analytic surfaces anyway); and `ShapeFix_Face::FixMissingSeam` after
+removing the slanted seam, which puts the seam at the surface's own u origin
+and splits rim edges in that face only, leaving the neighbour with the
+unsplit edge (an invalid shell).
+
+**Also seen.** The hybrid conversion of `mesh-to-solid.test.ts`'s
+`bossWithBump` mesh is a compound of 47 solids: the body (72 faces of its
+first shell) and 46 two-face shells of zero volume; Offset Face refuses it
+("the solid has an inner void"). Not followed up here.
+
+### Amendment, 2026-10-25b: the mesh's own degenerate components, and a flat face on a faceted body
+
+Measured through the raw facade and `Kernel` on the app's WASM (Vitest), the
+fixture `mesh-to-solid.test.ts`'s `bossWithBump`: a 30 × 30 × 10 box with a
+48-segment cylinder r 5, h 6 standing at z = 10 (its base **coplanar** with the
+box top), refined (6) and its top warped into a 2 mm tilted bump.
+
+**Cause, in the mesh, not in the rebuild.** `manifold-3d` reports the fixture's
+mesh as **47 connected components** (`part.decompose()`; status NoError): the
+body, 4,934 triangles, and **46 components of exactly 10 triangles** each,
+**flat at z = 10.000**, tiny (fractions of a millimetre), their nodes 4.5–4.95 mm
+from the boss axis, i.e. just inside the boss's r 5 base circle. The coplanar
+union of the box top and the cylinder base leaves thin zero-volume closed flaps;
+manifold calls each a valid manifold piece. Their signed volumes are 0 to
+5e-16 mm³. The hybrid (and faceted) build **one solid per connected component**
+(`rebuildHybrid`, `facets` then `byShell`; `facetedFromMesh`'s face components),
+so the result is a compound of **47 solids**: the body (1,608 faces after unify,
+volume 9,548.60 mm³, rebuild hybrid, 0.01 mm) and 46 solids of **2 faces** each
+(10 coplanar facets unify to their front and back) and **zero volume**.
+`kernel.isValid` is true and the volume is within ±1 %, so no existing test
+noticed; `offsetFaces` sees 47 shells and refuses the body ("the solid has an
+inner void", status 4).
+
+**Fix 1, at the mesh (facade).** `dropDegenerateComponents()` runs at the top of
+`meshToSolid`: it groups the staged triangles by shared edge (as
+`segmentMesh` does), sums each component's signed volume, and removes every
+**closed** component (every edge shared by exactly two of its triangles) with
+**|V| ≤ 1e-6 × max(1, |mesh volume|)**, compacting the node and triangle
+buffers. So neither the faceted nor the prismatic path ever builds a
+solid, a shell or a facet from one, and the hybrid's node-vs-solid check never
+sees a node of a component that is gone. A component with volume (a part) and
+one with negative volume (a cavity) both stay, and so does an open component
+(a boundary or a non-manifold edge), which is the path's to refuse, not this to
+drop. The conversion of `bossWithBump` becomes **1 solid, 1 shell** (1,608
+faces, 1,596 facets, 4 cylinders, 8 planes, unfit 1 region / 1,628 triangles),
+the same body as before but alone.
+
+**Fix 2, in Offset Face, because the inner-void refusal hid the next one.** With
+the body alone, `offsetFaces` on its bottom face (the box's z = 0 plane) then
+fails on the **smooth-chain guard** (status 6, "rounded edges meet at a sharp
+corner") rather than the inner void: the bump's 1,596 facets and the 4 small
+cylinders the hybrid fits to its flanks are, in OCCT's 4° tangent test, **one
+smooth chain of 115 faces with creases inside it** (facets ~14° apart — dot
+0.969–0.973 — reached through < 4° steps). That guard exists because
+`BRepOffset_MakeOffset` traps the wasm heap on a body where **two fillets meet
+at a corner**. The **flat-face prism fallback** (`buildPrismOffset`) never calls
+OCCT's offset, so `offsetFaces` now tries it, before keeping the refusal, when
+the chain's creases are **not between two non-planar faces** (a converted body's
+chain is plane/plane and plane/a fitted cylinder: `smoothChains` reports that in
+a `curvedCrease` out-parameter). On `bossWithBump` the gate passes (the bottom
+face is a plane; its neighbours are the box's four side planes, square to it),
+and the box's bottom rises 1 mm for +900 mm³. A fillet-corner body (two
+cylinders at a crease: `kernel.test.ts`'s and `offset-face.test.ts`'s rounded
+corners), a non-flat pick, or a gate the fallback can't pass all keep the
+status-6 refusal unchanged, and **OCCT's offset is never reached for any of
+them**, so the guard's protection is intact.
+
+**Rejected.**
+- *Dropping the degenerate **shells** after `BRepBuilderAPI_MakeSolid`, not the
+  mesh triangles.* Their triangles stay staged, so the hybrid's node check
+  (`trianglesOf`, `for n in 0..nodeCount`) validates the flaps' nodes against a
+  `result` that no longer has their faces: they are off the solid by 0.05–0.5 mm
+  (inside the boss footprint, on no face), their regions explode twice and the
+  build refuses ("a node off its face"). The drop must be at the mesh, before
+  the segmentation.
+- *Keeping the flaps but merging them into the main shell* (one solid for all
+  components): `MakeSolid` needs a connected shell, and `UnifySameDomain` does
+  not absorb coincident internal faces that share no edge.
+- *A zero-volume component as a cavity*: a cavity is a **negative** volume below
+  the threshold (already the rule); a flat flap is not.
+- *Removing the smooth-chain guard*: it protects OCCT's offset from a heap trap
+  for every body, not only a converted one; the safe fallback is tried first
+  instead.
+- *Changing the fixture* so the box top and cylinder base are not coplanar: a
+  slicer's or a mesh tool's union can leave such flaps, so the conversion has to
+  handle them.
+
+The mesh-region **preview** (`meshRegions` / `meshLoopsDebug`) still segments the
+staged mesh as staged — its per-triangle array has to line up with the view
+mesh's triangles — so a degenerate flap still shows as an (unfit) region there;
+only the conversion drops it.
+
+Test (`mesh-to-solid.test.ts`, the hybrid describe): `bossWithBump` converts to
+one solid and one shell (a `shells` helper reads the STEP writer's one
+`CLOSED_SHELL` per shell), and `offsetFaces` on the box's bottom by 1 mm gives
++900 mm³ within 0.5 %. The `mesh-to-solid-files.test.ts` fixtures are unchanged.
+

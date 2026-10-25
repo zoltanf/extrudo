@@ -957,6 +957,11 @@ cap and every other face through the Boolean's `Modified()` after
 `SimplifyResult` (the picked face is modified, not deleted, so it keeps its
 name). Do not extend the gate to slanting neighbours without handling their
 extension.
+**ADR-0051's amendment (2026-10-25b): the fallback before the smooth-chain
+refusal.** When `smoothChains` finds a crease inside a chain (status 6), `offsetFaces` first tries `buildPrismOffset` if **no crease is between two
+non-planar faces** (`curvedCrease`); a fillet corner (two curved faces at a
+crease) keeps the refusal, and OCCT's offset is never reached on a sharp chain.
+Details in ADR-0097's 2026-10-25b amendment.
 **ADR-0051's amendment (2026-10-14): a round next to a moved face keeps its
 radius.** The evaluator passes the unpicked fillet rounds (name `fillet:…` or a
 copy of one, cylinder or torus) of the picked faces' smooth chains
@@ -1259,8 +1264,12 @@ that isn't there), **a text's `attachment:<id>` font must exist in
 command to "repair" it), **WOFF2 is refused** from the file name (opentype.js
 can't read it), **garbage collection runs only from `saveVersion` /
 `deleteVersions`** (`collectAttachments`, under the version lock — never per
-autosave), and **the size limits live in storage** (`writeAttachment`: 10 MB a
-file, 50 MB a design, plus "these bytes are not the file they claim to be").
+autosave), and **the size limits live in storage** (`writeAttachment`, plus
+preflight before an import or copy writes files; ADR-0066 raises the limits to
+25 MB a file, 100 MB a design). Preflight checks the document and each saved
+version separately, counting a hash once and using at least the bytes' actual
+size: valid history can retain more than 100 MB across different states.
+`writeAttachment` also refuses bytes that do not match their hash.
 On the app side `fontBytes` reads `attachment:<id>` through a project-scoped
 resolver that `ProjectPage` sets (`useFontAttachments`, the cache follows the
 project), so the UI thread and the `Recomputer` need no other change; both Font
@@ -3149,24 +3158,88 @@ at all costs one build. This applies to **every** `largestThatWorks` caller
 diagnosis hooks** (raw facade in tests and the spike harness, as
 `meshLoopsDebug` is; **the app never calls them**): `shapeDiagnose(shape)` —
 max vertex/edge/face tolerance, sub-shape counts, not-SameParameter edges,
-faces sharing one analytic surface, free edges and how many are **dangling**
-(neither seam nor degenerate), over-shared edges, invalid faces/edges;
+faces sharing one analytic surface, free edges (one face: a seam counts),
+over-shared edges, invalid faces/edges;
 `offsetProbe(shape, face, distance)` — one plain `BRepOffset_MakeOffset`
 build: `IsDone`, `Error()`, the raw shape's kind, shell count and closed-shell
 count, and which of `offsetIsGood`'s checks the result fails; and
-`meshRefusalDebug()` — the last call's exact and hybrid refusals. **Measured
-on the gear:** tolerances small, 0 not-SameParameter, 0 invalid sub-shapes,
-but **5 dangling edges** (the shell is not watertight; `BRepCheck_Analyzer`
-misses it) and `BRepOffset_MakeOffset` returns `IsDone`/`Error() = 0` with an
-invalid ~0.0016 mm³ solid. The **assembled** hybrid solid has **0** dangling
-edges; `UnifySameDomain` adds the 5 (ConcatBSplines on or off), and sewing
-(≤1 mm, default and non-manifold) + `ShapeFix_Shape` + `ShapeFix_Wireframe`
-can't close them (no partner within 1 mm). Keeping the assembled solid (210
-faces, 6 on a shared surface) is closed but its offset is still ~0 volume, so
-coplanar/tangent split faces are a second trigger. **The fix is open.** The
+`meshRefusalDebug()` — the last call's exact and hybrid refusals. Its
+"5 dangling edges" on the gear were **wrong** (see 2026-10-25 below: the
+one-argument `BRep_Tool::IsClosed(edge)` counted seams). **The fix is open.** The
 local `MESH_FILE` test (`mesh-to-solid-files.test.ts`, skipped without the env
 var) converts a private .3mf/.stl prismatic Auto and runs Offset Face (2.6,
 0.5, −0.5 mm), Fillet, Shell and Press Pull on the top face.
+
+**ADR-0097 amendment (2026-10-25): the causes measured.** (1) **A seam is a
+seam of its face only with the two-argument `BRep_Tool::IsClosed(edge, face)`**;
+the one-argument form asks whether the edge is a closed loop. Use the
+two-argument form for any free/dangling-edge count. The gear's shell is
+closed (0 dangling); its 5 "dangling" edges were the seams of the full-turn
+faces unify made. (2) **Unify can keep a slanted seam**: the split edge it
+keeps as a merged periodic face's seam follows a mesh edge, a diagonal on a
+short band (gear: 2.0° and 1.0°). BRepCheck accepts it; **`BRepOffset_MakeOffset`
+returns an empty skin for any face of a body with a seam that is not an
+isoline** (synthetic cylinder: slant 0.001 rad already fails, the facade's
+seam retry too; Shell is unaffected). **Fix: `straightenSeams` (facade)
+runs after unify in the hybrid (its `BRepTools_History` merged into unify's,
+so the region/facet map follows) and the exact rebuild**: a face with one
+seam, no degenerated edge and a slanted seam is rebuilt on a **copy** of its
+surface (shared edges' old pcurves must not change) with the seam on the
+isoline through the old seam's first vertex, the far rim edge it crosses
+split in **both** faces (`EmptyCopied` + `ShapeBuild_ReShape` edge → wire of
+two pieces), other pcurves moved by whole periods; kept only if valid, same
+shape type and same volume (1e-6), else the unified solid stays. Test: the
+staircase-under-a-twisted-disc mesh in `mesh-to-solid.test.ts`.
+(3) **Offset Face refuses native bodies with a partial cylinder meeting a
+plane at a sharp edge** (a box with a D bore: all 8 faces; a D pin; a convex
+half-cylinder bump), while round/square bores, a concave notch and rounded
+edges work. The gear has a D bore through its hub, so its Offset Face is
+blocked by (3) whatever the conversion does; fixing (3) is an Offset Face
+(ADR-0051) change for all bodies. (4) Shell 1 mm on the gear is refused as on
+a native box with r 0.4 rounds (thickness over the round's radius); 0.3 and
+0.2 mm fail too, cause not isolated. (5) `bossWithBump`'s hybrid result is a
+compound of 47 solids (46 zero-volume two-face shells). Measurements:
+the spike harness (the `MESH_FILE` test's `MESH_OUT=<dir>` writes the staged
+mesh as `<dir>/staged.mesh` for it); never commit the private file or
+anything derived from it.
+
+**ADR-0097 amendment (2026-10-25b): the mesh's own degenerate components, and a
+flat face on a faceted body.** `mesh-to-solid.test.ts`'s `bossWithBump` (a box
+with a cylinder r 5 standing **coplanar** on its top, refined and warped) is,
+per `manifold-3d`, **47 connected mesh components**: the body (4,934 triangles)
+and **46 flat zero-volume components of 10 triangles** at z = 10 (the coplanar
+union's flaps), each 1e-32–5e-16 mm³. The hybrid and faceted build **one solid
+per component**, so the result is 47 solids (the body, 1,608 faces, 9,548.60
+mm³) and 46 two-face zero-volume shells; `isValid` and the ±1 % volume check
+pass, but `offsetFaces` refuses ("the solid has an inner void", status 4).
+**Rule: `dropDegenerateComponents()` runs at the top of `meshToSolid` (facade)
+and removes the staged triangles of every **closed** connected component (by
+shared edge; every edge of it shared by exactly two of its triangles) with
+|signed volume| ≤ 1e-6 × max(1, |mesh volume|), compacting nodes and
+triangles, so no path makes a degenerate solid/shell/facet and the hybrid's node
+check never sees a dropped component's nodes.** Keep a positive-volume (part),
+a negative-volume (cavity) and an **open** component (a boundary or a
+non-manifold edge: the path refuses it). Drop at the **mesh**, not the shells:
+dropping only the shells leaves their triangles staged, the node check marks
+their nodes off the (now smaller) result and the build refuses ("a node off its
+face"). The `meshRegions`/`meshLoopsDebug` preview still segments as staged (its
+per-triangle array must match the view mesh), so a flap still shows there.
+Second rule: with the inner void gone, `offsetFaces` on a converted body hits
+the **smooth-chain guard** (status 6, "rounded edges meet at a sharp corner") —
+the bump's 1,596 facets and 4 fitted cylinders are one 4°-chain of 115 faces
+with creases inside. The guard protects OCCT's offset (a heap trap where **two
+fillets meet at a corner**), which the **flat-face prism fallback
+`buildPrismOffset` never calls**, so `offsetFaces` now tries the fallback
+**before keeping the refusal when the chain's creases are not between two
+non-planar faces** (a converted body's chain is plane/plane and plane/a fitted
+cylinder; `smoothChains` reports that in its `curvedCrease` out-parameter). A
+fillet-corner body (two cylinders at a crease: the `kernel.test.ts` and
+`offset-face.test.ts` rounded corners), a non-flat pick or a gate the fallback
+can't pass keep the refusal, and **OCCT's offset is never reached for any of
+them**. Test: the conversion is one solid and one shell (a `shells` helper
+counts the STEP writer's `CLOSED_SHELL`s) and Offset Face moves the box's bottom
+by 1 mm for +900 mm³ within 0.5 %. The `mesh-to-solid-files.test.ts` fixtures are
+unchanged.
 
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
@@ -3251,7 +3324,15 @@ production — dev builds only (`import.meta.env.DEV`), and `grep -c longtask
 apps/web/dist/assets/*.js` after `pnpm build` must sum to 0 — and the status
 bar's `· n long` is dev builds only; `measure-startup.mjs` runs per release
 and is compared with the ADR's baseline: a jump is a release blocker to
-investigate, a drift is noted in the release notes.
+investigate, a drift is noted in the release notes. §5 (2026-10-25) adds
+two ceilings: `packages/kernel/src/benchmarks.test.ts`'s `recompute` asserts
+every benchmark recompute against `BUDGET_MS` (about 3× the laptop, at least
+1 s: B1–B6 and B10 1 s, B8 1.5 s, B7 3 s, B9 30 s; `BENCH=1` prints the
+times), and `scripts/measure-startup.mjs --budget` fails when app JS passes
+2 MB or the precache 10 MB brotli, run by CI's Docker job
+after its build. **Rules:** a new benchmark document needs a `BUDGET_MS`
+entry (the helper throws without one); both sets of budgets are widened only
+with a measurement in the commit message.
 
 ADR-0102 (P6-14, the owner, 2026-10-23) took **UI-thread work off the
 interaction paths**, measured with ADR-0100's `e2e/perf.spec.ts`. §1: the

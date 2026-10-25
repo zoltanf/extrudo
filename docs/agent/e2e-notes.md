@@ -2373,6 +2373,11 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 ### `e2e/storage.spec.ts`
 
+- The attachment-budget cases generate a 105 MB archive in the test output
+  folder and pass its path to the file chooser (a buffer that large cannot be
+  passed directly). Both a fresh import and an existing-ID copy must show the
+  import error, stay home, and leave the design list unchanged after a reload.
+
 - **Newer files in e2e**: write `projects/<id>/document.json` in OPFS from
   `page.evaluate` (see `storage.spec.ts`) to simulate a newer Extrudo.
 

@@ -1,1 +1,0 @@
-- 2026-10-25 · **Attachment limit on import**: importing a `.extrudo` file, or loading one from a linked folder, now refuses a design over the 100 MB of attached files before writing any of them; before, each file was checked alone and the total got past (#128).

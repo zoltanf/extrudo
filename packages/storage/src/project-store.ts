@@ -102,26 +102,32 @@ const decoder = new TextDecoder();
 const MB = 1024 * 1024;
 const megabytes = (bytes: number) => `${Math.ceil((bytes / MB) * 10) / 10} MB`;
 
-const tooManyBytes = (total: number) =>
-  new Error(
-    `This design's files would be ${megabytes(total)} altogether; they may be at most ${megabytes(MAX_ATTACHMENTS_BYTES)}.`,
-  );
+function assertAttachmentTotal(total: number): void {
+  if (total > MAX_ATTACHMENTS_BYTES) {
+    throw new Error(
+      `This design's files would be ${megabytes(total)} altogether; they may be at most ${megabytes(MAX_ATTACHMENTS_BYTES)}.`,
+    );
+  }
+}
 
-/**
- * Refuses a document whose files, among `files` (bytes by SHA-256, as an
- * archive holds them), come to more than `MAX_ATTACHMENTS_BYTES`. Callers
- * that write a whole set of files before the document naming them (an
- * import, a copy, a linked folder's file) check here first: `writeAttachment`
- * only sees the sizes the *stored* document records, which doesn't name any
- * of them yet (#128). Files only a version names don't count, as there.
- */
-export function assertAttachmentsFit(
-  doc: Pick<ExtrudoDocument, 'attachments'>,
-  files: ReadonlyMap<string, Uint8Array>,
+/** A batch has no stored document yet; count each file once in the incoming state. */
+export function assertAttachmentBudget(
+  doc: ExtrudoDocument,
+  attachments?: ReadonlyMap<string, Uint8Array>,
 ): void {
-  let total = 0;
-  for (const hash of attachmentHashes(doc)) total += files.get(hash)?.length ?? 0;
-  if (total > MAX_ATTACHMENTS_BYTES) throw tooManyBytes(total);
+  const sizes = new Map<string, number>();
+  for (const record of Object.values(doc.attachments ?? {})) {
+    // Missing files still count by their record; understated records cannot hide bytes.
+    sizes.set(
+      record.sha256,
+      Math.max(
+        record.size,
+        attachments?.get(record.sha256)?.length ?? 0,
+        sizes.get(record.sha256) ?? 0,
+      ),
+    );
+  }
+  assertAttachmentTotal([...sizes.values()].reduce((sum, size) => sum + size, 0));
 }
 
 /**
@@ -311,7 +317,7 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
     const total =
       bytes.length +
       [...sizes].reduce((sum, [hash, size]) => (hash === sha256 ? sum : sum + size), 0);
-    if (total > MAX_ATTACHMENTS_BYTES) throw tooManyBytes(total);
+    assertAttachmentTotal(total);
     await files.write(attachmentPath(id, sha256), bytes);
   };
 
@@ -395,13 +401,13 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
     name: string,
     extra: { thumbnail?: Uint8Array; attachments?: ReadonlyMap<string, Uint8Array> } = {},
   ) => {
+    assertAttachmentBudget(doc, extra.attachments);
     const copy: ExtrudoDocument = {
       ...doc,
       id: makeId(),
       name,
       meta: { ...doc.meta, created: now() },
     };
-    if (extra.attachments) assertAttachmentsFit(copy, extra.attachments);
     for (const [sha256, bytes] of extra.attachments ?? []) {
       await writeAttachment(copy.id, sha256, bytes);
     }
@@ -552,14 +558,18 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
       if (notice) options?.onNotice?.(notice);
       for (const message of attachmentNotices(archive)) options?.onNotice?.(message);
       const { doc, thumbnail, versions, attachments } = archive;
+      // Each saved state has its own budget; history may retain different files.
+      // Check them all before writing even the first attachment or project entry.
+      for (const state of [doc, ...versions.map((version) => version.doc)]) {
+        assertAttachmentBudget(state, attachments);
+      }
       if (await index.get(doc.id)) {
         const copy = await saveCopy(doc, doc.name, { thumbnail, attachments });
         await writeVersions(copy.id, versions);
         return copy;
       }
       // The bytes before the document: a design must never name a file that
-      // isn't stored. The total is checked first, as no file is named yet.
-      assertAttachmentsFit(doc, attachments);
+      // isn't stored, and the sizes the limit is checked against come with it.
       for (const [sha256, bytes] of attachments) await writeAttachment(doc.id, sha256, bytes);
       const summary = await save(doc);
       if (thumbnail) await writeThumbnail(doc.id, thumbnail);

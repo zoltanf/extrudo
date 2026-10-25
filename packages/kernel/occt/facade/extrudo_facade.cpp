@@ -928,10 +928,8 @@ public:
       // OCCT offsets a face's smooth neighbours with it: those are checked too. A chain with
       // a sharp edge inside it (fillets meeting at a corner) traps OCCT's offset: refused.
       std::vector<int> chain;
-      if (smoothChains(*input, faces, chain)) {
-        pushShellStatus(6, 0);
-        return fail("Offset failed: rounded edges meet at a sharp corner.");
-      }
+      bool curvedCrease = false;
+      const bool sharpChain = smoothChains(*input, faces, chain, &curvedCrease);
       const std::vector<int> moving = smoothClosure(chain, picked);
       // The flat-face prism fallback (see buildPrismOffset), built on a fresh copy.
       const auto storePrism = [&]() -> int {
@@ -948,6 +946,21 @@ public:
       if (forcePrismFallback_) {
         const int forced = storePrism();
         if (forced != 0) return forced;
+      }
+      if (sharpChain) {
+        // The fallback never calls OCCT's offset, so a flat picked face can still
+        // move. A converted body's faceted chain (plane to plane, plane to a
+        // fitted cylinder) is not the fillet-with-no-blend case the guard is
+        // for: try the safe fallback there (ADR-0097, 2026-10-25b). Two curved
+        // faces at a crease (a real fillet corner), a non-flat pick or a gate
+        // the fallback can't pass all keep the refusal, and OCCT's offset is
+        // never reached for any of them.
+        if (!curvedCrease) {
+          const int withPrism = storePrism();
+          if (withPrism != 0) return withPrism;
+        }
+        pushShellStatus(6, 0);
+        return fail("Offset failed: rounded edges meet at a sharp corner.");
       }
       {
         // A copy for every build, as in shell(): OCCT repairs its input in place.
@@ -2713,6 +2726,117 @@ public:
   uintptr_t meshTrianglesPtr() const { return reinterpret_cast<uintptr_t>(meshTriangles_.data()); }
 
   /**
+   * Drops the triangles of every connected component of the staged mesh that
+   * encloses no volume (|V| <= 1e-6 x max(1, |mesh volume|)) and compacts the
+   * node and triangle buffers. A mesh's own boolean can leave flat zero-volume
+   * flaps as closed components of their own (a boss standing on a coplanar
+   * face: `mesh-to-solid.test.ts`'s `bossWithBump` has 46 of them); one solid
+   * per component would put that many degenerate shells beside the body, and
+   * Offset Face then refuses it ("the solid has an inner void", ADR-0097,
+   * amendment 2026-10-25b). A component with positive volume is a part, with
+   * negative volume a cavity: both stay. Drops at the mesh, not at the
+   * shells, so the node check never validates a node of a component that is
+   * gone. Returns the number of components dropped, or -1 for a bad mesh (a
+   * triangle index past the node count).
+   */
+  int dropDegenerateComponents() {
+    const int nodeCount = static_cast<int>(meshNodes_.size() / 3);
+    const int triangleCount = static_cast<int>(meshTriangles_.size() / 3);
+    for (uint32_t index : meshTriangles_)
+      if (index >= static_cast<uint32_t>(nodeCount)) return -1;
+    if (triangleCount == 0) return 0;
+    const auto corner = [&](int t, int k) { return static_cast<int>(meshTriangles_[3 * t + k]); };
+    // Adjacency by shared edge, as segmentMesh does; a triangle on an edge that
+    // is not shared by exactly two is open (a boundary, or a non-manifold edge).
+    std::vector<int> parent(static_cast<size_t>(triangleCount));
+    for (int t = 0; t < triangleCount; ++t) parent[static_cast<size_t>(t)] = t;
+    const auto find = [&parent](int x) {
+      while (parent[static_cast<size_t>(x)] != x)
+        x = parent[static_cast<size_t>(x)] = parent[static_cast<size_t>(parent[static_cast<size_t>(x)])];
+      return x;
+    };
+    std::vector<char> open(static_cast<size_t>(triangleCount), 0);
+    {
+      std::vector<std::pair<uint64_t, int>> edges(3 * static_cast<size_t>(triangleCount));
+      for (int t = 0; t < triangleCount; ++t)
+        for (int k = 0; k < 3; ++k) {
+          const uint64_t a = static_cast<uint64_t>(corner(t, k));
+          const uint64_t b = static_cast<uint64_t>(corner(t, (k + 1) % 3));
+          edges[3 * t + k] = {std::min(a, b) << 32 | std::max(a, b), 3 * t + k};
+        }
+      std::sort(edges.begin(), edges.end());
+      for (size_t i = 0; i + 1 < edges.size();) {
+        size_t j = i + 1;
+        while (j < edges.size() && edges[j].first == edges[i].first) ++j;
+        if (j - i == 2) {
+          const int ra = find(static_cast<int>(edges[i].second / 3));
+          const int rb = find(static_cast<int>(edges[i + 1].second / 3));
+          if (ra != rb) parent[static_cast<size_t>(ra)] = rb;
+        } else {
+          for (size_t e = i; e < j; ++e) open[static_cast<size_t>(edges[e].second / 3)] = 1;
+        }
+        i = j;
+      }
+    }
+    // Each component's signed volume, and the mesh's in passing.
+    double meshVolume = 0;
+    std::vector<int> rootOf(static_cast<size_t>(triangleCount));
+    std::vector<double> componentVolume(static_cast<size_t>(triangleCount), 0);
+    for (int t = 0; t < triangleCount; ++t) {
+      const gp_XYZ a = meshNode(corner(t, 0)), b = meshNode(corner(t, 1)), c = meshNode(corner(t, 2));
+      const double volume = a.Dot(b.Crossed(c)) / 6;
+      meshVolume += volume;
+      rootOf[static_cast<size_t>(t)] = find(t);
+      componentVolume[static_cast<size_t>(rootOf[static_cast<size_t>(t)])] += volume;
+    }
+    const double threshold = 1e-6 * std::max(1.0, std::fabs(meshVolume));
+    std::vector<char> keepRoot(static_cast<size_t>(triangleCount), 0);
+    std::vector<char> openRoot(static_cast<size_t>(triangleCount), 0);
+    std::vector<char> decided(static_cast<size_t>(triangleCount), 0);
+    for (int t = 0; t < triangleCount; ++t)
+      if (open[static_cast<size_t>(t)] != 0)
+        openRoot[static_cast<size_t>(rootOf[static_cast<size_t>(t)])] = 1;
+    int dropped = 0;
+    for (int t = 0; t < triangleCount; ++t) {
+      const size_t root = static_cast<size_t>(rootOf[static_cast<size_t>(t)]);
+      if (decided[root] != 0) continue;
+      decided[root] = 1;
+      // Only a closed zero-volume piece is a flap: an open one (a boundary, a
+      // non-manifold edge) is the path's to refuse, not this to drop. A NaN
+      // volume is no evidence of degeneracy either: keep it (the path refuses).
+      if (openRoot[root] != 0 || std::fabs(componentVolume[root]) > threshold ||
+          componentVolume[root] != componentVolume[root])
+        keepRoot[root] = 1;
+      else
+        ++dropped;
+    }
+    if (dropped == 0) return 0;
+    // Compact the kept triangles and the nodes they use.
+    std::vector<int> remap(static_cast<size_t>(nodeCount), -1);
+    std::vector<double> nodes;
+    std::vector<uint32_t> triangles;
+    nodes.reserve(meshNodes_.size());
+    triangles.reserve(meshTriangles_.size());
+    for (int t = 0; t < triangleCount; ++t) {
+      if (keepRoot[static_cast<size_t>(rootOf[static_cast<size_t>(t)])] == 0) continue;
+      for (int k = 0; k < 3; ++k) {
+        const int n = corner(t, k);
+        int& mapped = remap[static_cast<size_t>(n)];
+        if (mapped < 0) {
+          mapped = static_cast<int>(nodes.size() / 3);
+          nodes.push_back(meshNodes_[3 * n]);
+          nodes.push_back(meshNodes_[3 * n + 1]);
+          nodes.push_back(meshNodes_[3 * n + 2]);
+        }
+        triangles.push_back(static_cast<uint32_t>(mapped));
+      }
+    }
+    meshNodes_ = std::move(nodes);
+    meshTriangles_ = std::move(triangles);
+    return dropped;
+  }
+
+  /**
    * Turns the staged mesh into a solid (ADR-0097 §3). method 0 = faceted (one
    * planar face per coplanar patch), 1 = prismatic (exact planes, cylinders,
    * cones, spheres and tori). A tolerance of 0 or less means Auto (slice D2).
@@ -2723,6 +2847,9 @@ public:
   int meshToSolid(int method, double tolerance) {
     beginOp();
     meshReport_.clear();
+    // Flat zero-volume components (a mesh's own boolean can leave them) are no
+    // part: dropped here, so no path makes a degenerate solid or shell of one.
+    dropDegenerateComponents();
     const int handle = method == 0   ? facetedFromMesh()
                        : method == 1 ? prismaticFromMesh(tolerance)
                                      : fail("Mesh to Solid failed: unknown method.");
@@ -5976,6 +6103,276 @@ private:
     for (int v = 0; v < nodes; ++v)
       if (pinched[v]) ++nonManifoldVertices;
     return true;
+  }
+
+  /**
+   * Re-seams each face of `solid` whose seam is not an isoline (ADR-0097's
+   * amendment, 2026-10-25). UnifySameDomain merges a periodic surface's
+   * split pieces back into one face and keeps one of the split edges as its
+   * seam; those edges follow mesh edges, and on a short band the mesh edge is
+   * a quad's diagonal, so the seam's ends sit at different u. BRepCheck
+   * accepts the face, but BRepOffset_MakeOffset builds an empty skin for any
+   * face of such a body (a cylinder whose seam is 0.001 rad off already
+   * fails), so Offset Face refuses it. The face is rebuilt on a copy of its
+   * surface with the seam on the isoline through the seam's first vertex,
+   * the rim edge that isoline crosses split there (in both of its faces),
+   * the other edges' pcurves moved by whole periods into the new range.
+   * Only a face with one seam, no degenerated edge, a pcurve on every edge
+   * and one crossing is re-seamed; a face whose rebuild throws is skipped. Returns the solid with `history` (null when nothing changed),
+   * or `solid` itself when the result isn't a valid solid of the same volume.
+   */
+  static TopoDS_Shape straightenSeams(const TopoDS_Shape& solid, Handle(BRepTools_History)& history) {
+    history.Nullify();
+    BRep_Builder builder;
+    Handle(ShapeBuild_ReShape) context = new ShapeBuild_ReShape;
+    int straightened = 0;
+    NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> seen;
+    for (TopExp_Explorer fx(solid, TopAbs_FACE); fx.More(); fx.Next()) {
+      const TopoDS_Face face = TopoDS::Face(fx.Current().Oriented(TopAbs_FORWARD));
+      if (!seen.Add(face)) continue;
+      // A face that throws is left as it was: only the input or a checked result comes back.
+      try {
+        TopLoc_Location location;
+        const Handle(Geom_Surface) surface = BRep_Tool::Surface(face, location);
+        if (surface.IsNull()) continue;
+        // Every edge needs its pcurve on the face, checked before any edge
+        // is touched (UpdateEdge below changes shared edges).
+        bool pcurves = true;
+        for (TopExp_Explorer ex(face, TopAbs_EDGE); ex.More() && pcurves; ex.Next()) {
+          double pf = 0, pl = 0;
+          if (BRep_Tool::CurveOnSurface(TopoDS::Edge(ex.Current()), face, pf, pl).IsNull()) pcurves = false;
+        }
+        if (!pcurves) continue;
+        // One seam, no degenerated edge.
+        TopoDS_Edge seam;
+        bool other = false;
+        for (TopExp_Explorer ex(face, TopAbs_EDGE); ex.More() && !other; ex.Next()) {
+          const TopoDS_Edge& edge = TopoDS::Edge(ex.Current());
+          if (BRep_Tool::Degenerated(edge)) other = true;
+          else if (BRep_Tool::IsClosed(edge, face)) {
+            if (!seam.IsNull() && !seam.IsSame(edge)) other = true;
+            seam = edge;
+          }
+        }
+        if (other || seam.IsNull()) continue;
+        const TopoDS_Edge seamF = TopoDS::Edge(seam.Oriented(TopAbs_FORWARD));
+        if (!BRep_Tool::SameParameter(seamF) || !BRep_Tool::SameRange(seamF)) continue;
+        double f = 0, l = 0;
+        const Handle(Geom2d_Curve) c1 = BRep_Tool::CurveOnSurface(seamF, face, f, l);
+        const Handle(Geom2d_Curve) c2 = BRep_Tool::CurveOnSurface(TopoDS::Edge(seamF.Reversed()), face, f, l);
+        if (c1.IsNull() || c2.IsNull()) continue;
+        // The seam's direction of period: d = 0 (u) or 1 (v).
+        const gp_Vec2d across(c2->Value(0.5 * (f + l)), c1->Value(0.5 * (f + l)));
+        int d = -1;
+        double period = 0;
+        if (surface->IsUPeriodic() && std::fabs(std::fabs(across.X()) - surface->UPeriod()) < 1e-6) {
+          d = 0;
+          period = surface->UPeriod();
+        } else if (surface->IsVPeriodic() && std::fabs(std::fabs(across.Y()) - surface->VPeriod()) < 1e-6) {
+          d = 1;
+          period = surface->VPeriod();
+        }
+        if (d < 0) continue;
+        const auto along = [d](const gp_Pnt2d& p) { return p.Coord(1 + d); };
+        const auto acrossOf = [d](const gp_Pnt2d& p) { return p.Coord(2 - d); };
+        TopoDS_Vertex v1, v2;
+        TopExp::Vertices(seamF, v1, v2);
+        if (v1.IsSame(v2)) continue;
+        const double t1 = BRep_Tool::Parameter(v1, seamF), t2 = BRep_Tool::Parameter(v2, seamF);
+        const double target = along(c1->Value(t1));
+        if (std::fabs(along(c1->Value(t2)) - target) < 1e-9) continue;  // an isoline already
+        const double lo = std::min(target, along(c2->Value(t1))), hi = lo + period;
+        // The seam's wire in order, and its two runs between the seam's uses.
+        TopoDS_Wire seamWire;
+        for (TopExp_Explorer wx(face, TopAbs_WIRE); wx.More() && seamWire.IsNull(); wx.Next())
+          for (TopExp_Explorer ex(wx.Current(), TopAbs_EDGE); ex.More(); ex.Next())
+            if (ex.Current().IsSame(seam)) seamWire = TopoDS::Wire(wx.Current());
+        std::vector<TopoDS_Edge> ordered;
+        for (BRepTools_WireExplorer wx(seamWire, face); wx.More(); wx.Next()) ordered.push_back(wx.Current());
+        std::vector<size_t> uses;
+        for (size_t i = 0; i < ordered.size(); ++i)
+          if (ordered[i].IsSame(seam)) uses.push_back(i);
+        if (uses.size() != 2) continue;
+        std::vector<TopoDS_Edge> runs[2];
+        for (size_t i = uses[0] + 1; i < uses[1]; ++i) runs[0].push_back(ordered[i]);
+        for (size_t i = uses[1] + 1; i < uses[0] + ordered.size(); ++i) runs[1].push_back(ordered[i % ordered.size()]);
+        if (runs[0].empty() || runs[1].empty()) continue;
+        const auto touches = [](const std::vector<TopoDS_Edge>& run, const TopoDS_Vertex& v) {
+          for (const TopoDS_Edge& e : run)
+            for (TopExp_Explorer vx(e, TopAbs_VERTEX); vx.More(); vx.Next())
+              if (vx.Current().IsSame(v)) return true;
+          return false;
+        };
+        const int far = touches(runs[0], v2) && !touches(runs[0], v1)   ? 0
+                        : touches(runs[1], v2) && !touches(runs[1], v1) ? 1
+                                                                        : -1;
+        if (far < 0) continue;
+        // Where a run crosses the isoline through v1 (sampled, then bisected);
+        // edge index -1 when an edge has no pcurve on the face.
+        struct Crossing {
+          int edge;
+          double t;
+        };
+        const auto crossings = [&](const std::vector<TopoDS_Edge>& run) {
+          std::vector<Crossing> found;
+          for (size_t i = 0; i < run.size(); ++i) {
+            double a = 0, b = 0;
+            const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(run[i], face, a, b);
+            if (pc.IsNull()) return std::vector<Crossing>{{-1, 0}};
+            const auto offset = [&](double t) { return std::remainder(along(pc->Value(t)) - target, period); };
+            const int samples = 64;
+            double ta = a, ha = offset(a);
+            for (int s = 1; s <= samples; ++s) {
+              const double tb = a + (b - a) * s / samples, hb = offset(tb);
+              if ((ha < 0) != (hb < 0) && std::fabs(ha - hb) < 0.5 * period) {
+                double x = ta, y = tb, hx = ha;
+                for (int it = 0; it < 80; ++it) {
+                  const double m = 0.5 * (x + y), hm = offset(m);
+                  if ((hm < 0) == (hx < 0)) {
+                    x = m;
+                    hx = hm;
+                  } else {
+                    y = m;
+                  }
+                }
+                found.push_back({static_cast<int>(i), 0.5 * (x + y)});
+              }
+              ta = tb;
+              ha = hb;
+            }
+          }
+          return found;
+        };
+        // The far run crosses once, inside an edge; the near run only at v1.
+        const std::vector<Crossing> farCrossings = crossings(runs[far]);
+        if (farCrossings.size() != 1 || farCrossings[0].edge < 0) continue;
+        bool nearCrosses = false;
+        for (const Crossing& c : crossings(runs[1 - far])) {
+          if (c.edge < 0) {
+            nearCrosses = true;
+            break;
+          }
+          double a = 0, b = 0;
+          BRep_Tool::Range(runs[1 - far][c.edge], a, b);
+          if (std::fabs(c.t - a) > 1e-7 * (b - a) && std::fabs(c.t - b) > 1e-7 * (b - a)) nearCrosses = true;
+        }
+        if (nearCrosses) continue;
+        const size_t split = static_cast<size_t>(farCrossings[0].edge);
+        const TopoDS_Edge crossed = runs[far][split];
+        const TopoDS_Edge crossedF = TopoDS::Edge(crossed.Oriented(TopAbs_FORWARD));
+        if (!BRep_Tool::SameParameter(crossedF) || !BRep_Tool::SameRange(crossedF)) continue;
+        double a = 0, b = 0;
+        const Handle(Geom_Curve) curve = BRep_Tool::Curve(crossedF, a, b);
+        double pa = 0, pb = 0;
+        const Handle(Geom2d_Curve) crossedPc = BRep_Tool::CurveOnSurface(crossedF, face, pa, pb);
+        if (curve.IsNull() || crossedPc.IsNull()) continue;
+        const double t = farCrossings[0].t;
+        if (t - a < 1e-9 * (b - a) || b - t < 1e-9 * (b - a)) continue;
+        // The new vertex, and the crossed edge's two pieces (each keeps every pcurve).
+        const gp_Pnt at = curve->Value(t);
+        const gp_Pnt2d atUV = crossedPc->Value(t);
+        const gp_Pnt onSurface = surface->Value(atUV.X(), atUV.Y()).Transformed(location.Transformation());
+        TopoDS_Vertex vn;
+        builder.MakeVertex(vn, at, std::max(BRep_Tool::Tolerance(crossedF), 1.001 * at.Distance(onSurface)));
+        TopoDS_Vertex e1, e2;
+        TopExp::Vertices(crossedF, e1, e2);
+        TopoDS_Edge piece1 = TopoDS::Edge(crossedF.EmptyCopied()), piece2 = TopoDS::Edge(crossedF.EmptyCopied());
+        builder.Add(piece1, e1.Oriented(TopAbs_FORWARD));
+        builder.Add(piece1, vn.Oriented(TopAbs_REVERSED));
+        builder.Range(piece1, a, t);
+        builder.Add(piece2, vn.Oriented(TopAbs_FORWARD));
+        builder.Add(piece2, e2.Oriented(TopAbs_REVERSED));
+        builder.Range(piece2, t, b);
+        // The rebuilt face, on a copy of the surface so no edge's old pcurve changes.
+        const Handle(Geom_Surface) copy = Handle(Geom_Surface)::DownCast(surface->Copy());
+        TopoDS_Face rebuilt;
+        builder.MakeFace(rebuilt, copy, location, BRep_Tool::Tolerance(face));
+        // An edge's pcurve on the face, moved by whole periods into [lo, hi), onto the copy.
+        const auto moveOnto = [&](const TopoDS_Edge& edge, const TopoDS_Edge& from) {
+          const TopoDS_Edge forward = TopoDS::Edge(from.Oriented(TopAbs_FORWARD));
+          double ea = 0, eb = 0, fa = 0, fb = 0;
+          BRep_Tool::Range(edge, ea, eb);
+          const Handle(Geom2d_Curve) pc =
+              Handle(Geom2d_Curve)::DownCast(BRep_Tool::CurveOnSurface(forward, face, fa, fb)->Copy());
+          const double k = std::floor((along(pc->Value(0.5 * (ea + eb))) - lo) / period);
+          if (k != 0) pc->Translate(d == 0 ? gp_Vec2d(-k * period, 0) : gp_Vec2d(0, -k * period));
+          builder.UpdateEdge(TopoDS::Edge(edge.Oriented(TopAbs_FORWARD)), pc, rebuilt, BRep_Tool::Tolerance(forward));
+          builder.Range(TopoDS::Edge(edge.Oriented(TopAbs_FORWARD)), ea, eb);
+        };
+        moveOnto(piece1, crossedF);
+        moveOnto(piece2, crossedF);
+        // The new seam: the isoline from v1 to vn, its forward use on the side
+        // that keeps the face's material on its left.
+        const double vStart = acrossOf(c1->Value(t1)), vEnd = acrossOf(atUV);
+        const bool rising = vEnd > vStart;
+        TopoDS_Edge newSeam;
+        builder.MakeEdge(newSeam, d == 0 ? copy->UIso(target) : copy->VIso(target), location, BRep_Tool::Tolerance(v1));
+        builder.Add(newSeam, (rising ? v1 : vn).Oriented(TopAbs_FORWARD));
+        builder.Add(newSeam, (rising ? vn : v1).Oriented(TopAbs_REVERSED));
+        const gp_Dir2d up = d == 0 ? gp_Dir2d(0, 1) : gp_Dir2d(1, 0);
+        const Handle(Geom2d_Line) atLo = new Geom2d_Line(d == 0 ? gp_Pnt2d(lo, 0) : gp_Pnt2d(0, lo), up);
+        const Handle(Geom2d_Line) atHi = new Geom2d_Line(d == 0 ? gp_Pnt2d(hi, 0) : gp_Pnt2d(0, hi), up);
+        if (d == 0) builder.UpdateEdge(newSeam, atHi, atLo, rebuilt, BRep_Tool::Tolerance(v1));
+        else builder.UpdateEdge(newSeam, atLo, atHi, rebuilt, BRep_Tool::Tolerance(v1));
+        builder.Range(newSeam, std::min(vStart, vEnd), std::max(vStart, vEnd));
+        for (TopExp_Explorer wx(face, TopAbs_WIRE); wx.More(); wx.Next()) {
+          TopoDS_Wire wire;
+          builder.MakeWire(wire);
+          if (!wx.Current().IsSame(seamWire)) {
+            // Another wire (a hole): the same edges, their pcurves onto the copy.
+            for (TopoDS_Iterator ex(wx.Current()); ex.More(); ex.Next()) {
+              moveOnto(TopoDS::Edge(ex.Value()), TopoDS::Edge(ex.Value()));
+              builder.Add(wire, ex.Value());
+            }
+            wire.Orientation(wx.Current().Orientation());
+            builder.Add(rebuilt, wire);
+            continue;
+          }
+          // From v1: the seam up, the far run from vn round to vn, the seam
+          // down, the near run from v1 round to v1.
+          const std::vector<TopoDS_Edge>& run = runs[far];
+          const bool forward = crossed.Orientation() == TopAbs_FORWARD;
+          std::vector<TopoDS_Edge> farRun;
+          farRun.push_back(forward ? piece2 : TopoDS::Edge(piece1.Reversed()));
+          for (size_t i = split + 1; i < run.size(); ++i) farRun.push_back(run[i]);
+          for (size_t i = 0; i < split; ++i) farRun.push_back(run[i]);
+          farRun.push_back(forward ? piece1 : TopoDS::Edge(piece2.Reversed()));
+          builder.Add(wire, newSeam.Oriented(rising ? TopAbs_FORWARD : TopAbs_REVERSED));
+          for (const TopoDS_Edge& e : farRun) {
+            if (!e.IsSame(piece1) && !e.IsSame(piece2)) moveOnto(e, e);
+            builder.Add(wire, e);
+          }
+          builder.Add(wire, newSeam.Oriented(rising ? TopAbs_REVERSED : TopAbs_FORWARD));
+          for (const TopoDS_Edge& e : runs[1 - far]) {
+            moveOnto(e, e);
+            builder.Add(wire, e);
+          }
+          wire.Closed(true);
+          builder.Add(rebuilt, wire);
+        }
+        TopoDS_Wire pieces;
+        builder.MakeWire(pieces);
+        builder.Add(pieces, piece1);
+        builder.Add(pieces, piece2);
+        context->Replace(crossedF, pieces);
+        context->Replace(face, rebuilt);
+        ++straightened;
+      } catch (const Standard_Failure&) {
+        continue;
+      }
+    }
+    if (straightened == 0) return solid;
+    try {
+      const TopoDS_Shape result = context->Apply(solid);
+      if (result.IsNull() || result.ShapeType() != solid.ShapeType() || !BRepCheck_Analyzer(result).IsValid())
+        return solid;
+      const double before = volumeOf(solid), after = volumeOf(result);
+      if (!(std::fabs(after - before) <= 1e-6 * std::max(1.0, std::fabs(before)))) return solid;
+      history = context->History();
+      return result;
+    } catch (const Standard_Failure&) {
+      return solid;
+    }
   }
 
   /**
@@ -9446,7 +9843,8 @@ private:
     // The cells split surfaces where other faces crossed them: one face per surface again.
     ShapeUpgrade_UnifySameDomain unify(solid, true, true, false);
     unify.Build();
-    TopoDS_Shape result = unify.Shape();
+    Handle(BRepTools_History) reseamed;
+    TopoDS_Shape result = straightenSeams(unify.Shape(), reseamed);
     stage("merged and unified");
     check();
     if (!BRepCheck_Analyzer(result).IsValid()) {
@@ -10234,6 +10632,13 @@ private:
         unify.Build();
         unified.push_back(unify.Shape());
         histories.push_back(unify.History());
+        // Unify can keep a slanted seam, which Offset Face can't offset (ADR-0097, 2026-10-25).
+        Handle(BRepTools_History) reseamed;
+        unified.back() = straightenSeams(unified.back(), reseamed);
+        if (!reseamed.IsNull()) {
+          if (histories.back().IsNull()) histories.back() = reseamed;
+          else histories.back()->Merge(reseamed);
+        }
         check();
       }
       stage("unified");
@@ -12212,11 +12617,14 @@ private:
    * offset corrupts the wasm heap on such bodies (a memory access trap at
    * some distances, an empty result at others), so they are refused.
    * Fills `chain` (per face: the lowest face index of its chain) and returns
-   * whether some chain has a sharp edge inside it.
+   * whether some chain has a sharp edge inside it. With `curvedCrease` given,
+   * sets it to whether such a crease is between two non-planar faces (the
+   * fillet-with-no-blend case); a converted body's faceted chain is
+   * plane/plane or plane/a fitted cylinder, not that.
    */
   static bool smoothChains(const TopoDS_Shape& body,
                            const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
-                           std::vector<int>& chain) {
+                           std::vector<int>& chain, bool* curvedCrease = nullptr) {
     EdgeFaceMap edgeFaces;
     TopExp::MapShapesAndUniqueAncestors(body, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
     const int count = faces.Extent();
@@ -12252,9 +12660,19 @@ private:
     }
     for (int i = 0; i < count; ++i) chain[static_cast<size_t>(i)] = root(i);
     bool sharpInside = false;
+    bool curvedInside = false;
     for (const auto& crease : creases) {
-      if (chain[static_cast<size_t>(crease.first)] == chain[static_cast<size_t>(crease.second)]) sharpInside = true;
+      if (chain[static_cast<size_t>(crease.first)] != chain[static_cast<size_t>(crease.second)]) continue;
+      sharpInside = true;
+      if (curvedCrease != nullptr) {
+        const GeomAbs_SurfaceType a =
+            BRepAdaptor_Surface(TopoDS::Face(faces(crease.first + 1)), false).GetType();
+        const GeomAbs_SurfaceType b =
+            BRepAdaptor_Surface(TopoDS::Face(faces(crease.second + 1)), false).GetType();
+        if (a != GeomAbs_Plane && b != GeomAbs_Plane) curvedInside = true;
+      }
     }
+    if (curvedCrease != nullptr) *curvedCrease = curvedInside;
     return sharpInside;
   }
 

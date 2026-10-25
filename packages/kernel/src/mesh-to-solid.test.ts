@@ -370,6 +370,11 @@ function radii(shape: ShapeHandle): number[] {
     .map((g) => g.radius as number);
 }
 
+/** The number of shells in `shape`: OCCT's STEP writer makes one CLOSED_SHELL per shell. */
+function shells(shape: ShapeHandle): number {
+  return kernel.writeStep([{ shape, name: 'Body' }]).match(/CLOSED_SHELL/g)?.length ?? 0;
+}
+
 const sorted = (list: string[]) => [...list].sort();
 
 /** Every face's surface. */
@@ -1163,6 +1168,44 @@ describe('Mesh to Solid, the hybrid rebuild (ADR-0097 slice D1)', { timeout: 300
     }
   });
 
+  it('makes the boss with a freeform top one solid and one shell, which Offset Face accepts', () => {
+    // `bossWithBump`'s own boolean leaves the body plus 46 flat zero-volume
+    // components at the boss's base (the box top and the cylinder base are
+    // coplanar). Each is a closed mesh component, so one solid per component
+    // would put 46 degenerate shells beside the body: Offset Face then refuses
+    // it ("the solid has an inner void"). The conversion drops them.
+    const part = bossWithBump();
+    const { shape, report } = prismatic(meshOf(part));
+    try {
+      expect(report.rebuild).toBe('hybrid');
+      const solids = kernel.solids(shape);
+      try {
+        expect(solids).toHaveLength(1);
+      } finally {
+        kernel.release(...solids);
+      }
+      expect(shells(shape)).toBe(1);
+      // With no inner void, Offset Face moves the box's bottom by 1 mm.
+      const bottom = kernel
+        .describe(shape)
+        .faces.map((surface, index) => ({ surface, index }))
+        .filter(({ surface }) => surface.type === 'plane')
+        .sort((a, b) => (a.surface.centroid[2] as number) - (b.surface.centroid[2] as number))[0];
+      expect(bottom).toBeDefined();
+      const before = kernel.properties(shape).volume;
+      const moved = kernel.offsetFaces(shape, [bottom?.index ?? -1], 1);
+      try {
+        expect(kernel.isValid(moved.shape)).toBe(true);
+        // The box's 30 x 30 bottom rises 1 mm: 900 mm3 more (within 0.5 %).
+        expect(Math.abs(kernel.properties(moved.shape).volume - before - 900)).toBeLessThan(4.5);
+      } finally {
+        kernel.release(moved.shape);
+      }
+    } finally {
+      kernel.release(shape);
+    }
+  });
+
   it('keeps a closed cavity hollow: its shell goes inside the solid around it', () => {
     const part = bossWithBump();
     const cavity = manifold.Manifold.cube([10, 10, 4]).translate([10, 10, 3]);
@@ -1176,6 +1219,73 @@ describe('Mesh to Solid, the hybrid rebuild (ADR-0097 slice D1)', { timeout: 300
       expect(kernel.isValid(shape)).toBe(true);
       // The cavity's 400 mm3 stay out (filled, the volume would be 800 off).
       expect(Math.abs(kernel.properties(shape).volume / volume - 1)).toBeLessThan(0.01);
+    } finally {
+      kernel.release(shape);
+    }
+  });
+
+  it('re-seams a merged band whose split edge was a diagonal, so Offset Face works (2026-10-25)', () => {
+    // A 260-step staircase (521 planes: over the exact stage's 500-surface
+    // cap, so the hybrid rebuilds it, no facets) under a disc r 8 h 1.2 of
+    // 181 segments whose top ring is turned half a segment: no wall edge is
+    // vertical, so the split edge unify keeps as the merged wall's seam is a
+    // diagonal, π/181 off an isoline. OCCT's offset builds nothing on a body
+    // with such a seam; Mesh to Solid moves it onto an isoline.
+    const steps = 260;
+    const w = 0.15;
+    const outline: [number, number][] = [
+      [0, 0],
+      [steps * w, 0],
+    ];
+    for (let i = 0; i < steps; i++)
+      outline.push([(steps - i) * w, (i + 1) * w], [(steps - i - 1) * w, (i + 1) * w]);
+    const section = new manifold.CrossSection([outline]);
+    const stairs = section.extrude(4);
+    section.delete();
+    const n = 181;
+    const r = 8;
+    const centre = (steps * w * (2 - Math.SQRT2)) / 2; // the staircase's incircle
+    const nodes: number[] = [];
+    for (let ring = 0; ring < 2; ring++) {
+      for (let i = 0; i < n; i++) {
+        const a = (2 * Math.PI * (i + ring / 2)) / n;
+        nodes.push(centre + r * Math.cos(a), centre + r * Math.sin(a), 4 + 1.2 * ring);
+      }
+    }
+    nodes.push(centre, centre, 4, centre, centre, 5.2);
+    const triangles: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      triangles.push(i, j, n + i, j, n + j, n + i, 2 * n, j, i, 2 * n + 1, n + i, n + j);
+    }
+    const disc = new manifold.Manifold(
+      new manifold.Mesh({
+        numProp: 3,
+        vertProperties: Float32Array.from(nodes),
+        triVerts: Uint32Array.from(triangles),
+      }),
+    );
+    const part = stairs.add(disc);
+    stairs.delete();
+    disc.delete();
+    const { shape, report } = prismatic(meshOf(part), -1);
+    try {
+      expect(report).toMatchObject({ rebuild: 'hybrid', cylinders: 1, facets: 0 });
+      expect(kernel.isValid(shape)).toBe(true);
+      const faces = kernel.describe(shape).faces;
+      const top = faces.findIndex(
+        (f) => f.type === 'plane' && Math.abs((f.centroid[2] as number) - 5.2) < 1e-3,
+      );
+      expect(top).toBeGreaterThanOrEqual(0);
+      const before = kernel.properties(shape).volume;
+      const moved = kernel.offsetFaces(shape, [top], 1);
+      try {
+        expect(kernel.isValid(moved.shape)).toBe(true);
+        // The disc's top rises 1 mm: π r² more.
+        expect(kernel.properties(moved.shape).volume - before).toBeCloseTo(Math.PI * r * r, 0);
+      } finally {
+        kernel.release(moved.shape);
+      }
     } finally {
       kernel.release(shape);
     }

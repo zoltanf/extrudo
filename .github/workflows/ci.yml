@@ -190,6 +190,9 @@ jobs:
 
       - run: pnpm --filter @extrudo/web build
 
+      - name: Download size within budget (ADR-0100 §5)
+        run: node scripts/measure-startup.mjs --no-browser --budget
+
       - run: docker build -t extrudo:ci .
 
       - name: Serve the image and check its responses

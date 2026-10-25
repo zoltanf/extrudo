@@ -440,6 +440,23 @@ rounds…"; the slot's chain stays whole); app `offset-face.test.ts` ("keep
 rounds' radius"); e2e `e2e/press-pull.spec.ts` ("a wall of a rounded block
 keeps its rounds' radius; turned off…").
 
+## Amendment 2026-10-25: a partial cylinder meeting a plane (open)
+
+Measured while diagnosing a converted gear (ADR-0097's 2026-10-25 amendment),
+on the app's kernel with native bodies: Offset Face refuses **every** face of
+a 30 × 30 × 6.6 box with a D-shaped through bore (r 8.6, the flat at
+x = 6.3015), the top of a D pin (a cylinder r 8.6 cut by a plane at x = 6.3015,
+0 or −4) and the top of a box with a convex half-cylinder bump r 5, at 2.6,
+0.5 and −0.5 mm. A round bore, a square bore, a concave half-cylinder notch and
+rounded vertical edges (tangent faces) work. One plain `BRepOffset_MakeOffset`
+build returns an empty skin, OCCT's intersection flag on or off; the seam
+retry doesn't apply (the partial cylinder has no seam). The offset path is
+unchanged here; this is an open item for Offset Face on every body: a partial
+cylinder (or another curved face) meeting a plane at a sharp edge. The
+flat-face fallback below (same day) covers a picked plane whose neighbours
+are planes square to it or cylinders parallel to its normal, which includes
+these bodies' flat faces.
+
 ## Amendment 2026-10-25: flat faces fall back to extrude and fuse
 
 A body imported from STEP (149 faces, a valid solid, 53 735 mm³) can't be
@@ -497,3 +514,16 @@ Local check (the owner's STEP, not committed): `offsetFaces` face 76 at +10,
 −1 and −1.5 gives 115 735, 47 535 and 44 435 mm³; three other planar faces at
 +0.5 build too. Tests: `offset-face.test.ts`.
 
+## Amendment 2026-10-25b: the flat-face fallback before the smooth-chain refusal
+
+A converted body's faceted regions (ADR-0097's 2026-10-25b amendment) form a
+smooth chain with creases inside it, so `smoothChains` refused Offset Face
+(status 6) on any of its faces. That guard protects `BRepOffset_MakeOffset`
+(a heap trap where two fillets meet at a corner), which the prism fallback
+never calls. **Rule:** on a sharp chain, `offsetFaces` tries `buildPrismOffset`
+(its gate and result checks unchanged) when no crease inside the chain is
+between two non-planar faces (`smoothChains`' `curvedCrease`); otherwise, or
+when the fallback fails, the status-6 refusal stays. OCCT's offset is never
+reached on a sharp chain. Test: `mesh-to-solid.test.ts`, the boss with a
+freeform top; the rounded-corner refusals in `kernel.test.ts` and
+`offset-face.test.ts` are unchanged.

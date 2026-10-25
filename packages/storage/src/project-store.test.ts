@@ -11,10 +11,9 @@ import {
 } from '@extrudo/core';
 import { strToU8, unzipSync, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { writeArchive } from './archive';
 import { memoryFiles } from './files';
 import { memoryIndex } from './idb';
-import { assertAttachmentsFit, createProjectStore, localLock } from './project-store';
+import { createProjectStore, localLock } from './project-store';
 import { sha256Hex } from './sha256';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES, ProjectNotFoundError } from './types';
 
@@ -503,51 +502,6 @@ describe('ProjectStore attachments (P4-03b, ADR-0061 §2)', () => {
       'they may be at most 100 MB',
     );
     expect(MAX_ATTACHMENTS_BYTES).toBe(100 * 1024 * 1024);
-  });
-
-  it('refuses an import whose files go over 100 MB, before storing any (#128)', async () => {
-    // Four files at the one-file limit make exactly 100 MB; a small font tips it.
-    const heavy = [0, 1, 2, 3].map((seed) => new Uint8Array(MAX_ATTACHMENT_BYTES).fill(seed));
-    const all = [...heavy, someBytes(5)];
-    const d = all.reduce((acc, bytes, i) => withFont(acc, `f${i}`, bytes), doc('Shelf'));
-    const file = new Blob([
-      writeArchive(
-        d,
-        undefined,
-        [],
-        new Map(all.map((b) => [hash(b), b])),
-      ) as Uint8Array<ArrayBuffer>,
-    ]);
-    const { store, files } = setup();
-    await expect(store.importFile(file)).rejects.toThrow('they may be at most 100 MB');
-    expect(files.paths()).toEqual([]);
-
-    // With the ID taken, the import is a copy: refused the same way.
-    await store.save({ ...d, attachments: {} });
-    const stored = files.paths();
-    await expect(store.importFile(file)).rejects.toThrow('they may be at most 100 MB');
-    expect(files.paths()).toEqual(stored);
-    expect(await store.list()).toHaveLength(1);
-  }, 60_000);
-
-  it('counts only the files the document names toward its limit', () => {
-    const big = new Uint8Array(MAX_ATTACHMENT_BYTES);
-    const named = Array.from({ length: 4 }, (_, i) => `${i}`.repeat(64));
-    const files = new Map([...named, 'f'.repeat(64)].map((h) => [h, big]));
-    const d = named.reduce(
-      (acc, sha256, i) =>
-        applyCommand(acc, addAttachment({ id: aid(`f${i}`), attachment: { ...font(big), sha256 } }))
-          .doc,
-      doc('Bracket'),
-    );
-    // Four named files make exactly 100 MB, which fits; the fifth only a
-    // version names.
-    expect(() => assertAttachmentsFit(d, files)).not.toThrow();
-    const all = applyCommand(
-      d,
-      addAttachment({ id: aid('f4'), attachment: { ...font(big), sha256: 'f'.repeat(64) } }),
-    ).doc;
-    expect(() => assertAttachmentsFit(all, files)).toThrow('they may be at most 100 MB');
   });
 
   it('takes the attachments folder with the project when it is deleted', async () => {

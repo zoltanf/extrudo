@@ -12,7 +12,7 @@
  */
 import type { DocumentStore, ExtrudoDocument } from '@extrudo/core';
 import {
-  assertAttachmentsFit,
+  assertAttachmentBudget,
   type LinkedFile,
   type ProjectStore,
   readArchive,
@@ -191,7 +191,7 @@ export function createLinkedProject(ctx: LinkedContext): LinkedProject {
       const archive = readArchive(bytes);
       // The bytes before the document that names them (ADR-0061 §2), so
       // their total is checked first.
-      assertAttachmentsFit(archive.doc, archive.attachments);
+      assertAttachmentBudget(archive.doc, archive.attachments);
       for (const [sha256, file] of archive.attachments) {
         if (!(await ctx.projects.readAttachment(id, sha256))) {
           await ctx.projects.writeAttachment(id, sha256, file);

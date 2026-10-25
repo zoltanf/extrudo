@@ -252,7 +252,9 @@ describe('Mesh to Solid, prismatic on the fixtures at Auto', { timeout: 120_000 
   // [name, url, the ladder step Auto picks, the outcome; slice D3: the
   // result's edges and circle edges where the hybrid collapsed its chains
   // (before: peg-perego-button 2,189 edges, trashcan-spacer 443,
-  // track-straight 847, no circles)]
+  // track-straight 847, no circles); 2026-10-25: peg-perego-button's one
+  // slanted seam is re-seamed, its rim circle split (1,488 edges, 21
+  // circles before)]
   const autoFixtures: [
     string,
     string,
@@ -272,7 +274,7 @@ describe('Mesh to Solid, prismatic on the fixtures at Auto', { timeout: 120_000 
       'peg-perego-button.stl',
       pegPeregoStl,
       0.02,
-      { faces: 212, rebuild: 'hybrid', edges: 1488, circles: 21 },
+      { faces: 212, rebuild: 'hybrid', edges: 1489, circles: 22 },
     ],
     ['drill-block.stl', drillBlockStl, 0.01, { faces: 388, rebuild: 'hybrid' }],
     [
@@ -483,6 +485,8 @@ describe.skipIf(!meshFile)(
       const mesh0 = readMeshFile(fs as NodeFs, meshFile as string);
       if (!mesh0) throw new Error(`no mesh in ${meshFile}`);
       const mesh = kernel.meshFrom(mesh0);
+      // MESH_OUT=<dir>: the staged mesh as <dir>/staged.mesh, for the spike harness (`.mesh` files).
+      if (env.MESH_OUT) writeStagedMesh(mesh, `${env.MESH_OUT}/staged.mesh`);
       let shape: ShapeHandle | undefined;
       try {
         const t0 = performance.now();
