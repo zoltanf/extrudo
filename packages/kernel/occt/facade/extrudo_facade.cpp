@@ -2955,6 +2955,17 @@ public:
           if (chain.right >= 0 && regions[chain.right].kind >= 0 && regions[chain.right].why.empty()) {
             const MeshChainFit fit = chainCurve(chain, regions, seg, tolerance, cache, coaxial);
             curve = fit.why.empty() ? fit.curve.type : -1;
+            if ((regions[chain.left].kind == 0 && regions[chain.right].kind == 1) ||
+                (regions[chain.left].kind == 1 && regions[chain.right].kind == 0)) {
+              std::string line = "chain kind " + std::to_string(regions[chain.left].kind) + "|" +
+                                 std::to_string(regions[chain.right].kind) + " nodes " + std::to_string(chain.nodes.size()) +
+                                 " edges " + std::to_string(chain.closed ? chain.nodes.size() : chain.nodes.size() - 1) +
+                                 " curve " + std::to_string(fit.curve.type) + " why [" + fit.why + "] off " +
+                                 std::to_string(fit.off) + " n0 (" ;
+              for (int k = 0; k < 3; ++k)
+                line += std::to_string(meshNode(chain.nodes.front()).Coord(k + 1)) + (k < 2 ? "," : ")");
+              tangentProbe() += line + "\n";
+            }
           }
           meshLoops_.insert(meshLoops_.end(), {chain.left, chain.right, chain.closed ? 1 : 0,
                                                static_cast<int32_t>(chain.closed ? chain.nodes.size() : chain.nodes.size() - 1), curve});
