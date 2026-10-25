@@ -3258,6 +3258,22 @@ share the chain's seam nodes, so `|d − r| ≤ T` (the tolerance IntAna snaps
 at) and a miss over `T` makes a fit unfit; 200 rounded-box perturbations
 found no configuration. Details in ADR-0097's 2026-10-25c amendment.
 
+**ADR-0097 amendment (2026-10-25d): whiteboard-tray-v5's slow refusal —
+no safe early point.** At Auto (0.02 mm, 3 unfit regions) the file is refused
+in 42.8 s with the same message; the hybrid builds three times and the
+**`ShapeFix_Shape` heal is 26.6 s of it** (8.2 + 9.8 + 8.5 s; each attempt's
+`BRepCheck` fails, then the heal fails), then `refuse("invalid")` with
+`cellsValid 0 culprits 0` — the single solid (5,382 faces) never validates.
+The brief's early-refusal examples do not apply: the hybrid `facetEstimate()`
+is 527–644 (under the 5,000 cap; the early estimate refusal is above 7,500)
+and the Auto ladder runs 0.01, 0.02 once each (220 ms). No retry is provably
+futile (attempt 0 undoes a collapse, attempt 1 explodes a region — both real
+changes), and cutting the heal outright leaves 16.2 s (still over the 15 s
+bar) while risking files that rely on it. So **no change**: facade reverted to
+the base (hash `occt-e1e731c1fd29`), no test, no changelog. The result is
+weld-sensitive (a 1e-6 weld converts in 10.8 s with 7 exploded regions).
+Measurements in ADR-0097's 2026-10-25d amendment.
+
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
 facade `removeFaces` with `BRepAlgoAPI_Defeaturing`). Rules: **all or nothing** (any

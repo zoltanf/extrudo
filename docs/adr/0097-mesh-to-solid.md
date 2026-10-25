@@ -2214,3 +2214,58 @@ tangent, node off …" line) is printed by the native `spikes/stl-to-solid`
 harness, which needs the OCCT static libraries and is built with Docker on
 the Arch workstation; on the Ubuntu machine the count is not readable
 through the WASM facade, so the tables here report the sweep's edge deltas.
+
+### Amendment, 2026-10-25d: whiteboard-tray-v5's slow refusal measured — no safe early point
+
+The D4 amendment's open item: `own/whiteboard-tray-v5.stl` at Auto is refused
+after ~45 s (now 42.8 s) where the hybrid alone runs to its refusal. Slice 2
+measured it through the facade's `stage(...)` timings (a temporary
+`takeStageTimes()` accessor, removed again) and found **no safe point to
+refuse earlier**: the cost is the `ShapeFix_Shape` heal, which is
+load-bearing, and cutting it still leaves ~16 s, over the 15 s bar.
+
+**Where the 42.8 s goes.** Auto picks 0.02 mm (the ladder's second step:
+0.01 gives 58.9 % unfit, 0.02 gives 0.1 %; the whole ladder plus segmentation
+is 220 ms). The hybrid then builds three times (slice D1's three, plus the
+undo path): 0.02 mm, 3 unfit regions, one solid. Per attempt, in ms
+(`TIMES`-style `stage()` names):
+
+| attempt | chain curves | faces | solid | unified | **healed** | validity/next | estimate | heal valid? |
+|---|---|---|---|---|---|---|---|---|
+| 0 (undo 1 collapse) | 20 | 668 | 1,714 | 477 | **8,223** | 2,101 | 527 | no |
+| 1 (explode 1 region) | 21 | 301 | 1,789 | 503 | **9,845** | 2,159 | 622 | no |
+| 2 (refuse) | 21 | 273 | 1,858 | 520 | **8,507** | – | 644 | no |
+
+The last line: `cellsValid 0 culprits 0 solids 1 faces 5382` — the single
+solid fails `BRepCheck` after all three builds and there is no region left to
+explode, so `refuse("invalid")` (the user still sees the same message: `Mesh
+to Solid couldn't rebuild this mesh as an exact solid within 0.02 mm. Use
+Faceted, or simplify the mesh in your slicer.`). The **heal is 26.6 s of the
+42.8 s (62 %)**: `ShapeFix_Shape` on the assembled result, run whenever
+`BRepCheck` fails, which for this mesh is every attempt. `solid`
+(`MakeSolid` + `ShapeFix_Solid` + volume) is 5.4 s, `unified`
+(`UnifySameDomain` + `straightenSeams`) 1.5 s, `faces` 1.2 s, the validity
+passes (`BRepCheck` + the culprit map) 4.3 s.
+
+**Why no early point.** The brief's two examples do not apply: the hybrid's
+`facetEstimate()` is **527 / 622 / 644**, far under the 5,000 cap (the early
+estimate refusal fires above 7,500), and the Auto ladder runs each rung once
+(0.01, 0.02) and stops — no repeated rung. Nor is any retry provably futile:
+attempt 0 undoes a collapsed chain and attempt 1 explodes a region, both real
+changes (the D1–D3 retries exist for other meshes and would be needed for
+them), and attempt 2 only learns `culprits 0` by building again. Cutting the
+`ShapeFix_Shape` heal outright — not provably safe, since files where unify's
+moved edges only need their tolerances raised rely on it — leaves
+42.8 − 26.6 = **16.2 s**, still over the 15 s acceptance, and skipping a
+rebuild on top of that is not safe. So slice 2 records the measurement and
+makes **no change**: the facade is back to the base (input hash
+`occt-e1e731c1fd29`; no new build), no test and no changelog fragment.
+
+**Measured with** (`mesh-to-solid-files.test.ts` and a scratch harness over
+`STL_DIR`, at Auto on the Ubuntu machine): the kernel's `meshToSolid` refuses
+in 42,915 ms with the same message; the raw facade with the kernel's own
+(manifold) welding refuses in 42,278 ms, `meshRefusalDebug` reporting `hybrid:
+invalid | exploded 0`; a 1e-6-rounding weld instead converts in 10.8 s with 7
+exploded regions, so the result is weld-sensitive — one more reason not to
+widen any rule here. The same numbers on the intermediate WASM
+`occt-234b03194dc6` (the `takeStageTimes` builds) and `occt-9c885cd89a84`.

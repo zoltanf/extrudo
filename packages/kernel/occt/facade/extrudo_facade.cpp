@@ -3086,13 +3086,6 @@ public:
     return 1;
   }
 
-  /** Debug (tests only): the last rebuild's stage times, one "name ms" line each. */
-  std::string takeStageTimes() {
-    std::string text;
-    for (const auto& [name, ms] : rebuildTimes_) text += name + " " + std::to_string(static_cast<long>(ms)) + "\n";
-    return text;
-  }
-
   /**
    * Probes one plain `BRepOffset_MakeOffset` build of `face` by `distance`
    * (tests and the spike harness only): geometry_ holds [built, IsDone,
@@ -10178,9 +10171,6 @@ private:
     for (int attempt = 0; attempt < 3 + undoBuilds; ++attempt) {
       {
         const int estimate = facetEstimate();
-        rebuildTimes_.push_back({"attempt " + std::to_string(attempt) + " undoBuilds " + std::to_string(undoBuilds) +
-                                     " estimate " + std::to_string(estimate),
-                                 0});
         if (estimate > HYBRID_FACET_CAP * FACETED_ESTIMATE_MARGIN) return capRefusal(estimate, true);
       }
       BRep_Builder builder;
@@ -10692,7 +10682,6 @@ private:
         stage("healed");
       }
       if (!valid) {
-        rebuildTimes_.push_back({"heal result valid " + std::to_string(valid) + " healed " + std::to_string(healed), 0});
         // The faces that fail, back to their regions: those explode, once.
         std::set<int> culprits;
         NCollection_DataMap<TopoDS_Shape, int, TopTools_ShapeMapHasher> regionOfFace;
@@ -10729,10 +10718,6 @@ private:
         }
         bool cellsValid = true;
         for (const TopoDS_Shape& solid : solids) cellsValid = cellsValid && BRepCheck_Analyzer(solid).IsValid();
-        rebuildTimes_.push_back({"invalid: cellsValid " + std::to_string(cellsValid) + " culprits " +
-                                     std::to_string(culprits.size()) + " solids " + std::to_string(solids.size()) +
-                                     " faces " + std::to_string(faces.size()) + " undone " + std::to_string(undone),
-                                 0});
         if (!cellsValid) return refuse("invalid");
         result = assemble(solids);
         undone = true;
