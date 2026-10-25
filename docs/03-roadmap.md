@@ -1117,10 +1117,17 @@ end to end, faster than in established desktop CAD.
   closed. Two causes measured (ADR-0097's 2026-10-25 amendment): unify keeps
   slanted seams on short bands, which `BRepOffset_MakeOffset` can't offset
   (fixed: `straightenSeams` re-seams them on an isoline), and Offset Face
-  refuses any body, native too,
-  with a partial cylinder meeting a plane — the gear's D bore — which is an
-  Offset Face (ADR-0051) change, not done. Shell 1 mm is beyond the teeth's
-  0.4 mm rounds.
+  refuses any body, native too, with a partial cylinder meeting a plane — the
+  gear's D bore — which the flat-face fallback (#130, ADR-0051's 2026-10-25
+  amendment) now moves. Shell 1 mm is beyond the teeth's 0.4 mm rounds.
+  *2026-10-25b:* the conversion made **one solid per connected mesh
+  component**, so a mesh whose own boolean left flat zero-volume flaps (a boss
+  standing coplanar on a face, `bossWithBump`) became a compound of 46
+  degenerate two-face shells and Offset Face refused the body ("the solid has
+  an inner void"). `dropDegenerateComponents` (facade) drops those components
+  at the mesh, and the flat-face prism fallback is tried before the
+  smooth-chain refusal, so a converted body's planes move (ADR-0097's
+  2026-10-25b amendment).
 
 ## Phase 5 — Programmatic design (→ v0.6)
 

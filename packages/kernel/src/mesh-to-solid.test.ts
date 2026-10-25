@@ -370,6 +370,11 @@ function radii(shape: ShapeHandle): number[] {
     .map((g) => g.radius as number);
 }
 
+/** The number of shells in `shape`: OCCT's STEP writer makes one CLOSED_SHELL per shell. */
+function shells(shape: ShapeHandle): number {
+  return kernel.writeStep([{ shape, name: 'Body' }]).match(/CLOSED_SHELL/g)?.length ?? 0;
+}
+
 const sorted = (list: string[]) => [...list].sort();
 
 /** Every face's surface. */
@@ -1158,6 +1163,44 @@ describe('Mesh to Solid, the hybrid rebuild (ADR-0097 slice D1)', { timeout: 300
       expect(radii(shape).filter((r) => Math.abs(r - 5) < 0.02)).toHaveLength(1);
       expect(kernel.isValid(shape)).toBe(true);
       expect(Math.abs(kernel.properties(shape).volume / volume - 1)).toBeLessThan(0.01);
+    } finally {
+      kernel.release(shape);
+    }
+  });
+
+  it('makes the boss with a freeform top one solid and one shell, which Offset Face accepts', () => {
+    // `bossWithBump`'s own boolean leaves the body plus 46 flat zero-volume
+    // components at the boss's base (the box top and the cylinder base are
+    // coplanar). Each is a closed mesh component, so one solid per component
+    // would put 46 degenerate shells beside the body: Offset Face then refuses
+    // it ("the solid has an inner void"). The conversion drops them.
+    const part = bossWithBump();
+    const { shape, report } = prismatic(meshOf(part));
+    try {
+      expect(report.rebuild).toBe('hybrid');
+      const solids = kernel.solids(shape);
+      try {
+        expect(solids).toHaveLength(1);
+      } finally {
+        kernel.release(...solids);
+      }
+      expect(shells(shape)).toBe(1);
+      // With no inner void, Offset Face moves the box's bottom by 1 mm.
+      const bottom = kernel
+        .describe(shape)
+        .faces.map((surface, index) => ({ surface, index }))
+        .filter(({ surface }) => surface.type === 'plane')
+        .sort((a, b) => (a.surface.centroid[2] as number) - (b.surface.centroid[2] as number))[0];
+      expect(bottom).toBeDefined();
+      const before = kernel.properties(shape).volume;
+      const moved = kernel.offsetFaces(shape, [bottom?.index ?? -1], 1);
+      try {
+        expect(kernel.isValid(moved.shape)).toBe(true);
+        // The box's 30 x 30 bottom rises 1 mm: 900 mm3 more (within 0.5 %).
+        expect(Math.abs(kernel.properties(moved.shape).volume - before - 900)).toBeLessThan(4.5);
+      } finally {
+        kernel.release(moved.shape);
+      }
     } finally {
       kernel.release(shape);
     }

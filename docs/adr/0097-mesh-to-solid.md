@@ -2060,3 +2060,91 @@ unsplit edge (an invalid shell).
 `bossWithBump` mesh is a compound of 47 solids: the body (72 faces of its
 first shell) and 46 two-face shells of zero volume; Offset Face refuses it
 ("the solid has an inner void"). Not followed up here.
+
+### Amendment, 2026-10-25b: the mesh's own degenerate components, and a flat face on a faceted body
+
+Measured through the raw facade and `Kernel` on the app's WASM (Vitest), the
+fixture `mesh-to-solid.test.ts`'s `bossWithBump`: a 30 × 30 × 10 box with a
+48-segment cylinder r 5, h 6 standing at z = 10 (its base **coplanar** with the
+box top), refined (6) and its top warped into a 2 mm tilted bump.
+
+**Cause, in the mesh, not in the rebuild.** `manifold-3d` reports the fixture's
+mesh as **47 connected components** (`part.decompose()`; status NoError): the
+body, 4,934 triangles, and **46 components of exactly 10 triangles** each,
+**flat at z = 10.000**, tiny (fractions of a millimetre), their nodes 4.5–4.95 mm
+from the boss axis, i.e. just inside the boss's r 5 base circle. The coplanar
+union of the box top and the cylinder base leaves thin zero-volume closed flaps;
+manifold calls each a valid manifold piece. Their signed volumes are 0 to
+5e-16 mm³. The hybrid (and faceted) build **one solid per connected component**
+(`rebuildHybrid`, `facets` then `byShell`; `facetedFromMesh`'s face components),
+so the result is a compound of **47 solids**: the body (1,608 faces after unify,
+volume 9,548.60 mm³, rebuild hybrid, 0.01 mm) and 46 solids of **2 faces** each
+(10 coplanar facets unify to their front and back) and **zero volume**.
+`kernel.isValid` is true and the volume is within ±1 %, so no existing test
+noticed; `offsetFaces` sees 47 shells and refuses the body ("the solid has an
+inner void", status 4).
+
+**Fix 1, at the mesh (facade).** `dropDegenerateComponents()` runs at the top of
+`meshToSolid`: it groups the staged triangles by shared edge (as
+`segmentMesh` does), sums each component's signed volume, and removes every
+**closed** component (every edge shared by exactly two of its triangles) with
+**|V| ≤ 1e-6 × max(1, |mesh volume|)**, compacting the node and triangle
+buffers. So neither the faceted nor the prismatic path ever builds a
+solid, a shell or a facet from one, and the hybrid's node-vs-solid check never
+sees a node of a component that is gone. A component with volume (a part) and
+one with negative volume (a cavity) both stay, and so does an open component
+(a boundary or a non-manifold edge), which is the path's to refuse, not this to
+drop. The conversion of `bossWithBump` becomes **1 solid, 1 shell** (1,608
+faces, 1,596 facets, 4 cylinders, 8 planes, unfit 1 region / 1,628 triangles),
+the same body as before but alone.
+
+**Fix 2, in Offset Face, because the inner-void refusal hid the next one.** With
+the body alone, `offsetFaces` on its bottom face (the box's z = 0 plane) then
+fails on the **smooth-chain guard** (status 6, "rounded edges meet at a sharp
+corner") rather than the inner void: the bump's 1,596 facets and the 4 small
+cylinders the hybrid fits to its flanks are, in OCCT's 4° tangent test, **one
+smooth chain of 115 faces with creases inside it** (facets ~14° apart — dot
+0.969–0.973 — reached through < 4° steps). That guard exists because
+`BRepOffset_MakeOffset` traps the wasm heap on a body where **two fillets meet
+at a corner**. The **flat-face prism fallback** (`buildPrismOffset`) never calls
+OCCT's offset, so `offsetFaces` now tries it, before keeping the refusal, when
+the chain's creases are **not between two non-planar faces** (a converted body's
+chain is plane/plane and plane/a fitted cylinder: `smoothChains` reports that in
+a `curvedCrease` out-parameter). On `bossWithBump` the gate passes (the bottom
+face is a plane; its neighbours are the box's four side planes, square to it),
+and the box's bottom rises 1 mm for +900 mm³. A fillet-corner body (two
+cylinders at a crease: `kernel.test.ts`'s and `offset-face.test.ts`'s rounded
+corners), a non-flat pick, or a gate the fallback can't pass all keep the
+status-6 refusal unchanged, and **OCCT's offset is never reached for any of
+them**, so the guard's protection is intact.
+
+**Rejected.**
+- *Dropping the degenerate **shells** after `BRepBuilderAPI_MakeSolid`, not the
+  mesh triangles.* Their triangles stay staged, so the hybrid's node check
+  (`trianglesOf`, `for n in 0..nodeCount`) validates the flaps' nodes against a
+  `result` that no longer has their faces: they are off the solid by 0.05–0.5 mm
+  (inside the boss footprint, on no face), their regions explode twice and the
+  build refuses ("a node off its face"). The drop must be at the mesh, before
+  the segmentation.
+- *Keeping the flaps but merging them into the main shell* (one solid for all
+  components): `MakeSolid` needs a connected shell, and `UnifySameDomain` does
+  not absorb coincident internal faces that share no edge.
+- *A zero-volume component as a cavity*: a cavity is a **negative** volume below
+  the threshold (already the rule); a flat flap is not.
+- *Removing the smooth-chain guard*: it protects OCCT's offset from a heap trap
+  for every body, not only a converted one; the safe fallback is tried first
+  instead.
+- *Changing the fixture* so the box top and cylinder base are not coplanar: a
+  slicer's or a mesh tool's union can leave such flaps, so the conversion has to
+  handle them.
+
+The mesh-region **preview** (`meshRegions` / `meshLoopsDebug`) still segments the
+staged mesh as staged — its per-triangle array has to line up with the view
+mesh's triangles — so a degenerate flap still shows as an (unfit) region there;
+only the conversion drops it.
+
+Test (`mesh-to-solid.test.ts`, the hybrid describe): `bossWithBump` converts to
+one solid and one shell (a `shells` helper reads the STEP writer's one
+`CLOSED_SHELL` per shell), and `offsetFaces` on the box's bottom by 1 mm gives
++900 mm³ within 0.5 %. The `mesh-to-solid-files.test.ts` fixtures are unchanged.
+

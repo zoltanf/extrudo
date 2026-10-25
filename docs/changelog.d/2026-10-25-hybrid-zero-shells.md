@@ -1,0 +1,1 @@
+- 2026-10-25 · **Mesh to Solid**: a mesh a slicer's boolean left flat zero-volume flaps in (a boss standing coplanar on a face) converts to one solid now, not one solid per flap, so Offset Face works on the converted body; and a flat face of a body whose freeform facets form a smooth chain moves by the prism fallback instead of being refused (ADR-0097 amendment 2026-10-25b).

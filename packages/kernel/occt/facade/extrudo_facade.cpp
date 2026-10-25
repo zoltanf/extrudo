@@ -928,10 +928,8 @@ public:
       // OCCT offsets a face's smooth neighbours with it: those are checked too. A chain with
       // a sharp edge inside it (fillets meeting at a corner) traps OCCT's offset: refused.
       std::vector<int> chain;
-      if (smoothChains(*input, faces, chain)) {
-        pushShellStatus(6, 0);
-        return fail("Offset failed: rounded edges meet at a sharp corner.");
-      }
+      bool curvedCrease = false;
+      const bool sharpChain = smoothChains(*input, faces, chain, &curvedCrease);
       const std::vector<int> moving = smoothClosure(chain, picked);
       // The flat-face prism fallback (see buildPrismOffset), built on a fresh copy.
       const auto storePrism = [&]() -> int {
@@ -948,6 +946,21 @@ public:
       if (forcePrismFallback_) {
         const int forced = storePrism();
         if (forced != 0) return forced;
+      }
+      if (sharpChain) {
+        // The fallback never calls OCCT's offset, so a flat picked face can still
+        // move. A converted body's faceted chain (plane to plane, plane to a
+        // fitted cylinder) is not the fillet-with-no-blend case the guard is
+        // for: try the safe fallback there (ADR-0097, 2026-10-25b). Two curved
+        // faces at a crease (a real fillet corner), a non-flat pick or a gate
+        // the fallback can't pass all keep the refusal, and OCCT's offset is
+        // never reached for any of them.
+        if (!curvedCrease) {
+          const int withPrism = storePrism();
+          if (withPrism != 0) return withPrism;
+        }
+        pushShellStatus(6, 0);
+        return fail("Offset failed: rounded edges meet at a sharp corner.");
       }
       {
         // A copy for every build, as in shell(): OCCT repairs its input in place.
@@ -2713,6 +2726,117 @@ public:
   uintptr_t meshTrianglesPtr() const { return reinterpret_cast<uintptr_t>(meshTriangles_.data()); }
 
   /**
+   * Drops the triangles of every connected component of the staged mesh that
+   * encloses no volume (|V| <= 1e-6 x max(1, |mesh volume|)) and compacts the
+   * node and triangle buffers. A mesh's own boolean can leave flat zero-volume
+   * flaps as closed components of their own (a boss standing on a coplanar
+   * face: `mesh-to-solid.test.ts`'s `bossWithBump` has 46 of them); one solid
+   * per component would put that many degenerate shells beside the body, and
+   * Offset Face then refuses it ("the solid has an inner void", ADR-0097,
+   * amendment 2026-10-25b). A component with positive volume is a part, with
+   * negative volume a cavity: both stay. Drops at the mesh, not at the
+   * shells, so the node check never validates a node of a component that is
+   * gone. Returns the number of components dropped, or -1 for a bad mesh (a
+   * triangle index past the node count).
+   */
+  int dropDegenerateComponents() {
+    const int nodeCount = static_cast<int>(meshNodes_.size() / 3);
+    const int triangleCount = static_cast<int>(meshTriangles_.size() / 3);
+    for (uint32_t index : meshTriangles_)
+      if (index >= static_cast<uint32_t>(nodeCount)) return -1;
+    if (triangleCount == 0) return 0;
+    const auto corner = [&](int t, int k) { return static_cast<int>(meshTriangles_[3 * t + k]); };
+    // Adjacency by shared edge, as segmentMesh does; a triangle on an edge that
+    // is not shared by exactly two is open (a boundary, or a non-manifold edge).
+    std::vector<int> parent(static_cast<size_t>(triangleCount));
+    for (int t = 0; t < triangleCount; ++t) parent[static_cast<size_t>(t)] = t;
+    const auto find = [&parent](int x) {
+      while (parent[static_cast<size_t>(x)] != x)
+        x = parent[static_cast<size_t>(x)] = parent[static_cast<size_t>(parent[static_cast<size_t>(x)])];
+      return x;
+    };
+    std::vector<char> open(static_cast<size_t>(triangleCount), 0);
+    {
+      std::vector<std::pair<uint64_t, int>> edges(3 * static_cast<size_t>(triangleCount));
+      for (int t = 0; t < triangleCount; ++t)
+        for (int k = 0; k < 3; ++k) {
+          const uint64_t a = static_cast<uint64_t>(corner(t, k));
+          const uint64_t b = static_cast<uint64_t>(corner(t, (k + 1) % 3));
+          edges[3 * t + k] = {std::min(a, b) << 32 | std::max(a, b), 3 * t + k};
+        }
+      std::sort(edges.begin(), edges.end());
+      for (size_t i = 0; i + 1 < edges.size();) {
+        size_t j = i + 1;
+        while (j < edges.size() && edges[j].first == edges[i].first) ++j;
+        if (j - i == 2) {
+          const int ra = find(static_cast<int>(edges[i].second / 3));
+          const int rb = find(static_cast<int>(edges[i + 1].second / 3));
+          if (ra != rb) parent[static_cast<size_t>(ra)] = rb;
+        } else {
+          for (size_t e = i; e < j; ++e) open[static_cast<size_t>(edges[e].second / 3)] = 1;
+        }
+        i = j;
+      }
+    }
+    // Each component's signed volume, and the mesh's in passing.
+    double meshVolume = 0;
+    std::vector<int> rootOf(static_cast<size_t>(triangleCount));
+    std::vector<double> componentVolume(static_cast<size_t>(triangleCount), 0);
+    for (int t = 0; t < triangleCount; ++t) {
+      const gp_XYZ a = meshNode(corner(t, 0)), b = meshNode(corner(t, 1)), c = meshNode(corner(t, 2));
+      const double volume = a.Dot(b.Crossed(c)) / 6;
+      meshVolume += volume;
+      rootOf[static_cast<size_t>(t)] = find(t);
+      componentVolume[static_cast<size_t>(rootOf[static_cast<size_t>(t)])] += volume;
+    }
+    const double threshold = 1e-6 * std::max(1.0, std::fabs(meshVolume));
+    std::vector<char> keepRoot(static_cast<size_t>(triangleCount), 0);
+    std::vector<char> openRoot(static_cast<size_t>(triangleCount), 0);
+    std::vector<char> decided(static_cast<size_t>(triangleCount), 0);
+    for (int t = 0; t < triangleCount; ++t)
+      if (open[static_cast<size_t>(t)] != 0)
+        openRoot[static_cast<size_t>(rootOf[static_cast<size_t>(t)])] = 1;
+    int dropped = 0;
+    for (int t = 0; t < triangleCount; ++t) {
+      const size_t root = static_cast<size_t>(rootOf[static_cast<size_t>(t)]);
+      if (decided[root] != 0) continue;
+      decided[root] = 1;
+      // Only a closed zero-volume piece is a flap: an open one (a boundary, a
+      // non-manifold edge) is the path's to refuse, not this to drop. A NaN
+      // volume is no evidence of degeneracy either: keep it (the path refuses).
+      if (openRoot[root] != 0 || std::fabs(componentVolume[root]) > threshold ||
+          componentVolume[root] != componentVolume[root])
+        keepRoot[root] = 1;
+      else
+        ++dropped;
+    }
+    if (dropped == 0) return 0;
+    // Compact the kept triangles and the nodes they use.
+    std::vector<int> remap(static_cast<size_t>(nodeCount), -1);
+    std::vector<double> nodes;
+    std::vector<uint32_t> triangles;
+    nodes.reserve(meshNodes_.size());
+    triangles.reserve(meshTriangles_.size());
+    for (int t = 0; t < triangleCount; ++t) {
+      if (keepRoot[static_cast<size_t>(rootOf[static_cast<size_t>(t)])] == 0) continue;
+      for (int k = 0; k < 3; ++k) {
+        const int n = corner(t, k);
+        int& mapped = remap[static_cast<size_t>(n)];
+        if (mapped < 0) {
+          mapped = static_cast<int>(nodes.size() / 3);
+          nodes.push_back(meshNodes_[3 * n]);
+          nodes.push_back(meshNodes_[3 * n + 1]);
+          nodes.push_back(meshNodes_[3 * n + 2]);
+        }
+        triangles.push_back(static_cast<uint32_t>(mapped));
+      }
+    }
+    meshNodes_ = std::move(nodes);
+    meshTriangles_ = std::move(triangles);
+    return dropped;
+  }
+
+  /**
    * Turns the staged mesh into a solid (ADR-0097 §3). method 0 = faceted (one
    * planar face per coplanar patch), 1 = prismatic (exact planes, cylinders,
    * cones, spheres and tori). A tolerance of 0 or less means Auto (slice D2).
@@ -2723,6 +2847,9 @@ public:
   int meshToSolid(int method, double tolerance) {
     beginOp();
     meshReport_.clear();
+    // Flat zero-volume components (a mesh's own boolean can leave them) are no
+    // part: dropped here, so no path makes a degenerate solid or shell of one.
+    dropDegenerateComponents();
     const int handle = method == 0   ? facetedFromMesh()
                        : method == 1 ? prismaticFromMesh(tolerance)
                                      : fail("Mesh to Solid failed: unknown method.");
@@ -12490,11 +12617,14 @@ private:
    * offset corrupts the wasm heap on such bodies (a memory access trap at
    * some distances, an empty result at others), so they are refused.
    * Fills `chain` (per face: the lowest face index of its chain) and returns
-   * whether some chain has a sharp edge inside it.
+   * whether some chain has a sharp edge inside it. With `curvedCrease` given,
+   * sets it to whether such a crease is between two non-planar faces (the
+   * fillet-with-no-blend case); a converted body's faceted chain is
+   * plane/plane or plane/a fitted cylinder, not that.
    */
   static bool smoothChains(const TopoDS_Shape& body,
                            const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
-                           std::vector<int>& chain) {
+                           std::vector<int>& chain, bool* curvedCrease = nullptr) {
     EdgeFaceMap edgeFaces;
     TopExp::MapShapesAndUniqueAncestors(body, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
     const int count = faces.Extent();
@@ -12530,9 +12660,19 @@ private:
     }
     for (int i = 0; i < count; ++i) chain[static_cast<size_t>(i)] = root(i);
     bool sharpInside = false;
+    bool curvedInside = false;
     for (const auto& crease : creases) {
-      if (chain[static_cast<size_t>(crease.first)] == chain[static_cast<size_t>(crease.second)]) sharpInside = true;
+      if (chain[static_cast<size_t>(crease.first)] != chain[static_cast<size_t>(crease.second)]) continue;
+      sharpInside = true;
+      if (curvedCrease != nullptr) {
+        const GeomAbs_SurfaceType a =
+            BRepAdaptor_Surface(TopoDS::Face(faces(crease.first + 1)), false).GetType();
+        const GeomAbs_SurfaceType b =
+            BRepAdaptor_Surface(TopoDS::Face(faces(crease.second + 1)), false).GetType();
+        if (a != GeomAbs_Plane && b != GeomAbs_Plane) curvedInside = true;
+      }
     }
+    if (curvedCrease != nullptr) *curvedCrease = curvedInside;
     return sharpInside;
   }
 

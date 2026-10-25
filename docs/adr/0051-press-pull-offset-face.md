@@ -514,3 +514,16 @@ Local check (the owner's STEP, not committed): `offsetFaces` face 76 at +10,
 −1 and −1.5 gives 115 735, 47 535 and 44 435 mm³; three other planar faces at
 +0.5 build too. Tests: `offset-face.test.ts`.
 
+## Amendment 2026-10-25b: the flat-face fallback before the smooth-chain refusal
+
+A converted body's faceted regions (ADR-0097's 2026-10-25b amendment) form a
+smooth chain with creases inside it, so `smoothChains` refused Offset Face
+(status 6) on any of its faces. That guard protects `BRepOffset_MakeOffset`
+(a heap trap where two fillets meet at a corner), which the prism fallback
+never calls. **Rule:** on a sharp chain, `offsetFaces` tries `buildPrismOffset`
+(its gate and result checks unchanged) when no crease inside the chain is
+between two non-planar faces (`smoothChains`' `curvedCrease`); otherwise, or
+when the fallback fails, the status-6 refusal stays. OCCT's offset is never
+reached on a sharp chain. Test: `mesh-to-solid.test.ts`, the boss with a
+freeform top; the rounded-corner refusals in `kernel.test.ts` and
+`offset-face.test.ts` are unchanged.
