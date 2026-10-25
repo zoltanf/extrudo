@@ -3277,7 +3277,15 @@ production — dev builds only (`import.meta.env.DEV`), and `grep -c longtask
 apps/web/dist/assets/*.js` after `pnpm build` must sum to 0 — and the status
 bar's `· n long` is dev builds only; `measure-startup.mjs` runs per release
 and is compared with the ADR's baseline: a jump is a release blocker to
-investigate, a drift is noted in the release notes.
+investigate, a drift is noted in the release notes. §5 (2026-10-25) adds
+two ceilings: `packages/kernel/src/benchmarks.test.ts`'s `recompute` asserts
+every benchmark recompute against `BUDGET_MS` (about 3× the laptop, at least
+1 s: B1–B6 and B10 1 s, B8 1.5 s, B7 3 s, B9 30 s; `BENCH=1` prints the
+times), and `scripts/measure-startup.mjs --budget` fails when app JS passes
+2 MB or the precache 10 MB brotli, run by CI's Docker job
+after its build. **Rules:** a new benchmark document needs a `BUDGET_MS`
+entry (the helper throws without one); both sets of budgets are widened only
+with a measurement in the commit message.
 
 ADR-0102 (P6-14, the owner, 2026-10-23) took **UI-thread work off the
 interaction paths**, measured with ADR-0100's `e2e/perf.spec.ts`. §1: the

@@ -169,6 +169,28 @@ were meant to catch and stop guarding anything; and subtracting per task with
 the render log alone — it covers 2–8 % of a SwiftShader task, so the budget
 would still be the rasteriser's.
 
+## §5. Amendment 2026-10-25: kernel and download-size budgets
+
+The plan's options 2 and 3, set aside above, land as two plain ceilings, so a
+slower evaluator or a heavier bundle fails before review:
+
+- **Kernel recompute budgets** (`packages/kernel/src/benchmarks.test.ts`,
+  `BUDGET_MS`): every recompute from scratch of a benchmark document must stay
+  under its budget, about three times the laptop's time and at least a second:
+  B1–B6 and B10 1 s, B8 1.5 s, B7 3 s, B9 30 s. Measured 2026-10-25 on the
+  laptop: B5 244–306 ms, B7 650–913 ms, B8 308–363 ms, B9 8.0–8.4 s, the rest
+  under 200 ms; CI's check job runs the file about 1.6× slower (35 s against
+  about 22 s), so the budgets leave CI about twice its time. `BENCH=1` prints
+  each recompute's time.
+- **Download-size budgets** (`scripts/measure-startup.mjs --budget`): the
+  brotli size of the app's JS under 2 MB and of the whole precache
+  under 10 MB (2026-10-25: 1.60 MB and 8.46 MB). CI's
+  Docker job runs `--no-browser --budget` right after its app build; the
+  check job doesn't build, so it is not there.
+
+Both are widened only with a measurement in the commit message, like the
+spec's budgets.
+
 ## Rejected
 
 - **Asserting render time or frame rate tightly in CI.** The e2e browser draws
@@ -181,7 +203,7 @@ would still be the rasteriser's.
   rest of the suite uses.
 - **A unit-test budget on the kernel benchmarks and a size budget in the check
   job** (options 2 and 3 of the plan): worth doing, later and separately; this
-  ADR is about the UI thread.
+  ADR is about the UI thread. (Done in §5.)
 - **Shipping the long-task observer in production** (to collect from users):
   no telemetry (NFR-06, no network calls at runtime).
 
