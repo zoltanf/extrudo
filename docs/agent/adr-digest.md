@@ -3549,3 +3549,17 @@ running there. A hidden tab throttles both, and the render nearly stops until th
 1050 Ti; time scales with samples, 3 bounces saves 5–18 %, and below 128 samples the grain is
 above the denoise threshold (a sandy face), so Standard stays 128 samples, 5 bounces. On a
 laptop's integrated Radeon, Standard is 29 s (wooden table) to 84 s (studio) at 1280×720.
+
+ADR-0111 (the owner, 2026-10-25): **Cancel on a long update undoes the edits behind it.**
+`packages/core/src/history.ts` (`UndoHistory.canRevertTo`/`revertTo`: undo or redo top-level steps
+until a step is the latest; `undefined` is "before any step"), `packages/core/src/stores.ts`
+(`DocumentState.canRevertTo`/`revertTo`, one `set`), `packages/kernel/src/recomputer.ts` (`#shown`:
+the `lastStepId()` captured in `#send` when no transaction is open, moved only by a finished
+recompute; `canRevertToShown`/`revertToShown`), `apps/web/src/viewport/progressRules.ts`
+(`showsCancel`), `ModelProgress.tsx` (the `cancel` prop, `[data-model-cancel]`) and
+`shell/AppShell.tsx` (the toast). **Rules:** Cancel never terminates the kernel worker and never
+leaves the model out of step with the document: it changes the document, through the history; one
+`revertTo` is one document change (one `set`), so one recompute follows; no Cancel while a design
+first opens (`preparing`), for a kernel wait (`waiting`), or inside a transaction (sketch mode, a
+feature dialog); no keyboard shortcut (Escape must never undo edits); the notice stays
+`pointer-events: none`, only the button takes the pointer. e2e: `e2e/kernel-cancel.spec.ts`.

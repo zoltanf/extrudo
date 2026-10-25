@@ -61,6 +61,15 @@ export function activeFeatureCount(
   return activeFeatures(doc).length;
 }
 
+/**
+ * Whether the notice offers Cancel (ADR-0111): only for a long update, and only
+ * when the document can go back to the shown model's step. Never while a design
+ * first opens or for a kernel wait.
+ */
+export function showsCancel(mode: ProgressMode, canRevert: () => boolean): boolean {
+  return mode === 'updating' && canRevert();
+}
+
 export function progressTitle(mode: ProgressMode, wait?: WaitInput): string {
   if (mode === 'preparing') return 'Preparing your design…';
   if (mode === 'updating') return 'Updating the model…';

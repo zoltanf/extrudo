@@ -60,6 +60,13 @@ export interface DocumentState {
   hasStep(stepId: number): boolean;
   undo(): void;
   redo(): void;
+  /** Whether `revertTo(stepId)` would change the document (ADR-0111, `UndoHistory.canRevertTo`). */
+  canRevertTo(stepId: number | undefined): boolean;
+  /**
+   * Undoes or redoes top-level steps until `stepId` is the latest (ADR-0111), in
+   * one document change. Returns whether it changed the document.
+   */
+  revertTo(stepId: number | undefined): boolean;
   beginTransaction(label: string): void;
   commitTransaction(): void;
   cancelTransaction(): void;
@@ -118,6 +125,14 @@ export function createDocumentStore(
     },
     redo() {
       set({ doc: history.redo(get().doc), ...historyState() });
+    },
+    canRevertTo(stepId) {
+      return history.canRevertTo(stepId);
+    },
+    revertTo(stepId) {
+      if (!history.canRevertTo(stepId)) return false;
+      set({ doc: history.revertTo(get().doc, stepId), ...historyState() });
+      return true;
     },
     beginTransaction(label) {
       history.begin(label);

@@ -154,6 +154,37 @@ export class UndoHistory {
     return applyPatches(doc, entry.patches);
   }
 
+  /**
+   * Whether `revertTo(stepId)` would change the document (ADR-0111): only at the
+   * top level (no open transaction); `stepId` is in the top level's undo or redo
+   * stack (undefined: "before any step", reachable while the undo stack has steps)
+   * and is not already the latest step.
+   */
+  canRevertTo(stepId: number | undefined): boolean {
+    if (this.#levels.length !== 1) return false;
+    const { undo, redo } = this.#top;
+    if (stepId === undefined) return undo.length > 0;
+    if (undo.at(-1)?.id === stepId) return false;
+    return undo.some((e) => e.id === stepId) || redo.some((e) => e.id === stepId);
+  }
+
+  /**
+   * Undoes or redoes top-level steps until `stepId` is the latest step
+   * (undefined: until no step is left), and returns the resulting document; the
+   * undone steps go to the redo stack as with `undo`. Returns `doc` unchanged when
+   * `canRevertTo` is false.
+   */
+  revertTo(doc: ExtrudoDocument, stepId: number | undefined): ExtrudoDocument {
+    if (!this.canRevertTo(stepId)) return doc;
+    const top = this.#top;
+    const back = stepId === undefined || top.undo.some((e) => e.id === stepId);
+    let result = doc;
+    if (back)
+      while (top.undo.length > 0 && top.undo.at(-1)?.id !== stepId) result = this.undo(result);
+    else while (top.redo.length > 0 && top.undo.at(-1)?.id !== stepId) result = this.redo(result);
+    return result;
+  }
+
   begin(label: string): void {
     this.#levels.push({ label, undo: [], redo: [] });
   }

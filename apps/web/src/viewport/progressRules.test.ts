@@ -5,6 +5,7 @@ import {
   progressDetail,
   progressMode,
   progressTitle,
+  showsCancel,
   UPDATING_AFTER_MS,
   WAITING_AFTER_MS,
   type WaitInput,
@@ -99,5 +100,14 @@ describe('activeFeatureCount and texts', () => {
       max: 7,
       text: 'Thread1 · 4 of 7',
     });
+  });
+});
+
+describe('showsCancel (ADR-0111)', () => {
+  it('shows only while updating, when the document can go back', () => {
+    expect(showsCancel('updating', () => true)).toBe(true);
+    expect(showsCancel('updating', () => false)).toBe(false);
+    expect(showsCancel('preparing', () => true)).toBe(false);
+    expect(showsCancel('waiting', () => true)).toBe(false);
   });
 });

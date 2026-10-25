@@ -236,6 +236,11 @@ export class Recomputer {
   #unsubscribe: (() => void) | undefined;
   #sent: ExtrudoDocument | undefined;
   #sequence = 0;
+  /**
+   * The undo step the model on screen was computed at (ADR-0111): undefined
+   * until a recompute finished, or when that document was inside a transaction.
+   */
+  #shown: { step: number | undefined } | undefined;
   /** The feature the kernel was computing, to blame for a crash. */
   #current: FeatureId | undefined;
   /** Features that crashed the kernel, as they were then. */
@@ -325,6 +330,24 @@ export class Recomputer {
       if (state.doc !== previous.doc) this.#schedule();
     });
     this.#schedule();
+  }
+
+  /**
+   * Whether Cancel on the "Updating the model…" notice can return the document to
+   * the state the model on screen was computed from (ADR-0111): a recompute
+   * finished before, no transaction is open, and that step is reachable by undo or
+   * redo at the top level.
+   */
+  canRevertToShown(): boolean {
+    const state = this.#document.getState();
+    if (!this.#shown || state.transactionDepth > 0) return false;
+    return state.canRevertTo(this.#shown.step);
+  }
+
+  /** Does it: one undo/redo run, one document change. Returns whether it changed anything. */
+  revertToShown(): boolean {
+    if (!this.canRevertToShown() || !this.#shown) return false;
+    return this.#document.getState().revertTo(this.#shown.step);
   }
 
   /** Stops following the document and shuts the kernel down. */
@@ -864,6 +887,8 @@ export class Recomputer {
   async #send(): Promise<void> {
     const doc = this.#document.getState().doc;
     if (doc === this.#sent || this.#disposed) return;
+    const state = this.#document.getState();
+    const step = state.transactionDepth === 0 ? { step: state.lastStepId() } : undefined;
     this.#sent = doc;
     const sequence = ++this.#sequence;
     this.#model.getState().computing();
@@ -941,6 +966,7 @@ export class Recomputer {
       } else sketches[id] = report;
     }
     const bodies = Object.fromEntries([...meshes].map(([id, { mesh }]) => [id, mesh]));
+    this.#shown = step;
     this.#model.getState().computed({
       features: sameStatuses(previous.features, features) ? previous.features : features,
       bodies: sameRecord(previous.bodies, bodies) ? previous.bodies : bodies,

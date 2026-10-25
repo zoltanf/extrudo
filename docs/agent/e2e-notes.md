@@ -1332,6 +1332,20 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `[data-model-status]` is `ready`, no `[data-model-progress]` and no
   `[data-kernel-busy]`.
 
+### `e2e/kernel-cancel.spec.ts`
+
+- **Cancel a long update e2e** (`e2e/kernel-cancel.spec.ts`, ADR-0111): opens
+  `#/example/bottle-cap` and checks `[data-model-cancel]` is absent once
+  `[data-model-progress="preparing"]` shows (the first load). Then the
+  `capDia` → `34 mm` edit from `kernel-waits.spec.ts`; once
+  `[data-model-progress="updating"]` shows, its `[data-model-cancel]` button
+  (the notice is `pointer-events: none`, the button alone takes the click) is
+  clicked and the Kernel status must be `ready` within 4 s (the earlier
+  state's features are cached; the spec logs the measured time). The toast is
+  `[data-toast]` with "Update cancelled". `capDia` is read back by reopening
+  Parameters (`parameterExpression(…).toHaveValue`) and closing it with
+  Escape before `Control+y` (Redo), so the key doesn't land in the field.
+
 ### `e2e/kernel-prewarm.spec.ts`
 
 - **Kernel-prewarm e2e** (ADR-0102 §8): loads the home screen and polls

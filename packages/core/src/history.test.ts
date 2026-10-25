@@ -51,6 +51,64 @@ describe('UndoHistory', () => {
   });
 });
 
+describe('revertTo (ADR-0111)', () => {
+  function threeSteps() {
+    const history = new UndoHistory();
+    let doc = sampleDocument();
+    const ids: number[] = [];
+    const docs: ExtrudoDocument[] = [];
+    for (const name of ['A', 'B', 'C']) {
+      doc = run(history, doc, renameDocument({ name }));
+      ids.push(history.lastStepId as number);
+      docs.push(doc);
+    }
+    return { history, doc, ids, docs };
+  }
+
+  it('undoes back to a step, and redo brings the rest back', () => {
+    const { history, doc, ids, docs } = threeSteps();
+    expect(history.canRevertTo(ids[0])).toBe(true);
+    let reverted = history.revertTo(doc, ids[0]);
+    expect(history.lastStepId).toBe(ids[0]);
+    expect(reverted).toEqual(docs[0]);
+    reverted = history.redo(history.redo(reverted));
+    expect(reverted).toEqual(docs[2]);
+  });
+
+  it('undoes every step for undefined, and not when there is none', () => {
+    const { history, doc } = threeSteps();
+    expect(history.canRevertTo(undefined)).toBe(true);
+    expect(history.revertTo(doc, undefined)).toEqual(sampleDocument());
+    expect(history.canUndo).toBe(false);
+    expect(history.canRevertTo(undefined)).toBe(false);
+  });
+
+  it('redoes forward to a step on the redo stack', () => {
+    const { history, ids, docs } = threeSteps();
+    let doc = history.undo(history.undo(docs[2] as ExtrudoDocument));
+    expect(history.canRevertTo(ids[2])).toBe(true);
+    doc = history.revertTo(doc, ids[2]);
+    expect(history.lastStepId).toBe(ids[2]);
+    expect(doc).toEqual(docs[2]);
+    expect(history.canRedo).toBe(false);
+  });
+
+  it('is false for the latest step and for an unknown id', () => {
+    const { history, doc, ids } = threeSteps();
+    expect(history.canRevertTo(ids[2])).toBe(false);
+    expect(history.canRevertTo(9999)).toBe(false);
+    expect(history.revertTo(doc, 9999)).toBe(doc);
+  });
+
+  it('does nothing inside a transaction', () => {
+    const { history, doc, ids } = threeSteps();
+    history.begin('Edit Sketch1');
+    expect(history.canRevertTo(ids[0])).toBe(false);
+    expect(history.revertTo(doc, ids[0])).toBe(doc);
+    expect(history.depth).toBe(1);
+  });
+});
+
 describe('transactions', () => {
   it('undo inside a transaction only steps through its own changes', () => {
     const history = new UndoHistory();

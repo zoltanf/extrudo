@@ -44,6 +44,23 @@ describe('document store', () => {
     expect(s()).toMatchObject({ doc: { name: 'Box' }, undoLabel: 'Include 3 curves' });
   });
 
+  it('reverts to a step in one change (ADR-0111)', () => {
+    const store = createDocumentStore(sampleDocument());
+    const s = () => store.getState();
+    s().dispatch(renameDocument({ name: 'A' }));
+    const a = s().lastStepId();
+    s().dispatch(renameDocument({ name: 'B' }));
+    s().dispatch(renameDocument({ name: 'C' }));
+    const listener = vi.fn();
+    store.subscribe(listener);
+    expect(s().canRevertTo(a)).toBe(true);
+    expect(s().revertTo(a)).toBe(true);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(s()).toMatchObject({ doc: { name: 'A' }, canRedo: true });
+    expect(s().revertTo(a)).toBe(false);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   it('freezes the document so components cannot mutate it', () => {
     const store = createDocumentStore(sampleDocument());
     expect(Object.isFrozen(store.getState().doc.features[0])).toBe(true);

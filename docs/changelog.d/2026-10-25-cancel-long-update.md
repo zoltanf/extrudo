@@ -1,0 +1,1 @@
+- 2026-10-25 · **Cancel a long update**: the "Updating the model…" notice has a Cancel button that undoes the changes since the model on screen; Redo brings them back (ADR-0111).
