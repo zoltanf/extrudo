@@ -266,7 +266,8 @@ describe('Mesh to Solid starts from a plate mesh (ADR-0097 §6)', () => {
       expect(file.bytes.length).toBeLessThan(100_000);
       const path = `${DEMOS}meshToSolid.stl`;
       if (process.env.WRITE_FIXTURES) await writeFile(path, file.bytes);
-      expect(new Uint8Array(await readFile(path))).toEqual(file.bytes);
+      // The 80-byte header names the app version, which changes with every release.
+      expect(new Uint8Array(await readFile(path)).subarray(80)).toEqual(file.bytes.subarray(80));
     } finally {
       await job.dispose();
     }
