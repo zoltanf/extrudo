@@ -3054,7 +3054,9 @@ faces only), and the dialog's Result line shows a hybrid draft's report in
 place of the region counts. Not the rejected silent faceted fallback: the
 recognised faces are real surfaces and the line says what stayed facets.
 Harness: `FACES=1`, `TIMES=1`, `HYBRID_BUDGET`; tests read the loops through
-the facade's `meshLoopsDebug` (never on `Kernel`).
+the facade's `meshLoopsDebug` (never on `Kernel`). The outside converters'
+benchmark (stl2step, mesh2cad) and its STEP checker
+(`spikes/stl-to-solid/bench/`): `docs/plans/mesh-to-solid-bench-2026-10-22.md`.
 
 **ADR-0097 slice D2 (2026-10-23): Auto tolerance, the facet cap at 5,000,
 cavities in Faceted.** A tolerance of 0 or less means **Auto** in
