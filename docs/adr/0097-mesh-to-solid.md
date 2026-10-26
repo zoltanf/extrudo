@@ -953,6 +953,8 @@ second stage behind the exact rebuild. We took the method from stl2step's
 documentation and source (`docs/METHOD.md`, `refit.hpp`'s region and loop
 contracts, `refit_build.cpp`'s per-edge tolerances and its facet fallback);
 the code is our own, in the facade's style, on our segmentation.
+The benchmark's per-file results, versions and failures, with mesh2cad as a
+third tool, are in `docs/plans/mesh-to-solid-bench-2026-10-22.md`.
 
 - **Two stages.** `prismaticFromMesh` segments as before, then runs the
   exact rebuild (`rebuildPrismatic`, unchanged) unless the segmentation

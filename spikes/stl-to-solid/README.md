@@ -138,3 +138,23 @@ Import dialog ("As solid" off), opens Convert to Solid… (Prismatic, Auto)
 and times from the dialog's OK to the body row losing its mesh flag, twice per
 file; it prints one `TIMING {file, run, ms}` line per run. Pair each file with
 the kernel sweep's time at Auto (ADR-0097's slice D4 amendment has the table).
+
+## Outside converters (2026-10-22)
+
+`bench/verify_step.cpp` checks a STEP file another tool made against the STL it
+came from, with desktop OCCT 7.9 (not the facade), and prints one JSON line:
+validity, faces by surface type, volume against the mesh's signed volume, and
+exact / faceted / failed. `bench/verify_all.sh` runs it over a list of STLs.
+The results and the tools' versions are in
+`docs/plans/mesh-to-solid-bench-2026-10-22.md`.
+
+```sh
+g++ -std=c++17 -O2 spikes/stl-to-solid/bench/verify_step.cpp -o /tmp/verify_step \
+  -I/usr/include/opencascade -lTKDESTEP -lTKXSBase -lTKBRep -lTKTopAlgo \
+  -lTKGeomBase -lTKG3d -lTKMath -lTKernel
+(cd "$STL_DIR" && find . -name '*.stl' | sed 's|^\./||') > /tmp/list.txt
+bash spikes/stl-to-solid/bench/verify_all.sh /tmp/verify_step "$STEP_DIR" "$STL_DIR" /tmp/list.txt > verify.jsonl
+```
+
+`$STEP_DIR` holds one `<name>.step` per `<name>.stl`, written by the tool under
+test; keep both folders outside the repository.
