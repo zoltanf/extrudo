@@ -1,1 +1,0 @@
-- 2026-10-24 · **Offset Face on a converted body**: the failure probe now answers in one build instead of seven (`largestThatWorks`), and Mesh to Solid gained harness-only diagnosis hooks (`shapeDiagnose`, `offsetProbe`, `meshRefusalDebug`) plus a local `MESH_FILE` test.

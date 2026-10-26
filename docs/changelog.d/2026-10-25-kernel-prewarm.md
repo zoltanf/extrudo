@@ -1,1 +1,0 @@
-- 2026-10-25 · **Kernel prewarm**: the kernel worker starts on the home screen in idle time, so opening a design finds the OCCT WASM already compiled (first-visit kernel-ready 1.8–2.3 s → 0.81 s).

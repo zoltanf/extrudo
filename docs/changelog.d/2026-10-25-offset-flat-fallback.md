@@ -1,1 +1,0 @@
-- 2026-10-25 · **Offset Face**: flat faces that OCCT's offset can't move now move by extruding them, so imported bodies can be pushed and pulled.

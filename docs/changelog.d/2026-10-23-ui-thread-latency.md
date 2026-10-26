@@ -1,1 +1,0 @@
-- 2026-10-23 · **Snappier editing, hovering and opening**: the design's thumbnail is taken when the app is idle, hovering picks once per frame and no longer redraws every panel, the app is built with the React Compiler, and opening a design no longer waits on a graphics check (ADR-0102).

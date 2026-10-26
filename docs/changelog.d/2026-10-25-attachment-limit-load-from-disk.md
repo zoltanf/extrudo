@@ -1,1 +1,0 @@
-- 2026-10-25 · **Attachment limit on Load from disk**: loading a linked folder's `.extrudo` file over the open design now refuses one over the 100 MB of attached files before writing any of them, as import already does (#128).
