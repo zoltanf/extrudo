@@ -28,6 +28,9 @@ import {
 } from './document-commands';
 import { UndoHistory } from './history';
 import type { ConfigurationId, DimensionId, SketchEntityId } from './ids';
+
+const did = (id: string) => id as DimensionId;
+
 import { removeBodiesFeatureOf } from './remove';
 import { DocumentSchema, type ExtrudoDocument, type Feature } from './schema';
 import { emptySketchData } from './sketch/feature';
@@ -84,6 +87,83 @@ describe('document commands', () => {
   it('change settings', () => {
     const doc = apply(sampleDocument(), updateSettings({ units: 'in' }));
     expect(doc.settings).toEqual({ units: 'in', precision: 2 });
+  });
+
+  it('a new unit keeps every length: plain numbers get the old unit spelled out', () => {
+    const base = sampleDocument();
+    base.parameters = [
+      {
+        ...parameter('p1', 'width', '40'),
+        customizer: { min: '10', max: '80', step: '5 mm' },
+      },
+      parameter('p2', 'wall', '3 mm'),
+      { ...parameter('p3', 'turns', '4'), unit: 'unitless' },
+      { ...parameter('p4', 'tilt', '15'), unit: 'angle' },
+    ];
+    base.configurations = [
+      {
+        id: 'c1' as ConfigurationId,
+        name: 'Big',
+        values: { [pid('p1')]: '60', [pid('p3')]: '5', [pid('p4')]: '30' },
+      },
+    ];
+    base.features = [
+      {
+        ...feature('f1', 'sketch'),
+        inputs: {
+          sketch: {
+            kind: 'sketchData',
+            sketch: {
+              entities: {},
+              constraints: {},
+              dimensions: {
+                [did('d1')]: {
+                  type: 'distance',
+                  orientation: 'aligned',
+                  a: 'e1' as SketchEntityId,
+                  expr: '12',
+                  driven: false,
+                },
+                [did('d2')]: {
+                  type: 'angle',
+                  a: 'e1' as SketchEntityId,
+                  b: 'e2' as SketchEntityId,
+                  expr: '45',
+                  driven: false,
+                },
+              },
+            },
+          },
+        },
+      },
+      {
+        ...feature('f2'),
+        inputs: {
+          distance: { kind: 'expr', expr: '10 / 2' },
+          taper: { kind: 'expr', expr: '5', unit: 'angle' },
+          count: { kind: 'expr', expr: '3', unit: 'unitless' },
+          height: { kind: 'expr', expr: 'wall * 2' },
+        },
+      },
+    ];
+    const doc = apply(base, updateSettings({ units: 'in' }));
+    expect(doc.parameters.map((p) => p.expression)).toEqual(['40 mm', '3 mm', '4', '15']);
+    expect(doc.parameters[0]?.customizer).toEqual({ min: '10 mm', max: '80 mm', step: '5 mm' });
+    expect(doc.configurations?.[0]?.values).toEqual({ p1: '60 mm', p3: '5', p4: '30' });
+    const sketch = doc.features[0]?.inputs.sketch;
+    if (sketch?.kind !== 'sketchData') throw new Error('sketch');
+    expect(sketch.sketch.dimensions[did('d1')]?.expr).toBe('12 mm');
+    expect(sketch.sketch.dimensions[did('d2')]?.expr).toBe('45');
+    expect(doc.features[1]?.inputs).toEqual({
+      distance: { kind: 'expr', expr: '(10 / 2) * 1 mm' },
+      taper: { kind: 'expr', expr: '5', unit: 'angle' },
+      count: { kind: 'expr', expr: '3', unit: 'unitless' },
+      height: { kind: 'expr', expr: 'wall * 2' },
+    });
+    // The same unit again, or precision alone, touches nothing.
+    expect(apply(doc, updateSettings({ units: 'in', precision: 3 })).parameters).toEqual(
+      doc.parameters,
+    );
   });
 
   it('add, edit and delete parameters, keeping names unique and valid', () => {

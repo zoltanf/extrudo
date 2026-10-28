@@ -40,6 +40,10 @@ design's unit (millimetres, unless you changed it), and in an angle field `45` m
 degrees. Next to a length, a plain number joins in too: `width + 2` adds 2 mm. This is what makes
 quick typing work.
 
+The design's unit is set in the browser's **Document settings** folder (or on the New design card
+for a new design). Changing it keeps every length: plain numbers get the old unit written out, so a
+`10` extrude in a millimetre design becomes `10 mm` rather than ten inches.
+
 Beyond that, units have to add up. You can't add a length and an angle, and a parameter that is
 just a number won't pass for a length: the app says "Multiply by a unit, like `… * 1 mm`".
 There is no hidden multiplication either, so write `2 * width`, not `2 width`.

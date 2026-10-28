@@ -6,6 +6,7 @@
 import { CommandError, type DocumentDraft, defineCommand } from './commands';
 import { isReservedName } from './expr/evaluate';
 import { mentions, parameterNames, renameReferences } from './expr/parameters';
+import { spellOutUnit } from './expr/spell-unit';
 import { dropFeatureFromGroups, normalizeGroupsInPlace } from './groups';
 import type { BodyId, FeatureId, ParameterId, ViewId } from './ids';
 import { makesFeatures } from './plugin-feature';
@@ -14,6 +15,7 @@ import {
   type ExtrudoDocument,
   type Feature,
   type FeatureInputs,
+  type LengthUnit,
   type NamedView,
   PARAMETER_NAME,
   type Parameter,
@@ -22,6 +24,7 @@ import {
   type Settings,
   type ViewCamera,
 } from './schema';
+import { dimensionUnit } from './sketch/dimensions';
 import { referencedFeatures } from './timeline';
 
 export const renameDocument = defineCommand<{ name: string }>(
@@ -62,9 +65,50 @@ export const updateSettings = defineCommand<Partial<Settings>>(
   'document.settings',
   'Change document settings',
   (draft, changes) => {
+    const from = draft.settings.units;
     Object.assign(draft.settings, changes);
+    if (changes.units !== undefined && changes.units !== from) keepLengths(draft, from);
   },
 );
+
+/**
+ * Spells the old unit out on every plain length number in the document
+ * (ADR-0113 §1), so a change of the document unit changes what is displayed
+ * and what a newly typed number means, never the model: a `10` extrude in a
+ * millimetre design becomes `10 mm`, not ten inches. Parameters and their
+ * slider ranges, configurations, feature inputs and sketch dimensions; angles
+ * and unitless numbers are left alone.
+ */
+function keepLengths(draft: DocumentDraft, unit: LengthUnit): void {
+  const spell = (expression: string) => spellOutUnit(expression, unit);
+  const lengthParameters = new Set<ParameterId>();
+  for (const parameter of draft.parameters) {
+    if (parameter.unit !== 'length') continue;
+    lengthParameters.add(parameter.id);
+    parameter.expression = spell(parameter.expression);
+    const slider = parameter.customizer;
+    if (slider?.min !== undefined) slider.min = spell(slider.min);
+    if (slider?.max !== undefined) slider.max = spell(slider.max);
+    if (slider?.step !== undefined) slider.step = spell(slider.step);
+  }
+  for (const configuration of draft.configurations ?? []) {
+    for (const [key, expression] of Object.entries(configuration.values)) {
+      const id = key as ParameterId;
+      if (lengthParameters.has(id)) configuration.values[id] = spell(expression);
+    }
+  }
+  for (const feature of draft.features) {
+    for (const value of Object.values(feature.inputs)) {
+      if (value.kind === 'expr') {
+        if ((value.unit ?? 'length') === 'length') value.expr = spell(value.expr);
+      } else if (value.kind === 'sketchData') {
+        for (const d of Object.values(value.sketch.dimensions)) {
+          if (dimensionUnit(d) === 'length') d.expr = spell(d.expr);
+        }
+      }
+    }
+  }
+}
 
 export const addParameter = defineCommand<{ parameter: Parameter }>(
   'parameter.add',
