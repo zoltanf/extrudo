@@ -20,6 +20,7 @@ import {
   isDatumLine,
   lineCrossing,
   measureDimension,
+  roundEdgePoint,
 } from './dimensions';
 import { readSketch } from './feature';
 import { originPlaneRef } from './planes';
@@ -100,6 +101,129 @@ describe('measureDimension', () => {
   it('gives nothing for missing entities', () => {
     expect(measure({ type: 'radius', curve: e('nope') })).toBeUndefined();
     expect(measure({ type: 'angle', a: e('base'), b: e('nope') })).toBeUndefined();
+  });
+});
+
+describe("distances to a circle's or an arc's edge (ADR-0112)", () => {
+  /** A Ø20 circle at (0, 0), a vertical line x = 35, a point, a Ø10 circle at (40, 30), an arc. */
+  function rounds(): SketchData {
+    const entities: Record<string, SketchEntity> = {
+      c: { type: 'point', x: 0, y: 0 },
+      circle: { type: 'circle', center: e('c'), radius: 10, construction: false },
+      l1: { type: 'point', x: 35, y: -50 },
+      l2: { type: 'point', x: 35, y: 50 },
+      wall: { type: 'line', start: e('l1'), end: e('l2'), construction: false },
+      s1: { type: 'point', x: 20, y: 0 },
+      s2: { type: 'point', x: 40, y: 20 },
+      slant: { type: 'line', start: e('s1'), end: e('s2'), construction: false },
+      p: { type: 'point', x: 30, y: 40 },
+      c2: { type: 'point', x: 40, y: 30 },
+      small: { type: 'circle', center: e('c2'), radius: 5, construction: false },
+      ac: { type: 'point', x: 0, y: 60 },
+      as: { type: 'point', x: 8, y: 60 },
+      ae: { type: 'point', x: 0, y: 68 },
+      arc: { type: 'arc', center: e('ac'), start: e('as'), end: e('ae'), construction: false },
+    };
+    return { entities, constraints: {}, dimensions: {} } as SketchData;
+  }
+  const distance = (
+    orientation: 'aligned' | 'horizontal' | 'vertical',
+    a: string,
+    b: string,
+    sides: { sideA?: 'near' | 'far'; sideB?: 'near' | 'far' } = {},
+  ) => dim({ type: 'distance', orientation, a: e(a), b: e(b), ...sides });
+  const near = (x: number) => expect.closeTo(x, 9);
+
+  it('measures a circle to a line from the edge facing it, or the far one', () => {
+    const s = rounds();
+    for (const o of ['aligned', 'horizontal'] as const) {
+      expect(measureDimension(s, distance(o, 'circle', 'wall'))).toEqual(near(25));
+      expect(measureDimension(s, distance(o, 'wall', 'circle'))).toEqual(near(25));
+      expect(measureDimension(s, distance(o, 'circle', 'wall', { sideA: 'far' }))).toEqual(
+        near(45),
+      );
+    }
+    expect(distanceEnds(s, distance('aligned', 'circle', 'wall'))).toEqual([
+      [near(10), near(0)],
+      [near(35), near(0)],
+    ]);
+    // The line first: its end comes first too.
+    expect(distanceEnds(s, distance('aligned', 'wall', 'circle', { sideB: 'far' }))).toEqual([
+      [near(35), near(0)],
+      [near(-10), near(0)],
+    ]);
+    // A slanted line y = x - 20: aligned square to it, horizontal along y = 0.
+    const h = 20 / Math.SQRT2;
+    expect(measureDimension(s, distance('aligned', 'circle', 'slant'))).toEqual(near(h - 10));
+    expect(measureDimension(s, distance('aligned', 'circle', 'slant', { sideA: 'far' }))).toEqual(
+      near(h + 10),
+    );
+    expect(measureDimension(s, distance('horizontal', 'circle', 'slant'))).toEqual(near(10));
+    expect(measureDimension(s, distance('vertical', 'circle', 'slant'))).toEqual(near(10));
+    expect(distanceEnds(s, distance('vertical', 'circle', 'slant'))).toEqual([
+      [near(0), near(-10)],
+      [near(0), near(-20)],
+    ]);
+  });
+
+  it('measures a circle or an arc to a point, aligned, horizontal or vertical', () => {
+    const s = rounds();
+    expect(measureDimension(s, distance('aligned', 'p', 'circle'))).toEqual(near(40));
+    expect(measureDimension(s, distance('aligned', 'p', 'circle', { sideB: 'far' }))).toEqual(
+      near(60),
+    );
+    expect(measureDimension(s, distance('horizontal', 'circle', 'p'))).toEqual(near(20));
+    expect(measureDimension(s, distance('horizontal', 'circle', 'p', { sideA: 'far' }))).toEqual(
+      near(40),
+    );
+    expect(measureDimension(s, distance('vertical', 'circle', 'p'))).toEqual(near(30));
+    // The arc counts as its whole circle (R8 at (0, 60)): its lower quadrant point.
+    expect(measureDimension(s, distance('vertical', 'arc', 'p'))).toEqual(near(12));
+    expect(distanceEnds(s, distance('vertical', 'arc', 'p'))).toEqual([
+      [near(0), near(52)],
+      [near(30), near(40)],
+    ]);
+    expect(measureDimension(s, distance('vertical', 'arc', 'p', { sideA: 'far' }))).toEqual(
+      near(28),
+    );
+  });
+
+  it('measures the gap between two circles, or across them', () => {
+    const s = rounds();
+    expect(measureDimension(s, distance('aligned', 'circle', 'small'))).toEqual(near(35));
+    expect(
+      measureDimension(s, distance('aligned', 'circle', 'small', { sideA: 'far', sideB: 'far' })),
+    ).toEqual(near(65));
+    expect(measureDimension(s, distance('aligned', 'circle', 'small', { sideB: 'far' }))).toEqual(
+      near(45),
+    );
+    expect(measureDimension(s, distance('horizontal', 'circle', 'small'))).toEqual(near(25));
+    expect(measureDimension(s, distance('vertical', 'small', 'circle'))).toEqual(near(15));
+    expect(measureDimension(s, distance('vertical', 'small', 'arc', { sideB: 'far' }))).toEqual(
+      near(33),
+    );
+  });
+
+  it('puts the edge point on the circle with roundEdgePoint', () => {
+    const s = rounds();
+    expect(roundEdgePoint(s, e('circle'), 'near', [0, 50])).toEqual([near(0), near(10)]);
+    expect(roundEdgePoint(s, e('circle'), 'far', [30, 40])).toEqual([near(-6), near(-8)]);
+    expect(roundEdgePoint(s, e('circle'), 'near', [-1, 99], 'horizontal')).toEqual([
+      near(-10),
+      near(0),
+    ]);
+    expect(roundEdgePoint(s, e('circle'), 'far', [-1, 99], 'vertical')).toEqual([
+      near(0),
+      near(-10),
+    ]);
+    expect(roundEdgePoint(s, e('wall'), 'near', [0, 0])).toBeUndefined();
+  });
+
+  it('anchors the distance between the edge points and lists both entities', () => {
+    const s = rounds();
+    const d = distance('aligned', 'circle', 'wall');
+    expect(dimensionAnchor(s, d)).toEqual([near(22.5), near(0)]);
+    expect(dimensionRefs(d)).toEqual(['circle', 'wall']);
   });
 });
 
