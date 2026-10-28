@@ -182,15 +182,13 @@ describe('Dimension tool', () => {
       const t = await setup({ tool: DIMENSION_TOOL });
       draw(t, { c: pt(20, 20), hole: circle('c', 10) });
       // The Y axis, already projected.
-      t.store
-        .getState()
-        .dispatch(
-          addProjection({
-            feature: t.id,
-            id: 'py' as ProjectionId,
-            ref: originAxisRef('origin:y'),
-          }),
-        );
+      t.store.getState().dispatch(
+        addProjection({
+          feature: t.id,
+          id: 'py' as ProjectionId,
+          ref: originAxisRef('origin:y'),
+        }),
+      );
       t.host.syncProjections({
         [t.id]: {
           frame: { origin: [0, 0, 0], normal: [0, 0, 1], x: [1, 0, 0], y: [0, 1, 0] },
