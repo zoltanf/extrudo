@@ -1499,10 +1499,11 @@ end to end, faster than in established desktop CAD.
   - [ ] **S2 Inch grid.** In an inch design the grid and grid snapping use
     binary fractions of an inch and feet (1/16, 1/8, 1/4, 1/2, 1, 6, 12 in, 10 ft …)
     instead of powers of ten mm; the finest step is 1/16 in (ADR-0113 §2).
-  - [ ] **S3 Fractions and feet-inches.** Expressions take mixed numbers and
+  - [x] **S3 Fractions and feet-inches.** Expressions take mixed numbers and
     the `'`/`"` marks (`1 1/2 in`, `3/8"`, `5' 6"`); an inch design can show
     lengths as fractions (`settings.fractions`, nearest 1/4 … 1/64 by
     precision) in dimensions, inputs and the Parameters dialog (ADR-0113 §3).
+    *Done 2026-10-28.*
   Acceptance: `pnpm check`; `e2e/document-units.spec.ts` green on CI; S2 and
   S3 add their own specs; the file-format doc and `pnpm api:generate` updated
   for `fractions`.

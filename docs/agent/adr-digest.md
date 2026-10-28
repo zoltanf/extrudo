@@ -3631,4 +3631,8 @@ document set `settings.units` directly instead of dispatching the command. S2 (i
 1/16 … 1 in, 6 in, 1 ft, 10 ft; metric designs unchanged; the shader takes both spacings) and S3
 (parser: `3/8 in`, `1 1/2"`, `5' 6"` as one number, no change to `10 / 2`; `settings.fractions`
 optional, display denominator `2^(precision + 2)` capped at 64, inch designs only) follow the ADR's
-§2 and §3. e2e: `e2e/document-units.spec.ts`.
+§2 and §3. S3 (done 2026-10-28) is in `packages/core/src/expr/parser.ts` (fractions, mixed numbers,
+the `'`/`"` marks via `UNIT_ALIASES`, feet-inches), `packages/core/src/expr/format.ts`
+(`formatQuantity`/`formatLength` fractions, `fractionDenominator`), `packages/core/src/schema.ts`
+(`settings.fractions`), `apps/web/src/shell/BrowserPanel.tsx` (the `Fractions` row and the
+fraction Precision labels) and renders through `formatQuantity`; e2e: `e2e/inch-fractions.spec.ts`.

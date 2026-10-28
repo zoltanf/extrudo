@@ -8,9 +8,11 @@
  *   ^            right-assoc, binds tighter than unary minus (-2^2 = -4)
  *   atoms        number [unit] · name · name(args) · ( expr )
  * A unit may follow a number literal only: `10 mm`, `2.5in`, `1e-3 m`.
+ * An inch design may also type fractions and feet-inches (ADR-0113 §3):
+ * `3/8 in`, `1 1/2"`, `5' 6"` each parse to one number.
  */
 import { ExprError } from './errors';
-import { UNIT_NAMES, unitNamed } from './units';
+import { canonicalUnit, UNIT_NAMES, unitNamed } from './units';
 
 /** Half-open source range [start, end), for error underlines. */
 export interface Span {
@@ -61,6 +63,12 @@ export function tokenize(source: string): Token[] {
       continue;
     }
     const char = source.charAt(pos);
+    // The foot and inch marks (`5'`, `6"`) are unit tokens (ADR-0113 §3).
+    if (char === "'" || char === '"') {
+      tokens.push({ kind: 'name', text: char, start: pos, end: pos + 1 });
+      pos += 1;
+      continue;
+    }
     if (OPERATORS.includes(char)) {
       tokens.push({ kind: 'op', text: char, start: pos, end: pos + 1 });
       pos += 1;
@@ -181,7 +189,109 @@ export function parse(source: string): Node {
     throw new ExprError(`Expected a value, found \`${token.text}\`.`, token);
   }
 
-  function number(token: Token): Node {
+  /** `int/int` with no whitespace, at token index `at` (the numerator). */
+  function fractionAt(at: number): { value: number; denominator: Token; last: number } | undefined {
+    const numerator = tokens[at];
+    const slash = tokens[at + 1];
+    const denominator = tokens[at + 2];
+    if (
+      numerator?.kind !== 'num' ||
+      !/^\d+$/.test(numerator.text) ||
+      slash?.kind !== 'op' ||
+      slash.text !== '/' ||
+      numerator.end !== slash.start ||
+      denominator?.kind !== 'num' ||
+      !/^\d+$/.test(denominator.text) ||
+      slash.end !== denominator.start
+    ) {
+      return undefined;
+    }
+    const den = Number(denominator.text);
+    if (den === 0) {
+      throw new ExprError('Divide by zero in a fraction.', {
+        start: numerator.start,
+        end: denominator.end,
+      });
+    }
+    return { value: Number(numerator.text) / den, denominator, last: at + 2 };
+  }
+
+  /** The length unit token at token index `at`, if any (a fraction must take one). */
+  function lengthUnitAt(at: number): Token | undefined {
+    const token = tokens[at];
+    if (token?.kind !== 'name') return undefined;
+    const unit = unitNamed(token.text);
+    return unit && unit.dim.length === 1 && unit.dim.angle === 0 ? token : undefined;
+  }
+
+  function numNode(value: number, unitToken: Token, start: number): Node {
+    return {
+      kind: 'num',
+      value,
+      unit: canonicalUnit(unitToken.text),
+      span: { start, end: unitToken.end },
+    };
+  }
+
+  /**
+   * One number with an optional unit, a fraction or a mixed number
+   * (ADR-0113 §3): `10 mm`, `3/8 in`, `1 1/2 in`, `1-1/2"`. A fraction is
+   * `int/int` with no spaces; either form needs a length unit right after it,
+   * so `10 / 2`, `10/2` and `width/2` stay arithmetic.
+   */
+  function singleNumber(token: Token): Node {
+    if (/^\d+$/.test(token.text)) {
+      // A mixed number: `1 1/2` (space) or `1-1/2` (dash), then a fraction.
+      const dash = tokens[index];
+      const dashed =
+        dash?.kind === 'op' && dash.text === '-' && dash.start === token.end
+          ? fractionAt(index + 1)
+          : undefined;
+      const mixed = dashed ?? fractionAt(index);
+      if (mixed) {
+        const unitToken = lengthUnitAt(mixed.last + 1);
+        if (unitToken) {
+          index = mixed.last + 2;
+          return numNode(Number(token.text) + mixed.value, unitToken, token.start);
+        }
+        // A spaced mixed number with no length unit can't mean anything else;
+        // a dashed one falls through, so `1-1/2` stays `1 - 1/2`.
+        if (!dashed) {
+          throw new ExprError('A mixed number needs a length unit, like `1 1/2 in`.', {
+            start: token.start,
+            end: mixed.denominator.end,
+          });
+        }
+      }
+      // A plain fraction `3/8`, only when a length unit follows.
+      const slash = tokens[index];
+      const denominator = tokens[index + 1];
+      if (
+        slash?.kind === 'op' &&
+        slash.text === '/' &&
+        token.end === slash.start &&
+        denominator?.kind === 'num' &&
+        /^\d+$/.test(denominator.text) &&
+        slash.end === denominator.start
+      ) {
+        const unitToken = lengthUnitAt(index + 2);
+        if (unitToken) {
+          const den = Number(denominator.text);
+          if (den === 0) {
+            throw new ExprError('Divide by zero in a fraction.', {
+              start: token.start,
+              end: denominator.end,
+            });
+          }
+          index += 3;
+          return numNode(Number(token.text) / den, unitToken, token.start);
+        }
+        const after = tokens[index + 2];
+        if (after?.kind === 'name' && unitNamed(after.text)) {
+          throw new ExprError('Fractions take a length unit, like `3/8 in`.', after);
+        }
+      }
+    }
     const value = Number(token.text);
     const unitToken = peek();
     if (unitToken.kind === 'name' && unitToken.start === token.end && !unitNamed(unitToken.text)) {
@@ -192,14 +302,39 @@ export function parse(source: string): Node {
     }
     if (unitToken.kind === 'name' && unitNamed(unitToken.text)) {
       next();
-      return {
-        kind: 'num',
-        value,
-        unit: unitToken.text,
-        span: { start: token.start, end: unitToken.end },
-      };
+      return numNode(value, unitToken, token.start);
     }
     return { kind: 'num', value, unit: undefined, span: token };
+  }
+
+  /**
+   * A number, plus a feet number directly followed by an inches number as
+   * their sum in inches: `5' 6"` and `5 ft 6 in` are 66 in (ADR-0113 §3).
+   */
+  function number(token: Token): Node {
+    const first = singleNumber(token);
+    if (first.kind !== 'num' || first.unit !== 'ft') return first;
+    const nextToken = tokens[index];
+    if (nextToken?.kind !== 'num') return first;
+    const save = index;
+    index += 1;
+    let second: Node;
+    try {
+      second = singleNumber(nextToken);
+    } catch (error) {
+      index = save;
+      throw error;
+    }
+    if (second.kind !== 'num' || second.unit !== 'in') {
+      index = save;
+      return first;
+    }
+    return {
+      kind: 'num',
+      value: first.value * 12 + second.value,
+      unit: 'in',
+      span: { start: first.span.start, end: second.span.end },
+    };
   }
 
   function nameOrCall(token: Token): Node {
@@ -238,6 +373,21 @@ export function parse(source: string): Node {
     );
   }
   return root;
+}
+
+/**
+ * Is the source exactly one number literal (with an optional unit, fraction
+ * or feet-inches), so it reads as a value the user typed rather than a
+ * formula? `10`, `-2.5`, `3/8 in`, `1 1/2"` and `5' 6"` are; `2 * 3`,
+ * `width + 2` and `10 / 2` are not.
+ */
+export function isNumberLiteral(source: string): boolean {
+  try {
+    const node = parse(source.trim());
+    return node.kind === 'num' || (node.kind === 'unary' && node.arg.kind === 'num');
+  } catch {
+    return false;
+  }
 }
 
 /** Every name the expression refers to (parameters, not functions or units), in order, once each. */

@@ -256,6 +256,7 @@ Whole-document rules (checked after the per-field rules):
 |---|---|---|---|
 | `units` | `"mm"`, `"cm"`, `"m"`, `"in"` | yes | The document's **length unit**: what a plain number in a length field means, and what the app displays. Stored lengths in sketches are always mm regardless. When the app changes it (the browser's Document settings, ADR-0113 §1), it writes the previous unit onto every plain length number first (`10` → `10 mm`), so the model keeps its size. |
 | `precision` | integer 0 to 8 | yes | Decimal places shown for lengths and angles. A new document uses 2. |
+| `fractions` | boolean | no | Show inch lengths as the nearest binary fraction (`1 1/2 in`, `3/8 in`, `0 in`) instead of decimals (ADR-0113 §3). Absent = false; only meaningful with `units: "in"`; the denominator follows `precision` (`2^(precision + 2)`, capped at 64). Areas, volumes and angles stay decimal. |
 
 ### 4.2 `bodies[<bodyId>]` (BodyMeta)
 
@@ -533,6 +534,12 @@ formula as a hint.
   implicit multiplication** (`2 width` is an error).
 - **Units:** `mm cm m in ft deg rad`. A unit may only follow a number
   literal. Values are held in millimetres and degrees.
+- **Fractions, feet and inches (ADR-0113 §3):** a length may be a fraction
+  `int/int` with no spaces (`3/8 in`) or a mixed number `1 1/2`/`1-1/2`
+  (`1 1/2 in`), always with a length unit right after it. The inch and foot
+  marks are units too: `6"` is 6 in, `5'` is 5 ft. A feet number directly
+  followed by an inches number is their sum (`5' 6"`, `5 ft 6 1/2 in`). With
+  no length unit, `10 / 2`, `10/2` and `width/2` stay arithmetic.
 - **Constant:** `pi`. **Functions:** `sin cos tan asin acos atan sqrt abs min
   max round floor ceil`. `min` and `max` take one or more arguments, the rest
   one.
