@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { memoryPreferences } from '../platform';
 import { basis, orientationFor, sameView, type View, viewProject, viewRay } from './camera';
-import { gridStep } from './grid';
+import { gridLevels, gridStep, INCH_LEVELS, METRIC_LEVELS } from './grid';
 import { createViewportStore, DEFAULT_SETTINGS, shownOrigin, TRANSITION_MS } from './store';
 
 function setup(options: { reducedMotion?: boolean; stored?: Record<string, unknown> } = {}) {
@@ -295,6 +295,22 @@ describe('gridStep', () => {
     expect(gridStep(1)).toBe(100);
   });
 
+  it('an inch design snaps to sixteenths of an inch and up (P6-18 S2, ADR-0113 §2)', () => {
+    expect(gridStep(0.01, 'in')).toBe(25.4 / 16);
+    expect(gridStep(0.1, 'in')).toBe(25.4 / 16);
+    expect(gridStep(0.2, 'in')).toBe(25.4 / 8);
+    expect(gridStep(3, 'in')).toBe(25.4 * 6);
+    expect(gridStep(100, 'in')).toBe(25.4 * 120);
+    expect(gridStep(1000, 'in')).toBe(25.4 * 1200);
+  });
+
+  it('cm and m designs stay on the millimetre levels', () => {
+    expect(gridLevels('mm')).toBe(METRIC_LEVELS);
+    expect(gridLevels('cm')).toBe(METRIC_LEVELS);
+    expect(gridLevels('m')).toBe(METRIC_LEVELS);
+    expect(gridLevels('in')).toBe(INCH_LEVELS);
+  });
+
   it('shows and picks the origin axes while a dialog field takes axes (P3-17)', () => {
     const { store } = setup();
     for (const axis of ['x', 'y', 'z'] as const) store.getState().setOrigin(axis, false);
@@ -327,6 +343,32 @@ describe('joint pose (P6-05 J2)', () => {
     store.getState().setJointPose({ joint: 'j1' as never, value: 45 });
     store.getState().setGrid(false);
     expect(JSON.stringify(preferences.get('viewport', {}))).not.toContain('jointPose');
+  });
+});
+
+describe('length unit (P6-18 S2)', () => {
+  it('follows the document unit: set, kept on a repeat, back to mm', () => {
+    const { store } = setup();
+    expect(store.getState().lengthUnit).toBe('mm');
+    store.getState().setLengthUnit('in');
+    expect(store.getState().lengthUnit).toBe('in');
+    const changed = store.getState();
+    store.getState().setLengthUnit('in');
+    expect(store.getState()).toBe(changed);
+    store.getState().setLengthUnit('mm');
+    expect(store.getState().lengthUnit).toBe('mm');
+  });
+
+  it('is not part of the saved preferences', () => {
+    const { store, preferences } = setup();
+    store.getState().setLengthUnit('in');
+    store.getState().setGrid(false);
+    expect(JSON.stringify(preferences.get('viewport', {}))).not.toContain('lengthUnit');
+  });
+
+  it('starts at mm even when the preferences hold a display setting', () => {
+    const { store } = setup({ stored: { viewport: { grid: false } } });
+    expect(store.getState().lengthUnit).toBe('mm');
   });
 });
 

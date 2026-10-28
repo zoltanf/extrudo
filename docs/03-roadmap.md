@@ -1496,9 +1496,10 @@ end to end, faster than in established desktop CAD.
     (parameters, slider ranges, configurations, feature inputs, sketch
     dimensions), so the model keeps its size. The New design card picks the
     unit of a new design and remembers it. *Done 2026-10-28.*
-  - [ ] **S2 Inch grid.** In an inch design the grid and grid snapping use
+  - [x] **S2 Inch grid.** In an inch design the grid and grid snapping use
     binary fractions of an inch and feet (1/16, 1/8, 1/4, 1/2, 1, 6, 12 in, 10 ft …)
     instead of powers of ten mm; the finest step is 1/16 in (ADR-0113 §2).
+    *Done 2026-10-28.*
   - [ ] **S3 Fractions and feet-inches.** Expressions take mixed numbers and
     the `'`/`"` marks (`1 1/2 in`, `3/8"`, `5' 6"`); an inch design can show
     lengths as fractions (`settings.fractions`, nearest 1/4 … 1/64 by

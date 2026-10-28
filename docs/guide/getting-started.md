@@ -98,7 +98,9 @@ The browser's **Document settings** folder holds the design's **unit** (`mm`, `c
 what a plain number means and what dimensions show) and **precision** (decimal places). Changing
 the unit never resizes anything: every plain number already in the design gets its old unit
 written out (`10` becomes `10 mm`), so only the display and what you type next change. Both are
-undoable like any edit.
+undoable like any edit. In an inch design the grid and grid snapping are in sixteenths of an inch
+and up — 1/16, 1/8, 1/4, 1/2 in, whole inches, then 6 in, 1 ft, 10 ft — instead of millimetres;
+a metric design keeps its millimetre grid.
 
 ## Selecting
 

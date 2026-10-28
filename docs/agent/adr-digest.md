@@ -3631,4 +3631,7 @@ document set `settings.units` directly instead of dispatching the command. S2 (i
 1/16 … 1 in, 6 in, 1 ft, 10 ft; metric designs unchanged; the shader takes both spacings) and S3
 (parser: `3/8 in`, `1 1/2"`, `5' 6"` as one number, no change to `10 / 2`; `settings.fractions`
 optional, display denominator `2^(precision + 2)` capped at 64, inch designs only) follow the ADR's
-§2 and §3. e2e: `e2e/document-units.spec.ts`.
+§2 and §3. S2 is in: `apps/web/src/viewport/grid.ts` (`gridLevels` with `METRIC_LEVELS`/`INCH_LEVELS`,
+`gridStep`'s unit), the viewport store's `lengthUnit` (`AppShell` sets it from `doc.settings.units`;
+`sketch/tools/host.ts` passes it to `gridStep`; not a preference) and `GridPlane.tsx`'s `uLevels`
+uniform table with the per-fragment scan. e2e: `e2e/document-units.spec.ts`, `e2e/inch-grid.spec.ts`.
