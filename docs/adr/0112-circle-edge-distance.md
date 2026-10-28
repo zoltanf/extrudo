@@ -52,18 +52,24 @@ edge to the rectangle's left edge.
    its "inner" case for nested circles measures a different gap). Everything
    else (a far side, horizontal, vertical, a round crossing the line, overlapping
    or nested circles) uses **solver-only helper points**, like the ellipse's
-   focus: `<id>#qa`/`<id>#qb` on the round (`point_on_circle`/`point_on_arc`,
-   which planegcs maps to a distance from the center, without the arc's angular
-   range), held to the direction (`horizontal_pp`/`vertical_pp` with the
-   center; `perpendicular_pppp` of center→q to the line; `point_on_line_ppp`
-   with the center and the other point or center), then the ordinary distance
-   from the helper (`p2l_distance`, `p2p_distance`, `difference`). A horizontal
-   or vertical distance to a line also has `<id>#m` on the line
-   (`point_on_line_pl`) level with the edge point (`horizontal_pp`/
-   `vertical_pp`). Each helper adds two unknowns and two equations, so the DOF
-   count is the same as a center distance's. Helpers start at the edge point
-   the geometry has now, which picks planegcs's solution on the stored side;
-   `System.setValues` writes them again when a system is reused.
+   focus: `<id>#qa`/`<id>#qb`, the edge point of round `a`/`b`. Horizontal or
+   vertical, it is the quadrant point on a fixed side: level with the center
+   (`horizontal_pp`/`vertical_pp`) and one radius off (`difference` of the
+   coordinates equal to the round's `radius` parameter), so no change of value
+   can flip it to the other quadrant. Aligned, it is on the round
+   (`point_on_circle`/`point_on_arc`, which planegcs maps to a distance from the
+   center, without the arc's angular range) and on the line through the center
+   square to the other line (`perpendicular_pppp`) or through the other point
+   or center (`point_on_line_ppp`). Then the ordinary distance runs from the
+   helper (`p2l_distance`, `p2p_distance`, `difference`). A horizontal or
+   vertical distance to a line also has `<id>#m` on the line
+   (`point_on_line_pl`) level with the edge point. Each helper adds two
+   unknowns and two equations, so the DOF count is the same as a center
+   distance's. Helpers start at the edge point the geometry has now;
+   `System.setValues` writes them again when a system is reused. An aligned
+   helper has two solutions on its line (near and far); starting on the stored
+   side keeps it there for the bounded steps `gradual.ts` takes, the same
+   guard that keeps a line on its side of an edge.
 
 ## Rules
 

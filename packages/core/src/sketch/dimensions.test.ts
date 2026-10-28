@@ -131,7 +131,11 @@ describe("distances to a circle's or an arc's edge (ADR-0112)", () => {
     a: string,
     b: string,
     sides: { sideA?: 'near' | 'far'; sideB?: 'near' | 'far' } = {},
-  ) => dim({ type: 'distance', orientation, a: e(a), b: e(b), ...sides });
+  ) =>
+    dim({ type: 'distance', orientation, a: e(a), b: e(b), ...sides }) as Extract<
+      SketchDimension,
+      { type: 'distance' }
+    >;
   const near = (x: number) => expect.closeTo(x, 9);
 
   it('measures a circle to a line from the edge facing it, or the far one', () => {

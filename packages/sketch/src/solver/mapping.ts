@@ -14,6 +14,7 @@
  * stores solved, so they're stable from one solve to the next.
  */
 import {
+  distanceEnds,
   projectedEntities,
   type SketchArc,
   type SketchCircle,
@@ -73,6 +74,10 @@ interface Vec {
 const sub = (a: Vec, b: Vec): Vec => ({ x: a.x - b.x, y: a.y - b.y });
 const dot = (a: Vec, b: Vec) => a.x * b.x + a.y * b.y;
 const cross = (a: Vec, b: Vec) => a.x * b.y - a.y * b.x;
+const xy = (a: Vec): [number, number] => [a.x, a.y];
+const isRound = (kind: string | undefined) => kind === 'circle' || kind === 'arc';
+
+type Distance = Extract<SketchDimension, { type: 'distance' }>;
 
 /** An arc's start and end angles with end > start (planegcs runs counter-clockwise). */
 export function arcAngles(center: Vec, start: Vec, end: Vec) {
@@ -494,6 +499,7 @@ export function mapSketch(sketch: SketchData, values: DimensionValues = {}): Map
       case 'distance': {
         const ka = entities[d.a]?.type;
         const kb = d.b === undefined ? undefined : entities[d.b]?.type;
+        if (isRound(ka) || isRound(kb)) return { prims: roundDistancePrims(id, d), param: value };
         let [p, q] = ka === 'line' && d.b === undefined ? line(d.a) : [d.a, d.b as string];
         if (d.orientation === 'aligned') {
           if (ka === 'line' && kb === 'line') {
@@ -560,6 +566,154 @@ export function mapSketch(sketch: SketchData, values: DimensionValues = {}): Map
         };
       }
     }
+  }
+
+  /**
+   * A distance to a circle's or an arc's edge (ADR-0112). planegcs's own
+   * constraints where they mean what `measureDimension` measures (aligned,
+   * near edges: a point, a line the circle stays clear of, a circle it stays
+   * apart from); otherwise solver-only helper points on the circles
+   * (`<id>#qa`, `<id>#qb`) and, for a horizontal or vertical distance to a
+   * line, where it meets the line (`<id>#m`), placed where the geometry has
+   * them now so the solve keeps the stored side.
+   */
+  function roundDistancePrims(id: string, d: Distance): SketchPrimitive[] {
+    const b = d.b as string;
+    const ka = entities[d.a]?.type;
+    const kb = entities[b]?.type;
+    const ends = distanceEnds(sketch, d);
+    if (!ends) throw new Error(`sketch dimension "${id}" is missing an entity`);
+    const nearA = (d.sideA ?? 'near') === 'near';
+    const nearB = (d.sideB ?? 'near') === 'near';
+    if (d.orientation === 'aligned') {
+      if (isRound(ka) && kb === 'point' && nearA) {
+        return [{ id, type: 'p2cdistance', p_id: b, c_id: d.a, distance: id }];
+      }
+      if (ka === 'point' && isRound(kb) && nearB) {
+        return [{ id, type: 'p2cdistance', p_id: d.a, c_id: b, distance: id }];
+      }
+      if ((ka === 'line' && nearB) || (kb === 'line' && nearA)) {
+        const [l, c] = ka === 'line' ? [d.a, b] : [b, d.a];
+        const [p1, p2] = [point(line(l)[0]), point(line(l)[1])];
+        const centre = point(roundOf(c).center);
+        const h =
+          Math.abs(cross(sub(p2, p1), sub(centre, p1))) / (Math.hypot(...xy(sub(p2, p1))) || 1);
+        if (h >= radiusOf(c)) return [{ id, type: 'c2ldistance', c_id: c, l_id: l, dist: id }];
+      }
+      if (isRound(ka) && isRound(kb) && nearA && nearB) {
+        const gap = Math.hypot(...xy(sub(point(roundOf(d.a).center), point(roundOf(b).center))));
+        if (gap >= radiusOf(d.a) + radiusOf(b)) {
+          return [{ id, type: 'c2cdistance', c1_id: d.a, c2_id: b, dist: id }];
+        }
+      }
+    }
+    const prims: SketchPrimitive[] = [];
+    const lineId = ka === 'line' ? d.a : kb === 'line' ? b : undefined;
+    /** The helper point on round `r` at `at`, held to the direction toward `other`. */
+    const helper = (r: string, tag: string, at: readonly [number, number], other: string) => {
+      const q = `${id}#${tag}`;
+      const round = roundOf(r);
+      const level = d.orientation === 'horizontal' ? 'horizontal_pp' : 'vertical_pp';
+      prims.push({ id: q, type: 'point', x: at[0], y: at[1], fixed: false });
+      if (d.orientation !== 'aligned') {
+        // The quadrant point: level with the center, one radius off on the side it is
+        // now (a fixed side, so a big change can't flip it to the other quadrant).
+        const i = d.orientation === 'horizontal' ? 'x' : 'y';
+        const before = at[i === 'x' ? 0 : 1] < point(round.center)[i];
+        prims.push(
+          { id: `${q}-dir`, type: level, p1_id: round.center, p2_id: q },
+          {
+            id: `${q}-on`,
+            type: 'difference',
+            param1: { o_id: before ? q : round.center, prop: i },
+            param2: { o_id: before ? round.center : q, prop: i },
+            difference: { o_id: r, prop: 'radius' },
+          },
+        );
+        return q;
+      }
+      prims.push(
+        round.type === 'circle'
+          ? { id: `${q}-on`, type: 'point_on_circle', p_id: q, c_id: r }
+          : { id: `${q}-on`, type: 'point_on_arc', p_id: q, a_id: r },
+      );
+      if (entities[other]?.type === 'line') {
+        const [l1, l2] = line(other);
+        prims.push({
+          id: `${q}-dir`,
+          type: 'perpendicular_pppp',
+          l1p1_id: round.center,
+          l1p2_id: q,
+          l2p1_id: l1,
+          l2p2_id: l2,
+        });
+      } else {
+        const toward = isRound(entities[other]?.type) ? roundOf(other).center : other;
+        prims.push({
+          id: `${q}-dir`,
+          type: 'point_on_line_ppp',
+          p_id: q,
+          lp1_id: round.center,
+          lp2_id: toward,
+        });
+      }
+      return q;
+    };
+    const endA = isRound(ka) ? helper(d.a, 'qa', ends[0], b) : d.a;
+    const endB = isRound(kb) ? helper(b, 'qb', ends[1], d.a) : b;
+    if (lineId !== undefined && d.orientation === 'aligned') {
+      const q = lineId === d.a ? endB : endA;
+      prims.push({ id, type: 'p2l_distance', p_id: q, l_id: lineId, distance: id });
+      return prims;
+    }
+    const at: Record<string, readonly [number, number]> = { [endA]: ends[0], [endB]: ends[1] };
+    let [p, q] = [endA, endB];
+    if (lineId !== undefined) {
+      // Where the horizontal or vertical from the edge point meets the line.
+      const m = `${id}#m`;
+      const [edge, meet] = lineId === d.a ? [endB, ends[0]] : [endA, ends[1]];
+      at[m] = meet;
+      prims.push(
+        { id: m, type: 'point', x: meet[0], y: meet[1], fixed: false },
+        { id: `${m}-on`, type: 'point_on_line_pl', p_id: m, l_id: lineId },
+        {
+          id: `${m}-dir`,
+          type: d.orientation === 'horizontal' ? 'horizontal_pp' : 'vertical_pp',
+          p1_id: edge,
+          p2_id: m,
+        },
+      );
+      [p, q] = lineId === d.a ? [m, endB] : [endA, m];
+    }
+    if (d.orientation === 'aligned') {
+      prims.push({ id, type: 'p2p_distance', p1_id: p, p2_id: q, distance: id });
+      return prims;
+    }
+    const i = d.orientation === 'horizontal' ? 0 : 1;
+    const prop = i === 0 ? 'x' : 'y';
+    if ((at[q]?.[i] ?? 0) < (at[p]?.[i] ?? 0)) [p, q] = [q, p];
+    prims.push({
+      id,
+      type: 'difference',
+      param1: { o_id: p, prop },
+      param2: { o_id: q, prop },
+      difference: id,
+    });
+    return prims;
+  }
+
+  function roundOf(id: string): SketchCircle | SketchArc {
+    const e = entities[id];
+    if (e?.type !== 'circle' && e?.type !== 'arc') {
+      throw new Error(`sketch entity "${id}" is not a circle or an arc`);
+    }
+    return e;
+  }
+
+  function radiusOf(id: string): number {
+    const e = roundOf(id);
+    if (e.type === 'circle') return e.radius;
+    return Math.hypot(...xy(sub(point(e.start), point(e.center))));
   }
 
   function line(id: string): [string, string] {
