@@ -116,6 +116,20 @@ describe('dimensionShape', () => {
     expect(shape?.lines[1]?.[0][0]).toBeCloseTo(-45);
   });
 
+  it("runs a circle's edge distance from its quadrant point (ADR-0112)", () => {
+    const d = dim({ type: 'distance', orientation: 'vertical', a: e('hole'), b: e('s1') });
+    const shape = dimensionShape(sketch(), d, 4);
+    // The extension lines start at the circle's top and at the point.
+    close(shape?.lines[0]?.[0], [50, 5]);
+    close(shape?.lines[1]?.[0], [30, 40]);
+    expect(shape?.arrows.map((a) => a.tip[1])).toEqual([
+      expect.closeTo(5, 9),
+      expect.closeTo(40, 9),
+    ]);
+    const far = dimensionShape(sketch(), { ...d, sideA: 'far' } as SketchDimension, 4);
+    close(far?.lines[0]?.[0], [50, -5]);
+  });
+
   it('draws a diameter through the center towards the label', () => {
     const shape = dimensionShape(
       sketch(),

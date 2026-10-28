@@ -51,7 +51,7 @@ test('the Dimension tool places a length, and its value drives the line', async 
   await expect(toolPrompt(page)).toHaveText('Pick a line, circle or arc to dimension, or a point.');
   await click(0, 0);
   await expect(toolPrompt(page)).toHaveText(
-    'Click to place the length, or pick a second line or a point.',
+    'Click to place the length, or pick a second line, a point or a circle.',
   );
   const place = at(0, 12);
   await page.mouse.move(place.x, place.y);
