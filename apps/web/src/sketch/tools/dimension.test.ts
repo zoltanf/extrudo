@@ -178,6 +178,40 @@ describe('Dimension tool', () => {
       ]);
     });
 
+    it('leaves a datum axis for the diameter label after a circle, but takes it first', async () => {
+      const t = await setup({ tool: DIMENSION_TOOL });
+      draw(t, { c: pt(20, 20), hole: circle('c', 10) });
+      // The Y axis, already projected.
+      t.store
+        .getState()
+        .dispatch(
+          addProjection({
+            feature: t.id,
+            id: 'py' as ProjectionId,
+            ref: originAxisRef('origin:y'),
+          }),
+        );
+      t.host.syncProjections({
+        [t.id]: {
+          frame: { origin: [0, 0, 0], normal: [0, 0, 1], x: [1, 0, 0], y: [0, 1, 0] },
+          projections: {
+            ['py' as ProjectionId]: {
+              curves: { axis: { type: 'line', a: [0, -50], b: [0, 50] } },
+            } as never,
+          },
+        },
+      });
+      const axis = t.data().projections?.['py' as ProjectionId]?.curves.axis;
+      t.host.click(at(30, 20));
+      t.host.click(at(0.1, 40)); // on the Y axis: the diameter's label
+      expect(dims(t)).toMatchObject([{ type: 'diameter', curve: 'hole', expr: '20' }]);
+      // The axis first, then the circle's far half: a distance from its edge.
+      t.host.click(at(0.1, -30));
+      t.host.click(at(30, 20));
+      t.host.click(at(15, -5));
+      expect(dims(t)[1]).toMatchObject({ type: 'distance', a: axis, b: 'hole', sideB: 'far' });
+    });
+
     it('takes a line first, and a circle second; a circle alone is a diameter', async () => {
       const t = await setup({ tool: DIMENSION_TOOL });
       draw(t, {

@@ -765,7 +765,9 @@ A list on the left, the selected parameter on the right.
 - **Distances from a circle's or an arc's edge** (ADR-0112): after a circle
   or an arc, the Dimension tool takes a second pick, a point, a line or
   another circle or arc, and dimensions from the edge; a click on empty space
-  still places the diameter or radius. The half of the circle that was clicked
+  still places the diameter or radius (a datum axis or a body edge under that
+  click is left for the label: pick the axis first, then the circle). The half
+  of the circle that was clicked
   picks the edge: the half facing the other entity measures to the near edge,
   the other half to the far edge. The label's place makes it horizontal,
   vertical or aligned, as for two points (next to a vertical or horizontal

@@ -3633,5 +3633,6 @@ the line; c2c: circles apart); otherwise solver-only helper points `<id>#qa`/`#q
 entities, so never in `uses`, `free` or the solution); a horizontal or vertical helper is the
 quadrant point on a fixed side (`difference` = the round's `radius`), an aligned one starts on the
 stored side and relies on `gradual.ts`'s bounded steps; the tool's side is the clicked half (facing
-the other entity's reference point → `near`, left out of the stored dimension). e2e:
+the other entity's reference point → `near`, left out of the stored dimension); after a round first,
+datum axis lines and body edges stay free for the diameter's label (only model points are taken). e2e:
 `e2e/sketch-dimensions.spec.ts` (the last test).
