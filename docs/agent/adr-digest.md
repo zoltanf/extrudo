@@ -3616,3 +3616,22 @@ leaves the model out of step with the document: it changes the document, through
 first opens (`preparing`), for a kernel wait (`waiting`), or inside a transaction (sketch mode, a
 feature dialog); no keyboard shortcut (Escape must never undo edits); the notice stays
 `pointer-events: none`, only the button takes the pointer. e2e: `e2e/kernel-cancel.spec.ts`.
+
+ADR-0112 (the owner, 2026-10-28): **distance dimensions to a circle's or an arc's edge.**
+`packages/core/src/sketch/schema.ts` (`distance` takes a circle or an arc as `a`/`b` with a
+second entity; `sideA`/`sideB: 'near' | 'far'`, only on a round; a round with a line may be
+horizontal or vertical, a point or line with a line stays aligned), `core/src/sketch/dimensions.ts`
+(`roundEdgePoint`, `lineMeet`, `roundEnds` inside `distanceEnds`: ends in `a`, `b` order; an arc
+counts as its whole circle), `packages/sketch/src/solver/mapping.ts` (`roundDistancePrims`),
+`solver.ts` (`setValues` resets a dimension's helper points; `equationCount` leaves them out of the
+redundancy count), `apps/web/src/sketch/tools/dimension.ts` (a round first waits for a second pick;
+`Pick.at`, `roundDistance`, `sideOf`), the API's `DistanceOptions` and emitter. **Rules:**
+`measureDimension` and the solver mapping agree for every pair, side and orientation (test the solved
+value against `measureDimension`); planegcs's `p2cdistance`/`c2ldistance`/`c2cdistance` only for
+aligned near edges and only while their equation is our measurement (c2l: center at least `r` from
+the line; c2c: circles apart); otherwise solver-only helper points `<id>#qa`/`#qb`/`#m` (never
+entities, so never in `uses`, `free` or the solution); a horizontal or vertical helper is the
+quadrant point on a fixed side (`difference` = the round's `radius`), an aligned one starts on the
+stored side and relies on `gradual.ts`'s bounded steps; the tool's side is the clicked half (facing
+the other entity's reference point → `near`, left out of the stored dimension). e2e:
+`e2e/sketch-dimensions.spec.ts` (the last test).

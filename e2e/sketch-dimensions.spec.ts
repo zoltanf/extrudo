@@ -258,3 +258,51 @@ test('a dimension is a parameter: the Parameters dialog edits it, and it takes e
   await page.keyboard.press('Control+Z');
   await expect(labels(page)).toHaveText(['fx: 30.00']);
 });
+
+test("a distance from a circle's edge to a line drives the circle (ADR-0112)", async ({ page }) => {
+  const at = await sketchOnXY(page);
+  const click = clicker(page, at);
+  // A rectangle from the origin (its corner held there) and a Ø20 circle left of it.
+  await page.keyboard.press('r');
+  await click(0, 0);
+  await click(30, 40);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('c');
+  await click(-30, 20);
+  await click(-20, 20);
+  await page.keyboard.press('Escape');
+
+  // The diameter first (a click on empty space after the circle places it), so
+  // the circle keeps its size; then its right half (facing the rectangle) and
+  // the rectangle's left side.
+  await page.keyboard.press('d');
+  await click(-30, 30);
+  await click(-45, 38);
+  const diameter = page.getByRole('textbox', { name: 'Value of d1' });
+  await expect(diameter).toHaveValue('20');
+  await diameter.press('Enter');
+  await click(-20, 20);
+  await expect(toolPrompt(page)).toHaveText(
+    'Click to place the diameter, or pick a line, a point, a circle or an arc for the distance.',
+  );
+  await click(0, 30);
+  await expect(toolPrompt(page)).toHaveText('Click to place the dimension.');
+  const place = at(-10, 32);
+  await page.mouse.move(place.x, place.y);
+  await expect(page.locator('[data-preview="dimension-label"]')).toHaveText('20.00');
+  await page.mouse.click(place.x, place.y);
+  const value = page.getByRole('textbox', { name: 'Value of d2' });
+  await expect(value).toBeFocused();
+  await value.fill('25');
+  await value.press('Enter');
+  await expect(labels(page)).toHaveText(['⌀20.00', '25.00']);
+  await page.keyboard.press('Escape');
+  await expect(toolPrompt(page)).toHaveCount(0);
+
+  // The circle moved left: its center is 25 + 10 from the side, which stayed at x = 0.
+  const panel = page.getByRole('region', { name: 'Selection' });
+  await click(-35, 20);
+  await expect(panel.locator('[data-selection-title]')).toHaveText('Point');
+  await expect(panel.getByRole('textbox', { name: 'X' })).toHaveValue('-35');
+  await expect(panel.getByRole('textbox', { name: 'Y' })).toHaveValue('20');
+});
