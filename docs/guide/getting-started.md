@@ -26,7 +26,8 @@ or a portable exe on Windows and a dmg on macOS (also `brew install --cask zolta
 
 You start on the home screen:
 
-- **New design** opens an empty design in millimetres.
+- **New design** opens an empty design in millimetres, or in the unit picked on the card (`mm`,
+  `cm`, `m` or `in`; the choice is remembered for the next one).
 - **Import…** adds a design from a file: an `.extrudo` or `.f3d` design, or a STEP, mesh or
   OpenSCAD file, which becomes a new design with the [Import Model](./files.md) dialog open.
 - **Start from a template** shows the templates: the Wall bracket, Storage box, Box with a lid
@@ -92,6 +93,12 @@ it was orthographic — as one entry of the design, so it survives undo, reload 
 browser's **Named views** folder has the same views: a click restores, and the right-click menu
 updates one to where the camera is now, renames it or deletes it. Views hold only the camera: a
 section plane or a hidden body is not part of one.
+
+The browser's **Document settings** folder holds the design's **unit** (`mm`, `cm`, `m` or `in`:
+what a plain number means and what dimensions show) and **precision** (decimal places). Changing
+the unit never resizes anything: every plain number already in the design gets its old unit
+written out (`10` becomes `10 mm`), so only the display and what you type next change. Both are
+undoable like any edit.
 
 ## Selecting
 

@@ -122,6 +122,10 @@ export const NOT_IN_SETTINGS: readonly { key: string; reason: string }[] = [
   },
   { key: 'browser.assemblyHint', reason: "A dismissal: the browser's assembly hint was closed." },
   {
+    key: 'newDesignUnits',
+    reason: 'Edited in place: the unit select on the New design card (ADR-0113 §1).',
+  },
+  {
     key: 'viewport.origin',
     reason: "Per item, in the browser's Origin folder, where the planes and axes are listed.",
   },

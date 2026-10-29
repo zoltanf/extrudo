@@ -11,7 +11,10 @@ import {
   isConstructionType,
   isFeatureVisible,
   type JointId,
+  type LengthUnit,
+  LengthUnitSchema,
   type NamedView,
+  updateSettings,
 } from '@extrudo/core';
 import {
   Box,
@@ -55,6 +58,7 @@ import {
   MenuSeparator,
   MenuSub,
   Popover,
+  Select,
   TextInput,
   ToolIcon,
   Tooltip,
@@ -255,12 +259,7 @@ export function BrowserPanel({
           </div>
           <ul className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2 text-base">
             <Folder label="Document settings" icon={<Settings2 size={14} />} defaultOpen={false}>
-              <Leaf>
-                Units{' '}
-                <span className="ml-auto font-mono text-field text-muted">
-                  {doc.settings.units}
-                </span>
-              </Leaf>
+              <DocumentSettings store={store} />
             </Folder>
             <Folder label="Named views" icon={<Video size={14} />} defaultOpen={false}>
               {doc.views.length === 0 ? (
@@ -1696,6 +1695,76 @@ function Leaf({
     >
       {children}
     </li>
+  );
+}
+
+/** The lengths a document is shown and typed in: the unit a plain number means. */
+const UNIT_LABELS: Record<LengthUnit, string> = {
+  mm: 'Millimetres',
+  cm: 'Centimetres',
+  m: 'Metres',
+  in: 'Inches',
+};
+
+/** Decimal places offered for lengths and angles (the schema allows up to 8). */
+const PRECISIONS = [0, 1, 2, 3, 4, 5, 6] as const;
+
+/**
+ * The Document settings folder's rows (FR-PRJ-07, ADR-0113 §1): the length
+ * unit and the precision, each a select that dispatches `document.settings`.
+ * Changing the unit never changes the model: the command spells the old unit
+ * out on every plain length number, so only what is displayed and what a newly
+ * typed number means change.
+ */
+function DocumentSettings({ store }: { store: DocumentStore }) {
+  const settings = useStore(store, (s) => s.doc.settings);
+  const dispatch = store.getState().dispatch;
+  const selectClass = 'h-6 py-0 pr-5 pl-1.5 text-field';
+  return (
+    <>
+      <Leaf data-setting="units">
+        Units
+        <span className="ml-auto w-16">
+          <Select
+            aria-label="Units"
+            title={`${UNIT_LABELS[settings.units]}. Changing the unit keeps every length as it is.`}
+            className={selectClass}
+            value={settings.units}
+            onChange={(event) => {
+              const units = LengthUnitSchema.parse(event.target.value);
+              if (units !== settings.units) dispatch(updateSettings({ units }));
+            }}
+          >
+            {LengthUnitSchema.options.map((unit) => (
+              <option key={unit} value={unit}>
+                {unit}
+              </option>
+            ))}
+          </Select>
+        </span>
+      </Leaf>
+      <Leaf data-setting="precision">
+        Precision
+        <span className="ml-auto w-16">
+          <Select
+            aria-label="Precision"
+            title="Decimal places shown for lengths and angles."
+            className={selectClass}
+            value={settings.precision}
+            onChange={(event) => {
+              const precision = Number(event.target.value);
+              if (precision !== settings.precision) dispatch(updateSettings({ precision }));
+            }}
+          >
+            {PRECISIONS.map((places) => (
+              <option key={places} value={places}>
+                {(0).toFixed(places)}
+              </option>
+            ))}
+          </Select>
+        </span>
+      </Leaf>
+    </>
   );
 }
 

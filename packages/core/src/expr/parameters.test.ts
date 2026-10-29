@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyCommand } from '../commands';
 import { createDocument } from '../document';
-import {
-  addParameter,
-  removeParameter,
-  updateParameter,
-  updateSettings,
-} from '../document-commands';
+import { addParameter, removeParameter, updateParameter } from '../document-commands';
 import type { ExtrudoDocument, Feature, Parameter, UnitKind } from '../schema';
 import { fid, pid } from '../testing';
 import {
@@ -78,8 +73,8 @@ describe('evaluateParameters', () => {
   });
 
   it('takes plain numbers in the document unit', () => {
-    let d = doc([param('w', '2')]);
-    d = applyCommand(d, updateSettings({ units: 'in' })).doc;
+    // A design saved in inches: the command would spell `mm` out (ADR-0113 §1).
+    const d = { ...doc([param('w', '2')]), settings: { units: 'in' as const, precision: 2 } };
     expect(valueFor(d, 'w').value).toBeCloseTo(50.8);
   });
 

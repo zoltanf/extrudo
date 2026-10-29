@@ -27,6 +27,7 @@ export {
   valuesByName,
 } from './parameters';
 export { type Node, parse, references, type Span, tokenize } from './parser';
+export { isBareNumber, spellOutUnit } from './spell-unit';
 export {
   ANGLE,
   type Dim,
