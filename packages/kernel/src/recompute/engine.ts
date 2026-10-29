@@ -1217,17 +1217,25 @@ export class RecomputeEngine {
   ): void {
     const kernel = this.#kernel;
     let broken = 0;
+    let empty = 0;
     for (const shape of output.bodies?.values() ?? []) {
       if (this.#refs.has(shape)) continue;
-      if (!kernel.isValid(shape)) broken++;
+      // A B-rep body with no face at all (a boolean that lost everything) is as useless as a broken one.
+      if (!kernel.isMesh(shape) && kernel.count(shape, 'face') === 0) empty++;
+      else if (!kernel.isValid(shape)) broken++;
     }
-    if (broken === 0) return;
+    if (broken === 0 && empty === 0) return;
     const known = new Set([...before.values(), ...this.#refs.keys()]);
     for (const h of outputHandles(output)) if (!known.has(h)) kernel.release(h);
+    const what =
+      broken > 0
+        ? "a broken body (its faces don't close up into a sound solid)"
+        : 'an empty body (nothing is left of it)';
+    const one = broken + empty === 1;
     throw new KernelError(
-      `${featureNoun(feature)} made a broken body (its faces don't close up into a sound solid), so the ${
-        broken === 1 ? 'body was' : 'bodies were'
-      } left as ${broken === 1 ? 'it was' : 'they were'} before this step. Change the step a little, or report the model.`,
+      `${featureNoun(feature)} made ${what}, so the ${one ? 'body was' : 'bodies were'} left as ${
+        one ? 'it was' : 'they were'
+      } before this step. Change the step a little, or report the model.`,
     );
   }
 

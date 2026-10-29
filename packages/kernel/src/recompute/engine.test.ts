@@ -204,6 +204,19 @@ describe('feature status', () => {
     expect(shape && kernel.measure(shape).volume).toBeCloseTo(1000 + 1 * 2 * 2, 3);
   });
 
+  it('refuses a feature whose body is empty', async () => {
+    const doc = testDocument([
+      testFeature('f1', 'test-box', { size: '10 mm' }),
+      testFeature('f2', 'test-empty'),
+    ]);
+    const result = await recompute(doc);
+    expect(result.features['f2' as FeatureId]).toEqual({
+      status: 'error',
+      message: expect.stringMatching(/^The test-empty made an empty body .* left as it was before this step/),
+    });
+    expect(result.bodies.map((b) => b.id)).toEqual(['f1:0']);
+  });
+
   it('reports invalid inputs', async () => {
     const result = await recompute(testDocument([testFeature('f1', 'test-box')]));
     expect(result.features['f1' as FeatureId]).toEqual({

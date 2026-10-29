@@ -531,71 +531,87 @@ freeform top; the rounded-corner refusals in `kernel.test.ts` and
 ## Amendment 2026-10-29: a join keeps its inputs, keeps a sound result, and no broken body goes down the timeline
 
 Found while replaying three f3d designs of one family (ADR-0083's amendment of
-the same day): a 3 mm plate with a semicircular end, its bottom face raised
-1.5 mm by Offset Face (the flat-face prism fallback or the plain offset: a
-plate built directly with its bottom at 1.5 mm behaves the same), then a
-1.5 mm prism from a sketch of nearly the same outline joined downward onto
-the new bottom. Three faults, measured with the kernel in Node and in a
-native harness on the pinned OCCT 8.0.1 image:
+the same day): a 3 mm plate with rounded ends, its bottom face raised 1.5 mm
+by Offset Face (the flat-face prism fallback or the plain offset: a plate
+built directly with its bottom at 1.5 mm behaves the same), then a 1.5 mm
+prism from a sketch of nearly the same outline joined downward onto the new
+bottom. Three faults, measured with the kernel in Node and in a native harness
+on the pinned OCCT 8.0.1 image:
 
-1. **The join changed the body it was joined to, in place.** With fillets on
-   the plate (7754.2 mm³, valid), one `BRepAlgoAPI_Fuse` left the *input*
-   handle at 2926.1 mm³ and invalid (its face and edge counts unchanged), and
-   returned a result of 3804.1 mm³ (the fuse's complement, 3950.1, the prism
-   alone, without the merge). `BOPAlgo_Options::SetNonDestructive` is off by
-   default, and in that mode the General Fuse may update the arguments'
-   sub-shapes. The recompute engine keeps the body before a failed feature,
-   so a failed join also left that body broken.
-2. **The face merge after a sound fuse broke it.** Without fillets the fuse
-   was complete and valid (11 612.0 mm³ = plate + prism, 43 faces) and
-   `SimplifyResult` (`ShapeUpgrade_UnifySameDomain`) made it invalid (39
-   faces): the faces on the plate's end cylinder (r 20.47 mm) came out
+1. **The face merge after the fuse broke a sound result.** Plain
+   `BRepAlgoAPI_Fuse` gives a complete, valid solid (11 612.0 mm³ = plate +
+   prism, 43 faces; with the plate's fillets 11 704.3 mm³, 51 faces).
+   `SimplifyResult` (`ShapeUpgrade_UnifySameDomain`) makes it invalid: the
+   faces on the plate's end cylinder (r 20.47 mm) come out
    `UnorientableShape`, their edges `InvalidCurveOnClosedSurface` /
    `InvalidSameParameterFlag`. Every setting tried gives the same: fuzzy
    values 1e-7 to 1e-4, non-destructive, glue, unify of edges only, faces
    only, without B-spline concatenation, with internal edges, safe input mode,
    `KeepShape` on the non-planar or on the closed-surface faces. `ShapeFix` on
    the merged result reports valid with a maximum tolerance of 40.9 mm, which
-   is junk.
-3. **A broken body crashed the WASM.** In a sister design a fillet left the
-   body invalid (`kernel.isValid` false, with a warning), the join above made
-   it worse, and the next chamfer died with `RuntimeError: null function or
-   function signature mismatch` (a call through a bad pointer inside OCCT's
-   chamfer on an inconsistent shape; the facade's `catch (...)` cannot catch
-   it). The STEP round trip heals the shape, so the native harness could not
-   reproduce the crash itself.
+   is junk. No synthetic plate and prism reproduced it (five variants: tangent
+   and chord arcs, a split top line, a line piece a few 1e-7 mm off).
+2. **The merge changed the body being joined to, in place.** With fillets on
+   the plate (7754.2 mm³, valid) a *simplified* fuse left the input handle at
+   2926.1 mm³ and invalid (face and edge counts unchanged) and returned
+   3804.1 mm³, invalid; the plain fuse first leaves the plate intact. The
+   unifier changes sub-shapes of its input, the fuse result, which shares its
+   untouched faces and edges with the body, and it does so with
+   `SetSafeInputMode` on as well (a fresh copy of the plate came out invalid
+   after a simplified fuse in the non-destructive build). The recompute
+   engine keeps the body before a failed feature, so a failed join also left
+   that body broken, and a second boolean on it gave the prism alone (3950.1
+   mm³) or nothing.
+3. **A broken body crashed the WASM.** In a sister design the join above gave
+   an invalid body of 4466.7 mm³ and the next chamfer died with
+   `RuntimeError: null function or function signature mismatch` (a call
+   through a bad pointer inside OCCT's chamfer on an inconsistent shape; the
+   facade's `catch (...)` cannot catch it). The STEP round trip heals the
+   shape, so the native harness could not reproduce the crash itself. (The
+   same design's fillet before it measured invalid only after the display
+   mesh: `BRepCheck_Analyzer` on a meshed shape also judges the polygons on
+   its triangulation, and a copy without the mesh is valid. `kernel.isValid`
+   is reliable before meshing, which is when the engine asks.)
 
 **Decision.**
 
-- `finishBoolean` (every fuse, cut, common and split of the kernel) sets
-  **`SetNonDestructive(true)`**: the inputs are live bodies and must come out
-  as they went in.
-- With `simplify`, `finishBoolean` checks the merged result with
-  `BRepCheck_Analyzer` and, when the merge broke it, **builds the plain
-  boolean again** and returns that (the merged history can't be taken back
-  out of the builder). A valid solid with a few more faces beats a merged
-  one that isn't. The check costs one analysis per simplified boolean (10.7 ms
-  on the 43-face result in the harness).
+- `finishBoolean` (every fuse, cut, common and split of the kernel) runs a
+  **simplified boolean on copies of both inputs** (`BRepBuilderAPI_Copy`,
+  geometry copied, meshes not; the sub-shape order is the inputs', so the
+  history reads off the copies as `offsetFaces` does) and sets
+  **`SetNonDestructive(true)`** on every boolean (cheap insurance for the
+  plain ones, which run on the live bodies).
+- With `simplify`, it checks the merged result with `BRepCheck_Analyzer` and,
+  when the merge broke it, **builds the plain boolean again from the untouched
+  inputs** and returns that (the merged history can't be taken back out of the
+  builder, and the copies the merge worked on may be broken too). A valid
+  solid with a few more faces beats a merged one that isn't. The check costs
+  one analysis per simplified boolean (10.7 ms on the 43-face result in the
+  harness; 0.15 to 0.3 ms per face on the corpus's bodies).
 - The recompute engine's **`#checkSound`**: every fresh body handle a feature
-  outputs (`Kernel.isValid`: `BRepCheck_Analyzer`, or manifold's status for a
-  mesh) must be sound, else the feature fails with "The <feature> made a
-  broken body (its faces don't close up into a sound solid), so the body was
-  left as it was before this step. Change the step a little, or report the
-  model." and its fresh handles are released. One place for every evaluator,
-  one check per new body in the timeline (bodies passed on unchanged were
-  checked when made); the facade's own result checks (fillet, chamfer, offset,
-  shell …) stay, this catches what they don't (a boolean's result, a fillet
-  that passed the facade's check and still measures invalid). Cost: see the
-  numbers below.
-- A test hook, `brokenSolidForTests` (a box with one face taken out of its
-  shell, as a solid), feeds the engine test; no product code calls it.
+  outputs must be sound (`Kernel.isValid`: `BRepCheck_Analyzer`, or
+  manifold's status for a mesh) and, for a B-rep, have a face at all; else
+  the feature fails with "The <feature> made a broken body (its faces don't
+  close up into a sound solid), so the body was left as it was before this
+  step. Change the step a little, or report the model." (or "an empty body
+  (nothing is left of it)") and its fresh handles are released. One place for
+  every evaluator, one check per new body in the timeline (bodies passed on
+  unchanged were checked when made); the facade's own result checks (fillet,
+  chamfer, offset, shell …) stay, this catches what they don't (a boolean's
+  result above all). Cost: see the numbers below.
+- Test hooks, `brokenSolidForTests` (a box with one face taken out of its
+  shell, as a solid) and the `test-broken` / `test-empty` features, feed the
+  engine tests; no product code calls them.
 
 **Rejected.** A validity check of every *input* body in each evaluator (or in
 the facade's `find`): the same check many times over for one body, and the
 evaluators' error paths differ (a fillet's diagnosis, a chamfer's), so the
 message would too. `ShapeFix` after the merge (junk, above). Keeping the
 merged result and warning: the next fillet or chamfer on it fails or crashes.
+Merging a copy of the plain result and composing the three histories (boolean,
+copy, merge): sound, but the copy's "kept" faces turn into "modified" ones and
+the code is longer, for the same number of copies.
 
-Tests: `engine.test.ts` (a feature whose body isn't sound fails with the
-message and the next feature works on the body before it); the facade's
-fallback and the non-destructive join on the three designs, below.
+Tests: `engine.test.ts` (a feature whose body isn't sound, or is empty, fails
+with the message and the next feature works on the body before it); the
+facade's fallback and the copies on the three designs, below.

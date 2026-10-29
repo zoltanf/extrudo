@@ -13555,17 +13555,22 @@ private:
     // Set the arguments here, not in the builder's constructor: the
     // constructor that takes two shapes already builds, and Build() would
     // run the whole boolean again (P4-02 found every boolean ran twice).
+    //
+    // The inputs are live bodies. The algorithm leaves them alone in
+    // non-destructive mode, but the face merge after it (SimplifyResult,
+    // ShapeUpgrade_UnifySameDomain) changes sub-shapes the result shares
+    // with them in place, safe input mode or not: a filleted plate measured
+    // 7754 mm³, valid, before a simplified fuse and 2926 mm³, invalid, after
+    // it (ADR-0051, 2026-10-29). So a merge works on copies, whose sub-shape
+    // order is the inputs' (the history reads off them, as offsetFaces does).
+    const TopoDS_Shape inA = simplify ? BRepBuilderAPI_Copy(a, true, false).Shape() : a;
+    const TopoDS_Shape inB = simplify ? BRepBuilderAPI_Copy(b, true, false).Shape() : b;
     NCollection_List<TopoDS_Shape> arguments, tools;
-    arguments.Append(a);
-    tools.Append(b);
+    arguments.Append(inA);
+    tools.Append(inB);
     builder.SetArguments(arguments);
     builder.SetTools(tools);
     builder.SetRunParallel(false);
-    // The inputs are live bodies: without this the algorithm may change
-    // their sub-shapes in place while it works, and a join that then fails
-    // (or is refused for a broken result) leaves the body it was joined to
-    // broken as well (a filleted plate measured 7754 mm³ before a fuse and
-    // 2926, invalid, after it; ADR-0051, 2026-10-29).
     builder.SetNonDestructive(true);
     builder.Build();
     if (!builder.IsDone() || builder.HasErrors()) {
@@ -13573,20 +13578,21 @@ private:
     }
     if (simplify) {
       builder.SimplifyResult();
-      // The merge (ShapeUpgrade_UnifySameDomain) can break a sound result:
-      // a plate's rounded end joined by a prism whose side lies on the same
-      // cylinder came out of the fuse valid and out of the merge with
-      // unorientable faces (ADR-0051, 2026-10-29). The merge is a nicety,
-      // the solid is not: then the plain result, built again (the merged
-      // history can't be taken back out of the builder).
+      // The merge can break a sound result: a plate's rounded end joined by
+      // a prism whose side lies on the same cylinder came out of the fuse
+      // valid and out of the merge with unorientable faces (ADR-0051,
+      // 2026-10-29). The merge is a nicety, the solid is not: then the plain
+      // boolean, built again from the untouched inputs (the merged history
+      // can't be taken back out of the builder, and the copies it worked on
+      // may be broken too).
       if (!BRepCheck_Analyzer(builder.Shape()).IsValid()) {
         Builder plain;
         return finishBoolean(plain, a, b, false);
       }
     }
     const TopoDS_Shape result = builder.Shape();
-    recordHistory(builder, a, 0, result);
-    recordHistory(builder, b, 1, result);
+    recordHistory(builder, inA, 0, result);
+    recordHistory(builder, inB, 1, result);
     // The builder is on the stack: its destructor frees what it owns (the
     // Clear() rule of ADR-0001 is for builders deleted from JS).
     return store(result);

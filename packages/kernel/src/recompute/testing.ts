@@ -68,6 +68,7 @@ const base = { category: 'create', icon: 'test' } as const;
  * - `test-sheet`: a new body that is a sketch's profile face (`profile` ref `<sketch>/<region>`).
  * - `test-fail`: always fails. `test-leak`: leaves a box behind. `test-crash`: aborts the WASM.
  * - `test-broken`: a new body that isn't a sound solid (`Kernel.brokenSolidForTests`).
+ * - `test-empty`: a new body that is an empty compound.
  *
  * Topological naming (ADR-0005), with the naming operations a real feature uses:
  * - `test-extrude`: extrudes `profile` refs (`<sketch>/<region>`, several at once
@@ -131,6 +132,10 @@ export function testFeatures(): TestFeatures {
 
   define('test-broken', z.strictObject({}), ({ kernel, bodies, bodyId }) => ({
     bodies: new Map(bodies).set(bodyId(), kernel.brokenSolidForTests()),
+  }));
+
+  define('test-empty', z.strictObject({}), ({ kernel, bodies, bodyId }) => ({
+    bodies: new Map(bodies).set(bodyId(), kernel.compound([])),
   }));
 
   define('test-grow', z.strictObject({ height: ExprInputSchema }), ({ kernel, bodies, value }) => {
