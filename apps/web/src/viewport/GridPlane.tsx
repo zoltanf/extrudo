@@ -42,8 +42,10 @@ const vertexShader = /* glsl */ `
   }
 `;
 
-/** The shader's level table holds at most this many levels; unused slots repeat the last. */
-export const LEVEL_SLOTS = 10;
+/** The shader's level table: `SCAN_SLOTS` levels at most, unused slots repeating the last. */
+export const LEVEL_SLOTS = 12;
+/** Slots the shader scans: the last two are tail only, so `j + 2` never leaves the table. */
+const SCAN_SLOTS = LEVEL_SLOTS - 2;
 
 /** The level table as the shader's uniform: `LEVEL_SLOTS` floats, the tail repeating the last level. */
 function levelSlots(levels: readonly number[]): Float32Array {
@@ -91,24 +93,30 @@ const fragmentShader = /* glsl */ `
 
     // The first level whose cells reach ${MINOR_PIXELS.toFixed(1)} px is the snap step: it is
     // drawn as the minor lines and the next level as the major ones (ADR-0113 §2). The scan
-    // breaks at the level it finds and every read keeps a constant-index expression: GLSL
-    // ES 1.0 fragment shaders don't index uniform arrays with a computed index on every
-    // driver, and the tail slots repeat the last level, so neighbours past the table's end
-    // are that level.
+    // breaks at the level it finds and every read keeps a constant-index expression inside
+    // the table: GLSL ES 1.0 fragment shaders don't index uniform arrays with a computed index
+    // on every driver, and an index outside the array is an error on strict compilers even
+    // on a branch that is never taken. So the two levels below come from loop variables, and
+    // the two spare tail slots (repeating the last level) keep j + 2 inside the table.
     float want = perPixel * ${MINOR_PIXELS.toFixed(1)};
     float lower = 0.0;
-    float s0 = uLevels[${LEVEL_SLOTS - 1}];
+    float s0 = uLevels[${SCAN_SLOTS - 1}];
     float s1 = s0;
     float s2 = s0;
-    for (int j = 0; j < ${LEVEL_SLOTS}; j++) {
-      if (uLevels[j] >= want) {
+    float prev = 0.0;
+    float prev2 = 0.0;
+    for (int j = 0; j < ${SCAN_SLOTS}; j++) {
+      float cur = uLevels[j];
+      if (cur >= want) {
         bool clamped = j > uLevelCount - 2;
-        s0 = clamped ? uLevels[j - 1] : uLevels[j];
-        s1 = clamped ? uLevels[j] : (j < ${LEVEL_SLOTS - 1} ? uLevels[j + 1] : uLevels[${LEVEL_SLOTS - 1}]);
-        s2 = clamped ? uLevels[j] : (j < ${LEVEL_SLOTS - 2} ? uLevels[j + 2] : uLevels[${LEVEL_SLOTS - 1}]);
-        lower = clamped ? (j > 1 ? uLevels[j - 2] : 0.0) : (j > 0 ? uLevels[j - 1] : 0.0);
+        s0 = clamped ? prev : cur;
+        s1 = clamped ? cur : uLevels[j + 1];
+        s2 = clamped ? cur : uLevels[j + 2];
+        lower = clamped ? prev2 : prev;
         break;
       }
+      prev2 = prev;
+      prev = cur;
     }
     // The minor lines fade out as they crowd towards ${MINOR_PIXELS.toFixed(1)} px, from full
     // strength at the spacing of the level below (any spacing at the first level).
