@@ -1,0 +1,1 @@
+- 2026-10-29 · **f3d import**: an offset face is named by the face as the offset saw it, and an extrude's end cap only where the extrude's distance puts it, so an offset of a body's bottom no longer moves its top (three designs of one family lost 18 % of their volume to that).

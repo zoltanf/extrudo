@@ -1708,3 +1708,42 @@ deletions that fail (the bumper) goes from 28 deletions in the timeline, 23 of
 them errored, to 5 in the timeline and 23 listed in the notice; its replayed
 volume stays 7095.8 mm³ and its body stays frozen. No other design drops a
 step.
+
+## Amendment, 2026-10-29: an offset's face by the state the offset saw; the end cap only at the distance
+
+Three designs of one family (a connector plate with a semicircular end, 3 mm
+thick, its bottom raised 1.5 mm by an offset of −1.5 mm and rebuilt by a
+later extrude) replayed with the **wrong face offset**: the import named the
+offset's face by its solved state (`face.solved ?? face.surface`, as the
+round-faces amendment of 2026-10-23 left it), a plane 1.5 mm above the start
+cap, and the extrude cap rule called every plane that is not the profile plane
+the **end cap** (`Math.abs(h) < tol ? 'start' : 'end'`). So the top ring
+moved down by 1.5 mm instead of the bottom up: −2029 mm³, 17.7 % off the
+reference (before #130 the kernel refused that offset and the design matched
+by accident, 0.35 %).
+
+**Rules.**
+
+- An offset-faces recipe's face is named by its `surface` first, the face as
+  the offset saw it (`FORMAT.md`: `surface` is the state before the offset,
+  `solved` the face in the solved body), and by `solved` only when that
+  misses. The face's other `states` are still not read for an offset (the
+  reasons of the 2026-10-23 amendment stand: a face another offset moved
+  ran Offset Face for over 15 minutes on one design, and a thread refused the
+  wider hole on another).
+- A one-sided extrude to a distance knows where its end cap is
+  (`ImportedExtrude.end`, cm along the file's sketch normal, signed by
+  `side1`; also set for an extrude up to a face parallel to its sketch, which
+  the import turns into a distance). Its caps: `start` within 1e-5 cm of the
+  profile plane, `end` within `CAP_TOL` (1e-4 cm, a micron: the file's
+  distance and a float32 B-rep stream agree to well under that) of the end,
+  and a plane between the caps is a **miss** ("plane between the caps of an
+  extrude"). An extrude to an object, through everything or from a slanted
+  face has no known end, and any other parallel plane is still its end cap,
+  as before. Two-sided and symmetric extrudes keep their sign rule.
+
+Tests (`map.test.ts`): an offset whose face has `surface` at the start cap and
+`solved` between the caps names the start cap and moves the bottom (the
+washer's volume shrinks by a quarter); a lone plane between the caps names
+nothing and the offset is left out with "none of its 1 faces could be named".
+Corpus: see the numbers at the end of this amendment.

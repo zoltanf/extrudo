@@ -798,6 +798,68 @@ describe('f3dToDesign', () => {
     expect(await volumes(f3d)).toEqual([expect.closeTo((RING * 1.0) / 0.8, 3)]);
   });
 
+  it('names an offset face by the state the offset saw, not by its solved plane between the caps', async () => {
+    // The ring's bottom, the start cap at z = 0, moved up 0.2 mm: the file's
+    // solved state is a plane between the caps. Named by `solved` alone the
+    // sloppy cap rule once called it the end cap (the top), and the wrong
+    // face moved (a connector lost 18 % of its volume).
+    const f3d = washer();
+    f3d.features.push({
+      type: 'offset-faces',
+      id: 3,
+      kind: 'OffsetFaces',
+      name: 'OffsetFaces1',
+      suppressed: false,
+      parameters: [],
+      faces: [
+        {
+          tags: [],
+          feature: 2,
+          surface: { kind: 'plane', point: [0, 0, 0], normal: [0, 0, 1] },
+          solved: { kind: 'plane', point: [0, 0, 0.02], normal: [0, 0, 1] },
+          states: [{ kind: 'plane', point: [0, 0, 0.02], normal: [0, 0, 1] }],
+        },
+      ],
+      distance: parameter({ name: 'd5', kind: 'distance', value: -0.02 }),
+    });
+    const { design, report } = f3dToDesign(f3d, 'Washer');
+    expect(report.imported).toContain('OffsetFaces1');
+    const offset = design.toJSON().features.find((f) => f.type === 'offsetFace');
+    expect(offset?.inputs.faces).toEqual({
+      kind: 'ref',
+      refs: [{ kind: 'face', id: expect.stringMatching(/:cap:start$/) }],
+    });
+    expect(await volumes(f3d)).toEqual([expect.closeTo((RING * 0.6) / 0.8, 3)]);
+  });
+
+  it('names no cap for a plane between the caps of an extrude to a distance', () => {
+    const f3d = washer();
+    f3d.features.push({
+      type: 'offset-faces',
+      id: 3,
+      kind: 'OffsetFaces',
+      name: 'OffsetFaces1',
+      suppressed: false,
+      parameters: [],
+      // A plane 0.3 mm up a 0.8 mm ring: neither cap.
+      faces: [
+        {
+          tags: [],
+          feature: 2,
+          surface: { kind: 'plane', point: [0, 0, 0.03], normal: [0, 0, 1] },
+        },
+      ],
+      distance: parameter({ name: 'd5', kind: 'distance', value: 0.02 }),
+    });
+    const { report } = f3dToDesign(f3d, 'Washer');
+    expect(report.skipped).toEqual([
+      expect.objectContaining({
+        name: 'OffsetFaces1',
+        reason: 'none of its 1 faces could be named',
+      }),
+    ]);
+  });
+
   it("reads the file's 180° drill point as flat, and its flip", async () => {
     const f3d = washer();
     f3d.features.push({

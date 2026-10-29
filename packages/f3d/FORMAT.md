@@ -388,6 +388,20 @@ one after the second `[311, -324, -325, -328, -329, -330]`. A state no
 stream kept (a recipe of four ids where the streams hold two and nine) is
 read as the nearest.
 
+An offset-faces recipe's face carries two surfaces (`F3dFace` in `model.ts`):
+`surface` is the face as the offset saw it, before the offset, and `solved` is
+the face in the solved body (the file's last state), which is the face after
+the offset when nothing moves it again. Verified with the stored planes and
+cones (2026-10-29): in three designs of one family the offset's face is the
+plane z = 0 in `surface` and z = 0.15 cm in `solved`, the body's bottom moved
+1.5 mm inward by a distance of −1.5 mm; in the issue-93 bumper's six offsets
+the planes of a +1 mm offset lie 0.1 cm apart along their normal, a face
+offset twice shows each offset its own `surface` (the cone's radius 0.60 cm
+before the first, 0.69 cm before the second) and the same `solved` (0.68 cm,
+the end state), and a face with no `solved` is one whose `surface` is the
+solved state already. The importer names an offset's face by `surface` first
+and by `solved` only when that misses (ADR-0083, 2026-10-29).
+
 A copying feature's data record (the first record its members name:
 `C444E6AD…` for a mirror, `EA0E146E…` for a rectangular pattern,
 `7493A99D…` for a circular one) lists its instances: `u8 1, u32 n, n ×
