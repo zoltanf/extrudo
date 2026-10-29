@@ -212,7 +212,9 @@ describe('feature status', () => {
     const result = await recompute(doc);
     expect(result.features['f2' as FeatureId]).toEqual({
       status: 'error',
-      message: expect.stringMatching(/^The test-empty made an empty body .* left as it was before this step/),
+      message: expect.stringMatching(
+        /^The test-empty made an empty body .* left as it was before this step/,
+      ),
     });
     expect(result.bodies.map((b) => b.id)).toEqual(['f1:0']);
   });
