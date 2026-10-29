@@ -558,7 +558,7 @@ on the pinned OCCT 8.0.1 image:
    unifier changes sub-shapes of its input, the fuse result, which shares its
    untouched faces and edges with the body, and it does so with
    `SetSafeInputMode` on as well (a fresh copy of the plate came out invalid
-   after a simplified fuse in the non-destructive build). The recompute
+   after a simplified fuse in a build that ran the boolean non-destructively). The recompute
    engine keeps the body before a failed feature, so a failed join also left
    that body broken, and a second boolean on it gave the prism alone (3950.1
    mm³) or nothing.
@@ -576,11 +576,15 @@ on the pinned OCCT 8.0.1 image:
 **Decision.**
 
 - `finishBoolean` (every fuse, cut, common and split of the kernel) runs a
-  **simplified boolean on copies of both inputs** (`BRepBuilderAPI_Copy`,
-  geometry copied, meshes not; the sub-shape order is the inputs', so the
-  history reads off the copies as `offsetFaces` does) and sets
-  **`SetNonDestructive(true)`** on every boolean (cheap insurance for the
-  plain ones, which run on the live bodies).
+  **simplified boolean on copies of both inputs** (`BRepBuilderAPI_Copy` with
+  geometry and meshes, so the faces the result keeps carry their display mesh
+  as before and the mesh goldens don't move; the sub-shape order is the
+  inputs', so the history reads off the copies as `offsetFaces` does). The boolean itself
+  stays in its default mode: `SetNonDestructive(true)` on every boolean was
+  tried first and changes the result's tolerances enough that a **fillet
+  after a cut ran forever** on two designs of the corpus (1.4 s before), so
+  it is out. A plain boolean on the live bodies modified nothing in the
+  measurements above; the merge did.
 - With `simplify`, it checks the merged result with `BRepCheck_Analyzer` and,
   when the merge broke it, **builds the plain boolean again from the untouched
   inputs** and returns that (the merged history can't be taken back out of the

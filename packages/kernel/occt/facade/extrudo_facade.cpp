@@ -13562,11 +13562,12 @@ private:
     // plate measured 7754 mm³, valid, before a simplified fuse and 2926 mm³,
     // invalid, after it (ADR-0051, 2026-10-29). So a merge works on copies,
     // whose sub-shape order is the inputs' (the history reads off them, as
-    // offsetFaces does). The boolean itself stays in its default mode: its
-    // non-destructive mode changes the result's tolerances enough that a
-    // fillet after a cut ran forever on two designs of the corpus.
-    const TopoDS_Shape inA = simplify ? BRepBuilderAPI_Copy(a, true, false).Shape() : a;
-    const TopoDS_Shape inB = simplify ? BRepBuilderAPI_Copy(b, true, false).Shape() : b;
+    // offsetFaces does), meshes included, so the faces the result keeps carry
+    // their display mesh as before. The boolean itself stays in its default
+    // mode: its non-destructive mode changes the result's tolerances enough
+    // that a fillet after a cut ran forever on two designs of the corpus.
+    const TopoDS_Shape inA = simplify ? BRepBuilderAPI_Copy(a, true, true).Shape() : a;
+    const TopoDS_Shape inB = simplify ? BRepBuilderAPI_Copy(b, true, true).Shape() : b;
     NCollection_List<TopoDS_Shape> arguments, tools;
     arguments.Append(inA);
     tools.Append(inB);
