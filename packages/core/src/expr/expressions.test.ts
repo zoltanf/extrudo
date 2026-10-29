@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LengthUnit, UnitKind } from '../schema';
 import { evaluateExpression, isReservedName, type Quantity } from './evaluate';
-import { formatQuantity } from './format';
+import { formatQuantity, lengthExpr } from './format';
 import { evaluateInline, type InlineParameter, inlineParameter } from './inline';
 import { MAX_DEPTH, parse, references, tokenize } from './parser';
 import { ANGLE, type Dim, LENGTH, UNITLESS } from './units';
@@ -424,6 +424,24 @@ describe('formatQuantity', () => {
     [-0.001, LENGTH, mm, '0.00 mm'],
   ])('%d', (v, dim, settings, expected) => {
     expect(formatQuantity(v, dim, settings)).toBe(expected);
+  });
+});
+
+describe('lengthExpr', () => {
+  it.each<[number, LengthUnit, string]>([
+    [12.5, 'mm', '12.5 mm'],
+    [0.0004, 'mm', '0 mm'],
+    [-0.0001, 'mm', '0 mm'],
+    [25.4, 'in', '1 in'],
+    [10, 'in', '0.3937 in'],
+    [12.5, 'cm', '1.25 cm'],
+    [1500, 'm', '1.5 m'],
+  ])('%d mm in %s is %s', (mm, unit, expected) => {
+    expect(lengthExpr(mm, unit)).toBe(expected);
+  });
+
+  it('takes the decimals to keep', () => {
+    expect(lengthExpr(12.345, 'mm', 2)).toBe('12.35 mm');
   });
 });
 
