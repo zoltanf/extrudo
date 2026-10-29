@@ -1005,7 +1005,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
   const startSpec = (spec: FeatureDialogSpec): boolean => {
     const doc = store.getState().doc;
     const { bodies } = model.getState();
-    let values = defaultValues(spec);
+    let values = defaultValues(spec, doc.settings.units);
     // Pre-selection (UI spec §3.3): the selection fills the first field that takes it;
     // what that field doesn't take goes on to the next fields that take it (a profile and
     // an axis selected before Revolve, P2-07). Each item fills one field.

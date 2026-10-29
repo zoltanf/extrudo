@@ -21,6 +21,7 @@ import {
   coilFeature,
   DEFAULT_PLACEMENT,
   type GeomRef,
+  lengthExpr,
   PLACEMENT_KINDS,
   type PrimitiveNumber,
   type SketchFrame,
@@ -195,14 +196,16 @@ export function coilManipulators(values: DialogValues, ctx: ManipulatorContext):
  */
 export function proposeCoil(
   values: DialogValues,
-  ctx: Pick<ProposeContext, 'bodies' | 'construction'>,
+  ctx: Pick<ProposeContext, 'doc' | 'bodies' | 'construction'>,
 ): Partial<DialogValues> {
   const picked = values.refs.plane ?? [];
   const plane = picked[0] ?? DEFAULT_PLACEMENT;
   const out: Partial<DialogValues> & { exprs?: Record<string, string> } = {};
   if (picked.length === 0) out.refs = { plane: [plane] };
   const centre = plane.kind === 'face' ? faceCentre(plane, ctx) : [0, 0];
-  if (centre) out.exprs = { x: mm(centre[0] ?? 0), y: mm(centre[1] ?? 0) };
+  const unit = ctx.doc.settings.units;
+  if (centre)
+    out.exprs = { x: lengthExpr(centre[0] ?? 0, unit), y: lengthExpr(centre[1] ?? 0, unit) };
   const operation: BodyOperation = plane.kind === 'face' ? 'join' : 'new-body';
   return { ...out, choices: { operation } };
 }
@@ -214,9 +217,4 @@ function faceCentre(
   const frame = placementFrame(ref, ctx);
   const centroid = faceFrame(ctx.bodies, ref)?.origin ?? ref.fingerprint?.at;
   return frame && centroid && worldToSketch(frame, centroid);
-}
-
-function mm(value: number): string {
-  const rounded = Math.round(value * 1000) / 1000;
-  return `${Object.is(rounded, -0) ? 0 : rounded} mm`;
 }

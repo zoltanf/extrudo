@@ -3631,4 +3631,4 @@ document set `settings.units` directly instead of dispatching the command. S2 (i
 1/16 … 1 in, 6 in, 1 ft, 10 ft; metric designs unchanged; the shader takes both spacings) and S3
 (parser: `3/8 in`, `1 1/2"`, `5' 6"` as one number, no change to `10 / 2`; `settings.fractions`
 optional, display denominator `2^(precision + 2)` capped at 64, inch designs only) follow the ADR's
-§2 and §3. e2e: `e2e/document-units.spec.ts`.
+§2 and §3. Tools never write a literal `mm` into a design: a dialog field's mm `default` goes through `features/default-unit.ts` (`defaultInUnit`: an inch table, 10 mm → 3/8 in; cm and m exact) in `defaultValues(spec, unit)`, and a length a tool computes (a clicked point, a face centre, a canvas width) through core's `lengthExpr(mm, unit)`. e2e: `e2e/document-units.spec.ts`.
