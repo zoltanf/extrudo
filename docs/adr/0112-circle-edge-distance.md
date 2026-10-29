@@ -40,10 +40,10 @@ edge to the rectangle's left edge.
    The tool flow follows the line's: a circle or arc first waits for a second
    pick (a line, a point, a circle or an arc, not its own center or ends);
    clicking empty space places its diameter or radius as before. Like after
-   a line, the label's click must stay free: after a circle or an arc, datum
-   axes (unseen lines through the view) and body edges are not taken as the
-   second pick (pick the axis first, then the circle); the origin and datum
-   points are. The
+   a line, the label's click must stay free: after a circle or an arc, body
+   edges are not taken as the second pick; datum axes, the origin and datum
+   points are (a click on an axis is its distance, so the diameter's label
+   goes away from the axis; owner's review, 2026-10-29). The
    orientation comes from `orient` on the two end points, as for two points,
    so a circle next to a vertical line gets an aligned distance that reads
    horizontal.

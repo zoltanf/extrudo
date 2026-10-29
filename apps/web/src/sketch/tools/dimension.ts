@@ -228,18 +228,16 @@ export class DimensionTool implements SketchTool {
       first && firstType === 'line' && !first.model ? lineEnds(sketch, first.id) : undefined;
     const across = (line: readonly [Vec2, Vec2] | undefined) =>
       firstLine !== undefined && (!line || !parallel(firstLine, line));
-    // After a circle or an arc the next click may place its diameter or radius:
-    // datum axes (unseen lines through the view) and body edges are left for the
-    // label (ADR-0112); pick the axis first for a distance from it.
+    // After a circle or an arc a datum axis is taken as the second pick (ADR-0112);
+    // to place the diameter or radius, click away from the axis. Body edges are
+    // left for the label.
     const firstRound = first !== undefined && isRound(first.entity);
     const accept = (entity: SketchEntity, id: SketchEntityId) => {
       if (taken.has(id)) return false;
       if (!firstType) return ['point', 'line', 'circle', 'arc'].includes(entity.type);
-      if (entity.type === 'line' && (firstLine || firstRound)) {
+      if (entity.type === 'line' && firstLine) {
         const source = projectionOf(sketch, id)?.projection.ref;
-        if (source && isDatumRef(source) && (firstRound || across(lineEnds(sketch, id)))) {
-          return false;
-        }
+        if (source && isDatumRef(source) && across(lineEnds(sketch, id))) return false;
       }
       // A circle's own center and an arc's own ends have no edge distance to it.
       if (first && (ownPoint(first.entity, id) || ownPoint(entity, first.id))) return false;
@@ -259,7 +257,7 @@ export class DimensionTool implements SketchTool {
     if (!model) return undefined;
     if (firstLine && model.kind !== 'point' && model.kind !== 'axis') return undefined;
     if (firstLine && model.kind === 'axis' && across(model.line)) return undefined;
-    if (firstRound && model.kind !== 'point') return undefined;
+    if (firstRound && model.kind !== 'point' && model.kind !== 'axis') return undefined;
     if (model.entityId) {
       const entity = sketch.entities[model.entityId];
       if (entity && accept(entity, model.entityId)) {

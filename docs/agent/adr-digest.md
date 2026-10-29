@@ -3634,5 +3634,5 @@ entities, so never in `uses`, `free` or the solution); a horizontal or vertical 
 quadrant point on a fixed side (`difference` = the round's `radius`), an aligned one starts on the
 stored side and relies on `gradual.ts`'s bounded steps; the tool's side is the clicked half (facing
 the other entity's reference point → `near`, left out of the stored dimension); after a round first,
-datum axis lines and body edges stay free for the diameter's label (only model points are taken). e2e:
+body edges stay free for the diameter's label, while datum axes and model points are taken as the second pick (a click on an axis is its distance, not the diameter's label). e2e:
 `e2e/sketch-dimensions.spec.ts` (the last test).

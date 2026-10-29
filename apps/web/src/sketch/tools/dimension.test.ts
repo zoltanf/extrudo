@@ -178,9 +178,14 @@ describe('Dimension tool', () => {
       ]);
     });
 
-    it('leaves a datum axis for the diameter label after a circle, but takes it first', async () => {
+    it('takes a datum axis as the second pick after a circle, in either order', async () => {
       const t = await setup({ tool: DIMENSION_TOOL });
-      draw(t, { c: pt(20, 20), hole: circle('c', 10) });
+      draw(t, {
+        c: pt(20, 20),
+        hole: circle('c', 10),
+        c2: pt(20, -60),
+        hole2: circle('c2', 10),
+      });
       // The Y axis, already projected.
       t.store.getState().dispatch(
         addProjection({
@@ -200,14 +205,20 @@ describe('Dimension tool', () => {
         },
       });
       const axis = t.data().projections?.['py' as ProjectionId]?.curves.axis;
+      // The circle's far half, then the axis, then the label: a distance.
       t.host.click(at(30, 20));
-      t.host.click(at(0.1, 40)); // on the Y axis: the diameter's label
-      expect(dims(t)).toMatchObject([{ type: 'diameter', curve: 'hole', expr: '20' }]);
-      // The axis first, then the circle's far half: a distance from its edge.
-      t.host.click(at(0.1, -30));
+      t.host.click(at(0.1, 40)); // on the Y axis
+      t.host.click(at(10, -5));
+      expect(dims(t)[0]).toMatchObject({ type: 'distance', a: 'hole', b: axis, sideA: 'far' });
+      // The axis first, then another circle's far half: the same kind of distance.
+      t.host.click(at(0.1, 80));
+      t.host.click(at(30, -60));
+      t.host.click(at(15, -40));
+      expect(dims(t)[1]).toMatchObject({ type: 'distance', a: axis, b: 'hole2', sideB: 'far' });
+      // A click away from the axis still places the diameter.
       t.host.click(at(30, 20));
-      t.host.click(at(15, -5));
-      expect(dims(t)[1]).toMatchObject({ type: 'distance', a: axis, b: 'hole', sideB: 'far' });
+      t.host.click(at(40, 45));
+      expect(dims(t)[2]).toMatchObject({ type: 'diameter', curve: 'hole' });
     });
 
     it('takes a line first, and a circle second; a circle alone is a diameter', async () => {
