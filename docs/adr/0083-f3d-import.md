@@ -1746,4 +1746,23 @@ Tests (`map.test.ts`): an offset whose face has `surface` at the start cap and
 `solved` between the caps names the start cap and moves the bottom (the
 washer's volume shrinks by a quarter); a lone plane between the caps names
 nothing and the offset is left out with "none of its 1 faces could be named".
-Corpus: see the numbers at the end of this amendment.
+
+**Corpus** (252 designs, replay; with the kernel changes of ADR-0051's
+amendment of the same day): 163 match, 48 mismatch, 25 partial, 2 match
+despite skips, 9 with no reference, 5 with no bodies (was 161 / 49 / 25 / 3);
+features left out 78 (was 80). The connector family: the first design
+17.690 % → **0.354 %** (11 284.3 mm³ against 11 244.6), the second 37.8 → 40.2 %
+and the third 40.7 → 24.9 % (their later features fail on their own: a 3 mm
+round too large for its edge, chamfers whose edges the join changed; no
+crash). A lamp base 5.018 % → **0.265 %** (a round after a cut that ran forever
+with a non-destructive boolean, see ADR-0051, now builds on the unchanged
+boolean). Closer without a new verdict: a rail top 15.05 → 0.81 %, a tray
+5.13 → 0.57 %. Two designs drop a rank, both because an offset that was left
+out now imports: a filament guide with a threaded hole 0.024 % (match despite
+the skip) → 1.157 % (partial), where the offset widens the hole by 0.3 mm as
+the file does and the thread after it then refuses the hole ("as wide as the
+thread"; a thread-import limit, not a naming one); a distributor base 0.727 %
+over (partial) → 0.545 % under (mismatch, no skip left), nearer the reference
+than before. The issue-93 bumper: its second offset names all four of its
+faces (two were left out), its replayed body 7095.8 → 7095.6 mm³, the body
+check unchanged. The first issue-93 file is identical.

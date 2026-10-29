@@ -100,6 +100,8 @@ const THREE_MF_UNITS: Readonly<Record<string, number>> = {
 export const kernelImport: KernelFeatureDefinition<ImportInputs> = {
   ...importFeature,
   bodyAccess: () => 'write',
+  // A file's body is kept as it is, sound or not (ADR-0051, 2026-10-29).
+  keepsBrokenBodies: true,
   prepare: prepareImport,
   evaluate: evaluateImport,
 };

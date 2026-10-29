@@ -939,7 +939,7 @@ export class RecomputeEngine {
       if (prepared && 'error' in prepared) throw prepared.error;
       output = definition.evaluate(ctx);
       this.#checkNames(output, bodies);
-      this.#checkSound(output, bodies, feature);
+      this.#checkSound(output, bodies, feature, definition, ctx.warn);
       const all = [...new Set([...warnings, ...(output.warnings ?? [])])];
       status = all.length ? { status: 'warning', message: all.join(' ') } : { status: 'ok' };
     } catch (error) {
@@ -1214,6 +1214,8 @@ export class RecomputeEngine {
     output: FeatureOutput,
     before: ReadonlyMap<BodyId, ShapeHandle>,
     feature: Feature,
+    definition: KernelFeatureDefinition,
+    warn: (message: string) => void,
   ): void {
     const kernel = this.#kernel;
     let broken = 0;
@@ -1225,6 +1227,16 @@ export class RecomputeEngine {
       else if (!kernel.isValid(shape)) broken++;
     }
     if (broken === 0 && empty === 0) return;
+    if (definition.keepsBrokenBodies) {
+      // A file's body is the user's data: kept, and said so.
+      const n = broken + empty;
+      warn(
+        `${n === 1 ? 'A body' : `${n} bodies`} this ${featureNoun(feature).slice(4)} read ${
+          n === 1 ? "isn't" : "aren't"
+        } a sound solid (faces that don't close up), so later steps on ${n === 1 ? 'it' : 'them'} may fail.`,
+      );
+      return;
+    }
     const known = new Set([...before.values(), ...this.#refs.keys()]);
     for (const h of outputHandles(output)) if (!known.has(h)) kernel.release(h);
     const what =

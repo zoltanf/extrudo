@@ -69,6 +69,7 @@ const base = { category: 'create', icon: 'test' } as const;
  * - `test-fail`: always fails. `test-leak`: leaves a box behind. `test-crash`: aborts the WASM.
  * - `test-broken`: a new body that isn't a sound solid (`Kernel.brokenSolidForTests`).
  * - `test-empty`: a new body that is an empty compound.
+ * - `test-broken-kept`: `test-broken` for a feature that keeps broken bodies (`keepsBrokenBodies`, an import).
  *
  * Topological naming (ADR-0005), with the naming operations a real feature uses:
  * - `test-extrude`: extrudes `profile` refs (`<sketch>/<region>`, several at once
@@ -100,6 +101,7 @@ export function testFeatures(): TestFeatures {
     inputsSchema: z.ZodType<I>,
     evaluate: KernelFeatureDefinition<I>['evaluate'],
     bodyAccess?: KernelFeatureDefinition<I>['bodyAccess'],
+    more: Partial<Pick<KernelFeatureDefinition<I>, 'keepsBrokenBodies'>> = {},
   ) => {
     const definition: KernelFeatureDefinition<I> = {
       ...base,
@@ -107,6 +109,7 @@ export function testFeatures(): TestFeatures {
       label: type,
       inputsSchema,
       ...(bodyAccess ? { bodyAccess } : {}),
+      ...more,
       evaluate(ctx) {
         calls.push(ctx.feature.id);
         return evaluate(ctx);
@@ -137,6 +140,16 @@ export function testFeatures(): TestFeatures {
   define('test-empty', z.strictObject({}), ({ kernel, bodies, bodyId }) => ({
     bodies: new Map(bodies).set(bodyId(), kernel.compound([])),
   }));
+
+  define(
+    'test-broken-kept',
+    z.strictObject({}),
+    ({ kernel, bodies, bodyId }) => ({
+      bodies: new Map(bodies).set(bodyId(), kernel.brokenSolidForTests()),
+    }),
+    undefined,
+    { keepsBrokenBodies: true },
+  );
 
   define('test-grow', z.strictObject({ height: ExprInputSchema }), ({ kernel, bodies, value }) => {
     const [id, body] = first(bodies);

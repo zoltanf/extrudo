@@ -602,10 +602,16 @@ on the pinned OCCT 8.0.1 image:
   every evaluator, one check per new body in the timeline (bodies passed on
   unchanged were checked when made); the facade's own result checks (fillet,
   chamfer, offset, shell …) stay, this catches what they don't (a boolean's
-  result above all). Cost: see the numbers below.
+  result above all). Cost: see the numbers below. **A body read from a file
+  is exempt** (`KernelFeatureDefinition.keepsBrokenBodies`, set by the import
+  feature): it is the user's data as it is, so it stays, with the warning "A
+  body this import read isn't a sound solid (faces that don't close up), so
+  later steps on it may fail." The first corpus run refused nine such bodies
+  (two of them editable at 0.1 to 0.4 % off their design) and lost two.
 - Test hooks, `brokenSolidForTests` (a box with one face taken out of its
-  shell, as a solid) and the `test-broken` / `test-empty` features, feed the
-  engine tests; no product code calls them.
+  shell, as a solid) and the `test-broken` / `test-empty` /
+  `test-broken-kept` features, feed the engine tests; no product code calls
+  them.
 
 **Rejected.** A validity check of every *input* body in each evaluator (or in
 the facade's `find`): the same check many times over for one body, and the
@@ -619,3 +625,18 @@ the code is longer, for the same number of copies.
 Tests: `engine.test.ts` (a feature whose body isn't sound, or is empty, fails
 with the message and the next feature works on the body before it); the
 facade's fallback and the copies on the three designs, below.
+
+**Numbers.** The connector family, bottom face offset as the file means it:
+the first design's join is complete and valid (11 704.3 mm³; it measured
+3804.1, invalid, before) and the design ends at 11 289.1 mm³ against the
+reference's 11 244.6 (0.40 %; replay 0.354 %, match); the second's join gives
+13 681.7 mm³ and its chamfer fails with a message instead of crashing the
+WASM; the third's join 17 815.0 mm³, valid, and the design 24.9 % off (was
+40.7 %, and its join once split the body into nine pieces). Corpus replay
+(252 designs): 163 match, 48 mismatch, 25 partial (was 161 / 49 / 25), no
+`RuntimeError` in any worker log; the designs that changed are listed in
+ADR-0083's amendment. **Cost:** `BRepCheck_Analyzer` takes 0.15 to 0.3 ms per
+face on the corpus's bodies (a 669-face thread adapter 194 ms, a 100-face
+body 15 to 30 ms); the replay's summed recompute time went from 865 s to
+940 s (+8.7 %, measured under other load), which includes the merge's copies
+and the fallback's second boolean where it fires.

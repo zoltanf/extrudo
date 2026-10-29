@@ -204,6 +204,16 @@ describe('feature status', () => {
     expect(shape && kernel.measure(shape).volume).toBeCloseTo(1000 + 1 * 2 * 2, 3);
   });
 
+  it('keeps a broken body a file-reading feature made, with a warning', async () => {
+    const doc = testDocument([testFeature('f1', 'test-broken-kept')]);
+    const result = await recompute(doc);
+    expect(result.features['f1' as FeatureId]).toEqual({
+      status: 'warning',
+      message: expect.stringMatching(/^A body this test-broken-kept read isn't a sound solid/),
+    });
+    expect(result.bodies.map((b) => b.id)).toEqual(['f1:0']);
+  });
+
   it('refuses a feature whose body is empty', async () => {
     const doc = testDocument([
       testFeature('f1', 'test-box', { size: '10 mm' }),
