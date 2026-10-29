@@ -1445,7 +1445,7 @@ several buttons (`ToastOptions.actions`, with `action` the first of them), both
 with `available()`. Errors (permission lost, file removed) are toasts. The home
 screen's "Linked folder" section opens a file as a project **linked** to it;
 "Save to Linked Folder" (Home › Export tile, Ctrl+K) links an unlinked one, refusing a
-name that is already in the folder.
+name that is already in the folder. **2026-10-29:** every boolean of the kernel (`finishBoolean`: fuse, cut, common, split) runs **`SetNonDestructive(true)`** (a fuse changed the filleted body it was joined to in place), and with `simplify` it **checks the merged result and falls back to the plain boolean** when `UnifySameDomain` broke it (faces on one cylinder merged across its seam came out unorientable); the recompute engine's **`#checkSound`** refuses a feature whose fresh body fails `Kernel.isValid` ("The <feature> made a broken body …"), releases its handles and keeps the bodies before it, so **no evaluator ever gets a broken body**; `Kernel.brokenSolidForTests` / the `test-broken` feature exist for that test only.
 
 ADR-0066 (P4-06, slice 1) added **drawings into a sketch**: `@extrudo/io`
 gained `readSvg` / `readDxf` (`xml.ts` is our own small tokenizer, no

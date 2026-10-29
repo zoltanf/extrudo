@@ -527,3 +527,75 @@ when the fallback fails, the status-6 refusal stays. OCCT's offset is never
 reached on a sharp chain. Test: `mesh-to-solid.test.ts`, the boss with a
 freeform top; the rounded-corner refusals in `kernel.test.ts` and
 `offset-face.test.ts` are unchanged.
+
+## Amendment 2026-10-29: a join keeps its inputs, keeps a sound result, and no broken body goes down the timeline
+
+Found while replaying three f3d designs of one family (ADR-0083's amendment of
+the same day): a 3 mm plate with a semicircular end, its bottom face raised
+1.5 mm by Offset Face (the flat-face prism fallback or the plain offset: a
+plate built directly with its bottom at 1.5 mm behaves the same), then a
+1.5 mm prism from a sketch of nearly the same outline joined downward onto
+the new bottom. Three faults, measured with the kernel in Node and in a
+native harness on the pinned OCCT 8.0.1 image:
+
+1. **The join changed the body it was joined to, in place.** With fillets on
+   the plate (7754.2 mm³, valid), one `BRepAlgoAPI_Fuse` left the *input*
+   handle at 2926.1 mm³ and invalid (its face and edge counts unchanged), and
+   returned a result of 3804.1 mm³ (the fuse's complement, 3950.1, the prism
+   alone, without the merge). `BOPAlgo_Options::SetNonDestructive` is off by
+   default, and in that mode the General Fuse may update the arguments'
+   sub-shapes. The recompute engine keeps the body before a failed feature,
+   so a failed join also left that body broken.
+2. **The face merge after a sound fuse broke it.** Without fillets the fuse
+   was complete and valid (11 612.0 mm³ = plate + prism, 43 faces) and
+   `SimplifyResult` (`ShapeUpgrade_UnifySameDomain`) made it invalid (39
+   faces): the faces on the plate's end cylinder (r 20.47 mm) came out
+   `UnorientableShape`, their edges `InvalidCurveOnClosedSurface` /
+   `InvalidSameParameterFlag`. Every setting tried gives the same: fuzzy
+   values 1e-7 to 1e-4, non-destructive, glue, unify of edges only, faces
+   only, without B-spline concatenation, with internal edges, safe input mode,
+   `KeepShape` on the non-planar or on the closed-surface faces. `ShapeFix` on
+   the merged result reports valid with a maximum tolerance of 40.9 mm, which
+   is junk.
+3. **A broken body crashed the WASM.** In a sister design a fillet left the
+   body invalid (`kernel.isValid` false, with a warning), the join above made
+   it worse, and the next chamfer died with `RuntimeError: null function or
+   function signature mismatch` (a call through a bad pointer inside OCCT's
+   chamfer on an inconsistent shape; the facade's `catch (...)` cannot catch
+   it). The STEP round trip heals the shape, so the native harness could not
+   reproduce the crash itself.
+
+**Decision.**
+
+- `finishBoolean` (every fuse, cut, common and split of the kernel) sets
+  **`SetNonDestructive(true)`**: the inputs are live bodies and must come out
+  as they went in.
+- With `simplify`, `finishBoolean` checks the merged result with
+  `BRepCheck_Analyzer` and, when the merge broke it, **builds the plain
+  boolean again** and returns that (the merged history can't be taken back
+  out of the builder). A valid solid with a few more faces beats a merged
+  one that isn't. The check costs one analysis per simplified boolean (10.7 ms
+  on the 43-face result in the harness).
+- The recompute engine's **`#checkSound`**: every fresh body handle a feature
+  outputs (`Kernel.isValid`: `BRepCheck_Analyzer`, or manifold's status for a
+  mesh) must be sound, else the feature fails with "The <feature> made a
+  broken body (its faces don't close up into a sound solid), so the body was
+  left as it was before this step. Change the step a little, or report the
+  model." and its fresh handles are released. One place for every evaluator,
+  one check per new body in the timeline (bodies passed on unchanged were
+  checked when made); the facade's own result checks (fillet, chamfer, offset,
+  shell …) stay, this catches what they don't (a boolean's result, a fillet
+  that passed the facade's check and still measures invalid). Cost: see the
+  numbers below.
+- A test hook, `brokenSolidForTests` (a box with one face taken out of its
+  shell, as a solid), feeds the engine test; no product code calls it.
+
+**Rejected.** A validity check of every *input* body in each evaluator (or in
+the facade's `find`): the same check many times over for one body, and the
+evaluators' error paths differ (a fillet's diagnosis, a chamfer's), so the
+message would too. `ShapeFix` after the merge (junk, above). Keeping the
+merged result and warning: the next fillet or chamfer on it fails or crashes.
+
+Tests: `engine.test.ts` (a feature whose body isn't sound fails with the
+message and the next feature works on the body before it); the facade's
+fallback and the non-destructive join on the three designs, below.

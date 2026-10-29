@@ -880,6 +880,17 @@ export class Kernel {
   }
 
   /**
+   * Test hook: a solid that isn't sound (a box with one face missing from
+   * its shell), for the tests of the engine's refusal of broken bodies. The
+   * caller owns it. No product code calls this.
+   */
+  brokenSolidForTests(): ShapeHandle {
+    const handle = this.#facade.brokenSolidForTests();
+    if (handle === 0) throw new KernelError(this.#facade.lastError() || 'No broken solid.');
+    return handle as ShapeHandle;
+  }
+
+  /**
    * The faces (indices) of the smooth chain around `face`, the face
    * included: the faces `offsetFaces` moves together with it.
    */

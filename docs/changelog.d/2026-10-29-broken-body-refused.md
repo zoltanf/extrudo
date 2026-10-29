@@ -1,0 +1,1 @@
+- 2026-10-29 · **Broken bodies are refused**: a feature whose result isn't a sound solid now fails with a plain message and leaves its bodies as they were, instead of passing a broken body down the timeline (a chamfer on one such body crashed the kernel).

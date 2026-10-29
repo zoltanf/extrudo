@@ -179,6 +179,31 @@ describe('feature status', () => {
     expect(result.bodies).toHaveLength(1);
   });
 
+  it('refuses a feature whose body is not a sound solid and keeps the bodies before it', async () => {
+    // A broken body kept in the timeline breaks every step after it, and
+    // OCCT's chamfer crashed the WASM on one (ADR-0051, 2026-10-29).
+    const doc = testDocument([
+      testFeature('f1', 'test-box', { size: '10 mm' }),
+      testFeature('f2', 'test-broken'),
+      testFeature('f3', 'test-grow', { height: '1 mm' }),
+    ]);
+    const result = await recompute(doc);
+    expect(result.features).toEqual({
+      f1: { status: 'ok' },
+      f2: {
+        status: 'error',
+        message: expect.stringMatching(
+          /^The test-broken made a broken body .* so the body was left as it was before this step/,
+        ),
+      },
+      f3: { status: 'ok' },
+    });
+    expect(result.bodies.map((b) => b.id)).toEqual(['f1:0']);
+    // The box grown by the block: the broken body never got in.
+    const shape = engine.latestBody('f1:0' as BodyId);
+    expect(shape && kernel.measure(shape).volume).toBeCloseTo(1000 + 1 * 2 * 2, 3);
+  });
+
   it('reports invalid inputs', async () => {
     const result = await recompute(testDocument([testFeature('f1', 'test-box')]));
     expect(result.features['f1' as FeatureId]).toEqual({

@@ -1,0 +1,1 @@
+- 2026-10-29 · **Joins, cuts and intersections keep their inputs intact**: the boolean no longer changes the body it works on while it runs (a filleted plate came out of a failed join broken), and a join whose face merge would break the solid keeps the unmerged, sound result.
