@@ -294,7 +294,10 @@ const value = {
 /**
  * `distance` covers linear dimensions: a line's length (`a` alone), two
  * points (aligned, horizontal or vertical), a point and a line, or two
- * parallel lines (aligned only).
+ * parallel lines (aligned only). A circle or an arc (ADR-0112) measures from
+ * its edge to a point, a line or another circle's or arc's edge (aligned,
+ * horizontal or vertical): `sideA`/`sideB` say which edge, the one facing the
+ * other entity (`near`, the default) or the one opposite (`far`).
  *
  * `angle` is the angle between the two lines' directions (start → end),
  * 0–180°; with `supplement` it is 180° minus that, the other pair of angles
@@ -306,6 +309,10 @@ export const SketchDimensionSchema = z.discriminatedUnion('type', [
     orientation: z.enum(['aligned', 'horizontal', 'vertical']),
     a: ref,
     b: ref.optional(),
+    /** Which edge of a round `a` the distance runs to (ADR-0112); near when absent. */
+    sideA: z.enum(['near', 'far']).optional(),
+    /** Which edge of a round `b` the distance runs to (ADR-0112); near when absent. */
+    sideB: z.enum(['near', 'far']).optional(),
     ...value,
   }),
   z.strictObject({ type: z.literal('radius'), curve: ref, ...value }),
@@ -343,6 +350,9 @@ export type SketchDimensionType = SketchDimension['type'];
  * the curves where the face or body meets the sketch plane instead of its
  * projection; `linked: false` is an include waiting for the kernel's report,
  * which the app turns into plain entities and drops the record with.
+ *
+ * Issue #140 (ADR-0074's 2026-10-30 amendment): `mode: 'center'` projects a face's area
+ * centre as one point, keyed `faceCenter`, for a sketch tool that snapped to it.
  */
 export const SketchProjectionSchema = z.strictObject({
   ref: GeomRefSchema.describe(
@@ -352,10 +362,10 @@ export const SketchProjectionSchema = z.strictObject({
     .record(z.string(), SketchEntityIdSchema.nullable())
     .describe("Each curve's source key to its sketch entity, or null once deleted."),
   mode: z
-    .enum(['project', 'intersect'])
+    .enum(['project', 'intersect', 'center'])
     .optional()
     .describe(
-      'project (the default): the source seen along the sketch normal; intersect: where it meets the sketch plane.',
+      "project (the default): the source seen along the sketch normal; intersect: where it meets the sketch plane; center: a face's area centre as one point.",
     ),
   linked: z
     .literal(false)
@@ -387,6 +397,7 @@ export type SketchData = z.infer<typeof SketchDataSchema>;
 
 const PROJECTABLE: readonly string[] = ['edge', 'face', 'vertex', 'body', 'axis', 'point'];
 const INTERSECTABLE: readonly string[] = ['face', 'body'];
+const CENTERED: readonly string[] = ['face'];
 const POINT_SOURCES: readonly string[] = ['vertex', 'point', 'axis'];
 
 type Kinds = readonly SketchEntityType[];
@@ -468,7 +479,11 @@ export function sketchIssues(sketch: {
   dimensions: Record<string, SketchDimension>;
   projections?: Record<
     string,
-    { ref: GeomRef; curves: Record<string, string | null>; mode?: 'project' | 'intersect' }
+    {
+      ref: GeomRef;
+      curves: Record<string, string | null>;
+      mode?: 'project' | 'intersect' | 'center';
+    }
   >;
 }): SketchIssue[] {
   const issues: SketchIssue[] = [];
@@ -713,12 +728,30 @@ export function sketchIssues(sketch: {
       expect('dimensions', id, field, ref, kinds);
     switch (d.type) {
       case 'distance': {
-        const a = e('a', d.a, ['point', 'line']);
-        const b = e('b', d.b, ['point', 'line']);
+        const a = e('a', d.a, SYMMETRIC);
+        const b = e('b', d.b, SYMMETRIC);
         distinct('dimensions', id, [d.a, d.b]);
-        if (d.b === undefined && a === 'point') fail('dimensions', id, 'needs a second entity');
-        if (a && b && (a === 'line' || b === 'line') && d.orientation !== 'aligned') {
+        const round = (k: SketchEntityType | undefined) => k === 'circle' || k === 'arc';
+        if (d.b === undefined && (a === 'point' || round(a))) {
+          fail('dimensions', id, 'needs a second entity');
+        }
+        // A line with a point or a line: perpendicular to it. A circle's or an
+        // arc's edge may be measured horizontally or vertically (ADR-0112).
+        if (
+          a &&
+          b &&
+          !round(a) &&
+          !round(b) &&
+          (a === 'line' || b === 'line') &&
+          d.orientation !== 'aligned'
+        ) {
           fail('dimensions', id, 'to a line must be aligned');
+        }
+        if (d.sideA !== undefined && a && !round(a)) {
+          fail('dimensions', id, 'sideA needs a circle or an arc as a');
+        }
+        if (d.sideB !== undefined && (d.b === undefined || (b && !round(b)))) {
+          fail('dimensions', id, 'sideB needs a circle or an arc as b');
         }
         break;
       }
@@ -739,14 +772,21 @@ export function sketchIssues(sketch: {
   // and bodies.
   const projectedBy = new Map<string, string>();
   for (const [id, projection] of Object.entries(sketch.projections ?? {})) {
-    const kinds = projection.mode === 'intersect' ? INTERSECTABLE : PROJECTABLE;
+    const kinds =
+      projection.mode === 'intersect'
+        ? INTERSECTABLE
+        : projection.mode === 'center'
+          ? CENTERED
+          : PROJECTABLE;
     if (!kinds.includes(projection.ref.kind)) {
       fail(
         'projections',
         id,
         projection.mode === 'intersect'
           ? `must intersect a face or a body, not a ${projection.ref.kind}`
-          : `must project an edge, a face, a vertex, a body, an axis or a point, not a ${projection.ref.kind}`,
+          : projection.mode === 'center'
+            ? `must take the centre of a face, not of a ${projection.ref.kind}`
+            : `must project an edge, a face, a vertex, a body, an axis or a point, not a ${projection.ref.kind}`,
       );
     }
     for (const [key, curve] of Object.entries(projection.curves)) {
@@ -754,9 +794,11 @@ export function sketchIssues(sketch: {
       const path = ['projections', id, 'curves', key];
       const kind = kindOf(curve);
       if (!kind) issues.push({ path, message: `refers to missing entity "${curve}"` });
-      // Vertices, points and axes along the normal (ADR-0093) project to points.
+      // Vertices, points and axes along the normal (ADR-0093) project to points, a face's centre too.
       else if (
-        (kind === 'point' && !POINT_SOURCES.includes(projection.ref.kind)) ||
+        (kind === 'point' &&
+          projection.mode !== 'center' &&
+          !POINT_SOURCES.includes(projection.ref.kind)) ||
         kind === 'text'
       ) {
         issues.push({

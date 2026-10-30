@@ -381,8 +381,9 @@ const SNAP_NAMES: Record<SnapKind, string> = {
   grid: 'Grid',
 };
 
-/** The snap glyph a model pick draws as (a vertex or datum point a point, an edge or axis an on-curve circle). */
+/** The snap glyph a model pick draws as (a vertex or datum point a point, a face's centre a center, an edge or axis an on-curve circle). */
 function modelGlyphKind(kind: ModelSnapKind): SnapKind {
+  if (kind === 'faceCenter') return 'center';
   return isPointSnap(kind) ? 'point' : 'onCurve';
 }
 

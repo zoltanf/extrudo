@@ -210,6 +210,59 @@ describe('sketch schema', () => {
     ]);
   });
 
+  it('takes a circle or an arc with a second entity as a distance (ADR-0112)', () => {
+    const r = rectangle();
+    const base = { expr: '1', driven: false } as const;
+    const good = {
+      toLine: { type: 'distance', orientation: 'horizontal', a: 'hole', b: 'left', ...base },
+      toPoint: { type: 'distance', orientation: 'vertical', a: 'p1', b: 'arc', ...base },
+      edges: {
+        type: 'distance',
+        orientation: 'aligned',
+        a: 'hole',
+        b: 'arc',
+        sideA: 'far',
+        sideB: 'near',
+        ...base,
+      },
+    };
+    expect(issues({ ...r, dimensions: good })).toEqual([]);
+    const bad = {
+      alone: { type: 'distance', orientation: 'aligned', a: 'hole', ...base },
+      sideOfPoint: {
+        type: 'distance',
+        orientation: 'aligned',
+        a: 'p1',
+        b: 'hole',
+        sideA: 'far',
+        ...base,
+      },
+      sideOfLine: {
+        type: 'distance',
+        orientation: 'aligned',
+        a: 'hole',
+        b: 'left',
+        sideB: 'near',
+        ...base,
+      },
+      sideOfNothing: {
+        type: 'distance',
+        orientation: 'aligned',
+        a: 'bottom',
+        sideB: 'near',
+        ...base,
+      },
+      pointToLine: { type: 'distance', orientation: 'vertical', a: 'p3', b: 'left', ...base },
+    };
+    expect(issues({ ...r, dimensions: bad })).toEqual([
+      'dimensions.alone: needs a second entity',
+      'dimensions.sideOfPoint: sideA needs a circle or an arc as a',
+      'dimensions.sideOfLine: sideB needs a circle or an arc as b',
+      'dimensions.sideOfNothing: sideB needs a circle or an arc as b',
+      'dimensions.pointToLine: to a line must be aligned',
+    ]);
+  });
+
   it('lets each point belong to one curve only', () => {
     const r = rectangle();
     const shared = {

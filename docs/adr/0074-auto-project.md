@@ -346,3 +346,88 @@ model much heavier than B5 would raise this before that would be needed.
   curved-edge refusal.
 - `e2e/auto-project.spec.ts` adds a Line end snapping to a cylinder's rim
   (a curved edge), which projects the circle and holds the point on it.
+
+## Amendment, 2026-10-30: snapping to a face's centre (issue #140)
+
+A user asked for the sketch tools to snap to the centre of the face a sketch
+is on, so a circle can start in the middle of a box's side without two
+dimensions afterwards.
+
+### The snap
+
+`ModelSnapKind` gains `faceCenter` (a point kind: `isPointSnap`). The view
+(`apps/web/src/sketch/autoProject.ts`, `faceCenterSnapAt`) offers the centre
+of every **flat face of a shown body that lies in the sketch plane** (every
+node of its triangles within 1e-3 mm of the plane): the sketch's own face,
+and any other face coplanar with it. The centre is the **area centroid of the
+face's triangles**, cached per mesh and frame, so a face with round edges is a
+little off until the kernel's exact one arrives (as an edge's display polyline
+is). Mesh bodies offer none (no B-rep face to name). `autoProjectSnap` takes
+the snap tolerance (the view passes `SNAP_PIXELS × perPixel`) and returns the
+face centre within it when it is nearer the cursor than the edge or vertex the
+pick found; the preference turns it off with the rest of auto-project.
+
+`infer` treats a `faceCenter` model target as a **point target at priority 1**
+(with endpoints, centres, sketch points and the origin, nearest first), not
+at 4b with other model targets: a centre has to beat a sketch line that runs
+through it, and its midpoint or crossings. A drawn sketch point wins a tie (the
+point is held to it instead), but **the origin loses one**: a box centred on
+the origin has its top face's centre there, and the origin's snap is a `fix`
+that would not follow the face.
+The snap is `kind: 'center'` with `model` set, so the overlay draws the centre
+glyph, and `place` turns it into a `ModelAttachment` of kind `faceCenter`.
+
+### The projection
+
+The point must follow the face, so the host projects it like a vertex, with
+a pending `coincident`. A face's ordinary projection is its outline (and
+would split the sketch's profiles), so the centre gets a **projection mode of
+its own**: `SketchProjection.mode: 'center'`, ref kind `face` only, one curve
+keyed `faceCenter` (a point). The kernel's `projectAll` reports the face's
+area centroid (`describe(...).faces[i].centroid`) projected along the normal;
+a lost face is reported lost like any other source. The host's `projectionFor`
+and its mint key take the mode from the snap kind (`projectionMode`), so a
+face can carry both an outline and a centre record, one of each. A picking
+tool (Dimension, Constraint) can pick the centre too: it stands in as a point.
+
+This changes §5: the file format gains the `center` value of `mode`
+(`docs/file-format.md`) and the kernel one more projection. **No
+`formatVersion` bump**, as with ADR-0093's axis and point projections: a new
+value is not an optional key, so an Extrudo from before this change refuses a
+design holding a `center` record as invalid rather than dropping it. A bump
+would only make it say "saved by a newer Extrudo" instead; designs without a
+face-centre snap are unaffected.
+
+### Rejected
+
+- **A plain snap with no projection** (the point placed at the centre,
+  nothing holding it): simpler, but the point stays behind when the face
+  changes size, which is what the user wanted to avoid.
+- **Projecting the face (its outline) and holding the point at the outline's
+  centre**: the outline would land in the sketch as profile-splitting
+  geometry the user did not ask for, and there is no constraint for "the
+  centre of a loop".
+- **Picking the face under the pointer** (like edges and vertices): the
+  sketch's own face is under the pointer everywhere, so the pick says nothing
+  about where the centre is; the candidates are found by distance instead.
+- **Faces parallel to the sketch plane but off it** (a box's top seen from a
+  sketch on its bottom): two faces with the same projected centre, hidden
+  behind the sketch's own face. Coplanar faces only, for now.
+
+### Deferred
+
+- **Midpoints of body edges** in the sketch plane: a projected edge plus a
+  `midpoint` constraint, a second pending kind whose curve key (`edge`) would
+  differ from its snap kind. Its own change.
+- **Curved faces**: their area centroid is off the surface; no centre is
+  offered.
+
+### Results
+
+- Unit tests: `packages/sketch/src/inference/inference.test.ts` (the
+  priority, the tie, `place`), `packages/core/src/sketch/projection.test.ts`
+  (the record, refusals, sync, the load check), `packages/kernel/src/features/project.test.ts`
+  (the centroid, following a longer box), `apps/web/src/sketch/autoProject.test.ts`
+  (coplanar faces only, against the pick) and `apps/web/src/sketch/tools/host.test.ts`
+  (a line started at a centre: the `center` record beside an outline, the
+  coincident).

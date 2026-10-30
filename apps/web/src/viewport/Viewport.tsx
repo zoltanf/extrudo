@@ -67,7 +67,7 @@ import {
 import { autoProjectSnap } from '../sketch/autoProject';
 import { sketchTargetAt } from '../sketch/facePick';
 import { tangentGrips } from '../sketch/splineEnds';
-import type { PlanePointer, SketchBox } from '../sketch/tools/host';
+import { type PlanePointer, type SketchBox, SNAP_PIXELS } from '../sketch/tools/host';
 import { applyView } from './applyView';
 import { Bodies, clipPlanes } from './Bodies';
 import { ghostBodiesSummary } from './bodyGhosts';
@@ -518,11 +518,17 @@ export function Viewport({
     () => ({ bodies, meta, sketches, construction, clip: sectionClip, posed }),
     [bodies, meta, sketches, construction, sectionClip, posed],
   );
-  // Auto-project (P6-07): the body edge or vertex under the pointer while a
-  // tool runs. Off, the view offers nothing and the tool never sees one.
+  // Auto-project (P6-07): the body edge or vertex under the pointer, or a face
+  // centre near it (issue #140), while a tool runs. Off, the view offers
+  // nothing and the tool never sees one.
   const modelSnapPicker = useMemo(
     () =>
-      (pointer: ScreenPointer, frame: SketchFrame, cursor: Vec2): ModelSnap | undefined => {
+      (
+        pointer: ScreenPointer,
+        frame: SketchFrame,
+        cursor: Vec2,
+        perPixel: number,
+      ): ModelSnap | undefined => {
         const { view, projection, visualStyle } = viewport.getState();
         return autoProjectSnap(
           viewport,
@@ -532,6 +538,7 @@ export function Viewport({
           [pointer.x, pointer.y],
           cursor,
           modelScene.bodies,
+          SNAP_PIXELS * perPixel,
         );
       },
     [viewport, modelScene],
@@ -1346,7 +1353,12 @@ function useSketchInput(
     request: ViewMenuRequest,
     hits: readonly PickHit[],
   ) => void,
-  modelSnap?: (pointer: ScreenPointer, frame: SketchFrame, cursor: Vec2) => ModelSnap | undefined,
+  modelSnap?: (
+    pointer: ScreenPointer,
+    frame: SketchFrame,
+    cursor: Vec2,
+    perPixel: number,
+  ) => ModelSnap | undefined,
 ) {
   // The latest picker without re-binding the listeners on every scene change
   // (a drag would be cut short); as `useModelInput` holds its scene.
@@ -1368,12 +1380,13 @@ function useSketchInput(
       const world: Vec3 = [hit.x, hit.y, hit.z];
       const point = worldToSketch(frame, world);
       // Behind the sketch's own geometry: inference decides that, not the pick.
+      const perPixel = worldPerPixel(view, projection, p.height, world);
       const pick = modelSnapRef.current;
-      const model = input.modelSnap && pick ? pick(p, frame, point) : undefined;
+      const model = input.modelSnap && pick ? pick(p, frame, point, perPixel) : undefined;
       return {
         point,
         frame,
-        perPixel: worldPerPixel(view, projection, p.height, world),
+        perPixel,
         screen: [p.x, p.y],
         infer: p.infer,
         toggle: p.toggle,

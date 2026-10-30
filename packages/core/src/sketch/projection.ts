@@ -107,20 +107,32 @@ export const DATUM_SPAN = 100;
 /** Whether a projection source is a datum (an axis or a point, ADR-0093). */
 export const isDatumRef = (ref: GeomRef) => ref.kind === 'axis' || ref.kind === 'point';
 
+/** How a projection makes its curves: see `SketchProjection.mode`. */
+export type ProjectionMode = NonNullable<SketchProjection['mode']>;
+
 /**
  * What can be projected (the Project tool's bodies, faces, edges and
  * vertices; the dimension and constraint tools' axes and points, ADR-0093),
- * and what Intersect can cut (P4-12).
+ * what Intersect can cut (P4-12), and whose centre a sketch tool can snap to
+ * (a face, issue #140).
  */
-const PROJECTABLE: Record<'project' | 'intersect', readonly GeomRef['kind'][]> = {
+const PROJECTABLE: Record<ProjectionMode, readonly GeomRef['kind'][]> = {
   project: ['edge', 'face', 'vertex', 'body', 'axis', 'point'],
   intersect: ['face', 'body'],
+  center: ['face'],
+};
+
+const REFUSED: Record<ProjectionMode, string> = {
+  project: 'Only body edges, faces, vertices, bodies, axes and points can be projected.',
+  intersect: 'Only faces and bodies can be intersected with the sketch plane.',
+  center: "Only a face's centre can be projected.",
 };
 
 /**
  * Projects a body edge, face, vertex or whole body into a sketch (the
- * Project tool), an origin or construction axis or point (ADR-0093), or with `mode: 'intersect'` the curves where a face or body
- * meets the sketch plane (Intersect, P4-12). The record starts without
+ * Project tool), an origin or construction axis or point (ADR-0093), with `mode: 'intersect'` the curves where a face or body
+ * meets the sketch plane (Intersect, P4-12), or with `mode: 'center'` a face's
+ * area centre as one point (a sketch tool snapped to it, issue #140). The record starts without
  * curves: the kernel reports them on the next recompute and the app adds them
  * (`syncProjections`), in the same undo step. With `linked: false` (an
  * include, "Keep linked" off) the app then turns them into plain entities and
@@ -130,17 +142,11 @@ export const addProjection = defineCommand<{
   feature: FeatureId;
   id: ProjectionId;
   ref: GeomRef;
-  mode?: 'project' | 'intersect';
+  mode?: ProjectionMode;
   linked?: boolean;
 }>('sketch.project', 'Project', (draft, { feature, id, ref, mode = 'project', linked = true }) => {
   const data = sketchDraft(draft, feature);
-  if (!PROJECTABLE[mode].includes(ref.kind)) {
-    throw new CommandError(
-      mode === 'intersect'
-        ? 'Only faces and bodies can be intersected with the sketch plane.'
-        : 'Only body edges, faces, vertices, bodies, axes and points can be projected.',
-    );
-  }
+  if (!PROJECTABLE[mode].includes(ref.kind)) throw new CommandError(REFUSED[mode]);
   const already = Object.values(data.projections ?? {}).some(
     (p) => p.ref.kind === ref.kind && p.ref.id === ref.id && (p.mode ?? 'project') === mode,
   );
@@ -163,7 +169,7 @@ export const addProjection = defineCommand<{
   data.projections[id] = {
     ref,
     curves: {},
-    ...(mode === 'intersect' && { mode }),
+    ...(mode !== 'project' && { mode }),
     ...(!linked && { linked: false as const }),
   };
 });

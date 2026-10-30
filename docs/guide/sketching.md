@@ -108,6 +108,10 @@ gives its length, two lines their angle (or their distance, if parallel), a circ
 an arc its radius, two points their distance. Then click where the label should sit. For a length or a distance between points, where you
 put the label decides whether it is horizontal (label above or below), vertical (label beside) or aligned.
 
+A circle or an arc and then a line, a point or another circle gives the distance from its **edge**, with
+no tangent line to draw: click the circle on the half that faces the other thing for the near edge, on the
+other half for the far edge. To give the circle its diameter instead, click empty space after picking it.
+
 The origin point and the X, Y and Z axes count as things to click too, for dimensions and for the
 constraint tools: a line to the Y axis gives its distance from it (pick the axis first for an angle to a line
 across it), a point to the origin its distance from there (a line to a parallel axis, or a point to an axis, is dimensioned at once, with no click to place it; the projected datum isn't drawn, the axis you see is the datum itself), and Coincident puts a point on the origin or on an axis. Construction axes
@@ -155,7 +159,9 @@ through the sketch plane. With **Keep linked** off, the curves come in as ordina
 no longer follow the model.
 
 **Auto-project** does that as you draw. With it on, a line's end that snaps to a body's edge or
-corner projects that edge and ties the point to it. It is on by default, and a checkbox in the
+corner projects that edge and ties the point to it. Near the middle of a flat face in the sketch
+plane (the face the sketch is on, say) the pointer snaps to the face's centre, and the point
+stays there when the face changes size. It is on by default, and a checkbox in the
 sketch palette and in **Settings** turns it off. **Auto-project face outline** also projects a
 flat face's outline when a sketch opens on it.
 

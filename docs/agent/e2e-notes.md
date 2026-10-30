@@ -205,7 +205,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   (`exact`, the second checkbox is "Auto-project face outline") off leaves the
   corner a plain grid snap with no projection; checking "Auto-project face
   outline" first makes the next sketch on the face start with
-  `<id>:curves=4`. **Slice 2** adds three tests: with a Line drawn with Ctrl
+  `<id>:curves=4`. **Face centre (issue #140)**: a Box with `X: '10 mm'` (so the top face's
+  centre, sketch (10,0), is away from the sketch origin and its projection
+  reads distinctly);
+  the Circle tool (`c`) clicked at (10.4,0.3) snaps its centre to the face's
+  centre, the rim at (17,6); `constraints=1` (the coincident) and
+  `data-sketch-projected` reads `<id>:curves=0:x=10..10:y=0..0`. **Slice 2** adds three tests: with a Line drawn with Ctrl
   held (no inference; endpoints at (5,0)-(5,10)), the **Coincident** tool
   (group "Constraints") picks the line's end and the Box's (20,20) vertex, the
   **Parallel** tool picks the line and the top face's far edge at (0,20), and
@@ -2094,6 +2099,17 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   d2 itself). Esc closes the list and keeps the editor; a click on an
   option inserts and keeps the focus; `2 * d1` gives the label "Diameter d2
   fx: ⌀40.00".
+
+- Circle edge distance (ADR-0112): a Rectangle (0,0)-(30,40) (its corner is
+  held at the origin, so its left side stays at x = 0) and a Circle (-30,20)
+  through (-20,20). `d`, the circle at (-30,30) and empty space at (-45,38)
+  place its diameter (d1 = 20, so the radius holds), then a click on the
+  circle's right half (-20,20) (prompt
+  "Click to place the diameter, or pick a line, a point, a circle or an arc
+  for the distance."), the left side at (0,30) ("Click to place the
+  dimension."), the label at (-10,32) previews `20.00`; "Value of d2" = 25
+  gives `25.00`, and a click on the center at (-35,20) shows Point X `-35`,
+  Y `20` in the `Selection` region.
 
 ### `e2e/sketch-datums.spec.ts`
 
