@@ -575,6 +575,7 @@ export function Viewport({
     setBox,
     hasViewMenu ? openViewMenu : undefined,
     modelSnapPicker,
+    setDragging,
   );
   const bodiesKey = useMemo(() => bodiesSummary(bodies, meta), [bodies, meta]);
   const appearanceKey = useMemo(() => bodyAppearanceSummary(bodies, meta), [bodies, meta]);
@@ -602,8 +603,9 @@ export function Viewport({
     setBox,
     setOtherMenu,
     hasViewMenu ? openViewMenu : undefined,
+    setDragging,
   );
-  useSketchTargetInput(surface, viewport, planePicker, hover, modelScene, setBox);
+  useSketchTargetInput(surface, viewport, planePicker, hover, modelScene, setBox, setDragging);
   // The menu belongs to model mode: it closes when that ends (a sketch opens, a tool starts).
   useEffect(() => {
     if (!modelSelect) setOtherMenu(undefined);
@@ -1361,6 +1363,7 @@ function useSketchInput(
     cursor: Vec2,
     perPixel: number,
   ) => ModelSnap | undefined,
+  onNavDrag?: (action: NavAction | undefined) => void,
 ) {
   // The latest picker without re-binding the listeners on every scene change
   // (a drag would be cut short); as `useModelInput` holds its scene.
@@ -1440,7 +1443,7 @@ function useSketchInput(
       }),
     };
   }, [input, viewport, surface, onContext]);
-  usePointerInput(surface, viewport, handlers, onBoxChange);
+  usePointerInput(surface, viewport, handlers, onBoxChange, onNavDrag);
 }
 
 /** What model-mode picking sees: the scene as drawn. */
@@ -1480,6 +1483,7 @@ function useModelInput(
     request: ViewMenuRequest,
     hits: readonly PickHit[],
   ) => void,
+  onNavDrag?: (action: NavAction | undefined) => void,
 ) {
   // The latest scene without re-binding the listeners on every change.
   const sceneRef = useRef(scene);
@@ -1552,7 +1556,7 @@ function useModelInput(
       }),
     };
   }, [select, viewport, surface, onMenu, onContext]);
-  usePointerInput(surface, viewport, handlers, onBoxChange);
+  usePointerInput(surface, viewport, handlers, onBoxChange, onNavDrag);
 }
 
 /**
@@ -1567,6 +1571,7 @@ function useSketchTargetInput(
   hover: SelectionItem | undefined,
   scene: ModelScene,
   onBoxChange: (box: ScreenBox | undefined) => void,
+  onNavDrag?: (action: NavAction | undefined) => void,
 ) {
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
@@ -1613,7 +1618,7 @@ function useSketchTargetInput(
       onLeave: () => hover(undefined),
     };
   }, [faces, viewport]);
-  usePointerInput(surface, viewport, handlers, onBoxChange);
+  usePointerInput(surface, viewport, handlers, onBoxChange, onNavDrag);
 }
 
 /**

@@ -53,7 +53,7 @@ const itemTexts = (html: string, menu: string) => {
 };
 
 describe('the app menu panel', () => {
-  it('has the rail: six presets in order, Slicer disabled, three toggles, three themes', () => {
+  it('has the rail: six presets in order, all choosable, three toggles, three themes', () => {
     const html = markup();
     expect(names(html, 'Mouse controls')).toEqual([
       'Crank',
@@ -63,7 +63,9 @@ describe('the app menu panel', () => {
       'Slicer',
       'Trackpad',
     ]);
-    expect(html).toMatch(/aria-label="Slicer" aria-checked="false" aria-disabled="true"/);
+    // Slicer is a preset like the others since 2026-10-31 (ADR-0090's amendment).
+    expect(html).toMatch(/aria-label="Slicer" aria-checked="false" tabindex="-1"/);
+    expect(html).not.toContain('aria-disabled');
     expect(html).toMatch(/aria-label="Spindle" aria-checked="true"/);
     expect(html).toMatch(/aria-label="Auto-project body edges" aria-pressed="true"/);
     expect(html).toMatch(/aria-label="Auto-project face outline" aria-pressed="false"/);

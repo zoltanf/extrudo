@@ -2613,8 +2613,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   panel; a pointer moving from one rail control to another may keep the first tooltip
   open (Radix's grace area), so a test presses Escape before hovering the next one. A
   click on a tooltip trigger keeps its tooltip shut until the pointer leaves, so hover
-  before clicking. Slicer is `aria-disabled` (Playwright's `toBeDisabled` sees it; a click
-  needs `force: true`).
+  before clicking.
   Home's `navigation` "Extrudo" has the links Docs and GitHub and an About button
   (opens the dialog, ADR-0085);
   `help-links.spec.ts` routes `https://github.com/**` like the docs host.
@@ -2688,13 +2687,16 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   Right view`, direction `-0.577,0.577,-0.577`).
 
 - Mouse presets live in the Menu rail's `radiogroup` "Mouse controls"
-  (radios Crank, Spindle, Glide, Blender, Slicer (disabled), Trackpad; Spindle
+  (radios Crank, Spindle, Glide, Blender, Slicer, Trackpad; Spindle
   default; each tooltip "Mouse controls: <name>" with the bindings as hint) and
   in the Settings dialog's combobox "Mouse buttons" (R3-03). `choosePreset`
   uses `pickPreset`, then Escape.
 
 - Spindle: middle-drag orbits, right-drag pans, left-drag neither; Shift swaps
-  them (R3-04). Glide: middle-drag pans, Shift+middle orbits, wheel zooms, F6
+  them (R3-04). Slicer (ADR-0090's amendment of 2026-10-31): a left-drag in the
+  empty view orbits (`data-cursor="orbit"` on `div.touch-none` while it runs),
+  right- or middle-drag pans, Shift+left-drag draws `[data-selection-box]` and
+  leaves the camera. Glide: middle-drag pans, Shift+middle orbits, wheel zooms, F6
   refits; Blender orbits with the middle button and is remembered across a
   reload. `data-cursor` / the cursor CSS on `div.touch-none` show the active
   nav tool (Orbit/Zoom/Pan), `pickTool` or a key ends it, and a menu-only tool

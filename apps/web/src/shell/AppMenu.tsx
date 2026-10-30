@@ -87,12 +87,9 @@ export interface AppMenuProps {
 /** A command's first key as it reads here ("Ctrl+K"); `keys` from `useKeysFor` (live). */
 const keyLabel = (keys: readonly string[]) => keys[0] && shortcutLabel(keys[0]);
 
-/**
- * The rail's presets in their own order (ADR-0090 §1). Slicer isn't a `NavPreset` yet: its
- * radio is disabled and its tooltip says what it will do.
- */
+/** The rail's presets in their own order (ADR-0090 §1), each with its glyph. */
 interface RailPreset {
-  value: NavPreset | 'slicer';
+  value: NavPreset;
   label: string;
   summary: string;
   icon: () => ReactNode;
@@ -108,12 +105,7 @@ const RAIL_PRESETS: readonly RailPreset[] = [
   navPreset('spindle', SpindleIcon),
   navPreset('glide', GlideIcon),
   navPreset('blender', BlenderIcon),
-  {
-    value: 'slicer',
-    label: 'Slicer',
-    summary: 'Left-drag orbits, right-drag pans; Shift+left-drag selects. Coming soon.',
-    icon: SlicerIcon,
-  },
+  navPreset('slicer', SlicerIcon),
   navPreset('trackpad', TrackpadIcon),
 ];
 
@@ -169,7 +161,7 @@ function rove(axis: 'x' | 'y') {
 
 const segment = 'inline-flex gap-0.5 rounded-control border border-line bg-panel p-0.5';
 const segmentRadio =
-  'inline-grid h-6 place-items-center rounded-input px-1.5 outline-none focus-visible:ring-2 focus-visible:ring-accent aria-checked:bg-raised aria-checked:text-ink aria-checked:shadow-sm aria-[checked=false]:text-muted aria-disabled:opacity-45 aria-disabled:cursor-not-allowed';
+  'inline-grid h-6 place-items-center rounded-input px-1.5 outline-none focus-visible:ring-2 focus-visible:ring-accent aria-checked:bg-raised aria-checked:text-ink aria-checked:shadow-sm aria-[checked=false]:text-muted';
 const toggle =
   'inline-grid h-7 w-[30px] place-items-center rounded-input border border-transparent text-muted outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-accent aria-pressed:border-accent aria-pressed:bg-accent-soft aria-pressed:text-ink';
 const itemClass =
@@ -315,7 +307,6 @@ export function MenuPanel({
           onKeyDown={rove('x')}
         >
           {RAIL_PRESETS.map((p) => {
-            const disabled = p.value === 'slicer';
             const checked = p.value === preset;
             const Icon = p.icon;
             return (
@@ -327,12 +318,9 @@ export function MenuPanel({
                   data-rove=""
                   aria-label={p.label}
                   aria-checked={checked}
-                  aria-disabled={disabled || undefined}
                   tabIndex={checked ? 0 : -1}
                   className={segmentRadio}
-                  onClick={() => {
-                    if (!disabled) display.set({ preset: p.value as NavPreset });
-                  }}
+                  onClick={() => display.set({ preset: p.value })}
                 >
                   <Icon />
                 </button>
