@@ -3316,11 +3316,13 @@ everything it made, return `{ valid, faces, solids, volumeRatio, bytes }`,
 never throwing — and `expectStepRoundTrip`, whose bar is: the read-back body
 valid, the same face and solid counts, the volume within 1e-4.
 **Rules:** every converted-body test case calls `expectStepRoundTrip` after
-its own assertions (a new one must too); a case that misses the bar becomes
-`it.fails` with its numbers in a comment — a known failure to fix, never to
-delete or loosen. Today's failures (all hybrid): peg-perego-button 0.01 and
-Auto, drill-block 0.01 and Auto, track-straight-100mm 0.1 (numbers in
-ADR-0097's 2026-10-30 amendment); fixing the converter is a later slice. The
+its own assertions (a new one must too); a case that misses the bar keeps
+those assertions and, under a `tripFails` flag with its numbers in a comment,
+pins the failure with `expect(() => expectStepRoundTrip(…)).toThrow()` — a
+fix flips it, never loosen or delete. Today's failures (all hybrid):
+peg-perego-button 0.01 and Auto, drill-block 0.01 and Auto,
+track-straight-100mm 0.1 (numbers in ADR-0097's 2026-10-30 amendment);
+fixing the converter is a later slice. The
 `STL_DIR` sweep gains `SWEEP_OUT=<file>.jsonl` (one JSON line per file, both
 methods' outcome and STEP round trip) and `SWEEP_BASELINE=<file>.jsonl`
 (a file fails when it is refused where it converted, exceeds the baseline's

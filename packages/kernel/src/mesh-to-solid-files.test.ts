@@ -107,8 +107,9 @@ type Outcome =
       /** The hybrid rebuild (slice D1): its unfit regions (as `leftOut`) and facet faces. */
       hybrid?: { unfit: number; facets: number };
       /**
-       * Slice D7: the STEP round trip misses the bar on this case, so it runs
-       * as `it.fails` — a known failure to fix, never to delete.
+       * Slice D7: the STEP round trip misses the bar on this case; the case
+       * pins the failure with `toThrow()`; drop the flag when a converter fix
+       * makes it pass.
        */
       tripFails?: boolean;
     }
@@ -228,10 +229,7 @@ const fixtures: [string, string, Outcome][] = [
 describe('Mesh to Solid, prismatic on the fixtures', { timeout: 120_000 }, () => {
   for (const [name, url, outcome] of fixtures) {
     const tolerance = outcome.tolerance ?? 0.01;
-    // `tripFails` cases run as it.fails (slice D7): the conversion itself is
-    // what it always was, the STEP round trip is the known failure.
-    const test = 'tripFails' in outcome && outcome.tripFails ? it.fails : it;
-    test(`converts ${name} at ${tolerance} mm${'refusal' in outcome ? ' (refused)' : ''}`, () => {
+    it(`converts ${name} at ${tolerance} mm${'refusal' in outcome ? ' (refused)' : ''}`, () => {
       const stl = readStl(bytesOf(url));
       const volume = meshVolume(stl.mesh.positions, stl.mesh.indices);
       const mesh = kernel.meshFrom(stl.mesh);
@@ -258,7 +256,16 @@ describe('Mesh to Solid, prismatic on the fixtures', { timeout: 120_000 }, () =>
           if (outcome.leftOut) expect(report.unfit.fraction).toBeLessThanOrEqual(0.02);
           expect(kernel.isValid(shape)).toBe(true);
           expect(Math.abs(kernel.properties(shape).volume / volume - 1)).toBeLessThan(0.005);
-          expectStepRoundTrip(kernel, shape, `prismatic fixture ${name} at ${tolerance} mm`);
+          if ('tripFails' in outcome && outcome.tripFails) {
+            // Slice D7: the STEP round trip misses the bar on this case today.
+            // Pinned, so the case's own assertions stay live and a converter
+            // fix flips it (then drop `tripFails`).
+            expect(() =>
+              expectStepRoundTrip(kernel, shape, `prismatic fixture ${name} at ${tolerance} mm`),
+            ).toThrow();
+          } else {
+            expectStepRoundTrip(kernel, shape, `prismatic fixture ${name} at ${tolerance} mm`);
+          }
         } finally {
           kernel.release(shape);
         }
@@ -288,7 +295,7 @@ describe('Mesh to Solid, prismatic on the fixtures at Auto', { timeout: 120_000 
       rebuild: string;
       edges?: number;
       circles?: number;
-      /** Slice D7: the STEP round trip misses the bar; the case runs as `it.fails`. */
+      /** Slice D7: the STEP round trip misses the bar; the case pins the failure with `toThrow()`; drop the flag when a converter fix makes it pass. */
       tripFails?: boolean;
     },
   ][] = [
@@ -336,10 +343,7 @@ describe('Mesh to Solid, prismatic on the fixtures at Auto', { timeout: 120_000 
     ['remove-before-flight-cover.stl', flightCoverStl, 0.01, { faces: 438, rebuild: 'hybrid' }],
   ];
   for (const [name, url, tolerance, outcome] of autoFixtures) {
-    // `tripFails` cases run as it.fails (slice D7): the conversion itself is
-    // what it always was, the STEP round trip is the known failure.
-    const test = outcome.tripFails ? it.fails : it;
-    test(`converts ${name} with Auto at ${tolerance} mm`, () => {
+    it(`converts ${name} with Auto at ${tolerance} mm`, () => {
       const stl = readStl(bytesOf(url));
       const volume = meshVolume(stl.mesh.positions, stl.mesh.indices);
       const mesh = kernel.meshFrom(stl.mesh);
@@ -357,7 +361,16 @@ describe('Mesh to Solid, prismatic on the fixtures at Auto', { timeout: 120_000 
           if (outcome.edges !== undefined) {
             expect(edgeCounts(shape)).toBe(`${outcome.edges} edges, ${outcome.circles} circles`);
           }
-          expectStepRoundTrip(kernel, shape, `prismatic Auto fixture ${name}`);
+          if (outcome.tripFails) {
+            // Slice D7: the STEP round trip misses the bar on this case today.
+            // Pinned, so the case's own assertions stay live and a converter
+            // fix flips it (then drop `tripFails`).
+            expect(() =>
+              expectStepRoundTrip(kernel, shape, `prismatic Auto fixture ${name}`),
+            ).toThrow();
+          } else {
+            expectStepRoundTrip(kernel, shape, `prismatic Auto fixture ${name}`);
+          }
         } finally {
           kernel.release(shape);
         }

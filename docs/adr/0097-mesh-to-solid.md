@@ -2332,11 +2332,13 @@ properties(shape).volume`) and `bytes` — never throwing on a bad result: it
 measures. `expectStepRoundTrip` asserts the bar: the read-back body is valid,
 keeps the face and solid counts, and the volume is the written body's within
 1e-4. Every converted-body test case calls it (in the existing `try`, after
-the existing assertions); every new such case must too. `it.fails` marks a
-case that misses the bar — a known failure to fix, never to delete.
+the existing assertions); every new such case must too. A case that misses
+the bar keeps all its own assertions and, under a `tripFails` flag with the
+numbers in a comment, asserts `expect(() => expectStepRoundTrip(…)).toThrow()`
+instead — the failure is pinned, so a fix flips it; never loosen or delete.
 
-**Where the bar fails today (all `it.fails`, all hybrid, both prismatic
-fixture passes — one entry per tolerance):**
+**Where the bar fails today (all pinned with `tripFails`, all hybrid, both
+prismatic fixture passes — one entry per tolerance):**
 
 | case | faces | solids | read back | volumeRatio |
 |---|---|---|---|---|
