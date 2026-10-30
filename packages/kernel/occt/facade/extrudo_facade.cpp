@@ -9060,12 +9060,16 @@ private:
             fit.why = "chain ends coincide";
             return fit;
           }
-          if (half > r) {
+          // A half turn's ends sit on the polygon's corners, a little wider
+          // than the fitted radius: within the tolerance the circle takes
+          // them as its diameter (the node checks below still apply).
+          if (half > r + tolerance) {
             fit.why = "chain ends wider than the circle";
             return fit;
           }
+          r = std::max(r, half);
           const gp_XYZ mid = (ph + qh) / 2, m = n.Crossed(chord).Normalized();
-          const double h = std::sqrt(r * r - half * half);
+          const double h = std::sqrt(std::max(0.0, r * r - half * half));
           const gp_XYZ a = mid + h * m, b = mid - h * m;
           centre = (a - c).Modulus() <= (b - c).Modulus() ? a : b;
         }
