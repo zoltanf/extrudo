@@ -1487,6 +1487,10 @@ static RoundTripRow stepOne(ExtrudoFacade& f, const std::string& path, double to
     std::cout << "   written: faces " << row.faces << ", facets " << row.facets << ", solids " << f.count(h, 3)
               << ", vertices " << row.writtenVertices << ", edges " << row.writtenEdges << ", max edge tol " << maxEdge
               << ", max vertex tol " << maxVertex << ", converted in " << row.ms << " ms\n";
+    if (row.rebuild == "hybrid" && !f.hybridChains_.empty())
+      std::cout << "   " << f.hybridChains_ << "; kept as polylines: "
+                << (f.hybridChainsKept_.empty() ? "none" : f.hybridChainsKept_) << "\n";
+    if (row.rebuild == "hybrid" && !f.hybridEnds_.empty()) std::cout << "   " << f.hybridEnds_ << "\n";
     std::cout << "   edge classes (written):\n";
     for (const auto& [cls, st] : classes) {
       std::cout << "     " << cls << ": " << st.count << " edges, invalid " << st.invalid << ", tolerances";
