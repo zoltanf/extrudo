@@ -1,9 +1,11 @@
 import type { GeomRef, SketchData, SketchEntityId, Vec2 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
+import { emptyAdd, type SketchAdd } from '../build/add';
+import { place } from '../build/inference';
 import { SketchBuilder } from '../fixtures';
 import { alignmentConstraints, lineAlong, snapConstraints } from './constraints';
 import { intersectCurves, nearestOnCurve, sketchCurves } from './geometry';
-import { type Inference, infer } from './inference';
+import { type Inference, infer, type ModelSnap } from './inference';
 
 const TOL = 1;
 const eid = (id: string) => id as SketchEntityId;
@@ -251,6 +253,54 @@ describe('infer with a model target (auto-project, P6-07)', () => {
     expect(r.snap).toMatchObject({ kind: 'onCurve', ids: [], model: edgeRef });
     // Out of tolerance the model target doesn't apply.
     expect(infer(b.sketch, [9, 9], { tolerance: TOL, model }).snap).toBeUndefined();
+  });
+});
+
+describe('infer with a face centre (issue #140)', () => {
+  const faceRef: GeomRef = { kind: 'face', id: 'extrude:E:cap:end' };
+  const centre: ModelSnap = { ref: faceRef, point: [10, 5], kind: 'faceCenter', straight: true };
+
+  it('snaps to the centre as a center, ahead of a curve, a midpoint and the grid', () => {
+    const b = new SketchBuilder();
+    // A diagonal through the centre, whose midpoint is a little off it.
+    const line = b.line(0, 0, 20.6, 10.3);
+    const r = infer(b.sketch, [10.2, 5.1], { tolerance: TOL, grid: 10, model: centre });
+    expect(r.point).toEqual([10, 5]);
+    expect(r.snap).toMatchObject({ kind: 'center', ids: [], model: faceRef });
+    // Away from the centre the line's midpoint is the target again.
+    const mid = infer(b.sketch, [10.5, 5.3], { tolerance: 0.3, model: centre });
+    expect(mid.snap).toMatchObject({ kind: 'midpoint', ids: [line.id] });
+    // Out of tolerance the centre doesn't apply: the grid does.
+    expect(infer(b.sketch, [3, 9], { tolerance: TOL, grid: 10, model: centre }).snap?.kind).toBe(
+      'grid',
+    );
+  });
+
+  it('loses to a nearer sketch point and to one at the same spot, not to the origin', () => {
+    const b = new SketchBuilder();
+    const p = b.point(10.6, 5);
+    expect(infer(b.sketch, [10.5, 5], { tolerance: TOL, model: centre }).snap?.ids).toEqual([p]);
+    expect(infer(b.sketch, [10.2, 5], { tolerance: TOL, model: centre }).snap?.model).toEqual(
+      faceRef,
+    );
+    const same = new SketchBuilder();
+    const q = same.point(10, 5);
+    expect(infer(same.sketch, [10, 5.2], { tolerance: TOL, model: centre }).snap?.ids).toEqual([q]);
+    // The origin loses the tie: a face centred on it still snaps as the face's centre.
+    const atOrigin: ModelSnap = { ...centre, point: [0, 0] };
+    const r = infer(new SketchBuilder().sketch, [0.2, 0.1], { tolerance: TOL, model: atOrigin });
+    expect(r.snap).toMatchObject({ kind: 'center', model: faceRef });
+  });
+
+  it('makes the placed point a faceCenter attachment, with no sketch constraint', () => {
+    const b = new SketchBuilder();
+    const pointer = infer(b.sketch, [10.2, 5.1], { tolerance: TOL, model: centre });
+    const edit: SketchAdd = emptyAdd();
+    let n = 0;
+    place(edit, { newId: () => `c${++n}`, construction: () => false }, pointer, eid('pt'));
+    expect(edit.models).toEqual([{ point: 'pt', ref: faceRef, kind: 'faceCenter' }]);
+    expect(edit.constraints).toEqual({});
+    expect(edit.auto).toEqual([]);
   });
 });
 

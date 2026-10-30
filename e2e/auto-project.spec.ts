@@ -14,7 +14,8 @@ import {
 // into the sketch on the fly. A Line end that snaps to a Box vertex brings the
 // vertex into the sketch and holds the point on it, all in one undo step; the
 // preference turns it off; and with the face-outline preference on a sketch
-// started on a face comes in with the face's outline already projected.
+// started on a face comes in with the face's outline already projected. A
+// Circle started near a face's centre is held on the projected centre (issue #140).
 
 test.use({ viewport: { width: 1440, height: 900 } });
 test.describe.configure({ timeout: 120_000 });
@@ -109,6 +110,35 @@ test('a Line end snapping to a Box vertex projects it and holds the point on it'
   await chip(page, 'Sketch1').dblclick();
   await expect.poll(async () => (await counts(page)).constraints).toBe(1);
   await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+});
+
+test("a Circle centred on a face's centre is held there (issue #140)", async ({ page }) => {
+  // The box sits 10 mm along X, so its top face's centre (10,0) is not the sketch's origin.
+  await openProject(page);
+  await kernelReady(page);
+  await primitive(page, 'Box', { Length: '40 mm', Width: '40 mm', Height: '20 mm', X: '10 mm' });
+  await expect(viewportOf(page)).toHaveAttribute('data-bodies', 'Body1:6:40,40,20');
+  const sketch = await sketchOnTopFace(page);
+  const viewport = viewportOf(page);
+  const at = await mapping(viewport);
+  await page.keyboard.press('c');
+  // A little off the centre: the snap pulls the circle's centre onto it.
+  const centre = at(10.4, 0.3);
+  await page.mouse.move(centre.x, centre.y);
+  await page.mouse.click(centre.x, centre.y);
+  const rim = at(17, 6);
+  await page.mouse.move(rim.x, rim.y);
+  await page.mouse.click(rim.x, rim.y);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+
+  // The kernel reports the face's centre; the circle's centre is held on it.
+  await expect.poll(async () => (await counts(page)).constraints, { timeout: 60_000 }).toBe(1);
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await kernelReady(page);
+  await expect
+    .poll(() => attr(viewport, 'data-sketch-projected'))
+    .toBe(`${sketch}:curves=0:x=10..10:y=0..0`);
 });
 
 test('the Auto-project preference off leaves the snap and the projection out', async ({ page }) => {

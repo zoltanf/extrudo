@@ -383,7 +383,7 @@ interface PendingModelConstraint {
  */
 interface PendingModelEdit {
   feature: FeatureId;
-  /** `kind` is the projection's curve key too (`vertex`, `edge`, `point`, `axis`). */
+  /** `kind` is the projection's curve key too (`vertex`, `edge`, `point`, `axis`, `faceCenter`). */
   bindings: { placeholder: SketchEntityId; projection: ProjectionId; kind: ModelSnapKind }[];
   constraints: Record<ConstraintId, SketchConstraint>;
   dimensions: { id: DimensionId; shape: SketchDimension }[];
@@ -589,7 +589,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         state.setState({ error: 'Pick a straight edge, or project the edge first (P).' });
         return undefined;
       }
-      const existing = projectionFor(data, snap.ref);
+      const existing = projectionFor(data, snap.ref, snap.kind);
       const curve = existing?.[1].curves[snap.kind];
       return { ...snap, ...(typeof curve === 'string' ? { entityId: curve } : {}) };
     },
@@ -732,7 +732,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     // dimension used; the host replaces it with the projected entity. An
     // already-projected ref is used at once; a new one waits for the kernel's
     // report (`syncProjections`).
-    const newProjections: { id: ProjectionId; ref: GeomRef }[] = [];
+    const newProjections: { id: ProjectionId; ref: GeomRef; kind: ModelSnapKind }[] = [];
     /** Refs whose curve the user deleted: the new snap revives the record (P6-07). */
     const revived: { id: ProjectionId; key: string }[] = [];
     const deferredModels: PendingModelConstraint[] = [];
@@ -742,7 +742,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     const minted = new Map<string, ProjectionId>();
     for (const m of edit.models ?? []) {
       const key = m.kind;
-      const existing = projectionFor(sketch.data, m.ref);
+      const existing = projectionFor(sketch.data, m.ref, m.kind);
       const deleted =
         existing !== undefined && key in existing[1].curves && existing[1].curves[key] === null;
       // The user's new action revives a curve they deleted: the `null` entry goes
@@ -760,9 +760,10 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         }
         continue;
       }
-      const id = existing?.[0] ?? minted.get(refKey(m.ref)) ?? (newId() as ProjectionId);
-      if (!existing && !minted.has(refKey(m.ref))) newProjections.push({ id, ref: m.ref });
-      minted.set(refKey(m.ref), id);
+      const mintKey = `${projectionMode(m.kind)}:${refKey(m.ref)}`;
+      const id = existing?.[0] ?? minted.get(mintKey) ?? (newId() as ProjectionId);
+      if (!existing && !minted.has(mintKey)) newProjections.push({ id, ref: m.ref, kind: m.kind });
+      minted.set(mintKey, id);
       if (m.placeholder) {
         pickBindings.push({ placeholder: m.placeholder, projection: id, kind: m.kind });
       } else if (m.point) {
@@ -957,9 +958,14 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       // The projection records join the step that added the geometry (P6-07).
       for (const entry of newProjections) {
         try {
-          store
-            .getState()
-            .amend(addProjection({ feature: sketch.id, id: entry.id, ref: entry.ref }));
+          store.getState().amend(
+            addProjection({
+              feature: sketch.id,
+              id: entry.id,
+              ref: entry.ref,
+              mode: projectionMode(entry.kind),
+            }),
+          );
         } catch (error) {
           if (!(error instanceof CommandError)) throw error;
           console.warn('[sketch] could not auto-project:', error);
@@ -1936,19 +1942,26 @@ function refKey(ref: GeomRef): string {
   return `${ref.kind}:${ref.id}`;
 }
 
+/** How a model snap's ref is projected: a face's centre on its own (issue #140), the rest as is. */
+function projectionMode(kind: ModelSnapKind): 'project' | 'center' {
+  return kind === 'faceCenter' ? 'center' : 'project';
+}
+
 /**
- * The projection record a sketch already holds for a ref, with its ID, if it
- * has one (auto-project reuses it rather than projecting the same ref twice).
+ * The projection record a sketch already holds for a model snap's ref, with
+ * its ID, if it has one (auto-project reuses it rather than projecting the
+ * same ref twice).
  */
 function projectionFor(
   data: SketchData,
   ref: GeomRef,
+  kind: ModelSnapKind,
 ): [ProjectionId, SketchProjection] | undefined {
   for (const [id, projection] of Object.entries(data.projections ?? {})) {
     if (
       projection.ref.kind === ref.kind &&
       projection.ref.id === ref.id &&
-      (projection.mode ?? 'project') === 'project'
+      (projection.mode ?? 'project') === projectionMode(kind)
     ) {
       return [id as ProjectionId, projection];
     }

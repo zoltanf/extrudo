@@ -218,7 +218,8 @@ function sketchFrame(ctx: EvalContext<SketchInputs>, plane: GeomRef | undefined)
  * curves by key, as `SketchProjection.curves` keys them. A source that
  * can't be found is reported lost, with a warning; the sketch still
  * computes with the curves where they were. An intersection (P4-12) reports
- * the curves where its face or body meets the plane.
+ * the curves where its face or body meets the plane, a face's centre (issue
+ * #140) one point.
  */
 function projectAll(
   ctx: EvalContext<SketchInputs>,
@@ -228,11 +229,15 @@ function projectAll(
   const out: Record<ProjectionId, ProjectionReport> = {};
   for (const [pid, projection] of Object.entries(data.projections ?? {})) {
     const { ref } = projection;
-    const what = SOURCE_NOUN[ref.kind] ?? 'edge';
+    const what = projection.mode === 'center' ? "face's centre" : (SOURCE_NOUN[ref.kind] ?? 'edge');
     const intersect = projection.mode === 'intersect';
     try {
       out[pid as ProjectionId] = {
-        curves: intersect ? intersectSource(ctx, ref, frame) : projectSource(ctx, ref, frame),
+        curves: intersect
+          ? intersectSource(ctx, ref, frame)
+          : projection.mode === 'center'
+            ? faceCenter(ctx, ref, frame)
+            : projectSource(ctx, ref, frame),
       };
     } catch (error) {
       if (!(error instanceof KernelError)) throw error;
@@ -313,6 +318,21 @@ function projectSource(
     },
   );
   return withoutRepeats(curves);
+}
+
+/**
+ * A face's area centre seen along the sketch normal (issue #140), keyed
+ * `faceCenter`: where a sketch tool snapped to the middle of a flat face.
+ */
+function faceCenter(
+  ctx: EvalContext<SketchInputs>,
+  ref: GeomRef,
+  frame: SketchFrame,
+): Record<string, ProjectedCurve> {
+  const hit = ctx.resolve(ref, { label: 'the face whose centre is projected' });
+  const face = ctx.describe(hit.shape).faces[hit.index];
+  if (!face) throw new LostReferenceError("Can't find the projected face any more.", ref);
+  return { faceCenter: projectPoint(face.centroid, frame) };
 }
 
 /** The body a `body` reference names, or a lost reference. */

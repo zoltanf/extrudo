@@ -205,7 +205,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   (`exact`, the second checkbox is "Auto-project face outline") off leaves the
   corner a plain grid snap with no projection; checking "Auto-project face
   outline" first makes the next sketch on the face start with
-  `<id>:curves=4`. **Slice 2** adds three tests: with a Line drawn with Ctrl
+  `<id>:curves=4`. **Face centre (issue #140)**: a Box with `X: '10 mm'` (so the top face's
+  centre, sketch (10,0), is away from the sketch origin and its projection
+  reads distinctly);
+  the Circle tool (`c`) clicked at (10.4,0.3) snaps its centre to the face's
+  centre, the rim at (17,6); `constraints=1` (the coincident) and
+  `data-sketch-projected` reads `<id>:curves=0:x=10..10:y=0..0`. **Slice 2** adds three tests: with a Line drawn with Ctrl
   held (no inference; endpoints at (5,0)-(5,10)), the **Coincident** tool
   (group "Constraints") picks the line's end and the Box's (20,20) vertex, the
   **Parallel** tool picks the line and the top face's far edge at (0,20), and
