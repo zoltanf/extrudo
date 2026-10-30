@@ -366,6 +366,50 @@ describe('auto-project through the host (P6-07)', () => {
   });
 });
 
+describe("a face's centre through the host (issue #140)", () => {
+  const faceRef: GeomRef = { kind: 'face', id: 'extrude:E:cap:end' };
+  const frame = {
+    origin: [0, 0, 0] as [number, number, number],
+    normal: [0, 0, 1] as [number, number, number],
+    x: [1, 0, 0] as [number, number, number],
+    y: [0, 1, 0] as [number, number, number],
+  };
+  const centre = {
+    ref: faceRef,
+    point: [5, 0] as [number, number],
+    kind: 'faceCenter' as const,
+    straight: true,
+  };
+
+  it("starts a line at a face's centre: a centre projection, the point held on it", async () => {
+    const t = await setup();
+    // The face's outline is projected already: the centre gets a record of its own.
+    t.store
+      .getState()
+      .dispatch(addProjection({ feature: t.id, id: 'outline' as ProjectionId, ref: faceRef }));
+    t.host.click({ ...at(5, 0.1), model: centre });
+    t.host.click(at(20, 0.3));
+    const records = Object.entries(t.data().projections ?? {});
+    expect(records).toHaveLength(2);
+    const [pid, record] = records.find(([id]) => id !== 'outline') ?? [];
+    expect(record).toEqual({ ref: faceRef, curves: {}, mode: 'center' });
+    t.host.syncProjections({
+      [t.id]: {
+        frame,
+        projections: {
+          [pid as ProjectionId]: { curves: { faceCenter: { type: 'point', at: [5, 0] } } },
+          ['outline' as ProjectionId]: { curves: {} },
+        },
+      },
+    });
+    const projected = t.data().projections?.[pid as ProjectionId]?.curves.faceCenter;
+    expect(projected).toBeTruthy();
+    expect(
+      Object.values(t.data().constraints).some((c) => c.type === 'coincident' && c.b === projected),
+    ).toBe(true);
+  });
+});
+
 describe('constraint and dimension tools pick body geometry (P6-07 slice 2)', () => {
   const vertexRef: GeomRef = { kind: 'vertex', id: 'v[face0|face1]' };
   const edgeRef: GeomRef = { kind: 'edge', id: 'e[face0|face1]' };

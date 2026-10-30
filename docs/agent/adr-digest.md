@@ -2002,6 +2002,18 @@ host's error. Dimension's `#pickAt` never takes a model pick for the
 click that would place a sketch line's label (so an existing line's length
 still places); a model edge first pick still takes a second model edge, and a
 sketch point takes a model vertex or edge.
+**Face centres (ADR-0074's amendment, 2026-10-30, issue #140)**: `ModelSnapKind`
+`faceCenter` (a point kind) is the area centroid of a flat face of a shown,
+non-mesh body **lying in the sketch plane** (`faceCenterSnapAt`, mesh triangles
+within 1e-3 mm, cached per mesh and frame); `autoProjectSnap(…, tolerance)` returns
+it when nearer the cursor than the pick. `infer` ranks it at **priority 1 with the
+sketch's points** (a sketch point wins a tie, the origin loses one), as `Snap.kind: 'center'` with `model`;
+`place` maps that to a `faceCenter` attachment. It projects through
+`SketchProjection.mode: 'center'` (ref kind `face` only, one point keyed
+`faceCenter`, the kernel's `faceCenter` from `describe`'s centroid), never the face's
+outline; `projectionFor` and the mint key match the mode (`projectionMode`), so a
+face may hold one outline and one centre record. Body-edge midpoints and curved
+faces: deferred.
 `viewport.autoProjectFace` (off) also projects a flat face's
 outline in `createSketchOn` when a sketch starts on it. No file-format or
 kernel change. `data-sketch-projected` now also lists a point-only projected

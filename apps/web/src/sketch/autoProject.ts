@@ -11,8 +11,13 @@
  * hidden, is taken. The point is the vertex projected onto the sketch plane,
  * or the nearest point of the edge's display polyline projected onto it; the
  * exact edge arrives from the kernel on the next recompute.
+ *
+ * Issue #140: the centre of a shown body's flat face lying in the sketch
+ * plane (the face a sketch is on, say) is offered too, when it is nearer the
+ * cursor than the edge or vertex under the pointer; the host projects it as a
+ * `center` projection of the face.
  */
-import { type BodyId, type SketchFrame, type Vec2, worldToSketch } from '@extrudo/core';
+import { type BodyId, type SketchFrame, type Vec2, type Vec3, worldToSketch } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import type { ModelSnap } from '@extrudo/sketch/inference';
 import { DEFAULT_FILTER, type SelectionFilter } from '../selection/filter';
@@ -34,9 +39,11 @@ const SNAP_FILTER: SelectionFilter = {
 };
 
 /**
- * The edge or vertex to offer a running tool, or `undefined` when the
- * auto-project preference is off (P6-07): off, the view offers no body
- * geometry at all and the Project tool is the only way to bring one in.
+ * The edge, vertex or face centre to offer a running tool, or `undefined`
+ * when the auto-project preference is off (P6-07): off, the view offers no
+ * body geometry at all and the Project tool is the only way to bring one in.
+ * A face centre within `tolerance` (mm) of the cursor wins when it is nearer
+ * than the pick (issue #140).
  */
 export function autoProjectSnap(
   viewport: Pick<ViewportStore, 'getState'>,
@@ -46,9 +53,90 @@ export function autoProjectSnap(
   at: readonly [number, number],
   cursor: Vec2,
   bodies: Readonly<Record<BodyId, BodyMesh>>,
+  tolerance: number,
 ): ModelSnap | undefined {
   if (!viewport.getState().autoProject) return undefined;
-  return modelSnapAt(scene, camera, frame, at, cursor, bodies);
+  const pick = modelSnapAt(scene, camera, frame, at, cursor, bodies);
+  const shown = scene.bodies.map((b) => b.id);
+  const centre = faceCenterSnapAt(frame, cursor, tolerance, shown, bodies);
+  if (!centre) return pick;
+  const far = (s: ModelSnap) => Math.hypot(s.point[0] - cursor[0], s.point[1] - cursor[1]);
+  return pick && far(pick) < far(centre) ? pick : centre;
+}
+
+/** Off the plane by more than this (mm), a face isn't in it: the mesh is single precision. */
+const IN_PLANE = 1e-3;
+
+/** A body's faces lying in a sketch plane, by face index, and their area centres in sketch coordinates. */
+const centresCache = new WeakMap<BodyMesh, { frame: SketchFrame; centres: [number, Vec2][] }>();
+
+/**
+ * The centre of a flat face of one of the `shown` bodies that lies in the
+ * sketch plane, nearest `cursor` within `tolerance` (mm), as a `faceCenter`
+ * model snap (issue #140); `undefined` if none is that near. The centre is the
+ * area centroid of the face's triangles, so a face with round edges is a
+ * little off until the kernel reports the exact one. Mesh bodies have no
+ * B-rep face to name, so they offer none.
+ */
+export function faceCenterSnapAt(
+  frame: SketchFrame,
+  cursor: Vec2,
+  tolerance: number,
+  shown: readonly BodyId[],
+  bodies: Readonly<Record<BodyId, BodyMesh>>,
+): ModelSnap | undefined {
+  let best: ModelSnap | undefined;
+  let bestD = tolerance;
+  for (const body of shown) {
+    const mesh = bodies[body];
+    if (!mesh || mesh.mesh) continue;
+    for (const [index, point] of planeFaceCentres(mesh, frame)) {
+      const d = Math.hypot(point[0] - cursor[0], point[1] - cursor[1]);
+      if (d > bestD) continue;
+      const ref = topologyRef({ kind: 'face', body, index }, bodies);
+      if (!ref) continue;
+      best = { ref, point, kind: 'faceCenter', straight: true };
+      bestD = d;
+    }
+  }
+  return best;
+}
+
+/** The faces of `mesh` lying in the frame's plane, with their area centres (cached per mesh and frame). */
+function planeFaceCentres(mesh: BodyMesh, frame: SketchFrame): [number, Vec2][] {
+  const hit = centresCache.get(mesh);
+  if (hit?.frame === frame) return hit.centres;
+  const { positions: p, indices, faceRanges } = mesh;
+  const [ox, oy, oz] = frame.origin;
+  const [nx, ny, nz] = frame.normal;
+  const node = (i: number): Vec3 => [p[3 * i] ?? 0, p[3 * i + 1] ?? 0, p[3 * i + 2] ?? 0];
+  const off = ([x, y, z]: Vec3) => Math.abs((x - ox) * nx + (y - oy) * ny + (z - oz) * nz);
+  const centres: [number, Vec2][] = [];
+  for (let face = 0; 2 * face + 1 < faceRanges.length; face++) {
+    const first = faceRanges[2 * face] ?? 0;
+    const count = faceRanges[2 * face + 1] ?? 0;
+    let flat = count > 0;
+    let area = 0;
+    let [sx, sy, sz] = [0, 0, 0];
+    for (let t = first; t < first + count && flat; t++) {
+      const [ax, ay, az] = node(indices[3 * t] ?? 0);
+      const [bx, by, bz] = node(indices[3 * t + 1] ?? 0);
+      const [cx, cy, cz] = node(indices[3 * t + 2] ?? 0);
+      flat = [off([ax, ay, az]), off([bx, by, bz]), off([cx, cy, cz])].every((d) => d <= IN_PLANE);
+      // Twice the triangle's area, |(b − a) × (c − a)|, weighs its centroid.
+      const [ux, uy, uz] = [bx - ax, by - ay, bz - az];
+      const [vx, vy, vz] = [cx - ax, cy - ay, cz - az];
+      const w = Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
+      area += w;
+      sx += (w * (ax + bx + cx)) / 3;
+      sy += (w * (ay + by + cy)) / 3;
+      sz += (w * (az + bz + cz)) / 3;
+    }
+    if (flat && area > 0)
+      centres.push([face, worldToSketch(frame, [sx / area, sy / area, sz / area])]);
+  }
+  centresCache.set(mesh, { frame, centres });
+  return centres;
 }
 
 /**

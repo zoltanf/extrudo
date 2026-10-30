@@ -404,6 +404,44 @@ describe('projections', () => {
     expect(data(d).entities[point]).toEqual({ type: 'point', x: 5, y: 4 });
   });
 
+  it("take a face's centre as one point, apart from the face's outline (issue #140)", () => {
+    let d = doc();
+    d = applyCommand(d, addProjection({ feature: F, id: P, ref: faceRef, mode: 'center' })).doc;
+    expect(data(d).projections?.[P]).toEqual({ ref: faceRef, curves: {}, mode: 'center' });
+    // The face's outline is a projection of its own; a second centre isn't, nor an edge's.
+    d = applyCommand(d, addProjection({ feature: F, id: 'pr2' as ProjectionId, ref: faceRef })).doc;
+    expect(() =>
+      applyCommand(
+        d,
+        addProjection({ feature: F, id: 'pr3' as ProjectionId, ref: faceRef, mode: 'center' }),
+      ),
+    ).toThrow(/already projected/);
+    expect(() =>
+      applyCommand(
+        d,
+        addProjection({ feature: F, id: 'pr3' as ProjectionId, ref: edgeRef, mode: 'center' }),
+      ),
+    ).toThrow(/face's centre/);
+
+    d = sync(d, report({ [P]: { curves: { faceCenter: { type: 'point', at: [10, 5] } } } }));
+    const point = data(d).projections?.[P]?.curves.faceCenter as SketchEntityId;
+    expect(data(d).entities[point]).toEqual({ type: 'point', x: 10, y: 5 });
+    expect(projectedEntities(data(d)).has(point)).toBe(true);
+    expect(DocumentSchema.safeParse(d).success).toBe(true);
+    // A centre of anything but a face fails the load check; a face's plain projection can't be a point.
+    const bad = {
+      ...data(d),
+      projections: {
+        [P]: { ref: edgeRef, curves: { faceCenter: point }, mode: 'center' as const },
+      },
+    };
+    expect(sketchIssues(bad).map((i) => i.message)).toContain(
+      'must take the centre of a face, not of a edge',
+    );
+    const plain = { ...data(d), projections: { [P]: { ref: faceRef, curves: { x: point } } } };
+    expect(sketchIssues(plain).map((i) => i.message)).toContain('must be a curve, not a point');
+  });
+
   it('take origin and construction axes and points as construction geometry (ADR-0093)', () => {
     const axisRef = { kind: 'axis' as const, id: 'origin:y' };
     const pointRef = { kind: 'point' as const, id: 'origin:point' };

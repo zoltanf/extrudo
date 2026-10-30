@@ -159,7 +159,9 @@ through the sketch plane. With **Keep linked** off, the curves come in as ordina
 no longer follow the model.
 
 **Auto-project** does that as you draw. With it on, a line's end that snaps to a body's edge or
-corner projects that edge and ties the point to it. It is on by default, and a checkbox in the
+corner projects that edge and ties the point to it. Near the middle of a flat face in the sketch
+plane (the face the sketch is on, say) the pointer snaps to the face's centre, and the point
+stays there when the face changes size. It is on by default, and a checkbox in the
 sketch palette and in **Settings** turns it off. **Auto-project face outline** also projects a
 flat face's outline when a sketch opens on it.
 

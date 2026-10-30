@@ -1,0 +1,1 @@
+- 2026-10-30 · **Snap to a face's centre**: while auto-project is on, the sketch tools snap to the centre of a flat face in the sketch plane (the face a sketch is on, say), and the point follows the face when it changes size (issue #140, ADR-0074's amendment).

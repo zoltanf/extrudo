@@ -350,6 +350,9 @@ export type SketchDimensionType = SketchDimension['type'];
  * the curves where the face or body meets the sketch plane instead of its
  * projection; `linked: false` is an include waiting for the kernel's report,
  * which the app turns into plain entities and drops the record with.
+ *
+ * Issue #140 (ADR-0074's 2026-10-30 amendment): `mode: 'center'` projects a face's area
+ * centre as one point, keyed `faceCenter`, for a sketch tool that snapped to it.
  */
 export const SketchProjectionSchema = z.strictObject({
   ref: GeomRefSchema.describe(
@@ -359,10 +362,10 @@ export const SketchProjectionSchema = z.strictObject({
     .record(z.string(), SketchEntityIdSchema.nullable())
     .describe("Each curve's source key to its sketch entity, or null once deleted."),
   mode: z
-    .enum(['project', 'intersect'])
+    .enum(['project', 'intersect', 'center'])
     .optional()
     .describe(
-      'project (the default): the source seen along the sketch normal; intersect: where it meets the sketch plane.',
+      "project (the default): the source seen along the sketch normal; intersect: where it meets the sketch plane; center: a face's area centre as one point.",
     ),
   linked: z
     .literal(false)
@@ -394,6 +397,7 @@ export type SketchData = z.infer<typeof SketchDataSchema>;
 
 const PROJECTABLE: readonly string[] = ['edge', 'face', 'vertex', 'body', 'axis', 'point'];
 const INTERSECTABLE: readonly string[] = ['face', 'body'];
+const CENTERED: readonly string[] = ['face'];
 const POINT_SOURCES: readonly string[] = ['vertex', 'point', 'axis'];
 
 type Kinds = readonly SketchEntityType[];
@@ -475,7 +479,11 @@ export function sketchIssues(sketch: {
   dimensions: Record<string, SketchDimension>;
   projections?: Record<
     string,
-    { ref: GeomRef; curves: Record<string, string | null>; mode?: 'project' | 'intersect' }
+    {
+      ref: GeomRef;
+      curves: Record<string, string | null>;
+      mode?: 'project' | 'intersect' | 'center';
+    }
   >;
 }): SketchIssue[] {
   const issues: SketchIssue[] = [];
@@ -764,14 +772,21 @@ export function sketchIssues(sketch: {
   // and bodies.
   const projectedBy = new Map<string, string>();
   for (const [id, projection] of Object.entries(sketch.projections ?? {})) {
-    const kinds = projection.mode === 'intersect' ? INTERSECTABLE : PROJECTABLE;
+    const kinds =
+      projection.mode === 'intersect'
+        ? INTERSECTABLE
+        : projection.mode === 'center'
+          ? CENTERED
+          : PROJECTABLE;
     if (!kinds.includes(projection.ref.kind)) {
       fail(
         'projections',
         id,
         projection.mode === 'intersect'
           ? `must intersect a face or a body, not a ${projection.ref.kind}`
-          : `must project an edge, a face, a vertex, a body, an axis or a point, not a ${projection.ref.kind}`,
+          : projection.mode === 'center'
+            ? `must take the centre of a face, not of a ${projection.ref.kind}`
+            : `must project an edge, a face, a vertex, a body, an axis or a point, not a ${projection.ref.kind}`,
       );
     }
     for (const [key, curve] of Object.entries(projection.curves)) {
@@ -779,9 +794,11 @@ export function sketchIssues(sketch: {
       const path = ['projections', id, 'curves', key];
       const kind = kindOf(curve);
       if (!kind) issues.push({ path, message: `refers to missing entity "${curve}"` });
-      // Vertices, points and axes along the normal (ADR-0093) project to points.
+      // Vertices, points and axes along the normal (ADR-0093) project to points, a face's centre too.
       else if (
-        (kind === 'point' && !POINT_SOURCES.includes(projection.ref.kind)) ||
+        (kind === 'point' &&
+          projection.mode !== 'center' &&
+          !POINT_SOURCES.includes(projection.ref.kind)) ||
         kind === 'text'
       ) {
         issues.push({
