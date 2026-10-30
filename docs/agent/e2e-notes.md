@@ -2095,6 +2095,17 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   option inserts and keeps the focus; `2 * d1` gives the label "Diameter d2
   fx: ⌀40.00".
 
+- Circle edge distance (ADR-0112): a Rectangle (0,0)-(30,40) (its corner is
+  held at the origin, so its left side stays at x = 0) and a Circle (-30,20)
+  through (-20,20). `d`, the circle at (-30,30) and empty space at (-45,38)
+  place its diameter (d1 = 20, so the radius holds), then a click on the
+  circle's right half (-20,20) (prompt
+  "Click to place the diameter, or pick a line, a point, a circle or an arc
+  for the distance."), the left side at (0,30) ("Click to place the
+  dimension."), the label at (-10,32) previews `20.00`; "Value of d2" = 25
+  gives `25.00`, and a click on the center at (-35,20) shows Point X `-35`,
+  Y `20` in the `Selection` region.
+
 ### `e2e/inch-fractions.spec.ts`
 
 - P6-18 S3, ADR-0113 §3: set the unit to `in` and check the browser's

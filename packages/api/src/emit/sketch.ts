@@ -361,6 +361,8 @@ function dimensionExpr(dimension: SketchDimension, refs: ReadonlyMap<string, Exp
     case 'distance': {
       if (dimension.orientation !== 'aligned')
         options.push(['orientation', str(dimension.orientation)]);
+      if (dimension.sideA !== undefined) options.push(['sideA', str(dimension.sideA)]);
+      if (dimension.sideB !== undefined) options.push(['sideB', str(dimension.sideB)]);
       addDimensionOptions(options, dimension);
       const target =
         dimension.b === undefined ? a(dimension.a) : arr([a(dimension.a), a(dimension.b)]);

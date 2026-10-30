@@ -29,6 +29,26 @@ describe('sketchStatus', () => {
     expect(s.over).toEqual([]);
   });
 
+  it('counts an edge distance like a center distance (ADR-0112)', () => {
+    const sketchWith = (edge: boolean) => {
+      const b = new SketchBuilder();
+      const c = b.circle(0, 0, 10);
+      const l = b.line(50, -40, 50, 40);
+      b.constrain({ type: 'vertical', a: l.id });
+      if (edge) {
+        b.dimension(
+          { type: 'distance', orientation: 'horizontal', a: c.id, b: l.id, sideA: 'far' },
+          60,
+        );
+      } else b.dimension({ type: 'distance', orientation: 'aligned', a: c.center, b: l.id }, 50);
+      return status(b);
+    };
+    const edge = sketchWith(true);
+    expect(edge.dof).toBe(sketchWith(false).dof);
+    expect(edge.dof).toBe(3 + 4 - 1 - 1);
+    expect(edge.over).toEqual([]);
+  });
+
   it('tells the fixed end of a line from the free one', () => {
     const b = new SketchBuilder();
     const l = b.line(0, 0, 10, 0);
