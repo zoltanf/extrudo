@@ -14,6 +14,11 @@ import repairFootStl from '../../../fixtures/imports/mesh-to-solid/trashcan-repa
 import spacerStl from '../../../fixtures/imports/mesh-to-solid/trashcan-spacer.stl?url&inline';
 import { Kernel, KernelError, type ShapeHandle } from './kernel';
 import { loadManifold } from './manifold';
+import {
+  expectStepRoundTrip,
+  type StepRoundTrip,
+  stepRoundTrip,
+} from './mesh-to-solid-test-support';
 import { loadOcct } from './occt/load';
 
 const env =
@@ -28,6 +33,7 @@ interface NodeFs {
   readFileSync(path: string): Uint8Array;
   mkdirSync(path: string, options: { recursive: true }): void;
   writeFileSync(path: string, data: Uint8Array): void;
+  appendFileSync(path: string, data: string): void;
 }
 const nodeFs = 'node:fs';
 const fs =
@@ -100,6 +106,11 @@ type Outcome =
       tolerance?: number;
       /** The hybrid rebuild (slice D1): its unfit regions (as `leftOut`) and facet faces. */
       hybrid?: { unfit: number; facets: number };
+      /**
+       * Slice D7: the STEP round trip misses the bar on this case, so it runs
+       * as `it.fails` — a known failure to fix, never to delete.
+       */
+      tripFails?: boolean;
     }
   | { refusal: string; tolerance?: number };
 
@@ -117,6 +128,9 @@ const DRILL_BLOCK: Outcome = {
   spheres: 3,
   tori: 4,
   hybrid: { unfit: 3, facets: 208 },
+  // slice D7: the round trip fails (faces 388 → 388, solids 1 → 1, read back
+  // invalid, volumeRatio 0.999998); fixing the hybrid is a later slice.
+  tripFails: true,
 };
 const TRACK_001: Outcome = {
   planes: 65,
@@ -143,6 +157,9 @@ const TRACK_01: Outcome = {
   tori: 0,
   hybrid: { unfit: 0, facets: 0 },
   tolerance: 0.1,
+  // slice D7: the round trip fails (faces 79 → 79, solids 1 → 1, read back
+  // valid, volumeRatio 1.00127); fixing the hybrid is a later slice.
+  tripFails: true,
 };
 const FLIGHT_COVER: Outcome = {
   planes: 252,
@@ -195,6 +212,9 @@ const fixtures: [string, string, Outcome][] = [
       spheres: 10,
       tori: 2,
       hybrid: { unfit: 3, facets: 670 },
+      // slice D7: the round trip fails (faces 892 → 892, solids 1 → 1, read
+      // back invalid, volumeRatio 0.99979); fixing the hybrid is a later slice.
+      tripFails: true,
     },
   ],
   // Slice C: unfit regions under 2 % of the surface are left out of the rebuild.
@@ -208,7 +228,10 @@ const fixtures: [string, string, Outcome][] = [
 describe('Mesh to Solid, prismatic on the fixtures', { timeout: 120_000 }, () => {
   for (const [name, url, outcome] of fixtures) {
     const tolerance = outcome.tolerance ?? 0.01;
-    it(`converts ${name} at ${tolerance} mm${'refusal' in outcome ? ' (refused)' : ''}`, () => {
+    // `tripFails` cases run as it.fails (slice D7): the conversion itself is
+    // what it always was, the STEP round trip is the known failure.
+    const test = 'tripFails' in outcome && outcome.tripFails ? it.fails : it;
+    test(`converts ${name} at ${tolerance} mm${'refusal' in outcome ? ' (refused)' : ''}`, () => {
       const stl = readStl(bytesOf(url));
       const volume = meshVolume(stl.mesh.positions, stl.mesh.indices);
       const mesh = kernel.meshFrom(stl.mesh);
@@ -235,6 +258,7 @@ describe('Mesh to Solid, prismatic on the fixtures', { timeout: 120_000 }, () =>
           if (outcome.leftOut) expect(report.unfit.fraction).toBeLessThanOrEqual(0.02);
           expect(kernel.isValid(shape)).toBe(true);
           expect(Math.abs(kernel.properties(shape).volume / volume - 1)).toBeLessThan(0.005);
+          expectStepRoundTrip(kernel, shape, `prismatic fixture ${name} at ${tolerance} mm`);
         } finally {
           kernel.release(shape);
         }
@@ -259,7 +283,14 @@ describe('Mesh to Solid, prismatic on the fixtures at Auto', { timeout: 120_000 
     string,
     string,
     number,
-    { faces: number; rebuild: string; edges?: number; circles?: number },
+    {
+      faces: number;
+      rebuild: string;
+      edges?: number;
+      circles?: number;
+      /** Slice D7: the STEP round trip misses the bar; the case runs as `it.fails`. */
+      tripFails?: boolean;
+    },
   ][] = [
     ['hole-filler-35mm.stl', holeFillerStl, 0.01, { faces: 6, rebuild: 'exact' }],
     ['trashcan-repair-foot.stl', repairFootStl, 0.01, { faces: 16, rebuild: 'exact' }],
@@ -274,9 +305,28 @@ describe('Mesh to Solid, prismatic on the fixtures at Auto', { timeout: 120_000 
       'peg-perego-button.stl',
       pegPeregoStl,
       0.02,
-      { faces: 212, rebuild: 'hybrid', edges: 1489, circles: 22 },
+      {
+        faces: 212,
+        rebuild: 'hybrid',
+        edges: 1489,
+        circles: 22,
+        // slice D7: the round trip fails (faces 212 → 214, solids 1 → 1, read
+        // back invalid, volumeRatio 1.00012); fixing the hybrid is a later slice.
+        tripFails: true,
+      },
     ],
-    ['drill-block.stl', drillBlockStl, 0.01, { faces: 388, rebuild: 'hybrid' }],
+    [
+      'drill-block.stl',
+      drillBlockStl,
+      0.01,
+      {
+        faces: 388,
+        rebuild: 'hybrid',
+        // slice D7: the round trip fails (faces 388 → 388, solids 1 → 1, read
+        // back invalid, volumeRatio 0.999998); fixing the hybrid is a later slice.
+        tripFails: true,
+      },
+    ],
     [
       'track-straight-100mm.stl',
       trackStl,
@@ -286,7 +336,10 @@ describe('Mesh to Solid, prismatic on the fixtures at Auto', { timeout: 120_000 
     ['remove-before-flight-cover.stl', flightCoverStl, 0.01, { faces: 438, rebuild: 'hybrid' }],
   ];
   for (const [name, url, tolerance, outcome] of autoFixtures) {
-    it(`converts ${name} with Auto at ${tolerance} mm`, () => {
+    // `tripFails` cases run as it.fails (slice D7): the conversion itself is
+    // what it always was, the STEP round trip is the known failure.
+    const test = outcome.tripFails ? it.fails : it;
+    test(`converts ${name} with Auto at ${tolerance} mm`, () => {
       const stl = readStl(bytesOf(url));
       const volume = meshVolume(stl.mesh.positions, stl.mesh.indices);
       const mesh = kernel.meshFrom(stl.mesh);
@@ -304,6 +357,7 @@ describe('Mesh to Solid, prismatic on the fixtures at Auto', { timeout: 120_000 
           if (outcome.edges !== undefined) {
             expect(edgeCounts(shape)).toBe(`${outcome.edges} edges, ${outcome.circles} circles`);
           }
+          expectStepRoundTrip(kernel, shape, `prismatic Auto fixture ${name}`);
         } finally {
           kernel.release(shape);
         }
@@ -336,6 +390,7 @@ describe('Mesh to Solid, faceted on the fixtures the 5,000 cap allows', {
           expect(kernel.count(shape, 'face')).toBe(faces);
           expect(kernel.isValid(shape)).toBe(true);
           expect(ms).toBeLessThan(20_000);
+          expectStepRoundTrip(kernel, shape, `faceted fixture ${name}`);
         } finally {
           kernel.release(shape);
         }
@@ -399,20 +454,98 @@ const stlDir = env.STL_DIR;
 const auto = env.TOL === 'auto' || env.AUTO === '1';
 const tolerance = auto ? -1 : Number(env.TOL ?? '0.01');
 const only = env.FILE;
+// SWEEP_OUT=<file.jsonl> appends one JSON line per file (the sweep bar, ADR-0097
+// slice D7); SWEEP_BASELINE=<file.jsonl> fails a file that got worse against a
+// previous run's line.
+const sweepOut = env.SWEEP_OUT;
+const sweepBaselinePath = env.SWEEP_BASELINE;
+
+/** One method's outcome for the sweep's JSON line: converted, or the refusal. */
+type SweepResult =
+  | {
+      faces: number;
+      rebuild?: 'exact' | 'hybrid';
+      facets: number;
+      unfit: number;
+      tolerance?: number;
+      valid: boolean;
+      volumeRatio: number;
+      ms: number;
+      step: StepRoundTrip;
+    }
+  | { refusal: string; ms: number };
+
+interface SweepLine {
+  file: string;
+  triangles: number;
+  tolerance: number | 'auto';
+  prismatic: SweepResult;
+  faceted: SweepResult;
+}
+
+/** A converted result's STEP read-back misses the bar (valid, faces, volume). */
+function stepFailed(result: SweepResult): boolean {
+  return (
+    'faces' in result &&
+    (!result.step.valid ||
+      result.step.faces !== result.faces ||
+      Math.abs(result.step.volumeRatio - 1) >= 1e-4)
+  );
+}
+
+/**
+ * The baseline bar (slice D7) for one method: what got worse against the
+ * previous run's result, or undefined. Refused in both passes; faces going
+ * down pass; the STEP read-back only counts when it was clean there.
+ */
+function sweepWorse(method: string, base: SweepResult, now: SweepResult): string | undefined {
+  if ('refusal' in base) return undefined; // refused there: converting now is only better
+  if ('refusal' in now) return `${method}: refused now: ${now.refusal} (converted before)`;
+  if (now.faces > base.faces * 1.1 + 1e-9)
+    return `${method}: baseline ${base.faces} faces → ${now.faces} (+${(((now.faces - base.faces) / base.faces) * 100).toFixed(1)} %)`;
+  if (base.step.valid && !now.step.valid)
+    return `${method}: STEP read back valid before, invalid now`;
+  if (base.step.faces === base.faces && now.step.faces !== now.faces)
+    return `${method}: STEP kept ${base.faces} faces before, keeps ${now.step.faces} of ${now.faces} now`;
+  return undefined;
+}
+
+/** Reads a SWEEP_BASELINE file into a map by file. */
+function readSweepBaseline(fs: NodeFs, path: string): Map<string, SweepLine> {
+  const map = new Map<string, SweepLine>();
+  for (const line of new TextDecoder().decode(fs.readFileSync(path)).split('\n')) {
+    if (!line.trim()) continue;
+    const parsed = JSON.parse(line) as SweepLine;
+    map.set(parsed.file, parsed);
+  }
+  return map;
+}
 
 describe.skipIf(!stlDir)('Mesh to Solid over STL_DIR', { timeout: 3_600_000 }, () => {
   const root = stlDir as string;
+  const nodeFs = fs as NodeFs;
+  const baseline: Map<string, SweepLine> | undefined =
+    fs && stlDir && sweepBaselinePath ? readSweepBaseline(nodeFs, sweepBaselinePath) : undefined;
+  /** The lines written this run, for `sweep totals`. */
+  const sweepLines: SweepLine[] = [];
   for (const name of fs && stlDir ? stlFiles(fs, root) : []) {
     if (only && name !== only) continue;
     it(name, () => {
-      const stl = readStl(new Uint8Array((fs as NodeFs).readFileSync(`${root}/${name}`)));
+      const stl = readStl(new Uint8Array(nodeFs.readFileSync(`${root}/${name}`)));
       const volume = meshVolume(stl.mesh.positions, stl.mesh.indices);
       const cells: string[] = [name, String(stl.mesh.indices.length / 3)];
+      const results: { prismatic: SweepResult; faceted: SweepResult } = {
+        prismatic: { refusal: 'no attempt', ms: 0 },
+        faceted: { refusal: 'no attempt', ms: 0 },
+      };
       let mesh: ShapeHandle | undefined;
       try {
         mesh = kernel.meshFrom(stl.mesh);
       } catch (error) {
-        cells.push(`mesh: ${error instanceof Error ? error.message : String(error)}`);
+        const message = `mesh: ${error instanceof Error ? error.message : String(error)}`;
+        cells.push(message);
+        results.prismatic = { refusal: message, ms: 0 };
+        results.faceted = { refusal: message, ms: 0 };
       }
       if (mesh) {
         try {
@@ -443,23 +576,93 @@ describe.skipIf(!stlDir)('Mesh to Solid over STL_DIR', { timeout: 3_600_000 }, (
                       : '';
                 const autoText = report.auto ? `, auto ${report.tolerance} mm` : '';
                 const ms = Math.round(performance.now() - t0);
+                const valid = kernel.isValid(shape);
                 cells.push(
-                  `✓ ${report.faces} faces (${report.planes}/${report.cylinders}/${report.cones}/${report.spheres}/${report.tori})${leftOut}${autoText}, ${edgeCounts(shape)}, valid ${kernel.isValid(shape)}, vol ${ratio.toFixed(4)} (${ms} ms)`,
+                  `✓ ${report.faces} faces (${report.planes}/${report.cylinders}/${report.cones}/${report.spheres}/${report.tori})${leftOut}${autoText}, ${edgeCounts(shape)}, valid ${valid}, vol ${ratio.toFixed(4)} (${ms} ms)`,
                 );
+                results[method] = {
+                  faces: report.faces,
+                  ...(report.rebuild ? { rebuild: report.rebuild } : {}),
+                  facets: report.facets,
+                  unfit: report.unfit.regions,
+                  ...(report.tolerance !== undefined ? { tolerance: report.tolerance } : {}),
+                  valid,
+                  volumeRatio: ratio,
+                  ms,
+                  step: stepRoundTrip(kernel, shape, name),
+                };
               } finally {
                 kernel.release(shape);
               }
             } catch (error) {
               cells.push(`✗ ${refusal(error)} (${Math.round(performance.now() - t0)} ms)`);
+              results[method] = {
+                refusal: refusal(error),
+                ms: Math.round(performance.now() - t0),
+              };
             }
           }
         } finally {
           kernel.release(mesh);
         }
       }
+      const line: SweepLine = {
+        file: name,
+        triangles: stl.mesh.indices.length / 3,
+        tolerance: auto ? 'auto' : tolerance,
+        prismatic: results.prismatic,
+        faceted: results.faceted,
+      };
+      const problems: string[] = [];
+      const baselineLine = baseline?.get(name);
+      if (baselineLine) {
+        for (const [method, base, now] of [
+          ['prismatic', baselineLine.prismatic, line.prismatic],
+          ['faceted', baselineLine.faceted, line.faceted],
+        ] as const) {
+          const worse = sweepWorse(method, base, now);
+          if (worse) {
+            problems.push(worse);
+            cells.push(`baseline: ${worse}`);
+          }
+        }
+      }
       console.log(`| ${cells.join(' | ')} |`);
+      sweepLines.push(line);
+      if (sweepOut) nodeFs.appendFileSync(sweepOut, `${JSON.stringify(line)}\n`);
+      if (problems.length) {
+        expect(
+          problems,
+          `${name} got worse against the baseline:\n  ${problems.join('\n  ')}`,
+        ).toEqual([]);
+      }
     });
   }
+
+  it('sweep totals', () => {
+    const totals = (lines: SweepLine[]): string => {
+      const converted = (key: 'prismatic' | 'faceted') =>
+        lines.filter((line) => !('refusal' in line[key]));
+      const prismatic = converted('prismatic');
+      const faceted = converted('faceted');
+      const failed = lines.filter((line) => stepFailed(line.prismatic) || stepFailed(line.faceted));
+      const faces = (key: 'prismatic' | 'faceted') =>
+        converted(key).reduce((sum, line) => sum + ('faces' in line[key] ? line[key].faces : 0), 0);
+      const ms = (key: 'prismatic' | 'faceted') =>
+        lines.reduce((sum, line) => sum + line[key].ms, 0);
+      return [
+        `files ${lines.length}`,
+        `prismatic converted ${prismatic.length} refused ${lines.length - prismatic.length}`,
+        `faceted converted ${faceted.length} refused ${lines.length - faceted.length}`,
+        `prismatic faces ${faces('prismatic')}`,
+        `prismatic ms ${ms('prismatic')}`,
+        `faceted ms ${ms('faceted')}`,
+        `round trips failed ${failed.length}${failed.length ? ` (${failed.map((line) => line.file).join(', ')})` : ''}`,
+      ].join(', ');
+    };
+    console.log(`sweep totals: ${totals(sweepLines)}`);
+    if (baseline) console.log(`baseline totals: ${totals([...baseline.values()])}`);
+  });
 });
 
 // The offset bug on converted bodies (ADR-0097 amendment, 2026-10-24): a real
@@ -500,6 +703,7 @@ describe.skipIf(!meshFile)(
             `${report.auto ? `, auto ${report.tolerance} mm` : ''}, ${edgeCounts(shape)}, valid ${kernel.isValid(shape)}` +
             `, vol ${report ? kernel.properties(shape).volume.toFixed(2) : '?'} (${Math.round(performance.now() - t0)} ms)`,
         );
+        expectStepRoundTrip(kernel, shape, `MESH_FILE ${meshFile}`);
         const info = kernel.describe(shape).faces;
         // The top face: the plane face with the highest centroid z.
         let top = -1;

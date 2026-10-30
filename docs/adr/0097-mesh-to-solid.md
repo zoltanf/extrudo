@@ -2311,3 +2311,76 @@ preview has `surfaceOf.length` = the view mesh's triangle count (5,218),
 `unfit.regions` = the conversion's report (1), and `planes`/`cylinders` = the
 report's (8/4, where the base WASM gave 100 planes). On the base WASM the
 test fails at `expected 100 to be 8`.
+
+### Amendment, 2026-10-30: the STEP round trip checked, sweep baselines (slice D7)
+
+stl2curves (an MIT Python STL→STEP converter) learned the hard way that a STEP
+file keeps no tolerances: a reader works them out again from the geometry,
+tightly, so a face that was only valid thanks to a generous edge tolerance
+comes back broken. The hybrid rebuild raises edge tolerances up to
+`HYBRID_EDGE_TOLERANCE_MAX` (1 mm, the 2026-10-23 amendment) and nothing wrote
+a converted body to STEP and read it back. Slice D7 adds **checks only**: no
+converter change, so this amendment also records where the bar fails today.
+
+**The check.** `mesh-to-solid-test-support.ts` (a plain module the two
+mesh-to-solid test files import) has `stepRoundTrip(kernel, shape, name)`: it
+writes `shape` to STEP (`Kernel.writeStep`), reads it back
+(`Kernel.readStep`), releases everything it made and returns a measurement —
+`valid` (`isValid`), `faces` (`count(back, 'face')`), `solids`
+(`solids(back).length`), `volumeRatio` (`properties(back).volume /
+properties(shape).volume`) and `bytes` — never throwing on a bad result: it
+measures. `expectStepRoundTrip` asserts the bar: the read-back body is valid,
+keeps the face and solid counts, and the volume is the written body's within
+1e-4. Every converted-body test case calls it (in the existing `try`, after
+the existing assertions); every new such case must too. `it.fails` marks a
+case that misses the bar — a known failure to fix, never to delete.
+
+**Where the bar fails today (all `it.fails`, all hybrid, both prismatic
+fixture passes — one entry per tolerance):**
+
+| case | faces | solids | read back | volumeRatio |
+|---|---|---|---|---|
+| peg-perego-button.stl 0.01 mm (670 facets) | 892 → 892 | 1 → 1 | invalid | 0.99979 |
+| peg-perego-button.stl Auto (0.02 mm) | 212 → 214 | 1 → 1 | invalid | 1.00012 |
+| drill-block.stl 0.01 mm (208 facets) | 388 → 388 | 1 → 1 | invalid | 0.999998 |
+| drill-block.stl Auto (0.01 mm, same build) | 388 → 388 | 1 → 1 | invalid | 0.999998 |
+| track-straight-100mm.stl 0.1 mm | 79 → 79 | 1 → 1 | valid | 1.00127 |
+
+The synthetic cases of `mesh-to-solid.test.ts` (58, faceted and prismatic,
+boxes to the 602-face staircase, the boss's freeform top, the re-seamed band)
+all pass the bar. Fixing the converter — the reader's tight tolerances land
+mostly on the hybrid's rebuilt faces and on facets sewn to them — is the next
+slice.
+
+**The sweep keeps itself honest.** The `STL_DIR` sweep gains
+`SWEEP_OUT=<file>.jsonl` (one JSON line per file: both methods' report,
+validity, volume ratio, ms and the STEP round trip — the measuring form, the
+sweep's own bar is below) and `SWEEP_BASELINE=<file>.jsonl`: against the
+previous run's line for that file, a file **fails** when it is refused where
+it converted, when prismatic's or faceted's faces exceed the baseline's by
+more than 10 % (fewer faces mean more of the part was recognised; going down
+passes), or when its STEP read-back was valid there and keeps the face count
+there but not now. A file with no baseline line passes; refused in both
+passes. The comparison prints on the row (`baseline 212 faces → 230
+(+8.5 %)`), and a last `it('sweep totals')` prints both runs' numbers (files,
+converted/refused per method, prismatic faces, ms, round trips failed).
+
+**First run** (the owner's 41-STL corpus, Auto, Ubuntu machine): files 41;
+prismatic converted 36, refused 5 (3 at `meshFrom`: open edges or a face of
+fewer than three corners; whiteboard-tray-v5's known slow refusal);
+faceted converted 25, refused 16 (14 over the 5,000-face cap, 2 mesh
+refusals); prismatic faces 27,706; prismatic 236 s, faceted 104 s of kernel
+time; **round trips failed 17** of 36 prismatic conversions (0 faceted): the
+fixture table's files plus battery-power-adapter (994 → 998, invalid),
+desk-organizer-module-small (418 → 418, invalid), kuglbahn-pillar-base (3941
+→ 3942, invalid), mirna-doodle-1 (120 → 120, valid, volumeRatio 0.99917),
+phone-stand-foldable (2325 → 2340, invalid, 0.98062), puzzle-insert-circle
+(1609 → 1609, valid, 1.00045), shower-holder (901 → 901, invalid),
+spool-nut-v4.1 (718 → 718, valid, 0.99965), spool-screw-v4.1 (3197 → 3197,
+valid, 0.99856), gear-bearing-5 (2308 → 2392, invalid, 7 solids),
+hot-wheels-connector (2015 → 2016, invalid), makita-vacuum-holder (3480 →
+3482, invalid, **0 solids**), micro-sd-keyring-inner (66 → 66, valid,
+0.99926), spaghetti-measure (165 → 165, valid, 1.00013), vented-funnel (715 →
+715, invalid). Second run on one file (`FILE=own/trashcan-spacer.stl`)
+against the first run's baseline passes against itself, the comparison path
+works. **Converter fixes are the next slice.**
