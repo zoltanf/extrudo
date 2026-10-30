@@ -2386,3 +2386,253 @@ hot-wheels-connector (2015 → 2016, invalid), makita-vacuum-holder (3480 →
 715, invalid). Second run on one file (`FILE=own/trashcan-spacer.stl`)
 against the first run's baseline passes against itself, the comparison path
 works. **Converter fixes are the next slice.**
+
+### Amendment, 2026-10-30b: the STEP read-back failures measured (diagnosis, no fix)
+
+Slice D7 recorded *that* the bar fails. This amendment records *where*, measured
+by two new spike-harness cases — no converter change. `s` is case `f` on one
+corpus file (`STL_DIR` mounted at `/stl`, `FILE`, `TOL`, `TOL=auto` allowed):
+it converts, writes the body to STEP, reads it back and prints the reader and
+writer settings in force, the written body's edges by class and tolerance
+buckets, the read-back `shapeDiagnose` summary and BRepCheck statuses by name,
+the invalid edges by class and invalid faces by kind, the summed area per face
+kind written against read back, and a `ShapeFix_Shape` pass at the written edge
+tolerance. `S` does the same for every file in one process and ends with one
+Markdown summary row per file. Run (Ubuntu machine, the pinned OCCT image):
+
+```sh
+STL_DIR=~/Development/extrudo-stl-solid-test TOL=auto BUILD=diag \
+  bash spikes/stl-to-solid/run.sh prismatic S
+```
+
+**The mesh order, and why this run reads differently from the sweep.** The
+spike stages the STL in the file's own triangle order (`stlFile`, `RWStl`),
+while the kernel sweep imports through `meshFrom`, which orders a mesh as
+manifold's `getMesh()` does (the note already in the spike README, 2026-10-21).
+Segmentation depends on that order, so the two runs convert the same file to
+slightly different bodies. This run: 9 exact rebuilds, 30 hybrids, 2 refusals
+(grass-for-flower, mms-m5-nut). **20 of the 30 hybrid conversions miss the D7
+bar** (read-back valid, the same face and solid counts, volume within 1e-4):
+the sweep's 17 all miss here too, plus whiteboard-tray-v5 and hex-key-cap-3mm
+(both refusals in the sweep's order, converted here) and sock-clips-6x (a pass
+in the sweep, invalid here). chip-bag-clip-small, a refusal in the sweep,
+converts and passes here. Face counts differ from the sweep's for
+battery-power-adapter (995 vs 994), kuglbahn-pillar-base (3930 vs 3941),
+phone-stand-foldable (2329 vs 2325), spool-screw-v4.1 (2915 vs 3197),
+gear-bearing-5 (2330 vs 2308) and hot-wheels-connector (2518 vs 2015); the
+other eleven match. Every number below is this run's.
+
+**Reader and writer settings in force (Q5, once per run).**
+`write.precision.mode 0`, `write.precision.val 0`, `write.surfacecurve.mode 0`,
+`read.precision.mode 0`, `read.precision.val 0`, `read.surfacecurve.mode 0`,
+`read.stdsameparameter.mode 0`. (0 is OCCT's default: the writer takes each
+face's own tolerance, and the reader works the tolerances out again from the
+geometry.)
+
+**Summary table (Q6; one row per file, as `S` prints it).**
+
+| file | rebuild | tol | faces | facets | max edge tol written | max vertex tol written | back valid | back faces | back solids | ratio | back invalid edges | back invalid faces | top status | fix valid | fix faces | fix ratio |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| own/ball.stl | exact | 0.01 | 1 | 0 | 1e-07 | 1e-07 | valid | 1 | 1 | 1 | 0 | 0 | - | valid | 1 | 1 |
+| own/battery-holder.stl | hybrid | 0.01 | 131 | 0 | 0.0168194 | 0.0168194 | valid | 131 | 1 | 1 | 0 | 0 | - | valid | 131 | 1 |
+| own/battery-power-adapter.stl | hybrid | 0.1 | 995 | 416 | 0.164814 | 0.164814 | invalid | 999 | 2 | 0.999899 | 0 | 2 | face BadOrientationOfSubshape x1 | invalid | 1000 | 0.999898 |
+| own/desk-organizer-module-small.stl | hybrid | 0.01 | 418 | 42 | 0.0153582 | 0.0153582 | invalid | 418 | 1 | 0.999998 | 0 | 1 | face BadOrientationOfSubshape x1 | invalid | 418 | 0.999998 |
+| own/drill-block.stl | hybrid | 0.01 | 388 | 208 | 0.58915 | 0.58915 | invalid | 388 | 1 | 0.999998 | 0 | 2 | face UnorientableShape x2 | invalid | 388 | 0.999998 |
+| own/grass-for-flower.stl | refused | 0.1 | 0 | 0 | 0 | 0 | invalid | 0 | 0 | 0 | 0 | 0 | - | invalid | 0 | 0 |
+| own/hole-filler-35mm.stl | exact | 0.01 | 6 | 0 | 1e-06 | 1e-06 | valid | 6 | 1 | 1 | 0 | 0 | - | valid | 6 | 1 |
+| own/hole-filler-5mm.stl | exact | 0.01 | 6 | 0 | 1e-07 | 1.00001e-07 | valid | 6 | 1 | 1 | 0 | 0 | - | valid | 6 | 1 |
+| own/kuglbahn-pillar-base.stl | hybrid | 0.1 | 3930 | 3398 | 0.229375 | 0.229375 | invalid | 3931 | 1 | 0.999357 | 0 | 6 | face UnorientableShape x3 | invalid | 3938 | 0.998435 |
+| own/mirna-doodle-1.stl | hybrid | 0.1 | 120 | 43 | 0.151169 | 0.151169 | valid | 120 | 5 | 0.999174 | 0 | 0 | - | valid | 120 | 0.999174 |
+| own/numbers-base-top.stl | exact | 0.01 | 471 | 0 | 1.5e-07 | 1.5e-07 | valid | 471 | 1 | 1 | 0 | 0 | - | valid | 471 | 1 |
+| own/object-permanence-base.stl | hybrid | 0.01 | 1985 | 1620 | 0.163989 | 0.163989 | valid | 1985 | 1 | 0.999986 | 0 | 0 | - | valid | 1985 | 0.999986 |
+| own/peg-perego-button.stl | hybrid | 0.02 | 212 | 0 | 0.044735 | 0.308934 | invalid | 214 | 1 | 1.00013 | 0 | 4 | face UnorientableShape x3 | invalid | 214 | 1.00013 |
+| own/phone-stand-foldable.stl | hybrid | 0.1 | 2329 | 1852 | 0.271369 | 0.271369 | invalid | 2346 | 2 | 0.979189 | 0 | 18 | face UnorientableShape x8 | invalid | 2355 | 0.996416 |
+| own/puzzle-base-circle.stl | exact | 0.01 | 37 | 0 | 1.5e-07 | 1.5e-07 | valid | 37 | 1 | 1 | 0 | 0 | - | valid | 37 | 1 |
+| own/puzzle-insert-circle.stl | hybrid | 0.05 | 1609 | 1230 | 0.0811348 | 0.0811348 | valid | 1609 | 1 | 1.00045 | 0 | 0 | - | valid | 1609 | 1.00045 |
+| own/remove-before-flight-cover.stl | hybrid | 0.01 | 438 | 120 | 0.872458 | 0.872458 | valid | 438 | 1 | 1.00002 | 0 | 0 | - | valid | 438 | 1.00002 |
+| own/scrap-plate.stl | hybrid | 0.02 | 154 | 0 | 0.034724 | 0.034724 | valid | 154 | 1 | 0.999994 | 0 | 0 | - | valid | 154 | 0.999994 |
+| own/shower-holder.stl | hybrid | 0.01 | 901 | 472 | 0.0159189 | 0.0159189 | invalid | 901 | 1 | 1.00005 | 0 | 2 | face BadOrientationOfSubshape x2 | invalid | 901 | 1.00005 |
+| own/spool-nut-v4.1.stl | hybrid | 0.01 | 718 | 0 | 0.0158714 | 0.0158714 | valid | 718 | 1 | 0.999655 | 0 | 0 | - | valid | 718 | 0.999655 |
+| own/spool-screw-v4.1.stl | hybrid | 0.05 | 2915 | 1841 | 0.0795326 | 0.0795326 | valid | 2915 | 0 | 0.998541 | 0 | 0 | - | valid | 2915 | 0.998541 |
+| own/track-straight-100mm.stl | hybrid | 0.01 | 306 | 237 | 0.0137019 | 0.0137019 | valid | 306 | 1 | 1.00001 | 0 | 0 | - | valid | 306 | 1.00001 |
+| own/trashcan-repair-foot.stl | exact | 0.01 | 16 | 0 | 1.5e-07 | 1.5e-07 | valid | 16 | 1 | 1 | 0 | 0 | - | valid | 16 | 1 |
+| own/trashcan-spacer.stl | hybrid | 0.05 | 78 | 0 | 0.0450076 | 0.0450076 | valid | 78 | 1 | 1.00001 | 0 | 0 | - | valid | 78 | 1.00001 |
+| own/whiteboard-tray-v5.stl | hybrid | 0.02 | 1302 | 622 | 0.826073 | 0.826073 | invalid | 1302 | 1 | 1.06794 | 0 | 3 | face BadOrientationOfSubshape x2 | invalid | 1307 | 1.06794 |
+| third-party/chip-bag-clip-small.stl | hybrid | 0.01 | 757 | 500 | 0.0145976 | 0.0145976 | valid | 757 | 0 | 0.999923 | 0 | 0 | - | valid | 757 | 0.999923 |
+| third-party/door-stopper-top.stl | hybrid | 0.01 | 147 | 0 | 0.0163259 | 0.0163259 | valid | 147 | 1 | 0.99999 | 0 | 0 | - | valid | 147 | 0.99999 |
+| third-party/gardena-end.stl | hybrid | 0.01 | 17 | 0 | 0.0564495 | 0.0564495 | valid | 17 | 1 | 1.00001 | 0 | 0 | - | valid | 17 | 1.00001 |
+| third-party/gear-bearing-5.stl | hybrid | 0.1 | 2330 | 1444 | 0.754246 | 0.754246 | invalid | 2414 | 7 | 0.998211 | 0 | 52 | face BadOrientationOfSubshape x46 | invalid | 2414 | 0.998211 |
+| third-party/hex-key-cap-3mm.stl | hybrid | 0.02 | 4590 | 3470 | 0.0347333 | 0.0347333 | valid | 4591 | 0 | 1.00297 | 0 | 0 | - | valid | 4591 | 1.00297 |
+| third-party/hot-wheels-connector.stl | hybrid | 0.01 | 2518 | 2318 | 0.0286497 | 0.0286497 | invalid | 2519 | 1 | 1.00027 | 0 | 8 | face BadOrientationOfSubshape x6 | invalid | 2520 | 1.00027 |
+| third-party/makita-vacuum-holder.stl | hybrid | 0.05 | 3480 | 2662 | 0.581547 | 0.581547 | invalid | 3481 | 1 | 0.999774 | 0 | 1 | face UnorientableShape x1 | invalid | 3481 | 0.999774 |
+| third-party/micro-sd-keyring-inner.stl | hybrid | 0.01 | 66 | 18 | 0.999885 | 0.999885 | valid | 66 | 1 | 0.99926 | 0 | 0 | - | valid | 66 | 0.99926 |
+| third-party/micro-sd-keyring-outer.stl | exact | 0.01 | 41 | 0 | 1.5e-07 | 1.5e-07 | valid | 41 | 1 | 1 | 0 | 0 | - | valid | 41 | 1 |
+| third-party/mms-camera-mount.stl | exact | 0.01 | 11 | 0 | 1.5e-07 | 1.5e-07 | valid | 11 | 1 | 1 | 0 | 0 | - | valid | 11 | 1 |
+| third-party/mms-flat-stand.stl | exact | 0.01 | 44 | 0 | 0.000220075 | 0.0002214 | valid | 44 | 1 | 1 | 0 | 0 | - | valid | 44 | 1 |
+| third-party/mms-m5-nut.stl | refused | 0.02 | 0 | 0 | 0 | 0 | invalid | 0 | 0 | 0 | 0 | 0 | - | invalid | 0 | 0 |
+| third-party/sock-clips-6x.stl | hybrid | 0.01 | 163 | 97 | 0.187077 | 0.187077 | invalid | 163 | 1 | 1.00012 | 0 | 1 | face UnorientableShape x1 | invalid | 163 | 1.00012 |
+| third-party/spaghetti-measure.stl | hybrid | 0.01 | 165 | 55 | 0.786253 | 0.786253 | valid | 165 | 1 | 1.00013 | 0 | 0 | - | valid | 165 | 1.00013 |
+| third-party/vented-funnel.stl | hybrid | 0.02 | 715 | 86 | 0.500955 | 0.500955 | valid | 715 | 1 | 0.999155 | 0 | 0 | - | valid | 715 | 0.999155 |
+| third-party/wyze-garage-bracket.stl | hybrid | 0.01 | 84 | 0 | 0.0124522 | 0.0124522 | valid | 84 | 2 | 1.00001 | 0 | 0 | - | valid | 84 | 1.00001 |
+
+**What the reader rejects (Q2).** Across the 20 failing conversions BRepCheck
+reports **no vertex and no edge status at all** — every non-`NoError` status is
+on a face, a wire or a shell:
+
+| sub-shape | status | count |
+|---|---|---|
+| face | `BadOrientationOfSubshape` | 67 |
+| face | `UnorientableShape` | 25 |
+| face | `InvalidImbricationOfWires` | 8 |
+| wire | `SelfIntersectingWire` | 25 |
+| wire (in context) | `SelfIntersectingWire` | 25 |
+| shell (in context) | `BadOrientationOfSubshape` | 5 |
+
+The invalid **faces** are almost all flat — by kind facet 17, plane 81, other 2.
+The "other" 2 are drill-block's read-back of two of its four torus faces, which
+come back as a surface the classifier doesn't name. Not one cylinder, cone,
+sphere or torus face is flagged invalid directly. The invalid **edges by class**
+table is empty for every one of the 20. So the read-back failure is not a
+tolerated pcurve: it is orientation and topology — a face `UnorientableShape`
+or `BadOrientationOfSubshape`, a wire `SelfIntersectingWire` — on the flat faces
+and facets, where the reader's own re-welding of the hybrid's seams disagrees
+with the body's orientation.
+
+**The written body's edges by class (Q1).** Class is `<curve> <A>|<B>` (A ≤ B,
+the two faces around the edge; "facet" is a 3-edge plane). Buckets are
+≤0.002 / ≤0.01 / ≤0.05 / ≤0.1 / ≤0.5 / ≤1 / >1 mm.
+
+drill-block (max vertex tolerance 0.58915 mm):
+
+```
+circle cylinder|plane  143  <=0.002:33 <=0.01:108 <=0.05:2   max 0.0109398
+circle plane|sphere      6  <=0.002:0  <=0.01:2   <=0.05:4   max 0.0111325
+ellipse cylinder|plane  20  <=0.002:18 <=0.05:2             max 0.0138686
+line cylinder|cylinder  69  <=0.002:20 <=0.01:47 <=0.05:2   max 0.0130068
+line cylinder|plane     28  <=0.002:10 <=0.01:9 <=0.05:5 <=0.5:4  max 0.177693
+line cylinder|sphere     2  <=0.5:2                         max 0.120998
+line facet|plane        11  <=0.002:7  <=0.05:4             max 0.0170903
+line facet|torus         4  <=1:4                           max 0.58915
+line plane|plane       855  <=0.002:810 <=0.01:34 <=0.05:11 max 0.0180813
+line plane|sphere       96  <=0.002:22 <=0.01:68 <=0.05:6   max 0.010993
+line plane|torus        16  <=0.05:12 <=0.5:4               max 0.271937
+line sphere|sphere       1  <=0.5:1                         max 0.224711
+```
+
+peg-perego-button (max vertex 0.308934; every edge ≤ 0.044735):
+
+```
+circle cone|cylinder     2  max 0.002      circle cone|plane        2  max 0.00708193
+circle cylinder|plane    5  max 0.00717953 circle cylinder|sphere    2  max 0.002
+circle cylinder|torus    3  max 0.002      circle plane|sphere      10  max 0.00826411
+ellipse cylinder|cylinder 2 max 0.00698371 ellipse cylinder|plane   44  max 0.0320919
+line cone|plane          4  max 0.0202268  line cylinder|cylinder   640 max 0.0211373
+line cylinder|facet     27  max 0.0167538  line cylinder|plane      194 max 0.044735
+line cylinder|sphere   194  max 0.0339869  line cylinder|torus        6  max 0.0433924
+line facet|plane        45  max 0.0217726  line plane|plane         137 max 0.0259957
+line plane|sphere        4  max 0.0191384  line plane|torus          92  max 0.0432143
+line torus|torus        18  max 0.00336356
+```
+
+spool-nut-v4.1 (max vertex 0.0158714; every edge ≤ 0.0158714):
+
+```
+circle cone|plane         2  max 2.82881e-05  circle cylinder|plane   4  max 0.002
+ellipse cylinder|plane   38  max 0.0158714    line cone|cone          1  max 0.00658458
+line cone|plane         960  max 0.00658611   line cylinder|cylinder 1039 max 0.0107784
+line cylinder|plane      92  max 0.0107499    line plane|plane      1280 max 0.00658812
+```
+
+For the other 17 failing files, the class with the most edges over 0.05 mm:
+
+| file | class over 0.05 mm |
+|---|---|
+| own/battery-power-adapter.stl | line plane\|plane (1163 of 2009, max 0.164814) |
+| own/desk-organizer-module-small.stl | none (max edge 0.0153582) |
+| own/kuglbahn-pillar-base.stl | line plane\|plane (1152 of 3041, max 0.164686) |
+| own/mirna-doodle-1.stl | line plane\|plane (37 of 276, max 0.13023) |
+| own/phone-stand-foldable.stl | line plane\|plane (1617 of 3227, max 0.164112) |
+| own/puzzle-insert-circle.stl | line plane\|plane (236 of 4300, max 0.0811348) |
+| own/shower-holder.stl | none (max edge 0.0159189) |
+| own/spool-screw-v4.1.stl | line cylinder\|cylinder (80 of 3065, max 0.054861) |
+| own/whiteboard-tray-v5.stl | line plane\|plane (12 of 1389, max 0.826073) |
+| third-party/gear-bearing-5.stl | line cylinder\|cylinder (2252 of 3399, max 0.142677) |
+| third-party/hex-key-cap-3mm.stl | none (max edge 0.0347333) |
+| third-party/hot-wheels-connector.stl | none (max edge 0.0286497) |
+| third-party/makita-vacuum-holder.stl | line cylinder\|plane (83 of 1047, max 0.468278) |
+| third-party/micro-sd-keyring-inner.stl | line plane\|sphere (8 of 88, max 0.999885) |
+| third-party/sock-clips-6x.stl | line plane\|torus and line facet\|torus (6 each of 6, max 0.187077) |
+| third-party/spaghetti-measure.stl | line cylinder\|sphere (1 of 1, max 0.786253) |
+| third-party/vented-funnel.stl | line cylinder\|plane (4 of 297, max 0.500955) |
+
+**Where the volume goes (Q3), the six valid-but-drifting files.** Written ->
+read-back summed area (mm²) and face count per kind:
+
+- **mirna-doodle-1** (ratio 0.999174): cylinder 139.9 (14) -> 139.9 (14), plane 3003.95 (106) -> 3000.06 (106) (delta -3.89).
+- **puzzle-insert-circle** (1.00045): plane 4826.17 (1546) -> 4816.89 (1546) (delta -9.29), cylinder 1020.14 (59) -> 1019.95 (59), cone 239.915 -> 239.918, facet 0.0538 -> 0.0358, torus unchanged.
+- **spool-nut-v4.1** (0.999655): plane 4392.91 (654) -> 4395.57 (654) (delta +2.66), cylinder 1464.61 (63) -> 1465.2 (63) (delta +0.59), cone 340.65 -> 340.644.
+- **spool-screw-v4.1** (0.998541): cylinder 18615.9 (95) -> 18610.4 (95) (delta -5.42), plane 5724.49 (1368) -> 5727.62 (1368) (delta +3.13), facet 326.499 (1448) -> 326.502 (1448), cone unchanged.
+- **micro-sd-keyring-inner** (0.99926): sphere 6.71917 (4) -> 13.3783 (4) (delta +6.66), plane 1659.44 (46) -> 1659.23 (46), cylinder unchanged.
+- **spaghetti-measure** (1.00013): sphere 5.54724 (1) -> 6.08194 (1) (delta +0.535), plane 8477.84 (63) -> 8477.21 (63) (delta -0.636), cylinder and facet unchanged.
+
+The face and solid counts are identical written against read back in all six;
+the drift is a re-fit of the same faces, not a face lost or added. (vented-funnel
+and hex-key-cap-3mm also drift validly in this run: ratios 0.999155 and 1.00297.)
+
+**Does ShapeFix help (Q4)?** On the read-back body, `ShapeFix_Shape` with
+`SetPrecision(maxEdgeToleranceWritten)` and
+`SetMaxTolerance(max(1, 2 x that))`, `Perform()`: it makes **0 of the 12
+invalid bodies valid** and changes no valid body's ratio. Back -> fix (faces,
+solids, ratio):
+
+| file | back | fix |
+|---|---|---|
+| own/battery-power-adapter.stl | invalid, 999f/2s/0.999899 | invalid, 1000f/2s/0.999898 |
+| own/desk-organizer-module-small.stl | invalid, 418f/1s/0.999998 | invalid, 418f/1s/0.999998 |
+| own/drill-block.stl | invalid, 388f/1s/0.999998 | invalid, 388f/1s/0.999998 |
+| own/kuglbahn-pillar-base.stl | invalid, 3931f/1s/0.999357 | invalid, 3938f/1s/0.998435 |
+| own/mirna-doodle-1.stl | valid, 120f/5s/0.999174 | valid, 120f/5s/0.999174 |
+| own/peg-perego-button.stl | invalid, 214f/1s/1.00013 | invalid, 214f/1s/1.00013 |
+| own/phone-stand-foldable.stl | invalid, 2346f/2s/0.979189 | invalid, 2355f/2s/0.996416 |
+| own/puzzle-insert-circle.stl | valid, 1609f/1s/1.00045 | valid, 1609f/1s/1.00045 |
+| own/shower-holder.stl | invalid, 901f/1s/1.00005 | invalid, 901f/1s/1.00005 |
+| own/spool-nut-v4.1.stl | valid, 718f/1s/0.999655 | valid, 718f/1s/0.999655 |
+| own/spool-screw-v4.1.stl | valid, 2915f/0s/0.998541 | valid, 2915f/0s/0.998541 |
+| own/whiteboard-tray-v5.stl | invalid, 1302f/1s/1.06794 | invalid, 1307f/1s/1.06794 |
+| third-party/gear-bearing-5.stl | invalid, 2414f/7s/0.998211 | invalid, 2414f/7s/0.998211 |
+| third-party/hex-key-cap-3mm.stl | valid, 4591f/0s/1.00297 | valid, 4591f/0s/1.00297 |
+| third-party/hot-wheels-connector.stl | invalid, 2519f/1s/1.00027 | invalid, 2520f/1s/1.00027 |
+| third-party/makita-vacuum-holder.stl | invalid, 3481f/1s/0.999774 | invalid, 3481f/1s/0.999774 |
+| third-party/micro-sd-keyring-inner.stl | valid, 66f/1s/0.99926 | valid, 66f/1s/0.99926 |
+| third-party/sock-clips-6x.stl | invalid, 163f/1s/1.00012 | invalid, 163f/1s/1.00012 |
+| third-party/spaghetti-measure.stl | valid, 165f/1s/1.00013 | valid, 165f/1s/1.00013 |
+| third-party/vented-funnel.stl | valid, 715f/1s/0.999155 | valid, 715f/1s/0.999155 |
+
+**What the numbers say**
+
+- The failure is not an edge-tolerance failure: no edge and no vertex carries a
+  non-`NoError` status; every status is on a face, a wire or a shell.
+- The invalid faces are flat: facet 17, plane 81, other 2; never a cylinder,
+  cone, sphere or torus.
+- Face `BadOrientationOfSubshape` (67) and `UnorientableShape` (25), and wire
+  `SelfIntersectingWire` (25 own, 25 in context) dominate;
+  `InvalidImbricationOfWires` (8) and shell-in-context
+  `BadOrientationOfSubshape` (5) follow.
+- The written body's max edge tolerance does not separate pass from fail:
+  passing hybrids reach 0.872 mm (remove-before-flight-cover) and 0.786 mm is a
+  failing one (spaghetti-measure), and the passing set and the failing set both
+  span the range from ~1e-7 to ~1 mm.
+- The facet count does not separate either: 0 facets appears on both sides
+  (spool-nut-v4.1 fails, battery-holder passes) and thousands too (1620 on
+  object-permanence-base, a pass; 3470 on hex-key-cap-3mm, a fail).
+- All 9 exact rebuilds pass the bar; every one of the 20 failures is a hybrid.
+- Every `BadOrientationOfSubshape`/`UnorientableShape`/`SelfIntersectingWire`
+  lands on the flat faces and facets and the wires between them, not on the
+  hybrid's rebuilt curved faces.
+- `ShapeFix_Shape` at the written tolerances repairs nothing: 0 of the 12
+  invalid bodies become valid, and no valid body's ratio moves toward 1.
+- The volume drift of the eight valid-but-drifting bodies keeps the face and
+  solid counts and is a small re-fit of the same faces (e.g. micro-sd-keyring-inner's
+  four sphere faces gain 6.66 mm², spool-nut-v4.1's cylinder and plane faces
+  drift by +0.59 and +2.66 mm²).
+- No fix is proposed here; the next slice designs it from these numbers.
