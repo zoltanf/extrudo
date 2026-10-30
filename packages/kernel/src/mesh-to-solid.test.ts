@@ -8,6 +8,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import cubeStl from '../../../fixtures/imports/cube.stl?url&inline';
 import { Kernel, KernelError, type ShapeHandle, type SurfaceGeometry } from './kernel';
 import { loadManifold, type Manifold } from './manifold';
+import { expectStepRoundTrip } from './mesh-to-solid-test-support';
 import { loadOcct } from './occt/load';
 
 let kernel: Kernel;
@@ -160,6 +161,7 @@ describe('Kernel.meshToSolid, faceted', { timeout: 300_000 }, () => {
           facets: 0,
         });
         expect(report.suggestedTolerance).toBeUndefined();
+        expectStepRoundTrip(kernel, shape, 'faceted cube.stl');
       } finally {
         kernel.release(shape);
       }
@@ -279,6 +281,7 @@ describe('Kernel.meshToSolid, faceted', { timeout: 300_000 }, () => {
         } finally {
           kernel.release(...solids);
         }
+        expectStepRoundTrip(kernel, shape, 'faceted two disjoint shells');
       } finally {
         kernel.release(shape);
       }
@@ -307,6 +310,7 @@ describe('Kernel.meshToSolid, faceted', { timeout: 300_000 }, () => {
         } finally {
           kernel.release(...solids);
         }
+        expectStepRoundTrip(kernel, faceted.shape, 'faceted cubic cavity');
       } finally {
         kernel.release(faceted.shape);
       }
@@ -314,6 +318,7 @@ describe('Kernel.meshToSolid, faceted', { timeout: 300_000 }, () => {
       try {
         expect(kernel.isValid(prism.shape)).toBe(true);
         expect(kernel.properties(prism.shape).volume).toBeCloseTo(7000, 3);
+        expectStepRoundTrip(kernel, prism.shape, 'prismatic cubic cavity');
       } finally {
         kernel.release(prism.shape);
       }
@@ -546,6 +551,7 @@ describe('Kernel.meshToSolid, prismatic', { timeout: 300_000 }, () => {
         facets: 0,
         tolerance: 0.01,
       });
+      expectStepRoundTrip(kernel, shape, 'prismatic 1: cube.stl');
     } finally {
       kernel.release(shape);
     }
@@ -576,6 +582,7 @@ describe('Kernel.meshToSolid, prismatic', { timeout: 300_000 }, () => {
       expect(kernel.count(shape, 'face')).toBe(7);
       expect(sorted(kinds(shape))).toEqual(sorted([...Array(6).fill('plane'), 'cylinder']));
       expect(Math.abs(kernel.properties(shape).volume / PLATE_VOLUME - 1)).toBeLessThan(0.001);
+      expectStepRoundTrip(kernel, shape, 'prismatic 5: plate with a hole');
       const topCircle = Array.from({ length: kernel.count(shape, 'edge') }, (_, i) => i).find(
         (i) => {
           const g = kernel.edgeGeometry(shape, i);
@@ -635,6 +642,7 @@ describe('Kernel.meshToSolid, prismatic', { timeout: 300_000 }, () => {
       expect(report.facets).toBe(kernel.count(shape, 'face'));
       expect(report.facets).toBeLessThanOrEqual(triangles);
       expect(kernel.isValid(shape)).toBe(true);
+      expectStepRoundTrip(kernel, shape, 'prismatic 7: ellipsoid as facets');
     } finally {
       kernel.release(shape);
     }
@@ -665,6 +673,7 @@ describe('Kernel.meshToSolid, prismatic', { timeout: 300_000 }, () => {
       expect(kernel.isValid(shape)).toBe(true);
       expect(kernel.properties(shape).volume).toBeCloseTo(224250, 3);
       expect(ms).toBeLessThan(10000);
+      expectStepRoundTrip(kernel, shape, 'prismatic 8: 602-face staircase');
     } finally {
       kernel.release(shape);
     }
@@ -680,6 +689,7 @@ describe('Kernel.meshToSolid, prismatic', { timeout: 300_000 }, () => {
       expect(noisy.report.facets).toBeGreaterThan(48);
       expect(noisy.report.facets).toBeLessThanOrEqual(64);
       expect(kernel.isValid(noisy.shape)).toBe(true);
+      expectStepRoundTrip(kernel, noisy.shape, 'prismatic 9: noisy cylinder as facets');
     } finally {
       kernel.release(noisy.shape);
     }
@@ -692,6 +702,7 @@ describe('Kernel.meshToSolid, prismatic', { timeout: 300_000 }, () => {
     try {
       expect(sorted(kinds(shape))).toEqual(['cylinder', 'plane', 'plane']);
       expect(report).toMatchObject({ planes: 2, cylinders: 1 });
+      expectStepRoundTrip(kernel, shape, 'prismatic 9: noisy cylinder at 0.02');
     } finally {
       kernel.release(shape);
     }
@@ -751,6 +762,7 @@ describe('Kernel.meshToSolid, prismatic', { timeout: 300_000 }, () => {
       expect(Math.abs(kernel.properties(shape).volume / volumeOfMesh(mesh) - 1)).toBeLessThan(
         0.005,
       );
+      expectStepRoundTrip(kernel, shape, 'prismatic 22: small unfit blend as facets');
     } finally {
       kernel.release(shape);
     }
@@ -767,6 +779,7 @@ describe('Kernel.meshToSolid, prismatic', { timeout: 300_000 }, () => {
       expect(report.planes).toBeGreaterThanOrEqual(6);
       expect(kernel.isValid(shape)).toBe(true);
       expect(Math.abs(kernel.properties(shape).volume / volumeOfMesh(mesh) - 1)).toBeLessThan(1e-4);
+      expectStepRoundTrip(kernel, shape, 'prismatic 23: unfit blend over 2 % as facets');
     } finally {
       kernel.release(shape);
     }
@@ -936,6 +949,7 @@ describe('Kernel.meshToSolid, prismatic', { timeout: 300_000 }, () => {
       );
       expect(Math.abs(kernel.properties(shape).volume / exact - 1)).toBeLessThan(1e-6);
       expect(report).toMatchObject({ planes: 6, cylinders: 4, unfit: { regions: 0 } });
+      expectStepRoundTrip(kernel, shape, 'prismatic 18: four filleted top edges');
     } finally {
       kernel.release(shape);
     }
@@ -960,6 +974,7 @@ describe('Kernel.meshToSolid, prismatic', { timeout: 300_000 }, () => {
       expect(Math.abs((torus.radius as number) - 3)).toBeLessThan(1e-3);
       expect(Math.abs((torus.minorRadius as number) - 2)).toBeLessThan(1e-3);
       expect(Math.abs(kernel.properties(shape).volume / exact - 1)).toBeLessThan(0.001);
+      expectStepRoundTrip(kernel, shape, 'prismatic 19: cylinder with a filleted end');
     } finally {
       kernel.release(shape);
     }
@@ -985,6 +1000,7 @@ describe('Kernel.meshToSolid, prismatic', { timeout: 300_000 }, () => {
       expect(Math.abs((torus.radius as number) - 4)).toBeLessThan(1e-3);
       expect(Math.abs((torus.minorRadius as number) - 1)).toBeLessThan(1e-3);
       expect(Math.abs(kernel.properties(shape).volume / exact - 1)).toBeLessThan(0.001);
+      expectStepRoundTrip(kernel, shape, 'prismatic 20: plate with a filleted hole');
     } finally {
       kernel.release(shape);
     }
@@ -1006,6 +1022,7 @@ describe('Kernel.meshToSolid, prismatic', { timeout: 300_000 }, () => {
       );
       expect(Math.abs(kernel.properties(shape).volume / exact - 1)).toBeLessThan(1e-6);
       expect(report).toMatchObject({ planes: 6, cylinders: 12, spheres: 8, unfit: { regions: 0 } });
+      expectStepRoundTrip(kernel, shape, 'prismatic 21: twelve filleted edges');
     } finally {
       kernel.release(shape);
     }
@@ -1163,6 +1180,7 @@ describe('Mesh to Solid, the hybrid rebuild (ADR-0097 slice D1)', { timeout: 300
       expect(radii(shape).filter((r) => Math.abs(r - 5) < 0.02)).toHaveLength(1);
       expect(kernel.isValid(shape)).toBe(true);
       expect(Math.abs(kernel.properties(shape).volume / volume - 1)).toBeLessThan(0.01);
+      expectStepRoundTrip(kernel, shape, 'hybrid: boss’s freeform top as facets');
     } finally {
       kernel.release(shape);
     }
@@ -1185,6 +1203,7 @@ describe('Mesh to Solid, the hybrid rebuild (ADR-0097 slice D1)', { timeout: 300
         kernel.release(...solids);
       }
       expect(shells(shape)).toBe(1);
+      expectStepRoundTrip(kernel, shape, 'hybrid: boss with freeform top, one solid and shell');
       // With no inner void, Offset Face moves the box's bottom by 1 mm.
       const bottom = kernel
         .describe(shape)
@@ -1219,6 +1238,7 @@ describe('Mesh to Solid, the hybrid rebuild (ADR-0097 slice D1)', { timeout: 300
       expect(kernel.isValid(shape)).toBe(true);
       // The cavity's 400 mm3 stay out (filled, the volume would be 800 off).
       expect(Math.abs(kernel.properties(shape).volume / volume - 1)).toBeLessThan(0.01);
+      expectStepRoundTrip(kernel, shape, 'hybrid: closed cavity hollow');
     } finally {
       kernel.release(shape);
     }
@@ -1272,6 +1292,7 @@ describe('Mesh to Solid, the hybrid rebuild (ADR-0097 slice D1)', { timeout: 300
     try {
       expect(report).toMatchObject({ rebuild: 'hybrid', cylinders: 1, facets: 0 });
       expect(kernel.isValid(shape)).toBe(true);
+      expectStepRoundTrip(kernel, shape, 'hybrid: re-seamed merged band');
       const faces = kernel.describe(shape).faces;
       const top = faces.findIndex(
         (f) => f.type === 'plane' && Math.abs((f.centroid[2] as number) - 5.2) < 1e-3,
@@ -1368,6 +1389,7 @@ describe('Mesh to Solid, the hybrid’s chains (ADR-0097 slice D3)', { timeout: 
       expect(rims.length).toBeLessThanOrEqual(4);
       // STEP carries them as circles.
       expect(kernel.writeStep([{ shape, name: 'Holed' }])).toMatch(/= CIRCLE\(/);
+      expectStepRoundTrip(kernel, shape, 'chains: through hole’s rims as circles');
       const filleted = kernel.fillet(shape, [top?.index ?? -1], 0.5).shape;
       try {
         expect(kernel.isValid(filleted)).toBe(true);
