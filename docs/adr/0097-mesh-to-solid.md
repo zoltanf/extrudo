@@ -2532,6 +2532,54 @@ the enum in this build; the numbers above are the enum's.
 | third-party/vented-funnel.stl | hybrid | valid | 715 | 1 | 1 | valid | 715 | valid | 715 | 1 | 0.999155 | valid | 715 | 1 | 0.999179 | valid | 715 | 1 | 0.999155 | 0 | 0 | 0 | 4604->4604 | 5317->5317 |
 | third-party/wyze-garage-bracket.stl | hybrid | valid | 84 | 2 | 1 | valid | 84 | valid | 84 | 2 | 1.00001 | valid | 84 | 2 | 0.999935 | valid | 84 | 2 | 1.00001 | 0 | 0 | 0 | 238->238 | 320->320 |
 
+**Third summary table (Q13; the edge-tolerance cap swept, one row per file).**
+
+| file | rebuild@1.0 | faces@1.0 | facets@1.0 | bar@1.0 | rebuild@0.1 | faces@0.1 | facets@0.1 | bar@0.1 | rebuild@0.05 | faces@0.05 | facets@0.05 | bar@0.05 | rebuild@0.02 | faces@0.02 | facets@0.02 | bar@0.02 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| own/ball.stl | exact | 1 | 0 | pass | exact | 1 | 0 | pass | exact | 1 | 0 | pass | exact | 1 | 0 | pass |
+| own/battery-holder.stl | hybrid | 131 | 0 | pass | hybrid | 131 | 0 | pass | hybrid | 131 | 0 | pass | hybrid | 131 | 0 | pass |
+| own/battery-power-adapter.stl | hybrid | 995 | 416 | fail | hybrid | 2991 | 2488 | fail | refused |  |  | refused | refused |  |  | refused |
+| own/desk-organizer-module-small.stl | hybrid | 418 | 42 | fail | hybrid | 418 | 42 | fail | hybrid | 418 | 42 | fail | hybrid | 418 | 42 | fail |
+| own/drill-block.stl | hybrid | 388 | 208 | fail | hybrid | 442 | 268 | pass | hybrid | 449 | 276 | pass | hybrid | 449 | 276 | pass |
+| own/grass-for-flower.stl | refused |  |  | refused | refused |  |  | refused | refused |  |  | refused | refused |  |  | refused |
+| own/hole-filler-35mm.stl | exact | 6 | 0 | pass | exact | 6 | 0 | pass | exact | 6 | 0 | pass | exact | 6 | 0 | pass |
+| own/hole-filler-5mm.stl | exact | 6 | 0 | pass | exact | 6 | 0 | pass | exact | 6 | 0 | pass | exact | 6 | 0 | pass |
+| own/kuglbahn-pillar-base.stl | hybrid | 3930 | 3398 | fail | refused |  |  | refused | refused |  |  | refused | refused |  |  | refused |
+| own/mirna-doodle-1.stl | hybrid | 120 | 43 | fail | hybrid | 126 | 52 | fail | hybrid | 178 | 126 | fail | hybrid | 189 | 144 | pass |
+| own/numbers-base-top.stl | exact | 471 | 0 | pass | exact | 471 | 0 | pass | exact | 471 | 0 | pass | exact | 471 | 0 | pass |
+| own/object-permanence-base.stl | hybrid | 1985 | 1620 | pass | hybrid | 2188 | 1828 | pass | hybrid | 2188 | 1828 | pass | hybrid | 2188 | 1828 | pass |
+| own/peg-perego-button.stl | hybrid | 212 | 0 | fail | hybrid | 222 | 13 | fail | hybrid | 222 | 13 | fail | hybrid | 492 | 297 | fail |
+| own/phone-stand-foldable.stl | hybrid | 2329 | 1852 | fail | hybrid | 4289 | 3859 | fail | refused |  |  | refused | refused |  |  | refused |
+| own/puzzle-base-circle.stl | exact | 37 | 0 | pass | exact | 37 | 0 | pass | exact | 37 | 0 | pass | exact | 37 | 0 | pass |
+| own/puzzle-insert-circle.stl | hybrid | 1609 | 1230 | fail | hybrid | 1609 | 1230 | fail | hybrid | 2843 | 2540 | pass | refused |  |  | refused |
+| own/remove-before-flight-cover.stl | hybrid | 438 | 120 | pass | hybrid | 438 | 120 | pass | hybrid | 438 | 120 | pass | hybrid | 438 | 120 | pass |
+| own/scrap-plate.stl | hybrid | 154 | 0 | pass | hybrid | 154 | 0 | pass | hybrid | 154 | 0 | pass | hybrid | 302 | 158 | pass |
+| own/shower-holder.stl | hybrid | 901 | 472 | fail | hybrid | 901 | 472 | fail | hybrid | 901 | 472 | fail | hybrid | 901 | 472 | fail |
+| own/spool-nut-v4.1.stl | hybrid | 718 | 0 | fail | hybrid | 718 | 0 | fail | hybrid | 718 | 0 | fail | hybrid | 718 | 0 | fail |
+| own/spool-screw-v4.1.stl | hybrid | 2915 | 1841 | fail | hybrid | 2915 | 1841 | fail | hybrid | 4834 | 3803 | fail | refused |  |  | refused |
+| own/track-straight-100mm.stl | hybrid | 306 | 237 | pass | hybrid | 306 | 237 | pass | hybrid | 306 | 237 | pass | hybrid | 306 | 237 | pass |
+| own/trashcan-repair-foot.stl | exact | 16 | 0 | pass | exact | 16 | 0 | pass | exact | 16 | 0 | pass | exact | 16 | 0 | pass |
+| own/trashcan-spacer.stl | hybrid | 78 | 0 | pass | hybrid | 78 | 0 | pass | hybrid | 78 | 0 | pass | hybrid | 1240 | 1198 | pass |
+| own/whiteboard-tray-v5.stl | hybrid | 1302 | 622 | fail | hybrid | 1317 | 639 | fail | hybrid | 1330 | 653 | fail | hybrid | 2388 | 1753 | fail |
+| third-party/chip-bag-clip-small.stl | hybrid | 757 | 500 | pass | hybrid | 757 | 500 | pass | hybrid | 757 | 500 | pass | hybrid | 757 | 500 | pass |
+| third-party/door-stopper-top.stl | hybrid | 147 | 0 | pass | hybrid | 147 | 0 | pass | hybrid | 147 | 0 | pass | hybrid | 147 | 0 | pass |
+| third-party/gardena-end.stl | hybrid | 17 | 0 | pass | hybrid | 17 | 0 | pass | hybrid | 1807 | 1802 | pass | hybrid | 1807 | 1802 | pass |
+| third-party/gear-bearing-5.stl | hybrid | 2330 | 1444 | fail | refused |  |  | refused | refused |  |  | refused | refused |  |  | refused |
+| third-party/hex-key-cap-3mm.stl | hybrid | 4590 | 3470 | fail | hybrid | 4590 | 3470 | fail | hybrid | 4590 | 3470 | fail | hybrid | 5478 | 4387 | fail |
+| third-party/hot-wheels-connector.stl | hybrid | 2518 | 2318 | fail | hybrid | 2518 | 2318 | fail | hybrid | 2518 | 2318 | fail | hybrid | 2529 | 2330 | fail |
+| third-party/makita-vacuum-holder.stl | hybrid | 3480 | 2662 | fail | hybrid | 3594 | 2788 | fail | hybrid | 5108 | 4356 | fail | refused |  |  | refused |
+| third-party/micro-sd-keyring-inner.stl | hybrid | 66 | 18 | fail | hybrid | 102 | 58 | pass | hybrid | 102 | 58 | pass | hybrid | 102 | 58 | pass |
+| third-party/micro-sd-keyring-outer.stl | exact | 41 | 0 | pass | exact | 41 | 0 | pass | exact | 41 | 0 | pass | exact | 41 | 0 | pass |
+| third-party/mms-camera-mount.stl | exact | 11 | 0 | pass | exact | 11 | 0 | pass | exact | 11 | 0 | pass | exact | 11 | 0 | pass |
+| third-party/mms-flat-stand.stl | exact | 44 | 0 | pass | exact | 44 | 0 | pass | exact | 44 | 0 | pass | exact | 44 | 0 | pass |
+| third-party/mms-m5-nut.stl | refused |  |  | refused | refused |  |  | refused | refused |  |  | refused | refused |  |  | refused |
+| third-party/sock-clips-6x.stl | hybrid | 163 | 97 | fail | hybrid | 271 | 211 | fail | hybrid | 271 | 211 | fail | hybrid | 274 | 215 | fail |
+| third-party/spaghetti-measure.stl | hybrid | 165 | 55 | fail | hybrid | 173 | 64 | pass | hybrid | 173 | 64 | pass | hybrid | 173 | 64 | pass |
+| third-party/vented-funnel.stl | hybrid | 715 | 86 | fail | hybrid | 715 | 86 | fail | hybrid | 715 | 86 | fail | hybrid | 2089 | 1493 | fail |
+| third-party/wyze-garage-bracket.stl | hybrid | 84 | 0 | pass | hybrid | 84 | 0 | pass | hybrid | 84 | 0 | pass | hybrid | 232 | 150 | pass |
+
+
+**Totals per cap** (the four `S` runs; cap 1.0 is `S-auto-3.log`): cap 1.0 — 30 hybrids, 2 refused, **10 of 30 pass the bar**, 34,594 faces, 22,751 facets, 215 s; cap 0.1 — 28 hybrids, 4 refused, **13 of 30**, 32,844 faces, 22,584 facets, 206 s; cap 0.05 — 26 hybrids, 6 refused, **14 of 30**, 32,093 faces, 22,975 facets, 179 s; cap 0.02 — 23 hybrids, 9 refused, **14 of 30**, 24,381 faces, 17,524 facets, 142 s. (The totals fall at the lower caps because whole large bodies are refused: kuglbahn-pillar-base, gear-bearing-5, battery-power-adapter, phone-stand-foldable, puzzle-insert-circle, spool-screw-v4.1, makita-vacuum-holder — so the per-file face counts, not the totals, are the cost.)
 
 **What the reader rejects (Q2).** Across the 20 failing conversions BRepCheck
 reports **no vertex and no edge status at all** — every non-`NoError` status is
@@ -2725,6 +2773,30 @@ shorter than 0.05 mm**, the shortest 0.00198 mm (gear-bearing-5). The flagged
 wires are full of sub-uncertainty and sub-0.05 edges; the reader's re-welding of
 such short seams is where the self-intersections and bad orientations come from.
 
+**Q13 — the edge-tolerance cap swept.** Three facade copies with
+`HYBRID_EDGE_TOLERANCE_MAX` at 0.1, 0.05 and 0.02 (one line changed in each; the
+repo file untouched), each run over the same corpus. Lowering the cap does not
+make the bodies round-trip: the bar passes go 10 → 13 → 14 → 14 of the 30
+hybrids and the refusals go 2 → 4 → 6 → 9. The three that join at cap 0.1 are
+drill-block (388 → 442 faces, 208 → 268 facets), micro-sd-keyring-inner
+(66 → 102, 18 → 58) and spaghetti-measure (165 → 173, 55 → 64) — the same three
+that passed under the greatest uncertainty (Q7). At 0.05 puzzle-insert-circle
+joins (1609 → 2843, 1230 → 2540) but spool-screw-v4.1 and phone-stand-foldable
+are refused; at 0.02 mirna-doodle-1 joins (120 → 189, 43 → 144) while
+puzzle-insert-circle, kuglbahn-pillar-base, gear-bearing-5, battery-power-adapter,
+spool-screw-v4.1 and makita-vacuum-holder are refused, so the count stays 14. The
+cap trades a handful of extra passes for many more facets and whole-body
+refusals; it is not the fix.
+
+**Q14 — the re-read tori.** Every read-back face my classifier calls `other` is
+a `SurfaceOfRevolution`: 11 of them, in drill-block (2), peg-perego-button (1)
+and gear-bearing-5 (8). Each comes from a written torus whose minor radius is at
+least its major radius — a degenerate (spindle) torus: drill-block 2 of its 4
+tori (R 0.495, r 0.531; R 0.494, r 0.540), peg-perego-button 1 of 3 (R 8.63,
+r 131.4), gear-bearing-5 all 8 (e.g. R 5.31, r 19.56). The reader re-reads such a
+torus as a surface of revolution, which is why those faces leave the kind
+classifier; the torus fit (slice 4a2) can return minor radius > major radius.
+
 **What the numbers say**
 
 - The failure is not an edge-tolerance failure: no edge and no vertex carries a
@@ -2761,6 +2833,12 @@ such short seams is where the self-intersections and bad orientations come from.
 - The 25 flagged wires hold 35 edges shorter than the file's uncertainty and 37
   shorter than 0.05 mm (shortest 0.00198 mm); the flagged wires are mostly line
   polylines: 18 of 25 are lines only, 7 contain a fitted circle or ellipse.
+- Lowering the hybrid edge-tolerance cap is not the fix: cap 1.0/0.1/0.05/0.02
+  give 10/13/14/14 passes of 30 hybrids, 2/4/6/9 refusals, and more facets per
+  converted body.
+- Every read-back `other` face is a `SurfaceOfRevolution` (11: drill-block 2,
+  peg-perego-button 1, gear-bearing-5 8), each from a written torus with
+  minor radius ≥ major radius.
 - The volume drift of the eight valid-but-drifting bodies keeps the face and
   solid counts and is a small re-fit of the same faces (e.g. micro-sd-keyring-inner's
   four sphere faces gain 6.66 mm², spool-nut-v4.1's cylinder and plane faces

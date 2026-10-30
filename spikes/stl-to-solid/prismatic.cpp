@@ -357,6 +357,24 @@ static std::string faceKind(const TopoDS_Face& face) {
   }
 }
 
+/** The GeomAbs_SurfaceType's name, for Q14 (the faces my classifier calls "other"). */
+static const char* surfaceTypeName(GeomAbs_SurfaceType type) {
+  switch (type) {
+    case GeomAbs_Plane: return "Plane";
+    case GeomAbs_Cylinder: return "Cylinder";
+    case GeomAbs_Cone: return "Cone";
+    case GeomAbs_Sphere: return "Sphere";
+    case GeomAbs_Torus: return "Torus";
+    case GeomAbs_BezierSurface: return "BezierSurface";
+    case GeomAbs_BSplineSurface: return "BSplineSurface";
+    case GeomAbs_SurfaceOfRevolution: return "SurfaceOfRevolution";
+    case GeomAbs_SurfaceOfExtrusion: return "SurfaceOfExtrusion";
+    case GeomAbs_OffsetSurface: return "OffsetSurface";
+    case GeomAbs_OtherSurface: return "OtherSurface";
+  }
+  return "Unknown";
+}
+
 /** The bucket an edge tolerance falls in: ≤0.002, ≤0.01, ≤0.05, ≤0.1, ≤0.5, ≤1, >1 mm. */
 static int bucketIndex(double tol) {
   if (tol <= 0.002) return 0;
@@ -494,6 +512,7 @@ struct RoundTripRow {
   int u2Faces = 0, u2Solids = 0;
   double u2Ratio = 0;
   double uncertainty = -1;
+  double ms = 0;  // the conversion's own time (meshToSolid)
   // Q9: the BREP round trip (keeps tolerances and pcurves).
   bool brepValid = false;
   int brepFaces = 0, brepSolids = 0;
@@ -655,7 +674,9 @@ static RoundTripRow stepOne(ExtrudoFacade& f, const std::string& path, double to
   for (size_t i = 0; i < m.nodes.size(); ++i) nodes[i] = static_cast<float>(m.nodes[i]);
   f.meshTriangles(int(m.triangles.size() / 3));
   std::memcpy(reinterpret_cast<void*>(f.meshTrianglesPtr()), m.triangles.data(), m.triangles.size() * sizeof(uint32_t));
+  const double conversionStart = now();
   const int h = f.meshToSolid(1, tolerance);
+  row.ms = now() - conversionStart;
   const auto& rep = f.meshReport_;
   if (rep.size() >= 11) row.rebuild = rep[10] == 1 ? "hybrid" : rep[10] == 0 ? "exact" : "refused";
   if (rep.size() >= 12) row.facets = int(rep[11]);
@@ -688,7 +709,7 @@ static RoundTripRow stepOne(ExtrudoFacade& f, const std::string& path, double to
   if (detail) {
     std::cout << "   written: faces " << row.faces << ", facets " << row.facets << ", solids " << f.count(h, 3)
               << ", vertices " << row.writtenVertices << ", edges " << row.writtenEdges << ", max edge tol " << maxEdge
-              << ", max vertex tol " << maxVertex << "\n";
+              << ", max vertex tol " << maxVertex << ", converted in " << row.ms << " ms\n";
     std::cout << "   edge classes (written):\n";
     for (const auto& [cls, st] : classes) {
       std::cout << "     " << cls << ": " << st.count << " edges, invalid " << st.invalid << ", tolerances";
@@ -778,6 +799,23 @@ static RoundTripRow stepOne(ExtrudoFacade& f, const std::string& path, double to
       const auto r = backAreas.find(kind) == backAreas.end() ? std::make_pair(0.0, 0) : backAreas.at(kind);
       std::cout << "     " << kind << ": " << w.first << " (" << w.second << " faces) -> " << r.first << " (" << r.second
                 << " faces), delta " << r.first - w.first << "\n";
+    }
+  }
+
+  // Q14: the read-back faces my classifier calls "other", and the written tori.
+  if (detail) {
+    for (TopExp_Explorer e(readBack, TopAbs_FACE); e.More(); e.Next()) {
+      const TopoDS_Face face = TopoDS::Face(e.Current());
+      if (faceKind(face) != "other") continue;
+      std::cout << "   q14 other face: read-back " << surfaceTypeName(BRepAdaptor_Surface(face).GetType()) << "\n";
+    }
+    for (TopExp_Explorer e(written, TopAbs_FACE); e.More(); e.Next()) {
+      const TopoDS_Face face = TopoDS::Face(e.Current());
+      const BRepAdaptor_Surface surface(face);
+      if (surface.GetType() != GeomAbs_Torus) continue;
+      const gp_Torus torus = surface.Torus();
+      std::cout << "   q14 written torus: R " << torus.MajorRadius() << ", r " << torus.MinorRadius()
+                << (torus.MinorRadius() >= torus.MajorRadius() ? " (degenerate)" : "") << "\n";
     }
   }
 
