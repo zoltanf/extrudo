@@ -3347,7 +3347,11 @@ faces are flat (facet 17, plane 81, other 2) with `BadOrientationOfSubshape`
 (67), `UnorientableShape` (25) and wire `SelfIntersectingWire` (25). The
 written max edge tolerance and the facet count do not separate pass from fail;
 every failure is a hybrid; `ShapeFix_Shape` at the written tolerances fixes 0
-of 12. Numbers in ADR-0097's 2026-10-30b amendment.
+of 12. The settings line needs `STEPControl_Controller::Init()` first (else all
+seven read 0); with the enum's Greatest (`write.precision.mode` 1 — the brief's
+"2") the global uncertainty does not change and none of the 20 passes; the
+flagged wires are mostly line polylines (7 of 25 carry a fitted circle/ellipse).
+Numbers in ADR-0097's 2026-10-30b amendment.
 
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,

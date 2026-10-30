@@ -90,6 +90,10 @@ converted body to STEP, reads it back and prints the settings in force, the writ
 buckets, the read-back `shapeDiagnose` and BRepCheck statuses by name, the invalid edges by class and faces by kind, the
 summed area per face kind written vs read back, and a `ShapeFix_Shape` pass at the written tolerances; `S` does that for
 every file and ends with one summary row per file (Markdown, printed to stdout). Neither changes the converter.
+The settings line calls `STEPControl_Controller::Init()` first (else every value reads 0); the summary gains the
+`u2 valid`/`u2 faces`/`u2 solids`/`u2 ratio`/`uncertainty` columns of a second round trip with
+`write.precision.mode` Greatest, and each file's flagged `SelfIntersectingWire` wires and
+`UnorientableShape`/`BadOrientationOfSubshape` faces with their edges' classes (ADR-0097's 2026-10-30b amendment).
 The kernel sweep writes the same numbers machine-readably: `SWEEP_OUT=<file>.jsonl` appends one JSON line per file (both methods' report, validity, volume ratio, time and STEP round trip), and `SWEEP_BASELINE=<file>.jsonl` compares each file against a previous run's line and fails it when it got worse (refused where it converted, over 10 % more faces, or a STEP read-back that was valid there and kept the face count there but not now).
 `BUILD=<folder>` builds into `spikes/stl-to-solid/<folder>` (default
 `build`), so two runs don't share one; `NOBUILD=1` reruns the last build;
