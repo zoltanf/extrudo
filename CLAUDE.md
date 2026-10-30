@@ -41,7 +41,7 @@ worktrees, merged to main one at a time.
 | `docs/adr/` | Architecture decision records, one per decision (0001 kernel … 0084 `.f3d` file bodies), with amendments |
 | **`docs/agent/adr-digest.md`** | One paragraph per ADR: the files involved and **the rules a change must keep**. Read the paragraphs for the area you touch before changing it (`grep -n "ADR-0047" docs/agent/adr-digest.md`) |
 | **`docs/agent/e2e-notes.md`** | Per spec: regions, data attributes, selectors, picking coordinates and traps. Read before writing or fixing an e2e spec |
-| **`docs/agent/dev-environment.md`** | The two dev machines (Arch workstation, Ubuntu machine), OCCT/planegcs WASM builds and CI, the facade, Docker harnesses, fuzzing, and OCCT/planegcs/library facts |
+| **`docs/agent/dev-environment.md`** | The three dev machines (Arch workstation, Ubuntu machine, Arch ARM VM), OCCT/planegcs WASM builds and CI, the facade, Docker harnesses, fuzzing, and OCCT/planegcs/library facts |
 | `docs/deploy.md`, `docs/release-checklist.md`, `docs/desktop.md` | Hosting, releases, the desktop app |
 | `docs/assets.md` | Recorded and generated assets (README screenshots, tooltip clips, guide and tutorial pictures, generated pages): the command for each and when to redo it |
 | `docs/cli.md`, `docs/api/`, `docs/plugins.md`, `docs/guide/` | The CLI, the document API, plugins, the user guide |
@@ -132,10 +132,11 @@ Vitest + Playwright · Biome.
 
 ## Environment, in brief
 
-Two dev machines: check which first (`grep ^ID= /etc/os-release`). The Arch
+Three dev machines: check which first (`grep ^ID= /etc/os-release`). The Arch
 workstation builds OCCT/planegcs with Docker and makes screenshot baselines; on
 the Ubuntu machine build WASM through CI (`gh workflow run ci.yml --ref
 <branch>`), take baselines from CI's artifacts, run one e2e at a time with
-`--workers=2` and `PLAYWRIGHT_CHROMIUM_PATH=/usr/bin/google-chrome-stable`.
-Everything else (WASM not in git, facade checks, harnesses, fuzzing, heap,
+`--workers=2` and `PLAYWRIGHT_CHROMIUM_PATH=/usr/bin/google-chrome-stable`. On
+the Arch ARM VM (`archarm`) prefer CI for WASM (the OCCT image is 12.7 GB), and
+re-run e2e timeouts alone before believing them. Everything else (WASM not in git, facade checks, harnesses, fuzzing, heap,
 library quirks) is in `docs/agent/dev-environment.md`.
