@@ -31,6 +31,7 @@
 #include <BRepExtrema_DistShapeShape.hxx>
 #include <GeomAPI_ProjectPointOnSurf.hxx>
 #include <IntRes2d_IntersectionPoint.hxx>
+#include <ShapeFix_ShapeTolerance.hxx>
 #include <chrono>
 #include <array>
 #include <cmath>
@@ -538,6 +539,7 @@ struct RoundTripRow {
   double pref2dRatio = 0;
   // Q12: the flagged wires and their small edges.
   int flaggedWires = 0;
+  int q18Written = -1;
   double minFlaggedEdge = 0;
   int flaggedEdgesBelowUncertainty = 0;
   int writtenVertices = 0, writtenEdges = 0, backVertices = 0, backEdges = 0;
@@ -1278,6 +1280,26 @@ static RoundTripRow stepOne(ExtrudoFacade& f, const std::string& path, double to
   // Q15-Q17: classify the flagged wires' self-intersections and check whether
   // the written body already carries them (ADR-0097 2026-10-30b).
   classifySelfIntersections(written, readBack, detail, row);
+
+  // Q18 (slice D8): does the written body's own UV outline cross itself once
+  // the vertex tolerances no longer cover the crossing? A copy with every
+  // vertex at Precision::Confusion(), BRepCheck_Wire::SelfIntersect per wire.
+  {
+    TopoDS_Shape tight = BRepBuilderAPI_Copy(written).Shape();
+    ShapeFix_ShapeTolerance().SetTolerance(tight, Precision::Confusion(), TopAbs_VERTEX);
+    row.q18Written = 0;
+    for (TopExp_Explorer fe(tight, TopAbs_FACE); fe.More(); fe.Next()) {
+      const TopoDS_Face face = TopoDS::Face(fe.Current());
+      for (TopExp_Explorer we(face, TopAbs_WIRE); we.More(); we.Next())
+        if (brepCheckFirstPair(TopoDS::Wire(we.Current()), face).found) {
+          ++row.q18Written;
+          if (detail) std::cout << "     q18 written wire on " << faceKind(face) << "\n";
+        }
+    }
+    if (detail)
+      std::cout << "   q18 written wires self-intersecting at vertex tol 1e-7: " << row.q18Written << " (read back flagged "
+                << row.flaggedWires << ")" << std::endl;
+  }
 
   // Q9: the BREP round trip (keeps tolerances and pcurves).
   {
