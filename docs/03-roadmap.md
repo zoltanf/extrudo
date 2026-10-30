@@ -1539,6 +1539,13 @@ end to end, faster than in established desktop CAD.
   in the packaged app as a STEP attachment; `docs/agent/adr-digest.md` has the
   ADR's rules.
 
+- [x] **P6-20 3D mouse** (owner, 2026-10-30; FR-VP-08; ADR-0114). Done 2026-10-30. A
+  3Dconnexion SpaceMouse or SpaceNavigator over WebHID moves the view in object mode (pan,
+  zoom, tilt, turntable twist, roll); left button Home, right Fit. Settings › View and
+  navigation connects it and sets its speed; allowed devices reconnect by themselves. The
+  desktop app picks the device itself (Electron has no chooser) and allows only 3D mice.
+  Acceptance: `pnpm check` (`viewport/spaceMouse.test.ts`, `main/permissions.test.ts`).
+
 ## Phase 7 — Later (lowest priority, after everything else)
 
 **Owner, 2026-10-14: the last work on the roadmap.** Don't pick a task here

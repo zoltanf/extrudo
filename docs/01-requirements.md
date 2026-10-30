@@ -151,6 +151,7 @@ for the phase's release, **S** = should, **C** = could.
 | FR-VP-05 | Pre-highlight on hover. Click and Shift/Ctrl multi-select. Window (left-to-right) vs crossing (right-to-left) box selection. Selection filters (bodies, faces, edges, vertices, sketches, profiles, construction). "Select other" for occluded items. | M | 1–2 |
 | FR-VP-06 | Section analysis: a live clipping plane with cap fill. | S | 3 |
 | FR-VP-07 | Browser tree: document settings, named views, origin, sketches, construction, bodies, each with visibility toggles. | M | 1 |
+| FR-VP-08 | A 3D mouse (3Dconnexion SpaceMouse) pans, zooms and turns the view, where the browser has WebHID and in the desktop app. | S | 6 |
 
 ### 5.7 Inspect and 3D-printing aids (FR-3DP)
 

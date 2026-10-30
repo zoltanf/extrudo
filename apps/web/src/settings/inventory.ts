@@ -35,7 +35,13 @@ export const SECTIONS: readonly SectionInfo[] = [
     id: 'view',
     label: 'View and navigation',
     summary: 'How the mouse moves the camera, and how the model is drawn.',
-    keys: ['viewport.preset', 'viewport.projection', 'viewport.visualStyle', 'viewport.grid'],
+    keys: [
+      'viewport.preset',
+      'viewport.spaceMouseSpeed',
+      'viewport.projection',
+      'viewport.visualStyle',
+      'viewport.grid',
+    ],
   },
   {
     id: 'keyboard',

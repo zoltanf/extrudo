@@ -1,6 +1,6 @@
 import { createDocument, type EvaluateResult, evaluateParameters } from '@extrudo/core';
 import { X } from 'lucide-react';
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { type AgentSetupId, agentSetups } from '../agent/clientSetup';
 import { useAgentStatus } from '../agent/useAgentBridge';
 import type { ThemeChoice } from '../design-system';
@@ -31,6 +31,7 @@ import {
 import { materialStore, useMaterialChoice } from '../print/materialStore';
 import { MarkingMenuEditor, type MarkingMenuEditorProps } from '../shell/MarkingMenuEditor';
 import { NAV_PRESETS } from '../viewport/navigation';
+import { spaceMouse } from '../viewport/spaceMouse';
 import { VISUAL_STYLES, type ViewportSettings } from '../viewport/store';
 import { type DisplayAccess, useDisplaySettings } from './displaySettings';
 import { type SectionId, type SectionInfo, visibleSections } from './inventory';
@@ -320,6 +321,8 @@ function View({ display }: { display: DisplayAccess }) {
           ))}
         </Select>
       </Row>
+      <SpaceMouseRows display={display} />
+      <Heading>Display</Heading>
       <Row label="Projection">
         <Select
           aria-label="Projection"
@@ -332,7 +335,6 @@ function View({ display }: { display: DisplayAccess }) {
           <option value="orthographic">Orthographic</option>
         </Select>
       </Row>
-      <Heading>Display</Heading>
       <Row label="Visual style">
         <Select
           aria-label="Visual style"
@@ -349,6 +351,71 @@ function View({ display }: { display: DisplayAccess }) {
         </Select>
       </Row>
       <Check label="Show grid" checked={s.grid} onChange={(grid) => display.set({ grid })} />
+    </>
+  );
+}
+
+/** The speed slider runs in powers of two, 0.25× … 4×, so 1× sits in the middle. */
+const SPEED_STOPS = 2;
+const speedOf = (position: number) => Math.round(2 ** position * 100) / 100;
+const positionOf = (speed: number) =>
+  Math.max(-SPEED_STOPS, Math.min(SPEED_STOPS, Math.log2(speed)));
+
+/** A 3Dconnexion SpaceMouse over WebHID (ADR-0114): connect it once, then set its speed. */
+function SpaceMouseRows({ display }: { display: DisplayAccess }) {
+  const s = useDisplaySettings(display);
+  const devices = useSyncExternalStore(spaceMouse.subscribe, spaceMouse.devices);
+  const [failed, setFailed] = useState(false);
+  if (!spaceMouse.supported) {
+    return (
+      <Row label="3D mouse" hint="Needs Chrome, Edge or the desktop app (WebHID).">
+        <span className="text-sm text-muted">Not available in this browser</span>
+      </Row>
+    );
+  }
+  const connect = () => {
+    setFailed(false);
+    spaceMouse.connect().catch(() => setFailed(true));
+  };
+  return (
+    <>
+      <Row
+        label="3D mouse"
+        hint={
+          failed
+            ? "Couldn't open it: another program may be using it."
+            : devices.length > 0
+              ? 'Push, pull, tilt and twist the cap to move the model. Left button: home, right: fit.'
+              : 'A 3Dconnexion SpaceMouse or SpaceNavigator. Connect it once; it reconnects by itself.'
+        }
+      >
+        {devices.length > 0 ? (
+          <span className="text-sm" data-space-mouse="connected">
+            {devices.join(', ')}
+          </span>
+        ) : (
+          <Button onClick={connect}>Connect…</Button>
+        )}
+      </Row>
+      <Row label="3D mouse speed" hint="Double-click the slider for 1×.">
+        <div className="flex w-full items-center gap-2">
+          <input
+            type="range"
+            aria-label="3D mouse speed"
+            data-space-mouse-speed
+            min={-SPEED_STOPS}
+            max={SPEED_STOPS}
+            step={0.05}
+            value={positionOf(s.spaceMouseSpeed)}
+            onChange={(e) =>
+              display.set({ spaceMouseSpeed: speedOf(e.currentTarget.valueAsNumber) })
+            }
+            onDoubleClick={() => display.set({ spaceMouseSpeed: 1 })}
+            className="min-w-0 flex-1 accent-(--x-accent)"
+          />
+          <output className="w-12 text-right text-sm tabular-nums">{s.spaceMouseSpeed}×</output>
+        </div>
+      </Row>
     </>
   );
 }
