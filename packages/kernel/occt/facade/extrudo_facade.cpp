@@ -241,6 +241,7 @@
 #include <chrono>
 #include <memory>
 #include <array>
+#include <unordered_set>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -10515,6 +10516,39 @@ private:
         return off <= reach ? through : Handle(Geom2d_Curve)();
       };
       auto chainBuilt = [&](int r) { return r >= 0 && regions[r].kind >= 0 && regions[r].why.empty(); };
+      // Slice D8: the outline pieces joining each pair of end points (by
+      // coordinates, to 1e-6): open chains, and boundary mesh edges no
+      // chain with those ends contains. A chain collapses only when it is
+      // the only one, else it and its twin would be one segment (a face of
+      // zero area, which a STEP reader takes back as a hairpin).
+      using PointKey = std::array<long long, 3>;
+      auto pointKey = [&](int n) {
+        const gp_XYZ p = meshNode(n);
+        return PointKey{std::llround(p.X() * 1e6), std::llround(p.Y() * 1e6), std::llround(p.Z() * 1e6)};
+      };
+      auto pairKey = [&](int a, int b) {
+        const PointKey ka = pointKey(a), kb = pointKey(b);
+        return ka < kb ? std::make_pair(ka, kb) : std::make_pair(kb, ka);
+      };
+      std::map<std::pair<PointKey, PointKey>, int> piecesBetween;
+      {
+        std::unordered_set<uint64_t> covered;
+        for (const MeshChain& chain : chains) {
+          if (chain.closed || pointKey(chain.nodes.front()) == pointKey(chain.nodes.back())) continue;
+          const auto ends = pairKey(chain.nodes.front(), chain.nodes.back());
+          ++piecesBetween[ends];
+          for (size_t i = 0; i + 1 < chain.nodes.size(); ++i)
+            if (pairKey(chain.nodes[i], chain.nodes[i + 1]) == ends) covered.insert(keyOf(chain.nodes[i], chain.nodes[i + 1]));
+        }
+        for (int t = 0; t < triangleCount; ++t)
+          for (int k = 0; k < 3; ++k) {
+            const int u = seg.neighbour[3 * t + k];
+            if (u >= 0 && (u < t || hybridOf[u] == hybridOf[t])) continue;
+            const int a = corner(t, k), b = corner(t, (k + 1) % 3);
+            if (covered.count(keyOf(a, b)) || pointKey(a) == pointKey(b)) continue;
+            ++piecesBetween[pairKey(a, b)];
+          }
+      }
       for (size_t c = 0; c < chains.size(); ++c) {
         const MeshChain& chain = chains[c];
         std::string why;
@@ -10522,6 +10556,9 @@ private:
           why = "undone";
         } else if (!chainBuilt(chain.left) || !chainBuilt(chain.right)) {
           why = "not a candidate";
+        } else if (!chain.closed && pointKey(chain.nodes.front()) != pointKey(chain.nodes.back()) &&
+                   piecesBetween[pairKey(chain.nodes.front(), chain.nodes.back())] > 1) {
+          why = "another piece joins its ends";
         } else if ((regions[chain.left].kind == 3 && regionsOnSurface[regions[chain.left].surface] > 1) ||
                    (regions[chain.right].kind == 3 && regionsOnSurface[regions[chain.right].surface] > 1)) {
           // A sphere's pieces each have their own frame (their poles away
@@ -10547,6 +10584,13 @@ private:
                     HYBRID_EDGE_TOLERANCE_MAX)
                   why = "a chord off its surface";
               }
+            }
+            // Slice D8: the curve itself on both surfaces (a circle moved to its
+            // end nodes' projections may leave the other one).
+            for (int i = 0; why.empty() && i <= 8; ++i) {
+              const gp_XYZ p = curveValue(fit.curve, fit.first + (fit.last - fit.first) * i / 8).XYZ();
+              for (const int r : {chain.left, chain.right})
+                if (distanceToSurface(seg.surfaces[regions[r].surface], p) > 1.5 * tolerance) why = "curve off its surface";
             }
             if (why.empty()) {
               const Handle(Geom_Curve) curve = curveGeom(fit.curve);
@@ -11132,7 +11176,8 @@ private:
               double u = 0, v = 0;
               ElSLib::Parameters(pln, curve->Value(t).Transformed(edgeLocation.Transformation()), u, v);
               const double miss = pcurve->Value(t).Distance(gp_Pnt2d(u, v));
-              if (miss > 1e-7) {
+              // 1e-5: unify's merged edges miss by up to 1e-6 (rounding); ours by none.
+              if (miss > 1e-5) {
                 if (++off <= 3)
                   offWhat += std::string(off > 1 ? "; " : " (") + curve->DynamicType()->Name() + " over " + text(last - first) + ", " + pcurve->DynamicType()->Name() + ", miss " + text(miss);
                 break;
