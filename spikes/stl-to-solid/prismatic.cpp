@@ -25,6 +25,11 @@
 #include <RWStl.hxx>
 #include <StlAPI_Writer.hxx>
 #include <BRepBuilderAPI_Copy.hxx>
+#include <ShapeAnalysis_Wire.hxx>
+#include <ShapeExtend_WireData.hxx>
+#include <BRepExtrema_DistShapeShape.hxx>
+#include <GeomAPI_ProjectPointOnSurf.hxx>
+#include <IntRes2d_IntersectionPoint.hxx>
 #include <chrono>
 #include <array>
 #include <cmath>
@@ -535,6 +540,12 @@ struct RoundTripRow {
   double minFlaggedEdge = 0;
   int flaggedEdgesBelowUncertainty = 0;
   int writtenVertices = 0, writtenEdges = 0, backVertices = 0, backEdges = 0;
+  // Q15-Q17 (ADR-0097 2026-10-30b): the flagged wires' self-intersecting pairs,
+  // classified, and whether the written body carries the same crossings.
+  int q15SameEdge = 0, q15Adjacent = 0, q15NonAdjacent = 0;
+  int q17Hairpin = 0, q17ThreeDClose = 0, q17TwoDOnly = 0;
+  int q16PairsOneE7 = 0, q16PairsTol = 0;
+  int q16Unmatched = 0;
 };
 
 /** The number in the STEP text's UNCERTAINTY_MEASURE_WITH_UNIT, or -1 (ADR-0097 D7 diagnosis). */
@@ -655,6 +666,283 @@ static FlaggedInfo flaggedWiresAndFaces(const TopoDS_Shape& shape, bool detail, 
     }
   }
   return info;
+}
+
+/**
+ * One self-intersection between two edges of a wire (ADR-0097 2026-10-30b
+ * Q15/Q17): `kind` 0 = same-edge, 1 = adjacent, 2 = non-adjacent.
+ */
+struct IntersectPair {
+  int kind = 0;
+  int i = 0, j = 0;
+  double len1 = 0, len2 = 0;
+  std::string cls1, cls2;
+  double err = 0;
+  gp_Pnt p3d;
+};
+
+/** The edge-class map `<curve> <A>|<B>` over a whole body (as Q1's). */
+static NCollection_DataMap<TopoDS_Shape, std::string, TopTools_ShapeMapHasher> buildEdgeClass(const TopoDS_Shape& shape) {
+  NCollection_DataMap<TopoDS_Shape, std::string, TopTools_ShapeMapHasher> edgeClass;
+  NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher> edgeFaces;
+  TopExp::MapShapesAndUniqueAncestors(shape, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+  for (int i = 1; i <= edgeFaces.Extent(); ++i) {
+    const TopoDS_Edge edge = TopoDS::Edge(edgeFaces.FindKey(i));
+    std::vector<std::string> faces;
+    for (const TopoDS_Shape& face : edgeFaces(i)) faces.push_back(faceKind(TopoDS::Face(face)));
+    std::string a = "none", b = "none";
+    if (faces.size() == 1) a = b = faces[0];
+    else if (faces.size() >= 2) { a = faces[0]; b = faces[1]; if (b < a) std::swap(a, b); }
+    edgeClass.Bind(edge, curveKind(edge) + " " + a + "|" + b);
+  }
+  return edgeClass;
+}
+
+/**
+ * The pairs ShapeAnalysis_Wire finds self-intersecting on `wire` over `face` at
+ * `precision` (ADR-0097 2026-10-30b Q15): each edge with itself, each adjacent
+ * pair (i-1, i) and each non-adjacent pair (i, j), j > i+1, skipping the
+ * closing pair 1/N. `agrees` reports CheckSelfIntersection() once for the wire.
+ */
+static std::vector<IntersectPair> findWirePairs(
+    const TopoDS_Wire& wire, const TopoDS_Face& face, double precision,
+    const NCollection_DataMap<TopoDS_Shape, std::string, TopTools_ShapeMapHasher>& edgeClass, bool& agrees) {
+  std::vector<IntersectPair> pairs;
+  agrees = false;
+  ShapeAnalysis_Wire saw(wire, face, precision);
+  if (!saw.IsReady()) return pairs;
+  agrees = saw.CheckSelfIntersection();
+  Handle(ShapeExtend_WireData) wd = saw.WireData();
+  const int n = wd->NbEdges();
+  auto edgeLen = [](const TopoDS_Edge& e) { GProp_GProps g; BRepGProp::LinearProperties(e, g); return g.Mass(); };
+  auto cls = [&](const TopoDS_Edge& e) {
+    return edgeClass.IsBound(e) ? edgeClass.Find(e) : curveKind(e) + " ?";
+  };
+  NCollection_Sequence<IntRes2d_IntersectionPoint> points2d;
+  NCollection_Sequence<gp_Pnt> points3d;
+  NCollection_Sequence<double> errors;
+  auto add = [&](int kind, int i, int j, double err) {
+    IntersectPair p;
+    p.kind = kind;
+    p.i = i;
+    p.j = j;
+    p.err = err;
+    const TopoDS_Edge e1 = wd->Edge(i), e2 = wd->Edge(j);
+    p.len1 = edgeLen(e1);
+    p.len2 = edgeLen(e2);
+    p.cls1 = cls(e1);
+    p.cls2 = cls(e2);
+    p.p3d = points3d.Length() > 0 ? points3d.Last() : gp_Pnt(0, 0, 0);
+    pairs.push_back(p);
+  };
+  auto maxError = [&]() {
+    double m = 0;
+    for (int k = 1; k <= errors.Length(); ++k) m = std::max(m, errors.Value(k));
+    return m;
+  };
+  for (int i = 1; i <= n; ++i) {
+    if (saw.CheckSelfIntersectingEdge(i, points2d, points3d)) add(0, i, i, 0);
+    if (saw.CheckIntersectingEdges(i, points2d, points3d, errors)) add(1, i > 1 ? i - 1 : n, i, maxError());
+    for (int j = i + 2; j <= n; ++j) {
+      if (i == 1 && j == n) continue;  // the closing pair 1/N is the same seam
+      if (saw.CheckIntersectingEdges(i, j, points2d, points3d, errors)) add(2, i, j, maxError());
+    }
+  }
+  return pairs;
+}
+
+/** A written face's centre of mass and area, for Q16's match. */
+struct WrittenFace {
+  TopoDS_Face face;
+  gp_Pnt centre;
+  double area = 0;
+};
+
+/**
+ * The written face matching `back` by centre of mass (nearest within 0.05 mm)
+ * and area (within 1 %), or -1; sets `outerTol` to the matched face's outer
+ * wire max edge tolerance (ADR-0097 2026-10-30b Q16).
+ */
+static int matchWrittenFace(const TopoDS_Face& back, const std::vector<WrittenFace>& writtenFaces, double& outerTol) {
+  GProp_GProps props;
+  BRepGProp::SurfaceProperties(back, props);
+  const gp_Pnt c = props.CentreOfMass();
+  const double a = props.Mass();
+  int best = -1;
+  double bestDistance = 1e100;
+  for (int i = 0; i < int(writtenFaces.size()); ++i) {
+    const double distance = c.Distance(writtenFaces[i].centre);
+    if (distance > 0.05) continue;
+    if (writtenFaces[i].area != 0 && std::abs(a - writtenFaces[i].area) / std::abs(writtenFaces[i].area) > 0.01) continue;
+    if (distance < bestDistance) { bestDistance = distance; best = i; }
+  }
+  if (best >= 0) {
+    const TopoDS_Wire outer = BRepTools::OuterWire(writtenFaces[best].face);
+    outerTol = 0;
+    for (TopExp_Explorer e(outer, TopAbs_EDGE); e.More(); e.Next())
+      outerTol = std::max(outerTol, BRep_Tool::Tolerance(TopoDS::Edge(e.Current())));
+  }
+  return best;
+}
+
+/** The turning angle at the shared vertex `v` of adjacent edges e1, e2, 0 = straight on, 180 = reversed (Q17). */
+static double turningAngleAtVertex(const TopoDS_Edge& e1, const TopoDS_Edge& e2, const TopoDS_Vertex& v) {
+  const gp_Pnt vertex = BRep_Tool::Pnt(v);
+  BRepAdaptor_Curve c1(e1), c2(e2);
+  auto farEnd = [](BRepAdaptor_Curve& c, const gp_Pnt& vt) {
+    const gp_Pnt a = c.Value(c.FirstParameter()), b = c.Value(c.LastParameter());
+    return a.Distance(vt) <= b.Distance(vt) ? b : a;
+  };
+  const gp_Vec into(farEnd(c1, vertex), vertex);  // direction arriving at the vertex
+  const gp_Vec out(vertex, farEnd(c2, vertex));   // direction leaving it
+  if (into.Magnitude() == 0 || out.Magnitude() == 0) return 0;
+  return into.Angle(out) * 180.0 / M_PI;
+}
+
+/** The distance of a point from the face's surface, location applied (Q17). */
+static double pointOffSurface(const gp_Pnt& point, const TopoDS_Face& face) {
+  TopLoc_Location location;
+  Handle(Geom_Surface) surface = BRep_Tool::Surface(face, location);
+  if (surface.IsNull()) return -1;
+  const gp_Pnt local = point.Transformed(location.Transformation().Inverted());
+  GeomAPI_ProjectPointOnSurf projection(local, surface);
+  return projection.IsDone() ? projection.LowerDistance() : -1;
+}
+
+/** The four vertices of the two edges of a pair (Q17). */
+static std::array<TopoDS_Vertex, 4> pairVertices(const TopoDS_Edge& e1, const TopoDS_Edge& e2) {
+  std::array<TopoDS_Vertex, 4> out;
+  TopoDS_Vertex a, b;
+  TopExp::Vertices(e1, a, b);
+  out[0] = a;
+  out[1] = b;
+  TopExp::Vertices(e2, a, b);
+  out[2] = a;
+  out[3] = b;
+  return out;
+}
+
+/**
+ * Q15-Q17 (ADR-0097 2026-10-30b): for every read-back wire BRepCheck flags
+ * SelfIntersectingWire, find its face and the pairs ShapeAnalysis_Wire reports
+ * (Q15), match the face to the written body and re-run the pair search on the
+ * written outer wire at 1e-7 and at its edge tolerance (Q16), and classify
+ * each pair into hairpin / 3D-close / 2D-only (Q17). Prints when `detail` and
+ * fills `row`.
+ */
+static void classifySelfIntersections(const TopoDS_Shape& written, const TopoDS_Shape& readBack, bool detail,
+                                      RoundTripRow& row) {
+  const NCollection_DataMap<TopoDS_Shape, std::string, TopTools_ShapeMapHasher> backClass = buildEdgeClass(readBack);
+  const NCollection_DataMap<TopoDS_Shape, std::string, TopTools_ShapeMapHasher> writtenClass = buildEdgeClass(written);
+  NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher> wireFaces;
+  TopExp::MapShapesAndAncestors(readBack, TopAbs_WIRE, TopAbs_FACE, wireFaces);
+  std::vector<WrittenFace> writtenFaces;
+  for (TopExp_Explorer e(written, TopAbs_FACE); e.More(); e.Next()) {
+    GProp_GProps props;
+    BRepGProp::SurfaceProperties(e.Current(), props);
+    writtenFaces.push_back({TopoDS::Face(e.Current()), props.CentreOfMass(), props.Mass()});
+  }
+  BRepCheck_Analyzer analyzer(readBack);
+  for (TopExp_Explorer e(readBack, TopAbs_WIRE); e.More(); e.Next()) {
+    const TopoDS_Wire wire = TopoDS::Wire(e.Current());
+    Handle(BRepCheck_Result) result = analyzer.Result(wire);
+    bool flagged = false;
+    if (!result.IsNull())
+      for (BRepCheck_Status st : result->Status())
+        if (st == BRepCheck_SelfIntersectingWire) flagged = true;
+    if (!flagged) continue;
+    if (!wireFaces.Contains(wire) || wireFaces.FindFromKey(wire).IsEmpty()) continue;
+    const TopoDS_Face face = TopoDS::Face(wireFaces.FindFromKey(wire).First());
+    bool agrees = false;
+    const std::vector<IntersectPair> pairs = findWirePairs(wire, face, 0.001, backClass, agrees);
+    int sameEdge = 0, adjacent = 0, nonAdjacent = 0;
+    for (const IntersectPair& p : pairs) {
+      if (p.kind == 0) ++sameEdge;
+      else if (p.kind == 1) ++adjacent;
+      else ++nonAdjacent;
+      if (detail)
+        std::cout << "     q15 pair " << (p.kind == 0 ? "same-edge" : p.kind == 1 ? "adjacent" : "non-adjacent")
+                  << " edges " << p.i << "," << p.j << " len " << p.len1 << "," << p.len2 << " classes " << p.cls1 << ";"
+                  << p.cls2 << " err " << p.err << " p3d " << p.p3d.X() << " " << p.p3d.Y() << " " << p.p3d.Z() << "\n";
+    }
+    row.q15SameEdge += sameEdge;
+    row.q15Adjacent += adjacent;
+    row.q15NonAdjacent += nonAdjacent;
+    if (detail)
+      std::cout << "     q15 wire: same-edge " << sameEdge << ", adjacent " << adjacent << ", non-adjacent " << nonAdjacent
+                << " (ShapeAnalysis CheckSelfIntersection " << (agrees ? "true" : "false") << ", BRepCheck flagged)\n";
+
+    // Q16: is the crossing in the written body too?
+    double outerTol = 0.001;
+    const int match = matchWrittenFace(face, writtenFaces, outerTol);
+    if (match >= 0) {
+      const TopoDS_Wire outer = BRepTools::OuterWire(writtenFaces[match].face);
+      bool a1 = false, a2 = false;
+      const int atE7 = int(findWirePairs(outer, writtenFaces[match].face, 1e-7, writtenClass, a1).size());
+      const int atTol = int(findWirePairs(outer, writtenFaces[match].face, outerTol, writtenClass, a2).size());
+      row.q16PairsOneE7 += atE7;
+      row.q16PairsTol += atTol;
+      if (detail)
+        std::cout << "     q16 written: pairs@1e-7 " << atE7 << ", pairs@tol " << atTol << " (tol " << outerTol << ")\n";
+    } else {
+      ++row.q16Unmatched;
+      if (detail) {
+        GProp_GProps backProps;
+        BRepGProp::SurfaceProperties(face, backProps);
+        const gp_Pnt backCentre = backProps.CentreOfMass();
+        const double backArea = backProps.Mass();
+        int nearest = -1;
+        double nearestDistance = 1e100;
+        for (int i = 0; i < int(writtenFaces.size()); ++i) {
+          const double distance = backCentre.Distance(writtenFaces[i].centre);
+          if (distance < nearestDistance) { nearestDistance = distance; nearest = i; }
+        }
+        std::cout << "     q16 written: unmatched (back " << faceKind(face) << " area " << backArea << ", nearest written "
+                  << (nearest >= 0 ? faceKind(writtenFaces[nearest].face) : "none") << " centre distance "
+                  << (nearest >= 0 ? nearestDistance : -1) << ", area "
+                  << (nearest >= 0 ? writtenFaces[nearest].area : -1) << ")\n";
+      }
+    }
+
+    // Q17: the mechanism of each pair.
+    ShapeAnalysis_Wire saw(wire, face, 0.001);
+    Handle(ShapeExtend_WireData) wd = saw.WireData();
+    for (const IntersectPair& p : pairs) {
+      const TopoDS_Edge e1 = wd->Edge(p.i), e2 = wd->Edge(p.j);
+      if (p.kind == 1) {
+        const double angle = turningAngleAtVertex(e1, e2, TopExp::LastVertex(e1, false));
+        if (angle >= 150) {
+          ++row.q17Hairpin;
+          if (detail) std::cout << "     q17 hairpin angle " << angle << "\n";
+        } else if (detail) {
+          std::cout << "     q17 adjacent angle " << angle << "\n";
+        }
+      } else {
+        BRepExtrema_DistShapeShape distance(e1, e2);
+        distance.Perform();
+        const double d = distance.IsDone() ? distance.Value() : -1;
+        const bool close = d >= 0 && d <= outerTol;
+        if (close) {
+          ++row.q17ThreeDClose;
+          if (detail) std::cout << "     q17 3D-close dist3d " << d << "\n";
+        } else {
+          ++row.q17TwoDOnly;
+          const std::array<TopoDS_Vertex, 4> vs = pairVertices(e1, e2);
+          if (detail) {
+            std::cout << "     q17 2D-only dist3d " << d << " vertexOffSurface " << pointOffSurface(BRep_Tool::Pnt(vs[0]), face)
+                      << " " << pointOffSurface(BRep_Tool::Pnt(vs[1]), face) << " "
+                      << pointOffSurface(BRep_Tool::Pnt(vs[2]), face) << " "
+                      << pointOffSurface(BRep_Tool::Pnt(vs[3]), face) << "\n";
+          }
+        }
+      }
+    }
+  }
+  if (detail)
+    std::cout << "   q15: same-edge " << row.q15SameEdge << ", adjacent " << row.q15Adjacent << ", non-adjacent "
+              << row.q15NonAdjacent << "\n"
+              << "   q17: hairpin " << row.q17Hairpin << ", 3D-close " << row.q17ThreeDClose << ", 2D-only " << row.q17TwoDOnly
+              << std::endl;
 }
 
 /**
@@ -903,6 +1191,10 @@ static RoundTripRow stepOne(ExtrudoFacade& f, const std::string& path, double to
               << std::endl;
   }
 
+  // Q15-Q17: classify the flagged wires' self-intersections and check whether
+  // the written body already carries them (ADR-0097 2026-10-30b).
+  classifySelfIntersections(written, readBack, detail, row);
+
   // Q9: the BREP round trip (keeps tolerances and pcurves).
   {
     std::ostringstream out;
@@ -1029,6 +1321,34 @@ static void printSummaryTable(const std::vector<RoundTripRow>& rows) {
               << r.backInvalidFaces << " | " << r.topStatus << " | " << (r.fixValid ? "valid" : "invalid") << " | "
               << r.fixFaces << " | " << r.fixRatio << " | " << (r.u2Valid ? "valid" : "invalid") << " | " << r.u2Faces
               << " | " << r.u2Solids << " | " << r.u2Ratio << " | " << r.uncertainty << " |\n";
+  std::cout.flush();
+}
+
+/** The Q15-Q17 fourth summary table (ADR-0097 2026-10-30b): the flagged wires'
+ * self-intersecting pairs, classified, and whether the written body carries
+ * them. */
+static void printSummaryTable3(const std::vector<RoundTripRow>& rows) {
+  std::cout << "\n| file | flagged wires | pairs same-edge / adjacent / non-adjacent | hairpin / 3D-close / 2D-only | "
+               "written pairs @1e-7 / @tol | unmatched faces |\n";
+  std::cout << "|---|---|---|---|---|---|\n";
+  int wires = 0, same = 0, adj = 0, non = 0, hair = 0, close = 0, two = 0, e7 = 0, tol = 0, unmatched = 0;
+  for (const RoundTripRow& r : rows) {
+    std::cout << "| " << r.file << " | " << r.flaggedWires << " | " << r.q15SameEdge << " / " << r.q15Adjacent << " / "
+              << r.q15NonAdjacent << " | " << r.q17Hairpin << " / " << r.q17ThreeDClose << " / " << r.q17TwoDOnly << " | "
+              << r.q16PairsOneE7 << " / " << r.q16PairsTol << " | " << r.q16Unmatched << " |\n";
+    wires += r.flaggedWires;
+    same += r.q15SameEdge;
+    adj += r.q15Adjacent;
+    non += r.q15NonAdjacent;
+    hair += r.q17Hairpin;
+    close += r.q17ThreeDClose;
+    two += r.q17TwoDOnly;
+    e7 += r.q16PairsOneE7;
+    tol += r.q16PairsTol;
+    unmatched += r.q16Unmatched;
+  }
+  std::cout << "| **totals** | " << wires << " | " << same << " / " << adj << " / " << non << " | " << hair << " / " << close
+            << " / " << two << " | " << e7 << " / " << tol << " | " << unmatched << " |\n";
   std::cout.flush();
 }
 
@@ -1401,6 +1721,7 @@ int main(int argc, char** argv) {
     }
     printSummaryTable(rows);
     printSummaryTable2(rows);
+    printSummaryTable3(rows);
     std::cout << "live shapes " << f.liveShapes() << std::endl;
     return 0;
   }
