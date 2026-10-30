@@ -27,6 +27,7 @@
 #include <BRepBuilderAPI_Copy.hxx>
 #include <ShapeAnalysis_Wire.hxx>
 #include <ShapeExtend_WireData.hxx>
+#include <BRepCheck_Wire.hxx>
 #include <BRepExtrema_DistShapeShape.hxx>
 #include <GeomAPI_ProjectPointOnSurf.hxx>
 #include <IntRes2d_IntersectionPoint.hxx>
@@ -546,6 +547,10 @@ struct RoundTripRow {
   int q17Hairpin = 0, q17ThreeDClose = 0, q17TwoDOnly = 0;
   int q16PairsOneE7 = 0, q16PairsTol = 0;
   int q16Unmatched = 0;
+  // Q15b/Q17b: BRepCheck_Wire::SelfIntersect's own first intersecting pair per
+  // flagged wire, classified (it is a separate algorithm from ShapeAnalysis).
+  int q15bPairs = 0;
+  int q17bSameEdge = 0, q17bHairpin = 0, q17bThreeDClose = 0, q17bTwoDOnly = 0;
 };
 
 /** The number in the STEP text's UNCERTAINTY_MEASURE_WITH_UNIT, or -1 (ADR-0097 D7 diagnosis). */
@@ -822,6 +827,40 @@ static std::array<TopoDS_Vertex, 4> pairVertices(const TopoDS_Edge& e1, const To
   return out;
 }
 
+/** BRepCheck_Wire::SelfIntersect's first intersecting pair of a wire (Q15b). */
+struct BRepCheckPair {
+  bool found = false;
+  bool sameEdge = false;
+  TopoDS_Edge e1, e2;
+};
+
+/** BRepCheck_Wire::SelfIntersect's own first pair over `face`, or `found` false (Q15b). */
+static BRepCheckPair brepCheckFirstPair(const TopoDS_Wire& wire, const TopoDS_Face& face) {
+  BRepCheckPair out;
+  BRepCheck_Wire checker(wire);
+  TopoDS_Edge e1, e2;
+  if (checker.SelfIntersect(face, e1, e2, false) == BRepCheck_SelfIntersectingWire) {
+    out.found = true;
+    out.e1 = e1;
+    out.e2 = e2;
+    out.sameEdge = e2.IsNull();
+  }
+  return out;
+}
+
+/** The vertex two edges share topologically, or null (Q17b). */
+static TopoDS_Vertex sharedVertex(const TopoDS_Edge& e1, const TopoDS_Edge& e2) {
+  TopoDS_Vertex a1, b1, a2, b2;
+  TopExp::Vertices(e1, a1, b1);
+  TopExp::Vertices(e2, a2, b2);
+  const TopoDS_Vertex first[2] = {a1, b1};
+  const TopoDS_Vertex second[2] = {a2, b2};
+  for (int i = 0; i < 2; ++i)
+    for (int j = 0; j < 2; ++j)
+      if (first[i].IsSame(second[j])) return first[i];
+  return TopoDS_Vertex();
+}
+
 /**
  * Q15-Q17 (ADR-0097 2026-10-30b): for every read-back wire BRepCheck flags
  * SelfIntersectingWire, find its face and the pairs ShapeAnalysis_Wire reports
@@ -937,11 +976,56 @@ static void classifySelfIntersections(const TopoDS_Shape& written, const TopoDS_
         }
       }
     }
+
+    // Q15b/Q17b: BRepCheck_Wire::SelfIntersect's own first pair. It is a
+    // separate algorithm from ShapeAnalysis (tolint 1e-10, Geom2dInt_GInter),
+    // so it is the faithful reproduction of the status BRepCheck reports.
+    const BRepCheckPair bc = brepCheckFirstPair(wire, face);
+    if (bc.found) {
+      ++row.q15bPairs;
+      if (bc.sameEdge) {
+        ++row.q17bSameEdge;
+        if (detail) std::cout << "     q17b same-edge (one edge crosses itself)\n";
+      } else {
+        const TopoDS_Vertex shared = sharedVertex(bc.e1, bc.e2);
+        if (!shared.IsNull()) {
+          const double angle = turningAngleAtVertex(bc.e1, bc.e2, shared);
+          if (angle >= 150) {
+            ++row.q17bHairpin;
+            if (detail) std::cout << "     q17b hairpin angle " << angle << "\n";
+          } else if (detail) {
+            std::cout << "     q17b adjacent angle " << angle << "\n";
+          }
+        } else {
+          BRepExtrema_DistShapeShape distance(bc.e1, bc.e2);
+          distance.Perform();
+          const double d = distance.IsDone() ? distance.Value() : -1;
+          if (d >= 0 && d <= outerTol) {
+            ++row.q17bThreeDClose;
+            if (detail) std::cout << "     q17b 3D-close dist3d " << d << "\n";
+          } else {
+            ++row.q17bTwoDOnly;
+            if (detail) {
+              const std::array<TopoDS_Vertex, 4> vs = pairVertices(bc.e1, bc.e2);
+              std::cout << "     q17b 2D-only dist3d " << d << " vertexOffSurface "
+                        << pointOffSurface(BRep_Tool::Pnt(vs[0]), face) << " " << pointOffSurface(BRep_Tool::Pnt(vs[1]), face)
+                        << " " << pointOffSurface(BRep_Tool::Pnt(vs[2]), face) << " "
+                        << pointOffSurface(BRep_Tool::Pnt(vs[3]), face) << "\n";
+            }
+          }
+        }
+      }
+    } else if (detail) {
+      std::cout << "     q17b BRepCheck SelfIntersect found no pair on this wire\n";
+    }
   }
   if (detail)
     std::cout << "   q15: same-edge " << row.q15SameEdge << ", adjacent " << row.q15Adjacent << ", non-adjacent "
               << row.q15NonAdjacent << "\n"
               << "   q17: hairpin " << row.q17Hairpin << ", 3D-close " << row.q17ThreeDClose << ", 2D-only " << row.q17TwoDOnly
+              << "\n"
+              << "   q17b: same-edge " << row.q17bSameEdge << ", hairpin " << row.q17bHairpin << ", 3D-close "
+              << row.q17bThreeDClose << ", 2D-only " << row.q17bTwoDOnly << " (of " << row.q15bPairs << " BRepCheck pairs)"
               << std::endl;
 }
 
@@ -1352,6 +1436,25 @@ static void printSummaryTable3(const std::vector<RoundTripRow>& rows) {
   std::cout.flush();
 }
 
+/** The Q15b/Q17b fifth summary table (ADR-0097 2026-10-30b): BRepCheck_Wire's
+ * own first pair per flagged wire, classified. */
+static void printSummaryTable4(const std::vector<RoundTripRow>& rows) {
+  std::cout << "\n| file | BRepCheck pairs | same-edge | hairpin | 3D-close | 2D-only |\n";
+  std::cout << "|---|---|---|---|---|---|\n";
+  int pairs = 0, same = 0, hair = 0, close = 0, two = 0;
+  for (const RoundTripRow& r : rows) {
+    std::cout << "| " << r.file << " | " << r.q15bPairs << " | " << r.q17bSameEdge << " | " << r.q17bHairpin << " | "
+              << r.q17bThreeDClose << " | " << r.q17bTwoDOnly << " |\n";
+    pairs += r.q15bPairs;
+    same += r.q17bSameEdge;
+    hair += r.q17bHairpin;
+    close += r.q17bThreeDClose;
+    two += r.q17bTwoDOnly;
+  }
+  std::cout << "| **totals** | " << pairs << " | " << same << " | " << hair << " | " << close << " | " << two << " |\n";
+  std::cout.flush();
+}
+
 /** The Q9-Q12 second summary table (ADR-0097 2026-10-30b). */
 static void printSummaryTable2(const std::vector<RoundTripRow>& rows) {
   std::cout << "\n| file | rebuild | brep valid | brep faces | brep solids | brep ratio | healed valid | healed faces | "
@@ -1722,6 +1825,7 @@ int main(int argc, char** argv) {
     printSummaryTable(rows);
     printSummaryTable2(rows);
     printSummaryTable3(rows);
+    printSummaryTable4(rows);
     std::cout << "live shapes " << f.liveShapes() << std::endl;
     return 0;
   }
