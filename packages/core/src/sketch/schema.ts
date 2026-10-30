@@ -294,7 +294,10 @@ const value = {
 /**
  * `distance` covers linear dimensions: a line's length (`a` alone), two
  * points (aligned, horizontal or vertical), a point and a line, or two
- * parallel lines (aligned only).
+ * parallel lines (aligned only). A circle or an arc (ADR-0112) measures from
+ * its edge to a point, a line or another circle's or arc's edge (aligned,
+ * horizontal or vertical): `sideA`/`sideB` say which edge, the one facing the
+ * other entity (`near`, the default) or the one opposite (`far`).
  *
  * `angle` is the angle between the two lines' directions (start → end),
  * 0–180°; with `supplement` it is 180° minus that, the other pair of angles
@@ -306,6 +309,10 @@ export const SketchDimensionSchema = z.discriminatedUnion('type', [
     orientation: z.enum(['aligned', 'horizontal', 'vertical']),
     a: ref,
     b: ref.optional(),
+    /** Which edge of a round `a` the distance runs to (ADR-0112); near when absent. */
+    sideA: z.enum(['near', 'far']).optional(),
+    /** Which edge of a round `b` the distance runs to (ADR-0112); near when absent. */
+    sideB: z.enum(['near', 'far']).optional(),
     ...value,
   }),
   z.strictObject({ type: z.literal('radius'), curve: ref, ...value }),
@@ -713,12 +720,30 @@ export function sketchIssues(sketch: {
       expect('dimensions', id, field, ref, kinds);
     switch (d.type) {
       case 'distance': {
-        const a = e('a', d.a, ['point', 'line']);
-        const b = e('b', d.b, ['point', 'line']);
+        const a = e('a', d.a, SYMMETRIC);
+        const b = e('b', d.b, SYMMETRIC);
         distinct('dimensions', id, [d.a, d.b]);
-        if (d.b === undefined && a === 'point') fail('dimensions', id, 'needs a second entity');
-        if (a && b && (a === 'line' || b === 'line') && d.orientation !== 'aligned') {
+        const round = (k: SketchEntityType | undefined) => k === 'circle' || k === 'arc';
+        if (d.b === undefined && (a === 'point' || round(a))) {
+          fail('dimensions', id, 'needs a second entity');
+        }
+        // A line with a point or a line: perpendicular to it. A circle's or an
+        // arc's edge may be measured horizontally or vertically (ADR-0112).
+        if (
+          a &&
+          b &&
+          !round(a) &&
+          !round(b) &&
+          (a === 'line' || b === 'line') &&
+          d.orientation !== 'aligned'
+        ) {
           fail('dimensions', id, 'to a line must be aligned');
+        }
+        if (d.sideA !== undefined && a && !round(a)) {
+          fail('dimensions', id, 'sideA needs a circle or an arc as a');
+        }
+        if (d.sideB !== undefined && (d.b === undefined || (b && !round(b)))) {
+          fail('dimensions', id, 'sideB needs a circle or an arc as b');
         }
         break;
       }

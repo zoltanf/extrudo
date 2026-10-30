@@ -7,12 +7,16 @@
  *   makes an angle, or the distance if the lines are parallel; a point makes
  *   the point's distance to the line; a datum axis with a parallel line or a
  *   point (ADR-0093) is placed by the second pick, with no placement click;
- * - a circle: its diameter; an arc: its radius;
+ * - a circle: its diameter; an arc: its radius (click on empty space to
+ *   place it); a second pick, a point, a line or another circle or arc, makes
+ *   the distance from its edge (ADR-0112): the edge facing the other entity
+ *   when the circle was clicked on that half, the far edge otherwise;
  * - two points: their distance.
  *
- * A length or a distance between points is horizontal or vertical when the
- * label is placed beside the geometry's extent, aligned otherwise; an
- * angle's label picks the pair of angles between the lines. The new
+ * A length, a distance between points or one from a circle's edge is
+ * horizontal or vertical when the label is placed beside the geometry's
+ * extent, aligned otherwise; an angle's label picks the pair of angles
+ * between the lines. The new
  * dimension drives the sketch at its measured value (rounded to the
  * document precision), and the host opens its value for editing
  * (`SketchEdit.editDimension`). If it would over-constrain the sketch, the
@@ -20,9 +24,11 @@
  */
 import {
   type DimensionId,
+  distanceEnds,
   isDatumRef,
   lineCrossing,
   lineEnds,
+  lineMeet,
   measureDimension,
   type ProjectionId,
   projectionOf,
@@ -59,7 +65,12 @@ interface Pick {
   synthetic?: Record<SketchEntityId, SketchEntity>;
   /** The marker for a stored datum axis line (ADR-0093), drawn like a fresh axis pick. */
   marker?: ModelSnap;
+  /** Where the entity was clicked (or is hovered): a circle's edge side (ADR-0112). */
+  at?: Vec2;
 }
+
+type Distance = Extract<SketchDimension, { type: 'distance' }>;
+type Orientation = Distance['orientation'];
 
 /** Lines closer to parallel than this (sine of the angle) get a distance, not an angle. */
 const PARALLEL = 1e-6;
@@ -76,13 +87,15 @@ export class DimensionTool implements SketchTool {
   prompt(): string {
     const [first, second] = this.#picked;
     if (!first) return 'Pick a line, circle or arc to dimension, or a point.';
-    if (second || first.entity.type === 'circle' || first.entity.type === 'arc') {
-      return 'Click to place the dimension.';
+    if (second) return 'Click to place the dimension.';
+    if (first.entity.type === 'circle' || first.entity.type === 'arc') {
+      const size = first.entity.type === 'circle' ? 'diameter' : 'radius';
+      return `Click to place the ${size}, or pick a line, a point, a circle or an arc for the distance.`;
     }
     if (first.entity.type === 'line') {
-      return 'Click to place the length, or pick a second line or a point.';
+      return 'Click to place the length, or pick a second line, a point or a circle.';
     }
-    return 'Pick a second point, or a line.';
+    return 'Pick a second point, a line or a circle.';
   }
 
   anchor(): Vec2 | undefined {
@@ -91,7 +104,8 @@ export class DimensionTool implements SketchTool {
 
   move(pointer: Inference): void {
     this.#cursor = pointer.cursor;
-    this.#hover = this.#placing() ? undefined : this.#pickAt(pointer.cursor);
+    const hover = this.#placing() ? undefined : this.#pickAt(pointer.cursor);
+    this.#hover = hover && { ...hover, at: pointer.cursor };
   }
 
   click(pointer: Inference): SketchEdit | undefined {
@@ -99,15 +113,17 @@ export class DimensionTool implements SketchTool {
     if (!this.#placing()) {
       const pick = this.#pickAt(pointer.cursor);
       if (pick) {
-        this.#picked.push(pick);
+        this.#picked.push({ ...pick, at: pointer.cursor });
         this.#hover = undefined;
         // A datum distance has nothing left to decide: no placement click.
         const auto = this.#datumCursor();
         if (!auto) return undefined;
         return this.#commit(auto);
       }
-      // Empty space after a line places its length; otherwise a click needs a pick.
-      if (this.#picked[0]?.entity.type !== 'line') return undefined;
+      // Empty space after a line places its length, after a circle or an arc
+      // its size; otherwise a click needs a pick.
+      const type = this.#picked[0]?.entity.type;
+      if (type !== 'line' && type !== 'circle' && type !== 'arc') return undefined;
     }
     return this.#commit(pointer.cursor);
   }
@@ -170,10 +186,9 @@ export class DimensionTool implements SketchTool {
     };
   }
 
-  /** The picks make a dimension without another pick (a circle, an arc, two entities). */
+  /** The picks make a dimension without another pick: two entities. */
   #placing(): boolean {
-    const [first, second] = this.#picked;
-    return second !== undefined || first?.entity.type === 'circle' || first?.entity.type === 'arc';
+    return this.#picked[1] !== undefined;
   }
 
   /**
@@ -213,6 +228,10 @@ export class DimensionTool implements SketchTool {
       first && firstType === 'line' && !first.model ? lineEnds(sketch, first.id) : undefined;
     const across = (line: readonly [Vec2, Vec2] | undefined) =>
       firstLine !== undefined && (!line || !parallel(firstLine, line));
+    // After a circle or an arc a datum axis is taken as the second pick (ADR-0112);
+    // to place the diameter or radius, click away from the axis. Body edges are
+    // left for the label.
+    const firstRound = first !== undefined && isRound(first.entity);
     const accept = (entity: SketchEntity, id: SketchEntityId) => {
       if (taken.has(id)) return false;
       if (!firstType) return ['point', 'line', 'circle', 'arc'].includes(entity.type);
@@ -220,7 +239,9 @@ export class DimensionTool implements SketchTool {
         const source = projectionOf(sketch, id)?.projection.ref;
         if (source && isDatumRef(source) && across(lineEnds(sketch, id))) return false;
       }
-      return entity.type === 'point' || entity.type === 'line';
+      // A circle's own center and an arc's own ends have no edge distance to it.
+      if (first && (ownPoint(first.entity, id) || ownPoint(entity, first.id))) return false;
+      return ['point', 'line', 'circle', 'arc'].includes(entity.type);
     };
     const id = this.context.pick(cursor, accept);
     if (id) {
@@ -236,6 +257,7 @@ export class DimensionTool implements SketchTool {
     if (!model) return undefined;
     if (firstLine && model.kind !== 'point' && model.kind !== 'axis') return undefined;
     if (firstLine && model.kind === 'axis' && across(model.line)) return undefined;
+    if (firstRound && model.kind !== 'point' && model.kind !== 'axis') return undefined;
     if (model.entityId) {
       const entity = sketch.entities[model.entityId];
       if (entity && accept(entity, model.entityId)) {
@@ -300,10 +322,19 @@ export class DimensionTool implements SketchTool {
     const [first, second] = this.#picked;
     if (!first) return undefined;
     const base = { expr: '', driven: false };
-    if (first.entity.type === 'circle') return { type: 'diameter', curve: first.id, ...base };
-    if (first.entity.type === 'arc') return { type: 'radius', curve: first.id, ...base };
-    // A line alone: the second pick may still come; until then, its length.
+    // A line, a circle or an arc alone: the second pick may still come; until
+    // then its length, diameter or radius. A point waits for its second pick.
     const b = second ?? (first.entity.type === 'line' ? undefined : this.#hoverPick());
+    if (isRound(first.entity) && !b) {
+      return {
+        type: first.entity.type === 'circle' ? 'diameter' : 'radius',
+        curve: first.id,
+        ...base,
+      };
+    }
+    if (b && (isRound(first.entity) || isRound(b.entity))) {
+      return roundDistance(sketch, first, b, cursor);
+    }
     if (first.entity.type === 'line' && !b) {
       const ends = lineEnds(sketch, first.id);
       const orientation = ends ? orient(ends[0], ends[1], cursor) : 'aligned';
@@ -350,6 +381,82 @@ export class DimensionTool implements SketchTool {
   #hoverPick(): Pick | undefined {
     return this.#hover;
   }
+}
+
+/**
+ * A distance from a circle's or an arc's edge (ADR-0112): its orientation by
+ * where the label goes, as for two points, between the edge points; each
+ * round's side by the half it was clicked on, facing the other entity
+ * (`near`, left out as the default) or not (`far`).
+ */
+function roundDistance(sketch: SketchData, a: Pick, b: Pick, cursor: Vec2): Distance | undefined {
+  const shape = (orientation: Orientation): Distance => {
+    const d: Distance = {
+      type: 'distance',
+      orientation,
+      a: a.id,
+      b: b.id,
+      expr: '',
+      driven: false,
+    };
+    const sideA = sideOf(sketch, a, b, orientation);
+    const sideB = sideOf(sketch, b, a, orientation);
+    return {
+      ...d,
+      ...(sideA === 'far' && { sideA }),
+      ...(sideB === 'far' && { sideB }),
+    };
+  };
+  const ends = distanceEnds(sketch, shape('aligned'));
+  if (!ends) return undefined;
+  return shape(orient(ends[0], ends[1], cursor));
+}
+
+/**
+ * Which edge of round pick `round` a distance to `other` runs to: `near` when
+ * it was clicked on the half facing `other`'s reference point (a point
+ * itself, where the line is met from the center, the other round's center),
+ * across that direction, or along x or y for a horizontal or vertical one.
+ */
+function sideOf(
+  sketch: SketchData,
+  round: Pick,
+  other: Pick,
+  orientation: Orientation,
+): 'near' | 'far' | undefined {
+  if (!isRound(round.entity) || !round.at) return undefined;
+  const centre = sketch.entities[round.entity.center];
+  if (centre?.type !== 'point') return undefined;
+  const c: Vec2 = [centre.x, centre.y];
+  let ref: Vec2 | undefined;
+  if (other.entity.type === 'point') ref = [other.entity.x, other.entity.y];
+  else if (other.entity.type === 'line') {
+    const ends = lineEnds(sketch, other.id);
+    ref = ends && lineMeet(c, ends, orientation);
+  } else if (isRound(other.entity)) {
+    const p = sketch.entities[other.entity.center];
+    ref = p?.type === 'point' ? [p.x, p.y] : undefined;
+  }
+  if (!ref) return undefined;
+  const toward = sub(ref, c);
+  const click = sub(round.at, c);
+  const facing =
+    orientation === 'horizontal'
+      ? click[0] * toward[0]
+      : orientation === 'vertical'
+        ? click[1] * toward[1]
+        : click[0] * toward[0] + click[1] * toward[1];
+  return facing < 0 ? 'far' : 'near';
+}
+
+const isRound = (e: SketchEntity): e is Extract<SketchEntity, { type: 'circle' | 'arc' }> =>
+  e.type === 'circle' || e.type === 'arc';
+
+/** Whether point `id` is the center of circle `e`, or the center or an end of arc `e`. */
+function ownPoint(e: SketchEntity, id: SketchEntityId): boolean {
+  if (e.type === 'circle') return e.center === id;
+  if (e.type === 'arc') return e.center === id || e.start === id || e.end === id;
+  return false;
 }
 
 /**

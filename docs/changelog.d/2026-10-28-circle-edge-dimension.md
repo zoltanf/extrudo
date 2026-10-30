@@ -1,0 +1,1 @@
+- 2026-10-28 · **Dimensions from a circle's edge**: the Dimension tool measures from a circle's or an arc's edge to a line, a point or another circle (near or far edge, by the half you click), no tangent line needed (ADR-0112).

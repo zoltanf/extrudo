@@ -49,7 +49,7 @@ test('dimensions a line to the Y axis and its end to the origin', async ({ page 
   await page.keyboard.press('d');
   await click(30, 5);
   await expect(toolPrompt(page)).toHaveText(
-    'Click to place the length, or pick a second line or a point.',
+    'Click to place the length, or pick a second line, a point or a circle.',
   );
   await click(0, 25);
   // The dimension lands once the kernel has projected the axis, and opens for editing.

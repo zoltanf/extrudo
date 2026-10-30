@@ -111,6 +111,9 @@ interface Dependent {
 /** The primitive an entity item is named after (an ellipse's focus point comes first). */
 const own = (item: Item): SketchPrimitive | undefined => item.prims.find((p) => p.id === item.id);
 
+/** How many equations an item adds: its primitives but a dimension's helper points (ADR-0112). */
+const equationCount = (item: Item): number => item.prims.filter((p) => p.type !== 'point').length;
+
 /** The parameters of the temporary constraints that pull the `i`th dragged point of a system. */
 const dragX = (i: number) => `#drag_x${i}`;
 const dragY = (i: number) => `#drag_y${i}`;
@@ -190,6 +193,15 @@ class System {
         set(focus + 1, e.focus.y);
         set(this.addr(item.id), e.radmin);
       }
+      // A dimension's helper points (ADR-0112) start again where the mapping put them.
+      if (item.kind === 'dimension') {
+        for (const helper of item.prims) {
+          if (helper.type !== 'point') continue;
+          const addr = this.addr(helper.id);
+          set(addr, helper.x);
+          set(addr + 1, helper.y);
+        }
+      }
     }
   }
 
@@ -217,7 +229,7 @@ class System {
     const redundant: string[] = [];
     const partlyRedundant: string[] = [];
     for (const [doc, { item, equations }] of byItem(gcs.get_gcs_redundant_constraints())) {
-      (equations.size >= item.prims.length ? redundant : partlyRedundant).push(doc);
+      (equations.size >= equationCount(item) ? redundant : partlyRedundant).push(doc);
     }
     this.report = {
       entities: this.component.entities,
