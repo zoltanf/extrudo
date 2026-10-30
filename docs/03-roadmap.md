@@ -1514,10 +1514,10 @@ end to end, faster than in established desktop CAD.
   .sab .igs .iges .pvz` to STEP before the normal STEP import; the design
   stores only the STEP. Desktop only; the browser's import dialog points at
   the desktop app. Two slices:
-  - [ ] **S1 Packaging.** `fetch-cadmpeg.mjs` with hash check, `extraResources`,
+  - [x] **S1 Packaging.** `fetch-cadmpeg.mjs` with hash check, `extraResources`,
     the `package*` scripts and the desktop workflow fetch first, mac signature
     and smoke checks, NOTICE, `docs/references.md`, `docs/desktop.md`, the
-    release checklist.
+    release checklist. *Done 2026-10-30.*
   - [ ] **S2 Import flow.** `cadmpeg.ts` + `cadmpegService.ts` in main with the
     IPC channels, `Platform.convertCad`, `IMPORT_ACCEPT` and `pickImportFile`
     in the renderer, unit tests with a fake spawn.

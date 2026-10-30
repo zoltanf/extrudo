@@ -2650,7 +2650,7 @@ change was finished, a kebab-case slug; `README.md` in the folder is the
 permanent explainer and is never collected) and its content is exactly one line
 matching `- \d{4}-\d{2}-\d{2} · **[^*]+**…` — no heading, no blank lines, no
 second paragraph; **a pull request never edits `docs/CHANGELOG.md`** (CI refuses
-it; the release commit's rename in `docs/release-checklist.md` step 2 is the one
+it; the release commit's rename (`docs/release-checklist.md`) is the one
 edit, made after `pnpm changelog`), and a fragment whose line is already in the
 changelog is refused, so a folded-in line is not duplicated by re-adding it.
 
@@ -3635,3 +3635,24 @@ optional, display denominator `2^(precision + 2)` capped at 64, inch designs onl
 `gridStep`'s unit), the viewport store's `lengthUnit` (`AppShell` sets it from `doc.settings.units`;
 `sketch/tools/host.ts` passes it to `gridStep`; not a preference) and `GridPlane.tsx`'s `uLevels`
 uniform table with the per-fragment scan. e2e: `e2e/document-units.spec.ts`, `e2e/inch-grid.spec.ts`.
+
+ADR-0115 (the owner, 2026-10-30): **Other CAD files through a bundled cadmpeg** (P6-19).
+`apps/desktop/cadmpeg.json` (the pin: version, repository, per-target archive name and SHA-256 from the
+release's `sha256.sum`), `apps/desktop/scripts/fetch-cadmpeg.mjs` (+ `fetch-cadmpeg.test.mjs`;
+`--target`, `--pin`, `--force`; `.version` and `.source` mark a finished fetch),
+`apps/desktop/vendor/cadmpeg/` (gitignored), `electron-builder.yml`'s `extraResources`, the `cadmpeg`
+and `package*` scripts in `apps/desktop/package.json`, `.github/workflows/desktop.yml` ("Fetch
+cadmpeg"; the mac verify step's `codesign` and `--version` of the bundled binary, "Check the
+AppImage's cadmpeg", both Windows smoke steps), `NOTICE` §4, `docs/desktop.md` ("Other CAD files").
+**Rules:** the binary comes only through `fetch-cadmpeg.mjs`, and only after the archive's SHA-256
+matched `cadmpeg.json` (no flag skips the check; a mismatch leaves no binary); `vendor/` is never
+committed; the packaged path is `resources/cadmpeg/cadmpeg[.exe]` with its `LICENSE` beside it; every
+`package*` script and the desktop workflow's package jobs fetch before building, and the workflow
+fails unless the packaged binary prints the pinned version; updating cadmpeg is the release
+checklist's step (version and the five hashes, nothing else); the formats are named by extension only
+(`.sldprt .ipt .iam .catpart .fcstd .sat .smt .smb .sab .igs .iges .pvz`), never by vendor or product.
+Main looks the binary up in this order: the preference `cadmpeg.path` → `process.resourcesPath/cadmpeg/`
+→ the dev checkout's `apps/desktop/vendor/cadmpeg/` → `PATH`. A conversion runs without a shell in
+`<temp>/extrudo-cadmpeg/<uuid>/` (mode 0700, removed afterwards), 120 s timeout, stdout/stderr capped
+at 64 KiB, input and output at most 100 MiB, no `--allow-errors`; the design stores only the STEP (no
+schema change). S2 (the import flow) adds its files here.

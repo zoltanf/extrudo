@@ -112,6 +112,12 @@ jobs:
       - name: Download Electron's binary
         run: node apps/desktop/node_modules/electron/install.js
 
+      # The pinned cadmpeg for this runner's OS, hash-checked, into
+      # apps/desktop/vendor/cadmpeg (P6-19, ADR-0115 §3); electron-builder
+      # ships it as resources/cadmpeg.
+      - name: Fetch cadmpeg
+        run: pnpm --filter @extrudo/desktop cadmpeg
+
       - name: Build the app
         env:
           EXTRUDO_CHANNEL: ${{ startsWith(github.ref, 'refs/tags/v') && 'stable' || '' }}
@@ -171,14 +177,22 @@ jobs:
           hdiutil attach -nobrowse -readonly -mountpoint "$work/dmg" "$dmg"
           trap 'hdiutil detach "$work/dmg" -force || true' EXIT
           fail=0
+          cadmpeg_version=$(node -p "require('./apps/desktop/cadmpeg.json').version")
           for app in "$work"/zip/*.app "$work"/dmg/*.app; do
             echo "::group::$app"
             codesign --verify --deep --strict --verbose=2 "$app" || fail=1
             codesign -dv --verbose=2 "$app" 2>&1 | grep -E 'Identifier|Signature|Authority|TeamIdentifier|flags' || true
             spctl --assess --type execute -vv "$app" 2>&1 || echo "(spctl rejects an ad-hoc app: expected)"
+            # The bundled cadmpeg (ADR-0115 §3): signed, and it runs.
+            cadmpeg="$app/Contents/Resources/cadmpeg/cadmpeg"
+            codesign --verify --strict --verbose=2 "$cadmpeg" || fail=1
+            codesign -dv --verbose=2 "$cadmpeg" 2>&1 | grep -E 'Identifier|Signature|flags' || true
+            out=$("$cadmpeg" --version 2>&1) || true
+            echo "$out"
+            case "$out" in *"$cadmpeg_version"*) ;; *) echo "cadmpeg --version did not print $cadmpeg_version"; fail=1 ;; esac
             echo "::endgroup::"
           done
-          if [ "$fail" != 0 ]; then echo "codesign verification failed"; exit 1; fi
+          if [ "$fail" != 0 ]; then echo "codesign or cadmpeg verification failed"; exit 1; fi
           # Launch smoke: the packaged binary must stay up for 15 s.
           app=$(ls -d "$work"/zip/*.app | head -n1)
           exe="$app/Contents/MacOS/$(defaults read "$app/Contents/Info" CFBundleExecutable)"
@@ -202,6 +216,19 @@ jobs:
           chmod +x apps/desktop/release/*.AppImage
           xvfb-run -a node apps/desktop/scripts/smoke.mjs --app apps/desktop/release/extrudo-*.AppImage
 
+      # The bundled cadmpeg (ADR-0115 §3) is in the image and runs.
+      - name: Check the AppImage's cadmpeg
+        if: ${{ matrix.os == 'linux' }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./apps/desktop/cadmpeg.json').version")
+          image=$(ls "$PWD"/apps/desktop/release/extrudo-*.AppImage | head -n1)
+          work=$(mktemp -d)
+          (cd "$work" && "$image" --appimage-extract > /dev/null)
+          out=$("$work/squashfs-root/resources/cadmpeg/cadmpeg" --version 2>&1)
+          echo "$out"
+          case "$out" in *"$version"*) ;; *) echo "cadmpeg --version did not print $version"; exit 1 ;; esac
+
       # Release only (and a manual run that asks for it): install the NSIS
       # installer silently and run the smoke script against the installed
       # app, as the Linux job does with the AppImage. v0.7.0 shipped unable
@@ -219,6 +246,13 @@ jobs:
           $exe = Join-Path $env:LOCALAPPDATA 'Programs\Extrudo\Extrudo.exe'
           if (-not (Test-Path $exe)) { Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Programs') -Recurse -Filter *.exe | Select-Object FullName; throw "installed exe not found at $exe" }
           node apps/desktop/scripts/smoke.mjs --app "$exe"
+          if ($LASTEXITCODE -ne 0) { throw "smoke failed ($LASTEXITCODE)" }
+          # The bundled cadmpeg (ADR-0115 §3), beside the installed exe.
+          $version = node -p "require('./apps/desktop/cadmpeg.json').version"
+          $cadmpeg = Join-Path (Split-Path $exe) 'resources\cadmpeg\cadmpeg.exe'
+          $out = & $cadmpeg --version 2>&1 | Out-String
+          Write-Output $out
+          if ($LASTEXITCODE -ne 0 -or -not $out.Contains($version)) { throw "cadmpeg --version did not print $version" }
 
       # The portable exe unpacks the app into %TEMP% and runs it with the same
       # arguments and environment, so the smoke script drives it as it does
@@ -232,6 +266,21 @@ jobs:
           $portable = Get-ChildItem apps/desktop/release/*-portable.exe | Select-Object -First 1
           if (-not $portable) { throw "no portable exe in apps/desktop/release" }
           node apps/desktop/scripts/smoke.mjs --app $portable.FullName
+          if ($LASTEXITCODE -ne 0) { throw "smoke failed ($LASTEXITCODE)" }
+          # The bundled cadmpeg (ADR-0115 §3): the portable exe only unpacks
+          # while it runs, so unpack it with 7-Zip (the NSIS stub holds the
+          # app as an inner .7z) and run the copy.
+          $version = node -p "require('./apps/desktop/cadmpeg.json').version"
+          $x = Join-Path $env:RUNNER_TEMP 'portable-x'
+          7z x $portable.FullName "-o$x" -y | Out-Null
+          if (-not (Get-ChildItem $x -Recurse -Filter cadmpeg.exe)) {
+            Get-ChildItem $x -Recurse -Filter *.7z | ForEach-Object { 7z x $_.FullName "-o$x\app" -y | Out-Null }
+          }
+          $cadmpeg = Get-ChildItem $x -Recurse -Filter cadmpeg.exe | Select-Object -First 1
+          if (-not $cadmpeg) { Get-ChildItem $x -Recurse | Select-Object FullName; throw "no cadmpeg.exe in the portable exe" }
+          $out = & $cadmpeg.FullName --version 2>&1 | Out-String
+          Write-Output $out
+          if ($LASTEXITCODE -ne 0 -or -not $out.Contains($version)) { throw "cadmpeg --version did not print $version" }
 
   homebrew:
     # Render the cask from the arm64 mac zip and push it to the tap (P6-01,

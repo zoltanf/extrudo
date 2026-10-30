@@ -11,10 +11,11 @@
     "build": "electron-vite build",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "package": "electron-vite build && electron-builder --publish never",
-    "package:linux": "electron-vite build && electron-builder --linux --publish never",
-    "package:win": "electron-vite build && electron-builder --win --publish never",
-    "package:mac": "electron-vite build && electron-builder --mac --publish never"
+    "cadmpeg": "node scripts/fetch-cadmpeg.mjs",
+    "package": "node scripts/fetch-cadmpeg.mjs && electron-vite build && electron-builder --publish never",
+    "package:linux": "node scripts/fetch-cadmpeg.mjs && electron-vite build && electron-builder --linux --publish never",
+    "package:win": "node scripts/fetch-cadmpeg.mjs && electron-vite build && electron-builder --win --publish never",
+    "package:mac": "node scripts/fetch-cadmpeg.mjs && electron-vite build && electron-builder --mac --publish never"
   },
   "devDependencies": {
     "@extrudo/core": "workspace:*",

@@ -35,6 +35,25 @@ different geometry model (triangle-mesh CSG, whereas we use exact B-rep).
 | Plugin-based "add from script / add from file" | ops `AddFromScript`, `AddFromFile` | Compare when designing the script feature (P5-02) and plugin API (P6-03). |
 | Icons | "Solar Bold" icon set (CC-BY-4.0, third-party) | Not for us: we draw our own icon set. |
 
+## cadmpeg (reviewed 2026-10-30)
+
+- <https://github.com/cadmpeg/cadmpeg>: a Rust command-line converter,
+  **Apache-2.0** code and **CC-BY-4.0** docs, written clean-room (its
+  `LEGAL.md`). Prebuilt binaries for Linux, macOS and Windows with a
+  `sha256.sum` on each release.
+
+**What it is:** `cadmpeg convert in.<ext> -o out.step` reads other CAD
+programs' native files and writes STEP. In v0.6.7 `.ipt .iam .sat .smt .smb
+.sab .sldprt .catpart .pvz` give a connected B-rep (no colours or names),
+`.fcstd` and IGES keep more; `.3dm` and `.prt` are too early to use.
+
+**How we use it:** the desktop app bundles it as a separate executable,
+pinned by version and per-target SHA-256 in `apps/desktop/cadmpeg.json` and
+fetched and hash-checked at build time (P6-19, ADR-0115).
+
+**Code reuse: none.** It runs as a separate process; nothing is linked or
+copied into Extrudo.
+
 ## Other projects to know (not reviewed in depth yet)
 
 | Project | Why it matters | License |

@@ -33,6 +33,14 @@ does not download Electron's binary. `dev` needs it once:
 `node apps/desktop/node_modules/electron/install.js`. `package` does not (electron-builder
 downloads the Electron it packs itself), but running the result does.
 
+Every `package*` script first runs `pnpm --filter @extrudo/desktop cadmpeg`
+(`scripts/fetch-cadmpeg.mjs`): it downloads the cadmpeg pinned in
+`apps/desktop/cadmpeg.json` for this OS, refuses it unless its SHA-256 matches
+the pin, and puts `cadmpeg[.exe]` and its `LICENSE` in `apps/desktop/vendor/cadmpeg/`
+(gitignored), which the installers carry as `resources/cadmpeg/`. A second run
+says "already fetched"; `--force` fetches again, `--target <triple>` fetches
+another OS's build (without running it).
+
 ## Slicers
 
 "Open in slicer" (the Export dialog and the Send to Slicer tile, ADR-0062's
@@ -131,6 +139,23 @@ renders a cube in every preset at draft quality and once at standard, through
 the real `nodeBlenderEnv`. It runs only with `EXTRUDO_BLENDER=1` and a
 `blender` on `PATH` (`EXTRUDO_BLENDER_PATH` points at a program instead);
 the pictures stay in `<tmp>/extrudo-pictures/` for a look.
+
+## Other CAD files
+
+The desktop app imports `.sldprt .ipt .iam .catpart .fcstd .sat .smt .smb .sab
+.igs .iges .pvz` by converting them to STEP with the bundled cadmpeg (P6-19,
+ADR-0115) and then importing that STEP. What you get is a B-rep only: no
+colours, names, history or sketches (`.fcstd` and IGES keep more). The design
+stores the STEP, not the original file, so it opens in the browser too.
+
+During the conversion the file is written to a folder under the OS temp
+directory (`extrudo-cadmpeg/`) and removed afterwards. To use another cadmpeg
+build, set `cadmpeg.path` in `preferences.json` in the app's user data
+directory:
+
+```json
+{ "cadmpeg.path": "/opt/cadmpeg/cadmpeg" }
+```
 
 ## Connecting an agent (MCP)
 
