@@ -2445,46 +2445,93 @@ the enum in this build; the numbers above are the enum's.
 | file | rebuild | tol | faces | facets | max edge tol written | max vertex tol written | back valid | back faces | back solids | ratio | back invalid edges | back invalid faces | top status | fix valid | fix faces | fix ratio | u2 valid | u2 faces | u2 solids | u2 ratio | uncertainty |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | own/ball.stl | exact | 0.01 | 1 | 0 | 1e-07 | 1e-07 | valid | 1 | 1 | 1 | 0 | 0 | - | valid | 1 | 1 | valid | 1 | 1 | 1 | 1e-07 |
-| own/battery-holder.stl | hybrid | 0.01 | 131 | 0 | 0.0168194 | 0.0168194 | valid | 131 | 1 | 1 | 0 | 0 | - | valid | 131 | 1 | valid | 131 | 1 | 1 | 0.005 |
-| own/battery-power-adapter.stl | hybrid | 0.1 | 995 | 416 | 0.164814 | 0.164814 | invalid | 999 | 2 | 0.999899 | 0 | 2 | face BadOrientationOfSubshape x1 | invalid | 1000 | 0.999898 | invalid | 999 | 2 | 0.999899 | 0.05 |
-| own/desk-organizer-module-small.stl | hybrid | 0.01 | 418 | 42 | 0.0153582 | 0.0153582 | invalid | 418 | 1 | 0.999998 | 0 | 1 | face BadOrientationOfSubshape x1 | invalid | 418 | 0.999998 | invalid | 418 | 1 | 0.999998 | 0.005 |
-| own/drill-block.stl | hybrid | 0.01 | 388 | 208 | 0.58915 | 0.58915 | invalid | 388 | 1 | 0.999998 | 0 | 2 | face UnorientableShape x2 | invalid | 388 | 0.999998 | invalid | 388 | 1 | 0.999998 | 0.01 |
+| own/battery-holder.stl | hybrid | 0.01 | 131 | 0 | 0.0168194 | 0.0168194 | valid | 131 | 1 | 1 | 0 | 0 | - | valid | 131 | 1 | valid | 131 | 1 | 1 | 0.02 |
+| own/battery-power-adapter.stl | hybrid | 0.1 | 995 | 416 | 0.164814 | 0.164814 | invalid | 999 | 2 | 0.999899 | 0 | 2 | face BadOrientationOfSubshape x1 | invalid | 1000 | 0.999898 | invalid | 999 | 2 | 0.999298 | 0.2 |
+| own/desk-organizer-module-small.stl | hybrid | 0.01 | 418 | 42 | 0.0153582 | 0.0153582 | invalid | 418 | 1 | 0.999998 | 0 | 1 | face BadOrientationOfSubshape x1 | invalid | 418 | 0.999998 | invalid | 418 | 1 | 0.999958 | 0.02 |
+| own/drill-block.stl | hybrid | 0.01 | 388 | 208 | 0.58915 | 0.58915 | invalid | 388 | 1 | 0.999998 | 0 | 2 | face UnorientableShape x2 | invalid | 388 | 0.999998 | valid | 388 | 1 | 0.999999 | 0.5 |
 | own/grass-for-flower.stl | refused | 0.1 | 0 | 0 | 0 | 0 | invalid | 0 | 0 | 0 | 0 | 0 | - | invalid | 0 | 0 | invalid | 0 | 0 | 0 | -1 |
-| own/hole-filler-35mm.stl | exact | 0.01 | 6 | 0 | 1e-06 | 1e-06 | valid | 6 | 1 | 1 | 0 | 0 | - | valid | 6 | 1 | valid | 6 | 1 | 1 | 2e-07 |
+| own/hole-filler-35mm.stl | exact | 0.01 | 6 | 0 | 1e-06 | 1e-06 | valid | 6 | 1 | 1 | 0 | 0 | - | valid | 6 | 1 | valid | 6 | 1 | 1 | 1e-06 |
 | own/hole-filler-5mm.stl | exact | 0.01 | 6 | 0 | 1e-07 | 1.00001e-07 | valid | 6 | 1 | 1 | 0 | 0 | - | valid | 6 | 1 | valid | 6 | 1 | 1 | 1e-07 |
-| own/kuglbahn-pillar-base.stl | hybrid | 0.1 | 3930 | 3398 | 0.229375 | 0.229375 | invalid | 3931 | 1 | 0.999357 | 0 | 6 | face UnorientableShape x3 | invalid | 3938 | 0.998435 | invalid | 3931 | 1 | 0.999357 | 0.02 |
-| own/mirna-doodle-1.stl | hybrid | 0.1 | 120 | 43 | 0.151169 | 0.151169 | valid | 120 | 5 | 0.999174 | 0 | 0 | - | valid | 120 | 0.999174 | valid | 120 | 5 | 0.999174 | 0.02 |
+| own/kuglbahn-pillar-base.stl | hybrid | 0.1 | 3930 | 3398 | 0.229375 | 0.229375 | invalid | 3931 | 1 | 0.999357 | 0 | 6 | face UnorientableShape x3 | invalid | 3938 | 0.998435 | invalid | 3931 | 1 | 0.999166 | 0.2 |
+| own/mirna-doodle-1.stl | hybrid | 0.1 | 120 | 43 | 0.151169 | 0.151169 | valid | 120 | 5 | 0.999174 | 0 | 0 | - | valid | 120 | 0.999174 | valid | 120 | 5 | 1.0032 | 0.2 |
 | own/numbers-base-top.stl | exact | 0.01 | 471 | 0 | 1.5e-07 | 1.5e-07 | valid | 471 | 1 | 1 | 0 | 0 | - | valid | 471 | 1 | valid | 471 | 1 | 1 | 2e-07 |
-| own/object-permanence-base.stl | hybrid | 0.01 | 1985 | 1620 | 0.163989 | 0.163989 | valid | 1985 | 1 | 0.999986 | 0 | 0 | - | valid | 1985 | 0.999986 | valid | 1985 | 1 | 0.999986 | 0.005 |
-| own/peg-perego-button.stl | hybrid | 0.02 | 212 | 0 | 0.044735 | 0.308934 | invalid | 214 | 1 | 1.00013 | 0 | 4 | face UnorientableShape x3 | invalid | 214 | 1.00013 | invalid | 214 | 1 | 1.00013 | 0.01 |
-| own/phone-stand-foldable.stl | hybrid | 0.1 | 2329 | 1852 | 0.271369 | 0.271369 | invalid | 2346 | 2 | 0.979189 | 0 | 18 | face UnorientableShape x8 | invalid | 2355 | 0.996416 | invalid | 2346 | 2 | 0.979189 | 0.05 |
+| own/object-permanence-base.stl | hybrid | 0.01 | 1985 | 1620 | 0.163989 | 0.163989 | valid | 1985 | 1 | 0.999986 | 0 | 0 | - | valid | 1985 | 0.999986 | valid | 1985 | 1 | 1.00001 | 0.2 |
+| own/peg-perego-button.stl | hybrid | 0.02 | 212 | 0 | 0.044735 | 0.308934 | invalid | 214 | 1 | 1.00013 | 0 | 4 | face UnorientableShape x3 | invalid | 214 | 1.00013 | invalid | 214 | 1 | 0.99996 | 0.2 |
+| own/phone-stand-foldable.stl | hybrid | 0.1 | 2329 | 1852 | 0.271369 | 0.271369 | invalid | 2346 | 2 | 0.979189 | 0 | 18 | face UnorientableShape x8 | invalid | 2355 | 0.996416 | invalid | 2346 | 2 | 1.00331 | 0.2 |
 | own/puzzle-base-circle.stl | exact | 0.01 | 37 | 0 | 1.5e-07 | 1.5e-07 | valid | 37 | 1 | 1 | 0 | 0 | - | valid | 37 | 1 | valid | 37 | 1 | 1 | 2e-07 |
-| own/puzzle-insert-circle.stl | hybrid | 0.05 | 1609 | 1230 | 0.0811348 | 0.0811348 | valid | 1609 | 1 | 1.00045 | 0 | 0 | - | valid | 1609 | 1.00045 | valid | 1609 | 1 | 1.00045 | 0.02 |
-| own/remove-before-flight-cover.stl | hybrid | 0.01 | 438 | 120 | 0.872458 | 0.872458 | valid | 438 | 1 | 1.00002 | 0 | 0 | - | valid | 438 | 1.00002 | valid | 438 | 1 | 1.00002 | 0.01 |
-| own/scrap-plate.stl | hybrid | 0.02 | 154 | 0 | 0.034724 | 0.034724 | valid | 154 | 1 | 0.999994 | 0 | 0 | - | valid | 154 | 0.999994 | valid | 154 | 1 | 0.999994 | 0.01 |
-| own/shower-holder.stl | hybrid | 0.01 | 901 | 472 | 0.0159189 | 0.0159189 | invalid | 901 | 1 | 1.00005 | 0 | 2 | face BadOrientationOfSubshape x2 | invalid | 901 | 1.00005 | invalid | 901 | 1 | 1.00005 | 0.005 |
-| own/spool-nut-v4.1.stl | hybrid | 0.01 | 718 | 0 | 0.0158714 | 0.0158714 | valid | 718 | 1 | 0.999655 | 0 | 0 | - | valid | 718 | 0.999655 | valid | 718 | 1 | 0.999655 | 0.005 |
-| own/spool-screw-v4.1.stl | hybrid | 0.05 | 2915 | 1841 | 0.0795326 | 0.0795326 | valid | 2915 | 0 | 0.998541 | 0 | 0 | - | valid | 2915 | 0.998541 | valid | 2915 | 0 | 0.998541 | 0.01 |
-| own/track-straight-100mm.stl | hybrid | 0.01 | 306 | 237 | 0.0137019 | 0.0137019 | valid | 306 | 1 | 1.00001 | 0 | 0 | - | valid | 306 | 1.00001 | valid | 306 | 1 | 1.00001 | 0.005 |
+| own/puzzle-insert-circle.stl | hybrid | 0.05 | 1609 | 1230 | 0.0811348 | 0.0811348 | valid | 1609 | 1 | 1.00045 | 0 | 0 | - | valid | 1609 | 1.00045 | valid | 1609 | 1 | 1.00045 | 0.1 |
+| own/remove-before-flight-cover.stl | hybrid | 0.01 | 438 | 120 | 0.872458 | 0.872458 | valid | 438 | 1 | 1.00002 | 0 | 0 | - | valid | 438 | 1.00002 | valid | 438 | 1 | 1.00002 | 1 |
+| own/scrap-plate.stl | hybrid | 0.02 | 154 | 0 | 0.034724 | 0.034724 | valid | 154 | 1 | 0.999994 | 0 | 0 | - | valid | 154 | 0.999994 | valid | 154 | 1 | 0.999994 | 0.05 |
+| own/shower-holder.stl | hybrid | 0.01 | 901 | 472 | 0.0159189 | 0.0159189 | invalid | 901 | 1 | 1.00005 | 0 | 2 | face BadOrientationOfSubshape x2 | invalid | 901 | 1.00005 | invalid | 901 | 1 | 1.00009 | 0.02 |
+| own/spool-nut-v4.1.stl | hybrid | 0.01 | 718 | 0 | 0.0158714 | 0.0158714 | valid | 718 | 1 | 0.999655 | 0 | 0 | - | valid | 718 | 0.999655 | valid | 718 | 1 | 1.00019 | 0.02 |
+| own/spool-screw-v4.1.stl | hybrid | 0.05 | 2915 | 1841 | 0.0795326 | 0.0795326 | valid | 2915 | 0 | 0.998541 | 0 | 0 | - | valid | 2915 | 0.998541 | valid | 2915 | 0 | 1.00021 | 0.1 |
+| own/track-straight-100mm.stl | hybrid | 0.01 | 306 | 237 | 0.0137019 | 0.0137019 | valid | 306 | 1 | 1.00001 | 0 | 0 | - | valid | 306 | 1.00001 | valid | 306 | 1 | 1 | 0.02 |
 | own/trashcan-repair-foot.stl | exact | 0.01 | 16 | 0 | 1.5e-07 | 1.5e-07 | valid | 16 | 1 | 1 | 0 | 0 | - | valid | 16 | 1 | valid | 16 | 1 | 1 | 2e-07 |
-| own/trashcan-spacer.stl | hybrid | 0.05 | 78 | 0 | 0.0450076 | 0.0450076 | valid | 78 | 1 | 1.00001 | 0 | 0 | - | valid | 78 | 1.00001 | valid | 78 | 1 | 1.00001 | 0.02 |
-| own/whiteboard-tray-v5.stl | hybrid | 0.02 | 1302 | 622 | 0.826073 | 0.826073 | invalid | 1302 | 1 | 1.06794 | 0 | 3 | face BadOrientationOfSubshape x2 | invalid | 1307 | 1.06794 | invalid | 1302 | 1 | 1.06794 | 0.01 |
-| third-party/chip-bag-clip-small.stl | hybrid | 0.01 | 757 | 500 | 0.0145976 | 0.0145976 | valid | 757 | 0 | 0.999923 | 0 | 0 | - | valid | 757 | 0.999923 | valid | 757 | 0 | 0.999923 | 0.002 |
-| third-party/door-stopper-top.stl | hybrid | 0.01 | 147 | 0 | 0.0163259 | 0.0163259 | valid | 147 | 1 | 0.99999 | 0 | 0 | - | valid | 147 | 0.99999 | valid | 147 | 1 | 0.99999 | 0.005 |
+| own/trashcan-spacer.stl | hybrid | 0.05 | 78 | 0 | 0.0450076 | 0.0450076 | valid | 78 | 1 | 1.00001 | 0 | 0 | - | valid | 78 | 1.00001 | valid | 78 | 1 | 1 | 0.05 |
+| own/whiteboard-tray-v5.stl | hybrid | 0.02 | 1302 | 622 | 0.826073 | 0.826073 | invalid | 1302 | 1 | 1.06794 | 0 | 3 | face BadOrientationOfSubshape x2 | invalid | 1307 | 1.06794 | invalid | 1302 | 1 | 1.06825 | 1 |
+| third-party/chip-bag-clip-small.stl | hybrid | 0.01 | 757 | 500 | 0.0145976 | 0.0145976 | valid | 757 | 0 | 0.999923 | 0 | 0 | - | valid | 757 | 0.999923 | valid | 757 | 0 | 0.999645 | 0.02 |
+| third-party/door-stopper-top.stl | hybrid | 0.01 | 147 | 0 | 0.0163259 | 0.0163259 | valid | 147 | 1 | 0.99999 | 0 | 0 | - | valid | 147 | 0.99999 | valid | 147 | 1 | 0.999976 | 0.02 |
 | third-party/gardena-end.stl | hybrid | 0.01 | 17 | 0 | 0.0564495 | 0.0564495 | valid | 17 | 1 | 1.00001 | 0 | 0 | - | valid | 17 | 1.00001 | valid | 17 | 1 | 1.00001 | 0.05 |
-| third-party/gear-bearing-5.stl | hybrid | 0.1 | 2330 | 1444 | 0.754246 | 0.754246 | invalid | 2414 | 7 | 0.998211 | 0 | 52 | face BadOrientationOfSubshape x46 | invalid | 2414 | 0.998211 | invalid | 2414 | 7 | 0.998211 | 0.05 |
-| third-party/hex-key-cap-3mm.stl | hybrid | 0.02 | 4590 | 3470 | 0.0347333 | 0.0347333 | valid | 4591 | 0 | 1.00297 | 0 | 0 | - | valid | 4591 | 1.00297 | valid | 4591 | 0 | 1.00297 | 0.005 |
-| third-party/hot-wheels-connector.stl | hybrid | 0.01 | 2518 | 2318 | 0.0286497 | 0.0286497 | invalid | 2519 | 1 | 1.00027 | 0 | 8 | face BadOrientationOfSubshape x6 | invalid | 2520 | 1.00027 | invalid | 2519 | 1 | 1.00027 | 0.002 |
-| third-party/makita-vacuum-holder.stl | hybrid | 0.05 | 3480 | 2662 | 0.581547 | 0.581547 | invalid | 3481 | 1 | 0.999774 | 0 | 1 | face UnorientableShape x1 | invalid | 3481 | 0.999774 | invalid | 3481 | 1 | 0.999774 | 0.02 |
-| third-party/micro-sd-keyring-inner.stl | hybrid | 0.01 | 66 | 18 | 0.999885 | 0.999885 | valid | 66 | 1 | 0.99926 | 0 | 0 | - | valid | 66 | 0.99926 | valid | 66 | 1 | 0.99926 | 0.2 |
-| third-party/micro-sd-keyring-outer.stl | exact | 0.01 | 41 | 0 | 1.5e-07 | 1.5e-07 | valid | 41 | 1 | 1 | 0 | 0 | - | valid | 41 | 1 | valid | 41 | 1 | 1 | 1e-07 |
+| third-party/gear-bearing-5.stl | hybrid | 0.1 | 2330 | 1444 | 0.754246 | 0.754246 | invalid | 2414 | 7 | 0.998211 | 0 | 52 | face BadOrientationOfSubshape x46 | invalid | 2414 | 0.998211 | invalid | 2414 | 7 | 0.999389 | 1 |
+| third-party/hex-key-cap-3mm.stl | hybrid | 0.02 | 4590 | 3470 | 0.0347333 | 0.0347333 | valid | 4591 | 0 | 1.00297 | 0 | 0 | - | valid | 4591 | 1.00297 | valid | 4591 | 0 | 1.0012 | 0.05 |
+| third-party/hot-wheels-connector.stl | hybrid | 0.01 | 2518 | 2318 | 0.0286497 | 0.0286497 | invalid | 2519 | 1 | 1.00027 | 0 | 8 | face BadOrientationOfSubshape x6 | invalid | 2520 | 1.00027 | invalid | 2519 | 1 | 1.0001 | 0.02 |
+| third-party/makita-vacuum-holder.stl | hybrid | 0.05 | 3480 | 2662 | 0.581547 | 0.581547 | invalid | 3481 | 1 | 0.999774 | 0 | 1 | face UnorientableShape x1 | invalid | 3481 | 0.999774 | invalid | 3480 | 1 | 1.00008 | 0.5 |
+| third-party/micro-sd-keyring-inner.stl | hybrid | 0.01 | 66 | 18 | 0.999885 | 0.999885 | valid | 66 | 1 | 0.99926 | 0 | 0 | - | valid | 66 | 0.99926 | valid | 66 | 1 | 0.999918 | 1 |
+| third-party/micro-sd-keyring-outer.stl | exact | 0.01 | 41 | 0 | 1.5e-07 | 1.5e-07 | valid | 41 | 1 | 1 | 0 | 0 | - | valid | 41 | 1 | valid | 41 | 1 | 1 | 2e-07 |
 | third-party/mms-camera-mount.stl | exact | 0.01 | 11 | 0 | 1.5e-07 | 1.5e-07 | valid | 11 | 1 | 1 | 0 | 0 | - | valid | 11 | 1 | valid | 11 | 1 | 1 | 2e-07 |
-| third-party/mms-flat-stand.stl | exact | 0.01 | 44 | 0 | 0.000220075 | 0.0002214 | valid | 44 | 1 | 1 | 0 | 0 | - | valid | 44 | 1 | valid | 44 | 1 | 1 | 1e-05 |
+| third-party/mms-flat-stand.stl | exact | 0.01 | 44 | 0 | 0.000220075 | 0.0002214 | valid | 44 | 1 | 1 | 0 | 0 | - | valid | 44 | 1 | valid | 44 | 1 | 1 | 0.0002 |
 | third-party/mms-m5-nut.stl | refused | 0.02 | 0 | 0 | 0 | 0 | invalid | 0 | 0 | 0 | 0 | 0 | - | invalid | 0 | 0 | invalid | 0 | 0 | 0 | -1 |
-| third-party/sock-clips-6x.stl | hybrid | 0.01 | 163 | 97 | 0.187077 | 0.187077 | invalid | 163 | 1 | 1.00012 | 0 | 1 | face UnorientableShape x1 | invalid | 163 | 1.00012 | invalid | 163 | 1 | 1.00012 | 0.01 |
-| third-party/spaghetti-measure.stl | hybrid | 0.01 | 165 | 55 | 0.786253 | 0.786253 | valid | 165 | 1 | 1.00013 | 0 | 0 | - | valid | 165 | 1.00013 | valid | 165 | 1 | 1.00013 | 0.01 |
-| third-party/vented-funnel.stl | hybrid | 0.02 | 715 | 86 | 0.500955 | 0.500955 | valid | 715 | 1 | 0.999155 | 0 | 0 | - | valid | 715 | 0.999155 | valid | 715 | 1 | 0.999155 | 0.01 |
-| third-party/wyze-garage-bracket.stl | hybrid | 0.01 | 84 | 0 | 0.0124522 | 0.0124522 | valid | 84 | 2 | 1.00001 | 0 | 0 | - | valid | 84 | 1.00001 | valid | 84 | 2 | 1.00001 | 0.005 |
+| third-party/sock-clips-6x.stl | hybrid | 0.01 | 163 | 97 | 0.187077 | 0.187077 | invalid | 163 | 1 | 1.00012 | 0 | 1 | face UnorientableShape x1 | invalid | 163 | 1.00012 | invalid | 163 | 1 | 1.00012 | 0.2 |
+| third-party/spaghetti-measure.stl | hybrid | 0.01 | 165 | 55 | 0.786253 | 0.786253 | valid | 165 | 1 | 1.00013 | 0 | 0 | - | valid | 165 | 1.00013 | valid | 165 | 1 | 0.999967 | 1 |
+| third-party/vented-funnel.stl | hybrid | 0.02 | 715 | 86 | 0.500955 | 0.500955 | valid | 715 | 1 | 0.999155 | 0 | 0 | - | valid | 715 | 0.999155 | valid | 715 | 1 | 0.999121 | 0.5 |
+| third-party/wyze-garage-bracket.stl | hybrid | 0.01 | 84 | 0 | 0.0124522 | 0.0124522 | valid | 84 | 2 | 1.00001 | 0 | 0 | - | valid | 84 | 1.00001 | valid | 84 | 2 | 1.00001 | 0.01 |
+
+**Second summary table (Q9-Q12; one row per file, as `S` prints it).**
+
+| file | rebuild | brep valid | brep faces | brep solids | brep ratio | healed valid | healed faces | healed rt valid | healed rt faces | healed rt solids | healed rt ratio | nopc valid | nopc faces | nopc solids | nopc ratio | pref2d valid | pref2d faces | pref2d solids | pref2d ratio | flagged wires | min edge in flagged | edges < uncertainty | written vertices->back vertices | written edges->back edges |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| own/ball.stl | exact | valid | 1 | 1 | 1 | valid | 1 | valid | 1 | 1 | 1 | valid | 1 | 1 | 1 | valid | 1 | 1 | 1 | 0 | 0 | 0 | 2->2 | 3->3 |
+| own/battery-holder.stl | hybrid | valid | 131 | 1 | 1 | valid | 131 | valid | 131 | 1 | 1 | valid | 131 | 1 | 0.999992 | valid | 131 | 1 | 1 | 0 | 0 | 0 | 372->372 | 470->470 |
+| own/battery-power-adapter.stl | hybrid | valid | 995 | 2 | 1 | valid | 995 | invalid | 999 | 2 | 0.999899 | invalid | 999 | 2 | 0.999896 | invalid | 999 | 2 | 0.999899 | 0 | 0 | 0 | 2940->2944 | 3931->3941 |
+| own/desk-organizer-module-small.stl | hybrid | valid | 418 | 1 | 1 | valid | 418 | invalid | 418 | 1 | 0.999998 | invalid | 418 | 1 | 1.00002 | invalid | 418 | 1 | 0.999998 | 0 | 0 | 0 | 6522->6522 | 6929->6929 |
+| own/drill-block.stl | hybrid | valid | 388 | 1 | 1 | valid | 388 | invalid | 388 | 1 | 0.999998 | invalid | 388 | 1 | 0.999998 | invalid | 388 | 1 | 0.999998 | 2 | 0.242139 | 0 | 872->872 | 1251->1251 |
+| own/grass-for-flower.stl | refused | invalid | 0 | 0 | 0 | invalid | 0 | invalid | 0 | 0 | 0 | invalid | 0 | 0 | 0 | invalid | 0 | 0 | 0 | 0 | 0 | 0 | 0->0 | 0->0 |
+| own/hole-filler-35mm.stl | exact | valid | 6 | 1 | 1 | valid | 6 | valid | 6 | 1 | 1 | valid | 6 | 1 | 1 | valid | 6 | 1 | 1 | 0 | 0 | 0 | 6->6 | 9->9 |
+| own/hole-filler-5mm.stl | exact | valid | 6 | 1 | 1 | valid | 6 | valid | 6 | 1 | 1 | valid | 6 | 1 | 1 | valid | 6 | 1 | 1 | 0 | 0 | 0 | 6->6 | 9->9 |
+| own/kuglbahn-pillar-base.stl | hybrid | valid | 3930 | 1 | 1 | valid | 3930 | invalid | 3931 | 1 | 0.999357 | invalid | 3931 | 1 | 0.999333 | invalid | 3931 | 1 | 0.999357 | 3 | 0.0155792 | 1 | 6335->6335 | 10264->10266 |
+| own/mirna-doodle-1.stl | hybrid | valid | 120 | 5 | 1 | valid | 120 | valid | 120 | 5 | 0.999174 | valid | 120 | 5 | 0.999645 | valid | 120 | 5 | 0.999174 | 0 | 0 | 0 | 220->220 | 330->330 |
+| own/numbers-base-top.stl | exact | valid | 471 | 1 | 1 | valid | 471 | valid | 471 | 1 | 1 | valid | 471 | 1 | 1 | valid | 471 | 1 | 1 | 0 | 0 | 0 | 888->808 | 1292->1212 |
+| own/object-permanence-base.stl | hybrid | valid | 1985 | 1 | 1 | valid | 1985 | valid | 1985 | 1 | 0.999986 | valid | 1985 | 1 | 0.999988 | valid | 1985 | 1 | 0.999986 | 0 | 0 | 0 | 2255->2255 | 4239->4239 |
+| own/peg-perego-button.stl | hybrid | valid | 212 | 1 | 1 | valid | 212 | invalid | 214 | 1 | 1.00013 | invalid | 214 | 1 | 1.0001 | invalid | 214 | 1 | 1.00013 | 3 | 0.129458 | 0 | 1223->1225 | 1431->1435 |
+| own/phone-stand-foldable.stl | hybrid | valid | 2329 | 2 | 1 | invalid | 2329 | invalid | 2346 | 2 | 0.979189 | invalid | 2348 | 2 | 0.979307 | invalid | 2346 | 2 | 0.979189 | 8 | 0.0053074 | 22 | 4563->4594 | 6864->6930 |
+| own/puzzle-base-circle.stl | exact | valid | 37 | 1 | 1 | valid | 37 | valid | 37 | 1 | 1 | valid | 37 | 1 | 1 | valid | 37 | 1 | 1 | 0 | 0 | 0 | 95->67 | 129->101 |
+| own/puzzle-insert-circle.stl | hybrid | valid | 1609 | 1 | 1 | valid | 1609 | valid | 1609 | 1 | 1.00045 | valid | 1609 | 1 | 1.00045 | valid | 1609 | 1 | 1.00045 | 0 | 0 | 0 | 4002->4002 | 5608->5608 |
+| own/remove-before-flight-cover.stl | hybrid | valid | 438 | 1 | 1 | valid | 438 | valid | 438 | 1 | 1.00002 | valid | 438 | 1 | 1.00002 | valid | 438 | 1 | 1.00002 | 0 | 0 | 0 | 686->686 | 1085->1085 |
+| own/scrap-plate.stl | hybrid | valid | 154 | 1 | 1 | valid | 154 | valid | 154 | 1 | 0.999994 | valid | 154 | 1 | 1.00001 | valid | 154 | 1 | 0.999994 | 0 | 0 | 0 | 1028->1028 | 1179->1179 |
+| own/shower-holder.stl | hybrid | valid | 901 | 1 | 1 | valid | 901 | invalid | 901 | 1 | 1.00005 | invalid | 901 | 1 | 1.00006 | invalid | 901 | 1 | 1.00005 | 0 | 0 | 0 | 2458->2458 | 3357->3357 |
+| own/spool-nut-v4.1.stl | hybrid | valid | 718 | 1 | 1 | valid | 718 | valid | 718 | 1 | 0.999655 | valid | 718 | 1 | 0.999698 | valid | 718 | 1 | 0.999655 | 0 | 0 | 0 | 2700->2700 | 3416->3416 |
+| own/spool-screw-v4.1.stl | hybrid | valid | 2915 | 0 | 1 | valid | 2915 | valid | 2915 | 0 | 0.998541 | valid | 2915 | 0 | 0.99691 | valid | 2915 | 0 | 0.998541 | 0 | 0 | 0 | 7582->7582 | 10462->10462 |
+| own/track-straight-100mm.stl | hybrid | valid | 306 | 1 | 1 | valid | 306 | valid | 306 | 1 | 1.00001 | valid | 306 | 1 | 1.00001 | valid | 306 | 1 | 1.00001 | 0 | 0 | 0 | 323->323 | 627->627 |
+| own/trashcan-repair-foot.stl | exact | valid | 16 | 1 | 1 | valid | 16 | valid | 16 | 1 | 1 | valid | 16 | 1 | 1 | valid | 16 | 1 | 1 | 0 | 0 | 0 | 64->28 | 72->42 |
+| own/trashcan-spacer.stl | hybrid | valid | 78 | 1 | 1 | valid | 78 | valid | 78 | 1 | 1.00001 | valid | 78 | 1 | 0.999994 | valid | 78 | 1 | 1.00001 | 0 | 0 | 0 | 283->283 | 359->359 |
+| own/whiteboard-tray-v5.stl | hybrid | valid | 1302 | 1 | 1 | invalid | 1302 | invalid | 1302 | 1 | 1.06791 | invalid | 1302 | 1 | 1.00017 | invalid | 1302 | 1 | 1.06794 | 0 | 0 | 0 | 4500->4495 | 5770->5770 |
+| third-party/chip-bag-clip-small.stl | hybrid | valid | 757 | 0 | 1 | valid | 757 | valid | 757 | 0 | 0.999923 | valid | 757 | 0 | 0.999923 | valid | 757 | 0 | 0.999923 | 0 | 0 | 0 | 1242->1242 | 2006->2006 |
+| third-party/door-stopper-top.stl | hybrid | valid | 147 | 1 | 1 | valid | 147 | valid | 147 | 1 | 0.99999 | valid | 147 | 1 | 0.999964 | valid | 147 | 1 | 0.99999 | 0 | 0 | 0 | 3115->3115 | 3259->3259 |
+| third-party/gardena-end.stl | hybrid | valid | 17 | 1 | 1 | valid | 17 | valid | 17 | 1 | 1.00001 | valid | 17 | 1 | 1.00001 | valid | 17 | 1 | 1.00001 | 0 | 0 | 0 | 200->200 | 212->212 |
+| third-party/gear-bearing-5.stl | hybrid | valid | 2330 | 7 | 1 | valid | 2330 | invalid | 2414 | 7 | 0.998211 | invalid | 2414 | 7 | 0.995221 | invalid | 2414 | 7 | 0.998211 | 6 | 0.00198009 | 12 | 5522->5606 | 7838->8006 |
+| third-party/hex-key-cap-3mm.stl | hybrid | valid | 4590 | 0 | 1 | valid | 4590 | valid | 4591 | 0 | 1.00297 | valid | 4591 | 0 | 1.004 | valid | 4591 | 0 | 1.00297 | 0 | 0 | 0 | 3218->6430 | 7352->10113 |
+| third-party/hot-wheels-connector.stl | hybrid | valid | 2518 | 1 | 1 | valid | 2518 | invalid | 2519 | 1 | 1.00027 | invalid | 2519 | 1 | 1.00024 | invalid | 2519 | 1 | 1.00027 | 1 | 0.114594 | 0 | 1496->1496 | 4023->4025 |
+| third-party/makita-vacuum-holder.stl | hybrid | valid | 3480 | 1 | 1 | valid | 3480 | invalid | 3481 | 1 | 0.999774 | invalid | 3481 | 1 | 0.999751 | invalid | 3481 | 1 | 0.999774 | 1 | 0.348622 | 0 | 5526->5531 | 9004->9014 |
+| third-party/micro-sd-keyring-inner.stl | hybrid | valid | 66 | 1 | 1 | valid | 66 | valid | 66 | 1 | 0.99926 | valid | 66 | 1 | 0.999502 | valid | 66 | 1 | 0.99926 | 0 | 0 | 0 | 200->200 | 264->264 |
+| third-party/micro-sd-keyring-outer.stl | exact | valid | 41 | 1 | 1 | valid | 41 | valid | 41 | 1 | 1 | valid | 41 | 1 | 1 | valid | 41 | 1 | 1 | 0 | 0 | 0 | 120->76 | 158->114 |
+| third-party/mms-camera-mount.stl | exact | valid | 11 | 1 | 1 | valid | 11 | valid | 11 | 1 | 1 | valid | 11 | 1 | 1 | valid | 11 | 1 | 1 | 0 | 0 | 0 | 16->16 | 24->24 |
+| third-party/mms-flat-stand.stl | exact | valid | 44 | 1 | 1 | valid | 44 | valid | 44 | 1 | 1 | valid | 44 | 1 | 1 | valid | 44 | 1 | 1 | 0 | 0 | 0 | 156->81 | 195->121 |
+| third-party/mms-m5-nut.stl | refused | invalid | 0 | 0 | 0 | invalid | 0 | invalid | 0 | 0 | 0 | invalid | 0 | 0 | 0 | invalid | 0 | 0 | 0 | 0 | 0 | 0 | 0->0 | 0->0 |
+| third-party/sock-clips-6x.stl | hybrid | valid | 163 | 1 | 1 | valid | 163 | invalid | 163 | 1 | 1.00012 | invalid | 163 | 1 | 1.00012 | invalid | 163 | 1 | 1.00012 | 1 | 4 | 0 | 326->326 | 494->493 |
+| third-party/spaghetti-measure.stl | hybrid | valid | 165 | 1 | 1 | valid | 165 | valid | 165 | 1 | 1.00013 | valid | 165 | 1 | 1.00014 | valid | 165 | 1 | 1.00013 | 0 | 0 | 0 | 286->286 | 449->449 |
+| third-party/vented-funnel.stl | hybrid | valid | 715 | 1 | 1 | valid | 715 | valid | 715 | 1 | 0.999155 | valid | 715 | 1 | 0.999179 | valid | 715 | 1 | 0.999155 | 0 | 0 | 0 | 4604->4604 | 5317->5317 |
+| third-party/wyze-garage-bracket.stl | hybrid | valid | 84 | 2 | 1 | valid | 84 | valid | 84 | 2 | 1.00001 | valid | 84 | 2 | 0.999935 | valid | 84 | 2 | 1.00001 | 0 | 0 | 0 | 238->238 | 320->320 |
+
 
 **What the reader rejects (Q2).** Across the 20 failing conversions BRepCheck
 reports **no vertex and no edge status at all** — every non-`NoError` status is
@@ -2620,20 +2667,18 @@ solids, ratio):
 | third-party/vented-funnel.stl | valid, 715f/1s/0.999155 | valid, 715f/1s/0.999155 |
 
 **Q7 — the uncertainty experiment.** STEP keeps no per-edge tolerance but one
-global uncertainty. A second round trip per file sets
-`Interface_Static::SetIVal("write.precision.mode", 1)` (Greatest; the brief's 2
-is Session) before `writeStep`, restores it, and reads back the same way. The
-written file changes — drill-block is the same 1,982,044 bytes but not
-byte-identical, the per-solid B-rep tolerance moves — yet the file's
-`UNCERTAINTY_MEASURE_WITH_UNIT` does not change and the read-back is identical
-to the default for **all 41 files**. **0 of the 20 failing conversions pass with
-Greatest**: each still fails with the same status as the default round trip (the
-12 invalid keep their `BadOrientationOfSubshape`/`UnorientableShape`/
-`SelfIntersectingWire`, the 8 valid-but-drifting keep their ratio). The q7
-uncertainty column equals the default file's for every file and tracks the body,
-not the mode: 1e-7 on a simple exact body (ball, hole-filler-5mm), 0.005–0.05 on
-most hybrids, 0.2 on micro-sd-keyring-inner. Raising `write.precision.mode` is
-not the fix.
+global uncertainty. A second round trip per file sets `write.precision.mode`
+= 1 (Greatest; the brief's 2 is Session) and reads back the same way. The
+facade's `writeStep()` overwrites the model's `DESTEP_Parameters` with its own
+(`stepParameters()`), so write-side statics have no effect through the app — the
+same file comes back, only the header timestamp differs — and the experiment
+writes with a plain `STEPControl_Writer` that honours the static. Greatest
+raises the file's uncertainty (drill-block 0.01 → 0.5 mm) and **3 of the 20
+failing conversions then pass the bar**: drill-block (invalid → valid, ratio
+0.999999), micro-sd-keyring-inner (0.99926 → 0.999918) and spaghetti-measure
+(1.00013 → 0.999967). The other 17 stay outside the bar; the ones that stay
+invalid keep their `UnorientableShape`/`BadOrientationOfSubshape`/
+`SelfIntersectingWire` statuses.
 
 **Q8 — where the self-intersections are.** For every wire BRepCheck flags
 `SelfIntersectingWire` and every face it flags `UnorientableShape`/
@@ -2649,6 +2694,36 @@ other 2. The wires are dominated by line edges on plane-plane and facet-plane
 seams — the mesh polylines and facet seams — with only 7 carrying a chain
 circle/ellipse, so a fix at the chain curves' ends alone would reach at most
 those 7.
+
+**Q9 — the BREP control.** Writing the written body with `BRepTools::Write` and
+reading it back with `BRepTools::Read` (which keeps tolerances and pcurves)
+passes the bar for **20 of 20** failing files: every one is valid, keeps its
+face and solid count and comes back at volume ratio 1 (of the 41, 39 pass — the
+two refusals produce nothing). So the body's topology and its toleranced pcurves
+survive a lossless round trip; the STEP reader's own reconstruction is the
+trigger, not the converter's topology.
+
+**Q10 — healing before writing.** On a copy of the written body,
+`ShapeFix_Shape` at the written tolerances (the same settings as Q4) makes
+**18 of the 20** bodies valid — phone-stand-foldable and whiteboard-tray-v5 stay
+invalid, their face counts unchanged. Writing and reading that healed body with
+the default settings passes the bar for **0 of 20**: healing the body before the
+write does not survive the reader.
+
+**Q11 — the pcurve modes.** (a) Written with no pcurves
+(`write.surfacecurve.mode` 0, via the direct writer — the file drops from
+1,982,044 to 648,049 bytes on drill-block), read with the defaults: passes the
+bar for **0 of 20** (8 valid, the same 8 the default round trip already had
+valid). (b) Written with the defaults and read preferring the file's pcurves
+(`read.surfacecurve.mode` 2 = `2DUse_Preferred`; the brief's −3 is
+`3DUse_Forced`, which ignores them): passes for **0 of 20** (8 valid). Dropping
+the pcurves or preferring them changes nothing on the bar.
+
+**Q12 — small edges in the flagged wires.** Over the 20 failing files the 25
+flagged wires hold **35 edges shorter than the file's uncertainty** and **37
+shorter than 0.05 mm**, the shortest 0.00198 mm (gear-bearing-5). The flagged
+wires are full of sub-uncertainty and sub-0.05 edges; the reader's re-welding of
+such short seams is where the self-intersections and bad orientations come from.
 
 **What the numbers say**
 
@@ -2673,10 +2748,19 @@ those 7.
   hybrid's rebuilt curved faces.
 - `ShapeFix_Shape` at the written tolerances repairs nothing: 0 of the 12
   invalid bodies become valid, and no valid body's ratio moves toward 1.
-- Writing with the greatest global uncertainty changes nothing: 0 of the 20 pass
-  with `write.precision.mode` Greatest, and every read-back matches the default's.
-- The flagged wires are mostly line polylines: 18 of 25 are lines only, and only
-  7 contain a fitted circle or ellipse.
+- The BREP round trip (tolerances and pcurves kept) passes the bar for 20 of 20
+  failing bodies, volume ratio 1: the topology is sound and the STEP reader's
+  reconstruction is the trigger.
+- Writing with the greatest global uncertainty (`write.precision.mode` 1) makes
+  3 of 20 pass (drill-block, micro-sd-keyring-inner, spaghetti-measure); the
+  facade's `writeStep()` ignores write-side statics, so a direct writer is used.
+- Healing the written body before writing makes 18 of 20 valid, but 0 of 20
+  survive the STEP round trip.
+- Dropping the pcurves (`write.surfacecurve.mode` 0) passes 0 of 20; preferring
+  the file's pcurves on read (`read.surfacecurve.mode` 2) passes 0 of 20.
+- The 25 flagged wires hold 35 edges shorter than the file's uncertainty and 37
+  shorter than 0.05 mm (shortest 0.00198 mm); the flagged wires are mostly line
+  polylines: 18 of 25 are lines only, 7 contain a fitted circle or ellipse.
 - The volume drift of the eight valid-but-drifting bodies keeps the face and
   solid counts and is a small re-fit of the same faces (e.g. micro-sd-keyring-inner's
   four sphere faces gain 6.66 mm², spool-nut-v4.1's cylinder and plane faces
