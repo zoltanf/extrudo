@@ -3362,7 +3362,11 @@ Greatest (`write.precision.mode` 1, via a direct `STEPControl_Writer`) 3 of 20
 pass (drill-block, micro-sd-keyring-inner, spaghetti-measure); the flagged wires
 are mostly line polylines (7 of 25 carry a fitted circle/ellipse) and the 25
 flagged wires hold 35 edges shorter than the file's uncertainty, 37 under
-0.05 mm.
+0.05 mm. Q13/Q14: lowering `HYBRID_EDGE_TOLERANCE_MAX` from 1.0 to 0.1/0.05/0.02
+gives 10/13/14/14 bar passes of 30 hybrids and 2/4/6/9 refusals (more facets
+per body) — not the fix; every read-back `other` face is a `SurfaceOfRevolution`
+(11, in drill-block, peg-perego-button, gear-bearing-5) from a written torus with
+minor radius ≥ major radius.
 Numbers in ADR-0097's 2026-10-30b amendment.
 
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
