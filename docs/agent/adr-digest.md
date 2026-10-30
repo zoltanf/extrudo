@@ -3655,4 +3655,24 @@ Main looks the binary up in this order: the preference `cadmpeg.path` → `proce
 → the dev checkout's `apps/desktop/vendor/cadmpeg/` → `PATH`. A conversion runs without a shell in
 `<temp>/extrudo-cadmpeg/<uuid>/` (mode 0700, removed afterwards), 120 s timeout, stdout/stderr capped
 at 64 KiB, input and output at most 100 MiB, no `--allow-errors`; the design stores only the STEP (no
-schema change). S2 (the import flow) adds its files here.
+schema change).
+S2 (the import flow): `apps/web/src/platform/cad.ts` (a leaf: `CAD_CONVERT_EXTENSIONS`/`_ACCEPT`,
+`isConvertibleCad`, `stepNameFor`, `CadFile`, `CadConvertResult`, `ConvertCad`, `CadmpegStatus`;
+exported as `@extrudo/web/platform/cad`), `Platform.convertCad?`, `features/import.ts`
+(`importAccept`, `importRefused`, `pickImportFile`'s `convertCad`), `project/actions.ts`
+(`importAnyFile`), `AppShell.tsx` (passes `platform.convertCad`), `apps/desktop/src/main/cadmpeg.ts`
+(pure over `CadmpegEnv`: `findCadmpeg`, `cadmpegStatus`, `safeInputName`, `convertWithCadmpeg`,
+`cleanupCadmpegFiles`, `nodeCadmpegEnv`; reuses `blender.ts`'s `wrap`), `cadmpegService.ts`
+(`isCadFile`, `cadmpegOverride`), the `cadStatus`/`cadConvert` channels (`extrudo:cad:*`) in
+`shared/ipc.ts`, `shared/bridge.ts` and `main/ipc.ts` (through `guarded`), `main/index.ts` (the dev
+vendor folder is `out/main/../../vendor/cadmpeg`; `cad.cleanup()` on `will-quit`),
+`renderer/platform.ts`'s `desktopCad`. **Rules:** the conversion happens inside `pickImportFile`
+after the f3d branch and before `modelKind`, so everything after it is the STEP path and the design
+holds only the STEP (`<base>.step`, `model/step`, the STEP's hash); the seam is optional and the web
+leaves it undefined (its picker doesn't offer the formats and its refusal points at the desktop
+app; `importAnyFile` counts a convertible file as a model only where the seam exists); main
+validates the payload (`isCadFile`, else throw) and checks the extension and the input size itself;
+the file name is sanitised (`safeInputName`: `[A-Za-z0-9._-]`, no leading `-`/`.`) before it
+touches the disk, the parent `extrudo-cadmpeg/` and each job directory must be plain directories
+owned by the user; the converter's message is the last non-empty stderr line (capped at 300
+characters).

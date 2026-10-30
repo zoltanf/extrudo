@@ -13,6 +13,7 @@ import { type ErrorEnvelope, serializeError } from '../shared/errors';
 import { CHANNELS, isPluginMethod, isStoreMethod, type StoreMethod } from '../shared/ipc';
 import { isMenuModel } from '../shared/menuModel';
 import type { BlenderService } from './blenderService';
+import type { CadmpegService } from './cadmpegService';
 import type { DialogFiles } from './dialogs';
 import type { ExternalFiles } from './externalFiles';
 import type { Folders } from './folders';
@@ -68,6 +69,8 @@ export interface IpcDependencies {
   slicers: SlicerService;
   /** Render Picture with Blender (P6-15, ADR-0101): status, one render at a time, cancel. */
   blender: BlenderService;
+  /** Other CAD files to STEP with the bundled cadmpeg (P6-19, ADR-0115 §2). */
+  cad: CadmpegService;
   getWindow: () => BrowserWindow | null;
   /** Auto-update (P6-01 slice 4): a check, an install, and the release page main built. */
   updates: { check(): void; apply(): boolean; openRelease(): void };
@@ -218,6 +221,12 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
     guarded(() => deps.blender.render(job)),
   );
   ipcMain.on(CHANNELS.renderCancel, () => deps.blender.cancel());
+  // Other CAD files (P6-19, ADR-0115 §2): the service checks the file itself; a
+  // malformed one crosses as the error envelope, a failed conversion as data.
+  ipcMain.handle(CHANNELS.cadStatus, () => guarded(() => deps.cad.status()));
+  ipcMain.handle(CHANNELS.cadConvert, (_event, file: unknown) =>
+    guarded(() => deps.cad.convert(file)),
+  );
   ipcMain.on(CHANNELS.appReady, () => deps.rendererReady());
   ipcMain.on(CHANNELS.appQuit, () => deps.quit());
 

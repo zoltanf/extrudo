@@ -77,7 +77,9 @@ The imported file is stored inside the design, so exporting the design carries i
 STEP is the common language between CAD tools. If your part lives in another program, export it
 from there as STEP — **AP214** or **AP242** both work — and open it with **Import Model**, or
 drop it on the home screen's **Import…** card. Extrudo reads the exact surfaces, not a mesh of
-triangles, so the part is a real solid you can keep working on.
+triangles, so the part is a real solid you can keep working on. The [desktop app](./desktop.md)
+also imports `.sldprt`, `.ipt`, `.iam`, `.catpart`, `.fcstd`, `.sat`, `.smt`, `.smb`, `.sab`,
+`.igs`, `.iges` and `.pvz` files directly, by converting them to STEP first.
 
 What comes across:
 

@@ -1847,6 +1847,7 @@ function Shell({
       store,
       notify,
       openF3d: file.importF3d,
+      convertCad: platform.convertCad,
     }).then((pending) => {
       if (pending) dialog?.start(IMPORT_TYPE);
     });

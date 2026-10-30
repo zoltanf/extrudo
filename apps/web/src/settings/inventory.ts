@@ -117,6 +117,11 @@ export const NOT_IN_SETTINGS: readonly { key: string; reason: string }[] = [
   { key: 'panel.*', reason: 'Layout state: panel sizes and collapsed state, set by dragging.' },
   { key: 'onboarding.tour', reason: 'Progress, not a choice: the tutorial restarts from Help.' },
   {
+    key: 'cadmpeg.path',
+    reason:
+      'An override for another cadmpeg build, set in preferences.json by hand (ADR-0115 §2): the bundled one needs no setting.',
+  },
+  {
     key: 'render.softwareNotice',
     reason: 'A dismissal: the notice about software rendering was seen.',
   },

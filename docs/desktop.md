@@ -144,13 +144,19 @@ the pictures stay in `<tmp>/extrudo-pictures/` for a look.
 
 The desktop app imports `.sldprt .ipt .iam .catpart .fcstd .sat .smt .smb .sab
 .igs .iges .pvz` by converting them to STEP with the bundled cadmpeg (P6-19,
-ADR-0115) and then importing that STEP. What you get is a B-rep only: no
-colours, names, history or sketches (`.fcstd` and IGES keep more). The design
-stores the STEP, not the original file, so it opens in the browser too.
+ADR-0115) and then importing that STEP: pick one with **Import…** (the Insert
+tab's tile, the File menu, or the home screen, which makes a new design for
+it). The app says "Converting *file*…" while cadmpeg runs, then that the file
+was converted to STEP: shapes only, without colours, names or history. The
+Import dialog that follows is the one for a STEP file. The design stores the
+STEP, not the original file, so it opens in the browser too; the browser itself
+can't convert these files and says the desktop app does.
 
-During the conversion the file is written to a folder under the OS temp
-directory (`extrudo-cadmpeg/`) and removed afterwards. To use another cadmpeg
-build, set `cadmpeg.path` in `preferences.json` in the app's user data
+A file over 100 MB, a conversion that takes longer than 2 minutes or a file
+cadmpeg's own check refuses is not imported; the message is cadmpeg's last
+line of output. During the conversion the file is written to a folder under the
+OS temp directory (`extrudo-cadmpeg/`) and removed afterwards. To use another
+cadmpeg build, set `cadmpeg.path` in `preferences.json` in the app's user data
 directory:
 
 ```json

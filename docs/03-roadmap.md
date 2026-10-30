@@ -1518,9 +1518,13 @@ end to end, faster than in established desktop CAD.
     the `package*` scripts and the desktop workflow fetch first, mac signature
     and smoke checks, NOTICE, `docs/references.md`, `docs/desktop.md`, the
     release checklist. *Done 2026-10-30.*
-  - [ ] **S2 Import flow.** `cadmpeg.ts` + `cadmpegService.ts` in main with the
+  - [x] **S2 Import flow.** `cadmpeg.ts` + `cadmpegService.ts` in main with the
     IPC channels, `Platform.convertCad`, `IMPORT_ACCEPT` and `pickImportFile`
-    in the renderer, unit tests with a fake spawn.
+    in the renderer, unit tests with a fake spawn. *Done 2026-10-30.* Not yet
+    checked: a real `.sldprt` imported in the packaged app (no sample with a
+    usable license; cadmpeg's own `.sldprt` fixtures are synthetic and convert
+    to an empty STEP). Its `.FCStd` fixtures convert through
+    `convertWithCadmpeg` and read back in the kernel as solids.
   Acceptance: `pnpm check`; the desktop workflow green on all three OSes with
   `cadmpeg --version` passing in the smoke steps; a `.sldprt` sample imports
   in the packaged app as a STEP attachment; `docs/agent/adr-digest.md` has the

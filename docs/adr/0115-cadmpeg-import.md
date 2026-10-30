@@ -67,8 +67,8 @@ colours, names, history or sketches (cadmpeg's L3).
 `apps/desktop/src/main/cadmpeg.ts` is pure over an injected environment
 (platform, file existence, spawn, temp directory, override path), like
 `slicers.ts`; `cadmpegService.ts` wires Node in and gives `status()` (found or
-not, version, path) and `convert(file)`. IPC channels `extrudo:cadmpeg:status`
-and `extrudo:cadmpeg:convert` (`shared/ipc.ts`, preload, `main/ipc.ts`), wired
+not, version, path) and `convert(file)`. IPC channels `extrudo:cad:status`
+and `extrudo:cad:convert` (`shared/ipc.ts`, preload, `main/ipc.ts`), wired
 in `main/index.ts` like `nodeSlicerService`. The binary is looked up in this
 order: the preference `cadmpeg.path` → the packaged
 `process.resourcesPath/cadmpeg/cadmpeg[.exe]` → the dev checkout's
@@ -94,7 +94,9 @@ extracts `cadmpeg[.exe]` and `LICENSE` into `apps/desktop/vendor/cadmpeg/`
 workflow's package jobs run the fetch first. On macOS the ad-hoc signature must
 cover the extra binary (checked with `codesign -dv` in the mac job); the smoke
 steps run `cadmpeg --version` from the packaged resources. The installers grow
-by the binary's size (about 21–43 MB compressed).
+by the binary's size (about 21–43 MB compressed). Measured on S1's desktop run
+(41020007841) against v0.9.0, in MiB: the AppImage 134.7 → 175.7 (+41), the mac
+arm64 dmg 135.9 → 171.4 (+35.5), the Windows x64 installer 117.5 → 144.6 (+27).
 
 Updating cadmpeg is a release-checklist step: bump the version and hashes in
 `cadmpeg.json`, nothing else.

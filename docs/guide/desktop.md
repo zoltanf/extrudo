@@ -70,6 +70,12 @@ chooses the engine: **In the app** (the default) or **Blender**, a Blender 4.2 o
 on your machine (free from blender.org; the app finds it). You pick the scene, a finish for each
 body, the camera, the size and the quality, and get the picture to save or copy. See [rendering a picture](./rendering.md).
 
+**Other CAD files.** **Import…** also takes `.sldprt`, `.ipt`, `.iam`, `.catpart`, `.fcstd`,
+`.sat`, `.smt`, `.smb`, `.sab`, `.igs`, `.iges` and `.pvz` files. The app converts them to STEP
+first, with the cadmpeg converter it ships with, and imports the STEP: you get the shapes, without
+colours, names or history. The design keeps only the STEP, so it opens in the browser too. The
+details are in the [desktop app's notes](https://github.com/zoltanf/extrudo/blob/main/docs/desktop.md#other-cad-files).
+
 **Updates.** The app looks for a new release a few seconds after it starts, then every six
 hours. What happens next depends on how you installed it:
 
