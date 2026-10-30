@@ -1871,6 +1871,116 @@ static void q22Faces(const ExtrudoFacade& f, const TopoDS_Shape& written, const 
             << ", read " << readUnmatched << ")" << std::endl;
 }
 
+
+/**
+ * Q23 (slice D8): the cone faces whose area moves on the default read: UV
+ * bounds and area written against read, per edge the pcurves (types, UV
+ * distance at the ends and over 9 samples, by the edges' own parameters run
+ * the same way), the tolerance, and for a circle its distance to the cone,
+ * its axis against the cone's, and its written pcurve against the exact
+ * projection (ElSLib's cone parameters of the circle's points).
+ */
+static void q23Cones(const TopoDS_Shape& written, const TopoDS_Shape& readBack) {
+  Q22EdgeIndex readIndex;
+  readIndex.build(readBack);
+  struct C {
+    TopoDS_Face face;
+    gp_Pnt centre;
+    double area;
+  };
+  auto cones = [](const TopoDS_Shape& s) {
+    std::vector<C> out;
+    for (TopExp_Explorer e(s, TopAbs_FACE); e.More(); e.Next()) {
+      const TopoDS_Face face = TopoDS::Face(e.Current());
+      if (BRepAdaptor_Surface(face).GetType() != GeomAbs_Cone) continue;
+      GProp_GProps props;
+      BRepGProp::SurfaceProperties(face, props);
+      out.push_back({face, props.CentreOfMass(), props.Mass()});
+    }
+    return out;
+  };
+  const std::vector<C> w = cones(written), r = cones(readBack);
+  int n = 0;
+  for (const C& x : w) {
+    int best = -1;
+    double bestD = 0.05;
+    for (size_t i = 0; i < r.size(); ++i) {
+      const double d = r[i].centre.Distance(x.centre);
+      if (d < bestD) { bestD = d; best = static_cast<int>(i); }
+    }
+    if (best < 0 || std::fabs(r[best].area - x.area) / x.area <= 1e-6) continue;
+    const C& y = r[best];
+    ++n;
+    double wu0, wu1, wv0, wv1, ru0, ru1, rv0, rv1;
+    BRepTools::UVBounds(x.face, wu0, wu1, wv0, wv1);
+    BRepTools::UVBounds(y.face, ru0, ru1, rv0, rv1);
+    const gp_Cone cone = BRepAdaptor_Surface(x.face).Cone();
+    std::cout << std::setprecision(9) << "   q23 cone face " << n << ": area written " << x.area << ", read " << y.area << " ("
+              << (y.area / x.area - 1) * 100 << " %), centre moved " << bestD << "; uv written [" << wu0 << ", " << wu1 << "] x ["
+              << wv0 << ", " << wv1 << "], read [" << ru0 << ", " << ru1 << "] x [" << rv0 << ", " << rv1 << "]; cone semi-angle "
+              << cone.SemiAngle() * 180 / M_PI << " deg, radius " << cone.RefRadius() << "\n";
+    for (TopExp_Explorer ee(x.face, TopAbs_EDGE); ee.More(); ee.Next()) {
+      const TopoDS_Edge we = TopoDS::Edge(ee.Current());
+      gp_Pnt a, b;
+      Q22EdgeIndex::ends(we, a, b);
+      // The read edge with those ends that bounds the read face.
+      TopoDS_Edge re;
+      for (int i : readIndex.find(a, b))
+        for (const TopoDS_Shape& f : readIndex.faces.FindFromKey(readIndex.edges(i)))
+          if (f.IsSame(y.face)) re = TopoDS::Edge(readIndex.edges(i));
+      std::cout << "     q23 edge " << q22CurveType(we) << " " << q22Length(we) << ", tol " << BRep_Tool::Tolerance(we);
+      if (re.IsNull()) {
+        std::cout << ", no read edge on the read face\n";
+        continue;
+      }
+      double wf, wl, rf, rl;
+      const Handle(Geom2d_Curve) wc = BRep_Tool::CurveOnSurface(we, x.face, wf, wl);
+      const Handle(Geom2d_Curve) rc = BRep_Tool::CurveOnSurface(re, y.face, rf, rl);
+      std::cout << ", pcurve written " << pcurveType(wc) << " read " << pcurveType(rc) << ", read tol " << BRep_Tool::Tolerance(re);
+      if (!wc.IsNull() && !rc.IsNull()) {
+        const bool forward = BRep_Tool::Pnt(TopExp::FirstVertex(re, false)).Distance(BRep_Tool::Pnt(TopExp::FirstVertex(we, false))) <= 1e-6;
+        double first = 0, last = 0, mx = 0;
+        for (int k = 0; k <= 8; ++k) {
+          const double t = k / 8.0;
+          const gp_Pnt2d pw = wc->Value(wf + t * (wl - wf));
+          gp_Pnt2d pr = rc->Value(forward ? rf + t * (rl - rf) : rl - t * (rl - rf));
+          pr.SetX(pr.X() + 2 * M_PI * std::round((pw.X() - pr.X()) / (2 * M_PI)));
+          const double d = pw.Distance(pr);
+          mx = std::max(mx, d);
+          if (k == 0) first = d;
+          if (k == 8) last = d;
+        }
+        std::cout << ", uv ends " << first << " " << last << ", max " << mx;
+      }
+      if (BRepAdaptor_Curve(we).GetType() == GeomAbs_Circle) {
+        const gp_Circ circle = BRepAdaptor_Curve(we).Circle();
+        double cf, cl;
+        TopLoc_Location loc;
+        const Handle(Geom_Curve) c3 = BRep_Tool::Curve(we, loc, cf, cl);
+        const Handle(Geom_Surface) surface = BRep_Tool::Surface(x.face);
+        double off = 0, exact = 0;
+        for (int k = 0; k <= 8; ++k) {
+          const double t = cf + (cl - cf) * k / 8.0;
+          const gp_Pnt p = c3->Value(t);
+          GeomAPI_ProjectPointOnSurf proj(p, surface);
+          if (proj.IsDone() && proj.NbPoints() > 0) off = std::max(off, proj.LowerDistance());
+          if (!wc.IsNull()) {
+            double u = 0, v = 0;
+            ElSLib::Parameters(cone, p, u, v);
+            const gp_Pnt2d pw = wc->Value(t);
+            u += 2 * M_PI * std::round((pw.X() - u) / (2 * M_PI));
+            exact = std::max(exact, pw.Distance(gp_Pnt2d(u, v)));
+          }
+        }
+        std::cout << ", circle to cone " << off << " mm, axis angle " << circle.Axis().Angle(cone.Axis()) * 180 / M_PI
+                  << " deg, written pcurve vs exact projection " << exact;
+      }
+      std::cout << "\n";
+    }
+  }
+  std::cout << std::setprecision(6) << "   q23 cone faces whose area moves: " << n << std::endl;
+}
+
 /**
  * Converts one file and diagnoses its STEP round trip (ADR-0097 D7): Q1 the
  * written body's edge classes, Q2 what the reader rejects, Q3 the areas by
@@ -2317,6 +2427,7 @@ static RoundTripRow stepOne(ExtrudoFacade& f, const std::string& path, double to
     else q22Hairpins(f, written, readBack, text, pairsFile);
   }
   if (detail && getenv("Q22B") && *getenv("Q22B")) q22Faces(f, written, readBack, text);
+  if (detail && getenv("Q23") && *getenv("Q23")) q23Cones(written, readBack);
 
   // Q9: the BREP round trip (keeps tolerances and pcurves).
   {
@@ -2765,7 +2876,7 @@ static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
     if (!h && !f.rebuildRefusal_.empty()) std::cout << "   rebuild refused at: " << f.rebuildRefusal_ << std::endl;
     if (!h && !f.hybridRefusal_.empty()) std::cout << "   hybrid refused at: " << f.hybridRefusal_ << std::endl;
     std::cout << "   hybrid exploded regions: " << f.hybridExploded_ << std::endl;
-    std::cout << "   calls: chainCurve " << f.chainCurveCalls_ << ", interpolate " << f.interpolateCalls_ << std::endl;
+    std::cout << "   calls: chainCurve " << f.chainCurveCalls_ << ", interpolate " << f.interpolateCalls_ << ", mesh check nodes " << f.meshCheckNodes_ << ", of them by BRepExtrema " << f.meshCheckExtrema_ << ", face classifiers " << f.meshCheckClassifiers_ << " built in " << f.meshCheckClassifierMs_ << " ms, classifying " << f.meshCheckClassifyMs_ << " ms" << std::endl;
   }
   if (!h) {
     std::cout << "   prismatic refused (" << ms << " ms): " << f.lastError() << std::endl;
