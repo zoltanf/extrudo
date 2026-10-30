@@ -2797,6 +2797,118 @@ r 131.4), gear-bearing-5 all 8 (e.g. R 5.31, r 19.56). The reader re-reads such 
 torus as a surface of revolution, which is why those faces leave the kind
 classifier; the torus fit (slice 4a2) can return minor radius > major radius.
 
+**Fourth summary table (Q15-Q17; the flagged wires' self-intersections, one row
+per failing hybrid, as `S` prints it).** The columns are the 0.001-precision
+ShapeAnalysis search of `shapeDiagnose`'s flagged wires. Only 8 of the 20 carry
+any flagged wire; the other 12 (battery-power-adapter, desk-organizer-module-small,
+mirna-doodle-1, puzzle-insert-circle, shower-holder, spool-nut-v4.1,
+spool-screw-v4.1, whiteboard-tray-v5, hex-key-cap-3mm, micro-sd-keyring-inner,
+spaghetti-measure, vented-funnel) fail on face orientation alone, with no
+`SelfIntersectingWire`:
+
+| file | flagged wires | pairs same-edge / adjacent / non-adjacent | hairpin / 3D-close / 2D-only | written pairs @1e-7 / @tol | unmatched faces |
+|---|---|---|---|---|---|
+| own/battery-power-adapter.stl | 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 | 0 |
+| own/desk-organizer-module-small.stl | 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 | 0 |
+| own/drill-block.stl | 2 | 0 / 0 / 2 | 0 / 0 / 2 | 0 / 0 | 2 |
+| own/kuglbahn-pillar-base.stl | 3 | 0 / 1 / 0 | 1 / 0 / 0 | 0 / 0 | 3 |
+| own/mirna-doodle-1.stl | 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 | 0 |
+| own/peg-perego-button.stl | 3 | 0 / 2 / 0 | 1 / 0 / 0 | 0 / 0 | 0 |
+| own/phone-stand-foldable.stl | 8 | 0 / 2 / 0 | 0 / 0 / 0 | 0 / 0 | 8 |
+| own/puzzle-insert-circle.stl | 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 | 0 |
+| own/shower-holder.stl | 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 | 0 |
+| own/spool-nut-v4.1.stl | 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 | 0 |
+| own/spool-screw-v4.1.stl | 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 | 0 |
+| own/whiteboard-tray-v5.stl | 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 | 0 |
+| third-party/gear-bearing-5.stl | 6 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 | 6 |
+| third-party/hex-key-cap-3mm.stl | 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 | 0 |
+| third-party/hot-wheels-connector.stl | 1 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 | 1 |
+| third-party/makita-vacuum-holder.stl | 1 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 | 1 |
+| third-party/micro-sd-keyring-inner.stl | 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 | 0 |
+| third-party/sock-clips-6x.stl | 1 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 | 0 |
+| third-party/spaghetti-measure.stl | 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 | 0 |
+| third-party/vented-funnel.stl | 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 | 0 |
+| **totals** | 25 | 0 / 5 / 2 | 2 / 0 / 2 | 0 / 0 | 21 |
+
+**Fifth summary table (Q15b/Q17b; BRepCheck's own first pair per flagged wire,
+classified).** Because ShapeAnalysis disagrees with BRepCheck (Q15 below), this
+runs `BRepCheck_Wire::SelfIntersect` — the algorithm that produced the status —
+on each flagged wire and classifies the pair it returns. `hairpin`/`3D-close`/
+`2D-only` here are Q17's rules on BRepCheck's pair; the residue is adjacent pairs
+below 150° (peg-perego-button 3, makita 1, gear-bearing-5 2):
+
+| file | BRepCheck pairs | same-edge | hairpin | 3D-close | 2D-only |
+|---|---|---|---|---|---|
+| own/drill-block.stl | 2 | 0 | 0 | 0 | 2 |
+| own/kuglbahn-pillar-base.stl | 3 | 0 | 1 | 0 | 2 |
+| own/peg-perego-button.stl | 3 | 0 | 0 | 0 | 0 |
+| own/phone-stand-foldable.stl | 8 | 0 | 1 | 0 | 7 |
+| third-party/gear-bearing-5.stl | 6 | 0 | 0 | 0 | 4 |
+| third-party/hot-wheels-connector.stl | 1 | 0 | 1 | 0 | 0 |
+| third-party/makita-vacuum-holder.stl | 1 | 0 | 0 | 0 | 0 |
+| third-party/sock-clips-6x.stl | 1 | 0 | 1 | 0 | 0 |
+| **totals** | 25 | 0 | 4 | 0 | 15 |
+
+**Q15 — the intersecting pairs, and that ShapeAnalysis does not reproduce
+BRepCheck.** Running `ShapeAnalysis_Wire saw(wire, face, 0.001)` on the 25
+read-back wires BRepCheck flags `SelfIntersectingWire`, then each edge with
+itself, each adjacent pair (i−1, i) and each non-adjacent pair (i, j), j > i+1
+(skipping the closing pair 1/N): the probe finds **7 pairs in total — 0
+same-edge, 5 adjacent, 2 non-adjacent** — and `saw.CheckSelfIntersection()`
+returns true on only **7 of the 25** wires (18 return false). The 7 pairs are
+drill-block 2 (non-adjacent), kuglbahn-pillar-base 1 (adjacent), peg-perego-button
+2 (adjacent) and phone-stand-foldable 2 (adjacent). Every other flagged wire —
+gear-bearing-5's 6, hot-wheels-connector, makita-vacuum-holder, sock-clips-6x,
+phone-stand-foldable's other 6 — yields no pair at all, so **ShapeAnalysis does
+not agree with BRepCheck**, contrary to the brief's expectation. Precision is not
+the cause: on gear-bearing-5's six wires the probe finds 0 pairs at 0.001, 1e-5,
+1e-7, 1e-9 alike. The reason is that `BRepCheck_Wire::SelfIntersect` (the
+function behind the status) is an independent algorithm from `ShapeAnalysis_Wire`:
+it works at `tolint = 1e-10` with `Geom2dInt_GInter` and accepts an intersection
+(the 2D-curve crossing) as correct only when it falls inside a 3D **vertex**
+tolerance (OCCT 8.0.1 `BRepCheck_Wire.cxx`). It therefore reports crossings
+ShapeAnalysis's own intersection test (which exempts anything enclosed by the
+common end vertex of two adjacent edges, and boxes non-adjacent ones) never sees.
+This is why the fourth table's counts are so small, and why the mechanism has to
+be read off BRepCheck's pair (the fifth table).
+
+**Q16 — is it in the written body too?** Each flagged read-back face is matched
+to a written face by centre of mass (nearest within 0.05 mm) and area (within
+1 %); then the same pair search runs on the written face's outer wire at 1e-7
+(geometry alone) and at that wire's max edge tolerance. **21 of the 25 faces do
+not match** a written face: drill-block's two are read-back `SurfaceOfRevolution`
+fragments (area 0.048 against the written torus's 0.149, centre 0.175 mm away,
+Q14's re-read tori); kuglbahn-pillar-base's, phone-stand-foldable's,
+gear-bearing-5's, hot-wheels-connector's and makita-vacuum-holder's are planes
+the reader split or re-fit (e.g. phone-stand-foldable 146.6 mm² against the
+nearest written 160.6 mm², 0.0052 mm away). For the **4 that do match**
+(peg-perego-button 3, sock-clips-6x 1) the written outer wire has **0 pairs at
+1e-7 and 0 pairs at its edge tolerance** (peg-perego 0.0205 and 0.0128 mm,
+sock-clips 0.002 mm): the written geometry is clean and the reader's
+reconstruction created the crossing. For the 21 unmatched faces Q16 cannot say
+either way — the matching criterion fails because the reader did not keep the
+face 1:1 — so "the written body already carries the crossings" is neither
+confirmed nor refuted there; it is refuted wherever it can be measured.
+
+**Q17 — the mechanism of each pair.** Of the 7 ShapeAnalysis pairs, **2 are
+hairpin** (adjacent, turning angle ≥ 150° at the shared vertex: kuglbahn-pillar-base
+176.7°, sock-clips-6x 180°) and **2 are 2D-only** (non-adjacent, 3D distance
+0.242 mm and 0.243 mm — far above the 0.001 mm fallback edge tolerance, the two
+edges 1.03 mm and 1.0 mm long, on drill-block's read-back revolution faces);
+**0 are 3D-close**, and the remaining 3 adjacent pairs turn an ordinary 89–93°.
+The pairs BRepCheck itself reports (Q15b, one per flagged wire, the fifth table)
+are clearer: **15 of 25 are 2D-only**, 4 hairpin, 0 same-edge and 0 3D-close,
+with 6 adjacent pairs below 150° (the residue). The 2D-only pairs are non-adjacent
+edges that are 0.0022–0.15 mm apart in 3D — far above their wire's edge
+tolerance (0.002–0.02 mm) — and cross only in the face's 2D parameter space:
+mostly the pair's vertices sit right on the surface (off-surface 1e-12 to 2e-4 mm
+on gear-bearing-5 and kuglbahn-pillar-base) but on phone-stand-foldable they sit
+0.012–0.099 mm off it, and phone-stand-foldable also has two degenerate read-back
+plane fragments whose vertices all sit 0.075 mm off the fitted plane (their area
+comes back as −3e-17 mm²). The 4 hairpin pairs turn 176.7–180° at the shared
+vertex (kuglbahn-pillar-base, phone-stand-foldable, hot-wheels-connector,
+sock-clips-6x). No pair at all falls in the 3D-close band.
+
 **What the numbers say**
 
 - The failure is not an edge-tolerance failure: no edge and no vertex carries a
@@ -2844,3 +2956,22 @@ classifier; the torus fit (slice 4a2) can return minor radius > major radius.
   four sphere faces gain 6.66 mm², spool-nut-v4.1's cylinder and plane faces
   drift by +0.59 and +2.66 mm²).
 - No fix is proposed here; the next slice designs it from these numbers.
+- `ShapeAnalysis_Wire` finds the self-intersection on only 7 of the 25 flagged
+  wires (18 return false from `CheckSelfIntersection`), even at precision 1e-9;
+  the 7 pairs are 0 same-edge, 5 adjacent and 2 non-adjacent.
+- `BRepCheck_Wire::SelfIntersect` is an independent algorithm from
+  `ShapeAnalysis_Wire` (tolint 1e-10, `Geom2dInt_GInter`, an intersection
+  accepted only inside a 3D vertex tolerance), so the wire status cannot be read
+  off ShapeAnalysis.
+- Of the 25 flagged faces only 4 (peg-perego-button 3, sock-clips-6x 1) match a
+  written face by centre of mass and area; on all 4 the written outer wire has 0
+  pairs at 1e-7 and 0 at its edge tolerance, so where it can be measured the
+  written geometry is clean and the reader created the crossing; the other 21
+  cannot be matched (the reader split or re-fit the face).
+- Of BRepCheck's 25 own pairs, 15 are 2D-only, 4 hairpin, 0 same-edge and 0
+  3D-close, 6 adjacent pairs (peg-perego-button 3, gear-bearing-5 2, makita 1)
+  turn under 150°.
+- 2D-only dominates: it is 15 of BRepCheck's 25 pairs and the only mechanism in
+  drill-block (2 of 2) and gear-bearing-5 (4 of 4), and the written body carries
+  no crossing at 1e-7 wherever the match succeeds.
+

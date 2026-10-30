@@ -99,6 +99,10 @@ BREP round trip (`BRepTools::Write`/`Read`), a `ShapeFix_Shape`-healed body's ST
 the transfer parameters), and the flagged wires' smallest edges (ADR-0097's 2026-10-30b amendment). Each file also prints
 its read-back `other` faces' surface type and its written tori (radii, degenerate), and the cap sweep runs the same `S`
 with `FACADE=` set to a copy of the facade whose `HYBRID_EDGE_TOLERANCE_MAX` is 0.1/0.05/0.02.
+Each flagged wire is then analysed with `ShapeAnalysis_Wire` (Q15: each edge with itself, adjacent and non-adjacent pairs),
+its face matched to the written body and the pair search re-run there (Q16), and each pair classified hairpin / 3D-close /
+2D-only (Q17) — a fourth summary table; because ShapeAnalysis reproduces `BRepCheck_Wire::SelfIntersect` on only 7 of the 25
+flagged wires, a fifth table classifies the pair `BRepCheck_Wire::SelfIntersect` itself returns (ADR-0097's 2026-10-30b amendment).
 The kernel sweep writes the same numbers machine-readably: `SWEEP_OUT=<file>.jsonl` appends one JSON line per file (both methods' report, validity, volume ratio, time and STEP round trip), and `SWEEP_BASELINE=<file>.jsonl` compares each file against a previous run's line and fails it when it got worse (refused where it converted, over 10 % more faces, or a STEP read-back that was valid there and kept the face count there but not now).
 `BUILD=<folder>` builds into `spikes/stl-to-solid/<folder>` (default
 `build`), so two runs don't share one; `NOBUILD=1` reruns the last build;
