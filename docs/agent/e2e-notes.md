@@ -251,7 +251,9 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   A `d` dimension on two parallel lines is their distance; on two lines
   that meet it is the angle (the label's sector picks it). The Constraints
   group ("Parallel") lives in the toolbar, not the palette. `data-bodies`
-  rounds sizes to 0.1 mm. `exportProject(page, 'b2-storage-box.extrudo')`
+  rounds sizes to 0.1 mm, and can lag a frame behind `kernelReady`, so
+  `expectBody` retries its checks (`toPass`, 5 s) rather than reading once (a
+  single read saw the bottle cap's pre-shell 3 faces on a slow runner). `exportProject(page, 'b2-storage-box.extrudo')`
   writes `fixtures/benchmarks/` only with `WRITE_FIXTURES=1`. Each spec
   takes about 20 s alone (B3 about 30 s); on the Ubuntu machine run with
   `PLAYWRIGHT_CHROMIUM_PATH=/usr/bin/google-chrome-stable` (no Playwright
@@ -1319,21 +1321,26 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 ### `e2e/kernel-waits.spec.ts`
 
 - **Kernel waits e2e** (`e2e/kernel-waits.spec.ts`, P6-17, ADR-0105): opens
-  `#/example/bottle-cap` (B9, an ~8 s recompute) and changes the `capDia`
+  `#/example/bottle-cap` (B9, an ~8 s recompute). It selects a face **before**
+  the edit (a plain click on the model centre, `projector(viewport)(camera-target)`,
+  picks the body, not the construction planes) and moves the pointer off the
+  model, so the view sets no pick cursor. Then it changes the `capDia`
   parameter to `34 mm` (the stored value is `32 mm`; it invalidates the first
-  sketch, so every feature re-evaluates in order and the bar advances — a
-  `wall` edit re-evaluates only the later features, which the bar reaches at
-  once; `expect.poll` only, the window is the recompute's ~8 s). The notice is
-  `[data-model-progress="updating"]` with a `<progress>` whose `value` grows and
-  a detail line matching `/\d+ of \d+/`. A queued kernel call: a plain click on
-  the model centre (`projector(viewport)(camera-target)`) selects a face (a
-  plain click picks the body, not the construction planes — a Section click
-  would pick an origin plane and call no reference), then
-  `pickTool(page, 'Section Analysis')` calls `Recomputer.reference` (non-quiet)
-  with that face at once; the recompute notice wins the pill, so assert the
-  wait through `[data-kernel-busy]` on the shell root instead, moving the
-  pointer off the model first so the view sets no pick cursor, then
-  `getComputedStyle(viewport).cursor === 'progress'`. Once
+  sketch, so every feature re-evaluates — a `wall` edit re-evaluates only the
+  later features). The notice is `[data-model-progress="updating"]` with a
+  `<progress>` and a detail line matching `/\d+ of \d+/`. As soon as it shows,
+  `pickTool(page, 'Section Analysis')` calls `Recomputer.reference`
+  (non-quiet) with the selected face, which queues behind the recompute; the
+  notice wins the pill, so the wait shows as `[data-kernel-busy]` on the shell
+  root and `getComputedStyle(viewport).cursor === 'progress'`. **Sample in the
+  page, not with Playwright polls**: a `requestAnimationFrame` loop
+  (`window.__kernelWaits`) records the bar's values, whether
+  `[data-kernel-busy]` showed and the view's cursor meanwhile; on a busy runner
+  the queued call can wait only a moment and polls miss it. **Don't assert the
+  bar changes**: the features before the heavy thread often finish inside the
+  notice's 800 ms delay (`UPDATING_AFTER_MS`), so it can show the last step
+  only (value 6); the spec asserts at least one value and never backwards
+  (per-feature progress is unit-tested in `recomputer.test.ts`). Once
   `[data-model-status]` is `ready`, no `[data-model-progress]` and no
   `[data-kernel-busy]`.
 
@@ -1345,9 +1352,13 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `capDia` → `34 mm` edit from `kernel-waits.spec.ts`; once
   `[data-model-progress="updating"]` shows, its `[data-model-cancel]` button
   (the notice is `pointer-events: none`, the button alone takes the click) is
-  clicked and the Kernel status must be `ready` within 4 s (the earlier
-  state's features are cached; the spec logs the measured time). The toast is
-  `[data-toast]` with "Update cancelled". `capDia` is read back by reopening
+  clicked. The toast (`[data-toast]` with "Update cancelled") comes with the
+  click and is gone again after a few seconds, so check it **before** waiting
+  for ready. The Kernel status must then be `ready` within 20 s: Cancel waits
+  for the feature in flight (the heavy thread) and then replays from the cache
+  (ADR-0111), 1-3.5 s on GitHub's runners, about 4.5 s on the Arch ARM VM and
+  5.5-7.5 s under load; the spec logs the measured time instead of asserting
+  it (a 4 s budget failed on main repeatedly). `capDia` is read back by reopening
   Parameters (`parameterExpression(…).toHaveValue`) and closing it with
   Escape before `Control+y` (Redo), so the key doesn't land in the field.
 
