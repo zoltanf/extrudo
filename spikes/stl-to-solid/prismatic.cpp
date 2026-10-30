@@ -32,6 +32,11 @@
 #include <GeomAPI_ProjectPointOnSurf.hxx>
 #include <IntRes2d_IntersectionPoint.hxx>
 #include <ShapeFix_ShapeTolerance.hxx>
+#include <ShapeFix_Face.hxx>
+#include <ShapeFix_Shell.hxx>
+#include <ShapeFix_Wire.hxx>
+#include <ShapeProcess.hxx>
+#include <functional>
 #include <chrono>
 #include <array>
 #include <cmath>
@@ -1036,6 +1041,200 @@ static void classifySelfIntersections(const TopoDS_Shape& written, const TopoDS_
               << std::endl;
 }
 
+
+/**
+ * Q20 (ADR-0097 slice D8 follow-up): the STEP reader's own healing. OCCT 8's
+ * reader runs the ShapeProcess operator FixShape (STEPControl_Reader's default
+ * process flags) with DESTEP_Parameters' default DE_ShapeFixParameters, which
+ * mirror the FromSTEP lines of XSTEPResource/STEP; precision is the file's
+ * uncertainty, max tolerance max(precision, read.maxprecision.val).
+ */
+static TopoDS_Shape readStepUnhealed(const std::string& text) {
+  std::istringstream in(text);
+  STEPControl_Reader reader;
+  if (reader.ReadStream("q20.step", in) != IFSelect_RetDone) return TopoDS_Shape();
+  // No ShapeProcess operator: the translated shape as is.
+  reader.SetShapeProcessFlags(ShapeProcess::OperationsFlags());
+  TopoDS_Shape shape;
+  if (reader.TransferRoots() > 0) shape = reader.OneShape();
+  // The actor is shared: back to the default (FixShape) for every later read.
+  ShapeProcess::OperationsFlags defaults;
+  defaults.set(ShapeProcess::Operation::FixShape);
+  reader.SetShapeProcessFlags(defaults);
+  return shape;
+}
+
+/** ShapeProcess's fixshape operator with FromSTEP's values, then `tweak` (one mode off); the fixed shape. */
+static TopoDS_Shape fixLikeReader(const TopoDS_Shape& shape, double precision, double maxTol,
+                                  const std::function<void(ShapeFix_Shape&)>& tweak, Handle(ShapeBuild_ReShape)* history = nullptr,
+                                  TopoDS_Shape* input = nullptr) {
+  // ShapeFix changes shared geometry and tolerances in place: every run on its own copy.
+  const TopoDS_Shape copy = BRepBuilderAPI_Copy(shape).Shape();
+  if (input) *input = copy;
+  Handle(ShapeFix_Shape) sfs = new ShapeFix_Shape;
+  Handle(ShapeFix_Face) sff = sfs->FixFaceTool();
+  Handle(ShapeFix_Wire) sfw = sfs->FixWireTool();
+  sfs->SetPrecision(precision);
+  sfs->SetMinTolerance(1e-7);
+  sfs->SetMaxTolerance(maxTol);
+  sfs->FixFreeShellMode() = -1;
+  sfs->FixFreeFaceMode() = -1;
+  sfs->FixFreeWireMode() = -1;
+  sfs->FixSameParameterMode() = -1;
+  sfs->FixSolidMode() = -1;
+  sfs->FixVertexPositionMode() = 0;
+  sfs->FixVertexTolMode() = -1;
+  sfs->FixSolidTool()->FixShellMode() = -1;
+  sfs->FixSolidTool()->FixShellOrientationMode() = -1;
+  sfs->FixSolidTool()->CreateOpenSolidMode() = false;
+  sfs->FixShellTool()->FixFaceMode() = -1;
+  sfs->FixShellTool()->SetNonManifoldFlag(false);
+  sfs->FixShellTool()->FixOrientationMode() = -1;
+  sff->FixWireMode() = -1;
+  sff->FixOrientationMode() = -1;
+  sff->FixAddNaturalBoundMode() = -1;
+  sff->FixMissingSeamMode() = -1;
+  sff->FixSmallAreaWireMode() = -1;
+  sff->RemoveSmallAreaFaceMode() = -1;
+  sff->FixIntersectingWiresMode() = -1;
+  sff->FixLoopWiresMode() = -1;
+  sff->FixSplitFaceMode() = -1;
+  sfw->ModifyTopologyMode() = false;
+  sfw->ModifyGeometryMode() = true;
+  sfw->ClosedWireMode() = true;
+  sfw->PreferencePCurveMode() = true;
+  sfw->FixReorderMode() = -1;
+  sfw->FixSmallMode() = -1;
+  sfw->FixConnectedMode() = -1;
+  sfw->FixEdgeCurvesMode() = -1;
+  sfw->FixDegeneratedMode() = -1;
+  sfw->FixLackingMode() = -1;
+  sfw->FixSelfIntersectionMode() = -1;
+  sfw->ModifyRemoveLoopMode() = -1;
+  sfw->FixReversed2dMode() = -1;
+  sfw->FixRemovePCurveMode() = -1;
+  sfw->FixRemoveCurve3dMode() = -1;
+  sfw->FixAddPCurveMode() = -1;
+  sfw->FixAddCurve3dMode() = -1;
+  sfw->FixShiftedMode() = -1;
+  sfw->FixSeamMode() = -1;
+  sfw->FixSameParameterMode() = 0;  // FixEdgeSameParameterMode
+  sfw->FixNotchedEdgesMode() = -1;
+  sfw->FixTailMode() = 0;
+  sfw->SetMaxTailAngle(0);
+  sfw->SetMaxTailWidth(-1);
+  sfw->FixSelfIntersectingEdgeMode() = -1;
+  sfw->FixIntersectingEdgesMode() = -1;
+  sfw->FixNonAdjacentIntersectingEdgesMode() = -1;
+  if (tweak) tweak(*sfs);
+  sfs->Init(copy);
+  sfs->Perform();
+  if (history) *history = sfs->Context();
+  return sfs->Shape();
+}
+
+/** The Q20 modes switched off one at a time: a name and the switch. */
+static const std::vector<std::pair<std::string, std::function<void(ShapeFix_Shape&)>>>& q20Modes() {
+  static const std::vector<std::pair<std::string, std::function<void(ShapeFix_Shape&)>>> modes = {
+      {"wire FixSmallMode", [](ShapeFix_Shape& s) { s.FixWireTool()->FixSmallMode() = 0; }},
+      {"wire FixNotchedEdgesMode", [](ShapeFix_Shape& s) { s.FixWireTool()->FixNotchedEdgesMode() = 0; }},
+      {"wire FixSelfIntersectingEdgeMode", [](ShapeFix_Shape& s) { s.FixWireTool()->FixSelfIntersectingEdgeMode() = 0; }},
+      {"wire FixIntersectingEdgesMode", [](ShapeFix_Shape& s) { s.FixWireTool()->FixIntersectingEdgesMode() = 0; }},
+      {"wire FixNonAdjacentIntersectingEdgesMode",
+       [](ShapeFix_Shape& s) { s.FixWireTool()->FixNonAdjacentIntersectingEdgesMode() = 0; }},
+      {"wire FixSelfIntersectionMode", [](ShapeFix_Shape& s) { s.FixWireTool()->FixSelfIntersectionMode() = 0; }},
+      {"wire FixLackingMode", [](ShapeFix_Shape& s) { s.FixWireTool()->FixLackingMode() = 0; }},
+      {"wire FixConnectedMode", [](ShapeFix_Shape& s) { s.FixWireTool()->FixConnectedMode() = 0; }},
+      {"wire FixDegeneratedMode", [](ShapeFix_Shape& s) { s.FixWireTool()->FixDegeneratedMode() = 0; }},
+      {"wire FixReorderMode", [](ShapeFix_Shape& s) { s.FixWireTool()->FixReorderMode() = 0; }},
+      {"shape FixSameParameterMode", [](ShapeFix_Shape& s) { s.FixSameParameterMode() = 0; }},
+      {"face FixWireMode", [](ShapeFix_Shape& s) { s.FixFaceTool()->FixWireMode() = 0; }},
+      {"face FixSplitFaceMode", [](ShapeFix_Shape& s) { s.FixFaceTool()->FixSplitFaceMode() = 0; }},
+      {"face FixLoopWiresMode", [](ShapeFix_Shape& s) { s.FixFaceTool()->FixLoopWiresMode() = 0; }},
+      {"face FixIntersectingWiresMode", [](ShapeFix_Shape& s) { s.FixFaceTool()->FixIntersectingWiresMode() = 0; }},
+      {"face FixSmallAreaWireMode", [](ShapeFix_Shape& s) { s.FixFaceTool()->FixSmallAreaWireMode() = 0; }},
+      {"face RemoveSmallAreaFaceMode", [](ShapeFix_Shape& s) { s.FixFaceTool()->RemoveSmallAreaFaceMode() = 0; }},
+      {"face FixMissingSeamMode", [](ShapeFix_Shape& s) { s.FixFaceTool()->FixMissingSeamMode() = 0; }},
+      {"face FixOrientationMode", [](ShapeFix_Shape& s) { s.FixFaceTool()->FixOrientationMode() = 0; }},
+      {"shell FixOrientationMode", [](ShapeFix_Shape& s) { s.FixShellTool()->FixOrientationMode() = 0; }},
+      {"solid FixShellMode", [](ShapeFix_Shape& s) { s.FixSolidTool()->FixShellMode() = 0; }},
+  };
+  return modes;
+}
+
+/** One Q20 line's numbers. */
+struct Q20Result {
+  bool ok = false, valid = false, pass = false;
+  int faces = 0, solids = 0, flagged = 0;
+  double ratio = 0;
+  std::string top = "-";
+};
+
+static int countOf(const TopoDS_Shape& s, TopAbs_ShapeEnum type) {
+  NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> m;
+  TopExp::MapShapes(s, type, m);
+  return m.Extent();
+}
+
+static Q20Result q20Measure(const TopoDS_Shape& s, int writtenFaces, int writtenSolids, double writtenVolume, double u) {
+  Q20Result r;
+  if (s.IsNull()) return r;
+  r.ok = true;
+  r.valid = BRepCheck_Analyzer(s).IsValid();
+  r.faces = countOf(s, TopAbs_FACE);
+  r.solids = countOf(s, TopAbs_SOLID);
+  r.ratio = writtenVolume != 0 ? ExtrudoFacade::volumeOf(s) / writtenVolume : 0;
+  r.flagged = flaggedWiresAndFaces(s, false, u).wires;
+  r.pass = r.valid && r.faces == writtenFaces && r.solids == writtenSolids && std::fabs(r.ratio - 1) < 1e-4;
+  if (!r.valid) {
+    int top = 0;
+    for (const auto& [key, n] : bRepCheckCounts(s))
+      if (n > top) { top = n; r.top = key + " x" + std::to_string(n); }
+  }
+  return r;
+}
+
+static void q20Print(const std::string& name, const Q20Result& r, int writtenFaces) {
+  if (!r.ok) { std::cout << "   q20 " << name << ": no shape" << std::endl; return; }
+  std::cout << "   q20 " << name << ": read back " << (r.valid ? "valid" : "invalid") << ", faces " << r.faces << " (written "
+            << writtenFaces << "), solids " << r.solids << ", ratio " << r.ratio << ", flagged wires " << r.flagged
+            << ", kernel bar " << (r.pass ? "pass" : "fail") << (r.valid ? "" : ", top status " + r.top) << std::endl;
+}
+
+/** Q20 step 5: a face's edges, its shortest edge, edges below `u`, and whether two of its vertices sit within `u`. */
+static std::string q20FaceTraits(const TopoDS_Face& face, double u) {
+  NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges, vertices;
+  TopExp::MapShapes(face, TopAbs_EDGE, edges);
+  TopExp::MapShapes(face, TopAbs_VERTEX, vertices);
+  double shortest = 1e100;
+  int below = 0;
+  for (int i = 1; i <= edges.Extent(); ++i) {
+    const TopoDS_Edge& e = TopoDS::Edge(edges(i));
+    if (BRep_Tool::Degenerated(e)) continue;
+    const double len = GCPnts_AbscissaPoint::Length(BRepAdaptor_Curve(e));
+    shortest = std::min(shortest, len);
+    below += len < u;
+  }
+  int close = 0;
+  double closest = 1e100;
+  if (vertices.Extent() <= 4000)
+    for (int i = 1; i <= vertices.Extent(); ++i)
+      for (int j = i + 1; j <= vertices.Extent(); ++j) {
+        const double d = BRep_Tool::Pnt(TopoDS::Vertex(vertices(i))).Distance(BRep_Tool::Pnt(TopoDS::Vertex(vertices(j))));
+        closest = std::min(closest, d);
+        close += d < u;
+      }
+  GProp_GProps props;
+  BRepGProp::SurfaceProperties(face, props);
+  int wires = 0;
+  for (TopExp_Explorer w(face, TopAbs_WIRE); w.More(); w.Next()) ++wires;
+  std::ostringstream out;
+  out << faceKind(face) << ", area " << props.Mass() << ", wires " << wires << ", edges " << edges.Extent() << ", shortest "
+      << shortest << ", edges < " << u << ": " << below << ", vertex pairs within " << u << ": " << close << " (closest "
+      << closest << ")";
+  return out.str();
+}
+
 /**
  * Converts one file and diagnoses its STEP round trip (ADR-0097 D7): Q1 the
  * written body's edge classes, Q2 what the reader rejects, Q3 the areas by
@@ -1359,6 +1558,67 @@ static RoundTripRow stepOne(ExtrudoFacade& f, const std::string& path, double to
         Interface_Static::SetIVal("read.precision.mode", readMode);
         Interface_Static::SetRVal("read.precision.val", readVal);
         if (detail) std::cout << "   q19 " << names[v] << ": threw" << std::endl;
+      }
+    }
+  }
+
+  // Q20: the reader's healing, operator by operator (FILE=... or Q20=1 on S).
+  if (detail && getenv("Q20") && *getenv("Q20")) {
+    const double u = uncertaintyOf(text);
+    const double maxTol = std::max(u, Interface_Static::RVal("read.maxprecision.val"));
+    const int writtenSolids = f.count(h, 3);
+    std::cout << "   q20 precision " << u << ", max tolerance " << maxTol << std::endl;
+    const TopoDS_Shape raw = readStepUnhealed(text);
+    // Measured on a copy too: BRepCheck and the volume don't change it, but be sure.
+    const Q20Result off = q20Measure(raw, row.faces, writtenSolids, writtenVolume, u);
+    q20Print("healing off", off, row.faces);
+    if (!raw.IsNull()) {
+      const char* only = getenv("Q20OFF");
+      Handle(ShapeBuild_ReShape) history;
+      TopoDS_Shape fixedInput;
+      const TopoDS_Shape all = fixLikeReader(raw, u, maxTol, nullptr, &history, &fixedInput);
+      const Q20Result fixAll = q20Measure(all, row.faces, writtenSolids, writtenVolume, u);
+      q20Print("fix all", fixAll, row.faces);
+      std::cout << "   q20 fix all vs default read: faces " << fixAll.faces - row.backFaces << ", solids "
+                << fixAll.solids - row.backSolids << ", flagged wires " << fixAll.flagged - row.flaggedWires << std::endl;
+      std::vector<std::string> restoring;
+      for (const auto& [name, tweak] : q20Modes()) {
+        if (only && *only && name.find(only) == std::string::npos) continue;
+        const Q20Result r = q20Measure(fixLikeReader(raw, u, maxTol, tweak), row.faces, writtenSolids, writtenVolume, u);
+        q20Print("fix without " + name, r, row.faces);
+      }
+      // Step 5: the raw faces the healing splits or changes (image not one face, or other edge count).
+      if (getenv("Q20FACES") && *getenv("Q20FACES")) {
+        std::vector<WrittenFace> writtenFaces;
+        for (TopExp_Explorer e(written, TopAbs_FACE); e.More(); e.Next()) {
+          GProp_GProps props;
+          BRepGProp::SurfaceProperties(e.Current(), props);
+          writtenFaces.push_back({TopoDS::Face(e.Current()), props.CentreOfMass(), props.Mass()});
+        }
+        std::vector<std::pair<double, std::string>> changed;
+        int changedCount = 0, splitCount = 0, goneCount = 0;
+        for (TopExp_Explorer e(fixedInput, TopAbs_FACE); e.More(); e.Next()) {
+          const TopoDS_Face face = TopoDS::Face(e.Current());
+          const TopoDS_Shape image = history->Apply(face);
+          const int imageFaces = image.IsNull() ? 0 : countOf(image, TopAbs_FACE);
+          const int before = countOf(face, TopAbs_EDGE), after = image.IsNull() ? 0 : countOf(image, TopAbs_EDGE);
+          if (imageFaces == 1 && before == after) continue;
+          ++changedCount;
+          splitCount += imageFaces > 1;
+          goneCount += imageFaces == 0;
+          double tol = 0.001;
+          const int match = matchWrittenFace(face, writtenFaces, tol);
+          const TopoDS_Face& source = match >= 0 ? writtenFaces[match].face : face;
+          GProp_GProps props;
+          BRepGProp::SurfaceProperties(source, props);
+          changed.push_back({props.Mass(), std::string(match >= 0 ? "written " : "raw (unmatched) ") +
+                                               q20FaceTraits(source, u) + "; healed into " + std::to_string(imageFaces) +
+                                               " faces, edges " + std::to_string(before) + " -> " + std::to_string(after)});
+        }
+        std::sort(changed.begin(), changed.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+        std::cout << "   q20 faces the healing changes: " << changedCount << " (split " << splitCount << ", removed "
+                  << goneCount << ")" << std::endl;
+        for (size_t i = 0; i < changed.size() && i < 20; ++i) std::cout << "     q20 face " << changed[i].second << std::endl;
       }
     }
   }
