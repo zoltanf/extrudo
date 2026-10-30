@@ -3348,9 +3348,16 @@ faces are flat (facet 17, plane 81, other 2) with `BadOrientationOfSubshape`
 written max edge tolerance and the facet count do not separate pass from fail;
 every failure is a hybrid; `ShapeFix_Shape` at the written tolerances fixes 0
 of 12. The settings line needs `STEPControl_Controller::Init()` first (else all
-seven read 0); with the enum's Greatest (`write.precision.mode` 1 — the brief's
-"2") the global uncertainty does not change and none of the 20 passes; the
-flagged wires are mostly line polylines (7 of 25 carry a fitted circle/ellipse).
+seven read 0); the facade's `writeStep()` overwrites the transfer parameters, so
+write-side statics are inert through the app. Probes (Q9-Q12): the BREP round
+trip passes 20 of 20 (tolerances/pcurves kept, ratio 1 — the STEP reader's
+reconstruction is the trigger); healing the written body fixes 18 of 20 but 0
+survive the round trip; no pcurves and `2DUse_Preferred` each pass 0; with
+Greatest (`write.precision.mode` 1, via a direct `STEPControl_Writer`) 3 of 20
+pass (drill-block, micro-sd-keyring-inner, spaghetti-measure); the flagged wires
+are mostly line polylines (7 of 25 carry a fitted circle/ellipse) and the 25
+flagged wires hold 35 edges shorter than the file's uncertainty, 37 under
+0.05 mm.
 Numbers in ADR-0097's 2026-10-30b amendment.
 
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,

@@ -93,7 +93,10 @@ every file and ends with one summary row per file (Markdown, printed to stdout).
 The settings line calls `STEPControl_Controller::Init()` first (else every value reads 0); the summary gains the
 `u2 valid`/`u2 faces`/`u2 solids`/`u2 ratio`/`uncertainty` columns of a second round trip with
 `write.precision.mode` Greatest, and each file's flagged `SelfIntersectingWire` wires and
-`UnorientableShape`/`BadOrientationOfSubshape` faces with their edges' classes (ADR-0097's 2026-10-30b amendment).
+`UnorientableShape`/`BadOrientationOfSubshape` faces with their edges' classes, and a second summary table: the
+BREP round trip (`BRepTools::Write`/`Read`), a `ShapeFix_Shape`-healed body's STEP round trip, a no-pcurve write and a
+`2DUse_Preferred` read (`stepDirect` writes with a plain `STEPControl_Writer` because the facade's `writeStep()` overwrites
+the transfer parameters), and the flagged wires' smallest edges (ADR-0097's 2026-10-30b amendment).
 The kernel sweep writes the same numbers machine-readably: `SWEEP_OUT=<file>.jsonl` appends one JSON line per file (both methods' report, validity, volume ratio, time and STEP round trip), and `SWEEP_BASELINE=<file>.jsonl` compares each file against a previous run's line and fails it when it got worse (refused where it converted, over 10 % more faces, or a STEP read-back that was valid there and kept the face count there but not now).
 `BUILD=<folder>` builds into `spikes/stl-to-solid/<folder>` (default
 `build`), so two runs don't share one; `NOBUILD=1` reruns the last build;
