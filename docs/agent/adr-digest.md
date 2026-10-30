@@ -3306,6 +3306,30 @@ mesh lines up), a dropped triangle taking a kept neighbour's surface else -1.
 `unfit.regions` = the conversion's (1) and `planes`/`cylinders` = the
 report's (8/4; 100 planes on the base WASM). No schema change.
 
+**ADR-0097 slice D7 (2026-10-30): the STEP round trip checked, sweep
+baselines.** A STEP file keeps no tolerances; a reader works them out again
+tightly, so a face valid only through a generous edge tolerance comes back
+broken. `packages/kernel/src/mesh-to-solid-test-support.ts` (a plain module
+the two mesh-to-solid test files import, nothing in `index.ts`) has
+`stepRoundTrip(kernel, shape, name)` — write to STEP, read back, release
+everything it made, return `{ valid, faces, solids, volumeRatio, bytes }`,
+never throwing — and `expectStepRoundTrip`, whose bar is: the read-back body
+valid, the same face and solid counts, the volume within 1e-4.
+**Rules:** every converted-body test case calls `expectStepRoundTrip` after
+its own assertions (a new one must too); a case that misses the bar keeps
+those assertions and, under a `tripFails` flag with its numbers in a comment,
+pins the failure with `expect(() => expectStepRoundTrip(…)).toThrow()` — a
+fix flips it, never loosen or delete. Today's failures (all hybrid):
+peg-perego-button 0.01 and Auto, drill-block 0.01 and Auto,
+track-straight-100mm 0.1 (numbers in ADR-0097's 2026-10-30 amendment);
+fixing the converter is a later slice. The
+`STL_DIR` sweep gains `SWEEP_OUT=<file>.jsonl` (one JSON line per file, both
+methods' outcome and STEP round trip) and `SWEEP_BASELINE=<file>.jsonl`
+(a file fails when it is refused where it converted, exceeds the baseline's
+faces by more than 10 % — fewer faces is better — or its read-back was valid
+there, kept the face count there and neither now; a comparison prints on the
+row and `sweep totals` prints both runs' numbers).
+
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
 facade `removeFaces` with `BRepAlgoAPI_Defeaturing`). Rules: **all or nothing** (any

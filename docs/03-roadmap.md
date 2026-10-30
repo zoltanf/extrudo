@@ -1147,6 +1147,14 @@ end to end, faster than in established desktop CAD.
   (`bossWithBump`: 100 plane surfaces → 8, the conversion's) while the
   per-triangle array keeps the view mesh's triangle count (ADR-0097's
   2026-10-25e amendment).
+  *slice D7 (2026-10-30, checks only):* every converted body in the tests is
+  written to STEP and read back; the bar is valid, the same face and
+  solid counts, the volume within 1e-4 (`expectStepRoundTrip`); 5 fixture
+  cases miss it today (pinned with `tripFails`, all hybrid) and 17 of the 36
+  prismatic
+  conversions in the owner's 41-file sweep, so fixing the hybrid's STEP
+  read-back is the next slice; the sweep gained `SWEEP_OUT`/`SWEEP_BASELINE`
+  (ADR-0097's 2026-10-30 amendment).
 
 ## Phase 5 — Programmatic design (→ v0.6)
 

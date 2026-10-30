@@ -83,6 +83,7 @@ shows in the next (the 2026-10-21 trap corrupted the heap for every later
 file). The kernel orders a mesh as manifold's `getMesh()` does, which can
 segment differently: write that order with
 `MESH_OUT=<dir> STL_DIR=… pnpm vitest run packages/kernel/src/mesh-to-solid-files.test.ts --project @extrudo/kernel`.
+The kernel sweep writes the same numbers machine-readably: `SWEEP_OUT=<file>.jsonl` appends one JSON line per file (both methods' report, validity, volume ratio, time and STEP round trip), and `SWEEP_BASELINE=<file>.jsonl` compares each file against a previous run's line and fails it when it got worse (refused where it converted, over 10 % more faces, or a STEP read-back that was valid there and kept the face count there but not now).
 `BUILD=<folder>` builds into `spikes/stl-to-solid/<folder>` (default
 `build`), so two runs don't share one; `NOBUILD=1` reruns the last build;
 `FACADE=<file>` builds an edited copy of the facade (it must have the members prismatic.cpp reads; an older facade needs its own run.sh and prismatic.cpp).
