@@ -7433,7 +7433,8 @@ private:
       for (int k = 0; k < 7; ++k) size += std::fabs(scale * step[k]);
       if (size < 1e-12 * (1 + R + r)) break;
     }
-    if (!(R > 0) || !(r > 0) || !std::isfinite(R) || !std::isfinite(r)) return fit;
+    // R > r (slice D8): a torus whose tube reaches its axis is no torus a STEP reader takes back.
+    if (!(R > 0) || !(r > 0) || !(R > r) || !std::isfinite(R) || !std::isfinite(r)) return fit;
     fit.deviation = 0;
     for (int n : nodes) fit.deviation = std::max(fit.deviation, std::fabs(torusDistance(o, a, R, r, meshNode(n))));
     // A deterministic axis: its largest component positive.
@@ -9410,7 +9411,10 @@ private:
         weights[root(i)] += surfaces[i].area;
       }
       for (int i = 0; i < surfaceCount; ++i) {
-        if (rolling(surfaces[i]) && weights[root(i)] > 0) surfaces[i].radius = weighted[root(i)] / weights[root(i)];
+        if (!rolling(surfaces[i]) || !(weights[root(i)] > 0)) continue;
+        const double radius = weighted[root(i)] / weights[root(i)];
+        // A torus keeps R > r (slice D8).
+        if (surfaces[i].kind != 4 || surfaces[i].majorRadius > radius) surfaces[i].radius = radius;
       }
     }
 
@@ -9567,8 +9571,12 @@ private:
         const gp_XYZ o = cyl.origin.XYZ();
         c = o + (c - o).Dot(a) * a;
         const double r = torus.radius, R = torus.majorRadius;
-        if (std::fabs(R + r - cyl.radius) <= 10 * tolerance) torus.majorRadius = cyl.radius - r;
-        else if (std::fabs(R - r - cyl.radius) <= 10 * tolerance) torus.majorRadius = cyl.radius + r;
+        // The adjusted major radius only while it stays above the minor (slice D8).
+        if (std::fabs(R + r - cyl.radius) <= 10 * tolerance) {
+          if (cyl.radius - r > r) torus.majorRadius = cyl.radius - r;
+        } else if (std::fabs(R - r - cyl.radius) <= 10 * tolerance && cyl.radius + r > r) {
+          torus.majorRadius = cyl.radius + r;
+        }
         axial = true;
         break;
       }
