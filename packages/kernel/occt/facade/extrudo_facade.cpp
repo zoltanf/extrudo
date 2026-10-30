@@ -9025,6 +9025,60 @@ private:
         fit.curve = c;
       }
     }
+    // Next to a plane (slice D8): the curve ends where its end nodes project
+    // onto the plane, so that projecting the curve (a STEP reader drops a
+    // plane's pcurves and does exactly that) gives back the face's outline.
+    const MeshChart* plane = left.chart.kind == 0 ? &left.chart : right.chart.kind == 0 ? &right.chart : nullptr;
+    if (plane != nullptr) {
+      const gp_XYZ p = meshNode(chain.nodes.front()), q = meshNode(chain.nodes.back());
+      const gp_XYZ n = plane->frame.Direction().XYZ();
+      if (fit.curve.type == 0) {
+        if ((q - p).Modulus() <= 1e-12) {
+          fit.why = "chain ends coincide";
+          return fit;
+        }
+        fit.curve.line = gp_Lin(gp_Pnt(p), gp_Dir(q - p));
+      } else if (fit.curve.type == 1) {
+        const gp_Ax2& old = fit.curve.circle.Position();
+        const double along = old.Direction().XYZ().Dot(n);
+        if (std::fabs(along) < std::cos(M_PI / 180)) {
+          fit.why = "a tilted circle on a plane";
+          return fit;
+        }
+        const gp_XYZ axis = along < 0 ? n.Reversed() : n;
+        const gp_XYZ c = fit.curve.circle.Location().XYZ();
+        // The ends' projections onto the circle's plane (through its centre, square to n).
+        const gp_XYZ ph = p - (p - c).Dot(n) * n, qh = q - (q - c).Dot(n) * n;
+        double r = fit.curve.circle.Radius();
+        gp_XYZ centre = c;
+        if (chain.closed) {
+          r = (ph - c).Modulus();
+        } else {
+          const gp_XYZ chord = qh - ph;
+          const double half = chord.Modulus() / 2;
+          if (half <= 1e-12) {
+            fit.why = "chain ends coincide";
+            return fit;
+          }
+          if (half > r) {
+            fit.why = "chain ends wider than the circle";
+            return fit;
+          }
+          const gp_XYZ mid = (ph + qh) / 2, m = n.Crossed(chord).Normalized();
+          const double h = std::sqrt(r * r - half * half);
+          const gp_XYZ a = mid + h * m, b = mid - h * m;
+          centre = (a - c).Modulus() <= (b - c).Modulus() ? a : b;
+        }
+        if (r <= 1e-12) {
+          fit.why = "chain ends coincide";
+          return fit;
+        }
+        fit.curve.circle = gp_Circ(gp_Ax2(gp_Pnt(centre), gp_Dir(axis), gp_Dir(ph - centre)), r);
+      } else {
+        fit.why = "an ellipse on a plane";
+        return fit;
+      }
+    }
     // Every node near it, its parameters one way along it.
     const double reach = 1.5 * tolerance;
     for (int pass = 0; pass < 2; ++pass) {
@@ -10119,6 +10173,8 @@ private:
   std::string hybridRefusal_;
   /** The last hybrid build's chains (slice D3): "chains: 12 collapsed (…), 3 polylines", and why chains stayed polylines. */
   std::string hybridChains_, hybridChainsKept_;
+  /** The last hybrid build's planar edges and how many end off their pcurves' ends (slice D8): "exact chain ends: 120 edges, 0 off". */
+  std::string hybridEnds_;
   /** Per recognised region of the last hybrid rebuild, when the spike harness asks (FACES=1). */
   bool keepHybridFaces_ = false;
   std::vector<std::string> hybridFaces_;
@@ -10161,6 +10217,7 @@ private:
     hybridFaces_.clear();
     hybridChains_.clear();
     hybridChainsKept_.clear();
+    hybridEnds_.clear();
     capMessage.clear();
     auto refuse = [&](const std::string& why) {
       hybridRefusal_ = why;
@@ -10466,16 +10523,32 @@ private:
               const Handle(Geom_Curve) curve = curveGeom(fit.curve);
               double offLeft = 0, offRight = 0;
               const int from = chain.nodes.front(), to = chain.closed ? from : chain.nodes.back();
-              auto onChart = [&](int r, double& off) {
+              bool endsMissed = false;
+              auto onChart = [&](int r, double& off) -> Handle(Geom2d_Curve) {
                 const MeshChart& chart = regions[r].chart;
-                return pcurveFor(chart, curve, fit.first, fit.last, chart.uv(gp_Pnt(meshNode(from))),
-                                 chart.uv(gp_Pnt(meshNode(to))), off);
+                const gp_Pnt2d a = chart.uv(gp_Pnt(meshNode(from))), b = chart.uv(gp_Pnt(meshNode(to)));
+                if (chart.kind == 0 && fit.curve.type == 1) {
+                  // A circle square to the plane (chainCurve): its projection, the same parameter.
+                  const gp_Circ& circle = fit.curve.circle;
+                  const gp_XYZ x = circle.XAxis().Direction().XYZ(), y = circle.YAxis().Direction().XYZ();
+                  const gp_XYZ u = chart.frame.XDirection().XYZ(), v = chart.frame.YDirection().XYZ();
+                  const gp_XY x2(x.Dot(u), x.Dot(v)), y2(y.Dot(u), y.Dot(v));
+                  const Handle(Geom2d_Curve) projected = new Geom2d_Circle(
+                      gp_Circ2d(gp_Ax22d(chart.uv(circle.Location()), gp_Dir2d(x2), x2.Crossed(y2) > 0), circle.Radius()));
+                  off = 0;
+                  if (projected->Value(fit.first).Distance(a) > 1e-7 || projected->Value(fit.last).Distance(b) > 1e-7) {
+                    endsMissed = true;
+                    return Handle(Geom2d_Curve)();
+                  }
+                  return projected;
+                }
+                return pcurveFor(chart, curve, fit.first, fit.last, a, b, off);
               };
               const Handle(Geom2d_Curve) onLeft = onChart(chain.left, offLeft);
               const Handle(Geom2d_Curve) onRight = onLeft.IsNull() ? onLeft : onChart(chain.right, offRight);
               const double tol = std::max(HYBRID_EDGE_TOLERANCE_MIN, 1.1 * std::max({fit.off, offLeft, offRight}));
               if (onLeft.IsNull() || onRight.IsNull()) {
-                why = "pcurve failed";
+                why = endsMissed ? "a plane's circle pcurve misses its ends" : "pcurve failed";
               } else if (tol > HYBRID_EDGE_TOLERANCE_MAX) {
                 why = "edge tolerance";
               } else {
@@ -11001,6 +11074,45 @@ private:
         continue;
       }
       stage("checked against the mesh");
+      {
+        // Slice D8's rule, checked: on every planar face, each edge's 3D
+        // curve ends project onto its pcurve's ends.
+        int planarEdges = 0, off = 0;
+        std::string offWhat;
+        auto text = [](double x) {
+          char buffer[32];
+          std::snprintf(buffer, sizeof buffer, "%.3g", x);
+          return std::string(buffer);
+        };
+        for (TopExp_Explorer fe(result, TopAbs_FACE); fe.More(); fe.Next()) {
+          const TopoDS_Face face = TopoDS::Face(fe.Current());
+          TopLoc_Location location;
+          const Handle(Geom_Plane) plane = Handle(Geom_Plane)::DownCast(BRep_Tool::Surface(face, location));
+          if (plane.IsNull()) continue;
+          const gp_Pln pln = plane->Pln().Transformed(location.Transformation());
+          for (TopExp_Explorer ee(face, TopAbs_EDGE); ee.More(); ee.Next()) {
+            const TopoDS_Edge edge = TopoDS::Edge(ee.Current());
+            double first = 0, last = 0, f2 = 0, l2 = 0;
+            TopLoc_Location edgeLocation;
+            const Handle(Geom_Curve) curve = BRep_Tool::Curve(edge, edgeLocation, first, last);
+            const Handle(Geom2d_Curve) pcurve = BRep_Tool::CurveOnSurface(edge, face, f2, l2);
+            if (curve.IsNull() || pcurve.IsNull()) continue;
+            ++planarEdges;
+            for (const double t : {first, last}) {
+              double u = 0, v = 0;
+              ElSLib::Parameters(pln, curve->Value(t).Transformed(edgeLocation.Transformation()), u, v);
+              const double miss = pcurve->Value(t).Distance(gp_Pnt2d(u, v));
+              if (miss > 1e-7) {
+                if (++off <= 3)
+                  offWhat += std::string(off > 1 ? "; " : " (") + curve->DynamicType()->Name() + " over " + text(last - first) + ", " + pcurve->DynamicType()->Name() + ", miss " + text(miss);
+                break;
+              }
+            }
+          }
+        }
+        hybridEnds_ = "exact chain ends: " + std::to_string(planarEdges) + " edges, " + std::to_string(off) + " off" +
+                      (offWhat.empty() ? "" : offWhat + ")");
+      }
       meshReport_[0] = static_cast<double>(resultFaces.Extent());
       for (int k = 0; k < 5; ++k) meshReport_[1 + k] = static_cast<double>(counts[k]);
       meshReport_[10] = 1;
