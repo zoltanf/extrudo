@@ -8685,6 +8685,8 @@ private:
     double first = 0, last = 0;
     /** The largest node distance to the curve. */
     double off = 0;
+    /** How far a planar chain's circle grew to reach its end nodes (slice D8; mm). */
+    double widened = 0;
     std::string why;
   };
 
@@ -8976,6 +8978,7 @@ private:
                           const MeshSegmentation& seg, double tolerance,
                           std::map<std::pair<int, int>, std::pair<std::vector<MeshChainCurve>, std::string>>& cache,
                           std::map<std::pair<int, int>, bool>& coaxialPairs) const {
+    ++chainCurveCalls_;
     MeshChainFit fit;
     const MeshHybridRegion& left = regions[chain.left];
     const MeshHybridRegion& right = regions[chain.right];
@@ -9067,6 +9070,7 @@ private:
             fit.why = "chain ends wider than the circle";
             return fit;
           }
+          fit.widened = std::max(0.0, half - r);
           r = std::max(r, half);
           const gp_XYZ mid = (ph + qh) / 2, m = n.Crossed(chord).Normalized();
           const double h = std::sqrt(std::max(0.0, r * r - half * half));
@@ -10179,6 +10183,20 @@ private:
   std::string hybridChains_, hybridChainsKept_;
   /** The last hybrid build's planar edges and how many end off their pcurves' ends (slice D8): "exact chain ends: 120 edges, 0 off". */
   std::string hybridEnds_;
+  /** The last hybrid build's chain edges whose circle widened to its end nodes (slice D8), and the largest widening (mm). */
+  int hybridWidened_ = 0;
+  double hybridWidenedMax_ = 0;
+  /** Calls in the last hybrid build (spike harness timing). */
+  mutable long chainCurveCalls_ = 0, interpolateCalls_ = 0;
+  /** With keepHybridFaces_: the last hybrid build's edges, a chain's (`chain` true) or a mesh edge's, by end points. */
+  struct HybridEdgeRecord {
+    gp_Pnt a, b;
+    int left = -1, right = -1;
+    bool chain = false;
+    int type = 0;
+    double widened = 0;
+  };
+  std::vector<HybridEdgeRecord> hybridEdges_;
   /** Per recognised region of the last hybrid rebuild, when the spike harness asks (FACES=1). */
   bool keepHybridFaces_ = false;
   std::vector<std::string> hybridFaces_;
@@ -10222,6 +10240,11 @@ private:
     hybridChains_.clear();
     hybridChainsKept_.clear();
     hybridEnds_.clear();
+    hybridWidened_ = 0;
+    hybridWidenedMax_ = 0;
+    chainCurveCalls_ = 0;
+    interpolateCalls_ = 0;
+    hybridEdges_.clear();
     capMessage.clear();
     auto refuse = [&](const std::string& why) {
       hybridRefusal_ = why;
@@ -10430,6 +10453,7 @@ private:
         Handle(Geom2d_Curve) pcurve[2];
         double tolerance = 0;
         int type = -1;
+        double widened = 0;
       };
       std::vector<ChainEdge> chainEdges(chains.size());
       std::map<std::string, int> keptWhy;
@@ -10482,6 +10506,7 @@ private:
           const double w = static_cast<double>(i) / samples;
           points->ChangeValue(i + 1).ChangeCoord() += (1 - w) * startOffset + w * endOffset;
         }
+        ++interpolateCalls_;
         Geom2dAPI_Interpolate interpolate(points, parameters, false, 1e-9);
         interpolate.Perform();
         if (!interpolate.IsDone()) return Handle(Geom2d_Curve)();
@@ -10566,6 +10591,7 @@ private:
                 ce.pcurve[1] = onRight;
                 ce.tolerance = tol;
                 ce.type = fit.curve.type;
+                ce.widened = fit.widened;
                 if (keepHybridFaces_)
                   hybridFaces_.push_back("chain " + std::to_string(c) + " " +
                                          pairName(regions[chain.left].kind, regions[chain.right].kind) + ": " +
@@ -11116,6 +11142,30 @@ private:
         }
         hybridEnds_ = "exact chain ends: " + std::to_string(planarEdges) + " edges, " + std::to_string(off) + " off" +
                       (offWhat.empty() ? "" : offWhat + ")");
+      }
+      for (size_t c = 0; c < chains.size(); ++c)
+        if (!chainEdges[c].edge.IsNull() && chainEdges[c].widened > 0) {
+          ++hybridWidened_;
+          hybridWidenedMax_ = std::max(hybridWidenedMax_, chainEdges[c].widened);
+        }
+      if (keepHybridFaces_) {
+        // Diagnostics: every chain edge built, and every mesh edge no collapsed chain covers.
+        for (size_t c = 0; c < chains.size(); ++c) {
+          if (chainEdges[c].edge.IsNull()) continue;
+          const MeshChain& chain = chains[c];
+          hybridEdges_.push_back({gp_Pnt(meshNode(chain.nodes.front())),
+                                  gp_Pnt(meshNode(chain.closed ? chain.nodes.front() : chain.nodes.back())), chain.left,
+                                  chain.right, true, chainEdges[c].type, chainEdges[c].widened});
+        }
+        for (int t = 0; t < triangleCount; ++t)
+          for (int k = 0; k < 3; ++k) {
+            const int u = seg.neighbour[3 * t + k];
+            if (u >= 0 && u < t) continue;
+            const int a = corner(t, k), b = corner(t, (k + 1) % 3);
+            const auto it = chainOf.find(keyOf(a, b));
+            if (it != chainOf.end() && !chainEdges[it->second].edge.IsNull()) continue;
+            hybridEdges_.push_back({gp_Pnt(meshNode(a)), gp_Pnt(meshNode(b)), hybridOf[t], u >= 0 ? hybridOf[u] : -1, false, 0, 0});
+          }
       }
       meshReport_[0] = static_cast<double>(resultFaces.Extent());
       for (int k = 0; k < 5; ++k) meshReport_[1 + k] = static_cast<double>(counts[k]);

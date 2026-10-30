@@ -36,6 +36,8 @@
 #include <ShapeFix_Shell.hxx>
 #include <ShapeFix_Wire.hxx>
 #include <ShapeProcess.hxx>
+#include <ShapeAnalysis_Curve.hxx>
+#include <BRepAdaptor_Curve2d.hxx>
 #include <unordered_map>
 #include <Geom_RectangularTrimmedSurface.hxx>
 #include <Geom_ElementarySurface.hxx>
@@ -1434,6 +1436,441 @@ static void q21Pcurves(const TopoDS_Shape& written, const TopoDS_Shape& raw, dou
             << typeChanged << std::endl;
 }
 
+
+/** Q22: a shape's edges by end point (on a 1e-4 grid, neighbouring cells searched; matched within 1e-6). */
+struct Q22EdgeIndex {
+  NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+  NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher> faces;
+  std::unordered_map<std::string, std::vector<int>> byCell;
+  static std::string key(long x, long y, long z) { return std::to_string(x) + "," + std::to_string(y) + "," + std::to_string(z); }
+  static void ends(const TopoDS_Edge& e, gp_Pnt& a, gp_Pnt& b) {
+    TopoDS_Vertex va, vb;
+    TopExp::Vertices(e, va, vb);
+    a = va.IsNull() ? gp_Pnt() : BRep_Tool::Pnt(va);
+    b = vb.IsNull() ? a : BRep_Tool::Pnt(vb);
+  }
+  void build(const TopoDS_Shape& shape) {
+    TopExp::MapShapes(shape, TopAbs_EDGE, edges);
+    TopExp::MapShapesAndAncestors(shape, TopAbs_EDGE, TopAbs_FACE, faces);
+    for (int i = 1; i <= edges.Extent(); ++i) {
+      gp_Pnt a, b;
+      ends(TopoDS::Edge(edges(i)), a, b);
+      for (const gp_Pnt& p : {a, b}) {
+        std::vector<int>& v = byCell[key(std::llround(p.X() * 1e4), std::llround(p.Y() * 1e4), std::llround(p.Z() * 1e4))];
+        if (v.empty() || v.back() != i) v.push_back(i);
+      }
+    }
+  }
+  /** Edges with an end within 1e-6 of p. */
+  std::vector<int> touching(const gp_Pnt& p) const {
+    std::vector<int> out;
+    const long x = std::llround(p.X() * 1e4), y = std::llround(p.Y() * 1e4), z = std::llround(p.Z() * 1e4);
+    for (long dx = -1; dx <= 1; ++dx)
+      for (long dy = -1; dy <= 1; ++dy)
+        for (long dz = -1; dz <= 1; ++dz) {
+          const auto it = byCell.find(key(x + dx, y + dy, z + dz));
+          if (it == byCell.end()) continue;
+          for (int i : it->second) {
+            gp_Pnt a, b;
+            ends(TopoDS::Edge(edges(i)), a, b);
+            if ((a.Distance(p) <= 1e-6 || b.Distance(p) <= 1e-6) && std::find(out.begin(), out.end(), i) == out.end())
+              out.push_back(i);
+          }
+        }
+    return out;
+  }
+  /** The edges whose two ends are p and q (either way). */
+  std::vector<int> find(const gp_Pnt& p, const gp_Pnt& q) const {
+    std::vector<int> out;
+    for (int i : touching(p)) {
+      gp_Pnt a, b;
+      ends(TopoDS::Edge(edges(i)), a, b);
+      if ((a.Distance(p) <= 1e-6 && b.Distance(q) <= 1e-6) || (a.Distance(q) <= 1e-6 && b.Distance(p) <= 1e-6)) out.push_back(i);
+    }
+    return out;
+  }
+};
+
+static std::string q22CurveType(const TopoDS_Edge& e) {
+  switch (BRepAdaptor_Curve(e).GetType()) {
+    case GeomAbs_Line: return "line";
+    case GeomAbs_Circle: return "circle";
+    case GeomAbs_Ellipse: return "ellipse";
+    case GeomAbs_BSplineCurve: return "bspline";
+    default: return "other";
+  }
+}
+
+static double q22Length(const TopoDS_Edge& e) {
+  if (BRep_Tool::Degenerated(e)) return 0;
+  return GCPnts_AbscissaPoint::Length(BRepAdaptor_Curve(e));
+}
+
+/** The diag record (hybridEdges_) of an edge from p to q, or null. */
+static const ExtrudoFacade::HybridEdgeRecord* q22Record(const ExtrudoFacade& f, const gp_Pnt& p, const gp_Pnt& q) {
+  for (const auto& r : f.hybridEdges_)
+    if ((r.a.Distance(p) <= 1e-6 && r.b.Distance(q) <= 1e-6) || (r.a.Distance(q) <= 1e-6 && r.b.Distance(p) <= 1e-6)) return &r;
+  return nullptr;
+}
+
+static std::string q22Describe(const ExtrudoFacade& f, const TopoDS_Edge& e) {
+  gp_Pnt a, b;
+  Q22EdgeIndex::ends(e, a, b);
+  std::ostringstream out;
+  out << q22CurveType(e) << " " << q22Length(e);
+  int records = 0;
+  for (const auto& r : f.hybridEdges_) {
+    if (!((r.a.Distance(a) <= 1e-6 && r.b.Distance(b) <= 1e-6) || (r.a.Distance(b) <= 1e-6 && r.b.Distance(a) <= 1e-6))) continue;
+    out << (records++ ? "; " : " records: ") << (r.chain ? "chain" : "chord") << " regions " << r.left << "|" << r.right;
+    if (r.chain) out << " type " << r.type;
+    if (r.widened > 0) out << " widened " << r.widened;
+  }
+  if (!records) out << " (no build record)";
+  return out.str();
+}
+
+/** The unit tangent leaving vertex point v along the edge, in 3D (face null) or in the face's UV. */
+static gp_Vec2d q22Out2d(const TopoDS_Edge& e, const TopoDS_Face& face, const gp_Pnt& v) {
+  BRepAdaptor_Curve c(e);
+  const bool atFirst = c.Value(c.FirstParameter()).Distance(v) <= c.Value(c.LastParameter()).Distance(v);
+  BRepAdaptor_Curve2d c2(e, face);
+  gp_Pnt2d p;
+  gp_Vec2d d;
+  c2.D1(atFirst ? c2.FirstParameter() : c2.LastParameter(), p, d);
+  if (!atFirst) d.Reverse();
+  return d.Magnitude() > 0 ? d.Normalized() : d;
+}
+static gp_Vec q22Out3d(const TopoDS_Edge& e, const gp_Pnt& v) {
+  BRepAdaptor_Curve c(e);
+  const bool atFirst = c.Value(c.FirstParameter()).Distance(v) <= c.Value(c.LastParameter()).Distance(v);
+  gp_Pnt p;
+  gp_Vec d;
+  c.D1(atFirst ? c.FirstParameter() : c.LastParameter(), p, d);
+  if (!atFirst) d.Reverse();
+  return d.Magnitude() > 0 ? d.Normalized() : d;
+}
+
+/** How much of the shorter edge lies within 1e-6 of the longer one (mm; 101 samples). */
+static double q22Overlap(const TopoDS_Edge& e1, const TopoDS_Edge& e2) {
+  const double l1 = q22Length(e1), l2 = q22Length(e2);
+  const TopoDS_Edge& shorter = l1 <= l2 ? e1 : e2;
+  const TopoDS_Edge& longer = l1 <= l2 ? e2 : e1;
+  BRepAdaptor_Curve s(shorter);
+  double lf = 0, ll = 0;
+  TopLoc_Location loc;
+  Handle(Geom_Curve) lc = BRep_Tool::Curve(longer, loc, lf, ll);
+  if (lc.IsNull()) return -1;
+  lc = Handle(Geom_Curve)::DownCast(lc->Transformed(loc.Transformation()));
+  ShapeAnalysis_Curve sac;
+  int within = 0;
+  for (int i = 0; i <= 100; ++i) {
+    const gp_Pnt p = s.Value(s.FirstParameter() + (s.LastParameter() - s.FirstParameter()) * i / 100.0);
+    gp_Pnt proj;
+    double param = 0;
+    if (sac.Project(lc, p, 1e-9, proj, param, lf, ll) <= 1e-6) ++within;
+  }
+  return std::min(l1, l2) * within / 101.0;
+}
+
+/** Is a wire of `face` (vertex tolerances at 1e-7 when `tight`) flagged, and on the pair with these ends? "no", "yes", "yes, other pair". */
+static std::string q22Flagged(const TopoDS_Face& face, bool tight, const gp_Pnt ends1[2], const gp_Pnt ends2[2]) {
+  TopoDS_Face use = face;
+  if (tight) {
+    use = TopoDS::Face(BRepBuilderAPI_Copy(face).Shape());
+    ShapeFix_ShapeTolerance().SetTolerance(use, Precision::Confusion(), TopAbs_VERTEX);
+  }
+  std::string out = "no";
+  for (TopExp_Explorer w(use, TopAbs_WIRE); w.More(); w.Next()) {
+    const BRepCheckPair pair = brepCheckFirstPair(TopoDS::Wire(w.Current()), use);
+    if (!pair.found) continue;
+    if (pair.sameEdge) { out = "yes, one edge"; continue; }
+    gp_Pnt a1, b1, a2, b2;
+    Q22EdgeIndex::ends(pair.e1, a1, b1);
+    Q22EdgeIndex::ends(pair.e2, a2, b2);
+    auto same = [](const gp_Pnt& a, const gp_Pnt& b, const gp_Pnt e[2]) {
+      return (a.Distance(e[0]) <= 1e-6 && b.Distance(e[1]) <= 1e-6) || (a.Distance(e[1]) <= 1e-6 && b.Distance(e[0]) <= 1e-6);
+    };
+    if ((same(a1, b1, ends1) && same(a2, b2, ends2)) || (same(a1, b1, ends2) && same(a2, b2, ends1))) return "yes";
+    out = "yes, other pair";
+  }
+  return out;
+}
+
+/** The face both edges of a shape bound (by index), or null. */
+static TopoDS_Face q22CommonFace(const Q22EdgeIndex& index, int i, int j) {
+  if (!i || !j) return TopoDS_Face();
+  for (const TopoDS_Shape& a : index.faces.FindFromKey(index.edges(i)))
+    for (const TopoDS_Shape& b : index.faces.FindFromKey(index.edges(j)))
+      if (a.IsSame(b)) return TopoDS::Face(a);
+  return TopoDS_Face();
+}
+
+static std::string q22Touching(const ExtrudoFacade& f, const Q22EdgeIndex& index, const gp_Pnt& p) {
+  std::ostringstream out;
+  for (int i : index.touching(p)) out << " [" << q22Describe(f, TopoDS::Edge(index.edges(i))) << "]";
+  return out.str();
+}
+
+/**
+ * Q22a: every hairpin pair (adjacent, turning >= 150 degrees) BRepCheck finds
+ * on the default read: both edges matched to the written body, the angles
+ * and overlap at the shared vertex, and whether the pair is flagged written,
+ * raw and healed. Saves the pairs' end points to `pairsFile` for the old build.
+ */
+static void q22Hairpins(const ExtrudoFacade& f, const TopoDS_Shape& written, const TopoDS_Shape& readBack, const std::string& text,
+                        const std::string& pairsFile) {
+  Q22EdgeIndex writtenIndex, rawIndex;
+  writtenIndex.build(written);
+  const TopoDS_Shape raw = readStepUnhealed(text);
+  if (!raw.IsNull()) rawIndex.build(raw);
+  std::ofstream pairs(pairsFile);
+  pairs << std::setprecision(17);
+  int count = 0;
+  for (TopExp_Explorer fe(readBack, TopAbs_FACE); fe.More(); fe.Next()) {
+    const TopoDS_Face face = TopoDS::Face(fe.Current());
+    for (TopExp_Explorer we(face, TopAbs_WIRE); we.More(); we.Next()) {
+      const BRepCheckPair pair = brepCheckFirstPair(TopoDS::Wire(we.Current()), face);
+      if (!pair.found || pair.sameEdge) continue;
+      const TopoDS_Vertex shared = sharedVertex(pair.e1, pair.e2);
+      if (shared.IsNull()) continue;
+      const double turning = turningAngleAtVertex(pair.e1, pair.e2, shared);
+      if (turning < 150) continue;
+      ++count;
+      const gp_Pnt v = BRep_Tool::Pnt(shared);
+      gp_Pnt e1[2], e2[2];
+      Q22EdgeIndex::ends(pair.e1, e1[0], e1[1]);
+      Q22EdgeIndex::ends(pair.e2, e2[0], e2[1]);
+      std::cout << "   q22a pair " << count << ": read-back turning " << turning << ", vertex " << v.X() << " " << v.Y() << " "
+                << v.Z() << ", read-back edges " << q22CurveType(pair.e1) << " " << q22Length(pair.e1) << " / "
+                << q22CurveType(pair.e2) << " " << q22Length(pair.e2) << "\n";
+      // 1. The written edges.
+      const std::vector<int> w1 = writtenIndex.find(e1[0], e1[1]), w2 = writtenIndex.find(e2[0], e2[1]);
+      for (int k = 0; k < 2; ++k) {
+        const std::vector<int>& w = k == 0 ? w1 : w2;
+        const gp_Pnt* e = k == 0 ? e1 : e2;
+        if (!w.empty()) {
+          std::cout << "     q22a edge " << k + 1 << " written: " << q22Describe(f, TopoDS::Edge(writtenIndex.edges(w[0])))
+                    << (w.size() > 1 ? " (+" + std::to_string(w.size() - 1) + " with the same ends)" : "") << "\n";
+        } else {
+          std::cout << "     q22a edge " << k + 1 << " written: no match; at its ends:" << q22Touching(f, writtenIndex, e[0])
+                    << " |" << q22Touching(f, writtenIndex, e[1]) << "\n";
+        }
+      }
+      // 2. Angles, overlap, edges at the vertex: on the written edges when both match on one face, else the read-back's.
+      // Two distinct written edges when both ends are the same pair of nodes.
+      const int i1 = w1.empty() ? 0 : w1[0];
+      int i2 = 0;
+      for (int i : w2)
+        if (i != i1) { i2 = i; break; }
+      const TopoDS_Face wf = q22CommonFace(writtenIndex, i1, i2);
+      const bool onWritten = !wf.IsNull();
+      const TopoDS_Edge a = onWritten ? TopoDS::Edge(writtenIndex.edges(i1)) : pair.e1;
+      const TopoDS_Edge b = onWritten ? TopoDS::Edge(writtenIndex.edges(i2)) : pair.e2;
+      const TopoDS_Face af = onWritten ? wf : face;
+      const double angle3d = q22Out3d(a, v).Angle(q22Out3d(b, v)) * 180 / M_PI;
+      const double angleUv = std::fabs(q22Out2d(a, af, v).Angle(q22Out2d(b, af, v))) * 180 / M_PI;
+      int atVertex = 0;
+      if (onWritten) {
+        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faceEdges;
+        TopExp::MapShapes(wf, TopAbs_EDGE, faceEdges);
+        for (int i = 1; i <= faceEdges.Extent(); ++i) {
+          gp_Pnt p, q;
+          Q22EdgeIndex::ends(TopoDS::Edge(faceEdges(i)), p, q);
+          if (p.Distance(v) <= 1e-6 || q.Distance(v) <= 1e-6) ++atVertex;
+        }
+      }
+      std::cout << "     q22a at the vertex (" << (onWritten ? "written" : "read-back") << " edges): angle 3d " << angle3d
+                << ", angle uv " << angleUv << ", overlap " << q22Overlap(a, b) << " of " << std::min(q22Length(a), q22Length(b))
+                << ", face " << faceKind(af) << " edges at the vertex " << (onWritten ? std::to_string(atVertex) : "-");
+      {
+        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> all, wires;
+        TopExp::MapShapes(af, TopAbs_EDGE, all);
+        TopExp::MapShapes(af, TopAbs_WIRE, wires);
+        GProp_GProps props;
+        BRepGProp::SurfaceProperties(af, props);
+        int inWire = -1;
+        for (TopExp_Explorer w(af, TopAbs_WIRE); w.More() && inWire < 0; w.Next()) {
+          NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> we;
+          TopExp::MapShapes(w.Current(), TopAbs_EDGE, we);
+          if (we.Contains(a) && we.Contains(b)) inWire = we.Extent();
+        }
+        std::cout << ", face edges " << all.Extent() << " in " << wires.Extent() << " wires (the pair's wire " << inWire
+                  << " edges), face area " << props.Mass();
+      }
+      std::cout << "\n";
+      // 3. Flagged written (vertex tolerance 1e-7), raw (no healing), healed (this read).
+      std::string rawFlag = "no raw face";
+      if (!raw.IsNull()) {
+        const std::vector<int> r1 = rawIndex.find(e1[0], e1[1]), r2 = rawIndex.find(e2[0], e2[1]);
+        const TopoDS_Face rf = q22CommonFace(rawIndex, r1.empty() ? 0 : r1[0], r2.empty() ? 0 : r2[0]);
+        if (!rf.IsNull()) rawFlag = q22Flagged(rf, false, e1, e2);
+      }
+      std::cout << "     q22a flagged: written " << (onWritten ? q22Flagged(wf, true, e1, e2) : "no written face") << ", raw "
+                << rawFlag << ", healed yes\n";
+      pairs << e1[0].X() << " " << e1[0].Y() << " " << e1[0].Z() << " " << e1[1].X() << " " << e1[1].Y() << " " << e1[1].Z() << " "
+            << e2[0].X() << " " << e2[0].Y() << " " << e2[0].Z() << " " << e2[1].X() << " " << e2[1].Y() << " " << e2[1].Z() << " "
+            << v.X() << " " << v.Y() << " " << v.Z() << "\n";
+    }
+  }
+  pairs.close();
+  std::cout << "   q22a hairpin pairs: " << count << std::endl;
+}
+
+/** Q22a step 4, on the old build: the saved pairs' edges in this written body. */
+static void q22OldPairs(const ExtrudoFacade& f, const TopoDS_Shape& written, const std::string& pairsFile) {
+  std::ifstream in(pairsFile);
+  if (!in) {
+    std::cout << "   q22a old: no pairs file " << pairsFile << std::endl;
+    return;
+  }
+  Q22EdgeIndex index;
+  index.build(written);
+  double c[15];
+  int n = 0;
+  while (in >> c[0]) {
+    for (int k = 1; k < 15; ++k) in >> c[k];
+    ++n;
+    const gp_Pnt e1[2] = {gp_Pnt(c[0], c[1], c[2]), gp_Pnt(c[3], c[4], c[5])};
+    const gp_Pnt e2[2] = {gp_Pnt(c[6], c[7], c[8]), gp_Pnt(c[9], c[10], c[11])};
+    const gp_Pnt v(c[12], c[13], c[14]);
+    const std::vector<int> w1 = index.find(e1[0], e1[1]), w2 = index.find(e2[0], e2[1]);
+    const int i1 = w1.empty() ? 0 : w1[0];
+    int i2 = 0;
+    for (int i : w2)
+      if (i != i1) { i2 = i; break; }
+    std::cout << "   q22a old pair " << n << ": written edges with edge 1's ends " << w1.size() << ", with edge 2's " << w2.size()
+              << "; edge 1 " << (i1 ? q22Describe(f, TopoDS::Edge(index.edges(i1))) : "absent") << ", edge 2 "
+              << (i2 ? q22Describe(f, TopoDS::Edge(index.edges(i2))) : "absent");
+    if (i1 && i2) {
+      const TopoDS_Edge a = TopoDS::Edge(index.edges(i1)), b = TopoDS::Edge(index.edges(i2));
+      std::cout << ", angle 3d " << q22Out3d(a, v).Angle(q22Out3d(b, v)) * 180 / M_PI << ", overlap " << q22Overlap(a, b);
+      const TopoDS_Face wf = q22CommonFace(index, i1, i2);
+      if (!wf.IsNull())
+        std::cout << ", angle uv " << std::fabs(q22Out2d(a, wf, v).Angle(q22Out2d(b, wf, v))) * 180 / M_PI << ", written flagged "
+                  << q22Flagged(wf, true, e1, e2);
+      else
+        std::cout << ", no common face";
+    }
+    std::cout << "\n     q22a old at the vertex:" << q22Touching(f, index, v) << std::endl;
+  }
+}
+
+/** Q22b: volumes written / raw / read, and the faces whose area moves on the read. */
+static void q22Faces(const ExtrudoFacade& f, const TopoDS_Shape& written, const TopoDS_Shape& readBack, const std::string& text) {
+  const TopoDS_Shape raw = readStepUnhealed(text);
+  std::cout << std::setprecision(12) << "   q22b volume written " << ExtrudoFacade::volumeOf(written) << ", raw "
+            << (raw.IsNull() ? 0.0 : ExtrudoFacade::volumeOf(raw)) << ", read " << ExtrudoFacade::volumeOf(readBack)
+            << std::setprecision(6) << std::endl;
+  std::cout << "   q22b widened circles " << f.hybridWidened_ << ", largest " << f.hybridWidenedMax_ << " mm" << std::endl;
+  struct F {
+    TopoDS_Face face;
+    GeomAbs_SurfaceType type;
+    gp_Pnt centre;
+    double area;
+    bool used = false;
+  };
+  auto list = [](const TopoDS_Shape& s) {
+    std::vector<F> out;
+    for (TopExp_Explorer e(s, TopAbs_FACE); e.More(); e.Next()) {
+      GProp_GProps props;
+      BRepGProp::SurfaceProperties(e.Current(), props);
+      out.push_back({TopoDS::Face(e.Current()), BRepAdaptor_Surface(TopoDS::Face(e.Current())).GetType(), props.CentreOfMass(),
+                     props.Mass()});
+    }
+    return out;
+  };
+  auto describe = [](const F& x) {
+    std::map<std::string, int> types;
+    for (TopExp_Explorer e(x.face, TopAbs_EDGE); e.More(); e.Next()) types[q22CurveType(TopoDS::Edge(e.Current()))]++;
+    std::ostringstream out;
+    out << std::setprecision(10) << faceKind(x.face) << " area " << x.area << " centre " << x.centre.X() << " " << x.centre.Y() << " "
+        << x.centre.Z() << ", edges";
+    for (const auto& [t, n] : types) out << " " << t << " " << n;
+    return out.str();
+  };
+  // The raw read against the written body: the same match, counts only.
+  if (!raw.IsNull()) {
+    std::vector<F> w0 = list(written), r0 = list(raw);
+    int movedRaw = 0, unmatchedRaw = 0;
+    for (F& x : w0) {
+      int best = -1;
+      double bestD = 1e-3;
+      for (size_t i = 0; i < r0.size(); ++i) {
+        if (r0[i].used || r0[i].type != x.type) continue;
+        const double d = r0[i].centre.Distance(x.centre);
+        if (d <= bestD) { bestD = d; best = static_cast<int>(i); }
+      }
+      if (best < 0) {
+        ++unmatchedRaw;
+        std::cout << "     q22b raw unmatched written face " << describe(x) << "\n";
+        continue;
+      }
+      r0[best].used = true;
+      if (std::fabs(std::fabs(r0[best].area) - x.area) / std::max(x.area, 1e-300) > 1e-6) {
+        ++movedRaw;
+        std::cout << std::setprecision(10) << "     q22b raw moved: written " << describe(x) << " -> raw area " << r0[best].area
+                  << std::setprecision(6) << "\n";
+      }
+    }
+    for (const F& x : r0)
+      if (!x.used) std::cout << "     q22b raw unmatched raw face " << describe(x) << "\n";
+    std::cout << "   q22b raw read: faces with |area| moved > 1e-6 rel " << movedRaw << ", unmatched written " << unmatchedRaw << std::endl;
+    int curvedEdges = 0, noPcurve = 0;
+    for (TopExp_Explorer fe(raw, TopAbs_FACE); fe.More(); fe.Next()) {
+      const TopoDS_Face face = TopoDS::Face(fe.Current());
+      if (BRepAdaptor_Surface(face).GetType() == GeomAbs_Plane) continue;
+      for (TopExp_Explorer ee(face, TopAbs_EDGE); ee.More(); ee.Next()) {
+        double a = 0, b = 0;
+        ++curvedEdges;
+        if (BRep_Tool::CurveOnSurface(TopoDS::Edge(ee.Current()), face, a, b).IsNull()) ++noPcurve;
+      }
+    }
+    std::cout << "   q22b raw read: edges on curved faces " << curvedEdges << ", without a pcurve " << noPcurve << std::endl;
+  }
+  std::vector<F> w = list(written), r = list(readBack);
+  int moved = 0, unmatched = 0;
+  for (F& x : w) {
+    int best = -1;
+    double bestD = 1e-3;
+    for (size_t i = 0; i < r.size(); ++i) {
+      if (r[i].used || r[i].type != x.type) continue;
+      const double d = r[i].centre.Distance(x.centre);
+      if (d <= bestD) { bestD = d; best = static_cast<int>(i); }
+    }
+    if (best < 0) {
+      ++unmatched;
+      std::cout << "     q22b unmatched written face " << describe(x) << "\n";
+      continue;
+    }
+    r[best].used = true;
+    const double rel = std::fabs(r[best].area - x.area) / std::max(x.area, 1e-300);
+    if (rel <= 1e-6) continue;
+    ++moved;
+    std::map<std::string, int> types;
+    bool widened = false;
+    for (TopExp_Explorer e(x.face, TopAbs_EDGE); e.More(); e.Next()) {
+      const TopoDS_Edge edge = TopoDS::Edge(e.Current());
+      types[q22CurveType(edge)]++;
+      gp_Pnt a, b;
+      Q22EdgeIndex::ends(edge, a, b);
+      const ExtrudoFacade::HybridEdgeRecord* rec = q22Record(f, a, b);
+      if (rec && rec->widened > 0) widened = true;
+    }
+    std::cout << std::setprecision(10) << "     q22b face " << faceKind(x.face) << ": written area " << x.area << ", read " << r[best].area
+              << " (rel " << rel << "), edges";
+    for (const auto& [t, n] : types) std::cout << " " << t << " " << n;
+    std::cout << (widened ? ", a widened circle" : ", no widened circle") << std::setprecision(6) << "\n";
+  }
+  int readUnmatched = 0;
+  for (const F& x : r)
+    if (!x.used) {
+      ++readUnmatched;
+      std::cout << "     q22b unmatched read face " << describe(x) << "\n";
+    }
+  std::cout << "   q22b faces with area moved > 1e-6 rel: " << moved << " of " << w.size() << " (unmatched written " << unmatched
+            << ", read " << readUnmatched << ")" << std::endl;
+}
+
 /**
  * Converts one file and diagnoses its STEP round trip (ADR-0097 D7): Q1 the
  * written body's edge classes, Q2 what the reader rejects, Q3 the areas by
@@ -1445,6 +1882,7 @@ static RoundTripRow stepOne(ExtrudoFacade& f, const std::string& path, double to
   row.file = path.size() > 5 ? path.substr(5) : path;
   row.tol = tolerance;
   const Mesh m = stlFile(path.c_str());
+  f.keepHybridFaces_ = getenv("FACES") && *getenv("FACES");
   if (detail) std::cout << "== step " << row.file << " (" << m.triangles.size() / 3 << " triangles, tol " << tolerance << ")\n";
   f.meshNodes(int(m.nodes.size() / 3));
   double* nodes = reinterpret_cast<double*>(f.meshNodesPtr());
@@ -1870,6 +2308,15 @@ static RoundTripRow stepOne(ExtrudoFacade& f, const std::string& path, double to
     row21("write greatest, read default", greatest, readMode, true);
     row21("write greatest, read mode -2", greatest, -2, true);
   }
+
+  // Q22 (ADR-0097 slice D8 follow-up): hairpins, drift.
+  if (detail && getenv("Q22A") && *getenv("Q22A")) {
+    const std::string base = std::filesystem::path(row.file).stem().string();
+    const std::string pairsFile = "diag/q22a-pairs-" + base + ".txt";
+    if (getenv("Q22OLD") && *getenv("Q22OLD")) q22OldPairs(f, written, pairsFile);
+    else q22Hairpins(f, written, readBack, text, pairsFile);
+  }
+  if (detail && getenv("Q22B") && *getenv("Q22B")) q22Faces(f, written, readBack, text);
 
   // Q9: the BREP round trip (keeps tolerances and pcurves).
   {
@@ -2318,6 +2765,7 @@ static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
     if (!h && !f.rebuildRefusal_.empty()) std::cout << "   rebuild refused at: " << f.rebuildRefusal_ << std::endl;
     if (!h && !f.hybridRefusal_.empty()) std::cout << "   hybrid refused at: " << f.hybridRefusal_ << std::endl;
     std::cout << "   hybrid exploded regions: " << f.hybridExploded_ << std::endl;
+    std::cout << "   calls: chainCurve " << f.chainCurveCalls_ << ", interpolate " << f.interpolateCalls_ << std::endl;
   }
   if (!h) {
     std::cout << "   prismatic refused (" << ms << " ms): " << f.lastError() << std::endl;
