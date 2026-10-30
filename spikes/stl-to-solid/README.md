@@ -54,6 +54,8 @@ four-fillet box and the slot fail.
 STL_DIR=~/stl FILE=own/part.stl TOL=0.05 bash spikes/stl-to-solid/run.sh prismatic f   # one file
 STL_DIR=~/stl TOL=auto bash spikes/stl-to-solid/run.sh prismatic f                      # Auto (ADR-0097 slice D2; picks 0.01/0.02/0.05/0.1)
 STL_DIR=~/stl TOL=0.01 bash spikes/stl-to-solid/run.sh prismatic F                     # every .stl/.mesh under STL_DIR, one process
+STL_DIR=~/stl FILE=own/part.stl TOL=auto bash spikes/stl-to-solid/run.sh prismatic s  # one file, then the STEP round-trip diagnosis (ADR-0097 D7)
+STL_DIR=~/stl TOL=auto bash spikes/stl-to-solid/run.sh prismatic S                    # every file, the diagnosis per file and a summary table
 SAN=1 STL_DIR=~/stl FILE=… bash spikes/stl-to-solid/run.sh prismatic f                  # AddressSanitizer (about 4 min to link)
 TIMES=1 …   # the rebuild's stage times, cell counts and the check that refused
 PIECES=1 …  # how many surfaces each region is on, every surface as fitted and as rebuilt
@@ -83,6 +85,11 @@ shows in the next (the 2026-10-21 trap corrupted the heap for every later
 file). The kernel orders a mesh as manifold's `getMesh()` does, which can
 segment differently: write that order with
 `MESH_OUT=<dir> STL_DIR=… pnpm vitest run packages/kernel/src/mesh-to-solid-files.test.ts --project @extrudo/kernel`.
+Cases `s`/`S` diagnose the STEP round trip (ADR-0097 D7): `s` is `f` on one file (STL_DIR, FILE, TOL) then writes the
+converted body to STEP, reads it back and prints the settings in force, the written body's edges by class and tolerance
+buckets, the read-back `shapeDiagnose` and BRepCheck statuses by name, the invalid edges by class and faces by kind, the
+summed area per face kind written vs read back, and a `ShapeFix_Shape` pass at the written tolerances; `S` does that for
+every file and ends with one summary row per file (Markdown, printed to stdout). Neither changes the converter.
 The kernel sweep writes the same numbers machine-readably: `SWEEP_OUT=<file>.jsonl` appends one JSON line per file (both methods' report, validity, volume ratio, time and STEP round trip), and `SWEEP_BASELINE=<file>.jsonl` compares each file against a previous run's line and fails it when it got worse (refused where it converted, over 10 % more faces, or a STEP read-back that was valid there and kept the face count there but not now).
 `BUILD=<folder>` builds into `spikes/stl-to-solid/<folder>` (default
 `build`), so two runs don't share one; `NOBUILD=1` reruns the last build;
