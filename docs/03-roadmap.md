@@ -1155,6 +1155,13 @@ end to end, faster than in established desktop CAD.
   conversions in the owner's 41-file sweep, so fixing the hybrid's STEP
   read-back is the next slice; the sweep gained `SWEEP_OUT`/`SWEEP_BASELINE`
   (ADR-0097's 2026-10-30 amendment).
+  *diagnosis 2026-10-30b:* spike cases `s`/`S` measured the failures: the
+  read-back breaks on face/wire **orientation** (`BadOrientationOfSubshape`,
+  `UnorientableShape`, `SelfIntersectingWire`), not on edge tolerances (no edge
+  or vertex carries a status; invalid faces are facet/plane only), the written
+  max edge tolerance and facet count do not separate pass from fail, and
+  `ShapeFix_Shape` at the written tolerances fixes 0 of 12 (ADR-0097's
+  2026-10-30b amendment; no converter change, the fix is still the next slice).
 
 ## Phase 5 — Programmatic design (→ v0.6)
 
