@@ -17,6 +17,7 @@
 #include <BRepPrimAPI_MakeSphere.hxx>
 #include <BRepPrimAPI_MakeTorus.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
+#include <Interface_Static.hxx>
 #include <RWStl.hxx>
 #include <StlAPI_Writer.hxx>
 #include <BRepBuilderAPI_Copy.hxx>
@@ -270,6 +271,387 @@ static int run(ExtrudoFacade& f, const char* name, const Mesh& m, double toleran
     }
   }
   return h;
+}
+
+// ------------------------------------------ STEP round trip diagnosis (s/S) --
+// ADR-0097's D7 amendment: a converted body is written to STEP and read back.
+// Cases s (one FILE) and S (every file) measure why the read-back misses the
+// bar: where the tolerances sit, what BRepCheck rejects, where the volume goes
+// and whether a ShapeFix_Shape pass at the written tolerances repairs it.
+
+/** The name of a BRepCheck_Status, for the dump (ADR-0097 D7 diagnosis). */
+static const char* statusName(BRepCheck_Status st) {
+  switch (st) {
+    case BRepCheck_NoError: return "NoError";
+    case BRepCheck_InvalidPointOnCurve: return "InvalidPointOnCurve";
+    case BRepCheck_InvalidPointOnCurveOnSurface: return "InvalidPointOnCurveOnSurface";
+    case BRepCheck_InvalidPointOnSurface: return "InvalidPointOnSurface";
+    case BRepCheck_No3DCurve: return "No3DCurve";
+    case BRepCheck_Multiple3DCurve: return "Multiple3DCurve";
+    case BRepCheck_Invalid3DCurve: return "Invalid3DCurve";
+    case BRepCheck_NoCurveOnSurface: return "NoCurveOnSurface";
+    case BRepCheck_InvalidCurveOnSurface: return "InvalidCurveOnSurface";
+    case BRepCheck_InvalidCurveOnClosedSurface: return "InvalidCurveOnClosedSurface";
+    case BRepCheck_InvalidSameRangeFlag: return "InvalidSameRangeFlag";
+    case BRepCheck_InvalidSameParameterFlag: return "InvalidSameParameterFlag";
+    case BRepCheck_InvalidDegeneratedFlag: return "InvalidDegeneratedFlag";
+    case BRepCheck_FreeEdge: return "FreeEdge";
+    case BRepCheck_InvalidMultiConnexity: return "InvalidMultiConnexity";
+    case BRepCheck_InvalidRange: return "InvalidRange";
+    case BRepCheck_EmptyWire: return "EmptyWire";
+    case BRepCheck_RedundantEdge: return "RedundantEdge";
+    case BRepCheck_SelfIntersectingWire: return "SelfIntersectingWire";
+    case BRepCheck_NoSurface: return "NoSurface";
+    case BRepCheck_InvalidWire: return "InvalidWire";
+    case BRepCheck_RedundantWire: return "RedundantWire";
+    case BRepCheck_IntersectingWires: return "IntersectingWires";
+    case BRepCheck_InvalidImbricationOfWires: return "InvalidImbricationOfWires";
+    case BRepCheck_EmptyShell: return "EmptyShell";
+    case BRepCheck_RedundantFace: return "RedundantFace";
+    case BRepCheck_InvalidImbricationOfShells: return "InvalidImbricationOfShells";
+    case BRepCheck_UnorientableShape: return "UnorientableShape";
+    case BRepCheck_NotClosed: return "NotClosed";
+    case BRepCheck_NotConnected: return "NotConnected";
+    case BRepCheck_SubshapeNotInShape: return "SubshapeNotInShape";
+    case BRepCheck_BadOrientation: return "BadOrientation";
+    case BRepCheck_BadOrientationOfSubshape: return "BadOrientationOfSubshape";
+    case BRepCheck_InvalidPolygonOnTriangulation: return "InvalidPolygonOnTriangulation";
+    case BRepCheck_InvalidToleranceValue: return "InvalidToleranceValue";
+    case BRepCheck_EnclosedRegion: return "EnclosedRegion";
+    case BRepCheck_CheckFail: return "CheckFail";
+  }
+  return "Unknown";
+}
+
+/** An edge's curve kind, or "degenerate" (ADR-0097 D7 diagnosis). */
+static std::string curveKind(const TopoDS_Edge& edge) {
+  if (BRep_Tool::Degenerated(edge)) return "degenerate";
+  switch (BRepAdaptor_Curve(edge).GetType()) {
+    case GeomAbs_Line: return "line";
+    case GeomAbs_Circle: return "circle";
+    case GeomAbs_Ellipse: return "ellipse";
+    case GeomAbs_BSplineCurve: return "bspline";
+    default: return "other";
+  }
+}
+
+/** A face's kind: "facet" for a 3-edge plane (a hybrid facet), else its surface kind. */
+static std::string faceKind(const TopoDS_Face& face) {
+  const BRepAdaptor_Surface surface(face);
+  if (surface.GetType() == GeomAbs_Plane) {
+    int edges = 0;
+    for (TopExp_Explorer e(face, TopAbs_EDGE); e.More(); e.Next()) ++edges;
+    return edges == 3 ? "facet" : "plane";
+  }
+  switch (surface.GetType()) {
+    case GeomAbs_Cylinder: return "cylinder";
+    case GeomAbs_Cone: return "cone";
+    case GeomAbs_Sphere: return "sphere";
+    case GeomAbs_Torus: return "torus";
+    default: return "other";
+  }
+}
+
+/** The bucket an edge tolerance falls in: ≤0.002, ≤0.01, ≤0.05, ≤0.1, ≤0.5, ≤1, >1 mm. */
+static int bucketIndex(double tol) {
+  if (tol <= 0.002) return 0;
+  if (tol <= 0.01) return 1;
+  if (tol <= 0.05) return 2;
+  if (tol <= 0.1) return 3;
+  if (tol <= 0.5) return 4;
+  if (tol <= 1.0) return 5;
+  return 6;
+}
+
+static const char* const BUCKET_NAMES[7] = {"<=0.002", "<=0.01", "<=0.05", "<=0.1", "<=0.5", "<=1", ">1"};
+
+struct ClassStat {
+  int count = 0;
+  int invalid = 0;
+  int buckets[7] = {0, 0, 0, 0, 0, 0, 0};
+  double maxTol = 0;
+};
+
+/**
+ * Every edge of `shape` by class `<curve> <A>|<B>` (A ≤ B, the two faces around
+ * it), with the tolerance buckets and the max (ADR-0097 D7 diagnosis). Also
+ * returns the max vertex tolerance.
+ */
+static std::map<std::string, ClassStat> edgeClasses(const TopoDS_Shape& shape, double& maxVertex) {
+  std::map<std::string, ClassStat> out;
+  maxVertex = 0;
+  NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> vertices;
+  TopExp::MapShapes(shape, TopAbs_VERTEX, vertices);
+  for (int i = 1; i <= vertices.Extent(); ++i)
+    maxVertex = std::max(maxVertex, BRep_Tool::Tolerance(TopoDS::Vertex(vertices(i))));
+  NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher> edgeFaces;
+  TopExp::MapShapesAndUniqueAncestors(shape, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+  BRepCheck_Analyzer analyzer(shape);
+  for (int i = 1; i <= edgeFaces.Extent(); ++i) {
+    const TopoDS_Edge edge = TopoDS::Edge(edgeFaces.FindKey(i));
+    std::vector<std::string> faces;
+    for (const TopoDS_Shape& face : edgeFaces(i)) faces.push_back(faceKind(TopoDS::Face(face)));
+    std::string a = "none", b = "none";
+    if (faces.size() == 1) a = b = faces[0];
+    else if (faces.size() >= 2) { a = faces[0]; b = faces[1]; if (b < a) std::swap(a, b); }
+    ClassStat& stat = out[curveKind(edge) + " " + a + "|" + b];
+    ++stat.count;
+    const double tol = BRep_Tool::Tolerance(edge);
+    ++stat.buckets[bucketIndex(tol)];
+    stat.maxTol = std::max(stat.maxTol, tol);
+    if (!analyzer.IsValid(edge)) ++stat.invalid;
+  }
+  return out;
+}
+
+/** The read-back faces that BRepCheck rejects, by kind (ADR-0097 D7 diagnosis). */
+static std::map<std::string, int> invalidFacesByKind(const TopoDS_Shape& shape, int& invalid) {
+  std::map<std::string, int> out;
+  invalid = 0;
+  for (TopExp_Explorer e(shape, TopAbs_FACE); e.More(); e.Next()) {
+    if (BRepCheck_Analyzer(e.Current()).IsValid()) continue;
+    ++invalid;
+    ++out[faceKind(TopoDS::Face(e.Current()))];
+  }
+  return out;
+}
+
+/** Summed face area and count per face kind, for the volume-drift question. */
+static std::map<std::string, std::pair<double, int>> areaByKind(const TopoDS_Shape& shape) {
+  std::map<std::string, std::pair<double, int>> out;
+  for (TopExp_Explorer e(shape, TopAbs_FACE); e.More(); e.Next()) {
+    GProp_GProps props;
+    BRepGProp::SurfaceProperties(e.Current(), props);
+    auto& entry = out[faceKind(TopoDS::Face(e.Current()))];
+    entry.first += props.Mass();
+    entry.second += 1;
+  }
+  return out;
+}
+
+/** BRepCheck's non-NoError statuses on `shape`, per sub-shape kind, own and in context, by name. */
+static std::map<std::string, int> bRepCheckCounts(const TopoDS_Shape& shape) {
+  std::map<std::string, int> counts;
+  BRepCheck_Analyzer analyzer(shape);
+  const std::pair<TopAbs_ShapeEnum, const char*> types[] = {{TopAbs_VERTEX, "vertex"}, {TopAbs_EDGE, "edge"},
+                                                            {TopAbs_WIRE, "wire"},   {TopAbs_FACE, "face"},
+                                                            {TopAbs_SHELL, "shell"}, {TopAbs_SOLID, "solid"}};
+  for (const auto& [type, name] : types) {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> shapes;
+    TopExp::MapShapes(shape, type, shapes);
+    for (int i = 1; i <= shapes.Extent(); ++i) {
+      Handle(BRepCheck_Result) result = analyzer.Result(shapes(i));
+      if (result.IsNull()) continue;
+      for (BRepCheck_Status st : result->Status())
+        if (st != BRepCheck_NoError) counts[std::string(name) + " " + statusName(st)]++;
+      for (result->InitContextIterator(); result->MoreShapeInContext(); result->NextShapeInContext())
+        for (BRepCheck_Status st : result->StatusOnShape())
+          if (st != BRepCheck_NoError) counts[std::string(name) + " in context " + statusName(st)]++;
+    }
+  }
+  return counts;
+}
+
+/** The STEP reader/writer settings in force (ADR-0097 D7 diagnosis, once per run). */
+static void printStepSettings() {
+  std::cout << "   step settings: write.precision.mode " << Interface_Static::IVal("write.precision.mode")
+            << ", write.precision.val " << Interface_Static::RVal("write.precision.val") << ", write.surfacecurve.mode "
+            << Interface_Static::IVal("write.surfacecurve.mode") << ", read.precision.mode "
+            << Interface_Static::IVal("read.precision.mode") << ", read.precision.val "
+            << Interface_Static::RVal("read.precision.val") << ", read.surfacecurve.mode "
+            << Interface_Static::IVal("read.surfacecurve.mode") << ", read.stdsameparameter.mode "
+            << Interface_Static::IVal("read.stdsameparameter.mode") << std::endl;
+}
+
+/** One file's summary row for the s/S table (ADR-0097 D7 diagnosis). */
+struct RoundTripRow {
+  std::string file;
+  std::string rebuild = "refused";
+  double tol = 0;
+  int faces = 0, facets = 0;
+  double maxEdge = 0, maxVertex = 0;
+  bool backValid = false;
+  int backFaces = 0, backSolids = 0;
+  double ratio = 0;
+  int backInvalidEdges = 0, backInvalidFaces = 0;
+  std::string topStatus = "-";
+  bool fixValid = false;
+  int fixFaces = 0;
+  int fixSolidCount = 0;
+  double fixRatio = 0;
+};
+
+/**
+ * Converts one file and diagnoses its STEP round trip (ADR-0097 D7): Q1 the
+ * written body's edge classes, Q2 what the reader rejects, Q3 the areas by
+ * kind, Q4 a ShapeFix_Shape pass at the written tolerances. Prints everything
+ * when `detail`, and always returns the summary row.
+ */
+static RoundTripRow stepOne(ExtrudoFacade& f, const std::string& path, double tolerance, bool detail) {
+  RoundTripRow row;
+  row.file = path.size() > 5 ? path.substr(5) : path;
+  row.tol = tolerance;
+  const Mesh m = stlFile(path.c_str());
+  if (detail) std::cout << "== step " << row.file << " (" << m.triangles.size() / 3 << " triangles, tol " << tolerance << ")\n";
+  f.meshNodes(int(m.nodes.size() / 3));
+  double* nodes = reinterpret_cast<double*>(f.meshNodesPtr());
+  for (size_t i = 0; i < m.nodes.size(); ++i) nodes[i] = static_cast<float>(m.nodes[i]);
+  f.meshTriangles(int(m.triangles.size() / 3));
+  std::memcpy(reinterpret_cast<void*>(f.meshTrianglesPtr()), m.triangles.data(), m.triangles.size() * sizeof(uint32_t));
+  const int h = f.meshToSolid(1, tolerance);
+  const auto& rep = f.meshReport_;
+  if (rep.size() >= 11) row.rebuild = rep[10] == 1 ? "hybrid" : rep[10] == 0 ? "exact" : "refused";
+  if (rep.size() >= 12) row.facets = int(rep[11]);
+  if (rep.size() >= 13) row.tol = rep[12];
+  if (!h) {
+    row.rebuild = "refused";
+    if (detail) std::cout << "   refused: " << f.lastError() << std::endl;
+    return row;
+  }
+  const TopoDS_Shape& written = *f.find(h);
+
+  // Q1: the written body's edges by class and tolerance.
+  double maxVertex = 0;
+  const std::map<std::string, ClassStat> classes = edgeClasses(written, maxVertex);
+  row.faces = f.count(h, 0);
+  if (rep.size() < 12)
+    for (TopExp_Explorer e(written, TopAbs_FACE); e.More(); e.Next())
+      if (faceKind(TopoDS::Face(e.Current())) == "facet") ++row.facets;
+  double maxEdge = 0;
+  for (const auto& [cls, st] : classes) maxEdge = std::max(maxEdge, st.maxTol);
+  row.maxEdge = maxEdge;
+  row.maxVertex = maxVertex;
+  if (detail) {
+    std::cout << "   written: faces " << row.faces << ", facets " << row.facets << ", solids " << f.count(h, 3)
+              << ", max edge tol " << maxEdge << ", max vertex tol " << maxVertex << "\n";
+    std::cout << "   edge classes (written):\n";
+    for (const auto& [cls, st] : classes) {
+      std::cout << "     " << cls << ": " << st.count << " edges, invalid " << st.invalid << ", tolerances";
+      for (int b = 0; b < 7; ++b) std::cout << " " << BUCKET_NAMES[b] << ":" << st.buckets[b];
+      std::cout << ", max " << st.maxTol << "\n";
+    }
+  }
+
+  // Write to STEP and read back.
+  f.clearArgs();
+  f.pushArg(h);
+  const int size = f.writeStep();
+  std::string text;
+  if (size > 0) text.assign(reinterpret_cast<const char*>(f.exportTextPtr()), static_cast<size_t>(size));
+  f.clearExport();
+  const int back = text.empty() ? 0 : f.readStep(text.c_str());
+  if (!back) {
+    row.backValid = false;
+    if (detail) std::cout << "   read back: FAILED (" << f.lastError() << ")\n";
+    f.release(h);
+    return row;
+  }
+  const TopoDS_Shape& readBack = *f.find(back);
+  row.backValid = BRepCheck_Analyzer(readBack).IsValid();
+  row.backFaces = f.count(back, 0);
+  row.backSolids = f.count(back, 3);
+  const double writtenVolume = ExtrudoFacade::volumeOf(written);
+  row.ratio = writtenVolume != 0 ? ExtrudoFacade::volumeOf(readBack) / writtenVolume : 0;
+
+  // Q2: shapeDiagnose's summary, then BRepCheck's statuses by name.
+  f.shapeDiagnose(back);
+  if (detail) {
+    std::cout << "   step: " << size << " bytes -> read back " << (row.backValid ? "valid" : "invalid") << ", faces "
+              << row.backFaces << ", solids " << row.backSolids << ", volume ratio " << row.ratio << "\n";
+    if (f.geometry_.size() >= 12)
+      std::cout << "   read-back diagnose: max tol vertex " << f.geometry_[0] << ", edge " << f.geometry_[1] << ", face "
+                << f.geometry_[2] << "; " << f.geometry_[3] << " vertices, " << f.geometry_[4] << " edges (" << f.geometry_[6]
+                << " not same-parameter, " << f.geometry_[11] << " invalid), " << f.geometry_[5] << " faces (" << f.geometry_[7]
+                << " split, " << f.geometry_[10] << " invalid), " << f.geometry_[8] << " free, " << f.geometry_[9] << " over-shared\n";
+  }
+  const std::map<std::string, int> counts = bRepCheckCounts(readBack);
+  if (detail && !counts.empty()) {
+    std::cout << "   read-back BRepCheck:\n";
+    for (const auto& [key, n] : counts) std::cout << "     " << key << " x" << n << "\n";
+  }
+  if (!counts.empty()) {
+    int top = 0;
+    for (const auto& [key, n] : counts)
+      if (n > top) { top = n; row.topStatus = key + " x" + std::to_string(n); }
+  }
+
+  // Q2: the invalid edges by class (on the read-back body) and faces by kind.
+  double ignoredVertex = 0;
+  const std::map<std::string, ClassStat> backClasses = edgeClasses(readBack, ignoredVertex);
+  for (const auto& [cls, st] : backClasses) row.backInvalidEdges += st.invalid;
+  int invalidFaces = 0;
+  const std::map<std::string, int> badFaces = invalidFacesByKind(readBack, invalidFaces);
+  row.backInvalidFaces = invalidFaces;
+  if (detail) {
+    std::cout << "   invalid edges by class (read back):\n";
+    bool any = false;
+    for (const auto& [cls, st] : backClasses)
+      if (st.invalid) { std::cout << "     " << cls << " x" << st.invalid << "\n"; any = true; }
+    if (!any) std::cout << "     none\n";
+    std::cout << "   invalid faces by kind (read back):\n";
+    if (badFaces.empty()) std::cout << "     none\n";
+    for (const auto& [kind, n] : badFaces) std::cout << "     " << kind << " x" << n << "\n";
+  }
+
+  // Q3: the summed area per face kind, written against read back.
+  const std::map<std::string, std::pair<double, int>> writtenAreas = areaByKind(written);
+  const std::map<std::string, std::pair<double, int>> backAreas = areaByKind(readBack);
+  if (detail) {
+    std::cout << "   area by kind (written -> read back), every file:\n";
+    std::set<std::string> kinds;
+    for (const auto& [kind, v] : writtenAreas) kinds.insert(kind);
+    for (const auto& [kind, v] : backAreas) kinds.insert(kind);
+    for (const std::string& kind : kinds) {
+      const auto w = writtenAreas.find(kind) == writtenAreas.end() ? std::make_pair(0.0, 0) : writtenAreas.at(kind);
+      const auto r = backAreas.find(kind) == backAreas.end() ? std::make_pair(0.0, 0) : backAreas.at(kind);
+      std::cout << "     " << kind << ": " << w.first << " (" << w.second << " faces) -> " << r.first << " (" << r.second
+                << " faces), delta " << r.first - w.first << "\n";
+    }
+  }
+
+  // Q4: ShapeFix_Shape on the read-back body at the written tolerances.
+  try {
+    ShapeFix_Shape fixer(readBack);
+    fixer.SetPrecision(maxEdge);
+    fixer.SetMaxTolerance(std::max(1.0, 2.0 * maxEdge));
+    fixer.Perform();
+    const TopoDS_Shape fixed = fixer.Shape();
+    row.fixValid = !fixed.IsNull() && BRepCheck_Analyzer(fixed).IsValid();
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> fixedFaces;
+    TopExp::MapShapes(fixed, TopAbs_FACE, fixedFaces);
+    row.fixFaces = fixedFaces.Extent();
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> fixedSolids;
+    TopExp::MapShapes(fixed, TopAbs_SOLID, fixedSolids);
+    row.fixSolidCount = fixedSolids.Extent();
+    row.fixRatio = writtenVolume != 0 ? ExtrudoFacade::volumeOf(fixed) / writtenVolume : 0;
+  } catch (...) {
+    row.fixValid = false;
+    row.fixFaces = 0;
+    row.fixRatio = 0;
+  }
+  if (detail)
+    std::cout << "   shapefix (precision " << maxEdge << ", max tol " << std::max(1.0, 2.0 * maxEdge) << "): valid "
+              << row.fixValid << ", faces " << row.fixFaces << " (of " << row.faces << "), solids " << row.fixSolidCount
+              << ", ratio " << row.fixRatio << std::endl;
+
+  f.release(back);
+  f.release(h);
+  return row;
+}
+
+/** The Q6 summary table over every file (ADR-0097 D7 diagnosis). */
+static void printSummaryTable(const std::vector<RoundTripRow>& rows) {
+  std::cout << "| file | rebuild | tol | faces | facets | max edge tol written | max vertex tol written | back valid | "
+               "back faces | back solids | ratio | back invalid edges | back invalid faces | top status | fix valid | "
+               "fix faces | fix ratio |\n";
+  std::cout << "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n";
+  for (const RoundTripRow& r : rows)
+    std::cout << "| " << r.file << " | " << r.rebuild << " | " << r.tol << " | " << r.faces << " | " << r.facets
+              << " | " << r.maxEdge << " | " << r.maxVertex << " | " << (r.backValid ? "valid" : "invalid") << " | "
+              << r.backFaces << " | " << r.backSolids << " | " << r.ratio << " | " << r.backInvalidEdges << " | "
+              << r.backInvalidFaces << " | " << r.topStatus << " | " << (r.fixValid ? "valid" : "invalid") << " | "
+              << r.fixFaces << " | " << r.fixRatio << " |\n";
+  std::cout.flush();
 }
 
 /** Runs meshRegions on `m` (the region preview, no solid); prints its surfaces by kind, the report and the time. */
@@ -586,6 +968,42 @@ int main(int argc, char** argv) {
     std::sort(paths.begin(), paths.end());
     for (const auto& p : paths) file(f, p, envTol);
     std::cout << "live shapes " << f.liveShapes() << "\n";
+    return 0;
+  }
+  if (only == "s") {
+    // One corpus file, then the STEP round-trip diagnosis (ADR-0097 D7): STL_DIR mounted at /stl, FILE, TOL.
+    printStepSettings();
+    const char* file = getenv("FILE");
+    if (!file || !*file) {
+      std::cout << "== step: set FILE (with STL_DIR mounted at /stl), e.g. FILE=own/drill-block.stl\n";
+    } else {
+      stepOne(f, std::string("/stl/") + file, envTol, true);
+    }
+    std::cout << "live shapes " << f.liveShapes() << std::endl;
+    return 0;
+  }
+  if (only == "S") {
+    // Every .stl under /stl, one process: the diagnosis per file and a summary table at the end.
+    printStepSettings();
+    std::vector<std::string> paths;
+    for (const auto& e : std::filesystem::recursive_directory_iterator("/stl"))
+      if (e.is_regular_file() && (e.path().extension() == ".stl" || e.path().extension() == ".mesh")) paths.push_back(e.path().string());
+    std::sort(paths.begin(), paths.end());
+    std::vector<RoundTripRow> rows;
+    for (const auto& p : paths) {
+      try {
+        rows.push_back(stepOne(f, p, envTol, true));
+      } catch (...) {
+        RoundTripRow r;
+        r.file = p.size() > 5 ? p.substr(5) : p;
+        r.rebuild = "crash";
+        rows.push_back(r);
+        std::cout << "   CRASH on " << r.file << std::endl;
+      }
+      std::cout.flush();
+    }
+    printSummaryTable(rows);
+    std::cout << "live shapes " << f.liveShapes() << std::endl;
     return 0;
   }
   auto want = [&](const char* id) { return only.empty() || only == id; };
