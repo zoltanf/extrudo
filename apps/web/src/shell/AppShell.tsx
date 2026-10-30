@@ -1999,6 +1999,11 @@ function Shell({
     const command = openGroupAtMarker(doc);
     if (command) store.getState().amend(command);
   }, [doc, store]);
+  // The grid and sketch snapping follow the document's unit (P6-18 S2, ADR-0113 §2):
+  // an inch design draws and snaps on sixteenths of an inch and up.
+  useEffect(() => {
+    viewport.getState().setLengthUnit(doc.settings.units);
+  }, [doc, viewport]);
   // A recompute's first new error goes into the notification history (P3-13).
   const featureActionsRef = useRef(featureActions);
   featureActionsRef.current = featureActions;

@@ -1,0 +1,1 @@
+- 2026-10-29 · **Tools start in the design's unit**: in an inch design Extrude, Chamfer, Fillet, Shell, Hole and the other tools open with inch sizes (3/8 in, not 10 mm), and a clicked position or face centre is written in inches too; cm and m designs get the same in their unit.

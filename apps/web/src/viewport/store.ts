@@ -4,7 +4,7 @@
  * open document. Nothing here is saved in the document or undoable; the
  * display settings are user preferences.
  */
-import type { JointId } from '@extrudo/core';
+import type { JointId, LengthUnit } from '@extrudo/core';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { JointCheckState } from '../joints/clearance';
 import type { Preferences } from '../platform';
@@ -207,6 +207,13 @@ export interface ViewportState extends ViewportSettings {
    */
   thickness: ThicknessState | undefined;
   /**
+   * The document's unit (P6-18 S2, ADR-0113 §2): an inch design draws and snaps
+   * its grid on fractions of an inch and feet. Set from `doc.settings.units`
+   * when a design opens or the unit changes (`AppShell`); not a display
+   * setting, so not in the preferences — the document says it.
+   */
+  lengthUnit: LengthUnit;
+  /**
    * A joint's clearance check (P6-05 J3, ADR-0081 §4): which joint, its minimum gap and
    * whether the view draws its marks. View state like the wall-thickness check's; the result
    * lives with the check (`joints/useJointCheck.ts`).
@@ -293,6 +300,8 @@ export interface ViewportState extends ViewportSettings {
   setThickness(thickness: ThicknessState | undefined): void;
   /** Changes part of the wall-thickness check; nothing while there is none. */
   updateThickness(patch: Partial<ThicknessState>): void;
+  /** Follows the document's unit for the grid and sketch snapping (P6-18 S2). */
+  setLengthUnit(lengthUnit: LengthUnit): void;
   /** Starts, replaces or (`undefined`) removes the clearance check. */
   setJointCheck(check: JointCheckState | undefined): void;
   /** Changes part of the clearance check; nothing while there is none. */
@@ -371,6 +380,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       thickness: undefined,
       jointCheck: undefined,
       jointPose: undefined,
+      lengthUnit: 'mm',
 
       setView(view) {
         set({ view, transition: undefined });
@@ -536,6 +546,9 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       updateThickness(patch) {
         const current = get().thickness;
         if (current) set({ thickness: { ...current, ...patch } });
+      },
+      setLengthUnit(lengthUnit) {
+        if (lengthUnit !== get().lengthUnit) set({ lengthUnit });
       },
       setJointCheck(jointCheck) {
         set({ jointCheck });

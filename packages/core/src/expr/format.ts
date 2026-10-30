@@ -68,3 +68,16 @@ function gcd(a: number, b: number): number {
   while (b) [a, b] = [b, a % b];
   return a;
 }
+
+/** The decimals a tool-written length keeps in each unit: about a micrometre. */
+const EXPR_DECIMALS: Record<LengthUnit, number> = { mm: 3, cm: 4, m: 6, in: 4 };
+
+/**
+ * A length in mm as an expression a tool writes (a clicked point, a face
+ * centre, a proposed size), in the document unit: "12.5 mm", "0.4921 in".
+ */
+export function lengthExpr(mm: number, unit: LengthUnit, decimals = EXPR_DECIMALS[unit]): string {
+  const scale = 10 ** decimals;
+  const rounded = Math.round((mm / lengthFactor(unit)) * scale) / scale;
+  return `${Object.is(rounded, -0) ? 0 : rounded} ${unit}`;
+}

@@ -33,6 +33,8 @@ import {
   type HoleKind,
   holeFeature,
   holePreset,
+  type LengthUnit,
+  lengthExpr,
   parseSketchEntityRefId,
   presetMatches,
   presetSizes,
@@ -178,10 +180,9 @@ const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const scale = (v: Vec3, s: number): Vec3 => [v[0] * s, v[1] * s, v[2] * s];
 const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
-/** A length as an expression to 0.01 mm, for clicked points: "12.35 mm". */
-function mm(value: number): string {
-  const rounded = Math.round(value * 100) / 100;
-  return `${Object.is(rounded, -0) ? 0 : rounded} mm`;
+/** A clicked point's coordinate as an expression, to 0.01 mm or 0.001 in: "12.35 mm". */
+function mm(value: number, unit: LengthUnit): string {
+  return lengthExpr(value, unit, { mm: 2, cm: 3, m: 5, in: 3 }[unit]);
 }
 
 /** The world place of a sketch point reference (`<sketch>/<point>`), or undefined. */
@@ -267,7 +268,8 @@ export function holePlaceAt(
   const frame = placementFrame(values.refs.plane?.[0], ctx);
   if (!frame) return undefined;
   const [x, y] = worldToSketch(frame, world);
-  return { refs: { points: [] }, exprs: { x: mm(x), y: mm(y) } };
+  const unit = ctx.doc.settings.units;
+  return { refs: { points: [] }, exprs: { x: mm(x, unit), y: mm(y, unit) } };
 }
 
 /**
@@ -290,7 +292,8 @@ export function proposeHole(
   if (own || picked.length === 0) out.refs = { plane: [plane] };
   if (points.length === 0) {
     const centre = plane.kind === 'face' ? faceCentre(plane, ctx) : [0, 0];
-    if (centre) out.exprs = { x: mm(centre[0] ?? 0), y: mm(centre[1] ?? 0) };
+    const unit = ctx.doc.settings.units;
+    if (centre) out.exprs = { x: mm(centre[0] ?? 0, unit), y: mm(centre[1] ?? 0, unit) };
   }
   return out;
 }

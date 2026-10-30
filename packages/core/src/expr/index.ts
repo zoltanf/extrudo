@@ -13,7 +13,7 @@ export {
   type Quantity,
   type Scope,
 } from './evaluate';
-export { formatLength, formatQuantity, fractionDenominator } from './format';
+export { formatLength, formatQuantity, fractionDenominator, lengthExpr } from './format';
 export { evaluateInline, type InlineParameter, inlineParameter } from './inline';
 export {
   type EvaluatedParameter,

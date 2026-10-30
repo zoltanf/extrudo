@@ -634,10 +634,11 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     lastModel = viewport.getState().autoProject ? pointer.model : undefined;
     lastFrame = pointer.frame;
     const model = !tool.picks ? lastModel : undefined;
+    const { snap, lengthUnit } = viewport.getState();
     return infer(data, pointer.point, {
       tolerance: SNAP_PIXELS * pointer.perPixel,
       anchor: tool.anchor(),
-      grid: viewport.getState().snap ? gridStep(pointer.perPixel) : undefined,
+      grid: snap ? gridStep(pointer.perPixel, lengthUnit) : undefined,
       enabled: pointer.infer && !tool.picks,
       ...(model && { model }),
     });
