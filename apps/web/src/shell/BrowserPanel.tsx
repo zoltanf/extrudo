@@ -8,6 +8,7 @@ import {
   type Feature,
   type FeatureId,
   type FeatureStatus,
+  fractionDenominator,
   isConstructionType,
   isFeatureVisible,
   type JointId,
@@ -1719,6 +1720,7 @@ const PRECISIONS = [0, 1, 2, 3, 4, 5, 6] as const;
 function DocumentSettings({ store }: { store: DocumentStore }) {
   const settings = useStore(store, (s) => s.doc.settings);
   const dispatch = store.getState().dispatch;
+  const fractionsOn = settings.units === 'in' && (settings.fractions ?? false);
   const selectClass = 'h-6 py-0 pr-5 pl-1.5 text-field';
   return (
     <>
@@ -1748,7 +1750,11 @@ function DocumentSettings({ store }: { store: DocumentStore }) {
         <span className="ml-auto w-16">
           <Select
             aria-label="Precision"
-            title="Decimal places shown for lengths and angles."
+            title={
+              fractionsOn
+                ? 'How fine a fraction the lengths show as.'
+                : 'Decimal places shown for lengths and angles.'
+            }
             className={selectClass}
             value={settings.precision}
             onChange={(event) => {
@@ -1758,12 +1764,27 @@ function DocumentSettings({ store }: { store: DocumentStore }) {
           >
             {PRECISIONS.map((places) => (
               <option key={places} value={places}>
-                {(0).toFixed(places)}
+                {fractionsOn ? `1/${fractionDenominator(places)}` : (0).toFixed(places)}
               </option>
             ))}
           </Select>
         </span>
       </Leaf>
+      {settings.units === 'in' && (
+        <Leaf data-setting="fractions">
+          Fractions
+          <span className="ml-auto">
+            <input
+              type="checkbox"
+              aria-label="Fractions"
+              title="Show inch lengths as the nearest fraction, like 1 1/2 in."
+              className="size-4 accent-(--x-accent)"
+              checked={settings.fractions ?? false}
+              onChange={(event) => dispatch(updateSettings({ fractions: event.target.checked }))}
+            />
+          </span>
+        </Leaf>
+      )}
     </>
   );
 }

@@ -3666,7 +3666,11 @@ optional, display denominator `2^(precision + 2)` capped at 64, inch designs onl
 §2 and §3. Tools never write a literal `mm` into a design: a dialog field's mm `default` goes through `features/default-unit.ts` (`defaultInUnit`: an inch table, 10 mm → 3/8 in; cm and m exact) in `defaultValues(spec, unit)`, and a length a tool computes (a clicked point, a face centre, a canvas width) through core's `lengthExpr(mm, unit)`. S2 is in: `apps/web/src/viewport/grid.ts` (`gridLevels` with `METRIC_LEVELS`/`INCH_LEVELS`,
 `gridStep`'s unit), the viewport store's `lengthUnit` (`AppShell` sets it from `doc.settings.units`;
 `sketch/tools/host.ts` passes it to `gridStep`; not a preference) and `GridPlane.tsx`'s `uLevels`
-uniform table with the per-fragment scan. e2e: `e2e/document-units.spec.ts`, `e2e/inch-grid.spec.ts`.
+uniform table with the per-fragment scan. e2e: `e2e/document-units.spec.ts`, `e2e/inch-grid.spec.ts`. S3 (done 2026-10-28) is in `packages/core/src/expr/parser.ts` (fractions, mixed numbers,
+the `'`/`"` marks via `UNIT_ALIASES`, feet-inches), `packages/core/src/expr/format.ts`
+(`formatQuantity`/`formatLength` fractions, `fractionDenominator`), `packages/core/src/schema.ts`
+(`settings.fractions`), `apps/web/src/shell/BrowserPanel.tsx` (the `Fractions` row and the
+fraction Precision labels) and renders through `formatQuantity`; e2e: `e2e/inch-fractions.spec.ts`.
 
 ADR-0115 (the owner, 2026-10-30): **Other CAD files through a bundled cadmpeg** (P6-19).
 `apps/desktop/cadmpeg.json` (the pin: version, repository, per-target archive name and SHA-256 from the
