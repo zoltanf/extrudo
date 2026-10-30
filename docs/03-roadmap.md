@@ -1507,6 +1507,24 @@ end to end, faster than in established desktop CAD.
   Acceptance: `pnpm check`; `e2e/document-units.spec.ts` green on CI; S2 and
   S3 add their own specs; the file-format doc and `pnpm api:generate` updated
   for `fractions`.
+- [ ] **P6-19 Other CAD files through a bundled cadmpeg** (owner, 2026-10-30;
+  issue #141; ADR-0115). The desktop app bundles cadmpeg (Apache-2.0, pinned
+  version and SHA-256 per target in `apps/desktop/cadmpeg.json`, fetched at
+  build time) and converts `.sldprt .ipt .iam .catpart .fcstd .sat .smt .smb
+  .sab .igs .iges .pvz` to STEP before the normal STEP import; the design
+  stores only the STEP. Desktop only; the browser's import dialog points at
+  the desktop app. Two slices:
+  - [ ] **S1 Packaging.** `fetch-cadmpeg.mjs` with hash check, `extraResources`,
+    the `package*` scripts and the desktop workflow fetch first, mac signature
+    and smoke checks, NOTICE, `docs/references.md`, `docs/desktop.md`, the
+    release checklist.
+  - [ ] **S2 Import flow.** `cadmpeg.ts` + `cadmpegService.ts` in main with the
+    IPC channels, `Platform.convertCad`, `IMPORT_ACCEPT` and `pickImportFile`
+    in the renderer, unit tests with a fake spawn.
+  Acceptance: `pnpm check`; the desktop workflow green on all three OSes with
+  `cadmpeg --version` passing in the smoke steps; a `.sldprt` sample imports
+  in the packaged app as a STEP attachment; `docs/agent/adr-digest.md` has the
+  ADR's rules.
 
 ## Phase 7 — Later (lowest priority, after everything else)
 
