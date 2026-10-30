@@ -540,6 +540,11 @@ struct RoundTripRow {
   // Q12: the flagged wires and their small edges.
   int flaggedWires = 0;
   int q18Written = -1;
+  /** Q19: per variant (read-user-1e-3, write-least, write-session-1e-3) the flagged wires and the kernel bar. */
+  int q19Flagged[3] = {-1, -1, -1};
+  bool q19Pass[3] = {false, false, false};
+  bool defaultPass = false;
+  int q19FaceDelta[3] = {0, 0, 0}, q19SolidDelta[3] = {0, 0, 0};
   double minFlaggedEdge = 0;
   int flaggedEdgesBelowUncertainty = 0;
   int writtenVertices = 0, writtenEdges = 0, backVertices = 0, backEdges = 0;
@@ -1299,6 +1304,63 @@ static RoundTripRow stepOne(ExtrudoFacade& f, const std::string& path, double to
     if (detail)
       std::cout << "   q18 written wires self-intersecting at vertex tol 1e-7: " << row.q18Written << " (read back flagged "
                 << row.flaggedWires << ")" << std::endl;
+  }
+
+  // Q19 (slice D8 follow-up): the same written body round-tripped with other
+  // STEP precision settings. a) the default file read at a user precision of
+  // 1e-3; b) written with the least uncertainty; c) written with a session
+  // uncertainty of 1e-3. Each static restored afterwards, as Q7 does.
+  {
+    row.defaultPass = row.backValid && row.backFaces == row.faces && row.backSolids == f.count(h, 3) &&
+                      std::fabs(row.ratio - 1) < 1e-4;
+    const char* names[3] = {"read-user-1e-3", "write-least", "write-session-1e-3"};
+    const int writeMode = Interface_Static::IVal("write.precision.mode");
+    const double writeVal = Interface_Static::RVal("write.precision.val");
+    const int readMode = Interface_Static::IVal("read.precision.mode");
+    const double readVal = Interface_Static::RVal("read.precision.val");
+    for (int v = 0; v < 3; ++v) {
+      std::string file = text;
+      try {
+        if (v == 0) {
+          Interface_Static::SetIVal("read.precision.mode", 1);
+          Interface_Static::SetRVal("read.precision.val", 1e-3);
+        } else {
+          Interface_Static::SetIVal("write.precision.mode", v == 1 ? -1 : 2);
+          if (v == 2) Interface_Static::SetRVal("write.precision.val", 1e-3);
+          file = stepDirect(written);
+          Interface_Static::SetIVal("write.precision.mode", writeMode);
+          Interface_Static::SetRVal("write.precision.val", writeVal);
+        }
+        const int b = file.empty() ? 0 : f.readStep(file.c_str());
+        Interface_Static::SetIVal("read.precision.mode", readMode);
+        Interface_Static::SetRVal("read.precision.val", readVal);
+        const double u = uncertaintyOf(file);
+        if (!b) {
+          if (detail) std::cout << "   q19 " << names[v] << ": file uncertainty " << u << ", read back FAILED" << std::endl;
+          continue;
+        }
+        const TopoDS_Shape& rb = *f.find(b);
+        const bool valid = BRepCheck_Analyzer(rb).IsValid();
+        const int faces = f.count(b, 0), solids = f.count(b, 3), writtenSolids = f.count(h, 3);
+        const double ratio = writtenVolume != 0 ? ExtrudoFacade::volumeOf(rb) / writtenVolume : 0;
+        row.q19Flagged[v] = flaggedWiresAndFaces(rb, false, u).wires;
+        row.q19Pass[v] = valid && faces == row.faces && solids == writtenSolids && std::fabs(ratio - 1) < 1e-4;
+        row.q19FaceDelta[v] = faces - row.faces;
+        row.q19SolidDelta[v] = solids - writtenSolids;
+        if (detail)
+          std::cout << "   q19 " << names[v] << ": file uncertainty " << u << ", read back " << (valid ? "valid" : "invalid")
+                    << ", faces " << faces << " (written " << row.faces << "), solids " << solids << ", ratio " << ratio
+                    << ", flagged wires " << row.q19Flagged[v] << ", kernel bar " << (row.q19Pass[v] ? "pass" : "fail")
+                    << std::endl;
+        f.release(b);
+      } catch (...) {
+        Interface_Static::SetIVal("write.precision.mode", writeMode);
+        Interface_Static::SetRVal("write.precision.val", writeVal);
+        Interface_Static::SetIVal("read.precision.mode", readMode);
+        Interface_Static::SetRVal("read.precision.val", readVal);
+        if (detail) std::cout << "   q19 " << names[v] << ": threw" << std::endl;
+      }
+    }
   }
 
   // Q9: the BREP round trip (keeps tolerances and pcurves).
