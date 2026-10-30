@@ -37,8 +37,8 @@ export const SECTIONS: readonly SectionInfo[] = [
     summary: 'How the mouse moves the camera, and how the model is drawn.',
     keys: [
       'viewport.preset',
-      'viewport.projection',
       'viewport.spaceMouseSpeed',
+      'viewport.projection',
       'viewport.visualStyle',
       'viewport.grid',
     ],

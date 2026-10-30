@@ -17,7 +17,7 @@ either place shows in the other at once. A reload keeps them.
 
 | Section | What is in it |
 |---|---|
-| **View and navigation** | The mouse buttons preset, projection, a 3D mouse and its speed, visual style, the grid |
+| **View and navigation** | The mouse buttons preset, a 3D mouse and its speed; projection, visual style, the grid |
 | **Keyboard** | Every command's keys: change, add or remove them |
 | **Marking menu** | The radial right-click menu on or off, and the command on each wedge of the ring (also Ctrl+K "Customize Marking Menu…") |
 | **Sketch** | Snap to grid, auto-project edges and face outlines, what a sketch shows, Slice |

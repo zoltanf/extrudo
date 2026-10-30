@@ -321,6 +321,8 @@ function View({ display }: { display: DisplayAccess }) {
           ))}
         </Select>
       </Row>
+      <SpaceMouseRows display={display} />
+      <Heading>Display</Heading>
       <Row label="Projection">
         <Select
           aria-label="Projection"
@@ -333,8 +335,6 @@ function View({ display }: { display: DisplayAccess }) {
           <option value="orthographic">Orthographic</option>
         </Select>
       </Row>
-      <SpaceMouseRows display={display} />
-      <Heading>Display</Heading>
       <Row label="Visual style">
         <Select
           aria-label="Visual style"
