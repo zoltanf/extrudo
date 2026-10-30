@@ -3335,6 +3335,25 @@ faces by more than 10 % — fewer faces is better — or its read-back was valid
 there, kept the face count there and neither now; a comparison prints on the
 row and `sweep totals` prints both runs' numbers).
 
+**ADR-0097 slice D7 diagnosis (2026-10-30b): the STEP read-back failures
+measured (no fix).** `spikes/stl-to-solid/prismatic.cpp` gains cases `s` (one
+corpus file, `STL_DIR`/`FILE`/`TOL`) and `S` (every file, one process, a
+Markdown summary row per file at the end): they convert, write the body to
+STEP, read it back and print the settings in force, the written body's edges by
+class and tolerance buckets, the read-back `shapeDiagnose` and BRepCheck
+statuses by name, the invalid edges by class and faces by kind, the summed area
+per face kind written vs read back, and a `ShapeFix_Shape` pass at the written
+tolerances. No converter change (`facade`, `packages/` untouched). Finding
+(41-file corpus, Auto; the spike stages the STL in its own order, so it is not
+byte-identical to the sweep): 20 of 30 hybrid conversions miss the D7 bar (the
+sweep's 17 plus three the order changes). The read-back failure is **not** an
+edge tolerance — no edge or vertex carries a BRepCheck status; the invalid
+faces are flat (facet 17, plane 81, other 2) with `BadOrientationOfSubshape`
+(67), `UnorientableShape` (25) and wire `SelfIntersectingWire` (25). The
+written max edge tolerance and the facet count do not separate pass from fail;
+every failure is a hybrid; `ShapeFix_Shape` at the written tolerances fixes 0
+of 12. Numbers in ADR-0097's 2026-10-30b amendment.
+
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
 facade `removeFaces` with `BRepAlgoAPI_Defeaturing`). Rules: **all or nothing** (any
