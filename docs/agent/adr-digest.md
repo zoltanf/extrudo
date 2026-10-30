@@ -2662,7 +2662,7 @@ change was finished, a kebab-case slug; `README.md` in the folder is the
 permanent explainer and is never collected) and its content is exactly one line
 matching `- \d{4}-\d{2}-\d{2} · **[^*]+**…` — no heading, no blank lines, no
 second paragraph; **a pull request never edits `docs/CHANGELOG.md`** (CI refuses
-it; the release commit's rename in `docs/release-checklist.md` step 2 is the one
+it; the release commit's rename (`docs/release-checklist.md`) is the one
 edit, made after `pnpm changelog`), and a fragment whose line is already in the
 changelog is refused, so a folded-in line is not duplicated by re-adding it.
 
@@ -3671,3 +3671,44 @@ the `'`/`"` marks via `UNIT_ALIASES`, feet-inches), `packages/core/src/expr/form
 (`formatQuantity`/`formatLength` fractions, `fractionDenominator`), `packages/core/src/schema.ts`
 (`settings.fractions`), `apps/web/src/shell/BrowserPanel.tsx` (the `Fractions` row and the
 fraction Precision labels) and renders through `formatQuantity`; e2e: `e2e/inch-fractions.spec.ts`.
+
+ADR-0115 (the owner, 2026-10-30): **Other CAD files through a bundled cadmpeg** (P6-19).
+`apps/desktop/cadmpeg.json` (the pin: version, repository, per-target archive name and SHA-256 from the
+release's `sha256.sum`), `apps/desktop/scripts/fetch-cadmpeg.mjs` (+ `fetch-cadmpeg.test.mjs`;
+`--target`, `--pin`, `--force`; `.version` and `.source` mark a finished fetch),
+`apps/desktop/vendor/cadmpeg/` (gitignored), `electron-builder.yml`'s `extraResources`, the `cadmpeg`
+and `package*` scripts in `apps/desktop/package.json`, `.github/workflows/desktop.yml` ("Fetch
+cadmpeg"; the mac verify step's `codesign` and `--version` of the bundled binary, "Check the
+AppImage's cadmpeg", both Windows smoke steps), `NOTICE` §4, `docs/desktop.md` ("Other CAD files").
+**Rules:** the binary comes only through `fetch-cadmpeg.mjs`, and only after the archive's SHA-256
+matched `cadmpeg.json` (no flag skips the check; a mismatch leaves no binary); `vendor/` is never
+committed; the packaged path is `resources/cadmpeg/cadmpeg[.exe]` with its `LICENSE` beside it; every
+`package*` script and the desktop workflow's package jobs fetch before building, and the workflow
+fails unless the packaged binary prints the pinned version; updating cadmpeg is the release
+checklist's step (version and the five hashes, nothing else); the formats are named by extension only
+(`.sldprt .ipt .iam .catpart .fcstd .sat .smt .smb .sab .igs .iges .pvz`), never by vendor or product.
+Main looks the binary up in this order: the preference `cadmpeg.path` → `process.resourcesPath/cadmpeg/`
+→ the dev checkout's `apps/desktop/vendor/cadmpeg/` → `PATH`. A conversion runs without a shell in
+`<temp>/extrudo-cadmpeg/<uuid>/` (mode 0700, removed afterwards), 120 s timeout, stdout/stderr capped
+at 64 KiB, input and output at most 100 MiB, no `--allow-errors`; the design stores only the STEP (no
+schema change).
+S2 (the import flow): `apps/web/src/platform/cad.ts` (a leaf: `CAD_CONVERT_EXTENSIONS`/`_ACCEPT`,
+`isConvertibleCad`, `stepNameFor`, `CadFile`, `CadConvertResult`, `ConvertCad`, `CadmpegStatus`;
+exported as `@extrudo/web/platform/cad`), `Platform.convertCad?`, `features/import.ts`
+(`importAccept`, `importRefused`, `pickImportFile`'s `convertCad`), `project/actions.ts`
+(`importAnyFile`), `AppShell.tsx` (passes `platform.convertCad`), `apps/desktop/src/main/cadmpeg.ts`
+(pure over `CadmpegEnv`: `findCadmpeg`, `cadmpegStatus`, `safeInputName`, `convertWithCadmpeg`,
+`cleanupCadmpegFiles`, `nodeCadmpegEnv`; reuses `blender.ts`'s `wrap`), `cadmpegService.ts`
+(`isCadFile`, `cadmpegOverride`), the `cadStatus`/`cadConvert` channels (`extrudo:cad:*`) in
+`shared/ipc.ts`, `shared/bridge.ts` and `main/ipc.ts` (through `guarded`), `main/index.ts` (the dev
+vendor folder is `out/main/../../vendor/cadmpeg`; `cad.cleanup()` on `will-quit`),
+`renderer/platform.ts`'s `desktopCad`. **Rules:** the conversion happens inside `pickImportFile`
+after the f3d branch and before `modelKind`, so everything after it is the STEP path and the design
+holds only the STEP (`<base>.step`, `model/step`, the STEP's hash); the seam is optional and the web
+leaves it undefined (its picker doesn't offer the formats and its refusal points at the desktop
+app; `importAnyFile` counts a convertible file as a model only where the seam exists); main
+validates the payload (`isCadFile`, else throw) and checks the extension and the input size itself;
+the file name is sanitised (`safeInputName`: `[A-Za-z0-9._-]`, no leading `-`/`.`) before it
+touches the disk, the parent `extrudo-cadmpeg/` and each job directory must be plain directories
+owned by the user; the converter's message is the last non-empty stderr line (capped at 300
+characters).

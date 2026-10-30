@@ -105,6 +105,27 @@ describe("the home screen's Import… (ADR-0083 §4)", () => {
     expect(takeModelImport(id)).toBeUndefined();
   });
 
+  it('makes a new design for another CAD file on the desktop only (ADR-0115 §1)', async () => {
+    const projects = memoryProjectStore();
+    const file = new File([new Uint8Array([1])], 'Bracket.SLDPRT');
+    const accepts: string[] = [];
+    const desktop = {
+      ...platformPicking(projects, file),
+      files: {
+        pick: async (accept: string) => {
+          accepts.push(accept);
+          return file;
+        },
+      },
+      convertCad: async () => ({ ok: false as const, message: 'unused' }),
+    } as unknown as Platform;
+    const summary = await importAnyFile(desktop);
+    expect(accepts[0]).toContain('.sldprt');
+    const id = summary?.id ?? '';
+    expect((await projects.load(id as never)).name).toBe('Bracket');
+    expect(takeModelImport(id)).toBe(file);
+  });
+
   it('imports an .extrudo file as itself, with no Import dialog', async () => {
     const projects = memoryProjectStore();
     const bytes = writeArchive(createDocument({ name: 'Saved' }));

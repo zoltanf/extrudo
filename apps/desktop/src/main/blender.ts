@@ -520,8 +520,11 @@ export function nodeBlenderEnv(tempDir: string, override: string | undefined): B
   };
 }
 
-/** A child process as the render watches it: text streams, exit, and a kill that takes the tree. */
-function wrap(child: ChildProcess): RenderProcess {
+/**
+ * A child process as the render watches it: text streams, exit, and a kill
+ * that takes the tree. cadmpeg's conversions use it too (`cadmpeg.ts`).
+ */
+export function wrap(child: ChildProcess): RenderProcess {
   child.stdout?.setEncoding('utf8');
   child.stderr?.setEncoding('utf8');
   return {

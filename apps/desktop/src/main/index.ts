@@ -19,6 +19,7 @@ import { app, BrowserWindow, dialog, Menu, type OpenDialogOptions, session, shel
 import { autoUpdater } from 'electron-updater';
 import { CHANNELS } from '../shared/ipc';
 import { nodeBlenderService } from './blenderService';
+import { nodeCadmpegService } from './cadmpegService';
 import { createDialogFiles, createFolderPicker } from './dialogs';
 import { createDocs } from './docs';
 import { createExternalFiles, createExternalPaths } from './externalFiles';
@@ -94,6 +95,14 @@ function main(): void {
   const folders = createFolders(join(userData, 'linked-folder.json'));
   const recent = createRecentFile(join(userData, 'recent.json'));
   const slicers = nodeSlicerService(app.getPath('temp'), () => preferences.read()['slicers.paths']);
+  // Other CAD files (P6-19, ADR-0115 §2): the bundled cadmpeg in `resources/cadmpeg/`
+  // when packaged, the checkout's `apps/desktop/vendor/cadmpeg/` (beside `out/main/`) in dev.
+  const cad = nodeCadmpegService(
+    app.getPath('temp'),
+    () => preferences.read()['cadmpeg.path'],
+    app.isPackaged ? process.resourcesPath : undefined,
+    app.isPackaged ? undefined : join(__dirname, '../../vendor/cadmpeg'),
+  );
   const openQueue = createOpenQueue();
   // The paths main itself chose (deliverOpen, Save As…), kept across restarts
   // as the projects keep their links: the only ones the renderer may read or
@@ -337,6 +346,7 @@ function main(): void {
       quit: () => app.quit(),
       slicers,
       blender,
+      cad,
       getWindow,
       updates: {
         check: () => updates.check(),
@@ -373,11 +383,12 @@ function main(): void {
     preferences.flush();
   });
 
-  // The exported files handed to slicers and the render jobs: removed on the
+  // The exported files handed to slicers, the render jobs and the conversions: removed on the
   // way out, best effort (a running render is killed first).
   app.on('will-quit', () => {
     slicers.cleanup();
     blender.cleanup();
+    cad.cleanup();
   });
 
   app.on('window-all-closed', () => {

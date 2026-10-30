@@ -161,6 +161,11 @@ export function desktopSlicer(
   };
 }
 
+/** Other CAD files (P6-19, ADR-0115 §1): main converts them to STEP with the bundled cadmpeg. */
+export function desktopCad(api: ExtrudoApi): Pick<Platform, 'convertCad'> {
+  return { convertCad: async (file) => unwrap(await api.cad.convert(file)) };
+}
+
 /** Render Picture (P6-15, ADR-0101): main runs Blender; progress comes back over its channel. */
 export function desktopRender(api: ExtrudoApi): Pick<Platform, 'render'> {
   return {
@@ -231,6 +236,7 @@ export async function desktopPlatform(api: ExtrudoApi = window.extrudo): Promise
     agent: desktopAgent(api),
     ...desktopSlicer(api),
     ...desktopRender(api),
+    ...desktopCad(api),
     updates: desktopUpdates(api, appNotifications.getState().push),
     // The docs pages (P6-06 S9): main builds the URL from the whitelisted path.
     openDocs: (path) => api.docs.open(path),

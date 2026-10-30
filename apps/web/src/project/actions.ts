@@ -16,8 +16,9 @@ import {
   type ProjectSummary,
 } from '@extrudo/storage';
 import { appNotifications } from '../design-system/notifications';
-import { IMPORT_ACCEPT, requestModelImport } from '../features/import';
+import { importAccept, requestModelImport } from '../features/import';
 import { type OpenedFile, type Platform, safeFileName } from '../platform';
+import { isConvertibleCad } from '../platform/cad';
 import { navigate, projectHref } from '../routes';
 import { APP_VERSION } from '../version';
 import type { BodyCheck, BodyCheckResult } from './f3dCheck';
@@ -92,14 +93,20 @@ export async function importProject(
  * The home screen's Import… (ADR-0083 §4): a design file (`.extrudo`, `.f3d`)
  * comes in as `importProject` brings it; a model file (STEP, mesh, OpenSCAD)
  * makes a new design named for it, which opens with Import Model's dialog on
- * the file. `undefined` if they cancel.
+ * the file (on the desktop also another CAD program's file, which that dialog
+ * converts to STEP first). `undefined` if they cancel.
  */
 export async function importAnyFile(
   platform: Platform,
 ): Promise<Pick<ProjectSummary, 'id'> | undefined> {
-  const file = await platform.files.pick(`${FILE_EXTENSION},application/zip,${IMPORT_ACCEPT}`);
+  const file = await platform.files.pick(
+    `${FILE_EXTENSION},application/zip,${importAccept(!!platform.convertCad)}`,
+  );
   if (!file) return undefined;
-  if (!modelKind(mediaTypeOf(file.name))) return importProject(platform, file);
+  // Another CAD program's file is a model too where the Import dialog converts it (ADR-0115 §1).
+  const model =
+    modelKind(mediaTypeOf(file.name)) || (!!platform.convertCad && isConvertibleCad(file.name));
+  if (!model) return importProject(platform, file);
   const name = file.name.replace(/\.[^.]+$/, '') || 'Imported model';
   const id = await createProject(platform, createDocument({ name, appVersion: APP_VERSION }));
   requestModelImport(id, file);

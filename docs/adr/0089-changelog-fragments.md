@@ -92,7 +92,7 @@ per job, against `origin/main`.
   before one.
 - A change's line is written once, next to the code; `pnpm changelog` at
   release-time is deterministic, and the release notes step reads
-  `## Unreleased` after it runs (`docs/release-checklist.md` step 2).
+  `## Unreleased` after it runs (`docs/release-checklist.md`, the release commit step).
 - A fragment that breaks the rules fails lint, not the release; a line that was
   already folded in is refused, so it cannot be duplicated by re-adding the
   file.
