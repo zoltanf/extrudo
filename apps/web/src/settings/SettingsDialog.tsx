@@ -1,6 +1,6 @@
 import { createDocument, type EvaluateResult, evaluateParameters } from '@extrudo/core';
 import { X } from 'lucide-react';
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { type AgentSetupId, agentSetups } from '../agent/clientSetup';
 import { useAgentStatus } from '../agent/useAgentBridge';
 import type { ThemeChoice } from '../design-system';
@@ -31,6 +31,7 @@ import {
 import { materialStore, useMaterialChoice } from '../print/materialStore';
 import { MarkingMenuEditor, type MarkingMenuEditorProps } from '../shell/MarkingMenuEditor';
 import { NAV_PRESETS } from '../viewport/navigation';
+import { spaceMouse } from '../viewport/spaceMouse';
 import { VISUAL_STYLES, type ViewportSettings } from '../viewport/store';
 import { type DisplayAccess, useDisplaySettings } from './displaySettings';
 import { type SectionId, type SectionInfo, visibleSections } from './inventory';
@@ -332,6 +333,7 @@ function View({ display }: { display: DisplayAccess }) {
           <option value="orthographic">Orthographic</option>
         </Select>
       </Row>
+      <SpaceMouseRows display={display} />
       <Heading>Display</Heading>
       <Row label="Visual style">
         <Select
@@ -349,6 +351,67 @@ function View({ display }: { display: DisplayAccess }) {
         </Select>
       </Row>
       <Check label="Show grid" checked={s.grid} onChange={(grid) => display.set({ grid })} />
+    </>
+  );
+}
+
+const SPACE_MOUSE_SPEEDS = [
+  { value: 0.25, label: 'Very slow' },
+  { value: 0.5, label: 'Slow' },
+  { value: 1, label: 'Normal' },
+  { value: 2, label: 'Fast' },
+  { value: 4, label: 'Very fast' },
+];
+
+/** A 3Dconnexion SpaceMouse over WebHID (ADR-0114): connect it once, then set its speed. */
+function SpaceMouseRows({ display }: { display: DisplayAccess }) {
+  const s = useDisplaySettings(display);
+  const devices = useSyncExternalStore(spaceMouse.subscribe, spaceMouse.devices);
+  const [failed, setFailed] = useState(false);
+  if (!spaceMouse.supported) {
+    return (
+      <Row label="3D mouse" hint="Needs Chrome, Edge or the desktop app (WebHID).">
+        <span className="text-sm text-muted">Not available in this browser</span>
+      </Row>
+    );
+  }
+  const connect = () => {
+    setFailed(false);
+    spaceMouse.connect().catch(() => setFailed(true));
+  };
+  return (
+    <>
+      <Row
+        label="3D mouse"
+        hint={
+          failed
+            ? "Couldn't open it: another program may be using it."
+            : devices.length > 0
+              ? 'Push, pull, tilt and twist the cap to move the model. Left button: home, right: fit.'
+              : 'A 3Dconnexion SpaceMouse or SpaceNavigator. Connect it once; it reconnects by itself.'
+        }
+      >
+        {devices.length > 0 ? (
+          <span className="text-sm" data-space-mouse="connected">
+            {devices.join(', ')}
+          </span>
+        ) : (
+          <Button onClick={connect}>Connect…</Button>
+        )}
+      </Row>
+      <Row label="3D mouse speed">
+        <Select
+          aria-label="3D mouse speed"
+          value={String(s.spaceMouseSpeed)}
+          onChange={(e) => display.set({ spaceMouseSpeed: Number(e.target.value) })}
+        >
+          {SPACE_MOUSE_SPEEDS.map((o) => (
+            <option key={o.value} value={String(o.value)}>
+              {o.label}
+            </option>
+          ))}
+        </Select>
+      </Row>
     </>
   );
 }

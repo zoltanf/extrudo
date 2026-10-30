@@ -131,6 +131,7 @@ import {
   sectionPlane,
   snapshotDirection,
 } from './snapshotView';
+import { spaceMotion, spaceMouse } from './spaceMouse';
 import {
   type Bounds,
   type OriginItem,
@@ -507,6 +508,7 @@ export function Viewport({
   }, [viewport]);
 
   useNavigation(section, surface, viewport, setDragging);
+  useSpaceMouse(viewport);
   const [box, setBox] = useState<ScreenBox>();
   const [otherMenu, setOtherMenu] = useState<OtherMenu>();
   // Construction geometry, with a dialog's preview (P3-05); hover and selection highlight it.
@@ -1753,6 +1755,27 @@ const QUIET_MS = 400;
  * the elements over it marked `VIEW_PASSTHROUGH`. The listeners sit on the
  * section, so they see events from both.
  */
+/** A 3D mouse moves this view while it is on screen (ADR-0114); its buttons go home and fit. */
+function useSpaceMouse(viewport: ViewportStore) {
+  useEffect(
+    () =>
+      spaceMouse.attach({
+        move(input, dt) {
+          const s = viewport.getState();
+          const height = s.width > 0 ? s.width / s.aspect : 600;
+          const options = { height, aspect: s.aspect, speed: s.spaceMouseSpeed };
+          s.setView(spaceMotion(s.view, input, dt, options));
+        },
+        press(button) {
+          const s = viewport.getState();
+          if (button === 0) s.home();
+          else if (button === 1) s.fit();
+        },
+      }),
+    [viewport],
+  );
+}
+
 function useNavigation(
   section: RefObject<HTMLElement | null>,
   surface: RefObject<HTMLDivElement | null>,

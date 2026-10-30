@@ -15,7 +15,16 @@ import { readFile, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { createNodePluginStore, createNodeProjectStore } from '@extrudo/storage/node';
 import type { MenuModel } from '@extrudo/web/menu-model';
-import { app, BrowserWindow, dialog, Menu, type OpenDialogOptions, session, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  type HIDDevice,
+  Menu,
+  type OpenDialogOptions,
+  session,
+  shell,
+} from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { CHANNELS } from '../shared/ipc';
 import { nodeBlenderService } from './blenderService';
@@ -39,7 +48,7 @@ import {
 } from './menuTemplate';
 import { isAllowedNavigation } from './navigation';
 import { createOpenQueue, extrudoPathFromArgv, isExtrudoPath } from './openPaths';
-import { allowPermission } from './permissions';
+import { allowPermission, isSpaceMouse } from './permissions';
 import { createPreferencesFile } from './preferences';
 import { APP_URL, handleAppProtocol, registerAppScheme } from './protocol';
 import { createRecentFile } from './recent';
@@ -294,6 +303,16 @@ function main(): void {
     // (camera, microphone, location, devices) is denied (permissions.ts).
     session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) =>
       callback(allowPermission(permission)),
+    );
+    // A 3D mouse over WebHID (ADR-0114). Electron has no device chooser, so the first 3D mouse
+    // the renderer's request lists is the answer, and one stays allowed across restarts so it
+    // reconnects by itself. Any other HID device is refused.
+    session.defaultSession.on('select-hid-device', (event, details, callback) => {
+      event.preventDefault();
+      callback(details.deviceList.find(isSpaceMouse)?.deviceId ?? '');
+    });
+    session.defaultSession.setDevicePermissionHandler(
+      (details) => details.deviceType === 'hid' && isSpaceMouse(details.device as HIDDevice),
     );
 
     registerIpcHandlers({

@@ -98,6 +98,8 @@ export interface ViewportSettings {
    * setting like the rest of the palette.
    */
   sketchSlice: boolean;
+  /** How fast a 3D mouse moves the view (ADR-0114): 1 normal, 0.25 to 4. */
+  spaceMouseSpeed: number;
 }
 
 export const DEFAULT_SETTINGS: ViewportSettings = {
@@ -117,6 +119,7 @@ export const DEFAULT_SETTINGS: ViewportSettings = {
   autoProject: true,
   autoProjectFace: false,
   sketchSlice: false,
+  spaceMouseSpeed: 1,
 };
 
 /** The part of the scene that "fit" frames. */
@@ -586,7 +589,8 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       s.snap !== prev.snap ||
       s.autoProject !== prev.autoProject ||
       s.autoProjectFace !== prev.autoProjectFace ||
-      s.sketchSlice !== prev.sketchSlice
+      s.sketchSlice !== prev.sketchSlice ||
+      s.spaceMouseSpeed !== prev.spaceMouseSpeed
     ) {
       const {
         projection,
@@ -602,6 +606,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
         autoProject,
         autoProjectFace,
         sketchSlice,
+        spaceMouseSpeed,
       } = s;
       preferences.set(PREFERENCES_KEY, {
         projection,
@@ -617,6 +622,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
         autoProject,
         autoProjectFace,
         sketchSlice,
+        spaceMouseSpeed,
       });
     }
   });
