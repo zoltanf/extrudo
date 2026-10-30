@@ -36,6 +36,10 @@
 #include <ShapeFix_Shell.hxx>
 #include <ShapeFix_Wire.hxx>
 #include <ShapeProcess.hxx>
+#include <unordered_map>
+#include <Geom_RectangularTrimmedSurface.hxx>
+#include <Geom_ElementarySurface.hxx>
+#include <Geom2d_TrimmedCurve.hxx>
 #include <functional>
 #include <chrono>
 #include <array>
@@ -1194,9 +1198,9 @@ static Q20Result q20Measure(const TopoDS_Shape& s, int writtenFaces, int written
   return r;
 }
 
-static void q20Print(const std::string& name, const Q20Result& r, int writtenFaces) {
-  if (!r.ok) { std::cout << "   q20 " << name << ": no shape" << std::endl; return; }
-  std::cout << "   q20 " << name << ": read back " << (r.valid ? "valid" : "invalid") << ", faces " << r.faces << " (written "
+static void q20Print(const std::string& name, const Q20Result& r, int writtenFaces, const char* tag = "q20") {
+  if (!r.ok) { std::cout << "   " << tag << " " << name << ": no shape" << std::endl; return; }
+  std::cout << "   " << tag << " " << name << ": read back " << (r.valid ? "valid" : "invalid") << ", faces " << r.faces << " (written "
             << writtenFaces << "), solids " << r.solids << ", ratio " << r.ratio << ", flagged wires " << r.flagged
             << ", kernel bar " << (r.pass ? "pass" : "fail") << (r.valid ? "" : ", top status " + r.top) << std::endl;
 }
@@ -1233,6 +1237,201 @@ static std::string q20FaceTraits(const TopoDS_Face& face, double u) {
       << shortest << ", edges < " << u << ": " << below << ", vertex pairs within " << u << ": " << close << " (closest "
       << closest << ")";
   return out.str();
+}
+
+
+/** Q21: a pcurve's type name, through a trimmed curve to its basis. */
+static std::string pcurveType(Handle(Geom2d_Curve) c) {
+  if (c.IsNull()) return "none";
+  Handle(Geom2d_TrimmedCurve) trimmed = Handle(Geom2d_TrimmedCurve)::DownCast(c);
+  if (!trimmed.IsNull()) c = trimmed->BasisCurve();
+  return c->DynamicType()->Name();
+}
+
+/** Q21: the elementary surface's location (its "centre"), or false when the face's surface isn't elementary. */
+static bool surfaceCentre(const TopoDS_Face& face, gp_Pnt& centre) {
+  Handle(Geom_Surface) s = BRep_Tool::Surface(face);
+  Handle(Geom_RectangularTrimmedSurface) rts = Handle(Geom_RectangularTrimmedSurface)::DownCast(s);
+  if (!rts.IsNull()) s = rts->BasisSurface();
+  Handle(Geom_ElementarySurface) e = Handle(Geom_ElementarySurface)::DownCast(s);
+  if (e.IsNull()) return false;
+  centre = e->Position().Location();
+  return true;
+}
+
+/** Q21 step 2: the STEP text's entity counts and what its EDGE_CURVEs reference. */
+static void q21Entities(const std::string& text) {
+  std::unordered_map<long, std::string> typeOf;
+  std::vector<long> edgeCurveTargets;
+  std::istringstream in(text);
+  std::string line, entity;
+  auto handle = [&](const std::string& e) {
+    if (e.empty() || e[0] != '#') return;
+    const size_t eq = e.find('=');
+    if (eq == std::string::npos) return;
+    const long id = std::atol(e.c_str() + 1);
+    size_t start = e.find_first_not_of(' ', eq + 1);
+    if (start == std::string::npos) return;
+    std::string type;
+    if (e[start] == '(') {
+      type = "(complex)";
+    } else {
+      const size_t paren = e.find('(', start);
+      type = e.substr(start, paren - start);
+      while (!type.empty() && type.back() == ' ') type.pop_back();
+    }
+    typeOf[id] = type;
+    if (type == "EDGE_CURVE") {
+      // EDGE_CURVE('',#v1,#v2,#curve,.T.): the third reference.
+      size_t pos = e.find('(', start);
+      int refs = 0;
+      while ((pos = e.find('#', pos + 1)) != std::string::npos)
+        if (++refs == 3) { edgeCurveTargets.push_back(std::atol(e.c_str() + pos + 1)); break; }
+    }
+  };
+  while (std::getline(in, line)) {
+    entity += line;
+    if (!entity.empty() && entity.find(';') != std::string::npos) {
+      handle(entity);
+      entity.clear();
+    }
+  }
+  std::map<std::string, int> counts;
+  for (const auto& [id, type] : typeOf) counts[type]++;
+  std::map<std::string, int> targets;
+  for (long id : edgeCurveTargets) targets[typeOf.count(id) ? typeOf[id] : "?"]++;
+  std::cout << "   q21 entities: PCURVE " << counts["PCURVE"] << ", SURFACE_CURVE " << counts["SURFACE_CURVE"]
+            << ", SEAM_CURVE " << counts["SEAM_CURVE"] << ", EDGE_CURVE " << counts["EDGE_CURVE"] << ", LINE " << counts["LINE"]
+            << ", CIRCLE " << counts["CIRCLE"] << ", PLANE " << counts["PLANE"] << "; EDGE_CURVE geometry:";
+  for (const auto& [type, n] : targets) std::cout << " " << type << " " << n;
+  std::cout << std::endl;
+}
+
+/**
+ * Q21 step 1: every edge of a flagged raw (unhealed) wire against the written
+ * edge with the same endpoints, on the written face with the same surface.
+ */
+static void q21Pcurves(const TopoDS_Shape& written, const TopoDS_Shape& raw, double u) {
+  // The written edges by endpoint, on a 1e-4 grid (then checked at 1e-6).
+  auto cell = [](const gp_Pnt& p) {
+    return std::to_string(std::llround(p.X() * 1e4)) + "," + std::to_string(std::llround(p.Y() * 1e4)) + "," +
+           std::to_string(std::llround(p.Z() * 1e4));
+  };
+  NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> writtenEdges;
+  TopExp::MapShapes(written, TopAbs_EDGE, writtenEdges);
+  NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher> edgeFaces;
+  TopExp::MapShapesAndAncestors(written, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+  std::unordered_map<std::string, std::vector<int>> byCell;
+  for (int i = 1; i <= writtenEdges.Extent(); ++i) {
+    TopoDS_Vertex a, b;
+    TopExp::Vertices(TopoDS::Edge(writtenEdges(i)), a, b);
+    if (a.IsNull()) continue;
+    byCell[cell(BRep_Tool::Pnt(a))].push_back(i);
+  }
+  struct Line {
+    double uvMax = 0;
+    std::string text;
+  };
+  std::vector<Line> lines;
+  int n = 0, d = 0, typeChanged = 0, unmatched = 0, dBelow = 0, dAbove = 0;
+  for (TopExp_Explorer fe(raw, TopAbs_FACE); fe.More(); fe.Next()) {
+    const TopoDS_Face face = TopoDS::Face(fe.Current());
+    for (TopExp_Explorer we(face, TopAbs_WIRE); we.More(); we.Next()) {
+      const TopoDS_Wire wire = TopoDS::Wire(we.Current());
+      if (!brepCheckFirstPair(wire, face).found) continue;
+      const GeomAbs_SurfaceType kind = BRepAdaptor_Surface(face).GetType();
+      gp_Pnt centre;
+      const bool hasCentre = surfaceCentre(face, centre);
+      for (TopExp_Explorer ee(wire, TopAbs_EDGE); ee.More(); ee.Next()) {
+        const TopoDS_Edge re = TopoDS::Edge(ee.Current());
+        if (BRep_Tool::Degenerated(re)) continue;
+        ++n;
+        TopoDS_Vertex ra, rb;
+        TopExp::Vertices(re, ra, rb);
+        const gp_Pnt pa = BRep_Tool::Pnt(ra), pb = BRep_Tool::Pnt(rb);
+        // The written edge: same two endpoints (either way round), on a face with the same surface.
+        TopoDS_Edge we2;
+        TopoDS_Face wf;
+        bool sameWay = true;
+        const auto it = byCell.find(cell(pa)), it2 = byCell.find(cell(pb));
+        std::vector<int> candidates;
+        if (it != byCell.end()) candidates.insert(candidates.end(), it->second.begin(), it->second.end());
+        if (it2 != byCell.end()) candidates.insert(candidates.end(), it2->second.begin(), it2->second.end());
+        for (int i : candidates) {
+          const TopoDS_Edge& w = TopoDS::Edge(writtenEdges(i));
+          TopoDS_Vertex wa, wb;
+          TopExp::Vertices(w, wa, wb);
+          const gp_Pnt qa = BRep_Tool::Pnt(wa), qb = BRep_Tool::Pnt(wb);
+          bool same = qa.Distance(pa) <= 1e-6 && qb.Distance(pb) <= 1e-6;
+          bool reversed = qa.Distance(pb) <= 1e-6 && qb.Distance(pa) <= 1e-6;
+          if (!same && !reversed) continue;
+          for (const TopoDS_Shape& fs : edgeFaces.FindFromKey(w)) {
+            const TopoDS_Face f2 = TopoDS::Face(fs);
+            if (BRepAdaptor_Surface(f2).GetType() != kind) continue;
+            gp_Pnt c2;
+            if (hasCentre && (!surfaceCentre(f2, c2) || c2.Distance(centre) > 1e-6)) continue;
+            we2 = w;
+            wf = f2;
+            sameWay = same;
+            break;
+          }
+          if (!wf.IsNull()) break;
+        }
+        if (wf.IsNull()) {
+          ++unmatched;
+          continue;
+        }
+        double rf, rl, wfp, wlp;
+        const Handle(Geom2d_Curve) rc = BRep_Tool::CurveOnSurface(re, face, rf, rl);
+        const Handle(Geom2d_Curve) wc = BRep_Tool::CurveOnSurface(we2, wf, wfp, wlp);
+        const std::string rType = pcurveType(rc), wType = pcurveType(wc);
+        if (rType != wType) ++typeChanged;
+        if (rc.IsNull() || wc.IsNull()) continue;
+        // Parameter-first vertices: does the raw edge run the same way as the written one?
+        TopoDS_Vertex rFirst = TopExp::FirstVertex(re, false), wFirst = TopExp::FirstVertex(we2, false);
+        const bool forward = BRep_Tool::Pnt(rFirst).Distance(BRep_Tool::Pnt(wFirst)) <= 1e-6;
+        (void)sameWay;
+        const Handle(Geom_Surface) ws = BRep_Tool::Surface(wf), rs = BRep_Tool::Surface(face);
+        double c3f, c3l, r3f, r3l;
+        TopLoc_Location wl, rl3;
+        const Handle(Geom_Curve) w3 = BRep_Tool::Curve(we2, wl, c3f, c3l);
+        const Handle(Geom_Curve) r3 = BRep_Tool::Curve(re, rl3, r3f, r3l);
+        double uvMax = 0, mmMax = 0, uvFirst = 0, uvLast = 0, w3d = 0, r3d = 0;
+        for (int k = 0; k <= 8; ++k) {
+          const double t = k / 8.0;
+          const double pw = wfp + t * (wlp - wfp);
+          const double pr = forward ? rf + t * (rl - rf) : rl - t * (rl - rf);
+          const gp_Pnt2d uw = wc->Value(pw), ur = rc->Value(pr);
+          const double duv = uw.Distance(ur);
+          gp_Pnt p;
+          gp_Vec su, sv;
+          ws->D1(uw.X(), uw.Y(), p, su, sv);
+          const double mm = (su * (ur.X() - uw.X()) + sv * (ur.Y() - uw.Y())).Magnitude();
+          uvMax = std::max(uvMax, duv);
+          mmMax = std::max(mmMax, mm);
+          if (k == 0) uvFirst = duv;
+          if (k == 8) uvLast = duv;
+          if (!w3.IsNull()) w3d = std::max(w3d, ws->Value(uw.X(), uw.Y()).Distance(w3->Value(pw).Transformed(wl.Transformation())));
+          if (!r3.IsNull()) r3d = std::max(r3d, rs->Value(ur.X(), ur.Y()).Distance(r3->Value(pr).Transformed(rl3.Transformation())));
+        }
+        const double tol = BRep_Tool::Tolerance(we2);
+        if (uvMax > 1e-6) {
+          ++d;
+          (tol < u ? dBelow : dAbove)++;
+        }
+        std::ostringstream out;
+        out << "     q21 edge on " << faceKind(wf) << ": written " << wType << ", raw " << rType << ", uv ends " << uvFirst
+            << " " << uvLast << ", uv max " << uvMax << " (" << mmMax << " mm), written tol " << tol << ", written 2d->3d "
+            << w3d << ", raw 2d->3d " << r3d << ", length " << BRep_Tool::Pnt(ra).Distance(BRep_Tool::Pnt(rb));
+        lines.push_back({uvMax, out.str()});
+      }
+    }
+  }
+  std::sort(lines.begin(), lines.end(), [](const Line& a, const Line& b) { return a.uvMax > b.uvMax; });
+  for (size_t i = 0; i < lines.size() && i < 40; ++i) std::cout << lines[i].text << "\n";
+  std::cout << "   q21 summary: edges in flagged raw wires " << n << ", matched " << n - unmatched << ", raw pcurve differs (> 1e-6 uv) "
+            << d << " (written tol < " << u << ": " << dBelow << ", >= " << u << ": " << dAbove << "), type changed "
+            << typeChanged << std::endl;
 }
 
 /**
@@ -1621,6 +1820,51 @@ static RoundTripRow stepOne(ExtrudoFacade& f, const std::string& path, double to
         for (size_t i = 0; i < changed.size() && i < 20; ++i) std::cout << "     q20 face " << changed[i].second << std::endl;
       }
     }
+  }
+
+  // Q21: the reader's pcurves against ours, and the read-mode matrix (Q21=1).
+  if (detail && getenv("Q21") && *getenv("Q21")) {
+    const double u = uncertaintyOf(text);
+    const int writtenSolids = f.count(h, 3);
+    const TopoDS_Shape raw = readStepUnhealed(text);
+    if (!raw.IsNull()) q21Pcurves(written, raw, u);
+    q21Entities(text);
+    const int readMode = Interface_Static::IVal("read.surfacecurve.mode");
+    const int writeMode = Interface_Static::IVal("write.precision.mode");
+    auto row21 = [&](const std::string& name, const std::string& file, int mode, bool healing) {
+      Interface_Static::SetIVal("read.surfacecurve.mode", mode);
+      Q20Result r;
+      try {
+        if (healing) {
+          const int b = f.readStep(file.c_str());
+          if (b) {
+            r = q20Measure(*f.find(b), row.faces, writtenSolids, writtenVolume, uncertaintyOf(file));
+            f.release(b);
+          }
+        } else {
+          r = q20Measure(readStepUnhealed(file), row.faces, writtenSolids, writtenVolume, uncertaintyOf(file));
+        }
+      } catch (...) {
+      }
+      Interface_Static::SetIVal("read.surfacecurve.mode", readMode);
+      q20Print(name, r, row.faces, "q21");
+    };
+    const std::pair<int, const char*> modes[] = {{0, "0 default"}, {3, "3 3DUse_Preferred"}, {2, "2 2DUse_Preferred"},
+                                                 {-3, "-3 3DUse_Forced"}, {-2, "-2 2DUse_Forced"}};
+    for (const auto& [mode, name] : modes) {
+      row21(std::string("read mode ") + name + ", healing", text, mode, true);
+      row21(std::string("read mode ") + name + ", healing off", text, mode, false);
+    }
+    std::string greatest;
+    try {
+      Interface_Static::SetIVal("write.precision.mode", 1);
+      greatest = stepDirect(written);
+    } catch (...) {
+    }
+    Interface_Static::SetIVal("write.precision.mode", writeMode);
+    std::cout << "   q21 greatest file uncertainty " << uncertaintyOf(greatest) << std::endl;
+    row21("write greatest, read default", greatest, readMode, true);
+    row21("write greatest, read mode -2", greatest, -2, true);
   }
 
   // Q9: the BREP round trip (keeps tolerances and pcurves).
