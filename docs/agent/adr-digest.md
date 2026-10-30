@@ -3636,3 +3636,22 @@ stored side and relies on `gradual.ts`'s bounded steps; the tool's side is the c
 the other entity's reference point → `near`, left out of the stored dimension); after a round first,
 body edges stay free for the diameter's label, while datum axes and model points are taken as the second pick (a click on an axis is its distance, not the diameter's label). e2e:
 `e2e/sketch-dimensions.spec.ts` (the last test).
+
+ADR-0113 (the owner, 2026-10-28): **Imperial units** (P6-18). `packages/core/src/expr/spell-unit.ts`
+(`isBareNumber`: literals and arithmetic of literals, no unit, no parameter; `spellOutUnit`: `10` →
+`10 mm`, `10 / 2` → `(10 / 2) * 1 mm`), `document-commands.ts` (`updateSettings`'s `keepLengths`),
+`apps/web/src/shell/BrowserPanel.tsx` (`DocumentSettings`: the `Units` and `Precision` selects,
+`[data-setting]`), `apps/web/src/home/HomeScreen.tsx` (the New design card's unit select, preference
+`newDesignUnits`). **Rules:** a unit change goes through `document.settings` and never resizes the
+model: the command spells the **old** unit out on every plain length number first (user parameters of
+unit `length` and their slider `min`/`max`/`step`, configuration values of those parameters, feature
+`expr` inputs of unit `length`, non-angle sketch dimensions; angles and unitless numbers untouched), in
+the same undo step; the same unit again or precision alone rewrites nothing; tests that want an inch
+document set `settings.units` directly instead of dispatching the command. S2 (inch grid: levels
+1/16 … 1 in, 6 in, 1 ft, 10 ft; metric designs unchanged; the shader takes both spacings) and S3
+(parser: `3/8 in`, `1 1/2"`, `5' 6"` as one number, no change to `10 / 2`; `settings.fractions`
+optional, display denominator `2^(precision + 2)` capped at 64, inch designs only) follow the ADR's
+§2 and §3. Tools never write a literal `mm` into a design: a dialog field's mm `default` goes through `features/default-unit.ts` (`defaultInUnit`: an inch table, 10 mm → 3/8 in; cm and m exact) in `defaultValues(spec, unit)`, and a length a tool computes (a clicked point, a face centre, a canvas width) through core's `lengthExpr(mm, unit)`. S2 is in: `apps/web/src/viewport/grid.ts` (`gridLevels` with `METRIC_LEVELS`/`INCH_LEVELS`,
+`gridStep`'s unit), the viewport store's `lengthUnit` (`AppShell` sets it from `doc.settings.units`;
+`sketch/tools/host.ts` passes it to `gridStep`; not a preference) and `GridPlane.tsx`'s `uLevels`
+uniform table with the per-fragment scan. e2e: `e2e/document-units.spec.ts`, `e2e/inch-grid.spec.ts`.

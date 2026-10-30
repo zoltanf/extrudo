@@ -1,3 +1,4 @@
+import { createDocument, type LengthUnit, LengthUnitSchema } from '@extrudo/core';
 import type { ProjectSummary } from '@extrudo/storage';
 import {
   ArrowLeft,
@@ -51,7 +52,7 @@ import { errorLog, watchWindowErrors } from '../shell/bugReport';
 import { docsPath, docsUrl, REPO_URL } from '../shell/docsLinks';
 import { useUpdateNotice } from '../shell/useUpdateNotice';
 import { useMarkingStyle } from '../shell/viewMenu';
-import { BUILD } from '../version';
+import { APP_VERSION, BUILD } from '../version';
 import { webglSupport } from '../viewport/webglSupport';
 import { EXAMPLES } from './examples';
 import { TEMPLATES, type Template } from './gallery';
@@ -65,6 +66,16 @@ type Sort = 'modified' | 'name';
  * The home screen (UI spec §6, FR-PRJ-01): new design, templates, the
  * project grid with search and sort, import, and the trash.
  */
+/** The preference that remembers the unit of the last new design. */
+const UNITS_KEY = 'newDesignUnits';
+
+const UNIT_WORDS: Record<LengthUnit, string> = {
+  mm: 'millimetres',
+  cm: 'centimetres',
+  m: 'metres',
+  in: 'inches',
+};
+
 export function HomeScreen({ platform }: { platform: Platform }) {
   const { choice, setChoice } = useTheme(platform.preferences);
   const marking = useMarkingStyle(platform.preferences);
@@ -148,8 +159,16 @@ export function HomeScreen({ platform }: { platform: Platform }) {
       .finally(() => void refresh());
 
   const open = (id: string) => navigate(projectHref(id));
+  // The unit a new design is in (FR-PRJ-07, ADR-0113 §1): the last one chosen here.
+  const [units, setUnitsState] = useState<LengthUnit>(() =>
+    LengthUnitSchema.catch('mm').parse(platform.preferences.get(UNITS_KEY, 'mm')),
+  );
+  const setUnits = (next: LengthUnit) => {
+    setUnitsState(next);
+    platform.preferences.set(UNITS_KEY, next);
+  };
   const start = () =>
-    createProject(platform)
+    createProject(platform, createDocument({ units, appVersion: APP_VERSION }))
       .then(open)
       .catch((e: unknown) => push('error', `Couldn't create the design: ${describeError(e)}`));
   // A template is a copy under a new ID, with its picture for the card (P3-12).
@@ -310,18 +329,37 @@ export function HomeScreen({ platform }: { platform: Platform }) {
                 Start
               </h2>
               <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-                <button
-                  type="button"
-                  onClick={() => void start()}
-                  className="group flex min-h-32 flex-col items-start justify-end gap-1 rounded-card border border-accent/40 bg-accent-soft p-4 text-left transition-colors duration-(--x-fast) hover:border-accent"
-                >
-                  <span className="mb-auto grid size-10 place-items-center rounded-control bg-accent text-on-accent transition-transform duration-(--x-normal) ease-ui group-hover:-translate-y-0.5">
-                    <Plus size={22} strokeWidth={2.25} />
-                  </span>
-                  <span className="text-lg font-semibold">New design</span>
-                  {/* Muted grey falls below 4.5:1 on the accent tint (P3-13 axe audit). */}
-                  <span className="text-sm text-ink/75">An empty design in millimetres.</span>
-                </button>
+                <div className="relative flex min-h-32 rounded-card border border-accent/40 bg-accent-soft transition-colors duration-(--x-fast) hover:border-accent">
+                  <button
+                    type="button"
+                    onClick={() => void start()}
+                    className="group flex flex-1 flex-col items-start justify-end gap-1 rounded-card p-4 text-left"
+                  >
+                    <span className="mb-auto grid size-10 place-items-center rounded-control bg-accent text-on-accent transition-transform duration-(--x-normal) ease-ui group-hover:-translate-y-0.5">
+                      <Plus size={22} strokeWidth={2.25} />
+                    </span>
+                    <span className="text-lg font-semibold">New design</span>
+                    {/* Muted grey falls below 4.5:1 on the accent tint (P3-13 axe audit). */}
+                    <span className="text-sm text-ink/75">
+                      An empty design in {UNIT_WORDS[units]}.
+                    </span>
+                  </button>
+                  {/* The unit of the next new design; the Browser's Document settings change it later. */}
+                  <div className="absolute top-2 right-2 w-16">
+                    <Select
+                      aria-label="Units of a new design"
+                      className="h-7 py-0 pr-5 pl-1.5 text-sm"
+                      value={units}
+                      onChange={(event) => setUnits(LengthUnitSchema.parse(event.target.value))}
+                    >
+                      {LengthUnitSchema.options.map((unit) => (
+                        <option key={unit} value={unit}>
+                          {unit}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                </div>
                 <StartCard
                   label="Import…"
                   description=".extrudo, .f3d, STEP, mesh, OpenSCAD."

@@ -254,7 +254,7 @@ Whole-document rules (checked after the per-field rules):
 
 | Field | Type | Required | Meaning |
 |---|---|---|---|
-| `units` | `"mm"`, `"cm"`, `"m"`, `"in"` | yes | The document's **length unit**: what a plain number in a length field means, and what the app displays. Stored lengths in sketches are always mm regardless. |
+| `units` | `"mm"`, `"cm"`, `"m"`, `"in"` | yes | The document's **length unit**: what a plain number in a length field means, and what the app displays. Stored lengths in sketches are always mm regardless. When the app changes it (the browser's Document settings, ADR-0113 §1), it writes the previous unit onto every plain length number first (`10` → `10 mm`), so the model keeps its size. |
 | `precision` | integer 0 to 8 | yes | Decimal places shown for lengths and angles. A new document uses 2. |
 
 ### 4.2 `bodies[<bodyId>]` (BodyMeta)

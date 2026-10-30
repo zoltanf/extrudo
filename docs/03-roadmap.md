@@ -1487,6 +1487,26 @@ end to end, faster than in established desktop CAD.
   B9's recompute shows the wait; the bar grows) and `e2e/model-progress.spec.ts`
   green on CI; the perf spec's edit and undo app time unchanged. Slices 1–3 done
   2026-10-24; the owner ticked it 2026-10-25.
+- [ ] **P6-18 Imperial units** (owner, 2026-10-28; FR-PRJ-07; ADR-0113). Inches
+  were in the file format, expressions and display from the start, but nothing
+  in the app could set a design's unit. Three slices:
+  - [x] **S1 Unit editor.** The browser's Document settings folder sets the
+    unit (`mm`, `cm`, `m`, `in`) and precision through `document.settings`;
+    changing the unit spells the old unit out on every plain length number
+    (parameters, slider ranges, configurations, feature inputs, sketch
+    dimensions), so the model keeps its size. The New design card picks the
+    unit of a new design and remembers it. *Done 2026-10-28.*
+  - [x] **S2 Inch grid.** In an inch design the grid and grid snapping use
+    binary fractions of an inch and feet (1/16, 1/8, 1/4, 1/2, 1, 6, 12 in, 10 ft …)
+    instead of powers of ten mm; the finest step is 1/16 in (ADR-0113 §2).
+    *Done 2026-10-28.*
+  - [ ] **S3 Fractions and feet-inches.** Expressions take mixed numbers and
+    the `'`/`"` marks (`1 1/2 in`, `3/8"`, `5' 6"`); an inch design can show
+    lengths as fractions (`settings.fractions`, nearest 1/4 … 1/64 by
+    precision) in dimensions, inputs and the Parameters dialog (ADR-0113 §3).
+  Acceptance: `pnpm check`; `e2e/document-units.spec.ts` green on CI; S2 and
+  S3 add their own specs; the file-format doc and `pnpm api:generate` updated
+  for `fractions`.
 
 ## Phase 7 — Later (lowest priority, after everything else)
 

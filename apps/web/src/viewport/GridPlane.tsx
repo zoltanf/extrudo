@@ -1,9 +1,9 @@
-import { type SketchFrame, worldToSketch } from '@extrudo/core';
+import { type LengthUnit, type SketchFrame, worldToSketch } from '@extrudo/core';
 import { useFrame } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
 import { Color, Matrix4, type Mesh, ShaderMaterial, Vector2, Vector3 } from 'three';
 import type { Rgba } from './colors';
-import { GRID_PIXELS } from './grid';
+import { gridLevels, METRIC_LEVELS, MINOR_PIXELS } from './grid';
 import type { ViewportStore } from './store';
 
 /**
@@ -14,10 +14,12 @@ import type { ViewportStore } from './store';
  *
  * One quad under the camera target, drawn by a shader: each pixel picks its
  * grid level from its own footprint (`fwidth`), so spacing adapts to zoom
- * and to distance in perspective. Levels are powers of ten mm; a level's
- * lines fade out as they crowd together, while the next level up takes over
- * as the minor lines. Major lines are twice as strong. The grid fades out
- * radially around the target and at grazing angles.
+ * and to distance in perspective. The levels are the document unit's
+ * (`gridLevels`): powers of ten mm for a metric design, fractions of an inch
+ * and feet for an inch one (P6-18 S2, ADR-0113 §2); a level's lines fade out
+ * as they crowd together, while the next level up takes over as the minor
+ * lines. Major lines are twice as strong. The grid fades out radially around
+ * the target and at grazing angles.
  */
 
 /** The grid has faded out this many view sizes from the target. */
@@ -40,6 +42,20 @@ const vertexShader = /* glsl */ `
   }
 `;
 
+/** The shader's level table: `SCAN_SLOTS` levels at most, unused slots repeating the last. */
+export const LEVEL_SLOTS = 12;
+/** Slots the shader scans: the last two are tail only, so `j + 2` never leaves the table. */
+const SCAN_SLOTS = LEVEL_SLOTS - 2;
+
+/** The level table as the shader's uniform: `LEVEL_SLOTS` floats, the tail repeating the last level. */
+function levelSlots(levels: readonly number[]): Float32Array {
+  const slots = new Float32Array(LEVEL_SLOTS);
+  for (let i = 0; i < LEVEL_SLOTS; i++) {
+    slots[i] = levels[Math.min(i, levels.length - 1)] ?? 0;
+  }
+  return slots;
+}
+
 const fragmentShader = /* glsl */ `
   uniform vec3 uGridColor;
   uniform float uGridAlpha;
@@ -53,6 +69,8 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uU;
   uniform vec3 uV;
   uniform vec3 uN;
+  uniform float uLevels[${LEVEL_SLOTS}];
+  uniform int uLevelCount;
   varying vec3 vWorld;
 
   // Coverage of grid lines 1 px wide with the given spacing (mm).
@@ -73,12 +91,36 @@ const fragmentShader = /* glsl */ `
     vec2 dudv = max(fwidth(uv), vec2(1e-6));
     float perPixel = max(dudv.x, dudv.y);
 
-    float lod = max(0.0, log(perPixel * ${GRID_PIXELS.toFixed(1)}) / log(10.0));
-    float level = floor(lod);
-    float fade = smoothstep(0.0, 1.0, fract(lod));
-    float s0 = pow(10.0, level);
-    float s1 = s0 * 10.0;
-    float s2 = s1 * 10.0;
+    // The first level whose cells reach ${MINOR_PIXELS.toFixed(1)} px is the snap step: it is
+    // drawn as the minor lines and the next level as the major ones (ADR-0113 §2). The scan
+    // breaks at the level it finds and every read keeps a constant-index expression inside
+    // the table: GLSL ES 1.0 fragment shaders don't index uniform arrays with a computed index
+    // on every driver, and an index outside the array is an error on strict compilers even
+    // on a branch that is never taken. So the two levels below come from loop variables, and
+    // the two spare tail slots (repeating the last level) keep j + 2 inside the table.
+    float want = perPixel * ${MINOR_PIXELS.toFixed(1)};
+    float lower = 0.0;
+    float s0 = uLevels[${SCAN_SLOTS - 1}];
+    float s1 = s0;
+    float s2 = s0;
+    float prev = 0.0;
+    float prev2 = 0.0;
+    for (int j = 0; j < ${SCAN_SLOTS}; j++) {
+      float cur = uLevels[j];
+      if (cur >= want) {
+        bool clamped = j > uLevelCount - 2;
+        s0 = clamped ? prev : cur;
+        s1 = clamped ? cur : uLevels[j + 1];
+        s2 = clamped ? cur : uLevels[j + 2];
+        lower = clamped ? prev2 : prev;
+        break;
+      }
+      prev2 = prev;
+      prev = cur;
+    }
+    // The minor lines fade out as they crowd towards ${MINOR_PIXELS.toFixed(1)} px, from full
+    // strength at the spacing of the level below (any spacing at the first level).
+    float fade = smoothstep(0.0, 1.0, (want - lower) / max(s0 - lower, 1e-9));
 
     float minor = uGridAlpha;
     float major = min(1.0, uGridAlpha * 2.0);
@@ -136,6 +178,9 @@ export function Grid({
   showY,
 }: GridProps) {
   const mesh = useRef<Mesh>(null);
+  // The level table follows the document unit; until the first frame it is the
+  // metric one (the default and the common case).
+  const levelsUnit = useRef<LengthUnit | undefined>(undefined);
   const { material, u } = useMemo(() => {
     const u = {
       uGridColor: { value: new Color() },
@@ -150,6 +195,8 @@ export function Grid({
       uU: { value: new Vector3(1, 0, 0) },
       uV: { value: new Vector3(0, 1, 0) },
       uN: { value: new Vector3(0, 0, 1) },
+      uLevels: { value: levelSlots(METRIC_LEVELS) },
+      uLevelCount: { value: METRIC_LEVELS.length },
     };
     const material = new ShaderMaterial({
       vertexShader,
@@ -182,7 +229,13 @@ export function Grid({
   );
 
   useFrame(() => {
-    const { view } = store.getState();
+    const { view, lengthUnit } = store.getState();
+    if (lengthUnit !== levelsUnit.current) {
+      levelsUnit.current = lengthUnit;
+      const levels = gridLevels(lengthUnit);
+      u.uLevels.value = levelSlots(levels);
+      u.uLevelCount.value = levels.length;
+    }
     const radius = view.size * GRID_RADIUS;
     // The quad sits under the camera target, projected onto the plane.
     const [cu, cv] = worldToSketch(frame, view.target);
