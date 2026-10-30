@@ -17,6 +17,8 @@
 #include <BRepPrimAPI_MakeSphere.hxx>
 #include <BRepPrimAPI_MakeTorus.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
+#include <BRepTools.hxx>
+#include <BRep_Builder.hxx>
 #include <Interface_Static.hxx>
 #include <NCollection_DataMap.hxx>
 #include <STEPControl_Controller.hxx>
@@ -29,6 +31,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <set>
 #include <iomanip>
 #include <iostream>
@@ -491,6 +494,28 @@ struct RoundTripRow {
   int u2Faces = 0, u2Solids = 0;
   double u2Ratio = 0;
   double uncertainty = -1;
+  // Q9: the BREP round trip (keeps tolerances and pcurves).
+  bool brepValid = false;
+  int brepFaces = 0, brepSolids = 0;
+  double brepRatio = 0;
+  // Q10: heal a copy, then the STEP round trip of the healed body.
+  bool healedValid = false;
+  int healedFaces = 0;
+  bool healedRtValid = false;
+  int healedRtFaces = 0, healedRtSolids = 0;
+  double healedRtRatio = 0;
+  // Q11: no pcurves written, and prefer 2D on read.
+  bool nopcValid = false;
+  int nopcFaces = 0, nopcSolids = 0;
+  double nopcRatio = 0;
+  bool pref2dValid = false;
+  int pref2dFaces = 0, pref2dSolids = 0;
+  double pref2dRatio = 0;
+  // Q12: the flagged wires and their small edges.
+  int flaggedWires = 0;
+  double minFlaggedEdge = 0;
+  int flaggedEdgesBelowUncertainty = 0;
+  int writtenVertices = 0, writtenEdges = 0, backVertices = 0, backEdges = 0;
 };
 
 /** The number in the STEP text's UNCERTAINTY_MEASURE_WITH_UNIT, or -1 (ADR-0097 D7 diagnosis). */
@@ -503,24 +528,47 @@ static double uncertaintyOf(const std::string& text) {
   return std::strtod(text.c_str() + measure + std::string("LENGTH_MEASURE(").size(), nullptr);
 }
 
-/** What Q8 found on one read-back body: flagged wires and faces and the wires' edge classes. */
+/**
+ * Writes `shape` with a plain STEPControl_Writer that honours the Interface_Static
+ * write parameters. The facade's writeStep() overwrites the model's
+ * DESTEP_Parameters with its own (stepParameters()), so write-side statics have
+ * no effect there; this path is how the Q7/Q11 write levers can actually be
+ * pulled. Schema AP242DIS, millimetres, as the facade writes. Returns the text,
+ * or "" on failure (ADR-0097 2026-10-30b).
+ */
+static std::string stepDirect(const TopoDS_Shape& shape) {
+  Interface_Static::SetCVal("write.step.schema", "AP242DIS");
+  Interface_Static::SetCVal("write.step.unit", "MM");
+  STEPControl_Writer writer;
+  if (writer.Transfer(shape, STEPControl_AsIs) != IFSelect_RetDone) return "";
+  std::ostringstream out;
+  if (writer.WriteStream(out) != IFSelect_RetDone) return "";
+  return out.str();
+}
+
+/** What Q8/Q12 found on one read-back body: flagged wires and faces and the wires' edges. */
 struct FlaggedInfo {
   int wires = 0;
   int wiresWithArc = 0;
   int wiresOnlyLines = 0;
   int unorientableFaces = 0;
   int badOrientationFaces = 0;
+  double minEdge = 0;  // the shortest edge in a flagged wire (mm); 0 = none
+  int edgesBelowUncertainty = 0;
+  int edgesBelow005 = 0;
   std::map<std::string, int> wireEdgeClasses;
   std::map<std::string, int> faceKinds;
 };
 
 /**
- * Q8 (ADR-0097 2026-10-30b): every wire BRepCheck flags SelfIntersectingWire and
- * every face it flags UnorientableShape/BadOrientationOfSubshape on `shape`,
+ * Q8/Q12 (ADR-0097 2026-10-30b): every wire BRepCheck flags SelfIntersectingWire
+ * and every face it flags UnorientableShape/BadOrientationOfSubshape on `shape`,
  * with the wire's edge classes, its max edge tolerance and whether it holds a
- * circle or ellipse edge. Prints when `detail`.
+ * circle or ellipse edge; and the flagged wires' shortest edge, how many of
+ * their edges are shorter than `uncertainty` and how many shorter than 0.05 mm.
+ * Prints when `detail`.
  */
-static FlaggedInfo flaggedWiresAndFaces(const TopoDS_Shape& shape, bool detail) {
+static FlaggedInfo flaggedWiresAndFaces(const TopoDS_Shape& shape, bool detail, double uncertainty) {
   FlaggedInfo info;
   BRepCheck_Analyzer analyzer(shape);
   // Every edge's class on the whole body, so a wire's edges read as Q1's.
@@ -561,7 +609,7 @@ static FlaggedInfo flaggedWiresAndFaces(const TopoDS_Shape& shape, bool detail) 
     if (!hasStatus(wire, BRepCheck_SelfIntersectingWire)) continue;
     ++info.wires;
     std::map<std::string, int> classes;
-    double maxTol = 0;
+    double maxTol = 0, minWireEdge = 0;
     bool arc = false;
     for (TopExp_Explorer edge(wire, TopAbs_EDGE); edge.More(); edge.Next()) {
       const TopoDS_Edge ed = TopoDS::Edge(edge.Current());
@@ -571,10 +619,18 @@ static FlaggedInfo flaggedWiresAndFaces(const TopoDS_Shape& shape, bool detail) 
       maxTol = std::max(maxTol, BRep_Tool::Tolerance(ed));
       const GeomAbs_CurveType type = BRepAdaptor_Curve(ed).GetType();
       if (!BRep_Tool::Degenerated(ed) && (type == GeomAbs_Circle || type == GeomAbs_Ellipse)) arc = true;
+      GProp_GProps length;
+      BRepGProp::LinearProperties(ed, length);
+      const double len = length.Mass();
+      minWireEdge = minWireEdge == 0 ? len : std::min(minWireEdge, len);
+      info.minEdge = info.minEdge == 0 ? len : std::min(info.minEdge, len);
+      if (uncertainty >= 0 && len < uncertainty) ++info.edgesBelowUncertainty;
+      if (len < 0.05) ++info.edgesBelow005;
     }
     if (arc) ++info.wiresWithArc; else ++info.wiresOnlyLines;
     if (detail) {
-      std::cout << "     flagged wire (max tol " << maxTol << (arc ? ", has circle/ellipse" : ", lines only") << "):";
+      std::cout << "     flagged wire (max tol " << maxTol << ", shortest edge " << minWireEdge
+                << (arc ? ", has circle/ellipse" : ", lines only") << "):";
       for (const auto& [cls, n] : classes) std::cout << " " << cls << " x" << n;
       std::cout << "\n";
     }
@@ -622,9 +678,17 @@ static RoundTripRow stepOne(ExtrudoFacade& f, const std::string& path, double to
   for (const auto& [cls, st] : classes) maxEdge = std::max(maxEdge, st.maxTol);
   row.maxEdge = maxEdge;
   row.maxVertex = maxVertex;
+  {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> vertices, edges;
+    TopExp::MapShapes(written, TopAbs_VERTEX, vertices);
+    TopExp::MapShapes(written, TopAbs_EDGE, edges);
+    row.writtenVertices = vertices.Extent();
+    row.writtenEdges = edges.Extent();
+  }
   if (detail) {
     std::cout << "   written: faces " << row.faces << ", facets " << row.facets << ", solids " << f.count(h, 3)
-              << ", max edge tol " << maxEdge << ", max vertex tol " << maxVertex << "\n";
+              << ", vertices " << row.writtenVertices << ", edges " << row.writtenEdges << ", max edge tol " << maxEdge
+              << ", max vertex tol " << maxVertex << "\n";
     std::cout << "   edge classes (written):\n";
     for (const auto& [cls, st] : classes) {
       std::cout << "     " << cls << ": " << st.count << " edges, invalid " << st.invalid << ", tolerances";
@@ -651,6 +715,13 @@ static RoundTripRow stepOne(ExtrudoFacade& f, const std::string& path, double to
   row.backValid = BRepCheck_Analyzer(readBack).IsValid();
   row.backFaces = f.count(back, 0);
   row.backSolids = f.count(back, 3);
+  {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> vertices, edges;
+    TopExp::MapShapes(readBack, TopAbs_VERTEX, vertices);
+    TopExp::MapShapes(readBack, TopAbs_EDGE, edges);
+    row.backVertices = vertices.Extent();
+    row.backEdges = edges.Extent();
+  }
   const double writtenVolume = ExtrudoFacade::volumeOf(written);
   row.ratio = writtenVolume != 0 ? ExtrudoFacade::volumeOf(readBack) / writtenVolume : 0;
 
@@ -737,23 +808,19 @@ static RoundTripRow stepOne(ExtrudoFacade& f, const std::string& path, double to
 
   // Q7: the same round trip with the writer's global uncertainty set to the
   // body's greatest tolerance ("Greatest"; write.precision.mode 1, the header's
-  // enum is Least -1 / Average 0 / Greatest 1 / Session 2).
+  // enum is Least -1 / Average 0 / Greatest 1 / Session 2). Written with
+  // stepDirect: the facade's writeStep() overwrites the transfer parameters, so
+  // the static has no effect there.
   try {
     const int previousMode = Interface_Static::IVal("write.precision.mode");
     Interface_Static::SetIVal("write.precision.mode", 1);  // Greatest
-    f.clearArgs();
-    f.pushArg(h);
-    const int size2 = f.writeStep();
-    std::string text2;
-    if (size2 > 0) text2.assign(reinterpret_cast<const char*>(f.exportTextPtr()), static_cast<size_t>(size2));
-    f.clearExport();
+    const std::string text2 = stepDirect(written);
     Interface_Static::SetIVal("write.precision.mode", previousMode);
     row.uncertainty = uncertaintyOf(text2);
     const double defaultUncertainty = uncertaintyOf(text);
     if (detail)
-      std::cout << "     q7 texts: default " << text.size() << " bytes (uncertainty " << defaultUncertainty
-                << "), greatest " << text2.size() << " bytes (uncertainty " << row.uncertainty << "), identical "
-                << (text == text2) << "\n";
+      std::cout << "     q7 uncertainty: facade default " << defaultUncertainty << ", greatest (direct writer) "
+                << row.uncertainty << ", " << text2.size() << " bytes\n";
     const int back2 = text2.empty() ? 0 : f.readStep(text2.c_str());
     if (back2) {
       const TopoDS_Shape& readBack2 = *f.find(back2);
@@ -782,12 +849,129 @@ static RoundTripRow stepOne(ExtrudoFacade& f, const std::string& path, double to
     Interface_Static::SetIVal("write.precision.mode", 0);
   }
 
-  // Q8: where the flagged wires and faces are, and their edges' classes.
-  const FlaggedInfo flagged = flaggedWiresAndFaces(readBack, detail);
-  if (detail)
+  // Q8/Q12: where the flagged wires and faces are, and their small edges. The
+  // "edges < uncertainty" count uses the default round trip's file uncertainty.
+  const double defaultUncertainty = uncertaintyOf(text);
+  const FlaggedInfo flagged = flaggedWiresAndFaces(readBack, detail, defaultUncertainty);
+  row.flaggedWires = flagged.wires;
+  row.minFlaggedEdge = flagged.minEdge;
+  row.flaggedEdgesBelowUncertainty = flagged.edgesBelowUncertainty;
+  if (detail) {
     std::cout << "   q8 flagged: wires " << flagged.wires << " (" << flagged.wiresWithArc << " with a circle/ellipse, "
               << flagged.wiresOnlyLines << " lines only), faces unorientable " << flagged.unorientableFaces
               << ", bad orientation " << flagged.badOrientationFaces << std::endl;
+    std::cout << "   q12 small edges: shortest in a flagged wire " << flagged.minEdge << ", edges < uncertainty ("
+              << defaultUncertainty << ") " << flagged.edgesBelowUncertainty << ", edges < 0.05 " << flagged.edgesBelow005
+              << std::endl;
+  }
+
+  // Q9: the BREP round trip (keeps tolerances and pcurves).
+  {
+    std::ostringstream out;
+    BRepTools::Write(written, out);
+    std::istringstream in(out.str());
+    BRep_Builder builder;
+    TopoDS_Shape brepShape;
+    BRepTools::Read(brepShape, in, builder);
+    const int brepH = f.store(brepShape);
+    if (brepH) {
+      const TopoDS_Shape& bs = *f.find(brepH);
+      row.brepValid = BRepCheck_Analyzer(bs).IsValid();
+      row.brepFaces = f.count(brepH, 0);
+      row.brepSolids = f.count(brepH, 3);
+      row.brepRatio = writtenVolume != 0 ? ExtrudoFacade::volumeOf(bs) / writtenVolume : 0;
+      f.release(brepH);
+    }
+    if (detail)
+      std::cout << "   q9 brep (" << out.str().size() << " bytes): " << (row.brepValid ? "valid" : "invalid")
+                << ", faces " << row.brepFaces << ", solids " << row.brepSolids << ", ratio " << row.brepRatio << std::endl;
+  }
+
+  // Q10: heal a copy, then the STEP round trip of the healed body.
+  {
+    ShapeFix_Shape healer(BRepBuilderAPI_Copy(written).Shape());
+    healer.SetPrecision(maxEdge);
+    healer.SetMaxTolerance(std::max(1.0, 2.0 * maxEdge));
+    healer.Perform();
+    const TopoDS_Shape healed = healer.Shape();
+    row.healedValid = !healed.IsNull() && BRepCheck_Analyzer(healed).IsValid();
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> healedFaces;
+    TopExp::MapShapes(healed, TopAbs_FACE, healedFaces);
+    row.healedFaces = healedFaces.Extent();
+    const int healedH = f.store(healed);
+    if (healedH) {
+      f.clearArgs();
+      f.pushArg(healedH);
+      const int hsize = f.writeStep();
+      std::string htext;
+      if (hsize > 0) htext.assign(reinterpret_cast<const char*>(f.exportTextPtr()), static_cast<size_t>(hsize));
+      f.clearExport();
+      const int hback = htext.empty() ? 0 : f.readStep(htext.c_str());
+      if (hback) {
+        const TopoDS_Shape& hr = *f.find(hback);
+        row.healedRtValid = BRepCheck_Analyzer(hr).IsValid();
+        row.healedRtFaces = f.count(hback, 0);
+        row.healedRtSolids = f.count(hback, 3);
+        row.healedRtRatio = writtenVolume != 0 ? ExtrudoFacade::volumeOf(hr) / writtenVolume : 0;
+        f.release(hback);
+      }
+      f.release(healedH);
+    }
+    if (detail)
+      std::cout << "   q10 healed: " << (row.healedValid ? "valid" : "invalid") << ", faces " << row.healedFaces
+                << "; healed round trip " << (row.healedRtValid ? "valid" : "invalid") << ", faces " << row.healedRtFaces
+                << ", solids " << row.healedRtSolids << ", ratio " << row.healedRtRatio << std::endl;
+  }
+
+  // Q11a: no pcurves written (write.surfacecurve.mode 0 = Off), read with the
+  // defaults. Written with stepDirect: the facade's writeStep() overwrites the
+  // transfer parameters, so the static has no effect there.
+  {
+    const int previous = Interface_Static::IVal("write.surfacecurve.mode");
+    Interface_Static::SetIVal("write.surfacecurve.mode", 0);
+    const std::string ntext = stepDirect(written);
+    Interface_Static::SetIVal("write.surfacecurve.mode", previous);
+    const int nback = ntext.empty() ? 0 : f.readStep(ntext.c_str());
+    if (nback) {
+      const TopoDS_Shape& nr = *f.find(nback);
+      row.nopcValid = BRepCheck_Analyzer(nr).IsValid();
+      row.nopcFaces = f.count(nback, 0);
+      row.nopcSolids = f.count(nback, 3);
+      row.nopcRatio = writtenVolume != 0 ? ExtrudoFacade::volumeOf(nr) / writtenVolume : 0;
+      f.release(nback);
+    }
+    if (detail)
+      std::cout << "   q11 no pcurves (" << ntext.size() << " bytes): " << (row.nopcValid ? "valid" : "invalid")
+                << ", faces " << row.nopcFaces << ", solids " << row.nopcSolids << ", ratio " << row.nopcRatio << std::endl;
+  }
+
+  // Q11b: read with the file's pcurves preferred. read.surfacecurve.mode 2 =
+  // 2DUse_Preferred; the brief's -3 is 3DUse_Forced (ignores them). The reader
+  // honours statics (STEPControl_Reader::ReadStream calls InitFromStatic), so
+  // the facade's readStep is fine here.
+  {
+    f.clearArgs();
+    f.pushArg(h);
+    const int psize = f.writeStep();
+    std::string ptext;
+    if (psize > 0) ptext.assign(reinterpret_cast<const char*>(f.exportTextPtr()), static_cast<size_t>(psize));
+    f.clearExport();
+    const int previous = Interface_Static::IVal("read.surfacecurve.mode");
+    Interface_Static::SetIVal("read.surfacecurve.mode", 2);
+    const int pback = ptext.empty() ? 0 : f.readStep(ptext.c_str());
+    Interface_Static::SetIVal("read.surfacecurve.mode", previous);
+    if (pback) {
+      const TopoDS_Shape& pr = *f.find(pback);
+      row.pref2dValid = BRepCheck_Analyzer(pr).IsValid();
+      row.pref2dFaces = f.count(pback, 0);
+      row.pref2dSolids = f.count(pback, 3);
+      row.pref2dRatio = writtenVolume != 0 ? ExtrudoFacade::volumeOf(pr) / writtenVolume : 0;
+      f.release(pback);
+    }
+    if (detail)
+      std::cout << "   q11 prefer 2D: " << (row.pref2dValid ? "valid" : "invalid") << ", faces " << row.pref2dFaces
+                << ", solids " << row.pref2dSolids << ", ratio " << row.pref2dRatio << std::endl;
+  }
 
   f.release(back);
   f.release(h);
@@ -807,6 +991,25 @@ static void printSummaryTable(const std::vector<RoundTripRow>& rows) {
               << r.backInvalidFaces << " | " << r.topStatus << " | " << (r.fixValid ? "valid" : "invalid") << " | "
               << r.fixFaces << " | " << r.fixRatio << " | " << (r.u2Valid ? "valid" : "invalid") << " | " << r.u2Faces
               << " | " << r.u2Solids << " | " << r.u2Ratio << " | " << r.uncertainty << " |\n";
+  std::cout.flush();
+}
+
+/** The Q9-Q12 second summary table (ADR-0097 2026-10-30b). */
+static void printSummaryTable2(const std::vector<RoundTripRow>& rows) {
+  std::cout << "\n| file | rebuild | brep valid | brep faces | brep solids | brep ratio | healed valid | healed faces | "
+               "healed rt valid | healed rt faces | healed rt solids | healed rt ratio | nopc valid | nopc faces | nopc "
+               "solids | nopc ratio | pref2d valid | pref2d faces | pref2d solids | pref2d ratio | flagged wires | min "
+               "edge in flagged | edges < uncertainty | written vertices->back vertices | written edges->back edges |\n";
+  std::cout << "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n";
+  for (const RoundTripRow& r : rows)
+    std::cout << "| " << r.file << " | " << r.rebuild << " | " << (r.brepValid ? "valid" : "invalid") << " | " << r.brepFaces
+              << " | " << r.brepSolids << " | " << r.brepRatio << " | " << (r.healedValid ? "valid" : "invalid") << " | "
+              << r.healedFaces << " | " << (r.healedRtValid ? "valid" : "invalid") << " | " << r.healedRtFaces << " | "
+              << r.healedRtSolids << " | " << r.healedRtRatio << " | " << (r.nopcValid ? "valid" : "invalid") << " | "
+              << r.nopcFaces << " | " << r.nopcSolids << " | " << r.nopcRatio << " | " << (r.pref2dValid ? "valid" : "invalid")
+              << " | " << r.pref2dFaces << " | " << r.pref2dSolids << " | " << r.pref2dRatio << " | " << r.flaggedWires
+              << " | " << r.minFlaggedEdge << " | " << r.flaggedEdgesBelowUncertainty << " | " << r.writtenVertices << "->"
+              << r.backVertices << " | " << r.writtenEdges << "->" << r.backEdges << " |\n";
   std::cout.flush();
 }
 
@@ -1159,6 +1362,7 @@ int main(int argc, char** argv) {
       std::cout.flush();
     }
     printSummaryTable(rows);
+    printSummaryTable2(rows);
     std::cout << "live shapes " << f.liveShapes() << std::endl;
     return 0;
   }
