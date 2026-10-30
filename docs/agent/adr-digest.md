@@ -3366,7 +3366,19 @@ flagged wires hold 35 edges shorter than the file's uncertainty, 37 under
 gives 10/13/14/14 bar passes of 30 hybrids and 2/4/6/9 refusals (more facets
 per body) — not the fix; every read-back `other` face is a `SurfaceOfRevolution`
 (11, in drill-block, peg-perego-button, gear-bearing-5) from a written torus with
-minor radius ≥ major radius.
+minor radius ≥ major radius. Q15-Q17 (the self-intersections classified):
+`ShapeAnalysis_Wire` at the reader precision, and down to 1e-9, finds the same
+self-intersection BRepCheck reports on only 7 of the 25 flagged wires (18 return
+false), because `BRepCheck_Wire::SelfIntersect` is a separate algorithm (tolint
+1e-10, `Geom2dInt_GInter`, an intersection accepted only inside a 3D vertex
+tolerance) — so the status cannot be read off ShapeAnalysis; running
+`BRepCheck_Wire::SelfIntersect` itself, 15 of the 25 pairs are **2D-only** (the
+two non-adjacent edges are 0.0022–0.15 mm apart in 3D, far above the wire's edge
+tolerance, and cross only in the face's 2D space), 4 are hairpin (turning angle
+≥ 150°), 0 same-edge and 0 3D-close; only 4 of the 25 flagged faces match a
+written face by centre/area, and on all 4 the written wire has 0 pairs at 1e-7
+and 0 at its edge tolerance, so where it can be measured the written body is
+clean and the reader created the crossing.
 Numbers in ADR-0097's 2026-10-30b amendment.
 
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
