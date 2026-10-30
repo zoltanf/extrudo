@@ -35,6 +35,14 @@ draw and in the Parameters dialog.
 The units are `mm`, `cm`, `m`, `in` and `ft` for lengths and `deg` and `rad` for angles. Write
 the unit after the number, with or without a space: `10 mm`, `2.5in`, `45 deg`.
 
+Inches are friendlier as fractions. Write a fraction with no spaces (`3/8 in`, `3/8"`), a mixed
+number with a space or a dash (`1 1/2 in`, `1-1/2"`), or use the inch and foot marks (`6"`, `5'`).
+A feet number right after it, an inches number, is one length: `5' 6"` and `5 ft 6 1/2 in`. A
+fraction needs a length unit after it; without one, `10 / 2` stays a division. To read inch
+lengths as fractions everywhere, open the browser's **Document settings** folder in an inch design
+and turn on **Fractions**; the Precision list then reads `1/4` to `1/64` and sets how fine the
+fraction is.
+
 A **plain number** takes the unit of the field it is in. In a length field `20` means 20 in the
 design's unit (millimetres, unless you changed it), and in an angle field `45` means 45
 degrees. Next to a length, a plain number joins in too: `width + 2` adds 2 mm. This is what makes

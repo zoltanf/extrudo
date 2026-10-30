@@ -13,7 +13,7 @@ export {
   type Quantity,
   type Scope,
 } from './evaluate';
-export { formatQuantity, lengthExpr } from './format';
+export { formatLength, formatQuantity, fractionDenominator, lengthExpr } from './format';
 export { evaluateInline, type InlineParameter, inlineParameter } from './inline';
 export {
   type EvaluatedParameter,
@@ -26,7 +26,14 @@ export {
   renameReferences,
   valuesByName,
 } from './parameters';
-export { type Node, parse, references, type Span, tokenize } from './parser';
+export {
+  isNumberLiteral,
+  type Node,
+  parse,
+  references,
+  type Span,
+  tokenize,
+} from './parser';
 export { isBareNumber, spellOutUnit } from './spell-unit';
 export {
   ANGLE,

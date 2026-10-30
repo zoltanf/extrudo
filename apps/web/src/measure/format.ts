@@ -2,7 +2,14 @@
  * What the Measure panel and the status bar say (P2-13): an inspection as
  * rows of label and value, in the document's unit and precision.
  */
-import { ANGLE, type Dim, formatQuantity, LENGTH, type Settings } from '@extrudo/core';
+import {
+  ANGLE,
+  type Dim,
+  formatLength,
+  formatQuantity,
+  LENGTH,
+  type Settings,
+} from '@extrudo/core';
 import type { Box, ItemMeasure, Vec3 } from '@extrudo/kernel';
 import type { Measurement } from './inspection';
 
@@ -20,13 +27,13 @@ export interface MeasureSection {
   rows: MeasureRow[];
 }
 
-type Format = Pick<Settings, 'units' | 'precision'>;
+type Format = Pick<Settings, 'units' | 'precision' | 'fractions'>;
 
 const length = (mm: number, s: Format) => formatQuantity(mm, LENGTH, s);
 
 /** Three numbers in the document unit, the unit once: "40.00, 80.00, 60.00 mm". */
 function triple(v: Vec3, s: Format, join = ', '): string {
-  const [a, b, c] = v.map((x) => formatQuantity(x, LENGTH, s).split(' ')[0]);
+  const [a, b, c] = v.map((x) => formatLength(x, s));
   return `${a}${join}${b}${join}${c} ${s.units}`;
 }
 

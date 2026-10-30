@@ -1,0 +1,1 @@
+- 2026-10-28 · **Inch fractions and feet-inches**: expressions take fractions, mixed numbers and the `'`/`"` marks (`3/8 in`, `1 1/2"`, `5' 6"`), and an inch design can show lengths as the nearest fraction (`1 1/2 in`) through the browser's Document settings Fractions switch.

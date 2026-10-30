@@ -201,6 +201,15 @@ describe('dimensionText', () => {
     );
     expect(dimensionText(length, undefined, settings)).toBe('?');
   });
+
+  it('shows an inch fraction with its unit (ADR-0113 §3)', () => {
+    const expr = '1 1/2"';
+    const d = dim({ type: 'distance', orientation: 'aligned', a: e('a'), expr });
+    expect(dimensionText(d, 1.5 * 25.4, { units: 'in', precision: 2, fractions: true })).toBe(
+      '1 1/2 in',
+    );
+    expect(dimensionText(d, 1.5 * 25.4, { units: 'in', precision: 2 })).toBe('1.50');
+  });
 });
 
 describe('datum distance label cursors', () => {

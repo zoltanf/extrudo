@@ -2111,6 +2111,16 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   gives `25.00`, and a click on the center at (-35,20) shows Point X `-35`,
   Y `20` in the `Selection` region.
 
+### `e2e/inch-fractions.spec.ts`
+
+- P6-18 S3, ADR-0113 §3: set the unit to `in` and check the browser's
+  `Fractions` checkbox (`data-setting="fractions"`, aria-label "Fractions")
+  before `newSketchOnXY`; the Precision select's options then read fractions
+  (`option[value="2"]` is `1/16`). A sketch line dimensioned `1 1/2"` (typed
+  into "Value of d1") shows `1 1/2 in` on its `[data-dimension]` label (the
+  unit is kept in this mode). A user parameter `5' 6"` shows `66 in` in its
+  Parameters-dialog row.
+
 ### `e2e/sketch-datums.spec.ts`
 
 - ADR-0093 (#61): `sketchOnXY`, a Line (30,-10)-(30,10) (inference makes it

@@ -108,6 +108,52 @@ describe('units', () => {
   });
 });
 
+describe('fractions and feet-inches (ADR-0113 §3)', () => {
+  it.each<[string, number]>([
+    ['3/8 in', 9.525],
+    ['1 1/2 in', 38.1],
+    ['1-1/2 in', 38.1],
+    ['3/8"', 9.525],
+    ['1 1/2"', 38.1],
+    ['6"', 152.4],
+    ["5'", 1524],
+    ['5 ft', 1524],
+    ['5\' 6"', 1676.4],
+    ['5 ft 6 in', 1676.4],
+    ['5\' 6 1/2"', 1689.1],
+    ['6" + 3/8"', 152.4 + 9.525],
+    ['2\' 3" - 6"', 685.8 - 152.4],
+  ])('%s', (source, expected) => {
+    const result = value(source);
+    expect(result.value).toBeCloseTo(expected, 6);
+    expect(result.dim).toEqual(LENGTH);
+  });
+
+  it('records the canonical unit, so the evaluator finds the factor', () => {
+    expect(parse('3/8"')).toMatchObject({ kind: 'num', value: 0.375, unit: 'in' });
+    expect(parse("5'")).toMatchObject({ kind: 'num', value: 5, unit: 'ft' });
+    expect(parse('5\' 6"')).toMatchObject({ kind: 'num', value: 66, unit: 'in' });
+  });
+
+  it('leaves ordinary arithmetic alone', () => {
+    expect(value('10 / 2').value).toBe(5);
+    expect(value('10 / 2').dim).toEqual(UNITLESS);
+    expect(value('10/2').value).toBe(5);
+    expect(value('10/2').dim).toEqual(UNITLESS);
+    expect(value('width/2').value).toBe(20);
+    expect(value('width/2').dim).toEqual(LENGTH);
+    expect(value('1-1/2').value).toBe(0.5);
+    expect(value('3/8').value).toBe(0.375);
+  });
+
+  it('refuses a mixed number and a fraction without a length unit', () => {
+    expect(error('1 1/2').message).toBe('A mixed number needs a length unit, like `1 1/2 in`.');
+    expect(error('3/8 deg').message).toBe('Fractions take a length unit, like `3/8 in`.');
+    expect(error('1 1/0 in').message).toBe('Divide by zero in a fraction.');
+    expect(error('3/0 in').message).toBe('Divide by zero in a fraction.');
+  });
+});
+
 describe('parameters', () => {
   it.each<[string, number, Dim]>([
     ['width', 40, LENGTH],
@@ -424,6 +470,34 @@ describe('formatQuantity', () => {
     [-0.001, LENGTH, mm, '0.00 mm'],
   ])('%d', (v, dim, settings, expected) => {
     expect(formatQuantity(v, dim, settings)).toBe(expected);
+  });
+
+  describe('fractions (ADR-0113 §3)', () => {
+    const inch = { units: 'in' as const, precision: 2, fractions: true };
+    it.each<[number, { units: LengthUnit; precision: number; fractions?: boolean }, string]>([
+      [1.5 * 25.4, inch, '1 1/2 in'],
+      [0.375 * 25.4, inch, '3/8 in'],
+      [2 * 25.4, inch, '2 in'],
+      [0, inch, '0 in'],
+      [-0.25 * 25.4, inch, '-1/4 in'],
+      [-1.5 * 25.4, inch, '-1 1/2 in'],
+      [(67 / 64) * 25.4, { units: 'in', precision: 4, fractions: true }, '1 3/64 in'],
+      [0.3 * 25.4, { units: 'in', precision: 0, fractions: true }, '1/4 in'],
+    ])('%d', (v, settings, expected) => {
+      expect(formatQuantity(v, LENGTH, settings)).toBe(expected);
+    });
+
+    it('leaves other units and other dimensions alone', () => {
+      expect(formatQuantity(40, LENGTH, { units: 'mm', precision: 2, fractions: true })).toBe(
+        '40.00 mm',
+      );
+      expect(formatQuantity(600, AREA, { units: 'in', precision: 2, fractions: true })).toBe(
+        '0.93 in²',
+      );
+      expect(formatQuantity(45, ANGLE, { units: 'in', precision: 2, fractions: true })).toBe(
+        '45.00°',
+      );
+    });
   });
 });
 
