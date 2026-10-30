@@ -355,13 +355,11 @@ function View({ display }: { display: DisplayAccess }) {
   );
 }
 
-const SPACE_MOUSE_SPEEDS = [
-  { value: 0.25, label: 'Very slow' },
-  { value: 0.5, label: 'Slow' },
-  { value: 1, label: 'Normal' },
-  { value: 2, label: 'Fast' },
-  { value: 4, label: 'Very fast' },
-];
+/** The speed slider runs in powers of two, 0.25× … 4×, so 1× sits in the middle. */
+const SPEED_STOPS = 2;
+const speedOf = (position: number) => Math.round(2 ** position * 100) / 100;
+const positionOf = (speed: number) =>
+  Math.max(-SPEED_STOPS, Math.min(SPEED_STOPS, Math.log2(speed)));
 
 /** A 3Dconnexion SpaceMouse over WebHID (ADR-0114): connect it once, then set its speed. */
 function SpaceMouseRows({ display }: { display: DisplayAccess }) {
@@ -399,18 +397,24 @@ function SpaceMouseRows({ display }: { display: DisplayAccess }) {
           <Button onClick={connect}>Connect…</Button>
         )}
       </Row>
-      <Row label="3D mouse speed">
-        <Select
-          aria-label="3D mouse speed"
-          value={String(s.spaceMouseSpeed)}
-          onChange={(e) => display.set({ spaceMouseSpeed: Number(e.target.value) })}
-        >
-          {SPACE_MOUSE_SPEEDS.map((o) => (
-            <option key={o.value} value={String(o.value)}>
-              {o.label}
-            </option>
-          ))}
-        </Select>
+      <Row label="3D mouse speed" hint="Double-click the slider for 1×.">
+        <div className="flex w-full items-center gap-2">
+          <input
+            type="range"
+            aria-label="3D mouse speed"
+            data-space-mouse-speed
+            min={-SPEED_STOPS}
+            max={SPEED_STOPS}
+            step={0.05}
+            value={positionOf(s.spaceMouseSpeed)}
+            onChange={(e) =>
+              display.set({ spaceMouseSpeed: speedOf(e.currentTarget.valueAsNumber) })
+            }
+            onDoubleClick={() => display.set({ spaceMouseSpeed: 1 })}
+            className="min-w-0 flex-1 accent-(--x-accent)"
+          />
+          <output className="w-12 text-right text-sm tabular-nums">{s.spaceMouseSpeed}×</output>
+        </div>
       </Row>
     </>
   );

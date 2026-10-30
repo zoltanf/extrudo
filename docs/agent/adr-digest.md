@@ -3676,13 +3676,13 @@ ADR-0114 (the owner, 2026-10-30): **3D mice over WebHID** (P6-20). `apps/web/src
 (`readReport`: report 1 translation, 12 bytes with rotation on newer models; 2 rotation; 3 buttons;
 `spaceMotion`: device x right / y towards the user / z down, object mode, twist = world-Z orbit;
 `createSpaceMouse(hid, frame)` and the app's `spaceMouse`), `useSpaceMouse` in `viewport/Viewport.tsx`
-(left button `home()`, right `fit()`), Settings' `SpaceMouseRows` (Connect…, the speed Select,
-`[data-space-mouse]`), `apps/desktop/src/main/permissions.ts` (`isSpaceMouse`) and its use in
-`main/index.ts` (`select-hid-device`, `setDevicePermissionHandler`). **Rules:** motion is applied per
+(left button `home()`, right `fit()`), Settings' `SpaceMouseRows` (Connect…, the speed slider,
+`[data-space-mouse]`, `[data-space-mouse-speed]`), `apps/desktop/src/main/permissions.ts`
+(`isSpaceMouse`) and its use in `main/index.ts` (`select-hid-device`, `setDevicePermissionHandler`). **Rules:** motion is applied per
 animation frame from the last report, never per report, with `dt` capped; the input is reset on window
 blur and on disconnect; camera changes go through `setView` like a mouse drag (view state, never a
-command); the speed is the display preference `viewport.spaceMouseSpeed` (a Select multiplier, not an
-`<ExpressionInput>`); no cross-origin SDK; the desktop grants HID only to `isSpaceMouse` devices, and
+command); the speed is the display preference `viewport.spaceMouseSpeed` (a log-scale slider, 0.25…4,
+a multiplier, not an `<ExpressionInput>`); no cross-origin SDK; the desktop grants HID only to `isSpaceMouse` devices, and
 the web filter (`SPACE_MOUSE_FILTERS`) and `isSpaceMouse` ask for the same devices: change both together.
 
 ADR-0115 (the owner, 2026-10-30): **Other CAD files through a bundled cadmpeg** (P6-19).

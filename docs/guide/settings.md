@@ -34,7 +34,8 @@ A 3Dconnexion SpaceMouse or SpaceNavigator moves the view with your left hand wh
 one keeps the mouse. Click **Connect…** under **View and navigation** once and pick it; it
 reconnects by itself after that. The model follows the cap: push it to pan, pull or push it
 towards you to zoom, tip it to tilt, twist it to turn. The left button goes home, the right one
-fits the model. It needs Chrome, Edge or the desktop app (Firefox and Safari can't talk to the
+fits the model. **3D mouse speed** slows it down or speeds it up, from 0.25× to 4×;
+double-click the slider for 1×. It needs Chrome, Edge or the desktop app (Firefox and Safari can't talk to the
 device), and no driver.
 
 ## Material densities

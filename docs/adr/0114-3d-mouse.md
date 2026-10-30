@@ -31,8 +31,9 @@ user, z down.
   about world Z like the mouse's orbit (a turntable); tilt and roll turn about
   the camera's own axes. A small dead zone, then a squared response for fine
   control; rates per second at full deflection, times a speed setting
-  (0.25 … 4, a Select of five steps, not an expression: it is a multiplier,
-  not a quantity).
+  (0.25 … 4, a slider in powers of two with 1× in the middle, not an
+  expression: it is a multiplier, not a quantity, and is best tuned while
+  trying the cap).
 - **Motion runs once per animation frame while the cap is off centre**, from
   the last report, not per report: some models send only on change.
   `dt` is capped at 50 ms. The input is reset when the window loses the focus
