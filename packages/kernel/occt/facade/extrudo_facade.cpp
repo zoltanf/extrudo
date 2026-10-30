@@ -10189,6 +10189,9 @@ private:
   double hybridWidenedMax_ = 0;
   /** Calls in the last hybrid build (spike harness timing). */
   mutable long chainCurveCalls_ = 0, interpolateCalls_ = 0;
+  /** The last hybrid build's mesh check: nodes measured, and how many needed BRepExtrema (spike harness timing). */
+  long meshCheckNodes_ = 0, meshCheckExtrema_ = 0, meshCheckClassifiers_ = 0;
+  double meshCheckClassifierMs_ = 0, meshCheckClassifyMs_ = 0;
   /** With keepHybridFaces_: the last hybrid build's edges, a chain's (`chain` true) or a mesh edge's, by end points. */
   struct HybridEdgeRecord {
     gp_Pnt a, b;
@@ -10245,6 +10248,11 @@ private:
     hybridWidenedMax_ = 0;
     chainCurveCalls_ = 0;
     interpolateCalls_ = 0;
+    meshCheckNodes_ = 0;
+    meshCheckExtrema_ = 0;
+    meshCheckClassifiers_ = 0;
+    meshCheckClassifierMs_ = 0;
+    meshCheckClassifyMs_ = 0;
     hybridEdges_.clear();
     capMessage.clear();
     auto refuse = [&](const std::string& why) {
@@ -10556,9 +10564,6 @@ private:
           why = "undone";
         } else if (!chainBuilt(chain.left) || !chainBuilt(chain.right)) {
           why = "not a candidate";
-        } else if (!chain.closed && pointKey(chain.nodes.front()) != pointKey(chain.nodes.back()) &&
-                   piecesBetween[pairKey(chain.nodes.front(), chain.nodes.back())] > 1) {
-          why = "another piece joins its ends";
         } else if ((regions[chain.left].kind == 3 && regionsOnSurface[regions[chain.left].surface] > 1) ||
                    (regions[chain.right].kind == 3 && regionsOnSurface[regions[chain.right].surface] > 1)) {
           // A sphere's pieces each have their own frame (their poles away
@@ -10569,6 +10574,19 @@ private:
           try {
             const MeshChainFit fit = chainCurve(chain, regions, seg, tolerance, curveCache, coaxialPairs);
             why = fit.why;
+            // A line only: two arcs of one split circle between the same two points are two faces' rims.
+            if (why.empty() && fit.curve.type == 0 && !chain.closed &&
+                pointKey(chain.nodes.front()) != pointKey(chain.nodes.back()) &&
+                piecesBetween[pairKey(chain.nodes.front(), chain.nodes.back())] > 1)
+              why = "another piece joins its ends";
+            // A circle between a plane and a cone (slice D8): moved square to the
+            // plane, it leaves the cone's axis (scrap-plate: 0.7 degrees), and a
+            // STEP reader's projection of it onto the cone moves the face's
+            // outline (1.47 % of its area, q23); the chain stays the mesh's.
+            if (why.empty() && fit.curve.type == 1 &&
+                ((regions[chain.left].kind == 0 && regions[chain.right].kind == 2) ||
+                 (regions[chain.left].kind == 2 && regions[chain.right].kind == 0)))
+              why = "a circle next to a cone";
             // Slice D1's limit holds for the mesh edges a collapse replaces:
             // where a chord strays from its straight pcurve's image by more
             // than the largest edge tolerance, the surface bulges past the
@@ -11083,6 +11101,7 @@ private:
         for (int n = 0; n < nodeCount; n += nodeStride) {
           check();
           if (onCollapsed[n]) continue;
+          ++meshCheckNodes_;
           const gp_Pnt p(meshNode(n));
           bool near = false;
           for (MeshCheckedFace& c : checked) {
@@ -11109,8 +11128,16 @@ private:
             const double turn = 2 * M_PI, slack = 1e-9;
             if (c.kind > 0) u += turn * std::ceil((c.u0 - slack - u) / turn);
             if (c.kind == 4) v += turn * std::ceil((c.v0 - slack - v) / turn);
-            if (!c.inside) c.inside.reset(new BRepTopAdaptor_FClass2d(c.face, 1e-7));
-            if (c.inside->Perform(gp_Pnt2d(u, v)) != TopAbs_OUT) {
+            if (!c.inside) {
+              const double t0 = nowMs();
+              c.inside.reset(new BRepTopAdaptor_FClass2d(c.face, 1e-7));
+              meshCheckClassifierMs_ += nowMs() - t0;
+              ++meshCheckClassifiers_;
+            }
+            const double t1 = nowMs();
+            const TopAbs_State state = c.inside->Perform(gp_Pnt2d(u, v));
+            meshCheckClassifyMs_ += nowMs() - t1;
+            if (state != TopAbs_OUT) {
               near = true;
               break;
             }
@@ -11120,6 +11147,7 @@ private:
             for (int t : trianglesOf[n])
               if (regions[hybridOf[t]].kind >= 0 && regions[hybridOf[t]].why.empty()) region = hybridOf[t];
             if (offRegions.count(region)) continue;
+            ++meshCheckExtrema_;
             BRepExtrema_DistShapeShape distance(BRepBuilderAPI_MakeVertex(p).Vertex(), result, Extrema_ExtFlag_MINMAX,
                                                 Extrema_ExtAlgo_Grad, deadline->Start());
             if (!distance.IsDone()) check();
@@ -11188,6 +11216,7 @@ private:
         hybridEnds_ = "exact chain ends: " + std::to_string(planarEdges) + " edges, " + std::to_string(off) + " off" +
                       (offWhat.empty() ? "" : offWhat + ")");
       }
+      stage("exact chain ends");
       for (size_t c = 0; c < chains.size(); ++c)
         if (!chainEdges[c].edge.IsNull() && chainEdges[c].widened > 0) {
           ++hybridWidened_;
