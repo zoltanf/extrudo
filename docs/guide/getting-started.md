@@ -79,7 +79,9 @@ The default mouse controls are:
 Hold **Shift** to swap them: Shift + middle-drag pans and Shift + right-drag orbits. The
 **Settings** menu's **Mouse controls** switches to another layout, each with its bindings under
 its name: **Crank** (right-drag orbits, middle-drag pans), **Glide** (middle-drag pans,
-Shift + middle-drag orbits), **Blender** or a **Trackpad**.
+Shift + middle-drag orbits), **Blender**, **Slicer** (as in your slicer: left-drag orbits,
+right-drag or middle-drag pans; hold Shift to drag a selection box instead) or a
+**Trackpad**.
 
 Seven keys jump to a named view: `Shift+1` is the home view, then `Shift+2` Top, `Shift+3`
 Bottom, `Shift+4` Front, `Shift+5` Back, `Shift+6` Left and `Shift+7` Right. Clicking a face of

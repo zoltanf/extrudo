@@ -144,7 +144,7 @@ for the phase's release, **S** = should, **C** = could.
 
 | ID | Requirement | Pri | Phase |
 |---|---|---|---|
-| FR-VP-01 | Orbit, pan and zoom with the **Spindle** mouse mapping by default (middle-drag orbits, right-drag pans; Shift swaps them). Presets **Crank** (right-drag orbits, middle-drag pans; Shift swaps them), **Glide** (middle-drag pans, Shift+middle-drag orbits), Blender and Trackpad, chosen in the Settings menu with each preset's bindings shown. No preset is named after another CAD product. (Renamed by the owner's UI review of 2026-10-11, R3-03/R3-04: Spindle was "Extrudo", Crank was named after two CAD products, Glide was "Shift orbit".) | M | 0 |
+| FR-VP-01 | Orbit, pan and zoom with the **Spindle** mouse mapping by default (middle-drag orbits, right-drag pans; Shift swaps them). Presets **Crank** (right-drag orbits, middle-drag pans; Shift swaps them), **Glide** (middle-drag pans, Shift+middle-drag orbits), Blender, **Slicer** (left-drag orbits, right- or middle-drag pans, Shift+left-drag selects a box; since 2026-10-31) and Trackpad, chosen in the Settings menu with each preset's bindings shown. No preset is named after another CAD product. (Renamed by the owner's UI review of 2026-10-11, R3-03/R3-04: Spindle was "Extrudo", Crank was named after two CAD products, Glide was "Shift orbit".) | M | 0 |
 | FR-VP-02 | ViewCube with click-to-orient (faces, edges, corners), home, and rotate arrows. | M | 0 |
 | FR-VP-03 | Perspective and orthographic. Visual styles: shaded, shaded with edges, wireframe, hidden edges. | M | 0 |
 | FR-VP-04 | Infinite adaptive grid and origin planes/axes. | M | 0 |

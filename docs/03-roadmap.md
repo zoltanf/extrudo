@@ -1545,6 +1545,13 @@ end to end, faster than in established desktop CAD.
   navigation connects it and sets its speed; allowed devices reconnect by themselves. The
   desktop app picks the device itself (Electron has no chooser) and allows only 3D mice.
   Acceptance: `pnpm check` (`viewport/spaceMouse.test.ts`, `main/permissions.test.ts`).
+- [x] **P6-21 Slicer mouse preset** (owner, 2026-10-31; FR-VP-01; ADR-0090's amendment).
+  Done 2026-10-31. The rail's Slicer radio, announced and disabled since P6-10, works: as
+  the slicers do it, left-drag orbits (where a selection box would be drawn, or nobody
+  listens to the drag), right- or middle-drag pans, the wheel zooms, Shift+left-drag
+  draws the selection box; a click, a double-click, a long press and a tool's drag stay
+  the pointer's. Acceptance: `pnpm check` (`viewport/navigation.test.ts`,
+  `viewport/pointer.test.ts`, `shell/AppMenu.test.tsx`), `e2e/viewport.spec.ts`.
 
 ## Phase 7 — Later (lowest priority, after everything else)
 

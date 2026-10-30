@@ -60,8 +60,7 @@ brief, voice) is in **`05-brand.md`**. In short:
   The Menu opens one panel, as wide as its rail, in three bands:
   **the rail**, one row of icon controls with a tooltip each — Mouse controls
   (a segmented control: Crank, Spindle, Glide, Blender, Slicer, Trackpad; the
-  tooltip's hint is the preset's bindings, R3-03; Slicer is disabled until its
-  behaviour lands), a divider, the toggles Auto-project body edges,
+  tooltip's hint is the preset's bindings, R3-03), a divider, the toggles Auto-project body edges,
   Auto-project face outline and Radial right-click menu, a second divider and
   the Theme (System by default, Light, Dark); **two columns**, App (Search…,
   Settings…, About Extrudo, then Close design on the web or Quit on the
@@ -343,7 +342,12 @@ same preference; R3-03, there is no nav-bar button). After Spindle:
 **Crank** (right-drag orbits, middle-drag or Ctrl + right-drag pans; Shift
 swaps them), **Glide** (middle-drag pans, Shift + middle-drag orbits),
 **Blender** (middle-drag orbits, Shift + middle-drag pans, Ctrl +
-middle-drag zooms) and **Trackpad** (two-finger pan, pinch zoom, Alt + drag
+middle-drag zooms), **Slicer** (as the slicers do it, ADR-0090's amendment of
+2026-10-31: left-drag orbits where a selection box would be drawn (model mode,
+sketch selection, plane picking), Shift, Ctrl or ⌘ + left-drag draws the box, a
+left click still selects and a long press still lists the stack, a drawing
+tool's drag and a gizmo's stay theirs; right-drag or middle-drag pans) and
+**Trackpad** (two-finger pan, pinch zoom, Alt + drag
 orbits, Alt + Shift + drag pans). No preset is named after another CAD
 product (Blender keeps its name by the owner's choice); a value stored
 under an old name (`extrudo`, `onshape`, `shift-orbit`) reads as Spindle,

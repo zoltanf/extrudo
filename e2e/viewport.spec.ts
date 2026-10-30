@@ -92,7 +92,7 @@ async function choosePreset(page: Page, name: string) {
   await expect(page.getByRole('dialog', { name: 'Menu' })).toHaveCount(0);
 }
 
-test('the rail lists six presets, Spindle the default, Slicer disabled; each says what it binds', async ({
+test('the rail lists six presets, Spindle the default; each says what it binds', async ({
   page,
 }) => {
   await open(page);
@@ -108,8 +108,8 @@ test('the rail lists six presets, Spindle the default, Slicer disabled; each say
   await expect(presets).toHaveCount(6);
   for (const [i, name] of names.entries()) await expect(presets.nth(i)).toHaveAccessibleName(name);
   await expect(presets.nth(1)).toHaveAttribute('aria-checked', 'true');
-  // Slicer is announced, not chosen yet (ADR-0090 §1).
-  await expect(presets.nth(4)).toBeDisabled();
+  // Slicer is a preset like the others since ADR-0090's amendment of 2026-10-31.
+  await expect(presets.nth(4)).not.toHaveAttribute('aria-disabled');
   // Every preset's bindings are readable before choosing it (R3-03): its tooltip's hint.
   await presets.nth(1).hover();
   await expect(page.getByRole('tooltip')).toContainText('Mouse controls: Spindle');
@@ -122,8 +122,6 @@ test('the rail lists six presets, Spindle the default, Slicer disabled; each say
   await expect(page.getByRole('dialog', { name: 'Menu' })).toBeVisible();
   await presets.nth(4).hover();
   await expect(page.getByRole('tooltip')).toContainText('Shift+left-drag selects');
-  await presets.nth(4).click({ force: true });
-  await expect(presets.nth(1)).toHaveAttribute('aria-checked', 'true');
   await page.keyboard.press('Escape');
 });
 
@@ -233,6 +231,59 @@ test('Glide mouse: middle-drag pans, Shift+middle-drag orbits, the wheel zooms, 
   await page.keyboard.press('F6');
   await expect(viewport).toHaveAttribute('data-camera-size', fitted);
   await expect(viewport).toHaveAttribute('data-camera-target', '0,0,0');
+});
+
+test('Slicer mouse: left-drag orbits, right-drag pans, Shift+left-drag selects', async ({
+  page,
+}) => {
+  const viewport = await open(page);
+  await choosePreset(page, 'Slicer');
+  const { x, y } = await centre(viewport);
+  const direction = await attr(viewport, 'data-camera-direction');
+
+  // Orbit with the left button: the direction changes, the target stays; the cursor says so.
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 100, y + 40, { steps: 6 });
+  await expect(viewport.locator('div.touch-none')).toHaveAttribute('data-cursor', 'orbit');
+  await page.mouse.up();
+  await expect(viewport.locator('div.touch-none')).not.toHaveAttribute('data-cursor');
+  await expect(viewport).not.toHaveAttribute('data-camera-direction', direction);
+  await expect(viewport).toHaveAttribute('data-camera-target', '0,0,0');
+
+  // Pan with the right button: the direction stays, the target moves.
+  const orbited = await attr(viewport, 'data-camera-direction');
+  await page.mouse.move(x, y);
+  await page.mouse.down({ button: 'right' });
+  await page.mouse.move(x - 120, y + 30, { steps: 6 });
+  await page.mouse.up({ button: 'right' });
+  await expect(viewport).toHaveAttribute('data-camera-direction', orbited);
+  await expect(viewport).not.toHaveAttribute('data-camera-target', '0,0,0');
+
+  // The middle button pans too.
+  const target = await attr(viewport, 'data-camera-target');
+  await page.mouse.move(x, y);
+  await page.mouse.down({ button: 'middle' });
+  await page.mouse.move(x + 60, y - 40, { steps: 6 });
+  await page.mouse.up({ button: 'middle' });
+  await expect(viewport).toHaveAttribute('data-camera-direction', orbited);
+  await expect(viewport).not.toHaveAttribute('data-camera-target', target);
+
+  // Shift+left-drag draws the selection box instead: the camera stays.
+  const panned = await attr(viewport, 'data-camera-target');
+  await page.keyboard.down('Shift');
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 80, y + 60, { steps: 4 });
+  await expect(viewport.locator('[data-selection-box]')).toHaveAttribute(
+    'data-selection-box',
+    'window',
+  );
+  await page.mouse.up();
+  await page.keyboard.up('Shift');
+  await expect(viewport.locator('[data-selection-box]')).toHaveCount(0);
+  await expect(viewport).toHaveAttribute('data-camera-direction', orbited);
+  await expect(viewport).toHaveAttribute('data-camera-target', panned);
 });
 
 test('the Blender preset orbits with the middle button, and is remembered', async ({ page }) => {

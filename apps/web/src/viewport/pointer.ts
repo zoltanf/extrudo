@@ -6,7 +6,8 @@
  * mode picks in 3D (`useModelInput`).
  */
 import { type RefObject, useEffect } from 'react';
-import { dragAction } from './navigation';
+import { orbit } from './camera';
+import { dragAction, freeDragAction, type NavAction, ORBIT_RATE } from './navigation';
 import type { ViewportStore } from './store';
 
 /** A pointer over the view. */
@@ -66,17 +67,19 @@ export function usePointerInput(
   viewport: ViewportStore,
   handlers: PointerHandlers | undefined,
   onBoxChange: (box: ScreenBox | undefined) => void,
+  onNavDrag?: (action: NavAction | undefined) => void,
 ) {
   useEffect(() => {
     const el = surface.current;
     if (!el || !handlers) return;
-    return attachPointerInput(el, viewport, handlers, onBoxChange);
-  }, [surface, viewport, handlers, onBoxChange]);
+    return attachPointerInput(el, viewport, handlers, onBoxChange, window, onNavDrag);
+  }, [surface, viewport, handlers, onBoxChange, onNavDrag]);
 }
 
 /**
  * `usePointerInput`'s listeners on `el` (and `win`); returns their removal.
- * Apart from the hook for unit tests.
+ * Apart from the hook for unit tests. `onNavDrag` hears a left drag the preset turns into
+ * navigation (Slicer's orbit, `freeDragAction`) start and end, for the cursor.
  */
 export function attachPointerInput(
   el: HTMLElement,
@@ -84,6 +87,7 @@ export function attachPointerInput(
   handlers: PointerHandlers,
   onBoxChange: (box: ScreenBox | undefined) => void,
   win: Pick<Window, 'addEventListener' | 'removeEventListener'> = window,
+  onNavDrag?: (action: NavAction | undefined) => void,
 ): () => void {
   let last: { x: number; y: number; infer: boolean; toggle: boolean } | undefined;
   let press:
@@ -93,6 +97,9 @@ export function attachPointerInput(
         id: number;
         dragging: boolean;
         box: boolean;
+        /** The drag orbits (Slicer): the camera follows the pointer from `last`. */
+        nav: NavAction | undefined;
+        last: { x: number; y: number };
         /** The long press opened the menu: the release does nothing. */
         menu: boolean;
         timer: ReturnType<typeof setTimeout> | undefined;
@@ -140,13 +147,45 @@ export function attachPointerInput(
     return [x - r.left, y - r.top];
   };
   const endPress = () => {
+    endNav();
     clearTimeout(press?.timer);
     press = undefined;
   };
-  /** Starts a drag at the press; one nobody takes becomes a selection box. */
-  const startDrag = (x: number, y: number, infer: boolean, toggle: boolean): boolean => {
+  /**
+   * Starts a drag at the press; one nobody takes becomes a selection box, or in Slicer an
+   * orbit where the box would be drawn, and where nobody listens to the drag at all (plane
+   * picking). A drawing tool's drag (no box, an `onDragEnd`) stays the tool's.
+   */
+  const startDrag = (
+    x: number,
+    y: number,
+    infer: boolean,
+    toggle: boolean,
+  ): 'box' | NavAction | undefined => {
     const taken = handlers.onDragStart?.(at(x, y, infer, toggle)) ?? false;
-    return !taken && handlers.onBox !== undefined;
+    if (taken) return undefined;
+    const free = handlers.onBox !== undefined || handlers.onDragEnd === undefined;
+    const nav = free ? freeDragAction(viewport.getState().preset, toggle) : undefined;
+    if (nav) return nav;
+    return handlers.onBox !== undefined ? 'box' : undefined;
+  };
+  const startNav = (current: NonNullable<typeof press>, nav: NavAction) => {
+    current.nav = nav;
+    current.last = { x: current.x, y: current.y };
+    onNavDrag?.(nav);
+  };
+  const endNav = () => {
+    if (!press?.nav) return;
+    press.nav = undefined;
+    onNavDrag?.(undefined);
+  };
+  const navMove = (current: NonNullable<typeof press>, x: number, y: number) => {
+    const dx = x - current.last.x;
+    const dy = y - current.last.y;
+    current.last = { x, y };
+    if (dx === 0 && dy === 0) return;
+    const { view, setView } = viewport.getState();
+    setView(orbit(view, -dx * ORBIT_RATE, -dy * ORBIT_RATE));
   };
   const finishBox = (from: { x: number; y: number }, x: number, y: number, toggle: boolean) => {
     onBoxChange(undefined);
@@ -174,11 +213,17 @@ export function attachPointerInput(
     ) {
       clearTimeout(press.timer);
       press.dragging = true;
-      press.box = startDrag(press.x, press.y, last.infer, last.toggle);
+      const drag = startDrag(press.x, press.y, last.infer, last.toggle);
+      press.box = drag === 'box';
+      if (drag && drag !== 'box') startNav(press, drag);
       // Keep the drag's events when the pointer leaves the view (synthetic pointers can't be captured).
       try {
         el.setPointerCapture(e.pointerId);
       } catch {}
+    }
+    if (press?.nav) {
+      navMove(press, e.clientX, e.clientY);
+      return;
     }
     if (press?.box) {
       onBoxChange({ from: local(press.x, press.y), to: local(e.clientX, e.clientY) });
@@ -201,6 +246,8 @@ export function attachPointerInput(
       id: e.pointerId,
       dragging: false,
       box: false,
+      nav: undefined,
+      last: { x: e.clientX, y: e.clientY },
       menu: false,
       timer: undefined as ReturnType<typeof setTimeout> | undefined,
     };
@@ -218,8 +265,9 @@ export function attachPointerInput(
     flush();
     if (!press || e.pointerId !== press.id) return;
     const current = press;
+    const navigated = current.nav !== undefined;
     endPress();
-    if (current.menu) return;
+    if (current.menu || navigated) return;
     const { infer, toggle } = modifiers(e);
     if (current.box) {
       finishBox(current, e.clientX, e.clientY, toggle);
@@ -229,9 +277,14 @@ export function attachPointerInput(
     if (current.dragging) handlers.onDragEnd?.(p);
     else if (Math.hypot(e.clientX - current.x, e.clientY - current.y) > CLICK_SLOP) {
       // A drag whose moves were coalesced away: start and end it now.
-      if (startDrag(current.x, current.y, infer, toggle)) {
-        finishBox(current, e.clientX, e.clientY, toggle);
-      } else handlers.onDragEnd?.(p);
+      const drag = startDrag(current.x, current.y, infer, toggle);
+      if (drag === 'box') finishBox(current, e.clientX, e.clientY, toggle);
+      else if (drag === undefined) handlers.onDragEnd?.(p);
+      else {
+        startNav(current, drag);
+        navMove(current, e.clientX, e.clientY);
+        onNavDrag?.(undefined);
+      }
     } else handlers.onClick({ ...p, double: isDouble(e.clientX, e.clientY) || undefined });
   };
   const onPointerCancel = (e: PointerEvent) => {

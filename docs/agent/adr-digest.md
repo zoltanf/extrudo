@@ -70,7 +70,7 @@ wrappers, icon pipeline) and the shell (`apps/web/src/shell/`), which opens a
 sample document in memory until storage exists. ADR-0008 (P0-05) set the
 viewport (`apps/web/src/viewport/`): Z-up world in mm, our own camera
 controller (target + quaternion + size, both projections), mouse presets (Spindle the
-default, Crank, Glide, Blender, Trackpad; Shift swaps orbit and pan in Spindle and Crank; in
+default, Crank, Glide, Blender, Slicer, Trackpad; Shift swaps orbit and pan in Spindle and Crank; in
 the app menu's Mouse controls ▸ since R3-03/R3-04, ADR-0008's amendment) as
 tables, shader grid, CSS 3D ViewCube, a viewport store with display settings
 as preferences. **Named views (ADR-0008's amendment, 2026-10-10)** save and
@@ -2679,8 +2679,13 @@ order, not `NAV_PRESETS`'; Spindle stays the default —, a divider, the three t
 Auto-project body edges / face outline / Radial right-click menu with `aria-pressed`, a
 second divider, the `radiogroup` "Theme"), every rail control with a `Tooltip` (label
 "Mouse controls: Crank", hint the preset's `summary` or the toggle's state and Settings
-hint); **Slicer is disabled** (`aria-disabled`, still focusable so its tooltip shows) and
-is **not a `NavPreset`** until its behaviour lands; **two columns always**, `menu`s "App"
+hint); **Slicer** (ADR-0090's amendment of 2026-10-31) is a `NavPreset` like the others:
+`dragAction` pans on the right or middle button and leaves the left one to the pointer
+input, where `freeDragAction` turns a left drag nobody takes into an orbit — only where a
+selection box would be drawn (`onBox`) or nobody listens to the drag (no `onDragEnd`:
+plane picking), never with Shift/Ctrl/⌘ (the box) and never a drawing tool's or a gizmo's
+drag; `attachPointerInput` runs that orbit itself (`camera.orbit`, `ORBIT_RATE`) and
+reports it through `onNavDrag` for the cursor; **two columns always**, `menu`s "App"
 (Search… where commands exist, Settings…, About Extrudo, then Close design on the web /
 Quit on the desktop) and "Learn" (**Help for \<tool\>** first, from
 `lastHoveredTool()` in `Toolbar.tsx` — the last tile hovered or focused, kept after the
