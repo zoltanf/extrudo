@@ -188,6 +188,21 @@ STL_DIR=~/Development/extrudo-stl-solid-test TOL=auto BUILD=diag FILE=own/scrap-
   two snap gates off, `Q24REV` matches nothing, and the listing shows the
   spindle tori the segmentation's retry keeps.
 
+- `Q25=1` (slice D10, case `f`/`F`): the rolling-ball fillet candidates at every Auto ladder step up to the one Auto
+  picks (`q25 auto`). Each unfit surface (one band per connected piece over mesh edges), each piece the "< 4 regions"
+  rule turned into planes (`keep`; run.sh's facade copy records them in `spikeKeepPieces`) and, for a band that fails,
+  its sub-bands (split by each pair of planes it borders: the facets whose normals lie in their arc) get one
+  `q25 band` line: triangles, area, class (`ff` two planes border it by 80 % or more, `ff?` they don't, `pc` a plane
+  and a cylinder, `other:<kinds>`), the first test that fails (`coverage`, `angle` 30-170 degrees, `area` 3 x the
+  largest facet, `normals` within 5 degrees of the n_A n_B plane and inside their arc, `side`), the planes' angle,
+  the rolling-ball radius (per node the root of |q - axis(r)| = r on the corner's side, the median after dropping
+  the 10 % farthest), the radii's spread, the nodes' distances to that cylinder (p50/p75/p90/max in multiples of T)
+  and `pass` (75 % within 2 T, all within 5 T, neither beyond 4 % of r). Every cylinder region growing fitted gets the
+  same line (`cyl`, with its fitted radius as `fit r`): a check of the method. `q25 step` sums a step (the unfit share
+  before and after taking the accepted bands out), `q25 exploded` the hybrid's exploded regions by kind and reason.
+  `Q25ONLY=1` skips the conversion. On kernel-staged meshes (`MESH_OUT`) the numbers match the sweep's.
+  `python3 spikes/stl-to-solid/q25.py <log>` turns the log into the tables of `docs/plans/m2s-fillets-q1-2026-10-31.md`.
+
 Case `f` with `TIMES=1` also prints `calls:` (chainCurve and
 `Geom2dAPI_Interpolate` calls, the mesh check's nodes, BRepExtrema calls and
 face classifier time); with `FACES=1` the validity stage lists each region

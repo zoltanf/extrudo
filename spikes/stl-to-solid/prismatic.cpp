@@ -10,6 +10,9 @@
 // Q24 (slice D9), wired in by run.sh's seds: Q24SPINDLE=1 lets a torus fit keep R <= r (the slice D8 gates off);
 // Q24REV=1 builds such a torus as a Geom_SurfaceOfRevolution of its meridian circle, at the torus's own parameters.
 static bool spikeSpindle = false, spikeRevolution = false;
+// Q25 (slice D10), wired in by run.sh's sed: each piece segmentMesh's "< 4 regions" rule turns into planes.
+#include <vector>
+static std::vector<std::vector<int>> spikeKeepPieces;
 static Handle(Geom_Surface) spikeTorusSurface(const gp_Ax3& frame, double R, double r) {
   if (!spikeRevolution || R > r) return new Geom_ToroidalSurface(frame, R, r);
   // The meridian at u = 0: centre O + R X, C(v) = centre + r cos v X + r sin v Z (gp_Ax2's Y = N x X, so N = -Y).
@@ -2782,6 +2785,343 @@ static void regions(ExtrudoFacade& f, const char* name, const Mesh& m, double to
   f.clearMeshRegions();
 }
 
+/**
+ * Q25 (slice D10): the rolling-ball fillet candidates after segmentMesh at `tolerance`. Each unfit surface (one band
+ * per connected piece over mesh edges) and each piece the "< 4 regions" rule turned into planes (spikeKeepPieces) is
+ * tested by the brief's rule 2: its boundary borders two planes A and B by at least 80 % of its length, their normals
+ * 30-170 degrees apart, each at least 3 x the band's largest facet; every facet's normal within 5 degrees of the
+ * plane of n_A and n_B and inside their arc; then the rolling-ball radius (per node, the larger root of
+ * |q - axis(r)| = r; the median after dropping the 10 % farthest from the first median) and the nodes' distances to
+ * that cylinder in multiples of T. Prints one "q25 band" line per candidate and one "q25 step" summary.
+ */
+struct Q25Band {
+  std::string source, cls, test = "ok";
+  int surface = -1, triangles = 0, nodes = 0;
+  double area = 0, cover = 0, angle = 0, r = 0, spread = 0, p50 = 0, p75 = 0, p90 = 0, max = 0, badNormals = 0;
+  bool pass = false;
+};
+
+static Q25Band q25Band(ExtrudoFacade& f, const ExtrudoFacade::MeshSegmentation& seg, const std::vector<int>& surfaceOf,
+                       const std::vector<int>& band, const std::vector<char>& inBand, const std::vector<char>& ownPlane,
+                       double T, int forcedA = -1, int forcedB = -1) {
+  Q25Band out;
+  out.triangles = int(band.size());
+  auto corner = [&](int t, int k) { return int(f.meshTriangles_[3 * t + k]); };
+  double largest = 0;
+  for (int t : band) out.area += seg.areas[t], largest = std::max(largest, seg.areas[t]);
+  // Boundary length by neighbouring surface.
+  std::map<int, double> border;
+  double total = 0;
+  for (int t : band)
+    for (int k = 0; k < 3; ++k) {
+      const int u = seg.neighbour[3 * t + k];
+      if (u >= 0 && inBand[u]) continue;
+      const double len = (f.meshNode(corner(t, (k + 1) % 3)) - f.meshNode(corner(t, k))).Modulus();
+      total += len;
+      if (u >= 0) border[surfaceOf[seg.regionOf[u]]] += len;
+    }
+  std::vector<std::pair<double, int>> byLength;
+  for (const auto& [s, len] : border) byLength.push_back({len, s});
+  std::sort(byLength.rbegin(), byLength.rend());
+  // The two longest neighbours, and the two longest planar ones (the band's own planes excluded).
+  std::vector<std::pair<double, int>> planes;
+  for (const auto& [len, s] : byLength)
+    if (s >= 0 && seg.surfaces[s].kind == 0 && !ownPlane[s]) planes.push_back({len, s});
+  if (forcedA >= 0) planes = {{border[forcedA], forcedA}, {border[forcedB], forcedB}};
+  auto kindOf = [&](int s) { return s < 0 ? -9 : seg.surfaces[s].kind; };
+  if (planes.size() < 2) {
+    if (byLength.size() >= 2 && (byLength[0].first + byLength[1].first) >= 0.8 * total) {
+      const int k0 = kindOf(byLength[0].second), k1 = kindOf(byLength[1].second);
+      out.cls = (std::min(k0, k1) == 0 && std::max(k0, k1) == 1) ? "pc" : "other:" + std::to_string(k0) + "," + std::to_string(k1);
+    } else {
+      out.cls = "other:many";
+    }
+    out.test = "planes";
+    out.cover = total > 0 && !planes.empty() ? planes[0].first / total : 0;
+    return out;
+  }
+  out.cover = total > 0 ? (planes[0].first + planes[1].first) / total : 0;
+  const auto& A = seg.surfaces[planes[0].second];
+  const auto& B = seg.surfaces[planes[1].second];
+  const gp_XYZ nA = A.direction.XYZ(), nB = B.direction.XYZ();
+  const double c = std::max(-1.0, std::min(1.0, nA.Dot(nB)));
+  out.angle = std::acos(c) * 180 / M_PI;
+  out.cls = "ff";
+  if (out.cover < 0.8) {
+    // Not mostly between two planes: a plane–cylinder band when its two longest neighbours are those, else other.
+    out.cls = "ff?";
+    if (byLength.size() >= 2 && (byLength[0].first + byLength[1].first) >= 0.8 * total) {
+      const int k0 = kindOf(byLength[0].second), k1 = kindOf(byLength[1].second);
+      if (std::min(k0, k1) == 0 && std::max(k0, k1) == 1) out.cls = "pc";
+    }
+    out.test = "coverage";
+  } else if (out.angle < 30 || out.angle > 170) {
+    out.test = "angle";
+  } else if (A.area < 3 * largest || B.area < 3 * largest) {
+    out.test = "area";
+  }
+  if (out.angle < 1 || out.angle > 179) {  // parallel planes: no axis
+    if (out.test == "ok") out.test = "angle";
+    return out;
+  }
+  const gp_XYZ e = nA.Crossed(nB).Normalized();
+  const double theta = std::acos(c);
+  // Facet normals: within 5 degrees of the n_A n_B plane and inside the arc.
+  const double five = 5 * M_PI / 180;
+  int bad = 0, counted = 0;
+  for (int t : band) {
+    const gp_XYZ n = seg.normals[t];
+    if (n.Modulus() < 0.5) continue;
+    const gp_XYZ a = f.meshNode(corner(t, 0)), b = f.meshNode(corner(t, 1)), cc = f.meshNode(corner(t, 2));
+    const double longest = std::max({(b - a).Modulus(), (cc - b).Modulus(), (a - cc).Modulus()});
+    if (longest > 0 && 2 * seg.areas[t] / longest < T / 100) continue;  // a sliver's normal means nothing
+    ++counted;
+    const double off = std::asin(std::min(1.0, std::fabs(n.Dot(e))));
+    gp_XYZ p = n - n.Dot(e) * e;
+    if (p.Modulus() < 1e-9) { ++bad; continue; }
+    p.Normalize();
+    const double toA = std::acos(std::max(-1.0, std::min(1.0, p.Dot(nA)))), toB = std::acos(std::max(-1.0, std::min(1.0, p.Dot(nB))));
+    if (off > five || toA + toB > theta + 2 * five) ++bad;
+  }
+  out.badNormals = counted ? double(bad) / counted : 0;
+  if (out.test == "ok" && bad > 0) out.test = "normals";
+  // The rolling ball: the line where A and B meet, the side the band is on, a radius per node.
+  std::vector<int> nodes;
+  for (int t : band)
+    for (int k = 0; k < 3; ++k) nodes.push_back(corner(t, k));
+  std::sort(nodes.begin(), nodes.end());
+  nodes.erase(std::unique(nodes.begin(), nodes.end()), nodes.end());
+  out.nodes = int(nodes.size());
+  const double hA = A.origin.XYZ().Dot(nA), hB = B.origin.XYZ().Dot(nB);
+  const gp_XYZ P0 = ((hA - c * hB) / (1 - c * c)) * nA + ((hB - c * hA) / (1 - c * c)) * nB;
+  double sideSum = 0;
+  for (int n : nodes) sideSum += (f.meshNode(n) - P0).Dot(nA) + (f.meshNode(n) - P0).Dot(nB);
+  const double side = sideSum < 0 ? -1 : 1;
+  const gp_XYZ m = (side / (1 + c)) * (nA + nB);
+  const double a = (1 - c) / (1 + c);
+  std::vector<double> radii;
+  for (int n : nodes) {
+    gp_XYZ d = f.meshNode(n) - P0;
+    d -= d.Dot(e) * e;
+    const double dm = d.Dot(m), disc = dm * dm - a * d.SquareModulus();
+    const double r = (dm + std::sqrt(std::max(0.0, disc))) / a;  // the arc faces the corner: the larger root
+    if (r > 0) radii.push_back(r);
+  }
+  if (radii.size() < 3) {
+    if (out.test == "ok") out.test = "side";
+    return out;
+  }
+  std::vector<double> sorted(radii);
+  std::sort(sorted.begin(), sorted.end());
+  const double m0 = sorted[sorted.size() / 2];
+  std::sort(radii.begin(), radii.end(), [&](double x, double y) { return std::fabs(x - m0) < std::fabs(y - m0); });
+  radii.resize(std::max<size_t>(3, size_t(std::ceil(0.9 * radii.size()))));
+  std::sort(radii.begin(), radii.end());
+  out.r = radii[radii.size() / 2];
+  out.spread = (radii.back() - radii.front()) / out.r;
+  std::vector<double> dev;
+  for (int n : nodes) {
+    gp_XYZ d = f.meshNode(n) - P0;
+    d -= d.Dot(e) * e;
+    dev.push_back(std::fabs((d - out.r * m).Modulus() - out.r) / T);
+  }
+  std::sort(dev.begin(), dev.end());
+  auto at = [&](double q) { return dev[std::min(dev.size() - 1, size_t(q * (dev.size() - 1) + 0.5))]; };
+  out.p50 = at(0.5), out.p75 = at(0.75), out.p90 = at(0.9), out.max = dev.back();
+  // Rule 2's acceptance: 75 % within FILLET_TOL = 2 T, all within FILLET_GROW = 5 T, neither beyond 4 % of r.
+  const double tol = std::min(2.0, 0.04 * out.r / T), grow = std::min(5.0, 0.04 * out.r / T);
+  out.pass = out.test == "ok" && out.p75 <= tol && out.max <= grow;
+  return out;
+}
+
+static void q25Step(ExtrudoFacade& f, double T, bool listBands) {
+  ExtrudoFacade::MeshSegmentation seg;
+  spikeKeepPieces.clear();
+  if (!f.segmentMesh(T, seg)) {
+    std::cout << "   q25 step " << T << ": segmentation failed: " << f.lastError() << std::endl;
+    return;
+  }
+  const std::vector<std::vector<int>> keepPieces = spikeKeepPieces;
+  const int triangleCount = int(f.meshTriangles_.size() / 3);
+  std::vector<int> surfaceOf(seg.regions.size(), -1);
+  for (size_t i = 0; i < seg.surfaces.size(); ++i)
+    for (int r : seg.surfaces[i].regions) surfaceOf[r] = int(i);
+  std::vector<char> inBand(triangleCount, 0), ownPlane(seg.surfaces.size(), 0);
+  std::vector<Q25Band> bands;
+  std::vector<double> fitRadius;
+  double unfitArea = 0;
+  int unfitTriangles = 0;
+  auto run = [&](const std::string& source, int surface, const std::vector<int>& band) {
+    for (int t : band) inBand[t] = 1;
+    Q25Band b;
+    try {
+      b = q25Band(f, seg, surfaceOf, band, inBand, ownPlane, T);
+    } catch (const std::exception& e) {
+      std::cout << "   q25 band threw " << typeid(e).name() << ": " << e.what() << std::endl;
+      b.cls = "threw";
+    } catch (...) {
+      std::cout << "   q25 band threw" << std::endl;
+      b.cls = "threw";
+    }
+    for (int t : band) inBand[t] = 0;
+    b.source = source, b.surface = surface;
+    bands.push_back(b);
+    fitRadius.resize(bands.size(), 0);
+  };
+  // (a) unfit surfaces, piece by piece over mesh edges.
+  for (size_t i = 0; i < seg.surfaces.size(); ++i) {
+    const auto& s = seg.surfaces[i];
+    if (s.kind >= 0) continue;
+    unfitArea += s.area;
+    std::vector<char> mine(triangleCount, 0), seen(triangleCount, 0);
+    for (int r : s.regions)
+      for (int t : seg.regions[r].triangles) mine[t] = 1, ++unfitTriangles;
+    for (int r : s.regions)
+      for (int start : seg.regions[r].triangles) {
+        if (seen[start]) continue;
+        std::vector<int> band(1, start);
+        seen[start] = 1;
+        for (size_t h = 0; h < band.size(); ++h)
+          for (int k = 0; k < 3; ++k) {
+            const int u = seg.neighbour[3 * band[h] + k];
+            if (u >= 0 && mine[u] && !seen[u]) seen[u] = 1, band.push_back(u);
+          }
+        run("unfit", int(i), band);
+        if (bands.back().test == "ok" || band.size() < 3) continue;
+        // A network: split it by plane pair. For each pair of planes it borders (30-170 degrees apart, longest border
+        // first), the band's facets whose normals lie in their arc (within 5 degrees) and not yet claimed, in
+        // connected pieces; a piece that borders both planes is a sub-band, tested with them.
+        std::vector<char> inThis(triangleCount, 0), claimed(triangleCount, 0);
+        for (int t : band) inThis[t] = 1;
+        std::map<int, double> border;
+        for (int t : band)
+          for (int k = 0; k < 3; ++k) {
+            const int u = seg.neighbour[3 * t + k];
+            if (u < 0 || inThis[u]) continue;
+            const int q = surfaceOf[seg.regionOf[u]];
+            if (q >= 0 && seg.surfaces[q].kind == 0)
+              border[q] += (f.meshNode(int(f.meshTriangles_[3 * t + (k + 1) % 3])) - f.meshNode(int(f.meshTriangles_[3 * t + k]))).Modulus();
+          }
+        std::vector<std::pair<double, std::pair<int, int>>> pairs;
+        for (const auto& [qa, la] : border)
+          for (const auto& [qb, lb] : border) {
+            if (qb <= qa) continue;
+            const double angle = std::acos(std::max(-1.0, std::min(1.0, seg.surfaces[qa].direction.XYZ().Dot(seg.surfaces[qb].direction.XYZ())))) * 180 / M_PI;
+            if (angle >= 30 && angle <= 170) pairs.push_back({std::min(la, lb), {qa, qb}});
+          }
+        std::sort(pairs.rbegin(), pairs.rend());
+        const double five = 5 * M_PI / 180;
+        for (const auto& [len, ab] : pairs) {
+          const gp_XYZ nA = seg.surfaces[ab.first].direction.XYZ(), nB = seg.surfaces[ab.second].direction.XYZ();
+          const gp_XYZ e = nA.Crossed(nB).Normalized();
+          const double theta = std::acos(std::max(-1.0, std::min(1.0, nA.Dot(nB))));
+          std::vector<char> fits(triangleCount, 0);
+          for (int t : band) {
+            if (claimed[t]) continue;
+            const gp_XYZ n = seg.normals[t];
+            if (n.Modulus() < 0.5) continue;
+            gp_XYZ p = n - n.Dot(e) * e;
+            if (std::asin(std::min(1.0, std::fabs(n.Dot(e)))) > five || p.Modulus() < 1e-9) continue;
+            p.Normalize();
+            const double toA = std::acos(std::max(-1.0, std::min(1.0, p.Dot(nA)))), toB = std::acos(std::max(-1.0, std::min(1.0, p.Dot(nB))));
+            if (toA + toB <= theta + 2 * five) fits[t] = 1;
+          }
+          std::vector<char> seen(triangleCount, 0);
+          for (int start : band) {
+            if (!fits[start] || seen[start]) continue;
+            std::vector<int> sub(1, start);
+            seen[start] = 1;
+            for (size_t h = 0; h < sub.size(); ++h)
+              for (int k = 0; k < 3; ++k) {
+                const int u = seg.neighbour[3 * sub[h] + k];
+                if (u >= 0 && fits[u] && !seen[u]) seen[u] = 1, sub.push_back(u);
+              }
+            bool touchA = false, touchB = false;
+            for (int t : sub)
+              for (int k = 0; k < 3; ++k) {
+                const int u = seg.neighbour[3 * t + k];
+                if (u < 0 || inThis[u]) continue;
+                touchA |= surfaceOf[seg.regionOf[u]] == ab.first, touchB |= surfaceOf[seg.regionOf[u]] == ab.second;
+              }
+            if (!touchA || !touchB || sub.size() < 2) continue;
+            for (int t : sub) inBand[t] = 1;
+            Q25Band b;
+            try {
+              b = q25Band(f, seg, surfaceOf, sub, inBand, ownPlane, T, ab.first, ab.second);
+            } catch (...) {
+              b.cls = "threw";
+            }
+            for (int t : sub) inBand[t] = 0;
+            b.source = "sub", b.surface = int(i);
+            bands.push_back(b);
+            fitRadius.push_back(0);
+            if (b.test == "ok") for (int t : sub) claimed[t] = 1;
+          }
+        }
+      }
+  }
+  // (b) the "< 4 regions" pieces: their own planes are not A or B.
+  for (const auto& piece : keepPieces) {
+    std::vector<int> band;
+    for (int r : piece) {
+      if (surfaceOf[r] >= 0) ownPlane[surfaceOf[r]] = 1;
+      band.insert(band.end(), seg.regions[r].triangles.begin(), seg.regions[r].triangles.end());
+    }
+    run("keep", piece.empty() ? -1 : surfaceOf[piece[0]], band);
+    for (int r : piece)
+      if (surfaceOf[r] >= 0) ownPlane[surfaceOf[r]] = 0;
+  }
+  // (c) a check of the method: every cylinder region growing fitted, through the same test (its fitted radius in "fit r").
+  fitRadius.resize(bands.size(), 0);
+  for (size_t i = 0; i < seg.surfaces.size(); ++i) {
+    const auto& s = seg.surfaces[i];
+    if (s.kind != 1) continue;
+    std::vector<int> band;
+    for (int r : s.regions) band.insert(band.end(), seg.regions[r].triangles.begin(), seg.regions[r].triangles.end());
+    run("cyl", int(i), band);
+    fitRadius.back() = s.radius;
+  }
+  double passUnfitArea = 0, passKeepArea = 0, passSubArea = 0;
+  int passUnfitTris = 0, passKeepTris = 0, passUnfit = 0, passKeep = 0, passSubTris = 0, passSub = 0;
+  std::map<std::string, std::pair<int, int>> byClass;  // class/test -> bands, triangles
+  for (size_t bi = 0; bi < bands.size(); ++bi) {
+    const Q25Band& b = bands[bi];
+    const std::string key = b.source + " " + (b.cls == "ff" ? "ff:" + b.test : b.cls);
+    byClass[key].first++, byClass[key].second += b.triangles;
+    if (b.pass && b.source == "unfit") passUnfitArea += b.area, passUnfitTris += b.triangles, ++passUnfit;
+    if (b.pass && b.source == "keep") passKeepArea += b.area, passKeepTris += b.triangles, ++passKeep;
+    if (b.pass && b.source == "sub") passSubArea += b.area, passSubTris += b.triangles, ++passSub;
+    if (!listBands) continue;
+    std::cout << std::setprecision(4) << "   q25 band T " << T << " " << b.source << " surface " << b.surface << " tris " << b.triangles
+              << " nodes " << b.nodes << " area " << b.area << " share " << 100 * b.area / seg.meshArea << " class " << b.cls << " test "
+              << b.test << " fit r " << fitRadius[bi] << " cover " << b.cover << " angle " << b.angle << " r " << b.r << " spread " << b.spread << " badnormals "
+              << b.badNormals << " dev/T p50 " << b.p50 << " p75 " << b.p75 << " p90 " << b.p90 << " max " << b.max << " pass " << b.pass
+              << std::setprecision(6) << "\n";
+  }
+  std::cout << std::setprecision(5) << "   q25 step " << T << ": unfit share " << 100 * seg.unfitFraction << " % (" << seg.unfitRegions
+            << " surfaces, " << unfitTriangles << " triangles), keep pieces " << keepPieces.size() << ", bands " << bands.size()
+            << "; pass unfit " << passUnfit << " bands / " << passUnfitTris << " tris / " << 100 * passUnfitArea / seg.meshArea
+            << " %, pass keep " << passKeep << " / " << passKeepTris << " tris, pass sub " << passSub << " / " << passSubTris << " tris; unfit share after "
+            << 100 * (unfitArea - passUnfitArea) / seg.meshArea << " %, with sub-bands " << 100 * (unfitArea - passUnfitArea - passSubArea) / seg.meshArea << " %\n";
+  for (const auto& [k, v] : byClass) std::cout << "   q25 class T " << T << " " << k << ": " << v.first << " bands, " << v.second << " tris\n";
+  std::cout << std::setprecision(6) << std::flush;
+}
+
+/** Q25: the probe at every Auto ladder step up to and including the one Auto picks. */
+static void q25(ExtrudoFacade& f) {
+  double chosen = 0;
+  ExtrudoFacade::MeshSegmentation seg;
+  if (!f.meshAutoTolerance(chosen, seg)) {
+    std::cout << "   q25: auto failed: " << f.lastError() << std::endl;
+    return;
+  }
+  std::cout << "   q25 auto " << chosen << std::endl;
+  for (double T : ExtrudoFacade::MESH_AUTO_LADDER) {
+    if (T > chosen + 1e-12) break;
+    q25Step(f, T, true);
+  }
+}
+
 /** Case f/F: one file from /stl (STL_DIR) through meshRegions, then meshToSolid prismatic, at `tolerance`. */
 static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
   const Mesh m = stlFile(path.c_str());
@@ -2794,6 +3134,12 @@ static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
     std::memcpy(reinterpret_cast<void*>(f.meshTrianglesPtr()), m.triangles.data(), m.triangles.size() * sizeof(uint32_t));
   };
   stage();
+  const bool q25On = getenv("Q25") && *getenv("Q25");
+  if (q25On) {
+    q25(f);
+    if (getenv("Q25ONLY") && *getenv("Q25ONLY")) return;
+    stage();
+  }
   if (getenv("UNFIT") && *getenv("UNFIT")) q24Spindles(f, tolerance);
   if (getenv("UNFIT") && *getenv("UNFIT")) {
     // Every unfit surface: triangles, area, box, the kinds of its neighbours, each kind's fit deviation, the thinnest triangle.
@@ -2952,11 +3298,30 @@ static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
   f.clearMeshRegions();
   stage();
   t0 = now();
-  f.keepHybridFaces_ = getenv("FACES") && *getenv("FACES");
+  const bool facesOn = getenv("FACES") && *getenv("FACES");
+  f.keepHybridFaces_ = facesOn || q25On;
+  f.hybridFaces_.clear();
   const int h = f.meshToSolid(1, tolerance);
   const double ms = now() - t0;
-  if (f.keepHybridFaces_)
+  if (facesOn)
     for (const auto& line : f.hybridFaces_) std::cout << "   hybrid " << line << std::endl;
+  if (q25On) {
+    // Q25: the hybrid's exploded regions (their triangles are facets too) by kind and reason.
+    // A region listed on several build attempts counts once.
+    std::map<std::string, std::pair<int, int>> exploded;
+    std::set<std::string> seenRegions;
+    for (auto it = f.hybridFaces_.rbegin(); it != f.hybridFaces_.rend(); ++it) {
+      const std::string& line = *it;
+      if (!seenRegions.insert(line.substr(0, line.find(" surface "))).second) continue;
+      const size_t at = line.find(" exploded: ");
+      if (at == std::string::npos) continue;
+      const size_t k = line.find(" kind "), tr = line.find(" triangles ");
+      const std::string why = line.substr(at + 11, 48);
+      const std::string key = "kind " + line.substr(k + 6, line.find(' ', k + 6) - k - 6) + " " + why.substr(0, why.find_first_of("0123456789(")) ;
+      exploded[key].first++, exploded[key].second += std::atoi(line.c_str() + tr + 11);
+    }
+    for (const auto& [k, v] : exploded) std::cout << "   q25 exploded " << k << ": " << v.first << " regions, " << v.second << " tris" << std::endl;
+  }
   if (f.keepHybridFaces_ && !f.hybridInvalid_.IsNull()) {
     // What BRepCheck says about the unified result that failed.
     BRepCheck_Analyzer analyzer(f.hybridInvalid_);
