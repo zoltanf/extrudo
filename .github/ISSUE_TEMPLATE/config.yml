@@ -1,4 +1,4 @@
-# Blank issues are off: the two forms ask for what we need to act on a report.
+# Blank issues are off: the three forms ask for what we need to act on a report.
 blank_issues_enabled: false
 contact_links:
   - name: Ask a question
