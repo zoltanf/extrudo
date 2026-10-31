@@ -124,14 +124,13 @@ type Outcome =
 // unfit regions (and any region whose face wouldn't build) as facets.
 const DRILL_BLOCK: Outcome = {
   planes: 108,
+  // Slice D9: its four tori (R about r, two of them R < r) fit again in
+  // splitComponent's spindle retry (slice D8 had 63 cylinders, no tori).
   cylinders: 65,
   cones: 0,
   spheres: 3,
   tori: 4,
   hybrid: { unfit: 3, facets: 208 },
-  // slice D7: the round trip fails (faces 388 → 388, solids 1 → 1, read back
-  // invalid, volumeRatio 0.999998); fixing the hybrid is a later slice.
-  tripFails: true,
 };
 const TRACK_001: Outcome = {
   planes: 65,
@@ -142,6 +141,8 @@ const TRACK_001: Outcome = {
   hybrid: { unfit: 2, facets: 237 },
 };
 const TRACK_005: Outcome = {
+  // Slice D9 (splitComponent's spindle retry): the counts from before slice
+  // D8 again (slice D8: 65 planes, 2 cylinders, 2 unfit, 237 facets).
   planes: 66,
   cylinders: 6,
   cones: 2,
@@ -158,11 +159,10 @@ const TRACK_01: Outcome = {
   tori: 0,
   hybrid: { unfit: 0, facets: 0 },
   tolerance: 0.1,
-  // slice D7: the round trip fails (faces 79 → 79, solids 1 → 1, read back
-  // valid, volumeRatio 1.00127); fixing the hybrid is a later slice.
-  tripFails: true,
 };
 const FLIGHT_COVER: Outcome = {
+  // Slice D9 (splitComponent's spindle retry): the counts from before slice
+  // D8 again (slice D8: 248 planes, 60 cylinders, 7 unfit, 154 facets).
   planes: 252,
   cylinders: 62,
   cones: 4,
@@ -311,15 +311,14 @@ describe('Mesh to Solid, prismatic on the fixtures at Auto', { timeout: 120_000 
     [
       'peg-perego-button.stl',
       pegPeregoStl,
+      // Slice D9: 0.02 mm again, its R < r torus region a surface of revolution
+      // (slice D8 left it unfit and went on to 0.05 mm, 261 faces).
       0.02,
       {
         faces: 212,
         rebuild: 'hybrid',
-        edges: 1489,
-        circles: 22,
-        // slice D7: the round trip fails (faces 212 → 214, solids 1 → 1, read
-        // back invalid, volumeRatio 1.00012); fixing the hybrid is a later slice.
-        tripFails: true,
+        edges: 1738,
+        circles: 20,
       },
     ],
     [
@@ -327,19 +326,18 @@ describe('Mesh to Solid, prismatic on the fixtures at Auto', { timeout: 120_000 
       drillBlockStl,
       0.01,
       {
+        // Slice D9: its four tori fit again (slice D8: 410 faces).
         faces: 388,
         rebuild: 'hybrid',
-        // slice D7: the round trip fails (faces 388 → 388, solids 1 → 1, read
-        // back invalid, volumeRatio 0.999998); fixing the hybrid is a later slice.
-        tripFails: true,
       },
     ],
     [
       'track-straight-100mm.stl',
       trackStl,
       0.01,
-      { faces: 306, rebuild: 'hybrid', edges: 627, circles: 4 },
+      { faces: 306, rebuild: 'hybrid', edges: 735, circles: 2 },
     ],
+    // Slice D9 (splitComponent's spindle retry): 438 faces again (slice D8: 466).
     ['remove-before-flight-cover.stl', flightCoverStl, 0.01, { faces: 438, rebuild: 'hybrid' }],
   ];
   for (const [name, url, tolerance, outcome] of autoFixtures) {

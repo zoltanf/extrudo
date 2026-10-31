@@ -129,7 +129,10 @@ What does not: anything that needs an exact face or edge. [Fillet](./tools/fille
 Hole, Place on Bed and Rib stop with a message that names the operation. A STEP file cannot hold
 a mesh, so the **Export Model** dialog disables mesh bodies when STEP is chosen.
 
-A mesh has to be closed (watertight) to import. If it is not, Extrudo says how many edges are
+A mesh has to be closed (watertight) to import. Before the check, Extrudo drops
+triangles no closed surface can use — ones that repeat a corner or an earlier
+triangle, which exporters produce and a slicer ignores — and tells you how many
+when it did. If the mesh is still not closed, Extrudo says how many edges are
 open and suggests repairing it in your slicer first. Where two parts touch along an edge or at a
 corner — an STL of patterned arms that meet a hub, say — Extrudo separates them itself and says
 how many edges it split, so they come in as separate bodies that still touch.

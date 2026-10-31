@@ -54,6 +54,8 @@ four-fillet box and the slot fail.
 STL_DIR=~/stl FILE=own/part.stl TOL=0.05 bash spikes/stl-to-solid/run.sh prismatic f   # one file
 STL_DIR=~/stl TOL=auto bash spikes/stl-to-solid/run.sh prismatic f                      # Auto (ADR-0097 slice D2; picks 0.01/0.02/0.05/0.1)
 STL_DIR=~/stl TOL=0.01 bash spikes/stl-to-solid/run.sh prismatic F                     # every .stl/.mesh under STL_DIR, one process
+STL_DIR=~/stl FILE=own/part.stl TOL=auto bash spikes/stl-to-solid/run.sh prismatic s  # one file, then the STEP round-trip diagnosis (ADR-0097 D7)
+STL_DIR=~/stl TOL=auto bash spikes/stl-to-solid/run.sh prismatic S                    # every file, the diagnosis per file and a summary table
 SAN=1 STL_DIR=~/stl FILE=… bash spikes/stl-to-solid/run.sh prismatic f                  # AddressSanitizer (about 4 min to link)
 TIMES=1 …   # the rebuild's stage times, cell counts and the check that refused
 PIECES=1 …  # how many surfaces each region is on, every surface as fitted and as rebuilt
@@ -83,6 +85,24 @@ shows in the next (the 2026-10-21 trap corrupted the heap for every later
 file). The kernel orders a mesh as manifold's `getMesh()` does, which can
 segment differently: write that order with
 `MESH_OUT=<dir> STL_DIR=… pnpm vitest run packages/kernel/src/mesh-to-solid-files.test.ts --project @extrudo/kernel`.
+Cases `s`/`S` diagnose the STEP round trip (ADR-0097 D7): `s` is `f` on one file (STL_DIR, FILE, TOL) then writes the
+converted body to STEP, reads it back and prints the settings in force, the written body's edges by class and tolerance
+buckets, the read-back `shapeDiagnose` and BRepCheck statuses by name, the invalid edges by class and faces by kind, the
+summed area per face kind written vs read back, and a `ShapeFix_Shape` pass at the written tolerances; `S` does that for
+every file and ends with one summary row per file (Markdown, printed to stdout). Neither changes the converter.
+The settings line calls `STEPControl_Controller::Init()` first (else every value reads 0); the summary gains the
+`u2 valid`/`u2 faces`/`u2 solids`/`u2 ratio`/`uncertainty` columns of a second round trip with
+`write.precision.mode` Greatest, and each file's flagged `SelfIntersectingWire` wires and
+`UnorientableShape`/`BadOrientationOfSubshape` faces with their edges' classes, and a second summary table: the
+BREP round trip (`BRepTools::Write`/`Read`), a `ShapeFix_Shape`-healed body's STEP round trip, a no-pcurve write and a
+`2DUse_Preferred` read (`stepDirect` writes with a plain `STEPControl_Writer` because the facade's `writeStep()` overwrites
+the transfer parameters), and the flagged wires' smallest edges (ADR-0097's 2026-10-30b amendment). Each file also prints
+its read-back `other` faces' surface type and its written tori (radii, degenerate), and the cap sweep runs the same `S`
+with `FACADE=` set to a copy of the facade whose `HYBRID_EDGE_TOLERANCE_MAX` is 0.1/0.05/0.02.
+Each flagged wire is then analysed with `ShapeAnalysis_Wire` (Q15: each edge with itself, adjacent and non-adjacent pairs),
+its face matched to the written body and the pair search re-run there (Q16), and each pair classified hairpin / 3D-close /
+2D-only (Q17) — a fourth summary table; because ShapeAnalysis reproduces `BRepCheck_Wire::SelfIntersect` on only 7 of the 25
+flagged wires, a fifth table classifies the pair `BRepCheck_Wire::SelfIntersect` itself returns (ADR-0097's 2026-10-30b amendment).
 The kernel sweep writes the same numbers machine-readably: `SWEEP_OUT=<file>.jsonl` appends one JSON line per file (both methods' report, validity, volume ratio, time and STEP round trip), and `SWEEP_BASELINE=<file>.jsonl` compares each file against a previous run's line and fails it when it got worse (refused where it converted, over 10 % more faces, or a STEP read-back that was valid there and kept the face count there but not now).
 `BUILD=<folder>` builds into `spikes/stl-to-solid/<folder>` (default
 `build`), so two runs don't share one; `NOBUILD=1` reruns the last build;
@@ -123,6 +143,55 @@ A converted hybrid file also prints
 reasons counted) and, for every converted file, `edges N (lines, circles,
 ellipses)`: the result's edges by curve type. An older facade lacks
 `hybridChains_`: build it with its own `run.sh` and `prismatic.cpp` (`FACADE=`).
+
+## STEP read-back probes (slice D8, 2026-10-31)
+
+Case `s` (one file) and `S` (all) run more probes after the 2026-10-30b ones
+(ADR-0097's 2026-10-31 amendment); each prints `qNN` lines under the file:
+
+```sh
+STL_DIR=~/Development/extrudo-stl-solid-test TOL=auto BUILD=diag FILE=own/scrap-plate.stl \
+  Q23=1 bash spikes/stl-to-solid/run.sh prismatic s
+```
+
+- always: `q18` (the written wires at vertex tolerance 1e-7 through
+  `BRepCheck_Wire::SelfIntersect`, next to the read's flagged count) and
+  `q19` (the default file read at a user precision of 1e-3, and written with
+  the least and with a session uncertainty of 1e-3), the `chains:` line with
+  its keptWhy counts and `exact chain ends: N edges, M off`;
+- `Q20=1`: the read with no shape processing, then the FixShape operator
+  replayed and once per mode switched off (`Q20OFF=<name part>` picks modes,
+  `Q20FACES=1` lists the faces the healing splits or changes);
+- `Q21=1`: the reader's pcurves against ours on the flagged raw wires, the
+  file's PCURVE/SURFACE_CURVE/EDGE_CURVE counts, and the
+  `read.surfacecurve.mode` matrix;
+- `Q22A=1` with `FACES=1`: each hairpin pair on the read matched to the written
+  edges and their build records (`hybridEdges_`), angles, overlap and flags;
+  `Q22OLD=1` looks the saved pairs (`diag/q22a-pairs-*.txt`) up in an older
+  build (`FACADE=`); `Q22B=1`: volumes written, raw and read, and the faces
+  whose area moves on the read;
+- `Q23=1`: the cone faces whose area moves on the read, per edge the pcurves,
+  the circle's distance to the cone, its axis against the cone's and its
+  pcurve against the exact projection.
+
+- `Q24=1` (slice D9): every written face on a spindle torus (R ≤ r) or a
+  surface of revolution and every read-back one: radii, u/v range, area,
+  BRepCheck on the face alone and `ShapeFix_Face`'s result. With `UNFIT=1`,
+  case `f` also lists each torus surface with R ≤ r that the segmentation
+  finds with slice D8's R > r gates off (`q24 spindle surface`: regions,
+  triangles, area, R, r, axis, where its nodes sit against the axis and the
+  poles, the plane/cylinder/cone/sphere fits on the same nodes). run.sh's
+  facade copy takes two hooks for that: `spikeSpindle` (the gates off;
+  `Q24SPINDLE=1`) and `spikeTorusSurface` (`Q24REV=1`: the chart's torus as a
+  surface of revolution of its meridian circle). Both are for slice D8's
+  facade (`FACADE=` a copy of it); on slice D9's, `Q24SPINDLE` only turns the
+  two snap gates off, `Q24REV` matches nothing, and the listing shows the
+  spindle tori the segmentation's retry keeps.
+
+Case `f` with `TIMES=1` also prints `calls:` (chainCurve and
+`Geom2dAPI_Interpolate` calls, the mesh check's nodes, BRepExtrema calls and
+face classifier time); with `FACES=1` the validity stage lists each region
+whose collapses it undoes (kind, area, outline length, its chains).
 
 ## Browser timings (slice D4, 2026-10-23)
 

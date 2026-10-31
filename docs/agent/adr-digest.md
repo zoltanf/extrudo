@@ -1525,7 +1525,17 @@ mesh to the map and a shape to OCCT). `meshFrom(mesh)` splits surfaces that
 touch along an edge or at a vertex (`splitNonManifoldEdges`, its 2026-10-09
 amendment) and welds the corners
 (`Mesh.merge()`) and refuses a mesh that isn't closed with `checkManifold`'s
-counts on a `MeshError`; `mesh`, `exportMesh`, `measure`, `properties`,
+counts on a `MeshError`; per its 2026-10-31 amendment `meshFrom` first runs
+`dropBadTriangles` (`@extrudo/io`) and drops **flat** triangles (a repeated
+corner or an out-of-range node) and **duplicates** (an earlier triangle's
+three corners, either winding — the first in file order stays), nodes
+untouched, zero-area triangles with three distinct corners kept (dropping one
+can open a closed mesh). The new `onDrop` callback fires only when something was
+dropped, and the import warning joins a drop and a split into one sentence,
+drop first; a still-refused mesh carries the counts on `MeshProblem.dropped`
+and `notClosed` words them inside the parentheses. `Mesh.merge()` is skipped
+only when the mesh was split: the comparison is with the mesh that went into
+the split, so a mesh that only lost triangles is still welded. `mesh`, `exportMesh`, `measure`, `properties`,
 `describe`, `count`, `solids` and `transform` have a mesh branch, and **every
 other public method that takes a shape throws `MeshBodyError`** naming the
 operation for the user ("Shell needs a solid body: this body is a mesh
@@ -2038,7 +2048,9 @@ there is no forked UI. The renderer keeps the web's posture (`contextIsolation`,
 braces), no top-level navigation off `app://` (or the dev origin), no new
 windows and no webview (`main/navigation.ts`), and `app://` (a privileged
 standard scheme) serves the packaged `dist` (`.wasm` as `application/wasm`)
-because `file://` breaks module workers and WASM fetches.
+because `file://` breaks module workers and WASM fetches. The renderer's
+`publicDir` is `apps/web/public` (the tooltip clips in `demos/`; Vite's default
+`src/renderer/public` doesn't exist), checked by `renderer/publicDir.test.ts`.
 **Every privileged call goes through `shared/ipc.ts`'s channels**: that one file
 lists the channels and the `ProjectStore` method whitelist, `preload/` exposes
 them with `contextBridge`, and main's `ipc.ts` answers them (no `remote`); a
@@ -3342,6 +3354,87 @@ methods' outcome and STEP round trip) and `SWEEP_BASELINE=<file>.jsonl`
 faces by more than 10 % — fewer faces is better — or its read-back was valid
 there, kept the face count there and neither now; a comparison prints on the
 row and `sweep totals` prints both runs' numbers).
+
+**ADR-0097 slice D7 diagnosis (2026-10-30b): the STEP read-back failures
+measured (no fix).** `spikes/stl-to-solid/prismatic.cpp` gains cases `s` (one
+corpus file, `STL_DIR`/`FILE`/`TOL`) and `S` (every file, one process, a
+Markdown summary row per file at the end): they convert, write the body to
+STEP, read it back and print the settings in force, the written body's edges by
+class and tolerance buckets, the read-back `shapeDiagnose` and BRepCheck
+statuses by name, the invalid edges by class and faces by kind, the summed area
+per face kind written vs read back, and a `ShapeFix_Shape` pass at the written
+tolerances. No converter change (`facade`, `packages/` untouched). Finding
+(41-file corpus, Auto; the spike stages the STL in its own order, so it is not
+byte-identical to the sweep): 20 of 30 hybrid conversions miss the D7 bar (the
+sweep's 17 plus three the order changes). The read-back failure is **not** an
+edge tolerance — no edge or vertex carries a BRepCheck status; the invalid
+faces are flat (facet 17, plane 81, other 2) with `BadOrientationOfSubshape`
+(67), `UnorientableShape` (25) and wire `SelfIntersectingWire` (25). The
+written max edge tolerance and the facet count do not separate pass from fail;
+every failure is a hybrid; `ShapeFix_Shape` at the written tolerances fixes 0
+of 12. The settings line needs `STEPControl_Controller::Init()` first (else all
+seven read 0); the facade's `writeStep()` overwrites the transfer parameters, so
+write-side statics are inert through the app. Probes (Q9-Q12): the BREP round
+trip passes 20 of 20 (tolerances/pcurves kept, ratio 1 — the STEP reader's
+reconstruction is the trigger); healing the written body fixes 18 of 20 but 0
+survive the round trip; no pcurves and `2DUse_Preferred` each pass 0; with
+Greatest (`write.precision.mode` 1, via a direct `STEPControl_Writer`) 3 of 20
+pass (drill-block, micro-sd-keyring-inner, spaghetti-measure); the flagged wires
+are mostly line polylines (7 of 25 carry a fitted circle/ellipse) and the 25
+flagged wires hold 35 edges shorter than the file's uncertainty, 37 under
+0.05 mm. Q13/Q14: lowering `HYBRID_EDGE_TOLERANCE_MAX` from 1.0 to 0.1/0.05/0.02
+gives 10/13/14/14 bar passes of 30 hybrids and 2/4/6/9 refusals (more facets
+per body) — not the fix; every read-back `other` face is a `SurfaceOfRevolution`
+(11, in drill-block, peg-perego-button, gear-bearing-5) from a written torus with
+minor radius ≥ major radius. Q15-Q17 (the self-intersections classified):
+`ShapeAnalysis_Wire` at the reader precision, and down to 1e-9, finds the same
+self-intersection BRepCheck reports on only 7 of the 25 flagged wires (18 return
+false), because `BRepCheck_Wire::SelfIntersect` is a separate algorithm (tolint
+1e-10, `Geom2dInt_GInter`, an intersection accepted only inside a 3D vertex
+tolerance) — so the status cannot be read off ShapeAnalysis; running
+`BRepCheck_Wire::SelfIntersect` itself, 15 of the 25 pairs are **2D-only** (the
+two non-adjacent edges are 0.0022–0.15 mm apart in 3D, far above the wire's edge
+tolerance, and cross only in the face's 2D space), 4 are hairpin (turning angle
+≥ 150°), 0 same-edge and 0 3D-close; only 4 of the 25 flagged faces match a
+written face by centre/area, and on all 4 the written wire has 0 pairs at 1e-7
+and 0 at its edge tolerance, so where it can be measured the written body is
+clean and the reader created the crossing.
+Numbers in ADR-0097's 2026-10-30b amendment.
+
+**ADR-0097 slice D8 (2026-10-31): chain edges that re-project exactly on
+planes, sliver chains, no degenerate tori.** `extrudo_facade.cpp`
+(`chainCurve`, `rebuildHybrid`'s chain loop, `fitMeshTorus`, the surface
+snaps); probes q18–q23 in `spikes/stl-to-solid/prismatic.cpp`. A STEP reader
+drops every planar pcurve and projects the edge's 3D curve. Rules:
+- A chain edge next to a plane ends at its nodes' projections: a line through
+  its end nodes; a circle square to the plane through the end nodes'
+  projections, its plane-side pcurve the exact `Geom2d_Circle` (checked to
+  1e-7); an ellipse next to a plane stays a polyline; a circle tilted over 1°
+  from the plane's normal stays a polyline.
+- A torus fit needs R > r (fit, axial adjustment and radius averaging),
+  except in slice D9's retry below.
+- A chain stays a polyline when another outline piece joins its end points
+  (by coordinates, 1e-6) and one of its regions is a sliver (area below
+  tolerance × outline length).
+- A chain's curve stays within 1.5 × tolerance of both surfaces (9 samples).
+- A circle between a plane and a cone stays a polyline.
+- The planar-ends self-check (`hybridEnds_`, misses above 1e-5) must report 0.
+Numbers in ADR-0097's 2026-10-31 amendment.
+
+**ADR-0097 slice D9 (2026-10-31b): R ≤ r torus regions.** `extrudo_facade.cpp`
+(`fitMeshTorus(…, spindle)`, `segmentMesh`'s `settle`, `MeshChart::surface`,
+`revolvedTorus`/`revolvedTorusOf`, the mesh check, the exact rebuild); probe
+Q24 in `spikes/stl-to-solid/prismatic.cpp`. Rules:
+- A spindle torus (R ≤ r) is fitted only in `splitComponent`'s retry: when a
+  split leaves its component whole and unfit, it runs once more with spindles
+  allowed and the retry is kept when it explains anything. Never in the first
+  split (spindle fits win seeds other primitives explain better).
+- The hybrid builds R ≤ r as `Geom_SurfaceOfRevolution` of the meridian circle
+  at the torus's own (u, v) (never a `Geom_ToroidalSurface`: the STEP reader
+  turns that into a revolution of another curve, wires crossing); R > r stays
+  a `Geom_ToroidalSurface`. The mesh check and face counts read it back as its
+  torus (`revolvedTorusOf`); the exact rebuild refuses it, the hybrid runs.
+Numbers in ADR-0097's 2026-10-31b amendment.
 
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
