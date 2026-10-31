@@ -419,3 +419,80 @@ table's existing rows are unchanged; two rows are appended (NPT 1/2 on a 10 mm
 cone: 3030.1 mm³, 28 faces; Ø20 × 1.5 on a 5° cone: 2414.3 mm³). The OCCT WASM
 grew by 339 bytes raw and 1.3 kB brotli (20.57 / 6.66 / 4.63 MB, as before at
 two decimals).
+
+
+## Fourth amendment (2026-10-31): threads made for printing
+
+A survey of threads in other open-source tools (BOSL2, threads.scad,
+FreeCAD's Hole and Fasteners, cq_warehouse/bd_warehouse, ScanRuler's reverse
+plugin; `docs/references.md`, "Threads in other tools") and of the printing
+community's practice found three things Extrudo lacked: a tooth made for FDM
+(45° flanks and flat crests, printed upright), named clearances, and a thread
+on a hole drawn at its nominal size (a Ø5 hole gets M6 from Fit the face, and
+only a 0.1 mm-deep M5 when M5 is typed, because the bore is already past the
+minor diameter). Code: `packages/core/src/thread.ts` (the `print45` profile
+and `PRINT` sizes, `autoThread`), the kernel's `planThread` (warnings), the
+dialog's Size and the new Fit choice, `e2e/thread.spec.ts`. No schema change:
+`profile` gains an enum value, `docs/file-format.md` §6.25.
+
+- **The `print45` profile.** Flanks at 45° to the radial (90° included), a
+  crest flat 0.2 P and a root flat 0.2 P, 0.3 P deep: `0.2 + 0.2 + 2 · 0.3 ·
+  tan 45° = 1 P`, so the tooth tiles the pitch, and the flats are the same
+  inside and out, so a screw and a nut are exact complements before the
+  tolerance. Printed with the axis upright no downward face overhangs past
+  45°, the flats are a layer or two wide at the pitches below, and there is
+  no round for the slicer to stair-step. It mates only with itself (a 60°
+  bolt doesn't fit a 45° nut); the dialog says so. Label "3D printing
+  (45°)"; a custom size reads "Print Ø10 × 2.5".
+- **Print sizes** (`THREAD_PRESETS`' `print` group, labels "Print 10 ×
+  2.75", ids `print-10`): the ISO coarse diameters M4 to M30 that
+  `METRIC_COARSE` has (4, 5, 6, 8, 10, 12, 14, 16, 20, 24, 30), each at the
+  pitch that cuts **as deep as the ISO coarse thread** — `coarse × (5√3/16) /
+  0.3 ≈ 1.8 × coarse`, rounded to 0.25 mm under 3 mm and to 0.5 mm from 3 mm:
+  4 × 1.25, 5 × 1.5, 6 × 1.75, 8 × 2.25, 10 × 2.75, 12 × 3, 14 × 3.5, 16 ×
+  3.5, 20 × 4.5, 24 × 5.5, 30 × 6.5. The minor diameter then stays ISO's
+  within 0.11 mm (M30; under 0.07 mm elsewhere), so the core is as strong,
+  a hole at the tap drill fits the same size, and Fit the face can use the
+  same rule. Nothing under M4: the community's floor for printed threads is
+  M5 at a 0.4 mm nozzle; M4 at 1.25 mm pitch is offered for fine printers.
+- **Fit the face** works for `iso` (as before) and `print45`: `autoThread`
+  takes the preset group and reads each size's minor diameter from its own
+  profile's depth (`threadProfile(...).depth`) instead of the ISO formula;
+  any other profile without a size is still refused. The Size option reads
+  "Fit the face" (no longer "(ISO metric)").
+- **A hole drawn at a nominal size is that size.** In `autoThread`, a hole
+  whose diameter is within 0.01 mm of a table size's diameter takes that
+  size (Ø5 → M5, Ø10 → Print 10 × 2.75 under the print profile): a part is
+  designed with the hole at the thread's name, and 0.01 mm is a typed
+  number, never a measured one. The rule is for holes only: a Ø5 shaft is M5
+  by the existing rule. Until the next amendment fills such a bore in, the
+  kernel **warns** when a hole is wider than the thread's minor diameter
+  ("The hole is Ø5 mm, wider than the M5 thread's minor diameter (Ø4.33 mm):
+  only the outer part of the tooth is cut. Draw the hole at about Ø4.2 mm
+  for a full thread.") and when a shaft is thinner than the major but
+  thicker than the root (the mirror text). The existing errors (a hole at or
+  past the root, a shaft at or under it) stay.
+- **Named fits.** The dialog gets a **Fit** choice above Tolerance, not an
+  input (like Size): Tight `0.05 mm`, Normal `0.1 mm` (default), Loose
+  `0.2 mm`, Parameter (`tolerance`, shown only while the document has a
+  length parameter of that name) and Custom. Choosing one fills Tolerance;
+  typing a tolerance makes Fit show the one it matches, else Custom; a new
+  thread in a document with the parameter proposes Parameter (as `propose`
+  did). Only the `tolerance` expression is stored. The values are the
+  community's radial clearances for FDM (0.1–0.2 mm, tested with a coupon);
+  Tight is for calibrated printers and fine pitches.
+
+**Rejected.** A 45° tooth at the ISO coarse pitch (0.3 P deep is 0.24 mm on
+M5: under a layer, and a bore at the tap drill would not fit it); a `fit`
+input stored in the file (the expression is the source of truth, as the
+presets are not stored, §3); applying the fit as a flank-normal offset
+(rejected in the original decision: the crest flat vanishes on fine
+pitches); copying the ScanRuler plugin's code (AGPL-3.0-only: its
+decisions were read, nothing taken).
+
+**Deferred to the next amendment (slice B, "the fill"):** a bore wider than
+the thread's minor diameter is filled in to it along the thread before the
+cut, and a shaft thinner than the major is built up to it, so a Ø5 hole
+takes a full M5 (and M4 or M6) and a Ø4 pin an M5; the warnings above then
+go. A thread read off a mesh for Mesh to Solid (ADR-0097) is a task of its
+own.
