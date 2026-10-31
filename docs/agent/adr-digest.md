@@ -3401,7 +3401,7 @@ drops every planar pcurve and projects the edge's 3D curve. Rules:
 - The planar-ends self-check (`hybridEnds_`, misses above 1e-5) must report 0.
 Numbers in ADR-0097's 2026-10-31 amendment.
 
-**ADR-0097 slice D9 (2026-11-01): R ≤ r torus regions.** `extrudo_facade.cpp`
+**ADR-0097 slice D9 (2026-10-31b): R ≤ r torus regions.** `extrudo_facade.cpp`
 (`fitMeshTorus(…, spindle)`, `segmentMesh`'s `settle`, `MeshChart::surface`,
 `revolvedTorus`/`revolvedTorusOf`, the mesh check, the exact rebuild); probe
 Q24 in `spikes/stl-to-solid/prismatic.cpp`. Rules:
@@ -3414,7 +3414,7 @@ Q24 in `spikes/stl-to-solid/prismatic.cpp`. Rules:
   turns that into a revolution of another curve, wires crossing); R > r stays
   a `Geom_ToroidalSurface`. The mesh check and face counts read it back as its
   torus (`revolvedTorusOf`); the exact rebuild refuses it, the hybrid runs.
-Numbers in ADR-0097's 2026-11-01 amendment.
+Numbers in ADR-0097's 2026-10-31b amendment.
 
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,

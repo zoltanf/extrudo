@@ -8329,7 +8329,7 @@ private:
    * A spindle torus (R <= r, slice D9) as the surface of revolution of its
    * meridian circle, at the torus's own parameters: a STEP reader takes a
    * toroidal surface with R <= r back as a revolution of another curve,
-   * whose wires then cross (ADR-0097's 2026-11-01 amendment). The meridian
+   * whose wires then cross (ADR-0097's 2026-10-31b amendment). The meridian
    * at u = 0 is centre O + R X, C(v) = centre + r cos v X + r sin v Z.
    */
   static Handle(Geom_Surface) revolvedTorus(const gp_Ax3& frame, double majorRadius, double radius) {

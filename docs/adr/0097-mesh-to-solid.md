@@ -3095,7 +3095,7 @@ vented-funnel still builds twice: a plane between two cylinder halves joined by
 two near-half arcs with shared ends fails the first validity check (its plane
 is not a sliver).
 
-### Amendment, 2026-11-01 (slice D9): R ≤ r torus regions
+### Amendment, 2026-10-31b (slice D9): R ≤ r torus regions
 
 **The question.** Slice D8's rule 2 refused every torus fit with R ≤ r (a
 spindle torus, its tube through its axis): OCCT's STEP reader takes such a
@@ -3195,7 +3195,7 @@ gear-bearing-5 2,386 → 2,326 (4 spindle faces, 9.5 → 12.7 s, largest edge to
 0.181 → 0.665 mm); remove-before-flight-cover 466 → 438;
 whiteboard-tray-v5 1,965 → 1,302 (read back invalid in both).
 The kernel sweep (`TOL=auto`, 41 files, against `baseline-2026-10-31-auto.jsonl`,
-written to `baseline-2026-11-01-auto.jsonl`) passes: prismatic converted 36
+written to `baseline-2026-10-31b-auto.jsonl`) passes: prismatic converted 36
 and refused 5 in both; faces 27,740 → 27,581; round trips failing the bar 7
 in both (the same files); prismatic kernel time 249.7 → 242.9 s. Four files
 changed, all fewer faces and with the round trip passing: peg-perego-button

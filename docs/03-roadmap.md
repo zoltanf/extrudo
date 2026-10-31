@@ -1162,11 +1162,11 @@ end to end, faster than in established desktop CAD.
   max edge tolerance and facet count do not separate pass from fail, and
   `ShapeFix_Shape` at the written tolerances fixes 0 of 12 (ADR-0097's
   2026-10-30b amendment; no converter change, the fix is still the next slice).
-  *slice D9 (2026-11-01):* a torus with R ≤ r is fitted again where a split
+  *slice D9 (2026-10-31b):* a torus with R ≤ r is fitted again where a split
   would otherwise leave its whole component as facets, and built as a surface
   of revolution that STEP keeps: peg-perego-button at Auto 0.02 mm, 212 faces,
   no facets (slice D8: 0.05 mm, 261 faces); the spike's round-trip passes stay
-  20 of 30 hybrids (ADR-0097's 2026-11-01 amendment).
+  20 of 30 hybrids (ADR-0097's 2026-10-31b amendment).
 
 ## Phase 5 — Programmatic design (→ v0.6)
 
