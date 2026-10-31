@@ -22,6 +22,20 @@ static Handle(Geom_Surface) spikeTorusSurface(const gp_Ax3& frame, double R, dou
   // Rotating by u maps X to cos u X + sin u Y: about Z for a direct frame, about -Z for an indirect one.
   return new Geom_SurfaceOfRevolution(meridian, gp_Ax1(frame.Location(), frame.Direct() ? z : z.Reversed()));
 }
+// Q26 (slice D11), wired in by run.sh's seds: hooks inside rebuildHybrid that record each region's face builds (pass,
+// BRepCheck statuses), each attempt's outcome, and a copy of the regions and the mesh for the analysis afterwards.
+// Declared here, defined after the facade (their argument types are the facade's own nested ones).
+#include <TopoDS_Face.hxx>
+#include <string>
+template <class Fa, class U>
+bool spikeQ26Face(Fa& f, const TopoDS_Face& face, int region, int pass, int attempt, const std::vector<U>& used);
+static void spikeQ26Null(int region, int pass, int attempt, const std::string& why);
+template <class Fa, class S, class R>
+void spikeQ26Faces(Fa& f, const S& seg, const R& regions, const std::vector<int>& hybridOf, int attempt);
+static void spikeQ26Event(int attempt, const std::string& what, double value = 0);
+template <class H, class C>
+void spikeQ26Invalid(int attempt, const TopoDS_Shape& result, const std::vector<H>& faces, bool healed, const C& solids);
+static void spikeQ26Valid(int attempt, int faces, int facets, bool undone, bool healed);
 #include "facade_public.cpp"  // in build/ (or BUILD), on the include path
 
 #include <BRepAlgoAPI_Cut.hxx>
@@ -3123,6 +3137,623 @@ static void q25(ExtrudoFacade& f) {
 }
 
 /** Case f/F: one file from /stl (STL_DIR) through meshRegions, then meshToSolid prismatic, at `tolerance`. */
+/*
+ * Q26 (slice D11): the hybrid rebuild's exploded regions. The hooks above (run.sh's seds put them into rebuildHybrid)
+ * record every region face build (attempt, pass, the collapsed chains it used, and for an invalid face BRepCheck's
+ * statuses per sub-shape kind and ShapeAnalysis_Wire's checks), every attempt's outcome, and a copy of the regions,
+ * the segmentation and the mesh. q26Report then prints one "q26 region" line per exploded region (the stage it
+ * exploded in, its loops walked again with each boundary edge paired to the next one round the same fan of the
+ * node's triangles, those loops' signs, crossings in the chart's (u, v), and a face built from them the way makeFace
+ * builds polylines), and q26Attempts one "q26 attempt" line per build attempt. Q26=1: all of it; Q26=2: attempts only.
+ */
+struct Q26Build {
+  int attempt = 0, pass = 0, chains = 0;
+  bool face = false, valid = false;
+  std::string pattern, detail, saw, why;
+};
+struct Q26Attempt {
+  int attempt = 0, estimate = -1, faces = -1, facets = -1, invalidFaces = -1, facetFaces = -1, nodesOff = -1;
+  bool built = false, invalid = false, valid = false, healed = false, undone = false, volumeOk = false, cellsValid = false;
+};
+static int q26Mode = 0;
+static double q26Tolerance = 0;
+static std::map<int, std::vector<Q26Build>> q26Builds;
+static std::vector<Q26Attempt> q26Attempts;
+static ExtrudoFacade::MeshSegmentation q26Seg;
+static std::vector<ExtrudoFacade::MeshHybridRegion> q26Regions;
+static std::vector<int> q26HybridOf;
+static std::vector<double> q26Nodes;
+static std::vector<uint32_t> q26Triangles;
+
+static Q26Attempt& q26AttemptOf(int attempt) {
+  for (Q26Attempt& a : q26Attempts)
+    if (a.attempt == attempt) return a;
+  q26Attempts.emplace_back();
+  q26Attempts.back().attempt = attempt;
+  return q26Attempts.back();
+}
+
+/** BRepCheck's statuses on a shape's vertices, edges, wires and faces: "kind:Status" (own) or "kind@context:Status". */
+static void q26Statuses(const TopoDS_Shape& shape, std::string& pattern, std::string& detail) {
+  BRepCheck_Analyzer analyzer(shape);
+  std::map<std::string, int> counts;
+  auto typeName = [](TopAbs_ShapeEnum t) {
+    return t == TopAbs_VERTEX ? "vertex" : t == TopAbs_EDGE ? "edge" : t == TopAbs_WIRE ? "wire" : t == TopAbs_FACE ? "face" : "other";
+  };
+  for (TopAbs_ShapeEnum type : {TopAbs_VERTEX, TopAbs_EDGE, TopAbs_WIRE, TopAbs_FACE}) {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> shapes;
+    TopExp::MapShapes(shape, type, shapes);
+    for (int i = 1; i <= shapes.Extent(); ++i) {
+      Handle(BRepCheck_Result) r = analyzer.Result(shapes(i));
+      if (r.IsNull()) continue;
+      for (BRepCheck_Status st : r->Status())
+        if (st != BRepCheck_NoError) counts[std::string(typeName(type)) + ":" + statusName(st)]++;
+      for (r->InitContextIterator(); r->MoreShapeInContext(); r->NextShapeInContext())
+        for (BRepCheck_Status st : r->StatusOnShape())
+          if (st != BRepCheck_NoError)
+            counts[std::string(typeName(type)) + "@" + typeName(r->ContextualShape().ShapeType()) + ":" + statusName(st)]++;
+    }
+  }
+  pattern.clear();
+  detail.clear();
+  for (const auto& [k, n] : counts) {
+    pattern += (pattern.empty() ? "" : "+") + k;
+    detail += (detail.empty() ? "" : ",") + k + "x" + std::to_string(n);
+  }
+  if (pattern.empty()) pattern = detail = "none";
+}
+
+/** ShapeAnalysis_Wire's checks on each wire of a face: the ones that report a problem. */
+static std::string q26Saw(const TopoDS_Face& face) {
+  std::set<std::string> flags;
+  for (TopExp_Explorer w(face, TopAbs_WIRE); w.More(); w.Next()) {
+    ShapeAnalysis_Wire saw(TopoDS::Wire(w.Current()), face, Precision::Confusion());
+    if (saw.CheckOrder()) flags.insert("order");
+    if (saw.CheckConnected()) flags.insert("connected");
+    if (saw.CheckSmall(Precision::Confusion())) flags.insert("small");
+    if (saw.CheckClosed()) flags.insert("closed");
+    if (saw.CheckSelfIntersection()) flags.insert("selfx");
+  }
+  std::string out;
+  for (const std::string& s : flags) out += (out.empty() ? "" : "+") + s;
+  return out.empty() ? "ok" : out;
+}
+
+template <class Fa, class U>
+bool spikeQ26Face(Fa&, const TopoDS_Face& face, int region, int pass, int attempt, const std::vector<U>& used) {
+  if (!q26Mode) return BRepCheck_Analyzer(face).IsValid();
+  Q26Build b;
+  b.attempt = attempt;
+  b.pass = pass;
+  b.face = true;
+  for (const U& u : used) b.chains += u.chain >= 0;
+  b.valid = BRepCheck_Analyzer(face).IsValid();
+  if (!b.valid && q26Mode == 1) {
+    q26Statuses(face, b.pattern, b.detail);
+    b.saw = q26Saw(face);
+  }
+  q26Builds[region].push_back(b);
+  return b.valid;
+}
+static void spikeQ26Null(int region, int pass, int attempt, const std::string& why) {
+  if (!q26Mode) return;
+  Q26Build b;
+  b.attempt = attempt;
+  b.pass = pass;
+  b.why = why;
+  q26Builds[region].push_back(b);
+}
+template <class Fa, class S, class R>
+void spikeQ26Faces(Fa& f, const S& seg, const R& regions, const std::vector<int>& hybridOf, int attempt) {
+  if (!q26Mode) return;
+  q26AttemptOf(attempt).built = true;
+  if (q26Mode != 1) return;
+  if (attempt == 0) {
+    q26Seg = seg;
+    q26HybridOf = hybridOf;
+    q26Nodes = f.meshNodes_;
+    q26Triangles = f.meshTriangles_;
+  }
+  q26Regions = regions;
+}
+static void spikeQ26Event(int attempt, const std::string& what, double value) {
+  if (!q26Mode) return;
+  if (what == "tolerance") q26Tolerance = value;
+  Q26Attempt& a = q26AttemptOf(attempt);
+  if (what == "estimate") a.estimate = static_cast<int>(value);
+  if (what == "volume ok") a.volumeOk = true;
+  if (what == "nodes off") a.nodesOff = static_cast<int>(value);
+}
+template <class H, class C>
+void spikeQ26Invalid(int attempt, const TopoDS_Shape& result, const std::vector<H>& faces, bool healed, const C& solids) {
+  if (!q26Mode) return;
+  Q26Attempt& a = q26AttemptOf(attempt);
+  a.invalid = true;
+  // The solids before unify (the cells): valid ones are what "unify undone" would deliver.
+  a.cellsValid = true;
+  for (const TopoDS_Shape& solid : solids) a.cellsValid = a.cellsValid && BRepCheck_Analyzer(solid).IsValid();
+  a.healed = healed;
+  a.faces = 0;
+  a.invalidFaces = 0;
+  for (TopExp_Explorer e(result, TopAbs_FACE); e.More(); e.Next()) {
+    ++a.faces;
+    a.invalidFaces += !BRepCheck_Analyzer(e.Current()).IsValid();
+  }
+  a.facetFaces = 0;
+  for (const H& h : faces) a.facetFaces += h.facet;
+}
+static void spikeQ26Valid(int attempt, int faces, int facets, bool undone, bool healed) {
+  if (!q26Mode) return;
+  Q26Attempt& a = q26AttemptOf(attempt);
+  a.valid = true;
+  a.faces = faces;
+  a.facets = facets;
+  a.undone = undone;
+  a.healed = healed;
+}
+
+/** makeFace's polyline path (every boundary edge its own straight edge), on its own vertices and edges. */
+static TopoDS_Face q26MakeFace(ExtrudoFacade& f, const ExtrudoFacade::MeshChart& chart, const std::vector<std::vector<int>>& loops,
+                               bool flip, double& worst) {
+  BRep_Builder builder;
+  std::map<int, TopoDS_Vertex> vertices;
+  std::map<std::pair<int, int>, TopoDS_Edge> edges;
+  auto vertexOf = [&](int n) -> TopoDS_Vertex& {
+    TopoDS_Vertex& v = vertices[n];
+    if (v.IsNull()) builder.MakeVertex(v, gp_Pnt(f.meshNode(n)), Precision::Confusion());
+    return v;
+  };
+  auto edgeOf = [&](int lo, int hi) -> TopoDS_Edge& {
+    TopoDS_Edge& e = edges[{lo, hi}];
+    if (e.IsNull()) {
+      const gp_Pnt p(f.meshNode(lo)), q(f.meshNode(hi));
+      builder.MakeEdge(e, new Geom_Line(p, gp_Dir(q.XYZ() - p.XYZ())), Precision::Confusion());
+      builder.Add(e, vertexOf(lo).Oriented(TopAbs_FORWARD));
+      builder.Add(e, vertexOf(hi).Oriented(TopAbs_REVERSED));
+      builder.Range(e, 0, p.Distance(q));
+    }
+    return e;
+  };
+  struct Use {
+    int lo, hi;
+    bool forward;
+    double tolerance;
+    Handle(Geom2d_Curve) pcurve;
+  };
+  worst = 0;
+  std::vector<std::vector<Use>> wires;
+  for (const std::vector<int>& loop : loops) {
+    wires.emplace_back();
+    for (size_t j = 0; j < loop.size(); ++j) {
+      const int a = loop[j], b = loop[(j + 1) % loop.size()];
+      const int lo = std::min(a, b), hi = std::max(a, b);
+      const gp_Pnt2d from = chart.uv(gp_Pnt(f.meshNode(lo))), to = chart.uv(gp_Pnt(f.meshNode(hi)));
+      const gp_XYZ p = f.meshNode(lo), q = f.meshNode(hi);
+      double off = 0;
+      for (int i = 0; i <= 10; ++i) {
+        const double s = i / 10.0;
+        off = std::max(off, chart.value(from.X() + s * (to.X() - from.X()), from.Y() + s * (to.Y() - from.Y())).Distance(gp_Pnt(p + s * (q - p))));
+      }
+      const double tol = std::max(off * 1.1, ExtrudoFacade::HYBRID_EDGE_TOLERANCE_MIN);
+      worst = std::max(worst, tol);
+      NCollection_Array1<gp_Pnt2d> poles(1, 2);
+      poles(1) = from;
+      poles(2) = to;
+      NCollection_Array1<double> knots(1, 2);
+      knots(1) = 0;
+      knots(2) = (p - q).Modulus();
+      NCollection_Array1<int> mults(1, 2);
+      mults(1) = mults(2) = 2;
+      wires.back().push_back({lo, hi, a == lo, tol, new Geom2d_BSplineCurve(poles, knots, mults, 1)});
+    }
+  }
+  TopoDS_Face face;
+  if (worst > ExtrudoFacade::HYBRID_EDGE_TOLERANCE_MAX) return face;
+  const Handle(Geom_Surface) surface = chart.surface();
+  builder.MakeFace(face, surface, Precision::Confusion());
+  for (std::vector<Use>& uses : wires) {
+    TopoDS_Wire wire;
+    builder.MakeWire(wire);
+    if (flip) std::reverse(uses.begin(), uses.end());
+    for (const Use& use : uses) {
+      TopoDS_Edge& e = edgeOf(use.lo, use.hi);
+      builder.UpdateEdge(e, use.pcurve, surface, TopLoc_Location(), use.tolerance);
+      builder.UpdateVertex(vertexOf(use.lo), use.tolerance);
+      builder.UpdateVertex(vertexOf(use.hi), use.tolerance);
+      builder.Add(wire, use.forward != flip ? e : TopoDS::Edge(e.Reversed()));
+    }
+    wire.Closed(true);
+    builder.Add(face, wire);
+  }
+  if (flip) face.Orientation(TopAbs_REVERSED);
+  return face;
+}
+
+/** A crossing of two loop segments in (u, v): loops, positions in them, nodes, how they meet, how far apart in 3D. */
+struct Q26Cross {
+  int loop1, at1, loop2, at2, a1, b1, a2, b2;
+  std::string how;
+  double apart;
+  gp_Pnt2d p;
+};
+/** Segments of the loops in (u, v) that cross or touch: within one loop (not neighbours) and between loops. */
+static std::vector<Q26Cross> q26Crossings(ExtrudoFacade& f, const std::vector<std::vector<int>>& loops,
+                                          const std::vector<std::vector<gp_Pnt2d>>& uvs, int& self, int& between) {
+  struct Seg {
+    double x0, x1;
+    int loop, at, a, b;
+    gp_Pnt2d p, q;
+  };
+  std::vector<Seg> segs;
+  for (size_t l = 0; l < loops.size(); ++l)
+    for (size_t j = 0; j < loops[l].size(); ++j) {
+      const size_t k = (j + 1) % loops[l].size();
+      const gp_Pnt2d p = uvs[l][j], q = uvs[l][k];
+      segs.push_back({std::min(p.X(), q.X()), std::max(p.X(), q.X()), static_cast<int>(l), static_cast<int>(j), loops[l][j], loops[l][k], p, q});
+    }
+  std::sort(segs.begin(), segs.end(), [](const Seg& s, const Seg& t) { return s.x0 < t.x0; });
+  auto cross = [](const gp_Pnt2d& o, const gp_Pnt2d& a, const gp_Pnt2d& b) {
+    return (a.X() - o.X()) * (b.Y() - o.Y()) - (a.Y() - o.Y()) * (b.X() - o.X());
+  };
+  std::vector<Q26Cross> out;
+  self = between = 0;
+  for (size_t i = 0; i < segs.size(); ++i)
+    for (size_t j = i + 1; j < segs.size() && segs[j].x0 <= segs[i].x1; ++j) {
+      const Seg &s = segs[i], &t = segs[j];
+      if (s.a == t.a || s.a == t.b || s.b == t.a || s.b == t.b) continue;
+      if (std::max(s.p.Y(), s.q.Y()) < std::min(t.p.Y(), t.q.Y()) || std::max(t.p.Y(), t.q.Y()) < std::min(s.p.Y(), s.q.Y())) continue;
+      const double d1 = cross(s.p, s.q, t.p), d2 = cross(s.p, s.q, t.q), d3 = cross(t.p, t.q, s.p), d4 = cross(t.p, t.q, s.q);
+      if ((d1 > 0 && d2 > 0) || (d1 < 0 && d2 < 0) || (d3 > 0 && d4 > 0) || (d3 < 0 && d4 < 0)) continue;
+      (s.loop == t.loop ? self : between)++;
+      // How they meet: two distinct nodes at one point (coincident), an end on the other segment (touch), or across.
+      const gp_XYZ A1 = f.meshNode(s.a), B1 = f.meshNode(s.b), A2 = f.meshNode(t.a), B2 = f.meshNode(t.b);
+      double ends = 1e300;
+      for (const gp_XYZ& x : {A1, B1})
+        for (const gp_XYZ& y : {A2, B2}) ends = std::min(ends, (x - y).Modulus());
+      const bool touch = d1 == 0 || d2 == 0 || d3 == 0 || d4 == 0;
+      // The segments' 3D distance, sampled.
+      double apart = 1e300;
+      for (int a = 0; a <= 20; ++a)
+        for (int b = 0; b <= 20; ++b)
+          apart = std::min(apart, ((A1 + (B1 - A1) * (a / 20.0)) - (A2 + (B2 - A2) * (b / 20.0))).Modulus());
+      apart = std::min(apart, ends);
+      out.push_back({s.loop, s.at, t.loop, t.at, s.a, s.b, t.a, t.b, ends < 1e-6 ? "coincident" : touch ? "touch" : "across", apart, s.p});
+    }
+  return out;
+}
+
+static std::string q26Stage(const std::string& why) {
+  if (why.rfind("touches itself", 0) == 0 || why.rfind("a loop that", 0) == 0 || why == "no boundary" || why.find("runs the wrong way") != std::string::npos)
+    return "loops";
+  if (why.rfind("edge tolerance", 0) == 0 || why == "invalid face" || why.rfind("threw", 0) == 0) return "build";
+  if (why == "invalid after unify") return "culprit";
+  if (why == "a node off its face") return "nodeoff";
+  return "other";
+}
+
+static void q26Report(ExtrudoFacade& f, double T) {
+  if (q26Regions.empty()) return;
+  f.meshNodes_ = q26Nodes;
+  f.meshTriangles_ = q26Triangles;
+  const ExtrudoFacade::MeshSegmentation& seg = q26Seg;
+  std::vector<ExtrudoFacade::MeshHybridRegion>& regions = q26Regions;
+  const std::vector<int>& hybridOf = q26HybridOf;
+  // A region exploded after the last copy (culprits or nodes off on the last attempt): its line in hybridFaces_.
+  for (const std::string& line : f.hybridFaces_) {
+    if (line.rfind("region ", 0) != 0) continue;
+    const size_t at = line.find(" exploded: ");
+    if (at == std::string::npos) continue;
+    const int r = std::atoi(line.c_str() + 7);
+    if (r >= 0 && r < static_cast<int>(regions.size()) && regions[r].why.empty()) regions[r].why = line.substr(at + 11);
+  }
+  auto corner = [&](int t, int k) { return static_cast<int>(q26Triangles[3 * t + (k % 3)]); };
+  for (size_t i = 0; i < regions.size(); ++i) {
+    const ExtrudoFacade::MeshHybridRegion& region = regions[i];
+    if (region.kind < 0 || region.why.empty()) continue;
+    const int id = static_cast<int>(i);
+    const auto& chart = region.chart;
+    // Boundary half-edges (t, k): corner k to k + 1, the region on the left.
+    std::map<std::pair<int, int>, int> halfIndex;
+    std::vector<std::pair<int, int>> half;
+    std::map<int, int> outgoing;
+    for (int t : region.triangles)
+      for (int k = 0; k < 3; ++k) {
+        const int u = seg.neighbour[3 * t + k];
+        if (u >= 0 && hybridOf[u] == id) continue;
+        halfIndex[{t, k}] = static_cast<int>(half.size());
+        half.push_back({t, k});
+        outgoing[corner(t, k)]++;
+      }
+    int pinch = 0;
+    for (const auto& [n, c] : outgoing) pinch += c > 1;
+    // The next boundary half-edge round the same fan of triangles at the end node.
+    std::vector<int> nextHalf(half.size(), -1);
+    bool fanBroken = false;
+    for (size_t h = 0; h < half.size(); ++h) {
+      int t = half[h].first, e = half[h].second;
+      const int n = corner(t, e + 1);
+      for (int guard = 0; guard < 4096; ++guard) {
+        const int e2 = (e + 1) % 3;
+        const int u = seg.neighbour[3 * t + e2];
+        if (u < 0 || hybridOf[u] != id) {
+          const auto it = halfIndex.find({t, e2});
+          if (it != halfIndex.end()) nextHalf[h] = it->second;
+          break;
+        }
+        int found = -1;
+        for (int k = 0; k < 3; ++k)
+          if (corner(u, k + 1) == n) found = k;
+        if (found < 0) break;
+        t = u;
+        e = found;
+      }
+      if (nextHalf[h] < 0) fanBroken = true;
+    }
+    std::vector<std::vector<int>> loops;
+    std::vector<char> seen(half.size(), 0);
+    bool open = false;
+    for (size_t h0 = 0; h0 < half.size(); ++h0) {
+      if (seen[h0]) continue;
+      std::vector<int> loop;
+      int h = static_cast<int>(h0);
+      while (h >= 0 && !seen[h]) {
+        seen[h] = 1;
+        loop.push_back(corner(half[h].first, half[h].second));
+        h = nextHalf[h];
+      }
+      if (h != static_cast<int>(h0)) open = true;
+      loops.push_back(loop);
+    }
+    bool simple = true;
+    for (const auto& loop : loops) {
+      std::set<int> nodes(loop.begin(), loop.end());
+      simple = simple && nodes.size() == loop.size();
+    }
+    // Edge-connected pieces of the region (the cut at pinch nodes keeps these).
+    int pieces = 0;
+    {
+      std::set<int> in(region.triangles.begin(), region.triangles.end()), done;
+      for (int seed : region.triangles) {
+        if (done.count(seed)) continue;
+        ++pieces;
+        std::vector<int> queue{seed};
+        done.insert(seed);
+        while (!queue.empty()) {
+          const int t = queue.back();
+          queue.pop_back();
+          for (int k = 0; k < 3; ++k) {
+            const int u = seg.neighbour[3 * t + k];
+            if (u >= 0 && in.count(u) && done.insert(u).second) queue.push_back(u);
+          }
+        }
+      }
+    }
+    // The loops in (u, v): areas, the outer one, the side test as meshLoops does it; seam and wrap.
+    std::vector<std::vector<gp_Pnt2d>> uvs;
+    std::vector<double> areas;
+    bool seam = false, wrap = false;
+    for (const auto& loop : loops) {
+      uvs.emplace_back();
+      double a = 0, previousRawU = 0, previousRawV = 0;
+      for (size_t j = 0; j < loop.size(); ++j) {
+        uvs.back().push_back(chart.uv(gp_Pnt(f.meshNode(loop[j]))));
+        double ru = 0, rv = 0;
+        chart.raw(gp_Pnt(f.meshNode(loop[j])), ru, rv);
+        if (j > 0 && chart.uPeriodic() && std::fabs(ru - previousRawU) > M_PI) seam = true;
+        if (j > 0 && chart.vPeriodic() && std::fabs(rv - previousRawV) > M_PI) seam = true;
+        previousRawU = ru;
+        previousRawV = rv;
+      }
+      for (size_t j = 0; j < loop.size(); ++j) {
+        const gp_Pnt2d& p = uvs.back()[j];
+        const gp_Pnt2d& q = uvs.back()[(j + 1) % loop.size()];
+        a += p.X() * q.Y() - q.X() * p.Y();
+        if (chart.uPeriodic() && std::fabs(q.X() - p.X()) > M_PI) wrap = true;
+        if (chart.vPeriodic() && std::fabs(q.Y() - p.Y()) > M_PI) wrap = true;
+      }
+      areas.push_back(a / 2);
+    }
+    size_t outer = 0;
+    for (size_t l = 1; l < areas.size(); ++l)
+      if (std::fabs(areas[l]) > std::fabs(areas[outer])) outer = l;
+    if (!loops.empty()) {
+      std::swap(loops[0], loops[outer]);
+      std::swap(uvs[0], uvs[outer]);
+      std::swap(areas[0], areas[outer]);
+    }
+    std::vector<double> sorted;
+    for (double a : areas) sorted.push_back(std::fabs(a));
+    std::sort(sorted.rbegin(), sorted.rend());
+    int largest = region.triangles.front();
+    for (int t : region.triangles)
+      if (f.triangleArea(t) > f.triangleArea(largest)) largest = t;
+    const gp_XYZ ca = f.meshNode(corner(largest, 0)), cb = f.meshNode(corner(largest, 1)), cd = f.meshNode(corner(largest, 2));
+    const gp_Pnt2d cuv = chart.uv(gp_Pnt((ca + cb + cd) / 3));
+    const double side = chart.normal(cuv.X(), cuv.Y()).XYZ().Dot((cb - ca).Crossed(cd - ca)) < 0 ? -1 : 1;
+    std::string signs = "ok";
+    for (size_t l = 0; l < areas.size(); ++l)
+      if ((l == 0) != (side * areas[l] > 0)) {
+        signs = l == 0 ? "outer" : "inner";
+        break;
+      }
+    // The chart's normal against the triangles': the area-weighted mean, and the triangles folded in (u, v).
+    gp_XYZ mean(0, 0, 0);
+    int folded = 0, agree = 0;
+    double offPlane = 0;
+    for (int t : region.triangles) {
+      const gp_XYZ a = f.meshNode(corner(t, 0)), b = f.meshNode(corner(t, 1)), c = f.meshNode(corner(t, 2));
+      mean += (b - a).Crossed(c - a);
+      const gp_Pnt2d pa = chart.uv(gp_Pnt(a)), pb = chart.uv(gp_Pnt(b)), pc = chart.uv(gp_Pnt(c));
+      const double s = (pb.X() - pa.X()) * (pc.Y() - pa.Y()) - (pb.Y() - pa.Y()) * (pc.X() - pa.X());
+      (side * s > 0 ? agree : folded)++;
+      if (chart.kind == 0)
+        for (const gp_XYZ& p : {a, b, c}) offPlane = std::max(offPlane, gp_Pln(chart.frame).Distance(gp_Pnt(p)));
+    }
+    const gp_Vec cn = chart.normal(cuv.X(), cuv.Y());
+    const double normalCos = mean.Modulus() > 0 && cn.Magnitude() > 0 ? side * cn.XYZ().Dot(mean) / (cn.Magnitude() * mean.Modulus()) : 0;
+    int selfx = 0, crossx = 0;
+    const std::vector<Q26Cross> crossings = q26Crossings(f, loops, uvs, selfx, crossx);
+    std::map<std::string, int> crossHow;
+    double apartMax = 0, apartMin = crossings.empty() ? 0 : 1e300;
+    int local = 0;
+    for (const Q26Cross& c : crossings) {
+      crossHow[c.how]++;
+      apartMax = std::max(apartMax, c.apart);
+      apartMin = std::min(apartMin, c.apart);
+      // Local: the two segments within 8 of each other along one loop (a fold or a zigzag, not the outline overlapping).
+      const int n = static_cast<int>(loops[c.loop1].size()), d = std::abs(c.at1 - c.at2);
+      local += c.loop1 == c.loop2 && std::min(d, n - d) <= 8;
+    }
+    std::string loopSizes, loopAreas;
+    for (size_t l = 0; l < loops.size() && l < 8; ++l) {
+      loopSizes += (l ? "," : "") + std::to_string(loops[l].size());
+      char buffer[32];
+      std::snprintf(buffer, sizeof buffer, "%.4g", areas[l]);
+      loopAreas += (l ? "," : "") + std::string(buffer);
+    }
+    // Faces from the loops, polylines throughout: the fan-paired loops as they are, and split at every node a loop
+    // passes twice (each simple cycle its own loop, the outer one the largest |area|, signs checked again).
+    const bool flip = chart.normal(cuv.X(), cuv.Y()).XYZ().Dot(seg.normals[largest]) < 0;
+    auto faceOf = [&](const std::vector<std::vector<int>>& ls) -> std::string {
+      if (open || fanBroken || ls.empty()) return "skipped";
+      try {
+        double worst = 0;
+        const TopoDS_Face face = q26MakeFace(f, chart, ls, flip, worst);
+        if (face.IsNull()) return "tolerance:" + std::to_string(worst);
+        if (BRepCheck_Analyzer(face).IsValid()) return "valid";
+        std::string pattern, detail;
+        q26Statuses(face, pattern, detail);
+        return "invalid:" + pattern;
+      } catch (const Standard_Failure&) {
+        return "threw";
+      }
+    };
+    const std::string fan = faceOf(loops);
+    std::vector<std::vector<int>> split;
+    for (const auto& loop : loops) {
+      std::vector<int> stack;
+      std::map<int, size_t> at;
+      for (int n : loop) {
+        const auto it = at.find(n);
+        if (it != at.end()) {
+          split.emplace_back(stack.begin() + it->second, stack.end());
+          for (size_t j = it->second + 1; j < stack.size(); ++j) at.erase(stack[j]);
+          stack.resize(it->second);
+        }
+        at[n] = stack.size();
+        stack.push_back(n);
+      }
+      if (!stack.empty()) split.push_back(stack);
+    }
+    std::vector<double> splitAreas;
+    for (const auto& loop : split) {
+      double a = 0;
+      for (size_t j = 0; j < loop.size(); ++j) {
+        const gp_Pnt2d p = chart.uv(gp_Pnt(f.meshNode(loop[j]))), q = chart.uv(gp_Pnt(f.meshNode(loop[(j + 1) % loop.size()])));
+        a += p.X() * q.Y() - q.X() * p.Y();
+      }
+      splitAreas.push_back(a / 2);
+    }
+    size_t splitOuter = 0;
+    for (size_t l = 1; l < splitAreas.size(); ++l)
+      if (std::fabs(splitAreas[l]) > std::fabs(splitAreas[splitOuter])) splitOuter = l;
+    if (!split.empty()) {
+      std::swap(split[0], split[splitOuter]);
+      std::swap(splitAreas[0], splitAreas[splitOuter]);
+    }
+    std::string splitSigns = "ok";
+    for (size_t l = 0; l < splitAreas.size(); ++l)
+      if ((l == 0) != (side * splitAreas[l] > 0)) {
+        splitSigns = l == 0 ? "outer" : "inner";
+        break;
+      }
+    const std::string splitFace = split.size() == loops.size() ? fan : faceOf(split);
+    // The facade's builds of this region: the attempt it failed in, pass 0 and pass 1 there.
+    const std::vector<Q26Build>& builds = q26Builds[id];
+    int failAttempt = -1;
+    for (const Q26Build& b : builds)
+      if (!b.valid) failAttempt = b.attempt;
+    std::string p0 = "-", p1 = "-", saw0 = "-", saw1 = "-";
+    if (failAttempt < 0 && !builds.empty()) failAttempt = builds.back().attempt;
+    int chains = -1, failPass = -1;
+    for (const Q26Build& b : builds) {
+      if (b.pass == 0 && b.face && b.attempt <= failAttempt) chains = b.chains;
+      if (b.attempt != failAttempt) continue;
+      std::string what = !b.face ? "null:" + b.why.substr(0, b.why.find(' ')) : b.valid ? "valid" : b.pattern;
+      if (b.pass == 0) p0 = what, saw0 = b.saw.empty() ? "-" : b.saw;
+      else p1 = what, saw1 = b.saw.empty() ? "-" : b.saw;
+      if (!b.valid) failPass = b.pass;
+    }
+    // Facets these triangles make on their own: coplanar neighbours within the region are one face.
+    int facets = 0;
+    {
+      std::map<int, int> parent;
+      for (int t : region.triangles) parent[t] = t;
+      std::function<int(int)> find = [&](int x) { return parent[x] == x ? x : parent[x] = find(parent[x]); };
+      const double cosTolerance = std::cos(1e-3);
+      for (int t : region.triangles)
+        for (int k = 0; k < 3; ++k) {
+          const int u = seg.neighbour[3 * t + k];
+          if (u < 0 || u < t || hybridOf[u] != id) continue;
+          const bool flat = seg.normals[t].Modulus() < 0.5 || seg.normals[u].Modulus() < 0.5;
+          if (!flat && seg.normals[t].Dot(seg.normals[u]) < cosTolerance) continue;
+          bool near = true;
+          for (int c = 0; c < 3 && near && !flat; ++c)
+            near = std::fabs((f.meshNode(corner(u, c)) - f.meshNode(corner(t, 0))).Dot(seg.normals[t])) <= 1e-3;
+          if (near) parent[find(t)] = find(u);
+        }
+      for (int t : region.triangles) facets += find(t) == t;
+    }
+    size_t edgesCount = 0;
+    for (const auto& loop : loops) edgesCount += loop.size();
+    const std::string stage = q26Stage(region.why);
+    std::cout << std::setprecision(5) << "   q26 region T " << T << " id " << id << " kind " << region.kind << " tris "
+              << region.triangles.size() << " share " << 100 * region.area / seg.meshArea << " stage "
+              << (stage == "build" ? "build" + std::to_string(std::max(failPass, 0)) : stage) << " attempt " << failAttempt
+              << " loops " << loops.size() << " edges " << edgesCount << " chains " << chains << " periodic "
+              << chart.uPeriodic() << " seam " << seam << " wrap " << wrap << " pinch " << pinch << " pieces " << pieces
+              << " open " << (open || fanBroken) << " simple " << simple << " signs " << signs << " area1 "
+              << (sorted.size() > 0 ? sorted[0] : 0) << " area2 " << (sorted.size() > 1 ? sorted[1] : 0) << " side " << side
+              << " normal " << normalCos << " folded " << folded << " selfx " << selfx << " crossx " << crossx << " offplane "
+              << offPlane << " facets " << facets << " fan " << fan << " splitloops " << split.size() << " splitsigns " << splitSigns
+              << " split " << splitFace << " p0 " << p0 << " p1 " << p1 << " saw0 " << saw0
+              << " saw1 " << saw1 << " coincident " << crossHow["coincident"] << " touch " << crossHow["touch"] << " across "
+              << crossHow["across"] << " apart " << apartMax << " apartmin " << apartMin << " local " << local << " loopsizes "
+              << (loopSizes.empty() ? "-" : loopSizes) << " loopareas " << (loopAreas.empty() ? "-" : loopAreas) << " why " << region.why << std::endl;
+    for (size_t c = 0; c < crossings.size() && c < 6; ++c) {
+      const Q26Cross& x = crossings[c];
+      std::cout << "   q26 cross id " << id << " " << x.how << " loop " << x.loop1 << " at " << x.at1 << "/" << loops[x.loop1].size()
+                << " nodes " << x.a1 << "-" << x.b1 << " loop " << x.loop2 << " at " << x.at2 << "/" << loops[x.loop2].size()
+                << " nodes " << x.a2 << "-" << x.b2 << " uv " << x.p.X() << "," << x.p.Y() << " apart " << x.apart << " xyz "
+                << f.meshNode(x.a1).X() << "," << f.meshNode(x.a1).Y() << "," << f.meshNode(x.a1).Z() << std::endl;
+    }
+  }
+  size_t unfit = 0, exploded = 0;
+  int unfitRegions = 0, explodedRegions = 0;
+  for (const auto& r : regions) {
+    if (r.kind < 0) unfit += r.triangles.size(), ++unfitRegions;
+    else if (!r.why.empty()) exploded += r.triangles.size(), ++explodedRegions;
+  }
+  std::cout << "   q26 summary T " << T << " unfit " << unfit << " unfitregions " << unfitRegions << " exploded " << exploded
+            << " explodedregions " << explodedRegions << " regions " << regions.size() << std::endl;
+  f.meshNodes_.clear();
+  f.meshTriangles_.clear();
+}
+
+/** One line per hybrid build attempt, and the refusal's stages. */
+static void q26AttemptLines(ExtrudoFacade& f, int handle) {
+  for (const Q26Attempt& a : q26Attempts)
+    std::cout << "   q26 attempt " << a.attempt << " T " << q26Tolerance << " estimate " << a.estimate << " built " << a.built
+              << " invalid " << a.invalid << " cellsvalid " << a.cellsValid << " invalidfaces " << a.invalidFaces << " valid " << a.valid << " healed " << a.healed
+              << " undone " << a.undone << " faces " << a.faces << " facets " << a.facets << " facettris " << a.facetFaces
+              << " volume " << a.volumeOk << " nodesoff " << a.nodesOff << std::endl;
+  std::string stages;
+  for (const auto& [name, ms] : f.rebuildTimes_)
+    if (name.find("exploding") != std::string::npos || name.find("undoing") != std::string::npos) stages += (stages.empty() ? "" : "; ") + name;
+  std::cout << "   q26 outcome T " << q26Tolerance << " " << (handle ? "converted" : "refused") << " exploded " << f.hybridExploded_
+            << " hybrid " << (q26Attempts.empty() ? "no" : "yes") << " stages [" << stages << "] refusal " << f.hybridRefusal_ << std::endl;
+}
+
 static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
   const Mesh m = stlFile(path.c_str());
   std::cout << "== file " << path.substr(5) << " (" << m.triangles.size() / 3 << " triangles, tol " << tolerance << ")" << std::endl;
@@ -3299,10 +3930,22 @@ static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
   stage();
   t0 = now();
   const bool facesOn = getenv("FACES") && *getenv("FACES");
-  f.keepHybridFaces_ = facesOn || q25On;
+  q26Mode = getenv("Q26") ? std::atoi(getenv("Q26")) : 0;
+  q26Tolerance = 0;
+  q26Builds.clear();
+  q26Attempts.clear();
+  q26Regions.clear();
+  q26HybridOf.clear();
+  q26Nodes.clear();
+  q26Triangles.clear();
+  f.keepHybridFaces_ = facesOn || q25On || q26Mode;
   f.hybridFaces_.clear();
   const int h = f.meshToSolid(1, tolerance);
   const double ms = now() - t0;
+  if (q26Mode) {
+    q26AttemptLines(f, h);
+    if (q26Mode == 1) q26Report(f, q26Tolerance);
+  }
   if (facesOn)
     for (const auto& line : f.hybridFaces_) std::cout << "   hybrid " << line << std::endl;
   if (q25On) {
