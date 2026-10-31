@@ -10557,6 +10557,14 @@ private:
             ++piecesBetween[pairKey(a, b)];
           }
       }
+      // A sliver region: its triangles' area below the tolerance times its outline's length.
+      std::vector<char> sliver(regions.size(), 0);
+      for (size_t r = 0; r < regions.size(); ++r) {
+        double boundary = 0;
+        for (const auto& loop : regions[r].loops)
+          for (size_t i = 0; i < loop.size(); ++i) boundary += (meshNode(loop[(i + 1) % loop.size()]) - meshNode(loop[i])).Modulus();
+        sliver[r] = regions[r].area < tolerance * boundary;
+      }
       for (size_t c = 0; c < chains.size(); ++c) {
         const MeshChain& chain = chains[c];
         std::string why;
@@ -10574,9 +10582,10 @@ private:
           try {
             const MeshChainFit fit = chainCurve(chain, regions, seg, tolerance, curveCache, coaxialPairs);
             why = fit.why;
-            // A line only: two arcs of one split circle between the same two points are two faces' rims.
-            if (why.empty() && fit.curve.type == 0 && !chain.closed &&
-                pointKey(chain.nodes.front()) != pointKey(chain.nodes.back()) &&
+            // Only next to a sliver region: two arcs of one split circle, or an
+            // arc and its diameter, between the same two points bound real faces.
+            if (why.empty() && !chain.closed && pointKey(chain.nodes.front()) != pointKey(chain.nodes.back()) &&
+                (sliver[chain.left] || sliver[chain.right]) &&
                 piecesBetween[pairKey(chain.nodes.front(), chain.nodes.back())] > 1)
               why = "another piece joins its ends";
             // A circle between a plane and a cone (slice D8): moved square to the
@@ -10992,6 +11001,28 @@ private:
           for (int region : origins.Find(e.Current())) culprits.insert(region);
         }
         check();
+        if (keepHybridFaces_)
+          for (int r : culprits) {
+            // Diagnostics: the failing region, its size and the chains on its outline.
+            double boundary = 0;
+            for (const auto& loop : regions[r].loops)
+              for (size_t i = 0; i < loop.size(); ++i)
+                boundary += (meshNode(loop[(i + 1) % loop.size()]) - meshNode(loop[i])).Modulus();
+            std::string outline;
+            for (int c : chainsOfRegion[r])
+              outline += " " + std::string(chainEdges[c].edge.IsNull() ? "polyline"
+                                           : chainEdges[c].type == 0 ? "line"
+                                           : chainEdges[c].type == 1 ? "circle"
+                                                                     : "ellipse") +
+                         "(" + std::to_string(chains[c].nodes.size() - (chains[c].closed ? 0 : 1)) +
+                         (!chains[c].closed && piecesBetween[pairKey(chains[c].nodes.front(), chains[c].nodes.back())] > 1
+                              ? ", shared ends"
+                              : "") +
+                         ")";
+            hybridFaces_.push_back("invalid region " + std::to_string(r) + " kind " + std::to_string(regions[r].kind) +
+                                   " area " + std::to_string(regions[r].area) + " boundary " + std::to_string(boundary) +
+                                   " triangles " + std::to_string(regions[r].triangles.size()) + ", chains:" + outline);
+          }
         if (undoCollapses(culprits, collapsedNow)) {
           stage("validity, undoing the collapses of " + std::to_string(culprits.size()));
           continue;
