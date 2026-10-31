@@ -3871,6 +3871,9 @@ amends ADR-0080's "only raw HTML is `<video>`, no script" and ADR-0057's policy 
 `apps/site/src/widgets/` (`index.ts` the fixed list; per widget `<name>-model.ts` pure, the
 renderer, `<name>.ts` `enhance`), `apps/site/src/docs-widgets.ts` (the one entry),
 `apps/site/src/docs.css` (the `sk-*` classes), `apps/web/src/shell/docsLinks.ts`,
+`apps/web/src/shell/helpTarget.ts` (the remembered target and `anchorFor`;
+`sketch/mode.ts` clears it as a sketch opens or closes, `sketch/panels.tsx`
+sets it from the palette's rows),
 `apps/web/src/shell/docsAnchors.json`, `apps/desktop/src/main/docs.ts`. Rules: a page names
 a widget only with a fenced block ```` ```widget <name> ```` (body = caption); an unknown name
 fails the build; the build writes the starting state into the page (controls `disabled`,

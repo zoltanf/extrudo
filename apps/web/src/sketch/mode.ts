@@ -24,6 +24,7 @@ import {
   type SketchFrame,
 } from '@extrudo/core';
 import { activeComponentOf } from '../components/active';
+import { clearHelpTarget } from '../shell/helpTarget';
 import type { ViewportStore } from '../viewport/store';
 import { sketchFrame } from './frame';
 
@@ -99,6 +100,9 @@ export function editSketch(stores: SketchModeStores, id: FeatureId): boolean {
   cancelCreateSketch(stores);
   store.getState().beginTransaction('Edit sketch');
   session.getState().enterSketch(id);
+  // The remembered help target named the closed context; F1 right after a
+  // sketch opens goes to the sketching guide (P6-22 S2, ADR-0116 §4).
+  clearHelpTarget();
   lookAtSketch(stores);
   return true;
 }
@@ -108,6 +112,8 @@ export function finishSketch({ store, session }: SketchModeStores): void {
   if (session.getState().mode !== 'sketch') return;
   if (store.getState().transactionDepth > 0) store.getState().commitTransaction();
   session.getState().exitSketch();
+  // A closed sketch leaves no help target behind (P6-22 S2, ADR-0116 §4).
+  clearHelpTarget();
 }
 
 /** Turns the camera to face the open sketch's plane, sketch X to the right (palette "Look at"). */
