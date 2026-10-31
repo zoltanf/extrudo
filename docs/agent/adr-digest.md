@@ -2028,6 +2028,14 @@ faces: deferred.
 outline in `createSketchOn` when a sketch starts on it. No file-format or
 kernel change. `data-sketch-projected` now also lists a point-only projected
 vertex (`curves=0`).
+**The palette's Face outline switch (ADR-0074's amendment, 2026-10-31)** is the
+open sketch's own outline, not the preference: `faceOutline(plane, data)` (the
+projection whose ref is the sketch's face, mode `project`; `undefined` on a plane)
+with the constraint and dimension counts on its curves. On dispatches
+`addProjection`; off dispatches `removeProjection`, which **refuses while any
+constraint or dimension uses the curves**, and the switch is disabled then (hint
+counts them) and on a plane sketch. It doesn't depend on Auto-project. Keep
+`viewport.autoProjectFace` for new sketches in Settings and the app menu only.
 
 ADR-0075 (P6-01, slice 1) added **the Electron desktop app** (`apps/desktop`,
 GPL): electron-vite builds main, preload and renderer, the **renderer being the

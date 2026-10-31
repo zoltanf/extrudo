@@ -1,4 +1,5 @@
 import {
+  addProjection,
   type BodyId,
   CANVAS_TYPE,
   type Command,
@@ -8,6 +9,7 @@ import {
   evaluateParameters,
   type Feature,
   type FeatureId,
+  faceOutline,
   formatQuantity,
   type GeomRef,
   IMPORT_TYPE,
@@ -18,9 +20,12 @@ import {
   jointRange,
   LENGTH,
   type ModelStore,
+  newId,
+  type ProjectionId,
   pluginFileOf,
   readSketch,
   redefineSketchPlane,
+  removeProjection,
   type SelectionItem,
   type SessionStore,
   type ViewId,
@@ -2237,6 +2242,33 @@ function Shell({
     [doc, canvasReports, editedId],
   );
   const activeSketch = doc.features.find((f) => f.id === activeSketchId);
+  // The open sketch's face outline (ADR-0074's 2026-10-31 amendment): the palette's switch
+  // adds it, and removes it while nothing refers to it.
+  const sketchContent = useMemo(
+    () => (activeSketch ? readSketch(activeSketch) : undefined),
+    [activeSketch],
+  );
+  const outline = useMemo(
+    () => sketchContent && faceOutline(sketchContent.plane, sketchContent.data),
+    [sketchContent],
+  );
+  const setOutline = (on: boolean) => {
+    if (!activeSketch || !sketchContent) return;
+    try {
+      store.getState().dispatch(
+        on
+          ? addProjection({
+              feature: activeSketch.id,
+              id: newId<ProjectionId>(),
+              ref: sketchContent.plane,
+            })
+          : removeProjection({ feature: activeSketch.id, id: outline?.id as ProjectionId }),
+      );
+    } catch (error) {
+      if (!(error instanceof CommandError)) throw error;
+      notify('error', error.message);
+    }
+  };
   const sketchPlane = sketches.find((s) => s.active)?.frame;
   // The right-click marking menu (P3-11): offered while nothing else owns the pointer.
   const runningTool = useMemo(
@@ -2860,6 +2892,8 @@ function Shell({
               name={activeSketch.name}
               viewport={viewport}
               host={host}
+              outline={outline}
+              onOutline={setOutline}
               onLookAt={() => lookAtSketch(stores)}
               onFinish={() => finishSketch(stores)}
             />

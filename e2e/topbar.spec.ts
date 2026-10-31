@@ -318,7 +318,8 @@ test('rail toggles and the theme change preferences and leave the panel open', a
   await (await railToggle(page, 'Auto-project body edges')).click();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('checkbox', { name: 'Auto-project', exact: true })).toBeChecked();
-  await expect(page.getByRole('checkbox', { name: 'Auto-project face outline' })).toBeChecked();
+  // Face outline in the palette is the open sketch's own (ADR-0074's 2026-10-31 amendment).
+  await expect(page.getByRole('checkbox', { name: 'Face outline', exact: true })).toBeDisabled();
 });
 
 test('the arrow keys move within a rail group or a column, Tab between them', async ({ page }) => {
