@@ -241,6 +241,7 @@
 #include <chrono>
 #include <memory>
 #include <array>
+#include <unordered_set>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -7433,7 +7434,8 @@ private:
       for (int k = 0; k < 7; ++k) size += std::fabs(scale * step[k]);
       if (size < 1e-12 * (1 + R + r)) break;
     }
-    if (!(R > 0) || !(r > 0) || !std::isfinite(R) || !std::isfinite(r)) return fit;
+    // R > r (slice D8): a torus whose tube reaches its axis is no torus a STEP reader takes back.
+    if (!(R > 0) || !(r > 0) || !(R > r) || !std::isfinite(R) || !std::isfinite(r)) return fit;
     fit.deviation = 0;
     for (int n : nodes) fit.deviation = std::max(fit.deviation, std::fabs(torusDistance(o, a, R, r, meshNode(n))));
     // A deterministic axis: its largest component positive.
@@ -8684,6 +8686,8 @@ private:
     double first = 0, last = 0;
     /** The largest node distance to the curve. */
     double off = 0;
+    /** How far a planar chain's circle grew to reach its end nodes (slice D8; mm). */
+    double widened = 0;
     std::string why;
   };
 
@@ -8975,6 +8979,7 @@ private:
                           const MeshSegmentation& seg, double tolerance,
                           std::map<std::pair<int, int>, std::pair<std::vector<MeshChainCurve>, std::string>>& cache,
                           std::map<std::pair<int, int>, bool>& coaxialPairs) const {
+    ++chainCurveCalls_;
     MeshChainFit fit;
     const MeshHybridRegion& left = regions[chain.left];
     const MeshHybridRegion& right = regions[chain.right];
@@ -9022,6 +9027,65 @@ private:
       if (sum < best) {
         best = sum;
         fit.curve = c;
+      }
+    }
+    // Next to a plane (slice D8): the curve ends where its end nodes project
+    // onto the plane, so that projecting the curve (a STEP reader drops a
+    // plane's pcurves and does exactly that) gives back the face's outline.
+    const MeshChart* plane = left.chart.kind == 0 ? &left.chart : right.chart.kind == 0 ? &right.chart : nullptr;
+    if (plane != nullptr) {
+      const gp_XYZ p = meshNode(chain.nodes.front()), q = meshNode(chain.nodes.back());
+      const gp_XYZ n = plane->frame.Direction().XYZ();
+      if (fit.curve.type == 0) {
+        if ((q - p).Modulus() <= 1e-12) {
+          fit.why = "chain ends coincide";
+          return fit;
+        }
+        fit.curve.line = gp_Lin(gp_Pnt(p), gp_Dir(q - p));
+      } else if (fit.curve.type == 1) {
+        const gp_Ax2& old = fit.curve.circle.Position();
+        const double along = old.Direction().XYZ().Dot(n);
+        if (std::fabs(along) < std::cos(M_PI / 180)) {
+          fit.why = "a tilted circle on a plane";
+          return fit;
+        }
+        const gp_XYZ axis = along < 0 ? n.Reversed() : n;
+        const gp_XYZ c = fit.curve.circle.Location().XYZ();
+        // The ends' projections onto the circle's plane (through its centre, square to n).
+        const gp_XYZ ph = p - (p - c).Dot(n) * n, qh = q - (q - c).Dot(n) * n;
+        double r = fit.curve.circle.Radius();
+        gp_XYZ centre = c;
+        if (chain.closed) {
+          r = (ph - c).Modulus();
+        } else {
+          const gp_XYZ chord = qh - ph;
+          const double half = chord.Modulus() / 2;
+          if (half <= 1e-12) {
+            fit.why = "chain ends coincide";
+            return fit;
+          }
+          // A half turn's ends sit on the polygon's corners, a little wider
+          // than the fitted radius: within the tolerance the circle takes
+          // them as its diameter (the node checks below still apply).
+          if (half > r + tolerance) {
+            fit.why = "chain ends wider than the circle";
+            return fit;
+          }
+          fit.widened = std::max(0.0, half - r);
+          r = std::max(r, half);
+          const gp_XYZ mid = (ph + qh) / 2, m = n.Crossed(chord).Normalized();
+          const double h = std::sqrt(std::max(0.0, r * r - half * half));
+          const gp_XYZ a = mid + h * m, b = mid - h * m;
+          centre = (a - c).Modulus() <= (b - c).Modulus() ? a : b;
+        }
+        if (r <= 1e-12) {
+          fit.why = "chain ends coincide";
+          return fit;
+        }
+        fit.curve.circle = gp_Circ(gp_Ax2(gp_Pnt(centre), gp_Dir(axis), gp_Dir(ph - centre)), r);
+      } else {
+        fit.why = "an ellipse on a plane";
+        return fit;
       }
     }
     // Every node near it, its parameters one way along it.
@@ -9410,7 +9474,10 @@ private:
         weights[root(i)] += surfaces[i].area;
       }
       for (int i = 0; i < surfaceCount; ++i) {
-        if (rolling(surfaces[i]) && weights[root(i)] > 0) surfaces[i].radius = weighted[root(i)] / weights[root(i)];
+        if (!rolling(surfaces[i]) || !(weights[root(i)] > 0)) continue;
+        const double radius = weighted[root(i)] / weights[root(i)];
+        // A torus keeps R > r (slice D8).
+        if (surfaces[i].kind != 4 || surfaces[i].majorRadius > radius) surfaces[i].radius = radius;
       }
     }
 
@@ -9567,8 +9634,12 @@ private:
         const gp_XYZ o = cyl.origin.XYZ();
         c = o + (c - o).Dot(a) * a;
         const double r = torus.radius, R = torus.majorRadius;
-        if (std::fabs(R + r - cyl.radius) <= 10 * tolerance) torus.majorRadius = cyl.radius - r;
-        else if (std::fabs(R - r - cyl.radius) <= 10 * tolerance) torus.majorRadius = cyl.radius + r;
+        // The adjusted major radius only while it stays above the minor (slice D8).
+        if (std::fabs(R + r - cyl.radius) <= 10 * tolerance) {
+          if (cyl.radius - r > r) torus.majorRadius = cyl.radius - r;
+        } else if (std::fabs(R - r - cyl.radius) <= 10 * tolerance && cyl.radius + r > r) {
+          torus.majorRadius = cyl.radius + r;
+        }
         axial = true;
         break;
       }
@@ -10111,6 +10182,25 @@ private:
   std::string hybridRefusal_;
   /** The last hybrid build's chains (slice D3): "chains: 12 collapsed (…), 3 polylines", and why chains stayed polylines. */
   std::string hybridChains_, hybridChainsKept_;
+  /** The last hybrid build's planar edges and how many end off their pcurves' ends (slice D8): "exact chain ends: 120 edges, 0 off". */
+  std::string hybridEnds_;
+  /** The last hybrid build's chain edges whose circle widened to its end nodes (slice D8), and the largest widening (mm). */
+  int hybridWidened_ = 0;
+  double hybridWidenedMax_ = 0;
+  /** Calls in the last hybrid build (spike harness timing). */
+  mutable long chainCurveCalls_ = 0, interpolateCalls_ = 0;
+  /** The last hybrid build's mesh check: nodes measured, and how many needed BRepExtrema (spike harness timing). */
+  long meshCheckNodes_ = 0, meshCheckExtrema_ = 0, meshCheckClassifiers_ = 0;
+  double meshCheckClassifierMs_ = 0, meshCheckClassifyMs_ = 0;
+  /** With keepHybridFaces_: the last hybrid build's edges, a chain's (`chain` true) or a mesh edge's, by end points. */
+  struct HybridEdgeRecord {
+    gp_Pnt a, b;
+    int left = -1, right = -1;
+    bool chain = false;
+    int type = 0;
+    double widened = 0;
+  };
+  std::vector<HybridEdgeRecord> hybridEdges_;
   /** Per recognised region of the last hybrid rebuild, when the spike harness asks (FACES=1). */
   bool keepHybridFaces_ = false;
   std::vector<std::string> hybridFaces_;
@@ -10153,6 +10243,17 @@ private:
     hybridFaces_.clear();
     hybridChains_.clear();
     hybridChainsKept_.clear();
+    hybridEnds_.clear();
+    hybridWidened_ = 0;
+    hybridWidenedMax_ = 0;
+    chainCurveCalls_ = 0;
+    interpolateCalls_ = 0;
+    meshCheckNodes_ = 0;
+    meshCheckExtrema_ = 0;
+    meshCheckClassifiers_ = 0;
+    meshCheckClassifierMs_ = 0;
+    meshCheckClassifyMs_ = 0;
+    hybridEdges_.clear();
     capMessage.clear();
     auto refuse = [&](const std::string& why) {
       hybridRefusal_ = why;
@@ -10361,6 +10462,7 @@ private:
         Handle(Geom2d_Curve) pcurve[2];
         double tolerance = 0;
         int type = -1;
+        double widened = 0;
       };
       std::vector<ChainEdge> chainEdges(chains.size());
       std::map<std::string, int> keptWhy;
@@ -10413,6 +10515,7 @@ private:
           const double w = static_cast<double>(i) / samples;
           points->ChangeValue(i + 1).ChangeCoord() += (1 - w) * startOffset + w * endOffset;
         }
+        ++interpolateCalls_;
         Geom2dAPI_Interpolate interpolate(points, parameters, false, 1e-9);
         interpolate.Perform();
         if (!interpolate.IsDone()) return Handle(Geom2d_Curve)();
@@ -10421,6 +10524,47 @@ private:
         return off <= reach ? through : Handle(Geom2d_Curve)();
       };
       auto chainBuilt = [&](int r) { return r >= 0 && regions[r].kind >= 0 && regions[r].why.empty(); };
+      // Slice D8: the outline pieces joining each pair of end points (by
+      // coordinates, to 1e-6): open chains, and boundary mesh edges no
+      // chain with those ends contains. A chain collapses only when it is
+      // the only one, else it and its twin would be one segment (a face of
+      // zero area, which a STEP reader takes back as a hairpin).
+      using PointKey = std::array<long long, 3>;
+      auto pointKey = [&](int n) {
+        const gp_XYZ p = meshNode(n);
+        return PointKey{std::llround(p.X() * 1e6), std::llround(p.Y() * 1e6), std::llround(p.Z() * 1e6)};
+      };
+      auto pairKey = [&](int a, int b) {
+        const PointKey ka = pointKey(a), kb = pointKey(b);
+        return ka < kb ? std::make_pair(ka, kb) : std::make_pair(kb, ka);
+      };
+      std::map<std::pair<PointKey, PointKey>, int> piecesBetween;
+      {
+        std::unordered_set<uint64_t> covered;
+        for (const MeshChain& chain : chains) {
+          if (chain.closed || pointKey(chain.nodes.front()) == pointKey(chain.nodes.back())) continue;
+          const auto ends = pairKey(chain.nodes.front(), chain.nodes.back());
+          ++piecesBetween[ends];
+          for (size_t i = 0; i + 1 < chain.nodes.size(); ++i)
+            if (pairKey(chain.nodes[i], chain.nodes[i + 1]) == ends) covered.insert(keyOf(chain.nodes[i], chain.nodes[i + 1]));
+        }
+        for (int t = 0; t < triangleCount; ++t)
+          for (int k = 0; k < 3; ++k) {
+            const int u = seg.neighbour[3 * t + k];
+            if (u >= 0 && (u < t || hybridOf[u] == hybridOf[t])) continue;
+            const int a = corner(t, k), b = corner(t, (k + 1) % 3);
+            if (covered.count(keyOf(a, b)) || pointKey(a) == pointKey(b)) continue;
+            ++piecesBetween[pairKey(a, b)];
+          }
+      }
+      // A sliver region: its triangles' area below the tolerance times its outline's length.
+      std::vector<char> sliver(regions.size(), 0);
+      for (size_t r = 0; r < regions.size(); ++r) {
+        double boundary = 0;
+        for (const auto& loop : regions[r].loops)
+          for (size_t i = 0; i < loop.size(); ++i) boundary += (meshNode(loop[(i + 1) % loop.size()]) - meshNode(loop[i])).Modulus();
+        sliver[r] = regions[r].area < tolerance * boundary;
+      }
       for (size_t c = 0; c < chains.size(); ++c) {
         const MeshChain& chain = chains[c];
         std::string why;
@@ -10438,6 +10582,20 @@ private:
           try {
             const MeshChainFit fit = chainCurve(chain, regions, seg, tolerance, curveCache, coaxialPairs);
             why = fit.why;
+            // Only next to a sliver region: two arcs of one split circle, or an
+            // arc and its diameter, between the same two points bound real faces.
+            if (why.empty() && !chain.closed && pointKey(chain.nodes.front()) != pointKey(chain.nodes.back()) &&
+                (sliver[chain.left] || sliver[chain.right]) &&
+                piecesBetween[pairKey(chain.nodes.front(), chain.nodes.back())] > 1)
+              why = "another piece joins its ends";
+            // A circle between a plane and a cone (slice D8): moved square to the
+            // plane, it leaves the cone's axis (scrap-plate: 0.7 degrees), and a
+            // STEP reader's projection of it onto the cone moves the face's
+            // outline (1.47 % of its area, q23); the chain stays the mesh's.
+            if (why.empty() && fit.curve.type == 1 &&
+                ((regions[chain.left].kind == 0 && regions[chain.right].kind == 2) ||
+                 (regions[chain.left].kind == 2 && regions[chain.right].kind == 0)))
+              why = "a circle next to a cone";
             // Slice D1's limit holds for the mesh edges a collapse replaces:
             // where a chord strays from its straight pcurve's image by more
             // than the largest edge tolerance, the surface bulges past the
@@ -10454,20 +10612,43 @@ private:
                   why = "a chord off its surface";
               }
             }
+            // Slice D8: the curve itself on both surfaces (a circle moved to its
+            // end nodes' projections may leave the other one).
+            for (int i = 0; why.empty() && i <= 8; ++i) {
+              const gp_XYZ p = curveValue(fit.curve, fit.first + (fit.last - fit.first) * i / 8).XYZ();
+              for (const int r : {chain.left, chain.right})
+                if (distanceToSurface(seg.surfaces[regions[r].surface], p) > 1.5 * tolerance) why = "curve off its surface";
+            }
             if (why.empty()) {
               const Handle(Geom_Curve) curve = curveGeom(fit.curve);
               double offLeft = 0, offRight = 0;
               const int from = chain.nodes.front(), to = chain.closed ? from : chain.nodes.back();
-              auto onChart = [&](int r, double& off) {
+              bool endsMissed = false;
+              auto onChart = [&](int r, double& off) -> Handle(Geom2d_Curve) {
                 const MeshChart& chart = regions[r].chart;
-                return pcurveFor(chart, curve, fit.first, fit.last, chart.uv(gp_Pnt(meshNode(from))),
-                                 chart.uv(gp_Pnt(meshNode(to))), off);
+                const gp_Pnt2d a = chart.uv(gp_Pnt(meshNode(from))), b = chart.uv(gp_Pnt(meshNode(to)));
+                if (chart.kind == 0 && fit.curve.type == 1) {
+                  // A circle square to the plane (chainCurve): its projection, the same parameter.
+                  const gp_Circ& circle = fit.curve.circle;
+                  const gp_XYZ x = circle.XAxis().Direction().XYZ(), y = circle.YAxis().Direction().XYZ();
+                  const gp_XYZ u = chart.frame.XDirection().XYZ(), v = chart.frame.YDirection().XYZ();
+                  const gp_XY x2(x.Dot(u), x.Dot(v)), y2(y.Dot(u), y.Dot(v));
+                  const Handle(Geom2d_Curve) projected = new Geom2d_Circle(
+                      gp_Circ2d(gp_Ax22d(chart.uv(circle.Location()), gp_Dir2d(x2), x2.Crossed(y2) > 0), circle.Radius()));
+                  off = 0;
+                  if (projected->Value(fit.first).Distance(a) > 1e-7 || projected->Value(fit.last).Distance(b) > 1e-7) {
+                    endsMissed = true;
+                    return Handle(Geom2d_Curve)();
+                  }
+                  return projected;
+                }
+                return pcurveFor(chart, curve, fit.first, fit.last, a, b, off);
               };
               const Handle(Geom2d_Curve) onLeft = onChart(chain.left, offLeft);
               const Handle(Geom2d_Curve) onRight = onLeft.IsNull() ? onLeft : onChart(chain.right, offRight);
               const double tol = std::max(HYBRID_EDGE_TOLERANCE_MIN, 1.1 * std::max({fit.off, offLeft, offRight}));
               if (onLeft.IsNull() || onRight.IsNull()) {
-                why = "pcurve failed";
+                why = endsMissed ? "a plane's circle pcurve misses its ends" : "pcurve failed";
               } else if (tol > HYBRID_EDGE_TOLERANCE_MAX) {
                 why = "edge tolerance";
               } else {
@@ -10481,6 +10662,7 @@ private:
                 ce.pcurve[1] = onRight;
                 ce.tolerance = tol;
                 ce.type = fit.curve.type;
+                ce.widened = fit.widened;
                 if (keepHybridFaces_)
                   hybridFaces_.push_back("chain " + std::to_string(c) + " " +
                                          pairName(regions[chain.left].kind, regions[chain.right].kind) + ": " +
@@ -10819,6 +11001,28 @@ private:
           for (int region : origins.Find(e.Current())) culprits.insert(region);
         }
         check();
+        if (keepHybridFaces_)
+          for (int r : culprits) {
+            // Diagnostics: the failing region, its size and the chains on its outline.
+            double boundary = 0;
+            for (const auto& loop : regions[r].loops)
+              for (size_t i = 0; i < loop.size(); ++i)
+                boundary += (meshNode(loop[(i + 1) % loop.size()]) - meshNode(loop[i])).Modulus();
+            std::string outline;
+            for (int c : chainsOfRegion[r])
+              outline += " " + std::string(chainEdges[c].edge.IsNull() ? "polyline"
+                                           : chainEdges[c].type == 0 ? "line"
+                                           : chainEdges[c].type == 1 ? "circle"
+                                                                     : "ellipse") +
+                         "(" + std::to_string(chains[c].nodes.size() - (chains[c].closed ? 0 : 1)) +
+                         (!chains[c].closed && piecesBetween[pairKey(chains[c].nodes.front(), chains[c].nodes.back())] > 1
+                              ? ", shared ends"
+                              : "") +
+                         ")";
+            hybridFaces_.push_back("invalid region " + std::to_string(r) + " kind " + std::to_string(regions[r].kind) +
+                                   " area " + std::to_string(regions[r].area) + " boundary " + std::to_string(boundary) +
+                                   " triangles " + std::to_string(regions[r].triangles.size()) + ", chains:" + outline);
+          }
         if (undoCollapses(culprits, collapsedNow)) {
           stage("validity, undoing the collapses of " + std::to_string(culprits.size()));
           continue;
@@ -10928,6 +11132,7 @@ private:
         for (int n = 0; n < nodeCount; n += nodeStride) {
           check();
           if (onCollapsed[n]) continue;
+          ++meshCheckNodes_;
           const gp_Pnt p(meshNode(n));
           bool near = false;
           for (MeshCheckedFace& c : checked) {
@@ -10954,8 +11159,16 @@ private:
             const double turn = 2 * M_PI, slack = 1e-9;
             if (c.kind > 0) u += turn * std::ceil((c.u0 - slack - u) / turn);
             if (c.kind == 4) v += turn * std::ceil((c.v0 - slack - v) / turn);
-            if (!c.inside) c.inside.reset(new BRepTopAdaptor_FClass2d(c.face, 1e-7));
-            if (c.inside->Perform(gp_Pnt2d(u, v)) != TopAbs_OUT) {
+            if (!c.inside) {
+              const double t0 = nowMs();
+              c.inside.reset(new BRepTopAdaptor_FClass2d(c.face, 1e-7));
+              meshCheckClassifierMs_ += nowMs() - t0;
+              ++meshCheckClassifiers_;
+            }
+            const double t1 = nowMs();
+            const TopAbs_State state = c.inside->Perform(gp_Pnt2d(u, v));
+            meshCheckClassifyMs_ += nowMs() - t1;
+            if (state != TopAbs_OUT) {
               near = true;
               break;
             }
@@ -10965,6 +11178,7 @@ private:
             for (int t : trianglesOf[n])
               if (regions[hybridOf[t]].kind >= 0 && regions[hybridOf[t]].why.empty()) region = hybridOf[t];
             if (offRegions.count(region)) continue;
+            ++meshCheckExtrema_;
             BRepExtrema_DistShapeShape distance(BRepBuilderAPI_MakeVertex(p).Vertex(), result, Extrema_ExtFlag_MINMAX,
                                                 Extrema_ExtAlgo_Grad, deadline->Start());
             if (!distance.IsDone()) check();
@@ -10993,6 +11207,71 @@ private:
         continue;
       }
       stage("checked against the mesh");
+      {
+        // Slice D8's rule, checked: on every planar face, each edge's 3D
+        // curve ends project onto its pcurve's ends.
+        int planarEdges = 0, off = 0;
+        std::string offWhat;
+        auto text = [](double x) {
+          char buffer[32];
+          std::snprintf(buffer, sizeof buffer, "%.3g", x);
+          return std::string(buffer);
+        };
+        for (TopExp_Explorer fe(result, TopAbs_FACE); fe.More(); fe.Next()) {
+          const TopoDS_Face face = TopoDS::Face(fe.Current());
+          TopLoc_Location location;
+          const Handle(Geom_Plane) plane = Handle(Geom_Plane)::DownCast(BRep_Tool::Surface(face, location));
+          if (plane.IsNull()) continue;
+          const gp_Pln pln = plane->Pln().Transformed(location.Transformation());
+          for (TopExp_Explorer ee(face, TopAbs_EDGE); ee.More(); ee.Next()) {
+            const TopoDS_Edge edge = TopoDS::Edge(ee.Current());
+            double first = 0, last = 0, f2 = 0, l2 = 0;
+            TopLoc_Location edgeLocation;
+            const Handle(Geom_Curve) curve = BRep_Tool::Curve(edge, edgeLocation, first, last);
+            const Handle(Geom2d_Curve) pcurve = BRep_Tool::CurveOnSurface(edge, face, f2, l2);
+            if (curve.IsNull() || pcurve.IsNull()) continue;
+            ++planarEdges;
+            for (const double t : {first, last}) {
+              double u = 0, v = 0;
+              ElSLib::Parameters(pln, curve->Value(t).Transformed(edgeLocation.Transformation()), u, v);
+              const double miss = pcurve->Value(t).Distance(gp_Pnt2d(u, v));
+              // 1e-5: unify's merged edges miss by up to 1e-6 (rounding); ours by none.
+              if (miss > 1e-5) {
+                if (++off <= 3)
+                  offWhat += std::string(off > 1 ? "; " : " (") + curve->DynamicType()->Name() + " over " + text(last - first) + ", " + pcurve->DynamicType()->Name() + ", miss " + text(miss);
+                break;
+              }
+            }
+          }
+        }
+        hybridEnds_ = "exact chain ends: " + std::to_string(planarEdges) + " edges, " + std::to_string(off) + " off" +
+                      (offWhat.empty() ? "" : offWhat + ")");
+      }
+      stage("exact chain ends");
+      for (size_t c = 0; c < chains.size(); ++c)
+        if (!chainEdges[c].edge.IsNull() && chainEdges[c].widened > 0) {
+          ++hybridWidened_;
+          hybridWidenedMax_ = std::max(hybridWidenedMax_, chainEdges[c].widened);
+        }
+      if (keepHybridFaces_) {
+        // Diagnostics: every chain edge built, and every mesh edge no collapsed chain covers.
+        for (size_t c = 0; c < chains.size(); ++c) {
+          if (chainEdges[c].edge.IsNull()) continue;
+          const MeshChain& chain = chains[c];
+          hybridEdges_.push_back({gp_Pnt(meshNode(chain.nodes.front())),
+                                  gp_Pnt(meshNode(chain.closed ? chain.nodes.front() : chain.nodes.back())), chain.left,
+                                  chain.right, true, chainEdges[c].type, chainEdges[c].widened});
+        }
+        for (int t = 0; t < triangleCount; ++t)
+          for (int k = 0; k < 3; ++k) {
+            const int u = seg.neighbour[3 * t + k];
+            if (u >= 0 && u < t) continue;
+            const int a = corner(t, k), b = corner(t, (k + 1) % 3);
+            const auto it = chainOf.find(keyOf(a, b));
+            if (it != chainOf.end() && !chainEdges[it->second].edge.IsNull()) continue;
+            hybridEdges_.push_back({gp_Pnt(meshNode(a)), gp_Pnt(meshNode(b)), hybridOf[t], u >= 0 ? hybridOf[u] : -1, false, 0, 0});
+          }
+      }
       meshReport_[0] = static_cast<double>(resultFaces.Extent());
       for (int k = 0; k < 5; ++k) meshReport_[1 + k] = static_cast<double>(counts[k]);
       meshReport_[10] = 1;

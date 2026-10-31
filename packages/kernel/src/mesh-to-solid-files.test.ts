@@ -124,14 +124,12 @@ type Outcome =
 // unfit regions (and any region whose face wouldn't build) as facets.
 const DRILL_BLOCK: Outcome = {
   planes: 108,
-  cylinders: 65,
+  // Slice D8: a torus fit needs R > r; its four tori (R about r) don't fit.
+  cylinders: 63,
   cones: 0,
   spheres: 3,
-  tori: 4,
-  hybrid: { unfit: 3, facets: 208 },
-  // slice D7: the round trip fails (faces 388 → 388, solids 1 → 1, read back
-  // invalid, volumeRatio 0.999998); fixing the hybrid is a later slice.
-  tripFails: true,
+  tori: 0,
+  hybrid: { unfit: 5, facets: 236 },
 };
 const TRACK_001: Outcome = {
   planes: 65,
@@ -142,12 +140,12 @@ const TRACK_001: Outcome = {
   hybrid: { unfit: 2, facets: 237 },
 };
 const TRACK_005: Outcome = {
-  planes: 66,
-  cylinders: 6,
+  planes: 65,
+  cylinders: 2,
   cones: 2,
   spheres: 0,
   tori: 0,
-  hybrid: { unfit: 1, facets: 145 },
+  hybrid: { unfit: 2, facets: 237 },
   tolerance: 0.05,
 };
 const TRACK_01: Outcome = {
@@ -158,17 +156,14 @@ const TRACK_01: Outcome = {
   tori: 0,
   hybrid: { unfit: 0, facets: 0 },
   tolerance: 0.1,
-  // slice D7: the round trip fails (faces 79 → 79, solids 1 → 1, read back
-  // valid, volumeRatio 1.00127); fixing the hybrid is a later slice.
-  tripFails: true,
 };
 const FLIGHT_COVER: Outcome = {
-  planes: 252,
-  cylinders: 62,
+  planes: 248,
+  cylinders: 60,
   cones: 4,
   spheres: 0,
   tori: 0,
-  hybrid: { unfit: 5, facets: 120 },
+  hybrid: { unfit: 7, facets: 154 },
 };
 
 const fixtures: [string, string, Outcome][] = [
@@ -311,15 +306,13 @@ describe('Mesh to Solid, prismatic on the fixtures at Auto', { timeout: 120_000 
     [
       'peg-perego-button.stl',
       pegPeregoStl,
-      0.02,
+      // Slice D8: 0.02 mm leaves an unfit torus region (R > r), so Auto goes on to 0.05 mm.
+      0.05,
       {
-        faces: 212,
+        faces: 261,
         rebuild: 'hybrid',
-        edges: 1489,
-        circles: 22,
-        // slice D7: the round trip fails (faces 212 → 214, solids 1 → 1, read
-        // back invalid, volumeRatio 1.00012); fixing the hybrid is a later slice.
-        tripFails: true,
+        edges: 1592,
+        circles: 16,
       },
     ],
     [
@@ -327,20 +320,17 @@ describe('Mesh to Solid, prismatic on the fixtures at Auto', { timeout: 120_000 
       drillBlockStl,
       0.01,
       {
-        faces: 388,
+        faces: 410,
         rebuild: 'hybrid',
-        // slice D7: the round trip fails (faces 388 → 388, solids 1 → 1, read
-        // back invalid, volumeRatio 0.999998); fixing the hybrid is a later slice.
-        tripFails: true,
       },
     ],
     [
       'track-straight-100mm.stl',
       trackStl,
       0.01,
-      { faces: 306, rebuild: 'hybrid', edges: 627, circles: 4 },
+      { faces: 306, rebuild: 'hybrid', edges: 735, circles: 2 },
     ],
-    ['remove-before-flight-cover.stl', flightCoverStl, 0.01, { faces: 438, rebuild: 'hybrid' }],
+    ['remove-before-flight-cover.stl', flightCoverStl, 0.01, { faces: 466, rebuild: 'hybrid' }],
   ];
   for (const [name, url, tolerance, outcome] of autoFixtures) {
     it(`converts ${name} with Auto at ${tolerance} mm`, () => {

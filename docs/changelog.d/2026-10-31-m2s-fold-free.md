@@ -1,0 +1,1 @@
+- 2026-10-31 · **Mesh to Solid survives a STEP round trip more often**: converted bodies read back valid and unchanged in 20 of the 30 hybrid conversions of our test corpus (was 10), and no torus comes back as a surface of revolution (ADR-0097 slice D8).

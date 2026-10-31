@@ -22,7 +22,7 @@ if [ "${1:-}" = prismatic ]; then
     ub) FLAGS="-O1 -g2 -fsanitize=undefined -sALLOW_MEMORY_GROWTH -sMAXIMUM_MEMORY=4GB"; OUT=prismatic-ubsan ;;
     heap) FLAGS="-O1 -g2 -sSAFE_HEAP=1 -sASSERTIONS=2 -DEXTRUDO_FACADE_CHECKS -sALLOW_MEMORY_GROWTH -sMAXIMUM_MEMORY=4GB"; OUT=prismatic-heap ;;
   esac
-  docker run --rm --user 0 -e FACES="${FACES:-}" -e PIECES="${PIECES:-}" -e TIMES="${TIMES:-}" -e SEGMENT="${SEGMENT:-}" -e BUDGET="${BUDGET:-}" -e HYBRID_BUDGET="${HYBRID_BUDGET:-}" -e GAPS="${GAPS:-}" -e UNFIT="${UNFIT:-}" -e FILE="${FILE:-}" -e TOL="${TOL:-}" -e FACETED_DEBUG="${FACETED_DEBUG:-}" \
+  docker run --rm --user 0 -e FACES="${FACES:-}" -e PIECES="${PIECES:-}" -e TIMES="${TIMES:-}" -e SEGMENT="${SEGMENT:-}" -e BUDGET="${BUDGET:-}" -e HYBRID_BUDGET="${HYBRID_BUDGET:-}" -e GAPS="${GAPS:-}" -e UNFIT="${UNFIT:-}" -e FILE="${FILE:-}" -e TOL="${TOL:-}" -e FACETED_DEBUG="${FACETED_DEBUG:-}" -e Q20="${Q20:-}" -e Q20OFF="${Q20OFF:-}" -e Q20FACES="${Q20FACES:-}" -e Q21="${Q21:-}" -e Q22A="${Q22A:-}" -e Q22B="${Q22B:-}" -e Q22OLD="${Q22OLD:-}" -e Q23="${Q23:-}" \
     -e NOBUILD="${NOBUILD:-}" -e B="$B" -e FLAGS="$FLAGS" -e OUT="$OUT" -v "$S:/w" -v "$R/fixtures:/repo/fixtures:ro" "${STL[@]}" -w /w --entrypoint sh "$IMAGE" -c '
     set -e
     LINK=$(ls /opencascade.js/build/occt-libraries/*.a | tr "\n" " ")
