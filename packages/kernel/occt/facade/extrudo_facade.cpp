@@ -7247,10 +7247,13 @@ private:
    * fit in its plane, the tube radius the nodes' mean distance from the
    * spine, and all seven parameters are refined by Gauss-Newton on the
    * nodes' distances. `origin` is the centre, `direction` the axis,
-   * `majorRadius` R and `radius` r.
+   * `majorRadius` R and `radius` r. R <= r (a spindle torus) only with
+   * `spindle` (slice D9: splitComponent's retry; the hybrid builds it as a
+   * surface of revolution).
    */
   MeshFit fitMeshTorus(const std::vector<int>& nodes, const std::vector<int>& triangles,
-                       const std::vector<gp_XYZ>& normals, const std::vector<double>& areas, double tolerance) const {
+                       const std::vector<gp_XYZ>& normals, const std::vector<double>& areas, double tolerance,
+                       bool spindle = false) const {
     MeshFit fit;
     if (nodes.size() < 12 || triangles.size() < 6) return fit;
     // Moments of the facet centroids g and normals n, about their means, so
@@ -7435,8 +7438,8 @@ private:
       for (int k = 0; k < 7; ++k) size += std::fabs(scale * step[k]);
       if (size < 1e-12 * (1 + R + r)) break;
     }
-    // R <= r (a spindle torus) is kept: the hybrid builds it as a surface of revolution (slice D9).
-    if (!(R > 0) || !(r > 0) || !std::isfinite(R) || !std::isfinite(r)) return fit;
+    // R > r unless `spindle` (slice D8): a toroidal surface whose tube reaches its axis is no torus a STEP reader takes back.
+    if (!(R > 0) || !(r > 0) || (!spindle && !(R > r)) || !std::isfinite(R) || !std::isfinite(r)) return fit;
     fit.deviation = 0;
     for (int n : nodes) fit.deviation = std::max(fit.deviation, std::fabs(torusDistance(o, a, R, r, meshNode(n))));
     // A deterministic axis: its largest component positive.
@@ -7779,7 +7782,9 @@ private:
         if (g.outward.Modulus() < 1e-300) g.outward = regions[members[0]].normal.XYZ();
         return g;
       };
-      // One kind's fit (0 plane, 1 cylinder, 2 cone, 3 sphere, 4 torus).
+      // One kind's fit (0 plane, 1 cylinder, 2 cone, 3 sphere, 4 torus); a
+      // spindle torus only while `spindle` is set (splitComponent's retry).
+      bool spindle = false;
       auto fitKind = [&](int kind, const Gathered& g) {
         switch (kind) {
           case 0: {
@@ -7825,7 +7830,7 @@ private:
           case 3:
             return fitMeshSphere(g.nodes);
           default:
-            return fitMeshTorus(g.nodes, g.triangles, normals, areas, tolerance);
+            return fitMeshTorus(g.nodes, g.triangles, normals, areas, tolerance, spindle);
         }
       };
       // The surface of a fit within the tolerance, with its chord error.
@@ -8130,7 +8135,19 @@ private:
             keep(std::move(s));
             return;
           }
-          for (MeshSurface& piece : splitComponent(s)) keep(std::move(piece));
+          std::vector<MeshSurface> pieces = splitComponent(s);
+          // A split that leaves the component whole and unfit is tried once
+          // more with spindle tori (slice D9): peg-perego-button's 296
+          // regions stay facets for a 5-region patch only a torus with
+          // R < r fits. Elsewhere a spindle fit wins seeds that other
+          // primitives explain better (vented-funnel, spaghetti-measure).
+          if (pieces.size() == 1 && pieces[0].kind < 0) {
+            spindle = true;
+            std::vector<MeshSurface> retry = splitComponent(s);
+            spindle = false;
+            if (retry.size() != 1 || retry[0].kind >= 0) pieces = std::move(retry);
+          }
+          for (MeshSurface& piece : pieces) keep(std::move(piece));
         };
         if (large.empty()) {
           settle(std::move(whole));
@@ -9508,7 +9525,10 @@ private:
         weights[root(i)] += surfaces[i].area;
       }
       for (int i = 0; i < surfaceCount; ++i) {
-        if (rolling(surfaces[i]) && weights[root(i)] > 0) surfaces[i].radius = weighted[root(i)] / weights[root(i)];
+        if (!rolling(surfaces[i]) || !(weights[root(i)] > 0)) continue;
+        const double radius = weighted[root(i)] / weights[root(i)];
+        // A torus keeps R > r (slice D8).
+        if (surfaces[i].kind != 4 || surfaces[i].majorRadius > radius) surfaces[i].radius = radius;
       }
     }
 
@@ -9665,10 +9685,10 @@ private:
         const gp_XYZ o = cyl.origin.XYZ();
         c = o + (c - o).Dot(a) * a;
         const double r = torus.radius, R = torus.majorRadius;
-        // R may end at or below r (a spindle torus, slice D9), never at or below 0.
+        // The adjusted major radius only while it stays above the minor (slice D8).
         if (std::fabs(R + r - cyl.radius) <= 10 * tolerance) {
-          if (cyl.radius - r > 0) torus.majorRadius = cyl.radius - r;
-        } else if (std::fabs(R - r - cyl.radius) <= 10 * tolerance) {
+          if (cyl.radius - r > r) torus.majorRadius = cyl.radius - r;
+        } else if (std::fabs(R - r - cyl.radius) <= 10 * tolerance && cyl.radius + r > r) {
           torus.majorRadius = cyl.radius + r;
         }
         axial = true;

@@ -174,6 +174,20 @@ STL_DIR=~/Development/extrudo-stl-solid-test TOL=auto BUILD=diag FILE=own/scrap-
   the circle's distance to the cone, its axis against the cone's and its
   pcurve against the exact projection.
 
+- `Q24=1` (slice D9): every written face on a spindle torus (R ≤ r) or a
+  surface of revolution and every read-back one: radii, u/v range, area,
+  BRepCheck on the face alone and `ShapeFix_Face`'s result. With `UNFIT=1`,
+  case `f` also lists each torus surface with R ≤ r that the segmentation
+  finds with slice D8's R > r gates off (`q24 spindle surface`: regions,
+  triangles, area, R, r, axis, where its nodes sit against the axis and the
+  poles, the plane/cylinder/cone/sphere fits on the same nodes). run.sh's
+  facade copy takes two hooks for that: `spikeSpindle` (the gates off;
+  `Q24SPINDLE=1`) and `spikeTorusSurface` (`Q24REV=1`: the chart's torus as a
+  surface of revolution of its meridian circle). Both are for slice D8's
+  facade (`FACADE=` a copy of it); on slice D9's, `Q24SPINDLE` only turns the
+  two snap gates off, `Q24REV` matches nothing, and the listing shows the
+  spindle tori the segmentation's retry keeps.
+
 Case `f` with `TIMES=1` also prints `calls:` (chainCurve and
 `Geom2dAPI_Interpolate` calls, the mesh check's nodes, BRepExtrema calls and
 face classifier time); with `FACES=1` the validity stage lists each region
