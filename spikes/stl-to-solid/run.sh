@@ -10,7 +10,14 @@ if [ "${1:-}" = prismatic ]; then
   B="${BUILD:-build}"
   mkdir -p "$S/$B"
   # The facade with its private members public, so the harness can look inside.
-  sed 's/^ *private:/ public:/' "${FACADE:-$R/packages/kernel/occt/facade/extrudo_facade.cpp}" > "$S/$B/facade_public.cpp"
+  # Q24 (slice D9): spikeSpindle lets a torus fit keep R <= r (the D8 gates off), spikeTorusSurface builds its surface
+  # (prismatic.cpp defines both before the include; a facade without these lines builds unchanged).
+  sed -e 's/^ *private:/ public:/' \
+    -e 's/|| !(R > r) ||/|| (!spikeSpindle \&\& !(R > r)) ||/' \
+    -e 's/|| surfaces\[i\]\.majorRadius > radius)/|| spikeSpindle || surfaces[i].majorRadius > radius)/' \
+    -e 's/if (cyl\.radius - r > r)/if (spikeSpindle || cyl.radius - r > r)/' \
+    -e 's/return new Geom_ToroidalSurface(frame, majorRadius, radius);/return spikeTorusSurface(frame, majorRadius, radius);/' \
+    "${FACADE:-$R/packages/kernel/occt/facade/extrudo_facade.cpp}" > "$S/$B/facade_public.cpp"
   # STL_DIR: a folder mounted read-only at /stl for cases f (FILE), F (all of it) and g (faceted, FILE), at TOL.
   STL=()
   [ -n "${STL_DIR:-}" ] && STL=(-v "$STL_DIR:/stl:ro")
@@ -22,7 +29,7 @@ if [ "${1:-}" = prismatic ]; then
     ub) FLAGS="-O1 -g2 -fsanitize=undefined -sALLOW_MEMORY_GROWTH -sMAXIMUM_MEMORY=4GB"; OUT=prismatic-ubsan ;;
     heap) FLAGS="-O1 -g2 -sSAFE_HEAP=1 -sASSERTIONS=2 -DEXTRUDO_FACADE_CHECKS -sALLOW_MEMORY_GROWTH -sMAXIMUM_MEMORY=4GB"; OUT=prismatic-heap ;;
   esac
-  docker run --rm --user 0 -e FACES="${FACES:-}" -e PIECES="${PIECES:-}" -e TIMES="${TIMES:-}" -e SEGMENT="${SEGMENT:-}" -e BUDGET="${BUDGET:-}" -e HYBRID_BUDGET="${HYBRID_BUDGET:-}" -e GAPS="${GAPS:-}" -e UNFIT="${UNFIT:-}" -e FILE="${FILE:-}" -e TOL="${TOL:-}" -e FACETED_DEBUG="${FACETED_DEBUG:-}" -e Q20="${Q20:-}" -e Q20OFF="${Q20OFF:-}" -e Q20FACES="${Q20FACES:-}" -e Q21="${Q21:-}" -e Q22A="${Q22A:-}" -e Q22B="${Q22B:-}" -e Q22OLD="${Q22OLD:-}" -e Q23="${Q23:-}" \
+  docker run --rm --user 0 -e FACES="${FACES:-}" -e PIECES="${PIECES:-}" -e TIMES="${TIMES:-}" -e SEGMENT="${SEGMENT:-}" -e BUDGET="${BUDGET:-}" -e HYBRID_BUDGET="${HYBRID_BUDGET:-}" -e GAPS="${GAPS:-}" -e UNFIT="${UNFIT:-}" -e FILE="${FILE:-}" -e TOL="${TOL:-}" -e FACETED_DEBUG="${FACETED_DEBUG:-}" -e Q20="${Q20:-}" -e Q20OFF="${Q20OFF:-}" -e Q20FACES="${Q20FACES:-}" -e Q21="${Q21:-}" -e Q22A="${Q22A:-}" -e Q22B="${Q22B:-}" -e Q22OLD="${Q22OLD:-}" -e Q23="${Q23:-}" -e Q24="${Q24:-}" -e Q24SPINDLE="${Q24SPINDLE:-}" -e Q24REV="${Q24REV:-}" \
     -e NOBUILD="${NOBUILD:-}" -e B="$B" -e FLAGS="$FLAGS" -e OUT="$OUT" -v "$S:/w" -v "$R/fixtures:/repo/fixtures:ro" "${STL[@]}" -w /w --entrypoint sh "$IMAGE" -c '
     set -e
     LINK=$(ls /opencascade.js/build/occt-libraries/*.a | tr "\n" " ")

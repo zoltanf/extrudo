@@ -1168,6 +1168,11 @@ end to end, faster than in established desktop CAD.
   the check (that file, and hex-key-cap-3mm.stl's 303 duplicates, are worded
   in the warning or refusal); welding and hole filling were measured and
   left out — they fix none of the others.
+  *slice D9 (2026-10-31b):* a torus with R ≤ r is fitted again where a split
+  would otherwise leave its whole component as facets, and built as a surface
+  of revolution that STEP keeps: peg-perego-button at Auto 0.02 mm, 212 faces,
+  no facets (slice D8: 0.05 mm, 261 faces); the spike's round-trip passes stay
+  20 of 30 hybrids (ADR-0097's 2026-10-31b amendment).
 
 ## Phase 5 — Programmatic design (→ v0.6)
 

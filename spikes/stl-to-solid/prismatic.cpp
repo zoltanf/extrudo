@@ -3,6 +3,22 @@
 // pinned OCCT image; case r runs meshRegions (the region preview, slice 4).
 // run.sh copies the facade with its private members made
 // public into build/facade_public.cpp, which this file includes.
+#include <Geom_Circle.hxx>
+#include <Geom_SurfaceOfRevolution.hxx>
+#include <Geom_ToroidalSurface.hxx>
+#include <gp_Ax3.hxx>
+// Q24 (slice D9), wired in by run.sh's seds: Q24SPINDLE=1 lets a torus fit keep R <= r (the slice D8 gates off);
+// Q24REV=1 builds such a torus as a Geom_SurfaceOfRevolution of its meridian circle, at the torus's own parameters.
+static bool spikeSpindle = false, spikeRevolution = false;
+static Handle(Geom_Surface) spikeTorusSurface(const gp_Ax3& frame, double R, double r) {
+  if (!spikeRevolution || R > r) return new Geom_ToroidalSurface(frame, R, r);
+  // The meridian at u = 0: centre O + R X, C(v) = centre + r cos v X + r sin v Z (gp_Ax2's Y = N x X, so N = -Y).
+  const gp_Dir x = frame.XDirection(), z = frame.Direction();
+  const gp_Pnt centre = frame.Location().Translated(R * gp_Vec(x));
+  Handle(Geom_Circle) meridian = new Geom_Circle(gp_Ax2(centre, z.Crossed(x).Reversed(), x), r);
+  // Rotating by u maps X to cos u X + sin u Y: about Z for a direct frame, about -Z for an indirect one.
+  return new Geom_SurfaceOfRevolution(meridian, gp_Ax1(frame.Location(), frame.Direct() ? z : z.Reversed()));
+}
 #include "facade_public.cpp"  // in build/ (or BUILD), on the include path
 
 #include <BRepAlgoAPI_Cut.hxx>
@@ -1987,6 +2003,101 @@ static void q23Cones(const TopoDS_Shape& written, const TopoDS_Shape& readBack) 
  * kind, Q4 a ShapeFix_Shape pass at the written tolerances. Prints everything
  * when `detail`, and always returns the summary row.
  */
+/**
+ * Q24 (slice D9), with UNFIT: the segmentation again with the R > r gate off; each torus surface it then finds with
+ * R <= r (what slice D8's rule 2 refuses): triangles, area, R, r, axis, deviation, where its nodes sit against the
+ * axis and the poles, and the plane, cylinder, cone and sphere fits' deviations on the same nodes.
+ */
+static void q24Spindles(ExtrudoFacade& f, double tolerance) {
+  const bool was = spikeSpindle;
+  spikeSpindle = true;
+  ExtrudoFacade::MeshSegmentation seg;
+  const bool ok = f.segmentMesh(tolerance, seg);
+  if (ok) {
+    for (size_t i = 0; i < seg.surfaces.size(); ++i) {
+      const auto& s = seg.surfaces[i];
+      if (s.kind != 4 || s.majorRadius > s.radius) continue;
+      std::vector<int> nodes, triangles;
+      for (int r : s.regions) {
+        nodes.insert(nodes.end(), seg.regions[r].nodes.begin(), seg.regions[r].nodes.end());
+        triangles.insert(triangles.end(), seg.regions[r].triangles.begin(), seg.regions[r].triangles.end());
+      }
+      std::sort(nodes.begin(), nodes.end());
+      nodes.erase(std::unique(nodes.begin(), nodes.end()), nodes.end());
+      const gp_XYZ a = s.direction.XYZ();
+      double rhoMin = 1e300, rhoMax = 0, hMin = 1e300, hMax = -1e300, dev = 0;
+      for (int n : nodes) {
+        const gp_XYZ q = f.meshNode(n) - s.origin.XYZ();
+        const double h = q.Dot(a), rho = (q - h * a).Modulus();
+        rhoMin = std::min(rhoMin, rho), rhoMax = std::max(rhoMax, rho), hMin = std::min(hMin, h), hMax = std::max(hMax, h);
+        dev = std::max(dev, ExtrudoFacade::distanceToSurface(s, f.meshNode(n)));
+      }
+      gp_XYZ outward(0, 0, 0);
+      for (int t : triangles) outward += seg.areas[t] * seg.normals[t];
+      if (outward.Modulus() < 1e-300) outward = gp_XYZ(0, 0, 1);
+      const ExtrudoFacade::MeshFit fits[4] = {f.fitMeshPlane(nodes, outward), f.fitMeshCylinder(nodes, triangles, seg.normals, seg.areas),
+                                              f.fitMeshCone(nodes, triangles, seg.normals, seg.areas), f.fitMeshSphere(nodes)};
+      std::cout << std::setprecision(5) << "   q24 spindle surface " << i << ": " << s.regions.size() << " regions, " << triangles.size()
+                << " triangles, " << nodes.size() << " nodes, area " << s.area << " (" << 100 * s.area / seg.meshArea << " %), R "
+                << s.majorRadius << " r " << s.radius << ", dev " << dev << ", axis (" << a.X() << "," << a.Y() << "," << a.Z()
+                << ") origin (" << s.origin.X() << "," << s.origin.Y() << "," << s.origin.Z() << "), nodes rho " << rhoMin << ".."
+                << rhoMax << " h " << hMin << ".." << hMax << ", poles at h +-"
+                << std::sqrt(std::max(0.0, s.radius * s.radius - s.majorRadius * s.majorRadius))
+                << (rhoMin < s.majorRadius ? ", reaches inside R" : ", outside R only") << "\n     fits pl/cy/co/sp:";
+      for (const auto& fit : fits) {
+        if (fit.ok) std::cout << " " << fit.deviation;
+        else std::cout << " -";
+      }
+      std::cout << " (sp r " << fits[3].radius << ", cy r " << fits[1].radius << ")" << std::setprecision(6) << std::endl;
+    }
+  }
+  spikeSpindle = was;
+}
+
+/**
+ * Q24 (slice D9): the spindle tori (R <= r) and surfaces of revolution, written and read back: per face its surface,
+ * area, BRepCheck's statuses on the face alone and what ShapeFix_Face makes of it.
+ */
+static void q24Faces(const TopoDS_Shape& written, const TopoDS_Shape& readBack) {
+  auto describe = [](const char* side, const TopoDS_Face& face) {
+    const BRepAdaptor_Surface surface(face);
+    const GeomAbs_SurfaceType type = surface.GetType();
+    std::ostringstream what;
+    if (type == GeomAbs_Torus) {
+      const gp_Torus t = surface.Torus();
+      if (t.MajorRadius() > t.MinorRadius()) return;
+      what << "torus R " << t.MajorRadius() << " r " << t.MinorRadius();
+    } else if (type == GeomAbs_SurfaceOfRevolution) {
+      Handle(Adaptor3d_Curve) c = surface.BasisCurve();
+      what << "revolution of " << (c->GetType() == GeomAbs_Circle ? "a circle r " + std::to_string(c->Circle().Radius()) : "a curve");
+    } else {
+      return;
+    }
+    GProp_GProps props;
+    BRepGProp::SurfaceProperties(face, props);
+    std::cout << "   q24 " << side << " face: " << what.str() << ", u " << surface.FirstUParameter() << ".." << surface.LastUParameter()
+              << ", v " << surface.FirstVParameter() << ".." << surface.LastVParameter() << ", area " << props.Mass() << ", "
+              << (BRepCheck_Analyzer(face).IsValid() ? "valid" : "invalid");
+    for (const auto& [key, n] : bRepCheckCounts(face)) std::cout << "; " << key << " x" << n;
+    double uMin, uMax, vMin, vMax;
+    BRepTools::UVBounds(face, uMin, uMax, vMin, vMax);
+    std::cout << "; uv bounds " << uMin << ".." << uMax << " x " << vMin << ".." << vMax;
+    try {
+      ShapeFix_Face fixer(face);
+      fixer.Perform();
+      const TopoDS_Shape fixed = fixer.Face();
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+      TopExp::MapShapes(fixed, TopAbs_FACE, faces);
+      std::cout << "; ShapeFix_Face: " << faces.Extent() << " face(s), " << (BRepCheck_Analyzer(fixed).IsValid() ? "valid" : "invalid");
+    } catch (...) {
+      std::cout << "; ShapeFix_Face threw";
+    }
+    std::cout << "\n";
+  };
+  for (TopExp_Explorer e(written, TopAbs_FACE); e.More(); e.Next()) describe("written", TopoDS::Face(e.Current()));
+  for (TopExp_Explorer e(readBack, TopAbs_FACE); e.More(); e.Next()) describe("read-back", TopoDS::Face(e.Current()));
+}
+
 static RoundTripRow stepOne(ExtrudoFacade& f, const std::string& path, double tolerance, bool detail) {
   RoundTripRow row;
   row.file = path.size() > 5 ? path.substr(5) : path;
@@ -2428,6 +2539,7 @@ static RoundTripRow stepOne(ExtrudoFacade& f, const std::string& path, double to
   }
   if (detail && getenv("Q22B") && *getenv("Q22B")) q22Faces(f, written, readBack, text);
   if (detail && getenv("Q23") && *getenv("Q23")) q23Cones(written, readBack);
+  if (detail && getenv("Q24") && *getenv("Q24")) q24Faces(written, readBack);
 
   // Q9: the BREP round trip (keeps tolerances and pcurves).
   {
@@ -2682,6 +2794,7 @@ static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
     std::memcpy(reinterpret_cast<void*>(f.meshTrianglesPtr()), m.triangles.data(), m.triangles.size() * sizeof(uint32_t));
   };
   stage();
+  if (getenv("UNFIT") && *getenv("UNFIT")) q24Spindles(f, tolerance);
   if (getenv("UNFIT") && *getenv("UNFIT")) {
     // Every unfit surface: triangles, area, box, the kinds of its neighbours, each kind's fit deviation, the thinnest triangle.
     ExtrudoFacade::MeshSegmentation seg;
@@ -2924,6 +3037,9 @@ int main(int argc, char** argv) {
   // BUDGET=ms lowers the rebuild's budget (PRISMATIC_REBUILD_BUDGET_MS), to see it hit; HYBRID_BUDGET=ms the hybrid's.
   if (getenv("BUDGET") && *getenv("BUDGET")) f.prismaticBudgetMs_ = std::atof(getenv("BUDGET"));
   if (getenv("HYBRID_BUDGET") && *getenv("HYBRID_BUDGET")) f.hybridBudgetMs_ = std::atof(getenv("HYBRID_BUDGET"));
+  spikeSpindle = getenv("Q24SPINDLE") && *getenv("Q24SPINDLE");
+  spikeRevolution = getenv("Q24REV") && *getenv("Q24REV");
+  if (spikeSpindle || spikeRevolution) std::cout << "q24: spindle tori " << spikeSpindle << ", as revolutions " << spikeRevolution << "\n";
   const std::string only = argc > 1 ? argv[1] : "";
   const double envTol = getenv("TOL") && *getenv("TOL") ? std::atof(getenv("TOL")) : 0.01;
   if (only == "f") {
