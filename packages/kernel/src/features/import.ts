@@ -61,6 +61,7 @@ import {
   UNIT_FACTORS,
 } from '@extrudo/core';
 import {
+  type DroppedTriangles,
   read3mf,
   readObj,
   readStl,
@@ -317,8 +318,22 @@ function meshBodies(
   const pieces: { shape: ShapeHandle; center: Vec3; volume: number }[] = [];
   for (const mesh of meshes) {
     let whole: ShapeHandle;
+    // A split and a drop are one warning, the drop first (ADR-0066's
+    // 2026-10-31 amendment); a refused mesh words both in its error instead.
+    let dropNote: string | undefined;
+    let splitNote: string | undefined;
     try {
-      whole = scope.track(kernel.meshFrom(mesh, (edges) => ctx.warn(separatedEdges(name, edges))));
+      whole = scope.track(
+        kernel.meshFrom(
+          mesh,
+          (edges) => {
+            splitNote = separatedEdges(name, edges);
+          },
+          (dropped) => {
+            dropNote = `${name}: ${droppedNote(dropped)}.`;
+          },
+        ),
+      );
     } catch (error) {
       // What is wrong with the mesh is worth more than what went wrong
       // building it: the count of open edges is what a user can act on.
@@ -326,6 +341,9 @@ function meshBodies(
         throw new KernelError(notClosed(name, error));
       }
       throw error;
+    }
+    if (dropNote || splitNote) {
+      ctx.warn([dropNote, splitNote].filter(Boolean).join(' '));
     }
     // The turn: (x, y, z) → (x, −z, y), so a Y-up file stands up in Z.
     const turned = up === 'y' ? scope.track(kernel.transform(whole, UP_Y).shape) : whole;
@@ -640,6 +658,22 @@ function separatedEdges(name: string, edges: number): string {
     : `${name}: ${edges} edges where parts touch were separated.`;
 }
 
+/**
+ * The drop half of a mesh warning or refusal (ADR-0066's 2026-10-31
+ * amendment): "4 flat and 303 duplicate triangles were dropped". Singular
+ * when exactly one triangle was dropped in all.
+ */
+function droppedNote(dropped: DroppedTriangles): string {
+  const total = dropped.degenerate + dropped.duplicate;
+  const counts = [
+    dropped.degenerate > 0 ? `${dropped.degenerate} flat` : '',
+    dropped.duplicate > 0 ? `${dropped.duplicate} duplicate` : '',
+  ]
+    .filter(Boolean)
+    .join(' and ');
+  return `${counts} ${total === 1 ? 'triangle' : 'triangles'} ${total === 1 ? 'was' : 'were'} dropped`;
+}
+
 /** What a mesh isn't solid about, worded with the file's own name. */
 function notClosed(name: string, error: MeshError): string {
   const problem = error.problem;
@@ -658,7 +692,9 @@ function notClosed(name: string, error: MeshError): string {
   ]
     .filter(Boolean)
     .join(', ');
-  return `${name} isn't a closed solid (${what || error.message}): repair it in your slicer or a mesh tool and import it again.`;
+  const dropped = problem?.dropped;
+  const dropNote = dropped ? `; ${droppedNote(dropped)}` : '';
+  return `${name} isn't a closed solid (${what || error.message}${dropNote}): repair it in your slicer or a mesh tool and import it again.`;
 }
 
 function message(error: unknown): string {

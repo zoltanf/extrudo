@@ -28,6 +28,8 @@ export { type DxfCode, type DxfEntity, DxfError, type DxfReadOptions, readDxf } 
 export { num } from './format';
 export {
   checkManifold,
+  type DroppedTriangles,
+  dropBadTriangles,
   type ManifoldReport,
   type MeshObject,
   mergeMeshes,

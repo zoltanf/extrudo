@@ -1525,7 +1525,17 @@ mesh to the map and a shape to OCCT). `meshFrom(mesh)` splits surfaces that
 touch along an edge or at a vertex (`splitNonManifoldEdges`, its 2026-10-09
 amendment) and welds the corners
 (`Mesh.merge()`) and refuses a mesh that isn't closed with `checkManifold`'s
-counts on a `MeshError`; `mesh`, `exportMesh`, `measure`, `properties`,
+counts on a `MeshError`; per its 2026-10-31 amendment `meshFrom` first runs
+`dropBadTriangles` (`@extrudo/io`) and drops **flat** triangles (a repeated
+corner or an out-of-range node) and **duplicates** (an earlier triangle's
+three corners, either winding — the first in file order stays), nodes
+untouched, zero-area triangles with three distinct corners kept (dropping one
+can open a closed mesh). The new `onDrop` callback fires only when something was
+dropped, and the import warning joins a drop and a split into one sentence,
+drop first; a still-refused mesh carries the counts on `MeshProblem.dropped`
+and `notClosed` words them inside the parentheses. `Mesh.merge()` is skipped
+only when the mesh was split: the comparison is with the mesh that went into
+the split, so a mesh that only lost triangles is still welded. `mesh`, `exportMesh`, `measure`, `properties`,
 `describe`, `count`, `solids` and `transform` have a mesh branch, and **every
 other public method that takes a shape throws `MeshBodyError`** naming the
 operation for the user ("Shell needs a solid body: this body is a mesh
