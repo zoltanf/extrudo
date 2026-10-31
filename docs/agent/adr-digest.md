@@ -3864,3 +3864,31 @@ the file name is sanitised (`safeInputName`: `[A-Za-z0-9._-]`, no leading `-`/`.
 touches the disk, the parent `extrudo-cadmpeg/` and each job directory must be plain directories
 owned by the user; the converter's message is the last non-empty stderr line (capped at 300
 characters).
+
+ADR-0116 (the owner, 2026-11-01): **Live widgets and drawn figures in the docs** (P6-22;
+amends ADR-0080's "only raw HTML is `<video>`, no script" and ADR-0057's policy use). Files:
+`apps/site/src/docs.ts` (the `widget` block, `.figure.svg` inlining, heading ids),
+`apps/site/src/widgets/` (`index.ts` the fixed list; per widget `<name>-model.ts` pure, the
+renderer, `<name>.ts` `enhance`), `apps/site/src/docs-widgets.ts` (the one entry),
+`apps/site/src/docs.css` (the `sk-*` classes), `apps/web/src/shell/docsLinks.ts`,
+`apps/web/src/shell/docsAnchors.json`, `apps/desktop/src/main/docs.ts`. Rules: a page names
+a widget only with a fenced block ```` ```widget <name> ```` (body = caption); an unknown name
+fails the build; the build writes the starting state into the page (controls `disabled`,
+caption a `<figcaption>`), so a widget is a still picture without JavaScript; a page with a
+widget holds exactly one `<script type="module">`, the hashed `docs-widgets` asset, and a
+page without one holds none; never an inline script, a handler, a `style` attribute or
+`<style>`, a `javascript:` URL; widgets are scripted scenes, never the solver, WASM or an
+internal package; keyboard for every control (`role="slider"` handles, real checkboxes),
+`role="img"` + `aria-label` on the SVG, results in an `aria-live="polite"` line, nothing
+moves by itself under reduced motion. A relative image named `*.figure.svg` is inlined, not
+`<img>`, through an element/attribute allow-list (ADR §2; `fill`/`stroke` only `none` or
+`currentColor`, `href` only `#id`, ids prefixed with the file's stem) and coloured only by the
+`sk-*` classes, which widgets share; a new colour is a new class for both themes. Every `h2`/
+`h3` gets an id (lower case, non-`a-z0-9` runs → `-`, repeats `-2`). `DocsPage` has
+`{ guide, anchor? }` (`[a-z0-9-]+`); one remembered help target (tiles `{ tool }`, palette rows
+`{ guide: 'sketching', anchor }`), F1 falls back to the sketching page while a sketch is open,
+opening or closing a sketch clears it, **Help for This Tool** reads only a tool target; every
+anchor in `docsAnchors.json` must exist in the built page (site test); the desktop's
+`DOCS_PATH` accepts `/<guide>/` and `#<anchor>`. Tool pages stay generated: hand text between
+the `<!-- notes -->` markers (Step by step, Options, What it keeps, Messages; messages quoted
+from the app).

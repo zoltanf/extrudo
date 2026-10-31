@@ -1570,6 +1570,15 @@ end to end, faster than in established desktop CAD.
   draws the selection box; a click, a double-click, a long press and a tool's drag stay
   the pointer's. Acceptance: `pnpm check` (`viewport/navigation.test.ts`,
   `viewport/pointer.test.ts`, `shell/AppMenu.test.tsx`), `e2e/viewport.spec.ts`.
+- [ ] **P6-22 Sketching docs with live widgets and drawn figures** (owner, 2026-11-01;
+  FR-UX-04; ADR-0116). Pilot: `/docs/sketching/` and the Line, Dimension, Project, Trim and
+  Sketch Fillet pages, with four widgets (`dof-playground`, `palette-switches`,
+  `dimension-label`, `trim`), drawn `.figure.svg` figures, heading anchors, and F1 that
+  opens the sketching page (at the palette row's section) while a sketch is open. Then the
+  other 45 sketch tool pages, clips for the 24 without one, and the `snap-explorer` and
+  `profiles` widgets. Acceptance: `pnpm check` (`apps/site/src/docs.test.ts`, the widget
+  models' tests, `shell/docsLinks.test.ts`, `main/docs.test.ts`), the owner's review of the
+  pilot on a local build of the site.
 
 ## Phase 7 — Later (lowest priority, after everything else)
 
