@@ -1874,6 +1874,8 @@ function useNavigation(
     const onWheel = (e: WheelEvent) => {
       if (!inView(e) && !passing(e)) return;
       e.preventDefault();
+      // The 3D mouse's driver turns the cap's motion into wheel turns too; the cap is read itself.
+      if (spaceMouse.recentlyMoving()) return;
       const { view: current, aspect, preset, setView } = viewport.getState();
       const result = wheelAction(preset, e);
       if (result.action === 'zoom') setView(zoomAt(current, result.factor, ndcOf(e), aspect));

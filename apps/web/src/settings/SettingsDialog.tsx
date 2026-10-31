@@ -368,7 +368,7 @@ function SpaceMouseRows({ display }: { display: DisplayAccess }) {
   const [failed, setFailed] = useState(false);
   if (!spaceMouse.supported) {
     return (
-      <Row label="3D mouse" hint="Needs Chrome, Edge or the desktop app (WebHID).">
+      <Row label="3D mouse" hint="Needs Chrome, Edge or the desktop app.">
         <span className="text-sm text-muted">Not available in this browser</span>
       </Row>
     );
@@ -386,15 +386,21 @@ function SpaceMouseRows({ display }: { display: DisplayAccess }) {
             ? "Couldn't open it: another program may be using it."
             : devices.length > 0
               ? 'Push, pull, tilt and twist the cap to move the model. Left button: home, right: fit.'
-              : 'A 3Dconnexion SpaceMouse or SpaceNavigator. Connect it once; it reconnects by itself.'
+              : spaceMouse.connectable
+                ? 'A 3Dconnexion SpaceMouse or SpaceNavigator. Push the cap firmly once, or connect it here.'
+                : 'A 3Dconnexion SpaceMouse or SpaceNavigator. Push the cap firmly once, if this browser lists it.'
         }
       >
         {devices.length > 0 ? (
           <span className="text-sm" data-space-mouse="connected">
             {devices.join(', ')}
           </span>
-        ) : (
+        ) : spaceMouse.connectable ? (
           <Button onClick={connect}>Connect…</Button>
+        ) : (
+          <span className="text-sm text-muted" data-space-mouse="waiting">
+            Not seen yet
+          </span>
         )}
       </Row>
       <Row label="3D mouse speed" hint="Double-click the slider for 1×.">

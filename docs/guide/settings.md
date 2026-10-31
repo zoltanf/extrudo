@@ -31,12 +31,15 @@ either place shows in the other at once. A reload keeps them.
 ## 3D mouse
 
 A 3Dconnexion SpaceMouse or SpaceNavigator moves the view with your left hand while the right
-one keeps the mouse. Click **Connect…** under **View and navigation** once and pick it; it
-reconnects by itself after that. The model follows the cap: push it to pan, pull or push it
-towards you to zoom, tip it to tilt, twist it to turn. The left button goes home, the right one
-fits the model. **3D mouse speed** slows it down or speeds it up, from 0.25× to 4×;
-double-click the slider for 1×. It needs Chrome, Edge or the desktop app (Firefox and Safari can't talk to the
-device), and no driver.
+one keeps the mouse. Push the cap firmly once over the page and it is read; or click
+**Connect…** under **View and navigation** and pick it, which also reconnects it by itself after
+that. The model follows the cap: push it to pan, pull or push it towards you to zoom, tip it to
+tilt, twist it to turn. The left button goes home, the right one fits the model. **3D mouse
+speed** slows it down or speeds it up, from 0.25× to 4×; double-click the slider for 1×. It
+needs Chrome, Edge or the desktop app (Firefox and Safari can't talk to the device), and no
+driver. With the vendor's driver (3DxWare) installed, its own mouse-wheel zoom for browsers is
+ignored while the cap moves, so the view doesn't zoom in steps on top; the first push after
+opening the page may still zoom a little.
 
 ## Material densities
 
