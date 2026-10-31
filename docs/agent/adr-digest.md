@@ -2890,6 +2890,15 @@ Ctrl+Space opens the list on an empty word. The list is a Radix Popover (portall
 `aria-selected`, `onEscapeKeyDown` prevented, no auto focus); the field keeps the
 `textbox` role with `aria-autocomplete`, `aria-controls`, `aria-activedescendant`, and
 `data-keep-escape` while the list is open.
+**Amendment (2026-10-31):** functions and `pi` follow the parameters (`BUILTINS` from core's
+`FUNCTION_ARITIES`/`CONSTANTS`, prefix match only, no scope probe; a function inserts `name()`
+with the caret inside, `insertName`). A field passing `newParameter(name)` (only the sketch
+dimension editor: its value is `d.expr`) offers to create an unknown name that is the whole
+field (`newName`; `evaluate` fails `'unknown-name'` and `evaluate("name = value")` succeeds):
+a last option "+ New parameter …" (Enter when it is the only row) and a "+ Create …" button
+under the message, only while the list is closed (the list covers it; Ctrl/Cmd+Enter
+always works); both set the draft to `name = value` with the value
+selected. Keep `newParameter` off fields whose `evaluate`/`onCommit` don't take `name = value`.
 
 ADR-0097 (P4-13, issue #95) adds **Mesh to Solid**: feature `meshToSolid`
 (`packages/kernel/src/features/mesh-to-solid.ts`, core `meshToSolidFeature`)

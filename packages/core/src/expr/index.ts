@@ -8,6 +8,7 @@ export {
   type EvaluateResult,
   evaluateExpression,
   evaluateNode,
+  FUNCTION_ARITIES,
   FUNCTION_NAMES,
   isReservedName,
   type Quantity,
