@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { basis, homeView, type View } from './camera';
 import {
+  choosePad,
   createSpaceMouse,
   type Hid,
   IDLE,
+  type Pad,
+  padKind,
+  padName,
+  readPad,
   readReport,
   type SpaceInput,
   spaceMotion,
+  WHEEL_QUIET_MS,
 } from './spaceMouse';
 
 const report = (...values: number[]) => {
@@ -64,6 +70,58 @@ describe('readReport (ADR-0114)', () => {
     const data = new DataView(new Uint8Array([0b10, 0]).buffer);
     expect(readReport(IDLE, 3, data).buttons).toBe(2);
     expect(readReport(IDLE, 23, report(1, 2, 3))).toBe(IDLE);
+  });
+});
+
+const pad = (id: string, axes: number[], pressed: number[] = [], connected = true): Pad => ({
+  id,
+  connected,
+  axes,
+  buttons: pressed.map((p) => ({ pressed: p === 1 })),
+});
+
+describe('gamepads (ADR-0114 amendment): the 3D mouse the browser lists', () => {
+  it('knows 3D mice by the ids Chromium browsers and Firefox give them', () => {
+    expect(padKind('SpaceMouse Compact (Vendor: 256f Product: c635)')).toBe('device');
+    expect(padKind('SpaceNavigator (STANDARD GAMEPAD Vendor: 046d Product: c626)')).toBe('device');
+    expect(padKind('46d-c62b-SpaceMouse Pro')).toBe('device');
+    expect(padKind('Unknown Gamepad (Vendor: beef Product: 046d)')).toBe('joystick');
+    expect(padKind('beef-046d-Unknown Gamepad')).toBe('joystick');
+    for (const id of [
+      'Logitech Dual Action (STANDARD GAMEPAD Vendor: 046d Product: c216)',
+      '046d-c21d-Logitech Gamepad F310',
+      'Xbox 360 Controller (XInput STANDARD GAMEPAD)',
+      'beef-046e-Unknown Gamepad',
+      'SpaceMouse Pro',
+      '',
+    ])
+      expect(padKind(id), id).toBeUndefined();
+  });
+
+  it('names the device without the ids', () => {
+    expect(padName('SpaceMouse Compact (Vendor: 256f Product: c635)')).toBe('SpaceMouse Compact');
+    expect(padName('SpaceNavigator (STANDARD GAMEPAD Vendor: 046d Product: c626)')).toBe(
+      'SpaceNavigator',
+    );
+    expect(padName('256f-c635-SpaceMouse Compact')).toBe('SpaceMouse Compact');
+    expect(padName('Vendor: 256f Product: c635')).toBe('3D mouse');
+  });
+
+  it('reads the six axes like the HID reports, and the buttons in order', () => {
+    const input = readPad(pad('x', [1, -1, 0.5, 0, 0, Number.NaN], [0, 1]));
+    expect(input?.t).toEqual([1, -1, readReport(IDLE, 1, report(0, 0, 175)).t[2]]);
+    expect(input?.r).toEqual([0, 0, 0]);
+    expect(input?.buttons).toBe(2);
+    expect(readPad(pad('x', [1, 1, 1, 1, 1]))).toBeUndefined(); // a joystick with fewer axes
+  });
+
+  it('takes the device before the virtual joystick, and only connected ones', () => {
+    const device = pad('SpaceMouse Compact (Vendor: 256f Product: c635)', [0, 0, 0, 0, 0, 0]);
+    const joystick = pad('beef-046d-Unknown Gamepad', [0, 0, 0, 0, 0, 0]);
+    const other = pad('046d-c21d-Logitech Gamepad F310', [0, 0, 0, 0, 0, 0]);
+    expect(choosePad([null, joystick, other, device])).toBe(device);
+    expect(choosePad([other, joystick])).toBe(joystick);
+    expect(choosePad([other, { ...device, connected: false }])).toBeUndefined();
   });
 });
 
@@ -143,7 +201,7 @@ describe('createSpaceMouse', () => {
   it('opens allowed devices, moves the sink once per frame while held, and presses buttons', async () => {
     const device = new FakeDevice('SpaceMouse Compact');
     const frames: ((now: number) => void)[] = [];
-    const mouse = createSpaceMouse(new FakeHid([device]), (cb) => frames.push(cb));
+    const mouse = createSpaceMouse(new FakeHid([device]), { frame: (cb) => frames.push(cb) });
     const moves: number[] = [];
     const presses: number[] = [];
     mouse.attach({ move: (_input, dt) => moves.push(dt), press: (b) => presses.push(b) });
@@ -170,7 +228,7 @@ describe('createSpaceMouse', () => {
   it('connects a device the user picks and forgets it when unplugged', async () => {
     const device = new FakeDevice('SpaceNavigator');
     const hid = new FakeHid([], [device]);
-    const mouse = createSpaceMouse(hid, () => 0);
+    const mouse = createSpaceMouse(hid, { frame: () => 0 });
     let changes = 0;
     mouse.subscribe(() => changes++);
     await mouse.connect();
@@ -180,7 +238,95 @@ describe('createSpaceMouse', () => {
     expect(changes).toBe(2);
   });
 
-  it('is unsupported without WebHID', () => {
+  it('is unsupported without WebHID or gamepads, and not connectable without WebHID', () => {
     expect(createSpaceMouse(undefined).supported).toBe(false);
+    const pads = createSpaceMouse(undefined, { gamepads: () => [] });
+    expect(pads.supported).toBe(true);
+    expect(pads.connectable).toBe(false);
+  });
+
+  it('reads the gamepad while no HID device is open: polled at rest, every frame while held', async () => {
+    let listed: (Pad | null)[] = [];
+    let poll: (() => void) | undefined;
+    const frames: ((now: number) => void)[] = [];
+    const mouse = createSpaceMouse(new FakeHid([]), {
+      frame: (cb) => frames.push(cb),
+      gamepads: () => listed,
+      interval: (cb) => {
+        poll = cb;
+      },
+    });
+    const moves: SpaceInput[] = [];
+    const presses: number[] = [];
+    mouse.attach({ move: (input) => moves.push(input), press: (b) => presses.push(b) });
+    let changes = 0;
+    mouse.subscribe(() => changes++);
+    expect(poll).toBeDefined();
+    poll?.();
+    expect(mouse.devices()).toEqual([]);
+    expect(frames).toHaveLength(0);
+
+    // The browser lists the device once it has been moved on the page.
+    listed = [null, pad('SpaceMouse Compact (Vendor: 256f Product: c635)', [1, 0, 0, 0, 0, 0])];
+    poll?.();
+    expect(mouse.devices()).toEqual(['SpaceMouse Compact']);
+    expect(changes).toBe(1);
+    expect(frames).toHaveLength(1);
+    frames.shift()?.(1000);
+    expect(moves.map((m) => m.t[0])).toEqual([1]);
+    // Each frame reads the pad afresh, without waiting for the poll.
+    listed = [null, pad('SpaceMouse Compact (Vendor: 256f Product: c635)', [0, 0, 0, 0, 0, -1])];
+    frames.shift()?.(1020);
+    expect(moves.map((m) => m.r[2])).toEqual([0, -1]);
+    listed = [
+      null,
+      pad('SpaceMouse Compact (Vendor: 256f Product: c635)', [0, 0, 0, 0, 0, 0], [1]),
+    ];
+    frames.shift()?.(1040);
+    expect(frames).toHaveLength(0);
+    expect(moves).toHaveLength(2);
+    expect(presses).toEqual([0]);
+    // Unplugged: forgotten.
+    listed = [];
+    poll?.();
+    expect(mouse.devices()).toEqual([]);
+  });
+
+  it('leaves the gamepad alone while a HID device is open', async () => {
+    const device = new FakeDevice('SpaceMouse Compact');
+    let poll: (() => void) | undefined;
+    const frames: ((now: number) => void)[] = [];
+    const mouse = createSpaceMouse(new FakeHid([device]), {
+      frame: (cb) => frames.push(cb),
+      gamepads: () => [pad('SpaceMouse Compact (Vendor: 256f Product: c635)', [1, 0, 0, 0, 0, 0])],
+      interval: (cb) => {
+        poll = cb;
+      },
+    });
+    mouse.attach({ move: () => {}, press: () => {} });
+    await flush();
+    poll?.();
+    expect(mouse.devices()).toEqual(['SpaceMouse Compact']); // the HID device, once
+    expect(frames).toHaveLength(0);
+  });
+
+  it('reports the cap as recently moving for a moment after it comes to rest (the wheel filter)', async () => {
+    const device = new FakeDevice('SpaceMouse Compact');
+    let clock = 1000;
+    const mouse = createSpaceMouse(new FakeHid([device]), { frame: () => 0, now: () => clock });
+    mouse.attach({ move: () => {}, press: () => {} });
+    await flush();
+    expect(mouse.recentlyMoving()).toBe(false);
+    device.send(1, report(0, 200, 0));
+    expect(mouse.recentlyMoving()).toBe(true);
+    clock += 10_000;
+    expect(mouse.recentlyMoving()).toBe(true); // still held
+    device.send(1, report(0, 0, 0));
+    expect(mouse.recentlyMoving()).toBe(true);
+    expect(mouse.recentlyMoving(clock + WHEEL_QUIET_MS)).toBe(true);
+    expect(mouse.recentlyMoving(clock + WHEEL_QUIET_MS + 1)).toBe(false);
+    // A cap resting inside the dead zone never counts.
+    device.send(1, report(5, 0, 0));
+    expect(mouse.recentlyMoving(clock + 1000)).toBe(false);
   });
 });
