@@ -203,6 +203,21 @@ STL_DIR=~/Development/extrudo-stl-solid-test TOL=auto BUILD=diag FILE=own/scrap-
   `Q25ONLY=1` skips the conversion. On kernel-staged meshes (`MESH_OUT`) the numbers match the sweep's.
   `python3 spikes/stl-to-solid/q25.py <log>` turns the log into the tables of ADR-0097's 2026-10-31c amendment (slice D10).
 
+- `Q26=1` (slice D11, case `f`/`F`): the hybrid's exploded regions. run.sh's facade copy gets spike-only hooks in
+  `rebuildHybrid` (`spikeQ26*`; with `Q26` unset they change nothing) that record every region face build (attempt,
+  pass, the collapsed chains it used; for an invalid face BRepCheck's statuses per sub-shape kind and
+  `ShapeAnalysis_Wire`'s checks), every attempt's outcome and a copy of the regions and the mesh. One `q26 region`
+  line per exploded region: the stage (`loops`, `build0`/`build1`, `culprit`, `nodeoff`), the boundary walked again
+  with each boundary edge paired to the next one round the same fan (`pinch` nodes two boundary edges leave, `pieces`,
+  `simple`, `signs` as `meshLoops` tests them, `seam`, `wrap`), the chart normal against the triangles (`normal`,
+  `folded`), the loop segments that cross in (u, v) (`selfx`, `crossx`; `across`/`touch`/`coincident`, `apart` in 3D,
+  `local`: within 8 along the loop; up to six `q26 cross` lines), the facets the region makes on its own, and faces
+  built from polylines on their own edges: from the fan-paired loops (`fan`) and from those split at every node a loop
+  passes twice (`split`). `p0`/`p1` are the facade's own pass 0 and pass 1 there. One `q26 attempt` line per build
+  attempt (estimate, valid, `cellsvalid`: the solids before unify, faces, facets, volume, nodes off) and a
+  `q26 outcome`. `Q26=2` prints only the attempts. `python3 spikes/stl-to-solid/q26.py <auto log> [fixed-step logs]`
+  turns the logs into the tables of `docs/plans/m2s-exploded-q1-2026-11-01.md`.
+
 Case `f` with `TIMES=1` also prints `calls:` (chainCurve and
 `Geom2dAPI_Interpolate` calls, the mesh check's nodes, BRepExtrema calls and
 face classifier time); with `FACES=1` the validity stage lists each region
