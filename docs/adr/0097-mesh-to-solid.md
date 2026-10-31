@@ -3094,3 +3094,121 @@ the nodes of chains that stay polylines lie on face boundaries).
 vented-funnel still builds twice: a plane between two cylinder halves joined by
 two near-half arcs with shared ends fails the first validity check (its plane
 is not a sliver).
+
+### Amendment, 2026-10-31b (slice D9): R ≤ r torus regions
+
+**The question.** Slice D8's rule 2 refused every torus fit with R ≤ r (a
+spindle torus, its tube through its axis): OCCT's STEP reader takes such a
+`Geom_ToroidalSurface` back as a surface of revolution. The price was
+peg-perego-button at Auto: step 0.02 → 0.05 mm, 212 → 261 faces.
+
+**Q1, what the refused regions are** (spike case `f`, `UNFIT=1`: the
+segmentation with the gate off; `q24 spindle surface` lines):
+
+| file, step | surfaces | regions / triangles each | area each (share) | R / r | dev | best other fit (dev) |
+|---|---|---|---|---|---|---|
+| peg-perego-button, 0.02 | 1 | 5 / 20 | 5.49 mm² (0.19 %) | 8.63 / 131.4 | 0.0114 | sphere r 520 (0.0336); cylinder 0.0529, plane 0.0573 |
+| drill-block, 0.01 | 2 | 8 / 16 | 1.13 mm² (0.01 %) | 0.495 / 0.531, 0.494 / 0.540 | 0.0012 | cylinder (0.0177), sphere (0.0179) |
+| gear-bearing-5, 0.1 | 8 | 12–13 / 15 | 27.1–29.5 mm² (0.17–0.19 %) | 5.31 / 19.56, 6.60 / 28.23, 8.45 / 27.14 | 0.076–0.085 | cylinder (0.178–0.182) |
+
+None fits a plane, cylinder, cone or sphere within its step (`bestFit` tries
+the torus last, so none could). None reaches the axis: the nodes' distance
+from it is 7.2–14.2 (peg), 0.51–0.87 (drill-block), 4.3–14.2 mm (gear), so
+no face holds one of the spindle's two poles (its only self-intersection, on
+the axis). peg-perego's patch sits at the top of its tube (h 131.3–131.4,
+the poles at ±131.14): a nearly flat strip the torus passes through.
+The price is not the patch: refused, it is a 5-region leftover of
+`splitComponent`'s seeded growing, and a leftover of 4 regions or more keeps
+the whole smooth component unfit (296 regions, 1,190 triangles, 38.7 % of
+the area). At 0.02 mm peg-perego gives 845 faces/694 facets with the gate,
+212/0 without it; Auto then moves on to 0.05 mm (261/48). drill-block and
+gear-bearing-5 have no spindle surface at their Auto steps' neighbours
+(drill-block at 0.02 mm, gear-bearing-5 at 0.02 mm refuses).
+
+**Q2, which representation reads back valid** (spike case `s`, `Q24=1`,
+slice D8's facade with its three R > r gates off through the harness's
+`spikeSpindle`, `Q24SPINDLE=1`; (b) with `spikeTorusSurface`, `Q24REV=1`):
+
+| variant | peg-perego 0.02 | drill-block 0.01 | gear-bearing-5 0.1 |
+|---|---|---|---|
+| (a) `Geom_ToroidalSurface`, R < r | valid, 212 faces, ratio 0.999999 | **invalid**, 388 faces | valid, 2,330 faces, 7 solids, ratio 0.998794 |
+| (b) `Geom_SurfaceOfRevolution` of the meridian circle | valid, 212, 0.999999 | valid, 388, ratio 1 | valid, 2,330, 0.998794 |
+| (c) split along the self-intersection | not built: no face reaches the axis | – | – |
+| (d) facets (slice D8) | valid, 845 faces | valid, 410 | valid, 2,386, 0.999607 |
+
+In (a) the reader rebuilds each spindle torus as a revolution of another
+curve (not a circle), with its own parameters: on drill-block both faces
+come back `UnorientableShape` with a `SelfIntersectingWire`, and
+`ShapeFix_Face` leaves them invalid; on peg-perego and gear-bearing-5 they
+happen to stay valid. Written, every face of (a) is valid on its own. In
+(b) the file carries a `SURFACE_OF_REVOLUTION` of a circle, which the reader
+takes back as itself (same radius, same parameters). The written faces'
+areas still move on the read (drill-block 0.148 → 0.360 mm², gear-bearing-5
+26.0 → 27.1 mm²), as in (a): those faces have edges up to 0.59 mm (drill-block)
+and 0.47 mm (gear-bearing-5) loose, pieces of tiny R ≈ r corner blends the
+hybrid builds badly (also the R > r ones beside them); the solids stay valid
+and the volume ratios as listed. (c) needs a face that holds a pole; none does.
+
+**What was tried and rejected.** (b) with the R > r gate gone everywhere (the
+fit and both surface snaps): spike `S` matched the run before slice D8
+file by file, face and facet counts alike (34,594 faces, 22,751 facets), so all
+of slice D8's face increase came from rule 2; but that also brought back its
+losses: vented-funnel 632 → 715 faces (0 → 86 facets) and spaghetti-measure
+148 → 165, over the sweep's 10 % bar, a spindle fit winning seeds that other
+primitives explain better.
+
+**The rules** (`extrudo_facade.cpp`: `fitMeshTorus`, `segmentMesh`'s
+`settle`, `MeshChart::surface`, `revolvedTorus`/`revolvedTorusOf`, the
+rebuild's mesh check and face counts, the exact rebuild):
+1. Rule 2 of slice D8 now reads: a torus fit needs R > r, except in
+   `splitComponent`'s retry. When a split leaves its component whole and
+   unfit, the component is split once more with spindle tori allowed
+   (`fitMeshTorus(…, spindle)`), and the retry is kept when it explains
+   anything. The surface snaps keep slice D8's R > r gates.
+2. The hybrid builds a torus with R ≤ r as the `Geom_SurfaceOfRevolution` of
+   its meridian circle (`revolvedTorus`: centre O + R X, the circle's X the
+   frame's X and its Y the axis, turned about the axis), at the torus's own
+   (u, v): charts, pcurves, `chainCurve` and the chain checks stay the
+   torus's. A torus with R > r is a `Geom_ToroidalSurface` as before.
+3. The mesh check and the face counts take such a face back as its torus
+   (`revolvedTorusOf`: a revolution of a circle whose Y is the axis).
+4. The exact rebuild refuses a spindle torus ("a torus whose tube reaches its
+   axis"; MakerVolume keeps to quadrics and tori), and the hybrid runs.
+
+**Measured** (spike `S`, TOL=auto, 41 files; D8 = `S-fix5`, slice D8's run):
+
+| | D8 | D9 |
+|---|---|---|
+| kernel-bar passes of 30 hybrids (of 41) | 20 (29) | 20 (29), none lost |
+| refusals | 2 | 2 |
+| faces | 35,291 | 34,469 |
+| facets | 23,489 | 22,613 |
+| conversion | 227.8 s | 223.3 s |
+| SurfaceOfRevolution faces on the read (invalid) | 0 | 7 (0) |
+| exact-ends misses (1e-5) | 0 of 150,893 edges | 0 of 147,296 |
+
+Files that changed (all fewer faces): peg-perego-button 0.05 → 0.02 mm, 261
+→ 212 faces, 48 → 0 facets, read-back valid (212 faces, volume ratio
+0.999999), 1.3 s instead of 11.0; drill-block 410 → 388 (2 spindle faces, its largest
+edge tolerance 0.225 → 0.589 mm);
+gear-bearing-5 2,386 → 2,326 (4 spindle faces, 9.5 → 12.7 s, largest edge tolerance
+0.181 → 0.665 mm); remove-before-flight-cover 466 → 438;
+whiteboard-tray-v5 1,965 → 1,302 (read back invalid in both).
+The kernel sweep (`TOL=auto`, 41 files, against `baseline-2026-10-31-auto.jsonl`,
+written to `baseline-2026-10-31b-auto.jsonl`) passes: prismatic converted 36
+and refused 5 in both; faces 27,740 → 27,581; round trips failing the bar 7
+in both (the same files); prismatic kernel time 249.7 → 242.9 s. Four files
+changed, all fewer faces and with the round trip passing: peg-perego-button
+0.05 → 0.02 mm, 261 → 212 faces, 48 → 0 facets, volume against the mesh
+1.00293 (D8 1.00317), STEP read-back 212 faces at 0.999997, 1.6 s;
+drill-block 410 → 388; remove-before-flight-cover 466 → 438; gear-bearing-5
+2,364 → 2,304. The fixture pins move back to the counts from before slice D8
+(drill-block at 0.01 mm 65 cylinders, 4 tori; track-straight at 0.05 mm and
+remove-before-flight-cover at 0.01 mm; at Auto peg-perego-button 0.02 mm,
+212 faces, 1,738 edges with 20 circles, drill-block 388,
+remove-before-flight-cover 438), none with a failing round trip.
+
+**Follow-ups.** drill-block's and gear-bearing-5's R ≈ r corner blends:
+the hybrid explodes part of each region ("invalid face") and builds the rest
+with edges up to 0.59 mm loose at a 0.01 mm step; the read-back moves those
+faces' areas. Not this slice's.

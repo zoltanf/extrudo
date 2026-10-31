@@ -431,3 +431,47 @@ face-centre snap are unaffected.
   (coplanar faces only, against the pick) and `apps/web/src/sketch/tools/host.test.ts`
   (a line started at a centre: the `center` record beside an outline, the
   coincident).
+
+## Amendment, 2026-10-31: the palette's Face outline switch acts on the open sketch
+
+The owner found the sketch palette's "Face outline" checkbox did nothing:
+it was the `viewport.autoProjectFace` preference, which only acts when a
+sketch is **created** on a face (§4), so inside an open sketch it could not
+change anything.
+
+### The switch
+
+The palette's switch (`aria-label` "Face outline") now shows and toggles
+**the open sketch's own face outline**: its projection of the face it sits on
+(`faceOutline(plane, data)` in `packages/core/src/sketch/projection.ts`, ref
+equal to the sketch's face, mode `project`; a face's `center` record is not
+it). On adds that projection (`addProjection`, one undo step; the host syncs
+the curves in as with the Project tool). Off removes it with its curves
+(`removeProjection`, a new command), and is **disabled while any constraint
+or dimension is on one of its curves or their points**; its tooltip counts
+them ("In use: 1 constraint refers to the outline. Delete it first."). The
+command refuses the same case, so nothing else can remove the user's
+constraints with it. A sketch on a plane has no face: the switch is disabled,
+with "This sketch is on a plane, not a face." It no longer depends on
+Auto-project. The preference for new sketches (§4) stays in Settings and the
+app menu, unchanged.
+
+### Rejected
+
+- **Removing the switch from the palette** (the preference only in Settings):
+  simplest, but the owner wanted the outline at hand while sketching.
+- **Off removes the outline and whatever uses it** (as deleting the curves
+  does): it would quietly undo the user's dimensions and constraints.
+- **Off removes only the unused curves**: the switch would read "off" while
+  outline curves are still there.
+- **One switch for both the open sketch and the preference**: one control
+  doing two things.
+
+### Results
+
+- Unit test: `packages/core/src/sketch/projection.test.ts` (the outline found
+  by face and mode, the counts, the refusal, removal with its curves).
+- E2E: `e2e/auto-project.spec.ts` (the switch adds the outline, a Coincident
+  locks it with the hint, undone it switches off and the curves go; the
+  preference test sets it from the app menu), `e2e/topbar.spec.ts` (disabled
+  on a plane sketch).

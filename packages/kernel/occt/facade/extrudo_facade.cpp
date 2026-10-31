@@ -86,6 +86,7 @@
 #include <Geom_ConicalSurface.hxx>
 #include <Geom_CylindricalSurface.hxx>
 #include <Geom_SphericalSurface.hxx>
+#include <Geom_SurfaceOfRevolution.hxx>
 #include <Geom_ToroidalSurface.hxx>
 #include <TopTools_ListOfShape.hxx>
 #include <Geom2d_Line.hxx>
@@ -7246,10 +7247,13 @@ private:
    * fit in its plane, the tube radius the nodes' mean distance from the
    * spine, and all seven parameters are refined by Gauss-Newton on the
    * nodes' distances. `origin` is the centre, `direction` the axis,
-   * `majorRadius` R and `radius` r.
+   * `majorRadius` R and `radius` r. R <= r (a spindle torus) only with
+   * `spindle` (slice D9: splitComponent's retry; the hybrid builds it as a
+   * surface of revolution).
    */
   MeshFit fitMeshTorus(const std::vector<int>& nodes, const std::vector<int>& triangles,
-                       const std::vector<gp_XYZ>& normals, const std::vector<double>& areas, double tolerance) const {
+                       const std::vector<gp_XYZ>& normals, const std::vector<double>& areas, double tolerance,
+                       bool spindle = false) const {
     MeshFit fit;
     if (nodes.size() < 12 || triangles.size() < 6) return fit;
     // Moments of the facet centroids g and normals n, about their means, so
@@ -7434,8 +7438,8 @@ private:
       for (int k = 0; k < 7; ++k) size += std::fabs(scale * step[k]);
       if (size < 1e-12 * (1 + R + r)) break;
     }
-    // R > r (slice D8): a torus whose tube reaches its axis is no torus a STEP reader takes back.
-    if (!(R > 0) || !(r > 0) || !(R > r) || !std::isfinite(R) || !std::isfinite(r)) return fit;
+    // R > r unless `spindle` (slice D8): a toroidal surface whose tube reaches its axis is no torus a STEP reader takes back.
+    if (!(R > 0) || !(r > 0) || (!spindle && !(R > r)) || !std::isfinite(R) || !std::isfinite(r)) return fit;
     fit.deviation = 0;
     for (int n : nodes) fit.deviation = std::max(fit.deviation, std::fabs(torusDistance(o, a, R, r, meshNode(n))));
     // A deterministic axis: its largest component positive.
@@ -7778,7 +7782,9 @@ private:
         if (g.outward.Modulus() < 1e-300) g.outward = regions[members[0]].normal.XYZ();
         return g;
       };
-      // One kind's fit (0 plane, 1 cylinder, 2 cone, 3 sphere, 4 torus).
+      // One kind's fit (0 plane, 1 cylinder, 2 cone, 3 sphere, 4 torus); a
+      // spindle torus only while `spindle` is set (splitComponent's retry).
+      bool spindle = false;
       auto fitKind = [&](int kind, const Gathered& g) {
         switch (kind) {
           case 0: {
@@ -7824,7 +7830,7 @@ private:
           case 3:
             return fitMeshSphere(g.nodes);
           default:
-            return fitMeshTorus(g.nodes, g.triangles, normals, areas, tolerance);
+            return fitMeshTorus(g.nodes, g.triangles, normals, areas, tolerance, spindle);
         }
       };
       // The surface of a fit within the tolerance, with its chord error.
@@ -8129,7 +8135,19 @@ private:
             keep(std::move(s));
             return;
           }
-          for (MeshSurface& piece : splitComponent(s)) keep(std::move(piece));
+          std::vector<MeshSurface> pieces = splitComponent(s);
+          // A split that leaves the component whole and unfit is tried once
+          // more with spindle tori (slice D9): peg-perego-button's 296
+          // regions stay facets for a 5-region patch only a torus with
+          // R < r fits. Elsewhere a spindle fit wins seeds that other
+          // primitives explain better (vented-funnel, spaghetti-measure).
+          if (pieces.size() == 1 && pieces[0].kind < 0) {
+            spindle = true;
+            std::vector<MeshSurface> retry = splitComponent(s);
+            spindle = false;
+            if (retry.size() != 1 || retry[0].kind >= 0) pieces = std::move(retry);
+          }
+          for (MeshSurface& piece : pieces) keep(std::move(piece));
         };
         if (large.empty()) {
           settle(std::move(whole));
@@ -8308,6 +8326,38 @@ private:
   }
 
   /**
+   * A spindle torus (R <= r, slice D9) as the surface of revolution of its
+   * meridian circle, at the torus's own parameters: a STEP reader takes a
+   * toroidal surface with R <= r back as a revolution of another curve,
+   * whose wires then cross (ADR-0097's 2026-10-31b amendment). The meridian
+   * at u = 0 is centre O + R X, C(v) = centre + r cos v X + r sin v Z.
+   */
+  static Handle(Geom_Surface) revolvedTorus(const gp_Ax3& frame, double majorRadius, double radius) {
+    const gp_Dir x = frame.XDirection(), z = frame.Direction();
+    Handle(Geom_Circle) meridian = new Geom_Circle(
+        gp_Ax2(frame.Location().Translated(majorRadius * gp_Vec(x)), z.Crossed(x).Reversed(), x), radius);
+    // Turning by u takes X to cos u X + sin u Y: about Z for a direct frame, about -Z for an indirect one.
+    return new Geom_SurfaceOfRevolution(meridian, gp_Ax1(frame.Location(), frame.Direct() ? z : z.Reversed()));
+  }
+
+  /** revolvedTorus's torus back from a face's surface (a direct frame's), else false. */
+  static bool revolvedTorusOf(const BRepAdaptor_Surface& surface, gp_Torus& torus) {
+    if (surface.GetType() != GeomAbs_SurfaceOfRevolution) return false;
+    const Handle(Adaptor3d_Curve) meridian = surface.BasisCurve();
+    if (meridian->GetType() != GeomAbs_Circle) return false;
+    const gp_Circ circle = meridian->Circle();
+    const gp_Ax1 axis = surface.AxeOfRevolution();
+    const gp_Ax2& position = circle.Position();
+    if (position.YDirection().Dot(axis.Direction()) < 1 - 1e-9) return false;
+    const gp_Vec offset(axis.Location(), circle.Location());
+    const double majorRadius = offset.Dot(gp_Vec(position.XDirection()));
+    if (!(majorRadius > 0) || (offset - majorRadius * gp_Vec(position.XDirection())).Magnitude() > 1e-9 * (1 + majorRadius))
+      return false;
+    torus = gp_Torus(gp_Ax3(axis.Location(), axis.Direction(), position.XDirection()), majorRadius, circle.Radius());
+    return true;
+  }
+
+  /**
    * A surface's parameters for the hybrid rebuild (ADR-0097, slice D1): its
    * frame and numbers, and the centres its periodic parameters are taken
    * near (within half a turn), so that a region's pcurves never wrap. A
@@ -8394,7 +8444,8 @@ private:
         case 3:
           return new Geom_SphericalSurface(frame, radius);
         case 4:
-          return new Geom_ToroidalSurface(frame, majorRadius, radius);
+          return majorRadius > radius ? Handle(Geom_Surface)(new Geom_ToroidalSurface(frame, majorRadius, radius))
+                                      : revolvedTorus(frame, majorRadius, radius);
         default:
           return new Geom_Plane(frame);
       }
@@ -9763,6 +9814,8 @@ private:
     NCollection_List<TopoDS_Shape> faces;
     for (const MeshSurface& s : surfaces) {
       if (s.kind < 0) continue;
+      // A spindle torus is the hybrid's (its surface of revolution, slice D9); MakerVolume keeps to quadrics and tori.
+      if (s.kind == 4 && !(s.majorRadius > s.radius)) return refuse("a torus whose tube reaches its axis");
       const double margin = margins[&s - surfaces.data()];
       const gp_Ax3 frame(s.origin, s.direction);
       const gp_XYZ ux = frame.XDirection().XYZ(), uy = frame.YDirection().XYZ(), uz = s.direction.XYZ();
@@ -11067,12 +11120,14 @@ private:
           ++facets;
           continue;
         }
+        gp_Torus spindle;
         const int kind = type == GeomAbs_Plane      ? 0
                          : type == GeomAbs_Cylinder ? 1
                          : type == GeomAbs_Cone     ? 2
                          : type == GeomAbs_Sphere   ? 3
-                         : type == GeomAbs_Torus    ? 4
-                                                    : -1;
+                         : type == GeomAbs_Torus || revolvedTorusOf(BRepAdaptor_Surface(TopoDS::Face(resultFaces(i)), false), spindle)
+                             ? 4
+                             : -1;
         if (kind >= 0) ++counts[kind];
       }
       hybridExploded_ = 0;
@@ -11106,12 +11161,14 @@ private:
                    : type == GeomAbs_Sphere   ? 3
                    : type == GeomAbs_Torus    ? 4
                                               : -1;
+          // A spindle torus's surface of revolution (slice D9) is checked as its torus, at the same parameters.
+          if (c.kind < 0 && revolvedTorusOf(surface, c.torus)) c.kind = 4;
           if (c.kind < 0) continue;
           if (c.kind == 0) c.plane = surface.Plane();
           if (c.kind == 1) c.cylinder = surface.Cylinder();
           if (c.kind == 2) c.cone = surface.Cone();
           if (c.kind == 3) c.sphere = surface.Sphere();
-          if (c.kind == 4) c.torus = surface.Torus();
+          if (type == GeomAbs_Torus) c.torus = surface.Torus();
           double u1 = 0, v1 = 0;
           BRepTools::UVBounds(c.face, c.u0, u1, c.v0, v1);
           BRepBndLib::Add(c.face, c.box);
