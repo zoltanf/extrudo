@@ -1105,8 +1105,9 @@ end to end, faster than in established desktop CAD.
   surfaces' curve; slice D4 (2026-10-23): the exact rebuild runs only on a
   segmentation with no unfit region at all (the hybrid keeps those as facets),
   its budget 30 s → 12 s, Faceted's cap 2,000 → 5,000, and the browser-vs-node
-  timings (Auto total over the 37 files 377.9 → 187.8 s). Next: fillet strips,
-  tangent lines where a plane meets a fillet's cylinder.
+  timings (Auto total over the 37 files 377.9 → 187.8 s). Both of those were
+  tried later: the tangent line in slice D5 (2026-10-25c, not kept) and fillet
+  strips as rolling-ball fillets in slice D10 (2026-10-31c, measured, not built).
   *Follow-up, 2026-10-24:* Offset Face on a converted body (the owner's gear:
   17,472 triangles, prismatic Auto → a valid 204-face hybrid body) fails at
   every distance. The failure probe answers in one build now
