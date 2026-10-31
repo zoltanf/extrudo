@@ -3445,6 +3445,18 @@ Q24 in `spikes/stl-to-solid/prismatic.cpp`. Rules:
   torus (`revolvedTorusOf`); the exact rebuild refuses it, the hybrid runs.
 Numbers in ADR-0097's 2026-10-31b amendment.
 
+**ADR-0097 slice D10 (2026-10-31c): rolling-ball fillets between two planes — measured, not built.**
+The proposal: fit an unfit or "< 4 regions" band that two planes border as the cylinder tangent to both, with a
+tolerance of its own. Probe `Q25` (`spikes/stl-to-solid/prismatic.cpp`, `q25.py`), run on the kernel's staged meshes,
+rejected it. At Auto, the bands that pass hold 158 triangles: 1.0 % of the 16,083 unfit triangles and 0.9 % of the
+17,790 facets, against a 5 % bar. No file's Auto step would move. The corpus's flat–flat fillets are already
+cylinders from region growing. The facets come instead from exploded regions (17,742 triangles, 7,609 of them planes
+refused as "invalid face") and from networks: blends along curved outlines and between curved faces, 97 % of the
+unfit area. Rules:
+- Don't add a separate flat–flat fillet pass without new evidence; `Q25` re-measures it.
+- The sweep baseline from here on is `baseline-2026-10-31c-auto.jsonl` (D9's, plus the import repair).
+Details in ADR-0097's 2026-10-31c amendment.
+
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
 facade `removeFaces` with `BRepAlgoAPI_Defeaturing`). Rules: **all or nothing** (any

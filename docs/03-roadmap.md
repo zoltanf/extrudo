@@ -1173,6 +1173,11 @@ end to end, faster than in established desktop CAD.
   of revolution that STEP keeps: peg-perego-button at Auto 0.02 mm, 212 faces,
   no facets (slice D8: 0.05 mm, 261 faces); the spike's round-trip passes stay
   20 of 30 hybrids (ADR-0097's 2026-10-31b amendment).
+  *slice D10 (2026-10-31c, measured, not built):* a rolling-ball cylinder for
+  fillet bands between two planes would take 0.9 % of the facets at Auto and
+  move no file's step, so it was not built. The facets come from exploded
+  regions and from blends along curved outlines and between curved faces
+  (ADR-0097's 2026-10-31c amendment).
 
 ## Phase 5 — Programmatic design (→ v0.6)
 

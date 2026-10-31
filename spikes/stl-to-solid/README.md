@@ -201,7 +201,7 @@ STL_DIR=~/Development/extrudo-stl-solid-test TOL=auto BUILD=diag FILE=own/scrap-
   same line (`cyl`, with its fitted radius as `fit r`): a check of the method. `q25 step` sums a step (the unfit share
   before and after taking the accepted bands out), `q25 exploded` the hybrid's exploded regions by kind and reason.
   `Q25ONLY=1` skips the conversion. On kernel-staged meshes (`MESH_OUT`) the numbers match the sweep's.
-  `python3 spikes/stl-to-solid/q25.py <log>` turns the log into the tables of `docs/plans/m2s-fillets-q1-2026-10-31.md`.
+  `python3 spikes/stl-to-solid/q25.py <log>` turns the log into the tables of ADR-0097's 2026-10-31c amendment (slice D10).
 
 Case `f` with `TIMES=1` also prints `calls:` (chainCurve and
 `Geom2dAPI_Interpolate` calls, the mesh check's nodes, BRepExtrema calls and
