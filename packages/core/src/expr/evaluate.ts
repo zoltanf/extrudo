@@ -131,6 +131,11 @@ const FUNCTIONS: Readonly<Record<string, { arity: number | 'many'; fn: Fn }>> = 
 
 export const FUNCTION_NAMES = Object.keys(FUNCTIONS);
 
+/** How many arguments each function takes, for name completion's hints. */
+export const FUNCTION_ARITIES: Readonly<Record<string, number | 'many'>> = Object.fromEntries(
+  Object.entries(FUNCTIONS).map(([name, { arity }]) => [name, arity]),
+);
+
 /** Names a parameter can't have: units, functions, constants. */
 export function isReservedName(name: string): boolean {
   return (
