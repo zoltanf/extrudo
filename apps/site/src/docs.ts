@@ -6,18 +6,25 @@
  * Nothing here runs in a browser: `docsPlugin` (`docs-plugin.ts`) calls these
  * functions while building, the Markdown becomes HTML, and the pages carry a
  * stylesheet, a sidebar and nothing else. No script, which is what the site's
- * stricter content policy asks for (ADR-0057).
+ * stricter content policy asks for (ADR-0057), except on a page with a live
+ * widget (ADR-0116): that one loads the one hashed widget module, never an
+ * inline script.
  *
  * The pages are read from the same Markdown the repository holds, so the
  * reference on extrudo.org is the reference in `docs/`, with its relative
  * links (`./sketch.md`, `../api/README.md`) rewritten to the pages they became.
  * Pictures and clips are collected as assets for the build to emit, and raw HTML
- * other than a `<video>` is refused, so a page can never hold a script.
+ * other than a `<video>` is refused, so a page can never hold a script. A fenced
+ * ```` ```widget <name> ```` block becomes that widget (`widgets/index.ts`), a
+ * `*.figure.svg` picture is checked and inlined (`figure-svg.ts`), and every `h2`
+ * and `h3` gets an id to link to (ADR-0116).
  */
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, posix } from 'node:path';
 import { Marked } from 'marked';
+import { figureSvg } from './figure-svg';
+import { WIDGETS } from './widgets/index';
 
 /** A folder of Markdown and where it is published. */
 export interface Collection {
@@ -75,6 +82,8 @@ export interface DocPage {
   html: string;
   /** The pictures and clips the page uses. */
   assets: DocAsset[];
+  /** The widgets the page holds, by name, once each (ADR-0116 §1). */
+  widgets: string[];
 }
 
 /** One group of the sidebar: a heading and links. */
@@ -139,8 +148,9 @@ export function docPages(root: string, options: DocOptions = {}): DocPage[] {
     const source = readFileSync(join(root, file), 'utf8');
     const { meta, body } = frontMatter(source);
     const assets = new Map<string, DocAsset>();
+    const widgets = new Set<string>();
     const text = fillTokens(body, options.tokens ?? {});
-    const html = renderer(root, file, assets).parse(rewriteLinks(text, file, collections));
+    const html = renderer(root, file, assets, widgets).parse(rewriteLinks(text, file, collections));
     const api = collection.section === 'API';
     const named = SECTIONS.find((name) => name === meta.section);
     return {
@@ -155,6 +165,7 @@ export function docPages(root: string, options: DocOptions = {}): DocPage[] {
       order: Number(meta.order ?? (Number(path.replace(/\D/g, '')) || 0)),
       html: focusable(html),
       assets: [...assets.values()],
+      widgets: [...widgets],
     } satisfies DocPage;
   });
   const seen = new Map<string, string>();
@@ -260,13 +271,18 @@ function byOrder(a: DocPage, b: DocPage): number {
  * One page as a whole document: the head (a canonical URL, the site's colour
  * scheme and its stylesheet), the sidebar, the page and a footer back to the
  * landing page. `stylesheet` is the built stylesheet's path and `description`
- * the site's one-liner, both handed in because the build knows them.
+ * the site's one-liner, both handed in because the build knows them; so is
+ * `widgetScript`, the widget module's path, which only a page with a widget loads.
  */
 export function pageHtml(
   page: DocPage,
   pages: readonly DocPage[],
-  options: { stylesheet: string; description: string; siteUrl: string },
+  options: { stylesheet: string; description: string; siteUrl: string; widgetScript: string },
 ): string {
+  const script =
+    page.widgets.length > 0
+      ? `\n    <script type="module" src="${html(options.widgetScript)}"></script>`
+      : '';
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -277,7 +293,7 @@ export function pageHtml(
     <meta name="description" content="${html(options.description)}" />
     <link rel="canonical" href="${html(page.url)}" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="stylesheet" href="${html(options.stylesheet)}" />
+    <link rel="stylesheet" href="${html(options.stylesheet)}" />${script}
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
@@ -453,11 +469,15 @@ function fillTokens(body: string, tokens: Record<string, string>): string {
   return body.replace(/\{\{([A-Z_]+)\}\}/g, (all, name: string) => tokens[name] ?? all);
 }
 
-/** A Markdown parser for one file: images and clips collected, raw HTML checked. */
+/**
+ * A Markdown parser for one file: images and clips collected, raw HTML checked,
+ * widgets and figures drawn, headings given ids.
+ */
 function renderer(
   root: string,
   file: string,
   assets: Map<string, DocAsset>,
+  widgets: Set<string>,
 ): { parse(source: string): string } {
   const where = posix.join('docs', file);
   /** The first problem found: marked rewrites what a renderer throws, so it is kept here. */
@@ -466,8 +486,8 @@ function renderer(
     throw new Error(`${where}: ${message}`);
   };
 
-  /** The asset a relative reference names; a failure names the page and the reference. */
-  const asset = (kind: 'image' | 'video', src: string, types: string[]): string => {
+  /** The file a relative reference names; a failure names the page and the reference. */
+  const localFile = (kind: 'image' | 'video', src: string, types: string[]): string => {
     let path: string;
     const demo = /^demo:([A-Za-z0-9_-]+)$/.exec(src);
     if (kind === 'video' && demo) {
@@ -485,6 +505,12 @@ function renderer(
       path = join(root, inside);
     }
     if (!existsSync(path) || !statSync(path).isFile()) fail(`missing ${kind} ${src}`);
+    return path;
+  };
+
+  /** The asset a relative reference names, as a placeholder for its hashed file. */
+  const asset = (kind: 'image' | 'video', src: string, types: string[]): string => {
+    const path = localFile(kind, src, types);
     const hash = createHash('sha256').update(readFileSync(path)).digest('hex').slice(0, 12);
     const name = basename(path);
     const id = `${hash}-${name}`;
@@ -519,11 +545,70 @@ function renderer(
     return `<video ${parts.join(' ')}>`;
   };
 
+  /**
+   * A drawn figure (ADR-0116 §2): the SVG checked and inlined, its ids prefixed with
+   * the file's stem, the alt text its name and the title its caption.
+   */
+  const figure = (src: string, alt: string, title: string | null | undefined): string => {
+    const path = localFile('image', src, ['.figure.svg']);
+    const stem = basename(path)
+      .replace(/\.figure\.svg$/i, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+    let svg: string;
+    try {
+      svg = figureSvg(readFileSync(path, 'utf8'), { prefix: stem || 'figure', label: alt });
+    } catch (error) {
+      return fail(`figure ${src}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const caption = title ? `<figcaption>${html(title)}</figcaption>` : '';
+    return `<figure class="sk-figure">${svg}${caption}</figure>\n`;
+  };
+  /** Set while a paragraph that is one figure alone renders it (a figure can't sit in a `<p>`). */
+  let alone = false;
+  /** The heading ids used so far on this page, for `-2`, `-3` (ADR-0116 §3). */
+  const headingIds = new Map<string, number>();
+
   const marked = new Marked({
     gfm: true,
     async: false,
     renderer: {
+      // A widget (ADR-0116 §1): ```widget <name>, its body the caption.
+      code({ lang, text }) {
+        const named = /^widget(?:\s+(\S*))?\s*$/.exec(lang ?? '');
+        if (!named) return false;
+        return guarded(() => {
+          const name = named[1] ?? '';
+          const widget = Object.hasOwn(WIDGETS, name) ? WIDGETS[name] : undefined;
+          if (!widget) return fail(`unknown widget "${name}"`);
+          widgets.add(name);
+          return widget.render(text);
+        });
+      },
+      paragraph({ tokens }) {
+        const only = tokens.length === 1 ? tokens[0] : undefined;
+        if (only?.type !== 'image' || !isFigure(only.href)) return false;
+        alone = true;
+        try {
+          return this.parser.parseInline(tokens);
+        } finally {
+          alone = false;
+        }
+      },
+      heading({ tokens, depth }) {
+        const inner = this.parser.parseInline(tokens);
+        if (depth !== 2 && depth !== 3) return false;
+        return `<h${depth} id="${headingId(inner)}">${inner}</h${depth}>\n`;
+      },
       image({ href, title, text }) {
+        if (isFigure(href)) {
+          return guarded(() =>
+            alone
+              ? figure(href, text, title)
+              : fail(`figure ${href} must be a paragraph of its own`),
+          );
+        }
         const src = guarded(() => asset('image', href, IMAGE_TYPES));
         return `<img src="${html(src)}" alt="${html(text)}"${title ? ` title="${html(title)}"` : ''} loading="lazy" />`;
       },
@@ -552,6 +637,20 @@ function renderer(
     }
     return href;
   };
+
+  /** A heading's id: its text lower-cased, other runs one `-`, a repeat numbered. */
+  function headingId(inner: string): string {
+    const base =
+      inner
+        .replace(/<[^>]*>/g, '')
+        .replace(/&[^;\s]+;/g, ' ')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') || 'section';
+    const seen = (headingIds.get(base) ?? 0) + 1;
+    headingIds.set(base, seen);
+    return seen === 1 ? base : `${base}-${seen}`;
+  }
 
   /** Runs one renderer step; a failure is kept and the page fails after the parse. */
   function guarded(step: () => string): string {
@@ -587,6 +686,11 @@ function renderer(
       return out;
     },
   };
+}
+
+/** Whether an image reference is a drawn figure, inlined rather than an `<img>` (ADR-0116 §2). */
+function isFigure(href: string): boolean {
+  return href.toLowerCase().endsWith('.figure.svg');
 }
 
 /** Text for an HTML attribute, a heading or a title: `&`, `<`, `>` and a quote. */

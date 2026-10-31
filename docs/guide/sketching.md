@@ -180,6 +180,10 @@ right. **Show profiles** in the palette turns the shading off. Select a profile 
 the selection panel shows its area. Curves that don't close, and construction geometry, make no
 profile.
 
+```widget palette-switches
+Flip a switch to see what it shows or hides.
+```
+
 ## Finish Sketch
 
 **Finish Sketch** (the green button in the palette) closes the sketch. Everything you did in it

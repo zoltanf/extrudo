@@ -3868,8 +3868,12 @@ characters).
 ADR-0116 (the owner, 2026-11-01): **Live widgets and drawn figures in the docs** (P6-22;
 amends ADR-0080's "only raw HTML is `<video>`, no script" and ADR-0057's policy use). Files:
 `apps/site/src/docs.ts` (the `widget` block, `.figure.svg` inlining, heading ids),
-`apps/site/src/widgets/` (`index.ts` the fixed list; per widget `<name>-model.ts` pure, the
-renderer, `<name>.ts` `enhance`), `apps/site/src/docs-widgets.ts` (the one entry),
+`apps/site/src/widgets/` (`index.ts` the fixed list, `enhance.ts` the scripts by the same
+names, `svg.ts`/`controls.ts` the shared markup; per widget `<name>-model.ts` pure, the
+renderer, `<name>.ts` `enhance`), `apps/site/src/docs-widgets.ts` (the one entry, emitted by
+`docs-plugin.ts` as a chunk only when a page has a widget), `apps/site/src/figure-svg.ts` (the
+strict parser and allow-list: XML declaration and comments dropped, the five XML entities,
+no DOCTYPE/CDATA/PI; a figure must be a paragraph of its own),
 `apps/site/src/docs.css` (the `sk-*` classes), `apps/web/src/shell/docsLinks.ts`,
 `apps/web/src/shell/docsAnchors.json`, `apps/desktop/src/main/docs.ts`. Rules: a page names
 a widget only with a fenced block ```` ```widget <name> ```` (body = caption); an unknown name
