@@ -746,11 +746,17 @@ A list on the left, the selected parameter on the right.
   move/copy, scale, parameters — the dialog, as on the SOLID tab) · CONSTRAINTS (row of constraint icons) · INSPECT ·
   EXPORT (the sketch or its profiles as SVG or DXF, P1-13) ·
   **FINISH SKETCH** (big green ✓).
-- **Sketch palette (right panel):** construction toggle, look at, sketch grid,
-  snap, slice (cuts the bodies away on the camera's side of the sketch plane
-  while the sketch is open), auto-project (and auto-project face outline),
-  show profiles, show points, show dimensions, show constraints, DOF counter
-  ("3 DOF left", "Fully constrained ✓", or "Over-constrained").
+- **Sketch palette (right panel):** the sketch's name with a Look at icon,
+  then one row per setting: an icon, a short caption and a switch at the
+  right. Construction (with its key) first; **Grid:** show and snap side by
+  side; **Show:** points, dimensions, constraints and profiles in two columns;
+  **View & project:** slice (cuts the bodies away on the camera's side of the
+  sketch plane while the sketch is open), auto-project, and face outline: the
+  open sketch's projection of the face it sits on, added when switched on and
+  removed when switched off; disabled on a plane sketch and while a constraint
+  or dimension uses the outline, with the tooltip saying which. Resting on a setting for a second opens a tooltip with
+  its full name and what it does. Then the DOF counter ("3 DOF left", "Fully
+  constrained ✓", or "Over-constrained") and Finish Sketch.
 - **Selecting and editing (no tool running):** hover pre-highlights; click
   and box select points and curves; dragging geometry moves it (or the whole
   selection) with a live solve, except that dragging a circle's rim resizes

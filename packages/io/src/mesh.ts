@@ -124,6 +124,69 @@ export function checkManifold(mesh: TriangleMesh): ManifoldReport {
   };
 }
 
+/** What `dropBadTriangles` removed. `mesh` is the input object when nothing was dropped. */
+export interface DroppedTriangles {
+  mesh: TriangleMesh;
+  /** Triangles that repeat a corner or name a node that doesn't exist. */
+  degenerate: number;
+  /** Triangles with the same three corners as an earlier one, either winding (the first stays). */
+  duplicate: number;
+}
+
+/**
+ * Removes the triangles no closed surface can use (ADR-0066's 2026-10-31
+ * amendment): ones that repeat a corner or name a node that doesn't exist
+ * (the same triangles `checkManifold` counts as bad), and ones that repeat an
+ * earlier triangle's three corners, either winding — exporters produce both,
+ * a slicer ignores them. The first triangle in file order stays; the nodes
+ * are left as they are (unused ones are harmless: `checkManifold` and
+ * manifold-3d ignore them, and `Mesh.merge()` welds what it needs). A
+ * zero-area triangle with three distinct corners is kept: dropping one could
+ * open a closed mesh.
+ */
+export function dropBadTriangles(mesh: TriangleMesh): DroppedTriangles {
+  const { positions, indices } = mesh;
+  const nodes = Math.floor(positions.length / 3);
+  const triangles = Math.floor(indices.length / 3);
+  const seen = new Set<string>();
+  const kept = new Uint8Array(triangles);
+  let degenerate = 0;
+  let duplicate = 0;
+  for (let t = 0; t < triangles; t++) {
+    const a = indices[3 * t] as number;
+    const b = indices[3 * t + 1] as number;
+    const c = indices[3 * t + 2] as number;
+    if (a === b || b === c || a === c || a >= nodes || b >= nodes || c >= nodes) {
+      degenerate++;
+      continue;
+    }
+    let lo = a;
+    let mid = b;
+    let hi = c;
+    if (lo > mid) [lo, mid] = [mid, lo];
+    if (mid > hi) [mid, hi] = [hi, mid];
+    if (lo > mid) [lo, mid] = [mid, lo];
+    // With `nodes` up to 10^6 a packed number key passes 2^53: key by string.
+    const key = `${lo},${mid},${hi}`;
+    if (seen.has(key)) {
+      duplicate++;
+      continue;
+    }
+    seen.add(key);
+    kept[t] = 1;
+  }
+  if (degenerate === 0 && duplicate === 0) return { mesh, degenerate: 0, duplicate: 0 };
+  const out = new Uint32Array((triangles - degenerate - duplicate) * 3);
+  let at = 0;
+  for (let t = 0; t < triangles; t++) {
+    if (!kept[t]) continue;
+    out[at++] = indices[3 * t] as number;
+    out[at++] = indices[3 * t + 1] as number;
+    out[at++] = indices[3 * t + 2] as number;
+  }
+  return { mesh: { positions, indices: out }, degenerate, duplicate };
+}
+
 /** What `splitNonManifoldEdges` did: the mesh, and how many edges it separated. */
 export interface NonManifoldSplit {
   /**

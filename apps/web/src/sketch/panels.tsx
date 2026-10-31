@@ -14,6 +14,7 @@ import {
   LENGTH,
   lineEnds,
   ORIGIN_PLANES,
+  type ProjectionId,
   radiusOf,
   readSketch,
   type SelectionItem,
@@ -31,11 +32,11 @@ import {
 } from '@extrudo/core';
 import { BUNDLED_FONTS } from '@extrudo/fonts';
 import type { DrawingUnit } from '@extrudo/io';
-import { Crosshair, Trash2 } from 'lucide-react';
+import { Crosshair, Grid3x3, Magnet, Trash2 } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { useKeysFor } from '../commands/keymapStore';
-import { Button, ConfirmDialog, ToolIcon, Tooltip } from '../design-system';
+import { Button, ConfirmDialog, type IconName, ToolIcon, Tooltip } from '../design-system';
 import { ExpressionInput } from '../parameters/ExpressionInput';
 import type { ViewportStore } from '../viewport/store';
 import { ADD_FONT_VALUE, addFontFile, FONT_HINT, type FontPicker } from './addFont';
@@ -65,11 +66,12 @@ import type { ToolHost } from './tools/host';
 /**
  * The column of floating panels on the right of the viewport, below the
  * ViewCube (UI spec §2, §4): the Create Sketch prompt or the sketch palette.
- * It scrolls when they don't fit.
+ * It scrolls with the wheel when they don't fit; no scrollbar, since the
+ * column lets the pointer through to the view and a bar couldn't be grabbed.
  */
 export function PanelColumn({ children }: { children: ReactNode }) {
   return (
-    <div className="pointer-events-none absolute top-[148px] right-3 bottom-3 z-10 flex w-60 flex-col gap-2 overflow-y-auto">
+    <div className="pointer-events-none absolute top-[148px] right-3 bottom-3 z-10 flex w-60 flex-col gap-2 overflow-y-auto [scrollbar-width:none]">
       {children}
     </div>
   );
@@ -88,9 +90,9 @@ function FloatingPanel({ label, children }: { label: string; children: ReactNode
   );
 }
 
-function PanelTitle({ children }: { children: ReactNode }) {
+function PanelTitle({ className = '', children }: { className?: string; children: ReactNode }) {
   return (
-    <h2 className="flex items-center gap-2 text-base font-semibold">
+    <h2 className={`flex items-center gap-2 text-base font-semibold ${className}`}>
       <ToolIcon name="create-sketch" category="sketch" size={18} />
       {children}
     </h2>
@@ -227,12 +229,24 @@ export interface SketchPaletteProps {
   viewport: ViewportStore;
   /** The drawing-tool host, which holds the construction toggle. */
   host: ToolHost | undefined;
+  /** The sketch's face outline (`faceOutline`); `undefined` for a sketch on a plane. */
+  outline: { id?: ProjectionId; constraints: number; dimensions: number } | undefined;
+  /** Adds (`true`) or removes the face outline. */
+  onOutline(on: boolean): void;
   onLookAt(): void;
   onFinish(): void;
 }
 
 /** The sketch palette (UI spec §4): sketch options, the DOF counter and Finish Sketch. */
-export function SketchPalette({ name, viewport, host, onLookAt, onFinish }: SketchPaletteProps) {
+export function SketchPalette({
+  name,
+  viewport,
+  host,
+  outline,
+  onOutline,
+  onLookAt,
+  onFinish,
+}: SketchPaletteProps) {
   const grid = useStore(viewport, (s) => s.grid);
   const points = useStore(viewport, (s) => s.sketchPoints);
   const constraints = useStore(viewport, (s) => s.sketchConstraints);
@@ -240,100 +254,120 @@ export function SketchPalette({ name, viewport, host, onLookAt, onFinish }: Sket
   const profiles = useStore(viewport, (s) => s.sketchProfiles);
   const snap = useStore(viewport, (s) => s.snap);
   const autoProject = useStore(viewport, (s) => s.autoProject);
-  const autoProjectFace = useStore(viewport, (s) => s.autoProjectFace);
   const slice = useStore(viewport, (s) => s.sketchSlice);
   return (
     <FloatingPanel label="Sketch palette">
-      <PanelTitle>
-        <span className="min-w-0 truncate">{name}</span>
-      </PanelTitle>
-      <ul className="flex flex-col text-base">
-        <li>
-          <PaletteButton icon={<Crosshair size={14} />} onClick={onLookAt}>
-            Look at
-          </PaletteButton>
-        </li>
-        {host && (
-          <li>
-            <ConstructionToggle host={host} />
-          </li>
-        )}
-        <li>
-          <PaletteToggle checked={grid} onChange={(v) => viewport.getState().setGrid(v)}>
-            Sketch grid
-          </PaletteToggle>
-        </li>
-        <li>
-          <PaletteToggle checked={points} onChange={(v) => viewport.getState().setSketchPoints(v)}>
-            Show points
-          </PaletteToggle>
-        </li>
-        <li>
-          <PaletteToggle
-            checked={constraints}
-            onChange={(v) => viewport.getState().setSketchConstraints(v)}
+      <div className="flex items-center gap-1">
+        <PanelTitle className="min-w-0 flex-1">
+          <span className="min-w-0 truncate">{name}</span>
+        </PanelTitle>
+        <Tooltip
+          label="Look at"
+          hint="Turn the view square to the sketch plane."
+          side="left"
+          delay={HINT_DELAY}
+        >
+          <button
+            type="button"
+            aria-label="Look at"
+            onClick={onLookAt}
+            className="grid size-6 shrink-0 place-items-center rounded-input text-muted hover:bg-accent-soft hover:text-ink"
           >
-            Show constraints
-          </PaletteToggle>
-        </li>
-        <li>
-          <PaletteToggle
+            <Crosshair size={14} />
+          </button>
+        </Tooltip>
+      </div>
+      <div className="flex flex-col">
+        {host && <ConstructionSwitch host={host} />}
+        <PaletteHeading>Grid</PaletteHeading>
+        <div className={TWO_COLUMNS}>
+          <PaletteSwitch
+            icon={<Grid3x3 size={16} strokeWidth={1.75} />}
+            checked={grid}
+            onChange={(v) => viewport.getState().setGrid(v)}
+            label="Sketch grid"
+            hint="Show the grid on the sketch plane."
+          >
+            Show
+          </PaletteSwitch>
+          <PaletteSwitch
+            icon={<Magnet size={16} strokeWidth={1.75} />}
+            checked={snap}
+            onChange={(v) => viewport.getState().setSnap(v)}
+            label="Snap to grid"
+            hint="Points land on the grid while you draw."
+          >
+            Snap
+          </PaletteSwitch>
+        </div>
+        <PaletteHeading>Show</PaletteHeading>
+        <div className={TWO_COLUMNS}>
+          <PaletteSwitch
+            icon={<PaletteIcon name="point" />}
+            checked={points}
+            onChange={(v) => viewport.getState().setSketchPoints(v)}
+            label="Show points"
+            hint="Show the points at the ends and centres of curves."
+          >
+            Points
+          </PaletteSwitch>
+          <PaletteSwitch
+            icon={<PaletteIcon name="sketch-dimension" />}
             checked={dimensions}
             onChange={(v) => viewport.getState().setSketchDimensions(v)}
+            label="Show dimensions"
+            hint="Show the sketch's dimensions."
           >
-            Show dimensions
-          </PaletteToggle>
-        </li>
-        <li>
-          <PaletteToggle
+            Dims
+          </PaletteSwitch>
+          <PaletteSwitch
+            icon={<PaletteIcon name="perpendicular" />}
+            checked={constraints}
+            onChange={(v) => viewport.getState().setSketchConstraints(v)}
+            label="Show constraints"
+            hint="Show the constraint glyphs (parallel, tangent, …) beside the geometry."
+          >
+            Constr.
+          </PaletteSwitch>
+          <PaletteSwitch
+            icon={<PaletteIcon name="polygon" />}
             checked={profiles}
             onChange={(v) => viewport.getState().setSketchProfiles(v)}
+            label="Show profiles"
+            hint="Shade the closed regions a feature such as Extrude can use, and let them be picked."
           >
-            Show profiles
-          </PaletteToggle>
-        </li>
-        <li>
-          <PaletteToggle checked={snap} onChange={(v) => viewport.getState().setSnap(v)}>
-            Snap to grid
-          </PaletteToggle>
-        </li>
-        <li>
-          <PaletteToggle
-            checked={slice}
-            label="Slice"
-            onChange={(v) => viewport.getState().setSketchSlice(v)}
-          >
-            Slice
-          </PaletteToggle>
-        </li>
-        <li>
-          <PaletteToggle
-            checked={autoProject}
-            onChange={(v) => viewport.getState().setAutoProject(v)}
-          >
-            Auto-project
-          </PaletteToggle>
-        </li>
-        <li>
-          <Tooltip
-            label="Auto-project face outline"
-            hint="Project a flat face's outline when a sketch starts on it."
-            side="left"
-          >
-            <label className="flex h-7 items-center gap-2 px-1 text-muted">
-              <input
-                type="checkbox"
-                disabled={!autoProject}
-                checked={autoProjectFace}
-                onChange={(e) => viewport.getState().setAutoProjectFace(e.target.checked)}
-                className="accent-(--x-accent)"
-                aria-label="Auto-project face outline"
-              />
-              Face outline
-            </label>
-          </Tooltip>
-        </li>
-      </ul>
+            Profiles
+          </PaletteSwitch>
+        </div>
+        <PaletteHeading>View &amp; project</PaletteHeading>
+        <PaletteSwitch
+          icon={<PaletteIcon name="section" />}
+          checked={slice}
+          onChange={(v) => viewport.getState().setSketchSlice(v)}
+          label="Slice"
+          hint="Cut the bodies away on your side of the sketch plane, to see into the model."
+        >
+          Slice
+        </PaletteSwitch>
+        <PaletteSwitch
+          icon={<PaletteIcon name="project" />}
+          checked={autoProject}
+          onChange={(v) => viewport.getState().setAutoProject(v)}
+          label="Auto-project"
+          hint="A body edge or vertex you snap to while drawing comes into the sketch, linked to the model."
+        >
+          Auto-project
+        </PaletteSwitch>
+        <PaletteSwitch
+          checked={outline?.id !== undefined}
+          disabled={!outline || outline.constraints + outline.dimensions > 0}
+          onChange={onOutline}
+          label="Face outline"
+          hint={outlineHint(outline)}
+        >
+          Face outline
+        </PaletteSwitch>
+      </div>
       <DofCounter host={host} />
       <Button
         className="border-success/60 font-semibold text-ink hover:bg-success/10"
@@ -1358,43 +1392,114 @@ export function OverConstrainedDialog({ host }: OverConstrainedDialogProps) {
   );
 }
 
-function PaletteButton({
-  icon,
-  onClick,
-  children,
-}: {
-  icon: ReactNode;
-  onClick(): void;
-  children: ReactNode;
-}) {
+/** The Face outline switch's hint: what it does, or why it can't be switched now. */
+function outlineHint(outline: SketchPaletteProps['outline']): string {
+  if (!outline) return 'This sketch is on a plane, not a face.';
+  const uses = [
+    count(outline.dimensions, 'dimension'),
+    count(outline.constraints, 'constraint'),
+  ].filter(Boolean);
+  if (uses.length > 0) {
+    const one = outline.dimensions + outline.constraints === 1;
+    return `In use: ${uses.join(' and ')} ${one ? 'refers' : 'refer'} to the outline. Delete ${one ? 'it' : 'them'} first.`;
+  }
+  return outline.id
+    ? "This sketch has its face's outline, linked to the model. Switch off to remove it."
+    : 'Bring the outline of the face this sketch is on into the sketch, linked to the model.';
+}
+
+const count = (n: number, noun: string) => (n === 0 ? '' : `${n} ${noun}${n === 1 ? '' : 's'}`);
+
+/** Palette hints wait a second, so they stay shut while the pointer crosses the panel. */
+const HINT_DELAY = 1000;
+
+/** Two settings to a row; the right column's switches line up with the full rows'. */
+const TWO_COLUMNS = 'grid grid-cols-2 gap-x-2';
+
+/** A group caption; plain text, so the sketch's name stays the palette's only heading. */
+function PaletteHeading({ children }: { children: ReactNode }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex h-7 w-full items-center gap-2 rounded-input px-1 text-left hover:bg-accent-soft"
-    >
-      <span className="grid w-[13px] place-items-center text-muted">{icon}</span>
+    <p className="px-0.5 pt-1.5 pb-0.5 text-xs font-semibold tracking-[0.08em] text-muted uppercase">
       {children}
-    </button>
+    </p>
   );
 }
 
+function PaletteIcon({ name }: { name: IconName }) {
+  return <ToolIcon name={name} category="sketch" size={16} color="currentColor" />;
+}
+
 /** New curves become construction geometry (FR-SK-04); its key (`X`) flips it too. */
-function ConstructionToggle({ host }: { host: ToolHost }) {
+function ConstructionSwitch({ host }: { host: ToolHost }) {
   const keysFor = useKeysFor();
   const construction = useStore(host.state, (s) => s.construction);
   return (
-    <PaletteToggle
+    <PaletteSwitch
+      icon={<PaletteIcon name="line" />}
       checked={construction}
       onChange={(v) => {
         if (v !== host.state.getState().construction) host.toggleConstruction();
       }}
+      label="Construction"
+      hint="New curves become construction geometry: they guide and constrain, but make no profiles."
+      shortcut={keysFor('construction')[0]}
     >
       Construction
-      <kbd className="ml-auto font-mono text-xs text-muted">{keysFor('construction')[0]}</kbd>
-    </PaletteToggle>
+    </PaletteSwitch>
   );
 }
+
+/**
+ * A sketch palette setting: an icon, a short caption and a switch (a styled
+ * checkbox named by `label`) at the right, with the full name and `hint` in a
+ * tooltip. A setting without an icon is a sub-setting: its caption lines up
+ * with the captions above it.
+ */
+function PaletteSwitch({
+  icon,
+  checked,
+  onChange,
+  label,
+  hint,
+  shortcut,
+  disabled = false,
+  children,
+}: {
+  icon?: ReactNode;
+  checked: boolean;
+  onChange(checked: boolean): void;
+  label: string;
+  hint: string;
+  shortcut?: string;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip label={label} hint={hint} shortcut={shortcut} side="left" delay={HINT_DELAY}>
+      <label
+        className={`flex h-[26px] min-w-0 items-center gap-1.5 rounded-input px-0.5 ${
+          disabled ? 'text-muted' : 'cursor-pointer hover:bg-accent-soft'
+        }`}
+      >
+        <span className="grid size-4 shrink-0 place-items-center">{icon}</span>
+        <span className="min-w-0 truncate">{children}</span>
+        {shortcut && <kbd className="font-mono text-xs text-muted">{shortcut}</kbd>}
+        <input
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.checked)}
+          aria-label={label}
+          className={SWITCH}
+        />
+      </label>
+    </Tooltip>
+  );
+}
+
+/** A checkbox drawn as a switch: the thumb is a radial gradient that slides right when checked. */
+const SWITCH =
+  'ml-auto h-3.5 w-6 shrink-0 cursor-pointer appearance-none rounded-full bg-muted/40 bg-[radial-gradient(circle,white_4.5px,transparent_5px)] bg-size-[14px_14px] bg-position-[left_center] bg-no-repeat transition-[background-color,background-position] duration-150 checked:bg-accent checked:bg-position-[right_center] disabled:cursor-default disabled:opacity-40 motion-reduce:transition-none';
 
 function PaletteToggle({
   checked,

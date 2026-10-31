@@ -1525,7 +1525,17 @@ mesh to the map and a shape to OCCT). `meshFrom(mesh)` splits surfaces that
 touch along an edge or at a vertex (`splitNonManifoldEdges`, its 2026-10-09
 amendment) and welds the corners
 (`Mesh.merge()`) and refuses a mesh that isn't closed with `checkManifold`'s
-counts on a `MeshError`; `mesh`, `exportMesh`, `measure`, `properties`,
+counts on a `MeshError`; per its 2026-10-31 amendment `meshFrom` first runs
+`dropBadTriangles` (`@extrudo/io`) and drops **flat** triangles (a repeated
+corner or an out-of-range node) and **duplicates** (an earlier triangle's
+three corners, either winding — the first in file order stays), nodes
+untouched, zero-area triangles with three distinct corners kept (dropping one
+can open a closed mesh). The new `onDrop` callback fires only when something was
+dropped, and the import warning joins a drop and a split into one sentence,
+drop first; a still-refused mesh carries the counts on `MeshProblem.dropped`
+and `notClosed` words them inside the parentheses. `Mesh.merge()` is skipped
+only when the mesh was split: the comparison is with the mesh that went into
+the split, so a mesh that only lost triangles is still welded. `mesh`, `exportMesh`, `measure`, `properties`,
 `describe`, `count`, `solids` and `transform` have a mesh branch, and **every
 other public method that takes a shape throws `MeshBodyError`** naming the
 operation for the user ("Shell needs a solid body: this body is a mesh
@@ -2018,6 +2028,14 @@ faces: deferred.
 outline in `createSketchOn` when a sketch starts on it. No file-format or
 kernel change. `data-sketch-projected` now also lists a point-only projected
 vertex (`curves=0`).
+**The palette's Face outline switch (ADR-0074's amendment, 2026-10-31)** is the
+open sketch's own outline, not the preference: `faceOutline(plane, data)` (the
+projection whose ref is the sketch's face, mode `project`; `undefined` on a plane)
+with the constraint and dimension counts on its curves. On dispatches
+`addProjection`; off dispatches `removeProjection`, which **refuses while any
+constraint or dimension uses the curves**, and the switch is disabled then (hint
+counts them) and on a plane sketch. It doesn't depend on Auto-project. Keep
+`viewport.autoProjectFace` for new sketches in Settings and the app menu only.
 
 ADR-0075 (P6-01, slice 1) added **the Electron desktop app** (`apps/desktop`,
 GPL): electron-vite builds main, preload and renderer, the **renderer being the
@@ -3402,7 +3420,8 @@ drops every planar pcurve and projects the edge's 3D curve. Rules:
   projections, its plane-side pcurve the exact `Geom2d_Circle` (checked to
   1e-7); an ellipse next to a plane stays a polyline; a circle tilted over 1°
   from the plane's normal stays a polyline.
-- A torus fit needs R > r (fit, axial adjustment and radius averaging).
+- A torus fit needs R > r (fit, axial adjustment and radius averaging),
+  except in slice D9's retry below.
 - A chain stays a polyline when another outline piece joins its end points
   (by coordinates, 1e-6) and one of its regions is a sliver (area below
   tolerance × outline length).
@@ -3410,6 +3429,21 @@ drops every planar pcurve and projects the edge's 3D curve. Rules:
 - A circle between a plane and a cone stays a polyline.
 - The planar-ends self-check (`hybridEnds_`, misses above 1e-5) must report 0.
 Numbers in ADR-0097's 2026-10-31 amendment.
+
+**ADR-0097 slice D9 (2026-10-31b): R ≤ r torus regions.** `extrudo_facade.cpp`
+(`fitMeshTorus(…, spindle)`, `segmentMesh`'s `settle`, `MeshChart::surface`,
+`revolvedTorus`/`revolvedTorusOf`, the mesh check, the exact rebuild); probe
+Q24 in `spikes/stl-to-solid/prismatic.cpp`. Rules:
+- A spindle torus (R ≤ r) is fitted only in `splitComponent`'s retry: when a
+  split leaves its component whole and unfit, it runs once more with spindles
+  allowed and the retry is kept when it explains anything. Never in the first
+  split (spindle fits win seeds other primitives explain better).
+- The hybrid builds R ≤ r as `Geom_SurfaceOfRevolution` of the meridian circle
+  at the torus's own (u, v) (never a `Geom_ToroidalSurface`: the STEP reader
+  turns that into a revolution of another curve, wires crossing); R > r stays
+  a `Geom_ToroidalSurface`. The mesh check and face counts read it back as its
+  torus (`revolvedTorusOf`); the exact rebuild refuses it, the hybrid runs.
+Numbers in ADR-0097's 2026-10-31b amendment.
 
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
