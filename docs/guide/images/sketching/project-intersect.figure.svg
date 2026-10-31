@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 240">
+  <title>Project copies a body outline onto a sketch plane; Intersect brings in the section where a cylinder crosses the plane</title>
+  <text x="135" y="28" class="sk-muted" text-anchor="middle" font-size="11">Project</text>
+  <text x="385" y="28" class="sk-muted" text-anchor="middle" font-size="11">Intersect</text>
+  <polygon points="70,110 130,80 190,110 130,140" class="sk-face"/>
+  <polygon points="70,110 130,140 130,168 70,138" class="sk-body-side"/>
+  <polygon points="130,140 190,110 190,138 130,168" class="sk-body-side"/>
+  <polygon points="90,96 110,86 130,96 110,106" class="sk-body"/>
+  <polygon points="130,96 150,86 170,96 150,106" class="sk-body"/>
+  <polygon points="60,154 96,146 150,158 114,166" class="sk-projected" fill="none" stroke-width="2.4" stroke-linejoin="round"/>
+  <ellipse cx="385" cy="80" rx="34" ry="14" class="sk-body"/>
+  <polygon points="351,80 351,140 419,140 419,80" class="sk-body-side"/>
+  <ellipse cx="385" cy="140" rx="34" ry="14" class="sk-body-side"/>
+  <polygon points="300,150 350,132 470,150 420,168" class="sk-face"/>
+  <ellipse cx="385" cy="150" rx="34" ry="14" class="sk-projected" fill="none" stroke-width="2.4"/>
+</svg>

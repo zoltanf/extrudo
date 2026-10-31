@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 110">
+  <title>Parallel: two lines at an angle, then parallel</title>
+  <path d="M18 68 92 30" class="sk-free" fill="none" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M24 82 100 62" class="sk-free" fill="none" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M110 55h14m-6 -5 6 5-6 5" class="sk-muted" fill="none" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M138 72 198 30" class="sk-free" fill="none" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M158 82 218 40" class="sk-free" fill="none" stroke-width="2.4" stroke-linecap="round"/>
+  <rect x="210" y="44" width="16" height="16" class="sk-glyph" rx="3"/>
+  <g transform="translate(210 44) scale(0.6667)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path class="sk-glyph-text" fill="none" d="M4 16 13 5 20 8 11 19Z"/><path class="sk-glyph-text" fill="none" d="M4 16 13 5M11 19 20 8"/>
+  </g>
+</svg>

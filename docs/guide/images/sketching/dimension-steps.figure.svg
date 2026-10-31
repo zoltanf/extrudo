@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 260">
+  <title>The Dimension tool: pick a line for its length, two lines for their angle, a circle for its diameter</title>
+  <line x1="50" y1="70" x2="190" y2="30" class="sk-free" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="120" cy="50" r="9" class="sk-step"/>
+  <text x="120" y="54" class="sk-step-text" text-anchor="middle" font-size="11">1</text>
+  <circle cx="150" cy="92" r="9" class="sk-step"/>
+  <text x="150" y="96" class="sk-step-text" text-anchor="middle" font-size="11">2</text>
+  <line x1="50" y1="70" x2="50" y2="86" class="sk-dim" fill="none" stroke-width="1"/>
+  <line x1="190" y1="30" x2="190" y2="46" class="sk-dim" fill="none" stroke-width="1"/>
+  <line x1="56" y1="79" x2="196" y2="39" class="sk-dim" fill="none" stroke-width="1"/>
+  <text x="126" y="72" class="sk-dim-text" text-anchor="middle" font-size="12" font-weight="600">42</text>
+  <line x1="50" y1="150" x2="150" y2="110" class="sk-free" stroke-width="2.4" stroke-linecap="round"/>
+  <line x1="200" y1="150" x2="330" y2="130" class="sk-free" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="100" cy="130" r="9" class="sk-step"/>
+  <text x="100" y="134" class="sk-step-text" text-anchor="middle" font-size="11">1</text>
+  <circle cx="180" cy="108" r="9" class="sk-step"/>
+  <text x="180" y="112" class="sk-step-text" text-anchor="middle" font-size="11">2</text>
+  <path d="M150 110A60 60 0 0 1 232 116" class="sk-dim" fill="none" stroke-width="1"/>
+  <text x="196" y="96" class="sk-dim-text" text-anchor="middle" font-size="12" font-weight="600">35°</text>
+  <circle cx="130" cy="196" r="36" class="sk-free" fill="none" stroke-width="2.4"/>
+  <circle cx="164" cy="196" r="9" class="sk-step"/>
+  <text x="164" y="200" class="sk-step-text" text-anchor="middle" font-size="11">1</text>
+  <circle cx="242" cy="232" r="9" class="sk-step"/>
+  <text x="242" y="236" class="sk-step-text" text-anchor="middle" font-size="11">2</text>
+  <line x1="170" y1="205" x2="236" y2="228" class="sk-muted" fill="none" stroke-width="1"/>
+  <text x="256" y="236" class="sk-dim-text" font-size="12" font-weight="600">⌀16</text>
+</svg>
