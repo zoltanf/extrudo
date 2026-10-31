@@ -16,12 +16,14 @@ import {
 } from './planes';
 import {
   addProjection,
+  faceOutline,
   includedCurves,
   includeLabel,
   includeProjection,
   projectedEntities,
   projectionOf,
   projectionSync,
+  removeProjection,
   type SketchReport,
   syncProjections,
 } from './projection';
@@ -522,5 +524,46 @@ describe('projections', () => {
       count: 0,
       lost: true,
     });
+  });
+  it("give a face sketch's outline, removable only while nothing uses it (ADR-0074)", () => {
+    expect(faceOutline({ kind: 'plane', id: 'xy' }, data(doc()))).toBeUndefined();
+    expect(faceOutline(faceRef, data(doc()))).toEqual({ constraints: 0, dimensions: 0 });
+    let d = applyCommand(doc(), addProjection({ feature: F, id: P, ref: faceRef })).doc;
+    // Another face's projection, or this face's centre, isn't the outline.
+    d = applyCommand(
+      d,
+      addProjection({ feature: F, id: 'c' as ProjectionId, ref: faceRef, mode: 'center' }),
+    ).doc;
+    d = sync(
+      d,
+      report({
+        [P]: {
+          curves: {
+            a: { type: 'line', a: [0, 0], b: [10, 0] },
+            b: { type: 'line', a: [10, 0], b: [10, 10] },
+          },
+        },
+      }),
+    );
+    expect(faceOutline(faceRef, data(d))).toEqual({ id: P, constraints: 0, dimensions: 0 });
+    const a = data(d).entities[data(d).projections?.[P]?.curves.a as SketchEntityId];
+    if (a?.type !== 'line') throw new Error('no line');
+    const used = applyCommand(
+      d,
+      addToSketch({
+        feature: F,
+        entities: { ['q' as SketchEntityId]: { type: 'point', x: 0, y: 0 } },
+        constraints: { ['k' as never]: { type: 'coincident', a: 'q', b: a.start } as never },
+      }),
+    ).doc;
+    expect(faceOutline(faceRef, data(used))).toEqual({ id: P, constraints: 1, dimensions: 0 });
+    expect(() => applyCommand(used, removeProjection({ feature: F, id: P }))).toThrow(
+      /Delete them first/,
+    );
+    // Unused, it goes with its curves and points; the face centre stays.
+    d = applyCommand(d, removeProjection({ feature: F, id: P })).doc;
+    expect(Object.keys(data(d).projections ?? {})).toEqual(['c']);
+    expect(Object.keys(data(d).entities)).toEqual([]);
+    expect(faceOutline(faceRef, data(d))).toEqual({ constraints: 0, dimensions: 0 });
   });
 });

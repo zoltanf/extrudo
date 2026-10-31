@@ -252,6 +252,64 @@ export const includeProjection = defineCommand<{
   if (data.projections && Object.keys(data.projections).length === 0) delete data.projections;
 });
 
+/** The curves a projection still has in the sketch (the user may have deleted some). */
+function liveCurves(data: SketchData, projection: SketchProjection): SketchEntityId[] {
+  return Object.values(projection.curves).filter(
+    (id): id is SketchEntityId => id !== null && id in data.entities,
+  );
+}
+
+/** The constraints and dimensions on a projection's curves and their points. */
+export function projectionUses(
+  data: SketchData,
+  projection: SketchProjection,
+): { constraints: number; dimensions: number } {
+  const removal = entityRemoval(data, liveCurves(data, projection));
+  return { constraints: removal.constraints.length, dimensions: removal.dimensions.length };
+}
+
+/**
+ * A sketch's face outline (ADR-0074's 2026-10-31 amendment): its projection
+ * of the face it sits on, if it has one, or `undefined` for a sketch on a
+ * plane. The sketch palette's Face outline switch shows and toggles it.
+ */
+export function faceOutline(
+  plane: GeomRef,
+  data: SketchData,
+): { id?: ProjectionId; constraints: number; dimensions: number } | undefined {
+  if (plane.kind !== 'face') return undefined;
+  for (const [id, p] of Object.entries(data.projections ?? {})) {
+    if (p.ref.kind === 'face' && p.ref.id === plane.id && (p.mode ?? 'project') === 'project') {
+      return { id: id as ProjectionId, ...projectionUses(data, p) };
+    }
+  }
+  return { constraints: 0, dimensions: 0 };
+}
+
+/**
+ * Removes a projection and its curves (the Face outline switch turned off,
+ * ADR-0074's 2026-10-31 amendment). Refused while a constraint or dimension
+ * is on one of its curves: removing them along would undo the user's work.
+ */
+export const removeProjection = defineCommand<{ feature: FeatureId; id: ProjectionId }>(
+  'sketch.unproject',
+  'Remove projection',
+  (draft, { feature, id }) => {
+    const data = sketchDraft(draft, feature);
+    const projection = data.projections?.[id];
+    if (!projection) throw new CommandError(`The sketch has no projection "${id}".`);
+    const removal = entityRemoval(data, liveCurves(data, projection));
+    if (removal.constraints.length > 0 || removal.dimensions.length > 0) {
+      throw new CommandError(
+        'Constraints or dimensions use the projected curves. Delete them first.',
+      );
+    }
+    for (const e of removal.entities) delete data.entities[e];
+    delete data.projections?.[id];
+    if (data.projections && Object.keys(data.projections).length === 0) delete data.projections;
+  },
+);
+
 /** The label of an include's undo step. */
 export function includeLabel(count: number): string {
   return `Include ${count} ${count === 1 ? 'curve' : 'curves'}`;

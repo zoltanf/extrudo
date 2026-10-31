@@ -451,7 +451,7 @@ test("the browser's right-click menu stays out of the view and panels, not text 
       .getByRole('navigation', { name: 'View navigation' })
       .getByRole('button', { name: 'Select', exact: true }),
     page.getByRole('navigation', { name: 'View navigation' }),
-    page.getByRole('region', { name: 'Sketch palette' }).getByText('Show points'),
+    page.getByRole('region', { name: 'Sketch palette' }).getByText('Points', { exact: true }),
     page.getByRole('button', { name: 'Finish Sketch' }).last(),
     page.getByRole('complementary', { name: 'Browser' }),
     page.getByRole('tab', { name: 'Sketch' }),
