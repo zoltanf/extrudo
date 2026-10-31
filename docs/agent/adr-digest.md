@@ -2030,7 +2030,9 @@ there is no forked UI. The renderer keeps the web's posture (`contextIsolation`,
 braces), no top-level navigation off `app://` (or the dev origin), no new
 windows and no webview (`main/navigation.ts`), and `app://` (a privileged
 standard scheme) serves the packaged `dist` (`.wasm` as `application/wasm`)
-because `file://` breaks module workers and WASM fetches.
+because `file://` breaks module workers and WASM fetches. The renderer's
+`publicDir` is `apps/web/public` (the tooltip clips in `demos/`; Vite's default
+`src/renderer/public` doesn't exist), checked by `renderer/publicDir.test.ts`.
 **Every privileged call goes through `shared/ipc.ts`'s channels**: that one file
 lists the channels and the `ProjectStore` method whitelist, `preload/` exposes
 them with `contextBridge`, and main's `ipc.ts` answers them (no `remote`); a
