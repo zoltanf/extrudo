@@ -1618,7 +1618,7 @@ function Folder({
         >
           {chevron}
           <span className="grid w-4 place-items-center text-muted">{icon}</span>
-          {label}
+          <span className="min-w-0 truncate">{label}</span>
           {countBadge}
         </button>
       )}
@@ -1694,7 +1694,8 @@ function Leaf({
       {...rest}
       className={`flex h-7 items-center gap-1.5 rounded-input pr-1 pl-[46px] ${muted ? 'text-muted' : ''} ${active ? 'bg-accent-soft' : ''} ${className}`}
     >
-      {children}
+      {/* An empty state's text ends in "…" rather than wrapping out of the row. */}
+      {muted ? <span className="min-w-0 truncate">{children}</span> : children}
     </li>
   );
 }
@@ -1721,12 +1722,12 @@ function DocumentSettings({ store }: { store: DocumentStore }) {
   const settings = useStore(store, (s) => s.doc.settings);
   const dispatch = store.getState().dispatch;
   const fractionsOn = settings.units === 'in' && (settings.fractions ?? false);
-  const selectClass = 'h-6 py-0 pr-5 pl-1.5 text-field';
+  const selectClass = 'h-6! py-0 pl-1.5 text-field';
   return (
     <>
       <Leaf data-setting="units">
         Units
-        <span className="ml-auto w-16">
+        <span className="ml-auto w-24">
           <Select
             aria-label="Units"
             title={`${UNIT_LABELS[settings.units]}. Changing the unit keeps every length as it is.`}
@@ -1747,7 +1748,7 @@ function DocumentSettings({ store }: { store: DocumentStore }) {
       </Leaf>
       <Leaf data-setting="precision">
         Precision
-        <span className="ml-auto w-16">
+        <span className="ml-auto w-24">
           <Select
             aria-label="Precision"
             title={

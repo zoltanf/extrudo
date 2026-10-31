@@ -1,0 +1,1 @@
+- 2026-10-31 · **Browser panel fits its settings**: the Units and Precision selects no longer clip their value in Chromium browsers (Edge, Chrome) or overlap each other; the browser panel is at least 220 px wide, and a long folder name ends in "…" instead of wrapping into the next row.
