@@ -2975,3 +2975,122 @@ sock-clips-6x). No pair at all falls in the 3D-close band.
   drill-block (2 of 2) and gear-bearing-5 (4 of 4), and the written body carries
   no crossing at 1e-7 wherever the match succeeds.
 
+
+### Amendment, 2026-10-31: chain edges that re-project exactly on planes, sliver chains, no degenerate tori (slice D8)
+
+**The mechanism.** A STEP reader keeps no tolerances and, on every planar face,
+drops the file's pcurves and projects each edge's 3D curve onto the plane
+instead (`StepToTopoDS_TranslateEdgeLoop`: `hasPcurve = false` for a
+`Geom_Plane`, then `RemovePCurves`). The hybrid's collapsed chains (slice D3)
+carried the two surfaces' fitted line, circle or ellipse as their 3D curve,
+trimmed nearest their end nodes, while their pcurves ended at the nodes so the
+face stayed closed with its neighbouring chord edges. The curves ended up to
+0.145 mm from the nodes (the edge tolerance covered it); the re-projected
+outline moved by that much and crossed the chord edges beside it, and the
+reader's healing then split faces to repair the crossings. Separately, tori
+fitted with minor radius ≥ major radius came back as surfaces of revolution.
+
+**The rules** (`extrudo_facade.cpp`, `chainCurve` and `rebuildHybrid`'s chain
+loop; tori in `fitMeshTorus` and the surface snaps):
+1. A chain with a planar side ends where its end nodes project onto that
+   plane. A line runs through the two end nodes. A circle is turned square to
+   the plane (a chain stays a polyline when its circle is tilted more than 1°:
+   "a tilted circle on a plane") and moved in its own plane to pass through the
+   end nodes' projections, the centre nearer the fitted one ("chain ends wider
+   than the circle" when they are wider apart than the diameter by more than
+   the tolerance; within it the circle takes their half-distance as its
+   radius); its plane-side pcurve is the circle's exact projection, a
+   `Geom2d_Circle` at the same parameter, checked against the end nodes'
+   parameters to 1e-7. An ellipse next to a plane stays a polyline ("an
+   ellipse on a plane"). The node, monotone and span checks run on the
+   adjusted curve.
+2. A torus fit needs R > r; the axial adjustment next to a cylinder and the
+   rolling surfaces' radius averaging keep a torus's radii when the new value
+   would break that.
+3. A self-check after the build: on every planar face of the result, each
+   edge's 3D curve ends project onto its pcurve's ends within 1e-5 (unify's
+   merged edges miss by up to 1e-6 from rounding), `hybridEnds_` ("exact chain
+   ends: N edges, M off"), its own stage (1 ms on battery-holder).
+4. A chain stays a polyline when another outline piece joins its two end
+   points (open chains and boundary mesh edges, by coordinates to 1e-6) and
+   one of its regions is a sliver, its triangles' area below the tolerance
+   times its outline's length ("another piece joins its ends"): else both
+   pieces become one segment and the region a face of zero area, which the
+   reader takes back as a hairpin. Split-circle halves and an arc with its
+   diameter bound real faces and still collapse.
+5. A chain's curve must stay within 1.5 × the tolerance of both regions'
+   surfaces at 9 samples ("curve off its surface").
+6. A circle between a plane and a cone stays a polyline ("a circle next to a
+   cone"): moved square to the plane by rule 1, scrap-plate's arcs leave their
+   cones' axes by 0.699° and sit 0.0108 mm off the cones; the cone-side pcurve
+   (the straight shortcut, 0.0244 mm off within the 0.03 mm reach) is up to
+   0.0180 apart in UV from the exact projection, and the reader replaces it
+   with that projection, so the four cone faces read back 1.47 % smaller
+   (volume ratio 1.00018). `pcurveFor`'s offset is the 3D distance between the
+   chart's surface at the pcurve's parameters and the curve, already in mm.
+
+**The probes** (spike harness `prismatic.cpp`, case `s`/`S`, ADR-0097's
+2026-10-30b amendment for Q1–Q17):
+- **Q18** copies the written body, sets every vertex tolerance to 1e-7 and runs
+  `BRepCheck_Wire::SelfIntersect` per wire: 1 (on a plane), 0 and 0 wires on
+  drill-block, phone-stand-foldable and gear-bearing-5 against 2, 8 and 6 on
+  the read: the written outlines don't cross.
+- **Q19** reads the default file at a user precision of 1e-3 and writes with
+  the least and with a session uncertainty of 1e-3: 9, 8 and 9 of 30 hybrids
+  pass against the default's 10; precision is not the cause.
+- **Q20** reads with no shape processing (`SetShapeProcessFlags` with no
+  operator) and replays the FixShape operator mode by mode: the raw read
+  already carries 61, 131 and 108 crossing wires (phone-stand, gear-bearing-5,
+  kuglbahn-pillar-base); the healing inherits them and splits faces repairing
+  them (face FixSplitFace, FixLoopWires or FixOrientation off keeps the
+  written face count).
+- **Q21** compares the reader's pcurves with ours on the flagged raw wires: on
+  planes every pcurve is re-projected from the 3D curve, up to 0.145 mm from
+  ours, with every EDGE_CURVE carrying a SURFACE_CURVE and our pcurves; no
+  `read.surfacecurve.mode` and no writer precision changes it.
+- **Q22** names the remaining failures after rules 1–3: 11 hairpins (two
+  edges with the same ends, a chain and the mesh edge between its ends or two
+  chains, a written face of zero area; 0.8–5.2° apart before the rules), the
+  scrap-plate drift on four cone faces bounded by a collapsed arc, and the
+  extra time of spool-screw and vented-funnel as a second build pass after a
+  failed validity check.
+- **Q23** measures those four cone faces (above, rule 6).
+
+**Measured** (spike `S`, TOL=auto, 41 files; before = the harness run of
+2026-10-30, after = this slice):
+
+| | before | after |
+|---|---|---|
+| kernel-bar passes of 30 hybrids (of 41) | 10 (19) | 20 (29) |
+| refusals | 2 | 2 |
+| faces | 34,594 | 35,291 |
+| facets | 22,751 | 23,489 |
+| conversion | 215.3 s | 227.8 s |
+| SurfaceOfRevolution faces on the read | 11 | 0 |
+| flagged read-back wires | 25 on 8 bodies | 3 on 2 (phone-stand 2, sock-clips 1) |
+| exact-ends misses (1e-5) | – | 0 of 150,893 edges |
+| chains collapsed (lines / circles / ellipses) | 11,924 (8,936 / 1,733 / 1,255) | 13,979 (12,293 / 1,585 / 101) |
+| polylines | 17,865 | 15,664 |
+
+New passes: desk-organizer-module-small, drill-block, kuglbahn-pillar-base,
+mirna-doodle-1, peg-perego-button, shower-holder, spool-screw-v4.1,
+hot-wheels-connector, makita-vacuum-holder, vented-funnel; none lost.
+phone-stand-foldable's two remaining wires sit on two folded written faces of
+almost no area, sock-clips-6x's on a pair whose second edge isn't built by the
+chains (both before this slice too): out of scope. The kernel sweep (Auto, 41 files, against the 2026-10-30 baseline, written to
+`baseline-2026-10-31-auto.jsonl`): round trips failed 17 → 7
+(battery-power-adapter, phone-stand-foldable, spool-nut-v4.1, gear-bearing-5,
+makita-vacuum-holder, micro-sd-keyring-inner, spaghetti-measure); prismatic
+converted 36 and refused 5 in both; prismatic faces 27,706 → 27,740; prismatic
+kernel time 236.1 → 249.7 s. One file is over the sweep's 10 % face bar:
+peg-perego-button, 212 → 261 faces (+23.1 %), its Auto step moving from 0.02 to
+0.05 mm (one torus region with R ≈ r that no longer fits at 0.02 mm, 48 facets
+instead), its round trip now passing. Accepted on 2026-10-31 as the new sweep
+baseline: `baseline-2026-10-31-auto.jsonl` is the baseline from here on.
+
+**Follow-ups.** The mesh check's face classification costs battery-holder
+4.4 s (`BRepTopAdaptor_FClass2d::Perform` on 1,290 nodes, 17 ms on 626 before:
+the nodes of chains that stay polylines lie on face boundaries).
+vented-funnel still builds twice: a plane between two cylinder halves joined by
+two near-half arcs with shared ends fails the first validity check (its plane
+is not a sliver).

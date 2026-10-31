@@ -3381,6 +3381,25 @@ and 0 at its edge tolerance, so where it can be measured the written body is
 clean and the reader created the crossing.
 Numbers in ADR-0097's 2026-10-30b amendment.
 
+**ADR-0097 slice D8 (2026-10-31): chain edges that re-project exactly on
+planes, sliver chains, no degenerate tori.** `extrudo_facade.cpp`
+(`chainCurve`, `rebuildHybrid`'s chain loop, `fitMeshTorus`, the surface
+snaps); probes q18–q23 in `spikes/stl-to-solid/prismatic.cpp`. A STEP reader
+drops every planar pcurve and projects the edge's 3D curve. Rules:
+- A chain edge next to a plane ends at its nodes' projections: a line through
+  its end nodes; a circle square to the plane through the end nodes'
+  projections, its plane-side pcurve the exact `Geom2d_Circle` (checked to
+  1e-7); an ellipse next to a plane stays a polyline; a circle tilted over 1°
+  from the plane's normal stays a polyline.
+- A torus fit needs R > r (fit, axial adjustment and radius averaging).
+- A chain stays a polyline when another outline piece joins its end points
+  (by coordinates, 1e-6) and one of its regions is a sliver (area below
+  tolerance × outline length).
+- A chain's curve stays within 1.5 × tolerance of both surfaces (9 samples).
+- A circle between a plane and a cone stays a polyline.
+- The planar-ends self-check (`hybridEnds_`, misses above 1e-5) must report 0.
+Numbers in ADR-0097's 2026-10-31 amendment.
+
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
 facade `removeFaces` with `BRepAlgoAPI_Defeaturing`). Rules: **all or nothing** (any

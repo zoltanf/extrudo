@@ -144,6 +144,41 @@ reasons counted) and, for every converted file, `edges N (lines, circles,
 ellipses)`: the result's edges by curve type. An older facade lacks
 `hybridChains_`: build it with its own `run.sh` and `prismatic.cpp` (`FACADE=`).
 
+## STEP read-back probes (slice D8, 2026-10-31)
+
+Case `s` (one file) and `S` (all) run more probes after the 2026-10-30b ones
+(ADR-0097's 2026-10-31 amendment); each prints `qNN` lines under the file:
+
+```sh
+STL_DIR=~/Development/extrudo-stl-solid-test TOL=auto BUILD=diag FILE=own/scrap-plate.stl \
+  Q23=1 bash spikes/stl-to-solid/run.sh prismatic s
+```
+
+- always: `q18` (the written wires at vertex tolerance 1e-7 through
+  `BRepCheck_Wire::SelfIntersect`, next to the read's flagged count) and
+  `q19` (the default file read at a user precision of 1e-3, and written with
+  the least and with a session uncertainty of 1e-3), the `chains:` line with
+  its keptWhy counts and `exact chain ends: N edges, M off`;
+- `Q20=1`: the read with no shape processing, then the FixShape operator
+  replayed and once per mode switched off (`Q20OFF=<name part>` picks modes,
+  `Q20FACES=1` lists the faces the healing splits or changes);
+- `Q21=1`: the reader's pcurves against ours on the flagged raw wires, the
+  file's PCURVE/SURFACE_CURVE/EDGE_CURVE counts, and the
+  `read.surfacecurve.mode` matrix;
+- `Q22A=1` with `FACES=1`: each hairpin pair on the read matched to the written
+  edges and their build records (`hybridEdges_`), angles, overlap and flags;
+  `Q22OLD=1` looks the saved pairs (`diag/q22a-pairs-*.txt`) up in an older
+  build (`FACADE=`); `Q22B=1`: volumes written, raw and read, and the faces
+  whose area moves on the read;
+- `Q23=1`: the cone faces whose area moves on the read, per edge the pcurves,
+  the circle's distance to the cone, its axis against the cone's and its
+  pcurve against the exact projection.
+
+Case `f` with `TIMES=1` also prints `calls:` (chainCurve and
+`Geom2dAPI_Interpolate` calls, the mesh check's nodes, BRepExtrema calls and
+face classifier time); with `FACES=1` the validity stage lists each region
+whose collapses it undoes (kind, area, outline length, its chains).
+
 ## Browser timings (slice D4, 2026-10-23)
 
 ```sh
