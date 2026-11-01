@@ -1523,7 +1523,7 @@ end to end, faster than in established desktop CAD.
   B9's recompute shows the wait; the bar grows) and `e2e/model-progress.spec.ts`
   green on CI; the perf spec's edit and undo app time unchanged. Slices 1–3 done
   2026-10-24; the owner ticked it 2026-10-25.
-- [ ] **P6-18 Imperial units** (owner, 2026-10-28; FR-PRJ-07; ADR-0113). Inches
+- [x] **P6-18 Imperial units** (owner, 2026-10-28; FR-PRJ-07; ADR-0113). Inches
   were in the file format, expressions and display from the start, but nothing
   in the app could set a design's unit. Three slices:
   - [x] **S1 Unit editor.** The browser's Document settings folder sets the
@@ -1543,7 +1543,8 @@ end to end, faster than in established desktop CAD.
     *Done 2026-10-28.*
   Acceptance: `pnpm check`; `e2e/document-units.spec.ts` green on CI; S2 and
   S3 add their own specs; the file-format doc and `pnpm api:generate` updated
-  for `fractions`.
+  for `fractions`. Slices 1–3 done 2026-10-28, tool defaults in the design's
+  unit 2026-10-29; the owner ticked it 2026-11-01.
 - [ ] **P6-19 Other CAD files through a bundled cadmpeg** (owner, 2026-10-30;
   issue #141; ADR-0115). The desktop app bundles cadmpeg (Apache-2.0, pinned
   version and SHA-256 per target in `apps/desktop/cadmpeg.json`, fetched at
