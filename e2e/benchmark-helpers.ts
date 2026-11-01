@@ -120,6 +120,12 @@ export async function expectNoProblems(page: Page) {
   await expect(page.locator('[data-feature-status]')).toHaveCount(0);
 }
 
+/** No feature has an error and exactly one has a warning (P4-12: a bore wider than its thread's minor warns). */
+export async function expectOneWarning(page: Page) {
+  await expect(page.locator('[data-feature-status="error"]')).toHaveCount(0);
+  await expect(page.locator('[data-feature-status="warning"]')).toHaveCount(1);
+}
+
 const exportDialog = (page: Page) => page.getByRole('dialog', { name: 'Export model' });
 
 export interface Exported {

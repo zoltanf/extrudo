@@ -8,7 +8,7 @@ import {
   closeParameters,
   dimension,
   expectBody,
-  expectNoProblems,
+  expectOneWarning,
   hideConstraints,
   homeView,
   ok,
@@ -197,7 +197,8 @@ test('Tutorial 4: a threaded bottle cap', async ({ page }) => {
       await ok(page, thread);
     },
     async () => {
-      await expect(chip(page, 'Thread1')).toHaveAccessibleName('Thread1');
+      // The warned feature says so on its chip.
+      await expect(chip(page, 'Thread1')).toHaveAccessibleName('Thread1 (warning)');
       await expectBody(page, 'Cap', [32, 32, 14]);
       expect((await bodies(page)).Cap?.faces).toBeGreaterThan(10);
     },
@@ -343,7 +344,8 @@ test('Tutorial 4: a threaded bottle cap', async ({ page }) => {
       await expect(chip(page, 'Thread2')).toHaveAccessibleName('Thread2');
       await expectBody(page, 'Cap', [32, 32, 14]);
       await expectBody(page, 'Adapter', [23.8, 23.8, 20]);
-      await expectNoProblems(page);
+      // The cap's thread is the one warning (its bore is past the minor).
+      await expectOneWarning(page);
     },
   );
 
@@ -354,7 +356,9 @@ test('Tutorial 4: a threaded bottle cap', async ({ page }) => {
       await kernelReady(page);
     },
     async () => {
-      await expectNoProblems(page);
+      // The cap's Ø36 bore is a size's own diameter now (M36), and its thread
+      // still warns: the bore is past M36's minor too.
+      await expectOneWarning(page);
       await expectBody(page, 'Cap', [40, 40, 14]);
       await expectBody(page, 'Adapter', [35.8, 35.8, 20]);
     },

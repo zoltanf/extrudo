@@ -7,7 +7,7 @@ import {
   clickWhere,
   closeParameters,
   expectBody,
-  expectNoProblems,
+  expectOneWarning,
   exportModel,
   exportProject,
   fill,
@@ -177,7 +177,8 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   // outer part of the tooth is cut (ADR-0056's fourth amendment).
   await expect(thread).toHaveAttribute('data-preview-status', 'warning', { timeout: 60_000 });
   await ok(page, thread);
-  await expect(chip(page, 'Thread1')).toHaveAccessibleName('Thread1');
+  // The warned feature says so on its chip.
+  await expect(chip(page, 'Thread1')).toHaveAccessibleName('Thread1 (warning)');
   await expectBody(page, 'Cap', [32, 32, 14]);
   // The thread's turns are its faces now.
   expect((await bodies(page)).Cap?.faces).toBeGreaterThan(10);
@@ -306,7 +307,9 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   await expectBody(page, 'Cap', [32, 32, 14]);
   await expectBody(page, 'Adapter', [23.8, 23.8, 20]);
 
-  await expectNoProblems(page);
+  // The cap's thread is the one warning (its bore is past the minor); the
+  // adapter's threads have none.
+  await expectOneWarning(page);
   await page.screenshot({ path: test.info().outputPath('b9.png') });
 
   // The design as it stands is the benchmark's fixture (fixtures/benchmarks/).
@@ -330,11 +333,13 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   expect(adapter?.size[2]).toBeCloseTo(20, 3);
 
   // A bigger cap and a wider adapter: the sketches re-solve and both threads
-  // refit. The cap's Ø36 bore takes M39 (a bore takes the thread just above
-  // it) and the adapter's Ø36 collar M36, so the two parts' threads mesh.
+  // refit. The cap's Ø36 bore is a size's own diameter, so it takes M36 (the
+  // hole-at-nominal rule, ADR-0056's fourth amendment), and the adapter's
+  // Ø36 collar M36, so the two parts' threads mesh.
   await setParameters(page, { capDia: '40 mm', adapterLow: '24 mm' });
   await kernelReady(page);
-  await expectNoProblems(page);
+  // The refitted cap thread still warns: its bore is past M36's minor too.
+  await expectOneWarning(page);
   await expectBody(page, 'Cap', [40, 40, 14]);
   await expectBody(page, 'Adapter', [35.8, 35.8, 20]);
 
