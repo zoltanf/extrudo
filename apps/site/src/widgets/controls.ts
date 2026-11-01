@@ -53,5 +53,5 @@ export function widgetFigure(parts: WidgetParts): string {
   const caption = parts.caption.trim()
     ? `<figcaption>${escapeText(parts.caption.trim())}</figcaption>`
     : '';
-  return `<figure class="widget" data-widget="${escapeText(parts.name)}"><div class="widget-row"><svg class="widget-stage" viewBox="${escapeText(parts.viewBox)}" role="img" aria-label="${escapeText(parts.label)}">${parts.stage}</svg><div class="widget-side">${parts.controls}${result}</div></div>${caption}</figure>\n`;
+  return `<figure class="widget" data-widget="${escapeText(parts.name)}"><div class="widget-row"><svg class="widget-stage" viewBox="${escapeText(parts.viewBox)}" role="group" aria-label="${escapeText(parts.label)}">${parts.stage}</svg><div class="widget-side">${parts.controls}${result}</div></div>${caption}</figure>\n`;
 }

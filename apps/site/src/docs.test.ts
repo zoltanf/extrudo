@@ -8,7 +8,7 @@
  * policy, ADR-0057) but the one widget module, and only where a widget is
  * (ADR-0116).
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -186,6 +186,21 @@ describe('a page document', () => {
       'palette-switches',
     ]);
     expect(pageHtml(sketching as DocPage, allPages, options)).toContain(WIDGET_TAG);
+    const widgetsOf = (url: string) => allPages.find((every) => every.url === url)?.widgets;
+    expect(widgetsOf('/docs/tools/trim/')).toEqual(['trim']);
+    expect(widgetsOf('/docs/tools/dimension/')).toEqual(['dimension-label']);
+  });
+
+  it('has every section F1 opens, by the ids in docsAnchors.json', () => {
+    const anchors: { guide: string; anchor: string }[] = JSON.parse(
+      readFileSync(resolve('apps/web/src/shell/docsAnchors.json'), 'utf8'),
+    );
+    expect(anchors.length).toBeGreaterThan(0);
+    for (const { guide, anchor } of anchors) {
+      const built = allPages.find((every) => every.url === `/docs/${guide}/`);
+      expect(built, guide).toBeDefined();
+      expect(built?.html, `${guide}#${anchor}`).toContain(`id="${anchor}"`);
+    }
   });
 
   it('gives every h2 and h3 of every page an id', () => {
@@ -558,7 +573,7 @@ describe('widgets', () => {
     const html = only?.html ?? '';
     expect(html).toContain('<figure class="widget" data-widget="palette-switches">');
     expect(html).toMatch(
-      /<svg class="widget-stage" viewBox="0 0 420 240" role="img" aria-label="[^"]+">/,
+      /<svg class="widget-stage" viewBox="0 0 420 240" role="group" aria-label="[^"]+">/,
     );
     expect(html).toContain('class="sk-profile"');
     expect(html.match(/<input type="checkbox"[^>]*>/g)).toHaveLength(5);
@@ -622,6 +637,27 @@ describe('drawn figures', () => {
     );
     expect(only?.html).not.toContain('<p><figure');
     expect(only?.html).not.toContain('a note');
+  });
+
+  it('stand in one gallery when two or more come in a row, a lone one stays alone', () => {
+    const fig = (n: number) => `![Figure ${n}](./images/plate.figure.svg "Title ${n}")`;
+    const count = (html: string, needle: string) => html.split(needle).length - 1;
+    const wrapper = '<div class="sk-figures">';
+    const run = build(
+      svg('<rect x="1" y="1" width="5" height="5"/>'),
+      `${fig(1)}\n\n${fig(2)}\n\n${fig(3)}\n`,
+    );
+    expect(count(run?.html ?? '', wrapper)).toBe(1);
+    expect(count(run?.html ?? '', '<figure class="sk-figure">')).toBe(3);
+    const lone = build(svg('<rect x="1" y="1" width="5" height="5"/>'), `${fig(1)}\n`);
+    expect(lone?.html).not.toContain(wrapper);
+    expect(count(lone?.html ?? '', '<figure class="sk-figure">')).toBe(1);
+    const split = build(
+      svg('<rect x="1" y="1" width="5" height="5"/>'),
+      `${fig(1)}\n\nText between.\n\n${fig(2)}\n`,
+    );
+    expect(split?.html).not.toContain(wrapper);
+    expect(count(split?.html ?? '', '<figure class="sk-figure">')).toBe(2);
   });
 
   it('prefix their ids with the file stem, and the references follow', () => {

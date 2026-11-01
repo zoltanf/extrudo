@@ -163,7 +163,7 @@ export function docPages(root: string, options: DocOptions = {}): DocPage[] {
       ...(api && meta.section ? { group: meta.section } : {}),
       ...(meta.category ? { category: meta.category } : {}),
       order: Number(meta.order ?? (Number(path.replace(/\D/g, '')) || 0)),
-      html: focusable(html),
+      html: focusable(galleries(html)),
       assets: [...assets.values()],
       widgets: [...widgets],
     } satisfies DocPage;
@@ -467,6 +467,17 @@ function rewriteLinks(body: string, file: string, collections: readonly Collecti
 /** `{{APP_URL}}` and the like, replaced when the build knows the name. */
 function fillTokens(body: string, tokens: Record<string, string>): string {
   return body.replace(/\{\{([A-Z_]+)\}\}/g, (all, name: string) => tokens[name] ?? all);
+}
+
+/**
+ * Two or more drawn figures in a row (only blank lines between them) become one
+ * `sk-figures` grid; a lone figure stays as it is.
+ */
+function galleries(html: string): string {
+  return html.replace(
+    /(?:<figure class="sk-figure">(?:(?!<\/figure>)[\s\S])*<\/figure>\n){2,}/g,
+    (run) => `<div class="sk-figures">\n${run}</div>\n`,
+  );
 }
 
 /**
