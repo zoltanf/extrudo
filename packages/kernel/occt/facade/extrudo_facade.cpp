@@ -8458,7 +8458,8 @@ private:
    * triangles (kind -1, always facets). `loops` are its boundary's node
    * lists in order, the region on the left seen from outside; the outer one
    * first (the largest area in the chart's parameters). `why` set: the
-   * region is exploded, its triangles become facets.
+   * region is exploded, its triangles become facets. `splitNodes`: the
+   * nodes its boundary passes twice, where meshLoops split it (slice D11).
    */
   struct MeshHybridRegion {
     int surface = -1;
@@ -8468,6 +8469,7 @@ private:
     std::vector<std::vector<int>> loops;
     double area = 0;
     std::string why;
+    int splitNodes = 0;
   };
 
   /** The angles' range past their largest gap: its start, its span (radians). */
@@ -8632,27 +8634,39 @@ private:
    * corner k to k + 1 (the region on its left seen from outside), chained
    * node to node into closed loops, then the outer one first (the largest
    * area in the chart's parameters; its sign must say the region is on its
-   * left, every inner loop's the opposite). A node two boundary edges leave
-   * (the region touches itself there) or a loop that doesn't close explodes
-   * the region (`why`). Where three or more regions meet is just a node of
-   * the loop: every mesh edge is its own B-rep edge, so chains between two
-   * regions aren't needed here.
+   * left, every inner loop's the opposite). A loop that doesn't close
+   * explodes the region (`why`). Where three or more regions meet is just a
+   * node of the loop: every mesh edge is its own B-rep edge, so chains
+   * between two regions aren't needed here.
+   *
+   * A node two boundary edges leave (slice D11): the boundary passes it
+   * twice, as where a hole touches the outer loop at a node, or two holes
+   * touch. The region is still one piece (regions are connected over mesh
+   * edges); meshFanLoops walks its boundary round each fan of triangles at
+   * such a node and splits the loops there, so the face gets simple loops
+   * that share the node's vertex.
    */
   void meshLoops(MeshHybridRegion& region, int id, const std::vector<int>& hybridOf,
                  const std::vector<int>& neighbour) const {
     std::map<int, int> next;
+    bool pinched = false;
     for (int t : region.triangles) {
-      for (int k = 0; k < 3; ++k) {
+      for (int k = 0; k < 3 && !pinched; ++k) {
         const int u = neighbour[3 * t + k];
         if (u >= 0 && hybridOf[u] == id) continue;
         const int a = static_cast<int>(meshTriangles_[3 * t + k]), b = static_cast<int>(meshTriangles_[3 * t + (k + 1) % 3]);
-        if (!next.emplace(a, b).second) {
-          region.why = "touches itself at node " + std::to_string(a);
-          return;
-        }
+        pinched = !next.emplace(a, b).second;
+      }
+      if (pinched) break;
+    }
+    if (pinched) {
+      if (!meshFanLoops(region, id, hybridOf, neighbour)) {
+        region.why = "a loop that doesn't close";
+        region.loops.clear();
+        return;
       }
     }
-    while (!next.empty()) {
+    while (!pinched && !next.empty()) {
       const int start = next.begin()->first;
       std::vector<int> loop;
       int node = start;
@@ -8706,6 +8720,86 @@ private:
         return;
       }
     }
+  }
+
+  /** The most triangles a fan round one node may have in meshFanLoops; more means the mesh's neighbours are inconsistent. */
+  static constexpr int MESH_FAN_MAX = 4096;
+
+  /**
+   * meshLoops for a region whose boundary passes a node twice (slice D11):
+   * each boundary edge (a, b) is followed by the boundary edge that leaves b
+   * round the same fan of the region's triangles at b, so every node is
+   * walked once per fan; then each loop is cut at every node it passes twice
+   * into simple loops (both keep the node). Fills `loops` and `splitNodes`;
+   * false when a fan doesn't end at a boundary edge or a walk doesn't close.
+   */
+  bool meshFanLoops(MeshHybridRegion& region, int id, const std::vector<int>& hybridOf,
+                    const std::vector<int>& neighbour) const {
+    auto corner = [&](int t, int k) { return static_cast<int>(meshTriangles_[3 * t + k % 3]); };
+    // The boundary edges as (triangle, corner) pairs, and each one's index by 3t + k.
+    std::vector<std::pair<int, int>> edges;
+    std::unordered_map<int, int> edgeAt;
+    for (int t : region.triangles)
+      for (int k = 0; k < 3; ++k) {
+        const int u = neighbour[3 * t + k];
+        if (u >= 0 && hybridOf[u] == id) continue;
+        edgeAt.emplace(3 * t + k, static_cast<int>(edges.size()));
+        edges.push_back({t, k});
+      }
+    // Each edge's successor round its end node's fan: across the triangles' other edge at the node until a boundary edge.
+    std::vector<int> after(edges.size(), -1);
+    for (size_t i = 0; i < edges.size(); ++i) {
+      int t = edges[i].first, k = edges[i].second;
+      const int node = corner(t, k + 1);
+      for (int step = 0; step < MESH_FAN_MAX; ++step) {
+        const int out = (k + 1) % 3;
+        const int u = neighbour[3 * t + out];
+        if (u < 0 || hybridOf[u] != id) {
+          const auto it = edgeAt.find(3 * t + out);
+          if (it != edgeAt.end()) after[i] = it->second;
+          break;
+        }
+        int in = -1;
+        for (int j = 0; j < 3; ++j)
+          if (corner(u, j + 1) == node) in = j;
+        if (in < 0) break;
+        t = u;
+        k = in;
+      }
+      if (after[i] < 0) return false;
+    }
+    // The walks, then each cut at the nodes it passes twice.
+    std::vector<char> walked(edges.size(), 0);
+    std::vector<int> walk, stack;
+    std::unordered_map<int, size_t> at;
+    region.loops.clear();
+    region.splitNodes = 0;
+    for (size_t first = 0; first < edges.size(); ++first) {
+      if (walked[first]) continue;
+      walk.clear();
+      int e = static_cast<int>(first);
+      do {
+        if (walked[e]) return false;
+        walked[e] = 1;
+        walk.push_back(corner(edges[e].first, edges[e].second));
+        e = after[e];
+      } while (e != static_cast<int>(first));
+      stack.clear();
+      at.clear();
+      for (int n : walk) {
+        const auto it = at.find(n);
+        if (it != at.end()) {
+          region.loops.emplace_back(stack.begin() + static_cast<long>(it->second), stack.end());
+          for (size_t j = it->second + 1; j < stack.size(); ++j) at.erase(stack[j]);
+          stack.resize(it->second);
+          ++region.splitNodes;
+        }
+        at[n] = stack.size();
+        stack.push_back(n);
+      }
+      region.loops.push_back(stack);
+    }
+    return true;
   }
 
   /**
@@ -10889,6 +10983,7 @@ private:
                                  std::to_string(region.kind) + " triangles " + std::to_string(region.triangles.size()) +
                                  " loops " + std::to_string(region.loops.size()) + " edges " + std::to_string(edgeCount) +
                                  " tolerance " + std::to_string(regionWorst[i]) +
+                                 (region.splitNodes > 0 ? " split at " + std::to_string(region.splitNodes) + " nodes" : "") +
                                  (region.why.empty() ? " built" : " exploded: " + region.why));
         }
       }
