@@ -334,3 +334,252 @@ Candidates by what they could recover at Auto (converted files only):
 5. **H4, keep the last valid attempt**: nothing in this corpus.
 
 H3 as briefed (a better largest-|area| rule) has no case: the wrong-way loops are degenerate fits and sliver holes.
+
+
+## Q2 (run 2)
+
+Two facade changes, each measured with the spike on the staged meshes and then with the kernel sweep at Auto against
+`baseline-2026-10-31c-auto.jsonl` (sweep A: Q2.1 alone, written as `baseline-2026-11-01-q21-auto.jsonl`; sweep B:
+Q2.1 and Q2.2, written as `baseline-2026-11-01-auto.jsonl`). The spike's facets per file match the sweep's exactly.
+
+### Q2.1 The boundary split at the nodes it passes twice
+
+`meshLoops` keeps its walk for every region without such a node (the loops, their order and their start nodes stay as
+they were). Where a node has two outgoing boundary edges, `meshFanLoops` pairs each boundary edge with the next one
+round the same fan of the region's triangles at its end node, closes the walks, and cuts each walk at every node it
+passes twice into simple loops that keep the node (so the face's wires share its vertex). Outer loop, sign test, "a
+loop that doesn't close" and "no boundary" are unchanged; a fan that doesn't end at a boundary edge counts as a loop
+that doesn't close. The region diagnostics line says "split at N nodes". Such nodes are chain break nodes already
+(4 boundary edges), so the chains need no change.
+
+Spike, Auto (before = Q1's run):
+
+| file | faces | facets | valid | volume ratio | ms | split regions (triangles built / exploded again) |
+|---|---|---|---|---|---|---|
+| own/battery-power-adapter | 994 → 583 | 415 → 0 | 1 → 1 | 0.9996 → 0.9981 | 2445 → 2562 | 4 (742 / 0) |
+| own/desk-organizer-module-small | 418 → 377 | 42 → 0 | 1 → 1 | 0.99994 → 0.99994 | 15353 → 15709 | 1 (42 / 0) |
+| own/kuglbahn-pillar-base | 3941 → 3881 | 3409 → 3348 | 1 → 1 | 1.0012 → 1.0012 | 10203 → 11416 | 1 (93 / 0) |
+| own/puzzle-insert-circle | 1609 → 379 | 1230 → 0 | 1 → 1 | 0.99843 → 0.99848 | 14944 → 15192 | 2 (2460 / 0) |
+| own/shower-holder | 901 → 869 | 472 → 439 | 1 → 1 | 0.99991 → 0.99993 | 2609 → 1710 | 1 (50 / 0) |
+| own/spool-screw-v4.1 | 3197 → 1361 | 2123 → 256 | 1 → 1 | 1.0006 → 1.0008 | 23166 → 49068 | 33 (2872 / 377) |
+| third-party/makita-vacuum-holder | 3467 → 3336 | 2649 → 2516 | 1 → 1 | 0.99993 → 0.99994 | 8468 → 9357 | 2 (250 / 0) |
+
+Of the 44 split regions, 42 (6,509 triangles) survive the collapsed chains, the shared edges and unify in the assembled
+solid; 2 in spool-screw-v4.1 (a cone of 285 triangles split at 5 nodes, a cylinder of 92 split at 1) are invalid in
+the unified solid and explode on a second attempt ("invalid after unify" 584 → 961 triangles). That second attempt is
+spool-screw's extra time (23 → 49 s in the spike, 22.5 → 41.8 s in sweep B). Exploded triangles 17,742 → 11,233;
+facets 17,790 → 14,009.
+
+Sweep A (Q2.1), totals (the test's own rules, recomputed from the JSONL: the `sweep totals` line still doesn't reach
+the log):
+
+    31c:  files 41, prismatic converted 36 refused 5, faceted converted 26 refused 15, prismatic faces 27581, prismatic facets 17790, prismatic ms 253658, faceted ms 104971, round trips failed 7 (own/battery-power-adapter.stl, own/phone-stand-foldable.stl, own/spool-nut-v4.1.stl, third-party/gear-bearing-5.stl, third-party/makita-vacuum-holder.stl, third-party/micro-sd-keyring-inner.stl, third-party/spaghetti-measure.stl)
+    Q2.1: files 41, prismatic converted 36 refused 5, faceted converted 26 refused 15, prismatic faces 23840, prismatic facets 14009, prismatic ms 307531, faceted ms 130372, round trips failed 9 (… the 7, plus own/puzzle-insert-circle.stl, own/spool-screw-v4.1.stl)
+
+Sweep A ran while other jobs loaded the machine: faceted, which didn't change, took 24 % longer too; its times are not
+comparable. Sweep B (below) ran on a quieter machine.
+
+**Two round trips lost.** In puzzle-insert-circle and spool-screw-v4.1 the converted body is valid, but its STEP
+read-back is not: one face each, `IntersectingWires` (puzzle-insert-circle: the rescued torus R 26.5, r 1, 1,232
+triangles; spool-screw-v4.1: a rescued cone). The read-back has one vertex more than the written body (2,644 against
+2,643; 8,059 against 8,058): the reader splits the vertex the face's touching loops share, and the two loops then
+cross. A healing pass, the 1e-3 and least uncertainties and writing without pcurves don't mend it (spike case `s`). Of
+the 44 split faces, these two fail; the synthetic test's plane face (two inner loops touching) round-trips. The change
+stays in, as briefed; see "for run 3".
+
+Test: `mesh-to-solid.test.ts`, "splits a top face whose two dimples touch at a node": a plate with two square pyramid
+dimples whose rims touch at a corner. `meshLoopsDebug` gives the top region an outer loop and two inner loops of 4
+(before slice D11 the region was exploded, so `meshLoopsDebug` listed no loops for it: from the code, not run
+against the old WASM); with a freeform boss beside them the hybrid builds the top as
+one plane face of 1,200 − 36 − 25π mm², and the body round-trips. The case without the boss converts exactly (the
+exact stage, which never reaches `meshLoops`). The committed fixtures of `mesh-to-solid-files.test.ts` keep their pins
+(61 passed in both sweeps).
+
+### Q2.2 Plane fits square to their facets
+
+Measured first (`Q26PLANES`): plane surfaces whose fitted normal and facets' area-weighted mean normal are under
+|cos| 0.5 apart. At Auto: only own/phone-stand-foldable (T 0.1), 41 surfaces, 2,006 triangles, |cos| 0 to 0.114, each a
+group of 8 to 90 regions; the plane square to the mean normal through the area-weighted centroid holds every node
+within T in none of them. At 0.01 mm: none in any file. So the rule is contained to one file, and was implemented.
+
+Where: `fitKind`'s plane case, which tries the largest region's plane, then the area-weighted plane, then the
+least-squares plane. The least-squares plane is now kept only when its normal agrees with the facets' area-weighted
+mean normal by |cos| ≥ 0.5 (`MESH_PLANE_NORMAL_AGREEMENT`); otherwise the area-weighted plane stands, outside the
+tolerance, so the group is no plane and is fitted as the other kinds (or left unfit). The brief's refit (the mean
+normal through the area-weighted centroid) is that area-weighted plane, already computed there. What the strips
+became: phone-stand-foldable's segmentation goes from 471 planes / 10 cylinders / 10 tori to 496 / 49 / 11, unfit 0:
+the strips are cylinders (walls along curved outlines) and smaller planes. Spike: phone-stand-foldable faces
+2,325 → 983, facets 1,847 → 403, valid, 19.6 → 4.7 s; no other file moves.
+
+### Sweep B (Q2.1 and Q2.2) against 31c
+
+    31c:       files 41, prismatic converted 36 refused 5, faceted converted 26 refused 15, prismatic faces 27581, prismatic facets 17790, prismatic ms 253658, faceted ms 104971, round trips failed 7 (own/battery-power-adapter.stl, own/phone-stand-foldable.stl, own/spool-nut-v4.1.stl, third-party/gear-bearing-5.stl, third-party/makita-vacuum-holder.stl, third-party/micro-sd-keyring-inner.stl, third-party/spaghetti-measure.stl)
+    2026-11-01: files 41, prismatic converted 36 refused 5, faceted converted 26 refused 15, prismatic faces 22498, prismatic facets 12565, prismatic ms 264074, faceted ms 109045, round trips failed 9 (own/battery-power-adapter.stl, own/phone-stand-foldable.stl, own/puzzle-insert-circle.stl, own/spool-nut-v4.1.stl, own/spool-screw-v4.1.stl, third-party/gear-bearing-5.stl, third-party/makita-vacuum-holder.stl, third-party/micro-sd-keyring-inner.stl, third-party/spaghetti-measure.stl)
+
+Every file that moved:
+
+| file | faces | facets | Auto step | valid | round trip (read back valid, faces) | ms |
+|---|---|---|---|---|---|---|
+| own/battery-power-adapter | 994 → 583 | 415 → 0 | 0.1 → 0.1 | yes → yes | yes, 994 → yes, 583 | 2518 → 2471 |
+| own/desk-organizer-module-small | 418 → 377 | 42 → 0 | 0.01 → 0.01 | yes → yes | yes, 418 → yes, 377 | 16414 → 16527 |
+| own/kuglbahn-pillar-base | 3941 → 3881 | 3409 → 3348 | 0.1 → 0.1 | yes → yes | yes, 3941 → yes, 3881 | 10406 → 10814 |
+| own/phone-stand-foldable | 2325 → 983 | 1847 → 403 | 0.1 → 0.1 | yes → yes | no, 2325 → yes, 983 | 18085 → 4538 |
+| own/puzzle-insert-circle | 1609 → 379 | 1230 → 0 | 0.05 → 0.05 | yes → yes | yes, 1609 → **no**, 379 | 15249 → 15068 |
+| own/shower-holder | 901 → 869 | 472 → 439 | 0.01 → 0.01 | yes → yes | yes, 901 → yes, 869 | 2945 → 1983 |
+| own/spool-screw-v4.1 | 3197 → 1361 | 2123 → 256 | 0.05 → 0.05 | yes → yes | yes, 3197 → **no**, 1361 | 22537 → 41836 |
+| third-party/makita-vacuum-holder | 3467 → 3336 | 2649 → 2516 | 0.05 → 0.05 | yes → yes | no, 3468 → no, 3337 | 8762 → 9427 |
+
+Against the owner's bars: facets −29 % (17,790 → 12,565; bar ≤ 16,000) and faces down in all 8 files that moved; no
+new refusal; no file with more facets; prismatic time +4.1 % (faceted, unchanged, +3.9 %: the machine); every
+converted body valid. **Missed: two round trips lost** (puzzle-insert-circle, spool-screw-v4.1, above). The sweep
+test fails on exactly those two files ("STEP read back valid before, invalid now"). phone-stand-foldable now reads
+back valid with the same face count (31c: invalid), but still counts as a failed round trip by the test's rule: its
+read-back volume ratio is 0.99957 (31c: 0.99958), off by more than 1e-4.
+
+## Q1b (ScanRuler ideas)
+
+### Q1b.1 The mesh's own noise against the Auto rung
+
+`spikes/stl-to-solid/noise.py` over the 38 staged meshes, as briefed: up to 4,000 nodes spread over each mesh (one per
+cell of a voxel grid sized for that many; all nodes when there are fewer), the least-squares plane through the nodes
+within two triangle rings, noise = 1.4826 × the median distance. Unfit shares per rung from `Q26LADDER` (the Q2.1-only
+facade, so the segmentation is 31c's); Auto's rung from 31c; faces/facets at another rung from Q1's fixed-step runs.
+
+**Answer: no.** On these meshes, which are exported from CAD and not scanned, a two-ring plane measures the meshes'
+curvature and creases, not noise: a sphere's ball.stl gives 0.167 mm, the drill block 0.078 mm. 3 × noise is above the
+ladder's top rung for 31 of the 36 files Auto converts; Auto's rung is the noise rung for 2 (kuglbahn-pillar-base and
+phone-stand-foldable, both 0.1); no file would skip a rung; 3 would land coarser than Auto (puzzle-base-circle 0.01 →
+0.05: 37 faces / 0 facets both; micro-sd-keyring-outer 0.01 → 0.05: 41 → 59 faces, 0 facets; trashcan-repair-foot
+0.01 → 0.1: 16 faces / 0 facets → 155 faces / 72 facets).
+
+| own/ball | 0.167 | 0.501 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| own/battery-holder | 0.1774 | 0.532 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| own/battery-power-adapter | 0.0905 | 0.272 | 0.1 | 21.01 / 20.07 / 6.80 / 0.00 | None | no rung (3 x noise > 0.1) |
+| own/desk-organizer-module-small | 0.05017 | 0.151 | 0.01 | 0.00 / 71.80 / 71.88 / 71.88 | None | no rung (3 x noise > 0.1) |
+| own/drill-block | 0.07762 | 0.233 | 0.01 | 0.35 / 0.00 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| own/hole-filler-35mm | 0.4017 | 1.21 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| own/hole-filler-5mm | 0.04196 | 0.126 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| own/kuglbahn-pillar-base | 0.02394 | 0.0718 | 0.1 | 41.80 / 39.08 / 36.55 / 36.55 | 0.1 | same |
+| own/mirna-doodle-1 | 1.54 | 4.62 | 0.1 | 6.10 / 6.10 / 5.02 / 2.60 | None | no rung (3 x noise > 0.1) |
+| own/numbers-base-top | 1.769 | 5.31 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| own/object-permanence-base | 0.04781 | 0.143 | 0.01 | 0.53 / 15.26 / 83.24 / 83.11 | None | no rung (3 x noise > 0.1) |
+| own/peg-perego-button | 0.05788 | 0.174 | 0.02 | 38.56 / 0.00 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| own/phone-stand-foldable | 0.02182 | 0.0655 | 0.1 | 48.46 / 95.00 / 94.80 / 0.00 | 0.1 | same |
+| own/puzzle-base-circle | 0.01247 | 0.0374 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | 0.05 | coarser: Auto 0.01 37 faces / 0 facets; 0.05: 37 faces / 0 facets |
+| own/puzzle-insert-circle | 0.05161 | 0.155 | 0.05 | 6.13 / 6.12 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| own/remove-before-flight-cover | 0.2631 | 0.789 | 0.01 | 0.53 / 0.53 / 0.48 / 0.00 | None | no rung (3 x noise > 0.1) |
+| own/scrap-plate | 0.1325 | 0.398 | 0.02 | 44.67 / 0.00 / 44.67 / 44.67 | None | no rung (3 x noise > 0.1) |
+| own/shower-holder | 0.04494 | 0.135 | 0.01 | 0.93 / 2.91 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| own/spool-nut-v4.1 | 0.3688 | 1.11 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| own/spool-screw-v4.1 | 0.2568 | 0.77 | 0.05 | 5.98 / 2.93 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| own/track-straight-100mm | 0.4199 | 1.26 | 0.01 | 0.50 / 0.00 / 0.25 / 0.00 | None | no rung (3 x noise > 0.1) |
+| own/trashcan-repair-foot | 0.02369 | 0.0711 | 0.01 | 0.00 / 0.00 / 34.38 / 38.21 | 0.1 | coarser: Auto 0.01 16 faces / 0 facets; 0.1: 155 faces / 72 facets |
+| own/trashcan-spacer | 0.2548 | 0.765 | 0.05 | 82.02 / 82.02 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| own/whiteboard-tray-v5 | 0.184 | 0.552 | None | 58.84 / 0.12 / 0.00 / 0.00 | None | refused at Auto |
+| third-party/door-stopper-top | 0.06785 | 0.204 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| third-party/gardena-end | 0.2638 | 0.791 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| third-party/gear-bearing-5 | 0.3841 | 1.15 | 0.1 | 56.87 / 56.87 / 21.35 / 18.56 | None | no rung (3 x noise > 0.1) |
+| third-party/hot-wheels-connector | 0.04898 | 0.147 | 0.01 | 0.94 / 0.00 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| third-party/makita-vacuum-holder | 0.05962 | 0.179 | 0.05 | 97.26 / 96.33 / 1.45 / 92.40 | None | no rung (3 x noise > 0.1) |
+| third-party/micro-sd-keyring-inner | 0.07568 | 0.227 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| third-party/micro-sd-keyring-outer | 0.009007 | 0.027 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | 0.05 | coarser: Auto 0.01 41 faces / 0 facets; 0.05: 59 faces / 0 facets |
+| third-party/mms-camera-mount | 0.09107 | 0.273 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| third-party/mms-flat-stand | 0.1621 | 0.486 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| third-party/mms-m5-nut | 0.2447 | 0.734 | None | 32.26 / 0.00 / 0.00 / 0.00 | None | refused at Auto |
+| third-party/sock-clips-6x | 0.09317 | 0.28 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| third-party/spaghetti-measure | 0.09274 | 0.278 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| third-party/vented-funnel | 0.09339 | 0.28 | 0.02 | 2.08 / 0.00 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+| third-party/wyze-garage-bracket | 0.4647 | 1.39 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | None | no rung (3 x noise > 0.1) |
+
+Auto rung = noise rung: 2; noise rung below Auto (same result): 0, of them skipping rungs: 0 (segmentation saved 0 ms); coarser: 3; above the ladder: 31; refused at Auto: 2
+
+A variant beyond the brief, the residual of a quadric height field over the same two-ring patch (curvature taken
+out), gets close to the float32 floor on smooth meshes (ball.stl 0.0003 mm) but still sees the creases: 18 files above
+the ladder, 5 at Auto's rung, 4 below it (2 of them skipping rungs: phone-stand-foldable 2 rungs, makita-vacuum-holder
+1, together 1.3 s of segmentation), 9 coarser than Auto, among them hot-wheels-connector 2,015 faces / 1,833 facets
+→ 682 / 439 at 0.05, and scrap-plate 154 / 0 → 274 / 173 at 0.05. The rows that aren't "no rung":
+
+| own/ball | 0.0002909 | 0.000873 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | 0.01 | same |
+| own/battery-power-adapter | 0.02091 | 0.0627 | 0.1 | 21.01 / 20.07 / 6.80 / 0.00 | 0.1 | same |
+| own/desk-organizer-module-small | 0.0003643 | 0.00109 | 0.01 | 0.00 / 71.80 / 71.88 / 71.88 | 0.01 | same |
+| own/hole-filler-5mm | 0.02153 | 0.0646 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | 0.1 | coarser: Auto 0.01 6 faces / 0 facets; 0.1: 6 faces / 0 facets |
+| own/kuglbahn-pillar-base | 0.002126 | 0.00638 | 0.1 | 41.80 / 39.08 / 36.55 / 36.55 | 0.01 | below Auto (same result), skips 0 rung(s), 0 ms |
+| own/object-permanence-base | 0.005573 | 0.0167 | 0.01 | 0.53 / 15.26 / 83.24 / 83.11 | 0.02 | coarser: Auto 0.01 1985 faces / 1620 facets; 0.02: 1711 faces / 1210 facets |
+| own/peg-perego-button | 0.00604 | 0.0181 | 0.02 | 38.56 / 0.00 / 0.00 / 0.00 | 0.02 | same |
+| own/phone-stand-foldable | 0.009342 | 0.028 | 0.1 | 48.46 / 95.00 / 94.80 / 0.00 | 0.05 | below Auto (same result), skips 2 rung(s), 630 ms |
+| own/puzzle-base-circle | 0.004728 | 0.0142 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | 0.02 | coarser: Auto 0.01 37 faces / 0 facets; 0.02: 37 faces / 0 facets |
+| own/puzzle-insert-circle | 0.0004303 | 0.00129 | 0.05 | 6.13 / 6.12 / 0.00 / 0.00 | 0.01 | below Auto (same result), skips 0 rung(s), 0 ms |
+| own/scrap-plate | 0.007765 | 0.0233 | 0.02 | 44.67 / 0.00 / 44.67 / 44.67 | 0.05 | coarser: Auto 0.02 154 faces / 0 facets; 0.05: 274 faces / 173 facets |
+| own/shower-holder | 0.007974 | 0.0239 | 0.01 | 0.93 / 2.91 / 0.00 / 0.00 | 0.05 | coarser: Auto 0.01 901 faces / 472 facets; 0.05: 369 faces / 74 facets |
+| own/trashcan-repair-foot | 0.0001896 | 0.000569 | 0.01 | 0.00 / 0.00 / 34.38 / 38.21 | 0.01 | same |
+| own/whiteboard-tray-v5 | 0.1792 | 0.538 | None | 58.84 / 0.12 / 0.00 / 0.00 | None | refused at Auto |
+| third-party/hot-wheels-connector | 0.01084 | 0.0325 | 0.01 | 0.94 / 0.00 / 0.00 / 0.00 | 0.05 | coarser: Auto 0.01 2015 faces / 1833 facets; 0.05: 682 faces / 439 facets |
+| third-party/makita-vacuum-holder | 0.005516 | 0.0165 | 0.05 | 97.26 / 96.33 / 1.45 / 92.40 | 0.02 | below Auto (same result), skips 1 rung(s), 713 ms |
+| third-party/micro-sd-keyring-inner | 0.03181 | 0.0954 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | 0.1 | coarser: Auto 0.01 66 faces / 18 facets; 0.1: 84 faces / 0 facets |
+| third-party/micro-sd-keyring-outer | 0.02187 | 0.0656 | 0.01 | 0.00 / 0.00 / 0.00 / 0.00 | 0.1 | coarser: Auto 0.01 41 faces / 0 facets; 0.1: 55 faces / 0 facets |
+| third-party/mms-m5-nut | 0.2153 | 0.646 | None | 32.26 / 0.00 / 0.00 / 0.00 | None | refused at Auto |
+| third-party/vented-funnel | 0.01215 | 0.0364 | 0.02 | 2.08 / 0.00 / 0.00 / 0.00 | 0.05 | coarser: Auto 0.02 632 faces / 0 facets; 0.05: 439 faces / 0 facets |
+
+Auto rung = noise rung: 5; noise rung below Auto (same result): 4, of them skipping rungs: 2 (segmentation saved 1343 ms); coarser: 9; above the ladder: 18; refused at Auto: 2
+
+Neither estimate is a floor Auto could start from: the plane one says nothing for most files, and the quadric one would
+move 9 files to a coarser rung, some better, some worse. A noise floor for these meshes would need patches inside one
+face (no crease), which is what the segmentation already finds.
+
+### Q1b.2 Torus faces' loop orientation in the written STEP
+
+`spikes/stl-to-solid/torus_loops.py` over the STEP files of the 36 converted bodies at Auto (written with `STEP_OUT` by
+the facade's own writer, Q2.1 and Q2.2 in), with two independent checks per face. The (u, v) one: every edge sampled
+at 64 points in the direction its ORIENTED_EDGE, EDGE_CURVE and bound flag give, (u, v) on the torus from its
+placement, unwrapped; a loop that doesn't wrap must have the area sign its role (outer = the largest, else a hole)
+and `same_sense` give; a band's two u-wrapping rims must run opposite ways in u. The edge-use one: in a closed shell,
+the two faces on an edge use it in opposite directions; a bound with a wrong flag uses its edges the same way as the
+neighbours.
+
+**Check of the method on OCCT's own fillets** (the kernel's `fillet`, its STEP writer): a cylinder r 5 with both rims
+filleted r 1, a holed block, a boss on a plate. In each file one torus face fails **both** checks: on the filleted
+cylinder, the bottom rim's torus (axis −z, at z 1) has bound flag .F.; with .T. both its edges would run opposite to
+the neighbours' as they must. Harness case `H` shows OCCT's frame of that torus is indirect (`gp_Ax3::Direct()` false,
+face reversed), and the top rim's is direct and fine. So the defect the brief describes is in the STEP files Extrudo
+writes today for an ordinary fillet on a cylinder's rim. OCCT's reader mends it: the three files read back valid with
+the same face counts (5, 9, 10).
+
+In the converted bodies:
+
+| file | faces | torus faces | unrolled | loops | disagree | ambiguous | edge uses the same way | read-back faces / valid |
+|---|---|---|---|---|---|---|---|---|
+| own/battery-power-adapter | 583 | 2 | 2 | 3 | 0 | 0 | 0 / 3439 | 583 / 1 |
+| own/desk-organizer-module-small | 377 | 12 | 12 | 12 | 0 | 0 | 0 / 6454 | 377 / 1 |
+| own/drill-block | 388 | 2 | 2 | 2 | 0 | 0 | 0 / 1864 | 388 / 1 |
+| own/hole-filler-35mm | 6 | 1 | 1 | 1 | 0 | 0 | 0 / 9 | 6 / 1 |
+| own/kuglbahn-pillar-base | 3881 | 10 | 10 | 10 | 0 | 0 | 0 / 10258 | 3881 / 1 |
+| own/peg-perego-button | 212 | 2 | 2 | 2 | 0 | 0 | 0 / 1738 | 212 / 1 |
+| own/phone-stand-foldable | 983 | 13 | 13 | 13 | 1 | 0 | 0 / 4426 | 983 / 1 |
+| own/puzzle-base-circle | 37 | 1 | 1 | 1 | 0 | 0 | 0 / 101 | 37 / 1 |
+| own/puzzle-insert-circle | 379 | 1 | 1 | 5 | 0 | 0 | 0 / 3019 | 379 / 0 |
+| own/trashcan-spacer | 78 | 4 | 4 | 4 | 0 | 0 | 0 / 359 | 78 / 1 |
+| third-party/gardena-end | 17 | 4 | 4 | 4 | 0 | 0 | 0 / 316 | 17 / 1 |
+| third-party/makita-vacuum-holder | 3336 | 5 | 5 | 9 | 0 | 0 | 0 / 8762 | 3337 / 0 |
+| third-party/sock-clips-6x | 161 | 6 | 6 | 6 | 0 | 0 | 0 / 489 | 161 / 1 |
+| third-party/vented-funnel | 632 | 6 | 6 | 6 | 0 | 0 | 0 / 5163 | 632 / 1 |
+
+Totals: 36 files, 22,498 faces, 69 torus faces, all unrolled, 78 loops; the edge-use check passes on all 90,989 edges;
+the (u, v) check disagrees on 1 loop: phone-stand-foldable's face 96465 (R 2.88, r 0.086, one loop, same_sense .F.,
+flag .F.), which the edge-use check passes and which reads back valid. That is not the writer defect (that fails
+both checks); it may be my (u, v) sampling on a tube that thin, not looked into. The hybrid builds its tori on direct
+frames (`gp_Ax3(origin, direction)`), so its tori don't meet the defect. The three read-back failures in the table
+(puzzle-insert-circle, spool-screw-v4.1, makita-vacuum-holder) are not torus loop orientations: both checks pass on
+those files; the first two are Q2.1's touching loops, makita's is 31c's own.
+
+## For run 3
+
+1. **Q2.1's two lost round trips.** Options, cheapest first: (a) explode a split region again when its pinch node
+   is shared by loops of a curved face (both failures are curved; the plane in the test round-trips) — costs those
+   faces' facets back, in the files the split helped most; (b) cut such a region into two faces along mesh edges
+   from the pinch node to its outer loop, so no face's loops touch; (c) find out why the reader splits the shared
+   vertex in those two faces and not the other 42.
+2. **The writer's torus flags (Q1b.2)**, outside Mesh to Solid: Extrudo's STEP of a filleted cylinder rim has a torus
+   bound flag that a reader trusting flags turns into a cove. A writer-side fix (write such faces on a direct frame, or
+   check and flip the bound flags against the neighbours' edge uses before writing) and a test reading the flags.
+3. **Q2.2 holds** (one file, no side effect).
+4. Neither noise estimate should move Auto.
