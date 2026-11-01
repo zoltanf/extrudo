@@ -191,7 +191,9 @@ test('Tutorial 4: a threaded bottle cap', async ({ page }) => {
       const thread = page.getByRole('region', { name: 'Thread dialog' });
       await expect(thread.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
       await expect(thread.getByRole('combobox', { name: 'Size' })).toHaveValue('auto');
-      await expect(thread).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
+      // The bore is past the thread's minor diameter, so it warns (ADR-0056's
+      // fourth amendment).
+      await expect(thread).toHaveAttribute('data-preview-status', 'warning', { timeout: 60_000 });
       await ok(page, thread);
     },
     async () => {

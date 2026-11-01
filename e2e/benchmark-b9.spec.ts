@@ -173,7 +173,9 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   const thread = page.getByRole('region', { name: 'Thread dialog' });
   await expect(thread.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
   await expect(thread.getByRole('combobox', { name: 'Size' })).toHaveValue('auto');
-  await expect(thread).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
+  // The bore is past M30's minor diameter, so the thread warns that only the
+  // outer part of the tooth is cut (ADR-0056's fourth amendment).
+  await expect(thread).toHaveAttribute('data-preview-status', 'warning', { timeout: 60_000 });
   await ok(page, thread);
   await expect(chip(page, 'Thread1')).toHaveAccessibleName('Thread1');
   await expectBody(page, 'Cap', [32, 32, 14]);

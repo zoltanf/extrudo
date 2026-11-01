@@ -104,7 +104,9 @@ click in the middle of the hollow picks the flat top instead. Press **Thread** i
 the **Modify** tab. **Faces** reads **1 face** and **Size** reads **auto**: Extrudo
 fits the standard metric thread to the wall's diameter, here M30 in a Ø28 wall.
 
-Wait a few seconds for the preview, then press **OK**. The inside of the cap
+Wait a few seconds for the preview. Extrudo warns that the bore is a little
+wider than the thread's minor diameter, so only the outer part of the tooth is
+cut — fine for a printed cap. Press **OK**. The inside of the cap
 gets a spiral groove, and its outside is unchanged at 32 × 32 × 14 mm.
 
 ![The cap seen from below with a thread cut inside](./images/bottle-cap/cap-thread.png)
