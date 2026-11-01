@@ -54,7 +54,7 @@ is g/cm³ and a line width mm whatever your design's units are.
 
 ## What is not here
 
-Document settings (units, precision) belong to the design: they are in the browser's **Document
-settings** folder, and the home screen's New design card picks the unit of a new design. Keyboard
-shortcuts can't be remapped yet. Panel sizes, the pinned commands in Search and the tutorial's progress are kept,
+Document settings (units, precision, fractions) belong to the design: they are in the browser's
+**Document settings** folder, and the home screen's New design card picks the unit of a new design.
+Panel sizes, the pinned commands in Search and the tutorial's progress are kept,
 but are changed where they live.

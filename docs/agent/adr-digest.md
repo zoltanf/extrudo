@@ -3831,7 +3831,10 @@ ADR-0113 (the owner, 2026-10-28): **Imperial units** (P6-18). `packages/core/src
 `10 mm`, `10 / 2` → `(10 / 2) * 1 mm`), `document-commands.ts` (`updateSettings`'s `keepLengths`),
 `apps/web/src/shell/BrowserPanel.tsx` (`DocumentSettings`: the `Units` and `Precision` selects,
 `[data-setting]`), `apps/web/src/home/HomeScreen.tsx` (the New design card's unit select, preference
-`newDesignUnits`). **Rules:** a unit change goes through `document.settings` and never resizes the
+`newDesignUnits`; every blank new design reads it through `newDesignUnits`/`createBlankProject` in
+`apps/web/src/project/actions.ts`, the Home tab's New Design tile included; the tutorial stays mm), and
+`packages/cli/src/cli.ts` (`info`'s text shows parameter values in the document unit, `--json` keeps mm
+and degrees). **Rules:** a unit change goes through `document.settings` and never resizes the
 model: the command spells the **old** unit out on every plain length number first (user parameters of
 unit `length` and their slider `min`/`max`/`step`, configuration values of those parameters, feature
 `expr` inputs of unit `length`, non-angle sketch dimensions; angles and unitless numbers untouched), in

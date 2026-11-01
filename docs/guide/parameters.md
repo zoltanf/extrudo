@@ -49,8 +49,8 @@ fraction is.
 
 A **plain number** takes the unit of the field it is in. In a length field `20` means 20 in the
 design's unit (millimetres, unless you changed it), and in an angle field `45` means 45
-degrees. Next to a length, a plain number joins in too: `width + 2` adds 2 mm. This is what makes
-quick typing work.
+degrees. Next to a length, a plain number joins in too: `width + 2` adds 2 in the design's unit.
+This is what makes quick typing work.
 
 The design's unit is set in the browser's **Document settings** folder (or on the New design card
 for a new design). Changing it keeps every length: plain numbers get the old unit written out, so a

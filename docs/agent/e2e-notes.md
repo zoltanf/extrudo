@@ -2127,6 +2127,27 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   gives `25.00`, and a click on the center at (-35,20) shows Point X `-35`,
   Y `20` in the `Selection` region.
 
+### `e2e/document-units.spec.ts`
+
+- P6-18 S1, ADR-0113 §1: the home screen's combobox "Units of a new design"
+  (starts `mm`; picking `in` shows "An empty design in inches.") is remembered
+  across a reload, and the Home tab's button "New Design" (exact; viewport
+  1440 × 900) in that design makes another inch design. The status region
+  "Status" (exact) reads `0 features · in`.
+  In a design the browser (complementary "Browser") button "Document settings"
+  opens the folder (check `aria-expanded` first: a second click closes it); its
+  comboboxes "Units" and "Precision" are two commands, so two Ctrl+Z steps.
+  Wait for `saveStatus` "Saved" before `page.reload()`.
+
+### `e2e/inch-grid.spec.ts`
+
+- P6-18 S2, ADR-0113 §2: viewport 1440 × 900. Set Units to `in` first, then
+  `newSketchOnXY` and a Line at (-20,30)-(30,-10) with "Snap to grid" on (the
+  palette default). Sketches store mm, so the check reads `document.json` from
+  OPFS (`projects/<id>/document.json`) after "Saved": every point is a whole
+  multiple of 25.4/16 mm and **not** a whole mm (true within ±40 mm of the
+  origin). The mm test asserts whole mm instead.
+
 ### `e2e/inch-fractions.spec.ts`
 
 - P6-18 S3, ADR-0113 §3: set the unit to `in` and check the browser's

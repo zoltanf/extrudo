@@ -139,6 +139,32 @@ describe('extrudo info', () => {
     expect(report.bodies[0].size).toEqual([60, 40, 30]);
   });
 
+  it(
+    "prints an inch design's lengths in inches; --json keeps mm (ADR-0113)",
+    SPAWNING,
+    async () => {
+      const design = Design.create({ name: 'Inch plate', units: 'in' });
+      design.parameter('width', '2');
+      design.parameter('thick', '3/8 in');
+      design.parameter('tilt', '15 deg');
+      design.box({ length: 'width', width: 'width', height: 'thick' });
+      const path = join(dir, 'inch-plate.extrudo');
+      await writeFile(path, writeArchive(design.doc));
+
+      const text = await extrudo(['info', path]);
+      expect(text.code).toBe(0);
+      expect(text.stdout).toContain('  in · 1 body');
+      expect(text.stdout).toMatch(/width\s+2\s+= 2 in\n/);
+      expect(text.stdout).toMatch(/thick\s+3\/8 in\s+= 0\.375 in\n/);
+      expect(text.stdout).toMatch(/tilt\s+15 deg\s+= 15 deg\n/);
+
+      const report = JSON.parse((await extrudo(['info', path, '--json'])).stdout);
+      expect(report.units).toBe('in');
+      const width = report.parameters.find((p: { name: string }) => p.name === 'width');
+      expect(width.value).toBeCloseTo(50.8);
+    },
+  );
+
   it('computes with a changed parameter, and names what it did', SPAWNING, async () => {
     const design = await fixture('b2-storage-box');
     const json = await extrudo(['info', design, '--param', 'wall=5mm', '--json']);
