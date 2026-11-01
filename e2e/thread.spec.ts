@@ -230,9 +230,7 @@ test('threads a cylinder with the printing profile and fits it loose', async ({ 
   const edit = page.getByRole('region', { name: 'Edit Thread1 dialog' });
   await expect(edit).toBeVisible();
   await edit.getByRole('combobox', { name: 'Fit' }).selectOption('loose');
-  await expect(edit.getByRole('textbox', { name: 'Tolerance', exact: true })).toHaveValue(
-    '0.2 mm',
-  );
+  await expect(edit.getByRole('textbox', { name: 'Tolerance', exact: true })).toHaveValue('0.2 mm');
   await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
   await ok(page, edit);
   await expect(viewport).toHaveAttribute('data-bodies', /^Body1:\d+:19\.6,19\.6,20$/);
