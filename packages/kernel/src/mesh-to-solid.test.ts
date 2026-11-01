@@ -1104,6 +1104,37 @@ function trianglesOf(solid: Manifold): { positions: Float64Array; indices: Uint3
 }
 
 /**
+ * A 40 x 30 x 5 plate with two square pyramids cut 3 mm deep into its top,
+ * their rims (corners at 3 mm from the centres 17 and 23) touching at
+ * (20, 15, 5). `bump`: `bossWithBump`'s boss (r 5, 6 high) at (8, 8) with its lopsided bump,
+ * which fits no surface.
+ */
+function dimplesTouching(bump = false): Manifold {
+  const plate = manifold.Manifold.cube([40, 30, 5]);
+  const a = manifold.Manifold.cylinder(4, 0, 4, 4).translate([17, 15, 2]);
+  const b = manifold.Manifold.cylinder(4, 0, 4, 4).translate([23, 15, 2]);
+  const dimples = a.add(b);
+  let part = plate.subtract(dimples);
+  for (const m of [plate, a, b, dimples]) m.delete();
+  if (bump) {
+    const cylinder = manifold.Manifold.cylinder(6, 5, 5, 48).translate([8, 8, 5]);
+    const boss = cylinder.refine(6);
+    const bumped = boss.warp((v) => {
+      if (v[2] > 10.999) {
+        const x = v[0] - 8;
+        const y = v[1] - 8;
+        const r2 = (x * x + y * y) / 25;
+        v[2] += 2 * Math.max(0, 1 - r2) * (1 + 0.3 * (x / 5) + 0.2 * (y / 5) ** 2);
+      }
+    });
+    const whole = part.add(bumped);
+    for (const m of [cylinder, boss, bumped, part]) m.delete();
+    part = whole;
+  }
+  return part;
+}
+
+/**
  * A 30 x 30 x 10 box with a cylindrical boss r 5 on top whose top is a
  * lopsided bump (2 mm high, tilted): no plane, cylinder, cone, sphere or
  * torus fits it, and it covers more than 2 % of the surface.
@@ -1153,6 +1184,37 @@ describe('Mesh to Solid, the hybrid rebuild (ADR-0097 slice D1)', { timeout: 300
     expect(walls).toHaveLength(2);
     expect(walls[0]?.surface).toBe(walls[1]?.surface);
     for (const r of walls) expect(r.loops).toHaveLength(1);
+  });
+
+  it('splits a top face whose two dimples touch at a node into one face with two inner loops (slice D11)', () => {
+    // Two square pyramids cut into a plate, their rims touching at one corner
+    // (20, 15, 5): the top face's boundary passes that node twice. The mesh is
+    // manifold there (the node's ring of triangles is one cycle); the region
+    // was exploded into facets ("touches itself at node") before slice D11.
+    const { positions, indices } = trianglesOf(dimplesTouching());
+    const top = loopsOf(positions, indices).filter((r) => r.kind === 0 && r.loops.length > 1);
+    expect(top).toHaveLength(1);
+    expect(top[0]?.loops.slice(1)).toEqual([4, 4]);
+    // With a freeform bump beside them (no exact rebuild then), the hybrid
+    // builds the top face whole: one plane at z 5 of the plate's area less
+    // the dimples' rims and the boss's base.
+    const part = dimplesTouching(true);
+    const volume = part.volume();
+    const { shape, report } = prismatic(meshOf(part));
+    try {
+      expect(report.rebuild).toBe('hybrid');
+      expect(report.facets).toBeGreaterThan(0);
+      const tops = kernel
+        .describe(shape)
+        .faces.filter((f) => f.type === 'plane' && Math.abs((f.centroid[2] as number) - 5) < 1e-6);
+      expect(tops).toHaveLength(1);
+      expect(tops[0]?.area).toBeCloseTo(1200 - 2 * 18 - 25 * Math.PI, 0);
+      expect(kernel.isValid(shape)).toBe(true);
+      expect(Math.abs(kernel.properties(shape).volume / volume - 1)).toBeLessThan(0.01);
+      expectStepRoundTrip(kernel, shape, 'hybrid: a top face whose dimples touch at a node');
+    } finally {
+      kernel.release(shape);
+    }
   });
 
   it('splits a capped cylinder’s wall into two halves', () => {
