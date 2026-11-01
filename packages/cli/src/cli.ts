@@ -26,6 +26,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { emitScript } from '@extrudo/api';
+import { type LengthUnit, lengthFactor } from '@extrudo/core';
 import {
   type ComputeResult,
   type DesignJob,
@@ -314,6 +315,15 @@ function unitLabel(unit: string, lengthUnit: string): string {
   return lengthUnit;
 }
 
+/**
+ * A parameter's value in the unit `unitLabel` names: a length is computed in mm,
+ * so an inch design's `2 in` reads 2, not 50.8 (ADR-0113). `--json` keeps mm.
+ */
+function valueIn(value: number, unit: string, lengthUnit: LengthUnit): number {
+  if (unit !== 'length' || lengthUnit === 'mm') return value;
+  return Number((value / lengthFactor(lengthUnit)).toPrecision(12));
+}
+
 /** The lines `info` prints. */
 function report(job: DesignJob, result: ComputeResult): string[] {
   const lines: string[] = [job.doc.name];
@@ -344,7 +354,9 @@ function report(job: DesignJob, result: ComputeResult): string[] {
     for (const parameter of group) {
       const unit = unitLabel(parameter.unit, job.doc.settings.units);
       const value =
-        parameter.value === undefined ? '—' : `${parameter.value}${unit ? ` ${unit}` : ''}`;
+        parameter.value === undefined
+          ? '—'
+          : `${valueIn(parameter.value, parameter.unit, job.doc.settings.units)}${unit ? ` ${unit}` : ''}`;
       lines.push(
         `  ${parameter.name.padEnd(names)}  ${parameter.expression.padEnd(expressions)} = ${value}` +
           `${parameter.of ? `  (${parameter.of})` : ''}`,

@@ -4,6 +4,8 @@ import {
   DocumentLoadError,
   type ExtrudoDocument,
   FILE_EXTENSION,
+  type LengthUnit,
+  LengthUnitSchema,
   mediaTypeOf,
   modelKind,
   randomUuid,
@@ -17,7 +19,7 @@ import {
 } from '@extrudo/storage';
 import { appNotifications } from '../design-system/notifications';
 import { importAccept, requestModelImport } from '../features/import';
-import { type OpenedFile, type Platform, safeFileName } from '../platform';
+import { type OpenedFile, type Platform, type Preferences, safeFileName } from '../platform';
 import { isConvertibleCad } from '../platform/cad';
 import { navigate, projectHref } from '../routes';
 import { APP_VERSION } from '../version';
@@ -38,6 +40,22 @@ export async function createProject(
   // Ask for persistent storage once there is something worth keeping (FR-PRJ-05).
   void platform.storage.requestPersistence();
   return doc.id;
+}
+
+/** The preference that remembers the unit of the last new design (FR-PRJ-07, ADR-0113 §1). */
+export const NEW_DESIGN_UNITS_KEY = 'newDesignUnits';
+
+/** The unit a new design starts in: the one last picked on the home screen's New design card. */
+export function newDesignUnits(preferences: Preferences): LengthUnit {
+  return LengthUnitSchema.catch('mm').parse(preferences.get(NEW_DESIGN_UNITS_KEY, 'mm'));
+}
+
+/** A new empty design in the remembered unit: the Home tab's New Design in a design. */
+export function createBlankProject(platform: Platform): Promise<ProjectId> {
+  return createProject(
+    platform,
+    createDocument({ units: newDesignUnits(platform.preferences), appVersion: APP_VERSION }),
+  );
 }
 
 /** A new empty design for the tutorial (P3-12), named for what it builds. */

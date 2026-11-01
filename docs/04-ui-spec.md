@@ -225,7 +225,9 @@ brief, voice) is in **`05-brand.md`**. In short:
   dropdown with the full list. Users can pin tools to the toolbar.
 - **Browser (left):** collapsible tree with an eye toggle per item and
   folder. Right-click menus. Items highlight in the viewport on hover.
-  Rename with F2. It floats over the view's left edge in frosted glass,
+  Rename with F2. The collapsed **Document settings** folder at the top
+  sets the design's Units (`mm`, `cm`, `m`, `in`), Precision and, in an
+  inch design, Fractions, each change one undoable command (ADR-0113). It floats over the view's left edge in frosted glass,
   like the nav bar: the view runs on behind it, so hiding, showing or
   resizing it never moves the model. Hiding it slides it out to the left
   in 200 ms (`--x-normal`, none under reduced motion); a small tab with
@@ -739,7 +741,8 @@ A list on the left, the selected parameter on the right.
   sketch plane (a cylinder cut by a slanted sketch is an ellipse); they follow
   the model like projected curves, with the same panel and Keep linked.
 - The camera animates to look at the plane (can be turned off). The grid
-  aligns to the sketch plane. Bodies are optionally sliced or dimmed.
+  aligns to the sketch plane; in an inch design it and its snapping step in
+  binary fractions of an inch up to feet (1/16 in … 10 ft, ADR-0113 §2). Bodies are optionally sliced or dimmed.
 - **SKETCH tab groups:** CREATE (line, rectangle ▾, circle ▾, arc ▾, polygon
   ▾, slot ▾, ellipse, spline ▾, point, text, mirror, pattern ▾, project ▾,
   dimension) · MODIFY (fillet, chamfer, trim, extend, break, offset,
@@ -896,7 +899,8 @@ command (replacing its first key).
 
 - A grid of project cards with thumbnail, name, modified time, and a hover
   menu (rename, duplicate, export `.extrudo`, delete).
-- A big playful "New design" card and, until it is started, dismissed or
+- A big playful "New design" card with a unit select (remembered; the
+  Home tab's New Design in a design uses the same unit, ADR-0113 §1) and, until it is started, dismissed or
   finished, a "Take the tour" card beside it (P3-12, §7); then "Start from a
   template": a row of four cards with a picture, a name and one line each (Wall
   bracket, Storage box, Box with a lid, PCB enclosure), the last three from the

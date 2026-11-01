@@ -1,0 +1,1 @@
+- 2026-11-01 · **Inch designs everywhere**: the Home tab's New Design inside a design now uses the unit picked on the home screen (it was always millimetres), and `extrudo info` prints an inch design's parameter values in inches (it showed millimetre numbers labelled "in").

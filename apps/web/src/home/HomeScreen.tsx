@@ -39,6 +39,8 @@ import {
   describeError,
   exportProject,
   importAnyFile,
+  NEW_DESIGN_UNITS_KEY,
+  newDesignUnits,
 } from '../project/actions';
 import { prewarmProjectKernel } from '../project/spawnKernel';
 import { exampleHref, navigate, projectHref } from '../routes';
@@ -66,9 +68,6 @@ type Sort = 'modified' | 'name';
  * The home screen (UI spec §6, FR-PRJ-01): new design, templates, the
  * project grid with search and sort, import, and the trash.
  */
-/** The preference that remembers the unit of the last new design. */
-const UNITS_KEY = 'newDesignUnits';
-
 const UNIT_WORDS: Record<LengthUnit, string> = {
   mm: 'millimetres',
   cm: 'centimetres',
@@ -160,12 +159,10 @@ export function HomeScreen({ platform }: { platform: Platform }) {
 
   const open = (id: string) => navigate(projectHref(id));
   // The unit a new design is in (FR-PRJ-07, ADR-0113 §1): the last one chosen here.
-  const [units, setUnitsState] = useState<LengthUnit>(() =>
-    LengthUnitSchema.catch('mm').parse(platform.preferences.get(UNITS_KEY, 'mm')),
-  );
+  const [units, setUnitsState] = useState<LengthUnit>(() => newDesignUnits(platform.preferences));
   const setUnits = (next: LengthUnit) => {
     setUnitsState(next);
-    platform.preferences.set(UNITS_KEY, next);
+    platform.preferences.set(NEW_DESIGN_UNITS_KEY, next);
   };
   const start = () =>
     createProject(platform, createDocument({ units, appVersion: APP_VERSION }))

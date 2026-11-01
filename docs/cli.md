@@ -64,9 +64,14 @@ Bodies:
   Lid  60.00 × 40.00 × 8.00 mm · 15 faces · 17002 mm³
 ```
 
+The text report shows a parameter's value in the design's unit (`units`, the
+first word of the summary line: an inch design's `width 2 = 2 in`); body sizes
+and volumes are always in mm.
+
 `--json` prints the same as one JSON object on stdout: `name`, `units`,
 `notices`, `parameters` (each with its `owner`), `configurations`, `features`,
-`bodies`, `errors`, `warnings`, `ms`. It is the slower way to read a design —
+`bodies`, `errors`, `warnings`, `ms`. Its numbers are in mm and degrees,
+whatever `units` says. It is the slower way to read a design —
 the volumes are the kernel's exact mass properties (see
 [Times](#times)).
 
@@ -172,7 +177,7 @@ run it against a [`Design`](api/README.md).
 
 | Option | Meaning |
 |---|---|
-| `--param name=expr` | Set a parameter to a new expression. Repeatable. The app's expression grammar with units: `width=60mm`, `tilt=30deg`, `wall=2 * tolerance`. A driving dimension's own parameter (`d1`, or the name it was given) works too and moves that sketch; a feature input's own parameter does not — the message says which feature and input it is. `info` lists all three kinds. |
+| `--param name=expr` | Set a parameter to a new expression. Repeatable. The app's expression grammar with units: `width=60mm`, `tilt=30deg`, `wall=2 * tolerance`, `wall=3/8in`; a plain number is in the design's unit. A driving dimension's own parameter (`d1`, or the name it was given) works too and moves that sketch; a feature input's own parameter does not — the message says which feature and input it is. `info` lists all three kinds. |
 | `--config <name>` | Put a configuration's values on the parameters (ADR-0059), then re-solve. |
 | `--bodies a,b` | Export only these bodies, by name (or by ID). |
 | `--component <name>` | Export a component's live bodies, by name (or ID). Repeatable; with `--bodies`, both. |

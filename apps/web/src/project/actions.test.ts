@@ -5,13 +5,16 @@ import { memoryProjectStore, writeArchive } from '@extrudo/storage';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { appNotifications } from '../design-system/notifications';
 import { takeModelImport } from '../features/import';
-import type { Platform } from '../platform';
+import { memoryPreferences, type Platform } from '../platform';
 import {
   CHECKING_TEXT,
+  createBlankProject,
   importAnyFile,
   importF3dFile,
   importNotices,
   MAX_F3D_BYTES,
+  NEW_DESIGN_UNITS_KEY,
+  newDesignUnits,
   openExternalFile,
   READING_TEXT,
   saveF3dImport,
@@ -83,6 +86,29 @@ describe('importF3dFile (M1)', () => {
       /too large to import/,
     );
     expect(read).toBe(false);
+  });
+});
+
+describe('a new design takes the remembered unit (FR-PRJ-07, ADR-0113 §1)', () => {
+  const platformWith = (projects: ReturnType<typeof memoryProjectStore>, stored?: unknown) =>
+    ({
+      projects,
+      preferences: memoryPreferences(
+        stored === undefined ? {} : { [NEW_DESIGN_UNITS_KEY]: stored },
+      ),
+      storage: { requestPersistence: async () => true },
+    }) as unknown as Platform;
+
+  it("the Home tab's New Design is in the unit last picked on the home screen", async () => {
+    const projects = memoryProjectStore();
+    const id = await createBlankProject(platformWith(projects, 'in'));
+    expect((await projects.load(id)).settings.units).toBe('in');
+  });
+
+  it('is millimetres with nothing stored, or something that is not a unit', () => {
+    expect(newDesignUnits(memoryPreferences())).toBe('mm');
+    expect(newDesignUnits(memoryPreferences({ [NEW_DESIGN_UNITS_KEY]: 'furlong' }))).toBe('mm');
+    expect(newDesignUnits(memoryPreferences({ [NEW_DESIGN_UNITS_KEY]: 'cm' }))).toBe('cm');
   });
 });
 
