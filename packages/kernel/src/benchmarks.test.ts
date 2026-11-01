@@ -88,7 +88,10 @@ const BUDGET_MS: Record<string, number> = {
 };
 
 /** Recomputes a document from scratch, within its budget: every feature ok. */
-async function recompute(doc: ExtrudoDocument): Promise<Done> {
+async function recompute(
+  doc: ExtrudoDocument,
+  expected?: { id: string; message: string },
+): Promise<Done> {
   engine?.clear();
   engine = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
   const start = performance.now();
@@ -100,7 +103,9 @@ async function recompute(doc: ExtrudoDocument): Promise<Done> {
   expect(ms, `${doc.name} took ${ms} ms, over its ${budget} ms budget`).toBeLessThan(budget);
   if (result.status !== 'done') throw new Error(`recompute ${result.status}`);
   const problems = Object.entries(result.features).filter(([, s]) => s.status !== 'ok');
-  expect(problems).toEqual([]);
+  expect(problems).toEqual(
+    expected ? [[expected.id, { status: 'warning', message: expected.message }]] : [],
+  );
   return result;
 }
 
@@ -143,6 +148,12 @@ function withParameters(doc: ExtrudoDocument, values: Record<string, string>): E
 }
 
 const featureNames = (doc: ExtrudoDocument) => doc.features.map((f) => f.name);
+/** The ID of a document feature by its name. */
+const featureId = (doc: ExtrudoDocument, name: string) => {
+  const feature = doc.features.find((f) => f.name === name);
+  if (!feature) throw new Error(`no feature ${name}`);
+  return feature.id;
+};
 
 /**
  * The area (mm²) every profile of every sketch of `doc` covers: B8's is its
@@ -443,7 +454,14 @@ describe('B9 bottle cap and thread adapter', { timeout: 120_000 }, () => {
       'Revolve2',
       'Thread2',
     ]);
-    const result = await recompute(doc);
+    const result = await recompute(doc, {
+      // The cap's bore is drawn at Ø28, past M30's minor diameter: the thread
+      // warns that only the outer part of the tooth is cut (P4-12's fourth
+      // amendment; the fill of such a bore is the next one).
+      id: featureId(doc, 'Thread1'),
+      message:
+        "The hole is 28 mm across, wider than the M30 thread's minor diameter (26.411 mm): only the outer part of the tooth is cut. Draw the hole at about 26.2 mm for a full thread.",
+    });
     expect(bodyNames(doc, result)).toEqual(['Cap', 'Adapter']);
     const [cap, adapter] = bodies(result);
     // The shell's cup is open at the bottom and closed at the top, so the
@@ -476,7 +494,14 @@ describe('B9 bottle cap and thread adapter', { timeout: 120_000 }, () => {
     // fit (M30 is the largest coarse size). A thinner wall leaves a Ø29 bore,
     // which M30 fits.
     const doc = withParameters(load(b9), { wall: '1.5 mm' });
-    const [cap, adapter] = bodies(await recompute(doc));
+    // The Ø29 bore is past M30's minor too, so the thread warns the same way.
+    const [cap, adapter] = bodies(
+      await recompute(doc, {
+        id: featureId(doc, 'Thread1'),
+        message:
+          "The hole is 29 mm across, wider than the M30 thread's minor diameter (26.411 mm): only the outer part of the tooth is cut. Draw the hole at about 26.2 mm for a full thread.",
+      }),
+    );
     expect(cap?.valid).toBe(true);
     expect(cap?.size[0]).toBeCloseTo(32, 1);
     expect(cap?.size[2]).toBeCloseTo(14, 3);
