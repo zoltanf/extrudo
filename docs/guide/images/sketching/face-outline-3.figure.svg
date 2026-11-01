@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 195">
+  <title>A dimension refers to the outline, so the switch is locked with a tooltip saying why</title>
+  <g transform="translate(0 30)">
+    <polygon points="40,116 130,144 225,102 135,78" class="sk-face"/>
+    <polygon points="40,116 40,128 130,156 130,144" class="sk-body-side"/>
+    <polygon points="130,144 130,156 225,114 225,102" class="sk-body-side"/>
+    <path d="M40 116 130 144 225 102 135 78Z" class="sk-projected" fill="none" stroke-width="2.2" stroke-linejoin="round"/>
+    <line x1="95" y1="108" x2="170" y2="98" class="sk-free" stroke-width="2.4" stroke-linecap="round"/>
+    <line x1="170" y1="98" x2="196" y2="90" class="sk-dim" fill="none" stroke-width="1"/>
+    <text x="202" y="88" class="sk-dim-text" font-size="12" font-weight="600">12</text>
+  </g>
+  <rect x="12" y="12" width="150" height="26" class="sk-ui" rx="6"/>
+  <text x="22" y="29" class="sk-muted" font-size="11">Face outline</text>
+  <rect x="120" y="18" width="30" height="14" class="sk-muted" rx="7"/>
+  <circle cx="143" cy="25" r="5" class="sk-point"/>
+  <rect x="12" y="42" width="236" height="34" class="sk-ui" rx="5"/>
+  <text x="18" y="57" class="sk-muted" font-size="11">In use: 1 dimension refers to the</text>
+  <text x="18" y="71" class="sk-muted" font-size="11">outline. Delete it first.</text>
+</svg>

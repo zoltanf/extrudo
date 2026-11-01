@@ -22,6 +22,7 @@ import {
 } from '../design-system';
 import { ToolDemo } from '../onboarding/ToolDemo';
 import { isToolReady } from './commands';
+import { clearHelpTarget, helpTarget, setHelpTarget } from './helpTarget';
 import { measureTileText, TILE_TEXT_WIDTH, tileLabel } from './tileLabel';
 import { type FitGroup, fitToolbar, groupWidth } from './toolbarFit';
 import {
@@ -90,29 +91,30 @@ export interface PluginItem {
 }
 
 /**
- * The tile hovered or focused last (P6-06 S9, ADR-0090): F1 and the app menu's
- * "Help for <tool>" open the docs page of its tool, or the user guide before any
- * tile was hovered. It is kept after the pointer leaves (the Menu is opened by a
- * click elsewhere). Module state, read when F1 runs or the panel opens; the
- * `help` command needs nothing else from React.
+ * The toolbar tile's pointer/focus tracking sets the one remembered help
+ * target (P6-22 S2, ADR-0116 §4), a tool target: F1 and the app menu's
+ * "Help for <tool>" open the docs page of the tool whose tile was hovered or
+ * focused last. A sketch palette row replaces it with its sketching section
+ * (`sketch/panels.tsx`); opening or closing a sketch clears it.
+ * Module state in `shell/helpTarget.ts`, read when F1 runs or the panel
+ * opens; the `help` command needs nothing else from React.
  */
-let lastTool: string | undefined;
-
-/** The tool whose toolbar tile was hovered or focused last, if any. */
 export function lastHoveredTool(): string | undefined {
-  return lastTool;
+  const target = helpTarget();
+  return typeof target === 'object' && 'tool' in target ? target.tool : undefined;
 }
 
-/** Sets the remembered tool (the tiles' pointer/focus handlers; exported for tests). */
+/** Sets a tool target, or clears it (exported for tests). */
 export function setHoveredTool(tool: string | undefined): void {
-  lastTool = tool;
+  if (tool === undefined) clearHelpTarget();
+  else setHelpTarget({ tool });
 }
 
 /** Pointer/focus tracking for one tile: remembered on enter and on focus. */
 function trackTool(id: string) {
   return {
-    onPointerEnter: () => setHoveredTool(id),
-    onFocus: () => setHoveredTool(id),
+    onPointerEnter: () => setHelpTarget({ tool: id }),
+    onFocus: () => setHelpTarget({ tool: id }),
   };
 }
 

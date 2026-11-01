@@ -1581,6 +1581,27 @@ end to end, faster than in established desktop CAD.
   draws the selection box; a click, a double-click, a long press and a tool's drag stay
   the pointer's. Acceptance: `pnpm check` (`viewport/navigation.test.ts`,
   `viewport/pointer.test.ts`, `shell/AppMenu.test.tsx`), `e2e/viewport.spec.ts`.
+- [ ] **P6-22 Sketching docs with live widgets and drawn figures** (owner, 2026-11-01;
+  FR-UX-04; ADR-0116). Pilot: `/docs/sketching/` and the Line, Dimension, Project, Trim and
+  Sketch Fillet pages, with four widgets (`dof-playground`, `palette-switches`,
+  `dimension-label`, `trim`), drawn `.figure.svg` figures, heading anchors, and F1 that
+  opens the sketching page (at the palette row's section) while a sketch is open. Then the
+  other 45 sketch tool pages, clips for the 24 without one, and the `snap-explorer` and
+  `profiles` widgets. Acceptance: `pnpm check` (`apps/site/src/docs.test.ts`, the widget
+  models' tests, `shell/docsLinks.test.ts`, `main/docs.test.ts`), the owner's review of the
+  pilot on a local build of the site.
+  - [x] S1: the machinery: the `widget` block and the widget list, the one hashed
+    `docs-widgets` module (only on pages with a widget), `.figure.svg` inlining through
+    the allow-list, the `sk-*` classes, heading ids, and `palette-switches` on the
+    sketching page as the first widget.
+  - [x] S2: F1 opens the sketching page at the palette row's section (`helpTarget.ts`,
+    `docsAnchors.json`, the desktop allow-list).
+  - [x] S3 and S7: the drawn figure set (26 `.figure.svg`), redrawn where unclear.
+  - [x] S4: the `dof-playground`, `dimension-label` and `trim` widgets.
+  - [x] S5: notes for the Line, Dimension, Project, Trim and Sketch Fillet pages;
+    Project's clip.
+  - [x] S6: the sketching page around its visuals, the palette section, figure galleries,
+    the anchor test and the axe audit.
 
 ## Phase 7 — Later (lowest priority, after everything else)
 

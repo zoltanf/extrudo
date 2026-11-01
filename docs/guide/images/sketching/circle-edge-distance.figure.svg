@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 200">
+  <title>A circle dimensioned to a line from its near edge and from its far edge</title>
+  <text x="120" y="30" class="sk-muted" text-anchor="middle" font-size="11">Near edge</text>
+  <circle cx="120" cy="115" r="45" class="sk-free" fill="none" stroke-width="2.4"/>
+  <line x1="220" y1="50" x2="220" y2="180" class="sk-free" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="165" cy="115" r="9" class="sk-step"/>
+  <text x="165" y="119" class="sk-step-text" text-anchor="middle" font-size="11">1</text>
+  <circle cx="220" cy="115" r="9" class="sk-step"/>
+  <text x="220" y="119" class="sk-step-text" text-anchor="middle" font-size="11">2</text>
+  <line x1="165" y1="132" x2="165" y2="176" class="sk-dim" fill="none" stroke-width="1"/>
+  <line x1="220" y1="132" x2="220" y2="176" class="sk-dim" fill="none" stroke-width="1"/>
+  <line x1="165" y1="174" x2="220" y2="174" class="sk-dim" fill="none" stroke-width="1"/>
+  <text x="192.5" y="168" class="sk-dim-text" text-anchor="middle" font-size="12" font-weight="600">13</text>
+  <text x="360" y="30" class="sk-muted" text-anchor="middle" font-size="11">Far edge</text>
+  <circle cx="360" cy="115" r="45" class="sk-free" fill="none" stroke-width="2.4"/>
+  <line x1="460" y1="50" x2="460" y2="180" class="sk-free" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="315" cy="115" r="9" class="sk-step"/>
+  <text x="315" y="119" class="sk-step-text" text-anchor="middle" font-size="11">1</text>
+  <circle cx="460" cy="115" r="9" class="sk-step"/>
+  <text x="460" y="119" class="sk-step-text" text-anchor="middle" font-size="11">2</text>
+  <line x1="315" y1="132" x2="315" y2="176" class="sk-dim" fill="none" stroke-width="1"/>
+  <line x1="460" y1="132" x2="460" y2="176" class="sk-dim" fill="none" stroke-width="1"/>
+  <line x1="315" y1="174" x2="460" y2="174" class="sk-dim" fill="none" stroke-width="1"/>
+  <text x="387.5" y="168" class="sk-dim-text" text-anchor="middle" font-size="12" font-weight="600">58</text>
+</svg>

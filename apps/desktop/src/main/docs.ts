@@ -9,11 +9,13 @@ export const DOCS_URL = 'https://extrudo.org/docs';
 
 /**
  * Every `docsPath` result (`apps/web/src/shell/docsLinks.ts`): the guide's
- * `/`, `/tutorials/`, `/examples/`, the tool index `/tools/` and a tool's
- * `/tools/<id>/`. Anything else — `..`, a full URL, a query or a name with a
- * space — is refused.
+ * `/`, `/tutorials/`, `/examples/`, the tool index `/tools/`, a tool's
+ * `/tools/<id>/`, and a guide page `/<guide>/` with its optional `#<anchor>`
+ * (P6-22 S2, ADR-0116 §4). Anything else — `..`, a full URL, a query, an
+ * uppercase name or a name with a space — is refused.
  */
-const DOCS_PATH = /^\/(tools\/([A-Za-z0-9]+\/)?|tutorials\/|examples\/)?$/;
+const DOCS_PATH =
+  /^\/(tools\/([A-Za-z0-9]+\/)?|tutorials\/|examples\/|[a-z0-9-]+\/(#[a-z0-9-]+)?)?$/;
 
 /** The top bar's GitHub link, the same address as the web app's (`docsLinks.ts`). */
 export const SITE_URLS: Readonly<Record<string, string>> = {

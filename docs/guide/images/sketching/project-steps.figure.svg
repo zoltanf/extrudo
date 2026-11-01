@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 200">
+  <title>Project: an edge picked in the view comes into the sketch as a fixed projected curve that follows the model</title>
+  <polygon points="40,120 120,80 210,120 130,160" class="sk-body"/>
+  <polygon points="40,120 130,160 130,186 40,146" class="sk-body-side"/>
+  <polygon points="130,160 210,120 210,146 130,186" class="sk-body-side"/>
+  <path d="M120 80 210 120" class="sk-accent" fill="none" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="165" cy="100" r="9" class="sk-step"/>
+  <text x="165" y="104" class="sk-step-text" text-anchor="middle" font-size="11">1</text>
+  <polygon points="290,130 350,152 430,112 370,90" class="sk-face"/>
+  <path d="M350 152 430 112" class="sk-projected" fill="none" stroke-width="2.4" stroke-linecap="round"/>
+  <text x="290" y="184" class="sk-muted" font-size="11">fixed, follows the model</text>
+  <path d="M232 130h38m-6 -5 6 5-6 5" class="sk-muted" fill="none" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

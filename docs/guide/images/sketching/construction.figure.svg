@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 220">
+  <title>A plate with a shaded profile, a dashed bolt circle with two centre lines and four holes on it, labelled construction</title>
+  <path d="M130 40H410a10 10 0 0 1 10 10V170a10 10 0 0 1-10 10H130a10 10 0 0 1-10-10V50a10 10 0 0 1 10-10Z M221.1 71.1a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M298.9 71.1a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M221.1 148.9a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M298.9 148.9a10 10 0 1 0 20 0a10 10 0 1 0-20 0" class="sk-profile"/>
+  <line x1="210" y1="110" x2="330" y2="110" class="sk-construction" fill="none" stroke-width="1.6"/>
+  <line x1="270" y1="30" x2="270" y2="190" class="sk-construction" fill="none" stroke-width="1.6"/>
+  <circle cx="270" cy="110" r="55" class="sk-construction" fill="none" stroke-width="1.6"/>
+  <path d="M130 40H410a10 10 0 0 1 10 10V170a10 10 0 0 1-10 10H130a10 10 0 0 1-10-10V50a10 10 0 0 1 10-10Z" class="sk-free" fill="none" stroke-width="2.4" stroke-linejoin="round"/>
+  <circle cx="231.1" cy="71.1" r="10" class="sk-free" fill="none" stroke-width="2.4"/>
+  <circle cx="308.9" cy="71.1" r="10" class="sk-free" fill="none" stroke-width="2.4"/>
+  <circle cx="231.1" cy="148.9" r="10" class="sk-free" fill="none" stroke-width="2.4"/>
+  <circle cx="308.9" cy="148.9" r="10" class="sk-free" fill="none" stroke-width="2.4"/>
+  <text x="30" y="58" class="sk-muted" font-size="11">construction</text>
+  <line x1="104" y1="54" x2="216" y2="84" class="sk-muted" fill="none" stroke-width="1"/>
+</svg>

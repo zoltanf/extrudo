@@ -5,9 +5,10 @@
  * about what the build will actually publish: every Markdown file becomes a page
  * at the address its links point to, the sidebar is the guide pages then the
  * feature pages by category, and a page carries no script (the site's content
- * policy allows none, ADR-0057).
+ * policy, ADR-0057) but the one widget module, and only where a widget is
+ * (ADR-0116).
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -20,6 +21,8 @@ import {
   sidebar,
   stylesheet,
 } from './docs';
+import { ENHANCERS } from './widgets/enhance';
+import { WIDGETS } from './widgets/index';
 
 const allPages = docPages(resolve('docs'), { tokens: { APP_URL: 'https://app.example' } });
 /** The API's own pages: their addresses and sidebar are pinned since ADR-0068. */
@@ -28,7 +31,9 @@ const options = {
   stylesheet: '/assets/docs-1234.css',
   description: 'The Extrudo document API.',
   siteUrl: '/docs/api/',
+  widgetScript: '/assets/docs-widgets-1234.js',
 };
+const WIDGET_TAG = '<script type="module" src="/assets/docs-widgets-1234.js"></script>';
 
 /** The page with a given path, or a failure that says which. */
 function pageAt(path: string): DocPage {
@@ -149,19 +154,65 @@ describe('the sidebar', () => {
   });
 });
 
-/** The page-level assertions the content policy needs (ADR-0057): no script, handler or script URL. */
-function expectNoScript(html: string, where = 'the page'): void {
-  expect(html, where).not.toMatch(/<script/i);
+/**
+ * The page-level assertions the content policy needs (ADR-0057, ADR-0116): no
+ * handler, style or script URL, and no script but the widget module, which a page
+ * holds exactly once if it has a widget and not at all if it hasn't.
+ */
+function expectPolicy(html: string, widgets: boolean, where = 'the page'): void {
+  const scripts = html.match(/<script\b[^>]*>/gi) ?? [];
+  expect(scripts, where).toEqual(widgets ? [WIDGET_TAG.replace('</script>', '')] : []);
+  expect(html.split('</script>').length - 1, where).toBe(widgets ? 1 : 0);
+  if (widgets) expect(html, where).toContain(WIDGET_TAG);
   expect(html, where).not.toMatch(/\son\w+=/i);
+  expect(html, where).not.toMatch(/\sstyle=/i);
+  expect(html, where).not.toMatch(/<style/i);
   expect(html, where).not.toMatch(/javascript:/i);
 }
 
 describe('a page document', () => {
   const html = pageHtml(pageAt('features/extrude.md'), allPages, options);
 
-  it('carries no script of any kind', () => {
-    expectNoScript(html);
-    for (const every of allPages) expectNoScript(pageHtml(every, allPages, options), every.file);
+  it('carries no script, except the widget module on a page with a widget', () => {
+    expectPolicy(html, false);
+    for (const every of allPages) {
+      expectPolicy(pageHtml(every, allPages, options), every.widgets.length > 0, every.file);
+    }
+    const sketching = allPages.find((every) => every.url === '/docs/sketching/');
+    expect(sketching?.widgets).toEqual([
+      'trim',
+      'dof-playground',
+      'dimension-label',
+      'palette-switches',
+    ]);
+    expect(pageHtml(sketching as DocPage, allPages, options)).toContain(WIDGET_TAG);
+    const widgetsOf = (url: string) => allPages.find((every) => every.url === url)?.widgets;
+    expect(widgetsOf('/docs/tools/trim/')).toEqual(['trim']);
+    expect(widgetsOf('/docs/tools/dimension/')).toEqual(['dimension-label']);
+  });
+
+  it('has every section F1 opens, by the ids in docsAnchors.json', () => {
+    const anchors: { guide: string; anchor: string }[] = JSON.parse(
+      readFileSync(resolve('apps/web/src/shell/docsAnchors.json'), 'utf8'),
+    );
+    expect(anchors.length).toBeGreaterThan(0);
+    for (const { guide, anchor } of anchors) {
+      const built = allPages.find((every) => every.url === `/docs/${guide}/`);
+      expect(built, guide).toBeDefined();
+      expect(built?.html, `${guide}#${anchor}`).toContain(`id="${anchor}"`);
+    }
+  });
+
+  it('gives every h2 and h3 of every page an id', () => {
+    for (const every of allPages) {
+      expect(every.html, every.file).not.toMatch(/<h[23]>/);
+      const ids = [...every.html.matchAll(/<h[23] id="([^"]*)"/g)].map((match) => match[1]);
+      for (const id of ids) expect(id, every.file).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+      expect(new Set(ids).size, every.file).toBe(ids.length);
+    }
+    const sketching = allPages.find((every) => every.url === '/docs/sketching/');
+    expect(sketching?.html).toContain('<h2 id="free-fixed-conflict">');
+    expect(sketching?.html).toContain('<h2 id="constraints-you-didn-t-ask-for">');
   });
 
   it('has the head a page needs, and no more', () => {
@@ -487,5 +538,189 @@ describe('assets', () => {
       'guide/x.md': page('X', '', '<!-- notes -->\n\nText.\n\n<!-- /notes -->\n'),
     });
     expect(docPages(root)[0]?.html).not.toContain('notes');
+  });
+});
+
+describe('heading ids', () => {
+  it('are the text in lower case, a repeat numbered', () => {
+    const root = tree({
+      'guide/x.md': page(
+        'X',
+        '',
+        '# Top\n\n## The sketch palette\n\n### Show `points` & more\n\n## Notes\n\n### Notes\n\n## Notes\n\n#### Deep\n',
+      ),
+    });
+    const html = docPages(root)[0]?.html ?? '';
+    expect(html).toContain('<h1>Top</h1>');
+    expect(html).toContain('<h2 id="the-sketch-palette">The sketch palette</h2>');
+    expect(html).toContain('<h3 id="show-points-more">Show <code>points</code> &amp; more</h3>');
+    expect([...html.matchAll(/id="(notes[^"]*)"/g)].map((match) => match[1])).toEqual([
+      'notes',
+      'notes-2',
+      'notes-3',
+    ]);
+    expect(html).toContain('<h4>Deep</h4>');
+  });
+});
+
+describe('widgets', () => {
+  it('draw the named widget in its starting state, the body its caption', () => {
+    const root = tree({
+      'guide/x.md': page('X', '', '```widget palette-switches\nFlip one.\n```\n'),
+    });
+    const [only] = docPages(root);
+    expect(only?.widgets).toEqual(['palette-switches']);
+    const html = only?.html ?? '';
+    expect(html).toContain('<figure class="widget" data-widget="palette-switches">');
+    expect(html).toMatch(
+      /<svg class="widget-stage" viewBox="0 0 420 240" role="group" aria-label="[^"]+">/,
+    );
+    expect(html).toContain('class="sk-profile"');
+    expect(html.match(/<input type="checkbox"[^>]*>/g)).toHaveLength(5);
+    expect(html.match(/<input type="checkbox"[^>]* checked disabled/g)).toHaveLength(5);
+    expect(html).toContain('<figcaption>Flip one.</figcaption>');
+    expect(html).not.toContain('<pre');
+  });
+
+  it('are counted once however often a page uses one', () => {
+    const block = '```widget palette-switches\n```\n\n';
+    const root = tree({ 'guide/x.md': page('X', '', block + block) });
+    const [only] = docPages(root);
+    expect(only?.widgets).toEqual(['palette-switches']);
+    expect(only?.html).not.toContain('<figcaption>');
+  });
+
+  it('fail the build for an unknown name', () => {
+    for (const [block, name] of [
+      ['```widget nope\nCaption.\n```\n', 'nope'],
+      ['```widget\n```\n', ''],
+      ['```widget toString\n```\n', 'toString'],
+    ]) {
+      const root = tree({ 'guide/x.md': page('X', '', block) });
+      expect(() => docPages(root), block).toThrow(`docs/guide/x.md: unknown widget "${name}"`);
+    }
+  });
+
+  it('leave other code blocks alone', () => {
+    const root = tree({ 'guide/x.md': page('X', '', '```widgets\nx\n```\n\n```ts\ny\n```\n') });
+    const [only] = docPages(root);
+    expect(only?.widgets).toEqual([]);
+    expect(only?.html.match(/<pre/g)).toHaveLength(2);
+  });
+
+  it('each have a script under the same name', () => {
+    expect(Object.keys(ENHANCERS).sort()).toEqual(Object.keys(WIDGETS).sort());
+  });
+});
+
+describe('drawn figures', () => {
+  const svg = (inner: string, head = '') =>
+    `${head}<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50" width="100" height="50">${inner}</svg>\n`;
+  const build = (
+    file: string,
+    body = '![A plate with a hole](./images/plate.figure.svg "The plate")\n',
+  ) => {
+    const root = tree({ 'guide/x.md': page('X', '', body), 'guide/images/plate.figure.svg': file });
+    return docPages(root)[0];
+  };
+
+  it('are inlined in a figure, named by the alt text, captioned by the title', () => {
+    const only = build(
+      svg(
+        '<!-- a note --><g class="sk-free"><rect x="10" y="10" width="80" height="30" fill="none" stroke-width="2"/></g><text class="sk-dim-text" x="50" y="8" text-anchor="middle">60 &amp; &lt;more&gt;</text>',
+        '<?xml version="1.0" encoding="UTF-8"?>\n',
+      ),
+    );
+    expect(only?.assets).toEqual([]);
+    expect(only?.html).toContain(
+      '<figure class="sk-figure"><svg viewBox="0 0 100 50" width="100" height="50" role="img" aria-label="A plate with a hole"><g class="sk-free"><rect x="10" y="10" width="80" height="30" fill="none" stroke-width="2"/></g><text class="sk-dim-text" x="50" y="8" text-anchor="middle">60 &amp; &lt;more&gt;</text></svg><figcaption>The plate</figcaption></figure>',
+    );
+    expect(only?.html).not.toContain('<p><figure');
+    expect(only?.html).not.toContain('a note');
+  });
+
+  it('stand in one gallery when two or more come in a row, a lone one stays alone', () => {
+    const fig = (n: number) => `![Figure ${n}](./images/plate.figure.svg "Title ${n}")`;
+    const count = (html: string, needle: string) => html.split(needle).length - 1;
+    const wrapper = '<div class="sk-figures">';
+    const run = build(
+      svg('<rect x="1" y="1" width="5" height="5"/>'),
+      `${fig(1)}\n\n${fig(2)}\n\n${fig(3)}\n`,
+    );
+    expect(count(run?.html ?? '', wrapper)).toBe(1);
+    expect(count(run?.html ?? '', '<figure class="sk-figure">')).toBe(3);
+    const lone = build(svg('<rect x="1" y="1" width="5" height="5"/>'), `${fig(1)}\n`);
+    expect(lone?.html).not.toContain(wrapper);
+    expect(count(lone?.html ?? '', '<figure class="sk-figure">')).toBe(1);
+    const split = build(
+      svg('<rect x="1" y="1" width="5" height="5"/>'),
+      `${fig(1)}\n\nText between.\n\n${fig(2)}\n`,
+    );
+    expect(split?.html).not.toContain(wrapper);
+    expect(count(split?.html ?? '', '<figure class="sk-figure">')).toBe(2);
+  });
+
+  it('prefix their ids with the file stem, and the references follow', () => {
+    const only = build(
+      svg(
+        '<defs><marker id="arrow" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z"/></marker><symbol id="dot"><circle r="2"/></symbol></defs><line x1="0" y1="0" x2="50" y2="0" marker-end="url(#arrow)" marker-start="none"/><use href="#dot" x="5" y="5"/>',
+      ),
+    );
+    const html = only?.html ?? '';
+    expect(html).toContain('<marker id="plate-arrow"');
+    expect(html).toContain('marker-end="url(#plate-arrow)" marker-start="none"');
+    expect(html).toContain('<symbol id="plate-dot">');
+    expect(html).toContain('<use href="#plate-dot" x="5" y="5"/>');
+  });
+
+  it('refuse anything outside the allow-list, naming the page, the file and the offender', () => {
+    const cases: [string, string][] = [
+      [svg('<rect style="fill:red" width="1" height="1"/>'), 'attribute style="fill:red"'],
+      [svg('<style>rect { fill: red }</style>'), 'element <style>'],
+      [
+        svg('<rect width="1" height="1"/>').replace('<svg ', '<svg onload="alert(1)" '),
+        'attribute onload="alert(1)"',
+      ],
+      [svg('<foreignObject width="1" height="1"></foreignObject>'), 'element <foreignObject>'],
+      [svg('<script>alert(1)</script>'), 'element <script>'],
+      [
+        svg('<use href="https://example.org/x.svg#a"/>'),
+        'attribute href="https://example.org/x.svg#a"',
+      ],
+      [svg('<use href="other.svg#a"/>'), 'attribute href="other.svg#a"'],
+      [svg('<rect fill="#f00" width="1" height="1"/>'), 'attribute fill="#f00"'],
+      [svg('<rect stroke="red" width="1" height="1"/>'), 'attribute stroke="red"'],
+      [svg('', '<!DOCTYPE svg [<!ENTITY x "y">]>'), 'a DOCTYPE'],
+      [svg('<text><![CDATA[x]]></text>'), 'CDATA'],
+      [svg('<?evil x?>'), 'processing instruction'],
+      [svg('<text>&#60;</text>'), 'entity &#60;'],
+      [svg('<text>&nbsp;</text>'), 'entity &nbsp;'],
+      [svg('<use xlink:href="#a"/>'), 'attribute xlink:href'],
+      [svg('<line marker-end="url(https://x/y#a)"/>'), 'attribute marker-end'],
+      [svg('<rect transform="url(#x)"/>'), 'attribute transform'],
+      [svg('<use href="#missing"/>'), '#missing names no element'],
+      [svg('<g>loose text</g>'), 'text isn'],
+      [svg('<g>'), "</svg> doesn't close <g>"],
+      [svg('').replace('</svg>', ''), '<svg> is not closed'],
+      [svg('') + svg(''), 'one <svg>'],
+      ['<g/>', 'one <svg>'],
+    ];
+    for (const [file, offender] of cases) {
+      expect(() => build(file), file).toThrow(
+        'docs/guide/x.md: figure ./images/plate.figure.svg: ',
+      );
+      expect(() => build(file), file).toThrow(offender);
+    }
+  });
+
+  it('must be a paragraph of their own', () => {
+    expect(() => build(svg(''), 'See ![a](./images/plate.figure.svg) here.\n')).toThrow(
+      'docs/guide/x.md: figure ./images/plate.figure.svg must be a paragraph of its own',
+    );
+  });
+
+  it('leave other SVG pictures as images', () => {
+    const root = tree({ 'guide/x.md': page('X', '', '![a](./x.svg)\n'), 'guide/x.svg': svg('') });
+    expect(docPages(root)[0]?.html).toMatch(/<img src="__DOCS_FILE_[0-9a-f]{12}-x\.svg__"/);
   });
 });

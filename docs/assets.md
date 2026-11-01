@@ -43,6 +43,21 @@ The `meshToSolid` clip starts from `fixtures/demos/meshToSolid.stl` (a 40 × 30 
 The `-g` value after `pnpm demos` is a Playwright `--grep` on test names, except
 `readme`, `guide` and `tutorials`, which pick their own spec files.
 
+**Drawn figures and live widgets** (ADR-0116) are not recorded: they are
+written by hand. A figure is an SVG file next to the page whose name ends in
+`.figure.svg` (`![What it shows](./images/sketching/trim.figure.svg "Caption")`, on
+a line of its own); the build inlines it, so it follows the light and dark theme.
+Only plain shapes and text are allowed (`svg g path line polyline polygon rect
+circle ellipse text tspan title desc defs marker symbol use`, geometry
+attributes, `href` only as `#id`), and colours only through the `sk-*` classes
+in `apps/site/src/docs.css` (`sk-free`, `sk-fixed`, `sk-dim`, …): `fill` and
+`stroke` may only be `none` or `currentColor`. Anything else fails the site build,
+naming the page, the file and the element or attribute. A widget lives in
+`apps/site/src/widgets/` (`<name>-model.ts` draws it, `<name>.ts` wakes it, and
+`index.ts` and `enhance.ts` list it); a page names one with a fenced block,
+```` ```widget <name> ````, whose body is the caption. Neither needs a command
+to redo: review them with the page when the app's behaviour they show changes.
+
 ## Redoing the README screenshots
 
 1. Pull `main` and run, on a machine with a GPU:
