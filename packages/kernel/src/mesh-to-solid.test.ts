@@ -1104,6 +1104,35 @@ function trianglesOf(solid: Manifold): { positions: Float64Array; indices: Uint3
 }
 
 /**
+ * A 50 x 40 x 5 plate with a cylindrical boss r 10, 6 high (48 sides) at
+ * (30, 20), and a square pyramid 2 deep cut radially into the boss's wall at
+ * +x, its top corner on the boss's top rim at (40, 20, 11); beside them
+ * `bossWithBump`'s freeform boss at (8, 8), so the conversion takes the hybrid.
+ */
+function bossWithRimDimple(): Manifold {
+  const plate = manifold.Manifold.cube([50, 40, 5]);
+  const boss = manifold.Manifold.cylinder(6, 10, 10, 48).translate([30, 20, 5]);
+  const body = plate.add(boss);
+  const dimple = manifold.Manifold.cylinder(2, 0, 1.5, 4)
+    .rotate([0, 90, 0])
+    .translate([38, 20, 9.5]);
+  const cut = body.subtract(dimple);
+  const cylinder = manifold.Manifold.cylinder(6, 5, 5, 48).translate([8, 8, 5]);
+  const refined = cylinder.refine(6);
+  const bumped = refined.warp((v) => {
+    if (v[2] > 10.999) {
+      const x = v[0] - 8;
+      const y = v[1] - 8;
+      const r2 = (x * x + y * y) / 25;
+      v[2] += 2 * Math.max(0, 1 - r2) * (1 + 0.3 * (x / 5) + 0.2 * (y / 5) ** 2);
+    }
+  });
+  const part = cut.add(bumped);
+  for (const m of [plate, boss, body, dimple, cut, cylinder, refined, bumped]) m.delete();
+  return part;
+}
+
+/**
  * A 40 x 30 x 5 plate with two square pyramids cut 3 mm deep into its top,
  * their rims (corners at 3 mm from the centres 17 and 23) touching at
  * (20, 15, 5). `bump`: `bossWithBump`'s boss (r 5, 6 high) at (8, 8) with its lopsided bump,
@@ -1212,6 +1241,28 @@ describe('Mesh to Solid, the hybrid rebuild (ADR-0097 slice D1)', { timeout: 300
       expect(kernel.isValid(shape)).toBe(true);
       expect(Math.abs(kernel.properties(shape).volume / volume - 1)).toBeLessThan(0.01);
       expectStepRoundTrip(kernel, shape, 'hybrid: a top face whose dimples touch at a node');
+    } finally {
+      kernel.release(shape);
+    }
+  });
+
+  it('cuts a boss wall whose dimple touches its rim at a node in two, so it round-trips (slice D11)', () => {
+    // A square pyramid dimple cut into a cylindrical boss's wall, its top
+    // corner on the boss's top rim (40, 20, 11): the wall's face keeps a hole
+    // that shares that vertex with its outline. Its STEP read back invalid
+    // until slice D11 cut such a face on a periodic surface in two.
+    const part = bossWithRimDimple();
+    const volume = part.volume();
+    const { shape, report } = prismatic(meshOf(part));
+    try {
+      expect(report.rebuild).toBe('hybrid');
+      expect(kernel.isValid(shape)).toBe(true);
+      expect(Math.abs(kernel.properties(shape).volume / volume - 1)).toBeLessThan(0.01);
+      expectStepRoundTrip(
+        kernel,
+        shape,
+        'hybrid: a boss wall whose dimple touches its rim at a node',
+      );
     } finally {
       kernel.release(shape);
     }
