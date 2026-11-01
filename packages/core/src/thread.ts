@@ -6,11 +6,12 @@
  * its dialog, each in its own registry keyed by `THREAD_TYPE` (ADR-0003).
  *
  * **Size.** `diameter` is the nominal (major) diameter and `pitch` the
- * distance between neighbouring crests, both of the ISO 68-1 basic profile
- * (60°, which the Unified inch threads share). Without them the kernel
- * picks the ISO metric coarse thread that fits the face (`autoThread`).
- * The presets (`THREAD_PRESETS`) aren't stored: choosing one fills the two
- * numbers, as a hole's presets do.
+ * distance between neighbouring crests, both of the profile's basic shape
+ * (ISO 68-1 for `iso`, which the Unified inch threads share; `print45` is
+ * made for printing). Without them the kernel picks the thread that fits the
+ * face (`autoThread`): the ISO metric coarse one, or, with the printing
+ * profile, the print size. The presets (`THREAD_PRESETS`) aren't stored:
+ * choosing one fills the two numbers, as a hole's presets do.
  *
  * **Where.** `extent` is `full` (the face's whole length) or `length`
  * (`length` mm); either starts `offset` mm from the face's end, the lower
@@ -64,7 +65,13 @@ export type ThreadHand = (typeof THREAD_HANDS)[number];
  * (the PCO-1881 soft-drink finish). The profile is one table here
  * (`threadProfile`); the kernel knows no angles of its own.
  */
-export const THREAD_PROFILE_NAMES = ['iso', 'trapezoidal', 'buttress', 'bottle'] as const;
+export const THREAD_PROFILE_NAMES = [
+  'iso',
+  'trapezoidal',
+  'buttress',
+  'bottle',
+  'print45',
+] as const;
 export type ThreadProfileName = (typeof THREAD_PROFILE_NAMES)[number];
 
 export interface ThreadProfileOption {
@@ -94,6 +101,12 @@ export const THREAD_PROFILES: readonly ThreadProfileOption[] = [
     value: 'bottle',
     label: 'Bottle (PCO-1881)',
     description: 'A soft-drink bottle thread: a rounded trapezoid, 20° flanks.',
+  },
+  {
+    value: 'print45',
+    label: '3D printing (45°)',
+    description:
+      '45° flanks, flat crest and root a fifth of the pitch, 0.3 P deep: prints upright without supports and mates only with itself.',
   },
 ];
 
@@ -177,7 +190,7 @@ export const ThreadInputsSchema = z.strictObject({
   profile: enumInput(THREAD_PROFILE_NAMES)
     .optional()
     .describe(
-      'The tooth profile: iso (the default, 60°), trapezoidal (Tr), buttress (DIN 513) or bottle (PCO-1881).',
+      'The tooth profile: iso (the default, 60°), trapezoidal (Tr), buttress (DIN 513), bottle (PCO-1881) or print45 (3D printing, 45°).',
     ),
   /** With `profile: buttress`; default `end`. */
   loadFlank: enumInput(THREAD_LOAD_FLANKS)
@@ -219,7 +232,7 @@ export interface ThreadSettings {
   loadFlank: ThreadLoadFlank;
   /** The `expr` inputs present, by name; a number without one takes `THREAD_DEFAULTS`. */
   exprs: ReadonlySet<string>;
-  /** No size given: the kernel picks the ISO coarse thread that fits each face. */
+  /** No size given: the kernel picks the thread that fits each face (ISO coarse, or a print size). */
   auto: boolean;
   /**
    * The starts as typed, when the expression is a plain number (else 1: the
@@ -368,6 +381,23 @@ function straightTooth(
   };
 }
 
+/**
+ * The 45° printing profile (P4-12, ADR-0056's fourth amendment): flat crest
+ * and root a fifth of the pitch each, 0.3 P deep at 45° flanks, so
+ * `0.2 + 0.2 + 2 · 0.3 · tan 45° = 1 P`: the tooth tiles the pitch. The
+ * flats are the same inside and out, so a screw and a nut are exact
+ * complements before the tolerance; `internal` is ignored.
+ */
+function print45Profile(pitch: number): ThreadProfileShape {
+  return straightTooth(pitch, {
+    depth: 0.3 * pitch,
+    crestHalf: 0.1 * pitch,
+    rootHalf: 0.1 * pitch,
+    flank0: Math.PI / 4,
+    flank1: Math.PI / 4,
+  });
+}
+
 const sub = (a: ProfilePoint, b: ProfilePoint): [number, number] => [a[0] - b[0], a[1] - b[1]];
 const add = (a: ProfilePoint, b: readonly [number, number]): [number, number] => [
   a[0] + b[0],
@@ -457,6 +487,8 @@ export function threadProfile(
     }
     case 'bottle':
       return bottleProfile(pitch);
+    case 'print45':
+      return print45Profile(pitch);
     default:
       return isoProfile(pitch, options.internal ?? false);
   }
@@ -567,7 +599,7 @@ export function threadRadii(
 export interface ThreadPreset {
   id: string;
   label: string;
-  group: 'metric' | 'metric-fine' | 'unc' | 'unf' | 'trapezoidal' | 'bottle' | 'npt';
+  group: 'metric' | 'metric-fine' | 'unc' | 'unf' | 'trapezoidal' | 'print' | 'bottle' | 'npt';
   /** The tooth profile this size belongs to. */
   profile: ThreadProfileName;
   /** mm. */
@@ -707,6 +739,40 @@ const trapezoidal = ([size, pitch]: readonly [number, number]): ThreadPreset => 
 });
 
 /**
+ * Print sizes for the `print45` profile (P4-12, ADR-0056's fourth
+ * amendment), `[size, pitch]` in mm: the ISO coarse diameters `METRIC_COARSE`
+ * has from M4 to M30, each at the pitch that cuts as deep as the ISO coarse
+ * thread — pitch = coarse × (5√3/16)/0.3 ≈ 1.8 × coarse, rounded to 0.25 mm
+ * under 3 mm and to 0.5 mm from 3 mm. The 0.3 P depth then puts each size's
+ * minor diameter where the coarse thread's is (within 0.11 mm, at M30), so
+ * the core is as strong and Fit the face can use the same rule. Keep the
+ * rule, don't tune single rows.
+ */
+const PRINT: readonly (readonly [number, number])[] = [
+  [4, 1.25],
+  [5, 1.5],
+  [6, 1.75],
+  [8, 2.25],
+  [10, 2.75],
+  [12, 3],
+  [14, 3.5],
+  [16, 3.5],
+  [20, 4.5],
+  [24, 5.5],
+  [30, 6.5],
+];
+
+const print = ([size, pitch]: readonly [number, number]): ThreadPreset => ({
+  id: `print-${size}`,
+  label: `Print ${size} × ${pitch}`,
+  group: 'print',
+  profile: 'print45',
+  diameter: size,
+  pitch,
+  exprs: { diameter: `${size} mm`, pitch: `${pitch} mm` },
+});
+
+/**
  * NPT's taper (ASME B1.20.1): 1 in 16 on the diameter, so a half angle of
  * atan(1/32) = 1.7899°.
  */
@@ -754,6 +820,7 @@ export const THREAD_PRESETS: readonly ThreadPreset[] = [
   ...UNC.map(inch('unc')),
   ...UNF.map(inch('unf')),
   ...TRAPEZOIDAL.map(trapezoidal),
+  ...PRINT.map(print),
   {
     id: 'pco-1881',
     label: 'PCO-1881',
@@ -799,11 +866,17 @@ export function taperDegrees(taper: number): string {
 }
 
 /**
- * The ISO metric coarse thread for a face of `radius` mm (`autoThread`):
- * on a shaft the largest whose major diameter isn't more than 0.1 mm over
- * the shaft's, in a hole the largest whose minor diameter is at most the
+ * The thread of a preset `group` for a face of `radius` mm (`autoThread`,
+ * P4-12): on a shaft the largest whose major diameter isn't more than 0.1 mm
+ * over the shaft's, in a hole the largest whose minor diameter is at most the
  * hole's + 0.1 mm and whose major is larger than it (a tap-drill hole finds
- * its thread). Undefined when none fits.
+ * its thread). Each size's minor comes from its own profile's depth, so the
+ * `print` group fits by the 0.3 P depth. **A hole drawn at a size's own
+ * diameter is that size** (ADR-0056's fourth amendment): within 0.01 mm of a
+ * preset's diameter, a hole takes it — a Ø5 hole gets M5, a Ø10 one Print
+ * 10 × 2.75 — because a part is designed with the hole at the thread's name.
+ * The rule is for holes only: a Ø5 shaft is M5 by the fit above. Undefined
+ * when none fits.
  */
 export function autoThread(
   radius: number,
@@ -812,9 +885,13 @@ export function autoThread(
 ): ThreadPreset | undefined {
   const d = 2 * radius;
   const coarse = THREAD_PRESETS.filter((p) => p.group === group);
+  if (internal) {
+    const nominal = coarse.find((p) => Math.abs(p.diameter - d) <= 0.01);
+    if (nominal) return nominal;
+  }
   let best: ThreadPreset | undefined;
   for (const p of coarse) {
-    const minor = p.diameter - 2 * ((5 / 8) * (Math.sqrt(3) / 2) * p.pitch);
+    const minor = p.diameter - 2 * threadProfile(p.profile, p.pitch).depth;
     const fits = internal ? minor <= d + 0.1 && p.diameter > d : p.diameter <= d + 0.1;
     if (fits && (!best || p.diameter > best.diameter)) best = p;
   }

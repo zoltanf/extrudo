@@ -133,6 +133,29 @@
       "thread:T:side:f0.root"
     ]
   },
+  "Print 10 × 2.75": {
+    "valid": true,
+    "volume": 303.9,
+    "faces": 15,
+    "bbox": [
+      -4.9,
+      -4.9,
+      0,
+      4.9,
+      4.9,
+      5
+    ],
+    "designation": "Print 10 × 2.75",
+    "turns": 1.818,
+    "names": [
+      "thread:T:side:f0.crest",
+      "thread:T:side:f0.flank0",
+      "thread:T:side:f0.flank1",
+      "thread:T:side:f0.lead0",
+      "thread:T:side:f0.lead1",
+      "thread:T:side:f0.root"
+    ]
+  },
   "PCO-1881 on a 27.43 mm shaft": {
     "valid": true,
     "volume": 2569.3,

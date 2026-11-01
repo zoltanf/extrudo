@@ -196,6 +196,7 @@ function numbersOf(ctx: EvalContext, settings: ThreadSettings): ThreadNumbers {
 }
 
 const round = (value: number) => Math.round(value * 1000) / 1000;
+const round1 = (value: number) => Math.round(value * 10) / 10;
 const mm = (value: number) => `${round(value)} mm`;
 
 /**
@@ -214,7 +215,15 @@ export function designation(
   const prefix =
     profile === 'iso'
       ? ''
-      : `${profile === 'trapezoidal' ? 'Tr' : profile === 'buttress' ? 'S' : 'PCO'} `;
+      : `${
+          profile === 'trapezoidal'
+            ? 'Tr'
+            : profile === 'buttress'
+              ? 'S'
+              : profile === 'print45'
+                ? 'Print'
+                : 'PCO'
+        } `;
   const tapered = Math.abs(taper) > 1e-9 ? `, taper ${taperDegrees(taper)}` : '';
   return `${prefix}Ø${round(diameter)} × ${round(pitch)}${tapered}`;
 }
@@ -281,10 +290,16 @@ export function planThread(
   const r = face.radius + (anchor - face.from) * Math.tan(taper);
   let { diameter, pitch } = n;
   if (settings.auto) {
-    if (settings.profile !== 'iso') {
+    // Fit the face is for the two profiles that have a fit table: ISO coarse
+    // and the print sizes (ADR-0056's fourth amendment). On a cone NPT's fit
+    // stays the ISO one.
+    if (settings.profile !== 'iso' && settings.profile !== 'print45') {
       throw new KernelError(`Enter a diameter and pitch for a ${settings.profile} thread.`);
     }
     if (taper !== 0) {
+      if (settings.profile !== 'iso') {
+        throw new KernelError(`Enter a diameter and pitch for a ${settings.profile} thread.`);
+      }
       const preset = autoTaperThread(r, taper, internal);
       if (!preset) {
         throw new KernelError(
@@ -296,10 +311,12 @@ export function planThread(
       diameter = preset.diameter;
       pitch = preset.pitch;
     } else {
-      const preset = autoThread(r, internal);
+      const preset = autoThread(r, internal, settings.profile === 'print45' ? 'print' : 'metric');
       if (!preset) {
         throw new KernelError(
-          `No standard metric thread fits this ${mm(2 * r)} ${what}. Set the diameter and pitch.`,
+          settings.profile === 'print45'
+            ? `No print size fits this ${mm(2 * r)} ${what}. Set the diameter and pitch.`
+            : `No standard metric thread fits this ${mm(2 * r)} ${what}. Set the diameter and pitch.`,
         );
       }
       diameter = preset.diameter;
@@ -331,6 +348,13 @@ export function planThread(
         `The hole is ${mm(2 * r)} across, much smaller than the ${name} thread: the thread bores it out to ${mm(2 * radii.crest)}.`,
       );
     }
+    // A hole wider than the tooth's tip: only the outer part of the tooth is
+    // cut (until the next amendment fills such a bore in).
+    if (r > radii.crest + EPS) {
+      warnings.push(
+        `The hole is ${mm(2 * r)} across, wider than the ${name} thread's minor diameter (${mm(2 * radii.crest)}): only the outer part of the tooth is cut. Draw the hole at about ${mm(round1(2 * radii.crest - 2 * n.tolerance))} for a full thread.`,
+      );
+    }
   } else {
     if (r <= radii.root + EPS) {
       throw new KernelError(
@@ -340,6 +364,13 @@ export function planThread(
     if (r > radii.crest + Math.max(0.5, 0.25 * diameter)) {
       warnings.push(
         `The shaft is ${mm(2 * r)} across, much thicker than the ${name} thread: the thread turns it down to ${mm(2 * radii.crest)}.`,
+      );
+    }
+    // A shaft thinner than the tooth's tips: the teeth stand off the surface,
+    // so only the outer part of the tooth is cut.
+    if (r < radii.crest - EPS) {
+      warnings.push(
+        `The shaft is ${mm(2 * r)} across, thinner than the ${name} thread's major diameter (${mm(2 * radii.crest)}): only the outer part of the tooth is cut. Make the shaft ${mm(round1(2 * radii.crest + 2 * n.tolerance))} for a full thread.`,
       );
     }
   }

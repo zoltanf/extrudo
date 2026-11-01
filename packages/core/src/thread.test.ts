@@ -100,12 +100,14 @@ describe('thread profiles', () => {
     trapezoidal: 0.5 * P,
     buttress: 0.75 * P,
     bottle: 0.45 * P,
+    print45: 0.3 * P,
   };
   const flanks: Record<string, [number, number]> = {
     iso: [30, 30],
     trapezoidal: [15, 15],
     buttress: [30, 3],
     bottle: [20, 20],
+    print45: [45, 45],
   };
 
   /** The outline's vertices, in order, from each segment's `to` (the loop is closed). */
@@ -287,18 +289,21 @@ describe('thread presets', () => {
     expect(autoThread(1.5, false)?.id).toBe('m3');
     expect(autoThread(0.5, false)).toBeUndefined();
     expect(autoThread(100, false)).toBeUndefined();
-    // Tap drills: M8 6.8 mm, M3 2.5 mm, M6 5 mm.
+    // Tap drills: M8 6.8 mm, M3 2.6 mm, M6 5.1 mm — each just off a size's
+    // own diameter, which (a hole only) would be that size now (P4-12).
     expect(autoThread(3.4, true)?.id).toBe('m8');
-    expect(autoThread(1.25, true)?.id).toBe('m3');
-    expect(autoThread(2.5, true)?.id).toBe('m6');
+    expect(autoThread(1.3, true)?.id).toBe('m3');
+    expect(autoThread(2.55, true)?.id).toBe('m6');
     expect(autoThread(40, true)).toBeUndefined();
     expect(autoThread(100, true)).toBeUndefined();
   });
 
   it('fits the coarse series past M30 (P4-11)', () => {
-    // A bore takes the thread just above it: Ø36 takes M39, Ø40 M42, Ø50 M56
-    // (its minor diameter is 50.05 mm, just inside the 0.1 mm of slack).
-    expect(autoThread(18, true)?.id).toBe('m39');
+    // A bore at a size's own diameter takes that size (the nominal rule,
+    // P4-12: Ø36 is M36); a wider one takes the thread just above it: Ø40
+    // takes M42, Ø50 M56 (its minor diameter is 50.05 mm, just inside the
+    // 0.1 mm of slack).
+    expect(autoThread(18, true)?.id).toBe('m36');
     expect(autoThread(20, true)?.id).toBe('m42');
     expect(autoThread(25, true)?.id).toBe('m56');
     // A shaft takes the largest thread inside it, so Ø36 takes M36 and Ø40 M39
@@ -353,5 +358,73 @@ describe('thread presets', () => {
     // And the fine sizes and inch threads follow without overlapping names.
     const fine = THREAD_PRESETS.filter((p) => p.group === 'metric-fine');
     expect(fine.every((p) => p.diameter <= 30)).toBe(true);
+  });
+
+  it('has the print sizes, as deep as the coarse thread (P4-12)', () => {
+    const print = THREAD_PRESETS.filter((p) => p.group === 'print');
+    expect(print.map((p) => p.id)).toEqual([
+      'print-4',
+      'print-5',
+      'print-6',
+      'print-8',
+      'print-10',
+      'print-12',
+      'print-14',
+      'print-16',
+      'print-20',
+      'print-24',
+      'print-30',
+    ]);
+    expect(print.every((p) => p.profile === 'print45')).toBe(true);
+    expect(threadPreset('print-10')).toMatchObject({
+      label: 'Print 10 × 2.75',
+      diameter: 10,
+      pitch: 2.75,
+      exprs: { diameter: '10 mm', pitch: '2.75 mm' },
+    });
+    // Ordered by size within the group, like every other group.
+    expect(print.map((p) => p.diameter)).toEqual(
+      [...print.map((p) => p.diameter)].sort((a, b) => a - b),
+    );
+    // Each print size's minor is the same thread's coarse minor (the pitch
+    // cuts as deep): d − 0.6 P against d − 1.0825 P_coarse.
+    for (const p of print) {
+      const minor = p.diameter - 2 * threadProfile('print45', p.pitch).depth;
+      const coarsePitch = THREAD_PRESETS.find(
+        (q) => q.group === 'metric' && q.diameter === p.diameter,
+      )?.pitch as number;
+      const coarseMinor = p.diameter - 1.0825 * coarsePitch;
+      expect(Math.abs(minor - coarseMinor), `Print ${p.diameter}`).toBeLessThanOrEqual(0.12);
+    }
+  });
+});
+
+describe('print45 (P4-12, fourth amendment)', () => {
+  const P = 2;
+
+  it('is closed and tiles one pitch, the same inside and out', () => {
+    for (const internal of [false, true]) {
+      const shape = threadProfile('print45', P, { internal });
+      // crest + root flats and the two 45° flanks make up one pitch:
+      // 2 · 0.1 P + 2 · 0.1 P + 2 · 0.3 P · tan 45° = 1 P.
+      expect(
+        2 * shape.crestHalf + 2 * shape.rootHalf + 2 * shape.depth * Math.tan(Math.PI / 4),
+      ).toBeCloseTo(P, 9);
+      expect(shape.depth).toBeCloseTo(0.3 * P, 9);
+      expect(shape.crestHalf).toBeCloseTo(0.1 * P, 9);
+      expect(shape.rootHalf).toBeCloseTo(0.1 * P, 9);
+    }
+    // The flats are the same inside and out: a screw and a nut are complements.
+    expect(threadProfile('print45', P, { internal: true })).toEqual(threadProfile('print45', P));
+  });
+
+  it('fits a hole at a nominal size, and sizes a shaft and a tap drill', () => {
+    // A hole drawn at a size's own diameter is that size (holes only).
+    expect(autoThread(2.5, true)?.id).toBe('m5');
+    expect(autoThread(2.5, true, 'print')?.id).toBe('print-5');
+    // The tap drill still finds its thread (Ø4.2 is M5's).
+    expect(autoThread(2.1, true)?.id).toBe('m5');
+    // A shaft is unchanged: the largest thread inside it.
+    expect(autoThread(2.5, false)?.id).toBe('m5');
   });
 });

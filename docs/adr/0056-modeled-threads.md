@@ -467,9 +467,10 @@ dialog's Size and the new Fit choice, `e2e/thread.spec.ts`. No schema change:
   number, never a measured one. The rule is for holes only: a Ø5 shaft is M5
   by the existing rule. Until the next amendment fills such a bore in, the
   kernel **warns** when a hole is wider than the thread's minor diameter
-  ("The hole is Ø5 mm, wider than the M5 thread's minor diameter (Ø4.33 mm):
-  only the outer part of the tooth is cut. Draw the hole at about Ø4.2 mm
-  for a full thread.") and when a shaft is thinner than the major but
+  ("The hole is 5 mm across, wider than the M5 thread's minor diameter
+  (4.334 mm): only the outer part of the tooth is cut. Draw the hole at
+  about 4.1 mm for a full thread." — the tap-drill figure is the basic minor
+  without the tolerance) and when a shaft is thinner than the major but
   thicker than the root (the mirror text). The existing errors (a hole at or
   past the root, a shaft at or under it) stay.
 - **Named fits.** The dialog gets a **Fit** choice above Tolerance, not an

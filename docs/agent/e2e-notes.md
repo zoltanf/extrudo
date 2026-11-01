@@ -2498,17 +2498,21 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 - **Thread e2e** (`e2e/thread.spec.ts`, P4-02): Modify › Modify › Thread
   (`pickTool(page, 'Thread')`, ADR-0079); the dialog is the region "Thread
   dialog" / "Edit Thread1 dialog": button "Faces" (`exact`, "1 face"), combobox
-  "Size" (values `auto`, `m8`, `m16x1.5`, `unc-1q4-20`…, `custom`; Diameter and
-  Pitch exist only off `auto`), "Profile" (values `iso` default, `trapezoidal`,
-  `buttress`, `bottle`) and, only for `buttress`, "Load flank" (`start`/`end`),
-  "Extent", "Hand", textboxes "Length", "Offset", "Starts" (`exact`, unitless, "1"; 2 gives the same
+  "Size" (values `auto`, `m8`, `m16x1.5`, `unc-1q4-20`…, `print-10`…, `custom`;
+  Diameter and Pitch exist only off `auto`), "Profile" (values `iso` default,
+  `trapezoidal`, `buttress`, `bottle`, `print45`) and, only for `buttress`,
+  "Load flank" (`start`/`end`), the "Fit" combobox (values `tight`, `normal`
+  default, `loose`, `parameter`, `custom`; choosing one fills Tolerance,
+  typing a tolerance makes Fit follow it), "Extent", "Hand", textboxes
+  "Length", "Offset", "Starts" (`exact`, unitless, "1"; 2 gives the same
   `19.8,19.8,20` with more faces),
   "Tolerance" (`exact`), checkboxes "From the other end", "Lead-in chamfer". A
   thread takes seconds to preview (wait up to 60 s). The default Ø20 cylinder
   threaded to fit is `Body1:<n>:19.8,19.8,20` (M20 less twice the tolerance);
   Size `auto` fits ISO 261 coarse from M2 to M64 (`METRIC_COARSE` in
   `packages/core/src/thread.ts`: a bore takes the thread just above it, a shaft
-  the largest thread inside it), and a thread of more than `MAX_TURNS` (150,
+  the largest thread inside it — a bore drawn at a size's own diameter takes
+  that size), and a thread of more than `MAX_TURNS` (150,
   `packages/kernel/src/features/thread.ts`) turns is refused before anything is
   built — over `MAX_TURNS` it takes minutes of booleans, and above about 400
   turns OCCT's boolean runs out of memory and traps (ADR-0067 §H2).
@@ -2520,7 +2524,11 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   half height and sets Size `npt-1q2` (Pitch reads "1 in / 14"): the dialog's
   `[data-info="designation"]` reads "NPT 1/2" and `data-bodies` keeps z = 20
   with x and y at least 0.1 under the drafted cylinder's (whose display box
-  reads 21.9 or 22 across).
+  reads 21.9 or 22 across). P4-12's print45 test (ADR-0056's fourth
+  amendment) picks the printing profile on the default Ø20 cylinder with Size
+  `auto`: the designation reads "Print 20 × 4.5" and `data-bodies` reads
+  `19.8,19.8,20`; then Fit `loose` sets Tolerance "0.2 mm" and the body reads
+  `19.6,19.6,20`.
 
 ### `e2e/timeline-groups.spec.ts`
 
