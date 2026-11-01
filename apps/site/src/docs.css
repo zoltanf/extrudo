@@ -586,6 +586,106 @@ code {
   font-variant-numeric: tabular-nums;
 }
 
+/* The dof-playground, dimension-label and trim widgets (ADR-0116). */
+
+.sk-handle {
+  fill: var(--x-sketch);
+  fill-opacity: 0.35;
+  stroke: var(--x-sketch);
+}
+
+.sk-handle-locked {
+  fill: var(--x-raised);
+  fill-opacity: 1;
+  stroke: var(--x-muted);
+}
+
+.sk-dim-conflict {
+  fill: var(--x-error);
+}
+
+.sk-dim-line {
+  stroke: var(--x-ink);
+}
+
+.sk-point-muted {
+  stroke: var(--x-muted);
+}
+
+.sk-region {
+  fill: var(--x-sketch);
+  fill-opacity: 0.025;
+}
+
+.sk-region-on {
+  fill-opacity: 0.07;
+}
+
+.sk-label {
+  fill: var(--x-raised);
+  stroke: var(--x-accent);
+}
+
+.widget-hit {
+  fill: none;
+  stroke: transparent;
+  cursor: pointer;
+  outline: none;
+}
+
+.widget-hit:focus-visible {
+  stroke: var(--x-accent);
+  stroke-opacity: 0.3;
+}
+
+.widget-stage [role="slider"] {
+  cursor: grab;
+  outline: none;
+}
+
+.widget-stage [role="slider"][aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+.widget-stage [role="slider"]:focus-visible {
+  outline: 2px solid var(--x-accent);
+  outline-offset: 3px;
+}
+
+.widget-button {
+  align-self: flex-start;
+  padding: 4px 14px;
+  border: 1px solid var(--x-line);
+  border-radius: 6px;
+  background: var(--x-raised);
+  color: var(--x-ink);
+  font: inherit;
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+
+.widget-button:hover:not(:disabled) {
+  border-color: var(--x-accent);
+}
+
+.widget-button:focus-visible {
+  outline: 2px solid var(--x-accent);
+  outline-offset: 2px;
+}
+
+.widget-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.widget-result.is-ok {
+  color: var(--x-ink);
+}
+
+.widget-result.is-bad {
+  color: var(--x-error);
+}
+
 .page .widget figcaption,
 .page .sk-figure figcaption {
   padding: 8px 14px;

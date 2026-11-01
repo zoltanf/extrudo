@@ -46,6 +46,10 @@ dimension, so it stays editable.
 [Sketch Fillet](./tools/sketchFillet.md) (`F`) and [Sketch Move](./tools/sketchMove.md) (`M`)
 change what you drew; their constraints and dimensions come along.
 
+```widget trim
+Point at a piece, then click to trim it.
+```
+
 ## Constraints you didn't ask for
 
 As you draw, the pointer snaps to existing points, midpoints, crossings, curves, and the
@@ -101,6 +105,10 @@ guarantee that a change to a dimension can't make the shape do something surpris
 
 You can also drag a free point or curve to see what moves. Press `Esc` during the drag to put it back.
 
+```widget dof-playground
+Switch constraints on and watch the colours and the DOF count.
+```
+
 ## Dimensions
 
 The [Dimension](./tools/dimension.md) tool (`D`) fixes a size. Click one thing or two: a line
@@ -135,6 +143,10 @@ Quicker: type only the new name. The list under the field offers **New parameter
 mm**, with the value the dimension has now. With the list closed (Escape), a link under the
 "Unknown name" message does the same, and so does Ctrl+Enter at any time. Either one fills in `width = 40` with the value selected: press Enter to keep it, or
 type another value first.
+
+```widget dimension-label
+Drag the label: where it sits decides what it measures.
+```
 
 ## Over-constraining
 

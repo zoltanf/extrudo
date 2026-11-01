@@ -179,7 +179,12 @@ describe('a page document', () => {
       expectPolicy(pageHtml(every, allPages, options), every.widgets.length > 0, every.file);
     }
     const sketching = allPages.find((every) => every.url === '/docs/sketching/');
-    expect(sketching?.widgets).toEqual(['palette-switches']);
+    expect(sketching?.widgets).toEqual([
+      'trim',
+      'dof-playground',
+      'dimension-label',
+      'palette-switches',
+    ]);
     expect(pageHtml(sketching as DocPage, allPages, options)).toContain(WIDGET_TAG);
   });
 

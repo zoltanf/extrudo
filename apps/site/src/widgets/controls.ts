@@ -21,6 +21,11 @@ export function switchRow(row: Switch): string {
   return `<label class="widget-switch"><svg viewBox="0 0 16 16" aria-hidden="true">${row.icon}</svg><span>${escapeText(row.label)}</span><input type="checkbox" data-key="${escapeText(row.key)}"${row.checked ? ' checked' : ''} disabled /><span class="widget-track" aria-hidden="true"></span></label>`;
 }
 
+/** A button in the side column, `disabled` until the widget's script wakes it. */
+export function buttonRow(key: string, label: string): string {
+  return `<button class="widget-button" type="button" data-key="${escapeText(key)}" disabled>${escapeText(label)}</button>`;
+}
+
 /** What a widget's figure holds. */
 export interface WidgetParts {
   name: string;
@@ -34,15 +39,17 @@ export interface WidgetParts {
   controls: string;
   /** The starting text of the `aria-live` result line, for a widget that has one. */
   result?: string;
+  /** The same line as markup the model built (escaped, with a `<strong>`); wins over `result`. */
+  resultMarkup?: string;
   caption: string;
 }
 
 /** The whole figure: stage, side column, result line and caption. */
 export function widgetFigure(parts: WidgetParts): string {
+  const line =
+    parts.resultMarkup ?? (parts.result === undefined ? undefined : escapeText(parts.result));
   const result =
-    parts.result === undefined
-      ? ''
-      : `<p class="widget-result" aria-live="polite">${escapeText(parts.result)}</p>`;
+    line === undefined ? '' : `<p class="widget-result" aria-live="polite">${line}</p>`;
   const caption = parts.caption.trim()
     ? `<figcaption>${escapeText(parts.caption.trim())}</figcaption>`
     : '';
