@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAppMenu, openProject, pickMenuItem, pickTool } from './helpers';
+import { newSketchOnXY, openAppMenu, openProject, pickMenuItem, pickTool } from './helpers';
 
 // P6-06 S9, ADR-0090: the app menu's Learn items and a tool tile's F1 open the landing
 // site's /docs/ pages through `Platform.openDocs`. The external host is
@@ -96,6 +96,32 @@ test('F1 before any tile was hovered opens the user guide (P6-06 S9, ADR-0090)',
   await open(page);
   const url = await popupUrl(page, () => page.keyboard.press('F1'));
   expect(url).toBe(`${DOCS}/docs/`);
+});
+
+test('F1 in a sketch, after a tile was hovered, opens the sketching guide (P6-22 S2)', async ({
+  page,
+}) => {
+  await open(page);
+  await page.getByRole('button', { name: 'Extrude' }).hover();
+  await newSketchOnXY(page);
+  // The palette may have appeared under the pointer: a row's hover would name
+  // its section. Move to the open part of the view, then F1 finds no target
+  // but the sketch.
+  await page.mouse.move(700, 400);
+  const url = await popupUrl(page, () => page.keyboard.press('F1'));
+  expect(url).toBe(`${DOCS}/docs/sketching/`);
+});
+
+test('F1 on a hovered palette row opens its sketching section (P6-22 S2, ADR-0116 §4)', async ({
+  page,
+}) => {
+  await open(page);
+  await newSketchOnXY(page);
+  const url = await popupUrl(page, async () => {
+    await page.getByRole('checkbox', { name: 'Snap to grid' }).hover();
+    await page.keyboard.press('F1');
+  });
+  expect(url).toBe(`${DOCS}/docs/sketching/#snap-to-grid`);
 });
 
 test('Ctrl+K Tool Reference opens the tool index (P6-06 S9)', async ({ page }) => {
