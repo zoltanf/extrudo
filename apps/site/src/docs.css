@@ -456,6 +456,23 @@ code {
   overflow: hidden;
 }
 
+.page .sk-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 16px 0 20px;
+}
+
+.page .sk-figures .sk-figure {
+  margin: 0;
+}
+
+@media (max-width: 480px) {
+  .page .sk-figures {
+    grid-template-columns: 1fr;
+  }
+}
+
 .sk-figure svg {
   display: block;
   width: 100%;

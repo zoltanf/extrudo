@@ -1583,6 +1583,14 @@ end to end, faster than in established desktop CAD.
     `docs-widgets` module (only on pages with a widget), `.figure.svg` inlining through
     the allow-list, the `sk-*` classes, heading ids, and `palette-switches` on the
     sketching page as the first widget.
+  - [x] S2: F1 opens the sketching page at the palette row's section (`helpTarget.ts`,
+    `docsAnchors.json`, the desktop allow-list).
+  - [x] S3 and S7: the drawn figure set (26 `.figure.svg`), redrawn where unclear.
+  - [x] S4: the `dof-playground`, `dimension-label` and `trim` widgets.
+  - [x] S5: notes for the Line, Dimension, Project, Trim and Sketch Fillet pages;
+    Project's clip.
+  - [x] S6: the sketching page around its visuals, the palette section, figure galleries,
+    the anchor test and the axe audit.
 
 ## Phase 7 — Later (lowest priority, after everything else)
 

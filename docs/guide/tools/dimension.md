@@ -16,6 +16,10 @@ Lengths, radii and angles that drive the sketch.
 <video src="demo:dimension" muted loop autoplay playsinline aria-label="Sketch Dimension demo"></video>
 
 <!-- notes -->
+```widget dimension-label
+Drag the label: where it sits decides what it measures.
+```
+
 ## Step by step
 
 1. Press `D` and click the first thing: a line for its length, a circle for

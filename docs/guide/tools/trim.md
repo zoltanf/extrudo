@@ -16,6 +16,10 @@ Cut curves back to where they cross.
 <video src="demo:trim" muted loop autoplay playsinline aria-label="Trim demo"></video>
 
 <!-- notes -->
+```widget trim
+Point at a piece, then click to trim it.
+```
+
 ## Step by step
 
 1. Press `T` and hover a curve: it shows in red the part a click would cut
