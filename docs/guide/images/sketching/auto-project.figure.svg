@@ -2,12 +2,12 @@
   <title>Auto-project: a drawn line ending on a body edge projects that edge; the pointer near a face centre snaps to it</title>
   <text x="120" y="28" class="sk-muted" text-anchor="middle" font-size="11">Edge</text>
   <text x="390" y="28" class="sk-muted" text-anchor="middle" font-size="11">Face centre</text>
-  <polygon points="30,110 120,80 210,110 120,140" class="sk-face"/>
-  <path d="M30 110 120 80" class="sk-projected" fill="none" stroke-width="2.4" stroke-linecap="round"/>
-  <path d="M70 128 120 80" class="sk-free" fill="none" stroke-width="2.4" stroke-linecap="round"/>
-  <circle cx="120" cy="80" r="3.5" class="sk-point"/>
-  <rect x="112" y="54" width="16" height="16" class="sk-glyph" rx="3"/>
-  <g transform="translate(112 54) scale(0.6667)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+  <polygon points="20,120 120,84 220,120 120,156" class="sk-face"/>
+  <path d="M20 120 120 84" class="sk-projected" fill="none" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M66 148 120 84" class="sk-free" fill="none" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="120" cy="84" r="3.5" class="sk-point"/>
+  <rect x="44" y="72" width="16" height="16" class="sk-glyph" rx="3"/>
+  <g transform="translate(44 72) scale(0.6667)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
     <path class="sk-glyph-text" fill="none" d="M4 18 20 6"/><circle class="sk-glyph-text" fill="none" cx="12" cy="12" r="3.2"/>
   </g>
   <polygon points="300,110 390,80 480,110 390,140" class="sk-face"/>

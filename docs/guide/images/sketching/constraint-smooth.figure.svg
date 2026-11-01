@@ -1,10 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 110">
-  <title>Smooth: two curves meeting at a corner, then meeting smoothly</title>
-  <path d="M18 76 56 52 100 30" class="sk-free" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <title>Smooth: a line meeting an arc at a corner, then meeting smoothly</title>
+  <path d="M18 70H62A18 18 0 0 1 98 70" class="sk-free" fill="none" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="62" cy="70" r="3.5" class="sk-point"/>
   <path d="M110 55h14m-6 -5 6 5-6 5" class="sk-muted" fill="none" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M138 76C150 76 156 46 181 46S212 62 224 30" class="sk-free" fill="none" stroke-width="2.4" stroke-linecap="round"/>
-  <rect x="210" y="44" width="16" height="16" class="sk-glyph" rx="3"/>
-  <g transform="translate(210 44) scale(0.6667)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M138 70H162A18 18 0 0 0 180 52V34" class="sk-free" fill="none" stroke-width="2.4" stroke-linecap="round"/>
+  <rect x="136" y="30" width="16" height="16" class="sk-glyph" rx="3"/>
+  <g transform="translate(136 30) scale(0.6667)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
     <path class="sk-glyph-text" fill="none" d="M3 18C7 18 8.5 8 12 8S17 12 21 17"/><circle class="sk-glyph-text" fill="none" cx="12" cy="8" r="2.4"/>
   </g>
 </svg>
