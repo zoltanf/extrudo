@@ -38,6 +38,7 @@ import { useStore } from 'zustand';
 import { useKeysFor } from '../commands/keymapStore';
 import { Button, ConfirmDialog, type IconName, ToolIcon, Tooltip } from '../design-system';
 import { ExpressionInput } from '../parameters/ExpressionInput';
+import { anchorFor, setHelpTarget } from '../shell/helpTarget';
 import type { ViewportStore } from '../viewport/store';
 import { ADD_FONT_VALUE, addFontFile, FONT_HINT, type FontPicker } from './addFont';
 import { ensureUiFonts } from './fonts';
@@ -271,6 +272,8 @@ export function SketchPalette({
             type="button"
             aria-label="Look at"
             onClick={onLookAt}
+            onPointerEnter={() => setHelpTarget({ guide: 'sketching', anchor: 'look-at' })}
+            onFocus={() => setHelpTarget({ guide: 'sketching', anchor: 'look-at' })}
             className="grid size-6 shrink-0 place-items-center rounded-input text-muted hover:bg-accent-soft hover:text-ink"
           >
             <Crosshair size={14} />
@@ -1454,6 +1457,9 @@ function ConstructionSwitch({ host }: { host: ToolHost }) {
  * checkbox named by `label`) at the right, with the full name and `hint` in a
  * tooltip. A setting without an icon is a sub-setting: its caption lines up
  * with the captions above it.
+ *
+ * Hovering or focusing the row remembers it as the help target (P6-22 S2,
+ * ADR-0116 §4): F1 opens the sketching guide at the row's own section.
  */
 function PaletteSwitch({
   icon,
@@ -1474,12 +1480,15 @@ function PaletteSwitch({
   disabled?: boolean;
   children: ReactNode;
 }) {
+  const target = () => setHelpTarget({ guide: 'sketching', anchor: anchorFor(label) });
   return (
     <Tooltip label={label} hint={hint} shortcut={shortcut} side="left" delay={HINT_DELAY}>
       <label
         className={`flex h-[26px] min-w-0 items-center gap-1.5 rounded-input px-0.5 ${
           disabled ? 'text-muted' : 'cursor-pointer hover:bg-accent-soft'
         }`}
+        onPointerEnter={target}
+        onFocus={target}
       >
         <span className="grid size-4 shrink-0 place-items-center">{icon}</span>
         <span className="min-w-0 truncate">{children}</span>

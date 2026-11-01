@@ -947,8 +947,12 @@ command (replacing its first key).
   the macOS Help menu list the same. The column starts with **Help for
   \<tool\>** (with F1), named after the tool whose toolbar tile was hovered
   or focused last, and absent when there is none. **F1** (`keymap.help`) opens
-  the docs page of the same tool (both read `lastHoveredTool()`), or the user
-  guide before any tile was hovered.
+  the docs page of the same tool (the one remembered help target, which a
+  tile sets for both), or the user guide before any tile was hovered. While a
+  sketch is open, F1 opens the sketching guide instead — at the sketch
+  palette row's own section when a row was hovered or focused last (P6-22 S2,
+  ADR-0116 §4) — and opening or closing a sketch forgets the remembered
+  target.
 
 ### 7.1 Preparing the design (ADR-0078, ADR-0105)
 

@@ -4,6 +4,7 @@ import { searchCommands } from '../commands/search';
 import { memoryPreferences } from '../platform/preferences';
 import { createViewportStore } from '../viewport/store';
 import { buildCommands, type CommandContext, commandShortcuts } from './commands';
+import { clearHelpTarget, setHelpTarget } from './helpTarget';
 import { menuModel, NATIVE_MENU_OWN } from './menuModel';
 import { lastHoveredTool, setHoveredTool } from './Toolbar';
 
@@ -463,6 +464,29 @@ describe('buildCommands', () => {
     expect(open).toHaveBeenLastCalledWith('guide');
     setHoveredTool('extrude');
     model.get('help')?.run();
+    expect(open).toHaveBeenLastCalledWith({ tool: 'extrude' });
+    setHoveredTool(undefined);
+  });
+
+  it('F1 opens the remembered target, else the sketching guide in a sketch (P6-22 S2, ADR-0116 §4)', () => {
+    const open = vi.fn();
+    const sketch = byId(context('sketch', { docs: { open } }));
+    // A hovered palette row: its own sketching section.
+    setHelpTarget({ guide: 'sketching', anchor: 'snap-to-grid' });
+    sketch.get('help')?.run();
+    expect(open).toHaveBeenLastCalledWith({ guide: 'sketching', anchor: 'snap-to-grid' });
+    // Nothing hovered: the sketching guide while a sketch is open, the guide outside.
+    clearHelpTarget();
+    sketch.get('help')?.run();
+    expect(open).toHaveBeenLastCalledWith({ guide: 'sketching' });
+    byId(context('model', { docs: { open } }))
+      .get('help')
+      ?.run();
+    expect(open).toHaveBeenLastCalledWith('guide');
+    // A hovered tile still wins in both modes; its tool target is what the
+    // Menu's "Help for This Tool" reads (`Toolbar.lastHoveredTool`).
+    setHoveredTool('extrude');
+    sketch.get('help')?.run();
     expect(open).toHaveBeenLastCalledWith({ tool: 'extrude' });
     setHoveredTool(undefined);
   });
