@@ -228,6 +228,10 @@ STL_DIR=~/Development/extrudo-stl-solid-test TOL=auto BUILD=diag FILE=own/scrap-
   distance of up to 4,000 spread nodes to the least-squares plane of their two triangle rings; also a quadric patch).
   `python3 -I spikes/stl-to-solid/torus_loops.py <step dir> [STEP_OUT log]`: whether torus faces' bounds in written
   STEP files run the way their flags say ((u, v) winding, and every edge used in opposite directions by its faces).
+  Run 3: `Q26TOUCH=1` lists every face of each converted body whose wires share a vertex (`q26 touch`: the pcurves
+  at the vertex, the distance to the face's u bounds, `splitvalid`: the face with that vertex copied per wire), then
+  the STEP round trip's invalid faces and split vertices (`q26 back`); `Q26TOUCH=cut` first applies the harness's
+  prototype of the facade's `cutTouchingLoops` (`spikeCutTouching`) to the body it writes.
 
 Case `f` with `TIMES=1` also prints `calls:` (chainCurve and
 `Geom2dAPI_Interpolate` calls, the mesh check's nodes, BRepExtrema calls and
