@@ -217,6 +217,17 @@ STL_DIR=~/Development/extrudo-stl-solid-test TOL=auto BUILD=diag FILE=own/scrap-
   attempt (estimate, valid, `cellsvalid`: the solids before unify, faces, facets, volume, nodes off) and a
   `q26 outcome`. `Q26=2` prints only the attempts. `python3 spikes/stl-to-solid/q26.py <auto log> [fixed-step logs]`
   turns the logs into the tables of `docs/plans/m2s-exploded-q1-2026-11-01.md`.
+  Run 2 (slice D11): `q26 split` lines say what became of each region meshLoops split at the nodes its boundary
+  passes twice. `Q26PLANES=1` (or `only`, which skips the conversion) lists the plane surfaces whose fitted normal
+  disagrees with their facets' area-weighted mean normal (|cos| < 0.5) at Auto's step and at 0.01 mm, with the
+  deviation of the plane square to that mean normal. `Q26LADDER=1` segments at every Auto rung and prints its unfit
+  share and time (`q26 rung`). `STEP_OUT=/w/<dir>` writes each converted body's STEP (the facade's own writer) under
+  the spike folder, with its OCCT read-back (`q26 step`). Case `H` fillets a cylinder's rims with OCCT and prints
+  each torus face's frame handedness (`/w/d11/hand.step`).
+  `python3 -I spikes/stl-to-solid/noise.py <meshes> [ladder log]`: each staged mesh's noise (1.4826 x the median
+  distance of up to 4,000 spread nodes to the least-squares plane of their two triangle rings; also a quadric patch).
+  `python3 -I spikes/stl-to-solid/torus_loops.py <step dir> [STEP_OUT log]`: whether torus faces' bounds in written
+  STEP files run the way their flags say ((u, v) winding, and every edge used in opposite directions by its faces).
 
 Case `f` with `TIMES=1` also prints `calls:` (chainCurve and
 `Geom2dAPI_Interpolate` calls, the mesh check's nodes, BRepExtrema calls and
