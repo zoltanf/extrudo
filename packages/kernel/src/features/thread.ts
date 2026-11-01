@@ -32,10 +32,18 @@
  * the cone has at its centre and swept along a conical helix. A tapered
  * preset (NPT) fits a cone of its taper without a size (`autoTaperThread`).
  *
+ * **The fill** (P4-12, ADR-0056's fifth amendment): a hole wider than the
+ * thread's crest (its minor with the tolerance) or a shaft thinner (the major
+ * less it) is first brought to it along the thread by a sleeve (`sleeveOf`)
+ * joined to the face's body, so a hole drawn at the nominal size threads
+ * fully; a hole's sleeve that reaches an end of the face is trimmed to the
+ * body with the hole closed (Remove Faces).
+ *
  * Faces: `thread:<id>:side:<source>`, sources `f<k>.root`, `f<k>.flank0`,
  * `f<k>.crest`, `f<k>.flank1` (one per turn, `#n`), `f<k>.end0|end1` (the
  * flat steps where a thread stops inside a face), `f<k>.lead0|lead1` (the
- * lead-in cones), where k is the face's place in the input (`f0`, `f1` …).
+ * lead-in cones), `f<k>.fill|fillWall|fillEnd0|fillEnd1` (the sleeve's),
+ * where k is the face's place in the input (`f0`, `f1` …).
  */
 import {
   autoTaperThread,

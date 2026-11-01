@@ -7,6 +7,7 @@ import {
   clickWhere,
   closeParameters,
   expectBody,
+  expectNoProblems,
   expectOneWarning,
   exportModel,
   exportProject,
@@ -173,12 +174,11 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   const thread = page.getByRole('region', { name: 'Thread dialog' });
   await expect(thread.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
   await expect(thread.getByRole('combobox', { name: 'Size' })).toHaveValue('auto');
-  // The bore is past M30's minor diameter, so the thread warns that only the
-  // outer part of the tooth is cut (ADR-0056's fourth amendment).
-  await expect(thread).toHaveAttribute('data-preview-status', 'warning', { timeout: 60_000 });
+  // The bore is past M30's minor diameter: the thread fills it in to it along
+  // the thread first (ADR-0056's fifth amendment), so a full tooth, no word.
+  await expect(thread).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
   await ok(page, thread);
-  // The warned feature says so on its chip.
-  await expect(chip(page, 'Thread1')).toHaveAccessibleName('Thread1 (warning)');
+  await expect(chip(page, 'Thread1')).toHaveAccessibleName('Thread1');
   await expectBody(page, 'Cap', [32, 32, 14]);
   // The thread's turns are its faces now.
   expect((await bodies(page)).Cap?.faces).toBeGreaterThan(10);
@@ -307,9 +307,7 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   await expectBody(page, 'Cap', [32, 32, 14]);
   await expectBody(page, 'Adapter', [23.8, 23.8, 20]);
 
-  // The cap's thread is the one warning (its bore is past the minor); the
-  // adapter's threads have none.
-  await expectOneWarning(page);
+  await expectNoProblems(page);
   await page.screenshot({ path: test.info().outputPath('b9.png') });
 
   // The design as it stands is the benchmark's fixture (fixtures/benchmarks/).
@@ -338,7 +336,8 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   // Ø36 collar M36, so the two parts' threads mesh.
   await setParameters(page, { capDia: '40 mm', adapterLow: '24 mm' });
   await kernelReady(page);
-  // The refitted cap thread still warns: its bore is past M36's minor too.
+  // The refitted cap thread notes that its bore is filled in: Ø36 is off
+  // M36's minor by more than the thread's depth (ADR-0056's fifth amendment).
   await expectOneWarning(page);
   await expectBody(page, 'Cap', [40, 40, 14]);
   await expectBody(page, 'Adapter', [35.8, 35.8, 20]);

@@ -11,8 +11,8 @@
   the evaluator `packages/kernel/src/features/thread.ts`; the dialog
   `apps/web/src/features/thread.ts` (tool `thread` in Solid › Modify's menu, no
   key); `e2e/thread.spec.ts`; the native harness `spikes/p4-02-harness/`; the
-  file format, `docs/file-format.md` 6.25. Amended three times (profiles,
-  multi-start, tapered threads on cones: below). **The facade changed** (OCCT input
+  file format, `docs/file-format.md` 6.25. Amended five times (profiles,
+  multi-start, tapered threads on cones, threads for printing, the fill: below). **The facade changed** (OCCT input
   hash `86f6c3f92d7a`, release `occt-86f6c3f92d7a`; additive but for the
   boolean fix), no schema-version change, no migration; one new feature type.
 - **Builds on:** ADR-0049 (hole: presets that fill sizes, a feature that always
@@ -465,8 +465,8 @@ dialog's Size and the new Fit choice, `e2e/thread.spec.ts`. No schema change:
   size (Ø5 → M5, Ø10 → Print 10 × 2.75 under the print profile): a part is
   designed with the hole at the thread's name, and 0.01 mm is a typed
   number, never a measured one. The rule is for holes only: a Ø5 shaft is M5
-  by the existing rule. Until the next amendment fills such a bore in, the
-  kernel **warns** when a hole is wider than the thread's minor diameter
+  by the existing rule. Until the fifth amendment filled such a bore in, the
+  kernel **warned** when a hole is wider than the thread's minor diameter
   ("The hole is 5 mm across, wider than the M5 thread's minor diameter
   (4.334 mm): only the outer part of the tooth is cut. Draw the hole at
   about 4.1 mm for a full thread." — the tap-drill figure is the basic minor
@@ -491,9 +491,119 @@ presets are not stored, §3); applying the fit as a flank-normal offset
 pitches); copying the ScanRuler plugin's code (AGPL-3.0-only: its
 decisions were read, nothing taken).
 
-**Deferred to the next amendment (slice B, "the fill"):** a bore wider than
-the thread's minor diameter is filled in to it along the thread before the
-cut, and a shaft thinner than the major is built up to it, so a Ø5 hole
-takes a full M5 (and M4 or M6) and a Ø4 pin an M5; the warnings above then
-go. A thread read off a mesh for Mesh to Solid (ADR-0097) is a task of its
+**Deferred to the next amendment (slice B, "the fill"), done in the fifth
+amendment below:** a bore wider than the thread's minor diameter is filled in
+to it along the thread before the cut, and a shaft thinner than the major is
+built up to it, so a Ø5 hole takes a full M5 and a Ø4 pin an M5; the
+warnings above then go. A thread read off a mesh for Mesh to Solid (ADR-0097) is a task of its
 own.
+
+## Fifth amendment (2026-11-01): the fill
+
+A part is designed with its hole at the thread's nominal size (Ø5 for M5) or
+its pin at a round number, not at the tap drill or the exact major. Until now
+a Ø5 hole threaded M5 got only the outer sliver of the tooth (the bore is
+already past the minor diameter) and a warning (the fourth amendment's); a
+Ø4.5 pin threaded M5 likewise. Now the thread first brings the face to the
+thread, then cuts. Code: `planThread` (`ThreadPlan.fill`, `ThreadFill`),
+`sleeveOf` and the evaluator in `packages/kernel/src/features/thread.ts`;
+`packages/kernel/src/features/thread-fill.test.ts`; `e2e/thread.spec.ts`.
+TypeScript only: **no facade change**, no new input, no schema key.
+
+- **When.** After the existing errors (a hole at or past the root, a shaft at
+  or under the root): a hole is *wide* when its radius is past the part's
+  crest radius (the minor + the tolerance), a shaft *thin* when it is under
+  its crest radius (the major − the tolerance). `ThreadPlan.fill` holds the
+  sleeve's band, at `anchor` on a cone: a hole's from `crest − reach/2` out
+  to the face, a shaft's from the face out to `crest + reach/2` (`reach` is
+  the ring's `0.1 P + 0.05 mm`). The fourth amendment's two warnings go. A
+  **note** (a warning, as the "much thicker" ones are) replaces them when the
+  face's **diameter** is off the crest's by more than the thread's depth:
+  "The hole is 5 mm across, wider than the M5 thread's minor diameter
+  (4.334 mm): it is filled in to it along the thread." / "The shaft is 4 mm
+  across, thinner than the M5 thread's major diameter (4.8 mm): it is built
+  up to it along the thread." Within the depth, no word. *Decided against
+  the brief's wording:* read on the radius ("off by more than the depth"),
+  the note could never show, since a hole that far past the crest is past
+  the root, an error; on the diameter, M5 in Ø5 (0.666 mm against 0.541) and
+  a Ø4 pin note it, while B9's Ø28 bore for M30 (1.589 against 1.894) is
+  silent.
+- **Geometry.** Before the cut, the **sleeve**: the band over the thread's
+  run `from … to`, both edges on a cone's slope (`shiftAt`, as the ring),
+  turned a whole turn (`namedRevolve`; faces `f<k>.fill` for the new
+  cylinder, `f<k>.fillWall` for the one on the face, `f<k>.fillEnd0|fillEnd1`
+  for its flat ends), fused to the face's body alone (`namedBoolean` fuse
+  with `simplify`, so the coincident cylinder on the face merges away). Then
+  the ring − tooth tool is built as before with the plan's `radius` replaced
+  by the crest (the ring's far edge is `crest ∓ reach`, the lead-ins start
+  from the crest) and cut as before. The sleeve's band lies inside the
+  ring's, so the cut leaves only the tooth of it: the tooth's crest is cut
+  out of sleeve material, no sleeve face coincides with the crest flat, and
+  `fill` never survives into a result (`fillEnd0|1` can, where a run stops
+  inside the face). The joins go through the step's own body map (the
+  pattern's `step` context), not `operate`'s join: one body and a known
+  tool need neither its touching question (an exact distance) nor its
+  preview tool, which would outlive the feature.
+- **Ends.** Where the thread stops inside the face, the sleeve's flat end is
+  that step. **A hole whose run reaches an end of the face** (open or not)
+  has its sleeve trimmed to the body's **hull**: the whole hole as a click in
+  Remove Faces takes it (`removeFacesPick`: the wall, its floor, steps and
+  drill point) removed by the kernel's `removeFaces`, which heals it closed,
+  then `common(sleeve, hull)`. So a hole that comes out of a curved or
+  slanted wall gets no sleeve standing in the air, and a blind hole's floor
+  goes with it; a bore that another one crosses is closed with the cross bore
+  still in the hull, so the trim keeps the sleeve out of it (tested). When
+  Remove Faces refuses (a hole whose neighbours can't be extended to close
+  it), the face is **left as drawn** and the fourth amendment's warning stays, reworded
+  ("… and can't be filled in here: only the outer part of the tooth is
+  cut. Draw the hole at about 4.1 mm for a full thread."). **A shaft's**
+  sleeve is flush with the face's ends, never trimmed.
+- **Several faces** (up to `MAX_THREAD_FACES`): every sleeve is joined
+  before any tool is built, one fuse per face needing one, bodies chained in
+  a map; then the tools are merged and cut once, as before. **Starts and
+  tapers** compose with no code of their own (the sleeve is a revolve).
+  **Multi-body**: the face's body only.
+
+**Known limit.** A chamfered or rounded **shaft** end that the thread runs
+out of shows a small step where the flush sleeve meets the chamfer (the
+lead-in cone cuts into it). Trimming the shaft's sleeve to a hull, as a
+hole's is, would fix it; nobody has needed it yet.
+
+**Rejected.** Trimming only at an end `threadFace` calls open: a hole coming
+out of a wall slanted past 60° is not open by that test, and its sleeve
+would stand out; any end is trimmed instead (the trim of a hole through a
+flat wall changes nothing and costs one Remove Faces and one common).
+Refusing a blind hole (Remove Faces of the wall alone fails on its floor):
+the hole's whole pick group closes it. `operate`'s join for the sleeve
+(above). A facade method for the fill: a revolve and two booleans are
+enough.
+
+**Results** (Ubuntu machine, `thread-fill.test.ts`; `BENCH=1` for the
+timing). M5 in a Ø5 × 10 hole through a 20 × 20 × 10 block and M5 in the
+same block's Ø4.2 tap-drill hole: both valid, 61 faces, **3822.860 mm³
+each** (the same to the printed digit), about 3.1 s each warm (the fill's
+revolve, fuse and Remove Faces add nothing measurable to the thread's
+booleans). The filled hole's volume is within 2 % of the profile's
+prediction (a bore at the crest, Ø4.334, less the groove swept along the
+helix); its crest is at Ø4.334, its root at Ø5.2. M6 in the Ø5 hole needs no
+fill (its minor with the tolerance is Ø5.117); M4 is refused (the hole is
+past its root). Fit the face on the Ø5 hole gives M5 with a full tooth:
+within 1 % of M5 at the tap drill; Print 5 × 1.5 the same against its Ø4.1
+tap drill. A Ø4 × 20 pin built up to M5 is within 1 % of M5 on a Ø5 pin,
+crests Ø4.8. A 4 mm thread 2 mm in fills only along its run (the Ø5 bore is
+as drawn above and below it). M5 through a Ø12 rod's side (a cross bore):
+trimmed, valid, nothing outside the rod, within 1 % of M5 in a bore drawn at
+the crest. An M5 screw on a Ø4.5 pin and an M5 nut in a Ø5 hole, both
+filled, share no volume and are more than 0.09 mm apart. A blind Ø5 hole 8
+deep, with a drill point or a flat floor, fills (closed with its floor for
+the trim); a Ø3 bore crossing the Ø5 one stays open. The "left as drawn"
+path is not reached by any test: no case found yet makes Remove Faces refuse
+a threadable hole. B9's Ø28 cap bore
+(M30) fills silently; its Ø29 variant (wall 1.5 mm) notes it. The golden
+table has no internal rows, so none was added; its rows are unchanged.
+
+**Deferred.** The shaft-end trim (the known limit above); importing a file's
+thread on a hole wider than the thread (`packages/f3d/src/map-more.ts`
+still leaves it out because Extrudo used not to fill: ADR-0083's mapping can
+now take it).
+

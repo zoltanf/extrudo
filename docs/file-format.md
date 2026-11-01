@@ -1277,9 +1277,11 @@ so the tooth tiles one pitch and the flats are the same inside and out — a
 screw and a nut are exact complements, and it mates only with itself. All are
 moved by `tolerance`. A shaft thicker than the thread is turned
 down to it (a warning when much thicker); a hole wider than the thread's
-minor diameter (as a bore drawn at a size's own diameter is, until the next
-amendment fills it) or a shaft thinner than its major warns that only the
-outer part of the tooth is cut, naming the size to draw or make instead; a
+minor diameter (as a bore drawn at a size's own diameter is) is filled in to
+it along the thread before the cut, and a shaft thinner than its major is
+built up to it, so the tooth is whole (a warning notes it when the diameter
+was off by more than the thread's depth; a hole Remove Faces can't close is
+cut as drawn, with a warning that only the outer part of the tooth is cut); a
 shaft at or under the thread's root, a hole as wide as the thread, a thread
 longer than the face, an offset as long
 as the face and more than 150 turns are errors. With `profile: iso` or
@@ -1290,7 +1292,10 @@ that start at the same plane mesh (the hole's tooth sits half a pitch on).
 Names: `thread:<feature id>:side:f<k>.<part>`, where k is the face's place in
 `faces` (0, 1 …) and the part is `crest`, `flank0`, `flank1` (one face per turn,
 `#n` along the helix), `root`, `end0` / `end1` (the flat steps where a thread
-stops inside a face) or `lead0` / `lead1` (the lead-in cones); a rounded crest
+stops inside a face), `lead0` / `lead1` (the lead-in cones) or, where a face
+was filled in or built up, `fillEnd0` / `fillEnd1` (the fill's flat ends,
+where a thread stops inside the face) and `fill` / `fillWall` (its cylinders,
+which the cut and the join take away); a rounded crest
 or root is still one `crest`/`root` face. The dialog's
 sizes (ISO metric coarse and fine, UNC, UNF, the Tr series, the print sizes
 and PCO-1881) only fill `diameter`, `pitch` and

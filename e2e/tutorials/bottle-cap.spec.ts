@@ -8,6 +8,7 @@ import {
   closeParameters,
   dimension,
   expectBody,
+  expectNoProblems,
   expectOneWarning,
   hideConstraints,
   homeView,
@@ -191,14 +192,13 @@ test('Tutorial 4: a threaded bottle cap', async ({ page }) => {
       const thread = page.getByRole('region', { name: 'Thread dialog' });
       await expect(thread.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
       await expect(thread.getByRole('combobox', { name: 'Size' })).toHaveValue('auto');
-      // The bore is past the thread's minor diameter, so it warns (ADR-0056's
-      // fourth amendment).
-      await expect(thread).toHaveAttribute('data-preview-status', 'warning', { timeout: 60_000 });
+      // The bore is past the thread's minor diameter and is filled in to it
+      // (ADR-0056's fifth amendment): no word.
+      await expect(thread).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
       await ok(page, thread);
     },
     async () => {
-      // The warned feature says so on its chip.
-      await expect(chip(page, 'Thread1')).toHaveAccessibleName('Thread1 (warning)');
+      await expect(chip(page, 'Thread1')).toHaveAccessibleName('Thread1');
       await expectBody(page, 'Cap', [32, 32, 14]);
       expect((await bodies(page)).Cap?.faces).toBeGreaterThan(10);
     },
@@ -344,8 +344,7 @@ test('Tutorial 4: a threaded bottle cap', async ({ page }) => {
       await expect(chip(page, 'Thread2')).toHaveAccessibleName('Thread2');
       await expectBody(page, 'Cap', [32, 32, 14]);
       await expectBody(page, 'Adapter', [23.8, 23.8, 20]);
-      // The cap's thread is the one warning (its bore is past the minor).
-      await expectOneWarning(page);
+      await expectNoProblems(page);
     },
   );
 
@@ -356,8 +355,8 @@ test('Tutorial 4: a threaded bottle cap', async ({ page }) => {
       await kernelReady(page);
     },
     async () => {
-      // The cap's Ø36 bore is a size's own diameter now (M36), and its thread
-      // still warns: the bore is past M36's minor too.
+      // The cap's Ø36 bore is a size's own diameter now (M36), filled in to
+      // M36's minor: off by more than the thread's depth, so it notes it.
       await expectOneWarning(page);
       await expectBody(page, 'Cap', [40, 40, 14]);
       await expectBody(page, 'Adapter', [35.8, 35.8, 20]);

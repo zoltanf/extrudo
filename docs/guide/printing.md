@@ -132,6 +132,10 @@ print sizes start at Print 4 × 1.25 (M5 and up at a 0.4 mm nozzle is the practi
 the Fit choice — Tight, Normal or Loose — fills the tolerance. Start with Normal and test a
 coupon.
 
+Draw a threaded hole at the thread's nominal size (Ø5 for M5) and a threaded pin at a round
+number: the thread fills a wider hole in, or builds a thinner pin up, to its own size first,
+so the tooth comes out whole.
+
 ## Send to Slicer (desktop)
 
 In the [desktop app](./desktop.md) there is a **Send to Slicer** tile next to Export. It

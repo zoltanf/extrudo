@@ -2528,7 +2528,15 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   amendment) picks the printing profile on the default Ø20 cylinder with Size
   `auto`: the designation reads "Print 20 × 4.5" and `data-bodies` reads
   `19.8,19.8,20`; then Fit `loose` sets Tolerance "0.2 mm" and the body reads
-  `19.6,19.6,20`.
+  `19.6,19.6,20`. The fill test (ADR-0056's fifth amendment) drills a through
+  Ø5 Hole at the default cylinder's top centre (`Body1:4:20,20,20`), picks its
+  wall at (−r, r, 18.5) with r = 2.5/√2 (just under the rim, so the near rim keeps clear of it) and sets Size `m5`: `data-preview-status`
+  is `warning` (the Feature status reads the "filled in to it along the
+  thread" note: Ø5 is off M5's minor by more than the depth), the designation
+  contains "M5" and `data-bodies` stays `20,20,20` with over 20 faces. B9 and
+  the bottle-cap tutorial: the cap's Ø28 bore is filled silently (`ok`, chip
+  "Thread1", `expectNoProblems`); after `capDia: 40 mm` its Ø36 bore takes M36
+  and notes the fill, so those steps keep `expectOneWarning`.
 
 ### `e2e/timeline-groups.spec.ts`
 

@@ -174,8 +174,9 @@ test('M5 in a Ø5 Hole fills the bore in to the thread first', async ({ page }) 
 
   at = await settledProjector(viewport);
   const dialog = await openThread(page);
+  // The far side of the narrow bore, just under the rim so the near rim doesn't hide it.
   const r = 2.5 * Math.SQRT1_2;
-  await clickFace(page, at, [-r, r, 17]);
+  await clickFace(page, at, [-r, r, 18.5]);
   await expect(dialog.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
   await dialog.getByRole('combobox', { name: 'Size' }).selectOption('m5');
   await expect(dialog).toHaveAttribute('data-preview-status', 'warning', { timeout: 60_000 });

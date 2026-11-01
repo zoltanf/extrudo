@@ -104,9 +104,9 @@ click in the middle of the hollow picks the flat top instead. Press **Thread** i
 the **Modify** tab. **Faces** reads **1 face** and **Size** reads **auto**: Extrudo
 fits the standard metric thread to the wall's diameter, here M30 in a Ø28 wall.
 
-Wait a few seconds for the preview. Extrudo warns that the bore is a little
-wider than the thread's minor diameter, so only the outer part of the tooth is
-cut — fine for a printed cap. Press **OK**. The inside of the cap
+Wait a few seconds for the preview. The bore is a little wider than the
+thread's minor diameter, so Extrudo first fills it in to it along the thread
+and then cuts a full tooth. Press **OK**. The inside of the cap
 gets a spiral groove, and its outside is unchanged at 32 × 32 × 14 mm.
 
 ![The cap seen from below with a thread cut inside](./images/bottle-cap/cap-thread.png)
@@ -177,8 +177,10 @@ Open the **Home** tab, press **Parameters** and set `capDia` to `40 mm` and
 `adapterLow` to `24 mm`. Press `Esc` and wait while the threads are rebuilt.
 
 Both sketches follow the parameters and every thread refits: the cap is now
-40 mm across, and the adapter 35.8 mm. The bigger cap bore takes an M39 thread and
-the wider adapter collar an M36, so the two parts still mesh. If you do not like
+40 mm across, and the adapter 35.8 mm. The bigger cap bore is drawn at 36 mm,
+so it takes an M36 thread (it is filled in to M36's minor diameter, and the
+thread notes that with a warning), and the wider adapter collar an M36 too, so
+the two parts still mesh. If you do not like
 it, `Ctrl+Z` undoes the change.
 
 ![The larger cap and adapter after changing two parameters](./images/bottle-cap/change-parameters.png)

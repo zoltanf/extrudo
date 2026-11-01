@@ -12,6 +12,8 @@ import {
   FeatureRegistry,
   type FeatureStatus,
   type GeomRef,
+  HOLE_TYPE,
+  holeInputs,
   originPlaneRef,
   primitiveInputs,
   type SketchData,
@@ -186,6 +188,10 @@ const threadNames = (names: readonly string[]) =>
   [
     ...new Set(names.filter((n) => n.startsWith('thread:')).map((n) => n.replace(/#\d+$/, ''))),
   ].sort();
+
+const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env;
+
+const round = (x: number, digits = 3) => Number(x.toFixed(digits));
 
 const dataOf = (id: string) => seen.get(id)?.data as ThreadOutputData;
 
@@ -509,6 +515,66 @@ describe('thread fill', { timeout: 300_000 }, () => {
     expect(Math.abs(filled.m.volume - atCrest.m.volume) / atCrest.m.volume).toBeLessThan(0.01);
   });
 
+  it('fills a blind hole, drill point or flat floor, closing it with its floor for the trim', async () => {
+    for (const tipAngle of ['118 deg', '0 deg']) {
+      engine.clear();
+      const result = await runWithShapes(
+        testDocument([
+          cylinder('C', 16, 12),
+          {
+            ...testFeature('H', HOLE_TYPE),
+            inputs: holeInputs({
+              plane: { kind: 'face', id: 'cylinder:C:cap:end' },
+              extent: 'blind',
+              numbers: { diameter: '5 mm', depth: '8 mm', tipAngle },
+            }),
+          },
+          thread('T', {
+            faces: [{ kind: 'face', id: 'hole:H:side:wall' }],
+            numbers: { diameter: '5 mm', pitch: '0.8 mm' },
+          }),
+        ]),
+      );
+      // Filled (the note), not left as drawn.
+      expect(warningOf(result, 'T'), tipAngle).toBe(FILLED);
+      const m = measure(result, 'C:0');
+      expect(m.valid, tipAngle).toBe(true);
+      expect(m.solids).toBe(1);
+      expect(round(m.bbox.max[2], 3)).toBe(12);
+      // Matter between the crest and the drawn bore, half way down.
+      expect(solidAlong(m.shape, 2.45, 6, 10)).toBeGreaterThan(0);
+    }
+  });
+
+  it('fills a bore that another one crosses, keeping the cross bore open', async () => {
+    const block = blockWithHole(5, 10);
+    const cross = new SketchBuilder();
+    cross.circle(0, 5, 1.5);
+    const result = await runWithShapes(
+      testDocument([
+        ...block.features,
+        sketch('SC', cross.sketch, originPlaneRef('origin:yz')),
+        {
+          ...testFeature('XC', 'extrude'),
+          inputs: extrudeInputs(profileRefs('SC', cross.sketch), {
+            direction: 'symmetric',
+            distance: '30 mm',
+            operation: 'cut',
+          }),
+        },
+        thread('T', { faces: [block.wall], numbers: { diameter: '5 mm', pitch: '0.8 mm' } }),
+      ]),
+    );
+    // Remove Faces closes the Z bore with the cross bore still in the hull,
+    // so the trim keeps the sleeve out of the cross bore.
+    expect(warningOf(result, 'T')).toBe(FILLED);
+    const m = measure(result, 'E:0');
+    expect(m.valid).toBe(true);
+    expect(m.solids).toBe(1);
+    for (const x of [2.35, -2.35]) expect(solidAt(m.shape, [x, 0, 5])).toBe(false);
+    expect(solidAlong(m.shape, 2.45, 1, 3)).toBeGreaterThan(0);
+  });
+
   it('an M5 screw on a Ø4.5 pin and an M5 nut in a Ø5 hole clear each other', async () => {
     const block = blockWithHole(5, 6);
     const result = filledOk(
@@ -528,5 +594,28 @@ describe('thread fill', { timeout: 300_000 }, () => {
     expect(kernel.measure(overlap.shape).volume).toBeLessThan(1e-4);
     kernel.release(overlap.shape);
     expect(kernel.distance(nut.shape, screw.shape)).toBeGreaterThan(0.09);
+  });
+
+  // Recompute times for the amendment (BENCH=1): M5 in a Ø5 hole (filled) and at the tap drill.
+  it.runIf(env?.BENCH)('times a filled thread against an unfilled one', async () => {
+    const lines: string[] = [];
+    for (const hole of [5, 4.2, 5, 4.2]) {
+      engine.clear();
+      const block = blockWithHole(hole, 10);
+      const base = await run(testDocument(block.features));
+      const t0 = performance.now();
+      const result = await runWithShapes(
+        testDocument([
+          ...block.features,
+          thread('T', { faces: [block.wall], numbers: { diameter: '5 mm', pitch: '0.8 mm' } }),
+        ]),
+      );
+      const ms = performance.now() - t0;
+      const m = measure(result, 'E:0');
+      lines.push(
+        `Ø${hole}: ${Math.round(ms)} ms (engine ${Math.round(result.stats.ms)}, base ${Math.round(base.stats.ms)}), ${m.volume.toFixed(3)} mm³, ${m.faces} faces, valid ${m.valid}`,
+      );
+    }
+    expect(lines.join('\n')).toBe('');
   });
 });
