@@ -6942,6 +6942,12 @@ private:
     return gp_XYZ(meshNodes_[3 * node], meshNodes_[3 * node + 1], meshNodes_[3 * node + 2]);
   }
 
+  /**
+   * A plane group's least-squares plane is kept only when its normal and the
+   * facets' area-weighted mean normal agree by this cosine (slice D11).
+   */
+  static constexpr double MESH_PLANE_NORMAL_AGREEMENT = 0.5;
+
   /** The least-squares plane through `nodes`, its normal on the side of `outward`. */
   MeshFit fitMeshPlane(const std::vector<int>& nodes, const gp_XYZ& outward) const {
     MeshFit fit;
@@ -7820,8 +7826,14 @@ private:
               plane.ok = true;
             }
             if (plane.ok && plane.deviation <= tolerance) return plane;
+            // A least-squares plane square to the facets is no face (slice D11): a wall strip lower
+            // than the tolerance has all its nodes within it of the plane through its middle.
             const MeshFit squares = fitMeshPlane(g.nodes, g.outward);
-            return squares.ok && (!plane.ok || squares.deviation < plane.deviation) ? squares : plane;
+            gp_XYZ mean(0, 0, 0);
+            for (int t : g.triangles) mean += areas[t] * normals[t];
+            const bool agrees = squares.ok && mean.Modulus() > 1e-300 &&
+                                std::fabs(squares.direction.XYZ().Dot(mean)) >= MESH_PLANE_NORMAL_AGREEMENT * mean.Modulus();
+            return agrees && (!plane.ok || squares.deviation < plane.deviation) ? squares : plane;
           }
           case 1:
             return fitMeshCylinder(g.nodes, g.triangles, normals, areas);
