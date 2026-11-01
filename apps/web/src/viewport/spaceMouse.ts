@@ -205,9 +205,10 @@ export interface SpaceMouse {
   /**
    * Whether the cap is off centre, or was within the last `WHEEL_QUIET_MS`. 3DxWare, the
    * vendor's driver, also turns the cap's motion into mouse-wheel turns for programs it has no
-   * profile for, browsers included; the viewport drops wheel events while this is true, since the
-   * cap is read here. The driver sends them only well past the dead zone, never at rest, so a
-   * wheel turn with the cap at rest is the user's.
+   * profile for, browsers included; the app drops every wheel event while this is true (see
+   * `start`), since the cap is read here. The driver sends them only well past the dead zone,
+   * never at rest, so a wheel turn with the cap at rest is the user's. Reads the gamepad first:
+   * the driver's first wheel turn of a push can come before the next poll.
    */
   recentlyMoving(now?: number): boolean;
 }
@@ -226,13 +227,18 @@ export interface SpaceMouseEnvironment {
   gamepads?: () => readonly (Pad | null)[];
   /** A repeating timer, for the gamepad poll. */
   interval?: (cb: () => void, ms: number) => unknown;
+  /** Where focus loss and wheel turns are listened for (the window). */
+  target?: EventTarget;
 }
 
 /**
  * Opens the devices already allowed, and any that is plugged in later, and turns their reports
- * into `move` calls once per animation frame while the cap is off centre. Without an open HID
- * device, reads the 3D mouse the browser lists as a gamepad instead (Chromium browsers list the
- * device itself; no chooser needed, but a gamepad appears only once it has been moved on the page).
+ * into `move` calls once per animation frame while the cap is off centre. Until an open HID
+ * device has sent a report, reads the 3D mouse the browser lists as a gamepad instead (Chromium
+ * browsers list the device itself; no chooser needed, but a gamepad appears only once it has been
+ * moved on the page). A device allowed once is opened again on every visit, and one that stays
+ * silent (a receiver with nothing paired, another device picked in the chooser) must not leave
+ * the cap dead.
  */
 export function createSpaceMouse(
   hid: Hid | undefined,
@@ -243,8 +249,11 @@ export function createSpaceMouse(
     now = () => performance.now(),
     gamepads,
     interval = (cb, ms) => setInterval(cb, ms),
+    target = typeof globalThis.addEventListener === 'function' ? globalThis : undefined,
   } = env;
   const open = new Set<HidDevice>();
+  /** The open devices that have sent a report: while there is one, the gamepad is not read. */
+  const live = new Set<HidDevice>();
   const listeners = new Set<() => void>();
   let sink: SpaceSink | undefined;
   let input = IDLE;
@@ -256,8 +265,9 @@ export function createSpaceMouse(
   let padId: string | undefined;
 
   const changed = () => {
-    const open_ = [...open].map((d) => d.productName || '3D mouse');
-    names = padId === undefined ? open_ : [...open_, padName(padId)];
+    const hidNames = [...(live.size > 0 ? live : open)].map((d) => d.productName || '3D mouse');
+    // The same device can be both an open HID device and the gamepad: name it once.
+    names = live.size === 0 && padId !== undefined ? [padName(padId)] : hidNames;
     for (const l of listeners) l();
   };
 
@@ -270,9 +280,9 @@ export function createSpaceMouse(
     for (let b = 0; b < 32; b++) if (pressed & (1 << b)) sink?.press(b);
   };
 
-  /** Reads the gamepad, while no HID device is open. */
+  /** Reads the gamepad, while no HID device has sent a report. */
   const poll = () => {
-    if (!gamepads || open.size > 0) return;
+    if (!gamepads || live.size > 0) return;
     const pad = choosePad(gamepads());
     const next = pad && readPad(pad);
     if (pad?.id !== padId) {
@@ -302,7 +312,17 @@ export function createSpaceMouse(
   };
 
   const onReport = (e: Event) => {
-    const { reportId, data } = e as HidInputReportEvent;
+    const { device, reportId, data } = e as HidInputReportEvent;
+    if (!live.has(device)) {
+      // The device takes over from the gamepad: none of the gamepad's reading carries over.
+      const first = live.size === 0;
+      live.add(device);
+      if (first) {
+        input = IDLE;
+        padId = undefined;
+      }
+      changed();
+    }
     take(readReport(input, reportId, data));
   };
 
@@ -318,19 +338,36 @@ export function createSpaceMouse(
     changed();
   };
 
+  function recentlyMoving(t = now()): boolean {
+    if (!scheduled) poll(); // While the motion runs, every frame has just read it.
+    return moving(input) || (movedAt !== undefined && t - movedAt <= WHEEL_QUIET_MS);
+  }
+
   const start = () => {
     if (started) return;
     started = true;
     // A held cap must not keep the view spinning while another window has the focus.
-    globalThis.addEventListener?.('blur', () => {
+    target?.addEventListener('blur', () => {
       input = IDLE;
     });
+    // The driver's wheel turns go to whatever is under the pointer (a panel, the page itself
+    // with Ctrl: the browser's zoom), so they are dropped before anything sees them.
+    target?.addEventListener(
+      'wheel',
+      (e) => {
+        if (!recentlyMoving()) return;
+        e.preventDefault();
+        e.stopPropagation();
+      },
+      { capture: true, passive: false },
+    );
     if (gamepads) interval(poll, POLL_MS);
     if (!hid) return;
     hid.addEventListener('connect', (e) => void add((e as HidConnectionEvent).device));
     hid.addEventListener('disconnect', (e) => {
       const { device } = e as HidConnectionEvent;
       if (!open.delete(device)) return;
+      live.delete(device);
       device.removeEventListener('inputreport', onReport);
       input = IDLE;
       changed();
@@ -360,9 +397,7 @@ export function createSpaceMouse(
         if (sink === next) sink = undefined;
       };
     },
-    recentlyMoving(t = now()) {
-      return moving(input) || (movedAt !== undefined && t - movedAt <= WHEEL_QUIET_MS);
-    },
+    recentlyMoving,
   };
 }
 

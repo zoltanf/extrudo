@@ -292,22 +292,90 @@ describe('createSpaceMouse', () => {
     expect(mouse.devices()).toEqual([]);
   });
 
-  it('leaves the gamepad alone while a HID device is open', async () => {
+  it('reads the gamepad until an open HID device sends a report, then leaves it alone', async () => {
     const device = new FakeDevice('SpaceMouse Compact');
+    const id = 'SpaceMouse Compact (Vendor: 256f Product: c635)';
+    let listed = [pad(id, [1, 0, 0, 0, 0, 0])];
     let poll: (() => void) | undefined;
     const frames: ((now: number) => void)[] = [];
     const mouse = createSpaceMouse(new FakeHid([device]), {
       frame: (cb) => frames.push(cb),
-      gamepads: () => [pad('SpaceMouse Compact (Vendor: 256f Product: c635)', [1, 0, 0, 0, 0, 0])],
+      gamepads: () => listed,
       interval: (cb) => {
         poll = cb;
       },
+      target: new EventTarget(),
+    });
+    const moves: SpaceInput[] = [];
+    mouse.attach({ move: (input) => moves.push(input), press: () => {} });
+    await flush();
+    // Opened again from an earlier visit, but silent: the gamepad still drives the view.
+    expect(mouse.devices()).toEqual(['SpaceMouse Compact']);
+    poll?.();
+    expect(mouse.devices()).toEqual(['SpaceMouse Compact']); // the same device, named once
+    frames.shift()?.(1000);
+    expect(moves.map((m) => m.t[0])).toEqual([1]);
+
+    // The device reports: it takes over, and the gamepad's push does not carry over.
+    device.send(2, report(0, 0, 350));
+    expect(mouse.devices()).toEqual(['SpaceMouse Compact']);
+    frames.shift()?.(1020);
+    expect(moves[1]?.t).toEqual([0, 0, 0]);
+    expect(moves[1]?.r).toEqual([0, 0, 1]);
+    listed = [pad(id, [-1, 0, 0, 0, 0, 0])];
+    poll?.();
+    device.send(2, report(0, 0, 0));
+    frames.shift()?.(1040);
+    expect(frames).toHaveLength(0); // at rest: the gamepad's reading is ignored
+    expect(moves).toHaveLength(2);
+  });
+
+  it('reads the gamepad afresh when asked whether the cap moves (the first wheel turn of a push)', () => {
+    const id = 'SpaceMouse Compact (Vendor: 256f Product: c635)';
+    let listed = [pad(id, [0, 0, 0, 0, 0, 0])];
+    let poll: (() => void) | undefined;
+    const mouse = createSpaceMouse(undefined, {
+      frame: () => 0,
+      now: () => 1000,
+      gamepads: () => listed,
+      interval: (cb) => {
+        poll = cb;
+      },
+      target: new EventTarget(),
+    });
+    mouse.attach({ move: () => {}, press: () => {} });
+    poll?.();
+    expect(mouse.recentlyMoving()).toBe(false);
+    listed = [pad(id, [0, 0.5, 0, 0, 0, 0])]; // pushed since the last poll
+    expect(mouse.recentlyMoving()).toBe(true);
+  });
+
+  it('drops wheel events anywhere in the app while the cap moves, and only then', async () => {
+    const device = new FakeDevice('SpaceMouse Compact');
+    const target = new EventTarget();
+    let clock = 1000;
+    const mouse = createSpaceMouse(new FakeHid([device]), {
+      frame: () => 0,
+      now: () => clock,
+      target,
     });
     mouse.attach({ move: () => {}, press: () => {} });
     await flush();
-    poll?.();
-    expect(mouse.devices()).toEqual(['SpaceMouse Compact']); // the HID device, once
-    expect(frames).toHaveLength(0);
+    const wheel = () => {
+      const e = new Event('wheel', { cancelable: true });
+      target.dispatchEvent(e);
+      return e;
+    };
+    let e = wheel();
+    expect(e.defaultPrevented).toBe(false);
+    expect(e.cancelBubble).toBe(false);
+    device.send(1, report(0, 200, 0));
+    e = wheel();
+    expect(e.defaultPrevented).toBe(true); // no page zoom, no panel scrolling
+    expect(e.cancelBubble).toBe(true); // nor the view's own zoom
+    device.send(1, report(0, 0, 0));
+    clock += WHEEL_QUIET_MS + 1;
+    expect(wheel().defaultPrevented).toBe(false);
   });
 
   it('reports the cap as recently moving for a moment after it comes to rest (the wheel filter)', async () => {

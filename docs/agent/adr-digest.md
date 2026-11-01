@@ -3869,6 +3869,13 @@ turns, so a wheel turn while the cap moves is never the user's). `padKind` / `pa
 `choosePad` read the 3D mouse the browser lists as a gamepad (polled every 50 ms at rest, then per frame);
 **an open HID device wins** over the gamepad (never both); `supported` = WebHID or gamepads, `connectable`
 = WebHID (Settings shows Connect… only then, `[data-space-mouse="waiting"]` otherwise).
+**Amendment 2026-11-01:** env gains `target` (where `blur` and `wheel` are listened for; the window by
+default, none in Node). `recentlyMoving()` polls the gamepad first unless a frame is pending. The wheel
+guard is one capture-phase, non-passive `wheel` listener on the window (`preventDefault` +
+`stopPropagation` while `recentlyMoving()`), not the viewport's `onWheel`: keep it app-wide (the driver's
+turns go to whatever is under the pointer). **A HID device wins only after its first report** (the `live`
+set; the input resets to `IDLE` then); an open but silent device leaves the gamepad in charge, and
+`devices()` names one device once.
 
 ADR-0115 (the owner, 2026-10-30): **Other CAD files through a bundled cadmpeg** (P6-19).
 `apps/desktop/cadmpeg.json` (the pin: version, repository, per-target archive name and SHA-256 from the

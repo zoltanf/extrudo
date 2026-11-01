@@ -37,9 +37,9 @@ that. The model follows the cap: push it to pan, pull or push it towards you to 
 tilt, twist it to turn. The left button goes home, the right one fits the model. **3D mouse
 speed** slows it down or speeds it up, from 0.25× to 4×; double-click the slider for 1×. It
 needs Chrome, Edge or the desktop app (Firefox and Safari can't talk to the device), and no
-driver. With the vendor's driver (3DxWare) installed, its own mouse-wheel zoom for browsers is
-ignored while the cap moves, so the view doesn't zoom in steps on top; the first push after
-opening the page may still zoom a little.
+driver. With the vendor's driver (3DxWare) installed, its mouse-wheel turns for browsers are
+ignored while the cap moves, over the view and the panels alike, so nothing zooms or scrolls in
+steps on top; the very first push after opening the page may still let one through.
 
 ## Material densities
 
