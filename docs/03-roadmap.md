@@ -1579,6 +1579,10 @@ end to end, faster than in established desktop CAD.
   `profiles` widgets. Acceptance: `pnpm check` (`apps/site/src/docs.test.ts`, the widget
   models' tests, `shell/docsLinks.test.ts`, `main/docs.test.ts`), the owner's review of the
   pilot on a local build of the site.
+  - [x] S1: the machinery: the `widget` block and the widget list, the one hashed
+    `docs-widgets` module (only on pages with a widget), `.figure.svg` inlining through
+    the allow-list, the `sk-*` classes, heading ids, and `palette-switches` on the
+    sketching page as the first widget.
 
 ## Phase 7 — Later (lowest priority, after everything else)
 
