@@ -54,6 +54,23 @@ fetched and hash-checked at build time (P6-19, ADR-0115).
 **Code reuse: none.** It runs as a separate process; nothing is linked or
 copied into Extrudo.
 
+## Threads in other tools (reviewed 2026-10-31)
+
+What other open-source tools do for screw threads, read for ADR-0056's fourth
+amendment (the `print45` profile, named fits, a hole at its nominal size) and
+the fill that follows it. Where a license forbids it, or the code is another
+language's, **ideas only, no code**.
+
+| Project | What it has | License, reuse |
+|---|---|---|
+| [ScanRuler](https://github.com/CNCKitchen/scanruler) (CNC Kitchen), reverse plugin: `core/thread.ts`, `kernelThread.ts`, `threadRead.ts` | A modeled Thread over OCCT WASM built like ours (tooth swept along a one-edge-per-turn helix, band − tooth cut); a 45° printing profile (flats P/5, 0.3 P deep, ISO's minor kept); an offset clearance into the material; a bore wider than the minor filled in, a thin boss built up, before the cut; a 45° chamfer from 0.1 P past the root; a thread **read off a scan** (radius against height per angular sector, the pitch by autocorrelation, minor/major as the 5th/95th percentile, the hand by phase agreement) matched to the nearest standard size | **AGPL-3.0-only: ideas only, no code, no text** |
+| [BOSL2](https://github.com/BelfrySCAD/BOSL2) `threading.scad` | ISO/UTS, Tr, ACME, buttress, square, pipe (NPT, BSPP), ball-screw and custom profiles as an OpenSCAD polyhedron; `$slop` clearance (+4·$slop on an internal diameter), `blunt_start` default on ("easier to start, prevents cross threading"), lead-in shapes, bevels, `teardrop` for horizontal holes, `starts` | BSD-2-Clause; OpenSCAD mesh code: ideas |
+| [threads.scad](https://dkprojects.net/openscad-threads/) (Dan Kirshner, v3.0) | metric and english threads, `n_starts`, square and rectangular teeth, taper, lead-in chamfer at either end, an internal relief of H/20 | GPL-3.0-or-later; OpenSCAD: ideas |
+| [threads-scad](https://github.com/rcolyer/threads-scad) | ScrewThread/ScrewHole, MetricBolt/Nut, `tolerance` 0.4 by default; the author's finding that M4 and up print reliably, M3 only on a well-tuned printer | CC0-1.0; OpenSCAD: ideas |
+| [FreeCAD](https://github.com/FreeCAD/FreeCAD) PartDesign Hole (`FeatureHole.cpp`) | Modeled or cosmetic threads: ISO metric and fine, UNC/UNF/UNEF, NPT, BSP, BSW/BSF, ISO tyre; tolerance classes (4G…8H, 1B–3B: the G classes add a per-pitch clearance), a tap-drill fit (medium/fine/coarse), a custom clearance, a DIN 76 run-out depth; one long helix swept by `MakePipeShell` and sewn | LGPL-2.1-or-later; C++ inside FreeCAD: ideas |
+| [FreeCAD Fasteners Workbench](https://github.com/shaise/FreeCAD_FastenersWB) | A fastener library (ISO, DIN, ASME, heat-set and PEM inserts, Tr rods, BSP taps and dies); a "3D printer compatible" thread generation that scales diameters (screw Ø × 0.990 − 0.05 mm, nut Ø × 1.030 + 0.10 mm by default) | GPL-2.0: **ideas only, no code** |
+| [cq_warehouse](https://github.com/gumyr/cq_warehouse) / [bd_warehouse](https://github.com/gumyr/bd_warehouse) `thread` | ISO, ACME, Tr, Whitworth 55°, BSPP, plastic bottle (ASTM D2911, PCO-1881 with an `identify()` from measurements) built from helix wires and four ruled flank faces without booleans; end finishes raw/fade/square/chamfer with their timings; a radial `manufacturing_compensation` for vertically printed FDM threads | Apache-2.0; Python: ideas |
+
 ## Other projects to know (not reviewed in depth yet)
 
 | Project | Why it matters | License |

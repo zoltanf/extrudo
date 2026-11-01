@@ -581,7 +581,9 @@ describe('thread', { timeout: 300_000 }, () => {
         inputs: holeInputs({
           plane: { kind: 'face', id: 'cylinder:C:cap:end' },
           extent: 'through',
-          numbers: { diameter: '5 mm' },
+          // Ø5.1: near M6's tap drill, but not a size's own diameter (a Ø5
+          // hole would be M5 now — ADR-0056's fourth amendment).
+          numbers: { diameter: '5.1 mm' },
         }),
       },
       thread('T', { faces: [{ kind: 'face', id: 'hole:H:side:wall' }] }),
@@ -842,7 +844,10 @@ describe('thread', { timeout: 300_000 }, () => {
             inputs: holeInputs({
               plane: { kind: 'face', id: 'cylinder:C:cap:end' },
               extent: 'through',
-              numbers: { diameter: '27 mm' },
+              // A bore just under the thread's minor diameter (Ø25.2 with the
+              // tolerance), so the tooth cuts whole (P4-12's fourth amendment
+              // warns when a bore is past it).
+              numbers: { diameter: '25 mm' },
             }),
           },
           thread('T', {
@@ -946,6 +951,15 @@ describe('thread', { timeout: 300_000 }, () => {
           numbers: { diameter: '20 mm', pitch: '4 mm' },
           profile: 'buttress',
           chamfer: false,
+        },
+      ],
+      [
+        'Print 10 × 2.75',
+        10,
+        {
+          faces: [wall('C')],
+          numbers: { diameter: '10 mm', pitch: '2.75 mm' },
+          profile: 'print45',
         },
       ],
       [

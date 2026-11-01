@@ -8,6 +8,7 @@ import {
   closeParameters,
   expectBody,
   expectNoProblems,
+  expectOneWarning,
   exportModel,
   exportProject,
   fill,
@@ -173,6 +174,8 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   const thread = page.getByRole('region', { name: 'Thread dialog' });
   await expect(thread.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
   await expect(thread.getByRole('combobox', { name: 'Size' })).toHaveValue('auto');
+  // The bore is past M30's minor diameter: the thread fills it in to it along
+  // the thread first (ADR-0056's fifth amendment), so a full tooth, no word.
   await expect(thread).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
   await ok(page, thread);
   await expect(chip(page, 'Thread1')).toHaveAccessibleName('Thread1');
@@ -328,11 +331,14 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   expect(adapter?.size[2]).toBeCloseTo(20, 3);
 
   // A bigger cap and a wider adapter: the sketches re-solve and both threads
-  // refit. The cap's Ø36 bore takes M39 (a bore takes the thread just above
-  // it) and the adapter's Ø36 collar M36, so the two parts' threads mesh.
+  // refit. The cap's Ø36 bore is a size's own diameter, so it takes M36 (the
+  // hole-at-nominal rule, ADR-0056's fourth amendment), and the adapter's
+  // Ø36 collar M36, so the two parts' threads mesh.
   await setParameters(page, { capDia: '40 mm', adapterLow: '24 mm' });
   await kernelReady(page);
-  await expectNoProblems(page);
+  // The refitted cap thread notes that its bore is filled in: Ø36 is off
+  // M36's minor by more than the thread's depth (ADR-0056's fifth amendment).
+  await expectOneWarning(page);
   await expectBody(page, 'Cap', [40, 40, 14]);
   await expectBody(page, 'Adapter', [35.8, 35.8, 20]);
 

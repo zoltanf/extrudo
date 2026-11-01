@@ -126,6 +126,16 @@ parameter `tolerance`, that hole presets and threads add to their sizes. The pan
 test piece first and see which fits your printer. The full explanation is in
 [parameters and expressions](./parameters.md).
 
+A [Thread](./tools/thread.md) has a **3D printing (45°)** profile made for FDM: 45° flanks with
+flat crests and roots, so nothing overhangs past 45° and it prints upright without supports. Its
+print sizes start at Print 4 × 1.25 (M5 and up at a 0.4 mm nozzle is the practical floor), and
+the Fit choice — Tight, Normal or Loose — fills the tolerance. Start with Normal and test a
+coupon.
+
+Draw a threaded hole at the thread's nominal size (Ø5 for M5) and a threaded pin at a round
+number: the thread fills a wider hole in, or builds a thinner pin up, to its own size first,
+so the tooth comes out whole.
+
 ## Send to Slicer (desktop)
 
 In the [desktop app](./desktop.md) there is a **Send to Slicer** tile next to Export. It
