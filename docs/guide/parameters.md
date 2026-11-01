@@ -30,6 +30,10 @@ wrong. The value isn't used until it works.
 This holds in feature dialogs, in a sketch's dimension labels, in the heads-up box while you
 draw and in the Parameters dialog.
 
+Typing a name lists the parameters that contain it, then the functions and `pi` that start with
+it. Pick one with the arrow keys and press Tab or Enter, or click it; a function comes with its
+brackets, ready for the value. Ctrl+Space opens the list on an empty field.
+
 ## Units
 
 The units are `mm`, `cm`, `m`, `in` and `ft` for lengths and `deg` and `rad` for angles. Write

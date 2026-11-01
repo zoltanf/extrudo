@@ -1,0 +1,1 @@
+- 2026-10-31 · **A parameter while you sketch**: type a new name in a dimension's editor and pick **New parameter** (or Ctrl+Enter) to make it from the dimension's value; expression fields also complete functions and `pi`, brackets included (ADR-0096).

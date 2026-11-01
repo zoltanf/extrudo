@@ -478,7 +478,18 @@ Crank or Glide. Since the right button drags, the right-click marking menu
   with nothing longer). ↑/↓ pick, Tab or Enter inserts (Enter
   without a pick commits as usual), Esc closes the list before it reverts the
   field, Ctrl+Space opens it on an empty field. A parameter that would make a
-  cycle (the one being edited, or one that uses it) isn't offered.
+  cycle (the one being edited, or one that uses it) isn't offered. After the
+  parameters come the functions (`sqrt(x)`, `max(a, b, …)`) and `pi` that
+  start with the word; a function goes in with its brackets and the caret
+  between them.
+- **New parameter from a dimension (ADR-0096's amendment):** in a sketch
+  dimension's editor, an unknown name alone in the field gets a last list row
+  "+ New parameter width = 40.00 mm" (the dimension's current value) and,
+  under the error, while the list is closed, a link "+ Create `width` =
+  40.00 mm  Ctrl+Enter". The row
+  (Enter when it is the only row, or picked) and the link both rewrite the
+  field to `width = 40` with the value selected; Enter then creates the
+  parameter and uses it, in one undo step.
 - OK commits one undoable step and adds (or updates) the timeline chip.
   A new feature that used sketch profiles hides those sketches in the same
   step (as is usual in CAD), so a used profile doesn't float in front of the

@@ -2890,6 +2890,15 @@ Ctrl+Space opens the list on an empty word. The list is a Radix Popover (portall
 `aria-selected`, `onEscapeKeyDown` prevented, no auto focus); the field keeps the
 `textbox` role with `aria-autocomplete`, `aria-controls`, `aria-activedescendant`, and
 `data-keep-escape` while the list is open.
+**Amendment (2026-10-31):** functions and `pi` follow the parameters (`BUILTINS` from core's
+`FUNCTION_ARITIES`/`CONSTANTS`, prefix match only, no scope probe; a function inserts `name()`
+with the caret inside, `insertName`). A field passing `newParameter(name)` (only the sketch
+dimension editor: its value is `d.expr`) offers to create an unknown name that is the whole
+field (`newName`; `evaluate` fails `'unknown-name'` and `evaluate("name = value")` succeeds):
+a last option "+ New parameter …" (Enter when it is the only row) and a "+ Create …" button
+under the message, only while the list is closed (the list covers it; Ctrl/Cmd+Enter
+always works); both set the draft to `name = value` with the value
+selected. Keep `newParameter` off fields whose `evaluate`/`onCommit` don't take `name = value`.
 
 ADR-0097 (P4-13, issue #95) adds **Mesh to Solid**: feature `meshToSolid`
 (`packages/kernel/src/features/mesh-to-solid.ts`, core `meshToSolidFeature`)
@@ -3814,6 +3823,14 @@ blur and on disconnect; camera changes go through `setView` like a mouse drag (v
 command); the speed is the display preference `viewport.spaceMouseSpeed` (a log-scale slider, 0.25…4,
 a multiplier, not an `<ExpressionInput>`); no cross-origin SDK; the desktop grants HID only to `isSpaceMouse` devices, and
 the web filter (`SPACE_MOUSE_FILTERS`) and `isSpaceMouse` ask for the same devices: change both together.
+**Amendment 2026-10-31** (3DxWare's wheel turns, gamepads): `createSpaceMouse(hid, env)` takes `{frame, now,
+gamepads, interval}`; `recentlyMoving(now?)` is true while the cap moves and `WHEEL_QUIET_MS` (150 ms)
+after, stamped on every moving frame and on the reading that brings the cap to rest; the viewport's
+`onWheel` returns after `preventDefault` while it is true (the vendor driver turns cap motion into wheel
+turns, so a wheel turn while the cap moves is never the user's). `padKind` / `padName` / `readPad` /
+`choosePad` read the 3D mouse the browser lists as a gamepad (polled every 50 ms at rest, then per frame);
+**an open HID device wins** over the gamepad (never both); `supported` = WebHID or gamepads, `connectable`
+= WebHID (Settings shows Connect… only then, `[data-space-mouse="waiting"]` otherwise).
 
 ADR-0115 (the owner, 2026-10-30): **Other CAD files through a bundled cadmpeg** (P6-19).
 `apps/desktop/cadmpeg.json` (the pin: version, repository, per-target archive name and SHA-256 from the

@@ -1,8 +1,9 @@
 /**
  * 3D mice (ADR-0114): a 3Dconnexion SpaceMouse or SpaceNavigator read over WebHID, in
- * Chromium browsers and the desktop app. No driver: the HID reports are parsed here and turned
- * into camera motion, so the device moves the view as if the model sat on its cap (push the cap
- * right and the model moves right; twist it and the model turns).
+ * Chromium browsers and the desktop app, or as the gamepad the browser lists it as (the
+ * amendment of 2026-10-31). No driver: the HID reports are parsed here and turned into camera
+ * motion, so the device moves the view as if the model sat on its cap (push the cap right and
+ * the model moves right; twist it and the model turns).
  */
 import { orbit, pan, shiftOf, turn, type View, zoomAt } from './camera';
 
@@ -29,14 +30,15 @@ const FULL = 350;
 /** Below this the cap is at rest: it never reads exactly zero when let go. */
 const DEAD_ZONE = 0.04;
 
-function axis(data: DataView, offset: number): number {
-  const v = Math.max(-1, Math.min(1, data.getInt16(offset, true) / FULL));
+/** A deflection −1…1 shaped for the camera: the dead zone, then squared so a light touch is fine control. */
+function shape(v: number): number {
   const a = Math.abs(v);
-  if (a < DEAD_ZONE) return 0;
-  // Squared, so a light touch is fine control.
-  const s = (a - DEAD_ZONE) / (1 - DEAD_ZONE);
+  if (!(a >= DEAD_ZONE)) return 0; // NaN included
+  const s = (Math.min(1, a) - DEAD_ZONE) / (1 - DEAD_ZONE);
   return Math.sign(v) * s * s;
 }
+
+const axis = (data: DataView, offset: number) => shape(data.getInt16(offset, true) / FULL);
 
 const triple = (data: DataView, at: number): [number, number, number] => [
   axis(data, at),
@@ -65,6 +67,66 @@ export function readReport(input: SpaceInput, reportId: number, data: DataView):
 
 export const moving = (input: SpaceInput) =>
   input.t.some((v) => v !== 0) || input.r.some((v) => v !== 0);
+
+/** The slice of the Gamepad API used here. */
+export interface Pad {
+  readonly id: string;
+  readonly connected: boolean;
+  readonly axes: readonly number[];
+  readonly buttons: readonly { readonly pressed: boolean }[];
+}
+
+/** The older devices' product IDs under Logitech's vendor ID (usb.ids); Logitech's gamepads share the vendor. */
+const LOGITECH_3D_MICE = new Set([
+  0xc603, 0xc605, 0xc606, 0xc621, 0xc623, 0xc625, 0xc626, 0xc627, 0xc628, 0xc629, 0xc62b,
+]);
+
+/**
+ * What a gamepad is, from the id the browser gives it (`SpaceMouse Compact (Vendor: 256f
+ * Product: c635)` in Chromium browsers, `256f-c635-SpaceMouse Compact` in Firefox): the device
+ * itself, 3DxWare's virtual joystick (which can carry the cap's six axes where the browser doesn't
+ * list the device), or neither.
+ */
+export function padKind(id: string): 'device' | 'joystick' | undefined {
+  const m =
+    /Vendor: ([0-9a-f]{1,4}) Product: ([0-9a-f]{1,4})/i.exec(id) ??
+    /^([0-9a-f]{1,4})-([0-9a-f]{1,4})-/i.exec(id);
+  if (!m) return undefined;
+  const [vendor, product] = [Number.parseInt(m[1] ?? '', 16), Number.parseInt(m[2] ?? '', 16)];
+  if (vendor === 0x256f) return 'device';
+  if (vendor === 0x046d) return LOGITECH_3D_MICE.has(product) ? 'device' : undefined;
+  return vendor === 0xbeef && product === 0x046d ? 'joystick' : undefined;
+}
+
+/** The gamepad's name without the ids the browser appends or prepends. */
+export const padName = (id: string) =>
+  (/Vendor: /.test(id)
+    ? id.replace(/\s*\(?(STANDARD GAMEPAD )?Vendor: .*$/i, '')
+    : id.replace(/^[^-]*-[^-]*-/, '')) || '3D mouse';
+
+/**
+ * The input a 3D mouse reports as a gamepad: six axes −1…1 in the device's own order and signs
+ * (its ±350 scaled by the browser), fewer than six is no 3D mouse; the buttons in order.
+ */
+export function readPad(pad: Pad): SpaceInput | undefined {
+  if (pad.axes.length < 6) return undefined;
+  const a = (i: number) => shape(pad.axes[i] ?? 0);
+  let buttons = 0;
+  for (const [i, b] of pad.buttons.slice(0, 32).entries()) if (b.pressed) buttons |= 1 << i;
+  return { t: [a(0), a(1), a(2)], r: [a(3), a(4), a(5)], buttons: buttons >>> 0 };
+}
+
+/** The 3D mouse among the gamepads listed: the first device, else the first virtual joystick. */
+export function choosePad(pads: readonly (Pad | null)[]): Pad | undefined {
+  let joystick: Pad | undefined;
+  for (const pad of pads) {
+    if (!pad?.connected) continue;
+    const kind = padKind(pad.id);
+    if (kind === 'device') return pad;
+    if (kind === 'joystick') joystick ??= pad;
+  }
+  return joystick;
+}
 
 /** At full deflection and speed 1: view heights panned, e-fold zoom and radians turned per second. */
 const PAN_RATE = 1.2;
@@ -129,49 +191,107 @@ export interface SpaceSink {
 }
 
 export interface SpaceMouse {
-  /** False where the browser has no WebHID (Firefox, Safari). */
+  /** False where the browser has neither WebHID nor gamepads. */
   readonly supported: boolean;
-  /** Names of the open devices (the same array until one opens or closes). */
+  /** True where a device can be asked for (WebHID: Chromium browsers and the desktop app). */
+  readonly connectable: boolean;
+  /** Names of the devices read (the same array until one appears or goes). */
   devices(): readonly string[];
   subscribe(listener: () => void): () => void;
   /** Asks for a device (needs a click: the browser shows its device chooser). */
   connect(): Promise<void>;
   /** Routes motion to `sink` until the returned function is called. */
   attach(sink: SpaceSink): () => void;
+  /**
+   * Whether the cap is off centre, or was within the last `WHEEL_QUIET_MS`. 3DxWare, the
+   * vendor's driver, also turns the cap's motion into mouse-wheel turns for programs it has no
+   * profile for, browsers included; the viewport drops wheel events while this is true, since the
+   * cap is read here. The driver sends them only well past the dead zone, never at rest, so a
+   * wheel turn with the cap at rest is the user's.
+   */
+  recentlyMoving(now?: number): boolean;
 }
 
+export const WHEEL_QUIET_MS = 150;
 const MAX_DT = 0.05;
+/** How often the gamepads are looked at while the cap rests (there is no event for its motion). */
+const POLL_MS = 50;
+
+export interface SpaceMouseEnvironment {
+  /** The animation frame (the motion runs once per frame). */
+  frame?: (cb: (now: number) => void) => unknown;
+  /** The clock `frame` and `recentlyMoving` share, in milliseconds. */
+  now?: () => number;
+  /** The gamepads the browser lists (`navigator.getGamepads`), or undefined without the API. */
+  gamepads?: () => readonly (Pad | null)[];
+  /** A repeating timer, for the gamepad poll. */
+  interval?: (cb: () => void, ms: number) => unknown;
+}
 
 /**
  * Opens the devices already allowed, and any that is plugged in later, and turns their reports
- * into `move` calls once per animation frame while the cap is off centre.
+ * into `move` calls once per animation frame while the cap is off centre. Without an open HID
+ * device, reads the 3D mouse the browser lists as a gamepad instead (Chromium browsers list the
+ * device itself; no chooser needed, but a gamepad appears only once it has been moved on the page).
  */
 export function createSpaceMouse(
   hid: Hid | undefined,
-  frame: (cb: (now: number) => void) => number = (cb) => requestAnimationFrame(cb),
+  env: SpaceMouseEnvironment = {},
 ): SpaceMouse {
+  const {
+    frame = (cb) => requestAnimationFrame(cb),
+    now = () => performance.now(),
+    gamepads,
+    interval = (cb, ms) => setInterval(cb, ms),
+  } = env;
   const open = new Set<HidDevice>();
   const listeners = new Set<() => void>();
   let sink: SpaceSink | undefined;
   let input = IDLE;
+  let movedAt: number | undefined;
   let last: number | undefined;
   let scheduled = false;
   let started = false;
   let names: readonly string[] = [];
+  let padId: string | undefined;
 
   const changed = () => {
-    names = [...open].map((d) => d.productName || '3D mouse');
+    const open_ = [...open].map((d) => d.productName || '3D mouse');
+    names = padId === undefined ? open_ : [...open_, padName(padId)];
     for (const l of listeners) l();
   };
 
-  const tick = (now: number) => {
+  const take = (next: SpaceInput) => {
+    const pressed = next.buttons & ~input.buttons;
+    // Moving until this reading, or from it: some models report only on change.
+    if (moving(input) || moving(next)) movedAt = now();
+    input = next;
+    if (moving(input)) schedule();
+    for (let b = 0; b < 32; b++) if (pressed & (1 << b)) sink?.press(b);
+  };
+
+  /** Reads the gamepad, while no HID device is open. */
+  const poll = () => {
+    if (!gamepads || open.size > 0) return;
+    const pad = choosePad(gamepads());
+    const next = pad && readPad(pad);
+    if (pad?.id !== padId) {
+      padId = pad?.id;
+      changed();
+    }
+    take(next ?? IDLE);
+  };
+
+  const tick = (t: number) => {
     scheduled = false;
+    poll();
     if (!moving(input)) {
       last = undefined;
       return;
     }
-    const dt = last === undefined ? 1 / 60 : Math.min(MAX_DT, (now - last) / 1000);
-    last = now;
+    const dt = last === undefined ? 1 / 60 : Math.min(MAX_DT, (t - last) / 1000);
+    last = t;
+    movedAt = now();
     sink?.move(input, dt);
     schedule();
   };
@@ -183,11 +303,7 @@ export function createSpaceMouse(
 
   const onReport = (e: Event) => {
     const { reportId, data } = e as HidInputReportEvent;
-    const before = input.buttons;
-    input = readReport(input, reportId, data);
-    const pressed = input.buttons & ~before;
-    for (let b = 0; b < 32; b++) if (pressed & (1 << b)) sink?.press(b);
-    if (moving(input)) schedule();
+    take(readReport(input, reportId, data));
   };
 
   const add = async (device: HidDevice) => {
@@ -203,8 +319,14 @@ export function createSpaceMouse(
   };
 
   const start = () => {
-    if (started || !hid) return;
+    if (started) return;
     started = true;
+    // A held cap must not keep the view spinning while another window has the focus.
+    globalThis.addEventListener?.('blur', () => {
+      input = IDLE;
+    });
+    if (gamepads) interval(poll, POLL_MS);
+    if (!hid) return;
     hid.addEventListener('connect', (e) => void add((e as HidConnectionEvent).device));
     hid.addEventListener('disconnect', (e) => {
       const { device } = e as HidConnectionEvent;
@@ -213,15 +335,12 @@ export function createSpaceMouse(
       input = IDLE;
       changed();
     });
-    // A held cap must not keep the view spinning while another window has the focus.
-    globalThis.addEventListener?.('blur', () => {
-      input = IDLE;
-    });
     void hid.getDevices().then((devices) => Promise.all(devices.map(add)));
   };
 
   return {
-    supported: hid !== undefined,
+    supported: hid !== undefined || gamepads !== undefined,
+    connectable: hid !== undefined,
     devices: () => names,
     subscribe(listener) {
       start();
@@ -241,10 +360,18 @@ export function createSpaceMouse(
         if (sink === next) sink = undefined;
       };
     },
+    recentlyMoving(t = now()) {
+      return moving(input) || (movedAt !== undefined && t - movedAt <= WHEEL_QUIET_MS);
+    },
   };
 }
 
 /** The app's one 3D mouse connection. */
-export const spaceMouse: SpaceMouse = createSpaceMouse(
-  (globalThis.navigator as { hid?: Hid } | undefined)?.hid,
-);
+export const spaceMouse: SpaceMouse = (() => {
+  const nav = globalThis.navigator as
+    | { hid?: Hid; getGamepads?: () => readonly (Pad | null)[] }
+    | undefined;
+  return createSpaceMouse(nav?.hid, {
+    gamepads: nav?.getGamepads ? () => nav.getGamepads?.() ?? [] : undefined,
+  });
+})();

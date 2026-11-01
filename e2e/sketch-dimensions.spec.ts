@@ -259,6 +259,60 @@ test('a dimension is a parameter: the Parameters dialog edits it, and it takes e
   await expect(labels(page)).toHaveText(['fx: 30.00']);
 });
 
+test('the editor creates a parameter from an unknown name, and completes functions (ADR-0096)', async ({
+  page,
+}) => {
+  const at = await sketchOnXY(page);
+  const click = clicker(page, at);
+  await page.keyboard.press('l');
+  await click(-20, 0);
+  await click(20, 0);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('d');
+  await click(0, 0);
+  await click(0, 12);
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Escape');
+
+  // An unknown name alone: the list offers it as a new parameter with the
+  // dimension's value; Enter writes `name = value` with the value selected.
+  await labels(page).first().dblclick();
+  const value = page.getByRole('textbox', { name: 'Value of d1' });
+  await value.fill('width');
+  const list = page.getByRole('listbox', { name: 'Parameters for Value of d1' });
+  await expect(list.getByRole('option')).toHaveText(['+ New parameter width = 40.00 mm']);
+  // The open list would cover the link, so the link waits until it closes.
+  await expect(editor(page).getByRole('button', { name: /Create width/ })).toHaveCount(0);
+  await value.press('Enter');
+  await expect(value).toHaveValue('width = 40');
+  await value.pressSequentially('45');
+  await expect(value).toHaveValue('width = 45');
+  await value.press('Enter');
+  await expect(labels(page)).toHaveText(['fx: 45.00']);
+  await expect(labels(page).first()).toHaveAttribute('title', 'd1 = width');
+
+  // With the list closed, the link under the error does the same (Ctrl+Enter).
+  await labels(page).first().dblclick();
+  await value.fill('depth');
+  await value.press('Escape');
+  await expect(list).toBeHidden();
+  const link = editor(page).getByRole('button', { name: /Create depth = 45\.00 mm/ });
+  await expect(link).toBeVisible();
+  await value.press('Control+Enter');
+  await expect(value).toHaveValue('depth = width');
+  await expect(link).toBeHidden();
+
+  // Functions complete by prefix and get their brackets, the caret inside.
+  await value.fill('sq');
+  await expect(list.getByRole('option')).toHaveText(['sqrt(x)', '+ New parameter sq = 45.00 mm']);
+  await value.press('Tab');
+  await expect(value).toHaveValue('sqrt()');
+  await value.pressSequentially('2025');
+  await value.press('Enter');
+  await expect(labels(page)).toHaveText(['fx: 45.00']);
+  await expect(labels(page).first()).toHaveAttribute('title', 'd1 = sqrt(2025)');
+});
+
 test("a distance from a circle's edge to a line drives the circle (ADR-0112)", async ({ page }) => {
   const at = await sketchOnXY(page);
   const click = clicker(page, at);
