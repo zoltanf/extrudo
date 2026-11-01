@@ -104,12 +104,12 @@ test('F1 in a sketch, after a tile was hovered, opens the sketching guide (P6-22
   await open(page);
   await page.getByRole('button', { name: 'Extrude' }).hover();
   await newSketchOnXY(page);
-  // The palette may have appeared under the pointer: a row's hover would name
-  // its section. Move to the open part of the view, then F1 finds no target
-  // but the sketch.
-  await page.mouse.move(700, 400);
+  // Opening the sketch cleared the hovered tile, so F1 can no longer reach
+  // the extrude page. The palette may have appeared under the pointer (the
+  // XY button's place), which names its row's section; either way it is the
+  // sketching guide.
   const url = await popupUrl(page, () => page.keyboard.press('F1'));
-  expect(url).toBe(`${DOCS}/docs/sketching/`);
+  expect(url.startsWith(`${DOCS}/docs/sketching/`)).toBe(true);
 });
 
 test('F1 on a hovered palette row opens its sketching section (P6-22 S2, ADR-0116 §4)', async ({

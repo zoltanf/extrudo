@@ -919,10 +919,11 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   Guide, Tutorial, Online Tutorials, Examples, Tool Reference; after hovering the
   Extrude tile it starts with "Help for Extrude" + F1 (its text `Help for ExtrudeF1`),
   which opens `…/docs/tools/extrude/`. P6-22 S2 (ADR-0116 §4): after a tile was
-  hovered, `newSketchOnXY` then a pointer move to (700, 400) — the palette may
-  appear under the pointer, and a row's enter would name its section — then F1 →
-  `…/docs/sketching/` (opening the sketch cleared the tile); hovering the
-  palette's "Snap to grid" checkbox then F1 → `…/docs/sketching/#snap-to-grid`. The
+  hovered, `newSketchOnXY` then F1 lands under `…/docs/sketching/` — opening
+  the sketch cleared the tile (the palette may appear under the stationary
+  pointer, the XY button's place, and its row's enter names its section, so
+  the URL can carry an anchor); hovering the palette's "Snap to grid" checkbox
+  then F1 → exactly `…/docs/sketching/#snap-to-grid`. The
   home bar's Docs and GitHub are links that open in popups; its About is a button
   that opens the dialog (ADR-0085).
 
