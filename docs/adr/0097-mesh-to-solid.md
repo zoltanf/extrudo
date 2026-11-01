@@ -3411,3 +3411,110 @@ ADR-0066 2026-10-31 amendment.
    8 files with nothing unfit (spool-screw 2,123, phone-stand-foldable 1,847, puzzle-insert-circle 1,230, …).
 2. **Networks.** Blends along curved outlines (strips running past many small planes) and between curved faces
    (corner blends, cylinder-to-cylinder blends, noisy tori), plus one freeform shell: 97 % of the unfit area.
+
+### Amendment, 2026-11-01: exploded regions split at the nodes their boundary passes twice, plane fits square to their facets (slice D11)
+
+**The problem.** At 31c (`baseline-2026-10-31c-auto.jsonl`) prismatic made 17,790 facets over the 41-file corpus at
+Auto, and the hybrid rebuild exploded 17,742 triangles of recognised regions into facets: about as many as the 16,083
+unfit ones, and 5,801 facets in 8 files with no unfit triangle at all. By reason (probe `Q26`, kernel-staged meshes,
+188 regions in 18 files; "facets" are the facets the regions make on their own, converted files only):
+
+| reason (`region.why`) | regions | triangles | facets |
+|---|---|---|---|
+| "touches itself at node" (tori 2,992, cylinders 2,434, cones 1,145, planes 273, a sphere 42) | 44 | 6,886 | 3,753 |
+| "invalid face", planes: a step lower than T absorbed into the plane | 7 | 5,324 | 386 |
+| "invalid face", planes: a wall strip lower than T fitted by a plane square to it | 24 | 1,153 | 951 |
+| "invalid face", planes: boundary nodes 2e-5 mm apart crossing in (u, v) | 6 | 1,132 | 26 |
+| "its outer loop runs the wrong way" (12 phone-stand-foldable planes, the same strips; 11 small periodic regions) | 23 | 844 | 614 |
+| "edge tolerance" (small periodic regions whose loops wrap the chart) | 68 | 631 | 375 |
+| "invalid after unify" (whiteboard-tray-v5, mms-m5-nut: both refused) | 3 | 584 | – |
+| "an inner loop runs the wrong way" (a 3-edge sliver hole) | 2 | 472 | 84 |
+| "invalid face", other kinds | 11 | 716 | 88 |
+
+Every "invalid face" plane is a wire that crosses itself in the plane's parameters, in pass 0 and pass 1 alike and
+when built alone, so neither the collapsed chains nor the neighbours' pcurves cause it. A "touches itself" region is
+never two lobes (regions are connected over mesh edges): it is one face whose boundary passes a node twice, a hole
+touching the outer loop or two holes touching.
+
+**Decisions and their rules.**
+
+1. **`meshFanLoops`.** `meshLoops` keeps its walk for every region without such a node (the same loops, order and
+   start nodes as before). Where a node has two outgoing boundary edges, each boundary edge is followed by the one
+   that leaves its end node round the same fan of the region's triangles (`MESH_FAN_MAX` triangles at most per fan),
+   the walks are closed, and each walk is cut at every node it passes twice into simple loops that keep the node: the
+   face's wires share its vertex. The outer loop (largest |area| in the chart's parameters), the sign test, "a loop
+   that doesn't close" and "no boundary" are unchanged; a fan that doesn't end at a boundary edge counts as a loop
+   that doesn't close. The region diagnostics line says "split at N nodes". Such nodes are chain break nodes already
+   (four boundary edges), so the chains don't change. 42 of the 44 regions build (6,509 triangles); 2 in
+   spool-screw-v4.1 are invalid in the unified solid and explode on a second attempt.
+2. **`cutTouchingLoops`.** The STEP writer writes a vertex that two loops of a face share as two VERTEX_POINTs, and
+   OCCT's reader then found the loops crossing on two of the 31 curved faces with touching loops (puzzle-insert-circle's
+   torus R 26.5, r 1; spool-screw-v4.1's 14-wire cone): read back invalid, `IntersectingWires`. The pcurves agree at
+   the vertex (no seam or period offset: the seam hypothesis was measured and rejected), and no single fix of the
+   reader's healing, switched off, mends it. After the hybrid's validity stage, every face on a periodic surface whose
+   hole shares a vertex with its outer wire is rebuilt as two faces along a new edge: a straight (u, v) segment from a
+   vertex of the hole (the farthest from the shared one first) to a vertex of the outer wire that it sees (crossing no
+   pcurve, its inner points inside); each piece passes the shared vertex once, the face's other holes go to the piece
+   holding them, every other edge is the face's own (the neighbours don't change). A face with no cut that gives two
+   valid faces stays; the body is kept only when it checks valid (`TOUCH_CUT_STARTS` 8, `TOUCH_CUT_ENDS` 64,
+   `TOUCH_CUT_SAMPLES` 16, `TOUCH_CUT_MAX` 512). Planes stay whole (their touching loops read back whole). The
+   stage list says "touching loops cut: N". Over the corpus: cuts in 6 files, 71 faces more, facets unchanged.
+   Rejected: a cutting plane through the node with `BRepAlgoAPI_Splitter` (it splits boundary edges the neighbours
+   share); `BRepFeat_SplitShape` with the same edge (it joins the hole to the outer wire with a slit, the body
+   invalid); exploding the two faces again (nothing sets them apart that a rule could test).
+3. **`MESH_PLANE_NORMAL_AGREEMENT` = 0.5.** In `fitKind`'s plane case, the least-squares fallback is kept only when
+   its normal and the facets' area-weighted mean normal agree by |cos| ≥ 0.5; else the area-weighted plane stands,
+   out of the tolerance, and the group is fitted as the other kinds or left unfit. Measured first: only
+   phone-stand-foldable had such planes (41 surfaces, 2,006 triangles at its Auto step 0.1 mm; none in any file at
+   0.01 mm). The strips became cylinders and smaller planes (planes/cylinders/tori 471/10/10 → 496/49/11, unfit 0):
+   phone-stand-foldable 2,325 → 983 faces, 1,847 → 403 facets, 18.1 → 4.4 s.
+
+**Measured and not built.**
+
+- *Keep the last valid build instead of refusing* (at the cap, the budget, an invalid last attempt): 0 cases. Over
+  Auto and 0.01/0.02/0.05/0.1 mm there are 15 refusals, none past the budget; the "invalid" ones (whiteboard-tray-v5,
+  mms-m5-nut) never had valid cells in any attempt, and every cap refusal is over the cap on its first build or on the
+  estimate.
+- *Refitting a degenerate plane with the facets' normal through their centroid, within T*: none of the 41 fits.
+- *The mesh's noise as Auto's starting rung* (1.4826 × the median distance of up to 4,000 nodes to their two rings'
+  least-squares plane, the first rung ≥ 3 × that): on these CAD-exported meshes it measures curvature and creases
+  (ball.stl 0.167 mm). 3 × it is above the ladder for 31 of 36 converted files, equals Auto's rung for 2, and would put
+  3 on a coarser rung (trashcan-repair-foot 16 faces / 0 facets → 155 / 72). A quadric patch instead of the plane
+  still sees creases (9 files coarser). Not a floor Auto could start from.
+- *A better outer-loop rule for "the wrong way"*: no case; those loops are the degenerate strips and sliver holes.
+
+**A finding outside this ADR.** OCCT's STEP writer writes a fillet rim's torus face on an indirect torus frame (the
+bottom rim of a filleted cylinder: `gp_Ax3::Direct()` false, face reversed) with a bound flag that disagrees with both
+its (u, v) winding and its neighbours' edge uses; OCCT's reader mends it from the pcurves, a reader that trusts the flag
+draws the round as a cove. The hybrid's tori are on direct frames and none of the 69 torus faces in the converted
+bodies shows it. The roadmap's P4-12 backlog has the item.
+
+**The sweep** (`TOL=auto`, 41 files, against 31c, written to `baseline-2026-11-01b-auto.jsonl`; totals recomputed from
+the JSONL with the test's own rules, its `sweep totals` line doesn't reach the log):
+
+    31c:          files 41, prismatic converted 36 refused 5, faceted converted 26 refused 15, prismatic faces 27581, prismatic facets 17790, prismatic ms 253658, faceted ms 104971, round trips failed 7
+    2026-11-01b:  files 41, prismatic converted 36 refused 5, faceted converted 26 refused 15, prismatic faces 22569, prismatic facets 12565, prismatic ms 264862, faceted ms 107397, round trips failed 7
+
+The same 7 files fail the round trip in both (battery-power-adapter, phone-stand-foldable, spool-nut-v4.1,
+gear-bearing-5, makita-vacuum-holder, micro-sd-keyring-inner, spaghetti-measure); facets −29 %, prismatic time +4.4 %
+(faceted, unchanged, +2.3 %). The files that moved, all valid and none worse on any column:
+
+| file | faces | facets | Auto step | round trip (read back valid, faces) | ms |
+|---|---|---|---|---|---|
+| own/battery-power-adapter | 994 → 587 | 415 → 0 | 0.1 | yes, 994 → yes, 587 | 2518 → 2728 |
+| own/desk-organizer-module-small | 418 → 378 | 42 → 0 | 0.01 | yes, 418 → yes, 378 | 16414 → 16951 |
+| own/kuglbahn-pillar-base | 3941 → 3882 | 3409 → 3348 | 0.1 | yes, 3941 → yes, 3882 | 10406 → 11380 |
+| own/phone-stand-foldable | 2325 → 983 | 1847 → 403 | 0.1 | no, 2325 → yes, 983 (volume 0.99957, the 1e-4 rule fails as before) | 18085 → 4381 |
+| own/puzzle-insert-circle | 1609 → 383 | 1230 → 0 | 0.05 | yes, 1609 → yes, 383 | 15249 → 15394 |
+| own/shower-holder | 901 → 870 | 472 → 439 | 0.01 | yes, 901 → yes, 870 | 2945 → 2182 |
+| own/spool-screw-v4.1 | 3197 → 1421 | 2123 → 256 | 0.05 | yes, 3197 → yes, 1421 | 22537 → 44064 |
+| third-party/makita-vacuum-holder | 3467 → 3336 | 2649 → 2516 | 0.05 | no, 3468 → no, 3337 | 8762 → 8719 |
+
+spool-screw-v4.1's time is its second attempt (two split regions invalid after unify). The fixture pins of
+`mesh-to-solid-files.test.ts` don't move. Tests in `mesh-to-solid.test.ts`: "splits a top face whose two dimples touch
+at a node into one face with two inner loops (slice D11)" and "cuts a boss wall whose dimple touches its rim at a node
+in two, so it round-trips (slice D11)". The OCCT input hash went `c33d3ca582fe` (the split alone) → `c7ba43be3df2`
+(with the plane rule) → `5d22216cd3d7`. All tables, the probes and the runs: `docs/plans/m2s-exploded-q1-2026-11-01.md`.
+
+**Left.** Absorbed steps (386 facets), edge tolerance on wrapped charts (375), sliver holes (84), micro zigzags (26),
+and spool-screw-v4.1's two regions invalid after unify.

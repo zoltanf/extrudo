@@ -583,3 +583,131 @@ those files; the first two are Q2.1's touching loops, makita's is 31c's own.
    check and flip the bound flags against the neighbours' edge uses before writing) and a test reading the flags.
 3. **Q2.2 holds** (one file, no side effect).
 4. Neither noise estimate should move Auto.
+
+
+## Q3 (run 3): the two lost round trips
+
+### Q3.1 step 1: why these two faces
+
+Probe `Q26TOUCH=1` (spike case `F`, Auto, the run-2 facade): every face of each converted body whose wires share a
+vertex, with each wire's pcurve values at that vertex and its distance to the face's u bounds (where a full wrap's
+seam lies), then the STEP round trip through the facade's writer and reader, the read-back's invalid faces and any
+two read-back vertices within 1e-6 of each other. 73 faces in 13 files have touching wires; 33 are curved:
+
+| file | face | kind | periodic u/v | spans a full turn | wires | shared vertices | smallest distance to the u bounds (rad) | pcurves at the shared vertex differ by | VERTEX_POINTs written per shared vertex | this face read back |
+|---|---|---|---|---|---|---|---|---|---|---|
+| own/battery-power-adapter | 8 | cylinder | 1/0 | no (0.013) | 4 | 1 | 0.004 | 0 | 2 | valid |
+| own/battery-power-adapter | 19 | cylinder | 1/0 | no (1.406) | 2 | 1 | 0.344 | 0 | 2 | valid |
+| own/battery-power-adapter | 382 | torus | 1/1 | no (1.983) | 2 | 1 | 0.991 | 0 | 2 | valid |
+| own/battery-power-adapter | 432 | cylinder | 1/0 | no (0.807) | 2 | 1 | 0.335 | 0 | 2 | valid |
+| own/desk-organizer-module-small | 273 | sphere | 1/0 | no (0.124) | 2 | 1 | 0.031 | 0 | 2 | valid |
+| own/kuglbahn-pillar-base | 3267 | cylinder | 1/0 | no (0.873) | 2 | 1 | 0.075 | 0 | 2 | valid |
+| own/puzzle-insert-circle | 3 | torus | 1/1 | yes (6.317) | 5 | 4 | 0.410 | 0 | 2 | **invalid** |
+| own/shower-holder | 275 | cylinder | 1/0 | no (0.749) | 2 | 1 | 0.079 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 62 | cylinder | 1/0 | no (0.445) | 4 | 3 | 0.044 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 101 | cylinder | 1/0 | no (0.149) | 2 | 1 | 0.069 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 106 | cylinder | 1/0 | no (0.148) | 4 | 3 | 0.039 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 111 | cone | 1/0 | no (1.099) | 7 | 6 | 0.070 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 160 | cylinder | 1/0 | no (0.129) | 2 | 1 | 0.041 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 170 | cylinder | 1/0 | no (0.113) | 2 | 1 | 0.040 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 176 | cylinder | 1/0 | no (0.301) | 3 | 2 | 0.044 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 307 | cylinder | 1/0 | no (0.183) | 2 | 1 | 0.040 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 311 | cylinder | 1/0 | no (0.299) | 5 | 4 | 0.038 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 512 | cylinder | 1/0 | no (0.239) | 2 | 1 | 0.090 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 517 | cylinder | 1/0 | no (0.153) | 4 | 3 | 0.037 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 530 | cylinder | 1/0 | no (0.277) | 3 | 2 | 0.097 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 549 | cone | 1/0 | no (1.129) | 4 | 3 | 0.436 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 557 | cone | 1/0 | no (1.609) | 14 | 13 | 0.077 | 0 | 2 | **invalid** |
+| own/spool-screw-v4.1 | 575 | cylinder | 1/0 | no (0.301) | 3 | 2 | 0.034 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 582 | cylinder | 1/0 | no (0.192) | 3 | 2 | 0.045 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 653 | cylinder | 1/0 | no (0.157) | 2 | 1 | 0.044 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 660 | cylinder | 1/0 | no (0.192) | 4 | 3 | 0.036 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 667 | cylinder | 1/0 | no (0.225) | 5 | 4 | 0.043 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 691 | cylinder | 1/0 | no (0.207) | 3 | 2 | 0.042 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 698 | cylinder | 1/0 | no (0.268) | 2 | 1 | 0.125 | 0 | 2 | valid |
+| own/spool-screw-v4.1 | 702 | cylinder | 1/0 | no (0.283) | 2 | 1 | 0.141 | 0 | 2 | valid |
+| third-party/makita-vacuum-holder | 1027 | torus | 1/1 | no (0.779) | 5 | 1 | 0.131 | 0 | 2 | valid |
+| third-party/mms-flat-stand | 28 | cone | 1/0 | yes (6.283) | 3 | 2 | 1.151 | 0 | – (exact rebuild; not matched) | valid |
+| third-party/mms-flat-stand | 29 | cylinder | 1/0 | no (2.303) | 3 | 2 | 0.000 | 0.00022 | – (exact rebuild; not matched) | valid |
+
+Plane faces with touching wires (all read back valid): own/numbers-base-top 5, own/puzzle-base-circle 2, own/spool-screw-v4.1 9, own/trashcan-repair-foot 2, third-party/makita-vacuum-holder 1, third-party/micro-sd-keyring-outer 3, third-party/mms-flat-stand 18
+
+**H5 does not hold.** At every shared vertex the two wires' pcurves agree exactly (0 apart; 2e-4 on one exact-rebuild
+face), so there is no u against u + 2π. Of the two failing faces only the torus spans a full turn (6.317 rad), and
+its shared vertices lie 0.41–1.2 rad from its u bounds. The cone (1.61 rad) doesn't wrap at all.
+
+**What happens instead.** The STEP writer writes every vertex that two loops share as two VERTEX_POINTs at the same
+point, one per loop. That holds for all 31 curved touching faces of the hybrid in the table, the 29 that read back
+valid included (the exact rebuild's 2 weren't matched). The reader keeps the two apart on exactly these two faces:
+their read-backs have one vertex more than the written bodies (2,644 against 2,643; 8,059 against 8,058), two
+vertices at exactly the written shared vertex (within 1e-11), and `IntersectingWires` on that face only. Nothing in
+the table sets the two apart cleanly: the torus is the only full-turn face, and the cone has the most loops (14
+wires, 13 shared vertices; the next has 7). The reader's healing doesn't explain it either (`Q20=1`, case `s`): with
+healing off, the read-back is far worse (1,637 and 1,097 edges `InvalidCurveOnSurface`), and switching off any one of
+21 fixes leaves the `IntersectingWires` face. A copy of each face with its shared vertex replaced by one vertex per
+wire (what the reader gets) is invalid for all 73 faces, planes included, so that doesn't single the two out either.
+So there was no narrow criterion for fix (c), and fix (a) has nothing to move.
+
+### Fix (b), as built
+
+`cutTouchingLoops` (facade), after the hybrid's validity stage, on the unified result: every face on a periodic
+surface with a hole that shares a vertex n with its outer wire is rebuilt as two faces. The cut is a new edge along a
+straight (u, v) segment (a degree-1 B-spline pcurve, its 3D curve built from it) from a vertex h of the hole, the
+farthest from n first, to a vertex o of the outer wire, the nearest to h first, that the segment sees: it crosses no
+edge's pcurve (16 samples each) and its quarter, mid and three-quarter points classify inside. The pieces are
+A = outer from n to o, the cut, hole from h to n; B = outer from o to n, hole from n to h, the cut back; each passes
+n once. The face's other holes go to the piece that holds one of their vertices. The pieces reuse every edge the
+face had, so its neighbours don't change, and both must check valid or the next candidate is tried. A face with no
+valid cut stays as it was. The loop runs until no such face is left (at most 512 cuts), and the body replaces the
+result only when it checks valid. Planes stay whole: their touching loops read back whole (40 plane faces above), and
+the test's plane case round-trips.
+
+Why not the brief's plane through the node and `BRepAlgoAPI_Splitter`: a cutting plane crosses the face's boundary
+edges in their middle, and the neighbours that share those edges would have to be split too (the cut can no longer
+be one face's business). A cut between two existing vertices splits no edge. The first prototype, `BRepFeat_SplitShape`
+with the same edge, didn't split the face: it joined the hole to the outer wire with a slit (379 → 379 faces, body
+invalid), since it doesn't see that the two wires already meet at n. The pieces are built by hand instead.
+
+The fix also leaves no face with loops that share a vertex on a periodic surface in the exported STEP, which some
+other kernels refuse to read; planes with touching loops are still written (as before slice D11, too, by the exact
+rebuild: mms-flat-stand, numbers-base-top, puzzle-base-circle, trashcan-repair-foot, micro-sd-keyring-outer).
+
+Spike first (case `F` with `Q26TOUCH=1`, the new facade): cuts in 6 files, every body valid, every read-back valid
+except makita-vacuum-holder's, which is 31c's own: the invalid face is a cone with one wire, not a touching face. Its
+touching torus 1027 (5 wires, 1 shared vertex) is not cut and reads back valid; whether its shared vertex is between
+two holes rather than on the outer wire, or no cut gave two valid faces, was not looked into.
+
+### Sweep (2026-11-01b) against 31c and against 2026-11-01
+
+    31c:          files 41, prismatic converted 36 refused 5, faceted converted 26 refused 15, prismatic faces 27581, prismatic facets 17790, prismatic ms 253658, faceted ms 104971, round trips failed 7 (own/battery-power-adapter.stl, own/phone-stand-foldable.stl, own/spool-nut-v4.1.stl, third-party/gear-bearing-5.stl, third-party/makita-vacuum-holder.stl, third-party/micro-sd-keyring-inner.stl, third-party/spaghetti-measure.stl)
+    2026-11-01:   files 41, prismatic converted 36 refused 5, faceted converted 26 refused 15, prismatic faces 22498, prismatic facets 12565, prismatic ms 264074, faceted ms 109045, round trips failed 9 (the 7, plus own/puzzle-insert-circle.stl, own/spool-screw-v4.1.stl)
+    2026-11-01b:  files 41, prismatic converted 36 refused 5, faceted converted 26 refused 15, prismatic faces 22569, prismatic facets 12565, prismatic ms 264862, faceted ms 107397, round trips failed 7 (own/battery-power-adapter.stl, own/phone-stand-foldable.stl, own/spool-nut-v4.1.stl, third-party/gear-bearing-5.stl, third-party/makita-vacuum-holder.stl, third-party/micro-sd-keyring-inner.stl, third-party/spaghetti-measure.stl)
+
+The sweep test passes (63 passed, 1 skipped; against 31c). The 7 failing round trips are 31c's 7 files;
+phone-stand-foldable now reads back valid with its faces but its read-back volume ratio stays 0.99957 (31c: 0.99958),
+off by more than the 1e-4 rule, as before. Against 2026-11-01 only the six cut files move, and only in faces and
+round trip:
+
+| file | faces 2026-11-01 → 11-01b | cuts | facets | round trip (read back valid, faces) | ms |
+|---|---|---|---|---|---|
+| own/battery-power-adapter | 583 → 587 | 4 | 0 | yes, 587 | 2471 → 2728 |
+| own/desk-organizer-module-small | 377 → 378 | 1 | 0 | yes, 378 | 16527 → 16951 |
+| own/kuglbahn-pillar-base | 3881 → 3882 | 1 | 3348 | yes, 3882 | 10814 → 11380 |
+| own/puzzle-insert-circle | 379 → 383 | 4 | 0 | no, 379 → **yes, 383** | 15068 → 15394 |
+| own/shower-holder | 869 → 870 | 1 | 439 | yes, 870 | 1983 → 2182 |
+| own/spool-screw-v4.1 | 1361 → 1421 | 60 | 256 | no, 1361 → **yes, 1421** | 41836 → 44064 |
+
+Against 31c no file is worse on any column: every moved file has fewer faces and facets, the same step, a valid body,
+and a round trip that passes where it passed (phone-stand-foldable's read-back is valid now). The cut costs 71 faces
+over the corpus and its time is inside the totals (prismatic +4.4 % against 31c, faceted, unchanged, +2.3 %: the
+machine). spool-screw-v4.1's two regions that are invalid after unify (the cone split at 5 nodes, the cylinder at 1)
+are unchanged: they explode on the second attempt before the cut runs.
+
+Tests: `mesh-to-solid.test.ts` "cuts a boss wall whose dimple touches its rim at a node in two, so it round-trips
+(slice D11)": a cylindrical boss with a square pyramid dimple cut radially into its wall, the dimple's top corner on
+the boss's top rim; with a freeform boss beside it the hybrid runs. On the run-2 WASM the body was valid and its
+read-back invalid (a scratch run of the same shape); on the new one it round-trips. The Q2.2 test was not added: a
+round boss r 5, 0.06 mm high at T 0.1 converts exactly as six planes (the segmentation takes the boss into the top
+plane: Q1.3's absorbed step), and at 0.15 mm it is a cylinder by region growing, not by the new rule.
+
+OCCT WASM: the input hash went `c7ba43be3df2` (run 2) → `5d22216cd3d7`, published by CI 41271268117.

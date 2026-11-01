@@ -910,6 +910,11 @@ end to end, faster than in established desktop CAD.
     2026-10-06, ADR-0034's amendment)**: a file's solid and assembly-instance
     colours become the imported bodies' appearance once, and coloured bodies
     export their colours; face colours are counted, not applied.
+  - STEP writer: a fillet rim's torus face is written with an indirect frame
+    and a bound flag that a reader trusting the flag turns into a cove (found
+    2026-11-01, ADR-0097 slice D11, Q1b.2); write such faces on a direct frame
+    or check the flags against the neighbouring edges before writing, with a
+    test that reads the flags back.
   - ~~Section analysis on several planes, a section box~~ **done
     (P4-12, 2026-10-06, ADR-0045's amendment: up to three planes, a box of
     six)**; sections saved with named views, a hatch per material (ADR-0045).
@@ -1179,6 +1184,15 @@ end to end, faster than in established desktop CAD.
   move no file's step, so it was not built. The facets come from exploded
   regions and from blends along curved outlines and between curved faces
   (ADR-0097's 2026-10-31c amendment).
+  *slice D11 (2026-11-01):* a hybrid region whose boundary passes a node twice
+  (a hole touching its outline) is built as one face instead of facets, a
+  periodic one cut in two where its loops touch so its STEP reads back, and a
+  wall strip lower than the tolerance is no longer a plane square to it: at
+  Auto the corpus's facets go 17,790 → 12,565 and its faces 27,581 → 22,569,
+  with the same 7 round trips failing as before (ADR-0097's 2026-11-01
+  amendment). Left of the exploded regions' facets: absorbed steps 386, edge
+  tolerance on wrapped charts 375, sliver holes 84, micro zigzags 26, and
+  spool-screw-v4.1's two regions invalid after unify.
 
 ## Phase 5 — Programmatic design (→ v0.6)
 
