@@ -348,7 +348,7 @@ export function HomeScreen({ platform }: { platform: Platform }) {
                   <div className="absolute top-2 right-2 w-16">
                     <Select
                       aria-label="Units of a new design"
-                      className="h-7 py-0 pr-5 pl-1.5 text-sm"
+                      className="h-7! py-0 pl-1.5 text-sm"
                       value={units}
                       onChange={(event) => setUnits(LengthUnitSchema.parse(event.target.value))}
                     >

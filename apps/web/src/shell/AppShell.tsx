@@ -393,7 +393,7 @@ function Shell({
   kernel,
 }: AppShellProps) {
   const { choice, setChoice } = useTheme(platform.preferences);
-  const browser = usePanel(platform.preferences, { key: 'browser', size: 248, min: 180, max: 480 });
+  const browser = usePanel(platform.preferences, { key: 'browser', size: 248, min: 220, max: 480 });
   // The browser floats over the view's left edge: fitting frames the part it leaves open.
   const browserCover = browser.collapsed ? 0 : browser.size;
   useEffect(() => viewport.getState().setCover(browserCover), [viewport, browserCover]);
