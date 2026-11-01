@@ -77,3 +77,54 @@ handler is unchanged (HID isn't one of its permissions).
   report layout; unit tests pin the mapping.
 - The SpaceMouse Enterprise and the bigger models' extra buttons use other
   report IDs and are ignored.
+
+## Amendment 2026-10-31: the driver's wheel turns, and the gamepad the browser lists
+
+**Context.** A user with a SpaceMouse Compact on Windows 11 and Chrome reported
+the view going wild with the cap. The vendor's driver, 3DxWare, turns the
+cap's motion into mouse-wheel turns (its keyboard-and-mouse emulation) for
+programs it has no profile for, browsers included; those arrive as ordinary
+trusted `wheel` events, indistinguishable from the real wheel, so the view
+zoomed and panned in steps on top of our own motion. Another open-source CAD
+app that reads the cap in the browser (conceptual reference only, see
+`docs/references.md`) met the same and reads the device as a gamepad, which
+Chromium browsers list a 3Dconnexion device as, with its six axes scaled to
+−1…1.
+
+**Decision.**
+
+- **The wheel is the cap's while the cap moves.** `spaceMouse.recentlyMoving()`
+  is true while the cap is off centre and for `WHEEL_QUIET_MS` (150 ms) after
+  it comes to rest, stamped on every moving frame and on the reading that
+  brings it to rest (some models report only on change). The viewport's wheel
+  handler drops the event then (`preventDefault`, no zoom or pan). The driver
+  sends wheel turns only well past the dead zone and never at rest, so a wheel
+  turn with the cap at rest is the user's. Pinch zoom arrives as Ctrl+wheel
+  and is covered. The driver's other mappings (arrow keys, mouse drags) are
+  not filtered.
+- **Without an open HID device, the 3D mouse the browser lists as a gamepad
+  is read** (`navigator.getGamepads()`, polled every 50 ms while the cap
+  rests, then once per animation frame while it moves, the same frame loop as
+  WebHID). No chooser and no click: Settings' Connect… remains for WebHID, the
+  gamepad works as soon as the cap has been pushed once on the page (a browser
+  lists a gamepad only after it has been moved there, so the first push after
+  opening the page may still let a wheel turn through). A device is known by
+  the ids in the gamepad's id string (vendor 0x256f; 0x046d with the older
+  models' product ids; 3DxWare's virtual joystick 0xbeef:0x046d, taken only
+  when no device is listed), the axes are shaped like the HID reports (dead
+  zone, squared), the buttons map in order. **An open HID device wins:** the
+  gamepad is ignored then, so the motion never counts twice. `supported` is
+  now WebHID or gamepads; `connectable` is WebHID.
+- **Desktop:** the same page code; nothing to grant (the Gamepad API needs no
+  permission).
+
+**Rejected (again).** Registering with 3DxWare's local WebSocket so it stops
+the generic mapping: still a cross-origin connection against the CSP, and a
+driver-only fix; the wheel guard works wherever the driver runs.
+
+**Consequences.** The gamepad path is Chromium only in practice (Firefox lists
+no 3D mice, Mozilla bug 1226575; it does list the driver's virtual joystick
+where the driver is told to feed it, which this ADR doesn't document). Still
+not tested on hardware when written: the gamepad id formats and axis order
+follow the reference's tests and the Gamepad API's id convention; the buttons'
+order as gamepad buttons is an assumption.

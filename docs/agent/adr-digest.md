@@ -3823,6 +3823,14 @@ blur and on disconnect; camera changes go through `setView` like a mouse drag (v
 command); the speed is the display preference `viewport.spaceMouseSpeed` (a log-scale slider, 0.25…4,
 a multiplier, not an `<ExpressionInput>`); no cross-origin SDK; the desktop grants HID only to `isSpaceMouse` devices, and
 the web filter (`SPACE_MOUSE_FILTERS`) and `isSpaceMouse` ask for the same devices: change both together.
+**Amendment 2026-10-31** (3DxWare's wheel turns, gamepads): `createSpaceMouse(hid, env)` takes `{frame, now,
+gamepads, interval}`; `recentlyMoving(now?)` is true while the cap moves and `WHEEL_QUIET_MS` (150 ms)
+after, stamped on every moving frame and on the reading that brings the cap to rest; the viewport's
+`onWheel` returns after `preventDefault` while it is true (the vendor driver turns cap motion into wheel
+turns, so a wheel turn while the cap moves is never the user's). `padKind` / `padName` / `readPad` /
+`choosePad` read the 3D mouse the browser lists as a gamepad (polled every 50 ms at rest, then per frame);
+**an open HID device wins** over the gamepad (never both); `supported` = WebHID or gamepads, `connectable`
+= WebHID (Settings shows Connect… only then, `[data-space-mouse="waiting"]` otherwise).
 
 ADR-0115 (the owner, 2026-10-30): **Other CAD files through a bundled cadmpeg** (P6-19).
 `apps/desktop/cadmpeg.json` (the pin: version, repository, per-target archive name and SHA-256 from the

@@ -1,0 +1,1 @@
+- 2026-10-31 · **3D mouse**: the view no longer zooms in steps when the vendor's driver (3DxWare) is installed, and the cap is read without Connect… in Chrome, Edge and the desktop app once it has been pushed on the page (ADR-0114 amendment).
