@@ -3728,6 +3728,12 @@ static void q26Report(ExtrudoFacade& f, double T) {
                 << f.meshNode(x.a1).X() << "," << f.meshNode(x.a1).Y() << "," << f.meshNode(x.a1).Z() << std::endl;
     }
   }
+  // Slice D11: the regions meshLoops split at the nodes their boundary passes twice, and what became of them.
+  for (size_t i = 0; i < regions.size(); ++i)
+    if (regions[i].splitNodes > 0)
+      std::cout << "   q26 split T " << T << " id " << i << " kind " << regions[i].kind << " tris " << regions[i].triangles.size()
+                << " nodes " << regions[i].splitNodes << " loops " << regions[i].loops.size() << " "
+                << (regions[i].why.empty() ? "built" : "exploded: " + regions[i].why) << std::endl;
   size_t unfit = 0, exploded = 0;
   int unfitRegions = 0, explodedRegions = 0;
   for (const auto& r : regions) {
@@ -3754,6 +3760,55 @@ static void q26AttemptLines(ExtrudoFacade& f, int handle) {
             << " hybrid " << (q26Attempts.empty() ? "no" : "yes") << " stages [" << stages << "] refusal " << f.hybridRefusal_ << std::endl;
 }
 
+/**
+ * Q26PLANES (slice D11, Q2.2): every plane surface of the segmentation at `T` whose fitted normal disagrees with its
+ * triangles' area-weighted mean normal (|cos| < 0.5): one "q26 plane" line each (triangles, area, cos, how far its
+ * nodes are from the plane through the area-weighted centroid square to the mean normal, its regions), and a summary.
+ */
+static void q26Planes(ExtrudoFacade& f, double T, bool autoStep) {
+  ExtrudoFacade::MeshSegmentation seg;
+  double used = T;
+  const bool ok = autoStep ? f.meshAutoTolerance(used, seg) : f.segmentMesh(T, seg);
+  if (!ok) {
+    std::cout << "   q26 planes T " << T << ": segmentation failed" << std::endl;
+    return;
+  }
+  auto corner = [&](int t, int k) { return static_cast<int>(f.meshTriangles_[3 * t + k]); };
+  int planes = 0, bad = 0;
+  size_t badTris = 0, planeTris = 0;
+  for (size_t i = 0; i < seg.surfaces.size(); ++i) {
+    const auto& s = seg.surfaces[i];
+    if (s.kind != 0) continue;
+    ++planes;
+    gp_XYZ mean(0, 0, 0), centre(0, 0, 0);
+    double area = 0;
+    std::vector<int> tris;
+    for (int r : s.regions)
+      for (int t : seg.regions[r].triangles) {
+        tris.push_back(t);
+        mean += seg.areas[t] * seg.normals[t];
+        area += seg.areas[t];
+        for (int k = 0; k < 3; ++k) centre += (seg.areas[t] / 3) * f.meshNode(corner(t, k));
+      }
+    planeTris += tris.size();
+    const double cosine = mean.Modulus() > 0 ? std::fabs(s.direction.XYZ().Dot(mean) / mean.Modulus()) : 0;
+    if (cosine >= 0.5) continue;
+    ++bad;
+    badTris += tris.size();
+    double refit = 0;
+    if (mean.Modulus() > 0 && area > 0) {
+      const gp_XYZ n = mean / mean.Modulus(), c = centre / area;
+      for (int t : tris)
+        for (int k = 0; k < 3; ++k) refit = std::max(refit, std::fabs((f.meshNode(corner(t, k)) - c).Dot(n)));
+    }
+    std::cout << std::setprecision(4) << "   q26 plane T " << used << " surface " << i << " tris " << tris.size() << " area " << area
+              << " cos " << cosine << " refit " << refit << " refitok " << (refit <= used) << " regions " << s.regions.size()
+              << std::endl;
+  }
+  std::cout << "   q26 planes T " << used << ": " << planes << " planes, " << planeTris << " triangles; " << bad
+            << " with |cos| < 0.5, " << badTris << " triangles" << std::endl;
+}
+
 static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
   const Mesh m = stlFile(path.c_str());
   std::cout << "== file " << path.substr(5) << " (" << m.triangles.size() / 3 << " triangles, tol " << tolerance << ")" << std::endl;
@@ -3765,6 +3820,24 @@ static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
     std::memcpy(reinterpret_cast<void*>(f.meshTrianglesPtr()), m.triangles.data(), m.triangles.size() * sizeof(uint32_t));
   };
   stage();
+  if (getenv("Q26LADDER") && *getenv("Q26LADDER")) {
+    // Q1b.1: segmentMesh at every Auto rung, its unfit share and time (Auto itself stops at the first that passes).
+    for (double T : ExtrudoFacade::MESH_AUTO_LADDER) {
+      ExtrudoFacade::MeshSegmentation seg;
+      const double t0 = now();
+      const bool ok = f.segmentMesh(T, seg);
+      std::cout << "   q26 rung " << T << " unfit " << (ok ? 100 * seg.unfitFraction : -1) << " % ms " << now() - t0 << std::endl;
+    }
+    return;
+  }
+  if (getenv("Q26PLANES") && *getenv("Q26PLANES")) {
+    // Q2.2: at Auto's step and at 0.01 mm, then (Q26PLANES=only) nothing else.
+    q26Planes(f, 0, true);
+    q26Planes(f, 0.01, false);
+    if (std::string(getenv("Q26PLANES")) == "only") return;
+    f.clearMeshRegions();
+    stage();
+  }
   const bool q25On = getenv("Q25") && *getenv("Q25");
   if (q25On) {
     q25(f);
@@ -4035,6 +4108,23 @@ static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
   }
   std::cout << "   prismatic " << f.count(h, 0) << " faces:" << kinds(s) << ", valid " << BRepCheck_Analyzer(s).IsValid() << ", volume "
             << v << " / mesh " << meshVolume << " = " << v / meshVolume << " (" << ms << " ms)" << std::endl;
+  if (getenv("STEP_OUT") && *getenv("STEP_OUT")) {
+    // Q1b.2 (slice D11): the body's STEP as the facade writes it (what users get), and its OCCT read-back.
+    f.clearArgs();
+    f.pushArg(h);
+    const int size = f.writeStep();
+    std::string text;
+    if (size > 0) text.assign(reinterpret_cast<const char*>(f.exportTextPtr()), static_cast<size_t>(size));
+    f.clearExport();
+    const std::string out = std::string(getenv("STEP_OUT")) + "/" + path.substr(5, path.rfind('.') - 5) + ".step";
+    std::filesystem::create_directories(std::filesystem::path(out).parent_path());
+    std::ofstream(out) << text;
+    const int back = text.empty() ? 0 : f.readStep(text.c_str());
+    std::cout << "   q26 step " << out << " bytes " << text.size() << " faces " << f.count(h, 0) << " back faces "
+              << (back ? f.count(back, 0) : -1) << " back valid " << (back ? BRepCheck_Analyzer(*f.find(back)).IsValid() : 0)
+              << std::endl;
+    if (back) f.release(back);
+  }
   f.release(h);
 }
 
