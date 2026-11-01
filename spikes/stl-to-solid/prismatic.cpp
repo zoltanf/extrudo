@@ -22,6 +22,20 @@ static Handle(Geom_Surface) spikeTorusSurface(const gp_Ax3& frame, double R, dou
   // Rotating by u maps X to cos u X + sin u Y: about Z for a direct frame, about -Z for an indirect one.
   return new Geom_SurfaceOfRevolution(meridian, gp_Ax1(frame.Location(), frame.Direct() ? z : z.Reversed()));
 }
+// Q26 (slice D11), wired in by run.sh's seds: hooks inside rebuildHybrid that record each region's face builds (pass,
+// BRepCheck statuses), each attempt's outcome, and a copy of the regions and the mesh for the analysis afterwards.
+// Declared here, defined after the facade (their argument types are the facade's own nested ones).
+#include <TopoDS_Face.hxx>
+#include <string>
+template <class Fa, class U>
+bool spikeQ26Face(Fa& f, const TopoDS_Face& face, int region, int pass, int attempt, const std::vector<U>& used);
+static void spikeQ26Null(int region, int pass, int attempt, const std::string& why);
+template <class Fa, class S, class R>
+void spikeQ26Faces(Fa& f, const S& seg, const R& regions, const std::vector<int>& hybridOf, int attempt);
+static void spikeQ26Event(int attempt, const std::string& what, double value = 0);
+template <class H, class C>
+void spikeQ26Invalid(int attempt, const TopoDS_Shape& result, const std::vector<H>& faces, bool healed, const C& solids);
+static void spikeQ26Valid(int attempt, int faces, int facets, bool undone, bool healed);
 #include "facade_public.cpp"  // in build/ (or BUILD), on the include path
 
 #include <BRepAlgoAPI_Cut.hxx>
@@ -41,6 +55,15 @@ static Handle(Geom_Surface) spikeTorusSurface(const gp_Ax3& frame, double R, dou
 #include <Interface_Static.hxx>
 #include <NCollection_DataMap.hxx>
 #include <STEPControl_Controller.hxx>
+#include <STEPControl_Writer.hxx>
+#include <BRepFeat_SplitShape.hxx>
+#include <ShapeBuild_Edge.hxx>
+#include <BRepTools_WireExplorer.hxx>
+#include <BRepTools_ReShape.hxx>
+#include <BRepLib.hxx>
+#include <GCE2d_MakeSegment.hxx>
+#include <BRepBuilderAPI_MakeEdge.hxx>
+#include <BRepTopAdaptor_FClass2d.hxx>
 #include <RWStl.hxx>
 #include <StlAPI_Writer.hxx>
 #include <BRepBuilderAPI_Copy.hxx>
@@ -3123,6 +3146,998 @@ static void q25(ExtrudoFacade& f) {
 }
 
 /** Case f/F: one file from /stl (STL_DIR) through meshRegions, then meshToSolid prismatic, at `tolerance`. */
+/*
+ * Q26 (slice D11): the hybrid rebuild's exploded regions. The hooks above (run.sh's seds put them into rebuildHybrid)
+ * record every region face build (attempt, pass, the collapsed chains it used, and for an invalid face BRepCheck's
+ * statuses per sub-shape kind and ShapeAnalysis_Wire's checks), every attempt's outcome, and a copy of the regions,
+ * the segmentation and the mesh. q26Report then prints one "q26 region" line per exploded region (the stage it
+ * exploded in, its loops walked again with each boundary edge paired to the next one round the same fan of the
+ * node's triangles, those loops' signs, crossings in the chart's (u, v), and a face built from them the way makeFace
+ * builds polylines), and q26Attempts one "q26 attempt" line per build attempt. Q26=1: all of it; Q26=2: attempts only.
+ */
+struct Q26Build {
+  int attempt = 0, pass = 0, chains = 0;
+  bool face = false, valid = false;
+  std::string pattern, detail, saw, why;
+};
+struct Q26Attempt {
+  int attempt = 0, estimate = -1, faces = -1, facets = -1, invalidFaces = -1, facetFaces = -1, nodesOff = -1;
+  bool built = false, invalid = false, valid = false, healed = false, undone = false, volumeOk = false, cellsValid = false;
+};
+static int q26Mode = 0;
+static double q26Tolerance = 0;
+static std::map<int, std::vector<Q26Build>> q26Builds;
+static std::vector<Q26Attempt> q26Attempts;
+static ExtrudoFacade::MeshSegmentation q26Seg;
+static std::vector<ExtrudoFacade::MeshHybridRegion> q26Regions;
+static std::vector<int> q26HybridOf;
+static std::vector<double> q26Nodes;
+static std::vector<uint32_t> q26Triangles;
+
+static Q26Attempt& q26AttemptOf(int attempt) {
+  for (Q26Attempt& a : q26Attempts)
+    if (a.attempt == attempt) return a;
+  q26Attempts.emplace_back();
+  q26Attempts.back().attempt = attempt;
+  return q26Attempts.back();
+}
+
+/** BRepCheck's statuses on a shape's vertices, edges, wires and faces: "kind:Status" (own) or "kind@context:Status". */
+static void q26Statuses(const TopoDS_Shape& shape, std::string& pattern, std::string& detail) {
+  BRepCheck_Analyzer analyzer(shape);
+  std::map<std::string, int> counts;
+  auto typeName = [](TopAbs_ShapeEnum t) {
+    return t == TopAbs_VERTEX ? "vertex" : t == TopAbs_EDGE ? "edge" : t == TopAbs_WIRE ? "wire" : t == TopAbs_FACE ? "face" : "other";
+  };
+  for (TopAbs_ShapeEnum type : {TopAbs_VERTEX, TopAbs_EDGE, TopAbs_WIRE, TopAbs_FACE}) {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> shapes;
+    TopExp::MapShapes(shape, type, shapes);
+    for (int i = 1; i <= shapes.Extent(); ++i) {
+      Handle(BRepCheck_Result) r = analyzer.Result(shapes(i));
+      if (r.IsNull()) continue;
+      for (BRepCheck_Status st : r->Status())
+        if (st != BRepCheck_NoError) counts[std::string(typeName(type)) + ":" + statusName(st)]++;
+      for (r->InitContextIterator(); r->MoreShapeInContext(); r->NextShapeInContext())
+        for (BRepCheck_Status st : r->StatusOnShape())
+          if (st != BRepCheck_NoError)
+            counts[std::string(typeName(type)) + "@" + typeName(r->ContextualShape().ShapeType()) + ":" + statusName(st)]++;
+    }
+  }
+  pattern.clear();
+  detail.clear();
+  for (const auto& [k, n] : counts) {
+    pattern += (pattern.empty() ? "" : "+") + k;
+    detail += (detail.empty() ? "" : ",") + k + "x" + std::to_string(n);
+  }
+  if (pattern.empty()) pattern = detail = "none";
+}
+
+/** ShapeAnalysis_Wire's checks on each wire of a face: the ones that report a problem. */
+static std::string q26Saw(const TopoDS_Face& face) {
+  std::set<std::string> flags;
+  for (TopExp_Explorer w(face, TopAbs_WIRE); w.More(); w.Next()) {
+    ShapeAnalysis_Wire saw(TopoDS::Wire(w.Current()), face, Precision::Confusion());
+    if (saw.CheckOrder()) flags.insert("order");
+    if (saw.CheckConnected()) flags.insert("connected");
+    if (saw.CheckSmall(Precision::Confusion())) flags.insert("small");
+    if (saw.CheckClosed()) flags.insert("closed");
+    if (saw.CheckSelfIntersection()) flags.insert("selfx");
+  }
+  std::string out;
+  for (const std::string& s : flags) out += (out.empty() ? "" : "+") + s;
+  return out.empty() ? "ok" : out;
+}
+
+template <class Fa, class U>
+bool spikeQ26Face(Fa&, const TopoDS_Face& face, int region, int pass, int attempt, const std::vector<U>& used) {
+  if (!q26Mode) return BRepCheck_Analyzer(face).IsValid();
+  Q26Build b;
+  b.attempt = attempt;
+  b.pass = pass;
+  b.face = true;
+  for (const U& u : used) b.chains += u.chain >= 0;
+  b.valid = BRepCheck_Analyzer(face).IsValid();
+  if (!b.valid && q26Mode == 1) {
+    q26Statuses(face, b.pattern, b.detail);
+    b.saw = q26Saw(face);
+  }
+  q26Builds[region].push_back(b);
+  return b.valid;
+}
+static void spikeQ26Null(int region, int pass, int attempt, const std::string& why) {
+  if (!q26Mode) return;
+  Q26Build b;
+  b.attempt = attempt;
+  b.pass = pass;
+  b.why = why;
+  q26Builds[region].push_back(b);
+}
+template <class Fa, class S, class R>
+void spikeQ26Faces(Fa& f, const S& seg, const R& regions, const std::vector<int>& hybridOf, int attempt) {
+  if (!q26Mode) return;
+  q26AttemptOf(attempt).built = true;
+  if (q26Mode != 1) return;
+  if (attempt == 0) {
+    q26Seg = seg;
+    q26HybridOf = hybridOf;
+    q26Nodes = f.meshNodes_;
+    q26Triangles = f.meshTriangles_;
+  }
+  q26Regions = regions;
+}
+static void spikeQ26Event(int attempt, const std::string& what, double value) {
+  if (!q26Mode) return;
+  if (what == "tolerance") q26Tolerance = value;
+  Q26Attempt& a = q26AttemptOf(attempt);
+  if (what == "estimate") a.estimate = static_cast<int>(value);
+  if (what == "volume ok") a.volumeOk = true;
+  if (what == "nodes off") a.nodesOff = static_cast<int>(value);
+}
+template <class H, class C>
+void spikeQ26Invalid(int attempt, const TopoDS_Shape& result, const std::vector<H>& faces, bool healed, const C& solids) {
+  if (!q26Mode) return;
+  Q26Attempt& a = q26AttemptOf(attempt);
+  a.invalid = true;
+  // The solids before unify (the cells): valid ones are what "unify undone" would deliver.
+  a.cellsValid = true;
+  for (const TopoDS_Shape& solid : solids) a.cellsValid = a.cellsValid && BRepCheck_Analyzer(solid).IsValid();
+  a.healed = healed;
+  a.faces = 0;
+  a.invalidFaces = 0;
+  for (TopExp_Explorer e(result, TopAbs_FACE); e.More(); e.Next()) {
+    ++a.faces;
+    a.invalidFaces += !BRepCheck_Analyzer(e.Current()).IsValid();
+  }
+  a.facetFaces = 0;
+  for (const H& h : faces) a.facetFaces += h.facet;
+}
+static void spikeQ26Valid(int attempt, int faces, int facets, bool undone, bool healed) {
+  if (!q26Mode) return;
+  Q26Attempt& a = q26AttemptOf(attempt);
+  a.valid = true;
+  a.faces = faces;
+  a.facets = facets;
+  a.undone = undone;
+  a.healed = healed;
+}
+
+/** makeFace's polyline path (every boundary edge its own straight edge), on its own vertices and edges. */
+static TopoDS_Face q26MakeFace(ExtrudoFacade& f, const ExtrudoFacade::MeshChart& chart, const std::vector<std::vector<int>>& loops,
+                               bool flip, double& worst) {
+  BRep_Builder builder;
+  std::map<int, TopoDS_Vertex> vertices;
+  std::map<std::pair<int, int>, TopoDS_Edge> edges;
+  auto vertexOf = [&](int n) -> TopoDS_Vertex& {
+    TopoDS_Vertex& v = vertices[n];
+    if (v.IsNull()) builder.MakeVertex(v, gp_Pnt(f.meshNode(n)), Precision::Confusion());
+    return v;
+  };
+  auto edgeOf = [&](int lo, int hi) -> TopoDS_Edge& {
+    TopoDS_Edge& e = edges[{lo, hi}];
+    if (e.IsNull()) {
+      const gp_Pnt p(f.meshNode(lo)), q(f.meshNode(hi));
+      builder.MakeEdge(e, new Geom_Line(p, gp_Dir(q.XYZ() - p.XYZ())), Precision::Confusion());
+      builder.Add(e, vertexOf(lo).Oriented(TopAbs_FORWARD));
+      builder.Add(e, vertexOf(hi).Oriented(TopAbs_REVERSED));
+      builder.Range(e, 0, p.Distance(q));
+    }
+    return e;
+  };
+  struct Use {
+    int lo, hi;
+    bool forward;
+    double tolerance;
+    Handle(Geom2d_Curve) pcurve;
+  };
+  worst = 0;
+  std::vector<std::vector<Use>> wires;
+  for (const std::vector<int>& loop : loops) {
+    wires.emplace_back();
+    for (size_t j = 0; j < loop.size(); ++j) {
+      const int a = loop[j], b = loop[(j + 1) % loop.size()];
+      const int lo = std::min(a, b), hi = std::max(a, b);
+      const gp_Pnt2d from = chart.uv(gp_Pnt(f.meshNode(lo))), to = chart.uv(gp_Pnt(f.meshNode(hi)));
+      const gp_XYZ p = f.meshNode(lo), q = f.meshNode(hi);
+      double off = 0;
+      for (int i = 0; i <= 10; ++i) {
+        const double s = i / 10.0;
+        off = std::max(off, chart.value(from.X() + s * (to.X() - from.X()), from.Y() + s * (to.Y() - from.Y())).Distance(gp_Pnt(p + s * (q - p))));
+      }
+      const double tol = std::max(off * 1.1, ExtrudoFacade::HYBRID_EDGE_TOLERANCE_MIN);
+      worst = std::max(worst, tol);
+      NCollection_Array1<gp_Pnt2d> poles(1, 2);
+      poles(1) = from;
+      poles(2) = to;
+      NCollection_Array1<double> knots(1, 2);
+      knots(1) = 0;
+      knots(2) = (p - q).Modulus();
+      NCollection_Array1<int> mults(1, 2);
+      mults(1) = mults(2) = 2;
+      wires.back().push_back({lo, hi, a == lo, tol, new Geom2d_BSplineCurve(poles, knots, mults, 1)});
+    }
+  }
+  TopoDS_Face face;
+  if (worst > ExtrudoFacade::HYBRID_EDGE_TOLERANCE_MAX) return face;
+  const Handle(Geom_Surface) surface = chart.surface();
+  builder.MakeFace(face, surface, Precision::Confusion());
+  for (std::vector<Use>& uses : wires) {
+    TopoDS_Wire wire;
+    builder.MakeWire(wire);
+    if (flip) std::reverse(uses.begin(), uses.end());
+    for (const Use& use : uses) {
+      TopoDS_Edge& e = edgeOf(use.lo, use.hi);
+      builder.UpdateEdge(e, use.pcurve, surface, TopLoc_Location(), use.tolerance);
+      builder.UpdateVertex(vertexOf(use.lo), use.tolerance);
+      builder.UpdateVertex(vertexOf(use.hi), use.tolerance);
+      builder.Add(wire, use.forward != flip ? e : TopoDS::Edge(e.Reversed()));
+    }
+    wire.Closed(true);
+    builder.Add(face, wire);
+  }
+  if (flip) face.Orientation(TopAbs_REVERSED);
+  return face;
+}
+
+/** A crossing of two loop segments in (u, v): loops, positions in them, nodes, how they meet, how far apart in 3D. */
+struct Q26Cross {
+  int loop1, at1, loop2, at2, a1, b1, a2, b2;
+  std::string how;
+  double apart;
+  gp_Pnt2d p;
+};
+/** Segments of the loops in (u, v) that cross or touch: within one loop (not neighbours) and between loops. */
+static std::vector<Q26Cross> q26Crossings(ExtrudoFacade& f, const std::vector<std::vector<int>>& loops,
+                                          const std::vector<std::vector<gp_Pnt2d>>& uvs, int& self, int& between) {
+  struct Seg {
+    double x0, x1;
+    int loop, at, a, b;
+    gp_Pnt2d p, q;
+  };
+  std::vector<Seg> segs;
+  for (size_t l = 0; l < loops.size(); ++l)
+    for (size_t j = 0; j < loops[l].size(); ++j) {
+      const size_t k = (j + 1) % loops[l].size();
+      const gp_Pnt2d p = uvs[l][j], q = uvs[l][k];
+      segs.push_back({std::min(p.X(), q.X()), std::max(p.X(), q.X()), static_cast<int>(l), static_cast<int>(j), loops[l][j], loops[l][k], p, q});
+    }
+  std::sort(segs.begin(), segs.end(), [](const Seg& s, const Seg& t) { return s.x0 < t.x0; });
+  auto cross = [](const gp_Pnt2d& o, const gp_Pnt2d& a, const gp_Pnt2d& b) {
+    return (a.X() - o.X()) * (b.Y() - o.Y()) - (a.Y() - o.Y()) * (b.X() - o.X());
+  };
+  std::vector<Q26Cross> out;
+  self = between = 0;
+  for (size_t i = 0; i < segs.size(); ++i)
+    for (size_t j = i + 1; j < segs.size() && segs[j].x0 <= segs[i].x1; ++j) {
+      const Seg &s = segs[i], &t = segs[j];
+      if (s.a == t.a || s.a == t.b || s.b == t.a || s.b == t.b) continue;
+      if (std::max(s.p.Y(), s.q.Y()) < std::min(t.p.Y(), t.q.Y()) || std::max(t.p.Y(), t.q.Y()) < std::min(s.p.Y(), s.q.Y())) continue;
+      const double d1 = cross(s.p, s.q, t.p), d2 = cross(s.p, s.q, t.q), d3 = cross(t.p, t.q, s.p), d4 = cross(t.p, t.q, s.q);
+      if ((d1 > 0 && d2 > 0) || (d1 < 0 && d2 < 0) || (d3 > 0 && d4 > 0) || (d3 < 0 && d4 < 0)) continue;
+      (s.loop == t.loop ? self : between)++;
+      // How they meet: two distinct nodes at one point (coincident), an end on the other segment (touch), or across.
+      const gp_XYZ A1 = f.meshNode(s.a), B1 = f.meshNode(s.b), A2 = f.meshNode(t.a), B2 = f.meshNode(t.b);
+      double ends = 1e300;
+      for (const gp_XYZ& x : {A1, B1})
+        for (const gp_XYZ& y : {A2, B2}) ends = std::min(ends, (x - y).Modulus());
+      const bool touch = d1 == 0 || d2 == 0 || d3 == 0 || d4 == 0;
+      // The segments' 3D distance, sampled.
+      double apart = 1e300;
+      for (int a = 0; a <= 20; ++a)
+        for (int b = 0; b <= 20; ++b)
+          apart = std::min(apart, ((A1 + (B1 - A1) * (a / 20.0)) - (A2 + (B2 - A2) * (b / 20.0))).Modulus());
+      apart = std::min(apart, ends);
+      out.push_back({s.loop, s.at, t.loop, t.at, s.a, s.b, t.a, t.b, ends < 1e-6 ? "coincident" : touch ? "touch" : "across", apart, s.p});
+    }
+  return out;
+}
+
+static std::string q26Stage(const std::string& why) {
+  if (why.rfind("touches itself", 0) == 0 || why.rfind("a loop that", 0) == 0 || why == "no boundary" || why.find("runs the wrong way") != std::string::npos)
+    return "loops";
+  if (why.rfind("edge tolerance", 0) == 0 || why == "invalid face" || why.rfind("threw", 0) == 0) return "build";
+  if (why == "invalid after unify") return "culprit";
+  if (why == "a node off its face") return "nodeoff";
+  return "other";
+}
+
+static void q26Report(ExtrudoFacade& f, double T) {
+  if (q26Regions.empty()) return;
+  f.meshNodes_ = q26Nodes;
+  f.meshTriangles_ = q26Triangles;
+  const ExtrudoFacade::MeshSegmentation& seg = q26Seg;
+  std::vector<ExtrudoFacade::MeshHybridRegion>& regions = q26Regions;
+  const std::vector<int>& hybridOf = q26HybridOf;
+  // A region exploded after the last copy (culprits or nodes off on the last attempt): its line in hybridFaces_.
+  for (const std::string& line : f.hybridFaces_) {
+    if (line.rfind("region ", 0) != 0) continue;
+    const size_t at = line.find(" exploded: ");
+    if (at == std::string::npos) continue;
+    const int r = std::atoi(line.c_str() + 7);
+    if (r >= 0 && r < static_cast<int>(regions.size()) && regions[r].why.empty()) regions[r].why = line.substr(at + 11);
+  }
+  auto corner = [&](int t, int k) { return static_cast<int>(q26Triangles[3 * t + (k % 3)]); };
+  for (size_t i = 0; i < regions.size(); ++i) {
+    const ExtrudoFacade::MeshHybridRegion& region = regions[i];
+    if (region.kind < 0 || region.why.empty()) continue;
+    const int id = static_cast<int>(i);
+    const auto& chart = region.chart;
+    // Boundary half-edges (t, k): corner k to k + 1, the region on the left.
+    std::map<std::pair<int, int>, int> halfIndex;
+    std::vector<std::pair<int, int>> half;
+    std::map<int, int> outgoing;
+    for (int t : region.triangles)
+      for (int k = 0; k < 3; ++k) {
+        const int u = seg.neighbour[3 * t + k];
+        if (u >= 0 && hybridOf[u] == id) continue;
+        halfIndex[{t, k}] = static_cast<int>(half.size());
+        half.push_back({t, k});
+        outgoing[corner(t, k)]++;
+      }
+    int pinch = 0;
+    for (const auto& [n, c] : outgoing) pinch += c > 1;
+    // The next boundary half-edge round the same fan of triangles at the end node.
+    std::vector<int> nextHalf(half.size(), -1);
+    bool fanBroken = false;
+    for (size_t h = 0; h < half.size(); ++h) {
+      int t = half[h].first, e = half[h].second;
+      const int n = corner(t, e + 1);
+      for (int guard = 0; guard < 4096; ++guard) {
+        const int e2 = (e + 1) % 3;
+        const int u = seg.neighbour[3 * t + e2];
+        if (u < 0 || hybridOf[u] != id) {
+          const auto it = halfIndex.find({t, e2});
+          if (it != halfIndex.end()) nextHalf[h] = it->second;
+          break;
+        }
+        int found = -1;
+        for (int k = 0; k < 3; ++k)
+          if (corner(u, k + 1) == n) found = k;
+        if (found < 0) break;
+        t = u;
+        e = found;
+      }
+      if (nextHalf[h] < 0) fanBroken = true;
+    }
+    std::vector<std::vector<int>> loops;
+    std::vector<char> seen(half.size(), 0);
+    bool open = false;
+    for (size_t h0 = 0; h0 < half.size(); ++h0) {
+      if (seen[h0]) continue;
+      std::vector<int> loop;
+      int h = static_cast<int>(h0);
+      while (h >= 0 && !seen[h]) {
+        seen[h] = 1;
+        loop.push_back(corner(half[h].first, half[h].second));
+        h = nextHalf[h];
+      }
+      if (h != static_cast<int>(h0)) open = true;
+      loops.push_back(loop);
+    }
+    bool simple = true;
+    for (const auto& loop : loops) {
+      std::set<int> nodes(loop.begin(), loop.end());
+      simple = simple && nodes.size() == loop.size();
+    }
+    // Edge-connected pieces of the region (the cut at pinch nodes keeps these).
+    int pieces = 0;
+    {
+      std::set<int> in(region.triangles.begin(), region.triangles.end()), done;
+      for (int seed : region.triangles) {
+        if (done.count(seed)) continue;
+        ++pieces;
+        std::vector<int> queue{seed};
+        done.insert(seed);
+        while (!queue.empty()) {
+          const int t = queue.back();
+          queue.pop_back();
+          for (int k = 0; k < 3; ++k) {
+            const int u = seg.neighbour[3 * t + k];
+            if (u >= 0 && in.count(u) && done.insert(u).second) queue.push_back(u);
+          }
+        }
+      }
+    }
+    // The loops in (u, v): areas, the outer one, the side test as meshLoops does it; seam and wrap.
+    std::vector<std::vector<gp_Pnt2d>> uvs;
+    std::vector<double> areas;
+    bool seam = false, wrap = false;
+    for (const auto& loop : loops) {
+      uvs.emplace_back();
+      double a = 0, previousRawU = 0, previousRawV = 0;
+      for (size_t j = 0; j < loop.size(); ++j) {
+        uvs.back().push_back(chart.uv(gp_Pnt(f.meshNode(loop[j]))));
+        double ru = 0, rv = 0;
+        chart.raw(gp_Pnt(f.meshNode(loop[j])), ru, rv);
+        if (j > 0 && chart.uPeriodic() && std::fabs(ru - previousRawU) > M_PI) seam = true;
+        if (j > 0 && chart.vPeriodic() && std::fabs(rv - previousRawV) > M_PI) seam = true;
+        previousRawU = ru;
+        previousRawV = rv;
+      }
+      for (size_t j = 0; j < loop.size(); ++j) {
+        const gp_Pnt2d& p = uvs.back()[j];
+        const gp_Pnt2d& q = uvs.back()[(j + 1) % loop.size()];
+        a += p.X() * q.Y() - q.X() * p.Y();
+        if (chart.uPeriodic() && std::fabs(q.X() - p.X()) > M_PI) wrap = true;
+        if (chart.vPeriodic() && std::fabs(q.Y() - p.Y()) > M_PI) wrap = true;
+      }
+      areas.push_back(a / 2);
+    }
+    size_t outer = 0;
+    for (size_t l = 1; l < areas.size(); ++l)
+      if (std::fabs(areas[l]) > std::fabs(areas[outer])) outer = l;
+    if (!loops.empty()) {
+      std::swap(loops[0], loops[outer]);
+      std::swap(uvs[0], uvs[outer]);
+      std::swap(areas[0], areas[outer]);
+    }
+    std::vector<double> sorted;
+    for (double a : areas) sorted.push_back(std::fabs(a));
+    std::sort(sorted.rbegin(), sorted.rend());
+    int largest = region.triangles.front();
+    for (int t : region.triangles)
+      if (f.triangleArea(t) > f.triangleArea(largest)) largest = t;
+    const gp_XYZ ca = f.meshNode(corner(largest, 0)), cb = f.meshNode(corner(largest, 1)), cd = f.meshNode(corner(largest, 2));
+    const gp_Pnt2d cuv = chart.uv(gp_Pnt((ca + cb + cd) / 3));
+    const double side = chart.normal(cuv.X(), cuv.Y()).XYZ().Dot((cb - ca).Crossed(cd - ca)) < 0 ? -1 : 1;
+    std::string signs = "ok";
+    for (size_t l = 0; l < areas.size(); ++l)
+      if ((l == 0) != (side * areas[l] > 0)) {
+        signs = l == 0 ? "outer" : "inner";
+        break;
+      }
+    // The chart's normal against the triangles': the area-weighted mean, and the triangles folded in (u, v).
+    gp_XYZ mean(0, 0, 0);
+    int folded = 0, agree = 0;
+    double offPlane = 0;
+    for (int t : region.triangles) {
+      const gp_XYZ a = f.meshNode(corner(t, 0)), b = f.meshNode(corner(t, 1)), c = f.meshNode(corner(t, 2));
+      mean += (b - a).Crossed(c - a);
+      const gp_Pnt2d pa = chart.uv(gp_Pnt(a)), pb = chart.uv(gp_Pnt(b)), pc = chart.uv(gp_Pnt(c));
+      const double s = (pb.X() - pa.X()) * (pc.Y() - pa.Y()) - (pb.Y() - pa.Y()) * (pc.X() - pa.X());
+      (side * s > 0 ? agree : folded)++;
+      if (chart.kind == 0)
+        for (const gp_XYZ& p : {a, b, c}) offPlane = std::max(offPlane, gp_Pln(chart.frame).Distance(gp_Pnt(p)));
+    }
+    const gp_Vec cn = chart.normal(cuv.X(), cuv.Y());
+    const double normalCos = mean.Modulus() > 0 && cn.Magnitude() > 0 ? side * cn.XYZ().Dot(mean) / (cn.Magnitude() * mean.Modulus()) : 0;
+    int selfx = 0, crossx = 0;
+    const std::vector<Q26Cross> crossings = q26Crossings(f, loops, uvs, selfx, crossx);
+    std::map<std::string, int> crossHow;
+    double apartMax = 0, apartMin = crossings.empty() ? 0 : 1e300;
+    int local = 0;
+    for (const Q26Cross& c : crossings) {
+      crossHow[c.how]++;
+      apartMax = std::max(apartMax, c.apart);
+      apartMin = std::min(apartMin, c.apart);
+      // Local: the two segments within 8 of each other along one loop (a fold or a zigzag, not the outline overlapping).
+      const int n = static_cast<int>(loops[c.loop1].size()), d = std::abs(c.at1 - c.at2);
+      local += c.loop1 == c.loop2 && std::min(d, n - d) <= 8;
+    }
+    std::string loopSizes, loopAreas;
+    for (size_t l = 0; l < loops.size() && l < 8; ++l) {
+      loopSizes += (l ? "," : "") + std::to_string(loops[l].size());
+      char buffer[32];
+      std::snprintf(buffer, sizeof buffer, "%.4g", areas[l]);
+      loopAreas += (l ? "," : "") + std::string(buffer);
+    }
+    // Faces from the loops, polylines throughout: the fan-paired loops as they are, and split at every node a loop
+    // passes twice (each simple cycle its own loop, the outer one the largest |area|, signs checked again).
+    const bool flip = chart.normal(cuv.X(), cuv.Y()).XYZ().Dot(seg.normals[largest]) < 0;
+    auto faceOf = [&](const std::vector<std::vector<int>>& ls) -> std::string {
+      if (open || fanBroken || ls.empty()) return "skipped";
+      try {
+        double worst = 0;
+        const TopoDS_Face face = q26MakeFace(f, chart, ls, flip, worst);
+        if (face.IsNull()) return "tolerance:" + std::to_string(worst);
+        if (BRepCheck_Analyzer(face).IsValid()) return "valid";
+        std::string pattern, detail;
+        q26Statuses(face, pattern, detail);
+        return "invalid:" + pattern;
+      } catch (const Standard_Failure&) {
+        return "threw";
+      }
+    };
+    const std::string fan = faceOf(loops);
+    std::vector<std::vector<int>> split;
+    for (const auto& loop : loops) {
+      std::vector<int> stack;
+      std::map<int, size_t> at;
+      for (int n : loop) {
+        const auto it = at.find(n);
+        if (it != at.end()) {
+          split.emplace_back(stack.begin() + it->second, stack.end());
+          for (size_t j = it->second + 1; j < stack.size(); ++j) at.erase(stack[j]);
+          stack.resize(it->second);
+        }
+        at[n] = stack.size();
+        stack.push_back(n);
+      }
+      if (!stack.empty()) split.push_back(stack);
+    }
+    std::vector<double> splitAreas;
+    for (const auto& loop : split) {
+      double a = 0;
+      for (size_t j = 0; j < loop.size(); ++j) {
+        const gp_Pnt2d p = chart.uv(gp_Pnt(f.meshNode(loop[j]))), q = chart.uv(gp_Pnt(f.meshNode(loop[(j + 1) % loop.size()])));
+        a += p.X() * q.Y() - q.X() * p.Y();
+      }
+      splitAreas.push_back(a / 2);
+    }
+    size_t splitOuter = 0;
+    for (size_t l = 1; l < splitAreas.size(); ++l)
+      if (std::fabs(splitAreas[l]) > std::fabs(splitAreas[splitOuter])) splitOuter = l;
+    if (!split.empty()) {
+      std::swap(split[0], split[splitOuter]);
+      std::swap(splitAreas[0], splitAreas[splitOuter]);
+    }
+    std::string splitSigns = "ok";
+    for (size_t l = 0; l < splitAreas.size(); ++l)
+      if ((l == 0) != (side * splitAreas[l] > 0)) {
+        splitSigns = l == 0 ? "outer" : "inner";
+        break;
+      }
+    const std::string splitFace = split.size() == loops.size() ? fan : faceOf(split);
+    // The facade's builds of this region: the attempt it failed in, pass 0 and pass 1 there.
+    const std::vector<Q26Build>& builds = q26Builds[id];
+    int failAttempt = -1;
+    for (const Q26Build& b : builds)
+      if (!b.valid) failAttempt = b.attempt;
+    std::string p0 = "-", p1 = "-", saw0 = "-", saw1 = "-";
+    if (failAttempt < 0 && !builds.empty()) failAttempt = builds.back().attempt;
+    int chains = -1, failPass = -1;
+    for (const Q26Build& b : builds) {
+      if (b.pass == 0 && b.face && b.attempt <= failAttempt) chains = b.chains;
+      if (b.attempt != failAttempt) continue;
+      std::string what = !b.face ? "null:" + b.why.substr(0, b.why.find(' ')) : b.valid ? "valid" : b.pattern;
+      if (b.pass == 0) p0 = what, saw0 = b.saw.empty() ? "-" : b.saw;
+      else p1 = what, saw1 = b.saw.empty() ? "-" : b.saw;
+      if (!b.valid) failPass = b.pass;
+    }
+    // Facets these triangles make on their own: coplanar neighbours within the region are one face.
+    int facets = 0;
+    {
+      std::map<int, int> parent;
+      for (int t : region.triangles) parent[t] = t;
+      std::function<int(int)> find = [&](int x) { return parent[x] == x ? x : parent[x] = find(parent[x]); };
+      const double cosTolerance = std::cos(1e-3);
+      for (int t : region.triangles)
+        for (int k = 0; k < 3; ++k) {
+          const int u = seg.neighbour[3 * t + k];
+          if (u < 0 || u < t || hybridOf[u] != id) continue;
+          const bool flat = seg.normals[t].Modulus() < 0.5 || seg.normals[u].Modulus() < 0.5;
+          if (!flat && seg.normals[t].Dot(seg.normals[u]) < cosTolerance) continue;
+          bool near = true;
+          for (int c = 0; c < 3 && near && !flat; ++c)
+            near = std::fabs((f.meshNode(corner(u, c)) - f.meshNode(corner(t, 0))).Dot(seg.normals[t])) <= 1e-3;
+          if (near) parent[find(t)] = find(u);
+        }
+      for (int t : region.triangles) facets += find(t) == t;
+    }
+    size_t edgesCount = 0;
+    for (const auto& loop : loops) edgesCount += loop.size();
+    const std::string stage = q26Stage(region.why);
+    std::cout << std::setprecision(5) << "   q26 region T " << T << " id " << id << " kind " << region.kind << " tris "
+              << region.triangles.size() << " share " << 100 * region.area / seg.meshArea << " stage "
+              << (stage == "build" ? "build" + std::to_string(std::max(failPass, 0)) : stage) << " attempt " << failAttempt
+              << " loops " << loops.size() << " edges " << edgesCount << " chains " << chains << " periodic "
+              << chart.uPeriodic() << " seam " << seam << " wrap " << wrap << " pinch " << pinch << " pieces " << pieces
+              << " open " << (open || fanBroken) << " simple " << simple << " signs " << signs << " area1 "
+              << (sorted.size() > 0 ? sorted[0] : 0) << " area2 " << (sorted.size() > 1 ? sorted[1] : 0) << " side " << side
+              << " normal " << normalCos << " folded " << folded << " selfx " << selfx << " crossx " << crossx << " offplane "
+              << offPlane << " facets " << facets << " fan " << fan << " splitloops " << split.size() << " splitsigns " << splitSigns
+              << " split " << splitFace << " p0 " << p0 << " p1 " << p1 << " saw0 " << saw0
+              << " saw1 " << saw1 << " coincident " << crossHow["coincident"] << " touch " << crossHow["touch"] << " across "
+              << crossHow["across"] << " apart " << apartMax << " apartmin " << apartMin << " local " << local << " loopsizes "
+              << (loopSizes.empty() ? "-" : loopSizes) << " loopareas " << (loopAreas.empty() ? "-" : loopAreas) << " why " << region.why << std::endl;
+    for (size_t c = 0; c < crossings.size() && c < 6; ++c) {
+      const Q26Cross& x = crossings[c];
+      std::cout << "   q26 cross id " << id << " " << x.how << " loop " << x.loop1 << " at " << x.at1 << "/" << loops[x.loop1].size()
+                << " nodes " << x.a1 << "-" << x.b1 << " loop " << x.loop2 << " at " << x.at2 << "/" << loops[x.loop2].size()
+                << " nodes " << x.a2 << "-" << x.b2 << " uv " << x.p.X() << "," << x.p.Y() << " apart " << x.apart << " xyz "
+                << f.meshNode(x.a1).X() << "," << f.meshNode(x.a1).Y() << "," << f.meshNode(x.a1).Z() << std::endl;
+    }
+  }
+  // Slice D11: the regions meshLoops split at the nodes their boundary passes twice, and what became of them.
+  for (size_t i = 0; i < regions.size(); ++i)
+    if (regions[i].splitNodes > 0)
+      std::cout << "   q26 split T " << T << " id " << i << " kind " << regions[i].kind << " tris " << regions[i].triangles.size()
+                << " nodes " << regions[i].splitNodes << " loops " << regions[i].loops.size() << " "
+                << (regions[i].why.empty() ? "built" : "exploded: " + regions[i].why) << std::endl;
+  size_t unfit = 0, exploded = 0;
+  int unfitRegions = 0, explodedRegions = 0;
+  for (const auto& r : regions) {
+    if (r.kind < 0) unfit += r.triangles.size(), ++unfitRegions;
+    else if (!r.why.empty()) exploded += r.triangles.size(), ++explodedRegions;
+  }
+  std::cout << "   q26 summary T " << T << " unfit " << unfit << " unfitregions " << unfitRegions << " exploded " << exploded
+            << " explodedregions " << explodedRegions << " regions " << regions.size() << std::endl;
+  f.meshNodes_.clear();
+  f.meshTriangles_.clear();
+}
+
+/** One line per hybrid build attempt, and the refusal's stages. */
+static void q26AttemptLines(ExtrudoFacade& f, int handle) {
+  for (const Q26Attempt& a : q26Attempts)
+    std::cout << "   q26 attempt " << a.attempt << " T " << q26Tolerance << " estimate " << a.estimate << " built " << a.built
+              << " invalid " << a.invalid << " cellsvalid " << a.cellsValid << " invalidfaces " << a.invalidFaces << " valid " << a.valid << " healed " << a.healed
+              << " undone " << a.undone << " faces " << a.faces << " facets " << a.facets << " facettris " << a.facetFaces
+              << " volume " << a.volumeOk << " nodesoff " << a.nodesOff << std::endl;
+  std::string stages;
+  for (const auto& [name, ms] : f.rebuildTimes_)
+    if (name.find("exploding") != std::string::npos || name.find("undoing") != std::string::npos) stages += (stages.empty() ? "" : "; ") + name;
+  std::cout << "   q26 outcome T " << q26Tolerance << " " << (handle ? "converted" : "refused") << " exploded " << f.hybridExploded_
+            << " hybrid " << (q26Attempts.empty() ? "no" : "yes") << " stages [" << stages << "] refusal " << f.hybridRefusal_ << std::endl;
+}
+
+/**
+ * Q26PLANES (slice D11, Q2.2): every plane surface of the segmentation at `T` whose fitted normal disagrees with its
+ * triangles' area-weighted mean normal (|cos| < 0.5): one "q26 plane" line each (triangles, area, cos, how far its
+ * nodes are from the plane through the area-weighted centroid square to the mean normal, its regions), and a summary.
+ */
+static void q26Planes(ExtrudoFacade& f, double T, bool autoStep) {
+  ExtrudoFacade::MeshSegmentation seg;
+  double used = T;
+  const bool ok = autoStep ? f.meshAutoTolerance(used, seg) : f.segmentMesh(T, seg);
+  if (!ok) {
+    std::cout << "   q26 planes T " << T << ": segmentation failed" << std::endl;
+    return;
+  }
+  auto corner = [&](int t, int k) { return static_cast<int>(f.meshTriangles_[3 * t + k]); };
+  int planes = 0, bad = 0;
+  size_t badTris = 0, planeTris = 0;
+  for (size_t i = 0; i < seg.surfaces.size(); ++i) {
+    const auto& s = seg.surfaces[i];
+    if (s.kind != 0) continue;
+    ++planes;
+    gp_XYZ mean(0, 0, 0), centre(0, 0, 0);
+    double area = 0;
+    std::vector<int> tris;
+    for (int r : s.regions)
+      for (int t : seg.regions[r].triangles) {
+        tris.push_back(t);
+        mean += seg.areas[t] * seg.normals[t];
+        area += seg.areas[t];
+        for (int k = 0; k < 3; ++k) centre += (seg.areas[t] / 3) * f.meshNode(corner(t, k));
+      }
+    planeTris += tris.size();
+    const double cosine = mean.Modulus() > 0 ? std::fabs(s.direction.XYZ().Dot(mean) / mean.Modulus()) : 0;
+    if (cosine >= 0.5) continue;
+    ++bad;
+    badTris += tris.size();
+    double refit = 0;
+    if (mean.Modulus() > 0 && area > 0) {
+      const gp_XYZ n = mean / mean.Modulus(), c = centre / area;
+      for (int t : tris)
+        for (int k = 0; k < 3; ++k) refit = std::max(refit, std::fabs((f.meshNode(corner(t, k)) - c).Dot(n)));
+    }
+    std::cout << std::setprecision(4) << "   q26 plane T " << used << " surface " << i << " tris " << tris.size() << " area " << area
+              << " cos " << cosine << " refit " << refit << " refitok " << (refit <= used) << " regions " << s.regions.size()
+              << std::endl;
+  }
+  std::cout << "   q26 planes T " << used << ": " << planes << " planes, " << planeTris << " triangles; " << bad
+            << " with |cos| < 0.5, " << badTris << " triangles" << std::endl;
+}
+
+/**
+ * Q3.1: `face` rebuilt with every vertex it shares between wires replaced by one copy per wire (same point and
+ * tolerance), as the STEP writer writes it (two VERTEX_POINTs). Its BRepCheck validity.
+ */
+static bool spikeSplitVertexValid(const TopoDS_Face& face) {
+  NCollection_DataMap<TopoDS_Shape, int, TopTools_ShapeMapHasher> wiresUsing;
+  for (TopExp_Explorer we(face, TopAbs_WIRE); we.More(); we.Next()) {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> vs;
+    TopExp::MapShapes(we.Current(), TopAbs_VERTEX, vs);
+    for (int i = 1; i <= vs.Extent(); ++i) {
+      if (!wiresUsing.IsBound(vs(i))) wiresUsing.Bind(vs(i), 0);
+      wiresUsing.ChangeFind(vs(i))++;
+    }
+  }
+  BRep_Builder builder;
+  TopLoc_Location location;
+  const Handle(Geom_Surface) surface = BRep_Tool::Surface(face, location);
+  TopoDS_Face out;
+  builder.MakeFace(out, surface, location, BRep_Tool::Tolerance(face));
+  int w = 0;
+  for (TopExp_Explorer we(face.Oriented(TopAbs_FORWARD), TopAbs_WIRE); we.More(); we.Next(), ++w) {
+    NCollection_DataMap<TopoDS_Shape, TopoDS_Shape, TopTools_ShapeMapHasher> copies;
+    TopoDS_Wire wire;
+    builder.MakeWire(wire);
+    for (TopExp_Explorer ee(we.Current(), TopAbs_EDGE); ee.More(); ee.Next()) {
+      const TopoDS_Edge edge = TopoDS::Edge(ee.Current());
+      TopoDS_Vertex a, b;
+      TopExp::Vertices(TopoDS::Edge(edge.Oriented(TopAbs_FORWARD)), a, b);
+      auto copyOf = [&](const TopoDS_Vertex& v) -> TopoDS_Vertex {
+        if (w == 0 || !wiresUsing.IsBound(v) || wiresUsing.Find(v) < 2) return v;
+        if (!copies.IsBound(v)) {
+          TopoDS_Vertex c;
+          builder.MakeVertex(c, BRep_Tool::Pnt(v), BRep_Tool::Tolerance(v));
+          copies.Bind(v, c);
+        }
+        return TopoDS::Vertex(copies.Find(v));
+      };
+      const TopoDS_Vertex na = copyOf(a), nb = copyOf(b);
+      if (na.IsSame(a) && nb.IsSame(b)) {
+        builder.Add(wire, edge);
+        continue;
+      }
+      TopoDS_Edge copy = ShapeBuild_Edge().CopyReplaceVertices(TopoDS::Edge(edge.Oriented(TopAbs_FORWARD)), na, nb);
+      builder.Add(wire, edge.Orientation() == TopAbs_REVERSED ? TopoDS::Edge(copy.Reversed()) : copy);
+    }
+    wire.Closed(true);
+    builder.Add(out, wire);
+  }
+  out.Orientation(face.Orientation());
+  return BRepCheck_Analyzer(out).IsValid();
+}
+
+/**
+ * Q26TOUCH (slice D11, run 3): every face of `shape` whose wires share a vertex (a split region's face after unify),
+ * one "q26 touch <tag>" line per shared vertex and wire: the surface kind, periodic in u/v, whether the face spans a
+ * full period, its seam edges, the vertex's position, and the pcurve values of that wire's edges at the vertex, with
+ * the distance to the face's parameter bounds (where a full wrap's seam lies). Returns the shared vertices' points.
+ */
+static std::vector<gp_Pnt> q26Touching(const TopoDS_Shape& shape, const char* tag) {
+  std::vector<gp_Pnt> out;
+  int index = 0;
+  for (TopExp_Explorer fe(shape, TopAbs_FACE); fe.More(); fe.Next(), ++index) {
+    const TopoDS_Face face = TopoDS::Face(fe.Current());
+    std::vector<TopoDS_Wire> wires;
+    for (TopExp_Explorer we(face, TopAbs_WIRE); we.More(); we.Next()) wires.push_back(TopoDS::Wire(we.Current()));
+    if (wires.size() < 2) continue;
+    NCollection_DataMap<TopoDS_Shape, std::set<int>, TopTools_ShapeMapHasher> wiresOf;
+    for (size_t w = 0; w < wires.size(); ++w)
+      for (TopExp_Explorer ve(wires[w], TopAbs_VERTEX); ve.More(); ve.Next()) {
+        if (!wiresOf.IsBound(ve.Current())) wiresOf.Bind(ve.Current(), {});
+        wiresOf.ChangeFind(ve.Current()).insert(static_cast<int>(w));
+      }
+    const BRepAdaptor_Surface surface(face, false);
+    double u0 = 0, u1 = 0, v0 = 0, v1 = 0;
+    BRepTools::UVBounds(face, u0, u1, v0, v1);
+    int seams = 0;
+    for (TopExp_Explorer ee(face, TopAbs_EDGE); ee.More(); ee.Next()) seams += BRep_Tool::IsClosed(TopoDS::Edge(ee.Current()), face);
+    for (NCollection_DataMap<TopoDS_Shape, std::set<int>, TopTools_ShapeMapHasher>::Iterator it(wiresOf); it.More(); it.Next()) {
+      if (it.Value().size() < 2) continue;
+      const TopoDS_Vertex vertex = TopoDS::Vertex(it.Key());
+      const gp_Pnt p = BRep_Tool::Pnt(vertex);
+      out.push_back(p);
+      for (int w : it.Value()) {
+        std::string values;
+        double du = 1e300, dv = 1e300;
+        for (TopExp_Explorer ee(wires[w], TopAbs_EDGE); ee.More(); ee.Next()) {
+          const TopoDS_Edge edge = TopoDS::Edge(ee.Current());
+          TopoDS_Vertex a, b;
+          TopExp::Vertices(edge, a, b);
+          if (!a.IsSame(vertex) && !b.IsSame(vertex)) continue;
+          double first = 0, last = 0;
+          const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(edge, face, first, last);
+          if (pc.IsNull()) continue;
+          const double t = BRep_Tool::Parameter(vertex, edge, face);
+          const gp_Pnt2d uv = pc->Value(t);
+          char buffer[96];
+          std::snprintf(buffer, sizeof buffer, " (%.6f, %.6f)", uv.X(), uv.Y());
+          values += buffer;
+          du = std::min({du, std::fabs(uv.X() - u0), std::fabs(uv.X() - u1)});
+          dv = std::min({dv, std::fabs(uv.Y() - v0), std::fabs(uv.Y() - v1)});
+        }
+        std::cout << std::setprecision(6) << "   q26 touch " << tag << " face " << index << " kind " << surfaceTypeName(surface.GetType())
+                  << " uper " << surface.IsUPeriodic() << " vper " << surface.IsVPeriodic() << " uspan " << u1 - u0 << " vspan "
+                  << v1 - v0 << " seams " << seams << " wires " << wires.size() << " vertex " << p.X() << "," << p.Y() << "," << p.Z()
+                  << " tol " << BRep_Tool::Tolerance(vertex) << " wire " << w << " du " << du << " dv " << dv
+                  << " valid " << BRepCheck_Analyzer(face).IsValid() << " splitvalid " << spikeSplitVertexValid(face) << " pcurves" << values << std::endl;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Q3.1 prototype (fix b, harness only): a face on a periodic surface whose hole H shares a vertex n with its outer
+ * wire O is rebuilt as two faces, cut by an edge c along a straight (u, v) segment from a vertex h of H to a vertex o
+ * of O that it sees (no edge crossed, midpoint inside): A = O[n..o] + c(o→h) + H[h..n], B = O[o..n] + H[n..h] + c(h→o).
+ * Each passes n once. The face's other holes go to the piece whose outline holds them. Edges are reused, so the
+ * neighbours don't change. Repeated until no periodic face has a hole that shares a vertex with its outer wire;
+ * a cut whose pieces don't check valid is not made. Holes touching only other holes are left (counted).
+ */
+static bool spikeCutFace(const TopoDS_Face& input, TopoDS_Face& pieceA, TopoDS_Face& pieceB) {
+  const TopoDS_Face face = TopoDS::Face(input.Oriented(TopAbs_FORWARD));
+  TopLoc_Location location;
+  const Handle(Geom_Surface) surface = BRep_Tool::Surface(face, location);
+  if (!location.IsIdentity()) return false;
+  const TopoDS_Wire outer = BRepTools::OuterWire(face);
+  struct Use {
+    TopoDS_Edge edge;
+    TopoDS_Vertex start;
+    gp_Pnt2d at;
+  };
+  auto uses = [&](const TopoDS_Wire& wire) {
+    std::vector<Use> out;
+    for (BRepTools_WireExplorer we(wire, face); we.More(); we.Next()) {
+      const TopoDS_Edge& e = we.Current();
+      double first = 0, last = 0;
+      const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(e, face, first, last);
+      if (pc.IsNull()) return std::vector<Use>();
+      out.push_back({e, we.CurrentVertex(), pc->Value(e.Orientation() == TopAbs_REVERSED ? last : first)});
+    }
+    return out;
+  };
+  std::vector<std::vector<Use>> holes;
+  std::vector<TopoDS_Wire> holeWires;
+  for (TopExp_Explorer we(face, TopAbs_WIRE); we.More(); we.Next())
+    if (!we.Current().IsSame(outer)) {
+      holeWires.push_back(TopoDS::Wire(we.Current()));
+      holes.push_back(uses(holeWires.back()));
+    }
+  const std::vector<Use> O = uses(outer);
+  if (O.empty()) return false;
+  std::vector<std::pair<gp_Pnt2d, gp_Pnt2d>> segments;
+  for (TopExp_Explorer ee(face, TopAbs_EDGE); ee.More(); ee.Next()) {
+    double first = 0, last = 0;
+    const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(TopoDS::Edge(ee.Current()), face, first, last);
+    if (pc.IsNull()) continue;
+    gp_Pnt2d previous = pc->Value(first);
+    for (int i = 1; i <= 16; ++i) {
+      const gp_Pnt2d p = pc->Value(first + (last - first) * i / 16);
+      segments.push_back({previous, p});
+      previous = p;
+    }
+  }
+  BRepTopAdaptor_FClass2d inside(face, 1e-7);
+  auto cross = [](const gp_Pnt2d& o, const gp_Pnt2d& a, const gp_Pnt2d& b) {
+    return (a.X() - o.X()) * (b.Y() - o.Y()) - (a.Y() - o.Y()) * (b.X() - o.X());
+  };
+  auto sees = [&](const gp_Pnt2d& p, const gp_Pnt2d& q) {
+    if (p.Distance(q) < 1e-9) return false;
+    for (double t : {0.25, 0.5, 0.75})
+      if (inside.Perform(gp_Pnt2d(p.X() + t * (q.X() - p.X()), p.Y() + t * (q.Y() - p.Y()))) != TopAbs_IN) return false;
+    for (const auto& [a, b] : segments) {
+      if (a.Distance(p) < 1e-7 || a.Distance(q) < 1e-7 || b.Distance(p) < 1e-7 || b.Distance(q) < 1e-7) continue;
+      const double d1 = cross(p, q, a), d2 = cross(p, q, b), d3 = cross(a, b, p), d4 = cross(a, b, q);
+      if (((d1 > 0) != (d2 > 0)) && ((d3 > 0) != (d4 > 0))) return false;
+    }
+    return true;
+  };
+  for (size_t k = 0; k < holes.size(); ++k) {
+    const std::vector<Use>& H = holes[k];
+    if (H.empty()) continue;
+    // n: a vertex both H and O start an edge at.
+    int hn = -1, on = -1;
+    for (size_t i = 0; i < H.size() && hn < 0; ++i)
+      for (size_t j = 0; j < O.size(); ++j)
+        if (H[i].start.IsSame(O[j].start)) {
+          hn = static_cast<int>(i);
+          on = static_cast<int>(j);
+          break;
+        }
+    if (hn < 0) continue;
+    // h: H's vertices farthest from n first; o: O's vertices nearest to h first.
+    std::vector<int> hs, os;
+    for (size_t i = 0; i < H.size(); ++i)
+      if (static_cast<int>(i) != hn) hs.push_back(static_cast<int>(i));
+    std::sort(hs.begin(), hs.end(), [&](int x, int y) { return H[x].at.Distance(H[hn].at) > H[y].at.Distance(H[hn].at); });
+    for (size_t hi = 0; hi < hs.size() && hi < 8; ++hi) {
+      const Use& h = H[hs[hi]];
+      os.clear();
+      for (size_t j = 0; j < O.size(); ++j)
+        if (static_cast<int>(j) != on && !O[j].start.IsSame(H[hn].start)) os.push_back(static_cast<int>(j));
+      std::sort(os.begin(), os.end(), [&](int x, int y) { return O[x].at.Distance(h.at) < O[y].at.Distance(h.at); });
+      for (size_t oi = 0; oi < os.size() && oi < 64; ++oi) {
+        const Use& o = O[os[oi]];
+        if (!sees(o.at, h.at)) continue;
+        try {
+          const Handle(Geom2d_TrimmedCurve) line = GCE2d_MakeSegment(o.at, h.at).Value();
+          BRepBuilderAPI_MakeEdge make(line, surface, o.start, h.start, line->FirstParameter(), line->LastParameter());
+          if (!make.IsDone()) continue;
+          TopoDS_Edge c = make.Edge();
+          BRepLib::BuildCurves3d(c);
+          BRep_Builder builder;
+          // The runs of a wire's uses from index `from` (inclusive) up to the use starting at `to` (exclusive).
+          auto run = [](const std::vector<Use>& w, int from, int to, TopoDS_Wire& into, BRep_Builder& b) {
+            const int m = static_cast<int>(w.size());
+            for (int i = from; i != to; i = (i + 1) % m) b.Add(into, w[i].edge);
+          };
+          TopoDS_Wire wa, wb;
+          builder.MakeWire(wa);
+          builder.MakeWire(wb);
+          run(O, on, os[oi], wa, builder);
+          builder.Add(wa, c);
+          run(H, hs[hi], hn, wa, builder);
+          run(O, os[oi], on, wb, builder);
+          run(H, hn, hs[hi], wb, builder);
+          builder.Add(wb, TopoDS::Edge(c.Reversed()));
+          wa.Closed(true);
+          wb.Closed(true);
+          TopoDS_Face fa, fb;
+          builder.MakeFace(fa, surface, location, BRep_Tool::Tolerance(face));
+          builder.MakeFace(fb, surface, location, BRep_Tool::Tolerance(face));
+          builder.Add(fa, wa);
+          builder.Add(fb, wb);
+          // The other holes, each to the piece that holds one of its vertices.
+          BRepTopAdaptor_FClass2d inA(fa, 1e-7);
+          for (size_t q = 0; q < holes.size(); ++q) {
+            if (q == k || holes[q].empty()) continue;
+            builder.Add(inA.Perform(holes[q][0].at) == TopAbs_IN ? fa : fb, holeWires[q]);
+          }
+          if (!BRepCheck_Analyzer(fa).IsValid() || !BRepCheck_Analyzer(fb).IsValid()) continue;
+          pieceA = TopoDS::Face(fa.Oriented(input.Orientation()));
+          pieceB = TopoDS::Face(fb.Oriented(input.Orientation()));
+          return true;
+        } catch (const Standard_Failure&) {
+        }
+      }
+    }
+  }
+  return false;
+}
+
+static TopoDS_Shape spikeCutTouching(const TopoDS_Shape& shape, int& cuts, int& failed) {
+  TopoDS_Shape current = shape;
+  cuts = failed = 0;
+  std::set<const void*> refused;
+  for (int round = 0; round < 512; ++round) {
+    bool done = false;
+    for (TopExp_Explorer fe(current, TopAbs_FACE); fe.More() && !done; fe.Next()) {
+      const TopoDS_Face face = TopoDS::Face(fe.Current());
+      if (refused.count(face.TShape().get())) continue;
+      const BRepAdaptor_Surface adaptor(face, false);
+      if (!adaptor.IsUPeriodic() && !adaptor.IsVPeriodic()) continue;
+      // Has a hole that shares a vertex with the outer wire?
+      const TopoDS_Wire outer = BRepTools::OuterWire(face);
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> outerVertices;
+      TopExp::MapShapes(outer, TopAbs_VERTEX, outerVertices);
+      bool touching = false;
+      for (TopExp_Explorer we(face, TopAbs_WIRE); we.More() && !touching; we.Next()) {
+        if (we.Current().IsSame(outer)) continue;
+        for (TopExp_Explorer ve(we.Current(), TopAbs_VERTEX); ve.More() && !touching; ve.Next())
+          touching = outerVertices.Contains(ve.Current());
+      }
+      if (!touching) continue;
+      TopoDS_Face a, b;
+      if (!spikeCutFace(face, a, b)) {
+        refused.insert(face.TShape().get());
+        ++failed;
+        continue;
+      }
+      Handle(BRepTools_ReShape) reshape = new BRepTools_ReShape;
+      TopoDS_Compound both;
+      BRep_Builder().MakeCompound(both);
+      BRep_Builder().Add(both, a);
+      BRep_Builder().Add(both, b);
+      reshape->Replace(face, both);
+      current = reshape->Apply(current);
+      ++cuts;
+      done = true;
+    }
+    if (!done) break;
+  }
+  return current;
+}
+
+/** Q26TOUCH: the read-back's invalid faces, and its vertices that lie within 1e-6 of another (a vertex split in two). */
+static void q26ReadBack(const TopoDS_Shape& back, const std::vector<gp_Pnt>& shared) {
+  int index = 0;
+  for (TopExp_Explorer fe(back, TopAbs_FACE); fe.More(); fe.Next(), ++index) {
+    if (BRepCheck_Analyzer(fe.Current()).IsValid()) continue;
+    const BRepAdaptor_Surface surface(TopoDS::Face(fe.Current()), false);
+    int wires = 0;
+    for (TopExp_Explorer we(fe.Current(), TopAbs_WIRE); we.More(); we.Next()) ++wires;
+    std::cout << "   q26 back invalid face " << index << " kind " << surfaceTypeName(surface.GetType()) << " wires " << wires << std::endl;
+  }
+  NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> vertices;
+  TopExp::MapShapes(back, TopAbs_VERTEX, vertices);
+  std::vector<std::pair<gp_Pnt, int>> points;
+  for (int i = 1; i <= vertices.Extent(); ++i) points.push_back({BRep_Tool::Pnt(TopoDS::Vertex(vertices(i))), i});
+  std::sort(points.begin(), points.end(), [](const auto& a, const auto& b) { return a.first.X() < b.first.X(); });
+  for (size_t i = 0; i < points.size(); ++i)
+    for (size_t j = i + 1; j < points.size() && points[j].first.X() - points[i].first.X() < 1e-6; ++j) {
+      if (points[i].first.Distance(points[j].first) >= 1e-6) continue;
+      double nearest = 1e300;
+      for (const gp_Pnt& q : shared) nearest = std::min(nearest, q.Distance(points[i].first));
+      const gp_Pnt& p = points[i].first;
+      std::cout << std::setprecision(6) << "   q26 back duplicate vertex " << p.X() << "," << p.Y() << "," << p.Z() << " apart "
+                << points[i].first.Distance(points[j].first) << " nearest written shared vertex " << nearest << std::endl;
+    }
+}
+
 static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
   const Mesh m = stlFile(path.c_str());
   std::cout << "== file " << path.substr(5) << " (" << m.triangles.size() / 3 << " triangles, tol " << tolerance << ")" << std::endl;
@@ -3134,6 +4149,24 @@ static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
     std::memcpy(reinterpret_cast<void*>(f.meshTrianglesPtr()), m.triangles.data(), m.triangles.size() * sizeof(uint32_t));
   };
   stage();
+  if (getenv("Q26LADDER") && *getenv("Q26LADDER")) {
+    // Q1b.1: segmentMesh at every Auto rung, its unfit share and time (Auto itself stops at the first that passes).
+    for (double T : ExtrudoFacade::MESH_AUTO_LADDER) {
+      ExtrudoFacade::MeshSegmentation seg;
+      const double t0 = now();
+      const bool ok = f.segmentMesh(T, seg);
+      std::cout << "   q26 rung " << T << " unfit " << (ok ? 100 * seg.unfitFraction : -1) << " % ms " << now() - t0 << std::endl;
+    }
+    return;
+  }
+  if (getenv("Q26PLANES") && *getenv("Q26PLANES")) {
+    // Q2.2: at Auto's step and at 0.01 mm, then (Q26PLANES=only) nothing else.
+    q26Planes(f, 0, true);
+    q26Planes(f, 0.01, false);
+    if (std::string(getenv("Q26PLANES")) == "only") return;
+    f.clearMeshRegions();
+    stage();
+  }
   const bool q25On = getenv("Q25") && *getenv("Q25");
   if (q25On) {
     q25(f);
@@ -3299,10 +4332,22 @@ static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
   stage();
   t0 = now();
   const bool facesOn = getenv("FACES") && *getenv("FACES");
-  f.keepHybridFaces_ = facesOn || q25On;
+  q26Mode = getenv("Q26") ? std::atoi(getenv("Q26")) : 0;
+  q26Tolerance = 0;
+  q26Builds.clear();
+  q26Attempts.clear();
+  q26Regions.clear();
+  q26HybridOf.clear();
+  q26Nodes.clear();
+  q26Triangles.clear();
+  f.keepHybridFaces_ = facesOn || q25On || q26Mode;
   f.hybridFaces_.clear();
   const int h = f.meshToSolid(1, tolerance);
   const double ms = now() - t0;
+  if (q26Mode) {
+    q26AttemptLines(f, h);
+    if (q26Mode == 1) q26Report(f, q26Tolerance);
+  }
   if (facesOn)
     for (const auto& line : f.hybridFaces_) std::cout << "   hybrid " << line << std::endl;
   if (q25On) {
@@ -3392,6 +4437,55 @@ static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
   }
   std::cout << "   prismatic " << f.count(h, 0) << " faces:" << kinds(s) << ", valid " << BRepCheck_Analyzer(s).IsValid() << ", volume "
             << v << " / mesh " << meshVolume << " = " << v / meshVolume << " (" << ms << " ms)" << std::endl;
+  if (getenv("Q26TOUCH") && *getenv("Q26TOUCH")) {
+    // Q3.1 step 1: faces whose wires share a vertex, then the STEP read-back's invalid faces and split vertices.
+    // Q26TOUCH=cut: the prototype cut first (spikeCutTouching), its body written instead.
+    int written = h;
+    if (std::string(getenv("Q26TOUCH")) == "cut") {
+      int cuts = 0, failed = 0;
+      const double t0 = now();
+      const TopoDS_Shape cut = spikeCutTouching(s, cuts, failed);
+      written = f.store(cut);
+      std::cout << "   q26 cut " << cuts << " cuts, " << failed << " holes without a cut, faces " << f.count(h, 0) << " -> "
+                << f.count(written, 0) << ", valid " << BRepCheck_Analyzer(cut).IsValid() << ", volume " << ExtrudoFacade::volumeOf(cut)
+                << " / " << ExtrudoFacade::volumeOf(s) << " (" << now() - t0 << " ms)" << std::endl;
+    }
+    const std::vector<gp_Pnt> shared = q26Touching(*f.find(written), "written");
+    f.clearArgs();
+    f.pushArg(written);
+    const int size = f.writeStep();
+    std::string text;
+    if (size > 0) text.assign(reinterpret_cast<const char*>(f.exportTextPtr()), static_cast<size_t>(size));
+    f.clearExport();
+    const int back = text.empty() ? 0 : f.readStep(text.c_str());
+    if (back) {
+      const TopoDS_Shape& readBack = *f.find(back);
+      std::cout << "   q26 back valid " << BRepCheck_Analyzer(readBack).IsValid() << " faces " << f.count(back, 0) << std::endl;
+      if (!BRepCheck_Analyzer(readBack).IsValid()) {
+        q26ReadBack(readBack, shared);
+        q26Touching(readBack, "back");
+      }
+      f.release(back);
+    }
+    if (written != h) f.release(written);
+  }
+  if (getenv("STEP_OUT") && *getenv("STEP_OUT")) {
+    // Q1b.2 (slice D11): the body's STEP as the facade writes it (what users get), and its OCCT read-back.
+    f.clearArgs();
+    f.pushArg(h);
+    const int size = f.writeStep();
+    std::string text;
+    if (size > 0) text.assign(reinterpret_cast<const char*>(f.exportTextPtr()), static_cast<size_t>(size));
+    f.clearExport();
+    const std::string out = std::string(getenv("STEP_OUT")) + "/" + path.substr(5, path.rfind('.') - 5) + ".step";
+    std::filesystem::create_directories(std::filesystem::path(out).parent_path());
+    std::ofstream(out) << text;
+    const int back = text.empty() ? 0 : f.readStep(text.c_str());
+    std::cout << "   q26 step " << out << " bytes " << text.size() << " faces " << f.count(h, 0) << " back faces "
+              << (back ? f.count(back, 0) : -1) << " back valid " << (back ? BRepCheck_Analyzer(*f.find(back)).IsValid() : 0)
+              << std::endl;
+    if (back) f.release(back);
+  }
   f.release(h);
 }
 
@@ -3420,6 +4514,27 @@ int main(int argc, char** argv) {
     std::sort(paths.begin(), paths.end());
     for (const auto& p : paths) file(f, p, envTol);
     std::cout << "live shapes " << f.liveShapes() << "\n";
+    return 0;
+  }
+  if (only == "H") {
+    // Q1b.2 (slice D11): the tori OCCT's own fillet makes on a cylinder's two rims (r 5, h 10, fillet 1): each
+    // face's orientation, its torus frame's handedness and location, then the body's STEP as /w/d11/hand.step.
+    TopoDS_Shape cyl = BRepPrimAPI_MakeCylinder(5, 10).Shape();
+    BRepFilletAPI_MakeFillet fillet(cyl);
+    for (TopExp_Explorer e(cyl, TopAbs_EDGE); e.More(); e.Next())
+      if (BRepAdaptor_Curve(TopoDS::Edge(e.Current())).GetType() == GeomAbs_Circle) fillet.Add(1, TopoDS::Edge(e.Current()));
+    const TopoDS_Shape body = fillet.Shape();
+    for (TopExp_Explorer e(body, TopAbs_FACE); e.More(); e.Next()) {
+      const TopoDS_Face face = TopoDS::Face(e.Current());
+      const BRepAdaptor_Surface s(face, false);
+      if (s.GetType() != GeomAbs_Torus) continue;
+      const gp_Torus t = s.Torus();
+      std::cout << "   q26 hand torus at z " << t.Location().Z() << " direct " << t.Position().Direct() << " axis z " << t.Axis().Direction().Z()
+                << " face " << (face.Orientation() == TopAbs_REVERSED ? "reversed" : "forward") << std::endl;
+    }
+    STEPControl_Writer writer;
+    writer.Transfer(body, STEPControl_AsIs);
+    writer.Write("/w/d11/hand.step");
     return 0;
   }
   if (only == "s") {

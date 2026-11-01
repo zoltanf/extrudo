@@ -3457,6 +3457,32 @@ unfit area. Rules:
 - The sweep baseline from here on is `baseline-2026-10-31c-auto.jsonl` (D9's, plus the import repair).
 Details in ADR-0097's 2026-10-31c amendment.
 
+**ADR-0097 slice D11 (2026-11-01): exploded regions split at the nodes their boundary passes twice, plane fits
+square to their facets.** `extrudo_facade.cpp` (`meshLoops`, `meshFanLoops`, `MeshHybridRegion::splitNodes`,
+`cutTouchingFace`, `cutTouchingLoops` after `rebuildHybrid`'s validity stage, `fitKind`'s plane case); probes `Q26`
+(`Q26PLANES`, `Q26LADDER`, `Q26TOUCH`, `STEP_OUT`, case `H`) in `spikes/stl-to-solid/prismatic.cpp`, `q26.py`,
+`noise.py`, `torus_loops.py`. Rules:
+- A region whose boundary passes a node twice is one face, not two: `meshFanLoops` pairs each boundary edge with the
+  next round the same fan, cuts each walk at the nodes it passes twice into simple loops that share the node's
+  vertex; outer loop, sign test, "a loop that doesn't close" and "no boundary" stay as they are, and a region without
+  such a node keeps the old walk exactly. The diagnostics line says "split at N nodes".
+- No face on a periodic surface leaves the hybrid with a hole that shares a vertex with its outer wire: the STEP
+  writer writes such a vertex twice and the reader can find the loops crossing. `cutTouchingLoops` cuts each such face
+  in two along a straight (u, v) edge between two existing vertices (no boundary edge split, the neighbours
+  untouched), keeps a face no valid cut exists for, and keeps the body only when it checks valid ("touching loops
+  cut: N" in the stages). Planes stay whole. Don't replace it by a cutting plane (it splits shared edges) or
+  `BRepFeat_SplitShape` (it makes a slit).
+- A plane group's least-squares plane is kept only when its normal agrees with the facets' area-weighted mean normal
+  by |cos| ≥ `MESH_PLANE_NORMAL_AGREEMENT` (0.5); a wall strip lower than T is no plane square to it.
+- Tests: `mesh-to-solid.test.ts` "splits a top face whose two dimples touch at a node into one face with two inner
+  loops (slice D11)" and "cuts a boss wall whose dimple touches its rim at a node in two, so it round-trips
+  (slice D11)". The sweep baseline from here on is `baseline-2026-11-01b-auto.jsonl`: `files 41, prismatic converted
+  36 refused 5, faceted converted 26 refused 15, prismatic faces 22569, prismatic facets 12565, prismatic ms 264862,
+  faceted ms 107397, round trips failed 7` (31c's 7 files).
+- Measured, not built (don't redo without new evidence): keeping the last valid hybrid attempt (0 cases), the mesh's
+  noise as Auto's starting rung (it measures creases on CAD meshes), refitting degenerate planes within T (none fits).
+Numbers in ADR-0097's 2026-11-01 amendment; all tables in `docs/plans/m2s-exploded-q1-2026-11-01.md`.
+
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
 facade `removeFaces` with `BRepAlgoAPI_Defeaturing`). Rules: **all or nothing** (any
