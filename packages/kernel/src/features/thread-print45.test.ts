@@ -1,8 +1,9 @@
 // The print45 thread profile (P4-12, ADR-0056's fourth amendment) through the
 // recompute engine with real OCCT: a print screw and a print nut (Fit the
 // face) clear each other, the cut matches the profile's section area, a hole
-// at a size's own diameter gets that size, and the new warnings say what a
-// bore wider than the minor (or a shaft thinner than the major) does.
+// at a size's own diameter gets that size, and a bore wider than the minor
+// (or a shaft thinner than the major) is brought to it first (the fill,
+// ADR-0056's fifth amendment; its own cases are in `thread-fill.test.ts`).
 // `thread.test.ts` has the ISO side and the golden table; the cases here live
 // in their own file so the next slice's tests don't collide.
 import {
@@ -337,9 +338,10 @@ describe('print45 threads', { timeout: 300_000 }, () => {
     expect(kernel.distance(nut.shape, screw.shape)).toBeGreaterThan(0.09);
   });
 
-  it('warns when a bore is past the minor or a shaft under the major, and still cuts', async () => {
-    // M5 typed into a hole drawn at Ø5: the nominal size, but the bore is
-    // already past the thread's minor diameter.
+  it('fills a bore past the minor and builds up a shaft under the major, then cuts', async () => {
+    // M5 typed into a hole drawn at Ø5: the nominal size, past the thread's
+    // minor diameter. The bore is filled in to it along the thread (ADR-0056's
+    // fifth amendment); Ø5 is off by more than the thread's depth, so a note.
     engine.clear();
     const hole = blockWithHole(5, 6);
     const inWide = await runWithShapes(
@@ -351,11 +353,11 @@ describe('print45 threads', { timeout: 300_000 }, () => {
     const wide = status(inWide, 'T');
     expect(wide.status).toBe('warning');
     expect(wide.message).toBe(
-      "The hole is 5 mm across, wider than the M5 thread's minor diameter (4.334 mm): only the outer part of the tooth is cut. Draw the hole at about 4.1 mm for a full thread.",
+      "The hole is 5 mm across, wider than the M5 thread's minor diameter (4.334 mm): it is filled in to it along the thread.",
     );
     expect(measure(inWide, 'E:0').valid).toBe(true);
 
-    // M5 on a Ø4.5 shaft: the teeth would stand off the surface.
+    // M5 on a Ø4.5 shaft: built up to the crest, within the depth: no word.
     engine.clear();
     const onThin = await runWithShapes(
       testDocument([
@@ -363,25 +365,30 @@ describe('print45 threads', { timeout: 300_000 }, () => {
         thread('T', { faces: [wall('C')], numbers: { diameter: '5 mm', pitch: '0.8 mm' } }),
       ]),
     );
-    const thin = status(onThin, 'T');
-    expect(thin.status).toBe('warning');
-    expect(thin.message).toBe(
-      "The shaft is 4.5 mm across, thinner than the M5 thread's major diameter (4.8 mm): only the outer part of the tooth is cut. Make the shaft 5 mm for a full thread.",
-    );
-    expect(measure(onThin, 'C:0').valid).toBe(true);
+    expect(status(onThin, 'T')).toEqual({ status: 'ok' });
+    const thin = measure(onThin, 'C:0');
+    expect(thin.valid).toBe(true);
+    // A full tooth: the crests reach the major less the tolerance.
+    expect(thin.bbox.max[0]).toBeGreaterThan(2.4 - 0.01);
   });
 
   it('fits print sizes to a nominal hole and a tap-drill hole, and refuses others', async () => {
     // A hole drawn at the size's own diameter is that size (Ø5 → Print 5 × 1.5);
-    // the bore is wider than the tooth's tip, so it also warns.
+    // the bore is wider than the tooth's tip by more than its depth, so it is
+    // filled in to it, with a note, and cuts a full tooth.
     engine.clear();
     const block = blockWithHole(5, 6);
     const nominal = await runWithShapes(
       testDocument([...block.features, thread('T', { faces: [block.wall], profile: 'print45' })]),
     );
     expect(dataOf('T').faces[0]).toMatchObject({ designation: 'Print 5 × 1.5', diameter: 5 });
-    expect(status(nominal, 'T').status).toBe('warning');
-    expect(measure(nominal, 'E:0').valid).toBe(true);
+    expect(status(nominal, 'T')).toEqual({
+      status: 'warning',
+      message:
+        "The hole is 5 mm across, wider than the Print 5 × 1.5 thread's minor diameter (4.3 mm): it is filled in to it along the thread.",
+    });
+    const filled = measure(nominal, 'E:0');
+    expect(filled.valid).toBe(true);
 
     // The tap drill (Ø4.1, the print-5 minor) fits the same size, no warning.
     engine.clear();
@@ -394,7 +401,10 @@ describe('print45 threads', { timeout: 300_000 }, () => {
     );
     expect(status(tap, 'T').status).toBe('ok');
     expect(dataOf('T').faces[0]).toMatchObject({ designation: 'Print 5 × 1.5', diameter: 5 });
-    expect(measure(tap, 'E:0').valid).toBe(true);
+    const tapped = measure(tap, 'E:0');
+    expect(tapped.valid).toBe(true);
+    // The nominal hole, filled, threads as fully as the tap-drill one.
+    expect(Math.abs(filled.volume - tapped.volume) / tapped.volume).toBeLessThan(0.01);
 
     // A profile with no fit table still needs a size.
     engine.clear();

@@ -427,7 +427,20 @@ describe('B9 bottle cap and thread adapter', { timeout: 120_000 }, () => {
   /** A cylinder's volume, mm³. */
   const volumeOf = (r: number, height: number) => Math.PI * r * r * height;
   /** The unthreaded cap: a cylinder less the cup a wall of `wall` hollows out. */
-  const cupVolume = (wall = 2) => volumeOf(16, 14) - volumeOf(16 - wall, 14 - wall);
+  /**
+   * What the cap can weigh once threaded: its bore filled in to M30's minor
+   * (ADR-0056's fifth amendment) and grooved out to the root, so between a
+   * bore at the root and one at the crest over the bore's height.
+   */
+  const capBounds = (wall = 2) => {
+    const pitch = 3.5;
+    const crest = 15 - (5 / 8) * (Math.sqrt(3) / 2) * pitch + 0.1;
+    const root = 15 + 0.1;
+    return [
+      volumeOf(16, 14) - volumeOf(root, 14 - wall),
+      volumeOf(16, 14) - volumeOf(crest, 14 - wall),
+    ] as const;
+  };
   /** The unthreaded adapter: two stacked cylinders. */
   const adapterVolume = () => volumeOf(10, 10) + volumeOf(14, 10);
   /**
@@ -454,14 +467,10 @@ describe('B9 bottle cap and thread adapter', { timeout: 120_000 }, () => {
       'Revolve2',
       'Thread2',
     ]);
-    const result = await recompute(doc, {
-      // The cap's bore is drawn at Ø28, past M30's minor diameter: the thread
-      // warns that only the outer part of the tooth is cut (P4-12's fourth
-      // amendment; the fill of such a bore is the next one).
-      id: featureId(doc, 'Thread1'),
-      message:
-        "The hole is 28 mm across, wider than the M30 thread's minor diameter (26.411 mm): only the outer part of the tooth is cut. Draw the hole at about 26.2 mm for a full thread.",
-    });
+    // The cap's bore is drawn at Ø28, past M30's minor diameter (Ø26.411 with
+    // the tolerance): the thread fills it in to it along the thread first
+    // (ADR-0056's fifth amendment), within the thread's depth, so no word.
+    const result = await recompute(doc);
     expect(bodyNames(doc, result)).toEqual(['Cap', 'Adapter']);
     const [cap, adapter] = bodies(result);
     // The shell's cup is open at the bottom and closed at the top, so the
@@ -472,10 +481,9 @@ describe('B9 bottle cap and thread adapter', { timeout: 120_000 }, () => {
     expect(cap?.size[2]).toBeCloseTo(14, 3);
     expect(cap?.min[2]).toBeCloseTo(0, 3);
     expect(cap?.faces).toBeGreaterThan(10);
-    // The internal thread takes a little more off the roots than it puts on
-    // the crests.
-    expect(cap?.volume).toBeLessThan(cupVolume());
-    expect(cap?.volume).toBeGreaterThan(cupVolume() * 0.8);
+    // Filled in to the crests and grooved out to the roots.
+    expect(cap?.volume).toBeGreaterThan(capBounds()[0]);
+    expect(cap?.volume).toBeLessThan(capBounds()[1]);
     // Both of the adapter's walls are threaded: the lower one is Ø20 (M20),
     // the upper Ø28 as drawn but M24's Ø23.8 once the thread turned it down.
     expect(adapter?.valid).toBe(true);
@@ -494,20 +502,21 @@ describe('B9 bottle cap and thread adapter', { timeout: 120_000 }, () => {
     // fit (M30 is the largest coarse size). A thinner wall leaves a Ø29 bore,
     // which M30 fits.
     const doc = withParameters(load(b9), { wall: '1.5 mm' });
-    // The Ø29 bore is past M30's minor too, so the thread warns the same way.
+    // The Ø29 bore is filled in to M30's minor too; it is off by more than the
+    // thread's depth (2.589 mm on the diameter against 1.894 mm), so a note.
     const [cap, adapter] = bodies(
       await recompute(doc, {
         id: featureId(doc, 'Thread1'),
         message:
-          "The hole is 29 mm across, wider than the M30 thread's minor diameter (26.411 mm): only the outer part of the tooth is cut. Draw the hole at about 26.2 mm for a full thread.",
+          "The hole is 29 mm across, wider than the M30 thread's minor diameter (26.411 mm): it is filled in to it along the thread.",
       }),
     );
     expect(cap?.valid).toBe(true);
     expect(cap?.size[0]).toBeCloseTo(32, 1);
     expect(cap?.size[2]).toBeCloseTo(14, 3);
-    // A thinner wall leaves more matter: the same bounds on a smaller cup.
-    expect(cap?.volume).toBeLessThan(cupVolume(1.5));
-    expect(cap?.volume).toBeGreaterThan(cupVolume(1.5) * 0.8);
+    // A thinner wall leaves a wider bore: the same bounds on a taller one.
+    expect(cap?.volume).toBeGreaterThan(capBounds(1.5)[0]);
+    expect(cap?.volume).toBeLessThan(capBounds(1.5)[1]);
     expect(adapter?.size[2]).toBeCloseTo(20, 3);
     expect(adapter?.valid).toBe(true);
   });

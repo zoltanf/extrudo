@@ -57,14 +57,30 @@ import {
   threadRadii,
   threadSettings,
 } from '@extrudo/core';
-import { type Axis, KernelError, type ShapeScope, type ThreadFace, type Vec3 } from '../kernel';
-import { type NamedShape, namedBoolean, namedRevolve, namedThreadSweep } from '../naming/ops';
+import {
+  type Axis,
+  KernelError,
+  type OperationResult,
+  RemoveFacesError,
+  type ShapeHandle,
+  type ShapeScope,
+  type ThreadFace,
+  type Vec3,
+} from '../kernel';
+import {
+  type NamedShape,
+  namedBoolean,
+  namedRevolve,
+  namedThreadSweep,
+  withHistory,
+} from '../naming/ops';
 import type { PlanarCurve, PlanarFrame } from '../planar';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { splitSolids } from './bodies';
 import { type OperationWords, operate } from './operation';
 import { compoundOf, mergeTools } from './pattern';
 import { planarFace } from './primitives';
+import { kernelSurface, removeFacesPick } from './remove-faces';
 import { cross, dot, scale } from './vec';
 
 /**
@@ -141,19 +157,50 @@ export const kernelThread: KernelFeatureDefinition<ThreadInputs> = {
     const parts: NamedShape[] = [];
     const bodies = new Set<BodyId>();
     const faces: ThreadOutputFace[] = [];
+    // The bodies once each face has been brought to its thread (the fill,
+    // ADR-0056's fifth amendment): every sleeve is joined before any tool is
+    // built, then the tools are merged and cut once.
+    const filled = new Map<BodyId, NamedShape>();
     settings.faces.forEach((ref, k) => {
       const hit = ctx.resolve(ref, { label: 'the face to thread' });
       const face = ctx.kernel.threadFace(hit.shape, hit.index);
-      const plan = planThread(face, settings, numbers, warnings);
+      let plan = planThread(face, settings, numbers, warnings);
+      if (plan.fill) {
+        const prefix = `f${k}.`;
+        const sleeve = sleeveOf(ctx, scope, plan, hit, prefix);
+        if (sleeve) {
+          const body = filled.get(hit.body) ?? { shape: hit.shape, names: ctx.names(hit.body) };
+          const joined = namedBoolean(ctx.kernel, 'fuse', body, sleeve, {
+            feature: ctx.feature.id,
+            op: 'thread',
+            simplify: true,
+          });
+          scope.track(joined.shape);
+          filled.set(hit.body, joined);
+          if (plan.fill.note) warnings.push(plan.fill.note);
+          // The ring and the lead-ins now start from the crest.
+          plan = { ...plan, radius: plan.radii.crest };
+        } else if (plan.fill.unfilled) {
+          warnings.push(plan.fill.unfilled);
+        }
+      }
       parts.push(buildTool(ctx, scope, plan, `f${k}.`));
       bodies.add(hit.body);
       faces.push(plan.report);
     });
     const tool = mergeTools(ctx, scope, parts, 'thread');
+    const step: EvalContext =
+      filled.size === 0
+        ? ctx
+        : {
+            ...ctx,
+            bodies: new Map([...ctx.bodies].map(([id, s]) => [id, filled.get(id)?.shape ?? s])),
+            names: (body) => filled.get(body)?.names ?? ctx.names(body),
+          };
     const result = splitSolids(
-      ctx,
+      step,
       scope,
-      operate(ctx, scope, { operation: 'cut', bodies: [] }, tool, [...bodies], warnings, WORDS),
+      operate(step, scope, { operation: 'cut', bodies: [] }, tool, [...bodies], warnings, WORDS),
     );
     const data: ThreadOutputData = { faces };
     const report: ThreadReport = {
@@ -262,7 +309,25 @@ export interface ThreadPlan {
   /** A lead-in at `from` / `to`. */
   lead: [boolean, boolean];
   left: boolean;
+  /**
+   * The sleeve that brings the face to the thread (ADR-0056's fifth
+   * amendment): only for a hole wider than the crest or a shaft thinner.
+   */
+  fill?: ThreadFill;
   report: ThreadOutputFace;
+}
+
+/** A face brought to the thread's size before the cut: the sleeve's radii at `anchor`. */
+export interface ThreadFill {
+  /** The band the sleeve spans, from the axis out (a hole: crest − reach/2 to the face; a shaft: the face to crest + reach/2). */
+  from: number;
+  to: number;
+  /** The run reaches an end of the face, so a hole's sleeve is trimmed to the body's hull. */
+  ends: boolean;
+  /** A warning when the face was off by more than the thread's depth. */
+  note?: string;
+  /** A hole's warning when its sleeve can't be trimmed (Remove Faces can't close it) and it is cut as drawn. */
+  unfilled?: string;
 }
 
 /** Checks the face and the numbers and works out one face's thread. */
@@ -348,13 +413,6 @@ export function planThread(
         `The hole is ${mm(2 * r)} across, much smaller than the ${name} thread: the thread bores it out to ${mm(2 * radii.crest)}.`,
       );
     }
-    // A hole wider than the tooth's tip: only the outer part of the tooth is
-    // cut (until the next amendment fills such a bore in).
-    if (r > radii.crest + EPS) {
-      warnings.push(
-        `The hole is ${mm(2 * r)} across, wider than the ${name} thread's minor diameter (${mm(2 * radii.crest)}): only the outer part of the tooth is cut. Draw the hole at about ${mm(round1(2 * radii.crest - 2 * n.tolerance))} for a full thread.`,
-      );
-    }
   } else {
     if (r <= radii.root + EPS) {
       throw new KernelError(
@@ -364,13 +422,6 @@ export function planThread(
     if (r > radii.crest + Math.max(0.5, 0.25 * diameter)) {
       warnings.push(
         `The shaft is ${mm(2 * r)} across, much thicker than the ${name} thread: the thread turns it down to ${mm(2 * radii.crest)}.`,
-      );
-    }
-    // A shaft thinner than the tooth's tips: the teeth stand off the surface,
-    // so only the outer part of the tooth is cut.
-    if (r < radii.crest - EPS) {
-      warnings.push(
-        `The shaft is ${mm(2 * r)} across, thinner than the ${name} thread's major diameter (${mm(2 * radii.crest)}): only the outer part of the tooth is cut. Make the shaft ${mm(round1(2 * radii.crest + 2 * n.tolerance))} for a full thread.`,
       );
     }
   }
@@ -404,6 +455,30 @@ export function planThread(
   const atFrom = Math.abs(from - face.from) < EPS && face.open[0];
   const atTo = Math.abs(to - face.to) < EPS && face.open[1];
   const lead: [boolean, boolean] = [settings.chamfer && atFrom, settings.chamfer && atTo];
+  // A hole wider than the part's crest (its minor diameter with the
+  // tolerance) or a shaft thinner than it (the major less the tolerance) is
+  // brought to it along the thread first (ADR-0056's fifth amendment): the
+  // sleeve reaches half the ring's reach past the crest, so the tooth's crest
+  // is cut out of sleeve material, and its other side is the face itself.
+  let fill: ThreadFill | undefined;
+  const depth = Math.abs(radii.root - radii.crest);
+  if (internal ? r > radii.crest + EPS : r < radii.crest - EPS) {
+    const off = 2 * Math.abs(r - radii.crest);
+    fill = {
+      from: internal ? radii.crest - reach({ pitch }) / 2 : r,
+      to: internal ? r : radii.crest + reach({ pitch }) / 2,
+      ends: Math.abs(from - face.from) < EPS || Math.abs(to - face.to) < EPS,
+      // Said only when the diameter is off by more than the thread's depth.
+      ...(off > depth + EPS && {
+        note: internal
+          ? `The hole is ${mm(2 * r)} across, wider than the ${name} thread's minor diameter (${mm(2 * radii.crest)}): it is filled in to it along the thread.`
+          : `The shaft is ${mm(2 * r)} across, thinner than the ${name} thread's major diameter (${mm(2 * radii.crest)}): it is built up to it along the thread.`,
+      }),
+      ...(internal && {
+        unfilled: `The hole is ${mm(2 * r)} across, wider than the ${name} thread's minor diameter (${mm(2 * radii.crest)}) and can't be filled in here: only the outer part of the tooth is cut. Draw the hole at about ${mm(round1(2 * radii.crest - 2 * n.tolerance))} for a full thread.`,
+      }),
+    };
+  }
   return {
     axis: face.axis,
     x: squareTo(face.axis.direction),
@@ -421,6 +496,7 @@ export function planThread(
     to,
     lead,
     left: settings.hand === 'left',
+    ...(fill && { fill }),
     report: {
       internal,
       profile: settings.profile,
@@ -675,6 +751,87 @@ export function toothPieces(
     done += count;
   }
   return out;
+}
+
+/**
+ * The sleeve that brings a face to its thread (ADR-0056's fifth amendment):
+ * the band `fill.from … fill.to` over the thread's run, both edges on a
+ * cone's slope, turned a whole turn. Faces `fill` (the new cylinder),
+ * `fillWall` (the one on the face, merged away by the join) and
+ * `fillEnd0|fillEnd1`.
+ *
+ * A hole's sleeve whose run reaches an end of the face is trimmed to the
+ * body's hull (the body with the hole closed by Remove Faces), so it doesn't
+ * stand out of a curved or slanted wall the hole comes out of. When Remove
+ * Faces can't close the hole (it meets another one), there is no sleeve:
+ * undefined, and the hole is cut as drawn.
+ */
+export function sleeveOf(
+  ctx: EvalContext,
+  scope: ShapeScope,
+  plan: ThreadPlan,
+  hit: { shape: ShapeHandle; index: number; body: BodyId },
+  prefix: string,
+): NamedShape | undefined {
+  const { fill } = plan;
+  if (!fill) return undefined;
+  const { kernel } = ctx;
+  const { from, to, internal } = plan;
+  const at = (u: number, v: number): [number, number] => [Math.max(0, u + shiftAt(plan, v)), v];
+  const corners: [number, number][] = [
+    at(fill.from, from),
+    at(fill.to, from),
+    at(fill.to, to),
+    at(fill.from, to),
+  ];
+  const sleeve = revolved(
+    ctx,
+    scope,
+    plan,
+    {
+      curves: corners.map((a, i) => ({
+        kind: 'line',
+        a,
+        b: corners[(i + 1) % corners.length] as [number, number],
+      })),
+      sources: [
+        'fillEnd0',
+        internal ? 'fillWall' : 'fill',
+        'fillEnd1',
+        internal ? 'fill' : 'fillWall',
+      ],
+    },
+    prefix,
+  );
+  if (!internal || !fill.ends) return sleeve;
+  // The hull: the whole hole (its floor and steps too, as a click in Remove
+  // Faces takes it) taken out and healed closed.
+  const description = ctx.describe(hit.shape);
+  const hole = removeFacesPick(
+    [hit.index],
+    description,
+    kernelSurface(kernel, hit.shape, description),
+    (f) => kernel.tangentFaces(hit.shape, f),
+  );
+  let closed: OperationResult;
+  try {
+    closed = kernel.removeFaces(hit.shape, hole);
+  } catch (error) {
+    if (error instanceof RemoveFacesError) return undefined;
+    throw error;
+  }
+  scope.track(closed.shape);
+  const hull = withHistory(kernel, closed, [ctx.names(hit.body)], {
+    op: 'thread',
+    feature: ctx.feature.id,
+  });
+  const trimmed = namedBoolean(kernel, 'common', sleeve, hull, {
+    feature: ctx.feature.id,
+    op: 'thread',
+    simplify: true,
+  });
+  scope.track(trimmed.shape);
+  return trimmed;
 }
 
 /**
