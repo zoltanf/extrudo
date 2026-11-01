@@ -3212,3 +3212,202 @@ remove-before-flight-cover 438), none with a failing round trip.
 the hybrid explodes part of each region ("invalid face") and builds the rest
 with edges up to 0.59 mm loose at a 0.01 mm step; the read-back moves those
 faces' areas. Not this slice's.
+
+### Amendment, 2026-10-31c: rolling-ball fillets between two planes — measured, not built (slice D10)
+
+The hypothesis (from stl2curves, `docs/references.md`; ideas only): many of prismatic's facets, and many of Auto's
+climbs up the ladder, are fillet bands between two flat faces. Exporters round fillet nodes to 0.02–0.05 mm, so
+region growing within T cuts such a band into strips or leaves it unfit, while two fitted planes pin the fillet's
+cylinder up to its radius. Slice D10 measured this first and **did not build it**: the numbers are far below the bar.
+
+**What was proposed.** A rolling-ball pass in `segmentMesh`, after the cluster loop and before the curved-surface
+refit. Its candidates: every unfit surface, piece by piece over mesh edges, and every piece the "< 4 regions" rule
+turns into planes. A candidate band would be accepted when:
+- two planes A and B (30°–170° apart, each at least 3 × the band's largest facet) border at least 80 % of its
+  boundary length;
+- every facet normal lies within 5° of the plane spanned by n_A and n_B and inside their arc;
+- with the radius most nodes vote for (the axis along n_A × n_B at distance r from both planes on the band's side, a
+  quadratic per node, the median after dropping the 10 % farthest), 75 % of the nodes lie within 2 T, all within 5 T,
+  and neither bound is above 4 % of r.
+
+The band would become a pinned cylinder with a tolerance of its own: a new `MeshSurface.tolerance` used by every
+node, chain and volume check, with the planes kept at T. Vouched radii would retry a band that failed alone at a
+clean fillet's radius. In `surfaceCurves`, the pinned cylinder and its planes would meet in tangent lines by
+construction (slice D5's shape, for pinned cylinders only). **The bar:** at least 5 % of the corpus's facets had to
+be such bands.
+
+**Method.**
+
+- **Baseline.** The kernel sweep at Auto against `baseline-2026-10-31b-auto.jsonl`, written as
+  `baseline-2026-10-31c-auto.jsonl`: passed (63 passed, 1 skipped, 764 s). Against 31b, `third-party/mms-m5-nut.stl`
+  is now imported (prismatic refuses it, faceted converts it: 628 faces), and `third-party/hex-key-cap-3mm.stl` is still
+  refused but on 1,245 open edges where it was 1,802 (PR #159's repair). The test's `sweep totals` line doesn't appear in
+  the log. These totals come from the JSONL with the test's own rules:
+  `files 41, prismatic converted 36 refused 5, faceted converted 26 refused 15, prismatic faces 27581, prismatic facets
+  17790, prismatic ms 253658, faceted ms 104971, round trips failed 7` (31b: faceted 25 / 16, prismatic ms 242913,
+  faceted ms 106395, the rest the same).
+- **Meshes.** The kernel orders a mesh as manifold does, and the spike's own STL reader segments differently
+  (hot-wheels-connector gave 2,318 facets there against the sweep's 1,833). So the probe ran on the meshes as the kernel
+  stages them (`MESH_OUT`, 38 files; the 3 the importer refuses are absent). There all 36 conversions give the
+  sweep's facets and Auto step exactly.
+- **Probe `Q25`** (`spikes/stl-to-solid/prismatic.cpp`, `README.md`; tables by `q25.py`). It runs at every ladder step
+  up to the one Auto picks. Candidates are (a) every unfit surface, one band per connected piece over mesh edges, and
+  (b) every piece the "< 4 regions" rule turned into planes (run.sh's facade copy records them). Each band gets rule 2's
+  tests in the design's order: two planes border it by at least 80 % of its boundary, 30–170° apart, each at least
+  3 × its largest facet, and every facet normal within 5° of the n_A n_B plane and inside their arc. Then the rolling-ball
+  radius: per node, the root of |q − axis(r)| = r on the corner's side, and the median after dropping the 10 % farthest.
+  Then the nodes' distances to that cylinder in multiples of T. Acceptance: 75 % within 2 T, all within 5 T, neither
+  beyond 4 % of r. A band that fails is also split into **sub-bands**, one per pair of planes it borders: its facets
+  whose normals lie in that pair's arc, in connected pieces touching both planes. That goes beyond the design and finds
+  fillet strips inside a network.
+- **Check of the method.** Every cylinder region growing fitted went through the same test. At Auto, 19 of the 2,521
+  pass tests 1–4. 14 of the 19 come out at their fitted radius (r 0.5, 0.6, 0.8, 2, 5, 6; deviation ~0) and pass. The
+  other 5 are arcs between planes that aren't tangent to them (fitted r 48.4, 3.0, 9.4 against 0.84, 2.07, 1.99), and
+  the deviation test fails them. So the rule finds real fillets and refuses the rest. In this corpus, the flat–flat
+  fillets are already cylinders.
+
+**What the facets are (Auto, kernel-staged meshes).**
+
+- **Exploded regions, not unfit ones, make a third of the facets outright.** 8 converted files have no unfit triangle
+  at Auto and still have 5,801 facets: spool-screw 2,123, phone-stand-foldable 1,847, puzzle-insert-circle 1,230,
+  battery-power-adapter 415, sock-clips 90, desk-organizer 42, spaghetti-measure 36, micro-sd-keyring-inner 18. Corpus-wide,
+  the hybrid exploded 17,742 triangles into facets: planes "invalid face" 7,609, tori "touches itself at node" 2,992,
+  cylinders "touches itself" 2,434, cones "touches itself" 1,145, planes "outer loop runs the wrong way" 744, the rest
+  under 600 each. That is about as many triangles as the 16,083 unfit ones.
+- **The unfit triangles are networks.** 97 % of the unfit area at Auto is in bands that border more than two surfaces,
+  or two planes by less than 80 % of their boundary (the `network` column). The `UNFIT=1` listing of the largest:
+  - kuglbahn-pillar-base: one freeform shell, 5,377 triangles, 36.5 %; the best primitive is off by 10 mm.
+  - makita-vacuum-holder: 1,481 regions, best a sphere off by 3 mm.
+  - shower-holder: 0.5 mm-high strips round an outline cut into many 30 mm² planes, a fillet or chamfer along a
+    curved edge.
+  - object-permanence-base: corner blends at the box's corners (best a cone off by 1.3 mm), and blends between r 2
+    and r 20/24.7 cylinders (a torus off by 0.30 mm at T 0.01).
+  - hot-wheels-connector: a noisy torus (0.085 mm at T 0.01) and a blend (2 mm).
+  - gear-bearing-5: 76 small networks (the gear teeth).
+
+  None of these is a fillet between two flat faces. Swept fillets along a curve and blends between curved faces were
+  outside this slice's design.
+
+**Per file, at the Auto step and at 0.01 mm.**
+
+The ten facet-heavy files and the twelve above 0.01 mm (15 files). The sweep has 9 files at 0.05/0.1 mm and 3 at 0.02. Each cell is bands/triangles (% of that file's unfit area). The keep-pieces
+column is pieces (accepted).
+
+**Unfit bands at auto: bands/triangles (% of the unfit area).**
+
+| file | T | facets | unfit tris | unfit share % | flat-flat accepted | flat-flat, deviation too large | flat-flat, a test fails (angle/area/normals/side) | plane-cylinder | network (borders > 2 surfaces) | other | sub-bands accepted | keep pieces (accepted) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| own/battery-power-adapter | 0.1 | 415 | 0 | 0.00 |  |  |  |  |  |  | 0/0 | 0 (0) |
+| own/kuglbahn-pillar-base | 0.1 | 3409 | 5377 | 36.55 |  |  |  |  | 1/5377 (100) |  | 0/0 | 0 (0) |
+| own/mirna-doodle-1 | 0.1 | 23 | 30 | 2.60 |  |  | 2/30 (100) |  |  |  | 0/0 | 0 (0) |
+| own/object-permanence-base | 0.01 | 1620 | 2938 | 0.53 |  |  |  | 2/538 (13) | 5/2400 (87) |  | 2/134 | 8 (0) |
+| own/peg-perego-button | 0.02 | 0 | 0 | 0.00 |  |  |  |  |  |  | 0/0 | 0 (0) |
+| own/phone-stand-foldable | 0.1 | 1847 | 0 | 0.00 |  |  |  |  |  |  | 0/0 | 0 (0) |
+| own/puzzle-insert-circle | 0.05 | 1230 | 0 | 0.00 |  |  |  |  |  |  | 0/0 | 0 (0) |
+| own/scrap-plate | 0.02 | 0 | 0 | 0.00 |  |  |  |  |  |  | 0/0 | 0 (0) |
+| own/shower-holder | 0.01 | 472 | 439 | 0.93 |  |  |  |  | 3/439 (100) |  | 0/0 | 0 (0) |
+| own/spool-screw-v4.1 | 0.05 | 2123 | 0 | 0.00 |  |  |  |  |  |  | 0/0 | 0 (0) |
+| own/trashcan-spacer | 0.05 | 0 | 0 | 0.00 |  |  |  |  |  |  | 0/0 | 0 (0) |
+| third-party/gear-bearing-5 | 0.1 | 1418 | 1588 | 18.56 |  |  |  |  | 76/1588 (100) |  | 0/0 | 0 (0) |
+| third-party/hot-wheels-connector | 0.01 | 1833 | 1909 | 0.94 |  |  |  |  | 2/1909 (100) |  | 0/0 | 4 (0) |
+| third-party/makita-vacuum-holder | 0.05 | 2649 | 3106 | 1.45 |  |  |  |  | 1/3106 (100) |  | 0/0 | 0 (0) |
+| third-party/vented-funnel | 0.02 | 0 | 0 | 0.00 |  |  |  |  |  |  | 0/0 | 0 (0) |
+| **total** | | 17039 | 15387 | | 0 (0) | 0 (0) | 30 (1) | 538 (1) | 14819 (98) | 0 (0) | 134 | 12 (0) |
+
+**Unfit bands at 0.01: bands/triangles (% of the unfit area).**
+
+| file | T | facets | unfit tris | unfit share % | flat-flat accepted | flat-flat, deviation too large | flat-flat, a test fails (angle/area/normals/side) | plane-cylinder | network (borders > 2 surfaces) | other | sub-bands accepted | keep pieces (accepted) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| own/battery-power-adapter | 0.01 |  | 6946 | 21.01 |  |  | 1/60 (1) |  | 8/6886 (99) |  | 0/0 | 6 (0) |
+| own/kuglbahn-pillar-base | 0.01 |  | 19513 | 41.80 |  |  |  |  | 4/12197 (96) | 3/7316 (4) | 0/0 | 3 (0) |
+| own/mirna-doodle-1 | 0.01 |  | 126 | 6.10 |  |  | 3/62 (70) |  | 8/64 (30) |  | 0/0 | 10 (0) |
+| own/object-permanence-base | 0.01 | 1620 | 2938 | 0.53 |  |  |  | 2/538 (13) | 5/2400 (87) |  | 2/134 | 8 (0) |
+| own/peg-perego-button | 0.01 |  | 1168 | 38.56 |  |  |  |  | 3/1168 (100) |  | 0/0 | 0 (0) |
+| own/phone-stand-foldable | 0.01 |  | 8059 | 48.46 |  |  | 19/910 (0) |  | 10/7149 (100) |  | 0/0 | 10 (0) |
+| own/puzzle-insert-circle | 0.01 |  | 8276 | 6.13 |  |  |  |  | 1/8276 (100) |  | 0/0 | 0 (0) |
+| own/scrap-plate | 0.01 |  | 942 | 44.67 |  |  |  |  | 1/942 (100) |  | 0/0 | 0 (0) |
+| own/shower-holder | 0.01 | 472 | 439 | 0.93 |  |  |  |  | 3/439 (100) |  | 0/0 | 0 (0) |
+| own/spool-screw-v4.1 | 0.01 |  | 6117 | 5.98 |  |  |  |  | 2/6117 (100) |  | 0/0 | 0 (0) |
+| own/trashcan-spacer | 0.01 |  | 671 | 82.02 |  |  |  |  | 1/671 (100) |  | 0/0 | 0 (0) |
+| third-party/gear-bearing-5 | 0.01 |  | 14828 | 56.87 |  |  |  |  | 240/14828 (100) |  | 0/0 | 0 (0) |
+| third-party/hot-wheels-connector | 0.01 | 1833 | 1909 | 0.94 |  |  |  |  | 2/1909 (100) |  | 0/0 | 4 (0) |
+| third-party/makita-vacuum-holder | 0.01 |  | 15597 | 97.26 |  |  |  |  | 7/15597 (100) |  | 0/0 | 0 (0) |
+| third-party/vented-funnel | 0.01 |  | 2017 | 2.08 |  |  |  |  |  | 1/2017 (100) | 0/0 | 6 (0) |
+| **total** | | 3925 | 89546 | | 0 (0) | 0 (0) | 1032 (0) | 538 (0) | 78643 (99) | 9333 (0) | 134 | 47 (0) |
+
+Over the whole corpus (38 files), the totals rows (Auto, then 0.01 mm) read:
+
+| file | T | facets | unfit tris | unfit share % | flat-flat accepted | flat-flat, deviation too large | flat-flat, a test fails (angle/area/normals/side) | plane-cylinder | network (borders > 2 surfaces) | other | sub-bands accepted | keep pieces (accepted) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **total** | | 17790 | 16722 | | 0 (0) | 0 (0) | 466 (1) | 790 (2) | 15466 (97) | 0 (0) | 158 | 21 (0) |
+| **total** | | 4676 | 98905 | | 0 (0) | 0 (0) | 1444 (0) | 790 (0) | 87326 (99) | 9345 (0) | 158 | 56 (0) |
+
+The flat–flat bands that fail a test all fail the angle test. Their two planes are either parallel (0°: steps and
+lettering walls on drill-block, phone-stand-foldable's 19 small bands at 0.01 mm, remove-before-flight-cover,
+whiteboard-tray-v5) or opposite (180°: full rounds on mirna-doodle-1, hot-wheels-connector, battery-power-adapter,
+mms-flat-stand). The "< 4 regions" pieces: 56 at 0.01 mm and 21 at Auto, none accepted. At 0.01 mm, 11 are flat–flat
+and fail the angle test (opposite planes), 30 border two planes by less than 80 %, 9 are plane–cylinder and 6 other.
+
+**Deviation from the rolling-ball cylinder at Auto: the 16 flat–flat bands that pass tests 1–4.**
+
+| k | p75 <= k T (bands / tris) | max <= k T | p75 <= k T and max <= 2.5 k T |
+|---|---|---|---|
+| 1 | 14 / 158 | 12 / 24 | 12 / 24 |
+| 2 | 16 / 328 | 12 / 24 | 14 / 158 |
+| 3 | 16 / 328 | 12 / 24 | 14 / 158 |
+| 5 | 16 / 328 | 14 / 158 | 14 / 158 |
+| 10 | 16 / 328 | 14 / 158 | 14 / 158 |
+
+All 16 are sub-bands, on files whose Auto step is 0.01 mm: object-permanence-base (4 bands, 304 triangles; 2 of them
+with 134 triangles pass) and remove-before-flight-cover (12 bands of 2 triangles, r 0.25, all pass). At 2 T / 5 T,
+14 bands with 158 triangles pass. The distribution is too thin to move the constants from.
+
+**The climbs.**
+
+The unfit share at 0.01 and 0.02 mm, and what is left after taking out the bands rule 2 accepts (whole bands, then
+sub-bands too), at FILLET_TOL 2 T and FILLET_GROW 5 T:
+
+| file | Auto | 0.01 share | 0.01 after | 0.01 after with sub-bands | 0.02 share | 0.02 after | 0.02 after with sub-bands | passing tris at Auto (whole + sub) / unfit tris at Auto | facets |
+|---|---|---|---|---|---|---|---|---|---|
+| own/battery-power-adapter | 0.1 | 21.01 | 21.01 | 21.01 | 20.07 | 20.07 | 20.07 | 0 / 0 | 415 |
+| own/kuglbahn-pillar-base | 0.1 | 41.80 | 41.80 | 41.80 | 39.08 | 39.08 | 39.08 | 0 / 5377 | 3409 |
+| own/mirna-doodle-1 | 0.1 | 6.10 | 6.10 | 6.10 | 6.10 | 6.10 | 6.10 | 0 / 30 | 23 |
+| own/peg-perego-button | 0.02 | 38.56 | 38.56 | 38.56 | 0.00 | 0.00 | 0.00 | 0 / 0 | 0 |
+| own/phone-stand-foldable | 0.1 | 48.46 | 48.46 | 48.46 | 95.00 | 95.00 | 95.00 | 0 / 0 | 1847 |
+| own/puzzle-insert-circle | 0.05 | 6.13 | 6.13 | 6.13 | 6.12 | 6.12 | 6.12 | 0 / 0 | 1230 |
+| own/scrap-plate | 0.02 | 44.67 | 44.67 | 44.67 | 0.00 | 0.00 | 0.00 | 0 / 0 | 0 |
+| own/spool-screw-v4.1 | 0.05 | 5.98 | 5.98 | 5.98 | 2.93 | 2.93 | 2.93 | 0 / 0 | 2123 |
+| own/trashcan-spacer | 0.05 | 82.02 | 82.02 | 82.02 | 82.02 | 82.02 | 82.02 | 0 / 0 | 0 |
+| own/whiteboard-tray-v5 | 0.02 | 58.84 | 58.84 | 58.84 | 0.12 | 0.12 | 0.12 | 0 / 639 | None |
+| third-party/gear-bearing-5 | 0.1 | 56.87 | 56.87 | 56.87 | 56.87 | 56.87 | 56.87 | 0 / 1588 | 1418 |
+| third-party/makita-vacuum-holder | 0.05 | 97.26 | 97.26 | 97.26 | 96.33 | 96.33 | 96.33 | 0 / 3106 | 2649 |
+| third-party/mms-m5-nut | 0.02 | 32.26 | 32.26 | 32.26 | 0.00 | 0.00 | 0.00 | 0 / 0 | None |
+| third-party/vented-funnel | 0.02 | 2.08 | 2.08 | 2.08 | 0.00 | 0.00 | 0.00 | 0 / 0 | 0 |
+
+No file's share moves, so Auto would keep every file at the step it takes today. (whiteboard-tray-v5 and mms-m5-nut
+are refused at Auto; their facets column is empty.)
+
+**whiteboard-tray-v5 at fixed tolerances.**
+
+Spike `f` and `s` on the kernel-staged mesh (39,088 triangles):
+
+- `TOL=0.05`: refused, 18.3 s. 497 / 140 / 2 / 2 / 7 surfaces, 0 unfit. The exact stage is skipped (surface cap) and
+  the hybrid hits the facet cap: 8,774 facets, 10 regions exploded. No STEP.
+- `TOL=0.1`: refused, 66.1 s. 487 / 70 / 2 / 0 / 3, 0 unfit. The exact rebuild refuses, then the hybrid's result is
+  invalid. No STEP.
+
+**The result.** The sub-bands that pass hold 158 triangles: 1.0 % of the 16,083 unfit triangles at Auto, and 0.9 % of
+the 17,790 facets at most. No whole unfit band passes. 14 of the 19 fitted cylinders that pass tests 1–4 come out at
+their fitted radius, so the corpus's flat–flat fillets are already cylinders from region growing. No file's unfit
+share at 0.01 or 0.02 mm moves, so no file's Auto step would move. The pass is not built: no facade change, the OCCT
+WASM input hash is unchanged, no test change and no changelog fragment. The probe stays in the spike harness:
+`Q25` in `spikes/stl-to-solid/prismatic.cpp`, run.sh's `spikeKeepPieces` hook, `q25.py` and the README section.
+From this slice on, the sweep baseline is `baseline-2026-10-31c-auto.jsonl`: D9's, plus the import repair of the
+ADR-0066 2026-10-31 amendment.
+
+**Where the facets come from instead.** Each source is a possible slice of its own:
+
+1. **Exploded regions.** 17,742 triangles at Auto, 7,609 of them planes refused as "invalid face". 5,801 facets are in
+   8 files with nothing unfit (spool-screw 2,123, phone-stand-foldable 1,847, puzzle-insert-circle 1,230, …).
+2. **Networks.** Blends along curved outlines (strips running past many small planes) and between curved faces
+   (corner blends, cylinder-to-cylinder blends, noisy tori), plus one freeform shell: 97 % of the unfit area.

@@ -1105,8 +1105,9 @@ end to end, faster than in established desktop CAD.
   surfaces' curve; slice D4 (2026-10-23): the exact rebuild runs only on a
   segmentation with no unfit region at all (the hybrid keeps those as facets),
   its budget 30 s → 12 s, Faceted's cap 2,000 → 5,000, and the browser-vs-node
-  timings (Auto total over the 37 files 377.9 → 187.8 s). Next: fillet strips,
-  tangent lines where a plane meets a fillet's cylinder.
+  timings (Auto total over the 37 files 377.9 → 187.8 s). The next steps named then, fillet strips and the tangent line, were
+  both tried later: the tangent line in slice D5 (2026-10-25c, not kept) and fillet
+  strips as rolling-ball fillets in slice D10 (2026-10-31c, measured, not built).
   *Follow-up, 2026-10-24:* Offset Face on a converted body (the owner's gear:
   17,472 triangles, prismatic Auto → a valid 204-face hybrid body) fails at
   every distance. The failure probe answers in one build now
@@ -1173,6 +1174,11 @@ end to end, faster than in established desktop CAD.
   of revolution that STEP keeps: peg-perego-button at Auto 0.02 mm, 212 faces,
   no facets (slice D8: 0.05 mm, 261 faces); the spike's round-trip passes stay
   20 of 30 hybrids (ADR-0097's 2026-10-31b amendment).
+  *slice D10 (2026-10-31c, measured, not built):* a rolling-ball cylinder for
+  fillet bands between two planes would take 0.9 % of the facets at Auto and
+  move no file's step, so it was not built. The facets come from exploded
+  regions and from blends along curved outlines and between curved faces
+  (ADR-0097's 2026-10-31c amendment).
 
 ## Phase 5 — Programmatic design (→ v0.6)
 
