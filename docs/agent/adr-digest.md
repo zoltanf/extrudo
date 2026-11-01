@@ -3886,7 +3886,7 @@ widget holds exactly one `<script type="module">`, the hashed `docs-widgets` ass
 page without one holds none; never an inline script, a handler, a `style` attribute or
 `<style>`, a `javascript:` URL; widgets are scripted scenes, never the solver, WASM or an
 internal package; keyboard for every control (`role="slider"` handles, real checkboxes),
-`role="img"` + `aria-label` on the SVG, results in an `aria-live="polite"` line, nothing
+`role="group"` + `aria-label` on the stage SVG (not `img`: it holds focusable handles), results in an `aria-live="polite"` line, nothing
 moves by itself under reduced motion. A relative image named `*.figure.svg` is inlined, not
 `<img>`, through an element/attribute allow-list (ADR §2; `fill`/`stroke` only `none` or
 `currentColor`, `href` only `#id`, ids prefixed with the file's stem) and coloured only by the

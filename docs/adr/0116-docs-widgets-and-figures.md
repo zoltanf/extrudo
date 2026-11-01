@@ -69,8 +69,9 @@ the docs headings carry no `id`, so nothing can link to a section.
   `@extrudo/site` keeps depending on no internal package
   (`scripts/check-boundaries.mjs`).
 - **Accessibility:** every control works from the keyboard (switches are real
-  checkboxes; drag handles are `role="slider"` with arrow keys); the SVG has a
-  `role="img"` and an `aria-label` that describes the starting state; live
+  checkboxes; drag handles are `role="slider"` with arrow keys); the stage SVG has
+  `role="group"` (it holds focusable handles, so not `img`: axe's
+  `nested-interactive`) and an `aria-label` that describes the starting state; live
   results go to an `aria-live="polite"` line. Under `prefers-reduced-motion`
   nothing animates by itself.
 

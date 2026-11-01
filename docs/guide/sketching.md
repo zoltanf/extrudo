@@ -295,8 +295,8 @@ A body edge or vertex you snap to while drawing comes into the sketch, linked to
 
 ### Face outline
 
-Adds the outline of the face the sketch sits on, or removes it again. It is off until you switch it
-on, and not available on a plane sketch. While a constraint or dimension uses the outline it
+Adds the outline of the face the sketch sits on, or removes it again. **Auto-project face outline** in
+**Settings** decides whether it starts on; it is not available on a plane sketch. While a constraint or dimension uses the outline it
 stays, and the switch says why. See [Project and Intersect](#project-and-intersect).
 
 ![A sketch open on a box face with Face outline off and nothing projected](./images/sketching/face-outline-1.figure.svg "Off: the sketch has only what you drew")
