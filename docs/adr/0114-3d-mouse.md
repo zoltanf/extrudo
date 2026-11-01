@@ -128,3 +128,38 @@ where the driver is told to feed it, which this ADR doesn't document). Still
 not tested on hardware when written: the gamepad id formats and axis order
 follow the reference's tests and the Gamepad API's id convention; the buttons'
 order as gamepad buttons is an assumption.
+
+## Amendment 2026-11-01: the wheel guard everywhere, a fresh reading, a silent HID device
+
+**Context.** A review of the 2026-10-31 amendment, before the reporting user
+tried it again, found three ways it could still fail on hardware: at rest the
+gamepad was read only every 50 ms, so the driver's first wheel turn of a brisk
+push could arrive before the cap was seen moving and zoom the view once per
+push; the guard covered only the viewport, while the driver's wheel turns go
+to whatever is under the pointer (the panels scroll, and Ctrl+wheel zooms the
+page); and any open HID device shut the gamepad out, but a device allowed once
+is opened again on every visit, so one that sends nothing (a receiver with
+nothing paired, the wrong device picked in the chooser) left the cap dead.
+
+**Decision.**
+
+- **`recentlyMoving()` reads the gamepad first** when no motion frame is
+  pending (a frame has just read it otherwise), so the push that sent the
+  wheel turn is seen.
+- **One capture-phase `wheel` listener on the window** (`passive: false`,
+  added when the 3D mouse starts) drops every wheel event while the cap moves:
+  `preventDefault` (no scrolling, no page zoom) and `stopPropagation` (no
+  handler of ours sees it). The viewport's own check is gone.
+- **A HID device takes over from the gamepad only once it has sent a
+  report.** On that first report the input resets (nothing of the gamepad's
+  reading carries over, so the view can't keep moving on it), and the device
+  list names the reporting HID devices; before, it names the gamepad, else the
+  open HID devices, so one device is named once.
+
+**Rejected.** Preferring whichever listed gamepad moves over the first
+3Dconnexion one (a second receiver listed first would win today): rare, and it
+needs a remembered choice; later if a user meets it.
+
+**Consequences.** `getGamepads()` now also runs once per wheel event while the
+cap rests (cheap). A cap that rests outside the dead zone (an old, drifting
+device) keeps the wheel blocked, as it keeps the view drifting; unchanged.

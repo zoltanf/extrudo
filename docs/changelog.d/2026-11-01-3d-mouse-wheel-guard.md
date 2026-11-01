@@ -1,0 +1,1 @@
+- 2026-11-01 · **3D mouse**: with the vendor's driver installed, a quick push no longer zooms the view a step, the panels and the page no longer scroll or zoom while the cap moves, and a device connected earlier that sends nothing no longer leaves the cap dead (ADR-0114 amendment).
