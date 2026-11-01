@@ -65,37 +65,32 @@ def parse_args(text, i=0):
         out.append(v)
 
 
+ENTITY = re.compile(r"#(\d+)\s*=\s*(.*?);\s*(?=#\d+\s*=|ENDSEC)", re.S)
+
+
 def read_step(path):
+    """Every entity of the DATA section: id -> (TYPE, args), or ('complex', {TYPE: args}) for a complex entity."""
     text = open(path, errors='replace').read()
     data = text[text.index('DATA;') + 5:]
     ents = {}
-    i = 0
-    while True:
-        m = re.compile(r'#(\d+)\s*=\s*').search(data, i)
-        if not m:
-            break
-        j = m.end()
-        if data[j] == '(':
-            # A complex entity: (NAME(args) NAME(args) ...)
-            parts = {}
-            k = j + 1
+    for m in ENTITY.finditer(data):
+        body = m.group(2).strip()
+        if body.startswith('('):
+            parts, k = {}, 1
             while True:
-                while data[k] in ' \n\r\t':
+                while body[k] in ' \n\r\t':
                     k += 1
-                if data[k] == ')':
-                    k += 1
+                if body[k] == ')':
                     break
-                n = re.match(r'([A-Z0-9_]+)\s*', data[k:])
+                n = re.match(r'([A-Z0-9_]+)\s*', body[k:])
                 k += len(n.group(0))
-                args, k = parse_args(data, k)
+                args, k = parse_args(body, k)
                 parts[n.group(1)] = args
             ents[int(m.group(1))] = ('complex', parts)
         else:
-            n = re.match(r'([A-Z0-9_]+)\s*', data[j:])
-            k = j + len(n.group(0))
-            args, k = parse_args(data, k)
+            n = re.match(r'([A-Z0-9_]+)\s*', body)
+            args, _ = parse_args(body, len(n.group(0)))
             ents[int(m.group(1))] = (n.group(1), args)
-        i = k
     return ents
 
 
@@ -259,6 +254,10 @@ def analyse(path):
             flag = ba[2][1] == 'T'
             loop = st.get(ba[1])
             edges = []
+            if loop[0] != 'EDGE_LOOP':
+                # A VERTEX_LOOP (a sphere's pole, a cone's apex): no edges; a torus face with one isn't unrolled.
+                bounds.append((bt, flag, None))
+                continue
             for oe in loop[1][1]:
                 ot, oa = st.get(oe)
                 if ot != 'ORIENTED_EDGE':
@@ -277,6 +276,9 @@ def analyse(path):
         loops = []
         ok = True
         for bt, flag, edges in bounds:
+            if edges is None:
+                ok = False
+                break
             pts = []
             for eid, ec, fwd in edges:
                 ea = ec[1]
@@ -311,7 +313,7 @@ def analyse(path):
         res['unrolled'] += 1
         # du x dv against the tube's outward direction at a loop point (a right-handed placement: always out).
         o, x, y, z = frame
-        p0 = st.point(bounds[0][2][0][1][1][1])
+        p0 = st.point(bounds[0][2][0][1][1][1])  # the first edge's start vertex
         u0, v0 = torus_uv(frame, R, p0)
         du_ = [(R + r * math.cos(v0)) * (-math.sin(u0) * x[k] + math.cos(u0) * y[k]) for k in range(3)]
         dv_ = [r * (-math.sin(v0) * (math.cos(u0) * x[k] + math.sin(u0) * y[k]) + math.cos(v0) * z[k]) for k in range(3)]
@@ -321,11 +323,18 @@ def analyse(path):
         sign = (1 if same else -1) * (-1 if left else 1)
         band = [l for l in loops if l['wraps_u'] != 0 and l['wraps_v'] == 0]
         full_round = len(loops) == 2 and len(band) == 2 and all(l['edges'] == 1 and l['curves'][0] in ('CIRCLE', 'SURFACE_CURVE', 'SEAM_CURVE') for l in loops)
+        # The outer loop: the FACE_OUTER_BOUND, else (OCCT writes FACE_BOUND only) the largest |area|; with a loop that
+        # wraps the torus, every loop that doesn't is a hole.
+        plain = [l for l in loops if l['wraps_u'] == 0 and l['wraps_v'] == 0]
+        outer = None
+        if len(plain) == len(loops):
+            marked = [l for l in plain if l['kind'] == 'FACE_OUTER_BOUND']
+            outer = marked[0] if marked else max(plain, key=lambda l: abs(l['area']))
         for l in loops:
             res['loops'] += 1
             bad = None
             if l['wraps_u'] == 0 and l['wraps_v'] == 0:
-                want = 1 if l['kind'] == 'FACE_OUTER_BOUND' or (len(loops) == 1) else -1
+                want = 1 if l is outer else -1
                 bad = sign * l['area'] * want < 0
             elif len(band) == 2 and l in band:
                 other = band[1] if l is band[0] else band[0]
@@ -338,7 +347,7 @@ def analyse(path):
                 bad = sign * l['wraps_u'] * want < 0
             if bad:
                 res['disagree'] += 1
-                res['details'].append(dict(face=fid, R=R, r=r, same_sense=same, flag=l['flag'], kind=l['kind'], wraps_u=l['wraps_u'],
+                res['details'].append(dict(face=fid, outer=l is outer, R=R, r=r, same_sense=same, flag=l['flag'], kind=l['kind'], wraps_u=l['wraps_u'],
                                            wraps_v=l['wraps_v'], area=round(l['area'], 6), left_handed=left, full_round=full_round,
                                            loops=len(loops)))
     for eid, u in uses.items():

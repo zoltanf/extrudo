@@ -55,6 +55,7 @@ static void spikeQ26Valid(int attempt, int faces, int facets, bool undone, bool 
 #include <Interface_Static.hxx>
 #include <NCollection_DataMap.hxx>
 #include <STEPControl_Controller.hxx>
+#include <STEPControl_Writer.hxx>
 #include <RWStl.hxx>
 #include <StlAPI_Writer.hxx>
 #include <BRepBuilderAPI_Copy.hxx>
@@ -4153,6 +4154,27 @@ int main(int argc, char** argv) {
     std::sort(paths.begin(), paths.end());
     for (const auto& p : paths) file(f, p, envTol);
     std::cout << "live shapes " << f.liveShapes() << "\n";
+    return 0;
+  }
+  if (only == "H") {
+    // Q1b.2 (slice D11): the tori OCCT's own fillet makes on a cylinder's two rims (r 5, h 10, fillet 1): each
+    // face's orientation, its torus frame's handedness and location, then the body's STEP as /w/d11/hand.step.
+    TopoDS_Shape cyl = BRepPrimAPI_MakeCylinder(5, 10).Shape();
+    BRepFilletAPI_MakeFillet fillet(cyl);
+    for (TopExp_Explorer e(cyl, TopAbs_EDGE); e.More(); e.Next())
+      if (BRepAdaptor_Curve(TopoDS::Edge(e.Current())).GetType() == GeomAbs_Circle) fillet.Add(1, TopoDS::Edge(e.Current()));
+    const TopoDS_Shape body = fillet.Shape();
+    for (TopExp_Explorer e(body, TopAbs_FACE); e.More(); e.Next()) {
+      const TopoDS_Face face = TopoDS::Face(e.Current());
+      const BRepAdaptor_Surface s(face, false);
+      if (s.GetType() != GeomAbs_Torus) continue;
+      const gp_Torus t = s.Torus();
+      std::cout << "   q26 hand torus at z " << t.Location().Z() << " direct " << t.Position().Direct() << " axis z " << t.Axis().Direction().Z()
+                << " face " << (face.Orientation() == TopAbs_REVERSED ? "reversed" : "forward") << std::endl;
+    }
+    STEPControl_Writer writer;
+    writer.Transfer(body, STEPControl_AsIs);
+    writer.Write("/w/d11/hand.step");
     return 0;
   }
   if (only == "s") {
