@@ -223,6 +223,55 @@ test('extrudes a profile, press-pulls its top face out and in, with undo, redo a
   await expect(viewport).toHaveAttribute('data-bodies', 'Body1:7:60,40,12');
 });
 
+// Issue #176 (ADR-0027's amendment): undo with the dialog open only cancels it. It used to
+// undo the step before as well, the sketch's edits, and the rectangle was gone.
+test('undo with the Extrude dialog open cancels the dialog and keeps the sketch', async ({
+  page,
+}) => {
+  const at = await sketchOnXY(page);
+  const viewport = viewportOf(page);
+  const click = clicker(page, at);
+  await page.keyboard.press('r');
+  await click(-30, -20);
+  await click(30, 20);
+  await page.keyboard.press('Escape');
+  await expect(prompt(page)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await expect(chip(page, 'Sketch1')).toBeVisible();
+
+  const dialog = page.getByRole('region', { name: 'Extrude dialog' });
+  const undo = page.getByRole('button', { name: 'Undo', exact: true });
+  const plate = at(15, 5);
+  // Picks the rectangle's profile (so it is still there) and opens Extrude on it.
+  const extrude = async () => {
+    await page.mouse.move(plate.x, plate.y);
+    await page.mouse.click(plate.x, plate.y);
+    await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^profile:/);
+    await page.keyboard.press('e');
+    await expect(dialog.getByRole('button', { name: 'Profiles', exact: true })).toHaveText(
+      'Profile · Sketch1',
+    );
+  };
+
+  await extrude();
+  await page.keyboard.press('Control+z');
+  await expect(dialog).toBeHidden();
+
+  // The top bar's Undo does the same (it used to undo under the open dialog).
+  await extrude();
+  await undo.click();
+  await expect(dialog).toBeHidden();
+
+  // The profile is still there; with no dialog open, undo takes the sketch's edits.
+  await extrude();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await page.keyboard.press('Control+z');
+  await page.mouse.move(plate.x, plate.y);
+  await page.mouse.click(plate.x, plate.y);
+  await expect.poll(() => attr(viewport, 'data-model-selection')).not.toMatch(/^profile:/);
+});
+
 test('the Wall bracket template computes its bracket; its cut edits through all', async ({
   page,
 }) => {
