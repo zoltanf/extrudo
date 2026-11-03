@@ -937,7 +937,10 @@ end to end, faster than in established desktop CAD.
     hole at its nominal size** done 2026-10-31 (ADR-0056's fourth
     amendment); **the fill** done 2026-11-01, ADR-0056's fifth amendment (a
     hole wider than the minor is filled in to it along the thread, a shaft
-    thinner than the major built up).
+    thinner than the major built up), **extended 2026-11-03** (the fifth
+    amendment's addendum: a hole at or past the root is filled too instead of
+    refused, and the `.f3d` importer imports a thread on such a hole,
+    ADR-0083).
   - ~~Sweep: say where a profile lands~~ **done in ADR-0067 §H5 (P4-12,
     2026-10-05): the sweep warns** when its profile is drawn more than max(1 %
     of the path's length, 0.5 mm) from the path's start line, naming the

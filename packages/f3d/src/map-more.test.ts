@@ -498,7 +498,7 @@ describe('f3dToDesign: copying features', () => {
     expect(volume).toBeGreaterThan(rod - Math.PI * (25 - 4.0705 ** 2) * 6 - 1);
   });
 
-  it('leaves out an internal thread on a hole wider than the thread', () => {
+  it('imports an internal thread on a hole wider than the thread (Extrudo fills it in to it)', () => {
     const f3d = washerWithHole();
     f3d.features.push({
       ...base,
@@ -506,7 +506,8 @@ describe('f3dToDesign: copying features', () => {
       id: 7,
       kind: 'Thread',
       name: 'Thread1',
-      // M4 in the washer's Ø4.2 hole: the file would fill the hole to Ø3.3 first.
+      // M4 in the washer's Ø4.2 hole: the file resizes the hole to the crest
+      // (Ø3.3); Extrudo fills the wider hole in to it along the thread.
       spec: {
         angle: 60,
         external: false,
@@ -532,11 +533,15 @@ describe('f3dToDesign: copying features', () => {
         },
       ],
     });
-    const { report } = f3dToDesign(f3d, 'Washer');
-    expect(report.skipped).toContainEqual({
-      name: 'Thread1',
-      kind: 'Thread',
-      reason: 'its hole is wider than the thread (the file fills it in to the thread first)',
+    const { design, report } = f3dToDesign(f3d, 'Washer');
+    expect(report.imported).toContain('Thread1');
+    expect(report.skipped).not.toContainEqual(expect.objectContaining({ name: 'Thread1' }));
+    const feature = design.toJSON().features.find((f) => f.name === 'Thread1');
+    expect(feature?.inputs).toMatchObject({
+      faces: { refs: [{ kind: 'face' }] },
+      diameter: { expr: '4 mm' },
+      pitch: { expr: '0.7 mm' },
+      tolerance: { expr: '0 mm' },
     });
   });
 
