@@ -132,7 +132,7 @@ jobs:
     name: Typecheck, lint, unit and memory tests
     needs: [occt, planegcs, openscad]
     runs-on: ${{ vars.RUNS_ON && fromJSON(vars.RUNS_ON) || 'ubuntu-latest' }}
-    timeout-minutes: 30
+    timeout-minutes: 45 # the tests alone take ~23 min
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -158,8 +158,13 @@ jobs:
       - name: Download the OCCT, planegcs and OpenSCAD WASM
         run: pnpm wasm
 
-      - name: Typecheck, lint, package boundaries, bindings, unit and memory tests
-        run: pnpm check
+      # `pnpm check`, in two steps: the tests run through vitest-retry.ts, which
+      # runs a test file again when its worker crashed with SIGTRAP.
+      - name: Typecheck, lint, package boundaries, bindings
+        run: pnpm check:static
+
+      - name: Unit and memory tests
+        run: node scripts/vitest-retry.ts
 
   docker:
     # The Docker image (ADR-0091): builds it from a fresh app build for the

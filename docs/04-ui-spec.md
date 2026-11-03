@@ -784,8 +784,6 @@ A list on the left, the selected parameter on the right.
   the two edges **Collinear** (ADR-0094); a Horizontal or Vertical between two
   points (a corner level with a circle centre) shows one glyph halfway between
   them, on the side away from any curve that passes close to it, with a dotted icon and the label "Horizontal (points)".
-- Pressing a dimension tool on a selection places the most likely dimension
-  type.
 - **Distances from a circle's or an arc's edge** (ADR-0112): after a circle
   or an arc, the Dimension tool takes a second pick, a point, a line or
   another circle or arc, and dimensions from the edge; a click on empty space

@@ -939,6 +939,7 @@ export class RecomputeEngine {
       if (prepared && 'error' in prepared) throw prepared.error;
       output = definition.evaluate(ctx);
       this.#checkNames(output, bodies);
+      this.#checkSound(output, bodies, feature, definition, ctx.warn);
       const all = [...new Set([...warnings, ...(output.warnings ?? [])])];
       status = all.length ? { status: 'warning', message: all.join(' ') } : { status: 'ok' };
     } catch (error) {
@@ -1199,6 +1200,57 @@ export class RecomputeEngine {
     }
   }
 
+  /**
+   * Every body a feature made or changed must be a sound shape
+   * (`Kernel.isValid`: BRepCheck_Analyzer, or manifold's status for a mesh).
+   * One broken body kept here breaks every step after it, and OCCT's
+   * chamfer crashed the WASM on one (a join whose face merge left
+   * unorientable faces, ADR-0051's 2026-10-29 amendment), so the feature
+   * fails instead and the bodies stay as they were before it. Bodies passed
+   * on unchanged were checked when they were made, so only fresh handles
+   * are asked: one check per new body in the timeline.
+   */
+  #checkSound(
+    output: FeatureOutput,
+    before: ReadonlyMap<BodyId, ShapeHandle>,
+    feature: Feature,
+    definition: KernelFeatureDefinition,
+    warn: (message: string) => void,
+  ): void {
+    const kernel = this.#kernel;
+    let broken = 0;
+    let empty = 0;
+    for (const shape of output.bodies?.values() ?? []) {
+      if (this.#refs.has(shape)) continue;
+      // A B-rep body with no face at all (a boolean that lost everything) is as useless as a broken one.
+      if (!kernel.isMesh(shape) && kernel.count(shape, 'face') === 0) empty++;
+      else if (!kernel.isValid(shape)) broken++;
+    }
+    if (broken === 0 && empty === 0) return;
+    if (definition.keepsBrokenBodies) {
+      // A file's body is the user's data: kept, and said so.
+      const n = broken + empty;
+      warn(
+        `${n === 1 ? 'A body' : `${n} bodies`} this ${featureNoun(feature).slice(4)} read ${
+          n === 1 ? "isn't" : "aren't"
+        } a sound solid (faces that don't close up), so later steps on ${n === 1 ? 'it' : 'them'} may fail.`,
+      );
+      return;
+    }
+    const known = new Set([...before.values(), ...this.#refs.keys()]);
+    for (const h of outputHandles(output)) if (!known.has(h)) kernel.release(h);
+    const what =
+      broken > 0
+        ? "a broken body (its faces don't close up into a sound solid)"
+        : 'an empty body (nothing is left of it)';
+    const one = broken + empty === 1;
+    throw new KernelError(
+      `${featureNoun(feature)} made ${what}, so the ${one ? 'body was' : 'bodies were'} left as ${
+        one ? 'it was' : 'they were'
+      } before this step. Change the step a little, or report the model.`,
+    );
+  }
+
   /** Drops least recently used entries that no current result uses, down to `maxEntries`. */
   #evict(): void {
     const max = this.#options.maxEntries ?? 256;
@@ -1232,6 +1284,12 @@ export class RecomputeEngine {
     this.#descriptions.delete(h);
     this.#kernel.release(h);
   }
+}
+
+/** "The extrude", "The fillet": a feature's type as the subject of a message. */
+function featureNoun(feature: Feature): string {
+  const words = feature.type.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+  return `The ${words}`;
 }
 
 /** Every shape an output holds, once each: bodies, named shapes and preview tools. */
