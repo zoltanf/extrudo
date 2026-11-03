@@ -1318,19 +1318,25 @@ function expressionValues(
 /**
  * Features this one refers to through `ref` inputs: references whose ID
  * starts with a feature's ID and a slash (a profile is `<sketch>/<region>`).
- * Faces and edges come from the body set instead.
+ * A sketch's projections count too (ADR-0125): a `sketchEntity` ref
+ * `<sketch>/<entity>` or a `feature` ref to a sketch makes the source sketch a
+ * dependency. Faces and edges come from the body set instead.
  */
 export function featureDependencies(
   feature: Feature,
   index: ReadonlyMap<FeatureId, number>,
 ): FeatureId[] {
   const found = new Set<FeatureId>();
+  const add = (refId: string) => {
+    const slash = refId.indexOf('/');
+    const source = (slash > 0 ? refId.slice(0, slash) : refId) as FeatureId;
+    if (source !== feature.id && (slash > 0 || index.has(source))) found.add(source);
+  };
   for (const input of Object.values(feature.inputs)) {
-    if (input.kind !== 'ref') continue;
-    for (const ref of input.refs) {
-      const slash = ref.id.indexOf('/');
-      const id = (slash > 0 ? ref.id.slice(0, slash) : ref.id) as FeatureId;
-      if (id !== feature.id && (slash > 0 || index.has(id))) found.add(id);
+    if (input.kind === 'ref') {
+      for (const ref of input.refs) add(ref.id);
+    } else if (input.kind === 'sketchData') {
+      for (const record of Object.values(input.sketch.projections ?? {})) add(record.ref.id);
     }
   }
   return [...found];

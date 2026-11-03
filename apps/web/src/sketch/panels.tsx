@@ -72,7 +72,7 @@ import type { ToolHost } from './tools/host';
  */
 export function PanelColumn({ children }: { children: ReactNode }) {
   return (
-    <div className="pointer-events-none absolute top-[148px] right-3 bottom-3 z-10 flex w-60 flex-col gap-2 overflow-y-auto [scrollbar-width:none]">
+    <div className="pointer-events-none absolute top-[148px] right-3 bottom-3 z-10 flex w-64 flex-col gap-2 overflow-y-auto [scrollbar-width:none]">
       {children}
     </div>
   );
@@ -127,7 +127,7 @@ export function ProjectPanel({ tool, linked, onLinked, onDone }: ProjectPanelPro
       <p className="text-sm text-muted">
         {tool === 'intersect'
           ? 'Pick a face in the view, or a body in the browser: its curves in the sketch plane come in.'
-          : 'Pick edges, faces or vertices in the view, or a body in the browser: their outline comes in.'}
+          : 'Pick edges, faces, vertices or sketch curves in the view, or a body or sketch in the browser: their outline comes in.'}
       </p>
       <label className="flex h-7 cursor-pointer items-center gap-2 rounded-input px-1 text-sm hover:bg-accent-soft">
         <input
@@ -255,6 +255,7 @@ export function SketchPalette({
   const profiles = useStore(viewport, (s) => s.sketchProfiles);
   const snap = useStore(viewport, (s) => s.snap);
   const autoProject = useStore(viewport, (s) => s.autoProject);
+  const autoProjectSketches = useStore(viewport, (s) => s.autoProjectSketches);
   const slice = useStore(viewport, (s) => s.sketchSlice);
   return (
     <FloatingPanel label="Sketch palette">
@@ -342,7 +343,7 @@ export function SketchPalette({
             Profiles
           </PaletteSwitch>
         </div>
-        <PaletteHeading>View &amp; project</PaletteHeading>
+        <PaletteHeading>View</PaletteHeading>
         <PaletteSwitch
           icon={<PaletteIcon name="section" />}
           checked={slice}
@@ -352,15 +353,27 @@ export function SketchPalette({
         >
           Slice
         </PaletteSwitch>
-        <PaletteSwitch
-          icon={<PaletteIcon name="project" />}
-          checked={autoProject}
-          onChange={(v) => viewport.getState().setAutoProject(v)}
-          label="Auto-project"
-          hint="A body edge or vertex you snap to while drawing comes into the sketch, linked to the model."
-        >
-          Auto-project
-        </PaletteSwitch>
+        <PaletteHeading>Auto-project</PaletteHeading>
+        <div className={TWO_COLUMNS}>
+          <PaletteSwitch
+            icon={<PaletteIcon name="project" />}
+            checked={autoProject}
+            onChange={(v) => viewport.getState().setAutoProject(v)}
+            label="Auto-project bodies"
+            hint="A body edge or vertex you snap to while drawing comes into the sketch, linked to the model."
+          >
+            Bodies
+          </PaletteSwitch>
+          <PaletteSwitch
+            icon={<PaletteIcon name="project" />}
+            checked={autoProjectSketches}
+            onChange={(v) => viewport.getState().setAutoProjectSketches(v)}
+            label="Auto-project sketches"
+            hint="A curve or point of an earlier sketch you snap to comes into this sketch, linked to it."
+          >
+            Sketches
+          </PaletteSwitch>
+        </div>
         <PaletteSwitch
           checked={outline?.id !== undefined}
           disabled={!outline || outline.constraints + outline.dimensions > 0}

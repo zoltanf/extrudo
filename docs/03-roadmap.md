@@ -1641,6 +1641,13 @@ end to end, faster than in established desktop CAD.
     the anchor test and the axe audit.
   - [x] Batch 1: notes for the 13 Constraints tool pages, each with its figure.
 
+- [x] **P6-23 Project a sketch into another sketch** (issue #171; FR-SK-12, FR-SK-17;
+  ADR-0125). The Project tool picks a curve or point of an earlier sketch in the view and a
+  whole earlier sketch through its browser row, and Auto-project Sketches offers an earlier
+  sketch's curves and points to a running tool as `sketchCurve`/`sketchPoint` snaps, linked
+  and following the source. Flows: the two switches (Bodies | Sketches) and the palette.
+  Acceptance: `pnpm check`, `e2e/project.spec.ts` and `e2e/auto-project.spec.ts`.
+
 ## Phase 7 — Later (lowest priority, after everything else)
 
 **Owner, 2026-10-14: the last work on the roadmap.** Don't pick a task here

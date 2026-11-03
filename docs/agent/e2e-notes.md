@@ -201,11 +201,18 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   point, so `data-sketch-projected` reads `<id>:curves=0:x=20..20:y=20..20` —
   **the summary now lists a point-only projected vertex**, `curves=0`); one
   Ctrl+Z after Finish Sketch takes the line, the projection and the constraint
-  away and Ctrl+Shift+Z brings them back; the palette's checkbox "Auto-project"
-  (`exact`, the second checkbox is "Auto-project face outline") off leaves the
+  away and Ctrl+Shift+Z brings them back; the palette's checkbox "Auto-project
+  bodies" (`exact`; the other checkboxes are "Auto-project sketches" and
+  "Auto-project face outline") off leaves the
   corner a plain grid snap with no projection; checking "Auto-project face
   outline" first makes the next sketch on the face start with
-  `<id>:curves=4`. **Face centre (issue #140)**: a Box with `X: '10 mm'` (so the top face's
+  `<id>:curves=4`. **Sketch snaps (ADR-0125, issue #171)**: Sketch1 on XY holds
+  a circle centred on the origin; an Offset Plane 10 mm above XY and a sketch on
+  it, `zoomOutTo`; the Circle tool's centre click at (0.4,0.3) snaps to
+  Sketch1's circle centre point (a projection of `curves=0:x=0..0:y=0..0`) and
+  the `coincident` makes `constraints=1`; with the palette's "Auto-project
+  sketches" switch off the same click is a plain grid snap with no projection.
+  **Face centre (issue #140)**: a Box with `X: '10 mm'` (so the top face's
   centre, sketch (10,0), is away from the sketch origin and its projection
   reads distinctly);
   the Circle tool (`c`) clicked at (10.4,0.3) snaps its centre to the face's
@@ -1728,7 +1735,19 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 ### `e2e/project.spec.ts`
 
 - See `e2e/sketch-on-face.spec.ts`: its notes carry the P4-12
-  Project/Intersect details.
+  Project/Intersect details. **ADR-0125** (issue #171): an earlier sketch is a
+  source. `sketchOnXY` draws Sketch1; an Offset Plane 10 mm above XY (the
+  `Offset Plane` dialog: click the XY square with a settled `projector`, fill
+  Distance, OK) and a sketch on it (`Create Sketch` → Construction planes →
+  Offset Plane1). While the Project tool runs, a click on a curve of the
+  earlier sketch offers `data-model-hover` containing `sketchEntity` and adds
+  a `sketchEntity` projection; a click on the **Features list** row of the
+  earlier sketch (`getByRole('list', { name: 'Features' })`) adds a `feature`
+  projection. The summary's bounds are the curves' **points**, so a projected
+  line reads `curves=1:x=-10..10:y=0..0` and a projected circle centred on the
+  origin `curves=1:x=0..0:y=0..0` (its centre). Editing Sketch1 (dblclick its
+  row, edit the length dimension `[data-dimension]` → `Value of d1`, Enter,
+  Finish) moves the projection with it.
 
 ### `e2e/pwa.spec.ts`
 

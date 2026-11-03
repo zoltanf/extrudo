@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { primitive, settled, zoomOutTo } from './benchmark-helpers';
 import {
+  clicker,
   counts,
   kernelReady,
   mapping,
@@ -9,6 +10,7 @@ import {
   pickTool,
   projector,
   railToggle,
+  sketchOnXY,
 } from './helpers';
 
 // P6-07 (ADR-0074): a body edge or vertex a sketch tool snaps to is projected
@@ -19,6 +21,9 @@ import {
 // Circle started near a face's centre is held on the projected centre (issue #140).
 // The palette's Face outline switch adds an open sketch's outline, and removes it
 // only while nothing refers to it (ADR-0074's 2026-10-31 amendment).
+//
+// ADR-0125 (issue #171): a curve or point of an earlier sketch a tool snaps to
+// is projected too, behind the palette's "Auto-project sketches" switch.
 
 test.use({ viewport: { width: 1440, height: 900 } });
 test.describe.configure({ timeout: 120_000 });
@@ -147,7 +152,7 @@ test("a Circle centred on a face's centre is held there (issue #140)", async ({ 
 test('the Auto-project preference off leaves the snap and the projection out', async ({ page }) => {
   await box(page);
   const sketch = await sketchOnTopFace(page);
-  await page.getByRole('checkbox', { name: 'Auto-project', exact: true }).uncheck();
+  await page.getByRole('checkbox', { name: 'Auto-project bodies', exact: true }).uncheck();
   const viewport = await lineFromCorner(page);
   // The corner is a grid point: no model snap, no projection, no constraint.
   await expect.poll(async () => (await counts(page)).constraints).toBe(0);
@@ -363,4 +368,84 @@ test('a Line end snapping to a cylinder rim projects the curved edge', async ({ 
   await expect
     .poll(() => attr(viewport, 'data-sketch-projected'), { timeout: 60_000 })
     .toContain(`${sketch}:curves=1`);
+});
+
+// ADR-0125 (issue #171): a curve or point of an earlier sketch a tool snaps to
+// is projected too. A circle's centre in an earlier sketch is offered to the
+// Circle tool on a plane above it; the palette's "Auto-project sketches"
+// switch turns it off.
+
+/** Makes an Offset Plane 10 mm above XY and starts a sketch on it. Returns the sketch's id. */
+async function sketchAboveXY(page: Page): Promise<string> {
+  const viewport = viewportOf(page);
+  await settled(viewport);
+  const world = await projector(viewport);
+  const half = Number(await viewport.getAttribute('data-camera-size')) * 0.16;
+  await pickTool(page, 'Offset Plane');
+  const dialog = page.getByRole('region', { name: 'Offset Plane dialog' });
+  await expect(dialog).toBeVisible();
+  const square = world([half * 0.5, -half * 0.5, 0]);
+  await page.mouse.click(square.x, square.y);
+  await dialog.getByRole('textbox', { name: 'Distance' }).fill('10 mm');
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).toBeHidden();
+  await kernelReady(page);
+
+  await pickTool(page, 'Create Sketch');
+  await page
+    .getByRole('region', { name: 'Create Sketch' })
+    .getByRole('group', { name: 'Construction planes' })
+    .getByRole('button', { name: 'Offset Plane1' })
+    .click();
+  const sketch = await openSketch(page);
+  await expect(viewport).toHaveAttribute('data-camera-direction', '0,0,-1');
+  return sketch;
+}
+
+test("a circle's centre snaps to an earlier sketch's centre point (ADR-0125)", async ({ page }) => {
+  const viewport = viewportOf(page);
+  const at = await sketchOnXY(page);
+  const click = clicker(page, at);
+  // Sketch1 on XY: a circle centred on the origin.
+  await page.keyboard.press('c');
+  await click(20, 0);
+  await click(30, 0);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await kernelReady(page);
+
+  const sketch = await sketchAboveXY(page);
+  const box = await viewport.boundingBox();
+  if (!box) throw new Error('no viewport');
+  await zoomOutTo(page, { x: box.x + box.width / 2, y: box.y + box.height / 2 }, 150);
+  await settled(viewport);
+  const on = await mapping(viewport);
+  const palette = page.getByRole('region', { name: 'Sketch palette' });
+  const switch_ = palette.getByRole('checkbox', { name: 'Auto-project sketches', exact: true });
+
+  // Off: the click lands on the grid, with no projection and no constraint.
+  await switch_.uncheck();
+  await page.keyboard.press('c');
+  await page.mouse.click(on(20.4, 0.3).x, on(20.4, 0.3).y);
+  await page.mouse.click(on(26, 0).x, on(26, 0).y);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await counts(page)).constraints).toBe(0);
+  await page.keyboard.press('Control+z');
+
+  // On: the circle's centre snaps to Sketch1's circle centre, held on the projection.
+  await switch_.check();
+  await page.keyboard.press('c');
+  await page.mouse.move(on(20.4, 0.3).x, on(20.4, 0.3).y);
+  await page.mouse.click(on(20.4, 0.3).x, on(20.4, 0.3).y);
+  await page.mouse.move(on(26, 0).x, on(26, 0).y);
+  await page.mouse.click(on(26, 0).x, on(26, 0).y);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await counts(page)).constraints, { timeout: 60_000 }).toBe(1);
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await kernelReady(page);
+  await expect
+    .poll(() => attr(viewport, 'data-sketch-projected'))
+    .toBe(`${sketch}:curves=0:x=20..20:y=0..0`);
 });

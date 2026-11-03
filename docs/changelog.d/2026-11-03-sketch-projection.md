@@ -1,0 +1,1 @@
+- 2026-11-03 · **Project a sketch into another sketch**: the Project tool takes a curve or point of an earlier sketch in the view, or a whole earlier sketch from its browser row, and Auto-project Sketches offers an earlier sketch's curves and points to a running tool; both stay linked to the source sketch (issue #171, ADR-0125).

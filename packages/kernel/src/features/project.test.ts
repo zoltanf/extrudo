@@ -356,6 +356,73 @@ describe('vertices and bodies', () => {
   });
 });
 
+describe('sketch sources (ADR-0125)', () => {
+  /** Sketch1 on XY (a circle, a construction line and a loose point) and an offset plane. */
+  function base() {
+    const first = new SketchBuilder();
+    const circle = first.circle(5, 0, 10);
+    const line = first.line(0, 0, 40, 0, true);
+    const loose = first.point(20, 20);
+    const features: Feature[] = [
+      {
+        ...testFeature('A', 'sketch'),
+        inputs: sketchInputs(originPlaneRef('origin:xy'), first.sketch),
+      },
+      offsetPlane('OP', '10 mm'),
+    ];
+    return { features, circle, line, loose };
+  }
+  const source = (ref: GeomRef): Source[] => [{ ref }];
+
+  it('projects one sketch curve by its entity id, as a circle', async () => {
+    const { features, circle } = base();
+    const result = ok(
+      await run(
+        testDocument([
+          ...features,
+          projecting('S', plane('OP'), source({ kind: 'sketchEntity', id: `A/${circle.id}` })),
+        ]),
+      ),
+    );
+    const curves = curvesOf(result, 'S');
+    expect(Object.keys(curves)).toEqual(['curve']);
+    expect(curves.curve).toEqual({ type: 'circle', center: [5, 0], radius: 10 });
+  });
+
+  it('projects a whole sketch with its construction curve and its loose point', async () => {
+    const { features, circle, line, loose } = base();
+    const result = ok(
+      await run(
+        testDocument([
+          ...features,
+          projecting('S', plane('OP'), source({ kind: 'feature', id: 'A' })),
+        ]),
+      ),
+    );
+    const curves = curvesOf(result, 'S');
+    expect(Object.keys(curves).sort()).toEqual([circle.id, line.id, loose].sort());
+    expect(curves[circle.id]).toMatchObject({ type: 'circle', center: [5, 0], radius: 10 });
+    expect(curves[line.id]).toMatchObject({ type: 'line', construction: true });
+    expect(curves[loose]).toEqual({ type: 'point', at: [20, 20] });
+    // No separate key for the circle's own centre point.
+    expect(Object.keys(curves)).not.toContain(circle.center);
+  });
+
+  it('reports a deleted sketch entity as lost, with a warning', async () => {
+    const { features } = base();
+    const result = await run(
+      testDocument([
+        ...features,
+        projecting('S', plane('OP'), source({ kind: 'sketchEntity', id: 'A/nope' })),
+      ]),
+    );
+    const report = result.reports['S' as FeatureId] as SketchReport;
+    expect(report.projections?.['P0' as ProjectionId]).toEqual({ lost: true });
+    expect(result.features['S' as FeatureId]?.status).toBe('warning');
+    expect(result.features['S' as FeatureId]?.message).toMatch(/Lost a projected sketch curve/);
+  });
+});
+
 describe('intersect', () => {
   it('cuts a cylinder with an oblique plane into one exact ellipse', async () => {
     // From z = −20 to 20, so the plane at 45° through the X axis only meets its wall.

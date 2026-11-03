@@ -20,8 +20,13 @@ import { entityPoints, entityRemoval, sketchDraft } from './commands';
 import type { SketchFrame, Vec2 } from './planes';
 import type { SketchData, SketchEntity, SketchProjection } from './schema';
 
-/** One curve of a projection, in sketch coordinates (mm), as the kernel reports it. */
-export type ProjectedCurve =
+/**
+ * One curve of a projection, in sketch coordinates (mm), as the kernel reports
+ * it. A curve whose source was construction geometry (a datum's line, ADR-0093,
+ * or a construction curve of an earlier sketch, ADR-0125) carries
+ * `construction: true`; `projectionSync` adds it construction.
+ */
+export type ProjectedCurve = (
   | { type: 'line'; a: Vec2; b: Vec2 }
   | { type: 'circle'; center: Vec2; radius: number }
   /** Counter-clockwise from `start` to `end`, as sketch arcs run. */
@@ -34,7 +39,8 @@ export type ProjectedCurve =
    */
   | { type: 'spline'; points: Vec2[]; mode?: 'control' }
   /** A projected vertex (P4-12). */
-  | { type: 'point'; at: Vec2 };
+  | { type: 'point'; at: Vec2 }
+) & { construction?: true };
 
 /** What the kernel found for one projection. */
 export interface ProjectionReport {
@@ -117,20 +123,21 @@ export type ProjectionMode = NonNullable<SketchProjection['mode']>;
  * (a face, issue #140).
  */
 const PROJECTABLE: Record<ProjectionMode, readonly GeomRef['kind'][]> = {
-  project: ['edge', 'face', 'vertex', 'body', 'axis', 'point'],
+  project: ['edge', 'face', 'vertex', 'body', 'axis', 'point', 'sketchEntity', 'feature'],
   intersect: ['face', 'body'],
   center: ['face'],
 };
 
 const REFUSED: Record<ProjectionMode, string> = {
-  project: 'Only body edges, faces, vertices, bodies, axes and points can be projected.',
+  project: 'Only body edges, faces, vertices, bodies, axes, points and sketches can be projected.',
   intersect: 'Only faces and bodies can be intersected with the sketch plane.',
   center: "Only a face's centre can be projected.",
 };
 
 /**
  * Projects a body edge, face, vertex or whole body into a sketch (the
- * Project tool), an origin or construction axis or point (ADR-0093), with `mode: 'intersect'` the curves where a face or body
+ * Project tool), an origin or construction axis or point (ADR-0093), a curve,
+ * point or whole sketch of an earlier sketch (ADR-0125), with `mode: 'intersect'` the curves where a face or body
  * meets the sketch plane (Intersect, P4-12), or with `mode: 'center'` a face's
  * area centre as one point (a sketch tool snapped to it, issue #140). The record starts without
  * curves: the kernel reports them on the next recompute and the app adds them
@@ -385,17 +392,26 @@ export function projectionSync(
         continue;
       }
       sync.remove.push(id);
-      curves[key] = addCurve(fresh, newId, sync, 'construction' in entity && entity.construction);
+      curves[key] = addCurve(
+        fresh,
+        newId,
+        sync,
+        isDatumRef(projection.ref) ||
+          ('construction' in entity && entity.construction) ||
+          fresh.construction === true,
+      );
       mapChanged = true;
     }
     for (const key of Object.keys(reported.curves).sort()) {
       if (key in projection.curves) continue;
-      // A datum's line is construction geometry: it never splits a profile (ADR-0093).
+      // A datum's line is construction geometry (ADR-0093); so is a construction
+      // curve of an earlier sketch (ADR-0125).
       curves[key] = addCurve(
         reported.curves[key] as ProjectedCurve,
         newId,
         sync,
-        isDatumRef(projection.ref),
+        isDatumRef(projection.ref) ||
+          (reported.curves[key] as ProjectedCurve).construction === true,
       );
       mapChanged = true;
     }

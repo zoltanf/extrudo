@@ -17,6 +17,7 @@ const markup = (over: Partial<MenuPanelProps> = {}) =>
         markingRadial
         onMarkingRadial={vi.fn()}
         autoProject
+        autoProjectSketches={false}
         autoProjectFace={false}
         preset="spindle"
         help={undefined}
@@ -53,7 +54,7 @@ const itemTexts = (html: string, menu: string) => {
 };
 
 describe('the app menu panel', () => {
-  it('has the rail: six presets in order, all choosable, three toggles, three themes', () => {
+  it('has the rail: six presets in order, all choosable, four toggles, three themes', () => {
     const html = markup();
     expect(names(html, 'Mouse controls')).toEqual([
       'Crank',
@@ -68,6 +69,7 @@ describe('the app menu panel', () => {
     expect(html).not.toContain('aria-disabled');
     expect(html).toMatch(/aria-label="Spindle" aria-checked="true"/);
     expect(html).toMatch(/aria-label="Auto-project body edges" aria-pressed="true"/);
+    expect(html).toMatch(/aria-label="Auto-project sketch curves" aria-pressed="false"/);
     expect(html).toMatch(/aria-label="Auto-project face outline" aria-pressed="false"/);
     expect(html).toMatch(/aria-label="Radial right-click menu" aria-pressed="true"/);
     expect(names(html, 'Theme')).toEqual(['System', 'Light', 'Dark']);
