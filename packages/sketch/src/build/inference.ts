@@ -13,6 +13,7 @@ import {
   type ArcShape,
   alignmentConstraints,
   type Inference,
+  type ModelSnapKind,
   type Snap,
   snapConstraints,
 } from '../inference';
@@ -147,12 +148,13 @@ export function place(
   // only model snap that infers as a `center`) in the same edit.
   const snap = pointer.snap;
   if (snap?.model) {
+    // The model snap's own kind when it has one (a sketch source, ADR-0125), else
+    // the body or datum kind the `Snap` names.
+    const kind: ModelSnapKind =
+      snap.modelKind ??
+      (snap.kind === 'onCurve' ? 'edge' : snap.kind === 'center' ? 'faceCenter' : 'vertex');
     edit.models = edit.models ?? [];
-    edit.models.push({
-      point,
-      ref: snap.model,
-      kind: snap.kind === 'onCurve' ? 'edge' : snap.kind === 'center' ? 'faceCenter' : 'vertex',
-    });
+    edit.models.push({ point, ref: snap.model, kind });
   }
 }
 

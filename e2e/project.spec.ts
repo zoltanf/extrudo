@@ -288,7 +288,7 @@ test("projects a whole earlier sketch through its browser row's click", async ({
   await page.keyboard.press('p');
   const panel = page.getByRole('region', { name: 'Project', exact: true });
   await expect(panel).toBeVisible();
-  await featureRow(page, 'Sketch1').click();
+  await browserRow(page, 'Sketch1').click();
   await expect
     .poll(() => attr(viewport, 'data-sketch-projected'))
     .toBe(`${sketch}:curves=1:x=0..0:y=0..0`);

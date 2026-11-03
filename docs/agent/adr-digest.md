@@ -4000,6 +4000,9 @@ whole sketch. Auto-project gets a second preference `viewport.autoProjectSketche
 default): while a tool runs, curves and points of the earlier, shown sketches are `ModelSnap`s
 (`sketchCurve`, `sketchPoint`) whose point is the nearest point of the curve's display polyline
 carried into the open sketch; the nearer of a body snap and a sketch snap to the cursor wins (a
-tie to the body), the rest is ADR-0074's path. The palette's "View & project" becomes "View" and
+tie to the body), the rest is ADR-0074's path: `Snap.modelKind` carries the
+sketch kind so `place`'s `ModelAttachment.kind` is `sketchPoint`/`sketchCurve`,
+and the host resolves through `projectionCurve(projection, kind)` (the kernel
+key is `point`/`curve`, not the kind). The palette's "View & project" becomes "View" and
 "Auto-project" (a Bodies | Sketches row and the Face outline switch); the app menu's toggle is
 "Auto-project sketch curves". Intersect and the f3d importer are unchanged.

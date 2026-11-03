@@ -408,8 +408,8 @@ test("a circle's centre snaps to an earlier sketch's centre point (ADR-0125)", a
   const click = clicker(page, at);
   // Sketch1 on XY: a circle centred on the origin.
   await page.keyboard.press('c');
-  await click(0, 0);
-  await click(10, 0);
+  await click(20, 0);
+  await click(30, 0);
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
   await kernelReady(page);
@@ -426,8 +426,8 @@ test("a circle's centre snaps to an earlier sketch's centre point (ADR-0125)", a
   // Off: the click lands on the grid, with no projection and no constraint.
   await switch_.uncheck();
   await page.keyboard.press('c');
-  await page.mouse.click(on(0.4, 0.3).x, on(0.4, 0.3).y);
-  await page.mouse.click(on(6, 0).x, on(6, 0).y);
+  await page.mouse.click(on(20.4, 0.3).x, on(20.4, 0.3).y);
+  await page.mouse.click(on(26, 0).x, on(26, 0).y);
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await expect.poll(async () => (await counts(page)).constraints).toBe(0);
@@ -436,10 +436,10 @@ test("a circle's centre snaps to an earlier sketch's centre point (ADR-0125)", a
   // On: the circle's centre snaps to Sketch1's circle centre, held on the projection.
   await switch_.check();
   await page.keyboard.press('c');
-  await page.mouse.move(on(0.4, 0.3).x, on(0.4, 0.3).y);
-  await page.mouse.click(on(0.4, 0.3).x, on(0.4, 0.3).y);
-  await page.mouse.move(on(6, 0).x, on(6, 0).y);
-  await page.mouse.click(on(6, 0).x, on(6, 0).y);
+  await page.mouse.move(on(20.4, 0.3).x, on(20.4, 0.3).y);
+  await page.mouse.click(on(20.4, 0.3).x, on(20.4, 0.3).y);
+  await page.mouse.move(on(26, 0).x, on(26, 0).y);
+  await page.mouse.click(on(26, 0).x, on(26, 0).y);
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await expect.poll(async () => (await counts(page)).constraints, { timeout: 60_000 }).toBe(1);
@@ -447,5 +447,5 @@ test("a circle's centre snaps to an earlier sketch's centre point (ADR-0125)", a
   await kernelReady(page);
   await expect
     .poll(() => attr(viewport, 'data-sketch-projected'))
-    .toBe(`${sketch}:curves=0:x=0..0:y=0..0`);
+    .toBe(`${sketch}:curves=0:x=20..20:y=0..0`);
 });

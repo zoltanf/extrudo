@@ -60,6 +60,8 @@ export interface Snap {
    * `ids` is empty then.
    */
   model?: GeomRef;
+  /** The model snap's own kind, so a sketch source keeps its `sketchPoint`/`sketchCurve` (ADR-0125). */
+  modelKind?: ModelSnapKind;
 }
 
 /**
@@ -331,6 +333,7 @@ export function infer(sketch: SketchData, cursor: Vec2, options: InferenceOption
       point: model.point,
       ids: [],
       model: model.ref,
+      modelKind: model.kind,
     });
   }
 

@@ -109,6 +109,18 @@ makes every old curve a snap target, and the user can turn Sketches off alone wh
 snapping stays on. Why on by default: the case that asked for it (a hole at the base
 circle's centre) is the first thing a new user tries.
 
+### Amendment (slice 3, 2026-11-03)
+
+The plan above said the host needed no change beyond `projectionMode`, but a
+sketch snap's kernel curve key is not its kind: a sketch point reports `point`
+and a sketch curve `curve` (or `curve:<n>` in pieces), while a body vertex or
+edge reports its own kind. So `Snap` carries the model snap's own kind
+(`Snap.modelKind`, set in `infer`), `place` uses it for the
+`ModelAttachment.kind`, and the host resolves a pending constraint or edit
+through `projectionCurve(projection, kind)` (a `curveKey` mapping plus the
+first `curve:<n>`). `projectedEntities` and `data-sketch-projected` are
+unchanged.
+
 ## Consequences
 
 - Sketch curves follow the sketch they came from, across parallel and tilted planes, with
