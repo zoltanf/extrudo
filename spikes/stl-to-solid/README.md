@@ -235,6 +235,10 @@ STL_DIR=~/Development/extrudo-stl-solid-test TOL=auto BUILD=diag FILE=own/scrap-
   round trip with a name, as `Kernel.writeStep` does; `Q26CONE=1` (Q3.3) prints every written cone face and every
   invalid read-back face with its BRepCheck statuses and its edges' pcurves (`q26 face`). For the sweep's own body,
   stage the kernel's mesh with `MESH_OUT` and run case `f` on the `.mesh`.
+  `Q26SPLIT=1` with `Q26TOUCH=1` (2026-11-03, plan §Q3.2): the written STEP read without healing, with the reader's
+  healing and with it minus one mode at a time; the vertex pairs within 1e-7 on two wires of one face in each
+  (`q26 split raw/healed`, `q26 split without <mode> pairs`); per face, the wires' 2D intersections as
+  `FixIntersectingWires` sees them and that tool alone on the face (`q26 split wires/int/uv/tool`).
 
 Case `f` with `TIMES=1` also prints `calls:` (chainCurve and
 `Geom2dAPI_Interpolate` calls, the mesh check's nodes, BRepExtrema calls and
