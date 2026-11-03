@@ -1641,6 +1641,19 @@ end to end, faster than in established desktop CAD.
     the anchor test and the axe audit.
   - [x] Batch 1: notes for the 13 Constraints tool pages, each with its figure.
 
+- [ ] **P6-23 Annotations** (owner, 2026-11-03; ADR-0126). Numbered notes (#1, #2, …,
+  never reused) pinned to a face, edge, vertex, body, sketch entity or a free point, in the
+  3D view and in sketches, saved in the document and undoable, hideable per annotation and
+  with one global eye, and readable and writable by agents over MCP (`list_annotations`,
+  `add_annotation`, `edit_annotation`, `remove_annotation`; `get_design` lists them) so
+  "make the hole at #3 M4" is a complete instruction. Anchors follow geometry through the
+  naming service and show as detached when it is gone. Acceptance: ADR-0126 §9 per slice;
+  `pnpm check`, `e2e/annotations.spec.ts`, CI green.
+  - [ ] S1 Model and agents: schema, commands, kernel resolution, MCP tools, skill, API, CLI.
+  - [ ] S2 3D view: overlay, Annotate tool (`N`), selection, browser folder, toggles.
+  - [ ] S3 Sketch mode.
+  - [ ] S4 Polish: re-anchor by drag, `screenshot { annotations }`, example file.
+
 ## Phase 7 — Later (lowest priority, after everything else)
 
 **Owner, 2026-10-14: the last work on the roadmap.** Don't pick a task here
