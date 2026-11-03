@@ -104,7 +104,7 @@ button for each:
 ![Symmetric: two points either side of a construction line, uneven, then mirrored](./images/sketching/constraint-symmetric.figure.svg "Symmetric: two things, then the line to mirror about")
 
 Pick a tool, then click the things it ties together. A small glyph appears on the sketch for each
-constraint; click one and press `Delete` to remove it. **Show constraints** in the sketch
+constraint; with no tool active (`Esc` leaves one), click a glyph and press `Delete` to remove it. **Show constraints** in the sketch
 palette hides the glyphs when they get in the way.
 
 If you ask for something the sketch can't do, the app says so and changes nothing: "Parallel
