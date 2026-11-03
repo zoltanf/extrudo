@@ -72,7 +72,7 @@ import type { ToolHost } from './tools/host';
  */
 export function PanelColumn({ children }: { children: ReactNode }) {
   return (
-    <div className="pointer-events-none absolute top-[148px] right-3 bottom-3 z-10 flex w-60 flex-col gap-2 overflow-y-auto [scrollbar-width:none]">
+    <div className="pointer-events-none absolute top-[148px] right-3 bottom-3 z-10 flex w-64 flex-col gap-2 overflow-y-auto [scrollbar-width:none]">
       {children}
     </div>
   );
