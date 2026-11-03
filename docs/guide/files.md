@@ -135,7 +135,9 @@ home screen, **Linked folder › Link a folder…** asks you to choose a folder.
 The browser's own copy stays the main one. If the folder is unreachable (the browser can lose
 permission after a restart), the home screen shows **Reconnect**. If the file changed on disk
 since Extrudo last wrote it, nothing is overwritten. A message says the file changed, and you
-choose **Load from disk** or **Overwrite**. **Unlink the folder** leaves the files where they are.
+choose **Load from disk** or **Overwrite**. Extrudo looks when you open the design, too. A file
+whose contents are still Extrudo's own doesn't count as changed, even when a sync app such as
+Google Drive has touched its date. **Unlink the folder** leaves the files where they are.
 
 This is handy for keeping designs in a synced folder, or in a repository. Firefox and Safari do
 not offer folder access, and there the tile and the section are not shown.

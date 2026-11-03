@@ -31,6 +31,13 @@ export interface LinkedFile {
   /** When we last wrote (or read) it, ms since the epoch; the conflict check (ADR-0065 §3). */
   modified: number;
   /**
+   * The SHA-256 of the bytes we last wrote (or read), lower case hex. A file
+   * whose time moved but whose bytes still hash to this is ours: a sync
+   * client touched the time, nobody changed it (issue #155). Links made
+   * before it was kept have none, and a moved time is a conflict for them.
+   */
+  sha256?: string;
+  /**
    * The link is to a real path main issued this session, not a file in the
    * linked folder (P6-01 slice 2). Only the desktop app writes these, through
    * the paths main handed out; the browser never sees one.

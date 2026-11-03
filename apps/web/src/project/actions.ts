@@ -16,6 +16,7 @@ import {
   type ProjectId,
   ProjectNotFoundError,
   type ProjectSummary,
+  sha256Hex,
 } from '@extrudo/storage';
 import { appNotifications } from '../design-system/notifications';
 import { importAccept, requestModelImport } from '../features/import';
@@ -353,6 +354,7 @@ export async function openExternalFile(
   await platform.projects.link(summary.id, {
     file: file.path,
     modified: file.modified,
+    sha256: sha256Hex(file.bytes),
     external: true,
   });
   for (const notice of notices) noteOnOpen(summary.id, notice);

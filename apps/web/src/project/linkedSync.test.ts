@@ -1,3 +1,4 @@
+import { type LinkedFile, sha256Hex } from '@extrudo/storage';
 import { describe, expect, it } from 'vitest';
 import {
   createLinkSync,
@@ -37,11 +38,25 @@ function fakeTimer() {
 
 /** A linked sync with the link, the disk and the writes all under the test's control. */
 function setup(
-  options: { modified?: number; onDisk?: number; gone?: boolean; unlinked?: boolean } = {},
+  options: {
+    modified?: number;
+    onDisk?: number;
+    gone?: boolean;
+    unlinked?: boolean;
+    /** The file's bytes, and whether the link knows their hash. */
+    bytes?: Uint8Array;
+    hashed?: boolean;
+  } = {},
 ) {
   const { timer, waiting, fire } = fakeTimer();
   let clock = 1_000;
-  let link = { file: 'Bracket.extrudo', modified: options.modified ?? 500 };
+  let disk = options.bytes ?? new Uint8Array([0]);
+  let link: LinkedFile = {
+    file: 'Bracket.extrudo',
+    modified: options.modified ?? 500,
+    ...(options.hashed ? { sha256: sha256Hex(disk) } : {}),
+  };
+  const reads: string[] = [];
   const writes: { name: string; bytes: Uint8Array }[] = [];
   const archives: number[] = [];
   // What the design looks like when the archive is built, as the app's is.
@@ -52,12 +67,17 @@ function setup(
       link = next ?? link;
     },
     onDisk: async () => (options.gone ? undefined : (options.onDisk ?? link.modified)),
+    read: async (name) => {
+      reads.push(name);
+      return disk;
+    },
     archive: async () => {
       archives.push(state);
       return new Uint8Array([state]);
     },
     write: async (name, bytes) => {
       writes.push({ name, bytes });
+      disk = bytes;
       link = { file: name, modified: 900 };
       return 900;
     },
@@ -70,10 +90,15 @@ function setup(
   return {
     sync,
     writes,
+    reads,
     archives,
     reported,
     waiting,
     fire,
+    /** The file's bytes, as another program's write changes them. */
+    set diskBytes(value: Uint8Array) {
+      disk = value;
+    },
     /** What the file on disk says, as another program's write changes it. */
     set onDiskValue(value: number) {
       ctx.onDisk = async () => value;
@@ -102,7 +127,11 @@ describe('linkedSync (P4-09, ADR-0065 §3)', () => {
     expect(t.writes.map((w) => w.name)).toEqual(['Bracket.extrudo']);
     expect(t.writes[0]?.bytes).toEqual(new Uint8Array([1]));
     expect(t.archives).toEqual([1]);
-    expect(t.link).toEqual({ file: 'Bracket.extrudo', modified: 900 });
+    expect(t.link).toEqual({
+      file: 'Bracket.extrudo',
+      modified: 900,
+      sha256: sha256Hex(new Uint8Array([1])),
+    });
     expect(t.sync.pending()).toBe(false);
   });
 
@@ -157,6 +186,7 @@ describe('linkedSync (P4-09, ADR-0065 §3)', () => {
     expect(t.reported).toEqual([]);
     // Someone else has the file by the time the write comes.
     t.onDiskValue = 42;
+    t.diskBytes = new Uint8Array([7]);
     await t.fire();
     expect(t.writes).toHaveLength(1);
     expect(t.reported).toEqual([{ kind: 'conflict', file: 'Bracket.extrudo', onDisk: 42 }]);
@@ -169,6 +199,51 @@ describe('linkedSync (P4-09, ADR-0065 §3)', () => {
     expect(t.writes).toEqual([]);
     // The recorded time is untouched: the next save still sees the conflict.
     expect(t.link.modified).toBe(500);
+    // A link without a hash (made before it was kept) can't tell: no read.
+    expect(t.reads).toEqual([]);
+  });
+
+  it('a time that moved over the same bytes is not a conflict: the file is written (#155)', async () => {
+    // A sync client touched the time after upload (issue #155).
+    const t = setup({ modified: 500, onDisk: 501.25, hashed: true });
+    t.edit(1);
+    const outcome = await t.sync.saved();
+    expect(outcome).toEqual({ kind: 'written', file: 'Bracket.extrudo', modified: 900 });
+    expect(t.reads).toEqual(['Bracket.extrudo']);
+    expect(t.writes[0]?.bytes).toEqual(new Uint8Array([1]));
+  });
+
+  it('a time that moved over other bytes is a conflict, hash or not (#155)', async () => {
+    const t = setup({ modified: 500, onDisk: 777, hashed: true });
+    t.diskBytes = new Uint8Array([9, 9]);
+    const outcome = await t.sync.saved();
+    expect(outcome).toEqual({ kind: 'conflict', file: 'Bracket.extrudo', onDisk: 777 });
+    expect(t.writes).toEqual([]);
+  });
+
+  it('the file is read only when its time moved', async () => {
+    const t = setup({ hashed: true });
+    await t.sync.saved();
+    expect(t.reads).toEqual([]);
+  });
+
+  it('check says a change on disk without writing or reporting it (#155)', async () => {
+    const t = setup({ modified: 500, onDisk: 777 });
+    expect(await t.sync.check()).toEqual({
+      kind: 'conflict',
+      file: 'Bracket.extrudo',
+      onDisk: 777,
+    });
+    expect(t.writes).toEqual([]);
+    expect(t.reported).toEqual([]);
+  });
+
+  it('check is skipped for a file that is as the link left it, or no link', async () => {
+    expect(await setup().sync.check()).toEqual({ kind: 'skipped' });
+    expect(await setup({ unlinked: true }).sync.check()).toEqual({ kind: 'skipped' });
+    const touched = setup({ modified: 500, onDisk: 501, hashed: true });
+    expect(await touched.sync.check()).toEqual({ kind: 'skipped' });
+    expect(touched.writes).toEqual([]);
   });
 
   it('a file that is gone is an error result, not a write', async () => {

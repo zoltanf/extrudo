@@ -107,6 +107,7 @@ describe('a linked project (P4-09, ADR-0065 §3)', () => {
     expect((await t.projects.get(t.store.getState().doc.id))?.linked).toEqual({
       file: 'Bracket.extrudo',
       modified: 1_000,
+      sha256: sha256Hex(t.folder.files.get('Bracket.extrudo')?.bytes ?? new Uint8Array()),
     });
     expect(t.notifications).toEqual([
       { tone: 'success', text: 'Saved Bracket.extrudo to the linked folder.', options: undefined },
@@ -187,6 +188,68 @@ describe('a linked project (P4-09, ADR-0065 §3)', () => {
       tone: 'success',
       text: 'Loaded Bracket.extrudo from the linked folder.',
     });
+  });
+
+  it('says a change once, however many saves find it, and a new change again (#155)', async () => {
+    const t = await setup();
+    await t.project.linkNow();
+    t.folder.change('Bracket.extrudo');
+    const conflicts = () => t.notifications.filter((n) => n.text.endsWith('changed on disk.'));
+    for (let save = 0; save < 3; save++) {
+      t.passThrottle();
+      await t.project.afterSave();
+    }
+    expect(conflicts()).toHaveLength(1);
+    // Its buttons still answer it (from the history, once the toast is gone).
+    expect(conflicts()[0]?.options?.actions?.[1]?.available?.()).toBe(true);
+    // Someone changes the file again: that is news.
+    t.folder.files.set('Bracket.extrudo', {
+      bytes: writeArchive(createDocument({ name: 'Later' })),
+      modified: 12_345,
+    });
+    t.passThrottle();
+    await t.project.afterSave();
+    expect(conflicts()).toHaveLength(2);
+  });
+
+  it('after Load from disk the next save writes the file, with no second conflict', async () => {
+    const t = await setup();
+    await t.project.linkNow();
+    t.folder.change('Bracket.extrudo');
+    t.passThrottle();
+    await t.project.afterSave();
+    t.notifications.at(-1)?.options?.actions?.[0]?.run();
+    await vi.waitFor(() => expect(t.restored).toHaveLength(1));
+    t.store.getState().dispatch(renameDocument({ name: 'Edited after loading' }));
+    await t.projects.save(t.store.getState().doc);
+    t.passThrottle();
+    await t.project.afterSave();
+    expect(t.notifications.filter((n) => n.text.endsWith('changed on disk.'))).toHaveLength(1);
+    expect((await t.documentIn('Bracket.extrudo')).name).toBe('Edited after loading');
+  });
+
+  it('a project that opens says a file changed on disk before the first edit (#155)', async () => {
+    const t = await setup();
+    await t.project.linkNow();
+    await t.project.opened();
+    expect(t.notifications).toHaveLength(1);
+    t.folder.change('Bracket.extrudo');
+    await t.project.opened();
+    expect(t.notifications.at(-1)?.text).toBe('Bracket.extrudo changed on disk.');
+    expect(t.notifications.at(-1)?.options?.actions?.map((a) => a.label)).toEqual([
+      'Load from disk',
+      'Overwrite',
+    ]);
+    // Nothing was written by looking.
+    expect((await t.documentIn('Bracket.extrudo')).name).toBe('From disk');
+  });
+
+  it('a project that opens without permission says nothing yet', async () => {
+    const t = await setup();
+    await t.project.linkNow();
+    t.folder.setPermission('prompt');
+    await t.project.opened();
+    expect(t.notifications).toHaveLength(1);
   });
 
   it('Load from disk refuses a file over 100 MB of attachments, writing none (#128)', async () => {
@@ -324,8 +387,27 @@ describe('an external-linked project (P6-01 slice 2, finding 3)', () => {
     expect((await t.projects.get(t.store.getState().doc.id))?.linked).toEqual({
       file: path,
       modified: 1_500,
+      sha256: sha256Hex(t.disk.get(path)?.bytes ?? new Uint8Array()),
       external: true,
     });
+  });
+
+  it('a time a sync client moved over our own bytes is no conflict (#155)', async () => {
+    const t = await externalSetup();
+    t.store.getState().dispatch(renameDocument({ name: 'First' }));
+    await t.projects.save(t.store.getState().doc);
+    t.passThrottle();
+    await t.project.afterSave();
+    // A sync client (Google Drive's G: drive, most likely) sets its own time.
+    const written = t.disk.get(path);
+    if (!written) throw new Error('not written');
+    t.disk.set(path, { bytes: written.bytes, modified: written.modified + 0.731 });
+    t.store.getState().dispatch(renameDocument({ name: 'Second' }));
+    await t.projects.save(t.store.getState().doc);
+    t.passThrottle();
+    await t.project.afterSave();
+    expect(t.notifications).toEqual([]);
+    expect(readArchive(t.disk.get(path)?.bytes ?? new Uint8Array()).doc.name).toBe('Second');
   });
 
   it('sees a changed file as a conflict and loads it back from disk', async () => {
