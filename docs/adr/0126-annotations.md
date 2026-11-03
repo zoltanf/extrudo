@@ -180,6 +180,20 @@ mechanics are the same for all of them:
   the `ViewCubeView` pattern, so many markers don't re-render React per
   frame). Buttons carry `data-view-passthrough=""` so the wheel and the
   middle/right buttons still orbit. Behind the camera: not drawn.
+- **Behind the part: ghosted** (owner, 2026-11-04). An annotation whose
+  anchor point the camera can't see (on a far face, or covered by another
+  feature or body) is drawn faint and dashed, without its leader and bubble,
+  so it never reads as a note about the face in front of it, yet never seems
+  lost. The test is the picking code's occlusion check (`hidden()` in
+  `apps/web/src/selection/pick.ts`, module-private today, so S2 exports it; a ray from the eye to the anchor point
+  against the bodies' BVH with a small slack), run after the camera settles
+  and after a recompute, not every frame. A selected annotation, the one
+  hovered in the browser folder, and one being edited are always drawn in
+  full. `ViewportSettings.annotationsBehind: 'ghost' | 'show'` (default
+  `'ghost'`, persisted like the other viewport preferences; a switch next to
+  the folder's eye) turns the check off. `free` and `sketch` anchors are
+  tested the same way. The idea is from ScanRuler's pinned readings, which
+  hide pins behind the part (`docs/references.md`).
 - The **badge**: a 20 px circle with the number, accent colour, white digits;
   `done` muted, `detached` hollow and dashed, selected with a ring, hovered
   brighter. A **leader** (1 px SVG line) from the anchor point to the badge
@@ -256,7 +270,7 @@ changes through `change()` as one `Agent: …` transaction):
 | Slice | What | Done when |
 |---|---|---|
 | **S1 Model and agents** | Sections 1–4 (schema, ids, commands, cascades, remint, restoreVersion, kernel resolution and report, model store), section 8 (MCP tools, summary, skill, API, CLI), `glyphMenu` rename, file-format doc, ADR digest, changelog line, roadmap tick | unit tests for every command and rule, `tools.test.ts` + `tools.kernel.test.ts` cases (a face annotation follows a parameter change; a deleted feature detaches it), `skill.test.ts` green with the new example, `pnpm check` green, CI green by SHA |
-| **S2 3D view** | Sections 5–6 in the chosen display option: overlay, tool, selection kind, folder, toggle, in-place editor, context menu, `N` key, tooltip clip | `e2e/annotations.spec.ts`: add on a face, number shown, text edited, hidden by the eye, follows a parameter change, detached after deleting the feature, deleted with Delete; `docs/agent/e2e-notes.md` heading; `docs/04-ui-spec.md` section; `docs/guide/` page |
+| **S2 3D view** | Sections 5–6 in the chosen display option: overlay, tool, selection kind, folder, toggle, in-place editor, context menu, `N` key, tooltip clip | `e2e/annotations.spec.ts`: add on a face, number shown, text edited, hidden by the eye, ghosted when the view turns to its back (`data-annotation-behind`) and full again when selected, follows a parameter change, detached after deleting the feature, deleted with Delete; `docs/agent/e2e-notes.md` heading; `docs/04-ui-spec.md` section; `docs/guide/` page |
 | **S3 Sketch mode** | Section 7 | the e2e spec extended: an annotation on a sketch point follows the point; shown in model mode through the plane |
 | **S4 Polish** | re-anchor by dragging the anchor dot; `screenshot { annotations: true }` composites the badges; "Delete all done"; a `.extrudo` example with annotations in `fixtures/examples` | e2e for re-anchoring; `tools.test.ts` for the screenshot option |
 
@@ -299,6 +313,11 @@ annotation **muted grey** / hidden by default.
 - **Drawing markers in three.js** (sprites or glyph curves). DOM markers are
   crisp, accessible, themed, and every existing label in the app is DOM;
   snapshots lose them, which the `screenshot` option covers where it matters.
+- **Hiding annotations behind the part outright** (ScanRuler's default for
+  its pins) and **drawing them through the part.** Hidden ones seem lost
+  until the view turns; drawn-through ones land on the face in front and
+  read as notes about it. Ghosting keeps both problems away (owner,
+  2026-11-04).
 - **A per-annotation `visible` in the viewport store** (not saved). People
   hide specific notes on purpose and expect it to stay hidden after a reload
   and to be shared with the file.
