@@ -1,14 +1,33 @@
 import type { EvaluateResult } from '@extrudo/core';
 import { Popover } from 'radix-ui';
 import { type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { matching, type NameEntry, type Word, wordAt } from './completion';
+import {
+  insertName,
+  matching,
+  matchingBuiltins,
+  type NameEntry,
+  newName,
+  type Word,
+  wordAt,
+} from './completion';
 import { useExpressionNames } from './expressionNames';
 import { Message } from './Message';
 
-/** The open completion list: the word it completes, the names, the one picked with the arrows (-1: none). */
+/** A parameter the field can create: `name = value`, its text and its value for display. */
+interface Creation {
+  name: string;
+  text: string;
+  shown: string;
+}
+
+/**
+ * The open completion list: the word it completes, the names, the parameter it
+ * can create (the row after the names), the row picked with the arrows (-1: none).
+ */
 interface Completion {
   word: Word;
   items: NameEntry[];
+  create?: Creation;
   active: number;
 }
 
@@ -23,6 +42,12 @@ export interface ExpressionInputProps {
   format(result: Extract<EvaluateResult, { ok: true }>): string;
   /** Called on every keystroke, for forms that submit the draft themselves. */
   onDraftChange?(expression: string, valid: boolean): void;
+  /**
+   * For a field that takes `name = value` (its `evaluate` and `onCommit`
+   * handle it): the value a new parameter `name` starts with. The field then
+   * offers to create an unknown name typed on its own.
+   */
+  newParameter?(name: string): string;
   /** Accessible name of the field. */
   label: string;
   /** With a placeholder, an empty field counts as "not filled in yet" rather than an error. */
@@ -37,9 +62,12 @@ export interface ExpressionInputProps {
  * valid expression; Esc goes back to the committed one. An invalid draft is
  * never committed.
  *
- * Typing a name lists the parameters in scope that contain it (ADR-0096):
- * ↑/↓ pick, Tab or Enter inserts, Esc closes the list first, Ctrl+Space opens
- * it on an empty word. Enter without a pick commits as usual.
+ * Typing a name lists the parameters in scope that contain it, then the
+ * functions and constants that start with it (ADR-0096): ↑/↓ pick, Tab or
+ * Enter inserts, Esc closes the list first, Ctrl+Space opens it on an empty
+ * word. Enter without a pick commits as usual. With `newParameter`, an
+ * unknown name alone in the field gets a "New parameter" row and a "Create"
+ * link under the error (Ctrl+Enter): both turn it into `name = value`.
  */
 export function ExpressionInput({
   value,
@@ -47,6 +75,7 @@ export function ExpressionInput({
   onDraftChange,
   evaluate,
   format,
+  newParameter,
   label,
   placeholder,
   className,
@@ -56,7 +85,7 @@ export function ExpressionInput({
   const [completion, setCompletion] = useState<Completion>();
   const backdrop = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
-  const caretAfterInsert = useRef<number>(undefined);
+  const selectAfterChange = useRef<readonly [number, number]>(undefined);
   const inScope = useRef(new Map<string, boolean>());
   const names = useExpressionNames();
   const messageId = useId();
@@ -90,16 +119,40 @@ export function ExpressionInput({
     return ok;
   };
 
+  // The parameter `text` would create: an unknown name alone in the field,
+  // whose definition with the starting value is valid here.
+  const creation = (text: string, evaluated: EvaluateResult): Creation | undefined => {
+    const name = newName(text);
+    if (!newParameter || !name || evaluated.ok || evaluated.error.code !== 'unknown-name') {
+      return undefined;
+    }
+    const definition = `${name} = ${newParameter(name)}`;
+    const defined = evaluate(definition);
+    return defined.ok ? { name, text: definition, shown: format(defined) } : undefined;
+  };
+  const creatable = pending ? undefined : creation(draft, result);
+
   // An empty word opens the list only when asked for (Ctrl+Space).
   const suggest = (text: string, caret: number, asked = false) => {
     const word = wordAt(text, caret);
     const items =
       word && (asked || word.text !== '')
-        ? matching(word.text, names()).filter((entry) => usable(entry.name))
+        ? [
+            ...matching(word.text, names()).filter((entry) => usable(entry.name)),
+            ...matchingBuiltins(word.text),
+          ]
         : [];
+    const create =
+      word && word.text !== '' && word.text === text.trim()
+        ? creation(text, evaluate(text))
+        : undefined;
     // A name typed out in full, with nothing longer to offer, needs no list.
     const done = !asked && items.length === 1 && items[0]?.name === word?.text;
-    setCompletion(word && items.length > 0 && !done ? { word, items, active: -1 } : undefined);
+    setCompletion(
+      word && ((items.length > 0 && !done) || create)
+        ? { word, items, create, active: -1 }
+        : undefined,
+    );
   };
 
   const change = (next: string) => {
@@ -110,27 +163,36 @@ export function ExpressionInput({
 
   const insert = (entry: NameEntry) => {
     if (!completion) return;
-    const { start, end } = completion.word;
-    caretAfterInsert.current = start + entry.name.length;
+    const inserted = insertName(draft, completion.word, entry);
+    selectAfterChange.current = [inserted.caret, inserted.caret];
     setCompletion(undefined);
-    change(draft.slice(0, start) + entry.name + draft.slice(end));
+    change(inserted.text);
+  };
+
+  // `name = value` with the value selected, so typing replaces it.
+  const create = ({ name, text }: Creation) => {
+    selectAfterChange.current = [name.length + 3, text.length];
+    setCompletion(undefined);
+    change(text);
   };
 
   useLayoutEffect(() => {
-    const caret = caretAfterInsert.current;
-    if (caret === undefined) return;
-    caretAfterInsert.current = undefined;
-    input.current?.setSelectionRange(caret, caret);
+    const range = selectAfterChange.current;
+    if (range === undefined) return;
+    selectAfterChange.current = undefined;
+    input.current?.setSelectionRange(...range);
   });
 
   // Keys the open list takes; true when it took this one.
   const listKey = (event: KeyboardEvent<HTMLInputElement>, list: Completion) => {
-    const count = list.items.length;
+    const count = list.items.length + (list.create ? 1 : 0);
     const pick = (active: number) => {
       event.preventDefault();
       setCompletion({ ...list, active });
       document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: 'nearest' });
     };
+    // The "New parameter" row, picked or alone in the list.
+    const creating = list.create && (list.active === list.items.length || list.items.length === 0);
     switch (event.key) {
       case 'ArrowDown':
         pick((list.active + 1) % count);
@@ -139,6 +201,11 @@ export function ExpressionInput({
         pick(list.active <= 0 ? count - 1 : list.active - 1);
         return true;
       case 'Tab': {
+        if (list.create && list.active === list.items.length && !event.shiftKey) {
+          event.preventDefault();
+          create(list.create);
+          return true;
+        }
         // A word that already is the first name moves on, like a field without a list.
         const entry = list.items[list.active] ?? list.items[0];
         if (event.shiftKey || !entry || (list.active < 0 && entry.name === list.word.text)) {
@@ -149,6 +216,11 @@ export function ExpressionInput({
         return true;
       }
       case 'Enter': {
+        if (list.create && creating) {
+          event.preventDefault();
+          create(list.create);
+          return true;
+        }
         const entry = list.items[list.active];
         if (!entry) return false;
         event.preventDefault();
@@ -173,6 +245,11 @@ export function ExpressionInput({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && creatable) {
+      event.preventDefault();
+      create(creatable);
+      return;
+    }
     if (completion && listKey(event, completion)) return;
     if (event.key === ' ' && event.ctrlKey) {
       event.preventDefault();
@@ -199,6 +276,8 @@ export function ExpressionInput({
 
   const activeId =
     completion && completion.active >= 0 ? `${listId}-${completion.active}` : undefined;
+  const optionClass = (i: number) =>
+    `cursor-default whitespace-nowrap rounded-input px-2 py-0.5 hover:bg-accent-soft ${completion?.active === i ? 'bg-accent-soft' : ''}`;
 
   return (
     <div className={`expr-input${error ? ' has-error' : ''} ${className ?? ''}`}>
@@ -279,21 +358,51 @@ export function ExpressionInput({
                 role="option"
                 tabIndex={-1}
                 aria-selected={i === completion.active}
-                className={`cursor-default whitespace-nowrap rounded-input px-2 py-0.5 hover:bg-accent-soft ${i === completion.active ? 'bg-accent-soft' : ''}`}
+                className={optionClass(i)}
                 // Keep the focus (and the edit) in the field.
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => insert(entry)}
               >
                 {entry.name}
+                {entry.args !== undefined && <span className="text-muted">({entry.args})</span>}
                 {entry.value !== undefined && <span className="text-muted"> = {entry.value}</span>}
               </div>
             ))}
+            {completion?.create && (
+              // biome-ignore lint/a11y/useKeyWithClickEvents: the field drives the keyboard
+              <div
+                id={`${listId}-${completion.items.length}`}
+                role="option"
+                tabIndex={-1}
+                aria-selected={completion.active === completion.items.length}
+                className={`${optionClass(completion.items.length)} text-accent`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => completion.create && create(completion.create)}
+              >
+                + New parameter {completion.create.name}
+                <span className="text-muted"> = {completion.create.shown}</span>
+              </div>
+            )}
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>
       <div id={messageId} className="expr-message" aria-live="polite">
         {pending ? '' : result.ok ? `= ${format(result)}` : <Message text={result.error.message} />}
       </div>
+      {/* The open list covers this spot and offers the same row. */}
+      {creatable && !completion?.create && (
+        <button
+          type="button"
+          tabIndex={-1}
+          className="cursor-pointer text-left text-sm text-accent hover:underline"
+          // Keep the focus (and the edit) in the field.
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => create(creatable)}
+        >
+          + Create <code>{creatable.name}</code> = {creatable.shown}{' '}
+          <kbd className="font-mono text-xs text-muted">Ctrl+Enter</kbd>
+        </button>
+      )}
     </div>
   );
 }

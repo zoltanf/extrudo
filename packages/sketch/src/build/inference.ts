@@ -143,14 +143,15 @@ export function place(
     if (c.type === 'collinear') dropAxisConstraint(edit, c.a);
   }
   // A model snap (auto-project, P6-07): the host projects the ref and holds
-  // the point on the projected vertex or curve in the same edit.
-  const model = pointer.snap?.model;
-  if (model) {
+  // the point on the projected vertex, curve or face centre (issue #140, the
+  // only model snap that infers as a `center`) in the same edit.
+  const snap = pointer.snap;
+  if (snap?.model) {
     edit.models = edit.models ?? [];
     edit.models.push({
       point,
-      ref: model,
-      kind: pointer.snap?.kind === 'onCurve' ? 'edge' : 'vertex',
+      ref: snap.model,
+      kind: snap.kind === 'onCurve' ? 'edge' : snap.kind === 'center' ? 'faceCenter' : 'vertex',
     });
   }
 }

@@ -1,6 +1,12 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { checkManifold, mergeMeshes, splitNonManifoldEdges, type TriangleMesh } from './mesh';
+import {
+  checkManifold,
+  dropBadTriangles,
+  mergeMeshes,
+  splitNonManifoldEdges,
+  type TriangleMesh,
+} from './mesh';
 import { readStl, writeStl } from './stl';
 import { MODEL_PATH, modelXml, read3mf, write3mf } from './threemf';
 
@@ -152,6 +158,47 @@ describe('splitNonManifoldEdges', () => {
     const unequal = withIndices(cube, [...cube.indices, 0, 1, 4, 0, 1, 7]);
     expect(checkManifold(unequal).nonManifoldEdges).toBeGreaterThan(0);
     expect(checkManifold(splitNonManifoldEdges(unequal).mesh).ok).toBe(false);
+  });
+});
+
+describe('dropBadTriangles', () => {
+  it('leaves a clean box alone, as the same object, with zero counts', () => {
+    const mesh = box(10, 20, 30);
+    const result = dropBadTriangles(mesh);
+    expect(result.mesh).toBe(mesh);
+    expect(result.degenerate).toBe(0);
+    expect(result.duplicate).toBe(0);
+  });
+
+  it('drops flat, out-of-range and duplicate triangles, keeping the first of a pair', () => {
+    const mesh = box(10, 10, 10);
+    const clean = [...mesh.indices];
+    // (1) a triangle repeating a corner, (2) one naming a node that doesn't
+    // exist, (3) an exact duplicate of the box's first triangle, (4) the same
+    // triangle the other way round.
+    const dirty = withIndices(mesh, [
+      ...clean,
+      0,
+      0,
+      2,
+      0,
+      1,
+      99,
+      ...clean.slice(0, 3),
+      ...clean.slice(0, 3).reverse(),
+    ]);
+    const result = dropBadTriangles(dirty);
+    expect(result.degenerate).toBe(2);
+    expect(result.duplicate).toBe(2);
+    // A new indices array; the nodes are untouched.
+    expect(result.mesh).not.toBe(dirty);
+    expect(result.mesh.positions).toBe(mesh.positions);
+    expect(result.mesh.indices.length).toBe(clean.length);
+    // The kept triangles are the file's first ones, in order: still a closed box.
+    expect([...result.mesh.indices]).toEqual(clean);
+    const report = checkManifold(result.mesh);
+    expect(report.ok).toBe(true);
+    expect(report.volume).toBeCloseTo(checkManifold(mesh).volume, 9);
   });
 });
 

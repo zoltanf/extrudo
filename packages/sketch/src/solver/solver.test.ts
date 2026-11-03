@@ -1,5 +1,5 @@
-import type { SketchData } from '@extrudo/core';
-import { SketchDataSchema } from '@extrudo/core';
+import type { SketchData, SketchDimension } from '@extrudo/core';
+import { measureDimension, SketchDataSchema } from '@extrudo/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { plate, SketchBuilder } from '../fixtures';
 import { splitComponents } from './components';
@@ -406,6 +406,235 @@ describe('dimensions (one per type)', () => {
     clean(s, 7);
     expect(s.result.skipped.sort()).toEqual([driven, missing].sort());
     close(dist(s.p(line.start), s.p(line.end)), 10);
+  });
+});
+
+describe("distances to a circle's or an arc's edge (ADR-0112)", () => {
+  type Side = 'near' | 'far';
+  type Orientation = 'aligned' | 'horizontal' | 'vertical';
+  /** The solved dimension as `measureDimension` reads it from the solved sketch. */
+  const measured = (s: Solved, id: string) =>
+    measureDimension(s.sketch, s.sketch.dimensions[id as never] as SketchDimension);
+  /** The planegcs primitive types a dimension maps to. */
+  const route = (b: SketchBuilder, id: string) =>
+    mapSketch(SketchDataSchema.parse(b.sketch), b.values)
+      .items.find((i) => i.id === id)
+      ?.prims.map((p) => p.type);
+
+  /**
+   * A Ø20 circle at (`x`, 0) and a fixed vertical line x = 50. Values change
+   * in the app in steps (`gradual.ts`), so a test starts near its value: a
+   * big jump may land an aligned helper on the circle's other side.
+   */
+  function circleAndWall(x = 0) {
+    const b = new SketchBuilder();
+    const circle = b.circle(x, 0, 10);
+    const wall = b.line(50, -40, 50, 40);
+    b.constrain({ type: 'fix', entity: wall.id });
+    b.dimension({ type: 'diameter', curve: circle.id }, 20);
+    return { b, circle, wall };
+  }
+
+  it('holds a circle 25 mm from a line by its near or far edge, aligned or horizontal', () => {
+    for (const orientation of ['aligned', 'horizontal'] as const) {
+      for (const [side, x] of [
+        ['near', 15],
+        ['far', 35],
+      ] as const) {
+        const { b, circle, wall } = circleAndWall(x - 3);
+        const d = b.dimension(
+          { type: 'distance', orientation, a: circle.id, b: wall.id, sideA: side },
+          25,
+        );
+        const s = solve(b);
+        clean(s, 1);
+        close(s.p(circle.center).x, x);
+        close(measured(s, d) as number, 25);
+        expect(route(b, d)).toEqual(
+          orientation === 'aligned' && side === 'near'
+            ? ['c2ldistance']
+            : orientation === 'aligned'
+              ? ['point', 'point_on_circle', 'perpendicular_pppp', 'p2l_distance']
+              : [
+                  'point',
+                  'horizontal_pp',
+                  'difference',
+                  'point',
+                  'point_on_line_pl',
+                  'horizontal_pp',
+                  'difference',
+                ],
+        );
+      }
+    }
+  });
+
+  it('counts the same degrees of freedom as a distance from the center', () => {
+    const edge = circleAndWall();
+    edge.b.dimension(
+      { type: 'distance', orientation: 'horizontal', a: edge.circle.id, b: edge.wall.id },
+      25,
+    );
+    const centre = circleAndWall();
+    centre.b.dimension(
+      { type: 'distance', orientation: 'aligned', a: centre.circle.center, b: centre.wall.id },
+      35,
+    );
+    expect(solve(edge.b).result.dof).toBe(solve(centre.b).result.dof);
+  });
+
+  it('keeps a circle that crosses the line crossing it (no planegcs c2l there)', () => {
+    const b = new SketchBuilder();
+    const circle = b.circle(45, 0, 10);
+    const wall = b.line(50, -40, 50, 40);
+    b.constrain({ type: 'fix', entity: wall.id });
+    b.dimension({ type: 'diameter', curve: circle.id }, 20);
+    const d = b.dimension(
+      { type: 'distance', orientation: 'aligned', a: wall.id, b: circle.id },
+      3,
+    );
+    expect(route(b, d)).toContain('p2l_distance');
+    const s = solve(b);
+    clean(s, 1);
+    close(s.p(circle.center).x, 43);
+    close(measured(s, d) as number, 3);
+  });
+
+  it('measures vertically from the edge to a slanted line', () => {
+    const b = new SketchBuilder();
+    const circle = b.circle(0, 0, 10);
+    const slant = b.line(20, 0, 40, 20);
+    b.constrain({ type: 'fix', entity: slant.id });
+    b.dimension({ type: 'diameter', curve: circle.id }, 20);
+    const d = b.dimension(
+      { type: 'distance', orientation: 'vertical', a: circle.id, b: slant.id },
+      15,
+    );
+    const s = solve(b);
+    clean(s, 1);
+    close(measured(s, d) as number, 15);
+    // The bottom quadrant point is 15 above where the vertical meets the line.
+    const c = s.p(circle.center);
+    close(c.y - 10 - (c.x - 20), 15);
+  });
+
+  it('holds a circle or an arc to a point, aligned, horizontal or vertical, either edge', () => {
+    const cases: [Orientation, Side, 'circle' | 'arc'][] = [
+      ['aligned', 'near', 'circle'],
+      ['aligned', 'far', 'circle'],
+      ['horizontal', 'far', 'circle'],
+      ['vertical', 'near', 'circle'],
+      ['aligned', 'near', 'arc'],
+      ['aligned', 'far', 'arc'],
+      ['horizontal', 'near', 'arc'],
+    ];
+    for (const [orientation, side, kind] of cases) {
+      const b = new SketchBuilder();
+      const round = kind === 'circle' ? b.circle(0, 0, 10) : b.arc(0, 0, 10, 0, 90);
+      const p = b.point(30, 40);
+      b.constrain({ type: 'fix', entity: p });
+      b.dimension({ type: 'radius', curve: round.id }, 10);
+      const shape = { type: 'distance', orientation, a: p, b: round.id, sideB: side } as const;
+      const start = measureDimension(SketchDataSchema.parse(b.sketch), {
+        ...shape,
+        expr: '0',
+        driven: false,
+      } as SketchDimension) as number;
+      const d = b.dimension(shape, start + 3);
+      const s = solve(b);
+      expect(s.result.ok, `${orientation} ${side} ${kind}`).toBe(true);
+      expect(s.result.redundant).toEqual([]);
+      close(measured(s, d) as number, start + 3);
+      close(s.r(round.id), 10);
+    }
+  });
+
+  it('holds the gap between two circles, near or far, and follows a new value', () => {
+    for (const [sideB, prims] of [
+      ['near', ['c2cdistance']],
+      ['far', ['point', 'point_on_circle', 'point_on_line_ppp']],
+    ] as const) {
+      const b = new SketchBuilder();
+      const big = b.circle(0, 0, 10);
+      const small = b.circle(28.8, 21.6, 5);
+      b.constrain({ type: 'fix', entity: big.id });
+      b.dimension({ type: 'radius', curve: small.id }, 5);
+      const d = b.dimension(
+        { type: 'distance', orientation: 'aligned', a: big.id, b: small.id, sideB },
+        sideB === 'near' ? 20 : 30,
+      );
+      expect(route(b, d)?.slice(0, prims.length)).toEqual(prims);
+      const solver = newSolver();
+      const s = solve(b, solver);
+      clean(s, 1);
+      close(dist(s.p(big.center), s.p(small.center)), 35);
+      // A new value reuses the system (helper points reset from the mapping).
+      b.values[d] = sideB === 'near' ? 25 : 35;
+      b.dimensions[d] = { ...(b.dimensions[d] as SketchDimension), expr: String(b.values[d]) };
+      const again = solve(b, solver);
+      clean(again, 1);
+      close(dist(again.p(big.center), again.p(small.center)), 40);
+    }
+  });
+
+  it('keeps the edge gap while the circle is resized by a drag', () => {
+    const b = new SketchBuilder();
+    const circle = b.circle(0, 0, 10);
+    const wall = b.line(50, -40, 50, 40);
+    b.constrain({ type: 'fix', entity: wall.id });
+    // The center's y is held; its x follows the radius.
+    b.constrain({ type: 'horizontal', a: circle.center, b: wall.start });
+    b.dimension({ type: 'distance', orientation: 'horizontal', a: circle.id, b: wall.id }, 25);
+    const solver = newSolver();
+    const s = solve(b, solver);
+    expect(s.result.ok).toBe(true);
+    expect(solver.beginRadiusDrag(circle.id)).toBe(true);
+    const dragged = solver.dragRadius(15);
+    solver.endDrag();
+    expect(dragged.ok).toBe(true);
+    close(dragged.solution.radii[circle.id] as number, 15);
+    close((dragged.solution.points[circle.center] as V).x, 50 - 25 - 15);
+  });
+
+  it("takes an arc for planegcs's own line and circle distances", () => {
+    const b = new SketchBuilder();
+    const arc = b.arc(0, 0, 10, 0, 90);
+    const circle = b.circle(-30, 0, 5);
+    const wall = b.line(50, -40, 50, 40);
+    b.constrain({ type: 'fix', entity: wall.id });
+    b.constrain({ type: 'fix', entity: circle.id });
+    b.dimension({ type: 'radius', curve: arc.id }, 10);
+    const toWall = b.dimension(
+      { type: 'distance', orientation: 'aligned', a: arc.id, b: wall.id },
+      42,
+    );
+    const toCircle = b.dimension(
+      { type: 'distance', orientation: 'aligned', a: circle.id, b: arc.id },
+      13,
+    );
+    expect(route(b, toWall)).toEqual(['c2ldistance']);
+    expect(route(b, toCircle)).toEqual(['c2cdistance']);
+    const s = solve(b);
+    expect(s.result.ok).toBe(true);
+    expect(s.result.redundant).toEqual([]);
+    close(measured(s, toWall) as number, 42);
+    close(measured(s, toCircle) as number, 13);
+  });
+
+  it('refuses a second, redundant edge distance', () => {
+    const { b, circle, wall } = circleAndWall();
+    b.constrain({ type: 'horizontal', a: circle.center, b: wall.start });
+    b.dimension({ type: 'distance', orientation: 'horizontal', a: circle.id, b: wall.id }, 25);
+    const solver = newSolver();
+    expect(solve(b, solver).result.dof).toBe(0);
+    const again = b.dimension(
+      { type: 'distance', orientation: 'aligned', a: circle.id, b: wall.id, sideA: 'far' },
+      45,
+    );
+    expect(solver.check(b.sketch, b.values, again)).toMatchObject({
+      accepted: false,
+      redundant: expect.arrayContaining([again]),
+    });
   });
 });
 

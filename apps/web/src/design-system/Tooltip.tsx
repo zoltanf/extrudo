@@ -26,6 +26,8 @@ export interface TooltipProps {
    */
   footer?: ReactNode;
   side?: 'top' | 'right' | 'bottom' | 'left';
+  /** How long the pointer rests before it opens, in ms; the provider's 500 by default. */
+  delay?: number;
   children: ReactElement;
 }
 
@@ -42,11 +44,12 @@ export function Tooltip({
   demo,
   footer,
   side = 'bottom',
+  delay,
   children,
   ...rest
 }: TooltipProps & Record<string, unknown>) {
   return (
-    <Radix.Root>
+    <Radix.Root delayDuration={delay}>
       <Radix.Trigger asChild {...rest}>
         {children}
       </Radix.Trigger>

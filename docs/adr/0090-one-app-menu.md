@@ -143,3 +143,26 @@ text above.
 After the implementation review: F1 and the panel's Help item share
 `lastHoveredTool()`, and Settings › General is labelled Appearance (its id
 stays `general`).
+
+## Amendment, 2026-10-31 (the owner): Slicer lands
+
+**Slicer** is a `NavPreset` now; its radio is enabled. The bindings are the
+ones its tooltip announced, as the slicers do them: **left-drag orbits,
+right-drag or middle-drag pans, the wheel zooms, Shift+left-drag selects**.
+
+The left button stays the pointer's at the press, so a click still selects, a
+double-click still opens, a long press still lists the stack and a drag that a
+tool takes (a sketch entity, a gizmo, a joint handle) stays the tool's. Only a
+drag that **nobody takes** turns into the orbit, and only where a selection
+box would have been drawn (model mode, sketch selection) or where nobody
+listens to the drag at all (plane picking); a drawing tool's untaken drag is
+left as it was. Shift, Ctrl or ⌘ (the add-to-selection modifiers) keep the
+box, so box selection stays reachable. The mapping is `freeDragAction` in
+`navigation.ts`; `attachPointerInput` runs the orbit (it has the pointer's
+capture and slop already) and reports it through `onNavDrag`, so the orbit
+cursor shows as with the nav bar's Orbit tool.
+
+Rejected: a left press that orbits at once (as the Trackpad preset's Alt+drag
+does, through `dragAction`): it would cost the click, the double-click and the
+long press. Orbiting on every untaken drag, a drawing tool's included: the
+Line tool's press-drag-release draws a segment.

@@ -36,6 +36,7 @@ import {
   type FeatureId,
   formatQuantity,
   LENGTH,
+  lengthExpr,
   mediaTypeOf,
   newId,
   type SketchFrame,
@@ -199,7 +200,7 @@ export function proposedWidth(ctx: DialogContext): string | undefined {
   const file = canvasFile(ctx);
   if (!file) return undefined;
   const pixels = canvasPixels(file.id);
-  return pixels ? widthForPixels(pixels.width) : undefined;
+  return pixels ? widthForPixels(pixels.width, ctx.doc.settings.units) : undefined;
 }
 
 /**
@@ -273,13 +274,8 @@ export function canvasPlaceAt(
   const frame = placementFrame(values.refs.plane?.[0], ctx);
   if (!frame) return undefined;
   const [x, y] = worldToSketch(frame, world);
-  return { exprs: { x: mm(x), y: mm(y) } };
-}
-
-/** A length in mm as an expression, to the micrometre. */
-function mm(value: number): string {
-  const rounded = Math.round(value * 1000) / 1000;
-  return `${Object.is(rounded, -0) ? 0 : rounded} mm`;
+  const unit = ctx.doc.settings.units;
+  return { exprs: { x: lengthExpr(x, unit), y: lengthExpr(y, unit) } };
 }
 
 // --------------------------------------------------------------- calibration
@@ -477,7 +473,7 @@ export function CanvasCalibrate({ open, controller }: DialogExtraProps) {
           />
           <Button
             variant="primary"
-            onClick={() => controller.setExpr('width', `${result.width} mm`)}
+            onClick={() => controller.setExpr('width', lengthExpr(result.width, settings.units))}
           >
             Apply
           </Button>

@@ -71,7 +71,7 @@ the Parameters dialog leaves out the parameter itself and what depends on it
 - **An absolutely positioned list inside the field:** the dialog body scrolls
   (`overflow: auto`) and would clip it.
 - **Functions (`sin`, `min`, …) and constants in the list:** later, as the issue
-  says.
+  says. (Done in the amendment below.)
 
 ## Consequences
 
@@ -79,3 +79,34 @@ the Parameters dialog leaves out the parameter itself and what depends on it
   with no change at its call site.
 - A new place that shows `<ExpressionInput>` outside `AppShell` gets no names
   until it adds the provider.
+
+## Amendment, 2026-10-31: functions, `pi`, and a new parameter from a name
+
+Owner's request: while sketching, add a parameter quickly from the dimension
+editor. `name = value` already worked there (FR-PAR-03) but nothing showed it;
+typing a new name alone ended in "Unknown name".
+
+1. **Functions and constants in the list.** `completion.ts` `BUILTINS` comes
+   from core's `FUNCTION_ARITIES` (new export) and `CONSTANTS`; they follow the
+   parameters, match by **prefix only** (contains would list five functions for
+   an `a`), shown as `sqrt(x)`, `max(a, b, …)`, `pi = 3.14159`. They skip the
+   field's scope probe. Picking a function inserts `name()` with the caret
+   inside, or only the name when a `(` follows already (`insertName`).
+2. **A new parameter from an unknown name**, for fields that pass
+   `newParameter(name)` (the value it starts with); only the sketch dimension
+   editor does, with the dimension's current expression, since only its
+   `evaluate`/`onCommit` take `name = value`. Offered when the whole field is
+   one identifier (`newName`), `evaluate` fails with `'unknown-name'`, and
+   `evaluate("name = value")` succeeds (so taken and reserved names never are).
+   Two ways in, one action: the list's last row "+ New parameter …" (picked
+   with the arrows, Tab on it, or Enter when it is the only row), and a link
+   under the error, "+ Create `name` = … Ctrl+Enter", shown only while the
+   list is closed (the open list covers that spot); Ctrl/Cmd+Enter works
+   either way. Both rewrite the field to `name = value` with the
+   value selected; the existing inline path commits it.
+
+Rejected: a hint in the placeholder only (teaches the syntax, saves no
+typing); a separate name box with an "=" button (more controls in a 168 px
+popup); offering a new parameter inside a larger expression (`2 * width`
+would need the value split from the factor; the whole-field case covers the
+request).

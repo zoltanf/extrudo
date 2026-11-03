@@ -8,6 +8,7 @@ import {
   type Feature,
   type FeatureId,
   type FeatureStatus,
+  fractionDenominator,
   isConstructionType,
   isFeatureVisible,
   type JointId,
@@ -1617,7 +1618,7 @@ function Folder({
         >
           {chevron}
           <span className="grid w-4 place-items-center text-muted">{icon}</span>
-          {label}
+          <span className="min-w-0 truncate">{label}</span>
           {countBadge}
         </button>
       )}
@@ -1693,7 +1694,8 @@ function Leaf({
       {...rest}
       className={`flex h-7 items-center gap-1.5 rounded-input pr-1 pl-[46px] ${muted ? 'text-muted' : ''} ${active ? 'bg-accent-soft' : ''} ${className}`}
     >
-      {children}
+      {/* An empty state's text ends in "…" rather than wrapping out of the row. */}
+      {muted ? <span className="min-w-0 truncate">{children}</span> : children}
     </li>
   );
 }
@@ -1719,12 +1721,13 @@ const PRECISIONS = [0, 1, 2, 3, 4, 5, 6] as const;
 function DocumentSettings({ store }: { store: DocumentStore }) {
   const settings = useStore(store, (s) => s.doc.settings);
   const dispatch = store.getState().dispatch;
-  const selectClass = 'h-6 py-0 pr-5 pl-1.5 text-field';
+  const fractionsOn = settings.units === 'in' && (settings.fractions ?? false);
+  const selectClass = 'h-6! py-0 pl-1.5 text-field';
   return (
     <>
       <Leaf data-setting="units">
         Units
-        <span className="ml-auto w-16">
+        <span className="ml-auto w-24">
           <Select
             aria-label="Units"
             title={`${UNIT_LABELS[settings.units]}. Changing the unit keeps every length as it is.`}
@@ -1745,10 +1748,14 @@ function DocumentSettings({ store }: { store: DocumentStore }) {
       </Leaf>
       <Leaf data-setting="precision">
         Precision
-        <span className="ml-auto w-16">
+        <span className="ml-auto w-24">
           <Select
             aria-label="Precision"
-            title="Decimal places shown for lengths and angles."
+            title={
+              fractionsOn
+                ? 'How fine a fraction the lengths show as.'
+                : 'Decimal places shown for lengths and angles.'
+            }
             className={selectClass}
             value={settings.precision}
             onChange={(event) => {
@@ -1758,12 +1765,27 @@ function DocumentSettings({ store }: { store: DocumentStore }) {
           >
             {PRECISIONS.map((places) => (
               <option key={places} value={places}>
-                {(0).toFixed(places)}
+                {fractionsOn ? `1/${fractionDenominator(places)}` : (0).toFixed(places)}
               </option>
             ))}
           </Select>
         </span>
       </Leaf>
+      {settings.units === 'in' && (
+        <Leaf data-setting="fractions">
+          Fractions
+          <span className="ml-auto">
+            <input
+              type="checkbox"
+              aria-label="Fractions"
+              title="Show inch lengths as the nearest fraction, like 1 1/2 in."
+              className="size-4 accent-(--x-accent)"
+              checked={settings.fractions ?? false}
+              onChange={(event) => dispatch(updateSettings({ fractions: event.target.checked }))}
+            />
+          </span>
+        </Leaf>
+      )}
     </>
   );
 }

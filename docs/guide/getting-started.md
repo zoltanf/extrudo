@@ -27,7 +27,8 @@ or a portable exe on Windows and a dmg on macOS (also `brew install --cask zolta
 You start on the home screen:
 
 - **New design** opens an empty design in millimetres, or in the unit picked on the card (`mm`,
-  `cm`, `m` or `in`; the choice is remembered for the next one).
+  `cm`, `m` or `in`; the choice is remembered for the next one, and the Home tab's **New Design**
+  inside a design uses it too).
 - **Import…** adds a design from a file: an `.extrudo` or `.f3d` design, or a STEP, mesh or
   OpenSCAD file, which becomes a new design with the [Import Model](./files.md) dialog open.
 - **Start from a template** shows the templates: the Wall bracket, Storage box, Box with a lid
@@ -79,7 +80,9 @@ The default mouse controls are:
 Hold **Shift** to swap them: Shift + middle-drag pans and Shift + right-drag orbits. The
 **Settings** menu's **Mouse controls** switches to another layout, each with its bindings under
 its name: **Crank** (right-drag orbits, middle-drag pans), **Glide** (middle-drag pans,
-Shift + middle-drag orbits), **Blender** or a **Trackpad**.
+Shift + middle-drag orbits), **Blender**, **Slicer** (as in your slicer: left-drag orbits,
+right-drag or middle-drag pans; hold Shift to drag a selection box instead) or a
+**Trackpad**.
 
 Seven keys jump to a named view: `Shift+1` is the home view, then `Shift+2` Top, `Shift+3`
 Bottom, `Shift+4` Front, `Shift+5` Back, `Shift+6` Left and `Shift+7` Right. Clicking a face of
@@ -98,7 +101,11 @@ The browser's **Document settings** folder holds the design's **unit** (`mm`, `c
 what a plain number means and what dimensions show) and **precision** (decimal places). Changing
 the unit never resizes anything: every plain number already in the design gets its old unit
 written out (`10` becomes `10 mm`), so only the display and what you type next change. Both are
-undoable like any edit.
+undoable like any edit. In an inch design the grid and grid snapping are in sixteenths of an inch
+and up — 1/16, 1/8, 1/4, 1/2 in, whole inches, then 6 in, 1 ft, 10 ft — instead of millimetres;
+a metric design keeps its millimetre grid. Tools open with sizes in the design's unit (3/8 in
+where a millimetre design gets 10 mm), and an inch design can show every length as a
+fraction (**Fractions**, see [Units](./parameters.md#units)).
 
 ## Selecting
 

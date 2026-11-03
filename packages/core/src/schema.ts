@@ -295,6 +295,12 @@ export const SettingsSchema = z.strictObject({
   units: LengthUnitSchema,
   /** Decimal places shown for lengths and angles. */
   precision: z.int().min(0).max(8),
+  /**
+   * Show inch lengths as the nearest binary fraction (`1 1/2 in`, `3/8 in`)
+   * instead of decimals (ADR-0113 §3). Absent = false; only meaningful with
+   * `units: "in"`.
+   */
+  fractions: z.boolean().optional(),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 

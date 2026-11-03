@@ -16,8 +16,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   clearPendingImport,
   formatSize,
+  IMPORT_ACCEPT,
+  IMPORT_REFUSED,
+  importAccept,
   importDialog,
   importedFile,
+  importRefused,
   type PendingImport,
   pendingImport,
   pendingImportStore,
@@ -269,6 +273,92 @@ describe('Import Model with an .f3d file (ADR-0083 §4)', () => {
     expect(writeAttachment).not.toHaveBeenCalled();
     expect(notify).not.toHaveBeenCalled();
     expect(pendingImport()).toBeUndefined();
+  });
+});
+
+describe('Import Model with another CAD file (P6-19, ADR-0115 §1)', () => {
+  const STEP = new TextEncoder().encode('ISO-10303-21;\nEND-ISO-10303-21;\n');
+  const deps = (file: File, over: Record<string, unknown> = {}) => {
+    const writeAttachment = vi.fn(async () => {});
+    const notify = vi.fn();
+    const accepts: string[] = [];
+    return {
+      writeAttachment,
+      notify,
+      accepts,
+      deps: {
+        files: {
+          pick: async (accept: string) => {
+            accepts.push(accept);
+            return file;
+          },
+        },
+        projects: { writeAttachment } as unknown as ProjectStore,
+        store: { getState: () => ({ doc: emptyDocument() }) } as never,
+        notify,
+        ...over,
+      },
+    };
+  };
+
+  it('offers the other CAD files only with the converter', () => {
+    expect(importAccept(false)).toBe(IMPORT_ACCEPT);
+    expect(importAccept(false)).not.toContain('.sldprt');
+    expect(importAccept(true).split(',')).toEqual(
+      expect.arrayContaining(['.step', '.sldprt', '.iges']),
+    );
+    expect(IMPORT_REFUSED).toBe(importRefused(false));
+    expect(importRefused(false)).toContain('The desktop app also imports .sldprt');
+    expect(importRefused(true)).toContain('and other CAD files (.sldprt');
+  });
+
+  it('converts a .sldprt to STEP and stores the STEP as the attachment', async () => {
+    const file = new File([new Uint8Array([7, 7, 7])], 'Bracket.SLDPRT');
+    const convertCad = vi.fn(async () => ({
+      ok: true as const,
+      name: 'Bracket.step',
+      bytes: STEP,
+    }));
+    const t = deps(file, { convertCad });
+    const picked = await pickImportFile(t.deps);
+    expect(t.accepts[0]).toContain('.sldprt');
+    expect(convertCad).toHaveBeenCalledWith({
+      name: 'Bracket.SLDPRT',
+      bytes: new Uint8Array([7, 7, 7]),
+    });
+    expect(picked?.attachment).toMatchObject({
+      name: 'Bracket',
+      fileName: 'Bracket.step',
+      mediaType: 'model/step',
+      size: STEP.length,
+    });
+    expect(t.writeAttachment).toHaveBeenCalledWith('d1', picked?.attachment.sha256, STEP);
+    expect(t.notify.mock.calls).toEqual([
+      ['info', 'Converting Bracket.SLDPRT…'],
+      [
+        'info',
+        'Bracket.SLDPRT was converted to STEP: shapes only, without colours, names or history.',
+      ],
+    ]);
+    clearPendingImport();
+  });
+
+  it('says why a conversion failed and stores nothing', async () => {
+    const file = new File([new Uint8Array([1])], 'part.ipt');
+    const convertCad = vi.fn(async () => ({ ok: false as const, message: 'cadmpeg said no' }));
+    const t = deps(file, { convertCad });
+    expect(await pickImportFile(t.deps)).toBeUndefined();
+    expect(t.writeAttachment).not.toHaveBeenCalled();
+    expect(t.notify).toHaveBeenLastCalledWith('error', 'cadmpeg said no');
+    expect(pendingImport()).toBeUndefined();
+  });
+
+  it('refuses the file on the web, pointing at the desktop app', async () => {
+    const t = deps(new File([new Uint8Array([1])], 'part.sldprt'));
+    expect(await pickImportFile(t.deps)).toBeUndefined();
+    expect(t.accepts[0]).toBe(IMPORT_ACCEPT);
+    expect(t.writeAttachment).not.toHaveBeenCalled();
+    expect(t.notify.mock.calls).toEqual([['error', importRefused(false)]]);
   });
 });
 

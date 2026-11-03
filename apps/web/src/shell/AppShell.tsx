@@ -1,4 +1,5 @@
 import {
+  addProjection,
   type BodyId,
   CANVAS_TYPE,
   type Command,
@@ -8,6 +9,7 @@ import {
   evaluateParameters,
   type Feature,
   type FeatureId,
+  faceOutline,
   formatQuantity,
   type GeomRef,
   IMPORT_TYPE,
@@ -18,9 +20,12 @@ import {
   jointRange,
   LENGTH,
   type ModelStore,
+  newId,
+  type ProjectionId,
   pluginFileOf,
   readSketch,
   redefineSketchPlane,
+  removeProjection,
   type SelectionItem,
   type SessionStore,
   type ViewId,
@@ -388,7 +393,7 @@ function Shell({
   kernel,
 }: AppShellProps) {
   const { choice, setChoice } = useTheme(platform.preferences);
-  const browser = usePanel(platform.preferences, { key: 'browser', size: 248, min: 180, max: 480 });
+  const browser = usePanel(platform.preferences, { key: 'browser', size: 248, min: 220, max: 480 });
   // The browser floats over the view's left edge: fitting frames the part it leaves open.
   const browserCover = browser.collapsed ? 0 : browser.size;
   useEffect(() => viewport.getState().setCover(browserCover), [viewport, browserCover]);
@@ -1847,6 +1852,7 @@ function Shell({
       store,
       notify,
       openF3d: file.importF3d,
+      convertCad: platform.convertCad,
     }).then((pending) => {
       if (pending) dialog?.start(IMPORT_TYPE);
     });
@@ -1999,6 +2005,11 @@ function Shell({
     const command = openGroupAtMarker(doc);
     if (command) store.getState().amend(command);
   }, [doc, store]);
+  // The grid and sketch snapping follow the document's unit (P6-18 S2, ADR-0113 §2):
+  // an inch design draws and snaps on sixteenths of an inch and up.
+  useEffect(() => {
+    viewport.getState().setLengthUnit(doc.settings.units);
+  }, [doc, viewport]);
   // A recompute's first new error goes into the notification history (P3-13).
   const featureActionsRef = useRef(featureActions);
   featureActionsRef.current = featureActions;
@@ -2231,6 +2242,33 @@ function Shell({
     [doc, canvasReports, editedId],
   );
   const activeSketch = doc.features.find((f) => f.id === activeSketchId);
+  // The open sketch's face outline (ADR-0074's 2026-10-31 amendment): the palette's switch
+  // adds it, and removes it while nothing refers to it.
+  const sketchContent = useMemo(
+    () => (activeSketch ? readSketch(activeSketch) : undefined),
+    [activeSketch],
+  );
+  const outline = useMemo(
+    () => sketchContent && faceOutline(sketchContent.plane, sketchContent.data),
+    [sketchContent],
+  );
+  const setOutline = (on: boolean) => {
+    if (!activeSketch || !sketchContent) return;
+    try {
+      store.getState().dispatch(
+        on
+          ? addProjection({
+              feature: activeSketch.id,
+              id: newId<ProjectionId>(),
+              ref: sketchContent.plane,
+            })
+          : removeProjection({ feature: activeSketch.id, id: outline?.id as ProjectionId }),
+      );
+    } catch (error) {
+      if (!(error instanceof CommandError)) throw error;
+      notify('error', error.message);
+    }
+  };
   const sketchPlane = sketches.find((s) => s.active)?.frame;
   // The right-click marking menu (P3-11): offered while nothing else owns the pointer.
   const runningTool = useMemo(
@@ -2854,6 +2892,8 @@ function Shell({
               name={activeSketch.name}
               viewport={viewport}
               host={host}
+              outline={outline}
+              onOutline={setOutline}
               onLookAt={() => lookAtSketch(stores)}
               onFinish={() => finishSketch(stores)}
             />

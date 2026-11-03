@@ -205,6 +205,21 @@ describe('preload bridge (ADR-0075 §1)', () => {
     ]);
   });
 
+  it('routes the cadmpeg status and convert channels (P6-19)', async () => {
+    const file = { name: 'a.sldprt', bytes: new Uint8Array([1]) };
+    const { ipc, calls } = fakeIpc({
+      [CHANNELS.cadStatus]: () => ({ found: true, version: '0.6.7' }),
+      [CHANNELS.cadConvert]: () => ({ ok: false, message: 'no' }),
+    });
+    const api = createApi(ipc);
+    expect(await api.cad.status()).toEqual({ found: true, version: '0.6.7' });
+    expect(await api.cad.convert(file)).toEqual({ ok: false, message: 'no' });
+    expect(calls).toEqual([
+      { channel: CHANNELS.cadStatus, args: [], kind: 'invoke' },
+      { channel: CHANNELS.cadConvert, args: [file], kind: 'invoke' },
+    ]);
+  });
+
   it('routes the render status, start and cancel, and subscribes to progress once (P6-15)', async () => {
     const job = {
       project: 'A',

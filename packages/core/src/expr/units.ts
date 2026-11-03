@@ -35,6 +35,13 @@ export const UNITS: Readonly<Record<string, Unit>> = {
 export const UNIT_NAMES = Object.keys(UNITS);
 
 /**
+ * Spellings that mean a unit but aren't its own name (ADR-0113 §3): the
+ * foot and inch marks. The parser accepts them after a number, the same as
+ * `ft` and `in`.
+ */
+export const UNIT_ALIASES: Readonly<Record<string, string>> = { '"': 'in', "'": 'ft' };
+
+/**
  * `table[name]` for the table's own keys only. A plain `table[name]` or
  * `name in table` also finds `constructor`, `toString` or `__proto__` on
  * Object.prototype, and these names come from typed text and files.
@@ -43,9 +50,17 @@ export function ownEntry<T>(table: Readonly<Record<string, T>>, name: string): T
   return Object.hasOwn(table, name) ? table[name] : undefined;
 }
 
+/** The canonical name of a unit or an alias (`"` → `in`, `'` → `ft`), if any. */
+export function canonicalUnit(name: string): string | undefined {
+  const alias = ownEntry(UNIT_ALIASES, name);
+  if (alias !== undefined) return alias;
+  return ownEntry(UNITS, name) ? name : undefined;
+}
+
 /** The unit called `name`, if there is one. */
 export function unitNamed(name: string): Unit | undefined {
-  return ownEntry(UNITS, name);
+  const canonical = canonicalUnit(name);
+  return canonical === undefined ? undefined : ownEntry(UNITS, canonical);
 }
 
 export function lengthFactor(unit: LengthUnit): number {

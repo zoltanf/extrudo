@@ -362,6 +362,8 @@ function canonicalDimension(dimension: SketchDimension, id: (value: string) => s
         orientation: dimension.orientation,
         a: id(dimension.a),
         b: dimension.b ? id(dimension.b) : null,
+        sideA: dimension.sideA ?? null,
+        sideB: dimension.sideB ?? null,
       };
     case 'radius':
     case 'diameter':
@@ -437,6 +439,22 @@ describe('emitScript', () => {
     expect(code).toContain('suppressed: true');
     const recreated = run(code, doc);
     expect(recreated.joints?.[0]?.suppressed).toBe(true);
+    const map = idMap(doc, recreated);
+    expect(canonical(recreated, map)).toEqual(canonical(doc, map));
+    expect(biomeFormat(code)).toBe(code);
+  });
+
+  it("round-trips a distance to a circle's far edge (ADR-0112)", () => {
+    const design = Design.create();
+    design.sketch(design.origin.xy, (k) => {
+      const plate = k.rectangle([30, -20], [80, 80]);
+      const hole = k.circle([0, 0], '10 mm');
+      k.dimension([hole, plate.left], '45 mm', { orientation: 'horizontal', sideA: 'far' });
+    });
+    const doc = design.toJSON();
+    const code = emitScript(doc);
+    expect(code).toContain("sideA: 'far'");
+    const recreated = run(code, doc);
     const map = idMap(doc, recreated);
     expect(canonical(recreated, map)).toEqual(canonical(doc, map));
     expect(biomeFormat(code)).toBe(code);

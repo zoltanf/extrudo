@@ -1,7 +1,8 @@
 // Document units (FR-PRJ-07, ADR-0113 §1): the home screen's New design card
-// picks the unit of a new design and remembers it; the browser's Document
-// settings folder changes a design's unit and precision through one undoable
-// command; both show in the status bar's "<n> features · <unit>".
+// picks the unit of a new design and remembers it (the Home tab's New Design
+// tile uses it too); the browser's Document settings folder changes a
+// design's unit and precision through one undoable command; both show in the
+// status bar's "<n> features · <unit>".
 import { expect, type Page, test } from '@playwright/test';
 import { openProject, saveStatus } from './helpers';
 
@@ -25,6 +26,14 @@ test('a new design takes the unit picked on the home screen, which is remembered
   await expect(page.getByText('An empty design in inches.')).toBeVisible();
   await page.getByRole('button', { name: 'New design' }).click();
   await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
+  await expect(status(page)).toHaveText('0 features · in');
+
+  // The Home tab's New Design tile, inside a design, takes the same unit.
+  const first = page.url();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole('tab', { name: 'Home' }).click();
+  await page.getByRole('button', { name: 'New Design', exact: true }).click();
+  await expect(page).not.toHaveURL(first);
   await expect(status(page)).toHaveText('0 features · in');
 
   await page.goto('./');

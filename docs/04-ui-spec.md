@@ -60,8 +60,7 @@ brief, voice) is in **`05-brand.md`**. In short:
   The Menu opens one panel, as wide as its rail, in three bands:
   **the rail**, one row of icon controls with a tooltip each — Mouse controls
   (a segmented control: Crank, Spindle, Glide, Blender, Slicer, Trackpad; the
-  tooltip's hint is the preset's bindings, R3-03; Slicer is disabled until its
-  behaviour lands), a divider, the toggles Auto-project body edges,
+  tooltip's hint is the preset's bindings, R3-03), a divider, the toggles Auto-project body edges,
   Auto-project face outline and Radial right-click menu, a second divider and
   the Theme (System by default, Light, Dark); **two columns**, App (Search…,
   Settings…, About Extrudo, then Close design on the web or Quit on the
@@ -226,7 +225,9 @@ brief, voice) is in **`05-brand.md`**. In short:
   dropdown with the full list. Users can pin tools to the toolbar.
 - **Browser (left):** collapsible tree with an eye toggle per item and
   folder. Right-click menus. Items highlight in the viewport on hover.
-  Rename with F2. It floats over the view's left edge in frosted glass,
+  Rename with F2. The collapsed **Document settings** folder at the top
+  sets the design's Units (`mm`, `cm`, `m`, `in`), Precision and, in an
+  inch design, Fractions, each change one undoable command (ADR-0113). It floats over the view's left edge in frosted glass,
   like the nav bar: the view runs on behind it, so hiding, showing or
   resizing it never moves the model. Hiding it slides it out to the left
   in 200 ms (`--x-normal`, none under reduced motion); a small tab with
@@ -343,7 +344,12 @@ same preference; R3-03, there is no nav-bar button). After Spindle:
 **Crank** (right-drag orbits, middle-drag or Ctrl + right-drag pans; Shift
 swaps them), **Glide** (middle-drag pans, Shift + middle-drag orbits),
 **Blender** (middle-drag orbits, Shift + middle-drag pans, Ctrl +
-middle-drag zooms) and **Trackpad** (two-finger pan, pinch zoom, Alt + drag
+middle-drag zooms), **Slicer** (as the slicers do it, ADR-0090's amendment of
+2026-10-31: left-drag orbits where a selection box would be drawn (model mode,
+sketch selection, plane picking), Shift, Ctrl or ⌘ + left-drag draws the box, a
+left click still selects and a long press still lists the stack, a drawing
+tool's drag and a gizmo's stay theirs; right-drag or middle-drag pans) and
+**Trackpad** (two-finger pan, pinch zoom, Alt + drag
 orbits, Alt + Shift + drag pans). No preset is named after another CAD
 product (Blender keeps its name by the owner's choice); a value stored
 under an old name (`extrudo`, `onshape`, `shift-orbit`) reads as Spindle,
@@ -474,7 +480,18 @@ Crank or Glide. Since the right button drags, the right-click marking menu
   with nothing longer). ↑/↓ pick, Tab or Enter inserts (Enter
   without a pick commits as usual), Esc closes the list before it reverts the
   field, Ctrl+Space opens it on an empty field. A parameter that would make a
-  cycle (the one being edited, or one that uses it) isn't offered.
+  cycle (the one being edited, or one that uses it) isn't offered. After the
+  parameters come the functions (`sqrt(x)`, `max(a, b, …)`) and `pi` that
+  start with the word; a function goes in with its brackets and the caret
+  between them.
+- **New parameter from a dimension (ADR-0096's amendment):** in a sketch
+  dimension's editor, an unknown name alone in the field gets a last list row
+  "+ New parameter width = 40.00 mm" (the dimension's current value) and,
+  under the error, while the list is closed, a link "+ Create `width` =
+  40.00 mm  Ctrl+Enter". The row
+  (Enter when it is the only row, or picked) and the link both rewrite the
+  field to `width = 40` with the value selected; Enter then creates the
+  parameter and uses it, in one undo step.
 - OK commits one undoable step and adds (or updates) the timeline chip.
   A new feature that used sketch profiles hides those sketches in the same
   step (as is usual in CAD), so a used profile doesn't float in front of the
@@ -724,18 +741,25 @@ A list on the left, the selected parameter on the right.
   sketch plane (a cylinder cut by a slanted sketch is an ellipse); they follow
   the model like projected curves, with the same panel and Keep linked.
 - The camera animates to look at the plane (can be turned off). The grid
-  aligns to the sketch plane. Bodies are optionally sliced or dimmed.
+  aligns to the sketch plane; in an inch design it and its snapping step in
+  binary fractions of an inch up to feet (1/16 in … 10 ft, ADR-0113 §2). Bodies are optionally sliced or dimmed.
 - **SKETCH tab groups:** CREATE (line, rectangle ▾, circle ▾, arc ▾, polygon
   ▾, slot ▾, ellipse, spline ▾, point, text, mirror, pattern ▾, project ▾,
   dimension) · MODIFY (fillet, chamfer, trim, extend, break, offset,
   move/copy, scale, parameters — the dialog, as on the SOLID tab) · CONSTRAINTS (row of constraint icons) · INSPECT ·
   EXPORT (the sketch or its profiles as SVG or DXF, P1-13) ·
   **FINISH SKETCH** (big green ✓).
-- **Sketch palette (right panel):** construction toggle, look at, sketch grid,
-  snap, slice (cuts the bodies away on the camera's side of the sketch plane
-  while the sketch is open), auto-project (and auto-project face outline),
-  show profiles, show points, show dimensions, show constraints, DOF counter
-  ("3 DOF left", "Fully constrained ✓", or "Over-constrained").
+- **Sketch palette (right panel):** the sketch's name with a Look at icon,
+  then one row per setting: an icon, a short caption and a switch at the
+  right. Construction (with its key) first; **Grid:** show and snap side by
+  side; **Show:** points, dimensions, constraints and profiles in two columns;
+  **View & project:** slice (cuts the bodies away on the camera's side of the
+  sketch plane while the sketch is open), auto-project, and face outline: the
+  open sketch's projection of the face it sits on, added when switched on and
+  removed when switched off; disabled on a plane sketch and while a constraint
+  or dimension uses the outline, with the tooltip saying which. Resting on a setting for a second opens a tooltip with
+  its full name and what it does. Then the DOF counter ("3 DOF left", "Fully
+  constrained ✓", or "Over-constrained") and Finish Sketch.
 - **Selecting and editing (no tool running):** hover pre-highlights; click
   and box select points and curves; dragging geometry moves it (or the whole
   selection) with a live solve, except that dragging a circle's rim resizes
@@ -760,8 +784,18 @@ A list on the left, the selected parameter on the right.
   the two edges **Collinear** (ADR-0094); a Horizontal or Vertical between two
   points (a corner level with a circle centre) shows one glyph halfway between
   them, on the side away from any curve that passes close to it, with a dotted icon and the label "Horizontal (points)".
-- Pressing a dimension tool on a selection places the most likely dimension
-  type.
+- **Distances from a circle's or an arc's edge** (ADR-0112): after a circle
+  or an arc, the Dimension tool takes a second pick, a point, a line or
+  another circle or arc, and dimensions from the edge; a click on empty space
+  still places the diameter or radius (a body edge under that click is left
+  for the label; a datum axis is taken as the second pick, so click away
+  from it to place the diameter). The half
+  of the circle that was clicked
+  picks the edge: the half facing the other entity measures to the near edge,
+  the other half to the far edge. The label's place makes it horizontal,
+  vertical or aligned, as for two points (next to a vertical or horizontal
+  line it is aligned, which reads level). The extension lines start at the
+  edge point (the quadrant point for horizontal and vertical).
 - **The origin and axes as picks** (ADR-0093): the dimension and constraint
   tools also pick the origin point and the origin axes the browser shows
   (after the sketch's own geometry, before body edges; a body vertex on an
@@ -863,7 +897,8 @@ command (replacing its first key).
 
 - A grid of project cards with thumbnail, name, modified time, and a hover
   menu (rename, duplicate, export `.extrudo`, delete).
-- A big playful "New design" card and, until it is started, dismissed or
+- A big playful "New design" card with a unit select (remembered; the
+  Home tab's New Design in a design uses the same unit, ADR-0113 §1) and, until it is started, dismissed or
   finished, a "Take the tour" card beside it (P3-12, §7); then "Start from a
   template": a row of four cards with a picture, a name and one line each (Wall
   bracket, Storage box, Box with a lid, PCB enclosure), the last three from the
@@ -914,8 +949,12 @@ command (replacing its first key).
   the macOS Help menu list the same. The column starts with **Help for
   \<tool\>** (with F1), named after the tool whose toolbar tile was hovered
   or focused last, and absent when there is none. **F1** (`keymap.help`) opens
-  the docs page of the same tool (both read `lastHoveredTool()`), or the user
-  guide before any tile was hovered.
+  the docs page of the same tool (the one remembered help target, which a
+  tile sets for both), or the user guide before any tile was hovered. While a
+  sketch is open, F1 opens the sketching guide instead — at the sketch
+  palette row's own section when a row was hovered or focused last (P6-22 S2,
+  ADR-0116 §4) — and opening or closing a sketch forgets the remembered
+  target.
 
 ### 7.1 Preparing the design (ADR-0078, ADR-0105)
 

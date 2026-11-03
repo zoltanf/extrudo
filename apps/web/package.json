@@ -13,6 +13,7 @@
     "./platform/rescue": "./src/platform/rescue.ts",
     "./platform/slicer": "./src/platform/slicer.ts",
     "./platform/render": "./src/platform/render.ts",
+    "./platform/cad": "./src/platform/cad.ts",
     "./platform/updates": "./src/platform/updates.ts",
     "./platform/updateNotice": "./src/platform/updateNotice.ts",
     "./platform/agent": "./src/platform/agent.ts"

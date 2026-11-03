@@ -6,7 +6,7 @@ import { memoryPreferences } from '../platform';
 import { type PickScene, projectPoint } from '../selection/pick';
 import { basis } from '../viewport/camera';
 import { createViewportStore } from '../viewport/store';
-import { autoProjectSnap, modelSnapAt } from './autoProject';
+import { autoProjectSnap, faceCenterSnapAt, modelSnapAt } from './autoProject';
 
 const FRAME: SketchFrame = {
   origin: [0, 0, 0],
@@ -56,7 +56,7 @@ function setup() {
 describe('auto-project model snaps (P6-07)', () => {
   it('offers a body vertex under the pointer, in sketch coordinates', () => {
     const { viewport, scene, camera, bodies } = setup();
-    const snap = autoProjectSnap(viewport, scene, camera, FRAME, [500, 500], [0, 0], bodies);
+    const snap = autoProjectSnap(viewport, scene, camera, FRAME, [500, 500], [0, 0], bodies, 1);
     expect(snap).toMatchObject({ kind: 'vertex', point: [0, 0], ref: { kind: 'vertex' } });
     expect(snap?.ref.id).toBe('v[face0|face1]');
   });
@@ -78,14 +78,14 @@ describe('auto-project model snaps (P6-07)', () => {
     const { viewport, scene, camera, bodies } = setup();
     viewport.getState().setAutoProject(false);
     expect(
-      autoProjectSnap(viewport, scene, camera, FRAME, [500, 500], [0, 0], bodies),
+      autoProjectSnap(viewport, scene, camera, FRAME, [500, 500], [0, 0], bodies, 1),
     ).toBeUndefined();
   });
 
   it('offers nothing over empty space', () => {
     const { viewport, scene, camera, bodies } = setup();
     expect(
-      autoProjectSnap(viewport, scene, camera, FRAME, [50, 50], [0, 0], bodies),
+      autoProjectSnap(viewport, scene, camera, FRAME, [50, 50], [0, 0], bodies, 1),
     ).toBeUndefined();
   });
 
@@ -165,5 +165,87 @@ describe('auto-project model snaps (P6-07)', () => {
     };
     const openBodies: Record<BodyId, BodyMesh> = { ['Body1' as BodyId]: openMesh };
     expect(modelSnapAt(openScene, camera, FRAME, at, [F.x, F.y], openBodies)?.kind).toBe('vertex');
+  });
+});
+
+describe('face centres (issue #140)', () => {
+  /** A 20 × 10 rectangle face at height `z` (two triangles), plus a slanted triangle face. */
+  function plate(z: number): BodyMesh {
+    return {
+      ...body(),
+      positions: new Float32Array([
+        0,
+        0,
+        z,
+        20,
+        0,
+        z,
+        20,
+        10,
+        z,
+        0,
+        10,
+        z,
+        // The slanted face: one corner off the plane.
+        0,
+        0,
+        z,
+        5,
+        0,
+        z,
+        0,
+        5,
+        z + 5,
+      ]),
+      normals: new Float32Array(21),
+      indices: new Uint32Array([0, 1, 2, 0, 2, 3, 4, 5, 6]),
+      faceRanges: new Uint32Array([0, 2, 2, 1]),
+      faceIds: ['face0', 'face1'],
+    };
+  }
+  const shown = ['Body1' as BodyId];
+
+  it("offers the area centre of a flat face in the sketch plane, by the face's name", () => {
+    const bodies: Record<BodyId, BodyMesh> = { ['Body1' as BodyId]: plate(0) };
+    const snap = faceCenterSnapAt(FRAME, [10.3, 5.2], 1, shown, bodies);
+    expect(snap).toMatchObject({ kind: 'faceCenter', ref: { kind: 'face', id: 'face0' } });
+    expect(snap?.point[0]).toBeCloseTo(10, 6);
+    expect(snap?.point[1]).toBeCloseTo(5, 6);
+    // Out of reach, the slanted face, a face off the plane, a hidden body or a mesh body: none.
+    expect(faceCenterSnapAt(FRAME, [12, 5], 1, shown, bodies)).toBeUndefined();
+    expect(faceCenterSnapAt(FRAME, [1.7, 1.7], 3, shown, bodies)).toBeUndefined();
+    const off: Record<BodyId, BodyMesh> = { ['Body1' as BodyId]: plate(2) };
+    expect(faceCenterSnapAt(FRAME, [10, 5], 1, shown, off)).toBeUndefined();
+    expect(faceCenterSnapAt(FRAME, [10, 5], 1, [], bodies)).toBeUndefined();
+    const meshBody: Record<BodyId, BodyMesh> = { ['Body1' as BodyId]: { ...plate(0), mesh: true } };
+    expect(faceCenterSnapAt(FRAME, [10, 5], 1, shown, meshBody)).toBeUndefined();
+  });
+
+  it('wins over the edge or vertex under the pointer only when nearer the cursor', () => {
+    const { viewport, scene, camera } = setup();
+    const mesh = plate(0);
+    const bodies: Record<BodyId, BodyMesh> = { ['Body1' as BodyId]: mesh };
+    const plateScene: PickScene = { ...scene, bodies: [{ id: 'Body1' as BodyId, mesh }] };
+    // Nothing picked near the centre: the centre is offered.
+    const at = projectPoint(camera, [10, 5, 0]);
+    if (!at) throw new Error('behind the camera');
+    const snap = autoProjectSnap(viewport, plateScene, camera, FRAME, at, [10, 5], bodies, 1);
+    expect(snap?.kind).toBe('faceCenter');
+    // At the body vertex (the origin) the vertex wins, with the centre still in reach.
+    const far = autoProjectSnap(
+      viewport,
+      plateScene,
+      camera,
+      FRAME,
+      [500, 500],
+      [0, 0],
+      bodies,
+      50,
+    );
+    expect(far?.kind).toBe('vertex');
+    viewport.getState().setAutoProject(false);
+    expect(
+      autoProjectSnap(viewport, plateScene, camera, FRAME, at, [10, 5], bodies, 1),
+    ).toBeUndefined();
   });
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   dragAction,
   dragZoomFactor,
+  freeDragAction,
   NAV_PRESETS,
   type NavAction,
   type NavPreset,
@@ -53,6 +54,13 @@ describe('dragAction', () => {
     ['blender', input(MIDDLE, { shiftKey: true }), 'pan'],
     ['blender', input(MIDDLE, { ctrlKey: true }), 'zoom'],
     ['blender', input(LEFT), undefined],
+    // Slicer (ADR-0090's amendment): the right or middle button pans; the left button is the
+    // pointer's at the press (a click selects; a free drag orbits, `freeDragAction`).
+    ['slicer', input(RIGHT), 'pan'],
+    ['slicer', input(MIDDLE), 'pan'],
+    ['slicer', input(RIGHT, { shiftKey: true }), 'pan'],
+    ['slicer', input(LEFT), undefined],
+    ['slicer', input(LEFT, { shiftKey: true }), undefined],
     // Trackpad
     ['trackpad', input(LEFT, { altKey: true }), 'orbit'],
     ['trackpad', input(LEFT, { altKey: true, shiftKey: true }), 'pan'],
@@ -67,6 +75,7 @@ describe('dragAction', () => {
       'Crank',
       'Glide',
       'Blender',
+      'Slicer',
       'Trackpad',
     ]);
     for (const p of NAV_PRESETS) {
@@ -84,12 +93,23 @@ describe('dragAction', () => {
   });
 
   it('turns a left-drag into the active nav-bar tool in every preset', () => {
-    for (const preset of ['spindle', 'crank', 'glide', 'blender', 'trackpad'] as const) {
+    for (const preset of ['spindle', 'crank', 'glide', 'blender', 'slicer', 'trackpad'] as const) {
       expect(dragAction(preset, input(LEFT), 'zoom')).toBe('zoom');
       expect(dragAction(preset, input(LEFT), 'pan')).toBe('pan');
     }
     // Other buttons keep their mapping.
     expect(dragAction('glide', input(MIDDLE), 'orbit')).toBe('pan');
+  });
+});
+
+describe('freeDragAction', () => {
+  it('orbits on a free left-drag in Slicer only, and keeps the box with a toggle modifier', () => {
+    expect(freeDragAction('slicer', false)).toBe('orbit');
+    expect(freeDragAction('slicer', true)).toBeUndefined();
+    for (const preset of ['spindle', 'crank', 'glide', 'blender', 'trackpad'] as const) {
+      expect(freeDragAction(preset, false)).toBeUndefined();
+      expect(freeDragAction(preset, true)).toBeUndefined();
+    }
   });
 });
 

@@ -771,6 +771,8 @@ test('the docs pass an axe audit in both themes', async ({ page }) => {
       '/docs/',
       '/docs/tools/',
       '/docs/tools/extrude/',
+      '/docs/sketching/',
+      '/docs/tools/trim/',
       '/docs/api/',
       '/docs/api/features/extrude/',
     ]) {

@@ -20,6 +20,8 @@ import {
   type Feature,
   type FeatureId,
   isFeatureVisible,
+  type LengthUnit,
+  lengthExpr,
   type SketchFrame,
   sketchToWorld,
   type Vec3,
@@ -116,10 +118,9 @@ export function canvasDrawings(
 const numberOf = (result: EvaluateResult | undefined): number | undefined =>
   result?.ok ? result.value : undefined;
 
-/** The width the dialog gives an image whose pixels are `pixels` wide (100 dpi). */
-export function widthForPixels(pixels: number): string {
-  const mm = Math.round(pixels * CANVAS_PIXEL_MM * 1000) / 1000;
-  return `${Object.is(mm, -0) ? 0 : mm} mm`;
+/** The width the dialog gives an image whose pixels are `pixels` wide (100 dpi), in `unit`. */
+export function widthForPixels(pixels: number, unit: LengthUnit = 'mm'): string {
+  return lengthExpr(pixels * CANVAS_PIXEL_MM, unit);
 }
 
 /** The image's size in the plane, mm: `width` × the picture's aspect. */

@@ -5,13 +5,16 @@ import { memoryProjectStore, writeArchive } from '@extrudo/storage';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { appNotifications } from '../design-system/notifications';
 import { takeModelImport } from '../features/import';
-import type { Platform } from '../platform';
+import { memoryPreferences, type Platform } from '../platform';
 import {
   CHECKING_TEXT,
+  createBlankProject,
   importAnyFile,
   importF3dFile,
   importNotices,
   MAX_F3D_BYTES,
+  NEW_DESIGN_UNITS_KEY,
+  newDesignUnits,
   openExternalFile,
   READING_TEXT,
   saveF3dImport,
@@ -86,6 +89,29 @@ describe('importF3dFile (M1)', () => {
   });
 });
 
+describe('a new design takes the remembered unit (FR-PRJ-07, ADR-0113 §1)', () => {
+  const platformWith = (projects: ReturnType<typeof memoryProjectStore>, stored?: unknown) =>
+    ({
+      projects,
+      preferences: memoryPreferences(
+        stored === undefined ? {} : { [NEW_DESIGN_UNITS_KEY]: stored },
+      ),
+      storage: { requestPersistence: async () => true },
+    }) as unknown as Platform;
+
+  it("the Home tab's New Design is in the unit last picked on the home screen", async () => {
+    const projects = memoryProjectStore();
+    const id = await createBlankProject(platformWith(projects, 'in'));
+    expect((await projects.load(id)).settings.units).toBe('in');
+  });
+
+  it('is millimetres with nothing stored, or something that is not a unit', () => {
+    expect(newDesignUnits(memoryPreferences())).toBe('mm');
+    expect(newDesignUnits(memoryPreferences({ [NEW_DESIGN_UNITS_KEY]: 'furlong' }))).toBe('mm');
+    expect(newDesignUnits(memoryPreferences({ [NEW_DESIGN_UNITS_KEY]: 'cm' }))).toBe('cm');
+  });
+});
+
 describe("the home screen's Import… (ADR-0083 §4)", () => {
   const platformPicking = (projects: ReturnType<typeof memoryProjectStore>, file: File) =>
     ({
@@ -103,6 +129,27 @@ describe("the home screen's Import… (ADR-0083 §4)", () => {
     expect((await projects.load(id as never)).name).toBe('Bracket');
     expect(takeModelImport(id)).toBe(file);
     expect(takeModelImport(id)).toBeUndefined();
+  });
+
+  it('makes a new design for another CAD file on the desktop only (ADR-0115 §1)', async () => {
+    const projects = memoryProjectStore();
+    const file = new File([new Uint8Array([1])], 'Bracket.SLDPRT');
+    const accepts: string[] = [];
+    const desktop = {
+      ...platformPicking(projects, file),
+      files: {
+        pick: async (accept: string) => {
+          accepts.push(accept);
+          return file;
+        },
+      },
+      convertCad: async () => ({ ok: false as const, message: 'unused' }),
+    } as unknown as Platform;
+    const summary = await importAnyFile(desktop);
+    expect(accepts[0]).toContain('.sldprt');
+    const id = summary?.id ?? '';
+    expect((await projects.load(id as never)).name).toBe('Bracket');
+    expect(takeModelImport(id)).toBe(file);
   });
 
   it('imports an .extrudo file as itself, with no Import dialog', async () => {

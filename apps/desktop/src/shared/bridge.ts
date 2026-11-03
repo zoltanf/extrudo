@@ -6,6 +6,7 @@
  * `invoke`, that only the rescue copy and its list are `sendSync`, and that the
  * menu/recent/open-file listeners register and unregister (P6-01 slice 2).
  */
+import type { CadConvertResult, CadmpegStatus } from '@extrudo/web/platform/cad';
 import type { BlenderStatus, RenderProgress, RenderResult } from '@extrudo/web/platform/render';
 import type { SlicerId } from '@extrudo/web/platform/slicer';
 import {
@@ -172,6 +173,10 @@ export function createApi(ipc: IpcRendererLike): ExtrudoApi {
         if (progressListener) ipc.removeListener(CHANNELS.renderProgress, progressListener);
         progressListener = undefined;
       },
+    },
+    cad: {
+      status: () => ipc.invoke(CHANNELS.cadStatus) as Promise<CadmpegStatus>,
+      convert: (file) => ipc.invoke(CHANNELS.cadConvert, file) as Promise<CadConvertResult>,
     },
     app: {
       ready: () => ipc.send(CHANNELS.appReady),

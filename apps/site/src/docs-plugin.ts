@@ -5,8 +5,9 @@
  * Everything happens while the site is built: the Markdown becomes HTML, the
  * stylesheet and the two font faces are emitted with hashed names (so the
  * site's `_headers` can serve them for good), and each page is written where the
- * host will find it. No script ends up in a docs page — the site's content
- * policy allows none (ADR-0057) and the pages need none.
+ * host will find it. No script ends up in a docs page (ADR-0057), except the one
+ * widget module (`docs-widgets.ts`, ADR-0116): emitted once as a hashed chunk and
+ * loaded only by the pages that hold a widget, never inline.
  *
  * The pages themselves are built by `docs.ts`, which has no Vite in it and is
  * unit-tested on its own.
@@ -37,6 +38,9 @@ const DOCS_DIR = join(ROOT, 'docs');
 const DESCRIPTION =
   'Extrudo docs: guides, tutorials, the tool reference and the document API for parametric CAD in the browser.';
 
+/** The widget module's path in a page until the build knows its hashed name. */
+const WIDGET_SCRIPT = '__DOCS_WIDGETS__';
+
 /** The bundled font the brand sets its UI in (docs/05-brand.md §4). */
 const FACES = [
   { file: 'instrument-sans-latin-400-normal.woff2', weight: 400 },
@@ -47,6 +51,8 @@ const FACES = [
 export function docsPlugin(): Plugin {
   /** Placeholder → the emitted file's reference. */
   const files = new Map<string, string>();
+  /** The widget module's reference, when a page holds a widget. */
+  let widgetChunk: string | undefined;
   return {
     name: 'extrudo-site-docs',
     apply: 'build',
@@ -89,6 +95,15 @@ export function docsPlugin(): Plugin {
         source: stylesheet(tokens, rules, faces),
       });
 
+      // The widgets' one script (ADR-0116 §1), only when some page needs it.
+      if (pages.some((page) => page.widgets.length > 0)) {
+        widgetChunk = this.emitFile({
+          type: 'chunk',
+          id: join(HERE, 'docs-widgets.ts'),
+          name: 'docs-widgets',
+        });
+      }
+
       for (const page of pages) {
         this.emitFile({
           type: 'asset',
@@ -97,6 +112,7 @@ export function docsPlugin(): Plugin {
             stylesheet: '__DOCS_ASSET_docs.css__',
             description: DESCRIPTION,
             siteUrl: '/docs/',
+            widgetScript: WIDGET_SCRIPT,
           }),
         });
       }
@@ -109,13 +125,18 @@ export function docsPlugin(): Plugin {
         if (output.type === 'asset') names.set(output.name ?? '', `/${output.fileName}`);
       }
       for (const output of Object.values(bundle)) {
-        if (output.type !== 'asset' || !output.fileName.endsWith('/index.html')) continue;
+        // The pages, and the stylesheet: its font faces name the fonts by placeholder too.
+        const page = output.type === 'asset' && output.fileName.endsWith('/index.html');
+        if (output.type !== 'asset' || (!page && output.name !== 'docs.css')) continue;
         let html = output.source as string;
         for (const [placeholder, reference] of files) {
           html = html.replaceAll(placeholder, `/${this.getFileName(reference)}`);
         }
         for (const [name, url] of names) {
           html = html.replaceAll(`__DOCS_ASSET_${name}__`, url);
+        }
+        if (widgetChunk) {
+          html = html.replaceAll(WIDGET_SCRIPT, `/${this.getFileName(widgetChunk)}`);
         }
         output.source = html;
       }

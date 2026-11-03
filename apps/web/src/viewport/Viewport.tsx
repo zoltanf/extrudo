@@ -67,7 +67,7 @@ import {
 import { autoProjectSnap } from '../sketch/autoProject';
 import { sketchTargetAt } from '../sketch/facePick';
 import { tangentGrips } from '../sketch/splineEnds';
-import type { PlanePointer, SketchBox } from '../sketch/tools/host';
+import { type PlanePointer, type SketchBox, SNAP_PIXELS } from '../sketch/tools/host';
 import { applyView } from './applyView';
 import { Bodies, clipPlanes } from './Bodies';
 import { ghostBodiesSummary } from './bodyGhosts';
@@ -131,6 +131,7 @@ import {
   sectionPlane,
   snapshotDirection,
 } from './snapshotView';
+import { spaceMotion, spaceMouse } from './spaceMouse';
 import {
   type Bounds,
   type OriginItem,
@@ -507,6 +508,7 @@ export function Viewport({
   }, [viewport]);
 
   useNavigation(section, surface, viewport, setDragging);
+  useSpaceMouse(viewport);
   const [box, setBox] = useState<ScreenBox>();
   const [otherMenu, setOtherMenu] = useState<OtherMenu>();
   // Construction geometry, with a dialog's preview (P3-05); hover and selection highlight it.
@@ -518,11 +520,17 @@ export function Viewport({
     () => ({ bodies, meta, sketches, construction, clip: sectionClip, posed }),
     [bodies, meta, sketches, construction, sectionClip, posed],
   );
-  // Auto-project (P6-07): the body edge or vertex under the pointer while a
-  // tool runs. Off, the view offers nothing and the tool never sees one.
+  // Auto-project (P6-07): the body edge or vertex under the pointer, or a face
+  // centre near it (issue #140), while a tool runs. Off, the view offers
+  // nothing and the tool never sees one.
   const modelSnapPicker = useMemo(
     () =>
-      (pointer: ScreenPointer, frame: SketchFrame, cursor: Vec2): ModelSnap | undefined => {
+      (
+        pointer: ScreenPointer,
+        frame: SketchFrame,
+        cursor: Vec2,
+        perPixel: number,
+      ): ModelSnap | undefined => {
         const { view, projection, visualStyle } = viewport.getState();
         return autoProjectSnap(
           viewport,
@@ -532,6 +540,7 @@ export function Viewport({
           [pointer.x, pointer.y],
           cursor,
           modelScene.bodies,
+          SNAP_PIXELS * perPixel,
         );
       },
     [viewport, modelScene],
@@ -566,6 +575,7 @@ export function Viewport({
     setBox,
     hasViewMenu ? openViewMenu : undefined,
     modelSnapPicker,
+    setDragging,
   );
   const bodiesKey = useMemo(() => bodiesSummary(bodies, meta), [bodies, meta]);
   const appearanceKey = useMemo(() => bodyAppearanceSummary(bodies, meta), [bodies, meta]);
@@ -593,8 +603,9 @@ export function Viewport({
     setBox,
     setOtherMenu,
     hasViewMenu ? openViewMenu : undefined,
+    setDragging,
   );
-  useSketchTargetInput(surface, viewport, planePicker, hover, modelScene, setBox);
+  useSketchTargetInput(surface, viewport, planePicker, hover, modelScene, setBox, setDragging);
   // The menu belongs to model mode: it closes when that ends (a sketch opens, a tool starts).
   useEffect(() => {
     if (!modelSelect) setOtherMenu(undefined);
@@ -1346,7 +1357,13 @@ function useSketchInput(
     request: ViewMenuRequest,
     hits: readonly PickHit[],
   ) => void,
-  modelSnap?: (pointer: ScreenPointer, frame: SketchFrame, cursor: Vec2) => ModelSnap | undefined,
+  modelSnap?: (
+    pointer: ScreenPointer,
+    frame: SketchFrame,
+    cursor: Vec2,
+    perPixel: number,
+  ) => ModelSnap | undefined,
+  onNavDrag?: (action: NavAction | undefined) => void,
 ) {
   // The latest picker without re-binding the listeners on every scene change
   // (a drag would be cut short); as `useModelInput` holds its scene.
@@ -1368,12 +1385,13 @@ function useSketchInput(
       const world: Vec3 = [hit.x, hit.y, hit.z];
       const point = worldToSketch(frame, world);
       // Behind the sketch's own geometry: inference decides that, not the pick.
+      const perPixel = worldPerPixel(view, projection, p.height, world);
       const pick = modelSnapRef.current;
-      const model = input.modelSnap && pick ? pick(p, frame, point) : undefined;
+      const model = input.modelSnap && pick ? pick(p, frame, point, perPixel) : undefined;
       return {
         point,
         frame,
-        perPixel: worldPerPixel(view, projection, p.height, world),
+        perPixel,
         screen: [p.x, p.y],
         infer: p.infer,
         toggle: p.toggle,
@@ -1425,7 +1443,7 @@ function useSketchInput(
       }),
     };
   }, [input, viewport, surface, onContext]);
-  usePointerInput(surface, viewport, handlers, onBoxChange);
+  usePointerInput(surface, viewport, handlers, onBoxChange, onNavDrag);
 }
 
 /** What model-mode picking sees: the scene as drawn. */
@@ -1465,6 +1483,7 @@ function useModelInput(
     request: ViewMenuRequest,
     hits: readonly PickHit[],
   ) => void,
+  onNavDrag?: (action: NavAction | undefined) => void,
 ) {
   // The latest scene without re-binding the listeners on every change.
   const sceneRef = useRef(scene);
@@ -1537,7 +1556,7 @@ function useModelInput(
       }),
     };
   }, [select, viewport, surface, onMenu, onContext]);
-  usePointerInput(surface, viewport, handlers, onBoxChange);
+  usePointerInput(surface, viewport, handlers, onBoxChange, onNavDrag);
 }
 
 /**
@@ -1552,6 +1571,7 @@ function useSketchTargetInput(
   hover: SelectionItem | undefined,
   scene: ModelScene,
   onBoxChange: (box: ScreenBox | undefined) => void,
+  onNavDrag?: (action: NavAction | undefined) => void,
 ) {
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
@@ -1598,7 +1618,7 @@ function useSketchTargetInput(
       onLeave: () => hover(undefined),
     };
   }, [faces, viewport]);
-  usePointerInput(surface, viewport, handlers, onBoxChange);
+  usePointerInput(surface, viewport, handlers, onBoxChange, onNavDrag);
 }
 
 /**
@@ -1740,6 +1760,27 @@ const QUIET_MS = 400;
  * the elements over it marked `VIEW_PASSTHROUGH`. The listeners sit on the
  * section, so they see events from both.
  */
+/** A 3D mouse moves this view while it is on screen (ADR-0114); its buttons go home and fit. */
+function useSpaceMouse(viewport: ViewportStore) {
+  useEffect(
+    () =>
+      spaceMouse.attach({
+        move(input, dt) {
+          const s = viewport.getState();
+          const height = s.width > 0 ? s.width / s.aspect : 600;
+          const options = { height, aspect: s.aspect, speed: s.spaceMouseSpeed };
+          s.setView(spaceMotion(s.view, input, dt, options));
+        },
+        press(button) {
+          const s = viewport.getState();
+          if (button === 0) s.home();
+          else if (button === 1) s.fit();
+        },
+      }),
+    [viewport],
+  );
+}
+
 function useNavigation(
   section: RefObject<HTMLElement | null>,
   surface: RefObject<HTMLDivElement | null>,

@@ -95,6 +95,7 @@ export {
   type DimensionOptions,
   type DimensionOrientation,
   type DimValue,
+  type DistanceOptions,
   EllipseHandle,
   type EntityLike,
   LineHandle,

@@ -5,7 +5,8 @@ import { kernelReady, openProject, pickTool, projector } from './helpers';
 // P4-02: Thread (FR-FT-15). A modeled thread on a cylinder's wall, sized to
 // fit (M20 on the default Ø20 cylinder, 0.1 mm tolerance: 19.8 mm across the
 // crests), edited to a size that doesn't fit; and an internal thread in a
-// Hole's wall, sized from the tap-drill hole; NPT on a drafted cylinder (P4-12).
+// Hole's wall, sized from the tap-drill hole, and M5 in a Ø5 Hole (filled in
+// to the minor first, ADR-0056's fifth amendment); NPT on a drafted cylinder (P4-12).
 // Threads take seconds to build.
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -148,6 +149,47 @@ test('an internal thread in a Hole’s wall finds its size from the tap-drill ho
   expect(faces).toBeGreaterThan(20);
 });
 
+// ADR-0056's fifth amendment: M5 typed into a hole drawn at its nominal Ø5.
+// The bore is wider than M5's minor diameter, so the thread fills it in to
+// it first and cuts a full tooth: no error, a note, the outside unchanged.
+test('M5 in a Ø5 Hole fills the bore in to the thread first', async ({ page }) => {
+  const viewport = viewportOf(page);
+  await openProject(page);
+  await kernelReady(page);
+  await primitive(page, 'Cylinder', {});
+  await page.keyboard.press('Shift+1');
+  let at = await settledProjector(viewport);
+  await page.keyboard.press('h');
+  const hole = page.getByRole('region', { name: 'Hole dialog' });
+  await expect(hole).toBeVisible();
+  const { x, y } = at([0, 0, 20]);
+  await page.mouse.click(x, y);
+  await expect(hole.getByRole('button', { name: 'Plane', exact: true })).toHaveText('1 face');
+  await hole.getByRole('textbox', { name: 'X', exact: true }).fill('0 mm');
+  await hole.getByRole('textbox', { name: 'Y', exact: true }).fill('0 mm');
+  await hole.getByRole('combobox', { name: 'Extent' }).selectOption('through');
+  await hole.getByRole('textbox', { name: 'Diameter', exact: true }).fill('5 mm');
+  await ok(page, hole);
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:4:20,20,20');
+
+  at = await settledProjector(viewport);
+  const dialog = await openThread(page);
+  // The far side of the narrow bore, just under the rim so the near rim doesn't hide it.
+  const r = 2.5 * Math.SQRT1_2;
+  await clickFace(page, at, [-r, r, 18.5]);
+  await expect(dialog.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
+  await dialog.getByRole('combobox', { name: 'Size' }).selectOption('m5');
+  await expect(dialog).toHaveAttribute('data-preview-status', 'warning', { timeout: 60_000 });
+  await expect(dialog.getByRole('status', { name: 'Feature status' })).toHaveText(
+    "The hole is 5 mm across, wider than the M5 thread's minor diameter (4.334 mm): it is filled in to it along the thread.",
+  );
+  await expect(dialog.locator('[data-info="designation"]')).toContainText('M5');
+  await ok(page, dialog);
+  await expect(viewport).toHaveAttribute('data-bodies', /^Body1:\d+:20,20,20$/);
+  const faces = Number((await viewport.getAttribute('data-bodies'))?.split(':')[1]);
+  expect(faces).toBeGreaterThan(20);
+});
+
 // P4-12: the profiles. A trapezoidal Tr 20 × 4 on a Ø20 cylinder (the crest is
 // the major diameter less twice the tolerance, so 19.8 mm across, whatever the
 // profile) and the PCO-1881 bottle profile in a bore (an internal thread).
@@ -203,6 +245,39 @@ test('cuts a two-start thread: the same size across the crests, more faces', asy
   expect(twoStart).toBeGreaterThan(faces);
 });
 
+test('threads a cylinder with the printing profile and fits it loose', async ({ page }) => {
+  const viewport = viewportOf(page);
+  await openProject(page);
+  await kernelReady(page);
+  await primitive(page, 'Cylinder', {});
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:3:20,20,20');
+  const at = await settledProjector(viewport);
+
+  const s = Math.SQRT1_2 * 10;
+  await clickFace(page, at, [s, -s, 10]);
+  const dialog = await openThread(page);
+  await dialog.getByRole('combobox', { name: 'Profile' }).selectOption('print45');
+  // Fit the face works for the printing profile too: Print 20 × 4.5, whose
+  // crests sit a tolerance under the Ø20 shaft, as an M20's would.
+  await expect(dialog.getByRole('combobox', { name: 'Size' })).toHaveValue('auto');
+  await expect(dialog.getByRole('textbox', { name: 'Diameter', exact: true })).toHaveCount(0);
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
+  await expect(dialog.locator('[data-info="designation"]')).toContainText('Print 20 × 4.5');
+  await ok(page, dialog);
+  await expect(chip(page, 'Thread1')).toHaveAccessibleName('Thread1');
+  await expect(viewport).toHaveAttribute('data-bodies', /^Body1:\d+:19\.8,19\.8,20$/);
+
+  // Fit Loose fills Tolerance with 0.2 mm; the crests drop to 19.6.
+  await chip(page, 'Thread1').dblclick();
+  const edit = page.getByRole('region', { name: 'Edit Thread1 dialog' });
+  await expect(edit).toBeVisible();
+  await edit.getByRole('combobox', { name: 'Fit' }).selectOption('loose');
+  await expect(edit.getByRole('textbox', { name: 'Tolerance', exact: true })).toHaveValue('0.2 mm');
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
+  await ok(page, edit);
+  await expect(viewport).toHaveAttribute('data-bodies', /^Body1:\d+:19\.6,19\.6,20$/);
+});
+
 test('threads a bore with the PCO-1881 bottle profile', async ({ page }) => {
   const viewport = viewportOf(page);
   await openProject(page);
@@ -210,7 +285,8 @@ test('threads a bore with the PCO-1881 bottle profile', async ({ page }) => {
   await primitive(page, 'Cylinder', { Diameter: '40 mm', Height: '20 mm' });
   await page.keyboard.press('Shift+1');
   let at = await settledProjector(viewport);
-  // A through bore a little under the thread's root (Ø27.43 + 0.2): Ø27.
+  // A through bore just under the thread's minor diameter (Ø25.2 with the
+  // tolerance; a wider bore warns): Ø25.
   await page.keyboard.press('h');
   const hole = page.getByRole('region', { name: 'Hole dialog' });
   await expect(hole).toBeVisible();
@@ -220,12 +296,12 @@ test('threads a bore with the PCO-1881 bottle profile', async ({ page }) => {
   await hole.getByRole('textbox', { name: 'X', exact: true }).fill('0 mm');
   await hole.getByRole('textbox', { name: 'Y', exact: true }).fill('0 mm');
   await hole.getByRole('combobox', { name: 'Extent' }).selectOption('through');
-  await hole.getByRole('textbox', { name: 'Diameter', exact: true }).fill('27 mm');
+  await hole.getByRole('textbox', { name: 'Diameter', exact: true }).fill('25 mm');
   await ok(page, hole);
 
   at = await settledProjector(viewport);
   const dialog = await openThread(page);
-  const r = 13.5 * Math.SQRT1_2;
+  const r = 12.5 * Math.SQRT1_2;
   await clickFace(page, at, [-r, r, 14]);
   await expect(dialog.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
   await dialog.getByRole('combobox', { name: 'Profile' }).selectOption('bottle');

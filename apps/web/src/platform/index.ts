@@ -20,6 +20,7 @@ import { DOCS_URL, REPO_URL } from '../shell/docsLinks';
 import type { MenuModel } from '../shell/menuModel';
 import { APP_VERSION } from '../version';
 import type { AgentBridge } from './agent';
+import type { ConvertCad } from './cad';
 import {
   closedStorage,
   STORAGE_CLOSED_TEXT,
@@ -179,6 +180,13 @@ export interface Platform {
    */
   render?: BlenderRenderer;
   /**
+   * Converts another CAD program's file to STEP with the bundled cadmpeg
+   * (P6-19, ADR-0115 §1). The web platform leaves it undefined: nothing in a
+   * browser can start a program. The Electron build implements it in main;
+   * Import offers the other CAD files only when it exists.
+   */
+  convertCad?: ConvertCad;
+  /**
    * "A new version is ready" (ADR-0054; P6-01 slice 4 made it a platform seam).
    * The web's is `appUpdates` (the service worker waits, Reload applies it);
    * the desktop's follows electron-updater in main (Restart installs). Absent:
@@ -276,6 +284,16 @@ export type {
   AgentToolDefinition,
   AgentToolResult,
 } from './agent';
+export {
+  CAD_CONVERT_ACCEPT,
+  CAD_CONVERT_EXTENSIONS,
+  type CadConvertResult,
+  type CadFile,
+  type CadmpegStatus,
+  type ConvertCad,
+  isConvertibleCad,
+  stepNameFor,
+} from './cad';
 export {
   BLOCKED_TEXT,
   closedStorage,

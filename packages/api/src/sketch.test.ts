@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { SketchData, SketchEntity, SketchEntityId } from '@extrudo/core';
+import type { SketchData, SketchDimension, SketchEntity, SketchEntityId } from '@extrudo/core';
 import { readArchive } from '@extrudo/storage';
 import { describe, expect, it } from 'vitest';
 import { Design } from './design';
@@ -468,6 +468,22 @@ describe('profile references', () => {
     ).toHaveLength(2);
     expect(() => s.profileAt([100, 100])).toThrow(/no profile at/);
     expect(s.profileOrUndefined([100, 100])).toBeUndefined();
+  });
+
+  it("dimensions from a circle's edge to a line, and keeps the circle alone a diameter", () => {
+    const d = Design.create(FIXED);
+    const s = d.sketch(d.origin.xy, (k) => {
+      const plate = k.rectangle([30, -20], [80, 80]);
+      const hole = k.circle([0, 0], '10 mm');
+      k.dimension(hole, '20 mm');
+      k.dimension([hole, plate.left], '25 mm', { orientation: 'horizontal' });
+      k.distance([plate.left, hole], '45 mm', { sideB: 'far' });
+    });
+    const [diameter, near, far] = dimensions(s.data) as SketchDimension[];
+    expect(diameter).toMatchObject({ type: 'diameter' });
+    expect(near).toMatchObject({ type: 'distance', orientation: 'horizontal' });
+    expect(near).not.toHaveProperty('sideA');
+    expect(far).toMatchObject({ type: 'distance', orientation: 'aligned', sideB: 'far' });
   });
 
   it('gives a text its whole-text reference (ADR-0058)', () => {

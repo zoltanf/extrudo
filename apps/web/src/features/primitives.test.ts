@@ -217,6 +217,20 @@ describe('the primitive dialogs', () => {
 });
 
 describe('what a primitive proposes', () => {
+  it('X and Y in the design’s unit (ADR-0113 §1)', () => {
+    const ctx = withValues();
+    const inches = {
+      ...ctx,
+      doc: { ...ctx.doc, settings: { units: 'in' as const, precision: 3 } },
+    };
+    expect(proposePrimitive('box', values('box'), inches).exprs).toEqual({ x: '0 in', y: '0 in' });
+    const onXY = values('box', { refs: { plane: [originPlaneRef('origin:xy')] } });
+    expect(primitivePlaceAt('box', [25.4, -12.7, 0], onXY, inches)?.exprs).toEqual({
+      x: '1 in',
+      y: '-0.5 in',
+    });
+  });
+
   it('the XY plane at the origin, a new body, when nothing is picked', () => {
     expect(proposePrimitive('box', values('box'), withValues())).toEqual({
       refs: { plane: [originPlaneRef('origin:xy')] },

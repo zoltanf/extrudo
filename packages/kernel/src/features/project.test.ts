@@ -85,7 +85,7 @@ const offsetPlane = (id: string, distance: string): Feature => ({
   inputs: { plane: refs([originPlaneRef('origin:xy')]), distance: length(distance) },
 });
 
-type Source = { ref: GeomRef; mode?: 'intersect' };
+type Source = { ref: GeomRef; mode?: 'intersect' | 'center' };
 
 /** A sketch on `plane` that projects (or intersects) the sources as P0, P1…, no curves yet. */
 function projecting(id: string, plane: GeomRef, sources: Source[], data?: SketchData): Feature {
@@ -285,6 +285,28 @@ describe('vertices and bodies', () => {
       ),
     );
     expect(curvesOf(result, 'S')).toEqual({ vertex: { type: 'point', at: [10, 5] } });
+  });
+
+  it("projects a face's area centre to one point, following the face (issue #140)", async () => {
+    const box = (length: string) =>
+      primitive('B', 'box', { length, width: '10 mm', height: '5 mm' });
+    const first = ok(await run(testDocument([box('20 mm')])));
+    const faces = kernel.describe(shapeOf(first)).faces;
+    // The +X side face: the box is centred on the origin, so its centre is at half the length.
+    const index = faces.findIndex((f) => f.type === 'plane' && f.centroid[0] > 9);
+    const face = refAt(first, 'face', index);
+    const sketch = projecting('S', originPlaneRef('origin:xy'), [{ ref: face, mode: 'center' }]);
+    const at = (curves: Record<string, ProjectedCurve>) =>
+      curves.faceCenter?.type === 'point' ? curves.faceCenter.at : undefined;
+    const result = ok(await run(testDocument([box('20 mm'), sketch])));
+    expect(Object.keys(curvesOf(result, 'S'))).toEqual(['faceCenter']);
+    const [x, y] = at(curvesOf(result, 'S')) ?? [Number.NaN, Number.NaN];
+    expect(x).toBeCloseTo(faces[index]?.centroid[0] ?? Number.NaN, 9);
+    expect(y).toBeCloseTo(faces[index]?.centroid[1] ?? Number.NaN, 9);
+    expect(x).toBeCloseTo(10, 9);
+    // A longer box moves the centre along.
+    const longer = ok(await run(testDocument([box('30 mm'), sketch])));
+    expect(at(curvesOf(longer, 'S'))?.[0]).toBeCloseTo(15, 9);
   });
 
   it('projects a box onto a plane at 30 degrees as its outline and its visible edges', async () => {

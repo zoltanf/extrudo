@@ -9,7 +9,7 @@ import {
   type FeatureId,
   importInputs,
 } from '@extrudo/core';
-import { checkManifold } from '@extrudo/io';
+import { checkManifold, type TriangleMesh, writeStl } from '@extrudo/io';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import asciiCube from '../../../../fixtures/imports/ascii-cube.stl?url&inline';
 import obj from '../../../../fixtures/imports/bracket-y-up.obj?url&inline';
@@ -56,6 +56,33 @@ function bytesOf(dataUrl: string): Uint8Array {
 }
 
 const CUBE_STL = bytesOf(cubeStl);
+
+/** A closed 20 × 20 × 20 mm cube, triangles counter-clockwise from outside. */
+function box20(): TriangleMesh {
+  const positions = new Float64Array([
+    0, 0, 0, 20, 0, 0, 20, 20, 0, 0, 20, 0, 0, 0, 20, 20, 0, 20, 20, 20, 20, 0, 20, 20,
+  ]);
+  // biome-ignore format: two triangles per side
+  const indices = new Uint32Array([
+    0, 2, 1, 0, 3, 2, // bottom (-z)
+    4, 5, 6, 4, 6, 7, // top (+z)
+    0, 1, 5, 0, 5, 4, // front (-y)
+    2, 3, 7, 2, 7, 6, // back (+y)
+    1, 2, 6, 1, 6, 5, // right (+x)
+    3, 0, 4, 3, 4, 7, // left (-x)
+  ]);
+  return { positions, indices };
+}
+
+/** A closed cube with two flat triangles and one duplicate of its first appended. */
+function badCube(): TriangleMesh {
+  const cube = box20();
+  const first = [...cube.indices.slice(0, 3)];
+  return {
+    positions: cube.positions,
+    indices: new Uint32Array([...cube.indices, 0, 0, 1, 2, 3, 3, ...first]),
+  };
+}
 const OPEN_STL = bytesOf(openStl);
 const TOUCHING_CUBES = bytesOf(touchingCubes);
 const ASCII_CUBE = bytesOf(asciiCube);
@@ -273,6 +300,41 @@ describe('importing a mesh (P4-06, ADR-0066 §3)', () => {
       [20, 20, 20],
       [20, 20, 20],
     ]);
+  });
+
+  it('drops flat and duplicate triangles, with a warning', { timeout: 60_000 }, async () => {
+    const result = await recompute(
+      design({
+        bytes: writeStl(badCube()),
+        fileName: 'bad-cube.stl',
+        mediaType: 'model/stl',
+      }),
+    );
+    expect(result.features[IMPORT_ID]?.status).toBe('warning');
+    expect(result.features[IMPORT_ID]?.message).toBe(
+      'bad-cube.stl: 2 flat and 1 duplicate triangles were dropped.',
+    );
+    const got = bodies(result);
+    expect(got).toHaveLength(1);
+    expect(got[0]?.size).toEqual([20, 20, 20]);
+  });
+
+  it('words a still-open mesh with what was dropped', { timeout: 60_000 }, async () => {
+    const cube = box20();
+    // A box missing one triangle (3 open edges) plus one degenerate triangle.
+    const message = await messageOf(
+      design({
+        bytes: writeStl({
+          positions: cube.positions,
+          indices: new Uint32Array([...cube.indices].slice(3).concat([0, 0, 1])),
+        }),
+        fileName: 'open-bad.stl',
+        mediaType: 'model/stl',
+      }),
+    );
+    expect(message).toBe(
+      "open-bad.stl isn't a closed solid (3 open edges; 1 flat triangle was dropped): repair it in your slicer or a mesh tool and import it again.",
+    );
   });
 
   it('says what is wrong with a mesh that is not closed', { timeout: 60_000 }, async () => {

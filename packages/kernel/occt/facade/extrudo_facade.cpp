@@ -86,6 +86,7 @@
 #include <Geom_ConicalSurface.hxx>
 #include <Geom_CylindricalSurface.hxx>
 #include <Geom_SphericalSurface.hxx>
+#include <Geom_SurfaceOfRevolution.hxx>
 #include <Geom_ToroidalSurface.hxx>
 #include <TopTools_ListOfShape.hxx>
 #include <Geom2d_Line.hxx>
@@ -241,6 +242,7 @@
 #include <chrono>
 #include <memory>
 #include <array>
+#include <unordered_set>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -6965,6 +6967,12 @@ private:
     return gp_XYZ(meshNodes_[3 * node], meshNodes_[3 * node + 1], meshNodes_[3 * node + 2]);
   }
 
+  /**
+   * A plane group's least-squares plane is kept only when its normal and the
+   * facets' area-weighted mean normal agree by this cosine (slice D11).
+   */
+  static constexpr double MESH_PLANE_NORMAL_AGREEMENT = 0.5;
+
   /** The least-squares plane through `nodes`, its normal on the side of `outward`. */
   MeshFit fitMeshPlane(const std::vector<int>& nodes, const gp_XYZ& outward) const {
     MeshFit fit;
@@ -7270,10 +7278,13 @@ private:
    * fit in its plane, the tube radius the nodes' mean distance from the
    * spine, and all seven parameters are refined by Gauss-Newton on the
    * nodes' distances. `origin` is the centre, `direction` the axis,
-   * `majorRadius` R and `radius` r.
+   * `majorRadius` R and `radius` r. R <= r (a spindle torus) only with
+   * `spindle` (slice D9: splitComponent's retry; the hybrid builds it as a
+   * surface of revolution).
    */
   MeshFit fitMeshTorus(const std::vector<int>& nodes, const std::vector<int>& triangles,
-                       const std::vector<gp_XYZ>& normals, const std::vector<double>& areas, double tolerance) const {
+                       const std::vector<gp_XYZ>& normals, const std::vector<double>& areas, double tolerance,
+                       bool spindle = false) const {
     MeshFit fit;
     if (nodes.size() < 12 || triangles.size() < 6) return fit;
     // Moments of the facet centroids g and normals n, about their means, so
@@ -7458,7 +7469,8 @@ private:
       for (int k = 0; k < 7; ++k) size += std::fabs(scale * step[k]);
       if (size < 1e-12 * (1 + R + r)) break;
     }
-    if (!(R > 0) || !(r > 0) || !std::isfinite(R) || !std::isfinite(r)) return fit;
+    // R > r unless `spindle` (slice D8): a toroidal surface whose tube reaches its axis is no torus a STEP reader takes back.
+    if (!(R > 0) || !(r > 0) || (!spindle && !(R > r)) || !std::isfinite(R) || !std::isfinite(r)) return fit;
     fit.deviation = 0;
     for (int n : nodes) fit.deviation = std::max(fit.deviation, std::fabs(torusDistance(o, a, R, r, meshNode(n))));
     // A deterministic axis: its largest component positive.
@@ -7801,7 +7813,9 @@ private:
         if (g.outward.Modulus() < 1e-300) g.outward = regions[members[0]].normal.XYZ();
         return g;
       };
-      // One kind's fit (0 plane, 1 cylinder, 2 cone, 3 sphere, 4 torus).
+      // One kind's fit (0 plane, 1 cylinder, 2 cone, 3 sphere, 4 torus); a
+      // spindle torus only while `spindle` is set (splitComponent's retry).
+      bool spindle = false;
       auto fitKind = [&](int kind, const Gathered& g) {
         switch (kind) {
           case 0: {
@@ -7837,8 +7851,14 @@ private:
               plane.ok = true;
             }
             if (plane.ok && plane.deviation <= tolerance) return plane;
+            // A least-squares plane square to the facets is no face (slice D11): a wall strip lower
+            // than the tolerance has all its nodes within it of the plane through its middle.
             const MeshFit squares = fitMeshPlane(g.nodes, g.outward);
-            return squares.ok && (!plane.ok || squares.deviation < plane.deviation) ? squares : plane;
+            gp_XYZ mean(0, 0, 0);
+            for (int t : g.triangles) mean += areas[t] * normals[t];
+            const bool agrees = squares.ok && mean.Modulus() > 1e-300 &&
+                                std::fabs(squares.direction.XYZ().Dot(mean)) >= MESH_PLANE_NORMAL_AGREEMENT * mean.Modulus();
+            return agrees && (!plane.ok || squares.deviation < plane.deviation) ? squares : plane;
           }
           case 1:
             return fitMeshCylinder(g.nodes, g.triangles, normals, areas);
@@ -7847,7 +7867,7 @@ private:
           case 3:
             return fitMeshSphere(g.nodes);
           default:
-            return fitMeshTorus(g.nodes, g.triangles, normals, areas, tolerance);
+            return fitMeshTorus(g.nodes, g.triangles, normals, areas, tolerance, spindle);
         }
       };
       // The surface of a fit within the tolerance, with its chord error.
@@ -8152,7 +8172,19 @@ private:
             keep(std::move(s));
             return;
           }
-          for (MeshSurface& piece : splitComponent(s)) keep(std::move(piece));
+          std::vector<MeshSurface> pieces = splitComponent(s);
+          // A split that leaves the component whole and unfit is tried once
+          // more with spindle tori (slice D9): peg-perego-button's 296
+          // regions stay facets for a 5-region patch only a torus with
+          // R < r fits. Elsewhere a spindle fit wins seeds that other
+          // primitives explain better (vented-funnel, spaghetti-measure).
+          if (pieces.size() == 1 && pieces[0].kind < 0) {
+            spindle = true;
+            std::vector<MeshSurface> retry = splitComponent(s);
+            spindle = false;
+            if (retry.size() != 1 || retry[0].kind >= 0) pieces = std::move(retry);
+          }
+          for (MeshSurface& piece : pieces) keep(std::move(piece));
         };
         if (large.empty()) {
           settle(std::move(whole));
@@ -8331,6 +8363,38 @@ private:
   }
 
   /**
+   * A spindle torus (R <= r, slice D9) as the surface of revolution of its
+   * meridian circle, at the torus's own parameters: a STEP reader takes a
+   * toroidal surface with R <= r back as a revolution of another curve,
+   * whose wires then cross (ADR-0097's 2026-10-31b amendment). The meridian
+   * at u = 0 is centre O + R X, C(v) = centre + r cos v X + r sin v Z.
+   */
+  static Handle(Geom_Surface) revolvedTorus(const gp_Ax3& frame, double majorRadius, double radius) {
+    const gp_Dir x = frame.XDirection(), z = frame.Direction();
+    Handle(Geom_Circle) meridian = new Geom_Circle(
+        gp_Ax2(frame.Location().Translated(majorRadius * gp_Vec(x)), z.Crossed(x).Reversed(), x), radius);
+    // Turning by u takes X to cos u X + sin u Y: about Z for a direct frame, about -Z for an indirect one.
+    return new Geom_SurfaceOfRevolution(meridian, gp_Ax1(frame.Location(), frame.Direct() ? z : z.Reversed()));
+  }
+
+  /** revolvedTorus's torus back from a face's surface (a direct frame's), else false. */
+  static bool revolvedTorusOf(const BRepAdaptor_Surface& surface, gp_Torus& torus) {
+    if (surface.GetType() != GeomAbs_SurfaceOfRevolution) return false;
+    const Handle(Adaptor3d_Curve) meridian = surface.BasisCurve();
+    if (meridian->GetType() != GeomAbs_Circle) return false;
+    const gp_Circ circle = meridian->Circle();
+    const gp_Ax1 axis = surface.AxeOfRevolution();
+    const gp_Ax2& position = circle.Position();
+    if (position.YDirection().Dot(axis.Direction()) < 1 - 1e-9) return false;
+    const gp_Vec offset(axis.Location(), circle.Location());
+    const double majorRadius = offset.Dot(gp_Vec(position.XDirection()));
+    if (!(majorRadius > 0) || (offset - majorRadius * gp_Vec(position.XDirection())).Magnitude() > 1e-9 * (1 + majorRadius))
+      return false;
+    torus = gp_Torus(gp_Ax3(axis.Location(), axis.Direction(), position.XDirection()), majorRadius, circle.Radius());
+    return true;
+  }
+
+  /**
    * A surface's parameters for the hybrid rebuild (ADR-0097, slice D1): its
    * frame and numbers, and the centres its periodic parameters are taken
    * near (within half a turn), so that a region's pcurves never wrap. A
@@ -8417,7 +8481,8 @@ private:
         case 3:
           return new Geom_SphericalSurface(frame, radius);
         case 4:
-          return new Geom_ToroidalSurface(frame, majorRadius, radius);
+          return majorRadius > radius ? Handle(Geom_Surface)(new Geom_ToroidalSurface(frame, majorRadius, radius))
+                                      : revolvedTorus(frame, majorRadius, radius);
         default:
           return new Geom_Plane(frame);
       }
@@ -8430,7 +8495,8 @@ private:
    * triangles (kind -1, always facets). `loops` are its boundary's node
    * lists in order, the region on the left seen from outside; the outer one
    * first (the largest area in the chart's parameters). `why` set: the
-   * region is exploded, its triangles become facets.
+   * region is exploded, its triangles become facets. `splitNodes`: the
+   * nodes its boundary passes twice, where meshLoops split it (slice D11).
    */
   struct MeshHybridRegion {
     int surface = -1;
@@ -8440,6 +8506,7 @@ private:
     std::vector<std::vector<int>> loops;
     double area = 0;
     std::string why;
+    int splitNodes = 0;
   };
 
   /** The angles' range past their largest gap: its start, its span (radians). */
@@ -8604,27 +8671,39 @@ private:
    * corner k to k + 1 (the region on its left seen from outside), chained
    * node to node into closed loops, then the outer one first (the largest
    * area in the chart's parameters; its sign must say the region is on its
-   * left, every inner loop's the opposite). A node two boundary edges leave
-   * (the region touches itself there) or a loop that doesn't close explodes
-   * the region (`why`). Where three or more regions meet is just a node of
-   * the loop: every mesh edge is its own B-rep edge, so chains between two
-   * regions aren't needed here.
+   * left, every inner loop's the opposite). A loop that doesn't close
+   * explodes the region (`why`). Where three or more regions meet is just a
+   * node of the loop: every mesh edge is its own B-rep edge, so chains
+   * between two regions aren't needed here.
+   *
+   * A node two boundary edges leave (slice D11): the boundary passes it
+   * twice, as where a hole touches the outer loop at a node, or two holes
+   * touch. The region is still one piece (regions are connected over mesh
+   * edges); meshFanLoops walks its boundary round each fan of triangles at
+   * such a node and splits the loops there, so the face gets simple loops
+   * that share the node's vertex.
    */
   void meshLoops(MeshHybridRegion& region, int id, const std::vector<int>& hybridOf,
                  const std::vector<int>& neighbour) const {
     std::map<int, int> next;
+    bool pinched = false;
     for (int t : region.triangles) {
-      for (int k = 0; k < 3; ++k) {
+      for (int k = 0; k < 3 && !pinched; ++k) {
         const int u = neighbour[3 * t + k];
         if (u >= 0 && hybridOf[u] == id) continue;
         const int a = static_cast<int>(meshTriangles_[3 * t + k]), b = static_cast<int>(meshTriangles_[3 * t + (k + 1) % 3]);
-        if (!next.emplace(a, b).second) {
-          region.why = "touches itself at node " + std::to_string(a);
-          return;
-        }
+        pinched = !next.emplace(a, b).second;
+      }
+      if (pinched) break;
+    }
+    if (pinched) {
+      if (!meshFanLoops(region, id, hybridOf, neighbour)) {
+        region.why = "a loop that doesn't close";
+        region.loops.clear();
+        return;
       }
     }
-    while (!next.empty()) {
+    while (!pinched && !next.empty()) {
       const int start = next.begin()->first;
       std::vector<int> loop;
       int node = start;
@@ -8680,6 +8759,86 @@ private:
     }
   }
 
+  /** The most triangles a fan round one node may have in meshFanLoops; more means the mesh's neighbours are inconsistent. */
+  static constexpr int MESH_FAN_MAX = 4096;
+
+  /**
+   * meshLoops for a region whose boundary passes a node twice (slice D11):
+   * each boundary edge (a, b) is followed by the boundary edge that leaves b
+   * round the same fan of the region's triangles at b, so every node is
+   * walked once per fan; then each loop is cut at every node it passes twice
+   * into simple loops (both keep the node). Fills `loops` and `splitNodes`;
+   * false when a fan doesn't end at a boundary edge or a walk doesn't close.
+   */
+  bool meshFanLoops(MeshHybridRegion& region, int id, const std::vector<int>& hybridOf,
+                    const std::vector<int>& neighbour) const {
+    auto corner = [&](int t, int k) { return static_cast<int>(meshTriangles_[3 * t + k % 3]); };
+    // The boundary edges as (triangle, corner) pairs, and each one's index by 3t + k.
+    std::vector<std::pair<int, int>> edges;
+    std::unordered_map<int, int> edgeAt;
+    for (int t : region.triangles)
+      for (int k = 0; k < 3; ++k) {
+        const int u = neighbour[3 * t + k];
+        if (u >= 0 && hybridOf[u] == id) continue;
+        edgeAt.emplace(3 * t + k, static_cast<int>(edges.size()));
+        edges.push_back({t, k});
+      }
+    // Each edge's successor round its end node's fan: across the triangles' other edge at the node until a boundary edge.
+    std::vector<int> after(edges.size(), -1);
+    for (size_t i = 0; i < edges.size(); ++i) {
+      int t = edges[i].first, k = edges[i].second;
+      const int node = corner(t, k + 1);
+      for (int step = 0; step < MESH_FAN_MAX; ++step) {
+        const int out = (k + 1) % 3;
+        const int u = neighbour[3 * t + out];
+        if (u < 0 || hybridOf[u] != id) {
+          const auto it = edgeAt.find(3 * t + out);
+          if (it != edgeAt.end()) after[i] = it->second;
+          break;
+        }
+        int in = -1;
+        for (int j = 0; j < 3; ++j)
+          if (corner(u, j + 1) == node) in = j;
+        if (in < 0) break;
+        t = u;
+        k = in;
+      }
+      if (after[i] < 0) return false;
+    }
+    // The walks, then each cut at the nodes it passes twice.
+    std::vector<char> walked(edges.size(), 0);
+    std::vector<int> walk, stack;
+    std::unordered_map<int, size_t> at;
+    region.loops.clear();
+    region.splitNodes = 0;
+    for (size_t first = 0; first < edges.size(); ++first) {
+      if (walked[first]) continue;
+      walk.clear();
+      int e = static_cast<int>(first);
+      do {
+        if (walked[e]) return false;
+        walked[e] = 1;
+        walk.push_back(corner(edges[e].first, edges[e].second));
+        e = after[e];
+      } while (e != static_cast<int>(first));
+      stack.clear();
+      at.clear();
+      for (int n : walk) {
+        const auto it = at.find(n);
+        if (it != at.end()) {
+          region.loops.emplace_back(stack.begin() + static_cast<long>(it->second), stack.end());
+          for (size_t j = it->second + 1; j < stack.size(); ++j) at.erase(stack[j]);
+          stack.resize(it->second);
+          ++region.splitNodes;
+        }
+        at[n] = stack.size();
+        stack.push_back(n);
+      }
+      region.loops.push_back(stack);
+    }
+    return true;
+  }
+
   /**
    * A boundary chain of the hybrid rebuild (ADR-0097, slice D3): a maximal
    * run of boundary mesh edges with the same two regions on its sides, in
@@ -8709,6 +8868,8 @@ private:
     double first = 0, last = 0;
     /** The largest node distance to the curve. */
     double off = 0;
+    /** How far a planar chain's circle grew to reach its end nodes (slice D8; mm). */
+    double widened = 0;
     std::string why;
   };
 
@@ -9000,6 +9161,7 @@ private:
                           const MeshSegmentation& seg, double tolerance,
                           std::map<std::pair<int, int>, std::pair<std::vector<MeshChainCurve>, std::string>>& cache,
                           std::map<std::pair<int, int>, bool>& coaxialPairs) const {
+    ++chainCurveCalls_;
     MeshChainFit fit;
     const MeshHybridRegion& left = regions[chain.left];
     const MeshHybridRegion& right = regions[chain.right];
@@ -9047,6 +9209,65 @@ private:
       if (sum < best) {
         best = sum;
         fit.curve = c;
+      }
+    }
+    // Next to a plane (slice D8): the curve ends where its end nodes project
+    // onto the plane, so that projecting the curve (a STEP reader drops a
+    // plane's pcurves and does exactly that) gives back the face's outline.
+    const MeshChart* plane = left.chart.kind == 0 ? &left.chart : right.chart.kind == 0 ? &right.chart : nullptr;
+    if (plane != nullptr) {
+      const gp_XYZ p = meshNode(chain.nodes.front()), q = meshNode(chain.nodes.back());
+      const gp_XYZ n = plane->frame.Direction().XYZ();
+      if (fit.curve.type == 0) {
+        if ((q - p).Modulus() <= 1e-12) {
+          fit.why = "chain ends coincide";
+          return fit;
+        }
+        fit.curve.line = gp_Lin(gp_Pnt(p), gp_Dir(q - p));
+      } else if (fit.curve.type == 1) {
+        const gp_Ax2& old = fit.curve.circle.Position();
+        const double along = old.Direction().XYZ().Dot(n);
+        if (std::fabs(along) < std::cos(M_PI / 180)) {
+          fit.why = "a tilted circle on a plane";
+          return fit;
+        }
+        const gp_XYZ axis = along < 0 ? n.Reversed() : n;
+        const gp_XYZ c = fit.curve.circle.Location().XYZ();
+        // The ends' projections onto the circle's plane (through its centre, square to n).
+        const gp_XYZ ph = p - (p - c).Dot(n) * n, qh = q - (q - c).Dot(n) * n;
+        double r = fit.curve.circle.Radius();
+        gp_XYZ centre = c;
+        if (chain.closed) {
+          r = (ph - c).Modulus();
+        } else {
+          const gp_XYZ chord = qh - ph;
+          const double half = chord.Modulus() / 2;
+          if (half <= 1e-12) {
+            fit.why = "chain ends coincide";
+            return fit;
+          }
+          // A half turn's ends sit on the polygon's corners, a little wider
+          // than the fitted radius: within the tolerance the circle takes
+          // them as its diameter (the node checks below still apply).
+          if (half > r + tolerance) {
+            fit.why = "chain ends wider than the circle";
+            return fit;
+          }
+          fit.widened = std::max(0.0, half - r);
+          r = std::max(r, half);
+          const gp_XYZ mid = (ph + qh) / 2, m = n.Crossed(chord).Normalized();
+          const double h = std::sqrt(std::max(0.0, r * r - half * half));
+          const gp_XYZ a = mid + h * m, b = mid - h * m;
+          centre = (a - c).Modulus() <= (b - c).Modulus() ? a : b;
+        }
+        if (r <= 1e-12) {
+          fit.why = "chain ends coincide";
+          return fit;
+        }
+        fit.curve.circle = gp_Circ(gp_Ax2(gp_Pnt(centre), gp_Dir(axis), gp_Dir(ph - centre)), r);
+      } else {
+        fit.why = "an ellipse on a plane";
+        return fit;
       }
     }
     // Every node near it, its parameters one way along it.
@@ -9435,7 +9656,10 @@ private:
         weights[root(i)] += surfaces[i].area;
       }
       for (int i = 0; i < surfaceCount; ++i) {
-        if (rolling(surfaces[i]) && weights[root(i)] > 0) surfaces[i].radius = weighted[root(i)] / weights[root(i)];
+        if (!rolling(surfaces[i]) || !(weights[root(i)] > 0)) continue;
+        const double radius = weighted[root(i)] / weights[root(i)];
+        // A torus keeps R > r (slice D8).
+        if (surfaces[i].kind != 4 || surfaces[i].majorRadius > radius) surfaces[i].radius = radius;
       }
     }
 
@@ -9592,8 +9816,12 @@ private:
         const gp_XYZ o = cyl.origin.XYZ();
         c = o + (c - o).Dot(a) * a;
         const double r = torus.radius, R = torus.majorRadius;
-        if (std::fabs(R + r - cyl.radius) <= 10 * tolerance) torus.majorRadius = cyl.radius - r;
-        else if (std::fabs(R - r - cyl.radius) <= 10 * tolerance) torus.majorRadius = cyl.radius + r;
+        // The adjusted major radius only while it stays above the minor (slice D8).
+        if (std::fabs(R + r - cyl.radius) <= 10 * tolerance) {
+          if (cyl.radius - r > r) torus.majorRadius = cyl.radius - r;
+        } else if (std::fabs(R - r - cyl.radius) <= 10 * tolerance && cyl.radius + r > r) {
+          torus.majorRadius = cyl.radius + r;
+        }
         axial = true;
         break;
       }
@@ -9717,6 +9945,8 @@ private:
     NCollection_List<TopoDS_Shape> faces;
     for (const MeshSurface& s : surfaces) {
       if (s.kind < 0) continue;
+      // A spindle torus is the hybrid's (its surface of revolution, slice D9); MakerVolume keeps to quadrics and tori.
+      if (s.kind == 4 && !(s.majorRadius > s.radius)) return refuse("a torus whose tube reaches its axis");
       const double margin = margins[&s - surfaces.data()];
       const gp_Ax3 frame(s.origin, s.direction);
       const gp_XYZ ux = frame.XDirection().XYZ(), uy = frame.YDirection().XYZ(), uz = s.direction.XYZ();
@@ -10136,6 +10366,25 @@ private:
   std::string hybridRefusal_;
   /** The last hybrid build's chains (slice D3): "chains: 12 collapsed (…), 3 polylines", and why chains stayed polylines. */
   std::string hybridChains_, hybridChainsKept_;
+  /** The last hybrid build's planar edges and how many end off their pcurves' ends (slice D8): "exact chain ends: 120 edges, 0 off". */
+  std::string hybridEnds_;
+  /** The last hybrid build's chain edges whose circle widened to its end nodes (slice D8), and the largest widening (mm). */
+  int hybridWidened_ = 0;
+  double hybridWidenedMax_ = 0;
+  /** Calls in the last hybrid build (spike harness timing). */
+  mutable long chainCurveCalls_ = 0, interpolateCalls_ = 0;
+  /** The last hybrid build's mesh check: nodes measured, and how many needed BRepExtrema (spike harness timing). */
+  long meshCheckNodes_ = 0, meshCheckExtrema_ = 0, meshCheckClassifiers_ = 0;
+  double meshCheckClassifierMs_ = 0, meshCheckClassifyMs_ = 0;
+  /** With keepHybridFaces_: the last hybrid build's edges, a chain's (`chain` true) or a mesh edge's, by end points. */
+  struct HybridEdgeRecord {
+    gp_Pnt a, b;
+    int left = -1, right = -1;
+    bool chain = false;
+    int type = 0;
+    double widened = 0;
+  };
+  std::vector<HybridEdgeRecord> hybridEdges_;
   /** Per recognised region of the last hybrid rebuild, when the spike harness asks (FACES=1). */
   bool keepHybridFaces_ = false;
   std::vector<std::string> hybridFaces_;
@@ -10170,6 +10419,218 @@ private:
    * message to show), else lastError is `rebuildFailed` and hybridRefusal_
    * says why. Throws OutOfTime past the deadline.
    */
+  /** cutTouchingFace's search: the hole vertices tried as the cut's start, and the outer vertices for each. */
+  static constexpr int TOUCH_CUT_STARTS = 8;
+  static constexpr int TOUCH_CUT_ENDS = 64;
+  /** The samples per pcurve in cutTouchingFace's crossing test. */
+  static constexpr int TOUCH_CUT_SAMPLES = 16;
+  /** The most cuts cutTouchingLoops makes in one body. */
+  static constexpr int TOUCH_CUT_MAX = 512;
+
+  /**
+   * One cut of cutTouchingLoops (ADR-0097 slice D11): `input`, on a periodic
+   * surface, has a hole H that shares a vertex n with its outer wire O (a
+   * region meshLoops split at a node its boundary passes twice). It is rebuilt
+   * as two faces along a new edge c, a straight segment in (u, v) from a
+   * vertex h of H to a vertex o of O that it sees (it crosses no edge and
+   * stays inside): A = O from n to o, c, H from h to n; B = O from o to n,
+   * H from n to h, c back. Each passes n once. The face's other holes go to
+   * the piece that holds them; every other edge is the face's own, so its
+   * neighbours don't change. False when no cut gives two valid faces.
+   */
+  static bool cutTouchingFace(const TopoDS_Face& input, TopoDS_Face& pieceA, TopoDS_Face& pieceB) {
+    const TopoDS_Face face = TopoDS::Face(input.Oriented(TopAbs_FORWARD));
+    TopLoc_Location location;
+    const Handle(Geom_Surface) surface = BRep_Tool::Surface(face, location);
+    if (!location.IsIdentity()) return false;
+    const TopoDS_Wire outer = BRepTools::OuterWire(face);
+    // A wire's edges in order, each with the vertex it starts at and that vertex's (u, v).
+    struct Use {
+      TopoDS_Edge edge;
+      TopoDS_Vertex start;
+      gp_Pnt2d at;
+    };
+    auto uses = [&](const TopoDS_Wire& wire) {
+      std::vector<Use> out;
+      for (BRepTools_WireExplorer we(wire, face); we.More(); we.Next()) {
+        const TopoDS_Edge& e = we.Current();
+        double first = 0, last = 0;
+        const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(e, face, first, last);
+        if (pc.IsNull()) return std::vector<Use>();
+        out.push_back({e, we.CurrentVertex(), pc->Value(e.Orientation() == TopAbs_REVERSED ? last : first)});
+      }
+      return out;
+    };
+    const std::vector<Use> O = uses(outer);
+    if (O.empty()) return false;
+    std::vector<TopoDS_Wire> holeWires;
+    std::vector<std::vector<Use>> holes;
+    for (TopExp_Explorer we(face, TopAbs_WIRE); we.More(); we.Next())
+      if (!we.Current().IsSame(outer)) {
+        holeWires.push_back(TopoDS::Wire(we.Current()));
+        holes.push_back(uses(holeWires.back()));
+      }
+    // Every pcurve as a polyline, for the crossing test.
+    std::vector<std::pair<gp_Pnt2d, gp_Pnt2d>> segments;
+    for (TopExp_Explorer ee(face, TopAbs_EDGE); ee.More(); ee.Next()) {
+      double first = 0, last = 0;
+      const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(TopoDS::Edge(ee.Current()), face, first, last);
+      if (pc.IsNull()) continue;
+      gp_Pnt2d previous = pc->Value(first);
+      for (int i = 1; i <= TOUCH_CUT_SAMPLES; ++i) {
+        const gp_Pnt2d p = pc->Value(first + (last - first) * i / TOUCH_CUT_SAMPLES);
+        segments.push_back({previous, p});
+        previous = p;
+      }
+    }
+    BRepTopAdaptor_FClass2d inside(face, Precision::PConfusion());
+    auto cross = [](const gp_Pnt2d& o, const gp_Pnt2d& a, const gp_Pnt2d& b) {
+      return (a.X() - o.X()) * (b.Y() - o.Y()) - (a.Y() - o.Y()) * (b.X() - o.X());
+    };
+    auto sees = [&](const gp_Pnt2d& p, const gp_Pnt2d& q) {
+      if (p.Distance(q) < Precision::PConfusion()) return false;
+      for (double t : {0.25, 0.5, 0.75})
+        if (inside.Perform(gp_Pnt2d(p.X() + t * (q.X() - p.X()), p.Y() + t * (q.Y() - p.Y()))) != TopAbs_IN) return false;
+      for (const auto& [a, b] : segments) {
+        const double near = Precision::PConfusion();
+        if (a.Distance(p) < near || a.Distance(q) < near || b.Distance(p) < near || b.Distance(q) < near) continue;
+        const double d1 = cross(p, q, a), d2 = cross(p, q, b), d3 = cross(a, b, p), d4 = cross(a, b, q);
+        if (((d1 > 0) != (d2 > 0)) && ((d3 > 0) != (d4 > 0))) return false;
+      }
+      return true;
+    };
+    BRep_Builder builder;
+    // The edges of `w` from use `from` up to, not including, the use `to`.
+    auto run = [&](const std::vector<Use>& w, int from, int to, TopoDS_Wire& into) {
+      const int m = static_cast<int>(w.size());
+      for (int i = from; i != to; i = (i + 1) % m) builder.Add(into, w[i].edge);
+    };
+    for (size_t k = 0; k < holes.size(); ++k) {
+      const std::vector<Use>& H = holes[k];
+      int hn = -1, on = -1;
+      for (size_t i = 0; i < H.size() && hn < 0; ++i)
+        for (size_t j = 0; j < O.size(); ++j)
+          if (H[i].start.IsSame(O[j].start)) {
+            hn = static_cast<int>(i);
+            on = static_cast<int>(j);
+            break;
+          }
+      if (hn < 0) continue;
+      // h: the hole's vertices farthest from n first; o: the outer ones nearest to h first.
+      std::vector<int> starts, ends;
+      for (size_t i = 0; i < H.size(); ++i)
+        if (static_cast<int>(i) != hn) starts.push_back(static_cast<int>(i));
+      std::sort(starts.begin(), starts.end(),
+                [&](int x, int y) { return H[x].at.Distance(H[hn].at) > H[y].at.Distance(H[hn].at); });
+      for (size_t si = 0; si < starts.size() && si < static_cast<size_t>(TOUCH_CUT_STARTS); ++si) {
+        const int hi = starts[si];
+        ends.clear();
+        for (size_t j = 0; j < O.size(); ++j)
+          if (!O[j].start.IsSame(H[hn].start)) ends.push_back(static_cast<int>(j));
+        std::sort(ends.begin(), ends.end(), [&](int x, int y) { return O[x].at.Distance(H[hi].at) < O[y].at.Distance(H[hi].at); });
+        for (size_t ei = 0; ei < ends.size() && ei < static_cast<size_t>(TOUCH_CUT_ENDS); ++ei) {
+          const int oi = ends[ei];
+          if (!sees(O[oi].at, H[hi].at)) continue;
+          try {
+            NCollection_Array1<gp_Pnt2d> poles(1, 2);
+            poles(1) = O[oi].at;
+            poles(2) = H[hi].at;
+            NCollection_Array1<double> knots(1, 2);
+            knots(1) = 0;
+            knots(2) = O[oi].at.Distance(H[hi].at);
+            NCollection_Array1<int> mults(1, 2);
+            mults(1) = mults(2) = 2;
+            const Handle(Geom2d_Curve) line = new Geom2d_BSplineCurve(poles, knots, mults, 1);
+            BRepBuilderAPI_MakeEdge make(line, surface, O[oi].start, H[hi].start, knots(1), knots(2));
+            if (!make.IsDone()) continue;
+            TopoDS_Edge c = make.Edge();
+            BRepLib::BuildCurves3d(c);
+            TopoDS_Wire wa, wb;
+            builder.MakeWire(wa);
+            builder.MakeWire(wb);
+            run(O, on, oi, wa);
+            builder.Add(wa, c);
+            run(H, hi, hn, wa);
+            run(O, oi, on, wb);
+            run(H, hn, hi, wb);
+            builder.Add(wb, TopoDS::Edge(c.Reversed()));
+            wa.Closed(true);
+            wb.Closed(true);
+            TopoDS_Face fa, fb;
+            builder.MakeFace(fa, surface, location, BRep_Tool::Tolerance(face));
+            builder.MakeFace(fb, surface, location, BRep_Tool::Tolerance(face));
+            builder.Add(fa, wa);
+            builder.Add(fb, wb);
+            BRepTopAdaptor_FClass2d inA(fa, Precision::PConfusion());
+            for (size_t q = 0; q < holes.size(); ++q) {
+              if (q == k || holes[q].empty()) continue;
+              builder.Add(inA.Perform(holes[q][0].at) == TopAbs_IN ? fa : fb, holeWires[q]);
+            }
+            if (!BRepCheck_Analyzer(fa).IsValid() || !BRepCheck_Analyzer(fb).IsValid()) continue;
+            pieceA = TopoDS::Face(fa.Oriented(input.Orientation()));
+            pieceB = TopoDS::Face(fb.Oriented(input.Orientation()));
+            return true;
+          } catch (const Standard_Failure&) {
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * ADR-0097 slice D11: no face on a periodic surface keeps a hole that
+   * shares a vertex with its outer wire. The STEP writer writes such a vertex
+   * twice (one VERTEX_POINT per loop), and OCCT's reader then finds the two
+   * loops crossing on some of these faces (a torus and a cone in the corpus;
+   * planes read back whole). Each such face is cut in two (cutTouchingFace)
+   * until none is left; a face no cut gives two valid faces stays. Replaces
+   * `shape` only when the cut body checks valid; returns the cuts made.
+   */
+  static int cutTouchingLoops(TopoDS_Shape& shape) {
+    TopoDS_Shape current = shape;
+    std::set<const void*> refused;
+    int cuts = 0;
+    while (cuts < TOUCH_CUT_MAX) {
+      bool cut = false;
+      for (TopExp_Explorer fe(current, TopAbs_FACE); fe.More() && !cut; fe.Next()) {
+        const TopoDS_Face face = TopoDS::Face(fe.Current());
+        if (refused.count(face.TShape().get())) continue;
+        const BRepAdaptor_Surface adaptor(face, false);
+        if (!adaptor.IsUPeriodic() && !adaptor.IsVPeriodic()) continue;
+        const TopoDS_Wire outer = BRepTools::OuterWire(face);
+        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> outerVertices;
+        TopExp::MapShapes(outer, TopAbs_VERTEX, outerVertices);
+        bool touching = false;
+        for (TopExp_Explorer we(face, TopAbs_WIRE); we.More() && !touching; we.Next()) {
+          if (we.Current().IsSame(outer)) continue;
+          for (TopExp_Explorer ve(we.Current(), TopAbs_VERTEX); ve.More() && !touching; ve.Next())
+            touching = outerVertices.Contains(ve.Current());
+        }
+        if (!touching) continue;
+        TopoDS_Face a, b;
+        if (!cutTouchingFace(face, a, b)) {
+          refused.insert(face.TShape().get());
+          continue;
+        }
+        BRep_Builder builder;
+        TopoDS_Compound both;
+        builder.MakeCompound(both);
+        builder.Add(both, a);
+        builder.Add(both, b);
+        Handle(BRepTools_ReShape) reshape = new BRepTools_ReShape;
+        reshape->Replace(face, both);
+        current = reshape->Apply(current);
+        ++cuts;
+        cut = true;
+      }
+      if (!cut) break;
+    }
+    if (cuts == 0 || !BRepCheck_Analyzer(current).IsValid()) return 0;
+    shape = current;
+    return cuts;
+  }
+
   struct HybridOutOfTime {};
   int rebuildHybrid(double tolerance, const MeshSegmentation& seg, const std::string& rebuildFailed,
                     const Handle(MeshDeadline)& deadline, std::string& capMessage) {
@@ -10178,6 +10639,17 @@ private:
     hybridFaces_.clear();
     hybridChains_.clear();
     hybridChainsKept_.clear();
+    hybridEnds_.clear();
+    hybridWidened_ = 0;
+    hybridWidenedMax_ = 0;
+    chainCurveCalls_ = 0;
+    interpolateCalls_ = 0;
+    meshCheckNodes_ = 0;
+    meshCheckExtrema_ = 0;
+    meshCheckClassifiers_ = 0;
+    meshCheckClassifierMs_ = 0;
+    meshCheckClassifyMs_ = 0;
+    hybridEdges_.clear();
     capMessage.clear();
     auto refuse = [&](const std::string& why) {
       hybridRefusal_ = why;
@@ -10386,6 +10858,7 @@ private:
         Handle(Geom2d_Curve) pcurve[2];
         double tolerance = 0;
         int type = -1;
+        double widened = 0;
       };
       std::vector<ChainEdge> chainEdges(chains.size());
       std::map<std::string, int> keptWhy;
@@ -10438,6 +10911,7 @@ private:
           const double w = static_cast<double>(i) / samples;
           points->ChangeValue(i + 1).ChangeCoord() += (1 - w) * startOffset + w * endOffset;
         }
+        ++interpolateCalls_;
         Geom2dAPI_Interpolate interpolate(points, parameters, false, 1e-9);
         interpolate.Perform();
         if (!interpolate.IsDone()) return Handle(Geom2d_Curve)();
@@ -10446,6 +10920,47 @@ private:
         return off <= reach ? through : Handle(Geom2d_Curve)();
       };
       auto chainBuilt = [&](int r) { return r >= 0 && regions[r].kind >= 0 && regions[r].why.empty(); };
+      // Slice D8: the outline pieces joining each pair of end points (by
+      // coordinates, to 1e-6): open chains, and boundary mesh edges no
+      // chain with those ends contains. A chain collapses only when it is
+      // the only one, else it and its twin would be one segment (a face of
+      // zero area, which a STEP reader takes back as a hairpin).
+      using PointKey = std::array<long long, 3>;
+      auto pointKey = [&](int n) {
+        const gp_XYZ p = meshNode(n);
+        return PointKey{std::llround(p.X() * 1e6), std::llround(p.Y() * 1e6), std::llround(p.Z() * 1e6)};
+      };
+      auto pairKey = [&](int a, int b) {
+        const PointKey ka = pointKey(a), kb = pointKey(b);
+        return ka < kb ? std::make_pair(ka, kb) : std::make_pair(kb, ka);
+      };
+      std::map<std::pair<PointKey, PointKey>, int> piecesBetween;
+      {
+        std::unordered_set<uint64_t> covered;
+        for (const MeshChain& chain : chains) {
+          if (chain.closed || pointKey(chain.nodes.front()) == pointKey(chain.nodes.back())) continue;
+          const auto ends = pairKey(chain.nodes.front(), chain.nodes.back());
+          ++piecesBetween[ends];
+          for (size_t i = 0; i + 1 < chain.nodes.size(); ++i)
+            if (pairKey(chain.nodes[i], chain.nodes[i + 1]) == ends) covered.insert(keyOf(chain.nodes[i], chain.nodes[i + 1]));
+        }
+        for (int t = 0; t < triangleCount; ++t)
+          for (int k = 0; k < 3; ++k) {
+            const int u = seg.neighbour[3 * t + k];
+            if (u >= 0 && (u < t || hybridOf[u] == hybridOf[t])) continue;
+            const int a = corner(t, k), b = corner(t, (k + 1) % 3);
+            if (covered.count(keyOf(a, b)) || pointKey(a) == pointKey(b)) continue;
+            ++piecesBetween[pairKey(a, b)];
+          }
+      }
+      // A sliver region: its triangles' area below the tolerance times its outline's length.
+      std::vector<char> sliver(regions.size(), 0);
+      for (size_t r = 0; r < regions.size(); ++r) {
+        double boundary = 0;
+        for (const auto& loop : regions[r].loops)
+          for (size_t i = 0; i < loop.size(); ++i) boundary += (meshNode(loop[(i + 1) % loop.size()]) - meshNode(loop[i])).Modulus();
+        sliver[r] = regions[r].area < tolerance * boundary;
+      }
       for (size_t c = 0; c < chains.size(); ++c) {
         const MeshChain& chain = chains[c];
         std::string why;
@@ -10463,6 +10978,20 @@ private:
           try {
             const MeshChainFit fit = chainCurve(chain, regions, seg, tolerance, curveCache, coaxialPairs);
             why = fit.why;
+            // Only next to a sliver region: two arcs of one split circle, or an
+            // arc and its diameter, between the same two points bound real faces.
+            if (why.empty() && !chain.closed && pointKey(chain.nodes.front()) != pointKey(chain.nodes.back()) &&
+                (sliver[chain.left] || sliver[chain.right]) &&
+                piecesBetween[pairKey(chain.nodes.front(), chain.nodes.back())] > 1)
+              why = "another piece joins its ends";
+            // A circle between a plane and a cone (slice D8): moved square to the
+            // plane, it leaves the cone's axis (scrap-plate: 0.7 degrees), and a
+            // STEP reader's projection of it onto the cone moves the face's
+            // outline (1.47 % of its area, q23); the chain stays the mesh's.
+            if (why.empty() && fit.curve.type == 1 &&
+                ((regions[chain.left].kind == 0 && regions[chain.right].kind == 2) ||
+                 (regions[chain.left].kind == 2 && regions[chain.right].kind == 0)))
+              why = "a circle next to a cone";
             // Slice D1's limit holds for the mesh edges a collapse replaces:
             // where a chord strays from its straight pcurve's image by more
             // than the largest edge tolerance, the surface bulges past the
@@ -10479,20 +11008,43 @@ private:
                   why = "a chord off its surface";
               }
             }
+            // Slice D8: the curve itself on both surfaces (a circle moved to its
+            // end nodes' projections may leave the other one).
+            for (int i = 0; why.empty() && i <= 8; ++i) {
+              const gp_XYZ p = curveValue(fit.curve, fit.first + (fit.last - fit.first) * i / 8).XYZ();
+              for (const int r : {chain.left, chain.right})
+                if (distanceToSurface(seg.surfaces[regions[r].surface], p) > 1.5 * tolerance) why = "curve off its surface";
+            }
             if (why.empty()) {
               const Handle(Geom_Curve) curve = curveGeom(fit.curve);
               double offLeft = 0, offRight = 0;
               const int from = chain.nodes.front(), to = chain.closed ? from : chain.nodes.back();
-              auto onChart = [&](int r, double& off) {
+              bool endsMissed = false;
+              auto onChart = [&](int r, double& off) -> Handle(Geom2d_Curve) {
                 const MeshChart& chart = regions[r].chart;
-                return pcurveFor(chart, curve, fit.first, fit.last, chart.uv(gp_Pnt(meshNode(from))),
-                                 chart.uv(gp_Pnt(meshNode(to))), off);
+                const gp_Pnt2d a = chart.uv(gp_Pnt(meshNode(from))), b = chart.uv(gp_Pnt(meshNode(to)));
+                if (chart.kind == 0 && fit.curve.type == 1) {
+                  // A circle square to the plane (chainCurve): its projection, the same parameter.
+                  const gp_Circ& circle = fit.curve.circle;
+                  const gp_XYZ x = circle.XAxis().Direction().XYZ(), y = circle.YAxis().Direction().XYZ();
+                  const gp_XYZ u = chart.frame.XDirection().XYZ(), v = chart.frame.YDirection().XYZ();
+                  const gp_XY x2(x.Dot(u), x.Dot(v)), y2(y.Dot(u), y.Dot(v));
+                  const Handle(Geom2d_Curve) projected = new Geom2d_Circle(
+                      gp_Circ2d(gp_Ax22d(chart.uv(circle.Location()), gp_Dir2d(x2), x2.Crossed(y2) > 0), circle.Radius()));
+                  off = 0;
+                  if (projected->Value(fit.first).Distance(a) > 1e-7 || projected->Value(fit.last).Distance(b) > 1e-7) {
+                    endsMissed = true;
+                    return Handle(Geom2d_Curve)();
+                  }
+                  return projected;
+                }
+                return pcurveFor(chart, curve, fit.first, fit.last, a, b, off);
               };
               const Handle(Geom2d_Curve) onLeft = onChart(chain.left, offLeft);
               const Handle(Geom2d_Curve) onRight = onLeft.IsNull() ? onLeft : onChart(chain.right, offRight);
               const double tol = std::max(HYBRID_EDGE_TOLERANCE_MIN, 1.1 * std::max({fit.off, offLeft, offRight}));
               if (onLeft.IsNull() || onRight.IsNull()) {
-                why = "pcurve failed";
+                why = endsMissed ? "a plane's circle pcurve misses its ends" : "pcurve failed";
               } else if (tol > HYBRID_EDGE_TOLERANCE_MAX) {
                 why = "edge tolerance";
               } else {
@@ -10506,6 +11058,7 @@ private:
                 ce.pcurve[1] = onRight;
                 ce.tolerance = tol;
                 ce.type = fit.curve.type;
+                ce.widened = fit.widened;
                 if (keepHybridFaces_)
                   hybridFaces_.push_back("chain " + std::to_string(c) + " " +
                                          pairName(regions[chain.left].kind, regions[chain.right].kind) + ": " +
@@ -10679,6 +11232,7 @@ private:
                                  std::to_string(region.kind) + " triangles " + std::to_string(region.triangles.size()) +
                                  " loops " + std::to_string(region.loops.size()) + " edges " + std::to_string(edgeCount) +
                                  " tolerance " + std::to_string(regionWorst[i]) +
+                                 (region.splitNodes > 0 ? " split at " + std::to_string(region.splitNodes) + " nodes" : "") +
                                  (region.why.empty() ? " built" : " exploded: " + region.why));
         }
       }
@@ -10844,6 +11398,28 @@ private:
           for (int region : origins.Find(e.Current())) culprits.insert(region);
         }
         check();
+        if (keepHybridFaces_)
+          for (int r : culprits) {
+            // Diagnostics: the failing region, its size and the chains on its outline.
+            double boundary = 0;
+            for (const auto& loop : regions[r].loops)
+              for (size_t i = 0; i < loop.size(); ++i)
+                boundary += (meshNode(loop[(i + 1) % loop.size()]) - meshNode(loop[i])).Modulus();
+            std::string outline;
+            for (int c : chainsOfRegion[r])
+              outline += " " + std::string(chainEdges[c].edge.IsNull() ? "polyline"
+                                           : chainEdges[c].type == 0 ? "line"
+                                           : chainEdges[c].type == 1 ? "circle"
+                                                                     : "ellipse") +
+                         "(" + std::to_string(chains[c].nodes.size() - (chains[c].closed ? 0 : 1)) +
+                         (!chains[c].closed && piecesBetween[pairKey(chains[c].nodes.front(), chains[c].nodes.back())] > 1
+                              ? ", shared ends"
+                              : "") +
+                         ")";
+            hybridFaces_.push_back("invalid region " + std::to_string(r) + " kind " + std::to_string(regions[r].kind) +
+                                   " area " + std::to_string(regions[r].area) + " boundary " + std::to_string(boundary) +
+                                   " triangles " + std::to_string(regions[r].triangles.size()) + ", chains:" + outline);
+          }
         if (undoCollapses(culprits, collapsedNow)) {
           stage("validity, undoing the collapses of " + std::to_string(culprits.size()));
           continue;
@@ -10860,6 +11436,10 @@ private:
         undone = true;
       }
       stage(undone ? "validity (unify undone)" : "validity");
+      {
+        const int cuts = cutTouchingLoops(result);
+        if (cuts > 0) stage("touching loops cut: " + std::to_string(cuts));
+      }
 
       // The result's faces: a facet is a face only facets made.
       NCollection_DataMap<TopoDS_Shape, int, TopTools_ShapeMapHasher> origin;
@@ -10888,12 +11468,14 @@ private:
           ++facets;
           continue;
         }
+        gp_Torus spindle;
         const int kind = type == GeomAbs_Plane      ? 0
                          : type == GeomAbs_Cylinder ? 1
                          : type == GeomAbs_Cone     ? 2
                          : type == GeomAbs_Sphere   ? 3
-                         : type == GeomAbs_Torus    ? 4
-                                                    : -1;
+                         : type == GeomAbs_Torus || revolvedTorusOf(BRepAdaptor_Surface(TopoDS::Face(resultFaces(i)), false), spindle)
+                             ? 4
+                             : -1;
         if (kind >= 0) ++counts[kind];
       }
       hybridExploded_ = 0;
@@ -10927,12 +11509,14 @@ private:
                    : type == GeomAbs_Sphere   ? 3
                    : type == GeomAbs_Torus    ? 4
                                               : -1;
+          // A spindle torus's surface of revolution (slice D9) is checked as its torus, at the same parameters.
+          if (c.kind < 0 && revolvedTorusOf(surface, c.torus)) c.kind = 4;
           if (c.kind < 0) continue;
           if (c.kind == 0) c.plane = surface.Plane();
           if (c.kind == 1) c.cylinder = surface.Cylinder();
           if (c.kind == 2) c.cone = surface.Cone();
           if (c.kind == 3) c.sphere = surface.Sphere();
-          if (c.kind == 4) c.torus = surface.Torus();
+          if (type == GeomAbs_Torus) c.torus = surface.Torus();
           double u1 = 0, v1 = 0;
           BRepTools::UVBounds(c.face, c.u0, u1, c.v0, v1);
           BRepBndLib::Add(c.face, c.box);
@@ -10953,6 +11537,7 @@ private:
         for (int n = 0; n < nodeCount; n += nodeStride) {
           check();
           if (onCollapsed[n]) continue;
+          ++meshCheckNodes_;
           const gp_Pnt p(meshNode(n));
           bool near = false;
           for (MeshCheckedFace& c : checked) {
@@ -10979,8 +11564,16 @@ private:
             const double turn = 2 * M_PI, slack = 1e-9;
             if (c.kind > 0) u += turn * std::ceil((c.u0 - slack - u) / turn);
             if (c.kind == 4) v += turn * std::ceil((c.v0 - slack - v) / turn);
-            if (!c.inside) c.inside.reset(new BRepTopAdaptor_FClass2d(c.face, 1e-7));
-            if (c.inside->Perform(gp_Pnt2d(u, v)) != TopAbs_OUT) {
+            if (!c.inside) {
+              const double t0 = nowMs();
+              c.inside.reset(new BRepTopAdaptor_FClass2d(c.face, 1e-7));
+              meshCheckClassifierMs_ += nowMs() - t0;
+              ++meshCheckClassifiers_;
+            }
+            const double t1 = nowMs();
+            const TopAbs_State state = c.inside->Perform(gp_Pnt2d(u, v));
+            meshCheckClassifyMs_ += nowMs() - t1;
+            if (state != TopAbs_OUT) {
               near = true;
               break;
             }
@@ -10990,6 +11583,7 @@ private:
             for (int t : trianglesOf[n])
               if (regions[hybridOf[t]].kind >= 0 && regions[hybridOf[t]].why.empty()) region = hybridOf[t];
             if (offRegions.count(region)) continue;
+            ++meshCheckExtrema_;
             BRepExtrema_DistShapeShape distance(BRepBuilderAPI_MakeVertex(p).Vertex(), result, Extrema_ExtFlag_MINMAX,
                                                 Extrema_ExtAlgo_Grad, deadline->Start());
             if (!distance.IsDone()) check();
@@ -11018,6 +11612,71 @@ private:
         continue;
       }
       stage("checked against the mesh");
+      {
+        // Slice D8's rule, checked: on every planar face, each edge's 3D
+        // curve ends project onto its pcurve's ends.
+        int planarEdges = 0, off = 0;
+        std::string offWhat;
+        auto text = [](double x) {
+          char buffer[32];
+          std::snprintf(buffer, sizeof buffer, "%.3g", x);
+          return std::string(buffer);
+        };
+        for (TopExp_Explorer fe(result, TopAbs_FACE); fe.More(); fe.Next()) {
+          const TopoDS_Face face = TopoDS::Face(fe.Current());
+          TopLoc_Location location;
+          const Handle(Geom_Plane) plane = Handle(Geom_Plane)::DownCast(BRep_Tool::Surface(face, location));
+          if (plane.IsNull()) continue;
+          const gp_Pln pln = plane->Pln().Transformed(location.Transformation());
+          for (TopExp_Explorer ee(face, TopAbs_EDGE); ee.More(); ee.Next()) {
+            const TopoDS_Edge edge = TopoDS::Edge(ee.Current());
+            double first = 0, last = 0, f2 = 0, l2 = 0;
+            TopLoc_Location edgeLocation;
+            const Handle(Geom_Curve) curve = BRep_Tool::Curve(edge, edgeLocation, first, last);
+            const Handle(Geom2d_Curve) pcurve = BRep_Tool::CurveOnSurface(edge, face, f2, l2);
+            if (curve.IsNull() || pcurve.IsNull()) continue;
+            ++planarEdges;
+            for (const double t : {first, last}) {
+              double u = 0, v = 0;
+              ElSLib::Parameters(pln, curve->Value(t).Transformed(edgeLocation.Transformation()), u, v);
+              const double miss = pcurve->Value(t).Distance(gp_Pnt2d(u, v));
+              // 1e-5: unify's merged edges miss by up to 1e-6 (rounding); ours by none.
+              if (miss > 1e-5) {
+                if (++off <= 3)
+                  offWhat += std::string(off > 1 ? "; " : " (") + curve->DynamicType()->Name() + " over " + text(last - first) + ", " + pcurve->DynamicType()->Name() + ", miss " + text(miss);
+                break;
+              }
+            }
+          }
+        }
+        hybridEnds_ = "exact chain ends: " + std::to_string(planarEdges) + " edges, " + std::to_string(off) + " off" +
+                      (offWhat.empty() ? "" : offWhat + ")");
+      }
+      stage("exact chain ends");
+      for (size_t c = 0; c < chains.size(); ++c)
+        if (!chainEdges[c].edge.IsNull() && chainEdges[c].widened > 0) {
+          ++hybridWidened_;
+          hybridWidenedMax_ = std::max(hybridWidenedMax_, chainEdges[c].widened);
+        }
+      if (keepHybridFaces_) {
+        // Diagnostics: every chain edge built, and every mesh edge no collapsed chain covers.
+        for (size_t c = 0; c < chains.size(); ++c) {
+          if (chainEdges[c].edge.IsNull()) continue;
+          const MeshChain& chain = chains[c];
+          hybridEdges_.push_back({gp_Pnt(meshNode(chain.nodes.front())),
+                                  gp_Pnt(meshNode(chain.closed ? chain.nodes.front() : chain.nodes.back())), chain.left,
+                                  chain.right, true, chainEdges[c].type, chainEdges[c].widened});
+        }
+        for (int t = 0; t < triangleCount; ++t)
+          for (int k = 0; k < 3; ++k) {
+            const int u = seg.neighbour[3 * t + k];
+            if (u >= 0 && u < t) continue;
+            const int a = corner(t, k), b = corner(t, (k + 1) % 3);
+            const auto it = chainOf.find(keyOf(a, b));
+            if (it != chainOf.end() && !chainEdges[it->second].edge.IsNull()) continue;
+            hybridEdges_.push_back({gp_Pnt(meshNode(a)), gp_Pnt(meshNode(b)), hybridOf[t], u >= 0 ? hybridOf[u] : -1, false, 0, 0});
+          }
+      }
       meshReport_[0] = static_cast<double>(resultFaces.Extent());
       for (int k = 0; k < 5; ++k) meshReport_[1 + k] = static_cast<double>(counts[k]);
       meshReport_[10] = 1;

@@ -1,0 +1,1 @@
+- 2026-11-01 · **A richer sketching guide**: the sketching guide now has live examples and drawn figures, a section for each sketch palette switch, and five tool pages (Line, Dimension, Project, Trim, Sketch Fillet) with step-by-step notes. F1 in a sketch opens the guide at the palette row you last pointed at.

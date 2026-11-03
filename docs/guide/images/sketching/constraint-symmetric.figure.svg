@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 110">
+  <title>Symmetric: two points either side of a construction line, uneven, then mirrored</title>
+  <line x1="58" y1="24" x2="58" y2="90" class="sk-construction" fill="none" stroke-width="1.6"/>
+  <circle cx="30" cy="44" r="3.5" class="sk-point"/>
+  <circle cx="82" cy="74" r="3.5" class="sk-point"/>
+  <path d="M110 55h14m-6 -5 6 5-6 5" class="sk-muted" fill="none" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="181" y1="24" x2="181" y2="90" class="sk-construction" fill="none" stroke-width="1.6"/>
+  <circle cx="150" cy="44" r="3.5" class="sk-point"/>
+  <circle cx="212" cy="44" r="3.5" class="sk-point"/>
+  <rect x="210" y="49" width="16" height="16" class="sk-glyph" rx="3"/>
+  <g transform="translate(210 49) scale(0.6667)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path class="sk-glyph-text" fill="none" stroke-dasharray="3 2.6" d="M12 3V21"/><path class="sk-glyph-text" fill="none" d="M8.5 7 3.5 12 8.5 17Z"/><path class="sk-glyph-text" fill="none" d="M15.5 7 20.5 12 15.5 17Z"/>
+  </g>
+</svg>

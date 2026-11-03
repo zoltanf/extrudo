@@ -54,6 +54,8 @@ four-fillet box and the slot fail.
 STL_DIR=~/stl FILE=own/part.stl TOL=0.05 bash spikes/stl-to-solid/run.sh prismatic f   # one file
 STL_DIR=~/stl TOL=auto bash spikes/stl-to-solid/run.sh prismatic f                      # Auto (ADR-0097 slice D2; picks 0.01/0.02/0.05/0.1)
 STL_DIR=~/stl TOL=0.01 bash spikes/stl-to-solid/run.sh prismatic F                     # every .stl/.mesh under STL_DIR, one process
+STL_DIR=~/stl FILE=own/part.stl TOL=auto bash spikes/stl-to-solid/run.sh prismatic s  # one file, then the STEP round-trip diagnosis (ADR-0097 D7)
+STL_DIR=~/stl TOL=auto bash spikes/stl-to-solid/run.sh prismatic S                    # every file, the diagnosis per file and a summary table
 SAN=1 STL_DIR=~/stl FILE=… bash spikes/stl-to-solid/run.sh prismatic f                  # AddressSanitizer (about 4 min to link)
 TIMES=1 …   # the rebuild's stage times, cell counts and the check that refused
 PIECES=1 …  # how many surfaces each region is on, every surface as fitted and as rebuilt
@@ -83,6 +85,25 @@ shows in the next (the 2026-10-21 trap corrupted the heap for every later
 file). The kernel orders a mesh as manifold's `getMesh()` does, which can
 segment differently: write that order with
 `MESH_OUT=<dir> STL_DIR=… pnpm vitest run packages/kernel/src/mesh-to-solid-files.test.ts --project @extrudo/kernel`.
+Cases `s`/`S` diagnose the STEP round trip (ADR-0097 D7): `s` is `f` on one file (STL_DIR, FILE, TOL) then writes the
+converted body to STEP, reads it back and prints the settings in force, the written body's edges by class and tolerance
+buckets, the read-back `shapeDiagnose` and BRepCheck statuses by name, the invalid edges by class and faces by kind, the
+summed area per face kind written vs read back, and a `ShapeFix_Shape` pass at the written tolerances; `S` does that for
+every file and ends with one summary row per file (Markdown, printed to stdout). Neither changes the converter.
+The settings line calls `STEPControl_Controller::Init()` first (else every value reads 0); the summary gains the
+`u2 valid`/`u2 faces`/`u2 solids`/`u2 ratio`/`uncertainty` columns of a second round trip with
+`write.precision.mode` Greatest, and each file's flagged `SelfIntersectingWire` wires and
+`UnorientableShape`/`BadOrientationOfSubshape` faces with their edges' classes, and a second summary table: the
+BREP round trip (`BRepTools::Write`/`Read`), a `ShapeFix_Shape`-healed body's STEP round trip, a no-pcurve write and a
+`2DUse_Preferred` read (`stepDirect` writes with a plain `STEPControl_Writer` because the facade's `writeStep()` overwrites
+the transfer parameters), and the flagged wires' smallest edges (ADR-0097's 2026-10-30b amendment). Each file also prints
+its read-back `other` faces' surface type and its written tori (radii, degenerate), and the cap sweep runs the same `S`
+with `FACADE=` set to a copy of the facade whose `HYBRID_EDGE_TOLERANCE_MAX` is 0.1/0.05/0.02.
+Each flagged wire is then analysed with `ShapeAnalysis_Wire` (Q15: each edge with itself, adjacent and non-adjacent pairs),
+its face matched to the written body and the pair search re-run there (Q16), and each pair classified hairpin / 3D-close /
+2D-only (Q17) — a fourth summary table; because ShapeAnalysis reproduces `BRepCheck_Wire::SelfIntersect` on only 7 of the 25
+flagged wires, a fifth table classifies the pair `BRepCheck_Wire::SelfIntersect` itself returns (ADR-0097's 2026-10-30b amendment).
+The kernel sweep writes the same numbers machine-readably: `SWEEP_OUT=<file>.jsonl` appends one JSON line per file (both methods' report, validity, volume ratio, time and STEP round trip), and `SWEEP_BASELINE=<file>.jsonl` compares each file against a previous run's line and fails it when it got worse (refused where it converted, over 10 % more faces, or a STEP read-back that was valid there and kept the face count there but not now).
 `BUILD=<folder>` builds into `spikes/stl-to-solid/<folder>` (default
 `build`), so two runs don't share one; `NOBUILD=1` reruns the last build;
 `FACADE=<file>` builds an edited copy of the facade (it must have the members prismatic.cpp reads; an older facade needs its own run.sh and prismatic.cpp).
@@ -122,6 +143,100 @@ A converted hybrid file also prints
 reasons counted) and, for every converted file, `edges N (lines, circles,
 ellipses)`: the result's edges by curve type. An older facade lacks
 `hybridChains_`: build it with its own `run.sh` and `prismatic.cpp` (`FACADE=`).
+
+## STEP read-back probes (slice D8, 2026-10-31)
+
+Case `s` (one file) and `S` (all) run more probes after the 2026-10-30b ones
+(ADR-0097's 2026-10-31 amendment); each prints `qNN` lines under the file:
+
+```sh
+STL_DIR=~/Development/extrudo-stl-solid-test TOL=auto BUILD=diag FILE=own/scrap-plate.stl \
+  Q23=1 bash spikes/stl-to-solid/run.sh prismatic s
+```
+
+- always: `q18` (the written wires at vertex tolerance 1e-7 through
+  `BRepCheck_Wire::SelfIntersect`, next to the read's flagged count) and
+  `q19` (the default file read at a user precision of 1e-3, and written with
+  the least and with a session uncertainty of 1e-3), the `chains:` line with
+  its keptWhy counts and `exact chain ends: N edges, M off`;
+- `Q20=1`: the read with no shape processing, then the FixShape operator
+  replayed and once per mode switched off (`Q20OFF=<name part>` picks modes,
+  `Q20FACES=1` lists the faces the healing splits or changes);
+- `Q21=1`: the reader's pcurves against ours on the flagged raw wires, the
+  file's PCURVE/SURFACE_CURVE/EDGE_CURVE counts, and the
+  `read.surfacecurve.mode` matrix;
+- `Q22A=1` with `FACES=1`: each hairpin pair on the read matched to the written
+  edges and their build records (`hybridEdges_`), angles, overlap and flags;
+  `Q22OLD=1` looks the saved pairs (`diag/q22a-pairs-*.txt`) up in an older
+  build (`FACADE=`); `Q22B=1`: volumes written, raw and read, and the faces
+  whose area moves on the read;
+- `Q23=1`: the cone faces whose area moves on the read, per edge the pcurves,
+  the circle's distance to the cone, its axis against the cone's and its
+  pcurve against the exact projection.
+
+- `Q24=1` (slice D9): every written face on a spindle torus (R ≤ r) or a
+  surface of revolution and every read-back one: radii, u/v range, area,
+  BRepCheck on the face alone and `ShapeFix_Face`'s result. With `UNFIT=1`,
+  case `f` also lists each torus surface with R ≤ r that the segmentation
+  finds with slice D8's R > r gates off (`q24 spindle surface`: regions,
+  triangles, area, R, r, axis, where its nodes sit against the axis and the
+  poles, the plane/cylinder/cone/sphere fits on the same nodes). run.sh's
+  facade copy takes two hooks for that: `spikeSpindle` (the gates off;
+  `Q24SPINDLE=1`) and `spikeTorusSurface` (`Q24REV=1`: the chart's torus as a
+  surface of revolution of its meridian circle). Both are for slice D8's
+  facade (`FACADE=` a copy of it); on slice D9's, `Q24SPINDLE` only turns the
+  two snap gates off, `Q24REV` matches nothing, and the listing shows the
+  spindle tori the segmentation's retry keeps.
+
+- `Q25=1` (slice D10, case `f`/`F`): the rolling-ball fillet candidates at every Auto ladder step up to the one Auto
+  picks (`q25 auto`). Each unfit surface (one band per connected piece over mesh edges), each piece the "< 4 regions"
+  rule turned into planes (`keep`; run.sh's facade copy records them in `spikeKeepPieces`) and, for a band that fails,
+  its sub-bands (split by each pair of planes it borders: the facets whose normals lie in their arc) get one
+  `q25 band` line: triangles, area, class (`ff` two planes border it by 80 % or more, `ff?` they don't, `pc` a plane
+  and a cylinder, `other:<kinds>`), the first test that fails (`coverage`, `angle` 30-170 degrees, `area` 3 x the
+  largest facet, `normals` within 5 degrees of the n_A n_B plane and inside their arc, `side`), the planes' angle,
+  the rolling-ball radius (per node the root of |q - axis(r)| = r on the corner's side, the median after dropping
+  the 10 % farthest), the radii's spread, the nodes' distances to that cylinder (p50/p75/p90/max in multiples of T)
+  and `pass` (75 % within 2 T, all within 5 T, neither beyond 4 % of r). Every cylinder region growing fitted gets the
+  same line (`cyl`, with its fitted radius as `fit r`): a check of the method. `q25 step` sums a step (the unfit share
+  before and after taking the accepted bands out), `q25 exploded` the hybrid's exploded regions by kind and reason.
+  `Q25ONLY=1` skips the conversion. On kernel-staged meshes (`MESH_OUT`) the numbers match the sweep's.
+  `python3 spikes/stl-to-solid/q25.py <log>` turns the log into the tables of ADR-0097's 2026-10-31c amendment (slice D10).
+
+- `Q26=1` (slice D11, case `f`/`F`): the hybrid's exploded regions. run.sh's facade copy gets spike-only hooks in
+  `rebuildHybrid` (`spikeQ26*`; with `Q26` unset they change nothing) that record every region face build (attempt,
+  pass, the collapsed chains it used; for an invalid face BRepCheck's statuses per sub-shape kind and
+  `ShapeAnalysis_Wire`'s checks), every attempt's outcome and a copy of the regions and the mesh. One `q26 region`
+  line per exploded region: the stage (`loops`, `build0`/`build1`, `culprit`, `nodeoff`), the boundary walked again
+  with each boundary edge paired to the next one round the same fan (`pinch` nodes two boundary edges leave, `pieces`,
+  `simple`, `signs` as `meshLoops` tests them, `seam`, `wrap`), the chart normal against the triangles (`normal`,
+  `folded`), the loop segments that cross in (u, v) (`selfx`, `crossx`; `across`/`touch`/`coincident`, `apart` in 3D,
+  `local`: within 8 along the loop; up to six `q26 cross` lines), the facets the region makes on its own, and faces
+  built from polylines on their own edges: from the fan-paired loops (`fan`) and from those split at every node a loop
+  passes twice (`split`). `p0`/`p1` are the facade's own pass 0 and pass 1 there. One `q26 attempt` line per build
+  attempt (estimate, valid, `cellsvalid`: the solids before unify, faces, facets, volume, nodes off) and a
+  `q26 outcome`. `Q26=2` prints only the attempts. `python3 spikes/stl-to-solid/q26.py <auto log> [fixed-step logs]`
+  turns the logs into the tables of `docs/plans/m2s-exploded-q1-2026-11-01.md`.
+  Run 2 (slice D11): `q26 split` lines say what became of each region meshLoops split at the nodes its boundary
+  passes twice. `Q26PLANES=1` (or `only`, which skips the conversion) lists the plane surfaces whose fitted normal
+  disagrees with their facets' area-weighted mean normal (|cos| < 0.5) at Auto's step and at 0.01 mm, with the
+  deviation of the plane square to that mean normal. `Q26LADDER=1` segments at every Auto rung and prints its unfit
+  share and time (`q26 rung`). `STEP_OUT=/w/<dir>` writes each converted body's STEP (the facade's own writer) under
+  the spike folder, with its OCCT read-back (`q26 step`). Case `H` fillets a cylinder's rims with OCCT and prints
+  each torus face's frame handedness (`/w/d11/hand.step`).
+  `python3 -I spikes/stl-to-solid/noise.py <meshes> [ladder log]`: each staged mesh's noise (1.4826 x the median
+  distance of up to 4,000 spread nodes to the least-squares plane of their two triangle rings; also a quadric patch).
+  `python3 -I spikes/stl-to-solid/torus_loops.py <step dir> [STEP_OUT log]`: whether torus faces' bounds in written
+  STEP files run the way their flags say ((u, v) winding, and every edge used in opposite directions by its faces).
+  Run 3: `Q26TOUCH=1` lists every face of each converted body whose wires share a vertex (`q26 touch`: the pcurves
+  at the vertex, the distance to the face's u bounds, `splitvalid`: the face with that vertex copied per wire), then
+  the STEP round trip's invalid faces and split vertices (`q26 back`); `Q26TOUCH=cut` first applies the harness's
+  prototype of the facade's `cutTouchingLoops` (`spikeCutTouching`) to the body it writes.
+
+Case `f` with `TIMES=1` also prints `calls:` (chainCurve and
+`Geom2dAPI_Interpolate` calls, the mesh check's nodes, BRepExtrema calls and
+face classifier time); with `FACES=1` the validity stage lists each region
+whose collapses it undoes (kind, area, outline length, its chains).
 
 ## Browser timings (slice D4, 2026-10-23)
 

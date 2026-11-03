@@ -723,6 +723,109 @@ volume 2000 mm³; `splitNonManifoldEdges` separates it (16 nodes, `ok`), and
 exactly one edge gives **two** solids, not one self-touching body: OCCT never
 merges along an edge alone, so the single-body case isn't made by a boolean.
 
+## Amendment, 2026-10-31: flat and duplicate triangles are dropped on import
+
+The Q1 measurement below (the owner's four refused STLs, measured 2026-10-31,
+plan `docs/plans/mesh-repair-q1-2026-10-31.md`, now folded in here) found that
+`third-party/mms-m5-nut.stl` in the STL corpus is refused **only** for 4
+triangles that repeat a corner ("4 faces of fewer than three corners"), and
+that `third-party/hex-key-cap-3mm.stl` carries 303 duplicate triangles
+(opposite winding). Exporters produce such triangles; a slicer ignores them.
+
+**Decision: drop them before the check, and say so.** `@extrudo/io`'s pure
+`dropBadTriangles(mesh)` (MIT, no dependencies) runs in `kernel.meshFrom`
+before `splitNonManifoldEdges` and `checkManifold` (chosen over the evaluator
+so any caller of `meshFrom` gets it, as with the split):
+
+- **Flat (degenerate) triangles** repeat a corner or name a node that doesn't
+  exist — the same triangles `checkManifold` counts as bad.
+- **Duplicate triangles** repeat an earlier triangle's three corners, either
+  winding; the first in file order stays. (The corners are keyed by their
+  sorted triple as a string: with up to 10^6 nodes a packed number key passes
+  2^53.)
+- **What stays:** a zero-area triangle with three distinct corners is kept —
+  dropping one can open a closed mesh. The nodes are left as they are;
+  unused ones are harmless (`checkManifold` and manifold-3d ignore them, and
+  `Mesh.merge()` welds what it needs). Nothing else is repaired — no welding,
+  no hole filling, no collinear-triangle removal (the measurement showed none
+  of those help).
+- **The merge condition.** `meshFrom` skips `Mesh.merge()` for a split mesh;
+  the comparison is now with the mesh that went into the split (the dropped
+  one), so a mesh that only lost triangles is still welded.
+- **The warning.** The new `onDrop` callback (beside `onSplit`) fires only
+  when something was dropped, and the import feature warns in the style of
+  `separatedEdges`: "`mms-m5-nut.stl: 4 flat triangles were dropped.`",
+  "`hex-key-cap-3mm.stl: 303 duplicate triangles were dropped.`", and, when
+  both, one sentence: "`<file>: 4 flat and 303 duplicate triangles were
+  dropped.`" Singular when exactly one triangle was dropped in all ("1 flat
+  triangle was dropped"). A split and a drop are one warning, the drop
+  sentence first. Nothing dropped, no warning.
+- **The refusal.** When the mesh is still refused, `notClosed` keeps its
+  message and adds the drop counts before "repair it in your slicer…":
+  "`<file> isn't a closed solid (30 open edges; 4 flat triangles were
+  dropped): repair it in your slicer or a mesh tool and import it again.`"
+  The counts travel on `MeshError`'s `MeshProblem` as its new `dropped` field.
+  `open.stl` loses nothing, so its e2e-worded message is unchanged.
+
+**The measurement (Q1, 2026-10-31).** Measured with `readStl` from
+`@extrudo/io` and `checkManifold` against `~/Development/extrudo-stl-solid-test/`;
+the counts reproduce the sweep baseline exactly (339, 30, 1802 after
+`splitNonManifoldEdges`, 4). The four files the corpus refused:
+
+| file | triangles | bbox diag (mm) | boundary edges | bad triangles | cracks ≤ 1e-4 | qualifies |
+|---|---|---|---|---|---|---|
+| `own/grass-for-flower.stl` | 953 | 161.52 | 339 | 0 | 0 | **no** |
+| `third-party/chip-bag-clip-small.stl` | 13,948 | 61.20 | 30 | 0 | 0 | **no** |
+| `third-party/hex-key-cap-3mm.stl` | 11,496 | 20.20 | 0 | 303 duplicate (opposite) | 0 | **no** |
+| `third-party/mms-m5-nut.stl` | 1,494 | 12.86 | 0 | 4 repeated corner | 0 | **yes** |
+
+**No file has a crack.** The nearest node that is not a triangle-neighbour of a
+boundary node is, over all four files, 0.060–0.149 mm away — three orders of
+magnitude above the 1e-4 mm weld. `readStl` already welds corners by exact
+position, so the "float-apart" cracks a repair might weld are not present here.
+
+Why each file does not (fully) qualify:
+
+- **`grass-for-flower.stl`** — 339 boundary edges, 290 boundary nodes, 49 of
+  them with **degree 4** (holes that share a vertex). The edges form many small
+  cycles (36 three-edge, …) plus one connected component of **87 nodes / 119
+  edges**. Filling every loop up to 8 edges closes 97 holes but leaves a single
+  **11-edge** loop; the file stays open. No bad triangles, no cracks.
+- **`chip-bag-clip-small.stl`** — 30 boundary edges in components of 3, 3, and
+  two of **9 edges (7 nodes, degree-4 vertices)**. All boundary vertices sit on
+  two straight seams at fixed (x, y) with z varying, so every candidate
+  three-edge "hole" is **collinear (zero area)** — a torn seam, not a fillable
+  hole. Fan filling rejects them (area < 1e-12); ear clipping has nothing to
+  clip. Not repairable as cracks/bad triangles/≤8-edge holes.
+- **`hex-key-cap-3mm.stl`** — no boundary edges, but **920 edges used by four
+  triangles** (all balanced 2-forward/2-backward). The 303 opposite-winding
+  duplicate triangles account for part of it: dropping them removes only 300 of
+  the 920 non-manifold edges (920 → 620). The rest are four faces meeting along
+  an edge (coincident/touching sheets), which is `splitNonManifoldEdges`'
+  territory — and after it splits them the mesh has 1,802 open edges, as the
+  baseline shows. Not a cracks/bad-triangles/≤8-edge-holes defect.
+- **`mms-m5-nut.stl`** — 4 triangles repeat a corner. Dropping them leaves a
+  closed, oriented mesh (`checkManifold.ok`, volume unchanged at 151.74 mm³).
+  This is the one file the drop fixes.
+
+**Why welding and hole filling were not done.** A prototype of the fuller
+repair (drop bad triangles, weld 1e-4, drop collinear/duplicate, fill boundary
+loops ≤ 8 with a fan/ear clip) run over the four files:
+
+| file | welded | dropped tris | holes filled | result after repair |
+|---|---|---|---|---|
+| `grass-for-flower` | 0 | 0 | 97 (134 tris) | 11 open edges — still refused |
+| `chip-bag-clip-small` | 0 | 0 | 0 | 30 open edges — still refused |
+| `hex-key-cap-3mm` | 0 | 303 | 0 | 620 non-manifold edges — still refused |
+| `mms-m5-nut` | 10 | 24 | 0 | **closed, volume 151.74 mm³** |
+
+So even a generous mechanical repair would make at most 1 of the 4 closed (2 if
+the default `maxHoleEdges` were raised past grass's 11-edge residual — but
+chip-bag's collinear seam and hex-key's four-use edges stay refused either
+way), while filling holes and welding risks breaking meshes a slicer would
+accept. The import drops only what no closed surface can use and leaves the
+rest to the user's slicer.
+
 
 
 - **Meshes as faceted B-rep** (one OCCT face per triangle, sewn): every feature

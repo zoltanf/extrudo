@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matching, wordAt } from './completion';
+import { insertName, matching, matchingBuiltins, newName, wordAt } from './completion';
 
 describe('wordAt', () => {
   it.each<[string, number, string | undefined]>([
@@ -43,5 +43,61 @@ describe('matching', () => {
 
   it('offers every name for an empty word, in order', () => {
     expect(names('')).toEqual(entries.map((e) => e.name));
+  });
+});
+
+describe('matchingBuiltins', () => {
+  const names = (word: string) => matchingBuiltins(word).map((e) => e.name);
+
+  it('finds functions and constants by prefix only, the exact name first', () => {
+    expect(names('s')).toEqual(['sin', 'sqrt']);
+    expect(names('a')).toEqual(['asin', 'acos', 'atan', 'abs']);
+    expect(names('SQ')).toEqual(['sqrt']);
+    expect(names('in')).toEqual([]);
+    expect(names('pi')).toEqual(['pi']);
+  });
+
+  it('shows arguments for functions and the value for pi', () => {
+    expect(matchingBuiltins('sqrt')).toEqual([{ name: 'sqrt', args: 'x' }]);
+    expect(matchingBuiltins('max')).toEqual([{ name: 'max', args: 'a, b, …' }]);
+    expect(matchingBuiltins('pi')).toEqual([{ name: 'pi', value: '3.14159' }]);
+  });
+});
+
+describe('insertName', () => {
+  const at = (text: string, caret: number) => wordAt(text, caret) ?? { start: 0, end: 0, text: '' };
+
+  it('replaces the word and puts the caret after it', () => {
+    expect(insertName('2 * cu + 1', at('2 * cu + 1', 6), { name: 'cut' })).toEqual({
+      text: '2 * cut + 1',
+      caret: 7,
+    });
+  });
+
+  it('gives a function its brackets with the caret inside', () => {
+    expect(insertName('2 * sq', at('2 * sq', 6), { name: 'sqrt', args: 'x' })).toEqual({
+      text: '2 * sqrt()',
+      caret: 9,
+    });
+  });
+
+  it('reuses brackets that follow already', () => {
+    expect(insertName('mi (a, b)', at('mi (a, b)', 2), { name: 'min', args: 'a, b, …' })).toEqual({
+      text: 'min (a, b)',
+      caret: 5,
+    });
+  });
+});
+
+describe('newName', () => {
+  it.each<[string, string | undefined]>([
+    ['width', 'width'],
+    ['  wall_2 ', 'wall_2'],
+    ['2 * width', undefined],
+    ['w = 1', undefined],
+    ['2w', undefined],
+    ['', undefined],
+  ])('%j', (text, name) => {
+    expect(newName(text)).toBe(name);
   });
 });

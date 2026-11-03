@@ -885,7 +885,7 @@ Faces: `from:(<edge>)` (A face the operation generated from an edge: a round, a 
 | `flip` | `boolean` | default `false` | Start from the face's other end. |
 | `hand` | `'right' \| 'left'` | default `right` | Right- or left-handed. |
 | `starts` | `string \| number \| ParameterHandle` | optional | How many helices start round the face: 1 (the default), or 2–8 for a multi-start thread whose lead is starts × pitch. |
-| `profile` | `'iso' \| 'trapezoidal' \| 'buttress' \| 'bottle'` | optional | The tooth profile: iso (the default, 60°), trapezoidal (Tr), buttress (DIN 513) or bottle (PCO-1881). |
+| `profile` | `'iso' \| 'trapezoidal' \| 'buttress' \| 'bottle' \| 'print45'` | optional | The tooth profile: iso (the default, 60°), trapezoidal (Tr), buttress (DIN 513), bottle (PCO-1881) or print45 (3D printing, 45°). |
 | `loadFlank` | `'start' \| 'end'` | default `end` | Buttress only: the end the steep 3° load flank faces, start or end. |
 | `tolerance` | `string \| number \| ParameterHandle` | optional | Radial clearance on this part; a length. Default 0.1 mm. |
 | `chamfer` | `boolean` | default `true` | A 45° lead-in at open ends. |

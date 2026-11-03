@@ -144,13 +144,14 @@ for the phase's release, **S** = should, **C** = could.
 
 | ID | Requirement | Pri | Phase |
 |---|---|---|---|
-| FR-VP-01 | Orbit, pan and zoom with the **Spindle** mouse mapping by default (middle-drag orbits, right-drag pans; Shift swaps them). Presets **Crank** (right-drag orbits, middle-drag pans; Shift swaps them), **Glide** (middle-drag pans, Shift+middle-drag orbits), Blender and Trackpad, chosen in the Settings menu with each preset's bindings shown. No preset is named after another CAD product. (Renamed by the owner's UI review of 2026-10-11, R3-03/R3-04: Spindle was "Extrudo", Crank was named after two CAD products, Glide was "Shift orbit".) | M | 0 |
+| FR-VP-01 | Orbit, pan and zoom with the **Spindle** mouse mapping by default (middle-drag orbits, right-drag pans; Shift swaps them). Presets **Crank** (right-drag orbits, middle-drag pans; Shift swaps them), **Glide** (middle-drag pans, Shift+middle-drag orbits), Blender, **Slicer** (left-drag orbits, right- or middle-drag pans, Shift+left-drag selects a box; since 2026-10-31) and Trackpad, chosen in the Settings menu with each preset's bindings shown. No preset is named after another CAD product. (Renamed by the owner's UI review of 2026-10-11, R3-03/R3-04: Spindle was "Extrudo", Crank was named after two CAD products, Glide was "Shift orbit".) | M | 0 |
 | FR-VP-02 | ViewCube with click-to-orient (faces, edges, corners), home, and rotate arrows. | M | 0 |
 | FR-VP-03 | Perspective and orthographic. Visual styles: shaded, shaded with edges, wireframe, hidden edges. | M | 0 |
 | FR-VP-04 | Infinite adaptive grid and origin planes/axes. | M | 0 |
 | FR-VP-05 | Pre-highlight on hover. Click and Shift/Ctrl multi-select. Window (left-to-right) vs crossing (right-to-left) box selection. Selection filters (bodies, faces, edges, vertices, sketches, profiles, construction). "Select other" for occluded items. | M | 1–2 |
 | FR-VP-06 | Section analysis: a live clipping plane with cap fill. | S | 3 |
 | FR-VP-07 | Browser tree: document settings, named views, origin, sketches, construction, bodies, each with visibility toggles. | M | 1 |
+| FR-VP-08 | A 3D mouse (3Dconnexion SpaceMouse) pans, zooms and turns the view, where the browser has WebHID and in the desktop app. | S | 6 |
 
 ### 5.7 Inspect and 3D-printing aids (FR-3DP)
 

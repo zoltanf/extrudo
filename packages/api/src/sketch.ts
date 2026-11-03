@@ -90,6 +90,17 @@ export interface DimensionOptions {
   driven?: boolean;
 }
 
+/**
+ * A distance's options: its orientation and, for a circle or an arc
+ * (ADR-0112), which edge it runs to: `near` (the default), the one facing the
+ * other entity, or `far`, the opposite one.
+ */
+export interface DistanceOptions extends DimensionOptions {
+  orientation?: DimensionOrientation;
+  sideA?: 'near' | 'far';
+  sideB?: 'near' | 'far';
+}
+
 /** What a call may name an entity by: the handle the builder returned, or its ID. */
 export type EntityLike = SketchEntityHandle | string;
 
@@ -926,6 +937,8 @@ export class SketchBuilder {
    * - a line: its length; a circle: its diameter; an arc: its radius;
    * - two points: their distance, `orientation` saying aligned, horizontal or
    *   vertical; a point and a line: the point's distance to it;
+   * - a circle or an arc with a point, a line or another circle or arc: the
+   *   distance from its edge (ADR-0112), `sideA`/`sideB` picking the edge;
    * - two lines: the angle between them.
    *
    * `{ name }` gives the model parameter the dimension shows up as a name of its
@@ -936,7 +949,7 @@ export class SketchBuilder {
   dimension(
     target: EntityLike | readonly [EntityLike, EntityLike],
     value: DimValue,
-    options: DimensionOptions & { orientation?: DimensionOrientation } = {},
+    options: DistanceOptions = {},
   ): DimensionHandle {
     const targets = (Array.isArray(target) ? target : [target]) as readonly EntityLike[];
     const first = this.entity(targets[0] as EntityLike);
@@ -953,11 +966,14 @@ export class SketchBuilder {
     return this.distance([first, second], value, options);
   }
 
-  /** A distance: a line's length (`target` alone), or two entities' apart. */
+  /**
+   * A distance: a line's length (`target` alone), or two entities' apart; a
+   * circle's or an arc's from its edge (ADR-0112).
+   */
   distance(
     target: EntityLike | readonly [EntityLike, EntityLike],
     value: DimValue,
-    options: DimensionOptions & { orientation?: DimensionOrientation } = {},
+    options: DistanceOptions = {},
   ): DimensionHandle {
     const targets = (Array.isArray(target) ? target : [target]) as readonly EntityLike[];
     return this.#add(
@@ -966,6 +982,8 @@ export class SketchBuilder {
         orientation: options.orientation ?? 'aligned',
         a: idOf(targets[0] as EntityLike),
         ...(targets[1] === undefined ? {} : { b: idOf(targets[1] as EntityLike) }),
+        ...(options.sideA === undefined ? {} : { sideA: options.sideA }),
+        ...(options.sideB === undefined ? {} : { sideB: options.sideB }),
       },
       value,
       options,
@@ -1011,7 +1029,7 @@ export class SketchBuilder {
   reference(
     target: EntityLike | readonly [EntityLike, EntityLike],
     value: DimValue,
-    options: { orientation?: DimensionOrientation } = {},
+    options: Omit<DistanceOptions, 'driven'> = {},
   ): DimensionHandle {
     return this.dimension(target, value, { ...options, driven: true });
   }

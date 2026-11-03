@@ -22,7 +22,7 @@ import { useUpdateNotice } from '../shell/useUpdateNotice';
 import { useDocumentFonts, useFontAttachments } from '../sketch/fonts';
 import { createViewportStore, type ViewportStore } from '../viewport/store';
 import {
-  createProject,
+  createBlankProject,
   createTutorialProject,
   describeError,
   exportProject,
@@ -153,7 +153,7 @@ function ProjectEditor({
     () => ({
       home: () => navigate(HOME_HREF),
       newDesign: () => {
-        createProject(platform)
+        createBlankProject(platform)
           .then((id) => navigate(projectHref(id)))
           .catch((error: unknown) => push('error', describeError(error)));
       },

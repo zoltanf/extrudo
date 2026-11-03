@@ -9,6 +9,7 @@ import {
   dimension,
   expectBody,
   expectNoProblems,
+  expectOneWarning,
   hideConstraints,
   homeView,
   ok,
@@ -191,6 +192,8 @@ test('Tutorial 4: a threaded bottle cap', async ({ page }) => {
       const thread = page.getByRole('region', { name: 'Thread dialog' });
       await expect(thread.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
       await expect(thread.getByRole('combobox', { name: 'Size' })).toHaveValue('auto');
+      // The bore is past the thread's minor diameter and is filled in to it
+      // (ADR-0056's fifth amendment): no word.
       await expect(thread).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
       await ok(page, thread);
     },
@@ -352,7 +355,9 @@ test('Tutorial 4: a threaded bottle cap', async ({ page }) => {
       await kernelReady(page);
     },
     async () => {
-      await expectNoProblems(page);
+      // The cap's Ø36 bore is a size's own diameter now (M36), filled in to
+      // M36's minor: off by more than the thread's depth, so it notes it.
+      await expectOneWarning(page);
       await expectBody(page, 'Cap', [40, 40, 14]);
       await expectBody(page, 'Adapter', [35.8, 35.8, 20]);
     },

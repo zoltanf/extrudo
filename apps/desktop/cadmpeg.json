@@ -1,0 +1,26 @@
+{
+  "version": "0.6.7",
+  "repository": "https://github.com/cadmpeg/cadmpeg",
+  "archives": {
+    "x86_64-unknown-linux-gnu": {
+      "file": "cadmpeg-x86_64-unknown-linux-gnu.tar.xz",
+      "sha256": "27028aaee874674efc2913067f6084fd9c910acb0b21febb912363c2077d9506"
+    },
+    "aarch64-unknown-linux-gnu": {
+      "file": "cadmpeg-aarch64-unknown-linux-gnu.tar.xz",
+      "sha256": "5abe4627f26afd4bbe0cb14c5dee75784c4d837407fdf6a47fa7e45560b37074"
+    },
+    "x86_64-apple-darwin": {
+      "file": "cadmpeg-x86_64-apple-darwin.tar.xz",
+      "sha256": "a91ec4f03c9f220783cc9c8dce651198e5730fab12308e82ecd8e309e3af32aa"
+    },
+    "aarch64-apple-darwin": {
+      "file": "cadmpeg-aarch64-apple-darwin.tar.xz",
+      "sha256": "43ba0df7d023bffa204ed2338a11780cbe0567e1b816a3eec7cf02649af857f9"
+    },
+    "x86_64-pc-windows-msvc": {
+      "file": "cadmpeg-x86_64-pc-windows-msvc.zip",
+      "sha256": "9891426730d6a0fad3240aeb49f42b071143aec4e78912edaffb757733a14227"
+    }
+  }
+}

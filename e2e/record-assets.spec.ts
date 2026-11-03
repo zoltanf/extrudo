@@ -12,6 +12,7 @@ import {
   closeParameters,
   exportProject,
   openParameters,
+  primitive,
   renameProject,
   selectBodies,
   settled,
@@ -2283,6 +2284,49 @@ sketchScene(
   ],
   [[-20, -6]],
 );
+
+/**
+ * Project (P4-12) needs a body: a box is made quietly, the view turns to the
+ * Top (the face pick then lands inside it, away from the foreshortened home
+ * view), a sketch opens on its top face, and the clip shows an edge picked in
+ * the view coming in purple.
+ */
+test('demo: project', async ({ page }) => {
+  const viewport = await demoProject(page);
+  await kernelReady(page);
+  await primitive(page, 'Box', { Length: '40 mm', Width: '30 mm', Height: '16 mm' });
+  // The ViewCube's Top: straight down, so the top face fills the view's middle.
+  await page.getByRole('button', { name: 'Top', exact: true }).dispatchEvent('click');
+  await expect(viewport).toHaveAttribute('data-camera-direction', '0,0,-1', { timeout: 15_000 });
+  await settled(viewport);
+  // Create Sketch, then a click on the top face: the sketch lies on it. While Create
+  // Sketch waits the view reports no model hover, so the click goes where the mapping
+  // puts the face's middle, and the camera's look-at says it took.
+  await pickTool(page, 'Create Sketch');
+  const world = await projector(viewport);
+  const top = world([8, 4, 16]);
+  await page.mouse.move(top.x, top.y);
+  await page.waitForTimeout(200);
+  await page.mouse.click(top.x, top.y);
+  await expect(viewport).toHaveAttribute('data-camera-direction', '0,0,-1', { timeout: 15_000 });
+  await settled(viewport);
+  const { at, clip } = await sketchFrame(page, await mapping(viewport), 50);
+  const p = pointer(page);
+  await p.jump(at(-24, 14));
+  await record(page, 'project', clip, async () => {
+    await page.waitForTimeout(300);
+    await page.keyboard.press('p');
+    await page.waitForTimeout(350);
+    await p.click(at(0, -15), 450);
+    await expect
+      .poll(() => attr(viewport, 'data-sketch-projected'), { timeout: 15_000 })
+      .toMatch(/curves=1:/);
+    await p.moveTo(at(24, 16), 500);
+    await page.waitForTimeout(700);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
+  });
+});
 
 sketchScene(
   'sketchOffset',

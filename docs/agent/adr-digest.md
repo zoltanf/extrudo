@@ -70,7 +70,7 @@ wrappers, icon pipeline) and the shell (`apps/web/src/shell/`), which opens a
 sample document in memory until storage exists. ADR-0008 (P0-05) set the
 viewport (`apps/web/src/viewport/`): Z-up world in mm, our own camera
 controller (target + quaternion + size, both projections), mouse presets (Spindle the
-default, Crank, Glide, Blender, Trackpad; Shift swaps orbit and pan in Spindle and Crank; in
+default, Crank, Glide, Blender, Slicer, Trackpad; Shift swaps orbit and pan in Spindle and Crank; in
 the app menu's Mouse controls ▸ since R3-03/R3-04, ADR-0008's amendment) as
 tables, shader grid, CSS 3D ViewCube, a viewport store with display settings
 as preferences. **Named views (ADR-0008's amendment, 2026-10-10)** save and
@@ -1172,7 +1172,7 @@ stages so it knows no angles; `threadRadii(profile, …)` places the depth and
 face: the tooth swept by the facade's `threadSweep` (one helix edge per turn: one
 long edge broke the boolean), lead-ins where the facade's `threadFace` says an
 end is open; it always cuts, so it is patternable. Faces
-`thread:<id>:side:f<k>.crest|flank0|flank1|root|end0|end1|lead0|lead1`. **P4-12 (ADR-0056's second amendment, 2026-10-07)** added **multi-start threads**: an optional `starts` input (unitless `expr`, 1 to 8, stored only when not 1) makes the helix's lead `starts × pitch` while the tooth keeps `pitch`; each piece has one tooth per start (the same section a pitch higher, faces `f<k>.s<j>.<role>`), the teeth one compound cut in one boolean, and `MAX_TURNS` counts turns per helix. **Its third amendment (2026-10-07)** added **tapered threads**: no input, the face decides — `threadFace` reads a cone too (`ThreadFace.taper`, the half angle signed along the axis, `radius` at `from`), the radii hold at the cone's small end (`ThreadPlan.anchor`) and every section moves by `shiftAt` with the slope, `threadSweep`'s trailing `taper` sweeps the tooth on a conical helix (`helixWire`, shared with `helix`, each keeping its own construction so straight threads and coils are bit for bit as before), an **NPT** preset group (`npt-1q8` … `npt-1`, `taper: NPT_TAPER`) fits a cone within 0.2° of 1:16 with Size `auto` (`autoTaperThread`), NPT on another taper warns and is cut with the face's, and the report (`ThreadReport`) gives the dialog's Thread line ("NPT 1/2", "Ø20 × 1.5, taper 5°"); BSPT is deferred. Native harness `spikes/p4-12-thread-taper/`. About
+`thread:<id>:side:f<k>.crest|flank0|flank1|root|end0|end1|lead0|lead1`. **P4-12 (ADR-0056's second amendment, 2026-10-07)** added **multi-start threads**: an optional `starts` input (unitless `expr`, 1 to 8, stored only when not 1) makes the helix's lead `starts × pitch` while the tooth keeps `pitch`; each piece has one tooth per start (the same section a pitch higher, faces `f<k>.s<j>.<role>`), the teeth one compound cut in one boolean, and `MAX_TURNS` counts turns per helix. **Its third amendment (2026-10-07)** added **tapered threads**: no input, the face decides — `threadFace` reads a cone too (`ThreadFace.taper`, the half angle signed along the axis, `radius` at `from`), the radii hold at the cone's small end (`ThreadPlan.anchor`) and every section moves by `shiftAt` with the slope, `threadSweep`'s trailing `taper` sweeps the tooth on a conical helix (`helixWire`, shared with `helix`, each keeping its own construction so straight threads and coils are bit for bit as before), an **NPT** preset group (`npt-1q8` … `npt-1`, `taper: NPT_TAPER`) fits a cone within 0.2° of 1:16 with Size `auto` (`autoTaperThread`), NPT on another taper warns and is cut with the face's, and the report (`ThreadReport`) gives the dialog's Thread line ("NPT 1/2", "Ø20 × 1.5, taper 5°"); BSPT is deferred. Native harness `spikes/p4-12-thread-taper/`. **Its fourth amendment (2026-10-31)** adds the **`print45` profile** (45° flanks, 0.2 P crest and root flats, 0.3 P deep: it must tile one pitch and be symmetric inside and out; mates only with itself), the **`print` preset group** ("Print 10 × 2.75", ids `print-<d>`: ISO coarse diameters M4–M30 at the pitch as deep as the coarse thread, rounded to 0.25/0.5 mm, so the minor stays ISO's; keep the table's rule, don't tune single rows), **Fit the face for `iso` and `print45`** (`autoThread` by preset group, each size's minor from its own profile's depth; other profiles without a size are refused), the **hole-at-nominal rule** (a hole within 0.01 mm of a size's diameter is that size: holes only) (its warnings for a hole wider than the minor or a shaft thinner than the major were replaced by the fill, the fifth amendment), and the dialog's **Fit** choice (Tight 0.05 / Normal 0.1 / Loose 0.2 mm / Parameter / Custom; not an input: only `tolerance` is stored). Sources of these ideas are listed in `docs/references.md` ("Threads in other tools"); the ScanRuler plugin there is AGPL-3.0-only: never copy its code or text. **Its fifth amendment (2026-11-01), the fill:** a hole wider than the part's crest (minor + tolerance) or a shaft thinner than it (major − tolerance) gets `ThreadPlan.fill`, a **sleeve** over the thread's run (`sleeveOf`: hole `crest − reach/2` to the face, shaft the face to `crest + reach/2`, both edges on a cone's slope; faces `f<k>.fill|fillWall|fillEnd0|fillEnd1`) fused to the face's body alone before any tool is built (all sleeves first, bodies chained through a `step` context, then the tools merged and cut once); the ring and lead-ins are then built with `radius` = the crest. Keep the sleeve's band **inside the ring's** (so only the tooth of it survives and no face coincides with the crest flat) and its other side exactly on the face (the fuse's `simplify` merges it). A hole's sleeve whose run reaches either end of the face is trimmed by `common` with the **hull** (the hole's `removeFacesPick` group removed by `removeFaces`); a `RemoveFacesError` leaves the face as drawn with the `unfilled` warning; a shaft's sleeve is never trimmed (known limit: a step at a chamfered shaft end). The only word is a **note** when the face's *diameter* is off the crest's by more than the thread's depth ("… it is filled in to it along the thread." / "… built up to it …"). No facade change; tests `thread-fill.test.ts`. About
 0.1 s per turn (booleans); **the facade's booleans used to build twice** (fixed
 in `finishBoolean`). Native harness: `spikes/p4-02-harness/`.
 ADR-0058 (P4-03) added **sketch text**: the `text` sketch entity (`core/src/sketch/schema.ts`,
@@ -1525,7 +1525,17 @@ mesh to the map and a shape to OCCT). `meshFrom(mesh)` splits surfaces that
 touch along an edge or at a vertex (`splitNonManifoldEdges`, its 2026-10-09
 amendment) and welds the corners
 (`Mesh.merge()`) and refuses a mesh that isn't closed with `checkManifold`'s
-counts on a `MeshError`; `mesh`, `exportMesh`, `measure`, `properties`,
+counts on a `MeshError`; per its 2026-10-31 amendment `meshFrom` first runs
+`dropBadTriangles` (`@extrudo/io`) and drops **flat** triangles (a repeated
+corner or an out-of-range node) and **duplicates** (an earlier triangle's
+three corners, either winding — the first in file order stays), nodes
+untouched, zero-area triangles with three distinct corners kept (dropping one
+can open a closed mesh). The new `onDrop` callback fires only when something was
+dropped, and the import warning joins a drop and a split into one sentence,
+drop first; a still-refused mesh carries the counts on `MeshProblem.dropped`
+and `notClosed` words them inside the parentheses. `Mesh.merge()` is skipped
+only when the mesh was split: the comparison is with the mesh that went into
+the split, so a mesh that only lost triangles is still welded. `mesh`, `exportMesh`, `measure`, `properties`,
 `describe`, `count`, `solids` and `transform` have a mesh branch, and **every
 other public method that takes a shape throws `MeshBodyError`** naming the
 operation for the user ("Shell needs a solid body: this body is a mesh
@@ -2002,10 +2012,30 @@ host's error. Dimension's `#pickAt` never takes a model pick for the
 click that would place a sketch line's label (so an existing line's length
 still places); a model edge first pick still takes a second model edge, and a
 sketch point takes a model vertex or edge.
+**Face centres (ADR-0074's amendment, 2026-10-30, issue #140)**: `ModelSnapKind`
+`faceCenter` (a point kind) is the area centroid of a flat face of a shown,
+non-mesh body **lying in the sketch plane** (`faceCenterSnapAt`, mesh triangles
+within 1e-3 mm, cached per mesh and frame); `autoProjectSnap(…, tolerance)` returns
+it when nearer the cursor than the pick. `infer` ranks it at **priority 1 with the
+sketch's points** (a sketch point wins a tie, the origin loses one), as `Snap.kind: 'center'` with `model`;
+`place` maps that to a `faceCenter` attachment. It projects through
+`SketchProjection.mode: 'center'` (ref kind `face` only, one point keyed
+`faceCenter`, the kernel's `faceCenter` from `describe`'s centroid), never the face's
+outline; `projectionFor` and the mint key match the mode (`projectionMode`), so a
+face may hold one outline and one centre record. Body-edge midpoints and curved
+faces: deferred.
 `viewport.autoProjectFace` (off) also projects a flat face's
 outline in `createSketchOn` when a sketch starts on it. No file-format or
 kernel change. `data-sketch-projected` now also lists a point-only projected
 vertex (`curves=0`).
+**The palette's Face outline switch (ADR-0074's amendment, 2026-10-31)** is the
+open sketch's own outline, not the preference: `faceOutline(plane, data)` (the
+projection whose ref is the sketch's face, mode `project`; `undefined` on a plane)
+with the constraint and dimension counts on its curves. On dispatches
+`addProjection`; off dispatches `removeProjection`, which **refuses while any
+constraint or dimension uses the curves**, and the switch is disabled then (hint
+counts them) and on a plane sketch. It doesn't depend on Auto-project. Keep
+`viewport.autoProjectFace` for new sketches in Settings and the app menu only.
 
 ADR-0075 (P6-01, slice 1) added **the Electron desktop app** (`apps/desktop`,
 GPL): electron-vite builds main, preload and renderer, the **renderer being the
@@ -2018,7 +2048,9 @@ there is no forked UI. The renderer keeps the web's posture (`contextIsolation`,
 braces), no top-level navigation off `app://` (or the dev origin), no new
 windows and no webview (`main/navigation.ts`), and `app://` (a privileged
 standard scheme) serves the packaged `dist` (`.wasm` as `application/wasm`)
-because `file://` breaks module workers and WASM fetches.
+because `file://` breaks module workers and WASM fetches. The renderer's
+`publicDir` is `apps/web/public` (the tooltip clips in `demos/`; Vite's default
+`src/renderer/public` doesn't exist), checked by `renderer/publicDir.test.ts`.
 **Every privileged call goes through `shared/ipc.ts`'s channels**: that one file
 lists the channels and the `ProjectStore` method whitelist, `preload/` exposes
 them with `contextBridge`, and main's `ipc.ts` answers them (no `remote`); a
@@ -2650,7 +2682,7 @@ change was finished, a kebab-case slug; `README.md` in the folder is the
 permanent explainer and is never collected) and its content is exactly one line
 matching `- \d{4}-\d{2}-\d{2} · **[^*]+**…` — no heading, no blank lines, no
 second paragraph; **a pull request never edits `docs/CHANGELOG.md`** (CI refuses
-it; the release commit's rename in `docs/release-checklist.md` step 2 is the one
+it; the release commit's rename (`docs/release-checklist.md`) is the one
 edit, made after `pnpm changelog`), and a fragment whose line is already in the
 changelog is refused, so a folded-in line is not duplicated by re-adding it.
 
@@ -2667,8 +2699,13 @@ order, not `NAV_PRESETS`'; Spindle stays the default —, a divider, the three t
 Auto-project body edges / face outline / Radial right-click menu with `aria-pressed`, a
 second divider, the `radiogroup` "Theme"), every rail control with a `Tooltip` (label
 "Mouse controls: Crank", hint the preset's `summary` or the toggle's state and Settings
-hint); **Slicer is disabled** (`aria-disabled`, still focusable so its tooltip shows) and
-is **not a `NavPreset`** until its behaviour lands; **two columns always**, `menu`s "App"
+hint); **Slicer** (ADR-0090's amendment of 2026-10-31) is a `NavPreset` like the others:
+`dragAction` pans on the right or middle button and leaves the left one to the pointer
+input, where `freeDragAction` turns a left drag nobody takes into an orbit — only where a
+selection box would be drawn (`onBox`) or nobody listens to the drag (no `onDragEnd`:
+plane picking), never with Shift/Ctrl/⌘ (the box) and never a drawing tool's or a gizmo's
+drag; `attachPointerInput` runs that orbit itself (`camera.orbit`, `ORBIT_RATE`) and
+reports it through `onNavDrag` for the cursor; **two columns always**, `menu`s "App"
 (Search… where commands exist, Settings…, About Extrudo, then Close design on the web /
 Quit on the desktop) and "Learn" (**Help for \<tool\>** first, from
 `lastHoveredTool()` in `Toolbar.tsx` — the last tile hovered or focused, kept after the
@@ -2853,6 +2890,15 @@ Ctrl+Space opens the list on an empty word. The list is a Radix Popover (portall
 `aria-selected`, `onEscapeKeyDown` prevented, no auto focus); the field keeps the
 `textbox` role with `aria-autocomplete`, `aria-controls`, `aria-activedescendant`, and
 `data-keep-escape` while the list is open.
+**Amendment (2026-10-31):** functions and `pi` follow the parameters (`BUILTINS` from core's
+`FUNCTION_ARITIES`/`CONSTANTS`, prefix match only, no scope probe; a function inserts `name()`
+with the caret inside, `insertName`). A field passing `newParameter(name)` (only the sketch
+dimension editor: its value is `d.expr`) offers to create an unknown name that is the whole
+field (`newName`; `evaluate` fails `'unknown-name'` and `evaluate("name = value")` succeeds):
+a last option "+ New parameter …" (Enter when it is the only row) and a "+ Create …" button
+under the message, only while the list is closed (the list covers it; Ctrl/Cmd+Enter
+always works); both set the draft to `name = value` with the value
+selected. Keep `newParameter` off fields whose `evaluate`/`onCommit` don't take `name = value`.
 
 ADR-0097 (P4-13, issue #95) adds **Mesh to Solid**: feature `meshToSolid`
 (`packages/kernel/src/features/mesh-to-solid.ts`, core `meshToSolidFeature`)
@@ -3294,6 +3340,149 @@ mesh lines up), a dropped triangle taking a kept neighbour's surface else -1.
 `unfit.regions` = the conversion's (1) and `planes`/`cylinders` = the
 report's (8/4; 100 planes on the base WASM). No schema change.
 
+**ADR-0097 slice D7 (2026-10-30): the STEP round trip checked, sweep
+baselines.** A STEP file keeps no tolerances; a reader works them out again
+tightly, so a face valid only through a generous edge tolerance comes back
+broken. `packages/kernel/src/mesh-to-solid-test-support.ts` (a plain module
+the two mesh-to-solid test files import, nothing in `index.ts`) has
+`stepRoundTrip(kernel, shape, name)` — write to STEP, read back, release
+everything it made, return `{ valid, faces, solids, volumeRatio, bytes }`,
+never throwing — and `expectStepRoundTrip`, whose bar is: the read-back body
+valid, the same face and solid counts, the volume within 1e-4.
+**Rules:** every converted-body test case calls `expectStepRoundTrip` after
+its own assertions (a new one must too); a case that misses the bar keeps
+those assertions and, under a `tripFails` flag with its numbers in a comment,
+pins the failure with `expect(() => expectStepRoundTrip(…)).toThrow()` — a
+fix flips it, never loosen or delete. Today's failures (all hybrid):
+peg-perego-button 0.01 and Auto, drill-block 0.01 and Auto,
+track-straight-100mm 0.1 (numbers in ADR-0097's 2026-10-30 amendment);
+fixing the converter is a later slice. The
+`STL_DIR` sweep gains `SWEEP_OUT=<file>.jsonl` (one JSON line per file, both
+methods' outcome and STEP round trip) and `SWEEP_BASELINE=<file>.jsonl`
+(a file fails when it is refused where it converted, exceeds the baseline's
+faces by more than 10 % — fewer faces is better — or its read-back was valid
+there, kept the face count there and neither now; a comparison prints on the
+row and `sweep totals` prints both runs' numbers).
+
+**ADR-0097 slice D7 diagnosis (2026-10-30b): the STEP read-back failures
+measured (no fix).** `spikes/stl-to-solid/prismatic.cpp` gains cases `s` (one
+corpus file, `STL_DIR`/`FILE`/`TOL`) and `S` (every file, one process, a
+Markdown summary row per file at the end): they convert, write the body to
+STEP, read it back and print the settings in force, the written body's edges by
+class and tolerance buckets, the read-back `shapeDiagnose` and BRepCheck
+statuses by name, the invalid edges by class and faces by kind, the summed area
+per face kind written vs read back, and a `ShapeFix_Shape` pass at the written
+tolerances. No converter change (`facade`, `packages/` untouched). Finding
+(41-file corpus, Auto; the spike stages the STL in its own order, so it is not
+byte-identical to the sweep): 20 of 30 hybrid conversions miss the D7 bar (the
+sweep's 17 plus three the order changes). The read-back failure is **not** an
+edge tolerance — no edge or vertex carries a BRepCheck status; the invalid
+faces are flat (facet 17, plane 81, other 2) with `BadOrientationOfSubshape`
+(67), `UnorientableShape` (25) and wire `SelfIntersectingWire` (25). The
+written max edge tolerance and the facet count do not separate pass from fail;
+every failure is a hybrid; `ShapeFix_Shape` at the written tolerances fixes 0
+of 12. The settings line needs `STEPControl_Controller::Init()` first (else all
+seven read 0); the facade's `writeStep()` overwrites the transfer parameters, so
+write-side statics are inert through the app. Probes (Q9-Q12): the BREP round
+trip passes 20 of 20 (tolerances/pcurves kept, ratio 1 — the STEP reader's
+reconstruction is the trigger); healing the written body fixes 18 of 20 but 0
+survive the round trip; no pcurves and `2DUse_Preferred` each pass 0; with
+Greatest (`write.precision.mode` 1, via a direct `STEPControl_Writer`) 3 of 20
+pass (drill-block, micro-sd-keyring-inner, spaghetti-measure); the flagged wires
+are mostly line polylines (7 of 25 carry a fitted circle/ellipse) and the 25
+flagged wires hold 35 edges shorter than the file's uncertainty, 37 under
+0.05 mm. Q13/Q14: lowering `HYBRID_EDGE_TOLERANCE_MAX` from 1.0 to 0.1/0.05/0.02
+gives 10/13/14/14 bar passes of 30 hybrids and 2/4/6/9 refusals (more facets
+per body) — not the fix; every read-back `other` face is a `SurfaceOfRevolution`
+(11, in drill-block, peg-perego-button, gear-bearing-5) from a written torus with
+minor radius ≥ major radius. Q15-Q17 (the self-intersections classified):
+`ShapeAnalysis_Wire` at the reader precision, and down to 1e-9, finds the same
+self-intersection BRepCheck reports on only 7 of the 25 flagged wires (18 return
+false), because `BRepCheck_Wire::SelfIntersect` is a separate algorithm (tolint
+1e-10, `Geom2dInt_GInter`, an intersection accepted only inside a 3D vertex
+tolerance) — so the status cannot be read off ShapeAnalysis; running
+`BRepCheck_Wire::SelfIntersect` itself, 15 of the 25 pairs are **2D-only** (the
+two non-adjacent edges are 0.0022–0.15 mm apart in 3D, far above the wire's edge
+tolerance, and cross only in the face's 2D space), 4 are hairpin (turning angle
+≥ 150°), 0 same-edge and 0 3D-close; only 4 of the 25 flagged faces match a
+written face by centre/area, and on all 4 the written wire has 0 pairs at 1e-7
+and 0 at its edge tolerance, so where it can be measured the written body is
+clean and the reader created the crossing.
+Numbers in ADR-0097's 2026-10-30b amendment.
+
+**ADR-0097 slice D8 (2026-10-31): chain edges that re-project exactly on
+planes, sliver chains, no degenerate tori.** `extrudo_facade.cpp`
+(`chainCurve`, `rebuildHybrid`'s chain loop, `fitMeshTorus`, the surface
+snaps); probes q18–q23 in `spikes/stl-to-solid/prismatic.cpp`. A STEP reader
+drops every planar pcurve and projects the edge's 3D curve. Rules:
+- A chain edge next to a plane ends at its nodes' projections: a line through
+  its end nodes; a circle square to the plane through the end nodes'
+  projections, its plane-side pcurve the exact `Geom2d_Circle` (checked to
+  1e-7); an ellipse next to a plane stays a polyline; a circle tilted over 1°
+  from the plane's normal stays a polyline.
+- A torus fit needs R > r (fit, axial adjustment and radius averaging),
+  except in slice D9's retry below.
+- A chain stays a polyline when another outline piece joins its end points
+  (by coordinates, 1e-6) and one of its regions is a sliver (area below
+  tolerance × outline length).
+- A chain's curve stays within 1.5 × tolerance of both surfaces (9 samples).
+- A circle between a plane and a cone stays a polyline.
+- The planar-ends self-check (`hybridEnds_`, misses above 1e-5) must report 0.
+Numbers in ADR-0097's 2026-10-31 amendment.
+
+**ADR-0097 slice D9 (2026-10-31b): R ≤ r torus regions.** `extrudo_facade.cpp`
+(`fitMeshTorus(…, spindle)`, `segmentMesh`'s `settle`, `MeshChart::surface`,
+`revolvedTorus`/`revolvedTorusOf`, the mesh check, the exact rebuild); probe
+Q24 in `spikes/stl-to-solid/prismatic.cpp`. Rules:
+- A spindle torus (R ≤ r) is fitted only in `splitComponent`'s retry: when a
+  split leaves its component whole and unfit, it runs once more with spindles
+  allowed and the retry is kept when it explains anything. Never in the first
+  split (spindle fits win seeds other primitives explain better).
+- The hybrid builds R ≤ r as `Geom_SurfaceOfRevolution` of the meridian circle
+  at the torus's own (u, v) (never a `Geom_ToroidalSurface`: the STEP reader
+  turns that into a revolution of another curve, wires crossing); R > r stays
+  a `Geom_ToroidalSurface`. The mesh check and face counts read it back as its
+  torus (`revolvedTorusOf`); the exact rebuild refuses it, the hybrid runs.
+Numbers in ADR-0097's 2026-10-31b amendment.
+
+**ADR-0097 slice D10 (2026-10-31c): rolling-ball fillets between two planes — measured, not built.**
+The proposal: fit an unfit or "< 4 regions" band that two planes border as the cylinder tangent to both, with a
+tolerance of its own. Probe `Q25` (`spikes/stl-to-solid/prismatic.cpp`, `q25.py`), run on the kernel's staged meshes,
+rejected it. At Auto, the bands that pass hold 158 triangles: 1.0 % of the 16,083 unfit triangles and 0.9 % of the
+17,790 facets, against a 5 % bar. No file's Auto step would move. The corpus's flat–flat fillets are already
+cylinders from region growing. The facets come instead from exploded regions (17,742 triangles, 7,609 of them planes
+refused as "invalid face") and from networks: blends along curved outlines and between curved faces, 97 % of the
+unfit area. Rules:
+- Don't add a separate flat–flat fillet pass without new evidence; `Q25` re-measures it.
+- The sweep baseline from here on is `baseline-2026-10-31c-auto.jsonl` (D9's, plus the import repair).
+Details in ADR-0097's 2026-10-31c amendment.
+
+**ADR-0097 slice D11 (2026-11-01): exploded regions split at the nodes their boundary passes twice, plane fits
+square to their facets.** `extrudo_facade.cpp` (`meshLoops`, `meshFanLoops`, `MeshHybridRegion::splitNodes`,
+`cutTouchingFace`, `cutTouchingLoops` after `rebuildHybrid`'s validity stage, `fitKind`'s plane case); probes `Q26`
+(`Q26PLANES`, `Q26LADDER`, `Q26TOUCH`, `STEP_OUT`, case `H`) in `spikes/stl-to-solid/prismatic.cpp`, `q26.py`,
+`noise.py`, `torus_loops.py`. Rules:
+- A region whose boundary passes a node twice is one face, not two: `meshFanLoops` pairs each boundary edge with the
+  next round the same fan, cuts each walk at the nodes it passes twice into simple loops that share the node's
+  vertex; outer loop, sign test, "a loop that doesn't close" and "no boundary" stay as they are, and a region without
+  such a node keeps the old walk exactly. The diagnostics line says "split at N nodes".
+- No face on a periodic surface leaves the hybrid with a hole that shares a vertex with its outer wire: the STEP
+  writer writes such a vertex twice and the reader can find the loops crossing. `cutTouchingLoops` cuts each such face
+  in two along a straight (u, v) edge between two existing vertices (no boundary edge split, the neighbours
+  untouched), keeps a face no valid cut exists for, and keeps the body only when it checks valid ("touching loops
+  cut: N" in the stages). Planes stay whole. Don't replace it by a cutting plane (it splits shared edges) or
+  `BRepFeat_SplitShape` (it makes a slit).
+- A plane group's least-squares plane is kept only when its normal agrees with the facets' area-weighted mean normal
+  by |cos| ≥ `MESH_PLANE_NORMAL_AGREEMENT` (0.5); a wall strip lower than T is no plane square to it.
+- Tests: `mesh-to-solid.test.ts` "splits a top face whose two dimples touch at a node into one face with two inner
+  loops (slice D11)" and "cuts a boss wall whose dimple touches its rim at a node in two, so it round-trips
+  (slice D11)". The sweep baseline from here on is `baseline-2026-11-01b-auto.jsonl`: `files 41, prismatic converted
+  36 refused 5, faceted converted 26 refused 15, prismatic faces 22569, prismatic facets 12565, prismatic ms 264862,
+  faceted ms 107397, round trips failed 7` (31c's 7 files).
+- Measured, not built (don't redo without new evidence): keeping the last valid hybrid attempt (0 cases), the mesh's
+  noise as Auto's starting rung (it measures creases on CAD meshes), refitting degenerate planes within T (none fits).
+Numbers in ADR-0097's 2026-11-01 amendment; all tables in `docs/plans/m2s-exploded-q1-2026-11-01.md`.
+
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
 facade `removeFaces` with `BRepAlgoAPI_Defeaturing`). Rules: **all or nothing** (any
@@ -3617,12 +3806,35 @@ first opens (`preparing`), for a kernel wait (`waiting`), or inside a transactio
 feature dialog); no keyboard shortcut (Escape must never undo edits); the notice stays
 `pointer-events: none`, only the button takes the pointer. e2e: `e2e/kernel-cancel.spec.ts`.
 
+ADR-0112 (the owner, 2026-10-28): **distance dimensions to a circle's or an arc's edge.**
+`packages/core/src/sketch/schema.ts` (`distance` takes a circle or an arc as `a`/`b` with a
+second entity; `sideA`/`sideB: 'near' | 'far'`, only on a round; a round with a line may be
+horizontal or vertical, a point or line with a line stays aligned), `core/src/sketch/dimensions.ts`
+(`roundEdgePoint`, `lineMeet`, `roundEnds` inside `distanceEnds`: ends in `a`, `b` order; an arc
+counts as its whole circle), `packages/sketch/src/solver/mapping.ts` (`roundDistancePrims`),
+`solver.ts` (`setValues` resets a dimension's helper points; `equationCount` leaves them out of the
+redundancy count), `apps/web/src/sketch/tools/dimension.ts` (a round first waits for a second pick;
+`Pick.at`, `roundDistance`, `sideOf`), the API's `DistanceOptions` and emitter. **Rules:**
+`measureDimension` and the solver mapping agree for every pair, side and orientation (test the solved
+value against `measureDimension`); planegcs's `p2cdistance`/`c2ldistance`/`c2cdistance` only for
+aligned near edges and only while their equation is our measurement (c2l: center at least `r` from
+the line; c2c: circles apart); otherwise solver-only helper points `<id>#qa`/`#qb`/`#m` (never
+entities, so never in `uses`, `free` or the solution); a horizontal or vertical helper is the
+quadrant point on a fixed side (`difference` = the round's `radius`), an aligned one starts on the
+stored side and relies on `gradual.ts`'s bounded steps; the tool's side is the clicked half (facing
+the other entity's reference point → `near`, left out of the stored dimension); after a round first,
+body edges stay free for the diameter's label, while datum axes and model points are taken as the second pick (a click on an axis is its distance, not the diameter's label). e2e:
+`e2e/sketch-dimensions.spec.ts` (the last test).
+
 ADR-0113 (the owner, 2026-10-28): **Imperial units** (P6-18). `packages/core/src/expr/spell-unit.ts`
 (`isBareNumber`: literals and arithmetic of literals, no unit, no parameter; `spellOutUnit`: `10` →
 `10 mm`, `10 / 2` → `(10 / 2) * 1 mm`), `document-commands.ts` (`updateSettings`'s `keepLengths`),
 `apps/web/src/shell/BrowserPanel.tsx` (`DocumentSettings`: the `Units` and `Precision` selects,
 `[data-setting]`), `apps/web/src/home/HomeScreen.tsx` (the New design card's unit select, preference
-`newDesignUnits`). **Rules:** a unit change goes through `document.settings` and never resizes the
+`newDesignUnits`; every blank new design reads it through `newDesignUnits`/`createBlankProject` in
+`apps/web/src/project/actions.ts`, the Home tab's New Design tile included; the tutorial stays mm), and
+`packages/cli/src/cli.ts` (`info`'s text shows parameter values in the document unit, `--json` keeps mm
+and degrees). **Rules:** a unit change goes through `document.settings` and never resizes the
 model: the command spells the **old** unit out on every plain length number first (user parameters of
 unit `length` and their slider `min`/`max`/`step`, configuration values of those parameters, feature
 `expr` inputs of unit `length`, non-angle sketch dimensions; angles and unitless numbers untouched), in
@@ -3631,4 +3843,115 @@ document set `settings.units` directly instead of dispatching the command. S2 (i
 1/16 … 1 in, 6 in, 1 ft, 10 ft; metric designs unchanged; the shader takes both spacings) and S3
 (parser: `3/8 in`, `1 1/2"`, `5' 6"` as one number, no change to `10 / 2`; `settings.fractions`
 optional, display denominator `2^(precision + 2)` capped at 64, inch designs only) follow the ADR's
-§2 and §3. e2e: `e2e/document-units.spec.ts`.
+§2 and §3. Tools never write a literal `mm` into a design: a dialog field's mm `default` goes through `features/default-unit.ts` (`defaultInUnit`: an inch table, 10 mm → 3/8 in; cm and m exact) in `defaultValues(spec, unit)`, and a length a tool computes (a clicked point, a face centre, a canvas width) through core's `lengthExpr(mm, unit)`. S2 is in: `apps/web/src/viewport/grid.ts` (`gridLevels` with `METRIC_LEVELS`/`INCH_LEVELS`,
+`gridStep`'s unit), the viewport store's `lengthUnit` (`AppShell` sets it from `doc.settings.units`;
+`sketch/tools/host.ts` passes it to `gridStep`; not a preference) and `GridPlane.tsx`'s `uLevels`
+uniform table with the per-fragment scan. e2e: `e2e/document-units.spec.ts`, `e2e/inch-grid.spec.ts`. S3 (done 2026-10-28) is in `packages/core/src/expr/parser.ts` (fractions, mixed numbers,
+the `'`/`"` marks via `UNIT_ALIASES`, feet-inches), `packages/core/src/expr/format.ts`
+(`formatQuantity`/`formatLength` fractions, `fractionDenominator`), `packages/core/src/schema.ts`
+(`settings.fractions`), `apps/web/src/shell/BrowserPanel.tsx` (the `Fractions` row and the
+fraction Precision labels) and renders through `formatQuantity`; e2e: `e2e/inch-fractions.spec.ts`.
+
+ADR-0114 (the owner, 2026-10-30): **3D mice over WebHID** (P6-20). `apps/web/src/viewport/spaceMouse.ts`
+(`readReport`: report 1 translation, 12 bytes with rotation on newer models; 2 rotation; 3 buttons;
+`spaceMotion`: device x right / y towards the user / z down, object mode, twist = world-Z orbit;
+`createSpaceMouse(hid, frame)` and the app's `spaceMouse`), `useSpaceMouse` in `viewport/Viewport.tsx`
+(left button `home()`, right `fit()`), Settings' `SpaceMouseRows` (Connect…, the speed slider,
+`[data-space-mouse]`, `[data-space-mouse-speed]`), `apps/desktop/src/main/permissions.ts`
+(`isSpaceMouse`) and its use in `main/index.ts` (`select-hid-device`, `setDevicePermissionHandler`). **Rules:** motion is applied per
+animation frame from the last report, never per report, with `dt` capped; the input is reset on window
+blur and on disconnect; camera changes go through `setView` like a mouse drag (view state, never a
+command); the speed is the display preference `viewport.spaceMouseSpeed` (a log-scale slider, 0.25…4,
+a multiplier, not an `<ExpressionInput>`); no cross-origin SDK; the desktop grants HID only to `isSpaceMouse` devices, and
+the web filter (`SPACE_MOUSE_FILTERS`) and `isSpaceMouse` ask for the same devices: change both together.
+**Amendment 2026-10-31** (3DxWare's wheel turns, gamepads): `createSpaceMouse(hid, env)` takes `{frame, now,
+gamepads, interval}`; `recentlyMoving(now?)` is true while the cap moves and `WHEEL_QUIET_MS` (150 ms)
+after, stamped on every moving frame and on the reading that brings the cap to rest; the viewport's
+`onWheel` returns after `preventDefault` while it is true (the vendor driver turns cap motion into wheel
+turns, so a wheel turn while the cap moves is never the user's). `padKind` / `padName` / `readPad` /
+`choosePad` read the 3D mouse the browser lists as a gamepad (polled every 50 ms at rest, then per frame);
+**an open HID device wins** over the gamepad (never both); `supported` = WebHID or gamepads, `connectable`
+= WebHID (Settings shows Connect… only then, `[data-space-mouse="waiting"]` otherwise).
+**Amendment 2026-11-01:** env gains `target` (where `blur` and `wheel` are listened for; the window by
+default, none in Node). `recentlyMoving()` polls the gamepad first unless a frame is pending. The wheel
+guard is one capture-phase, non-passive `wheel` listener on the window (`preventDefault` +
+`stopPropagation` while `recentlyMoving()`), not the viewport's `onWheel`: keep it app-wide (the driver's
+turns go to whatever is under the pointer). **A HID device wins only after its first report** (the `live`
+set; the input resets to `IDLE` then); an open but silent device leaves the gamepad in charge, and
+`devices()` names one device once.
+
+ADR-0115 (the owner, 2026-10-30): **Other CAD files through a bundled cadmpeg** (P6-19).
+`apps/desktop/cadmpeg.json` (the pin: version, repository, per-target archive name and SHA-256 from the
+release's `sha256.sum`), `apps/desktop/scripts/fetch-cadmpeg.mjs` (+ `fetch-cadmpeg.test.mjs`;
+`--target`, `--pin`, `--force`; `.version` and `.source` mark a finished fetch),
+`apps/desktop/vendor/cadmpeg/` (gitignored), `electron-builder.yml`'s `extraResources`, the `cadmpeg`
+and `package*` scripts in `apps/desktop/package.json`, `.github/workflows/desktop.yml` ("Fetch
+cadmpeg"; the mac verify step's `codesign` and `--version` of the bundled binary, "Check the
+AppImage's cadmpeg", both Windows smoke steps), `NOTICE` §4, `docs/desktop.md` ("Other CAD files").
+**Rules:** the binary comes only through `fetch-cadmpeg.mjs`, and only after the archive's SHA-256
+matched `cadmpeg.json` (no flag skips the check; a mismatch leaves no binary); `vendor/` is never
+committed; the packaged path is `resources/cadmpeg/cadmpeg[.exe]` with its `LICENSE` beside it; every
+`package*` script and the desktop workflow's package jobs fetch before building, and the workflow
+fails unless the packaged binary prints the pinned version; updating cadmpeg is the release
+checklist's step (version and the five hashes, nothing else); the formats are named by extension only
+(`.sldprt .ipt .iam .catpart .fcstd .sat .smt .smb .sab .igs .iges .pvz`), never by vendor or product.
+Main looks the binary up in this order: the preference `cadmpeg.path` → `process.resourcesPath/cadmpeg/`
+→ the dev checkout's `apps/desktop/vendor/cadmpeg/` → `PATH`. A conversion runs without a shell in
+`<temp>/extrudo-cadmpeg/<uuid>/` (mode 0700, removed afterwards), 120 s timeout, stdout/stderr capped
+at 64 KiB, input and output at most 100 MiB, no `--allow-errors`; the design stores only the STEP (no
+schema change).
+S2 (the import flow): `apps/web/src/platform/cad.ts` (a leaf: `CAD_CONVERT_EXTENSIONS`/`_ACCEPT`,
+`isConvertibleCad`, `stepNameFor`, `CadFile`, `CadConvertResult`, `ConvertCad`, `CadmpegStatus`;
+exported as `@extrudo/web/platform/cad`), `Platform.convertCad?`, `features/import.ts`
+(`importAccept`, `importRefused`, `pickImportFile`'s `convertCad`), `project/actions.ts`
+(`importAnyFile`), `AppShell.tsx` (passes `platform.convertCad`), `apps/desktop/src/main/cadmpeg.ts`
+(pure over `CadmpegEnv`: `findCadmpeg`, `cadmpegStatus`, `safeInputName`, `convertWithCadmpeg`,
+`cleanupCadmpegFiles`, `nodeCadmpegEnv`; reuses `blender.ts`'s `wrap`), `cadmpegService.ts`
+(`isCadFile`, `cadmpegOverride`), the `cadStatus`/`cadConvert` channels (`extrudo:cad:*`) in
+`shared/ipc.ts`, `shared/bridge.ts` and `main/ipc.ts` (through `guarded`), `main/index.ts` (the dev
+vendor folder is `out/main/../../vendor/cadmpeg`; `cad.cleanup()` on `will-quit`),
+`renderer/platform.ts`'s `desktopCad`. **Rules:** the conversion happens inside `pickImportFile`
+after the f3d branch and before `modelKind`, so everything after it is the STEP path and the design
+holds only the STEP (`<base>.step`, `model/step`, the STEP's hash); the seam is optional and the web
+leaves it undefined (its picker doesn't offer the formats and its refusal points at the desktop
+app; `importAnyFile` counts a convertible file as a model only where the seam exists); main
+validates the payload (`isCadFile`, else throw) and checks the extension and the input size itself;
+the file name is sanitised (`safeInputName`: `[A-Za-z0-9._-]`, no leading `-`/`.`) before it
+touches the disk, the parent `extrudo-cadmpeg/` and each job directory must be plain directories
+owned by the user; the converter's message is the last non-empty stderr line (capped at 300
+characters).
+
+ADR-0116 (the owner, 2026-11-01): **Live widgets and drawn figures in the docs** (P6-22;
+amends ADR-0080's "only raw HTML is `<video>`, no script" and ADR-0057's policy use). Files:
+`apps/site/src/docs.ts` (the `widget` block, `.figure.svg` inlining, heading ids),
+`apps/site/src/widgets/` (`index.ts` the fixed list, `enhance.ts` the scripts by the same
+names, `svg.ts`/`controls.ts` the shared markup; per widget `<name>-model.ts` pure, the
+renderer, `<name>.ts` `enhance`), `apps/site/src/docs-widgets.ts` (the one entry, emitted by
+`docs-plugin.ts` as a chunk only when a page has a widget), `apps/site/src/figure-svg.ts` (the
+strict parser and allow-list: XML declaration and comments dropped, the five XML entities,
+no DOCTYPE/CDATA/PI; a figure must be a paragraph of its own),
+`apps/site/src/docs.css` (the `sk-*` classes), `apps/web/src/shell/docsLinks.ts`,
+`apps/web/src/shell/helpTarget.ts` (the remembered target and `anchorFor`;
+`sketch/mode.ts` clears it as a sketch opens or closes, `sketch/panels.tsx`
+sets it from the palette's rows),
+`apps/web/src/shell/docsAnchors.json`, `apps/desktop/src/main/docs.ts`. Rules: a page names
+a widget only with a fenced block ```` ```widget <name> ```` (body = caption); an unknown name
+fails the build; the build writes the starting state into the page (controls `disabled`,
+caption a `<figcaption>`), so a widget is a still picture without JavaScript; a page with a
+widget holds exactly one `<script type="module">`, the hashed `docs-widgets` asset, and a
+page without one holds none; never an inline script, a handler, a `style` attribute or
+`<style>`, a `javascript:` URL; widgets are scripted scenes, never the solver, WASM or an
+internal package; keyboard for every control (`role="slider"` handles, real checkboxes),
+`role="group"` + `aria-label` on the stage SVG (not `img`: it holds focusable handles), results in an `aria-live="polite"` line, nothing
+moves by itself under reduced motion. A relative image named `*.figure.svg` is inlined, not
+`<img>`, through an element/attribute allow-list (ADR §2; `fill`/`stroke` only `none` or
+`currentColor`, `href` only `#id`, ids prefixed with the file's stem) and coloured only by the
+`sk-*` classes, which widgets share; a new colour is a new class for both themes. Every `h2`/
+`h3` gets an id (lower case, non-`a-z0-9` runs → `-`, repeats `-2`). `DocsPage` has
+`{ guide, anchor? }` (`[a-z0-9-]+`); one remembered help target (tiles `{ tool }`, palette rows
+`{ guide: 'sketching', anchor }`), F1 falls back to the sketching page while a sketch is open,
+opening or closing a sketch clears it, **Help for This Tool** reads only a tool target; every
+anchor in `docsAnchors.json` must exist in the built page (site test); the desktop's
+`DOCS_PATH` accepts `/<guide>/` and `#<anchor>`. Tool pages stay generated: hand text between
+the `<!-- notes -->` markers (Step by step, Options, What it keeps, Messages; messages quoted
+from the app).

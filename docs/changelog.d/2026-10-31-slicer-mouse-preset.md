@@ -1,0 +1,1 @@
+- 2026-10-31 · **Slicer mouse preset**: the Menu's sixth mouse layout works: left-drag orbits, right- or middle-drag pans, the wheel zooms, Shift+left-drag draws a selection box (ADR-0090's amendment).

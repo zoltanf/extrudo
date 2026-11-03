@@ -6,6 +6,7 @@ import {
   type ConstraintId,
   type DimensionId,
   evaluateParameters,
+  measureDimension,
   originAxisRef,
   type ParameterId,
   type ProjectionId,
@@ -66,7 +67,9 @@ describe('Dimension tool', () => {
     t.host.move(at(10, 0.3));
     expect(t.host.state.getState().tool?.preview().hover).toBe('a');
     t.host.click(at(10, 0.3));
-    expect(prompt(t)).toBe('Click to place the length, or pick a second line or a point.');
+    expect(prompt(t)).toBe(
+      'Click to place the length, or pick a second line, a point or a circle.',
+    );
     t.host.move(at(10, 6));
     expect(t.host.state.getState().tool?.preview().dimension).toMatchObject({
       type: 'distance',
@@ -119,7 +122,9 @@ describe('Dimension tool', () => {
       arc: { type: 'arc', center: e('ac'), start: e('as'), end: e('ae'), construction: false },
     });
     t.host.click(at(5, 0));
-    expect(prompt(t)).toBe('Click to place the dimension.');
+    expect(prompt(t)).toBe(
+      'Click to place the diameter, or pick a line, a point, a circle or an arc for the distance.',
+    );
     t.host.click(at(10, 10));
     t.host.click(at(40 + 8 * Math.SQRT1_2, 8 * Math.SQRT1_2));
     t.host.click(at(55, 15));
@@ -128,6 +133,181 @@ describe('Dimension tool', () => {
       ['radius', '8', 'd2'],
     ]);
     expect(t.report().ok).toBe(true);
+  });
+
+  describe("distances from a circle's or an arc's edge (ADR-0112)", () => {
+    const circle = (center: string, radius: number): SketchEntity => ({
+      type: 'circle',
+      center: e(center),
+      radius,
+      construction: false,
+    });
+    const distances = (t: Setup) =>
+      dims(t).map((d) =>
+        d.type === 'distance'
+          ? [d.orientation, d.a, d.b, d.expr, d.sideA ?? '', d.sideB ?? '']
+          : [d.type, d.expr],
+      );
+
+    it('runs from the edge facing a line, or the far one by the half clicked', async () => {
+      const t = await setup({ tool: DIMENSION_TOOL });
+      // A Ø20 circle left of a rectangle's left side, x = 35.
+      draw(t, {
+        c: pt(0, 0),
+        hole: circle('c', 10),
+        w0: pt(35, -50),
+        w1: pt(35, 50),
+        wall: line('w0', 'w1'),
+      });
+      t.host.click(at(10, 0));
+      t.host.move(at(35, 20));
+      expect(t.host.state.getState().tool?.preview()).toMatchObject({
+        hover: 'wall',
+        dimension: { type: 'distance', a: 'hole', b: 'wall', expr: '25' },
+      });
+      t.host.click(at(35, 20));
+      expect(prompt(t)).toBe('Click to place the dimension.');
+      t.host.click(at(20, 15));
+      // The left half: the far edge.
+      t.host.click(at(-10, 0));
+      t.host.click(at(35, 20));
+      t.host.click(at(10, 15));
+      expect(distances(t)).toEqual([
+        ['aligned', 'hole', 'wall', '25', '', ''],
+        ['aligned', 'hole', 'wall', '45', 'far', ''],
+      ]);
+    });
+
+    it('takes a datum axis as the second pick after a circle, in either order', async () => {
+      const t = await setup({ tool: DIMENSION_TOOL });
+      draw(t, {
+        c: pt(20, 20),
+        hole: circle('c', 10),
+        c2: pt(20, -60),
+        hole2: circle('c2', 10),
+      });
+      // The Y axis, already projected.
+      t.store.getState().dispatch(
+        addProjection({
+          feature: t.id,
+          id: 'py' as ProjectionId,
+          ref: originAxisRef('origin:y'),
+        }),
+      );
+      t.host.syncProjections({
+        [t.id]: {
+          frame: { origin: [0, 0, 0], normal: [0, 0, 1], x: [1, 0, 0], y: [0, 1, 0] },
+          projections: {
+            ['py' as ProjectionId]: {
+              curves: { axis: { type: 'line', a: [0, -50], b: [0, 50] } },
+            } as never,
+          },
+        },
+      });
+      const axis = t.data().projections?.['py' as ProjectionId]?.curves.axis;
+      // The circle's far half, then the axis, then the label: a distance.
+      t.host.click(at(30, 20));
+      t.host.click(at(0.1, 40)); // on the Y axis
+      t.host.click(at(10, -5));
+      expect(dims(t)[0]).toMatchObject({ type: 'distance', a: 'hole', b: axis, sideA: 'far' });
+      // The axis first, then another circle's far half: the same kind of distance.
+      t.host.click(at(0.1, 80));
+      t.host.click(at(30, -60));
+      t.host.click(at(15, -40));
+      expect(dims(t)[1]).toMatchObject({ type: 'distance', a: axis, b: 'hole2', sideB: 'far' });
+      // A click away from the axis still places the diameter.
+      t.host.click(at(30, 20));
+      t.host.click(at(40, 45));
+      expect(dims(t)[2]).toMatchObject({ type: 'diameter', curve: 'hole' });
+    });
+
+    it('takes a line first, and a circle second; a circle alone is a diameter', async () => {
+      const t = await setup({ tool: DIMENSION_TOOL });
+      draw(t, {
+        c: pt(0, 0),
+        hole: circle('c', 10),
+        w0: pt(35, -50),
+        w1: pt(35, 50),
+        wall: line('w0', 'w1'),
+      });
+      t.host.click(at(35, 20));
+      t.host.click(at(-10, 0));
+      t.host.click(at(10, 15));
+      expect(distances(t)).toEqual([['aligned', 'wall', 'hole', '45', '', 'far']]);
+      // A circle alone still gets its diameter: a click on empty space places it.
+      t.host.click(at(0, -10));
+      t.host.click(at(-20, -20));
+      expect(dims(t)[1]).toMatchObject({ type: 'diameter', curve: 'hole', expr: '20' });
+    });
+
+    it('is horizontal, vertical or aligned to a point by where the label goes', async () => {
+      const t = await setup({ tool: DIMENSION_TOOL });
+      draw(t, { c: pt(0, 0), hole: circle('c', 10), p: pt(30, 40) });
+      const place = (label: [number, number]) => {
+        t.host.click(at(6, 8));
+        t.host.click(at(30, 40));
+        t.host.click(at(...label));
+      };
+      place([18, 50]);
+      place([40, 20]);
+      place([18, 24]);
+      expect(distances(t)).toEqual([
+        ['horizontal', 'hole', 'p', '20', '', ''],
+        ['vertical', 'hole', 'p', '30', '', ''],
+        ['aligned', 'hole', 'p', '40', '', ''],
+      ]);
+      // A point first, then the circle's far half.
+      const u = await setup({ tool: DIMENSION_TOOL });
+      draw(u, { c: pt(0, 0), hole: circle('c', 10), p: pt(30, 40) });
+      u.host.click(at(30, 40));
+      u.host.click(at(-6, -8));
+      u.host.click(at(10, 26));
+      expect(distances(u)).toEqual([['aligned', 'p', 'hole', '60', '', 'far']]);
+    });
+
+    it('measures the gap between two circles, or to the far edge', async () => {
+      const t = await setup({ tool: DIMENSION_TOOL });
+      draw(t, { c: pt(0, 0), big: circle('c', 10), k: pt(40, 30), small: circle('k', 5) });
+      t.host.click(at(8, 6));
+      t.host.click(at(36, 27));
+      t.host.click(at(22, 16));
+      t.host.click(at(8, 6));
+      t.host.click(at(44, 33));
+      t.host.click(at(22, 16));
+      expect(distances(t)).toEqual([
+        ['aligned', 'big', 'small', '35', '', ''],
+        ['aligned', 'big', 'small', '45', '', 'far'],
+      ]);
+      expect(t.report().ok).toBe(true);
+    });
+
+    it('solves a new value to what measureDimension reads', async () => {
+      const t = await setup({ tool: DIMENSION_TOOL });
+      draw(
+        t,
+        {
+          c: pt(0, 0),
+          hole: circle('c', 10),
+          w0: pt(35, -50),
+          w1: pt(35, 50),
+          wall: line('w0', 'w1'),
+        },
+        { fix: { type: 'fix', entity: e('wall') } },
+        { size: { type: 'diameter', curve: e('hole'), expr: '20', driven: false } },
+      );
+      t.host.click(at(-10, 0));
+      t.host.click(at(35, 20));
+      t.host.click(at(10, 15));
+      const id = Object.keys(t.data().dimensions).find((k) => k !== 'size') as DimensionId;
+      t.host.apply(
+        updateSketchDimension({ feature: t.id, id: id as DimensionId, changes: { expr: '50' } }),
+      );
+      const d = t.data().dimensions[id as DimensionId] as SketchDimension;
+      expect(measureDimension(t.data(), d)).toBeCloseTo(50, 9);
+      // The far (left) edge is 50 from the wall: the center 40 from it.
+      expect(t.point(e('c'))[0]).toBeCloseTo(35 - 40, 9);
+      expect(t.report().ok).toBe(true);
+    });
   });
 
   it('dimensions two points, a point and a line, two parallel lines, and an angle', async () => {
@@ -147,7 +327,7 @@ describe('Dimension tool', () => {
     });
     // Two points (aligned, placed above them).
     t.host.click(at(40, 30));
-    expect(prompt(t)).toBe('Pick a second point, or a line.');
+    expect(prompt(t)).toBe('Pick a second point, a line or a circle.');
     t.host.click(at(50, 30));
     t.host.click(at(45, 36));
     // A point and a line.

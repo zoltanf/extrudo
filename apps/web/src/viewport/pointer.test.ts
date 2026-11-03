@@ -96,3 +96,117 @@ describe('pointer input: one report per frame (ADR-0102 §2)', () => {
     expect(log).toEqual([]);
   });
 });
+
+/** A press that moves: what the drag becomes, by preset and by who listens (ADR-0090's amendment). */
+function setupDrag(options: {
+  preset?: string;
+  box?: boolean;
+  takes?: boolean;
+  dragEnd?: boolean;
+}) {
+  const el = Object.assign(new EventTarget(), {
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 400, height: 300 }),
+    setPointerCapture: () => {},
+  }) as unknown as HTMLElement;
+  const win = new EventTarget();
+  const log: string[] = [];
+  let view = { orientation: [0, 0, 0, 1] as [number, number, number, number] };
+  const viewport = {
+    getState: () => ({
+      preset: options.preset ?? 'slicer',
+      tool: undefined,
+      view,
+      setView: (v: typeof view) => {
+        view = v;
+        log.push('view');
+      },
+    }),
+    subscribe: () => () => {},
+  } as unknown as ViewportStore;
+  const handlers: PointerHandlers = {
+    onMove: () => {},
+    onClick: (p: ScreenPointer) => log.push(`click ${p.x},${p.y}`),
+    onLeave: () => {},
+    onDragStart: () => {
+      log.push('dragStart');
+      return options.takes ?? false;
+    },
+    ...(options.dragEnd !== false && { onDragEnd: () => log.push('dragEnd') }),
+    ...(options.box && { onBox: () => log.push('box') }),
+  };
+  attachPointerInput(
+    el,
+    viewport,
+    handlers,
+    (box) => log.push(box ? 'drawing' : 'undrawn'),
+    win,
+    (action) => log.push(`nav ${action}`),
+  );
+  const pointer = (type: string, x: number, y: number, extra: Record<string, unknown> = {}) =>
+    el.dispatchEvent(
+      Object.assign(new Event(type), {
+        clientX: x,
+        clientY: y,
+        pointerId: 1,
+        button: 0,
+        buttons: 1,
+        ...extra,
+      }),
+    );
+  const drag = (extra: Record<string, unknown> = {}) => {
+    pointer('pointerdown', 20, 30, extra);
+    pointer('pointermove', 40, 50, extra);
+    pointer('pointermove', 60, 50, extra);
+    pointer('pointerup', 60, 50, { ...extra, buttons: 0 });
+  };
+  return { log, pointer, drag, view: () => view };
+}
+
+describe('a free left-drag in the Slicer preset', () => {
+  it('orbits where a selection box would be drawn, and says so for the cursor', () => {
+    const { log, drag, view } = setupDrag({ box: true });
+    drag();
+    expect(log).toEqual(['dragStart', 'nav orbit', 'view', 'view', 'nav undefined']);
+    expect(view().orientation).not.toEqual([0, 0, 0, 1]);
+  });
+
+  it('orbits where nobody listens to the drag (plane picking)', () => {
+    const { log, drag } = setupDrag({ dragEnd: false });
+    drag();
+    expect(log).toEqual(['dragStart', 'nav orbit', 'view', 'view', 'nav undefined']);
+  });
+
+  it('keeps the box with Shift, Ctrl or ⌘ (add to the selection)', () => {
+    for (const mod of ['shiftKey', 'ctrlKey', 'metaKey']) {
+      const { log, drag } = setupDrag({ box: true });
+      drag({ [mod]: true });
+      expect(log).toEqual(['dragStart', 'drawing', 'drawing', 'undrawn', 'box']);
+    }
+  });
+
+  it("leaves a drag that a tool takes, and a drawing tool's untaken drag, to the tool", () => {
+    const taken = setupDrag({ box: true, takes: true });
+    taken.drag();
+    expect(taken.log).toEqual(['dragStart', 'dragEnd']);
+    const drawing = setupDrag({ takes: false });
+    drawing.drag();
+    expect(drawing.log).toEqual(['dragStart', 'dragEnd']);
+  });
+
+  it('still clicks, and orbits by the whole drag when its moves were coalesced away', () => {
+    const { log, pointer, view } = setupDrag({ box: true });
+    pointer('pointerdown', 20, 30);
+    pointer('pointerup', 21, 30, { buttons: 0 });
+    expect(log).toEqual(['click 21,30']);
+    pointer('pointerdown', 20, 30);
+    pointer('pointerup', 80, 90, { buttons: 0 });
+    expect(log.slice(1)).toEqual(['dragStart', 'nav orbit', 'view', 'nav undefined']);
+    expect(view().orientation).not.toEqual([0, 0, 0, 1]);
+  });
+
+  it('draws the box in every other preset', () => {
+    const { log, drag } = setupDrag({ preset: 'spindle', box: true });
+    drag();
+    expect(log).toEqual(['dragStart', 'drawing', 'drawing', 'undrawn', 'box']);
+  });
+});

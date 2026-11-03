@@ -35,7 +35,13 @@ export const SECTIONS: readonly SectionInfo[] = [
     id: 'view',
     label: 'View and navigation',
     summary: 'How the mouse moves the camera, and how the model is drawn.',
-    keys: ['viewport.preset', 'viewport.projection', 'viewport.visualStyle', 'viewport.grid'],
+    keys: [
+      'viewport.preset',
+      'viewport.spaceMouseSpeed',
+      'viewport.projection',
+      'viewport.visualStyle',
+      'viewport.grid',
+    ],
   },
   {
     id: 'keyboard',
@@ -116,6 +122,11 @@ export const NOT_IN_SETTINGS: readonly { key: string; reason: string }[] = [
   { key: 'toolbox.pins', reason: 'Edited in place: the pin on a command in Search.' },
   { key: 'panel.*', reason: 'Layout state: panel sizes and collapsed state, set by dragging.' },
   { key: 'onboarding.tour', reason: 'Progress, not a choice: the tutorial restarts from Help.' },
+  {
+    key: 'cadmpeg.path',
+    reason:
+      'An override for another cadmpeg build, set in preferences.json by hand (ADR-0115 §2): the bundled one needs no setting.',
+  },
   {
     key: 'render.softwareNotice',
     reason: 'A dismissal: the notice about software rendering was seen.',

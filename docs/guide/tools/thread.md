@@ -7,7 +7,7 @@ order: 45
 
 # Thread
 
-A real, printable screw thread on a shaft or in a hole: ISO metric or inch, with a print clearance.
+A real, printable screw thread on a shaft or in a hole: ISO metric, inch or the 45° printing profile, with a print clearance.
 
 | Where | Shortcut |
 |---|---|

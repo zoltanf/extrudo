@@ -20,6 +20,7 @@ import {
   faceSketchFrame,
   fingerprintFrame,
   type GeomRef,
+  lengthExpr,
   PLACEMENT_KINDS,
   PLACEMENT_NUMBERS,
   PRIMITIVE_FEATURES,
@@ -384,31 +385,27 @@ export function primitivePlaceAt(
   type: PrimitiveType,
   world: Vec3,
   values: DialogValues,
-  ctx: Pick<ManipulatorContext, 'bodies' | 'construction' | 'value'>,
+  ctx: Pick<ManipulatorContext, 'doc' | 'bodies' | 'construction' | 'value'>,
 ): Partial<DialogValues> | undefined {
   const frame = placementFrame(values.refs.plane?.[0], ctx);
   if (!frame) return undefined;
+  const unit = ctx.doc.settings.units;
   if (type === 'box' && corners().dialog !== undefined) {
     const f = markCorner(world, frame);
     if (!f) return undefined;
     const turned = (ctx.value('rotation') ?? 0) !== 0;
     return {
       exprs: {
-        x: mm2(f.x),
-        y: mm2(f.y),
-        length: mm2(f.length),
-        width: mm2(f.width),
+        x: lengthExpr(f.x, unit),
+        y: lengthExpr(f.y, unit),
+        length: lengthExpr(f.length, unit),
+        width: lengthExpr(f.width, unit),
         ...(turned && { rotation: '0 deg' }),
       },
     };
   }
   const [x, y] = worldToSketch(frame, world);
-  return { exprs: { x: mm(x), y: mm(y) } };
-}
-
-/** A length as an expression of two decimals at most: "12.5 mm". */
-function mm2(value: number): string {
-  return `${value} mm`;
+  return { exprs: { x: lengthExpr(x, unit), y: lengthExpr(y, unit) } };
 }
 
 /**
@@ -421,7 +418,7 @@ function mm2(value: number): string {
 export function proposePrimitive(
   type: PrimitiveType,
   values: DialogValues,
-  ctx: Pick<ProposeContext, 'bodies' | 'construction' | 'value'>,
+  ctx: Pick<ProposeContext, 'doc' | 'bodies' | 'construction' | 'value'>,
 ): Partial<DialogValues> {
   const picked = values.refs.plane ?? [];
   const plane = picked[0] ?? DEFAULT_PLACEMENT;
@@ -430,7 +427,9 @@ export function proposePrimitive(
   > = {};
   if (picked.length === 0) out.refs = { plane: [plane] };
   const centre = plane.kind === 'face' ? faceCentre(plane, ctx) : [0, 0];
-  if (centre) out.exprs = { x: mm(centre[0] ?? 0), y: mm(centre[1] ?? 0) };
+  const unit = ctx.doc.settings.units;
+  if (centre)
+    out.exprs = { x: lengthExpr(centre[0] ?? 0, unit), y: lengthExpr(centre[1] ?? 0, unit) };
   let operation: BodyOperation = 'new-body';
   if (plane.kind === 'face') {
     const height = type === 'box' || type === 'cylinder' ? ctx.value('height') : undefined;
@@ -447,12 +446,6 @@ function faceCentre(
   const frame = placementFrame(ref, ctx);
   const centroid = faceFrame(ctx.bodies, ref)?.origin ?? ref.fingerprint?.at;
   return frame && centroid && worldToSketch(frame, centroid);
-}
-
-/** A length as an expression, to the micrometre: "12.5 mm". */
-function mm(value: number): string {
-  const rounded = Math.round(value * 1000) / 1000;
-  return `${Object.is(rounded, -0) ? 0 : rounded} mm`;
 }
 
 const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];

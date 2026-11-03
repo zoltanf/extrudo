@@ -30,15 +30,27 @@ wrong. The value isn't used until it works.
 This holds in feature dialogs, in a sketch's dimension labels, in the heads-up box while you
 draw and in the Parameters dialog.
 
+Typing a name lists the parameters that contain it, then the functions and `pi` that start with
+it. Pick one with the arrow keys and press Tab or Enter, or click it; a function comes with its
+brackets, ready for the value. Ctrl+Space opens the list on an empty field.
+
 ## Units
 
 The units are `mm`, `cm`, `m`, `in` and `ft` for lengths and `deg` and `rad` for angles. Write
 the unit after the number, with or without a space: `10 mm`, `2.5in`, `45 deg`.
 
+Inches are friendlier as fractions. Write a fraction with no spaces (`3/8 in`, `3/8"`), a mixed
+number with a space or a dash (`1 1/2 in`, `1-1/2"`), or use the inch and foot marks (`6"`, `5'`).
+A feet number right after it, an inches number, is one length: `5' 6"` and `5 ft 6 1/2 in`. A
+fraction needs a length unit after it; without one, `10 / 2` stays a division. To read inch
+lengths as fractions everywhere, open the browser's **Document settings** folder in an inch design
+and turn on **Fractions**; the Precision list then reads `1/4` to `1/64` and sets how fine the
+fraction is.
+
 A **plain number** takes the unit of the field it is in. In a length field `20` means 20 in the
 design's unit (millimetres, unless you changed it), and in an angle field `45` means 45
-degrees. Next to a length, a plain number joins in too: `width + 2` adds 2 mm. This is what makes
-quick typing work.
+degrees. Next to a length, a plain number joins in too: `width + 2` adds 2 in the design's unit.
+This is what makes quick typing work.
 
 The design's unit is set in the browser's **Document settings** folder (or on the New design card
 for a new design). Changing it keeps every length: plain numbers get the old unit written out, so a

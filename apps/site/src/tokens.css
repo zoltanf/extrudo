@@ -31,6 +31,15 @@
   --x-logo-sketch: #5aa9ff;
   --x-logo-sketch-fill: rgb(90 169 255 / 16%);
   --x-shadow: 0 24px 60px -24px rgb(0 0 0 / 70%);
+  /* The sketch colours the docs' figures and widgets draw with (ADR-0116 §2): the
+     app's own values and names, from apps/web/src/design-system/tokens.css, as
+     apps/web/src/viewport/colors.ts maps them (free --x-sketch, fixed --x-ink,
+     conflict --x-error, construction --x-muted, projected --x-cat-construct,
+     profiles --x-profile-fill). --x-grid is the widgets' faint stage grid. */
+  --x-error: #ff6b6b;
+  --x-cat-construct: #a590ff;
+  --x-profile-fill: rgb(90 169 255 / 14%);
+  --x-grid: rgb(255 255 255 / 5%);
 }
 
 @media (prefers-color-scheme: light) {
@@ -55,5 +64,9 @@
     --x-logo-sketch: #2f86f0;
     --x-logo-sketch-fill: rgb(47 134 240 / 12%);
     --x-shadow: 0 24px 60px -28px rgb(17 19 24 / 35%);
+    --x-error: #d93d3d;
+    --x-cat-construct: #7c5cff;
+    --x-profile-fill: rgb(47 134 240 / 12%);
+    --x-grid: rgb(17 19 24 / 5%);
   }
 }

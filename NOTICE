@@ -212,6 +212,11 @@ app redistributes Electron.
     on (hono, @hono/node-server, ajv, zod and the rest, all MIT, ISC or
     BSD) are checked against the allow-list by scripts/check-licenses.mjs
     (its BUNDLED_DEV list), although they are devDependencies.
+  cadmpeg 0.6.7 (Apache-2.0)
+    https://github.com/cadmpeg/cadmpeg
+    Converts other CAD programs' native files to STEP for the desktop app's
+    import (P6-19, ADR-0115). Shipped as a separate executable at
+    resources/cadmpeg/ together with its LICENSE; not linked into Extrudo.
 
 
 5. Not third-party

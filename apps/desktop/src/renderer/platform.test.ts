@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ExtrudoApi, UpdateStatus } from '../shared/ipc';
 import {
   desktopApp,
+  desktopCad,
   desktopFiles,
   desktopFolders,
   desktopPlatform,
@@ -74,6 +75,10 @@ function fakeApi(overrides: Partial<ExtrudoApi> = {}) {
       cancel: () => {},
       onProgress: () => {},
       offProgress: () => {},
+    },
+    cad: {
+      status: async () => ({ found: false, message: 'none' }),
+      convert: async () => ({ ok: false, message: 'none' }),
     },
     agent: {
       onRequest: () => {},
@@ -198,6 +203,7 @@ describe('desktopPlatform (ADR-0075 §3)', () => {
     const platform = await desktopPlatform(fakeApi());
     expect(Object.keys(platform).sort()).toEqual([
       'agent',
+      'convertCad',
       'desktop',
       'externalFiles',
       'files',
@@ -349,6 +355,44 @@ describe('the slicer launch (P6-02)', () => {
     );
     const file = { name: 'a.stl', bytes: new Uint8Array([1]), format: 'stl' as const };
     await expect(slicer.openInSlicer?.(file, 'cura')).rejects.toThrow('malformed');
+  });
+});
+
+describe('other CAD files (P6-19)', () => {
+  it('passes the file to main and returns its answer', async () => {
+    const step = new Uint8Array([1, 2]);
+    const seen: unknown[] = [];
+    const cad = desktopCad(
+      fakeApi({
+        cad: {
+          status: async () => ({ found: true }),
+          convert: async (file) => {
+            seen.push(file);
+            return { ok: true, name: 'a.step', bytes: step };
+          },
+        },
+      }),
+    );
+    const file = { name: 'a.sldprt', bytes: new Uint8Array([9]) };
+    expect(await cad.convertCad?.(file)).toEqual({ ok: true, name: 'a.step', bytes: step });
+    expect(seen).toEqual([file]);
+  });
+
+  it('rebuilds a main-side failure as a rejection', async () => {
+    const cad = desktopCad(
+      fakeApi({
+        cad: {
+          status: async () => ({ found: false }),
+          convert: async () =>
+            ({
+              error: { name: 'Error', message: 'The conversion request is malformed.' },
+            }) as never,
+        },
+      }),
+    );
+    await expect(cad.convertCad?.({ name: 'a.ipt', bytes: new Uint8Array() })).rejects.toThrow(
+      'malformed',
+    );
   });
 });
 

@@ -1,0 +1,56 @@
+name: Mesh to Solid problem
+description: A mesh that Mesh to Solid refuses, converts badly, or takes far too long.
+labels: [bug, mesh-to-solid]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing Mesh to Solid. The mesh itself helps more than anything: attach the `.stl` or `.3mf` below (zip it first if GitHub does not take the extension). **This tracker is public:** only attach a mesh you have the right to share (your own design, or one whose licence allows it); otherwise describe the part instead and say where it came from.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What went wrong (refused, wrong shape, missing holes or rounds, too slow ...) and what you expected. A screenshot of the preview or the result helps.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Result line or message
+      description: The text the Mesh to Solid dialog showed, for example "12 planes, 4 cylinders · 3 unfit regions kept as 318 facets · auto 0.02 mm", or the message when it refused.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: settings
+    attributes:
+      label: Method and tolerance
+      description: Faceted or Prismatic, and the tolerance (Auto, or the Custom value).
+      placeholder: Prismatic, Auto
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Where the mesh came from
+      description: The program that exported it, or the site you downloaded it from, and roughly how many triangles it has (the import's status line says).
+      placeholder: Exported from FreeCAD, 12,000 triangles
+  - type: input
+    id: version
+    attributes:
+      label: Extrudo version
+      description: The release or commit, or "hosted demo" with the date you used it.
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and operating system
+      placeholder: Firefox 150 on Linux, Chrome 153 on Windows 11, the desktop app on macOS 16 ...
+    validations:
+      required: true
+  - type: textarea
+    id: mesh
+    attributes:
+      label: Mesh
+      description: Attach the `.stl` or `.3mf` here (zipped if needed), or link to where it can be downloaded. If you cannot share it, say so.

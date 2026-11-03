@@ -11,6 +11,7 @@
  * page is going away, when an async write would not finish.
  */
 import type { MenuModel } from '@extrudo/web/menu-model';
+import type { CadConvertResult, CadFile, CadmpegStatus } from '@extrudo/web/platform/cad';
 import type {
   BlenderStatus,
   RenderJob,
@@ -72,6 +73,9 @@ export const CHANNELS = {
   renderStart: 'extrudo:render:start',
   renderCancel: 'extrudo:render:cancel',
   renderProgress: 'extrudo:render:progress',
+  // Other CAD files converted to STEP with the bundled cadmpeg (P6-19, ADR-0115 §2).
+  cadStatus: 'extrudo:cad:status',
+  cadConvert: 'extrudo:cad:convert',
   // Auto-update (P6-01 slice 4): main → renderer status, renderer → main asks.
   updateStatus: 'extrudo:update:status',
   updateCheck: 'extrudo:update:check',
@@ -328,6 +332,12 @@ export interface ExtrudoApi {
     /** Registers the one handler for main's `render:progress`. */
     onProgress(handler: (progress: RenderProgress) => void): void;
     offProgress(): void;
+  };
+  readonly cad: {
+    /** Where the converter for other CAD files is, or why there is none (ADR-0115 §2). */
+    status(): Promise<CadmpegStatus>;
+    /** Converts the file to STEP in a temp directory; `{ ok: false }` says why not. */
+    convert(file: CadFile): Promise<CadConvertResult>;
   };
   readonly updates: {
     /** Registers the one handler for main's `update:status`. */

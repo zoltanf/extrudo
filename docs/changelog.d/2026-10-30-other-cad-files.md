@@ -1,0 +1,1 @@
+- 2026-10-30 · **Other CAD files (desktop)**: the desktop app imports .sldprt, .ipt, .iam, .catpart, .fcstd, .sat, .smt, .smb, .sab, .igs, .iges and .pvz files by converting them to STEP with the bundled cadmpeg; the design stores only the STEP (#141).

@@ -1,0 +1,13 @@
+[
+  { "guide": "sketching", "anchor": "look-at" },
+  { "guide": "sketching", "anchor": "construction" },
+  { "guide": "sketching", "anchor": "sketch-grid" },
+  { "guide": "sketching", "anchor": "snap-to-grid" },
+  { "guide": "sketching", "anchor": "show-points" },
+  { "guide": "sketching", "anchor": "show-dimensions" },
+  { "guide": "sketching", "anchor": "show-constraints" },
+  { "guide": "sketching", "anchor": "show-profiles" },
+  { "guide": "sketching", "anchor": "slice" },
+  { "guide": "sketching", "anchor": "auto-project" },
+  { "guide": "sketching", "anchor": "face-outline" }
+]

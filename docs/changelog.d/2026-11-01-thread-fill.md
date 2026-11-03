@@ -1,0 +1,1 @@
+- 2026-11-01 · **A thread brings its face to size**: a hole drawn wider than the thread's minor diameter (Ø5 for M5) is filled in to it along the thread before the cut, and a shaft thinner than the major is built up, so a part designed at the nominal sizes threads fully (ADR-0056's fifth amendment).

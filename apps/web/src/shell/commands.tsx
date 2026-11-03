@@ -45,7 +45,7 @@ import type { ViewportStore } from '../viewport/store';
 import { FACES, type FaceName } from '../viewport/viewcube';
 import type { FileActions } from './AppBar';
 import type { DocsPage } from './docsLinks';
-import { lastHoveredTool } from './Toolbar';
+import { helpTarget } from './helpTarget';
 import {
   FILE_COMMANDS,
   type FileCommandId,
@@ -488,16 +488,17 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
   }
   if (ctx.docs) {
     const open = (page: DocsPage) => ctx.docs?.open(page);
-    // F1 (P6-06 S9): the docs page of the tool whose tile was hovered or
-    // focused last (the app menu's "Help for <tool>" reads the same,
-    // ADR-0090), or the user guide before any tile was.
+    // F1 (P6-06 S9): the remembered help target (P6-22 S2, ADR-0116 §4) —
+    // a hovered toolbar tile's tool page, or a sketch palette row's
+    // sketching section — else the sketching guide while a sketch is open,
+    // and the user guide before any of those.
     plain(
       'help',
       'Help for this tool',
       'Help',
       () => {
-        const tool = lastHoveredTool();
-        open(tool ? { tool } : 'guide');
+        const target = helpTarget();
+        open(target ?? (ctx.mode === 'sketch' ? { guide: 'sketching' } : 'guide'));
       },
       {
         icon: icon(BookOpen),

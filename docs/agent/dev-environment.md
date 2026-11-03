@@ -5,25 +5,25 @@ Moved out of `CLAUDE.md` on 2026-10-12: the two dev machines, the WASM builds (O
 ## Dev machines
 
 
-The project is developed on two machines. Check which one you are on first
-(`grep ^ID= /etc/os-release`, `command -v docker`), because the OCCT and
-planegcs builds, screenshot baselines and some tools only work on one of
-them. Notes further down that name a machine apply to that machine only.
+The project is developed on three machines. Check which one you are on first
+(`grep ^ID= /etc/os-release`: `arch`, `ubuntu` or `archarm`; `command -v
+docker`), because the OCCT and planegcs builds, screenshot baselines and some
+tools only work on some of them. Notes further down that name a machine apply to that machine only.
 
-| | **Arch workstation** (original) | **Ubuntu machine** (since 2026-09-29) |
-|---|---|---|
-| OS | Arch Linux | Ubuntu 26.04, 4 cores |
-| Node, pnpm | Node 26 + pnpm 12 from mise (`~/.config/mise/config.toml`) | Node 24 + pnpm 12 from nvm (no mise) |
-| Docker | Yes (`docker` group; socket-activated daemon) | Yes since 2026-09-29 (`docker.io` from Ubuntu; `docker` group). Until the next login, run it through `sg docker -c '…'` (`sg`/`newgrp` come from `util-linux-extra`). No emscripten outside the image, no sudo for agents |
-| OCCT / planegcs WASM | `pnpm occt build` / `pnpm planegcs build` locally, or CI | Prefer CI (`gh workflow run ci.yml --ref <branch>`, below): a local build competes for the 4 cores. Local builds are possible but not tried yet |
-| Facade checks | `em++ -fsyntax-only` and the native harness in the image | Same, through `sg docker -c`: the pinned image `ghcr.io/taucad/opencascade.js:3.1.0-single-threaded` (the toolchain's version) is pulled; the syntax check takes about 8 s |
-| Playwright browser | Playwright's own Chromium (`pnpm e2e:install`) | System Chrome: `PLAYWRIGHT_CHROMIUM_PATH=/usr/bin/google-chrome-stable` |
-| Screenshot baselines | Regenerate, then check in the Playwright Ubuntu docker image | Some shots fail locally (Chrome renders differently; they pass in CI): `shell.spec.ts:35` dark/light, `sketch.spec.ts:140`, the home screen in `storage.spec.ts` dark/light, and `print-aids.spec.ts`'s overhang shading (about 1 % of pixels). New baselines: take them from CI's `playwright-report-1`/`-2` artifacts (one per e2e shard; `gh run download <id>`) |
-| E2E load | Full parallel run fine | Only one full e2e at a time, `--workers=2`; under load timeouts give false failures. Prefer single specs locally and the full suite through CI on the branch. With its NVIDIA GPU, `E2E_GPU=1` makes viewport-heavy specs 17-39 % faster (screenshot specs excluded: they need SwiftShader) |
-| Inkscape, rsvg-convert | Installed | Not installed |
-| Slicers, FreeCAD | `prusa-slicer`, `orca-slicer`, `freecadcmd` | Not installed |
-| `brotli` CLI | – | Not installed (`scripts/measure-startup.mjs` uses Node's zlib) |
-| Electron desktop (P6-01) | `pnpm --filter @extrudo/desktop dev` runs | Headless: no display and **no `xvfb-run`** (checked 2026-10-07), and `electron`'s binary is not downloaded (`pnpm-workspace.yaml`'s `allowBuilds` keeps `electron: false`), so `apps/desktop/scripts/smoke.mjs` can't run here. Packaging and the packaged-app smoke run in CI only (`desktop.yml`, slice 3); `electron-builder --linux --dir` does build here (it downloads its own Electron). The desktop unit tests run in Node without Electron |
+| | **Arch workstation** (original) | **Ubuntu machine** (since 2026-09-29) | **Arch ARM VM** (since 2026-10-16) |
+|---|---|---|---|
+| OS | Arch Linux | Ubuntu 26.04, 4 cores | Arch Linux ARM (aarch64) in a QEMU VM, 12 cores, 16 GB RAM (plus zram swap of the same size), 52 GB disk |
+| Node, pnpm | Node 26 + pnpm 12 from mise (`~/.config/mise/config.toml`) | Node 24 + pnpm 12 from nvm (no mise) | Node 26 + pnpm 12 from mise |
+| Docker | Yes (`docker` group; socket-activated daemon) | Yes since 2026-09-29 (`docker.io` from Ubuntu; `docker` group). Until the next login, run it through `sg docker -c '…'` (`sg`/`newgrp` come from `util-linux-extra`). No emscripten outside the image, no sudo for agents | Yes since 2026-10-16 (`docker` from pacman; `docker` group; socket-activated). No `sg` on Arch: until the next login, `newgrp docker <<'EOF' … EOF` |
+| OCCT / planegcs WASM | `pnpm occt build` / `pnpm planegcs build` locally, or CI | Prefer CI (`gh workflow run ci.yml --ref <branch>`, below): a local build competes for the 4 cores. Local builds are possible but not tried yet | OCCT image runs natively (it has a linux/arm64 variant) but is **12.7 GB unpacked** (measured on 3.0.2; only that one is pulled, the build uses 3.1.0 since 2026-10-16); leave room on the disk or remove it after facade work and use CI. Full local builds not tried yet; the planegcs image not tried |
+| Facade checks | `em++ -fsyntax-only` and the native harness in the image | Same, through `sg docker -c`: the pinned image `ghcr.io/taucad/opencascade.js:3.1.0-single-threaded` (the toolchain's version) is pulled; the syntax check takes about 8 s | `em++ -fsyntax-only` in the image: about 2 s (3.0.2 image) |
+| Playwright browser | Playwright's own Chromium (`pnpm e2e:install`) | System Chrome: `PLAYWRIGHT_CHROMIUM_PATH=/usr/bin/google-chrome-stable` | Playwright's own Chromium: `pnpm e2e:install` downloads the ubuntu24.04-arm64 fallback ("OS not officially supported") and it works |
+| Screenshot baselines | Regenerate, then check in the Playwright Ubuntu docker image | Some shots fail locally (Chrome renders differently; they pass in CI): `shell.spec.ts:35` dark/light, `sketch.spec.ts:140`, the home screen in `storage.spec.ts` dark/light, and `print-aids.spec.ts`'s overhang shading (about 1 % of pixels). New baselines: take them from CI's `playwright-report-1`/`-2` artifacts (one per e2e shard; `gh run download <id>`) | All baselines pass here (2026-10-17: the six screenshot specs, 49 tests in 36 s), the ones that fail on the Ubuntu machine included. Not regenerated here yet |
+| E2E load | Full parallel run fine | Only one full e2e at a time, `--workers=2`; under load timeouts give false failures. Prefer single specs locally and the full suite through CI on the branch. With its NVIDIA GPU, `E2E_GPU=1` makes viewport-heavy specs 17-39 % faster (screenshot specs excluded: they need SwiftShader) | Full suite with the default 6 workers: 8-10 min at a load average of 25-28 on the 12 vCPUs, and specs time out under that load: 1 timeout in one run, 19 in another (2026-10-17), each passing when re-run alone or with `--last-failed` (the 19 in 29 s). Re-run failures that way before believing them; fewer workers not measured yet. `chamfer.spec.ts:561` failed here every time until PR #54 (a handle lifted off its shaft). Memory: `pnpm check` peaks at about 10 GB used, the full e2e at about 11 GB; with 16 GB nothing swapped, with 12 GB 2.4 GB went to zram. GPU: the VM has virgl (virtio-gpu forwarding OpenGL to the host); `E2E_GPU=1` not tried yet |
+| Inkscape, rsvg-convert | Installed | Not installed | rsvg-convert only |
+| Slicers, FreeCAD | `prusa-slicer`, `orca-slicer`, `freecadcmd` | Not installed | Not installed (aarch64 builds not checked) |
+| `brotli` CLI | – | Not installed (`scripts/measure-startup.mjs` uses Node's zlib) | Installed |
+| Electron desktop (P6-01) | `pnpm --filter @extrudo/desktop dev` runs | Headless: no display and **no `xvfb-run`** (checked 2026-10-07), and `electron`'s binary is not downloaded (`pnpm-workspace.yaml`'s `allowBuilds` keeps `electron: false`), so `apps/desktop/scripts/smoke.mjs` can't run here. Packaging and the packaged-app smoke run in CI only (`desktop.yml`, slice 3); `electron-builder --linux --dir` does build here (it downloads its own Electron). The desktop unit tests run in Node without Electron | Has a display. The binary is fetched once with `node apps/desktop/node_modules/electron/install.js` (aarch64, runs); `pnpm --filter @extrudo/desktop dev` not tried yet. No `xvfb-run` |
 ## Notes
 
 - **Git identity:** check `git config user.email` before committing. The

@@ -205,7 +205,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   (`exact`, the second checkbox is "Auto-project face outline") off leaves the
   corner a plain grid snap with no projection; checking "Auto-project face
   outline" first makes the next sketch on the face start with
-  `<id>:curves=4`. **Slice 2** adds three tests: with a Line drawn with Ctrl
+  `<id>:curves=4`. **Face centre (issue #140)**: a Box with `X: '10 mm'` (so the top face's
+  centre, sketch (10,0), is away from the sketch origin and its projection
+  reads distinctly);
+  the Circle tool (`c`) clicked at (10.4,0.3) snaps its centre to the face's
+  centre, the rim at (17,6); `constraints=1` (the coincident) and
+  `data-sketch-projected` reads `<id>:curves=0:x=10..10:y=0..0`. **Slice 2** adds three tests: with a Line drawn with Ctrl
   held (no inference; endpoints at (5,0)-(5,10)), the **Coincident** tool
   (group "Constraints") picks the line's end and the Box's (20,20) vertex, the
   **Parallel** tool picks the line and the top face's far edge at (0,20), and
@@ -246,7 +251,9 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   A `d` dimension on two parallel lines is their distance; on two lines
   that meet it is the angle (the label's sector picks it). The Constraints
   group ("Parallel") lives in the toolbar, not the palette. `data-bodies`
-  rounds sizes to 0.1 mm. `exportProject(page, 'b2-storage-box.extrudo')`
+  rounds sizes to 0.1 mm, and can lag a frame behind `kernelReady`, so
+  `expectBody` retries its checks (`toPass`, 5 s) rather than reading once (a
+  single read saw the bottle cap's pre-shell 3 faces on a slow runner). `exportProject(page, 'b2-storage-box.extrudo')`
   writes `fixtures/benchmarks/` only with `WRITE_FIXTURES=1`. Each spec
   takes about 20 s alone (B3 about 30 s); on the Ubuntu machine run with
   `PLAYWRIGHT_CHROMIUM_PATH=/usr/bin/google-chrome-stable` (no Playwright
@@ -911,7 +918,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   the web strip's only button is GitHub. The Learn column on a fresh page is User
   Guide, Tutorial, Online Tutorials, Examples, Tool Reference; after hovering the
   Extrude tile it starts with "Help for Extrude" + F1 (its text `Help for ExtrudeF1`),
-  which opens `…/docs/tools/extrude/`. The
+  which opens `…/docs/tools/extrude/`. P6-22 S2 (ADR-0116 §4): after a tile was
+  hovered, `newSketchOnXY` then F1 lands under `…/docs/sketching/` — opening
+  the sketch cleared the tile (the palette may appear under the stationary
+  pointer, the XY button's place, and its row's enter names its section, so
+  the URL can carry an anchor); hovering the palette's "Snap to grid" checkbox
+  then F1 → exactly `…/docs/sketching/#snap-to-grid`. The
   home bar's Docs and GitHub are links that open in popups; its About is a button
   that opens the dialog (ADR-0085).
 
@@ -1314,21 +1326,26 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 ### `e2e/kernel-waits.spec.ts`
 
 - **Kernel waits e2e** (`e2e/kernel-waits.spec.ts`, P6-17, ADR-0105): opens
-  `#/example/bottle-cap` (B9, an ~8 s recompute) and changes the `capDia`
+  `#/example/bottle-cap` (B9, an ~8 s recompute). It selects a face **before**
+  the edit (a plain click on the model centre, `projector(viewport)(camera-target)`,
+  picks the body, not the construction planes) and moves the pointer off the
+  model, so the view sets no pick cursor. Then it changes the `capDia`
   parameter to `34 mm` (the stored value is `32 mm`; it invalidates the first
-  sketch, so every feature re-evaluates in order and the bar advances — a
-  `wall` edit re-evaluates only the later features, which the bar reaches at
-  once; `expect.poll` only, the window is the recompute's ~8 s). The notice is
-  `[data-model-progress="updating"]` with a `<progress>` whose `value` grows and
-  a detail line matching `/\d+ of \d+/`. A queued kernel call: a plain click on
-  the model centre (`projector(viewport)(camera-target)`) selects a face (a
-  plain click picks the body, not the construction planes — a Section click
-  would pick an origin plane and call no reference), then
-  `pickTool(page, 'Section Analysis')` calls `Recomputer.reference` (non-quiet)
-  with that face at once; the recompute notice wins the pill, so assert the
-  wait through `[data-kernel-busy]` on the shell root instead, moving the
-  pointer off the model first so the view sets no pick cursor, then
-  `getComputedStyle(viewport).cursor === 'progress'`. Once
+  sketch, so every feature re-evaluates — a `wall` edit re-evaluates only the
+  later features). The notice is `[data-model-progress="updating"]` with a
+  `<progress>` and a detail line matching `/\d+ of \d+/`. As soon as it shows,
+  `pickTool(page, 'Section Analysis')` calls `Recomputer.reference`
+  (non-quiet) with the selected face, which queues behind the recompute; the
+  notice wins the pill, so the wait shows as `[data-kernel-busy]` on the shell
+  root and `getComputedStyle(viewport).cursor === 'progress'`. **Sample in the
+  page, not with Playwright polls**: a `requestAnimationFrame` loop
+  (`window.__kernelWaits`) records the bar's values, whether
+  `[data-kernel-busy]` showed and the view's cursor meanwhile; on a busy runner
+  the queued call can wait only a moment and polls miss it. **Don't assert the
+  bar changes**: the features before the heavy thread often finish inside the
+  notice's 800 ms delay (`UPDATING_AFTER_MS`), so it can show the last step
+  only (value 6); the spec asserts at least one value and never backwards
+  (per-feature progress is unit-tested in `recomputer.test.ts`). Once
   `[data-model-status]` is `ready`, no `[data-model-progress]` and no
   `[data-kernel-busy]`.
 
@@ -1340,9 +1357,13 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `capDia` → `34 mm` edit from `kernel-waits.spec.ts`; once
   `[data-model-progress="updating"]` shows, its `[data-model-cancel]` button
   (the notice is `pointer-events: none`, the button alone takes the click) is
-  clicked and the Kernel status must be `ready` within 4 s (the earlier
-  state's features are cached; the spec logs the measured time). The toast is
-  `[data-toast]` with "Update cancelled". `capDia` is read back by reopening
+  clicked. The toast (`[data-toast]` with "Update cancelled") comes with the
+  click and is gone again after a few seconds, so check it **before** waiting
+  for ready. The Kernel status must then be `ready` within 20 s: Cancel waits
+  for the feature in flight (the heavy thread) and then replays from the cache
+  (ADR-0111), 1-3.5 s on GitHub's runners, about 4.5 s on the Arch ARM VM and
+  5.5-7.5 s under load; the spec logs the measured time instead of asserting
+  it (a 4 s budget failed on main repeatedly). `capDia` is read back by reopening
   Parameters (`parameterExpression(…).toHaveValue`) and closing it with
   Escape before `Control+y` (Redo), so the key doesn't land in the field.
 
@@ -2095,6 +2116,48 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   option inserts and keeps the focus; `2 * d1` gives the label "Diameter d2
   fx: ⌀40.00".
 
+- Circle edge distance (ADR-0112): a Rectangle (0,0)-(30,40) (its corner is
+  held at the origin, so its left side stays at x = 0) and a Circle (-30,20)
+  through (-20,20). `d`, the circle at (-30,30) and empty space at (-45,38)
+  place its diameter (d1 = 20, so the radius holds), then a click on the
+  circle's right half (-20,20) (prompt
+  "Click to place the diameter, or pick a line, a point, a circle or an arc
+  for the distance."), the left side at (0,30) ("Click to place the
+  dimension."), the label at (-10,32) previews `20.00`; "Value of d2" = 25
+  gives `25.00`, and a click on the center at (-35,20) shows Point X `-35`,
+  Y `20` in the `Selection` region.
+
+### `e2e/document-units.spec.ts`
+
+- P6-18 S1, ADR-0113 §1: the home screen's combobox "Units of a new design"
+  (starts `mm`; picking `in` shows "An empty design in inches.") is remembered
+  across a reload, and the Home tab's button "New Design" (exact; viewport
+  1440 × 900) in that design makes another inch design. The status region
+  "Status" (exact) reads `0 features · in`.
+  In a design the browser (complementary "Browser") button "Document settings"
+  opens the folder (check `aria-expanded` first: a second click closes it); its
+  comboboxes "Units" and "Precision" are two commands, so two Ctrl+Z steps.
+  Wait for `saveStatus` "Saved" before `page.reload()`.
+
+### `e2e/inch-grid.spec.ts`
+
+- P6-18 S2, ADR-0113 §2: viewport 1440 × 900. Set Units to `in` first, then
+  `newSketchOnXY` and a Line at (-20,30)-(30,-10) with "Snap to grid" on (the
+  palette default). Sketches store mm, so the check reads `document.json` from
+  OPFS (`projects/<id>/document.json`) after "Saved": every point is a whole
+  multiple of 25.4/16 mm and **not** a whole mm (true within ±40 mm of the
+  origin). The mm test asserts whole mm instead.
+
+### `e2e/inch-fractions.spec.ts`
+
+- P6-18 S3, ADR-0113 §3: set the unit to `in` and check the browser's
+  `Fractions` checkbox (`data-setting="fractions"`, aria-label "Fractions")
+  before `newSketchOnXY`; the Precision select's options then read fractions
+  (`option[value="2"]` is `1/16`). A sketch line dimensioned `1 1/2"` (typed
+  into "Value of d1") shows `1 1/2 in` on its `[data-dimension]` label (the
+  unit is kept in this mode). A user parameter `5' 6"` shows `66 in` in its
+  Parameters-dialog row.
+
 ### `e2e/sketch-datums.spec.ts`
 
 - ADR-0093 (#61): `sketchOnXY`, a Line (30,-10)-(30,10) (inference makes it
@@ -2461,17 +2524,21 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 - **Thread e2e** (`e2e/thread.spec.ts`, P4-02): Modify › Modify › Thread
   (`pickTool(page, 'Thread')`, ADR-0079); the dialog is the region "Thread
   dialog" / "Edit Thread1 dialog": button "Faces" (`exact`, "1 face"), combobox
-  "Size" (values `auto`, `m8`, `m16x1.5`, `unc-1q4-20`…, `custom`; Diameter and
-  Pitch exist only off `auto`), "Profile" (values `iso` default, `trapezoidal`,
-  `buttress`, `bottle`) and, only for `buttress`, "Load flank" (`start`/`end`),
-  "Extent", "Hand", textboxes "Length", "Offset", "Starts" (`exact`, unitless, "1"; 2 gives the same
+  "Size" (values `auto`, `m8`, `m16x1.5`, `unc-1q4-20`…, `print-10`…, `custom`;
+  Diameter and Pitch exist only off `auto`), "Profile" (values `iso` default,
+  `trapezoidal`, `buttress`, `bottle`, `print45`) and, only for `buttress`,
+  "Load flank" (`start`/`end`), the "Fit" combobox (values `tight`, `normal`
+  default, `loose`, `parameter`, `custom`; choosing one fills Tolerance,
+  typing a tolerance makes Fit follow it), "Extent", "Hand", textboxes
+  "Length", "Offset", "Starts" (`exact`, unitless, "1"; 2 gives the same
   `19.8,19.8,20` with more faces),
   "Tolerance" (`exact`), checkboxes "From the other end", "Lead-in chamfer". A
   thread takes seconds to preview (wait up to 60 s). The default Ø20 cylinder
   threaded to fit is `Body1:<n>:19.8,19.8,20` (M20 less twice the tolerance);
   Size `auto` fits ISO 261 coarse from M2 to M64 (`METRIC_COARSE` in
   `packages/core/src/thread.ts`: a bore takes the thread just above it, a shaft
-  the largest thread inside it), and a thread of more than `MAX_TURNS` (150,
+  the largest thread inside it — a bore drawn at a size's own diameter takes
+  that size), and a thread of more than `MAX_TURNS` (150,
   `packages/kernel/src/features/thread.ts`) turns is refused before anything is
   built — over `MAX_TURNS` it takes minutes of booleans, and above about 400
   turns OCCT's boolean runs out of memory and traps (ADR-0067 §H2).
@@ -2483,7 +2550,19 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   half height and sets Size `npt-1q2` (Pitch reads "1 in / 14"): the dialog's
   `[data-info="designation"]` reads "NPT 1/2" and `data-bodies` keeps z = 20
   with x and y at least 0.1 under the drafted cylinder's (whose display box
-  reads 21.9 or 22 across).
+  reads 21.9 or 22 across). P4-12's print45 test (ADR-0056's fourth
+  amendment) picks the printing profile on the default Ø20 cylinder with Size
+  `auto`: the designation reads "Print 20 × 4.5" and `data-bodies` reads
+  `19.8,19.8,20`; then Fit `loose` sets Tolerance "0.2 mm" and the body reads
+  `19.6,19.6,20`. The fill test (ADR-0056's fifth amendment) drills a through
+  Ø5 Hole at the default cylinder's top centre (`Body1:4:20,20,20`), picks its
+  wall at (−r, r, 18.5) with r = 2.5/√2 (just under the rim, so the near rim keeps clear of it) and sets Size `m5`: `data-preview-status`
+  is `warning` (the Feature status reads the "filled in to it along the
+  thread" note: Ø5 is off M5's minor by more than the depth), the designation
+  contains "M5" and `data-bodies` stays `20,20,20` with over 20 faces. B9 and
+  the bottle-cap tutorial: the cap's Ø28 bore is filled silently (`ok`, chip
+  "Thread1", `expectNoProblems`); after `capDia: 40 mm` its Ø36 bore takes M36
+  and notes the fill, so those steps keep `expectOneWarning`.
 
 ### `e2e/timeline-groups.spec.ts`
 
@@ -2576,8 +2655,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   panel; a pointer moving from one rail control to another may keep the first tooltip
   open (Radix's grace area), so a test presses Escape before hovering the next one. A
   click on a tooltip trigger keeps its tooltip shut until the pointer leaves, so hover
-  before clicking. Slicer is `aria-disabled` (Playwright's `toBeDisabled` sees it; a click
-  needs `force: true`).
+  before clicking.
   Home's `navigation` "Extrudo" has the links Docs and GitHub and an About button
   (opens the dialog, ADR-0085);
   `help-links.spec.ts` routes `https://github.com/**` like the docs host.
@@ -2651,13 +2729,16 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   Right view`, direction `-0.577,0.577,-0.577`).
 
 - Mouse presets live in the Menu rail's `radiogroup` "Mouse controls"
-  (radios Crank, Spindle, Glide, Blender, Slicer (disabled), Trackpad; Spindle
+  (radios Crank, Spindle, Glide, Blender, Slicer, Trackpad; Spindle
   default; each tooltip "Mouse controls: <name>" with the bindings as hint) and
   in the Settings dialog's combobox "Mouse buttons" (R3-03). `choosePreset`
   uses `pickPreset`, then Escape.
 
 - Spindle: middle-drag orbits, right-drag pans, left-drag neither; Shift swaps
-  them (R3-04). Glide: middle-drag pans, Shift+middle orbits, wheel zooms, F6
+  them (R3-04). Slicer (ADR-0090's amendment of 2026-10-31): a left-drag in the
+  empty view orbits (`data-cursor="orbit"` on `div.touch-none` while it runs),
+  right- or middle-drag pans, Shift+left-drag draws `[data-selection-box]` and
+  leaves the camera. Glide: middle-drag pans, Shift+middle orbits, wheel zooms, F6
   refits; Blender orbits with the middle button and is remembered across a
   reload. `data-cursor` / the cursor CSS on `div.touch-none` show the active
   nav tool (Orbit/Zoom/Pan), `pickTool` or a key ends it, and a menu-only tool

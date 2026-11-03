@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 170">
+  <title>A sketch open on a box face with Face outline off, nothing projected</title>
+  <polygon points="40,116 130,144 225,102 135,78" class="sk-face"/>
+  <polygon points="40,116 40,128 130,156 130,144" class="sk-body-side"/>
+  <polygon points="130,144 130,156 225,114 225,102" class="sk-body-side"/>
+  <line x1="95" y1="108" x2="170" y2="98" class="sk-free" stroke-width="2.4" stroke-linecap="round"/>
+  <rect x="12" y="12" width="150" height="26" class="sk-ui" rx="6"/>
+  <text x="22" y="29" class="sk-ui-text" font-size="11">Face outline</text>
+  <rect x="120" y="18" width="30" height="14" class="sk-ui" rx="7"/>
+  <circle cx="127" cy="25" r="5" class="sk-point"/>
+</svg>

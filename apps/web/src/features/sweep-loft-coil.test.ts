@@ -1,6 +1,7 @@
 import {
   CoilInputsSchema,
   coilSettings,
+  createDocument,
   LoftInputsSchema,
   loftSettings,
   originPlaneRef,
@@ -173,7 +174,10 @@ describe('the coil dialog', () => {
   });
 
   it('proposes the centre of a picked face and a join', () => {
-    const ctx = { bodies: { [BOX]: namedBoxMesh() } } as unknown as ManipulatorContext;
+    const ctx = {
+      doc: createDocument(),
+      bodies: { [BOX]: namedBoxMesh() },
+    } as unknown as ManipulatorContext;
     const values = mergeValues(defaultValues(coilDialog), { refs: { plane: [face(1)] } });
     const proposed = proposeCoil(values, ctx);
     expect(proposed.choices).toEqual({ operation: 'join' });

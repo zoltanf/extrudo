@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 110">
+  <title>Tangent: a line and a circle apart, then the line touching the circle</title>
+  <circle cx="52" cy="72" r="20" class="sk-free" fill="none" stroke-width="2.4"/>
+  <path d="M18 34H104" class="sk-free" fill="none" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M110 55h14m-6 -5 6 5-6 5" class="sk-muted" fill="none" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="182" cy="70" r="22" class="sk-free" fill="none" stroke-width="2.4"/>
+  <path d="M138 48H226" class="sk-free" fill="none" stroke-width="2.4" stroke-linecap="round"/>
+  <rect x="210" y="16" width="16" height="16" class="sk-glyph" rx="3"/>
+  <g transform="translate(210 16) scale(0.6667)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <circle class="sk-glyph-text" fill="none" cx="12" cy="14.5" r="6.5"/><path class="sk-glyph-text" fill="none" d="M3 8H21"/>
+  </g>
+</svg>

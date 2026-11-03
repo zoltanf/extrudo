@@ -16,12 +16,14 @@ import {
 } from './planes';
 import {
   addProjection,
+  faceOutline,
   includedCurves,
   includeLabel,
   includeProjection,
   projectedEntities,
   projectionOf,
   projectionSync,
+  removeProjection,
   type SketchReport,
   syncProjections,
 } from './projection';
@@ -404,6 +406,44 @@ describe('projections', () => {
     expect(data(d).entities[point]).toEqual({ type: 'point', x: 5, y: 4 });
   });
 
+  it("take a face's centre as one point, apart from the face's outline (issue #140)", () => {
+    let d = doc();
+    d = applyCommand(d, addProjection({ feature: F, id: P, ref: faceRef, mode: 'center' })).doc;
+    expect(data(d).projections?.[P]).toEqual({ ref: faceRef, curves: {}, mode: 'center' });
+    // The face's outline is a projection of its own; a second centre isn't, nor an edge's.
+    d = applyCommand(d, addProjection({ feature: F, id: 'pr2' as ProjectionId, ref: faceRef })).doc;
+    expect(() =>
+      applyCommand(
+        d,
+        addProjection({ feature: F, id: 'pr3' as ProjectionId, ref: faceRef, mode: 'center' }),
+      ),
+    ).toThrow(/already projected/);
+    expect(() =>
+      applyCommand(
+        d,
+        addProjection({ feature: F, id: 'pr3' as ProjectionId, ref: edgeRef, mode: 'center' }),
+      ),
+    ).toThrow(/face's centre/);
+
+    d = sync(d, report({ [P]: { curves: { faceCenter: { type: 'point', at: [10, 5] } } } }));
+    const point = data(d).projections?.[P]?.curves.faceCenter as SketchEntityId;
+    expect(data(d).entities[point]).toEqual({ type: 'point', x: 10, y: 5 });
+    expect(projectedEntities(data(d)).has(point)).toBe(true);
+    expect(DocumentSchema.safeParse(d).success).toBe(true);
+    // A centre of anything but a face fails the load check; a face's plain projection can't be a point.
+    const bad = {
+      ...data(d),
+      projections: {
+        [P]: { ref: edgeRef, curves: { faceCenter: point }, mode: 'center' as const },
+      },
+    };
+    expect(sketchIssues(bad).map((i) => i.message)).toContain(
+      'must take the centre of a face, not of a edge',
+    );
+    const plain = { ...data(d), projections: { [P]: { ref: faceRef, curves: { x: point } } } };
+    expect(sketchIssues(plain).map((i) => i.message)).toContain('must be a curve, not a point');
+  });
+
   it('take origin and construction axes and points as construction geometry (ADR-0093)', () => {
     const axisRef = { kind: 'axis' as const, id: 'origin:y' };
     const pointRef = { kind: 'point' as const, id: 'origin:point' };
@@ -484,5 +524,46 @@ describe('projections', () => {
       count: 0,
       lost: true,
     });
+  });
+  it("give a face sketch's outline, removable only while nothing uses it (ADR-0074)", () => {
+    expect(faceOutline({ kind: 'plane', id: 'xy' }, data(doc()))).toBeUndefined();
+    expect(faceOutline(faceRef, data(doc()))).toEqual({ constraints: 0, dimensions: 0 });
+    let d = applyCommand(doc(), addProjection({ feature: F, id: P, ref: faceRef })).doc;
+    // Another face's projection, or this face's centre, isn't the outline.
+    d = applyCommand(
+      d,
+      addProjection({ feature: F, id: 'c' as ProjectionId, ref: faceRef, mode: 'center' }),
+    ).doc;
+    d = sync(
+      d,
+      report({
+        [P]: {
+          curves: {
+            a: { type: 'line', a: [0, 0], b: [10, 0] },
+            b: { type: 'line', a: [10, 0], b: [10, 10] },
+          },
+        },
+      }),
+    );
+    expect(faceOutline(faceRef, data(d))).toEqual({ id: P, constraints: 0, dimensions: 0 });
+    const a = data(d).entities[data(d).projections?.[P]?.curves.a as SketchEntityId];
+    if (a?.type !== 'line') throw new Error('no line');
+    const used = applyCommand(
+      d,
+      addToSketch({
+        feature: F,
+        entities: { ['q' as SketchEntityId]: { type: 'point', x: 0, y: 0 } },
+        constraints: { ['k' as never]: { type: 'coincident', a: 'q', b: a.start } as never },
+      }),
+    ).doc;
+    expect(faceOutline(faceRef, data(used))).toEqual({ id: P, constraints: 1, dimensions: 0 });
+    expect(() => applyCommand(used, removeProjection({ feature: F, id: P }))).toThrow(
+      /Delete them first/,
+    );
+    // Unused, it goes with its curves and points; the face centre stays.
+    d = applyCommand(d, removeProjection({ feature: F, id: P })).doc;
+    expect(Object.keys(data(d).projections ?? {})).toEqual(['c']);
+    expect(Object.keys(data(d).entities)).toEqual([]);
+    expect(faceOutline(faceRef, data(d))).toEqual({ constraints: 0, dimensions: 0 });
   });
 });

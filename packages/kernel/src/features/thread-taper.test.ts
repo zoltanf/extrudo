@@ -283,7 +283,10 @@ describe('tapered threads', { timeout: 300_000 }, () => {
     block.line(15, 15, -15, 15);
     block.line(-15, 15, -15, -15);
     const hole = new SketchBuilder();
-    const circle = hole.circle(0, 0, 9.6);
+    // Ø18.8 at the small end: just under the thread's minor diameter there
+    // (Ø18.95 with the tolerance), so the tooth cuts whole (P4-12's fourth
+    // amendment warns when a bore is past it).
+    const circle = hole.circle(0, 0, 9.4);
     const doc = testDocument([
       sketch('SB', block.sketch),
       {

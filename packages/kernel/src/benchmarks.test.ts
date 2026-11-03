@@ -88,7 +88,10 @@ const BUDGET_MS: Record<string, number> = {
 };
 
 /** Recomputes a document from scratch, within its budget: every feature ok. */
-async function recompute(doc: ExtrudoDocument): Promise<Done> {
+async function recompute(
+  doc: ExtrudoDocument,
+  expected?: { id: string; message: string },
+): Promise<Done> {
   engine?.clear();
   engine = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
   const start = performance.now();
@@ -100,7 +103,9 @@ async function recompute(doc: ExtrudoDocument): Promise<Done> {
   expect(ms, `${doc.name} took ${ms} ms, over its ${budget} ms budget`).toBeLessThan(budget);
   if (result.status !== 'done') throw new Error(`recompute ${result.status}`);
   const problems = Object.entries(result.features).filter(([, s]) => s.status !== 'ok');
-  expect(problems).toEqual([]);
+  expect(problems).toEqual(
+    expected ? [[expected.id, { status: 'warning', message: expected.message }]] : [],
+  );
   return result;
 }
 
@@ -143,6 +148,12 @@ function withParameters(doc: ExtrudoDocument, values: Record<string, string>): E
 }
 
 const featureNames = (doc: ExtrudoDocument) => doc.features.map((f) => f.name);
+/** The ID of a document feature by its name. */
+const featureId = (doc: ExtrudoDocument, name: string) => {
+  const feature = doc.features.find((f) => f.name === name);
+  if (!feature) throw new Error(`no feature ${name}`);
+  return feature.id;
+};
 
 /**
  * The area (mm²) every profile of every sketch of `doc` covers: B8's is its
@@ -416,7 +427,20 @@ describe('B9 bottle cap and thread adapter', { timeout: 120_000 }, () => {
   /** A cylinder's volume, mm³. */
   const volumeOf = (r: number, height: number) => Math.PI * r * r * height;
   /** The unthreaded cap: a cylinder less the cup a wall of `wall` hollows out. */
-  const cupVolume = (wall = 2) => volumeOf(16, 14) - volumeOf(16 - wall, 14 - wall);
+  /**
+   * What the cap can weigh once threaded: its bore filled in to M30's minor
+   * (ADR-0056's fifth amendment) and grooved out to the root, so between a
+   * bore at the root and one at the crest over the bore's height.
+   */
+  const capBounds = (wall = 2) => {
+    const pitch = 3.5;
+    const crest = 15 - (5 / 8) * (Math.sqrt(3) / 2) * pitch + 0.1;
+    const root = 15 + 0.1;
+    return [
+      volumeOf(16, 14) - volumeOf(root, 14 - wall),
+      volumeOf(16, 14) - volumeOf(crest, 14 - wall),
+    ] as const;
+  };
   /** The unthreaded adapter: two stacked cylinders. */
   const adapterVolume = () => volumeOf(10, 10) + volumeOf(14, 10);
   /**
@@ -443,6 +467,9 @@ describe('B9 bottle cap and thread adapter', { timeout: 120_000 }, () => {
       'Revolve2',
       'Thread2',
     ]);
+    // The cap's bore is drawn at Ø28, past M30's minor diameter (Ø26.411 with
+    // the tolerance): the thread fills it in to it along the thread first
+    // (ADR-0056's fifth amendment), within the thread's depth, so no word.
     const result = await recompute(doc);
     expect(bodyNames(doc, result)).toEqual(['Cap', 'Adapter']);
     const [cap, adapter] = bodies(result);
@@ -454,10 +481,9 @@ describe('B9 bottle cap and thread adapter', { timeout: 120_000 }, () => {
     expect(cap?.size[2]).toBeCloseTo(14, 3);
     expect(cap?.min[2]).toBeCloseTo(0, 3);
     expect(cap?.faces).toBeGreaterThan(10);
-    // The internal thread takes a little more off the roots than it puts on
-    // the crests.
-    expect(cap?.volume).toBeLessThan(cupVolume());
-    expect(cap?.volume).toBeGreaterThan(cupVolume() * 0.8);
+    // Filled in to the crests and grooved out to the roots.
+    expect(cap?.volume).toBeGreaterThan(capBounds()[0]);
+    expect(cap?.volume).toBeLessThan(capBounds()[1]);
     // Both of the adapter's walls are threaded: the lower one is Ø20 (M20),
     // the upper Ø28 as drawn but M24's Ø23.8 once the thread turned it down.
     expect(adapter?.valid).toBe(true);
@@ -476,13 +502,21 @@ describe('B9 bottle cap and thread adapter', { timeout: 120_000 }, () => {
     // fit (M30 is the largest coarse size). A thinner wall leaves a Ø29 bore,
     // which M30 fits.
     const doc = withParameters(load(b9), { wall: '1.5 mm' });
-    const [cap, adapter] = bodies(await recompute(doc));
+    // The Ø29 bore is filled in to M30's minor too; it is off by more than the
+    // thread's depth (2.589 mm on the diameter against 1.894 mm), so a note.
+    const [cap, adapter] = bodies(
+      await recompute(doc, {
+        id: featureId(doc, 'Thread1'),
+        message:
+          "The hole is 29 mm across, wider than the M30 thread's minor diameter (26.411 mm): it is filled in to it along the thread.",
+      }),
+    );
     expect(cap?.valid).toBe(true);
     expect(cap?.size[0]).toBeCloseTo(32, 1);
     expect(cap?.size[2]).toBeCloseTo(14, 3);
-    // A thinner wall leaves more matter: the same bounds on a smaller cup.
-    expect(cap?.volume).toBeLessThan(cupVolume(1.5));
-    expect(cap?.volume).toBeGreaterThan(cupVolume(1.5) * 0.8);
+    // A thinner wall leaves a wider bore: the same bounds on a taller one.
+    expect(cap?.volume).toBeGreaterThan(capBounds(1.5)[0]);
+    expect(cap?.volume).toBeLessThan(capBounds(1.5)[1]);
     expect(adapter?.size[2]).toBeCloseTo(20, 3);
     expect(adapter?.valid).toBe(true);
   });

@@ -24,6 +24,15 @@ files:
   - '!**/*.map'
   - package.json
 
+# The pinned, hash-checked cadmpeg (P6-19, ADR-0115 §3): `scripts/fetch-cadmpeg.mjs`
+# puts it in `vendor/cadmpeg` (every `package*` script and the desktop workflow
+# run it first), and it ships beside the asar as `resources/cadmpeg/`, a
+# separate executable with its LICENSE. The filter is relative to `from`.
+extraResources:
+  - from: vendor/cadmpeg
+    to: cadmpeg
+    filter: ['cadmpeg', 'cadmpeg.exe', 'LICENSE', '.version']
+
 # The `.extrudo` document, registered with the OS. The extension is the one
 # `@extrudo/core` declares (FILE_EXTENSION).
 fileAssociations:

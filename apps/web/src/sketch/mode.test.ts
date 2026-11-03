@@ -9,6 +9,8 @@ import {
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import { memoryPreferences } from '../platform';
+import { clearHelpTarget, helpTarget, setHelpTarget } from '../shell/helpTarget';
+import { lastHoveredTool } from '../shell/Toolbar';
 import { basis } from '../viewport/camera';
 import { createViewportStore } from '../viewport/store';
 import {
@@ -135,5 +137,22 @@ describe('sketch mode', () => {
     createSketchOn(t, originPlaneRef('origin:xy'));
     startCreateSketch(t);
     expect(t.mode().activeTool).toBeUndefined();
+  });
+
+  it('clears the remembered help target when a sketch opens or closes (P6-22 S2, ADR-0116 §4)', () => {
+    const t = setup();
+    setHelpTarget({ tool: 'extrude' });
+    createSketchOn(t, originPlaneRef('origin:xy'));
+    expect(helpTarget()).toBeUndefined();
+    // A palette row was hovered in the sketch; leaving leaves nothing behind.
+    setHelpTarget({ guide: 'sketching', anchor: 'slice' });
+    finishSketch(t);
+    expect(helpTarget()).toBeUndefined();
+    expect(lastHoveredTool()).toBeUndefined();
+    // A sketch that isn't entered changes nothing.
+    setHelpTarget({ tool: 'line' });
+    expect(editSketch(t, 'nope' as FeatureId)).toBe(false);
+    expect(helpTarget()).toEqual({ tool: 'line' });
+    clearHelpTarget();
   });
 });

@@ -5,7 +5,7 @@
  */
 
 export type NavAction = 'orbit' | 'pan' | 'zoom';
-export type NavPreset = 'spindle' | 'crank' | 'glide' | 'blender' | 'trackpad';
+export type NavPreset = 'spindle' | 'crank' | 'glide' | 'blender' | 'slicer' | 'trackpad';
 
 /**
  * The presets in menu order; the first is the default (`DEFAULT_SETTINGS.preset`). The first
@@ -34,6 +34,12 @@ export const NAV_PRESETS: readonly { value: NavPreset; label: string; summary: s
     value: 'blender',
     label: 'Blender',
     summary: 'Middle-drag orbits, Shift+middle-drag pans, Ctrl+middle-drag zooms. The wheel zooms.',
+  },
+  {
+    value: 'slicer',
+    label: 'Slicer',
+    summary:
+      'Left-drag orbits, right-drag or middle-drag pans; Shift+left-drag selects a box. The wheel zooms.',
   },
   {
     value: 'trackpad',
@@ -94,11 +100,25 @@ export function dragAction(
     case 'blender':
       if (button === 1) return shiftKey ? 'pan' : ctrlKey ? 'zoom' : 'orbit';
       return undefined;
+    case 'slicer':
+      // As the slicers do it: the right or middle button pans. The left button is the
+      // pointer's (a click selects); a left drag nobody takes orbits (`freeDragAction`).
+      if (button === 1 || button === 2) return 'pan';
+      return undefined;
     case 'trackpad':
       if (button === 0 && altKey) return shiftKey ? 'pan' : 'orbit';
       if (button === 1) return shiftKey ? 'orbit' : 'pan';
       return undefined;
   }
+}
+
+/**
+ * What a left drag that no tool takes does, in place of the selection box (ADR-0090's
+ * amendment of 2026-10-31): in Slicer it orbits, unless Shift, Ctrl or ⌘ (`toggle`, the
+ * add-to-selection modifiers) is held, which keeps the box. Every other preset keeps the box.
+ */
+export function freeDragAction(preset: NavPreset, toggle: boolean): NavAction | undefined {
+  return preset === 'slicer' && !toggle ? 'orbit' : undefined;
 }
 
 /** The parts of a wheel event the mapping looks at. */

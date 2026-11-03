@@ -2,6 +2,7 @@
  * Parameter name completion in expression fields (ADR-0096): the word at the
  * caret and the names that match it. Pure, so `ExpressionInput` only renders.
  */
+import { CONSTANTS, FUNCTION_ARITIES } from '@extrudo/core';
 
 /** The identifier around the caret: the part a picked name replaces. */
 export interface Word {
@@ -10,10 +11,14 @@ export interface Word {
   text: string;
 }
 
-/** A name to offer, with its value for display ("12.00 mm"); no value when it has an error. */
+/**
+ * A name to offer, with its value for display ("12.00 mm"); no value when it
+ * has an error. A function shows its arguments ("x") instead.
+ */
 export interface NameEntry {
   name: string;
   value?: string;
+  args?: string;
 }
 
 const WORD_CHAR = /[A-Za-z0-9_]/;
@@ -56,4 +61,50 @@ export function matching(word: string, entries: readonly NameEntry[]): NameEntry
     })
     .sort((a, b) => a.r - b.r || a.index - b.index)
     .map(({ entry }) => entry);
+}
+
+/** The expression language's functions, then its constants (ADR-0096's amendment). */
+export const BUILTINS: readonly NameEntry[] = [
+  ...Object.entries(FUNCTION_ARITIES).map(([name, arity]) => ({
+    name,
+    args: arity === 'many' ? 'a, b, …' : 'x',
+  })),
+  ...Object.entries(CONSTANTS).map(([name, q]) => ({ name, value: String(+q.value.toFixed(5)) })),
+];
+
+/** The built-in names that start with `word`, ignoring case, the exact name first. */
+export function matchingBuiltins(word: string): NameEntry[] {
+  const needle = word.toLowerCase();
+  return BUILTINS.filter((entry) => entry.name.startsWith(needle)).sort(
+    (a, b) => Number(b.name === needle) - Number(a.name === needle),
+  );
+}
+
+/**
+ * `text` with `entry` in place of `word`, and the caret after it. A function
+ * gets its brackets with the caret inside, unless they follow already.
+ */
+export function insertName(
+  text: string,
+  word: Word,
+  entry: NameEntry,
+): { text: string; caret: number } {
+  const before = text.slice(0, word.start);
+  const after = text.slice(word.end);
+  const caret = word.start + entry.name.length;
+  if (entry.args === undefined) return { text: before + entry.name + after, caret };
+  const open = /^\s*\(/.exec(after);
+  if (open) return { text: before + entry.name + after, caret: caret + open[0].length };
+  return { text: `${before}${entry.name}()${after}`, caret: caret + 1 };
+}
+
+const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * The name a new parameter would get from `text`: the whole field is one
+ * identifier (surrounding spaces aside). Whether it is free is the field's call.
+ */
+export function newName(text: string): string | undefined {
+  const name = text.trim();
+  return IDENTIFIER.test(name) ? name : undefined;
 }

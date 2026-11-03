@@ -83,6 +83,10 @@ function fakeApi(answers: Partial<Record<string, unknown>> = {}) {
       onProgress: () => {},
       offProgress: () => {},
     },
+    cad: {
+      status: async () => ({ found: false }),
+      convert: async () => ({ ok: false, message: 'no' }),
+    },
     agent: {
       onRequest: () => {},
       offRequest: () => {},

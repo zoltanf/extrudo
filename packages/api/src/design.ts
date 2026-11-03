@@ -176,6 +176,8 @@ export interface DesignOptions {
   name?: string;
   /** The document's length unit: `mm`, `cm`, `m` or `in`. */
   units?: LengthUnit;
+  /** Show inch lengths as fractions (`1 1/2 in`); only meaningful with `units: 'in'`. */
+  fractions?: boolean;
   /** The document's own ID. */
   id?: DocumentId;
   /** The ISO time stamped into `meta.created` and `meta.modified`; the clock otherwise. */
@@ -838,6 +840,7 @@ function newDocumentOptions(options: DesignOptions): NewDocumentOptions {
   return {
     ...(options.name ? { name: options.name } : {}),
     ...(options.units ? { units: options.units } : {}),
+    ...(options.fractions ? { fractions: true } : {}),
     ...(options.now ? { now: options.now } : {}),
     ...(options.appVersion ? { appVersion: options.appVersion } : {}),
   };

@@ -5,15 +5,18 @@
  * tolerance, the starts and the lead-in chamfer.
  *
  * Fields are named like the feature's inputs, so the framework's default
- * mapping turns them into inputs and back; **Size is the one field that
- * isn't an input**: "Fit the face" stores no diameter and pitch (the kernel
- * picks the ISO coarse thread that fits each face), a preset fills Diameter
+ * mapping turns them into inputs and back; **Size and Fit are the fields
+ * that aren't inputs**: "Fit the face" stores no diameter and pitch (the
+ * kernel picks the thread that fits each face), a preset fills Diameter
  * and Pitch (`onChange`), and the dropdown always shows the preset the two
- * match, else Custom, as the hole's Preset does.
+ * match, else Custom, as the hole's Preset does. Fit (ADR-0056's fourth
+ * amendment) fills Tolerance and is read back from it: only `tolerance` is
+ * stored.
  *
  * A new thread's Tolerance is the document parameter `tolerance` when there
  * is one (FR-3DP-05's parameter; P4-08 adds the helper that makes it), else
- * 0.1 mm: `propose` sets it until the user types their own.
+ * 0.1 mm: `propose` sets it, and Fit shows Parameter, until the user types
+ * their own.
  */
 import {
   type FeatureDefinition,
@@ -61,8 +64,22 @@ const GROUP_LABELS: Record<string, string> = {
   unc: 'UNC',
   unf: 'UNF',
   trapezoidal: 'Trapezoidal',
+  print: '3D printing',
   bottle: 'Bottle',
   npt: 'pipe, tapered',
+};
+
+/**
+ * The named fits (ADR-0056's fourth amendment): the community's radial
+ * clearances for FDM, as the expressions they fill into Tolerance. Only
+ * `tolerance` is stored; Fit is read back from it.
+ */
+export type ThreadFit = 'tight' | 'normal' | 'loose' | 'parameter';
+export const FIT_EXPRS: Record<ThreadFit, string> = {
+  tight: '0.05 mm',
+  normal: '0.1 mm',
+  loose: '0.2 mm',
+  parameter: TOLERANCE_PARAMETER,
 };
 
 const size = (v: ShownValues) => v.choices.preset ?? AUTO;
@@ -76,10 +93,11 @@ const HINTS: Record<string, string> = {
   length: 'How long the thread is, from where it starts.',
   offset: 'How far from the face’s end the thread starts.',
   profile:
-    'The tooth shape: ISO metric (60°, the default), Trapezoidal (Tr), Buttress (DIN 513) or Bottle (the PCO-1881 soft-drink finish).',
+    'The tooth shape: ISO metric (60°, the default), Trapezoidal (Tr), Buttress (DIN 513), Bottle (the PCO-1881 soft-drink finish) or 3D printing (45° flanks, flat crest and root: prints upright, mates only with itself).',
   loadFlank: 'Buttress only: which end of the thread the steep 3° load flank faces.',
   tolerance:
     'Clearance for printing: the whole thread moves this far into the part (a shaft’s thread gets thinner, a hole’s wider). 0.1 mm on both parts leaves 0.4 mm between their diameters.',
+  fit: 'Clearance for printing, filled into Tolerance: Normal suits most printers, Tight a calibrated one or a fine pitch, Loose a rough one. Parameter follows the document’s tolerance parameter.',
 };
 
 function shownFor(name: string): ((v: DialogValues) => boolean) | undefined {
@@ -123,10 +141,24 @@ export function presetOf(values: DialogValues): string {
   return match?.id ?? CUSTOM;
 }
 
+/** The Fit choice's value of the shown values (the field's default is `normal`). */
+const fitOf = (v: ShownValues): ThreadFit => (v.choices.fit ?? 'normal') as ThreadFit;
+
+/** The fit a tolerance expression as typed is: the one whose text matches, else `custom`. */
+export function fitOfTolerance(tolerance: string | undefined): ThreadFit | 'custom' {
+  const text = (tolerance ?? '').trim();
+  const match = (Object.entries(FIT_EXPRS) as [ThreadFit, string][]).find(
+    ([, expr]) => expr === text,
+  );
+  return match?.[0] ?? 'custom';
+}
+
 /**
  * What changing `field` does to the rest: a preset fills Diameter, Pitch and
  * Profile; editing a number leaves Size showing the preset they now match; a
- * profile change re-checks Size (and leaves Fit the face only for ISO).
+ * profile change re-checks Size (and leaves Fit the face only for ISO and
+ * the printing profile); a fit fills Tolerance; a typed tolerance makes Fit
+ * show the one it matches, else Custom.
  */
 export function threadOnChange(
   field: string,
@@ -144,10 +176,19 @@ export function threadOnChange(
   }
   if (field === 'profile') {
     if (size(values) === AUTO) {
-      return profile(values) === 'iso' ? undefined : { choices: { preset: CUSTOM } };
+      const p = profile(values);
+      return p === 'iso' || p === 'print45' ? undefined : { choices: { preset: CUSTOM } };
     }
     const now = presetOf(values);
     return now === size(values) ? undefined : { choices: { preset: now } };
+  }
+  if (field === 'fit') {
+    const expr = FIT_EXPRS[fitOf(values)];
+    return expr ? { exprs: { tolerance: expr } } : undefined;
+  }
+  if (field === 'tolerance') {
+    const now = fitOfTolerance(values.exprs.tolerance);
+    return now === fitOf(values) ? undefined : { choices: { fit: now } };
   }
   return undefined;
 }
@@ -161,7 +202,7 @@ export function proposeThread(
     (p) => p.name === TOLERANCE_PARAMETER && p.unit === 'length',
   );
   if (!parameter || values.exprs.tolerance === TOLERANCE_PARAMETER) return undefined;
-  return { exprs: { tolerance: TOLERANCE_PARAMETER } };
+  return { exprs: { tolerance: TOLERANCE_PARAMETER }, choices: { fit: 'parameter' } };
 }
 
 /** Whether a picked face is one the view's meshes show as flat (the kernel checks the rest). */
@@ -192,7 +233,7 @@ export const threadDialog: FeatureDialogSpec = defineFeatureDialog({
       name: 'preset',
       label: 'Size',
       options: [
-        { value: AUTO, label: 'Fit the face (ISO metric)' },
+        { value: AUTO, label: 'Fit the face' },
         ...THREAD_PRESETS.map((p) => ({
           value: p.id,
           label: p.group === 'metric' ? p.label : `${p.label} (${GROUP_LABELS[p.group]})`,
@@ -200,7 +241,7 @@ export const threadDialog: FeatureDialogSpec = defineFeatureDialog({
         { value: CUSTOM, label: 'Custom' },
       ],
       default: AUTO,
-      hint: 'A standard thread fills Diameter and Pitch. Fit the face picks the ISO metric coarse thread for the shaft or the tap-drill hole.',
+      hint: 'A standard thread fills Diameter and Pitch. Fit the face picks the ISO metric coarse thread (or, with the 3D printing profile, the print size) for the shaft or the tap-drill hole; a hole drawn at a size’s own diameter (Ø5) gets that size (M5).',
     },
     {
       kind: 'choice',
@@ -259,6 +300,20 @@ export const threadDialog: FeatureDialogSpec = defineFeatureDialog({
       default: '1',
       hint: 'How many helices start round the face, 1 to 8. The lead is starts × pitch, so a 2-start thread advances twice as far a turn.',
     },
+    {
+      kind: 'choice',
+      name: 'fit',
+      label: 'Fit',
+      options: [
+        { value: 'tight', label: 'Tight (0.05 mm)' },
+        { value: 'normal', label: 'Normal (0.1 mm)' },
+        { value: 'loose', label: 'Loose (0.2 mm)' },
+        { value: 'parameter', label: 'Parameter (tolerance)' },
+        { value: 'custom', label: 'Custom' },
+      ],
+      default: 'normal',
+      hint: HINTS.fit,
+    },
     numberField('tolerance'),
     {
       kind: 'toggle',
@@ -268,9 +323,10 @@ export const threadDialog: FeatureDialogSpec = defineFeatureDialog({
       hint: 'A 45° lead-in where the thread runs out of a shaft’s end or a hole’s mouth, so it starts cleanly and screws in.',
     },
   ],
-  // Size isn't an input: the stored inputs are the plain diameter and pitch, or neither.
+  // Size and Fit aren't inputs: the stored inputs are the plain diameter and
+  // pitch, or neither; only `tolerance` holds the fit.
   toInputs(values) {
-    const { preset: _preset, ...inputs } = defaultInputs(threadDialog, values);
+    const { preset: _preset, fit: _fit, ...inputs } = defaultInputs(threadDialog, values);
     // One start is the default and is never stored.
     const starts = inputs.starts;
     if (starts?.kind === 'expr' && (starts.expr.trim() === '' || Number(starts.expr) === 1)) {
@@ -284,9 +340,20 @@ export const threadDialog: FeatureDialogSpec = defineFeatureDialog({
     const exprs = stored.exprs ?? {};
     const choices = stored.choices ?? {};
     const preset = sized ? presetOf({ refs: {}, exprs, choices, toggles: {}, labels: {} }) : AUTO;
-    return { ...stored, choices: { ...choices, preset } };
+    // Fit is read back only from a stored tolerance; without one the field's
+    // default (Normal) stands, as Tolerance's default does.
+    const fit = 'tolerance' in inputs ? fitOfTolerance(exprs.tolerance) : undefined;
+    return { ...stored, choices: { ...choices, preset, ...(fit && { fit }) } };
   },
   validate(values, ctx) {
+    if ((values.choices.fit ?? 'normal') === 'parameter') {
+      const parameter = ctx.doc?.parameters?.find(
+        (p) => p.name === TOLERANCE_PARAMETER && p.unit === 'length',
+      );
+      if (!parameter) {
+        return { field: 'fit', message: 'This document has no tolerance parameter.' };
+      }
+    }
     if ((values.refs.faces ?? []).some((ref) => isFlat(ref, ctx))) {
       return { field: 'faces', message: 'Pick round faces: a shaft’s side or a hole’s wall.' };
     }

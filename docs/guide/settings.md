@@ -17,7 +17,7 @@ either place shows in the other at once. A reload keeps them.
 
 | Section | What is in it |
 |---|---|
-| **View and navigation** | The mouse buttons preset, projection, visual style, the grid |
+| **View and navigation** | The mouse buttons preset, a 3D mouse and its speed; projection, visual style, the grid |
 | **Keyboard** | Every command's keys: change, add or remove them |
 | **Marking menu** | The radial right-click menu on or off, and the command on each wedge of the ring (also Ctrl+K "Customize Marking Menu…") |
 | **Sketch** | Snap to grid, auto-project edges and face outlines, what a sketch shows, Slice |
@@ -27,6 +27,19 @@ either place shows in the other at once. A reload keeps them.
 | **Desktop** | Slicer and Blender paths (desktop app only) |
 | **Agents (MCP)** | Let AI agents read and change the open design (desktop app only) |
 | **Plugins** | Install, enable and remove plugins (also Ctrl+K "Plugins…") |
+
+## 3D mouse
+
+A 3Dconnexion SpaceMouse or SpaceNavigator moves the view with your left hand while the right
+one keeps the mouse. Push the cap firmly once over the page and it is read; or click
+**Connect…** under **View and navigation** and pick it, which also reconnects it by itself after
+that. The model follows the cap: push it to pan, pull or push it towards you to zoom, tip it to
+tilt, twist it to turn. The left button goes home, the right one fits the model. **3D mouse
+speed** slows it down or speeds it up, from 0.25× to 4×; double-click the slider for 1×. It
+needs Chrome, Edge or the desktop app (Firefox and Safari can't talk to the device), and no
+driver. With the vendor's driver (3DxWare) installed, its mouse-wheel turns for browsers are
+ignored while the cap moves, over the view and the panels alike, so nothing zooms or scrolls in
+steps on top; the very first push after opening the page may still let one through.
 
 ## Material densities
 
@@ -41,7 +54,7 @@ is g/cm³ and a line width mm whatever your design's units are.
 
 ## What is not here
 
-Document settings (units, precision) belong to the design: they are in the browser's **Document
-settings** folder, and the home screen's New design card picks the unit of a new design. Keyboard
-shortcuts can't be remapped yet. Panel sizes, the pinned commands in Search and the tutorial's progress are kept,
+Document settings (units, precision, fractions) belong to the design: they are in the browser's
+**Document settings** folder, and the home screen's New design card picks the unit of a new design.
+Panel sizes, the pinned commands in Search and the tutorial's progress are kept,
 but are changed where they live.

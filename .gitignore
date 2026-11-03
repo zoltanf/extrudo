@@ -7,6 +7,8 @@ coverage/
 .vitest/
 # The Electron build (P6-01, ADR-0075): main, preload and the renderer.
 apps/desktop/out/
+# cadmpeg, fetched and hash-checked by apps/desktop/scripts/fetch-cadmpeg.mjs (ADR-0115 §3).
+apps/desktop/vendor/
 
 # Playwright
 test-results/
@@ -46,6 +48,7 @@ spikes/p0-03-solver/planegcs-build/.work/
 # P4-12: the native harness builds (spikes/*/build/)
 spikes/*/build/
 spikes/*/build-*/
+spikes/*/diag/
 
 # Packaged installers (P6-01 slice 3)
 apps/desktop/release/

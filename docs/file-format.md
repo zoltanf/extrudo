@@ -256,6 +256,7 @@ Whole-document rules (checked after the per-field rules):
 |---|---|---|---|
 | `units` | `"mm"`, `"cm"`, `"m"`, `"in"` | yes | The document's **length unit**: what a plain number in a length field means, and what the app displays. Stored lengths in sketches are always mm regardless. When the app changes it (the browser's Document settings, ADR-0113 §1), it writes the previous unit onto every plain length number first (`10` → `10 mm`), so the model keeps its size. |
 | `precision` | integer 0 to 8 | yes | Decimal places shown for lengths and angles. A new document uses 2. |
+| `fractions` | boolean | no | Show inch lengths as the nearest binary fraction (`1 1/2 in`, `3/8 in`, `0 in`) instead of decimals (ADR-0113 §3). Absent = false; only meaningful with `units: "in"`; the denominator follows `precision` (`2^(precision + 2)`, capped at 64). Areas, volumes and angles stay decimal. |
 
 ### 4.2 `bodies[<bodyId>]` (BodyMeta)
 
@@ -533,6 +534,12 @@ formula as a hint.
   implicit multiplication** (`2 width` is an error).
 - **Units:** `mm cm m in ft deg rad`. A unit may only follow a number
   literal. Values are held in millimetres and degrees.
+- **Fractions, feet and inches (ADR-0113 §3):** a length may be a fraction
+  `int/int` with no spaces (`3/8 in`) or a mixed number `1 1/2`/`1-1/2`
+  (`1 1/2 in`), always with a length unit right after it. The inch and foot
+  marks are units too: `6"` is 6 in, `5'` is 5 ft. A feet number directly
+  followed by an inches number is their sum (`5' 6"`, `5 ft 6 1/2 in`). With
+  no length unit, `10 / 2`, `10/2` and `width/2` stay arithmetic.
 - **Constant:** `pi`. **Functions:** `sin cos tan asin acos atan sqrt abs min
   max round floor ceil`. `min` and `max` take one or more arguments, the rest
   one.
@@ -1246,13 +1253,13 @@ repeat it as a feature (6.16). No new keys.
 |---|---|---|---|
 | `faces` | `ref` | yes | 1 to 16 refs of kind `face`: whole cylindrical faces (all the way round), one thread on each. A flat or curved face of another kind, or part of a cylinder, is an error |
 | `diameter` | `expr` | no | Length: the nominal (major) diameter of the ISO 68-1 basic profile (60°, which the Unified inch threads share) |
-| `pitch` | `expr` | no | Length: crest to crest along the axis. **With neither `diameter` nor `pitch` the kernel picks the ISO metric coarse thread that fits each face** (M2 to M30: on a shaft the largest whose diameter isn't more than 0.1 mm over the shaft's; in a hole the largest whose minor diameter is at most the hole's + 0.1 mm and whose diameter is larger, so a tap-drill hole finds its thread). With one of them, the other takes its default (6 mm, 1 mm) |
+| `pitch` | `expr` | no | Length: crest to crest along the axis. **With neither `diameter` nor `pitch` the kernel picks the thread that fits each face** (M2 to M64 for `iso`, the print sizes for `print45`: on a shaft the largest whose diameter isn't more than 0.1 mm over the shaft's; in a hole the largest whose minor diameter is at most the hole's + 0.1 mm and whose diameter is larger, so a tap-drill hole finds its thread; and a hole drawn at a size's own diameter — within 0.01 mm of it — is that size). With one of them, the other takes its default (6 mm, 1 mm) |
 | `extent` | `enum` | no | `full` (default: from `offset` to the face's far end) or `length` |
 | `length` | `expr` | no | Length, default 10 mm; with `extent: length`. At least one pitch |
 | `offset` | `expr` | no | Length, default 0: from the face's end to where the thread starts |
 | `flip` | `bool` | no | Default `false`: `offset` and `length` run from the face's lower end along its axis (the axis taken with its first non-zero component positive: a vertical shaft's bottom end); `true` from the other end |
 | `hand` | `enum` | no | `right` (default) or `left` |
-| `profile` | `enum` | no | `iso` (default: ISO 68-1, 60°), `trapezoidal` (ISO 2901 / DIN 103 Tr), `buttress` (DIN 513 S) or `bottle` (the PCO-1881 finish, a rounded trapezoid) |
+| `profile` | `enum` | no | `iso` (default: ISO 68-1, 60°), `trapezoidal` (ISO 2901 / DIN 103 Tr), `buttress` (DIN 513 S), `bottle` (the PCO-1881 finish, a rounded trapezoid) or `print45` (made for printing: 45° flanks, flat crest and root) |
 | `loadFlank` | `enum` | no | Buttress only: `start` or `end` (default), the end the steep 3° load flank faces |
 | `starts` | `expr` | no | Unitless, 1 (default, never stored) to 8: helices round the face, lead = `starts × pitch` (6.33) |
 | `tolerance` | `expr` | no | Length, default 0.1 mm, not negative: the print clearance. The whole profile moves this far radially into the part's material, so an external thread's diameters shrink by twice it and an internal one's grow by twice it |
@@ -1264,20 +1271,34 @@ puts a crest flat P/8 wide at the major diameter and a root flat P/4 wide at
 the minor (D − 1.0825 P), in a hole the reverse; trapezoidal is a 30°
 trapezoid 0.5 P deep with equal 0.366 P flats; buttress is a 3° load flank
 and a 30° trailing flank at a 0.75 P load-bearing depth; bottle is a rounded
-20° trapezoid 0.45 P deep with arcs on its crest and root. All are moved by
-`tolerance`. A shaft thicker than the thread is turned
-down to it (a warning when much thicker); a shaft at or under the thread's root,
-a hole as wide as the thread, a thread longer than the face, an offset as long
-as the face and more than 150 turns are errors. With `profile: iso` and no
-size the kernel picks the ISO coarse thread (`autoThread`); another profile
+20° trapezoid 0.45 P deep with arcs on its crest and root; print45 is the
+printing profile: 45° flanks, a flat crest and root each 0.2 P, 0.3 P deep,
+so the tooth tiles one pitch and the flats are the same inside and out — a
+screw and a nut are exact complements, and it mates only with itself. All are
+moved by `tolerance`. A shaft thicker than the thread is turned
+down to it (a warning when much thicker); a hole wider than the thread's
+minor diameter (as a bore drawn at a size's own diameter is) is filled in to
+it along the thread before the cut, and a shaft thinner than its major is
+built up to it, so the tooth is whole (a warning notes it when the diameter
+was off by more than the thread's depth; a hole Remove Faces can't close is
+cut as drawn, with a warning that only the outer part of the tooth is cut); a
+shaft at or under the thread's root, a hole as wide as the thread, a thread
+longer than the face, an offset as long
+as the face and more than 150 turns are errors. With `profile: iso` or
+`print45` and no size the kernel picks the thread that fits (`autoThread`):
+the ISO coarse one, or a print size; another profile
 with no size is refused ("Enter a diameter and pitch"). A shaft's thread and a hole's
 that start at the same plane mesh (the hole's tooth sits half a pitch on).
 Names: `thread:<feature id>:side:f<k>.<part>`, where k is the face's place in
 `faces` (0, 1 …) and the part is `crest`, `flank0`, `flank1` (one face per turn,
 `#n` along the helix), `root`, `end0` / `end1` (the flat steps where a thread
-stops inside a face) or `lead0` / `lead1` (the lead-in cones); a rounded crest
+stops inside a face), `lead0` / `lead1` (the lead-in cones) or, where a face
+was filled in or built up, `fillEnd0` / `fillEnd1` (the fill's flat ends,
+where a thread stops inside the face) and `fill` / `fillWall` (its cylinders,
+which the cut and the join take away); a rounded crest
 or root is still one `crest`/`root` face. The dialog's
-sizes (ISO metric coarse and fine, UNC, UNF, the Tr series and PCO-1881) only fill `diameter`, `pitch` and
+sizes (ISO metric coarse and fine, UNC, UNF, the Tr series, the print sizes
+and PCO-1881) only fill `diameter`, `pitch` and
 `profile`; nothing about a preset is stored. For a new thread the dialog writes the
 document's print-tolerance parameter (`tolerance`, P4-08, ADR-0062) here when
 it has one, which is an ordinary expression like any other.
@@ -1677,7 +1698,7 @@ Every dimension has these common fields, in addition to its own:
 
 | `type` | Own fields | Meaning and rules |
 |---|---|---|
-| `distance` | `orientation` (`aligned`, `horizontal` or `vertical`, required); `a` (required); `b` (optional) | A line's length (`a` a line, no `b`), or the distance between two points, a point and a line, or two parallel lines. `a` and `b` are points or lines and distinct; `a` a point needs `b`; when a line is involved the orientation must be `aligned`. |
+| `distance` | `orientation` (`aligned`, `horizontal` or `vertical`, required); `a` (required); `b` (optional); `sideA`, `sideB` (`near` or `far`, optional) | A line's length (`a` a line, no `b`), or the distance between two points, a point and a line, or two parallel lines; since ADR-0112 also between a circle's or an arc's edge and a point, a line or another circle's or arc's edge. `a` and `b` are points, lines, circles or arcs and distinct; `a` a point, circle or arc needs `b`; a line with a point or a line must be `aligned`. A circle's or arc's edge point lies on its whole circle: aligned, on the line from its center toward the other entity (a point, the center's foot on a line, the other center); horizontal or vertical, the quadrant point on that side. `sideA` (only when `a` is a circle or an arc) and `sideB` (likewise for `b`) say which edge: `near` (the default when absent), the one facing the other entity, or `far`, the opposite one. To a line, a horizontal or vertical distance runs along that direction to where it meets the line. |
 | `radius` | `curve` | A circle or arc. |
 | `diameter` | `curve` | A circle or arc. |
 | `angle` | `a`, `b` (distinct lines); `supplement` (boolean, optional) | The angle between the lines' directions (start to end), 0 to 180 degrees; with `supplement`, 180 degrees minus that. |
@@ -1699,8 +1720,8 @@ when the origin or an axis is picked.
 | Field | Type | Required | Meaning |
 |---|---|---|---|
 | `ref` | GeomRef | yes | What is projected: kind `edge`, `face`, `vertex` or `body`, or kind `axis` or `point` (an origin axis `origin:x`/`origin:y`/`origin:z`, the origin point `origin:point`, or a construction axis or point feature's ID); with `mode: "intersect"` kind `face` or `body` (other kinds are refused). A body is referred to by its ID. |
-| `curves` | record: string to entity ID or `null` | yes | Each key is what a curve comes from (the source edge's persistent name, `sil:<n>` for a silhouette of a projected face, `sil:<face>:<n>` for a silhouette of a projected body's face, `edge` for a projected edge itself, `vertex` for a projected vertex, `cut:<n>` for an intersection curve, `axis` for a projected axis (a construction line 100 mm long, centred on the axis's origin), `point` for a projected point or an axis along the sketch's normal); its value the entity ID of the curve in the sketch, or `null` once the user deleted it (so it does not come back). A non-null value must be an existing curve (not a point, except for a vertex's `vertex` and an axis's or a point's `point`), and no curve is used by two projections. Silhouettes and intersection curves that are neither lines nor conics are control-point splines (`mode: "control"`). |
-| `mode` | `"project"` or `"intersect"` | no | `intersect`: the curves where the face or body meets the sketch plane, instead of its projection along the sketch's normal. Absent: `project`. |
+| `curves` | record: string to entity ID or `null` | yes | Each key is what a curve comes from (the source edge's persistent name, `sil:<n>` for a silhouette of a projected face, `sil:<face>:<n>` for a silhouette of a projected body's face, `edge` for a projected edge itself, `vertex` for a projected vertex, `cut:<n>` for an intersection curve, `axis` for a projected axis (a construction line 100 mm long, centred on the axis's origin), `point` for a projected point or an axis along the sketch's normal, `faceCenter` for a face's centre); its value the entity ID of the curve in the sketch, or `null` once the user deleted it (so it does not come back). A non-null value must be an existing curve (not a point, except for a vertex's `vertex`, an axis's or a point's `point` and a centre's `faceCenter`), and no curve is used by two projections. Silhouettes and intersection curves that are neither lines nor conics are control-point splines (`mode: "control"`). |
+| `mode` | `"project"`, `"intersect"` or `"center"` | no | `intersect`: the curves where the face or body meets the sketch plane, instead of its projection along the sketch's normal. `center` (issue #140, ADR-0074's amendment): the area centre of a face (`ref` of kind `face` only) seen along the sketch's normal, one point keyed `faceCenter`, where a sketch tool snapped to the middle of a flat face. Absent: `project`. |
 | `linked` | `false` | no | An include ("Keep linked" off) waiting for the kernel's report: the app turns the reported curves into plain entities and removes the record, in the step that added it. Absent: linked. A file normally has none; one left in a file is finished on the next recompute. |
 
 ---

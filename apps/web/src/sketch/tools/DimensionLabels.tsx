@@ -494,6 +494,8 @@ function DimensionEditor({
           evaluate={evaluate}
           format={(r) => formatQuantity(r.value, r.dim, doc.settings)}
           onCommit={commit}
+          // A new parameter starts with what the dimension holds now.
+          newParameter={() => d.expr}
         />
       )}
       <label className="flex items-center gap-1.5 px-1 text-sm text-muted">

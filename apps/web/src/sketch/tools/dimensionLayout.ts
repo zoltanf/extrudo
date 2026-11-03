@@ -14,6 +14,9 @@ import {
   CIRCLE_SEGMENTS,
   dimensionAnchor,
   distanceEnds,
+  formatQuantity,
+  isNumberLiteral,
+  LENGTH,
   type LengthUnit,
   lineCrossing,
   lineEnds,
@@ -248,28 +251,33 @@ export function pointAxisCursor(
   return add([(point[0] + f[0]) / 2, (point[1] + f[1]) / 2], scale(d, step));
 }
 
-const PLAIN_NUMBER = /^\s*[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?\s*(mm|cm|m|in|ft|deg|°)?\s*$/i;
-
 /**
  * A dimension's label text (UI spec §4): the value at the document
  * precision, lengths in the document unit without the unit, "R" before a
  * radius, "⌀" before a diameter, "°" after an angle; "fx: " when the value
- * comes from an expression, and parentheses around a driven dimension.
+ * comes from an expression, and parentheses around a driven dimension. An
+ * inch design showing fractions keeps the unit (`1 1/2 in`), since a bare
+ * fraction is ambiguous (ADR-0113 §3).
  */
 export function dimensionText(
   d: SketchDimension,
   value: number | undefined,
-  settings: { units: LengthUnit; precision: number },
+  settings: { units: LengthUnit; precision: number; fractions?: boolean },
 ): string {
   if (value === undefined) return '?';
-  const factor = d.type === 'angle' ? 1 : (UNITS[settings.units]?.factor ?? 1);
-  let text = (value / factor).toFixed(settings.precision);
-  if (/^-0\.?0*$/.test(text)) text = text.slice(1);
+  const fraction = settings.fractions === true && settings.units === 'in';
+  const fixed = (v: number) => {
+    const text = v.toFixed(settings.precision);
+    return /^-0\.?0*$/.test(text) ? text.slice(1) : text;
+  };
+  let text: string;
+  if (d.type === 'angle') text = `${fixed(value)}°`;
+  else if (fraction) text = formatQuantity(value, LENGTH, settings);
+  else text = fixed(value / (UNITS[settings.units]?.factor ?? 1));
   if (d.type === 'radius') text = `R${text}`;
   else if (d.type === 'diameter') text = `⌀${text}`;
-  else if (d.type === 'angle') text = `${text}°`;
   if (d.driven) return `(${text})`;
-  return PLAIN_NUMBER.test(d.expr) ? text : `fx: ${text}`;
+  return isNumberLiteral(d.expr) ? text : `fx: ${text}`;
 }
 
 /** Coordinates of `v` in the basis (a, b). */

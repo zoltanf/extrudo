@@ -7,8 +7,10 @@
  * `snapConstraints` and `alignmentConstraints` (`constraints.ts`).
  *
  * Priorities, first match wins:
- * 1. A point within tolerance: an endpoint, a center, a sketch point or the
- *    sketch origin (nearest first).
+ * 1. A point within tolerance: an endpoint, a center, a sketch point, the
+ *    sketch origin or a body face's centre the view offers (issue #140;
+ *    nearest first; a tie goes to a sketch point, but to the face's centre
+ *    over the origin, which would only pin the point).
  * 2. An intersection of two curves or a midpoint (nearest first).
  * 3. A horizontal or vertical alignment guide that crosses a curve close
  *    to the cursor: the crossing (on-curve plus alignment).
@@ -61,14 +63,17 @@ export interface Snap {
 }
 
 /**
- * What a model snap is: a body vertex or edge (P6-07), or the origin point or
- * an origin or construction axis (ADR-0093; offered to the picking tools only).
- * An axis seen end-on is a `point`. A projection keys its curve by this kind.
+ * What a model snap is: a body vertex or edge (P6-07), the origin point or
+ * an origin or construction axis (ADR-0093; offered to the picking tools only),
+ * or the area centre of a flat body face in the sketch plane (issue #140,
+ * ADR-0074's 2026-10-30 amendment: a `center` projection of the face). An axis seen
+ * end-on is a `point`. A projection keys its curve by this kind.
  */
-export type ModelSnapKind = 'vertex' | 'edge' | 'point' | 'axis';
+export type ModelSnapKind = 'vertex' | 'edge' | 'point' | 'axis' | 'faceCenter';
 
-/** Whether a model snap is a point (a vertex, or a datum point). */
-export const isPointSnap = (kind: ModelSnapKind) => kind === 'vertex' || kind === 'point';
+/** Whether a model snap is a point (a vertex, a datum point or a face's centre). */
+export const isPointSnap = (kind: ModelSnapKind) =>
+  kind === 'vertex' || kind === 'point' || kind === 'faceCenter';
 
 /**
  * A body edge or vertex the view offers a sketch tool to snap to while it
@@ -143,7 +148,9 @@ export interface InferenceOptions {
   grid?: number;
   /**
    * A body edge or vertex under the pointer to snap to (auto-project, P6-07):
-   * considered after the sketch's own curves and before alignment guides.
+   * considered after the sketch's own curves and before alignment guides. A
+   * face's centre (`faceCenter`, issue #140) is a point target like a sketch
+   * center instead: it competes with the sketch's points, nearest first.
    */
   model?: ModelSnap;
   /** False turns inference and grid snapping off (a held modifier): the cursor is used as is. */
@@ -236,11 +243,28 @@ export function infer(sketch: SketchData, cursor: Vec2, options: InferenceOption
   const allowed = (t: Target) => t.ids.every((id) => !exclude.has(id));
   const curves = all.filter((c) => !exclude.has(c.id));
 
-  // 1 and 2: points, then intersections and midpoints.
-  for (const targets of [points, derived]) {
-    const best = nearest(targets.filter(allowed), cursor, tolerance);
-    if (best) return result(best.point, { ...best });
+  // 1: points, a face's centre among them (issue #140). A sketch point wins a
+  // tie; the origin doesn't: a fix there wouldn't follow the face.
+  const best = nearest(points.filter(allowed), cursor, tolerance);
+  const centre = options.model?.kind === 'faceCenter' ? options.model : undefined;
+  const centreD = centre ? dist(centre.point, cursor) : Number.POSITIVE_INFINITY;
+  const bestD = best ? dist(best.point, cursor) : Number.POSITIVE_INFINITY;
+  if (
+    centre &&
+    centreD <= tolerance &&
+    (centreD < bestD || (best?.kind === 'origin' && centreD <= bestD + 1e-9))
+  ) {
+    return result(centre.point, {
+      kind: 'center',
+      point: centre.point,
+      ids: [],
+      model: centre.ref,
+    });
   }
+  if (best) return result(best.point, { ...best });
+  // 2: intersections and midpoints.
+  const derivedBest = nearest(derived.filter(allowed), cursor, tolerance);
+  if (derivedBest) return result(derivedBest.point, { ...derivedBest });
 
   // Alignment candidates: the anchor first, then sketch points (not the origin).
   const sources: { source: AlignmentSource; at: Vec2 }[] = [];
@@ -292,7 +316,7 @@ export function infer(sketch: SketchData, cursor: Vec2, options: InferenceOption
   // 4b: a body edge or vertex the view offers (auto-project, P6-07). A sketch
   // point or curve above already won; this beats alignment guides and the grid.
   const model = options.model;
-  if (model && dist(model.point, cursor) <= tolerance) {
+  if (model && model.kind !== 'faceCenter' && dist(model.point, cursor) <= tolerance) {
     return result(model.point, {
       kind: isPointSnap(model.kind) ? 'point' : 'onCurve',
       point: model.point,

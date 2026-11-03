@@ -102,6 +102,19 @@ describe('thread sizes', () => {
     expect(presetOf(values({ diameter: '8 mm', pitch: '1.3 mm' }))).toBe('custom');
   });
 
+  it('shows the print preset under its profile, not under ISO (P4-12)', () => {
+    expect(
+      presetOf(
+        mergeValues(defaultValues(threadDialog), {
+          exprs: { diameter: '10 mm', pitch: '2.75 mm' },
+          choices: { preset: 'custom', profile: 'print45' },
+        }),
+      ),
+    ).toBe('print-10');
+    // The same numbers under iso are not a print size.
+    expect(presetOf(values({ diameter: '10 mm', pitch: '2.75 mm' }))).toBe('custom');
+  });
+
   it('fills the numbers from a preset, and goes custom when they change', () => {
     expect(threadOnChange('preset', values({}, 'm5'))).toEqual({
       exprs: { diameter: '5 mm', pitch: '0.8 mm' },
@@ -124,7 +137,89 @@ describe('thread sizes', () => {
     expect(
       threadOnChange('profile', mergeValues(values({}, AUTO), { choices: { profile: 'bottle' } })),
     ).toEqual({ choices: { preset: 'custom' } });
+    // The printing profile keeps "fit the face" too (P4-12's fourth amendment).
+    expect(
+      threadOnChange('profile', mergeValues(values({}, AUTO), { choices: { profile: 'print45' } })),
+    ).toBeUndefined();
     expect(threadOnChange('preset', values({}, AUTO))).toBeUndefined();
+  });
+
+  it('fills Tolerance from a named fit, and shows the fit a typed tolerance is', () => {
+    expect(
+      threadOnChange(
+        'fit',
+        mergeValues(defaultValues(threadDialog), { choices: { fit: 'loose' } }),
+      ),
+    ).toEqual({
+      exprs: { tolerance: '0.2 mm' },
+    });
+    expect(
+      threadOnChange(
+        'fit',
+        mergeValues(defaultValues(threadDialog), { choices: { fit: 'tight' } }),
+      ),
+    ).toEqual({
+      exprs: { tolerance: '0.05 mm' },
+    });
+    // Custom fills nothing: the user types their own.
+    expect(
+      threadOnChange(
+        'fit',
+        mergeValues(defaultValues(threadDialog), { choices: { fit: 'custom' } }),
+      ),
+    ).toBeUndefined();
+    // A typed tolerance makes Fit show the one it matches, else Custom.
+    expect(threadOnChange('tolerance', values({ tolerance: '0.2 mm' }))).toEqual({
+      choices: { fit: 'loose' },
+    });
+    expect(threadOnChange('tolerance', values({ tolerance: '0.15 mm' }))).toEqual({
+      choices: { fit: 'custom' },
+    });
+    expect(threadOnChange('tolerance', values({ tolerance: 'tolerance' }))).toEqual({
+      choices: { fit: 'parameter' },
+    });
+    // Matching twice changes nothing.
+    expect(
+      threadOnChange(
+        'tolerance',
+        mergeValues(defaultValues(threadDialog), {
+          exprs: { tolerance: '0.1 mm' },
+          choices: { fit: 'normal' },
+        }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it('reads Fit back from a stored tolerance and stores no fit', () => {
+    const inputs = threadDialog.toInputs?.(defaultValues(threadDialog), {
+      doc: undefined as never,
+      bodies: {},
+    } as never);
+    expect(inputs?.fit).toBeUndefined();
+    expect(ThreadInputsSchema.safeParse(inputs).success).toBe(true);
+    // A stored `tolerance` parameter reference is the Parameter fit.
+    const stored = threadDialog.fromInputs?.(
+      {
+        faces: { kind: 'ref', refs: [SHAFT] },
+        tolerance: { kind: 'expr', expr: 'tolerance', unit: 'length' },
+      },
+      { doc: undefined as never, bodies: {} } as never,
+    );
+    expect(stored?.choices).toMatchObject({ preset: AUTO, fit: 'parameter' });
+    const loose = threadDialog.fromInputs?.(
+      {
+        faces: { kind: 'ref', refs: [SHAFT] },
+        tolerance: { kind: 'expr', expr: '0.2 mm', unit: 'length' },
+      },
+      { doc: undefined as never, bodies: {} } as never,
+    );
+    expect(loose?.choices).toMatchObject({ fit: 'loose' });
+    // Without a stored tolerance the field's default (Normal) stands.
+    const plain = threadDialog.fromInputs?.({ faces: { kind: 'ref', refs: [SHAFT] } }, {
+      doc: undefined as never,
+      bodies: {},
+    } as never);
+    expect(plain?.choices?.fit).toBeUndefined();
   });
 
   it('takes the document’s tolerance parameter when there is one', () => {
@@ -140,6 +235,23 @@ describe('thread sizes', () => {
     expect(proposeThread(defaultValues(threadDialog), { doc: doc([]) })).toBeUndefined();
     expect(proposeThread(defaultValues(threadDialog), { doc: doc(['tolerance']) })).toEqual({
       exprs: { tolerance: 'tolerance' },
+      choices: { fit: 'parameter' },
     });
+  });
+
+  it('refuses the Parameter fit without the document parameter', () => {
+    const ctx = { doc: { parameters: [] }, bodies: {} } as never;
+    expect(
+      threadDialog.validate?.(
+        mergeValues(defaultValues(threadDialog), { choices: { fit: 'parameter' } }),
+        ctx,
+      ),
+    ).toEqual({ field: 'fit', message: 'This document has no tolerance parameter.' });
+    expect(
+      threadDialog.validate?.(
+        mergeValues(defaultValues(threadDialog), { choices: { fit: 'loose' } }),
+        ctx,
+      ),
+    ).toBeUndefined();
   });
 });

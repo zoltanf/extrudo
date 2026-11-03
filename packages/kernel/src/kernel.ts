@@ -1,5 +1,11 @@
 import type { MeshToSolidReport } from '@extrudo/core';
-import { checkManifold, splitNonManifoldEdges, type TriangleMesh } from '@extrudo/io';
+import {
+  checkManifold,
+  type DroppedTriangles,
+  dropBadTriangles,
+  splitNonManifoldEdges,
+  type TriangleMesh,
+} from '@extrudo/io';
 import { decodeHistory, type HistoryRecord, type SubShapeKind } from './history';
 import type { Manifold, ManifoldToplevel, Mat4 } from './manifold';
 import type { BodyMesh, ExportMesh, Measurements, MeshOptions } from './mesh';
@@ -95,6 +101,11 @@ export interface MeshProblem {
    * mesh faces inwards, which is closed and consistent but inside-out.
    */
   volume: number;
+  /**
+   * What was dropped before the check (ADR-0066's 2026-10-31 amendment),
+   * when triangles were: flat ones and duplicates of an earlier triangle.
+   */
+  dropped?: DroppedTriangles;
 }
 
 /**
@@ -605,11 +616,13 @@ export class Kernel {
   }
 
   /**
-   * A mesh body from triangles (P4-06, ADR-0066 §3): the nodes are welded
-   * (`Mesh.merge()`) and the result is one closed, oriented manifold-3d
-   * solid, whose handles are the body. A mesh that isn't closed is refused
-   * with a `MeshError` carrying what `checkManifold` found, so the feature can
-   * word the message with the file's name.
+   * A mesh body from triangles (P4-06, ADR-0066 §3): flat and duplicate
+   * triangles are dropped first (ADR-0066's 2026-10-31 amendment, `onDrop`
+   * hears the counts when any were), the nodes are welded (`Mesh.merge()`)
+   * and the result is one closed, oriented manifold-3d solid, whose handles
+   * are the body. A mesh that isn't closed is refused with a `MeshError`
+   * carrying what `checkManifold` found, so the feature can word the message
+   * with the file's name.
    *
    * Where surfaces touch along an edge or at a vertex (an STL Extrudo itself
    * wrote of two bodies that meet), the weld would glue them together
@@ -617,14 +630,20 @@ export class Kernel {
    * first, so the parts stay distinct bodies that still touch geometrically.
    * `onSplit` hears how many edges were separated.
    */
-  meshFrom(mesh: TriangleMesh, onSplit?: (edges: number) => void): ShapeHandle {
+  meshFrom(
+    mesh: TriangleMesh,
+    onSplit?: (edges: number) => void,
+    onDrop?: (dropped: DroppedTriangles) => void,
+  ): ShapeHandle {
     const module = this.#manifold;
     if (!module) {
       throw new KernelError(
         "Mesh bodies need the mesh kernel, which isn't loaded (the document has no mesh import).",
       );
     }
-    const separated = splitNonManifoldEdges(mesh);
+    const dropped = dropBadTriangles(mesh);
+    if (dropped.degenerate + dropped.duplicate > 0) onDrop?.(dropped);
+    const separated = splitNonManifoldEdges(dropped.mesh);
     if (separated.split > 0) onSplit?.(separated.split);
     const solid = separated.mesh;
     const report = checkManifold(solid);
@@ -636,6 +655,7 @@ export class Kernel {
       badNodes: report.badNodes,
       volume: report.volume,
     };
+    if (dropped.degenerate + dropped.duplicate > 0) problem.dropped = dropped;
     if (!report.ok) throw new MeshError(meshNotSolid(problem), problem);
     const gl = new module.Mesh({
       numProp: 3,
@@ -645,7 +665,9 @@ export class Kernel {
     // Weld the corners that are the same point but sit apart in the file. When
     // the mesh was split, its duplicate nodes are deliberate: they must not be
     // welded back together, so the split mesh is already welded by position.
-    if (solid === mesh) gl.merge();
+    // The comparison is with what went into the split, so a mesh that only
+    // lost triangles is still welded.
+    if (solid === dropped.mesh) gl.merge();
     let manifold: Manifold | undefined;
     try {
       manifold = new module.Manifold(gl);

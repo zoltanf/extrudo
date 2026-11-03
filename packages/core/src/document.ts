@@ -5,6 +5,8 @@ import type { ExtrudoDocument, LengthUnit } from './schema';
 export interface NewDocumentOptions {
   name?: string;
   units?: LengthUnit;
+  /** Show inch lengths as fractions (`1 1/2 in`); only meaningful with `units: 'in'`. */
+  fractions?: boolean;
   id?: DocumentId;
   /** ISO timestamp for `meta.created` and `meta.modified`; defaults to now. */
   now?: string;
@@ -19,7 +21,11 @@ export function createDocument(options: NewDocumentOptions = {}): ExtrudoDocumen
     formatVersion: FORMAT_VERSION,
     id: options.id ?? newId<DocumentId>(),
     name: options.name ?? 'Untitled',
-    settings: { units: options.units ?? 'mm', precision: 2 },
+    settings: {
+      units: options.units ?? 'mm',
+      precision: 2,
+      ...(options.fractions ? { fractions: true } : {}),
+    },
     parameters: [],
     features: [],
     timelineMarker: 0,

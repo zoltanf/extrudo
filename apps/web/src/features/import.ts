@@ -48,6 +48,7 @@ import { type ProjectStore, sha256Hex } from '@extrudo/storage';
 import { createStore } from 'zustand/vanilla';
 import { withActiveComponent } from '../components/active';
 import type { FileAccess } from '../platform';
+import { CAD_CONVERT_ACCEPT, type ConvertCad, isConvertibleCad } from '../platform/cad';
 import { pendingPluginById } from '../plugins/pending';
 import { putAttachmentBytes } from '../sketch/fonts';
 import { ScadOverrides } from './ScadOverrides';
@@ -57,13 +58,33 @@ import { defaultFromInputs, shownFields } from './values';
 
 /**
  * The app's file picker: the model files of §0, and an
- * `.f3d` file, which opens as a new design instead (ADR-0083 §4).
+ * `.f3d` file, which opens as a new design instead (ADR-0083 §4). The desktop
+ * adds the other CAD files it converts (`importAccept`).
  */
 export const IMPORT_ACCEPT = '.step,.stp,.stl,.3mf,.obj,.scad,.f3d';
 
-/** What a file the picker refuses says so, in the app's voice. */
-export const IMPORT_REFUSED =
-  'Extrudo imports STEP files (.step, .stp), meshes (.stl, .3mf, .obj), OpenSCAD files (.scad) and .f3d files.';
+/**
+ * The picker's `accept`: with the desktop's converter (ADR-0115 §1) also the
+ * other CAD files it turns into STEP.
+ */
+export function importAccept(convertCad: boolean): string {
+  return convertCad ? `${IMPORT_ACCEPT},${CAD_CONVERT_ACCEPT}` : IMPORT_ACCEPT;
+}
+
+/**
+ * What a file the picker refuses says so, in the app's voice: the desktop
+ * lists the other CAD files it converts, the web says the desktop app does.
+ */
+export function importRefused(convertCad: boolean): string {
+  const base =
+    'Extrudo imports STEP files (.step, .stp), meshes (.stl, .3mf, .obj), OpenSCAD files (.scad)';
+  return convertCad
+    ? `${base}, .f3d files, and other CAD files (.sldprt, .ipt, .iam, .catpart, .fcstd, .sat, .smt, .smb, .sab, .igs, .iges, .pvz).`
+    : `${base} and .f3d files. The desktop app also imports .sldprt, .ipt, .iam, .catpart, .fcstd, .sat, .smt, .smb, .sab, .igs, .iges and .pvz files.`;
+}
+
+/** The web's refusal (`importRefused(false)`). */
+export const IMPORT_REFUSED = importRefused(false);
 
 /** The file the dialog is about, while it is open (the picked bytes and record). */
 export interface PendingImport {
@@ -92,16 +113,35 @@ export async function pickImportFile(deps: {
   store: DocumentStore;
   notify(tone: 'info' | 'error', message: string): void;
   openF3d?(file: File): void;
+  /** The desktop's converter for other CAD files (ADR-0115 §1); absent on the web. */
+  convertCad?: ConvertCad;
 }): Promise<PendingImport | undefined> {
-  const file = await deps.files.pick(IMPORT_ACCEPT);
-  if (!file) return undefined;
-  if (/\.f3d$/i.test(file.name) && deps.openF3d) {
-    deps.openF3d(file);
+  const picked = await deps.files.pick(importAccept(!!deps.convertCad));
+  if (!picked) return undefined;
+  if (/\.f3d$/i.test(picked.name) && deps.openF3d) {
+    deps.openF3d(picked);
     return undefined;
+  }
+  let file = picked;
+  // Another CAD program's file becomes STEP first (ADR-0115 §1): the design
+  // only ever holds the STEP, so everything below is the STEP path.
+  let converted = false;
+  if (isConvertibleCad(picked.name) && deps.convertCad) {
+    deps.notify('info', `Converting ${picked.name}…`);
+    const result = await deps.convertCad({
+      name: picked.name,
+      bytes: new Uint8Array(await picked.arrayBuffer()),
+    });
+    if (!result.ok) {
+      deps.notify('error', result.message);
+      return undefined;
+    }
+    file = new File([result.bytes as Uint8Array<ArrayBuffer>], result.name);
+    converted = true;
   }
   const mediaType = mediaTypeOf(file.name);
   if (!modelKind(mediaType)) {
-    deps.notify('error', IMPORT_REFUSED);
+    deps.notify('error', importRefused(!!deps.convertCad));
     return undefined;
   }
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -109,9 +149,18 @@ export async function pickImportFile(deps: {
   const sha256 = sha256Hex(bytes);
   // The same file twice is one attachment (the bytes are content-addressed).
   const stored = Object.entries(doc.attachments ?? {}).find(([, a]) => a.sha256 === sha256);
+  const convertedNotice = () => {
+    if (converted) {
+      deps.notify(
+        'info',
+        `${picked.name} was converted to STEP: shapes only, without colours, names or history.`,
+      );
+    }
+  };
   if (stored) {
     const pending = { id: stored[0] as AttachmentId, attachment: stored[1] as Attachment };
     pendingImportStore.setState({ pending });
+    convertedNotice();
     return pending;
   }
   const id = newId<AttachmentId>();
@@ -136,6 +185,7 @@ export async function pickImportFile(deps: {
   // asks the kernel through `addFile`) finds the bytes (ADR-0066 §0).
   putAttachmentBytes(id, bytes);
   pendingImportStore.setState({ pending });
+  convertedNotice();
   return pending;
 }
 

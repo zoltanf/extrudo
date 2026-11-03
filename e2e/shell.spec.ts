@@ -67,7 +67,7 @@ test('the browser panel resizes with the keyboard and the mouse', async ({ page 
   expect(await width()).toBe(280);
   await expect(splitter).toHaveAttribute('aria-valuenow', '280');
   await page.keyboard.press('Home');
-  expect(await width()).toBe(180);
+  expect(await width()).toBe(220);
   await page.keyboard.press('End');
   expect(await width()).toBe(480);
 

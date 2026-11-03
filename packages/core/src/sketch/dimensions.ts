@@ -55,6 +55,7 @@ export function isDatumLine(sketch: SketchData, id: SketchEntityId | undefined):
 export function distanceEnds(sketch: SketchData, d: Distance): [Vec2, Vec2] | undefined {
   const a = sketch.entities[d.a];
   const b = d.b === undefined ? undefined : sketch.entities[d.b];
+  if (isRound(a) || isRound(b)) return roundEnds(sketch, d);
   if (a?.type === 'line' && d.b === undefined) return lineEnds(sketch, d.a);
   if (a?.type === 'point' && b?.type === 'point')
     return [
@@ -81,6 +82,103 @@ export function distanceEnds(sketch: SketchData, d: Distance): [Vec2, Vec2] | un
   return p && [p, foot(p, on[0], on[1])];
 }
 
+export type RoundSide = 'near' | 'far';
+
+const isRound = (e: SketchData['entities'][SketchEntityId] | undefined) =>
+  e?.type === 'circle' || e?.type === 'arc';
+
+const sketchEntity = (sketch: SketchData, id: SketchEntityId | undefined) =>
+  id === undefined ? undefined : sketch.entities[id];
+
+/**
+ * A point on the circle of circle or arc `roundId` (ADR-0112): aligned, on
+ * the ray from its center through `towards` (`near`) or the opposite one
+ * (`far`); horizontal or vertical, the quadrant point left or right (below or
+ * above) of the center on the side `towards` is (`near`) or the other one. An
+ * arc counts as its whole circle. Undefined if the entity is not round.
+ */
+export function roundEdgePoint(
+  sketch: SketchData,
+  roundId: SketchEntityId,
+  side: RoundSide,
+  towards: Vec2,
+  orientation: Distance['orientation'] = 'aligned',
+): Vec2 | undefined {
+  const e = sketch.entities[roundId];
+  if (e?.type !== 'circle' && e?.type !== 'arc') return undefined;
+  const c = at(sketch, e.center);
+  const r = radiusOf(sketch, roundId);
+  if (!c || r === undefined) return undefined;
+  let u: Vec2;
+  if (orientation === 'horizontal') u = [towards[0] < c[0] ? -1 : 1, 0];
+  else if (orientation === 'vertical') u = [0, towards[1] < c[1] ? -1 : 1];
+  else {
+    const v = sub(towards, c);
+    const len = Math.hypot(...v);
+    u = len > 1e-12 ? [v[0] / len, v[1] / len] : [1, 0];
+  }
+  const k = side === 'far' ? -r : r;
+  return [c[0] + u[0] * k, c[1] + u[1] * k];
+}
+
+/**
+ * Where a line is met from `p` (ADR-0112): square to it (aligned), along the
+ * horizontal through `p` (horizontal), or the vertical (vertical). The foot of
+ * the perpendicular when the line runs along that direction.
+ */
+export function lineMeet(
+  p: Vec2,
+  [a, b]: readonly [Vec2, Vec2],
+  orientation: Distance['orientation'],
+): Vec2 {
+  if (orientation !== 'aligned') {
+    const i = orientation === 'horizontal' ? 1 : 0;
+    const d = b[i] - a[i];
+    if (Math.abs(d) > 1e-12 * (Math.hypot(...sub(b, a)) || 1)) {
+      const t = (p[i] - a[i]) / d;
+      return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    }
+  }
+  return foot(p, a, b);
+}
+
+/**
+ * A distance with a circle or an arc (ADR-0112), its ends in `a`, `b` order:
+ * each round's edge point toward the other entity (a point, the center's
+ * meeting point on a line, the other round's center), and a line's meeting
+ * point from the other end.
+ */
+function roundEnds(sketch: SketchData, d: Distance): [Vec2, Vec2] | undefined {
+  if (d.b === undefined) return undefined;
+  const o = d.orientation;
+  const centre = (id: SketchEntityId): Vec2 | undefined => {
+    const e = sketch.entities[id];
+    if (e?.type === 'point') return [e.x, e.y];
+    if (e?.type === 'circle' || e?.type === 'arc') return at(sketch, e.center);
+    return undefined;
+  };
+  const ka = sketch.entities[d.a]?.type;
+  const kb = sketch.entities[d.b]?.type;
+  if (ka === 'line' || kb === 'line') {
+    const [lineId, roundId, side] = ka === 'line' ? [d.a, d.b, d.sideB] : [d.b, d.a, d.sideA];
+    const on = lineEnds(sketch, lineId);
+    const c = centre(roundId);
+    if (!on || !c) return undefined;
+    const edge = roundEdgePoint(sketch, roundId, side ?? 'near', lineMeet(c, on, o), o);
+    if (!edge) return undefined;
+    const meet = lineMeet(edge, on, o);
+    return ka === 'line' ? [meet, edge] : [edge, meet];
+  }
+  const ca = centre(d.a);
+  const cb = centre(d.b);
+  if (!ca || !cb) return undefined;
+  const end = (id: SketchEntityId, side: RoundSide | undefined, own: Vec2, other: Vec2) =>
+    isRound(sketch.entities[id]) ? roundEdgePoint(sketch, id, side ?? 'near', other, o) : own;
+  const p = end(d.a, d.sideA, ca, cb);
+  const q = end(d.b, d.sideB, cb, ca);
+  return p && q && [p, q];
+}
+
 /**
  * The dimension's value as the geometry stands: mm, or degrees for an
  * angle. Undefined if an entity is missing or the angle's lines are
@@ -89,7 +187,8 @@ export function distanceEnds(sketch: SketchData, d: Distance): [Vec2, Vec2] | un
 export function measureDimension(sketch: SketchData, d: SketchDimension): number | undefined {
   switch (d.type) {
     case 'distance': {
-      if (d.b !== undefined && d.orientation === 'aligned') {
+      const round = isRound(sketch.entities[d.a]) || isRound(sketchEntity(sketch, d.b));
+      if (!round && d.b !== undefined && d.orientation === 'aligned') {
         // A point (or the second line's start, as the solver has it) to a line.
         const a = sketch.entities[d.a];
         const [pointId, lineId] = a?.type === 'line' ? [d.b, d.a] : [d.a, d.b];

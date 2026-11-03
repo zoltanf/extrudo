@@ -39,6 +39,9 @@ export default defineConfig({
   renderer: {
     root: 'src/renderer',
     base: './',
+    // The web app's static files (the tooltip clips in `demos/` above all).
+    // Vite's default is `<root>/public`, which the desktop doesn't have.
+    publicDir: resolve(import.meta.dirname, '../web/public'),
     // The version, channel and commit the About dialog shows (`apps/web/src/version.ts`).
     define: { __EXTRUDO_BUILD__: JSON.stringify(buildInfo(pkg.version)) },
     plugins: [react(), tailwindcss()],

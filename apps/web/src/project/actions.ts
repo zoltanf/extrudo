@@ -4,6 +4,8 @@ import {
   DocumentLoadError,
   type ExtrudoDocument,
   FILE_EXTENSION,
+  type LengthUnit,
+  LengthUnitSchema,
   mediaTypeOf,
   modelKind,
   randomUuid,
@@ -16,8 +18,9 @@ import {
   type ProjectSummary,
 } from '@extrudo/storage';
 import { appNotifications } from '../design-system/notifications';
-import { IMPORT_ACCEPT, requestModelImport } from '../features/import';
-import { type OpenedFile, type Platform, safeFileName } from '../platform';
+import { importAccept, requestModelImport } from '../features/import';
+import { type OpenedFile, type Platform, type Preferences, safeFileName } from '../platform';
+import { isConvertibleCad } from '../platform/cad';
 import { navigate, projectHref } from '../routes';
 import { APP_VERSION } from '../version';
 import type { BodyCheck, BodyCheckResult } from './f3dCheck';
@@ -37,6 +40,22 @@ export async function createProject(
   // Ask for persistent storage once there is something worth keeping (FR-PRJ-05).
   void platform.storage.requestPersistence();
   return doc.id;
+}
+
+/** The preference that remembers the unit of the last new design (FR-PRJ-07, ADR-0113 §1). */
+export const NEW_DESIGN_UNITS_KEY = 'newDesignUnits';
+
+/** The unit a new design starts in: the one last picked on the home screen's New design card. */
+export function newDesignUnits(preferences: Preferences): LengthUnit {
+  return LengthUnitSchema.catch('mm').parse(preferences.get(NEW_DESIGN_UNITS_KEY, 'mm'));
+}
+
+/** A new empty design in the remembered unit: the Home tab's New Design in a design. */
+export function createBlankProject(platform: Platform): Promise<ProjectId> {
+  return createProject(
+    platform,
+    createDocument({ units: newDesignUnits(platform.preferences), appVersion: APP_VERSION }),
+  );
 }
 
 /** A new empty design for the tutorial (P3-12), named for what it builds. */
@@ -92,14 +111,20 @@ export async function importProject(
  * The home screen's Import… (ADR-0083 §4): a design file (`.extrudo`, `.f3d`)
  * comes in as `importProject` brings it; a model file (STEP, mesh, OpenSCAD)
  * makes a new design named for it, which opens with Import Model's dialog on
- * the file. `undefined` if they cancel.
+ * the file (on the desktop also another CAD program's file, which that dialog
+ * converts to STEP first). `undefined` if they cancel.
  */
 export async function importAnyFile(
   platform: Platform,
 ): Promise<Pick<ProjectSummary, 'id'> | undefined> {
-  const file = await platform.files.pick(`${FILE_EXTENSION},application/zip,${IMPORT_ACCEPT}`);
+  const file = await platform.files.pick(
+    `${FILE_EXTENSION},application/zip,${importAccept(!!platform.convertCad)}`,
+  );
   if (!file) return undefined;
-  if (!modelKind(mediaTypeOf(file.name))) return importProject(platform, file);
+  // Another CAD program's file is a model too where the Import dialog converts it (ADR-0115 §1).
+  const model =
+    modelKind(mediaTypeOf(file.name)) || (!!platform.convertCad && isConvertibleCad(file.name));
+  if (!model) return importProject(platform, file);
   const name = file.name.replace(/\.[^.]+$/, '') || 'Imported model';
   const id = await createProject(platform, createDocument({ name, appVersion: APP_VERSION }));
   requestModelImport(id, file);

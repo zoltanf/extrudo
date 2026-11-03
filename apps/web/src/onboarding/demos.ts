@@ -15,7 +15,8 @@
 /**
  * The tools that have a clip: every tile of the Solid, Modify, Construct, Make and
  * Sketch tabs (in the tabs' order), all recorded in the current UI (R3-16). The Sketch tab's
- * tiles are the ribbon's; the tools in its "more" menus have none.
+ * tiles are the ribbon's; Project, in its Create ▾ menu, is the one tool from a "more"
+ * menu with a clip.
  */
 export const DEMO_TOOLS: readonly string[] = [
   // Solid › Create, Primitives, Features, Pattern, Program, Assemble.
@@ -86,6 +87,7 @@ export const DEMO_TOOLS: readonly string[] = [
   'circle',
   'arc',
   'dimension',
+  'project',
   'sketchFillet',
   'trim',
   'sketchOffset',

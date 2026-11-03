@@ -14,8 +14,10 @@ import {
   type GeomRef,
   type GeomRefKind,
   type Input,
+  type LengthUnit,
   parameterNames,
 } from '@extrudo/core';
+import { defaultInUnit } from './default-unit';
 import type {
   DialogContext,
   DialogField,
@@ -36,14 +38,15 @@ export const EMPTY_VALUES: DialogValues = {
 /** The records `DialogValues` holds, one per kind of field that carries a value. */
 const KINDS = ['refs', 'exprs', 'choices', 'toggles', 'labels'] as const;
 
-/** Every field at its default: selection fields empty. */
-export function defaultValues(spec: FeatureDialogSpec): DialogValues {
+/** Every field at its default: selection fields empty, mm sizes in the design's `unit`. */
+export function defaultValues(spec: FeatureDialogSpec, unit: LengthUnit = 'mm'): DialogValues {
   const values = { refs: {}, exprs: {}, choices: {}, toggles: {}, labels: {} } as {
     [K in keyof DialogValues]: Record<string, DialogValues[K][string]>;
   };
   for (const field of spec.fields) {
     if (field.kind === 'selection' || field.kind === 'features') values.refs[field.name] = [];
-    else if (field.kind === 'expression') values.exprs[field.name] = field.default;
+    else if (field.kind === 'expression')
+      values.exprs[field.name] = defaultInUnit(field.default, unit);
     else if (field.kind === 'choice') values.choices[field.name] = field.default;
     else if (field.kind === 'toggle') values.toggles[field.name] = field.default;
     else if (field.kind === 'labels') values.labels[field.name] = [];

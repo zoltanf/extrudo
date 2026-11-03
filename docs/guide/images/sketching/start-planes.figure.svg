@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 260">
+  <title>The three origin planes with a flat face that accepts a sketch and a curved face that refuses one</title>
+  <polygon points="130,110 177.6,137.5 130,165 82.4,137.5" class="sk-face"/>
+  <polygon points="130,110 177.6,137.5 177.6,87.5 130,60" class="sk-body"/>
+  <polygon points="130,110 82.4,137.5 82.4,87.5 130,60" class="sk-body"/>
+  <text x="156" y="170" class="sk-muted" text-anchor="middle" font-size="11">XY</text>
+  <text x="188" y="140" class="sk-muted" font-size="11">XZ</text>
+  <text x="66" y="120" class="sk-muted" text-anchor="end" font-size="11">YZ</text>
+  <polygon points="380,60 440,95 380,130 320,95" class="sk-face"/>
+  <polygon points="380,130 440,95 440,145 380,180" class="sk-body-side"/>
+  <polygon points="320,95 380,130 380,180 320,145" class="sk-body-side"/>
+  <path d="M400 92 396 118 404 112 410 122 414 119 408 109 418 107Z" class="sk-pointer" fill="none" stroke-width="2" stroke-linejoin="round"/>
+  <polygon points="80,194 80,226 160,226 160,194" class="sk-body-side"/>
+  <ellipse cx="120" cy="194" rx="40" ry="18" class="sk-body"/>
+  <ellipse cx="120" cy="226" rx="40" ry="18" class="sk-body-side"/>
+  <path d="M112 204 128 218M128 204 112 218" class="sk-accent" fill="none" stroke-width="2" stroke-linecap="round"/>
+  <text x="216" y="222" class="sk-muted" font-size="11">A sketch needs a flat face or a plane</text>
+</svg>

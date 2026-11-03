@@ -107,20 +107,32 @@ export const DATUM_SPAN = 100;
 /** Whether a projection source is a datum (an axis or a point, ADR-0093). */
 export const isDatumRef = (ref: GeomRef) => ref.kind === 'axis' || ref.kind === 'point';
 
+/** How a projection makes its curves: see `SketchProjection.mode`. */
+export type ProjectionMode = NonNullable<SketchProjection['mode']>;
+
 /**
  * What can be projected (the Project tool's bodies, faces, edges and
  * vertices; the dimension and constraint tools' axes and points, ADR-0093),
- * and what Intersect can cut (P4-12).
+ * what Intersect can cut (P4-12), and whose centre a sketch tool can snap to
+ * (a face, issue #140).
  */
-const PROJECTABLE: Record<'project' | 'intersect', readonly GeomRef['kind'][]> = {
+const PROJECTABLE: Record<ProjectionMode, readonly GeomRef['kind'][]> = {
   project: ['edge', 'face', 'vertex', 'body', 'axis', 'point'],
   intersect: ['face', 'body'],
+  center: ['face'],
+};
+
+const REFUSED: Record<ProjectionMode, string> = {
+  project: 'Only body edges, faces, vertices, bodies, axes and points can be projected.',
+  intersect: 'Only faces and bodies can be intersected with the sketch plane.',
+  center: "Only a face's centre can be projected.",
 };
 
 /**
  * Projects a body edge, face, vertex or whole body into a sketch (the
- * Project tool), an origin or construction axis or point (ADR-0093), or with `mode: 'intersect'` the curves where a face or body
- * meets the sketch plane (Intersect, P4-12). The record starts without
+ * Project tool), an origin or construction axis or point (ADR-0093), with `mode: 'intersect'` the curves where a face or body
+ * meets the sketch plane (Intersect, P4-12), or with `mode: 'center'` a face's
+ * area centre as one point (a sketch tool snapped to it, issue #140). The record starts without
  * curves: the kernel reports them on the next recompute and the app adds them
  * (`syncProjections`), in the same undo step. With `linked: false` (an
  * include, "Keep linked" off) the app then turns them into plain entities and
@@ -130,17 +142,11 @@ export const addProjection = defineCommand<{
   feature: FeatureId;
   id: ProjectionId;
   ref: GeomRef;
-  mode?: 'project' | 'intersect';
+  mode?: ProjectionMode;
   linked?: boolean;
 }>('sketch.project', 'Project', (draft, { feature, id, ref, mode = 'project', linked = true }) => {
   const data = sketchDraft(draft, feature);
-  if (!PROJECTABLE[mode].includes(ref.kind)) {
-    throw new CommandError(
-      mode === 'intersect'
-        ? 'Only faces and bodies can be intersected with the sketch plane.'
-        : 'Only body edges, faces, vertices, bodies, axes and points can be projected.',
-    );
-  }
+  if (!PROJECTABLE[mode].includes(ref.kind)) throw new CommandError(REFUSED[mode]);
   const already = Object.values(data.projections ?? {}).some(
     (p) => p.ref.kind === ref.kind && p.ref.id === ref.id && (p.mode ?? 'project') === mode,
   );
@@ -163,7 +169,7 @@ export const addProjection = defineCommand<{
   data.projections[id] = {
     ref,
     curves: {},
-    ...(mode === 'intersect' && { mode }),
+    ...(mode !== 'project' && { mode }),
     ...(!linked && { linked: false as const }),
   };
 });
@@ -245,6 +251,64 @@ export const includeProjection = defineCommand<{
   delete data.projections?.[id];
   if (data.projections && Object.keys(data.projections).length === 0) delete data.projections;
 });
+
+/** The curves a projection still has in the sketch (the user may have deleted some). */
+function liveCurves(data: SketchData, projection: SketchProjection): SketchEntityId[] {
+  return Object.values(projection.curves).filter(
+    (id): id is SketchEntityId => id !== null && id in data.entities,
+  );
+}
+
+/** The constraints and dimensions on a projection's curves and their points. */
+export function projectionUses(
+  data: SketchData,
+  projection: SketchProjection,
+): { constraints: number; dimensions: number } {
+  const removal = entityRemoval(data, liveCurves(data, projection));
+  return { constraints: removal.constraints.length, dimensions: removal.dimensions.length };
+}
+
+/**
+ * A sketch's face outline (ADR-0074's 2026-10-31 amendment): its projection
+ * of the face it sits on, if it has one, or `undefined` for a sketch on a
+ * plane. The sketch palette's Face outline switch shows and toggles it.
+ */
+export function faceOutline(
+  plane: GeomRef,
+  data: SketchData,
+): { id?: ProjectionId; constraints: number; dimensions: number } | undefined {
+  if (plane.kind !== 'face') return undefined;
+  for (const [id, p] of Object.entries(data.projections ?? {})) {
+    if (p.ref.kind === 'face' && p.ref.id === plane.id && (p.mode ?? 'project') === 'project') {
+      return { id: id as ProjectionId, ...projectionUses(data, p) };
+    }
+  }
+  return { constraints: 0, dimensions: 0 };
+}
+
+/**
+ * Removes a projection and its curves (the Face outline switch turned off,
+ * ADR-0074's 2026-10-31 amendment). Refused while a constraint or dimension
+ * is on one of its curves: removing them along would undo the user's work.
+ */
+export const removeProjection = defineCommand<{ feature: FeatureId; id: ProjectionId }>(
+  'sketch.unproject',
+  'Remove projection',
+  (draft, { feature, id }) => {
+    const data = sketchDraft(draft, feature);
+    const projection = data.projections?.[id];
+    if (!projection) throw new CommandError(`The sketch has no projection "${id}".`);
+    const removal = entityRemoval(data, liveCurves(data, projection));
+    if (removal.constraints.length > 0 || removal.dimensions.length > 0) {
+      throw new CommandError(
+        'Constraints or dimensions use the projected curves. Delete them first.',
+      );
+    }
+    for (const e of removal.entities) delete data.entities[e];
+    delete data.projections?.[id];
+    if (data.projections && Object.keys(data.projections).length === 0) delete data.projections;
+  },
+);
 
 /** The label of an include's undo step. */
 export function includeLabel(count: number): string {

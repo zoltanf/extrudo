@@ -910,6 +910,11 @@ end to end, faster than in established desktop CAD.
     2026-10-06, ADR-0034's amendment)**: a file's solid and assembly-instance
     colours become the imported bodies' appearance once, and coloured bodies
     export their colours; face colours are counted, not applied.
+  - STEP writer: a fillet rim's torus face is written with an indirect frame
+    and a bound flag that a reader trusting the flag turns into a cove (found
+    2026-11-01, ADR-0097 slice D11, Q1b.2); write such faces on a direct frame
+    or check the flags against the neighbouring edges before writing, with a
+    test that reads the flags back.
   - ~~Section analysis on several planes, a section box~~ **done
     (P4-12, 2026-10-06, ADR-0045's amendment: up to three planes, a box of
     six)**; sections saved with named views, a hatch per material (ADR-0045).
@@ -928,7 +933,11 @@ end to end, faster than in established desktop CAD.
     `starts` input, 2026-10-07, ADR-0056's second amendment) done, and
     ~~tapered threads~~ (2026-10-07, ADR-0056's third amendment: a thread on a
     conical face follows the cone; NPT 1/8 to 1 presets) done; BSPT (55°)
-    stays deferred.**
+    stays deferred.** **A `print45` profile, print sizes, named fits and a
+    hole at its nominal size** done 2026-10-31 (ADR-0056's fourth
+    amendment); **the fill** done 2026-11-01, ADR-0056's fifth amendment (a
+    hole wider than the minor is filled in to it along the thread, a shaft
+    thinner than the major built up).
   - ~~Sweep: say where a profile lands~~ **done in ADR-0067 §H5 (P4-12,
     2026-10-05): the sweep warns** when its profile is drawn more than max(1 %
     of the path's length, 0.5 mm) from the path's start line, naming the
@@ -1105,8 +1114,9 @@ end to end, faster than in established desktop CAD.
   surfaces' curve; slice D4 (2026-10-23): the exact rebuild runs only on a
   segmentation with no unfit region at all (the hybrid keeps those as facets),
   its budget 30 s → 12 s, Faceted's cap 2,000 → 5,000, and the browser-vs-node
-  timings (Auto total over the 37 files 377.9 → 187.8 s). Next: fillet strips,
-  tangent lines where a plane meets a fillet's cylinder.
+  timings (Auto total over the 37 files 377.9 → 187.8 s). The next steps named then, fillet strips and the tangent line, were
+  both tried later: the tangent line in slice D5 (2026-10-25c, not kept) and fillet
+  strips as rolling-ball fillets in slice D10 (2026-10-31c, measured, not built).
   *Follow-up, 2026-10-24:* Offset Face on a converted body (the owner's gear:
   17,472 triangles, prismatic Auto → a valid 204-face hybrid body) fails at
   every distance. The failure probe answers in one build now
@@ -1147,6 +1157,46 @@ end to end, faster than in established desktop CAD.
   (`bossWithBump`: 100 plane surfaces → 8, the conversion's) while the
   per-triangle array keeps the view mesh's triangle count (ADR-0097's
   2026-10-25e amendment).
+  *slice D7 (2026-10-30, checks only):* every converted body in the tests is
+  written to STEP and read back; the bar is valid, the same face and
+  solid counts, the volume within 1e-4 (`expectStepRoundTrip`); 5 fixture
+  cases miss it today (pinned with `tripFails`, all hybrid) and 17 of the 36
+  prismatic
+  conversions in the owner's 41-file sweep, so fixing the hybrid's STEP
+  read-back is the next slice; the sweep gained `SWEEP_OUT`/`SWEEP_BASELINE`
+  (ADR-0097's 2026-10-30 amendment).
+  *diagnosis 2026-10-30b:* spike cases `s`/`S` measured the failures: the
+  read-back breaks on face/wire **orientation** (`BadOrientationOfSubshape`,
+  `UnorientableShape`, `SelfIntersectingWire`), not on edge tolerances (no edge
+  or vertex carries a status; invalid faces are facet/plane only), the written
+  max edge tolerance and facet count do not separate pass from fail, and
+  `ShapeFix_Shape` at the written tolerances fixes 0 of 12 (ADR-0097's
+  2026-10-30b amendment; no converter change, the fix is still the next slice).
+  *2026-10-31:* the corpus's four refused STLs were measured
+  (ADR-0066's 2026-10-31 amendment): only mms-m5-nut.stl's refusal is plain
+  bad triangles, so the import now drops flat and duplicate triangles before
+  the check (that file, and hex-key-cap-3mm.stl's 303 duplicates, are worded
+  in the warning or refusal); welding and hole filling were measured and
+  left out — they fix none of the others.
+  *slice D9 (2026-10-31b):* a torus with R ≤ r is fitted again where a split
+  would otherwise leave its whole component as facets, and built as a surface
+  of revolution that STEP keeps: peg-perego-button at Auto 0.02 mm, 212 faces,
+  no facets (slice D8: 0.05 mm, 261 faces); the spike's round-trip passes stay
+  20 of 30 hybrids (ADR-0097's 2026-10-31b amendment).
+  *slice D10 (2026-10-31c, measured, not built):* a rolling-ball cylinder for
+  fillet bands between two planes would take 0.9 % of the facets at Auto and
+  move no file's step, so it was not built. The facets come from exploded
+  regions and from blends along curved outlines and between curved faces
+  (ADR-0097's 2026-10-31c amendment).
+  *slice D11 (2026-11-01):* a hybrid region whose boundary passes a node twice
+  (a hole touching its outline) is built as one face instead of facets, a
+  periodic one cut in two where its loops touch so its STEP reads back, and a
+  wall strip lower than the tolerance is no longer a plane square to it: at
+  Auto the corpus's facets go 17,790 → 12,565 and its faces 27,581 → 22,569,
+  with the same 7 round trips failing as before (ADR-0097's 2026-11-01
+  amendment). Left of the exploded regions' facets: absorbed steps 386, edge
+  tolerance on wrapped charts 375, sliver holes 84, micro zigzags 26, and
+  spool-screw-v4.1's two regions invalid after unify.
 
 ## Phase 5 — Programmatic design (→ v0.6)
 
@@ -1487,7 +1537,7 @@ end to end, faster than in established desktop CAD.
   B9's recompute shows the wait; the bar grows) and `e2e/model-progress.spec.ts`
   green on CI; the perf spec's edit and undo app time unchanged. Slices 1–3 done
   2026-10-24; the owner ticked it 2026-10-25.
-- [ ] **P6-18 Imperial units** (owner, 2026-10-28; FR-PRJ-07; ADR-0113). Inches
+- [x] **P6-18 Imperial units** (owner, 2026-10-28; FR-PRJ-07; ADR-0113). Inches
   were in the file format, expressions and display from the start, but nothing
   in the app could set a design's unit. Three slices:
   - [x] **S1 Unit editor.** The browser's Document settings folder sets the
@@ -1496,16 +1546,76 @@ end to end, faster than in established desktop CAD.
     (parameters, slider ranges, configurations, feature inputs, sketch
     dimensions), so the model keeps its size. The New design card picks the
     unit of a new design and remembers it. *Done 2026-10-28.*
-  - [ ] **S2 Inch grid.** In an inch design the grid and grid snapping use
+  - [x] **S2 Inch grid.** In an inch design the grid and grid snapping use
     binary fractions of an inch and feet (1/16, 1/8, 1/4, 1/2, 1, 6, 12 in, 10 ft …)
     instead of powers of ten mm; the finest step is 1/16 in (ADR-0113 §2).
-  - [ ] **S3 Fractions and feet-inches.** Expressions take mixed numbers and
+    *Done 2026-10-28.*
+  - [x] **S3 Fractions and feet-inches.** Expressions take mixed numbers and
     the `'`/`"` marks (`1 1/2 in`, `3/8"`, `5' 6"`); an inch design can show
     lengths as fractions (`settings.fractions`, nearest 1/4 … 1/64 by
     precision) in dimensions, inputs and the Parameters dialog (ADR-0113 §3).
+    *Done 2026-10-28.*
   Acceptance: `pnpm check`; `e2e/document-units.spec.ts` green on CI; S2 and
   S3 add their own specs; the file-format doc and `pnpm api:generate` updated
-  for `fractions`.
+  for `fractions`. Slices 1–3 done 2026-10-28, tool defaults in the design's
+  unit 2026-10-29; the owner ticked it 2026-11-01.
+- [ ] **P6-19 Other CAD files through a bundled cadmpeg** (owner, 2026-10-30;
+  issue #141; ADR-0115). The desktop app bundles cadmpeg (Apache-2.0, pinned
+  version and SHA-256 per target in `apps/desktop/cadmpeg.json`, fetched at
+  build time) and converts `.sldprt .ipt .iam .catpart .fcstd .sat .smt .smb
+  .sab .igs .iges .pvz` to STEP before the normal STEP import; the design
+  stores only the STEP. Desktop only; the browser's import dialog points at
+  the desktop app. Two slices:
+  - [x] **S1 Packaging.** `fetch-cadmpeg.mjs` with hash check, `extraResources`,
+    the `package*` scripts and the desktop workflow fetch first, mac signature
+    and smoke checks, NOTICE, `docs/references.md`, `docs/desktop.md`, the
+    release checklist. *Done 2026-10-30.*
+  - [x] **S2 Import flow.** `cadmpeg.ts` + `cadmpegService.ts` in main with the
+    IPC channels, `Platform.convertCad`, `IMPORT_ACCEPT` and `pickImportFile`
+    in the renderer, unit tests with a fake spawn. *Done 2026-10-30.* Not yet
+    checked: a real `.sldprt` imported in the packaged app (no sample with a
+    usable license; cadmpeg's own `.sldprt` fixtures are synthetic and convert
+    to an empty STEP). Its `.FCStd` fixtures convert through
+    `convertWithCadmpeg` and read back in the kernel as solids.
+  Acceptance: `pnpm check`; the desktop workflow green on all three OSes with
+  `cadmpeg --version` passing in the smoke steps; a `.sldprt` sample imports
+  in the packaged app as a STEP attachment; `docs/agent/adr-digest.md` has the
+  ADR's rules.
+
+- [x] **P6-20 3D mouse** (owner, 2026-10-30; FR-VP-08; ADR-0114). Done 2026-10-30. A
+  3Dconnexion SpaceMouse or SpaceNavigator over WebHID moves the view in object mode (pan,
+  zoom, tilt, turntable twist, roll); left button Home, right Fit. Settings › View and
+  navigation connects it and sets its speed; allowed devices reconnect by themselves. The
+  desktop app picks the device itself (Electron has no chooser) and allows only 3D mice.
+  Acceptance: `pnpm check` (`viewport/spaceMouse.test.ts`, `main/permissions.test.ts`).
+- [x] **P6-21 Slicer mouse preset** (owner, 2026-10-31; FR-VP-01; ADR-0090's amendment).
+  Done 2026-10-31. The rail's Slicer radio, announced and disabled since P6-10, works: as
+  the slicers do it, left-drag orbits (where a selection box would be drawn, or nobody
+  listens to the drag), right- or middle-drag pans, the wheel zooms, Shift+left-drag
+  draws the selection box; a click, a double-click, a long press and a tool's drag stay
+  the pointer's. Acceptance: `pnpm check` (`viewport/navigation.test.ts`,
+  `viewport/pointer.test.ts`, `shell/AppMenu.test.tsx`), `e2e/viewport.spec.ts`.
+- [ ] **P6-22 Sketching docs with live widgets and drawn figures** (owner, 2026-11-01;
+  FR-UX-04; ADR-0116). Pilot: `/docs/sketching/` and the Line, Dimension, Project, Trim and
+  Sketch Fillet pages, with four widgets (`dof-playground`, `palette-switches`,
+  `dimension-label`, `trim`), drawn `.figure.svg` figures, heading anchors, and F1 that
+  opens the sketching page (at the palette row's section) while a sketch is open. Then the
+  other 45 sketch tool pages, clips for the 24 without one, and the `snap-explorer` and
+  `profiles` widgets. Acceptance: `pnpm check` (`apps/site/src/docs.test.ts`, the widget
+  models' tests, `shell/docsLinks.test.ts`, `main/docs.test.ts`), the owner's review of the
+  pilot on a local build of the site.
+  - [x] S1: the machinery: the `widget` block and the widget list, the one hashed
+    `docs-widgets` module (only on pages with a widget), `.figure.svg` inlining through
+    the allow-list, the `sk-*` classes, heading ids, and `palette-switches` on the
+    sketching page as the first widget.
+  - [x] S2: F1 opens the sketching page at the palette row's section (`helpTarget.ts`,
+    `docsAnchors.json`, the desktop allow-list).
+  - [x] S3 and S7: the drawn figure set (26 `.figure.svg`), redrawn where unclear.
+  - [x] S4: the `dof-playground`, `dimension-label` and `trim` widgets.
+  - [x] S5: notes for the Line, Dimension, Project, Trim and Sketch Fillet pages;
+    Project's clip.
+  - [x] S6: the sketching page around its visuals, the palette section, figure galleries,
+    the anchor test and the axe audit.
 
 ## Phase 7 — Later (lowest priority, after everything else)
 

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 110">
+  <title>Vertical: a slanted line, then upright</title>
+  <path d="M18 72 70 24" class="sk-free" fill="none" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M110 55h14m-6 -5 6 5-6 5" class="sk-muted" fill="none" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M181 26V86" class="sk-free" fill="none" stroke-width="2.4" stroke-linecap="round"/>
+  <rect x="210" y="47" width="16" height="16" class="sk-glyph" rx="3"/>
+  <g transform="translate(210 47) scale(0.6667)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path class="sk-glyph-text" fill="none" d="M10 6.2V17.8"/><circle class="sk-glyph-text" fill="none" cx="10" cy="4" r="2.2"/><circle class="sk-glyph-text" fill="none" cx="10" cy="20" r="2.2"/><path class="sk-glyph-text" fill="none" stroke-dasharray="3 2.6" d="M17 3V21"/>
+  </g>
+</svg>

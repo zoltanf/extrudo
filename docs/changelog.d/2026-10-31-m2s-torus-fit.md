@@ -1,0 +1,1 @@
+- 2026-10-31 · **Mesh to Solid fits a torus whose tube reaches its axis again**: where a mesh's curved patch would otherwise stay facets, such a torus is now a surface of revolution that a STEP file keeps, so peg-perego-button converts at 0.02 mm with 212 faces and no facets instead of 261 faces with 48 (ADR-0097 slice D9).
