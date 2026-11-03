@@ -227,9 +227,10 @@ describe('measureProbe', () => {
       { record: 1, name: 'Body1', step: 'ONE' },
       { record: 2, name: 'Body2', step: 'TWO' },
       { record: 3, name: 'Body3', step: 'THREE' },
+      { record: 4, name: 'Body4', step: 'FOUR' },
     ];
     const probe = probeDocument(replay, steps);
-    const [one, two, three] = probe.bodies.map((b) => b.feature);
+    const [one, two, three, four] = probe.bodies.map((b) => b.feature);
     const asked: BodyId[] = [];
     const { replayed, measured } = await measureProbe(
       probe,
@@ -238,8 +239,13 @@ describe('measureProbe', () => {
           [one as string]: { status: 'ok' },
           [two as string]: { status: 'error', message: 'unreadable STEP' },
           [three as string]: { status: 'ok' },
+          // A file body that isn't a sound solid is kept with a warning (ADR-0051, 2026-10-29): measured all the same.
+          [four as string]: {
+            status: 'warning',
+            message: "A body this import read isn't a sound solid",
+          },
         },
-        bodies: [bid('shown:0'), bid('hidden:0'), bid(`${one}:0`)],
+        bodies: [bid('shown:0'), bid('hidden:0'), bid(`${one}:0`), bid(`${four}:0`)],
       },
       async (body) => {
         asked.push(body);
@@ -250,7 +256,8 @@ describe('measureProbe', () => {
     expect(measured.get(1)).toEqual(box(0, 10));
     expect(measured.get(2)).toEqual({ error: 'unreadable STEP' });
     expect(measured.get(3)).toEqual({ error: 'the probe made 0 bodies' });
-    expect(asked).toEqual([bid('shown:0'), bid(`${one}:0`)]);
+    expect(measured.get(4)).toEqual(box(0, 10));
+    expect(asked).toEqual([bid('shown:0'), bid(`${one}:0`), bid(`${four}:0`)]);
   });
 });
 
