@@ -36,11 +36,13 @@
  * preset (NPT) fits a cone of its taper without a size (`autoTaperThread`).
  *
  * **The fill** (P4-12, ADR-0056's fifth amendment): a hole wider than the
- * thread's crest (its minor with the tolerance) or a shaft thinner (the major
- * less it) is first brought to it along the thread by a sleeve (`sleeveOf`)
- * joined to the face's body, so a hole drawn at the nominal size threads
- * fully; a hole's sleeve that reaches an end of the face is trimmed to the
- * body with the hole closed (Remove Faces).
+ * thread's crest (its minor with the tolerance) — one at or past the root
+ * included — or a shaft thinner (the major less it) is first brought to it
+ * along the thread by a sleeve (`sleeveOf`) joined to the face's body, so a
+ * hole drawn at the nominal size threads fully; a hole's sleeve that reaches
+ * an end of the face is trimmed to the body with the hole closed (Remove
+ * Faces), and a hole at or past the root whose sleeve can't be trimmed is an
+ * error, because without the sleeve nothing would be cut.
  *
  * Faces: `thread:<id>:side:<source>`, sources `f<k>.root`, `f<k>.flank0`,
  * `f<k>.crest`, `f<k>.flank1` (one per turn, `#n`), `f<k>.end0|end1` (the
@@ -192,6 +194,8 @@ export const kernelThread: KernelFeatureDefinition<ThreadInputs> = {
           if (plan.fill.note) warnings.push(plan.fill.note);
           // The ring and the lead-ins now start from the crest.
           plan = { ...plan, radius: plan.radii.crest };
+        } else if (plan.fill.required && plan.fill.unfilled) {
+          throw new KernelError(plan.fill.unfilled);
         } else if (plan.fill.unfilled) {
           warnings.push(plan.fill.unfilled);
         }
@@ -346,6 +350,11 @@ export interface ThreadFill {
   note?: string;
   /** A hole's warning when its sleeve can't be trimmed (Remove Faces can't close it) and it is cut as drawn. */
   unfilled?: string;
+  /**
+   * A hole at or past the root: without the sleeve nothing would be cut, so
+   * an untrimmable one is an error, not a warning.
+   */
+  required?: boolean;
 }
 
 /** Checks the face and the numbers and works out one face's thread. */
@@ -421,11 +430,6 @@ export function planThread(
     );
   }
   if (internal) {
-    if (r >= radii.root - EPS) {
-      throw new KernelError(
-        `The hole is ${mm(2 * r)} across, as wide as the ${name} thread (${mm(2 * radii.root)} with the tolerance). Pick a larger thread or a smaller hole.`,
-      );
-    }
     if (r < radii.crest * 0.5) {
       warnings.push(
         `The hole is ${mm(2 * r)} across, much smaller than the ${name} thread: the thread bores it out to ${mm(2 * radii.crest)}.`,
@@ -483,6 +487,7 @@ export function planThread(
   const depth = Math.abs(radii.root - radii.crest);
   if (internal ? r > radii.crest + EPS : r < radii.crest - EPS) {
     const off = 2 * Math.abs(r - radii.crest);
+    const required = internal && r >= radii.root - EPS;
     fill = {
       from: internal ? radii.crest - reach({ pitch }) / 2 : r,
       to: internal ? r : radii.crest + reach({ pitch }) / 2,
@@ -494,8 +499,11 @@ export function planThread(
           : `The shaft is ${mm(2 * r)} across, thinner than the ${name} thread's major diameter (${mm(2 * radii.crest)}): it is built up to it along the thread.`,
       }),
       ...(internal && {
-        unfilled: `The hole is ${mm(2 * r)} across, wider than the ${name} thread's minor diameter (${mm(2 * radii.crest)}) and can't be filled in here: only the outer part of the tooth is cut. Draw the hole at about ${mm(round1(2 * radii.crest - 2 * n.tolerance))} for a full thread.`,
+        unfilled: required
+          ? `The hole is ${mm(2 * r)} across, as wide as the ${name} thread (${mm(2 * radii.root)} with the tolerance) and can't be filled in here: nothing would be cut. Draw the hole at about ${mm(round1(2 * radii.crest - 2 * n.tolerance))} for a full thread.`
+          : `The hole is ${mm(2 * r)} across, wider than the ${name} thread's minor diameter (${mm(2 * radii.crest)}) and can't be filled in here: only the outer part of the tooth is cut. Draw the hole at about ${mm(round1(2 * radii.crest - 2 * n.tolerance))} for a full thread.`,
       }),
+      ...(required && { required: true }),
     };
   }
   return {
@@ -828,7 +836,8 @@ export function toothPieces(
  * body's hull (the body with the hole closed by Remove Faces), so it doesn't
  * stand out of a curved or slanted wall the hole comes out of. When Remove
  * Faces can't close the hole (it meets another one), there is no sleeve:
- * undefined, and the hole is cut as drawn.
+ * undefined, and the hole is cut as drawn — an error when the hole is at or
+ * past the root (`ThreadFill.required`), since nothing would be cut.
  */
 export function sleeveOf(
   ctx: EvalContext,

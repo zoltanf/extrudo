@@ -287,8 +287,9 @@ them; the decoders are `decode/copies.ts`, `decode/sweep.ts` and
    diameters), full length or a length from an offset. The file resizes the
    face to the thread (a shaft's to the major diameter, a hole's to the
    minor), so the face is found as the sketch circle of the side nearest that
-   crest, not by the B-rep's radius. A thread in a hole wider than the thread
-   is skipped (the file fills the hole in first; Extrudo only cuts). 55° pipe
+   crest, not by the B-rep's radius; Extrudo fills a wider hole in (or builds
+   a thinner shaft up) to it along the thread (ADR-0056's fifth amendment),
+   so the thread imports as drawn. 55° pipe
    threads get Extrudo's 60° profile, with a note. Every thread in the corpus
    is modeled; a cosmetic flag was not found, so a cosmetic thread would be
    cut too.
@@ -1708,3 +1709,81 @@ deletions that fail (the bumper) goes from 28 deletions in the timeline, 23 of
 them errored, to 5 in the timeline and 23 listed in the notice; its replayed
 volume stays 7095.8 mm³ and its body stays frozen. No other design drops a
 step.
+
+## Amendment, 2026-10-29: an offset's face by the state the offset saw; the end cap only at the distance
+
+Three designs of one family (a connector plate with a semicircular end, 3 mm
+thick, its bottom raised 1.5 mm by an offset of −1.5 mm and rebuilt by a
+later extrude) replayed with the **wrong face offset**: the import named the
+offset's face by its solved state (`face.solved ?? face.surface`, as the
+round-faces amendment of 2026-10-23 left it), a plane 1.5 mm above the start
+cap, and the extrude cap rule called every plane that is not the profile plane
+the **end cap** (`Math.abs(h) < tol ? 'start' : 'end'`). So the top ring
+moved down by 1.5 mm instead of the bottom up: −2029 mm³, 17.7 % off the
+reference (before #130 the kernel refused that offset and the design matched
+by accident, 0.35 %).
+
+**Rules.**
+
+- An offset-faces recipe's face is named by its `surface` first, the face as
+  the offset saw it (`FORMAT.md`: `surface` is the state before the offset,
+  `solved` the face in the solved body), and by `solved` only when that
+  misses. The face's other `states` are still not read for an offset (the
+  reasons of the 2026-10-23 amendment stand: a face another offset moved
+  ran Offset Face for over 15 minutes on one design, and a thread refused the
+  wider hole on another).
+- A one-sided extrude to a distance knows where its end cap is
+  (`ImportedExtrude.end`, cm along the file's sketch normal, signed by
+  `side1`; also set for an extrude up to a face parallel to its sketch, which
+  the import turns into a distance). Its caps: `start` within 1e-5 cm of the
+  profile plane, `end` within `CAP_TOL` (1e-4 cm, a micron: the file's
+  distance and a float32 B-rep stream agree to well under that) of the end,
+  and a plane between the caps is a **miss** ("plane between the caps of an
+  extrude"). An extrude to an object, through everything or from a slanted
+  face has no known end, and any other parallel plane is still its end cap,
+  as before. Two-sided and symmetric extrudes keep their sign rule.
+
+Tests (`map.test.ts`): an offset whose face has `surface` at the start cap and
+`solved` between the caps names the start cap and moves the bottom (the
+washer's volume shrinks by a quarter); a lone plane between the caps names
+nothing and the offset is left out with "none of its 1 faces could be named".
+
+**Corpus** (252 designs, replay; with the kernel changes of ADR-0051's
+amendment of the same day): 163 match, 48 mismatch, 25 partial, 2 match
+despite skips, 9 with no reference, 5 with no bodies (was 161 / 49 / 25 / 3);
+features left out 78 (was 80). The connector family: the first design
+17.690 % → **0.354 %** (11 284.3 mm³ against 11 244.6), the second 37.8 → 40.2 %
+and the third 40.7 → 24.9 % (their later features fail on their own: a 3 mm
+round too large for its edge, chamfers whose edges the join changed; no
+crash). A lamp base 5.018 % → **0.265 %** (a round after a cut that ran forever
+with a non-destructive boolean, see ADR-0051, now builds on the unchanged
+boolean). Closer without a new verdict: a rail top 15.05 → 0.81 %, a tray
+5.13 → 0.57 %. Two designs drop a rank, both because an offset that was left
+out now imports: a filament guide with a threaded hole 0.024 % (match despite
+the skip) → 1.157 % (partial), where the offset widens the hole by 0.3 mm as
+the file does and the thread after it then refuses the hole ("as wide as the
+thread"; a thread-import limit, not a naming one); a distributor base 0.727 %
+over (partial) → 0.545 % under (mismatch, no skip left), nearer the reference
+than before. The issue-93 bumper: its second offset names all four of its
+faces (two were left out), its replayed body 7095.8 → 7095.6 mm³, the body
+check unchanged. The first issue-93 file is identical.
+
+The body check (ADR-0084) writes the file's bodies through the import
+feature, which now keeps a body that isn't a sound solid with a warning
+(ADR-0051's amendment); `measureProbe` takes such a probe import as made
+(only an `error` fails it), so those bodies are measured as before. Body
+check (252 designs): 232 editable, 124 frozen, 26 unchecked (was 230 / 126 /
+26), the unchecked reasons the same body by body; the first connector's body
+and the lamp base's go from frozen ("the timeline made it differently") to
+editable (0.040 % and 0.268 % off), no body gets worse.
+
+## Amendment, 2026-11-03: a thread on a hole wider than the thread
+
+A thread on a hole wider than the thread imports as drawn, at the file's
+diameters (item 4 above): the mapping no longer skips it. Extrudo fills a
+wider hole in to the thread's crest along the thread before the cut
+(ADR-0056's fifth amendment, its 2026-11-03 addendum), which is what the
+file's own resize of the hole did, so `map-more.ts`'s `thread()` no longer
+skips a hole at or past half the thread's major diameter, and the face name's
+radius (only the skip read it) is gone. `map-more.test.ts` imports the
+washer's M4 in its Ø4.2 hole instead of leaving it out.

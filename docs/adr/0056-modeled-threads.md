@@ -510,8 +510,8 @@ thread, then cuts. Code: `planThread` (`ThreadPlan.fill`, `ThreadFill`),
 `packages/kernel/src/features/thread-fill.test.ts`; `e2e/thread.spec.ts`.
 TypeScript only: **no facade change**, no new input, no schema key.
 
-- **When.** After the existing errors (a hole at or past the root, a shaft at
-  or under the root): a hole is *wide* when its radius is past the part's
+- **When.** After the existing errors (a shaft at or under the root; the hole
+  at or past the root was one too, until the addendum below): a hole is *wide* when its radius is past the part's
   crest radius (the minor + the tolerance), a shaft *thin* when it is under
   its crest radius (the major − the tolerance). `ThreadPlan.fill` holds the
   sleeve's band, at `anchor` on a cone: a hole's from `crest − reach/2` out
@@ -524,10 +524,10 @@ TypeScript only: **no facade change**, no new input, no schema key.
   across, thinner than the M5 thread's major diameter (4.8 mm): it is built
   up to it along the thread." Within the depth, no word. *Decided against
   the brief's wording:* read on the radius ("off by more than the depth"),
-  the note could never show, since a hole that far past the crest is past
-  the root, an error; on the diameter, M5 in Ø5 (0.666 mm against 0.541) and
-  a Ø4 pin note it, while B9's Ø28 bore for M30 (1.589 against 1.894) is
-  silent.
+  the note could never show, since a hole that far past the crest was past
+  the root, an error then; on the diameter, M5 in Ø5 (0.666 mm against 0.541)
+  and a Ø4 pin note it, while B9's Ø28 bore for M30 (1.589 against 1.894) is
+  silent. (The addendum below fills that hole too, and it notes it.)
 - **Geometry.** Before the cut, the **sleeve**: the band over the thread's
   run `from … to`, both edges on a cone's slope (`shiftAt`, as the ring),
   turned a whole turn (`namedRevolve`; faces `f<k>.fill` for the new
@@ -574,6 +574,20 @@ at z = 19.7, then jumped to 2.25: a step of 0.28 mm. It was not the fill's
 sleeve. Without the lead-in, or at a round (never open, so never a
 lead-in), the radius only falls toward the end.
 
+**Addendum (2026-11-03): a hole at or past the root.** The hole-at-the-root
+error is gone: the sleeve fills any hole wider than the crest, one at or past
+the root included (its band is `crest − reach/2 … r` and the ring then cuts
+`crest … root` out of the filled-in material, so a Ø5 hole takes an M4 thread
+as drawn). A hole at or past the root sets `ThreadFill.required`: without the
+sleeve nothing would be cut, so when Remove Faces can't trim its sleeve the
+feature is an **error** — "The hole is 5 mm across, as wide as the M4 thread
+(4.2 mm with the tolerance) and can't be filled in here: nothing would be
+cut." — not the "left as drawn" warning; a wider hole whose sleeve trims keeps the
+note. No known model reaches the error (Remove Faces has not refused a
+threadable hole yet). The `.f3d` importer now imports a file's thread on a
+hole wider than the thread as drawn (ADR-0083's amendment of this date):
+Extrudo's fill does what the file's resize of the hole did.
+
 **Rejected.** Trimming only at an end `threadFace` calls open: a hole coming
 out of a wall slanted past 60° is not open by that test, and its sleeve
 would stand out; any end is trimmed instead (the trim of a hole through a
@@ -591,8 +605,8 @@ revolve, fuse and Remove Faces add nothing measurable to the thread's
 booleans). The filled hole's volume is within 2 % of the profile's
 prediction (a bore at the crest, Ø4.334, less the groove swept along the
 helix); its crest is at Ø4.334, its root at Ø5.2. M6 in the Ø5 hole needs no
-fill (its minor with the tolerance is Ø5.117); M4 is refused (the hole is
-past its root). Fit the face on the Ø5 hole gives M5 with a full tooth:
+fill (its minor with the tolerance is Ø5.117); M4 fills the Ø5 hole past its
+root (the addendum above). Fit the face on the Ø5 hole gives M5 with a full tooth:
 within 1 % of M5 at the tap drill; Print 5 × 1.5 the same against its Ø4.1
 tap drill. A Ø4 × 20 pin built up to M5 is within 1 % of M5 on a Ø5 pin,
 crests Ø4.8. A 4 mm thread 2 mm in fills only along its run (the Ø5 bore is
@@ -606,11 +620,6 @@ path is not reached by any test: no case found yet makes Remove Faces refuse
 a threadable hole. B9's Ø28 cap bore
 (M30) fills silently; its Ø29 variant (wall 1.5 mm) notes it. The golden
 table has no internal rows, so none was added; its rows are unchanged.
-
-**Deferred.** Importing a file's
-thread on a hole wider than the thread (`packages/f3d/src/map-more.ts`
-still leaves it out because Extrudo used not to fill: ADR-0083's mapping can
-now take it).
 
 ## Amendment, 2026-11-03: the lead-in runs through the end
 

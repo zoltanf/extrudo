@@ -805,6 +805,34 @@ describe('thread', { timeout: 300_000 }, () => {
     );
   });
 
+  // A hole at or past the root is filled (no longer refused); the sleeve is
+  // then the only thing that makes the cut work, so an untrimmable one is an
+  // error (`ThreadFill.required`).
+  it('marks a hole at or past the root as a required fill, a smaller hole not', () => {
+    const hole = (radius: number): ThreadFace => ({
+      axis: { origin: [0, 0, 0], direction: [0, 0, 1] },
+      radius,
+      inside: true,
+      from: 0,
+      to: 10,
+      whole: true,
+      open: [true, true],
+      taper: 0,
+    });
+    const settings = threadSettings(
+      threadInputs({ faces: [{ kind: 'face', id: 'x' }], numbers: { diameter: '4 mm' } }),
+    );
+    const numbers = { diameter: 4, pitch: 0.7, length: 10, offset: 0, tolerance: 0.1 };
+    // Ø5 is past M4's root: the fill is required.
+    expect(planThread(hole(2.5), settings, numbers, []).fill?.required).toBe(true);
+    const m5 = threadSettings(
+      threadInputs({ faces: [{ kind: 'face', id: 'x' }], numbers: { diameter: '5 mm' } }),
+    );
+    const m5numbers = { diameter: 5, pitch: 0.8, length: 10, offset: 0, tolerance: 0.1 };
+    // A Ø4 hole is under M5's crest: no fill at all.
+    expect(planThread(hole(2), m5, m5numbers, []).fill?.required).toBeUndefined();
+  });
+
   // P4-12: each profile builds, cuts about the volume its own section
   // predicts (not a snapshot), and keeps its face names.
   it('cuts two turns of each profile by its own section area', async () => {

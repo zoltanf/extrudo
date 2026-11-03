@@ -70,6 +70,14 @@ export interface KernelFeatureDefinition<I extends FeatureInputs = FeatureInputs
   /** Defaults to `write`. */
   bodyAccess?(inputs: I): BodyAccess;
   /**
+   * A body this feature outputs that isn't a sound solid is kept, with a
+   * warning, instead of failing the feature (the engine's `#checkSound`,
+   * ADR-0051's 2026-10-29 amendment): for bodies read from a file, which are
+   * the user's data as it is. Defaults to false: Extrudo's own operations
+   * must make sound solids.
+   */
+  keepsBrokenBodies?: boolean;
+  /**
    * Builds the feature's result. Synchronous: the engine yields to the event
    * loop between features, not inside one. Throw `KernelError` with a
    * message for the user when the feature can't be built; release every

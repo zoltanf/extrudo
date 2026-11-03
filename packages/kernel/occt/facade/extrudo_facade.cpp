@@ -1013,6 +1013,31 @@ public:
   void setPrismFallback(bool on) { forcePrismFallback_ = on; }
 
   /**
+   * Test hook: a solid that is not sound, a 10 mm box with one face taken
+   * out of its shell (BRepCheck_Analyzer: the shell isn't closed), stored
+   * as any body is. Only for the tests of the recompute engine's refusal of
+   * broken bodies (ADR-0051, 2026-10-29): no product code calls it.
+   */
+  int brokenSolidForTests() {
+    beginOp();
+    try {
+      const TopoDS_Shape box = BRepPrimAPI_MakeBox(10, 10, 10).Shape();
+      BRep_Builder builder;
+      TopoDS_Shell shell;
+      builder.MakeShell(shell);
+      TopExp_Explorer faces(box, TopAbs_FACE);
+      faces.Next();
+      for (; faces.More(); faces.Next()) builder.Add(shell, faces.Current());
+      TopoDS_Solid solid;
+      builder.MakeSolid(solid);
+      builder.Add(solid, shell);
+      return store(solid);
+    } catch (...) {
+      return failFromException("Broken solid failed");
+    }
+  }
+
+  /**
    * The faces (indices, in lookupPtr/lookupSize) that run smoothly into
    * face `face` and each other, the face itself included: the faces OCCT's
    * offset moves together (a fillet around a pad moves with the pad's top).
@@ -14202,9 +14227,22 @@ private:
     // Set the arguments here, not in the builder's constructor: the
     // constructor that takes two shapes already builds, and Build() would
     // run the whole boolean again (P4-02 found every boolean ran twice).
+    //
+    // The inputs are live bodies. The face merge after the boolean
+    // (SimplifyResult, ShapeUpgrade_UnifySameDomain) changes sub-shapes the
+    // result shares with them in place, safe input mode or not: a filleted
+    // plate measured 7754 mm³, valid, before a simplified fuse and 2926 mm³,
+    // invalid, after it (ADR-0051, 2026-10-29). So a merge works on copies,
+    // whose sub-shape order is the inputs' (the history reads off them, as
+    // offsetFaces does), meshes included, so the faces the result keeps carry
+    // their display mesh as before. The boolean itself stays in its default
+    // mode: its non-destructive mode changes the result's tolerances enough
+    // that a fillet after a cut ran forever on two designs of the corpus.
+    const TopoDS_Shape inA = simplify ? BRepBuilderAPI_Copy(a, true, true).Shape() : a;
+    const TopoDS_Shape inB = simplify ? BRepBuilderAPI_Copy(b, true, true).Shape() : b;
     NCollection_List<TopoDS_Shape> arguments, tools;
-    arguments.Append(a);
-    tools.Append(b);
+    arguments.Append(inA);
+    tools.Append(inB);
     builder.SetArguments(arguments);
     builder.SetTools(tools);
     builder.SetRunParallel(false);
@@ -14212,10 +14250,23 @@ private:
     if (!builder.IsDone() || builder.HasErrors()) {
       return fail("Boolean failed: OCCT could not combine these shapes.");
     }
-    if (simplify) builder.SimplifyResult();
+    if (simplify) {
+      builder.SimplifyResult();
+      // The merge can break a sound result: a plate's rounded end joined by
+      // a prism whose side lies on the same cylinder came out of the fuse
+      // valid and out of the merge with unorientable faces (ADR-0051,
+      // 2026-10-29). The merge is a nicety, the solid is not: then the plain
+      // boolean, built again from the untouched inputs (the merged history
+      // can't be taken back out of the builder, and the copies it worked on
+      // may be broken too).
+      if (!BRepCheck_Analyzer(builder.Shape()).IsValid()) {
+        Builder plain;
+        return finishBoolean(plain, a, b, false);
+      }
+    }
     const TopoDS_Shape result = builder.Shape();
-    recordHistory(builder, a, 0, result);
-    recordHistory(builder, b, 1, result);
+    recordHistory(builder, inA, 0, result);
+    recordHistory(builder, inB, 1, result);
     // The builder is on the stack: its destructor frees what it owns (the
     // Clear() rule of ADR-0001 is for builders deleted from JS).
     return store(result);

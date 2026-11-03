@@ -1277,12 +1277,15 @@ so the tooth tiles one pitch and the flats are the same inside and out — a
 screw and a nut are exact complements, and it mates only with itself. All are
 moved by `tolerance`. A shaft thicker than the thread is turned
 down to it (a warning when much thicker); a hole wider than the thread's
-minor diameter (as a bore drawn at a size's own diameter is) is filled in to
+minor diameter (as a bore drawn at a size's own diameter is, one at or past
+the thread's root included) is filled in to
 it along the thread before the cut, and a shaft thinner than its major is
 built up to it, so the tooth is whole (a warning notes it when the diameter
 was off by more than the thread's depth; a hole Remove Faces can't close is
-cut as drawn, with a warning that only the outer part of the tooth is cut); a
-shaft at or under the thread's root, a hole as wide as the thread, a thread
+cut as drawn, with a warning that only the outer part of the tooth is cut,
+unless the hole is at or past the root, where nothing would be cut: an
+error); a
+shaft at or under the thread's root, a thread
 longer than the face, an offset as long
 as the face and more than 150 turns are errors. With `profile: iso` or
 `print45` and no size the kernel picks the thread that fits (`autoThread`):
