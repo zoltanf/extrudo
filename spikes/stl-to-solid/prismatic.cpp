@@ -3921,7 +3921,7 @@ static std::vector<gp_Pnt> q26Touching(const TopoDS_Shape& shape, const char* ta
         }
         std::cout << std::setprecision(6) << "   q26 touch " << tag << " face " << index << " kind " << surfaceTypeName(surface.GetType())
                   << " uper " << surface.IsUPeriodic() << " vper " << surface.IsVPeriodic() << " uspan " << u1 - u0 << " vspan "
-                  << v1 - v0 << " seams " << seams << " wires " << wires.size() << " vertex " << p.X() << "," << p.Y() << "," << p.Z()
+                  << v1 - v0 << " seams " << seams << " wires " << wires.size() << " outer " << BRepTools::OuterWire(face).IsSame(wires[w]) << " vertex " << p.X() << "," << p.Y() << "," << p.Z()
                   << " tol " << BRep_Tool::Tolerance(vertex) << " wire " << w << " du " << du << " dv " << dv
                   << " valid " << BRepCheck_Analyzer(face).IsValid() << " splitvalid " << spikeSplitVertexValid(face) << " pcurves" << values << std::endl;
       }

@@ -10585,7 +10585,12 @@ private:
    * stays inside): A = O from n to o, c, H from h to n; B = O from o to n,
    * H from n to h, c back. Each passes n once. The face's other holes go to
    * the piece that holds them; every other edge is the face's own, so its
-   * neighbours don't change. False when no cut gives two valid faces.
+   * neighbours don't change. Two holes H1, H2 that share a vertex n (and
+   * neither the outer wire) are cut along an edge from a vertex h1 of H1 to a
+   * vertex h2 of H2 instead: P = H2 from h2 to n, H1 from n to h1, c; L = H1
+   * from h1 to n, H2 from n to h2, c back. The one counterclockwise in (u, v)
+   * (the wedge between the holes) is a face of its own, the other a hole of
+   * the rest with O. False when no cut gives two valid faces.
    */
   static bool cutTouchingFace(const TopoDS_Face& input, TopoDS_Face& pieceA, TopoDS_Face& pieceB) {
     const TopoDS_Face face = TopoDS::Face(input.Oriented(TopAbs_FORWARD));
@@ -10654,6 +10659,47 @@ private:
       const int m = static_cast<int>(w.size());
       for (int i = from; i != to; i = (i + 1) % m) builder.Add(into, w[i].edge);
     };
+    // The cut: an edge on `surface` along the straight (u, v) segment from `a` to `b`.
+    auto cutEdge = [&](const Use& a, const Use& b) {
+      NCollection_Array1<gp_Pnt2d> poles(1, 2);
+      poles(1) = a.at;
+      poles(2) = b.at;
+      NCollection_Array1<double> knots(1, 2);
+      knots(1) = 0;
+      knots(2) = a.at.Distance(b.at);
+      NCollection_Array1<int> mults(1, 2);
+      mults(1) = mults(2) = 2;
+      const Handle(Geom2d_Curve) line = new Geom2d_BSplineCurve(poles, knots, mults, 1);
+      BRepBuilderAPI_MakeEdge make(line, surface, a.start, b.start, knots(1), knots(2));
+      if (!make.IsDone()) return TopoDS_Edge();
+      TopoDS_Edge c = make.Edge();
+      BRepLib::BuildCurves3d(c);
+      return c;
+    };
+    // Twice the signed (u, v) area a closed wire's pcurves enclose (counterclockwise positive).
+    auto area = [&](const TopoDS_Wire& wire) {
+      double sum = 0;
+      for (TopExp_Explorer ee(wire, TopAbs_EDGE); ee.More(); ee.Next()) {
+        const TopoDS_Edge e = TopoDS::Edge(ee.Current());
+        double first = 0, last = 0;
+        const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(e, face, first, last);
+        if (pc.IsNull()) return 0.0;
+        if (e.Orientation() == TopAbs_REVERSED) std::swap(first, last);
+        gp_Pnt2d previous = pc->Value(first);
+        for (int i = 1; i <= TOUCH_CUT_SAMPLES; ++i) {
+          const gp_Pnt2d p = pc->Value(first + (last - first) * i / TOUCH_CUT_SAMPLES);
+          sum += previous.X() * p.Y() - p.X() * previous.Y();
+          previous = p;
+        }
+      }
+      return sum;
+    };
+    // A point inside hole `q`'s first edge, to tell which piece holds it.
+    auto probe = [&](size_t q) {
+      double first = 0, last = 0;
+      const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(holes[q][0].edge, face, first, last);
+      return pc->Value(0.5 * (first + last));
+    };
     for (size_t k = 0; k < holes.size(); ++k) {
       const std::vector<Use>& H = holes[k];
       int hn = -1, on = -1;
@@ -10681,19 +10727,8 @@ private:
           const int oi = ends[ei];
           if (!sees(O[oi].at, H[hi].at)) continue;
           try {
-            NCollection_Array1<gp_Pnt2d> poles(1, 2);
-            poles(1) = O[oi].at;
-            poles(2) = H[hi].at;
-            NCollection_Array1<double> knots(1, 2);
-            knots(1) = 0;
-            knots(2) = O[oi].at.Distance(H[hi].at);
-            NCollection_Array1<int> mults(1, 2);
-            mults(1) = mults(2) = 2;
-            const Handle(Geom2d_Curve) line = new Geom2d_BSplineCurve(poles, knots, mults, 1);
-            BRepBuilderAPI_MakeEdge make(line, surface, O[oi].start, H[hi].start, knots(1), knots(2));
-            if (!make.IsDone()) continue;
-            TopoDS_Edge c = make.Edge();
-            BRepLib::BuildCurves3d(c);
+            const TopoDS_Edge c = cutEdge(O[oi], H[hi]);
+            if (c.IsNull()) continue;
             TopoDS_Wire wa, wb;
             builder.MakeWire(wa);
             builder.MakeWire(wb);
@@ -10713,7 +10748,7 @@ private:
             BRepTopAdaptor_FClass2d inA(fa, Precision::PConfusion());
             for (size_t q = 0; q < holes.size(); ++q) {
               if (q == k || holes[q].empty()) continue;
-              builder.Add(inA.Perform(holes[q][0].at) == TopAbs_IN ? fa : fb, holeWires[q]);
+              builder.Add(inA.Perform(probe(q)) == TopAbs_IN ? fa : fb, holeWires[q]);
             }
             if (!BRepCheck_Analyzer(fa).IsValid() || !BRepCheck_Analyzer(fb).IsValid()) continue;
             pieceA = TopoDS::Face(fa.Oriented(input.Orientation()));
@@ -10724,14 +10759,78 @@ private:
         }
       }
     }
+    // Two holes that share a vertex.
+    for (size_t k1 = 0; k1 < holes.size(); ++k1)
+      for (size_t k2 = k1 + 1; k2 < holes.size(); ++k2) {
+        const std::vector<Use>& H1 = holes[k1];
+        const std::vector<Use>& H2 = holes[k2];
+        int n1 = -1, n2 = -1;
+        for (size_t i = 0; i < H1.size() && n1 < 0; ++i)
+          for (size_t j = 0; j < H2.size(); ++j)
+            if (H1[i].start.IsSame(H2[j].start)) {
+              n1 = static_cast<int>(i);
+              n2 = static_cast<int>(j);
+              break;
+            }
+        if (n1 < 0) continue;
+        // h1: H1's vertices farthest from n first; h2: H2's nearest to h1 first.
+        std::vector<int> starts, ends;
+        for (size_t i = 0; i < H1.size(); ++i)
+          if (static_cast<int>(i) != n1) starts.push_back(static_cast<int>(i));
+        std::sort(starts.begin(), starts.end(),
+                  [&](int x, int y) { return H1[x].at.Distance(H1[n1].at) > H1[y].at.Distance(H1[n1].at); });
+        for (size_t si = 0; si < starts.size() && si < static_cast<size_t>(TOUCH_CUT_STARTS); ++si) {
+          const int h1 = starts[si];
+          ends.clear();
+          for (size_t j = 0; j < H2.size(); ++j)
+            if (!H2[j].start.IsSame(H1[n1].start)) ends.push_back(static_cast<int>(j));
+          std::sort(ends.begin(), ends.end(), [&](int x, int y) { return H2[x].at.Distance(H1[h1].at) < H2[y].at.Distance(H1[h1].at); });
+          for (size_t ei = 0; ei < ends.size() && ei < static_cast<size_t>(TOUCH_CUT_ENDS); ++ei) {
+            const int h2 = ends[ei];
+            if (!sees(H1[h1].at, H2[h2].at)) continue;
+            try {
+              const TopoDS_Edge c = cutEdge(H1[h1], H2[h2]);
+              if (c.IsNull()) continue;
+              TopoDS_Wire wp, wl;
+              builder.MakeWire(wp);
+              builder.MakeWire(wl);
+              run(H2, h2, n2, wp);
+              run(H1, n1, h1, wp);
+              builder.Add(wp, c);
+              run(H1, h1, n1, wl);
+              run(H2, n2, h2, wl);
+              builder.Add(wl, TopoDS::Edge(c.Reversed()));
+              wp.Closed(true);
+              wl.Closed(true);
+              const bool own = area(wp) > 0;
+              TopoDS_Face fa, fb;
+              builder.MakeFace(fa, surface, location, BRep_Tool::Tolerance(face));
+              builder.MakeFace(fb, surface, location, BRep_Tool::Tolerance(face));
+              builder.Add(fa, own ? wp : wl);
+              builder.Add(fb, outer);
+              builder.Add(fb, own ? wl : wp);
+              BRepTopAdaptor_FClass2d inA(fa, Precision::PConfusion());
+              for (size_t q = 0; q < holes.size(); ++q) {
+                if (q == k1 || q == k2 || holes[q].empty()) continue;
+                builder.Add(inA.Perform(probe(q)) == TopAbs_IN ? fa : fb, holeWires[q]);
+              }
+              if (!BRepCheck_Analyzer(fa).IsValid() || !BRepCheck_Analyzer(fb).IsValid()) continue;
+              pieceA = TopoDS::Face(fa.Oriented(input.Orientation()));
+              pieceB = TopoDS::Face(fb.Oriented(input.Orientation()));
+              return true;
+            } catch (const Standard_Failure&) {
+            }
+          }
+        }
+      }
     return false;
   }
 
   /**
-   * ADR-0097 slice D11: no face on a periodic surface keeps a hole that
-   * shares a vertex with its outer wire. The STEP writer writes such a vertex
-   * twice (one VERTEX_POINT per loop), and OCCT's reader then finds the two
-   * loops crossing on some of these faces (a torus and a cone in the corpus;
+   * ADR-0097 slice D11: no face on a periodic surface keeps two wires that
+   * share a vertex (a hole and its outer wire, or two holes: 2026-11-03).
+   * The STEP writer writes such a vertex twice (one VERTEX_POINT per loop),
+   * and OCCT's reader then finds the two loops crossing on some of these faces (a torus and a cone in the corpus;
    * planes read back whole). Each such face is cut in two (cutTouchingFace)
    * until none is left; a face no cut gives two valid faces stays. Replaces
    * `shape` only when the cut body checks valid; returns the cuts made.
@@ -10747,14 +10846,14 @@ private:
         if (refused.count(face.TShape().get())) continue;
         const BRepAdaptor_Surface adaptor(face, false);
         if (!adaptor.IsUPeriodic() && !adaptor.IsVPeriodic()) continue;
-        const TopoDS_Wire outer = BRepTools::OuterWire(face);
-        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> outerVertices;
-        TopExp::MapShapes(outer, TopAbs_VERTEX, outerVertices);
+        // A vertex of one wire that an earlier wire holds too.
+        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> seen;
         bool touching = false;
         for (TopExp_Explorer we(face, TopAbs_WIRE); we.More() && !touching; we.Next()) {
-          if (we.Current().IsSame(outer)) continue;
-          for (TopExp_Explorer ve(we.Current(), TopAbs_VERTEX); ve.More() && !touching; ve.Next())
-            touching = outerVertices.Contains(ve.Current());
+          NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> own;
+          TopExp::MapShapes(we.Current(), TopAbs_VERTEX, own);
+          for (int i = 1; i <= own.Extent() && !touching; ++i) touching = seen.Contains(own(i));
+          for (int i = 1; i <= own.Extent(); ++i) seen.Add(own(i));
         }
         if (!touching) continue;
         TopoDS_Face a, b;
