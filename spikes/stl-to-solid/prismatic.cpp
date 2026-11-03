@@ -3921,7 +3921,7 @@ static std::vector<gp_Pnt> q26Touching(const TopoDS_Shape& shape, const char* ta
         }
         std::cout << std::setprecision(6) << "   q26 touch " << tag << " face " << index << " kind " << surfaceTypeName(surface.GetType())
                   << " uper " << surface.IsUPeriodic() << " vper " << surface.IsVPeriodic() << " uspan " << u1 - u0 << " vspan "
-                  << v1 - v0 << " seams " << seams << " wires " << wires.size() << " vertex " << p.X() << "," << p.Y() << "," << p.Z()
+                  << v1 - v0 << " seams " << seams << " wires " << wires.size() << " outer " << BRepTools::OuterWire(face).IsSame(wires[w]) << " vertex " << p.X() << "," << p.Y() << "," << p.Z()
                   << " tol " << BRep_Tool::Tolerance(vertex) << " wire " << w << " du " << du << " dv " << dv
                   << " valid " << BRepCheck_Analyzer(face).IsValid() << " splitvalid " << spikeSplitVertexValid(face) << " pcurves" << values << std::endl;
       }
@@ -4113,6 +4113,52 @@ static TopoDS_Shape spikeCutTouching(const TopoDS_Shape& shape, int& cuts, int& 
 }
 
 /** Q26TOUCH: the read-back's invalid faces, and its vertices that lie within 1e-6 of another (a vertex split in two). */
+/**
+ * Q3.3 (Q26CONE=1): a face's BRepCheck statuses (the face's own, per wire and per edge on the face), its (u, v)
+ * bounds, and per edge: curve type, closed (a seam), degenerated, tolerance, and its pcurve's ends on the face.
+ */
+static void q26Describe(const TopoDS_Face& face, const char* tag) {
+  BRepCheck_Analyzer analyzer(face, Standard_True);
+  auto statuses = [&](const TopoDS_Shape& s) {
+    std::string out;
+    const Handle(BRepCheck_Result) r = analyzer.Result(s);
+    if (r.IsNull()) return out;
+    for (r->InitContextIterator(); r->MoreShapeInContext(); r->NextShapeInContext())
+      for (const BRepCheck_Status st : r->StatusOnShape())
+        if (st != BRepCheck_NoError) out += " " + std::to_string(static_cast<int>(st));
+    for (const BRepCheck_Status st : r->Status())
+      if (st != BRepCheck_NoError) out += " own" + std::to_string(static_cast<int>(st));
+    return out;
+  };
+  double u0 = 0, u1 = 0, v0 = 0, v1 = 0;
+  BRepTools::UVBounds(face, u0, u1, v0, v1);
+  const BRepAdaptor_Surface surface(face, false);
+  std::cout << std::setprecision(8) << "   q26 face " << tag << " " << surfaceTypeName(surface.GetType()) << " orient " << face.Orientation()
+            << " u " << u0 << ".." << u1 << " v " << v0 << ".." << v1 << " tol " << BRep_Tool::Tolerance(face) << " status" << statuses(face) << std::endl;
+  if (surface.GetType() == GeomAbs_Cone) {
+    const gp_Cone c = surface.Cone();
+    std::cout << "   q26 face " << tag << " cone r " << c.RefRadius() << " semi " << c.SemiAngle() << " apex " << c.Apex().X() << "," << c.Apex().Y() << "," << c.Apex().Z()
+              << " at " << c.Location().X() << "," << c.Location().Y() << "," << c.Location().Z() << " axis " << c.Axis().Direction().X() << "," << c.Axis().Direction().Y() << "," << c.Axis().Direction().Z() << std::endl;
+  }
+  for (TopExp_Explorer we(face, TopAbs_WIRE); we.More(); we.Next()) {
+    std::cout << "   q26 face " << tag << " wire orient " << we.Current().Orientation() << " status" << statuses(we.Current()) << std::endl;
+    for (TopExp_Explorer ee(we.Current(), TopAbs_EDGE); ee.More(); ee.Next()) {
+      const TopoDS_Edge e = TopoDS::Edge(ee.Current());
+      double first = 0, last = 0;
+      const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(e, face, first, last);
+      std::cout << "   q26 face " << tag << "  edge " << BRepAdaptor_Curve(e).GetType() << " orient " << e.Orientation() << " closed "
+                << BRep_Tool::IsClosed(e, face) << " degen " << BRep_Tool::Degenerated(e) << " tol " << BRep_Tool::Tolerance(e);
+      if (!pc.IsNull()) {
+        const gp_Pnt2d a = pc->Value(first), b = pc->Value(last);
+        std::cout << " pc (" << a.X() << ", " << a.Y() << ") -> (" << b.X() << ", " << b.Y() << ")";
+      } else {
+        std::cout << " no pcurve";
+      }
+      std::cout << " status" << statuses(e) << std::endl;
+    }
+  }
+}
+
 static void q26ReadBack(const TopoDS_Shape& back, const std::vector<gp_Pnt>& shared) {
   int index = 0;
   for (TopExp_Explorer fe(back, TopAbs_FACE); fe.More(); fe.Next(), ++index) {
@@ -4121,6 +4167,7 @@ static void q26ReadBack(const TopoDS_Shape& back, const std::vector<gp_Pnt>& sha
     int wires = 0;
     for (TopExp_Explorer we(fe.Current(), TopAbs_WIRE); we.More(); we.Next()) ++wires;
     std::cout << "   q26 back invalid face " << index << " kind " << surfaceTypeName(surface.GetType()) << " wires " << wires << std::endl;
+    if (getenv("Q26CONE") && *getenv("Q26CONE")) q26Describe(TopoDS::Face(fe.Current()), "back");
   }
   NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> vertices;
   TopExp::MapShapes(back, TopAbs_VERTEX, vertices);
@@ -4451,8 +4498,14 @@ static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
                 << " / " << ExtrudoFacade::volumeOf(s) << " (" << now() - t0 << " ms)" << std::endl;
     }
     const std::vector<gp_Pnt> shared = q26Touching(*f.find(written), "written");
+    if (getenv("Q26CONE") && *getenv("Q26CONE"))
+      for (TopExp_Explorer fe(*f.find(written), TopAbs_FACE); fe.More(); fe.Next())
+        if (BRepAdaptor_Surface(TopoDS::Face(fe.Current()), false).GetType() == GeomAbs_Cone) q26Describe(TopoDS::Face(fe.Current()), "written");
     f.clearArgs();
     f.pushArg(written);
+    // Q26NAMED=1: with a name, as Kernel.writeStep (and the sweep's round trip) writes it.
+    f.clearStepNames();
+    if (getenv("Q26NAMED") && *getenv("Q26NAMED")) f.pushStepName("Body");
     const int size = f.writeStep();
     std::string text;
     if (size > 0) text.assign(reinterpret_cast<const char*>(f.exportTextPtr()), static_cast<size_t>(size));

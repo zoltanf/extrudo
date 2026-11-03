@@ -1133,6 +1133,37 @@ function bossWithRimDimple(): Manifold {
 }
 
 /**
+ * `bossWithRimDimple`'s plate and freeform boss, with the boss r 10 on 96
+ * sides and refined once (a node at (40, 20, 8), halfway up its wall), and two
+ * square pyramid dimples 2 deep cut radially into the wall at +x, side by
+ * side: their corners meet at that node, away from both rims.
+ */
+function bossWithDimplesTouching(): Manifold {
+  const plate = manifold.Manifold.cube([50, 40, 5]);
+  const prism = manifold.Manifold.cylinder(6, 10, 10, 96).translate([30, 20, 5]);
+  const boss = prism.refine(2);
+  const body = plate.add(boss);
+  const a = manifold.Manifold.cylinder(2, 0, 1.5, 4).rotate([0, 90, 0]).translate([38, 18.5, 8]);
+  const b = manifold.Manifold.cylinder(2, 0, 1.5, 4).rotate([0, 90, 0]).translate([38, 21.5, 8]);
+  const dimples = a.add(b);
+  const cut = body.subtract(dimples);
+  const cylinder = manifold.Manifold.cylinder(6, 5, 5, 48).translate([8, 8, 5]);
+  const refined = cylinder.refine(6);
+  const bumped = refined.warp((v) => {
+    if (v[2] > 10.999) {
+      const x = v[0] - 8;
+      const y = v[1] - 8;
+      const r2 = (x * x + y * y) / 25;
+      v[2] += 2 * Math.max(0, 1 - r2) * (1 + 0.3 * (x / 5) + 0.2 * (y / 5) ** 2);
+    }
+  });
+  const part = cut.add(bumped);
+  for (const m of [plate, prism, boss, body, a, b, dimples, cut, cylinder, refined, bumped])
+    m.delete();
+  return part;
+}
+
+/**
  * A 40 x 30 x 5 plate with two square pyramids cut 3 mm deep into its top,
  * their rims (corners at 3 mm from the centres 17 and 23) touching at
  * (20, 15, 5). `bump`: `bossWithBump`'s boss (r 5, 6 high) at (8, 8) with its lopsided bump,
@@ -1263,6 +1294,26 @@ describe('Mesh to Solid, the hybrid rebuild (ADR-0097 slice D1)', { timeout: 300
         shape,
         'hybrid: a boss wall whose dimple touches its rim at a node',
       );
+    } finally {
+      kernel.release(shape);
+    }
+  });
+
+  it('cuts a boss wall whose two dimples touch each other at a node in two, so it round-trips (slice D11, 2026-11-03)', () => {
+    // Two square pyramid dimples in a cylindrical boss's wall, their corners
+    // meeting at (40, 20, 8), away from both rims: the wall's face keeps two
+    // holes that share that vertex (neither touches the outline). Before
+    // 2026-11-03 `cutTouchingLoops` only cut a hole touching the outline, so
+    // this face stayed whole: one wall face, not two.
+    const part = bossWithDimplesTouching();
+    const volume = part.volume();
+    const { shape, report } = prismatic(meshOf(part));
+    try {
+      expect(report.rebuild).toBe('hybrid');
+      expect(radii(shape).filter((r) => Math.abs(r - 10) < 0.01)).toHaveLength(2);
+      expect(kernel.isValid(shape)).toBe(true);
+      expect(Math.abs(kernel.properties(shape).volume / volume - 1)).toBeLessThan(0.01);
+      expectStepRoundTrip(kernel, shape, 'hybrid: a boss wall whose two dimples touch at a node');
     } finally {
       kernel.release(shape);
     }

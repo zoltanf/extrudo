@@ -231,7 +231,10 @@ STL_DIR=~/Development/extrudo-stl-solid-test TOL=auto BUILD=diag FILE=own/scrap-
   Run 3: `Q26TOUCH=1` lists every face of each converted body whose wires share a vertex (`q26 touch`: the pcurves
   at the vertex, the distance to the face's u bounds, `splitvalid`: the face with that vertex copied per wire), then
   the STEP round trip's invalid faces and split vertices (`q26 back`); `Q26TOUCH=cut` first applies the harness's
-  prototype of the facade's `cutTouchingLoops` (`spikeCutTouching`) to the body it writes.
+  prototype of the facade's `cutTouchingLoops` (`spikeCutTouching`) to the body it writes. `Q26NAMED=1` writes the
+  round trip with a name, as `Kernel.writeStep` does; `Q26CONE=1` (Q3.3) prints every written cone face and every
+  invalid read-back face with its BRepCheck statuses and its edges' pcurves (`q26 face`). For the sweep's own body,
+  stage the kernel's mesh with `MESH_OUT` and run case `f` on the `.mesh`.
 
 Case `f` with `TIMES=1` also prints `calls:` (chainCurve and
 `Geom2dAPI_Interpolate` calls, the mesh check's nodes, BRepExtrema calls and

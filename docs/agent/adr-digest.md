@@ -3481,13 +3481,16 @@ square to their facets.** `extrudo_facade.cpp` (`meshLoops`, `meshFanLoops`, `Me
   writer writes such a vertex twice and the reader can find the loops crossing. `cutTouchingLoops` cuts each such face
   in two along a straight (u, v) edge between two existing vertices (no boundary edge split, the neighbours
   untouched), keeps a face no valid cut exists for, and keeps the body only when it checks valid ("touching loops
-  cut: N" in the stages). Planes stay whole. Don't replace it by a cutting plane (it splits shared edges) or
+  cut: N" in the stages). Planes stay whole. Two holes that share a vertex count too (2026-11-03): the cut runs
+  from one hole to the other, and the piece it closes off that runs counterclockwise in (u, v) is a face of its own;
+  a hole of one closed edge can't be cut (its only vertex is the shared one) and stays. Don't replace it by a cutting plane (it splits shared edges) or
   `BRepFeat_SplitShape` (it makes a slit).
 - A plane group's least-squares plane is kept only when its normal agrees with the facets' area-weighted mean normal
   by |cos| ≥ `MESH_PLANE_NORMAL_AGREEMENT` (0.5); a wall strip lower than T is no plane square to it.
 - Tests: `mesh-to-solid.test.ts` "splits a top face whose two dimples touch at a node into one face with two inner
-  loops (slice D11)" and "cuts a boss wall whose dimple touches its rim at a node in two, so it round-trips
-  (slice D11)". The sweep baseline from here on is `baseline-2026-11-01b-auto.jsonl`: `files 41, prismatic converted
+  loops (slice D11)", "cuts a boss wall whose dimple touches its rim at a node in two, so it round-trips
+  (slice D11)" and "cuts a boss wall whose two dimples touch each other at a node in two, so it round-trips (slice
+  D11, 2026-11-03)". The sweep baseline from here on is `baseline-2026-11-01b-auto.jsonl`: `files 41, prismatic converted
   36 refused 5, faceted converted 26 refused 15, prismatic faces 22569, prismatic facets 12565, prismatic ms 264862,
   faceted ms 107397, round trips failed 7` (31c's 7 files).
 - Measured, not built (don't redo without new evidence): keeping the last valid hybrid attempt (0 cases), the mesh's
