@@ -387,16 +387,38 @@ describe('thread fill', { timeout: 300_000 }, () => {
     expect(names.filter((n) => n.includes('.fill'))).toEqual([]);
   });
 
-  it('refuses M4 in a Ø5 hole (past its root) and gives M6 there with no fill', async () => {
+  it('fills a Ø5 hole past M4’s root in to the minor, and gives M6 there with no fill', async () => {
     const block = blockWithHole(5, 10);
-    const m4 = await run(
+    const m4 = await runWithShapes(
       testDocument([
         ...block.features,
-        thread('T', { faces: [block.wall], numbers: { diameter: '4 mm', pitch: '0.7 mm' } }),
+        thread('T', {
+          faces: [block.wall],
+          numbers: { diameter: '4 mm', pitch: '0.7 mm' },
+          chamfer: false,
+        }),
       ]),
     );
-    expect(status(m4, 'T').status).toBe('error');
-    expect(status(m4, 'T').message).toMatch(/as wide as the M4 thread/);
+    // Ø5 is past M4's root: the sleeve fills it in to the crest and the ring
+    // then cuts crest … root out of it.
+    const m4in = threadRadii('iso', 4, 0.7, 0.1, true);
+    const fmt = (v: number) => `${Math.round(v * 1000) / 1000} mm`;
+    expect(warningOf(m4, 'T')).toBe(
+      `The hole is 5 mm across, wider than the M4 thread's minor diameter (${fmt(2 * m4in.crest)}): it is filled in to it along the thread.`,
+    );
+    const m = measure(m4, 'E:0');
+    expect(m.valid).toBe(true);
+    expect(m.solids).toBe(1);
+    expect(dataOf('T').faces[0]).toMatchObject({ internal: true, designation: 'M4', face: 5 });
+    // Nothing inside the crest, the tooth between crest and root, the sleeve
+    // fills solid past the root (the drawn hole, Ø5, lies beyond it).
+    expect(solidAlong(m.shape, m4in.crest - 0.03, 1, 9)).toBe(0);
+    const tooth = solidAlong(m.shape, m4in.crest + 0.03, 1, 9);
+    expect(tooth).toBeGreaterThan(0);
+    expect(tooth).toBeLessThan(40);
+    expect(solidAlong(m.shape, m4in.root - 0.03, 1, 9)).toBeGreaterThan(0);
+    expect(solidAlong(m.shape, m4in.root - 0.03, 1, 9)).toBeLessThan(40);
+    expect(solidAlong(m.shape, m4in.root + 0.03, 1, 9)).toBe(40);
     engine.clear();
     const m6 = await runWithShapes(
       testDocument([
