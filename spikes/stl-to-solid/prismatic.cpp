@@ -4453,6 +4453,9 @@ static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
     const std::vector<gp_Pnt> shared = q26Touching(*f.find(written), "written");
     f.clearArgs();
     f.pushArg(written);
+    // Q26NAMED=1: with a name, as Kernel.writeStep (and the sweep's round trip) writes it.
+    f.clearStepNames();
+    if (getenv("Q26NAMED") && *getenv("Q26NAMED")) f.pushStepName("Body");
     const int size = f.writeStep();
     std::string text;
     if (size > 0) text.assign(reinterpret_cast<const char*>(f.exportTextPtr()), static_cast<size_t>(size));
