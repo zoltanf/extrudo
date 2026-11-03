@@ -910,11 +910,21 @@ end to end, faster than in established desktop CAD.
     2026-10-06, ADR-0034's amendment)**: a file's solid and assembly-instance
     colours become the imported bodies' appearance once, and coloured bodies
     export their colours; face colours are counted, not applied.
-  - STEP writer: a fillet rim's torus face is written with an indirect frame
+  - ~~STEP writer: a fillet rim's torus face is written with an indirect frame
     and a bound flag that a reader trusting the flag turns into a cove (found
     2026-11-01, ADR-0097 slice D11, Q1b.2); write such faces on a direct frame
     or check the flags against the neighbouring edges before writing, with a
-    test that reads the flags back.
+    test that reads the flags back.~~ **done 2026-11-03 (ADR-0034's third
+    amendment)**: OCCT's writer reversed the face's wire when it made the face
+    direct, then flipped the wire's circles when it turned the wire forward;
+    every STEP path now hands it a copy with direct faces and forward wires
+    when an indirect face has a seam, and a test checks every edge's two uses
+    in the written text.
+  - STEP round trip: a cone the hybrid leaves as two half-turn faces on one
+    surface reads back with an extra, invalid face at its apex (their shared
+    edge has two pcurves 2π apart, like a seam): makita-vacuum-holder's own
+    round-trip failure (ADR-0097's 2026-11-03 amendment). One face per such
+    surface, or a surface copy per face, in the unify path.
   - ~~Section analysis on several planes, a section box~~ **done
     (P4-12, 2026-10-06, ADR-0045's amendment: up to three planes, a box of
     six)**; sections saved with named views, a hatch per material (ADR-0045).
@@ -1200,6 +1210,16 @@ end to end, faster than in established desktop CAD.
   amendment). Left of the exploded regions' facets: absorbed steps 386, edge
   tolerance on wrapped charts 375, sliver holes 84, micro zigzags 26, and
   spool-screw-v4.1's two regions invalid after unify.
+  *2026-11-03:* two holes that touch each other on a periodic face are cut
+  too (makita-vacuum-holder's torus; ADR-0097's 2026-11-03 amendment).
+  *slice D12 (2026-11-03):* a sliver island inside a plane joins it, and a
+  plane whose outline folds over a wall lower than the tolerance gives its
+  off-plane triangles to facets: hot-wheels-connector 1,833 → 1,745 facets,
+  phone-stand-foldable 403 → 287, whiteboard-tray-v5 converts at Auto (was
+  refused); over the 36 files converted before, facets 12,565 → 12,359 and
+  faces 22,569 → 22,356 (ADR-0097's 2026-11-03 amendment). Left: micro
+  zigzags (2 facets), wrapped charts 375 (mostly cone fits on makita's
+  fillets), spool-screw-v4.1's two regions invalid after unify and healing.
 
 ## Phase 5 — Programmatic design (→ v0.6)
 

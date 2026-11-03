@@ -171,6 +171,9 @@
 #include <TopTools_ShapeMapHasher.hxx>
 #include <BRepTools_WireExplorer.hxx>
 #include <ShapeBuild_ReShape.hxx>
+#include <ShapeCustom.hxx>
+#include <TopTools_MapOfShape.hxx>
+#include <Geom_ElementarySurface.hxx>
 #include <ShapeUpgrade_ShapeDivideClosed.hxx>
 #include <ShapeUpgrade_UnifySameDomain.hxx>
 #include <TopoDS.hxx>
@@ -2690,7 +2693,7 @@ public:
       STEPControl_Writer writer;
       int scanned = 0;
       for (size_t i = 0; i < args_.size(); ++i) {
-        if (writer.Transfer(*find(args_[i]), STEPControl_AsIs, stepParameters()) != IFSelect_RetDone) {
+        if (writer.Transfer(stepShape(*find(args_[i])), STEPControl_AsIs, stepParameters()) != IFSelect_RetDone) {
           return failExport("STEP export failed: a body couldn't be translated.");
         }
         nameStepProduct(writer.Model(), scanned, i);
@@ -3074,7 +3077,7 @@ public:
       MeshSegmentation seg;
       if (segmentMesh(tolerance, seg)) {
         std::vector<int> hybridOf;
-        const std::vector<MeshHybridRegion> regions = hybridRegions(seg, hybridOf);
+        const std::vector<MeshHybridRegion> regions = hybridRegions(seg, tolerance, hybridOf);
         for (const MeshHybridRegion& r : regions) {
           const bool built = r.kind >= 0 && r.why.empty();
           meshLoops_.push_back(r.kind);
@@ -4270,8 +4273,20 @@ public:
    * when the face goes all the way round. `open0` / `open1` say whether the
    * face's edge at h0 / h1 is an outward corner (1: the shaft's end, a hole's
    * mouth, where a thread gets its lead-in chamfer) or not (0: a shoulder,
-   * a hole's floor, a smooth join, or no edge right round). Returns 14, or -1
-   * (not a cylinder or a cone, unknown shape).
+   * a hole's floor, a smooth join, or no edge right round). Then [across0,
+   * across1] (ADR-0056's sixth amendment): at an open end, how far the faces
+   * across it reach past the end along the axis (mm, from their vertices: a
+   * 45° chamfer 0.3 mm long gives 0.3, a flat end 0); 0 at an end that isn't
+   * open. Then [beyond0, beyond1]: the radius (mm, from the axis) at which
+   * material continues past the faces across that end, or 0 when nothing
+   * does. It is read at the far edges of each face across (the ones at its
+   * far extremity along the axis): where the face across them doesn't turn
+   * away (a stem's cylinder), material continues at the far vertices'
+   * distance from the axis; where it does (a flat end, a counterbore's
+   * floor), the faces across that face's other edges are asked the same (a
+   * counterbore's wall: its radius; a shaft's free end: nothing). Over
+   * several, a shaft keeps the largest, a hole the smallest. Returns 18, or
+   * -1 (not a cylinder or a cone, unknown shape).
    */
   int threadFace(int shape, int face) {
     beginOp();
@@ -4317,6 +4332,33 @@ public:
       const double tol = 1e-6 * std::max(1.0, v1 - v0);
       double open[2] = {1, 1};
       double around[2] = {0, 0};
+      double across[2] = {0, 0};
+      double beyond[2] = {0, 0};
+      // Whether `face` turns its back on `into` at `edge`: 1 yes, 0 no, -1 unknown.
+      auto turnsAway = [](const TopoDS_Edge& edge, const TopoDS_Face& face, const gp_Vec& into) {
+        double a = 0, b = 0;
+        Handle(Geom2d_Curve) on = BRep_Tool::CurveOnSurface(edge, face, a, b);
+        if (on.IsNull()) return -1;
+        const gp_Pnt2d uv = on->Value((a + b) / 2);
+        BRepAdaptor_Surface faceSurface(face);
+        BRepLProp_SLProps faceProps(faceSurface, uv.X(), uv.Y(), 1, Precision::Confusion());
+        if (!faceProps.IsNormalDefined()) return -1;
+        gp_Dir n = faceProps.Normal();
+        if (face.Orientation() == TopAbs_REVERSED) n.Reverse();
+        return gp_Vec(n).Dot(into) < -0.5 ? 1 : 0;
+      };
+      auto radiusOf = [&](const TopoDS_Shape& vertex) {
+        const gp_Vec t(origin, BRep_Tool::Pnt(TopoDS::Vertex(vertex)));
+        return (t - gp_Vec(axis) * t.Dot(gp_Vec(axis))).Magnitude();
+      };
+      // Material continues at the vertices of `edge`: a shaft's cone stops at the largest such radius, a hole's at the smallest.
+      auto continuesAt = [&](int end, const TopoDS_Edge& edge) {
+        for (TopExp_Explorer x(edge, TopAbs_VERTEX); x.More(); x.Next()) {
+          const double r = radiusOf(x.Current());
+          if (beyond[end] == 0) beyond[end] = r;
+          else beyond[end] = inside ? std::min(beyond[end], r) : std::max(beyond[end], r);
+        }
+      };
       for (TopExp_Explorer e(f, TopAbs_EDGE); e.More(); e.Next()) {
         const TopoDS_Edge edge = TopoDS::Edge(e.Current());
         double first = 0, last = 0;
@@ -4352,10 +4394,51 @@ public:
           if (other.Orientation() == TopAbs_REVERSED) n2.Reverse();
           // An outward corner: the face across turns its back on this one.
           if (!(gp_Vec(n2).Dot(into) < -0.5)) open[end] = 0;
+          // How far the face across reaches past the end, from its vertices.
+          const double endHeight = (end == 0 ? v0 : v1) * alongV;
+          auto pastOf = [&](const TopoDS_Shape& vertex) {
+            const gp_Vec toVertex(origin, BRep_Tool::Pnt(TopoDS::Vertex(vertex)));
+            return -(toVertex.Dot(gp_Vec(axis)) - endHeight) * (end == 0 ? 1.0 : -1.0);
+          };
+          double reach = 0;
+          for (TopExp_Explorer x(other, TopAbs_VERTEX); x.More(); x.Next()) reach = std::max(reach, pastOf(x.Current()));
+          across[end] = std::max(across[end], reach);
+          if (reach < 1e-4) continue;
+          // Where material continues past it: across its far edges, and through a face there that turns away, across that face's other edges.
+          for (TopExp_Explorer fe(other, TopAbs_EDGE); fe.More(); fe.Next()) {
+            const TopoDS_Edge farEdge = TopoDS::Edge(fe.Current());
+            bool atFar = false, allFar = true;
+            for (TopExp_Explorer x(farEdge, TopAbs_VERTEX); x.More(); x.Next()) {
+              atFar = true;
+              if (std::abs(pastOf(x.Current()) - reach) > 1e-4) allFar = false;
+            }
+            if (!atFar || !allFar) continue;
+            const int farAt = edgeFaces.FindIndex(farEdge);
+            if (farAt == 0) continue;
+            for (NCollection_List<TopoDS_Shape>::Iterator ft(edgeFaces(farAt)); ft.More(); ft.Next()) {
+              if (ft.Value().IsSame(f) || ft.Value().IsSame(other)) continue;
+              const TopoDS_Face farFace = TopoDS::Face(ft.Value());
+              if (turnsAway(farEdge, farFace, into) != 1) {
+                continuesAt(end, farEdge);
+                continue;
+              }
+              for (TopExp_Explorer ge(farFace, TopAbs_EDGE); ge.More(); ge.Next()) {
+                const TopoDS_Edge nextEdge = TopoDS::Edge(ge.Current());
+                if (nextEdge.IsSame(farEdge) || BRep_Tool::Degenerated(nextEdge)) continue;
+                const int nextAt = edgeFaces.FindIndex(nextEdge);
+                if (nextAt == 0) continue;
+                for (NCollection_List<TopoDS_Shape>::Iterator nt(edgeFaces(nextAt)); nt.More(); nt.Next()) {
+                  if (nt.Value().IsSame(farFace)) continue;
+                  if (turnsAway(nextEdge, TopoDS::Face(nt.Value()), into) != 1) continuesAt(end, nextEdge);
+                }
+              }
+            }
+          }
         }
       }
       for (int end = 0; end < 2; ++end) {
         if (around[end] < (u1 - u0) - 1e-6) open[end] = 0;
+        if (open[end] == 0) across[end] = beyond[end] = 0;
       }
       pushPoint(origin);
       pushDir(out);
@@ -4365,7 +4448,9 @@ public:
       const double radius = refRadius + (flip > 0 ? v0 : v1) * std::sin(halfAngle);
       geometry_.insert(geometry_.end(), {radius, inside ? 1.0 : 0.0, h0, h1, whole ? 1.0 : 0.0,
                                          flip > 0 ? open[0] : open[1], flip > 0 ? open[1] : open[0],
-                                         flip * halfAngle});
+                                         flip * halfAngle, flip > 0 ? across[0] : across[1],
+                                         flip > 0 ? across[1] : across[0], flip > 0 ? beyond[0] : beyond[1],
+                                         flip > 0 ? beyond[1] : beyond[0]});
       return static_cast<int>(geometry_.size());
     } catch (...) {
       failFromException("Thread face failed");
@@ -5817,6 +5902,70 @@ private:
     return parameters;
   }
 
+  /**
+   * The shape a STEP transfer writes for `shape` (ADR-0034's third
+   * amendment). STEP's AXIS2_PLACEMENT_3D can't hold an indirect frame, so
+   * OCCT's writer first rebuilds a face on one (a fillet's torus on a
+   * cylinder's bottom rim) on a direct frame with its wires reversed; it then
+   * writes each wire turned forward through ShapeFix_Wire's reorder, which on
+   * a reversed wire with a seam flips the wire's other edges, and the face
+   * uses its edges the way its neighbours do. So the faces are made direct
+   * here (ShapeCustom::DirectFaces) and every reversed wire is rebuilt forward
+   * from its edges reversed: same geometry, nothing left for the writer to
+   * turn. Only a shape with such a face that has a seam is copied: without a
+   * seam the writer turns the wire right (a fillet's cylinder between two
+   * planes, a prism's or revolve's indirect planes), so those files don't
+   * change. The stored shape is never touched.
+   */
+  static TopoDS_Shape stepShape(const TopoDS_Shape& shape) {
+    const auto reversedWire = [](const TopoDS_Shape& face) {
+      for (TopoDS_Iterator it(face, false, false); it.More(); it.Next()) {
+        if (it.Value().Orientation() == TopAbs_REVERSED) return true;
+      }
+      return false;
+    };
+    bool needed = false;
+    for (TopExp_Explorer it(shape, TopAbs_FACE); it.More() && !needed; it.Next()) {
+      TopLoc_Location location;
+      Handle(Geom_Surface) surface = BRep_Tool::Surface(TopoDS::Face(it.Current()), location);
+      while (!surface.IsNull() && surface->IsKind(STANDARD_TYPE(Geom_RectangularTrimmedSurface))) {
+        surface = Handle(Geom_RectangularTrimmedSurface)::DownCast(surface)->BasisSurface();
+      }
+      const Handle(Geom_ElementarySurface) elementary = Handle(Geom_ElementarySurface)::DownCast(surface);
+      if (elementary.IsNull() || elementary->Position().Direct()) continue;
+      const TopoDS_Face& face = TopoDS::Face(it.Current());
+      for (TopExp_Explorer e(face, TopAbs_EDGE); e.More() && !needed; e.Next()) {
+        needed = BRep_Tool::IsClosed(TopoDS::Edge(e.Current()), face);
+      }
+    }
+    if (!needed) return shape;
+    const TopoDS_Shape direct = ShapeCustom::DirectFaces(shape);
+    Handle(ShapeBuild_ReShape) reshape = new ShapeBuild_ReShape();
+    BRep_Builder builder;
+    TopTools_MapOfShape seen;
+    for (TopExp_Explorer it(direct, TopAbs_FACE); it.More(); it.Next()) {
+      const TopoDS_Shape face = it.Current().Oriented(TopAbs_FORWARD);
+      if (!seen.Add(face) || !reversedWire(face)) continue;
+      TopoDS_Shape rebuilt = face.EmptyCopied();
+      for (TopoDS_Iterator w(face, false, false); w.More(); w.Next()) {
+        const TopoDS_Shape& wire = w.Value();
+        if (wire.Orientation() != TopAbs_REVERSED) {
+          builder.Add(rebuilt, wire);
+          continue;
+        }
+        std::vector<TopoDS_Shape> edges;
+        for (TopoDS_Iterator e(wire); e.More(); e.Next()) edges.push_back(e.Value());
+        TopoDS_Wire forward;
+        builder.MakeWire(forward);
+        for (auto e = edges.rbegin(); e != edges.rend(); ++e) builder.Add(forward, *e);
+        forward.Closed(wire.Closed());
+        builder.Add(rebuilt, forward);
+      }
+      reshape->Replace(face, rebuilt);
+    }
+    return reshape->Apply(direct);
+  }
+
   /** Whether stageStepColor() gave any staged part a colour. */
   bool stepColored() const {
     for (size_t i = 0; i < args_.size() && 3 * i + 2 < stepColors_.size(); ++i) {
@@ -5873,7 +6022,7 @@ private:
       int scanned = 0;
       bool ok = true;
       for (size_t i = 0; ok && i < args_.size(); ++i) {
-        const TDF_Label label = shapes->AddShape(*find(args_[i]), false, false);
+        const TDF_Label label = shapes->AddShape(stepShape(*find(args_[i])), false, false);
         if (3 * i + 2 < stepColors_.size() && stepColors_[3 * i] >= 0) {
           const Quantity_Color color(clamp01(stepColors_[3 * i]), clamp01(stepColors_[3 * i + 1]),
                                      clamp01(stepColors_[3 * i + 2]), Quantity_TOC_sRGB);
@@ -5943,7 +6092,7 @@ private:
       }
       std::vector<TDF_Label> loose;
       for (size_t i = 0; i < args_.size(); ++i) {
-        const TDF_Label label = shapes->AddShape(*find(args_[i]), false, false);
+        const TDF_Label label = shapes->AddShape(stepShape(*find(args_[i])), false, false);
         if (3 * i + 2 < stepColors_.size() && stepColors_[3 * i] >= 0) {
           const Quantity_Color color(clamp01(stepColors_[3 * i]), clamp01(stepColors_[3 * i + 1]),
                                      clamp01(stepColors_[3 * i + 2]), Quantity_TOC_sRGB);
@@ -6972,6 +7121,17 @@ private:
    * facets' area-weighted mean normal agree by this cosine (slice D11).
    */
   static constexpr double MESH_PLANE_NORMAL_AGREEMENT = 0.5;
+
+  /** How many segments on along a plane's loop slice D12 looks for a fold. */
+  static constexpr int MESH_FOLD_REACH = 8;
+
+  /**
+   * A folded plane keeps the triangles whose nodes lie within this share of
+   * the tolerance of it, then a tenth of that while it still folds, up to
+   * MESH_FOLD_ROUNDS times (slice D12).
+   */
+  static constexpr double MESH_FOLD_OFF = 0.1;
+  static constexpr int MESH_FOLD_ROUNDS = 3;
 
   /** The least-squares plane through `nodes`, its normal on the side of `outward`. */
   MeshFit fitMeshPlane(const std::vector<int>& nodes, const gp_XYZ& outward) const {
@@ -8535,7 +8695,7 @@ private:
    * angles, and each region's boundary ordered into loops (`meshLoops`).
    * `hybridOf` gets each triangle's region.
    */
-  std::vector<MeshHybridRegion> hybridRegions(const MeshSegmentation& seg, std::vector<int>& hybridOf) const {
+  std::vector<MeshHybridRegion> hybridRegions(const MeshSegmentation& seg, double tolerance, std::vector<int>& hybridOf) const {
     const int triangleCount = static_cast<int>(seg.regionOf.size());
     auto corner = [&](int t, int k) { return static_cast<int>(meshTriangles_[3 * t + k]); };
     std::vector<int> surfaceOf(triangleCount, -1);
@@ -8629,40 +8789,226 @@ private:
       for (int t : piece) chartIndex[t] = static_cast<int>(chartOf.size());
       chartOf.push_back(chart);
     }
-    // The regions: connected pieces of each label, centred on their own angles.
-    std::vector<MeshHybridRegion> out;
-    hybridOf.assign(triangleCount, -1);
-    for (std::vector<int>& piece : pieces(label)) {
-      MeshHybridRegion region;
-      region.surface = surfaceOf[piece.front()];
-      region.chart = chartOf[chartIndex[piece.front()]];
-      region.kind = region.chart.kind;
-      for (int t : piece) {
-        region.area += seg.areas[t];
-        hybridOf[t] = static_cast<int>(out.size());
-      }
-      if (region.chart.uPeriodic()) {
-        std::vector<double> us, vs;
+    // Slice D12, sliver islands: a piece of another label inside one
+    // recognised piece (every edge of its outline borders that piece), of
+    // less area than the tolerance times its outline's length, its nodes
+    // within the tolerance of the piece's surface, joins that piece: the
+    // face keeps its outline instead of a hole that is an inverted sliver.
+    {
+      const std::vector<std::vector<int>> all = pieces(label);
+      std::vector<int> pieceOf(triangleCount, -1);
+      for (size_t p = 0; p < all.size(); ++p)
+        for (int t : all[p]) pieceOf[t] = static_cast<int>(p);
+      for (size_t p = 0; p < all.size(); ++p) {
+        const std::vector<int>& piece = all[p];
+        int around = -1;
+        bool inside = true;
+        double area = 0, boundary = 0;
         for (int t : piece) {
-          double u = 0, v = 0;
-          region.chart.raw(centroid(t), u, v);
-          us.push_back(u);
-          vs.push_back(v);
+          area += seg.areas[t];
+          for (int k = 0; k < 3 && inside; ++k) {
+            const int u = seg.neighbour[3 * t + k];
+            if (u >= 0 && pieceOf[u] == static_cast<int>(p)) continue;
+            if (u < 0 || (around >= 0 && around != pieceOf[u])) inside = false;
+            else around = pieceOf[u];
+            boundary += (meshNode(corner(t, (k + 1) % 3)) - meshNode(corner(t, k))).Modulus();
+          }
+          if (!inside) break;
         }
-        double start, span;
-        angularSpan(us, start, span);
-        region.chart.uCentre = start + span / 2;
-        if (region.chart.vPeriodic()) {
-          angularSpan(vs, start, span);
-          region.chart.vCentre = start + span / 2;
+        if (!inside || around < 0) continue;
+        const int host = all[around].front(), s = surfaceOf[host];
+        if (s < 0 || seg.surfaces[s].kind < 0 || !(area < tolerance * boundary)) continue;
+        bool near = true;
+        for (size_t i = 0; i < piece.size() && near; ++i)
+          for (int k = 0; k < 3 && near; ++k) near = distanceToSurface(seg.surfaces[s], meshNode(corner(piece[i], k))) <= tolerance;
+        if (!near) continue;
+        for (int t : piece) {
+          label[t] = label[host];
+          surfaceOf[t] = s;
+          chartIndex[t] = chartIndex[host];
         }
       }
-      region.triangles = std::move(piece);
-      out.push_back(std::move(region));
     }
-    for (size_t i = 0; i < out.size(); ++i)
-      if (out[i].kind >= 0) meshLoops(out[i], static_cast<int>(i), hybridOf, seg.neighbour);
+    // The regions: connected pieces of each label, centred on their own angles.
+    auto build = [&] {
+      std::vector<MeshHybridRegion> out;
+      hybridOf.assign(triangleCount, -1);
+      for (std::vector<int>& piece : pieces(label)) {
+        MeshHybridRegion region;
+        region.surface = surfaceOf[piece.front()];
+        region.chart = chartOf[chartIndex[piece.front()]];
+        region.kind = region.chart.kind;
+        for (int t : piece) {
+          region.area += seg.areas[t];
+          hybridOf[t] = static_cast<int>(out.size());
+        }
+        if (region.chart.uPeriodic()) {
+          std::vector<double> us, vs;
+          for (int t : piece) {
+            double u = 0, v = 0;
+            region.chart.raw(centroid(t), u, v);
+            us.push_back(u);
+            vs.push_back(v);
+          }
+          double start, span;
+          angularSpan(us, start, span);
+          region.chart.uCentre = start + span / 2;
+          if (region.chart.vPeriodic()) {
+            angularSpan(vs, start, span);
+            region.chart.vCentre = start + span / 2;
+          }
+        }
+        region.triangles = std::move(piece);
+        out.push_back(std::move(region));
+      }
+      for (size_t i = 0; i < out.size(); ++i)
+        if (out[i].kind >= 0) meshLoops(out[i], static_cast<int>(i), hybridOf, seg.neighbour);
+      return out;
+    };
+    std::vector<MeshHybridRegion> out = build();
+    // Slice D12, absorbed steps: a plane took in the floor on both sides of a
+    // wall lower than the tolerance (the wall's triangles are another
+    // region's), and the start of the rounds beyond it, so its outline runs
+    // along the wall's foot and back along its top, which project onto one
+    // line: the loop folds over itself within a few edges. Where the face,
+    // built alone, is invalid too, the plane's triangles with a node farther
+    // than MESH_FOLD_OFF times the tolerance from it leave it and become
+    // facets, and the regions are made again (a tenth of that, while it still
+    // folds): its outline then runs where the floor ends. (Built folded with
+    // the notch filled instead, the face's outline stood up to the tolerance
+    // off its plane all round, and the solid's volume came out 2 % low.)
+    auto foldedPlanes = [&] {
+      std::set<int> folded;
+      for (size_t r = 0; r < out.size(); ++r) {
+        const MeshHybridRegion& region = out[r];
+        if (region.kind != 0 || !region.why.empty()) continue;
+        for (const std::vector<int>& loop : region.loops) {
+          std::vector<gp_Pnt2d> uv(loop.size());
+          for (size_t i = 0; i < loop.size(); ++i) uv[i] = region.chart.uv(gp_Pnt(meshNode(loop[i])));
+          bool fold = false;
+          for (size_t i = 0; i < uv.size() && !fold; ++i) fold = meshLoopFolds(uv, static_cast<int>(i));
+          if (fold) {
+            if (!meshPlaneFaceValid(region)) folded.insert(static_cast<int>(r));
+            break;
+          }
+        }
+      }
+      return folded;
+    };
+    int unfitChart = -1;
+    double bar = MESH_FOLD_OFF * tolerance;
+    for (int round = 0; round < MESH_FOLD_ROUNDS; ++round, bar /= 10) {
+      const std::set<int> folded = foldedPlanes();
+      if (folded.empty()) break;
+      if (unfitChart < 0) {
+        unfitChart = static_cast<int>(chartOf.size());
+        chartOf.push_back(MeshChart());
+      }
+      int moved = 0;
+      for (int r : folded) {
+        const MeshSurface& plane = seg.surfaces[out[r].surface];
+        for (int t : out[r].triangles) {
+          double off = 0;
+          for (int k = 0; k < 3; ++k) off = std::max(off, distanceToSurface(plane, meshNode(corner(t, k))));
+          if (off <= bar) continue;
+          label[t] = 0;
+          surfaceOf[t] = -1;
+          chartIndex[t] = unfitChart;
+          ++moved;
+        }
+      }
+      if (moved > 0) out = build();
+    }
     return out;
+  }
+
+  /**
+   * Slice D12: whether a plane region's face, built alone from its loops as
+   * polylines (an edge per mesh edge, its tolerance the nodes' distance from
+   * the plane), checks valid. A fold the check passes stays as it is.
+   */
+  bool meshPlaneFaceValid(const MeshHybridRegion& region) const {
+    BRep_Builder builder;
+    const Handle(Geom_Surface) surface = region.chart.surface();
+    TopoDS_Face face;
+    builder.MakeFace(face, surface, Precision::Confusion());
+    std::unordered_map<int, TopoDS_Vertex> vertices;
+    auto vertexOf = [&](int n) {
+      TopoDS_Vertex& v = vertices[n];
+      if (v.IsNull()) builder.MakeVertex(v, gp_Pnt(meshNode(n)), Precision::Confusion());
+      return v;
+    };
+    try {
+      for (const std::vector<int>& loop : region.loops) {
+        TopoDS_Wire wire;
+        builder.MakeWire(wire);
+        for (size_t i = 0; i < loop.size(); ++i) {
+          const int a = loop[i], b = loop[(i + 1) % loop.size()], lo = std::min(a, b), hi = std::max(a, b);
+          const gp_Pnt p(meshNode(lo)), q(meshNode(hi));
+          const double length = p.Distance(q);
+          if (length <= 0) return false;
+          TopoDS_Edge edge;
+          builder.MakeEdge(edge, new Geom_Line(p, gp_Dir(q.XYZ() - p.XYZ())), Precision::Confusion());
+          builder.Add(edge, vertexOf(lo).Oriented(TopAbs_FORWARD));
+          builder.Add(edge, vertexOf(hi).Oriented(TopAbs_REVERSED));
+          builder.Range(edge, 0, length);
+          NCollection_Array1<gp_Pnt2d> poles(1, 2);
+          poles(1) = region.chart.uv(p);
+          poles(2) = region.chart.uv(q);
+          NCollection_Array1<double> knots(1, 2);
+          knots(1) = 0;
+          knots(2) = length;
+          NCollection_Array1<int> mults(1, 2);
+          mults(1) = mults(2) = 2;
+          const double off = std::max(region.chart.value(poles(1).X(), poles(1).Y()).Distance(p),
+                                      region.chart.value(poles(2).X(), poles(2).Y()).Distance(q));
+          const double tolerance = std::max(off * 1.1, HYBRID_EDGE_TOLERANCE_MIN);
+          builder.UpdateEdge(edge, new Geom2d_BSplineCurve(poles, knots, mults, 1), surface, TopLoc_Location(), tolerance);
+          builder.UpdateVertex(vertexOf(lo), tolerance);
+          builder.UpdateVertex(vertexOf(hi), tolerance);
+          builder.Add(wire, a == lo ? edge : TopoDS::Edge(edge.Reversed()));
+        }
+        wire.Closed(true);
+        builder.Add(face, wire);
+      }
+      return BRepCheck_Analyzer(face).IsValid();
+    } catch (const Standard_Failure&) {
+      return false;
+    }
+  }
+
+  /**
+   * Slice D12: whether segment i of `uv` (a closed loop's nodes) crosses or
+   * touches one of the MESH_FOLD_REACH segments after it. The next one, which
+   * shares a node with it, touches only where the loop doubles back.
+   */
+  static bool meshLoopFolds(const std::vector<gp_Pnt2d>& uv, int i) {
+    const int m = static_cast<int>(uv.size());
+    if (m < 4) return false;
+    const gp_XY a = uv[i].XY(), b = uv[(i + 1) % m].XY();
+    const double eps = 1e-9 * std::max({1.0, std::fabs(a.X()), std::fabs(a.Y())});
+    auto side = [](const gp_XY& p, const gp_XY& q, const gp_XY& r) { return (q - p).Crossed(r - p); };
+    // r on the segment p-q, within eps of it.
+    auto on = [&](const gp_XY& p, const gp_XY& q, const gp_XY& r) {
+      const gp_XY d = q - p;
+      const double l2 = d.SquareModulus();
+      if (l2 <= 0) return (r - p).Modulus() <= eps;
+      const double s = (r - p).Dot(d) / l2;
+      return s >= 0 && s <= 1 && std::fabs(d.Crossed(r - p)) <= eps * std::sqrt(l2);
+    };
+    for (int step = 1; step <= std::min(MESH_FOLD_REACH, m - 2); ++step) {
+      const int j = (i + step) % m;
+      const gp_XY c = uv[j].XY(), d = uv[(j + 1) % m].XY();
+      if (step == 1) {
+        if (on(a, b, d) || on(c, d, a)) return true;
+        continue;
+      }
+      const double s1 = side(a, b, c), s2 = side(a, b, d), s3 = side(c, d, a), s4 = side(c, d, b);
+      if ((((s1 > 0 && s2 < 0) || (s1 < 0 && s2 > 0)) && ((s3 > 0 && s4 < 0) || (s3 < 0 && s4 > 0))) || on(a, b, c) ||
+          on(a, b, d) || on(c, d, a) || on(c, d, b))
+        return true;
+    }
+    return false;
   }
 
   /**
@@ -10436,7 +10782,12 @@ private:
    * stays inside): A = O from n to o, c, H from h to n; B = O from o to n,
    * H from n to h, c back. Each passes n once. The face's other holes go to
    * the piece that holds them; every other edge is the face's own, so its
-   * neighbours don't change. False when no cut gives two valid faces.
+   * neighbours don't change. Two holes H1, H2 that share a vertex n (and
+   * neither the outer wire) are cut along an edge from a vertex h1 of H1 to a
+   * vertex h2 of H2 instead: P = H2 from h2 to n, H1 from n to h1, c; L = H1
+   * from h1 to n, H2 from n to h2, c back. The one counterclockwise in (u, v)
+   * (the wedge between the holes) is a face of its own, the other a hole of
+   * the rest with O. False when no cut gives two valid faces.
    */
   static bool cutTouchingFace(const TopoDS_Face& input, TopoDS_Face& pieceA, TopoDS_Face& pieceB) {
     const TopoDS_Face face = TopoDS::Face(input.Oriented(TopAbs_FORWARD));
@@ -10505,6 +10856,47 @@ private:
       const int m = static_cast<int>(w.size());
       for (int i = from; i != to; i = (i + 1) % m) builder.Add(into, w[i].edge);
     };
+    // The cut: an edge on `surface` along the straight (u, v) segment from `a` to `b`.
+    auto cutEdge = [&](const Use& a, const Use& b) {
+      NCollection_Array1<gp_Pnt2d> poles(1, 2);
+      poles(1) = a.at;
+      poles(2) = b.at;
+      NCollection_Array1<double> knots(1, 2);
+      knots(1) = 0;
+      knots(2) = a.at.Distance(b.at);
+      NCollection_Array1<int> mults(1, 2);
+      mults(1) = mults(2) = 2;
+      const Handle(Geom2d_Curve) line = new Geom2d_BSplineCurve(poles, knots, mults, 1);
+      BRepBuilderAPI_MakeEdge make(line, surface, a.start, b.start, knots(1), knots(2));
+      if (!make.IsDone()) return TopoDS_Edge();
+      TopoDS_Edge c = make.Edge();
+      BRepLib::BuildCurves3d(c);
+      return c;
+    };
+    // Twice the signed (u, v) area a closed wire's pcurves enclose (counterclockwise positive).
+    auto area = [&](const TopoDS_Wire& wire) {
+      double sum = 0;
+      for (TopExp_Explorer ee(wire, TopAbs_EDGE); ee.More(); ee.Next()) {
+        const TopoDS_Edge e = TopoDS::Edge(ee.Current());
+        double first = 0, last = 0;
+        const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(e, face, first, last);
+        if (pc.IsNull()) return 0.0;
+        if (e.Orientation() == TopAbs_REVERSED) std::swap(first, last);
+        gp_Pnt2d previous = pc->Value(first);
+        for (int i = 1; i <= TOUCH_CUT_SAMPLES; ++i) {
+          const gp_Pnt2d p = pc->Value(first + (last - first) * i / TOUCH_CUT_SAMPLES);
+          sum += previous.X() * p.Y() - p.X() * previous.Y();
+          previous = p;
+        }
+      }
+      return sum;
+    };
+    // A point inside hole `q`'s first edge, to tell which piece holds it.
+    auto probe = [&](size_t q) {
+      double first = 0, last = 0;
+      const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(holes[q][0].edge, face, first, last);
+      return pc->Value(0.5 * (first + last));
+    };
     for (size_t k = 0; k < holes.size(); ++k) {
       const std::vector<Use>& H = holes[k];
       int hn = -1, on = -1;
@@ -10532,19 +10924,8 @@ private:
           const int oi = ends[ei];
           if (!sees(O[oi].at, H[hi].at)) continue;
           try {
-            NCollection_Array1<gp_Pnt2d> poles(1, 2);
-            poles(1) = O[oi].at;
-            poles(2) = H[hi].at;
-            NCollection_Array1<double> knots(1, 2);
-            knots(1) = 0;
-            knots(2) = O[oi].at.Distance(H[hi].at);
-            NCollection_Array1<int> mults(1, 2);
-            mults(1) = mults(2) = 2;
-            const Handle(Geom2d_Curve) line = new Geom2d_BSplineCurve(poles, knots, mults, 1);
-            BRepBuilderAPI_MakeEdge make(line, surface, O[oi].start, H[hi].start, knots(1), knots(2));
-            if (!make.IsDone()) continue;
-            TopoDS_Edge c = make.Edge();
-            BRepLib::BuildCurves3d(c);
+            const TopoDS_Edge c = cutEdge(O[oi], H[hi]);
+            if (c.IsNull()) continue;
             TopoDS_Wire wa, wb;
             builder.MakeWire(wa);
             builder.MakeWire(wb);
@@ -10564,7 +10945,7 @@ private:
             BRepTopAdaptor_FClass2d inA(fa, Precision::PConfusion());
             for (size_t q = 0; q < holes.size(); ++q) {
               if (q == k || holes[q].empty()) continue;
-              builder.Add(inA.Perform(holes[q][0].at) == TopAbs_IN ? fa : fb, holeWires[q]);
+              builder.Add(inA.Perform(probe(q)) == TopAbs_IN ? fa : fb, holeWires[q]);
             }
             if (!BRepCheck_Analyzer(fa).IsValid() || !BRepCheck_Analyzer(fb).IsValid()) continue;
             pieceA = TopoDS::Face(fa.Oriented(input.Orientation()));
@@ -10575,14 +10956,78 @@ private:
         }
       }
     }
+    // Two holes that share a vertex.
+    for (size_t k1 = 0; k1 < holes.size(); ++k1)
+      for (size_t k2 = k1 + 1; k2 < holes.size(); ++k2) {
+        const std::vector<Use>& H1 = holes[k1];
+        const std::vector<Use>& H2 = holes[k2];
+        int n1 = -1, n2 = -1;
+        for (size_t i = 0; i < H1.size() && n1 < 0; ++i)
+          for (size_t j = 0; j < H2.size(); ++j)
+            if (H1[i].start.IsSame(H2[j].start)) {
+              n1 = static_cast<int>(i);
+              n2 = static_cast<int>(j);
+              break;
+            }
+        if (n1 < 0) continue;
+        // h1: H1's vertices farthest from n first; h2: H2's nearest to h1 first.
+        std::vector<int> starts, ends;
+        for (size_t i = 0; i < H1.size(); ++i)
+          if (static_cast<int>(i) != n1) starts.push_back(static_cast<int>(i));
+        std::sort(starts.begin(), starts.end(),
+                  [&](int x, int y) { return H1[x].at.Distance(H1[n1].at) > H1[y].at.Distance(H1[n1].at); });
+        for (size_t si = 0; si < starts.size() && si < static_cast<size_t>(TOUCH_CUT_STARTS); ++si) {
+          const int h1 = starts[si];
+          ends.clear();
+          for (size_t j = 0; j < H2.size(); ++j)
+            if (!H2[j].start.IsSame(H1[n1].start)) ends.push_back(static_cast<int>(j));
+          std::sort(ends.begin(), ends.end(), [&](int x, int y) { return H2[x].at.Distance(H1[h1].at) < H2[y].at.Distance(H1[h1].at); });
+          for (size_t ei = 0; ei < ends.size() && ei < static_cast<size_t>(TOUCH_CUT_ENDS); ++ei) {
+            const int h2 = ends[ei];
+            if (!sees(H1[h1].at, H2[h2].at)) continue;
+            try {
+              const TopoDS_Edge c = cutEdge(H1[h1], H2[h2]);
+              if (c.IsNull()) continue;
+              TopoDS_Wire wp, wl;
+              builder.MakeWire(wp);
+              builder.MakeWire(wl);
+              run(H2, h2, n2, wp);
+              run(H1, n1, h1, wp);
+              builder.Add(wp, c);
+              run(H1, h1, n1, wl);
+              run(H2, n2, h2, wl);
+              builder.Add(wl, TopoDS::Edge(c.Reversed()));
+              wp.Closed(true);
+              wl.Closed(true);
+              const bool own = area(wp) > 0;
+              TopoDS_Face fa, fb;
+              builder.MakeFace(fa, surface, location, BRep_Tool::Tolerance(face));
+              builder.MakeFace(fb, surface, location, BRep_Tool::Tolerance(face));
+              builder.Add(fa, own ? wp : wl);
+              builder.Add(fb, outer);
+              builder.Add(fb, own ? wl : wp);
+              BRepTopAdaptor_FClass2d inA(fa, Precision::PConfusion());
+              for (size_t q = 0; q < holes.size(); ++q) {
+                if (q == k1 || q == k2 || holes[q].empty()) continue;
+                builder.Add(inA.Perform(probe(q)) == TopAbs_IN ? fa : fb, holeWires[q]);
+              }
+              if (!BRepCheck_Analyzer(fa).IsValid() || !BRepCheck_Analyzer(fb).IsValid()) continue;
+              pieceA = TopoDS::Face(fa.Oriented(input.Orientation()));
+              pieceB = TopoDS::Face(fb.Oriented(input.Orientation()));
+              return true;
+            } catch (const Standard_Failure&) {
+            }
+          }
+        }
+      }
     return false;
   }
 
   /**
-   * ADR-0097 slice D11: no face on a periodic surface keeps a hole that
-   * shares a vertex with its outer wire. The STEP writer writes such a vertex
-   * twice (one VERTEX_POINT per loop), and OCCT's reader then finds the two
-   * loops crossing on some of these faces (a torus and a cone in the corpus;
+   * ADR-0097 slice D11: no face on a periodic surface keeps two wires that
+   * share a vertex (a hole and its outer wire, or two holes: 2026-11-03).
+   * The STEP writer writes such a vertex twice (one VERTEX_POINT per loop),
+   * and OCCT's reader then finds the two loops crossing on some of these faces (a torus and a cone in the corpus;
    * planes read back whole). Each such face is cut in two (cutTouchingFace)
    * until none is left; a face no cut gives two valid faces stays. Replaces
    * `shape` only when the cut body checks valid; returns the cuts made.
@@ -10598,14 +11043,14 @@ private:
         if (refused.count(face.TShape().get())) continue;
         const BRepAdaptor_Surface adaptor(face, false);
         if (!adaptor.IsUPeriodic() && !adaptor.IsVPeriodic()) continue;
-        const TopoDS_Wire outer = BRepTools::OuterWire(face);
-        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> outerVertices;
-        TopExp::MapShapes(outer, TopAbs_VERTEX, outerVertices);
+        // A vertex of one wire that an earlier wire holds too.
+        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> seen;
         bool touching = false;
         for (TopExp_Explorer we(face, TopAbs_WIRE); we.More() && !touching; we.Next()) {
-          if (we.Current().IsSame(outer)) continue;
-          for (TopExp_Explorer ve(we.Current(), TopAbs_VERTEX); ve.More() && !touching; ve.Next())
-            touching = outerVertices.Contains(ve.Current());
+          NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> own;
+          TopExp::MapShapes(we.Current(), TopAbs_VERTEX, own);
+          for (int i = 1; i <= own.Extent() && !touching; ++i) touching = seen.Contains(own(i));
+          for (int i = 1; i <= own.Extent(); ++i) seen.Add(own(i));
         }
         if (!touching) continue;
         TopoDS_Face a, b;
@@ -10668,7 +11113,7 @@ private:
     const int triangleCount = static_cast<int>(meshTriangles_.size() / 3);
     auto corner = [&](int t, int k) { return static_cast<int>(meshTriangles_[3 * t + k]); };
     std::vector<int> hybridOf;
-    std::vector<MeshHybridRegion> regions = hybridRegions(seg, hybridOf);
+    std::vector<MeshHybridRegion> regions = hybridRegions(seg, tolerance, hybridOf);
     const int regionCount = static_cast<int>(regions.size());
     // The boundary chains (slice D3), once: an exploded region stays a region
     // (its triangles one facet island), so they only stop being candidates.

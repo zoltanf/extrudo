@@ -69,6 +69,12 @@ static void spikeQ26Valid(int attempt, int faces, int facets, bool undone, bool 
 #include <BRepBuilderAPI_Copy.hxx>
 #include <ShapeAnalysis_Wire.hxx>
 #include <ShapeExtend_WireData.hxx>
+#include <ShapeFix_IntersectionTool.hxx>
+#include <BndLib_Add2dCurve.hxx>
+#include <Bnd_Box2d.hxx>
+#include <ShapeAnalysis_Edge.hxx>
+#include <IntRes2d_Domain.hxx>
+#include <Geom2dAdaptor_Curve.hxx>
 #include <BRepCheck_Wire.hxx>
 #include <BRepExtrema_DistShapeShape.hxx>
 #include <GeomAPI_ProjectPointOnSurf.hxx>
@@ -3921,7 +3927,7 @@ static std::vector<gp_Pnt> q26Touching(const TopoDS_Shape& shape, const char* ta
         }
         std::cout << std::setprecision(6) << "   q26 touch " << tag << " face " << index << " kind " << surfaceTypeName(surface.GetType())
                   << " uper " << surface.IsUPeriodic() << " vper " << surface.IsVPeriodic() << " uspan " << u1 - u0 << " vspan "
-                  << v1 - v0 << " seams " << seams << " wires " << wires.size() << " vertex " << p.X() << "," << p.Y() << "," << p.Z()
+                  << v1 - v0 << " seams " << seams << " wires " << wires.size() << " outer " << BRepTools::OuterWire(face).IsSame(wires[w]) << " vertex " << p.X() << "," << p.Y() << "," << p.Z()
                   << " tol " << BRep_Tool::Tolerance(vertex) << " wire " << w << " du " << du << " dv " << dv
                   << " valid " << BRepCheck_Analyzer(face).IsValid() << " splitvalid " << spikeSplitVertexValid(face) << " pcurves" << values << std::endl;
       }
@@ -4113,6 +4119,52 @@ static TopoDS_Shape spikeCutTouching(const TopoDS_Shape& shape, int& cuts, int& 
 }
 
 /** Q26TOUCH: the read-back's invalid faces, and its vertices that lie within 1e-6 of another (a vertex split in two). */
+/**
+ * Q3.3 (Q26CONE=1): a face's BRepCheck statuses (the face's own, per wire and per edge on the face), its (u, v)
+ * bounds, and per edge: curve type, closed (a seam), degenerated, tolerance, and its pcurve's ends on the face.
+ */
+static void q26Describe(const TopoDS_Face& face, const char* tag) {
+  BRepCheck_Analyzer analyzer(face, Standard_True);
+  auto statuses = [&](const TopoDS_Shape& s) {
+    std::string out;
+    const Handle(BRepCheck_Result) r = analyzer.Result(s);
+    if (r.IsNull()) return out;
+    for (r->InitContextIterator(); r->MoreShapeInContext(); r->NextShapeInContext())
+      for (const BRepCheck_Status st : r->StatusOnShape())
+        if (st != BRepCheck_NoError) out += " " + std::to_string(static_cast<int>(st));
+    for (const BRepCheck_Status st : r->Status())
+      if (st != BRepCheck_NoError) out += " own" + std::to_string(static_cast<int>(st));
+    return out;
+  };
+  double u0 = 0, u1 = 0, v0 = 0, v1 = 0;
+  BRepTools::UVBounds(face, u0, u1, v0, v1);
+  const BRepAdaptor_Surface surface(face, false);
+  std::cout << std::setprecision(8) << "   q26 face " << tag << " " << surfaceTypeName(surface.GetType()) << " orient " << face.Orientation()
+            << " u " << u0 << ".." << u1 << " v " << v0 << ".." << v1 << " tol " << BRep_Tool::Tolerance(face) << " status" << statuses(face) << std::endl;
+  if (surface.GetType() == GeomAbs_Cone) {
+    const gp_Cone c = surface.Cone();
+    std::cout << "   q26 face " << tag << " cone r " << c.RefRadius() << " semi " << c.SemiAngle() << " apex " << c.Apex().X() << "," << c.Apex().Y() << "," << c.Apex().Z()
+              << " at " << c.Location().X() << "," << c.Location().Y() << "," << c.Location().Z() << " axis " << c.Axis().Direction().X() << "," << c.Axis().Direction().Y() << "," << c.Axis().Direction().Z() << std::endl;
+  }
+  for (TopExp_Explorer we(face, TopAbs_WIRE); we.More(); we.Next()) {
+    std::cout << "   q26 face " << tag << " wire orient " << we.Current().Orientation() << " status" << statuses(we.Current()) << std::endl;
+    for (TopExp_Explorer ee(we.Current(), TopAbs_EDGE); ee.More(); ee.Next()) {
+      const TopoDS_Edge e = TopoDS::Edge(ee.Current());
+      double first = 0, last = 0;
+      const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(e, face, first, last);
+      std::cout << "   q26 face " << tag << "  edge " << BRepAdaptor_Curve(e).GetType() << " orient " << e.Orientation() << " closed "
+                << BRep_Tool::IsClosed(e, face) << " degen " << BRep_Tool::Degenerated(e) << " tol " << BRep_Tool::Tolerance(e);
+      if (!pc.IsNull()) {
+        const gp_Pnt2d a = pc->Value(first), b = pc->Value(last);
+        std::cout << " pc (" << a.X() << ", " << a.Y() << ") -> (" << b.X() << ", " << b.Y() << ")";
+      } else {
+        std::cout << " no pcurve";
+      }
+      std::cout << " status" << statuses(e) << std::endl;
+    }
+  }
+}
+
 static void q26ReadBack(const TopoDS_Shape& back, const std::vector<gp_Pnt>& shared) {
   int index = 0;
   for (TopExp_Explorer fe(back, TopAbs_FACE); fe.More(); fe.Next(), ++index) {
@@ -4121,6 +4173,7 @@ static void q26ReadBack(const TopoDS_Shape& back, const std::vector<gp_Pnt>& sha
     int wires = 0;
     for (TopExp_Explorer we(fe.Current(), TopAbs_WIRE); we.More(); we.Next()) ++wires;
     std::cout << "   q26 back invalid face " << index << " kind " << surfaceTypeName(surface.GetType()) << " wires " << wires << std::endl;
+    if (getenv("Q26CONE") && *getenv("Q26CONE")) q26Describe(TopoDS::Face(fe.Current()), "back");
   }
   NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> vertices;
   TopExp::MapShapes(back, TopAbs_VERTEX, vertices);
@@ -4136,6 +4189,183 @@ static void q26ReadBack(const TopoDS_Shape& back, const std::vector<gp_Pnt>& sha
       std::cout << std::setprecision(6) << "   q26 back duplicate vertex " << p.X() << "," << p.Y() << "," << p.Z() << " apart "
                 << points[i].first.Distance(points[j].first) << " nearest written shared vertex " << nearest << std::endl;
     }
+}
+
+/**
+ * Q26SPLIT (P4-12, 2026-11-03): why the reader keeps a shared vertex split on some faces. Every face of `s` whose wires
+ * hold two distinct vertices within 1e-7 of each other (the writer's one VERTEX_POINT per loop), as pairs.
+ */
+static int q26SplitPairs(const TopoDS_Shape& s, bool print, const char* tag) {
+  int pairs = 0, index = 0;
+  for (TopExp_Explorer fe(s, TopAbs_FACE); fe.More(); fe.Next(), ++index) {
+    const TopoDS_Face face = TopoDS::Face(fe.Current());
+    std::vector<std::pair<TopoDS_Vertex, int>> vs;
+    int w = 0;
+    for (TopExp_Explorer we(face, TopAbs_WIRE); we.More(); we.Next(), ++w)
+      for (TopExp_Explorer ve(we.Current(), TopAbs_VERTEX); ve.More(); ve.Next()) vs.push_back({TopoDS::Vertex(ve.Current()), w});
+    if (w < 2) continue;
+    for (size_t i = 0; i < vs.size(); ++i)
+      for (size_t j = i + 1; j < vs.size(); ++j) {
+        if (vs[i].second == vs[j].second || vs[i].first.IsSame(vs[j].first)) continue;
+        const gp_Pnt a = BRep_Tool::Pnt(vs[i].first), b = BRep_Tool::Pnt(vs[j].first);
+        if (a.Distance(b) > 1e-7) continue;
+        bool seen = false;  // a vertex is met once per edge: count each pair of vertices once
+        for (size_t k = 0; k < i && !seen; ++k)
+          for (size_t l = k + 1; l < vs.size() && !seen; ++l)
+            seen = ((vs[k].first.IsSame(vs[i].first) && vs[l].first.IsSame(vs[j].first)) ||
+                    (vs[k].first.IsSame(vs[j].first) && vs[l].first.IsSame(vs[i].first)));
+        if (seen) continue;
+        ++pairs;
+        if (print)
+          std::cout << std::setprecision(8) << "   q26 split " << tag << " face " << index << " kind "
+                    << surfaceTypeName(BRepAdaptor_Surface(face, false).GetType()) << " wires " << w << " at " << a.X() << "," << a.Y()
+                    << "," << a.Z() << " wires " << vs[i].second << "/" << vs[j].second << " tol " << BRep_Tool::Tolerance(vs[i].first)
+                    << "/" << BRep_Tool::Tolerance(vs[j].first) << " valid " << BRepCheck_Analyzer(face).IsValid() << std::endl;
+      }
+  }
+  return pairs;
+}
+
+static const char* q26Position(IntRes2d_Position p) {
+  return p == IntRes2d_Head ? "head" : p == IntRes2d_End ? "end" : "middle";
+}
+
+/**
+ * Q26SPLIT on one raw face: for every pair of wires holding a split pair, every pair of their edges whose 2D boxes
+ * meet, Geom2dInt_GInter as ShapeFix_IntersectionTool::FixIntersectingWires runs it (tolerance 1e-10): points (each
+ * one's position on both edges and its distance to the split vertex) and segments. Then that tool on the face alone.
+ */
+static void q26SplitFace(const TopoDS_Face& face, int index, double precision, double maxTol) {
+  std::vector<TopoDS_Wire> wires;
+  for (TopExp_Explorer we(face, TopAbs_WIRE); we.More(); we.Next()) wires.push_back(TopoDS::Wire(we.Current()));
+  ShapeAnalysis_Edge sae;
+  for (size_t w1 = 0; w1 < wires.size(); ++w1)
+    for (size_t w2 = w1 + 1; w2 < wires.size(); ++w2) {
+      // The split vertices between these two wires.
+      std::vector<gp_Pnt> split;
+      for (TopExp_Explorer a(wires[w1], TopAbs_VERTEX); a.More(); a.Next())
+        for (TopExp_Explorer b(wires[w2], TopAbs_VERTEX); b.More(); b.Next())
+          if (!a.Current().IsSame(b.Current()) &&
+              BRep_Tool::Pnt(TopoDS::Vertex(a.Current())).Distance(BRep_Tool::Pnt(TopoDS::Vertex(b.Current()))) < 1e-7)
+            split.push_back(BRep_Tool::Pnt(TopoDS::Vertex(a.Current())));
+      if (split.empty()) continue;
+      for (size_t w : {w1, w2})
+        for (BRepTools_WireExplorer we(wires[w], face); we.More(); we.Next()) {
+          const TopoDS_Edge& e = we.Current();
+          TopoDS_Vertex a, b;
+          TopExp::Vertices(e, a, b, true);
+          double first = 0, last = 0;
+          const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(e, face, first, last);
+          if (pc.IsNull()) continue;
+          for (int end = 0; end < 2; ++end) {
+            const TopoDS_Vertex& v = end ? b : a;
+            for (const gp_Pnt& q : split)
+              if (BRep_Tool::Pnt(v).Distance(q) < 1e-6) {
+                const gp_Pnt2d uv = pc->Value((e.Orientation() == TopAbs_REVERSED) == (end == 0) ? last : first);
+                std::cout << std::setprecision(12) << "   q26 split uv face " << index << " wire " << w << " edge "
+                          << (end ? "end" : "start") << " at " << q.X() << "," << q.Y() << " uv " << uv.X() << ", " << uv.Y()
+                          << " range " << first << ".." << last << " tol " << BRep_Tool::Tolerance(e) << std::endl;
+              }
+          }
+        }
+      int pairs = 0, points = 0, segments = 0, atSplit = 0, union_ = 0, middle = 0, elsewhere = 0, notDone = 0;
+      int edges1 = 0, edges2 = 0;
+      for (TopExp_Explorer e(wires[w1], TopAbs_EDGE); e.More(); e.Next()) ++edges1;
+      for (TopExp_Explorer e(wires[w2], TopAbs_EDGE); e.More(); e.Next()) ++edges2;
+      for (TopExp_Explorer e1(wires[w1], TopAbs_EDGE); e1.More(); e1.Next())
+        for (TopExp_Explorer e2(wires[w2], TopAbs_EDGE); e2.More(); e2.Next()) {
+          const TopoDS_Edge edge1 = TopoDS::Edge(e1.Current()), edge2 = TopoDS::Edge(e2.Current());
+          Handle(Geom2d_Curve) c1, c2;
+          double a1, b1, a2, b2;
+          if (!sae.PCurve(edge1, face, c1, a1, b1, false) || !sae.PCurve(edge2, face, c2, a2, b2, false)) continue;
+          Geom2dAdaptor_Curve C1(c1), C2(c2);
+          Bnd_Box2d B1, B2;
+          BndLib_Add2dCurve::Add(C1, a1, b1, 0., B1);
+          BndLib_Add2dCurve::Add(C2, a2, b2, 0., B2);
+          if (B1.IsOut(B2)) continue;
+          ++pairs;
+          const double tolint = 1.0e-10;
+          IntRes2d_Domain d1(C1.Value(a1), a1, tolint, C1.Value(b1), b1, tolint);
+          IntRes2d_Domain d2(C2.Value(a2), a2, tolint, C2.Value(b2), b2, tolint);
+          Geom2dInt_GInter inter;
+          inter.Perform(C1, d1, C2, d2, tolint, tolint);
+          if (!inter.IsDone()) { ++notDone; continue; }
+          segments += inter.NbSegments();
+          for (int i = 1; i <= inter.NbPoints(); ++i) {
+            ++points;
+            const IntRes2d_IntersectionPoint& ip = inter.Point(i);
+            const IntRes2d_Position p1 = ip.TransitionOfFirst().PositionOnCurve(), p2 = ip.TransitionOfSecond().PositionOnCurve();
+            const gp_Pnt2d uv = ip.Value();
+            const gp_Pnt P = BRepAdaptor_Surface(face, false).Value(uv.X(), uv.Y());
+            double nearest = 1e300;
+            for (const gp_Pnt& q : split) nearest = std::min(nearest, q.Distance(P));
+            const bool here = nearest < 1e-6;
+            atSplit += here;
+            if (p1 != IntRes2d_Middle && p2 != IntRes2d_Middle) union_ += here;
+            else if (here) ++middle;
+            if (!here) ++elsewhere;
+            if (here || inter.NbPoints() >= 3)
+              std::cout << std::setprecision(6) << "   q26 split int face " << index << " wires " << w1 << "/" << w2 << " point " << i << "/"
+                        << inter.NbPoints() << " " << q26Position(p1) << "/" << q26Position(p2) << " to split " << nearest << std::endl;
+          }
+        }
+      std::cout << "   q26 split wires face " << index << " wires " << w1 << "/" << w2 << " edges " << edges1 << "/" << edges2
+                << " split vertices " << split.size() << " edge pairs " << pairs << " points " << points << " (at split " << atSplit
+                << ": end/end " << union_ << ", middle " << middle << "; elsewhere " << elsewhere << ") segments " << segments
+                << " not done " << notDone << std::endl;
+    }
+  // The tool alone on this face (a copy), as ShapeFix_Face runs it.
+  const TopoDS_Face copy = TopoDS::Face(BRepBuilderAPI_Copy(face).Shape());
+  Handle(ShapeBuild_ReShape) context = new ShapeBuild_ReShape;
+  ShapeFix_IntersectionTool tool(context, precision, maxTol);
+  TopoDS_Face fixed = copy;
+  const bool done = tool.FixIntersectingWires(fixed);
+  const TopoDS_Shape after = context->Apply(fixed);
+  std::cout << "   q26 split tool face " << index << " done " << done << " pairs " << q26SplitPairs(copy, false, "") << " -> "
+            << q26SplitPairs(after, false, "") << " valid " << BRepCheck_Analyzer(after).IsValid() << std::endl;
+}
+
+/** Q26SPLIT: the split pairs in the raw read, the healed read and the healed read without each face fix; then each raw face. */
+static void q26Split(const std::string& text) {
+  const TopoDS_Shape raw = readStepUnhealed(text);
+  if (raw.IsNull()) return;
+  const double u = uncertaintyOf(text);
+  const double maxTol = std::max(u, Interface_Static::RVal("read.maxprecision.val"));
+  std::cout << "   q26 split precision " << u << " max tolerance " << maxTol << " raw pairs " << q26SplitPairs(raw, true, "raw") << std::endl;
+  const TopoDS_Shape all = fixLikeReader(raw, u, maxTol, nullptr);
+  const int healedPairs = q26SplitPairs(all, true, "healed");
+  std::cout << "   q26 split healed pairs " << healedPairs << std::endl;
+  if (healedPairs == 0) return;
+  std::vector<std::pair<std::string, std::function<void(ShapeFix_Shape&)>>> modes(q20Modes().begin(), q20Modes().end());
+  modes.push_back({"wire FixEdgeCurvesMode", [](ShapeFix_Shape& s) { s.FixWireTool()->FixEdgeCurvesMode() = 0; }});
+  modes.push_back({"wire FixShiftedMode", [](ShapeFix_Shape& s) { s.FixWireTool()->FixShiftedMode() = 0; }});
+  modes.push_back({"wire FixSeamMode", [](ShapeFix_Shape& s) { s.FixWireTool()->FixSeamMode() = 0; }});
+  modes.push_back({"wire FixReversed2dMode", [](ShapeFix_Shape& s) { s.FixWireTool()->FixReversed2dMode() = 0; }});
+  modes.push_back({"wire FixRemovePCurveMode", [](ShapeFix_Shape& s) { s.FixWireTool()->FixRemovePCurveMode() = 0; }});
+  modes.push_back({"wire FixAddPCurveMode", [](ShapeFix_Shape& s) { s.FixWireTool()->FixAddPCurveMode() = 0; }});
+  modes.push_back({"wire FixRemoveCurve3dMode", [](ShapeFix_Shape& s) { s.FixWireTool()->FixRemoveCurve3dMode() = 0; }});
+  modes.push_back({"wire FixAddCurve3dMode", [](ShapeFix_Shape& s) { s.FixWireTool()->FixAddCurve3dMode() = 0; }});
+  modes.push_back({"wire ModifyRemoveLoopMode", [](ShapeFix_Shape& s) { s.FixWireTool()->ModifyRemoveLoopMode() = 0; }});
+  modes.push_back({"shape FixVertexTolMode", [](ShapeFix_Shape& s) { s.FixVertexTolMode() = 0; }});
+  for (const auto& [name, tweak] : modes) {
+    int pairs = -1;
+    try {
+      pairs = q26SplitPairs(fixLikeReader(raw, u, maxTol, tweak), false, "");
+    } catch (...) {
+    }
+    std::cout << "   q26 split without " << name << " pairs " << pairs << std::endl;
+  }
+  int index = 0;
+  for (TopExp_Explorer fe(raw, TopAbs_FACE); fe.More(); fe.Next(), ++index) {
+    if (q26SplitPairs(fe.Current(), false, "") == 0) continue;
+    q26SplitFace(TopoDS::Face(fe.Current()), index, u, maxTol);
+  }
+  index = 0;
+  for (TopExp_Explorer fe(all, TopAbs_FACE); fe.More(); fe.Next(), ++index) {
+    if (q26SplitPairs(fe.Current(), false, "") == 0) continue;
+    std::cout << "   q26 split -- healed face " << index << std::endl;
+    q26SplitFace(TopoDS::Face(fe.Current()), index, u, maxTol);
+  }
 }
 
 static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
@@ -4437,6 +4667,38 @@ static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
   }
   std::cout << "   prismatic " << f.count(h, 0) << " faces:" << kinds(s) << ", valid " << BRepCheck_Analyzer(s).IsValid() << ", volume "
             << v << " / mesh " << meshVolume << " = " << v / meshVolume << " (" << ms << " ms)" << std::endl;
+  if (getenv("D12") && *getenv("D12")) {
+    // Slice D12: every face over D12 mm² (default 50): its kind, area, a plane's normal, offset and centre (its
+    // "volume", BRepGProp's volume properties of the lone face, means nothing on its own).
+    const double bar = std::atof(getenv("D12")) > 0 ? std::atof(getenv("D12")) : 50;
+    for (TopExp_Explorer e(s, TopAbs_FACE); e.More(); e.Next()) {
+      const TopoDS_Face& face = TopoDS::Face(e.Current());
+      GProp_GProps area, vol;
+      BRepGProp::SurfaceProperties(face, area);
+      if (area.Mass() < bar) continue;
+      BRepGProp::VolumeProperties(face, vol);
+      const BRepAdaptor_Surface surface(face, false);
+      std::cout << "   d12 face type " << surface.GetType() << " area " << area.Mass() << " volume " << vol.Mass();
+      if (surface.GetType() == GeomAbs_Plane) {
+        gp_Dir n = surface.Plane().Axis().Direction();
+        if (face.Orientation() == TopAbs_REVERSED) n.Reverse();
+        std::cout << " normal " << n.X() << "," << n.Y() << "," << n.Z() << " offset " << surface.Plane().Location().XYZ().Dot(n.XYZ())
+                  << " centre " << area.CentreOfMass().X() << "," << area.CentreOfMass().Y() << "," << area.CentreOfMass().Z();
+        double ca = 0, cb = 0, cc = 0, cd = 0;
+        surface.Plane().Coefficients(ca, cb, cc, cd);
+        std::cout << " coefficients " << ca << "," << cb << "," << cc << "," << cd << " location " << surface.Plane().Location().X()
+                  << "," << surface.Plane().Location().Y() << "," << surface.Plane().Location().Z();
+        if (getenv("D12V") && area.Mass() > 1000) {
+          // The face's own vertices' distance from its plane.
+          double worst = 0;
+          for (TopExp_Explorer v(face, TopAbs_VERTEX); v.More(); v.Next())
+            worst = std::max(worst, surface.Plane().Distance(BRep_Tool::Pnt(TopoDS::Vertex(v.Current()))));
+          std::cout << " vertices off " << worst;
+        }
+      }
+      std::cout << std::endl;
+    }
+  }
   if (getenv("Q26TOUCH") && *getenv("Q26TOUCH")) {
     // Q3.1 step 1: faces whose wires share a vertex, then the STEP read-back's invalid faces and split vertices.
     // Q26TOUCH=cut: the prototype cut first (spikeCutTouching), its body written instead.
@@ -4451,12 +4713,19 @@ static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
                 << " / " << ExtrudoFacade::volumeOf(s) << " (" << now() - t0 << " ms)" << std::endl;
     }
     const std::vector<gp_Pnt> shared = q26Touching(*f.find(written), "written");
+    if (getenv("Q26CONE") && *getenv("Q26CONE"))
+      for (TopExp_Explorer fe(*f.find(written), TopAbs_FACE); fe.More(); fe.Next())
+        if (BRepAdaptor_Surface(TopoDS::Face(fe.Current()), false).GetType() == GeomAbs_Cone) q26Describe(TopoDS::Face(fe.Current()), "written");
     f.clearArgs();
     f.pushArg(written);
+    // Q26NAMED=1: with a name, as Kernel.writeStep (and the sweep's round trip) writes it.
+    f.clearStepNames();
+    if (getenv("Q26NAMED") && *getenv("Q26NAMED")) f.pushStepName("Body");
     const int size = f.writeStep();
     std::string text;
     if (size > 0) text.assign(reinterpret_cast<const char*>(f.exportTextPtr()), static_cast<size_t>(size));
     f.clearExport();
+    if (getenv("Q26SPLIT") && *getenv("Q26SPLIT") && !text.empty()) q26Split(text);
     const int back = text.empty() ? 0 : f.readStep(text.c_str());
     if (back) {
       const TopoDS_Shape& readBack = *f.find(back);

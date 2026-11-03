@@ -65,6 +65,19 @@ export interface ThreadFace {
   whole: boolean;
   /** Whether the face's edge at `from` / `to` is an outward corner: a shaft's end, a hole's mouth. */
   open: [boolean, boolean];
+  /**
+   * At an open end, how far the faces across it reach past the end along the
+   * axis (mm; a 45° chamfer 0.3 mm long: 0.3, a flat end: 0); 0 at an end
+   * that isn't open. A thread's lead-in runs on through that far (ADR-0056's
+   * sixth amendment).
+   */
+  across: [number, number];
+  /**
+   * At an open end, the radius (mm) at which material continues past the
+   * faces across it (a stem past a chamfer, a counterbore's wall past a
+   * countersink), 0 when nothing does: the lead-in's run-on stops there.
+   */
+  beyond: [number, number];
 }
 
 /** A conical face as an emboss sees it (`Kernel.coneFace`, P4-12). */
@@ -1451,6 +1464,8 @@ export class Kernel {
       whole: at(10) === 1,
       open: [at(11) === 1, at(12) === 1],
       taper: at(13),
+      across: [at(14), at(15)],
+      beyond: [at(16), at(17)],
     };
   }
 

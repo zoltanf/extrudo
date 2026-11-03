@@ -16,6 +16,7 @@ import {
   type LinkedFile,
   type ProjectStore,
   readArchive,
+  sha256Hex,
 } from '@extrudo/storage';
 import type { ToastOptions } from '../design-system';
 import type { ExternalFiles, FolderLink, LinkedFolders } from '../platform';
@@ -58,6 +59,12 @@ export interface LinkedContext {
 export interface LinkedProject {
   /** The file this project is linked to, or undefined. */
   link(): LinkedFile | undefined;
+  /**
+   * Called once the project is open: a file that changed on disk since the
+   * project last wrote or read it (another computer, through a synced folder)
+   * gets its conflict toast now, not at the first edit (issue #155).
+   */
+  opened(): Promise<void>;
   /** Called after each successful autosave; writes at most once every 10 s. */
   afterSave(): Promise<void>;
   /** A last write, whatever the throttle says (the project is closing). */
@@ -141,6 +148,7 @@ export function createLinkedProject(ctx: LinkedContext): LinkedProject {
       await ctx.projects.link(id, link);
     },
     onDisk,
+    read: async (name) => (await readFile(name)).bytes,
     archive: () => ctx.projects.archiveBytes(id),
     write: async (name, bytes) => {
       if (isExternal()) {
@@ -163,7 +171,11 @@ export function createLinkedProject(ctx: LinkedContext): LinkedProject {
   /** What an outcome means to the user: a conflict with two answers, or a message. */
   function say(outcome: LinkOutcome): LinkOutcome {
     if (outcome.kind === 'conflict') {
+      // Every save until it is answered finds the same change: one toast for
+      // it (its buttons stay in the history), not one per save (issue #155).
+      const known = conflict?.file === outcome.file && conflict.onDisk === outcome.onDisk;
       conflict = { file: outcome.file, onDisk: outcome.onDisk };
+      if (known) return outcome;
       ctx.notify('error', `${outcome.file} changed on disk.`, {
         // Errors stay until dismissed: someone else has the file, and only the
         // user can say which side wins.
@@ -187,7 +199,7 @@ export function createLinkedProject(ctx: LinkedContext): LinkedProject {
     if (!current || !applies()) return;
     conflict = undefined;
     try {
-      const { bytes } = await readFile(current.file);
+      const { bytes, modified } = await readFile(current.file);
       const archive = readArchive(bytes);
       // The bytes before the document that names them (ADR-0061 §2), so
       // their total is checked first.
@@ -200,6 +212,15 @@ export function createLinkedProject(ctx: LinkedContext): LinkedProject {
       // A whole document in one undo step: end whatever holds a transaction.
       endBeforeRestore();
       await ctx.restore({ ...archive.doc, id }, current.file);
+      // The file as read is now ours, so the next save writes it rather than
+      // finding the same change again.
+      link = {
+        file: current.file,
+        modified,
+        sha256: sha256Hex(bytes),
+        ...(link?.external ? { external: true as const } : {}),
+      };
+      await ctx.projects.link(id, link);
       ctx.notify('success', `Loaded ${current.file} from the linked folder.`);
     } catch (error) {
       ctx.notify('error', `Couldn't load ${current.file}: ${describeError(error)}`);
@@ -224,6 +245,13 @@ export function createLinkedProject(ctx: LinkedContext): LinkedProject {
 
   return {
     link: () => link,
+    async opened() {
+      await ready;
+      const outcome = await sync.check();
+      // Only a change is worth a toast here: an error (a folder not
+      // reconnected yet) is said by the first write, as it was.
+      if (outcome.kind === 'conflict') say(outcome);
+    },
     async afterSave() {
       await ready;
       await sync.saved();

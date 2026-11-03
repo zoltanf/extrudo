@@ -74,8 +74,10 @@ export function useLinkedFolder(props: LinkedFolderProps): LinkedFolderHandle {
 
   // A last write when the project closes (ADR-0065 §3): the design may have
   // moved since the last autosave, or the trailing write may still be waiting.
+  // And a check when it opens: the file may have changed since (issue #155).
   useEffect(() => {
     if (!project || !autosave) return;
+    void project.opened();
     const unsubscribe = autosave.subscribe((state, previous) => {
       if (state.status === 'saved' && previous.status !== 'saved') void project.afterSave();
     });

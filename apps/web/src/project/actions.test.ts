@@ -1,7 +1,7 @@
 import { Design } from '@extrudo/api';
 import { type BodyId, createDocument } from '@extrudo/core';
 import type { BodyPlan, BodyStep, ImportResult } from '@extrudo/f3d';
-import { memoryProjectStore, writeArchive } from '@extrudo/storage';
+import { memoryProjectStore, sha256Hex, writeArchive } from '@extrudo/storage';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { appNotifications } from '../design-system/notifications';
 import { takeModelImport } from '../features/import';
@@ -42,9 +42,16 @@ describe('openExternalFile (P6-01 slice 2, finding 3)', () => {
 
   it('imports the file, links it external and navigates', async () => {
     const projects = memoryProjectStore();
-    const summary = await openExternalFile(fakePlatform(projects), openedFile('/models/A.extrudo'));
+    const file = openedFile('/models/A.extrudo');
+    const summary = await openExternalFile(fakePlatform(projects), file);
     const stored = await projects.get(summary.id);
-    expect(stored?.linked).toEqual({ file: '/models/A.extrudo', modified: 123, external: true });
+    // The bytes' hash too: a time a sync client moves later isn't a change (#155).
+    expect(stored?.linked).toEqual({
+      file: '/models/A.extrudo',
+      modified: 123,
+      sha256: sha256Hex(file.bytes),
+      external: true,
+    });
     expect((await projects.list()).map((p) => p.id)).toEqual([summary.id]);
     expect(globals.window?.location.hash).toBe(`#/p/${encodeURIComponent(summary.id)}`);
   });

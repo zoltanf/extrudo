@@ -8,7 +8,7 @@ import {
   type ModelStore,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
-import type { ProjectId } from '@extrudo/storage';
+import { type ProjectId, sha256Hex } from '@extrudo/storage';
 import { useEffect, useMemo, useState } from 'react';
 import { startLongTaskObserver } from '../debug/longTasks';
 import { Button, LogoMark, useToasts } from '../design-system';
@@ -200,6 +200,7 @@ function ProjectEditor({
             await platform.projects.link(doc.id, {
               file: result.path,
               modified: result.modified,
+              sha256: sha256Hex(new Uint8Array(await bytes.arrayBuffer())),
               external: true,
             });
             const chosen = result.path.split(/[\\/]/).pop() ?? fileName;

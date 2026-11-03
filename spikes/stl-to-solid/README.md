@@ -231,7 +231,14 @@ STL_DIR=~/Development/extrudo-stl-solid-test TOL=auto BUILD=diag FILE=own/scrap-
   Run 3: `Q26TOUCH=1` lists every face of each converted body whose wires share a vertex (`q26 touch`: the pcurves
   at the vertex, the distance to the face's u bounds, `splitvalid`: the face with that vertex copied per wire), then
   the STEP round trip's invalid faces and split vertices (`q26 back`); `Q26TOUCH=cut` first applies the harness's
-  prototype of the facade's `cutTouchingLoops` (`spikeCutTouching`) to the body it writes.
+  prototype of the facade's `cutTouchingLoops` (`spikeCutTouching`) to the body it writes. `Q26NAMED=1` writes the
+  round trip with a name, as `Kernel.writeStep` does; `Q26CONE=1` (Q3.3) prints every written cone face and every
+  invalid read-back face with its BRepCheck statuses and its edges' pcurves (`q26 face`). For the sweep's own body,
+  stage the kernel's mesh with `MESH_OUT` and run case `f` on the `.mesh`.
+  `Q26SPLIT=1` with `Q26TOUCH=1` (2026-11-03, plan §Q3.2): the written STEP read without healing, with the reader's
+  healing and with it minus one mode at a time; the vertex pairs within 1e-7 on two wires of one face in each
+  (`q26 split raw/healed`, `q26 split without <mode> pairs`); per face, the wires' 2D intersections as
+  `FixIntersectingWires` sees them and that tool alone on the face (`q26 split wires/int/uv/tool`).
 
 Case `f` with `TIMES=1` also prints `calls:` (chainCurve and
 `Geom2dAPI_Interpolate` calls, the mesh check's nodes, BRepExtrema calls and
@@ -273,3 +280,14 @@ bash spikes/stl-to-solid/bench/verify_all.sh /tmp/verify_step "$STEP_DIR" "$STL_
 
 `$STEP_DIR` holds one `<name>.step` per `<name>.stl`, written by the tool under
 test; keep both folders outside the repository.
+
+## Facet sources (slice D12, 2026-11-03)
+
+```sh
+D12=50 …     # every face of the result over 50 mm² (any number): kind, area, a plane's normal, offset and centre
+D12V=1 …     # with D12: a plane face's vertices' largest distance from its plane (faces over 1,000 mm²)
+```
+
+The runs and tables are in `docs/plans/m2s-exploded-q1-2026-11-01.md`, "Run 4 (D12)". Ignore the "volume" D12 prints
+(BRepGProp's volume properties of a lone face); to see where a solid's volume moved, compare the planes'
+`offset × area / 3` sums.

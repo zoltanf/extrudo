@@ -711,3 +711,177 @@ round boss r 5, 0.06 mm high at T 0.1 converts exactly as six planes (the segmen
 plane: Q1.3's absorbed step), and at 0.15 mm it is a cylinder by region growing, not by the new rule.
 
 OCCT WASM: the input hash went `c7ba43be3df2` (run 2) → `5d22216cd3d7`, published by CI 41271268117.
+
+### Q3.2 Why the reader keeps the shared vertex split on only two faces (2026-11-03)
+
+Fix (c) of "For run 3", answered after D11 shipped (so it changes nothing that ships; the cut stays). Probe
+`Q26SPLIT=1` with `Q26TOUCH=1` (spike, the run-3 facade with `TOUCH_CUT_MAX` set to 0 so the touching faces are written
+as before the cut): the written STEP read without healing (`readStepUnhealed`), with the reader's healing
+(`fixLikeReader`, Q20) and with that healing minus one mode at a time; in each, the pairs of distinct vertices within
+1e-7 of each other on two wires of one face; then, per raw and healed face with such a pair, the 2D intersections of
+the two wires' edges as `ShapeFix_IntersectionTool::FixIntersectingWires` computes them (tolerance 1e-10), and that tool
+run on the face alone.
+
+- **The writer splits every shared vertex; the reader's healing joins them again.** The raw read has one vertex per
+  loop at every shared vertex of every touching face (battery-power-adapter 4, desk-organizer-module-small 1,
+  kuglbahn-pillar-base 1, shower-holder 1, puzzle-insert-circle 4, spool-screw-v4.1 63). The step that joins them is
+  the face fix `FixIntersectingWiresMode`: without it no pair is joined in any file (battery-power-adapter 4 of 4
+  left, puzzle-insert-circle 4 of 4, spool-screw-v4.1 63 of 63). At each split vertex the two wires' edges meet end to
+  end in (u, v), which the tool takes as one vertex (`UnionVertexes`). Plane faces are not split by the writer.
+- **On the two failing faces one pair survives the full healing.** puzzle-insert-circle's torus (outer wire of 540
+  edges, 4 holes of 8, each touching the outer wire once): run alone on the raw face, the tool joins all 4 pairs; after
+  the reader's whole healing, 1 is left (at −26.45, 4.56, 8.94, the duplicate vertex the read-back has). spool-screw-v4.1:
+  63 raw pairs, 1 left after healing (face 1146 of the healed shape, a cylinder).
+- **What takes the join away: the wire fixes that rebuild edges.** Switching off `FixShiftedMode` alone (both files) or
+  `FixEdgeCurvesMode` alone (puzzle-insert-circle; on spool-screw-v4.1 that run throws) leaves no pair, and so does
+  the face's whole `FixWireMode`, which runs them (puzzle-insert-circle; it throws on spool-screw-v4.1). The other 26
+  wire, face and shape modes each leave the one pair (`FixIntersectingWiresMode` and the solid's `FixShellMode`, which
+  skips the face fixes, leave all of them). Running the tool again on the healed face joins the pair, and the face is then
+  valid (both files).
+- **Reading (not proven):** the healing works face by face through one shared `ShapeBuild_ReShape`. The tool replaces
+  the edges at the joined vertex with copies that carry the joined vertex. A later wire fix that rebuilds one of those
+  edges, on the same face or on the neighbour that shares it, replaces it again from a copy that still has the old
+  vertex. Which pair loses depends on the order the faces and edges are processed in. That fits "nothing in the table
+  sets the two apart cleanly" (§Q3.1): the two faces are not special in kind, they are where the order works out wrong.
+
+So the cause is OCCT's healing order, not something in the faces, and there is still no narrow criterion for fix (a)
+or (c). D11's cut stays the right fix. It writes no periodic face with loops that share a vertex, so the reader never
+has to join one. Not done: tracing the `ReShape` history to confirm the reading, and why OCCT's writer writes one
+VERTEX_POINT per loop instead of one per vertex.
+
+### Q3.3 (2026-11-03): makita-vacuum-holder's touching torus
+
+Probe `Q26TOUCH=1`, spike case `f`, Auto, the 2026-11-01b facade (the spike's `q26 touch` line now says whether the
+wire is the face's outer one):
+
+    prismatic 3336 faces: 3074 plane 237 cyl 8 cone 12 sphere 5 torus, valid 1, volume 378801 / mesh 378824 = 0.999939
+    q26 touch written face 1715 kind Torus uper 1 vper 1 uspan 0.778594 vspan 1.21931 seams 0 wires 5 outer 0 vertex 67.3794,11.6557,0.679272 tol 0.0109589 wire 1 du 0.130848 dv 0.510132 valid 1 splitvalid 0 pcurves (6.174039, 1.919864) (6.174039, 1.919864)
+    q26 touch written face 1715 kind Torus uper 1 vper 1 uspan 0.778594 vspan 1.21931 seams 0 wires 5 outer 0 vertex 67.3794,11.6557,0.679272 tol 0.0109589 wire 2 du 0.130848 dv 0.510132 valid 1 splitvalid 0 pcurves (6.174039, 1.919864) (6.174039, 1.919864)
+
+(Q3.1's face 1027; the spike numbers faces in explorer order.) The shared vertex is between holes 1 and 2, neither the
+outer wire: case (a), not detected. With the hole-to-hole cut (ADR-0097's 2026-11-03 amendment):
+
+    prismatic 3337 faces: 3074 plane 237 cyl 8 cone 12 sphere 6 torus, valid 1, volume 378801 / mesh 378824 = 0.999939
+    q26 back valid 1 faces 3337
+
+and no periodic face of makita's with touching wires (one plane is left, as planes are). The corpus (case `F`, Auto,
+`Q26TOUCH=1 Q26NAMED=1`, the new facade), faces whose wires share a vertex, per file and kind:
+
+| file | kind | faces |
+|---|---|---|
+| own/numbers-base-top | plane | 5 |
+| own/puzzle-base-circle | plane | 2 |
+| own/spool-screw-v4.1 | plane | 9 |
+| own/trashcan-repair-foot | plane | 2 |
+| third-party/gear-bearing-5 | plane | 2 |
+| third-party/makita-vacuum-holder | plane | 1 |
+| third-party/micro-sd-keyring-outer | plane | 3 |
+| third-party/mms-flat-stand | plane | 18 |
+| third-party/mms-flat-stand | cylinder (face 28, exact rebuild) | 1 |
+| third-party/mms-flat-stand | cone (face 29, exact rebuild) | 1 |
+
+mms-flat-stand's two curved faces come from the exact rebuild (Q3.1's table has them), which `cutTouchingLoops` doesn't
+run on. Each has two holes of one closed circle edge whose only vertex is on the outer wire (instrumented build: hole
+`BRepTools_WireExplorer` uses 0, `TopExp` edges 1, a circle), so no cut between existing vertices exists; a call after
+the exact rebuild cut nothing and was dropped. Both read back valid.
+
+The spike's read-back fails on whiteboard-tray-v5 (a plane, 7 wires) and sock-clips-6x (a plane, 1 wire); both pass
+the sweep's round trip, which converts the kernel's staged mesh; the spike reads the STL itself, and its nodes
+probably differ slightly from the kernel's weld (not checked), so its round trips aren't the sweep's.
+
+**Sweep** (Auto, against 2026-11-01b; `baseline-2026-11-03-touching-holes-auto.jsonl`): 63 passed, 1 skipped.
+
+    2026-11-01b:  files 41, prismatic converted 36 refused 5, faceted converted 26 refused 15, prismatic faces 22569, prismatic facets 12565, prismatic ms 264862, faceted ms 107397, round trips failed 7
+    2026-11-03:   files 41, prismatic converted 36 refused 5, faceted converted 26 refused 15, prismatic faces 22570, prismatic facets 12565, prismatic ms 272785, faceted ms 108644, round trips failed 7
+
+| file | faces | cuts | facets | round trip (read back valid, faces) | ms |
+|---|---|---|---|---|---|
+| third-party/makita-vacuum-holder | 3336 → 3337 | 1 | 2516 | no, 3337 → no, 3338 (0 solids, as before) | 8719 → 10023 |
+
+No other file moves on any column; the times are the shared machine (faceted, unchanged, +1.2 %).
+
+**makita's own round-trip failure** ("31c's own"). On the kernel's staged mesh (`MESH_OUT`, then spike case `f` on the
+`.mesh`, `Q26NAMED=1 Q26CONE=1`) the read-back's one extra face is invalid:
+
+    q26 back valid 0 faces 3338
+    q26 back invalid face 3337 kind Cone wires 1
+    q26 face back Cone orient 0 u 0..6.2831853 v 0..0 tol 1e-07 status own27
+    q26 face back cone r 0 semi 1.3533905 apex 66.23082,82.551102,33.730818 at 66.23082,82.551102,33.730818 axis -0.36183684,-0.85915673,-0.36183397
+    q26 face back wire orient 0 status 28
+    q26 face back  edge 1 orient 0 closed 0 degen 1 tol 1e-07 pc (0, 0) -> (6.2831853, 0) status
+
+A cone face made of its degenerated apex edge alone, on the cone that the body has as two faces of half a turn (u
+0.71..3.85 and 3.85..6.99) on one surface. Their shared edge at u 0.71 ≡ 6.99 has a pcurve for each face, 2π apart,
+so it is stored like a seam (`BRep_Tool::IsClosed` is true for it on the face u 0.71..3.85), and the reader builds the
+extra apex face from it. The mirror cone at x −66.23 has the same two-halves layout and reads back. The fix belongs in
+the unify path (one face per such surface, or a surface copy per face), not in the cut: not built here.
+
+## Run 4 (D12): the remaining facet sources
+
+2026-11-03, ADR-0097 slice D12. Spike runs on the staged meshes in `/tmp/m2s-exploded/meshes/` at Auto (`Q26=1`;
+`D12=<mm²>` prints the faces over that area with their planes, `D12V=1` their vertices' distance from them), then the
+kernel sweep. "Before" is the 2026-11-01b facade (its spike run gives the sweep's numbers file for file).
+
+**Exploded regions by reason, before → after** (all files, the refused whiteboard-tray-v5 included; facets are the
+regions' own):
+
+| reason, kind | before: regions / triangles / facets | after |
+|---|---|---|
+| an inner loop runs the wrong way, plane (sliver holes) | 2 / 472 / 84 | 0 |
+| invalid face, plane (absorbed steps, micro zigzags) | 13 / 6456 / 445 | 2 / 1108 / 2 (gear-bearing-5 0 and 152) |
+| edge tolerance (wrapped charts): cone / sphere / torus / cylinder | 18 / 312 / 157; 36 / 150 / 97; 13 / 165 / 119; 1 / 4 / 2 | the same |
+| invalid after unify: plane / cylinder / cone | 2 / 563 / 29; 2 / 113 / 58; 1 / 285 / 168 | the same |
+| invalid face, cylinder / torus | 1 / 574 / 50; 10 / 142 / 100 | the same |
+| its outer loop runs the wrong way | 12 / 201 / 152 | the same |
+
+**Per source, spike at Auto** (faces, facets, ms; before → after):
+
+| source | file | faces | facets | ms |
+|---|---|---|---|---|
+| sliver holes (rule 1) | hot-wheels-connector | 2015 → 1928 | 1833 → 1745 | 2812 → 1690 |
+| absorbed steps (rule 2) | phone-stand-foldable | 983 → 868 | 403 → 287 | 4390 → 4287 |
+| absorbed steps (rule 2) | whiteboard-tray-v5 | refused → 2586 | → 1900 | 56857 → 18934 |
+| micro zigzags | gear-bearing-5 | 2304 → 2304 | 1418 → 1418 | 13009 → 14374 |
+| wrapped charts | (not built) | | | |
+| invalid after unify | spool-screw-v4.1 | 1421 → 1419 | 256 → 256 | 50335 → 51505 |
+
+Rule 1 also moved battery-power-adapter (587 → 581 faces), kuglbahn-pillar-base (3882 → 3880, facets 3348 → 3346)
+and makita-vacuum-holder (3336 → 3335).
+
+**Absorbed steps, the variants** (phone-stand-foldable, Auto 0.1 mm):
+
+| variant | faces | facets | volume ratio |
+|---|---|---|---|
+| before | 983 | 403 | 0.99919 |
+| steep triangles (> 60°) out of the plane, if they touch its outline | 983 | 403 (none moved: the wall is another region's) | 0.99919 |
+| fill the notch: a steep triangle with two edges on the folded plane, nodes within T, joins it | 667 | 86 | 0.97840 |
+| the same, the mesh moved to its centroid / by (100, 100, 0) | 674 / 679 | | 0.98046 / 0.98406 (before: 1.00134 / 1.00511) |
+| off-plane triangles (> 0.1 T) of a folded plane to facets (built) | 868 | 287 | 0.99867 |
+
+Filling the notch builds the three planes but leaves their outlines up to 0.09 mm off the plane all round (the D12V
+probe: vertices 0.0904 off); the 2 % volume deficit holds wherever the mesh sits, so it is the B-rep's, not the
+volume integral's origin. On a synthetic plate with a rounded ledge under one corner (the test's `plateWithLedge`, with
+`bossWithBump` beside it), the off-plane rule without the alone check gave 3 facets where the folded face built valid
+(0 before), hence `meshPlaneFaceValid`; with the ledge's foot as one long edge (the test's version) the face fails
+alone, the first bar (0.1 T) still folds, the second fixes it: 6 → 5 facets.
+
+**Micro zigzags.** gear-bearing-5 0's outline passes nodes 5830 and 5831, 1.8e-5 mm apart; their edge is also an
+edge of 16557, a standing sliver of the wall (3.4e-5 mm², its third node at z 3.7). Merging the nodes would change
+the wall region's outline as well; not done. The four 6-triangle regions (0.097 mm off their planes, folded) are
+taken out by rule 2: the same facets.
+
+**spool-screw-v4.1.** BRepCheck on regions 214 (cone, split at 5 nodes, 6 wires) and 271 (cylinder, split at 1
+node, 2 wires): valid as built, valid once every face is built, valid in the cells before and after
+`ShapeFix_Solid`; after unify and healing, both fail at face level with `IntersectingWires`. Tried: unify again with
+both faces' edges kept (`KeepShape`, in place, +2.4 s): still invalid after healing; `cutTouchingLoops` before the
+explosion: it refuses both (no valid cut). Stage times at Auto: unify 11.0 s and healing 6.2–6.7 s per attempt, so
+the second attempt is about 20 s of the 44–50 s. Left.
+
+**Sweep** (`TOL=auto`, against `baseline-2026-11-01b-auto.jsonl`, written to `baseline-2026-11-03-auto.jsonl`;
+`Tests 63 passed | 1 skipped`; totals recomputed from the JSONL):
+
+    2026-11-01b:  files 41, prismatic converted 36 refused 5, faceted converted 26 refused 15, prismatic faces 22569, prismatic facets 12565, prismatic ms 264862, faceted ms 107397, round trips failed 7
+    2026-11-03:   files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24942, prismatic facets 14259, prismatic ms 232772, faceted ms 107193, round trips failed 7
+
+The per-file table is in ADR-0097's 2026-11-03 amendment. OCCT WASM: the input hash went `3d788da00513` →
+`1076701bd590`, published by CI 41686876602.

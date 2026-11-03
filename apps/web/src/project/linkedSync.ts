@@ -11,10 +11,15 @@
  * LINK_THROTTLE_MS} and with the throttle trailing, and once more when the
  * project closes. Before writing, the file's own `lastModified` is compared
  * with the one recorded in the project index: someone else changed the file,
- * so nothing is written.
+ * so nothing is written. A time that moved over the same bytes is not a
+ * change: a sync client (most likely Google Drive's G: drive) can touch the
+ * time of a file it uploads, and every write after that was a false conflict
+ * (issue #155).
+ * So the link also keeps the bytes' hash, and a file whose hash still matches
+ * is written as usual.
  */
 import { FILE_EXTENSION } from '@extrudo/core';
-import type { LinkedFile } from '@extrudo/storage';
+import { type LinkedFile, sha256Hex } from '@extrudo/storage';
 import { safeFileName } from '../platform/files';
 
 /** How long a linked file waits between writes; the last save in a burst gets through. */
@@ -54,6 +59,12 @@ export interface LinkContext {
   /** The file's `lastModified` right now, or `undefined` when it isn't there. */
   onDisk(name: string): Promise<number | undefined>;
   /**
+   * The file's bytes, read when its time no longer matches the link's: the
+   * same bytes as the link's `sha256` mean only the time moved (issue #155).
+   * Without it a moved time is a conflict.
+   */
+  read?(name: string): Promise<Uint8Array>;
+  /**
    * The project's `.extrudo` bytes, built when the write happens: the trailing
    * write then holds the newest state, not the one from ten seconds ago.
    */
@@ -88,6 +99,13 @@ export interface LinkSync {
    * there and records the link with the time the file then says.
    */
   link(file: string): Promise<LinkOutcome>;
+  /**
+   * Whether the file changed on disk since the link last wrote or read it,
+   * without writing: a project that opens says so before the first edit
+   * (issue #155). Answers the conflict or error a write would meet, else
+   * `skipped`; reports nothing.
+   */
+  check(): Promise<LinkOutcome>;
   /** Whether a trailing write is waiting. */
   readonly pending: () => boolean;
 }
@@ -104,7 +122,7 @@ export function createLinkSync(ctx: LinkContext): LinkSync {
     try {
       const bytes = await ctx.archive();
       const modified = await ctx.write(file, bytes);
-      await ctx.saveLink({ file, modified });
+      await ctx.saveLink({ file, modified, sha256: sha256Hex(bytes) });
       lastWrite = now();
       return { kind: 'written', file, modified };
     } catch (error) {
@@ -114,20 +132,27 @@ export function createLinkSync(ctx: LinkContext): LinkSync {
     }
   };
 
-  const write = async (): Promise<LinkOutcome> => {
-    const link = ctx.link();
-    if (!link) return { kind: 'skipped' };
+  /** What stops a write to the linked file (a change on disk, an error), or nothing. */
+  const blocked = async (link: LinkedFile): Promise<LinkOutcome | undefined> => {
     const { file } = link;
     try {
       const onDisk = await ctx.onDisk(file);
       if (onDisk === undefined) {
         return { kind: 'error', file, message: `${file} isn't in the linked folder any more.` };
       }
-      if (onDisk !== link.modified) return { kind: 'conflict', file, onDisk };
+      if (onDisk !== link.modified && !(await sameBytes(link, ctx.read))) {
+        return { kind: 'conflict', file, onDisk };
+      }
     } catch (error) {
       return { kind: 'error', file, message: messageOf(error) };
     }
-    return writeFile(file);
+    return undefined;
+  };
+
+  const write = async (): Promise<LinkOutcome> => {
+    const link = ctx.link();
+    if (!link) return { kind: 'skipped' };
+    return (await blocked(link)) ?? writeFile(link.file);
   };
 
   const settle = async (write: Promise<LinkOutcome>): Promise<LinkOutcome> => {
@@ -160,8 +185,18 @@ export function createLinkSync(ctx: LinkContext): LinkSync {
     saved: () => sync(false),
     flush: () => sync(true),
     link: (file: string) => settle(writeFile(file)),
+    check: async () => {
+      const link = ctx.link();
+      return (link && (await blocked(link))) ?? { kind: 'skipped' };
+    },
     pending: () => waiting !== undefined,
   };
+}
+
+/** Whether the file still holds the bytes the link last wrote or read. */
+async function sameBytes(link: LinkedFile, read: LinkContext['read']): Promise<boolean> {
+  if (!link.sha256 || !read) return false;
+  return sha256Hex(await read(link.file)) === link.sha256;
 }
 
 function messageOf(error: unknown): string {

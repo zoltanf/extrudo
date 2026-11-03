@@ -1133,6 +1133,37 @@ function bossWithRimDimple(): Manifold {
 }
 
 /**
+ * `bossWithRimDimple`'s plate and freeform boss, with the boss r 10 on 96
+ * sides and refined once (a node at (40, 20, 8), halfway up its wall), and two
+ * square pyramid dimples 2 deep cut radially into the wall at +x, side by
+ * side: their corners meet at that node, away from both rims.
+ */
+function bossWithDimplesTouching(): Manifold {
+  const plate = manifold.Manifold.cube([50, 40, 5]);
+  const prism = manifold.Manifold.cylinder(6, 10, 10, 96).translate([30, 20, 5]);
+  const boss = prism.refine(2);
+  const body = plate.add(boss);
+  const a = manifold.Manifold.cylinder(2, 0, 1.5, 4).rotate([0, 90, 0]).translate([38, 18.5, 8]);
+  const b = manifold.Manifold.cylinder(2, 0, 1.5, 4).rotate([0, 90, 0]).translate([38, 21.5, 8]);
+  const dimples = a.add(b);
+  const cut = body.subtract(dimples);
+  const cylinder = manifold.Manifold.cylinder(6, 5, 5, 48).translate([8, 8, 5]);
+  const refined = cylinder.refine(6);
+  const bumped = refined.warp((v) => {
+    if (v[2] > 10.999) {
+      const x = v[0] - 8;
+      const y = v[1] - 8;
+      const r2 = (x * x + y * y) / 25;
+      v[2] += 2 * Math.max(0, 1 - r2) * (1 + 0.3 * (x / 5) + 0.2 * (y / 5) ** 2);
+    }
+  });
+  const part = cut.add(bumped);
+  for (const m of [plate, prism, boss, body, a, b, dimples, cut, cylinder, refined, bumped])
+    m.delete();
+  return part;
+}
+
+/**
  * A 40 x 30 x 5 plate with two square pyramids cut 3 mm deep into its top,
  * their rims (corners at 3 mm from the centres 17 and 23) touching at
  * (20, 15, 5). `bump`: `bossWithBump`'s boss (r 5, 6 high) at (8, 8) with its lopsided bump,
@@ -1186,6 +1217,142 @@ function bossWithBump(): Manifold {
   box.delete();
   bumped.delete();
   return part;
+}
+
+/**
+ * `mesh` with its largest triangle whose corners all lie at height `z`
+ * split round an inverted sliver (slice D12): three inner nodes A, B, C, C
+ * 1e-4 mm across A-B from where the triangle's winding would put it, so the
+ * sliver A-B-C faces the other way and the plane around it gets a 3-edge
+ * hole of 1e-4 mm² that runs the wrong way.
+ */
+function withInvertedSliver(mesh: { positions: Float64Array; indices: Uint32Array }, z: number) {
+  const p = (i: number) => [0, 1, 2].map((k) => mesh.positions[3 * i + k] as number);
+  let best = -1;
+  let bestArea = 0;
+  for (let t = 0; t < mesh.indices.length / 3; t++) {
+    const [a, b, c] = [0, 1, 2].map((k) => p(mesh.indices[3 * t + k] as number));
+    if (![a, b, c].every((v) => Math.abs((v?.[2] as number) - z) < 1e-9)) continue;
+    const [ax, ay] = a as [number, number];
+    const [bx, by] = b as [number, number];
+    const [cx, cy] = c as [number, number];
+    const area = Math.abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / 2;
+    if (area > bestArea) {
+      bestArea = area;
+      best = t;
+    }
+  }
+  const [P, Q, R] = [0, 1, 2].map((k) => mesh.indices[3 * best + k] as number) as [
+    number,
+    number,
+    number,
+  ];
+  const [pp, qq, rr] = [p(P), p(Q), p(R)];
+  const g = [0, 1].map((k) => ((pp[k] as number) + (qq[k] as number) + (rr[k] as number)) / 3);
+  const towards = (v: number[], s: number) =>
+    [0, 1].map((k) => (g[k] as number) + s * ((v[k] as number) - (g[k] as number)));
+  const a = towards(pp, 0.3);
+  const b = towards(qq, 0.3);
+  // Left of A-B in the triangle's own winding (its normal +z or -z).
+  const up =
+    ((qq[0] as number) - (pp[0] as number)) * ((rr[1] as number) - (pp[1] as number)) -
+      ((rr[0] as number) - (pp[0] as number)) * ((qq[1] as number) - (pp[1] as number)) >
+    0
+      ? 1
+      : -1;
+  const d = [(b[0] as number) - (a[0] as number), (b[1] as number) - (a[1] as number)];
+  const length = Math.hypot(d[0] as number, d[1] as number);
+  const left = [(-up * (d[1] as number)) / length, (up * (d[0] as number)) / length];
+  const c = [0, 1].map(
+    (k) => ((a[k] as number) + (b[k] as number)) / 2 - 1e-4 * (left[k] as number),
+  );
+  const n = mesh.positions.length / 3;
+  const positions = new Float64Array(mesh.positions.length + 9);
+  positions.set(mesh.positions);
+  for (const [i, v] of [a, b, c].entries())
+    positions.set([v[0] as number, v[1] as number, z], 3 * (n + i));
+  const [A, B, C] = [n, n + 1, n + 2];
+  // The sliver's neighbours: across A-B below it (overlapping it), across B-C and C-A above.
+  const ring = [A, B, C, C, B, R, A, C, R, B, A, P, P, Q, B, Q, R, B, R, P, A];
+  const indices = new Uint32Array(mesh.indices.length - 3 + ring.length);
+  indices.set(mesh.indices.subarray(0, 3 * best));
+  indices.set(mesh.indices.subarray(3 * best + 3), 3 * best);
+  indices.set(ring, mesh.indices.length - 3);
+  return { positions, indices };
+}
+
+/**
+ * A 40 x 20 x 2 plate (slice D12) whose bottom, flat at z 0, has a rounded
+ * ledge under y > 10 along its x 0 edge: z = h (1 - x / w)² for x < w, in
+ * `n` strips. A wall from 0 to h high stands at y 10 below it, one long edge
+ * at its foot. Under the tolerance the bottom plane takes in the ledge, and
+ * its outline runs along the wall's foot and back along the ledge's edge.
+ */
+function plateWithLedge(h: number, w: number, n: number) {
+  const positions: number[] = [];
+  const index = new Map<string, number>();
+  const node = (x: number, y: number, z: number) => {
+    const key = [x, y, z].map((c) => c.toFixed(9)).join();
+    let i = index.get(key);
+    if (i === undefined) {
+      i = positions.length / 3;
+      index.set(key, i);
+      positions.push(x, y, z);
+    }
+    return i;
+  };
+  const indices: number[] = [];
+  const at = (i: number, k: number) => positions[3 * i + k] as number;
+  // A fan from the polygon's first node, each triangle turned to face `outward`.
+  const fan = (polygon: number[], outward: [number, number, number]) => {
+    for (let i = 1; i + 1 < polygon.length; i++) {
+      const [a, b, c] = [polygon[0], polygon[i], polygon[i + 1]] as [number, number, number];
+      const u = [0, 1, 2].map((k) => at(b, k) - at(a, k));
+      const v = [0, 1, 2].map((k) => at(c, k) - at(a, k));
+      const cross = [
+        (u[1] as number) * (v[2] as number) - (u[2] as number) * (v[1] as number),
+        (u[2] as number) * (v[0] as number) - (u[0] as number) * (v[2] as number),
+        (u[0] as number) * (v[1] as number) - (u[1] as number) * (v[0] as number),
+      ];
+      const dot = cross.reduce((sum, x, k) => sum + x * (outward[k] as number), 0);
+      if (Math.hypot(...cross) < 1e-15) continue;
+      indices.push(...(dot > 0 ? [a, b, c] : [a, c, b]));
+    }
+  };
+  const f = (x: number) => h * Math.max(0, (w - x) / w) ** 2;
+  const xs = [...Array.from({ length: n + 1 }, (_, i) => (w * i) / n), 20, 40];
+  const xl = [0, w, 20, 40];
+  const lo0 = xl.map((x) => node(x, 0, 0));
+  const lo10 = xl.map((x) => node(x, 10, 0));
+  const up10 = xs.map((x) => node(x, 10, f(x)));
+  const up20 = xs.map((x) => node(x, 20, f(x)));
+  const top = [node(0, 0, 2), node(40, 0, 2), node(40, 20, 2), node(0, 20, 2)] as const;
+  fan([...top], [0, 0, 1]);
+  for (let i = 0; i + 1 < xl.length; i++)
+    fan([lo0[i], lo0[i + 1], lo10[i + 1], lo10[i]] as number[], [0, 0, -1]);
+  for (let i = 0; i + 1 < xs.length; i++)
+    fan([up10[i], up10[i + 1], up20[i + 1], up20[i]] as number[], [0, 0, -1]);
+  fan([lo10[0] as number, ...up10.slice(0, n + 1)], [0, 1, 0]);
+  fan([top[0], ...lo0, top[1]], [0, -1, 0]);
+  fan([top[3], ...up20, top[2]], [0, 1, 0]);
+  fan([top[1], lo0[3], lo10[3], up20[n + 2], top[2]] as number[], [1, 0, 0]);
+  fan([top[0], lo0[0], lo10[0], up10[0], up20[0], top[3]] as number[], [-1, 0, 0]);
+  return { positions: Float64Array.from(positions), indices: Uint32Array.from(indices) };
+}
+
+/** Two meshes as one, the second's indices after the first's nodes. */
+function joined(
+  a: { positions: Float64Array; indices: Uint32Array },
+  b: { positions: Float64Array; indices: Uint32Array },
+) {
+  const n = a.positions.length / 3;
+  const positions = new Float64Array(a.positions.length + b.positions.length);
+  positions.set(a.positions);
+  positions.set(b.positions, a.positions.length);
+  return {
+    positions,
+    indices: Uint32Array.from([...a.indices, ...Array.from(b.indices, (i) => i + n)]),
+  };
 }
 
 describe('Mesh to Solid, the hybrid rebuild (ADR-0097 slice D1)', { timeout: 300_000 }, () => {
@@ -1265,6 +1432,73 @@ describe('Mesh to Solid, the hybrid rebuild (ADR-0097 slice D1)', { timeout: 300
       );
     } finally {
       kernel.release(shape);
+    }
+  });
+
+  it('cuts a boss wall whose two dimples touch each other at a node in two, so it round-trips (slice D11, 2026-11-03)', () => {
+    // Two square pyramid dimples in a cylindrical boss's wall, their corners
+    // meeting at (40, 20, 8), away from both rims: the wall's face keeps two
+    // holes that share that vertex (neither touches the outline). Before
+    // 2026-11-03 `cutTouchingLoops` only cut a hole touching the outline, so
+    // this face stayed whole: one wall face, not two.
+    const part = bossWithDimplesTouching();
+    const volume = part.volume();
+    const { shape, report } = prismatic(meshOf(part));
+    try {
+      expect(report.rebuild).toBe('hybrid');
+      expect(radii(shape).filter((r) => Math.abs(r - 10) < 0.01)).toHaveLength(2);
+      expect(kernel.isValid(shape)).toBe(true);
+      expect(Math.abs(kernel.properties(shape).volume / volume - 1)).toBeLessThan(0.01);
+      expectStepRoundTrip(kernel, shape, 'hybrid: a boss wall whose two dimples touch at a node');
+    } finally {
+      kernel.release(shape);
+    }
+  });
+
+  it('keeps a plane whole round an inverted sliver of another region inside it (slice D12)', () => {
+    // A sliver of 1e-4 mm² in the box's top, facing down: the top's region
+    // had a 3-edge hole running the wrong way and exploded into facets. The
+    // sliver now joins the plane round it.
+    const plain = trianglesOf(bossWithBump());
+    const slivered = withInvertedSliver(plain, 10);
+    const tops = (mesh: typeof plain) =>
+      loopsOf(mesh.positions, mesh.indices).filter((r) => r.kind === 0 && r.loops.length > 1);
+    expect(tops(slivered)).toEqual(tops(plain));
+    const before = prismatic(kernel.meshFrom(plain));
+    const after = prismatic(kernel.meshFrom(slivered));
+    try {
+      expect(after.report.rebuild).toBe('hybrid');
+      expect(after.report.facets).toBe(before.report.facets);
+      expect(kernel.count(after.shape, 'face')).toBe(kernel.count(before.shape, 'face'));
+      expect(kernel.isValid(after.shape)).toBe(true);
+    } finally {
+      kernel.release(before.shape);
+      kernel.release(after.shape);
+    }
+  });
+
+  it('takes the off-plane triangles out of a plane whose outline folds over a low wall (slice D12)', () => {
+    // The plate's bottom took in the rounded ledge (0.06 mm at T 0.1) on
+    // the far side of the low wall at y 10, and its outline folded over the
+    // wall: an invalid face, the whole bottom exploded into facets. The
+    // ledge's strips with a node more than T / 10 (then T / 100) off the
+    // plane are facets now, one per strip, and the bottom is a plane again.
+    const part = bossWithBump();
+    const boss = part.volume();
+    const moved = part.translate([0, 30, 0]);
+    part.delete();
+    const bump = trianglesOf(moved);
+    const before = prismatic(kernel.meshFrom(bump), 0.1);
+    const after = prismatic(kernel.meshFrom(joined(plateWithLedge(0.06, 0.5, 5), bump)), 0.1);
+    try {
+      expect(after.report.rebuild).toBe('hybrid');
+      expect(kernel.isValid(after.shape)).toBe(true);
+      expect(after.report.facets).toBe(before.report.facets + 5);
+      const volume = 1600 - (10 * 0.06 * 0.5) / 3 + boss;
+      expect(Math.abs(kernel.properties(after.shape).volume / volume - 1)).toBeLessThan(0.002);
+    } finally {
+      kernel.release(before.shape);
+      kernel.release(after.shape);
     }
   });
 

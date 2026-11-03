@@ -397,3 +397,86 @@ the imported bodies' names, exactly as its colours became their appearance.
   called; the part's own name is.
 - **Keeping a generic name** (`SOLID`, `PART`): every imported body would be
   named alike, which is worse than the default "Body n".
+
+## Amendment (2026-11-03, P4-12): faces on an indirect frame
+
+ADR-0097 slice D11 (`docs/plans/m2s-exploded-q1-2026-11-01.md` §Q1b.2) found
+that the STEP file Extrudo writes for an ordinary fillet on a cylinder's rim is
+wrong. OCCT's fillet builds the bottom rim's torus on an **indirect frame**
+(`gp_Ax3::Direct()` false, the face reversed); the top rim's is direct. In the
+written file that torus face fails two independent checks: its loop runs the
+wrong way round in the torus's (u, v), and it uses its two circles the
+**same** way as its neighbours do, where in a closed shell every edge has two
+uses in opposite directions (direction of a use: `ORIENTED_EDGE.orientation`
+XOR the bound's `orientation`). OCCT's own reader mends the file, so no
+round-trip test saw it; a reader that trusts the flags draws the round as a
+cove. A fillet on a cone's base round (its torus) had the same fault.
+
+### Decisions
+
+1. **The cause is the writer's handling of the reversed wire, not the frame
+   alone.** OCCT's STEP transfer already makes faces direct itself
+   (`ShapeCustom::DirectFaces` in its shape processing): the torus is
+   U-reversed onto a direct frame, the face turned forward and its wire
+   **reversed**. `TopoDSToStep_MakeStepWire` then writes the wire turned
+   forward through `ShapeFix_Wire::FixReorder` (2D and 3D mode, for toroidal
+   surfaces), and on a reversed wire with a seam that reorder flips the wire's
+   two circles. Calling `DirectFaces` before the transfer, the first attempt,
+   wrote byte-identical text; a diagnostic build showed OCCT's model itself is
+   sound before and after (`BRepCheck` valid, every edge used both ways).
+2. **The facade's `stepShape()`, used by all three paths** (`writeStep`,
+   `writeStepXde`, `writeStepAssembly`) on the shape that goes into
+   `Transfer`/`AddShape`: when the shape has a face on an indirect elementary
+   surface (plane, cylinder, cone, sphere, torus) **with a seam edge**
+   (`BRep_Tool::IsClosed`; a cheap `TopExp_Explorer` over the faces), it
+   takes `ShapeCustom::DirectFaces`' copy and
+   rebuilds every face with a reversed wire with that wire forward (its edges
+   reversed, in reverse order; `EmptyCopied` face, so surface and pcurves stay;
+   `ShapeBuild_ReShape`). The writer then has nothing to make direct or turn.
+   The stored shape is never touched; the copies are values that go with the
+   call.
+3. **Any other shape goes in as it is**, so its file is byte-identical to
+   before. Indirect faces without a seam are common (a fillet's cylinders
+   between two planes, a prism's or a revolve's planes) and OCCT writes them
+   right: their reversed wire has no seam for the reorder to trip on. Checked
+   on every export fixture through all three paths (plain, coloured,
+   grouped): box, cylinder, box with a hole, the filleted bracket, the revolved
+   sphere, cone and torus, ring segment and fused box and cylinder come out
+   byte-identical; the rim and cone fillets and the tapered extrude with a
+   hole (its hole's cone is indirect, with a seam) change. The tapered
+   extrude's file was already right and is rewritten equivalently (its cone
+   face's bound and edge flags flipped together, entities renumbered); it
+   reads back the same (7 faces, valid, 9315.0016 mm³).
+4. **The guard**: `export.test.ts`'s "writes a rim fillet's torus with bound
+   flags that agree with its neighbours (P4-12)" fillets both rims of a
+   cylinder r 5 h 10 with r 1 and checks the written text with
+   `badEdgeUses` (`packages/kernel/src/step-test-support.ts`, a small Part 21
+   reader ported from `spikes/stl-to-solid/torus_loops.py`'s edge-use check),
+   plus two `TOROIDAL_SURFACE`s and a read-back with 5 faces, valid, the same
+   volume.
+
+### Results
+
+- Before: the test fails with two edges used the same way (the bottom torus's
+  two circles); `torus_loops.py` on the written rim and cone fillets: 2
+  disagreeing loops, 4 edges used the same way. After: the test passes;
+  `torus_loops.py`: 0 disagree, 0 edges used the same way.
+- Indirect surfaces with a seam seen: tori (the rim fillet's bottom torus,
+  a cone's base fillet) and a cone (the tapered extrude's hole); OCCT's
+  reorder broke only the full-round tori. Read back before and after: the
+  rim fillet 5 faces, valid, 772.5167 mm³; the cone fillet 3 faces, valid,
+  768.1626 mm³, both unchanged.
+
+### Rejected
+
+- **`DirectFaces` alone** (the first plan): OCCT's writer does that already;
+  the text came out byte-identical, still wrong.
+- **Rebuilding the indirect tori by hand on a direct `gp_Ax3`**: the same
+  result as `DirectFaces` (a reversed wire), so the same fault.
+- **Turning every reversed wire forward, indirect face or not**, and then
+  **rebuilding every body with any indirect face**: both fix the same thing,
+  but rewrote clean files (a cylinder's cap; the bracket's fillet cylinders,
+  the ring segment) with equivalent flags and another entity order; the export
+  is byte-stable unless it has to change.
+- **Flipping the flags in the written model** (or in the text): it would work
+  around the writer's output instead of handing it a shape it writes right.
