@@ -1616,6 +1616,7 @@ end to end, faster than in established desktop CAD.
     Project's clip.
   - [x] S6: the sketching page around its visuals, the palette section, figure galleries,
     the anchor test and the axe audit.
+  - [x] Batch 1: notes for the 13 Constraints tool pages, each with its figure.
 
 ## Phase 7 — Later (lowest priority, after everything else)
 
