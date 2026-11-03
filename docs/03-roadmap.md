@@ -1640,6 +1640,7 @@ end to end, faster than in established desktop CAD.
   - [x] S6: the sketching page around its visuals, the palette section, figure galleries,
     the anchor test and the axe audit.
   - [x] Batch 1: notes for the 13 Constraints tool pages, each with its figure.
+  - [x] Batch 2: notes for the 25 Create tool pages (Point to Import Drawing); Intersect carries its figure.
 
 - [x] **P6-23 Project a sketch into another sketch** (issue #171; FR-SK-12, FR-SK-17;
   ADR-0125). The Project tool picks a curve or point of an earlier sketch in the view and a
