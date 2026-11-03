@@ -2,12 +2,15 @@ import {
   type BodyId,
   curvePolyline,
   ellipseShape,
+  entityPoints,
+  type FeatureId,
   faceSketchFrame,
   type GeomRef,
   originPlane,
   type ProjectedCurve,
   type ProjectionId,
   type ProjectionReport,
+  parseSketchEntityRefId,
   placeText,
   type SketchData,
   type SketchEntity,
@@ -16,6 +19,7 @@ import {
   type SketchInputs,
   type SketchReport,
   sketchFeature,
+  sketchToWorld,
   splineCurve,
   type Vec2,
 } from '@extrudo/core';
@@ -35,6 +39,7 @@ import {
   projectEdge,
   projectPieces,
   projectPoint,
+  projectSketchCurve,
   withoutRepeats,
 } from './projection';
 import { lineOf, planeOf, pointOf } from './references';
@@ -103,6 +108,18 @@ export interface SketchOutputData {
    */
   points?: Record<SketchEntityId, Vec2>;
   /**
+   * The construction curves of the sketch (the IDs of construction entries in
+   * `exact`, ADR-0125): a projection of one stays construction. Absent when
+   * none.
+   */
+  construction?: SketchEntityId[];
+  /**
+   * The sketch's loose points (ADR-0125): points of `points` no curve's
+   * `entityPoints` names (not a curve's ends, centre or poles, nor a text's
+   * anchors). A whole-sketch projection brings these. Absent when none.
+   */
+  loose?: SketchEntityId[];
+  /**
    * Every text entity of the sketch (construction ones too), P4-03: what a
    * whole-text reference (`<sketch>/<text>`, ADR-0058 §5) names. A ref to
    * an ID not in here is a lost reference; one in here without ink faces
@@ -169,14 +186,20 @@ export const kernelSketch: KernelFeatureDefinition<SketchInputs> = {
     }
     const warnings = textWarnings(data);
     const texts = textsOf(data);
+    const exact = exactCurves(data);
+    const points = sketchPoints(data);
+    const construction = constructionCurves(data, exact);
+    const loose = loosePoints(data, points);
     const output: SketchOutputData = {
       frame,
       sketch: data,
       profiles,
       lines: sketchLines(data),
       curves: sketchCurves(data),
-      exact: exactCurves(data),
-      points: sketchPoints(data),
+      exact,
+      points,
+      ...(construction.length > 0 && { construction }),
+      ...(loose.length > 0 && { loose }),
       ...(texts.length > 0 && { texts }),
     };
     const report: SketchReport = {
@@ -261,6 +284,8 @@ const SOURCE_NOUN: Partial<Record<GeomRef['kind'], string>> = {
   body: 'body',
   axis: 'axis',
   point: 'point',
+  sketchEntity: 'sketch curve',
+  feature: 'sketch',
 };
 
 /**
@@ -298,6 +323,8 @@ function projectSource(
     const curve = projectAxis(axis.origin, axis.direction, frame);
     return curve.type === 'point' ? { point: curve } : { axis: curve };
   }
+  if (ref.kind === 'sketchEntity') return projectSketchEntity(ctx, ref, frame);
+  if (ref.kind === 'feature') return projectWholeSketch(ctx, ref, frame);
   const hit = ctx.resolve(ref, { label: 'the projected face' });
   const description = ctx.describe(hit.shape);
   const names = ctx.names(hit.body).edges;
@@ -318,6 +345,96 @@ function projectSource(
     },
   );
   return withoutRepeats(curves);
+}
+
+/** The output data of an earlier sketch, or `undefined` if the feature isn't one (ADR-0125). */
+function outputData(
+  ctx: EvalContext<SketchInputs>,
+  feature: FeatureId,
+): Partial<SketchOutputData> | undefined {
+  try {
+    return ctx.output(feature).data as Partial<SketchOutputData>;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The source path polyline of a sketch entity, when the source has one. */
+function polylineOf(
+  data: Partial<SketchOutputData>,
+  entity: SketchEntityId,
+): readonly Vec2[] | undefined {
+  const curve = data.curves?.[entity];
+  return curve?.type === 'polyline' ? curve.points : undefined;
+}
+
+/** One curve or point of an earlier sketch (ADR-0125), keyed `curve` (or `curve:<n>`) or `point`. */
+function projectSketchEntity(
+  ctx: EvalContext<SketchInputs>,
+  ref: GeomRef,
+  frame: SketchFrame,
+): Record<string, ProjectedCurve> {
+  const parsed = parseSketchEntityRefId(ref.id);
+  const data = parsed ? outputData(ctx, parsed.feature) : undefined;
+  if (!parsed || !data?.frame) {
+    throw new LostReferenceError("Can't find the projected sketch any more.", ref);
+  }
+  const entity = parsed.entity;
+  const point = data.points?.[entity];
+  if (point) {
+    return { point: projectPoint(sketchToWorld(data.frame, point), frame) };
+  }
+  const curve = data.exact?.[entity];
+  if (!curve) {
+    throw new LostReferenceError(
+      "Can't find the projected sketch curve any more: an earlier change to its sketch removed it.",
+      ref,
+    );
+  }
+  const construction = data.construction?.includes(entity) ?? false;
+  const pieces = projectSketchCurve(curve, polylineOf(data, entity), data.frame, frame);
+  return keyCurves(pieces, (i) => (pieces.length === 1 ? 'curve' : `curve:${i}`), construction);
+}
+
+/** A whole earlier sketch (ADR-0125): its curves by entity id, then its loose points. */
+function projectWholeSketch(
+  ctx: EvalContext<SketchInputs>,
+  ref: GeomRef,
+  frame: SketchFrame,
+): Record<string, ProjectedCurve> {
+  const data = outputData(ctx, ref.id as FeatureId);
+  if (!data?.exact || !data.frame) {
+    throw new LostReferenceError('Only a sketch can be projected whole.', ref);
+  }
+  const source = data.frame;
+  const curves: Record<string, ProjectedCurve> = {};
+  for (const entity of Object.keys(data.exact) as SketchEntityId[]) {
+    const curve = data.exact[entity] as PlanarCurve;
+    const construction = data.construction?.includes(entity) ?? false;
+    const pieces = projectSketchCurve(curve, polylineOf(data, entity), source, frame);
+    Object.assign(
+      curves,
+      keyCurves(pieces, (i) => (pieces.length === 1 ? entity : `${entity}:${i}`), construction),
+    );
+  }
+  for (const entity of data.loose ?? []) {
+    const point = data.points?.[entity];
+    if (point) curves[entity] = projectPoint(sketchToWorld(source, point), frame);
+  }
+  return withoutRepeats(curves);
+}
+
+/** Keys `pieces` by `keyOf(i)`, marking each construction when the source was. */
+function keyCurves(
+  pieces: readonly ProjectedCurve[],
+  keyOf: (i: number) => string,
+  construction: boolean,
+): Record<string, ProjectedCurve> {
+  const out: Record<string, ProjectedCurve> = {};
+  pieces.forEach((piece, i) => {
+    out[keyOf(i)] = construction ? { ...piece, construction: true } : piece;
+  });
+  return out;
 }
 
 /**
@@ -430,6 +547,30 @@ export function sketchPoints(data: SketchData): Record<SketchEntityId, Vec2> {
     if (e.type === 'point') out[id] = [e.x, e.y];
   }
   return out;
+}
+
+/** The exact curves that are construction geometry (see `SketchOutputData.construction`). */
+function constructionCurves(
+  data: SketchData,
+  exact: Record<SketchEntityId, PlanarCurve>,
+): SketchEntityId[] {
+  const out: SketchEntityId[] = [];
+  for (const id of Object.keys(exact) as SketchEntityId[]) {
+    const entity = data.entities[id];
+    if (entity && entity.type !== 'point' && entity.type !== 'text' && entity.construction) {
+      out.push(id);
+    }
+  }
+  return out;
+}
+
+/** The points no curve or text uses (see `SketchOutputData.loose`). */
+function loosePoints(data: SketchData, points: Record<SketchEntityId, Vec2>): SketchEntityId[] {
+  const named = new Set<SketchEntityId>();
+  for (const e of Object.values(data.entities) as SketchEntity[]) {
+    for (const p of entityPoints(e)) named.add(p);
+  }
+  return (Object.keys(points) as SketchEntityId[]).filter((id) => !named.has(id));
 }
 
 /** The path-pattern form of every curve of a sketch (see `SketchOutputData.curves`). */

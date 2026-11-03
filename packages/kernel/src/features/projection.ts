@@ -11,11 +11,13 @@ import {
   fitControlPoles,
   type ProjectedCurve,
   type SketchFrame,
+  sketchToWorld,
   type Vec2,
   type Vec3,
   worldToSketch,
 } from '@extrudo/core';
 import type { Conic, CurvePiece, EdgeGeometry } from '../kernel';
+import type { PlanarCurve } from '../planar';
 
 /** Shorter than this (mm), a projected curve is a point and is left out. */
 const TINY = 1e-6;
@@ -213,6 +215,71 @@ export function projectPoint(p: Vec3, frame: SketchFrame): ProjectedCurve {
 }
 
 /**
+ * A curve of an earlier sketch (ADR-0125) placed in the world from the
+ * source frame and projected along the target sketch's normal. A `line`
+ * becomes a segment; an `arc` or full circle a conic about the source's
+ * normal, so parallel planes give the same curve and a tilted plane an
+ * ellipse (or, seen edge-on, a line); an `ellipse` likewise; a `spline` or
+ * `conic` goes through its source polyline (`polyline`, the source's
+ * `SketchOutputData.curves[entity]`), fitted as a silhouette is. `[]` when
+ * the curve can't be built (no polyline, or seen end-on).
+ */
+export function projectSketchCurve(
+  curve: PlanarCurve,
+  polyline: readonly Vec2[] | undefined,
+  source: SketchFrame,
+  frame: SketchFrame,
+): ProjectedCurve[] {
+  const toWorld = (p: Vec2) => sketchToWorld(source, p);
+  switch (curve.kind) {
+    case 'line': {
+      const edge: EdgeGeometry = {
+        type: 'line',
+        closed: false,
+        points: [toWorld(curve.a), toWorld(curve.b)],
+      };
+      const projected = projectEdge(edge, frame);
+      return projected ? [projected] : [];
+    }
+    case 'arc': {
+      const conic: Conic = {
+        center: toWorld(curve.center),
+        axis: source.normal,
+        xDirection: source.x,
+        radius: curve.radius,
+        first: curve.from,
+        last: curve.from + curve.sweep,
+      };
+      // A full sweep closes the conic, so `projectEdge` gives a circle; an arc gives one.
+      const projected = projectEdge(conicEdge('circle', conic), frame);
+      return projected ? [projected] : [];
+    }
+    case 'ellipse': {
+      const rotation = curve.rotation;
+      const xDirection = unit([
+        Math.cos(rotation) * source.x[0] + Math.sin(rotation) * source.y[0],
+        Math.cos(rotation) * source.x[1] + Math.sin(rotation) * source.y[1],
+        Math.cos(rotation) * source.x[2] + Math.sin(rotation) * source.y[2],
+      ]);
+      const conic: Conic = {
+        center: toWorld(curve.center),
+        axis: source.normal,
+        xDirection,
+        radius: curve.a,
+        minor: curve.b,
+        first: 0,
+        last: 2 * Math.PI,
+      };
+      const projected = projectEdge(conicEdge('ellipse', conic), frame);
+      return projected ? [projected] : [];
+    }
+    case 'spline':
+    case 'conic':
+      return polyline ? projectPolyline(polyline.map(toWorld), frame) : [];
+  }
+}
+
+/**
  * The curve pieces of `Kernel.faceSilhouettes` or `sectionWithPlane`
  * projected into the plane, in order: arcs of one circle joined first (a
  * sphere's outline comes in pieces split at its seam, some twice), lines as
@@ -285,7 +352,7 @@ export function joinPolylines(pieces: readonly CurvePiece[]): CurvePiece[] {
 }
 
 /** A conic piece as `Kernel.edgeGeometry` would describe it, with 24 samples. */
-function conicEdge(type: 'circle' | 'ellipse', conic: Conic): EdgeGeometry {
+export function conicEdge(type: 'circle' | 'ellipse', conic: Conic): EdgeGeometry {
   const x = unit(conic.xDirection);
   const y = cross(unit(conic.axis), x);
   const b = conic.minor ?? conic.radius;
