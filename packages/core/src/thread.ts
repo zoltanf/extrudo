@@ -216,7 +216,7 @@ export const threadFeature: FeatureDefinition<ThreadInputs> = {
     {
       pattern: 'side:<piece>',
       description:
-        "One piece of the thread: `root`, `crest`, `flank0`, `flank1`, `end0`, `end1` or `lead0`, `lead1` (with `lead0step`, `lead1step` where a lead-in runs on through a chamfered end), prefixed with the face's place in the input (`f0`, `f1`, ...) and numbered per turn. A multi-start thread (`starts` above 1) puts `s<j>.` after that prefix for each start's tooth faces: `f0.s1.crest`.",
+        "One piece of the thread: `root`, `crest`, `flank0`, `flank1`, `end0`, `end1` or `lead0`, `lead1` (with `lead0step`, `lead1step` where a lead-in runs on through a chamfered end, and `lead0beyond`, `lead1beyond` where it stops at a stem or a counterbore beyond it), prefixed with the face's place in the input (`f0`, `f1`, ...) and numbered per turn. A multi-start thread (`starts` above 1) puts `s<j>.` after that prefix for each start's tooth faces: `f0.s1.crest`.",
     },
   ],
 };

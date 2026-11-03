@@ -1224,7 +1224,7 @@ export interface FeatureMethods {
    * - `cap:start` — The face the sweep starts at: the profile in its own place.
    * - `cap:end` — The face the sweep ends at.
    * - `side:<curve>` — A wall, one per edge of the profile: the sketch curve it came from, or the body edge it was swept from.
-   * - `side:<piece>` — One piece of the thread: `root`, `crest`, `flank0`, `flank1`, `end0`, `end1` or `lead0`, `lead1` (with `lead0step`, `lead1step` where a lead-in runs on through a chamfered end), prefixed with the face's place in the input (`f0`, `f1`, ...) and numbered per turn. A multi-start thread (`starts` above 1) puts `s<j>.` after that prefix for each start's tooth faces: `f0.s1.crest`.
+   * - `side:<piece>` — One piece of the thread: `root`, `crest`, `flank0`, `flank1`, `end0`, `end1` or `lead0`, `lead1` (with `lead0step`, `lead1step` where a lead-in runs on through a chamfered end, and `lead0beyond`, `lead1beyond` where it stops at a stem or a counterbore beyond it), prefixed with the face's place in the input (`f0`, `f1`, ...) and numbered per turn. A multi-start thread (`starts` above 1) puts `s<j>.` after that prefix for each start's tooth faces: `f0.s1.crest`.
    */
   thread(inputs: PlainInputs<ThreadInputs>, options?: FeatureOptions): FeatureHandle<'thread'>;
   /**

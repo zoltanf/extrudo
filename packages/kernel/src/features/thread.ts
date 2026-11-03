@@ -48,7 +48,8 @@
  * `f<k>.crest`, `f<k>.flank1` (one per turn, `#n`), `f<k>.end0|end1` (the
  * flat steps where a thread stops inside a face), `f<k>.lead0|lead1` (the
  * lead-in cones, past the end too), `f<k>.lead0step|lead1step` (the 0.1 P
- * annulus where a lead-in runs on past the end), `f<k>.fill|fillWall|fillEnd0|fillEnd1` (the sleeve's),
+ * annulus where a lead-in runs on past the end), `f<k>.lead0beyond|lead1beyond`
+ * (where it stops at a stem or a counterbore's wall), `f<k>.fill|fillWall|fillEnd0|fillEnd1` (the sleeve's),
  * where k is the face's place in the input (`f0`, `f1` …).
  */
 import {
@@ -330,6 +331,12 @@ export interface ThreadPlan {
    * length), 0 at a flat end or with no lead-in there.
    */
   across: [number, number];
+  /**
+   * The radius (mm) at which material continues past `from` / `to` (a stem
+   * past a chamfer, a counterbore's wall): the run-on's cone stops there.
+   * 0 when nothing continues or with no lead-in there.
+   */
+  beyond: [number, number];
   left: boolean;
   /**
    * The sleeve that brings the face to the thread (ADR-0056's fifth
@@ -478,6 +485,7 @@ export function planThread(
   const atTo = Math.abs(to - face.to) < EPS && face.open[1];
   const lead: [boolean, boolean] = [settings.chamfer && atFrom, settings.chamfer && atTo];
   const across: [number, number] = [lead[0] ? face.across[0] : 0, lead[1] ? face.across[1] : 0];
+  const beyond: [number, number] = [lead[0] ? face.beyond[0] : 0, lead[1] ? face.beyond[1] : 0];
   // A hole wider than the part's crest (its minor diameter with the
   // tolerance) or a shaft thinner than it (the major less the tolerance) is
   // brought to it along the thread first (ADR-0056's fifth amendment): the
@@ -523,6 +531,7 @@ export function planThread(
     to,
     lead,
     across,
+    beyond,
     left: settings.hand === 'left',
     ...(fill && { fill }),
     report: {
@@ -713,7 +722,11 @@ export function leadSection(plan: ThreadPlan, end: 0 | 1): Section {
  * inside the run, its cone would lie on the tool's own lead-in faces and the
  * fuse of the two goes invalid, so the end plane keeps a 0.1 P annulus
  * (`lead<end>step`) from the root in to the cone. Its cone is named
- * `lead<end>` too. Undefined when nothing lies past the end.
+ * `lead<end>` too. Where material continues past the faces across the end
+ * (`plan.beyond`: a stem, a counterbore's wall) the cone stops at that
+ * radius and a cylinder there (`lead<end>beyond`) runs on to the far end, so
+ * the stem runs up to the thread instead of being necked. Undefined when
+ * nothing lies past the end.
  */
 export function leadCapSection(plan: ThreadPlan, end: 0 | 1): Section | undefined {
   const { radii, internal, pitch } = plan;
@@ -732,20 +745,37 @@ export function leadCapSection(plan: ThreadPlan, end: 0 | 1): Section | undefine
     internal ? Math.max(0, u + shiftAt(plan, v)) : u + shiftAt(plan, v),
     v,
   ];
-  const corners: [number, number][] = [
-    shifted(start, at),
-    shifted(crestSide, at),
-    shifted(crestSide, far),
-    shifted(start + s * past, far),
-  ];
-  return {
+  const outline = (corners: [number, number][], sources: string[]): Section => ({
     curves: corners.map((a, i) => ({
       kind: 'line',
       a,
       b: corners[(i + 1) % corners.length] as [number, number],
     })),
-    sources: [`lead${end}step`, `lead${end}out`, `lead${end}far`, `lead${end}`],
-  };
+    sources,
+  });
+  const sides = [`lead${end}step`, `lead${end}out`, `lead${end}far`];
+  const outer: [number, number][] = [shifted(crestSide, at), shifted(crestSide, far)];
+  // The cone's radius `d` past the end (it follows a taper's slope).
+  const coneAt = (d: number) => start + s * d + shiftAt(plan, at - into * d);
+  const b = plan.beyond[end];
+  // Past the clamp: a shaft's cone under it, a hole's over it.
+  const bites = (r: number) => b > EPS && (internal ? r > b - EPS : r < b + EPS);
+  if (bites(coneAt(0))) {
+    // The cone starts past the clamp already: only the cylinder at it.
+    return outline([[b, at], ...outer, [b, far]], [...sides, `lead${end}beyond`]);
+  }
+  if (bites(coneAt(past))) {
+    // The cone meets the clamp on the way: a cylinder from there on.
+    const meet = ((b - coneAt(0)) / (coneAt(past) - coneAt(0))) * past;
+    return outline(
+      [shifted(start, at), ...outer, [b, far], [b, at - into * meet]],
+      [...sides, `lead${end}beyond`, `lead${end}`],
+    );
+  }
+  return outline(
+    [shifted(start, at), ...outer, shifted(start + s * past, far)],
+    [...sides, `lead${end}`],
+  );
 }
 
 // ------------------------------------------------------------------ solids

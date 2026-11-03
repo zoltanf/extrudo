@@ -685,9 +685,11 @@ describe('thread fill', { timeout: 300_000 }, () => {
     });
   }
 
-  // The lead-in runs on only as far as the face across the end reaches: a
-  // pin chamfered down to a thinner stem keeps the stem whole.
-  it('stops the lead-in at the chamfer of a stepped pin', async () => {
+  // The lead-in runs on only as far as the face across the end reaches, and
+  // only down to the radius at which material continues past it: a pin
+  // chamfered down to a thinner stem keeps the stem whole, and the stem runs
+  // up to the thread's end (the chamfer cut back to it, no neck).
+  it('stops the lead-in at the stem of a stepped pin', async () => {
     engine.clear();
     const b = new SketchBuilder();
     const outline: [number, number][] = [
@@ -724,6 +726,62 @@ describe('thread fill', { timeout: 300_000 }, () => {
     // The stem, from the chamfer's end on, is as drawn.
     for (const { z, r } of profile.filter((p) => p.z >= 10)) {
       expect(Math.abs(r - 1.95), `y = ${z}`).toBeLessThan(0.005);
+    }
+    // No neck between the thread's end and the stem, and no step from the crest on.
+    for (const { z, r } of profile.filter((p) => p.z >= 9.7 && p.z < 10)) {
+      expect(r, `y = ${z}`).toBeGreaterThan(1.95 - 0.02);
+    }
+    expect(stepOf(profile)).toBeLessThan(0.02);
+    expect(threadNames(m.names)).toContain('thread:T:side:f0.lead1beyond');
+  });
+
+  // A countersink at the floor of a Ø5.6 counterbore: the lead-in's cone
+  // would open to 2.98 there, past the counterbore's wall (2.8): it stops at
+  // the wall, which runs on as drawn.
+  it('stops the lead-in at a counterbore past the countersink', async () => {
+    engine.clear();
+    const features: Feature[] = [
+      cylinder('C', 16, 10),
+      {
+        ...testFeature('H', HOLE_TYPE),
+        inputs: holeInputs({
+          plane: { kind: 'face', id: 'cylinder:C:cap:end' },
+          type: 'counterbore',
+          extent: 'through',
+          numbers: { diameter: '4.2 mm', cbDiameter: '5.6 mm', cbDepth: '2 mm' },
+        }),
+      },
+    ];
+    const edge = refTo(
+      await run(testDocument(features)),
+      'edge',
+      'e[hole:H:side:cbfloor|hole:H:side:wall]',
+    );
+    engine.clear();
+    const result = filledOk(
+      await runWithShapes(
+        testDocument([
+          ...features,
+          {
+            ...testFeature('K', 'chamfer'),
+            inputs: chamferInputs([{ edges: [edge], distance: '0.3 mm' }]),
+          },
+          thread('T', {
+            faces: [{ kind: 'face', id: 'hole:H:side:wall' }],
+            numbers: { diameter: '5 mm', pitch: '0.8 mm' },
+          }),
+        ]),
+      ),
+    );
+    const m = measure(result, 'C:0');
+    expect(m.valid).toBe(true);
+    expect(m.solids).toBe(1);
+    expect(dataOf('T').faces[0]?.lead).toEqual([true, true]);
+    const profile = radiusAlong(m.shape, 6, 10, { inner: true });
+    expect(stepOf(profile, true)).toBeLessThan(0.02);
+    // The mouth at the counterbore's floor is the wall's radius, and the wall is as drawn.
+    for (const { z, r } of profile.filter((p) => p.z >= 7.98)) {
+      expect(Math.abs(r - 2.8), `z = ${z}`).toBeLessThan(0.005);
     }
   });
 

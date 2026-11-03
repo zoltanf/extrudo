@@ -406,6 +406,7 @@ describe('thread sections', () => {
       to: 10,
       lead: [true, true] as [boolean, boolean],
       across: [0.5, 0] as [number, number],
+      beyond: [0, 0] as [number, number],
       left: false,
       report: {} as never,
     };
@@ -433,6 +434,25 @@ describe('thread sections', () => {
     ]);
     expect(cap?.sources[3]).toBe('lead0');
     expect(leadCapSection(plan, 1)).toBeUndefined();
+    // Where material continues past the end (a stem) the cone stops at its
+    // radius and a cylinder there runs on; a stem wider than the cone's start
+    // leaves only the cylinder.
+    const stem = start - 0.2;
+    const clamped = leadCapSection({ ...plan, beyond: [stem, 0] }, 0);
+    expect(clamped?.sources).toEqual(['lead0step', 'lead0out', 'lead0far', 'lead0beyond', 'lead0']);
+    expect(clamped?.curves.map((curve) => (curve.kind === 'line' ? curve.a : undefined))).toEqual([
+      [start, 0],
+      [expect.any(Number), 0],
+      [expect.any(Number), -0.5],
+      [stem, -0.5],
+      [stem, expect.closeTo(-0.2, 9)],
+    ]);
+    expect(leadCapSection({ ...plan, beyond: [start + 0.05, 0] }, 0)?.sources).toEqual([
+      'lead0step',
+      'lead0out',
+      'lead0far',
+      'lead0beyond',
+    ]);
   });
 
   // P4-12, ADR-0067 §H2: the tooth is cut out of the ring in pieces, so that no
@@ -798,6 +818,7 @@ describe('thread', { timeout: 300_000 }, () => {
       open: [false, false],
       taper: 0,
       across: [0, 0],
+      beyond: [0, 0],
     });
     expect(planThread(face(MAX_TURNS), settings, numbers, []).report.turns).toBe(MAX_TURNS);
     expect(() => planThread(face(MAX_TURNS + 1), settings, numbers, [])).toThrow(
@@ -819,6 +840,7 @@ describe('thread', { timeout: 300_000 }, () => {
       open: [true, true],
       taper: 0,
       across: [0, 0],
+      beyond: [0, 0],
     });
     const settings = threadSettings(
       threadInputs({ faces: [{ kind: 'face', id: 'x' }], numbers: { diameter: '4 mm' } }),

@@ -72,6 +72,12 @@ export interface ThreadFace {
    * sixth amendment).
    */
   across: [number, number];
+  /**
+   * At an open end, the radius (mm) at which material continues past the
+   * faces across it (a stem past a chamfer, a counterbore's wall past a
+   * countersink), 0 when nothing does: the lead-in's run-on stops there.
+   */
+  beyond: [number, number];
 }
 
 /** A conical face as an emboss sees it (`Kernel.coneFace`, P4-12). */
@@ -1459,6 +1465,7 @@ export class Kernel {
       open: [at(11) === 1, at(12) === 1],
       taper: at(13),
       across: [at(14), at(15)],
+      beyond: [at(16), at(17)],
     };
   }
 
