@@ -1,0 +1,1 @@
+- 2026-11-03 · **Mesh to Solid keeps more planes whole**: a sliver inside a plane no longer breaks it into facets, and a plane that ran over a low step gives only the step's triangles to facets (hot-wheels-connector 1,833 → 1,745 facets, phone-stand-foldable 403 → 287), and whiteboard-tray-v5, refused before, converts at Auto (ADR-0097 slice D12).

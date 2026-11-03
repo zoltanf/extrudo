@@ -3077,7 +3077,7 @@ public:
       MeshSegmentation seg;
       if (segmentMesh(tolerance, seg)) {
         std::vector<int> hybridOf;
-        const std::vector<MeshHybridRegion> regions = hybridRegions(seg, hybridOf);
+        const std::vector<MeshHybridRegion> regions = hybridRegions(seg, tolerance, hybridOf);
         for (const MeshHybridRegion& r : regions) {
           const bool built = r.kind >= 0 && r.why.empty();
           meshLoops_.push_back(r.kind);
@@ -7122,6 +7122,17 @@ private:
    */
   static constexpr double MESH_PLANE_NORMAL_AGREEMENT = 0.5;
 
+  /** How many segments on along a plane's loop slice D12 looks for a fold. */
+  static constexpr int MESH_FOLD_REACH = 8;
+
+  /**
+   * A folded plane keeps the triangles whose nodes lie within this share of
+   * the tolerance of it, then a tenth of that while it still folds, up to
+   * MESH_FOLD_ROUNDS times (slice D12).
+   */
+  static constexpr double MESH_FOLD_OFF = 0.1;
+  static constexpr int MESH_FOLD_ROUNDS = 3;
+
   /** The least-squares plane through `nodes`, its normal on the side of `outward`. */
   MeshFit fitMeshPlane(const std::vector<int>& nodes, const gp_XYZ& outward) const {
     MeshFit fit;
@@ -8684,7 +8695,7 @@ private:
    * angles, and each region's boundary ordered into loops (`meshLoops`).
    * `hybridOf` gets each triangle's region.
    */
-  std::vector<MeshHybridRegion> hybridRegions(const MeshSegmentation& seg, std::vector<int>& hybridOf) const {
+  std::vector<MeshHybridRegion> hybridRegions(const MeshSegmentation& seg, double tolerance, std::vector<int>& hybridOf) const {
     const int triangleCount = static_cast<int>(seg.regionOf.size());
     auto corner = [&](int t, int k) { return static_cast<int>(meshTriangles_[3 * t + k]); };
     std::vector<int> surfaceOf(triangleCount, -1);
@@ -8778,40 +8789,226 @@ private:
       for (int t : piece) chartIndex[t] = static_cast<int>(chartOf.size());
       chartOf.push_back(chart);
     }
-    // The regions: connected pieces of each label, centred on their own angles.
-    std::vector<MeshHybridRegion> out;
-    hybridOf.assign(triangleCount, -1);
-    for (std::vector<int>& piece : pieces(label)) {
-      MeshHybridRegion region;
-      region.surface = surfaceOf[piece.front()];
-      region.chart = chartOf[chartIndex[piece.front()]];
-      region.kind = region.chart.kind;
-      for (int t : piece) {
-        region.area += seg.areas[t];
-        hybridOf[t] = static_cast<int>(out.size());
-      }
-      if (region.chart.uPeriodic()) {
-        std::vector<double> us, vs;
+    // Slice D12, sliver islands: a piece of another label inside one
+    // recognised piece (every edge of its outline borders that piece), of
+    // less area than the tolerance times its outline's length, its nodes
+    // within the tolerance of the piece's surface, joins that piece: the
+    // face keeps its outline instead of a hole that is an inverted sliver.
+    {
+      const std::vector<std::vector<int>> all = pieces(label);
+      std::vector<int> pieceOf(triangleCount, -1);
+      for (size_t p = 0; p < all.size(); ++p)
+        for (int t : all[p]) pieceOf[t] = static_cast<int>(p);
+      for (size_t p = 0; p < all.size(); ++p) {
+        const std::vector<int>& piece = all[p];
+        int around = -1;
+        bool inside = true;
+        double area = 0, boundary = 0;
         for (int t : piece) {
-          double u = 0, v = 0;
-          region.chart.raw(centroid(t), u, v);
-          us.push_back(u);
-          vs.push_back(v);
+          area += seg.areas[t];
+          for (int k = 0; k < 3 && inside; ++k) {
+            const int u = seg.neighbour[3 * t + k];
+            if (u >= 0 && pieceOf[u] == static_cast<int>(p)) continue;
+            if (u < 0 || (around >= 0 && around != pieceOf[u])) inside = false;
+            else around = pieceOf[u];
+            boundary += (meshNode(corner(t, (k + 1) % 3)) - meshNode(corner(t, k))).Modulus();
+          }
+          if (!inside) break;
         }
-        double start, span;
-        angularSpan(us, start, span);
-        region.chart.uCentre = start + span / 2;
-        if (region.chart.vPeriodic()) {
-          angularSpan(vs, start, span);
-          region.chart.vCentre = start + span / 2;
+        if (!inside || around < 0) continue;
+        const int host = all[around].front(), s = surfaceOf[host];
+        if (s < 0 || seg.surfaces[s].kind < 0 || !(area < tolerance * boundary)) continue;
+        bool near = true;
+        for (size_t i = 0; i < piece.size() && near; ++i)
+          for (int k = 0; k < 3 && near; ++k) near = distanceToSurface(seg.surfaces[s], meshNode(corner(piece[i], k))) <= tolerance;
+        if (!near) continue;
+        for (int t : piece) {
+          label[t] = label[host];
+          surfaceOf[t] = s;
+          chartIndex[t] = chartIndex[host];
         }
       }
-      region.triangles = std::move(piece);
-      out.push_back(std::move(region));
     }
-    for (size_t i = 0; i < out.size(); ++i)
-      if (out[i].kind >= 0) meshLoops(out[i], static_cast<int>(i), hybridOf, seg.neighbour);
+    // The regions: connected pieces of each label, centred on their own angles.
+    auto build = [&] {
+      std::vector<MeshHybridRegion> out;
+      hybridOf.assign(triangleCount, -1);
+      for (std::vector<int>& piece : pieces(label)) {
+        MeshHybridRegion region;
+        region.surface = surfaceOf[piece.front()];
+        region.chart = chartOf[chartIndex[piece.front()]];
+        region.kind = region.chart.kind;
+        for (int t : piece) {
+          region.area += seg.areas[t];
+          hybridOf[t] = static_cast<int>(out.size());
+        }
+        if (region.chart.uPeriodic()) {
+          std::vector<double> us, vs;
+          for (int t : piece) {
+            double u = 0, v = 0;
+            region.chart.raw(centroid(t), u, v);
+            us.push_back(u);
+            vs.push_back(v);
+          }
+          double start, span;
+          angularSpan(us, start, span);
+          region.chart.uCentre = start + span / 2;
+          if (region.chart.vPeriodic()) {
+            angularSpan(vs, start, span);
+            region.chart.vCentre = start + span / 2;
+          }
+        }
+        region.triangles = std::move(piece);
+        out.push_back(std::move(region));
+      }
+      for (size_t i = 0; i < out.size(); ++i)
+        if (out[i].kind >= 0) meshLoops(out[i], static_cast<int>(i), hybridOf, seg.neighbour);
+      return out;
+    };
+    std::vector<MeshHybridRegion> out = build();
+    // Slice D12, absorbed steps: a plane took in the floor on both sides of a
+    // wall lower than the tolerance (the wall's triangles are another
+    // region's), and the start of the rounds beyond it, so its outline runs
+    // along the wall's foot and back along its top, which project onto one
+    // line: the loop folds over itself within a few edges. Where the face,
+    // built alone, is invalid too, the plane's triangles with a node farther
+    // than MESH_FOLD_OFF times the tolerance from it leave it and become
+    // facets, and the regions are made again (a tenth of that, while it still
+    // folds): its outline then runs where the floor ends. (Built folded with
+    // the notch filled instead, the face's outline stood up to the tolerance
+    // off its plane all round, and the solid's volume came out 2 % low.)
+    auto foldedPlanes = [&] {
+      std::set<int> folded;
+      for (size_t r = 0; r < out.size(); ++r) {
+        const MeshHybridRegion& region = out[r];
+        if (region.kind != 0 || !region.why.empty()) continue;
+        for (const std::vector<int>& loop : region.loops) {
+          std::vector<gp_Pnt2d> uv(loop.size());
+          for (size_t i = 0; i < loop.size(); ++i) uv[i] = region.chart.uv(gp_Pnt(meshNode(loop[i])));
+          bool fold = false;
+          for (size_t i = 0; i < uv.size() && !fold; ++i) fold = meshLoopFolds(uv, static_cast<int>(i));
+          if (fold) {
+            if (!meshPlaneFaceValid(region)) folded.insert(static_cast<int>(r));
+            break;
+          }
+        }
+      }
+      return folded;
+    };
+    int unfitChart = -1;
+    double bar = MESH_FOLD_OFF * tolerance;
+    for (int round = 0; round < MESH_FOLD_ROUNDS; ++round, bar /= 10) {
+      const std::set<int> folded = foldedPlanes();
+      if (folded.empty()) break;
+      if (unfitChart < 0) {
+        unfitChart = static_cast<int>(chartOf.size());
+        chartOf.push_back(MeshChart());
+      }
+      int moved = 0;
+      for (int r : folded) {
+        const MeshSurface& plane = seg.surfaces[out[r].surface];
+        for (int t : out[r].triangles) {
+          double off = 0;
+          for (int k = 0; k < 3; ++k) off = std::max(off, distanceToSurface(plane, meshNode(corner(t, k))));
+          if (off <= bar) continue;
+          label[t] = 0;
+          surfaceOf[t] = -1;
+          chartIndex[t] = unfitChart;
+          ++moved;
+        }
+      }
+      if (moved > 0) out = build();
+    }
     return out;
+  }
+
+  /**
+   * Slice D12: whether a plane region's face, built alone from its loops as
+   * polylines (an edge per mesh edge, its tolerance the nodes' distance from
+   * the plane), checks valid. A fold the check passes stays as it is.
+   */
+  bool meshPlaneFaceValid(const MeshHybridRegion& region) const {
+    BRep_Builder builder;
+    const Handle(Geom_Surface) surface = region.chart.surface();
+    TopoDS_Face face;
+    builder.MakeFace(face, surface, Precision::Confusion());
+    std::unordered_map<int, TopoDS_Vertex> vertices;
+    auto vertexOf = [&](int n) {
+      TopoDS_Vertex& v = vertices[n];
+      if (v.IsNull()) builder.MakeVertex(v, gp_Pnt(meshNode(n)), Precision::Confusion());
+      return v;
+    };
+    try {
+      for (const std::vector<int>& loop : region.loops) {
+        TopoDS_Wire wire;
+        builder.MakeWire(wire);
+        for (size_t i = 0; i < loop.size(); ++i) {
+          const int a = loop[i], b = loop[(i + 1) % loop.size()], lo = std::min(a, b), hi = std::max(a, b);
+          const gp_Pnt p(meshNode(lo)), q(meshNode(hi));
+          const double length = p.Distance(q);
+          if (length <= 0) return false;
+          TopoDS_Edge edge;
+          builder.MakeEdge(edge, new Geom_Line(p, gp_Dir(q.XYZ() - p.XYZ())), Precision::Confusion());
+          builder.Add(edge, vertexOf(lo).Oriented(TopAbs_FORWARD));
+          builder.Add(edge, vertexOf(hi).Oriented(TopAbs_REVERSED));
+          builder.Range(edge, 0, length);
+          NCollection_Array1<gp_Pnt2d> poles(1, 2);
+          poles(1) = region.chart.uv(p);
+          poles(2) = region.chart.uv(q);
+          NCollection_Array1<double> knots(1, 2);
+          knots(1) = 0;
+          knots(2) = length;
+          NCollection_Array1<int> mults(1, 2);
+          mults(1) = mults(2) = 2;
+          const double off = std::max(region.chart.value(poles(1).X(), poles(1).Y()).Distance(p),
+                                      region.chart.value(poles(2).X(), poles(2).Y()).Distance(q));
+          const double tolerance = std::max(off * 1.1, HYBRID_EDGE_TOLERANCE_MIN);
+          builder.UpdateEdge(edge, new Geom2d_BSplineCurve(poles, knots, mults, 1), surface, TopLoc_Location(), tolerance);
+          builder.UpdateVertex(vertexOf(lo), tolerance);
+          builder.UpdateVertex(vertexOf(hi), tolerance);
+          builder.Add(wire, a == lo ? edge : TopoDS::Edge(edge.Reversed()));
+        }
+        wire.Closed(true);
+        builder.Add(face, wire);
+      }
+      return BRepCheck_Analyzer(face).IsValid();
+    } catch (const Standard_Failure&) {
+      return false;
+    }
+  }
+
+  /**
+   * Slice D12: whether segment i of `uv` (a closed loop's nodes) crosses or
+   * touches one of the MESH_FOLD_REACH segments after it. The next one, which
+   * shares a node with it, touches only where the loop doubles back.
+   */
+  static bool meshLoopFolds(const std::vector<gp_Pnt2d>& uv, int i) {
+    const int m = static_cast<int>(uv.size());
+    if (m < 4) return false;
+    const gp_XY a = uv[i].XY(), b = uv[(i + 1) % m].XY();
+    const double eps = 1e-9 * std::max({1.0, std::fabs(a.X()), std::fabs(a.Y())});
+    auto side = [](const gp_XY& p, const gp_XY& q, const gp_XY& r) { return (q - p).Crossed(r - p); };
+    // r on the segment p-q, within eps of it.
+    auto on = [&](const gp_XY& p, const gp_XY& q, const gp_XY& r) {
+      const gp_XY d = q - p;
+      const double l2 = d.SquareModulus();
+      if (l2 <= 0) return (r - p).Modulus() <= eps;
+      const double s = (r - p).Dot(d) / l2;
+      return s >= 0 && s <= 1 && std::fabs(d.Crossed(r - p)) <= eps * std::sqrt(l2);
+    };
+    for (int step = 1; step <= std::min(MESH_FOLD_REACH, m - 2); ++step) {
+      const int j = (i + step) % m;
+      const gp_XY c = uv[j].XY(), d = uv[(j + 1) % m].XY();
+      if (step == 1) {
+        if (on(a, b, d) || on(c, d, a)) return true;
+        continue;
+      }
+      const double s1 = side(a, b, c), s2 = side(a, b, d), s3 = side(c, d, a), s4 = side(c, d, b);
+      if ((((s1 > 0 && s2 < 0) || (s1 < 0 && s2 > 0)) && ((s3 > 0 && s4 < 0) || (s3 < 0 && s4 > 0))) || on(a, b, c) ||
+          on(a, b, d) || on(c, d, a) || on(c, d, b))
+        return true;
+    }
+    return false;
   }
 
   /**
@@ -10916,7 +11113,7 @@ private:
     const int triangleCount = static_cast<int>(meshTriangles_.size() / 3);
     auto corner = [&](int t, int k) { return static_cast<int>(meshTriangles_[3 * t + k]); };
     std::vector<int> hybridOf;
-    std::vector<MeshHybridRegion> regions = hybridRegions(seg, hybridOf);
+    std::vector<MeshHybridRegion> regions = hybridRegions(seg, tolerance, hybridOf);
     const int regionCount = static_cast<int>(regions.size());
     // The boundary chains (slice D3), once: an exploded region stays a region
     // (its triangles one facet island), so they only stop being candidates.
