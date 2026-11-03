@@ -7125,8 +7125,13 @@ private:
   /** How many segments on along a plane's loop slice D12 looks for a fold. */
   static constexpr int MESH_FOLD_REACH = 8;
 
-  /** A folded plane keeps the triangles whose nodes lie within this share of the tolerance of it (slice D12). */
+  /**
+   * A folded plane keeps the triangles whose nodes lie within this share of
+   * the tolerance of it, then a tenth of that while it still folds, up to
+   * MESH_FOLD_ROUNDS times (slice D12).
+   */
   static constexpr double MESH_FOLD_OFF = 0.1;
+  static constexpr int MESH_FOLD_ROUNDS = 3;
 
   /** The least-squares plane through `nodes`, its normal on the side of `outward`. */
   MeshFit fitMeshPlane(const std::vector<int>& nodes, const gp_XYZ& outward) const {
@@ -8865,45 +8870,111 @@ private:
     // wall lower than the tolerance (the wall's triangles are another
     // region's), and the start of the rounds beyond it, so its outline runs
     // along the wall's foot and back along its top, which project onto one
-    // line: the loop folds over itself within a few edges, and the face is
-    // invalid. In such a plane, the triangles with a node farther than
-    // MESH_FOLD_OFF times the tolerance from it leave it and become facets,
-    // and the regions are made again: the plane's outline then runs where
-    // the floor ends. (Built folded, with the notch filled, the face's
-    // outline would stand up to the tolerance off its plane all round, and
-    // the solid's volume came out 2 % low.)
-    std::set<int> folded;
-    for (size_t r = 0; r < out.size(); ++r) {
-      const MeshHybridRegion& region = out[r];
-      if (region.kind != 0 || !region.why.empty()) continue;
-      for (const std::vector<int>& loop : region.loops) {
-        std::vector<gp_Pnt2d> uv(loop.size());
-        for (size_t i = 0; i < loop.size(); ++i) uv[i] = region.chart.uv(gp_Pnt(meshNode(loop[i])));
-        bool fold = false;
-        for (size_t i = 0; i < uv.size() && !fold; ++i) fold = meshLoopFolds(uv, static_cast<int>(i));
-        if (fold) {
-          folded.insert(static_cast<int>(r));
-          break;
+    // line: the loop folds over itself within a few edges. Where the face,
+    // built alone, is invalid too, the plane's triangles with a node farther
+    // than MESH_FOLD_OFF times the tolerance from it leave it and become
+    // facets, and the regions are made again (a tenth of that, while it still
+    // folds): its outline then runs where the floor ends. (Built folded with
+    // the notch filled instead, the face's outline stood up to the tolerance
+    // off its plane all round, and the solid's volume came out 2 % low.)
+    auto foldedPlanes = [&] {
+      std::set<int> folded;
+      for (size_t r = 0; r < out.size(); ++r) {
+        const MeshHybridRegion& region = out[r];
+        if (region.kind != 0 || !region.why.empty()) continue;
+        for (const std::vector<int>& loop : region.loops) {
+          std::vector<gp_Pnt2d> uv(loop.size());
+          for (size_t i = 0; i < loop.size(); ++i) uv[i] = region.chart.uv(gp_Pnt(meshNode(loop[i])));
+          bool fold = false;
+          for (size_t i = 0; i < uv.size() && !fold; ++i) fold = meshLoopFolds(uv, static_cast<int>(i));
+          if (fold) {
+            if (!meshPlaneFaceValid(region)) folded.insert(static_cast<int>(r));
+            break;
+          }
         }
       }
-    }
-    if (folded.empty()) return out;
-    const int unfitChart = static_cast<int>(chartOf.size());
-    chartOf.push_back(MeshChart());
-    int moved = 0;
-    for (int r : folded) {
-      const MeshSurface& plane = seg.surfaces[out[r].surface];
-      for (int t : out[r].triangles) {
-        double off = 0;
-        for (int k = 0; k < 3; ++k) off = std::max(off, distanceToSurface(plane, meshNode(corner(t, k))));
-        if (off <= MESH_FOLD_OFF * tolerance) continue;
-        label[t] = 0;
-        surfaceOf[t] = -1;
-        chartIndex[t] = unfitChart;
-        ++moved;
+      return folded;
+    };
+    int unfitChart = -1;
+    double bar = MESH_FOLD_OFF * tolerance;
+    for (int round = 0; round < MESH_FOLD_ROUNDS; ++round, bar /= 10) {
+      const std::set<int> folded = foldedPlanes();
+      if (folded.empty()) break;
+      if (unfitChart < 0) {
+        unfitChart = static_cast<int>(chartOf.size());
+        chartOf.push_back(MeshChart());
       }
+      int moved = 0;
+      for (int r : folded) {
+        const MeshSurface& plane = seg.surfaces[out[r].surface];
+        for (int t : out[r].triangles) {
+          double off = 0;
+          for (int k = 0; k < 3; ++k) off = std::max(off, distanceToSurface(plane, meshNode(corner(t, k))));
+          if (off <= bar) continue;
+          label[t] = 0;
+          surfaceOf[t] = -1;
+          chartIndex[t] = unfitChart;
+          ++moved;
+        }
+      }
+      if (moved > 0) out = build();
     }
-    return moved > 0 ? build() : out;
+    return out;
+  }
+
+  /**
+   * Slice D12: whether a plane region's face, built alone from its loops as
+   * polylines (an edge per mesh edge, its tolerance the nodes' distance from
+   * the plane), checks valid. A fold the check passes stays as it is.
+   */
+  bool meshPlaneFaceValid(const MeshHybridRegion& region) const {
+    BRep_Builder builder;
+    const Handle(Geom_Surface) surface = region.chart.surface();
+    TopoDS_Face face;
+    builder.MakeFace(face, surface, Precision::Confusion());
+    std::unordered_map<int, TopoDS_Vertex> vertices;
+    auto vertexOf = [&](int n) {
+      TopoDS_Vertex& v = vertices[n];
+      if (v.IsNull()) builder.MakeVertex(v, gp_Pnt(meshNode(n)), Precision::Confusion());
+      return v;
+    };
+    try {
+      for (const std::vector<int>& loop : region.loops) {
+        TopoDS_Wire wire;
+        builder.MakeWire(wire);
+        for (size_t i = 0; i < loop.size(); ++i) {
+          const int a = loop[i], b = loop[(i + 1) % loop.size()], lo = std::min(a, b), hi = std::max(a, b);
+          const gp_Pnt p(meshNode(lo)), q(meshNode(hi));
+          const double length = p.Distance(q);
+          if (length <= 0) return false;
+          TopoDS_Edge edge;
+          builder.MakeEdge(edge, new Geom_Line(p, gp_Dir(q.XYZ() - p.XYZ())), Precision::Confusion());
+          builder.Add(edge, vertexOf(lo).Oriented(TopAbs_FORWARD));
+          builder.Add(edge, vertexOf(hi).Oriented(TopAbs_REVERSED));
+          builder.Range(edge, 0, length);
+          NCollection_Array1<gp_Pnt2d> poles(1, 2);
+          poles(1) = region.chart.uv(p);
+          poles(2) = region.chart.uv(q);
+          NCollection_Array1<double> knots(1, 2);
+          knots(1) = 0;
+          knots(2) = length;
+          NCollection_Array1<int> mults(1, 2);
+          mults(1) = mults(2) = 2;
+          const double off = std::max(region.chart.value(poles(1).X(), poles(1).Y()).Distance(p),
+                                      region.chart.value(poles(2).X(), poles(2).Y()).Distance(q));
+          const double tolerance = std::max(off * 1.1, HYBRID_EDGE_TOLERANCE_MIN);
+          builder.UpdateEdge(edge, new Geom2d_BSplineCurve(poles, knots, mults, 1), surface, TopLoc_Location(), tolerance);
+          builder.UpdateVertex(vertexOf(lo), tolerance);
+          builder.UpdateVertex(vertexOf(hi), tolerance);
+          builder.Add(wire, a == lo ? edge : TopoDS::Edge(edge.Reversed()));
+        }
+        wire.Closed(true);
+        builder.Add(face, wire);
+      }
+      return BRepCheck_Analyzer(face).IsValid();
+    } catch (const Standard_Failure&) {
+      return false;
+    }
   }
 
   /**
