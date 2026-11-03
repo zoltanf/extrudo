@@ -3518,3 +3518,49 @@ in two, so it round-trips (slice D11)". The OCCT input hash went `c33d3ca582fe` 
 
 **Left.** Absorbed steps (386 facets), edge tolerance on wrapped charts (375), sliver holes (84), micro zigzags (26),
 and spool-screw-v4.1's two regions invalid after unify.
+
+### Amendment, 2026-11-03: holes that touch each other (slice D11 follow-up)
+
+**Finding.** makita-vacuum-holder's torus with 5 wires and 1 shared vertex (face 1027 in the Q3.1 table) was left
+whole because its shared vertex lies between two holes, not on the outer wire: probe `Q26TOUCH=1` (spike case `f`,
+Auto, the 2026-11-01b facade) shows wires 1 and 2 sharing (67.38, 11.66, 0.68), both with `outer 0`.
+`cutTouchingLoops` only looked for a hole that shares a vertex with the outer wire.
+
+**Rule.** No face on a periodic surface leaves the hybrid with two wires that share a vertex: a hole and the outer
+wire, or two holes. `cutTouchingLoops` now flags a face when any vertex is in two of its wires. For two holes H1, H2
+sharing n, `cutTouchingFace` cuts from a vertex h1 of H1 (farthest from n first) to a vertex h2 of H2 (nearest to h1
+first) that it sees, the same straight (u, v) edge as before: P = H2 from h2 to n, H1 from n to h1, the cut; L = H1
+from h1 to n, H2 from n to h2, the cut back. The one with positive signed (u, v) area (the wedge the cut closes off) is
+a face of its own, the other a hole of the rest with the outer wire; each passes n once. The face's other holes go to
+the piece that holds the midpoint of their first edge (it used to be their first vertex, which can be the shared one).
+Both pieces must check valid, as before.
+
+**Rejected.** A cut from H1 to the outer wire alone: the cut would be used twice in one wire (a slit, what
+`BRepFeat_SplitShape` gave in slice D11). Two cuts, one from each hole to the outer wire: it needs both holes to see
+the outer wire and adds an edge; the hole-to-hole cut is local. Running `cutTouchingLoops` after the exact rebuild too:
+the corpus's only exact-rebuild case, mms-flat-stand's cylinder and cone (Q3.1 table), has holes of one closed circle
+edge whose only vertex is the shared one, so no cut exists without splitting an edge the neighbour face shares (which
+D11 rejected); the call cut nothing and was dropped. Those two faces keep their touching loops and read back valid.
+
+**Results.** makita-vacuum-holder 3336 → 3337 faces (5 → 6 tori), body valid. The corpus sweep at Auto against
+`baseline-2026-11-01b-auto.jsonl` passes (63 passed, 1 skipped) and only makita moves (faces; its round trip fails as
+before, see below; the run is `baseline-2026-11-03-touching-holes-auto.jsonl`):
+
+    2026-11-01b:  files 41, prismatic converted 36 refused 5, faceted converted 26 refused 15, prismatic faces 22569, prismatic facets 12565, prismatic ms 264862, faceted ms 107397, round trips failed 7
+    2026-11-03:   files 41, prismatic converted 36 refused 5, faceted converted 26 refused 15, prismatic faces 22570, prismatic facets 12565, prismatic ms 272785, faceted ms 108644, round trips failed 7
+
+The time difference is the shared machine (faceted, unchanged, moved +1.2 %). After the change the spike's
+`Q26TOUCH=1` table over the corpus lists no periodic face of a hybrid body with touching wires; only mms-flat-stand's
+two exact-rebuild faces remain.
+
+**makita's own round-trip failure** (unchanged by this fix): on the kernel's staged mesh (`MESH_OUT`, then spike case
+`f`, `Q26NAMED=1 Q26CONE=1`) the read-back has one face more than the body, a cone face around the apex of the cone at
+(66.23, 82.55, 33.73) bounded by its degenerated apex edge alone (its wire doesn't close in (u, v)). The body has that
+cone as two faces of half a turn each (u 0.71..3.85 and 3.85..6.99) on one surface; the edge they share at u 0.71 ≡ 6.99
+carries two pcurves 2π apart, so it is stored like a seam (`BRep_Tool::IsClosed` on the face), and the reader builds
+the extra face from it. The mirror cone at x −66.23 has the same layout and reads back. Not fixed here (a surface copy
+per face or one face per such surface, in the unify path).
+
+Test: `mesh-to-solid.test.ts` "cuts a boss wall whose two dimples touch each other at a node in two, so it round-trips
+(slice D11, 2026-11-03)" (fails on the old WASM: one wall face, not two). The OCCT input hash went `3d788da00513` →
+`5c49315827d6`. Probe output and the corpus table: `docs/plans/m2s-exploded-q1-2026-11-01.md` §Q3.3.

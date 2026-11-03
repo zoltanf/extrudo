@@ -920,6 +920,11 @@ end to end, faster than in established desktop CAD.
     every STEP path now hands it a copy with direct faces and forward wires
     when an indirect face has a seam, and a test checks every edge's two uses
     in the written text.
+  - STEP round trip: a cone the hybrid leaves as two half-turn faces on one
+    surface reads back with an extra, invalid face at its apex (their shared
+    edge has two pcurves 2π apart, like a seam): makita-vacuum-holder's own
+    round-trip failure (ADR-0097's 2026-11-03 amendment). One face per such
+    surface, or a surface copy per face, in the unify path.
   - ~~Section analysis on several planes, a section box~~ **done
     (P4-12, 2026-10-06, ADR-0045's amendment: up to three planes, a box of
     six)**; sections saved with named views, a hatch per material (ADR-0045).
@@ -1205,6 +1210,8 @@ end to end, faster than in established desktop CAD.
   amendment). Left of the exploded regions' facets: absorbed steps 386, edge
   tolerance on wrapped charts 375, sliver holes 84, micro zigzags 26, and
   spool-screw-v4.1's two regions invalid after unify.
+  *2026-11-03:* two holes that touch each other on a periodic face are cut
+  too (makita-vacuum-holder's torus; ADR-0097's 2026-11-03 amendment).
 
 ## Phase 5 — Programmatic design (→ v0.6)
 

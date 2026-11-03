@@ -711,3 +711,70 @@ round boss r 5, 0.06 mm high at T 0.1 converts exactly as six planes (the segmen
 plane: Q1.3's absorbed step), and at 0.15 mm it is a cylinder by region growing, not by the new rule.
 
 OCCT WASM: the input hash went `c7ba43be3df2` (run 2) → `5d22216cd3d7`, published by CI 41271268117.
+
+### Q3.3 (2026-11-03): makita-vacuum-holder's touching torus
+
+Probe `Q26TOUCH=1`, spike case `f`, Auto, the 2026-11-01b facade (the spike's `q26 touch` line now says whether the
+wire is the face's outer one):
+
+    prismatic 3336 faces: 3074 plane 237 cyl 8 cone 12 sphere 5 torus, valid 1, volume 378801 / mesh 378824 = 0.999939
+    q26 touch written face 1715 kind Torus uper 1 vper 1 uspan 0.778594 vspan 1.21931 seams 0 wires 5 outer 0 vertex 67.3794,11.6557,0.679272 tol 0.0109589 wire 1 du 0.130848 dv 0.510132 valid 1 splitvalid 0 pcurves (6.174039, 1.919864) (6.174039, 1.919864)
+    q26 touch written face 1715 kind Torus uper 1 vper 1 uspan 0.778594 vspan 1.21931 seams 0 wires 5 outer 0 vertex 67.3794,11.6557,0.679272 tol 0.0109589 wire 2 du 0.130848 dv 0.510132 valid 1 splitvalid 0 pcurves (6.174039, 1.919864) (6.174039, 1.919864)
+
+(Q3.1's face 1027; the spike numbers faces in explorer order.) The shared vertex is between holes 1 and 2, neither the
+outer wire: case (a), not detected. With the hole-to-hole cut (ADR-0097's 2026-11-03 amendment):
+
+    prismatic 3337 faces: 3074 plane 237 cyl 8 cone 12 sphere 6 torus, valid 1, volume 378801 / mesh 378824 = 0.999939
+    q26 back valid 1 faces 3337
+
+and no periodic face of makita's with touching wires (one plane is left, as planes are). The corpus (case `F`, Auto,
+`Q26TOUCH=1 Q26NAMED=1`, the new facade), faces whose wires share a vertex, per file and kind:
+
+| file | kind | faces |
+|---|---|---|
+| own/numbers-base-top | plane | 5 |
+| own/puzzle-base-circle | plane | 2 |
+| own/spool-screw-v4.1 | plane | 9 |
+| own/trashcan-repair-foot | plane | 2 |
+| third-party/gear-bearing-5 | plane | 2 |
+| third-party/makita-vacuum-holder | plane | 1 |
+| third-party/micro-sd-keyring-outer | plane | 3 |
+| third-party/mms-flat-stand | plane | 18 |
+| third-party/mms-flat-stand | cylinder (face 28, exact rebuild) | 1 |
+| third-party/mms-flat-stand | cone (face 29, exact rebuild) | 1 |
+
+mms-flat-stand's two curved faces come from the exact rebuild (Q3.1's table has them), which `cutTouchingLoops` doesn't
+run on. Each has two holes of one closed circle edge whose only vertex is on the outer wire (instrumented build: hole
+`BRepTools_WireExplorer` uses 0, `TopExp` edges 1, a circle), so no cut between existing vertices exists; a call after
+the exact rebuild cut nothing and was dropped. Both read back valid.
+
+The spike's read-back fails on whiteboard-tray-v5 (a plane, 7 wires) and sock-clips-6x (a plane, 1 wire); both pass
+the sweep's round trip, which converts the kernel's staged mesh; the spike reads the STL itself, and its nodes
+probably differ slightly from the kernel's weld (not checked), so its round trips aren't the sweep's.
+
+**Sweep** (Auto, against 2026-11-01b; `baseline-2026-11-03-touching-holes-auto.jsonl`): 63 passed, 1 skipped.
+
+    2026-11-01b:  files 41, prismatic converted 36 refused 5, faceted converted 26 refused 15, prismatic faces 22569, prismatic facets 12565, prismatic ms 264862, faceted ms 107397, round trips failed 7
+    2026-11-03:   files 41, prismatic converted 36 refused 5, faceted converted 26 refused 15, prismatic faces 22570, prismatic facets 12565, prismatic ms 272785, faceted ms 108644, round trips failed 7
+
+| file | faces | cuts | facets | round trip (read back valid, faces) | ms |
+|---|---|---|---|---|---|
+| third-party/makita-vacuum-holder | 3336 → 3337 | 1 | 2516 | no, 3337 → no, 3338 (0 solids, as before) | 8719 → 10023 |
+
+No other file moves on any column; the times are the shared machine (faceted, unchanged, +1.2 %).
+
+**makita's own round-trip failure** ("31c's own"). On the kernel's staged mesh (`MESH_OUT`, then spike case `f` on the
+`.mesh`, `Q26NAMED=1 Q26CONE=1`) the read-back's one extra face is invalid:
+
+    q26 back valid 0 faces 3338
+    q26 back invalid face 3337 kind Cone wires 1
+    q26 face back Cone orient 0 u 0..6.2831853 v 0..0 tol 1e-07 status own27
+    q26 face back cone r 0 semi 1.3533905 apex 66.23082,82.551102,33.730818 at 66.23082,82.551102,33.730818 axis -0.36183684,-0.85915673,-0.36183397
+    q26 face back wire orient 0 status 28
+    q26 face back  edge 1 orient 0 closed 0 degen 1 tol 1e-07 pc (0, 0) -> (6.2831853, 0) status
+
+A cone face made of its degenerated apex edge alone, on the cone that the body has as two faces of half a turn (u
+0.71..3.85 and 3.85..6.99) on one surface. Their shared edge at u 0.71 ≡ 6.99 has a pcurve for each face, 2π apart,
+so it is stored like a seam (`BRep_Tool::IsClosed` is true for it on the face u 0.71..3.85), and the reader builds the
+extra apex face from it. The mirror cone at x −66.23 has the same two-halves layout and reads back. The fix belongs in
+the unify path (one face per such surface, or a surface copy per face), not in the cut: not built here.
