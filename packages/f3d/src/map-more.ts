@@ -361,15 +361,16 @@ export function moveBodies(d: Design, f: F3dMove, context: CopyContext): string 
  * A modeled thread on cylindrical faces, at the file's major diameter and
  * pitch with no clearance (the file's diameters are the thread's own).
  * Extrudo's tooth is the 60° ISO profile: a 55° pipe thread comes out a
- * little deeper. The file first resizes the face to the thread's crest;
- * Extrudo cuts the thread into the face as it is, so a hole wider than the
- * thread is left out.
+ * little deeper. The file resizes the face to the thread's crest; Extrudo
+ * fills a wider hole in (or builds a thinner shaft up) to it along the
+ * thread (ADR-0056's fifth amendment), so the thread is imported as drawn,
+ * at the file's diameters.
  */
 export function thread(
   d: Design,
   f: F3dThread,
-  /** The Extrudo name of a face, and its sketch circle's radius (cm) where known. */
-  faceName: (face: F3dFace) => { id: string; radius?: number | undefined } | undefined,
+  /** The Extrudo name of a face. */
+  faceName: (face: F3dFace) => string | undefined,
   expressionOf: (p: ParameterValue, negate?: boolean) => string,
   report: ImportReport,
 ): string | undefined {
@@ -377,11 +378,8 @@ export function thread(
   const faces: GeomRef[] = [];
   for (const face of f.faces) {
     const named = faceName(face);
-    if (!named || faces.some((r) => r.id === named.id)) continue;
-    // The file resizes the face to the thread; Extrudo only cuts into it.
-    if (!spec.external && named.radius !== undefined && named.radius >= spec.major / 2)
-      return 'its hole is wider than the thread (the file fills it in to the thread first)';
-    faces.push({ kind: 'face', id: named.id });
+    if (!named || faces.some((r) => r.id === named)) continue;
+    faces.push({ kind: 'face', id: named });
   }
   if (faces.length === 0)
     return f.faces.length === 0 ? 'its face was not found' : 'its face could not be named';

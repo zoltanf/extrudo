@@ -287,8 +287,9 @@ them; the decoders are `decode/copies.ts`, `decode/sweep.ts` and
    diameters), full length or a length from an offset. The file resizes the
    face to the thread (a shaft's to the major diameter, a hole's to the
    minor), so the face is found as the sketch circle of the side nearest that
-   crest, not by the B-rep's radius. A thread in a hole wider than the thread
-   is skipped (the file fills the hole in first; Extrudo only cuts). 55° pipe
+   crest, not by the B-rep's radius; Extrudo fills a wider hole in (or builds
+   a thinner shaft up) to it along the thread (ADR-0056's fifth amendment),
+   so the thread imports as drawn. 55° pipe
    threads get Extrudo's 60° profile, with a note. Every thread in the corpus
    is modeled; a cosmetic flag was not found, so a cosmetic thread would be
    cut too.
@@ -1708,3 +1709,14 @@ deletions that fail (the bumper) goes from 28 deletions in the timeline, 23 of
 them errored, to 5 in the timeline and 23 listed in the notice; its replayed
 volume stays 7095.8 mm³ and its body stays frozen. No other design drops a
 step.
+
+## Amendment, 2026-11-03: a thread on a hole wider than the thread
+
+A thread on a hole wider than the thread imports as drawn, at the file's
+diameters (item 4 above): the mapping no longer skips it. Extrudo fills a
+wider hole in to the thread's crest along the thread before the cut
+(ADR-0056's fifth amendment, its 2026-11-03 addendum), which is what the
+file's own resize of the hole did, so `map-more.ts`'s `thread()` no longer
+skips a hole at or past half the thread's major diameter, and the face name's
+radius (only the skip read it) is gone. `map-more.test.ts` imports the
+washer's M4 in its Ø4.2 hole instead of leaving it out.

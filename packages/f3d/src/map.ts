@@ -805,10 +805,7 @@ export function f3dToDesign(
         const reason = thread(
           d,
           feature,
-          (face) => {
-            const id = faceName(face, naming, undefined, crest);
-            return id ? { id, radius: sideRadius(id, naming) } : undefined;
-          },
+          (face) => faceName(face, naming, undefined, crest),
           expressionOf,
           report,
         );
@@ -2464,20 +2461,6 @@ function faceNameIn(
 }
 
 /** The named edge of a fillet or chamfer nearest a point (cm), by its geometry. */
-/** The radius (cm) behind an imported extrude's side face name, or a hole's wall. */
-function sideRadius(name: string, naming: FaceNaming): number | undefined {
-  const w = /^hole:([^:]+):side:[^.]+\.wall$/.exec(name);
-  if (w) for (const h of naming.holes.values()) if (h.id === w[1]) return h.diameter / 2;
-  const m = /^extrude:([^:]+):side:(.+)$/.exec(name);
-  if (!m) return undefined;
-  for (const ex of naming.extrudes.values()) {
-    if (ex.id !== m[1]) continue;
-    const c = ex.sketch.curves.get(m[2] as string);
-    return c && 'center' in c ? c.radius : undefined;
-  }
-  return undefined;
-}
-
 /** cm: rounds whose edges lie this close alike to a face are a tie (a face merged from several). */
 const GAP_TIE = 1e-4;
 
