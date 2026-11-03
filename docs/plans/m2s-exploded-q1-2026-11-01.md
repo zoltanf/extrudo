@@ -778,3 +778,73 @@ A cone face made of its degenerated apex edge alone, on the cone that the body h
 so it is stored like a seam (`BRep_Tool::IsClosed` is true for it on the face u 0.71..3.85), and the reader builds the
 extra apex face from it. The mirror cone at x −66.23 has the same two-halves layout and reads back. The fix belongs in
 the unify path (one face per such surface, or a surface copy per face), not in the cut: not built here.
+
+## Run 4 (D12): the remaining facet sources
+
+2026-11-03, ADR-0097 slice D12. Spike runs on the staged meshes in `/tmp/m2s-exploded/meshes/` at Auto (`Q26=1`;
+`D12=<mm²>` prints the faces over that area with their planes, `D12V=1` their vertices' distance from them), then the
+kernel sweep. "Before" is the 2026-11-01b facade (its spike run gives the sweep's numbers file for file).
+
+**Exploded regions by reason, before → after** (all files, the refused whiteboard-tray-v5 included; facets are the
+regions' own):
+
+| reason, kind | before: regions / triangles / facets | after |
+|---|---|---|
+| an inner loop runs the wrong way, plane (sliver holes) | 2 / 472 / 84 | 0 |
+| invalid face, plane (absorbed steps, micro zigzags) | 13 / 6456 / 445 | 2 / 1108 / 2 (gear-bearing-5 0 and 152) |
+| edge tolerance (wrapped charts): cone / sphere / torus / cylinder | 18 / 312 / 157; 36 / 150 / 97; 13 / 165 / 119; 1 / 4 / 2 | the same |
+| invalid after unify: plane / cylinder / cone | 2 / 563 / 29; 2 / 113 / 58; 1 / 285 / 168 | the same |
+| invalid face, cylinder / torus | 1 / 574 / 50; 10 / 142 / 100 | the same |
+| its outer loop runs the wrong way | 12 / 201 / 152 | the same |
+
+**Per source, spike at Auto** (faces, facets, ms; before → after):
+
+| source | file | faces | facets | ms |
+|---|---|---|---|---|
+| sliver holes (rule 1) | hot-wheels-connector | 2015 → 1928 | 1833 → 1745 | 2812 → 1690 |
+| absorbed steps (rule 2) | phone-stand-foldable | 983 → 868 | 403 → 287 | 4390 → 4287 |
+| absorbed steps (rule 2) | whiteboard-tray-v5 | refused → 2586 | → 1900 | 56857 → 18934 |
+| micro zigzags | gear-bearing-5 | 2304 → 2304 | 1418 → 1418 | 13009 → 14374 |
+| wrapped charts | (not built) | | | |
+| invalid after unify | spool-screw-v4.1 | 1421 → 1419 | 256 → 256 | 50335 → 51505 |
+
+Rule 1 also moved battery-power-adapter (587 → 581 faces), kuglbahn-pillar-base (3882 → 3880, facets 3348 → 3346)
+and makita-vacuum-holder (3336 → 3335).
+
+**Absorbed steps, the variants** (phone-stand-foldable, Auto 0.1 mm):
+
+| variant | faces | facets | volume ratio |
+|---|---|---|---|
+| before | 983 | 403 | 0.99919 |
+| steep triangles (> 60°) out of the plane, if they touch its outline | 983 | 403 (none moved: the wall is another region's) | 0.99919 |
+| fill the notch: a steep triangle with two edges on the folded plane, nodes within T, joins it | 667 | 86 | 0.97840 |
+| the same, the mesh moved to its centroid / by (100, 100, 0) | 674 / 679 | | 0.98046 / 0.98406 (before: 1.00134 / 1.00511) |
+| off-plane triangles (> 0.1 T) of a folded plane to facets (built) | 868 | 287 | 0.99867 |
+
+Filling the notch builds the three planes but leaves their outlines up to 0.09 mm off the plane all round (the D12V
+probe: vertices 0.0904 off); the 2 % volume deficit holds wherever the mesh sits, so it is the B-rep's, not the
+volume integral's origin. On a synthetic plate with a rounded ledge under one corner (the test's `plateWithLedge`, with
+`bossWithBump` beside it), the off-plane rule without the alone check gave 3 facets where the folded face built valid
+(0 before), hence `meshPlaneFaceValid`; with the ledge's foot as one long edge (the test's version) the face fails
+alone, the first bar (0.1 T) still folds, the second fixes it: 6 → 5 facets.
+
+**Micro zigzags.** gear-bearing-5 0's outline passes nodes 5830 and 5831, 1.8e-5 mm apart; their edge is also an
+edge of 16557, a standing sliver of the wall (3.4e-5 mm², its third node at z 3.7). Merging the nodes would change
+the wall region's outline as well; not done. The four 6-triangle regions (0.097 mm off their planes, folded) are
+taken out by rule 2: the same facets.
+
+**spool-screw-v4.1.** BRepCheck on regions 214 (cone, split at 5 nodes, 6 wires) and 271 (cylinder, split at 1
+node, 2 wires): valid as built, valid once every face is built, valid in the cells before and after
+`ShapeFix_Solid`; after unify and healing, both fail at face level with `IntersectingWires`. Tried: unify again with
+both faces' edges kept (`KeepShape`, in place, +2.4 s): still invalid after healing; `cutTouchingLoops` before the
+explosion: it refuses both (no valid cut). Stage times at Auto: unify 11.0 s and healing 6.2–6.7 s per attempt, so
+the second attempt is about 20 s of the 44–50 s. Left.
+
+**Sweep** (`TOL=auto`, against `baseline-2026-11-01b-auto.jsonl`, written to `baseline-2026-11-03-auto.jsonl`;
+`Tests 63 passed | 1 skipped`; totals recomputed from the JSONL):
+
+    2026-11-01b:  files 41, prismatic converted 36 refused 5, faceted converted 26 refused 15, prismatic faces 22569, prismatic facets 12565, prismatic ms 264862, faceted ms 107397, round trips failed 7
+    2026-11-03:   files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24942, prismatic facets 14259, prismatic ms 232772, faceted ms 107193, round trips failed 7
+
+The per-file table is in ADR-0097's 2026-11-03 amendment. OCCT WASM: the input hash went `3d788da00513` →
+`1076701bd590`, published by CI 41686876602.

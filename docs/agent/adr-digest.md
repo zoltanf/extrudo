@@ -3497,6 +3497,23 @@ square to their facets.** `extrudo_facade.cpp` (`meshLoops`, `meshFanLoops`, `Me
   noise as Auto's starting rung (it measures creases on CAD meshes), refitting degenerate planes within T (none fits).
 Numbers in ADR-0097's 2026-11-01 amendment; all tables in `docs/plans/m2s-exploded-q1-2026-11-01.md`.
 
+**ADR-0097 slice D12 (2026-11-03): sliver islands, folded planes.** `extrudo_facade.cpp` (`hybridRegions`,
+`meshLoopFolds`, `meshPlaneFaceValid`, `MESH_FOLD_REACH`, `MESH_FOLD_OFF`, `MESH_FOLD_ROUNDS`); probe `D12`/`D12V` in
+`spikes/stl-to-solid/prismatic.cpp`. Rules:
+- A piece of another label inside one recognised piece (every outline edge borders it), of less area than T times its
+  outline, its nodes within T of that surface, joins the piece (no 3-edge wrong-way hole from an inverted sliver).
+- A plane region whose loop folds (crosses or touches itself within 8 segments) and whose face, built alone from
+  polylines, fails BRepCheck loses its triangles with a node more than 0.1 T off the plane (then 0.01 T, 0.001 T while
+  it still folds) to facets, and the regions are made again. A fold that checks valid alone stays. Don't fill the
+  notch instead (the outline stands off the plane and the volume came out 2 % low).
+- Measured, not built: merging micro-zigzag nodes (the edge is the wall sliver's too), re-centring wrapped charts
+  (most don't wrap; the makita cones are fits), keeping spool-screw-v4.1's split faces' edges through unify (still
+  invalid after healing).
+- Tests: `mesh-to-solid.test.ts` "keeps a plane whole round an inverted sliver of another region inside it (slice
+  D12)", "takes the off-plane triangles out of a plane whose outline folds over a low wall (slice D12)". Sweep
+  baseline from here on: `baseline-2026-11-03-auto.jsonl` (`prismatic converted 37 refused 4, prismatic faces 24942,
+  prismatic facets 14259, prismatic ms 232772, round trips failed 7`). Numbers in ADR-0097's 2026-11-03 amendment.
+
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
 facade `removeFaces` with `BRepAlgoAPI_Defeaturing`). Rules: **all or nothing** (any

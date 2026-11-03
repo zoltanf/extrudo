@@ -4484,6 +4484,38 @@ static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
   }
   std::cout << "   prismatic " << f.count(h, 0) << " faces:" << kinds(s) << ", valid " << BRepCheck_Analyzer(s).IsValid() << ", volume "
             << v << " / mesh " << meshVolume << " = " << v / meshVolume << " (" << ms << " ms)" << std::endl;
+  if (getenv("D12") && *getenv("D12")) {
+    // Slice D12: every face over D12 mm² (default 50): its kind, area, a plane's normal, offset and centre (its
+    // "volume", BRepGProp's volume properties of the lone face, means nothing on its own).
+    const double bar = std::atof(getenv("D12")) > 0 ? std::atof(getenv("D12")) : 50;
+    for (TopExp_Explorer e(s, TopAbs_FACE); e.More(); e.Next()) {
+      const TopoDS_Face& face = TopoDS::Face(e.Current());
+      GProp_GProps area, vol;
+      BRepGProp::SurfaceProperties(face, area);
+      if (area.Mass() < bar) continue;
+      BRepGProp::VolumeProperties(face, vol);
+      const BRepAdaptor_Surface surface(face, false);
+      std::cout << "   d12 face type " << surface.GetType() << " area " << area.Mass() << " volume " << vol.Mass();
+      if (surface.GetType() == GeomAbs_Plane) {
+        gp_Dir n = surface.Plane().Axis().Direction();
+        if (face.Orientation() == TopAbs_REVERSED) n.Reverse();
+        std::cout << " normal " << n.X() << "," << n.Y() << "," << n.Z() << " offset " << surface.Plane().Location().XYZ().Dot(n.XYZ())
+                  << " centre " << area.CentreOfMass().X() << "," << area.CentreOfMass().Y() << "," << area.CentreOfMass().Z();
+        double ca = 0, cb = 0, cc = 0, cd = 0;
+        surface.Plane().Coefficients(ca, cb, cc, cd);
+        std::cout << " coefficients " << ca << "," << cb << "," << cc << "," << cd << " location " << surface.Plane().Location().X()
+                  << "," << surface.Plane().Location().Y() << "," << surface.Plane().Location().Z();
+        if (getenv("D12V") && area.Mass() > 1000) {
+          // The face's own vertices' distance from its plane.
+          double worst = 0;
+          for (TopExp_Explorer v(face, TopAbs_VERTEX); v.More(); v.Next())
+            worst = std::max(worst, surface.Plane().Distance(BRep_Tool::Pnt(TopoDS::Vertex(v.Current()))));
+          std::cout << " vertices off " << worst;
+        }
+      }
+      std::cout << std::endl;
+    }
+  }
   if (getenv("Q26TOUCH") && *getenv("Q26TOUCH")) {
     // Q3.1 step 1: faces whose wires share a vertex, then the STEP read-back's invalid faces and split vertices.
     // Q26TOUCH=cut: the prototype cut first (spikeCutTouching), its body written instead.

@@ -3564,3 +3564,79 @@ per face or one face per such surface, in the unify path).
 Test: `mesh-to-solid.test.ts` "cuts a boss wall whose two dimples touch each other at a node in two, so it round-trips
 (slice D11, 2026-11-03)" (fails on the old WASM: one wall face, not two). The OCCT input hash went `3d788da00513` →
 `5c49315827d6`. Probe output and the corpus table: `docs/plans/m2s-exploded-q1-2026-11-01.md` §Q3.3.
+
+### Amendment, 2026-11-03: the remaining facet sources (slice D12)
+
+**The problem.** The 2026-11-01 amendment left five sources of exploded regions at Auto: absorbed steps (386 facets),
+edge tolerance on wrapped charts (375), sliver holes (84), micro zigzags (26), and spool-screw-v4.1's two regions
+invalid after unify. Each was measured with the spike (`Q26`, kernel-staged meshes) before any change; a new probe
+`D12=<mm²>` prints every face over that area with its plane, and `D12V=1` its vertices' distance from it.
+
+**What the absorbed steps are.** Not a ledge wall inside the plane, as briefed: the wall's triangles belong to another
+region (a tall wall whose low end meets the floor), and the plane took in the floor on both sides of it plus the
+start of the rounds beyond (phone-stand-foldable 53: the floor at y < 5, a round rising to 0.09 mm at y > 5, the wall
+y = 5 between them). Its outline runs along the wall's foot and back along its top, which project onto one line.
+Moving steep triangles (normal more than 60° off the plane's) out of phone-stand-foldable's three such planes moved none.
+
+**Decisions and their rules.**
+
+1. **Sliver islands** (`hybridRegions`, before the regions are made). A piece of another label whose every outline
+   edge borders one recognised piece, of less area than T times its outline's length, with every node within T of
+   that piece's surface, joins the piece. The plane keeps its outline instead of a 3-edge hole that is an inverted
+   sliver (hot-wheels-connector 33 and 141).
+2. **Folded planes** (`hybridRegions`, after the regions are made; `meshLoopFolds`, `meshPlaneFaceValid`). A plane
+   region whose loop crosses or touches itself within `MESH_FOLD_REACH` (8) segments, and whose face built alone
+   from its loops as polylines fails BRepCheck, loses its triangles with a node farther than `MESH_FOLD_OFF` (0.1)
+   times T from the plane: they become facets (an unfit chart) and the regions are made again; while such a plane
+   still folds, the bar drops to a tenth, up to `MESH_FOLD_ROUNDS` (3) rounds. The plane's outline then runs where the
+   floor ends. A fold whose face checks valid alone stays as it is (a synthetic ledge plate built valid folded, and
+   the rule without that check turned it into 3 facets).
+
+**Measured and not built.**
+
+- *Filling the notch instead* (a steep triangle with two edges on the folded plane and its nodes within T joins it,
+  round the notch): phone-stand-foldable 403 → 86 facets, but the plane's outline then stands up to T off its plane
+  all round and the solid's volume came out 2.2 % low (0.978; the same 2 % with the mesh moved, so not the volume
+  integral's origin). The off-plane rule keeps 0.9987.
+- *Micro zigzags* (gear-bearing-5 0 and 152, 554 triangles each): the floor's outline passes two nodes 2e-5 mm apart
+  whose edge is shared with a standing sliver triangle of the wall (16557, area 3e-5 mm², its third node 3.7 mm up).
+  Merging the two nodes would change the wall's region too; not done. The four 6-triangle regions are now facets by
+  rule 2 instead of exploded (the same 24 facets).
+- *Wrapped charts* (the "edge tolerance" regions: 68, 631 triangles, 375 facets): 18 are makita-vacuum-holder cones
+  of 17–18 triangles fitted to fillet patches (157 facets: a fit question, the torus work's); 36 are sphere regions,
+  33 of them of one or two triangles, all in micro-sd-keyring-inner; 39 of the 68 loops don't wrap the chart at all
+  (the probe's `wrap 0`), so a re-centred chart can't help them; the rest are small tori. A region that stays facets
+  costs the same, and a failed build of one returns before BRepCheck, so skipping it saves no measurable time.
+- *spool-screw-v4.1's two regions* (a cone split at 5 nodes, a cylinder at 1): valid when built, valid in the cells
+  before and after `ShapeFix_Solid`, invalid only after unify and healing, as `IntersectingWires` on the face.
+  Running unify again with their edges kept (`KeepShape`) leaves them invalid, and `cutTouchingLoops` finds no valid
+  cut for either; re-checking them once every face is built finds them valid. The second attempt stays (44 s in the
+  sweep, as before).
+
+**Results** (the sweep, `TOL=auto`, 41 files, against `baseline-2026-11-01b-auto.jsonl`, written to
+`baseline-2026-11-03-auto.jsonl`; it passes, no file worse on any column; totals recomputed from the JSONL):
+
+    2026-11-01b:  files 41, prismatic converted 36 refused 5, faceted converted 26 refused 15, prismatic faces 22569, prismatic facets 12565, prismatic ms 264862, faceted ms 107397, round trips failed 7
+    2026-11-03:   files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24942, prismatic facets 14259, prismatic ms 232772, faceted ms 107193, round trips failed 7
+
+Over the 36 files converted in both: faces 22,569 → 22,356, facets 12,565 → 12,359; the new totals add
+whiteboard-tray-v5 (2,586 faces, 1,900 facets). The same 7 files fail the round trip. The files that moved:
+
+| file | faces | facets | Auto step | round trip (read back valid, faces) | ms |
+|---|---|---|---|---|---|
+| own/battery-power-adapter | 587 → 581 | 0 → 0 | 0.1 | yes, 581 | 2728 → 2624 |
+| own/kuglbahn-pillar-base | 3882 → 3880 | 3348 → 3346 | 0.1 | yes, 3880 | 11380 → 10337 |
+| own/phone-stand-foldable | 983 → 868 | 403 → 287 | 0.1 | yes, 868 (the 1e-4 volume rule fails as before) | 4381 → 4244 |
+| own/spool-screw-v4.1 | 1421 → 1419 | 256 → 256 | 0.05 | yes, 1419 | 44064 → 44047 |
+| own/whiteboard-tray-v5 | refused → 2586 | → 1900 | → 0.02 | yes, 2586 | 42694 → 13999 |
+| third-party/hot-wheels-connector | 2015 → 1928 | 1833 → 1745 | 0.01 | yes, 1928 | 2902 → 1608 |
+| third-party/makita-vacuum-holder | 3336 → 3335 | 2516 → 2516 | 0.05 | no, 3337 → no, 3336 | 8719 → 8701 |
+
+The fixture pins of `mesh-to-solid-files.test.ts` don't move. Tests in `mesh-to-solid.test.ts`: "keeps a plane whole
+round an inverted sliver of another region inside it (slice D12)" and "takes the off-plane triangles out of a plane
+whose outline folds over a low wall (slice D12)". The OCCT input hash went `3d788da00513` → `1076701bd590`. Tables and
+runs: `docs/plans/m2s-exploded-q1-2026-11-01.md`, "Run 4 (D12)".
+
+**Left.** Micro zigzags (gear-bearing-5's two end faces, 2 facets), the wrapped charts (375 facets, mostly fits),
+spool-screw-v4.1's two regions (its second attempt), and the planes' regions still exploded for other reasons (the
+"its outer loop runs the wrong way" ones, 152 facets).
