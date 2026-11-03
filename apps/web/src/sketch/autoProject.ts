@@ -1,7 +1,8 @@
 /**
  * Auto-project (P6-07, FR-SK-17): the body edge or vertex under the pointer
  * while a sketch tool runs, so the tool can snap to it and the host can
- * project it (ADR-0074).
+ * project it (ADR-0074). Since ADR-0125 an earlier sketch's curve or point
+ * under the pointer is offered too, linked to that sketch.
  *
  * The pick runs through the model picker (`pickStack`) with a filter of edges
  * and vertices only, behind the sketch's own geometry (the inference is what
@@ -16,8 +17,24 @@
  * plane (the face a sketch is on, say) is offered too, when it is nearer the
  * cursor than the edge or vertex under the pointer; the host projects it as a
  * `center` projection of the face.
+ *
+ * ADR-0125: a second pick runs with a sketches-and-sketch-points filter for
+ * the earlier, shown sketches; its curves and points (`sketchCurve`,
+ * `sketchPoint`) carry the nearest point of the curve's display polyline into
+ * the open sketch. Of the body pick, the face centre and the sketch pick, the
+ * nearest to the cursor wins; a tie goes to the body, then the face centre.
  */
-import { type BodyId, type SketchFrame, type Vec2, type Vec3, worldToSketch } from '@extrudo/core';
+import {
+  type BodyId,
+  curvePolyline,
+  type FeatureId,
+  parseSketchEntityRefId,
+  type SketchFrame,
+  sketchToWorld,
+  type Vec2,
+  type Vec3,
+  worldToSketch,
+} from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import type { ModelSnap } from '@extrudo/sketch/inference';
 import { DEFAULT_FILTER, type SelectionFilter } from '../selection/filter';
@@ -38,12 +55,27 @@ const SNAP_FILTER: SelectionFilter = {
   sketchPoints: false,
 };
 
+/** The earlier sketches' curves, construction curves and points (ADR-0125). */
+const SKETCH_SNAP_FILTER: SelectionFilter = {
+  ...DEFAULT_FILTER,
+  bodies: false,
+  faces: false,
+  edges: false,
+  vertices: false,
+  sketches: true,
+  profiles: false,
+  construction: true,
+  sketchPoints: true,
+};
+
+const EMPTY_SKETCHES: ReadonlySet<FeatureId> = new Set();
+
 /**
- * The edge, vertex or face centre to offer a running tool, or `undefined`
- * when the auto-project preference is off (P6-07): off, the view offers no
- * body geometry at all and the Project tool is the only way to bring one in.
- * A face centre within `tolerance` (mm) of the cursor wins when it is nearer
- * than the pick (issue #140).
+ * The body edge, vertex, face centre or earlier-sketch curve or point to offer
+ * a running tool (P6-07, ADR-0125), or `undefined` when both auto-project
+ * preferences are off. The body pick and the face centre are gated by
+ * `autoProject`, the sketch pick by `autoProjectSketches`; of the candidates
+ * the nearest to the cursor wins, a tie to the body then the face centre.
  */
 export function autoProjectSnap(
   viewport: Pick<ViewportStore, 'getState'>,
@@ -54,14 +86,25 @@ export function autoProjectSnap(
   cursor: Vec2,
   bodies: Readonly<Record<BodyId, BodyMesh>>,
   tolerance: number,
+  earlier: ReadonlySet<FeatureId> = EMPTY_SKETCHES,
 ): ModelSnap | undefined {
-  if (!viewport.getState().autoProject) return undefined;
-  const pick = modelSnapAt(scene, camera, frame, at, cursor, bodies);
+  const state = viewport.getState();
+  const body = state.autoProject
+    ? modelSnapAt(scene, camera, frame, at, cursor, bodies)
+    : undefined;
   const shown = scene.bodies.map((b) => b.id);
-  const centre = faceCenterSnapAt(frame, cursor, tolerance, shown, bodies);
-  if (!centre) return pick;
+  const centre = state.autoProject
+    ? faceCenterSnapAt(frame, cursor, tolerance, shown, bodies)
+    : undefined;
+  const sketch = state.autoProjectSketches
+    ? sketchSnapAt(scene, camera, frame, at, cursor, earlier)
+    : undefined;
   const far = (s: ModelSnap) => Math.hypot(s.point[0] - cursor[0], s.point[1] - cursor[1]);
-  return pick && far(pick) < far(centre) ? pick : centre;
+  let best: ModelSnap | undefined;
+  for (const candidate of [body, centre, sketch]) {
+    if (candidate && (!best || far(candidate) < far(best))) best = candidate;
+  }
+  return best;
 }
 
 /** Off the plane by more than this (mm), a face isn't in it: the mesh is single precision. */
@@ -139,6 +182,74 @@ function planeFaceCentres(mesh: BodyMesh, frame: SketchFrame): [number, Vec2][] 
   return centres;
 }
 
+/** A source sketch's point (mm) carried into the open sketch's frame. */
+function carry(source: SketchFrame, frame: SketchFrame, p: Vec2): Vec2 {
+  return worldToSketch(frame, sketchToWorld(source, p));
+}
+
+/**
+ * A curve or point of an **earlier**, shown sketch under the pointer `at`
+ * (ADR-0125), as a `sketchCurve` or `sketchPoint` model snap. A point entity
+ * wins over a curve; within each, the nearest to `cursor` wins. A text is
+ * skipped; the snap point is the nearest point of the curve's display
+ * polyline carried into the open sketch's frame.
+ */
+export function sketchSnapAt(
+  scene: PickScene,
+  camera: PickCamera,
+  frame: SketchFrame,
+  at: readonly [number, number],
+  cursor: Vec2,
+  earlier: ReadonlySet<FeatureId>,
+): ModelSnap | undefined {
+  type Candidate = { snap: ModelSnap; point: Vec2 };
+  const points: Candidate[] = [];
+  const curves: Candidate[] = [];
+  const hits = pickStack(scene, camera, at, SKETCH_SNAP_FILTER).filter(
+    (h) => h.item.kind === 'sketchEntity',
+  );
+  for (const hit of hits) {
+    const id = hit.item.id;
+    const parsed = parseSketchEntityRefId(id);
+    if (!parsed || !earlier.has(parsed.feature)) continue;
+    const source = scene.sketches.find((s) => s.id === parsed.feature);
+    const entity = source?.data.entities[parsed.entity];
+    if (!source || !entity || entity.type === 'text') continue;
+    const ref = { kind: 'sketchEntity' as const, id };
+    if (entity.type === 'point') {
+      const point = carry(source.frame, frame, [entity.x, entity.y]);
+      points.push({ snap: { ref, point, kind: 'sketchPoint', straight: true }, point });
+      continue;
+    }
+    const polyline = curvePolyline(source.data, entity);
+    if (!polyline || polyline.length === 0) continue;
+    const carried = polyline.map((p) => carry(source.frame, frame, p));
+    const point = nearestOnPolyline(carried, cursor);
+    const line =
+      entity.type === 'line' && carried.length >= 2
+        ? ([carried[0], carried[carried.length - 1]] as [Vec2, Vec2])
+        : undefined;
+    curves.push({
+      snap: {
+        ref,
+        point,
+        kind: 'sketchCurve',
+        straight: entity.type === 'line',
+        ...(line && { line }),
+      },
+      point,
+    });
+  }
+  const nearest = (list: Candidate[]) =>
+    list.reduce<Candidate | undefined>((best, c) => {
+      if (!best) return c;
+      const d = Math.hypot(c.point[0] - cursor[0], c.point[1] - cursor[1]);
+      const bd = Math.hypot(best.point[0] - cursor[0], best.point[1] - cursor[1]);
+      return d < bd ? c : best;
+    }, undefined);
+  return (nearest(points) ?? nearest(curves))?.snap;
+}
+
 /**
  * The body edge or vertex under the pointer `at` (view px), in sketch
  * coordinates, or `undefined` over empty space or when the body's mesh
@@ -199,11 +310,26 @@ function edgePoint(
   const p = mesh.edgePoints;
   const project = (i: number): Vec2 =>
     worldToSketch(frame, [p[3 * i] ?? 0, p[3 * i + 1] ?? 0, p[3 * i + 2] ?? 0]);
-  let best = project(first);
+  const points: Vec2[] = [];
+  for (let i = first; i < first + count; i++) points.push(project(i));
+  const best = nearestOnPolyline(points, cursor);
+  const straight = count <= 2 || isStraight(project, first, count);
+  const line: readonly [Vec2, Vec2] | undefined =
+    count >= 2 ? [points[0] as Vec2, points[count - 1] as Vec2] : undefined;
+  return line ? { point: best, straight, line } : { point: best, straight };
+}
+
+/**
+ * The point of a polyline nearest `cursor`: the nearest point on a segment,
+ * not only at a vertex (a straight edge's polyline is just its two ends, so a
+ * vertex-only search would put the snap at an endpoint far from the pointer).
+ */
+export function nearestOnPolyline(points: readonly Vec2[], cursor: Vec2): Vec2 {
+  let best = (points[0] ?? cursor) as Vec2;
   let bestD = Number.POSITIVE_INFINITY;
-  for (let i = first; i + 1 < first + count; i++) {
-    const a = project(i);
-    const b = project(i + 1);
+  for (let i = 0; i + 1 < points.length; i++) {
+    const a = points[i] as Vec2;
+    const b = points[i + 1] as Vec2;
     const dx = b[0] - a[0];
     const dy = b[1] - a[1];
     const len2 = dx * dx + dy * dy;
@@ -218,10 +344,7 @@ function edgePoint(
       best = q;
     }
   }
-  const straight = count <= 2 || isStraight(project, first, count);
-  const line: readonly [Vec2, Vec2] | undefined =
-    count >= 2 ? [project(first), project(first + count - 1)] : undefined;
-  return line ? { point: best, straight, line } : { point: best, straight };
+  return best;
 }
 
 /**

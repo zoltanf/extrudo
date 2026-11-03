@@ -69,17 +69,26 @@ export interface Snap {
  * ADR-0074's 2026-10-30 amendment: a `center` projection of the face). An axis seen
  * end-on is a `point`. A projection keys its curve by this kind.
  */
-export type ModelSnapKind = 'vertex' | 'edge' | 'point' | 'axis' | 'faceCenter';
+export type ModelSnapKind =
+  | 'vertex'
+  | 'edge'
+  | 'point'
+  | 'axis'
+  | 'faceCenter'
+  | 'sketchCurve'
+  | 'sketchPoint';
 
-/** Whether a model snap is a point (a vertex, a datum point or a face's centre). */
+/** Whether a model snap is a point (a vertex, a datum point, a face's centre or a sketch point). */
 export const isPointSnap = (kind: ModelSnapKind) =>
-  kind === 'vertex' || kind === 'point' || kind === 'faceCenter';
+  kind === 'vertex' || kind === 'point' || kind === 'faceCenter' || kind === 'sketchPoint';
 
 /**
  * A body edge or vertex the view offers a sketch tool to snap to while it
- * draws (auto-project, P6-07), or a datum a picking tool may pick (ADR-0093): the persistent reference, the snap point in
- * sketch coordinates (a vertex projected onto the plane, or the nearest point
- * of an edge's display polyline projected onto it) and which of the two it is.
+ * draws (auto-project, P6-07), a datum a picking tool may pick (ADR-0093), or
+ * a curve or point of an earlier sketch (fields of ADR-0125): the persistent
+ * reference, the snap point in sketch coordinates (a vertex projected onto the
+ * plane, or the nearest point of an edge's display polyline projected onto it)
+ * and which kind it is.
  */
 export interface ModelSnap {
   ref: GeomRef;

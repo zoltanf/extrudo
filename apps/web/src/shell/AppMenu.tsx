@@ -13,6 +13,7 @@ import {
   Search,
   Settings,
   Shapes,
+  Spline,
   SquareDashed,
   Sun,
   Wrench,
@@ -181,7 +182,7 @@ const link =
  */
 export function AppMenu(props: AppMenuProps) {
   const { display, theme, onThemeChange, markingRadial, onMarkingRadial } = props;
-  const { autoProject, autoProjectFace, preset } = useDisplaySettings(display);
+  const { autoProject, autoProjectSketches, autoProjectFace, preset } = useDisplaySettings(display);
   const [open, setOpen] = useState(false);
   const [help, setHelp] = useState<HelpTool>();
   const onOpenChange = (next: boolean) => {
@@ -224,6 +225,7 @@ export function AppMenu(props: AppMenuProps) {
           <MenuPanel
             {...props}
             autoProject={autoProject}
+            autoProjectSketches={autoProjectSketches}
             autoProjectFace={autoProjectFace}
             preset={preset}
             theme={theme}
@@ -241,6 +243,7 @@ export function AppMenu(props: AppMenuProps) {
 
 export interface MenuPanelProps extends AppMenuProps {
   autoProject: boolean;
+  autoProjectSketches: boolean;
   autoProjectFace: boolean;
   preset: NavPreset;
   help: HelpTool | undefined;
@@ -256,6 +259,7 @@ export function MenuPanel({
   markingRadial,
   onMarkingRadial,
   autoProject,
+  autoProjectSketches,
   autoProjectFace,
   preset,
   help,
@@ -281,6 +285,13 @@ export function MenuPanel({
       hint: 'A body edge or vertex a tool snaps to is projected into the sketch.',
       icon: <Box size={16} strokeWidth={1.75} />,
       set: (v: boolean) => display.set({ autoProject: v }),
+    },
+    {
+      label: 'Auto-project sketch curves',
+      on: autoProjectSketches,
+      hint: 'A curve or point of an earlier sketch a tool snaps to is projected into the sketch.',
+      icon: <Spline size={16} strokeWidth={1.75} />,
+      set: (v: boolean) => display.set({ autoProjectSketches: v }),
     },
     {
       label: 'Auto-project face outline',
