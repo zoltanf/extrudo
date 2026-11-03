@@ -5830,8 +5830,9 @@ private:
    * uses its edges the way its neighbours do. So the faces are made direct
    * here (ShapeCustom::DirectFaces) and every reversed wire is rebuilt forward
    * from its edges reversed: same geometry, nothing left for the writer to
-   * turn. A shape with neither is returned as it is, so its file doesn't
-   * change. The stored shape is never touched.
+   * turn. A shape without an indirect face is returned as it is, so its file
+   * doesn't change (the reversed wires modelling leaves elsewhere, e.g. on a
+   * cylinder's cap, are written right). The stored shape is never touched.
    */
   static TopoDS_Shape stepShape(const TopoDS_Shape& shape) {
     const auto reversedWire = [](const TopoDS_Shape& face) {
@@ -5848,7 +5849,7 @@ private:
         surface = Handle(Geom_RectangularTrimmedSurface)::DownCast(surface)->BasisSurface();
       }
       const Handle(Geom_ElementarySurface) elementary = Handle(Geom_ElementarySurface)::DownCast(surface);
-      needed = (!elementary.IsNull() && !elementary->Position().Direct()) || reversedWire(it.Current());
+      needed = !elementary.IsNull() && !elementary->Position().Direct();
     }
     if (!needed) return shape;
     const TopoDS_Shape direct = ShapeCustom::DirectFaces(shape);
