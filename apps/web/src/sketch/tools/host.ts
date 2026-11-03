@@ -590,7 +590,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         return undefined;
       }
       const existing = projectionFor(data, snap.ref, snap.kind);
-      const curve = existing?.[1].curves[snap.kind];
+      const curve = existing ? projectionCurve(existing[1], snap.kind) : undefined;
       return { ...snap, ...(typeof curve === 'string' ? { entityId: curve } : {}) };
     },
   };
@@ -741,14 +741,15 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     /** The projection a ref got in this commit: a second attachment reuses it. */
     const minted = new Map<string, ProjectionId>();
     for (const m of edit.models ?? []) {
-      const key = m.kind;
       const existing = projectionFor(sketch.data, m.ref, m.kind);
-      const deleted =
-        existing !== undefined && key in existing[1].curves && existing[1].curves[key] === null;
+      const prior = existing ? projectionCurve(existing[1], m.kind) : undefined;
+      const deleted = prior === null;
       // The user's new action revives a curve they deleted: the `null` entry goes
       // so the kernel's next report re-adds the entity (P6-07).
-      if (deleted && existing) revived.push({ id: existing[0], key });
-      const projected = deleted ? undefined : existing?.[1].curves[key];
+      if (deleted && existing) {
+        revived.push({ id: existing[0], key: projectionCurveKey(existing[1], m.kind) ?? m.kind });
+      }
+      const projected = deleted ? undefined : prior;
       if (typeof projected === 'string') {
         if (m.placeholder) substitute.set(m.placeholder, projected);
         if (m.point) {
@@ -1266,7 +1267,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         pendingModels.splice(i, 1);
         continue;
       }
-      const curve = projection.curves[pending.kind];
+      const curve = projectionCurve(projection, pending.kind);
       if (curve === undefined) continue;
       pendingModels.splice(i, 1);
       if (curve === null) continue;
@@ -1327,7 +1328,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
           status = 'drop';
           break;
         }
-        const curve = projection.curves[binding.kind];
+        const curve = projectionCurve(projection, binding.kind);
         if (curve === undefined) {
           status = 'waiting';
           break;
@@ -1362,7 +1363,8 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     const settings = doc.settings;
     const map = new Map<SketchEntityId, SketchEntityId>();
     for (const binding of pending.bindings) {
-      const curve = data.projections?.[binding.projection]?.curves[binding.kind];
+      const projection = data.projections?.[binding.projection];
+      const curve = projection ? projectionCurve(projection, binding.kind) : undefined;
       if (curve === undefined || curve === null) return;
       map.set(binding.placeholder, curve);
     }
@@ -1945,6 +1947,34 @@ function refKey(ref: GeomRef): string {
 /** How a model snap's ref is projected: a face's centre on its own (issue #140), the rest as is. */
 function projectionMode(kind: ModelSnapKind): 'project' | 'center' {
   return kind === 'faceCenter' ? 'center' : 'project';
+}
+
+/**
+ * The kernel's curve key for a model snap kind: a sketch point reports `point`,
+ * a sketch curve `curve` (or `curve:<n>` when it comes in pieces, ADR-0125);
+ * the other kinds name their own key.
+ */
+function curveKey(kind: ModelSnapKind): string {
+  return kind === 'sketchPoint' ? 'point' : kind === 'sketchCurve' ? 'curve' : kind;
+}
+
+/** The curve map key a projection reports a model snap kind under, if any. */
+function projectionCurveKey(projection: SketchProjection, kind: ModelSnapKind): string | undefined {
+  const key = curveKey(kind);
+  if (key in projection.curves) return key;
+  if (kind === 'sketchCurve') {
+    return Object.keys(projection.curves).find((k) => k.startsWith('curve:'));
+  }
+  return key;
+}
+
+/** The reported curve (or point) entity of a projection for a model snap kind. */
+function projectionCurve(
+  projection: SketchProjection,
+  kind: ModelSnapKind,
+): SketchEntityId | null | undefined {
+  const key = projectionCurveKey(projection, kind);
+  return key === undefined ? undefined : projection.curves[key];
 }
 
 /**

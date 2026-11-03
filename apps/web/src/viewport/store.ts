@@ -90,6 +90,11 @@ export interface ViewportSettings {
    * to is projected into the sketch on the fly. On by default.
    */
   autoProject: boolean;
+  /**
+   * Auto-project Sketches (ADR-0125): a curve or point of an earlier sketch a
+   * tool snaps to is projected into the sketch on the fly. On by default.
+   */
+  autoProjectSketches: boolean;
   /** Also project a flat face's outline when a sketch starts on it (off by default). */
   autoProjectFace: boolean;
   /**
@@ -117,6 +122,7 @@ export const DEFAULT_SETTINGS: ViewportSettings = {
   sketchProfiles: true,
   snap: true,
   autoProject: true,
+  autoProjectSketches: true,
   autoProjectFace: false,
   sketchSlice: false,
   spaceMouseSpeed: 1,
@@ -265,6 +271,7 @@ export interface ViewportState extends ViewportSettings {
   setSnap(snap: boolean): void;
   /** Turns auto-project on or off (P6-07). */
   setAutoProject(autoProject: boolean): void;
+  setAutoProjectSketches(autoProjectSketches: boolean): void;
   /** Whether starting a sketch on a face projects the face's outline (P6-07). */
   setAutoProjectFace(autoProjectFace: boolean): void;
   /** Turns the sketch palette's Slice on or off (P4-12). */
@@ -479,6 +486,9 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       setAutoProject(autoProject) {
         set({ autoProject });
       },
+      setAutoProjectSketches(autoProjectSketches) {
+        set({ autoProjectSketches });
+      },
       setAutoProjectFace(autoProjectFace) {
         set({ autoProjectFace });
       },
@@ -588,6 +598,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       s.sketchProfiles !== prev.sketchProfiles ||
       s.snap !== prev.snap ||
       s.autoProject !== prev.autoProject ||
+      s.autoProjectSketches !== prev.autoProjectSketches ||
       s.autoProjectFace !== prev.autoProjectFace ||
       s.sketchSlice !== prev.sketchSlice ||
       s.spaceMouseSpeed !== prev.spaceMouseSpeed
@@ -604,6 +615,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
         sketchProfiles,
         snap,
         autoProject,
+        autoProjectSketches,
         autoProjectFace,
         sketchSlice,
         spaceMouseSpeed,
@@ -620,6 +632,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
         sketchProfiles,
         snap,
         autoProject,
+        autoProjectSketches,
         autoProjectFace,
         sketchSlice,
         spaceMouseSpeed,

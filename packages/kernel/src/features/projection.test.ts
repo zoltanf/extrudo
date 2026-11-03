@@ -3,7 +3,8 @@
 import { ORIGIN_PLANES, type SketchFrame, type Vec3 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import type { EdgeGeometry } from '../kernel';
-import { projectEdge, projectSegment } from './projection';
+import type { PlanarCurve } from '../planar';
+import { projectEdge, projectSegment, projectSketchCurve } from './projection';
 
 const XY = ORIGIN_PLANES[0]?.frame as SketchFrame;
 const XZ = ORIGIN_PLANES[1]?.frame as SketchFrame;
@@ -143,5 +144,105 @@ describe('projectEdge', () => {
         XY,
       ),
     ).toBeUndefined();
+  });
+});
+
+// A sketch curve, point or whole sketch as a projection source (ADR-0125): the
+// pure maths, from a source frame into a target frame, on made-up curves.
+describe('projectSketchCurve', () => {
+  const parallel: SketchFrame = { ...XY, origin: [0, 0, 10] };
+  const opposite: SketchFrame = {
+    origin: [0, 0, 10],
+    x: [1, 0, 0],
+    y: [0, -1, 0],
+    normal: [0, 0, -1],
+  };
+  const circle: PlanarCurve = {
+    kind: 'arc',
+    center: [0, 0],
+    radius: 5,
+    from: 0,
+    sweep: 2 * Math.PI,
+  };
+  const quarter: PlanarCurve = {
+    kind: 'arc',
+    center: [0, 0],
+    radius: 5,
+    from: 0,
+    sweep: Math.PI / 2,
+  };
+
+  it('keeps a line, a circle, an arc and an ellipse on a parallel plane', () => {
+    const line: PlanarCurve = { kind: 'line', a: [0, 0], b: [10, 5] };
+    expect(projectSketchCurve(line, undefined, XY, parallel)).toEqual([
+      { type: 'line', a: [0, 0], b: [10, 5] },
+    ]);
+    expect(projectSketchCurve(circle, undefined, XY, parallel)).toEqual([
+      { type: 'circle', center: [0, 0], radius: 5 },
+    ]);
+    const arc = projectSketchCurve(quarter, undefined, XY, parallel)[0];
+    expect(arc).toEqual({ type: 'arc', center: [0, 0], start: [5, 0], end: [0, 5] });
+    const ellipse: PlanarCurve = { kind: 'ellipse', center: [1, 2], a: 6, b: 3, rotation: 0 };
+    expect(projectSketchCurve(ellipse, undefined, XY, parallel)).toEqual([
+      { type: 'ellipse', center: [1, 2], major: [7, 2], minor: [1, 5] },
+    ]);
+  });
+
+  it('swaps an arc on a plane with the opposite normal', () => {
+    const arc = projectSketchCurve(quarter, undefined, XY, opposite)[0];
+    expect(arc).toEqual({ type: 'arc', center: [0, 0], start: [0, -5], end: [5, 0] });
+  });
+
+  it('sees a circle edge-on in the perpendicular plane as a line of its diameter', () => {
+    const seen = projectSketchCurve(circle, undefined, XY, XZ);
+    expect(seen).toHaveLength(1);
+    const line = seen[0];
+    expect(line?.type).toBe('line');
+    if (line?.type !== 'line') return;
+    expect(Math.hypot(line.b[0] - line.a[0], line.b[1] - line.a[1])).toBeCloseTo(10, 9);
+  });
+
+  it('gives a circle on a plane tilted 60° about X an ellipse r by r·cos 60°', () => {
+    const t = (60 * Math.PI) / 180;
+    const tilted: SketchFrame = {
+      origin: [0, 0, 0],
+      x: [1, 0, 0],
+      y: [0, Math.cos(t), Math.sin(t)],
+      normal: [0, -Math.sin(t), Math.cos(t)],
+    };
+    const out = projectSketchCurve(circle, undefined, XY, tilted);
+    const e = out[0];
+    expect(e?.type).toBe('ellipse');
+    if (e?.type !== 'ellipse') return;
+    const semi = (p: readonly [number, number]) =>
+      Math.hypot(p[0] - e.center[0], p[1] - e.center[1]);
+    expect(semi(e.major)).toBeCloseTo(5, 9);
+    expect(semi(e.minor)).toBeCloseTo(5 * Math.cos(t), 9);
+  });
+
+  it('fits a spline through a source polyline, and gives nothing without one', () => {
+    const spline: PlanarCurve = {
+      kind: 'spline',
+      degree: 3,
+      poles: [
+        [0, 0],
+        [1, 2],
+        [2, 0],
+        [3, -2],
+      ],
+      knots: [0, 0, 0, 0, 1, 1, 1, 1],
+    };
+    const polyline = [
+      [0, 0],
+      [1, 0.2],
+      [2, 0.6],
+      [3, 1.2],
+      [4, 2.0],
+      [5, 3.0],
+    ] as const;
+    const out = projectSketchCurve(spline, polyline, XY, parallel);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.type).toBe('spline');
+    expect(projectSketchCurve(spline, undefined, XY, parallel)).toEqual([]);
   });
 });

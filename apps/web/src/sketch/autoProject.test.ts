@@ -1,4 +1,4 @@
-import type { BodyId, SketchFrame } from '@extrudo/core';
+import type { BodyId, FeatureId, SketchData, SketchEntityId, SketchFrame } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import { Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
@@ -6,7 +6,7 @@ import { memoryPreferences } from '../platform';
 import { type PickScene, projectPoint } from '../selection/pick';
 import { basis } from '../viewport/camera';
 import { createViewportStore } from '../viewport/store';
-import { autoProjectSnap, faceCenterSnapAt, modelSnapAt } from './autoProject';
+import { autoProjectSnap, faceCenterSnapAt, modelSnapAt, sketchSnapAt } from './autoProject';
 
 const FRAME: SketchFrame = {
   origin: [0, 0, 0],
@@ -247,5 +247,150 @@ describe('face centres (issue #140)', () => {
     expect(
       autoProjectSnap(viewport, plateScene, camera, FRAME, at, [10, 5], bodies, 1),
     ).toBeUndefined();
+  });
+});
+
+describe('sketch snaps (ADR-0125)', () => {
+  const SK1 = 'Sk1' as FeatureId;
+  // The source sketch sits on a plane 10 mm above XY: draws first, projects into XY.
+  const OFFSET: SketchFrame = {
+    origin: [0, 0, 10],
+    normal: [0, 0, 1],
+    x: [1, 0, 0],
+    y: [0, 1, 0],
+  };
+  const earlier = new Set<FeatureId>([SK1]);
+
+  function sketchScene(entities: SketchData['entities']): PickScene {
+    return {
+      bodies: [],
+      sketches: [{ id: SK1, frame: OFFSET, data: { entities, constraints: {}, dimensions: {} } }],
+      occluding: true,
+    };
+  }
+  const screen = (camera: Parameters<typeof projectPoint>[0], p: [number, number, number]) => {
+    const at = projectPoint(camera, p);
+    if (!at) throw new Error('behind the camera');
+    return at;
+  };
+
+  it('offers an earlier sketch point carried into the open sketch', () => {
+    const { camera } = setup();
+    const scene = sketchScene({
+      ['p1' as SketchEntityId]: { type: 'point', x: 5, y: 0 },
+    } as SketchData['entities']);
+    const snap = sketchSnapAt(scene, camera, FRAME, screen(camera, [5, 0, 10]), [5, 0], earlier);
+    expect(snap).toMatchObject({
+      kind: 'sketchPoint',
+      point: [5, 0],
+      straight: true,
+      ref: { kind: 'sketchEntity', id: 'Sk1/p1' },
+    });
+  });
+
+  it('offers a line as a straight sketchCurve with its ends', () => {
+    const { camera } = setup();
+    const scene = sketchScene({
+      ['p0' as SketchEntityId]: { type: 'point', x: 0, y: 0 },
+      ['p2' as SketchEntityId]: { type: 'point', x: 10, y: 0 },
+      ['l1' as SketchEntityId]: {
+        type: 'line',
+        start: 'p0',
+        end: 'p2',
+        construction: false,
+      },
+    } as SketchData['entities']);
+    const snap = sketchSnapAt(scene, camera, FRAME, screen(camera, [5, 0, 10]), [5, 0], earlier);
+    expect(snap?.kind).toBe('sketchCurve');
+    expect(snap?.straight).toBe(true);
+    expect(snap?.line).toEqual([
+      [0, 0],
+      [10, 0],
+    ]);
+  });
+
+  it('offers a circle as a curved sketchCurve, and refuses a later sketch', () => {
+    const { camera } = setup();
+    const scene = sketchScene({
+      ['p0' as SketchEntityId]: { type: 'point', x: 0, y: 0 },
+      ['c1' as SketchEntityId]: { type: 'circle', center: 'p0', radius: 5, construction: false },
+    } as SketchData['entities']);
+    const at = screen(camera, [5, 0, 10]);
+    expect(sketchSnapAt(scene, camera, FRAME, at, [5, 0], earlier)?.straight).toBe(false);
+    // The open sketch's source must be earlier: with an empty set, nothing is offered.
+    expect(sketchSnapAt(scene, camera, FRAME, at, [5, 0], new Set())).toBeUndefined();
+  });
+
+  it('the preference off leaves a body vertex offered but no sketch snap', () => {
+    const { viewport, camera } = setup();
+    const mesh = body();
+    const bodies: Record<BodyId, BodyMesh> = { ['Body1' as BodyId]: mesh };
+    const scene: PickScene = {
+      bodies: [{ id: 'Body1' as BodyId, mesh }],
+      sketches: [
+        {
+          id: SK1,
+          frame: OFFSET,
+          data: {
+            entities: {
+              ['p1' as SketchEntityId]: { type: 'point', x: 5, y: 0 },
+            } as SketchData['entities'],
+            constraints: {},
+            dimensions: {},
+          },
+        },
+      ],
+      occluding: true,
+    };
+    viewport.getState().setAutoProjectSketches(false);
+    const atSketch = screen(camera, [5, 0, 10]);
+    expect(
+      autoProjectSnap(viewport, scene, camera, FRAME, atSketch, [5, 0], bodies, 0.5, earlier),
+    ).toBeUndefined();
+    // The body vertex is still offered with the sketch preference off.
+    expect(
+      autoProjectSnap(viewport, scene, camera, FRAME, [500, 500], [0, 0], bodies, 0.5, earlier)
+        ?.kind,
+    ).toBe('vertex');
+    // On, the sketch point is offered.
+    viewport.getState().setAutoProjectSketches(true);
+    expect(
+      autoProjectSnap(viewport, scene, camera, FRAME, atSketch, [5, 0], bodies, 0.5, earlier)?.kind,
+    ).toBe('sketchPoint');
+  });
+
+  it('a body vertex nearer the cursor wins over a sketch point', () => {
+    const { viewport, camera } = setup();
+    const mesh = body();
+    const bodies: Record<BodyId, BodyMesh> = { ['Body1' as BodyId]: mesh };
+    const scene: PickScene = {
+      bodies: [{ id: 'Body1' as BodyId, mesh }],
+      sketches: [
+        {
+          id: SK1,
+          frame: OFFSET,
+          data: {
+            entities: {
+              ['p1' as SketchEntityId]: { type: 'point', x: 5, y: 0 },
+            } as SketchData['entities'],
+            constraints: {},
+            dimensions: {},
+          },
+        },
+      ],
+      occluding: true,
+    };
+    const snap = autoProjectSnap(
+      viewport,
+      scene,
+      camera,
+      FRAME,
+      [500, 500],
+      [0, 0],
+      bodies,
+      20,
+      earlier,
+    );
+    expect(snap?.kind).toBe('vertex');
   });
 });

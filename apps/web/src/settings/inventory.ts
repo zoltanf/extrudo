@@ -66,6 +66,7 @@ export const SECTIONS: readonly SectionInfo[] = [
       'viewport.sketchDimensions',
       'viewport.sketchProfiles',
       'viewport.autoProject',
+      'viewport.autoProjectSketches',
       'viewport.autoProjectFace',
       'viewport.sketchSlice',
     ],
