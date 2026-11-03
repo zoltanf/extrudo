@@ -171,6 +171,9 @@
 #include <TopTools_ShapeMapHasher.hxx>
 #include <BRepTools_WireExplorer.hxx>
 #include <ShapeBuild_ReShape.hxx>
+#include <ShapeCustom.hxx>
+#include <TopTools_MapOfShape.hxx>
+#include <Geom_ElementarySurface.hxx>
 #include <ShapeUpgrade_ShapeDivideClosed.hxx>
 #include <ShapeUpgrade_UnifySameDomain.hxx>
 #include <TopoDS.hxx>
@@ -2690,7 +2693,7 @@ public:
       STEPControl_Writer writer;
       int scanned = 0;
       for (size_t i = 0; i < args_.size(); ++i) {
-        if (writer.Transfer(*find(args_[i]), STEPControl_AsIs, stepParameters()) != IFSelect_RetDone) {
+        if (writer.Transfer(stepShape(*find(args_[i])), STEPControl_AsIs, stepParameters()) != IFSelect_RetDone) {
           return failExport("STEP export failed: a body couldn't be translated.");
         }
         nameStepProduct(writer.Model(), scanned, i);
@@ -5899,6 +5902,70 @@ private:
     return parameters;
   }
 
+  /**
+   * The shape a STEP transfer writes for `shape` (ADR-0034's third
+   * amendment). STEP's AXIS2_PLACEMENT_3D can't hold an indirect frame, so
+   * OCCT's writer first rebuilds a face on one (a fillet's torus on a
+   * cylinder's bottom rim) on a direct frame with its wires reversed; it then
+   * writes each wire turned forward through ShapeFix_Wire's reorder, which on
+   * a reversed wire with a seam flips the wire's other edges, and the face
+   * uses its edges the way its neighbours do. So the faces are made direct
+   * here (ShapeCustom::DirectFaces) and every reversed wire is rebuilt forward
+   * from its edges reversed: same geometry, nothing left for the writer to
+   * turn. Only a shape with such a face that has a seam is copied: without a
+   * seam the writer turns the wire right (a fillet's cylinder between two
+   * planes, a prism's or revolve's indirect planes), so those files don't
+   * change. The stored shape is never touched.
+   */
+  static TopoDS_Shape stepShape(const TopoDS_Shape& shape) {
+    const auto reversedWire = [](const TopoDS_Shape& face) {
+      for (TopoDS_Iterator it(face, false, false); it.More(); it.Next()) {
+        if (it.Value().Orientation() == TopAbs_REVERSED) return true;
+      }
+      return false;
+    };
+    bool needed = false;
+    for (TopExp_Explorer it(shape, TopAbs_FACE); it.More() && !needed; it.Next()) {
+      TopLoc_Location location;
+      Handle(Geom_Surface) surface = BRep_Tool::Surface(TopoDS::Face(it.Current()), location);
+      while (!surface.IsNull() && surface->IsKind(STANDARD_TYPE(Geom_RectangularTrimmedSurface))) {
+        surface = Handle(Geom_RectangularTrimmedSurface)::DownCast(surface)->BasisSurface();
+      }
+      const Handle(Geom_ElementarySurface) elementary = Handle(Geom_ElementarySurface)::DownCast(surface);
+      if (elementary.IsNull() || elementary->Position().Direct()) continue;
+      const TopoDS_Face& face = TopoDS::Face(it.Current());
+      for (TopExp_Explorer e(face, TopAbs_EDGE); e.More() && !needed; e.Next()) {
+        needed = BRep_Tool::IsClosed(TopoDS::Edge(e.Current()), face);
+      }
+    }
+    if (!needed) return shape;
+    const TopoDS_Shape direct = ShapeCustom::DirectFaces(shape);
+    Handle(ShapeBuild_ReShape) reshape = new ShapeBuild_ReShape();
+    BRep_Builder builder;
+    TopTools_MapOfShape seen;
+    for (TopExp_Explorer it(direct, TopAbs_FACE); it.More(); it.Next()) {
+      const TopoDS_Shape face = it.Current().Oriented(TopAbs_FORWARD);
+      if (!seen.Add(face) || !reversedWire(face)) continue;
+      TopoDS_Shape rebuilt = face.EmptyCopied();
+      for (TopoDS_Iterator w(face, false, false); w.More(); w.Next()) {
+        const TopoDS_Shape& wire = w.Value();
+        if (wire.Orientation() != TopAbs_REVERSED) {
+          builder.Add(rebuilt, wire);
+          continue;
+        }
+        std::vector<TopoDS_Shape> edges;
+        for (TopoDS_Iterator e(wire); e.More(); e.Next()) edges.push_back(e.Value());
+        TopoDS_Wire forward;
+        builder.MakeWire(forward);
+        for (auto e = edges.rbegin(); e != edges.rend(); ++e) builder.Add(forward, *e);
+        forward.Closed(wire.Closed());
+        builder.Add(rebuilt, forward);
+      }
+      reshape->Replace(face, rebuilt);
+    }
+    return reshape->Apply(direct);
+  }
+
   /** Whether stageStepColor() gave any staged part a colour. */
   bool stepColored() const {
     for (size_t i = 0; i < args_.size() && 3 * i + 2 < stepColors_.size(); ++i) {
@@ -5955,7 +6022,7 @@ private:
       int scanned = 0;
       bool ok = true;
       for (size_t i = 0; ok && i < args_.size(); ++i) {
-        const TDF_Label label = shapes->AddShape(*find(args_[i]), false, false);
+        const TDF_Label label = shapes->AddShape(stepShape(*find(args_[i])), false, false);
         if (3 * i + 2 < stepColors_.size() && stepColors_[3 * i] >= 0) {
           const Quantity_Color color(clamp01(stepColors_[3 * i]), clamp01(stepColors_[3 * i + 1]),
                                      clamp01(stepColors_[3 * i + 2]), Quantity_TOC_sRGB);
@@ -6025,7 +6092,7 @@ private:
       }
       std::vector<TDF_Label> loose;
       for (size_t i = 0; i < args_.size(); ++i) {
-        const TDF_Label label = shapes->AddShape(*find(args_[i]), false, false);
+        const TDF_Label label = shapes->AddShape(stepShape(*find(args_[i])), false, false);
         if (3 * i + 2 < stepColors_.size() && stepColors_[3 * i] >= 0) {
           const Quantity_Color color(clamp01(stepColors_[3 * i]), clamp01(stepColors_[3 * i + 1]),
                                      clamp01(stepColors_[3 * i + 2]), Quantity_TOC_sRGB);

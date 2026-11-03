@@ -11,6 +11,7 @@ import { loadOcct } from './occt/load';
 import type { PlanarCurve, PlanarFrame } from './planar';
 import { testDocument, testFeature } from './recompute/testing';
 import { isExportCancelled, KernelService } from './service';
+import { badEdgeUses } from './step-test-support';
 
 let kernel: Kernel;
 
@@ -205,6 +206,34 @@ describe('writeStep', () => {
       }
     } finally {
       kernel.release(...part, ...ball);
+    }
+  });
+
+  it("writes a rim fillet's torus with bound flags that agree with its neighbours (P4-12)", () => {
+    // OCCT builds the bottom rim's torus on an indirect frame, which STEP's
+    // AXIS2_PLACEMENT_3D can't hold (ADR-0034's third amendment).
+    const cylinder = kernel.cylinder(5, 10);
+    const rims = [0, 1, 2].filter((i) => {
+      const g = kernel.edgeGeometry(cylinder, i);
+      return g.type === 'circle';
+    });
+    expect(rims).toHaveLength(2);
+    const round = kernel.fillet(cylinder, rims, 1).shape;
+    try {
+      expect(kernel.count(round, 'face')).toBe(5);
+      const text = kernel.writeStep([{ shape: round, name: 'Round' }]);
+      expect(text.match(/TOROIDAL_SURFACE/g)).toHaveLength(2);
+      expect(badEdgeUses(text)).toEqual([]);
+      const back = kernel.readStep(text);
+      try {
+        expect(kernel.count(back, 'face')).toBe(5);
+        expect(kernel.isValid(back)).toBe(true);
+        expect(kernel.measure(back).volume).toBeCloseTo(kernel.measure(round).volume, 3);
+      } finally {
+        kernel.release(back);
+      }
+    } finally {
+      kernel.release(round, cylinder);
     }
   });
 
