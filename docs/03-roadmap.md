@@ -910,11 +910,16 @@ end to end, faster than in established desktop CAD.
     2026-10-06, ADR-0034's amendment)**: a file's solid and assembly-instance
     colours become the imported bodies' appearance once, and coloured bodies
     export their colours; face colours are counted, not applied.
-  - STEP writer: a fillet rim's torus face is written with an indirect frame
+  - ~~STEP writer: a fillet rim's torus face is written with an indirect frame
     and a bound flag that a reader trusting the flag turns into a cove (found
     2026-11-01, ADR-0097 slice D11, Q1b.2); write such faces on a direct frame
     or check the flags against the neighbouring edges before writing, with a
-    test that reads the flags back.
+    test that reads the flags back.~~ **done 2026-11-03 (ADR-0034's third
+    amendment)**: OCCT's writer reversed the face's wire when it made the face
+    direct, then flipped the wire's circles when it turned the wire forward;
+    every STEP path now hands it a copy with direct faces and forward wires
+    when an indirect face has a seam, and a test checks every edge's two uses
+    in the written text.
   - ~~Section analysis on several planes, a section box~~ **done
     (P4-12, 2026-10-06, ADR-0045's amendment: up to three planes, a box of
     six)**; sections saved with named views, a hatch per material (ADR-0045).
