@@ -275,7 +275,8 @@ export async function measureProbe(
   for (const b of probe.bodies) {
     const status = made.features[b.feature];
     const count = made.bodies.filter((id) => id.startsWith(`${b.feature}:`)).length;
-    if (status && status.status !== 'ok') {
+    // A warning (a file body that isn't a sound solid, kept as it is) still made the body.
+    if (status && status.status === 'error') {
       measured.set(b.record, { error: status.message ?? 'the probe import failed' });
     } else if (count !== 1) {
       measured.set(b.record, { error: `the probe made ${count} bodies` });
