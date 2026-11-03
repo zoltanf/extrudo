@@ -818,6 +818,7 @@ describe('thread', { timeout: 300_000 }, () => {
       whole: true,
       open: [true, true],
       taper: 0,
+      across: [0, 0],
     });
     const settings = threadSettings(
       threadInputs({ faces: [{ kind: 'face', id: 'x' }], numbers: { diameter: '4 mm' } }),
