@@ -276,3 +276,14 @@ bash spikes/stl-to-solid/bench/verify_all.sh /tmp/verify_step "$STEP_DIR" "$STL_
 
 `$STEP_DIR` holds one `<name>.step` per `<name>.stl`, written by the tool under
 test; keep both folders outside the repository.
+
+## Facet sources (slice D12, 2026-11-03)
+
+```sh
+D12=50 …     # every face of the result over 50 mm² (any number): kind, area, a plane's normal, offset and centre
+D12V=1 …     # with D12: a plane face's vertices' largest distance from its plane (faces over 1,000 mm²)
+```
+
+The runs and tables are in `docs/plans/m2s-exploded-q1-2026-11-01.md`, "Run 4 (D12)". Ignore the "volume" D12 prints
+(BRepGProp's volume properties of a lone face); to see where a solid's volume moved, compare the planes'
+`offset × area / 3` sums.

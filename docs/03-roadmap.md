@@ -1212,6 +1212,14 @@ end to end, faster than in established desktop CAD.
   spool-screw-v4.1's two regions invalid after unify.
   *2026-11-03:* two holes that touch each other on a periodic face are cut
   too (makita-vacuum-holder's torus; ADR-0097's 2026-11-03 amendment).
+  *slice D12 (2026-11-03):* a sliver island inside a plane joins it, and a
+  plane whose outline folds over a wall lower than the tolerance gives its
+  off-plane triangles to facets: hot-wheels-connector 1,833 → 1,745 facets,
+  phone-stand-foldable 403 → 287, whiteboard-tray-v5 converts at Auto (was
+  refused); over the 36 files converted before, facets 12,565 → 12,359 and
+  faces 22,569 → 22,356 (ADR-0097's 2026-11-03 amendment). Left: micro
+  zigzags (2 facets), wrapped charts 375 (mostly cone fits on makita's
+  fillets), spool-screw-v4.1's two regions invalid after unify and healing.
 
 ## Phase 5 — Programmatic design (→ v0.6)
 
