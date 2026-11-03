@@ -4245,8 +4245,11 @@ public:
    * when the face goes all the way round. `open0` / `open1` say whether the
    * face's edge at h0 / h1 is an outward corner (1: the shaft's end, a hole's
    * mouth, where a thread gets its lead-in chamfer) or not (0: a shoulder,
-   * a hole's floor, a smooth join, or no edge right round). Returns 14, or -1
-   * (not a cylinder or a cone, unknown shape).
+   * a hole's floor, a smooth join, or no edge right round). Then [across0,
+   * across1] (ADR-0056's sixth amendment): at an open end, how far the faces
+   * across it reach past the end along the axis (mm, from their vertices: a
+   * 45° chamfer 0.3 mm long gives 0.3, a flat end 0); 0 at an end that isn't
+   * open. Returns 16, or -1 (not a cylinder or a cone, unknown shape).
    */
   int threadFace(int shape, int face) {
     beginOp();
@@ -4292,6 +4295,7 @@ public:
       const double tol = 1e-6 * std::max(1.0, v1 - v0);
       double open[2] = {1, 1};
       double around[2] = {0, 0};
+      double across[2] = {0, 0};
       for (TopExp_Explorer e(f, TopAbs_EDGE); e.More(); e.Next()) {
         const TopoDS_Edge edge = TopoDS::Edge(e.Current());
         double first = 0, last = 0;
@@ -4327,10 +4331,18 @@ public:
           if (other.Orientation() == TopAbs_REVERSED) n2.Reverse();
           // An outward corner: the face across turns its back on this one.
           if (!(gp_Vec(n2).Dot(into) < -0.5)) open[end] = 0;
+          // How far the face across reaches past the end, from its vertices.
+          const double endHeight = (end == 0 ? v0 : v1) * alongV;
+          for (TopExp_Explorer x(other, TopAbs_VERTEX); x.More(); x.Next()) {
+            const gp_Vec toVertex(origin, BRep_Tool::Pnt(TopoDS::Vertex(x.Current())));
+            const double past = -(toVertex.Dot(gp_Vec(axis)) - endHeight) * (end == 0 ? 1.0 : -1.0);
+            across[end] = std::max(across[end], past);
+          }
         }
       }
       for (int end = 0; end < 2; ++end) {
         if (around[end] < (u1 - u0) - 1e-6) open[end] = 0;
+        if (open[end] == 0) across[end] = 0;
       }
       pushPoint(origin);
       pushDir(out);
@@ -4340,7 +4352,8 @@ public:
       const double radius = refRadius + (flip > 0 ? v0 : v1) * std::sin(halfAngle);
       geometry_.insert(geometry_.end(), {radius, inside ? 1.0 : 0.0, h0, h1, whole ? 1.0 : 0.0,
                                          flip > 0 ? open[0] : open[1], flip > 0 ? open[1] : open[0],
-                                         flip * halfAngle});
+                                         flip * halfAngle, flip > 0 ? across[0] : across[1],
+                                         flip > 0 ? across[1] : across[0]});
       return static_cast<int>(geometry_.size());
     } catch (...) {
       failFromException("Thread face failed");
