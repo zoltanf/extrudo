@@ -240,7 +240,10 @@ describe('measureProbe', () => {
           [two as string]: { status: 'error', message: 'unreadable STEP' },
           [three as string]: { status: 'ok' },
           // A file body that isn't a sound solid is kept with a warning (ADR-0051, 2026-10-29): measured all the same.
-          [four as string]: { status: 'warning', message: "A body this import read isn't a sound solid" },
+          [four as string]: {
+            status: 'warning',
+            message: "A body this import read isn't a sound solid",
+          },
         },
         bodies: [bid('shown:0'), bid('hidden:0'), bid(`${one}:0`), bid(`${four}:0`)],
       },
