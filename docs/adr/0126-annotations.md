@@ -1,7 +1,8 @@
 # ADR-0126: Annotations: numbered notes on geometry, for people and agents
 
 - **Status:** Proposed, 2026-11-03 (the owner asked for the spec, display
-  options and the slices; S1 may start before the display option is chosen)
+  options and the slices). Display chosen 2026-11-04: callouts, text always
+  visible (option 2), ghosted behind the part.
 - **Task:** P6-23 (`docs/03-roadmap.md`).
 - **Builds on:** ADR-0003 (commands, undo), ADR-0005 (topological naming,
   `GeomRef`, fingerprints), ADR-0068 (the document API), ADR-0069 (the CLI),
@@ -171,8 +172,8 @@ them by default; the agent's `screenshot` tool gets an `annotations` option
 
 ### 6. The marker and the tool (3D view, S2)
 
-The display option is the owner's choice (section "Display options"); the
-mechanics are the same for all of them:
+**Callouts, text always visible** (owner, 2026-11-04; option 2 under
+"Display options"):
 
 - A DOM/SVG overlay `AnnotationsOverlay` (`apps/web/src/annotations/`), a
   child of `DialogViewport` next to `MeasureOverlay`, z-[4], projecting with
@@ -182,7 +183,7 @@ mechanics are the same for all of them:
   middle/right buttons still orbit. Behind the camera: not drawn.
 - **Behind the part: ghosted** (owner, 2026-11-04). An annotation whose
   anchor point the camera can't see (on a far face, or covered by another
-  feature or body) is drawn faint and dashed, without its leader and bubble,
+  feature or body) is drawn as its faint, dashed badge, without leader or text,
   so it never reads as a note about the face in front of it, yet never seems
   lost. The test is the picking code's occlusion check (`hidden()` in
   `apps/web/src/selection/pick.ts`, module-private today, so S2 exports it; a ray from the eye to the anchor point
@@ -194,13 +195,23 @@ mechanics are the same for all of them:
   the folder's eye) turns the check off. `free` and `sketch` anchors are
   tested the same way. The idea is from ScanRuler's pinned readings, which
   hide pins behind the part (`docs/references.md`).
-- The **badge**: a 20 px circle with the number, accent colour, white digits;
-  `done` muted, `detached` hollow and dashed, selected with a ring, hovered
-  brighter. A **leader** (1 px SVG line) from the anchor point to the badge
-  when `offset` is non-zero; a 4 px dot at the anchor point.
-- The **bubble**: the text in a `rounded-control border border-line
-  shadow-raised` box (the dimension-label styling), wrapped at 36 ch, with
-  the number as a `#n` prefix. When it is shown depends on the option.
+- The **callout**: a `rounded-control border border-line shadow-raised`
+  box (the dimension-label styling) at `offset` from the anchor, holding the
+  **badge** (an 18 px circle with the number, accent colour, white digits) and
+  the text, wrapped at 36 ch and **cut to three lines** with an ellipsis; the
+  whole text shows while it is hovered, selected or edited. A **leader**
+  (1 px SVG line) runs from a 4 px dot at the anchor point to the nearest
+  edge of the callout.
+- States: selected with an accent ring, hovered brighter, `detached` with a
+  dashed border and hollow badge, **`done` collapsed to its muted badge**
+  (no text until hovered), so ticked-off notes stop taking room.
+- **Clutter controls**, besides the global eye: `ViewportSettings
+  .annotationText: 'always' | 'numbers'` (default `'always'`, persisted; the
+  folder menu's "Numbers only" / "Show text") collapses every callout to its
+  badge, the text then shown on hover and selection. A new callout's
+  default `offset` is `[28, -28]` px, mirrored to the left or below when that
+  would leave the viewport; callouts never move by themselves after that
+  (no automatic layout), they are dragged.
 - **Interaction:** click selects (`SelectionItem { kind: 'annotation', id }`,
   added to `SelectionItem.kind`, `PICKED`, `NOUNS`, `itemLabel`,
   `selectionKey`, `pruneSelection`); Delete removes; double-click edits the
@@ -270,13 +281,17 @@ changes through `change()` as one `Agent: …` transaction):
 | Slice | What | Done when |
 |---|---|---|
 | **S1 Model and agents** | Sections 1–4 (schema, ids, commands, cascades, remint, restoreVersion, kernel resolution and report, model store), section 8 (MCP tools, summary, skill, API, CLI), `glyphMenu` rename, file-format doc, ADR digest, changelog line, roadmap tick | unit tests for every command and rule, `tools.test.ts` + `tools.kernel.test.ts` cases (a face annotation follows a parameter change; a deleted feature detaches it), `skill.test.ts` green with the new example, `pnpm check` green, CI green by SHA |
-| **S2 3D view** | Sections 5–6 in the chosen display option: overlay, tool, selection kind, folder, toggle, in-place editor, context menu, `N` key, tooltip clip | `e2e/annotations.spec.ts`: add on a face, number shown, text edited, hidden by the eye, ghosted when the view turns to its back (`data-annotation-behind`) and full again when selected, follows a parameter change, detached after deleting the feature, deleted with Delete; `docs/agent/e2e-notes.md` heading; `docs/04-ui-spec.md` section; `docs/guide/` page |
+| **S2 3D view** | Sections 5–6 in the chosen display option: overlay, tool, selection kind, folder, toggle, in-place editor, context menu, `N` key, tooltip clip | `e2e/annotations.spec.ts`: add on a face, callout shows number and text, text edited, "Numbers only" collapses it (`data-annotation-text`), hidden by the eye, ghosted when the view turns to its back (`data-annotation-behind`) and full again when selected, follows a parameter change, detached after deleting the feature, deleted with Delete; `docs/agent/e2e-notes.md` heading; `docs/04-ui-spec.md` section; `docs/guide/` page |
 | **S3 Sketch mode** | Section 7 | the e2e spec extended: an annotation on a sketch point follows the point; shown in model mode through the plane |
 | **S4 Polish** | re-anchor by dragging the anchor dot; `screenshot { annotations: true }` composites the badges; "Delete all done"; a `.extrudo` example with annotations in `fixtures/examples` | e2e for re-anchoring; `tools.test.ts` for the screenshot option |
 
-S1 can start now; S2 waits for the display option.
+S1 can start now. S2 can start once S1 is merged: its display is decided (section 6).
 
-## Display options (the owner's choice)
+## Display options (decided 2026-11-04: option 2)
+
+The owner chose option 2, callouts with the text always visible, plus the
+"Numbers only" switch of section 6 as the way out when they crowd the view.
+The options as they were put:
 
 All options share the badge (numbered circle at or near the anchor), the
 leader and the browser folder; they differ in **when the text is visible**.
@@ -285,19 +300,20 @@ leader and the browser folder; they differ in **when the text is visible**.
    or selecting a badge opens its bubble; double-click edits. Least clutter,
    the numbers are what people and agents talk about anyway. A `Show text`
    entry in the folder menu pins every bubble open for a review pass.
-   **Recommended.**
+   (Recommended; kept as the "Numbers only" switch.)
 2. **Callouts: text always visible.** Every annotation is a badge plus a
    bubble, placed at `offset` and draggable. Reads like an engineering
    drawing and needs no interaction, but ten notes cover the model; the
-   global toggle becomes the main way to see the part.
+   global toggle becomes the main way to see the part. **Chosen.**
 3. **Pins plus panel.** Badges only in the view, the text only in the
    Annotations folder (and the status bar on hover). Zero view clutter, but
    the eye has to travel between the model and the panel, and the folder is
    hidden with the browser.
 
-Sub-choices (defaults in bold, change by number): badge colour **accent
-blue** / amber "sticky"; badge shape **circle** / rounded tag; a `done`
-annotation **muted grey** / hidden by default.
+Sub-choices (defaults in bold, kept unless the owner changes them): badge
+colour **accent blue** / amber "sticky"; badge shape **circle** / rounded
+tag; a `done` annotation **muted grey** (collapsed to its badge, section 6) /
+hidden by default.
 
 ## Rejected
 
@@ -310,6 +326,10 @@ annotation **muted grey** / hidden by default.
   what "#5" is. A stored counter costs one optional key.
 - **Mesh-index anchors.** Valid only for the current mesh; the naming service
   with fingerprints exists for this.
+- **Automatic callout layout** (moving callouts apart as the view turns).
+  Callouts that jump while you orbit can't be read or clicked, and a layout
+  solver per frame costs more than it gives; a callout stays where it was
+  put and is dragged, and "Numbers only" handles a crowded view.
 - **Drawing markers in three.js** (sprites or glyph curves). DOM markers are
   crisp, accessible, themed, and every existing label in the app is DOM;
   snapshots lose them, which the `screenshot` option covers where it matters.
