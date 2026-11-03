@@ -83,41 +83,57 @@ export function Toasts({
       className={`pointer-events-none flex flex-col items-end gap-2 ${PLACES[place]}`}
       style={clearRight ? { right: clearRight } : undefined}
     >
-      {toasts.map((t) => (
-        <div
-          key={t.id}
-          role={t.tone === 'error' ? 'alert' : 'status'}
-          data-toast={t.tone}
-          className="pointer-events-auto flex max-w-[min(420px,100%)] items-start gap-2.5 rounded-dialog border border-line bg-raised py-2.5 pr-2 pl-3 text-base text-ink shadow-raised"
-        >
-          <span
-            className={`mt-1.5 size-2 shrink-0 rounded-full ${DOT[t.tone]}`}
-            aria-hidden="true"
-          />
-          <ClampedText text={t.text} className="flex-1" onExpand={() => onKeep?.(t.id)} />
-          {actionsOf(t).map((action) => (
-            <button
-              key={action.label}
-              type="button"
-              onClick={() => {
-                onDismiss(t.id);
-                action.run();
-              }}
-              className="-my-0.5 h-7 shrink-0 rounded-control px-2 font-medium text-accent hover:bg-accent-soft"
-            >
-              {action.label}
-            </button>
-          ))}
-          <button
-            type="button"
-            aria-label="Dismiss"
-            onClick={() => onDismiss(t.id)}
-            className="grid size-6 place-items-center rounded-control text-muted hover:bg-accent-soft hover:text-ink"
+      {toasts.map((t) => {
+        const actions = actionsOf(t);
+        return (
+          <div
+            key={t.id}
+            role={t.tone === 'error' ? 'alert' : 'status'}
+            data-toast={t.tone}
+            className="pointer-events-auto flex max-w-[min(420px,100%)] items-start gap-2.5 rounded-dialog border border-line bg-raised py-2.5 pr-2 pl-3 text-base text-ink shadow-raised"
           >
-            <X size={14} />
-          </button>
-        </div>
-      ))}
+            <span
+              className={`mt-1.5 size-2 shrink-0 rounded-full ${DOT[t.tone]}`}
+              aria-hidden="true"
+            />
+            {/* The text keeps 10rem beside its buttons; where they don't fit,
+              the buttons go under it together rather than squeezing a long file
+              path to nothing (issue #155). */}
+            <div className="flex min-w-0 flex-1 flex-wrap items-start gap-x-2.5 gap-y-1">
+              <ClampedText
+                text={t.text}
+                className={actions.length > 0 ? 'flex-[1_1_10rem]' : 'flex-1'}
+                onExpand={() => onKeep?.(t.id)}
+              />
+              {actions.length > 0 && (
+                <div className="flex shrink-0 gap-x-1">
+                  {actions.map((action) => (
+                    <button
+                      key={action.label}
+                      type="button"
+                      onClick={() => {
+                        onDismiss(t.id);
+                        action.run();
+                      }}
+                      className="-my-0.5 h-7 shrink-0 rounded-control px-2 font-medium text-accent hover:bg-accent-soft"
+                    >
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              aria-label="Dismiss"
+              onClick={() => onDismiss(t.id)}
+              className="grid size-6 place-items-center rounded-control text-muted hover:bg-accent-soft hover:text-ink"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }

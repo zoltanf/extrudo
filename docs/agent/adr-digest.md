@@ -1456,7 +1456,14 @@ several buttons (`ToastOptions.actions`, with `action` the first of them), both
 with `available()`. Errors (permission lost, file removed) are toasts. The home
 screen's "Linked folder" section opens a file as a project **linked** to it;
 "Save to Linked Folder" (Home › Export tile, Ctrl+K) links an unlinked one, refusing a
-name that is already in the folder. **2026-10-29:** in the kernel's booleans (`finishBoolean`: fuse, cut, common, split) a **simplified** one runs **on copies of both inputs** (the face merge, `UnifySameDomain`, changed sub-shapes shared with the live body in place, safe input mode or not) and **checks the merged result, falling back to the plain boolean built again from the inputs** when the merge broke it (faces on one cylinder came out unorientable); **never `SetNonDestructive(true)`** on a boolean (a fillet after such a cut ran forever); the recompute engine's **`#checkSound`** refuses a feature whose fresh body fails `Kernel.isValid` or has no face ("The <feature> made a broken body …", "… an empty body …"), releases its handles and keeps the bodies before it, so **no evaluator ever gets a broken body** (a body read from a file is kept with a warning instead: `keepsBrokenBodies`, set only by the import feature); `Kernel.brokenSolidForTests` / the `test-broken`, `test-empty` and `test-broken-kept` features exist for those tests only.
+name that is already in the folder. **Amendment (2026-11-03, issue #155):** a
+moved time over the same bytes is no conflict: the link keeps `sha256` of the
+bytes last written or read (every write, Load from disk, Open…, Save As…), and
+`linkedSync` reads and hashes the file **only when the time moved**; a link
+without a hash keeps the time-only rule. A conflict is said **once per (file,
+time)**, Load from disk records the file it read in the link, and a project
+checks the file when it opens (`LinkSync.check`, `LinkedProject.opened`,
+conflicts only). **2026-10-29:** in the kernel's booleans (`finishBoolean`: fuse, cut, common, split) a **simplified** one runs **on copies of both inputs** (the face merge, `UnifySameDomain`, changed sub-shapes shared with the live body in place, safe input mode or not) and **checks the merged result, falling back to the plain boolean built again from the inputs** when the merge broke it (faces on one cylinder came out unorientable); **never `SetNonDestructive(true)`** on a boolean (a fillet after such a cut ran forever); the recompute engine's **`#checkSound`** refuses a feature whose fresh body fails `Kernel.isValid` or has no face ("The <feature> made a broken body …", "… an empty body …"), releases its handles and keeps the bodies before it, so **no evaluator ever gets a broken body** (a body read from a file is kept with a warning instead: `keepsBrokenBodies`, set only by the import feature); `Kernel.brokenSolidForTests` / the `test-broken`, `test-empty` and `test-broken-kept` features exist for those tests only.
 
 ADR-0066 (P4-06, slice 1) added **drawings into a sketch**: `@extrudo/io`
 gained `readSvg` / `readDxf` (`xml.ts` is our own small tokenizer, no
