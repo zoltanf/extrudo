@@ -890,7 +890,7 @@ Faces: `from:(<edge>)` (A face the operation generated from an edge: a round, a 
 | `tolerance` | `string \| number \| ParameterHandle` | optional | Radial clearance on this part; a length. Default 0.1 mm. |
 | `chamfer` | `boolean` | default `true` | A 45° lead-in at open ends. |
 
-Faces: `cap:start` (The face the sweep starts at: the profile in its own place); `cap:end` (The face the sweep ends at); `side:<curve>` (A wall, one per edge of the profile: the sketch curve it came from, or the body edge it was swept from); `side:<piece>` (One piece of the thread: `root`, `crest`, `flank0`, `flank1`, `end0`, `end1` or `lead0`, `lead1`, prefixed with the face's place in the input (`f0`, `f1`, ...) and numbered per turn. A multi-start thread (`starts` above 1) puts `s<j>.` after that prefix for each start's tooth faces: `f0.s1.crest`).
+Faces: `cap:start` (The face the sweep starts at: the profile in its own place); `cap:end` (The face the sweep ends at); `side:<curve>` (A wall, one per edge of the profile: the sketch curve it came from, or the body edge it was swept from); `side:<piece>` (One piece of the thread: `root`, `crest`, `flank0`, `flank1`, `end0`, `end1` or `lead0`, `lead1` (with `lead0step`, `lead1step` where a lead-in runs on through a chamfered end), prefixed with the face's place in the input (`f0`, `f1`, ...) and numbered per turn. A multi-start thread (`starts` above 1) puts `s<j>.` after that prefix for each start's tooth faces: `f0.s1.crest`).
 
 ### `meshToSolid` — Mesh to Solid
 

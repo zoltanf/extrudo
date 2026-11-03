@@ -15,6 +15,9 @@
  * - **lead-ins**: at an open end of the face (`Kernel.threadFace`'s `open`:
  *   a shaft's end, a hole's mouth) the tooth is cut back by a 45° cone, so
  *   the first turn grows out of the end instead of starting as a sliver;
+ *   past a chamfered end or a countersunk mouth the cone runs on through the
+ *   body as far as the face across reaches (`across`, ADR-0056's sixth
+ *   amendment), so no collar of the chamfer is left;
  * - the tool is ring − tooth: cut from the body (`operate`), it leaves the
  *   tooth standing and takes the rest of the band away.
  *
@@ -42,7 +45,8 @@
  * Faces: `thread:<id>:side:<source>`, sources `f<k>.root`, `f<k>.flank0`,
  * `f<k>.crest`, `f<k>.flank1` (one per turn, `#n`), `f<k>.end0|end1` (the
  * flat steps where a thread stops inside a face), `f<k>.lead0|lead1` (the
- * lead-in cones), `f<k>.fill|fillWall|fillEnd0|fillEnd1` (the sleeve's),
+ * lead-in cones, past the end too), `f<k>.lead0step|lead1step` (the 0.1 P
+ * annulus where a lead-in runs on past the end), `f<k>.fill|fillWall|fillEnd0|fillEnd1` (the sleeve's),
  * where k is the face's place in the input (`f0`, `f1` …).
  */
 import {
@@ -316,6 +320,12 @@ export interface ThreadPlan {
   to: number;
   /** A lead-in at `from` / `to`. */
   lead: [boolean, boolean];
+  /**
+   * How far the lead-in runs on past `from` / `to` (ADR-0056's sixth
+   * amendment): as far as the faces across that end reach (a chamfer's
+   * length), 0 at a flat end or with no lead-in there.
+   */
+  across: [number, number];
   left: boolean;
   /**
    * The sleeve that brings the face to the thread (ADR-0056's fifth
@@ -463,6 +473,7 @@ export function planThread(
   const atFrom = Math.abs(from - face.from) < EPS && face.open[0];
   const atTo = Math.abs(to - face.to) < EPS && face.open[1];
   const lead: [boolean, boolean] = [settings.chamfer && atFrom, settings.chamfer && atTo];
+  const across: [number, number] = [lead[0] ? face.across[0] : 0, lead[1] ? face.across[1] : 0];
   // A hole wider than the part's crest (its minor diameter with the
   // tolerance) or a shaft thinner than it (the major less the tolerance) is
   // brought to it along the thread first (ADR-0056's fifth amendment): the
@@ -503,6 +514,7 @@ export function planThread(
     from,
     to,
     lead,
+    across,
     left: settings.hand === 'left',
     ...(fill && { fill }),
     report: {
@@ -681,6 +693,50 @@ export function leadSection(plan: ThreadPlan, end: 0 | 1): Section {
       b: corners[(i + 1) % corners.length] as [number, number],
     })),
     sources: [`lead${end}x`, `lead${end}`, `lead${end}y`, `lead${end}z`],
+  };
+}
+
+/**
+ * The lead-in's run on past end `end` (ADR-0056's sixth amendment): the
+ * region outside the lead-in's 45° cone continued through the end plane, as
+ * far past it as the faces across that end reach (`plan.across`), so a
+ * chamfered shaft end or a countersunk hole mouth becomes the lead-in's cone
+ * instead of standing as a collar. It starts at the end plane: started
+ * inside the run, its cone would lie on the tool's own lead-in faces and the
+ * fuse of the two goes invalid, so the end plane keeps a 0.1 P annulus
+ * (`lead<end>step`) from the root in to the cone. Its cone is named
+ * `lead<end>` too. Undefined when nothing lies past the end.
+ */
+export function leadCapSection(plan: ThreadPlan, end: 0 | 1): Section | undefined {
+  const { radii, internal, pitch } = plan;
+  const s = internal ? 1 : -1; // towards the root
+  const start = radii.root + s * 0.1 * pitch;
+  // A shaft's cone reaches the axis `start` past the end: stop short of it.
+  const past = internal ? plan.across[end] : Math.min(plan.across[end], 0.9 * start);
+  if (past < EPS) return undefined;
+  const crestSide = internal
+    ? Math.max(0, radii.crest - reach(plan))
+    : radii.crest + reach(plan) + Math.max(0, plan.radius - radii.crest);
+  const at = end === 0 ? plan.from : plan.to;
+  const into = end === 0 ? 1 : -1; // along v into the thread
+  const far = at - into * past;
+  const shifted = (u: number, v: number): [number, number] => [
+    internal ? Math.max(0, u + shiftAt(plan, v)) : u + shiftAt(plan, v),
+    v,
+  ];
+  const corners: [number, number][] = [
+    shifted(start, at),
+    shifted(crestSide, at),
+    shifted(crestSide, far),
+    shifted(start + s * past, far),
+  ];
+  return {
+    curves: corners.map((a, i) => ({
+      kind: 'line',
+      a,
+      b: corners[(i + 1) % corners.length] as [number, number],
+    })),
+    sources: [`lead${end}step`, `lead${end}out`, `lead${end}far`, `lead${end}`],
   };
 }
 
@@ -909,5 +965,10 @@ export function buildTool(
     tool = namedBoolean(kernel, 'cut', tool, tooth, options);
     scope.track(tool.shape);
   });
-  return tool;
+  // The lead-ins run on through a chamfered end (ADR-0056's sixth amendment).
+  const caps = ([0, 1] as const).flatMap((end) => {
+    const section = plan.lead[end] ? leadCapSection(plan, end) : undefined;
+    return section ? [revolved(ctx, scope, plan, section, prefix)] : [];
+  });
+  return caps.length === 0 ? tool : mergeTools(ctx, scope, [tool, ...caps], 'thread');
 }

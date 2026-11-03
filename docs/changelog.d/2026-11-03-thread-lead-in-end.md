@@ -1,0 +1,1 @@
+- 2026-11-03 · **A thread's lead-in runs through a chamfered end**: a thread that reaches a chamfered shaft end or a countersunk hole mouth now carries its lead-in cone on through the chamfer, so no collar of the chamfer is left standing (ADR-0056's sixth amendment).
