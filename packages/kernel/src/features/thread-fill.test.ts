@@ -5,6 +5,7 @@
 // for M5) threads fully. The harness is `thread.test.ts`'s.
 import {
   CYLINDER_TYPE,
+  chamferInputs,
   type ExtrudoDocument,
   extrudeInputs,
   type Feature,
@@ -14,8 +15,10 @@ import {
   type GeomRef,
   HOLE_TYPE,
   holeInputs,
+  originAxisRef,
   originPlaneRef,
   primitiveInputs,
+  revolveInputs,
   type SketchData,
   sketchInputs,
   THREAD_TYPE,
@@ -345,6 +348,130 @@ const warningOf = (result: Done, id: string) => {
   return s.status === 'warning' ? s.message : undefined;
 };
 
+/** A reference, with its fingerprint, to the sub-shape named `id` in a recompute. */
+function refTo(result: Done, kind: 'face' | 'edge', id: string): GeomRef {
+  for (const body of result.bodies) {
+    const list = kind === 'face' ? body.mesh?.faceIds : body.mesh?.edgeIds;
+    const index = list?.indexOf(id) ?? -1;
+    if (index < 0) continue;
+    const ref = engine.reference(body.id, kind, index);
+    if (ref) return ref;
+  }
+  throw new Error(`no ${kind} named ${id}`);
+}
+
+/**
+ * A Ø`diameter` pin 20 mm long (body `C:0`) whose free end (z = 20) is
+ * chamfered 0.3 mm (the chamfer feature) or rounded 0.3 mm (`test-fillet`).
+ */
+async function endedPin(diameter: number, end: 'chamfer' | 'round'): Promise<Feature[]> {
+  const pin = cylinder('C', diameter, 20);
+  const edge = refTo(
+    await run(testDocument([pin])),
+    'edge',
+    'e[cylinder:C:cap:end|cylinder:C:side:wall]',
+  );
+  engine.clear();
+  return [
+    pin,
+    end === 'chamfer'
+      ? {
+          ...testFeature('K', 'chamfer'),
+          inputs: chamferInputs([{ edges: [edge], distance: '0.3 mm' }]),
+        }
+      : testFeature(
+          'K',
+          'test-fillet',
+          { radius: '0.3 mm' },
+          { edges: { kind: 'ref', refs: [edge] } },
+        ),
+  ];
+}
+
+/**
+ * The shape's radius along `axis` (through the origin): for each slab
+ * `z … z + step` from `z0` up to `z1`, the largest distance from the axis of
+ * any material in it, all the way round (5 less the slab's distance to a tube
+ * from Ø10 out), or with `inner` the least (the slab's distance to a Ø0.02
+ * rod on the axis, plus its radius). 0 for an empty slab.
+ */
+function radiusAlong(
+  shape: ShapeHandle,
+  z0: number,
+  z1: number,
+  { axis = 'z', inner = false }: { axis?: 'y' | 'z'; inner?: boolean } = {},
+  step = 0.02,
+) {
+  const dir: [number, number, number] = axis === 'z' ? [0, 0, 1] : [0, 1, 0];
+  const at = (h: number) => dir.map((d) => d * h) as [number, number, number];
+  const rod = 0.01;
+  let probe: ShapeHandle;
+  if (inner) {
+    probe = kernel.cylinder(rod, 40, at(-10), dir);
+  } else {
+    const outer = kernel.cylinder(20, 40, at(-10), dir);
+    const hollow = kernel.cylinder(5, 40, at(-10), dir);
+    probe = kernel.cut(outer, hollow).shape;
+    kernel.release(outer, hollow);
+  }
+  const out: { z: number; r: number }[] = [];
+  for (let z = z0; z < z1 - 1e-9; z += step) {
+    const slab = kernel.cylinder(15, step, at(z), dir);
+    const common = kernel.common(shape, slab);
+    const empty = kernel.measure(common.shape).volume < 1e-9;
+    const d = empty ? 0 : kernel.distance(common.shape, probe);
+    out.push({ z: round(z, 3), r: empty ? 0 : round(inner ? d + rod : 5 - d, 3) });
+    kernel.release(slab, common.shape);
+  }
+  kernel.release(probe);
+  return out;
+}
+
+/**
+ * The largest rise of `r` along the profile (or with `fall`, the largest
+ * drop): how far a slab stands out past one before it. Empty slabs are left out.
+ */
+function stepOf(profile: { z: number; r: number }[], fall = false): number {
+  let least = Number.POSITIVE_INFINITY;
+  let rise = 0;
+  for (const { r: radius } of profile) {
+    if (radius === 0) continue;
+    const r = fall ? -radius : radius;
+    rise = Math.max(rise, r - least);
+    least = Math.min(least, r);
+  }
+  return rise;
+}
+
+/** The last non-empty slab's radius. */
+const lastOf = (profile: { z: number; r: number }[]) =>
+  profile.filter((p) => p.r > 0).at(-1)?.r ?? 0;
+
+/**
+ * A Ø`hole` hole through a 20 × 20 × 10 block (body `E:0`), its mouth at
+ * z = 10 countersunk 0.3 mm at 45° (the chamfer feature).
+ */
+async function countersunk(hole: number): Promise<{ features: Feature[]; wall: GeomRef }> {
+  const block = blockWithHole(hole, 10);
+  const circle = block.wall.id.replace('extrude:E:side:', '');
+  const edge = refTo(
+    await run(testDocument(block.features)),
+    'edge',
+    `e[extrude:E:cap:end|extrude:E:side:${circle}]`,
+  );
+  engine.clear();
+  return {
+    features: [
+      ...block.features,
+      {
+        ...testFeature('K', 'chamfer'),
+        inputs: chamferInputs([{ edges: [edge], distance: '0.3 mm' }]),
+      },
+    ],
+    wall: block.wall,
+  };
+}
+
 describe('thread fill', { timeout: 300_000 }, () => {
   const m5in = threadRadii('iso', 5, 0.8, 0.1, true);
   const m5out = threadRadii('iso', 5, 0.8, 0.1, false);
@@ -477,8 +604,185 @@ describe('thread fill', { timeout: 300_000 }, () => {
     expect(solidAlong(thin.m.shape, m5out.root + 0.03, 2, 18)).toBeLessThan(40);
     expect(solidAlong(thin.m.shape, 2.1, 2, 18)).toBeGreaterThan(0);
     const thick = await pin(5);
+    // A flat end has nothing past it: the lead-in is as it was before it ran
+    // on through chamfers (ADR-0056's sixth amendment).
+    expect(thin.m.faces).toBe(107);
+    expect(round(thin.m.volume, 3)).toBe(292.577);
+    expect(thick.m.faces).toBe(107);
+    expect(round(thick.m.volume, 3)).toBe(292.577);
     expect(status(thick.result, 'T')).toEqual({ status: 'ok' });
     expect(Math.abs(thin.m.volume - thick.m.volume) / thick.m.volume).toBeLessThan(0.01);
+  });
+
+  // A pin whose free end is chamfered or rounded, threaded out to that end:
+  // the outer radius may only fall toward the end, no collar or ledge. Before
+  // the lead-in ran on through the end (ADR-0056's sixth amendment) the
+  // chamfer with the lead-in kept a collar: the tooth cut back to the root at
+  // z = 19.7 and the chamfer above it untouched, 0.28 mm proud on a Ø4.5 pin,
+  // 0.53 mm on an unfilled Ø5 one. Now the lead-in's cone runs on through
+  // the chamfer: the end face is the cone's at 0.3 mm past the run.
+  const start = m5out.root - 0.1 * 0.8;
+  for (const [diameter, end, chamfer] of [
+    [4.5, 'chamfer', true],
+    [5, 'chamfer', true],
+    [4.5, 'chamfer', false],
+    [4.5, 'round', true],
+    [4.5, 'round', false],
+  ] as const) {
+    it(`builds a Ø${diameter} pin to M5 out to a ${end}ed end with no step (lead-in ${chamfer ? 'on' : 'off'})`, async () => {
+      engine.clear();
+      const result = await runWithShapes(
+        testDocument([
+          ...(await endedPin(diameter, end)),
+          thread('T', {
+            faces: [wall('C')],
+            numbers: { diameter: '5 mm', pitch: '0.8 mm' },
+            chamfer,
+          }),
+        ]),
+      );
+      const m = measure(result, 'C:0');
+      expect(m.valid).toBe(true);
+      expect(m.solids).toBe(1);
+      const profile = radiusAlong(m.shape, 17, 20.2);
+      expect(stepOf(profile)).toBeLessThan(0.02);
+      if (end === 'chamfer' && chamfer) {
+        // The last slab (z 19.98 … 20) reaches out to the cone at 19.98.
+        expect(Math.abs(lastOf(profile) - (start - 0.3))).toBeLessThan(0.03);
+        // The cap's cone is the lead-in's and the end plane keeps the 0.1 P
+        // annulus between the root and the cone; its outer faces don't survive.
+        const names = threadNames(m.names);
+        expect(names).toContain('thread:T:side:f0.lead1');
+        expect(names).toContain('thread:T:side:f0.lead1step');
+        expect(names.filter((n) => /lead\d(out|far)$/.test(n))).toEqual([]);
+      }
+    });
+  }
+
+  // A countersunk mouth: the lead-in's cone runs on through the countersink,
+  // so no ring of the countersink stands inside it; drawn at the tap drill
+  // and (filled) at Ø4.5.
+  for (const hole of [4.2, 4.5]) {
+    it(`runs an M5 lead-in through a Ø${hole} hole's countersink`, async () => {
+      engine.clear();
+      const plate = await countersunk(hole);
+      const result = filledOk(
+        await runWithShapes(
+          testDocument([
+            ...plate.features,
+            thread('T', { faces: [plate.wall], numbers: { diameter: '5 mm', pitch: '0.8 mm' } }),
+          ]),
+        ),
+      );
+      const m = measure(result, 'E:0');
+      expect(m.valid).toBe(true);
+      expect(m.solids).toBe(1);
+      expect(dataOf('T').faces[0]?.lead).toEqual([true, true]);
+      const profile = radiusAlong(m.shape, 7, 10, { inner: true });
+      // The wall only widens toward the mouth, to the cone's radius at the face.
+      expect(stepOf(profile, true)).toBeLessThan(0.02);
+      expect(Math.abs(lastOf(profile) - (m5in.root + 0.1 * 0.8 + 0.3))).toBeLessThan(0.03);
+    });
+  }
+
+  // The lead-in runs on only as far as the face across the end reaches, and
+  // only down to the radius at which material continues past it: a pin
+  // chamfered down to a thinner stem keeps the stem whole, and the stem runs
+  // up to the thread's end (the chamfer cut back to it, no neck).
+  it('stops the lead-in at the stem of a stepped pin', async () => {
+    engine.clear();
+    const b = new SketchBuilder();
+    const outline: [number, number][] = [
+      [0, 0],
+      [2.25, 0],
+      [2.25, 9.7],
+      [1.95, 10],
+      [1.95, 20],
+      [0, 20],
+    ];
+    const lines = outline.map(
+      ([x, y], i) => b.line(x, y, ...(outline[(i + 1) % outline.length] as [number, number])).id,
+    );
+    const result = filledOk(
+      await runWithShapes(
+        testDocument([
+          sketch('SV', b.sketch),
+          {
+            ...testFeature('V', 'revolve'),
+            inputs: revolveInputs(profileRefs('SV', b.sketch), originAxisRef('origin:y')),
+          },
+          thread('T', {
+            faces: [{ kind: 'face', id: `revolve:V:side:${lines[1]}` }],
+            numbers: { diameter: '5 mm', pitch: '0.8 mm' },
+          }),
+        ]),
+      ),
+    );
+    const m = measure(result, 'V:0');
+    expect(m.valid).toBe(true);
+    expect(m.solids).toBe(1);
+    expect(dataOf('T').faces[0]).toMatchObject({ lead: [true, true] });
+    const profile = radiusAlong(m.shape, 8, 20, { axis: 'y' });
+    // The stem, from the chamfer's end on, is as drawn.
+    for (const { z, r } of profile.filter((p) => p.z >= 10)) {
+      expect(Math.abs(r - 1.95), `y = ${z}`).toBeLessThan(0.005);
+    }
+    // No neck between the thread's end and the stem, and no step from the crest on.
+    for (const { z, r } of profile.filter((p) => p.z >= 9.7 && p.z < 10)) {
+      expect(r, `y = ${z}`).toBeGreaterThan(1.95 - 0.02);
+    }
+    expect(stepOf(profile)).toBeLessThan(0.02);
+    expect(threadNames(m.names)).toContain('thread:T:side:f0.lead1beyond');
+  });
+
+  // A countersink at the floor of a Ø5.6 counterbore: the lead-in's cone
+  // would open to 2.98 there, past the counterbore's wall (2.8): it stops at
+  // the wall, which runs on as drawn.
+  it('stops the lead-in at a counterbore past the countersink', async () => {
+    engine.clear();
+    const features: Feature[] = [
+      cylinder('C', 16, 10),
+      {
+        ...testFeature('H', HOLE_TYPE),
+        inputs: holeInputs({
+          plane: { kind: 'face', id: 'cylinder:C:cap:end' },
+          type: 'counterbore',
+          extent: 'through',
+          numbers: { diameter: '4.2 mm', cbDiameter: '5.6 mm', cbDepth: '2 mm' },
+        }),
+      },
+    ];
+    const edge = refTo(
+      await run(testDocument(features)),
+      'edge',
+      'e[hole:H:side:cbfloor|hole:H:side:wall]',
+    );
+    engine.clear();
+    const result = filledOk(
+      await runWithShapes(
+        testDocument([
+          ...features,
+          {
+            ...testFeature('K', 'chamfer'),
+            inputs: chamferInputs([{ edges: [edge], distance: '0.3 mm' }]),
+          },
+          thread('T', {
+            faces: [{ kind: 'face', id: 'hole:H:side:wall' }],
+            numbers: { diameter: '5 mm', pitch: '0.8 mm' },
+          }),
+        ]),
+      ),
+    );
+    const m = measure(result, 'C:0');
+    expect(m.valid).toBe(true);
+    expect(m.solids).toBe(1);
+    expect(dataOf('T').faces[0]?.lead).toEqual([true, true]);
+    const profile = radiusAlong(m.shape, 6, 10, { inner: true });
+    expect(stepOf(profile, true)).toBeLessThan(0.02);
+    // The mouth at the counterbore's floor is the wall's radius, and the wall is as drawn.
+    for (const { z, r } of profile.filter((p) => p.z >= 7.98)) {
+      expect(Math.abs(r - 2.8), `z = ${z}`).toBeLessThan(0.005);
+    }
   });
 
   it('fills a short thread only along its run', async () => {

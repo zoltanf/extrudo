@@ -4273,8 +4273,20 @@ public:
    * when the face goes all the way round. `open0` / `open1` say whether the
    * face's edge at h0 / h1 is an outward corner (1: the shaft's end, a hole's
    * mouth, where a thread gets its lead-in chamfer) or not (0: a shoulder,
-   * a hole's floor, a smooth join, or no edge right round). Returns 14, or -1
-   * (not a cylinder or a cone, unknown shape).
+   * a hole's floor, a smooth join, or no edge right round). Then [across0,
+   * across1] (ADR-0056's sixth amendment): at an open end, how far the faces
+   * across it reach past the end along the axis (mm, from their vertices: a
+   * 45° chamfer 0.3 mm long gives 0.3, a flat end 0); 0 at an end that isn't
+   * open. Then [beyond0, beyond1]: the radius (mm, from the axis) at which
+   * material continues past the faces across that end, or 0 when nothing
+   * does. It is read at the far edges of each face across (the ones at its
+   * far extremity along the axis): where the face across them doesn't turn
+   * away (a stem's cylinder), material continues at the far vertices'
+   * distance from the axis; where it does (a flat end, a counterbore's
+   * floor), the faces across that face's other edges are asked the same (a
+   * counterbore's wall: its radius; a shaft's free end: nothing). Over
+   * several, a shaft keeps the largest, a hole the smallest. Returns 18, or
+   * -1 (not a cylinder or a cone, unknown shape).
    */
   int threadFace(int shape, int face) {
     beginOp();
@@ -4320,6 +4332,33 @@ public:
       const double tol = 1e-6 * std::max(1.0, v1 - v0);
       double open[2] = {1, 1};
       double around[2] = {0, 0};
+      double across[2] = {0, 0};
+      double beyond[2] = {0, 0};
+      // Whether `face` turns its back on `into` at `edge`: 1 yes, 0 no, -1 unknown.
+      auto turnsAway = [](const TopoDS_Edge& edge, const TopoDS_Face& face, const gp_Vec& into) {
+        double a = 0, b = 0;
+        Handle(Geom2d_Curve) on = BRep_Tool::CurveOnSurface(edge, face, a, b);
+        if (on.IsNull()) return -1;
+        const gp_Pnt2d uv = on->Value((a + b) / 2);
+        BRepAdaptor_Surface faceSurface(face);
+        BRepLProp_SLProps faceProps(faceSurface, uv.X(), uv.Y(), 1, Precision::Confusion());
+        if (!faceProps.IsNormalDefined()) return -1;
+        gp_Dir n = faceProps.Normal();
+        if (face.Orientation() == TopAbs_REVERSED) n.Reverse();
+        return gp_Vec(n).Dot(into) < -0.5 ? 1 : 0;
+      };
+      auto radiusOf = [&](const TopoDS_Shape& vertex) {
+        const gp_Vec t(origin, BRep_Tool::Pnt(TopoDS::Vertex(vertex)));
+        return (t - gp_Vec(axis) * t.Dot(gp_Vec(axis))).Magnitude();
+      };
+      // Material continues at the vertices of `edge`: a shaft's cone stops at the largest such radius, a hole's at the smallest.
+      auto continuesAt = [&](int end, const TopoDS_Edge& edge) {
+        for (TopExp_Explorer x(edge, TopAbs_VERTEX); x.More(); x.Next()) {
+          const double r = radiusOf(x.Current());
+          if (beyond[end] == 0) beyond[end] = r;
+          else beyond[end] = inside ? std::min(beyond[end], r) : std::max(beyond[end], r);
+        }
+      };
       for (TopExp_Explorer e(f, TopAbs_EDGE); e.More(); e.Next()) {
         const TopoDS_Edge edge = TopoDS::Edge(e.Current());
         double first = 0, last = 0;
@@ -4355,10 +4394,51 @@ public:
           if (other.Orientation() == TopAbs_REVERSED) n2.Reverse();
           // An outward corner: the face across turns its back on this one.
           if (!(gp_Vec(n2).Dot(into) < -0.5)) open[end] = 0;
+          // How far the face across reaches past the end, from its vertices.
+          const double endHeight = (end == 0 ? v0 : v1) * alongV;
+          auto pastOf = [&](const TopoDS_Shape& vertex) {
+            const gp_Vec toVertex(origin, BRep_Tool::Pnt(TopoDS::Vertex(vertex)));
+            return -(toVertex.Dot(gp_Vec(axis)) - endHeight) * (end == 0 ? 1.0 : -1.0);
+          };
+          double reach = 0;
+          for (TopExp_Explorer x(other, TopAbs_VERTEX); x.More(); x.Next()) reach = std::max(reach, pastOf(x.Current()));
+          across[end] = std::max(across[end], reach);
+          if (reach < 1e-4) continue;
+          // Where material continues past it: across its far edges, and through a face there that turns away, across that face's other edges.
+          for (TopExp_Explorer fe(other, TopAbs_EDGE); fe.More(); fe.Next()) {
+            const TopoDS_Edge farEdge = TopoDS::Edge(fe.Current());
+            bool atFar = false, allFar = true;
+            for (TopExp_Explorer x(farEdge, TopAbs_VERTEX); x.More(); x.Next()) {
+              atFar = true;
+              if (std::abs(pastOf(x.Current()) - reach) > 1e-4) allFar = false;
+            }
+            if (!atFar || !allFar) continue;
+            const int farAt = edgeFaces.FindIndex(farEdge);
+            if (farAt == 0) continue;
+            for (NCollection_List<TopoDS_Shape>::Iterator ft(edgeFaces(farAt)); ft.More(); ft.Next()) {
+              if (ft.Value().IsSame(f) || ft.Value().IsSame(other)) continue;
+              const TopoDS_Face farFace = TopoDS::Face(ft.Value());
+              if (turnsAway(farEdge, farFace, into) != 1) {
+                continuesAt(end, farEdge);
+                continue;
+              }
+              for (TopExp_Explorer ge(farFace, TopAbs_EDGE); ge.More(); ge.Next()) {
+                const TopoDS_Edge nextEdge = TopoDS::Edge(ge.Current());
+                if (nextEdge.IsSame(farEdge) || BRep_Tool::Degenerated(nextEdge)) continue;
+                const int nextAt = edgeFaces.FindIndex(nextEdge);
+                if (nextAt == 0) continue;
+                for (NCollection_List<TopoDS_Shape>::Iterator nt(edgeFaces(nextAt)); nt.More(); nt.Next()) {
+                  if (nt.Value().IsSame(farFace)) continue;
+                  if (turnsAway(nextEdge, TopoDS::Face(nt.Value()), into) != 1) continuesAt(end, nextEdge);
+                }
+              }
+            }
+          }
         }
       }
       for (int end = 0; end < 2; ++end) {
         if (around[end] < (u1 - u0) - 1e-6) open[end] = 0;
+        if (open[end] == 0) across[end] = beyond[end] = 0;
       }
       pushPoint(origin);
       pushDir(out);
@@ -4368,7 +4448,9 @@ public:
       const double radius = refRadius + (flip > 0 ? v0 : v1) * std::sin(halfAngle);
       geometry_.insert(geometry_.end(), {radius, inside ? 1.0 : 0.0, h0, h1, whole ? 1.0 : 0.0,
                                          flip > 0 ? open[0] : open[1], flip > 0 ? open[1] : open[0],
-                                         flip * halfAngle});
+                                         flip * halfAngle, flip > 0 ? across[0] : across[1],
+                                         flip > 0 ? across[1] : across[0], flip > 0 ? beyond[0] : beyond[1],
+                                         flip > 0 ? beyond[1] : beyond[0]});
       return static_cast<int>(geometry_.size());
     } catch (...) {
       failFromException("Thread face failed");

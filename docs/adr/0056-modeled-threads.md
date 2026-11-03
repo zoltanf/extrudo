@@ -564,10 +564,15 @@ TypeScript only: **no facade change**, no new input, no schema key.
   tapers** compose with no code of their own (the sleeve is a revolve).
   **Multi-body**: the face's body only.
 
-**Known limit.** A chamfered or rounded **shaft** end that the thread runs
-out of shows a small step where the flush sleeve meets the chamfer (the
-lead-in cone cuts into it). Trimming the shaft's sleeve to a hull, as a
-hole's is, would fix it; nobody has needed it yet.
+**Known limit, fixed by the sixth amendment** (below). A shaft with a 45°
+chamfer at its free end, threaded out to that end with the lead-in, kept a
+**collar**: the lead-in cut the tooth back to the root at the face's end and
+the chamfer past the run was not cut at all. On a Ø4.5 × 20 pin, M5 × 0.8,
+chamfer 0.3 mm, the outer radius fell along the lead-in to the root's 1.967
+at z = 19.7, then jumped to 2.25: a step of 0.28 mm. It was not the fill's
+(an unfilled Ø5 pin had 0.53 mm), although this paragraph first blamed the
+sleeve. Without the lead-in, or at a round (never open, so never a
+lead-in), the radius only falls toward the end.
 
 **Addendum (2026-11-03): a hole at or past the root.** The hole-at-the-root
 error is gone: the sleeve fills any hole wider than the crest, one at or past
@@ -616,5 +621,96 @@ a threadable hole. B9's Ø28 cap bore
 (M30) fills silently; its Ø29 variant (wall 1.5 mm) notes it. The golden
 table has no internal rows, so none was added; its rows are unchanged.
 
-**Deferred.** The shaft-end trim (the known limit above).
+## Amendment, 2026-11-03: the lead-in runs through the end
 
+A thread that reaches a chamfered shaft end or a countersunk hole mouth
+left the chamfer as drawn past its run: a collar standing 0.28 mm proud of
+the lead-in on a filled Ø4.5 pin, 0.53 mm on a Ø5 one (the fifth
+amendment's Known limit). Now, at an **open end with the lead-in**
+(`plan.lead[end]`), the region the lead-in's 45° cone sweeps **past the
+face's end** is cut from the body too, as far along the axis as the faces
+across that end reach. A shaft's end gets one chamfer from the crest down
+past the root, as a turned bolt's has; a hole's countersink becomes the
+lead-in's cone. A flat end has nothing past it and is unchanged. Code:
+`threadFace` in the facade, `Kernel.threadFace`, `leadCapSection` and
+`buildTool` in `packages/kernel/src/features/thread.ts`; tests
+`thread-fill.test.ts`, `thread.test.ts`.
+
+- **The facade's `across`.** `threadFace` returns 16 numbers (18 with `beyond`, below): after
+  `taper`, `across0, across1`, how far the faces across each open end reach
+  past it along the axis (mm), from their vertices (the farthest one, over
+  the faces across that end): a 45° chamfer 0.3 mm long gives 0.3, a flat
+  end 0, an end that isn't open 0. `ThreadFace.across` carries it, and
+  `ThreadPlan.across` keeps it at an end with the lead-in (0 elsewhere).
+- **The cap.** `leadCapSection(plan, end)`: in the half-plane, from the end
+  plane out to `across` past it, between the lead-in's cone continued
+  (radius `start ∓ d` at `d` past the end, `start` = root ∓ 0.1 P as
+  `leadSection` has it: shrinking for a shaft, growing for a hole) and the
+  same outer bound `leadSection` uses (a hole's is inside the crest, empty
+  anyway). It follows `shiftAt` on a cone. A shaft's cap stops at 0.9 ×
+  `start` past the end, short of the axis (a chamfer that long is not a
+  thread's). The caps are revolved and merged into the thread's tool
+  (`mergeTools`), so they are cut in the same boolean as the ring.
+- **Where material continues, the cone stops** (owner's decision the same
+  day: no neck). The facade returns 18 numbers: after `across`, `beyond0,
+  beyond1`, the radius at which material continues past the faces across
+  an open end, 0 when nothing does. It is read at each face across's far
+  edges (at its far extremity along the axis): where the face across one
+  doesn't turn away (the outward-corner test of `open`, the same `into`: a
+  stem's cylinder), material continues at that edge's radius; where it does
+  (a flat end, a counterbore's floor, a flat shoulder), the faces across
+  that face's other edges are asked the same, one level (a counterbore's
+  wall: its radius; a shaft's free end has no other edge: nothing). Over
+  several, a shaft keeps the largest, a hole the smallest. `ThreadFace.beyond`
+  / `ThreadPlan.beyond` carry it like `across`. In `leadCapSection` a
+  shaft's cone never goes under `beyond`, a hole's never past it: where the
+  cone meets it the section gets a fifth corner and runs on as a cylinder
+  at `beyond` to the far end; where the cone starts past it already (a stem
+  wider than `start`), the inner side is that cylinder alone. *Decided
+  against the brief:* it asked only the faces across the far edges, but a
+  countersink's far face in a counterbore is the counterbore's floor, which
+  turns away, so the wall behind it would never have been found; hence the
+  second level.
+- **Face names.** The cap's cone is `f<k>.lead0|lead1`, the lead-in's own
+  name: one cone, one name. `f<k>.lead0step|lead1step` is the annulus the
+  end plane keeps (next bullet); `f<k>.lead0beyond|lead1beyond` the clamp's
+  cylinder, which survives as the stem's or the counterbore wall's run up
+  to the thread; `lead<end>out|far` (the cap's outer cylinder and far
+  plane) don't survive in the body (tested).
+- **It starts at the end plane**, not where the cone meets the root 0.1 P
+  inside the run: started inside, its cone lies on the tool's own lead-in
+  faces and the fuse of the cap with ring − tooth comes out invalid
+  (measured: every chamfered case failed `isValid`). So the end plane keeps
+  an annulus 0.1 P wide (root to `start`, `lead<end>step`), a fall toward
+  the end, not a step.
+
+**Rejected.** Running the cone on unbounded ("two pitches past the end", as
+the lead region reaches): it would nick anything narrower further along (a
+pin chamfered down to a thinner stem) and cut a point at the axis. Trimming
+a shaft's sleeve to an Offset Face hull (tried for the fifth amendment's
+limit): the sleeve never reaches past the face's end, so it left the collar
+unchanged to the measured digit.
+
+**Results** (Ubuntu machine, `thread-fill.test.ts`; the radius all the way
+round in 0.02 mm slabs). The Ø4.5 pin and the unfilled Ø5 pin, chamfer 0.3
+with the lead-in: the radius falls from the crest's 2.40 along the lead-in
+to 1.967 at z = 19.7 and on along the cone to 1.607 in the last slab (the
+end face's radius is `start − 0.3` = 1.587, Ø3.17): no step, the same for
+both. Without the lead-in and at a 0.3 round (either way): as before, no
+step. M5 through a 10 mm plate, a Ø4.2 hole and a filled Ø4.5 one, each
+countersunk 0.3 mm: the wall's radius stays at the crest's 2.167, widens
+along the lead-in to 2.6 at the end plane and on along the cone to 2.96 in
+the last slab (the mouth `root + 0.1 P + 0.3` = 2.98); the filled hole's
+trim to its hull and the cap do not meet (the same radii to the digit). A
+Ø4.5 × 10 pin chamfered 0.3 down to a Ø3.9 stem: the stem stays at 1.95 all
+along and runs up to the thread's end (1.950 from y = 9.72 on; without the
+clamp the cone necked it to 1.587 there); the radius only falls from the
+crest, through the root's 1.967, to the stem. A Ø4.2 hole through a Ø16 × 10
+plate with a Ø5.6 counterbore 2 mm deep and the hole's top edge
+countersunk 0.3: the wall widens along the lead-in to 2.6 at z = 7.7 and on
+along the cone to 2.80 at z = 7.84, then stays at 2.800 up through the
+counterbore (the cone alone would have opened to 2.98 under the
+counterbore's wall); the plain countersunk holes keep their 2.98 mouth (the
+block's sides, found through the plate's top, are far out of reach). The Ø4 and Ø5 flat-ended pins: 107 faces, 292.577 mm³, as
+before; the golden table `thread-options.json` is unchanged (no row has a
+chamfered end).
