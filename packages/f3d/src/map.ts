@@ -220,6 +220,12 @@ interface ImportedExtrude {
   /** Which way its side 1 runs along the file's sketch normal: 1 or −1. */
   side1: number;
   /**
+   * Of a one-sided extrude to a distance: where its end cap lies along the
+   * file's sketch normal from the profile plane (cm, signed). Unknown
+   * (`undefined`) for an extrude to an object or through everything.
+   */
+  end?: number;
+  /**
    * Of a new-body extrude whose profile has several region groups: the
    * Extrudo body (`${id}:k`) each group became, in the file's group order
    * (`bodyOrder`).
@@ -1612,6 +1618,8 @@ function extrude(
   // negative distance; Extrudo's runs along its plane's normal unless flipped.
   const flip = placement.opposite !== (f.reversed !== negative);
   const inputs: Record<string, unknown> = { profiles, operation: f.operation };
+  /** A one-sided extrude's end cap along the sketch normal (`ImportedExtrude.end`). */
+  let end: number | undefined;
   const stop = slanted && along && placeSketch(d, slanted.frame, report, `${f.name} start face`);
   if (stop && along) {
     inputs.extent = 'to-object';
@@ -1631,6 +1639,7 @@ function extrude(
       const total = to + Math.sign(to) * past;
       if (Math.abs(total) < 1e-9) return 'it goes up to a face in its own plane';
       inputs.distance = numberExpression(Math.abs(total), 'cm');
+      end = total;
       if (placement.opposite !== total < 0) inputs.flip = true;
       report.notes.push(`${f.name}: up to a face, imported as a distance.`);
     } else {
@@ -1642,8 +1651,10 @@ function extrude(
       if (Math.abs(along) > 1e-12) inputs.offset = numberExpression(along, 'cm');
     }
   } else if (f.direction === 'one-side') {
-    if (along) inputs.distance = expressionOf(along, negative);
-    else inputs.extent = throughAll(report, f, unread);
+    if (along) {
+      inputs.distance = expressionOf(along, negative);
+      end = side1 * Math.abs(along.value);
+    } else inputs.extent = throughAll(report, f, unread);
   } else if (f.direction === 'two-sides') {
     inputs.direction = 'two-sides';
     // Each side: a distance, up to a face (its offset parameter and the next
@@ -1714,9 +1725,17 @@ function extrude(
     curves: regionCurves(entry, profiles),
     oneSided: f.direction === 'one-side',
     side1: f.reversed !== negative ? -1 : 1,
+    ...(end !== undefined ? { end } : {}),
     ...(order ? { bodies: order } : {}),
   };
 }
+
+/**
+ * How far (cm) a plane may lie from where an extrude's end cap is computed to
+ * be and still be that cap (`faceNameIn`): the file's distance and its B-rep
+ * (float32 in some streams) agree to well under a micron.
+ */
+const CAP_TOL = 1e-4;
 
 /**
  * Along the axis that orders two solids, the kernel calls centres no further
@@ -2411,7 +2430,15 @@ function faceNameIn(
   if (s.kind === 'plane') {
     if (norm(cross(s.normal, N)) < 1e-6) {
       const h = dot(sub(s.point, O), N);
-      if (ex.oneSided) return `extrude:${ex.id}:cap:${Math.abs(h) < tol ? 'start' : 'end'}`;
+      if (ex.oneSided) {
+        if (Math.abs(h) < tol) return `extrude:${ex.id}:cap:start`;
+        // The end cap is the distance along; a plane between the caps (a face
+        // an offset moved, in its solved state) is neither. Where the distance
+        // isn't known (to an object, through everything) any other plane is the end.
+        if (ex.end === undefined || Math.abs(h - ex.end) < CAP_TOL)
+          return `extrude:${ex.id}:cap:end`;
+        return miss('plane between the caps of an extrude');
+      }
       // Two sides: side 1 ends in `cap:end`, side 2 in `cap:start`.
       if (Math.abs(h) < tol) return miss('profile plane of a two-sided extrude');
       return `extrude:${ex.id}:cap:${Math.sign(h) === ex.side1 ? 'end' : 'start'}`;
@@ -2689,13 +2716,18 @@ function offsetFaces(
     return 'it moves faces a pattern or mirror copied (not imported yet)';
   if (Math.abs(f.distance.value) < 1e-12)
     return 'its distance is 0 (Extrudo refuses an offset that moves nothing)';
-  // Named by the face's solved state only, as before the states were read.
-  // The faces other states name had moved, mostly by an earlier offset:
-  // offsetting one again ran the kernel's Offset Face for over 15 minutes on
-  // one design seen, and on another a thread after the offset then refused
-  // the wider hole. Left out until Offset Face is bounded.
-  const nameOf = (face: F3dFace) =>
-    faceName({ ...face, surface: face.solved ?? face.surface, states: [] }, naming);
+  // Named by the face as the offset saw it (`surface`, the state before the
+  // offset: an extrude's cap is still at its cap), and failing that by its
+  // solved state. Not by the face's other states: the faces those name had
+  // moved, mostly by an earlier offset, and offsetting one again ran the
+  // kernel's Offset Face for over 15 minutes on one design seen, and on
+  // another a thread after the offset then refused the wider hole. Left out
+  // until Offset Face is bounded.
+  const nameOf = (face: F3dFace) => {
+    const seen = faceName({ ...face, states: [] }, naming);
+    if (seen !== undefined || !face.solved) return seen;
+    return faceName({ ...face, surface: face.solved, states: [] }, naming);
+  };
   const faces: GeomRef[] = [];
   for (const face of f.faces) {
     const id = nameOf(face);
