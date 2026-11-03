@@ -70,6 +70,11 @@ export interface AppBarProps {
   tabs: ReactNode;
   theme: ThemeChoice;
   onThemeChange(theme: ThemeChoice): void;
+  /** Undo and redo, the commands the keys run: with a dialog open, undo only cancels it. */
+  onUndo(): void;
+  onRedo(): void;
+  /** A feature or Joint dialog is open: Undo stays enabled, to cancel it (ADR-0027's amendment). */
+  dialogOpen: boolean;
   /**
    * Opens the search (P1-14, R3-05): dropped from the Search button's bottom-right corner
    * `at`, or centred when absent (the app menu).
@@ -126,6 +131,9 @@ export function AppBar({
   tabs,
   theme,
   onThemeChange,
+  onUndo,
+  onRedo,
+  dialogOpen,
   onSearch,
   onTutorial,
   onDocs,
@@ -146,7 +154,7 @@ export function AppBar({
 }: AppBarProps) {
   const keysFor = useKeysFor();
   const name = useStore(store, (s) => s.doc.name);
-  const { canUndo, canRedo, undoLabel, redoLabel, undo, redo } = useStore(store);
+  const { canUndo, canRedo, undoLabel, redoLabel } = useStore(store);
 
   return (
     <header className="flex h-10 items-stretch gap-1 border-b border-line bg-bg px-2">
@@ -168,9 +176,15 @@ export function AppBar({
         <IconButton
           label="Undo"
           shortcut={keyLabel(keysFor('undo'))}
-          hint={undoLabel ? `Undo “${undoLabel}”.` : 'Nothing to undo.'}
-          disabled={!canUndo}
-          onClick={undo}
+          hint={
+            dialogOpen
+              ? 'Cancel the open dialog.'
+              : undoLabel
+                ? `Undo “${undoLabel}”.`
+                : 'Nothing to undo.'
+          }
+          disabled={!canUndo && !dialogOpen}
+          onClick={onUndo}
         >
           <Undo2 size={18} strokeWidth={1.75} />
         </IconButton>
@@ -179,7 +193,7 @@ export function AppBar({
           shortcut={keyLabel(keysFor('redo'))}
           hint={redoLabel ? `Redo “${redoLabel}”.` : 'Nothing to redo.'}
           disabled={!canRedo}
-          onClick={redo}
+          onClick={onRedo}
         >
           <Redo2 size={18} strokeWidth={1.75} />
         </IconButton>

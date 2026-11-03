@@ -1,0 +1,1 @@
+- 2026-11-03 · **Undo in a dialog keeps your sketch**: with a feature dialog open (Extrude, say), Undo now only cancels the dialog; it used to undo the sketch's edits too, so the sketch looked empty (issue #176, ADR-0027's amendment).

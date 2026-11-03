@@ -499,6 +499,10 @@ Crank or Glide. Since the right button drags, the right-click marking menu
   says so ("Sketch1 is hidden: Extrude1 used its profile.") with a Show
   button; the eye in the browser shows it again too. Editing a feature
   doesn't change visibility.
+- Undo (Ctrl+Z or the top bar's button) with a dialog open cancels the
+  dialog and nothing else: the draft is the change on screen, so the step
+  before it (a sketch's edits, say) stays (issue #176). Redo ends the
+  dialog, then redoes.
 - **As built (P2-05, ADR-0027):** the dialog floats top-right below the
   ViewCube, non-modal, and moves when dragged by its title. Selection
   fields are buttons: the one taking picks has the accent border ("Pick a
