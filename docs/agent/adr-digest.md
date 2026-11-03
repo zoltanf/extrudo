@@ -414,7 +414,14 @@ none): trimmed, empty/generic (`SOLID`, `PART`, `Body`, OCCT's translator
 name)/all-digits names dropped, repeats numbered `" (2)"`. **The app's
 `followBodyNames` gives a body the report's name in place of "Body n" once,
 when it first names it, so a renamed body keeps its name on recompute** (the
-colours rule). No schema change. `@extrudo/io` has
+colours rule). No schema change. **ADR-0034's third amendment (2026-11-03)**:
+every STEP path transfers `stepShape()`'s copy, which for a body with a face
+on an indirect frame **that has a seam** is `ShapeCustom::DirectFaces`' result
+with every reversed wire rebuilt forward (OCCT's writer otherwise reverses the wire itself and its
+`ShapeFix_Wire` reorder flips a seam wire's circles); any other body goes in
+as it is, byte-identical. Guarded by `export.test.ts`'s rim-fillet test
+(`badEdgeUses` in `step-test-support.ts`: every edge two opposite uses).
+`@extrudo/io` has
 `TriangleMesh`, `checkManifold`, `writeStl`/`readStl` (binary) and
 `write3mf`/`read3mf` (fflate; colours as `m:colorgroup` with object
 `pid`/`pindex` and per-triangle `pid`/`p1`). The app's
