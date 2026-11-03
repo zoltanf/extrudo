@@ -172,6 +172,7 @@
 #include <BRepTools_WireExplorer.hxx>
 #include <ShapeBuild_ReShape.hxx>
 #include <ShapeCustom.hxx>
+#include <TopTools_IndexedMapOfShape.hxx>
 #include <ShapeCustom_DirectModification.hxx>
 #include <BRepTools_Modifier.hxx>
 #include <TopTools_DataMapOfShapeShape.hxx>
@@ -5823,6 +5824,8 @@ private:
   // DEBUG-STEP (temporary)
   static std::string stepDebugFaces(const TopoDS_Shape& shape) {
     std::ostringstream o;
+    TopTools_IndexedMapOfShape edgeIds;
+    TopExp::MapShapes(shape, TopAbs_EDGE, edgeIds);
     o << "type " << shape.ShapeType() << " orient " << shape.Orientation() << " loc " << shape.Location().IsIdentity() << "\n";
     for (TopExp_Explorer it(shape, TopAbs_FACE); it.More(); it.Next()) {
       const TopoDS_Face face = TopoDS::Face(it.Current());
@@ -5840,7 +5843,24 @@ private:
       o << " adaptorType " << a.GetType();
       if (a.GetType() == GeomAbs_Torus) o << " adaptorDirect " << a.Torus().Position().Direct();
       o << "\n";
+      for (TopoDS_Iterator w(face, false, false); w.More(); w.Next()) {
+        o << "  wire orient " << w.Value().Orientation() << " outer " << w.Value().IsSame(BRepTools::OuterWire(face)) << " edges";
+        for (TopoDS_Iterator ed(w.Value(), false, false); ed.More(); ed.Next()) {
+          o << " " << edgeIds.FindIndex(ed.Value()) << ":" << ed.Value().Orientation();
+        }
+        o << "\n";
+      }
+      o << "  composed";
+      for (TopExp_Explorer ed(face, TopAbs_EDGE); ed.More(); ed.Next()) o << " " << edgeIds.FindIndex(ed.Current()) << ":" << ed.Current().Orientation();
+      o << "\n";
     }
+    std::map<int, std::vector<int>> uses;
+    for (TopExp_Explorer f(shape, TopAbs_FACE); f.More(); f.Next())
+      for (TopExp_Explorer ed(f.Current(), TopAbs_EDGE); ed.More(); ed.Next())
+        uses[edgeIds.FindIndex(ed.Current())].push_back(ed.Current().Orientation());
+    int bad = 0;
+    for (const auto& [k, v] : uses) bad += (v.size() == 2 && v[0] == v[1]);
+    o << " occt edge uses same way " << bad << " valid " << BRepCheck_Analyzer(shape).IsValid() << "\n";
     return o.str();
   }
   static std::string stepDebug(const TopoDS_Shape& shape) {
