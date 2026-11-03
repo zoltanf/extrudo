@@ -364,7 +364,9 @@ plane, the camera's side removed — view state, one more `SectionClip` in
 `useSection`'s list, last after the person's own planes; the removed side
 is decided once per sketch or Slice turn-on (the session's
 `sketchSliceFlip`) and kept while the camera orbits. Native harness:
-`spikes/p4-12-project/` (`run.sh`, `run.sh leaks 100`). **In the app a sketch's frame comes only from
+`spikes/p4-12-project/` (`run.sh`, `run.sh leaks 100`). **ADR-0125** extends
+Project and auto-project to an **earlier sketch**: a curve, point or whole
+sketch is a source (a `sketchEntity` or `feature` ref); see its paragraph. **In the app a sketch's frame comes only from
 `sketchFrame(feature, plane, model.sketches)`** (`sketch/frame.ts`),
 never `planeFrame()` alone. ADR-0032 (P2-10) added the primitives
 `box`, `cylinder`, `sphere`, `torus` (`packages/core/src/primitives.ts`,
@@ -2047,6 +2049,8 @@ with the constraint and dimension counts on its curves. On dispatches
 constraint or dimension uses the curves**, and the switch is disabled then (hint
 counts them) and on a plane sketch. It doesn't depend on Auto-project. Keep
 `viewport.autoProjectFace` for new sketches in Settings and the app menu only.
+ADR-0125 adds `viewport.autoProjectSketches` and the `sketchCurve`/`sketchPoint`
+snap kinds; see its paragraph.
 
 ADR-0075 (P6-01, slice 1) added **the Electron desktop app** (`apps/desktop`,
 GPL): electron-vite builds main, preload and renderer, the **renderer being the
@@ -3966,3 +3970,36 @@ anchor in `docsAnchors.json` must exist in the built page (site test); the deskt
 `DOCS_PATH` accepts `/<guide>/` and `#<anchor>`. Tool pages stay generated: hand text between
 the `<!-- notes -->` markers (Step by step, Options, What it keeps, Messages; messages quoted
 from the app).
+
+ADR-0125 (issue #171, 2026-11-03): **project a sketch into another, and auto-project sketches.**
+Files: `packages/core/src/sketch/projection.ts` (`PROJECTABLE.project`, `REFUSED.project`,
+`ProjectedCurve.construction`), `sketch/schema.ts` (`PROJECTABLE`, `POINT_SOURCES`, the `project`
+message), `packages/kernel/src/features/sketch.ts` (`SketchOutputData.construction`/`loose`,
+`SOURCE_NOUN`, `projectSketchEntity`, `projectWholeSketch`),
+`packages/kernel/src/features/projection.ts` (`projectSketchCurve`, exported `conicEdge`),
+`packages/kernel/src/recompute/engine.ts` (`featureDependencies` now walks a sketch's projection
+refs too, so an earlier source is computed first), `apps/web/src/sketch/project.ts` (the
+`sketchEntity` pick and the `feature` row), `apps/web/src/sketch/autoProject.ts` (`sketchSnapAt`),
+`apps/web/src/viewport/store.ts` (`autoProjectSketches`), the palette (`sketch/panels.tsx`),
+`apps/web/src/shell/AppMenu.tsx`, `e2e/project.spec.ts`, `e2e/auto-project.spec.ts`. **Rules:** a
+projection's `ref` may be kind `sketchEntity` (`<sketch>/<entity>`: one curve or point) or
+`feature` (a sketch feature id: the whole sketch), in `project` mode only; the schema's
+`sketchIssues` accepts the two kinds (a point is allowed for a `sketchEntity`/`feature`). The
+kernel reads the source from `ctx.output(<sketch>).data` (the `pieceOf` pattern); a missing
+source or entity is a `LostReferenceError` ("Lost a projected sketch curve/sketch"). A curve
+projects by `projectSketchCurve` (a line, arc/circle and ellipse as a conic about the source
+normal through `conicEdge`, splines and conics through the source polyline's `projectPolyline`),
+key `curve` (or `curve:<n>` in pieces), a point key `point`, a whole sketch keyed by entity id
+(`<id>:<n>` in pieces) plus its loose points. `SketchOutputData.construction`/`loose` list the
+source's construction curves and the points no curve uses; a `ProjectedCurve` from a construction
+source carries `construction: true` and `projectionSync`'s `addCurve` keeps it construction (as it
+does a datum's line). Only a sketch **earlier in the timeline** is offered: the Project tool
+refuses a later one ("Only a sketch earlier in the timeline can be projected.") and a text ("Text
+can't be projected: project its sketch's curves instead."); a sketch's browser row projects the
+whole sketch. Auto-project gets a second preference `viewport.autoProjectSketches` (on by
+default): while a tool runs, curves and points of the earlier, shown sketches are `ModelSnap`s
+(`sketchCurve`, `sketchPoint`) whose point is the nearest point of the curve's display polyline
+carried into the open sketch; the nearer of a body snap and a sketch snap to the cursor wins (a
+tie to the body), the rest is ADR-0074's path. The palette's "View & project" becomes "View" and
+"Auto-project" (a Bodies | Sketches row and the Face outline switch); the app menu's toggle is
+"Auto-project sketch curves". Intersect and the f3d importer are unchanged.

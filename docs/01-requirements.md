@@ -99,12 +99,12 @@ for the phase's release, **S** = should, **C** = could.
 | FR-SK-09 | Constraint status shown by colour: under-constrained, fully constrained, over-constrained or conflicting. Show remaining degrees of freedom. Dragging under-constrained geometry re-solves live. | M | 1 |
 | FR-SK-10 | Modify tools: trim, extend, break, sketch fillet, sketch chamfer, offset, mirror, move/copy, rectangular and circular pattern, scale. | M | 1 |
 | FR-SK-11 | Automatic closed-profile detection, including nested regions (holes). Profiles are shaded and selectable. | M | 1 |
-| FR-SK-12 | Project / include edges and faces of bodies into a sketch (associative). | M | 2 |
+| FR-SK-12 | Project / include edges and faces of bodies, and curves of earlier sketches, into a sketch (associative). | M | 2 |
 | FR-SK-13 | Text: font picker (bundled open fonts plus user fonts), size, alignment. Output is curves that can be extruded. | M | 4 |
 | FR-SK-14 | Import SVG and DXF into a sketch. | S | 4 |
 | FR-SK-15 | Export a sketch to SVG (1 unit = 1 mm, correct viewBox). | M | 1 |
 | FR-SK-16 | Export a sketch to DXF. | S | 1 |
-| FR-SK-17 | Auto-project: body edges and vertices a sketch snaps, constrains or dimensions to are projected into the sketch automatically (can be turned off). | C | 6 |
+| FR-SK-17 | Auto-project: body edges and vertices, and curves and points of earlier sketches, a sketch snaps, constrains or dimensions to are projected into the sketch automatically (can be turned off). | C | 6 |
 
 ### 5.4 Solid features (FR-FT)
 

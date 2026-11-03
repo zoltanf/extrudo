@@ -38,7 +38,7 @@ export const TOOLS = {
     label: 'Project',
     icon: 'project',
     category: 'sketch',
-    hint: 'Bring body edges, faces, vertices and bodies into the sketch; they follow the model.',
+    hint: 'Bring body edges, faces, vertices and bodies, and curves of earlier sketches, into the sketch; they follow their source.',
   },
   intersect: {
     id: 'intersect',
