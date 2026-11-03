@@ -172,6 +172,9 @@
 #include <BRepTools_WireExplorer.hxx>
 #include <ShapeBuild_ReShape.hxx>
 #include <ShapeCustom.hxx>
+#include <ShapeCustom_DirectModification.hxx>
+#include <BRepTools_Modifier.hxx>
+#include <TopTools_DataMapOfShapeShape.hxx>
 #include <Geom_ElementarySurface.hxx>
 #include <ShapeUpgrade_ShapeDivideClosed.hxx>
 #include <ShapeUpgrade_UnifySameDomain.hxx>
@@ -2677,6 +2680,7 @@ public:
         return failExport("STEP export failed: the file couldn't be written.");
       }
       exportText_ = out.str();
+      if (!stepNames_.empty() && stepNames_[0] == "__debug__") exportText_ += stepDebug(*find(args_[0]));
       return static_cast<int>(exportText_.size());
     } catch (...) {
       clearExport();
@@ -5814,6 +5818,44 @@ private:
       if (!elementary.IsNull() && !elementary->Position().Direct()) return ShapeCustom::DirectFaces(shape);
     }
     return shape;
+  }
+
+  // DEBUG-STEP (temporary)
+  static std::string stepDebugFaces(const TopoDS_Shape& shape) {
+    std::ostringstream o;
+    o << "type " << shape.ShapeType() << " orient " << shape.Orientation() << " loc " << shape.Location().IsIdentity() << "\n";
+    for (TopExp_Explorer it(shape, TopAbs_FACE); it.More(); it.Next()) {
+      const TopoDS_Face face = TopoDS::Face(it.Current());
+      TopLoc_Location location;
+      Handle(Geom_Surface) surface = BRep_Tool::Surface(face, location);
+      o << " face orient " << face.Orientation() << " floc " << face.Location().IsIdentity() << " sloc " << location.IsIdentity()
+        << " surf " << (surface.IsNull() ? "null" : surface->DynamicType()->Name());
+      while (!surface.IsNull() && surface->IsKind(STANDARD_TYPE(Geom_RectangularTrimmedSurface))) {
+        surface = Handle(Geom_RectangularTrimmedSurface)::DownCast(surface)->BasisSurface();
+        o << " basis " << surface->DynamicType()->Name();
+      }
+      const Handle(Geom_ElementarySurface) e = Handle(Geom_ElementarySurface)::DownCast(surface);
+      if (!e.IsNull()) o << " direct " << e->Position().Direct() << " axis " << e->Position().Direction().Z();
+      const BRepAdaptor_Surface a(face, false);
+      o << " adaptorType " << a.GetType();
+      if (a.GetType() == GeomAbs_Torus) o << " adaptorDirect " << a.Torus().Position().Direct();
+      o << "\n";
+    }
+    return o.str();
+  }
+  static std::string stepDebug(const TopoDS_Shape& shape) {
+    std::ostringstream o;
+    o << "/*DEBUG\nINPUT\n" << stepDebugFaces(shape);
+    const TopoDS_Shape d = ShapeCustom::DirectFaces(shape);
+    o << "DIRECTFACES same " << d.IsSame(shape) << " equal " << d.IsEqual(shape) << "\n" << stepDebugFaces(d);
+    Handle(ShapeCustom_DirectModification) dm = new ShapeCustom_DirectModification();
+    BRepTools_Modifier md;
+    md.Init(shape.Oriented(TopAbs_FORWARD));
+    md.Perform(dm);
+    o << "MODIFIER done " << md.IsDone() << "\n";
+    if (md.IsDone()) o << stepDebugFaces(md.ModifiedShape(shape.Oriented(TopAbs_FORWARD)));
+    o << "STEPSHAPE same " << stepShape(shape).IsSame(shape) << "\n*/\n";
+    return o.str();
   }
 
   /** Whether stageStepColor() gave any staged part a colour. */
