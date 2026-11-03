@@ -1766,3 +1766,12 @@ over (partial) → 0.545 % under (mismatch, no skip left), nearer the reference
 than before. The issue-93 bumper: its second offset names all four of its
 faces (two were left out), its replayed body 7095.8 → 7095.6 mm³, the body
 check unchanged. The first issue-93 file is identical.
+
+The body check (ADR-0084) writes the file's bodies through the import
+feature, which now keeps a body that isn't a sound solid with a warning
+(ADR-0051's amendment); `measureProbe` takes such a probe import as made
+(only an `error` fails it), so those bodies are measured as before. Body
+check (252 designs): 232 editable, 124 frozen, 26 unchecked (was 230 / 126 /
+26), the unchecked reasons the same body by body; the first connector's body
+and the lamp base's go from frozen ("the timeline made it differently") to
+editable (0.040 % and 0.268 % off), no body gets worse.
