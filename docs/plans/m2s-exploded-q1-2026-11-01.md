@@ -712,6 +712,43 @@ plane: Q1.3's absorbed step), and at 0.15 mm it is a cylinder by region growing,
 
 OCCT WASM: the input hash went `c7ba43be3df2` (run 2) → `5d22216cd3d7`, published by CI 41271268117.
 
+### Q3.2 Why the reader keeps the shared vertex split on only two faces (2026-11-03)
+
+Fix (c) of "For run 3", answered after D11 shipped (so it changes nothing that ships; the cut stays). Probe
+`Q26SPLIT=1` with `Q26TOUCH=1` (spike, the run-3 facade with `TOUCH_CUT_MAX` set to 0 so the touching faces are written
+as before the cut): the written STEP read without healing (`readStepUnhealed`), with the reader's healing
+(`fixLikeReader`, Q20) and with that healing minus one mode at a time; in each, the pairs of distinct vertices within
+1e-7 of each other on two wires of one face; then, per raw and healed face with such a pair, the 2D intersections of
+the two wires' edges as `ShapeFix_IntersectionTool::FixIntersectingWires` computes them (tolerance 1e-10), and that tool
+run on the face alone.
+
+- **The writer splits every shared vertex; the reader's healing joins them again.** The raw read has one vertex per
+  loop at every shared vertex of every touching face (battery-power-adapter 4, desk-organizer-module-small 1,
+  kuglbahn-pillar-base 1, shower-holder 1, puzzle-insert-circle 4, spool-screw-v4.1 63). The step that joins them is
+  the face fix `FixIntersectingWiresMode`: without it no pair is joined in any file (battery-power-adapter 4 of 4
+  left, puzzle-insert-circle 4 of 4, spool-screw-v4.1 63 of 63). At each split vertex the two wires' edges meet end to
+  end in (u, v), which the tool takes as one vertex (`UnionVertexes`). Plane faces are not split by the writer.
+- **On the two failing faces one pair survives the full healing.** puzzle-insert-circle's torus (outer wire of 540
+  edges, 4 holes of 8, each touching the outer wire once): run alone on the raw face, the tool joins all 4 pairs; after
+  the reader's whole healing, 1 is left (at −26.45, 4.56, 8.94, the duplicate vertex the read-back has). spool-screw-v4.1:
+  63 raw pairs, 1 left after healing (face 1146 of the healed shape, a cylinder).
+- **What takes the join away: the wire fixes that rebuild edges.** Switching off `FixShiftedMode` alone (both files) or
+  `FixEdgeCurvesMode` alone (puzzle-insert-circle; on spool-screw-v4.1 that run throws) leaves no pair, and so does
+  the face's whole `FixWireMode`, which runs them (puzzle-insert-circle; it throws on spool-screw-v4.1). The other 26
+  wire, face and shape modes each leave the one pair (`FixIntersectingWiresMode` and the solid's `FixShellMode`, which
+  skips the face fixes, leave all of them). Running the tool again on the healed face joins the pair, and the face is then
+  valid (both files).
+- **Reading (not proven):** the healing works face by face through one shared `ShapeBuild_ReShape`. The tool replaces
+  the edges at the joined vertex with copies that carry the joined vertex. A later wire fix that rebuilds one of those
+  edges, on the same face or on the neighbour that shares it, replaces it again from a copy that still has the old
+  vertex. Which pair loses depends on the order the faces and edges are processed in. That fits "nothing in the table
+  sets the two apart cleanly" (§Q3.1): the two faces are not special in kind, they are where the order works out wrong.
+
+So the cause is OCCT's healing order, not something in the faces, and there is still no narrow criterion for fix (a)
+or (c). D11's cut stays the right fix. It writes no periodic face with loops that share a vertex, so the reader never
+has to join one. Not done: tracing the `ReShape` history to confirm the reading, and why OCCT's writer writes one
+VERTEX_POINT per loop instead of one per vertex.
+
 ### Q3.3 (2026-11-03): makita-vacuum-holder's touching torus
 
 Probe `Q26TOUCH=1`, spike case `f`, Auto, the 2026-11-01b facade (the spike's `q26 touch` line now says whether the
