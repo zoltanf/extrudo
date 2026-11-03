@@ -256,7 +256,11 @@ controller per project (`features/dialog.ts`) does pre-selection, picks
 as persistent refs, per-dialog `dN` names, live previews through the
 `Recomputer` (evaluators may return `previewTools`, meshed as `tools`;
 `preview(…, base)` gives the bodies before an edited feature) and OK as
-one command. ADR-0028 (P2-06) added extrude: `packages/core/src/extrude.ts`
+one command. **Undo with a feature or Joint dialog open only cancels the
+dialog** (ADR-0027's 2026-11-03 amendment, issue #176: it undid the step
+before, a sketch's edits); redo ends it, then redoes. Every undo control
+(keys, search, marking menu, the top bar's buttons) runs `AppShell`'s one
+`undo`/`redo`; never call `store.undo()` from a control. ADR-0028 (P2-06) added extrude: `packages/core/src/extrude.ts`
 (optional inputs with shared defaults, `extrudeSettings`/`extrudeInputs`),
 the evaluator `packages/kernel/src/features/extrude.ts` (profiles unioned
 before the sweep, taper through `DraftAngle` in the facade `prism`,

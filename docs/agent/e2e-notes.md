@@ -786,6 +786,11 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   the extrude reaches is hidden." with OK disabled; after OK `data-bodies` is
   `Body1:<n>:52,20,10` and, with `Show Body2`, `… Body2:6:30,20,10`. The eye cycles shown →
   ghost → hidden, so hiding is two clicks (`Show as ghost X`, then `Hide X`).
+  Issue #176's test "undo with the Extrude dialog open cancels the dialog and keeps the
+  sketch" draws a 60 × 40 rectangle on XY, picks its profile at (15, 5) and presses E
+  (the "Profiles" button reads `Profile · Sketch1`), then Ctrl+Z and the top bar's button
+  `Undo` (`exact`): each hides the dialog and the profile still picks. With no dialog open
+  Ctrl+Z takes the sketch's edits, so the same click no longer gives `profile:`.
 
 ### `e2e/feature-dialog.spec.ts`
 

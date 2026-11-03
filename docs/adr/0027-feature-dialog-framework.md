@@ -275,3 +275,19 @@ picking (a shown profile should pick where it is drawn; hiding also
 declutters the view), and a preference to turn it off (not needed yet; the
 eye shows a sketch again).
 
+## Amendment (undo with a dialog open, 2026-11-03)
+
+A user report (issue #176): "lost the contents of a sketch after undoing
+an extrusion from that sketch". The Extrude dialog was still open: its
+draft isn't in the history (§14), so Ctrl+Z ended the dialog and then
+undid the step before it, the sketch's whole edit session. The top bar's
+Undo button undid that step too, under the open dialog, which then lost
+its profile. Now **undo with a feature or Joint dialog open only cancels
+the dialog**, as Esc does: the draft is the change the user sees last.
+Redo still ends the dialog, then redoes. The keys, the search, the
+marking menu and the top bar's buttons run the same `undo`/`redo` in
+`AppShell`; the Undo button stays enabled while a dialog is open ("Cancel
+the open dialog."). Rejected: putting the draft into the history as a
+transaction (a preview changes nothing in the document, and the
+dialog's own fields keep their text undo).
+

@@ -1232,6 +1232,21 @@ function Shell({
     [kernelClient],
   );
   const displayAccess = useMemo(() => storeAccess(viewport), [viewport]);
+  // Undo with a feature or Joint dialog open only cancels it (ADR-0027's amendment): its
+  // draft is the change on screen but isn't in the history, so undo took the step before
+  // it, often a whole sketch's edits (issue #176). Redo ends the dialog, then redoes. The
+  // keys, the search, the marking menu and the top bar's buttons all run these.
+  const undo = useCallback(() => {
+    if (dialogOpen || jointOpen) {
+      dialog?.cancel();
+      jointDialog?.cancel();
+    } else store.getState().undo();
+  }, [dialog, dialogOpen, jointDialog, jointOpen, store]);
+  const redo = useCallback(() => {
+    dialog?.cancel();
+    jointDialog?.cancel();
+    store.getState().redo();
+  }, [dialog, jointDialog, store]);
   // `listing` builds a mode's commands for the Customize Marking Menu dialog: what the mode
   // offers whatever is selected now (Delete, Repeat last and the construction toggle included).
   const commandBuilder = useMemo(
@@ -1247,15 +1262,8 @@ function Shell({
           else runRef.current(tool);
         },
         notify,
-        // Undo and redo end an open dialog first (its draft isn't in the history).
-        undo: () => {
-          dialog?.cancel();
-          store.getState().undo();
-        },
-        redo: () => {
-          dialog?.cancel();
-          store.getState().redo();
-        },
+        undo,
+        redo,
         ...(listing ? { remove: () => {} } : m === 'sketch' && !drawing && { remove }),
         // Delete with bodies selected in the model removes them (a Remove feature, P2-08);
         // with only faces of solid bodies it makes a Remove Faces feature (P4-13, ADR-0099 §7).
@@ -1387,9 +1395,9 @@ function Shell({
       quitApp,
       host,
       notify,
-      store,
       recording,
-      dialog,
+      undo,
+      redo,
       ready,
       dialogCommands,
       pluginEntries,
@@ -2421,6 +2429,9 @@ function Shell({
         tabs={<ToolbarTabs mode={mode} tab={toolbarTab} onTab={setToolbarTab} />}
         theme={choice}
         onThemeChange={setChoice}
+        onUndo={undo}
+        onRedo={redo}
+        dialogOpen={dialogOpen !== undefined || jointOpen !== undefined}
         onSearch={(at) => setSearch(at ? { from: 'button', at } : { from: 'centre' })}
         onTutorial={startTutorial}
         onDocs={(page) => platform.openDocs(docsPath(page))}
