@@ -564,10 +564,41 @@ TypeScript only: **no facade change**, no new input, no schema key.
   tapers** compose with no code of their own (the sleeve is a revolve).
   **Multi-body**: the face's body only.
 
-**Known limit.** A chamfered or rounded **shaft** end that the thread runs
-out of shows a small step where the flush sleeve meets the chamfer (the
-lead-in cone cuts into it). Trimming the shaft's sleeve to a hull, as a
-hole's is, would fix it; nobody has needed it yet.
+**Known limit** (corrected 2026-11-03 from measurement; the first version
+blamed the sleeve). A shaft with a 45° **chamfer** at its free end, threaded
+out to that end **with the lead-in**, keeps a **collar**: the lead-in cuts
+the tooth back to the root at the face's end, and the chamfer above it,
+outside the thread's run, is not cut at all. Measured on a Ø4.5 × 20 pin, M5
+× 0.8, chamfer 0.3 mm (`thread-fill.test.ts`, the outer radius all the way
+round in 0.02 mm slabs): the radius falls along the lead-in from 2.40 to the
+root's 1.967 at z = 19.7, then jumps to 2.25 where the chamfer starts and
+falls to 1.95 at the end: a step of **0.28 mm**. It is not the fill's: an
+unfilled Ø5 pin has the same collar, **0.53 mm** (Ø4.8: 0.43). Without the
+lead-in, or at a 0.3 mm round (not an open end, so never a lead-in), the
+radius only falls toward the end (no step; the filled Ø4.5 pin drops from
+the crest's 2.40 to the end's 2.25 at z = 19.7, an unfilled Ø5 pin rises
+0.1 mm past the crest there). The test of the chamfer with the lead-in is
+marked `fails`; the other three are guards.
+
+*Trimming the shaft's sleeve to its hull* (Offset Face of the face by the
+sleeve's build-up, then `common`), as this paragraph proposed, was tried and
+**does not fix it**: the sleeve lies inside the ring's band over the run and
+never reaches past the face's end, so the collar is unchanged to the
+measured digit. Offset Face did not fail on the chamfered pin; its only
+effect is without the lead-in, where the extended chamfer cone cuts the last
+crest (z 19.56 … 19.7: 2.40 → 2.27), and at a round none (no `blends`
+passed: the round moves with the face). Not shipped: an Offset Face and a
+`common` per filled shaft for the 0.15 mm ledge where the last crest meets
+the chamfer, which the step test doesn't count as a step.
+
+*Proposal* (not built): at an open end with the lead-in, cut the lead
+region **past the face's end** from the body too, not only from the tooth,
+bounded by the 45° cone continued through the end, so the lead-in's cone
+runs on through the chamfer and the end gets a chamfer reaching just under
+the root, as a turned bolt's end has. A flat end (no chamfer) has nothing
+past its end there, so it is unchanged; every chamfered threaded shaft,
+filled or not, would change shape, and the end plane would shrink (the M5
+pin's to about Ø3.2).
 
 **Rejected.** Trimming only at an end `threadFace` calls open: a hole coming
 out of a wall slanted past 60° is not open by that test, and its sleeve
@@ -602,7 +633,8 @@ a threadable hole. B9's Ø28 cap bore
 (M30) fills silently; its Ø29 variant (wall 1.5 mm) notes it. The golden
 table has no internal rows, so none was added; its rows are unchanged.
 
-**Deferred.** The shaft-end trim (the known limit above); importing a file's
+**Deferred.** The chamfered shaft end's collar (the known limit's
+proposal above); importing a file's
 thread on a hole wider than the thread (`packages/f3d/src/map-more.ts`
 still leaves it out because Extrudo used not to fill: ADR-0083's mapping can
 now take it).

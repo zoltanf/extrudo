@@ -5,6 +5,7 @@
 // for M5) threads fully. The harness is `thread.test.ts`'s.
 import {
   CYLINDER_TYPE,
+  chamferInputs,
   type ExtrudoDocument,
   extrudeInputs,
   type Feature,
@@ -345,6 +346,83 @@ const warningOf = (result: Done, id: string) => {
   return s.status === 'warning' ? s.message : undefined;
 };
 
+/** A reference, with its fingerprint, to the sub-shape named `id` in a recompute. */
+function refTo(result: Done, kind: 'face' | 'edge', id: string): GeomRef {
+  for (const body of result.bodies) {
+    const list = kind === 'face' ? body.mesh?.faceIds : body.mesh?.edgeIds;
+    const index = list?.indexOf(id) ?? -1;
+    if (index < 0) continue;
+    const ref = engine.reference(body.id, kind, index);
+    if (ref) return ref;
+  }
+  throw new Error(`no ${kind} named ${id}`);
+}
+
+/**
+ * A Ø`diameter` pin 20 mm long (body `C:0`) whose free end (z = 20) is
+ * chamfered 0.3 mm (the chamfer feature) or rounded 0.3 mm (`test-fillet`).
+ */
+async function endedPin(diameter: number, end: 'chamfer' | 'round'): Promise<Feature[]> {
+  const pin = cylinder('C', diameter, 20);
+  const edge = refTo(
+    await run(testDocument([pin])),
+    'edge',
+    'e[cylinder:C:cap:end|cylinder:C:side:wall]',
+  );
+  engine.clear();
+  return [
+    pin,
+    end === 'chamfer'
+      ? {
+          ...testFeature('K', 'chamfer'),
+          inputs: chamferInputs([{ edges: [edge], distance: '0.3 mm' }]),
+        }
+      : testFeature(
+          'K',
+          'test-fillet',
+          { radius: '0.3 mm' },
+          { edges: { kind: 'ref', refs: [edge] } },
+        ),
+  ];
+}
+
+/**
+ * The shape's outer radius along Z: for each slab `z … z + step` from `z0` up
+ * to `z1`, the largest distance from the axis of any material in it, all the
+ * way round (5 less the slab's distance to a tube from Ø10 out).
+ */
+function outerRadius(shape: ShapeHandle, z0: number, z1: number, step = 0.02) {
+  const outer = kernel.cylinder(20, 40, [0, 0, -10]);
+  const inner = kernel.cylinder(5, 40, [0, 0, -10]);
+  const tube = kernel.cut(outer, inner);
+  kernel.release(outer, inner);
+  const out: { z: number; r: number }[] = [];
+  for (let z = z0; z < z1 - 1e-9; z += step) {
+    const slab = kernel.cylinder(10, step, [0, 0, z]);
+    const common = kernel.common(shape, slab);
+    const empty = kernel.measure(common.shape).volume < 1e-9;
+    out.push({
+      z: round(z, 3),
+      r: empty ? 0 : round(5 - kernel.distance(common.shape, tube.shape), 3),
+    });
+    kernel.release(slab, common.shape);
+  }
+  kernel.release(tube.shape);
+  return out;
+}
+
+/** The largest rise of `r` toward the end: how far a slab stands out past one nearer the thread. */
+function stepOf(profile: { z: number; r: number }[]): number {
+  let least = Number.POSITIVE_INFINITY;
+  let rise = 0;
+  for (const { r } of profile) {
+    if (r === 0) continue;
+    rise = Math.max(rise, r - least);
+    least = Math.min(least, r);
+  }
+  return rise;
+}
+
 describe('thread fill', { timeout: 300_000 }, () => {
   const m5in = threadRadii('iso', 5, 0.8, 0.1, true);
   const m5out = threadRadii('iso', 5, 0.8, 0.1, false);
@@ -458,6 +536,42 @@ describe('thread fill', { timeout: 300_000 }, () => {
     expect(status(thick.result, 'T')).toEqual({ status: 'ok' });
     expect(Math.abs(thin.m.volume - thick.m.volume) / thick.m.volume).toBeLessThan(0.01);
   });
+
+  // A pin whose free end is chamfered or rounded, threaded out to that end:
+  // the outer radius may only fall toward the end, no collar or ledge. With
+  // the lead-in at a chamfered end it doesn't (`fails`): the lead-in cuts the
+  // tooth back to the root at the face's end (Ø3.93 at z = 19.7) and the
+  // chamfer above it, outside the thread's run, keeps its Ø4.5 → Ø3.9 cone:
+  // a collar 0.28 mm proud. Not the sleeve's (it is all inside the ring and
+  // never reaches past the face): an unfilled Ø5 pin has the same collar,
+  // 0.53 mm (ADR-0056's fifth amendment, Known limit).
+  for (const [end, chamfer, collar] of [
+    ['chamfer', true, true],
+    ['chamfer', false, false],
+    ['round', true, false],
+    ['round', false, false],
+  ] as const) {
+    (collar ? it.fails : it)(
+      `builds a Ø4.5 pin up to M5 out to a ${end}ed end with no step (lead-in ${chamfer ? 'on' : 'off'})`,
+      async () => {
+        engine.clear();
+        const result = await runWithShapes(
+          testDocument([
+            ...(await endedPin(4.5, end)),
+            thread('T', {
+              faces: [wall('C')],
+              numbers: { diameter: '5 mm', pitch: '0.8 mm' },
+              chamfer,
+            }),
+          ]),
+        );
+        const m = measure(result, 'C:0');
+        expect(m.valid).toBe(true);
+        expect(m.solids).toBe(1);
+        expect(stepOf(outerRadius(m.shape, 17, 20.2))).toBeLessThan(0.02);
+      },
+    );
+  }
 
   it('fills a short thread only along its run', async () => {
     const block = blockWithHole(5, 10);
