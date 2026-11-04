@@ -1,5 +1,13 @@
 import { Design } from '@extrudo/api';
-import { type BodyId, type ExtrudoDocument, renameFeature, type SketchData } from '@extrudo/core';
+import {
+  type AnnotationId,
+  type BodyId,
+  type ExtrudoDocument,
+  type GeomFingerprint,
+  type GeomRef,
+  renameFeature,
+  type SketchData,
+} from '@extrudo/core';
 import type { ProjectSummary } from '@extrudo/storage';
 import { describe, expect, it } from 'vitest';
 import type { AgentReply } from '../platform/agent';
@@ -596,5 +604,280 @@ describe('createPacer', () => {
     time = 1000;
     await new Promise((resolve) => setTimeout(resolve, 1050));
     expect(done).toBe(true);
+  });
+});
+
+describe('annotations (ADR-0126 §8)', () => {
+  /** The plate with its model computed: one body, `<extrude id>:0`. */
+  function computedPlate() {
+    const fake = plateHost();
+    const { model, store } = fake;
+    const [sketch, extrude] = store.getState().doc.features;
+    const body = `${extrude?.id}:0`;
+    const ready = () =>
+      model.getState().computed({
+        features: {},
+        bodies: { [body]: {} } as Record<BodyId, unknown>,
+        doc: store.getState().doc,
+      });
+    ready();
+    // Every document change is "recomputed" at once, as the kernel would.
+    store.subscribe((s, p) => {
+      if (s.doc !== p.doc) ready();
+    });
+    return { ...fake, sketch: sketch?.id as string, extrude: extrude?.id as string, body };
+  }
+  const top = (extrude: string) => `extrude:${extrude}:cap:end`;
+
+  it('adds a free note and a sketch note with running numbers, and lists them', async () => {
+    const { host, store, sketch } = computedPlate();
+    const first = jsonOf(
+      await runTool(
+        'add_annotation',
+        { text: 'Logo here', anchor: { at: [1, 2, 3] } },
+        context(host),
+      ),
+    );
+    expect(first.done).toBe('Agent: Annotate #1');
+    expect(first.result.number).toBe(1);
+    const second = jsonOf(
+      await runTool(
+        'add_annotation',
+        { text: 'Round this\ncorner', anchor: { sketch, at: [40, 20] } },
+        context(host),
+      ),
+    );
+    expect(second.result.number).toBe(2);
+    expect(store.getState().undoLabel).toBe('Agent: Annotate #2');
+    expect(jsonOf(await runTool('list_annotations', {}, context(host)))).toEqual([
+      {
+        number: 1,
+        text: 'Logo here',
+        done: false,
+        hidden: false,
+        anchor: { kind: 'free', status: 'ok', at: [1, 2, 3] },
+      },
+      {
+        number: 2,
+        text: 'Round this\ncorner',
+        done: false,
+        hidden: false,
+        anchor: { kind: 'sketch', status: 'ok', at: [40, 20], sketch },
+      },
+    ]);
+    const design = jsonOf(await runTool('get_design', {}, context(host)));
+    expect(design.annotations).toEqual([
+      { number: 1, text: 'Logo here', status: 'ok' },
+      { number: 2, text: 'Round this', status: 'ok' },
+    ]);
+  });
+
+  it('stores a face by its resolved name and fingerprint, and lists it agent-readably', async () => {
+    const { host, model, extrude, body } = computedPlate();
+    const fingerprint: GeomFingerprint = {
+      type: 'plane',
+      at: [20, 10, 5],
+      dir: [0, 0, 1],
+      size: 800,
+    };
+    const asked: unknown[] = [];
+    host.resolveAnnotation = async (annotation) => {
+      asked.push(annotation.anchor);
+      return {
+        id: annotation.id,
+        status: 'ok',
+        at: [20, 10, 5],
+        normal: [0, 0, 1],
+        resolved: {
+          ref: { kind: 'face', id: top(extrude), fingerprint: { ...fingerprint, at: [20, 10, 5] } },
+          body: body as BodyId,
+        },
+      };
+    };
+    const reply = jsonOf(
+      await runTool(
+        'add_annotation',
+        { text: 'Make this hole M4', anchor: { face: top(extrude), at: [5, 5, 5] } },
+        context(host),
+      ),
+    );
+    expect(reply.result.number).toBe(1);
+    expect(asked).toEqual([
+      { kind: 'model', ref: { kind: 'face', id: top(extrude) }, at: [0, 0, 0] },
+    ]);
+    const stored = host.store.getState().doc.annotations?.[0];
+    expect(stored?.anchor).toEqual({
+      kind: 'model',
+      ref: { kind: 'face', id: top(extrude), fingerprint: { ...fingerprint, at: [20, 10, 5] } },
+      at: [5, 5, 5],
+    });
+    // What the kernel reports after the recompute is what list_annotations reads.
+    model.setState({
+      annotations: {
+        [stored?.id as AnnotationId]: {
+          id: stored?.id as AnnotationId,
+          status: 'moved',
+          at: [5, 5, 7],
+          normal: [0, 0, 1],
+          resolved: { ref: { kind: 'face', id: top(extrude) }, body: body as BodyId },
+        },
+      },
+    });
+    const [listed] = jsonOf(await runTool('list_annotations', {}, context(host)));
+    expect(listed.anchor).toEqual({
+      kind: 'model',
+      status: 'moved',
+      at: [5, 5, 7],
+      normal: [0, 0, 1],
+      face: top(extrude),
+      body,
+      feature: extrude,
+    });
+    // Without `at`, the note sits at the face's centre.
+    await runTool(
+      'add_annotation',
+      { text: 'Centre', anchor: { face: top(extrude) } },
+      context(host),
+    );
+    expect(host.store.getState().doc.annotations?.[1]?.anchor).toMatchObject({ at: [20, 10, 5] });
+  });
+
+  it('turns edgeBetween into an edge name and a bare feature id into its body', async () => {
+    const { host, extrude, body } = computedPlate();
+    const asked: GeomRef[] = [];
+    host.resolveAnnotation = async (annotation) => {
+      const ref = (annotation.anchor as { ref: GeomRef }).ref;
+      asked.push(ref);
+      return {
+        id: annotation.id,
+        status: 'ok',
+        resolved: { ref: { ...ref, fingerprint: { type: 'line', at: [0, 0, 0] } } },
+      };
+    };
+    await runTool(
+      'add_annotation',
+      { text: 'Chamfer', anchor: { edgeBetween: ['b:f:side', 'a:f:cap'] } },
+      context(host),
+    );
+    await runTool(
+      'add_annotation',
+      { text: 'Whole part', anchor: { body: extrude } },
+      context(host),
+    );
+    expect(asked).toEqual([
+      { kind: 'edge', id: 'e[a:f:cap|b:f:side]' },
+      { kind: 'body', id: body },
+    ]);
+  });
+
+  it('refuses what does not resolve, with the input path, and changes nothing', async () => {
+    const { host, store, extrude } = computedPlate();
+    const before = store.getState().doc;
+    const refused = async (args: Record<string, unknown>) => {
+      const reply = await runTool('add_annotation', args, context(host));
+      expect(reply.result.isError).toBe(true);
+      expect(store.getState().doc).toBe(before);
+      return textOf(reply);
+    };
+    // The kernel can't say yet.
+    expect(await refused({ text: 'x', anchor: { face: top(extrude) } })).toBe(
+      "The model isn't computed: check get_design's problems first.",
+    );
+    host.resolveAnnotation = async (annotation) => ({ id: annotation.id, status: 'detached' });
+    expect(await refused({ text: 'x', anchor: { face: 'extrude:nope:cap:end' } })).toBe(
+      'anchor.face: There is no face "extrude:nope:cap:end" in the model at the timeline marker: get_feature and list_annotations give names.',
+    );
+    expect(await refused({ text: 'x', anchor: { body: 'nope' } })).toBe(
+      'anchor.body: There is no body "nope": bodies are named <feature id>:<n>, and get_bodies lists them.',
+    );
+    expect(await refused({ text: 'x', anchor: { sketch: 'nope', at: [0, 0] } })).toBe(
+      'anchor.sketch: There is no sketch "nope".',
+    );
+    expect(
+      await refused({ text: 'x', anchor: { sketch: 'Sketch1', at: [0, 0], entity: 'zz' } }),
+    ).toBe('anchor.entity: The sketch has no entity "zz".');
+    expect(await refused({ text: '   ', anchor: { at: [0, 0, 0] } })).toMatch(/^text: /);
+    expect(await refused({ text: 'x', anchor: { face: top(extrude), at: [0, 0] } })).toMatch(
+      /^anchor/,
+    );
+  });
+
+  it('edits text, done, hidden and anchor by number, and answers the note', async () => {
+    const { host, store, sketch } = computedPlate();
+    await runTool('add_annotation', { text: 'a', anchor: { at: [0, 0, 0] } }, context(host));
+    const edited = jsonOf(
+      await runTool(
+        'edit_annotation',
+        {
+          number: 1,
+          text: 'Thicker wall',
+          done: true,
+          hidden: true,
+          anchor: { sketch, at: [1, 1] },
+        },
+        context(host),
+      ),
+    );
+    expect(edited.done).toBe('Agent: Edit #1');
+    expect(edited.result).toEqual({
+      number: 1,
+      text: 'Thicker wall',
+      done: true,
+      hidden: true,
+      anchor: { kind: 'sketch', status: 'ok', at: [1, 1], sketch },
+    });
+    // One undo step takes it all back.
+    await runTool('undo', {}, context(host));
+    expect(store.getState().doc.annotations?.[0]).toMatchObject({
+      text: 'a',
+      anchor: { kind: 'free' },
+    });
+    expect(
+      (await runTool('edit_annotation', { number: 7, done: true }, context(host))).result,
+    ).toEqual({
+      content: [{ type: 'text', text: 'There is no annotation #7: list_annotations lists them.' }],
+      isError: true,
+    });
+    expect(textOf(await runTool('edit_annotation', { number: 1 }, context(host)))).toBe(
+      'Give text, done, hidden or anchor to change.',
+    );
+    // Ticked-off notes are listed last, and can be left out.
+    await runTool('add_annotation', { text: 'b', anchor: { at: [0, 0, 0] } }, context(host));
+    await runTool('edit_annotation', { number: 1, done: true }, context(host));
+    const listed = jsonOf(await runTool('list_annotations', {}, context(host)));
+    expect(listed.map((a: { number: number }) => a.number)).toEqual([2, 1]);
+    const open = jsonOf(await runTool('list_annotations', { includeDone: false }, context(host)));
+    expect(open.map((a: { number: number }) => a.number)).toEqual([2]);
+  });
+
+  it('removes by number, never gives a number again, and refuses an unknown one', async () => {
+    const { host, store } = computedPlate();
+    for (const text of ['a', 'b', 'c']) {
+      await runTool('add_annotation', { text, anchor: { at: [0, 0, 0] } }, context(host));
+    }
+    const removed = jsonOf(await runTool('remove_annotation', { numbers: [3, 1] }, context(host)));
+    expect(removed.done).toBe('Agent: Delete #3, #1');
+    expect(removed.result).toEqual({ removed: [3, 1] });
+    expect(store.getState().doc.annotations?.map((a) => a.number)).toEqual([2]);
+    const next = jsonOf(
+      await runTool('add_annotation', { text: 'd', anchor: { at: [0, 0, 0] } }, context(host)),
+    );
+    expect(next.result.number).toBe(4);
+    expect(textOf(await runTool('remove_annotation', { numbers: [1, 9] }, context(host)))).toBe(
+      'There is no annotation #1, #9: list_annotations lists them.',
+    );
+  });
+
+  it('refuses a change while a sketch is open', async () => {
+    const { host, session } = computedPlate();
+    session.setState({ mode: 'sketch' } as never);
+    expect(
+      textOf(
+        await runTool('add_annotation', { text: 'x', anchor: { at: [0, 0, 0] } }, context(host)),
+      ),
+    ).toBe(BUSY);
+    expect(textOf(await runTool('remove_annotation', { numbers: [1] }, context(host)))).toMatch(
+      /There is no annotation/,
+    );
   });
 });

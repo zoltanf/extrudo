@@ -4,7 +4,14 @@
  * menus, and registers it while the design is open (`agentHosts`). The tools
  * stay plain functions over it, tested with a fake.
  */
-import type { Command, DocumentStore, ModelStore, SessionStore } from '@extrudo/core';
+import type {
+  Annotation,
+  AnnotationReport,
+  Command,
+  DocumentStore,
+  ModelStore,
+  SessionStore,
+} from '@extrudo/core';
 import { createStore } from 'zustand/vanilla';
 import type { AgentExportFormat } from '../platform/agent';
 import type { SnapshotOptions } from '../viewport/snapshotView';
@@ -57,6 +64,12 @@ export interface AgentHost {
   bodies(): Promise<AgentBody[]>;
   /** The pairs of these bodies (at the marker) that share volume; touching ones aren't. */
   interference(bodies: readonly string[]): Promise<AgentInterference[]>;
+  /**
+   * Where an annotation would be in the model at the marker (ADR-0126 §4): its
+   * reference resolved, with the current name and fingerprint. Undefined while
+   * the kernel can't say.
+   */
+  resolveAnnotation(annotation: Annotation): Promise<AnnotationReport | undefined>;
   /**
    * A square PNG of the model, `size` px, through a camera of its own (the
    * person's view doesn't move); null when the view isn't drawn or none of

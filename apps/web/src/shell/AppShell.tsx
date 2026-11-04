@@ -332,7 +332,12 @@ export interface AppShellProps {
     Partial<PluginCommandKernel> &
     Partial<Pick<JointDialogKernel, 'resolveJoint'>> &
     Partial<JointCheckKernel> &
-    Partial<Pick<Recomputer, 'interference' | 'waits' | 'canRevertToShown' | 'revertToShown'>> &
+    Partial<
+      Pick<
+        Recomputer,
+        'interference' | 'resolveAnnotation' | 'waits' | 'canRevertToShown' | 'revertToShown'
+      >
+    > &
     Partial<{
       readonly client: {
         heap(): Promise<{ top: number; size: number }>;

@@ -6,7 +6,15 @@
  * design and never holds a stale command list. Only where the platform has an
  * agent bridge (the desktop): on the web nothing is registered.
  */
-import type { BodyId, Command, DocumentStore, ModelStore, SessionStore } from '@extrudo/core';
+import type {
+  Annotation,
+  AnnotationReport,
+  BodyId,
+  Command,
+  DocumentStore,
+  ModelStore,
+  SessionStore,
+} from '@extrudo/core';
 import {
   type ExportBody,
   type Interference,
@@ -35,7 +43,10 @@ export interface AgentShell {
   kernel:
     | (ModelExporter &
         MeasureKernel &
-        Partial<{ interference(bodies: readonly BodyId[]): Promise<Interference[]> }>)
+        Partial<{
+          interference(bodies: readonly BodyId[]): Promise<Interference[]>;
+          resolveAnnotation(annotation: Annotation): Promise<AnnotationReport | undefined>;
+        }>)
     | undefined;
   apply(command: Command<unknown>): void;
   commands: readonly AppCommand[];
@@ -113,6 +124,9 @@ function createShellHost(designId: string, current: { current: AgentShell }): Ag
       const { kernel } = shell();
       if (!kernel?.interference) throw new Error("The geometry kernel isn't ready yet.");
       return kernel.interference(bodies as BodyId[]);
+    },
+    async resolveAnnotation(annotation) {
+      return shell().kernel?.resolveAnnotation?.(annotation);
     },
     async ready() {
       // The tool host is a lazy chunk: wait for it (10 s at most), then for its solver.

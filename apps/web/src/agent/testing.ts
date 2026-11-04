@@ -45,6 +45,7 @@ export function fakeHost(
       },
     ],
     interference: async () => [],
+    resolveAnnotation: async () => undefined,
     snapshot: async () => new Blob([new Uint8Array([137, 80, 78, 71])], { type: 'image/png' }),
     commands: () => [
       { id: 'fitView', label: 'Fit view', group: 'View', run: () => ran.push('fitView') },

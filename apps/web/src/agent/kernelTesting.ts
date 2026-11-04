@@ -63,6 +63,7 @@ export async function kernelHost(doc: ExtrudoDocument, designId = doc.id) {
       sketches: sketches as Record<FeatureId, SketchReport>,
       construction: construction as never,
       origins: result.origins,
+      ...(result.annotations && { annotations: result.annotations }),
       doc: current,
     });
   };
@@ -90,6 +91,8 @@ export async function kernelHost(doc: ExtrudoDocument, designId = doc.id) {
       };
     });
   };
+
+  host.resolveAnnotation = async (annotation) => engine.resolveAnnotation(annotation);
 
   host.interference = async (ids) =>
     interferences(

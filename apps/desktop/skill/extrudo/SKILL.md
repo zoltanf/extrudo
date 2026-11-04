@@ -112,6 +112,29 @@ from `get_design`'s timeline.
 one undo step per call. Colour each part of a multi-body model, and name the
 bodies after what they are (`Trunk`, `Crown`).
 
+## Annotations (#n)
+
+The person can pin numbered notes on the model: **#1, #2, …**, each on a
+face, edge, vertex, body, sketch or point. Numbers are never reused, so "#3"
+always means the same note. When the person says "#3" (or "the hole at #3"):
+
+1. Call `list_annotations`. Each note's `anchor` names what it is on: `face`,
+   `edge`, `vertex`, `body` (`<feature id>:<n>`), `sketchEntity`, and
+   `feature`, the feature that made the face, plus `at` (world mm) and, on a
+   flat face, its `normal`. `get_design` lists them too, short.
+2. Use those names as references in `add_feature` / `edit_feature`
+   (`{ "kind": "face", "id": "<the face>" }`), or `at` as a position.
+3. A note whose `status` is `detached` lost its geometry: say so, don't guess.
+   `moved` means the app found it again by a guess: check it.
+
+Leave notes of your own with `add_annotation` (on `{ "face": … }`,
+`{ "edge": … }` or `{ "edgeBetween": [f, f] }`, `{ "vertex": … }`,
+`{ "body": … }`, `{ "sketch": id, "at": [x, y] }` or a point `{ "at": [x, y, z] }`)
+for what the person should look at ("#7: this wall is 0.8 mm, thinner than the
+nozzle"). Tick a note off with `edit_annotation` `done: true` once the person
+agrees it is dealt with. **Never delete a person's note unasked**
+(`remove_annotation`).
+
 ## Files
 
 `save` saves now (the app also saves on its own). `export` writes STL, 3MF or
@@ -127,5 +150,5 @@ STEP of the shown bodies and answers the file's path.
 
 - `references/tools.md`: every tool and its inputs.
 - `references/api.md`: every feature type, its inputs and its faces.
-- `references/examples.md`: two worked examples, as the exact tool calls: a
-  box with a lid, and a parametric bracket.
+- `references/examples.md`: worked examples, as the exact tool calls: a box
+  with a lid, a parametric bracket, and notes on it.

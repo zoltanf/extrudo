@@ -13,6 +13,7 @@ function host(designId: string): AgentHost {
     ready: async () => {},
     bodies: async () => [],
     interference: async () => [],
+    resolveAnnotation: async () => undefined,
     snapshot: async () => null,
     commands: () => [],
     undo: () => {},

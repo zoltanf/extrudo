@@ -108,7 +108,14 @@ async function run(url, token) {
   );
   const { tools } = await client.listTools();
   const names = tools.map((t) => t.name);
-  for (const name of ['get_design', 'add_feature', 'set_parameter', 'get_bodies', 'get_skill']) {
+  for (const name of [
+    'get_design',
+    'add_feature',
+    'set_parameter',
+    'get_bodies',
+    'list_annotations',
+    'get_skill',
+  ]) {
     check(names.includes(name), `tools/list has ${name}`);
   }
 

@@ -40,7 +40,7 @@ Renames the open design (get_design and list_designs show the new name) and save
 
 ## `get_design`
 
-The open design: id, name, parameters, configurations, and the timeline as [{ id, type, name, status, message?, suppressed }]. Read it first, and after every change: status 'error' or 'warning' says what went wrong.
+The open design: id, name, parameters, configurations, the timeline as [{ id, type, name, status, message?, suppressed }] and, when it has any, the annotations as [{ number, text (first line), status, done? }]. Read it first, and after every change: status 'error' or 'warning' says what went wrong.
 
 No inputs.
 
@@ -77,6 +77,14 @@ Finds bodies that overlap: [{ a, b, volume (mm³), box ({ min, max } mm) }], one
 What the person has selected in the app: [{ kind, id }].
 
 No inputs.
+
+## `list_annotations`
+
+The design's numbered notes (#1, #2, …) in number order, ticked-off ones last: [{ number, text, done, hidden, anchor }], where anchor says what it is on, with names to paste into add_feature/edit_feature: { kind: 'model' | 'free' | 'sketch', status: 'ok' | 'moved' (found again by a guess) | 'detached' (its geometry is gone) | 'pending', at (world mm; sketch mm for a sketch note), normal (a flat face's), face | edge | vertex | body | sketchEntity, body ('<feature id>:<n>'), feature (the feature that made the face), sketch }. When the person says "#3", read it here.
+
+| Input | Type | Required | What it is |
+| --- | --- | --- | --- |
+| `includeDone` | `boolean` | default `true` | Also list the ticked-off notes (default true). |
 
 ## `screenshot`
 
@@ -207,6 +215,41 @@ Deletes a feature; refused while another feature uses it. One undo step.
 | Input | Type | Required | What it is |
 | --- | --- | --- | --- |
 | `id` | `string` | yes | The feature id. |
+
+## `add_annotation`
+
+**Changes the design.**
+
+Leaves a numbered note on geometry, in a sketch or at a point, and answers its { number, id }. Numbers are never reused. A name that doesn't resolve in the model is refused with its input path and nothing changes. One undo step.
+
+| Input | Type | Required | What it is |
+| --- | --- | --- | --- |
+| `text` | `string` | yes | The note, plain text. |
+| `anchor` | `{ face: string, at?: [number, number, number] } \| { edge: string, at?: [number, number, number] } \| { edgeBetween: string[], at?: [number, number, number] } \| { vertex: string } \| { body: string, at?: [number, number, number] } \| { sketchEntity: string, at?: [number, number, number] } \| { sketch: string, at: [number, number], entity?: string } \| { at: [number, number, number] }` | yes | On a face, edge (or edgeBetween), vertex, body or sketch entity by its name; in a sketch { sketch, at: [x, y] }; or a free point { at: [x, y, z] }. Names as get_feature, get_bodies and list_annotations give them. |
+
+## `edit_annotation`
+
+**Changes the design.**
+
+Changes a note by its number: its text, done (ticked off, when the person agrees), hidden, or anchor (what it is on, as add_annotation takes it). Answers the note as list_annotations does. One undo step.
+
+| Input | Type | Required | What it is |
+| --- | --- | --- | --- |
+| `number` | `integer` | yes | The annotation number (#3 is 3). |
+| `text` | `string` | no | The new text. |
+| `done` | `boolean` | no | Ticked off (true) or open again (false). |
+| `hidden` | `boolean` | no | Not drawn (true) or drawn (false). |
+| `anchor` | `{ face: string, at?: [number, number, number] } \| { edge: string, at?: [number, number, number] } \| { edgeBetween: string[], at?: [number, number, number] } \| { vertex: string } \| { body: string, at?: [number, number, number] } \| { sketchEntity: string, at?: [number, number, number] } \| { sketch: string, at: [number, number], entity?: string } \| { at: [number, number, number] }` | no | On a face, edge (or edgeBetween), vertex, body or sketch entity by its name; in a sketch { sketch, at: [x, y] }; or a free point { at: [x, y, z] }. Names as get_feature, get_bodies and list_annotations give them. |
+
+## `remove_annotation`
+
+**Changes the design.**
+
+Deletes notes by number and answers { removed }. Their numbers are not given again. Never delete a person's note unasked. One undo step.
+
+| Input | Type | Required | What it is |
+| --- | --- | --- | --- |
+| `numbers` | `integer[]` | yes | The numbers to delete. |
 
 ## `run_command`
 

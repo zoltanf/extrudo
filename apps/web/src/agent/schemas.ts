@@ -22,6 +22,51 @@ const geomRef = z
   .object({ kind: z.string(), id: z.string() })
   .describe("A reference: { kind, id }, e.g. { kind: 'face', id: 'extrude:<feature>:cap:end' }.");
 
+const vec3 = z.tuple([z.number(), z.number(), z.number()]);
+const at3 = vec3
+  .optional()
+  .describe(
+    'Where on it, world mm (list_annotations and get_feature give points); default: its centre.',
+  );
+const name = (what: string) => z.string().min(1).describe(what);
+
+/** Where an annotation goes, as an agent names it (ADR-0126 §8). */
+const annotationAnchor = z
+  .union([
+    z.strictObject({ face: name("A face's persistent name."), at: at3 }),
+    z.strictObject({ edge: name("An edge's persistent name."), at: at3 }),
+    z.strictObject({
+      edgeBetween: z
+        .array(z.string().min(1))
+        .min(2)
+        .describe('The edge between two faces, by their persistent names.'),
+      at: at3,
+    }),
+    z.strictObject({ vertex: name("A vertex's persistent name.") }),
+    z.strictObject({
+      body: name("A body: '<feature id>:<n>' (get_bodies), or a feature id that made one."),
+      at: at3,
+    }),
+    z.strictObject({
+      sketchEntity: name("A sketch curve or point in the model: '<sketch id>/<entity id>'."),
+      at: at3,
+    }),
+    z.strictObject({
+      sketch: name('The sketch feature id.'),
+      at: z.tuple([z.number(), z.number()]).describe('Sketch mm, in the sketch frame.'),
+      entity: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('A sketch point, curve or text to follow; `at` is then its offset from it.'),
+    }),
+    z.strictObject({ at: vec3.describe('A point in space, world mm.') }),
+  ])
+  .describe(
+    'On a face, edge (or edgeBetween), vertex, body or sketch entity by its name; in a sketch { sketch, at: [x, y] }; or a free point { at: [x, y, z] }. Names as get_feature, get_bodies and list_annotations give them.',
+  );
+const annotationNumber = z.int().min(1).describe('The annotation number (#3 is 3).');
+
 const shape = z.discriminatedUnion('shape', [
   z
     .object({
@@ -91,7 +136,7 @@ export const TOOL_SCHEMAS = {
   },
   get_design: {
     description:
-      "The open design: id, name, parameters, configurations, and the timeline as [{ id, type, name, status, message?, suppressed }]. Read it first, and after every change: status 'error' or 'warning' says what went wrong.",
+      "The open design: id, name, parameters, configurations, the timeline as [{ id, type, name, status, message?, suppressed }] and, when it has any, the annotations as [{ number, text (first line), status, done? }]. Read it first, and after every change: status 'error' or 'warning' says what went wrong.",
     input: empty,
   },
   get_document: {
@@ -123,6 +168,16 @@ export const TOOL_SCHEMAS = {
   get_selection: {
     description: 'What the person has selected in the app: [{ kind, id }].',
     input: empty,
+  },
+  list_annotations: {
+    description:
+      "The design's numbered notes (#1, #2, …) in number order, ticked-off ones last: [{ number, text, done, hidden, anchor }], where anchor says what it is on, with names to paste into add_feature/edit_feature: { kind: 'model' | 'free' | 'sketch', status: 'ok' | 'moved' (found again by a guess) | 'detached' (its geometry is gone) | 'pending', at (world mm; sketch mm for a sketch note), normal (a flat face's), face | edge | vertex | body | sketchEntity, body ('<feature id>:<n>'), feature (the feature that made the face), sketch }. When the person says \"#3\", read it here.",
+    input: z.object({
+      includeDone: z
+        .boolean()
+        .default(true)
+        .describe('Also list the ticked-off notes (default true).'),
+    }),
   },
   screenshot: {
     description:
@@ -247,6 +302,32 @@ export const TOOL_SCHEMAS = {
     description: 'Deletes a feature; refused while another feature uses it. One undo step.',
     input: z.object({ id: id('The feature id.') }),
   },
+  add_annotation: {
+    description:
+      "Leaves a numbered note on geometry, in a sketch or at a point, and answers its { number, id }. Numbers are never reused. A name that doesn't resolve in the model is refused with its input path and nothing changes. One undo step.",
+    input: z.object({
+      text: z.string().trim().min(1).max(2000).describe('The note, plain text.'),
+      anchor: annotationAnchor,
+    }),
+  },
+  edit_annotation: {
+    description:
+      'Changes a note by its number: its text, done (ticked off, when the person agrees), hidden, or anchor (what it is on, as add_annotation takes it). Answers the note as list_annotations does. One undo step.',
+    input: z.object({
+      number: annotationNumber,
+      text: z.string().trim().min(1).max(2000).optional().describe('The new text.'),
+      done: z.boolean().optional().describe('Ticked off (true) or open again (false).'),
+      hidden: z.boolean().optional().describe('Not drawn (true) or drawn (false).'),
+      anchor: annotationAnchor.optional(),
+    }),
+  },
+  remove_annotation: {
+    description:
+      "Deletes notes by number and answers { removed }. Their numbers are not given again. Never delete a person's note unasked. One undo step.",
+    input: z.object({
+      numbers: z.array(annotationNumber).min(1).describe('The numbers to delete.'),
+    }),
+  },
   run_command: {
     description:
       "Runs one of the app's commands by id (list_commands lists them). One that opens a dialog or a sketch answers `opened`: it is finished in the app, and change tools are refused until then.",
@@ -283,6 +364,9 @@ export const CHANGE_TOOLS: ReadonlySet<ToolName> = new Set([
   'suppress',
   'rename',
   'remove',
+  'add_annotation',
+  'edit_annotation',
+  'remove_annotation',
   'run_command',
   'undo',
   'redo',

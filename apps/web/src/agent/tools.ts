@@ -23,7 +23,14 @@ import {
   type Vec2,
 } from '@extrudo/api';
 import {
+  type Annotation,
+  type AnnotationAnchor,
+  type AnnotationId,
+  addAnnotation,
   addParameter,
+  annotationAnchorProblem,
+  annotationByNumber,
+  annotationEntityPoint,
   type ClearableBodyField,
   type Command,
   CommandError,
@@ -36,9 +43,13 @@ import {
   type FeatureInputs,
   type GeomRef,
   insertFeature,
+  moveAnnotation,
   newId,
+  nextAnnotationNumber,
   planeFrame,
+  readSketch,
   remintFeatures,
+  removeAnnotation,
   removeFeature,
   renameDocument,
   renameFeature,
@@ -46,6 +57,7 @@ import {
   setFeatureSuppressed,
   setParameterExpressions,
   sketchEntityRefId,
+  updateAnnotation,
   updateBody,
   updateFeatureInputs,
   updateParameter,
@@ -197,6 +209,17 @@ function designSummary(host: AgentHost) {
     timeline: timeline(host),
     marker: doc.timelineMarker ?? doc.features.length,
     canUndo: host.store.getState().undoLabel ?? null,
+    ...((doc.annotations ?? []).length > 0 && {
+      annotations: annotationsInOrder(doc).map((a) => {
+        const line = a.text.split('\n')[0] ?? '';
+        return {
+          number: a.number,
+          text: line.length > 80 ? `${line.slice(0, 79)}…` : line,
+          status: readableAnchor(host, a).status,
+          ...(a.done && { done: true }),
+        };
+      }),
+    }),
   };
 }
 
@@ -350,6 +373,143 @@ async function screenshot(
     binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   }
   return { result: { content: [{ type: 'image', data: btoa(binary), mimeType: 'image/png' }] } };
+}
+
+// --- Annotations (ADR-0126 §8) ---------------------------------------------------
+
+/** Open notes by number, then the ticked-off ones. */
+function annotationsInOrder(doc: ExtrudoDocument): Annotation[] {
+  return [...(doc.annotations ?? [])].sort(
+    (a, b) => Number(a.done ?? false) - Number(b.done ?? false) || a.number - b.number,
+  );
+}
+
+const round3s = (v: readonly number[]) => v.map(round3);
+
+/**
+ * Where an annotation is, as an agent reads it: its status and point, and the
+ * names of what it is on, ready to paste into a feature's references.
+ */
+function readableAnchor(host: AgentHost, annotation: Annotation) {
+  const { anchor } = annotation;
+  if (anchor.kind === 'free') return { kind: 'free', status: 'ok', at: round3s(anchor.at) };
+  const { doc } = host.store.getState();
+  if (anchor.kind === 'sketch') {
+    const feature = doc.features.find((f) => f.id === anchor.sketch);
+    const data = feature ? readSketch(feature)?.data : undefined;
+    const base =
+      anchor.entity === undefined || !data ? undefined : annotationEntityPoint(data, anchor.entity);
+    return {
+      kind: 'sketch',
+      status: 'ok',
+      at: round3s(base ? [base[0] + anchor.at[0], base[1] + anchor.at[1]] : anchor.at),
+      sketch: anchor.sketch,
+      ...(anchor.entity !== undefined && {
+        sketchEntity: sketchEntityRefId(anchor.sketch, anchor.entity),
+      }),
+    };
+  }
+  const model = host.model.getState();
+  const report = model.annotations[annotation.id];
+  const ref = report?.resolved?.ref ?? anchor.ref;
+  const maker = ref.kind === 'face' ? ref.id.split(':')[1] : undefined;
+  return {
+    kind: 'model',
+    status: report?.status ?? 'pending',
+    at: round3s(report?.at ?? anchor.at),
+    ...(report?.normal && { normal: round3s(report.normal) }),
+    [ref.kind]: ref.id,
+    ...(report?.resolved?.body !== undefined && { body: report.resolved.body }),
+    ...(maker !== undefined && doc.features.some((f) => f.id === maker) && { feature: maker }),
+  };
+}
+
+/** An annotation as list_annotations answers it. */
+function readableAnnotation(host: AgentHost, annotation: Annotation) {
+  return {
+    number: annotation.number,
+    text: annotation.text,
+    done: annotation.done ?? false,
+    hidden: annotation.hidden ?? false,
+    anchor: readableAnchor(host, annotation),
+  };
+}
+
+type AgentAnchor = ToolInput<'add_annotation'>['anchor'];
+type Vec3 = [number, number, number];
+type AnnotationRef = Extract<AnnotationAnchor, { kind: 'model' }>['ref'];
+
+/** The geometry keys of an agent's anchor and the reference kind each names. */
+const ANCHOR_KINDS = {
+  face: 'face',
+  edge: 'edge',
+  edgeBetween: 'edge',
+  vertex: 'vertex',
+  body: 'body',
+  sketchEntity: 'sketchEntity',
+} as const;
+
+/**
+ * An agent's anchor as stored (ADR-0126 §8): a name resolved in the model at
+ * the marker, kept with its current name and fingerprint, or a sketch or free
+ * point checked against the document. Anything that doesn't resolve is refused
+ * with its input path before anything changes.
+ */
+async function storedAnchor(
+  ctx: AgentContext,
+  host: AgentHost,
+  anchor: AgentAnchor,
+): Promise<AnnotationAnchor> {
+  const { doc } = host.store.getState();
+  if ('sketch' in anchor) {
+    const feature = doc.features.find(
+      (f) => f.type === 'sketch' && (f.id === anchor.sketch || f.name === anchor.sketch),
+    );
+    if (!feature) throw new CommandError(`anchor.sketch: There is no sketch "${anchor.sketch}".`);
+    const stored: AnnotationAnchor = {
+      kind: 'sketch',
+      sketch: feature.id,
+      at: anchor.at,
+      ...(anchor.entity !== undefined && { entity: anchor.entity as SketchEntityId }),
+    };
+    const problem = annotationAnchorProblem(doc, stored);
+    if (problem) throw new CommandError(`anchor.entity: ${problem}`);
+    return stored;
+  }
+  const key = (Object.keys(ANCHOR_KINDS) as (keyof typeof ANCHOR_KINDS)[]).find((k) => k in anchor);
+  if (key === undefined) return { kind: 'free', at: (anchor as { at: Vec3 }).at };
+  const given = (anchor as Record<string, unknown>)[key];
+  const at = (anchor as { at?: Vec3 }).at;
+  await settled(host, ctx.settleMs);
+  const live = liveBodies(host);
+  if (!live) throw new CommandError("The model isn't computed: check get_design's problems first.");
+  let ref: AnnotationRef =
+    key === 'edgeBetween'
+      ? { kind: 'edge', id: edgeName(given as string[]) }
+      : { kind: ANCHOR_KINDS[key], id: given as string };
+  if (key === 'body') {
+    ref = (resolveBodyRefs({ body: ref }, live, doc, ['anchor']) as { body: AnnotationRef }).body;
+  }
+  const report = await host.resolveAnnotation({
+    id: 'probe' as AnnotationId,
+    number: 1,
+    text: 'probe',
+    anchor: { kind: 'model', ref, at: [0, 0, 0] },
+  });
+  if (!report)
+    throw new CommandError("The model isn't computed: check get_design's problems first.");
+  const found = report.resolved?.ref;
+  if (report.status === 'detached' || !found?.fingerprint) {
+    const what = key === 'edgeBetween' ? 'edge between' : key;
+    const named = key === 'edgeBetween' ? (given as string[]).join(' and ') : `"${given}"`;
+    // The input's path, built so it never reads as a preference key (settings inventory).
+    const path = ['anchor', key].join('.');
+    throw new CommandError(
+      `${path}: There is no ${what} ${named} in the model at the timeline marker: get_feature and list_annotations give names.`,
+    );
+  }
+  const point = at ?? found.fingerprint.at;
+  return { kind: 'model', ref: found as AnnotationRef, at: [point[0], point[1], point[2]] };
 }
 
 // --- Changing ----------------------------------------------------------------
@@ -946,6 +1106,76 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
       const feature = featureOf(h.store.getState().doc, id);
       h.store.getState().dispatch(removeFeature({ id: feature.id }));
       return { id: feature.id, name: feature.name };
+    });
+  },
+  list_annotations: async ({ includeDone }, ctx, host) => {
+    const h = need(host);
+    await settled(h, ctx.settleMs);
+    return json(
+      annotationsInOrder(h.store.getState().doc)
+        .filter((a) => includeDone || !a.done)
+        .map((a) => readableAnnotation(h, a)),
+    );
+  },
+  add_annotation: async ({ text, anchor }, ctx, host) => {
+    const h = need(host);
+    const stored = await storedAnchor(ctx, h, anchor);
+    const number = nextAnnotationNumber(h.store.getState().doc);
+    const id = newId<AnnotationId>();
+    return change(ctx, h, `Annotate #${number}`, () => {
+      h.store.getState().dispatch(addAnnotation({ id, text, anchor: stored }));
+      return { number, id };
+    });
+  },
+  edit_annotation: async ({ number, text, done, hidden, anchor }, ctx, host) => {
+    const h = need(host);
+    const found = annotationByNumber(h.store.getState().doc, number);
+    if (!found) return failure(`There is no annotation #${number}: list_annotations lists them.`);
+    if (text === undefined && done === undefined && hidden === undefined && !anchor) {
+      return failure('Give text, done, hidden or anchor to change.');
+    }
+    const stored = anchor ? await storedAnchor(ctx, h, anchor) : undefined;
+    return change(
+      ctx,
+      h,
+      `Edit #${number}`,
+      () => {
+        const { dispatch } = h.store.getState();
+        if (text !== undefined || done !== undefined || hidden !== undefined) {
+          dispatch(
+            updateAnnotation({
+              id: found.id,
+              changes: {
+                ...(text !== undefined && { text }),
+                ...(done !== undefined && { done }),
+                ...(hidden !== undefined && { hidden }),
+              },
+            }),
+          );
+        }
+        if (stored) dispatch(moveAnnotation({ id: found.id, anchor: stored }));
+        return { number };
+      },
+      () => {
+        const now = annotationByNumber(h.store.getState().doc, number);
+        return now ? readableAnnotation(h, now) : { number };
+      },
+    );
+  },
+  remove_annotation: ({ numbers }, ctx, host) => {
+    const h = need(host);
+    const { doc } = h.store.getState();
+    const unique = [...new Set(numbers)];
+    const missing = unique.filter((n) => !annotationByNumber(doc, n));
+    if (missing.length > 0) {
+      return failure(
+        `There is no annotation ${missing.map((n) => `#${n}`).join(', ')}: list_annotations lists them.`,
+      );
+    }
+    return change(ctx, h, `Delete ${unique.map((n) => `#${n}`).join(', ')}`, () => {
+      const ids = unique.map((n) => annotationByNumber(doc, n)?.id as AnnotationId);
+      h.store.getState().dispatch(removeAnnotation({ ids }));
+      return { removed: unique };
     });
   },
   run_command: async ({ id }, ctx, host) => {
