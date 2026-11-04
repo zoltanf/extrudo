@@ -1,0 +1,1 @@
+- 2026-11-04 · **Mesh to Solid: a cone round its own tip reads back from STEP**: where a converted cone's two halves met on a mesh edge passing close to the tip, its STEP file read back with an extra, invalid face there; the edge now runs through the tip and the halves become one face (ADR-0097).

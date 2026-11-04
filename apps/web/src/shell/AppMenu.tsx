@@ -14,6 +14,7 @@ import {
   Search,
   Settings,
   Shapes,
+  Spline,
   SquareDashed,
   Sun,
   Wrench,
@@ -182,7 +183,8 @@ const link =
  */
 export function AppMenu(props: AppMenuProps) {
   const { display, theme, onThemeChange, markingRadial, onMarkingRadial } = props;
-  const { autoProject, autoProjectFace, preset, annotations } = useDisplaySettings(display);
+  const { autoProject, autoProjectSketches, autoProjectFace, preset, annotations } =
+    useDisplaySettings(display);
   const [open, setOpen] = useState(false);
   const [help, setHelp] = useState<HelpTool>();
   const onOpenChange = (next: boolean) => {
@@ -225,6 +227,7 @@ export function AppMenu(props: AppMenuProps) {
           <MenuPanel
             {...props}
             autoProject={autoProject}
+            autoProjectSketches={autoProjectSketches}
             autoProjectFace={autoProjectFace}
             annotations={annotations}
             preset={preset}
@@ -243,6 +246,7 @@ export function AppMenu(props: AppMenuProps) {
 
 export interface MenuPanelProps extends AppMenuProps {
   autoProject: boolean;
+  autoProjectSketches: boolean;
   autoProjectFace: boolean;
   /** The annotations are drawn (ADR-0126 §5); on unless said. */
   annotations?: boolean;
@@ -260,6 +264,7 @@ export function MenuPanel({
   markingRadial,
   onMarkingRadial,
   autoProject,
+  autoProjectSketches,
   autoProjectFace,
   annotations = true,
   preset,
@@ -286,6 +291,13 @@ export function MenuPanel({
       hint: 'A body edge or vertex a tool snaps to is projected into the sketch.',
       icon: <Box size={16} strokeWidth={1.75} />,
       set: (v: boolean) => display.set({ autoProject: v }),
+    },
+    {
+      label: 'Auto-project sketch curves',
+      on: autoProjectSketches,
+      hint: 'A curve or point of an earlier sketch a tool snaps to is projected into the sketch.',
+      icon: <Spline size={16} strokeWidth={1.75} />,
+      set: (v: boolean) => display.set({ autoProjectSketches: v }),
     },
     {
       label: 'Auto-project face outline',

@@ -145,6 +145,12 @@ export interface BrowserPanelProps {
   /** The pointer on a body's row (`undefined` when it leaves): the view highlights the body. */
   onHoverBody?(id: BodyId | undefined): void;
   /**
+   * A click on a **sketch** row while the Project tool runs (ADR-0125): the
+   * whole sketch is offered to the tool as the view's picks are; `toggle`
+   * with Shift, Ctrl or ⌘. Absent otherwise.
+   */
+  onPickFeature?(id: FeatureId, toggle: boolean): void;
+  /**
    * The section analysis (P3-09), while there is one: an Analysis folder with its row. The eye
    * clips the view or not, a click opens the panel, the menu removes it.
    */
@@ -215,6 +221,7 @@ export function BrowserPanel({
   selectedBodies = NO_BODIES,
   onPickBody,
   onHoverBody,
+  onPickFeature,
   section,
   overhang,
   thickness,
@@ -353,6 +360,9 @@ export function BrowserPanel({
                     position={{ index, marker: doc.timelineMarker, count: doc.features.length }}
                     active={feature.id === activeSketchId}
                     actions={actions}
+                    {...(onPickFeature && {
+                      onPick: (toggle: boolean) => onPickFeature(feature.id, toggle),
+                    })}
                   />
                 ))
               )}
@@ -619,6 +629,7 @@ function SketchLeaf({
   actions,
   icon,
   rowAttribute,
+  onPick,
 }: {
   feature: Feature;
   editable: boolean;
@@ -632,6 +643,8 @@ function SketchLeaf({
   icon?: ReactNode;
   /** A hook for the test to find this row (`data-construction`, `data-canvas`). */
   rowAttribute?: Record<string, string>;
+  /** A click on the row while the Project tool runs (ADR-0125): the whole sketch is picked. */
+  onPick?: (toggle: boolean) => void;
 }) {
   const [renaming, setRenaming] = useState(false);
   const visible = isFeatureVisible(feature);
@@ -659,6 +672,11 @@ function SketchLeaf({
           {...rowAttribute}
           data-feature-row={feature.id}
           data-feature-status={problem?.status}
+          onClick={
+            onPick && !renaming
+              ? (event) => onPick(event.shiftKey || event.metaKey || event.ctrlKey)
+              : undefined
+          }
           onDoubleClick={editable && !renaming ? () => actions.edit(feature.id) : undefined}
           onPointerEnter={() => actions.hover(feature.id)}
           onPointerLeave={() => actions.hover(undefined)}

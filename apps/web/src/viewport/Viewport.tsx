@@ -547,7 +547,13 @@ export function Viewport({
   }, [viewport, bodies, sectionClip, posed, drawnStyle]);
   // Auto-project (P6-07): the body edge or vertex under the pointer, or a face
   // centre near it (issue #140), while a tool runs. Off, the view offers
-  // nothing and the tool never sees one.
+  // nothing and the tool never sees one. ADR-0125 adds an earlier sketch's
+  // curves and points; only the sketches before the open one count.
+  const earlierSketches = useMemo<ReadonlySet<FeatureId>>(() => {
+    const index = modelScene.sketches.findIndex((s) => s.active);
+    const before = index < 0 ? modelScene.sketches : modelScene.sketches.slice(0, index);
+    return new Set(before.map((s) => s.id as FeatureId));
+  }, [modelScene]);
   const modelSnapPicker = useMemo(
     () =>
       (
@@ -566,9 +572,10 @@ export function Viewport({
           cursor,
           modelScene.bodies,
           SNAP_PIXELS * perPixel,
+          earlierSketches,
         );
       },
-    [viewport, modelScene],
+    [viewport, modelScene, earlierSketches],
   );
   // A dialog's preview of a canvas replaces the canvas it edits (P4-06).
   const drawnCanvases = useMemo(

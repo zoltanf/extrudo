@@ -2792,6 +2792,10 @@ function Shell({
                 : undefined
             }
             onHoverBody={(id) => modelSelect?.onHover(id ? { kind: 'body', id } : undefined)}
+            {...(projecting &&
+              modelSelect && {
+                onPickFeature: (id, toggle) => modelSelect.onClick({ kind: 'feature', id }, toggle),
+              })}
             {...(sectionEntry && { section: sectionEntry })}
             {...(overhang.state && {
               overhang: {

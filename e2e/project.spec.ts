@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { clickAt, primitive, settled, zoomOutTo } from './benchmark-helpers';
 import {
+  clicker,
   counts,
   kernelReady,
   mapping,
@@ -9,12 +10,17 @@ import {
   openSketch,
   pickTool,
   projector,
+  sketchOnXY,
 } from './helpers';
 
 // P4-12 (ADR-0031's amendment): Project takes a sphere's outline (a silhouette,
 // not just its edges), Intersect (Shift+P) brings in the curves where a body
 // meets the sketch plane, and with "Keep linked" off the curves come in as
 // plain sketch geometry that no longer follows the model.
+//
+// ADR-0125 (issue #171): Project also takes a curve or point of an earlier
+// sketch in the view, and a whole earlier sketch through its browser row; the
+// curves stay linked and follow the source sketch.
 
 test.use({ viewport: { width: 1440, height: 900 } });
 test.describe.configure({ timeout: 90_000 });
@@ -162,4 +168,131 @@ test('with "Keep linked" off, the curves are plain and can be moved', async ({ p
   await page.mouse.up();
   await expect(viewport).toHaveAttribute('data-sketch-profiles', 'profiles=0 holes=0');
   await expect(viewport).not.toHaveAttribute('data-sketch-projected', /./);
+});
+
+// ---------------------------------------------------------------------------
+// ADR-0125 (issue #171): an earlier sketch is a projection source.
+
+const viewportOf = (page: Page) => page.getByRole('region', { name: 'Viewport' });
+const featureRow = (page: Page, name: string) =>
+  page
+    .getByRole('list', { name: 'Features' })
+    .getByRole('button', { name: new RegExp(`^${name}`) });
+
+/** A camera settled world (mm) → page (px) mapping. */
+async function settledProjector(viewport: Locator) {
+  let last = '';
+  await expect
+    .poll(async () => {
+      const values = await Promise.all(
+        ['size', 'target', 'direction'].map((k) => viewport.getAttribute(`data-camera-${k}`)),
+      );
+      const key = values.join(' ');
+      const still = key === last;
+      last = key;
+      return still;
+    })
+    .toBe(true);
+  return projector(viewport);
+}
+
+/** Makes an Offset Plane 10 mm above XY and starts a sketch on it. Returns the sketch's id. */
+async function sketchAboveXY(page: Page): Promise<string> {
+  const viewport = viewportOf(page);
+  await settled(viewport);
+  const world = await settledProjector(viewport);
+  const half = Number(await viewport.getAttribute('data-camera-size')) * 0.16;
+  await pickTool(page, 'Offset Plane');
+  const dialog = page.getByRole('region', { name: 'Offset Plane dialog' });
+  await expect(dialog).toBeVisible();
+  await clickAt(page, world, [half * 0.5, -half * 0.5, 0]);
+  await dialog.getByRole('textbox', { name: 'Distance' }).fill('10 mm');
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).toBeHidden();
+  await kernelReady(page);
+
+  await pickTool(page, 'Create Sketch');
+  await page
+    .getByRole('region', { name: 'Create Sketch' })
+    .getByRole('group', { name: 'Construction planes' })
+    .getByRole('button', { name: 'Offset Plane1' })
+    .click();
+  const sketch = await openSketch(page);
+  await expect(viewport).toHaveAttribute('data-camera-direction', '0,0,-1');
+  return sketch;
+}
+
+test('projects a sketch curve and follows the source sketch when it changes', async ({ page }) => {
+  const viewport = viewportOf(page);
+  const at = await sketchOnXY(page);
+  const click = clicker(page, at);
+  // Sketch1 on XY: a line from (−10, 0) to (10, 0), dimensioned so it can be edited later.
+  await page.keyboard.press('l');
+  await click(-10, 0);
+  await click(10, 0);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('d');
+  await click(0, 0);
+  await click(0, 8);
+  await page.getByRole('textbox', { name: 'Value of d1' }).fill('20');
+  await page.getByRole('textbox', { name: 'Value of d1' }).press('Enter');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await kernelReady(page);
+
+  const sketch = await sketchAboveXY(page);
+  const box = await viewport.boundingBox();
+  if (!box) throw new Error('no viewport');
+  await zoomOutTo(page, { x: box.x + box.width / 2, y: box.y + box.height / 2 }, 150);
+  await settled(viewport);
+  await page.keyboard.press('p');
+  const panel = page.getByRole('region', { name: 'Project', exact: true });
+  await expect(panel).toBeVisible();
+  const on = await mapping(viewport);
+  const line = on(5, 0);
+  await page.mouse.move(line.x, line.y);
+  await expect.poll(() => attr(viewport, 'data-model-hover')).toContain('sketchEntity');
+  await page.mouse.click(line.x, line.y);
+  await expect
+    .poll(() => attr(viewport, 'data-sketch-projected'))
+    .toBe(`${sketch}:curves=1:x=-10..10:y=0..0`);
+  await panel.getByRole('button', { name: 'Done' }).click();
+
+  // Editing Sketch1's line moves the projection with it.
+  await featureRow(page, 'Sketch1').dblclick();
+  await expect.poll(async () => (await counts(page)).dimensions).toBe(1);
+  await page.locator('[data-dimension]').first().dblclick();
+  await page.getByRole('textbox', { name: 'Value of d1' }).fill('40');
+  await page.getByRole('textbox', { name: 'Value of d1' }).press('Enter');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await kernelReady(page);
+  await expect
+    .poll(() => attr(viewport, 'data-sketch-projected'))
+    .toBe(`${sketch}:curves=1:x=-20..20:y=0..0`);
+});
+
+test("projects a whole earlier sketch through its browser row's click", async ({ page }) => {
+  const viewport = viewportOf(page);
+  const at = await sketchOnXY(page);
+  const click = clicker(page, at);
+  // Sketch1 on XY: one circle centred on the origin (no loose points).
+  await page.keyboard.press('c');
+  await click(0, 0);
+  await click(10, 0);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await kernelReady(page);
+
+  const sketch = await sketchAboveXY(page);
+  await page.keyboard.press('p');
+  const panel = page.getByRole('region', { name: 'Project', exact: true });
+  await expect(panel).toBeVisible();
+  await browserRow(page, 'Sketch1').click();
+  await expect
+    .poll(() => attr(viewport, 'data-sketch-projected'))
+    .toBe(`${sketch}:curves=1:x=0..0:y=0..0`);
+  // One undo takes the projection away.
+  await page.keyboard.press('Control+z');
+  await expect.poll(() => attr(viewport, 'data-sketch-projected')).toBe('');
 });

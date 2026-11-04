@@ -395,10 +395,19 @@ export type SketchData = z.infer<typeof SketchDataSchema>;
 
 // Reference checks -----------------------------------------------------------
 
-const PROJECTABLE: readonly string[] = ['edge', 'face', 'vertex', 'body', 'axis', 'point'];
+const PROJECTABLE: readonly string[] = [
+  'edge',
+  'face',
+  'vertex',
+  'body',
+  'axis',
+  'point',
+  'sketchEntity',
+  'feature',
+];
 const INTERSECTABLE: readonly string[] = ['face', 'body'];
 const CENTERED: readonly string[] = ['face'];
-const POINT_SOURCES: readonly string[] = ['vertex', 'point', 'axis'];
+const POINT_SOURCES: readonly string[] = ['vertex', 'point', 'axis', 'sketchEntity', 'feature'];
 
 type Kinds = readonly SketchEntityType[];
 const POINT: Kinds = ['point'];
@@ -768,8 +777,8 @@ export function sketchIssues(sketch: {
   }
 
   // Each curve belongs to at most one projection; projections are of edges, faces,
-  // vertices and bodies (P4-12), axes and points (ADR-0093), intersections of faces
-  // and bodies.
+  // vertices and bodies (P4-12), axes and points (ADR-0093), a curve, point or whole
+  // sketch of an earlier sketch (ADR-0125), intersections of faces and bodies.
   const projectedBy = new Map<string, string>();
   for (const [id, projection] of Object.entries(sketch.projections ?? {})) {
     const kinds =
@@ -786,7 +795,7 @@ export function sketchIssues(sketch: {
           ? `must intersect a face or a body, not a ${projection.ref.kind}`
           : projection.mode === 'center'
             ? `must take the centre of a face, not of a ${projection.ref.kind}`
-            : `must project an edge, a face, a vertex, a body, an axis or a point, not a ${projection.ref.kind}`,
+            : `must project an edge, a face, a vertex, a body, an axis, a point, a sketch curve or a sketch, not a ${projection.ref.kind}`,
       );
     }
     for (const [key, curve] of Object.entries(projection.curves)) {

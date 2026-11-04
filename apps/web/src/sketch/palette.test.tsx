@@ -32,7 +32,8 @@ const ROWS = [
   'Show constraints',
   'Show profiles',
   'Slice',
-  'Auto-project',
+  'Auto-project bodies',
+  'Auto-project sketches',
   'Face outline',
 ];
 

@@ -314,3 +314,49 @@ holds is ever the only copy.
 
 - Several linked folders, sub-folders, a desktop (Electron) implementation of the
   same interface (Phase 6), nested groups, groups in the browser panel.
+
+## Amendment, 2026-11-03: a moved time is not a change (issue #155)
+
+The conflict rule compared the file's time and nothing else. A desktop design
+linked to a file on Google Drive's G: drive (Windows) showed "changed on disk"
+toasts all the time, nobody else having touched the file, one more at every
+save. Not reproduced here; the likely cause is that the sync client sets the
+file's time again after it uploads it, so the next write found "a change", and
+the time recorded in the link never caught up.
+
+- **The link keeps the bytes' hash** (`LinkedFile.sha256`, the SHA-256 of what
+  was last written or read: `linkedSync`'s writes, Load from disk, Open… and
+  Save As…). When the time moved, the file is read and hashed; the same hash
+  means only the time moved, and the write goes ahead. Different bytes, or a
+  link made before the hash was kept, are a conflict as before. The read
+  happens only when the time moved.
+- **One toast per change.** Every save until the conflict is answered finds the
+  same change; it is said once (its buttons stay usable from the history), and
+  a toast comes again only when the file's time moves again.
+- **Load from disk records the file it read** in the link (time and hash), so
+  the next save writes it instead of finding the same change again.
+- **A project checks when it opens** (`LinkSync.check`, `LinkedProject.opened`):
+  a file changed elsewhere (another computer, through the synced folder) gets
+  its conflict toast before the first edit, not after it. Only a conflict is
+  said there; an error (a folder to reconnect) waits for the first write, as
+  before.
+- **Rejected:** a tolerance on the time (how far a sync client moves it is its
+  own business, and a real change can land inside any tolerance), and keeping
+  the last written bytes in memory (gone after a restart, which is when a
+  synced file has most likely moved).
+
+## Amendment, 2026-11-04: Save As… links the open project (issue #155)
+
+Testing the amendment above on Windows with Google Drive found a second fault.
+Save As… recorded its file as the link in the project index only. The open
+project had read its link when it opened, so it went on writing the old file
+(or none), and the next write recorded the old file in the index again: the
+new file was never written back, without a word. Closing the design did the
+same.
+
+- **`LinkedProject.adopt(link)`** sets the open project's link, clears what was
+  said about the old file, and records the link in the index. Save As… calls it
+  (through `useLinkedFolder`'s `adopt`) wherever there is a linked project, and
+  `ProjectStore.link` only where there is none.
+- Adopting a link also hides "Save to Linked Folder", as linking does.
+

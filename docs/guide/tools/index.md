@@ -161,7 +161,7 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 - [Conic](./conic.md) — A conic from its two ends and the shoulder point. Rho sets how full it is.
 - [Text](./text.md) — Type text on the sketch. Its letters are closed regions like any other profile.
 - [Import Drawing](./importDrawing.md) — Bring an SVG or DXF drawing into the sketch as ordinary curves.
-- [Project](./project.md) — Bring body edges, faces, vertices and bodies into the sketch; they follow the model.
+- [Project](./project.md) — Bring body edges, faces, vertices and bodies, and curves of earlier sketches, into the sketch; they follow their source.
 - [Intersect](./intersect.md) — Bring in the curves where a face or body meets the sketch plane; they follow the model.
 - [Mirror](./sketchMirror.md) — Mirror curves about a line; the copies stay symmetric.
 - [Rectangular Pattern](./sketchRectangularPattern.md) — Copies in rows and columns. Type the counts and spacing.

@@ -314,10 +314,14 @@ test('rail toggles and the theme change preferences and leave the panel open', a
   await expect(panel).toHaveCount(0);
   await expect(appMenu(page)).toBeFocused();
   await newSketchOnXY(page);
-  await expect(page.getByRole('checkbox', { name: 'Auto-project', exact: true })).not.toBeChecked();
+  await expect(
+    page.getByRole('checkbox', { name: 'Auto-project bodies', exact: true }),
+  ).not.toBeChecked();
   await (await railToggle(page, 'Auto-project body edges')).click();
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('checkbox', { name: 'Auto-project', exact: true })).toBeChecked();
+  await expect(
+    page.getByRole('checkbox', { name: 'Auto-project bodies', exact: true }),
+  ).toBeChecked();
   // Face outline in the palette is the open sketch's own (ADR-0074's 2026-10-31 amendment).
   await expect(page.getByRole('checkbox', { name: 'Face outline', exact: true })).toBeDisabled();
 });

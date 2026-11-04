@@ -445,6 +445,11 @@ function SketchPage({ display }: { display: DisplayAccess }) {
         'Auto-project body edges',
         'A body edge or vertex a tool snaps to is projected into the sketch.',
       )}
+      {flag(
+        'autoProjectSketches',
+        'Auto-project sketch curves',
+        'A curve or point of an earlier sketch a tool snaps to is projected into the sketch.',
+      )}
       {flag('autoProjectFace', 'Auto-project face outline', 'When a sketch starts on a flat face.')}
       <Heading>Shown in a sketch</Heading>
       {flag('sketchPoints', 'Show points')}

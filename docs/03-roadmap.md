@@ -920,11 +920,14 @@ end to end, faster than in established desktop CAD.
     every STEP path now hands it a copy with direct faces and forward wires
     when an indirect face has a seam, and a test checks every edge's two uses
     in the written text.
-  - STEP round trip: a cone the hybrid leaves as two half-turn faces on one
+  - ~~STEP round trip: a cone the hybrid leaves as two half-turn faces on one
     surface reads back with an extra, invalid face at its apex (their shared
     edge has two pcurves 2π apart, like a seam): makita-vacuum-holder's own
     round-trip failure (ADR-0097's 2026-11-03 amendment). One face per such
-    surface, or a surface copy per face, in the unify path.
+    surface, or a surface copy per face, in the unify path.~~ **done
+    2026-11-04 (ADR-0097's amendment of that day)**: the halves met on a mesh
+    edge past the apex whose tolerance held it; that edge now runs through
+    the apex, the halves unify into one face and makita reads back.
   - ~~Section analysis on several planes, a section box~~ **done
     (P4-12, 2026-10-06, ADR-0045's amendment: up to three planes, a box of
     six)**; sections saved with named views, a hatch per material (ADR-0045).
@@ -1220,6 +1223,14 @@ end to end, faster than in established desktop CAD.
   faces 22,569 → 22,356 (ADR-0097's 2026-11-03 amendment). Left: micro
   zigzags (2 facets), wrapped charts 375 (mostly cone fits on makita's
   fillets), spool-screw-v4.1's two regions invalid after unify and healing.
+  *2026-11-04:* a cone's two halves that met on a mesh edge past its apex
+  meet through the apex: makita-vacuum-holder's round trip passes, 6 of the
+  corpus's round trips fail at Auto (7 before; ADR-0097's 2026-11-04
+  amendment). *2026-11-04b:* holes that unify moved a turn away from their
+  outline go back, so spool-screw-v4.1 builds once: 43.3 → 23.9 s, 256 → 0
+  facets (ADR-0097's 2026-11-04b amendment). Left: micro zigzags (2 facets),
+  wrapped charts 375 (mostly cone fits on makita's fillets), the planes still
+  exploded as "its outer loop runs the wrong way" (152 facets).
 
 ## Phase 5 — Programmatic design (→ v0.6)
 
@@ -1640,6 +1651,15 @@ end to end, faster than in established desktop CAD.
   - [x] S6: the sketching page around its visuals, the palette section, figure galleries,
     the anchor test and the axe audit.
   - [x] Batch 1: notes for the 13 Constraints tool pages, each with its figure.
+  - [x] Batch 2: notes for the 25 Create tool pages (Point to Import Drawing); Intersect carries its figure.
+  - [x] Batch 3: notes for the 7 remaining Modify tool pages (Extend to Sketch Scale) and Export Sketch.
+
+- [x] **P6-23 Project a sketch into another sketch** (issue #171; FR-SK-12, FR-SK-17;
+  ADR-0125). The Project tool picks a curve or point of an earlier sketch in the view and a
+  whole earlier sketch through its browser row, and Auto-project Sketches offers an earlier
+  sketch's curves and points to a running tool as `sketchCurve`/`sketchPoint` snaps, linked
+  and following the source. Flows: the two switches (Bodies | Sketches) and the palette.
+  Acceptance: `pnpm check`, `e2e/project.spec.ts` and `e2e/auto-project.spec.ts`.
 
 - [x] **P6-23 Annotations** (owner, 2026-11-03; ADR-0126). Numbered notes (#1, #2, …,
   never reused) pinned to a face, edge, vertex, body, sketch entity or a free point, in the

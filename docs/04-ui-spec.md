@@ -61,7 +61,7 @@ brief, voice) is in **`05-brand.md`**. In short:
   **the rail**, one row of icon controls with a tooltip each — Mouse controls
   (a segmented control: Crank, Spindle, Glide, Blender, Slicer, Trackpad; the
   tooltip's hint is the preset's bindings, R3-03), a divider, the toggles Auto-project body edges,
-  Auto-project face outline and Radial right-click menu, a second divider and
+  Auto-project sketch curves, Auto-project face outline and Radial right-click menu, a second divider and
   the Theme (System by default, Light, Dark); **two columns**, App (Search…,
   Settings…, About Extrudo, then Close design on the web or Quit on the
   desktop) and Learn (Help for \<tool\>, User Guide, Tutorial, Online
@@ -790,6 +790,8 @@ runs from a 4 px dot at the anchor to the box's nearest edge.
   the tool runs. Since P4-12 it also projects a sphere's, torus's or free-form
   face's outline, a vertex (a fixed point) and a whole body (picked by its
   browser row: its outline and the sharp edges seen from the sketch's side).
+  Since ADR-0125 it also picks a curve or point of an earlier sketch in the view
+  and a whole earlier sketch by its browser row; a later sketch is refused.
   A panel in the sketch's column says what to pick and has **Keep linked**
   (on): off, the next picks come in as plain curves that don't follow the
   model, one undo step "Include 4 curves".
@@ -810,8 +812,10 @@ runs from a 4 px dot at the anchor to the box's nearest edge.
   then one row per setting: an icon, a short caption and a switch at the
   right. Construction (with its key) first; **Grid:** show and snap side by
   side; **Show:** points, dimensions, constraints and profiles in two columns;
-  **View & project:** slice (cuts the bodies away on the camera's side of the
-  sketch plane while the sketch is open), auto-project, and face outline: the
+  **View:** slice (cuts the bodies away on the camera's side of the
+  sketch plane while the sketch is open); **Auto-project:** bodies and sketches
+  side by side (a curve or point of an earlier sketch you snap to comes in,
+  linked to that sketch), then face outline: the
   open sketch's projection of the face it sits on, added when switched on and
   removed when switched off; disabled on a plane sketch and while a constraint
   or dimension uses the outline, with the tooltip saying which. Resting on a setting for a second opens a tooltip with

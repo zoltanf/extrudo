@@ -219,8 +219,9 @@ no longer follow the model.
 **Auto-project** does that as you draw. With it on, a line's end that snaps to a body's edge or
 corner projects that edge and ties the point to it. Near the middle of a flat face in the sketch
 plane (the face the sketch is on, say) the pointer snaps to the face's centre, and the point
-stays there when the face changes size. It is on by default, and a checkbox in the
-sketch palette and in **Settings** turns it off. **Auto-project face outline** in **Settings**
+stays there when the face changes size. A curve or point of an earlier sketch you snap to comes
+in too, linked to that sketch. Both are on by default, and a switch in the
+sketch palette and in **Settings** turns each off. **Auto-project face outline** in **Settings**
 also projects a flat face's outline when a sketch opens on it. In an open sketch on a face,
 **Face outline** in the palette adds the face's outline now, or removes it again; while a
 constraint or dimension uses the outline it stays, and the switch says why.
@@ -240,7 +241,8 @@ profile.
 While a sketch is open, the palette sits at the right of the view. It shows the sketch's name with
 a **Look at** button, then one row per setting, each with an icon, a short caption and a switch.
 **Construction** comes first. The **Grid** group has the grid and snapping, the **Show** group
-what is drawn, and the **View & project** group the slice, Auto-project and the face outline.
+what is drawn, the **View** group the slice, and the **Auto-project** group the bodies, the
+sketches and the face outline.
 Under them are the degrees-of-freedom counter and **Finish Sketch**. Rest the pointer on a row for
 a second and a tooltip says what it does. Press `F1` over a row to open its section here.
 
@@ -296,8 +298,19 @@ sketch is open. Off by default.
 
 ### Auto-project
 
+A body edge or vertex, or a curve or point of an earlier sketch, you snap to while drawing comes
+into the sketch, linked to its source. See [Project and Intersect](#project-and-intersect). Both
+kinds are on by default.
+
+### Auto-project bodies
+
 A body edge or vertex you snap to while drawing comes into the sketch, linked to the model. See
-[Project and Intersect](#project-and-intersect). On by default.
+[Project and Intersect](#project-and-intersect).
+
+### Auto-project sketches
+
+A curve or point of an earlier sketch you snap to comes into this sketch, linked to that sketch.
+Only sketches earlier in the timeline are offered. See [Project and Intersect](#project-and-intersect).
 
 ### Face outline
 

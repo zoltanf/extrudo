@@ -364,7 +364,9 @@ plane, the camera's side removed — view state, one more `SectionClip` in
 `useSection`'s list, last after the person's own planes; the removed side
 is decided once per sketch or Slice turn-on (the session's
 `sketchSliceFlip`) and kept while the camera orbits. Native harness:
-`spikes/p4-12-project/` (`run.sh`, `run.sh leaks 100`). **In the app a sketch's frame comes only from
+`spikes/p4-12-project/` (`run.sh`, `run.sh leaks 100`). **ADR-0125** extends
+Project and auto-project to an **earlier sketch**: a curve, point or whole
+sketch is a source (a `sketchEntity` or `feature` ref); see its paragraph. **In the app a sketch's frame comes only from
 `sketchFrame(feature, plane, model.sketches)`** (`sketch/frame.ts`),
 never `planeFrame()` alone. ADR-0032 (P2-10) added the primitives
 `box`, `cylinder`, `sphere`, `torus` (`packages/core/src/primitives.ts`,
@@ -1456,7 +1458,18 @@ several buttons (`ToastOptions.actions`, with `action` the first of them), both
 with `available()`. Errors (permission lost, file removed) are toasts. The home
 screen's "Linked folder" section opens a file as a project **linked** to it;
 "Save to Linked Folder" (Home › Export tile, Ctrl+K) links an unlinked one, refusing a
-name that is already in the folder. **2026-10-29:** in the kernel's booleans (`finishBoolean`: fuse, cut, common, split) a **simplified** one runs **on copies of both inputs** (the face merge, `UnifySameDomain`, changed sub-shapes shared with the live body in place, safe input mode or not) and **checks the merged result, falling back to the plain boolean built again from the inputs** when the merge broke it (faces on one cylinder came out unorientable); **never `SetNonDestructive(true)`** on a boolean (a fillet after such a cut ran forever); the recompute engine's **`#checkSound`** refuses a feature whose fresh body fails `Kernel.isValid` or has no face ("The <feature> made a broken body …", "… an empty body …"), releases its handles and keeps the bodies before it, so **no evaluator ever gets a broken body** (a body read from a file is kept with a warning instead: `keepsBrokenBodies`, set only by the import feature); `Kernel.brokenSolidForTests` / the `test-broken`, `test-empty` and `test-broken-kept` features exist for those tests only.
+name that is already in the folder. **Amendment (2026-11-03, issue #155):** a
+moved time over the same bytes is no conflict: the link keeps `sha256` of the
+bytes last written or read (every write, Load from disk, Open…, Save As…), and
+`linkedSync` reads and hashes the file **only when the time moved**; a link
+without a hash keeps the time-only rule. A conflict is said **once per (file,
+time)**, Load from disk records the file it read in the link, and a project
+checks the file when it opens (`LinkSync.check`, `LinkedProject.opened`,
+conflicts only). **A link made while the project is open** (desktop Save As…)
+goes through **`LinkedProject.adopt`** (`useLinkedFolder`'s `adopt`), never
+`ProjectStore.link` alone: the open project reads the link only when it opens,
+and kept writing (and re-recording) the old file until it was opened again.
+**2026-10-29:** in the kernel's booleans (`finishBoolean`: fuse, cut, common, split) a **simplified** one runs **on copies of both inputs** (the face merge, `UnifySameDomain`, changed sub-shapes shared with the live body in place, safe input mode or not) and **checks the merged result, falling back to the plain boolean built again from the inputs** when the merge broke it (faces on one cylinder came out unorientable); **never `SetNonDestructive(true)`** on a boolean (a fillet after such a cut ran forever); the recompute engine's **`#checkSound`** refuses a feature whose fresh body fails `Kernel.isValid` or has no face ("The <feature> made a broken body …", "… an empty body …"), releases its handles and keeps the bodies before it, so **no evaluator ever gets a broken body** (a body read from a file is kept with a warning instead: `keepsBrokenBodies`, set only by the import feature); `Kernel.brokenSolidForTests` / the `test-broken`, `test-empty` and `test-broken-kept` features exist for those tests only.
 
 ADR-0066 (P4-06, slice 1) added **drawings into a sketch**: `@extrudo/io`
 gained `readSvg` / `readDxf` (`xml.ts` is our own small tokenizer, no
@@ -2047,6 +2060,8 @@ with the constraint and dimension counts on its curves. On dispatches
 constraint or dimension uses the curves**, and the switch is disabled then (hint
 counts them) and on a plane sketch. It doesn't depend on Auto-project. Keep
 `viewport.autoProjectFace` for new sketches in Settings and the app menu only.
+ADR-0125 adds `viewport.autoProjectSketches` and the `sketchCurve`/`sketchPoint`
+snap kinds; see its paragraph.
 
 ADR-0075 (P6-01, slice 1) added **the Electron desktop app** (`apps/desktop`,
 GPL): electron-vite builds main, preload and renderer, the **renderer being the
@@ -3514,6 +3529,31 @@ Numbers in ADR-0097's 2026-11-01 amendment; all tables in `docs/plans/m2s-explod
   baseline from here on: `baseline-2026-11-03-auto.jsonl` (`prismatic converted 37 refused 4, prismatic faces 24942,
   prismatic facets 14259, prismatic ms 232772, round trips failed 7`). Numbers in ADR-0097's 2026-11-03 amendment.
 
+**ADR-0097 amendment (2026-11-04): a cone's halves meet through its apex.** `extrudo_facade.cpp` (`rebuildHybrid`'s
+`makeFace`, `ApexRoute`, `apexRouteOf`, `apexOff`); probe `Q26CONE=all` in `spikes/stl-to-solid/prismatic.cpp`. Rules:
+- No edge of a hybrid face passes a cone's apex closer than its own tolerance: a cone region's mesh edge whose straight
+  pcurve strays from the chord by more than the edge's distance from the apex, with a region of the same cone across
+  it, runs through the apex (a shared leg from each node to one apex vertex, a degenerated edge per face between);
+  a region that fails with a route builds again without its routes, and the regions across them too.
+- Don't treat the second pcurve 2π away on such an edge as the cause (dropping it was measured: the read-back still
+  has the extra apex face), and each hybrid face already has its own surface.
+- Test: `mesh-to-solid.test.ts` "routes the edge where a cone’s two halves meet past its tip through the tip, so it
+  round-trips (2026-11-04)" (one cone face, two before); the round trip itself is pinned by makita-vacuum-holder in
+  the sweep. Sweep baseline from here on: `baseline-2026-11-04-half-cone-auto.jsonl` (`prismatic faces 24941,
+  prismatic facets 14259, round trips failed 6`).
+
+**ADR-0097 amendment (2026-11-04b): holes that unify moves a turn away.** `extrudo_facade.cpp` (`rewrapHoles` after
+`straightenSeams` in `rebuildHybrid`, `cutTouchingLoops`). Rules:
+- After unify, no hole of a face on a periodic surface lies a period away from its outer wire: `rewrapHoles` moves such
+  a hole's pcurves back by whole periods (unify moves holes past 2π into [0, 2π) when the outline straddles 2π; the
+  healer then leaves `IntersectingWires` and the regions explode). Don't move the validity check later for this: the
+  faces are invalid after unify, not checked too early.
+- `cutTouchingLoops` cuts in rounds (one rebuild of the body per round, not per cut); a cut must keep leaving every
+  other face as it is, or the rounds would change the result.
+- Test: `mesh-to-solid.test.ts` "keeps a boss wall’s hole where it is through unify, so the first build stands
+  (2026-11-04)". Sweep baseline from here on: `baseline-2026-11-04-second-attempt-auto.jsonl` (`prismatic faces
+  24693, prismatic facets 14003, prismatic ms 214077, round trips failed 6`; spool-screw-v4.1 23.9 s).
+
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
 facade `removeFaces` with `BRepAlgoAPI_Defeaturing`). Rules: **all or nothing** (any
@@ -3986,6 +4026,42 @@ anchor in `docsAnchors.json` must exist in the built page (site test); the deskt
 `DOCS_PATH` accepts `/<guide>/` and `#<anchor>`. Tool pages stay generated: hand text between
 the `<!-- notes -->` markers (Step by step, Options, What it keeps, Messages; messages quoted
 from the app).
+
+ADR-0125 (issue #171, 2026-11-03): **project a sketch into another, and auto-project sketches.**
+Files: `packages/core/src/sketch/projection.ts` (`PROJECTABLE.project`, `REFUSED.project`,
+`ProjectedCurve.construction`), `sketch/schema.ts` (`PROJECTABLE`, `POINT_SOURCES`, the `project`
+message), `packages/kernel/src/features/sketch.ts` (`SketchOutputData.construction`/`loose`,
+`SOURCE_NOUN`, `projectSketchEntity`, `projectWholeSketch`),
+`packages/kernel/src/features/projection.ts` (`projectSketchCurve`, exported `conicEdge`),
+`packages/kernel/src/recompute/engine.ts` (`featureDependencies` now walks a sketch's projection
+refs too, so an earlier source is computed first), `apps/web/src/sketch/project.ts` (the
+`sketchEntity` pick and the `feature` row), `apps/web/src/sketch/autoProject.ts` (`sketchSnapAt`),
+`apps/web/src/viewport/store.ts` (`autoProjectSketches`), the palette (`sketch/panels.tsx`),
+`apps/web/src/shell/AppMenu.tsx`, `e2e/project.spec.ts`, `e2e/auto-project.spec.ts`. **Rules:** a
+projection's `ref` may be kind `sketchEntity` (`<sketch>/<entity>`: one curve or point) or
+`feature` (a sketch feature id: the whole sketch), in `project` mode only; the schema's
+`sketchIssues` accepts the two kinds (a point is allowed for a `sketchEntity`/`feature`). The
+kernel reads the source from `ctx.output(<sketch>).data` (the `pieceOf` pattern); a missing
+source or entity is a `LostReferenceError` ("Lost a projected sketch curve/sketch"). A curve
+projects by `projectSketchCurve` (a line, arc/circle and ellipse as a conic about the source
+normal through `conicEdge`, splines and conics through the source polyline's `projectPolyline`),
+key `curve` (or `curve:<n>` in pieces), a point key `point`, a whole sketch keyed by entity id
+(`<id>:<n>` in pieces) plus its loose points. `SketchOutputData.construction`/`loose` list the
+source's construction curves and the points no curve uses; a `ProjectedCurve` from a construction
+source carries `construction: true` and `projectionSync`'s `addCurve` keeps it construction (as it
+does a datum's line). Only a sketch **earlier in the timeline** is offered: the Project tool
+refuses a later one ("Only a sketch earlier in the timeline can be projected.") and a text ("Text
+can't be projected: project its sketch's curves instead."); a sketch's browser row projects the
+whole sketch. Auto-project gets a second preference `viewport.autoProjectSketches` (on by
+default): while a tool runs, curves and points of the earlier, shown sketches are `ModelSnap`s
+(`sketchCurve`, `sketchPoint`) whose point is the nearest point of the curve's display polyline
+carried into the open sketch; the nearer of a body snap and a sketch snap to the cursor wins (a
+tie to the body), the rest is ADR-0074's path: `Snap.modelKind` carries the
+sketch kind so `place`'s `ModelAttachment.kind` is `sketchPoint`/`sketchCurve`,
+and the host resolves through `projectionCurve(projection, kind)` (the kernel
+key is `point`/`curve`, not the kind). The palette's "View & project" becomes "View" and
+"Auto-project" (a Bodies | Sketches row and the Face outline switch); the app menu's toggle is
+"Auto-project sketch curves". Intersect and the f3d importer are unchanged.
 
 ADR-0126 (the owner, 2026-11-03; S1 2026-11-03): **Annotations** (P6-23), numbered notes
 pinned to geometry, a point or a sketch. **Model:** `doc.annotations[]` (`Annotation`: `id`,

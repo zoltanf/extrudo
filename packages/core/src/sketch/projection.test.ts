@@ -156,7 +156,7 @@ describe('projections', () => {
           ref: { kind: 'plane', id: 'origin:xy' },
         }),
       ),
-    ).toThrow(/edges, faces, vertices, bodies, axes and points/);
+    ).toThrow(/edges, faces, vertices, bodies, axes, points and sketches/);
     expect(DocumentSchema.safeParse(d).success).toBe(true);
   });
 
@@ -332,7 +332,7 @@ describe('projections', () => {
     };
     const messages = sketchIssues(bad as never).map((i) => `${i.path.join('.')} ${i.message}`);
     expect(messages).toEqual([
-      'projections.x must project an edge, a face, a vertex, a body, an axis or a point, not a plane',
+      'projections.x must project an edge, a face, a vertex, a body, an axis, a point, a sketch curve or a sketch, not a plane',
       'projections.x.curves.a must be a curve, not a point',
       'projections.x.curves.b refers to missing entity "missing"',
       'projections.p ID is also used in entities',
@@ -482,6 +482,56 @@ describe('projections', () => {
     );
     const edge = data(d).projections?.['pr4' as ProjectionId]?.curves.edge as SketchEntityId;
     expect(data(d).entities[edge]).toMatchObject({ type: 'line', construction: false });
+  });
+
+  it('take a sketch curve, point or whole sketch as a source (ADR-0125)', () => {
+    const curveRef = { kind: 'sketchEntity' as const, id: 'Sk1/c1' };
+    const wholeRef = { kind: 'feature' as const, id: 'Sk1' };
+    let d = doc();
+    d = applyCommand(d, addProjection({ feature: F, id: P, ref: curveRef })).doc;
+    d = applyCommand(
+      d,
+      addProjection({ feature: F, id: 'pr2' as ProjectionId, ref: wholeRef }),
+    ).doc;
+    expect(data(d).projections?.[P]).toEqual({ ref: curveRef, curves: {} });
+    expect(data(d).projections?.['pr2' as ProjectionId]).toEqual({ ref: wholeRef, curves: {} });
+    // Neither can be intersected, and a sketch has no centre.
+    expect(() =>
+      applyCommand(
+        d,
+        addProjection({ feature: F, id: 'pr3' as ProjectionId, ref: curveRef, mode: 'intersect' }),
+      ),
+    ).toThrow(/faces and bodies/);
+    expect(() =>
+      applyCommand(
+        d,
+        addProjection({ feature: F, id: 'pr3' as ProjectionId, ref: wholeRef, mode: 'center' }),
+      ),
+    ).toThrow(/face's centre/);
+    expect(DocumentSchema.safeParse(d).success).toBe(true);
+
+    // A point entity is allowed as the curve of a sketchEntity or feature projection.
+    const asSketch = (ref: unknown) =>
+      ({
+        entities: { q: { type: 'point', x: 1, y: 2 } },
+        constraints: {},
+        dimensions: {},
+        projections: { P: { ref, curves: { point: 'q' } } },
+      }) as never;
+    expect(sketchIssues(asSketch(curveRef))).toEqual([]);
+    expect(sketchIssues(asSketch(wholeRef))).toEqual([]);
+    expect(sketchIssues(asSketch({ kind: 'edge', id: 'e' }))).toHaveLength(1);
+
+    // A reported construction curve is added construction (ADR-0125).
+    const synced = sync(
+      applyCommand(doc(), addProjection({ feature: F, id: P, ref: curveRef })).doc,
+      report({
+        [P]: { curves: { curve: { type: 'line', a: [0, 0], b: [5, 0], construction: true } } },
+      }),
+    );
+    const line =
+      data(synced).entities[data(synced).projections?.[P]?.curves.curve as SketchEntityId];
+    expect(line).toMatchObject({ type: 'line', construction: true });
   });
 
   it('include curves without a link: plain entities, no record (P4-12)', () => {

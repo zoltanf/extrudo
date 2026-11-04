@@ -10,5 +10,7 @@
   { "guide": "sketching", "anchor": "show-profiles" },
   { "guide": "sketching", "anchor": "slice" },
   { "guide": "sketching", "anchor": "auto-project" },
+  { "guide": "sketching", "anchor": "auto-project-bodies" },
+  { "guide": "sketching", "anchor": "auto-project-sketches" },
   { "guide": "sketching", "anchor": "face-outline" }
 ]

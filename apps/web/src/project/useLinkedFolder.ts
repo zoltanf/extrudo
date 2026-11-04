@@ -5,8 +5,8 @@
  * (`platform.folders`), nothing here exists and the app behaves as it did.
  */
 import type { DocumentStore } from '@extrudo/core';
-import type { ProjectId } from '@extrudo/storage';
-import { useEffect, useMemo, useState } from 'react';
+import type { LinkedFile, ProjectId } from '@extrudo/storage';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ToastOptions } from '../design-system';
 import type { Platform } from '../platform';
 import type { Autosaver } from './autosave';
@@ -29,6 +29,11 @@ export interface LinkedFolderHandle {
    * §3).
    */
   linkNow?: () => void;
+  /**
+   * Links the open project to a file Save As… wrote, so it is written back
+   * from the next autosave on. Absent where there is no linked project.
+   */
+  adopt?: (link: LinkedFile) => Promise<void>;
 }
 
 export function useLinkedFolder(props: LinkedFolderProps): LinkedFolderHandle {
@@ -74,8 +79,10 @@ export function useLinkedFolder(props: LinkedFolderProps): LinkedFolderHandle {
 
   // A last write when the project closes (ADR-0065 §3): the design may have
   // moved since the last autosave, or the trailing write may still be waiting.
+  // And a check when it opens: the file may have changed since (issue #155).
   useEffect(() => {
     if (!project || !autosave) return;
+    void project.opened();
     const unsubscribe = autosave.subscribe((state, previous) => {
       if (state.status === 'saved' && previous.status !== 'saved') void project.afterSave();
     });
@@ -85,8 +92,20 @@ export function useLinkedFolder(props: LinkedFolderProps): LinkedFolderHandle {
     };
   }, [project, autosave]);
 
-  if (!canLink || !project) return {};
+  // A Save As… link (issue #155): the project now has a file, so the folder's
+  // "Save to Linked Folder" is no longer offered either.
+  const adopt = useCallback(
+    async (link: LinkedFile) => {
+      await project?.adopt(link);
+      setCanLink(false);
+    },
+    [project],
+  );
+
+  if (!project) return {};
+  if (!canLink) return { adopt };
   return {
+    adopt,
     linkNow: () => {
       void project.linkNow().then((outcome) => {
         if (outcome.kind === 'written') setCanLink(false);
