@@ -504,6 +504,58 @@ describe('extrude', { timeout: 120_000 }, () => {
     expect(added.bodies.map((b) => b.id)).toEqual(['B:0', 'E:0']);
   });
 
+  it('merges a join into whole curved sides, so every edge chamfers (issue #181)', async () => {
+    // Two profiles side by side (an annular sector r 20..30 from 170° to 200°
+    // split at 185°), both extruded, and one of them extruded again further
+    // as a join: the union of the two profiles rebuilt their arcs, and the
+    // join's merge left the sides split in pieces with concave edges no
+    // chamfer could take (ADR-0051, 2026-11-04).
+    const b = new SketchBuilder();
+    const at = (r: number, a: number): [number, number] => [
+      r * Math.cos((a * Math.PI) / 180),
+      r * Math.sin((a * Math.PI) / 180),
+    ];
+    const inner = b.arc(0, 0, 20, 170, 200).id;
+    b.arc(0, 0, 30, 170, 200);
+    const [, middle] = [170, 185, 200].map((a) => b.line(...at(20, a), ...at(30, a)).id);
+    const data = b.sketch;
+    const doc = testDocument([
+      sketch('S', data),
+      extrude(
+        'E1',
+        [profile('S', data, near(...at(25, 177.5))), profile('S', data, near(...at(25, 192.5)))],
+        {
+          direction: 'symmetric',
+          distance: '10 mm',
+        },
+      ),
+      extrude('E2', [profile('S', data, near(...at(25, 177.5)))], {
+        direction: 'symmetric',
+        distance: '20 mm',
+        operation: 'join',
+      }),
+    ]);
+    const result = ok(await runWithShapes(doc));
+    expect(result.bodies.map((body) => body.id)).toEqual(['E1:0']);
+    const m = measure(result, 'E1:0');
+    expect(m.faces).toBe(10);
+    expect(m.names.filter((n) => n.includes(`:side:${inner}`))).toEqual([
+      `extrude:E1:side:${inner}`,
+    ]);
+    const shape = bodyShapes.get('E1:0') as ShapeHandle;
+    const capEdges = m.edgeNames.flatMap((n, i) => (n.includes('extrude:E1:cap:') ? [i] : []));
+    // The concave edges where E1's caps meet E2's middle side refused a 1 mm chamfer.
+    for (const cap of ['start', 'end']) {
+      expect(m.edgeNames).toContain(`e[extrude:E1:cap:${cap}|extrude:E2:side:${middle}]`);
+    }
+    expect(capEdges.length).toBeGreaterThan(0);
+    for (const edge of capEdges) {
+      using scope = kernel.scope();
+      scope.track(kernel.chamfer(shape, [edge], { mode: 'equal', distance: 1 }));
+      scope.track(kernel.fillet(shape, [edge], 1));
+    }
+  });
+
   it('press-pulls a flat face of a body, and extrudes up to a face or a vertex', async () => {
     const base = block();
     const first = ok(await runWithShapes(testDocument(base.features)));

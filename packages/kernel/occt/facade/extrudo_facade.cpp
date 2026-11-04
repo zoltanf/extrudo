@@ -14832,6 +14832,95 @@ private:
                             : "Offset failed: OCCT can't offset these faces.");
   }
 
+  /**
+   * Gives each open arc the face merge rebuilt its input edge's circle back
+   * (ADR-0051, 2026-11-04, issue #181). Joining the arc pieces of one circle,
+   * UnifySameDomain puts the edge on a new circle whose X axis is at the
+   * arc's first vertex (its axis sometimes reversed), so an extrude of two
+   * profiles united first got side cylinders parametrized unlike its
+   * sketch's; a later join merging faces of one cylinder that disagree puts
+   * one a turn off and breaks the body. An edge whose faces are all planar
+   * (a profile union) goes back onto the circle of the input edge it came
+   * from, input 0 first: the same arc, the same direction (the circle
+   * reversed when the merge reversed its axis), its parameters and the
+   * planes' pcurves recomputed. In place, on the merge's copies, so the
+   * builder's history stays valid. Ellipses and edges on curved faces stay.
+   */
+  template <typename Builder>
+  static void keepInputCircles(Builder& builder, const TopoDS_Shape& inA, const TopoDS_Shape& inB) {
+    const TopoDS_Shape result = builder.Shape();
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+    TopExp::MapShapes(result, TopAbs_EDGE, edges);
+    NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher>
+        facesOf;
+    TopExp::MapShapesAndAncestors(result, TopAbs_EDGE, TopAbs_FACE, facesOf);
+    std::vector<bool> found(edges.Extent() + 1, false);
+    std::vector<gp_Circ> source(edges.Extent() + 1);
+    for (const TopoDS_Shape* input : {&inA, &inB}) {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> inputEdges;
+      TopExp::MapShapes(*input, TopAbs_EDGE, inputEdges);
+      for (int i = 1; i <= inputEdges.Extent(); ++i) {
+        const TopoDS_Edge& edge = TopoDS::Edge(inputEdges(i));
+        if (BRep_Tool::Degenerated(edge)) continue;
+        BRepAdaptor_Curve curve(edge);
+        if (curve.GetType() != GeomAbs_Circle) continue;
+        for (const TopoDS_Shape& made : builder.Modified(edge)) {
+          if (made.ShapeType() != TopAbs_EDGE) continue;
+          const int at = edges.FindIndex(made);
+          if (at == 0 || found[at]) continue;
+          found[at] = true;
+          source[at] = curve.Circle();
+        }
+      }
+    }
+    BRep_Builder bb;
+    for (int at = 1; at <= edges.Extent(); ++at) {
+      if (!found[at]) continue;
+      const TopoDS_Edge edge = TopoDS::Edge(edges(at));
+      BRepAdaptor_Curve curve(edge);
+      if (curve.GetType() != GeomAbs_Circle) continue;
+      TopoDS_Vertex v1, v2;
+      TopExp::Vertices(edge, v1, v2);
+      if (v1.IsNull() || v2.IsNull() || v1.IsSame(v2)) continue;  // a whole circle has no X axis to keep
+      const gp_Circ now = curve.Circle();
+      const gp_Circ& was = source[at];
+      const gp_Dir& axis = was.Axis().Direction();
+      if (now.Location().Distance(was.Location()) > 1e-7 || std::abs(now.Radius() - was.Radius()) > 1e-7 ||
+          !now.Axis().Direction().IsParallel(axis, 1e-9)) {
+        continue;
+      }
+      const gp_Circ target = now.Axis().Direction().Dot(axis) < 0
+                                 ? gp_Circ(gp_Ax2(was.Location(), axis.Reversed(), was.XAxis().Direction()),
+                                           was.Radius())
+                                 : was;
+      if (target.XAxis().Direction().IsEqual(now.XAxis().Direction(), 1e-12) &&
+          target.Axis().Direction().IsEqual(now.Axis().Direction(), 1e-12)) {
+        continue;
+      }
+      const int faces = facesOf.FindIndex(edge);
+      if (faces == 0) continue;
+      bool planar = true;
+      for (const TopoDS_Shape& face : facesOf(faces)) {
+        planar = planar && BRepAdaptor_Surface(TopoDS::Face(face), false).GetType() == GeomAbs_Plane;
+      }
+      if (!planar) continue;
+      const double first = ElCLib::Parameter(target, BRep_Tool::Pnt(v1));
+      double last = ElCLib::Parameter(target, BRep_Tool::Pnt(v2));
+      if (last <= first) last += 2 * M_PI;
+      const gp_Pnt middle = curve.Value(0.5 * (curve.FirstParameter() + curve.LastParameter()));
+      if (middle.Distance(ElCLib::Value(0.5 * (first + last), target)) > 1e-6) continue;  // the other arc
+      const double tolerance = BRep_Tool::Tolerance(edge);
+      // Pcurves on planes are recomputed on demand; drop the old ones.
+      for (const TopoDS_Shape& face : facesOf(faces)) {
+        bb.UpdateEdge(edge, Handle(Geom2d_Curve)(), TopoDS::Face(face), tolerance);
+      }
+      bb.UpdateEdge(edge, new Geom_Circle(target), TopLoc_Location(), tolerance);
+      bb.Range(edge, first, last, true);
+      bb.SameRange(edge, true);
+      bb.SameParameter(edge, true);
+    }
+  }
+
   template <typename Builder>
   int finishBoolean(Builder& builder, const TopoDS_Shape& a, const TopoDS_Shape& b, bool simplify) {
     // Set the arguments here, not in the builder's constructor: the
@@ -14862,6 +14951,7 @@ private:
     }
     if (simplify) {
       builder.SimplifyResult();
+      keepInputCircles(builder, inA, inB);
       // The merge can break a sound result: a plate's rounded end joined by
       // a prism whose side lies on the same cylinder came out of the fuse
       // valid and out of the merge with unorientable faces (ADR-0051,
