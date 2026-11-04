@@ -11036,11 +11036,15 @@ private:
     TopoDS_Shape current = shape;
     std::set<const void*> refused;
     int cuts = 0;
+    // In rounds: every face to cut is cut once and the body rebuilt once per
+    // round (a cut leaves the other faces as they are); the pieces that
+    // still touch go to the next round.
     while (cuts < TOUCH_CUT_MAX) {
       bool cut = false;
-      for (TopExp_Explorer fe(current, TopAbs_FACE); fe.More() && !cut; fe.Next()) {
+      Handle(BRepTools_ReShape) reshape = new BRepTools_ReShape;
+      for (TopExp_Explorer fe(current, TopAbs_FACE); fe.More() && cuts < TOUCH_CUT_MAX; fe.Next()) {
         const TopoDS_Face face = TopoDS::Face(fe.Current());
-        if (refused.count(face.TShape().get())) continue;
+        if (refused.count(face.TShape().get()) || reshape->IsRecorded(face)) continue;
         const BRepAdaptor_Surface adaptor(face, false);
         if (!adaptor.IsUPeriodic() && !adaptor.IsVPeriodic()) continue;
         // A vertex of one wire that an earlier wire holds too.
@@ -11063,17 +11067,90 @@ private:
         builder.MakeCompound(both);
         builder.Add(both, a);
         builder.Add(both, b);
-        Handle(BRepTools_ReShape) reshape = new BRepTools_ReShape;
         reshape->Replace(face, both);
-        current = reshape->Apply(current);
         ++cuts;
         cut = true;
       }
       if (!cut) break;
+      current = reshape->Apply(current);
     }
     if (cuts == 0 || !BRepCheck_Analyzer(current).IsValid()) return 0;
     shape = current;
     return cuts;
+  }
+
+  /**
+   * ADR-0097, 2026-11-04: no hole of a face on a periodic surface lies a
+   * period away from its outer wire. UnifySameDomain moves a hole's pcurves
+   * into [0, 2π) when the face's outer wire straddles 2π (spool-screw-v4.1's
+   * split cone and cylinder: holes at u 6.46 moved to 0.18, the outer wire at
+   * u 5.45..6.69), and the face fails BRepCheck (InvalidImbricationOfWires).
+   * Each such hole whose (u, v) box lies outside the outer wire's, and inside
+   * it moved by whole periods, gets its pcurves on the face moved back, in
+   * place (a seam edge's wire is left alone). Returns the holes moved.
+   */
+  static int rewrapHoles(const TopoDS_Shape& shape) {
+    BRep_Builder builder;
+    int moved = 0;
+    const auto boxOf = [](const TopoDS_Wire& wire, const TopoDS_Face& face, bool& seam) {
+      Bnd_Box2d box;
+      for (TopExp_Explorer ee(wire, TopAbs_EDGE); ee.More(); ee.Next()) {
+        const TopoDS_Edge& edge = TopoDS::Edge(ee.Current());
+        seam = seam || BRep_Tool::IsClosed(edge, face);
+        double f = 0, l = 0;
+        const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(edge, face, f, l);
+        if (pc.IsNull()) {
+          seam = true;
+          continue;
+        }
+        BndLib_Add2dCurve::Add(pc, f, l, 0, box);
+      }
+      return box;
+    };
+    NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> seen;
+    for (TopExp_Explorer fe(shape, TopAbs_FACE); fe.More(); fe.Next()) {
+      const TopoDS_Face face = TopoDS::Face(fe.Current().Oriented(TopAbs_FORWARD));
+      if (!seen.Add(face)) continue;
+      const Handle(Geom_Surface) surface = BRep_Tool::Surface(face);
+      if (surface.IsNull() || (!surface->IsUPeriodic() && !surface->IsVPeriodic())) continue;
+      const TopoDS_Wire outer = BRepTools::OuterWire(face);
+      if (outer.IsNull()) continue;
+      bool outerSeam = false;
+      const Bnd_Box2d outerBox = boxOf(outer, face, outerSeam);
+      if (outerBox.IsVoid()) continue;
+      double ou0, ov0, ou1, ov1;
+      outerBox.Get(ou0, ov0, ou1, ov1);
+      for (TopExp_Explorer we(face, TopAbs_WIRE); we.More(); we.Next()) {
+        const TopoDS_Wire wire = TopoDS::Wire(we.Current());
+        if (wire.IsSame(outer)) continue;
+        bool seam = false;
+        const Bnd_Box2d box = boxOf(wire, face, seam);
+        if (seam || box.IsVoid()) continue;
+        double u0, v0, u1, v1;
+        box.Get(u0, v0, u1, v1);
+        // The whole periods that put the hole's box inside the outer wire's.
+        const auto shiftOf = [](bool periodic, double period, double lo, double hi, double outerLo, double outerHi) {
+          const double slack = 1e-7;
+          if (!periodic || (lo >= outerLo - slack && hi <= outerHi + slack)) return 0.0;
+          const double k = std::round((outerLo + outerHi - lo - hi) / (2 * period));
+          if (k == 0 || lo + k * period < outerLo - slack || hi + k * period > outerHi + slack) return 0.0;
+          return k * period;
+        };
+        const double du = shiftOf(surface->IsUPeriodic(), surface->IsUPeriodic() ? surface->UPeriod() : 0, u0, u1, ou0, ou1);
+        const double dv = shiftOf(surface->IsVPeriodic(), surface->IsVPeriodic() ? surface->VPeriod() : 0, v0, v1, ov0, ov1);
+        if (du == 0 && dv == 0) continue;
+        for (TopExp_Explorer ee(wire, TopAbs_EDGE); ee.More(); ee.Next()) {
+          const TopoDS_Edge& edge = TopoDS::Edge(ee.Current());
+          double f = 0, l = 0;
+          const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(edge, face, f, l);
+          const Handle(Geom2d_Curve) shifted = Handle(Geom2d_Curve)::DownCast(pc->Translated(gp_Vec2d(du, dv)));
+          builder.UpdateEdge(edge, shifted, face, BRep_Tool::Tolerance(edge));
+          builder.Range(edge, face, f, l);
+        }
+        ++moved;
+      }
+    }
+    return moved;
   }
 
   struct HybridOutOfTime {};
@@ -11871,6 +11948,7 @@ private:
         // Unify can keep a slanted seam, which Offset Face can't offset (ADR-0097, 2026-10-25).
         Handle(BRepTools_History) reseamed;
         unified.back() = straightenSeams(unified.back(), reseamed);
+        rewrapHoles(unified.back());
         if (!reseamed.IsNull()) {
           if (histories.back().IsNull()) histories.back() = reseamed;
           else histories.back()->Merge(reseamed);
