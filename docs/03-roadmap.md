@@ -1076,9 +1076,10 @@ end to end, faster than in established desktop CAD.
     command or all at once; a toolbar tile's right-click "Change shortcut…" and a
     key button on each Search row open it. The preference `keymap.overrides`
     holds only the changes.
-- [ ] **P4-13 Remove Faces (defeaturing; #78).** ADR-0099. Added 2026-10-23
+- [x] **P4-13 Remove Faces (defeaturing; #78).** ADR-0099. Added 2026-10-23
   (the owner). A rounded or drilled imported body loses a round or a hole in
-  one click; the `.f3d` import replays the file's face deletions.
+  one click; the `.f3d` import replays the file's face deletions. Done
+  2026-10-23 (#110, #112); ticked 2026-11-04 after a check of every item below.
   - [x] Feature `removeFaces` (Solid › Modify): the picked faces are removed
     and their neighbours extended to close the gap, all or nothing; facade
     `removeFaces`, persistent face references (removed faces become lost
