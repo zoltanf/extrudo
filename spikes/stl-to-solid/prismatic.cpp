@@ -78,11 +78,15 @@ static void spikeQ26Valid(int attempt, int faces, int facets, bool undone, bool 
 #include <BRepCheck_Wire.hxx>
 #include <BRepExtrema_DistShapeShape.hxx>
 #include <GeomAPI_ProjectPointOnSurf.hxx>
+#include <GeomAPI_ProjectPointOnCurve.hxx>
 #include <IntRes2d_IntersectionPoint.hxx>
 #include <ShapeFix_ShapeTolerance.hxx>
 #include <ShapeFix_Face.hxx>
 #include <ShapeFix_Shell.hxx>
 #include <ShapeFix_Wire.hxx>
+#include <ShapeFix_Edge.hxx>
+#include <Interface_MSG.hxx>
+#include <ShapeAnalysis_ShapeTolerance.hxx>
 #include <ShapeProcess.hxx>
 #include <ShapeAnalysis_Curve.hxx>
 #include <BRepAdaptor_Curve2d.hxx>
@@ -4774,6 +4778,404 @@ static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
 
 static double noise32(int ring, int i) { return 0.005 * (ring == 0 ? std::sin(1.7 * i + 0.3) : std::cos(2.3 * i + 0.1)); }
 
+// Run 6, slice 1 (2026-11-04): where a converted body's volume goes in the STEP round trip. Case V: one file (FILE, TOL),
+// converted, written with the facade's writeStep and read back with its readStep; both bodies' volumes measured several
+// ways (BRepGProp fixed order, bounded at 1e-7 and 1e-9, Gauss-Kronrod at 1e-9, the signed volume of a fine
+// triangulation), then face by face (matched by index, checked by centroid): each face's area and signed volume
+// contribution (BRepGProp of the lone face, origin 0), the faces whose contribution moves most, and what they are.
+static double qvFixed(const TopoDS_Shape& s) { GProp_GProps p; BRepGProp::VolumeProperties(s, p); return p.Mass(); }
+static double qvEps(const TopoDS_Shape& s, double e) { GProp_GProps p; BRepGProp::VolumeProperties(s, p, e, false); return p.Mass(); }
+static double qvGK(const TopoDS_Shape& s, double e) { GProp_GProps p; BRepGProp::VolumePropertiesGK(s, p, e); return p.Mass(); }
+static int qvMeshFailed = 0;
+static double qvMesh(const TopoDS_Shape& s, double deflection) {
+  BRepTools::Clean(s);
+  BRepMesh_IncrementalMesh(s, deflection, false, 0.05);
+  double v = 0;
+  for (TopExp_Explorer e(s, TopAbs_FACE); e.More(); e.Next()) {
+    const TopoDS_Face& face = TopoDS::Face(e.Current());
+    TopLoc_Location loc;
+    const Handle(Poly_Triangulation) tri = BRep_Tool::Triangulation(face, loc);
+    if (tri.IsNull()) { ++qvMeshFailed; continue; }
+    const bool rev = face.Orientation() == TopAbs_REVERSED;
+    for (int i = 1; i <= tri->NbTriangles(); ++i) {
+      int a, b, c;
+      tri->Triangle(i).Get(a, b, c);
+      if (rev) std::swap(b, c);
+      const gp_XYZ pa = tri->Node(a).Transformed(loc.Transformation()).XYZ(), pb = tri->Node(b).Transformed(loc.Transformation()).XYZ(),
+                   pc = tri->Node(c).Transformed(loc.Transformation()).XYZ();
+      v += pa.Dot(pb.Crossed(pc)) / 6;
+    }
+  }
+  BRepTools::Clean(s);
+  return v;
+}
+struct QvFace {
+  double area = 0, vol = 0, volEps = 0, tol = 0, vtol = 0;
+  gp_Pnt centre;
+  std::string kind, surf, pcurves;
+  int edges = 0, wires = 0;
+  bool reversed = false;
+};
+static std::vector<QvFace> qvFaces(const TopoDS_Shape& s) {
+  std::vector<QvFace> out;
+  std::vector<TopoDS_Face> faces;
+  for (TopExp_Explorer e(s, TopAbs_FACE); e.More(); e.Next()) faces.push_back(TopoDS::Face(e.Current()));
+  for (size_t i = 0; i < faces.size(); ++i) {
+    // The face as the solid uses it (the explorer composes the shell's and solid's orientations).
+    const TopoDS_Face& face = faces[i];
+    QvFace q;
+    GProp_GProps a; BRepGProp::SurfaceProperties(face, a);
+    q.area = a.Mass();
+    q.centre = a.CentreOfMass();
+    GProp_GProps v; BRepGProp::VolumeProperties(face, v);
+    q.vol = v.Mass();
+    GProp_GProps ve; BRepGProp::VolumeProperties(face, ve, 1e-9, false);
+    q.volEps = ve.Mass();
+    q.kind = faceKind(face);
+    q.surf = surfaceTypeName(BRepAdaptor_Surface(face, false).GetType());
+    q.reversed = face.Orientation() == TopAbs_REVERSED;
+    std::map<std::string, int> pc;
+    for (TopExp_Explorer e(face, TopAbs_EDGE); e.More(); e.Next()) {
+      const TopoDS_Edge& edge = TopoDS::Edge(e.Current());
+      ++q.edges;
+      q.tol = std::max(q.tol, BRep_Tool::Tolerance(edge));
+      double f0, l0;
+      const Handle(Geom2d_Curve) c2 = BRep_Tool::CurveOnSurface(edge, face, f0, l0);
+      pc[c2.IsNull() ? "none" : pcurveType(c2)]++;
+      pc["3d:" + curveKind(edge)]++;
+    }
+    for (TopExp_Explorer e(face, TopAbs_VERTEX); e.More(); e.Next()) q.vtol = std::max(q.vtol, BRep_Tool::Tolerance(TopoDS::Vertex(e.Current())));
+    for (TopoDS_Iterator w(face); w.More(); w.Next()) ++q.wires;
+    for (const auto& [k, n] : pc) q.pcurves += k + ":" + std::to_string(n) + " ";
+    out.push_back(q);
+  }
+  return out;
+}
+// An edge's largest distance between a vertex and its 3D curve's end (gap), and between that end and the vertex's
+// projection onto the curve (slide: what a STEP reader, which keeps no edge parameters, moves the end by).
+static void qvVertexGap(const TopoDS_Edge& edge, double& gap, double& slide) {
+  gap = slide = 0;
+  double c0, c1;
+  const Handle(Geom_Curve) c = BRep_Tool::Curve(edge, c0, c1);
+  if (c.IsNull()) return;
+  TopoDS_Vertex v0, v1;
+  TopExp::Vertices(edge, v0, v1);
+  for (int k = 0; k < 2; ++k) {
+    const TopoDS_Vertex& v = k ? v1 : v0;
+    if (v.IsNull()) continue;
+    const gp_Pnt p = BRep_Tool::Pnt(v), end = c->Value(k ? c1 : c0);
+    gap = std::max(gap, p.Distance(end));
+    GeomAPI_ProjectPointOnCurve proj(p, c, c0 - (c1 - c0), c1 + (c1 - c0));
+    if (proj.NbPoints() > 0) slide = std::max(slide, proj.NearestPoint().Distance(end));
+  }
+}
+
+// QVFIX=1: before writing, each edge of a face on a non-plane surface gets the pcurve a STEP reader would give it
+// (XSAlgo_ShapeProcessor::CheckPCurve's deviation rule): where its pcurve strays from the 3D curve by more than
+// min(1, 2 p) (p: the uncertainty the writer puts in the file) and the 3D curve's projection onto the surface strays
+// less, the projection. Returns the pairs replaced.
+static double qvUncertainty(const TopoDS_Shape& shape) {
+  ShapeAnalysis_ShapeTolerance stu;
+  return Interface_MSG::Intervalled(stu.Tolerance(shape, 0) * 1.5);
+}
+static int qvFix(const TopoDS_Shape& shape, double p, int& tried) {
+  int replaced = 0;
+  tried = 0;
+  BRep_Builder builder;
+  NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> seenFaces;
+  for (TopExp_Explorer fx(shape, TopAbs_FACE); fx.More(); fx.Next()) {
+    const TopoDS_Face face = TopoDS::Face(fx.Current().Oriented(TopAbs_FORWARD));
+    if (!seenFaces.Add(face)) continue;
+    if (BRepAdaptor_Surface(face, false).GetType() == GeomAbs_Plane) continue;
+    NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> seenEdges;
+    for (TopExp_Explorer ex(face, TopAbs_EDGE); ex.More(); ex.Next()) {
+      const TopoDS_Edge edge = TopoDS::Edge(ex.Current());
+      if (!seenEdges.Add(edge) || BRep_Tool::Degenerated(edge)) continue;
+      const bool seam = BRep_Tool::IsClosed(edge, face);
+      if (seam) continue;
+      double a, b, pa, pb;
+      const Handle(Geom_Curve) c = BRep_Tool::Curve(edge, a, b);
+      const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(edge, face, pa, pb);
+      if (c.IsNull() || pc.IsNull()) continue;
+      if (!(BRep_Tool::Tolerance(edge) > std::min(p, std::min(1., 2. * p)))) continue;
+      const Handle(Geom_Surface) surf0 = BRep_Tool::Surface(face);
+      const gp_Pnt2d e0 = pc->Value(pa), e1 = pc->Value(pb);
+      // The reader drops a pcurve whose ends lie farther than p from the 3D curve's (and projects the curve again).
+      const bool ends = getenv("QVENDS") && *getenv("QVENDS") &&
+                        (surf0->Value(e0.X(), e0.Y()).Distance(c->Value(a)) > p || surf0->Value(e1.X(), e1.Y()).Distance(c->Value(b)) > p);
+      const auto onCurve = [&] {
+        BRepBuilderAPI_MakeEdge maker(c, c->Value(a), c->Value(b), a, b);
+        return maker.Edge();
+      };
+      TopoDS_Edge tmp = onCurve();
+      builder.UpdateEdge(tmp, pc, face, 0.);
+      builder.Range(tmp, face, pa, pb);
+      builder.SameRange(tmp, false);
+      builder.SameParameter(tmp, false);
+      Handle(ShapeFix_Edge) fixer = new ShapeFix_Edge;
+      fixer->FixSameParameter(tmp);
+      const double tol = BRep_Tool::Tolerance(tmp);
+      if (!ends && !(tol > std::min(1., 2. * p))) continue;
+      ++tried;
+      TopoDS_Edge pr = onCurve();
+      fixer->FixAddPCurve(pr, face, false, p);
+      fixer->FixSameParameter(pr);
+      const double tolPr = BRep_Tool::Tolerance(pr);
+      if (!ends && !(tolPr < tol)) continue;
+      double qa, qb;
+      const Handle(Geom2d_Curve) npc = BRep_Tool::CurveOnSurface(pr, face, qa, qb);
+      if (npc.IsNull()) continue;
+      {
+        // Onto the old pcurve's period: the projection lands in the surface's first period.
+        const Handle(Geom_Surface) surf = BRep_Tool::Surface(face);
+        const gp_Pnt2d o0 = pc->Value(pa), n0 = npc->Value(qa);
+        double du = 0, dv = 0;
+        if (surf->IsUPeriodic()) du = surf->UPeriod() * std::round((o0.X() - n0.X()) / surf->UPeriod());
+        if (surf->IsVPeriodic()) dv = surf->VPeriod() * std::round((o0.Y() - n0.Y()) / surf->VPeriod());
+        if (du != 0 || dv != 0) npc->Translate(gp_Vec2d(du, dv));
+        const gp_Pnt2d m0 = npc->Value(qa), m1 = npc->Value(qb), o1 = pc->Value(pb);
+        if (m0.Distance(o0) > 0.1 || m1.Distance(o1) > 0.1) { std::cout << "   qvfix ends moved " << m0.Distance(o0) << " " << m1.Distance(o1) << "\n"; continue; }
+      }
+      builder.UpdateEdge(TopoDS::Edge(edge.Oriented(TopAbs_FORWARD)), npc, face, BRep_Tool::Tolerance(edge));
+      builder.Range(TopoDS::Edge(edge.Oriented(TopAbs_FORWARD)), face, qa, qb);
+      ++replaced;
+    }
+  }
+  return replaced;
+}
+
+// A cone face's area by Green's theorem in (u, v), each edge's pcurve sampled `n` times (Simpson): dA = (R + v sin a) du dv,
+// so A = -sum over the boundary of (R v + v^2 sin a / 2) du. Also BRepGProp's fixed, bounded and GK areas of the face.
+static void qvConeArea(const TopoDS_Face& face0, const char* tag) {
+  const TopoDS_Face face = TopoDS::Face(face0.Oriented(TopAbs_FORWARD));
+  const BRepAdaptor_Surface s(face, false);
+  GProp_GProps g0; BRepGProp::SurfaceProperties(face, g0);
+  GProp_GProps g1; BRepGProp::SurfaceProperties(face, g1, 1e-9, false);
+  std::cout << "      " << tag << " area fixed " << g0.Mass() << " eps " << g1.Mass();
+  if (s.GetType() != GeomAbs_Cone) { std::cout << "\n"; return; }
+  const gp_Cone c = s.Cone();
+  const double R = c.RefRadius(), sa = std::sin(c.SemiAngle());
+  double total = 0, seam = 0;
+  int edges = 0;
+  for (TopExp_Explorer e(face, TopAbs_EDGE); e.More(); e.Next()) {
+    const TopoDS_Edge& edge = TopoDS::Edge(e.Current());
+    double f0, l0;
+    const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(edge, face, f0, l0);
+    if (pc.IsNull()) continue;
+    const int n = 200;
+    double sum = 0;
+    gp_Pnt2d prev = pc->Value(f0);
+    for (int k = 1; k <= n; ++k) {
+      const gp_Pnt2d q = pc->Value(f0 + (l0 - f0) * k / n), m = pc->Value(f0 + (l0 - f0) * (k - 0.5) / n);
+      const auto P = [&](double v) { return -(R * v + v * v * sa / 2); };
+      sum += (P(prev.Y()) + 4 * P(m.Y()) + P(q.Y())) / 6 * (q.X() - prev.X());
+      prev = q;
+    }
+    if (edge.Orientation() == TopAbs_REVERSED) sum = -sum;
+    if (BRep_Tool::IsClosed(edge, face)) seam += sum;
+    total += sum;
+    ++edges;
+  }
+  std::cout << " green " << total << " (seam edges " << seam << ", " << edges << " edges)\n";
+}
+
+// QVFACE=i,j,…: the written faces to look into, edge by edge, against the read-back face of the same index: the face's
+// (u, v) box and surface, then per edge the largest distance between the written and read-back pcurves' images, and
+// each pcurve image's largest distance from the edge's 3D curve (9 samples).
+static void qvEdges(const TopoDS_Face& w, const TopoDS_Face& b, int index) {
+  double u0, u1, v0, v1, U0, U1, V0, V1;
+  BRepTools::UVBounds(w, u0, u1, v0, v1);
+  BRepTools::UVBounds(b, U0, U1, V0, V1);
+  const BRepAdaptor_Surface sw(w, false), sb(b, false);
+  std::cout << "   qvface " << index << " uv written [" << u0 << ", " << u1 << "]x[" << v0 << ", " << v1 << "] back [" << U0 << ", " << U1 << "]x[" << V0 << ", " << V1 << "]\n";
+  const auto frame = [](const BRepAdaptor_Surface& s) {
+    std::ostringstream o;
+    o << std::setprecision(9);
+    if (s.GetType() == GeomAbs_Cone) { const gp_Cone c = s.Cone(); o << "cone r " << c.RefRadius() << " a " << c.SemiAngle() << " loc " << c.Location().X() << "," << c.Location().Y() << "," << c.Location().Z() << " dir " << c.Axis().Direction().Z() << " xdir " << c.XAxis().Direction().X() << "," << c.XAxis().Direction().Y() << " direct " << c.Position().Direct(); }
+    if (s.GetType() == GeomAbs_Sphere) { const gp_Sphere c = s.Sphere(); o << "sphere r " << c.Radius() << " loc " << c.Location().X() << "," << c.Location().Y() << "," << c.Location().Z() << " dirz " << c.Position().Direction().Z() << " xdir " << c.XAxis().Direction().X() << "," << c.XAxis().Direction().Y() << " direct " << c.Position().Direct(); }
+    if (s.GetType() == GeomAbs_Torus) { const gp_Torus c = s.Torus(); o << "torus R " << c.MajorRadius() << " r " << c.MinorRadius() << " loc " << c.Location().X() << "," << c.Location().Y() << "," << c.Location().Z() << " dirz " << c.Position().Direction().Z() << " xdir " << c.XAxis().Direction().X() << "," << c.XAxis().Direction().Y() << " direct " << c.Position().Direct(); }
+    return o.str();
+  };
+  std::cout << "      written " << frame(sw) << "\n      back    " << frame(sb) << "\n";
+  qvConeArea(w, "written");
+  qvConeArea(b, "back");
+  std::vector<TopoDS_Edge> we, be;
+  for (TopExp_Explorer e(w, TopAbs_EDGE); e.More(); e.Next()) we.push_back(TopoDS::Edge(e.Current()));
+  for (TopExp_Explorer e(b, TopAbs_EDGE); e.More(); e.Next()) be.push_back(TopoDS::Edge(e.Current()));
+  struct E { size_t i; double wb, wOff, bOff, len; std::string wt, bt; double uv = 0; gp_Pnt2d w0, w1, b0, b1; double gap = 0, slide = 0; };
+  std::vector<E> rows;
+  for (size_t i = 0; i < we.size() && i < be.size(); ++i) {
+    double f0, l0, f1, l1, c0, c1, d0, d1;
+    const Handle(Geom2d_Curve) pw = BRep_Tool::CurveOnSurface(we[i], w, f0, l0);
+    const Handle(Geom2d_Curve) pb = BRep_Tool::CurveOnSurface(be[i], b, f1, l1);
+    const Handle(Geom_Curve) cw = BRep_Tool::Curve(we[i], c0, c1);
+    const Handle(Geom_Curve) cb = BRep_Tool::Curve(be[i], d0, d1);
+    if (pw.IsNull() || pb.IsNull() || cw.IsNull() || cb.IsNull()) continue;
+    E r{i, 0, 0, 0, cw->Value(c0).Distance(cw->Value(c1)), pcurveType(pw), pcurveType(pb)};
+    qvVertexGap(we[i], r.gap, r.slide);
+    for (int k = 0; k <= 8; ++k) {
+      const double t = k / 8.0;
+      const gp_Pnt2d a = pw->Value(f0 + t * (l0 - f0)), q = pb->Value(f1 + t * (l1 - f1));
+      const gp_Pnt A = sw.Value(a.X(), a.Y()), Q = sb.Value(q.X(), q.Y());
+      r.wb = std::max(r.wb, A.Distance(Q));
+      r.uv = std::max(r.uv, a.Distance(q));
+      if (k == 0) r.w0 = a, r.b0 = q;
+      if (k == 8) r.w1 = a, r.b1 = q;
+      r.wOff = std::max(r.wOff, A.Distance(cw->Value(c0 + t * (c1 - c0))));
+      r.bOff = std::max(r.bOff, Q.Distance(cb->Value(d0 + t * (d1 - d0))));
+    }
+    rows.push_back(r);
+  }
+  std::sort(rows.begin(), rows.end(), [](const E& a, const E& b) { return a.uv + a.wb > b.uv + b.wb; });
+  double sum = 0;
+  for (const E& r : rows) sum += r.wb;
+  std::cout << "      edges " << we.size() << "/" << be.size() << ", mean written-vs-back image distance " << (rows.empty() ? 0 : sum / rows.size()) << "\n";
+  for (size_t k = 0; k < rows.size() && k < 8; ++k)
+    std::cout << "      edge " << rows[k].i << " len " << rows[k].len << " images apart " << rows[k].wb << " written off 3d " << rows[k].wOff << " back off 3d " << rows[k].bOff << " " << rows[k].wt << " -> " << rows[k].bt << " uv apart " << rows[k].uv
+              << " written (" << rows[k].w0.X() << ", " << rows[k].w0.Y() << ")-(" << rows[k].w1.X() << ", " << rows[k].w1.Y() << ") back (" << rows[k].b0.X() << ", " << rows[k].b0.Y() << ")-(" << rows[k].b1.X() << ", " << rows[k].b1.Y() << ")"
+              << " vertex gap " << rows[k].gap << " slide " << rows[k].slide << (we[rows[k].i].Orientation() == TopAbs_REVERSED ? " R" : " F") << (be[rows[k].i].Orientation() == TopAbs_REVERSED ? "R" : "F") << "\n";
+}
+
+static void qv(ExtrudoFacade& f, const std::string& path, double tolerance) {
+  const Mesh m = stlFile(path.c_str());
+  std::cout << std::setprecision(9) << "== qv " << path.substr(5) << " (" << m.triangles.size() / 3 << " triangles)\n";
+  f.meshNodes(int(m.nodes.size() / 3));
+  double* nodes = reinterpret_cast<double*>(f.meshNodesPtr());
+  for (size_t i = 0; i < m.nodes.size(); ++i) nodes[i] = static_cast<float>(m.nodes[i]);
+  f.meshTriangles(int(m.triangles.size() / 3));
+  std::memcpy(reinterpret_cast<void*>(f.meshTrianglesPtr()), m.triangles.data(), m.triangles.size() * sizeof(uint32_t));
+  const int h = f.meshToSolid(1, tolerance);
+  if (!h) { std::cout << "   refused: " << f.lastError() << "\n"; return; }
+  const auto& rep = f.meshReport_;
+  std::cout << "   faces " << f.count(h, 0) << " facets " << (rep.size() >= 12 ? rep[11] : -1) << " tol " << (rep.size() >= 13 ? rep[12] : -1) << "\n";
+  if (getenv("QVFIX") && *getenv("QVFIX")) {
+    const TopoDS_Shape& body = *f.find(h);
+    const double before = qvFixed(body);
+    for (int round = 0; round < (getenv("QVENDS") && *getenv("QVENDS") ? 1 : 3); ++round) {
+      const double p = qvUncertainty(body);
+      int tried = 0;
+      const double t0 = now();
+      const int n = qvFix(body, p, tried);
+      std::cout << "   qvfix round " << round << " p " << p << " tried " << tried << " replaced " << n << " ms " << now() - t0 << "\n";
+      if (n == 0) break;
+    }
+    std::cout << "   qvfix valid " << BRepCheck_Analyzer(body).IsValid() << " volume " << before << " -> " << qvFixed(body) << " ratio " << qvFixed(body) / before << " p now " << qvUncertainty(body) << "\n";
+  }
+  f.clearArgs();
+  f.pushArg(h);
+  const int size = f.writeStep();
+  std::string text(reinterpret_cast<const char*>(f.exportTextPtr()), static_cast<size_t>(size));
+  f.clearExport();
+  if (getenv("QVSTEP") && *getenv("QVSTEP")) { std::ofstream o(getenv("QVSTEP")); o << text; }
+  const int back = f.readStep(text.c_str());
+  const TopoDS_Shape written = *f.find(h);
+  const TopoDS_Shape readBack = *f.find(back);
+  // The facade's own measure, as Kernel.properties gives it.
+  f.properties(h);
+  const double facadeW = f.measured_[0];
+  f.properties(back);
+  const double facadeB = f.measured_[0];
+  std::cout << "   facade properties: written " << facadeW << " back " << facadeB << " ratio " << facadeB / facadeW << "\n";
+  std::cout << "   valid written " << BRepCheck_Analyzer(written).IsValid() << " back " << BRepCheck_Analyzer(readBack).IsValid() << "\n";
+  const double fw = qvFixed(written), fb = qvFixed(readBack);
+  std::cout << "   fixed      " << fw << " / " << fb << " ratio " << fb / fw << "\n";
+  for (double e : {1e-7, 1e-9}) {
+    const double w = qvEps(written, e), b = qvEps(readBack, e);
+    std::cout << "   eps " << e << " " << w << " / " << b << " ratio " << b / w << " (written vs fixed " << w / fw << ")\n";
+  }
+  {
+    const double w = qvGK(written, 1e-9), b = qvGK(readBack, 1e-9);
+    std::cout << "   GK 1e-9    " << w << " / " << b << " ratio " << b / w << " (written vs fixed " << w / fw << ")\n";
+  }
+  for (double d : {0.01, 0.002}) {
+    qvMeshFailed = 0;
+    const double w = qvMesh(written, d), b = qvMesh(readBack, d);
+    std::cout << "   mesh " << d << " " << w << " / " << b << " ratio " << b / w << " (written vs fixed " << w / fw << ", faces not meshed " << qvMeshFailed << ")\n";
+  }
+  // Per solid.
+  for (const TopoDS_Shape* s : {&written, &readBack}) {
+    std::cout << "   solids of " << (s == &written ? "written" : "back") << ":";
+    for (TopExp_Explorer e(*s, TopAbs_SOLID); e.More(); e.Next()) std::cout << " " << qvFixed(e.Current());
+    std::cout << "\n";
+  }
+  {
+    // Body-wide: the edges whose ends a reader would slide (by curve type), and the faces they bound.
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+    TopExp::MapShapes(written, TopAbs_EDGE, edges);
+    std::map<std::string, std::array<double, 4>> stat;  // count, slide > 1e-4, slide > 1e-3, max slide
+    for (int i = 1; i <= edges.Extent(); ++i) {
+      const TopoDS_Edge& e = TopoDS::Edge(edges(i));
+      double gap, slide;
+      qvVertexGap(e, gap, slide);
+      auto& st = stat[curveKind(e)];
+      st[0] += 1; st[1] += slide > 1e-4; st[2] += slide > 1e-3; st[3] = std::max(st[3], slide);
+    }
+    for (const auto& [k, st] : stat) std::cout << "   edges " << k << ": " << st[0] << ", slide > 1e-4: " << st[1] << ", > 1e-3: " << st[2] << ", max " << st[3] << "\n";
+  }
+  const std::vector<QvFace> W = qvFaces(written), B = qvFaces(readBack);
+  std::cout << "   face maps: written " << W.size() << " back " << B.size() << "\n";
+  double sumW = 0, sumB = 0;
+  for (const auto& q : W) sumW += q.vol;
+  for (const auto& q : B) sumB += q.vol;
+  std::cout << "   face sums: written " << sumW << " back " << sumB << "\n";
+  // Match: by index if the centroid agrees, else the nearest centroid of a face with an area within 1 %.
+  std::vector<int> match(W.size(), -1);
+  int byIndex = 0;
+  for (size_t i = 0; i < W.size(); ++i) {
+    if (!getenv("QVNEAR") && i < B.size() && W[i].centre.Distance(B[i].centre) < 1e-3 + 1e-3 * std::sqrt(W[i].area)) { match[i] = int(i); ++byIndex; continue; }
+    double best = 1e300;
+    for (size_t j = 0; j < B.size(); ++j) {
+      if (std::abs(B[j].area - W[i].area) > (getenv("QVNEAR") ? 0.05 : 0.01) * W[i].area + 1e-6 || (getenv("QVNEAR") && B[j].surf != W[i].surf)) continue;
+      const double d = W[i].centre.Distance(B[j].centre);
+      if (d < best) { best = d; match[i] = int(j); }
+    }
+  }
+  std::cout << "   matched by index " << byIndex << " of " << W.size() << "\n";
+  struct Row { size_t i; double dv; };
+  std::vector<Row> rows;
+  std::map<std::string, std::array<double, 3>> byKind;  // count, |dv| sum, dv sum
+  double unmatched = 0;
+  for (size_t i = 0; i < W.size(); ++i) {
+    if (match[i] < 0) { unmatched += W[i].vol; continue; }
+    const double dv = B[size_t(match[i])].vol - W[i].vol;
+    rows.push_back({i, dv});
+    auto& k = byKind[W[i].kind];
+    k[0] += 1; k[1] += std::abs(dv); k[2] += dv;
+  }
+  std::cout << "   unmatched written faces' volume " << unmatched << "\n";
+  std::vector<char> hit(B.size(), 0);
+  for (int j : match) if (j >= 0) hit[size_t(j)] = 1;
+  const auto line = [](const char* tag, size_t i, const QvFace& q) {
+    std::cout << "   " << tag << " " << i << " vol " << q.vol << " area " << q.area << " " << q.kind << "/" << q.surf << (q.reversed ? " R" : " F") << " edges " << q.edges
+              << " wires " << q.wires << " tol " << q.tol << " centre (" << q.centre.X() << ", " << q.centre.Y() << ", " << q.centre.Z() << ") " << q.pcurves << "\n";
+  };
+  for (size_t i = 0; i < W.size(); ++i) if (match[i] < 0) line("unmatched written", i, W[i]);
+  for (size_t j = 0; j < B.size(); ++j) if (!hit[j]) line("unmatched back", j, B[j]);
+  for (const auto& [k, v] : byKind) std::cout << "   kind " << k << ": " << v[0] << " faces, sum |dv| " << v[1] << ", sum dv " << v[2] << "\n";
+  std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) { return std::abs(a.dv) > std::abs(b.dv); });
+  const int top = getenv("QVTOP") && *getenv("QVTOP") ? std::atoi(getenv("QVTOP")) : 15;
+  for (int r = 0; r < top && r < int(rows.size()); ++r) {
+    const QvFace& w = W[rows[size_t(r)].i];
+    const QvFace& b = B[size_t(match[rows[size_t(r)].i])];
+    std::cout << "   face " << rows[size_t(r)].i << " -> " << match[rows[size_t(r)].i] << " dv " << rows[size_t(r)].dv << " (eps dv " << b.volEps - w.volEps
+              << ") area " << w.area << " -> " << b.area << " (" << b.area - w.area << ") " << w.kind << "/" << w.surf << " -> " << b.kind << "/" << b.surf
+              << (w.reversed ? " R" : " F") << (b.reversed ? "R" : "F") << " edges " << w.edges << "->" << b.edges << " wires " << w.wires << "->" << b.wires
+              << " tol " << w.tol << "->" << b.tol << " vtol " << w.vtol << "->" << b.vtol << " centre (" << w.centre.X() << ", " << w.centre.Y() << ", " << w.centre.Z()
+              << ")\n      written pcurves " << w.pcurves << "| back " << b.pcurves << "\n";
+  }
+  if (getenv("QVFACE") && *getenv("QVFACE")) {
+    std::vector<TopoDS_Face> wf, bf;
+    for (TopExp_Explorer e(written, TopAbs_FACE); e.More(); e.Next()) wf.push_back(TopoDS::Face(e.Current()));
+    for (TopExp_Explorer e(readBack, TopAbs_FACE); e.More(); e.Next()) bf.push_back(TopoDS::Face(e.Current()));
+    std::stringstream list(getenv("QVFACE"));
+    std::string item;
+    while (std::getline(list, item, ','))
+      if (std::atoi(item.c_str()) < int(wf.size())) qvEdges(wf[size_t(std::atoi(item.c_str()))], bf[size_t(std::atoi(item.c_str()))], std::atoi(item.c_str()));
+  }
+  f.release(back);
+  f.release(h);
+}
+
 int main(int argc, char** argv) {
   ExtrudoFacade f;
   // BUDGET=ms lowers the rebuild's budget (PRISMATIC_REBUILD_BUDGET_MS), to see it hit; HYBRID_BUDGET=ms the hybrid's.
@@ -4786,6 +5188,11 @@ int main(int argc, char** argv) {
   const double envTol = getenv("TOL") && *getenv("TOL") ? std::atof(getenv("TOL")) : 0.01;
   if (only == "f") {
     file(f, std::string("/stl/") + (getenv("FILE") ? getenv("FILE") : ""), envTol);
+    std::cout << "live shapes " << f.liveShapes() << "\n";
+    return 0;
+  }
+  if (only == "V") {
+    qv(f, std::string("/stl/") + (getenv("FILE") ? getenv("FILE") : ""), envTol);
     std::cout << "live shapes " << f.liveShapes() << "\n";
     return 0;
   }
