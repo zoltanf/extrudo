@@ -56,7 +56,9 @@ import { clipsSummary, type SectionBox, type SectionClip, sectionsSummary } from
 import { combineFilters } from '../selection/filter';
 import { itemLabel, type LabelContext, selectionKey } from '../selection/items';
 import {
+  occludedPoints,
   type PickAxis,
+  type PickCamera,
   type PickHit,
   type PickScene,
   pickBox,
@@ -248,8 +250,11 @@ export interface ViewportProps {
 export interface ModelSelect {
   /** The item under the pointer, or `undefined` over empty space or when it leaves. */
   onHover(item: SelectionItem | undefined): void;
-  /** A click on an item (`undefined`: empty space). `toggle` with Shift, Ctrl or ⌘. */
-  onClick(item: SelectionItem | undefined, toggle: boolean): void;
+  /**
+   * A click on an item (`undefined`: empty space). `toggle` with Shift, Ctrl or ⌘. `at`:
+   * where the click met the item, world mm, or the grid plane (z = 0) under empty space.
+   */
+  onClick(item: SelectionItem | undefined, toggle: boolean, at?: Vec3): void;
   /** A box selected `items`; `add` with Shift, Ctrl or ⌘. */
   onBox(items: SelectionItem[], add: boolean): void;
 }
@@ -520,6 +525,19 @@ export function Viewport({
     () => ({ bodies, meta, sketches, construction, clip: sectionClip, posed }),
     [bodies, meta, sketches, construction, sectionClip, posed],
   );
+  // Annotations behind the part (ADR-0126 §6): the picking code's occlusion test on what the
+  // view draws. A new scene is a new function, which tells the overlay to look again.
+  useEffect(() => {
+    viewport.getState().setOccluded((points, { width, height }) => {
+      const { view, projection, visualStyle } = viewport.getState();
+      return occludedPoints(
+        pickScene(modelScene, visualStyle),
+        { view, projection, width, height },
+        points,
+      );
+    });
+    return () => viewport.getState().setOccluded(undefined);
+  }, [viewport, modelScene]);
   // Auto-project (P6-07): the body edge or vertex under the pointer, or a face
   // centre near it (issue #140), while a tool runs. Off, the view offers
   // nothing and the tool never sees one.
@@ -1518,7 +1536,11 @@ function useModelInput(
     };
     return {
       onMove: (p) => select.onHover(viewport.getState().tool ? undefined : pick(p)),
-      onClick: (p) => select.onClick(pick(p), p.toggle),
+      onClick: (p) => {
+        const c = context(p);
+        const hit = pickStack(c.scene, c.camera, [p.x, p.y], c.filter).find((h) => !h.occluded);
+        select.onClick(hit?.item, p.toggle, clickPoint(c.camera, [p.x, p.y], hit?.depth));
+      },
       onDragStart: () => false,
       onBox: (from, to) => {
         const c = context(to);
@@ -1635,6 +1657,27 @@ export function originAxes(origin: Record<OriginItem, boolean>, size: number): P
 }
 
 /** The pick scene: visible bodies, drawn sketches with their shaded profiles. */
+/** Where a click meets what it hit (`depth` along the pick ray), or the grid plane z = 0. */
+function clickPoint(
+  camera: PickCamera,
+  at: readonly [number, number],
+  depth: number | undefined,
+): Vec3 | undefined {
+  const { view, projection, width, height } = camera;
+  if (width <= 0 || height <= 0) return undefined;
+  const ndc: [number, number] = [(at[0] / width) * 2 - 1, 1 - (at[1] / height) * 2];
+  const ray = viewRay(view, projection, width / height, ndc);
+  if (depth !== undefined) {
+    return [
+      ray.origin.x + ray.direction.x * depth,
+      ray.origin.y + ray.direction.y * depth,
+      ray.origin.z + ray.direction.z * depth,
+    ];
+  }
+  const ground = rayPlane(ray, [0, 0, 0], [0, 0, 1]);
+  return ground ? [ground.x, ground.y, ground.z] : undefined;
+}
+
 function pickScene(scene: ModelScene, style: VisualStyle): PickScene {
   return {
     bodies: pickableBodies(scene.bodies, scene.meta, scene.posed),

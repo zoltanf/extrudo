@@ -276,6 +276,21 @@ function hidden(e: Eye, scene: PickScene, x: number, y: number, z: number): bool
   return scene.clip !== undefined && capDepth(scene, ray, far) !== undefined;
 }
 
+/**
+ * Which of `points` (world mm) a drawn face hides from the camera, with the same slack
+ * picking uses (ADR-0126 §6: an annotation behind the part is ghosted). One BVH ray per
+ * point: ask after the camera settles, not every frame.
+ */
+export function occludedPoints(
+  scene: PickScene,
+  camera: PickCamera,
+  points: readonly (readonly [number, number, number])[],
+): boolean[] {
+  if (camera.width <= 0 || camera.height <= 0) return points.map(() => false);
+  const e = eyeFor(camera, [camera.width / 2, camera.height / 2]);
+  return points.map(([x, y, z]) => hidden(e, scene, x, y, z));
+}
+
 /** Whether the ray meets a face within `far`, ignoring what a section clips away. */
 function keptHit(
   bvh: MeshBVH,

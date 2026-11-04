@@ -100,6 +100,12 @@ export interface ViewportSettings {
   sketchSlice: boolean;
   /** How fast a 3D mouse moves the view (ADR-0114): 1 normal, 0.25 to 4. */
   spaceMouseSpeed: number;
+  /** Draw the annotations (ADR-0126 §5): the Annotations folder's eye. On by default. */
+  annotations: boolean;
+  /** An annotation the part hides is a faint badge (`ghost`) or drawn in full (`show`, ADR-0126 §6). */
+  annotationsBehind: 'ghost' | 'show';
+  /** Callouts with their text (`always`) or only their numbers (`numbers`, ADR-0126 §6). */
+  annotationText: 'always' | 'numbers';
 }
 
 export const DEFAULT_SETTINGS: ViewportSettings = {
@@ -120,6 +126,9 @@ export const DEFAULT_SETTINGS: ViewportSettings = {
   autoProjectFace: false,
   sketchSlice: false,
   spaceMouseSpeed: 1,
+  annotations: true,
+  annotationsBehind: 'ghost',
+  annotationText: 'always',
 };
 
 /** The part of the scene that "fit" frames. */
@@ -162,6 +171,17 @@ export interface ViewportState extends ViewportSettings {
   tool: NavAction | undefined;
   /** Renders the view to a thumbnail PNG; set while the canvas is mounted. */
   snapshot: ((size?: number, options?: SnapshotOptions) => Promise<Blob | null>) | undefined;
+  /**
+   * Which of these world points the drawn model hides from the camera (ADR-0126 §6): the
+   * picking code's occlusion test on what the view shows. Set by the view while it is
+   * mounted; the annotations overlay asks it after the camera settles and after a recompute.
+   */
+  occluded:
+    | ((
+        points: readonly (readonly [number, number, number])[],
+        size: { width: number; height: number },
+      ) => boolean[])
+    | undefined;
   /** Frames per second and frame time while the canvas is mounted (the status bar shows them). */
   renderStats: RenderStats | undefined;
   /**
@@ -269,6 +289,10 @@ export interface ViewportState extends ViewportSettings {
   setAutoProjectFace(autoProjectFace: boolean): void;
   /** Turns the sketch palette's Slice on or off (P4-12). */
   setSketchSlice(sketchSlice: boolean): void;
+  setAnnotations(annotations: boolean): void;
+  setAnnotationsBehind(behind: ViewportSettings['annotationsBehind']): void;
+  setAnnotationText(text: ViewportSettings['annotationText']): void;
+  setOccluded(occluded: ViewportState['occluded']): void;
   setSnapshot(
     snapshot: ((size?: number, options?: SnapshotOptions) => Promise<Blob | null>) | undefined,
   ): void;
@@ -372,6 +396,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       bounds: undefined,
       tool: undefined,
       snapshot: undefined,
+      occluded: undefined,
       renderStats: undefined,
       longTaskCount: 0,
       selectionFilter: DEFAULT_FILTER,
@@ -485,6 +510,18 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       setSketchSlice(sketchSlice) {
         set({ sketchSlice });
       },
+      setAnnotations(annotations) {
+        set({ annotations });
+      },
+      setAnnotationsBehind(annotationsBehind) {
+        set({ annotationsBehind });
+      },
+      setAnnotationText(annotationText) {
+        set({ annotationText });
+      },
+      setOccluded(occluded) {
+        set({ occluded });
+      },
       setSnapshot(snapshot) {
         set({ snapshot });
       },
@@ -590,7 +627,10 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       s.autoProject !== prev.autoProject ||
       s.autoProjectFace !== prev.autoProjectFace ||
       s.sketchSlice !== prev.sketchSlice ||
-      s.spaceMouseSpeed !== prev.spaceMouseSpeed
+      s.spaceMouseSpeed !== prev.spaceMouseSpeed ||
+      s.annotations !== prev.annotations ||
+      s.annotationsBehind !== prev.annotationsBehind ||
+      s.annotationText !== prev.annotationText
     ) {
       const {
         projection,
@@ -607,6 +647,9 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
         autoProjectFace,
         sketchSlice,
         spaceMouseSpeed,
+        annotations,
+        annotationsBehind,
+        annotationText,
       } = s;
       preferences.set(PREFERENCES_KEY, {
         projection,
@@ -623,6 +666,9 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
         autoProjectFace,
         sketchSlice,
         spaceMouseSpeed,
+        annotations,
+        annotationsBehind,
+        annotationText,
       });
     }
   });

@@ -158,7 +158,8 @@ export function createDocumentStore(
  * point or curve of the open sketch is a `sketchEntity` (P1-09).
  */
 export interface SelectionItem {
-  kind: GeomRefKind | 'feature' | 'parameter' | 'constraint' | 'dimension';
+  /** `annotation`: a numbered note (ADR-0126 §6), by its `AnnotationId`. */
+  kind: GeomRefKind | 'feature' | 'parameter' | 'constraint' | 'dimension' | 'annotation';
   id: string;
 }
 
