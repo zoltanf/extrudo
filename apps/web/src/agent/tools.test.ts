@@ -12,6 +12,7 @@ import {
 import type { ProjectSummary } from '@extrudo/storage';
 import { describe, expect, it } from 'vitest';
 import type { AgentReply } from '../platform/agent';
+import type { SnapshotOptions } from '../viewport/snapshotView';
 import type { AgentHost } from './host';
 import { TOOL_NAMES, toolDefinitions } from './schemas';
 import { fakeContext, fakeHost } from './testing';
@@ -933,6 +934,31 @@ describe('annotations (ADR-0126 §8)', () => {
     );
     expect(reply.done).toBe('Agent: Annotate #2');
     expect(reply.result.number).toBe(2);
+  });
+
+  it("screenshot { annotations } hands the notes' badges to the snapshot, hidden ones left out", async () => {
+    const { host } = computedPlate();
+    for (const text of ['a', 'b', 'c']) {
+      await runTool('add_annotation', { text, anchor: { at: [1, 2, 3] } }, context(host));
+    }
+    await runTool('edit_annotation', { number: 2, done: true }, context(host));
+    await runTool('edit_annotation', { number: 3, hidden: true }, context(host));
+    const asked: (SnapshotOptions | undefined)[] = [];
+    host.snapshot = async (_size, options) => {
+      asked.push(options);
+      // The fake's picture changes with what it draws, as the real one does.
+      const bytes = options?.marks ? [137, 80, 78, 71, options.marks.length] : [137, 80, 78, 71];
+      return new Blob([new Uint8Array(bytes)], { type: 'image/png' });
+    };
+    const plain = await runTool('screenshot', {}, context(host));
+    const marked = await runTool('screenshot', { annotations: true }, context(host));
+    expect(asked[0]).toBeUndefined();
+    expect(asked[1]?.marks).toEqual([
+      { at: [1, 2, 3], number: 1, look: 'solid' },
+      { at: [1, 2, 3], number: 2, look: 'muted' },
+    ]);
+    const data = (reply: AgentReply) => (reply.result.content[0] as { data: string }).data;
+    expect(data(marked)).not.toBe(data(plain));
   });
 
   it('refuses a change while a sketch is open', async () => {

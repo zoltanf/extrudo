@@ -6,6 +6,7 @@
  * snapshot's own, so the person's view never moves.
  */
 import { Plane, Vector3 } from 'three';
+import type { AnnotationMark } from '../annotations/marks';
 import { HOME_DIRECTION, type Vec3 } from './camera';
 import { FACES, type FaceName } from './viewcube';
 
@@ -21,6 +22,8 @@ export interface SnapshotOptions {
   section?: { origin: Vec3; normal: Vec3 };
   /** Sketches and construction geometry; default true. */
   overlays?: boolean;
+  /** Annotation badges drawn over the picture through its own camera (ADR-0126 S4). */
+  marks?: readonly AnnotationMark[];
 }
 
 /** Scene objects drawn only with `overlays` (sketches, construction geometry). */

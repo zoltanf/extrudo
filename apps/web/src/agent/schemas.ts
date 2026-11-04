@@ -192,7 +192,7 @@ export const TOOL_SCHEMAS = {
   },
   screenshot: {
     description:
-      "A picture of the model as a PNG, framed on the bodies, drawn apart from the person's view (which doesn't move). Without inputs: the app's current view direction, sketches and construction shown, 768 px. Inputs pick another side, only some bodies (framed on them), a section that cuts away what lies past a plane (a floor plan: view 'top', section on 'xy' at the floor's height), and the size. Sizes come from get_bodies, not pictures. At most one per second.",
+      "A picture of the model as a PNG, framed on the bodies, drawn apart from the person's view (which doesn't move). Without inputs: the app's current view direction, sketches and construction shown, 768 px. Inputs pick another side, only some bodies (framed on them), a section that cuts away what lies past a plane (a floor plan: view 'top', section on 'xy' at the floor's height), the annotations' numbered badges, and the size. Sizes come from get_bodies, not pictures. At most one per second.",
     input: z.object({
       view: z
         .union([z.enum(SNAPSHOT_VIEWS), z.tuple([z.number(), z.number(), z.number()])])
@@ -222,6 +222,12 @@ export const TOOL_SCHEMAS = {
         .boolean()
         .optional()
         .describe('Sketches and construction geometry; default true.'),
+      annotations: z
+        .boolean()
+        .optional()
+        .describe(
+          "The annotations' numbered badges (#1, #2, …) at their anchors, not hidden ones; default false. No text: list_annotations has it.",
+        ),
       size: z
         .number()
         .int()

@@ -21,6 +21,7 @@ import {
   type DocumentStore,
   type FeatureId,
   type ModelStore,
+  moveAnnotation,
   newId,
   removeAnnotation,
   type SelectionItem,
@@ -46,6 +47,7 @@ import { viewProject } from '../viewport/camera';
 import type { ViewportStore } from '../viewport/store';
 import { type PlacedAnnotation, placeAnnotations, type Vec3 } from './anchor';
 import { boxOffset, calloutBox, clampBox, leaderEnd, type Screen } from './layout';
+import type { Reanchor } from './reanchor';
 import type { AnnotationsUiStore } from './ui';
 
 /** A press turns into a drag after this many pixels (as a dimension label's). */
@@ -63,6 +65,8 @@ export interface AnnotationsOverlayProps {
   interactive: boolean;
   /** The sketch open for editing and its plane: its notes follow it live (ADR-0126 §7). */
   openSketch?: { id: FeatureId; frame: SketchFrame };
+  /** What a dragged anchor dot would anchor to (S4); absent, the dot doesn't drag. */
+  reanchor?: Reanchor;
   onError(message: string): void;
 }
 
@@ -97,6 +101,7 @@ export function AnnotationsOverlay({
   ui,
   interactive,
   openSketch,
+  reanchor,
   onError,
 }: AnnotationsOverlayProps) {
   const doc = useStore(store, (s) => s.doc);
@@ -165,8 +170,9 @@ export function AnnotationsOverlay({
       const next = new Set(list.filter((_, i) => hidden[i]).map((d) => d.id));
       setBehind((b) => (b.size === next.size && [...next].every((id) => b.has(id)) ? b : next));
     };
-    check();
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Not at once: notes that move with a dragged sketch point change `drawn` every step, and
+    // the check runs once they stop, as it does after the camera.
+    let timer: ReturnType<typeof setTimeout> | undefined = setTimeout(check, SETTLE_MS);
     const unsubscribe = viewport.subscribe((s, prev) => {
       if (
         s.view === prev.view &&
@@ -212,6 +218,18 @@ export function AnnotationsOverlay({
   const leaders = useRef(new Map<string, SVGGElement>());
   const press = useRef<Press | undefined>(undefined);
   const dragged = useRef<{ id: string; left: number; bottom: number } | undefined>(undefined);
+  const dotDrag = useRef<
+    | {
+        id: string;
+        x: number;
+        y: number;
+        startX: number;
+        startY: number;
+        moved: boolean;
+        escape?: (e: globalThis.KeyboardEvent) => void;
+      }
+    | undefined
+  >(undefined);
   const place = useRef<() => void>(() => {});
   place.current = () => {
     const el = layer.current;
@@ -281,15 +299,20 @@ export function AnnotationsOverlay({
       box.style.transform = `translate(${rect.left}px, ${rect.top}px)`;
       if (!leader) continue;
       leader.style.visibility = ghost ? 'hidden' : '';
-      const [ex, ey] = leaderEnd(p, rect);
-      const line = leader.firstElementChild as SVGLineElement | null;
-      const dot = leader.lastElementChild as SVGCircleElement | null;
-      line?.setAttribute('x1', String(p[0]));
-      line?.setAttribute('y1', String(p[1]));
+      // A dot being dragged onto other geometry is drawn at the pointer; the box stays.
+      const held =
+        dotDrag.current?.id === d.id && dotDrag.current.moved ? dotDrag.current : undefined;
+      const from: Screen = held ? [held.x, held.y] : p;
+      const [ex, ey] = leaderEnd(from, rect);
+      const line = leader.querySelector('line');
+      line?.setAttribute('x1', String(from[0]));
+      line?.setAttribute('y1', String(from[1]));
       line?.setAttribute('x2', String(ex));
       line?.setAttribute('y2', String(ey));
-      dot?.setAttribute('cx', String(p[0]));
-      dot?.setAttribute('cy', String(p[1]));
+      for (const dot of leader.querySelectorAll('circle')) {
+        dot.setAttribute('cx', String(from[0]));
+        dot.setAttribute('cy', String(from[1]));
+      }
     }
   };
   useLayoutEffect(() => {
@@ -395,6 +418,89 @@ export function AnnotationsOverlay({
     if (!run(updateAnnotation({ id: d.id as AnnotationId, changes: { offset } }))) place.current();
   };
 
+  // Dragging the anchor dot onto other geometry (ADR-0126 S4): the hover shows what a drop takes,
+  // Esc cancels, a drop re-anchors in one step and keeps the box where it is on screen.
+  const viewSize = () => ({
+    width: layer.current?.clientWidth ?? 0,
+    height: layer.current?.clientHeight ?? 0,
+  });
+  const stopDot = () => {
+    const held = dotDrag.current;
+    dotDrag.current = undefined;
+    if (held?.escape) window.removeEventListener('keydown', held.escape, true);
+    const h = session.getState().hover;
+    if (held?.moved && h && h.kind !== 'annotation') session.getState().setHover(undefined);
+    place.current();
+  };
+  const dotDown = (d: Drawn) => (event: PointerEvent<SVGCircleElement>) => {
+    if (!interactive || !reanchor || !d.annotation || event.button !== 0) return;
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const [x, y] = local(event);
+    const onEscape = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      stopDot();
+    };
+    window.addEventListener('keydown', onEscape, true);
+    dotDrag.current = { id: d.id, x, y, startX: x, startY: y, moved: false, escape: onEscape };
+  };
+  const dotMove = (event: PointerEvent<SVGCircleElement>) => {
+    const held = dotDrag.current;
+    if (!held || !reanchor) return;
+    const [x, y] = local(event);
+    if (!held.moved && Math.hypot(x - held.startX, y - held.startY) < DRAG_PX) return;
+    held.moved = true;
+    held.x = x;
+    held.y = y;
+    session.getState().setHover(reanchor.hover(x, y, viewSize()));
+    place.current();
+  };
+  const dotUp = (d: Drawn) => (event: PointerEvent<SVGCircleElement>) => {
+    const held = dotDrag.current;
+    if (!held || held.id !== d.id || !reanchor || !d.annotation) return;
+    const [x, y] = local(event);
+    const moved = held.moved;
+    const box = elements.current.get(d.id)?.getBoundingClientRect();
+    const origin = layer.current?.getBoundingClientRect();
+    stopDot();
+    if (!moved || !box || !origin) return;
+    const annotation = d.annotation;
+    void reanchor.anchor(x, y, viewSize()).then((found) => {
+      if (!found) return;
+      const el = layer.current;
+      const { view, projection } = viewport.getState();
+      const ndc =
+        el && viewProject(view, projection, el.clientWidth / el.clientHeight, found.world);
+      const rect = {
+        left: box.left - origin.left,
+        top: box.top - origin.top,
+        width: box.width,
+        height: box.height,
+      };
+      const state = store.getState();
+      state.beginTransaction(`Move annotation #${annotation.number}`);
+      try {
+        state.dispatch(moveAnnotation({ id: annotation.id, anchor: found.anchor }));
+        if (ndc && el) {
+          const p: Screen = [
+            ((ndc[0] + 1) / 2) * el.clientWidth,
+            ((1 - ndc[1]) / 2) * el.clientHeight,
+          ];
+          state.dispatch(
+            updateAnnotation({ id: annotation.id, changes: { offset: boxOffset(p, rect) } }),
+          );
+        }
+        state.commitTransaction();
+      } catch (error) {
+        state.cancelTransaction();
+        if (!(error instanceof CommandError)) throw error;
+        onError(error.message);
+      }
+    });
+  };
+
   const commit = (d: Drawn, text: string) => {
     const trimmed = text.trim();
     if (!d.annotation) {
@@ -439,7 +545,31 @@ export function AnnotationsOverlay({
               strokeWidth={1}
               strokeOpacity={states.get(d.id) === 'done' ? 0.5 : 1}
             />
-            <circle r={2} fill="var(--x-accent)" stroke="var(--x-bg)" strokeWidth={1} />
+            {/* The anchor dot's hit area: drag a selected note's dot onto other geometry (S4). */}
+            <circle
+              r={7}
+              fill="transparent"
+              data-annotation-anchor={d.annotation ? d.number : undefined}
+              style={{
+                // Only a selected note's dot: unselected, the geometry under it (a sketch point
+                // the note is on) is what a press takes.
+                pointerEvents:
+                  interactive && d.annotation && reanchor && isAnnotation(selection, d.id)
+                    ? 'auto'
+                    : 'none',
+                cursor: 'move',
+              }}
+              onPointerDown={dotDown(d)}
+              onPointerMove={dotMove}
+              onPointerUp={dotUp(d)}
+            />
+            <circle
+              r={2}
+              fill="var(--x-accent)"
+              stroke="var(--x-bg)"
+              strokeWidth={1}
+              style={{ pointerEvents: 'none' }}
+            />
           </g>
         ))}
       </svg>

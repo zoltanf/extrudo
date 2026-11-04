@@ -126,6 +126,8 @@ always means the same note. When the person says "#3" (or "the hole at #3"):
    (`{ "kind": "face", "id": "<the face>" }`), or `at` as a position.
 3. A note whose `status` is `detached` lost its geometry: say so, don't guess.
    `moved` means the app found it again by a guess: check it.
+4. To see where the notes are, `screenshot` with `"annotations": true` draws their numbered
+   badges (no text) on the picture.
 
 Leave notes of your own with `add_annotation` (on `{ "face": … }`,
 `{ "edge": … }` or `{ "edgeBetween": [f, f] }`, `{ "vertex": … }`,

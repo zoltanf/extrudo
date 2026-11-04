@@ -51,6 +51,28 @@ export async function fingerprintedAnchor(
   };
 }
 
+/** The sketch open for editing and the plane it is drawn on. */
+export interface OpenSketch {
+  id: FeatureId;
+  frame: SketchFrame;
+}
+
+/**
+ * Where the notes are now: `placeAnnotations` over the model store's reports, with the open
+ * sketch (if any). The one call the overlay's helpers (browser rows, look at) share, so a note
+ * the view draws is one they can find.
+ */
+export function placedNow(
+  doc: Pick<ExtrudoDocument, 'annotations' | 'features'>,
+  model: {
+    annotations: Readonly<Record<string, AnnotationReport | undefined>>;
+    sketches: Readonly<Record<string, SketchReport | undefined>>;
+  },
+  open?: OpenSketch,
+): PlacedAnnotation[] {
+  return placeAnnotations(doc, model.annotations, model.sketches, open);
+}
+
 /** How an annotation is drawn: its world point and status, or nothing (a sketch not shown). */
 export interface PlacedAnnotation {
   annotation: Annotation;
@@ -74,7 +96,7 @@ export function placeAnnotations(
    * The sketch open for editing and the plane it is drawn on (ADR-0126 §7): its notes are
    * drawn through that frame, shown or not, from the document as it is during a drag.
    */
-  open?: { id: FeatureId; frame: SketchFrame },
+  open?: OpenSketch,
 ): PlacedAnnotation[] {
   const out: PlacedAnnotation[] = [];
   for (const annotation of doc.annotations ?? []) {

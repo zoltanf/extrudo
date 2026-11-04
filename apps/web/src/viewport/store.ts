@@ -4,7 +4,7 @@
  * open document. Nothing here is saved in the document or undoable; the
  * display settings are user preferences.
  */
-import type { JointId, LengthUnit } from '@extrudo/core';
+import type { JointId, LengthUnit, SelectionItem } from '@extrudo/core';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { JointCheckState } from '../joints/clearance';
 import type { Preferences } from '../platform';
@@ -182,6 +182,18 @@ export interface ViewportState extends ViewportSettings {
         size: { width: number; height: number },
       ) => boolean[])
     | undefined;
+  /**
+   * What a model-mode click at view px (`x`, `y`) would take, and where it meets it (the hit,
+   * else the grid plane): the Annotate tool's pick, offered for dragging a note's anchor dot
+   * onto other geometry (ADR-0126 S4). Set by the view while it picks in the model.
+   */
+  pickAt:
+    | ((
+        x: number,
+        y: number,
+        size: { width: number; height: number },
+      ) => { item: SelectionItem | undefined; at: [number, number, number] | undefined })
+    | undefined;
   /** Frames per second and frame time while the canvas is mounted (the status bar shows them). */
   renderStats: RenderStats | undefined;
   /**
@@ -293,6 +305,7 @@ export interface ViewportState extends ViewportSettings {
   setAnnotationsBehind(behind: ViewportSettings['annotationsBehind']): void;
   setAnnotationText(text: ViewportSettings['annotationText']): void;
   setOccluded(occluded: ViewportState['occluded']): void;
+  setPickAt(pickAt: ViewportState['pickAt']): void;
   setSnapshot(
     snapshot: ((size?: number, options?: SnapshotOptions) => Promise<Blob | null>) | undefined,
   ): void;
@@ -397,6 +410,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       tool: undefined,
       snapshot: undefined,
       occluded: undefined,
+      pickAt: undefined,
       renderStats: undefined,
       longTaskCount: 0,
       selectionFilter: DEFAULT_FILTER,
@@ -521,6 +535,9 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       },
       setOccluded(occluded) {
         set({ occluded });
+      },
+      setPickAt(pickAt) {
+        set({ pickAt });
       },
       setSnapshot(snapshot) {
         set({ snapshot });

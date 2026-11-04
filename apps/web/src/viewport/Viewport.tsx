@@ -41,6 +41,7 @@ import {
 } from 'three';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
+import { type AnnotationMark, drawMarks } from '../annotations/marks';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
 import {
   Button,
@@ -526,20 +527,24 @@ export function Viewport({
     [bodies, meta, sketches, construction, sectionClip, posed],
   );
   // Annotations behind the part (ADR-0126 §6): the picking code's occlusion test on what the
-  // view draws. A new scene or style is a new function, which tells the overlay to look again.
+  // view draws. Only what hides things (the bodies, a section, a pose, the style) makes a new
+  // function, which tells the overlay to look again: a sketch dragged in an open sketch
+  // changes the scene every step but hides nothing (ADR-0126 S3 review).
   const drawnStyle = useStore(viewport, (s) => s.visualStyle);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `drawnStyle` makes a new function when wireframe stops hiding things; the function reads the current style itself.
+  const sceneRef = useRef(modelScene);
+  sceneRef.current = modelScene;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the bodies, the clip, the pose and the style are what change occlusion; the function reads the latest scene and style itself.
   useEffect(() => {
     viewport.getState().setOccluded((points, { width, height }) => {
       const { view, projection, visualStyle } = viewport.getState();
       return occludedPoints(
-        pickScene(modelScene, visualStyle),
+        pickScene(sceneRef.current, visualStyle),
         { view, projection, width, height },
         points,
       );
     });
     return () => viewport.getState().setOccluded(undefined);
-  }, [viewport, modelScene, drawnStyle]);
+  }, [viewport, bodies, sectionClip, posed, drawnStyle]);
   // Auto-project (P6-07): the body edge or vertex under the pointer, or a face
   // centre near it (issue #140), while a tool runs. Off, the view offers
   // nothing and the tool never sees one.
@@ -1010,6 +1015,7 @@ function Scene({
         options.view === undefined &&
         options.bodies === undefined &&
         options.section === undefined &&
+        options.marks === undefined &&
         options.overlays !== false;
       if (!plain)
         return snapshotWith(gl, scene, viewport.getState(), thumbnailBoxRef.current, size, options);
@@ -1232,6 +1238,7 @@ function snapshotWith(
       (options.overlays === false && object.name === SNAPSHOT_OVERLAY) ||
       (keep !== undefined && object.name.startsWith('body:') && !keep.has(object.name)),
     ...(options.section && { clip: sectionPlane(options.section) }),
+    ...(options.marks && { marks: options.marks }),
   });
 }
 
@@ -1249,7 +1256,7 @@ async function thumbnailFromBox(
   view: View,
   projection: Projection,
   size = THUMBNAIL_SIZE,
-  extra: { hide?(object: Object3D): boolean; clip?: Plane } = {},
+  extra: { hide?(object: Object3D): boolean; clip?: Plane; marks?: readonly AnnotationMark[] } = {},
 ): Promise<Blob | null> {
   const out = document.createElement('canvas');
   out.width = size;
@@ -1324,6 +1331,8 @@ async function thumbnailFromBox(
     }
   }
   ctx.putImageData(image, 0, 0);
+  // Through this picture's own camera, so another view or a framing on some bodies holds.
+  if (extra.marks) drawMarks(ctx, extra.marks, view, projection, size);
   return new Promise<Blob | null>((resolve) => out.toBlob(resolve, 'image/png'));
 }
 
@@ -1466,6 +1475,27 @@ function useSketchInput(
   usePointerInput(surface, viewport, handlers, onBoxChange, onNavDrag);
 }
 
+/** What model-mode picking sees in a view of `size` px: the scene, the camera, the filter. */
+function pickContext(
+  viewport: ViewportStore,
+  scene: ModelScene,
+  size: { width: number; height: number },
+) {
+  const { view, projection, visualStyle, selectionFilter, fieldFilter, origin, pickAxes } =
+    viewport.getState();
+  const made = constructionPick(scene.construction, view.size);
+  return {
+    scene: {
+      ...pickScene(scene, visualStyle),
+      axes: [...originAxes(shownOrigin(origin, pickAxes), view.size), ...made.axes],
+      planes: made.planes,
+      points: made.points,
+    },
+    camera: { view, projection, width: size.width, height: size.height },
+    filter: combineFilters(selectionFilter, fieldFilter),
+  };
+}
+
 /** What model-mode picking sees: the scene as drawn. */
 interface ModelScene {
   bodies: Record<BodyId, BodyMesh>;
@@ -1517,25 +1547,12 @@ function useModelInput(
   }, [pickBodies]);
   const handlers = useMemo<PointerHandlers | undefined>(() => {
     if (!select) return undefined;
-    const context = (p: ScreenPointer) => {
-      const { view, projection, visualStyle, selectionFilter, fieldFilter, origin, pickAxes } =
-        viewport.getState();
-      const made = constructionPick(sceneRef.current.construction, view.size);
-      return {
-        scene: {
-          ...pickScene(sceneRef.current, visualStyle),
-          axes: [...originAxes(shownOrigin(origin, pickAxes), view.size), ...made.axes],
-          planes: made.planes,
-          points: made.points,
-        },
-        camera: { view, projection, width: p.width, height: p.height },
-        filter: combineFilters(selectionFilter, fieldFilter),
-      };
-    };
+    const context = (p: ScreenPointer) => pickContext(viewport, sceneRef.current, p);
     const pick = (p: ScreenPointer) => {
       const c = context(p);
       return pickTop(c.scene, c.camera, [p.x, p.y], c.filter);
     };
+
     return {
       onMove: (p) => select.onHover(viewport.getState().tool ? undefined : pick(p)),
       onClick: (p) => {
@@ -1581,6 +1598,17 @@ function useModelInput(
     };
   }, [select, viewport, surface, onMenu, onContext]);
   usePointerInput(surface, viewport, handlers, onBoxChange, onNavDrag);
+  // The same pick for a dragged annotation anchor (ADR-0126 S4), with where it lands.
+  useEffect(() => {
+    if (!select) return;
+    viewport.getState().setPickAt((x, y, size) => {
+      const c = pickContext(viewport, sceneRef.current, size);
+      const hit = pickStack(c.scene, c.camera, [x, y], c.filter).find((h) => !h.occluded);
+      const at = clickPoint(c.camera, [x, y], hit?.depth);
+      return { item: hit?.item, at: at && [at[0], at[1], at[2]] };
+    });
+    return () => viewport.getState().setPickAt(undefined);
+  }, [viewport, select]);
 }
 
 /**

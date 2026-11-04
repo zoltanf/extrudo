@@ -63,7 +63,12 @@ import {
   updateParameter,
 } from '@extrudo/core';
 import type { ProjectSummary } from '@extrudo/storage';
-import { type AnnotationRef, fingerprintedAnchor, type Vec3 } from '../annotations/anchor';
+import {
+  type AnnotationRef,
+  fingerprintedAnchor,
+  placedNow,
+  type Vec3,
+} from '../annotations/anchor';
 import { withActiveComponent } from '../components/active';
 import type { AgentExportFormat, AgentReply } from '../platform/agent';
 import { bodyEntries } from '../shell/bodies';
@@ -878,7 +883,7 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
     );
   },
   get_selection: (_input, _ctx, host) => json(need(host).session.getState().selection),
-  screenshot: async ({ view, bodies, section, overlays, size }, ctx, host) => {
+  screenshot: async ({ view, bodies, section, overlays, annotations, size }, ctx, host) => {
     const h = need(host);
     await ctx.screenshotTurn();
     await settled(h, ctx.settleMs);
@@ -912,6 +917,17 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
         ],
         normal: n,
       };
+    }
+    if (annotations) {
+      // Every note that isn't hidden, whatever the person's eye says: the agent asked.
+      const { doc } = h.store.getState();
+      options.marks = placedNow(doc, h.model.getState())
+        .filter((p) => !p.annotation.hidden)
+        .map((p) => ({
+          at: p.at,
+          number: p.annotation.number,
+          look: p.status === 'detached' ? 'hollow' : p.annotation.done ? 'muted' : 'solid',
+        }));
     }
     const plain = Object.keys(options).length === 0;
     return screenshot(h, size, plain ? undefined : options);

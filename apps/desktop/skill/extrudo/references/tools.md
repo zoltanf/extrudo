@@ -88,7 +88,7 @@ The design's numbered notes (#1, #2, …) in number order, ticked-off ones last:
 
 ## `screenshot`
 
-A picture of the model as a PNG, framed on the bodies, drawn apart from the person's view (which doesn't move). Without inputs: the app's current view direction, sketches and construction shown, 768 px. Inputs pick another side, only some bodies (framed on them), a section that cuts away what lies past a plane (a floor plan: view 'top', section on 'xy' at the floor's height), and the size. Sizes come from get_bodies, not pictures. At most one per second.
+A picture of the model as a PNG, framed on the bodies, drawn apart from the person's view (which doesn't move). Without inputs: the app's current view direction, sketches and construction shown, 768 px. Inputs pick another side, only some bodies (framed on them), a section that cuts away what lies past a plane (a floor plan: view 'top', section on 'xy' at the floor's height), the annotations' numbered badges, and the size. Sizes come from get_bodies, not pictures. At most one per second.
 
 | Input | Type | Required | What it is |
 | --- | --- | --- | --- |
@@ -96,6 +96,7 @@ A picture of the model as a PNG, framed on the bodies, drawn apart from the pers
 | `bodies` | `({ kind: string, id: string })[]` | no | Only these bodies (references, ids from get_bodies), framed on them. |
 | `section` | `{ plane: "xy" \| "xz" \| "yz" \| { kind: string, id: string }, offset?: number \| string }` | no | Cuts away everything on the side the plane's normal points to (above an 'xy' plane). |
 | `overlays` | `boolean` | no | Sketches and construction geometry; default true. |
+| `annotations` | `boolean` | no | The annotations' numbered badges (#1, #2, …) at their anchors, not hidden ones; default false. No text: list_annotations has it. |
 | `size` | `integer` | no | Width and height in px; default 768. |
 
 ## `list_commands`

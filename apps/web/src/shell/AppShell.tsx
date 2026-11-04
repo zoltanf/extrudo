@@ -49,7 +49,8 @@ import { useStore } from 'zustand';
 import { useAgentHost } from '../agent/useAgentHost';
 import { AnnotationsOverlay } from '../annotations/AnnotationsOverlay';
 import { createAnnotationActions } from '../annotations/actions';
-import { placeAnnotations } from '../annotations/anchor';
+import { type OpenSketch, placedNow } from '../annotations/anchor';
+import { createReanchor } from '../annotations/reanchor';
 import {
   ANNOTATE_TOOL,
   createAnnotateSelect,
@@ -192,7 +193,12 @@ import {
 import { pickDrawing } from '../sketch/pickDrawing';
 import { profileIdsIn, sketchProfiles } from '../sketch/profiles';
 import { INTERSECT_TOOL, isProjectTool, PROJECT_TOOL, useProjectTool } from '../sketch/project';
-import { deleteSelection } from '../sketch/selection';
+import {
+  deleteSelection,
+  selectedConstraints,
+  selectedDimensions,
+  selectedEntities,
+} from '../sketch/selection';
 import { gripSplineOf } from '../sketch/splineEnds';
 import { textDraftStore } from '../sketch/textDraft';
 import type { ToolHost } from '../sketch/tools/host';
@@ -573,6 +579,8 @@ function Shell({
   const annotating = activeTool === ANNOTATE_TOOL;
   // What is edited in place, or drafted by the Annotate tool (ADR-0126 §6): view state.
   const annotationsUi = useMemo(() => createAnnotationsUi(), []);
+  // The open sketch for the browser rows and Look At, which run outside a render.
+  const openSketchRef = useRef<OpenSketch | undefined>(undefined);
   useEffect(() => {
     if (!annotating) annotationsUi.getState().setDraft(undefined);
   }, [annotating, annotationsUi]);
@@ -585,6 +593,7 @@ function Shell({
         viewport,
         ui: annotationsUi,
         notify: (message) => notify('error', message),
+        openSketch: () => openSketchRef.current,
       }),
     [store, session, model, viewport, annotationsUi, notify],
   );
@@ -1174,7 +1183,13 @@ function Shell({
       const notes = selection
         .filter((item) => item.kind === 'annotation')
         .map((item) => item.id as AnnotationId);
-      const both = notes.length > 0 && selection.some((item) => item.kind !== 'annotation');
+      // Both only when the sketch's own Delete takes something (a profile, say, it doesn't).
+      const both =
+        notes.length > 0 &&
+        selectedEntities(stores).length +
+          selectedConstraints(stores).length +
+          selectedDimensions(stores).length >
+          0;
       const state = stores.store.getState();
       if (both) {
         state.beginTransaction(
@@ -1419,10 +1434,13 @@ function Shell({
               const points =
                 notes.size === 0
                   ? []
-                  : placeAnnotations(
+                  : placedNow(
                       stores.store.getState().doc,
-                      modelState?.annotations ?? {},
-                      modelState?.sketches ?? {},
+                      {
+                        annotations: modelState?.annotations ?? {},
+                        sketches: modelState?.sketches ?? {},
+                      },
+                      openSketchRef.current,
                     )
                       .filter((p) => notes.has(p.annotation.id))
                       .map((p) => p.at);
@@ -2456,6 +2474,7 @@ function Shell({
         : undefined,
     [mode, activeSketchId, sketchPlane],
   );
+  openSketchRef.current = openSketch;
   // The right-click marking menu (P3-11): offered while nothing else owns the pointer.
   const runningTool = useMemo(
     () =>
@@ -2512,6 +2531,20 @@ function Shell({
           })
         : undefined,
     [annotating, sessionSelect, store, session, annotationsUi, kernel, notify],
+  );
+  // Dragging a note's anchor dot onto other geometry (ADR-0126 S4): the tool's picks.
+  const reanchor = useMemo(
+    () =>
+      createReanchor({
+        store,
+        viewport,
+        bodies: () => bodiesRef.current,
+        resolve: kernel?.resolveAnnotation
+          ? (annotation) => kernel.resolveAnnotation?.(annotation) ?? Promise.resolve(undefined)
+          : undefined,
+        openSketch: () => openSketchRef.current,
+      }),
+    [store, viewport, kernel],
   );
   // While Measure runs, two plain clicks pick two things to measure between.
   const measureSelect = useMemo(
@@ -2963,6 +2996,7 @@ function Shell({
                   viewport={viewport}
                   ui={annotationsUi}
                   {...(openSketch && { openSketch })}
+                  reanchor={reanchor}
                   interactive={
                     !picking &&
                     !dialogOpen &&

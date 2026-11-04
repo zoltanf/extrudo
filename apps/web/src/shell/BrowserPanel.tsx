@@ -1181,6 +1181,14 @@ function AnnotationsFolder({
           >
             {behind === 'ghost' ? 'Show through' : 'Ghost behind the part'}
           </MenuItem>
+          <MenuSeparator />
+          <MenuItem
+            icon={<Trash2 size={14} />}
+            disabled={!notes.some((note) => note.done)}
+            onSelect={() => actions.removeDone()}
+          >
+            Delete all done
+          </MenuItem>
         </>
       }
     >

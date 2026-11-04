@@ -16,6 +16,7 @@ import {
   readSketch,
   type SelectionItem,
   type SessionStore,
+  type SketchData,
   type SketchEntityId,
   type SketchFrame,
   sketchToWorld,
@@ -94,7 +95,7 @@ export function createAnnotateSelect(deps: AnnotateToolDeps): ModelSelect {
       if (!at) return;
       if (!mayStartDraft(ui)) return;
       const mine = ++generation;
-      anchorFor(deps, item, at)
+      modelAnchorFor(deps, item, at)
         .then((anchor) => {
           if (mine !== generation || !anchor || !deps.active()) return;
           ui.getState().setDraft({
@@ -112,8 +113,12 @@ export function createAnnotateSelect(deps: AnnotateToolDeps): ModelSelect {
   };
 }
 
-async function anchorFor(
-  { bodies, resolve }: AnnotateToolDeps,
+/**
+ * The anchor a pick makes (the tool's click, a dragged anchor dot's drop): a `model` anchor on
+ * what was hit, through the kernel's name and fingerprint, or a `free` one at the point.
+ */
+export async function modelAnchorFor(
+  { bodies, resolve }: Pick<AnnotateToolDeps, 'bodies' | 'resolve'>,
   item: SelectionItem | undefined,
   at: readonly [number, number, number],
 ): Promise<AnnotationAnchor | undefined> {
@@ -165,13 +170,10 @@ export function createSketchAnnotateInput(deps: SketchAnnotateDeps): SketchInput
     onClick: (pointer) => {
       if (!mayStartDraft(ui)) return;
       const current = data();
-      const entity = entityAt(pointer);
-      const base = current && entity ? annotationEntityPoint(current, entity) : undefined;
       const [x, y] = pointer.point;
-      const anchor: AnnotationAnchor =
-        entity && base
-          ? { kind: 'sketch', sketch, at: [x - base[0], y - base[1]], entity }
-          : { kind: 'sketch', sketch, at: [x, y] };
+      const anchor: AnnotationAnchor = current
+        ? sketchAnchorFor(current, sketch, pointer.point, entityAt(pointer))
+        : { kind: 'sketch', sketch, at: [x, y] };
       const world = sketchToWorld(frame, [x, y]);
       ui.getState().setDraft({
         anchor,
@@ -180,4 +182,21 @@ export function createSketchAnnotateInput(deps: SketchAnnotateDeps): SketchInput
       });
     },
   };
+}
+
+/**
+ * The anchor a click in an open sketch makes (the tool, a dragged anchor dot's drop): on the
+ * entity under it (`at` the offset from its reference point), else at that sketch position.
+ */
+export function sketchAnchorFor(
+  data: SketchData,
+  sketch: FeatureId,
+  point: readonly [number, number],
+  entity: SketchEntityId | undefined,
+): AnnotationAnchor {
+  const base = entity ? annotationEntityPoint(data, entity) : undefined;
+  const [x, y] = point;
+  return entity && base
+    ? { kind: 'sketch', sketch, at: [x - base[0], y - base[1]], entity }
+    : { kind: 'sketch', sketch, at: [x, y] };
 }

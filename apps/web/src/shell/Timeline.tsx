@@ -25,6 +25,7 @@ import {
   useState,
 } from 'react';
 import { useStore } from 'zustand';
+import { AnnotationHint } from '../annotations/AnnotationHint';
 import {
   ContextMenu,
   IconButton,
@@ -401,6 +402,7 @@ export function Timeline({
       <span className="flex-1" />
       {macro && <MacroRecording macro={macro} store={store} />}
       {session && <ActiveComponent session={session} store={store} />}
+      {session && model && <AnnotationHint session={session} store={store} model={model} />}
       {session && <SelectionState session={session} store={store} size={selectionSize} />}
       <output className="font-mono text-[11px] whitespace-nowrap text-muted" aria-label="Status">
         {activeSketch ? `Editing ${activeSketch} · ` : ''}

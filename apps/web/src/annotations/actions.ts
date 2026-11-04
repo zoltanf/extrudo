@@ -13,7 +13,7 @@ import {
   updateAnnotation,
 } from '@extrudo/core';
 import type { ViewportStore } from '../viewport/store';
-import { placeAnnotations } from './anchor';
+import { type OpenSketch, placedNow } from './anchor';
 import type { AnnotationsUiStore } from './ui';
 
 export interface AnnotationActions {
@@ -25,6 +25,8 @@ export interface AnnotationActions {
   setHidden(id: AnnotationId, hidden: boolean): void;
   setDone(id: AnnotationId, done: boolean): void;
   remove(ids: readonly AnnotationId[]): void;
+  /** Deletes every ticked-off note, one step ("Delete 3 done annotations"). */
+  removeDone(): void;
 }
 
 const annotationByNumberOf = (store: DocumentStore, id: AnnotationId) =>
@@ -40,8 +42,14 @@ export function createAnnotationActions(deps: {
   viewport: ViewportStore;
   ui: AnnotationsUiStore;
   notify(message: string): void;
+  /** The sketch open for editing: its notes are drawn even while the sketch is hidden. */
+  openSketch(): OpenSketch | undefined;
 }): AnnotationActions {
   const { store, session, model, viewport, ui, notify } = deps;
+  const placed = (id: AnnotationId) =>
+    placedNow(store.getState().doc, model.getState(), deps.openSketch()).find(
+      (p) => p.annotation.id === id,
+    );
   const run = (command: Parameters<ReturnType<DocumentStore['getState']>['dispatch']>[0]) => {
     try {
       store.getState().dispatch(command);
@@ -54,12 +62,9 @@ export function createAnnotationActions(deps: {
     select(id, toggle) {
       session.getState().select([{ kind: 'annotation', id }], toggle ? 'toggle' : 'replace');
       if (toggle) return;
-      const { annotations, sketches } = model.getState();
-      const placed = placeAnnotations(store.getState().doc, annotations, sketches).find(
-        (p) => p.annotation.id === id,
-      );
-      if (!placed) return;
-      const [x, y, z] = placed.at;
+      const found = placed(id);
+      if (!found) return;
+      const [x, y, z] = found.at;
       viewport.getState().lookAtBox({
         min: [x - LOOK_ROOM, y - LOOK_ROOM, z - LOOK_ROOM],
         max: [x + LOOK_ROOM, y + LOOK_ROOM, z + LOOK_ROOM],
@@ -72,11 +77,7 @@ export function createAnnotationActions(deps: {
     },
     edit(id) {
       // Only a note the view can place can be edited in place (a sketch note needs its sketch).
-      const { annotations, sketches } = model.getState();
-      const placed = placeAnnotations(store.getState().doc, annotations, sketches).find(
-        (p) => p.annotation.id === id,
-      );
-      if (!placed) {
+      if (!placed(id)) {
         notify(`#${annotationByNumberOf(store, id)} isn't drawn: show its sketch to edit it.`);
         return;
       }
@@ -85,5 +86,15 @@ export function createAnnotationActions(deps: {
     setHidden: (id, hidden) => run(updateAnnotation({ id, changes: { hidden } })),
     setDone: (id, done) => run(updateAnnotation({ id, changes: { done } })),
     remove: (ids) => run(removeAnnotation({ ids })),
+    removeDone() {
+      const ids = (store.getState().doc.annotations ?? []).filter((a) => a.done).map((a) => a.id);
+      if (ids.length === 0) return;
+      const state = store.getState();
+      state.beginTransaction(
+        `Delete ${ids.length} done ${ids.length === 1 ? 'annotation' : 'annotations'}`,
+      );
+      run(removeAnnotation({ ids }));
+      state.commitTransaction();
+    },
   };
 }
