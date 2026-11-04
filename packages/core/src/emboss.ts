@@ -203,19 +203,21 @@ export function embossMethodsText(methods: readonly EmbossMethod[]): string {
   const counts = new Map<EmbossMethod, number>();
   for (const method of methods) counts.set(method, (counts.get(method) ?? 0) + 1);
   const text = [...counts]
-    .map(([method, n]) => {
-      if (n === 1) return embossMethodText(method).toLowerCase();
-      switch (method) {
-        case 'moved':
-          return `moved onto ${n} faces`;
-        case 'wrapped-cylinder':
-          return `wrapped round ${n} cylinders`;
-        case 'wrapped-cone':
-          return `wrapped round ${n} cones`;
-        case 'projected':
-          return `projected onto ${n} faces`;
-      }
-    })
+    .map(([method, n]) => (n === 1 ? embossMethodText(method) : manyText(method, n)).toLowerCase())
     .join(', ');
   return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** "Moved onto 2 faces": a method several faces took. */
+function manyText(method: EmbossMethod, n: number): string {
+  switch (method) {
+    case 'moved':
+      return `Moved onto ${n} faces`;
+    case 'wrapped-cylinder':
+      return `Wrapped round ${n} cylinders`;
+    case 'wrapped-cone':
+      return `Wrapped round ${n} cones`;
+    case 'projected':
+      return `Projected onto ${n} faces`;
+  }
 }

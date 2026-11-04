@@ -243,11 +243,12 @@ function toolOn(
       return wrappedTool(ctx, scope, parts, hit, kind.round, mode, depth);
     case 'moved':
       return flatTool(ctx, scope, parts, hit, kind.flat, mode, depth);
-    case 'projected':
-      return projectedTool(ctx, scope, parts, hit, mode, depth) as {
-        tool: NamedShape;
-        data: EmbossOutputData;
-      };
+    case 'projected': {
+      // Unclipped, a part that misses the face is refused, so there is a tool.
+      const projected = projectedTool(ctx, scope, parts, hit, mode, depth);
+      if (!projected) throw new KernelError(MISSES);
+      return projected;
+    }
   }
 }
 

@@ -822,7 +822,7 @@ describe('emboss on several faces', { timeout: 300_000 }, () => {
     const side = (k: number) => `extrude:E:side:${square.lines[k]}`;
     const first = ok(await run([square.feature, extrude]));
     const corner = edgeName([side(1), side(2)]);
-    const index = first.bodies[0]?.mesh?.edgeIds.indexOf(corner) ?? -1;
+    const index = first.bodies[0]?.mesh?.edgeIds?.indexOf(corner) ?? -1;
     const edge = engine.reference('E:0' as never, 'edge', index);
     if (!edge) throw new Error(`no edge ${corner}`);
     const fillet = feature('F', 'fillet', filletInputs([{ edges: [edge], radius: '5 mm' }]));

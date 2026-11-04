@@ -179,7 +179,7 @@ describe('the emboss dialog', () => {
     expect(Object.keys(inputs).sort()).toEqual(['depth', 'face', 'mode', 'profiles']);
     expect(embossSettings(inputs as never)).toMatchObject({
       profiles: [RECT],
-      face: TOP,
+      faces: [TOP],
       depth: 'depth',
       mode: 'deboss',
     });
