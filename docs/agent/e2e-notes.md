@@ -190,6 +190,30 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   for `getByRole`): say results inside the dialog (the Versions dialog's
   status line "Versions status").
 
+### `e2e/annotations.spec.ts`
+
+- **Annotations in the 3D view** (ADR-0126 S2). The overlay is a layer inside the viewport
+  region with `data-annotations`: `<number>:<status>:<state>` per note in number order,
+  space-separated (`status` `ok|moved|detached|pending`, `state` `full|done|ghost|hidden`;
+  `hidden` for a note whose eye or the folder's eye is off, or a sketch note whose sketch isn't
+  shown). Each callout is `[data-annotation="<n>"]` (`role="note"`) with
+  `data-annotation-state`, `data-annotation-text` (`always|numbers`), `data-annotation-behind`
+  while ghosted, `data-annotation-detached`, `data-selected`, and `data-anchor` (`x,y`, the
+  anchor's px in the view, written as the camera moves: compare it to see a note follow a
+  parameter). The in-place editor is `[data-annotation-editor]` (a textarea; Enter commits,
+  Esc cancels).
+- The browser folder's rows are `[data-annotation-row="<n>"]` with buttons `Hide #n` / `Show #n`
+  and `Mark #n done`; the folder's eye is `Hide all annotations` / `Show all annotations`,
+  its right-click menu has `Numbers only` / `Show text` and `Show through` /
+  `Ghost behind the part`.
+- **Traps:** a note whose row (or callout) is under the pointer is drawn in full: move the
+  pointer onto the view before checking `ghost`. The ghost check runs 150 ms after the camera
+  stops, so wait with `turnView` (it waits for `settled`). A note the tool just made is
+  selected: press Esc before testing what an unselected note shows. After a parameter makes
+  the part taller, fit (`F6`) before clicking a callout: its box may sit under the toolbar.
+- The tool's clicks: `clickWhere(page, at, point, /^face:/)` with the orthographic home view;
+  a click on empty view space makes a `free` note on the grid plane.
+
 ### `e2e/auto-project.spec.ts`
 
 - **Auto-project e2e** (`e2e/auto-project.spec.ts`, P6-07): a Box primitive
