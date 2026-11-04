@@ -1263,6 +1263,7 @@ export interface FeatureMethods {
    * @param inputs.file The file to import: an attachment of this design with a `model/*` media type or an OpenSCAD file (a STEP solid, a mesh, or a `.scad` file compiled to a mesh). Required.
    * @param inputs.units Meshes only: what unit the file's numbers are in (`auto` takes a 3MF's own). STEP converts its own units. Default auto.
    * @param inputs.up The file's up axis; `y` turns it +90° about X (Y-up to Z-up). Default z.
+   * @param inputs.position Where the bodies land, after the `up` turn: `file` keeps the file's coordinates; `centre` moves them together so their box's centre is over the origin and its bottom on the XY plane; the app's Import dialog picks `centre`. Default file.
    * @param inputs.scadName OpenSCAD files only: override 1's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
    * @param inputs.scadValue OpenSCAD files only: override 1's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees; a parameter given as a handle keeps its own unit). Needs its variable.
    * @param inputs.scadName2 OpenSCAD files only: override 2's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.

@@ -57,7 +57,8 @@ These are in the Home tab's **Import** group.
   real faces when you need to fillet, shell or sketch on it. Tick **As solid** in the Import dialog to do both in
   one step. An OpenSCAD file is compiled in your browser, and
   its customizer variables show up as fields you can change. The **Up** setting says whether the
-  file's up is Z or Y, and a mesh has a **Units** setting. An `.f3d` file picked here opens as a
+  file's up is Z or Y, and a mesh has a **Units** setting. **Position** centres the model on the
+  origin, standing on the XY plane (the default), or keeps it where the file has it. An `.f3d` file picked here opens as a
   new design instead, with its parameters, sketches, pulled solids, fillets and chamfers; a
   notice says what came across. Extrudo also checks each body it rebuilt against the shape
   stored in the file. A body it couldn't rebuild, or rebuilt differently, comes in as the

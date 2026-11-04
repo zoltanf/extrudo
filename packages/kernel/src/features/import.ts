@@ -10,6 +10,9 @@
  * roots), the mesh branch is manifold-3d (`meshFrom`, ADR-0066 §3), the `up`
  * turn is `transform` (ADR-0044) for both, and one body per piece is
  * `splitSolids` (ADR-0030) for a solid and `Manifold.decompose()` for a mesh.
+ * `position` `centre` (ADR-0066's amendment of 2026-11-04) is one more
+ * `transform` after the turn: all of the file's bodies by the same move, so
+ * their box is centred over the origin and stands on the XY plane.
  *
  * **Colours** (P4-12, ADR-0034's amendment): a STEP file that names a colour
  * is read once more through XDE (the facade's `readStepColors`), and each
@@ -53,6 +56,7 @@ import {
   type IMPORT_UNITS,
   type ImportInputs,
   type ImportReport,
+  type ImportSettings,
   importFeature,
   importSettings,
   isMeshMediaType,
@@ -80,7 +84,7 @@ import type {
   PrepareContext,
 } from '../recompute/types';
 import { splitSolids } from './bodies';
-import { rotation } from './matrix';
+import { rotation, translation } from './matrix';
 
 /** The units an `import` reads a mesh file's numbers in. */
 type MeshUnits = (typeof IMPORT_UNITS)[number];
@@ -110,14 +114,25 @@ export const kernelImport: KernelFeatureDefinition<ImportInputs> = {
 /** A turn of +90° about X: a Y-up file becomes Z-up (ADR-0066 §2). */
 const UP_Y = rotation([0, 0, 0], [1, 0, 0], Math.PI / 2);
 
+/** How the file's bodies are placed: the `up` turn, then `position`. */
+type Placement = Pick<ImportSettings, 'up' | 'position'>;
+
+/**
+ * The move that centres a box over the origin and stands it on the XY plane
+ * (`position` `centre`, ADR-0066's amendment of 2026-11-04).
+ */
+function toOrigin(box: { readonly min: Vec3; readonly max: Vec3 }): Vec3 {
+  return [-(box.min[0] + box.max[0]) / 2, -(box.min[1] + box.max[1]) / 2, -box.min[2]];
+}
+
 function evaluateImport(ctx: EvalContext<ImportInputs>): FeatureOutput {
   const settings = importSettings(ctx.inputs);
   const mediaType = ctx.fileType(settings.file);
   if (isScadMediaType(mediaType)) {
-    return evaluateScadImport(ctx, settings.file, settings.units, settings.up);
+    return evaluateScadImport(ctx, settings.file, settings.units, settings);
   }
   if (isMeshMediaType(mediaType)) {
-    return evaluateMeshImport(ctx, settings.file, settings.units, settings.up);
+    return evaluateMeshImport(ctx, settings.file, settings.units, settings);
   }
   if (mediaType !== 'model/step') {
     throw new KernelError(
@@ -151,8 +166,17 @@ function evaluateImport(ctx: EvalContext<ImportInputs>): FeatureOutput {
     );
   }
   // The turn rebuilds the shape with the same sub-shape order, so the faces
-  // are numbered the file's own either way.
-  const placed = settings.up === 'y' ? scope.track(ctx.kernel.transform(read, UP_Y).shape) : read;
+  // are numbered the file's own either way; so does the move to the origin,
+  // whose box is `properties`' (the exact geometry's: `measure`'s adds the
+  // tolerances), so the bottom lands on z = 0.
+  const turned = settings.up === 'y' ? scope.track(ctx.kernel.transform(read, UP_Y).shape) : read;
+  const placed =
+    settings.position === 'centre'
+      ? scope.track(
+          ctx.kernel.transform(turned, translation(toOrigin(ctx.kernel.properties(turned).bbox)))
+            .shape,
+        )
+      : turned;
   const id = ctx.bodyId(0);
   const bodies = new Map(ctx.bodies);
   // The names before the keep: a shape kept and then lost to a throw would
@@ -293,8 +317,8 @@ function importNames(ctx: EvalContext, shape: ShapeHandle): TopoNames {
 }
 
 /**
- * The mesh branch (P4-06, ADR-0066 §3): `@extrudo/io` reads the file, `units`
- * and `up` are applied, `meshFrom` makes a body of each object and
+ * The mesh branch (P4-06, ADR-0066 §3): `@extrudo/io` reads the file, `units`,
+ * `up` and `position` are applied, `meshFrom` makes a body of each object and
  * `decompose()` splits it into its connected pieces, so a file of several
  * parts is one body each. The pieces are numbered as `splitSolids` numbers a
  * solid's (ADR-0030): the largest keeps the feature's first body ID.
@@ -303,21 +327,22 @@ function evaluateMeshImport(
   ctx: EvalContext<ImportInputs>,
   file: AttachmentId,
   units: MeshUnits,
-  up: 'z' | 'y',
+  placement: Placement,
 ): FeatureOutput {
-  return meshBodies(ctx, ctx.fileName(file), readMeshFile(ctx, file, units), up);
+  return meshBodies(ctx, ctx.fileName(file), readMeshFile(ctx, file, units), placement);
 }
 
-/** Meshes as bodies: `meshFrom`, the `up` turn, one body per connected piece. */
+/** Meshes as bodies: `meshFrom`, the `up` turn, one body per connected piece, `position`. */
 function meshBodies(
   ctx: EvalContext<ImportInputs>,
   name: string,
   meshes: readonly TriangleMesh[],
-  up: 'z' | 'y',
+  placement: Placement,
 ): FeatureOutput {
   const { kernel } = ctx;
   using scope = kernel.scope();
-  const pieces: { shape: ShapeHandle; center: Vec3; volume: number }[] = [];
+  type Box = { min: Vec3; max: Vec3 };
+  const pieces: { shape: ShapeHandle; center: Vec3; volume: number; bbox: Box }[] = [];
   for (const mesh of meshes) {
     let whole: ShapeHandle;
     // A split and a drop are one warning, the drop first (ADR-0066's
@@ -348,13 +373,14 @@ function meshBodies(
       ctx.warn([dropNote, splitNote].filter(Boolean).join(' '));
     }
     // The turn: (x, y, z) → (x, −z, y), so a Y-up file stands up in Z.
-    const turned = up === 'y' ? scope.track(kernel.transform(whole, UP_Y).shape) : whole;
+    const turned = placement.up === 'y' ? scope.track(kernel.transform(whole, UP_Y).shape) : whole;
     for (const piece of kernel.solids(turned)) {
       scope.track(piece);
       const { volume, bbox } = kernel.measure(piece);
       pieces.push({
         shape: piece,
         volume,
+        bbox,
         center: [
           (bbox.min[0] + bbox.max[0]) / 2,
           (bbox.min[1] + bbox.max[1]) / 2,
@@ -372,6 +398,19 @@ function meshBodies(
   const largest = ordered.reduce((best, piece) => (piece.volume > best.volume ? piece : best));
   ordered.splice(ordered.indexOf(largest), 1);
   ordered.unshift(largest);
+  // Centred: every piece by the same move, from the box of them all, so a
+  // file's parts keep their places; after the ordering, so the bodies keep
+  // the IDs they have at the file's coordinates.
+  if (placement.position === 'centre') {
+    const min = (i: number) => Math.min(...pieces.map((p) => p.bbox.min[i] as number));
+    const max = (i: number) => Math.max(...pieces.map((p) => p.bbox.max[i] as number));
+    const move = translation(
+      toOrigin({ min: [min(0), min(1), min(2)], max: [max(0), max(1), max(2)] }),
+    );
+    for (const piece of ordered) {
+      piece.shape = scope.track(kernel.transform(piece.shape, move).shape);
+    }
+  }
   const used = new Set(ctx.bodies.keys());
   const bodies = new Map(ctx.bodies);
   const names = new Map<BodyId, TopoNames>();
@@ -568,13 +607,13 @@ function evaluateScadImport(
   ctx: EvalContext<ImportInputs>,
   file: AttachmentId,
   units: MeshUnits,
-  up: 'z' | 'y',
+  placement: Placement,
 ): FeatureOutput {
   const compiled = ctx.prepared as ScadCompiled | undefined;
   const name = ctx.fileName(file);
   if (!compiled) throw new KernelError(`${name} wasn't compiled: OpenSCAD isn't loaded here.`);
   const meshes = threeMfMeshes(read(read3mf, compiled.model, name), units, name);
-  const output = meshBodies(ctx, name, meshes, up);
+  const output = meshBodies(ctx, name, meshes, placement);
   for (const warning of compiled.warnings) ctx.warn(warning);
   return output;
 }

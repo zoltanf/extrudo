@@ -1,0 +1,1 @@
+- 2026-11-04 · **Import Model**: a new import is centred on the origin and stands on the XY plane; the dialog's new **Position** setting keeps the file's coordinates instead. Imports in designs saved before keep their place.

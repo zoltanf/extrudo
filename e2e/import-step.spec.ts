@@ -75,6 +75,8 @@ test('a STEP file becomes one body per solid, and undo takes it away', async ({ 
   await expect(panel.getByRole('combobox', { name: 'Units' })).toHaveCount(0);
   // And no As solid: a STEP file comes in as a solid already (ADR-0097 §6).
   await expect(panel.getByRole('checkbox', { name: 'As solid' })).toHaveCount(0);
+  // A new import is centred on the origin, on the XY plane (2026-11-04).
+  await expect(panel.getByRole('combobox', { name: 'Position' })).toHaveValue('centre');
   // The live preview drew the two solids before OK.
   await expect(panel).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
 

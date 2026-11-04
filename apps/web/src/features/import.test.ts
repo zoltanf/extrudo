@@ -1,6 +1,7 @@
 // The Import dialog (P4-06, ADR-0066 §0, §2): the file it read is a read-only
-// line, `Units` is there for a mesh only, `Up` turns a Y-up file, and OK adds
-// the attachment record and the feature as one undo step.
+// line, `Units` is there for a mesh only, `Up` turns a Y-up file, `Position`
+// centres it on the origin by default (2026-11-04), and OK adds the attachment
+// record and the feature as one undo step.
 import {
   type AttachmentId,
   type ComponentId,
@@ -38,7 +39,7 @@ import {
 } from './scadRows';
 import type { DialogContext, DialogValues } from './spec';
 import { setupDialogs } from './testing';
-import { shownFields } from './values';
+import { shownFields, valuesFor } from './values';
 
 const pick = (
   fileName: string,
@@ -73,13 +74,19 @@ describe('the Import dialog', () => {
     t.controller.start('import');
     const values = (t.open()?.values ?? {}) as DialogValues;
     const ctx = contextOf(emptyDocument(), pending);
-    expect(shownFields(importDialog, values, ctx).map((f) => f.name)).toEqual(['file', 'up']);
+    expect(shownFields(importDialog, values, ctx).map((f) => f.name)).toEqual([
+      'file',
+      'up',
+      'position',
+    ]);
     // The file is a read-only line: it fills no input and takes no picks.
     expect(importDialog.fields[0]).toMatchObject({ kind: 'info', name: 'file', label: 'File' });
     expect(importedFile(ctx)).toEqual(pending);
+    // A new import is centred on the origin unless the user says otherwise.
     expect(importDialog.toInputs?.(values, ctx)).toEqual({
       file: { kind: 'file', id: pending.id },
       up: { kind: 'enum', value: 'z' },
+      position: { kind: 'enum', value: 'centre' },
     });
   });
 
@@ -94,6 +101,7 @@ describe('the Import dialog', () => {
       'file',
       'units',
       'up',
+      'position',
       'solid',
     ]);
     t.controller.setChoice('units', 'in');
@@ -237,6 +245,29 @@ describe('the Import dialog', () => {
     expect(t.store.getState().doc.features.at(-1)?.inputs.up).toEqual({
       kind: 'enum',
       value: 'z',
+    });
+  });
+
+  it("opens an import stored without a position at the file's coordinates, and keeps it there", () => {
+    const pending = pick('b3.step');
+    const t = setupDialogs([importDialog]);
+    t.controller.start('import');
+    t.controller.ok();
+    const id = t.store.getState().doc.features.at(-1)?.id;
+    if (!id) throw new Error('no feature');
+    expect(t.store.getState().doc.features.at(-1)?.inputs.position).toEqual({
+      kind: 'enum',
+      value: 'centre',
+    });
+    // As a design stored before the input was there has it.
+    const feature = t.store.getState().doc.features.find((f) => f.id === id);
+    if (!feature) throw new Error('no feature');
+    const { position: _, ...older } = feature.inputs;
+    const ctx = contextOf(t.store.getState().doc, pending, { ...feature, inputs: older });
+    const values = valuesFor(importDialog, { ...feature, inputs: older }, ctx);
+    expect(values.choices.position).toBe('file');
+    expect(importDialog.toInputs?.(values, ctx)).toMatchObject({
+      position: { kind: 'enum', value: 'file' },
     });
   });
 
