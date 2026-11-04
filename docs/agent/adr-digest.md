@@ -4024,3 +4024,23 @@ refuse `annotate`, `annotation` and `annotations`. The sketch glyph and label ri
 is `sketch/tools/glyphMenu.tsx` (`useGlyphMenu`), renamed from `annotationMenu.tsx` so
 "annotation" means only these notes. S2–S4 (the overlay, the Annotate tool, sketch mode,
 polish) are open.
+**S2 (the 3D view, 2026-11-04):** `apps/web/src/annotations/` — `AnnotationsOverlay.tsx` (a
+child of the viewport next to `MeasureOverlay`, z-[4], model mode only), `anchor.ts`
+(`fingerprintedAnchor`, the one path that stores a new anchor's ref with the kernel's
+fingerprint, used by the tool and the agent tools; `placeAnnotations`, the world point per
+note), `layout.ts` (`calloutBox`, `boxOffset`, `leaderEnd`), `tool.ts` (`ANNOTATE_TOOL`,
+`createAnnotateSelect`), `ui.ts` (the editing note or the tool's draft: view state), `actions.ts`
+(the browser rows). Rules a change must keep: **positions follow the camera imperatively** (a
+`viewport.subscribe` writing `style.transform`, never a React render per frame); **the ghost
+check runs after the camera settles (150 ms) and after a recompute** (the view sets
+`ViewportState.occluded`, `pick.ts`'s `occludedPoints`, anew per scene), never per frame; a
+selected, hovered (view or browser row) or edited note is always full; **`offset` runs from the
+anchor to the callout's bottom-left corner** (a default one mirrors to fit, a dragged one stays);
+**the tool adds nothing until the text is committed** (a draft in `ui.ts`; Esc or an empty text
+leaves no step); `SelectionItem.kind` `'annotation'` (`PICKED`, `NOUNS`, `itemLabel` with
+`LabelContext.annotation`, `pruneAnnotations` on document changes); Delete on a selection of only
+notes is `removeAnnotation`; `ModelSelect.onClick`'s third argument is the click's world point
+(the hit's depth, else the grid plane z = 0). **A new `ViewportSettings` key goes in four places**
+(the interface, `DEFAULT_SETTINGS`, both lists of the persisting subscribe) and in the settings
+inventory: `annotations` (the folder's eye, App menu › Toggles, `toggleAnnotations`),
+`annotationsBehind` (`ghost|show`), `annotationText` (`always|numbers`).

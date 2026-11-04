@@ -3,7 +3,7 @@
 - **Status:** Accepted (S1), 2026-11-03 (the owner asked for the spec, display
   options and the slices). Display chosen 2026-11-04: callouts, text always
   visible (option 2), ghosted behind the part. S1 landed with the amendments
-  under "Amendment (S1)".
+  under "Amendment (S1)"; S2 (2026-11-04) under "Amendment (S2)".
 - **Task:** P6-23 (`docs/03-roadmap.md`).
 - **Builds on:** ADR-0003 (commands, undo), ADR-0005 (topological naming,
   `GeomRef`, fingerprints), ADR-0068 (the document API), ADR-0069 (the CLI),
@@ -382,6 +382,28 @@ Where S1 had to decide what the spec left open, or the code disagreed with it:
   gives a deleted number again. `add_annotation` names its step and answers the
   number as the step begins, and the agent anchors also take `{ plane }`,
   `{ axis }` and `{ point }`, which need no bodies.
+
+## Amendment (S2, 2026-11-04)
+
+- **`offset` runs from the anchor to the callout's bottom-left corner** (screen px, y down):
+  one convention for every side, so a drag never makes the callout jump. The default
+  `[28, -28]` is mirrored left (by the callout's width) or down when it would leave the view;
+  a stored (dragged) offset is kept as it is.
+- **The Annotate tool drafts, it doesn't add with an empty text** (`addAnnotation` refuses an
+  empty text, S1): a click opens the editor of a draft that shows the next number, and the note
+  is added, one undo step, when the text is committed; Esc or an empty text leaves nothing. A
+  click while a draft or an edit is open only ends that one (the editor commits on blur).
+- **A click on nothing makes a `free` note on the grid plane z = 0** (the view's clicks now carry
+  their world point: `ModelSelect.onClick(item, toggle, at)`).
+- **The occlusion test** is `pick.ts`'s `occludedPoints` behind `ViewportState.occluded`, which
+  the view sets anew whenever its scene changes (so a recompute re-checks); the overlay passes
+  its own size. A note hovered in the browser counts as hovered in the view (drawn in full).
+- **`data-annotations` is on the overlay layer** inside the viewport region (not on the region
+  element itself), and callouts are `role="note"`; the browser rows are the keyboard path.
+- **Sketch notes in model mode** are drawn through their sketch's frame while the sketch feature
+  is visible (`placeAnnotations`); drawing and making them in an open sketch stays S3.
+- **Deleting a feature a note is on** leaves it `detached` (drawn at `anchor.at`, dashed, hollow
+  badge); the status bar message of §4 is not shown yet (left for S4).
 
 ## Rejected
 

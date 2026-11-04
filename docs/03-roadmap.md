@@ -1650,7 +1650,7 @@ end to end, faster than in established desktop CAD.
   naming service and show as detached when it is gone. Acceptance: ADR-0126 §9 per slice;
   `pnpm check`, `e2e/annotations.spec.ts`, CI green.
   - [x] S1 Model and agents: schema, commands, kernel resolution, MCP tools, skill, API, CLI.
-  - [ ] S2 3D view: overlay, Annotate tool (`N`), selection, browser folder, toggles.
+  - [x] S2 3D view: overlay, Annotate tool (`N`), selection, browser folder, toggles.
   - [ ] S3 Sketch mode.
   - [ ] S4 Polish: re-anchor by drag, `screenshot { annotations }`, example file.
 

@@ -100,7 +100,7 @@ brief, voice) is in **`05-brand.md`**. In short:
   review 3, R3-09, where there was one Files group); Parameters, Customizer),
   `SOLID` (default: Create, Primitives, Features, Pattern, Program, Component),
   `MODIFY` (Modify, Transform), `CONSTRUCT` (Planes, Axes, Points, and
-  **Inspect**: Measure, Section Analysis — there is no Inspect tab since R3-10,
+  **Inspect**: Measure, Annotate, Section Analysis — there is no Inspect tab since R3-10,
   a tab of two tools took room) and `3D PRINT` (our addition: export,
   orientation, overhang, slicer hand-off, mass/filament). **Plugins…** is an
   item of the app menu and a Ctrl+K command (R3-12), not a tile. `SKETCH` shows only while editing
@@ -713,6 +713,41 @@ A list on the left, the selected parameter on the right.
   selects it. A design without parameters opens on the form.
 - A refused change shows its message at the top of the inspector.
 
+### 3.6 Annotations (P6-23, ADR-0126)
+
+Numbered notes on the model: **#1, #2, …**, a number never given twice. In the
+3D view each is a **callout**: a box at an offset from its anchor (default
+28 px right and up, mirrored left or down when it would leave the view, then
+wherever it was dragged; it never moves by itself), with an 18 px badge (the
+number, white on accent) and the text, wrapped at 36 ch and cut to three
+lines; the whole text shows while hovered, selected or edited. A 1 px leader
+runs from a 4 px dot at the anchor to the box's nearest edge.
+
+- **States.** Selected: accent border and ring. Detached (its geometry is
+  gone): dashed border, hollow badge, drawn where it was. **Done**: collapsed
+  to its muted badge, the text on hover. **Behind the part**: a faint dashed
+  badge without leader or text, so it never reads as a note about the face in
+  front; selected, hovered (in the view or the browser) or edited, it is drawn
+  in full. Checked after the camera settles and after a recompute.
+- **Annotate** (Construct › Inspect, `N`, model mode): hovering highlights what
+  a click pins the note to (face, edge, vertex, body, plane, axis, point, a
+  sketch curve); a click there, or on empty space (a point on the grid plane),
+  opens the editor with the next number shown. Enter adds the note (one undo
+  step), Shift+Enter is a newline, Esc or an empty text adds nothing. The tool
+  stays on until Esc.
+- **On a callout:** click selects (Shift/Ctrl/⌘ toggles), Delete deletes the
+  selected notes, double-click edits in place, a drag moves the callout (one
+  undo step), right-click: Edit, Hide, Done, Delete. The wheel and the middle
+  and right buttons still navigate over it.
+- **Browser › Annotations** (below Analysis, while there are any): `#n` and
+  the first line, open ones by number then the done ones; per row a done tick
+  and an eye (hides that note, saved in the design); click selects and turns
+  the view to it, double-click or F2 edits. The folder's eye hides them all
+  (a preference, also App menu › Toggles › Annotations and the
+  `toggleAnnotations` command); its menu: **Numbers only** / **Show text**
+  (every callout collapsed to its badge, text on hover and selection) and
+  **Show through** / **Ghost behind the part**.
+
 ## 4. Sketch mode
 
 - Enter by: Create Sketch → pick a plane or face; double-click a sketch in the
@@ -829,6 +864,7 @@ Follow mainstream CAD tools where they have a shortcut; remappable in settings.
 | T | Trim | S | Search at the pointer |
 | O | Offset | I | Measure |
 | X | Construction toggle | Delete | Delete |
+| N | Annotate (model) | | |
 | Ctrl+Z / Ctrl+Y | Undo / Redo | Ctrl+K | Search |
 | Ctrl+S | Save version | Esc | Cancel / clear |
 | F6 | Fit | Shift+1…7 | Standard views (ours) |
