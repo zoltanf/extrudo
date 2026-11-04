@@ -13,8 +13,8 @@ import { MenuItem, PointMenu } from '../../design-system';
 import { CLICK_SLOP } from '../../viewport/pointer';
 
 /**
- * What a right click on an annotation selects: nothing new when it is already selected (the
- * menu acts on the whole selection, like Delete), else just that annotation.
+ * What a right click on a glyph or label selects: nothing new when it is already selected (the
+ * menu acts on the whole selection, like Delete), else just that glyph or label.
  */
 export function menuSelection(
   selection: readonly SelectionItem[],
@@ -43,7 +43,7 @@ interface OpenMenu {
   item: SelectionItem;
 }
 
-export interface AnnotationMenuOptions {
+export interface GlyphMenuOptions {
   session: SessionStore;
   /** False while a tool runs: no menu (the right button still navigates). */
   interactive: boolean;
@@ -57,12 +57,7 @@ export interface AnnotationMenuOptions {
  * `onPointerDown(item)` for each glyph or label, and the menu to draw once in the layer.
  * The menu has Delete (the selection) and, for dimensions, Edit Value.
  */
-export function useAnnotationMenu({
-  session,
-  interactive,
-  onDelete,
-  onEdit,
-}: AnnotationMenuOptions) {
+export function useGlyphMenu({ session, interactive, onDelete, onEdit }: GlyphMenuOptions) {
   const keysFor = useKeysFor();
   const [open, setOpen] = useState<OpenMenu>();
   const listener = useRef<(e: globalThis.PointerEvent) => void>(undefined);
