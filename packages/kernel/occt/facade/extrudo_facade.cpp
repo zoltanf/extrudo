@@ -11036,11 +11036,15 @@ private:
     TopoDS_Shape current = shape;
     std::set<const void*> refused;
     int cuts = 0;
+    // In rounds: every face to cut is cut once and the body rebuilt once per
+    // round (a cut leaves the other faces as they are); the pieces that
+    // still touch go to the next round.
     while (cuts < TOUCH_CUT_MAX) {
       bool cut = false;
-      for (TopExp_Explorer fe(current, TopAbs_FACE); fe.More() && !cut; fe.Next()) {
+      Handle(BRepTools_ReShape) reshape = new BRepTools_ReShape;
+      for (TopExp_Explorer fe(current, TopAbs_FACE); fe.More() && cuts < TOUCH_CUT_MAX; fe.Next()) {
         const TopoDS_Face face = TopoDS::Face(fe.Current());
-        if (refused.count(face.TShape().get())) continue;
+        if (refused.count(face.TShape().get()) || reshape->IsRecorded(face)) continue;
         const BRepAdaptor_Surface adaptor(face, false);
         if (!adaptor.IsUPeriodic() && !adaptor.IsVPeriodic()) continue;
         // A vertex of one wire that an earlier wire holds too.
@@ -11063,17 +11067,90 @@ private:
         builder.MakeCompound(both);
         builder.Add(both, a);
         builder.Add(both, b);
-        Handle(BRepTools_ReShape) reshape = new BRepTools_ReShape;
         reshape->Replace(face, both);
-        current = reshape->Apply(current);
         ++cuts;
         cut = true;
       }
       if (!cut) break;
+      current = reshape->Apply(current);
     }
     if (cuts == 0 || !BRepCheck_Analyzer(current).IsValid()) return 0;
     shape = current;
     return cuts;
+  }
+
+  /**
+   * ADR-0097, 2026-11-04: no hole of a face on a periodic surface lies a
+   * period away from its outer wire. UnifySameDomain moves a hole's pcurves
+   * into [0, 2π) when the face's outer wire straddles 2π (spool-screw-v4.1's
+   * split cone and cylinder: holes at u 6.46 moved to 0.18, the outer wire at
+   * u 5.45..6.69), and the face fails BRepCheck (InvalidImbricationOfWires).
+   * Each such hole whose (u, v) box lies outside the outer wire's, and inside
+   * it moved by whole periods, gets its pcurves on the face moved back, in
+   * place (a seam edge's wire is left alone). Returns the holes moved.
+   */
+  static int rewrapHoles(const TopoDS_Shape& shape) {
+    BRep_Builder builder;
+    int moved = 0;
+    const auto boxOf = [](const TopoDS_Wire& wire, const TopoDS_Face& face, bool& seam) {
+      Bnd_Box2d box;
+      for (TopExp_Explorer ee(wire, TopAbs_EDGE); ee.More(); ee.Next()) {
+        const TopoDS_Edge& edge = TopoDS::Edge(ee.Current());
+        seam = seam || BRep_Tool::IsClosed(edge, face);
+        double f = 0, l = 0;
+        const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(edge, face, f, l);
+        if (pc.IsNull()) {
+          seam = true;
+          continue;
+        }
+        BndLib_Add2dCurve::Add(pc, f, l, 0, box);
+      }
+      return box;
+    };
+    NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> seen;
+    for (TopExp_Explorer fe(shape, TopAbs_FACE); fe.More(); fe.Next()) {
+      const TopoDS_Face face = TopoDS::Face(fe.Current().Oriented(TopAbs_FORWARD));
+      if (!seen.Add(face)) continue;
+      const Handle(Geom_Surface) surface = BRep_Tool::Surface(face);
+      if (surface.IsNull() || (!surface->IsUPeriodic() && !surface->IsVPeriodic())) continue;
+      const TopoDS_Wire outer = BRepTools::OuterWire(face);
+      if (outer.IsNull()) continue;
+      bool outerSeam = false;
+      const Bnd_Box2d outerBox = boxOf(outer, face, outerSeam);
+      if (outerBox.IsVoid()) continue;
+      double ou0, ov0, ou1, ov1;
+      outerBox.Get(ou0, ov0, ou1, ov1);
+      for (TopExp_Explorer we(face, TopAbs_WIRE); we.More(); we.Next()) {
+        const TopoDS_Wire wire = TopoDS::Wire(we.Current());
+        if (wire.IsSame(outer)) continue;
+        bool seam = false;
+        const Bnd_Box2d box = boxOf(wire, face, seam);
+        if (seam || box.IsVoid()) continue;
+        double u0, v0, u1, v1;
+        box.Get(u0, v0, u1, v1);
+        // The whole periods that put the hole's box inside the outer wire's.
+        const auto shiftOf = [](bool periodic, double period, double lo, double hi, double outerLo, double outerHi) {
+          const double slack = 1e-7;
+          if (!periodic || (lo >= outerLo - slack && hi <= outerHi + slack)) return 0.0;
+          const double k = std::round((outerLo + outerHi - lo - hi) / (2 * period));
+          if (k == 0 || lo + k * period < outerLo - slack || hi + k * period > outerHi + slack) return 0.0;
+          return k * period;
+        };
+        const double du = shiftOf(surface->IsUPeriodic(), surface->IsUPeriodic() ? surface->UPeriod() : 0, u0, u1, ou0, ou1);
+        const double dv = shiftOf(surface->IsVPeriodic(), surface->IsVPeriodic() ? surface->VPeriod() : 0, v0, v1, ov0, ov1);
+        if (du == 0 && dv == 0) continue;
+        for (TopExp_Explorer ee(wire, TopAbs_EDGE); ee.More(); ee.Next()) {
+          const TopoDS_Edge& edge = TopoDS::Edge(ee.Current());
+          double f = 0, l = 0;
+          const Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(edge, face, f, l);
+          const Handle(Geom2d_Curve) shifted = Handle(Geom2d_Curve)::DownCast(pc->Translated(gp_Vec2d(du, dv)));
+          builder.UpdateEdge(edge, shifted, face, BRep_Tool::Tolerance(edge));
+          builder.Range(edge, face, f, l);
+        }
+        ++moved;
+      }
+    }
+    return moved;
   }
 
   struct HybridOutOfTime {};
@@ -11222,6 +11299,8 @@ private:
       return true;
     };
     std::vector<char> collapsedNow(chains.size(), 0);
+    // Mesh edges not to route through their cone's apex: a region on one side failed (makeFace).
+    std::unordered_set<uint64_t> apexOff;
     for (int attempt = 0; attempt < 3 + undoBuilds; ++attempt) {
       {
         const int estimate = facetEstimate();
@@ -11250,6 +11329,31 @@ private:
           builder.Range(e, 0, p.Distance(q));
         }
         return e;
+      };
+      // A mesh edge routed through its cone's apex (ADR-0097, 2026-11-04): the
+      // straight edges from each node to the apex vertex, shared by the
+      // regions on both sides; a face adds its own degenerated edge between.
+      struct ApexRoute {
+        TopoDS_Vertex apex;
+        TopoDS_Edge toApex[2];
+        /** The regions whose faces took it. */
+        std::vector<int> regions;
+      };
+      std::unordered_map<uint64_t, ApexRoute> apexRoutes;
+      auto apexRouteOf = [&](int a, int b, const gp_Pnt& apex) -> ApexRoute& {
+        ApexRoute& route = apexRoutes[keyOf(a, b)];
+        if (route.apex.IsNull()) {
+          builder.MakeVertex(route.apex, apex, Precision::Confusion());
+          const int ends[2] = {std::min(a, b), std::max(a, b)};
+          for (int k = 0; k < 2; ++k) {
+            const gp_Pnt p(meshNode(ends[k]));
+            builder.MakeEdge(route.toApex[k], new Geom_Line(p, gp_Dir(apex.XYZ() - p.XYZ())), Precision::Confusion());
+            builder.Add(route.toApex[k], vertexOf(ends[k]).Oriented(TopAbs_FORWARD));
+            builder.Add(route.toApex[k], route.apex.Oriented(TopAbs_REVERSED));
+            builder.Range(route.toApex[k], 0, p.Distance(apex));
+          }
+        }
+        return route;
       };
       // A straight pcurve from one node's parameters to another's, over [first, last].
       auto pcurveOf = [](const gp_Pnt2d& from, const gp_Pnt2d& to, double first, double last) {
@@ -11565,6 +11669,62 @@ private:
             const int lo = std::min(a, b), hi = std::max(a, b);
             const gp_Pnt2d from = chart.uv(gp_Pnt(meshNode(lo))), to = chart.uv(gp_Pnt(meshNode(hi)));
             const double off = deviation(chart, lo, hi, from, to);
+            // A cone region's mesh edge that passes its apex closer than its
+            // straight pcurve strays (the two halves of a cone round its apex
+            // meet on such an edge, each pcurve half a turn the other way
+            // round): through the apex instead, lo to the apex, along the
+            // apex, the apex to hi. The edge's tolerance would hold the
+            // apex, and OCCT's STEP reader builds an extra apex face there.
+            if (region >= 0 && chart.kind == 2 && off > HYBRID_EDGE_TOLERANCE_MIN && !apexOff.count(keyOf(lo, hi))) {
+              const gp_Pnt apex = chart.frame.Location();
+              const gp_XYZ p = meshNode(lo), d = meshNode(hi) - p;
+              const double s = std::max(0.0, std::min(1.0, (apex.XYZ() - p).Dot(d) / d.SquareModulus()));
+              // The region across must be a face of the same cone (its facets would take the straight edge).
+              int across = -1;
+              for (int t : regions[region].triangles)
+                for (int k = 0; k < 3; ++k)
+                  if (std::min(corner(t, k), corner(t, (k + 1) % 3)) == lo && std::max(corner(t, k), corner(t, (k + 1) % 3)) == hi &&
+                      seg.neighbour[3 * t + k] >= 0)
+                    across = hybridOf[seg.neighbour[3 * t + k]];
+              if (across >= 0 && across != region && regions[across].surface == regions[region].surface &&
+                  regions[across].why.empty() && std::fabs(to.X() - from.X()) > 1e-6 && apex.Distance(gp_Pnt(p + s * d)) < off) {
+                ApexRoute& route = apexRouteOf(lo, hi, apex);
+                route.regions.push_back(region);
+                const gp_Pnt2d at[2] = {from, to};
+                std::vector<EdgeUse> legs;
+                for (int k = 0; k < 2; ++k) {
+                  const double length = BRep_Tool::Parameter(route.apex, route.toApex[k]);
+                  const gp_Pnt2d foot(at[k].X(), 0);
+                  double stray = 0;
+                  for (int i = 0; i <= 10; ++i) {
+                    const double t = i / 10.0;
+                    const gp_Pnt image = chart.value(at[k].X(), at[k].Y() * (1 - t));
+                    stray = std::max(stray, image.Distance(gp_Pnt(meshNode(k ? hi : lo) + t * (apex.XYZ() - meshNode(k ? hi : lo)))));
+                  }
+                  const double legTol = std::max(stray * 1.1, HYBRID_EDGE_TOLERANCE_MIN);
+                  worstTolerance = std::max(worstTolerance, legTol);
+                  legs.push_back({route.toApex[k], pcurveOf(at[k], foot, 0, length), legTol, k ? hi : lo, -1, true});
+                }
+                // From the walk's first node to the apex (each leg runs node to apex), along the apex (this
+                // face's own degenerated edge), the apex to the walk's last node.
+                TopoDS_Edge along;
+                builder.MakeEdge(along);
+                builder.Add(along, route.apex.Oriented(TopAbs_FORWARD));
+                builder.Add(along, route.apex.Oriented(TopAbs_REVERSED));
+                builder.Degenerated(along, true);
+                const bool fromLo = a == lo;
+                const gp_Pnt2d start(at[fromLo ? 0 : 1].X(), 0), end(at[fromLo ? 1 : 0].X(), 0);
+                const EdgeUse first{legs[fromLo ? 0 : 1].edge, legs[fromLo ? 0 : 1].pcurve, legs[fromLo ? 0 : 1].tolerance,
+                                    legs[fromLo ? 0 : 1].lo, -1, true};
+                const EdgeUse middle{along, pcurveOf(start, end, 0, std::fabs(end.X() - start.X())), HYBRID_EDGE_TOLERANCE_MIN, -1, -1, true};
+                const EdgeUse last{legs[fromLo ? 1 : 0].edge, legs[fromLo ? 1 : 0].pcurve, legs[fromLo ? 1 : 0].tolerance,
+                                   legs[fromLo ? 1 : 0].lo, -1, false};
+                wires.back().push_back(first);
+                wires.back().push_back(middle);
+                wires.back().push_back(last);
+                continue;
+              }
+            }
             const double tol = std::max(off * 1.1, HYBRID_EDGE_TOLERANCE_MIN);
             worstTolerance = std::max(worstTolerance, tol);
             wires.back().push_back({TopoDS_Edge(), Handle(Geom2d_Curve)(), tol, lo, hi, a == lo});
@@ -11579,10 +11739,13 @@ private:
           builder.MakeWire(wire);
           if (flip) std::reverse(wireUses.begin(), wireUses.end());
           for (EdgeUse& use : wireUses) {
-            use.edge = use.chain >= 0 ? chainEdges[use.chain].edge : edgeOf(use.lo, use.hi);
+            if (use.edge.IsNull()) use.edge = use.chain >= 0 ? chainEdges[use.chain].edge : edgeOf(use.lo, use.hi);
             builder.UpdateEdge(use.edge, use.pcurve, surface, TopLoc_Location(), use.tolerance);
-            builder.UpdateVertex(vertexOf(use.lo), use.tolerance);
-            builder.UpdateVertex(vertexOf(use.hi), use.tolerance);
+            if (BRep_Tool::Degenerated(use.edge))
+              builder.Range(use.edge, surface, TopLoc_Location(), use.pcurve->FirstParameter(), use.pcurve->LastParameter());
+            // Its vertices take its tolerance (an apex route's apex vertex too).
+            for (TopExp_Explorer vx(use.edge, TopAbs_VERTEX); vx.More(); vx.Next())
+              builder.UpdateVertex(TopoDS::Vertex(vx.Current()), use.tolerance);
             builder.Add(wire, use.forward != flip ? use.edge : TopoDS::Edge(use.edge.Reversed()));
             used.push_back(use);
           }
@@ -11652,7 +11815,21 @@ private:
             why = std::string("threw ") + e.GetMessageString();
           }
           strip(i);
-          if (pass == 0 && undoChains(i)) continue;
+          // Its apex routes are off (and it builds once more without them): the
+          // regions across them, built already, again too.
+          bool routesOff = false;
+          for (const auto& loop : region.loops)
+            for (size_t k = 0; k < loop.size(); ++k) {
+              const auto route = apexRoutes.find(keyOf(loop[k], loop[(k + 1) % loop.size()]));
+              if (route == apexRoutes.end() || !apexOff.insert(route->first).second) continue;
+              routesOff = true;
+              for (int other : route->second.regions)
+                if (other != i && !regionFace[other].IsNull()) {
+                  strip(other);
+                  again.push_back(other);
+                }
+            }
+          if (pass == 0 && (undoChains(i) || routesOff)) continue;
           region.why = why;
           return;
         }
@@ -11771,6 +11948,7 @@ private:
         // Unify can keep a slanted seam, which Offset Face can't offset (ADR-0097, 2026-10-25).
         Handle(BRepTools_History) reseamed;
         unified.back() = straightenSeams(unified.back(), reseamed);
+        rewrapHoles(unified.back());
         if (!reseamed.IsNull()) {
           if (histories.back().IsNull()) histories.back() = reseamed;
           else histories.back()->Merge(reseamed);

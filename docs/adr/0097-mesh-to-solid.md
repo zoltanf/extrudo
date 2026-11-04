@@ -3640,3 +3640,100 @@ runs: `docs/plans/m2s-exploded-q1-2026-11-01.md`, "Run 4 (D12)".
 **Left.** Micro zigzags (gear-bearing-5's two end faces, 2 facets), the wrapped charts (375 facets, mostly fits),
 spool-screw-v4.1's two regions (its second attempt), and the planes' regions still exploded for other reasons (the
 "its outer loop runs the wrong way" ones, 152 facets).
+
+### Amendment, 2026-11-04: a cone's two halves that meet past its apex (makita-vacuum-holder's round trip)
+
+**Main first.** The two 2026-11-03 slices were each swept on a branch without the other; the combined sweep on main
+(`baseline-2026-11-04-main-auto.jsonl`, against `baseline-2026-11-03-auto.jsonl`, 63 passed, 1 skipped) equals D12's
+run except makita-vacuum-holder, +1 face (3335 → 3336, the touching-holes cut):
+
+    2026-11-04 main:  files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24943, prismatic facets 14259, prismatic ms 234451, faceted ms 107788, round trips failed 7
+
+**Finding.** makita's half-turn cone faces (u 0.71..3.85 and 3.85..6.99, apex (66.23, 82.55, 33.73)) are the two
+halves `hybridRegions` makes of one cone piece that spans more than 3/4 of a turn (regions 402 and 405, 12 triangles
+each; the mirror cone's are 845 and 846). The piece holds the apex, so the halves meet on two generatrix edges and on
+one mesh edge that passes 0.051 mm from the apex, between nodes at v 0.153 and 0.206. That edge's straight pcurve goes
+half a turn round the apex in each half, the other way round in the other, and its tolerance (0.195 mm, the distance
+between those pcurves' images and the chord) holds the apex. OCCT's STEP reader turns the points within tolerance of
+the apex into degenerated edges on both cones, and on the one at +x leaves an extra face of the apex edge alone. What
+the brief's hypothesis named (the shared edge stored like a seam) is there on both cones: the failing face's short
+generatrix edge carries a second pcurve 2π from its own, the mirror's two identical ones; it is a symptom, not the
+cause (see Rejected). Each region already has its own surface (`MeshChart::surface()` makes one per region).
+
+**Rule.** No edge of a hybrid face passes a cone's apex closer than the edge's own tolerance. In `makeFace`, a cone
+region's mesh edge whose straight pcurve strays from the chord by more than the edge's distance from the apex, with a
+region of the same cone surface across it, goes through the apex instead: a straight leg from each node to one apex
+vertex (shared by both regions, cached per mesh edge), and in each face its own degenerated edge along v = 0 between
+the legs' u. A region whose face fails with such a route builds once more without its routes (`apexOff`), and the
+regions across them, built already, are built again (as `undoChains` does for chains). Both halves then end at the
+apex, and unify merges them into one face with a seam.
+
+**Rejected.** (b) A surface copy per face: each face has its own already. (c) Dropping the extra pcurve (each edge a
+face uses once keeps only the pcurve that use takes; built as `dropStaleSeams` after `cutTouchingLoops`): the body
+stays valid and the read-back still has the extra apex face (3337 faces for 3336). (a) One face per cone surface:
+unify leaves the halves apart because the merged face would hold the apex inside its outer wire; once both halves
+reach the apex it merges them by itself. Exploding the two regions: the round trip would pass, with their 24 triangles as facets.
+
+**Results.** makita-vacuum-holder 3336 → 3334 faces (8 → 6 cones), facets 2516, round trip passes (read back valid,
+3334 faces). The sweep at Auto against `baseline-2026-11-04-main-auto.jsonl` passes (63 passed, 1 skipped), only
+makita moves, `baseline-2026-11-04-half-cone-auto.jsonl`:
+
+    2026-11-04 main:       files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24943, prismatic facets 14259, prismatic ms 234451, faceted ms 107788, round trips failed 7
+    2026-11-04 half cone:  files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24941, prismatic facets 14259, prismatic ms 232695, faceted ms 105161, round trips failed 6
+
+| file | faces | facets | Auto step | round trip (read back valid, faces) | ms |
+|---|---|---|---|---|---|
+| third-party/makita-vacuum-holder | 3336 → 3334 | 2516 → 2516 | 0.05 | no, 3337 → yes, 3334 | 9487 → 9429 |
+
+Test: `mesh-to-solid.test.ts` "routes the edge where a cone’s two halves meet past its tip through the tip, so it
+round-trips (2026-11-04)": a cone with no node at its tip (`pointedCone`) whose halves meet on such an edge; one cone
+face (two before). No synthetic mesh reproduced the reader's extra face (six tip offsets read back valid on main's
+facade, as the mirror cone does), so the round trip itself is pinned by makita in the sweep. The OCCT input hash went
+`9c209d156d2a` → `1cfd66c77c7f` (CI 41746920246). Probes and runs: `docs/plans/m2s-exploded-q1-2026-11-01.md`, "Run 5".
+
+### Amendment, 2026-11-04b: holes that unify moves a turn away (spool-screw-v4.1's second attempt)
+
+**Finding.** spool-screw-v4.1's two regions (214, a cone split at 5 nodes, 6 wires; 271, a cylinder split at 1 node,
+2 wires) were not checked against a stale analyzer: they really were invalid after unify, for a reason the check on
+the cells can't see. Their outer wires straddle the surface's u = 2π (214: u 5.45..6.69) and three of 214's holes and
+271's hole lie past 2π (u 6.46..6.63, 6.33..6.35). UnifySameDomain rebuilds the faces (it merged two outer edges) and
+moves those holes' pcurves a turn back into [0, 2π) (u 0.18..0.34, 0.05..0.07), outside the outer wire: BRepCheck
+says `InvalidImbricationOfWires` (23). The healer moves them back, and its tolerances then leave `IntersectingWires`
+(22) on both (their holes touch the outer wire at a vertex), so the rebuild exploded them and ran a second attempt.
+In the cells, before unify, every hole sits inside its outline. A boss wall whose rim dimple lies past 2π
+(`bossWithRimDimple`, the halves merged by unify) shows the same: 23 after unify, 22 after healing, a second build that
+undid the collapsed chains.
+
+**Rule.** After unify (and `straightenSeams`), no hole of a face on a periodic surface lies a period away from its
+outer wire: `rewrapHoles` moves the pcurves of each hole whose (u, v) box is outside the outer wire's, and inside it
+moved by whole periods, back by those periods (in place, on that face only; a wire with a seam edge or a missing
+pcurve is left alone). The validity stage, the healer, the final body check and the STEP round trip stay as they were.
+
+**Also.** `cutTouchingLoops` now cuts in rounds: every face to cut in one pass and the body rebuilt once per round
+(it was rebuilt after every cut, about 50 ms each on spool-screw's 1,171 faces); a cut leaves the other faces as they
+were, so the cuts are the same (spool-screw 65 cuts, 3.2 → 1.5 s).
+
+**Rejected.** Moving the validity check later (the faces are invalid at that point, not just checked too early).
+`KeepShape` on their edges and `cutTouchingLoops` before the explosion (2026-11-03's amendment: neither helps). Charts
+whose u = 0 lies opposite the region's centre, so that no face straddles 2π: it changes every periodic region's frame,
+and unify would merge halves on differently framed surfaces; not tried.
+
+**Results.** spool-screw-v4.1 at Auto: 43.3 → 23.9 s, 1419 → 1171 faces, facets 256 → 0 (the two regions build; the
+256 facets were theirs), round trip passes (1171). The sweep at Auto against
+`baseline-2026-11-04-half-cone-auto.jsonl` passes (63 passed, 1 skipped; `uptime` load 0.08 at the start, nothing
+else running), only spool-screw moves, `baseline-2026-11-04-second-attempt-auto.jsonl`:
+
+    2026-11-04 half cone:       files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24941, prismatic facets 14259, prismatic ms 232695, faceted ms 105161, round trips failed 6
+    2026-11-04 second attempt:  files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24693, prismatic facets 14003, prismatic ms 214077, faceted ms 104661, round trips failed 6
+
+| file | faces | facets | Auto step | round trip (read back valid, faces) | ms |
+|---|---|---|---|---|---|
+| own/spool-screw-v4.1 | 1419 → 1171 | 256 → 0 | 0.05 | yes, 1419 → yes, 1171 | 43270 → 23945 |
+
+Test: `mesh-to-solid.test.ts` "keeps a boss wall’s hole where it is through unify, so the first build stands
+(2026-11-04)" (5 circle edges; 1 before, when the second build undid the collapses). The OCCT input hash went
+`1cfd66c77c7f` → `700b080c6fb2` (CI 41759201441). Probe output: `docs/plans/m2s-exploded-q1-2026-11-01.md`, "Run 5".
+
+**Left.** Micro zigzags (2 facets), the wrapped charts (375 facets, mostly fits), the planes exploded as "its outer
+loop runs the wrong way" (152 facets); 6 files fail the round trip at Auto (battery-power-adapter and
+phone-stand-foldable on the 1e-4 volume rule).

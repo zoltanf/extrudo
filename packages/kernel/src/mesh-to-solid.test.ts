@@ -1340,6 +1340,67 @@ function plateWithLedge(h: number, w: number, n: number) {
   return { positions: Float64Array.from(positions), indices: Uint32Array.from(indices) };
 }
 
+/**
+ * A solid cone with no node at its tip (ADR-0097, 2026-11-04): base r 5 at
+ * z 0 round (cx, cy) on `n` sides, tip at z 5 (45°), its two top nodes on the
+ * surface at distances `a` (at +x) and `b` (at -x) below the tip. The side
+ * fans to the near one; two triangles meet on the edge between them, which
+ * passes the tip closer than half a turn round it at their radius. The hybrid
+ * splits the side into halves on that edge, as makita-vacuum-holder's cone.
+ */
+function pointedCone(cx: number, cy: number, a: number, b: number, n: number) {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const node = (x: number, y: number, z: number) => positions.push(x, y, z) / 3 - 1;
+  const at = (i: number, k: number) => positions[3 * i + k] as number;
+  // Each triangle turned to face away from the axis point (cx, cy, 2).
+  const face = (p: number, q: number, r: number, outward?: [number, number, number]) => {
+    const u = [0, 1, 2].map((k) => at(q, k) - at(p, k));
+    const v = [0, 1, 2].map((k) => at(r, k) - at(p, k));
+    const cross = [
+      (u[1] as number) * (v[2] as number) - (u[2] as number) * (v[1] as number),
+      (u[2] as number) * (v[0] as number) - (u[0] as number) * (v[2] as number),
+      (u[0] as number) * (v[1] as number) - (u[1] as number) * (v[0] as number),
+    ];
+    const out = outward ?? [
+      (at(p, 0) + at(q, 0) + at(r, 0)) / 3 - cx,
+      (at(p, 1) + at(q, 1) + at(r, 1)) / 3 - cy,
+      (at(p, 2) + at(q, 2) + at(r, 2)) / 3 - 2,
+    ];
+    indices.push(
+      ...(cross.reduce((sum, x, k) => sum + x * (out[k] as number), 0) > 0 ? [p, q, r] : [p, r, q]),
+    );
+  };
+  // The nodes next to +x a fifth of a step farther out: the widest gap
+  // between the triangles' angles is at +x, so the halves split at +x and -x.
+  const angle = (i: number) => (2 * Math.PI * (i + (i === 1 ? 0.2 : i === n - 1 ? -0.2 : 0))) / n;
+  const rings = [0, 2, 3.5, 4.5].map((z) =>
+    Array.from({ length: n }, (_, i) =>
+      node(cx + (5 - z) * Math.cos(angle(i)), cy + (5 - z) * Math.sin(angle(i)), z),
+    ),
+  );
+  for (let j = 0; j + 1 < rings.length; j++)
+    for (let i = 0; i < n; i++) {
+      const [p, q] = [rings[j]?.[i], rings[j]?.[(i + 1) % n]] as [number, number];
+      const [r, t] = [rings[j + 1]?.[i], rings[j + 1]?.[(i + 1) % n]] as [number, number];
+      face(p, q, t);
+      face(p, t, r);
+    }
+  const top = rings[rings.length - 1] as number[];
+  const east = node(cx + a, cy, 5 - a);
+  const west = node(cx - b, cy, 5 - b);
+  for (let i = 0; i < n; i++) {
+    face(top[i] as number, top[(i + 1) % n] as number, i < n / 4 || i >= (3 * n) / 4 ? east : west);
+  }
+  face(top[n / 4] as number, east, west);
+  face(top[(3 * n) / 4] as number, east, west);
+  const rim = rings[0] as number[];
+  const centre = node(cx, cy, 0);
+  for (let i = 0; i < n; i++)
+    face(centre, rim[i] as number, rim[(i + 1) % n] as number, [0, 0, -1]);
+  return { positions: Float64Array.from(positions), indices: Uint32Array.from(indices) };
+}
+
 /** Two meshes as one, the second's indices after the first's nodes. */
 function joined(
   a: { positions: Float64Array; indices: Uint32Array },
@@ -1435,6 +1496,25 @@ describe('Mesh to Solid, the hybrid rebuild (ADR-0097 slice D1)', { timeout: 300
     }
   });
 
+  it('keeps a boss wall’s hole where it is through unify, so the first build stands (2026-11-04)', () => {
+    // `bossWithRimDimple`'s wall face straddles its cylinder's u = 2π and its
+    // dimple's hole lies past 2π; UnifySameDomain moved the hole's pcurves a
+    // turn back, outside the outline, the body stayed invalid after healing,
+    // and a second build undid the collapsed chains (1 circle edge, 2699
+    // lines). The hole goes back a turn after unify now.
+    const { shape } = prismatic(meshOf(bossWithRimDimple()));
+    try {
+      expect(kernel.isValid(shape)).toBe(true);
+      const types = Array.from(
+        { length: kernel.count(shape, 'edge') },
+        (_, i) => kernel.edgeGeometry(shape, i, 2).type,
+      );
+      expect(types.filter((t) => t === 'circle')).toHaveLength(5);
+    } finally {
+      kernel.release(shape);
+    }
+  });
+
   it('cuts a boss wall whose two dimples touch each other at a node in two, so it round-trips (slice D11, 2026-11-03)', () => {
     // Two square pyramid dimples in a cylindrical boss's wall, their corners
     // meeting at (40, 20, 8), away from both rims: the wall's face keeps two
@@ -1499,6 +1579,27 @@ describe('Mesh to Solid, the hybrid rebuild (ADR-0097 slice D1)', { timeout: 300
     } finally {
       kernel.release(before.shape);
       kernel.release(after.shape);
+    }
+  });
+
+  it('routes the edge where a cone’s two halves meet past its tip through the tip, so it round-trips (2026-11-04)', () => {
+    // A cone with no node at its tip: its side's two halves met on a mesh
+    // edge 0.05 mm from the tip, each half's pcurve half a turn the other
+    // way round it, so the edge's tolerance held the tip (on
+    // makita-vacuum-holder OCCT's STEP reader built an extra face there;
+    // this mesh read back either way). The edge runs through the tip now: a
+    // leg from each node, a degenerated edge per face at the tip.
+    const cone = pointedCone(50, 15, 0.04, 0.08, 48);
+    const bump = trianglesOf(bossWithBump());
+    const { shape, report } = prismatic(kernel.meshFrom(joined(bump, cone)), 0.05);
+    try {
+      expect(report.rebuild).toBe('hybrid');
+      expect(kernel.isValid(shape)).toBe(true);
+      // The halves, through the tip on both sides, unify into one face (two before).
+      expect(kinds(shape).filter((k) => k === 'cone')).toHaveLength(1);
+      expectStepRoundTrip(kernel, shape, 'hybrid: a cone with no node at its tip');
+    } finally {
+      kernel.release(shape);
     }
   });
 

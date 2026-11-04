@@ -4140,7 +4140,8 @@ static void q26Describe(const TopoDS_Face& face, const char* tag) {
   BRepTools::UVBounds(face, u0, u1, v0, v1);
   const BRepAdaptor_Surface surface(face, false);
   std::cout << std::setprecision(8) << "   q26 face " << tag << " " << surfaceTypeName(surface.GetType()) << " orient " << face.Orientation()
-            << " u " << u0 << ".." << u1 << " v " << v0 << ".." << v1 << " tol " << BRep_Tool::Tolerance(face) << " status" << statuses(face) << std::endl;
+            << " u " << u0 << ".." << u1 << " v " << v0 << ".." << v1 << " tol " << BRep_Tool::Tolerance(face) << " surface "
+            << static_cast<const void*>(BRep_Tool::Surface(face).get()) << " status" << statuses(face) << std::endl;
   if (surface.GetType() == GeomAbs_Cone) {
     const gp_Cone c = surface.Cone();
     std::cout << "   q26 face " << tag << " cone r " << c.RefRadius() << " semi " << c.SemiAngle() << " apex " << c.Apex().X() << "," << c.Apex().Y() << "," << c.Apex().Z()
@@ -4157,6 +4158,15 @@ static void q26Describe(const TopoDS_Face& face, const char* tag) {
       if (!pc.IsNull()) {
         const gp_Pnt2d a = pc->Value(first), b = pc->Value(last);
         std::cout << " pc (" << a.X() << ", " << a.Y() << ") -> (" << b.X() << ", " << b.Y() << ")";
+        if (BRep_Tool::IsClosed(e, face)) {
+          // Run 5: the edge's other pcurve on the face (a seam's second use).
+          const Handle(Geom2d_Curve) other = BRep_Tool::CurveOnSurface(TopoDS::Edge(e.Reversed()), face, first, last);
+          if (!other.IsNull())
+            std::cout << " other (" << other->Value(first).X() << ", " << other->Value(first).Y() << ") -> (" << other->Value(last).X() << ", "
+                      << other->Value(last).Y() << ")";
+        }
+        gp_Pnt p3 = BRepAdaptor_Curve(e).Value(0.5 * (BRepAdaptor_Curve(e).FirstParameter() + BRepAdaptor_Curve(e).LastParameter()));
+        std::cout << " mid " << p3.X() << "," << p3.Y() << "," << p3.Z() << " edge@" << static_cast<const void*>(e.TShape().get());
       } else {
         std::cout << " no pcurve";
       }
@@ -4168,6 +4178,10 @@ static void q26Describe(const TopoDS_Face& face, const char* tag) {
 static void q26ReadBack(const TopoDS_Shape& back, const std::vector<gp_Pnt>& shared) {
   int index = 0;
   for (TopExp_Explorer fe(back, TopAbs_FACE); fe.More(); fe.Next(), ++index) {
+    // Run 5: Q26CONE=all describes every read-back cone face, valid ones too.
+    if (getenv("Q26CONE") && std::string(getenv("Q26CONE")) == "all" &&
+        BRepAdaptor_Surface(TopoDS::Face(fe.Current()), false).GetType() == GeomAbs_Cone)
+      q26Describe(TopoDS::Face(fe.Current()), "backall");
     if (BRepCheck_Analyzer(fe.Current()).IsValid()) continue;
     const BRepAdaptor_Surface surface(TopoDS::Face(fe.Current()), false);
     int wires = 0;

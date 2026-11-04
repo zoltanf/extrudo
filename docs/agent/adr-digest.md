@@ -3525,6 +3525,31 @@ Numbers in ADR-0097's 2026-11-01 amendment; all tables in `docs/plans/m2s-explod
   baseline from here on: `baseline-2026-11-03-auto.jsonl` (`prismatic converted 37 refused 4, prismatic faces 24942,
   prismatic facets 14259, prismatic ms 232772, round trips failed 7`). Numbers in ADR-0097's 2026-11-03 amendment.
 
+**ADR-0097 amendment (2026-11-04): a cone's halves meet through its apex.** `extrudo_facade.cpp` (`rebuildHybrid`'s
+`makeFace`, `ApexRoute`, `apexRouteOf`, `apexOff`); probe `Q26CONE=all` in `spikes/stl-to-solid/prismatic.cpp`. Rules:
+- No edge of a hybrid face passes a cone's apex closer than its own tolerance: a cone region's mesh edge whose straight
+  pcurve strays from the chord by more than the edge's distance from the apex, with a region of the same cone across
+  it, runs through the apex (a shared leg from each node to one apex vertex, a degenerated edge per face between);
+  a region that fails with a route builds again without its routes, and the regions across them too.
+- Don't treat the second pcurve 2π away on such an edge as the cause (dropping it was measured: the read-back still
+  has the extra apex face), and each hybrid face already has its own surface.
+- Test: `mesh-to-solid.test.ts` "routes the edge where a cone’s two halves meet past its tip through the tip, so it
+  round-trips (2026-11-04)" (one cone face, two before); the round trip itself is pinned by makita-vacuum-holder in
+  the sweep. Sweep baseline from here on: `baseline-2026-11-04-half-cone-auto.jsonl` (`prismatic faces 24941,
+  prismatic facets 14259, round trips failed 6`).
+
+**ADR-0097 amendment (2026-11-04b): holes that unify moves a turn away.** `extrudo_facade.cpp` (`rewrapHoles` after
+`straightenSeams` in `rebuildHybrid`, `cutTouchingLoops`). Rules:
+- After unify, no hole of a face on a periodic surface lies a period away from its outer wire: `rewrapHoles` moves such
+  a hole's pcurves back by whole periods (unify moves holes past 2π into [0, 2π) when the outline straddles 2π; the
+  healer then leaves `IntersectingWires` and the regions explode). Don't move the validity check later for this: the
+  faces are invalid after unify, not checked too early.
+- `cutTouchingLoops` cuts in rounds (one rebuild of the body per round, not per cut); a cut must keep leaving every
+  other face as it is, or the rounds would change the result.
+- Test: `mesh-to-solid.test.ts` "keeps a boss wall’s hole where it is through unify, so the first build stands
+  (2026-11-04)". Sweep baseline from here on: `baseline-2026-11-04-second-attempt-auto.jsonl` (`prismatic faces
+  24693, prismatic facets 14003, prismatic ms 214077, round trips failed 6`; spool-screw-v4.1 23.9 s).
+
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
 facade `removeFaces` with `BRepAlgoAPI_Defeaturing`). Rules: **all or nothing** (any
