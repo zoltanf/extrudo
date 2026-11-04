@@ -25,13 +25,22 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { embossDialog, embossManipulators } from './emboss';
 import { featureDialogs, specForCommand } from './registry';
 import type { DialogValues, Manipulator, ManipulatorContext } from './spec';
-import { BOX, CYLINDER, cylinderMesh, faceItem, namedBoxMesh, setupDialogs } from './testing';
+import {
+  BOX,
+  CYLINDER,
+  cylinderMesh,
+  faceItem,
+  namedBoxMesh,
+  settle,
+  setupDialogs,
+} from './testing';
 import { defaultValues, inputsFor, mergeValues, valuesFor } from './values';
 
 const FONTS_DIR = new URL('../../../../packages/fonts/fonts/', import.meta.url);
 
 /** The 10 mm test box's top face (z = 10); its centre is (5, 5). */
 const TOP = { kind: 'face', id: 'box:top' } as const;
+const FRONT = { kind: 'face', id: 'box:front' } as const;
 const RECT = { kind: 'profile', id: 'SK/r1' } as const;
 
 const bodies = { [BOX]: namedBoxMesh() };
@@ -108,13 +117,15 @@ describe('the emboss dialog', () => {
       'face',
       'depth',
       'mode',
+      'tangent',
       'method',
     ]);
     expect(embossDialog.fields.map((f) => f.label)).toEqual([
       'Profiles',
-      'Face',
+      'Faces',
       'Depth',
       'Mode',
+      'Tangent to the face',
       'Method',
     ]);
   });
@@ -127,7 +138,7 @@ describe('the emboss dialog', () => {
       ({
         doc: {},
         bodies: {},
-        ...(method && { draftEmboss: { kind: 'emboss', method } }),
+        ...(method && { draftEmboss: { kind: 'emboss', method, faces: [method] } }),
       }) as never;
     expect(field.shown?.(values, ctx())).toBe(false);
     expect(field.shown?.(values, ctx('wrapped-cone'))).toBe(true);
@@ -137,7 +148,39 @@ describe('the emboss dialog', () => {
     expect(field.text(values, ctx('moved'))).toBe('Moved onto the face');
   });
 
-  it('takes profiles and whole texts, one face, and says what it needs', () => {
+  it('names each method for several faces', () => {
+    const field = embossDialog.fields.find((f) => f.name === 'method');
+    if (field?.kind !== 'info') throw new Error('no method line');
+    const values = { refs: {}, exprs: {}, choices: {}, toggles: {} } as never;
+    const text = (faces: EmbossMethod[]) =>
+      field.text(values, { doc: {}, bodies: {}, draftEmboss: { kind: 'emboss', faces } } as never);
+    expect(text(['moved', 'wrapped-cylinder'])).toBe(
+      'Moved onto the face, wrapped round the cylinder',
+    );
+    expect(text(['projected', 'projected', 'projected'])).toBe('Projected onto 3 faces');
+    expect(text(['wrapped-cylinder', 'wrapped-cylinder'])).toBe(
+      'Wrapped round 2 cylindrical faces',
+    );
+  });
+
+  it('stores Tangent to the face only while it is on', () => {
+    const ctx = { doc: setupDialogs().store.getState().doc, bodies };
+    const refs = { profiles: [RECT], face: [TOP] };
+    const on = inputsFor(embossDialog, values({ refs, toggles: { tangent: true } }), ctx);
+    expect(on.tangent).toEqual({ kind: 'bool', value: true });
+    expect(EmbossInputsSchema.safeParse(on).success).toBe(true);
+    const off = inputsFor(embossDialog, values({ refs, toggles: { tangent: false } }), ctx);
+    expect(Object.keys(off).sort()).toEqual(['depth', 'face', 'mode', 'profiles']);
+    const feature = {
+      id: 'E',
+      type: 'emboss',
+      name: 'Emboss1',
+      inputs: embossInputs([RECT], TOP, { tangent: true }),
+    } as Feature;
+    expect(valuesFor(embossDialog, feature, ctx).toggles.tangent).toBe(true);
+  });
+
+  it('takes profiles and whole texts, several faces, and says what it needs', () => {
     expect(embossDialog.fields.find((f) => f.name === 'profiles')).toMatchObject({
       kind: 'selection',
       accepts: EMBOSS_PROFILE_KINDS,
@@ -147,7 +190,7 @@ describe('the emboss dialog', () => {
     expect(embossDialog.fields.find((f) => f.name === 'face')).toMatchObject({
       kind: 'selection',
       accepts: EMBOSS_FACE_KINDS,
-      max: 1,
+      prompt: 'Pick faces',
     });
     expect(embossDialog.fields.find((f) => f.name === 'depth')).toMatchObject({
       kind: 'expression',
@@ -179,7 +222,7 @@ describe('the emboss dialog', () => {
     expect(Object.keys(inputs).sort()).toEqual(['depth', 'face', 'mode', 'profiles']);
     expect(embossSettings(inputs as never)).toMatchObject({
       profiles: [RECT],
-      face: TOP,
+      faces: [TOP],
       depth: 'depth',
       mode: 'deboss',
     });
@@ -213,11 +256,11 @@ describe('the emboss dialog', () => {
     expect(t.open()?.pickField).toBe('profiles');
     expect(t.open()?.checked.fields).toEqual({
       profiles: 'Pick profiles or a text.',
-      face: 'Pick a face.',
+      face: 'Pick faces.',
     });
     expect(t.controller.ok()).toBe(false);
     t.controller.setRefs('profiles', [t.profile]);
-    expect(t.open()?.checked.fields).toEqual({ face: 'Pick a face.' });
+    expect(t.open()?.checked.fields).toEqual({ face: 'Pick faces.' });
     t.controller.setRefs('face', [TOP]);
     expect(t.open()?.checked.first).toBeUndefined();
     expect(t.open()?.draft.inputs.depth).toMatchObject({
@@ -246,6 +289,28 @@ describe('the emboss dialog', () => {
     expect(t.open()?.values.refs).toEqual({ profiles: [t.profile], face: [TOP] });
     expect(t.open()?.checked.first).toBeUndefined();
     expect(EmbossInputsSchema.safeParse(t.open()?.draft.inputs).success).toBe(true);
+  });
+
+  it('a selected profile and two faces fill the fields, faces in pick order', () => {
+    const t = withSketch();
+    t.session.getState().select([faceItem(1), t.profile, faceItem(2)]);
+    t.controller.start('emboss');
+    expect(t.open()?.values.refs.profiles).toEqual([t.profile]);
+    expect(t.open()?.values.refs.face).toEqual([TOP, FRONT]);
+  });
+
+  it('picking a second face adds it to the Faces field, and picking it again removes it', async () => {
+    const t = withSketch();
+    t.session.getState().select([t.profile, faceItem(1)]);
+    t.controller.start('emboss');
+    expect(t.open()?.values.refs.face?.map((r) => r.id)).toEqual([TOP.id]);
+    if (t.open()?.pickField !== 'face') t.controller.pickInto('face');
+    t.controller.select.onClick(faceItem(2), false);
+    await settle();
+    expect(t.open()?.values.refs.face?.map((r) => r.id)).toEqual([TOP.id, FRONT.id]);
+    t.controller.select.onClick(faceItem(2), false);
+    await settle();
+    expect(t.open()?.values.refs.face?.map((r) => r.id)).toEqual([TOP.id]);
   });
 
   it('a selected text goes to Profiles, and the feature stores that reference', () => {
@@ -347,6 +412,27 @@ describe('the depth arrow', () => {
     const inward = handles(picked, inside);
     expect(way(inward[0])).toEqual(flipped);
     expect(at(inward[0])).toEqual(where);
+  });
+
+  it('stands at the kernel’s anchor with Tangent to the face on, and only then', () => {
+    const t = withSketch();
+    const doc = t.store.getState().doc;
+    const draftEmboss = {
+      kind: 'emboss',
+      faces: ['moved'],
+      anchor: { origin: [1, 2, 3], normal: [0, 1, 0] },
+    };
+    const stand = (v: DialogValues) =>
+      embossManipulators(v, { doc, bodies, value: () => 1, draftEmboss } as never);
+    const refs = { profiles: [t.profile], face: [TOP] };
+    const on = stand(values({ refs, toggles: { tangent: true } }));
+    expect(at(on[0])).toEqual([1, 2, 3]);
+    expect(way(on[0])).toEqual([0, 1, 0]);
+    const deboss = stand(values({ refs, toggles: { tangent: true }, choices: { mode: 'deboss' } }));
+    expect(way(deboss[0])).toEqual([0, -1, 0]);
+    const off = stand(values({ refs }));
+    expect(at(off[0])).toEqual([2, 1, 10]);
+    expect(way(off[0])).toEqual([0, 0, 1]);
   });
 
   it('falls back to the face’s centre, and needs a face at all', () => {

@@ -109,6 +109,12 @@ export interface ProjectionOptions extends SweepSource {
   depth: number;
   /** Whether the letters stand out of the face (true) or go into it. */
   outward?: boolean;
+  /**
+   * Stop the piece at the face's edge instead of refusing a profile that
+   * reaches past it (a several-face emboss, ADR-0060's second amendment B4);
+   * the walls there have no history, so they are `op:feature:new`.
+   */
+  clip?: boolean;
 }
 
 /**
@@ -124,6 +130,7 @@ export function namedProjection(kernel: Kernel, options: ProjectionOptions): Nam
     options.face,
     options.depth,
     options.outward ?? true,
+    options.clip ?? false,
   );
   return nameSwept(kernel, result, options.op ?? 'emboss', options.feature, options.edgeSources);
 }

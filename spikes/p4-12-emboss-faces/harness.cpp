@@ -1,7 +1,8 @@
 // Native harness for P4-12's emboss backlog (ADR-0060's amendment): the cone
 // wrap (wrapOnCone), the projection onto spheres and free-form faces
 // (projectOnFace) and wraps of more than half way round (wrapOnCylinder and
-// wrapOnCone without the old |u| <= pi limit). Built and run inside the pinned
+// wrapOnCone without the old |u| <= pi limit); the second amendment's faceHit,
+// faceSlab and projectOnFace's clip (section 6). Built and run inside the pinned
 // OCCT image by run.sh; prints one line per check and exits non-zero if any
 // fails. `run.sh leaks [n]` runs every case n times (default 300) and checks
 // that the heap top stays flat, with a control that must grow.
@@ -11,6 +12,8 @@
 
 #include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepOffsetAPI_ThruSections.hxx>
+#include <BRepFilletAPI_MakeFillet.hxx>
+#include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCone.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
 #include <BRepPrimAPI_MakeSphere.hxx>
@@ -182,14 +185,201 @@ static double ms(std::chrono::steady_clock::time_point since) {
   return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - since).count();
 }
 
+
+// ---- The second amendment (ADR-0060, 2026-11-04): faceHit, faceSlab, clip. ----
+
+/** The faces of `h` whose surface isn't a plane, by index. */
+static std::vector<int> curvedFaces(int h) {
+  std::vector<int> out;
+  NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> map;
+  TopExp::MapShapes(*f.find(h), TopAbs_FACE, map);
+  for (int i = 1; i <= map.Extent(); ++i) {
+    if (BRepAdaptor_Surface(TopoDS::Face(map(i))).GetType() != GeomAbs_Plane) out.push_back(i - 1);
+  }
+  return out;
+}
+/** The index of the flat face of `h` whose outward normal is `n` and that lies at `n . x = at`. */
+static int flatFace(int h, gp_Dir n, double at) {
+  NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> map;
+  TopExp::MapShapes(*f.find(h), TopAbs_FACE, map);
+  for (int i = 1; i <= map.Extent(); ++i) {
+    const TopoDS_Face face = TopoDS::Face(map(i));
+    BRepAdaptor_Surface surface(face);
+    if (surface.GetType() != GeomAbs_Plane) continue;
+    gp_Dir normal = surface.Plane().Axis().Direction();
+    if (face.Orientation() == TopAbs_REVERSED) normal.Reverse();
+    if (normal.Dot(n) > 1 - 1e-9 && std::abs(gp_Vec(surface.Plane().Location().XYZ()).Dot(gp_Vec(n)) - at) < 1e-9) {
+      return i - 1;
+    }
+  }
+  return -1;
+}
+/** A rectangle in the plane z = at from (x0, y0) to (x1, y1), its normal along +Z. */
+static int rectZ(double at, double x0, double y0, double x1, double y1) {
+  BRepBuilderAPI_MakePolygon poly;
+  poly.Add(gp_Pnt(x0, y0, at));
+  poly.Add(gp_Pnt(x1, y0, at));
+  poly.Add(gp_Pnt(x1, y1, at));
+  poly.Add(gp_Pnt(x0, y1, at));
+  poly.Close();
+  return f.store(BRepBuilderAPI_MakeFace(poly.Wire(), true).Face());
+}
+/** A circle of radius r centred on (x, y) in the plane z = at, its normal along +Z. */
+static int discZ(double at, double x, double y, double r) {
+  BRepBuilderAPI_MakeEdge edge(gp_Circ(gp_Ax2(gp_Pnt(x, y, at), gp_Dir(0, 0, 1)), r));
+  return f.store(BRepBuilderAPI_MakeFace(BRepBuilderAPI_MakeWire(edge.Edge()).Wire(), true).Face());
+}
+static int boxBody() { return f.store(BRepPrimAPI_MakeBox(gp_Pnt(0, 0, 0), 40, 40, 10).Shape()); }
+static int cylinderBody() {
+  return f.store(BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), R, 10).Shape());
+}
+/** The frustum of the 20-degree cone through radius 20 at z = 0, from z = -8 to 8. */
+static int coneBody() {
+  const double r0 = R - 8 * std::tan(ALPHA), r1 = R + 8 * std::tan(ALPHA);
+  return f.store(BRepPrimAPI_MakeCone(gp_Ax2(gp_Pnt(0, 0, -8), gp_Dir(0, 0, 1)), r0, r1, 16).Shape());
+}
+/** The ball of 4b: a half disc turned about Z (the Sphere primitive's own shape). */
+static int ballBody() {
+  BRepBuilderAPI_MakeWire half;
+  half.Add(BRepBuilderAPI_MakeEdge(gp_Circ(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, -1, 0), gp_Dir(0, 0, -1)), R), 0, M_PI)
+               .Edge());
+  half.Add(BRepBuilderAPI_MakeEdge(gp_Pnt(0, 0, R), gp_Pnt(0, 0, -R)).Edge());
+  const TopoDS_Face disk = BRepBuilderAPI_MakeFace(half.Wire(), true).Face();
+  return f.store(BRepPrimAPI_MakeRevol(disk, gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1))).Shape());
+}
+/** A dome: a quarter disc (the arc from (R, 0, 0) up to the pole) turned about Z. */
+static int domeBody() {
+  BRepBuilderAPI_MakeWire quarter;
+  quarter.Add(
+      BRepBuilderAPI_MakeEdge(gp_Circ(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, -1, 0), gp_Dir(1, 0, 0)), R), 0, M_PI / 2)
+          .Edge());
+  quarter.Add(BRepBuilderAPI_MakeEdge(gp_Pnt(0, 0, R), gp_Pnt(0, 0, 0)).Edge());
+  quarter.Add(BRepBuilderAPI_MakeEdge(gp_Pnt(0, 0, 0), gp_Pnt(R, 0, 0)).Edge());
+  const TopoDS_Face piece = BRepBuilderAPI_MakeFace(quarter.Wire(), true).Face();
+  return f.store(BRepPrimAPI_MakeRevol(piece, gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1))).Shape());
+}
+/** loftBody() with every section in two halves (seams at -Y and +Y): two B-spline side faces. */
+static TopoDS_Wire halves(const TopoDS_Edge& a, const TopoDS_Edge& b) {
+  BRepBuilderAPI_MakeWire wire;
+  wire.Add(a);
+  wire.Add(b);
+  return wire.Wire();
+}
+static int splitLoftBody() {
+  const auto place = [](double x, double z) { return gp_Ax2(gp_Pnt(x, 0, z), gp_Dir(0, 0, 1), gp_Dir(1, 0, 0)); };
+  const auto circle = [&](double z, double r) {
+    const gp_Circ c(place(0, z), r);
+    return halves(BRepBuilderAPI_MakeEdge(c, -M_PI / 2, M_PI / 2).Edge(),
+                  BRepBuilderAPI_MakeEdge(c, M_PI / 2, 3 * M_PI / 2).Edge());
+  };
+  const gp_Elips e(place(3, 15), 26, 16);
+  BRepOffsetAPI_ThruSections loft(true, false);
+  loft.AddWire(circle(0, 20));
+  loft.AddWire(halves(BRepBuilderAPI_MakeEdge(e, -M_PI / 2, M_PI / 2).Edge(),
+                      BRepBuilderAPI_MakeEdge(e, M_PI / 2, 3 * M_PI / 2).Edge()));
+  loft.AddWire(circle(30, 18));
+  loft.Build();
+  return f.store(loft.Shape());
+}
+/** The spike's body: the 40 x 40 x 10 box with its vertical edge at x = y = 40 filleted R 5. */
+static int filletedBox() {
+  const TopoDS_Shape box = BRepPrimAPI_MakeBox(gp_Pnt(0, 0, 0), 40, 40, 10).Shape();
+  BRepFilletAPI_MakeFillet fillet(box);
+  for (TopExp_Explorer e(box, TopAbs_EDGE); e.More(); e.Next()) {
+    BRepAdaptor_Curve curve(TopoDS::Edge(e.Current()));
+    const gp_Pnt a = curve.Value(curve.FirstParameter()), b = curve.Value(curve.LastParameter());
+    if (std::abs(a.X() - 40) < 1e-9 && std::abs(a.Y() - 40) < 1e-9 && std::abs(b.X() - 40) < 1e-9 &&
+        std::abs(b.Y() - 40) < 1e-9) {
+      fillet.Add(5, TopoDS::Edge(e.Current()));
+    }
+  }
+  fillet.Build();
+  return f.store(fillet.Shape());
+}
+static int commonOf(int a, int b) {
+  if (a <= 0 || b <= 0) return 0;
+  BRepAlgoAPI_Common op(*f.find(a), *f.find(b));
+  return op.IsDone() && !op.HasErrors() ? f.store(op.Shape()) : 0;
+}
+static int fuseOf(int a, int b) {
+  if (a <= 0 || b <= 0) return 0;
+  BRepAlgoAPI_Fuse op(*f.find(a), *f.find(b));
+  return op.IsDone() && !op.HasErrors() ? f.store(op.Shape()) : 0;
+}
+static int solids(int h) {
+  if (h <= 0) return 0;
+  int n = 0;
+  for (TopExp_Explorer e(*f.find(h), TopAbs_SOLID); e.More(); e.Next()) ++n;
+  return n;
+}
+/** A faceHit() that must land on `want` with the outward normal `normal`. */
+static void hit(int body, int face, gp_Pnt p, gp_Vec d, gp_Pnt want, gp_Vec normal, const char* what) {
+  const int n = f.faceHit(body, face, p.X(), p.Y(), p.Z(), d.X(), d.Y(), d.Z());
+  if (n != 6) {
+    check(false, f.lastError_.empty() ? what : f.lastError_.c_str(), n, 6);
+    return;
+  }
+  const std::vector<double>& g = f.geometry_;
+  const double off = std::max(gp_Pnt(g[0], g[1], g[2]).Distance(want),
+                              (gp_Vec(g[3], g[4], g[5]) - normal.Normalized()).Magnitude());
+  check(off < 1e-9, what, off, 0);
+}
+/** The slab of a frustum's side of slant length l between radii r0 and r1, by Pappus. */
+static double frustumSlab(double r0, double r1, double l, double depth, double alpha, bool out) {
+  return 2 * M_PI * l * depth * ((r0 + r1) / 2 + (out ? 1 : -1) * depth * std::cos(alpha) / 2);
+}
+static int rectY(double at) {
+  BRepBuilderAPI_MakePolygon poly;
+  poly.Add(gp_Pnt(30, at, 3));
+  poly.Add(gp_Pnt(40, at, 3));
+  poly.Add(gp_Pnt(40, at, 7));
+  poly.Add(gp_Pnt(30, at, 7));
+  poly.Close();
+  return f.store(BRepBuilderAPI_MakeFace(poly.Wire(), true).Face());
+}
+/** The spike's tool: the flat piece and the fillet's wrapped piece, each cut to its face's slab, fused. */
+static int spikeTool(int body, bool out, double& flat, double& wrap) {
+  const int front = flatFace(body, gp_Dir(0, 1, 0), 40);
+  const int round = curvedFaces(body).front();
+  const int prism = f.store(BRepPrimAPI_MakePrism(*f.find(rectY(40)), gp_Vec(0, out ? 1 : -1, 0)).Shape());
+  const int flatPiece = commonOf(prism, f.faceSlab(body, front, 1, out));
+  // The sketch on y = 50; the frame on the fillet's axis (35, 35, z), r towards the
+  // sketch (+Y), the corner the axis's foot on the sketch, across = a x r = -X.
+  const int wrapped = f.wrapOnCylinder(rectY(50), 35, 35, 0, 0, 0, 1, 0, 1, 0, 5, 35, 50, 0, -1, 0, 0, 1, out);
+  const int roundPiece = commonOf(wrapped, f.faceSlab(body, round, 1, out));
+  flat = volume(flatPiece);
+  wrap = volume(roundPiece);
+  return fuseOf(flatPiece, roundPiece);
+}
+
+static void secondRound() {
+  const int box = boxBody();
+  const int top = flatFace(box, gp_Dir(0, 0, 1), 10);
+  f.faceHit(box, top, 5, 5, 30, 0, 0, 1);
+  const int cylinder = cylinderBody();
+  f.faceHit(cylinder, curvedFaces(cylinder).front(), 0, 25, 5, 0, -1, 0);
+  f.faceSlab(box, top, 1, true);
+  f.faceSlab(cylinder, curvedFaces(cylinder).front(), 1, false);
+  const int cone = coneBody();
+  f.faceSlab(cone, curvedFaces(cone).front(), 1, true);
+  f.projectOnFace(rectZ(30, 30, 10, 50, 20), box, top, 1, true, true);
+  const int dome = domeBody();
+  f.projectOnFace(discZ(30, 0, 0, 3), dome, curvedFaces(dome).front(), 1, true, true);
+  f.projectOnFace(disc(30, 0, 0, 5), dome, curvedFaces(dome).front(), 1, false, true);
+  double a = 0, b = 0;
+  spikeTool(filletedBox(), true, a, b);
+  f.releaseAll();
+}
+
 static void round() {
   CONE(rect(-5, -2, 10, 4), ALPHA, 1, true);
   CONE(ringO(0, 3, 4, 2), -ALPHA, 0.8, false);
   CYL(rect(0, 0, 300 * M_PI / 180 * R, 4), 1, true);
   const int sphere = sphereBody();
-  f.projectOnFace(disc(30, 0, 0, 5), sphere, 0, 1, true);
-  f.projectOnFace(disc(30, 0, 0, 5), sphere, 0, 1, false);
+  f.projectOnFace(disc(30, 0, 0, 5), sphere, 0, 1, true, false);
+  f.projectOnFace(disc(30, 0, 0, 5), sphere, 0, 1, false, false);
   f.releaseAll();
+  secondRound();
 }
 
 int main(int argc, char** argv) {
@@ -305,7 +495,7 @@ int main(int argc, char** argv) {
       const int sphere = sphereBody();
       for (bool out : {true, false}) {
         const auto t0 = std::chrono::steady_clock::now();
-        const int h = f.projectOnFace(disc(30, 0, 0, 5), sphere, 0, 1, out);
+        const int h = f.projectOnFace(disc(30, 0, 0, 5), sphere, 0, 1, out, false);
         std::printf("     sphere projection: %.0f ms\n", ms(t0));
         solid(h, out ? "sphere emboss: valid solid" : "sphere deboss: valid solid");
         const double want = out ? column(5, R, R + 1) : column(5, R - 1, R);
@@ -322,7 +512,7 @@ int main(int argc, char** argv) {
               out ? whole + want : whole - want);
       }
       // From the other side: the sketch at x = -30 projects onto the sphere's -X side.
-      const int other = f.projectOnFace(disc(-30, 0, 0, 5), sphere, 0, 1, true);
+      const int other = f.projectOnFace(disc(-30, 0, 0, 5), sphere, 0, 1, true, false);
       solid(other, "sphere from -X: valid solid");
       check(other > 0 && f.find(other) != nullptr, "sphere from -X: built");
       if (other > 0) {
@@ -333,13 +523,13 @@ int main(int argc, char** argv) {
         check(x1 < -R * 0.9, "sphere from -X: on the -X side", x1, -R);
       }
       // A sketch inside the sphere's outline... reaching past it, and missing it.
-      const int past = f.projectOnFace(disc(30, 17, 0, 5), sphere, 0, 1, true);
+      const int past = f.projectOnFace(disc(30, 17, 0, 5), sphere, 0, 1, true, false);
       check(past == 0, "sphere: past the silhouette refused", past, 0);
       std::printf("     %s\n", f.lastError_.c_str());
-      const int band = f.projectOnFace(disc(30, 0, 0, 19.5), sphere, 0, 1, false);
+      const int band = f.projectOnFace(disc(30, 0, 0, 19.5), sphere, 0, 1, false, false);
       check(band == 0, "sphere deboss: past the inner sphere's outline refused", band, 0);
       std::printf("     %s\n", f.lastError_.c_str());
-      const int miss = f.projectOnFace(disc(30, 40, 0, 5), sphere, 0, 1, true);
+      const int miss = f.projectOnFace(disc(30, 40, 0, 5), sphere, 0, 1, true, false);
       check(miss == 0, "sphere: a profile off it refused", miss, 0);
       std::printf("     %s\n", f.lastError_.c_str());
       // A ring (a letter O) keeps its counter.
@@ -351,7 +541,7 @@ int main(int argc, char** argv) {
           BRepBuilderAPI_MakeWire(BRepBuilderAPI_MakeEdge(gp_Circ(gp_Ax2(gp_Pnt(30, 0, 0), gp_Dir(1, 0, 0)), 3)).Edge())
               .Wire()
               .Reversed()));
-      const int ring = f.projectOnFace(f.store(o.Face()), sphere, 0, 1, true);
+      const int ring = f.projectOnFace(f.store(o.Face()), sphere, 0, 1, true, false);
       solid(ring, "sphere O: valid solid");
       check(faces(ring) == 4, "sphere O: 4 faces", faces(ring), 4);
       check(near(volume(ring), column(6, R, R + 1) - column(3, R, R + 1), 1e-7), "sphere O: volume", volume(ring),
@@ -375,7 +565,7 @@ int main(int argc, char** argv) {
       BRepBuilderAPI_MakeEdge edge(gp_Circ(gp_Ax2(gp_Pnt(0, 0, 30), gp_Dir(0, 0, 1)), 3));
       for (bool out : {true, false}) {
         const int top = f.store(BRepBuilderAPI_MakeFace(BRepBuilderAPI_MakeWire(edge.Edge()).Wire(), true).Face());
-        const int h = f.projectOnFace(top, ball, index, 1, out);
+        const int h = f.projectOnFace(top, ball, index, 1, out, false);
         solid(h, out ? "pole emboss: valid solid" : "pole deboss: valid solid");
         const double want = out ? column(3, R, R + 1) : column(3, R - 1, R);
         check(near(volume(h), want, 1e-7), "pole: volume", volume(h), want);
@@ -389,7 +579,7 @@ int main(int argc, char** argv) {
       BRepBuilderAPI_MakeEdge edge(gp_Circ(gp_Ax2(gp_Pnt(15, 0, 20), gp_Dir(0, 0, 1)), 2));
       for (bool out : {true, false}) {
         const int top = f.store(BRepBuilderAPI_MakeFace(BRepBuilderAPI_MakeWire(edge.Edge()).Wire(), true).Face());
-        const int h = f.projectOnFace(top, ring, 0, 0.5, out);
+        const int h = f.projectOnFace(top, ring, 0, 0.5, out, false);
         solid(h, out ? "torus emboss: valid solid" : "torus deboss: valid solid");
         check(faces(h) == 3, "torus: 3 faces", faces(h), 3);
         // About the disc's area times the depth (the tube is nearly flat under it).
@@ -410,7 +600,7 @@ int main(int argc, char** argv) {
       const double side = 8;
       for (bool out : {true, false}) {
         const auto t0 = std::chrono::steady_clock::now();
-        const int h = f.projectOnFace(squareY(-40, 0, 12, side), body, index, 1, out);
+        const int h = f.projectOnFace(squareY(-40, 0, 12, side), body, index, 1, out, false);
         std::printf("     loft projection: %.0f ms\n", ms(t0));
         solid(h, out ? "loft emboss: valid solid" : "loft deboss: valid solid");
         check(faces(h) == 6, "loft: 6 faces", faces(h), 6);
@@ -424,9 +614,215 @@ int main(int argc, char** argv) {
         check(ok && near(after, out ? volume(body) + v : volume(body) - v, 1e-6), "loft: the boolean adds up", after,
               out ? volume(body) + v : volume(body) - v);
       }
-      const int over = f.projectOnFace(squareY(-40, 0, 28, side), body, index, 1, true);
+      const int over = f.projectOnFace(squareY(-40, 0, 28, side), body, index, 1, true, false);
       check(over == 0, "loft: past the face's edge refused", over, 0);
       std::printf("     %s\n", f.lastError_.c_str());
+    }
+    // 6. The second amendment. 6a: faceHit.
+    {
+      const int box = boxBody();
+      const int top = flatFace(box, gp_Dir(0, 0, 1), 10);
+      hit(box, top, gp_Pnt(5, 5, 30), gp_Vec(0, 0, 1), gp_Pnt(5, 5, 10), gp_Vec(0, 0, 1), "faceHit plane, behind");
+      hit(box, top, gp_Pnt(5, 5, 30), gp_Vec(0, 0, -1), gp_Pnt(5, 5, 10), gp_Vec(0, 0, 1), "faceHit plane, ahead");
+      const int cylinder = cylinderBody();
+      const int side = curvedFaces(cylinder).front();
+      hit(cylinder, side, gp_Pnt(0, 25, 5), gp_Vec(0, -1, 0), gp_Pnt(0, 20, 5), gp_Vec(0, 1, 0),
+          "faceHit cylinder: the near hit ahead");
+      hit(cylinder, side, gp_Pnt(0, 25, 5), gp_Vec(0, 1, 0), gp_Pnt(0, 20, 5), gp_Vec(0, 1, 0),
+          "faceHit cylinder: the near hit behind");
+      hit(cylinder, side, gp_Pnt(0, -15, 5), gp_Vec(0, 1, 0), gp_Pnt(0, -20, 5), gp_Vec(0, -1, 0),
+          "faceHit cylinder: from inside, the near hit");
+      hit(cylinder, side, gp_Pnt(0, 0, 5), gp_Vec(0, 1, 0), gp_Pnt(0, 20, 5), gp_Vec(0, 1, 0),
+          "faceHit cylinder: a tie goes the way d points");
+      hit(cylinder, side, gp_Pnt(0, 0, 5), gp_Vec(0, -1, 0), gp_Pnt(0, -20, 5), gp_Vec(0, -1, 0),
+          "faceHit cylinder: a tie the other way");
+      const int ball = ballBody();
+      hit(ball, curvedFace(ball), gp_Pnt(0, 0, 30), gp_Vec(0, 0, -1), gp_Pnt(0, 0, R), gp_Vec(0, 0, 1),
+          "faceHit sphere: the pole");
+      hit(ball, curvedFace(ball), gp_Pnt(0, 0, 30), gp_Vec(0, 0, 1), gp_Pnt(0, 0, R), gp_Vec(0, 0, 1),
+          "faceHit sphere: the pole, behind");
+      const int loft = loftBody();
+      const int sideOf = curvedFace(loft);
+      const int n = f.faceHit(loft, sideOf, 0, -40, 12, 0, 1, 0);
+      check(n == 6, "faceHit loft: a hit", n, 6);
+      if (n == 6) {
+        const std::vector<double> g = f.geometry_;
+        const gp_Pnt at(g[0], g[1], g[2]);
+        const gp_Vec normal(g[3], g[4], g[5]);
+        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> map;
+        TopExp::MapShapes(*f.find(loft), TopAbs_FACE, map);
+        const TopoDS_Face face = TopoDS::Face(map(sideOf + 1));
+        GeomAPI_ProjectPointOnSurf foot(at, BRep_Tool::Surface(face));
+        double u = 0, v = 0;
+        foot.LowerDistanceParameters(u, v);
+        gp_Pnt p;
+        gp_Vec du, dv;
+        BRep_Tool::Surface(face)->D1(u, v, p, du, dv);
+        const double square = std::max(std::abs(normal.Dot(du.Normalized())), std::abs(normal.Dot(dv.Normalized())));
+        check(foot.LowerDistance() < 1e-7 && std::abs(at.X()) < 1e-9 && std::abs(at.Z() - 12) < 1e-9 && at.Y() < 0,
+              "faceHit loft: on the face and the line, the near side", foot.LowerDistance(), 0);
+        check(square < 1e-7 && std::abs(normal.Magnitude() - 1) < 1e-12 && normal.Y() < -0.5,
+              "faceHit loft: a unit normal square to the face, outward", square, 0);
+        std::printf("     loft hit (%.6f, %.6f, %.6f) normal (%.6f, %.6f, %.6f)\n", g[0], g[1], g[2], g[3], g[4], g[5]);
+      }
+      const int miss = f.faceHit(cylinder, side, 100, 100, 5, 0, 0, 1);
+      check(miss == -1, "faceHit: a miss is -1", miss, -1);
+      std::printf("     %s\n", f.lastError_.c_str());
+      check(f.faceHit(box, top, 50, 50, 30, 0, 0, 1) == -1, "faceHit: a line past the bounded face's edge misses");
+    }
+    // 6b. faceSlab: a plane, a cylinder and a cone face, out and in.
+    for (bool out : {true, false}) {
+      const int box = boxBody();
+      const auto t0 = std::chrono::steady_clock::now();
+      const int plane = f.faceSlab(box, flatFace(box, gp_Dir(0, 0, 1), 10), 1, out);
+      std::printf("     plane slab: %.0f ms\n", ms(t0));
+      int c[6];
+      relations(c);
+      solid(plane, "faceSlab plane: valid solid");
+      check(near(volume(plane), 1600, 1e-9), out ? "faceSlab plane out: area x d" : "faceSlab plane in: area x d",
+            volume(plane), 1600);
+      check(faces(plane) == 6 && c[1] == 4 && c[4] == 1 && c[5] == 1,
+            "faceSlab plane: 6 faces; 4 generated, first, last", c[1] * 100 + c[4] * 10 + c[5], 411);
+      const int cylinder = cylinderBody();
+      const int round = f.faceSlab(cylinder, curvedFaces(cylinder).front(), 1, out);
+      relations(c);
+      solid(round, "faceSlab cylinder: valid solid");
+      const double want = 2 * M_PI * R * 10 * 1 * (R + (out ? 0.5 : -0.5)) / R;
+      check(near(volume(round), want, 1e-9),
+            out ? "faceSlab cylinder out: A d (R + d/2) / R" : "faceSlab cylinder in: A d (R - d/2) / R",
+            volume(round), want);
+      std::printf("     cylinder slab: %d faces, generated %d, first %d, last %d\n", faces(round), c[1], c[4], c[5]);
+      const int cone = coneBody();
+      const double r0 = R - 8 * std::tan(ALPHA), r1 = R + 8 * std::tan(ALPHA);
+      const int conical = f.faceSlab(cone, curvedFaces(cone).front(), 1, out);
+      relations(c);
+      solid(conical, "faceSlab cone: valid solid");
+      const double cw = frustumSlab(r0, r1, 16 / std::cos(ALPHA), 1, ALPHA, out);
+      check(near(volume(conical), cw, 1e-9), out ? "faceSlab cone out: Pappus" : "faceSlab cone in: Pappus",
+            volume(conical), cw);
+      std::printf("     cone slab: %d faces, generated %d, first %d, last %d\n", faces(conical), c[1], c[4], c[5]);
+      // The coincident-surface boolean (plan 11): a wrap on the cone common its slab is the wrap.
+      const int wrap = CONE(rect(-5, -2, 10, 4), ALPHA, 1, out);
+      const int both = commonOf(wrap, conical);
+      solid(both, "cone wrap common its slab: valid solid");
+      check(near(volume(both), volume(wrap), 1e-9), "cone wrap common its slab: the wrap", volume(both), volume(wrap));
+    }
+    check(f.faceSlab(boxBody(), 0, 0, true) == 0, "faceSlab: a depth of 0 refused");
+    // 6c. projectOnFace with clip.
+    {
+      const int box = boxBody();
+      const int top = flatFace(box, gp_Dir(0, 0, 1), 10);
+      for (bool out : {true, false}) {
+        const int h = f.projectOnFace(rectZ(30, 30, 10, 50, 20), box, top, 1, out, true);
+        int c[6];
+        relations(c);
+        solid(h, "clip overhang: valid solid");
+        check(near(volume(h), 100, 1e-9),
+              out ? "clip overhang out: the face's part, 10 x 10 x 1" : "clip overhang in: 10 x 10 x 1", volume(h),
+              100);
+        check(faces(h) == 6, "clip overhang: 6 faces", faces(h), 6);
+        std::printf("     overhang history: generated %d, first %d, last %d\n", c[1], c[4], c[5]);
+      }
+      check(f.projectOnFace(rectZ(30, 30, 10, 50, 20), box, top, 1, true, false) == 0,
+            "overhang without clip: still refused");
+      // A dome (a quarter disc turned about Z, the pole on top): the pole's circle and one across the rim.
+      const int dome = domeBody();
+      const int cap = curvedFaces(dome).front();
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> map;
+      TopExp::MapShapes(*f.find(dome), TopAbs_FACE, map);
+      for (bool out : {true, false}) {
+        const int slab = f.faceSlab(dome, cap, 1, out);
+        const double want = 2 * M_PI / 3 * (out ? std::pow(R + 1, 3) - std::pow(R, 3) : std::pow(R, 3) - std::pow(R - 1, 3));
+        solid(slab, "dome slab: valid solid (the simple offset takes the pole)");
+        check(near(volume(slab), want, 1e-9), "dome slab: the hemispherical shell", volume(slab), want);
+      }
+      check(BRepAdaptor_Surface(TopoDS::Face(map(cap + 1))).GetType() == GeomAbs_Sphere &&
+                !ExtrudoFacade::wholeFace(TopoDS::Face(map(cap + 1))),
+            "dome: a sphere face, not a whole one");
+      // The dome's own pole (under the circle) and seam (under the rim's) lie in the
+      // boolean's way, so its intersection there is approximated: 1e-7, not 1e-9.
+      for (bool out : {true, false}) {
+        const double want = out ? column(3, R, R + 1) : column(3, R - 1, R);
+        const auto t0 = std::chrono::steady_clock::now();
+        const int h = f.projectOnFace(discZ(30, 0, 0, 3), dome, cap, 1, out, true);
+        std::printf("     dome pole, clip: %.0f ms\n", ms(t0));
+        solid(h, "dome pole, clip: valid solid");
+        check(near(volume(h), want, 1e-7), out ? "dome pole, clip, out: the column" : "dome pole, clip, in: the column",
+              volume(h), want);
+        const int plain = f.projectOnFace(discZ(30, 0, 0, 3), dome, cap, 1, out, false);
+        check(near(volume(plain), want, 1e-9), "dome pole, no clip: the column", volume(plain), want);
+        const int rim = f.projectOnFace(disc(30, 0, 0, 5), dome, cap, 1, out, true);
+        solid(rim, "dome rim, clip: valid solid");
+        const double half = (out ? column(5, R, R + 1) : column(5, R - 1, R)) / 2;
+        check(near(volume(rim), half, 1e-7),
+              out ? "dome rim, clip, out: half the column" : "dome rim, clip, in: half the column", volume(rim), half);
+        if (rim > 0) {
+          Bnd_Box bounds;
+          BRepBndLib::Add(*f.find(rim), bounds);
+          double x0, y0, z0, x1, y1, z1;
+          bounds.Get(x0, y0, z0, x1, y1, z1);
+          check(z0 > -1e-6, "dome rim, clip: stops at the rim (z >= 0)", z0, 0);
+        }
+        check(f.projectOnFace(disc(30, 0, 0, 5), dome, cap, 1, out, false) == 0, "dome rim, no clip: refused");
+      }
+      // Two adjacent faces of a loft, the square across their seam: each clipped, fused.
+      const int loft = splitLoftBody();
+      const std::vector<int> sides = curvedFaces(loft);
+      check(sides.size() == 2, "split loft: two curved faces", static_cast<double>(sides.size()), 2);
+      if (sides.size() == 2) {
+        for (bool out : {true, false}) {
+          const auto t0 = std::chrono::steady_clock::now();
+          const int a = f.projectOnFace(squareY(-40, 0, 12, 8), loft, sides[0], 1, out, true);
+          const int b = f.projectOnFace(squareY(-40, 0, 12, 8), loft, sides[1], 1, out, true);
+          std::printf("     two loft faces, clip: %.0f ms\n", ms(t0));
+          solid(a, "loft face 1, clip: valid solid");
+          solid(b, "loft face 2, clip: valid solid");
+          const int both = fuseOf(a, b);
+          solid(both, "two loft faces fused: valid solid");
+          check(solids(both) == 1, "two loft faces fused: one solid", solids(both), 1);
+          const double v = volume(both);
+          std::printf("     pieces %.7f + %.7f, fused %.7f\n", volume(a), volume(b), v);
+          check(near(v, volume(a) + volume(b), 1e-6), "two loft faces fused: the pieces add up", v,
+                volume(a) + volume(b));
+          check(v > 64 * 0.9 && v < 64 * 1.3, "two loft faces fused: volume between the bounds", v, 64);
+          if (both > 0) {
+            bool ok = false;
+            const double after = booleanVolume(loft, both, out, ok);
+            check(ok && near(after, out ? volume(loft) + v : volume(loft) - v, 1e-6),
+                  "two loft faces: the boolean adds up", after, out ? volume(loft) + v : volume(loft) - v);
+          }
+        }
+      }
+      // The Sphere primitive's shape (4b): clip changes nothing.
+      const int ball = ballBody();
+      for (bool out : {true, false}) {
+        const int plain = f.projectOnFace(discZ(30, 0, 0, 3), ball, curvedFace(ball), 1, out, false);
+        const int clipped = f.projectOnFace(discZ(30, 0, 0, 3), ball, curvedFace(ball), 1, out, true);
+        check(plain > 0 && volume(clipped) == volume(plain) && faces(clipped) == faces(plain),
+              out ? "Sphere primitive, clip out: identical" : "Sphere primitive, clip in: identical", volume(clipped),
+              volume(plain));
+      }
+    }
+    // 6d. The spike: a box's +Y face and the fillet beside it, each piece cut to its face's slab.
+    for (bool out : {true, false}) {
+      const int body = filletedBox();
+      double flat = 0, wrap = 0;
+      const auto t0 = std::chrono::steady_clock::now();
+      const int tool = spikeTool(body, out, flat, wrap);
+      std::printf("     flat + fillet tool: %.0f ms\n", ms(t0));
+      check(near(flat, 20, 1e-9), "spike: the flat piece, 5 x 4 x 1", flat, 20);
+      const double w = 20 * (5 + (out ? 0.5 : -0.5)) / 5;
+      check(near(wrap, w, 1e-9), "spike: the fillet's piece, A d (R +- d/2) / R", wrap, w);
+      solid(tool, "spike: the fused tool is valid");
+      check(solids(tool) == 1, "spike: one solid", solids(tool), 1);
+      check(near(volume(tool), out ? 42 : 38, 1e-9), out ? "spike: emboss tool 42" : "spike: deboss tool 38",
+            volume(tool), out ? 42 : 38);
+      if (tool > 0) {
+        bool ok = false;
+        const double after = booleanVolume(body, tool, out, ok);
+        check(ok && near(after, volume(body) + (out ? 42 : -38), 1e-9), "spike: the body grows or shrinks exactly",
+              after, volume(body) + (out ? 42 : -38));
+      }
     }
   } else {
     const int n = argc > 2 ? std::atoi(argv[2]) : 300;

@@ -1381,15 +1381,20 @@ Puts sketch profiles or text **onto** a face of a body and joins them on
 (emboss) or cuts them in (deboss) (P4-04, ADR-0060): the same thing as
 sketching on the face and extruding out or in, done in one step from a sketch
 anywhere in a parallel plane. It makes no body of its own: the body that owns
-`face` is the only body it touches, and a pattern or mirror can repeat it as a
-feature (6.16). No new keys.
+the picked faces is the only body it touches, and a pattern or mirror can
+repeat it as a feature (6.16). The one key added since P4-04 is `tangent`: an
+older Extrudo ignores it with its unknown-input warning and computes the emboss
+without folding the profiles, so it may refuse the sketch. Since P4-12 `face`
+may hold several faces; an older Extrudo, whose schema allowed one, marks such
+an emboss "Invalid inputs".
 
 | Input | Kind | Required | Rule |
 |---|---|---|---|
 | `profiles` | `ref` | yes | Refs of kind `profile` (`<sketch>/<region>`) and `sketchEntity` (a whole text, `<sketch>/<text>`: every ink region of it, so editing the string keeps the feature). All in one plane, parallel to the face's. Missing or empty: an error until some are picked |
-| `face` | `ref` | yes | One ref of kind `face`: the face to emboss on (a flat face; a cylinder or a cone needs the sketch parallel to its axis; any other face takes the profiles projected along the sketch's normal, P4-12). Missing: an error until picked |
+| `face` | `ref` | yes | Refs of kind `face`, all of one body: the faces to emboss on (a flat face; a cylinder or a cone needs the sketch parallel to its axis; any other face takes the profiles projected along the sketch's normal, P4-12). One face works as before, unclipped; with several (P4-12, ADR-0060 B3) each face takes the part of the letters that lands on it, clipped to the face. Missing: an error until picked |
 | `depth` | `expr` | no | Length, greater than 0; default 1 mm. How far the letters stand out (`emboss`) or go in (`deboss`) |
 | `mode` | `enum` | no | `emboss` (default: joins material outwards) or `deboss` (cuts inwards) |
+| `tangent` | `bool` | no | Default false. Lay the profiles on the face first, as if sketched on its tangent plane straight in front of them: any sketch angle, the letters read the right way round from outside (P4-12, ADR-0060 B2) |
 
 The profiles are moved onto the face's plane (a translation along the face's
 outward normal) and swept `depth` along it (emboss) or against it (deboss),
@@ -1401,11 +1406,26 @@ Since P4-12 (ADR-0060's amendment) the kernel also wraps the profiles round a
 **cone** like a cylinder, and **projects** them onto any other face (a sphere,
 a torus, a free-form face) along the sketch's normal, refusing profiles that
 reach past the face's edge or outline as seen from the sketch; a wrap may run up
-to a whole turn. The method is chosen from the face, not stored: no new keys.
+to a whole turn. With `tangent` the profiles are first laid on the face as if
+sketched on its tangent plane straight in front of them (the line through their
+area centroid along the sketch's normal, the nearest hit, then a fold onto the
+face's outward normal there), and the face's method runs on the laid profiles.
+The method is chosen from the face, not stored.
+
+With **several faces** (ADR-0060's second amendment B3) each face takes the
+part of the letters that lands on it by its own method, clipped to that face,
+and the pieces fuse into one tool. When any face takes a projection, every face
+that isn't a flat face parallel to the profiles is projected too (a flat face
+that isn't parallel, refused alone, is projected in a set). A face no letter
+reaches gives the warning "No letters land on face *k*."; when none is reached
+the feature fails. Faces of two bodies are an error.
 
 Names: the prism's own names under `emboss:<feature id>` — `…:cap:start` (on
 the face's plane) and `…:cap:end`, and `…:side:<source>` for each sketch curve
-the profile is bounded by, `#n` where names repeat — like an extrude's.
+the profile is bounded by, `#n` where names repeat — like an extrude's. With
+several faces, the walls where the letters stop at a picked face's edge are
+`…:clip:<k>`, *k* the face's place in the `face` list (from 1), and names split
+across the faces' pieces take `#n`.
 
 ### 6.27 `rib`
 
