@@ -1,0 +1,1 @@
+- 2026-11-04 · **Flat faces of mirrored bodies and chamfers face outwards again**: on a mirrored body or a chamfer's slope, Measure showed a flat face's normal pointing into the body, a Shell with a thicker wall failed, an Emboss changed nothing, and a slider joint slid inwards; they now all take the normal out of the face (ADR-0035).
