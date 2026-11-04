@@ -1,8 +1,9 @@
 # ADR-0126: Annotations: numbered notes on geometry, for people and agents
 
-- **Status:** Proposed, 2026-11-03 (the owner asked for the spec, display
+- **Status:** Accepted (S1), 2026-11-03 (the owner asked for the spec, display
   options and the slices). Display chosen 2026-11-04: callouts, text always
-  visible (option 2), ghosted behind the part.
+  visible (option 2), ghosted behind the part. S1 landed with the amendments
+  under "Amendment (S1)".
 - **Task:** P6-23 (`docs/03-roadmap.md`).
 - **Builds on:** ADR-0003 (commands, undo), ADR-0005 (topological naming,
   `GeomRef`, fingerprints), ADR-0068 (the document API), ADR-0069 (the CLI),
@@ -314,6 +315,62 @@ Sub-choices (defaults in bold, kept unless the owner changes them): badge
 colour **accent blue** / amber "sticky"; badge shape **circle** / rounded
 tag; a `done` annotation **muted grey** (collapsed to its badge, section 6) /
 hidden by default.
+
+## Amendment (S1, 2026-11-03)
+
+Where S1 had to decide what the spec left open, or the code disagreed with it:
+
+- **The fingerprint is optional in the schema.** `model.ref` keeps the
+  `GeomRef` schema's optional `fingerprint`: the app and the agent tools always
+  store one (the kernel's, from `resolveAnnotation`), but the document API has
+  no kernel, so `d.annotate` stores one only when given (`options.fingerprint`)
+  and then needs `options.at`. Without a fingerprint the note is drawn at its
+  `at` and resolves by name only.
+- **Every kind gets a fingerprint from the kernel**, so every kind follows: a
+  face, edge or vertex the naming service's own; a body
+  `{ type: 'body', at: <its faces' centroids, area-weighted> }`; a plane
+  `{ type: 'plane', at: <its anchor>, dir: <its normal> }`; an axis its origin
+  and direction; a point and a `sketchEntity` (`type` its entity type) their
+  position. A vertex, a point and a sketch point are drawn where they are; the
+  rest at `anchor.at` moved by their point's move.
+- **`AnnotationReport.resolved.body` is optional** (a plane, axis or point is on
+  none), and **`normal` is given for flat faces and planes only**: the face
+  description has no normal at a point of a curved face, and a wrongly signed
+  one would be worse than none.
+- **`addAnnotation` also takes `hidden`, `done` and `number`.** `number` must
+  be past the counter (a design rebuilt from `emitScript` keeps its numbers);
+  without it the next number is given. The text is stored trimmed.
+- **`restoreVersion` never lowers the counter** (the larger of the current and
+  the version's): a number given since the version was saved is not given
+  again. It now copies `components`, `joints`, `annotations` and
+  `annotationCounter`; it missed `components` and `joints` before (a restored
+  version kept today's components and joints).
+- **Sketch entity removal** clears `entity` in `removeFromSketch`, in
+  `modifySketch`'s removals (trim, offset, …) and when projections drop their
+  curves (`removeProjection`, `syncProjections`), through
+  `detachAnnotationEntities`, called while the entities still exist so `at`
+  becomes the sketch position the note was drawn at.
+- **Remint:** `remintFeatures` maps features only, and no caller inserts
+  annotations with features today, so the rewrite is a sibling,
+  `remintAnnotations(annotations, features, ids)` in `core/remint.ts`, sharing
+  its token renamer.
+- **`design.annotations()` is a method**, like `d.joints()`, so the script
+  sandbox can refuse it like any other; scripts refuse `annotate`,
+  `annotation` and `annotations`.
+- **The agent tools' answers:** `list_annotations` gives `status: 'pending'`
+  for a note on geometry the model hasn't computed yet; the anchor names the
+  reference under its kind's key (`face`, `edge`, `vertex`, `body`, `plane`,
+  `axis`, `point`, `sketchEntity`), a sketch note's `at` is in sketch mm with
+  its entity's offset applied. `get_design` lists annotations only when the
+  design has some, with the first line of the text (80 characters at most) and
+  `done: true` when ticked off. `add_annotation`, `edit_annotation` and
+  `remove_annotation` name their step `Agent: Annotate #n`, `Agent: Edit #n`
+  and `Agent: Delete #n, #m`.
+- **`emitScript`** writes annotations for a whole design only (a run replays
+  into a design with its own), in number order, with `number` only where it
+  isn't the next one, and the fingerprint as an object literal.
+- **The CLI** reports a note on geometry the kernel didn't report as
+  `detached`; free and sketch notes are `ok`.
 
 ## Rejected
 

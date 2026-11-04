@@ -3986,3 +3986,37 @@ anchor in `docsAnchors.json` must exist in the built page (site test); the deskt
 `DOCS_PATH` accepts `/<guide>/` and `#<anchor>`. Tool pages stay generated: hand text between
 the `<!-- notes -->` markers (Step by step, Options, What it keeps, Messages; messages quoted
 from the app).
+
+ADR-0126 (the owner, 2026-11-03; S1 2026-11-03): **Annotations** (P6-23), numbered notes
+pinned to geometry, a point or a sketch. **Model:** `doc.annotations[]` (`Annotation`: `id`,
+`number`, `text` 1–2000, `anchor`, `offset?`, `hidden?: true`, `done?: true`) and
+`doc.annotationCounter` (`packages/core/src/schema.ts`; `AnnotationIdSchema` in `ids.ts`);
+`AnnotationAnchor` is `model` (`ref` of `ANNOTATION_REF_KINDS`, never `index:`, plus world
+`at`), `free` (world `at`) or `sketch` (`sketch` feature, sketch-mm `at`, `entity?`: then `at`
+is the offset from `annotationEntityPoint`). **Commands** (`core/src/annotations.ts`):
+`addAnnotation` (number = counter + 1, or a given `number` past it; the counter moves in the
+same recipe), `updateAnnotation`, `moveAnnotation`, `removeAnnotation` (drops the key when
+empty, keeps the counter). Cascades: `removeFeature` of a sketch removes its `sketch` notes;
+`removeFromSketch`, `modifySketch`'s removals, `removeProjection` and `syncProjections` call
+`detachAnnotationEntities` **before** deleting entities; `remintAnnotations` (`remint.ts`);
+`restoreVersion` copies components, joints and annotations and never lowers the counter.
+**Kernel:** `RecomputeEngine`'s annotation pass after the joint pass (`#annotation`,
+`annotations/resolve.ts`), `model` anchors only, in no cache key; `AnnotationReport`
+(`core/src/stores.ts`: `status` ok/moved/detached, `at`, `normal` of a flat face or plane,
+`resolved { ref with fingerprint, body? }`) on `RecomputeResult.annotations` and
+`ModelState.annotations`; `resolveAnnotation` on the engine, service, worker API, browser
+client and `Recomputer`, and `AgentHost.resolveAnnotation`. **Agents** (`apps/web/src/agent/`):
+`list_annotations`, `add_annotation`, `edit_annotation`, `remove_annotation`; `get_design`'s
+`annotations`. **API:** `d.annotate(text, anchor, options)` → `AnnotationHandle`,
+`d.annotations()`, `d.annotation(n)`; ID prefix `n`; `emitScript` writes them (whole design).
+**CLI:** `info` lists them. Rules a change must keep: **a number is never given twice** (only
+`addAnnotation` moves the counter, upward; nothing lowers it); annotations are **in no feature's
+cache key** and the recompute never reads them for geometry; **a `model` anchor's ref is a
+persistent name with the kernel's fingerprint** whenever the app or an agent makes it (the
+agent tools resolve the name with `resolveAnnotation` first and refuse an unresolved one with
+its input path before any change); every agent change is one `Agent: …` step through
+`change()`; a sketch entity's removal clears `entity` while the entity still exists; scripts
+refuse `annotate`, `annotation` and `annotations`. The sketch glyph and label right-click menu
+is `sketch/tools/glyphMenu.tsx` (`useGlyphMenu`), renamed from `annotationMenu.tsx` so
+"annotation" means only these notes. S2–S4 (the overlay, the Annotate tool, sketch mode,
+polish) are open.
