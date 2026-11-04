@@ -14,6 +14,9 @@
  * the kernel when the last entry holding it is evicted.
  */
 import {
+  type Annotation,
+  type AnnotationId,
+  type AnnotationReport,
   type AttachmentId,
   type BodyId,
   type EvaluateResult,
@@ -36,6 +39,7 @@ import {
 } from '@extrudo/core';
 import type { ScadCompiler } from '@extrudo/openscad';
 import type { z } from 'zod';
+import { resolveAnnotation as annotationAt } from '../annotations/resolve';
 import { type SmoothFaces, smoothFaces } from '../features/offset-face';
 import { kernelSurface, removeFacesPick } from '../features/remove-faces';
 import type { SmoothKind, SubShapeKind } from '../history';
@@ -352,6 +356,17 @@ export class RecomputeEngine {
   }
 
   /**
+   * Where an annotation is against the last finished recompute (P6-23,
+   * ADR-0126 §4): what the agent tools read to store a reference with its
+   * fingerprint. Nothing is evaluated or cached; `detached` with no recompute yet.
+   */
+  resolveAnnotation(annotation: Annotation): AnnotationReport {
+    const at = this.#atMarker;
+    if (!at) return { id: annotation.id, status: 'detached' };
+    return this.#annotation(annotation, at);
+  }
+
+  /**
    * Bodies of the last finished recompute as an OpenSCAD file (P6-09,
    * ADR-0088): the timeline replayed as body versions through the features'
    * `csg` hooks, polyhedra where they can't follow. Synchronous, so the
@@ -661,6 +676,7 @@ export class RecomputeEngine {
     for (const [id, run] of scriptRuns) features[id] = scriptStatus(run, features);
     this.#pinned[channel] = new Set(used);
     let joints: Record<JointId, JointReport> | undefined;
+    let annotations: Record<AnnotationId, AnnotationReport> | undefined;
     if (channel === 'recompute') {
       this.#latest = bodies;
       // The joint pass (ADR-0081 §4): every unsuppressed joint's frames at the
@@ -673,6 +689,12 @@ export class RecomputeEngine {
       joints = {};
       for (const joint of doc.joints ?? []) {
         if (!joint.suppressed) joints[joint.id] = this.#joint(joint, this.#atMarker);
+      }
+      // The annotation pass (ADR-0126 §4), in no key either: an edit recomputes nothing.
+      annotations = {};
+      for (const annotation of doc.annotations ?? []) {
+        if (annotation.anchor.kind !== 'model') continue;
+        annotations[annotation.id] = this.#annotation(annotation, this.#atMarker);
       }
     }
     if (channel === 'preview') this.#previewBase = base ?? new Map();
@@ -691,6 +713,7 @@ export class RecomputeEngine {
       bodies: results,
       origins: Object.fromEntries(origins) as Record<BodyId, BodyId>,
       ...(joints && { joints }),
+      ...(annotations && { annotations }),
       reports,
       ...(tools && { tools }),
       ...(baseResults && { base: baseResults }),
@@ -782,8 +805,10 @@ export class RecomputeEngine {
     starting: () => void,
   ): ScriptRun {
     const own = doc.features.findIndex((f) => f.id === feature.id);
+    // Annotations may name sketches after the script (ADR-0126); the script can't read them.
+    const { annotations: _notes, annotationCounter: _counter, ...rest } = doc;
     const before: ExtrudoDocument = {
-      ...doc,
+      ...rest,
       features: doc.features.slice(0, Math.max(own, 0)),
       timelineMarker: Math.max(own, 0),
       // A group may name features after the script; the script can't group anyway.
@@ -1047,6 +1072,56 @@ export class RecomputeEngine {
       ...(all.length > 0 && { status: 'warning', message: all.join(' ') }),
       ...(issues.size > 0 && { refs: [...issues.values()] }),
     };
+  }
+
+  /**
+   * One `model` annotation at the marker (ADR-0126 §4): `detached` when its
+   * reference is on a feature the marker has rolled back, else resolved like
+   * a feature's references there.
+   */
+  #annotation(annotation: Annotation, at: AtMarker): AnnotationReport {
+    // A note is never worth a failed recompute: whatever goes wrong resolving
+    // one leaves it detached (its geometry can't be told), and the rest stand.
+    try {
+      return this.#resolveAnnotation(annotation, at);
+    } catch {
+      return { id: annotation.id, status: 'detached' };
+    }
+  }
+
+  #resolveAnnotation(annotation: Annotation, at: AtMarker): AnnotationReport {
+    const { doc } = at;
+    const { anchor } = annotation;
+    if (anchor.kind !== 'model') return { id: annotation.id, status: 'ok' };
+    const feature: Feature = {
+      id: annotation.id as unknown as FeatureId,
+      type: 'annotation',
+      name: `Annotation #${annotation.number}`,
+      suppressed: false,
+      inputs: { anchor: { kind: 'ref', refs: [anchor.ref] } },
+    };
+    const ids = new Set<string>(doc.features.map((f) => f.id));
+    const index = new Map<string, number>(doc.features.map((f, i) => [f.id, i]));
+    const rolledBack = referencedFeatures(feature, ids).some(
+      (id) => (index.get(id) ?? 0) >= doc.timelineMarker,
+    );
+    if (rolledBack) return { id: annotation.id, status: 'detached' };
+    const { names, resolve } = this.#references(feature, at.bodies);
+    return annotationAt(
+      {
+        kernel: this.#kernel,
+        bodies: at.bodies,
+        names,
+        describe: (shape) => this.#describe(shape),
+        resolve,
+        output: (id) => {
+          const output = at.outputs.get(id);
+          if (!output) throw new KernelError(`There is no feature ${id} at the marker.`);
+          return output;
+        },
+      },
+      annotation,
+    );
   }
 
   /**

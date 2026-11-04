@@ -6,7 +6,15 @@
  * design and never holds a stale command list. Only where the platform has an
  * agent bridge (the desktop): on the web nothing is registered.
  */
-import type { BodyId, Command, DocumentStore, ModelStore, SessionStore } from '@extrudo/core';
+import type {
+  Annotation,
+  AnnotationReport,
+  BodyId,
+  Command,
+  DocumentStore,
+  ModelStore,
+  SessionStore,
+} from '@extrudo/core';
 import {
   type ExportBody,
   type Interference,
@@ -17,6 +25,7 @@ import {
   stepBody,
 } from '@extrudo/kernel';
 import { useEffect, useRef } from 'react';
+import type { OpenSketch } from '../annotations/anchor';
 import type { MeasureKernel } from '../measure/inspection';
 import type { AgentExportFormat } from '../platform/agent';
 import { bodyEntries } from '../shell/bodies';
@@ -35,11 +44,16 @@ export interface AgentShell {
   kernel:
     | (ModelExporter &
         MeasureKernel &
-        Partial<{ interference(bodies: readonly BodyId[]): Promise<Interference[]> }>)
+        Partial<{
+          interference(bodies: readonly BodyId[]): Promise<Interference[]>;
+          resolveAnnotation(annotation: Annotation): Promise<AnnotationReport | undefined>;
+        }>)
     | undefined;
   apply(command: Command<unknown>): void;
   commands: readonly AppCommand[];
   save(): Promise<void>;
+  /** The sketch open for editing and its plane, if one is (screenshot badges, ADR-0126 S4). */
+  openSketch?(): OpenSketch | undefined;
   /** The sketch tools' host (loaded lazily): its `apply` solves, once its solver is in. */
   toolHost: Pick<ToolHost, 'whenSolverReady'> | undefined;
 }
@@ -113,6 +127,10 @@ function createShellHost(designId: string, current: { current: AgentShell }): Ag
       const { kernel } = shell();
       if (!kernel?.interference) throw new Error("The geometry kernel isn't ready yet.");
       return kernel.interference(bodies as BodyId[]);
+    },
+    openSketch: () => shell().openSketch?.(),
+    async resolveAnnotation(annotation) {
+      return shell().kernel?.resolveAnnotation?.(annotation);
     },
     async ready() {
       // The tool host is a lazy chunk: wait for it (10 s at most), then for its solver.

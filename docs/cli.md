@@ -68,9 +68,22 @@ The text report shows a parameter's value in the design's unit (`units`, the
 first word of the summary line: an inch design's `width 2 = 2 in`); body sizes
 and volumes are always in mm.
 
+A design with annotations (numbered notes, ADR-0126) ends with them, in number
+order, each with its status at the timeline marker: `ok`, `moved` (its face or
+edge was found again by a guess) or `detached` (its geometry is gone). A note
+in a sketch or at a point is always `ok`; `…` marks a note of several lines.
+
+```sh
+Annotations:
+  #1 ok       Make this hole M4 …
+  #3 detached Chamfer this edge
+  #4 ok       Logo here (done)
+```
+
 `--json` prints the same as one JSON object on stdout: `name`, `units`,
 `notices`, `parameters` (each with its `owner`), `configurations`, `features`,
-`bodies`, `errors`, `warnings`, `ms`. Its numbers are in mm and degrees,
+`bodies`, `components`, `joints`, `annotations` (`number`, the whole `text`,
+`status`, and `done` / `hidden` when set), `errors`, `warnings`, `ms`. Its numbers are in mm and degrees,
 whatever `units` says. It is the slower way to read a design —
 the volumes are the kernel's exact mass properties (see
 [Times](#times)).
@@ -126,8 +139,8 @@ extrudo set bracket.extrudo --config Large --out bracket-large.extrudo
 
 Writes a new `.extrudo` file with the changes: its saved versions, its
 thumbnail and the attachments it names travel with it (a font the design
-carries, a STEP, mesh or OpenSCAD file it imports). The design it was given is
-untouched.
+carries, a STEP, mesh or OpenSCAD file it imports), and so do its components,
+joints and annotations. The design it was given is untouched.
 
 ### `check` — is this design sound?
 

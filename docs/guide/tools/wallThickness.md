@@ -2,7 +2,7 @@
 title: Wall Thickness
 section: Tools
 category: Make
-order: 121
+order: 122
 ---
 
 # Wall Thickness

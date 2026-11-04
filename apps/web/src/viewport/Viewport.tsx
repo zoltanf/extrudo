@@ -41,6 +41,7 @@ import {
 } from 'three';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
+import { type AnnotationMark, drawMarks } from '../annotations/marks';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
 import {
   Button,
@@ -56,7 +57,9 @@ import { clipsSummary, type SectionBox, type SectionClip, sectionsSummary } from
 import { combineFilters } from '../selection/filter';
 import { itemLabel, type LabelContext, selectionKey } from '../selection/items';
 import {
+  occludedPoints,
   type PickAxis,
+  type PickCamera,
   type PickHit,
   type PickScene,
   pickBox,
@@ -249,8 +252,11 @@ export interface ViewportProps {
 export interface ModelSelect {
   /** The item under the pointer, or `undefined` over empty space or when it leaves. */
   onHover(item: SelectionItem | undefined): void;
-  /** A click on an item (`undefined`: empty space). `toggle` with Shift, Ctrl or ⌘. */
-  onClick(item: SelectionItem | undefined, toggle: boolean): void;
+  /**
+   * A click on an item (`undefined`: empty space). `toggle` with Shift, Ctrl or ⌘. `at`:
+   * where the click met the item, world mm, or the grid plane (z = 0) under empty space.
+   */
+  onClick(item: SelectionItem | undefined, toggle: boolean, at?: Vec3): void;
   /** A box selected `items`; `add` with Shift, Ctrl or ⌘. */
   onBox(items: SelectionItem[], add: boolean): void;
 }
@@ -521,6 +527,25 @@ export function Viewport({
     () => ({ bodies, meta, sketches, construction, clip: sectionClip, posed }),
     [bodies, meta, sketches, construction, sectionClip, posed],
   );
+  // Annotations behind the part (ADR-0126 §6): the picking code's occlusion test on what the
+  // view draws. Only what hides things (the bodies, a section, a pose, the style) makes a new
+  // function, which tells the overlay to look again: a sketch dragged in an open sketch
+  // changes the scene every step but hides nothing (ADR-0126 S3 review).
+  const drawnStyle = useStore(viewport, (s) => s.visualStyle);
+  const sceneRef = useRef(modelScene);
+  sceneRef.current = modelScene;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the bodies, the clip, the pose and the style are what change occlusion; the function reads the latest scene and style itself.
+  useEffect(() => {
+    viewport.getState().setOccluded((points, { width, height }) => {
+      const { view, projection, visualStyle } = viewport.getState();
+      return occludedPoints(
+        pickScene(sceneRef.current, visualStyle),
+        { view, projection, width, height },
+        points,
+      );
+    });
+    return () => viewport.getState().setOccluded(undefined);
+  }, [viewport, bodies, sectionClip, posed, drawnStyle]);
   // Auto-project (P6-07): the body edge or vertex under the pointer, or a face
   // centre near it (issue #140), while a tool runs. Off, the view offers
   // nothing and the tool never sees one. ADR-0125 adds an earlier sketch's
@@ -1012,6 +1037,7 @@ function Scene({
         options.view === undefined &&
         options.bodies === undefined &&
         options.section === undefined &&
+        options.marks === undefined &&
         options.overlays !== false;
       if (!plain)
         return snapshotWith(gl, scene, viewport.getState(), thumbnailBoxRef.current, size, options);
@@ -1241,6 +1267,7 @@ function snapshotWith(
       (options.overlays === false && object.name === SNAPSHOT_OVERLAY) ||
       (keep !== undefined && object.name.startsWith('body:') && !keep.has(object.name)),
     ...(options.section && { clip: sectionPlane(options.section) }),
+    ...(options.marks && { marks: options.marks }),
   });
 }
 
@@ -1258,7 +1285,7 @@ async function thumbnailFromBox(
   view: View,
   projection: Projection,
   size = THUMBNAIL_SIZE,
-  extra: { hide?(object: Object3D): boolean; clip?: Plane } = {},
+  extra: { hide?(object: Object3D): boolean; clip?: Plane; marks?: readonly AnnotationMark[] } = {},
 ): Promise<Blob | null> {
   const out = document.createElement('canvas');
   out.width = size;
@@ -1333,6 +1360,8 @@ async function thumbnailFromBox(
     }
   }
   ctx.putImageData(image, 0, 0);
+  // Through this picture's own camera, so another view or a framing on some bodies holds.
+  if (extra.marks) drawMarks(ctx, extra.marks, view, projection, size);
   return new Promise<Blob | null>((resolve) => out.toBlob(resolve, 'image/png'));
 }
 
@@ -1475,6 +1504,27 @@ function useSketchInput(
   usePointerInput(surface, viewport, handlers, onBoxChange, onNavDrag);
 }
 
+/** What model-mode picking sees in a view of `size` px: the scene, the camera, the filter. */
+function pickContext(
+  viewport: ViewportStore,
+  scene: ModelScene,
+  size: { width: number; height: number },
+) {
+  const { view, projection, visualStyle, selectionFilter, fieldFilter, origin, pickAxes } =
+    viewport.getState();
+  const made = constructionPick(scene.construction, view.size);
+  return {
+    scene: {
+      ...pickScene(scene, visualStyle),
+      axes: [...originAxes(shownOrigin(origin, pickAxes), view.size), ...made.axes],
+      planes: made.planes,
+      points: made.points,
+    },
+    camera: { view, projection, width: size.width, height: size.height },
+    filter: combineFilters(selectionFilter, fieldFilter),
+  };
+}
+
 /** What model-mode picking sees: the scene as drawn. */
 interface ModelScene {
   bodies: Record<BodyId, BodyMesh>;
@@ -1526,28 +1576,19 @@ function useModelInput(
   }, [pickBodies]);
   const handlers = useMemo<PointerHandlers | undefined>(() => {
     if (!select) return undefined;
-    const context = (p: ScreenPointer) => {
-      const { view, projection, visualStyle, selectionFilter, fieldFilter, origin, pickAxes } =
-        viewport.getState();
-      const made = constructionPick(sceneRef.current.construction, view.size);
-      return {
-        scene: {
-          ...pickScene(sceneRef.current, visualStyle),
-          axes: [...originAxes(shownOrigin(origin, pickAxes), view.size), ...made.axes],
-          planes: made.planes,
-          points: made.points,
-        },
-        camera: { view, projection, width: p.width, height: p.height },
-        filter: combineFilters(selectionFilter, fieldFilter),
-      };
-    };
+    const context = (p: ScreenPointer) => pickContext(viewport, sceneRef.current, p);
     const pick = (p: ScreenPointer) => {
       const c = context(p);
       return pickTop(c.scene, c.camera, [p.x, p.y], c.filter);
     };
+
     return {
       onMove: (p) => select.onHover(viewport.getState().tool ? undefined : pick(p)),
-      onClick: (p) => select.onClick(pick(p), p.toggle),
+      onClick: (p) => {
+        const c = context(p);
+        const hit = pickStack(c.scene, c.camera, [p.x, p.y], c.filter).find((h) => !h.occluded);
+        select.onClick(hit?.item, p.toggle, clickPoint(c.camera, [p.x, p.y], hit?.depth));
+      },
       onDragStart: () => false,
       onBox: (from, to) => {
         const c = context(to);
@@ -1586,6 +1627,17 @@ function useModelInput(
     };
   }, [select, viewport, surface, onMenu, onContext]);
   usePointerInput(surface, viewport, handlers, onBoxChange, onNavDrag);
+  // The same pick for a dragged annotation anchor (ADR-0126 S4), with where it lands.
+  useEffect(() => {
+    if (!select) return;
+    viewport.getState().setPickAt((x, y, size) => {
+      const c = pickContext(viewport, sceneRef.current, size);
+      const hit = pickStack(c.scene, c.camera, [x, y], c.filter).find((h) => !h.occluded);
+      const at = clickPoint(c.camera, [x, y], hit?.depth);
+      return { item: hit?.item, at: at && [at[0], at[1], at[2]] };
+    });
+    return () => viewport.getState().setPickAt(undefined);
+  }, [viewport, select]);
 }
 
 /**
@@ -1664,6 +1716,34 @@ export function originAxes(origin: Record<OriginItem, boolean>, size: number): P
 }
 
 /** The pick scene: visible bodies, drawn sketches with their shaded profiles. */
+/** Where a click meets what it hit (`depth` along the pick ray), or the grid plane z = 0. */
+function clickPoint(
+  camera: PickCamera,
+  at: readonly [number, number],
+  depth: number | undefined,
+): Vec3 | undefined {
+  const { view, projection, width, height } = camera;
+  if (width <= 0 || height <= 0) return undefined;
+  const ndc: [number, number] = [(at[0] / width) * 2 - 1, 1 - (at[1] / height) * 2];
+  const ray = viewRay(view, projection, width / height, ndc);
+  if (depth !== undefined) {
+    return [
+      ray.origin.x + ray.direction.x * depth,
+      ray.origin.y + ray.direction.y * depth,
+      ray.origin.z + ray.direction.z * depth,
+    ];
+  }
+  // The grid plane, unless the view sees it edge-on (a front or side view): then the plane
+  // through the view's target, facing the camera.
+  const back = basis(view).back;
+  const ground = Math.abs(back.z) > EDGE_ON ? rayPlane(ray, [0, 0, 0], [0, 0, 1]) : undefined;
+  const hit = ground ?? rayPlane(ray, view.target, [back.x, back.y, back.z]);
+  return hit ? [hit.x, hit.y, hit.z] : undefined;
+}
+
+/** Below this |cos| between the view direction and the grid's normal, the grid is edge-on. */
+const EDGE_ON = 0.05;
+
 function pickScene(scene: ModelScene, style: VisualStyle): PickScene {
   return {
     bodies: pickableBodies(scene.bodies, scene.meta, scene.posed),

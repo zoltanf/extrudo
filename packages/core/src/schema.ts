@@ -27,6 +27,7 @@ export { PARAMETER_NAME } from './names';
 export * from './refs';
 
 import {
+  AnnotationIdSchema,
   AttachmentIdSchema,
   BodyIdSchema,
   ComponentIdSchema,
@@ -36,6 +37,7 @@ import {
   GroupIdSchema,
   JointIdSchema,
   ParameterIdSchema,
+  SketchEntityIdSchema,
   ViewIdSchema,
 } from './ids';
 
@@ -426,6 +428,99 @@ export const JOINT_LIMIT_UNIT: Readonly<Record<Joint['type'], UnitKind | undefin
   slider: 'length',
 };
 
+/**
+ * The geometry kinds an annotation may sit on (ADR-0126 §1): a face, edge,
+ * vertex or body, a plane, axis or point, or a sketch curve in its model-mode
+ * form `<sketch>/<entity>`.
+ */
+export const ANNOTATION_REF_KINDS = [
+  'face',
+  'edge',
+  'vertex',
+  'body',
+  'plane',
+  'axis',
+  'point',
+  'sketchEntity',
+] as const satisfies readonly GeomRefKind[];
+
+/**
+ * The reference of a `model` anchor: a persistent name, never an `index:` one
+ * (those are valid only for the mesh they were picked on).
+ */
+export const AnnotationRefSchema = GeomRefSchema.extend({
+  kind: z.enum(ANNOTATION_REF_KINDS).describe('What the annotation is on.'),
+})
+  .refine((ref) => !ref.id.startsWith('index:'), {
+    message: "is an index reference, which an annotation can't keep: pick the geometry again",
+    path: ['id'],
+  })
+  .describe('The geometry, by its persistent name, with its fingerprint.');
+
+const Vec2Schema = z.tuple([z.number(), z.number()]);
+
+/** On geometry: follows it through the naming service (ADR-0126 §4). */
+export const AnnotationModelAnchorSchema = z.strictObject({
+  kind: z.literal('model').describe('On geometry.'),
+  ref: AnnotationRefSchema,
+  at: Vec3Schema.describe('Where it touches the geometry, world mm.'),
+});
+
+/** A point in space, world mm. */
+export const AnnotationFreeAnchorSchema = z.strictObject({
+  kind: z.literal('free').describe('A point in space.'),
+  at: Vec3Schema.describe('The point, world mm.'),
+});
+
+/**
+ * In a sketch, in that sketch's own mm. With `entity`, `at` is the offset from
+ * the entity's reference point (a point's position, a line's midpoint, a
+ * circle's or arc's centre, a text's anchor), so the note follows it.
+ */
+export const AnnotationSketchAnchorSchema = z.strictObject({
+  kind: z.literal('sketch').describe('In a sketch.'),
+  sketch: FeatureIdSchema.describe('The sketch feature.'),
+  at: Vec2Schema.describe(
+    "Sketch mm in the sketch's frame; with `entity`, the offset from the entity's reference point.",
+  ),
+  entity: SketchEntityIdSchema.optional().describe('The sketch point, curve or text it is on.'),
+});
+
+/** Where an annotation is (ADR-0126 §1). */
+export const AnnotationAnchorSchema = z
+  .discriminatedUnion('kind', [
+    AnnotationModelAnchorSchema,
+    AnnotationFreeAnchorSchema,
+    AnnotationSketchAnchorSchema,
+  ])
+  .describe('Where the annotation is: on geometry, a free point, or in a sketch.');
+export type AnnotationAnchor = z.infer<typeof AnnotationAnchorSchema>;
+
+/** The longest annotation text (ADR-0126 §1). */
+export const ANNOTATION_TEXT_MAX = 2000;
+
+/**
+ * A numbered note (P6-23, ADR-0126 §1): "#3: make this hole M4". The number
+ * is unique in the design and never reused; `annotationCounter` holds the
+ * highest one ever given.
+ */
+export const AnnotationSchema = z.strictObject({
+  id: AnnotationIdSchema.describe('A UUID, for life.'),
+  number: z.int().min(1).describe('The #n people and agents call it by; never reused.'),
+  text: z
+    .string()
+    .min(1)
+    .max(ANNOTATION_TEXT_MAX)
+    .describe('Plain text, 1 to 2000 characters; may contain newlines.'),
+  anchor: AnnotationAnchorSchema,
+  offset: Vec2Schema.optional().describe(
+    "The callout's offset from the anchor in screen px; default [28, -28].",
+  ),
+  hidden: z.literal(true).optional().describe('Not drawn (stored only as true).'),
+  done: z.literal(true).optional().describe('Ticked off: drawn muted, listed last (only as true).'),
+});
+export type Annotation = z.infer<typeof AnnotationSchema>;
+
 export const DocumentSchema = z
   .strictObject({
     format: z.literal(FORMAT_NAME),
@@ -447,6 +542,17 @@ export const DocumentSchema = z
     components: z.array(ComponentSchema).optional(),
     /** Joints between components, in browser order (P6-05, ADR-0081 §4); absent when there are none. */
     joints: z.array(JointSchema).optional(),
+    /** Numbered notes (P6-23, ADR-0126 §1); absent when there are none. */
+    annotations: z
+      .array(AnnotationSchema)
+      .optional()
+      .describe('Numbered notes on geometry, points and sketches; absent when there are none.'),
+    /** The highest annotation number ever given (ADR-0126 §2); absent until the first. */
+    annotationCounter: z
+      .int()
+      .min(1)
+      .optional()
+      .describe('The highest annotation number ever given; absent until the first.'),
     bodies: z.record(BodyIdSchema, BodyMetaSchema),
     views: z.array(NamedViewSchema),
     /** Render Picture settings (ADR-0101 §4); absent until the first render. */
@@ -484,11 +590,14 @@ export const DocumentSchema = z
       ['components', 'name', (doc.components ?? []).map((c) => c.name), (n) => n.toLowerCase()],
       ['joints', 'id', (doc.joints ?? []).map((j) => j.id)],
       ['joints', 'name', (doc.joints ?? []).map((j) => j.name), (n) => n.toLowerCase()],
+      ['annotations', 'id', (doc.annotations ?? []).map((a) => a.id)],
+      ['annotations', 'number', (doc.annotations ?? []).map((a) => String(a.number))],
     ];
     for (const [list, key, values, fold] of unique) reportDuplicates(ctx, list, key, values, fold);
     reportGroups(ctx, doc);
     reportComponentRefs(ctx, doc);
     reportJoints(ctx, doc);
+    reportAnnotations(ctx, doc);
     reportFonts(ctx, doc);
     reportFiles(ctx, doc);
   });
@@ -612,6 +721,35 @@ function reportJoints(ctx: z.RefinementCtx, doc: z.infer<typeof DocumentSchema>)
           message: `is ${input.unit ?? 'length'}, but a ${joint.type} joint's limits are ${unit === 'angle' ? 'angles' : 'lengths'}`,
         });
       }
+    }
+  });
+}
+
+/**
+ * Every annotation's number is at most `annotationCounter` (numbers are never
+ * reused, ADR-0126 §2), and a `sketch` anchor names a sketch feature of the
+ * timeline. The issue names the annotation, so a file's error points at it.
+ */
+function reportAnnotations(ctx: z.RefinementCtx, doc: z.infer<typeof DocumentSchema>): void {
+  const sketches = new Set<string>(
+    doc.features.filter((f) => f.type === 'sketch').map((f) => f.id),
+  );
+  const counter = doc.annotationCounter ?? 0;
+  (doc.annotations ?? []).forEach((annotation, index) => {
+    if (annotation.number > counter) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['annotations', index, 'number'],
+        message: `is ${annotation.number}, past annotationCounter (${counter})`,
+      });
+    }
+    const { anchor } = annotation;
+    if (anchor.kind === 'sketch' && !sketches.has(anchor.sketch)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['annotations', index, 'anchor', 'sketch'],
+        message: `is ${anchor.sketch}, which is not a sketch of this timeline`,
+      });
     }
   });
 }

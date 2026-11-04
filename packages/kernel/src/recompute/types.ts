@@ -1,4 +1,6 @@
 import type {
+  AnnotationId,
+  AnnotationReport,
   AttachmentId,
   BodyId,
   ExtrudoDocument,
@@ -342,6 +344,11 @@ export type RecomputeResult =
        * (P6-05, ADR-0081 §4). Recomputes only; never cached.
        */
       joints?: Record<JointId, JointReport>;
+      /**
+       * Where each `model` annotation resolved at the marker (P6-23, ADR-0126
+       * §4). Recomputes only; never cached.
+       */
+      annotations?: Record<AnnotationId, AnnotationReport>;
       /** `FeatureOutput.report` of every feature that computed and has one. */
       reports: Record<FeatureId, unknown>;
       /**

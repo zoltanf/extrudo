@@ -776,6 +776,13 @@ export const TOOLS = {
     category: 'inspect',
     hint: 'Distances, angles, areas and volumes. Pick one thing, or two to measure between.',
   },
+  annotate: {
+    id: 'annotate',
+    label: 'Annotate',
+    icon: 'annotate',
+    category: 'inspect',
+    hint: 'Pin a numbered note (#1, #2, …) to a face, an edge, a point or empty space. Click, type, Enter.',
+  },
   section: {
     id: 'section',
     label: 'Section Analysis',
@@ -1067,8 +1074,8 @@ export const TABS: Tab[] = [
       },
       { label: 'Axes', tools: ['axisThroughPoints', 'axisThroughCylinder', 'axisAlongEdge'] },
       { label: 'Points', tools: ['constructionPoint', 'pointOnPath', 'pointAtIntersection'] },
-      // The Inspect tab's two tools (R3-10).
-      { label: 'Inspect', tools: ['measure', 'section'] },
+      // The Inspect group's tools (R3-10; Annotate, ADR-0126 §6).
+      { label: 'Inspect', tools: ['measure', 'annotate', 'section'] },
     ],
   },
   {
@@ -1130,6 +1137,8 @@ export const TABS: Tab[] = [
         ],
       },
       // Measure works on bodies (P2-13); measuring sketch geometry comes later.
+      // Annotate pins notes to the sketch's points and curves (ADR-0126 §7).
+      { label: 'Inspect', tools: ['annotate'] },
       { label: 'Export', tools: ['exportSketch'] },
     ],
   },

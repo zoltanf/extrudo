@@ -28,6 +28,7 @@ const ROWS = [
   'Snap to grid',
   'Show points',
   'Show dimensions',
+  'Show notes',
   'Show constraints',
   'Show profiles',
   'Slice',

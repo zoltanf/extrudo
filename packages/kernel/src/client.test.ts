@@ -72,6 +72,7 @@ describe('KernelClient', () => {
       inspect: async () => ({ items: [] }),
       interference: async () => [],
       resolveJoint: async () => ({ status: 'ok' }),
+      resolveAnnotation: async (annotation) => ({ id: annotation.id, status: 'ok' }),
       checkJoint: async () => ({ samples: 0, collisions: [], underMinimum: [] }),
       cancelCheck: async () => {},
     };
@@ -118,6 +119,7 @@ describe('KernelClient', () => {
       inspect: async () => ({ items: [] }),
       interference: async () => [],
       resolveJoint: async () => ({ status: 'ok' }),
+      resolveAnnotation: async (annotation) => ({ id: annotation.id, status: 'ok' }),
       checkJoint: async () => ({ samples: 0, collisions: [], underMinimum: [] }),
       cancelCheck: async () => {},
     };

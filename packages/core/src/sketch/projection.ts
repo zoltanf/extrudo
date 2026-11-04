@@ -12,6 +12,7 @@
  * inference, constraints, dimensions and export treat them like drawn ones;
  * the solver holds them fixed (`projectedEntities`).
  */
+import { detachAnnotationEntities } from '../annotations';
 import { CommandError, defineCommand } from '../commands';
 import { refuseIfUsed } from '../document-commands';
 import type { ConstraintId, DimensionId, FeatureId, ProjectionId, SketchEntityId } from '../ids';
@@ -311,6 +312,7 @@ export const removeProjection = defineCommand<{ feature: FeatureId; id: Projecti
         'Constraints or dimensions use the projected curves. Delete them first.',
       );
     }
+    detachAnnotationEntities(draft, feature, data, removal.entities);
     for (const e of removal.entities) delete data.entities[e];
     delete data.projections?.[id];
     if (data.projections && Object.keys(data.projections).length === 0) delete data.projections;
@@ -556,6 +558,7 @@ export const syncProjections = defineCommand<{ feature: FeatureId } & Projection
         kept.add(id);
         continue;
       }
+      detachAnnotationEntities(draft, feature, data, removal.entities);
       for (const e of removal.entities) delete data.entities[e];
       for (const c of removal.constraints) delete data.constraints[c as ConstraintId];
       for (const d of removal.dimensions) delete data.dimensions[d as DimensionId];

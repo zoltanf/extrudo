@@ -2,7 +2,7 @@
 title: Smooth
 section: Tools
 category: Sketch
-order: 113
+order: 114
 ---
 
 # Smooth

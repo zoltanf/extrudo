@@ -145,6 +145,18 @@ export function selectedTopology(session: SessionStore): TopologyItem[] {
 }
 
 /**
+ * The selection without the annotations the document no longer has (ADR-0126 §6: one
+ * deleted or undone). Returns `selection` itself when nothing goes.
+ */
+export function pruneAnnotations(
+  selection: readonly SelectionItem[],
+  annotations: ReadonlySet<string>,
+): readonly SelectionItem[] {
+  const out = selection.filter((i) => i.kind !== 'annotation' || annotations.has(i.id));
+  return out.length === selection.length ? selection : out;
+}
+
+/**
  * Keeps a selection valid after a recompute replaced the meshes (`from` →
  * `to`). A body that is gone takes its items along. An item on a mesh that
  * didn't change stays. On a new mesh, an item is found again by its
@@ -202,6 +214,7 @@ const NOUNS: Record<string, [string, string]> = {
   parameter: ['parameter', 'parameters'],
   constraint: ['constraint', 'constraints'],
   dimension: ['dimension', 'dimensions'],
+  annotation: ['annotation', 'annotations'],
 };
 
 /**
@@ -267,6 +280,8 @@ export interface LabelContext {
   /** The name of a construction feature (a plane, axis or point reference's ID, P3-05). */
   feature?(id: string): string | undefined;
   sketch(id: FeatureId): { name?: string; data: SketchData } | undefined;
+  /** An annotation's number (ADR-0126 §6), for "Annotation #3". */
+  annotation?(id: string): number | undefined;
 }
 
 const ENTITY_NAMES: Record<string, string> = {
@@ -310,6 +325,10 @@ export function itemLabel(item: SelectionItem, context: LabelContext): string {
   if (item.kind === 'plane' || item.kind === 'axis' || item.kind === 'point') {
     const name = context.feature?.(item.id);
     if (name) return name;
+  }
+  if (item.kind === 'annotation') {
+    const number = context.annotation?.(item.id);
+    if (number !== undefined) return `Annotation #${number}`;
   }
   const [one] = NOUNS[item.kind] ?? [item.kind];
   return one.charAt(0).toUpperCase() + one.slice(1);

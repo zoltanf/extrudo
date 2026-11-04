@@ -8,6 +8,7 @@ import {
   LayoutGrid,
   ListChecks,
   LogOut,
+  MessageSquareText,
   Monitor,
   Moon,
   Search,
@@ -182,7 +183,8 @@ const link =
  */
 export function AppMenu(props: AppMenuProps) {
   const { display, theme, onThemeChange, markingRadial, onMarkingRadial } = props;
-  const { autoProject, autoProjectSketches, autoProjectFace, preset } = useDisplaySettings(display);
+  const { autoProject, autoProjectSketches, autoProjectFace, preset, annotations } =
+    useDisplaySettings(display);
   const [open, setOpen] = useState(false);
   const [help, setHelp] = useState<HelpTool>();
   const onOpenChange = (next: boolean) => {
@@ -227,6 +229,7 @@ export function AppMenu(props: AppMenuProps) {
             autoProject={autoProject}
             autoProjectSketches={autoProjectSketches}
             autoProjectFace={autoProjectFace}
+            annotations={annotations}
             preset={preset}
             theme={theme}
             onThemeChange={onThemeChange}
@@ -245,6 +248,8 @@ export interface MenuPanelProps extends AppMenuProps {
   autoProject: boolean;
   autoProjectSketches: boolean;
   autoProjectFace: boolean;
+  /** The annotations are drawn (ADR-0126 §5); on unless said. */
+  annotations?: boolean;
   preset: NavPreset;
   help: HelpTool | undefined;
   /** Wraps an item's handler: closes the panel, then runs it. */
@@ -261,6 +266,7 @@ export function MenuPanel({
   autoProject,
   autoProjectSketches,
   autoProjectFace,
+  annotations = true,
   preset,
   help,
   choose,
@@ -299,6 +305,13 @@ export function MenuPanel({
       hint: 'When a sketch starts on a flat face.',
       icon: <SquareDashed size={16} strokeWidth={1.75} />,
       set: (v: boolean) => display.set({ autoProjectFace: v }),
+    },
+    {
+      label: 'Annotations',
+      on: annotations,
+      hint: 'The numbered notes (#1, #2, …) in the 3D view.',
+      icon: <MessageSquareText size={16} strokeWidth={1.75} />,
+      set: (v: boolean) => display.set({ annotations: v }),
     },
     {
       label: 'Radial right-click menu',

@@ -191,6 +191,11 @@ export const DEMO_DESIGNS: Record<string, (d: Design) => void> = {
     d.box({ x: '-20 mm', length: '30 mm', width: '20 mm', height: '14 mm' });
     d.cylinder({ x: '25 mm', diameter: '12 mm', height: '14 mm' });
   },
+  // A plate with a peg: Annotate pins a note to the plate's top beside the peg.
+  annotate: (d) => {
+    d.box({ length: '50 mm', width: '30 mm', height: '6 mm' });
+    d.cylinder({ x: '12 mm', diameter: '10 mm', height: '16 mm', operation: 'join' });
+  },
   // A block with a hole through it: the section shows the hole's inside.
   section: (d) => {
     d.box({ length: '36 mm', width: '24 mm', height: '20 mm' });

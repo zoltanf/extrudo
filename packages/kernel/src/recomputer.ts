@@ -9,6 +9,8 @@
  * crashes the kernel, it is marked as an error and skipped until it changes.
  */
 import {
+  type Annotation,
+  type AnnotationReport,
   type AttachmentId,
   activeFeatures,
   type BodyId,
@@ -672,6 +674,24 @@ export class Recomputer {
   }
 
   /**
+   * Where an annotation is against what the model store shows (P6-23,
+   * ADR-0126 §4): the agent tools' check of a reference before storing it.
+   * Undefined if the kernel can't say.
+   */
+  async resolveAnnotation(
+    annotation: Annotation,
+    options?: WaitOptions,
+  ): Promise<AnnotationReport | undefined> {
+    try {
+      return await this.#wait('Reading the annotation…', options, () =>
+        this.client.call((api) => api.resolveAnnotation(annotation)),
+      );
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
    * The clearance check along a joint's motion on what the model store shows
    * (P6-05 J3, ADR-0081 §4). The next recompute, a newer check or
    * `cancelCheck` stops it (rejects with `isCheckCancelled`).
@@ -862,8 +882,10 @@ export class Recomputer {
         }
         const full = this.#document.getState().doc;
         const marker = full.timelineMarker;
+        // Annotations may name sketches past the marker (ADR-0126); a command can't read them.
+        const { annotations: _notes, annotationCounter: _counter, ...rest } = full;
         const doc: ExtrudoDocument = {
-          ...full,
+          ...rest,
           features: full.features.slice(0, marker),
           timelineMarker: marker,
           // A group may name features past the marker; a command can't group anyway.
@@ -985,6 +1007,11 @@ export class Recomputer {
       origins: result.origins,
       ...(result.joints && {
         joints: sameReports(previous.joints, result.joints) ? previous.joints : result.joints,
+      }),
+      ...(result.annotations && {
+        annotations: sameReports(previous.annotations, result.annotations)
+          ? previous.annotations
+          : result.annotations,
       }),
       stats: {
         ms: result.stats.ms,

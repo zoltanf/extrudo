@@ -3,6 +3,7 @@
  * features, the timeline marker, body metadata. Feature-specific commands
  * (edit a sketch, change an extrude) come with their features.
  */
+import { removeAnnotationsFrom } from './annotations';
 import { CommandError, type DocumentDraft, defineCommand } from './commands';
 import { isReservedName } from './expr/evaluate';
 import { mentions, parameterNames, renameReferences } from './expr/parameters';
@@ -37,11 +38,13 @@ export const renameDocument = defineCommand<{ name: string }>(
 
 /**
  * Brings back a saved version's content (FR-PRJ-03, P2-14): its settings,
- * parameters, timeline, groups, bodies, views, configurations and attachments.
- * The document's ID, name and dates stay, so the project stays the same
- * project. One undo step. Attachments come back with the rest: a version's
- * texts need the fonts it carried (P4-03b), and its groups come back with the
- * timeline they were folds of (ADR-0065 §1).
+ * parameters, timeline, groups, components, joints, bodies, views,
+ * configurations, attachments and annotations. The document's ID, name and
+ * dates stay, so the project stays the same project. One undo step.
+ * Attachments come back with the rest: a version's texts need the fonts it
+ * carried (P4-03b), and its groups come back with the timeline they were folds
+ * of (ADR-0065 §1). The annotation counter never goes back: a number given
+ * since the version was saved is not given again (ADR-0126 §2).
  */
 export const restoreVersion = defineCommand<{ doc: ExtrudoDocument }>(
   'document.restoreVersion',
@@ -57,6 +60,11 @@ export const restoreVersion = defineCommand<{ doc: ExtrudoDocument }>(
     draft.configurations = doc.configurations;
     draft.attachments = doc.attachments;
     draft.groups = doc.groups;
+    draft.components = doc.components;
+    draft.joints = doc.joints;
+    draft.annotations = doc.annotations;
+    const counter = Math.max(draft.annotationCounter ?? 0, doc.annotationCounter ?? 0);
+    if (counter > 0) draft.annotationCounter = counter;
     normalizeGroupsInPlace(draft);
   },
 );
@@ -258,7 +266,8 @@ export function isFeatureVisible(feature: Pick<Feature, 'visible'>): boolean {
  * its geometry, or while an expression outside it uses one of its named
  * dimensions: those would break (P1-12). The timeline's groups follow the
  * deletion (ADR-0065 §1): a group that loses a member keeps it, a group that
- * was one feature long is dropped.
+ * was one feature long is dropped. A sketch takes its own annotations along
+ * (ADR-0126 §3); annotations on other geometry stay and detach.
  */
 export const removeFeature = defineCommand<{ id: FeatureId }>(
   'feature.remove',
@@ -289,6 +298,7 @@ export const removeFeature = defineCommand<{ id: FeatureId }>(
     }
     dropFeatureFromGroups(draft, index);
     draft.features.splice(index, 1);
+    removeAnnotationsFrom(draft, (a) => a.anchor.kind === 'sketch' && a.anchor.sketch === id);
     if (index < draft.timelineMarker) draft.timelineMarker -= 1;
     normalizeGroupsInPlace(draft);
   },

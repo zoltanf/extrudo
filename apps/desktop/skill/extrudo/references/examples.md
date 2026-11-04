@@ -101,3 +101,22 @@ Check it:
 
 One body, 50 × 30 × 40 mm. A sturdier bracket is `set_parameter` `thickness`
 to `"6 mm"`; everything follows.
+
+## Notes on the bracket
+
+The agent leaves the person a note at the first screw hole (on the plate's top
+at x = base / 6) and lists the notes. On a face of the model the anchor is its
+name instead, `{ "face": "<face name>" }`, which follows the face when a
+parameter moves it.
+
+```json
+{ "tool": "add_annotation", "args": { "text": "Screw holes are 4.5 mm, for M4 self-tappers: change screw if yours differ.", "anchor": { "at": [8.333, 0, 4] } } }
+{ "tool": "list_annotations", "args": {} }
+```
+
+The answer is note `#1`. When the person later says "#1 is fine", tick it off
+(a note is never deleted unasked):
+
+```json
+{ "tool": "edit_annotation", "args": { "number": 1, "done": true } }
+```

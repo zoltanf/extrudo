@@ -100,7 +100,7 @@ brief, voice) is in **`05-brand.md`**. In short:
   review 3, R3-09, where there was one Files group); Parameters, Customizer),
   `SOLID` (default: Create, Primitives, Features, Pattern, Program, Component),
   `MODIFY` (Modify, Transform), `CONSTRUCT` (Planes, Axes, Points, and
-  **Inspect**: Measure, Section Analysis — there is no Inspect tab since R3-10,
+  **Inspect**: Measure, Annotate, Section Analysis — there is no Inspect tab since R3-10,
   a tab of two tools took room) and `3D PRINT` (our addition: export,
   orientation, overhang, slicer hand-off, mass/filament). **Plugins…** is an
   item of the app menu and a Ctrl+K command (R3-12), not a tile. `SKETCH` shows only while editing
@@ -713,6 +713,64 @@ A list on the left, the selected parameter on the right.
   selects it. A design without parameters opens on the form.
 - A refused change shows its message at the top of the inspector.
 
+### 3.6 Annotations (P6-23, ADR-0126)
+
+Numbered notes on the model: **#1, #2, …**, a number never given twice. In the
+3D view each is a **callout**: a box at an offset from its anchor (default
+28 px right and up, mirrored left or down when it would leave the view, then
+wherever it was dragged; it never moves by itself). The box is a card whose
+left edge is a **number tab** (at least 22 px, dark digits on accent, centred
+on their cap height) and whose body holds the text, wrapped at 32 ch and cut
+to three lines; the whole text shows while hovered, selected or edited. With
+no text shown the tab alone is the callout, rounded on all four corners. A
+1 px leader runs from a 4 px dot at the anchor to the box's nearest edge.
+
+- **States.** Selected: accent border and ring. Editing: the same, the body
+  itself is the field (one line, growing with the text up to eight). Detached
+  (its geometry is gone): dashed body, hollow tab, drawn where it was.
+  **Done**: collapsed to its muted tab, the text on hover. **Behind the
+  part**: a faint dashed tab without text, its leader dotted to a hollow dot
+  at the anchor, so the eye finds the point without the note reading as one
+  about the face in front; selected, hovered (in the view or the browser) or
+  edited, it is drawn in full. Checked after the camera settles and after a
+  recompute.
+- **Annotate** (Construct › Inspect, `N`, model mode): hovering highlights what
+  a click pins the note to (face, edge, vertex, body, plane, axis, point, a
+  sketch curve); a click there, or on empty space (a point on the grid plane),
+  opens the editor with the next number shown. Enter adds the note (one undo
+  step), Shift+Enter is a newline, Esc or an empty text adds nothing. The tool
+  stays on until Esc.
+- **On a callout:** click selects (Shift/Ctrl/⌘ toggles), Delete deletes the
+  selected notes, double-click edits in place, a drag moves the callout (one
+  undo step), right-click: Edit, Hide, Done, Delete. The wheel and the middle
+  and right buttons still navigate over it.
+- **Re-anchor:** select a note, then drag its anchor dot (the 4 px dot has a larger hit area;
+  an unselected note's dot lets presses through to the geometry under it) onto other
+  geometry: hovering shows what a drop takes, as the tool does; the drop moves the note there
+  (on geometry, on the grid plane over nothing, or in an open sketch on an entity or the
+  plane), one undo step "Move annotation #n", and the callout stays where it was on screen.
+  Esc during the drag cancels it. A detached note dragged onto geometry is on it again.
+- **Detached:** while a detached note is hovered or selected, the status bar says
+  "Annotation #n lost its geometry: drag it onto something or delete it."
+- **In a sketch** (ADR-0126 §7): the overlay draws the open sketch's notes through its plane
+  and the model's other notes; a note on a sketch point, curve or text follows it live, during
+  a drag too. Annotate is in the Sketch tab (Inspect) and on `N`: a click on a point, curve,
+  text or projected curve pins the note to it, a click on empty plane makes a note at that
+  sketch position. Constraint glyphs and dimension labels let the clicks through while it
+  runs. The palette's Show section has **Notes**, the same global eye. Delete with notes and
+  sketch geometry selected deletes both, one undo step. Deleting a point or curve a note is
+  on keeps the note where it was; deleting the sketch deletes its notes. In the model a
+  sketch's notes show while the sketch is shown.
+- **Browser › Annotations** (below Analysis, while there are any): `#n` and
+  the first line, open ones by number then the done ones; per row a done tick
+  and an eye (hides that note, saved in the design); click selects and turns
+  the view to it, double-click or F2 edits. The folder's eye hides them all
+  (a preference, also App menu › Toggles › Annotations and the
+  `toggleAnnotations` command); its menu: **Numbers only** / **Show text**
+  (every callout collapsed to its badge, text on hover and selection),
+  **Show through** / **Ghost behind the part**, and **Delete all done** (one undo step,
+  disabled while none is done).
+
 ## 4. Sketch mode
 
 - Enter by: Create Sketch → pick a plane or face; double-click a sketch in the
@@ -835,6 +893,7 @@ Follow mainstream CAD tools where they have a shortcut; remappable in settings.
 | T | Trim | S | Search at the pointer |
 | O | Offset | I | Measure |
 | X | Construction toggle | Delete | Delete |
+| N | Annotate (model) | | |
 | Ctrl+Z / Ctrl+Y | Undo / Redo | Ctrl+K | Search |
 | Ctrl+S | Save version | Esc | Cancel / clear |
 | F6 | Fit | Shift+1…7 | Standard views (ours) |

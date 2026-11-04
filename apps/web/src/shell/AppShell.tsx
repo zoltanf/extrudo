@@ -1,4 +1,5 @@
 import {
+  type AnnotationId,
   addProjection,
   type BodyId,
   CANVAS_TYPE,
@@ -25,6 +26,7 @@ import {
   pluginFileOf,
   readSketch,
   redefineSketchPlane,
+  removeAnnotation,
   removeProjection,
   type SelectionItem,
   type SessionStore,
@@ -45,6 +47,16 @@ import {
 } from 'react';
 import { useStore } from 'zustand';
 import { useAgentHost } from '../agent/useAgentHost';
+import { AnnotationsOverlay } from '../annotations/AnnotationsOverlay';
+import { createAnnotationActions } from '../annotations/actions';
+import { type OpenSketch, placedNow } from '../annotations/anchor';
+import { createReanchor } from '../annotations/reanchor';
+import {
+  ANNOTATE_TOOL,
+  createAnnotateSelect,
+  createSketchAnnotateInput,
+} from '../annotations/tool';
+import { createAnnotationsUi } from '../annotations/ui';
 import { keysFor } from '../commands/keymap';
 import { useKeymap } from '../commands/keymapStore';
 import { isRepeatable } from '../commands/marking';
@@ -140,7 +152,12 @@ import { navigate, projectHref } from '../routes';
 import { SectionOverlay } from '../section/SectionOverlay';
 import { SectionPanel } from '../section/SectionPanel';
 import { planeName, SECTION_TOOL, useSection } from '../section/useSection';
-import { readTopology, selectionRefs, sketchEntityIdsIn } from '../selection/items';
+import {
+  pruneAnnotations,
+  readTopology,
+  selectionRefs,
+  sketchEntityIdsIn,
+} from '../selection/items';
 import { type LookSketch, selectionLookTarget } from '../selection/lookAt';
 import { useModelSelection } from '../selection/useModelSelection';
 import { storeAccess } from '../settings/displaySettings';
@@ -176,7 +193,12 @@ import {
 import { pickDrawing } from '../sketch/pickDrawing';
 import { profileIdsIn, sketchProfiles } from '../sketch/profiles';
 import { INTERSECT_TOOL, isProjectTool, PROJECT_TOOL, useProjectTool } from '../sketch/project';
-import { deleteSelection } from '../sketch/selection';
+import {
+  deleteSelection,
+  selectedConstraints,
+  selectedDimensions,
+  selectedEntities,
+} from '../sketch/selection';
 import { gripSplineOf } from '../sketch/splineEnds';
 import { textDraftStore } from '../sketch/textDraft';
 import type { ToolHost } from '../sketch/tools/host';
@@ -332,7 +354,12 @@ export interface AppShellProps {
     Partial<PluginCommandKernel> &
     Partial<Pick<JointDialogKernel, 'resolveJoint'>> &
     Partial<JointCheckKernel> &
-    Partial<Pick<Recomputer, 'interference' | 'waits' | 'canRevertToShown' | 'revertToShown'>> &
+    Partial<
+      Pick<
+        Recomputer,
+        'interference' | 'resolveAnnotation' | 'waits' | 'canRevertToShown' | 'revertToShown'
+      >
+    > &
     Partial<{
       readonly client: {
         heap(): Promise<{ top: number; size: number }>;
@@ -548,6 +575,42 @@ function Shell({
   const drawing = mode === 'sketch' && isSketchTool(activeTool);
   const projecting = mode === 'sketch' && isProjectTool(activeTool);
   const measuring = mode === 'model' && activeTool === MEASURE_TOOL;
+  // Annotate runs in the model and in an open sketch (ADR-0126 §6–7).
+  const annotating = activeTool === ANNOTATE_TOOL;
+  // What is edited in place, or drafted by the Annotate tool (ADR-0126 §6): view state.
+  const annotationsUi = useMemo(() => createAnnotationsUi(), []);
+  // The open sketch for the browser rows and Look At, which run outside a render.
+  const openSketchRef = useRef<OpenSketch | undefined>(undefined);
+  useEffect(() => {
+    if (!annotating) annotationsUi.getState().setDraft(undefined);
+  }, [annotating, annotationsUi]);
+  const annotationActions = useMemo(
+    () =>
+      createAnnotationActions({
+        store,
+        session,
+        model,
+        viewport,
+        ui: annotationsUi,
+        notify: (message) => notify('error', message),
+        openSketch: () => openSketchRef.current,
+      }),
+    [store, session, model, viewport, annotationsUi, notify],
+  );
+  // A deleted or undone annotation leaves the selection.
+  useEffect(
+    () =>
+      store.subscribe((s, prev) => {
+        if (s.doc.annotations === prev.doc.annotations) return;
+        const ids = new Set((s.doc.annotations ?? []).map((a) => a.id as string));
+        const current = session.getState().selection;
+        const next = pruneAnnotations(current, ids);
+        if (next !== current) session.getState().select([...next], 'replace');
+        const editing = annotationsUi.getState().editing;
+        if (editing && !ids.has(editing)) annotationsUi.getState().edit(undefined);
+      }),
+    [store, session, annotationsUi],
+  );
   const sectioning = mode === 'model' && activeTool === SECTION_TOOL;
   const printing = mode === 'model' && activeTool === PRINT_INFO_TOOL;
   const tolerancing = mode === 'model' && activeTool === TOLERANCE_TOOL;
@@ -915,16 +978,61 @@ function Shell({
         : undefined,
     [store, session, dialog, notify],
   );
+  const selectedAnnotations = useMemo(
+    () => new Set(selection.filter((item) => item.kind === 'annotation').map((item) => item.id)),
+    [selection],
+  );
   const selectedBodyIds = useMemo(
     () => selection.filter((item) => item.kind === 'body').map((item) => item.id as BodyId),
     [selection],
   );
   // Delete on a selection that is only faces of solid bodies (P4-13, ADR-0099 §7);
-  // a selection that mixes faces with other kinds keeps Delete's own behaviour.
+  // a selection that mixes faces with other kinds keeps Delete's own behaviour. Selected
+  // annotations don't count here: Delete takes them along (ADR-0126 §6).
+  const selectedNotes = useMemo(
+    () =>
+      selection.filter((item) => item.kind === 'annotation').map((item) => item.id as AnnotationId),
+    [selection],
+  );
   const facesRemovable = useMemo(
-    () => selectedBodyIds.length === 0 && faceActions.applies(selection),
+    () =>
+      selectedBodyIds.length === 0 &&
+      faceActions.applies(selection.filter((item) => item.kind !== 'annotation')),
     [selectedBodyIds, faceActions, selection],
   );
+  // Delete in the model: the selected notes, and the bodies (a Remove feature) or the faces
+  // (Remove Faces) it would delete anyway, all one undo step.
+  const removeModelSelection = useCallback(() => {
+    const notes = selectedNotes.length > 0 ? removeAnnotation({ ids: selectedNotes }) : undefined;
+    const noun = (n: number, one: string, many: string) => (n === 1 ? one : many);
+    const label = (other: string) =>
+      `Delete ${noun(selectedNotes.length, 'annotation', 'annotations')} and ${other}`;
+    if (selectedBodyIds.length > 0) {
+      if (!notes) {
+        bodyActions.remove(selectedBodyIds);
+        return;
+      }
+      const state = store.getState();
+      state.beginTransaction(label(noun(selectedBodyIds.length, 'body', 'bodies')));
+      try {
+        state.dispatch(notes);
+        bodyActions.remove(selectedBodyIds);
+        state.commitTransaction();
+      } catch (error) {
+        state.cancelTransaction();
+        throw error;
+      }
+    } else if (facesRemovable) {
+      const faces = selection.filter((item) => item.kind !== 'annotation');
+      void faceActions.remove(
+        faces,
+        notes && {
+          label: label(noun(faces.length, 'face', 'faces')),
+          commands: [notes as Command<unknown>],
+        },
+      );
+    } else if (notes) store.getState().dispatch(notes);
+  }, [selectedNotes, selectedBodyIds, facesRemovable, selection, bodyActions, faceActions, store]);
   // The component all the selected bodies share, if they share one (activate and isolate act on it).
   const selectedComponent = useMemo(() => {
     if (selectedBodyIds.length === 0) return undefined;
@@ -1067,12 +1175,33 @@ function Shell({
     });
   }, [store, history]);
 
-  // Deleting a dimension another expression uses is refused; say why.
+  // Deleting a dimension another expression uses is refused; say why. Selected notes go with
+  // the sketch's selected geometry, one undo step (ADR-0126 §7).
   const remove = useMemo(
     () => () => {
+      const selection = stores.session.getState().selection;
+      const notes = selection
+        .filter((item) => item.kind === 'annotation')
+        .map((item) => item.id as AnnotationId);
+      // Both only when the sketch's own Delete takes something (a profile, say, it doesn't).
+      const both =
+        notes.length > 0 &&
+        selectedEntities(stores).length +
+          selectedConstraints(stores).length +
+          selectedDimensions(stores).length >
+          0;
+      const state = stores.store.getState();
+      if (both) {
+        state.beginTransaction(
+          `Delete ${notes.length === 1 ? 'annotation' : 'annotations'} and sketch geometry`,
+        );
+      }
       try {
+        if (notes.length > 0) state.dispatch(removeAnnotation({ ids: notes }));
         deleteSelection(stores);
+        if (both) state.commitTransaction();
       } catch (error) {
+        if (both) state.cancelTransaction();
         if (!(error instanceof CommandError)) throw error;
         notify('error', error.message);
       }
@@ -1265,19 +1394,12 @@ function Shell({
         undo,
         redo,
         ...(listing ? { remove: () => {} } : m === 'sketch' && !drawing && { remove }),
-        // Delete with bodies selected in the model removes them (a Remove feature, P2-08);
-        // with only faces of solid bodies it makes a Remove Faces feature (P4-13, ADR-0099 §7).
+        // Delete in the model (P2-08, P4-13, ADR-0126 §6): notes, bodies, faces of solid bodies.
         ...(!listing &&
           m === 'model' &&
           !dialogOpen &&
-          selectedBodyIds.length > 0 && { remove: () => bodyActions.remove(selectedBodyIds) }),
-        ...(!listing &&
-          m === 'model' &&
-          !dialogOpen &&
-          facesRemovable && {
-            remove: () => {
-              void faceActions.remove(selection);
-            },
+          (selectedBodyIds.length > 0 || facesRemovable || selectedNotes.length > 0) && {
+            remove: removeModelSelection,
           }),
         ...(m === 'sketch' &&
           (listing || host) && {
@@ -1305,10 +1427,28 @@ function Shell({
                   );
                 if (sketch && frame) shown.push({ id: feature.id, frame, data: sketch.data });
               }
+              const selected = stores.session.getState().selection;
+              const notes = new Set(
+                selected.filter((i) => i.kind === 'annotation').map((i) => i.id as string),
+              );
+              const points =
+                notes.size === 0
+                  ? []
+                  : placedNow(
+                      stores.store.getState().doc,
+                      {
+                        annotations: modelState?.annotations ?? {},
+                        sketches: modelState?.sketches ?? {},
+                      },
+                      openSketchRef.current,
+                    )
+                      .filter((p) => notes.has(p.annotation.id))
+                      .map((p) => p.at);
               const target = selectionLookTarget(
-                stores.session.getState().selection,
+                selected,
                 (modelState?.bodies ?? {}) as Record<string, BodyMesh>,
                 shown,
+                points,
               );
               if (!target) return;
               viewport.getState().lookAtBox(target, target.direction);
@@ -1406,14 +1546,14 @@ function Shell({
       dialogOpen,
       selectedBodyIds,
       facesRemovable,
+      selectedNotes,
+      removeModelSelection,
       selectedComponent,
       selectedComponentName,
       activeComponent,
       isolatedComponent,
       session,
       selection,
-      bodyActions,
-      faceActions,
       viewActions,
       doc.views,
       construction,
@@ -1452,6 +1592,7 @@ function Shell({
       await autosave.flush();
     },
     toolHost: host,
+    openSketch: () => openSketchRef.current,
   });
   // biome-ignore lint/correctness/useExhaustiveDependencies: `keymap` stands for `keysFor`'s overrides
   const markingCommands = useMemo(
@@ -1553,7 +1694,13 @@ function Shell({
             { keys: 'Enter', run: () => host.enter() },
           ]
         : []),
-      ...(measuring || sectioning || printing || overhanging || thickening || customizing
+      ...(measuring ||
+      annotating ||
+      sectioning ||
+      printing ||
+      overhanging ||
+      thickening ||
+      customizing
         ? [{ keys: 'Escape', run: () => session.getState().setTool(undefined) }]
         : []),
       // In the model, Esc stops a nav tool (as the viewport's own Esc does), or else clears
@@ -1589,6 +1736,7 @@ function Shell({
       picking,
       projecting,
       measuring,
+      annotating,
       sectioning,
       printing,
       overhanging,
@@ -1688,7 +1836,15 @@ function Shell({
     if (pluginFeature) {
       if (mode !== 'model') return;
       if (picking) cancelCreateSketch(stores);
-      if (measuring || sectioning || printing || overhanging || thickening || customizing) {
+      if (
+        measuring ||
+        annotating ||
+        sectioning ||
+        printing ||
+        overhanging ||
+        thickening ||
+        customizing
+      ) {
         session.getState().setTool(undefined);
       }
       dialog?.cancel();
@@ -1739,7 +1895,15 @@ function Shell({
     if (tool === 'importBody' || tool === 'canvas') {
       if (mode !== 'model') return;
       if (picking) cancelCreateSketch(stores);
-      if (measuring || sectioning || printing || overhanging || thickening || customizing) {
+      if (
+        measuring ||
+        annotating ||
+        sectioning ||
+        printing ||
+        overhanging ||
+        thickening ||
+        customizing
+      ) {
         session.getState().setTool(undefined);
       }
       dialog?.cancel();
@@ -1752,7 +1916,15 @@ function Shell({
     if (spec) {
       if (mode === 'model') {
         if (picking) cancelCreateSketch(stores);
-        if (measuring || sectioning || printing || overhanging || thickening || customizing)
+        if (
+          measuring ||
+          annotating ||
+          sectioning ||
+          printing ||
+          overhanging ||
+          thickening ||
+          customizing
+        )
           session.getState().setTool(undefined);
         dialog?.start(spec.type);
       }
@@ -1782,7 +1954,15 @@ function Shell({
     else if (tool === 'slicer') {
       if (platform.openInSlicer) setModelExport({ slicer: true });
     } else if (tool === 'render') setRenderRequest({});
-    else if (tool === MEASURE_TOOL) {
+    else if (tool === ANNOTATE_TOOL) {
+      if (annotating) session.getState().setTool(undefined);
+      else {
+        if (picking) cancelCreateSketch(stores);
+        // In a sketch, the drawing tool that runs ends first.
+        if (mode === 'sketch') host?.stop();
+        session.getState().setTool(ANNOTATE_TOOL);
+      }
+    } else if (tool === MEASURE_TOOL) {
       if (mode !== 'model') return;
       if (measuring) session.getState().setTool(undefined);
       else {
@@ -1850,7 +2030,15 @@ function Shell({
   startImportRef.current = (picked) => {
     if (mode !== 'model') return;
     if (picking) cancelCreateSketch(stores);
-    if (measuring || sectioning || printing || overhanging || thickening || customizing) {
+    if (
+      measuring ||
+      annotating ||
+      sectioning ||
+      printing ||
+      overhanging ||
+      thickening ||
+      customizing
+    ) {
       session.getState().setTool(undefined);
     }
     dialog?.cancel();
@@ -1912,6 +2100,7 @@ function Shell({
     else if (
       projecting ||
       measuring ||
+      annotating ||
       sectioning ||
       printing ||
       overhanging ||
@@ -2278,6 +2467,15 @@ function Shell({
     }
   };
   const sketchPlane = sketches.find((s) => s.active)?.frame;
+  // The open sketch's notes are drawn through its plane, live (ADR-0126 §7).
+  const openSketch = useMemo(
+    () =>
+      mode === 'sketch' && activeSketchId && sketchPlane
+        ? { id: activeSketchId, frame: sketchPlane }
+        : undefined,
+    [mode, activeSketchId, sketchPlane],
+  );
+  openSketchRef.current = openSketch;
   // The right-click marking menu (P3-11): offered while nothing else owns the pointer.
   const runningTool = useMemo(
     () =>
@@ -2313,6 +2511,42 @@ function Shell({
     bodies,
     mode === 'model' && !picking && !dialogOpen && !jointOpen,
   );
+  // While Annotate runs, a click drafts a note where it lands (ADR-0126 §6).
+  const bodiesRef = useRef(bodies);
+  bodiesRef.current = bodies;
+  const annotateSelect = useMemo(
+    () =>
+      annotating && sessionSelect
+        ? createAnnotateSelect({
+            store,
+            ui: annotationsUi,
+            base: sessionSelect,
+            bodies: () => bodiesRef.current,
+            resolve: kernel?.resolveAnnotation
+              ? (annotation) => kernel.resolveAnnotation?.(annotation) ?? Promise.resolve(undefined)
+              : undefined,
+            active: () =>
+              session.getState().mode === 'model' &&
+              session.getState().activeTool === ANNOTATE_TOOL,
+            notify: (message) => notify('error', message),
+          })
+        : undefined,
+    [annotating, sessionSelect, store, session, annotationsUi, kernel, notify],
+  );
+  // Dragging a note's anchor dot onto other geometry (ADR-0126 S4): the tool's picks.
+  const reanchor = useMemo(
+    () =>
+      createReanchor({
+        store,
+        viewport,
+        bodies: () => bodiesRef.current,
+        resolve: kernel?.resolveAnnotation
+          ? (annotation) => kernel.resolveAnnotation?.(annotation) ?? Promise.resolve(undefined)
+          : undefined,
+        openSketch: () => openSketchRef.current,
+      }),
+    [store, viewport, kernel],
+  );
   // While Measure runs, two plain clicks pick two things to measure between.
   const measureSelect = useMemo(
     () => (measuring && sessionSelect ? createMeasureSelect(session, sessionSelect) : undefined),
@@ -2328,7 +2562,7 @@ function Shell({
           : dialog?.select
         : projecting
           ? project.select
-          : (measureSelect ?? sessionSelect);
+          : (annotateSelect ?? measureSelect ?? sessionSelect);
   // A body menu's Convert to Solid… selects the body the way a browser row's click
   // does, then runs the tool the way a tile click does (P4-13, ADR-0097 §5): the
   // dialog pre-selects from the session's selection.
@@ -2347,6 +2581,16 @@ function Shell({
   const sketchInput = useMemo<SketchInput | undefined>(() => {
     // The Project tool picks in 3D instead (P2-09).
     if (!sketchPlane || projecting) return undefined;
+    // Annotate pins notes to the sketch's geometry or plane (ADR-0126 §7).
+    if (annotating && activeSketchId) {
+      return createSketchAnnotateInput({
+        store,
+        session,
+        ui: annotationsUi,
+        sketch: activeSketchId,
+        frame: sketchPlane,
+      });
+    }
     if (!drawing && host) {
       return {
         frame: sketchPlane,
@@ -2379,7 +2623,18 @@ function Shell({
       onLeave: () => {},
       cursor: 'default',
     };
-  }, [drawing, host, sketchPlane, activeTool, session, projecting]);
+  }, [
+    drawing,
+    host,
+    sketchPlane,
+    activeTool,
+    session,
+    projecting,
+    annotating,
+    activeSketchId,
+    store,
+    annotationsUi,
+  ]);
 
   // A feature dialog's Plane field (P2-10) picks origin planes and flat faces the same way.
   const dialogPlanes = useMemo(
@@ -2505,6 +2760,10 @@ function Shell({
             bodies={browserBodies}
             bodyActions={bodyActions}
             viewActions={viewActions}
+            {...(mode === 'model' && {
+              annotations: annotationActions,
+              selectedAnnotations,
+            })}
             componentActions={componentActions}
             {...(jointActions && {
               joints: {
@@ -2734,6 +2993,26 @@ function Shell({
                   settings={doc.settings}
                 />
               )}
+              {(mode === 'model' || sketchPlane) && (
+                <AnnotationsOverlay
+                  store={store}
+                  session={session}
+                  model={model}
+                  viewport={viewport}
+                  ui={annotationsUi}
+                  {...(openSketch && { openSketch })}
+                  reanchor={reanchor}
+                  interactive={
+                    !picking &&
+                    !dialogOpen &&
+                    !jointOpen &&
+                    !drawing &&
+                    (!activeTool || annotating) &&
+                    !section.choosing
+                  }
+                  onError={(message) => notify('error', message)}
+                />
+              )}
               {showConstraints && tools && activeSketchId && sketchPlane && (
                 <tools.Glyphs
                   store={store}
@@ -2741,7 +3020,7 @@ function Shell({
                   viewport={viewport}
                   sketchId={activeSketchId}
                   frame={sketchPlane}
-                  interactive={!drawing}
+                  interactive={!drawing && !annotating}
                   over={status?.over}
                   onDelete={remove}
                 />
@@ -2754,7 +3033,7 @@ function Shell({
                   host={tools.host}
                   sketchId={activeSketchId}
                   frame={sketchPlane}
-                  interactive={!drawing}
+                  interactive={!drawing && !annotating}
                   notify={notify}
                   onDelete={remove}
                 />

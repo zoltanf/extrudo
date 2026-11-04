@@ -539,7 +539,7 @@ test('Home and Construct show every tool as a tile at 1440 px, each 64 px wide',
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
   }
   // Inspect's tools are Construct's fourth group (R3-10).
-  expect(await group('Inspect')).toBe('measure,section');
+  expect(await group('Inspect')).toBe('measure,annotate,section');
 
   // 1024 px: the Home tab's groups still fit the row (some tiles in their group menus).
   await page.setViewportSize({ width: 1024, height: 900 });

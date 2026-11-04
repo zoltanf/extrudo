@@ -141,6 +141,18 @@ export const NOT_IN_SETTINGS: readonly { key: string; reason: string }[] = [
     key: 'viewport.origin',
     reason: "Per item, in the browser's Origin folder, where the planes and axes are listed.",
   },
+  {
+    key: 'viewport.annotations',
+    reason: "The eye of the browser's Annotations folder, and the toggleAnnotations command.",
+  },
+  {
+    key: 'viewport.annotationsBehind',
+    reason: "The Annotations folder's menu: Show through or Ghost behind the part (ADR-0126 §6).",
+  },
+  {
+    key: 'viewport.annotationText',
+    reason: "The Annotations folder's menu: Numbers only or Show text (ADR-0126 §6).",
+  },
 ];
 
 export function sectionOf(key: string): SectionInfo | undefined {

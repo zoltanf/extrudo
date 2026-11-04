@@ -1,4 +1,6 @@
 import type {
+  Annotation,
+  AnnotationReport,
   AttachmentId,
   BodyId,
   FeatureRegistry,
@@ -220,6 +222,11 @@ export interface KernelApi {
    * ADR-0081 §4), for the Joint dialog's live readout. Evaluates nothing.
    */
   resolveJoint(joint: Joint): Promise<JointReport>;
+  /**
+   * Where an annotation is against the last finished recompute (P6-23,
+   * ADR-0126 §4), for the agent tools. Evaluates nothing.
+   */
+  resolveAnnotation(annotation: Annotation): Promise<AnnotationReport>;
   /**
    * The clearance check along a joint's motion (P6-05 J3, ADR-0081 §4) on the
    * bodies of the last finished recompute, held for the run. A newer check,
@@ -560,6 +567,10 @@ export class KernelService implements KernelApi {
 
   resolveJoint(joint: Joint): Promise<JointReport> {
     return this.#run(() => this.#engineOf().resolveJoint(joint));
+  }
+
+  resolveAnnotation(annotation: Annotation): Promise<AnnotationReport> {
+    return this.#run(() => this.#engineOf().resolveAnnotation(annotation));
   }
 
   checkJoint(request: JointCheckRequest, onProgress?: CheckProgress): Promise<JointCheck> {

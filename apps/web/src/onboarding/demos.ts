@@ -71,6 +71,7 @@ export const DEMO_TOOLS: readonly string[] = [
   'pointOnPath',
   'pointAtIntersection',
   'measure',
+  'annotate',
   'section',
   // Make › Prepare, Output (Measure is Construct's).
   'placeOnBed',

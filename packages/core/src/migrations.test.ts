@@ -352,3 +352,28 @@ describe('an older reader and joints (P6-05, ADR-0081 §4)', () => {
     expect(parsed.doc).toEqual(plain);
   });
 });
+
+describe('an older reader and annotations (P6-23, ADR-0126 §1)', () => {
+  /** DocumentSchema as it was before annotations. */
+  const { annotations: _a, annotationCounter: _c, ...shape } = DocumentSchema.shape;
+  const olderSchema = z.strictObject(shape) as unknown as z.ZodType<ExtrudoDocument>;
+
+  it('drops `annotations` and `annotationCounter` and keeps everything else', () => {
+    const plain = sampleDocument();
+    const raw = JSON.parse(
+      JSON.stringify({
+        ...plain,
+        annotations: [
+          { id: 'n1', number: 1, text: 'Hole M4', anchor: { kind: 'free', at: [0, 0, 0] } },
+        ],
+        annotationCounter: 1,
+      }),
+    );
+    expect(FORMAT_VERSION).toBe(2);
+    expect(DocumentSchema.safeParse(raw).success).toBe(true);
+    const parsed = parseLeniently(raw, olderSchema);
+    if (!parsed.ok) throw new Error('the older reader refused the file');
+    expect(parsed.dropped.sort()).toEqual(['annotationCounter', 'annotations']);
+    expect(parsed.doc).toEqual(plain);
+  });
+});

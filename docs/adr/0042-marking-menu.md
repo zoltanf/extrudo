@@ -141,7 +141,7 @@ context menu at all.
 ## Amendment (P3-17)
 
 Constraint glyphs and dimension labels have a right-click menu of their own
-(`sketch/tools/annotationMenu.tsx`), not the marking menu: what is under the
+(`sketch/tools/glyphMenu.tsx`, `annotationMenu.tsx` until ADR-0126), not the marking menu: what is under the
 pointer is one annotation, and a ring of sketch tools would be the wrong
 answer to a right-click on it. A right press on a glyph or label is
 remembered and its release heard on the window (the navigation captures it,

@@ -17,7 +17,7 @@ import { applyCommand, type Command } from './commands';
 import type { BodyOrigins } from './components';
 import type { ConstructionReport } from './construction';
 import { type HistoryOptions, UndoHistory } from './history';
-import type { BodyId, ComponentId, FeatureId, JointId } from './ids';
+import type { AnnotationId, BodyId, ComponentId, FeatureId, JointId } from './ids';
 import type { ImportReport } from './import';
 import type { MeshToSolidReport } from './mesh-to-solid';
 import type { ExtrudoDocument, GeomRef, GeomRefKind } from './schema';
@@ -158,7 +158,8 @@ export function createDocumentStore(
  * point or curve of the open sketch is a `sketchEntity` (P1-09).
  */
 export interface SelectionItem {
-  kind: GeomRefKind | 'feature' | 'parameter' | 'constraint' | 'dimension';
+  /** `annotation`: a numbered note (ADR-0126 §6), by its `AnnotationId`. */
+  kind: GeomRefKind | 'feature' | 'parameter' | 'constraint' | 'dimension' | 'annotation';
   id: string;
 }
 
@@ -363,6 +364,26 @@ export interface JointReport {
   bodies?: { a?: BodyId; b?: BodyId };
 }
 
+/**
+ * Where the kernel found a `model` annotation at the marker (P6-23, ADR-0126
+ * §4). `free` and `sketch` annotations are placed by the app and have none.
+ */
+export interface AnnotationReport {
+  id: AnnotationId;
+  /**
+   * `ok`: the name resolved exactly; `moved`: by a related name or the
+   * fingerprint (a guess, shown as a warning); `detached`: nothing resolves
+   * (the geometry is gone, its feature deleted or rolled back).
+   */
+  status: 'ok' | 'moved' | 'detached';
+  /** Where to draw it now, world mm (absent when detached: draw it at `anchor.at`). */
+  at?: Vec3;
+  /** The face normal at `at` when the reference is a face. */
+  normal?: Vec3;
+  /** What it resolved to now: the current name (with its fingerprint) and its body. */
+  resolved?: { ref: GeomRef; body?: BodyId };
+}
+
 /** How the last recompute went, for the status bar. */
 export interface ModelStats {
   ms: number;
@@ -427,6 +448,8 @@ export interface ModelState<TBody> {
   origins: BodyOrigins;
   /** What the last recompute found for each unsuppressed joint (P6-05, ADR-0081 §4). */
   joints: Record<JointId, JointReport>;
+  /** Where the last recompute found each `model` annotation (P6-23, ADR-0126 §4). */
+  annotations: Record<AnnotationId, AnnotationReport>;
   stats: ModelStats | undefined;
   /** Where a running recompute is; undefined unless one is running and reporting (P6-17). */
   progress: ModelProgress | undefined;
@@ -446,6 +469,7 @@ export interface ModelState<TBody> {
     imports?: Record<FeatureId, ImportReport>;
     origins?: BodyOrigins;
     joints?: Record<JointId, JointReport>;
+    annotations?: Record<AnnotationId, AnnotationReport>;
     stats?: ModelStats;
     doc?: ExtrudoDocument;
   }): void;
@@ -469,6 +493,7 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
     imports: {} as Record<FeatureId, ImportReport>,
     origins: {} as BodyOrigins,
     joints: {} as Record<JointId, JointReport>,
+    annotations: {} as Record<AnnotationId, AnnotationReport>,
     stats: undefined,
     progress: undefined as ModelProgress | undefined,
     doc: undefined,
@@ -487,6 +512,7 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
       imports,
       origins,
       joints,
+      annotations,
       stats,
       doc,
     }) {
@@ -501,6 +527,7 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
         imports: imports ?? s.imports,
         origins: origins ?? s.origins,
         joints: joints ?? s.joints,
+        annotations: annotations ?? s.annotations,
         stats,
         progress: undefined,
         doc,

@@ -381,4 +381,51 @@ describe('the agent tools on the real kernel', { timeout: 60_000 }, () => {
     );
     dispose();
   });
+
+  it('an annotation on a cap face follows a parameter and detaches when the feature goes (ADR-0126)', async () => {
+    const { call, dispose } = await open();
+    await call('set_parameter', { name: 'thickness', expression: '5 mm' });
+    const extrude = await plate(call, { distance: 'thickness' });
+    const face = `extrude:${extrude}:cap:end`;
+    const added = jsonOf(
+      await call('add_annotation', { text: 'Hole M4 here', anchor: { face, at: [10, 5, 5] } }),
+    );
+    expect(added.problems).toEqual([]);
+    expect(added.result.number).toBe(1);
+    let [note] = jsonOf(await call('list_annotations'));
+    expect(note.anchor).toEqual({
+      kind: 'model',
+      status: 'ok',
+      at: [10, 5, 5],
+      normal: [0, 0, 1],
+      face,
+      body: `${extrude}:0`,
+      feature: extrude,
+    });
+    // The face's centre without `at`; a name that isn't there is refused.
+    const centre = jsonOf(await call('add_annotation', { text: 'Centre', anchor: { face } }));
+    expect(centre.result.number).toBe(2);
+    const missing = await call('add_annotation', {
+      text: 'x',
+      anchor: { face: 'extrude:no:cap:end' },
+    });
+    expect(missing.result.isError).toBe(true);
+    expect(textOf(missing)).toMatch(/^anchor\.face: There is no face/);
+
+    await call('set_parameter', { name: 'thickness', expression: '12 mm' });
+    [note] = jsonOf(await call('list_annotations'));
+    expect(note.anchor.status).toBe('ok');
+    expect(note.anchor.at).toEqual([10, 5, 12]);
+    const listed = jsonOf(await call('list_annotations'));
+    expect(listed[1].anchor.at).toEqual([20, 10, 12]);
+    expect(jsonOf(await call('get_design')).annotations).toEqual([
+      { number: 1, text: 'Hole M4 here', status: 'ok' },
+      { number: 2, text: 'Centre', status: 'ok' },
+    ]);
+
+    await call('remove', { id: extrude });
+    [note] = jsonOf(await call('list_annotations'));
+    expect(note.anchor).toMatchObject({ kind: 'model', status: 'detached', at: [10, 5, 5], face });
+    dispose();
+  });
 });

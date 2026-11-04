@@ -47,6 +47,7 @@ export function workerApi(service: KernelService): KernelApi {
     inspect: (targets) => service.inspect(targets),
     interference: (bodies) => service.interference(bodies),
     resolveJoint: (joint) => service.resolveJoint(joint),
+    resolveAnnotation: (annotation) => service.resolveAnnotation(annotation),
     checkJoint: (request, onProgress) => service.checkJoint(request, onProgress),
     cancelCheck: () => service.cancelCheck(),
     debugTestPart: async () => {

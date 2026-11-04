@@ -12,7 +12,7 @@ describe('visibleTabs (ADR-0079 §2)', () => {
     expect(labels('model')).toEqual(['Home', 'Solid', 'Modify', 'Construct', 'Make']);
     const construct = TABS.find((t) => t.id === 'construct');
     expect(construct?.groups.map((g) => g.label)).toEqual(['Planes', 'Axes', 'Points', 'Inspect']);
-    expect(construct?.groups.at(-1)?.tools).toEqual(['measure', 'section']);
+    expect(construct?.groups.at(-1)?.tools).toEqual(['measure', 'annotate', 'section']);
   });
 
   it('replaces the model tabs with Sketch while a sketch is open, Make too (R3-11)', () => {

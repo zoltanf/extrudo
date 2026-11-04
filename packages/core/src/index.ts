@@ -3,6 +3,7 @@
  * See docs/02-architecture.md §4 and ADR-0003. Must not use the DOM or WASM.
  */
 
+export * from './annotations';
 export * from './attachments';
 export * from './canvas';
 export * from './chamfer';
@@ -95,6 +96,7 @@ export * from './sketch/text';
 export * from './sketch/text-layout';
 export * from './split-body';
 export {
+  type AnnotationReport,
   createDocumentStore,
   createModelStore,
   createSessionStore,

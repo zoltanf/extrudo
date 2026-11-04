@@ -17,6 +17,9 @@ import { readTopology } from './items';
 
 type Vec3 = [number, number, number];
 
+/** How far around a looked-at point the view keeps in frame, mm. */
+const POINT_ROOM = 15;
+
 export interface LookTarget {
   min: Vec3;
   max: Vec3;
@@ -42,6 +45,8 @@ export function selectionLookTarget(
   items: readonly SelectionItem[],
   meshes: Readonly<Record<string, BodyMesh | undefined>>,
   sketches: readonly LookSketch[] = [],
+  /** Selected annotations' points, world mm (ADR-0126 §6): looked at with some room around. */
+  points: readonly (readonly [number, number, number])[] = [],
 ): LookTarget | undefined {
   const min: Vec3 = [Infinity, Infinity, Infinity];
   const max: Vec3 = [-Infinity, -Infinity, -Infinity];
@@ -135,6 +140,11 @@ export function selectionLookTarget(
       }
       others++;
     }
+  }
+  for (const [x, y, z] of points) {
+    add(x - POINT_ROOM, y - POINT_ROOM, z - POINT_ROOM);
+    add(x + POINT_ROOM, y + POINT_ROOM, z + POINT_ROOM);
+    others++;
   }
   if (min[0] === Infinity) return undefined;
   const target: LookTarget = { min, max };

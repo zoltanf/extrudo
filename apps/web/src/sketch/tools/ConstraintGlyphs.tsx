@@ -18,7 +18,7 @@ import { useStore } from 'zustand';
 import { ToolIcon } from '../../design-system';
 import { viewProject } from '../../viewport/camera';
 import type { ViewportStore } from '../../viewport/store';
-import { useAnnotationMenu } from './annotationMenu';
+import { useGlyphMenu } from './glyphMenu';
 import { GLYPH_SIZE, glyphAnchors, glyphCurves, layoutGlyphs } from './glyphs';
 
 export interface ConstraintGlyphsProps {
@@ -41,7 +41,7 @@ export interface ConstraintGlyphsProps {
  * Hovering a glyph highlights the entities it constrains and its other
  * glyphs; one that over-constrains the sketch is red (P1-08). Clicking selects the constraint (Shift or Ctrl adds or removes),
  * and Delete removes the selection (`sketch/selection.ts`); a right click opens a menu with
- * Delete (P3-17, `annotationMenu.tsx`). Glyphs of
+ * Delete (P3-17, `glyphMenu.tsx`). Glyphs of
  * constraints added while the sketch is open flash once.
  *
  * The layer lets the wheel and the middle and right buttons through to the
@@ -57,7 +57,7 @@ export function ConstraintGlyphs({
   over,
   onDelete,
 }: ConstraintGlyphsProps) {
-  const menu = useAnnotationMenu({ session, interactive, onDelete });
+  const menu = useGlyphMenu({ session, interactive, onDelete });
   const layer = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   useLayoutEffect(() => {

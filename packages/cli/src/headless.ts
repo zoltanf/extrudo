@@ -40,6 +40,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { Design } from '@extrudo/api';
 import {
+  type AnnotationReport,
   type AttachmentId,
   type BodyId,
   type BodyMeta,
@@ -162,6 +163,18 @@ export interface JointReportSummary {
   message?: string;
 }
 
+/**
+ * One annotation as `info` lists it (P6-23, ADR-0126 §8): a note on geometry
+ * has the kernel's status at the marker; a free or sketch note is `ok`.
+ */
+export interface AnnotationSummary {
+  number: number;
+  text: string;
+  status: AnnotationReport['status'];
+  done?: true;
+  hidden?: true;
+}
+
 /** One joint's clearance check through `KernelApi.checkJoint` (ADR-0081 §4). */
 export interface JointCheckReport {
   id: JointId;
@@ -193,6 +206,8 @@ export interface ComputeResult {
   components: ComponentReport[];
   /** The design's joints with their status (P6-05 S8). */
   joints: JointReportSummary[];
+  /** The design's annotations in number order, with their status (ADR-0126 §8). */
+  annotations: AnnotationSummary[];
   /** How many features have an error, and how many a warning. */
   errors: number;
   warnings: number;
@@ -441,6 +456,7 @@ export class DesignJob {
       bodies,
       components: this.components,
       joints: jointReports(this.doc, result),
+      annotations: annotationReports(this.doc, result),
       errors: features.filter((f) => f.status === 'error').length,
       warnings: features.filter((f) => f.status === 'warning').length,
       ms: result.stats.ms,
@@ -991,6 +1007,28 @@ function jointReports(
       ...(report?.message ? { message: report.message } : {}),
     };
   });
+}
+
+/**
+ * Every annotation in number order, with the status the kernel gave a note on
+ * geometry at the marker (ADR-0126 §4); one it didn't report is `detached`.
+ */
+function annotationReports(
+  doc: ExtrudoDocument,
+  result: Extract<RecomputeResult, { status: 'done' }>,
+): AnnotationSummary[] {
+  return [...(doc.annotations ?? [])]
+    .sort((a, b) => a.number - b.number)
+    .map((annotation) => ({
+      number: annotation.number,
+      text: annotation.text,
+      status:
+        annotation.anchor.kind === 'model'
+          ? (result.annotations?.[annotation.id]?.status ?? 'detached')
+          : 'ok',
+      ...(annotation.done && { done: true as const }),
+      ...(annotation.hidden && { hidden: true as const }),
+    }));
 }
 
 /** One joint limit or expression value, through the document's evaluation. */

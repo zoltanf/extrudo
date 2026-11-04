@@ -6,7 +6,7 @@ order: 0
 
 # Examples
 
-Eleven designs to open, take apart and change. Each opens as your own copy
+Twelve designs to open, take apart and change. Each opens as your own copy
 in the app: nothing you change touches the original. They are the models
 Extrudo's own tests build, so they always work with the current version.
 
@@ -46,6 +46,15 @@ A key tag with embossed text and rounded corners.
 Shows: text, emboss, fillet.
 
 [Open in Extrudo]({{APP_URL}}/#/example/name-tag)
+
+### Plate with notes
+![Plate with notes](./images/examples/annotated-plate.png)
+
+A plate with numbered notes on a face, an edge, a sketch circle and a point in space, one of them ticked off.
+
+Shows: annotations, sketch on face, parameters.
+
+[Open in Extrudo]({{APP_URL}}/#/example/annotated-plate)
 
 ## Intermediate
 ### Box with a lid

@@ -37,6 +37,8 @@ export const AttachmentIdSchema = id.brand<'AttachmentId'>();
 export const ComponentIdSchema = id.brand<'ComponentId'>();
 /** An as-built joint between two components (P6-05, ADR-0081 §4). */
 export const JointIdSchema = id.brand<'JointId'>();
+/** A numbered note pinned to geometry, a point or a sketch (P6-23, ADR-0126 §1). */
+export const AnnotationIdSchema = id.brand<'AnnotationId'>();
 
 export type DocumentId = z.infer<typeof DocumentIdSchema>;
 export type FeatureId = z.infer<typeof FeatureIdSchema>;
@@ -52,6 +54,7 @@ export type ProjectionId = z.infer<typeof ProjectionIdSchema>;
 export type AttachmentId = z.infer<typeof AttachmentIdSchema>;
 export type ComponentId = z.infer<typeof ComponentIdSchema>;
 export type JointId = z.infer<typeof JointIdSchema>;
+export type AnnotationId = z.infer<typeof AnnotationIdSchema>;
 
 type AnyId =
   | DocumentId
@@ -67,7 +70,8 @@ type AnyId =
   | ProjectionId
   | AttachmentId
   | ComponentId
-  | JointId;
+  | JointId
+  | AnnotationId;
 
 /**
  * A random UUID v4. `crypto.randomUUID` exists only in secure contexts (HTTPS,

@@ -35,9 +35,9 @@ import { withDimensionExpr } from '../../parameters/drafts';
 import { ExpressionInput } from '../../parameters/ExpressionInput';
 import { rayPlane, viewProject, viewRay } from '../../viewport/camera';
 import type { ViewportStore } from '../../viewport/store';
-import { useAnnotationMenu } from './annotationMenu';
 import { EntityHighlight } from './ConstraintGlyphs';
 import { type DimensionShape, dimensionShape, dimensionText } from './dimensionLayout';
+import { useGlyphMenu } from './glyphMenu';
 import type { ToolHost } from './host';
 
 export interface DimensionLabelsProps {
@@ -83,7 +83,7 @@ export function DimensionLabels({
   notify,
   onDelete,
 }: DimensionLabelsProps) {
-  const menu = useAnnotationMenu({
+  const menu = useGlyphMenu({
     session,
     interactive,
     onDelete,

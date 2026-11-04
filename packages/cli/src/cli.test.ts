@@ -469,6 +469,45 @@ describe('components and joints (P6-05 S8)', () => {
   });
 });
 
+describe('annotations (ADR-0126 §8)', () => {
+  it('lists them under info, and set keeps them', SPAWNING, async () => {
+    const design = Design.create({ name: 'Plate' });
+    design.parameter('h', '5 mm');
+    const plate = design.box({ length: '40 mm', width: '20 mm', height: 'h' });
+    design.annotate('Hole M4 here\nand a chamfer', plate.face('cap:end'), {
+      at: [10, 5, 5],
+      fingerprint: { type: 'plane', at: [0, 0, 5], dir: [0, 0, 1], size: 800 },
+    });
+    design.annotate('Lost', design.ref('face', 'box:gone:cap:end'), { at: [0, 0, 0] });
+    design.annotate('Logo', [1, 2, 3], { done: true });
+    const path = join(dir, 'annotated.extrudo');
+    await writeFile(path, writeArchive(design.doc));
+
+    const text = await extrudo(['info', path]);
+    expect(text.code).toBe(0);
+    expect(text.stdout).toContain('Annotations:');
+    expect(text.stdout).toContain('  #1 ok       Hole M4 here …');
+    expect(text.stdout).toContain('  #2 detached Lost');
+    expect(text.stdout).toContain('  #3 ok       Logo (done)');
+    const json = JSON.parse((await extrudo(['info', path, '--json'])).stdout);
+    expect(json.annotations).toEqual([
+      { number: 1, text: 'Hole M4 here\nand a chamfer', status: 'ok' },
+      { number: 2, text: 'Lost', status: 'detached' },
+      { number: 3, text: 'Logo', status: 'ok', done: true },
+    ]);
+
+    const out = join(dir, 'annotated-12.extrudo');
+    expect((await extrudo(['set', path, '--param', 'h=12mm', '--out', out])).code).toBe(0);
+    const { job } = await openDesign(out);
+    try {
+      expect(job.doc.annotations).toEqual(design.doc.annotations);
+      expect(job.doc.annotationCounter).toBe(3);
+    } finally {
+      await job.dispose();
+    }
+  });
+});
+
 describe('the command line itself', () => {
   it('is 1 about a usage mistake, with the usage', SPAWNING, async () => {
     const design = await fixture('b1-plate');

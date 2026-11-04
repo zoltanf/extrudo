@@ -4104,3 +4104,95 @@ open sketch's plane and `CarriedCurves` (`viewport/Sketches.tsx`) draws them thi
 faint (no text, no segment already in the plane; `data-carried-curves` is the segment count);
 `sketchSnapAt` also offers an earlier entity whose carried copy lies within the snap tolerance of
 the cursor, so the faint copy is what the pointer snaps to.
+
+ADR-0126 (the owner, 2026-11-03; S1 2026-11-03): **Annotations** (P6-23), numbered notes
+pinned to geometry, a point or a sketch. **Model:** `doc.annotations[]` (`Annotation`: `id`,
+`number`, `text` 1–2000, `anchor`, `offset?`, `hidden?: true`, `done?: true`) and
+`doc.annotationCounter` (`packages/core/src/schema.ts`; `AnnotationIdSchema` in `ids.ts`);
+`AnnotationAnchor` is `model` (`ref` of `ANNOTATION_REF_KINDS`, never `index:`, plus world
+`at`), `free` (world `at`) or `sketch` (`sketch` feature, sketch-mm `at`, `entity?`: then `at`
+is the offset from `annotationEntityPoint`). **Commands** (`core/src/annotations.ts`):
+`addAnnotation` (number = counter + 1, or a given `number` past it; the counter moves in the
+same recipe), `updateAnnotation`, `moveAnnotation`, `removeAnnotation` (drops the key when
+empty, keeps the counter). Cascades: `removeFeature` of a sketch removes its `sketch` notes;
+`removeFromSketch`, `modifySketch`'s removals, `removeProjection` and `syncProjections` call
+`detachAnnotationEntities` **before** deleting entities; `remintAnnotations` (`remint.ts`);
+`restoreVersion` copies components, joints and annotations and never lowers the counter;
+`raiseAnnotationCounter` only raises it (`emitScript` writes `design.annotationCounter(n)`).
+The truncated documents a script and a plugin command see drop `annotations` and
+`annotationCounter` (like `groups`).
+**Kernel:** `RecomputeEngine`'s annotation pass after the joint pass (`#annotation`,
+`annotations/resolve.ts`), `model` anchors only, in no cache key; `AnnotationReport`
+(a note whose resolution throws is `detached`, never a failed recompute;
+`core/src/stores.ts`: `status` ok/moved/detached, `at`, `normal` of a flat face or plane,
+`resolved { ref with fingerprint, body? }`) on `RecomputeResult.annotations` and
+`ModelState.annotations`; `resolveAnnotation` on the engine, service, worker API, browser
+client and `Recomputer`, and `AgentHost.resolveAnnotation`. **Agents** (`apps/web/src/agent/`):
+`list_annotations`, `add_annotation`, `edit_annotation`, `remove_annotation`; `get_design`'s
+`annotations`. **API:** `d.annotate(text, anchor, options)` → `AnnotationHandle`,
+`d.annotations()`, `d.annotation(n)`; ID prefix `n`; `emitScript` writes them (whole design).
+**CLI:** `info` lists them. Rules a change must keep: **a number is never given twice** (only
+`addAnnotation` moves the counter, upward; nothing lowers it); annotations are **in no feature's
+cache key** and the recompute never reads them for geometry; **a `model` anchor's ref is a
+persistent name with the kernel's fingerprint** whenever the app or an agent makes it (the
+agent tools resolve the name with `resolveAnnotation` first and refuse an unresolved one with
+its input path before any change); every agent change is one `Agent: …` step through
+`change()`; a sketch entity's removal clears `entity` while the entity still exists; scripts
+refuse `annotate`, `annotation` and `annotations`. The sketch glyph and label right-click menu
+is `sketch/tools/glyphMenu.tsx` (`useGlyphMenu`), renamed from `annotationMenu.tsx` so
+"annotation" means only these notes. S2–S4 (the overlay, the Annotate tool, sketch mode,
+polish) are open.
+**S2 (the 3D view, 2026-11-04):** `apps/web/src/annotations/` — `AnnotationsOverlay.tsx` (a
+child of the viewport next to `MeasureOverlay`, z-[4], model mode only), `anchor.ts`
+(`fingerprintedAnchor`, the one path that stores a new anchor's ref with the kernel's
+fingerprint, used by the tool and the agent tools; `placeAnnotations`, the world point per
+note), `layout.ts` (`calloutBox`, `boxOffset`, `leaderEnd`), `tool.ts` (`ANNOTATE_TOOL`,
+`createAnnotateSelect`), `ui.ts` (the editing note or the tool's draft: view state), `actions.ts`
+(the browser rows). Rules a change must keep: **positions follow the camera imperatively** (a
+`viewport.subscribe` writing `style.transform`, never a React render per frame); **the ghost
+check runs after the camera settles (150 ms) and after a recompute** (the view sets
+`ViewportState.occluded`, `pick.ts`'s `occludedPoints`, anew per scene), never per frame; a
+selected, hovered (view or browser row) or edited note is always full; **`offset` runs from the
+anchor to the callout's bottom-left corner** (a default one mirrors to fit, a dragged one stays);
+**the tool adds nothing until the text is committed** (a draft in `ui.ts`; Esc or an empty text
+leaves no step); `SelectionItem.kind` `'annotation'` (`PICKED`, `NOUNS`, `itemLabel` with
+`LabelContext.annotation`, `pruneAnnotations` on document changes); Delete on a selection of only
+notes is `removeAnnotation`; `ModelSelect.onClick`'s third argument is the click's world point
+(the hit's depth, else the grid plane z = 0). **A new `ViewportSettings` key goes in four places**
+(the interface, `DEFAULT_SETTINGS`, both lists of the persisting subscribe) and in the settings
+inventory: `annotations` (the folder's eye, App menu › Toggles, `toggleAnnotations`),
+`annotationsBehind` (`ghost|show`), `annotationText` (`always|numbers`).
+**S3 (sketch mode, 2026-11-04):** the overlay also runs in an open sketch (`openSketch` prop:
+the open sketch's id and the tool host's plane); `placeAnnotations(doc, reports, sketches, open)`
+draws the open sketch's notes through that frame shown or not, **from the document**, which is
+the live source during a drag (as `DimensionLabels` reads it), so an entity note follows its
+point before the drag ends. `createSketchAnnotateInput` (`annotations/tool.ts`) is the
+`SketchInput` while Annotate runs in a sketch: `pickEntity` (`@extrudo/sketch/inference`, points
+first, projected curves too) gives `entity` and `at` as the offset from `annotationEntityPoint`;
+it shares `mayStartDraft` and the draft/editor with the 3D tool. Rules: **constraint glyphs and
+dimension labels are not interactive while Annotate runs** (a corner's coincident glyph would
+take the click); Delete in a sketch with notes and sketch items selected is **one transaction**
+(`removeAnnotation` then `deleteSelection`, "Delete annotation(s) and sketch geometry"); the
+palette's Notes switch is `ViewportSettings.annotations`; the tool sits in the Sketch tab's
+Inspect group, `N` in both modes.
+**S4 (polish, 2026-11-04):** **re-anchoring by the dot** (`annotations/reanchor.ts`
+`createReanchor`) goes through the tool's own picks and anchor builders (`ViewportState.pickAt`,
+set by the view's `useModelInput` with the same pick context; `modelAnchorFor`,
+`sketchAnchorFor` in `tool.ts`) — never a second path; the drop is one transaction
+("Move annotation #n": `moveAnnotation` + an `offset` that keeps the box where it was); only
+a selected note's dot drags; a drop off the view cancels, and every way a drag can end
+(`pointercancel`, lost capture, unmount) removes its Esc listener. **The
+screenshot's badges** (`screenshot { annotations }`, `SnapshotOptions.marks`,
+`annotations/marks.ts`) are projected through **the snapshot's own camera** in
+`thumbnailFromBox`, after the picture is read back, so `view`/`bodies` framing holds; hidden
+notes are left out, the global eye doesn't apply, no ghosting, no text. The detached line is
+`AnnotationHint` in the status bar. "Delete all done" is one transaction. The example
+`fixtures/benchmarks/annotated-plate.extrudo` is written by `packages/cli/src/
+example-annotations.test.ts` (`WRITE_FIXTURES=1`, deterministic UUID-shaped IDs, the kernel's
+fingerprints). S3 review: the browser rows and Look At place notes with the open sketch
+(`placedNow`); the ghost check is keyed on what hides things (bodies, clip, pose, style) and
+runs debounced, never per drag step.
+Owner review: the callout is one card, a number tab (`Tab`, `data-annotation-badge`) on the
+left of the text body; with no text shown the tab alone, rounded all round; digits trimmed to
+cap height (`text-box`). A note behind the part keeps a dotted leader to a hollow dot; the
+editor is the body itself, one line growing (`field-sizing: content`).

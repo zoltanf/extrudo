@@ -27,6 +27,7 @@ const PUBLISHED = Object.entries(api)
 const UNREACHABLE: Readonly<Record<string, string>> = {
   ComponentHandle: 'a script cannot add a component (ADR-0081 §9)',
   JointHandle: 'a script cannot add a joint (ADR-0081 §9)',
+  AnnotationHandle: 'a script cannot add or read an annotation (ADR-0126 §8)',
 };
 
 /** Whether an instance of `published` is a handle: it is one of the classes, or of a kind of one. */

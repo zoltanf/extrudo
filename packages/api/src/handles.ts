@@ -8,6 +8,9 @@
  * and an undo removes what they pointed at.
  */
 import type {
+  Annotation,
+  AnnotationChanges,
+  AnnotationId,
   BodyId,
   Component,
   ComponentId,
@@ -29,6 +32,7 @@ import {
   isConstructionType,
   originPointRef,
 } from '@extrudo/core';
+import { ApiError } from './error';
 import type { FaceRoleName } from './generated/features';
 import { createdName, edgeName, indexedName, splitName, vertexName } from './names';
 
@@ -232,6 +236,66 @@ export class JointHandle {
   /** The name, so a message reads as the joint's name. */
   toString(): string {
     return this.name;
+  }
+}
+
+/** What an `AnnotationHandle` changes through (ADR-0126 §8): the design's own commands. */
+export interface AnnotationHandleContext extends HandleContext {
+  updateAnnotation(id: AnnotationId, changes: AnnotationChanges): void;
+  removeAnnotations(ids: readonly AnnotationId[]): void;
+}
+
+/**
+ * One annotation, by its ID (ADR-0126 §8): `#3` to a person, `number` here.
+ * Its text, done flag and existence change through the design's commands.
+ */
+export class AnnotationHandle {
+  readonly id: AnnotationId;
+  readonly #design: AnnotationHandleContext;
+
+  constructor(design: AnnotationHandleContext, id: AnnotationId) {
+    this.#design = design;
+    this.id = id;
+  }
+
+  /** The stored annotation, or `undefined` when it is gone. */
+  get annotation(): Annotation | undefined {
+    return (this.#design.doc.annotations ?? []).find((a) => a.id === this.id);
+  }
+
+  /** Its number: `#3` is 3. Never given to another annotation. */
+  get number(): number {
+    const annotation = this.annotation;
+    if (!annotation) throw new ApiError(`Annotation ${this.id} is gone.`);
+    return annotation.number;
+  }
+
+  /** Its text. */
+  get text(): string {
+    return this.annotation?.text ?? '';
+  }
+
+  /** Replaces its text (one step); an empty text is refused. */
+  setText(text: string): this {
+    this.#design.updateAnnotation(this.id, { text });
+    return this;
+  }
+
+  /** Ticks it off (`true`, the default) or opens it again (`false`). */
+  done(done = true): this {
+    this.#design.updateAnnotation(this.id, { done });
+    return this;
+  }
+
+  /** Deletes it; its number is not given again. */
+  remove(): void {
+    this.#design.removeAnnotations([this.id]);
+  }
+
+  /** `#3`, as people say it. */
+  toString(): string {
+    const annotation = this.annotation;
+    return annotation ? `#${annotation.number}` : this.id;
   }
 }
 

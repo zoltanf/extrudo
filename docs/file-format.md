@@ -141,7 +141,8 @@ integer; the current one is **2**). The rules:
   expression inputs, `bodies[..].opacity`, `visible`, `ghost`, a sketch's
   `projections`, a reference's `fingerprint` were all added this way, and so
   were the components of P6-05: `components`, `bodies[..].component` and
-  `features[..].component`, section 4.7, and its `joints`, section 4.8), and
+  `features[..].component`, section 4.7, and its `joints`, section 4.8, and
+  the `annotations` and `annotationCounter` of P6-23, section 4.10), and
   new feature types (`Feature.type`
   is an open string).
 - **Objects are strict, reading is lenient.** Every object in the schema
@@ -213,6 +214,8 @@ schema names unknown keys, and a reader leaves them out (section 3).
 | `groups` | array of Group | no | Folds of the timeline (section 4.6). Absent means the design has none. |
 | `components` | array of Component | no | Named sets of bodies, in browser order (section 4.7). Absent means the design has none. |
 | `joints` | array of Joint | no | As-built joints between components, in browser order (section 4.8). Absent means the design has none. |
+| `annotations` | array of Annotation | no | Numbered notes on geometry, points and sketches (section 4.10). Absent means the design has none. |
+| `annotationCounter` | integer | no | At least 1: the highest annotation `number` ever given (section 4.10). Absent until the first annotation; stays when every annotation is deleted. |
 | `bodies` | object | yes | Record from body ID to `BodyMeta` (section 4.2). May be empty. Keys are IDs the kernel makes (section 10). |
 | `views` | array of NamedView | yes | Saved camera views (section 4.3). May be empty. |
 | `render` | object | no | Render Picture settings (section 4.9). Absent until the first render. |
@@ -237,6 +240,9 @@ Whole-document rules (checked after the per-field rules):
 - A joint's two sides name components of `components`, and different ones;
   its limits come only with a revolute or a slider, in the unit the type takes;
   and each frame's reference is a kind the type reads (section 4.8).
+- Annotation `id`s are unique and annotation `number`s are unique; every
+  `number` is at most `annotationCounter`; a `sketch` anchor names a feature
+  of type `sketch` in `features` (section 4.10).
 - Each group (section 4.6) must name features that exist, run forwards along
   the timeline, and not share a feature with another group.
 - A `text` entity whose `font` is `attachment:<id>` needs that `id` in
@@ -462,6 +468,69 @@ stored**: it is derived, and the user saves or copies it from the dialog.
   "quality": "standard",
   "engine": "blender"
 }
+```
+
+### 4.10 `annotations[]` (Annotation)
+
+A numbered note (P6-23, ADR-0126): "#3: make this hole M4". People pin them in
+the app and agents read and write them over the MCP server. Each has a
+**`number`** that is unique in the design and **never given again**:
+`annotationCounter` holds the highest number ever given, a new annotation gets
+`annotationCounter + 1` and the counter moves with it, and deleting an
+annotation keeps the counter. Nothing in the recompute reads `annotations`:
+the kernel only resolves `model` anchors at the timeline marker after a
+recompute, to draw them, so an older reader that leaves both keys out (section
+3) opens the same geometry. The array is in the order the annotations were
+made.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `id` | ID | yes | Unique among annotations, permanent (section 10). |
+| `number` | integer | yes | At least 1, unique, at most `annotationCounter`: the `#n` people and agents call it by. |
+| `text` | string | yes | 1 to 2000 characters, plain text; may contain newlines. |
+| `anchor` | AnnotationAnchor | yes | Where it is (4.10.1). |
+| `offset` | [number, number] | no | The callout's offset from the anchor in screen pixels (x right, y down). Absent means `[28, -28]`. |
+| `hidden` | boolean | no | `true` only: the annotation is not drawn. |
+| `done` | boolean | no | `true` only: ticked off; drawn muted and listed last. |
+
+#### 4.10.1 `AnnotationAnchor`
+
+An object whose **`kind`** says which of three it is:
+
+| `kind` | Fields | Meaning |
+|---|---|---|
+| `model` | `ref` (reference), `at` ([x, y, z]) | On geometry: `ref` is a reference (section 6.1) of kind `face`, `edge`, `vertex`, `body`, `plane`, `axis`, `point` or `sketchEntity` (the model-mode `<sketch>/<entity>`), by its persistent name, never an `index:` one; the app always stores its `fingerprint`. `at` is where it touches the geometry, world mm. |
+| `free` | `at` ([x, y, z]) | A point in space, world mm. |
+| `sketch` | `sketch` (ID), `at` ([x, y]), `entity` (ID, optional) | In a sketch: `sketch` names a sketch feature; `at` is in that sketch's own mm. With `entity` (a sketch point, curve or text of that sketch), `at` is the offset from the entity's reference point: a point's position, a line's midpoint, a circle's, arc's or ellipse's centre, a spline's mean point, a text's anchor. |
+
+A `model` annotation follows its geometry: the kernel resolves `ref` like a
+feature's reference (exact name, related name, fingerprint) and draws the
+annotation at `at` moved by as much as the reference's own point moved since
+the fingerprint was taken (the vertex or point itself for a vertex or point).
+One whose reference resolves to nothing, or to a feature past the timeline
+marker, is **detached** and drawn at `at`. Deleting a sketch feature deletes
+its `sketch` annotations; deleting a sketch entity clears `entity` and turns
+`at` into the sketch position it was drawn at.
+
+```json
+"annotations": [
+  {
+    "id": "6f1c…",
+    "number": 1,
+    "text": "Make this hole M4",
+    "anchor": {
+      "kind": "model",
+      "ref": {
+        "kind": "face",
+        "id": "extrude:extrude-1:cap:end",
+        "fingerprint": { "type": "plane", "at": [20, 10, 5], "dir": [0, 0, 1], "size": 800 }
+      },
+      "at": [10, 5, 5]
+    }
+  },
+  { "id": "9a0e…", "number": 3, "text": "Logo here", "anchor": { "kind": "free", "at": [0, -12, 2.5] }, "done": true }
+],
+"annotationCounter": 3
 ```
 
 ---

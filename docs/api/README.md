@@ -206,6 +206,35 @@ const joints = d.joints();         // every stored joint
 The frames must already agree as built (a revolute's two axes are collinear, a
 slider's two directions parallel); nothing moves when a joint is made.
 
+## Annotations
+
+An **annotation** is a numbered note (ADR-0126): `#1`, `#2`, … in the order
+they were made, a number never given twice. It sits on a reference (a face,
+edge, vertex, body, plane, axis, point or sketch curve), at a point `[x, y, z]`
+or in a sketch `{ sketch, at: [x, y] }`. The API has no kernel, so a note on a
+reference needs `at`, where on it the note goes (world mm), unless the
+reference carries a fingerprint; the app stores a fingerprint with every note
+it makes, which is how a note follows its face when a parameter moves it.
+
+```ts
+import { Design } from '@extrudo/api';
+
+const d = Design.create({ name: 'Plate' });
+const plate = d.box({ length: '40 mm', width: '20 mm', height: '5 mm' });
+const hole = d.annotate('Hole M4 here', plate.face('cap:end'), { at: [10, 5, 5] });
+d.annotate('Logo on this side', [20, 0, 2.5], { offset: [28, -28] });
+
+hole.number;                   // 1
+hole.setText('Hole M3 here');
+hole.done();                   // ticked off
+d.annotation(2)?.remove();     // #2 is gone; the next note is #3
+const notes = d.annotations(); // in number order
+```
+
+`d.annotationCounter(n)` marks every number up to `n` as given (a design rebuilt
+by `emitScript` whose last notes were deleted); it never lowers the counter. A
+script can't add or read annotations (`design.annotate` is refused there).
+
 ## Stability
 
 `API_VERSION` is `1`. The feature methods follow the document's feature inputs,

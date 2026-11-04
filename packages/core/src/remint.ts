@@ -12,19 +12,27 @@
  */
 import { nextFeatureName } from './features';
 import type { FeatureId } from './ids';
-import type { ExtrudoDocument, Feature, FeatureInputs, GeomRef } from './schema';
+import type { Annotation, ExtrudoDocument, Feature, FeatureInputs, GeomRef } from './schema';
 
 /** The characters of one token in a stored reference's ID (`timeline.ts`'s separators' complement). */
 const TOKEN = /[A-Za-z0-9_.~-]+/g;
+
+/** Rewrites every token of a stored reference's ID that names one of `features` to its new ID. */
+function renamer(
+  features: readonly Pick<Feature, 'id'>[],
+  ids: readonly FeatureId[],
+): (id: string) => string {
+  if (ids.length !== features.length) throw new Error('One new ID per feature.');
+  const map = new Map<string, string>(features.map((f, i) => [f.id, ids[i] as string]));
+  return (id: string) => id.replace(TOKEN, (token) => map.get(token) ?? token);
+}
 
 export function remintFeatures(
   features: readonly Feature[],
   doc: Pick<ExtrudoDocument, 'features'>,
   ids: readonly FeatureId[],
 ): Feature[] {
-  if (ids.length !== features.length) throw new Error('One new ID per feature.');
-  const map = new Map<string, string>(features.map((f, i) => [f.id, ids[i] as string]));
-  const rename = (id: string) => id.replace(TOKEN, (token) => map.get(token) ?? token);
+  const rename = renamer(features, ids);
   const ref = (r: GeomRef): GeomRef => ({ ...r, id: rename(r.id) });
   const named: Feature[] = [];
   return features.map((feature, i) => {
@@ -50,5 +58,31 @@ export function remintFeatures(
     const out = { ...feature, id: ids[i] as FeatureId, name, inputs } as Feature;
     named.push(out);
     return out;
+  });
+}
+
+/**
+ * Annotations that came with reminted features (ADR-0126 §3): a `model`
+ * anchor's reference (`extrude:cmd.f2:cap:end`, a `<sketch>/<entity>`) and a
+ * `sketch` anchor's sketch name the new IDs, like `remintFeatures`' references.
+ */
+export function remintAnnotations(
+  annotations: readonly Annotation[],
+  features: readonly Pick<Feature, 'id'>[],
+  ids: readonly FeatureId[],
+): Annotation[] {
+  const rename = renamer(features, ids);
+  return annotations.map((annotation) => {
+    const { anchor } = annotation;
+    if (anchor.kind === 'model') {
+      return {
+        ...annotation,
+        anchor: { ...anchor, ref: { ...anchor.ref, id: rename(anchor.ref.id) } },
+      };
+    }
+    if (anchor.kind === 'sketch') {
+      return { ...annotation, anchor: { ...anchor, sketch: rename(anchor.sketch) as FeatureId } };
+    }
+    return annotation;
   });
 }

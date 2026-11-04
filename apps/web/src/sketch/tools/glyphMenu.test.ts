@@ -1,12 +1,12 @@
 import type { SelectionItem } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
-import { isRightClick, menuSelection } from './annotationMenu';
+import { isRightClick, menuSelection } from './glyphMenu';
 
-describe('annotation menu', () => {
+describe('glyph menu', () => {
   const c1: SelectionItem = { kind: 'constraint', id: 'c1' };
   const d1: SelectionItem = { kind: 'dimension', id: 'd1' };
 
-  it('keeps a selection the right-clicked annotation is in, else selects just it', () => {
+  it('keeps a selection the right-clicked glyph is in, else selects just it', () => {
     expect(menuSelection([c1, d1], d1)).toBeUndefined();
     expect(menuSelection([c1], d1)).toEqual([d1]);
     expect(menuSelection([], c1)).toEqual([c1]);

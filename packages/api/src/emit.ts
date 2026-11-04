@@ -23,6 +23,7 @@ import {
   type Feature,
   type FeatureDefinition,
   type FeatureInputs,
+  type GeomFingerprint,
   type GeomRef,
   type Joint,
   type JointId,
@@ -39,6 +40,7 @@ import {
   comment,
   constant,
   type Expr,
+  num,
   obj,
   printProgram,
   raw,
@@ -46,7 +48,7 @@ import {
   statement,
   str,
 } from './emit/print';
-import { refExpr } from './emit/refs';
+import { idExpr, refExpr } from './emit/refs';
 import { sketchExpr } from './emit/sketch';
 import { inferUnit } from './expr';
 import { compact, inputMeta } from './inputs';
@@ -142,6 +144,8 @@ export function emitScript(doc: ExtrudoDocument, options: EmitOptions = {}): str
   statements.push(...groupStatements(doc, ctx));
   statements.push(...membershipStatements(doc, features, componentOf, ctx));
   statements.push(...jointStatements(joints, ctx));
+  // Annotations last, a whole design only: a run replays into a design with its own (ADR-0126 §8).
+  if (whole) statements.push(...annotationStatements(doc, ctx));
   return printProgram(statements);
 }
 
@@ -235,6 +239,81 @@ function jointStatements(joints: readonly Joint[], ctx: EmitContext): Stmt[] {
     );
   }
   return statements;
+}
+
+/**
+ * The `design.annotate('…', anchor, { … })` calls (ADR-0126 §8), in number
+ * order. A number is written only where it isn't the next one, so a design
+ * whose notes run #1, #2, … reads without them; a counter past the last note
+ * (its notes deleted) is written as `design.annotationCounter(n)`.
+ */
+function annotationStatements(doc: ExtrudoDocument, ctx: EmitContext): Stmt[] {
+  const statements: Stmt[] = [];
+  let next = 1;
+  for (const annotation of [...(doc.annotations ?? [])].sort((a, b) => a.number - b.number)) {
+    const options: [string, Expr][] = [];
+    const { anchor } = annotation;
+    let anchorExpr: Expr;
+    if (anchor.kind === 'model') {
+      anchorExpr = refExpr(anchor.ref, ctx);
+      const print = anchor.ref.fingerprint;
+      const same = print?.at.every((v, i) => v === anchor.at[i]);
+      if (!same) options.push(['at', numbers(anchor.at)]);
+      if (print) options.push(['fingerprint', fingerprintExpr(print, ctx)]);
+    } else if (anchor.kind === 'free') {
+      anchorExpr = numbers(anchor.at);
+    } else {
+      const sketch = ctx.varOf.get(anchor.sketch);
+      anchorExpr = obj([
+        ['sketch', sketch ? raw(sketch) : idExpr(anchor.sketch, ctx)],
+        ['at', numbers(anchor.at)],
+        ...(anchor.entity === undefined
+          ? []
+          : ([
+              [
+                'entity',
+                refExpr({ kind: 'sketchEntity', id: `${anchor.sketch}/${anchor.entity}` }, ctx),
+              ],
+            ] as [string, Expr][])),
+      ]);
+    }
+    if (annotation.offset) options.push(['offset', numbers(annotation.offset)]);
+    if (annotation.hidden) options.push(['hidden', bool(true)]);
+    if (annotation.done) options.push(['done', bool(true)]);
+    if (annotation.number !== next) options.push(['number', num(annotation.number)]);
+    next = annotation.number + 1;
+    statements.push(
+      statement(
+        call('design.annotate', [
+          str(annotation.text),
+          anchorExpr,
+          ...(options.length > 0 ? [obj(options)] : []),
+        ]),
+      ),
+    );
+  }
+  // Numbers given to notes deleted since stay given (ADR-0126 §2).
+  if ((doc.annotationCounter ?? 0) >= next) {
+    statements.push(
+      statement(call('design.annotationCounter', [num(doc.annotationCounter as number)])),
+    );
+  }
+  return statements;
+}
+
+const numbers = (values: readonly number[]): Expr => arr(values.map(num));
+
+/** A fingerprint as an object literal, its neighbours' names through their handles' IDs. */
+function fingerprintExpr(print: GeomFingerprint, ctx: EmitContext): Expr {
+  return obj([
+    ['type', str(print.type)],
+    ['at', numbers(print.at)],
+    ...(print.dir ? ([['dir', numbers(print.dir)]] as [string, Expr][]) : []),
+    ...(print.size !== undefined ? ([['size', num(print.size)]] as [string, Expr][]) : []),
+    ...(print.adj
+      ? ([['adj', arr(print.adj.map((name) => idExpr(name, ctx)))]] as [string, Expr][])
+      : []),
+  ]);
 }
 
 /** One joint side as `{ component: leaf, frame: … }`. */
