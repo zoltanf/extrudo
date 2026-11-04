@@ -273,6 +273,12 @@ Shows the points at the ends and centres of curves. On by default.
 
 Shows the sketch's [dimensions](#dimensions). On by default.
 
+### Show notes
+
+The numbered notes (#1, #2, …) in the sketch and on the model, on or off. It is the same
+switch as the eye of the browser's Annotations folder: it hides them in the 3D view too. See
+[Annotate](./tools/annotate.md).
+
 ### Show constraints
 
 Shows the constraint glyphs (parallel, tangent, …) beside the geometry. The

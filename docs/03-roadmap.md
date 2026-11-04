@@ -1651,7 +1651,7 @@ end to end, faster than in established desktop CAD.
   `pnpm check`, `e2e/annotations.spec.ts`, CI green.
   - [x] S1 Model and agents: schema, commands, kernel resolution, MCP tools, skill, API, CLI.
   - [x] S2 3D view: overlay, Annotate tool (`N`), selection, browser folder, toggles.
-  - [ ] S3 Sketch mode.
+  - [x] S3 Sketch mode.
   - [ ] S4 Polish: re-anchor by drag, `screenshot { annotations }`, example file.
 
 ## Phase 7 — Later (lowest priority, after everything else)

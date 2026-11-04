@@ -11,7 +11,7 @@ Pin a numbered note (#1, #2, …) to a face, an edge, a point or empty space. Cl
 
 | Where | Shortcut |
 |---|---|
-| Construct › Inspect | N |
+| Construct › Inspect · Sketch › Inspect | N |
 
 <video src="demo:annotate" muted loop autoplay playsinline aria-label="Annotate demo"></video>
 
@@ -27,6 +27,15 @@ Pin a numbered note (#1, #2, …) to a face, an edge, a point or empty space. Cl
 3. Type the note. `Shift+Enter` starts a new line, `Enter` adds it (one undo
    step). `Esc`, or leaving the box empty, adds nothing.
 4. The tool stays on for the next note. `Esc` ends it.
+
+## In a sketch
+
+While a sketch is open, press `N` (Sketch › Inspect › Annotate) and click a point, a line, a
+circle or a text: the note follows it when you drag it or a dimension changes. A click on
+empty space leaves a note at that spot of the sketch. The palette's **Notes** switch shows
+and hides all notes. When you finish the sketch, its notes stay on its plane in the 3D view
+and hide when you hide the sketch. Deleting the point a note is on keeps the note where it
+was; deleting the sketch deletes its notes.
 
 ## Working with notes
 

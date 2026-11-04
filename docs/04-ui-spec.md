@@ -739,6 +739,15 @@ runs from a 4 px dot at the anchor to the box's nearest edge.
   selected notes, double-click edits in place, a drag moves the callout (one
   undo step), right-click: Edit, Hide, Done, Delete. The wheel and the middle
   and right buttons still navigate over it.
+- **In a sketch** (ADR-0126 §7): the overlay draws the open sketch's notes through its plane
+  and the model's other notes; a note on a sketch point, curve or text follows it live, during
+  a drag too. Annotate is in the Sketch tab (Inspect) and on `N`: a click on a point, curve,
+  text or projected curve pins the note to it, a click on empty plane makes a note at that
+  sketch position. Constraint glyphs and dimension labels let the clicks through while it
+  runs. The palette's Show section has **Notes**, the same global eye. Delete with notes and
+  sketch geometry selected deletes both, one undo step. Deleting a point or curve a note is
+  on keeps the note where it was; deleting the sketch deletes its notes. In the model a
+  sketch's notes show while the sketch is shown.
 - **Browser › Annotations** (below Analysis, while there are any): `#n` and
   the first line, open ones by number then the done ones; per row a done tick
   and an eye (hides that note, saved in the design); click selects and turns

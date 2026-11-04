@@ -4044,3 +4044,16 @@ notes is `removeAnnotation`; `ModelSelect.onClick`'s third argument is the click
 (the interface, `DEFAULT_SETTINGS`, both lists of the persisting subscribe) and in the settings
 inventory: `annotations` (the folder's eye, App menu › Toggles, `toggleAnnotations`),
 `annotationsBehind` (`ghost|show`), `annotationText` (`always|numbers`).
+**S3 (sketch mode, 2026-11-04):** the overlay also runs in an open sketch (`openSketch` prop:
+the open sketch's id and the tool host's plane); `placeAnnotations(doc, reports, sketches, open)`
+draws the open sketch's notes through that frame shown or not, **from the document**, which is
+the live source during a drag (as `DimensionLabels` reads it), so an entity note follows its
+point before the drag ends. `createSketchAnnotateInput` (`annotations/tool.ts`) is the
+`SketchInput` while Annotate runs in a sketch: `pickEntity` (`@extrudo/sketch/inference`, points
+first, projected curves too) gives `entity` and `at` as the offset from `annotationEntityPoint`;
+it shares `mayStartDraft` and the draft/editor with the 3D tool. Rules: **constraint glyphs and
+dimension labels are not interactive while Annotate runs** (a corner's coincident glyph would
+take the click); Delete in a sketch with notes and sketch items selected is **one transaction**
+(`removeAnnotation` then `deleteSelection`, "Delete annotation(s) and sketch geometry"); the
+palette's Notes switch is `ViewportSettings.annotations`; the tool sits in the Sketch tab's
+Inspect group, `N` in both modes.

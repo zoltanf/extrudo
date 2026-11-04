@@ -216,6 +216,11 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   clamped into the view (`data-anchor` still gives the anchor's own point, off the view too).
 - The tool's clicks: `clickWhere(page, at, point, /^face:/)` with the orthographic home view;
   a click on empty view space makes a `free` note on the grid plane.
+- **In a sketch** (S3): `newSketchOnXY` + `clicker`; `N` then a click on a corner pins the note
+  to the point. The view has no `data-model-selection` in a sketch: check a callout's
+  `data-selected` and the status bar's `output[aria-label="Selection"]` ("1 annotation, 1 …").
+  The palette's switch is `getByRole('checkbox', { name: 'Show notes' })`. `counts(page)` keys
+  are `points`, `lines`, … (the open sketch's `data-sketch-summary`).
 
 ### `e2e/auto-project.spec.ts`
 

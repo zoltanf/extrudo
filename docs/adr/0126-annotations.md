@@ -3,7 +3,8 @@
 - **Status:** Accepted (S1), 2026-11-03 (the owner asked for the spec, display
   options and the slices). Display chosen 2026-11-04: callouts, text always
   visible (option 2), ghosted behind the part. S1 landed with the amendments
-  under "Amendment (S1)"; S2 (2026-11-04) under "Amendment (S2)".
+  under "Amendment (S1)"; S2 (2026-11-04) under "Amendment (S2)"; S3 (2026-11-04)
+  under "Amendment (S3)".
 - **Task:** P6-23 (`docs/03-roadmap.md`).
 - **Builds on:** ADR-0003 (commands, undo), ADR-0005 (topological naming,
   `GeomRef`, fingerprints), ADR-0068 (the document API), ADR-0069 (the CLI),
@@ -416,6 +417,19 @@ Where S1 had to decide what the spec left open, or the code disagreed with it:
   click on nothing lands on the plane through the view's target facing the camera; a kernel
   answer after the tool ended opens nothing; the click whose press blurred an open editor (and
   so committed it) doesn't open the next draft.
+
+## Amendment (S3, 2026-11-04)
+
+- **The open sketch's notes are drawn whether or not its feature is shown** (it is being
+  edited), through the tool host's plane, from the document as it is during a drag.
+- **Constraint glyphs and dimension labels let clicks through while Annotate runs**, so a click
+  on a corner reaches the point, not the coincident glyph drawn on it.
+- **Delete in a sketch** with notes and sketch geometry selected is one undo step named
+  "Delete annotation(s) and sketch geometry" (the sketch's own removal decides what geometry
+  goes, so the label doesn't name it); notes alone are "Delete annotation(s)".
+- **Annotate is in the Sketch tab's Inspect group** (a new group of one); `N` in both modes.
+- **The marking menu's `SKETCH_KINDS` is unchanged**: a callout has its own right-click menu
+  (Edit, Hide, Done, Delete), as in the model.
 
 ## Rejected
 

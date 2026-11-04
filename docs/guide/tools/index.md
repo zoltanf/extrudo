@@ -196,6 +196,10 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 - [Equal](./equal.md) — Give lines the same length, or circles the same radius.
 - [Symmetric](./symmetric.md) — Mirror two things about a line.
 
+### Inspect
+
+- [Annotate](./annotate.md) — Pin a numbered note (#1, #2, …) to a face, an edge, a point or empty space. Click, type, Enter.
+
 ### Export
 
 - [Export Sketch](./exportSketch.md) — Save the sketch or its profiles as SVG or DXF, at 1 unit = 1 mm.
