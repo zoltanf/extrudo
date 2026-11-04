@@ -603,7 +603,7 @@ code {
   font-variant-numeric: tabular-nums;
 }
 
-/* The dof-playground, dimension-label and trim widgets (ADR-0116). */
+/* The dof-playground, dimension-label, trim, snap-explorer and profiles widgets (ADR-0116). */
 
 .sk-handle {
   fill: var(--x-sketch);
@@ -641,6 +641,40 @@ code {
 .sk-label {
   fill: var(--x-raised);
   stroke: var(--x-accent);
+}
+
+.sk-guide {
+  fill: none;
+  stroke: var(--x-accent);
+  stroke-dasharray: 4 4;
+}
+
+.sk-snap-dot {
+  fill: var(--x-accent);
+}
+
+.sk-profile-off {
+  fill: transparent;
+}
+
+.sk-profile-hover {
+  fill: var(--x-sketch);
+  fill-opacity: 0.24;
+}
+
+.sk-profile-picked {
+  fill: var(--x-accent);
+  fill-opacity: 0.32;
+}
+
+.widget-stage [role="checkbox"] {
+  cursor: pointer;
+  outline: none;
+}
+
+.widget-stage [role="checkbox"]:focus-visible {
+  stroke: var(--x-accent);
+  stroke-width: 2.5;
 }
 
 .widget-hit {

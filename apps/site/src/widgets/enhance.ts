@@ -5,6 +5,8 @@
 import { enhanceDimensionLabel } from './dimension-label';
 import { enhanceDofPlayground } from './dof-playground';
 import { enhancePaletteSwitches } from './palette-switches';
+import { enhanceProfiles } from './profiles';
+import { enhanceSnapExplorer } from './snap-explorer';
 import { enhanceTrim } from './trim';
 
 export const ENHANCERS: Readonly<Record<string, (root: HTMLElement) => void>> = {
@@ -12,4 +14,6 @@ export const ENHANCERS: Readonly<Record<string, (root: HTMLElement) => void>> = 
   'dof-playground': enhanceDofPlayground,
   'dimension-label': enhanceDimensionLabel,
   trim: enhanceTrim,
+  'snap-explorer': enhanceSnapExplorer,
+  profiles: enhanceProfiles,
 };
