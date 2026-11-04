@@ -25,6 +25,7 @@ import {
   stepBody,
 } from '@extrudo/kernel';
 import { useEffect, useRef } from 'react';
+import type { OpenSketch } from '../annotations/anchor';
 import type { MeasureKernel } from '../measure/inspection';
 import type { AgentExportFormat } from '../platform/agent';
 import { bodyEntries } from '../shell/bodies';
@@ -51,6 +52,8 @@ export interface AgentShell {
   apply(command: Command<unknown>): void;
   commands: readonly AppCommand[];
   save(): Promise<void>;
+  /** The sketch open for editing and its plane, if one is (screenshot badges, ADR-0126 S4). */
+  openSketch?(): OpenSketch | undefined;
   /** The sketch tools' host (loaded lazily): its `apply` solves, once its solver is in. */
   toolHost: Pick<ToolHost, 'whenSolverReady'> | undefined;
 }
@@ -125,6 +128,7 @@ function createShellHost(designId: string, current: { current: AgentShell }): Ag
       if (!kernel?.interference) throw new Error("The geometry kernel isn't ready yet.");
       return kernel.interference(bodies as BodyId[]);
     },
+    openSketch: () => shell().openSketch?.(),
     async resolveAnnotation(annotation) {
       return shell().kernel?.resolveAnnotation?.(annotation);
     },

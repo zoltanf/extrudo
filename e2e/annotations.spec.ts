@@ -367,6 +367,16 @@ test('in a sketch: a note on a line, Esc on a draft adds no step, right-click �
   await page.keyboard.press('Control+y');
   await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full');
 
+  // It is on the line: dragging the line's corner moves its middle, and the note with it.
+  const one = await anchorOf(callout(page, 1));
+  const from = at(30, 20);
+  const to = at(50, 20);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(async () => (await anchorOf(callout(page, 1)))[0]).toBeGreaterThan(one[0] + 10);
+
   // Right-click › Delete on the callout.
   await callout(page, 1).click({ button: 'right' });
   await menuItem(page, 'Delete').click();
@@ -433,7 +443,8 @@ test('re-anchoring by the dot, a detached note fixed and its message, Delete all
   const boxAfter = await callout(page, 1).boundingBox();
   expect(Math.abs((boxAfter?.x ?? 0) - (boxBefore?.x ?? 0))).toBeLessThan(2);
   expect(Math.abs((boxAfter?.y ?? 0) - (boxBefore?.y ?? 0))).toBeLessThan(2);
-  // Esc during a drag puts the dot back and changes nothing.
+  // Esc during a drag puts the dot back and adds no step: the anchor holds, and one Ctrl+Z
+  // then takes back the re-anchoring itself, box and all (one step).
   await callout(page, 1).click();
   const [ax, ay] = await anchorOf(callout(page, 1));
   const lb = (await layer(page).boundingBox()) ?? { x: 0, y: 0 };
@@ -442,7 +453,17 @@ test('re-anchoring by the dot, a detached note fixed and its message, Delete all
   await page.mouse.move(lb.x + ax + 60, lb.y + ay - 40, { steps: 4 });
   await page.keyboard.press('Escape');
   await page.mouse.up();
+  await kernelReady(page);
+  await page.waitForTimeout(500);
   expect(await anchorOf(callout(page, 1))).toEqual([ax, ay]);
+  await page.getByRole('button', { name: 'Undo', exact: true }).hover();
+  await expect(page.getByText('Undo “Move annotation #1”.').first()).toBeVisible();
+  await page.keyboard.press('Control+z');
+  await expect.poll(async () => (await anchorOf(callout(page, 1)))[1]).toBeCloseTo(before[1], 0);
+  const undone = await callout(page, 1).boundingBox();
+  expect(Math.abs((undone?.y ?? 0) - (boxBefore?.y ?? 0))).toBeLessThan(2);
+  await page.keyboard.press('Control+y');
+  await expect.poll(async () => (await anchorOf(callout(page, 1)))[1]).toBeCloseTo(ay, 0);
 
   // Deleting the cylinder detaches #2; selected, the status bar says what to do.
   await chip(page, 'Cylinder1').click({ button: 'right' });

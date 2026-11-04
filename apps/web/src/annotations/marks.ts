@@ -42,10 +42,13 @@ export function drawMarks(
   projection: Projection,
   size: number,
 ): void {
-  const style = getComputedStyle(document.documentElement);
-  const accent = style.getPropertyValue('--x-accent').trim() || '#e8590c';
-  const muted = style.getPropertyValue('--x-muted').trim() || '#8a8a8a';
-  const line = style.getPropertyValue('--x-line').trim() || '#d0d0d0';
+  const style =
+    typeof document === 'undefined' ? undefined : getComputedStyle(document.documentElement);
+  const token = (name: string, fallback: string) =>
+    style?.getPropertyValue(name).trim() || fallback;
+  const accent = token('--x-accent', '#e8590c');
+  const muted = token('--x-muted', '#8a8a8a');
+  const line = token('--x-line', '#d0d0d0');
   for (const { mark, anchor, badge } of markPositions(marks, view, projection, size)) {
     const colour = mark.look === 'muted' ? muted : accent;
     ctx.strokeStyle = colour;

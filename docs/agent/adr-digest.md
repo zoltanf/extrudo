@@ -4061,7 +4061,9 @@ Inspect group, `N` in both modes.
 `createReanchor`) goes through the tool's own picks and anchor builders (`ViewportState.pickAt`,
 set by the view's `useModelInput` with the same pick context; `modelAnchorFor`,
 `sketchAnchorFor` in `tool.ts`) — never a second path; the drop is one transaction
-("Move annotation #n": `moveAnnotation` + an `offset` that keeps the box where it was). **The
+("Move annotation #n": `moveAnnotation` + an `offset` that keeps the box where it was); only
+a selected note's dot drags; a drop off the view cancels, and every way a drag can end
+(`pointercancel`, lost capture, unmount) removes its Esc listener. **The
 screenshot's badges** (`screenshot { annotations }`, `SnapshotOptions.marks`,
 `annotations/marks.ts`) are projected through **the snapshot's own camera** in
 `thumbnailFromBox`, after the picture is read back, so `view`/`bodies` framing holds; hidden

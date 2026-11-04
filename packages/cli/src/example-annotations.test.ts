@@ -85,7 +85,14 @@ describe('the annotations example', () => {
     }
     const { d } = plate(fingerprints);
     const bytes = await d.toFile();
-    const { job } = await openDesign(bytes);
+    if (process.env.WRITE_FIXTURES) await writeFile(FILE, bytes);
+    // The checked-in file: the document the code builds (its dates aside), and on opening,
+    // every feature computes and every note sits on its geometry.
+    const checkedIn = new Uint8Array(await readFile(FILE));
+    const { meta: _stored, ...stored } = readArchive(checkedIn).doc;
+    const { meta: _built, ...built } = d.toJSON();
+    expect(stored).toEqual(built);
+    const { job } = await openDesign(checkedIn);
     try {
       const computed = await job.compute();
       expect(computed.features.filter((f) => f.status !== 'ok')).toEqual([]);
@@ -98,12 +105,5 @@ describe('the annotations example', () => {
     } finally {
       await job.dispose();
     }
-    if (process.env.WRITE_FIXTURES) await writeFile(FILE, bytes);
-    const stored = readArchive(new Uint8Array(await readFile(FILE))).doc;
-    const doc = d.toJSON();
-    expect(stored.features.map(({ type, name, inputs }) => ({ type, name, inputs }))).toEqual(
-      doc.features.map(({ type, name, inputs }) => ({ type, name, inputs })),
-    );
-    expect(stored.annotations).toEqual(doc.annotations);
   });
 });

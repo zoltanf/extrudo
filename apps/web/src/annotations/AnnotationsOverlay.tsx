@@ -466,40 +466,62 @@ export function AnnotationsOverlay({
     const origin = layer.current?.getBoundingClientRect();
     stopDot();
     if (!moved || !box || !origin) return;
+    // Released off the view (pointer capture follows the pointer anywhere): a cancel.
+    const size = viewSize();
+    if (x < 0 || y < 0 || x > size.width || y > size.height) return;
     const annotation = d.annotation;
-    void reanchor.anchor(x, y, viewSize()).then((found) => {
-      if (!found) return;
-      const el = layer.current;
-      const { view, projection } = viewport.getState();
-      const ndc =
-        el && viewProject(view, projection, el.clientWidth / el.clientHeight, found.world);
-      const rect = {
-        left: box.left - origin.left,
-        top: box.top - origin.top,
-        width: box.width,
-        height: box.height,
-      };
-      const state = store.getState();
-      state.beginTransaction(`Move annotation #${annotation.number}`);
-      try {
-        state.dispatch(moveAnnotation({ id: annotation.id, anchor: found.anchor }));
-        if (ndc && el) {
-          const p: Screen = [
-            ((ndc[0] + 1) / 2) * el.clientWidth,
-            ((1 - ndc[1]) / 2) * el.clientHeight,
-          ];
-          state.dispatch(
-            updateAnnotation({ id: annotation.id, changes: { offset: boxOffset(p, rect) } }),
-          );
+    void reanchor.anchor(x, y, size).then(
+      (found) => {
+        if (!found) return;
+        const el = layer.current;
+        const { view, projection } = viewport.getState();
+        const ndc =
+          el && viewProject(view, projection, el.clientWidth / el.clientHeight, found.world);
+        const rect = {
+          left: box.left - origin.left,
+          top: box.top - origin.top,
+          width: box.width,
+          height: box.height,
+        };
+        const state = store.getState();
+        state.beginTransaction(`Move annotation #${annotation.number}`);
+        try {
+          state.dispatch(moveAnnotation({ id: annotation.id, anchor: found.anchor }));
+          if (ndc && el) {
+            const p: Screen = [
+              ((ndc[0] + 1) / 2) * el.clientWidth,
+              ((1 - ndc[1]) / 2) * el.clientHeight,
+            ];
+            state.dispatch(
+              updateAnnotation({ id: annotation.id, changes: { offset: boxOffset(p, rect) } }),
+            );
+          }
+          state.commitTransaction();
+        } catch (error) {
+          state.cancelTransaction();
+          if (!(error instanceof CommandError)) throw error;
+          onError(error.message);
         }
-        state.commitTransaction();
-      } catch (error) {
-        state.cancelTransaction();
-        if (!(error instanceof CommandError)) throw error;
-        onError(error.message);
-      }
-    });
+      },
+      (error: unknown) =>
+        onError(
+          `Couldn't place the note: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+    );
   };
+  // A drag cut short (a pen or touch cancel, capture lost) or the overlay gone ends it, so its
+  // Esc listener never outlives it.
+  const cancelDot = () => {
+    if (dotDrag.current) stopDot();
+  };
+  useEffect(
+    () => () => {
+      const held = dotDrag.current;
+      dotDrag.current = undefined;
+      if (held?.escape) window.removeEventListener('keydown', held.escape, true);
+    },
+    [],
+  );
 
   const commit = (d: Drawn, text: string) => {
     const trimmed = text.trim();
@@ -562,6 +584,8 @@ export function AnnotationsOverlay({
               onPointerDown={dotDown(d)}
               onPointerMove={dotMove}
               onPointerUp={dotUp(d)}
+              onPointerCancel={cancelDot}
+              onLostPointerCapture={cancelDot}
             />
             <circle
               r={2}

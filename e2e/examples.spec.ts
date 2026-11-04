@@ -5,7 +5,7 @@ const naturalWidth = (locator: ReturnType<Page['locator']>) =>
   locator.evaluate((el) => (el as unknown as { naturalWidth: number }).naturalWidth);
 
 // P6-06 S3: the example library — `#/example/<id>` opens a copy of one of the
-// eleven example designs, listed under the home screen's More examples…
+// twelve example designs, listed under the home screen's More examples…
 // dialog. The examples are not precached (they fetch over the network).
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -36,7 +36,7 @@ test('the home screen lists the examples under More examples…', async ({ page 
   await page.getByRole('button', { name: 'More examples…' }).click();
   const dialog = page.getByRole('dialog', { name: 'Examples' });
   const list = dialog.getByRole('list', { name: 'Examples' });
-  await expect(list.getByRole('button', { name: /^Open the / })).toHaveCount(11);
+  await expect(list.getByRole('button', { name: /^Open the / })).toHaveCount(12);
   await dialog.getByRole('button', { name: 'Open the Plate with corner holes example' }).click();
   await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
   await kernelReady(page);
@@ -56,9 +56,9 @@ test('the More examples… dialog shows a picture for every example', async ({ p
   const dialog = page.getByRole('dialog', { name: 'Examples' });
   const list = dialog.getByRole('list', { name: 'Examples' });
   const pictures = list.getByRole('img');
-  await expect(pictures).toHaveCount(11);
+  await expect(pictures).toHaveCount(12);
   await expect(list.getByRole('img', { name: 'Name tag' })).toBeVisible();
-  for (let i = 0; i < 11; i++) {
+  for (let i = 0; i < 12; i++) {
     await expect.poll(() => naturalWidth(pictures.nth(i))).toBeGreaterThan(0);
   }
 });

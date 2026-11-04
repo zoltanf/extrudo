@@ -1592,6 +1592,7 @@ function Shell({
       await autosave.flush();
     },
     toolHost: host,
+    openSketch: () => openSketchRef.current,
   });
   // biome-ignore lint/correctness/useExhaustiveDependencies: `keymap` stands for `keysFor`'s overrides
   const markingCommands = useMemo(

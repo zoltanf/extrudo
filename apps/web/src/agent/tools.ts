@@ -921,7 +921,7 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
     if (annotations) {
       // Every note that isn't hidden, whatever the person's eye says: the agent asked.
       const { doc } = h.store.getState();
-      options.marks = placedNow(doc, h.model.getState())
+      options.marks = placedNow(doc, h.model.getState(), h.openSketch?.())
         .filter((p) => !p.annotation.hidden)
         .map((p) => ({
           at: p.at,

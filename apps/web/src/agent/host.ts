@@ -13,6 +13,7 @@ import type {
   SessionStore,
 } from '@extrudo/core';
 import { createStore } from 'zustand/vanilla';
+import type { OpenSketch } from '../annotations/anchor';
 import type { AgentExportFormat } from '../platform/agent';
 import type { SnapshotOptions } from '../viewport/snapshotView';
 
@@ -70,6 +71,8 @@ export interface AgentHost {
    * the kernel can't say.
    */
   resolveAnnotation(annotation: Annotation): Promise<AnnotationReport | undefined>;
+  /** The sketch open for editing and its plane, if one is: its notes are drawn even hidden. */
+  openSketch?(): OpenSketch | undefined;
   /**
    * A square PNG of the model, `size` px, through a camera of its own (the
    * person's view doesn't move); null when the view isn't drawn or none of

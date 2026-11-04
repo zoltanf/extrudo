@@ -438,12 +438,15 @@ Where S1 had to decide what the spec left open, or the code disagreed with it:
   a new `offset` so the callout stays where it is on screen; one undo step "Move annotation #n".
   **Only a selected note's dot drags**: the dot sits on the note's geometry, and an unselected
   note must not take the press that drags a sketch point it is on.
+  **(S4 review.)** A drop outside the view cancels (pointer capture follows the pointer
+  anywhere); a pen or touch cancel, a lost capture or the overlay unmounting ends the drag and
+  its Esc listener; a failed drop says "Couldn't place the note: …".
 - **The detached line** is a status-bar output of its own ("Annotation status"), shown while
   a detached note is hovered or the only selected note: the status bar had no hint mechanism
   to reuse (the tool prompt is the sketch's).
 - **`screenshot { annotations }`** draws badges and leaders only (accent, done muted,
   detached hollow), at the callout's default offset mirrored to fit; every note but the hidden
-  ones, no ghosting.
+  ones (an open sketch's notes too, through its plane), no ghosting.
 - **The example** lives in `fixtures/benchmarks/` (the gallery bundles that folder), built by
   a CLI test with deterministic UUID-shaped IDs; its gallery picture shows the part only, as
   every thumbnail does (callouts are DOM, §5).
