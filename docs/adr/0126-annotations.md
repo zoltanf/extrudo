@@ -1,10 +1,10 @@
 # ADR-0126: Annotations: numbered notes on geometry, for people and agents
 
-- **Status:** Accepted (S1), 2026-11-03 (the owner asked for the spec, display
+- **Status:** Accepted (S1–S4), 2026-11-04; proposed 2026-11-03 (the owner asked for the spec, display
   options and the slices). Display chosen 2026-11-04: callouts, text always
   visible (option 2), ghosted behind the part. S1 landed with the amendments
   under "Amendment (S1)"; S2 (2026-11-04) under "Amendment (S2)"; S3 (2026-11-04)
-  under "Amendment (S3)".
+  under "Amendment (S3)"; S4 (2026-11-04) under "Amendment (S4)". P6-23 is complete.
 - **Task:** P6-23 (`docs/03-roadmap.md`).
 - **Builds on:** ADR-0003 (commands, undo), ADR-0005 (topological naming,
   `GeomRef`, fingerprints), ADR-0068 (the document API), ADR-0069 (the CLI),
@@ -430,6 +430,27 @@ Where S1 had to decide what the spec left open, or the code disagreed with it:
 - **Annotate is in the Sketch tab's Inspect group** (a new group of one); `N` in both modes.
 - **The marking menu's `SKETCH_KINDS` is unchanged**: a callout has its own right-click menu
   (Edit, Hide, Done, Delete), as in the model.
+
+## Amendment (S4, 2026-11-04)
+
+- **Re-anchoring** reuses the tool's picks and anchor builders through `ViewportState.pickAt`
+  (the view's own model pick) and, in an open sketch, the sketch's pick; the drop also stores
+  a new `offset` so the callout stays where it is on screen; one undo step "Move annotation #n".
+  **Only a selected note's dot drags**: the dot sits on the note's geometry, and an unselected
+  note must not take the press that drags a sketch point it is on.
+- **The detached line** is a status-bar output of its own ("Annotation status"), shown while
+  a detached note is hovered or the only selected note: the status bar had no hint mechanism
+  to reuse (the tool prompt is the sketch's).
+- **`screenshot { annotations }`** draws badges and leaders only (accent, done muted,
+  detached hollow), at the callout's default offset mirrored to fit; every note but the hidden
+  ones, no ghosting.
+- **The example** lives in `fixtures/benchmarks/` (the gallery bundles that folder), built by
+  a CLI test with deterministic UUID-shaped IDs; its gallery picture shows the part only, as
+  every thumbnail does (callouts are DOM, §5).
+- **(S3 review.)** The browser rows and Look At find a hidden sketch's notes while it is open
+  (`placedNow` with the open sketch); Delete's "and sketch geometry" label only when the
+  sketch's own Delete takes something; the ghost check is keyed on the bodies, the section,
+  the pose and the style, and debounced, so a sketch drag doesn't run it every step.
 
 ## Rejected
 

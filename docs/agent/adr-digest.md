@@ -4057,3 +4057,18 @@ take the click); Delete in a sketch with notes and sketch items selected is **on
 (`removeAnnotation` then `deleteSelection`, "Delete annotation(s) and sketch geometry"); the
 palette's Notes switch is `ViewportSettings.annotations`; the tool sits in the Sketch tab's
 Inspect group, `N` in both modes.
+**S4 (polish, 2026-11-04):** **re-anchoring by the dot** (`annotations/reanchor.ts`
+`createReanchor`) goes through the tool's own picks and anchor builders (`ViewportState.pickAt`,
+set by the view's `useModelInput` with the same pick context; `modelAnchorFor`,
+`sketchAnchorFor` in `tool.ts`) — never a second path; the drop is one transaction
+("Move annotation #n": `moveAnnotation` + an `offset` that keeps the box where it was). **The
+screenshot's badges** (`screenshot { annotations }`, `SnapshotOptions.marks`,
+`annotations/marks.ts`) are projected through **the snapshot's own camera** in
+`thumbnailFromBox`, after the picture is read back, so `view`/`bodies` framing holds; hidden
+notes are left out, the global eye doesn't apply, no ghosting, no text. The detached line is
+`AnnotationHint` in the status bar. "Delete all done" is one transaction. The example
+`fixtures/benchmarks/annotated-plate.extrudo` is written by `packages/cli/src/
+example-annotations.test.ts` (`WRITE_FIXTURES=1`, deterministic UUID-shaped IDs, the kernel's
+fingerprints). S3 review: the browser rows and Look At place notes with the open sketch
+(`placedNow`); the ghost check is keyed on what hides things (bodies, clip, pose, style) and
+runs debounced, never per drag step.

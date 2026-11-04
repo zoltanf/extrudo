@@ -739,6 +739,14 @@ runs from a 4 px dot at the anchor to the box's nearest edge.
   selected notes, double-click edits in place, a drag moves the callout (one
   undo step), right-click: Edit, Hide, Done, Delete. The wheel and the middle
   and right buttons still navigate over it.
+- **Re-anchor:** select a note, then drag its anchor dot (the 4 px dot has a larger hit area;
+  an unselected note's dot lets presses through to the geometry under it) onto other
+  geometry: hovering shows what a drop takes, as the tool does; the drop moves the note there
+  (on geometry, on the grid plane over nothing, or in an open sketch on an entity or the
+  plane), one undo step "Move annotation #n", and the callout stays where it was on screen.
+  Esc during the drag cancels it. A detached note dragged onto geometry is on it again.
+- **Detached:** while a detached note is hovered or selected, the status bar says
+  "Annotation #n lost its geometry: drag it onto something or delete it."
 - **In a sketch** (ADR-0126 §7): the overlay draws the open sketch's notes through its plane
   and the model's other notes; a note on a sketch point, curve or text follows it live, during
   a drag too. Annotate is in the Sketch tab (Inspect) and on `N`: a click on a point, curve,
@@ -754,8 +762,9 @@ runs from a 4 px dot at the anchor to the box's nearest edge.
   the view to it, double-click or F2 edits. The folder's eye hides them all
   (a preference, also App menu › Toggles › Annotations and the
   `toggleAnnotations` command); its menu: **Numbers only** / **Show text**
-  (every callout collapsed to its badge, text on hover and selection) and
-  **Show through** / **Ghost behind the part**.
+  (every callout collapsed to its badge, text on hover and selection),
+  **Show through** / **Ghost behind the part**, and **Delete all done** (one undo step,
+  disabled while none is done).
 
 ## 4. Sketch mode
 

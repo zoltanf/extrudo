@@ -45,6 +45,9 @@ was; deleting the sketch deletes its notes.
 - Double-click a note to change its text, drag it to move it out of the
   way, right-click it to hide it, mark it done or delete it. `Delete`
   deletes the selected notes.
+- To move a note onto something else, select it, then drag the small dot at the end of its line onto the
+  face, edge or point it belongs to. `Esc` while dragging puts it back. This is also how you
+  fix a note whose geometry is gone (the status bar says so when you select it).
 - A note on the part follows it: change a parameter and the note moves with
   its face. If what it was on is gone, the note is drawn dashed where it
   was: delete it, or keep it as a reminder.
@@ -53,5 +56,5 @@ was; deleting the sketch deletes its notes.
 - The **Annotations** folder in the browser lists them. Its eye hides all
   notes (for screenshots), each row's eye hides one, and the tick marks one
   done (it shrinks to its number). The folder's menu has **Numbers only**
-  for a crowded view.
+  for a crowded view and **Delete all done** to clear the ticked-off ones.
 <!-- /notes -->

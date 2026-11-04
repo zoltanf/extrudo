@@ -221,6 +221,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `data-selected` and the status bar's `output[aria-label="Selection"]` ("1 annotation, 1 …").
   The palette's switch is `getByRole('checkbox', { name: 'Show notes' })`. `counts(page)` keys
   are `points`, `lines`, … (the open sketch's `data-sketch-summary`).
+- **Re-anchoring** (S4): click the callout first (only a selected note's dot takes presses);
+  the dot's hit area is `[data-annotation-anchor="<n>"]` at the callout's
+  `data-anchor`; press there, move in steps, poll `data-model-hover` for the target kind, then
+  release (`dragDot` in the spec). The detached line is `output[aria-label="Annotation status"]`.
+  "Delete all done" is in the folder's right-click menu; a ticked-off note whose row is hovered
+  is drawn full, so move the pointer onto the view before checking `done`.
 
 ### `e2e/auto-project.spec.ts`
 
