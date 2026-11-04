@@ -58,6 +58,7 @@ export const REFUSED_METHODS: Readonly<Record<string, string>> = {
   annotate: 'would add an annotation',
   annotation: 'would read an annotation',
   annotations: 'would read the annotations',
+  annotationCounter: 'would change the annotation numbers',
   transaction: 'needs a function a script cannot pass',
   toFile: 'would write a file',
 };

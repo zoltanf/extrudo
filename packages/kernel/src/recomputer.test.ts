@@ -1,6 +1,7 @@
 // The Recomputer against an in-process kernel with the test features. The
 // worker path (Comlink, transfers) is covered by e2e/recompute.spec.ts.
 import {
+  type AnnotationId,
   type AttachmentId,
   AttachmentIdSchema,
   type BodyId,
@@ -120,6 +121,10 @@ function setup(
           events.push(
             `command:${request.fileId}:${request.commandId}:${request.doc.features.map((f) => f.id).join(',')}:${request.selection.map((r) => r.id).join(',')}`,
           );
+          // What the command's document carries of the annotations (ADR-0126): nothing.
+          if ('annotations' in request.doc || 'annotationCounter' in request.doc) {
+            events.push('command-doc:annotations');
+          }
           return service.runPluginCommand(request);
         },
         reference: async (...args: Parameters<KernelService['reference']>) => {
@@ -501,12 +506,22 @@ describe('Recomputer', () => {
   it("runs a plugin command on the features before the marker, sending the plugin's file once per kernel", {
     timeout: 60_000,
   }, async () => {
-    const doc = {
+    const doc: ExtrudoDocument = {
       ...testDocument([
         testFeature('a', 'test-box', { size: '10 mm' }),
         testFeature('b', 'test-box', { size: '20 mm' }),
       ]),
       timelineMarker: 1,
+      // A note on b, past the marker: the command's document must not name it.
+      annotations: [
+        {
+          id: 'n1' as AnnotationId,
+          number: 1,
+          text: 'On b',
+          anchor: { kind: 'model', ref: { kind: 'body', id: 'b:0' }, at: [0, 0, 0] },
+        },
+      ],
+      annotationCounter: 1,
     };
     const { model, events, spawned } = setup(doc);
     await until(() => ready(model));
@@ -530,6 +545,7 @@ describe('Recomputer', () => {
       'command:plugin:tiny@1.0.0:box:a:a:0',
     ]);
     expect(asked).toBe(1);
+    expect(events).not.toContain('command-doc:annotations');
     // A new kernel has none of it: the next command sends the file again.
     await recomputer?.client.restart();
     await until(() => spawned() >= 2);

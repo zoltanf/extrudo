@@ -79,6 +79,7 @@ import {
   type ParameterId,
   parameterNames,
   parseSketchEntityRefId,
+  raiseAnnotationCounter,
   removeAnnotation,
   removeFeature,
   removeParameter,
@@ -760,6 +761,15 @@ export class Design {
   annotation(number: number): AnnotationHandle | undefined {
     const found = annotationByNumber(this.doc, number);
     return found && new AnnotationHandle(this.#annotationContext, found.id);
+  }
+
+  /**
+   * Moves the annotation counter up to `counter`, so no number up to it is
+   * given: a rebuilt design whose last notes were deleted keeps them unused.
+   * Never lowers it (an `ApiError`).
+   */
+  annotationCounter(counter: number): void {
+    this.#dispatch(raiseAnnotationCounter({ counter }));
   }
 
   /** What an `AnnotationHandle` changes through, kept off `Design`'s own surface. */

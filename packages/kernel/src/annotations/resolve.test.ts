@@ -177,4 +177,19 @@ describe('the annotation pass (ADR-0126 §4)', () => {
     );
     expect(edited.stats.evaluated).toEqual([]);
   });
+
+  it('a note whose resolution throws is detached, and the recompute stands', async () => {
+    // A reference no pick can make (no name at all): resolving it throws a
+    // plain error, not a KernelError.
+    const broken: Annotation = {
+      ...onTop([0, 0, 0]),
+      id: 'n9' as AnnotationId,
+      number: 2,
+      anchor: { kind: 'model', ref: { kind: 'face' } as never, at: [0, 0, 0] },
+    };
+    const result = await recompute(plate('10 mm', [onTop(await topCentre()), broken]));
+    expect(result.annotations?.['n9' as AnnotationId]).toEqual({ id: 'n9', status: 'detached' });
+    expect(result.annotations?.[N1]?.status).toBe('ok');
+    expect(engine.resolveAnnotation(broken)).toEqual({ id: 'n9', status: 'detached' });
+  });
 });

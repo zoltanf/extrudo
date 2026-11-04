@@ -244,7 +244,8 @@ function jointStatements(joints: readonly Joint[], ctx: EmitContext): Stmt[] {
 /**
  * The `design.annotate('…', anchor, { … })` calls (ADR-0126 §8), in number
  * order. A number is written only where it isn't the next one, so a design
- * whose notes run #1, #2, … reads without them.
+ * whose notes run #1, #2, … reads without them; a counter past the last note
+ * (its notes deleted) is written as `design.annotationCounter(n)`.
  */
 function annotationStatements(doc: ExtrudoDocument, ctx: EmitContext): Stmt[] {
   const statements: Stmt[] = [];
@@ -289,6 +290,12 @@ function annotationStatements(doc: ExtrudoDocument, ctx: EmitContext): Stmt[] {
           ...(options.length > 0 ? [obj(options)] : []),
         ]),
       ),
+    );
+  }
+  // Numbers given to notes deleted since stay given (ADR-0126 §2).
+  if ((doc.annotationCounter ?? 0) >= next) {
+    statements.push(
+      statement(call('design.annotationCounter', [num(doc.annotationCounter as number)])),
     );
   }
   return statements;

@@ -583,6 +583,13 @@ describe('annotations (ADR-0126 §8)', () => {
     expect(d.doc.annotationCounter).toBe(5);
   });
 
+  it('raises the counter for numbers already given, never lowers it', () => {
+    const d = Design.create();
+    d.annotationCounter(3);
+    expect(d.annotate('a', [0, 0, 0]).number).toBe(4);
+    expect(() => d.annotationCounter(2)).toThrow(ApiError);
+  });
+
   it('Design.from seeds the counter past stored annotation IDs', () => {
     const d = Design.create();
     d.annotate('a', [0, 0, 0]);

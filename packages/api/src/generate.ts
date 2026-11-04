@@ -38,6 +38,7 @@ export const RESERVED_NAMES: readonly string[] = [
   'add',
   'annotate',
   'annotation',
+  'annotationCounter',
   'annotations',
   'create',
   'doc',

@@ -181,6 +181,25 @@ export const addAnnotation = defineCommand<AddAnnotationPayload>(
   },
 );
 
+/**
+ * Moves the counter up to `counter`, so no number up to it is given again: a
+ * design rebuilt from a script whose last notes had been deleted (`emitScript`).
+ * Never lowers it. One undo step.
+ */
+export const raiseAnnotationCounter = defineCommand<{ counter: number }>(
+  'annotation.counter',
+  'Annotation numbers',
+  (draft, { counter }) => {
+    const current = draft.annotationCounter ?? 0;
+    if (!Number.isInteger(counter) || counter < current) {
+      throw new CommandError(
+        `The annotation counter only grows: it is ${current}, so it can't be ${counter}.`,
+      );
+    }
+    if (counter > 0) draft.annotationCounter = counter;
+  },
+);
+
 export interface AnnotationChanges {
   text?: string;
   offset?: readonly [number, number];

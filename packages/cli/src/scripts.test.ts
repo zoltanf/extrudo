@@ -305,6 +305,22 @@ describe('a script in the engine', () => {
     expect(statusOf(second, 'f1')?.script?.generated).toHaveLength(4);
   });
 
+  it('runs before a sketch that carries annotations (ADR-0126)', async () => {
+    // The script sees the document before it: a note on a later sketch must not
+    // make that document invalid.
+    const d = Design.create({ name: 'Notes', now: '2026-10-05T00:00:00.000Z' });
+    d.script({ code: 'design.box({ x: 30 });' });
+    const sketch = d.sketch(d.origin.xy, (k) => {
+      k.rectangle([0, 0], [10, 10]);
+    });
+    d.annotate('In the sketch', { sketch, at: [5, 5] });
+    d.annotate('On the script box', d.ref('body', 'f1.f1:0'), { at: [30, 0, 5] });
+    const result = await compute(engineOf(), doc(d));
+    expect(statusOf(result, 'f1')?.status).toBe('ok');
+    expect(statusOf(result, 'f1')?.script?.generated).toHaveLength(1);
+    expect(Object.values(result.annotations ?? {}).map((a) => a.status)).toEqual(['ok']);
+  });
+
   it('gives a body to every generated feature under its own ID, the same every run', async () => {
     const d = Design.create({ name: 'Two scripts', now: '2026-10-05T00:00:00.000Z' });
     d.box({ length: 10, width: 10, height: 10 });

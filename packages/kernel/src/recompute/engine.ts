@@ -805,8 +805,10 @@ export class RecomputeEngine {
     starting: () => void,
   ): ScriptRun {
     const own = doc.features.findIndex((f) => f.id === feature.id);
+    // Annotations may name sketches after the script (ADR-0126); the script can't read them.
+    const { annotations: _notes, annotationCounter: _counter, ...rest } = doc;
     const before: ExtrudoDocument = {
-      ...doc,
+      ...rest,
       features: doc.features.slice(0, Math.max(own, 0)),
       timelineMarker: Math.max(own, 0),
       // A group may name features after the script; the script can't group anyway.
@@ -1078,6 +1080,16 @@ export class RecomputeEngine {
    * a feature's references there.
    */
   #annotation(annotation: Annotation, at: AtMarker): AnnotationReport {
+    // A note is never worth a failed recompute: whatever goes wrong resolving
+    // one leaves it detached (its geometry can't be told), and the rest stand.
+    try {
+      return this.#resolveAnnotation(annotation, at);
+    } catch {
+      return { id: annotation.id, status: 'detached' };
+    }
+  }
+
+  #resolveAnnotation(annotation: Annotation, at: AtMarker): AnnotationReport {
     const { doc } = at;
     const { anchor } = annotation;
     if (anchor.kind !== 'model') return { id: annotation.id, status: 'ok' };

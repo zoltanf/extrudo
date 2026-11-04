@@ -6,6 +6,7 @@ import {
   annotationEntityPoint,
   moveAnnotation,
   nextAnnotationNumber,
+  raiseAnnotationCounter,
   removeAnnotation,
   updateAnnotation,
 } from './annotations';
@@ -262,6 +263,18 @@ describe('updateAnnotation, moveAnnotation, removeAnnotation', () => {
     expect(doc.annotationCounter).toBe(2);
     expect(refused(two(), removeAnnotation({ ids: [aid('n1'), aid('zz')] }))).toBe(
       "Annotation zz doesn't exist.",
+    );
+  });
+});
+
+describe('raiseAnnotationCounter', () => {
+  it('moves the counter up, never down', () => {
+    const doc = roundTrip(design([note('n1', 1)], 1), raiseAnnotationCounter({ counter: 4 }));
+    expect(doc.annotationCounter).toBe(4);
+    expect(nextAnnotationNumber(doc)).toBe(5);
+    expect(roundTrip(doc, raiseAnnotationCounter({ counter: 4 })).annotationCounter).toBe(4);
+    expect(refused(doc, raiseAnnotationCounter({ counter: 3 }))).toBe(
+      "The annotation counter only grows: it is 4, so it can't be 3.",
     );
   });
 });

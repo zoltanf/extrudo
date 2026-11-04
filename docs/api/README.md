@@ -231,7 +231,9 @@ d.annotation(2)?.remove();     // #2 is gone; the next note is #3
 const notes = d.annotations(); // in number order
 ```
 
-A script can't add or read annotations (`design.annotate` is refused there).
+`d.annotationCounter(n)` marks every number up to `n` as given (a design rebuilt
+by `emitScript` whose last notes were deleted); it never lowers the counter. A
+script can't add or read annotations (`design.annotate` is refused there).
 
 ## Stability
 

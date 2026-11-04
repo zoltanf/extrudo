@@ -882,8 +882,10 @@ export class Recomputer {
         }
         const full = this.#document.getState().doc;
         const marker = full.timelineMarker;
+        // Annotations may name sketches past the marker (ADR-0126); a command can't read them.
+        const { annotations: _notes, annotationCounter: _counter, ...rest } = full;
         const doc: ExtrudoDocument = {
-          ...full,
+          ...rest,
           features: full.features.slice(0, marker),
           timelineMarker: marker,
           // A group may name features past the marker; a command can't group anyway.
