@@ -13,6 +13,8 @@ A regular polygon built on one edge.
 |---|---|
 | Sketch › Create | None |
 
+<video src="demo:polygonEdge" muted loop autoplay playsinline aria-label="Edge Polygon demo"></video>
+
 <!-- notes -->
 ## Step by step
 

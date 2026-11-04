@@ -13,6 +13,8 @@ A smooth curve through the points you click. Enter to finish.
 |---|---|
 | Sketch › Create | None |
 
+<video src="demo:spline" muted loop autoplay playsinline aria-label="Fit Point Spline demo"></video>
+
 <!-- notes -->
 ## Step by step
 

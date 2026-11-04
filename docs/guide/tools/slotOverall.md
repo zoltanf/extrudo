@@ -13,6 +13,8 @@ A slot from end to end, then the width.
 |---|---|
 | Sketch › Create | None |
 
+<video src="demo:slotOverall" muted loop autoplay playsinline aria-label="Overall Slot demo"></video>
+
 <!-- notes -->
 ## Step by step
 

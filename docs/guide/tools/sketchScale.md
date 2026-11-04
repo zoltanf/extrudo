@@ -13,6 +13,8 @@ Scale curves about a point, with their dimensions.
 |---|---|
 | Sketch › Modify | None |
 
+<video src="demo:sketchScale" muted loop autoplay playsinline aria-label="Sketch Scale demo"></video>
+
 <!-- notes -->
 ## Step by step
 

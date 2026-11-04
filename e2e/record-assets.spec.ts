@@ -334,7 +334,7 @@ async function record(page: Page, tool: string, clip: Clip, flow: () => Promise<
   } finally {
     await recorder.stop();
   }
-  // Under the tooltip's budget (`demos.test.ts`: 150 kB a clip, kept to 140 here, and 4 MB for
+  // Under the tooltip's budget (`demos.test.ts`: 150 kB a clip, kept to 140 here, and 6 MB for
   // all of them): 200 kbit/s looks the same as more at the tooltip's 236 px, and a long clip is
   // encoded again at a lower rate rather than cut short.
   const file = join(DEMOS, `${tool}.webm`);
@@ -2427,6 +2427,462 @@ test('demo: exportSketch', async ({ page }) => {
     await page.waitForTimeout(600);
     await p.click(await centreOf(dialog.getByRole('radio', { name: /^DXF/ })), 600);
     await page.waitForTimeout(1000);
+  });
+});
+
+// ---- The Sketch tab's Create and Modify menus (P6-22 batch 5, ADR-0116)
+//
+// These tools have no tile, so their clips play on their tool pages only. Most have no key
+// either: the tool is started from its menu before the clip starts, so no menu is in it.
+
+/** Starts a tool from a Sketch tab group's ▾ menu. */
+async function menuTool(page: Page, group: 'Create' | 'Modify', item: string) {
+  await page.locator('[role="tab"][data-tab="sketch"]').dispatchEvent('click');
+  await page.locator(`[data-toolbar-group="${group}"] button[aria-haspopup="menu"]`).click();
+  await page
+    .getByRole('menuitem', { name: new RegExp(`^${item}( (Shift\\+)?[A-Z0-9]{1,3})?$`) })
+    .click();
+  await expect(page.getByRole('menu')).toHaveCount(0);
+}
+
+/**
+ * A tool from the Sketch tab's menus: the shapes are drawn first (not recorded), the tool is
+ * started from its menu (or its `key` is pressed in the clip), and `flow` runs it, in sketch
+ * millimetres.
+ */
+function menuScene(
+  tool: string,
+  start: { menu: 'Create' | 'Modify'; item: string } | { key: string },
+  shapes: Parameters<typeof drawQuietly>[2],
+  flow: (page: Page, p: Glide, at: SketchAt) => Promise<void>,
+  options: { width?: number; hover?: Pt } = {},
+) {
+  test(`demo: ${tool}`, async ({ page }) => {
+    await demoProject(page);
+    const view = await sketchView(page);
+    const { at, clip } = await sketchFrame(page, view, options.width ?? 80);
+    await drawQuietly(page, at, shapes);
+    if ('menu' in start) await menuTool(page, start.menu, start.item);
+    const p = pointer(page);
+    await p.jump(at(...(options.hover ?? [-36, 20])));
+    await record(page, tool, clip, async () => {
+      await page.waitForTimeout(300);
+      if ('key' in start) {
+        await page.keyboard.press(start.key);
+        await page.waitForTimeout(350);
+      }
+      await flow(page, p, at);
+      await page.waitForTimeout(700);
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(500);
+    });
+  });
+}
+
+/** Clicks the points in turn, a pause between. */
+const clicks = (p: Glide, at: SketchAt, points: readonly Pt[], ms = 450) =>
+  points.reduce(
+    (done, q) => done.then(() => p.click(at(...q), ms)),
+    Promise.resolve() as Promise<void>,
+  );
+
+const create = (item: string) => ({ menu: 'Create', item }) as const;
+const modify = (item: string) => ({ menu: 'Modify', item }) as const;
+
+// Create ▾: points, circles, arcs, conics.
+
+menuScene(
+  'point',
+  create('Point'),
+  [
+    {
+      line: [
+        [-32, -12],
+        [32, -12],
+      ],
+    },
+  ],
+  (_page, p, at) =>
+    clicks(p, at, [
+      [-16, 6],
+      [0, -12],
+      [18, 10],
+    ]),
+);
+
+menuScene('circle2', create('2-Point Circle'), [], (_page, p, at) =>
+  clicks(p, at, [
+    [-18, -8],
+    [14, 10],
+  ]),
+);
+
+menuScene('circle3', create('3-Point Circle'), [], (_page, p, at) =>
+  clicks(p, at, [
+    [-22, -6],
+    [0, 16],
+    [20, -4],
+  ]),
+);
+
+// The pointer goes round the center from the start, so the arc turns that way.
+menuScene('arcCenter', create('Center Point Arc'), [], async (_page, p, at) => {
+  await clicks(p, at, [
+    [0, -8],
+    [22, -8],
+  ]);
+  await p.moveTo(at(16, 8), 400);
+  await p.moveTo(at(0, 14), 350);
+  await p.click(at(-20, 2), 400);
+});
+
+menuScene(
+  'arcTangent',
+  create('Tangent Arc'),
+  [
+    {
+      line: [
+        [-34, -10],
+        [-8, -10],
+      ],
+    },
+  ],
+  async (_page, p, at) => {
+    await p.click(at(-8, -10), 450);
+    await p.moveTo(at(6, -4), 400);
+    await p.click(at(14, 10), 500);
+  },
+);
+
+menuScene('conic', create('Conic'), [], async (_page, p, at) => {
+  await clicks(p, at, [
+    [-28, -12],
+    [28, -12],
+  ]);
+  await p.moveTo(at(-6, 8), 400);
+  await p.click(at(0, 16), 450);
+});
+
+menuScene('ellipse', create('Ellipse'), [], async (_page, p, at) => {
+  await clicks(p, at, [
+    [0, 0],
+    [26, 0],
+  ]);
+  await p.moveTo(at(14, 6), 350);
+  await p.click(at(6, 13), 400);
+});
+
+// Create ▾: rectangles, polygons, slots.
+
+menuScene('rectangleCenter', create('Center Rectangle'), [], (_page, p, at) =>
+  clicks(p, at, [
+    [0, 0],
+    [24, 14],
+  ]),
+);
+
+menuScene('rectangle3', create('3-Point Rectangle'), [], async (_page, p, at) => {
+  await clicks(p, at, [
+    [-24, -12],
+    [14, -18],
+  ]);
+  await p.moveTo(at(14, -6), 350);
+  await p.click(at(18, 8), 400);
+});
+
+menuScene('polygon', create('Inscribed Polygon'), [], (_page, p, at) =>
+  clicks(p, at, [
+    [0, 0],
+    [12, 15],
+  ]),
+);
+
+menuScene('polygonCircumscribed', create('Circumscribed Polygon'), [], (_page, p, at) =>
+  clicks(p, at, [
+    [0, 0],
+    [18, 2],
+  ]),
+);
+
+menuScene('polygonEdge', create('Edge Polygon'), [], async (_page, p, at) => {
+  await clicks(p, at, [
+    [-10, -16],
+    [10, -16],
+  ]);
+  await p.click(at(0, 4), 450);
+});
+
+menuScene('slot', create('Center to Center Slot'), [], async (_page, p, at) => {
+  await clicks(p, at, [
+    [-18, 0],
+    [18, 0],
+  ]);
+  await p.moveTo(at(6, 4), 300);
+  await p.click(at(0, 9), 400);
+});
+
+menuScene('slotOverall', create('Overall Slot'), [], async (_page, p, at) => {
+  await clicks(p, at, [
+    [-28, 0],
+    [28, 0],
+  ]);
+  await p.moveTo(at(6, 4), 300);
+  await p.click(at(0, 10), 400);
+});
+
+// Create ▾: splines and text. Enter finishes a spline at its last point.
+
+menuScene('spline', create('Fit Point Spline'), [], async (page, p, at) => {
+  await clicks(p, at, [
+    [-30, -8],
+    [-12, 12],
+    [6, -10],
+    [26, 8],
+  ]);
+  await page.keyboard.press('Enter');
+  await p.moveTo(at(40, -20), 450);
+});
+
+menuScene('splineControl', create('Control Point Spline'), [], async (page, p, at) => {
+  await clicks(p, at, [
+    [-30, -12],
+    [-14, 14],
+    [12, -14],
+    [28, 10],
+  ]);
+  await page.keyboard.press('Enter');
+  await p.moveTo(at(40, -20), 450);
+});
+
+// The Text panel opens beside the view; its field has the focus, and the text previews at
+// the anchor as it is typed.
+menuScene(
+  'text',
+  { key: 'Shift+T' },
+  [],
+  async (page, p, at) => {
+    await p.click(at(-24, -5), 400);
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('Extrudo', { delay: 90 });
+    await page.keyboard.press('Control+Enter');
+  },
+  { hover: [-34, 16] },
+);
+
+// Create ▾: mirror and patterns. The picks are clicked, Enter ends the picking.
+
+menuScene(
+  'sketchMirror',
+  create('Mirror'),
+  [
+    {
+      line: [
+        [4, -20],
+        [4, 20],
+      ],
+    },
+    {
+      line: [
+        [-30, -10],
+        [-10, -10],
+        [-22, 10],
+        [-30, -10],
+      ],
+    },
+  ],
+  async (page, p, at) => {
+    await clicks(p, at, [
+      [-20, -10],
+      [-16, 0],
+      [-26, 0],
+    ]);
+    await page.keyboard.press('Enter');
+    await p.moveTo(at(4, 0), 450);
+    await page.waitForTimeout(300);
+    await p.click(at(4, 12), 400);
+  },
+);
+
+menuScene(
+  'sketchRectangularPattern',
+  create('Rectangular Pattern'),
+  [{ circle: [-26, -12], to: [-22, -12] }],
+  async (page, p, at) => {
+    await p.click(at(-22, -12), 450);
+    await page.keyboard.press('Enter');
+    await p.moveTo(at(10, -6), 450);
+    await page.keyboard.type('4', { delay: 200 });
+    await page.keyboard.press('Tab');
+    await page.keyboard.type('2', { delay: 200 });
+    await p.moveTo(at(22, 8), 500);
+    await page.waitForTimeout(300);
+    await p.click(at(24, 10), 300);
+  },
+);
+
+menuScene(
+  'sketchCircularPattern',
+  create('Circular Pattern'),
+  [{ circle: [16, 0], to: [20, 0] }],
+  async (page, p, at) => {
+    await p.click(at(20, 0), 450);
+    await page.keyboard.press('Enter');
+    await p.moveTo(at(-10, 8), 450);
+    await page.waitForTimeout(300);
+    await p.click(at(0, 0), 450);
+  },
+);
+
+// Modify ▾: Extend, Break, Sketch Chamfer.
+
+menuScene(
+  'extend',
+  modify('Extend'),
+  [
+    {
+      line: [
+        [-32, -10],
+        [-6, -10],
+      ],
+    },
+    {
+      line: [
+        [-24, 8],
+        [2, 8],
+      ],
+    },
+    {
+      line: [
+        [18, -22],
+        [18, 20],
+      ],
+    },
+  ],
+  (_page, p, at) =>
+    clicks(p, at, [
+      [-10, -10],
+      [-2, 8],
+    ]),
+);
+
+menuScene(
+  'break',
+  modify('Break'),
+  [
+    {
+      line: [
+        [-34, -4],
+        [34, -4],
+      ],
+    },
+    {
+      line: [
+        [-10, -20],
+        [-10, 16],
+      ],
+    },
+    {
+      line: [
+        [12, -20],
+        [12, 16],
+      ],
+    },
+  ],
+  async (page, p, at) => {
+    await p.moveTo(at(1, -4), 450);
+    await page.waitForTimeout(300);
+    await p.click(at(1, -4), 300);
+    await p.moveTo(at(24, -4), 450);
+    await page.waitForTimeout(500);
+    await p.moveTo(at(-22, -4), 600);
+  },
+);
+
+// As in Sketch Fillet: the distance is typed first, then the corner is picked.
+menuScene(
+  'sketchChamfer',
+  modify('Sketch Chamfer'),
+  [
+    {
+      line: [
+        [-20, -8],
+        [4, -8],
+        [4, 14],
+      ],
+    },
+  ],
+  async (page, p, at) => {
+    await p.moveTo(at(-8, 4), 400);
+    await page.keyboard.type('10', { delay: 200 });
+    await p.click(at(4, -8), 500);
+    await p.moveTo(at(24, 12), 500);
+  },
+  { width: 50, hover: [-20, 12] },
+);
+
+// Modify ▾ and M: move, copy and scale pick, take a point to work from, then the target.
+
+menuScene('sketchMove', { key: 'm' }, [{ circle: [-20, 0], to: [-12, 0] }], async (page, p, at) => {
+  await p.click(at(-12, 0), 450);
+  await page.keyboard.press('Enter');
+  await p.click(at(-20, 0), 450);
+  await p.moveTo(at(4, 10), 450);
+  await p.click(at(18, 4), 400);
+});
+
+menuScene(
+  'sketchCopy',
+  modify('Copy'),
+  [{ circle: [-24, 0], to: [-18, 0] }],
+  async (page, p, at) => {
+    await p.click(at(-18, 0), 450);
+    await page.keyboard.press('Enter');
+    await clicks(p, at, [
+      [-24, 0],
+      [-4, 0],
+      [16, 0],
+    ]);
+  },
+);
+
+// About the origin: a pointer twice as far out as the circle's middle doubles it, about.
+menuScene(
+  'sketchScale',
+  modify('Sketch Scale'),
+  [{ circle: [8, 4], to: [13, 4] }],
+  async (page, p, at) => {
+    await p.click(at(13, 4), 450);
+    await page.keyboard.press('Enter');
+    await p.click(at(0, 0), 450);
+    await p.moveTo(at(12, 6), 450);
+    await p.click(at(18, 9), 500);
+  },
+);
+
+/**
+ * Intersect (Shift+P) needs a body that crosses the sketch plane: a sphere sunk below XY, so
+ * the plane cuts its cap. A click on the cap brings in the circle where they meet.
+ */
+test('demo: intersect', async ({ page }) => {
+  await demoProject(page);
+  await primitive(page, 'Sphere', { Diameter: '40 mm', Offset: '-14 mm' });
+  const view = await sketchView(page);
+  const { at, clip } = await sketchFrame(page, view, 60);
+  const viewport = viewportOf(page);
+  const p = pointer(page);
+  await p.jump(at(-26, 16));
+  await record(page, 'intersect', clip, async () => {
+    await page.waitForTimeout(300);
+    await page.keyboard.press('Shift+P');
+    await page.waitForTimeout(350);
+    await p.click(at(-4, 3), 500);
+    await expect
+      .poll(() => attr(viewport, 'data-sketch-projected'), { timeout: 15_000 })
+      .toMatch(/curves=1:/);
+    await p.moveTo(at(24, 16), 500);
+    await page.waitForTimeout(800);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
   });
 });
 

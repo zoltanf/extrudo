@@ -13,6 +13,8 @@ Copy curves from one point to another, as often as you click.
 |---|---|
 | Sketch › Modify | None |
 
+<video src="demo:sketchCopy" muted loop autoplay playsinline aria-label="Copy demo"></video>
+
 <!-- notes -->
 ## Step by step
 

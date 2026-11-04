@@ -13,6 +13,8 @@ Copies in rows and columns. Type the counts and spacing.
 |---|---|
 | Sketch › Create | None |
 
+<video src="demo:sketchRectangularPattern" muted loop autoplay playsinline aria-label="Rectangular Pattern demo"></video>
+
 <!-- notes -->
 ## Step by step
 

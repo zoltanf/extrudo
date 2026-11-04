@@ -13,6 +13,8 @@ A conic from its two ends and the shoulder point. Rho sets how full it is.
 |---|---|
 | Sketch › Create | None |
 
+<video src="demo:conic" muted loop autoplay playsinline aria-label="Conic demo"></video>
+
 <!-- notes -->
 ## Step by step
 

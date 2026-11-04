@@ -14,9 +14,9 @@
 
 /**
  * The tools that have a clip: every tile of the Solid, Modify, Construct, Make and
- * Sketch tabs (in the tabs' order), all recorded in the current UI (R3-16). The Sketch tab's
- * tiles are the ribbon's; Project, in its Create ▾ menu, is the one tool from a "more"
- * menu with a clip.
+ * Sketch tabs (in the tabs' order), all recorded in the current UI (R3-16), and every tool
+ * of the Sketch tab's Create ▾ and Modify ▾ menus but Import Drawing (P6-22, ADR-0116). A
+ * menu item has no tooltip, so those clips play on the tools' pages in the docs.
  */
 export const DEMO_TOOLS: readonly string[] = [
   // Solid › Create, Primitives, Features, Pattern, Program, Assemble.
@@ -107,6 +107,34 @@ export const DEMO_TOOLS: readonly string[] = [
   'equal',
   'symmetric',
   'exportSketch',
+  // Sketch › the Create ▾ and Modify ▾ menus (Project's is above, with the tiles).
+  'rectangle3',
+  'rectangleCenter',
+  'circle2',
+  'circle3',
+  'arcCenter',
+  'arcTangent',
+  'point',
+  'polygon',
+  'polygonCircumscribed',
+  'polygonEdge',
+  'slot',
+  'slotOverall',
+  'ellipse',
+  'spline',
+  'splineControl',
+  'conic',
+  'text',
+  'intersect',
+  'sketchMirror',
+  'sketchRectangularPattern',
+  'sketchCircularPattern',
+  'sketchChamfer',
+  'extend',
+  'break',
+  'sketchMove',
+  'sketchCopy',
+  'sketchScale',
 ];
 
 /** Tiles whose clip is still to record; empty now. */

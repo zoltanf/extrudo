@@ -59,6 +59,14 @@ describe('tool demos', () => {
     }
   });
 
+  it("has a clip for every tool of the Sketch tab's menus but Import Drawing", () => {
+    const groups = TABS.find((t) => t.id === 'sketch')?.groups ?? [];
+    const menus = groups.flatMap((group) => group.more ?? []);
+    expect(menus.length).toBeGreaterThan(20);
+    // Import Drawing is a file picker and a panel: its page is the Home tab's.
+    expect(menus.filter((id) => !DEMO_TOOLS.includes(id))).toEqual(['importDrawing']);
+  });
+
   it('keeps every clip small enough for a tooltip', async () => {
     const sizes = await Promise.all(
       Object.entries(files).map(async ([path, load]) => ({
@@ -69,7 +77,7 @@ describe('tool demos', () => {
     );
     for (const { path, bytes } of sizes)
       expect({ path, ok: bytes <= 150_000 }).toEqual({ path, ok: true });
-    expect(sizes.reduce((sum, s) => sum + s.bytes, 0)).toBeLessThan(4_000_000);
+    expect(sizes.reduce((sum, s) => sum + s.bytes, 0)).toBeLessThan(6_000_000);
   });
 
   it('gives a URL only to tools that have a clip', () => {

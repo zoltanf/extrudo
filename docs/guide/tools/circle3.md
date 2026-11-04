@@ -13,6 +13,8 @@ Through three points on the rim.
 |---|---|
 | Sketch › Create | None |
 
+<video src="demo:circle3" muted loop autoplay playsinline aria-label="3-Point Circle demo"></video>
+
 <!-- notes -->
 ## Step by step
 

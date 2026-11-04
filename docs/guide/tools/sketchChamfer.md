@@ -13,6 +13,8 @@ Cut the corner between two lines. Type the distance.
 |---|---|
 | Sketch › Modify | None |
 
+<video src="demo:sketchChamfer" muted loop autoplay playsinline aria-label="Sketch Chamfer demo"></video>
+
 <!-- notes -->
 ## Step by step
 

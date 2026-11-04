@@ -13,6 +13,8 @@ One edge at any angle, then the height.
 |---|---|
 | Sketch › Create | None |
 
+<video src="demo:rectangle3" muted loop autoplay playsinline aria-label="3-Point Rectangle demo"></video>
+
 <!-- notes -->
 ## Step by step
 

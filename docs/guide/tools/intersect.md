@@ -13,6 +13,8 @@ Bring in the curves where a face or body meets the sketch plane; they follow the
 |---|---|
 | Sketch › Create | Shift+P |
 
+<video src="demo:intersect" muted loop autoplay playsinline aria-label="Intersect demo"></video>
+
 <!-- notes -->
 ## Step by step
 

@@ -13,6 +13,8 @@ A sketch point, for construction and hole centers.
 |---|---|
 | Sketch › Create | None |
 
+<video src="demo:point" muted loop autoplay playsinline aria-label="Point demo"></video>
+
 <!-- notes -->
 ## Step by step
 

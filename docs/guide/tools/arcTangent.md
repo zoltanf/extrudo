@@ -13,6 +13,8 @@ Carries on smoothly from the end of a line or an arc.
 |---|---|
 | Sketch › Create | None |
 
+<video src="demo:arcTangent" muted loop autoplay playsinline aria-label="Tangent Arc demo"></video>
+
 <!-- notes -->
 ## Step by step
 
