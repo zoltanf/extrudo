@@ -345,3 +345,18 @@ the time recorded in the link never caught up.
   the last written bytes in memory (gone after a restart, which is when a
   synced file has most likely moved).
 
+## Amendment, 2026-11-04: Save As… links the open project (issue #155)
+
+Testing the amendment above on Windows with Google Drive found a second fault.
+Save As… recorded its file as the link in the project index only. The open
+project had read its link when it opened, so it went on writing the old file
+(or none), and the next write recorded the old file in the index again: the
+new file was never written back, without a word. Closing the design did the
+same.
+
+- **`LinkedProject.adopt(link)`** sets the open project's link, clears what was
+  said about the old file, and records the link in the index. Save As… calls it
+  (through `useLinkedFolder`'s `adopt`) wherever there is a linked project, and
+  `ProjectStore.link` only where there is none.
+- Adopting a link also hides "Save to Linked Folder", as linking does.
+

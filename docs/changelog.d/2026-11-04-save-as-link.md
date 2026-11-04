@@ -1,0 +1,1 @@
+- 2026-11-04 · **Save As… keeps writing the new file**: on the desktop app, a design saved with Save As… is written back to that file from the next edit on; until now it went on writing the old file (or none) until the design was opened again (issue #155, ADR-0065's amendment).

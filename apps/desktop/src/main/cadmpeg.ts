@@ -10,6 +10,7 @@
  * result is the STEP's bytes, and the directory is removed afterwards
  * whatever happened.
  */
+import { Buffer } from 'node:buffer';
 import { spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
@@ -72,6 +73,23 @@ export const VERSION_TIMEOUT_MS = 10_000;
 
 export const NOT_AVAILABLE =
   "The converter for other CAD files isn't available in this build. Set cadmpeg.path in preferences.json to a cadmpeg binary.";
+
+/** Why a conversion with no solid in its STEP is refused, in place of the kernel's "surfaces". */
+export const noSolidMessage = (name: string) =>
+  `Couldn't read the geometry of ${name}: converting it gave no solid body. Export it as STEP from the program it was made in, then import that file.`;
+
+/** The STEP entities a solid is written as: manifold_solid_brep and its subtypes. */
+const SOLID_ENTITIES = ['MANIFOLD_SOLID_BREP', 'BREP_WITH_VOIDS', 'FACETED_BREP'];
+
+/**
+ * Whether STEP bytes hold a solid. cadmpeg exits 0 with a STEP of none when
+ * it couldn't read the part's B-rep: nothing at all ("no geometry was
+ * written"), or an open shell of the faces it could write.
+ */
+export function stepHasSolid(bytes: Uint8Array): boolean {
+  const text = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return SOLID_ENTITIES.some((entity) => text.includes(entity));
+}
 
 const pathOf = (env: CadmpegEnv) => (env.platform === 'win32' ? win32 : posix);
 const exeName = (env: CadmpegEnv) => (env.platform === 'win32' ? 'cadmpeg.exe' : 'cadmpeg');
@@ -136,7 +154,8 @@ function capped(): { add(chunk: string): void; text(): string } {
 /**
  * Converts `file` to STEP: refuses what isn't convertible or is too large,
  * then runs cadmpeg in a fresh directory and returns the STEP or why there is
- * none. Never throws; the directory is removed whatever happened.
+ * none (a STEP without a solid counts as none). Never throws; the directory
+ * is removed whatever happened.
  */
 export async function convertWithCadmpeg(
   env: CadmpegEnv,
@@ -172,6 +191,7 @@ export async function convertWithCadmpeg(
     }
     const bytes = env.readFile(output);
     if (!bytes) return { ok: false, message: 'cadmpeg finished without a STEP file.' };
+    if (!stepHasSolid(bytes)) return { ok: false, message: noSolidMessage(file.name) };
     return { ok: true, name: stepNameFor(file.name), bytes };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
