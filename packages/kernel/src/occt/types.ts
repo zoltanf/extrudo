@@ -336,7 +336,19 @@ export interface FacadeBinding {
     face: number,
     depth: number,
     outward: boolean,
+    clip: boolean,
   ): number;
+  faceHit(
+    shape: number,
+    face: number,
+    px: number,
+    py: number,
+    pz: number,
+    dx: number,
+    dy: number,
+    dz: number,
+  ): number;
+  faceSlab(shape: number, face: number, depth: number, outward: boolean): number;
   delete(): void;
 }
 

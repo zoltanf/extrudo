@@ -991,13 +991,13 @@ end to end, faster than in established desktop CAD.
     `marking.slots` preference and the Customize Marking Menu dialog give each
     wedge of both rings any command the mode offers.
   - Emboss: ~~cones, spheres and free-form faces; more than half way round a
-    cylinder;~~ "tangent to the face" for a flat sketch far from it; several
-    faces at once (ADR-0060). **Cones, spheres, free-form faces and wraps past
+    cylinder;~~ ~~"tangent to the face" for a flat sketch far from it; several
+    faces at once~~ (ADR-0060). **Cones, spheres, free-form faces and wraps past
     half way round done 2026-10-06** (ADR-0060's amendment): a cone wraps like a
     cylinder (`wrapOnCone`, exact, the frame at the profiles' centroid's
     height), any other curved face takes the profiles projected along the
     sketch's normal (`projectOnFace`, a sphere's or torus's offset exact), the
-    dialog says which, and a wrap may go up to a whole turn. ~~`Kernel.measure`'s volume is 1-2 % off on the
+    dialog says which, and a wrap may go up to a whole turn. **Tangent to the face and several faces done 2026-11-04** (ADR-0060's second amendment): the Faces field takes several faces of one body, each taking the part of the letters in front of it and stopping at its edges (`faceSlab`, `projectOnFace` clip); "Tangent to the face" lays a sketch at any angle on a face (`faceHit`, `layTangent`), and a cone also takes a sketch on a plane parallel to one of its tangent planes. Known: a letter across a wrap and a flat face jogs, and a convex crease between two projected faces notches. ~~`Kernel.measure`'s volume is 1-2 % off on the
     B-spline walls of a wrap (its own gap, like the lofter's), so the wrap's
     exactness is only as good as the integrator.~~ **Done 2026-10-05**
     (ADR-0067 §H3): the facade integrates with an error bound where a B-spline

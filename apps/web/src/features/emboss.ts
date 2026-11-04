@@ -12,12 +12,18 @@
  * text (`wholeTexts`, P4-03) and the field counts it as one, and the face is
  * picked in the model, so its reference is the face's own name.
  *
+ * Several faces of one body can be picked, and "Tangent to the face" lays the
+ * letters on the face from any sketch angle (ADR-0060's second amendment); it
+ * is stored only while on.
+ *
  * The kernel decides how the profiles go on the face (P4-12, ADR-0060's
  * amendment): moved onto a flat one, wrapped round a cylinder or a cone,
  * projected along the sketch's normal onto anything else. The read-only
  * "Method" line says which, from the preview's `EmbossReport`.
  *
- * A depth arrow stands on the face among the letters, along the face's
+ * With Tangent to the face on, the arrow stands at the kernel's anchor (where
+ * the letters were laid) along its normal. Otherwise a depth arrow stands on
+ * the first face among the letters, along the face's
  * outward normal (or against it for a deboss), as the kernel grows them: on a
  * round face that is the radius where the letters are. The preview is drawn as
  * the join it makes (a cut for a deboss), like the extrude's.
@@ -30,7 +36,7 @@ import {
   type EmbossMode,
   type ExtrudoDocument,
   embossFeature,
-  embossMethodText,
+  embossMethodsText,
   evaluateParameters,
   type GeomRef,
   parseSketchEntityRefId,
@@ -49,6 +55,7 @@ import {
   type Manipulator,
   type ManipulatorContext,
 } from './spec';
+import { defaultInputs } from './values';
 
 const MODES = EMBOSS_MODES.map((value) => ({
   value,
@@ -68,16 +75,15 @@ export const embossDialog: FeatureDialogSpec = defineFeatureDialog({
       accepts: EMBOSS_PROFILE_KINDS,
       prompt: 'Pick profiles or a text',
       wholeTexts: true,
-      hint: 'Sketch profiles or a whole text, beside the face: parallel to a flat face, along the axis of a cylinder or a cone. They are moved, wrapped or projected onto the face, so the sketch can lie anywhere beside it.',
+      hint: 'Sketch profiles or a whole text, beside the face: parallel to a flat face, along the axis of a cylinder, along a cone’s axis or one of its tangent planes, or at any angle with Tangent to the face. They are moved, wrapped or projected onto the face, so the sketch can lie anywhere beside it.',
     },
     {
       kind: 'selection',
       name: 'face',
-      label: 'Face',
+      label: 'Faces',
       accepts: EMBOSS_FACE_KINDS,
-      max: 1,
-      prompt: 'Pick a face',
-      hint: 'The face the letters go on. Round a cylinder or a cone the sketch plane has to run along its axis, and the letters are wrapped round it so they keep their width; on a sphere or any other curved face they are projected along the sketch’s normal. Only the body that owns the face is changed.',
+      prompt: 'Pick faces',
+      hint: 'The faces the letters go on, all of one body; only that body changes. A flat face takes the letters moved onto it, a cylinder or a cone wraps them so they keep their width, any other curved face takes them projected along the sketch’s normal. Pick several and each takes the part of the letters in front of it, stopping at its edges.',
     },
     {
       kind: 'expression',
@@ -95,13 +101,28 @@ export const embossDialog: FeatureDialogSpec = defineFeatureDialog({
       default: 'emboss',
     },
     {
+      kind: 'toggle',
+      name: 'tangent',
+      label: 'Tangent to the face',
+      default: false,
+      hint: 'Lay the letters on the face as if sketched on a tangent plane right in front of them: any sketch angle, the right way round seen from outside.',
+    },
+    {
       kind: 'info',
       name: 'method',
       label: 'Method',
       shown: (_values, ctx) => ctx?.draftEmboss !== undefined,
-      text: (_values, ctx) => (ctx.draftEmboss ? embossMethodText(ctx.draftEmboss.method) : ''),
+      text: (_values, ctx) => (ctx.draftEmboss ? embossMethodsText(ctx.draftEmboss.faces) : ''),
     },
   ],
+  // `tangent` is stored only while on, so a feature made with it off keeps the
+  // four inputs older versions know (they refuse an unknown key).
+  toInputs(values) {
+    const inputs = defaultInputs(embossDialog, values);
+    const tangent = inputs.tangent;
+    if (tangent?.kind === 'bool' && !tangent.value) delete inputs.tangent;
+    return inputs;
+  },
   // Both fields filled is the framework's own check (a pick count each); this is
   // the one thing it can't know: a depth of zero would leave the body untouched.
   validate(values, ctx) {
@@ -126,6 +147,18 @@ export const embossDialog: FeatureDialogSpec = defineFeatureDialog({
  * yet, no arrow (there is no direction without it).
  */
 export function embossManipulators(values: DialogValues, ctx: ManipulatorContext): Manipulator[] {
+  const anchor = values.toggles.tangent === true ? ctx.draftEmboss?.anchor : undefined;
+  if (anchor) {
+    const normal = anchor.normal;
+    return [
+      {
+        kind: 'distance',
+        field: 'depth',
+        origin: anchor.origin,
+        direction: mode(values) === 'deboss' ? negate(normal) : normal,
+      },
+    ];
+  }
   const ref = values.refs.face?.[0];
   const centre = profilesCentre(values.refs.profiles ?? [], ctx);
   const frame =
