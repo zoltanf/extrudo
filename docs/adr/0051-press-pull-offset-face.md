@@ -640,3 +640,77 @@ face on the corpus's bodies (a 669-face thread adapter 194 ms, a 100-face
 body 15 to 30 ms); the replay's summed recompute time went from 865 s to
 940 s (+8.7 %, measured under other load), which includes the merge's copies
 and the fallback's second boolean where it fires.
+
+## Amendment 2026-11-04: a merge keeps its inputs' circles (issue #181)
+
+**Report.** In a tester's design (Extrudo 0.9.0) every edge of one body
+refused chamfer and fillet, even at 1 mm. The body is an extrude of two
+adjacent sketch profiles (symmetric 70 mm, new body) joined by an extrude of
+one of the same profiles (symmetric 115 mm), whose sides lie on the same
+planes and cylinders.
+
+**Cause, in two steps.**
+
+1. *The profile union rebuilds arcs.* An extrude of several profiles fuses
+   them first (`unite()` in `features/sources.ts`, a simplified fuse). The
+   merge (`SimplifyResult`, `ShapeUpgrade_UnifySameDomain`) joins the two arc
+   pieces of one sketch circle into one edge on a **new** `Geom_Circle` whose
+   X axis sits at the arc's first vertex, its axis sometimes reversed. So the
+   first extrude's side cylinders are parametrized unlike the second's, which
+   come straight from the sketch (in the tester's body: x (0.707, 0, 0.707),
+   axis (0, −1, 0) against x (1, 0, 0), axis (0, 1, 0)).
+2. *The join's merge then breaks.* Merging faces of one cylinder that carry
+   different parametrizations, `UnifySameDomain` puts one face a whole turn
+   off: in the tester's body two merged faces overlapped (447 149 mm³ instead
+   of 425 447); in the minimal model below the merged cylinder face spans
+   u 2.97..8.81 with a `NotClosed` wire, `InvalidCurveOnClosedSurface` and
+   `InvalidSameParameterFlag` edges and an `UnorientableShape` face, the
+   statuses of the 2026-10-29 amendment. In 0.9.0 that body was kept; since
+   2026-10-29 the merge's check falls back to the plain fuse, a valid body
+   whose sides stay split (26 faces instead of 13 in the tester's body, 29 of
+   58 edges refusing a 1 mm chamfer: seams between faces of one surface, the
+   concave edges next to them, and cap edges whose tangent chain runs into a
+   seam).
+
+**Decision.** In `finishBoolean`, with `simplify`, right after
+`SimplifyResult()` and before the validity check (which stays, with its
+fallback), `keepInputCircles` gives every **open** circular edge of the
+result that the builder's history says came from an input edge on a circle
+**that input circle** back (input 0 first): same centre, radius and axis
+line, the same arc and direction (the circle reversed with the input's X
+axis when the merge reversed the axis), its range recomputed, and only when
+**every face along the edge is a plane** (their pcurves dropped and
+recomputed on demand). That is exactly the profile union, so an extrude of
+several profiles is parametrized like its sketch and a later join merges its
+cylinders. The edits are in place on the merge's copies (2026-10-29), so the
+history read off the builder stays valid. Ellipses are left as they are
+(only circles were seen); an edge's `Poly_PolygonOnTriangulation` on the
+copies' display meshes is not touched (the kernel suite and the meshes of
+the tests stayed right).
+
+**Rejected (measured).** `ShapeFix_Wire::FixShifted` on the merged faces
+(still invalid). Swapping the fuse's operands (fixes the tester's body, not
+the minimal model). Moving the tool's cylinder faces onto the target's
+surface before the boolean (tester fixed, the sweep below still 68 of 144
+bad). Moving both inputs' faces onto a new cylinder with its seam opposite
+the faces (worse: 102 of 144 bad).
+
+**Sweep** (`kernel.test.ts`, "the boolean merge"): an annular sector
+r 20..30 from a0 to a0 + 30° split at a0 + 15°; A is both halves united (a
+simplified fuse) and swept ±5 mm, B the first half swept 10 mm each way, up
+or down; `fuse(A, B)` and `fuse(B, A)`, simplified, must give 10 faces,
+valid, with the plain fuse's volume; a0 = 0, 10, … 350. Sketch normal +Z: on
+the old facade a0 = 160..350 failed (the plain fallback); now none. Normal
+−Z: a0 = 160..350 failed; now only **340 and 350 (open)**: sectors across the
+sketch circle's 0°, where a plain face merges but the rule doesn't reach;
+they get the valid unmerged fallback, no worse than before. The tester's
+body (coordinator's measurement with the prototype): 13 faces, valid,
+425 446.595 mm³ (plain fuse 425 446.619); chamfer and fillet 1 mm on every
+edge: 2 of 33 fail, both tangent edges that rightly refuse.
+
+**Tests.** `kernel.test.ts` (the sweep), `features/extrude.test.ts` ("merges
+a join into whole curved sides"): the sector r 20..30 from 170° to 200° split
+at 185°, both profiles symmetric 10 mm as a new body, one of them symmetric
+20 mm as a join: 10 faces (18 on the old facade), one `side:<r20 arc>` face
+(four pieces before), and a 1 mm chamfer and fillet on every edge of the
+first extrude's caps (the concave ones refused before).

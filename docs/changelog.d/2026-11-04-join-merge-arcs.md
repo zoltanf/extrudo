@@ -1,0 +1,1 @@
+- 2026-11-04 · **Joins merge curved sides again**: an extrude of several profiles joined by another extrude of the same sketch kept its curved sides split (and in 0.9.0 broke the body), so chamfers and fillets on it failed; the sides merge into whole faces again (#181).
