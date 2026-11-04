@@ -291,3 +291,24 @@ D12V=1 …     # with D12: a plane face's vertices' largest distance from its pl
 The runs and tables are in `docs/plans/m2s-exploded-q1-2026-11-01.md`, "Run 4 (D12)". Ignore the "volume" D12 prints
 (BRepGProp's volume properties of a lone face); to see where a solid's volume moved, compare the planes'
 `offset × area / 3` sums.
+
+## STEP volume drift (Run 6, 2026-11-04)
+
+```sh
+STL_DIR=<staged meshes> TOL=auto FILE=own/spool-nut-v4.1.mesh bash spikes/stl-to-solid/run.sh prismatic V
+```
+
+Case `V` converts one file, writes it with the facade's `writeStep`, reads it back with `readStep` and prints both
+volumes by BRepGProp's fixed order, bounded at 1e-7 and 1e-9, Gauss–Kronrod at 1e-9 and a fine triangulation, the
+solids' volumes, the edges a reader would slide (a vertex's projection onto its 3D curve away from the curve's end),
+and face by face (matched by index, else by centroid; `QVNEAR=1` by centroid and surface type only) each face's area and
+lone-face volume (BRepGProp integrates a lone face about its own rough centre, so these don't sum to the solid's),
+the `QVTOP` (15) faces that move most. `QVFACE=i,j` compares those faces edge by edge (pcurve images in 3D and in
+(u, v), their distance from the 3D curve, vertex gap and slide) and, for a cone, its area by Green's theorem.
+`QVFIX=1` applies the reader's pcurve rule to the body before writing (the prototype of the facade's
+`pcurvesAsRead`), `QVENDS=1` its end rule too, `QVSTEP=/w/<file>` writes the STEP text. The tables are in
+`docs/plans/m2s-exploded-q1-2026-11-01.md`, "Run 6".
+
+Case `D` (review, 2026-11-04): one file (FILE, TOL) converted; per face its BRepGProp and triangulated area (deflection
+0.005), the mesh nodes' distance to the body (max, mean) and each face's triangulation nodes' distance to the mesh
+triangles; the body's BRepGProp and triangulated volume, and the conversion time.

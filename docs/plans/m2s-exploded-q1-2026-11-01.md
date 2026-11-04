@@ -999,3 +999,135 @@ The healer still runs once (the unified body has other faces with edges moved on
 
 Sweep (`baseline-2026-11-04-second-attempt-auto.jsonl` against the half-cone run, 63 passed, 1 skipped): only
 spool-screw moves, 1419 → 1171 faces, 256 → 0 facets, 43270 → 23945 ms.
+
+## Run 6 (2026-11-04): the volume-only round trips, makita's facets
+
+Kernel-staged meshes (`MESH_OUT`) of the six files and makita-vacuum-holder; spike case `V` (new: one file converted,
+written with the facade's `writeStep`, read back with its `readStep`, both measured several ways, then face by face)
+at Auto, `BUILD=d13`.
+
+### Slice 1: where the volume goes
+
+Main's facade (`700b080c6fb2`), every integral of both bodies (fixed order, bounded 1e-7 / 1e-9, Gauss–Kronrod 1e-9)
+gives the same ratio:
+
+| file | written / read back (fixed) | ratio | the faces that differ |
+|---|---|---|---|
+| own/battery-power-adapter | 24505.713 / 24499.918 | 0.999764 | torus 154: area 37.486 → 38.044 (solid 1 only) |
+| own/phone-stand-foldable | 11957.775 / 11952.660 | 0.999572 | 10 tori |
+| own/spool-nut-v4.1 | 9893.972 / 9899.185 | 1.000527 | cone 175 (1146 edges): area 340.651 → 341.277 |
+| third-party/micro-sd-keyring-inner | 942.716 / 942.095 | 0.999342 | 4 spheres: 1.680 → 3.345 each |
+| third-party/spaghetti-measure | 16092.078 / 16094.963 | 1.000179 | sphere 109: 5.546 → 6.080 |
+| third-party/gear-bearing-5 | 22265.831 / 22257.462 | 0.999624 | 18 spheres, 4 revolutions |
+
+Planes, cylinders and facets match face by face to about 1e-9 in all six. `QVFACE=<i>` compares a face edge by edge
+(the pcurves' images, in 3D and in (u, v), against each other and against the 3D curve):
+
+    spool-nut-v4.1 face 175 (cone, a 0.785, full turn):
+      written area fixed 340.650627, Green (du form) 340.650627
+      back    area fixed 341.277363, Green (du form) 340.650627
+      edge 185 (the seam line) uv written (9.21384597, 45.6800113)-(9.21384597, 47.3770676) back (9.21384597, 45.676923)-(…)
+               vertex gap 0.00439 slide 0.00309      (the only edge of 3780 that slides)
+      every other edge: pcurves 1e-11 apart
+    battery-power-adapter face 154 (torus R 32.4 r 4.27):
+      edge 12 len 4.765 images apart 0.088 written off 3d 0.111 back off 3d 0.075 uv apart 0.020
+    micro-sd-keyring-inner face 22 (sphere r 1.385):
+      edge 10 len 2.400 images apart 0.836 written off 3d 0.909 back off 3d 0.690 uv apart 0.628
+
+`gap` is a vertex's distance from its 3D curve's end, `slide` how far its projection onto the curve lies from that end
+(what a reader moves the end by). The written STEP has pcurves (7560 PCURVE entities for spool-nut) and
+`UNCERTAINTY_MEASURE_WITH_UNIT(5.E-03)`. OCCT's reader (`StepToTopoDS_TranslateEdgeLoop`, `CheckPCurves` →
+`XSAlgo_ShapeProcessor::CheckPCurve`, sources in the image under `/opencascade.js/deps/OCCT/src/`) drops every plane
+pcurve, and re-tests the others with `FixSameParameter` at the uncertainty p, taking the projection where the
+deviation exceeds min(1, 2p) and the projection strays less; a pcurve whose ends lie farther than p from the 3D
+curve's is dropped and projected again.
+
+The fix prototyped in the spike (`QVFIX=1`: the reader's deviation rule applied to the converted body before writing),
+then in the facade (`pcurvesAsRead`, and the seam through its vertices):
+
+| file | main | `QVFIX` | `QVFIX` + `QVENDS` (the end rule too) | facade |
+|---|---|---|---|---|
+| own/battery-power-adapter | 0.999764 | 1.0000003 (2 pcurves, 62 ms) | 1.0000000 (365, 353 ms) | 1.0000003 |
+| own/phone-stand-foldable | 0.999572 | 0.999966 (232) | 0.999982 (545, 554 ms) | 0.999966 |
+| own/spool-nut-v4.1 | 1.000527 | 1.000527 (0) | 1.000527 | 1.0000000 (seam) |
+| third-party/micro-sd-keyring-inner | 0.999342 | 1.0000000 (4) | 1.0000000 | 1.0000000 |
+| third-party/spaghetti-measure | 1.000179 | 1.0000000 (1) | 1.0000000 | 1.0000000 |
+| third-party/gear-bearing-5 | 0.999624 | 0.999802 (68) | 0.999881 (2994, 1160 ms) | 0.999802 |
+| third-party/makita-vacuum-holder | 0.999956 | 0.999998 (34) | 1.0000023 (1039) | 0.999998 |
+
+Synthetic candidates on main's facade (each beside `bossWithBump`, hybrid): a 16-segment sphere with a box corner at
+0.1 mm 1.0000000; **a 24-segment sphere with a box corner at 0.05 mm 1.00047** (233 faces, valid; the test); a sphere
+with a small sphere on it, a coarse donut, a 12-sided torus with a box, a noisy cone band at 0.01: all within 2e-8.
+With the facade's fix the 24-segment sphere reads back at 1.0000000.
+
+Sweep: ADR-0097's 2026-11-04c amendment (round trips failed 6 → 1; no face or facet moves).
+
+### Slice 2: makita-vacuum-holder's facets
+
+Spike case `f` at Auto with `Q26=1` (exploded regions), `Q25=1 Q25ONLY=1` (unfit bands) and `UNFIT=1` at 0.05 (the
+unfit surfaces), the kernel-staged mesh:
+
+    rebuild hybrid, facets 2516, tolerance 0.05, exploded 23, pl/cy/co/sp/to 557/237/6/12/6
+    unfit surface 641: 1481 regions, 3106 triangles, 1815 nodes, area 707.59 (1.4491 %), thinnest triangle 0.10283, longest edge 14.07, dev 3.0492
+    q25 step 0.05: unfit share 1.4491 % (1 surfaces, 3106 triangles), bands 1301; pass unfit 0 bands / 0 tris
+    q25 band T 0.05 unfit surface 641 tris 3106 … class ff? test coverage cover 0.1562 … dev/T p50 217.2 … pass 0
+    q25 band T 0.05 sub surface 641 tris 229 … class ff? test coverage cover 0.1389 … dev/T p50 7.353 p75 10.95 … pass 0
+    q25 band T 0.05 sub surface 641 tris 87 … class ff? test coverage cover 0.1795 … dev/T p50 4.505 p75 6.33 … pass 0
+
+Exploded regions (`q26 region`, by kind and reason): cone "edge tolerance" 18 regions / 312 triangles (1.18–3.53 mm),
+torus "edge tolerance" 4 / 96 (1.36–4.25 mm), plane "its outer loop runs the wrong way" 1 / 16.
+
+With the chord's image as pcurve (a copy of the facade, `FACADE=`), the same run: cone "edge tolerance" 18 / 312
+(1.18–3.42 mm), torus 2 / 62, plane 1 / 16; makita 3306 faces, 2486 facets. Spike case `V`, the same build, against
+2026-11-04c's (round-trip ratio):
+
+| file | 2026-11-04c | chord images |
+|---|---|---|
+| third-party/makita-vacuum-holder | 3334 / 2516, 0.999998 | 3306 / 2486, 0.999997 |
+| third-party/micro-sd-keyring-inner | 66 / 18, 1 | 51 / 3, 1 |
+| third-party/gear-bearing-5 | 0.999802 | 0.999921 |
+| own/phone-stand-foldable | 0.999966 | 0.999989 |
+| synthetic: 8-segment ball r 2, box corner, `bossWithBump`, 0.05 | 120 faces, 1.00035 | 120 faces, 1.0000004 |
+
+Synthetic candidates that changed nothing (no region exploded for edge tolerance in either build): coarse tori 8 × 8
+(R 10, r 1.5) and 12 × 6 (R 12, r 1), a 12-segment sphere's pole under a box, a twisted 16-sided cone band, a plate
+with a 12-sided hole, each at 0.05 and 0.1 mm.
+
+Sweep: ADR-0097's 2026-11-04d amendment (facets 14,003 → 13,958, round trips failed 1 → 0).
+
+### Review: gardena-end with the chord images
+
+Spike case `D` (new: each face's BRepGProp and triangulated area at deflection 0.005, the mesh nodes' distance to the
+body, each face's triangulation nodes' distance to the mesh triangles), gardena-end at Auto (T 0.01), 2026-11-04c's
+facade against the 17-point images:
+
+| face | surface | BRepGProp area 04c → 04d | triangulated area 04c → 04d |
+|---|---|---|---|
+| 0 | torus | 613.750 → 616.442 | 616.283 → 616.283 |
+| 8 | cone | 46.342 → 46.262 | 46.353 → 46.355 |
+| 11 | torus | 184.909 → 181.978 | 181.945 → 181.946 |
+| 13 | sphere | 74.653 → 74.941 | 75.102 → 75.103 |
+| 14 | torus | 104.181 → 105.337 | 105.333 → 105.528 |
+
+    04c: volume 13102.5488 (mesh 13060.2678, 1.00323738), triangulated 13120.2411; nodes to body max 0.00728673 mean 7.967e-05; faces to mesh max 0.0853445 mean 0.0205110
+    04d: volume 13130.0358 (1.00534201),                  triangulated 13120.4241; nodes to body max 0.00728673 mean 7.967e-05; faces to mesh max 0.0853445 mean 0.0204570
+
+`chordPcurve` (a probe copy printing each call): 884 calls (torus 488, cylinder 154, cone 122, sphere 120), 594
+replaced, the straight pcurve's stray 0.0217–0.0513 mm, the image's at most 0.0482. Stage times (`TIMES=1`, load
+under 1, two runs each, ms, 04c → 04d): hybrid faces 41 → 113 and 30 → 87, hybrid solid 78 → 400 and 73 → 409, hybrid
+unified 65 → 94 and 81 → 342, healed 180 → 264, checked against the mesh 83 → 438; face classifiers built in 3.0 →
+20.2 ms, classifying 58 → 277 ms.
+
+Narrowings (spike, round-trip ratio, faces / facets):
+
+| variant | gardena-end | makita | micro-sd-keyring-inner | gear-bearing-5 | phone-stand-foldable |
+|---|---|---|---|---|---|
+| 17 points, stray > 1.5 T (04d) | 594 replaced, 1.000013 | 3306 / 2486 | 51 / 3 | 0.999921 | 868 / 287 |
+| stray > 10 T | 0 replaced, 1.000012 | 3306 / 2486 | 51 / 3 | 0.999802 (fails) | 868 / 287 |
+| only with a facet across | 0 replaced | 3334 / 2516 | 79 / 18 | 0.999838 (fails) | 961 / 381 |
+| 3 points | 1.000014 | 3306 / 2486 | 51 / 3 | 0.999920 | 868 / 287 |
+
+gear-bearing-5's replacements stray 1.5–6.0 T, gardena-end's 2.2–5.1 T; the image's gain (its stray over the straight
+one's) overlaps too (micro-sd 0.59–1.0, gardena-end from 0.006). Whole conversions of gardena-end (case `D`, two runs,
+load under 2): 04c 3843 / 3950 ms, 17 points 5494 / 5532, 3 points 4037 / 4030. Sweep: ADR-0097's 2026-11-04d
+amendment, "Review".
