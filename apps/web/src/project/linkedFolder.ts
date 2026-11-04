@@ -70,6 +70,12 @@ export interface LinkedProject {
   /** A last write, whatever the throttle says (the project is closing). */
   close(): Promise<LinkOutcome>;
   /**
+   * Links the open project to a file written elsewhere (desktop Save As…), in
+   * the index and here, so the next autosave writes it. The link is otherwise
+   * read only when the project opens.
+   */
+  adopt(next: LinkedFile): Promise<void>;
+  /**
    * Writes `<project name>.extrudo` into the folder and links the project to
    * it. Refuses a name that is already there (ADR-0065 §3).
    */
@@ -260,6 +266,14 @@ export function createLinkedProject(ctx: LinkedContext): LinkedProject {
       await ready;
       await ctx.autosave.flush();
       return sync.flush();
+    },
+    async adopt(next) {
+      await ready;
+      link = next;
+      // What was said about the old file no longer applies to the new one.
+      conflict = undefined;
+      lastError = undefined;
+      await ctx.projects.link(id, next);
     },
     async linkNow() {
       const file = linkedName(ctx.store.getState().doc.name);
