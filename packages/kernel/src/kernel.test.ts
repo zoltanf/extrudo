@@ -737,7 +737,8 @@ describe('the boolean merge', () => {
   // a0 + 30° split at a0 + 15°. A is both halves, united first as an extrude
   // of two profiles does, swept ±5 mm; B is the first half swept 10 mm each
   // way, up or down. A simplified fuse must merge A's and B's sides into
-  // whole faces: 10, valid, with the plain fuse's volume.
+  // whole faces: 10, valid, with the plain fuse's volume. 144 fuses a
+  // sketch: about 4 s locally, 6 s on CI.
   const deg = Math.PI / 180;
   /** The start angles whose fuses don't merge, for a sketch with normal (0, 0, `nz`). */
   function unmerged(nz: 1 | -1): number[] {
@@ -790,9 +791,9 @@ describe('the boolean merge', () => {
 
   it('merges the sides of a join onto an extrude of two profiles (issue #181)', () => {
     expect(unmerged(1)).toEqual([]);
-  });
+  }, 60_000);
 
   it('merges them for a mirrored sketch too', () => {
     expect(unmerged(-1)).toEqual([]);
-  });
+  }, 60_000);
 });
