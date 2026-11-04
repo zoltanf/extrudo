@@ -86,5 +86,13 @@
     "file": "benchmarks/p4-01-sweep-loft-coil.extrudo",
     "tags": ["sweep", "loft", "coil"],
     "level": "advanced"
+  },
+  {
+    "id": "annotated-plate",
+    "title": "Plate with notes",
+    "description": "A plate with numbered notes on a face, an edge, a sketch circle and a point in space, one of them ticked off.",
+    "file": "benchmarks/annotated-plate.extrudo",
+    "tags": ["annotations", "sketch on face", "parameters"],
+    "level": "beginner"
   }
 ]
