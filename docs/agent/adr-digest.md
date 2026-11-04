@@ -2062,6 +2062,17 @@ counts them) and on a plane sketch. It doesn't depend on Auto-project. Keep
 `viewport.autoProjectFace` for new sketches in Settings and the app menu only.
 ADR-0125 adds `viewport.autoProjectSketches` and the `sketchCurve`/`sketchPoint`
 snap kinds; see its paragraph.
+**A pick-only edit's own step (ADR-0074's amendment, 2026-11-04)**: a commit whose
+constraints and dimensions all wait for a projection adds nothing, and
+`UndoHistory.record` keeps no empty step, so `lastStepId()` would be the user's
+previous step and the edit would join it (one undo then took a drawn rectangle with
+the dimensions placed on it later). `ToolHost.commit` compares `lastStepId()` before
+and after its dispatch: with no new step, the first `addProjection` or
+`reviveProjectionCurve` is **dispatched** under the edit's label and becomes the step;
+with none of those either (the projection is in, its curve not reported yet), the
+pendings carry `label` and no `step`, and `writePending` dispatches them as their own
+step when they land. Keep that: never pin a pending to a step id taken without
+checking the commit made the step.
 
 ADR-0075 (P6-01, slice 1) added **the Electron desktop app** (`apps/desktop`,
 GPL): electron-vite builds main, preload and renderer, the **renderer being the
