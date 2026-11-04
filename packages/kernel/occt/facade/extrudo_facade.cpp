@@ -11610,13 +11610,17 @@ private:
         off = measure(through);
         return off <= reach ? through : Handle(Geom2d_Curve)();
       };
-      // A mesh edge's pcurve on `chart` through the chart parameters of 16
-      // points along its chord, from `from` to `to` (its nodes' chart
+      // A mesh edge's pcurve on `chart` through the chart parameters of its
+      // chord's ends and midpoint, from `from` to `to` (its nodes' chart
       // parameters) over [0, length]; `off` how far its image strays from
       // the chord. Null when the samples jump more than a tenth from the ends.
+      // Three points, not more: with 17 the later stages took 1.6 s longer
+      // on gardena-end's 594 such edges (unify, healing and the mesh check
+      // on 16-span pcurves) for the same faces (ADR-0097's 2026-11-04d
+      // amendment, review).
       auto chordPcurve = [&](const MeshChart& chart, const gp_Pnt& p, const gp_Pnt& q, const gp_Pnt2d& from,
                              const gp_Pnt2d& to, double length, double& off) -> Handle(Geom2d_Curve) {
-        const int samples = 16;
+        const int samples = 2;
         Handle(NCollection_HArray1<gp_Pnt2d>) points = new NCollection_HArray1<gp_Pnt2d>(1, samples + 1);
         Handle(NCollection_HArray1<double>) parameters = new NCollection_HArray1<double>(1, samples + 1);
         gp_Pnt2d previous;

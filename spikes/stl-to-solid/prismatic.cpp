@@ -5176,6 +5176,94 @@ static void qv(ExtrudoFacade& f, const std::string& path, double tolerance) {
   f.release(h);
 }
 
+// Review 1 (2026-11-04): case D, how far a converted body lies from its mesh. Converts FILE at TOL, then prints each
+// face (index, surface, area, centre), the mesh nodes' distance to the body (max, mean), and per face the distance
+// from its triangulation's nodes (deflection 0.005) to the mesh triangles (max, mean).
+static double dPointTriangle(const gp_XYZ& p, const gp_XYZ& a, const gp_XYZ& b, const gp_XYZ& c) {
+  const gp_XYZ ab = b - a, ac = c - a, ap = p - a;
+  const double d1 = ab.Dot(ap), d2 = ac.Dot(ap);
+  if (d1 <= 0 && d2 <= 0) return ap.Modulus();
+  const gp_XYZ bp = p - b;
+  const double d3 = ab.Dot(bp), d4 = ac.Dot(bp);
+  if (d3 >= 0 && d4 <= d3) return bp.Modulus();
+  const double vc = d1 * d4 - d3 * d2;
+  if (vc <= 0 && d1 >= 0 && d3 <= 0) return (p - (a + ab * (d1 / (d1 - d3)))).Modulus();
+  const gp_XYZ cp = p - c;
+  const double d5 = ab.Dot(cp), d6 = ac.Dot(cp);
+  if (d6 >= 0 && d5 <= d6) return cp.Modulus();
+  const double vb = d5 * d2 - d1 * d6;
+  if (vb <= 0 && d2 >= 0 && d6 <= 0) return (p - (a + ac * (d2 / (d2 - d6)))).Modulus();
+  const double va = d3 * d6 - d5 * d4;
+  if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) return (p - (b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6))))).Modulus();
+  const double denom = 1 / (va + vb + vc);
+  return (p - (a + ab * (vb * denom) + ac * (vc * denom))).Modulus();
+}
+static void dCase(ExtrudoFacade& f, const std::string& path, double tolerance) {
+  const Mesh m = stlFile(path.c_str());
+  f.meshNodes(int(m.nodes.size() / 3));
+  double* nodes = reinterpret_cast<double*>(f.meshNodesPtr());
+  for (size_t i = 0; i < m.nodes.size(); ++i) nodes[i] = static_cast<float>(m.nodes[i]);
+  f.meshTriangles(int(m.triangles.size() / 3));
+  std::memcpy(reinterpret_cast<void*>(f.meshTrianglesPtr()), m.triangles.data(), m.triangles.size() * sizeof(uint32_t));
+  const double t0 = now();
+  const int h = f.meshToSolid(1, tolerance);
+  std::cout << std::setprecision(9) << "   d ms " << now() - t0 << "\n";
+  if (!h) { std::cout << "   refused " << f.lastError() << "\n"; return; }
+  const TopoDS_Shape body = *f.find(h);
+  const int nodeCount = int(m.nodes.size() / 3), triCount = int(m.triangles.size() / 3);
+  const auto node = [&](int n) { return gp_XYZ(static_cast<float>(m.nodes[3 * n]), static_cast<float>(m.nodes[3 * n + 1]), static_cast<float>(m.nodes[3 * n + 2])); };
+  double meshVolume = 0;
+  for (int t = 0; t < triCount; ++t)
+    meshVolume += node(int(m.triangles[3 * t])).Dot(node(int(m.triangles[3 * t + 1])).Crossed(node(int(m.triangles[3 * t + 2])))) / 6;
+  std::cout << "   d faces " << f.count(h, 0) << " volume " << qvFixed(body) << " meshVolume " << meshVolume << " ratio " << qvFixed(body) / meshVolume << "\n";
+  {
+    double mx = 0, sum = 0;
+    for (int n = 0; n < nodeCount; ++n) {
+      BRepExtrema_DistShapeShape d(BRepBuilderAPI_MakeVertex(gp_Pnt(node(n))).Vertex(), body);
+      const double v = d.IsDone() ? d.Value() : 0;
+      mx = std::max(mx, v);
+      sum += v;
+    }
+    std::cout << "   d nodes to body: max " << mx << " mean " << sum / nodeCount << " (" << nodeCount << " nodes)\n";
+  }
+  BRepMesh_IncrementalMesh(body, 0.005, false, 0.05);
+  int i = 0;
+  double allMax = 0, allSum = 0;
+  int allN = 0;
+  for (TopExp_Explorer e(body, TopAbs_FACE); e.More(); e.Next(), ++i) {
+    const TopoDS_Face& face = TopoDS::Face(e.Current());
+    GProp_GProps g; BRepGProp::SurfaceProperties(face, g);
+    TopLoc_Location loc;
+    const Handle(Poly_Triangulation) tri = BRep_Tool::Triangulation(face, loc);
+    double mx = 0, sum = 0, triArea = 0;
+    int n = 0;
+    if (!tri.IsNull())
+      for (int k = 1; k <= tri->NbTriangles(); ++k) {
+        int a, b, c;
+        tri->Triangle(k).Get(a, b, c);
+        const gp_XYZ pa = tri->Node(a).XYZ(), pb = tri->Node(b).XYZ(), pc = tri->Node(c).XYZ();
+        triArea += 0.5 * (pb - pa).Crossed(pc - pa).Modulus();
+      }
+    if (!tri.IsNull())
+      for (int k = 1; k <= tri->NbNodes(); ++k) {
+        const gp_XYZ p = tri->Node(k).Transformed(loc.Transformation()).XYZ();
+        double best = 1e300;
+        for (int t = 0; t < triCount; ++t)
+          best = std::min(best, dPointTriangle(p, node(int(m.triangles[3 * t])), node(int(m.triangles[3 * t + 1])), node(int(m.triangles[3 * t + 2]))));
+        mx = std::max(mx, best); sum += best; ++n;
+      }
+    allMax = std::max(allMax, mx); allSum += sum; allN += n;
+    const gp_Pnt c = g.CentreOfMass();
+    int edges = 0;
+    for (TopExp_Explorer x(face, TopAbs_EDGE); x.More(); x.Next()) ++edges;
+    std::cout << "   d face " << i << " " << surfaceTypeName(BRepAdaptor_Surface(face, false).GetType()) << " area " << g.Mass() << " centre " << c.X() << " " << c.Y() << " " << c.Z()
+              << " edges " << edges << " meshedArea " << triArea << " toMesh max " << mx << " mean " << (n ? sum / n : 0) << " samples " << n << "\n";
+  }
+  std::cout << "   d meshed volume " << qvMesh(body, 0.005) << "\n";
+  std::cout << "   d faces to mesh: max " << allMax << " mean " << (allN ? allSum / allN : 0) << "\n";
+  f.release(h);
+}
+
 int main(int argc, char** argv) {
   ExtrudoFacade f;
   // BUDGET=ms lowers the rebuild's budget (PRISMATIC_REBUILD_BUDGET_MS), to see it hit; HYBRID_BUDGET=ms the hybrid's.
@@ -5188,6 +5276,11 @@ int main(int argc, char** argv) {
   const double envTol = getenv("TOL") && *getenv("TOL") ? std::atof(getenv("TOL")) : 0.01;
   if (only == "f") {
     file(f, std::string("/stl/") + (getenv("FILE") ? getenv("FILE") : ""), envTol);
+    std::cout << "live shapes " << f.liveShapes() << "\n";
+    return 0;
+  }
+  if (only == "D") {
+    dCase(f, std::string("/stl/") + (getenv("FILE") ? getenv("FILE") : ""), envTol);
     std::cout << "live shapes " << f.liveShapes() << "\n";
     return 0;
   }
