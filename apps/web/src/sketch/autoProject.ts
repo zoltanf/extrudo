@@ -21,7 +21,9 @@
  * ADR-0125: a second pick runs with a sketches-and-sketch-points filter for
  * the earlier, shown sketches; its curves and points (`sketchCurve`,
  * `sketchPoint`) carry the nearest point of the curve's display polyline into
- * the open sketch. Of the body pick, the face centre and the sketch pick, the
+ * the open sketch. Since amendment 1 the carried copies the view draws faintly
+ * on the open sketch's plane are offered too, when within the snap tolerance of
+ * the cursor. Of the body pick, the face centre and the sketch pick, the
  * nearest to the cursor wins; a tie goes to the body, then the face centre.
  */
 import {
@@ -29,7 +31,10 @@ import {
   curvePolyline,
   type FeatureId,
   parseSketchEntityRefId,
+  type SketchData,
+  type SketchEntityId,
   type SketchFrame,
+  sketchEntityRefId,
   sketchToWorld,
   type Vec2,
   type Vec3,
@@ -97,7 +102,7 @@ export function autoProjectSnap(
     ? faceCenterSnapAt(frame, cursor, tolerance, shown, bodies)
     : undefined;
   const sketch = state.autoProjectSketches
-    ? sketchSnapAt(scene, camera, frame, at, cursor, earlier)
+    ? sketchSnapAt(scene, camera, frame, at, cursor, earlier, tolerance)
     : undefined;
   const far = (s: ModelSnap) => Math.hypot(s.point[0] - cursor[0], s.point[1] - cursor[1]);
   let best: ModelSnap | undefined;
@@ -187,12 +192,53 @@ function carry(source: SketchFrame, frame: SketchFrame, p: Vec2): Vec2 {
   return worldToSketch(frame, sketchToWorld(source, p));
 }
 
+/** An earlier sketch's point or curve carried into the open sketch: a point, or a polyline. */
+type CarriedEntity =
+  | { entity: SketchEntityId; point: Vec2 }
+  | { entity: SketchEntityId; polyline: Vec2[]; line: boolean };
+
+/** Each source sketch's entities carried into a frame (cached per sketch data and frame). */
+const carriedCache = new WeakMap<
+  SketchData,
+  { frame: SketchFrame; source: SketchFrame; items: CarriedEntity[] }
+>();
+
+/** The points and curves of `source` (no text) carried into `frame`. */
+function carriedEntities(
+  source: PickScene['sketches'][number],
+  frame: SketchFrame,
+): CarriedEntity[] {
+  const hit = carriedCache.get(source.data);
+  if (hit?.frame === frame && hit.source === source.frame) return hit.items;
+  const items: CarriedEntity[] = [];
+  for (const [id, entity] of Object.entries(source.data.entities)) {
+    if (entity.type === 'text') continue;
+    const key = id as SketchEntityId;
+    if (entity.type === 'point') {
+      items.push({ entity: key, point: carry(source.frame, frame, [entity.x, entity.y]) });
+      continue;
+    }
+    const polyline = curvePolyline(source.data, entity);
+    if (!polyline || polyline.length === 0) continue;
+    items.push({
+      entity: key,
+      polyline: polyline.map((p) => carry(source.frame, frame, p)),
+      line: entity.type === 'line',
+    });
+  }
+  carriedCache.set(source.data, { frame, source: source.frame, items });
+  return items;
+}
+
 /**
- * A curve or point of an **earlier**, shown sketch under the pointer `at`
- * (ADR-0125), as a `sketchCurve` or `sketchPoint` model snap. A point entity
- * wins over a curve; within each, the nearest to `cursor` wins. A text is
- * skipped; the snap point is the nearest point of the curve's display
- * polyline carried into the open sketch's frame.
+ * A curve or point of an **earlier**, shown sketch (ADR-0125), as a
+ * `sketchCurve` or `sketchPoint` model snap: one under the pointer `at`
+ * (where the source sketch is drawn), or, since amendment 1, one whose
+ * carried copy in the open sketch's plane (the faint preview) lies within
+ * `tolerance` (mm) of `cursor`. A point entity wins over a curve; within
+ * each, the nearest to `cursor` wins. A text is skipped; the snap point is
+ * the nearest point of the curve's display polyline carried into the open
+ * sketch's frame.
  */
 export function sketchSnapAt(
   scene: PickScene,
@@ -201,52 +247,54 @@ export function sketchSnapAt(
   at: readonly [number, number],
   cursor: Vec2,
   earlier: ReadonlySet<FeatureId>,
+  tolerance = 0,
 ): ModelSnap | undefined {
   type Candidate = { snap: ModelSnap; point: Vec2 };
   const points: Candidate[] = [];
   const curves: Candidate[] = [];
+  const far = (p: Vec2) => Math.hypot(p[0] - cursor[0], p[1] - cursor[1]);
+  /** Adds `item` of sketch `feature`; with `near`, only when it lies within `tolerance`. */
+  const offer = (feature: FeatureId, item: CarriedEntity, near: boolean) => {
+    const ref = { kind: 'sketchEntity' as const, id: sketchEntityRefId(feature, item.entity) };
+    if ('point' in item) {
+      if (near && far(item.point) > tolerance) return;
+      const point = item.point;
+      points.push({ snap: { ref, point, kind: 'sketchPoint', straight: true }, point });
+      return;
+    }
+    const point = nearestOnPolyline(item.polyline, cursor);
+    if (near && far(point) > tolerance) return;
+    const { polyline } = item;
+    const line =
+      item.line && polyline.length >= 2
+        ? ([polyline[0], polyline[polyline.length - 1]] as [Vec2, Vec2])
+        : undefined;
+    curves.push({
+      snap: { ref, point, kind: 'sketchCurve', straight: item.line, ...(line && { line }) },
+      point,
+    });
+  };
   const hits = pickStack(scene, camera, at, SKETCH_SNAP_FILTER).filter(
     (h) => h.item.kind === 'sketchEntity',
   );
   for (const hit of hits) {
-    const id = hit.item.id;
-    const parsed = parseSketchEntityRefId(id);
+    const parsed = parseSketchEntityRefId(hit.item.id);
     if (!parsed || !earlier.has(parsed.feature)) continue;
     const source = scene.sketches.find((s) => s.id === parsed.feature);
-    const entity = source?.data.entities[parsed.entity];
-    if (!source || !entity || entity.type === 'text') continue;
-    const ref = { kind: 'sketchEntity' as const, id };
-    if (entity.type === 'point') {
-      const point = carry(source.frame, frame, [entity.x, entity.y]);
-      points.push({ snap: { ref, point, kind: 'sketchPoint', straight: true }, point });
-      continue;
+    const item = source && carriedEntities(source, frame).find((c) => c.entity === parsed.entity);
+    if (item) offer(parsed.feature, item, false);
+  }
+  if (tolerance > 0) {
+    for (const source of scene.sketches) {
+      if (!earlier.has(source.id as FeatureId)) continue;
+      for (const item of carriedEntities(source, frame)) offer(source.id as FeatureId, item, true);
     }
-    const polyline = curvePolyline(source.data, entity);
-    if (!polyline || polyline.length === 0) continue;
-    const carried = polyline.map((p) => carry(source.frame, frame, p));
-    const point = nearestOnPolyline(carried, cursor);
-    const line =
-      entity.type === 'line' && carried.length >= 2
-        ? ([carried[0], carried[carried.length - 1]] as [Vec2, Vec2])
-        : undefined;
-    curves.push({
-      snap: {
-        ref,
-        point,
-        kind: 'sketchCurve',
-        straight: entity.type === 'line',
-        ...(line && { line }),
-      },
-      point,
-    });
   }
   const nearest = (list: Candidate[]) =>
-    list.reduce<Candidate | undefined>((best, c) => {
-      if (!best) return c;
-      const d = Math.hypot(c.point[0] - cursor[0], c.point[1] - cursor[1]);
-      const bd = Math.hypot(best.point[0] - cursor[0], best.point[1] - cursor[1]);
-      return d < bd ? c : best;
-    }, undefined);
+    list.reduce<Candidate | undefined>(
+      (best, c) => (!best || far(c.point) < far(best.point) ? c : best),
+      undefined,
+    );
   return (nearest(points) ?? nearest(curves))?.snap;
 }
 

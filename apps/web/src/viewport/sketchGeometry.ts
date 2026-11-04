@@ -99,6 +99,60 @@ export function curveSegments(
   return out;
 }
 
+/** Closer to the open sketch's plane than this (mm), a curve is in it: its sketch draws it already. */
+const ON_PLANE = 1e-6;
+
+/**
+ * Auto-project Sketches' preview (ADR-0125, amendment 1): the curves of the
+ * sketches drawn before the `active` one, flattened onto the open sketch's
+ * plane along its normal, as line-segment pairs (xyz xyz). These are what a
+ * drawing tool can snap to and project. A text is left out (it never
+ * projects), and so is a segment already in the plane.
+ */
+export function carriedSegments(
+  sketches: readonly SketchDrawing[],
+  frame: SketchFrame,
+): Float32Array {
+  const index = sketches.findIndex((s) => s.active);
+  if (index <= 0) return new Float32Array(0);
+  const [ox, oy, oz] = frame.origin;
+  const [nx, ny, nz] = frame.normal;
+  const out: number[] = [];
+  for (const sketch of sketches.slice(0, index)) {
+    const entities: SketchData['entities'] = {};
+    for (const [id, entity] of Object.entries(sketch.data.entities)) {
+      if (entity.type !== 'text') entities[id as SketchEntityId] = entity;
+    }
+    const segments = sketchSegments({ ...sketch.data, entities }, sketch.frame);
+    for (const part of [
+      ...STATUSES.map((s) => segments.curves[s]),
+      segments.construction,
+      segments.projected,
+    ]) {
+      for (let i = 0; i + 5 < part.length; i += 6) {
+        const d0 =
+          ((part[i] ?? 0) - ox) * nx +
+          ((part[i + 1] ?? 0) - oy) * ny +
+          ((part[i + 2] ?? 0) - oz) * nz;
+        const d1 =
+          ((part[i + 3] ?? 0) - ox) * nx +
+          ((part[i + 4] ?? 0) - oy) * ny +
+          ((part[i + 5] ?? 0) - oz) * nz;
+        if (Math.abs(d0) < ON_PLANE && Math.abs(d1) < ON_PLANE) continue;
+        out.push(
+          (part[i] ?? 0) - d0 * nx,
+          (part[i + 1] ?? 0) - d0 * ny,
+          (part[i + 2] ?? 0) - d0 * nz,
+          (part[i + 3] ?? 0) - d1 * nx,
+          (part[i + 4] ?? 0) - d1 * ny,
+          (part[i + 5] ?? 0) - d1 * nz,
+        );
+      }
+    }
+  }
+  return new Float32Array(out);
+}
+
 export const STATUSES: readonly EntityStatus[] = ['free', 'fixed', 'conflict'];
 
 export interface SketchSegments {

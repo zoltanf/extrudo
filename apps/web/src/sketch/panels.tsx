@@ -369,7 +369,7 @@ export function SketchPalette({
             checked={autoProjectSketches}
             onChange={(v) => viewport.getState().setAutoProjectSketches(v)}
             label="Auto-project sketches"
-            hint="A curve or point of an earlier sketch you snap to comes into this sketch, linked to it."
+            hint="A curve or point of an earlier sketch you snap to comes into this sketch, linked to it. While you draw, those curves show faintly."
           >
             Sketches
           </PaletteSwitch>

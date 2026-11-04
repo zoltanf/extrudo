@@ -304,7 +304,9 @@ A body edge or vertex you snap to while drawing comes into the sketch, linked to
 ### Auto-project sketches
 
 A curve or point of an earlier sketch you snap to comes into this sketch, linked to that sketch.
-Only sketches earlier in the timeline are offered. See [Project and Intersect](#project-and-intersect).
+Only sketches earlier in the timeline are offered. While a drawing tool runs, their curves show
+faint and dashed on this sketch's plane; point at one to snap to it. Nothing comes in until you
+do. See [Project and Intersect](#project-and-intersect).
 
 ### Face outline
 
