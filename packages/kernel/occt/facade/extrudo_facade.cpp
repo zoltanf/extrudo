@@ -11076,57 +11076,6 @@ private:
     return cuts;
   }
 
-  /**
-   * ADR-0097, 2026-11-04: no face keeps a seam's two pcurves on an edge its
-   * wires use once. The hybrid can leave such an edge between two faces of
-   * half a turn on one cone (makita-vacuum-holder): stored like a seam
-   * (`BRep_Tool::IsClosed` on the face), it makes the STEP writer write a
-   * seam the face doesn't have, and OCCT's reader builds an extra face from
-   * it. Each such edge keeps only the pcurve its use takes, in place (its
-   * other faces are untouched); when the body then fails BRepCheck every
-   * edge gets its two pcurves back. Returns the edges changed.
-   */
-  static int dropStaleSeams(const TopoDS_Shape& shape) {
-    struct Stale {
-      TopoDS_Edge edge;
-      TopoDS_Face face;
-      Handle(Geom2d_Curve) forward, reversed;
-      double first, last;
-    };
-    std::vector<Stale> stale;
-    BRep_Builder builder;
-    NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
-    for (TopExp_Explorer fe(shape, TopAbs_FACE); fe.More(); fe.Next()) {
-      const TopoDS_Face face = TopoDS::Face(fe.Current().Oriented(TopAbs_FORWARD));
-      if (!faces.Add(face)) continue;
-      NCollection_DataMap<TopoDS_Shape, int, TopTools_ShapeMapHasher> uses;
-      for (TopExp_Explorer ee(face, TopAbs_EDGE); ee.More(); ee.Next()) {
-        if (!uses.IsBound(ee.Current())) uses.Bind(ee.Current(), 0);
-        ++uses.ChangeFind(ee.Current());
-      }
-      for (TopExp_Explorer ee(face, TopAbs_EDGE); ee.More(); ee.Next()) {
-        const TopoDS_Edge edge = TopoDS::Edge(ee.Current());
-        if (uses.Find(edge) != 1 || BRep_Tool::Degenerated(edge) || !BRep_Tool::IsClosed(edge, face)) continue;
-        const TopoDS_Edge forward = TopoDS::Edge(edge.Oriented(TopAbs_FORWARD));
-        Stale s{forward, face, nullptr, nullptr, 0, 0};
-        s.forward = BRep_Tool::CurveOnSurface(forward, face, s.first, s.last);
-        s.reversed = BRep_Tool::CurveOnSurface(TopoDS::Edge(forward.Reversed()), face, s.first, s.last);
-        double first = 0, last = 0;
-        const Handle(Geom2d_Curve) used = BRep_Tool::CurveOnSurface(edge, face, first, last);
-        if (s.forward.IsNull() || s.reversed.IsNull() || used.IsNull()) continue;
-        builder.UpdateEdge(forward, used, face, BRep_Tool::Tolerance(forward));
-        builder.Range(forward, face, s.first, s.last);
-        stale.push_back(s);
-      }
-    }
-    if (stale.empty() || BRepCheck_Analyzer(shape).IsValid()) return static_cast<int>(stale.size());
-    for (const Stale& s : stale) {
-      builder.UpdateEdge(s.edge, s.forward, s.reversed, s.face, BRep_Tool::Tolerance(s.edge));
-      builder.Range(s.edge, s.face, s.first, s.last);
-    }
-    return 0;
-  }
-
   struct HybridOutOfTime {};
   int rebuildHybrid(double tolerance, const MeshSegmentation& seg, const std::string& rebuildFailed,
                     const Handle(MeshDeadline)& deadline, std::string& capMessage) {
@@ -11653,15 +11602,15 @@ private:
               const gp_Pnt apex = chart.frame.Location();
               const gp_XYZ p = meshNode(lo), d = meshNode(hi) - p;
               const double s = std::max(0.0, std::min(1.0, (apex.XYZ() - p).Dot(d) / d.SquareModulus()));
-              // The region across must be a cone face too (its facets would take the straight edge).
+              // The region across must be a face of the same cone (its facets would take the straight edge).
               int across = -1;
               for (int t : regions[region].triangles)
                 for (int k = 0; k < 3; ++k)
                   if (std::min(corner(t, k), corner(t, (k + 1) % 3)) == lo && std::max(corner(t, k), corner(t, (k + 1) % 3)) == hi &&
                       seg.neighbour[3 * t + k] >= 0)
                     across = hybridOf[seg.neighbour[3 * t + k]];
-              if (across >= 0 && across != region && regions[across].kind == 2 && regions[across].why.empty() &&
-                  apex.Distance(gp_Pnt(p + s * d)) < off) {
+              if (across >= 0 && across != region && regions[across].surface == regions[region].surface &&
+                  regions[across].why.empty() && std::fabs(to.X() - from.X()) > 1e-6 && apex.Distance(gp_Pnt(p + s * d)) < off) {
                 ApexRoute& route = apexRouteOf(lo, hi, apex);
                 route.regions.push_back(region);
                 const gp_Pnt2d at[2] = {from, to};
@@ -12035,8 +11984,6 @@ private:
       {
         const int cuts = cutTouchingLoops(result);
         if (cuts > 0) stage("touching loops cut: " + std::to_string(cuts));
-        const int seams = dropStaleSeams(result);
-        if (seams > 0) stage("stale seams dropped: " + std::to_string(seams));
       }
 
       // The result's faces: a facet is a face only facets made.
