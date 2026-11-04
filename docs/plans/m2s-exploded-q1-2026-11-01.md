@@ -952,3 +952,50 @@ the route; makita pins the round trip.
 
 Sweep (`baseline-2026-11-04-half-cone-auto.jsonl` against main's, 63 passed, 1 skipped): only makita moves, 3336 →
 3334 faces, round trip no → yes; `round trips failed 6`.
+
+### Slice 2: spool-screw-v4.1's second attempt
+
+A copy of the facade with prints after `stage("solid")` (regions 214 and 271 in the cells), after unify and after
+healing (every face invalid alone or in the body, its regions, BRepCheck statuses, and per wire the (u, v) box of its
+pcurves); `FACADE=` the copy, case `f`, Auto. Statuses: 22 `IntersectingWires`, 23 `InvalidImbricationOfWires`, 27
+`UnorientableShape` (merged full-turn faces checked alone; valid in the body).
+
+    P2 cells attempt 0 region 214 alone 1 wires 6
+    P2W cells wire outer edges 94 u 5.4550..6.6922 v 24.3585..28.2387
+    P2W cells wire inner edges 3 u 6.4641..6.4969 v 25.4641..25.9860      (and 6.5296.., 6.5949.., 5.5240.., 5.5232..)
+    P2 cells attempt 0 region 271 alone 1 wires 2
+    P2W cells wire outer edges 39 u 6.1639..6.3892 / inner edges 3 u 6.3346..6.3511
+    P2 unified   face 260 type 2 alone 0 own[ 23] wires 6 edges 107 u 0.180964..6.69219 regions[ 214]
+    P2W unified wire outer edges 92 u 5.4550..6.6922
+    P2W unified wire inner edges 3 u 0.1810..0.2137                       (the three holes past 2π: −2π)
+    P2 unified   face 429 type 1 alone 0 own[ 23] wires 2 u 0.0514616..6.3892 regions[ 271]
+    P2 healed   face 260 type 2 alone 0 own[ 22] u 5.45496..6.69219       (holes back at 6.46.., IntersectingWires)
+    P2 healed   face 429 type 1 alone 0 own[ 22] u 6.16386..6.3892
+    P2 healed attempt 1 solid 0 valid 1                                    (the second attempt, both exploded)
+
+The same on `bossWithRimDimple` (`rim-0.stl` below): the merged wall (regions 20 and 22) `own[ 23]` u −0.14..7.72 after
+unify, `own[ 22]` after healing. Spike case `f`, main's facade against `rewrapHoles` (Q26=2 attempts; the boss with a
+square dimple in its wall at 8 mm from the axis, turned by the angle; at the rim z 9.5, else z 8):
+
+| mesh | main: attempts, faces, ms | with `rewrapHoles` |
+|---|---|---|
+| boss-0 (z 8) | 1, healed, 1644, 2524 | 1, not healed, 1644, 1354 |
+| boss-15 (z 8) | 1, healed, 1644, 2190 | 1, not healed, 1644, 1109 |
+| rim-0 | 2 (the first invalid after healing), 1645, 3944 | 1, 1645, 1366 |
+| rim-45 | 2, 1645, 3827 | 1, 1645, 1342 |
+| the other 14 angles | 1 | the same |
+
+spool-screw-v4.1, stage times (ms) at Auto, spike:
+
+| stage | main (two attempts, each) | `rewrapHoles` | and cuts in rounds |
+|---|---|---|---|
+| unified | 10783, 10688 | 10802 | 10853 |
+| healed | 6223, 6266 | 6182 | 6193 |
+| touching loops cut | 3143 (59 cuts) | 3228 (65) | 1529 (65) |
+| total | 45630 | 25380 | 23763 |
+
+The healer still runs once (the unified body has other faces with edges moved onto merged planes); the result is
+1171 faces, 0 facets, read back valid with 1171.
+
+Sweep (`baseline-2026-11-04-second-attempt-auto.jsonl` against the half-cone run, 63 passed, 1 skipped): only
+spool-screw moves, 1419 → 1171 faces, 256 → 0 facets, 43270 → 23945 ms.

@@ -1,0 +1,1 @@
+- 2026-11-04 · **Mesh to Solid builds spool-screw-like parts once, in half the time**: a curved face whose holes the face merging moved a full turn away from their outline failed its check, so its regions became flat facets and the conversion ran twice; the holes are put back now (a 23,600-triangle part: 43 s → 24 s, 256 facets → none) (ADR-0097).

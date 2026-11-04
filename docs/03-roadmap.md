@@ -1226,8 +1226,11 @@ end to end, faster than in established desktop CAD.
   *2026-11-04:* a cone's two halves that met on a mesh edge past its apex
   meet through the apex: makita-vacuum-holder's round trip passes, 6 of the
   corpus's round trips fail at Auto (7 before; ADR-0097's 2026-11-04
-  amendment). Left: micro zigzags, wrapped charts, spool-screw-v4.1's two
-  regions invalid after unify and healing.
+  amendment). *2026-11-04b:* holes that unify moved a turn away from their
+  outline go back, so spool-screw-v4.1 builds once: 43.3 → 23.9 s, 256 → 0
+  facets (ADR-0097's 2026-11-04b amendment). Left: micro zigzags (2 facets),
+  wrapped charts 375 (mostly cone fits on makita's fillets), the planes still
+  exploded as "its outer loop runs the wrong way" (152 facets).
 
 ## Phase 5 — Programmatic design (→ v0.6)
 

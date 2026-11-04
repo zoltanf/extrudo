@@ -3690,3 +3690,50 @@ round-trips (2026-11-04)": a cone with no node at its tip (`pointedCone`) whose 
 face (two before). No synthetic mesh reproduced the reader's extra face (six tip offsets read back valid on main's
 facade, as the mirror cone does), so the round trip itself is pinned by makita in the sweep. The OCCT input hash went
 `9c209d156d2a` → `1cfd66c77c7f` (CI 41746920246). Probes and runs: `docs/plans/m2s-exploded-q1-2026-11-01.md`, "Run 5".
+
+### Amendment, 2026-11-04b: holes that unify moves a turn away (spool-screw-v4.1's second attempt)
+
+**Finding.** spool-screw-v4.1's two regions (214, a cone split at 5 nodes, 6 wires; 271, a cylinder split at 1 node,
+2 wires) were not checked against a stale analyzer: they really were invalid after unify, for a reason the check on
+the cells can't see. Their outer wires straddle the surface's u = 2π (214: u 5.45..6.69) and three of 214's holes and
+271's hole lie past 2π (u 6.46..6.63, 6.33..6.35). UnifySameDomain rebuilds the faces (it merged two outer edges) and
+moves those holes' pcurves a turn back into [0, 2π) (u 0.18..0.34, 0.05..0.07), outside the outer wire: BRepCheck
+says `InvalidImbricationOfWires` (23). The healer moves them back, and its tolerances then leave `IntersectingWires`
+(22) on both (their holes touch the outer wire at a vertex), so the rebuild exploded them and ran a second attempt.
+In the cells, before unify, every hole sits inside its outline. A boss wall whose rim dimple lies past 2π
+(`bossWithRimDimple`, the halves merged by unify) shows the same: 23 after unify, 22 after healing, a second build that
+undid the collapsed chains.
+
+**Rule.** After unify (and `straightenSeams`), no hole of a face on a periodic surface lies a period away from its
+outer wire: `rewrapHoles` moves the pcurves of each hole whose (u, v) box is outside the outer wire's, and inside it
+moved by whole periods, back by those periods (in place, on that face only; a wire with a seam edge or a missing
+pcurve is left alone). The validity stage, the healer, the final body check and the STEP round trip stay as they were.
+
+**Also.** `cutTouchingLoops` now cuts in rounds: every face to cut in one pass and the body rebuilt once per round
+(it was rebuilt after every cut, about 50 ms each on spool-screw's 1,171 faces); a cut leaves the other faces as they
+were, so the cuts are the same (spool-screw 65 cuts, 3.2 → 1.5 s).
+
+**Rejected.** Moving the validity check later (the faces are invalid at that point, not just checked too early).
+`KeepShape` on their edges and `cutTouchingLoops` before the explosion (2026-11-03's amendment: neither helps). Charts
+whose u = 0 lies opposite the region's centre, so that no face straddles 2π: it changes every periodic region's frame,
+and unify would merge halves on differently framed surfaces; not tried.
+
+**Results.** spool-screw-v4.1 at Auto: 43.3 → 23.9 s, 1419 → 1171 faces, facets 256 → 0 (the two regions build; the
+256 facets were theirs), round trip passes (1171). The sweep at Auto against
+`baseline-2026-11-04-half-cone-auto.jsonl` passes (63 passed, 1 skipped; `uptime` load 0.08 at the start, nothing
+else running), only spool-screw moves, `baseline-2026-11-04-second-attempt-auto.jsonl`:
+
+    2026-11-04 half cone:       files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24941, prismatic facets 14259, prismatic ms 232695, faceted ms 105161, round trips failed 6
+    2026-11-04 second attempt:  files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24693, prismatic facets 14003, prismatic ms 214077, faceted ms 104661, round trips failed 6
+
+| file | faces | facets | Auto step | round trip (read back valid, faces) | ms |
+|---|---|---|---|---|---|
+| own/spool-screw-v4.1 | 1419 → 1171 | 256 → 0 | 0.05 | yes, 1419 → yes, 1171 | 43270 → 23945 |
+
+Test: `mesh-to-solid.test.ts` "keeps a boss wall’s hole where it is through unify, so the first build stands
+(2026-11-04)" (5 circle edges; 1 before, when the second build undid the collapses). The OCCT input hash went
+`1cfd66c77c7f` → `700b080c6fb2` (CI 41759201441). Probe output: `docs/plans/m2s-exploded-q1-2026-11-01.md`, "Run 5".
+
+**Left.** Micro zigzags (2 facets), the wrapped charts (375 facets, mostly fits), the planes exploded as "its outer
+loop runs the wrong way" (152 facets); 6 files fail the round trip at Auto (battery-power-adapter and
+phone-stand-foldable on the 1e-4 volume rule).

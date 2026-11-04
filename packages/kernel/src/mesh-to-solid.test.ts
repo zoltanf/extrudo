@@ -1496,6 +1496,25 @@ describe('Mesh to Solid, the hybrid rebuild (ADR-0097 slice D1)', { timeout: 300
     }
   });
 
+  it('keeps a boss wall’s hole where it is through unify, so the first build stands (2026-11-04)', () => {
+    // `bossWithRimDimple`'s wall face straddles its cylinder's u = 2π and its
+    // dimple's hole lies past 2π; UnifySameDomain moved the hole's pcurves a
+    // turn back, outside the outline, the body stayed invalid after healing,
+    // and a second build undid the collapsed chains (1 circle edge, 2699
+    // lines). The hole goes back a turn after unify now.
+    const { shape } = prismatic(meshOf(bossWithRimDimple()));
+    try {
+      expect(kernel.isValid(shape)).toBe(true);
+      const types = Array.from(
+        { length: kernel.count(shape, 'edge') },
+        (_, i) => kernel.edgeGeometry(shape, i, 2).type,
+      );
+      expect(types.filter((t) => t === 'circle')).toHaveLength(5);
+    } finally {
+      kernel.release(shape);
+    }
+  });
+
   it('cuts a boss wall whose two dimples touch each other at a node in two, so it round-trips (slice D11, 2026-11-03)', () => {
     // Two square pyramid dimples in a cylindrical boss's wall, their corners
     // meeting at (40, 20, 8), away from both rims: the wall's face keeps two

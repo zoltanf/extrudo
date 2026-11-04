@@ -3538,6 +3538,18 @@ Numbers in ADR-0097's 2026-11-01 amendment; all tables in `docs/plans/m2s-explod
   the sweep. Sweep baseline from here on: `baseline-2026-11-04-half-cone-auto.jsonl` (`prismatic faces 24941,
   prismatic facets 14259, round trips failed 6`).
 
+**ADR-0097 amendment (2026-11-04b): holes that unify moves a turn away.** `extrudo_facade.cpp` (`rewrapHoles` after
+`straightenSeams` in `rebuildHybrid`, `cutTouchingLoops`). Rules:
+- After unify, no hole of a face on a periodic surface lies a period away from its outer wire: `rewrapHoles` moves such
+  a hole's pcurves back by whole periods (unify moves holes past 2π into [0, 2π) when the outline straddles 2π; the
+  healer then leaves `IntersectingWires` and the regions explode). Don't move the validity check later for this: the
+  faces are invalid after unify, not checked too early.
+- `cutTouchingLoops` cuts in rounds (one rebuild of the body per round, not per cut); a cut must keep leaving every
+  other face as it is, or the rounds would change the result.
+- Test: `mesh-to-solid.test.ts` "keeps a boss wall’s hole where it is through unify, so the first build stands
+  (2026-11-04)". Sweep baseline from here on: `baseline-2026-11-04-second-attempt-auto.jsonl` (`prismatic faces
+  24693, prismatic facets 14003, prismatic ms 214077, round trips failed 6`; spool-screw-v4.1 23.9 s).
+
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
 facade `removeFaces` with `BRepAlgoAPI_Defeaturing`). Rules: **all or nothing** (any
