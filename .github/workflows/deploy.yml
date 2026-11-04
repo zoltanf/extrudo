@@ -194,6 +194,7 @@ jobs:
       contents: read
       packages: write
     env:
+      GH_TOKEN: ${{ github.token }} # `pnpm wasm` downloads releases; anonymous calls hit the shared rate limit
       SHA: ${{ needs.plan.outputs.sha }}
       STABLE: ${{ needs.plan.outputs.stable }}
     steps:
