@@ -1564,6 +1564,10 @@ export class Kernel {
    * looks at; a profile past the face's edge or its silhouette as seen from
    * the sketch is a `KernelError` that says so.
    *
+   * With `clip` (ADR-0060's second amendment: one face of several) the
+   * profile may reach past the face's edge: the solid stops there, and its
+   * walls along the edge get no history.
+   *
    * History (input 0, the profile): `first` (the face's pieces), `last` (the
    * offset's) and `generated` (each edge's wall), as a prism's.
    */
@@ -1573,12 +1577,50 @@ export class Kernel {
     face: number,
     depth: number,
     outward = true,
+    clip = false,
   ): OperationResult {
     this.#solid(profile, 'Emboss');
     this.#solid(body, 'Emboss');
     const f = this.#facade;
-    const handle = f.projectOnFace(profile, body, face, depth, outward);
+    const handle = f.projectOnFace(profile, body, face, depth, outward, clip);
     if (handle === 0) throw new KernelError(f.lastError() || 'The projection failed.');
+    return this.#withHistory(handle);
+  }
+
+  /**
+   * Where the line through `point` along `direction` meets face `face` of
+   * `shape` (P4-12, ADR-0060's second amendment): of the hits with the bounded
+   * face, the one nearest `point` either way along the line (a tie goes the
+   * way `direction` points), and the face's outward normal there (unit).
+   * Undefined when the line misses the face.
+   */
+  faceHit(
+    shape: ShapeHandle,
+    face: number,
+    point: Vec3,
+    direction: Vec3,
+  ): { point: Vec3; normal: Vec3 } | undefined {
+    this.#solid(shape, 'Emboss');
+    const f = this.#facade;
+    if (f.faceHit(shape, face, ...point, ...direction) < 0) return undefined;
+    const v = this.#copy(Float64Array, f.geometryPtr(), f.geometrySize());
+    const at = (k: number) => v[k] as number;
+    return { point: [at(0), at(1), at(2)], normal: [at(3), at(4), at(5)] };
+  }
+
+  /**
+   * The solid between face `face` of `shape` and its offset by `depth` along
+   * its outward normal (`outward`) or against it (P4-12, ADR-0060's second
+   * amendment: what a moved or wrapped piece of a several-face emboss is cut
+   * to). History (input 0, `shape`): `first` from the face (its copy), `last`
+   * from the face (the offset), `generated` from each of the face's edges (the
+   * wall along it).
+   */
+  faceSlab(shape: ShapeHandle, face: number, depth: number, outward = true): OperationResult {
+    this.#solid(shape, 'Emboss');
+    const f = this.#facade;
+    const handle = f.faceSlab(shape, face, depth, outward);
+    if (handle === 0) throw new KernelError(f.lastError() || "The face's slab failed.");
     return this.#withHistory(handle);
   }
 
