@@ -472,8 +472,62 @@ vertical edge filleted R 5 and a 10 × 4 rectangle across the seam between its
 22 (A·d·(R + d/2)/R), and the fused tool one valid solid of 42; the body grows
 by exactly 42. As a deboss: 20 and 18, the body less 38.
 
-The native harness's numbers, the OCCT build and its WASM size change, and
-the kernel tests are added by the slices.
+**S2, the facade** (native harness `spikes/p4-12-emboss-faces/` section 6,
+`run.sh` and `run.sh leaks 300`; every volume integrated to 1e-12 and checked
+against its formula to 1e-9 unless noted):
+
+- `faceHit`: a box's top face from above, the line either way: (5, 5, 10),
+  normal +Z; a R 20 cylinder's side from outside, ahead and behind, and from
+  inside: the nearer hit each time, its normal radial outwards; a line through
+  the axis (a tie) takes the hit the line points to, either way; the Sphere
+  primitive's pole from above and from below the sketch: (0, 0, 20), normal +Z
+  (second derivatives); a lofted B-spline side: on the face (< 1e-7) and on the
+  line, its normal unit and square to the face; a miss and a line past the
+  bounded face's edge: -1, "The line misses the face." All to 1e-9.
+- `faceSlab`: a 40 × 40 face, 1 mm out and in: 1600 exactly, 6 faces, history
+  first, last and 4 generated; a R 20 × 10 cylinder's side: 1288.0529881 /
+  1225.2211348 (A d (R ± d/2) / R); the 20° cone frustum's side (z from −8 to 8):
+  2189.9218486 / 2089.3908837 (Pappus, 2π l d ((r0 + r1)/2 ± d cos α / 2)); a
+  full cylinder's or cone's seam gets no wall (4 faces, 2 generated). The
+  coincident-surface case of the plan's §11: the A4 cone wrap `common` the cone's
+  slab is the wrap, 40.9396927 / 39.0603073, to 1e-9. A dome's slab (the
+  simple offset of a sphere face with a pole) is the exact hemispherical shell:
+  the simple offset takes the pole, so §11's fallback wasn't needed.
+- `projectOnFace(…, clip)`: a 20 × 10 rectangle half over the box's top face:
+  100 exactly, out and in, 6 faces, 3 walls with history (the fourth stands
+  past the face; the slab's wall there has none); still refused without clip.
+  A dome (a quarter disc turned about Z): a Ø6 circle over the pole, 28.4274489 /
+  28.4437625 against the column's 28.4274498 / 28.4437619, and a Ø10 circle
+  across the rim from the side, exactly half the column to 6e-9, its piece
+  stopping at the rim (z ≥ −1e-7); the dome's own pole and seam lie under these
+  profiles, so the boolean approximates its intersection there: 3e-8, held to
+  1e-7. Two B-spline faces of a loft (each section in two halves), an 8 mm
+  square across their seam: two clipped pieces (9.82 + 55.32 out, 9.68 + 55.43
+  in) fuse into one valid solid of 65.14 / 65.11 (the one-face loft's 65.15,
+  between 0.9 and 1.3 × 64), the boolean with the loft exact to 1e-6. The
+  Sphere primitive's shape: clip changes nothing, 28.4274498 / 28.4437619
+  identical to the bit.
+- The spike, natively: the flat piece (a prism `common` the +Y face's slab) 20,
+  the fillet's (`wrapOnCylinder` `common` the fillet's slab) 22 / 18, fused one
+  valid solid of 42 / 38, the body + 42 and − 38 exactly.
+- Every existing case of the harness and of `spikes/p4-04-harness/` passes as
+  before; `wrap.test.ts`, `emboss.test.ts` and `emboss-faces.test.ts` pass
+  unchanged against the new build.
+- Time: a plane slab 3 ms, a dome's clipped piece 14 ms, two clipped loft
+  pieces 0.53 s, the spike's two pieces and the fuse 51 ms.
+- Leaks: every case of the old and new rounds (491 ms a round) × 300, heap
+  7.9 MB at 60 and at 300 rounds (flat); the control grows 18.4 MB.
+
+The OCCT build `occt-29fa847938dc` grows 8.0 kB raw: 21,246,205 bytes raw,
+6,886,917 gzip, 4,798,723 brotli (21,238,180 / 6,884,168 / 4,796,791 for
+`occt-700b080c6fb2` before; Node's zlib, gzip level 9, brotli quality 11 as
+`scripts/measure-startup.mjs`). Wrapper tests: `packages/kernel/src/emboss-facade.test.ts`
+(real OCCT, no shape left after each case): `faceHit` on the plane, the
+cylinder both ways, the pole, a miss as `undefined`; `faceSlab` on the plane
+(history), the cylinder and the cone, out and in; `projectOnFace(…, true)` on
+the overhang and the Sphere primitive.
+
+The kernel tests of the later slices are added by them.
 
 ### B6. Rejected
 

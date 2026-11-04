@@ -1262,7 +1262,7 @@ the face's edge or outline as seen from the sketch); the method is no input but
 an `EmbossReport` (`Preview.emboss`, the dialog's read-only "Method" line). A
 wrap may run up to a whole turn ("The profile is wider than the face's
 circumference."); "tangent to the face" and several faces stay deferred. Native
-harness `spikes/p4-12-emboss-faces/`. The tool is `emboss`, a tile of Solid ›
+harness `spikes/p4-12-emboss-faces/`. The second amendment's facade (2026-11-04): `faceHit` (the line's hit with the bounded face nearest the point either way, a tie the way the line points, and the outward normal there; `Kernel.faceHit` is `undefined` on a miss), `faceSlab` (a face's simple-offset slab, history `first`/`last` from the face and `generated` from each of its edges by the edge's index in the body) and `projectOnFace`'s last argument `clip` (no past-the-edge refusals, a partial sphere or torus takes the simple offset, walls of the slab get no history; with `clip` false every result must stay byte-identical). The tool is `emboss`, a tile of Solid ›
 Features (ADR-0079), no key; `e2e/emboss.spec.ts` covers both kinds of face
 in both modes. Native harness: `spikes/p4-04-harness/`.
 ADR-0061 (P4-03b) added **user fonts as attachments**: `doc.attachments` holds
