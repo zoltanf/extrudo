@@ -6,6 +6,8 @@
  */
 import { readFileSync } from 'node:fs';
 import {
+  AnnotationAnchorSchema,
+  AnnotationSchema,
   type AttachmentId,
   AttachmentSchema,
   addAttachment,
@@ -249,6 +251,8 @@ describe('docs/file-format.md', () => {
       ...keys(JointSchema),
       ...keys(JointFrameSchema),
       ...JointSchema.shape.type.options,
+      ...keys(AnnotationSchema),
+      ...variants(AnnotationAnchorSchema, 'kind').flatMap((v) => [v.name, ...v.keys]),
       ...keys(BodyMetaSchema),
       ...keys(NamedViewSchema),
       ...keys(RenderSettingsSchema),

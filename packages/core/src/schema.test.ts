@@ -205,3 +205,90 @@ describe('customizer and configurations (P4-07, ADR-0059)', () => {
     expect(DocumentSchema.parse(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
   });
 });
+
+describe('annotations (P6-23, ADR-0126 §1)', () => {
+  const sketch = {
+    ...feature('s1', 'sketch', 'Sketch9'),
+    inputs: {
+      plane: { kind: 'ref', refs: [{ kind: 'plane', id: 'origin:xy' }] },
+      sketch: { kind: 'sketchData', sketch: { entities: {}, constraints: {}, dimensions: {} } },
+    },
+  };
+  const ref = {
+    kind: 'face',
+    id: 'extrude:f2:cap:end',
+    fingerprint: { type: 'plane', at: [0, 0, 1] },
+  };
+  const withNotes = (annotations: unknown[], counter = 3) => ({
+    ...sampleDocument(),
+    features: [...sampleDocument().features, sketch],
+    timelineMarker: 4,
+    annotations,
+    annotationCounter: counter,
+  });
+  const n = (number: number, anchor: unknown, extra: object = {}) => ({
+    id: `n${number}`,
+    number,
+    text: 'Note',
+    anchor,
+    ...extra,
+  });
+
+  it('takes the three anchor kinds, an offset and the two flags', () => {
+    expect(
+      issues(
+        withNotes([
+          n(1, { kind: 'model', ref, at: [1, 2, 3] }, { offset: [28, -28], done: true }),
+          n(2, { kind: 'free', at: [0, 0, 0] }, { hidden: true }),
+          n(3, { kind: 'sketch', sketch: 's1', at: [1, 1], entity: 'p1' }),
+        ]),
+      ),
+    ).toEqual([]);
+  });
+
+  it('refuses a duplicate number, a number past the counter, an unknown sketch', () => {
+    expect(
+      issues(
+        withNotes([
+          n(1, { kind: 'free', at: [0, 0, 0] }),
+          { ...n(1, { kind: 'free', at: [0, 0, 0] }), id: 'other' },
+        ]),
+      ),
+    ).toEqual(['annotations.1.number: duplicate number "1"']);
+    expect(issues(withNotes([n(4, { kind: 'free', at: [0, 0, 0] })]))).toEqual([
+      'annotations.0.number: is 4, past annotationCounter (3)',
+    ]);
+    expect(
+      issues({
+        ...withNotes([n(1, { kind: 'free', at: [0, 0, 0] })]),
+        annotationCounter: undefined,
+      }),
+    ).toEqual(['annotations.0.number: is 1, past annotationCounter (0)']);
+    expect(issues(withNotes([n(1, { kind: 'sketch', sketch: 'f2', at: [0, 0] })]))).toEqual([
+      'annotations.0.anchor.sketch: is f2, which is not a sketch of this timeline',
+    ]);
+  });
+
+  it('refuses an index reference, a kind it does not take, an empty or long text, a false flag', () => {
+    const model = (r: object) => n(1, { kind: 'model', ref: r, at: [0, 0, 0] });
+    expect(issues(withNotes([model({ kind: 'face', id: 'index:b1:face:2' })]))).toEqual([
+      "annotations.0.anchor.ref.id: is an index reference, which an annotation can't keep: pick the geometry again",
+    ]);
+    expect(issues(withNotes([model({ kind: 'profile', id: 's1/0' })]))).toHaveLength(1);
+    expect(
+      issues(withNotes([{ ...n(1, { kind: 'free', at: [0, 0, 0] }), text: '' }])),
+    ).toHaveLength(1);
+    expect(
+      issues(withNotes([{ ...n(1, { kind: 'free', at: [0, 0, 0] }), text: 'x'.repeat(2001) }])),
+    ).toHaveLength(1);
+    expect(
+      issues(withNotes([n(1, { kind: 'free', at: [0, 0, 0] }, { done: false })])),
+    ).toHaveLength(1);
+    expect(issues(withNotes([n(1, { kind: 'free', at: [0, 0] })]))).toHaveLength(1);
+  });
+
+  it('keeps a counter without annotations (they were all deleted)', () => {
+    expect(issues({ ...sampleDocument(), annotationCounter: 7 })).toEqual([]);
+    expect(issues({ ...sampleDocument(), annotationCounter: 0 })).toHaveLength(1);
+  });
+});

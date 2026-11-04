@@ -4,6 +4,7 @@
  * applying a solve (P1-07), deleting entities and the construction flag
  * (P1-09), and the modify tools' changes (P1-10, `modifySketch`).
  */
+import { detachAnnotationEntities } from '../annotations';
 import { type Command, CommandError, type DocumentDraft, defineCommand } from '../commands';
 import { insertFeature, refuseIfUsed } from '../document-commands';
 import { isReservedName } from '../expr/evaluate';
@@ -190,8 +191,9 @@ function changeSketch(draft: DocumentDraft, change: SketchChange & { feature: Fe
   refuseProjectedEdits(data, Object.keys(update));
   for (const id of remove.entities ?? []) {
     if (!(id in data.entities)) throw new CommandError(`The sketch has no entity "${id}".`);
-    delete data.entities[id];
   }
+  detachAnnotationEntities(draft, feature, data, remove.entities ?? []);
+  for (const id of remove.entities ?? []) delete data.entities[id];
   for (const [id, e] of Object.entries(update)) {
     if (!(id in data.entities)) throw new CommandError(`The sketch has no entity "${id}".`);
     data.entities[id as SketchEntityId] = e;
@@ -302,6 +304,7 @@ export const removeFromSketch = defineCommand<RemoveFromSketchPayload>(
         if (spline.degree !== undefined && points.length <= spline.degree) delete spline.degree;
       }
     }
+    detachAnnotationEntities(draft, feature, data, removal.entities);
     for (const id of removal.entities) delete data.entities[id];
     for (const id of allConstraints) delete data.constraints[id];
     for (const id of allDimensions) delete data.dimensions[id];
