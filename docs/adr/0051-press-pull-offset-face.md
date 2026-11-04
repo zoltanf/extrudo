@@ -699,13 +699,21 @@ the faces (worse: 102 of 144 bad).
 r 20..30 from a0 to a0 + 30° split at a0 + 15°; A is both halves united (a
 simplified fuse) and swept ±5 mm, B the first half swept 10 mm each way, up
 or down; `fuse(A, B)` and `fuse(B, A)`, simplified, must give 10 faces,
-valid, with the plain fuse's volume; a0 = 0, 10, … 350. Sketch normal +Z: on
-the old facade a0 = 160..350 failed (the plain fallback); now none. Normal
-−Z: a0 = 160..350 failed; now none. (The coordinator's prototype sweep, built
-slightly differently, left a0 = 340° and 350° with a mirrored sketch on the
-unmerged fallback; the final helper's sweep has no such corner, so nothing is
-recorded as open.) The tester's
-body (coordinator's measurement with the prototype): 13 faces, valid,
+valid, with the plain fuse's volume; a0 = 0, 10, … 350, so 144 fuses per
+construction. Measured on the old facade (occt-700b080c6fb2) and the new one
+(occt-189b6836e802):
+
+| Construction | Old: bad fuses (angles) | New |
+|---|---|---|
+| Sketch normal +Z, A swept along it | 76 of 144 (a0 = 160..350) | 0 |
+| Sketch normal −Z, A swept along it | 76 of 144 (a0 = 160..350) | 0 |
+| Sketch normal −Z, A swept along +Z, against the normal (a flipped extrude) | 110 of 144 (every a0) | 4: a0 = 340 and 350, tool up and down |
+
+**Open:** the last construction at **340° and 350°**, sectors across the
+sketch circle's 0°: the rule doesn't reach them (a plain face merges there),
+so they get the valid unmerged fallback (18 faces), no worse than before.
+
+The tester's body (coordinator's measurement with the prototype): 13 faces, valid,
 425 446.595 mm³ (plain fuse 425 446.619); chamfer and fillet 1 mm on every
 edge: 2 of 33 fail, both tangent edges that rightly refuse.
 

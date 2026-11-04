@@ -740,8 +740,11 @@ describe('the boolean merge', () => {
   // whole faces: 10, valid, with the plain fuse's volume. 144 fuses a
   // sketch: about 4 s locally, 6 s on CI.
   const deg = Math.PI / 180;
-  /** The start angles whose fuses don't merge, for a sketch with normal (0, 0, `nz`). */
-  function unmerged(nz: 1 | -1): number[] {
+  /**
+   * The start angles whose fuses don't merge, for a sketch with normal
+   * (0, 0, `nz`); A swept along the normal, or `against` it (a flipped extrude).
+   */
+  function unmerged(nz: 1 | -1, against = false): number[] {
     const before = kernel.stats().liveShapes;
     const bad = new Set<number>();
     for (let a0 = 0; a0 < 360; a0 += 10) {
@@ -767,7 +770,8 @@ describe('the boolean merge', () => {
       if (!first) throw new Error('no first half');
       const [p, q] = faces.map((f) => f.shape) as [ShapeHandle, ShapeHandle];
       const base = scope.track(kernel.fuse(p, q, { simplify: true })).shape;
-      const a = scope.track(kernel.prism(base, [0, 0, 10 * nz], [0, 0, -5 * nz])).shape;
+      const t = against ? -nz : nz;
+      const a = scope.track(kernel.prism(base, [0, 0, 10 * t], [0, 0, -5 * t])).shape;
       for (const up of [1, -1]) {
         const s = up * nz;
         const b = scope.track(kernel.prism(first.shape, [0, 0, 20 * s], [0, 0, -10 * s])).shape;
@@ -795,5 +799,11 @@ describe('the boolean merge', () => {
 
   it('merges them for a mirrored sketch too', () => {
     expect(unmerged(-1)).toEqual([]);
+  }, 60_000);
+
+  it('merges them swept against a mirrored sketch, but for sectors across its 0°', () => {
+    // 340° and 350° (tool up and down) still fall back to the plain fuse: a
+    // valid body, its sides unmerged (ADR-0051, 2026-11-04, open).
+    expect(unmerged(-1, true)).toEqual([340, 350]);
   }, 60_000);
 });
