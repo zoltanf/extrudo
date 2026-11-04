@@ -23,7 +23,8 @@ export type IdKind =
   | 'dimension'
   | 'configuration'
   | 'component'
-  | 'joint';
+  | 'joint'
+  | 'annotation';
 
 const PREFIX: Readonly<Record<IdKind, string>> = {
   document: 'doc',
@@ -36,12 +37,13 @@ const PREFIX: Readonly<Record<IdKind, string>> = {
   configuration: 'cfg',
   component: 'cmp',
   joint: 'jnt',
+  annotation: 'n',
 };
 
 /** The document keys `storedIds` reads: the IDs an API factory must skip past. */
 type StoredIdDocument = Pick<
   ExtrudoDocument,
-  'features' | 'parameters' | 'groups' | 'components' | 'joints'
+  'features' | 'parameters' | 'groups' | 'components' | 'joints' | 'annotations'
 >;
 
 /** Hands out the design's IDs. One call per new entity, in creation order. */
@@ -87,7 +89,7 @@ export class CounterIds {
   };
 }
 
-/** Every ID a document stores: features, parameters, groups, components and joints. */
+/** Every ID a document stores: features, parameters, groups, components, joints and annotations. */
 export function storedIds(doc: StoredIdDocument): string[] {
   const ids: string[] = [];
   for (const parameter of doc.parameters) ids.push(parameter.id);
@@ -103,6 +105,7 @@ export function storedIds(doc: StoredIdDocument): string[] {
   for (const group of doc.groups ?? []) ids.push(group.id);
   for (const component of doc.components ?? []) ids.push(component.id);
   for (const joint of doc.joints ?? []) ids.push(joint.id);
+  for (const annotation of doc.annotations ?? []) ids.push(annotation.id);
   return ids;
 }
 

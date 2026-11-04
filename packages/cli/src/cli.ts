@@ -412,6 +412,17 @@ function report(job: DesignJob, result: ComputeResult): string[] {
       );
     }
   }
+  if (result.annotations.length > 0) {
+    lines.push('Annotations:');
+    for (const note of result.annotations) {
+      const [first = '', ...more] = note.text.split('\n');
+      const flags = [note.done && 'done', note.hidden && 'hidden'].filter(Boolean);
+      lines.push(
+        `  #${note.number} ${note.status.padEnd(8)} ${first}${more.length > 0 ? ' …' : ''}` +
+          `${flags.length > 0 ? ` (${flags.join(', ')})` : ''}`,
+      );
+    }
+  }
   return lines;
 }
 
@@ -433,6 +444,7 @@ async function info(options: Options, streams: Streams): Promise<number> {
             bodies: result.bodies,
             components: result.components,
             joints: result.joints,
+            annotations: result.annotations,
             errors: result.errors,
             warnings: result.warnings,
             ms: Math.round(result.ms),

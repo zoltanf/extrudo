@@ -508,3 +508,85 @@ describe('OpenSCAD overrides (ADR-0071 §5)', () => {
     ).toThrow(/scadValue: must say its unit/);
   });
 });
+
+describe('annotations (ADR-0126 §8)', () => {
+  it('annotates a face, a point and a sketch, with running numbers', () => {
+    const d = Design.create();
+    const plate = d.box({ length: '40 mm', width: '20 mm', height: '5 mm' });
+    const sketch = d.sketch(d.origin.xy, (k) => {
+      k.point([3, 4]);
+    });
+    const hole = d.annotate('Hole M4 here', plate.face('cap:end'), { at: [10, 5, 5] });
+    const free = d.annotate('Logo', [1, 2, 3], { offset: [10, 10] });
+    const inSketch = d.annotate('Here', { sketch, at: [1, 1] });
+    expect([hole.number, free.number, inSketch.number]).toEqual([1, 2, 3]);
+    expect(hole.id).toBe('n1');
+    expect(String(hole)).toBe('#1');
+    expect(d.doc.annotations?.[0]).toEqual({
+      id: 'n1',
+      number: 1,
+      text: 'Hole M4 here',
+      anchor: {
+        kind: 'model',
+        ref: { kind: 'face', id: `box:${plate.id}:cap:end` },
+        at: [10, 5, 5],
+      },
+    });
+    expect(d.doc.annotations?.[1]?.anchor).toEqual({ kind: 'free', at: [1, 2, 3] });
+    expect(d.doc.annotations?.[2]?.anchor).toEqual({
+      kind: 'sketch',
+      sketch: sketch.id,
+      at: [1, 1],
+    });
+    expect(d.annotations().map((a) => a.text)).toEqual(['Hole M4 here', 'Logo', 'Here']);
+    expect(d.annotation(2)?.text).toBe('Logo');
+    expect(d.annotation(9)).toBeUndefined();
+  });
+
+  it('edits, ticks off and removes through the handle; a number is never given again', () => {
+    const d = Design.create();
+    const first = d.annotate('a', [0, 0, 0]);
+    first.setText('Thicker').done();
+    expect(d.doc.annotations?.[0]).toMatchObject({ text: 'Thicker', done: true });
+    first.done(false);
+    expect(d.doc.annotations?.[0]?.done).toBeUndefined();
+    first.remove();
+    expect(d.doc.annotations).toBeUndefined();
+    expect(d.annotate('b', [0, 0, 0]).number).toBe(2);
+    expect(() => first.number).toThrow(ApiError);
+  });
+
+  it('refuses a bad call with ApiError and changes nothing', () => {
+    const d = Design.create();
+    const plate = d.box({});
+    const before = d.doc;
+    expect(() => d.annotate('x', plate.face('cap:end'))).toThrow(
+      'Give options.at, where on the geometry the note goes (world mm), or a fingerprint.',
+    );
+    expect(() => d.annotate('  ', [0, 0, 0])).toThrow("An annotation's text can't be empty.");
+    expect(() => d.annotate('x', { sketch: plate, at: [0, 0] })).toThrow(ApiError);
+    expect(() => d.annotate('x', d.ref('profile', 'p/0'), { at: [0, 0, 0] })).toThrow(
+      "An annotation can't sit on a profile.",
+    );
+    expect(d.doc).toBe(before);
+  });
+
+  it('takes the fingerprint for its point, and a number past the counter', () => {
+    const d = Design.create();
+    const plate = d.box({});
+    const note = d.annotate('x', plate.face('cap:end'), {
+      fingerprint: { type: 'plane', at: [0, 0, 10] },
+      number: 5,
+    });
+    expect(note.number).toBe(5);
+    expect(d.doc.annotations?.[0]?.anchor).toMatchObject({ at: [0, 0, 10] });
+    expect(d.doc.annotationCounter).toBe(5);
+  });
+
+  it('Design.from seeds the counter past stored annotation IDs', () => {
+    const d = Design.create();
+    d.annotate('a', [0, 0, 0]);
+    const again = Design.from(d.toJSON());
+    expect(again.annotate('b', [0, 0, 0]).id).toBe('n2');
+  });
+});

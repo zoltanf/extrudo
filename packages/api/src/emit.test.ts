@@ -154,6 +154,10 @@ function canonical(doc: ExtrudoDocument, map: ReadonlyMap<string, string>): unkn
         suppressed: joint.suppressed ?? false,
       }))
       .sort((a, b) => a.name.localeCompare(b.name)),
+    // Annotations as stored, up to IDs (ADR-0126 §8); the counter isn't carried.
+    annotations: [...(doc.annotations ?? [])]
+      .sort((a, b) => a.number - b.number)
+      .map(({ id: _, ...annotation }) => JSON.parse(replaceIds(JSON.stringify(annotation), map))),
   };
 }
 
@@ -439,6 +443,40 @@ describe('emitScript', () => {
     expect(code).toContain('suppressed: true');
     const recreated = run(code, doc);
     expect(recreated.joints?.[0]?.suppressed).toBe(true);
+    const map = idMap(doc, recreated);
+    expect(canonical(recreated, map)).toEqual(canonical(doc, map));
+    expect(biomeFormat(code)).toBe(code);
+  });
+
+  it('round-trips annotations with their numbers, anchors and flags (ADR-0126 §8)', () => {
+    const design = Design.create();
+    const plate = design.box({ length: '40 mm', width: '20 mm', height: '5 mm' });
+    let corner = '';
+    const sketch = design.sketch(design.origin.xy, (k) => {
+      const p = k.point([3, 4]);
+      corner = p.id;
+    });
+    design.annotate('Hole M4 here', plate.face('cap:end'), {
+      at: [10, 5, 5],
+      fingerprint: {
+        type: 'plane',
+        at: [20, 10, 5],
+        dir: [0, 0, 1],
+        size: 800,
+        adj: [`box:${plate.id}:side:front`],
+      },
+    });
+    design.annotate("Don't print\nthis", [1, 2, 3], { offset: [10, -40], done: true });
+    design.annotation(2)?.remove();
+    design.annotate('Follow the point', { sketch, at: [1, 1], entity: corner }, { hidden: true });
+    design.annotate('Whole plate', design.ref('body', `${plate.id}:0`), { at: [0, 0, 0] });
+    const doc = design.toJSON();
+    expect(doc.annotations?.map((a) => a.number)).toEqual([1, 3, 4]);
+    const code = emitScript(doc);
+    expect(code).toContain("design.annotate('Hole M4 here', box1.face('cap:end'), {");
+    expect(code).toContain('number: 3');
+    const recreated = run(code, doc);
+    expect(recreated.annotations?.map((a) => a.number)).toEqual([1, 3, 4]);
     const map = idMap(doc, recreated);
     expect(canonical(recreated, map)).toEqual(canonical(doc, map));
     expect(biomeFormat(code)).toBe(code);

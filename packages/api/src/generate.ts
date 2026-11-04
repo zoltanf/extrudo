@@ -36,6 +36,9 @@ export const DOCS_DIR = join(ROOT, 'docs/api/features');
  */
 export const RESERVED_NAMES: readonly string[] = [
   'add',
+  'annotate',
+  'annotation',
+  'annotations',
   'create',
   'doc',
   'feature',

@@ -25,10 +25,16 @@
  * generated from core's feature registry: see `generated/features.ts`.
  */
 import {
+  ANNOTATION_REF_KINDS,
+  type AnnotationAnchor,
+  type AnnotationChanges,
+  type AnnotationId,
+  addAnnotation,
   addComponent,
   addConfiguration,
   addJoint,
   addParameter,
+  annotationByNumber,
   type BodyId,
   type Command,
   CommandError,
@@ -48,6 +54,7 @@ import {
   type FeatureDefinition,
   type FeatureId,
   type FeatureInputs,
+  type GeomFingerprint,
   type GeomRef,
   type GroupId,
   groupFeatures,
@@ -71,6 +78,8 @@ import {
   type Parameter,
   type ParameterId,
   parameterNames,
+  parseSketchEntityRefId,
+  removeAnnotation,
   removeFeature,
   removeParameter,
   renameFeature,
@@ -80,6 +89,7 @@ import {
   setFeatureSuppressed,
   setParameterExpressions,
   sketchInputs,
+  updateAnnotation,
   updateParameter,
 } from '@extrudo/core';
 import { emptyAdd } from '@extrudo/sketch/build';
@@ -88,6 +98,8 @@ import { ApiError } from './error';
 import { inferUnit } from './expr';
 import { type FeatureMethods, featureMethods } from './generated/features';
 import {
+  AnnotationHandle,
+  type AnnotationHandleContext,
   ComponentHandle,
   FeatureHandle,
   JointHandle,
@@ -168,6 +180,42 @@ export interface JointOptions {
   /** Kept, but not resolved, posed or checked. */
   suppressed?: boolean;
   /** The joint's ID (`jnt1`… from the counter otherwise). */
+  id?: string;
+}
+
+/**
+ * What `d.annotate` pins a note to (ADR-0126 §8): a reference (a face, edge,
+ * vertex, body, plane, axis, point or sketch curve), a point in space
+ * `[x, y, z]`, a place in a sketch `{ sketch, at: [x, y], entity? }`, or an
+ * anchor as the document stores it.
+ */
+export type AnnotationAnchorInput =
+  | GeomRef
+  | readonly [number, number, number]
+  | {
+      sketch: FeatureLike;
+      at: readonly [number, number];
+      /** A sketch point, curve or text (its ID or its reference) to follow; `at` is then the offset from it. */
+      entity?: string | GeomRef;
+    }
+  | AnnotationAnchor;
+
+/** What `d.annotate(text, anchor, options)` takes besides the text and the anchor. */
+export interface AnnotationOptions {
+  /**
+   * On a reference: where on it, world mm. Needed unless the reference
+   * carries a fingerprint (the API has no kernel to find a face's centre).
+   */
+  at?: readonly [number, number, number];
+  /** On a reference: what the geometry looked like, so the app finds it again when its name is gone. */
+  fingerprint?: GeomFingerprint;
+  /** The callout's offset from the anchor in screen px (default [28, -28]). */
+  offset?: readonly [number, number];
+  hidden?: boolean;
+  done?: boolean;
+  /** A number past every one given so far (a rebuilt design keeps its numbers); default the next. */
+  number?: number;
+  /** The annotation's ID (`n1`… from the counter otherwise). */
   id?: string;
 }
 
@@ -667,6 +715,112 @@ export class Design {
       });
     }
     return { component: component.id, ref: side.frame };
+  }
+
+  // ------------------------------------------------------------- annotations
+
+  /**
+   * A numbered note (ADR-0126 §8) and a handle to it (IDs `n1`…); it gets the
+   * next number, which is never given again:
+   *
+   * ```ts
+   * const plate = d.box({ length: '40 mm', width: '20 mm', height: '5 mm' });
+   * const note = d.annotate('Hole M4 here', plate.face('cap:end'), { at: [10, 5, 5] });
+   * note.number; // 1
+   * ```
+   */
+  annotate(
+    text: string,
+    anchor: AnnotationAnchorInput,
+    options: AnnotationOptions = {},
+  ): AnnotationHandle {
+    const id = (options.id ?? this.#ids('annotation')) as AnnotationId;
+    this.#dispatch(
+      addAnnotation({
+        id,
+        text,
+        anchor: this.#annotationAnchor(anchor, options),
+        ...(options.offset && { offset: options.offset }),
+        ...(options.hidden && { hidden: true }),
+        ...(options.done && { done: true }),
+        ...(options.number !== undefined && { number: options.number }),
+      }),
+    );
+    return new AnnotationHandle(this.#annotationContext, id);
+  }
+
+  /** The design's annotations, in number order. */
+  annotations(): AnnotationHandle[] {
+    return [...(this.doc.annotations ?? [])]
+      .sort((a, b) => a.number - b.number)
+      .map((a) => new AnnotationHandle(this.#annotationContext, a.id));
+  }
+
+  /** The annotation numbered `number` (`#3` is 3), or `undefined`. */
+  annotation(number: number): AnnotationHandle | undefined {
+    const found = annotationByNumber(this.doc, number);
+    return found && new AnnotationHandle(this.#annotationContext, found.id);
+  }
+
+  /** What an `AnnotationHandle` changes through, kept off `Design`'s own surface. */
+  readonly #annotationContext: AnnotationHandleContext = ((design: Design) => ({
+    get doc() {
+      return design.doc;
+    },
+    find: (id: FeatureId) => design.find(id),
+    updateAnnotation: (id: AnnotationId, changes: AnnotationChanges) =>
+      design.#dispatch(updateAnnotation({ id, changes })),
+    removeAnnotations: (ids: readonly AnnotationId[]) =>
+      design.#dispatch(removeAnnotation({ ids })),
+  }))(this);
+
+  /** An anchor as stored, from any form `annotate` takes. */
+  #annotationAnchor(anchor: AnnotationAnchorInput, options: AnnotationOptions): AnnotationAnchor {
+    if (Array.isArray(anchor)) {
+      const [x, y, z] = anchor as readonly number[];
+      if (anchor.length !== 3 || [x, y, z].some((v) => typeof v !== 'number')) {
+        throw new ApiError('A point is [x, y, z] in mm.', { path: 'anchor' });
+      }
+      return { kind: 'free', at: [x as number, y as number, z as number] };
+    }
+    const kind = (anchor as { kind?: string }).kind;
+    if (kind === 'model' || kind === 'free' || kind === 'sketch') return anchor as AnnotationAnchor;
+    if ('sketch' in anchor) {
+      const sketch = this.#featureOf(anchor.sketch);
+      const entity =
+        anchor.entity === undefined
+          ? undefined
+          : typeof anchor.entity === 'string'
+            ? anchor.entity
+            : parseSketchEntityRefId(anchor.entity.id)?.entity;
+      return {
+        kind: 'sketch',
+        sketch: sketch.id,
+        at: [anchor.at[0], anchor.at[1]],
+        ...(entity !== undefined && { entity: entity as never }),
+      };
+    }
+    const ref = anchor as GeomRef;
+    if (!(ANNOTATION_REF_KINDS as readonly string[]).includes(ref.kind)) {
+      throw new ApiError(`An annotation can't sit on a ${ref.kind}.`, { path: 'anchor' });
+    }
+    const fingerprint = options.fingerprint ?? ref.fingerprint;
+    const at = options.at ?? fingerprint?.at;
+    if (!at) {
+      throw new ApiError(
+        'Give options.at, where on the geometry the note goes (world mm), or a fingerprint.',
+        { path: 'at' },
+      );
+    }
+    return {
+      kind: 'model',
+      ref: {
+        kind: ref.kind as (typeof ANNOTATION_REF_KINDS)[number],
+        id: ref.id,
+        ...(fingerprint && { fingerprint }),
+      },
+      at: [at[0], at[1], at[2]],
+    };
   }
 
   // -------------------------------------------------------------------- other

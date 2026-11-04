@@ -20,6 +20,9 @@
  * package: what `toJSON` returns, what a reference is, and the IDs a call takes.
  */
 export type {
+  Annotation,
+  AnnotationAnchor,
+  AnnotationId,
   Attachment,
   AttachmentId,
   Customizer,
@@ -38,6 +41,8 @@ export type {
   Vec2,
 } from '@extrudo/core';
 export {
+  type AnnotationAnchorInput,
+  type AnnotationOptions,
   type ComponentOptions,
   Design,
   type DesignOptions,
@@ -61,6 +66,7 @@ export {
   featureMethods,
 } from './generated/features';
 export {
+  AnnotationHandle,
   ComponentHandle,
   FeatureHandle,
   JointHandle,
