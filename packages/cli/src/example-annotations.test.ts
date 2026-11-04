@@ -51,7 +51,8 @@ function plate(fingerprints: Record<string, GeomFingerprint> = {}) {
   d.annotate(
     'Boss here: 6 mm across, 8 mm tall.',
     { sketch, at: [0, 0], entity: boss },
-    { done: true },
+    // Below and right of the boss, clear of #2's callout in the home view.
+    { done: true, offset: [40, 40] },
   );
   d.annotate('Print with this side down.', [0, 0, -12]);
   return { d, refs };
