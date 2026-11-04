@@ -3976,7 +3976,8 @@ S2 (the import flow): `apps/web/src/platform/cad.ts` (a leaf: `CAD_CONVERT_EXTEN
 exported as `@extrudo/web/platform/cad`), `Platform.convertCad?`, `features/import.ts`
 (`importAccept`, `importRefused`, `pickImportFile`'s `convertCad`), `project/actions.ts`
 (`importAnyFile`), `AppShell.tsx` (passes `platform.convertCad`), `apps/desktop/src/main/cadmpeg.ts`
-(pure over `CadmpegEnv`: `findCadmpeg`, `cadmpegStatus`, `safeInputName`, `convertWithCadmpeg`,
+(pure over `CadmpegEnv`: `findCadmpeg`, `cadmpegStatus`, `safeInputName`, `stepHasSolid`,
+`noSolidMessage`, `convertWithCadmpeg`,
 `cleanupCadmpegFiles`, `nodeCadmpegEnv`; reuses `blender.ts`'s `wrap`), `cadmpegService.ts`
 (`isCadFile`, `cadmpegOverride`), the `cadStatus`/`cadConvert` channels (`extrudo:cad:*`) in
 `shared/ipc.ts`, `shared/bridge.ts` and `main/ipc.ts` (through `guarded`), `main/index.ts` (the dev
@@ -3990,7 +3991,10 @@ validates the payload (`isCadFile`, else throw) and checks the extension and the
 the file name is sanitised (`safeInputName`: `[A-Za-z0-9._-]`, no leading `-`/`.`) before it
 touches the disk, the parent `extrudo-cadmpeg/` and each job directory must be plain directories
 owned by the user; the converter's message is the last non-empty stderr line (capped at 300
-characters).
+characters). Exit 0 counts only with a STEP that holds a solid (`stepHasSolid`: `MANIFOLD_SOLID_BREP`,
+`BREP_WITH_VOIDS` or `FACETED_BREP`); without one the answer is `noSolidMessage` (the geometry couldn't
+be read, export STEP from the program it was made in), never the kernel's "surfaces" (amendment
+2026-11-04: cadmpeg exits 0 with an empty STEP or an open shell when it can't read a part's B-rep).
 
 ADR-0116 (the owner, 2026-11-01): **Live widgets and drawn figures in the docs** (P6-22;
 amends ADR-0080's "only raw HTML is `<video>`, no script" and ADR-0057's policy use). Files:

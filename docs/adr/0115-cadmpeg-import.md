@@ -122,3 +122,30 @@ limits, the `cadmpeg.path` preference for a different build).
   smaller cost.
 - **Storing the native file in the design.** A file-format change for a file
   the app can't read without cadmpeg; the STEP is what the design uses.
+
+## Amendment, 2026-11-04: a conversion without a solid is refused; cadmpeg 0.6.8
+
+Five sample `.sldprt` parts showed that cadmpeg exits 0 when it can't read a
+part's B-rep. 0.6.7 wrote a STEP with no geometry for two of them (stderr lists
+"[error/geometry] no geometry was written to a STEP representation" among the
+export losses, which its check doesn't count as errors), and 0.6.8 writes an
+open shell of the faces it could for two others. Exit 0 and a STEP passed as
+success, so the kernel's import then said "The STEP file has no solids:
+Extrudo imports solid bodies, not surfaces", which is wrong for a solid part.
+
+`convertWithCadmpeg` now also needs a solid in the STEP: `stepHasSolid` looks
+for `MANIFOLD_SOLID_BREP` or its subtypes `BREP_WITH_VOIDS` and
+`FACETED_BREP`, which is how cadmpeg writes a solid. The kernel imports only
+solids, so nothing it would import is refused. Without one the message is
+`noSolidMessage`: "Couldn't read the geometry of *file*: converting it gave no
+solid body. Export it as STEP from the program it was made in, then import that
+file." A STEP with solids and some open shells still imports its solids, as any
+STEP does.
+
+The pin moves to 0.6.8 (released 2026-11-03), which converts the two parts
+0.6.7 left empty to one solid each, with the volume and area of the STEP files
+their author exported.
+
+Rejected: matching cadmpeg's "no geometry was written" line (its wording is no
+interface, and it misses the open shells); `--reject-lossy=export` (it refuses
+the parts that convert well too, over losses such as colours and attributes).

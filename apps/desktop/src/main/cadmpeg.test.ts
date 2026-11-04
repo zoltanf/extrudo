@@ -11,7 +11,9 @@ import {
   MAX_LOG_BYTES,
   MAX_OUTPUT_BYTES,
   NOT_AVAILABLE,
+  noSolidMessage,
   safeInputName,
+  stepHasSolid,
 } from './cadmpeg';
 
 interface FakeProcess extends ConvertProcess {
@@ -99,14 +101,31 @@ function fake(
   return state;
 }
 
-const STEP = new TextEncoder().encode('ISO-10303-21;\nEND-ISO-10303-21;\n');
+/** A STEP file whose DATA section is `data`; the units' SOLID_ANGLE_UNIT is no solid. */
+const step = (...data: string[]) =>
+  new TextEncoder().encode(
+    [
+      'ISO-10303-21;',
+      'DATA;',
+      '#3 = ( NAMED_UNIT(*) SI_UNIT($,.STERADIAN.) SOLID_ANGLE_UNIT() );',
+      ...data,
+      'ENDSEC;',
+      'END-ISO-10303-21;',
+      '',
+    ].join('\n'),
+  );
+const STEP = step("#20 = MANIFOLD_SOLID_BREP('',#21);");
 const INPUT = { name: 'My Part (v2).SLDPRT', bytes: new Uint8Array([1, 2, 3]) };
 
-const writesStep = (process: FakeProcess, files: Map<string, Uint8Array>, cwd: string) => {
-  process.stdout('Converted.\n');
-  files.set(`${cwd}/My_Part_v2.step`, STEP);
-  process.emit('exit', 0);
-};
+const writes =
+  (bytes: Uint8Array, stderr = '') =>
+  (process: FakeProcess, files: Map<string, Uint8Array>, cwd: string) => {
+    process.stdout('Converted.\n');
+    if (stderr) process.stderr(stderr);
+    files.set(`${cwd}/My_Part_v2.step`, bytes);
+    process.emit('exit', 0);
+  };
+const writesStep = writes(STEP);
 
 describe('findCadmpeg (ADR-0115 §2)', () => {
   const all = ['/pref/cadmpeg', '/res/cadmpeg/cadmpeg', '/dev/vendor/cadmpeg'];
@@ -269,6 +288,47 @@ describe('convertWithCadmpeg (ADR-0115 §2)', () => {
     const result = await convertWithCadmpeg(huge.env, INPUT);
     expect(result.ok === false && result.message).toContain('too large');
     expect(huge.removed).toEqual(huge.dirs);
+  });
+
+  // cadmpeg exits 0 when it couldn't read the part's B-rep: a STEP with no
+  // geometry, or with an open shell of the faces it could write. Either is
+  // refused here, so the kernel doesn't call the part a file of surfaces.
+  it('refuses a STEP without a solid, and removes the directory', async () => {
+    const empty = fake({
+      script: writes(
+        step(),
+        'step export losses:\n  [error/geometry] no geometry was written to a STEP representation\n',
+      ),
+    });
+    expect(await convertWithCadmpeg(empty.env, INPUT)).toEqual({
+      ok: false,
+      message: noSolidMessage('My Part (v2).SLDPRT'),
+    });
+    expect(empty.removed).toEqual(empty.dirs);
+    const open = fake({
+      script: writes(
+        step("#20 = OPEN_SHELL('',(#30));", "#21 = SHELL_BASED_SURFACE_MODEL('',(#20));"),
+        '  [error/topology] region #86 was written as a surface model because its solid shells are incomplete or open\n',
+      ),
+    });
+    expect(await convertWithCadmpeg(open.env, INPUT)).toEqual({
+      ok: false,
+      message: noSolidMessage('My Part (v2).SLDPRT'),
+    });
+    expect(noSolidMessage('GEAR 32.SLDPRT')).toBe(
+      "Couldn't read the geometry of GEAR 32.SLDPRT: converting it gave no solid body. Export it as STEP from the program it was made in, then import that file.",
+    );
+  });
+
+  it('takes manifold_solid_brep and its subtypes as a solid', () => {
+    expect(stepHasSolid(STEP)).toBe(true);
+    expect(stepHasSolid(step("#20 = BREP_WITH_VOIDS('',#21,(#22));"))).toBe(true);
+    expect(stepHasSolid(step("#20 = FACETED_BREP('',#21);"))).toBe(true);
+    expect(stepHasSolid(step())).toBe(false);
+    // A view into a larger buffer reads only its own bytes.
+    const tail = new TextEncoder().encode('MANIFOLD_SOLID_BREP');
+    const joined = new Uint8Array([...step(), ...tail]);
+    expect(stepHasSolid(joined.subarray(0, joined.length - tail.length))).toBe(false);
   });
 
   it("says it couldn't start cadmpeg, and a directory that isn't ours", async () => {
