@@ -3640,3 +3640,53 @@ runs: `docs/plans/m2s-exploded-q1-2026-11-01.md`, "Run 4 (D12)".
 **Left.** Micro zigzags (gear-bearing-5's two end faces, 2 facets), the wrapped charts (375 facets, mostly fits),
 spool-screw-v4.1's two regions (its second attempt), and the planes' regions still exploded for other reasons (the
 "its outer loop runs the wrong way" ones, 152 facets).
+
+### Amendment, 2026-11-04: a cone's two halves that meet past its apex (makita-vacuum-holder's round trip)
+
+**Main first.** The two 2026-11-03 slices were each swept on a branch without the other; the combined sweep on main
+(`baseline-2026-11-04-main-auto.jsonl`, against `baseline-2026-11-03-auto.jsonl`, 63 passed, 1 skipped) equals D12's
+run except makita-vacuum-holder, +1 face (3335 → 3336, the touching-holes cut):
+
+    2026-11-04 main:  files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24943, prismatic facets 14259, prismatic ms 234451, faceted ms 107788, round trips failed 7
+
+**Finding.** makita's half-turn cone faces (u 0.71..3.85 and 3.85..6.99, apex (66.23, 82.55, 33.73)) are the two
+halves `hybridRegions` makes of one cone piece that spans more than 3/4 of a turn (regions 402 and 405, 12 triangles
+each; the mirror cone's are 845 and 846). The piece holds the apex, so the halves meet on two generatrix edges and on
+one mesh edge that passes 0.051 mm from the apex, between nodes at v 0.153 and 0.206. That edge's straight pcurve goes
+half a turn round the apex in each half, the other way round in the other, and its tolerance (0.195 mm, the distance
+between those pcurves' images and the chord) holds the apex. OCCT's STEP reader turns the points within tolerance of
+the apex into degenerated edges on both cones, and on the one at +x leaves an extra face of the apex edge alone. What
+the brief's hypothesis named (the shared edge stored like a seam) is there on both cones: the failing face's short
+generatrix edge carries a second pcurve 2π from its own, the mirror's two identical ones; it is a symptom, not the
+cause (see Rejected). Each region already has its own surface (`MeshChart::surface()` makes one per region).
+
+**Rule.** No edge of a hybrid face passes a cone's apex closer than the edge's own tolerance. In `makeFace`, a cone
+region's mesh edge whose straight pcurve strays from the chord by more than the edge's distance from the apex, with a
+region of the same cone surface across it, goes through the apex instead: a straight leg from each node to one apex
+vertex (shared by both regions, cached per mesh edge), and in each face its own degenerated edge along v = 0 between
+the legs' u. A region whose face fails with such a route builds once more without its routes (`apexOff`), and the
+regions across them, built already, are built again (as `undoChains` does for chains). Both halves then end at the
+apex, and unify merges them into one face with a seam.
+
+**Rejected.** (b) A surface copy per face: each face has its own already. (c) Dropping the extra pcurve (each edge a
+face uses once keeps only the pcurve that use takes; built as `dropStaleSeams` after `cutTouchingLoops`): the body
+stays valid and the read-back still has the extra apex face (3337 faces for 3336). (a) One face per cone surface:
+unify leaves the halves apart because the merged face would hold the apex inside its outer wire; once both halves
+reach the apex it merges them by itself. Exploding the two regions: the round trip would pass, with their 24 triangles as facets.
+
+**Results.** makita-vacuum-holder 3336 → 3334 faces (8 → 6 cones), facets 2516, round trip passes (read back valid,
+3334 faces). The sweep at Auto against `baseline-2026-11-04-main-auto.jsonl` passes (63 passed, 1 skipped), only
+makita moves, `baseline-2026-11-04-half-cone-auto.jsonl`:
+
+    2026-11-04 main:       files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24943, prismatic facets 14259, prismatic ms 234451, faceted ms 107788, round trips failed 7
+    2026-11-04 half cone:  files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24941, prismatic facets 14259, prismatic ms 232695, faceted ms 105161, round trips failed 6
+
+| file | faces | facets | Auto step | round trip (read back valid, faces) | ms |
+|---|---|---|---|---|---|
+| third-party/makita-vacuum-holder | 3336 → 3334 | 2516 → 2516 | 0.05 | no, 3337 → yes, 3334 | 9487 → 9429 |
+
+Test: `mesh-to-solid.test.ts` "routes the edge where a cone’s two halves meet past its tip through the tip, so it
+round-trips (2026-11-04)": a cone with no node at its tip (`pointedCone`) whose halves meet on such an edge; one cone
+face (two before). No synthetic mesh reproduced the reader's extra face (six tip offsets read back valid on main's
+facade, as the mirror cone does), so the round trip itself is pinned by makita in the sweep. The OCCT input hash went
+`9c209d156d2a` → `1cfd66c77c7f` (CI 41746920246). Probes and runs: `docs/plans/m2s-exploded-q1-2026-11-01.md`, "Run 5".

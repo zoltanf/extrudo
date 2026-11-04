@@ -885,3 +885,70 @@ the second attempt is about 20 s of the 44–50 s. Left.
 
 The per-file table is in ADR-0097's 2026-11-03 amendment. OCCT WASM: the input hash went `3d788da00513` →
 `1076701bd590`, published by CI 41686876602.
+
+## Run 5 (2026-11-04): main combined, the half-turn cone, spool-screw's second attempt
+
+Kernel-staged meshes (`MESH_OUT`) in `/tmp/m2s-unify/meshes/`, spike case `f` at Auto (`BUILD=build-unify`).
+
+### Step 0: the combined sweep on main
+
+`baseline-2026-11-04-main-auto.jsonl` against `baseline-2026-11-03-auto.jsonl`: 63 passed, 1 skipped.
+
+    2026-11-03-touching-holes:  files 41, prismatic converted 36 refused 5, faceted converted 26 refused 15, prismatic faces 22570, prismatic facets 12565, prismatic ms 272785, faceted ms 108644, round trips failed 7
+    2026-11-03 (D12):           files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24942, prismatic facets 14259, prismatic ms 232772, faceted ms 107193, round trips failed 7
+    2026-11-04 main:            files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24943, prismatic facets 14259, prismatic ms 234451, faceted ms 107788, round trips failed 7
+
+Files that differ from either baseline (touching-holes → D12 → main; "vol" is the 1e-4 volume rule failing, as before):
+
+| file | faces | facets | round trip (read back valid, faces) | Auto step | ms |
+|---|---|---|---|---|---|
+| own/battery-power-adapter | 587 → 581 → 581 | 0 | yes 587 → yes 581 → yes 581 (vol) | 0.1 | 2830 → 2624 → 2643 |
+| own/kuglbahn-pillar-base | 3882 → 3880 → 3880 | 3348 → 3346 → 3346 | yes | 0.1 | 11219 → 10337 → 10272 |
+| own/phone-stand-foldable | 983 → 868 → 868 | 403 → 287 → 287 | yes (vol) | 0.1 | 4636 → 4244 → 4340 |
+| own/spool-screw-v4.1 | 1421 → 1419 → 1419 | 256 | yes | 0.05 | 46531 → 44047 → 44223 |
+| own/whiteboard-tray-v5 | refused → 2586 → 2586 | – → 1900 → 1900 | yes 2586 | 0.02 | 43400 → 13999 → 14142 |
+| third-party/hot-wheels-connector | 2015 → 1928 → 1928 | 1833 → 1745 → 1745 | yes | 0.01 | 3039 → 1608 → 1624 |
+| third-party/makita-vacuum-holder | 3337 → 3335 → 3336 | 2516 | no 3338 → no 3336 → no 3337 | 0.05 | 10023 → 8701 → 9487 |
+
+main equals D12 except makita +1 face (the touching-holes cut); every difference from the touching-holes run is D12's.
+
+### Slice 1: makita-vacuum-holder's half-turn cone
+
+`Q26TOUCH=1 Q26NAMED=1 Q26CONE=1` (the probe now prints each face's surface handle, a closed edge's other pcurve, the
+edge's mid point and handle; `Q26CONE=all` also every read-back cone face). Both cones, main's facade (edges with
+`closed 1` only; the failing cone is the one at +x):
+
+    q26 face written Cone orient 0 u -0.70981158..2.4318397 v 0.15321691..0.83177087 surface 0x13226c8          (−x, half A)
+    q26 face written  edge orient 1 closed 1 tol 0.1953002 pc (2.4318397, 0.20620139) -> (-0.70981158, 0.15321691) other (2.4318397, 0.20620139) -> (5.5733737, 0.15321691) mid -66.19878,82.526672,33.698778
+    q26 face written  edge orient 1 closed 1 tol 0.0062269628 pc (2.4318189, 0.5547165) -> (2.4318397, 0.20620139) other (2.4318189, 0.5547165) -> (2.4318397, 0.20620139)
+    q26 face written Cone orient 0 u 2.4318189..5.5733867 surface 0x1325c98                                       (−x, half B: the same edges, closed 0)
+    q26 face written Cone orient 0 u 0.70978098..3.8513799 v 0.15321827..0.83177617 surface 0x15a7928             (+x, half A)
+    q26 face written  edge orient 0 closed 1 tol 0.006226585 pc (0.7097841, 0.55471508) -> (0.70978098, 0.20619996) other (6.9929694, 0.55471508) -> (6.9929663, 0.20619996)
+    q26 face written  edge orient 0 closed 1 tol 0.19529508 pc (0.70978098, 0.20619996) -> (3.8513662, 0.15321827) other (6.9929663, 0.20619996) -> (3.8513662, 0.15321827) mid 66.19878,82.526672,33.698778
+    q26 face written Cone orient 0 u 3.8513662..6.9929694 surface 0x15a92c0                                       (+x, half B)
+    q26 back valid 0 faces 3337
+    q26 face backall Cone u 0..6.2831853 v 0..0 status own27, one degenerated apex edge                           (the extra face, +x)
+
+Each half has its own surface. The long edge (tolerance 0.195) is the mesh edge between the halves past the apex (its
+mid point 0.051 mm from it); the short generatrix next to it is stored with two pcurves on the +x half A (2π apart)
+and on the −x half A (equal). FACES=1: regions 402/405 and 845/846 (12 triangles each, "tolerance 0.1953" built).
+
+Variants on makita (spike, Auto):
+
+| variant | faces | cones | read back |
+|---|---|---|---|
+| main | 3336 | 8 | invalid, 3337 faces |
+| `dropStaleSeams` (each edge a face uses once keeps only its own pcurve) | 3336 | 8 | invalid, 3337 faces |
+| apex route, without the retry | 3364 | 5 | valid 3364 (a half failed alone and exploded: legs' orientation) |
+| apex route, orientation fixed | 3350 | 5 | valid (region 36 failed with a route, exploded, mismatched edge: a second attempt, 28.9 s) |
+| apex route, the region across must build too | 3344 | 5 | valid (region 36 still exploded: no retry without its routes) |
+| apex route, a failed region retries without its routes (built) | 3334 | 6 | valid 3334, 8.8 s |
+
+Synthetic cones (`pointedCone`, joined with `bossWithBump`, T 0.05, main's facade): with 32 sides at 0.01 mm no cone
+(planes); a fan straight to the tip fits a sphere; with rings and the widest gap at +x the halves split on the edge
+past the tip as makita's. Tip offsets (a, b) = (0.02, 0.15), (0.03, 0.2), (0.04, 0.06), (0.05, 0.2), (0.1, 0.3),
+(0.15, 0.2): every one reads back valid on main (172 faces, 2 cones); with the route 171 faces, 1 cone. The test pins
+the route; makita pins the round trip.
+
+Sweep (`baseline-2026-11-04-half-cone-auto.jsonl` against main's, 63 passed, 1 skipped): only makita moves, 3336 →
+3334 faces, round trip no → yes; `round trips failed 6`.

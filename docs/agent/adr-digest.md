@@ -3525,6 +3525,19 @@ Numbers in ADR-0097's 2026-11-01 amendment; all tables in `docs/plans/m2s-explod
   baseline from here on: `baseline-2026-11-03-auto.jsonl` (`prismatic converted 37 refused 4, prismatic faces 24942,
   prismatic facets 14259, prismatic ms 232772, round trips failed 7`). Numbers in ADR-0097's 2026-11-03 amendment.
 
+**ADR-0097 amendment (2026-11-04): a cone's halves meet through its apex.** `extrudo_facade.cpp` (`rebuildHybrid`'s
+`makeFace`, `ApexRoute`, `apexRouteOf`, `apexOff`); probe `Q26CONE=all` in `spikes/stl-to-solid/prismatic.cpp`. Rules:
+- No edge of a hybrid face passes a cone's apex closer than its own tolerance: a cone region's mesh edge whose straight
+  pcurve strays from the chord by more than the edge's distance from the apex, with a region of the same cone across
+  it, runs through the apex (a shared leg from each node to one apex vertex, a degenerated edge per face between);
+  a region that fails with a route builds again without its routes, and the regions across them too.
+- Don't treat the second pcurve 2π away on such an edge as the cause (dropping it was measured: the read-back still
+  has the extra apex face), and each hybrid face already has its own surface.
+- Test: `mesh-to-solid.test.ts` "routes the edge where a cone’s two halves meet past its tip through the tip, so it
+  round-trips (2026-11-04)" (one cone face, two before); the round trip itself is pinned by makita-vacuum-holder in
+  the sweep. Sweep baseline from here on: `baseline-2026-11-04-half-cone-auto.jsonl` (`prismatic faces 24941,
+  prismatic facets 14259, round trips failed 6`).
+
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
 facade `removeFaces` with `BRepAlgoAPI_Defeaturing`). Rules: **all or nothing** (any
