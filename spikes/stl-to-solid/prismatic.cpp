@@ -4421,6 +4421,34 @@ static void file(ExtrudoFacade& f, const std::string& path, double tolerance) {
     if (getenv("Q25ONLY") && *getenv("Q25ONLY")) return;
     stage();
   }
+  if (getenv("DUMP") && *getenv("DUMP")) {
+    // Run 7: the segmentation at the tolerance, as text: nodes, triangles (surface, region), surfaces (kind and fit).
+    ExtrudoFacade::MeshSegmentation seg;
+    if (f.segmentMesh(tolerance, seg)) {
+      std::ofstream o(getenv("DUMP"));
+      o << std::setprecision(9);
+      const int nn = int(f.meshNodes_.size() / 3), nt = int(f.meshTriangles_.size() / 3);
+      std::vector<int> surfaceOf(seg.regions.size(), -1);
+      for (size_t i = 0; i < seg.surfaces.size(); ++i)
+        for (int r : seg.surfaces[i].regions) surfaceOf[r] = int(i);
+      o << "T " << tolerance << "\n";
+      for (int n = 0; n < nn; ++n) { const gp_XYZ p = f.meshNode(n); o << "n " << p.X() << " " << p.Y() << " " << p.Z() << "\n"; }
+      for (int t = 0; t < nt; ++t) {
+        const int r = seg.regionOf[t];
+        o << "t " << f.meshTriangles_[3 * t] << " " << f.meshTriangles_[3 * t + 1] << " " << f.meshTriangles_[3 * t + 2] << " " << r << " "
+          << (r >= 0 ? surfaceOf[r] : -1) << "\n";
+      }
+      for (size_t i = 0; i < seg.surfaces.size(); ++i) {
+        const auto& s = seg.surfaces[i];
+        o << "s " << i << " " << s.kind << " " << s.area << " " << s.origin.X() << " " << s.origin.Y() << " " << s.origin.Z() << " "
+          << s.direction.X() << " " << s.direction.Y() << " " << s.direction.Z() << " " << s.radius << " " << s.majorRadius << " "
+          << s.semiAngle << " " << s.sag << " " << s.deviation << " " << s.regions.size() << "\n";
+      }
+      std::cout << "   dump written: " << nn << " nodes, " << nt << " triangles, " << seg.surfaces.size() << " surfaces" << std::endl;
+    }
+    if (std::string(getenv("DUMP")).find("only") != std::string::npos) return;
+    stage();
+  }
   if (getenv("UNFIT") && *getenv("UNFIT")) q24Spindles(f, tolerance);
   if (getenv("UNFIT") && *getenv("UNFIT")) {
     // Every unfit surface: triangles, area, box, the kinds of its neighbours, each kind's fit deviation, the thinnest triangle.

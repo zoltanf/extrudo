@@ -1131,3 +1131,78 @@ gear-bearing-5's replacements stray 1.5–6.0 T, gardena-end's 2.2–5.1 T; the 
 one's) overlaps too (micro-sd 0.59–1.0, gardena-end from 0.006). Whole conversions of gardena-end (case `D`, two runs,
 load under 2): 04c 3843 / 3950 ms, 17 points 5494 / 5532, 3 points 4037 / 4030. Sweep: ADR-0097's 2026-11-04d
 amendment, "Review".
+
+## Run 7 (2026-11-04): makita-vacuum-holder's fillet network and cone fits
+
+The kernel-staged mesh (`/tmp/m2s-rest/mesh/`, the same as Run 6's) at T 0.05, spike case `f` with the new `DUMP`
+probe (the segmentation as text, README "The segmentation as text"), numpy on the dump; then `SPLIT`/`SEED` prints in
+a facade copy (`FACADE=`), not committed.
+
+### Diagnosis
+
+Main's segmentation: 835 surfaces (558 planes, 232 cylinders, 24 cones, 12 spheres, 8 tori, 1 unfit). The cup:
+the inner wall is a drafted cone (facet normals at z 0.099, 5.7°) cut into 2.2° facets of two triangles each (70 mm²);
+the outer wall is a cylinder r 67.49 in 2° facets; the top is the plane z 35; the front slot runs from about −128° to
+−52° with r 15 corner cylinders.
+
+| what | triangles | where it lies |
+|---|---|---|
+| unfit surface 641 (1,481 regions, 707.6 mm²), rim part | 1,801 (579.8 mm²) | one torus, nodes within 0.0000 mm: axis Z through the origin, R 59.31, tube centre z 33, r 2 |
+| unfit surface 641, the rest | 654 + 651 | the slot's two top corners, z 7–35: r 2 blends between the drafted inner wall and the slot's r 15 corner cylinders (the ball centres form one smooth curve) |
+| cones 311–324 (half-angles 88.6–89.3°), spheres 320–321, planes 333–362 | 216 + 36 + 83 | the rim torus's top rows, nodes 0.0000 off |
+| cones 326–330 | 89 | the bottom inner round: R 56.21, z 2, r 2, 0.0000 off |
+| cones 294, 297, torus 299 | 52 | the left side plate's round, the mirror of torus 291 (R 107.69, r 2): 0.026, 0.002, 0.002 off |
+
+`SPLIT` on 641 (1,481 regions): 178 seeds; 38 large seeds became planes; the others' patches (6–10 regions, one
+column of the round) fitted cylinders first (100 pieces) and planes; one leftover component of 6 regions (3.165 mm²)
+made the split return the whole component unfit. The facade's torus fit can't fix the axis on a strip: the flatness
+of g − ρn has its minimum at the sampling bound (ρ −100) on 4° of the ring, an axis 16° off on 10°, the right one on
+30°. A trimmed fit over all of 641 (flatness estimate and circle, keep the triangles within max(T, 60th percentile),
+refit) reaches the rim torus in 5 iterations: 1,803 triangles within T.
+
+### Variants (spike `F` over the 38 staged meshes, Auto; main gives the sweep baseline's totals exactly)
+
+| variant | makita faces / facets | corpus faces / facets | what went wrong |
+|---|---|---|---|
+| main | 3306 / 2486 | 24,650 / 13,958 | |
+| E1: every kind that holds a seed patch grows, the largest wins | 878 / 32 | 20,821 / 11,384, ms +23 % | facets up on 5 files (phone-stand-foldable 287 → 387, spaghetti-measure 36 → 106, spool-screw-v4.1 0 → 104, puzzle-insert-circle 0 → 36, battery-power-adapter 0 → 24); the rim 151 small faces |
+| E1 + merging adjacent pieces one surface holds | 722 / 32 | | the rim still 72 cylinders |
+| V1: a split whose leftovers hold ≤ 10 % stands | 1211 / 219 | (stopped) | Auto 0.1 → 0.01 on phone-stand-foldable (287 → 2,098 facets), battery-power-adapter 0 → 1,050 |
+| V1 + merging | 877 / 157 | | volume 0.999669 |
+| VAB2: V1 + dominant torus (trimmed, no Gauss–Newton) + every torus absorbs | 1210 / 466 | | 311-region component left whole and unfit (19 % leftover after the torus) |
+| VAB4: leftover rule only with a dominant piece, retry without the torus | 907 / 128 | (partial) | hole-filler-35mm 6 → 703 faces, peg-perego-button 0 → 1,068 facets (absorb took a plane); Auto finer on phone-stand-foldable and spool-screw-v4.1 |
+| VAB5: only a dominant torus absorbs, never a plane | 950 / 128 | (partial) | Auto still finer |
+| VAB6: the Auto ladder without the new rules | 950 / 128 | 21,345 / 11,164, ms −3 % | track-straight-100mm: a torus through nodes only (centroids 0.61 mm off at T 0.01), 440 ms → 9.2 s |
+| VAB8: VAB6, the strict refit or nothing | 3283 / 2486 | | the rim's refit fails: no torus |
+| VAB9: VAB6 + centroids within T (rules 1 and 4): **built** | 950 / 128 | 21,426 / 11,132, ms −7 % | shower-holder and vented-funnel keep main's result (VAB6 had 870 → 730 and 632 → 568 faces) |
+
+Case `D` (spike, body against mesh), main → VAB6:
+
+| file, T | nodes to body max / mean | faces to mesh max / mean | volume ratio |
+|---|---|---|---|
+| own/track-straight-100mm, 0.01 | 8.4e-5 / 7.8e-6 → 9.9e-4 / 8.2e-5 | 0.0060 / 0.0013 → 0.694 / 0.218 | 1.00004 → 1.00143 |
+| own/battery-power-adapter, 0.1 | 0.1179 / 0.0107 → 0.1179 / 0.0104 | 0.1185 / 0.0046 → 0.1185 / 0.0084 | 0.99781 → 0.99716 |
+
+Triangle centroids' distance from each torus over 40 triangles (VAB6 dumps): makita's 291, 541, 606 (the rim) and
+758 at most 0.036, 0.033, 0.038, 0.042 (T 0.05); battery-power-adapter's ten at most 0.081 (T 0.1);
+track-straight-100mm's R 26.57 torus 0.611 (T 0.01), its two R 20.20 tori 0.005.
+
+makita at VAB6: 950 faces, 128 facets: 6 cones and 2 tori explode for edge tolerance, 1 plane for its outer loop, 2
+small unfit pieces (40 triangles). Of the 2,369 triangles above z 32.9 within T of the rim torus, one torus face holds
+1,986, the top plane 252, and 20 small planes and a cylinder the rest; volume 378,824 against the mesh's 378,824.
+
+VAB9 against main, the files that change (spike `F`, Auto; volume ratio body / mesh):
+
+| file | faces | facets | volume ratio | ms | Auto step |
+|---|---|---|---|---|---|
+| own/battery-power-adapter | 581 → 512 | 0 → 0 | 0.997812 → 0.997161 | 3099 → 2587 | 0.1 |
+| own/kuglbahn-pillar-base | 3880 → 3559 | 3346 → 3346 | 1.00118 → 0.999514 | 13200 → 10190 | 0.1 |
+| own/peg-perego-button | 212 → 160 | 0 → 0 | 1.00293 → 1.00295 | 1596 → 1191 | 0.02 |
+| own/phone-stand-foldable | 868 → 862 | 287 → 287 | 0.998266 → 1.00004 | 5022 → 4768 | 0.1 |
+| own/track-straight-100mm | 306 → 101 | 237 → 0 (the exact stage now holds) | 1.00004 → 1.00000 | 440 → 1073 | 0.01 |
+| own/whiteboard-tray-v5 | 2586 → 2547 | 1900 → 1865 | 1.00006 → 1.00005 | 15725 → 14466 | 0.02 |
+| third-party/hot-wheels-connector | 1928 → 1752 | 1745 → 1549 | 0.999856 → 0.999857 | 2041 → 1824 | 0.01 |
+| third-party/makita-vacuum-holder | 3306 → 950 | 2486 → 128 | 0.999861 → 1.000000 | 10945 → 6590 | 0.05 |
+| **totals (38 files)** | 24,650 → 21,426 | 13,958 → 11,132 | | 225,174 → 209,650 | |
+
+The kernel sweep, the round trips and case `D` on every changed file follow in the implementation slice.
