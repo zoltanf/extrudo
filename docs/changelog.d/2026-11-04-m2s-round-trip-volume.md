@@ -1,0 +1,1 @@
+- 2026-11-04 · **Converted bodies keep their volume through STEP**: a converted body with curved faces (fillets, balls, cones) could come back from a STEP export up to 0.07 % bigger or smaller, because the reader redrew some of its face outlines; the conversion now draws them the way a reader will, and every such part in the test set reads back within 0.01 % (ADR-0097).

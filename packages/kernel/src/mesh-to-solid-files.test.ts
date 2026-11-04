@@ -213,9 +213,8 @@ const fixtures: [string, string, Outcome][] = [
       spheres: 10,
       tori: 2,
       hybrid: { unfit: 3, facets: 670 },
-      // slice D7: the round trip fails (faces 892 → 892, solids 1 → 1, read
-      // back invalid, volumeRatio 0.99979); fixing the hybrid is a later slice.
-      tripFails: true,
+      // The round trip failed from slice D7 (read back invalid, volumeRatio
+      // 0.99979) until ADR-0097's 2026-11-04c amendment (pcurves as read).
     },
   ],
   // Slice C: unfit regions under 2 % of the surface are left out of the rebuild.
