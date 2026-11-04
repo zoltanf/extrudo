@@ -142,6 +142,7 @@ function ProjectEditor({
     notify: push,
   });
   const linkNow = linked.linkNow;
+  const adopt = linked.adopt;
   useFirstThumbnail(doc.id, hasThumbnail, viewport, platform);
   // What opening needed to leave out (a file from a newer Extrudo, P3-13): long, so it stays a while.
   useEffect(() => {
@@ -197,12 +198,15 @@ function ProjectEditor({
             const bytes = await platform.projects.exportFile(doc.id);
             const result = await saveAs(bytes, fileName);
             if (!result) return;
-            await platform.projects.link(doc.id, {
+            const link = {
               file: result.path,
               modified: result.modified,
               sha256: sha256Hex(new Uint8Array(await bytes.arrayBuffer())),
-              external: true,
-            });
+              external: true as const,
+            };
+            // Through the open project where there is one, or the file isn't
+            // written back until the design is opened again (issue #155).
+            await (adopt ? adopt(link) : platform.projects.link(doc.id, link));
             const chosen = result.path.split(/[\\/]/).pop() ?? fileName;
             push('success', `Saved ${chosen}.`);
           })().catch((error: unknown) => push('error', describeError(error)));
@@ -211,7 +215,7 @@ function ProjectEditor({
       // Only where a folder is linked and this project isn't linked yet (P4-09).
       ...(linkNow && { saveToLinkedFolder: linkNow }),
     }),
-    [platform, autosave, doc.id, store, push, linkNow],
+    [platform, autosave, doc.id, store, push, linkNow, adopt],
   );
 
   if (!autosave) return null;

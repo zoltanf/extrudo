@@ -331,13 +331,15 @@ describe('a linked project (P4-09, ADR-0065 §3)', () => {
 describe('an external-linked project (P6-01 slice 2, finding 3)', () => {
   const path = '/models/Bracket.extrudo';
 
-  async function externalSetup() {
+  async function externalSetup({ linked = true } = {}) {
     const projects = memoryProjectStore();
     const store = createDocumentStore(createDocument({ name: 'Bracket' }));
     await projects.save(store.getState().doc);
     const disk = new Map<string, { bytes: Uint8Array; modified: number }>();
     disk.set(path, { bytes: writeArchive(createDocument({ name: 'Bracket' })), modified: 500 });
-    await projects.link(store.getState().doc.id, { file: path, modified: 500, external: true });
+    if (linked) {
+      await projects.link(store.getState().doc.id, { file: path, modified: 500, external: true });
+    }
     const externalFiles: ExternalFiles = {
       stat: async (file) =>
         disk.has(file) ? { modified: disk.get(file)?.modified as number } : undefined,
@@ -390,6 +392,26 @@ describe('an external-linked project (P6-01 slice 2, finding 3)', () => {
       sha256: sha256Hex(t.disk.get(path)?.bytes ?? new Uint8Array()),
       external: true,
     });
+  });
+
+  it('a Save As made while the design is open is written back without reopening it (#155)', async () => {
+    const t = await externalSetup({ linked: false });
+    await t.project.opened();
+    const saved = t.disk.get(path);
+    if (!saved) throw new Error('not on disk');
+    await t.project.adopt({
+      file: path,
+      modified: saved.modified,
+      sha256: sha256Hex(saved.bytes),
+      external: true,
+    });
+    t.store.getState().dispatch(renameDocument({ name: 'Wall hook' }));
+    await t.projects.save(t.store.getState().doc);
+    t.passThrottle();
+    await t.project.afterSave();
+    expect(t.notifications).toEqual([]);
+    expect(readArchive(t.disk.get(path)?.bytes ?? new Uint8Array()).doc.name).toBe('Wall hook');
+    expect((await t.projects.get(t.store.getState().doc.id))?.linked?.file).toBe(path);
   });
 
   it('a time a sync client moved over our own bytes is no conflict (#155)', async () => {
