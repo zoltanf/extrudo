@@ -61,6 +61,7 @@ function connect(worker: Worker): KernelConnection {
     inspect: (targets) => api.inspect(targets),
     interference: (bodies) => api.interference(bodies),
     resolveJoint: (joint) => api.resolveJoint(joint),
+    resolveAnnotation: (annotation) => api.resolveAnnotation(annotation),
     checkJoint: (request, onProgress) =>
       api.checkJoint(request, onProgress && Comlink.proxy(onProgress)),
     cancelCheck: () => api.cancelCheck(),

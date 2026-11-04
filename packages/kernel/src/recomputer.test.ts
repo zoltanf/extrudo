@@ -184,6 +184,7 @@ function bind(service: KernelService) {
     inspect: service.inspect.bind(service),
     interference: service.interference.bind(service),
     resolveJoint: service.resolveJoint.bind(service),
+    resolveAnnotation: service.resolveAnnotation.bind(service),
     checkJoint: service.checkJoint.bind(service),
     cancelCheck: () => service.cancelCheck(),
     debugTestPart: () => service.debugTestPart(),
