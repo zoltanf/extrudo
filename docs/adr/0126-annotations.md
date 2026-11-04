@@ -455,6 +455,22 @@ Where S1 had to decide what the spec left open, or the code disagreed with it:
   sketch's own Delete takes something; the ghost check is keyed on the bodies, the section,
   the pose and the style, and debounced, so a sketch drag doesn't run it every step.
 
+## Amendment (owner review, 2026-11-04)
+
+- **The number is a tab on the card** (owner's pick of three variants: a badge inside the
+  card, a badge on the anchor point, a tab). The callout is one object: a tab with the
+  number on its left edge (`Tab`, at least 22 px, `data-annotation-badge` kept) and the
+  text body. With no text shown (done, Numbers only, behind the part) the tab alone is the
+  callout, rounded on all four corners (owner). The digits are trimmed to their cap height
+  (`text-box: trim-both cap alphabetic`) so they sit in the optical centre.
+- **Behind the part keeps its leader**, dotted, to a hollow dot at the anchor: with the
+  callout away from the point, the owner could not tell where a ghosted note was. This
+  replaces S2's "without leader".
+- **The editor is the card's body**: one line that grows with the text (`field-sizing:
+  content`, up to eight lines), no field border of its own; the card's accent border and
+  ring mark it. It was a two-row field inside the card.
+- `screenshot { annotations }` still draws round badges: it is for the agent, not the owner.
+
 ## Rejected
 
 - **Storing sketch annotations inside `sketchData`.** It would change the

@@ -4192,3 +4192,7 @@ example-annotations.test.ts` (`WRITE_FIXTURES=1`, deterministic UUID-shaped IDs,
 fingerprints). S3 review: the browser rows and Look At place notes with the open sketch
 (`placedNow`); the ghost check is keyed on what hides things (bodies, clip, pose, style) and
 runs debounced, never per drag step.
+Owner review: the callout is one card, a number tab (`Tab`, `data-annotation-badge`) on the
+left of the text body; with no text shown the tab alone, rounded all round; digits trimmed to
+cap height (`text-box`). A note behind the part keeps a dotted leader to a hollow dot; the
+editor is the body itself, one line growing (`field-sizing: content`).

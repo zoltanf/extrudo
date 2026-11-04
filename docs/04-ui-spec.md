@@ -718,17 +718,22 @@ A list on the left, the selected parameter on the right.
 Numbered notes on the model: **#1, #2, …**, a number never given twice. In the
 3D view each is a **callout**: a box at an offset from its anchor (default
 28 px right and up, mirrored left or down when it would leave the view, then
-wherever it was dragged; it never moves by itself), with an 18 px badge (the
-number, white on accent) and the text, wrapped at 36 ch and cut to three
-lines; the whole text shows while hovered, selected or edited. A 1 px leader
-runs from a 4 px dot at the anchor to the box's nearest edge.
+wherever it was dragged; it never moves by itself). The box is a card whose
+left edge is a **number tab** (at least 22 px, dark digits on accent, centred
+on their cap height) and whose body holds the text, wrapped at 32 ch and cut
+to three lines; the whole text shows while hovered, selected or edited. With
+no text shown the tab alone is the callout, rounded on all four corners. A
+1 px leader runs from a 4 px dot at the anchor to the box's nearest edge.
 
-- **States.** Selected: accent border and ring. Detached (its geometry is
-  gone): dashed border, hollow badge, drawn where it was. **Done**: collapsed
-  to its muted badge, the text on hover. **Behind the part**: a faint dashed
-  badge without leader or text, so it never reads as a note about the face in
-  front; selected, hovered (in the view or the browser) or edited, it is drawn
-  in full. Checked after the camera settles and after a recompute.
+- **States.** Selected: accent border and ring. Editing: the same, the body
+  itself is the field (one line, growing with the text up to eight). Detached
+  (its geometry is gone): dashed body, hollow tab, drawn where it was.
+  **Done**: collapsed to its muted tab, the text on hover. **Behind the
+  part**: a faint dashed tab without text, its leader dotted to a hollow dot
+  at the anchor, so the eye finds the point without the note reading as one
+  about the face in front; selected, hovered (in the view or the browser) or
+  edited, it is drawn in full. Checked after the camera settles and after a
+  recompute.
 - **Annotate** (Construct › Inspect, `N`, model mode): hovering highlights what
   a click pins the note to (face, edge, vertex, body, plane, axis, point, a
   sketch curve); a click there, or on empty space (a point on the grid plane),

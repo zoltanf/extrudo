@@ -1,8 +1,10 @@
 /**
- * The annotations over the 3D view (P6-23, ADR-0126 §6): one callout per note, the badge
- * with its number and the text cut to three lines, a leader from a dot at the anchor to the
- * callout's nearest edge. The text is always visible (the owner's choice), unless "Numbers
- * only" is on or the note is done; a note the part hides is a faint badge ("ghosted").
+ * The annotations over the 3D view (P6-23, ADR-0126 §6): one callout per note, a card whose
+ * left edge is a tab with the number and whose body holds the text cut to three lines, and a
+ * leader from a dot at the anchor to the callout's nearest edge. The text is always visible
+ * (the owner's choice), unless "Numbers only" is on or the note is done: then the tab alone,
+ * rounded all round. A note the part hides is a faint dashed tab ("ghosted") whose leader is
+ * dotted to a hollow dot, so the eye finds where it is.
  *
  * The callouts are React, but their positions follow the camera imperatively (a store
  * subscription writing `style.transform`, as the ViewCube does), so orbiting re-renders
@@ -31,6 +33,7 @@ import {
 } from '@extrudo/core';
 import { Check, Eye, EyeOff, Pencil, Trash2 } from 'lucide-react';
 import {
+  type CSSProperties,
   type KeyboardEvent,
   type PointerEvent,
   useEffect,
@@ -264,12 +267,11 @@ export function AnnotationsOverlay({
           leader: leaders.current.get(d.id),
           p,
           size: { width: box.offsetWidth, height: box.offsetHeight },
-          ghost: box.dataset.annotationBehind !== undefined,
         },
       ];
     });
     const editing = ui.getState().editing;
-    for (const { d, box, leader, p: projected, size, ghost } of items) {
+    for (const { d, box, leader, p: projected, size } of items) {
       if (projected) box.dataset.anchor = `${projected[0].toFixed(1)},${projected[1].toFixed(1)}`;
       const off =
         !projected ||
@@ -298,7 +300,7 @@ export function AnnotationsOverlay({
       box.style.visibility = '';
       box.style.transform = `translate(${rect.left}px, ${rect.top}px)`;
       if (!leader) continue;
-      leader.style.visibility = ghost ? 'hidden' : '';
+      leader.style.visibility = '';
       // A dot being dragged onto other geometry is drawn at the pointer; the box stays.
       const held =
         dotDrag.current?.id === d.id && dotDrag.current.moved ? dotDrag.current : undefined;
@@ -566,6 +568,11 @@ export function AnnotationsOverlay({
               stroke="var(--x-accent)"
               strokeWidth={1}
               strokeOpacity={states.get(d.id) === 'done' ? 0.5 : 1}
+              // Behind the part: dotted, so it reads as "the note is over there".
+              {...(states.get(d.id) === 'ghost' && {
+                strokeDasharray: '1.5 3',
+                strokeLinecap: 'round' as const,
+              })}
             />
             {/* The anchor dot's hit area: drag a selected note's dot onto other geometry (S4). */}
             <circle
@@ -587,13 +594,23 @@ export function AnnotationsOverlay({
               onPointerCancel={cancelDot}
               onLostPointerCapture={cancelDot}
             />
-            <circle
-              r={2}
-              fill="var(--x-accent)"
-              stroke="var(--x-bg)"
-              strokeWidth={1}
-              style={{ pointerEvents: 'none' }}
-            />
+            {states.get(d.id) === 'ghost' ? (
+              <circle
+                r={3}
+                fill="var(--x-raised)"
+                stroke="var(--x-accent)"
+                strokeWidth={1.2}
+                style={{ pointerEvents: 'none' }}
+              />
+            ) : (
+              <circle
+                r={2}
+                fill="var(--x-accent)"
+                stroke="var(--x-bg)"
+                strokeWidth={1}
+                style={{ pointerEvents: 'none' }}
+              />
+            )}
           </g>
         ))}
       </svg>
@@ -628,20 +645,11 @@ export function AnnotationsOverlay({
                 ? `Annotation #${d.number}: ${d.annotation.text}`
                 : `New annotation #${d.number}`
             }
-            className={`absolute top-0 left-0 flex items-start gap-1.5 ${
+            className={`absolute top-0 left-0 flex items-stretch rounded-control text-xs ${
               interactive || isEditing ? 'pointer-events-auto' : 'pointer-events-none'
-            } ${
-              collapsed
-                ? ''
-                : `max-w-[36ch] rounded-control border px-1.5 py-1 text-xs shadow-raised ${
-                    detached ? 'border-dashed' : ''
-                  } ${selected ? 'border-accent ring-2 ring-accent' : 'border-line'}`
-            } ${state === 'ghost' ? 'opacity-45' : ''} ${state === 'done' ? 'opacity-70' : ''}`}
-            style={
-              collapsed
-                ? undefined
-                : { background: 'color-mix(in srgb, var(--x-raised) 94%, transparent)' }
-            }
+            } ${collapsed ? '' : 'shadow-raised'} ${selected || isEditing ? 'ring-2 ring-accent' : ''} ${
+              state === 'ghost' ? 'opacity-60' : ''
+            }`}
             onPointerDown={down(d)}
             onPointerMove={move}
             onPointerUp={up(d)}
@@ -660,28 +668,37 @@ export function AnnotationsOverlay({
             }}
             onContextMenu={(event) => event.preventDefault()}
           >
-            <Badge
+            <Tab
               number={d.number}
               look={state === 'ghost' || detached ? 'hollow' : state === 'done' ? 'muted' : 'solid'}
               dashed={state === 'ghost'}
+              alone={collapsed}
             />
-            {!collapsed &&
-              (isEditing ? (
-                <Editor
-                  initial={d.annotation?.text ?? ''}
-                  onCommit={(text) => commit(d, text)}
-                  onCancel={cancel}
-                  onBlur={() => ui.getState().noteBlur()}
-                />
-              ) : (
-                <span
-                  className={`min-w-0 whitespace-pre-wrap break-words text-ink ${
-                    engaged ? '' : 'line-clamp-3'
-                  }`}
-                >
-                  {d.annotation?.text}
-                </span>
-              ))}
+            {!collapsed && (
+              <div
+                className={`min-w-0 max-w-[32ch] rounded-r-control border border-l-0 px-1.5 py-1 ${
+                  detached ? 'border-dashed' : ''
+                } ${selected || isEditing ? 'border-accent' : 'border-line'}`}
+                style={{ background: 'color-mix(in srgb, var(--x-raised) 94%, transparent)' }}
+              >
+                {isEditing ? (
+                  <Editor
+                    initial={d.annotation?.text ?? ''}
+                    onCommit={(text) => commit(d, text)}
+                    onCancel={cancel}
+                    onBlur={() => ui.getState().noteBlur()}
+                  />
+                ) : (
+                  <span
+                    className={`block whitespace-pre-wrap break-words text-ink ${
+                      engaged ? '' : 'line-clamp-3'
+                    }`}
+                  >
+                    {d.annotation?.text}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         );
       })}
@@ -731,15 +748,20 @@ export function AnnotationsOverlay({
   );
 }
 
-/** The numbered circle: accent with white digits, muted when done, hollow when detached or ghosted. */
-function Badge({
+/**
+ * The number tab: the card's left edge, accent with dark digits; muted when done, hollow when
+ * detached or ghosted. `alone` (no text shown): the tab is the whole callout, rounded all round.
+ */
+function Tab({
   number,
   look,
   dashed,
+  alone,
 }: {
   number: number;
   look: 'solid' | 'muted' | 'hollow';
   dashed: boolean;
+  alone: boolean;
 }) {
   const style =
     look === 'solid'
@@ -757,13 +779,15 @@ function Badge({
           };
   return (
     <span
-      className={`flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full border px-1 font-medium text-[11px] leading-none tabular-nums ${
-        dashed ? 'border-dashed' : ''
-      }`}
+      className={`flex min-h-[22px] min-w-[22px] shrink-0 items-center justify-center border px-1.5 font-medium text-[11px] leading-none tabular-nums ${
+        alone ? 'rounded-control' : 'rounded-l-control'
+      } ${dashed ? 'border-dashed' : ''}`}
       style={style}
       data-annotation-badge=""
     >
-      {number}
+      {/* Trimmed to the digits' cap height, so flex centring centres the digits themselves,
+          not the font's ascender and descender space. */}
+      <span style={{ textBox: 'trim-both cap alphabetic' } as CSSProperties}>{number}</span>
     </span>
   );
 }
@@ -815,9 +839,9 @@ function Editor({
       data-annotation-editor=""
       aria-label="Annotation text"
       defaultValue={initial}
-      rows={Math.min(6, Math.max(2, initial.split('\n').length))}
+      rows={1}
       maxLength={2000}
-      className="w-[30ch] resize-none rounded-control border border-line bg-bg px-1 py-0.5 text-ink text-xs outline-none focus:border-accent"
+      className="block max-h-[8lh] min-h-[1lh] w-[30ch] resize-none border-0 bg-transparent p-0 text-ink text-xs outline-none [field-sizing:content]"
       onKeyDown={key}
       onBlur={() => finish(true, true)}
       onPointerDown={(event) => event.stopPropagation()}
