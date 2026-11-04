@@ -4581,10 +4581,17 @@ public:
    * from the sketch."; a profile whose line misses the face is "The profiles
    * don't touch the face.".
    *
+   * With `clip` (ADR-0060's second amendment: one face of several), neither
+   * of those two checks of the face's edge is made and the piece just stops
+   * where the face ends: the walls of the thick piece there bound it too (and
+   * get no history), and a partial sphere or torus (a dome) is thickened by
+   * the simple offset, so its piece stops at the rim. The side the profiles
+   * come from and the refusal of a piece that stands on the face's back stay.
+   *
    * History for input 0 (the profile): first (4) for the pieces of the face,
    * last (5) for the offset face's, generated (1) from each edge for its wall.
    */
-  int projectOnFace(int profileHandle, int shape, int face, double depth, bool outward) {
+  int projectOnFace(int profileHandle, int shape, int face, double depth, bool outward, bool clip) {
     beginOp();
     TopoDS_Face profile;
     if (const char* why = singleProfile(profileHandle, profile)) return fail(why);
@@ -4600,24 +4607,10 @@ public:
       if (carried.GetType() != GeomAbs_Plane) return fail("Emboss failed: the profile isn't flat.");
       const gp_Dir n = carried.Plane().Axis().Direction();
 
-      // The face's outward normal at (u, v): its surface's, turned for a reversed face.
-      // At a singular point (a sphere's pole, where a line through a sketch's centre
-      // may well land) the first derivatives give none, so the second ones are asked.
       BRepAdaptor_Surface surface(target);
       const bool reversed = target.Orientation() == TopAbs_REVERSED;
       const auto outwardAt = [&](double u, double v, gp_Vec& normal) {
-        gp_Pnt at;
-        gp_Vec du, dv;
-        surface.D1(u, v, at, du, dv);
-        normal = du.Crossed(dv);
-        if (normal.Magnitude() <= 1e-12) {
-          BRepLProp_SLProps props(surface, u, v, 2, Precision::Confusion());
-          if (!props.IsNormalDefined()) return false;
-          normal = gp_Vec(props.Normal());
-        }
-        normal.Normalize();
-        if (reversed) normal.Reverse();
-        return true;
+        return outwardNormal(surface, reversed, u, v, normal);
       };
 
       // Which way the profiles travel: along the line through their centre, the hit
@@ -4672,15 +4665,16 @@ public:
       TopoDS_Solid shell;
       TopoDS_Face skin;
       TopoDS_Face farFace;
-      if (const char* why = thickPiece(target, surface, d, middle, depth, outward, shell, skin, farFace)) {
+      if (const char* why = thickPiece(target, surface, d, middle, depth, outward, clip, shell, skin, farFace)) {
         return fail(why);
       }
       IntCurvesFace_Intersector onFar(farFace, tol);
 
       // Every sample's first hit, coming from behind the sketch, must be on the face
-      // where it looks back, and the sample must meet the offset face too.
+      // where it looks back, and the sample must meet the offset face too (unless the
+      // piece is clipped to the face).
       const char* past = "The profiles reach past the face's edge as seen from the sketch.";
-      for (const gp_Pnt& p : samples) {
+      for (const gp_Pnt& p : clip ? std::vector<gp_Pnt>() : samples) {
         onFace.Perform(gp_Lin(p, d), -RealLast(), RealLast());
         if (!onFace.IsDone() || onFace.NbPnt() == 0) return fail(past);
         int first = 0;
@@ -4776,8 +4770,9 @@ public:
         if (front == 0) continue;
         if (backs > 0) return fail(past);
         // Only the face, its offset and the prism's walls may bound it: a wall of the
-        // thick piece or an end of the prism means the profile reaches past the face.
-        for (TopExp_Explorer e(solid.Current(), TopAbs_FACE); e.More(); e.Next()) {
+        // thick piece or an end of the prism means the profile reaches past the face
+        // (where a clipped piece stops).
+        for (TopExp_Explorer e(solid.Current(), TopAbs_FACE); !clip && e.More(); e.Next()) {
           const TopoDS_Shape& f = e.Current();
           if (!onSkin.Contains(f) && !onFarFace.Contains(f) && !onWalls.Contains(f)) return fail(past);
         }
@@ -4808,6 +4803,117 @@ public:
     }
   }
 
+  /**
+   * Where the line through p along d meets face `face` of `shape` (P4-12,
+   * ADR-0060's second amendment: the anchor of "tangent to the face"): of its
+   * hits with the bounded face, the one nearest p either way along the line, a
+   * tie going to the side d points to. geometryNumbers: [x, y, z, nx, ny, nz],
+   * the hit and the face's outward normal there. Returns 6, or -1 with
+   * lastError() (the line misses the face, unknown shape).
+   */
+  int faceHit(int shape, int face, double px, double py, double pz, double dx, double dy, double dz) {
+    beginOp();
+    geometry_.clear();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) return failCurve("Unknown shape.");
+    const gp_Vec along(dx, dy, dz);
+    if (!(along.Magnitude() > Precision::Confusion())) return failCurve("The line has no direction.");
+    try {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+      TopExp::MapShapes(*s, TopAbs_FACE, faces);
+      if (face < 0 || face >= faces.Extent()) return failCurve("Face index out of range.");
+      const TopoDS_Face target = TopoDS::Face(faces(face + 1));
+      const double tol = Precision::Confusion();
+      IntCurvesFace_Intersector hits(target, tol);
+      hits.Perform(gp_Lin(gp_Pnt(px, py, pz), gp_Dir(along)), -RealLast(), RealLast());
+      int best = 0;
+      for (int i = 1; hits.IsDone() && i <= hits.NbPnt(); ++i) {
+        const double w = hits.WParameter(i);
+        const double wb = best == 0 ? 0 : hits.WParameter(best);
+        if (best == 0 || std::abs(w) < std::abs(wb) - tol || (std::abs(w) <= std::abs(wb) + tol && w > wb)) best = i;
+      }
+      if (best == 0) return failCurve("The line misses the face.");
+      gp_Vec normal;
+      if (!outwardNormal(BRepAdaptor_Surface(target), target.Orientation() == TopAbs_REVERSED,
+                         hits.UParameter(best), hits.VParameter(best), normal)) {
+        return failCurve("The face has no normal where the line meets it.");
+      }
+      pushPoint(hits.Pnt(best));
+      pushDir(gp_Dir(normal));
+      return static_cast<int>(geometry_.size());
+    } catch (...) {
+      failFromException("Face hit failed");
+      return -1;
+    }
+  }
+
+  /**
+   * The solid between face `face` of `shape` and its offset by `depth` along
+   * its outward normal (`outward`) or against it (P4-12, ADR-0060's second
+   * amendment: the slab a moved or wrapped piece of a several-face emboss is
+   * cut to): OCCT's simple offset of a copy of the face, as projectOnFace()
+   * thickens anything but a whole sphere or torus.
+   *
+   * History for input 0 (`shape`): first (4) from the face for its copy, last
+   * (5) for the offset face, generated (1) from each of the face's edges (its
+   * index among the shape's edges) for the wall along it.
+   */
+  int faceSlab(int shape, int face, double depth, bool outward) {
+    beginOp();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) return fail("Emboss failed: unknown shape.");
+    if (!(depth > Precision::Confusion())) return fail("Emboss failed: the depth must be greater than 0.");
+    try {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+      TopExp::MapShapes(*s, TopAbs_FACE, faces);
+      if (face < 0 || face >= faces.Extent()) return fail("Emboss failed: face index out of range.");
+      const TopoDS_Face target = TopoDS::Face(faces(face + 1));
+      BRepBuilderAPI_Copy copy(target);
+      const TopoDS_Face skin = TopoDS::Face(copy.Shape());
+      TopoDS_Solid slab;
+      TopoDS_Face farFace;
+      std::vector<TopoDS_Shape> rims;
+      if (const char* why = simpleSlab(skin, depth, outward, slab, farFace, &rims)) return fail(why);
+      if (!(exactVolume(slab) > 0)) return fail("Emboss failed: the face's slab is inside out.");
+      if (!BRepCheck_Analyzer(slab).IsValid()) return fail("Emboss failed: the face's slab isn't sound.");
+
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> resultFaces;
+      TopExp::MapShapes(slab, TopAbs_FACE, resultFaces);
+      recordFaces(0, 0, face, 4, {skin}, resultFaces);
+      recordFaces(0, 0, face, 5, {farFace}, resultFaces);
+      // The wall of an edge: the face of the slab that carries the edge's offset and
+      // is neither the face nor the offset.
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> bodyEdges;
+      TopExp::MapShapes(*s, TopAbs_EDGE, bodyEdges);
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> skinEdges;
+      TopExp::MapShapes(skin, TopAbs_EDGE, skinEdges);
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faceEdges;
+      TopExp::MapShapes(target, TopAbs_EDGE, faceEdges);
+      for (int k = 1; k <= faceEdges.Extent(); ++k) {
+        const int at = skinEdges.FindIndex(copy.ModifiedShape(faceEdges(k)));
+        const int index = bodyEdges.FindIndex(faceEdges(k));
+        if (at <= 0 || index <= 0) continue;
+        const TopoDS_Shape& rim = rims[static_cast<size_t>(at - 1)];
+        if (rim.IsNull()) continue;
+        std::vector<TopoDS_Shape> walls;
+        for (int f = 1; f <= resultFaces.Extent(); ++f) {
+          const TopoDS_Shape& wall = resultFaces.FindKey(f);
+          if (wall.IsSame(skin) || wall.IsSame(farFace)) continue;
+          for (TopExp_Explorer e(wall, TopAbs_EDGE); e.More(); e.Next()) {
+            if (e.Current().IsSame(rim)) {
+              walls.push_back(wall);
+              break;
+            }
+          }
+        }
+        recordFaces(0, 1, index - 1, 1, walls, resultFaces);
+      }
+      return store(slab);
+    } catch (...) {
+      return failFromException("Emboss failed");
+    }
+  }
+
 private:
   /**
    * The solid between face `target` and its offset by `depth` along its
@@ -4816,14 +4922,16 @@ private:
    * or a torus (a whole one is a closed face OCCT's offset can't take) is the
    * shell between two concentric spheres or two tori of the same centre circle,
    * exactly, their seams turned away from the profile at `profile` coming along
-   * `d`; any other face is OCCT's simple offset of a copy of it. Returns
-   * the reason it can't be built, or nullptr.
+   * `d`; any other face is OCCT's simple offset of a copy of it. With `clip`
+   * the shells are only for a whole sphere or torus: a part of one (a dome)
+   * takes the simple offset, whose walls stop the piece at the face's edge.
+   * Returns the reason it can't be built, or nullptr.
    */
   const char* thickPiece(const TopoDS_Face& target, const BRepAdaptor_Surface& surface, const gp_Dir& d,
-                         const gp_Pnt& profile, double depth, bool outward, TopoDS_Solid& shell, TopoDS_Face& skin,
-                         TopoDS_Face& farFace) {
+                         const gp_Pnt& profile, double depth, bool outward, bool clip, TopoDS_Solid& shell,
+                         TopoDS_Face& skin, TopoDS_Face& farFace) {
     const GeomAbs_SurfaceType type = surface.GetType();
-    if (type == GeomAbs_Sphere || type == GeomAbs_Torus) {
+    if ((type == GeomAbs_Sphere || type == GeomAbs_Torus) && (!clip || wholeFace(target))) {
       // Whether the outward normal points away from the centre (a ball, a ring's
       // outside) or towards it (a spherical hollow), from the middle of the face.
       double u0 = 0, u1 = 0, v0 = 0, v1 = 0;
@@ -4882,6 +4990,19 @@ private:
       return nullptr;
     }
     skin = TopoDS::Face(BRepBuilderAPI_Copy(target).Shape());
+    return simpleSlab(skin, depth, outward, shell, farFace, nullptr);
+  }
+
+  /**
+   * The solid between face `skin` (a copy the solid may own) and its simple
+   * offset by `depth` along its outward normal (`outward`) or against it:
+   * OCCT's BRepOffset_MakeSimpleOffset, made a solid and oriented. `farFace`
+   * is the offset face; `rims`, when asked, gets the offset edge of each edge
+   * of `skin` (TopExp::MapShapes order; null where there is none). Returns the
+   * reason it can't be built, or nullptr (thickPiece(), faceSlab()).
+   */
+  const char* simpleSlab(const TopoDS_Face& skin, double depth, bool outward, TopoDS_Solid& shell,
+                         TopoDS_Face& farFace, std::vector<TopoDS_Shape>* rims) {
     BRepOffset_MakeSimpleOffset thick(skin, outward ? depth : -depth);
     thick.SetBuildSolidFlag(true);
     thick.Perform();
@@ -4894,7 +5015,46 @@ private:
     const TopoDS_Shape far = thick.Generated(skin);
     for (TopExp_Explorer e(far, TopAbs_FACE); e.More(); e.Next()) farFace = TopoDS::Face(e.Current());
     if (farFace.IsNull()) return "Emboss failed: the offset lost the face.";
+    if (rims != nullptr) {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+      TopExp::MapShapes(skin, TopAbs_EDGE, edges);
+      for (int k = 1; k <= edges.Extent(); ++k) rims->push_back(thick.Generated(edges(k)));
+    }
     return nullptr;
+  }
+
+  /** Whether face `face` covers its whole surface, both ways round (a whole sphere or torus). */
+  static bool wholeFace(const TopoDS_Face& face) {
+    const Handle(Geom_Surface) surface = BRep_Tool::Surface(face);
+    if (surface.IsNull()) return false;
+    double su0 = 0, su1 = 0, sv0 = 0, sv1 = 0;
+    surface->Bounds(su0, su1, sv0, sv1);
+    double u0 = 0, u1 = 0, v0 = 0, v1 = 0;
+    BRepTools::UVBounds(face, u0, u1, v0, v1);
+    const double tol = 1e-7;
+    return u1 - u0 >= su1 - su0 - tol && v1 - v0 >= sv1 - sv0 - tol;
+  }
+
+  /**
+   * The outward normal of a face at (u, v) of its `surface`: the surface's,
+   * turned for a `reversed` face. At a singular point (a sphere's pole, where a
+   * line through a sketch's centre may well land) the first derivatives give
+   * none, so the second ones are asked. False when there is none
+   * (projectOnFace(), faceHit()).
+   */
+  static bool outwardNormal(const BRepAdaptor_Surface& surface, bool reversed, double u, double v, gp_Vec& normal) {
+    gp_Pnt at;
+    gp_Vec du, dv;
+    surface.D1(u, v, at, du, dv);
+    normal = du.Crossed(dv);
+    if (normal.Magnitude() <= 1e-12) {
+      BRepLProp_SLProps props(surface, u, v, 2, Precision::Confusion());
+      if (!props.IsNormalDefined()) return false;
+      normal = gp_Vec(props.Normal());
+    }
+    normal.Normalize();
+    if (reversed) normal.Reverse();
+    return true;
   }
 
   /**
