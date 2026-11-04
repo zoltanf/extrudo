@@ -729,6 +729,27 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   already tracked by the scope — **don't track it again**, that releases it
   twice).
 
+  **Second amendment (S6)**: the toggle is a **checkbox** named "Tangent to the
+  face" (`exact`), the Faces button reads "2 faces". Three more tests.
+  (a) Cone: Draft as above, **Tangent Plane** (Construct; click the wall at
+  (0, −(10 − 10 tan 10°)·0.99, 10)), its origin and normal read from
+  `data-construction` (`Tangent_Plane1:plane:o:n`); the **Offset Plane** picks
+  the tangent plane by clicking 6 mm beside its origin along X (off the wall); the sketch's frame is
+  `:0,-14.6…,2.6…:0,-0.98…,0.17…`, its text lands at sketch (0…9, 10…15) whatever
+  you click (the clicks' scale is the target plane's), so find a letter with
+  `pickText` and the world map origin + u·X + v·(0, n_z, −n_y). (b) Chamfer
+  (click the top front edge at (0, −10, 20), Distance 6 mm): **a perspective
+  sketch view scales plane points by about 2.8 at 40 mm up**, so clicks through
+  `mapping` don't land: draw with the Rectangle tool's first corner through the
+  `settledProjector` after a wheel zoom-out, then type Width and Height in the
+  heads-up group; pick the profile after `turnView('Shift+1')`. Tangent off the
+  dialog is `data-preview-status="error"` with OK disabled. Read volumes with
+  `exportModel(page, '3MF')` and **poll the body's face count first**: the
+  export can come from the meshes of the body before the recompute (volume
+  unchanged, once also a half-built one). (c) Fillet one vertical edge R 5
+  (edge at (10, −10, 10)), "AB" at sketch (3, 10) on an XZ offset plane
+  30 mm out, faces at (−5, −10, 17) and (5 + 5/√2, −5 − 5/√2, 17).
+
 ### `e2e/examples.spec.ts`
 
 - **Examples e2e** (`e2e/examples.spec.ts`, P6-06 S3): the home screen's

@@ -25,7 +25,15 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { embossDialog, embossManipulators } from './emboss';
 import { featureDialogs, specForCommand } from './registry';
 import type { DialogValues, Manipulator, ManipulatorContext } from './spec';
-import { BOX, CYLINDER, cylinderMesh, faceItem, namedBoxMesh, setupDialogs } from './testing';
+import {
+  BOX,
+  CYLINDER,
+  cylinderMesh,
+  faceItem,
+  namedBoxMesh,
+  settle,
+  setupDialogs,
+} from './testing';
 import { defaultValues, inputsFor, mergeValues, valuesFor } from './values';
 
 const FONTS_DIR = new URL('../../../../packages/fonts/fonts/', import.meta.url);
@@ -291,12 +299,18 @@ describe('the emboss dialog', () => {
     expect(t.open()?.values.refs.face).toEqual([TOP, FRONT]);
   });
 
-  it('picking a second face adds it to the Faces field', () => {
+  it('picking a second face adds it to the Faces field, and picking it again removes it', async () => {
     const t = withSketch();
     t.session.getState().select([t.profile, faceItem(1)]);
     t.controller.start('emboss');
-    t.controller.setRefs('face', [TOP, FRONT]);
-    expect(t.open()?.values.refs.face).toHaveLength(2);
+    expect(t.open()?.values.refs.face?.map((r) => r.id)).toEqual([TOP.id]);
+    if (t.open()?.pickField !== 'face') t.controller.pickInto('face');
+    t.controller.select.onClick(faceItem(2), false);
+    await settle();
+    expect(t.open()?.values.refs.face?.map((r) => r.id)).toEqual([TOP.id, FRONT.id]);
+    t.controller.select.onClick(faceItem(2), false);
+    await settle();
+    expect(t.open()?.values.refs.face?.map((r) => r.id)).toEqual([TOP.id]);
   });
 
   it('a selected text goes to Profiles, and the feature stores that reference', () => {

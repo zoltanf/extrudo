@@ -782,15 +782,16 @@ function wrappedCentre(ctx: EvalContext, parts: readonly Base[], frame: WrapFram
 
 /**
  * The flat face to emboss on as a plane with its **outward** normal, or
- * undefined for a face that isn't flat (P4-12: it takes a projection then):
- * `surfaceGeometry` gives a plane's normal reversed for a reversed face, so it
- * points out of the body (the same thing `describe` reports as a plane face's
- * `direction`).
+ * undefined for a face that isn't flat (P4-12: it takes a projection then).
+ * The normal is `describe`'s: `surfaceGeometry`'s plane axis points into the
+ * body for a face whose plane has a left-handed frame (a chamfer's, say), and
+ * the emboss would grow inwards.
  */
 function flatFaceOf(ctx: EvalContext, hit: ResolvedRef): Plane | undefined {
   const surface = ctx.kernel.surfaceGeometry(hit.shape, hit.index);
   if (surface.type !== 'plane' || !surface.origin || !surface.direction) return undefined;
-  return { point: surface.origin, normal: surface.direction };
+  const outward = ctx.describe(hit.shape).faces[hit.index]?.direction;
+  return { point: surface.origin, normal: outward ?? surface.direction };
 }
 
 /** Whether two planes are parallel (either way round), however far apart. */

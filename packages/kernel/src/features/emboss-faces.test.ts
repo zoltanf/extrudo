@@ -7,6 +7,7 @@
 // turn. The flat and cylindrical cases stay in `emboss.test.ts`.
 import {
   type ConstructionReport,
+  chamferInputs,
   constructionRef,
   EMBOSS_FACE_ROLES,
   EMBOSS_TYPE,
@@ -1010,5 +1011,42 @@ describe('emboss on several faces', { timeout: 300_000 }, () => {
     // The centroid (22, 0, 30) is over the upper top only.
     expect(apart(report?.anchor?.origin ?? [], [22, 0, 20])).toBeLessThan(1e-9);
     expect(apart(report?.anchor?.normal ?? [], [0, 0, 1])).toBeLessThan(1e-9);
+  });
+});
+
+describe('emboss on a chamfer feature’s face', { timeout: 300_000 }, () => {
+  it('grows outwards from a chamfer face, whose plane axis points into the body', async () => {
+    const sq = rectangle('SQ', XY, [-10, -10, 20, 20]);
+    const box = feature('B', 'extrude', extrudeInputs([sq.profile], { distance: '20 mm' }));
+    const first = await run([sq.feature, box]);
+    const ids = first.bodies[0]?.mesh?.edgeIds ?? [];
+    const want = ids.find((id) => id.includes('cap:end') && id.includes(sq.lines[0] as string));
+    if (!want) throw new Error('no edge');
+    const body = first.bodies[0];
+    if (!body) throw new Error('no body');
+    const edgeRef = engine.reference(body.id, 'edge', ids.indexOf(want));
+    const chamfer = feature(
+      'C',
+      'chamfer',
+      chamferInputs([{ edges: [edgeRef as GeomRef], distance: '6 mm' }]),
+    );
+    const second = ok(await run([sq.feature, box, chamfer]));
+    const faces = second.bodies[0]?.mesh?.faceIds ?? [];
+    const slope = faces.find((f) => f.includes('chamfer'));
+    const [plane, above] = offsetPlane('P', XY, '30 mm');
+    const p = rectangle('SK', above, [-5, -9, 10, 3]);
+    const result = ok(
+      await run([
+        sq.feature,
+        box,
+        chamfer,
+        plane,
+        p.feature,
+        emboss([p.profile], { kind: 'face', id: slope as string }, { tangent: true }),
+      ]),
+    );
+    // The chamfered box (8000 − 360) and the 10 × 3 mm pad, 1 mm out of the slope.
+    expect(off(shapeOf('B:0').volume, 7640 + 30)).toBeLessThan(1e-9);
+    expect(faceNames(result, 'B:0').length).toBeGreaterThan(7);
   });
 });
