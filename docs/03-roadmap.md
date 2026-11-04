@@ -1236,7 +1236,12 @@ end to end, faster than in established desktop CAD.
   STEP reader gives them, and a straight seam runs through its vertices: 1
   of the corpus's round trips fails at Auto (6 before: five failed on the
   1e-4 volume rule alone; gear-bearing-5 is left, 0.99980; ADR-0097's
-  2026-11-04c amendment).
+  2026-11-04c amendment). *2026-11-04d:* a mesh edge whose straight pcurve
+  strays far from its chord gets the chord's image: every corpus round trip
+  passes at Auto, facets 14,003 → 13,958 (makita-vacuum-holder 2,516 → 2,486,
+  micro-sd-keyring-inner 18 → 3). Left: makita's unfit fillet network (about
+  2,090 facets) and its 18 cone fits on fillet patches (ADR-0097's
+  2026-11-04d amendment).
 
 ## Phase 5 — Programmatic design (→ v0.6)
 

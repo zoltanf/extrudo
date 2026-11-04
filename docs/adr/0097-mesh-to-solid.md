@@ -3815,3 +3815,59 @@ round-trips (2026-11-04c)": a 24-segment sphere with a box's corner through it, 
 main (a noisy cone band read back exact), so spool-nut-v4.1 pins it in the sweep. The OCCT input hash went
 `700b080c6fb2` → `2093b9db170f` (CI 41785913256). Probes and tables: `docs/plans/m2s-exploded-q1-2026-11-01.md`,
 "Run 6".
+
+### Amendment, 2026-11-04d: a mesh edge far from its straight pcurve gets its chord's image (makita-vacuum-holder's facets)
+
+**Where makita-vacuum-holder's facets come from** (3,334 faces, 2,516 facets at Auto, T 0.05; spike `Q26=1`, `Q25=1`,
+`UNFIT=1` on the kernel-staged mesh):
+
+| source | regions | triangles | why |
+|---|---|---|---|
+| one unfit surface (no fit) | 1,481 (about 2 triangles each) | 3,106 (707.6 mm², 1.45 % of the area) | a connected fillet network that borders more than two surfaces; as a whole it fails the rolling-ball test on coverage (16 % of its outline on two planes), and its two-plane sub-bands lie a median 4–7 T off their rolling-ball cylinders |
+| exploded: cones | 18 | 312 | "edge tolerance" 1.18–3.53 mm: fillet patches fitted as cones, crossed by chords up to 14 mm long |
+| exploded: tori | 4 | 96 | "edge tolerance" 1.36–4.25 mm |
+| exploded: a plane | 1 | 16 | "its outer loop runs the wrong way" |
+
+The coordinator's belief holds in part: the network (about 2,090 of the facets) is fillets that no fit takes; the
+cone fits on fillet patches are 18 regions. The network needs fitting of its own (fillet networks and their corner
+blends, beyond slice D10's rolling-ball bands): not this slice.
+
+**The next source: edge tolerance.** A hybrid mesh edge's pcurve was straight in the chart's (u, v) between its nodes;
+on a thin fillet's cone or torus its image strays up to 3.5 mm from the chord, over `HYBRID_EDGE_TOLERANCE_MAX`
+(1 mm), so the region explodes.
+
+**Rule.** A mesh edge of a curved region whose straight pcurve strays from its chord by more than 1.5 T (what a
+collapsed chain's straight pcurve may) gets the chart's image of the chord instead (`chordPcurve`: 17 points along the
+chord through `MeshChart::uv`, continuous across periods, the ends' offsets blended so it ends at its nodes' chart
+parameters, interpolated over the chord's length), when that strays less; the edge's tolerance follows the pcurve it
+keeps.
+
+**Results** (the sweep, `TOL=auto`, 41 files, against `baseline-2026-11-04c-round-trip-auto.jsonl`, written to
+`baseline-2026-11-04d-chord-pcurves-auto.jsonl`; 63 passed, 1 skipped; totals recomputed from the JSONL; another job's
+tests ran on the machine, so the times are not comparable):
+
+    2026-11-04c round trip:     files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24693, prismatic facets 14003, prismatic ms 221681, faceted ms 109408, round trips failed 1
+    2026-11-04d chord pcurves:  files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24650, prismatic facets 13958, prismatic ms 227361, faceted ms 112500, round trips failed 0
+
+| file | faces | facets | Auto step | round trip (passes, read-back faces, volume ratio) | ms |
+|---|---|---|---|---|---|
+| own/phone-stand-foldable | 868 → 868 | 287 → 287 | 0.1 | yes, 868, 0.999966 → yes, 868, 0.999989 | 4921 → 5832 |
+| third-party/gear-bearing-5 | 2304 → 2304 | 1418 → 1418 | 0.1 | no, 2304, 0.999802 → yes, 2304, 0.999921 | 14800 → 15040 |
+| third-party/makita-vacuum-holder | 3334 → 3306 | 2516 → 2486 | 0.05 | yes, 3334, 0.999998 → yes, 3306, 0.999997 | 10412 → 10434 |
+| third-party/micro-sd-keyring-inner | 66 → 51 | 18 → 3 | 0.01 | yes, 66, 1.000000 → yes, 51, 1.000000 | 2350 → 2610 |
+
+makita's facets go down by 30 only: 2 of its tori build now, while its 18 cones still need 1.18–3.42 mm with the
+chord's own image, so those chords really lie that far from the fitted cone (a fit question: a torus, not a cone, is
+the fillet patch's surface). Every corpus file's round trip passes at Auto now: gear-bearing-5 0.999802 → 0.999921 (not probed face by face).
+
+**Not tried, and why.** The image for every curved mesh edge: the straight pcurve is kept within 1.5 T, as a
+chain's is. The chord's orthogonal projection (`ShapeFix_Edge::FixAddPCurve`, as `pcurvesAsRead` uses): its ends are
+the nodes' orthogonal projections, not their chart parameters where the face's other pcurves end (a cone's chart
+projects radially), so the face's outline would open in (u, v) at such nodes, the gap 2026-11-04c's seam rule closes.
+
+Test: `mesh-to-solid.test.ts` "gives a mesh edge that strays far from its straight pcurve the chord’s own image, so
+a coarse ball round-trips (2026-11-04d)": an 8-segment ball r 2 with a box's corner through it, beside
+`bossWithBump`, at 0.05 mm (2026-11-04c's facade: read back valid, 120 faces, ratio 1.00035; now 1.0000004, spike).
+No synthetic mesh tried made a region explode for edge tolerance (coarse tori 8 × 8 and 12 × 6, a sphere's pole under
+a box, a twisted cone band, a coarse filleted hole: none), so makita and micro-sd-keyring-inner pin the facets in the
+sweep. The OCCT input hash went `2093b9db170f` → `b3019374ded4` (CI 41795467145). Tables: `docs/plans/m2s-exploded-q1-2026-11-01.md`, "Run 6".

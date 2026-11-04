@@ -1061,3 +1061,36 @@ with a small sphere on it, a coarse donut, a 12-sided torus with a box, a noisy 
 With the facade's fix the 24-segment sphere reads back at 1.0000000.
 
 Sweep: ADR-0097's 2026-11-04c amendment (round trips failed 6 → 1; no face or facet moves).
+
+### Slice 2: makita-vacuum-holder's facets
+
+Spike case `f` at Auto with `Q26=1` (exploded regions), `Q25=1 Q25ONLY=1` (unfit bands) and `UNFIT=1` at 0.05 (the
+unfit surfaces), the kernel-staged mesh:
+
+    rebuild hybrid, facets 2516, tolerance 0.05, exploded 23, pl/cy/co/sp/to 557/237/6/12/6
+    unfit surface 641: 1481 regions, 3106 triangles, 1815 nodes, area 707.59 (1.4491 %), thinnest triangle 0.10283, longest edge 14.07, dev 3.0492
+    q25 step 0.05: unfit share 1.4491 % (1 surfaces, 3106 triangles), bands 1301; pass unfit 0 bands / 0 tris
+    q25 band T 0.05 unfit surface 641 tris 3106 … class ff? test coverage cover 0.1562 … dev/T p50 217.2 … pass 0
+    q25 band T 0.05 sub surface 641 tris 229 … class ff? test coverage cover 0.1389 … dev/T p50 7.353 p75 10.95 … pass 0
+    q25 band T 0.05 sub surface 641 tris 87 … class ff? test coverage cover 0.1795 … dev/T p50 4.505 p75 6.33 … pass 0
+
+Exploded regions (`q26 region`, by kind and reason): cone "edge tolerance" 18 regions / 312 triangles (1.18–3.53 mm),
+torus "edge tolerance" 4 / 96 (1.36–4.25 mm), plane "its outer loop runs the wrong way" 1 / 16.
+
+With the chord's image as pcurve (a copy of the facade, `FACADE=`), the same run: cone "edge tolerance" 18 / 312
+(1.18–3.42 mm), torus 2 / 62, plane 1 / 16; makita 3306 faces, 2486 facets. Spike case `V`, the same build, against
+2026-11-04c's (round-trip ratio):
+
+| file | 2026-11-04c | chord images |
+|---|---|---|
+| third-party/makita-vacuum-holder | 3334 / 2516, 0.999998 | 3306 / 2486, 0.999997 |
+| third-party/micro-sd-keyring-inner | 66 / 18, 1 | 51 / 3, 1 |
+| third-party/gear-bearing-5 | 0.999802 | 0.999921 |
+| own/phone-stand-foldable | 0.999966 | 0.999989 |
+| synthetic: 8-segment ball r 2, box corner, `bossWithBump`, 0.05 | 120 faces, 1.00035 | 120 faces, 1.0000004 |
+
+Synthetic candidates that changed nothing (no region exploded for edge tolerance in either build): coarse tori 8 × 8
+(R 10, r 1.5) and 12 × 6 (R 12, r 1), a 12-segment sphere's pole under a box, a twisted 16-sided cone band, a plate
+with a 12-sided hole, each at 0.05 and 0.1 mm.
+
+Sweep: ADR-0097's 2026-11-04d amendment (facets 14,003 → 13,958, round trips failed 1 → 0).
