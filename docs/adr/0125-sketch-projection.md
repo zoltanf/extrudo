@@ -148,3 +148,26 @@ unchanged.
   the moment the source sketch changes; "Keep linked" off already gives it.
 - **Exact spline transfer through projected poles:** exact only for parallel planes and the
   same knot vector; the fitted route is uniform with silhouettes and within 1 µm.
+
+## Amendment 1 (2026-11-04): a faint preview of what can be snapped
+
+The owner tried Auto-project Sketches on edge and saw nothing happen: nothing is projected
+until the pointer finds a curve, and nothing showed where the earlier sketch's curves would
+land. Now, **while a drawing tool runs** and the Sketches switch is on, the curves of the
+earlier sketches (`carriedSegments` in `apps/web/src/viewport/sketchGeometry.ts`) are drawn on
+the open sketch's plane, flattened along its normal, thin, dashed and at half the construct
+colour's opacity (`CarriedCurves` in `viewport/Sketches.tsx`). Nothing is added to the
+sketch until a snap. The carried copy is where the pointer aims, so `sketchSnapAt` also offers
+an earlier sketch's point or curve whose carried copy lies within the snap tolerance of the
+cursor (in the open sketch's plane, cached per sketch data and frame), besides the one under
+the pointer where the source is drawn; a point still wins over a curve, the nearest wins.
+Before this, in a perspective view the copy and the source sit apart on screen and only the
+source snapped. Left out of the preview: a text (it
+never projects), a segment already in the plane (its own sketch draws it), later sketches,
+and everything while no drawing tool runs or the switch is off. The view reports the segment
+count as `data-carried-curves`.
+
+**Rejected:** projecting every earlier curve when a sketch opens (clutters the sketch with
+geometry the user may not want, and adds fixed entities the solver carries); showing the
+preview whenever the sketch is open (with the selection tool there is nothing to snap, so it
+is noise).

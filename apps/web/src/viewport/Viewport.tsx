@@ -117,8 +117,9 @@ import {
 import { pickableBodies, posedSummary } from './posedBodies';
 import { createRenderMeter } from './renderMeter';
 import { SectionBoxWire } from './SectionBoxWire';
-import { Sketches } from './Sketches';
+import { CarriedCurves, Sketches } from './Sketches';
 import {
+  carriedSegments,
   type SketchDrawing,
   sketchSegments,
   textBoundsSummary,
@@ -552,6 +553,16 @@ export function Viewport({
       },
     [viewport, modelScene, earlierSketches],
   );
+  // Auto-project Sketches' preview (ADR-0125, amendment 1): while a drawing
+  // tool runs, the earlier sketches' curves show faintly on the open sketch's plane.
+  const autoProjectSketches = useStore(viewport, (s) => s.autoProjectSketches);
+  const carried = useMemo(
+    () =>
+      sketchPlane && sketchInput?.modelSnap && autoProjectSketches
+        ? carriedSegments(sketches, sketchPlane)
+        : undefined,
+    [sketches, sketchPlane, sketchInput?.modelSnap, autoProjectSketches],
+  );
   // A dialog's preview of a canvas replaces the canvas it edits (P4-06).
   const drawnCanvases = useMemo(
     () => (preview?.canvas ? [...canvases, preview.canvas] : canvases),
@@ -642,6 +653,7 @@ export function Viewport({
       data-sketches={sketches.map((s) => s.id).join(' ')}
       data-sketch-frames={sketchFramesSummary(sketches)}
       data-sketch-projected={sketchProjectedSummary(sketches)}
+      data-carried-curves={carried && carried.length > 0 ? carried.length / 6 : undefined}
       data-text-bounds={textBoundsSummary(sketches)}
       data-highlight={sketches.find((s) => s.highlight)?.id}
       data-model-selection={modelSelect ? selectionKey(selection) : undefined}
@@ -735,6 +747,7 @@ export function Viewport({
               meta={meta}
               sketches={sketches}
               sketchPlane={sketchPlane}
+              carried={carried}
               planePicker={planePicker}
               hover={hover}
               selection={selection}
@@ -896,6 +909,7 @@ function Scene({
   meta,
   sketches,
   sketchPlane,
+  carried,
   planePicker,
   hover,
   selection,
@@ -920,6 +934,7 @@ function Scene({
   meta: Record<BodyId, BodyMeta>;
   sketches: readonly SketchDrawing[];
   sketchPlane: SketchFrame | undefined;
+  carried: Float32Array | undefined;
   planePicker: PlanePicker | undefined;
   hover: SelectionItem | undefined;
   selection: readonly SelectionItem[];
@@ -1104,6 +1119,13 @@ function Scene({
           projected={colors.sketchProjected}
           clip={previewPlanes}
         />
+        {carried && (
+          <CarriedCurves
+            store={viewport}
+            positions={carried}
+            color={{ ...colors.sketchProjected, a: colors.sketchProjected.a * 0.5 }}
+          />
+        )}
       </group>
       <Grid
         store={viewport}

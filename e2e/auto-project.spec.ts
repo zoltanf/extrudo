@@ -426,6 +426,7 @@ test("a circle's centre snaps to an earlier sketch's centre point (ADR-0125)", a
   // Off: the click lands on the grid, with no projection and no constraint.
   await switch_.uncheck();
   await page.keyboard.press('c');
+  await expect(viewport).not.toHaveAttribute('data-carried-curves');
   await page.mouse.click(on(20.4, 0.3).x, on(20.4, 0.3).y);
   await page.mouse.click(on(26, 0).x, on(26, 0).y);
   await page.keyboard.press('Escape');
@@ -435,7 +436,10 @@ test("a circle's centre snaps to an earlier sketch's centre point (ADR-0125)", a
 
   // On: the circle's centre snaps to Sketch1's circle centre, held on the projection.
   await switch_.check();
+  // Amendment 1: no tool, no preview; a drawing tool shows Sketch1's circle faintly on this plane.
+  await expect(viewport).not.toHaveAttribute('data-carried-curves');
   await page.keyboard.press('c');
+  await expect(viewport).toHaveAttribute('data-carried-curves', /^[1-9]\d*$/);
   await page.mouse.move(on(20.4, 0.3).x, on(20.4, 0.3).y);
   await page.mouse.click(on(20.4, 0.3).x, on(20.4, 0.3).y);
   await page.mouse.move(on(26, 0).x, on(26, 0).y);

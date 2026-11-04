@@ -321,6 +321,25 @@ describe('sketch snaps (ADR-0125)', () => {
     expect(sketchSnapAt(scene, camera, FRAME, at, [5, 0], new Set())).toBeUndefined();
   });
 
+  it("offers a curve near the cursor through its carried copy, off the source's screen spot (amendment 1)", () => {
+    const { camera } = setup();
+    const scene = sketchScene({
+      ['p0' as SketchEntityId]: { type: 'point', x: 0, y: 0 },
+      ['c1' as SketchEntityId]: { type: 'circle', center: 'p0', radius: 5, construction: false },
+    } as SketchData['entities']);
+    // The pointer is on the open sketch's (5.3, 0), not on the source circle 10 mm above.
+    const at = screen(camera, [5.3, 0, 0]);
+    expect(sketchSnapAt(scene, camera, FRAME, at, [5.3, 0], earlier)).toBeUndefined();
+    const snap = sketchSnapAt(scene, camera, FRAME, at, [5.3, 0], earlier, 0.5);
+    expect(snap).toMatchObject({ kind: 'sketchCurve', ref: { id: 'Sk1/c1' } });
+    expect(snap?.point[0]).toBeCloseTo(5, 1);
+    // The centre point is nearer than the tolerance only near the origin, and wins over the curve there.
+    expect(sketchSnapAt(scene, camera, FRAME, at, [0.2, 0.1], earlier, 0.5)?.kind).toBe(
+      'sketchPoint',
+    );
+    expect(sketchSnapAt(scene, camera, FRAME, at, [2.5, 0], earlier, 0.5)).toBeUndefined();
+  });
+
   it('the preference off leaves a body vertex offered but no sketch snap', () => {
     const { viewport, camera } = setup();
     const mesh = body();

@@ -4065,4 +4065,10 @@ sketch kind so `place`'s `ModelAttachment.kind` is `sketchPoint`/`sketchCurve`,
 and the host resolves through `projectionCurve(projection, kind)` (the kernel
 key is `point`/`curve`, not the kind). The palette's "View & project" becomes "View" and
 "Auto-project" (a Bodies | Sketches row and the Face outline switch); the app menu's toggle is
-"Auto-project sketch curves". Intersect and the f3d importer are unchanged.
+"Auto-project sketch curves". Intersect and the f3d importer are unchanged. **Amendment 1**
+(2026-11-04): while a drawing tool runs (`sketchInput.modelSnap`) and `autoProjectSketches` is on,
+`carriedSegments` (`viewport/sketchGeometry.ts`) flattens the earlier sketches' curves onto the
+open sketch's plane and `CarriedCurves` (`viewport/Sketches.tsx`) draws them thin, dashed and
+faint (no text, no segment already in the plane; `data-carried-curves` is the segment count);
+`sketchSnapAt` also offers an earlier entity whose carried copy lies within the snap tolerance of
+the cursor, so the faint copy is what the pointer snaps to.

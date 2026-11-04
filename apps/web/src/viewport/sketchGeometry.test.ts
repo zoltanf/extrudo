@@ -5,6 +5,7 @@ import { textSketch } from '../sketch/textTesting';
 import {
   boundsOfPositions,
   CIRCLE_SEGMENTS,
+  carriedSegments,
   curveSegments,
   profileTriangles,
   sketchSegments,
@@ -440,5 +441,62 @@ describe('textBoundsSummary (P4-03)', () => {
     };
     expect(Math.abs(mid(centre))).toBeLessThan(1);
     expect(mid(left)).toBeGreaterThan(1);
+  });
+});
+
+describe('carriedSegments (ADR-0125, amendment 1)', () => {
+  const xy = frame('origin:xy');
+  const raised: SketchFrame = { ...xy, origin: [0, 0, 20] };
+  const line = sketch({
+    a: { type: 'point', x: 1, y: 2 },
+    b: { type: 'point', x: 4, y: 6 },
+    l: { type: 'line', start: 'a', end: 'b', construction: false },
+  });
+  const drawing = (id: string, f: SketchFrame, data: SketchData, active = false) => ({
+    id,
+    frame: f,
+    data,
+    active,
+  });
+
+  it("flattens an earlier sketch's curves onto the open sketch's plane", () => {
+    const out = carriedSegments(
+      [drawing('s1', xy, line), drawing('s2', raised, sketch({}), true)],
+      raised,
+    );
+    expect(pairs(out)).toEqual([
+      [1, 2, 20],
+      [4, 6, 20],
+    ]);
+  });
+
+  it('a tilted source lands in the plane along its normal', () => {
+    // On XZ the line runs (1,0,2)→(4,0,6); flattened onto z = 20 it keeps x and y.
+    const out = carriedSegments(
+      [drawing('s1', frame('origin:xz'), line), drawing('s2', raised, sketch({}), true)],
+      raised,
+    );
+    expect(pairs(out)).toEqual([
+      [1, 0, 20],
+      [4, 0, 20],
+    ]);
+  });
+
+  it('leaves out later sketches, a coplanar one and a text', () => {
+    const text = textSketch();
+    const out = carriedSegments(
+      [
+        drawing('same', raised, line),
+        drawing('t', xy, text),
+        drawing('s2', raised, sketch({}), true),
+        drawing('later', xy, line),
+      ],
+      raised,
+    );
+    expect(out).toHaveLength(0);
+  });
+
+  it('is empty without an open sketch', () => {
+    expect(carriedSegments([drawing('s1', xy, line)], raised)).toHaveLength(0);
   });
 });
