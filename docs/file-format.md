@@ -1313,7 +1313,9 @@ Puts sketch profiles or text **onto** a face of a body and joins them on
 sketching on the face and extruding out or in, done in one step from a sketch
 anywhere in a parallel plane. It makes no body of its own: the body that owns
 `face` is the only body it touches, and a pattern or mirror can repeat it as a
-feature (6.16). No new keys.
+feature (6.16). The one key added since P4-04 is `tangent`: an older Extrudo
+ignores it with its unknown-input warning and computes the emboss without
+folding the profiles, so it may refuse the sketch.
 
 | Input | Kind | Required | Rule |
 |---|---|---|---|
@@ -1321,6 +1323,7 @@ feature (6.16). No new keys.
 | `face` | `ref` | yes | One ref of kind `face`: the face to emboss on (a flat face; a cylinder or a cone needs the sketch parallel to its axis; any other face takes the profiles projected along the sketch's normal, P4-12). Missing: an error until picked |
 | `depth` | `expr` | no | Length, greater than 0; default 1 mm. How far the letters stand out (`emboss`) or go in (`deboss`) |
 | `mode` | `enum` | no | `emboss` (default: joins material outwards) or `deboss` (cuts inwards) |
+| `tangent` | `bool` | no | Default false. Lay the profiles on the face first, as if sketched on its tangent plane straight in front of them: any sketch angle, the letters read the right way round from outside (P4-12, ADR-0060 B2) |
 
 The profiles are moved onto the face's plane (a translation along the face's
 outward normal) and swept `depth` along it (emboss) or against it (deboss),
@@ -1332,7 +1335,11 @@ Since P4-12 (ADR-0060's amendment) the kernel also wraps the profiles round a
 **cone** like a cylinder, and **projects** them onto any other face (a sphere,
 a torus, a free-form face) along the sketch's normal, refusing profiles that
 reach past the face's edge or outline as seen from the sketch; a wrap may run up
-to a whole turn. The method is chosen from the face, not stored: no new keys.
+to a whole turn. With `tangent` the profiles are first laid on the face as if
+sketched on its tangent plane straight in front of them (the line through their
+area centroid along the sketch's normal, the nearest hit, then a fold onto the
+face's outward normal there), and the face's method runs on the laid profiles.
+The method is chosen from the face, not stored.
 
 Names: the prism's own names under `emboss:<feature id>` — `…:cap:start` (on
 the face's plane) and `…:cap:end`, and `…:side:<source>` for each sketch curve

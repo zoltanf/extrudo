@@ -404,10 +404,11 @@ first laid on the face; then the face's method runs as today.
    Distance doesn't matter. No hit: "Tangent to the face needs the face in
    front of the profiles: the line through their centre along the sketch's
    normal misses it."
-2. **Fold**: the smallest turn that takes the sketch's normal to the face's
-   outward normal at the anchor, about the centroid, then a move of the
-   centroid onto the anchor. When the two normals are opposite, a half turn
-   about the sketch's own up direction (its frame's y), so up stays up.
+2. **Fold**: about the centroid, the smallest turn that takes the sketch's normal to
+   the face's outward normal at the anchor, then a move of the centroid onto the
+   anchor. A sketch facing away from the face (the two normals more than 90° apart)
+   first turns over about its own up direction (its frame's y), so up stays up and a
+   sketch straight under a face doesn't land upside down at a slight tilt.
 3. **Method** from the laid profiles: moved (flat), wrapped (cylinder; a cone
    through B1), or projected along the face's normal at the anchor (any other
    face; the profiles are moved out by depth + 1 mm along it first, so that

@@ -1265,8 +1265,18 @@ normal at 90° ± α to the axis), turned about `across` through the profiles'
 centroid until the plane runs along the axis first (`rollOntoAxis`); any other
 plane is refused with "Sketch on a plane parallel to the cone's axis, or to one
 of its tangent planes, to emboss on a round face." A wrap may run up to a whole
-turn ("The profile is wider than the face's circumference."); "tangent to the
-face" and several faces stay deferred. Native
+turn ("The profile is wider than the face's circumference."); several faces
+stay deferred. With `tangent` (a `bool` input, default off) the profiles are
+laid on the face first (`layTangent`): the anchor is the nearest `faceHit` of
+the line through their area centroid along the sketch's normal (a tie goes the
+way the normal points; no hit is "Tangent to the face needs the face in front
+of the profiles: the line through their centre along the sketch's normal misses
+it."), they fold about the centroid onto the face's outward normal there (a
+sketch facing away turns over about the sketch's up first, so up stays up), and
+the face's method runs on the laid profiles — a projected face moves them out
+by depth + 1 mm along the normal first. The report gains `anchor` (origin,
+normal) for the dialog's arrow; with `tangent` off the golden table stays
+byte-identical. Native
 harness `spikes/p4-12-emboss-faces/`. The second amendment's facade (2026-11-04): `faceHit` (the line's hit with the bounded face nearest the point either way, a tie the way the line points, and the outward normal there; `Kernel.faceHit` is `undefined` on a miss), `faceSlab` (a face's simple-offset slab, history `first`/`last` from the face and `generated` from each of its edges by the edge's index in the body) and `projectOnFace`'s last argument `clip` (no past-the-edge refusals, a partial sphere or torus takes the simple offset, walls of the slab get no history; with `clip` false every result must stay byte-identical). The tool is `emboss`, a tile of Solid ›
 Features (ADR-0079), no key; `e2e/emboss.spec.ts` covers both kinds of face
 in both modes. Native harness: `spikes/p4-04-harness/`.

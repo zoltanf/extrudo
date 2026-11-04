@@ -24,6 +24,7 @@ a valid feature.
 | `face` | `GeomRef \| GeomRef[]` (`face`) | optional | The face to emboss on: the body that owns it is the only body touched. |
 | `depth` | `string \| number \| ParameterHandle` | optional | How far the letters stand out or go in; a length greater than 0. |
 | `mode` | `'emboss' \| 'deboss'` | default `emboss` | Emboss joins material outwards, deboss cuts inwards. |
+| `tangent` | `boolean` | default `false` | Lay the profiles on the face first, as if sketched on its tangent plane straight in front of them: any sketch angle, the letters read the right way round from outside. |
 
 ## Faces
 

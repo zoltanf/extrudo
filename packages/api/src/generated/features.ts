@@ -1234,6 +1234,7 @@ export interface FeatureMethods {
    * @param inputs.face The face to emboss on: the body that owns it is the only body touched.
    * @param inputs.depth How far the letters stand out or go in; a length greater than 0.
    * @param inputs.mode Emboss joins material outwards, deboss cuts inwards. Default emboss.
+   * @param inputs.tangent Lay the profiles on the face first, as if sketched on its tangent plane straight in front of them: any sketch angle, the letters read the right way round from outside. Default false.
    *
    * The faces it makes, as `handle.face(role)` takes them:
    * - `cap:start` — The face the sweep starts at: the profile in its own place.

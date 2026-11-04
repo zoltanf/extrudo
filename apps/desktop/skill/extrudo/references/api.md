@@ -194,6 +194,7 @@ Faces: `cap:start` (The face the sweep starts at: the profile in its own place);
 | `face` | `GeomRef \| GeomRef[]` (`face`) | optional | The face to emboss on: the body that owns it is the only body touched. |
 | `depth` | `string \| number \| ParameterHandle` | optional | How far the letters stand out or go in; a length greater than 0. |
 | `mode` | `'emboss' \| 'deboss'` | default `emboss` | Emboss joins material outwards, deboss cuts inwards. |
+| `tangent` | `boolean` | default `false` | Lay the profiles on the face first, as if sketched on its tangent plane straight in front of them: any sketch angle, the letters read the right way round from outside. |
 
 Faces: `cap:start` (The face the sweep starts at: the profile in its own place); `cap:end` (The face the sweep ends at); `side:<curve>` (A wall, one per edge of the profile: the sketch curve it came from, or the body edge it was swept from).
 

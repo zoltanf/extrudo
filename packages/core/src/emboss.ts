@@ -16,7 +16,15 @@
 import { SWEEP_FACE_ROLES } from './face-roles';
 import { enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
-import type { ExprInput, GeomRef, GeomRefKind, RefInput, UnitKind } from './schema';
+import {
+  BoolInputSchema,
+  type ExprInput,
+  type GeomRef,
+  type GeomRefKind,
+  type RefInput,
+  type UnitKind,
+} from './schema';
+import type { Vec3 } from './sketch/planes';
 import { z } from './zod';
 
 export const EMBOSS_TYPE = 'emboss';
@@ -54,6 +62,10 @@ export const EmbossInputsSchema = z.strictObject({
   mode: enumInput(EMBOSS_MODES)
     .optional()
     .describe('Emboss joins material outwards, deboss cuts inwards. Default emboss.'),
+  /** Default false. */
+  tangent: BoolInputSchema.optional().describe(
+    'Lay the profiles on the face first, as if sketched on its tangent plane straight in front of them: any sketch angle, the letters read the right way round from outside. Default false.',
+  ),
 });
 export type EmbossInputs = z.infer<typeof EmbossInputsSchema>;
 
@@ -76,6 +88,8 @@ export interface EmbossSettings {
   /** The `expr` input holding the depth, if there is one (else `EMBOSS_DEFAULT_DEPTH`). */
   depth?: 'depth';
   mode: EmbossMode;
+  /** Whether the profiles are laid on the face first (ADR-0060's second amendment B2). */
+  tangent: boolean;
 }
 
 /** Reads an emboss's (valid) inputs with their defaults. */
@@ -86,12 +100,14 @@ export function embossSettings(inputs: EmbossInputs): EmbossSettings {
     ...(face ? { face } : {}),
     ...(inputs.depth ? { depth: 'depth' as const } : {}),
     mode: inputs.mode?.value ?? 'emboss',
+    tangent: inputs.tangent?.value ?? false,
   };
 }
 
 export interface EmbossInputOptions {
   depth?: string;
   mode?: EmbossMode;
+  tangent?: boolean;
 }
 
 /**
@@ -109,6 +125,7 @@ export function embossInputs(
   const inputs: EmbossInputs = { profiles: refs(profiles), face: refs([face]) };
   if (options.depth !== undefined) inputs.depth = expr(options.depth, 'length');
   if (options.mode) inputs.mode = { kind: 'enum', value: options.mode };
+  if (options.tangent !== undefined) inputs.tangent = { kind: 'bool', value: options.tangent };
   return inputs;
 }
 
@@ -125,6 +142,11 @@ export type EmbossMethod = (typeof EMBOSS_METHODS)[number];
 export interface EmbossReport {
   kind: 'emboss';
   method: EmbossMethod;
+  /**
+   * With `tangent`: where the profiles were laid and the face's outward normal
+   * there, for the dialog's arrow.
+   */
+  anchor?: { origin: Vec3; normal: Vec3 };
 }
 
 export function isEmbossReport(report: unknown): report is EmbossReport {

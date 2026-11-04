@@ -12,6 +12,7 @@ import {
   type EmbossInputOptions,
   type EmbossReport,
   embossInputs,
+  extrudeInputs,
   type Feature,
   type FeatureId,
   FeatureRegistry,
@@ -93,7 +94,9 @@ type Done = Extract<RecomputeResult, { status: 'done' }>;
 
 const XY = originPlaneRef('origin:xy');
 const XZ = originPlaneRef('origin:xz');
+const YZ = originPlaneRef('origin:yz');
 const AXIS_Z = { kind: 'axis', id: 'origin:z' } as const;
+const AXIS_X = { kind: 'axis', id: 'origin:x' } as const;
 
 const refs = (list: GeomRef[]) => ({ kind: 'ref' as const, refs: list });
 const length = (expr: string) => ({ kind: 'expr' as const, expr, unit: 'length' as const });
@@ -493,6 +496,200 @@ describe('emboss more than half way round a cylinder', { timeout: 300_000 }, () 
     expect(status(result, 'EM')).toMatchObject({
       status: 'error',
       message: "The profile is wider than the face's circumference.",
+    });
+  });
+});
+
+// ------------------------------------------------- tangent to the face (S3)
+
+const SQRT_HALF = Math.SQRT1_2;
+/** The largest componentwise difference of two vectors. */
+const apart = (a: readonly number[], b: readonly number[]) =>
+  Math.max(...a.map((x, i) => Math.abs(x - (b[i] as number))));
+const angle = (expr: string) => ({ kind: 'expr' as const, expr, unit: 'angle' as const });
+
+/**
+ * A 40 mm prism extruded along +X from a YZ sketch: (0,0) → (40,0) → (40,10) →
+ * (30,20) → (0,20), so the slanted 45° chamfer's face is `extrude:E:side:<slant>`
+ * (outward normal (0, √½, √½)). Body volume 30000.
+ */
+function chamferBody(): { features: Feature[]; chamfer: GeomRef; slant: string } {
+  const b = new SketchBuilder();
+  b.line(0, 0, 40, 0);
+  b.line(40, 0, 40, 10);
+  const slant = b.line(40, 10, 30, 20).id;
+  b.line(30, 20, 0, 20);
+  b.line(0, 20, 0, 0);
+  const [found] = detectProfiles(b.sketch);
+  if (!found) throw new Error('no profile');
+  return {
+    features: [
+      sketch('EK', b.sketch, YZ),
+      feature('E', 'extrude', extrudeInputs([profileOf('EK', found.id)], { distance: '40 mm' })),
+    ],
+    chamfer: { kind: 'face', id: `extrude:E:side:${slant}` },
+    slant,
+  };
+}
+
+describe('emboss tangent to the face', { timeout: 300_000 }, () => {
+  it('folds a level sketch onto a 45° chamfer, out and in', async () => {
+    const body = chamferBody();
+    const [plane, above] = offsetPlane('P', XY, '30 mm');
+    const p = rectangle('SK', above, [15, 33, 10, 4]);
+    // Tangent off: a flat face refuses a sketch that isn't parallel to it.
+    expect(
+      status(
+        await run([...body.features, plane, p.feature, emboss([p.profile], body.chamfer)]),
+        'EM',
+      ),
+    ).toMatchObject({
+      status: 'error',
+      message: 'Sketch on a plane parallel to the face to emboss on a flat face.',
+    });
+    for (const mode of ['emboss', 'deboss'] as const) {
+      const result = ok(
+        await run([
+          ...body.features,
+          plane,
+          p.feature,
+          emboss([p.profile], body.chamfer, { mode, tangent: true }),
+        ]),
+      );
+      const shape = shapeOf('E:0');
+      const want = 30000 + (mode === 'emboss' ? 40 : -40);
+      expect(off(shape.volume, want)).toBeLessThan(1e-9);
+      expect(shape.valid).toBe(true);
+      expect(shape.solids).toBe(1);
+      const report = seen.get('EM')?.report;
+      expect(report?.method).toBe('moved');
+      const anchor = report?.anchor;
+      if (!anchor) throw new Error('no anchor');
+      const wantOrigin = [20, 35, 15];
+      expect(apart(anchor.origin, wantOrigin)).toBeLessThan(1e-9);
+      const wantNormal = [0, SQRT_HALF, SQRT_HALF];
+      expect(apart(anchor.normal, wantNormal)).toBeLessThan(1e-9);
+      const data = seen.get('EM')?.data as EmbossOutputData;
+      expect(apart(data.origin, wantOrigin)).toBeLessThan(1e-9);
+      const names = faceNames(result, 'E:0');
+      expect(names).toContain('emboss:EM:cap:end');
+      for (const line of p.lines) expect(names).toContain(`emboss:EM:side:${line}`);
+      expect(new Set(names).size).toBe(names.length);
+    }
+  });
+
+  it('reads the right way round from below, and the bar stays up', async () => {
+    const b = new SketchBuilder();
+    b.line(0, 0, 6, 0);
+    b.line(6, 0, 6, 2);
+    b.line(6, 2, 2, 2);
+    b.line(2, 2, 2, 8);
+    b.line(2, 8, 0, 8);
+    b.line(0, 8, 0, 0);
+    const [found] = detectProfiles(b.sketch);
+    if (!found) throw new Error('no profile');
+    const profile: GeomRef = { kind: 'profile', id: `SK/${found.id}` };
+    const [plane, above] = offsetPlane('P', XY, '10 mm');
+    const square = rectangle('Q', above, [-20, -20, 40, 40]);
+    const extrude = feature('B', 'extrude', extrudeInputs([square.profile], { distance: '20 mm' }));
+    const bottom: GeomRef = { kind: 'face', id: 'extrude:B:cap:start' };
+    const base = [plane, square.feature, extrude, sketch('SK', b.sketch, XY)];
+    // Tangent off: the letters read mirrored from below.
+    ok(await run([...base, emboss([profile], bottom)]));
+    const plain = shapeOf('B:0');
+    expect(off(plain.volume, 32000 + 24)).toBeLessThan(1e-9);
+    expect(solidAt(plain.shape, [5, 1, 9.5])).toBe(true);
+    expect(solidAt(plain.shape, [-1, 1, 9.5])).toBe(false);
+    // Tangent on: the L folds over about its up, so it reads right from below.
+    ok(await run([...base, emboss([profile], bottom, { tangent: true })]));
+    const shape = shapeOf('B:0');
+    expect(off(shape.volume, 32000 + 24)).toBeLessThan(1e-9);
+    expect(solidAt(shape.shape, [-1, 1, 9.5])).toBe(true);
+    expect(solidAt(shape.shape, [5, 1, 9.5])).toBe(false);
+    expect(solidAt(shape.shape, [3, 7, 9.5])).toBe(true);
+  });
+
+  it('folds a sketch tilted to the cylinder’s axis and wraps it', async () => {
+    const tilt = feature('P', 'planeAtAngle', {
+      axis: refs([AXIS_X]),
+      plane: refs([XY]),
+      angle: angle('60 deg'),
+    });
+    const plane = constructionRef(tilt) as GeomRef;
+    ok(await run([cylinder(), tilt]));
+    const p = rectangle('SK', plane, [-5, -2, 10, 4]);
+    // Tangent off: the tilted sketch isn't parallel to the axis.
+    expect(
+      status(await run([cylinder(), tilt, p.feature, emboss([p.profile], WALL)]), 'EM'),
+    ).toMatchObject({
+      status: 'error',
+      message: "Sketch on a plane parallel to the cylinder's axis to emboss on a round face.",
+    });
+    for (const mode of ['emboss', 'deboss'] as const) {
+      ok(
+        await run([
+          cylinder(),
+          tilt,
+          p.feature,
+          emboss([p.profile], WALL, { mode, tangent: true }),
+        ]),
+      );
+      const shape = shapeOf('C:0');
+      const plain = Math.PI * R * R * 20;
+      const tool = 40 * ((mode === 'emboss' ? R + 0.5 : R - 0.5) / R);
+      expect(off(shape.volume, plain + (mode === 'emboss' ? tool : -tool))).toBeLessThan(1e-5);
+      expect(shape.valid).toBe(true);
+      expect(shape.solids).toBe(1);
+      const report = seen.get('EM')?.report;
+      expect(report?.method).toBe('wrapped-cylinder');
+      const anchor = report?.anchor;
+      if (!anchor) throw new Error('no anchor');
+      expect(Math.abs(Math.hypot(anchor.origin[0], anchor.origin[1]) - R)).toBeLessThan(1e-6);
+    }
+  });
+
+  it('projects an off-centre circle along the sphere’s normal there', async () => {
+    const [plane, above] = offsetPlane('P', XY, '30 mm');
+    const c = circle('SK', above, 12, 0, 3);
+    for (const mode of ['emboss', 'deboss'] as const) {
+      ok(
+        await run([
+          sphereBody(),
+          plane,
+          c.feature,
+          emboss([c.profile], SPHERE, { mode, tangent: true }),
+        ]),
+      );
+      const shape = shapeOf('S:0');
+      const want = mode === 'emboss' ? BALL + column(3, R, R + 1) : BALL - column(3, R - 1, R);
+      expect(off(shape.volume, want)).toBeLessThan(1e-6);
+      expect(shape.valid).toBe(true);
+      expect(shape.solids).toBe(1);
+      const report = seen.get('EM')?.report;
+      expect(report?.method).toBe('projected');
+      const anchor = report?.anchor;
+      if (!anchor) throw new Error('no anchor');
+      const wantOrigin = [12, 0, 16];
+      const wantNormal = [0.6, 0, 0.8];
+      expect(apart(anchor.origin, wantOrigin)).toBeLessThan(1e-9);
+      expect(apart(anchor.normal, wantNormal)).toBeLessThan(1e-9);
+    }
+  });
+
+  it('refuses when the line through the centre misses the face', async () => {
+    const body = chamferBody();
+    const [plane, above] = offsetPlane('P', XY, '30 mm');
+    const p = rectangle('SK', above, [60, 33, 10, 4]);
+    const result = await run([
+      ...body.features,
+      plane,
+      p.feature,
+      emboss([p.profile], body.chamfer, { tangent: true }),
+    ]);
+    expect(status(result, 'EM')).toMatchObject({
+      status: 'error',
+      message:
+        "Tangent to the face needs the face in front of the profiles: the line through their centre along the sketch's normal misses it.",
     });
   });
 });

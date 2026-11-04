@@ -77,11 +77,11 @@ import {
 import type { ResolvedRef } from '../naming/resolve';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { splitSolids } from './bodies';
-import { apply, translation, turnTo } from './matrix';
+import { apply, compose, rotation, translation, turnTo } from './matrix';
 import { type OperationWords, operate, TOUCH } from './operation';
 import { mergeTools } from './pattern';
 import { type Base, centroidOf, type Plane, partsOf, uniteParts } from './sources';
-import { add, cross, dot, scale, sub, unit } from './vec';
+import { add, cross, dot, length, perpendicular, scale, sub, unit } from './vec';
 
 /** Lengths (mm) at or below which an emboss has none. */
 const EPS = 1e-6;
@@ -153,14 +153,26 @@ function evaluateEmboss(ctx: EvalContext<EmbossInputs>): FeatureOutput {
       : flat
         ? 'moved'
         : 'projected';
+  // Tangent to the face (ADR-0060 B2): lay the profiles on the face first, then
+  // run the face's method on the laid profiles. A projection needs them out in
+  // front of the face by more than the depth, or `projectOnFace` won't reach it.
+  const laid = settings.tangent ? layTangent(ctx, scope, parts, [hit]) : undefined;
+  const source = laid?.parts ?? parts;
   // Each branch leaves its tool tracked by `scope` exactly once.
   const { tool, data } = round
-    ? wrappedTool(ctx, scope, parts, hit, { ...round, halfAngle: 0 }, settings.mode, depth)
+    ? wrappedTool(ctx, scope, source, hit, { ...round, halfAngle: 0 }, settings.mode, depth)
     : cone
-      ? wrappedTool(ctx, scope, parts, hit, cone, settings.mode, depth)
+      ? wrappedTool(ctx, scope, source, hit, cone, settings.mode, depth)
       : flat
-        ? flatTool(ctx, scope, parts, hit, flat, settings.mode, depth)
-        : projectedTool(ctx, scope, parts, hit, settings.mode, depth);
+        ? flatTool(ctx, scope, source, hit, flat, settings.mode, depth)
+        : projectedTool(
+            ctx,
+            scope,
+            laid ? shifted(ctx, scope, source, scale(laid.anchor.normal, depth + 1)) : source,
+            hit,
+            settings.mode,
+            depth,
+          );
   // A join of two solids that miss each other would leave a second body, and a
   // cut that removes nothing would only say so in its own words: one message
   // for both, and the exact distance is cheap for one tool and one body.
@@ -182,8 +194,88 @@ function evaluateEmboss(ctx: EvalContext<EmbossInputs>): FeatureOutput {
       ),
     ),
     data,
-    report: { kind: 'emboss', method } satisfies EmbossReport,
+    report: {
+      kind: 'emboss',
+      method,
+      ...(laid && { anchor: laid.anchor }),
+    } satisfies EmbossReport,
   };
+}
+
+/**
+ * The parts laid on the face as if sketched on its tangent plane straight in
+ * front of them (ADR-0060 B2): the anchor is where the line through their area
+ * centroid along the sketch's normal meets a picked face, nearest the centroid;
+ * the parts turn about the centroid until the sketch's normal is the face's
+ * outward normal there and move onto the anchor. A sketch facing away from the
+ * face turns over about its own up first, so up stays up.
+ */
+function layTangent(
+  ctx: EvalContext,
+  scope: ShapeScope,
+  parts: Base[],
+  hits: readonly ResolvedRef[],
+): { parts: Base[]; anchor: { origin: Vec3; normal: Vec3 } } {
+  const first = parts[0] as Base;
+  for (const part of parts) {
+    if (!parallel(part.plane, first.plane)) {
+      throw new KernelError('Put the profiles in one plane to emboss them tangent to the face.');
+    }
+  }
+  const c = partsCentroid(ctx, parts);
+  const n = unit(first.plane.normal);
+  let best: { point: Vec3; normal: Vec3 } | undefined;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const hit of hits) {
+    const found = ctx.kernel.faceHit(hit.shape, hit.index, c, n);
+    if (!found) continue;
+    const distance = length(sub(found.point, c));
+    // A tie goes the way the sketch's normal points.
+    const ahead = dot(sub(found.point, c), n) > 0;
+    if (distance < bestDistance - 1e-9 || (Math.abs(distance - bestDistance) <= 1e-9 && ahead)) {
+      best = found;
+      bestDistance = distance;
+    }
+  }
+  if (!best) {
+    throw new KernelError(
+      "Tangent to the face needs the face in front of the profiles: the line through their centre along the sketch's normal misses it.",
+    );
+  }
+  const anchor = best.point;
+  const N = unit(best.normal);
+  const up = first.up ?? perpendicular(n);
+  const fold =
+    dot(n, N) < 0 ? compose(turnTo(c, scale(n, -1), N), rotation(c, up, Math.PI)) : turnTo(c, n, N);
+  const m = compose(translation(sub(anchor, c)), fold);
+  const laid = parts.map((part) => {
+    const moved = scope.track(ctx.kernel.transform(part.source.shape, m));
+    return {
+      source: {
+        ...part.source,
+        shape: moved.shape,
+        edgeSources: edgeSourcesOf(ctx, moved, part.source),
+      },
+      plane: { point: apply(m, part.plane.point), normal: N },
+    };
+  });
+  return { parts: laid, anchor: { origin: anchor, normal: N } };
+}
+
+/** The parts moved by `by`, each tracked by `scope` (a projected tangent lay). */
+function shifted(ctx: EvalContext, scope: ShapeScope, parts: Base[], by: Vec3): Base[] {
+  const m = translation(by);
+  return parts.map((part) => {
+    const moved = scope.track(ctx.kernel.transform(part.source.shape, m));
+    return {
+      source: {
+        ...part.source,
+        shape: moved.shape,
+        edgeSources: edgeSourcesOf(ctx, moved, part.source),
+      },
+      plane: { point: apply(m, part.plane.point), normal: part.plane.normal },
+    };
+  });
 }
 
 /** A face the profiles wrap round: a cylinder (`halfAngle` 0) or a cone. */

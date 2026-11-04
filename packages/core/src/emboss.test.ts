@@ -19,6 +19,7 @@ describe('emboss inputs', () => {
       profiles: [profile],
       face,
       mode: 'emboss',
+      tangent: false,
     });
   });
 
@@ -30,7 +31,21 @@ describe('emboss inputs', () => {
       face,
       depth: 'depth',
       mode: 'deboss',
+      tangent: false,
     });
+  });
+
+  it('round trips the tangent toggle', () => {
+    expect(embossInputs([profile], face, { tangent: true }).tangent).toEqual({
+      kind: 'bool',
+      value: true,
+    });
+    // Absent stays absent, so every existing document is byte-identical.
+    expect(embossInputs([profile], face).tangent).toBeUndefined();
+    const inputs = embossInputs([profile], face, { tangent: true });
+    const parsed = EmbossInputsSchema.parse(JSON.parse(JSON.stringify(inputs)));
+    expect(parsed).toEqual(inputs);
+    expect(embossSettings(parsed).tangent).toBe(true);
   });
 
   it('round trips through the schema', () => {
