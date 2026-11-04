@@ -131,6 +131,7 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 ### Inspect
 
 - [Measure](./measure.md) — Distances, angles, areas and volumes. Pick one thing, or two to measure between.
+- [Annotate](./annotate.md) — Pin a numbered note (#1, #2, …) to a face, an edge, a point or empty space. Click, type, Enter.
 - [Section Analysis](./section.md) — Cut the view through a plane, with the cut filled in. Look inside without changing the model.
 
 ## Sketch

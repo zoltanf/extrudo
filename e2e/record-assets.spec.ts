@@ -1698,6 +1698,26 @@ test('demo: measure', async ({ page }) => {
   });
 });
 
+test('demo: annotate', async ({ page }) => {
+  await demoDesign(page, 'annotate');
+  await turnView(page, 'Shift+1');
+  const { at, clip } = await frameWorld(page, boxPoints([-25, -15, 0], [25, 15, 30]));
+  const p = pointer(page);
+  await p.jump({ x: clip.x + 40, y: clip.y + clip.height - 30 });
+  await record(page, 'annotate', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'annotate', 'construct');
+    await page.waitForTimeout(400);
+    await pickModel(page, p, at, [-14, 2, 6], /^face:/);
+    await expect(page.locator('[data-annotation-editor]')).toBeFocused();
+    await page.waitForTimeout(300);
+    await page.keyboard.type('Hole M3 here', { delay: 70 });
+    await page.waitForTimeout(250);
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(1300);
+  });
+});
+
 test('demo: section', async ({ page }) => {
   await demoDesign(page, 'section');
   await turnView(page, 'Shift+1');
