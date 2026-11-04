@@ -1260,8 +1260,13 @@ concave), and **any other face** (sphere, torus, free-form) takes the profiles
 the face's thick piece, a sphere's or torus's exactly concentric; refused past
 the face's edge or outline as seen from the sketch); the method is no input but
 an `EmbossReport` (`Preview.emboss`, the dialog's read-only "Method" line). A
-wrap may run up to a whole turn ("The profile is wider than the face's
-circumference."); "tangent to the face" and several faces stay deferred. Native
+cone also takes a sketch on a plane parallel to one of its tangent planes (the
+normal at 90° ± α to the axis), turned about `across` through the profiles'
+centroid until the plane runs along the axis first (`rollOntoAxis`); any other
+plane is refused with "Sketch on a plane parallel to the cone's axis, or to one
+of its tangent planes, to emboss on a round face." A wrap may run up to a whole
+turn ("The profile is wider than the face's circumference."); "tangent to the
+face" and several faces stay deferred. Native
 harness `spikes/p4-12-emboss-faces/`. The tool is `emboss`, a tile of Solid ›
 Features (ADR-0079), no key; `e2e/emboss.spec.ts` covers both kinds of face
 in both modes. Native harness: `spikes/p4-04-harness/`.

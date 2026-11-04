@@ -77,7 +77,7 @@ import {
 import type { ResolvedRef } from '../naming/resolve';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { splitSolids } from './bodies';
-import { translation } from './matrix';
+import { apply, translation, turnTo } from './matrix';
 import { type OperationWords, operate, TOUCH } from './operation';
 import { mergeTools } from './pattern';
 import { type Base, centroidOf, type Plane, partsOf, uniteParts } from './sources';
@@ -235,7 +235,9 @@ function flatTool(
 /**
  * The tool of an emboss on a **cylindrical** face (ADR-0060 §3) or a
  * **conical** one (P4-12), and where it stands: every part's face wrapped round
- * it in the unrolled frame of the sketches' plane, fused into one tool.
+ * it in the unrolled frame of the sketches' plane, fused into one tool. A
+ * sketch on a plane parallel to one of the cone's tangent planes is turned
+ * onto the axis first (`rollOntoAxis`, ADR-0060's second amendment B1).
  */
 function wrappedTool(
   ctx: EvalContext,
@@ -246,13 +248,14 @@ function wrappedTool(
   mode: EmbossMode,
   depth: number,
 ): { tool: NamedShape; data: EmbossOutputData } {
-  const frame = wrapFrameOf(ctx, round, parts);
+  const rolled = rollOntoAxis(ctx, scope, parts, round);
+  const frame = wrapFrameOf(ctx, round, rolled);
   // A boss's wall looks away from the axis and a hole's wall towards it: the
   // letters stand out of the face for an emboss and go into it for a deboss,
   // which is the other way round for a hole.
   const convex = !round.inside;
   const outward = mode === 'emboss' ? convex : !convex;
-  const wrapped = parts.map((part) => {
+  const wrapped = rolled.map((part) => {
     const tool = namedWrap(ctx.kernel, {
       feature: ctx.feature.id,
       op: WORDS.noun,
@@ -268,7 +271,7 @@ function wrappedTool(
   // `mergeTools` hands back one of its parts when there is only one and a
   // shape it made otherwise, tracked in `scope` either way.
   const tool = mergeTools(ctx, scope, wrapped, WORDS.noun);
-  const centre = wrappedCentre(ctx, parts, frame);
+  const centre = wrappedCentre(ctx, rolled, frame);
   return {
     tool,
     data: {
@@ -278,6 +281,44 @@ function wrappedTool(
       body: hit.body,
     },
   };
+}
+
+/**
+ * A cone's parts sketched on a plane parallel to one of its tangent planes
+ * (|n·a| = sin α), turned about the line through the parts' area centroid
+ * along `across` until their plane runs along the axis (ADR-0060 B1). Parts
+ * already along the axis come back as they are.
+ */
+function rollOntoAxis(
+  ctx: EvalContext,
+  scope: ShapeScope,
+  parts: Base[],
+  round: RoundFace,
+): Base[] {
+  if (round.halfAngle === 0) return parts;
+  const a = unit(round.axis.direction);
+  const c = partsCentroid(ctx, parts);
+  return parts.map((part) => {
+    const n = unit(part.plane.normal);
+    const na = dot(n, a);
+    if (
+      Math.abs(na) < AXIS_TOLERANCE ||
+      Math.abs(Math.abs(na) - Math.sin(Math.abs(round.halfAngle))) >= AXIS_TOLERANCE
+    ) {
+      return part;
+    }
+    const target = unit(sub(n, scale(a, na)));
+    const m = turnTo(c, n, target);
+    const moved = scope.track(ctx.kernel.transform(part.source.shape, m));
+    return {
+      source: {
+        ...part.source,
+        shape: moved.shape,
+        edgeSources: edgeSourcesOf(ctx, moved, part.source),
+      },
+      plane: { point: apply(m, part.plane.point), normal: target },
+    };
+  });
 }
 
 /**
@@ -353,7 +394,7 @@ function wrapFrameOf(ctx: EvalContext, round: RoundFace, parts: Base[]): WrapFra
     if (Math.abs(dot(part.plane.normal, axis)) >= AXIS_TOLERANCE) {
       throw new KernelError(
         conical
-          ? "Sketch on a plane parallel to the cone's axis to emboss on a round face."
+          ? "Sketch on a plane parallel to the cone's axis, or to one of its tangent planes, to emboss on a round face."
           : "Sketch on a plane parallel to the cylinder's axis to emboss on a round face.",
       );
     }

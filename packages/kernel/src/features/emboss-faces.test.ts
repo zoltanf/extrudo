@@ -6,6 +6,8 @@
 // B-spline side, the projection's refusals, a 300° wrap and a wrap past a whole
 // turn. The flat and cylindrical cases stay in `emboss.test.ts`.
 import {
+  type ConstructionReport,
+  constructionRef,
   EMBOSS_TYPE,
   type EmbossInputOptions,
   type EmbossReport,
@@ -40,6 +42,8 @@ let kernel: Kernel;
 let engine: RecomputeEngine;
 /** The `data` and `report` of the emboss feature's latest evaluation. */
 const seen = new Map<string, { data: EmbossOutputData; report: EmbossReport }>();
+/** Construction planes' reports, by feature id (the tangent plane's frame). */
+const planes = new Map<string, Extract<ConstructionReport, { kind: 'plane' }>>();
 
 function bytesOf(dataUrl: string): Uint8Array {
   const binary = atob(dataUrl.slice(dataUrl.indexOf(',') + 1));
@@ -56,6 +60,7 @@ beforeEach(() => {
   engine?.clear();
   expect(kernel.stats().liveShapes).toBe(0);
   seen.clear();
+  planes.clear();
   const registry = new FeatureRegistry<KernelFeatureDefinition>();
   for (const definition of testFeatures().registry.list()) {
     registry.register({
@@ -68,6 +73,8 @@ beforeEach(() => {
             report: output.report as EmbossReport,
           });
         }
+        const report = output.report as ConstructionReport | undefined;
+        if (report?.kind === 'plane') planes.set(ctx.feature.id, report);
         return output;
       },
     });
@@ -300,6 +307,54 @@ describe('emboss on a cone', { timeout: 300_000 }, () => {
     expect(solidAt(body.shape, at(-0.3) as [number, number, number])).toBe(true);
   });
 
+  it('wraps a sketch on the cone’s tangent plane, out and in', async () => {
+    const cone = frustum();
+    const tp = feature('TP', 'tangentPlane', { face: refs([cone.face]) });
+    const plane = constructionRef(tp) as GeomRef;
+    ok(await run([...cone.features, tp]));
+    // A sketch's origin is the plane report's frame origin (the world origin's
+    // foot on the plane), which for this frustum lies below the body — so the
+    // rectangle is centred on the report's anchor (the touching point) instead,
+    // in the sketch's own coordinates.
+    const report = planes.get('TP');
+    if (!report) throw new Error('no tangent plane report');
+    const { frame, anchor } = report;
+    const dot3 = (a: readonly number[], b: readonly number[]) =>
+      (a[0] ?? 0) * (b[0] ?? 0) + (a[1] ?? 0) * (b[1] ?? 0) + (a[2] ?? 0) * (b[2] ?? 0);
+    const cx = dot3(
+      [anchor[0] - frame.origin[0], anchor[1] - frame.origin[1], anchor[2] - frame.origin[2]],
+      frame.x,
+    );
+    const cy = dot3(
+      [anchor[0] - frame.origin[0], anchor[1] - frame.origin[1], anchor[2] - frame.origin[2]],
+      frame.y,
+    );
+    const p = rectangle('SK', plane, [cx - 5, cy - 2, 10, 4]);
+    for (const mode of ['emboss', 'deboss'] as const) {
+      const result = ok(
+        await run([...cone.features, tp, p.feature, emboss([p.profile], cone.face, { mode })]),
+      );
+      const body = shapeOf('R:0');
+      const zc = anchor[2];
+      const tool = coneWant(40, coneRadius(zc), 1, mode === 'emboss');
+      expect(off(body.volume, FRUSTUM + (mode === 'emboss' ? tool : -tool))).toBeLessThan(1e-6);
+      expect(body.valid).toBe(true);
+      expect(body.solids).toBe(1);
+      expect(seen.get('EM')?.report).toEqual({ kind: 'emboss', method: 'wrapped-cone' });
+      const names = faceNames(result, 'R:0');
+      expect(names).toContain('emboss:EM:cap:end');
+      for (const line of p.lines) expect(names).toContain(`emboss:EM:side:${line}`);
+      expect(new Set(names).size).toBe(names.length);
+      // The tool's centre sits at the touching generatrix's angle.
+      const data = seen.get('EM')?.data;
+      if (!data) throw new Error('no emboss data');
+      expect(Math.atan2(data.origin[1], data.origin[0])).toBeCloseTo(
+        Math.atan2(anchor[1], anchor[0]),
+        9,
+      );
+    }
+  });
+
   it('refuses a sketch across the cone axis', async () => {
     const cone = frustum();
     const [plane, above] = offsetPlane('P', XY, '30 mm');
@@ -307,7 +362,8 @@ describe('emboss on a cone', { timeout: 300_000 }, () => {
     const result = await run([...cone.features, plane, p.feature, emboss([p.profile], cone.face)]);
     expect(status(result, 'EM')).toMatchObject({
       status: 'error',
-      message: "Sketch on a plane parallel to the cone's axis to emboss on a round face.",
+      message:
+        "Sketch on a plane parallel to the cone's axis, or to one of its tangent planes, to emboss on a round face.",
     });
   });
 });
