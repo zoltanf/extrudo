@@ -7,13 +7,14 @@
  *
  * One feature for both, with a `mode`: an emboss joins material outwards and a
  * deboss cuts inwards, like extrude's operation. The target body is the body
- * that owns `face`; nothing else is touched.
+ * that owns the picked faces (`face`, several of one body: P4-12); nothing
+ * else is touched.
  *
  * Every input except `profiles` and `face` is optional and has a default, so
  * a minimal emboss is `{ profiles, face }`: 1 mm, embossed.
  */
 
-import { SWEEP_FACE_ROLES } from './face-roles';
+import { type FaceRole, SWEEP_FACE_ROLES } from './face-roles';
 import { enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import {
@@ -35,7 +36,10 @@ export const EMBOSS_TYPE = 'emboss';
  * survives editing the string).
  */
 export const EMBOSS_PROFILE_KINDS: readonly GeomRefKind[] = ['profile', 'sketchEntity'];
-/** The face to emboss on: one flat face of a body (cylindrical faces come with P4-04's later slices). */
+/**
+ * The faces to emboss on: any faces of one body (flat faces take the profiles
+ * moved, cylinders and cones wrapped, anything else projected; P4-12).
+ */
 export const EMBOSS_FACE_KINDS: readonly GeomRefKind[] = ['face'];
 
 /** `emboss` joins material outwards; `deboss` cuts it inwards. */
@@ -50,10 +54,12 @@ export const EmbossInputsSchema = z.strictObject({
   profiles: refsOf(EMBOSS_PROFILE_KINDS)
     .optional()
     .describe('The profiles and whole texts to emboss, all in one plane and parallel to the face.'),
-  /** The face to emboss on: the body that owns it is the only body touched. */
-  face: refsOf(EMBOSS_FACE_KINDS, 1)
+  /** The faces to emboss on, all of one body: the body that owns them is the only body touched. */
+  face: refsOf(EMBOSS_FACE_KINDS)
     .optional()
-    .describe('The face to emboss on: the body that owns it is the only body touched.'),
+    .describe(
+      'The faces to emboss on, all of one body: each takes the part of the letters that lands on it. The body is the only one touched.',
+    ),
   /** How far the letters stand out or go in; must be greater than 0. */
   depth: exprOf('length')
     .optional()
@@ -69,22 +75,35 @@ export const EmbossInputsSchema = z.strictObject({
 });
 export type EmbossInputs = z.infer<typeof EmbossInputsSchema>;
 
+/**
+ * ADR-0068 §4, from the kernel's prism, wrap or projection (P4-04, ADR-0060):
+ * a cap on the face it stands on and one out, a wall per edge of the
+ * profiles, and with several faces a wall where the letters stop at a picked
+ * face's edge (ADR-0060's second amendment B3).
+ */
+export const EMBOSS_FACE_ROLES: readonly FaceRole[] = [
+  ...SWEEP_FACE_ROLES,
+  {
+    pattern: 'clip:<n>',
+    description:
+      "A wall where the letters stop at the edge of the picked faces: n is the face's place in the Faces list.",
+  },
+];
+
 export const embossFeature: FeatureDefinition<EmbossInputs> = {
   type: EMBOSS_TYPE,
   label: 'Emboss',
   category: 'create',
   icon: 'emboss',
   inputsSchema: EmbossInputsSchema,
-  // ADR-0068 §4, from the kernel's prism or wrap (P4-04, ADR-0060): a cap on
-  // the face it stands on and one out, and a wall per edge of the profiles.
-  faceRoles: SWEEP_FACE_ROLES,
+  faceRoles: EMBOSS_FACE_ROLES,
 };
 
 /** An emboss's inputs with every default filled in: what the kernel builds. */
 export interface EmbossSettings {
   profiles: GeomRef[];
-  /** The face to emboss on, if there is one. */
-  face?: GeomRef;
+  /** The faces to emboss on, in list order (empty when none is picked). */
+  faces: GeomRef[];
   /** The `expr` input holding the depth, if there is one (else `EMBOSS_DEFAULT_DEPTH`). */
   depth?: 'depth';
   mode: EmbossMode;
@@ -94,10 +113,9 @@ export interface EmbossSettings {
 
 /** Reads an emboss's (valid) inputs with their defaults. */
 export function embossSettings(inputs: EmbossInputs): EmbossSettings {
-  const face = inputs.face?.refs[0];
   return {
     profiles: inputs.profiles?.refs ?? [],
-    ...(face ? { face } : {}),
+    faces: inputs.face?.refs ?? [],
     ...(inputs.depth ? { depth: 'depth' as const } : {}),
     mode: inputs.mode?.value ?? 'emboss',
     tangent: inputs.tangent?.value ?? false,
@@ -117,12 +135,15 @@ export interface EmbossInputOptions {
  */
 export function embossInputs(
   profiles: GeomRef[],
-  face: GeomRef,
+  face: GeomRef | GeomRef[],
   options: EmbossInputOptions = {},
 ): EmbossInputs {
   const expr = (value: string, unit: UnitKind): ExprInput => ({ kind: 'expr', expr: value, unit });
   const refs = (list: GeomRef[]): RefInput => ({ kind: 'ref', refs: list });
-  const inputs: EmbossInputs = { profiles: refs(profiles), face: refs([face]) };
+  const inputs: EmbossInputs = {
+    profiles: refs(profiles),
+    face: refs(Array.isArray(face) ? face : [face]),
+  };
   if (options.depth !== undefined) inputs.depth = expr(options.depth, 'length');
   if (options.mode) inputs.mode = { kind: 'enum', value: options.mode };
   if (options.tangent !== undefined) inputs.tangent = { kind: 'bool', value: options.tangent };
@@ -141,7 +162,13 @@ export type EmbossMethod = (typeof EMBOSS_METHODS)[number];
 /** What an emboss reports (`FeatureOutput.report`): the method it took. */
 export interface EmbossReport {
   kind: 'emboss';
+  /** The first face's method (`faces[0]`). */
   method: EmbossMethod;
+  /**
+   * Each picked face's method, in list order: the one it took after the
+   * mixing rule (ADR-0060's second amendment B3). One entry for one face.
+   */
+  faces: EmbossMethod[];
   /**
    * With `tangent`: where the profiles were laid and the face's outward normal
    * there, for the dialog's arrow.
@@ -165,4 +192,30 @@ export function embossMethodText(method: EmbossMethod): string {
     case 'projected':
       return 'Projected onto the face';
   }
+}
+
+/**
+ * The dialog's line for several faces' methods: each method once, in order
+ * of first appearance, with how many faces took it ("Moved onto 2 faces,
+ * wrapped round the cylinder"). One face reads as `embossMethodText`.
+ */
+export function embossMethodsText(methods: readonly EmbossMethod[]): string {
+  const counts = new Map<EmbossMethod, number>();
+  for (const method of methods) counts.set(method, (counts.get(method) ?? 0) + 1);
+  const text = [...counts]
+    .map(([method, n]) => {
+      if (n === 1) return embossMethodText(method).toLowerCase();
+      switch (method) {
+        case 'moved':
+          return `moved onto ${n} faces`;
+        case 'wrapped-cylinder':
+          return `wrapped round ${n} cylinders`;
+        case 'wrapped-cone':
+          return `wrapped round ${n} cones`;
+        case 'projected':
+          return `projected onto ${n} faces`;
+      }
+    })
+    .join(', ');
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }

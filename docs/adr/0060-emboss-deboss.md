@@ -437,6 +437,8 @@ gains `anchor` (origin, normal) for the dialog's arrow.
   line up exactly (the fillet's s = 0 is the seam). A letter across a sharp edge
   between a wrap and a flat away from s = 0 jogs, and across a convex crease
   between two projected faces an emboss has a V-notch: documented, not fixed.
+- A flat face that isn't parallel to the profiles (alone it is refused) is
+  projected in a set, and so counts as a projected face for the mixing rule.
 - **One face stays as today, unclipped** (owner, 2026-11-04), so existing
   documents keep their geometry.
 - A face no letter reaches warns "No letters land on face *k*."; none reached

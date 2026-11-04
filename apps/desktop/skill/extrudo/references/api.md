@@ -191,12 +191,12 @@ Faces: `cap:start` (The face the sweep starts at: the profile in its own place);
 | Input | Type | Required or default | What it does |
 | --- | --- | --- | --- |
 | `profiles` | `GeomRef \| GeomRef[]` (`profile`, `sketchEntity`) | optional | The profiles and whole texts to emboss, all in one plane and parallel to the face. |
-| `face` | `GeomRef \| GeomRef[]` (`face`) | optional | The face to emboss on: the body that owns it is the only body touched. |
+| `face` | `GeomRef \| GeomRef[]` (`face`) | optional | The faces to emboss on, all of one body: each takes the part of the letters that lands on it. The body is the only one touched. |
 | `depth` | `string \| number \| ParameterHandle` | optional | How far the letters stand out or go in; a length greater than 0. |
 | `mode` | `'emboss' \| 'deboss'` | default `emboss` | Emboss joins material outwards, deboss cuts inwards. |
 | `tangent` | `boolean` | default `false` | Lay the profiles on the face first, as if sketched on its tangent plane straight in front of them: any sketch angle, the letters read the right way round from outside. |
 
-Faces: `cap:start` (The face the sweep starts at: the profile in its own place); `cap:end` (The face the sweep ends at); `side:<curve>` (A wall, one per edge of the profile: the sketch curve it came from, or the body edge it was swept from).
+Faces: `cap:start` (The face the sweep starts at: the profile in its own place); `cap:end` (The face the sweep ends at); `side:<curve>` (A wall, one per edge of the profile: the sketch curve it came from, or the body edge it was swept from); `clip:<n>` (A wall where the letters stop at the edge of the picked faces: n is the face's place in the Faces list).
 
 ### `rib` — Rib
 

@@ -8,6 +8,7 @@
 import {
   type ConstructionReport,
   constructionRef,
+  EMBOSS_FACE_ROLES,
   EMBOSS_TYPE,
   type EmbossInputOptions,
   type EmbossReport,
@@ -17,6 +18,8 @@ import {
   type FeatureId,
   FeatureRegistry,
   type FeatureStatus,
+  faceRoleIssues,
+  filletInputs,
   type GeomRef,
   loftInputs,
   originPlaneRef,
@@ -33,6 +36,7 @@ import { loadFont } from '@extrudo/sketch/text';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import interRegular from '../../../fonts/fonts/inter-regular.ttf?url&inline';
 import { Kernel, type ShapeHandle } from '../kernel';
+import { edgeName } from '../naming/topo-id';
 import { loadOcct } from '../occt/load';
 import { RecomputeEngine } from '../recompute/engine';
 import { testDocument, testFeature, testFeatures } from '../recompute/testing';
@@ -114,7 +118,11 @@ function offsetPlane(id: string, plane: GeomRef, distance: string): [Feature, Ge
   return [made, { kind: 'plane', id }];
 }
 
-function emboss(profiles: GeomRef[], face: GeomRef, options: EmbossInputOptions = {}): Feature {
+function emboss(
+  profiles: GeomRef[],
+  face: GeomRef | GeomRef[],
+  options: EmbossInputOptions = {},
+): Feature {
   return { ...testFeature('EM', EMBOSS_TYPE), inputs: embossInputs(profiles, face, options) };
 }
 
@@ -247,7 +255,11 @@ describe('emboss on a cone', { timeout: 300_000 }, () => {
       expect(off(body.volume, FRUSTUM + (mode === 'emboss' ? tool : -tool))).toBeLessThan(1e-5);
       expect(body.valid).toBe(true);
       expect(body.solids).toBe(1);
-      expect(seen.get('EM')?.report).toEqual({ kind: 'emboss', method: 'wrapped-cone' });
+      expect(seen.get('EM')?.report).toEqual({
+        kind: 'emboss',
+        method: 'wrapped-cone',
+        faces: ['wrapped-cone'],
+      });
       const names = faceNames(result, 'R:0');
       expect(names).toContain('emboss:EM:cap:end');
       for (const line of p.lines) expect(names).toContain(`emboss:EM:side:${line}`);
@@ -343,7 +355,11 @@ describe('emboss on a cone', { timeout: 300_000 }, () => {
       expect(off(body.volume, FRUSTUM + (mode === 'emboss' ? tool : -tool))).toBeLessThan(1e-6);
       expect(body.valid).toBe(true);
       expect(body.solids).toBe(1);
-      expect(seen.get('EM')?.report).toEqual({ kind: 'emboss', method: 'wrapped-cone' });
+      expect(seen.get('EM')?.report).toEqual({
+        kind: 'emboss',
+        method: 'wrapped-cone',
+        faces: ['wrapped-cone'],
+      });
       const names = faceNames(result, 'R:0');
       expect(names).toContain('emboss:EM:cap:end');
       for (const line of p.lines) expect(names).toContain(`emboss:EM:side:${line}`);
@@ -397,7 +413,11 @@ describe('emboss projected onto a sphere', { timeout: 300_000 }, () => {
       expect(off(body.volume, want)).toBeLessThan(1e-6);
       expect(body.valid).toBe(true);
       expect(body.solids).toBe(1);
-      expect(seen.get('EM')?.report).toEqual({ kind: 'emboss', method: 'projected' });
+      expect(seen.get('EM')?.report).toEqual({
+        kind: 'emboss',
+        method: 'projected',
+        faces: ['projected'],
+      });
       const names = faceNames(result, 'S:0');
       expect(names).toContain('emboss:EM:cap:end');
       expect(names.some((name) => name.startsWith('emboss:EM:side:'))).toBe(true);
@@ -691,5 +711,304 @@ describe('emboss tangent to the face', { timeout: 300_000 }, () => {
       message:
         "Tangent to the face needs the face in front of the profiles: the line through their centre along the sketch's normal misses it.",
     });
+  });
+});
+
+// ------------------------------------------------------ several faces (S4)
+
+/** A face reference by its name. */
+const faceOf = (id: string): GeomRef => ({ kind: 'face', id });
+
+/** A sketch of the closed polyline through `points` and its profile. */
+function polygon(id: string, plane: GeomRef, points: readonly (readonly [number, number])[]) {
+  const b = new SketchBuilder();
+  const lines = points.map(([x, y], i) => {
+    const [u, v] = points[(i + 1) % points.length] as readonly [number, number];
+    return b.line(x, y, u, v).id;
+  });
+  const [found] = detectProfiles(b.sketch);
+  if (!found) throw new Error('no profile');
+  return { feature: sketch(id, b.sketch, plane), lines, profile: profileOf(id, found.id) };
+}
+
+/**
+ * An L extruded 40 mm (y ±20) from XZ (body `E:0`, volume 24000): a lower top
+ * at z = 10 over x 0…20 and an upper one at z = 20 over x 20…40, a riser
+ * between them at x = 20.
+ */
+function stepped() {
+  const l = polygon('LS', XZ, [
+    [0, 0],
+    [40, 0],
+    [40, 20],
+    [20, 20],
+    [20, 10],
+    [0, 10],
+  ]);
+  const extrude = feature(
+    'E',
+    'extrude',
+    extrudeInputs([l.profile], { distance: '40 mm', direction: 'symmetric' }),
+  );
+  const side = (k: number) => faceOf(`extrude:E:side:${l.lines[k]}`);
+  return {
+    features: [l.feature, extrude],
+    lower: side(4),
+    upper: side(2),
+    right: side(1),
+  };
+}
+const STEPPED = 40 * 10 * 40 + 20 * 10 * 40;
+
+/** The names of a body's own faces that are this emboss's, and the role issues among them. */
+function namesOf(result: Done, body: string) {
+  const names = faceNames(result, body);
+  return {
+    names,
+    own: names.filter((name) => name.startsWith('emboss:EM:')),
+    issues: faceRoleIssues(EMBOSS_FACE_ROLES, 'EM', names),
+  };
+}
+
+describe('emboss on several faces', { timeout: 300_000 }, () => {
+  it('moves onto both tops of a step: each takes its part, out and in, and the names', async () => {
+    const step = stepped();
+    const [plane, above] = offsetPlane('P', XY, '30 mm');
+    // x 12…32: 8 × 10 over the lower top, 12 × 10 over the upper one.
+    const p = rectangle('SK', above, [12, -5, 20, 10]);
+    const area = 8 * 10 + 12 * 10;
+    for (const mode of ['emboss', 'deboss'] as const) {
+      const result = ok(
+        await run([
+          ...step.features,
+          plane,
+          p.feature,
+          emboss([p.profile], [step.lower, step.upper], { mode }),
+        ]),
+      );
+      const body = shapeOf('E:0');
+      expect(Math.abs(body.volume - (STEPPED + (mode === 'emboss' ? area : -area)))).toBeLessThan(
+        1e-9 * STEPPED,
+      );
+      expect(body.valid).toBe(true);
+      expect(body.solids).toBe(1);
+      expect(seen.get('EM')?.report).toEqual({
+        kind: 'emboss',
+        method: 'moved',
+        faces: ['moved', 'moved'],
+      });
+      const { names, own, issues } = namesOf(result, 'E:0');
+      expect(issues).toEqual([]);
+      expect(new Set(names).size).toBe(names.length);
+      // The walls along y = ±5 run over both tops: one piece each.
+      for (const line of [p.lines[0], p.lines[2]]) {
+        expect(own).toContain(`emboss:EM:side:${line}#1`);
+        expect(own).toContain(`emboss:EM:side:${line}#2`);
+      }
+      // Cut in, the lower piece stops at the riser inside the material: its clip wall.
+      if (mode === 'deboss') expect(own).toContain('emboss:EM:clip:1');
+      else expect(own.some((name) => name.includes(':clip:'))).toBe(false);
+    }
+  });
+
+  it('moves onto a flat face and wraps round the fillet beside it, out and in (the spike)', async () => {
+    const square = polygon('BS', XY, [
+      [0, 0],
+      [40, 0],
+      [40, 40],
+      [0, 40],
+    ]);
+    const extrude = feature('E', 'extrude', extrudeInputs([square.profile], { distance: '10 mm' }));
+    const side = (k: number) => `extrude:E:side:${square.lines[k]}`;
+    const first = ok(await run([square.feature, extrude]));
+    const corner = edgeName([side(1), side(2)]);
+    const index = first.bodies[0]?.mesh?.edgeIds.indexOf(corner) ?? -1;
+    const edge = engine.reference('E:0' as never, 'edge', index);
+    if (!edge) throw new Error(`no edge ${corner}`);
+    const fillet = feature('F', 'fillet', filletInputs([{ edges: [edge], radius: '5 mm' }]));
+    const rounded = [square.feature, extrude, fillet];
+    ok(await run(rounded));
+    const plain = shapeOf('E:0').volume;
+    // The plane y = 50 (XZ's normal is −Y); x 30…40, z 3…7: half on +Y, half over the fillet.
+    const [plane, front] = offsetPlane('P', XZ, '-50 mm');
+    const p = rectangle('SK', front, [30, 3, 10, 4]);
+    const faces = [faceOf(side(2)), faceOf(`fillet:F:from:(${corner})`)];
+    for (const mode of ['emboss', 'deboss'] as const) {
+      const result = ok(
+        await run([...rounded, plane, p.feature, emboss([p.profile], faces, { mode })]),
+      );
+      const body = shapeOf('E:0');
+      expect(Math.abs(body.volume - (plain + (mode === 'emboss' ? 42 : -38)))).toBeLessThan(1e-6);
+      expect(body.valid).toBe(true);
+      expect(body.solids).toBe(1);
+      expect(seen.get('EM')?.report).toEqual({
+        kind: 'emboss',
+        method: 'moved',
+        faces: ['moved', 'wrapped-cylinder'],
+      });
+      const { names, own, issues } = namesOf(result, 'E:0');
+      expect(issues).toEqual([]);
+      expect(new Set(names).size).toBe(names.length);
+      // The outer cap is split across the pieces (flat and round); the walls at
+      // z = 3 and 7 run flat across the seam, so the fuse leaves one face each.
+      // The letters stop nowhere at a face's edge: no clip walls.
+      expect([...own].sort()).toEqual(
+        [
+          'emboss:EM:cap:end#1',
+          'emboss:EM:cap:end#2',
+          ...p.lines.map((line) => `emboss:EM:side:${line}`),
+        ].sort(),
+      );
+    }
+  });
+
+  it('wraps across both halves of a split cylinder as one face alone does', async () => {
+    const b = new SketchBuilder();
+    const upper = b.arc(0, 0, 20, 0, 180).id;
+    const lower = b.arc(0, 0, 20, 180, 360).id;
+    const [found] = detectProfiles(b.sketch);
+    if (!found) throw new Error('no profile');
+    const base = [
+      sketch('CS', b.sketch, XY),
+      feature('E', 'extrude', extrudeInputs([profileOf('CS', found.id)], { distance: '20 mm' })),
+    ];
+    // On x = 30, y −5…5 (across the seam at y = 0), z 8…12.
+    const [plane, aside] = offsetPlane('P', YZ, '30 mm');
+    const p = rectangle('SK', aside, [-5, 8, 10, 4]);
+    const halves = [faceOf(`extrude:E:side:${upper}`), faceOf(`extrude:E:side:${lower}`)];
+    const plain = Math.PI * 20 * 20 * 20;
+    ok(await run([...base, plane, p.feature, emboss([p.profile], halves)]));
+    const both = shapeOf('E:0');
+    expect(seen.get('EM')?.report.faces).toEqual(['wrapped-cylinder', 'wrapped-cylinder']);
+    ok(await run([...base, plane, p.feature, emboss([p.profile], halves[0] as GeomRef)]));
+    const alone = shapeOf('E:0');
+    expect(Math.abs(both.volume - alone.volume)).toBeLessThan(1e-6);
+    expect(off(both.volume - plain, (40 * 20.5) / 20)).toBeLessThan(1e-6);
+    expect(both.valid).toBe(true);
+    expect(both.solids).toBe(1);
+  });
+
+  it('projects across a capsule: the cylinder takes a projection too', async () => {
+    // A R 10 cylinder along X (x 0…30) with a half ball at x = 30, revolved about X.
+    const b = new SketchBuilder();
+    b.line(0, 0, 0, 10);
+    const top = b.line(0, 10, 30, 10).id;
+    const cap = b.arc(30, 0, 10, 0, 90).id;
+    b.line(40, 0, 0, 0);
+    const [found] = detectProfiles(b.sketch);
+    if (!found) throw new Error('no profile');
+    const base = [
+      sketch('RS', b.sketch, XY),
+      feature('R', 'revolve', revolveInputs([profileOf('RS', found.id)], AXIS_X)),
+    ];
+    ok(await run(base));
+    const plain = shapeOf('R:0').volume;
+    const [plane, above] = offsetPlane('P', XY, '20 mm');
+    const p = rectangle('SK', above, [25, -3, 10, 6]);
+    const faces = [faceOf(`revolve:R:side:${top}`), faceOf(`revolve:R:side:${cap}`)];
+    const result = ok(await run([...base, plane, p.feature, emboss([p.profile], faces)]));
+    const body = shapeOf('R:0');
+    expect(seen.get('EM')?.report.faces).toEqual(['projected', 'projected']);
+    expect(body.valid).toBe(true);
+    expect(body.solids).toBe(1);
+    expect(body.volume).toBeGreaterThan(plain + 60 * 0.9);
+    expect(namesOf(result, 'R:0').issues).toEqual([]);
+  });
+
+  it('projects across three twisted side faces of a loft', async () => {
+    const hexagon = (r: number, turn: number) =>
+      Array.from({ length: 6 }, (_, k): [number, number] => {
+        const t = ((60 * k + turn) * Math.PI) / 180;
+        return [r * Math.cos(t), r * Math.sin(t)];
+      });
+    const bottom = polygon('L1', XY, hexagon(20, 0));
+    const [plane, high] = offsetPlane('P', XY, '30 mm');
+    const top = polygon('L2', high, hexagon(16, 15));
+    const sections = [bottom.feature, plane, top.feature];
+    const loft = feature('LO', 'loft', loftInputs([bottom.profile, top.profile]));
+    ok(await run([...sections, loft]));
+    const plain = shapeOf('LO:0').volume;
+    // The faces from the edges 180°→240°, 240°→300° and 300°→360°: the ones facing −Y.
+    const faces = [3, 4, 5].map((k) => faceOf(`loft:LO:side:${bottom.lines[k]}`));
+    // The plane y = −40, x −14…14, z 8…14.
+    const [front, aside] = offsetPlane('Q', XZ, '40 mm');
+    const p = rectangle('SK', aside, [-14, 8, 28, 6]);
+    const result = ok(await run([...sections, loft, front, p.feature, emboss([p.profile], faces)]));
+    const body = shapeOf('LO:0');
+    expect(seen.get('EM')?.report.faces).toEqual(['projected', 'projected', 'projected']);
+    expect(body.valid).toBe(true);
+    expect(body.solids).toBe(1);
+    expect(body.volume).toBeGreaterThan(plain + 28 * 6 * 0.9);
+    const { names, issues } = namesOf(result, 'LO:0');
+    expect(issues).toEqual([]);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('refuses faces of two bodies, warns of a face no letter reaches, refuses when none is', async () => {
+    const step = stepped();
+    const [plane, above] = offsetPlane('P', XY, '30 mm');
+    const p = rectangle('SK', above, [12, -5, 20, 10]);
+    const other = feature('B', 'box', {
+      length: length('10 mm'),
+      width: length('10 mm'),
+      height: length('10 mm'),
+    });
+    const twoBodies = await run([
+      ...step.features,
+      other,
+      plane,
+      p.feature,
+      emboss([p.profile], [step.lower, faceOf('box:B:cap:end')]),
+    ]);
+    expect(status(twoBodies, 'EM')).toMatchObject({
+      status: 'error',
+      message: 'Pick faces of one body to emboss on.',
+    });
+
+    // The side at x = 40 is not parallel to the sketch: projected, and nothing lands on it.
+    const third = await run([
+      ...step.features,
+      plane,
+      p.feature,
+      emboss([p.profile], [step.lower, step.upper, step.right]),
+    ]);
+    expect(status(third, 'EM')).toMatchObject({
+      status: 'warning',
+      message: 'No letters land on face 3.',
+    });
+    expect(seen.get('EM')?.report.faces).toEqual(['moved', 'moved', 'projected']);
+    expect(Math.abs(shapeOf('E:0').volume - (STEPPED + 200))).toBeLessThan(1e-9 * STEPPED);
+
+    const far = rectangle('SK', above, [60, -5, 10, 10]);
+    const none = await run([
+      ...step.features,
+      plane,
+      far.feature,
+      emboss([far.profile], [step.lower, step.upper]),
+    ]);
+    expect(status(none, 'EM')).toMatchObject({
+      status: 'error',
+      message: "The profiles don't touch the faces.",
+    });
+  });
+
+  it('lays the profiles once for every face with tangent', async () => {
+    const step = stepped();
+    const [plane, above] = offsetPlane('P', XY, '30 mm');
+    const p = rectangle('SK', above, [12, -5, 20, 10]);
+    ok(
+      await run([
+        ...step.features,
+        plane,
+        p.feature,
+        emboss([p.profile], [step.lower, step.upper], { tangent: true }),
+      ]),
+    );
+    expect(Math.abs(shapeOf('E:0').volume - (STEPPED + 200))).toBeLessThan(1e-9 * STEPPED);
+    const report = seen.get('EM')?.report;
+    expect(report?.faces).toEqual(['moved', 'moved']);
+    // The centroid (22, 0, 30) is over the upper top only.
+    expect(apart(report?.anchor?.origin ?? [], [22, 0, 20])).toBeLessThan(1e-9);
+    expect(apart(report?.anchor?.normal ?? [], [0, 0, 1])).toBeLessThan(1e-9);
   });
 });

@@ -127,7 +127,7 @@ describe('the emboss dialog', () => {
       ({
         doc: {},
         bodies: {},
-        ...(method && { draftEmboss: { kind: 'emboss', method } }),
+        ...(method && { draftEmboss: { kind: 'emboss', method, faces: [method] } }),
       }) as never;
     expect(field.shown?.(values, ctx())).toBe(false);
     expect(field.shown?.(values, ctx('wrapped-cone'))).toBe(true);

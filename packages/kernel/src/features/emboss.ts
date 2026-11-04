@@ -44,6 +44,14 @@
  * between the face and the face offset by the depth. Which of the four it was
  * is the feature's report (`EmbossReport`), for the dialog's status line.
  *
+ * **Several faces** of one body (ADR-0060's second amendment B3,
+ * `embossOnFaces`): each takes the part of the letters that lands on it, by
+ * its own method (with the mixing rule there), clipped to the face — a moved
+ * or wrapped piece `common` the face's slab (`Kernel.faceSlab`), a projected
+ * one through `projectOnFace`'s clip mode — and the pieces fuse into one
+ * tool. Their walls at a face's edge are `emboss:<id>:clip:<k>`. One face
+ * stays as it was, unclipped.
+ *
  * Names: the prism's or the wrap's own, under `emboss:<id>` — `…:cap:start`
  * (on the face) and `…:cap:end`, and `…:side:<sketch curve>` for each edge of
  * the profiles, taken through the move's history so they follow the rebuild.
@@ -55,6 +63,7 @@ import {
   type EmbossMethod,
   type EmbossMode,
   type EmbossReport,
+  type EmbossSettings,
   embossFeature,
   embossSettings,
 } from '@extrudo/core';
@@ -67,14 +76,17 @@ import {
   type Vec3,
   type WrapFrame,
 } from '../kernel';
+import { renameFaces } from '../naming/names';
 import {
   type NamedShape,
+  namedBoolean,
   namedPrism,
   namedProjection,
   namedWrap,
   type SweepSource,
 } from '../naming/ops';
 import type { ResolvedRef } from '../naming/resolve';
+import { createdName } from '../naming/topo-id';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { splitSolids } from './bodies';
 import { apply, compose, rotation, translation, turnTo } from './matrix';
@@ -88,6 +100,9 @@ const EPS = 1e-6;
 
 /** Cosines within this of ±1 are parallel plane normals (as in `sources.ts`). */
 const PARALLEL_TOLERANCE = 1e-6;
+
+/** `projectOnFace`'s refusal of a profile that misses the face. */
+const MISSES = "The profiles don't touch the face.";
 
 /**
  * Cosines at or above this of 0 mean the sketch plane runs across the
@@ -127,52 +142,37 @@ function evaluateEmboss(ctx: EvalContext<EmbossInputs>): FeatureOutput {
   if (settings.profiles.length === 0) {
     throw new KernelError('Pick at least one profile or text to emboss.');
   }
-  if (!settings.face) throw new KernelError('Pick the face to emboss on.');
+  const [face] = settings.faces;
+  if (!face) throw new KernelError('Pick the face to emboss on.');
   const depth = settings.depth ? ctx.value('depth') : EMBOSS_DEFAULT_DEPTH;
   if (!(depth > EPS)) throw new KernelError('The depth must be greater than 0.');
+  if (settings.faces.length > 1) return embossOnFaces(ctx, settings, depth);
 
-  const hit = ctx.resolve(settings.face, { label: 'the face to emboss on' });
+  const hit = ctx.resolve(face, { label: 'the face to emboss on' });
   const { kernel } = ctx;
   const target = ctx.bodies.get(hit.body) as ShapeHandle;
 
   using scope = kernel.scope();
   const parts = partsOf(ctx, scope, settings.profiles, WORDS.noun);
   if (parts.length === 0) throw new KernelError('Pick at least one profile or text to emboss.');
-  // A cylinder wraps (ADR-0060 §3), and a cone (P4-12); a flat face takes the
-  // profiles moved onto it, and anything else projected onto it.
-  // The third argument names the feature in a mesh refusal (ADR-0066 §4).
-  // `threadFace` reads cones too (P4-12's tapered threads): a cone wraps through `coneFace`.
-  const turned = kernel.threadFace(hit.shape, hit.index, 'Emboss');
-  const round = turned && turned.taper === 0 ? turned : undefined;
-  const cone = round ? undefined : kernel.coneFace(hit.shape, hit.index, 'Emboss');
-  const flat = round || cone ? undefined : flatFaceOf(ctx, hit);
-  const method: EmbossMethod = round
-    ? 'wrapped-cylinder'
-    : cone
-      ? 'wrapped-cone'
-      : flat
-        ? 'moved'
-        : 'projected';
+  const kind = faceKindOf(ctx, hit);
   // Tangent to the face (ADR-0060 B2): lay the profiles on the face first, then
   // run the face's method on the laid profiles. A projection needs them out in
   // front of the face by more than the depth, or `projectOnFace` won't reach it.
   const laid = settings.tangent ? layTangent(ctx, scope, parts, [hit]) : undefined;
   const source = laid?.parts ?? parts;
   // Each branch leaves its tool tracked by `scope` exactly once.
-  const { tool, data } = round
-    ? wrappedTool(ctx, scope, source, hit, { ...round, halfAngle: 0 }, settings.mode, depth)
-    : cone
-      ? wrappedTool(ctx, scope, source, hit, cone, settings.mode, depth)
-      : flat
-        ? flatTool(ctx, scope, source, hit, flat, settings.mode, depth)
-        : projectedTool(
-            ctx,
-            scope,
-            laid ? shifted(ctx, scope, source, scale(laid.anchor.normal, depth + 1)) : source,
-            hit,
-            settings.mode,
-            depth,
-          );
+  const { tool, data } = toolOn(
+    ctx,
+    scope,
+    kind,
+    kind.method === 'projected' && laid
+      ? shifted(ctx, scope, source, scale(laid.anchor.normal, depth + 1))
+      : source,
+    hit,
+    settings.mode,
+    depth,
+  );
   // A join of two solids that miss each other would leave a second body, and a
   // cut that removes nothing would only say so in its own words: one message
   // for both, and the exact distance is cheap for one tool and one body.
@@ -196,9 +196,204 @@ function evaluateEmboss(ctx: EvalContext<EmbossInputs>): FeatureOutput {
     data,
     report: {
       kind: 'emboss',
-      method,
+      method: kind.method,
+      faces: [kind.method],
       ...(laid && { anchor: laid.anchor }),
     } satisfies EmbossReport,
+  };
+}
+
+/**
+ * How a face takes the profiles (ADR-0060 §2, §3 and its amendment): a
+ * cylinder or a cone wraps them, a flat face takes them moved onto it, and
+ * anything else projected onto it.
+ */
+type FaceKind =
+  | { method: 'wrapped-cylinder' | 'wrapped-cone'; round: RoundFace }
+  | { method: 'moved'; flat: Plane }
+  | { method: 'projected' };
+
+function faceKindOf(ctx: EvalContext, hit: ResolvedRef): FaceKind {
+  const { kernel } = ctx;
+  // The third argument names the feature in a mesh refusal (ADR-0066 §4).
+  // `threadFace` reads cones too (P4-12's tapered threads): a cone wraps through `coneFace`.
+  const turned = kernel.threadFace(hit.shape, hit.index, 'Emboss');
+  if (turned && turned.taper === 0) {
+    return { method: 'wrapped-cylinder', round: { ...turned, halfAngle: 0 } };
+  }
+  const cone = kernel.coneFace(hit.shape, hit.index, 'Emboss');
+  if (cone) return { method: 'wrapped-cone', round: cone };
+  const flat = flatFaceOf(ctx, hit);
+  return flat ? { method: 'moved', flat } : { method: 'projected' };
+}
+
+/** The tool of one face by its kind (unclipped), tracked by `scope` exactly once. */
+function toolOn(
+  ctx: EvalContext,
+  scope: ShapeScope,
+  kind: FaceKind,
+  parts: Base[],
+  hit: ResolvedRef,
+  mode: EmbossMode,
+  depth: number,
+): { tool: NamedShape; data: EmbossOutputData } {
+  switch (kind.method) {
+    case 'wrapped-cylinder':
+    case 'wrapped-cone':
+      return wrappedTool(ctx, scope, parts, hit, kind.round, mode, depth);
+    case 'moved':
+      return flatTool(ctx, scope, parts, hit, kind.flat, mode, depth);
+    case 'projected':
+      return projectedTool(ctx, scope, parts, hit, mode, depth) as {
+        tool: NamedShape;
+        data: EmbossOutputData;
+      };
+  }
+}
+
+/**
+ * An emboss on several faces of one body (ADR-0060's second amendment B3):
+ * each face takes the part of the letters that lands on it, by the method it
+ * would take alone, clipped to the face, and the pieces fuse into one tool.
+ * When any face takes a projection, every face that isn't a flat face
+ * parallel to the profiles is projected too, so the letters line up at every
+ * seam; a flat face that isn't parallel (refused alone) counts as projected.
+ */
+function embossOnFaces(
+  ctx: EvalContext<EmbossInputs>,
+  settings: EmbossSettings,
+  depth: number,
+): FeatureOutput {
+  const hits = settings.faces.map((ref, k) =>
+    ctx.resolve(ref, { label: `face ${k + 1} to emboss on` }),
+  );
+  const body = (hits[0] as ResolvedRef).body;
+  if (hits.some((hit) => hit.body !== body)) {
+    throw new KernelError('Pick faces of one body to emboss on.');
+  }
+  const { kernel } = ctx;
+  const target = ctx.bodies.get(body) as ShapeHandle;
+
+  using scope = kernel.scope();
+  const parts = partsOf(ctx, scope, settings.profiles, WORDS.noun);
+  if (parts.length === 0) throw new KernelError('Pick at least one profile or text to emboss.');
+  // One anchor and one fold for every face (B3).
+  const laid = settings.tangent ? layTangent(ctx, scope, parts, hits) : undefined;
+  const source = laid?.parts ?? parts;
+  const alone = hits.map((hit): FaceKind => {
+    const kind = faceKindOf(ctx, hit);
+    return kind.method === 'moved' && !source.every((part) => parallel(part.plane, kind.flat))
+      ? { method: 'projected' }
+      : kind;
+  });
+  const kinds = alone.some((kind) => kind.method === 'projected')
+    ? alone.map((kind): FaceKind => (kind.method === 'moved' ? kind : { method: 'projected' }))
+    : alone;
+  let projectedSource: Base[] | undefined;
+  const projectFrom = () => {
+    projectedSource ??= laid
+      ? shifted(ctx, scope, source, scale(laid.anchor.normal, depth + 1))
+      : source;
+    return projectedSource;
+  };
+
+  const warnings: string[] = [];
+  const pieces: NamedShape[] = [];
+  let data: EmbossOutputData | undefined;
+  kinds.forEach((kind, i) => {
+    const hit = hits[i] as ResolvedRef;
+    const piece =
+      kind.method === 'projected'
+        ? projectedTool(ctx, scope, projectFrom(), hit, settings.mode, depth, true)
+        : clipToFace(
+            ctx,
+            scope,
+            toolOn(ctx, scope, kind, source, hit, settings.mode, depth),
+            hit,
+            settings.mode,
+            depth,
+          );
+    if (!piece) {
+      warnings.push(`No letters land on face ${i + 1}.`);
+      return;
+    }
+    data ??= piece.data;
+    pieces.push(clipNamed(ctx, piece.tool, i + 1));
+  });
+  if (!data) throw new KernelError("The profiles don't touch the faces.");
+  const tool = mergeTools(ctx, scope, pieces, WORDS.noun);
+  if (kernel.distance(target, tool.shape) > TOUCH) {
+    throw new KernelError("The profiles don't touch the faces.");
+  }
+  const methods = kinds.map((kind) => kind.method);
+  return {
+    ...splitSolids(
+      ctx,
+      scope,
+      operate(
+        ctx,
+        scope,
+        { operation: settings.mode === 'emboss' ? 'join' : 'cut', bodies: [] },
+        tool,
+        [body],
+        warnings,
+        WORDS,
+      ),
+    ),
+    data,
+    report: {
+      kind: 'emboss',
+      method: methods[0] as EmbossMethod,
+      faces: methods,
+      ...(laid && { anchor: laid.anchor }),
+    } satisfies EmbossReport,
+    ...(warnings.length ? { warnings } : {}),
+  };
+}
+
+/**
+ * A moved or wrapped piece cut to the face it stands on: `common` the solid
+ * between the face and its offset by the depth (`Kernel.faceSlab`, outwards
+ * for an emboss, for a hole's wall too: the slab goes along the face's own
+ * outward normal). The slab has no names, so the walls it adds come out as
+ * `emboss:<id>:new`. Undefined when nothing of the piece is on the face.
+ */
+function clipToFace(
+  ctx: EvalContext,
+  scope: ShapeScope,
+  piece: { tool: NamedShape; data: EmbossOutputData },
+  hit: ResolvedRef,
+  mode: EmbossMode,
+  depth: number,
+): { tool: NamedShape; data: EmbossOutputData } | undefined {
+  const { kernel } = ctx;
+  const slab = scope.track(kernel.faceSlab(hit.shape, hit.index, depth, mode === 'emboss'));
+  const tool = namedBoolean(
+    kernel,
+    'common',
+    piece.tool,
+    { shape: slab.shape, names: { faces: [], edges: [], vertices: [] } },
+    { feature: ctx.feature.id, op: WORDS.noun },
+  );
+  scope.track(tool.shape);
+  if (kernel.count(tool.shape, 'face') === 0) return undefined;
+  return { tool, data: piece.data };
+}
+
+/**
+ * The piece of face `k` (from 1) with its walls that have no history (where
+ * the letters stop at the face's edge) named `emboss:<id>:clip:<k>`.
+ */
+function clipNamed(ctx: EvalContext, piece: NamedShape, k: number): NamedShape {
+  const id = ctx.feature.id;
+  return {
+    shape: piece.shape,
+    names: renameFaces(
+      piece.names,
+      createdName(WORDS.noun, id, 'new'),
+      createdName(WORDS.noun, id, `clip:${k}`),
+      ctx.kernel.describe(piece.shape),
+    ),
   };
 }
 
@@ -418,6 +613,9 @@ function rollOntoAxis(
  * cone (P4-12, ADR-0060's amendment): each part's face projected onto it along
  * the sketch plane's normal and cut back to the face and its offset by
  * `depth`, outwards for an emboss and inwards for a deboss, fused into one tool.
+ * With `clip` (several faces, ADR-0060's second amendment B3) the pieces stop
+ * at the face's edge and a part that misses the face is left out: undefined
+ * when every part does.
  * The output's origin is the tool's centre and its direction the sketch's
  * normal pointing back at the sketch (out of the face where the letters are),
  * or the other way for a deboss.
@@ -429,27 +627,38 @@ function projectedTool(
   hit: ResolvedRef,
   mode: EmbossMode,
   depth: number,
-): { tool: NamedShape; data: EmbossOutputData } {
+  clip = false,
+): { tool: NamedShape; data: EmbossOutputData } | undefined {
   const first = parts[0] as Base;
   for (const part of parts) {
     if (!parallel(part.plane, first.plane)) {
       throw new KernelError('Put the profiles in one plane to emboss them on a curved face.');
     }
   }
-  const projected = parts.map((part) => {
-    const tool = namedProjection(ctx.kernel, {
-      feature: ctx.feature.id,
-      op: WORDS.noun,
-      shape: part.source.shape,
-      edgeSources: part.source.edgeSources,
-      body: hit.shape,
-      face: hit.index,
-      depth,
-      outward: mode === 'emboss',
-    });
+  const projected: NamedShape[] = [];
+  for (const part of parts) {
+    let tool: NamedShape;
+    try {
+      tool = namedProjection(ctx.kernel, {
+        feature: ctx.feature.id,
+        op: WORDS.noun,
+        shape: part.source.shape,
+        edgeSources: part.source.edgeSources,
+        body: hit.shape,
+        face: hit.index,
+        depth,
+        outward: mode === 'emboss',
+        clip,
+      });
+    } catch (error) {
+      // Clipped, a part that misses this face lands on another one (B3).
+      if (clip && error instanceof KernelError && error.message === MISSES) continue;
+      throw error;
+    }
     scope.track(tool.shape);
-    return tool;
-  });
+    projected.push(tool);
+  }
+  if (projected.length === 0) return undefined;
   const tool = mergeTools(ctx, scope, projected, WORDS.noun);
   const origin = centroidOf(ctx, tool.shape);
   const normal = unit(first.plane.normal);
