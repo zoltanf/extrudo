@@ -731,3 +731,79 @@ describe('errors and ownership', () => {
     expect(calls).toEqual(['b.Clear', 'b.delete', 'a.delete']);
   });
 });
+
+describe('the boolean merge', () => {
+  // Issue #181 (ADR-0051, 2026-11-04): an annular sector r 20..30 from a0 to
+  // a0 + 30° split at a0 + 15°. A is both halves, united first as an extrude
+  // of two profiles does, swept ±5 mm; B is the first half swept 10 mm each
+  // way, up or down. A simplified fuse must merge A's and B's sides into
+  // whole faces: 10, valid, with the plain fuse's volume. 144 fuses a
+  // sketch: about 4 s locally, 6 s on CI.
+  const deg = Math.PI / 180;
+  /**
+   * The start angles whose fuses don't merge, for a sketch with normal
+   * (0, 0, `nz`); A swept along the normal, or `against` it (a flipped extrude).
+   */
+  function unmerged(nz: 1 | -1, against = false): number[] {
+    const before = kernel.stats().liveShapes;
+    const bad = new Set<number>();
+    for (let a0 = 0; a0 < 360; a0 += 10) {
+      using scope = kernel.scope();
+      const at = (r: number, a: number): [number, number] => [
+        r * Math.cos(a * deg),
+        r * Math.sin(a * deg),
+      ];
+      const { faces } = kernel.planarFaces(
+        [
+          { kind: 'arc', center: [0, 0], radius: 20, from: a0 * deg, sweep: 30 * deg },
+          { kind: 'arc', center: [0, 0], radius: 30, from: a0 * deg, sweep: 30 * deg },
+          { kind: 'line', a: at(20, a0), b: at(30, a0) },
+          { kind: 'line', a: at(20, a0 + 15), b: at(30, a0 + 15) },
+          { kind: 'line', a: at(20, a0 + 30), b: at(30, a0 + 30) },
+        ],
+        { origin: [0, 0, 0], x: [1, 0, 0], normal: [0, 0, nz] },
+        1e-6,
+      );
+      for (const face of faces) scope.track(face.shape);
+      expect(faces).toHaveLength(2);
+      const first = faces.find((f) => f.outer.some((e) => e.curve === 2));
+      if (!first) throw new Error('no first half');
+      const [p, q] = faces.map((f) => f.shape) as [ShapeHandle, ShapeHandle];
+      const base = scope.track(kernel.fuse(p, q, { simplify: true })).shape;
+      const t = against ? -nz : nz;
+      const a = scope.track(kernel.prism(base, [0, 0, 10 * t], [0, 0, -5 * t])).shape;
+      for (const up of [1, -1]) {
+        const s = up * nz;
+        const b = scope.track(kernel.prism(first.shape, [0, 0, 20 * s], [0, 0, -10 * s])).shape;
+        const plain = kernel.measure(scope.track(kernel.fuse(a, b)).shape).volume;
+        for (const [x, y] of [
+          [a, b],
+          [b, a],
+        ] as const) {
+          const merged = scope.track(kernel.fuse(x, y, { simplify: true })).shape;
+          const good =
+            kernel.count(merged, 'face') === 10 &&
+            kernel.isValid(merged) &&
+            Math.abs(kernel.measure(merged).volume - plain) <= 1e-6 * plain;
+          if (!good) bad.add(a0);
+        }
+      }
+    }
+    expect(kernel.stats().liveShapes).toBe(before);
+    return [...bad].sort((x, y) => x - y);
+  }
+
+  it('merges the sides of a join onto an extrude of two profiles (issue #181)', () => {
+    expect(unmerged(1)).toEqual([]);
+  }, 60_000);
+
+  it('merges them for a mirrored sketch too', () => {
+    expect(unmerged(-1)).toEqual([]);
+  }, 60_000);
+
+  it('merges them swept against a mirrored sketch, but for sectors across its 0°', () => {
+    // 340° and 350° (tool up and down) still fall back to the plain fuse: a
+    // valid body, its sides unmerged (ADR-0051, 2026-11-04, open).
+    expect(unmerged(-1, true)).toEqual([340, 350]);
+  }, 60_000);
+});
