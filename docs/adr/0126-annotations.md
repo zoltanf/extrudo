@@ -371,6 +371,17 @@ Where S1 had to decide what the spec left open, or the code disagreed with it:
   isn't the next one, and the fingerprint as an object literal.
 - **The CLI** reports a note on geometry the kernel didn't report as
   `detached`; free and sketch notes are `ok`.
+- **(Review of S1.)** The documents a Script feature and a plugin command see
+  (the timeline before them) **leave out `annotations` and
+  `annotationCounter`**, like `groups`: a note on a sketch after the script
+  would make that document invalid. **Resolving a note never fails a
+  recompute**: whatever throws leaves that note `detached`. The counter is
+  carried by `emitScript` through **`raiseAnnotationCounter`** (core,
+  `annotation.counter`, only upward) and `design.annotationCounter(n)` (refused
+  in scripts), written when it is past the last note, so a rebuilt design never
+  gives a deleted number again. `add_annotation` names its step and answers the
+  number as the step begins, and the agent anchors also take `{ plane }`,
+  `{ axis }` and `{ point }`, which need no bodies.
 
 ## Rejected
 

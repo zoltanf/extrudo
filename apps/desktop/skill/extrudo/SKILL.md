@@ -129,7 +129,8 @@ always means the same note. When the person says "#3" (or "the hole at #3"):
 
 Leave notes of your own with `add_annotation` (on `{ "face": … }`,
 `{ "edge": … }` or `{ "edgeBetween": [f, f] }`, `{ "vertex": … }`,
-`{ "body": … }`, `{ "sketch": id, "at": [x, y] }` or a point `{ "at": [x, y, z] }`)
+`{ "body": … }`, `{ "plane": "origin:xy" }`, `{ "axis": … }`, `{ "point": … }`,
+`{ "sketch": id, "at": [x, y] }` or a point in space `{ "at": [x, y, z] }`)
 for what the person should look at ("#7: this wall is 0.8 mm, thinner than the
 nozzle"). Tick a note off with `edit_annotation` `done: true` once the person
 agrees it is dealt with. **Never delete a person's note unasked**

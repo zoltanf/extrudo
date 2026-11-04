@@ -3999,10 +3999,14 @@ same recipe), `updateAnnotation`, `moveAnnotation`, `removeAnnotation` (drops th
 empty, keeps the counter). Cascades: `removeFeature` of a sketch removes its `sketch` notes;
 `removeFromSketch`, `modifySketch`'s removals, `removeProjection` and `syncProjections` call
 `detachAnnotationEntities` **before** deleting entities; `remintAnnotations` (`remint.ts`);
-`restoreVersion` copies components, joints and annotations and never lowers the counter.
+`restoreVersion` copies components, joints and annotations and never lowers the counter;
+`raiseAnnotationCounter` only raises it (`emitScript` writes `design.annotationCounter(n)`).
+The truncated documents a script and a plugin command see drop `annotations` and
+`annotationCounter` (like `groups`).
 **Kernel:** `RecomputeEngine`'s annotation pass after the joint pass (`#annotation`,
 `annotations/resolve.ts`), `model` anchors only, in no cache key; `AnnotationReport`
-(`core/src/stores.ts`: `status` ok/moved/detached, `at`, `normal` of a flat face or plane,
+(a note whose resolution throws is `detached`, never a failed recompute;
+`core/src/stores.ts`: `status` ok/moved/detached, `at`, `normal` of a flat face or plane,
 `resolved { ref with fingerprint, body? }`) on `RecomputeResult.annotations` and
 `ModelState.annotations`; `resolveAnnotation` on the engine, service, worker API, browser
 client and `Recomputer`, and `AgentHost.resolveAnnotation`. **Agents** (`apps/web/src/agent/`):

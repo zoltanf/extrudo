@@ -225,7 +225,7 @@ Leaves a numbered note on geometry, in a sketch or at a point, and answers its {
 | Input | Type | Required | What it is |
 | --- | --- | --- | --- |
 | `text` | `string` | yes | The note, plain text. |
-| `anchor` | `{ face: string, at?: [number, number, number] } \| { edge: string, at?: [number, number, number] } \| { edgeBetween: string[], at?: [number, number, number] } \| { vertex: string } \| { body: string, at?: [number, number, number] } \| { sketchEntity: string, at?: [number, number, number] } \| { sketch: string, at: [number, number], entity?: string } \| { at: [number, number, number] }` | yes | On a face, edge (or edgeBetween), vertex, body or sketch entity by its name; in a sketch { sketch, at: [x, y] }; or a free point { at: [x, y, z] }. Names as get_feature, get_bodies and list_annotations give them. |
+| `anchor` | `{ face: string, at?: [number, number, number] } \| { edge: string, at?: [number, number, number] } \| { edgeBetween: string[], at?: [number, number, number] } \| { vertex: string } \| { body: string, at?: [number, number, number] } \| { sketchEntity: string, at?: [number, number, number] } \| { plane: string, at?: [number, number, number] } \| { axis: string, at?: [number, number, number] } \| { point: string } \| { sketch: string, at: [number, number], entity?: string } \| { at: [number, number, number] }` | yes | On a face, edge (or edgeBetween), vertex, body or sketch entity by its name; in a sketch { sketch, at: [x, y] }; or a free point { at: [x, y, z] }. Names as get_feature, get_bodies and list_annotations give them. |
 
 ## `edit_annotation`
 
@@ -239,7 +239,7 @@ Changes a note by its number: its text, done (ticked off, when the person agrees
 | `text` | `string` | no | The new text. |
 | `done` | `boolean` | no | Ticked off (true) or open again (false). |
 | `hidden` | `boolean` | no | Not drawn (true) or drawn (false). |
-| `anchor` | `{ face: string, at?: [number, number, number] } \| { edge: string, at?: [number, number, number] } \| { edgeBetween: string[], at?: [number, number, number] } \| { vertex: string } \| { body: string, at?: [number, number, number] } \| { sketchEntity: string, at?: [number, number, number] } \| { sketch: string, at: [number, number], entity?: string } \| { at: [number, number, number] }` | no | On a face, edge (or edgeBetween), vertex, body or sketch entity by its name; in a sketch { sketch, at: [x, y] }; or a free point { at: [x, y, z] }. Names as get_feature, get_bodies and list_annotations give them. |
+| `anchor` | `{ face: string, at?: [number, number, number] } \| { edge: string, at?: [number, number, number] } \| { edgeBetween: string[], at?: [number, number, number] } \| { vertex: string } \| { body: string, at?: [number, number, number] } \| { sketchEntity: string, at?: [number, number, number] } \| { plane: string, at?: [number, number, number] } \| { axis: string, at?: [number, number, number] } \| { point: string } \| { sketch: string, at: [number, number], entity?: string } \| { at: [number, number, number] }` | no | On a face, edge (or edgeBetween), vertex, body or sketch entity by its name; in a sketch { sketch, at: [x, y] }; or a free point { at: [x, y, z] }. Names as get_feature, get_bodies and list_annotations give them. |
 
 ## `remove_annotation`
 

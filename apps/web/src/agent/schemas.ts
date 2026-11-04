@@ -52,6 +52,17 @@ const annotationAnchor = z
       at: at3,
     }),
     z.strictObject({
+      plane: name("A plane: 'origin:xy' ('xz', 'yz') or a construction plane's feature id."),
+      at: at3,
+    }),
+    z.strictObject({
+      axis: name("An axis: 'origin:x' ('y', 'z') or a construction axis's feature id."),
+      at: at3,
+    }),
+    z.strictObject({
+      point: name("A point: 'origin:point' or a construction point's feature id."),
+    }),
+    z.strictObject({
       sketch: name('The sketch feature id.'),
       at: z.tuple([z.number(), z.number()]).describe('Sketch mm, in the sketch frame.'),
       entity: z

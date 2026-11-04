@@ -1,6 +1,7 @@
 import { Design } from '@extrudo/api';
 import {
   type AnnotationId,
+  addAnnotation,
   type BodyId,
   type ExtrudoDocument,
   type GeomFingerprint,
@@ -866,6 +867,72 @@ describe('annotations (ADR-0126 §8)', () => {
     expect(textOf(await runTool('remove_annotation', { numbers: [1, 9] }, context(host)))).toBe(
       'There is no annotation #1, #9: list_annotations lists them.',
     );
+  });
+
+  it('takes a plane, axis or point without the bodies, and refuses a body until they are', async () => {
+    // A design whose model isn't computed: no bodies to check names against.
+    const { host, store } = plateHost();
+    const asked: GeomRef[] = [];
+    host.resolveAnnotation = async (annotation) => {
+      const ref = (annotation.anchor as { ref: GeomRef }).ref;
+      asked.push(ref);
+      return {
+        id: annotation.id,
+        status: 'ok',
+        resolved: { ref: { ...ref, fingerprint: { type: ref.kind, at: [0, 0, 0] } } },
+      };
+    };
+    for (const anchor of [
+      { plane: 'origin:xy', at: [1, 2, 0] },
+      { axis: 'origin:z' },
+      { point: 'origin:point' },
+    ]) {
+      const reply = await runTool('add_annotation', { text: 'x', anchor }, context(host));
+      expect(reply.result.isError, textOf(reply)).toBeUndefined();
+    }
+    expect(asked.map((r) => r.kind)).toEqual(['plane', 'axis', 'point']);
+    expect(store.getState().doc.annotations?.map((a) => a.anchor)).toEqual([
+      {
+        kind: 'model',
+        ref: { kind: 'plane', id: 'origin:xy', fingerprint: { type: 'plane', at: [0, 0, 0] } },
+        at: [1, 2, 0],
+      },
+      {
+        kind: 'model',
+        ref: { kind: 'axis', id: 'origin:z', fingerprint: { type: 'axis', at: [0, 0, 0] } },
+        at: [0, 0, 0],
+      },
+      {
+        kind: 'model',
+        ref: { kind: 'point', id: 'origin:point', fingerprint: { type: 'point', at: [0, 0, 0] } },
+        at: [0, 0, 0],
+      },
+    ]);
+    const body = await runTool(
+      'add_annotation',
+      { text: 'x', anchor: { body: 'b' } },
+      context(host),
+    );
+    expect(textOf(body)).toBe("The model isn't computed: check get_design's problems first.");
+  });
+
+  it('names the step and answers the number given as the step begins', async () => {
+    const { host, store } = computedPlate();
+    // A person's note lands while the agent's change waits for the solver.
+    host.ready = async () => {
+      store.getState().dispatch(
+        addAnnotation({
+          id: 'p1' as AnnotationId,
+          text: 'Mine',
+          anchor: { kind: 'free', at: [0, 0, 0] },
+        }),
+      );
+    };
+    const reply = jsonOf(
+      await runTool('add_annotation', { text: 'Agent', anchor: { at: [0, 0, 0] } }, context(host)),
+    );
+    expect(reply.done).toBe('Agent: Annotate #2');
+    expect(reply.result.number).toBe(2);
   });
 
   it('refuses a change while a sketch is open', async () => {

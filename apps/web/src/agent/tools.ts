@@ -447,7 +447,13 @@ const ANCHOR_KINDS = {
   vertex: 'vertex',
   body: 'body',
   sketchEntity: 'sketchEntity',
+  plane: 'plane',
+  axis: 'axis',
+  point: 'point',
 } as const;
+
+/** The anchors that need the bodies at the marker (the others are origin, construction or sketch geometry). */
+const ON_BODIES: ReadonlySet<string> = new Set(['face', 'edge', 'edgeBetween', 'vertex', 'body']);
 
 /**
  * An agent's anchor as stored (ADR-0126 §8): a name resolved in the model at
@@ -482,12 +488,14 @@ async function storedAnchor(
   const at = (anchor as { at?: Vec3 }).at;
   await settled(host, ctx.settleMs);
   const live = liveBodies(host);
-  if (!live) throw new CommandError("The model isn't computed: check get_design's problems first.");
+  if (!live && ON_BODIES.has(key)) {
+    throw new CommandError("The model isn't computed: check get_design's problems first.");
+  }
   let ref: AnnotationRef =
     key === 'edgeBetween'
       ? { kind: 'edge', id: edgeName(given as string[]) }
       : { kind: ANCHOR_KINDS[key], id: given as string };
-  if (key === 'body') {
+  if (key === 'body' && live) {
     ref = (resolveBodyRefs({ body: ref }, live, doc, ['anchor']) as { body: AnnotationRef }).body;
   }
   const report = await host.resolveAnnotation({
@@ -522,7 +530,8 @@ async function storedAnchor(
 async function change(
   ctx: AgentContext,
   host: AgentHost,
-  label: string,
+  /** The step's name; a function is read once the step can begin (after `ready`). */
+  label: string | (() => string),
   body: () => unknown,
   /** Adds to the summary what is known only once the model is computed. */
   after?: (summary: unknown) => unknown,
@@ -536,7 +545,8 @@ async function change(
     return failure(BUSY);
   }
   let summary: unknown;
-  store.getState().beginTransaction(`Agent: ${label}`);
+  const name = typeof label === 'function' ? label() : label;
+  store.getState().beginTransaction(`Agent: ${name}`);
   try {
     summary = body();
     store.getState().commitTransaction();
@@ -551,7 +561,7 @@ async function change(
   const problems = timeline(host).filter((f) => f.status === 'error' || f.status === 'warning');
   const model = host.model.getState();
   return json({
-    done: `Agent: ${label}`,
+    done: `Agent: ${name}`,
     ...(summary !== undefined && { result: summary }),
     ...(model.status === 'failed' && { recomputeFailed: model.error }),
     problems,
@@ -1120,12 +1130,18 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
   add_annotation: async ({ text, anchor }, ctx, host) => {
     const h = need(host);
     const stored = await storedAnchor(ctx, h, anchor);
-    const number = nextAnnotationNumber(h.store.getState().doc);
     const id = newId<AnnotationId>();
-    return change(ctx, h, `Annotate #${number}`, () => {
-      h.store.getState().dispatch(addAnnotation({ id, text, anchor: stored }));
-      return { number, id };
-    });
+    // The number is read as the step begins: another change may land while it waits.
+    return change(
+      ctx,
+      h,
+      () => `Annotate #${nextAnnotationNumber(h.store.getState().doc)}`,
+      () => {
+        h.store.getState().dispatch(addAnnotation({ id, text, anchor: stored }));
+        const number = h.store.getState().doc.annotations?.find((a) => a.id === id)?.number;
+        return { number, id };
+      },
+    );
   },
   edit_annotation: async ({ number, text, done, hidden, anchor }, ctx, host) => {
     const h = need(host);
