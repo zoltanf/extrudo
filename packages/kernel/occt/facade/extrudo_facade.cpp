@@ -6603,7 +6603,7 @@ private:
         const double vLow = std::min(vStart, vEnd), vHigh = std::max(vStart, vEnd);
         // A straight isoline (a cone's or a cylinder's) becomes the line
         // through the seam's two vertices, its pcurves running from vLow to
-        // vHigh over that line's length (2026-11-05): a STEP edge keeps no
+        // vHigh over that line's length (2026-11-04c): a STEP edge keeps no
         // parameters, so a reader trims a line where its vertices project,
         // and the isoline's ends lie where the chart put the nodes, up to
         // their distance from the surface away (spool-nut-v4.1: 0.003 mm
@@ -11072,7 +11072,7 @@ private:
   }
 
   /**
-   * ADR-0097's 2026-11-05 amendment: every edge of a face on a curved
+   * ADR-0097's 2026-11-04c amendment: every edge of a face on a curved
    * surface gets the pcurve a STEP reader gives it, so the face bounds the
    * same domain once read back. A STEP file keeps no tolerances; OCCT's
    * reader (XSAlgo_ShapeProcessor::CheckPCurve) re-runs FixSameParameter on
@@ -11610,6 +11610,49 @@ private:
         off = measure(through);
         return off <= reach ? through : Handle(Geom2d_Curve)();
       };
+      // A mesh edge's pcurve on `chart` through the chart parameters of 16
+      // points along its chord, from `from` to `to` (its nodes' chart
+      // parameters) over [0, length]; `off` how far its image strays from
+      // the chord. Null when the samples jump more than a tenth from the ends.
+      auto chordPcurve = [&](const MeshChart& chart, const gp_Pnt& p, const gp_Pnt& q, const gp_Pnt2d& from,
+                             const gp_Pnt2d& to, double length, double& off) -> Handle(Geom2d_Curve) {
+        const int samples = 16;
+        Handle(NCollection_HArray1<gp_Pnt2d>) points = new NCollection_HArray1<gp_Pnt2d>(1, samples + 1);
+        Handle(NCollection_HArray1<double>) parameters = new NCollection_HArray1<double>(1, samples + 1);
+        gp_Pnt2d previous;
+        for (int i = 0; i <= samples; ++i) {
+          const double s = static_cast<double>(i) / samples;
+          gp_Pnt2d uv = chart.uv(gp_Pnt(p.XYZ() + s * (q.XYZ() - p.XYZ())));
+          if (i > 0) {
+            if (chart.uPeriodic()) uv.SetX(uv.X() + 2 * M_PI * std::round((previous.X() - uv.X()) / (2 * M_PI)));
+            if (chart.vPeriodic()) uv.SetY(uv.Y() + 2 * M_PI * std::round((previous.Y() - uv.Y()) / (2 * M_PI)));
+          } else if (chart.uPeriodic() || chart.vPeriodic()) {
+            if (chart.uPeriodic()) uv.SetX(uv.X() + 2 * M_PI * std::round((from.X() - uv.X()) / (2 * M_PI)));
+            if (chart.vPeriodic()) uv.SetY(uv.Y() + 2 * M_PI * std::round((from.Y() - uv.Y()) / (2 * M_PI)));
+          }
+          previous = uv;
+          points->SetValue(i + 1, uv);
+          parameters->SetValue(i + 1, s * length);
+        }
+        const gp_XY startOffset = from.XY() - points->Value(1).XY(), endOffset = to.XY() - points->Value(samples + 1).XY();
+        if (startOffset.Modulus() > 0.1 || endOffset.Modulus() > 0.1) return Handle(Geom2d_Curve)();
+        for (int i = 0; i <= samples; ++i) {
+          const double w = static_cast<double>(i) / samples;
+          points->ChangeValue(i + 1).ChangeCoord() += (1 - w) * startOffset + w * endOffset;
+        }
+        ++interpolateCalls_;
+        Geom2dAPI_Interpolate interpolate(points, parameters, false, 1e-9);
+        interpolate.Perform();
+        if (!interpolate.IsDone()) return Handle(Geom2d_Curve)();
+        const Handle(Geom2d_Curve) through = interpolate.Curve();
+        off = 0;
+        for (int i = 0; i <= 20; ++i) {
+          const double s = i / 20.0;
+          const gp_Pnt2d uv = through->Value(s * length);
+          off = std::max(off, chart.value(uv.X(), uv.Y()).Distance(gp_Pnt(p.XYZ() + s * (q.XYZ() - p.XYZ()))));
+        }
+        return through;
+      };
       auto chainBuilt = [&](int r) { return r >= 0 && regions[r].kind >= 0 && regions[r].why.empty(); };
       // Slice D8: the outline pieces joining each pair of end points (by
       // coordinates, to 1e-6): open chains, and boundary mesh edges no
@@ -11867,10 +11910,26 @@ private:
                 continue;
               }
             }
-            const double tol = std::max(off * 1.1, HYBRID_EDGE_TOLERANCE_MIN);
+            const double length = meshNode(lo).Subtracted(meshNode(hi)).Modulus();
+            Handle(Geom2d_Curve) pcurve = pcurveOf(from, to, 0, length);
+            double strays = off;
+            if (off > 1.5 * tolerance && region >= 0 && chart.kind > 0 && length > 1e-9) {
+              // A mesh edge whose straight pcurve strays further than a
+              // chain's may (a long chord across a thin fillet: up to 3.5 mm
+              // on makita-vacuum-holder) gets the chord's image in the chart
+              // instead, as a collapsed chain does, when that strays less
+              // (ADR-0097's 2026-11-04d amendment).
+              double imageOff = 0;
+              const Handle(Geom2d_Curve) image =
+                  chordPcurve(chart, gp_Pnt(meshNode(lo)), gp_Pnt(meshNode(hi)), from, to, length, imageOff);
+              if (!image.IsNull() && imageOff < off) {
+                pcurve = image;
+                strays = imageOff;
+              }
+            }
+            const double tol = std::max(strays * 1.1, HYBRID_EDGE_TOLERANCE_MIN);
             worstTolerance = std::max(worstTolerance, tol);
-            wires.back().push_back({TopoDS_Edge(), Handle(Geom2d_Curve)(), tol, lo, hi, a == lo});
-            wires.back().back().pcurve = pcurveOf(from, to, 0, meshNode(lo).Subtracted(meshNode(hi)).Modulus());
+            wires.back().push_back({TopoDS_Edge(), pcurve, tol, lo, hi, a == lo});
           }
         }
         TopoDS_Face face;

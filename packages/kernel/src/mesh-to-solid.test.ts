@@ -1631,6 +1631,32 @@ describe('Mesh to Solid, the hybrid rebuild (ADR-0097 slice D1)', { timeout: 300
     }
   });
 
+  it('gives a mesh edge that strays far from its straight pcurve the chord’s own image, so a coarse ball round-trips (2026-11-04d)', () => {
+    // An 8-segment ball r 2 with a box's corner through its top, beside
+    // `bossWithBump`, at 0.05 mm: its curved region's mesh edges are chords
+    // whose pcurves, straight in the chart's (u, v), strayed further from
+    // them than 1.5 × the tolerance, and the body read back from STEP at a
+    // volume ratio of 1.00035 (valid, the same 120 faces). Such an edge's
+    // pcurve is the chart's image of its chord now, as a collapsed chain's is.
+    const sphere = manifold.Manifold.sphere(2, 8).translate([50, 0, 0]);
+    const box = manifold.Manifold.cube([1.5, 1.5, 1.5]).translate([50, 0, 1]);
+    const ball = sphere.add(box);
+    sphere.delete();
+    box.delete();
+    const bump = bossWithBump();
+    const part = ball.add(bump);
+    ball.delete();
+    bump.delete();
+    const { shape, report } = prismatic(meshOf(part), 0.05);
+    try {
+      expect(report.rebuild).toBe('hybrid');
+      expect(kernel.isValid(shape)).toBe(true);
+      expectStepRoundTrip(kernel, shape, 'hybrid: a coarse ball with a box’s corner through it');
+    } finally {
+      kernel.release(shape);
+    }
+  });
+
   it('splits a capped cylinder’s wall into two halves', () => {
     const { positions, indices } = trianglesOf(manifold.Manifold.cylinder(20, 5, 5, 32));
     const regions = loopsOf(positions, indices);
