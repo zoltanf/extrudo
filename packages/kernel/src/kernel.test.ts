@@ -792,8 +792,7 @@ describe('the boolean merge', () => {
     expect(unmerged(1)).toEqual([]);
   });
 
-  it('merges them for a mirrored sketch too, but for sectors across its 0°', () => {
-    // These two still fall back to the plain fuse: a valid body, its sides unmerged.
-    expect(unmerged(-1)).toEqual([340, 350]);
+  it('merges them for a mirrored sketch too', () => {
+    expect(unmerged(-1)).toEqual([]);
   });
 });

@@ -544,9 +544,11 @@ describe('extrude', { timeout: 120_000 }, () => {
     ]);
     const shape = bodyShapes.get('E1:0') as ShapeHandle;
     const capEdges = m.edgeNames.flatMap((n, i) => (n.includes('extrude:E1:cap:') ? [i] : []));
-    // The concave edges where E1's caps meet E2's middle side refused a 1 mm chamfer.
+    // The concave edges where E1's caps meet E2's middle side (two faces, one
+    // above and one below E1) refused a 1 mm chamfer.
     for (const cap of ['start', 'end']) {
-      expect(m.edgeNames).toContain(`e[extrude:E1:cap:${cap}|extrude:E2:side:${middle}]`);
+      const concave = new RegExp(`^e\\[extrude:E1:cap:${cap}\\|extrude:E2:side:${middle}#\\d\\]$`);
+      expect(m.edgeNames.filter((n) => concave.test(n))).toHaveLength(1);
     }
     expect(capEdges.length).toBeGreaterThan(0);
     for (const edge of capEdges) {

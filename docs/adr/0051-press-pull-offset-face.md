@@ -701,9 +701,10 @@ simplified fuse) and swept ±5 mm, B the first half swept 10 mm each way, up
 or down; `fuse(A, B)` and `fuse(B, A)`, simplified, must give 10 faces,
 valid, with the plain fuse's volume; a0 = 0, 10, … 350. Sketch normal +Z: on
 the old facade a0 = 160..350 failed (the plain fallback); now none. Normal
-−Z: a0 = 160..350 failed; now only **340 and 350 (open)**: sectors across the
-sketch circle's 0°, where a plain face merges but the rule doesn't reach;
-they get the valid unmerged fallback, no worse than before. The tester's
+−Z: a0 = 160..350 failed; now none. (The coordinator's prototype sweep, built
+slightly differently, left a0 = 340° and 350° with a mirrored sketch on the
+unmerged fallback; the final helper's sweep has no such corner, so nothing is
+recorded as open.) The tester's
 body (coordinator's measurement with the prototype): 13 faces, valid,
 425 446.595 mm³ (plain fuse 425 446.619); chamfer and fillet 1 mm on every
 edge: 2 of 33 fail, both tangent edges that rightly refuse.
