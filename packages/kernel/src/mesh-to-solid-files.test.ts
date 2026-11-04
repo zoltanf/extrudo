@@ -122,6 +122,7 @@ type Outcome =
 // exact rebuild fails (track-straight at 0.01 and 0.1 mm,
 // remove-before-flight-cover at 0.01 mm), the hybrid rebuild converts, the
 // unfit regions (and any region whose face wouldn't build) as facets.
+// track-straight is exact at every step since ADR-0097's 2026-11-04f amendment.
 const DRILL_BLOCK: Outcome = {
   planes: 108,
   // Slice D9: its four tori (R about r, two of them R < r) fit again in
@@ -132,32 +133,25 @@ const DRILL_BLOCK: Outcome = {
   tori: 4,
   hybrid: { unfit: 3, facets: 208 },
 };
+// ADR-0097's 2026-11-04f amendment (a component's dominant torus): the
+// socket rims' rounds are two tori, and track-straight rebuilds exact at
+// every step (before: 65 planes, 2 cylinders, 2 cones, 2 unfit, 237 facets at
+// 0.01 mm; 66, 6, 2, 1 unfit, 145 facets at 0.05 mm; 69, 8, 2 and the hybrid
+// without facets at 0.1 mm).
 const TRACK_001: Outcome = {
-  planes: 65,
+  planes: 89,
+  cylinders: 7,
+  cones: 3,
+  spheres: 0,
+  tori: 2,
+};
+const TRACK_005: Outcome = { ...TRACK_001, tolerance: 0.05 };
+const TRACK_01: Outcome = {
+  planes: 69,
   cylinders: 2,
   cones: 2,
   spheres: 0,
-  tori: 0,
-  hybrid: { unfit: 2, facets: 237 },
-};
-const TRACK_005: Outcome = {
-  // Slice D9 (splitComponent's spindle retry): the counts from before slice
-  // D8 again (slice D8: 65 planes, 2 cylinders, 2 unfit, 237 facets).
-  planes: 66,
-  cylinders: 6,
-  cones: 2,
-  spheres: 0,
-  tori: 0,
-  hybrid: { unfit: 1, facets: 145 },
-  tolerance: 0.05,
-};
-const TRACK_01: Outcome = {
-  planes: 69,
-  cylinders: 8,
-  cones: 2,
-  spheres: 0,
-  tori: 0,
-  hybrid: { unfit: 0, facets: 0 },
+  tori: 2,
   tolerance: 0.1,
 };
 const FLIGHT_COVER: Outcome = {
@@ -207,11 +201,13 @@ const fixtures: [string, string, Outcome][] = [
     'peg-perego-button.stl',
     pegPeregoStl,
     {
-      planes: 108,
-      cylinders: 94,
+      // ADR-0097's 2026-11-04f amendment: dominant tori take cylinder and
+      // sphere pieces (before: 108 planes, 94 cylinders, 10 spheres, 2 tori).
+      planes: 80,
+      cylinders: 26,
       cones: 8,
-      spheres: 10,
-      tori: 2,
+      spheres: 2,
+      tori: 4,
       hybrid: { unfit: 3, facets: 670 },
       // The round trip failed from slice D7 (read back invalid, volumeRatio
       // 0.99979) until ADR-0097's 2026-11-04c amendment (pcurves as read).
@@ -312,12 +308,13 @@ describe('Mesh to Solid, prismatic on the fixtures at Auto', { timeout: 120_000 
       pegPeregoStl,
       // Slice D9: 0.02 mm again, its R < r torus region a surface of revolution
       // (slice D8 left it unfit and went on to 0.05 mm, 261 faces).
+      // ADR-0097's 2026-11-04f amendment: 160 faces (212, 1,738 edges, 20 circles before).
       0.02,
       {
-        faces: 212,
+        faces: 160,
         rebuild: 'hybrid',
-        edges: 1738,
-        circles: 20,
+        edges: 1390,
+        circles: 16,
       },
     ],
     [
@@ -334,7 +331,8 @@ describe('Mesh to Solid, prismatic on the fixtures at Auto', { timeout: 120_000 
       'track-straight-100mm.stl',
       trackStl,
       0.01,
-      { faces: 306, rebuild: 'hybrid', edges: 735, circles: 2 },
+      // ADR-0097's 2026-11-04f amendment: exact (the hybrid's 306 faces, 735 edges, 2 circles before).
+      { faces: 101, rebuild: 'exact', edges: 282, circles: 18 },
     ],
     // Slice D9 (splitComponent's spindle retry): 438 faces again (slice D8: 466).
     ['remove-before-flight-cover.stl', flightCoverStl, 0.01, { faces: 438, rebuild: 'hybrid' }],
