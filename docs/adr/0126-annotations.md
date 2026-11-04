@@ -404,6 +404,18 @@ Where S1 had to decide what the spec left open, or the code disagreed with it:
   is visible (`placeAnnotations`); drawing and making them in an open sketch stays S3.
 - **Deleting a feature a note is on** leaves it `detached` (drawn at `anchor.at`, dashed, hollow
   badge); the status bar message of §4 is not shown yet (left for S4).
+- **(Review of S2.)** A callout is **drawn inside the view**: its box is clamped 12 px from the
+  edges and off the view cube's corner, the leader still running to the anchor, the stored
+  `offset` unchanged; only an anchor off the view or behind the camera hides it (not one being
+  edited, which is pulled into the view). **Editing a hidden note** (its row's F2, Enter or
+  double-click, or with the global eye off) draws it while the editor is open and changes
+  nothing else. **Delete** removes the selected notes together with what it would remove anyway
+  (bodies, or faces of solid bodies), one undo step named after both ("Delete annotation and
+  body"); Delete on a focused browser row stays that row's own. **The tool** anchors a mesh
+  body's face (no persistent name) to the body; with the grid edge-on (a front or side view) a
+  click on nothing lands on the plane through the view's target facing the camera; a kernel
+  answer after the tool ended opens nothing; the click whose press blurred an open editor (and
+  so committed it) doesn't open the next draft.
 
 ## Rejected
 

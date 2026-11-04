@@ -211,6 +211,9 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   stops, so wait with `turnView` (it waits for `settled`). A note the tool just made is
   selected: press Esc before testing what an unselected note shows. After a parameter makes
   the part taller, fit (`F6`) before clicking a callout: its box may sit under the toolbar.
+  Delete on a focused body row deletes only the body (the row's own key): to test Delete on
+  a note plus a body, click the body's row first, then Shift-click the callout. Callouts are
+  clamped into the view (`data-anchor` still gives the anchor's own point, off the view too).
 - The tool's clicks: `clickWhere(page, at, point, /^face:/)` with the orthographic home view;
   a click on empty view space makes a `free` note on the grid plane.
 
