@@ -23,6 +23,23 @@ import {
 } from './dof-playground-model';
 import { LABEL, paletteMarkup, START, SWITCHES, VIEW_BOX } from './palette-switches-model';
 import {
+  LABEL as PROFILES_LABEL,
+  START as PROFILES_START,
+  SWITCHES as PROFILES_SWITCHES,
+  VIEW_BOX as PROFILES_VIEW_BOX,
+  type SwitchKey as ProfilesSwitchKey,
+  profilesMarkup,
+  resultMarkup as profilesResultMarkup,
+} from './profiles-model';
+import {
+  LABEL as SNAP_LABEL,
+  START as SNAP_START,
+  SWITCHES as SNAP_SWITCHES,
+  VIEW_BOX as SNAP_VIEW_BOX,
+  snapMarkup,
+  resultMarkup as snapResultMarkup,
+} from './snap-explorer-model';
+import {
   LABEL as TRIM_LABEL,
   START as TRIM_START,
   VIEW_BOX as TRIM_VIEW_BOX,
@@ -84,6 +101,34 @@ export const WIDGETS: Readonly<Record<string, WidgetDef>> = {
         stage: trimMarkup(TRIM_START, false),
         controls: buttonRow('reset', 'Reset'),
         result: trimResult(undefined),
+        caption,
+      }),
+  },
+  'snap-explorer': {
+    render: (caption) =>
+      widgetFigure({
+        name: 'snap-explorer',
+        viewBox: SNAP_VIEW_BOX,
+        label: SNAP_LABEL,
+        stage: snapMarkup(SNAP_START, false),
+        controls: SNAP_SWITCHES.map((row) =>
+          switchRow({ ...row, checked: SNAP_START[row.key as 'ctrl' | 'grid'] }),
+        ).join(''),
+        resultMarkup: snapResultMarkup(SNAP_START),
+        caption,
+      }),
+  },
+  profiles: {
+    render: (caption) =>
+      widgetFigure({
+        name: 'profiles',
+        viewBox: PROFILES_VIEW_BOX,
+        label: PROFILES_LABEL,
+        stage: profilesMarkup(PROFILES_START, false),
+        controls: PROFILES_SWITCHES.map((row) =>
+          switchRow({ ...row, checked: PROFILES_START[row.key as ProfilesSwitchKey] }),
+        ).join(''),
+        resultMarkup: profilesResultMarkup(PROFILES_START),
         caption,
       }),
   },

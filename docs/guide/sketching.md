@@ -65,6 +65,10 @@ the pointer shows which snap you are on.
 Hold `Ctrl` to draw without snapping. The grid snaps too, and **Snap to grid** in the sketch
 palette turns that off.
 
+```widget snap-explorer
+You are drawing a line from the start point: move the pointer near ends, midpoints, the circle's centre, the crossings and the level line through the start.
+```
+
 ## Constraint tools
 
 Constraints are the rules that tie shapes together. The Sketch tab's Constraints group has one
@@ -235,6 +239,10 @@ would pick. A circle inside a larger outline is a hole in that outline and a reg
 right. **Show profiles** in the palette turns the shading off. Select a profile in the view and
 the selection panel shows its area. Curves that don't close, and construction geometry, make no
 profile.
+
+```widget profiles
+Click regions to select them; flip a switch to open the slot or make the hole construction.
+```
 
 ## The sketch palette
 

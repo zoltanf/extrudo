@@ -181,8 +181,10 @@ describe('a page document', () => {
     const sketching = allPages.find((every) => every.url === '/docs/sketching/');
     expect(sketching?.widgets).toEqual([
       'trim',
+      'snap-explorer',
       'dof-playground',
       'dimension-label',
+      'profiles',
       'palette-switches',
     ]);
     expect(pageHtml(sketching as DocPage, allPages, options)).toContain(WIDGET_TAG);
