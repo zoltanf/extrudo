@@ -250,6 +250,9 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   Sketch1's circle centre point (a projection of `curves=0:x=0..0:y=0..0`) and
   the `coincident` makes `constraints=1`; with the palette's "Auto-project
   sketches" switch off the same click is a plain grid snap with no projection.
+  The faint preview (ADR-0125 amendment 1): `data-carried-curves` (a segment
+  count) is set only while a drawing tool runs with the switch on; absent with
+  the selection tool or the switch off.
   **Face centre (issue #140)**: a Box with `X: '10 mm'` (so the top face's
   centre, sketch (10,0), is away from the sketch origin and its projection
   reads distinctly);

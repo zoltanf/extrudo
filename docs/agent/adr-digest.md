@@ -1469,7 +1469,7 @@ conflicts only). **A link made while the project is open** (desktop Save As…)
 goes through **`LinkedProject.adopt`** (`useLinkedFolder`'s `adopt`), never
 `ProjectStore.link` alone: the open project reads the link only when it opens,
 and kept writing (and re-recording) the old file until it was opened again.
-**2026-10-29:** in the kernel's booleans (`finishBoolean`: fuse, cut, common, split) a **simplified** one runs **on copies of both inputs** (the face merge, `UnifySameDomain`, changed sub-shapes shared with the live body in place, safe input mode or not) and **checks the merged result, falling back to the plain boolean built again from the inputs** when the merge broke it (faces on one cylinder came out unorientable); **never `SetNonDestructive(true)`** on a boolean (a fillet after such a cut ran forever); the recompute engine's **`#checkSound`** refuses a feature whose fresh body fails `Kernel.isValid` or has no face ("The <feature> made a broken body …", "… an empty body …"), releases its handles and keeps the bodies before it, so **no evaluator ever gets a broken body** (a body read from a file is kept with a warning instead: `keepsBrokenBodies`, set only by the import feature); `Kernel.brokenSolidForTests` / the `test-broken`, `test-empty` and `test-broken-kept` features exist for those tests only.
+**2026-10-29:** in the kernel's booleans (`finishBoolean`: fuse, cut, common, split) a **simplified** one runs **on copies of both inputs** (the face merge, `UnifySameDomain`, changed sub-shapes shared with the live body in place, safe input mode or not) and **checks the merged result, falling back to the plain boolean built again from the inputs** when the merge broke it (faces on one cylinder came out unorientable); **never `SetNonDestructive(true)`** on a boolean (a fillet after such a cut ran forever); the recompute engine's **`#checkSound`** refuses a feature whose fresh body fails `Kernel.isValid` or has no face ("The <feature> made a broken body …", "… an empty body …"), releases its handles and keeps the bodies before it, so **no evaluator ever gets a broken body** (a body read from a file is kept with a warning instead: `keepsBrokenBodies`, set only by the import feature); `Kernel.brokenSolidForTests` / the `test-broken`, `test-empty` and `test-broken-kept` features exist for those tests only. **2026-11-04 (#181):** after the merge, an open arc the merge rebuilt gets its input edge's circle back (same arc and direction, input 0 first) when all its faces are planar (`keepInputCircles`, between `SimplifyResult` and the validity check), so an extrude of several profiles is parametrized like its sketch and a later join merges its cylinders; never leave a merged arc on OCCT's new circle.
 
 ADR-0066 (P4-06, slice 1) added **drawings into a sketch**: `@extrudo/io`
 gained `readSvg` / `readDxf` (`xml.ts` is our own small tokenizer, no
@@ -3554,6 +3554,38 @@ Numbers in ADR-0097's 2026-11-01 amendment; all tables in `docs/plans/m2s-explod
   (2026-11-04)". Sweep baseline from here on: `baseline-2026-11-04-second-attempt-auto.jsonl` (`prismatic faces
   24693, prismatic facets 14003, prismatic ms 214077, round trips failed 6`; spool-screw-v4.1 23.9 s).
 
+**ADR-0097 amendment (2026-11-04c): curved faces keep their domain through STEP.** `extrudo_facade.cpp`
+(`pcurvesAsRead`, called last in `rebuildHybrid`; `straightenSeams`); probe case `V` (`QVFACE`, `QVFIX`, `QVENDS`,
+`QVNEAR`, `QVSTEP`) in `spikes/stl-to-solid/prismatic.cpp`. Rules:
+- No pcurve of a hybrid face on a curved surface is one a STEP reader would replace: where it strays from its 3D curve
+  by more than min(1, 2p) (p the writer's uncertainty, 1.5 × the average tolerance rounded to 1, 2, 5) and the curve's
+  projection strays less, the face gets the projection, moved by whole periods onto the old ends; all of it goes
+  back when the body checks invalid.
+- A straight seam `straightenSeams` makes is the line through its two vertices (degree-1 B-spline pcurves over its
+  length), not the isoline: a reader trims a line where its vertices project.
+- Don't loosen the 1e-4 volume rule or swap the integral: every integral agrees on each side. Measured, not built: the
+  reader's end rule (a pcurve whose ends lie farther than p from the curve's is re-projected anyway): gear-bearing-5
+  0.99988, 1.1 s.
+- Test: `mesh-to-solid.test.ts` "gives a sphere’s edges the pcurves a STEP reader gives them, so its volume
+  round-trips (2026-11-04c)"; spool-nut-v4.1 pins the seam in the sweep. Sweep baseline from here on:
+  `baseline-2026-11-04c-round-trip-auto.jsonl` (`prismatic faces 24693, prismatic facets 14003, round trips failed 1`:
+  gear-bearing-5).
+
+**ADR-0097 amendment (2026-11-04d): a mesh edge far from its straight pcurve.** `extrudo_facade.cpp` (`rebuildHybrid`'s
+`makeFace`, `chordPcurve`). Rules:
+- A curved region's mesh edge whose straight (u, v) pcurve strays from its chord by more than 1.5 T gets the chart's
+  image of the chord (ending at its nodes' chart parameters) when that strays less; the tolerance follows it. Don't
+  use the orthogonal projection there (its ends miss the chart parameters the face's other pcurves end at). The image
+  goes through three points (ends and midpoint): with 17, unify, healing and the mesh check took 1.6 s longer on
+  gardena-end's 594 such edges for the same body; a k T threshold or a facet-across rule loses gear-bearing-5's round
+  trip.
+- Measured, not built: makita-vacuum-holder's facets are mostly one unfit fillet network (3,106 triangles, about 2,090
+  facets; no rolling-ball band fits) and 18 cone fits on fillet patches whose chords lie 1.2–3.4 mm off the cone.
+- Test: `mesh-to-solid.test.ts` "gives a mesh edge that strays far from its straight pcurve the chord’s own image, so a
+  coarse ball round-trips (2026-11-04d)". Sweep baseline from here on:
+  `baseline-2026-11-04e-chord-three-points-auto.jsonl` (`prismatic faces 24650, prismatic facets 13958, prismatic ms
+  221048, round trips failed 0`). Spike case `D` measures a body's distance from its mesh.
+
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
 facade `removeFaces` with `BRepAlgoAPI_Defeaturing`). Rules: **all or nothing** (any
@@ -3976,7 +4008,8 @@ S2 (the import flow): `apps/web/src/platform/cad.ts` (a leaf: `CAD_CONVERT_EXTEN
 exported as `@extrudo/web/platform/cad`), `Platform.convertCad?`, `features/import.ts`
 (`importAccept`, `importRefused`, `pickImportFile`'s `convertCad`), `project/actions.ts`
 (`importAnyFile`), `AppShell.tsx` (passes `platform.convertCad`), `apps/desktop/src/main/cadmpeg.ts`
-(pure over `CadmpegEnv`: `findCadmpeg`, `cadmpegStatus`, `safeInputName`, `convertWithCadmpeg`,
+(pure over `CadmpegEnv`: `findCadmpeg`, `cadmpegStatus`, `safeInputName`, `stepHasSolid`,
+`noSolidMessage`, `convertWithCadmpeg`,
 `cleanupCadmpegFiles`, `nodeCadmpegEnv`; reuses `blender.ts`'s `wrap`), `cadmpegService.ts`
 (`isCadFile`, `cadmpegOverride`), the `cadStatus`/`cadConvert` channels (`extrudo:cad:*`) in
 `shared/ipc.ts`, `shared/bridge.ts` and `main/ipc.ts` (through `guarded`), `main/index.ts` (the dev
@@ -3990,7 +4023,10 @@ validates the payload (`isCadFile`, else throw) and checks the extension and the
 the file name is sanitised (`safeInputName`: `[A-Za-z0-9._-]`, no leading `-`/`.`) before it
 touches the disk, the parent `extrudo-cadmpeg/` and each job directory must be plain directories
 owned by the user; the converter's message is the last non-empty stderr line (capped at 300
-characters).
+characters). Exit 0 counts only with a STEP that holds a solid (`stepHasSolid`: `MANIFOLD_SOLID_BREP`,
+`BREP_WITH_VOIDS` or `FACETED_BREP`); without one the answer is `noSolidMessage` (the geometry couldn't
+be read, export STEP from the program it was made in), never the kernel's "surfaces" (amendment
+2026-11-04: cadmpeg exits 0 with an empty STEP or an open shell when it can't read a part's B-rep).
 
 ADR-0116 (the owner, 2026-11-01): **Live widgets and drawn figures in the docs** (P6-22;
 amends ADR-0080's "only raw HTML is `<video>`, no script" and ADR-0057's policy use). Files:
@@ -4061,7 +4097,13 @@ sketch kind so `place`'s `ModelAttachment.kind` is `sketchPoint`/`sketchCurve`,
 and the host resolves through `projectionCurve(projection, kind)` (the kernel
 key is `point`/`curve`, not the kind). The palette's "View & project" becomes "View" and
 "Auto-project" (a Bodies | Sketches row and the Face outline switch); the app menu's toggle is
-"Auto-project sketch curves". Intersect and the f3d importer are unchanged.
+"Auto-project sketch curves". Intersect and the f3d importer are unchanged. **Amendment 1**
+(2026-11-04): while a drawing tool runs (`sketchInput.modelSnap`) and `autoProjectSketches` is on,
+`carriedSegments` (`viewport/sketchGeometry.ts`) flattens the earlier sketches' curves onto the
+open sketch's plane and `CarriedCurves` (`viewport/Sketches.tsx`) draws them thin, dashed and
+faint (no text, no segment already in the plane; `data-carried-curves` is the segment count);
+`sketchSnapAt` also offers an earlier entity whose carried copy lies within the snap tolerance of
+the cursor, so the faint copy is what the pointer snaps to.
 
 ADR-0126 (the owner, 2026-11-03; S1 2026-11-03): **Annotations** (P6-23), numbered notes
 pinned to geometry, a point or a sketch. **Model:** `doc.annotations[]` (`Annotation`: `id`,

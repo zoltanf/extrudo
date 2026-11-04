@@ -3737,3 +3737,172 @@ Test: `mesh-to-solid.test.ts` "keeps a boss wall’s hole where it is through un
 **Left.** Micro zigzags (2 facets), the wrapped charts (375 facets, mostly fits), the planes exploded as "its outer
 loop runs the wrong way" (152 facets); 6 files fail the round trip at Auto (battery-power-adapter and
 phone-stand-foldable on the 1e-4 volume rule).
+
+### Amendment, 2026-11-04c: curved faces keep their domain through STEP (the volume-only round trips)
+
+**The problem.** Six files at Auto failed the round trip on the 1e-4 volume rule alone (read back valid, the same face
+count): battery-power-adapter 0.999764, phone-stand-foldable 0.999572, spool-nut-v4.1 1.000527, gear-bearing-5
+0.999624, micro-sd-keyring-inner 0.999342, spaghetti-measure 1.000179.
+
+**Where the volume went** (spike case `V`: the written body and its read-back measured with BRepGProp's fixed order,
+bounded at 1e-7 and 1e-9, Gauss–Kronrod at 1e-9 and a fine triangulation, then face by face). Every integral gives the
+same ratio, so the measure's precision is not it. Planes, cylinders and facets match face by face to about 1e-9; the
+whole difference sits on cones, spheres, tori and a spindle torus's revolution. Two causes:
+
+- **(a) A reader re-projects stray pcurves (five files).** A hybrid chord across a torus or a sphere has a pcurve
+  that is straight in the chart's (u, v) between its two nodes; its image strays from the 3D chord by up to 0.9 mm
+  (micro-sd-keyring-inner's spheres, chords 2.4 mm long on r 1.38). OCCT's STEP reader
+  (`StepToTopoDS_TranslateEdgeLoop` → `XSAlgo_ShapeProcessor::CheckPCurve`) re-runs `FixSameParameter` on every
+  pcurve at the file's uncertainty p (the writer's: 1.5 × the average tolerance, rounded to 1, 2, 5) and, where the
+  pcurve then strays more than min(1, 2p), takes the 3D curve's projection onto the surface if that strays less. The
+  face's domain changes: battery-power-adapter's torus face 154 37.486 → 38.044 mm², micro-sd's four spheres 1.68 →
+  3.34 mm² each. The geometry really changes in the read.
+- **(b) A reader re-trims a seam line (spool-nut-v4.1).** `straightenSeams` makes a periodic face's new seam the
+  surface's isoline from the chart's v at one vertex to the other. Its vertices are mesh nodes, up to 0.0044 mm off
+  the cone, radially (the cone's chart), so 0.0031 mm along its generatrix from the isoline's end. A STEP edge keeps no
+  parameters: the reader trims the line where its vertices project, and the seam's pcurves then start 0.003 below
+  where the face's other pcurves end. Green's theorem (the du form) gives the face's area as 340.650627 mm² on both
+  sides, and both triangulations give the same volume; BRepGProp's dv form adds the overshoot times a whole turn
+  (sin a · v · dv · 2π = 0.627 mm², 341.277 read back). The face is the same; the measure sees the gap.
+
+**Rules.**
+
+1. **Pcurves as read** (`pcurvesAsRead`, the hybrid's last step before the report). Every edge of a face on a curved
+   surface whose pcurve, tested as the reader tests it (on an edge of the 3D curve alone, `FixSameParameter`), strays
+   more than min(1, 2p) gets the 3D curve's projection (`ShapeFix_Edge::FixAddPCurve`) when that strays less, moved by
+   whole periods onto the old pcurve's ends (one that ends a period on is left out). Only edges whose tolerance exceeds
+   the bar are tested; planes, seams and degenerated edges are left alone. In place; when the body then checks invalid,
+   every pcurve goes back.
+2. **A line seam runs through its vertices** (`straightenSeams`). A straight isoline (a cone's or a cylinder's)
+   becomes the line through the seam's two vertices, its pcurves degree-1 B-splines from vLow to vHigh over that
+   line's length, when the line stays within both vertices' tolerances of the isoline (else the isoline, as before).
+
+**Results** (the sweep, `TOL=auto`, 41 files, against `baseline-2026-11-04-second-attempt-auto.jsonl`, written to
+`baseline-2026-11-04c-round-trip-auto.jsonl`; no file worse on the bar; totals recomputed from the JSONL):
+
+    2026-11-04 second attempt:  files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24693, prismatic facets 14003, prismatic ms 214077, faceted ms 104661, round trips failed 6
+    2026-11-04c round trip:     files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24693, prismatic facets 14003, prismatic ms 221681, faceted ms 109408, round trips failed 1
+
+No file's faces or facets move. The files whose round trip moved (volume ratio read back / written):
+
+| file | cause | round trip (passes, read-back faces, volume ratio) | ms |
+|---|---|---|---|
+| own/battery-power-adapter | (a) torus | no, 581, 0.999764 → yes, 581, 1.000000 | 2642 → 2907 |
+| own/phone-stand-foldable | (a) tori | no, 868, 0.999572 → yes, 868, 0.999966 | 4237 → 4921 |
+| own/spool-nut-v4.1 | (b) cone seam | no, 718, 1.000527 → yes, 718, 1.000000 | 8293 → 7995 |
+| third-party/micro-sd-keyring-inner | (a) spheres | no, 66, 0.999342 → yes, 66, 1.000000 | 2278 → 2350 |
+| third-party/spaghetti-measure | (a) sphere | no, 148, 1.000179 → yes, 148, 1.000000 | 1076 → 1117 |
+| third-party/gear-bearing-5 | (a) spheres, revolutions | no, 2304, 0.999624 → no, 2304, 0.999802 | 13657 → 14800 |
+
+Nine more files' ratios moved inside the rule: drill-block, track-straight-100mm, trashcan-spacer and
+whiteboard-tray-v5 to 1.000000 (from up to 1.000023), makita-vacuum-holder 0.999956 → 0.999998, kuglbahn-pillar-base
+0.999934 → 0.999975, peg-perego-button 0.999997 → 0.999996, shower-holder 0.999994 → 1.000005 and mirna-doodle-1
+1.000000 → 1.000023. The faceted method's code did not change, so its +4.5 % is load; prismatic's +3.6 % is that load
+plus the pass (60 ms on battery-power-adapter's 581 faces in the spike). The fixture pin of
+`peg-perego-button.stl` at 0.01 mm (`tripFails`, slice D7) flipped: it round-trips now.
+
+**Left: gear-bearing-5.** The reader's other rule: a pcurve whose ends lie farther than p from its 3D curve's is
+dropped and projected again whatever it gains. Doing that too (spike `QVENDS`) leaves gear-bearing-5 at 0.99988, still
+over the rule, and costs 1.1 s on it (2,994 pcurves); not built.
+
+**Rejected.** Loosening 1e-4 or measuring with another integral (every integral agrees on each side). Moving the
+vertices onto the isoline (the chords that end there would then slide). Trimming the isoline where its vertices
+project (the gap then sits in the written body and both sides measure 0.18 % too much on spool-nut's cone).
+
+Test: `mesh-to-solid.test.ts` "gives a sphere’s edges the pcurves a STEP reader gives them, so its volume
+round-trips (2026-11-04c)": a 24-segment sphere with a box's corner through it, beside `bossWithBump`, at 0.05 mm
+(main's facade: read back valid, 233 faces, ratio 1.00047; now 1.0000000). No synthetic mesh tried for (b) failed on
+main (a noisy cone band read back exact), so spool-nut-v4.1 pins it in the sweep. The OCCT input hash went
+`700b080c6fb2` → `2093b9db170f` (CI 41785913256). Probes and tables: `docs/plans/m2s-exploded-q1-2026-11-01.md`,
+"Run 6".
+
+### Amendment, 2026-11-04d: a mesh edge far from its straight pcurve gets its chord's image (makita-vacuum-holder's facets)
+
+**Where makita-vacuum-holder's facets come from** (3,334 faces, 2,516 facets at Auto, T 0.05; spike `Q26=1`, `Q25=1`,
+`UNFIT=1` on the kernel-staged mesh):
+
+| source | regions | triangles | why |
+|---|---|---|---|
+| one unfit surface (no fit) | 1,481 (about 2 triangles each) | 3,106 (707.6 mm², 1.45 % of the area) | a connected fillet network that borders more than two surfaces; as a whole it fails the rolling-ball test on coverage (16 % of its outline on two planes), and its two-plane sub-bands lie a median 4–7 T off their rolling-ball cylinders |
+| exploded: cones | 18 | 312 | "edge tolerance" 1.18–3.53 mm: fillet patches fitted as cones, crossed by chords up to 14 mm long |
+| exploded: tori | 4 | 96 | "edge tolerance" 1.36–4.25 mm |
+| exploded: a plane | 1 | 16 | "its outer loop runs the wrong way" |
+
+The coordinator's belief holds in part: the network (about 2,090 of the facets) is fillets that no fit takes; the
+cone fits on fillet patches are 18 regions. The network needs fitting of its own (fillet networks and their corner
+blends, beyond slice D10's rolling-ball bands): not this slice.
+
+**The next source: edge tolerance.** A hybrid mesh edge's pcurve was straight in the chart's (u, v) between its nodes;
+on a thin fillet's cone or torus its image strays up to 3.5 mm from the chord, over `HYBRID_EDGE_TOLERANCE_MAX`
+(1 mm), so the region explodes.
+
+**Rule.** A mesh edge of a curved region whose straight pcurve strays from its chord by more than 1.5 T (what a
+collapsed chain's straight pcurve may) gets the chart's image of the chord instead (`chordPcurve`: the chord's ends and
+midpoint through `MeshChart::uv`, continuous across periods, the ends' offsets blended so it ends at its nodes' chart
+parameters, interpolated over the chord's length), when that strays less; the edge's tolerance follows the pcurve it
+keeps. Three points, not more (the review below).
+
+**Results** (the sweep, `TOL=auto`, 41 files, against `baseline-2026-11-04c-round-trip-auto.jsonl`, written to
+`baseline-2026-11-04d-chord-pcurves-auto.jsonl`; 63 passed, 1 skipped; totals recomputed from the JSONL; another job's
+tests ran on the machine, so the times are not comparable):
+
+    2026-11-04c round trip:     files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24693, prismatic facets 14003, prismatic ms 221681, faceted ms 109408, round trips failed 1
+    2026-11-04d chord pcurves:  files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24650, prismatic facets 13958, prismatic ms 227361, faceted ms 112500, round trips failed 0
+
+| file | faces | facets | Auto step | round trip (passes, read-back faces, volume ratio) | ms |
+|---|---|---|---|---|---|
+| own/phone-stand-foldable | 868 → 868 | 287 → 287 | 0.1 | yes, 868, 0.999966 → yes, 868, 0.999989 | 4921 → 5832 |
+| third-party/gear-bearing-5 | 2304 → 2304 | 1418 → 1418 | 0.1 | no, 2304, 0.999802 → yes, 2304, 0.999921 | 14800 → 15040 |
+| third-party/makita-vacuum-holder | 3334 → 3306 | 2516 → 2486 | 0.05 | yes, 3334, 0.999998 → yes, 3306, 0.999997 | 10412 → 10434 |
+| third-party/micro-sd-keyring-inner | 66 → 51 | 18 → 3 | 0.01 | yes, 66, 1.000000 → yes, 51, 1.000000 | 2350 → 2610 |
+
+makita's facets go down by 30 only: 2 of its tori build now, while its 18 cones still need 1.18–3.42 mm with the
+chord's own image, so those chords really lie that far from the fitted cone (a fit question: a torus, not a cone, is
+the fillet patch's surface). Every corpus file's round trip passes at Auto now: gear-bearing-5 0.999802 → 0.999921 (not probed face by face).
+
+**Not tried, and why.** The image for every curved mesh edge: the straight pcurve is kept within 1.5 T, as a
+chain's is. The chord's orthogonal projection (`ShapeFix_Edge::FixAddPCurve`, as `pcurvesAsRead` uses): its ends are
+the nodes' orthogonal projections, not their chart parameters where the face's other pcurves end (a cone's chart
+projects radially), so the face's outline would open in (u, v) at such nodes, the gap 2026-11-04c's seam rule closes.
+
+**Review: gardena-end's volume and time.** The first build interpolated the image through 17 points. gardena-end (17
+faces, all fitted, T 0.01) then gave a body/mesh volume of 1.003237 → 1.005342 and took 3546 → 5458 ms. Measured with
+spike case `D` (each face's BRepGProp and triangulated area, the mesh nodes' distance to the body, each face's
+triangulation nodes' distance to the mesh):
+- 884 `chordPcurve` calls (torus 488, cylinder 154, cone 122, sphere 120), 594 replaced; the straight pcurves strayed
+  2.2–5.1 T (0.022–0.051 mm), the images at most 0.048 mm; none near the 1 mm cap.
+- The body did not move. Triangulated areas of the five faces whose BRepGProp area moved (tori 0, 11, 14, sphere 13,
+  cone 8: −2.93 to +2.69 mm²) changed by 0.001–0.2 mm², the triangulated volume 13120.241 → 13120.424 (+0.0014 %),
+  the mesh nodes' distance to the body max 0.00729 and mean 8.0e-5 on both, the faces' distance to the mesh max 0.0853
+  on both, mean 0.02051 → 0.02046. 2026-11-04c's integrals were off their own triangulation (torus 0 613.75 against
+  616.28 mm², torus 11 184.91 against 181.95); the new ones agree with it (13130.0 mm³; 13102.5 before).
+- The time was `chordPcurve`'s, not load (uptime under 1, two runs each): hybrid faces +80 ms, hybrid solid 80 → 400 ms
+  per attempt, unify, healing and the mesh check (face classifiers 3 → 20 ms to build, 60 → 280 ms classifying) on the
+  16-span pcurves.
+- Narrowings tried: a threshold of k T on the straight pcurve's stray (gardena's are up to 5.1 T, gear-bearing-5's,
+  which its round trip needs, up to 6 T: k 10 fails it again, 0.999802); only edges with a facet across (makita and
+  micro-sd lose their gains, phone-stand-foldable 868 → 961 faces, gear-bearing-5 fails). Kept: three points. On
+  gardena-end, whole conversions in the spike: 2026-11-04c 3843 and 3950 ms, 17 points 5494 and 5532, three points
+  4037 and 4030; every gain stays.
+
+The sweep with three points (against `baseline-2026-11-04c-round-trip-auto.jsonl`, written to
+`baseline-2026-11-04e-chord-three-points-auto.jsonl`; 63 passed, 1 skipped; `uptime` under 1.3 throughout):
+
+    2026-11-04c round trip:    files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24693, prismatic facets 14003, prismatic ms 221681, faceted ms 109408, round trips failed 1
+    2026-11-04e three points:  files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24650, prismatic facets 13958, prismatic ms 221048, faceted ms 105879, round trips failed 0
+
+| file | faces | facets | round trip (passes, read-back faces, volume ratio) | body/mesh volume | ms (04c → 17 points → 3) |
+|---|---|---|---|---|---|
+| own/phone-stand-foldable | 868 → 868 | 287 → 287 | yes, 0.999966 → yes, 0.999982 | 0.998275 → 0.998266 | 4921 → 5832 → 4869 |
+| third-party/gardena-end | 17 → 17 | 0 → 0 | yes, 1.000012 → yes, 1.000014 | 1.003237 → 1.005340 | 3546 → 5458 → 3641 |
+| third-party/gear-bearing-5 | 2304 → 2304 | 1418 → 1418 | no, 0.999802 → yes, 0.999920 | | 14800 → 15040 → 14666 |
+| third-party/makita-vacuum-holder | 3334 → 3306 | 2516 → 2486 | yes, 0.999998 → yes, 0.999997 | 0.999915 → 0.999861 | 10412 → 10434 → 10160 |
+| third-party/micro-sd-keyring-inner | 66 → 51 | 18 → 3 | yes, 1.000000 → yes, 1.000000 | 0.996652 → 0.996240 | 2350 → 2610 → 2378 |
+
+Test: `mesh-to-solid.test.ts` "gives a mesh edge that strays far from its straight pcurve the chord’s own image, so
+a coarse ball round-trips (2026-11-04d)": an 8-segment ball r 2 with a box's corner through it, beside
+`bossWithBump`, at 0.05 mm (2026-11-04c's facade: read back valid, 120 faces, ratio 1.00035; now 1.0000004, spike).
+No synthetic mesh tried made a region explode for edge tolerance (coarse tori 8 × 8 and 12 × 6, a sphere's pole under
+a box, a twisted cone band, a coarse filleted hole: none), so makita and micro-sd-keyring-inner pin the facets in the
+sweep. The OCCT input hash went `2093b9db170f` → `b3019374ded4` (CI 41795467145), then with three points →
+`98a3b9ae5c94` (CI 41812088740). Tables: `docs/plans/m2s-exploded-q1-2026-11-01.md`, "Run 6".

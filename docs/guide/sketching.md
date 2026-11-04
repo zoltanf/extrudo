@@ -65,6 +65,10 @@ the pointer shows which snap you are on.
 Hold `Ctrl` to draw without snapping. The grid snaps too, and **Snap to grid** in the sketch
 palette turns that off.
 
+```widget snap-explorer
+You are drawing a line from the start point: move the pointer near ends, midpoints, the circle's centre, the crossings and the level line through the start.
+```
+
 ## Constraint tools
 
 Constraints are the rules that tie shapes together. The Sketch tab's Constraints group has one
@@ -236,6 +240,10 @@ right. **Show profiles** in the palette turns the shading off. Select a profile 
 the selection panel shows its area. Curves that don't close, and construction geometry, make no
 profile.
 
+```widget profiles
+Click regions to select them; flip a switch to open the slot or make the hole construction.
+```
+
 ## The sketch palette
 
 While a sketch is open, the palette sits at the right of the view. It shows the sketch's name with
@@ -310,7 +318,9 @@ A body edge or vertex you snap to while drawing comes into the sketch, linked to
 ### Auto-project sketches
 
 A curve or point of an earlier sketch you snap to comes into this sketch, linked to that sketch.
-Only sketches earlier in the timeline are offered. See [Project and Intersect](#project-and-intersect).
+Only sketches earlier in the timeline are offered. While a drawing tool runs, their curves show
+faint and dashed on this sketch's plane; point at one to snap to it. Nothing comes in until you
+do. See [Project and Intersect](#project-and-intersect).
 
 ### Face outline
 

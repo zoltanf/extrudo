@@ -466,3 +466,51 @@ function CurveMarks({
   line.material.opacity = c.a;
   return <primitive object={line} />;
 }
+
+/**
+ * Auto-project Sketches' preview (ADR-0125, amendment 1): the earlier
+ * sketches' curves flattened onto the open sketch's plane (`carriedSegments`),
+ * thin, dashed and faint, while a drawing tool runs, so what it can snap to
+ * and project shows before the pointer finds it. Not pickable.
+ */
+export function CarriedCurves({
+  store,
+  positions,
+  color: c,
+}: {
+  store: ViewportStore;
+  positions: Float32Array;
+  color: Rgba;
+}) {
+  const line = useMemo(() => {
+    if (positions.length === 0) return undefined;
+    const g = new LineSegmentsGeometry();
+    g.setPositions(positions);
+    const l = new LineSegments2(
+      g,
+      new LineMaterial({ linewidth: 1, transparent: true, dashed: true }),
+    );
+    l.computeLineDistances();
+    l.renderOrder = 3;
+    l.frustumCulled = false;
+    return l;
+  }, [positions]);
+  useEffect(
+    () => () => {
+      line?.geometry.dispose();
+      line?.material.dispose();
+    },
+    [line],
+  );
+  const height = useThree((s) => s.size.height);
+  useFrame(() => {
+    if (!line) return;
+    const perPixel = store.getState().view.size / Math.max(1, height);
+    line.material.dashSize = DASH * perPixel;
+    line.material.gapSize = GAP * perPixel;
+  });
+  if (!line) return null;
+  line.material.color = color(c);
+  line.material.opacity = c.a;
+  return <primitive object={line} />;
+}

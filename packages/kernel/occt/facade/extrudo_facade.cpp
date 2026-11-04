@@ -69,6 +69,9 @@
 #include <Bnd_Box2d.hxx>
 #include <ShapeFix_Solid.hxx>
 #include <ShapeFix_Shape.hxx>
+#include <Interface_MSG.hxx>
+#include <ShapeAnalysis_ShapeTolerance.hxx>
+#include <ShapeFix_Edge.hxx>
 #include <BRepBuilderAPI_MakeShapeOnMesh.hxx>
 #include <Poly_Triangle.hxx>
 #include <BRepBuilderAPI_MakeSolid.hxx>
@@ -6594,15 +6597,58 @@ private:
         const double vStart = acrossOf(c1->Value(t1)), vEnd = acrossOf(atUV);
         const bool rising = vEnd > vStart;
         TopoDS_Edge newSeam;
-        builder.MakeEdge(newSeam, d == 0 ? copy->UIso(target) : copy->VIso(target), location, BRep_Tool::Tolerance(v1));
-        builder.Add(newSeam, (rising ? v1 : vn).Oriented(TopAbs_FORWARD));
-        builder.Add(newSeam, (rising ? vn : v1).Oriented(TopAbs_REVERSED));
-        const gp_Dir2d up = d == 0 ? gp_Dir2d(0, 1) : gp_Dir2d(1, 0);
-        const Handle(Geom2d_Line) atLo = new Geom2d_Line(d == 0 ? gp_Pnt2d(lo, 0) : gp_Pnt2d(0, lo), up);
-        const Handle(Geom2d_Line) atHi = new Geom2d_Line(d == 0 ? gp_Pnt2d(hi, 0) : gp_Pnt2d(0, hi), up);
-        if (d == 0) builder.UpdateEdge(newSeam, atHi, atLo, rebuilt, BRep_Tool::Tolerance(v1));
-        else builder.UpdateEdge(newSeam, atLo, atHi, rebuilt, BRep_Tool::Tolerance(v1));
-        builder.Range(newSeam, std::min(vStart, vEnd), std::max(vStart, vEnd));
+        const Handle(Geom_Curve) iso = d == 0 ? copy->UIso(target) : copy->VIso(target);
+        const TopoDS_Vertex& low = rising ? v1 : vn;
+        const TopoDS_Vertex& high = rising ? vn : v1;
+        const double vLow = std::min(vStart, vEnd), vHigh = std::max(vStart, vEnd);
+        // A straight isoline (a cone's or a cylinder's) becomes the line
+        // through the seam's two vertices, its pcurves running from vLow to
+        // vHigh over that line's length (2026-11-04c): a STEP edge keeps no
+        // parameters, so a reader trims a line where its vertices project,
+        // and the isoline's ends lie where the chart put the nodes, up to
+        // their distance from the surface away (spool-nut-v4.1: 0.003 mm
+        // along the line, a whole turn's ring of area once read back).
+        const gp_Pnt pLow = BRep_Tool::Pnt(low), pHigh = BRep_Tool::Pnt(high);
+        const double length = pLow.Distance(pHigh);
+        bool chord = !Handle(Geom_Line)::DownCast(iso).IsNull() && length > 1e-7;
+        if (chord) {
+          // The chord stays within the seam's tolerance of the isoline, else the isoline it is.
+          double strays = 0;
+          for (int k = 0; k <= 8; ++k) {
+            const double t = k / 8.0;
+            strays = std::max(strays, pLow.XYZ().Added((pHigh.XYZ() - pLow.XYZ()) * t)
+                                          .Subtracted(iso->Value(vLow + t * (vHigh - vLow)).Transformed(location.Transformation()).XYZ())
+                                          .Modulus());
+          }
+          chord = strays < BRep_Tool::Tolerance(v1) && strays < BRep_Tool::Tolerance(vn);
+        }
+        if (chord) {
+          builder.MakeEdge(newSeam, new Geom_Line(pLow, gp_Dir(gp_Vec(pLow, pHigh))), BRep_Tool::Tolerance(v1));
+          const auto run = [&](double at) {
+            NCollection_Array1<gp_Pnt2d> poles(1, 2);
+            poles(1) = d == 0 ? gp_Pnt2d(at, vLow) : gp_Pnt2d(vLow, at);
+            poles(2) = d == 0 ? gp_Pnt2d(at, vHigh) : gp_Pnt2d(vHigh, at);
+            NCollection_Array1<double> knots(1, 2);
+            knots(1) = 0;
+            knots(2) = length;
+            NCollection_Array1<int> mults(1, 2);
+            mults(1) = mults(2) = 2;
+            return Handle(Geom2d_Curve)(new Geom2d_BSplineCurve(poles, knots, mults, 1));
+          };
+          if (d == 0) builder.UpdateEdge(newSeam, run(hi), run(lo), rebuilt, BRep_Tool::Tolerance(v1));
+          else builder.UpdateEdge(newSeam, run(lo), run(hi), rebuilt, BRep_Tool::Tolerance(v1));
+        } else {
+          builder.MakeEdge(newSeam, iso, location, BRep_Tool::Tolerance(v1));
+          const gp_Dir2d up = d == 0 ? gp_Dir2d(0, 1) : gp_Dir2d(1, 0);
+          const Handle(Geom2d_Line) atLo = new Geom2d_Line(d == 0 ? gp_Pnt2d(lo, 0) : gp_Pnt2d(0, lo), up);
+          const Handle(Geom2d_Line) atHi = new Geom2d_Line(d == 0 ? gp_Pnt2d(hi, 0) : gp_Pnt2d(0, hi), up);
+          if (d == 0) builder.UpdateEdge(newSeam, atHi, atLo, rebuilt, BRep_Tool::Tolerance(v1));
+          else builder.UpdateEdge(newSeam, atLo, atHi, rebuilt, BRep_Tool::Tolerance(v1));
+        }
+        builder.Add(newSeam, low.Oriented(TopAbs_FORWARD));
+        builder.Add(newSeam, high.Oriented(TopAbs_REVERSED));
+        if (chord) builder.Range(newSeam, 0, length);
+        else builder.Range(newSeam, vLow, vHigh);
         for (TopExp_Explorer wx(face, TopAbs_WIRE); wx.More(); wx.Next()) {
           TopoDS_Wire wire;
           builder.MakeWire(wire);
@@ -10716,6 +10762,8 @@ private:
   std::string hybridEnds_;
   /** The last hybrid build's chain edges whose circle widened to its end nodes (slice D8), and the largest widening (mm). */
   int hybridWidened_ = 0;
+  /** The pcurves pcurvesAsRead replaced in the last hybrid rebuild. */
+  int hybridReprojected_ = 0;
   double hybridWidenedMax_ = 0;
   /** Calls in the last hybrid build (spike harness timing). */
   mutable long chainCurveCalls_ = 0, interpolateCalls_ = 0;
@@ -11024,6 +11072,99 @@ private:
   }
 
   /**
+   * ADR-0097's 2026-11-04c amendment: every edge of a face on a curved
+   * surface gets the pcurve a STEP reader gives it, so the face bounds the
+   * same domain once read back. A STEP file keeps no tolerances; OCCT's
+   * reader (XSAlgo_ShapeProcessor::CheckPCurve) re-runs FixSameParameter on
+   * each pcurve at the file's uncertainty `p` (the writer's: 1.5 × the
+   * average tolerance, rounded to 1, 2, 5), and where the pcurve strays from
+   * the edge's 3D curve by more than min(1, 2p) it takes the curve's
+   * projection onto the surface instead, when that strays less. A hybrid
+   * chord across a torus or a sphere (a straight line in the chart's (u, v)
+   * between two nodes, up to 0.9 mm from the chord) is such a pcurve: read
+   * back, its face lost or gained up to 1.5 % of its area. Here the same test
+   * picks the same projection first, moved by whole periods onto the old
+   * pcurve's ends (a projection that ends elsewhere is left out). Planes are
+   * left alone (the reader projects every plane pcurve, and ours are already
+   * the chords' projections), and so are seams and degenerated edges. In
+   * place; when the body then checks invalid every pcurve goes back. Returns
+   * the pcurves replaced.
+   */
+  static int pcurvesAsRead(const TopoDS_Shape& shape) {
+    const double p = Interface_MSG::Intervalled(ShapeAnalysis_ShapeTolerance().Tolerance(shape, 0) * 1.5);
+    const double bar = std::min(1., 2. * p);
+    struct Old {
+      TopoDS_Edge edge;
+      TopoDS_Face face;
+      Handle(Geom2d_Curve) pcurve;
+      double first, last;
+    };
+    std::vector<Old> old;
+    BRep_Builder builder;
+    Handle(ShapeFix_Edge) fixer = new ShapeFix_Edge;
+    NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> seenFaces;
+    try {
+      for (TopExp_Explorer fx(shape, TopAbs_FACE); fx.More(); fx.Next()) {
+        const TopoDS_Face face = TopoDS::Face(fx.Current().Oriented(TopAbs_FORWARD));
+        if (!seenFaces.Add(face)) continue;
+        TopLoc_Location location;
+        const Handle(Geom_Surface) surface = BRep_Tool::Surface(face, location);
+        if (surface.IsNull() || !location.IsIdentity() || BRepAdaptor_Surface(face, false).GetType() == GeomAbs_Plane)
+          continue;
+        NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> seenEdges;
+        for (TopExp_Explorer ex(face, TopAbs_EDGE); ex.More(); ex.Next()) {
+          const TopoDS_Edge edge = TopoDS::Edge(ex.Current().Oriented(TopAbs_FORWARD));
+          // An edge's pcurve can't stray further than its tolerance: most are skipped here.
+          if (!seenEdges.Add(edge) || BRep_Tool::Degenerated(edge) || BRep_Tool::IsClosed(edge, face) ||
+              !(BRep_Tool::Tolerance(edge) > bar))
+            continue;
+          double a = 0, b = 0, pa = 0, pb = 0;
+          TopLoc_Location edgeLocation;
+          const Handle(Geom_Curve) curve = BRep_Tool::Curve(edge, edgeLocation, a, b);
+          const Handle(Geom2d_Curve) pcurve = BRep_Tool::CurveOnSurface(edge, face, pa, pb);
+          if (curve.IsNull() || pcurve.IsNull() || !edgeLocation.IsIdentity()) continue;
+          // The reader's test, on an edge of the 3D curve alone (as CheckPCurve builds it).
+          const auto onCurve = [&] { return BRepBuilderAPI_MakeEdge(curve, curve->Value(a), curve->Value(b), a, b).Edge(); };
+          TopoDS_Edge stored = onCurve();
+          builder.UpdateEdge(stored, pcurve, face, 0.);
+          builder.Range(stored, face, pa, pb);
+          builder.SameRange(stored, false);
+          builder.SameParameter(stored, false);
+          fixer->FixSameParameter(stored);
+          const double strays = BRep_Tool::Tolerance(stored);
+          if (!(strays > bar)) continue;
+          TopoDS_Edge projected = onCurve();
+          fixer->FixAddPCurve(projected, face, false, p);
+          fixer->FixSameParameter(projected);
+          if (!(BRep_Tool::Tolerance(projected) < strays)) continue;
+          double qa = 0, qb = 0;
+          const Handle(Geom2d_Curve) found = BRep_Tool::CurveOnSurface(projected, face, qa, qb);
+          if (found.IsNull() || std::fabs(qa - a) > 1e-9 * (1 + std::fabs(a)) || std::fabs(qb - b) > 1e-9 * (1 + std::fabs(b)))
+            continue;
+          const Handle(Geom2d_Curve) moved = Handle(Geom2d_Curve)::DownCast(found->Copy());
+          const gp_Pnt2d from = pcurve->Value(pa), to = moved->Value(qa);
+          gp_Vec2d shift(0, 0);
+          if (surface->IsUPeriodic()) shift.SetX(surface->UPeriod() * std::round((from.X() - to.X()) / surface->UPeriod()));
+          if (surface->IsVPeriodic()) shift.SetY(surface->VPeriod() * std::round((from.Y() - to.Y()) / surface->VPeriod()));
+          if (shift.Magnitude() > 0) moved->Translate(shift);
+          // Its ends where the old pcurve's are, not a period on (the 3D points would agree).
+          if (moved->Value(qa).Distance(from) > 1 || moved->Value(qb).Distance(pcurve->Value(pb)) > 1) continue;
+          old.push_back({edge, face, pcurve, pa, pb});
+          builder.UpdateEdge(edge, moved, face, BRep_Tool::Tolerance(edge));
+          builder.Range(edge, face, qa, qb);
+        }
+      }
+      if (old.empty() || BRepCheck_Analyzer(shape).IsValid()) return static_cast<int>(old.size());
+    } catch (const Standard_Failure&) {
+    }
+    for (auto it = old.rbegin(); it != old.rend(); ++it) {
+      builder.UpdateEdge(it->edge, it->pcurve, it->face, BRep_Tool::Tolerance(it->edge));
+      builder.Range(it->edge, it->face, it->first, it->last);
+    }
+    return 0;
+  }
+
+  /**
    * ADR-0097 slice D11: no face on a periodic surface keeps two wires that
    * share a vertex (a hole and its outer wire, or two holes: 2026-11-03).
    * The STEP writer writes such a vertex twice (one VERTEX_POINT per loop),
@@ -11163,6 +11304,7 @@ private:
     hybridChainsKept_.clear();
     hybridEnds_.clear();
     hybridWidened_ = 0;
+    hybridReprojected_ = 0;
     hybridWidenedMax_ = 0;
     chainCurveCalls_ = 0;
     interpolateCalls_ = 0;
@@ -11468,6 +11610,53 @@ private:
         off = measure(through);
         return off <= reach ? through : Handle(Geom2d_Curve)();
       };
+      // A mesh edge's pcurve on `chart` through the chart parameters of its
+      // chord's ends and midpoint, from `from` to `to` (its nodes' chart
+      // parameters) over [0, length]; `off` how far its image strays from
+      // the chord. Null when the samples jump more than a tenth from the ends.
+      // Three points, not more: with 17 the later stages took 1.6 s longer
+      // on gardena-end's 594 such edges (unify, healing and the mesh check
+      // on 16-span pcurves) for the same faces (ADR-0097's 2026-11-04d
+      // amendment, review).
+      auto chordPcurve = [&](const MeshChart& chart, const gp_Pnt& p, const gp_Pnt& q, const gp_Pnt2d& from,
+                             const gp_Pnt2d& to, double length, double& off) -> Handle(Geom2d_Curve) {
+        const int samples = 2;
+        Handle(NCollection_HArray1<gp_Pnt2d>) points = new NCollection_HArray1<gp_Pnt2d>(1, samples + 1);
+        Handle(NCollection_HArray1<double>) parameters = new NCollection_HArray1<double>(1, samples + 1);
+        gp_Pnt2d previous;
+        for (int i = 0; i <= samples; ++i) {
+          const double s = static_cast<double>(i) / samples;
+          gp_Pnt2d uv = chart.uv(gp_Pnt(p.XYZ() + s * (q.XYZ() - p.XYZ())));
+          if (i > 0) {
+            if (chart.uPeriodic()) uv.SetX(uv.X() + 2 * M_PI * std::round((previous.X() - uv.X()) / (2 * M_PI)));
+            if (chart.vPeriodic()) uv.SetY(uv.Y() + 2 * M_PI * std::round((previous.Y() - uv.Y()) / (2 * M_PI)));
+          } else if (chart.uPeriodic() || chart.vPeriodic()) {
+            if (chart.uPeriodic()) uv.SetX(uv.X() + 2 * M_PI * std::round((from.X() - uv.X()) / (2 * M_PI)));
+            if (chart.vPeriodic()) uv.SetY(uv.Y() + 2 * M_PI * std::round((from.Y() - uv.Y()) / (2 * M_PI)));
+          }
+          previous = uv;
+          points->SetValue(i + 1, uv);
+          parameters->SetValue(i + 1, s * length);
+        }
+        const gp_XY startOffset = from.XY() - points->Value(1).XY(), endOffset = to.XY() - points->Value(samples + 1).XY();
+        if (startOffset.Modulus() > 0.1 || endOffset.Modulus() > 0.1) return Handle(Geom2d_Curve)();
+        for (int i = 0; i <= samples; ++i) {
+          const double w = static_cast<double>(i) / samples;
+          points->ChangeValue(i + 1).ChangeCoord() += (1 - w) * startOffset + w * endOffset;
+        }
+        ++interpolateCalls_;
+        Geom2dAPI_Interpolate interpolate(points, parameters, false, 1e-9);
+        interpolate.Perform();
+        if (!interpolate.IsDone()) return Handle(Geom2d_Curve)();
+        const Handle(Geom2d_Curve) through = interpolate.Curve();
+        off = 0;
+        for (int i = 0; i <= 20; ++i) {
+          const double s = i / 20.0;
+          const gp_Pnt2d uv = through->Value(s * length);
+          off = std::max(off, chart.value(uv.X(), uv.Y()).Distance(gp_Pnt(p.XYZ() + s * (q.XYZ() - p.XYZ()))));
+        }
+        return through;
+      };
       auto chainBuilt = [&](int r) { return r >= 0 && regions[r].kind >= 0 && regions[r].why.empty(); };
       // Slice D8: the outline pieces joining each pair of end points (by
       // coordinates, to 1e-6): open chains, and boundary mesh edges no
@@ -11725,10 +11914,26 @@ private:
                 continue;
               }
             }
-            const double tol = std::max(off * 1.1, HYBRID_EDGE_TOLERANCE_MIN);
+            const double length = meshNode(lo).Subtracted(meshNode(hi)).Modulus();
+            Handle(Geom2d_Curve) pcurve = pcurveOf(from, to, 0, length);
+            double strays = off;
+            if (off > 1.5 * tolerance && region >= 0 && chart.kind > 0 && length > 1e-9) {
+              // A mesh edge whose straight pcurve strays further than a
+              // chain's may (a long chord across a thin fillet: up to 3.5 mm
+              // on makita-vacuum-holder) gets the chord's image in the chart
+              // instead, as a collapsed chain does, when that strays less
+              // (ADR-0097's 2026-11-04d amendment).
+              double imageOff = 0;
+              const Handle(Geom2d_Curve) image =
+                  chordPcurve(chart, gp_Pnt(meshNode(lo)), gp_Pnt(meshNode(hi)), from, to, length, imageOff);
+              if (!image.IsNull() && imageOff < off) {
+                pcurve = image;
+                strays = imageOff;
+              }
+            }
+            const double tol = std::max(strays * 1.1, HYBRID_EDGE_TOLERANCE_MIN);
             worstTolerance = std::max(worstTolerance, tol);
-            wires.back().push_back({TopoDS_Edge(), Handle(Geom2d_Curve)(), tol, lo, hi, a == lo});
-            wires.back().back().pcurve = pcurveOf(from, to, 0, meshNode(lo).Subtracted(meshNode(hi)).Modulus());
+            wires.back().push_back({TopoDS_Edge(), pcurve, tol, lo, hi, a == lo});
           }
         }
         TopoDS_Face face;
@@ -12300,6 +12505,8 @@ private:
             hybridEdges_.push_back({gp_Pnt(meshNode(a)), gp_Pnt(meshNode(b)), hybridOf[t], u >= 0 ? hybridOf[u] : -1, false, 0, 0});
           }
       }
+      hybridReprojected_ = pcurvesAsRead(result);
+      stage("pcurves as read: " + std::to_string(hybridReprojected_));
       meshReport_[0] = static_cast<double>(resultFaces.Extent());
       for (int k = 0; k < 5; ++k) meshReport_[1 + k] = static_cast<double>(counts[k]);
       meshReport_[10] = 1;
@@ -14832,6 +15039,95 @@ private:
                             : "Offset failed: OCCT can't offset these faces.");
   }
 
+  /**
+   * Gives each open arc the face merge rebuilt its input edge's circle back
+   * (ADR-0051, 2026-11-04, issue #181). Joining the arc pieces of one circle,
+   * UnifySameDomain puts the edge on a new circle whose X axis is at the
+   * arc's first vertex (its axis sometimes reversed), so an extrude of two
+   * profiles united first got side cylinders parametrized unlike its
+   * sketch's; a later join merging faces of one cylinder that disagree puts
+   * one a turn off and breaks the body. An edge whose faces are all planar
+   * (a profile union) goes back onto the circle of the input edge it came
+   * from, input 0 first: the same arc, the same direction (the circle
+   * reversed when the merge reversed its axis), its parameters and the
+   * planes' pcurves recomputed. In place, on the merge's copies, so the
+   * builder's history stays valid. Ellipses and edges on curved faces stay.
+   */
+  template <typename Builder>
+  static void keepInputCircles(Builder& builder, const TopoDS_Shape& inA, const TopoDS_Shape& inB) {
+    const TopoDS_Shape result = builder.Shape();
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+    TopExp::MapShapes(result, TopAbs_EDGE, edges);
+    NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher>
+        facesOf;
+    TopExp::MapShapesAndAncestors(result, TopAbs_EDGE, TopAbs_FACE, facesOf);
+    std::vector<bool> found(edges.Extent() + 1, false);
+    std::vector<gp_Circ> source(edges.Extent() + 1);
+    for (const TopoDS_Shape* input : {&inA, &inB}) {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> inputEdges;
+      TopExp::MapShapes(*input, TopAbs_EDGE, inputEdges);
+      for (int i = 1; i <= inputEdges.Extent(); ++i) {
+        const TopoDS_Edge& edge = TopoDS::Edge(inputEdges(i));
+        if (BRep_Tool::Degenerated(edge)) continue;
+        BRepAdaptor_Curve curve(edge);
+        if (curve.GetType() != GeomAbs_Circle) continue;
+        for (const TopoDS_Shape& made : builder.Modified(edge)) {
+          if (made.ShapeType() != TopAbs_EDGE) continue;
+          const int at = edges.FindIndex(made);
+          if (at == 0 || found[at]) continue;
+          found[at] = true;
+          source[at] = curve.Circle();
+        }
+      }
+    }
+    BRep_Builder bb;
+    for (int at = 1; at <= edges.Extent(); ++at) {
+      if (!found[at]) continue;
+      const TopoDS_Edge edge = TopoDS::Edge(edges(at));
+      BRepAdaptor_Curve curve(edge);
+      if (curve.GetType() != GeomAbs_Circle) continue;
+      TopoDS_Vertex v1, v2;
+      TopExp::Vertices(edge, v1, v2);
+      if (v1.IsNull() || v2.IsNull() || v1.IsSame(v2)) continue;  // a whole circle has no X axis to keep
+      const gp_Circ now = curve.Circle();
+      const gp_Circ& was = source[at];
+      const gp_Dir& axis = was.Axis().Direction();
+      if (now.Location().Distance(was.Location()) > 1e-7 || std::abs(now.Radius() - was.Radius()) > 1e-7 ||
+          !now.Axis().Direction().IsParallel(axis, 1e-9)) {
+        continue;
+      }
+      const gp_Circ target = now.Axis().Direction().Dot(axis) < 0
+                                 ? gp_Circ(gp_Ax2(was.Location(), axis.Reversed(), was.XAxis().Direction()),
+                                           was.Radius())
+                                 : was;
+      if (target.XAxis().Direction().IsEqual(now.XAxis().Direction(), 1e-12) &&
+          target.Axis().Direction().IsEqual(now.Axis().Direction(), 1e-12)) {
+        continue;
+      }
+      const int faces = facesOf.FindIndex(edge);
+      if (faces == 0) continue;
+      bool planar = true;
+      for (const TopoDS_Shape& face : facesOf(faces)) {
+        planar = planar && BRepAdaptor_Surface(TopoDS::Face(face), false).GetType() == GeomAbs_Plane;
+      }
+      if (!planar) continue;
+      const double first = ElCLib::Parameter(target, BRep_Tool::Pnt(v1));
+      double last = ElCLib::Parameter(target, BRep_Tool::Pnt(v2));
+      if (last <= first) last += 2 * M_PI;
+      const gp_Pnt middle = curve.Value(0.5 * (curve.FirstParameter() + curve.LastParameter()));
+      if (middle.Distance(ElCLib::Value(0.5 * (first + last), target)) > 1e-6) continue;  // the other arc
+      const double tolerance = BRep_Tool::Tolerance(edge);
+      // Pcurves on planes are recomputed on demand; drop the old ones.
+      for (const TopoDS_Shape& face : facesOf(faces)) {
+        bb.UpdateEdge(edge, Handle(Geom2d_Curve)(), TopoDS::Face(face), tolerance);
+      }
+      bb.UpdateEdge(edge, new Geom_Circle(target), TopLoc_Location(), tolerance);
+      bb.Range(edge, first, last, true);
+      bb.SameRange(edge, true);
+      bb.SameParameter(edge, true);
+    }
+  }
+
   template <typename Builder>
   int finishBoolean(Builder& builder, const TopoDS_Shape& a, const TopoDS_Shape& b, bool simplify) {
     // Set the arguments here, not in the builder's constructor: the
@@ -14862,6 +15158,7 @@ private:
     }
     if (simplify) {
       builder.SimplifyResult();
+      keepInputCircles(builder, inA, inB);
       // The merge can break a sound result: a plate's rounded end joined by
       // a prism whose side lies on the same cylinder came out of the fuse
       // valid and out of the merge with unorientable faces (ADR-0051,

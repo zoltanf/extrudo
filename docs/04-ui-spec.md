@@ -815,7 +815,9 @@ runs from a 4 px dot at the anchor to the box's nearest edge.
   **View:** slice (cuts the bodies away on the camera's side of the
   sketch plane while the sketch is open); **Auto-project:** bodies and sketches
   side by side (a curve or point of an earlier sketch you snap to comes in,
-  linked to that sketch), then face outline: the
+  linked to that sketch; while a drawing tool runs, the earlier sketches' curves
+  show thin, dashed and faint on the sketch plane, so you see what you can snap
+  to), then face outline: the
   open sketch's projection of the face it sits on, added when switched on and
   removed when switched off; disabled on a plane sketch and while a constraint
   or dimension uses the outline, with the tooltip saying which. Resting on a setting for a second opens a tooltip with

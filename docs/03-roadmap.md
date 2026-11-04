@@ -1079,9 +1079,10 @@ end to end, faster than in established desktop CAD.
     command or all at once; a toolbar tile's right-click "Change shortcut…" and a
     key button on each Search row open it. The preference `keymap.overrides`
     holds only the changes.
-- [ ] **P4-13 Remove Faces (defeaturing; #78).** ADR-0099. Added 2026-10-23
+- [x] **P4-13 Remove Faces (defeaturing; #78).** ADR-0099. Added 2026-10-23
   (the owner). A rounded or drilled imported body loses a round or a hole in
-  one click; the `.f3d` import replays the file's face deletions.
+  one click; the `.f3d` import replays the file's face deletions. Done
+  2026-10-23 (#110, #112); ticked 2026-11-04 after a check of every item below.
   - [x] Feature `removeFaces` (Solid › Modify): the picked faces are removed
     and their neighbours extended to close the gap, all or nothing; facade
     `removeFaces`, persistent face references (removed faces become lost
@@ -1231,6 +1232,16 @@ end to end, faster than in established desktop CAD.
   facets (ADR-0097's 2026-11-04b amendment). Left: micro zigzags (2 facets),
   wrapped charts 375 (mostly cone fits on makita's fillets), the planes still
   exploded as "its outer loop runs the wrong way" (152 facets).
+  *2026-11-04c:* a hybrid face's pcurves on curved surfaces are the ones a
+  STEP reader gives them, and a straight seam runs through its vertices: 1
+  of the corpus's round trips fails at Auto (6 before: five failed on the
+  1e-4 volume rule alone; gear-bearing-5 is left, 0.99980; ADR-0097's
+  2026-11-04c amendment). *2026-11-04d:* a mesh edge whose straight pcurve
+  strays far from its chord gets the chord's image: every corpus round trip
+  passes at Auto, facets 14,003 → 13,958 (makita-vacuum-holder 2,516 → 2,486,
+  micro-sd-keyring-inner 18 → 3). Left: makita's unfit fillet network (about
+  2,090 facets) and its 18 cone fits on fillet patches (ADR-0097's
+  2026-11-04d amendment).
 
 ## Phase 5 — Programmatic design (→ v0.6)
 
@@ -1653,6 +1664,7 @@ end to end, faster than in established desktop CAD.
   - [x] Batch 1: notes for the 13 Constraints tool pages, each with its figure.
   - [x] Batch 2: notes for the 25 Create tool pages (Point to Import Drawing); Intersect carries its figure.
   - [x] Batch 3: notes for the 7 remaining Modify tool pages (Extend to Sketch Scale) and Export Sketch.
+  - [x] Batch 4: the `snap-explorer` and `profiles` widgets on the sketching page.
 
 - [x] **P6-23 Project a sketch into another sketch** (issue #171; FR-SK-12, FR-SK-17;
   ADR-0125). The Project tool picks a curve or point of an earlier sketch in the view and a
