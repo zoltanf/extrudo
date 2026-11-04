@@ -1,12 +1,15 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import {
+  type At,
   addParameter,
+  attr,
   chip,
   clickWhere,
   closeParameters,
   openParameters,
   setParameters,
   turnView,
+  viewportOf,
 } from './benchmark-helpers';
 import { clicker, counts, kernelReady, newSketchOnXY, openProject, pickTool } from './helpers';
 
@@ -330,4 +333,142 @@ test('notes in a sketch: on a point and the plane, following a drag, the Notes s
   await expect(layer(page)).toHaveAttribute('data-annotations', '');
   await page.keyboard.press('Control+z');
   await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full 2:ok:full');
+});
+
+test('in a sketch: a note on a line, Esc on a draft adds no step, right-click › Delete', async ({
+  page,
+}) => {
+  await openProject(page);
+  await kernelReady(page);
+  const at = await newSketchOnXY(page);
+  const click = clicker(page, at);
+  await page.keyboard.press('r');
+  await click(-30, -20);
+  await click(30, 20);
+  await page.keyboard.press('Escape');
+
+  // The top line's middle: the note sits on the line.
+  await page.keyboard.press('n');
+  await click(0, 20);
+  const editor = page.locator('[data-annotation-editor]');
+  await expect(editor).toBeFocused();
+  await editor.fill('Fillet this edge');
+  await page.keyboard.press('Enter');
+  await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full');
+
+  // A draft dropped with Esc adds no undo step: Ctrl+Z then takes #1 back, not a draft.
+  await click(-10, 40);
+  await expect(editor).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(editor).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+z');
+  await expect(layer(page)).toHaveAttribute('data-annotations', '');
+  await page.keyboard.press('Control+y');
+  await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full');
+
+  // Right-click › Delete on the callout.
+  await callout(page, 1).click({ button: 'right' });
+  await menuItem(page, 'Delete').click();
+  await expect(layer(page)).toHaveAttribute('data-annotations', '');
+});
+
+/** Drags a note's anchor dot to a world point, waiting for the hover `kind` under it. */
+async function dragDot(page: Page, n: number, at: At, to: [number, number, number], kind: RegExp) {
+  // A selected note's dot drags.
+  await callout(page, n).click();
+  const [ax, ay] = await anchorOf(callout(page, n));
+  const box = (await layer(page).boundingBox()) ?? { x: 0, y: 0 };
+  const target = at(to);
+  await page.mouse.move(box.x + ax, box.y + ay);
+  await page.mouse.down();
+  await page.mouse.move((box.x + ax + target.x) / 2, (box.y + ay + target.y) / 2, { steps: 4 });
+  await page.mouse.move(target.x, target.y, { steps: 4 });
+  await expect.poll(() => attr(viewportOf(page), 'data-model-hover')).toMatch(kind);
+  await page.mouse.up();
+}
+
+test('re-anchoring by the dot, a detached note fixed and its message, Delete all done', async ({
+  page,
+}) => {
+  const viewport = await openProject(page);
+  await kernelReady(page);
+  // A 20 × 20 × 20 box about the origin, and a cylinder beside it at x = 40.
+  await pickTool(page, 'Box');
+  let dialog = page.getByRole('region', { name: 'Box dialog' });
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await kernelReady(page);
+  await pickTool(page, 'Cylinder');
+  dialog = page.getByRole('region', { name: 'Cylinder dialog' });
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await dialog.getByRole('textbox', { name: 'X', exact: true }).fill('40 mm');
+  await expect(dialog).toHaveAttribute('data-dialog-valid', 'true');
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await kernelReady(page);
+  await page.getByRole('button', { name: 'Orthographic' }).click();
+  const at = await turnView(page, 'F6');
+
+  // #1 on the box's top, #2 on the cylinder's top.
+  await page.keyboard.press('n');
+  await clickWhere(page, at, [-5, -5, 20], /^face:/);
+  const editor = page.locator('[data-annotation-editor]');
+  await editor.fill('On the box');
+  await page.keyboard.press('Enter');
+  await clickWhere(page, at, [40, 0, 20], /^face:/);
+  await editor.fill('On the cylinder');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full 2:ok:full');
+
+  // Dragging #1's dot onto the box's front face re-anchors it there, one step; the box stays put.
+  const boxBefore = await callout(page, 1).boundingBox();
+  const before = await anchorOf(callout(page, 1));
+  await dragDot(page, 1, at, [0, -10, 10], /^face:/);
+  await expect
+    .poll(async () => (await anchorOf(callout(page, 1)))[1])
+    .toBeGreaterThan(before[1] + 10);
+  await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full 2:ok:full');
+  const boxAfter = await callout(page, 1).boundingBox();
+  expect(Math.abs((boxAfter?.x ?? 0) - (boxBefore?.x ?? 0))).toBeLessThan(2);
+  expect(Math.abs((boxAfter?.y ?? 0) - (boxBefore?.y ?? 0))).toBeLessThan(2);
+  // Esc during a drag puts the dot back and changes nothing.
+  await callout(page, 1).click();
+  const [ax, ay] = await anchorOf(callout(page, 1));
+  const lb = (await layer(page).boundingBox()) ?? { x: 0, y: 0 };
+  await page.mouse.move(lb.x + ax, lb.y + ay);
+  await page.mouse.down();
+  await page.mouse.move(lb.x + ax + 60, lb.y + ay - 40, { steps: 4 });
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
+  expect(await anchorOf(callout(page, 1))).toEqual([ax, ay]);
+
+  // Deleting the cylinder detaches #2; selected, the status bar says what to do.
+  await chip(page, 'Cylinder1').click({ button: 'right' });
+  await menuItem(page, 'Delete').click();
+  await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full 2:detached:full');
+  await callout(page, 2).click();
+  await expect(page.locator('output[aria-label="Annotation status"]')).toHaveText(
+    'Annotation #2 lost its geometry: drag it onto something or delete it. ·',
+  );
+  // Dragged onto the box's top, it is on geometry again.
+  await dragDot(page, 2, at, [5, 5, 20], /^face:/);
+  await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full 2:ok:full');
+  await expect(page.locator('output[aria-label="Annotation status"]')).toHaveCount(0);
+
+  // Delete all done: #1 ticked off goes, one step; Undo brings it back.
+  await page.keyboard.press('Escape');
+  await row(page, 1).getByRole('button', { name: 'Mark #1 done' }).click();
+  // Off the row: a hovered note is drawn in full.
+  const vb = (await viewport.boundingBox()) ?? { x: 0, y: 0, width: 0, height: 0 };
+  const offView = () => page.mouse.move(vb.x + vb.width - 20, vb.y + vb.height - 20);
+  await offView();
+  await expect(layer(page)).toHaveAttribute('data-annotations', /^1:ok:done/);
+  await browser(page).getByText('Annotations', { exact: true }).click({ button: 'right' });
+  await menuItem(page, 'Delete all done').click();
+  await expect(layer(page)).toHaveAttribute('data-annotations', '2:ok:full');
+  await offView();
+  await page.keyboard.press('Control+z');
+  await expect(layer(page)).toHaveAttribute('data-annotations', /^1:ok:done 2:ok:full$/);
 });
