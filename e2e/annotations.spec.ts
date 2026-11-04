@@ -8,7 +8,7 @@ import {
   setParameters,
   turnView,
 } from './benchmark-helpers';
-import { kernelReady, openProject, pickTool } from './helpers';
+import { clicker, counts, kernelReady, newSketchOnXY, openProject, pickTool } from './helpers';
 
 // P6-23 S2: annotations in the 3D view (ADR-0126 §5–6). The Annotate tool (N) pins a numbered
 // note to a face; its callout shows the number and the text, is edited in place, collapses to
@@ -231,4 +231,103 @@ test('a click on nothing makes a free note; Esc leaves nothing behind', async ({
   await page.keyboard.press('Enter');
   await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full');
   await expect(callout(page, 1)).toContainText('Logo here');
+});
+
+test('notes in a sketch: on a point and the plane, following a drag, the Notes switch, model mode, cascades', async ({
+  page,
+}) => {
+  await openProject(page);
+  await kernelReady(page);
+  const at = await newSketchOnXY(page);
+  const click = clicker(page, at);
+  await page.keyboard.press('r');
+  await click(-30, -20);
+  await click(30, 20);
+  await page.keyboard.press('Escape');
+
+  // N in the sketch: a click on the rectangle's corner pins #1 to that point, a click on
+  // empty plane makes #2 there.
+  await page.keyboard.press('n');
+  await click(30, 20);
+  const editor = page.locator('[data-annotation-editor]');
+  await expect(editor).toBeFocused();
+  await editor.pressSequentially('Corner');
+  await page.keyboard.press('Enter');
+  await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full');
+  await click(-20, 40);
+  await expect(editor).toBeFocused();
+  await editor.fill('Free in the sketch');
+  await page.keyboard.press('Enter');
+  await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full 2:ok:full');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  // Double-click edits it in the sketch as in the model.
+  await callout(page, 2).dblclick();
+  await expect(editor).toBeFocused();
+  await editor.fill('Free note');
+  await page.keyboard.press('Enter');
+  await expect(callout(page, 2)).toContainText('Free note');
+  await page.keyboard.press('Escape');
+
+  // #1 follows its point while it is dragged, before the drag ends; #2 stays.
+  const one = await anchorOf(callout(page, 1));
+  const two = await anchorOf(callout(page, 2));
+  const from = at(30, 20);
+  const to = at(40, 30);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 4 });
+  await page.mouse.move(to.x, to.y, { steps: 4 });
+  await expect.poll(async () => (await anchorOf(callout(page, 1)))[0]).toBeGreaterThan(one[0] + 20);
+  await page.mouse.up();
+  expect(await anchorOf(callout(page, 2))).toEqual(two);
+  const moved = await anchorOf(callout(page, 1));
+
+  // The palette's Notes switch hides both, and shows them again.
+  const notes = page.getByRole('checkbox', { name: 'Show notes' });
+  await notes.uncheck();
+  await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:hidden 2:ok:hidden');
+  await notes.check();
+  await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full 2:ok:full');
+
+  // Delete with #2 and a line selected: both go, one undo step.
+  await callout(page, 2).click();
+  await page.keyboard.down('Shift');
+  await click(-30, 0);
+  await page.keyboard.up('Shift');
+  // The sketch keeps the note in its selection (the status bar counts both).
+  await expect(callout(page, 2)).toHaveAttribute('data-selected', '');
+  await expect(page.locator('output[aria-label="Selection"]')).toHaveText(/1 annotation, 1 /);
+  const before = await counts(page);
+  await page.keyboard.press('Delete');
+  await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full');
+  await expect.poll(async () => (await counts(page)).lines).toBeLessThan(before.lines);
+  await page.keyboard.press('Control+z');
+  await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full 2:ok:full');
+  await expect.poll(async () => (await counts(page)).lines).toBe(before.lines);
+
+  // Deleting the annotated point keeps #1 where it was, on the plane.
+  await page.keyboard.press('Escape');
+  await click(40, 30);
+  await page.keyboard.press('Delete');
+  await expect.poll(async () => (await counts(page)).lines).toBeLessThan(before.lines);
+  await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full 2:ok:full');
+  const kept = await anchorOf(callout(page, 1));
+  expect(Math.abs(kept[0] - moved[0])).toBeLessThan(1.5);
+  expect(Math.abs(kept[1] - moved[1])).toBeLessThan(1.5);
+
+  // Finished, the sketch's notes show in the model through its plane, and hide with it.
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full 2:ok:full');
+  await browser(page).getByRole('button', { name: 'Hide Sketch1' }).click();
+  await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:hidden 2:ok:hidden');
+  await browser(page).getByRole('button', { name: 'Show Sketch1' }).click();
+  await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full 2:ok:full');
+
+  // Deleting the sketch deletes its notes; Undo brings them back.
+  await chip(page, 'Sketch1').click({ button: 'right' });
+  await menuItem(page, 'Delete').click();
+  await expect(layer(page)).toHaveAttribute('data-annotations', '');
+  await page.keyboard.press('Control+z');
+  await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full 2:ok:full');
 });
