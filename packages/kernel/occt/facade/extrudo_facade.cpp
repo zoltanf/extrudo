@@ -6951,6 +6951,18 @@ private:
   static constexpr double PRISMATIC_REBUILD_BUDGET_MS = 12000;
   /** Unfit regions covering at most this share of the surface area are left out of the rebuild instead of refusing (slice C). */
   static constexpr double PRISMATIC_UNFIT_ALLOWED = 0.02;
+  /** A component's dominant torus, or a split's dominant piece, holds at least this share of its area (ADR-0097's 2026-11-04f amendment). */
+  static constexpr double MESH_DOMINANT_SHARE = 0.25;
+  /** Beside a dominant piece, a split's leftovers may hold at most this share of the component's area (2026-11-04f amendment). */
+  static constexpr double MESH_LEFTOVER_SHARE = 0.1;
+  /** The dominant torus's trimmed fit stops after this many rounds at most (2026-11-04f amendment). */
+  static constexpr int MESH_TORUS_TRIM_ROUNDS = 12;
+  /** The trimmed fit's flatness gate: looser than MESH_TORUS_FLATNESS, the estimate is only a start (2026-11-04f amendment). */
+  static constexpr double MESH_TORUS_TRIM_FLATNESS = 2e-2;
+  /** fitMeshTorus's flatness gate: g − ρn's smallest covariance eigenvalue over its trace (2026-11-04f amendment names it). */
+  static constexpr double MESH_TORUS_FLATNESS = 1e-3;
+  /** Only components of this many regions or more get a dominant torus (regions, not minimumNodes's nodes; 2026-11-04f amendment). */
+  static constexpr int MESH_TORUS_TRIM_MIN_REGIONS = 16;
   /**
    * Auto's tolerance ladder (ADR-0097, slice D2): a tolerance of 0 or less
    * means Auto, and the kernel tries these in order, stopping at the first
@@ -7022,6 +7034,12 @@ private:
     double sag = 0;
     /** The smallest tolerance a fitted surface would need here (unfit regions). */
     double deviation = 0;
+    /**
+     * Found by a component's trimmed torus fit (ADR-0097's 2026-11-04f
+     * amendment): only such a torus takes its neighbours after the clusters
+     * are settled.
+     */
+    bool dominant = false;
   };
 
   /** One planar region of prismatic's segmentation. */
@@ -7486,11 +7504,15 @@ private:
    * nodes' distances. `origin` is the centre, `direction` the axis,
    * `majorRadius` R and `radius` r. R <= r (a spindle torus) only with
    * `spindle` (slice D9: splitComponent's retry; the hybrid builds it as a
-   * surface of revolution).
+   * surface of revolution). `gate` is the flatness a fit must reach (the
+   * trimmed fit of a component's dominant torus takes the looser
+   * MESH_TORUS_TRIM_FLATNESS); `refine = false` skips Gauss-Newton, so the
+   * fit is the flatness estimate and the circle only (ADR-0097's 2026-11-04f
+   * amendment).
    */
   MeshFit fitMeshTorus(const std::vector<int>& nodes, const std::vector<int>& triangles,
                        const std::vector<gp_XYZ>& normals, const std::vector<double>& areas, double tolerance,
-                       bool spindle = false) const {
+                       bool spindle = false, double gate = MESH_TORUS_FLATNESS, bool refine = true) const {
     MeshFit fit;
     if (nodes.size() < 12 || triangles.size() < 6) return fit;
     // Moments of the facet centroids g and normals n, about their means, so
@@ -7576,7 +7598,7 @@ private:
         }
       }
     }
-    if (!(best <= 1e-3)) return fit;
+    if (!(best <= gate)) return fit;
     gp_XYZ axisVector;
     flatness(bestRho, &axisVector);
     if (axisVector.Modulus() < 1e-12) return fit;
@@ -7616,7 +7638,7 @@ private:
       return sum;
     };
     double current = residualSum(o, a, R, r);
-    for (int iteration = 0; iteration < 12; ++iteration) {
+    for (int iteration = 0; iteration < 12 && refine; ++iteration) {
       const gp_Ax3 frame(gp_Pnt(0, 0, 0), gp_Dir(a));
       const gp_XYZ e1 = frame.XDirection().XYZ(), e2 = frame.YDirection().XYZ();
       auto at = [&](const double* x, gp_XYZ& oo, gp_XYZ& aa, double& RR, double& rr) {
@@ -7772,9 +7794,13 @@ private:
    * nothing whole split into several. Fills `out` and meshReport_ (the counts, no
    * faces yet). Returns 1, or 0 with lastError for a bad tolerance or mesh.
    * The region preview (meshRegions) and the conversion (prismaticFromMesh)
-   * both run this, so they always agree. May throw.
+   * both run this, so they always agree. `networks` turns on the rules that
+   * find a fillet ring's torus over its network (ADR-0097's 2026-11-04f
+   * amendment: the dominant torus, the dominant piece's leftovers, the torus
+   * taking what lies on it); Auto's ladder measures its steps without them.
+   * May throw.
    */
-  int segmentMesh(double tolerance, MeshSegmentation& out) {
+  int segmentMesh(double tolerance, MeshSegmentation& out, bool networks = true) {
     {
       if (!(tolerance > 0) || !std::isfinite(tolerance)) return fail("Mesh to Solid needs a tolerance above 0 mm.");
       const int nodeCount = static_cast<int>(meshNodes_.size() / 3);
@@ -8154,10 +8180,37 @@ private:
       // round. What no piece took is unfit, one piece per smooth component;
       // when such a piece has 4 regions or more, the split explains too
       // little (a freeform surface fits small primitives here and there) and
-      // the component stays whole and unfit.
+      // the component stays whole and unfit, unless one piece holds at least
+      // MESH_DOMINANT_SHARE of the component's area and the leftovers at most
+      // MESH_LEFTOVER_SHARE: then the split stands and each leftover is an
+      // unfit piece of its own (ADR-0097's 2026-11-04f amendment, rule 2).
+      //
+      // With `networks` and `tryDominant`, a component of
+      // MESH_TORUS_TRIM_MIN_REGIONS regions or more first gets its dominant
+      // torus (2026-11-04f, rule 1): a seed patch on a fillet ring is one
+      // column of its quads, which a cylinder holds and from which no torus
+      // fit finds the axis, so one torus is fitted over the whole component by
+      // trimming (the flatness estimate and the circle, gate
+      // MESH_TORUS_TRIM_FLATNESS, no Gauss-Newton; then the regions within the
+      // larger of T and the 60th-percentile region distance, refitted, until
+      // that set stands still). The regions within T of the last estimate, in
+      // their largest smooth piece, are the split's first piece when they hold
+      // MESH_DOMINANT_SHARE of the area and every triangle's centroid lies
+      // within T too (a torus through a coarse patch's nodes need not follow
+      // its triangles): the torus refitted over them, else the estimate.
       std::vector<int> pieceOf(regionCount, -2), frontierMark(regionCount, -1);
       int frontierRound = 0;
       constexpr int minimumNodes = 16;
+      bool tryDominant = true;
+      // Whether every triangle centroid of `members` lies within the tolerance of `surface`.
+      auto centroidsWithin = [&](const MeshSurface& surface, const std::vector<int>& members) {
+        for (int r : members)
+          for (int t : regions[r].triangles) {
+            const gp_XYZ c = (meshNode(corner(t, 0)) + meshNode(corner(t, 1)) + meshNode(corner(t, 2))) / 3;
+            if (distanceToSurface(surface, c) > tolerance) return false;
+          }
+        return true;
+      };
       auto splitComponent = [&](const MeshSurface& whole) {
         const std::vector<int>& members = whole.regions;
         constexpr int unassigned = -1, patched = -3;
@@ -8167,6 +8220,63 @@ private:
         const double median = regions[order[order.size() / 2]].area;
         std::vector<MeshSurface> pieces;
         std::vector<int> frontier;
+        if (networks && tryDominant && members.size() >= MESH_TORUS_TRIM_MIN_REGIONS) {
+          auto farthestFromTorus = [&](int r, const MeshFit& fit) {
+            double d = 0;
+            for (int n : regions[r].nodes)
+              d = std::max(d, std::fabs(torusDistance(fit.origin.XYZ(), fit.direction.XYZ(), fit.majorRadius,
+                                                      fit.radius, meshNode(n))));
+            return d;
+          };
+          std::vector<int> trimmed(members);
+          MeshFit fit;
+          for (int round = 0; round < MESH_TORUS_TRIM_ROUNDS; ++round) {
+            const Gathered g = gather(trimmed);
+            if (g.nodes.size() < 12 || g.triangles.size() < 6) break;
+            const MeshFit next =
+                fitMeshTorus(g.nodes, g.triangles, normals, areas, tolerance, false, MESH_TORUS_TRIM_FLATNESS, false);
+            if (!next.ok) break;
+            fit = next;
+            std::vector<std::pair<double, int>> far;
+            for (int r : members) far.push_back({farthestFromTorus(r, fit), r});
+            std::sort(far.begin(), far.end());
+            // The 60th-percentile region distance, in integers so the index is exact.
+            const double cut = std::max(tolerance, far[(far.size() * 6) / 10].first);
+            std::vector<int> keep;
+            for (const auto& [d, r] : far)
+              if (d <= cut) keep.push_back(r);
+            std::sort(keep.begin(), keep.end());
+            std::vector<int> before(trimmed);
+            std::sort(before.begin(), before.end());
+            if (keep == before) break;
+            trimmed = std::move(keep);
+          }
+          if (fit.ok) {
+            std::vector<int> within;
+            for (int r : members)
+              if (farthestFromTorus(r, fit) <= tolerance) within.push_back(r);
+            std::vector<int> largest;
+            double largestArea = 0;
+            for (const std::vector<int>& component : components(within)) {
+              double area = 0;
+              for (int r : component) area += regions[r].area;
+              if (area > largestArea) {
+                largestArea = area;
+                largest = component;
+              }
+            }
+            if (largestArea >= MESH_DOMINANT_SHARE * whole.area && largest.size() >= 4) {
+              MeshSurface torus = fitOfKind(4, largest);
+              if (torus.kind != 4) torus = surfaceOfFit(4, fit, largest, gather(largest));
+              if (centroidsWithin(torus, largest)) {
+                const int id = static_cast<int>(pieces.size());
+                for (int r : largest) pieceOf[r] = id;
+                torus.dominant = true;
+                pieces.push_back(std::move(torus));
+              }
+            }
+          }
+        }
         for (int seed : order) {
           if (pieceOf[seed] != unassigned) continue;
           MeshSurface s;
@@ -8265,6 +8375,8 @@ private:
           }
           pieces.push_back(std::move(s));
         }
+        // The border moves below may refit the dominant torus; it stays dominant while it is a torus.
+        const bool firstDominant = !pieces.empty() && pieces[0].dominant;
         // A region on a border between two pieces goes to the one whose
         // surface is nearer its nodes: a piece grown first takes its
         // neighbour's slivers along a tangent border (within the tolerance,
@@ -8322,6 +8434,7 @@ private:
             }
           }
         }
+        if (firstDominant && pieces[0].kind == 4) pieces[0].dominant = true;
         // What no piece took: unfit pieces, one per smooth component.
         std::vector<int> left;
         for (int r : members) {
@@ -8329,8 +8442,17 @@ private:
           // Outside the component, pieceOf means nothing (the next split's own).
           pieceOf[r] = -2;
         }
+        double leftArea = 0, largestPiece = 0;
+        for (int r : left) leftArea += regions[r].area;
+        for (const MeshSurface& piece : pieces) {
+          double area = 0;
+          for (int r : piece.regions) area += regions[r].area;
+          largestPiece = std::max(largestPiece, area);
+        }
+        const bool explained = networks && leftArea <= MESH_LEFTOVER_SHARE * whole.area &&
+                               largestPiece >= MESH_DOMINANT_SHARE * whole.area;
         for (const std::vector<int>& component : components(left)) {
-          if (component.size() >= 4) return std::vector<MeshSurface>(1, whole);
+          if (component.size() >= 4 && !explained) return std::vector<MeshSurface>(1, whole);
           pieces.push_back(component.size() == 1 ? planeOf(component[0]) : bestFit(component));
         }
         return pieces;
@@ -8379,14 +8501,25 @@ private:
             return;
           }
           std::vector<MeshSurface> pieces = splitComponent(s);
+          // A split with the dominant torus that leaves the component whole
+          // and unfit is split again without it (ADR-0097's 2026-11-04f
+          // amendment, rule 3): with the torus taken first, the remainder can
+          // fragment where the old split held.
+          if (pieces.size() == 1 && pieces[0].kind < 0) {
+            tryDominant = false;
+            pieces = splitComponent(s);
+            tryDominant = true;
+          }
           // A split that leaves the component whole and unfit is tried once
-          // more with spindle tori (slice D9): peg-perego-button's 296
-          // regions stay facets for a 5-region patch only a torus with
-          // R < r fits. Elsewhere a spindle fit wins seeds that other
-          // primitives explain better (vented-funnel, spaghetti-measure).
+          // more with spindle tori (slice D9), without the dominant torus:
+          // peg-perego-button's 296 regions stay facets for a 5-region patch
+          // only a torus with R < r fits. Elsewhere a spindle fit wins seeds
+          // that other primitives explain better (vented-funnel, spaghetti-measure).
           if (pieces.size() == 1 && pieces[0].kind < 0) {
             spindle = true;
+            tryDominant = false;
             std::vector<MeshSurface> retry = splitComponent(s);
+            tryDominant = true;
             spindle = false;
             if (retry.size() != 1 || retry[0].kind >= 0) pieces = std::move(retry);
           }
@@ -8405,6 +8538,70 @@ private:
         }
         for (const std::vector<int>& component : components(rest)) {
           settle(component.size() == 1 ? planeOf(component[0]) : bestFit(component));
+        }
+      }
+
+      // A dominant torus takes what lies on it (ADR-0097's 2026-11-04f
+      // amendment, rule 4): each one, largest first, takes the neighbouring
+      // surfaces, planes excepted, whose every node and triangle centroid lie
+      // within the tolerance of it, refitted over the union when that holds,
+      // else kept as it is. A fillet ring's top rows are large regions, and
+      // their own split holds them as near-flat cones, spheres and unfit
+      // pieces. Only dominant tori take, and never a plane: a narrow plane
+      // within T of a fitted torus is a face of its own (hole-filler-35mm).
+      if (networks) {
+        bool changed = true;
+        for (int pass = 0; changed && pass < 4; ++pass) {
+          changed = false;
+          std::vector<int> surfaceOfRegion(regionCount, -1);
+          for (size_t i = 0; i < surfaces.size(); ++i)
+            for (int r : surfaces[i].regions) surfaceOfRegion[r] = static_cast<int>(i);
+          std::vector<char> gone(surfaces.size(), 0);
+          std::vector<int> order;
+          for (size_t i = 0; i < surfaces.size(); ++i)
+            if (surfaces[i].kind == 4 && surfaces[i].dominant) order.push_back(static_cast<int>(i));
+          std::stable_sort(order.begin(), order.end(), [&](int a, int b) { return surfaces[a].area > surfaces[b].area; });
+          for (int i : order) {
+            if (gone[i]) continue;
+            for (bool took = true; took;) {
+              took = false;
+              std::vector<int> neighbours;
+              for (int r : surfaces[i].regions)
+                for (int o : regionNeighbours[r]) {
+                  const int q = surfaceOfRegion[o];
+                  if (q >= 0 && q != i && !gone[q] && surfaces[q].kind != 0 &&
+                      std::find(neighbours.begin(), neighbours.end(), q) == neighbours.end())
+                    neighbours.push_back(q);
+                }
+              for (int q : neighbours) {
+                bool inside = true;
+                for (size_t k = 0; k < surfaces[q].regions.size() && inside; ++k)
+                  for (int n : regions[surfaces[q].regions[k]].nodes)
+                    if (distanceToSurface(surfaces[i], meshNode(n)) > tolerance) {
+                      inside = false;
+                      break;
+                    }
+                if (!inside || !centroidsWithin(surfaces[i], surfaces[q].regions)) continue;
+                std::vector<int> joined(surfaces[i].regions);
+                joined.insert(joined.end(), surfaces[q].regions.begin(), surfaces[q].regions.end());
+                MeshSurface refit = fitOfKind(4, joined);
+                refit.dominant = true;
+                if (refit.kind != 4) {
+                  refit = surfaces[i];
+                  refit.regions = joined;
+                  refit.area = surfaces[i].area + surfaces[q].area;
+                }
+                surfaces[i] = std::move(refit);
+                for (int r : surfaces[q].regions) surfaceOfRegion[r] = i;
+                gone[q] = 1;
+                took = changed = true;
+              }
+            }
+          }
+          std::vector<MeshSurface> kept;
+          for (size_t i = 0; i < surfaces.size(); ++i)
+            if (!gone[i]) kept.push_back(std::move(surfaces[i]));
+          surfaces = std::move(kept);
         }
       }
 
@@ -8527,12 +8724,15 @@ private:
 
   /**
    * Auto's tolerance (ADR-0097, slice D2): segmentMesh at each step of
-   * MESH_AUTO_LADDER in order and stop at the first whose unfit share is at
-   * most PRISMATIC_UNFIT_ALLOWED (the share the exact rebuild tolerates);
-   * that step's tolerance and segmentation are returned and reused, so the
-   * caller doesn't segment again. When no step qualifies, the one with the
-   * smallest unfit share (ties: the smaller tolerance). Fills `out` and
-   * meshReport_ (the chosen step's report, with its tolerance in slot 12).
+   * MESH_AUTO_LADDER in order, without the network rules, and stop at the
+   * first whose unfit share is at most PRISMATIC_UNFIT_ALLOWED (the share the
+   * exact rebuild tolerates); when no step qualifies, the one with the
+   * smallest unfit share (ties: the smaller tolerance). The chosen step is
+   * then segmented once more with the network rules, and that segmentation
+   * returned, so the caller doesn't segment again: with them at every step,
+   * Auto stops at finer steps where the hybrid explodes more regions
+   * (ADR-0097's 2026-11-04f amendment, rule 5). Fills `out` and meshReport_
+   * (the chosen step's report, with its tolerance in slot 12).
    * Each extra step costs a segmentation (~0.3 s on 20,000 triangles);
    * under TIMES (the spike harness) each step's tolerance, unfit share and
    * time is printed as "auto <tol>: unfit <share> %". Returns 1, or 0 with
@@ -8541,11 +8741,10 @@ private:
   int meshAutoTolerance(double& chosen, MeshSegmentation& out) {
     bool haveBest = false;
     double bestShare = 0;
-    std::vector<double> bestReport;
     for (double step : MESH_AUTO_LADDER) {
       MeshSegmentation seg;
       const double start = nowMs();
-      if (!segmentMesh(step, seg)) return 0;
+      if (!segmentMesh(step, seg, false)) return 0;
       const int tenths = static_cast<int>(std::lround(seg.unfitFraction * 1000));
       rebuildTimes_.push_back(
           {"auto " + millimetres(step) + ": unfit " + std::to_string(tenths / 10) + "." +
@@ -8553,19 +8752,16 @@ private:
            nowMs() - start});
       if (seg.unfitFraction <= PRISMATIC_UNFIT_ALLOWED) {
         chosen = step;
-        out = std::move(seg);
-        return 1;
+        break;
       }
       if (!haveBest || seg.unfitFraction < bestShare) {
         haveBest = true;
         bestShare = seg.unfitFraction;
         chosen = step;
-        out = std::move(seg);
-        bestReport = meshReport_;
       }
     }
-    meshReport_ = bestReport;
-    return 1;
+    out = MeshSegmentation();
+    return segmentMesh(chosen, out);
   }
 
   /**
