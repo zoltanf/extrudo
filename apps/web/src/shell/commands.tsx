@@ -19,6 +19,7 @@ import {
   ListChecks,
   Magnet,
   Maximize,
+  MessageSquareText,
   Moon,
   PanelLeft,
   Power,
@@ -409,6 +410,20 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
         keywords: `View named restore camera ${v.name}`,
       });
     }
+  }
+  if (ctx.mode === 'model') {
+    // The global eye of the annotations (ADR-0126 §5): App menu › Toggles too, no key.
+    const shown = ctx.viewport.getState().annotations;
+    plain(
+      'toggleAnnotations',
+      shown ? 'Hide Annotations' : 'Show Annotations',
+      'View',
+      () => ctx.viewport.getState().setAnnotations(!shown),
+      {
+        icon: icon(MessageSquareText),
+        keywords: 'View annotations notes callouts numbers show hide',
+      },
+    );
   }
   plain(
     'toggleBrowser',

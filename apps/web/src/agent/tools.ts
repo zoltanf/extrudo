@@ -63,6 +63,7 @@ import {
   updateParameter,
 } from '@extrudo/core';
 import type { ProjectSummary } from '@extrudo/storage';
+import { type AnnotationRef, fingerprintedAnchor, type Vec3 } from '../annotations/anchor';
 import { withActiveComponent } from '../components/active';
 import type { AgentExportFormat, AgentReply } from '../platform/agent';
 import { bodyEntries } from '../shell/bodies';
@@ -436,8 +437,6 @@ function readableAnnotation(host: AgentHost, annotation: Annotation) {
 }
 
 type AgentAnchor = ToolInput<'add_annotation'>['anchor'];
-type Vec3 = [number, number, number];
-type AnnotationRef = Extract<AnnotationAnchor, { kind: 'model' }>['ref'];
 
 /** The geometry keys of an agent's anchor and the reference kind each names. */
 const ANCHOR_KINDS = {
@@ -498,16 +497,10 @@ async function storedAnchor(
   if (key === 'body' && live) {
     ref = (resolveBodyRefs({ body: ref }, live, doc, ['anchor']) as { body: AnnotationRef }).body;
   }
-  const report = await host.resolveAnnotation({
-    id: 'probe' as AnnotationId,
-    number: 1,
-    text: 'probe',
-    anchor: { kind: 'model', ref, at: [0, 0, 0] },
-  });
-  if (!report)
+  const stored = await fingerprintedAnchor((a) => host.resolveAnnotation(a), ref, at);
+  if (!stored)
     throw new CommandError("The model isn't computed: check get_design's problems first.");
-  const found = report.resolved?.ref;
-  if (report.status === 'detached' || !found?.fingerprint) {
+  if (stored === 'detached') {
     const what = key === 'edgeBetween' ? 'edge between' : key;
     const named = key === 'edgeBetween' ? (given as string[]).join(' and ') : `"${given}"`;
     // The input's path, built so it never reads as a preference key (settings inventory).
@@ -516,8 +509,7 @@ async function storedAnchor(
       `${path}: There is no ${what} ${named} in the model at the timeline marker: get_feature and list_annotations give names.`,
     );
   }
-  const point = at ?? found.fingerprint.at;
-  return { kind: 'model', ref: found as AnnotationRef, at: [point[0], point[1], point[2]] };
+  return stored;
 }
 
 // --- Changing ----------------------------------------------------------------

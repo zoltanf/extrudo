@@ -1,0 +1,75 @@
+/**
+ * What the Annotations folder in the browser does with a note (ADR-0126 §6): select it and
+ * look at it, hover it, edit it in place, hide it, tick it off, delete it. Every change is
+ * one command; looking and hovering are view state.
+ */
+import {
+  type AnnotationId,
+  CommandError,
+  type DocumentStore,
+  type ModelStore,
+  removeAnnotation,
+  type SessionStore,
+  updateAnnotation,
+} from '@extrudo/core';
+import type { ViewportStore } from '../viewport/store';
+import { placeAnnotations } from './anchor';
+import type { AnnotationsUiStore } from './ui';
+
+export interface AnnotationActions {
+  /** Selects the note (`toggle` adds or removes it) and turns the view to it. */
+  select(id: AnnotationId, toggle: boolean): void;
+  /** The pointer on a note's row (`undefined` when it leaves): drawn in full, highlighted. */
+  hover(id: AnnotationId | undefined): void;
+  edit(id: AnnotationId): void;
+  setHidden(id: AnnotationId, hidden: boolean): void;
+  setDone(id: AnnotationId, done: boolean): void;
+  remove(ids: readonly AnnotationId[]): void;
+}
+
+/** How far around a note "look at" keeps in frame, mm. */
+const LOOK_ROOM = 15;
+
+export function createAnnotationActions(deps: {
+  store: DocumentStore;
+  session: SessionStore;
+  model: ModelStore<unknown>;
+  viewport: ViewportStore;
+  ui: AnnotationsUiStore;
+  notify(message: string): void;
+}): AnnotationActions {
+  const { store, session, model, viewport, ui, notify } = deps;
+  const run = (command: Parameters<ReturnType<DocumentStore['getState']>['dispatch']>[0]) => {
+    try {
+      store.getState().dispatch(command);
+    } catch (error) {
+      if (!(error instanceof CommandError)) throw error;
+      notify(error.message);
+    }
+  };
+  return {
+    select(id, toggle) {
+      session.getState().select([{ kind: 'annotation', id }], toggle ? 'toggle' : 'replace');
+      if (toggle) return;
+      const { annotations, sketches } = model.getState();
+      const placed = placeAnnotations(store.getState().doc, annotations, sketches).find(
+        (p) => p.annotation.id === id,
+      );
+      if (!placed) return;
+      const [x, y, z] = placed.at;
+      viewport.getState().lookAtBox({
+        min: [x - LOOK_ROOM, y - LOOK_ROOM, z - LOOK_ROOM],
+        max: [x + LOOK_ROOM, y + LOOK_ROOM, z + LOOK_ROOM],
+      });
+    },
+    hover(id) {
+      const current = session.getState().hover;
+      if (id) session.getState().setHover({ kind: 'annotation', id });
+      else if (current?.kind === 'annotation') session.getState().setHover(undefined);
+    },
+    edit: (id) => ui.getState().edit(id),
+    setHidden: (id, hidden) => run(updateAnnotation({ id, changes: { hidden } })),
+    setDone: (id, done) => run(updateAnnotation({ id, changes: { done } })),
+    remove: (ids) => run(removeAnnotation({ ids })),
+  };
+}

@@ -1,4 +1,5 @@
 import {
+  type AnnotationId,
   addProjection,
   type BodyId,
   CANVAS_TYPE,
@@ -25,6 +26,7 @@ import {
   pluginFileOf,
   readSketch,
   redefineSketchPlane,
+  removeAnnotation,
   removeProjection,
   type SelectionItem,
   type SessionStore,
@@ -45,6 +47,11 @@ import {
 } from 'react';
 import { useStore } from 'zustand';
 import { useAgentHost } from '../agent/useAgentHost';
+import { AnnotationsOverlay } from '../annotations/AnnotationsOverlay';
+import { createAnnotationActions } from '../annotations/actions';
+import { placeAnnotations } from '../annotations/anchor';
+import { ANNOTATE_TOOL, createAnnotateSelect } from '../annotations/tool';
+import { createAnnotationsUi } from '../annotations/ui';
 import { keysFor } from '../commands/keymap';
 import { useKeymap } from '../commands/keymapStore';
 import { isRepeatable } from '../commands/marking';
@@ -140,7 +147,12 @@ import { navigate, projectHref } from '../routes';
 import { SectionOverlay } from '../section/SectionOverlay';
 import { SectionPanel } from '../section/SectionPanel';
 import { planeName, SECTION_TOOL, useSection } from '../section/useSection';
-import { readTopology, selectionRefs, sketchEntityIdsIn } from '../selection/items';
+import {
+  pruneAnnotations,
+  readTopology,
+  selectionRefs,
+  sketchEntityIdsIn,
+} from '../selection/items';
 import { type LookSketch, selectionLookTarget } from '../selection/lookAt';
 import { useModelSelection } from '../selection/useModelSelection';
 import { storeAccess } from '../settings/displaySettings';
@@ -553,6 +565,38 @@ function Shell({
   const drawing = mode === 'sketch' && isSketchTool(activeTool);
   const projecting = mode === 'sketch' && isProjectTool(activeTool);
   const measuring = mode === 'model' && activeTool === MEASURE_TOOL;
+  const annotating = mode === 'model' && activeTool === ANNOTATE_TOOL;
+  // What is edited in place, or drafted by the Annotate tool (ADR-0126 §6): view state.
+  const annotationsUi = useMemo(() => createAnnotationsUi(), []);
+  useEffect(() => {
+    if (!annotating) annotationsUi.getState().setDraft(undefined);
+  }, [annotating, annotationsUi]);
+  const annotationActions = useMemo(
+    () =>
+      createAnnotationActions({
+        store,
+        session,
+        model,
+        viewport,
+        ui: annotationsUi,
+        notify: (message) => notify('error', message),
+      }),
+    [store, session, model, viewport, annotationsUi, notify],
+  );
+  // A deleted or undone annotation leaves the selection.
+  useEffect(
+    () =>
+      store.subscribe((s, prev) => {
+        if (s.doc.annotations === prev.doc.annotations) return;
+        const ids = new Set((s.doc.annotations ?? []).map((a) => a.id as string));
+        const current = session.getState().selection;
+        const next = pruneAnnotations(current, ids);
+        if (next !== current) session.getState().select([...next], 'replace');
+        const editing = annotationsUi.getState().editing;
+        if (editing && !ids.has(editing)) annotationsUi.getState().edit(undefined);
+      }),
+    [store, session, annotationsUi],
+  );
   const sectioning = mode === 'model' && activeTool === SECTION_TOOL;
   const printing = mode === 'model' && activeTool === PRINT_INFO_TOOL;
   const tolerancing = mode === 'model' && activeTool === TOLERANCE_TOOL;
@@ -920,6 +964,10 @@ function Shell({
         : undefined,
     [store, session, dialog, notify],
   );
+  const selectedAnnotations = useMemo(
+    () => new Set(selection.filter((item) => item.kind === 'annotation').map((item) => item.id)),
+    [selection],
+  );
   const selectedBodyIds = useMemo(
     () => selection.filter((item) => item.kind === 'body').map((item) => item.id as BodyId),
     [selection],
@@ -1276,6 +1324,19 @@ function Shell({
           m === 'model' &&
           !dialogOpen &&
           selectedBodyIds.length > 0 && { remove: () => bodyActions.remove(selectedBodyIds) }),
+        // Delete with only annotations selected deletes them, one step (ADR-0126 §6).
+        ...(!listing &&
+          m === 'model' &&
+          !dialogOpen &&
+          selection.length > 0 &&
+          selection.every((item) => item.kind === 'annotation') && {
+            remove: () =>
+              stores.store
+                .getState()
+                .dispatch(
+                  removeAnnotation({ ids: selection.map((item) => item.id as AnnotationId) }),
+                ),
+          }),
         ...(!listing &&
           m === 'model' &&
           !dialogOpen &&
@@ -1310,10 +1371,25 @@ function Shell({
                   );
                 if (sketch && frame) shown.push({ id: feature.id, frame, data: sketch.data });
               }
+              const selected = stores.session.getState().selection;
+              const notes = new Set(
+                selected.filter((i) => i.kind === 'annotation').map((i) => i.id as string),
+              );
+              const points =
+                notes.size === 0
+                  ? []
+                  : placeAnnotations(
+                      stores.store.getState().doc,
+                      modelState?.annotations ?? {},
+                      modelState?.sketches ?? {},
+                    )
+                      .filter((p) => notes.has(p.annotation.id))
+                      .map((p) => p.at);
               const target = selectionLookTarget(
-                stores.session.getState().selection,
+                selected,
                 (modelState?.bodies ?? {}) as Record<string, BodyMesh>,
                 shown,
+                points,
               );
               if (!target) return;
               viewport.getState().lookAtBox(target, target.direction);
@@ -1558,7 +1634,13 @@ function Shell({
             { keys: 'Enter', run: () => host.enter() },
           ]
         : []),
-      ...(measuring || sectioning || printing || overhanging || thickening || customizing
+      ...(measuring ||
+      annotating ||
+      sectioning ||
+      printing ||
+      overhanging ||
+      thickening ||
+      customizing
         ? [{ keys: 'Escape', run: () => session.getState().setTool(undefined) }]
         : []),
       // In the model, Esc stops a nav tool (as the viewport's own Esc does), or else clears
@@ -1594,6 +1676,7 @@ function Shell({
       picking,
       projecting,
       measuring,
+      annotating,
       sectioning,
       printing,
       overhanging,
@@ -1693,7 +1776,15 @@ function Shell({
     if (pluginFeature) {
       if (mode !== 'model') return;
       if (picking) cancelCreateSketch(stores);
-      if (measuring || sectioning || printing || overhanging || thickening || customizing) {
+      if (
+        measuring ||
+        annotating ||
+        sectioning ||
+        printing ||
+        overhanging ||
+        thickening ||
+        customizing
+      ) {
         session.getState().setTool(undefined);
       }
       dialog?.cancel();
@@ -1744,7 +1835,15 @@ function Shell({
     if (tool === 'importBody' || tool === 'canvas') {
       if (mode !== 'model') return;
       if (picking) cancelCreateSketch(stores);
-      if (measuring || sectioning || printing || overhanging || thickening || customizing) {
+      if (
+        measuring ||
+        annotating ||
+        sectioning ||
+        printing ||
+        overhanging ||
+        thickening ||
+        customizing
+      ) {
         session.getState().setTool(undefined);
       }
       dialog?.cancel();
@@ -1757,7 +1856,15 @@ function Shell({
     if (spec) {
       if (mode === 'model') {
         if (picking) cancelCreateSketch(stores);
-        if (measuring || sectioning || printing || overhanging || thickening || customizing)
+        if (
+          measuring ||
+          annotating ||
+          sectioning ||
+          printing ||
+          overhanging ||
+          thickening ||
+          customizing
+        )
           session.getState().setTool(undefined);
         dialog?.start(spec.type);
       }
@@ -1787,7 +1894,14 @@ function Shell({
     else if (tool === 'slicer') {
       if (platform.openInSlicer) setModelExport({ slicer: true });
     } else if (tool === 'render') setRenderRequest({});
-    else if (tool === MEASURE_TOOL) {
+    else if (tool === ANNOTATE_TOOL) {
+      if (mode !== 'model') return;
+      if (annotating) session.getState().setTool(undefined);
+      else {
+        if (picking) cancelCreateSketch(stores);
+        session.getState().setTool(ANNOTATE_TOOL);
+      }
+    } else if (tool === MEASURE_TOOL) {
       if (mode !== 'model') return;
       if (measuring) session.getState().setTool(undefined);
       else {
@@ -1855,7 +1969,15 @@ function Shell({
   startImportRef.current = (picked) => {
     if (mode !== 'model') return;
     if (picking) cancelCreateSketch(stores);
-    if (measuring || sectioning || printing || overhanging || thickening || customizing) {
+    if (
+      measuring ||
+      annotating ||
+      sectioning ||
+      printing ||
+      overhanging ||
+      thickening ||
+      customizing
+    ) {
       session.getState().setTool(undefined);
     }
     dialog?.cancel();
@@ -1917,6 +2039,7 @@ function Shell({
     else if (
       projecting ||
       measuring ||
+      annotating ||
       sectioning ||
       printing ||
       overhanging ||
@@ -2318,6 +2441,24 @@ function Shell({
     bodies,
     mode === 'model' && !picking && !dialogOpen && !jointOpen,
   );
+  // While Annotate runs, a click drafts a note where it lands (ADR-0126 §6).
+  const bodiesRef = useRef(bodies);
+  bodiesRef.current = bodies;
+  const annotateSelect = useMemo(
+    () =>
+      annotating && sessionSelect
+        ? createAnnotateSelect({
+            store,
+            ui: annotationsUi,
+            base: sessionSelect,
+            bodies: () => bodiesRef.current,
+            resolve: kernel?.resolveAnnotation
+              ? (annotation) => kernel.resolveAnnotation?.(annotation) ?? Promise.resolve(undefined)
+              : undefined,
+          })
+        : undefined,
+    [annotating, sessionSelect, store, annotationsUi, kernel],
+  );
   // While Measure runs, two plain clicks pick two things to measure between.
   const measureSelect = useMemo(
     () => (measuring && sessionSelect ? createMeasureSelect(session, sessionSelect) : undefined),
@@ -2333,7 +2474,7 @@ function Shell({
           : dialog?.select
         : projecting
           ? project.select
-          : (measureSelect ?? sessionSelect);
+          : (annotateSelect ?? measureSelect ?? sessionSelect);
   // A body menu's Convert to Solid… selects the body the way a browser row's click
   // does, then runs the tool the way a tile click does (P4-13, ADR-0097 §5): the
   // dialog pre-selects from the session's selection.
@@ -2510,6 +2651,10 @@ function Shell({
             bodies={browserBodies}
             bodyActions={bodyActions}
             viewActions={viewActions}
+            {...(mode === 'model' && {
+              annotations: annotationActions,
+              selectedAnnotations,
+            })}
             componentActions={componentActions}
             {...(jointActions && {
               joints: {
@@ -2733,6 +2878,23 @@ function Shell({
                   pair={measured.measurement.pair}
                   viewport={viewport}
                   settings={doc.settings}
+                />
+              )}
+              {mode === 'model' && (
+                <AnnotationsOverlay
+                  store={store}
+                  session={session}
+                  model={model}
+                  viewport={viewport}
+                  ui={annotationsUi}
+                  interactive={
+                    !picking &&
+                    !dialogOpen &&
+                    !jointOpen &&
+                    (!activeTool || annotating) &&
+                    !section.choosing
+                  }
+                  onError={(message) => notify('error', message)}
                 />
               )}
               {showConstraints && tools && activeSketchId && sketchPlane && (

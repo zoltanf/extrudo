@@ -108,6 +108,7 @@ export const ICON_NAMES = [
   'axis',
   'measure',
   'section',
+  'annotate',
   'insert-svg',
   'canvas',
   'export',

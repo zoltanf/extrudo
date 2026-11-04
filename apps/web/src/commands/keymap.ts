@@ -69,6 +69,7 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   axisThroughPoints: ['Shift+A'],
   constructionPoint: ['Shift+X'],
   measure: ['I'],
+  annotate: ['N'],
   // Joints between components (P6-05, ADR-0081 §4): the usual key.
   joint: ['J'],
   // Section Analysis (P3-09): there is no usual key for it.

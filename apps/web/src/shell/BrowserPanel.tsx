@@ -1,4 +1,6 @@
 import {
+  type Annotation,
+  type AnnotationId,
   type BodyId,
   bodyDisplay,
   CANVAS_TYPE,
@@ -20,6 +22,7 @@ import {
 import {
   Box,
   Boxes,
+  Check,
   ChevronDown,
   ChevronRight,
   Copy,
@@ -49,6 +52,7 @@ import {
   useState,
 } from 'react';
 import { useStore } from 'zustand';
+import type { AnnotationActions } from '../annotations/actions';
 import type { ComponentActions } from '../components/componentActions';
 import { type ComponentRow, componentRows, offersAssembly } from '../components/componentRows';
 import type { PlacementActions } from '../components/placement';
@@ -157,6 +161,10 @@ export interface BrowserPanelProps {
   recomputeFinished?: boolean;
   /** Restore, update, rename and delete the named views (ADR-0008's amendment, 2026-10-10). */
   viewActions: ViewActions;
+  /** The Annotations folder's rows (ADR-0126 §6), shown when the design has annotations. */
+  annotations?: AnnotationActions;
+  /** Annotations in the selection: their rows show selected. */
+  selectedAnnotations?: ReadonlySet<string>;
 }
 
 /** The assembly hint's two buttons: New Component (the tile's action) and close for good. */
@@ -214,6 +222,8 @@ export function BrowserPanel({
   statuses = NO_STATUSES,
   recomputeFinished = true,
   viewActions,
+  annotations,
+  selectedAnnotations = NO_BODIES,
 }: BrowserPanelProps) {
   const doc = useStore(store, (s) => s.doc);
   const origin = useStore(viewport, (s) => s.origin);
@@ -471,6 +481,14 @@ export function BrowserPanel({
                   />
                 )}
               </Folder>
+            )}
+            {annotations && (doc.annotations ?? []).length > 0 && (
+              <AnnotationsFolder
+                notes={doc.annotations ?? []}
+                viewport={viewport}
+                actions={annotations}
+                selected={selectedAnnotations}
+              />
             )}
             <Folder
               label="Bodies"
@@ -1115,6 +1133,145 @@ export function AppearancePanel({ body, actions }: { body: BodyEntry; actions: B
         ))}
       </fieldset>
     </div>
+  );
+}
+
+/**
+ * The Annotations folder (ADR-0126 §6): `#n  first line` per note, open ones by number and
+ * the ticked-off ones last, each with its eye and a done tick. The folder's eye is the global
+ * one; its menu switches "Numbers only" and "Ghost behind the part".
+ */
+function AnnotationsFolder({
+  notes,
+  viewport,
+  actions,
+  selected,
+}: {
+  notes: readonly Annotation[];
+  viewport: ViewportStore;
+  actions: AnnotationActions;
+  selected: ReadonlySet<string>;
+}) {
+  const shown = useStore(viewport, (s) => s.annotations);
+  const text = useStore(viewport, (s) => s.annotationText);
+  const behind = useStore(viewport, (s) => s.annotationsBehind);
+  const ordered = [...notes].sort(
+    (a, b) => Number(a.done ?? false) - Number(b.done ?? false) || a.number - b.number,
+  );
+  return (
+    <Folder
+      label="Annotations"
+      icon={<ToolIcon name="annotate" category="inspect" size={16} />}
+      count={notes.length}
+      attrs={{ 'data-annotations-folder': shown ? 'shown' : 'hidden' }}
+      eye={{ visible: shown, onToggle: () => viewport.getState().setAnnotations(!shown) }}
+      menu={
+        <>
+          <MenuItem
+            onSelect={() =>
+              viewport.getState().setAnnotationText(text === 'always' ? 'numbers' : 'always')
+            }
+          >
+            {text === 'always' ? 'Numbers only' : 'Show text'}
+          </MenuItem>
+          <MenuItem
+            onSelect={() =>
+              viewport.getState().setAnnotationsBehind(behind === 'ghost' ? 'show' : 'ghost')
+            }
+          >
+            {behind === 'ghost' ? 'Show through' : 'Ghost behind the part'}
+          </MenuItem>
+        </>
+      }
+    >
+      {ordered.map((note) => (
+        <AnnotationLeaf
+          key={note.id}
+          note={note}
+          actions={actions}
+          selected={selected.has(note.id)}
+        />
+      ))}
+    </Folder>
+  );
+}
+
+function AnnotationLeaf({
+  note,
+  actions,
+  selected,
+}: {
+  note: Annotation;
+  actions: AnnotationActions;
+  selected: boolean;
+}) {
+  const id = note.id as AnnotationId;
+  const line = note.text.split('\n')[0] ?? '';
+  const name = `#${note.number}`;
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'F2' || event.key === 'Enter') actions.edit(id);
+    else if (event.key === 'Delete' || event.key === 'Backspace') actions.remove([id]);
+    else return;
+    // Handled here: not a shortcut for the view as well.
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const row = (
+    <Leaf
+      data-annotation-row={note.number}
+      data-annotation-done={note.done ? '' : undefined}
+      data-annotation-hidden={note.hidden ? '' : undefined}
+      data-selected={selected || undefined}
+      className={selected ? 'bg-accent-soft' : ''}
+      onPointerEnter={() => actions.hover(id)}
+      onPointerLeave={() => actions.hover(undefined)}
+    >
+      <button
+        type="button"
+        aria-pressed={selected}
+        title={note.text}
+        onClick={(event: MouseEvent) =>
+          actions.select(id, event.shiftKey || event.ctrlKey || event.metaKey)
+        }
+        onDoubleClick={() => actions.edit(id)}
+        onKeyDown={onKeyDown}
+        className={`flex min-w-0 items-baseline gap-1.5 rounded-input text-left focus-visible:outline-2 focus-visible:outline-accent ${note.done || note.hidden ? 'text-muted' : ''}`}
+      >
+        <span className="shrink-0 font-mono text-xs tabular-nums">{name}</span>
+        <span className="min-w-0 truncate">{line}</span>
+      </button>
+      <IconButton
+        label={note.done ? `Mark ${name} not done` : `Mark ${name} done`}
+        className={`ml-auto size-6 ${note.done ? 'text-accent' : 'text-muted'}`}
+        onClick={() => actions.setDone(id, !note.done)}
+      >
+        <Check size={14} />
+      </IconButton>
+      <IconButton
+        label={`${note.hidden ? 'Show' : 'Hide'} ${name}`}
+        className="size-6"
+        onClick={() => actions.setHidden(id, !note.hidden)}
+      >
+        {note.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+      </IconButton>
+    </Leaf>
+  );
+  return (
+    <ContextMenu label={`${name} menu`} trigger={row}>
+      <MenuItem icon={<Pencil size={14} />} shortcut="F2" onSelect={() => actions.edit(id)}>
+        Edit
+      </MenuItem>
+      <MenuItem onSelect={() => actions.setHidden(id, !note.hidden)}>
+        {note.hidden ? 'Show' : 'Hide'}
+      </MenuItem>
+      <MenuItem onSelect={() => actions.setDone(id, !note.done)}>
+        {note.done ? 'Not done' : 'Done'}
+      </MenuItem>
+      <MenuSeparator />
+      <MenuItem icon={<Trash2 size={14} />} shortcut="Del" onSelect={() => actions.remove([id])}>
+        Delete
+      </MenuItem>
+    </ContextMenu>
   );
 }
 
