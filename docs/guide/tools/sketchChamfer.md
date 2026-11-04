@@ -58,7 +58,7 @@ Cut the corner between two lines. Type the distance.
 
 - "Pick a corner, or the first of two lines.": the prompt.
 - "Pick the second line.": the prompt after the first of two lines.
-- "Those two lines make no corner to round.": the second click was on a line
+- "Those two lines make no corner to cut.": the second click was on a line
   that makes no corner with the first: it is parallel, or the corner lies
   past the end of a line on the side you clicked. The first line stays
   picked; click another line, or press `Esc` to start over.

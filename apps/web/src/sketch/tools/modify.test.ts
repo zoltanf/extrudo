@@ -230,6 +230,19 @@ describe('fillet and chamfer', () => {
     expect(clean(t).dof).toBe(0);
   });
 
+  it('names its own action when two lines make no corner', async () => {
+    for (const [name, verb] of [
+      ['sketchFillet', 'round'],
+      ['sketchChamfer', 'cut'],
+    ] as const) {
+      const t = await rectangle(name);
+      t.host.click(at(20, 0.2));
+      t.host.click(at(20, 19.8));
+      expect(error(t)).toBe(`Those two lines make no corner to ${verb}.`);
+      expect(types(t)).toEqual(['line', 'line', 'line', 'line']);
+    }
+  });
+
   it("refuses a radius that doesn't fit", async () => {
     const t = await rectangle('sketchFillet');
     t.host.lock('size', { expr: '30', value: 30 });
@@ -356,6 +369,33 @@ describe('mirror, move, copy, patterns and scale', () => {
     t.host.lock('count', { expr: '4', value: 4 });
     t.host.click(at(0, 0));
     expect(types(t)).toEqual(['circle', 'circle', 'circle', 'circle']);
+  });
+
+  it('patterns around the pointer on Enter, as a click there does', async () => {
+    const t = await setup({ tool: 'line' });
+    t.host.stop();
+    draw(t, {
+      o: pt(10, 0),
+      c: { type: 'circle', center: e('o'), radius: 2, construction: false },
+    });
+    t.session.getState().select([{ kind: 'sketchEntity', id: 'c' }], 'replace');
+    t.host.start('sketchCircularPattern');
+    expect(tool(t)?.prompt()).toMatch(/^Click the center/);
+    // The pointer hasn't been over the view yet: Enter has no center and waits.
+    t.host.enter();
+    expect(types(t)).toEqual(['circle']);
+    t.host.lock('count', { expr: '3', value: 3 });
+    t.host.move(at(0, 0));
+    t.host.enter();
+    expect(types(t)).toEqual(['circle', 'circle', 'circle']);
+    const centers = Object.values(t.data().entities).flatMap((x) =>
+      x.type === 'circle' ? [t.point(x.center).map((v) => Math.round(v * 1e6) / 1e6 + 0)] : [],
+    );
+    expect(centers).toEqual([
+      [10, 0],
+      [-5, 8.660254],
+      [-5, -8.660254],
+    ]);
   });
 
   it('scales a circle and its diameter; refuses when a fix holds it', async () => {

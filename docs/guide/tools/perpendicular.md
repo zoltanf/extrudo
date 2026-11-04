@@ -7,7 +7,7 @@ order: 110
 
 # Perpendicular
 
-Make two lines meet at a right angle.
+Set two lines at a right angle to each other.
 
 | Where | Shortcut |
 |---|---|
