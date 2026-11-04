@@ -1231,6 +1231,11 @@ end to end, faster than in established desktop CAD.
   facets (ADR-0097's 2026-11-04b amendment). Left: micro zigzags (2 facets),
   wrapped charts 375 (mostly cone fits on makita's fillets), the planes still
   exploded as "its outer loop runs the wrong way" (152 facets).
+  *2026-11-04c:* a hybrid face's pcurves on curved surfaces are the ones a
+  STEP reader gives them, and a straight seam runs through its vertices: 1
+  of the corpus's round trips fails at Auto (6 before: five failed on the
+  1e-4 volume rule alone; gear-bearing-5 is left, 0.99980; ADR-0097's
+  2026-11-04c amendment).
 
 ## Phase 5 — Programmatic design (→ v0.6)
 

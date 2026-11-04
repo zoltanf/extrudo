@@ -999,3 +999,65 @@ The healer still runs once (the unified body has other faces with edges moved on
 
 Sweep (`baseline-2026-11-04-second-attempt-auto.jsonl` against the half-cone run, 63 passed, 1 skipped): only
 spool-screw moves, 1419 → 1171 faces, 256 → 0 facets, 43270 → 23945 ms.
+
+## Run 6 (2026-11-04): the volume-only round trips, makita's facets
+
+Kernel-staged meshes (`MESH_OUT`) of the six files and makita-vacuum-holder; spike case `V` (new: one file converted,
+written with the facade's `writeStep`, read back with its `readStep`, both measured several ways, then face by face)
+at Auto, `BUILD=d13`.
+
+### Slice 1: where the volume goes
+
+Main's facade (`700b080c6fb2`), every integral of both bodies (fixed order, bounded 1e-7 / 1e-9, Gauss–Kronrod 1e-9)
+gives the same ratio:
+
+| file | written / read back (fixed) | ratio | the faces that differ |
+|---|---|---|---|
+| own/battery-power-adapter | 24505.713 / 24499.918 | 0.999764 | torus 154: area 37.486 → 38.044 (solid 1 only) |
+| own/phone-stand-foldable | 11957.775 / 11952.660 | 0.999572 | 10 tori |
+| own/spool-nut-v4.1 | 9893.972 / 9899.185 | 1.000527 | cone 175 (1146 edges): area 340.651 → 341.277 |
+| third-party/micro-sd-keyring-inner | 942.716 / 942.095 | 0.999342 | 4 spheres: 1.680 → 3.345 each |
+| third-party/spaghetti-measure | 16092.078 / 16094.963 | 1.000179 | sphere 109: 5.546 → 6.080 |
+| third-party/gear-bearing-5 | 22265.831 / 22257.462 | 0.999624 | 18 spheres, 4 revolutions |
+
+Planes, cylinders and facets match face by face to about 1e-9 in all six. `QVFACE=<i>` compares a face edge by edge
+(the pcurves' images, in 3D and in (u, v), against each other and against the 3D curve):
+
+    spool-nut-v4.1 face 175 (cone, a 0.785, full turn):
+      written area fixed 340.650627, Green (du form) 340.650627
+      back    area fixed 341.277363, Green (du form) 340.650627
+      edge 185 (the seam line) uv written (9.21384597, 45.6800113)-(9.21384597, 47.3770676) back (9.21384597, 45.676923)-(…)
+               vertex gap 0.00439 slide 0.00309      (the only edge of 3780 that slides)
+      every other edge: pcurves 1e-11 apart
+    battery-power-adapter face 154 (torus R 32.4 r 4.27):
+      edge 12 len 4.765 images apart 0.088 written off 3d 0.111 back off 3d 0.075 uv apart 0.020
+    micro-sd-keyring-inner face 22 (sphere r 1.385):
+      edge 10 len 2.400 images apart 0.836 written off 3d 0.909 back off 3d 0.690 uv apart 0.628
+
+`gap` is a vertex's distance from its 3D curve's end, `slide` how far its projection onto the curve lies from that end
+(what a reader moves the end by). The written STEP has pcurves (7560 PCURVE entities for spool-nut) and
+`UNCERTAINTY_MEASURE_WITH_UNIT(5.E-03)`. OCCT's reader (`StepToTopoDS_TranslateEdgeLoop`, `CheckPCurves` →
+`XSAlgo_ShapeProcessor::CheckPCurve`, sources in the image under `/opencascade.js/deps/OCCT/src/`) drops every plane
+pcurve, and re-tests the others with `FixSameParameter` at the uncertainty p, taking the projection where the
+deviation exceeds min(1, 2p) and the projection strays less; a pcurve whose ends lie farther than p from the 3D
+curve's is dropped and projected again.
+
+The fix prototyped in the spike (`QVFIX=1`: the reader's deviation rule applied to the converted body before writing),
+then in the facade (`pcurvesAsRead`, and the seam through its vertices):
+
+| file | main | `QVFIX` | `QVFIX` + `QVENDS` (the end rule too) | facade |
+|---|---|---|---|---|
+| own/battery-power-adapter | 0.999764 | 1.0000003 (2 pcurves, 62 ms) | 1.0000000 (365, 353 ms) | 1.0000003 |
+| own/phone-stand-foldable | 0.999572 | 0.999966 (232) | 0.999982 (545, 554 ms) | 0.999966 |
+| own/spool-nut-v4.1 | 1.000527 | 1.000527 (0) | 1.000527 | 1.0000000 (seam) |
+| third-party/micro-sd-keyring-inner | 0.999342 | 1.0000000 (4) | 1.0000000 | 1.0000000 |
+| third-party/spaghetti-measure | 1.000179 | 1.0000000 (1) | 1.0000000 | 1.0000000 |
+| third-party/gear-bearing-5 | 0.999624 | 0.999802 (68) | 0.999881 (2994, 1160 ms) | 0.999802 |
+| third-party/makita-vacuum-holder | 0.999956 | 0.999998 (34) | 1.0000023 (1039) | 0.999998 |
+
+Synthetic candidates on main's facade (each beside `bossWithBump`, hybrid): a 16-segment sphere with a box corner at
+0.1 mm 1.0000000; **a 24-segment sphere with a box corner at 0.05 mm 1.00047** (233 faces, valid; the test); a sphere
+with a small sphere on it, a coarse donut, a 12-sided torus with a box, a noisy cone band at 0.01: all within 2e-8.
+With the facade's fix the 24-segment sphere reads back at 1.0000000.
+
+Sweep: ADR-0097's 2026-11-04c amendment (round trips failed 6 → 1; no face or facet moves).

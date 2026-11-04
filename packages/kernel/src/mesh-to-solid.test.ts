@@ -1603,7 +1603,7 @@ describe('Mesh to Solid, the hybrid rebuild (ADR-0097 slice D1)', { timeout: 300
     }
   });
 
-  it('gives a sphere’s edges the pcurves a STEP reader gives them, so its volume round-trips (2026-11-05)', () => {
+  it('gives a sphere’s edges the pcurves a STEP reader gives them, so its volume round-trips (2026-11-04c)', () => {
     // A 24-segment sphere r 5 with a box's corner through its top, beside
     // `bossWithBump` (the hybrid). The sphere face meets the facets on mesh
     // chords whose pcurves, straight in the chart's (u, v), stray from the

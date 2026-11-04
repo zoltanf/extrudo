@@ -3550,6 +3550,23 @@ Numbers in ADR-0097's 2026-11-01 amendment; all tables in `docs/plans/m2s-explod
   (2026-11-04)". Sweep baseline from here on: `baseline-2026-11-04-second-attempt-auto.jsonl` (`prismatic faces
   24693, prismatic facets 14003, prismatic ms 214077, round trips failed 6`; spool-screw-v4.1 23.9 s).
 
+**ADR-0097 amendment (2026-11-04c): curved faces keep their domain through STEP.** `extrudo_facade.cpp`
+(`pcurvesAsRead`, called last in `rebuildHybrid`; `straightenSeams`); probe case `V` (`QVFACE`, `QVFIX`, `QVENDS`,
+`QVNEAR`, `QVSTEP`) in `spikes/stl-to-solid/prismatic.cpp`. Rules:
+- No pcurve of a hybrid face on a curved surface is one a STEP reader would replace: where it strays from its 3D curve
+  by more than min(1, 2p) (p the writer's uncertainty, 1.5 × the average tolerance rounded to 1, 2, 5) and the curve's
+  projection strays less, the face gets the projection, moved by whole periods onto the old ends; all of it goes
+  back when the body checks invalid.
+- A straight seam `straightenSeams` makes is the line through its two vertices (degree-1 B-spline pcurves over its
+  length), not the isoline: a reader trims a line where its vertices project.
+- Don't loosen the 1e-4 volume rule or swap the integral: every integral agrees on each side. Measured, not built: the
+  reader's end rule (a pcurve whose ends lie farther than p from the curve's is re-projected anyway): gear-bearing-5
+  0.99988, 1.1 s.
+- Test: `mesh-to-solid.test.ts` "gives a sphere’s edges the pcurves a STEP reader gives them, so its volume
+  round-trips (2026-11-04c)"; spool-nut-v4.1 pins the seam in the sweep. Sweep baseline from here on:
+  `baseline-2026-11-04c-round-trip-auto.jsonl` (`prismatic faces 24693, prismatic facets 14003, round trips failed 1`:
+  gear-bearing-5).
+
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
 facade `removeFaces` with `BRepAlgoAPI_Defeaturing`). Rules: **all or nothing** (any
