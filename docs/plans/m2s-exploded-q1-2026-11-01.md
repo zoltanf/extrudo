@@ -1094,3 +1094,40 @@ Synthetic candidates that changed nothing (no region exploded for edge tolerance
 with a 12-sided hole, each at 0.05 and 0.1 mm.
 
 Sweep: ADR-0097's 2026-11-04d amendment (facets 14,003 → 13,958, round trips failed 1 → 0).
+
+### Review: gardena-end with the chord images
+
+Spike case `D` (new: each face's BRepGProp and triangulated area at deflection 0.005, the mesh nodes' distance to the
+body, each face's triangulation nodes' distance to the mesh triangles), gardena-end at Auto (T 0.01), 2026-11-04c's
+facade against the 17-point images:
+
+| face | surface | BRepGProp area 04c → 04d | triangulated area 04c → 04d |
+|---|---|---|---|
+| 0 | torus | 613.750 → 616.442 | 616.283 → 616.283 |
+| 8 | cone | 46.342 → 46.262 | 46.353 → 46.355 |
+| 11 | torus | 184.909 → 181.978 | 181.945 → 181.946 |
+| 13 | sphere | 74.653 → 74.941 | 75.102 → 75.103 |
+| 14 | torus | 104.181 → 105.337 | 105.333 → 105.528 |
+
+    04c: volume 13102.5488 (mesh 13060.2678, 1.00323738), triangulated 13120.2411; nodes to body max 0.00728673 mean 7.967e-05; faces to mesh max 0.0853445 mean 0.0205110
+    04d: volume 13130.0358 (1.00534201),                  triangulated 13120.4241; nodes to body max 0.00728673 mean 7.967e-05; faces to mesh max 0.0853445 mean 0.0204570
+
+`chordPcurve` (a probe copy printing each call): 884 calls (torus 488, cylinder 154, cone 122, sphere 120), 594
+replaced, the straight pcurve's stray 0.0217–0.0513 mm, the image's at most 0.0482. Stage times (`TIMES=1`, load
+under 1, two runs each, ms, 04c → 04d): hybrid faces 41 → 113 and 30 → 87, hybrid solid 78 → 400 and 73 → 409, hybrid
+unified 65 → 94 and 81 → 342, healed 180 → 264, checked against the mesh 83 → 438; face classifiers built in 3.0 →
+20.2 ms, classifying 58 → 277 ms.
+
+Narrowings (spike, round-trip ratio, faces / facets):
+
+| variant | gardena-end | makita | micro-sd-keyring-inner | gear-bearing-5 | phone-stand-foldable |
+|---|---|---|---|---|---|
+| 17 points, stray > 1.5 T (04d) | 594 replaced, 1.000013 | 3306 / 2486 | 51 / 3 | 0.999921 | 868 / 287 |
+| stray > 10 T | 0 replaced, 1.000012 | 3306 / 2486 | 51 / 3 | 0.999802 (fails) | 868 / 287 |
+| only with a facet across | 0 replaced | 3334 / 2516 | 79 / 18 | 0.999838 (fails) | 961 / 381 |
+| 3 points | 1.000014 | 3306 / 2486 | 51 / 3 | 0.999920 | 868 / 287 |
+
+gear-bearing-5's replacements stray 1.5–6.0 T, gardena-end's 2.2–5.1 T; the image's gain (its stray over the straight
+one's) overlaps too (micro-sd 0.59–1.0, gardena-end from 0.006). Whole conversions of gardena-end (case `D`, two runs,
+load under 2): 04c 3843 / 3950 ms, 17 points 5494 / 5532, 3 points 4037 / 4030. Sweep: ADR-0097's 2026-11-04d
+amendment, "Review".

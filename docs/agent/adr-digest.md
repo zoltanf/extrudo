@@ -3575,12 +3575,16 @@ Numbers in ADR-0097's 2026-11-01 amendment; all tables in `docs/plans/m2s-explod
 `makeFace`, `chordPcurve`). Rules:
 - A curved region's mesh edge whose straight (u, v) pcurve strays from its chord by more than 1.5 T gets the chart's
   image of the chord (ending at its nodes' chart parameters) when that strays less; the tolerance follows it. Don't
-  use the orthogonal projection there (its ends miss the chart parameters the face's other pcurves end at).
+  use the orthogonal projection there (its ends miss the chart parameters the face's other pcurves end at). The image
+  goes through three points (ends and midpoint): with 17, unify, healing and the mesh check took 1.6 s longer on
+  gardena-end's 594 such edges for the same body; a k T threshold or a facet-across rule loses gear-bearing-5's round
+  trip.
 - Measured, not built: makita-vacuum-holder's facets are mostly one unfit fillet network (3,106 triangles, about 2,090
   facets; no rolling-ball band fits) and 18 cone fits on fillet patches whose chords lie 1.2–3.4 mm off the cone.
 - Test: `mesh-to-solid.test.ts` "gives a mesh edge that strays far from its straight pcurve the chord’s own image, so a
-  coarse ball round-trips (2026-11-04d)". Sweep baseline from here on: `baseline-2026-11-04d-chord-pcurves-auto.jsonl`
-  (`prismatic faces 24650, prismatic facets 13958, round trips failed 0`).
+  coarse ball round-trips (2026-11-04d)". Sweep baseline from here on:
+  `baseline-2026-11-04e-chord-three-points-auto.jsonl` (`prismatic faces 24650, prismatic facets 13958, prismatic ms
+  221048, round trips failed 0`). Spike case `D` measures a body's distance from its mesh.
 
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,

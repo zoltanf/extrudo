@@ -309,3 +309,6 @@ the `QVTOP` (15) faces that move most. `QVFACE=i,j` compares those faces edge by
 `pcurvesAsRead`), `QVENDS=1` its end rule too, `QVSTEP=/w/<file>` writes the STEP text. The tables are in
 `docs/plans/m2s-exploded-q1-2026-11-01.md`, "Run 6".
 
+Case `D` (review, 2026-11-04): one file (FILE, TOL) converted; per face its BRepGProp and triangulated area (deflection
+0.005), the mesh nodes' distance to the body (max, mean) and each face's triangulation nodes' distance to the mesh
+triangles; the body's BRepGProp and triangulated volume, and the conversion time.
