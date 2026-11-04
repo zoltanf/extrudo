@@ -1137,6 +1137,8 @@ export const TABS: Tab[] = [
         ],
       },
       // Measure works on bodies (P2-13); measuring sketch geometry comes later.
+      // Annotate pins notes to the sketch's points and curves (ADR-0126 §7).
+      { label: 'Inspect', tools: ['annotate'] },
       { label: 'Export', tools: ['exportSketch'] },
     ],
   },

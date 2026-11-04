@@ -50,7 +50,11 @@ import { useAgentHost } from '../agent/useAgentHost';
 import { AnnotationsOverlay } from '../annotations/AnnotationsOverlay';
 import { createAnnotationActions } from '../annotations/actions';
 import { placeAnnotations } from '../annotations/anchor';
-import { ANNOTATE_TOOL, createAnnotateSelect } from '../annotations/tool';
+import {
+  ANNOTATE_TOOL,
+  createAnnotateSelect,
+  createSketchAnnotateInput,
+} from '../annotations/tool';
 import { createAnnotationsUi } from '../annotations/ui';
 import { keysFor } from '../commands/keymap';
 import { useKeymap } from '../commands/keymapStore';
@@ -565,7 +569,8 @@ function Shell({
   const drawing = mode === 'sketch' && isSketchTool(activeTool);
   const projecting = mode === 'sketch' && isProjectTool(activeTool);
   const measuring = mode === 'model' && activeTool === MEASURE_TOOL;
-  const annotating = mode === 'model' && activeTool === ANNOTATE_TOOL;
+  // Annotate runs in the model and in an open sketch (ADR-0126 §6–7).
+  const annotating = activeTool === ANNOTATE_TOOL;
   // What is edited in place, or drafted by the Annotate tool (ADR-0126 §6): view state.
   const annotationsUi = useMemo(() => createAnnotationsUi(), []);
   useEffect(() => {
@@ -1161,12 +1166,27 @@ function Shell({
     });
   }, [store, history]);
 
-  // Deleting a dimension another expression uses is refused; say why.
+  // Deleting a dimension another expression uses is refused; say why. Selected notes go with
+  // the sketch's selected geometry, one undo step (ADR-0126 §7).
   const remove = useMemo(
     () => () => {
+      const selection = stores.session.getState().selection;
+      const notes = selection
+        .filter((item) => item.kind === 'annotation')
+        .map((item) => item.id as AnnotationId);
+      const both = notes.length > 0 && selection.some((item) => item.kind !== 'annotation');
+      const state = stores.store.getState();
+      if (both) {
+        state.beginTransaction(
+          `Delete ${notes.length === 1 ? 'annotation' : 'annotations'} and sketch geometry`,
+        );
+      }
       try {
+        if (notes.length > 0) state.dispatch(removeAnnotation({ ids: notes }));
         deleteSelection(stores);
+        if (both) state.commitTransaction();
       } catch (error) {
+        if (both) state.cancelTransaction();
         if (!(error instanceof CommandError)) throw error;
         notify('error', error.message);
       }
@@ -1916,10 +1936,11 @@ function Shell({
       if (platform.openInSlicer) setModelExport({ slicer: true });
     } else if (tool === 'render') setRenderRequest({});
     else if (tool === ANNOTATE_TOOL) {
-      if (mode !== 'model') return;
       if (annotating) session.getState().setTool(undefined);
       else {
         if (picking) cancelCreateSketch(stores);
+        // In a sketch, the drawing tool that runs ends first.
+        if (mode === 'sketch') host?.stop();
         session.getState().setTool(ANNOTATE_TOOL);
       }
     } else if (tool === MEASURE_TOOL) {
@@ -2427,6 +2448,14 @@ function Shell({
     }
   };
   const sketchPlane = sketches.find((s) => s.active)?.frame;
+  // The open sketch's notes are drawn through its plane, live (ADR-0126 §7).
+  const openSketch = useMemo(
+    () =>
+      mode === 'sketch' && activeSketchId && sketchPlane
+        ? { id: activeSketchId, frame: sketchPlane }
+        : undefined,
+    [mode, activeSketchId, sketchPlane],
+  );
   // The right-click marking menu (P3-11): offered while nothing else owns the pointer.
   const runningTool = useMemo(
     () =>
@@ -2518,6 +2547,16 @@ function Shell({
   const sketchInput = useMemo<SketchInput | undefined>(() => {
     // The Project tool picks in 3D instead (P2-09).
     if (!sketchPlane || projecting) return undefined;
+    // Annotate pins notes to the sketch's geometry or plane (ADR-0126 §7).
+    if (annotating && activeSketchId) {
+      return createSketchAnnotateInput({
+        store,
+        session,
+        ui: annotationsUi,
+        sketch: activeSketchId,
+        frame: sketchPlane,
+      });
+    }
     if (!drawing && host) {
       return {
         frame: sketchPlane,
@@ -2550,7 +2589,18 @@ function Shell({
       onLeave: () => {},
       cursor: 'default',
     };
-  }, [drawing, host, sketchPlane, activeTool, session, projecting]);
+  }, [
+    drawing,
+    host,
+    sketchPlane,
+    activeTool,
+    session,
+    projecting,
+    annotating,
+    activeSketchId,
+    store,
+    annotationsUi,
+  ]);
 
   // A feature dialog's Plane field (P2-10) picks origin planes and flat faces the same way.
   const dialogPlanes = useMemo(
@@ -2905,17 +2955,19 @@ function Shell({
                   settings={doc.settings}
                 />
               )}
-              {mode === 'model' && (
+              {(mode === 'model' || sketchPlane) && (
                 <AnnotationsOverlay
                   store={store}
                   session={session}
                   model={model}
                   viewport={viewport}
                   ui={annotationsUi}
+                  {...(openSketch && { openSketch })}
                   interactive={
                     !picking &&
                     !dialogOpen &&
                     !jointOpen &&
+                    !drawing &&
                     (!activeTool || annotating) &&
                     !section.choosing
                   }
@@ -2929,7 +2981,7 @@ function Shell({
                   viewport={viewport}
                   sketchId={activeSketchId}
                   frame={sketchPlane}
-                  interactive={!drawing}
+                  interactive={!drawing && !annotating}
                   over={status?.over}
                   onDelete={remove}
                 />
@@ -2942,7 +2994,7 @@ function Shell({
                   host={tools.host}
                   sketchId={activeSketchId}
                   frame={sketchPlane}
-                  interactive={!drawing}
+                  interactive={!drawing && !annotating}
                   notify={notify}
                   onDelete={remove}
                 />

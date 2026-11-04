@@ -1,8 +1,8 @@
 import { Design } from '@extrudo/api';
-import { type BodyId, createDocumentStore } from '@extrudo/core';
+import { type BodyId, createDocumentStore, createSessionStore } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import { describe, expect, it } from 'vitest';
-import { annotationRefOf, createAnnotateSelect } from './tool';
+import { annotationRefOf, createAnnotateSelect, createSketchAnnotateInput } from './tool';
 import { createAnnotationsUi } from './ui';
 
 describe('annotationRefOf', () => {
@@ -89,6 +89,47 @@ describe('annotationRefOf on a mesh body', () => {
     expect(annotationRefOf({ kind: 'face', id: 'm1:0:0' }, bodies)).toEqual({
       kind: 'body',
       id: 'm1:0',
+    });
+  });
+});
+
+describe('createSketchAnnotateInput', () => {
+  it('pins a click on a point to it, and a click on empty plane to the sketch', async () => {
+    const d = Design.create();
+    let corner = '';
+    const sketch = d.sketch(d.origin.xy, (k) => {
+      corner = k.point([10, 5]).id;
+    });
+    const store = createDocumentStore(d.toJSON());
+    const ui = createAnnotationsUi();
+    const session = createSessionStore();
+    const input = createSketchAnnotateInput({
+      store,
+      session,
+      ui,
+      sketch: sketch.id,
+      frame: { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], normal: [0, 0, 1] },
+    });
+    const pointer = (x: number, y: number) =>
+      ({ point: [x, y], perPixel: 0.1, screen: [0, 0], infer: true }) as never;
+    input.onMove(pointer(10.2, 5.1));
+    expect(session.getState().hover).toEqual({ kind: 'sketchEntity', id: corner });
+    input.onClick(pointer(10.2, 5.1));
+    expect(ui.getState().draft).toMatchObject({
+      anchor: { kind: 'sketch', sketch: sketch.id, entity: corner },
+      at: [10.2, 5.1, 0],
+      number: 1,
+    });
+    const anchor = ui.getState().draft?.anchor;
+    const offset = anchor?.kind === 'sketch' ? anchor.at : [Number.NaN, Number.NaN];
+    expect(offset[0]).toBeCloseTo(0.2, 9);
+    expect(offset[1]).toBeCloseTo(0.1, 9);
+    ui.getState().setDraft(undefined);
+    input.onClick(pointer(-20, 30));
+    expect(ui.getState().draft?.anchor).toEqual({
+      kind: 'sketch',
+      sketch: sketch.id,
+      at: [-20, 30],
     });
   });
 });

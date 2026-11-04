@@ -252,6 +252,7 @@ export function SketchPalette({
   const points = useStore(viewport, (s) => s.sketchPoints);
   const constraints = useStore(viewport, (s) => s.sketchConstraints);
   const dimensions = useStore(viewport, (s) => s.sketchDimensions);
+  const notes = useStore(viewport, (s) => s.annotations);
   const profiles = useStore(viewport, (s) => s.sketchProfiles);
   const snap = useStore(viewport, (s) => s.snap);
   const autoProject = useStore(viewport, (s) => s.autoProject);
@@ -322,6 +323,15 @@ export function SketchPalette({
             hint="Show the sketch's dimensions."
           >
             Dims
+          </PaletteSwitch>
+          <PaletteSwitch
+            icon={<PaletteIcon name="annotate" />}
+            checked={notes}
+            onChange={(v) => viewport.getState().setAnnotations(v)}
+            label="Show notes"
+            hint="Show the numbered notes (#1, #2, …), in this sketch and on the model."
+          >
+            Notes
           </PaletteSwitch>
           <PaletteSwitch
             icon={<PaletteIcon name="perpendicular" />}

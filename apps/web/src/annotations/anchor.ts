@@ -13,6 +13,7 @@ import {
   type FeatureId,
   isFeatureVisible,
   readSketch,
+  type SketchFrame,
   type SketchReport,
   sketchToWorld,
 } from '@extrudo/core';
@@ -69,6 +70,11 @@ export function placeAnnotations(
   doc: Pick<ExtrudoDocument, 'annotations' | 'features'>,
   reports: Readonly<Record<string, AnnotationReport | undefined>>,
   sketches: Readonly<Record<string, SketchReport | undefined>>,
+  /**
+   * The sketch open for editing and the plane it is drawn on (ADR-0126 §7): its notes are
+   * drawn through that frame, shown or not, from the document as it is during a drag.
+   */
+  open?: { id: FeatureId; frame: SketchFrame },
 ): PlacedAnnotation[] {
   const out: PlacedAnnotation[] = [];
   for (const annotation of doc.annotations ?? []) {
@@ -80,7 +86,7 @@ export function placeAnnotations(
       const at = report?.status !== 'detached' && report?.at ? report.at : anchor.at;
       out.push({ annotation, at: [...at] as Vec3, status: report?.status ?? 'pending' });
     } else {
-      const placed = sketchPoint(doc, sketches, anchor.sketch, anchor.at, anchor.entity);
+      const placed = sketchPoint(doc, sketches, anchor.sketch, anchor.at, anchor.entity, open);
       if (placed) out.push({ annotation, at: placed, status: 'ok' });
     }
   }
@@ -93,10 +99,12 @@ function sketchPoint(
   id: FeatureId,
   at: readonly [number, number],
   entity: string | undefined,
+  open: { id: FeatureId; frame: SketchFrame } | undefined,
 ): Vec3 | undefined {
   const feature = doc.features.find((f) => f.id === id);
-  const frame = sketches[id]?.frame;
-  if (!feature || !frame || !isFeatureVisible(feature)) return undefined;
+  const editing = open?.id === id;
+  const frame = editing ? open.frame : sketches[id]?.frame;
+  if (!feature || !frame || (!editing && !isFeatureVisible(feature))) return undefined;
   const data = readSketch(feature)?.data;
   const base =
     entity !== undefined && data ? annotationEntityPoint(data, entity as never) : undefined;

@@ -8,14 +8,23 @@
  */
 import {
   type AnnotationAnchor,
+  annotationEntityPoint,
   type BodyId,
   type DocumentStore,
+  type FeatureId,
   nextAnnotationNumber,
+  readSketch,
   type SelectionItem,
+  type SessionStore,
+  type SketchEntityId,
+  type SketchFrame,
+  sketchToWorld,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
+import { pickEntity } from '@extrudo/sketch/inference';
 import { readTopology, topologyRef } from '../selection/items';
-import type { ModelSelect } from '../viewport/Viewport';
+import { type PlanePointer, SNAP_PIXELS } from '../sketch/tools/host';
+import type { ModelSelect, SketchInput } from '../viewport/Viewport';
 import {
   type AnnotationRef,
   fingerprintedAnchor,
@@ -64,6 +73,16 @@ export interface AnnotateToolDeps {
 /** A click this soon after an editor lost focus is the press that took the focus, ms. */
 const BLUR_CLICK_MS = 800;
 
+/**
+ * Whether a click may start a draft: not while a note is being typed (the press blurred its
+ * editor, which committed it), nor for the click whose press did that.
+ */
+export function mayStartDraft(ui: AnnotationsUiStore): boolean {
+  const { draft, editing, blurredAt } = ui.getState();
+  if (draft || editing) return false;
+  return blurredAt === undefined || performance.now() - blurredAt >= BLUR_CLICK_MS;
+}
+
 /** The view's model selection while the tool runs: hover as usual, a click drafts a note. */
 export function createAnnotateSelect(deps: AnnotateToolDeps): ModelSelect {
   const { store, ui, base } = deps;
@@ -73,11 +92,7 @@ export function createAnnotateSelect(deps: AnnotateToolDeps): ModelSelect {
     onBox: () => {},
     onClick: (item, _toggle, at) => {
       if (!at) return;
-      // A click while a note is being typed only ends that one: the press blurred its editor,
-      // which committed it.
-      const { draft, editing, blurredAt } = ui.getState();
-      if (draft || editing) return;
-      if (blurredAt !== undefined && performance.now() - blurredAt < BLUR_CLICK_MS) return;
+      if (!mayStartDraft(ui)) return;
       const mine = ++generation;
       anchorFor(deps, item, at)
         .then((anchor) => {
@@ -108,4 +123,61 @@ async function anchorFor(
   // The kernel couldn't say (no recompute yet): the name alone, which still resolves.
   if (!stored || stored === 'detached') return { kind: 'model', ref, at: [at[0], at[1], at[2]] };
   return stored;
+}
+
+export interface SketchAnnotateDeps {
+  store: DocumentStore;
+  session: SessionStore;
+  ui: AnnotationsUiStore;
+  /** The open sketch and the plane it is drawn on. */
+  sketch: FeatureId;
+  frame: SketchFrame;
+}
+
+/**
+ * The open sketch's pointer while Annotate runs (ADR-0126 §7): hovering a point, curve or
+ * text (projected ones too) highlights it; a click on one drafts a note on it (`entity`, `at`
+ * the offset from its reference point), a click on empty plane a note at that sketch position.
+ * The draft, its editor and the guards are the 3D tool's.
+ */
+export function createSketchAnnotateInput(deps: SketchAnnotateDeps): SketchInput {
+  const { store, session, ui, sketch, frame } = deps;
+  const data = () => {
+    const feature = store.getState().doc.features.find((f) => f.id === sketch);
+    return feature ? readSketch(feature)?.data : undefined;
+  };
+  const entityAt = (pointer: PlanePointer): SketchEntityId | undefined => {
+    const current = data();
+    return current && pickEntity(current, pointer.point, SNAP_PIXELS * pointer.perPixel);
+  };
+  const clearHover = () => {
+    if (session.getState().hover?.kind === 'sketchEntity') session.getState().setHover(undefined);
+  };
+  return {
+    frame,
+    cursor: 'default',
+    onMove: (pointer) => {
+      const id = entityAt(pointer);
+      if (id) session.getState().setHover({ kind: 'sketchEntity', id });
+      else clearHover();
+    },
+    onLeave: clearHover,
+    onClick: (pointer) => {
+      if (!mayStartDraft(ui)) return;
+      const current = data();
+      const entity = entityAt(pointer);
+      const base = current && entity ? annotationEntityPoint(current, entity) : undefined;
+      const [x, y] = pointer.point;
+      const anchor: AnnotationAnchor =
+        entity && base
+          ? { kind: 'sketch', sketch, at: [x - base[0], y - base[1]], entity }
+          : { kind: 'sketch', sketch, at: [x, y] };
+      const world = sketchToWorld(frame, [x, y]);
+      ui.getState().setDraft({
+        anchor,
+        at: [world[0], world[1], world[2]],
+        number: nextAnnotationNumber(store.getState().doc),
+      });
+    },
+  };
 }

@@ -19,11 +19,13 @@ import {
   addAnnotation,
   CommandError,
   type DocumentStore,
+  type FeatureId,
   type ModelStore,
   newId,
   removeAnnotation,
   type SelectionItem,
   type SessionStore,
+  type SketchFrame,
   updateAnnotation,
 } from '@extrudo/core';
 import { Check, Eye, EyeOff, Pencil, Trash2 } from 'lucide-react';
@@ -59,6 +61,8 @@ export interface AnnotationsOverlayProps {
   ui: AnnotationsUiStore;
   /** False while a dialog, a sketch or another tool owns the pointer: callouts let it through. */
   interactive: boolean;
+  /** The sketch open for editing and its plane: its notes follow it live (ADR-0126 §7). */
+  openSketch?: { id: FeatureId; frame: SketchFrame };
   onError(message: string): void;
 }
 
@@ -92,6 +96,7 @@ export function AnnotationsOverlay({
   viewport,
   ui,
   interactive,
+  openSketch,
   onError,
 }: AnnotationsOverlayProps) {
   const doc = useStore(store, (s) => s.doc);
@@ -109,7 +114,10 @@ export function AnnotationsOverlay({
   const editing = useStore(ui, (s) => s.editing);
   const draft = useStore(ui, (s) => s.draft);
 
-  const placed = useMemo(() => placeAnnotations(doc, reports, sketches), [doc, reports, sketches]);
+  const placed = useMemo(
+    () => placeAnnotations(doc, reports, sketches, openSketch),
+    [doc, reports, sketches, openSketch],
+  );
   // A hidden note being edited (from its browser row) is drawn while the editor is open.
   const visible = useMemo(
     () => placed.filter((p) => (shown && !p.annotation.hidden) || p.annotation.id === editing),
