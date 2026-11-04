@@ -52,3 +52,39 @@ export function leaderEnd(p: Screen, box: Box): [number, number] {
   sides.sort((a, b) => a[0] - b[0]);
   return (sides[0] as [number, [number, number]])[1];
 }
+
+/** How far a callout keeps from the view's edges, px. */
+export const VIEW_MARGIN = 12;
+
+/**
+ * The callout's box moved inside the view (less `VIEW_MARGIN`) and off `keepOut` (the view
+ * cube's corner), the smallest way: drawn there, while its stored offset stays as it is.
+ */
+export function clampBox(
+  box: Box,
+  view: { width: number; height: number },
+  keepOut?: Box,
+  margin = VIEW_MARGIN,
+): Box {
+  const fit = (start: number, size: number, extent: number) =>
+    Math.max(margin, Math.min(start, extent - margin - size));
+  let left = fit(box.left, box.width, view.width);
+  let top = fit(box.top, box.height, view.height);
+  if (keepOut && overlaps({ ...box, left, top }, keepOut, margin)) {
+    const below = keepOut.top + keepOut.height + margin;
+    const leftOf = keepOut.left - margin - box.width;
+    // Whichever moves it less: down below the cube, or left of it.
+    if (below - top <= left - leftOf && below + box.height <= view.height - margin) top = below;
+    else left = Math.max(margin, leftOf);
+  }
+  return { ...box, left, top };
+}
+
+function overlaps(a: Box, b: Box, margin: number): boolean {
+  return (
+    a.left < b.left + b.width + margin &&
+    b.left - margin < a.left + a.width &&
+    a.top < b.top + b.height + margin &&
+    b.top - margin < a.top + a.height
+  );
+}

@@ -27,6 +27,9 @@ export interface AnnotationActions {
   remove(ids: readonly AnnotationId[]): void;
 }
 
+const annotationByNumberOf = (store: DocumentStore, id: AnnotationId) =>
+  store.getState().doc.annotations?.find((a) => a.id === id)?.number ?? '?';
+
 /** How far around a note "look at" keeps in frame, mm. */
 const LOOK_ROOM = 15;
 
@@ -67,7 +70,18 @@ export function createAnnotationActions(deps: {
       if (id) session.getState().setHover({ kind: 'annotation', id });
       else if (current?.kind === 'annotation') session.getState().setHover(undefined);
     },
-    edit: (id) => ui.getState().edit(id),
+    edit(id) {
+      // Only a note the view can place can be edited in place (a sketch note needs its sketch).
+      const { annotations, sketches } = model.getState();
+      const placed = placeAnnotations(store.getState().doc, annotations, sketches).find(
+        (p) => p.annotation.id === id,
+      );
+      if (!placed) {
+        notify(`#${annotationByNumberOf(store, id)} isn't drawn: show its sketch to edit it.`);
+        return;
+      }
+      ui.getState().edit(id);
+    },
     setHidden: (id, hidden) => run(updateAnnotation({ id, changes: { hidden } })),
     setDone: (id, done) => run(updateAnnotation({ id, changes: { done } })),
     remove: (ids) => run(removeAnnotation({ ids })),

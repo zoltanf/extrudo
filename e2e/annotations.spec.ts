@@ -74,7 +74,11 @@ test('a note on a face: added, edited, collapsed, hidden, ghosted, following, de
   await clickWhere(page, at, [5, 5, 10], /^face:/);
   const editor = page.locator('[data-annotation-editor]');
   await expect(editor).toBeFocused();
-  await editor.fill('Hole M4 here');
+  // Typed key by key: N, Delete and Backspace are the editor's, not the app's shortcuts.
+  await editor.pressSequentially('Hole M4 heren');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.press('Delete');
+  await expect(editor).toHaveValue('Hole M4 here');
   await page.keyboard.press('Enter');
   await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full');
   await expect(callout(page, 1)).toContainText('1');
@@ -129,12 +133,16 @@ test('a note on a face: added, edited, collapsed, hidden, ghosted, following, de
     width: 0,
     height: 0,
   };
-  await page.mouse.move(vx + vw - 20, vy + vh - 20);
-  // From below, the box hides the top face: the note is ghosted, full again when selected.
+  const offView = () => page.mouse.move(vx + vw - 20, vy + vh - 20);
+  await offView();
+  // From below, the box hides the top face: the note is ghosted, full again when selected
+  // (the pointer leaves the row, so it is the selection that draws it in full).
   at = await turnView(page, 'Shift+3');
   await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:ghost');
   await expect(callout(page, 1)).toHaveAttribute('data-annotation-behind', '');
   await row(page, 1).getByRole('button').first().click();
+  await offView();
+  await expect(viewport).toHaveAttribute('data-model-selection', /^annotation:/);
   await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full');
   await expect(callout(page, 1)).not.toHaveAttribute('data-annotation-behind');
   await page.keyboard.press('Escape');
@@ -158,6 +166,17 @@ test('a note on a face: added, edited, collapsed, hidden, ghosted, following, de
   await kernelReady(page);
   await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full');
 
+  // A hidden note is drawn while its row edits it, and stays hidden.
+  await row(page, 1).getByRole('button', { name: 'Hide #1' }).click();
+  await row(page, 1).getByRole('button').first().dblclick();
+  await expect(editor).toBeFocused();
+  await editor.fill('Hole M3 here, 6 deep');
+  await page.keyboard.press('Enter');
+  await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:hidden');
+  await row(page, 1).getByRole('button', { name: 'Show #1' }).click();
+  await expect(callout(page, 1)).toContainText('Hole M3 here, 6 deep');
+  await offView();
+
   // Delete removes the selected note; Undo brings it back with its number. (Fit first: the
   // taller box's top went up past the view.)
   at = await turnView(page, 'F6');
@@ -168,7 +187,23 @@ test('a note on a face: added, edited, collapsed, hidden, ghosted, following, de
   await expect(callout(page, 1)).toHaveCount(0);
   await page.keyboard.press('Control+z');
   await expect(layer(page)).toHaveAttribute('data-annotations', '1:ok:full');
-  await expect(callout(page, 1)).toContainText('Hole M3 here');
+  await expect(callout(page, 1)).toContainText('Hole M3 here, 6 deep');
+
+  // Delete with the note and the body selected: both go, one undo step. (The body's row first:
+  // Delete on a focused body row is the row's own, the body alone.)
+  await browser(page).locator('[data-body] button[aria-pressed]').first().click();
+  await callout(page, 1).click({ modifiers: ['Shift'] });
+  await expect(viewport).toHaveAttribute(
+    'data-model-selection',
+    /annotation:.* body:|body:.* annotation:/,
+  );
+  await page.keyboard.press('Delete');
+  await expect(layer(page)).toHaveAttribute('data-annotations', '');
+  await expect(chip(page, 'Remove1')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled();
+  await page.keyboard.press('Control+z');
+  await expect(layer(page)).toHaveAttribute('data-annotations', /^1:/);
+  await expect(chip(page, 'Remove1')).toHaveCount(0);
   void at;
 });
 
@@ -189,6 +224,7 @@ test('a click on nothing makes a free note; Esc leaves nothing behind', async ({
   await page.keyboard.press('Escape');
   await expect(editor).toHaveCount(0);
   await expect(layer(page)).toHaveAttribute('data-annotations', '');
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled();
   // Again, typed: a free note #1 on the grid.
   await page.mouse.click(x + width * 0.6, y + height * 0.7);
   await editor.fill('Logo here');

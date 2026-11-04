@@ -32,7 +32,12 @@ export function annotationRefOf(
   bodies: Readonly<Record<BodyId, BodyMesh>>,
 ): AnnotationRef | undefined {
   const topology = readTopology(item);
-  if (topology) return topologyRef(topology, bodies) as AnnotationRef | undefined;
+  if (topology) {
+    const ref = topologyRef(topology, bodies) as AnnotationRef | undefined;
+    // A mesh body's faces have no persistent names: the note follows the body instead.
+    if (!ref && bodies[topology.body]) return { kind: 'body', id: topology.body };
+    return ref;
+  }
   if (item.kind === 'plane' || item.kind === 'axis' || item.kind === 'point') {
     return { kind: item.kind, id: item.id };
   }
@@ -50,7 +55,14 @@ export interface AnnotateToolDeps {
   bodies(): Readonly<Record<BodyId, BodyMesh>>;
   /** The kernel's `resolveAnnotation`, for the reference's fingerprint; absent without one. */
   resolve: ResolveAnnotation | undefined;
+  /** Whether the tool still runs (model mode, Annotate on): a late kernel answer opens nothing. */
+  active(): boolean;
+  /** A failure to read the clicked geometry, worded for the person. */
+  notify(message: string): void;
 }
+
+/** A click this soon after an editor lost focus is the press that took the focus, ms. */
+const BLUR_CLICK_MS = 800;
 
 /** The view's model selection while the tool runs: hover as usual, a click drafts a note. */
 export function createAnnotateSelect(deps: AnnotateToolDeps): ModelSelect {
@@ -61,17 +73,26 @@ export function createAnnotateSelect(deps: AnnotateToolDeps): ModelSelect {
     onBox: () => {},
     onClick: (item, _toggle, at) => {
       if (!at) return;
-      // A click while a note is being typed only ends that one (its editor commits on blur).
-      if (ui.getState().draft || ui.getState().editing) return;
+      // A click while a note is being typed only ends that one: the press blurred its editor,
+      // which committed it.
+      const { draft, editing, blurredAt } = ui.getState();
+      if (draft || editing) return;
+      if (blurredAt !== undefined && performance.now() - blurredAt < BLUR_CLICK_MS) return;
       const mine = ++generation;
-      void anchorFor(deps, item, at).then((anchor) => {
-        if (mine !== generation || !anchor) return;
-        ui.getState().setDraft({
-          anchor,
-          at: [...at] as Vec3,
-          number: nextAnnotationNumber(store.getState().doc),
-        });
-      });
+      anchorFor(deps, item, at)
+        .then((anchor) => {
+          if (mine !== generation || !anchor || !deps.active()) return;
+          ui.getState().setDraft({
+            anchor,
+            at: [...at] as Vec3,
+            number: nextAnnotationNumber(store.getState().doc),
+          });
+        })
+        .catch((error: unknown) =>
+          deps.notify(
+            `Couldn't place the note: ${error instanceof Error ? error.message : String(error)}`,
+          ),
+        );
     },
   };
 }

@@ -21,8 +21,14 @@ export interface AnnotationsUi {
   editing: AnnotationId | undefined;
   /** The Annotate tool's draft, its editor open; committing adds it in one step. */
   draft: AnnotationDraft | undefined;
+  /**
+   * When an editor last closed because it lost focus (performance.now()): the press that took
+   * the focus commits it, and its click must not start the next draft at once.
+   */
+  blurredAt: number | undefined;
   edit(id: AnnotationId | undefined): void;
   setDraft(draft: AnnotationDraft | undefined): void;
+  noteBlur(): void;
 }
 
 export type AnnotationsUiStore = StoreApi<AnnotationsUi>;
@@ -31,7 +37,9 @@ export function createAnnotationsUi(): AnnotationsUiStore {
   return createStore<AnnotationsUi>()((set) => ({
     editing: undefined,
     draft: undefined,
+    blurredAt: undefined,
     edit: (editing) => set({ editing, draft: undefined }),
     setDraft: (draft) => set({ draft, editing: undefined }),
+    noteBlur: () => set({ blurredAt: performance.now() }),
   }));
 }

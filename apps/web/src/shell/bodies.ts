@@ -462,8 +462,14 @@ interface PickKernel {
 export interface FaceActions {
   /** Whether Delete on this selection makes a Remove Faces feature: only faces of solid bodies. */
   applies(selection: readonly SelectionItem[]): boolean;
-  /** Makes the feature for the selection's faces; returns its ID, or `undefined` if refused. */
-  remove(selection: readonly SelectionItem[]): Promise<FeatureId | undefined>;
+  /**
+   * Makes the feature for the selection's faces; returns its ID, or `undefined` if refused.
+   * `also` goes in the same undo step, named `also.label` (notes deleted with the faces).
+   */
+  remove(
+    selection: readonly SelectionItem[],
+    also?: { label: string; commands: readonly Command<unknown>[] },
+  ): Promise<FeatureId | undefined>;
 }
 
 export function createFaceActions(
@@ -491,7 +497,10 @@ export function createFaceActions(
   };
   const applies = (selection: readonly SelectionItem[]) =>
     selection.length > 0 && selection.every((item) => faceOf(item) !== undefined);
-  const remove = async (selection: readonly SelectionItem[]) => {
+  const remove = async (
+    selection: readonly SelectionItem[],
+    also?: { label: string; commands: readonly Command<unknown>[] },
+  ) => {
     if (!applies(selection)) return undefined;
     if (session.getState().mode === 'sketch') {
       notify('info', 'Finish the sketch first.');
@@ -525,7 +534,20 @@ export function createFaceActions(
       nextFeatureName(store.getState().doc, 'Remove Faces'),
       refs,
     );
-    if (!run(insertFeature({ feature: withActiveComponent(feature, session) }))) return undefined;
+    const insert = insertFeature({ feature: withActiveComponent(feature, session) });
+    if (also) {
+      const state = store.getState();
+      state.beginTransaction(also.label);
+      let ok = false;
+      try {
+        for (const command of also.commands) state.dispatch(command);
+        ok = run(insert);
+      } finally {
+        if (ok) state.commitTransaction();
+        else state.cancelTransaction();
+      }
+      if (!ok) return undefined;
+    } else if (!run(insert)) return undefined;
     // The removed faces leave the selection and the hover.
     const s = session.getState();
     const gone = new Set(answers.flatMap(({ body, faces }) => faces.map((f) => `${body}:${f}`)));

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boxOffset, calloutBox, leaderEnd } from './layout';
+import { boxOffset, calloutBox, clampBox, leaderEnd } from './layout';
 
 const view = { width: 800, height: 600 };
 const size = { width: 120, height: 40 };
@@ -32,5 +32,30 @@ describe('leaderEnd', () => {
     expect(leaderEnd([100, 300], box)).toEqual([128, 272]);
     expect(leaderEnd([180, 300], box)).toEqual([180, 272]);
     expect(leaderEnd([130, 260], box)).toEqual([128, 260]);
+  });
+});
+
+describe('clampBox', () => {
+  const box = { left: 0, top: 0, width: 120, height: 40 };
+  it('keeps a callout inside the view, 12 px from its edges', () => {
+    expect(clampBox({ ...box, left: 750, top: 300 }, view)).toMatchObject({ left: 668, top: 300 });
+    expect(clampBox({ ...box, left: -30, top: -20 }, view)).toMatchObject({ left: 12, top: 12 });
+    expect(clampBox({ ...box, left: 100, top: 590 }, view)).toMatchObject({ left: 100, top: 548 });
+  });
+
+  it('moves it off the view cube the shorter way', () => {
+    const cube = { left: 660, top: 8, width: 132, height: 132 };
+    // Overlapping the cube's bottom: down below it.
+    expect(clampBox({ ...box, left: 600, top: 120 }, view, cube)).toMatchObject({ top: 152 });
+    // High up beside the cube's left: left of it.
+    expect(clampBox({ ...box, left: 600, top: 20 }, view, cube)).toMatchObject({
+      left: 660 - 12 - 120,
+      top: 20,
+    });
+    // Clear of it: unchanged.
+    expect(clampBox({ ...box, left: 300, top: 20 }, view, cube)).toMatchObject({
+      left: 300,
+      top: 20,
+    });
   });
 });

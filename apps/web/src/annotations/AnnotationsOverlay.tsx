@@ -43,7 +43,7 @@ import { isRightClick, menuSelection } from '../sketch/tools/glyphMenu';
 import { viewProject } from '../viewport/camera';
 import type { ViewportStore } from '../viewport/store';
 import { type PlacedAnnotation, placeAnnotations, type Vec3 } from './anchor';
-import { boxOffset, calloutBox, leaderEnd, type Screen } from './layout';
+import { boxOffset, calloutBox, clampBox, leaderEnd, type Screen } from './layout';
 import type { AnnotationsUiStore } from './ui';
 
 /** A press turns into a drag after this many pixels (as a dimension label's). */
@@ -102,14 +102,18 @@ export function AnnotationsOverlay({
   const textMode = useStore(viewport, (s) => s.annotationText);
   const occluded = useStore(viewport, (s) => s.occluded);
   const selection = useStore(session, (s) => s.selection);
-  const hover = useStore(session, (s) => s.hover);
+  // Only an annotation's hover matters here: a face hovered in the view re-renders nothing.
+  const hovered = useStore(session, (s) =>
+    s.hover?.kind === 'annotation' ? s.hover.id : undefined,
+  );
   const editing = useStore(ui, (s) => s.editing);
   const draft = useStore(ui, (s) => s.draft);
 
   const placed = useMemo(() => placeAnnotations(doc, reports, sketches), [doc, reports, sketches]);
+  // A hidden note being edited (from its browser row) is drawn while the editor is open.
   const visible = useMemo(
-    () => (shown ? placed.filter((p) => !p.annotation.hidden) : []),
-    [placed, shown],
+    () => placed.filter((p) => (shown && !p.annotation.hidden) || p.annotation.id === editing),
+    [placed, shown, editing],
   );
   const drawn = useMemo<Drawn[]>(() => {
     const list: Drawn[] = visible.map(({ annotation, at }) => ({
@@ -156,7 +160,14 @@ export function AnnotationsOverlay({
     check();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = viewport.subscribe((s, prev) => {
-      if (s.view === prev.view && s.width === prev.width && s.aspect === prev.aspect) return;
+      if (
+        s.view === prev.view &&
+        s.width === prev.width &&
+        s.aspect === prev.aspect &&
+        s.projection === prev.projection &&
+        s.visualStyle === prev.visualStyle
+      )
+        return;
       clearTimeout(timer);
       timer = setTimeout(check, SETTLE_MS);
     });
@@ -170,10 +181,7 @@ export function AnnotationsOverlay({
   const states = new Map<string, State>();
   for (const d of drawn) {
     if (!d.annotation) continue;
-    const engaged =
-      isAnnotation(selection, d.id) ||
-      (hover?.kind === 'annotation' && hover.id === d.id) ||
-      editing === d.id;
+    const engaged = isAnnotation(selection, d.id) || hovered === d.id || editing === d.id;
     states.set(
       d.id,
       !engaged && behindMode === 'ghost' && behind.has(d.id)
@@ -204,27 +212,66 @@ export function AnnotationsOverlay({
     const height = el.clientHeight;
     if (width === 0 || height === 0) return;
     const { view, projection } = viewport.getState();
-    for (const d of drawnRef.current) {
+    // Read every size first, then write: no layout per note per frame.
+    const origin = el.getBoundingClientRect();
+    const cube = el.parentElement
+      ?.querySelector('fieldset[aria-label="ViewCube"]')
+      ?.getBoundingClientRect();
+    const keepOut = cube && {
+      left: cube.left - origin.left,
+      top: cube.top - origin.top,
+      width: cube.width,
+      height: cube.height,
+    };
+    const items = drawnRef.current.flatMap((d) => {
       const box = elements.current.get(d.id);
-      const leader = leaders.current.get(d.id);
-      if (!box) continue;
+      if (!box) return [];
       const ndc = viewProject(view, projection, width / height, d.at);
-      if (!ndc) {
+      const p: Screen | undefined = ndc && [
+        ((ndc[0] + 1) / 2) * width,
+        ((1 - ndc[1]) / 2) * height,
+      ];
+      return [
+        {
+          d,
+          box,
+          leader: leaders.current.get(d.id),
+          p,
+          size: { width: box.offsetWidth, height: box.offsetHeight },
+          ghost: box.dataset.annotationBehind !== undefined,
+        },
+      ];
+    });
+    const editing = ui.getState().editing;
+    for (const { d, box, leader, p: projected, size, ghost } of items) {
+      if (projected) box.dataset.anchor = `${projected[0].toFixed(1)},${projected[1].toFixed(1)}`;
+      const off =
+        !projected ||
+        projected[0] < 0 ||
+        projected[0] > width ||
+        projected[1] < 0 ||
+        projected[1] > height;
+      // Only an anchor off the view or behind the camera hides the note; one being typed in
+      // stays, pulled into the view (its editor must keep the focus).
+      if (off && d.annotation && d.id !== editing) {
         box.style.visibility = 'hidden';
         if (leader) leader.style.visibility = 'hidden';
         continue;
       }
-      const p: Screen = [((ndc[0] + 1) / 2) * width, ((1 - ndc[1]) / 2) * height];
-      const size = { width: box.offsetWidth, height: box.offsetHeight };
+      const p: Screen = off
+        ? [
+            Math.min(Math.max(projected?.[0] ?? width / 2, 0), width),
+            Math.min(Math.max(projected?.[1] ?? height / 2, 0), height),
+          ]
+        : (projected as Screen);
       const drag = dragged.current?.id === d.id ? dragged.current : undefined;
-      const rect = drag
+      const wanted = drag
         ? { left: drag.left, top: drag.bottom - size.height, ...size }
         : calloutBox(p, size, d.offset, { width, height });
+      const rect = clampBox(wanted, { width, height }, keepOut);
       box.style.visibility = '';
       box.style.transform = `translate(${rect.left}px, ${rect.top}px)`;
-      box.dataset.anchor = `${p[0].toFixed(1)},${p[1].toFixed(1)}`;
       if (!leader) continue;
-      const ghost = box.dataset.annotationBehind !== undefined;
       leader.style.visibility = ghost ? 'hidden' : '';
       const [ex, ey] = leaderEnd(p, rect);
       const line = leader.firstElementChild as SVGLineElement | null;
@@ -367,7 +414,7 @@ export function AnnotationsOverlay({
   return (
     <div
       ref={layer}
-      className="pointer-events-none absolute inset-0 z-[4] overflow-hidden"
+      className="pointer-events-none absolute inset-0 z-[4] overflow-clip"
       data-annotations={summary}
     >
       <svg className="absolute inset-0 h-full w-full overflow-visible" aria-hidden="true">
@@ -378,7 +425,6 @@ export function AnnotationsOverlay({
               if (g) leaders.current.set(d.id, g);
               else leaders.current.delete(d.id);
             }}
-            style={{ visibility: 'hidden' }}
           >
             <line
               stroke="var(--x-accent)"
@@ -392,10 +438,7 @@ export function AnnotationsOverlay({
       {drawn.map((d) => {
         const state = d.annotation ? (states.get(d.id) ?? 'full') : 'full';
         const engaged =
-          !d.annotation ||
-          isAnnotation(selection, d.id) ||
-          (hover?.kind === 'annotation' && hover.id === d.id) ||
-          editing === d.id;
+          !d.annotation || isAnnotation(selection, d.id) || hovered === d.id || editing === d.id;
         const selected = isAnnotation(selection, d.id);
         const detached = placed.find((p) => p.annotation.id === d.id)?.status === 'detached';
         const isEditing = !d.annotation || editing === d.id;
@@ -432,12 +475,11 @@ export function AnnotationsOverlay({
                     detached ? 'border-dashed' : ''
                   } ${selected ? 'border-accent ring-2 ring-accent' : 'border-line'}`
             } ${state === 'ghost' ? 'opacity-45' : ''} ${state === 'done' ? 'opacity-70' : ''}`}
-            style={{
-              visibility: 'hidden',
-              ...(!collapsed && {
-                background: 'color-mix(in srgb, var(--x-raised) 94%, transparent)',
-              }),
-            }}
+            style={
+              collapsed
+                ? undefined
+                : { background: 'color-mix(in srgb, var(--x-raised) 94%, transparent)' }
+            }
             onPointerDown={down(d)}
             onPointerMove={move}
             onPointerUp={up(d)}
@@ -467,6 +509,7 @@ export function AnnotationsOverlay({
                   initial={d.annotation?.text ?? ''}
                   onCommit={(text) => commit(d, text)}
                   onCancel={cancel}
+                  onBlur={() => ui.getState().noteBlur()}
                 />
               ) : (
                 <span
@@ -571,21 +614,26 @@ function Editor({
   initial,
   onCommit,
   onCancel,
+  onBlur,
 }: {
   initial: string;
   onCommit(text: string): void;
   onCancel(): void;
+  /** It lost focus (a press elsewhere): said before it commits. */
+  onBlur(): void;
 }) {
   const field = useRef<HTMLTextAreaElement>(null);
   const done = useRef(false);
   useEffect(() => {
     const el = field.current;
-    el?.focus();
+    // Not scrolled into view: the layer would scroll under the camera's projection.
+    el?.focus({ preventScroll: true });
     el?.select();
   }, []);
-  const finish = (commit: boolean) => {
+  const finish = (commit: boolean, blurred = false) => {
     if (done.current) return;
     done.current = true;
+    if (blurred) onBlur();
     if (commit) onCommit(field.current?.value ?? '');
     else onCancel();
   };
@@ -609,7 +657,7 @@ function Editor({
       maxLength={2000}
       className="w-[30ch] resize-none rounded-control border border-line bg-bg px-1 py-0.5 text-ink text-xs outline-none focus:border-accent"
       onKeyDown={key}
-      onBlur={() => finish(true)}
+      onBlur={() => finish(true, true)}
       onPointerDown={(event) => event.stopPropagation()}
     />
   );

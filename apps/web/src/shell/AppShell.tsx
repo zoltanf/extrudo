@@ -973,11 +973,52 @@ function Shell({
     [selection],
   );
   // Delete on a selection that is only faces of solid bodies (P4-13, ADR-0099 §7);
-  // a selection that mixes faces with other kinds keeps Delete's own behaviour.
+  // a selection that mixes faces with other kinds keeps Delete's own behaviour. Selected
+  // annotations don't count here: Delete takes them along (ADR-0126 §6).
+  const selectedNotes = useMemo(
+    () =>
+      selection.filter((item) => item.kind === 'annotation').map((item) => item.id as AnnotationId),
+    [selection],
+  );
   const facesRemovable = useMemo(
-    () => selectedBodyIds.length === 0 && faceActions.applies(selection),
+    () =>
+      selectedBodyIds.length === 0 &&
+      faceActions.applies(selection.filter((item) => item.kind !== 'annotation')),
     [selectedBodyIds, faceActions, selection],
   );
+  // Delete in the model: the selected notes, and the bodies (a Remove feature) or the faces
+  // (Remove Faces) it would delete anyway, all one undo step.
+  const removeModelSelection = useCallback(() => {
+    const notes = selectedNotes.length > 0 ? removeAnnotation({ ids: selectedNotes }) : undefined;
+    const noun = (n: number, one: string, many: string) => (n === 1 ? one : many);
+    const label = (other: string) =>
+      `Delete ${noun(selectedNotes.length, 'annotation', 'annotations')} and ${other}`;
+    if (selectedBodyIds.length > 0) {
+      if (!notes) {
+        bodyActions.remove(selectedBodyIds);
+        return;
+      }
+      const state = store.getState();
+      state.beginTransaction(label(noun(selectedBodyIds.length, 'body', 'bodies')));
+      try {
+        state.dispatch(notes);
+        bodyActions.remove(selectedBodyIds);
+        state.commitTransaction();
+      } catch (error) {
+        state.cancelTransaction();
+        throw error;
+      }
+    } else if (facesRemovable) {
+      const faces = selection.filter((item) => item.kind !== 'annotation');
+      void faceActions.remove(
+        faces,
+        notes && {
+          label: label(noun(faces.length, 'face', 'faces')),
+          commands: [notes as Command<unknown>],
+        },
+      );
+    } else if (notes) store.getState().dispatch(notes);
+  }, [selectedNotes, selectedBodyIds, facesRemovable, selection, bodyActions, faceActions, store]);
   // The component all the selected bodies share, if they share one (activate and isolate act on it).
   const selectedComponent = useMemo(() => {
     if (selectedBodyIds.length === 0) return undefined;
@@ -1318,32 +1359,12 @@ function Shell({
         undo,
         redo,
         ...(listing ? { remove: () => {} } : m === 'sketch' && !drawing && { remove }),
-        // Delete with bodies selected in the model removes them (a Remove feature, P2-08);
-        // with only faces of solid bodies it makes a Remove Faces feature (P4-13, ADR-0099 §7).
+        // Delete in the model (P2-08, P4-13, ADR-0126 §6): notes, bodies, faces of solid bodies.
         ...(!listing &&
           m === 'model' &&
           !dialogOpen &&
-          selectedBodyIds.length > 0 && { remove: () => bodyActions.remove(selectedBodyIds) }),
-        // Delete with only annotations selected deletes them, one step (ADR-0126 §6).
-        ...(!listing &&
-          m === 'model' &&
-          !dialogOpen &&
-          selection.length > 0 &&
-          selection.every((item) => item.kind === 'annotation') && {
-            remove: () =>
-              stores.store
-                .getState()
-                .dispatch(
-                  removeAnnotation({ ids: selection.map((item) => item.id as AnnotationId) }),
-                ),
-          }),
-        ...(!listing &&
-          m === 'model' &&
-          !dialogOpen &&
-          facesRemovable && {
-            remove: () => {
-              void faceActions.remove(selection);
-            },
+          (selectedBodyIds.length > 0 || facesRemovable || selectedNotes.length > 0) && {
+            remove: removeModelSelection,
           }),
         ...(m === 'sketch' &&
           (listing || host) && {
@@ -1487,14 +1508,14 @@ function Shell({
       dialogOpen,
       selectedBodyIds,
       facesRemovable,
+      selectedNotes,
+      removeModelSelection,
       selectedComponent,
       selectedComponentName,
       activeComponent,
       isolatedComponent,
       session,
       selection,
-      bodyActions,
-      faceActions,
       viewActions,
       doc.views,
       construction,
@@ -2455,9 +2476,13 @@ function Shell({
             resolve: kernel?.resolveAnnotation
               ? (annotation) => kernel.resolveAnnotation?.(annotation) ?? Promise.resolve(undefined)
               : undefined,
+            active: () =>
+              session.getState().mode === 'model' &&
+              session.getState().activeTool === ANNOTATE_TOOL,
+            notify: (message) => notify('error', message),
           })
         : undefined,
-    [annotating, sessionSelect, store, annotationsUi, kernel],
+    [annotating, sessionSelect, store, session, annotationsUi, kernel, notify],
   );
   // While Measure runs, two plain clicks pick two things to measure between.
   const measureSelect = useMemo(

@@ -35,16 +35,24 @@ describe('annotationRefOf', () => {
 });
 
 describe('createAnnotateSelect', () => {
-  it('drafts a free note with the next number on a click on nothing, and adds nothing', async () => {
+  function setup(active = () => true) {
     const store = createDocumentStore(Design.create().toJSON());
     const ui = createAnnotationsUi();
+    const notes: string[] = [];
     const select = createAnnotateSelect({
       store,
       ui,
       base: { onHover: () => {}, onClick: () => {}, onBox: () => {} },
       bodies: () => ({}),
       resolve: undefined,
+      active,
+      notify: (message) => notes.push(message),
     });
+    return { store, ui, select, notes };
+  }
+
+  it('drafts a free note with the next number on a click on nothing, and adds nothing', async () => {
+    const { store, ui, select } = setup();
     select.onClick(undefined, false, [1, 2, 0]);
     await expect
       .poll(() => ui.getState().draft)
@@ -54,5 +62,33 @@ describe('createAnnotateSelect', () => {
         number: 1,
       });
     expect(store.getState().doc.annotations).toBeUndefined();
+  });
+
+  it('opens nothing when the answer comes after the tool ended', async () => {
+    let on = true;
+    const { ui, select } = setup(() => on);
+    select.onClick(undefined, false, [1, 2, 0]);
+    on = false;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(ui.getState().draft).toBeUndefined();
+  });
+
+  it('skips the click whose press just committed an editor by blurring it', async () => {
+    const { ui, select } = setup();
+    ui.getState().noteBlur();
+    select.onClick(undefined, false, [1, 2, 0]);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(ui.getState().draft).toBeUndefined();
+  });
+});
+
+describe('annotationRefOf on a mesh body', () => {
+  it('takes the body when the face has no persistent name', () => {
+    const mesh = { faceRanges: [0, 3], mesh: true };
+    const bodies = { 'm1:0': mesh } as unknown as Record<BodyId, BodyMesh>;
+    expect(annotationRefOf({ kind: 'face', id: 'm1:0:0' }, bodies)).toEqual({
+      kind: 'body',
+      id: 'm1:0',
+    });
   });
 });

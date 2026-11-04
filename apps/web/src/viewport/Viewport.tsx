@@ -526,7 +526,9 @@ export function Viewport({
     [bodies, meta, sketches, construction, sectionClip, posed],
   );
   // Annotations behind the part (ADR-0126 §6): the picking code's occlusion test on what the
-  // view draws. A new scene is a new function, which tells the overlay to look again.
+  // view draws. A new scene or style is a new function, which tells the overlay to look again.
+  const drawnStyle = useStore(viewport, (s) => s.visualStyle);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `drawnStyle` makes a new function when wireframe stops hiding things; the function reads the current style itself.
   useEffect(() => {
     viewport.getState().setOccluded((points, { width, height }) => {
       const { view, projection, visualStyle } = viewport.getState();
@@ -537,7 +539,7 @@ export function Viewport({
       );
     });
     return () => viewport.getState().setOccluded(undefined);
-  }, [viewport, modelScene]);
+  }, [viewport, modelScene, drawnStyle]);
   // Auto-project (P6-07): the body edge or vertex under the pointer, or a face
   // centre near it (issue #140), while a tool runs. Off, the view offers
   // nothing and the tool never sees one.
@@ -1674,9 +1676,16 @@ function clickPoint(
       ray.origin.z + ray.direction.z * depth,
     ];
   }
-  const ground = rayPlane(ray, [0, 0, 0], [0, 0, 1]);
-  return ground ? [ground.x, ground.y, ground.z] : undefined;
+  // The grid plane, unless the view sees it edge-on (a front or side view): then the plane
+  // through the view's target, facing the camera.
+  const back = basis(view).back;
+  const ground = Math.abs(back.z) > EDGE_ON ? rayPlane(ray, [0, 0, 0], [0, 0, 1]) : undefined;
+  const hit = ground ?? rayPlane(ray, view.target, [back.x, back.y, back.z]);
+  return hit ? [hit.x, hit.y, hit.z] : undefined;
 }
+
+/** Below this |cos| between the view direction and the grid's normal, the grid is edge-on. */
+const EDGE_ON = 0.05;
 
 function pickScene(scene: ModelScene, style: VisualStyle): PickScene {
   return {
