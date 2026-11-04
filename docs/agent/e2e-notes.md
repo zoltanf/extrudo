@@ -702,7 +702,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 - **Emboss e2e** (`e2e/emboss.spec.ts`, P4-04): the tool is `emboss` in Create's
   menu (`menuitem` "Emboss", no key); its dialog is the region "Emboss dialog" /
-  "Edit Emboss1 dialog" with the buttons "Profiles" and "Face" (`exact: true`:
+  "Edit Emboss1 dialog" with the buttons "Profiles" and "Faces" (`exact: true`:
   **"1 text"**, **"1 face"**), the `Depth` textbox (`exact`) and the `Mode`
   combobox (`emboss`/`deboss`); P4-12 adds the read-only line
   `[data-info="method"]` ("Wrapped round the cone", "Projected onto the face",

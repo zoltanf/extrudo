@@ -246,7 +246,7 @@ test('Tutorial 3: a name tag', async ({ page }) => {
       );
       // The top face itself, clear of the letters and the hole.
       await clickAt(page, at, [-15, -6, 3]);
-      await expect(emboss.getByRole('button', { name: 'Face', exact: true })).toHaveText('1 face');
+      await expect(emboss.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
       await fill(emboss, { Depth: 'letters' });
     },
     async () => {
@@ -255,7 +255,7 @@ test('Tutorial 3: a name tag', async ({ page }) => {
       await expect(emboss.getByRole('button', { name: 'Profiles', exact: true })).toHaveText(
         '1 text',
       );
-      await expect(emboss.getByRole('button', { name: 'Face', exact: true })).toHaveText('1 face');
+      await expect(emboss.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
     },
   );
 

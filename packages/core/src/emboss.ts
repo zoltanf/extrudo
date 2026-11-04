@@ -214,9 +214,9 @@ function manyText(method: EmbossMethod, n: number): string {
     case 'moved':
       return `Moved onto ${n} faces`;
     case 'wrapped-cylinder':
-      return `Wrapped round ${n} cylinders`;
+      return `Wrapped round ${n} cylindrical faces`;
     case 'wrapped-cone':
-      return `Wrapped round ${n} cones`;
+      return `Wrapped round ${n} conical faces`;
     case 'projected':
       return `Projected onto ${n} faces`;
   }

@@ -213,7 +213,7 @@ test('embosses a text on a flat face and presses it back in as a deboss', async 
   await expect(dialog.getByRole('button', { name: 'Profiles', exact: true })).toHaveText('1 text');
   // The box's top face, 40 mm below the letters.
   await clickFace(page, at, [0, 0, 10]);
-  await expect(dialog.getByRole('button', { name: 'Face', exact: true })).toHaveText('1 face');
+  await expect(dialog.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
   await dialog.getByRole('textbox', { name: 'Depth' }).fill('1 mm');
   await ok(page, dialog);
 
@@ -230,7 +230,7 @@ test('embosses a text on a flat face and presses it back in as a deboss', async 
   const edit = dialogOf(page, 'Edit Emboss1');
   await expect(edit).toBeVisible();
   await expect(edit.getByRole('button', { name: 'Profiles', exact: true })).toHaveText('1 text');
-  await expect(edit.getByRole('button', { name: 'Face', exact: true })).toHaveText('1 face');
+  await expect(edit.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
   await edit.getByRole('combobox', { name: 'Mode' }).selectOption('deboss');
   await ok(page, edit);
   const pressed = await bodies(page);
@@ -263,7 +263,7 @@ test('wraps a text round a cylinder wall, and presses it back in as a deboss', a
   // The wall the letters stand on: its own face, clear of them, and the one the
   // sketch plane looks at.
   await clickFace(page, at, [0, -10, 17]);
-  await expect(dialog.getByRole('button', { name: 'Face', exact: true })).toHaveText('1 face');
+  await expect(dialog.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
   await dialog.getByRole('textbox', { name: 'Depth' }).fill('1 mm');
   // The depth arrow stands on the wall among the letters, radially out of it.
   await expect(viewport.locator('[data-manipulators]')).toHaveAttribute(
@@ -337,7 +337,7 @@ test('wraps a text round a cone (a drafted cylinder), out and in', async ({ page
   // The cone's wall high up, clear of the letters: its radius there is 10 - 17 tan 10°.
   const r = 10 - 17 * Math.tan((10 * Math.PI) / 180);
   await clickFace(page, view, [0, -r * 0.99, 17]);
-  await expect(dialog.getByRole('button', { name: 'Face', exact: true })).toHaveText('1 face');
+  await expect(dialog.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
   await expect(method(dialog)).toHaveText('Wrapped round the cone', { timeout: 30_000 });
   await ok(page, dialog);
   const raised = await bodies(page);
@@ -419,7 +419,7 @@ test('projects a circle onto a sphere, out and in', async ({ page }) => {
   // The sphere where it looks at the home view's camera, clear of the disc.
   const s = 10 / Math.sqrt(3);
   await clickFace(page, at, [s, -s, s]);
-  await expect(dialog.getByRole('button', { name: 'Face', exact: true })).toHaveText('1 face');
+  await expect(dialog.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
   await expect(method(dialog)).toHaveText('Projected onto the face', { timeout: 30_000 });
   await ok(page, dialog);
   // The disc stands 1 mm off the top of the sphere.

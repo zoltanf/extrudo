@@ -116,9 +116,9 @@ describe('emboss inputs', () => {
       'Moved onto 2 faces, wrapped round the cylinder',
     );
     expect(text(['projected', 'projected', 'projected'])).toBe('Projected onto 3 faces');
-    expect(text(['wrapped-cone', 'wrapped-cone'])).toBe('Wrapped round 2 cones');
+    expect(text(['wrapped-cone', 'wrapped-cone'])).toBe('Wrapped round 2 conical faces');
     expect(text(['wrapped-cylinder', 'moved', 'wrapped-cylinder'])).toBe(
-      'Wrapped round 2 cylinders, moved onto the face',
+      'Wrapped round 2 cylindrical faces, moved onto the face',
     );
   });
 
