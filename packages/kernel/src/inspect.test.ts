@@ -159,6 +159,23 @@ describe('inspectShapes (OCCT)', () => {
     expect(bbox?.max.map((v) => Math.round(v * 1e6) / 1e6)).toEqual([40, 80, 60]);
   });
 
+  it('gives a mirrored body’s flat face its outward normal (a left-handed plane)', () => {
+    const mirrored = kernel.transform(block, [-1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]).shape;
+    try {
+      // The block's face on x = 0 stays there, now the mirrored block's +x side.
+      const index = kernel
+        .describe(mirrored)
+        .faces.findIndex((f) => Math.abs(f.centroid[0]) < 1e-9);
+      const { items } = inspectShapes(kernel, [
+        { body: mirrored, target: { kind: 'face', body: BODY, index } },
+      ]);
+      const [item] = items;
+      expect(item?.kind === 'face' && item.normal?.map((v) => v + 0)).toEqual([1, 0, 0]);
+    } finally {
+      kernel.release(mirrored);
+    }
+  });
+
   it('measures faces: a plane with its outward normal, a cylinder with axis and radius', () => {
     const top = faceWhere(block, (s) => s.type === 'plane' && same(s.direction, [0, 0, 1]));
     const bottom = faceWhere(block, (s) => s.type === 'plane' && same(s.direction, [0, 0, -1]));

@@ -452,7 +452,7 @@ area, length, radii, normal/axis, centre, tight box; for two, the
 distance with closest points, the angle, the centre distance) from new
 facade calls (`distance` leaves the closest points, `properties`,
 `surfaceGeometry`); **`measure()` keeps its loose, fast box** for
-extrude. The app's `apps/web/src/measure/` has `useInspection` (the
+extrude. **A flat face's normal is the facade's `outwardNormal`** (2026-11-04 amendment): never a plane's axis alone, which points into the body for a left-handed frame (every plane of a mirrored body, some chamfer slopes); `surfaceGeometry`, Shell's wall checks and the press-pull prism path use it. The app's `apps/web/src/measure/` has `useInspection` (the
 status bar's "Selection size"), the Measure tool (`I`, session tool
 `measure`, two plain clicks pick two things: `createMeasureSelect`), its
 panel and the in-view line. ADR-0036 (P2-14) added versions:

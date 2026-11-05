@@ -2500,8 +2500,7 @@ public:
       switch (type) {
         case GeomAbs_Plane: {
           const gp_Pln plane = surface.Plane();
-          const gp_Dir normal = plane.Axis().Direction();
-          axis(plane.Location(), f.Orientation() == TopAbs_REVERSED ? normal.Reversed() : normal, 0, 0);
+          axis(plane.Location(), outwardNormal(f, plane), 0, 0);
           break;
         }
         case GeomAbs_Cylinder: {
@@ -14124,8 +14123,7 @@ private:
       BRepAdaptor_Surface surface(face);
       if (surface.GetType() != GeomAbs_Plane) continue;
       const gp_Pln plane = surface.Plane();
-      gp_Vec n(plane.Axis().Direction());
-      if (face.Orientation() == TopAbs_REVERSED) n.Reverse();
+      const gp_Vec n(outwardNormal(face, plane));
       const gp_Pnt at = plane.Location();
       double far = 0;
       for (double x : {x0, x1}) {
@@ -14365,8 +14363,7 @@ private:
       plugs.clear();
       for (int index : removed) {
         const TopoDS_Face face = TopoDS::Face(faces(index + 1));
-        gp_Dir n = BRepAdaptor_Surface(face).Plane().Axis().Direction();
-        if (face.Orientation() == TopAbs_REVERSED) n.Reverse();
+        const gp_Dir n = outwardNormal(face, BRepAdaptor_Surface(face).Plane());
         const double depth = perFace[static_cast<size_t>(index)] * factor;
         const double over = 0.5 * depth;
         // Inwards the wall is under the face, outwards over it; the prism runs `over` past both sides.
@@ -15272,8 +15269,7 @@ private:
       const TopoDS_Face& face = TopoDS::Face(faces(index + 1));
       BRepAdaptor_Surface surface(face, false);
       if (surface.GetType() != GeomAbs_Plane) return false;
-      gp_Dir normal = surface.Plane().Axis().Direction();
-      if (face.Orientation() == TopAbs_REVERSED) normal.Reverse();
+      const gp_Dir normal = outwardNormal(face, surface.Plane());
       for (TopExp_Explorer e(face, TopAbs_EDGE); e.More(); e.Next()) {
         const TopoDS_Edge edge = TopoDS::Edge(e.Current());
         const int at = edgeFaces.FindIndex(edge);
@@ -15323,8 +15319,7 @@ private:
       for (int index : picked) {
         const TopoDS_Face& face = TopoDS::Face(faces(index + 1));
         BRepAdaptor_Surface surface(face, false);
-        gp_Dir normal = surface.Plane().Axis().Direction();
-        if (face.Orientation() == TopAbs_REVERSED) normal.Reverse();
+        const gp_Dir normal = outwardNormal(face, surface.Plane());
         BRepPrimAPI_MakePrism prism(face, gp_Vec(normal.XYZ() * distance));
         if (!prism.IsDone()) return false;
         const TopoDS_Shape cap = prism.LastShape();
@@ -16122,6 +16117,18 @@ private:
     geometry_.push_back(static_cast<double>(n));
     for (int k = 1; k <= n; ++k) pushPoint(sampler.Value(k));
     return 1;
+  }
+
+  /**
+   * A flat face's normal out of the face: the plane's own normal (X ^ Y of its
+   * frame), turned for a reversed face. A left-handed frame (every plane of a
+   * mirrored body, some chamfer slopes) has its axis against that normal, so
+   * the axis alone points into the body there (ADR-0035 amendment 2026-11-04).
+   */
+  static gp_Dir outwardNormal(const TopoDS_Face& face, const gp_Pln& plane) {
+    gp_Dir normal = plane.Position().Direct() ? plane.Axis().Direction() : plane.Axis().Direction().Reversed();
+    if (face.Orientation() == TopAbs_REVERSED) normal.Reverse();
+    return normal;
   }
 
   /** A canonical sign for an axis or line direction: first non-zero component positive. */
