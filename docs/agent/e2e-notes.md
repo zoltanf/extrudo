@@ -252,7 +252,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   sketches" switch off the same click is a plain grid snap with no projection.
   The faint preview (ADR-0125 amendment 1): `data-carried-curves` (a segment
   count) is set only while a drawing tool runs with the switch on; absent with
-  the selection tool or the switch off.
+  the selection tool or the switch off. **The undo step (ADR-0074's 2026-11-04
+  amendment)**: Sketch1's Ctrl-held line at y = 30, Sketch2 (10 mm above) its
+  own line at y = 0; the Dimension tool picks the **dashed line first** (10,30)
+  (after a sketch line, a model curve is left for the label), then (10,0), then
+  places at (25,15); `dimensions=1` and `lines=2` (with the projected one) once
+  the recompute lands; Enter keeps the value; one Ctrl+Z leaves `lines=1`.
   **Face centre (issue #140)**: a Box with `X: '10 mm'` (so the top face's
   centre, sketch (10,0), is away from the sketch origin and its projection
   reads distinctly);
@@ -743,7 +748,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 - **Emboss e2e** (`e2e/emboss.spec.ts`, P4-04): the tool is `emboss` in Create's
   menu (`menuitem` "Emboss", no key); its dialog is the region "Emboss dialog" /
-  "Edit Emboss1 dialog" with the buttons "Profiles" and "Face" (`exact: true`:
+  "Edit Emboss1 dialog" with the buttons "Profiles" and "Faces" (`exact: true`:
   **"1 text"**, **"1 face"**), the `Depth` textbox (`exact`) and the `Mode`
   combobox (`emboss`/`deboss`); P4-12 adds the read-only line
   `[data-info="method"]` ("Wrapped round the cone", "Projected onto the face",
@@ -769,6 +774,27 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   on. A wrap of one profile is one tool (`mergeTools` hands it back as it is,
   already tracked by the scope — **don't track it again**, that releases it
   twice).
+
+  **Second amendment (S6)**: the toggle is a **checkbox** named "Tangent to the
+  face" (`exact`), the Faces button reads "2 faces". Three more tests.
+  (a) Cone: Draft as above, **Tangent Plane** (Construct; click the wall at
+  (0, −(10 − 10 tan 10°)·0.99, 10)), its origin and normal read from
+  `data-construction` (`Tangent_Plane1:plane:o:n`); the **Offset Plane** picks
+  the tangent plane by clicking 6 mm beside its origin along X (off the wall); the sketch's frame is
+  `:0,-14.6…,2.6…:0,-0.98…,0.17…`, its text lands at sketch (0…9, 10…15) whatever
+  you click (the clicks' scale is the target plane's), so find a letter with
+  `pickText` and the world map origin + u·X + v·(0, n_z, −n_y). (b) Chamfer
+  (click the top front edge at (0, −10, 20), Distance 6 mm): **a perspective
+  sketch view scales plane points by about 2.8 at 40 mm up**, so clicks through
+  `mapping` don't land: draw with the Rectangle tool's first corner through the
+  `settledProjector` after a wheel zoom-out, then type Width and Height in the
+  heads-up group; pick the profile after `turnView('Shift+1')`. Tangent off the
+  dialog is `data-preview-status="error"` with OK disabled. Read volumes with
+  `exportModel(page, '3MF')` and **poll the body's face count first**: the
+  export can come from the meshes of the body before the recompute (volume
+  unchanged, once also a half-built one). (c) Fillet one vertical edge R 5
+  (edge at (10, −10, 10)), "AB" at sketch (3, 10) on an XZ offset plane
+  30 mm out, faces at (−5, −10, 17) and (5 + 5/√2, −5 − 5/√2, 17).
 
 ### `e2e/examples.spec.ts`
 

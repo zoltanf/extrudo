@@ -2500,8 +2500,7 @@ public:
       switch (type) {
         case GeomAbs_Plane: {
           const gp_Pln plane = surface.Plane();
-          const gp_Dir normal = plane.Axis().Direction();
-          axis(plane.Location(), f.Orientation() == TopAbs_REVERSED ? normal.Reversed() : normal, 0, 0);
+          axis(plane.Location(), outwardNormal(f, plane), 0, 0);
           break;
         }
         case GeomAbs_Cylinder: {
@@ -4584,10 +4583,17 @@ public:
    * from the sketch."; a profile whose line misses the face is "The profiles
    * don't touch the face.".
    *
+   * With `clip` (ADR-0060's second amendment: one face of several), neither
+   * of those two checks of the face's edge is made and the piece just stops
+   * where the face ends: the walls of the thick piece there bound it too (and
+   * get no history), and a partial sphere or torus (a dome) is thickened by
+   * the simple offset, so its piece stops at the rim. The side the profiles
+   * come from and the refusal of a piece that stands on the face's back stay.
+   *
    * History for input 0 (the profile): first (4) for the pieces of the face,
    * last (5) for the offset face's, generated (1) from each edge for its wall.
    */
-  int projectOnFace(int profileHandle, int shape, int face, double depth, bool outward) {
+  int projectOnFace(int profileHandle, int shape, int face, double depth, bool outward, bool clip) {
     beginOp();
     TopoDS_Face profile;
     if (const char* why = singleProfile(profileHandle, profile)) return fail(why);
@@ -4603,24 +4609,10 @@ public:
       if (carried.GetType() != GeomAbs_Plane) return fail("Emboss failed: the profile isn't flat.");
       const gp_Dir n = carried.Plane().Axis().Direction();
 
-      // The face's outward normal at (u, v): its surface's, turned for a reversed face.
-      // At a singular point (a sphere's pole, where a line through a sketch's centre
-      // may well land) the first derivatives give none, so the second ones are asked.
       BRepAdaptor_Surface surface(target);
       const bool reversed = target.Orientation() == TopAbs_REVERSED;
       const auto outwardAt = [&](double u, double v, gp_Vec& normal) {
-        gp_Pnt at;
-        gp_Vec du, dv;
-        surface.D1(u, v, at, du, dv);
-        normal = du.Crossed(dv);
-        if (normal.Magnitude() <= 1e-12) {
-          BRepLProp_SLProps props(surface, u, v, 2, Precision::Confusion());
-          if (!props.IsNormalDefined()) return false;
-          normal = gp_Vec(props.Normal());
-        }
-        normal.Normalize();
-        if (reversed) normal.Reverse();
-        return true;
+        return outwardNormal(surface, reversed, u, v, normal);
       };
 
       // Which way the profiles travel: along the line through their centre, the hit
@@ -4675,15 +4667,16 @@ public:
       TopoDS_Solid shell;
       TopoDS_Face skin;
       TopoDS_Face farFace;
-      if (const char* why = thickPiece(target, surface, d, middle, depth, outward, shell, skin, farFace)) {
+      if (const char* why = thickPiece(target, surface, d, middle, depth, outward, clip, shell, skin, farFace)) {
         return fail(why);
       }
       IntCurvesFace_Intersector onFar(farFace, tol);
 
       // Every sample's first hit, coming from behind the sketch, must be on the face
-      // where it looks back, and the sample must meet the offset face too.
+      // where it looks back, and the sample must meet the offset face too (unless the
+      // piece is clipped to the face).
       const char* past = "The profiles reach past the face's edge as seen from the sketch.";
-      for (const gp_Pnt& p : samples) {
+      for (const gp_Pnt& p : clip ? std::vector<gp_Pnt>() : samples) {
         onFace.Perform(gp_Lin(p, d), -RealLast(), RealLast());
         if (!onFace.IsDone() || onFace.NbPnt() == 0) return fail(past);
         int first = 0;
@@ -4779,8 +4772,9 @@ public:
         if (front == 0) continue;
         if (backs > 0) return fail(past);
         // Only the face, its offset and the prism's walls may bound it: a wall of the
-        // thick piece or an end of the prism means the profile reaches past the face.
-        for (TopExp_Explorer e(solid.Current(), TopAbs_FACE); e.More(); e.Next()) {
+        // thick piece or an end of the prism means the profile reaches past the face
+        // (where a clipped piece stops).
+        for (TopExp_Explorer e(solid.Current(), TopAbs_FACE); !clip && e.More(); e.Next()) {
           const TopoDS_Shape& f = e.Current();
           if (!onSkin.Contains(f) && !onFarFace.Contains(f) && !onWalls.Contains(f)) return fail(past);
         }
@@ -4811,6 +4805,117 @@ public:
     }
   }
 
+  /**
+   * Where the line through p along d meets face `face` of `shape` (P4-12,
+   * ADR-0060's second amendment: the anchor of "tangent to the face"): of its
+   * hits with the bounded face, the one nearest p either way along the line, a
+   * tie going to the side d points to. geometryNumbers: [x, y, z, nx, ny, nz],
+   * the hit and the face's outward normal there. Returns 6, or -1 with
+   * lastError() (the line misses the face, unknown shape).
+   */
+  int faceHit(int shape, int face, double px, double py, double pz, double dx, double dy, double dz) {
+    beginOp();
+    geometry_.clear();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) return failCurve("Unknown shape.");
+    const gp_Vec along(dx, dy, dz);
+    if (!(along.Magnitude() > Precision::Confusion())) return failCurve("The line has no direction.");
+    try {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+      TopExp::MapShapes(*s, TopAbs_FACE, faces);
+      if (face < 0 || face >= faces.Extent()) return failCurve("Face index out of range.");
+      const TopoDS_Face target = TopoDS::Face(faces(face + 1));
+      const double tol = Precision::Confusion();
+      IntCurvesFace_Intersector hits(target, tol);
+      hits.Perform(gp_Lin(gp_Pnt(px, py, pz), gp_Dir(along)), -RealLast(), RealLast());
+      int best = 0;
+      for (int i = 1; hits.IsDone() && i <= hits.NbPnt(); ++i) {
+        const double w = hits.WParameter(i);
+        const double wb = best == 0 ? 0 : hits.WParameter(best);
+        if (best == 0 || std::abs(w) < std::abs(wb) - tol || (std::abs(w) <= std::abs(wb) + tol && w > wb)) best = i;
+      }
+      if (best == 0) return failCurve("The line misses the face.");
+      gp_Vec normal;
+      if (!outwardNormal(BRepAdaptor_Surface(target), target.Orientation() == TopAbs_REVERSED,
+                         hits.UParameter(best), hits.VParameter(best), normal)) {
+        return failCurve("The face has no normal where the line meets it.");
+      }
+      pushPoint(hits.Pnt(best));
+      pushDir(gp_Dir(normal));
+      return static_cast<int>(geometry_.size());
+    } catch (...) {
+      failFromException("Face hit failed");
+      return -1;
+    }
+  }
+
+  /**
+   * The solid between face `face` of `shape` and its offset by `depth` along
+   * its outward normal (`outward`) or against it (P4-12, ADR-0060's second
+   * amendment: the slab a moved or wrapped piece of a several-face emboss is
+   * cut to): OCCT's simple offset of a copy of the face, as projectOnFace()
+   * thickens anything but a whole sphere or torus.
+   *
+   * History for input 0 (`shape`): first (4) from the face for its copy, last
+   * (5) for the offset face, generated (1) from each of the face's edges (its
+   * index among the shape's edges) for the wall along it.
+   */
+  int faceSlab(int shape, int face, double depth, bool outward) {
+    beginOp();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) return fail("Emboss failed: unknown shape.");
+    if (!(depth > Precision::Confusion())) return fail("Emboss failed: the depth must be greater than 0.");
+    try {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+      TopExp::MapShapes(*s, TopAbs_FACE, faces);
+      if (face < 0 || face >= faces.Extent()) return fail("Emboss failed: face index out of range.");
+      const TopoDS_Face target = TopoDS::Face(faces(face + 1));
+      BRepBuilderAPI_Copy copy(target);
+      const TopoDS_Face skin = TopoDS::Face(copy.Shape());
+      TopoDS_Solid slab;
+      TopoDS_Face farFace;
+      std::vector<TopoDS_Shape> rims;
+      if (const char* why = simpleSlab(skin, depth, outward, slab, farFace, &rims)) return fail(why);
+      if (!(exactVolume(slab) > 0)) return fail("Emboss failed: the face's slab is inside out.");
+      if (!BRepCheck_Analyzer(slab).IsValid()) return fail("Emboss failed: the face's slab isn't sound.");
+
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> resultFaces;
+      TopExp::MapShapes(slab, TopAbs_FACE, resultFaces);
+      recordFaces(0, 0, face, 4, {skin}, resultFaces);
+      recordFaces(0, 0, face, 5, {farFace}, resultFaces);
+      // The wall of an edge: the face of the slab that carries the edge's offset and
+      // is neither the face nor the offset.
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> bodyEdges;
+      TopExp::MapShapes(*s, TopAbs_EDGE, bodyEdges);
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> skinEdges;
+      TopExp::MapShapes(skin, TopAbs_EDGE, skinEdges);
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faceEdges;
+      TopExp::MapShapes(target, TopAbs_EDGE, faceEdges);
+      for (int k = 1; k <= faceEdges.Extent(); ++k) {
+        const int at = skinEdges.FindIndex(copy.ModifiedShape(faceEdges(k)));
+        const int index = bodyEdges.FindIndex(faceEdges(k));
+        if (at <= 0 || index <= 0) continue;
+        const TopoDS_Shape& rim = rims[static_cast<size_t>(at - 1)];
+        if (rim.IsNull()) continue;
+        std::vector<TopoDS_Shape> walls;
+        for (int f = 1; f <= resultFaces.Extent(); ++f) {
+          const TopoDS_Shape& wall = resultFaces.FindKey(f);
+          if (wall.IsSame(skin) || wall.IsSame(farFace)) continue;
+          for (TopExp_Explorer e(wall, TopAbs_EDGE); e.More(); e.Next()) {
+            if (e.Current().IsSame(rim)) {
+              walls.push_back(wall);
+              break;
+            }
+          }
+        }
+        recordFaces(0, 1, index - 1, 1, walls, resultFaces);
+      }
+      return store(slab);
+    } catch (...) {
+      return failFromException("Emboss failed");
+    }
+  }
+
 private:
   /**
    * The solid between face `target` and its offset by `depth` along its
@@ -4819,14 +4924,16 @@ private:
    * or a torus (a whole one is a closed face OCCT's offset can't take) is the
    * shell between two concentric spheres or two tori of the same centre circle,
    * exactly, their seams turned away from the profile at `profile` coming along
-   * `d`; any other face is OCCT's simple offset of a copy of it. Returns
-   * the reason it can't be built, or nullptr.
+   * `d`; any other face is OCCT's simple offset of a copy of it. With `clip`
+   * the shells are only for a whole sphere or torus: a part of one (a dome)
+   * takes the simple offset, whose walls stop the piece at the face's edge.
+   * Returns the reason it can't be built, or nullptr.
    */
   const char* thickPiece(const TopoDS_Face& target, const BRepAdaptor_Surface& surface, const gp_Dir& d,
-                         const gp_Pnt& profile, double depth, bool outward, TopoDS_Solid& shell, TopoDS_Face& skin,
-                         TopoDS_Face& farFace) {
+                         const gp_Pnt& profile, double depth, bool outward, bool clip, TopoDS_Solid& shell,
+                         TopoDS_Face& skin, TopoDS_Face& farFace) {
     const GeomAbs_SurfaceType type = surface.GetType();
-    if (type == GeomAbs_Sphere || type == GeomAbs_Torus) {
+    if ((type == GeomAbs_Sphere || type == GeomAbs_Torus) && (!clip || wholeFace(target))) {
       // Whether the outward normal points away from the centre (a ball, a ring's
       // outside) or towards it (a spherical hollow), from the middle of the face.
       double u0 = 0, u1 = 0, v0 = 0, v1 = 0;
@@ -4885,6 +4992,19 @@ private:
       return nullptr;
     }
     skin = TopoDS::Face(BRepBuilderAPI_Copy(target).Shape());
+    return simpleSlab(skin, depth, outward, shell, farFace, nullptr);
+  }
+
+  /**
+   * The solid between face `skin` (a copy the solid may own) and its simple
+   * offset by `depth` along its outward normal (`outward`) or against it:
+   * OCCT's BRepOffset_MakeSimpleOffset, made a solid and oriented. `farFace`
+   * is the offset face; `rims`, when asked, gets the offset edge of each edge
+   * of `skin` (TopExp::MapShapes order; null where there is none). Returns the
+   * reason it can't be built, or nullptr (thickPiece(), faceSlab()).
+   */
+  const char* simpleSlab(const TopoDS_Face& skin, double depth, bool outward, TopoDS_Solid& shell,
+                         TopoDS_Face& farFace, std::vector<TopoDS_Shape>* rims) {
     BRepOffset_MakeSimpleOffset thick(skin, outward ? depth : -depth);
     thick.SetBuildSolidFlag(true);
     thick.Perform();
@@ -4897,7 +5017,46 @@ private:
     const TopoDS_Shape far = thick.Generated(skin);
     for (TopExp_Explorer e(far, TopAbs_FACE); e.More(); e.Next()) farFace = TopoDS::Face(e.Current());
     if (farFace.IsNull()) return "Emboss failed: the offset lost the face.";
+    if (rims != nullptr) {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+      TopExp::MapShapes(skin, TopAbs_EDGE, edges);
+      for (int k = 1; k <= edges.Extent(); ++k) rims->push_back(thick.Generated(edges(k)));
+    }
     return nullptr;
+  }
+
+  /** Whether face `face` covers its whole surface, both ways round (a whole sphere or torus). */
+  static bool wholeFace(const TopoDS_Face& face) {
+    const Handle(Geom_Surface) surface = BRep_Tool::Surface(face);
+    if (surface.IsNull()) return false;
+    double su0 = 0, su1 = 0, sv0 = 0, sv1 = 0;
+    surface->Bounds(su0, su1, sv0, sv1);
+    double u0 = 0, u1 = 0, v0 = 0, v1 = 0;
+    BRepTools::UVBounds(face, u0, u1, v0, v1);
+    const double tol = 1e-7;
+    return u1 - u0 >= su1 - su0 - tol && v1 - v0 >= sv1 - sv0 - tol;
+  }
+
+  /**
+   * The outward normal of a face at (u, v) of its `surface`: the surface's,
+   * turned for a `reversed` face. At a singular point (a sphere's pole, where a
+   * line through a sketch's centre may well land) the first derivatives give
+   * none, so the second ones are asked. False when there is none
+   * (projectOnFace(), faceHit()).
+   */
+  static bool outwardNormal(const BRepAdaptor_Surface& surface, bool reversed, double u, double v, gp_Vec& normal) {
+    gp_Pnt at;
+    gp_Vec du, dv;
+    surface.D1(u, v, at, du, dv);
+    normal = du.Crossed(dv);
+    if (normal.Magnitude() <= 1e-12) {
+      BRepLProp_SLProps props(surface, u, v, 2, Precision::Confusion());
+      if (!props.IsNormalDefined()) return false;
+      normal = gp_Vec(props.Normal());
+    }
+    normal.Normalize();
+    if (reversed) normal.Reverse();
+    return true;
   }
 
   /**
@@ -6951,6 +7110,18 @@ private:
   static constexpr double PRISMATIC_REBUILD_BUDGET_MS = 12000;
   /** Unfit regions covering at most this share of the surface area are left out of the rebuild instead of refusing (slice C). */
   static constexpr double PRISMATIC_UNFIT_ALLOWED = 0.02;
+  /** A component's dominant torus, or a split's dominant piece, holds at least this share of its area (ADR-0097's 2026-11-04f amendment). */
+  static constexpr double MESH_DOMINANT_SHARE = 0.25;
+  /** Beside a dominant piece, a split's leftovers may hold at most this share of the component's area (2026-11-04f amendment). */
+  static constexpr double MESH_LEFTOVER_SHARE = 0.1;
+  /** The dominant torus's trimmed fit stops after this many rounds at most (2026-11-04f amendment). */
+  static constexpr int MESH_TORUS_TRIM_ROUNDS = 12;
+  /** The trimmed fit's flatness gate: looser than MESH_TORUS_FLATNESS, the estimate is only a start (2026-11-04f amendment). */
+  static constexpr double MESH_TORUS_TRIM_FLATNESS = 2e-2;
+  /** fitMeshTorus's flatness gate: g − ρn's smallest covariance eigenvalue over its trace (2026-11-04f amendment names it). */
+  static constexpr double MESH_TORUS_FLATNESS = 1e-3;
+  /** Only components of this many regions or more get a dominant torus (regions, not minimumNodes's nodes; 2026-11-04f amendment). */
+  static constexpr int MESH_TORUS_TRIM_MIN_REGIONS = 16;
   /**
    * Auto's tolerance ladder (ADR-0097, slice D2): a tolerance of 0 or less
    * means Auto, and the kernel tries these in order, stopping at the first
@@ -7022,6 +7193,12 @@ private:
     double sag = 0;
     /** The smallest tolerance a fitted surface would need here (unfit regions). */
     double deviation = 0;
+    /**
+     * Found by a component's trimmed torus fit (ADR-0097's 2026-11-04f
+     * amendment): only such a torus takes its neighbours after the clusters
+     * are settled.
+     */
+    bool dominant = false;
   };
 
   /** One planar region of prismatic's segmentation. */
@@ -7486,11 +7663,15 @@ private:
    * nodes' distances. `origin` is the centre, `direction` the axis,
    * `majorRadius` R and `radius` r. R <= r (a spindle torus) only with
    * `spindle` (slice D9: splitComponent's retry; the hybrid builds it as a
-   * surface of revolution).
+   * surface of revolution). `gate` is the flatness a fit must reach (the
+   * trimmed fit of a component's dominant torus takes the looser
+   * MESH_TORUS_TRIM_FLATNESS); `refine = false` skips Gauss-Newton, so the
+   * fit is the flatness estimate and the circle only (ADR-0097's 2026-11-04f
+   * amendment).
    */
   MeshFit fitMeshTorus(const std::vector<int>& nodes, const std::vector<int>& triangles,
                        const std::vector<gp_XYZ>& normals, const std::vector<double>& areas, double tolerance,
-                       bool spindle = false) const {
+                       bool spindle = false, double gate = MESH_TORUS_FLATNESS, bool refine = true) const {
     MeshFit fit;
     if (nodes.size() < 12 || triangles.size() < 6) return fit;
     // Moments of the facet centroids g and normals n, about their means, so
@@ -7576,7 +7757,7 @@ private:
         }
       }
     }
-    if (!(best <= 1e-3)) return fit;
+    if (!(best <= gate)) return fit;
     gp_XYZ axisVector;
     flatness(bestRho, &axisVector);
     if (axisVector.Modulus() < 1e-12) return fit;
@@ -7616,7 +7797,7 @@ private:
       return sum;
     };
     double current = residualSum(o, a, R, r);
-    for (int iteration = 0; iteration < 12; ++iteration) {
+    for (int iteration = 0; iteration < 12 && refine; ++iteration) {
       const gp_Ax3 frame(gp_Pnt(0, 0, 0), gp_Dir(a));
       const gp_XYZ e1 = frame.XDirection().XYZ(), e2 = frame.YDirection().XYZ();
       auto at = [&](const double* x, gp_XYZ& oo, gp_XYZ& aa, double& RR, double& rr) {
@@ -7772,9 +7953,13 @@ private:
    * nothing whole split into several. Fills `out` and meshReport_ (the counts, no
    * faces yet). Returns 1, or 0 with lastError for a bad tolerance or mesh.
    * The region preview (meshRegions) and the conversion (prismaticFromMesh)
-   * both run this, so they always agree. May throw.
+   * both run this, so they always agree. `networks` turns on the rules that
+   * find a fillet ring's torus over its network (ADR-0097's 2026-11-04f
+   * amendment: the dominant torus, the dominant piece's leftovers, the torus
+   * taking what lies on it); Auto's ladder measures its steps without them.
+   * May throw.
    */
-  int segmentMesh(double tolerance, MeshSegmentation& out) {
+  int segmentMesh(double tolerance, MeshSegmentation& out, bool networks = true) {
     {
       if (!(tolerance > 0) || !std::isfinite(tolerance)) return fail("Mesh to Solid needs a tolerance above 0 mm.");
       const int nodeCount = static_cast<int>(meshNodes_.size() / 3);
@@ -8154,10 +8339,37 @@ private:
       // round. What no piece took is unfit, one piece per smooth component;
       // when such a piece has 4 regions or more, the split explains too
       // little (a freeform surface fits small primitives here and there) and
-      // the component stays whole and unfit.
+      // the component stays whole and unfit, unless one piece holds at least
+      // MESH_DOMINANT_SHARE of the component's area and the leftovers at most
+      // MESH_LEFTOVER_SHARE: then the split stands and each leftover is an
+      // unfit piece of its own (ADR-0097's 2026-11-04f amendment, rule 2).
+      //
+      // With `networks` and `tryDominant`, a component of
+      // MESH_TORUS_TRIM_MIN_REGIONS regions or more first gets its dominant
+      // torus (2026-11-04f, rule 1): a seed patch on a fillet ring is one
+      // column of its quads, which a cylinder holds and from which no torus
+      // fit finds the axis, so one torus is fitted over the whole component by
+      // trimming (the flatness estimate and the circle, gate
+      // MESH_TORUS_TRIM_FLATNESS, no Gauss-Newton; then the regions within the
+      // larger of T and the 60th-percentile region distance, refitted, until
+      // that set stands still). The regions within T of the last estimate, in
+      // their largest smooth piece, are the split's first piece when they hold
+      // MESH_DOMINANT_SHARE of the area and every triangle's centroid lies
+      // within T too (a torus through a coarse patch's nodes need not follow
+      // its triangles): the torus refitted over them, else the estimate.
       std::vector<int> pieceOf(regionCount, -2), frontierMark(regionCount, -1);
       int frontierRound = 0;
       constexpr int minimumNodes = 16;
+      bool tryDominant = true;
+      // Whether every triangle centroid of `members` lies within the tolerance of `surface`.
+      auto centroidsWithin = [&](const MeshSurface& surface, const std::vector<int>& members) {
+        for (int r : members)
+          for (int t : regions[r].triangles) {
+            const gp_XYZ c = (meshNode(corner(t, 0)) + meshNode(corner(t, 1)) + meshNode(corner(t, 2))) / 3;
+            if (distanceToSurface(surface, c) > tolerance) return false;
+          }
+        return true;
+      };
       auto splitComponent = [&](const MeshSurface& whole) {
         const std::vector<int>& members = whole.regions;
         constexpr int unassigned = -1, patched = -3;
@@ -8167,6 +8379,63 @@ private:
         const double median = regions[order[order.size() / 2]].area;
         std::vector<MeshSurface> pieces;
         std::vector<int> frontier;
+        if (networks && tryDominant && members.size() >= MESH_TORUS_TRIM_MIN_REGIONS) {
+          auto farthestFromTorus = [&](int r, const MeshFit& fit) {
+            double d = 0;
+            for (int n : regions[r].nodes)
+              d = std::max(d, std::fabs(torusDistance(fit.origin.XYZ(), fit.direction.XYZ(), fit.majorRadius,
+                                                      fit.radius, meshNode(n))));
+            return d;
+          };
+          std::vector<int> trimmed(members);
+          MeshFit fit;
+          for (int round = 0; round < MESH_TORUS_TRIM_ROUNDS; ++round) {
+            const Gathered g = gather(trimmed);
+            if (g.nodes.size() < 12 || g.triangles.size() < 6) break;
+            const MeshFit next =
+                fitMeshTorus(g.nodes, g.triangles, normals, areas, tolerance, false, MESH_TORUS_TRIM_FLATNESS, false);
+            if (!next.ok) break;
+            fit = next;
+            std::vector<std::pair<double, int>> far;
+            for (int r : members) far.push_back({farthestFromTorus(r, fit), r});
+            std::sort(far.begin(), far.end());
+            // The 60th-percentile region distance, in integers so the index is exact.
+            const double cut = std::max(tolerance, far[(far.size() * 6) / 10].first);
+            std::vector<int> keep;
+            for (const auto& [d, r] : far)
+              if (d <= cut) keep.push_back(r);
+            std::sort(keep.begin(), keep.end());
+            std::vector<int> before(trimmed);
+            std::sort(before.begin(), before.end());
+            if (keep == before) break;
+            trimmed = std::move(keep);
+          }
+          if (fit.ok) {
+            std::vector<int> within;
+            for (int r : members)
+              if (farthestFromTorus(r, fit) <= tolerance) within.push_back(r);
+            std::vector<int> largest;
+            double largestArea = 0;
+            for (const std::vector<int>& component : components(within)) {
+              double area = 0;
+              for (int r : component) area += regions[r].area;
+              if (area > largestArea) {
+                largestArea = area;
+                largest = component;
+              }
+            }
+            if (largestArea >= MESH_DOMINANT_SHARE * whole.area && largest.size() >= 4) {
+              MeshSurface torus = fitOfKind(4, largest);
+              if (torus.kind != 4) torus = surfaceOfFit(4, fit, largest, gather(largest));
+              if (centroidsWithin(torus, largest)) {
+                const int id = static_cast<int>(pieces.size());
+                for (int r : largest) pieceOf[r] = id;
+                torus.dominant = true;
+                pieces.push_back(std::move(torus));
+              }
+            }
+          }
+        }
         for (int seed : order) {
           if (pieceOf[seed] != unassigned) continue;
           MeshSurface s;
@@ -8265,6 +8534,8 @@ private:
           }
           pieces.push_back(std::move(s));
         }
+        // The border moves below may refit the dominant torus; it stays dominant while it is a torus.
+        const bool firstDominant = !pieces.empty() && pieces[0].dominant;
         // A region on a border between two pieces goes to the one whose
         // surface is nearer its nodes: a piece grown first takes its
         // neighbour's slivers along a tangent border (within the tolerance,
@@ -8322,6 +8593,7 @@ private:
             }
           }
         }
+        if (firstDominant && pieces[0].kind == 4) pieces[0].dominant = true;
         // What no piece took: unfit pieces, one per smooth component.
         std::vector<int> left;
         for (int r : members) {
@@ -8329,8 +8601,17 @@ private:
           // Outside the component, pieceOf means nothing (the next split's own).
           pieceOf[r] = -2;
         }
+        double leftArea = 0, largestPiece = 0;
+        for (int r : left) leftArea += regions[r].area;
+        for (const MeshSurface& piece : pieces) {
+          double area = 0;
+          for (int r : piece.regions) area += regions[r].area;
+          largestPiece = std::max(largestPiece, area);
+        }
+        const bool explained = networks && leftArea <= MESH_LEFTOVER_SHARE * whole.area &&
+                               largestPiece >= MESH_DOMINANT_SHARE * whole.area;
         for (const std::vector<int>& component : components(left)) {
-          if (component.size() >= 4) return std::vector<MeshSurface>(1, whole);
+          if (component.size() >= 4 && !explained) return std::vector<MeshSurface>(1, whole);
           pieces.push_back(component.size() == 1 ? planeOf(component[0]) : bestFit(component));
         }
         return pieces;
@@ -8379,14 +8660,25 @@ private:
             return;
           }
           std::vector<MeshSurface> pieces = splitComponent(s);
+          // A split with the dominant torus that leaves the component whole
+          // and unfit is split again without it (ADR-0097's 2026-11-04f
+          // amendment, rule 3): with the torus taken first, the remainder can
+          // fragment where the old split held.
+          if (pieces.size() == 1 && pieces[0].kind < 0) {
+            tryDominant = false;
+            pieces = splitComponent(s);
+            tryDominant = true;
+          }
           // A split that leaves the component whole and unfit is tried once
-          // more with spindle tori (slice D9): peg-perego-button's 296
-          // regions stay facets for a 5-region patch only a torus with
-          // R < r fits. Elsewhere a spindle fit wins seeds that other
-          // primitives explain better (vented-funnel, spaghetti-measure).
+          // more with spindle tori (slice D9), without the dominant torus:
+          // peg-perego-button's 296 regions stay facets for a 5-region patch
+          // only a torus with R < r fits. Elsewhere a spindle fit wins seeds
+          // that other primitives explain better (vented-funnel, spaghetti-measure).
           if (pieces.size() == 1 && pieces[0].kind < 0) {
             spindle = true;
+            tryDominant = false;
             std::vector<MeshSurface> retry = splitComponent(s);
+            tryDominant = true;
             spindle = false;
             if (retry.size() != 1 || retry[0].kind >= 0) pieces = std::move(retry);
           }
@@ -8405,6 +8697,70 @@ private:
         }
         for (const std::vector<int>& component : components(rest)) {
           settle(component.size() == 1 ? planeOf(component[0]) : bestFit(component));
+        }
+      }
+
+      // A dominant torus takes what lies on it (ADR-0097's 2026-11-04f
+      // amendment, rule 4): each one, largest first, takes the neighbouring
+      // surfaces, planes excepted, whose every node and triangle centroid lie
+      // within the tolerance of it, refitted over the union when that holds,
+      // else kept as it is. A fillet ring's top rows are large regions, and
+      // their own split holds them as near-flat cones, spheres and unfit
+      // pieces. Only dominant tori take, and never a plane: a narrow plane
+      // within T of a fitted torus is a face of its own (hole-filler-35mm).
+      if (networks) {
+        bool changed = true;
+        for (int pass = 0; changed && pass < 4; ++pass) {
+          changed = false;
+          std::vector<int> surfaceOfRegion(regionCount, -1);
+          for (size_t i = 0; i < surfaces.size(); ++i)
+            for (int r : surfaces[i].regions) surfaceOfRegion[r] = static_cast<int>(i);
+          std::vector<char> gone(surfaces.size(), 0);
+          std::vector<int> order;
+          for (size_t i = 0; i < surfaces.size(); ++i)
+            if (surfaces[i].kind == 4 && surfaces[i].dominant) order.push_back(static_cast<int>(i));
+          std::stable_sort(order.begin(), order.end(), [&](int a, int b) { return surfaces[a].area > surfaces[b].area; });
+          for (int i : order) {
+            if (gone[i]) continue;
+            for (bool took = true; took;) {
+              took = false;
+              std::vector<int> neighbours;
+              for (int r : surfaces[i].regions)
+                for (int o : regionNeighbours[r]) {
+                  const int q = surfaceOfRegion[o];
+                  if (q >= 0 && q != i && !gone[q] && surfaces[q].kind != 0 &&
+                      std::find(neighbours.begin(), neighbours.end(), q) == neighbours.end())
+                    neighbours.push_back(q);
+                }
+              for (int q : neighbours) {
+                bool inside = true;
+                for (size_t k = 0; k < surfaces[q].regions.size() && inside; ++k)
+                  for (int n : regions[surfaces[q].regions[k]].nodes)
+                    if (distanceToSurface(surfaces[i], meshNode(n)) > tolerance) {
+                      inside = false;
+                      break;
+                    }
+                if (!inside || !centroidsWithin(surfaces[i], surfaces[q].regions)) continue;
+                std::vector<int> joined(surfaces[i].regions);
+                joined.insert(joined.end(), surfaces[q].regions.begin(), surfaces[q].regions.end());
+                MeshSurface refit = fitOfKind(4, joined);
+                refit.dominant = true;
+                if (refit.kind != 4) {
+                  refit = surfaces[i];
+                  refit.regions = joined;
+                  refit.area = surfaces[i].area + surfaces[q].area;
+                }
+                surfaces[i] = std::move(refit);
+                for (int r : surfaces[q].regions) surfaceOfRegion[r] = i;
+                gone[q] = 1;
+                took = changed = true;
+              }
+            }
+          }
+          std::vector<MeshSurface> kept;
+          for (size_t i = 0; i < surfaces.size(); ++i)
+            if (!gone[i]) kept.push_back(std::move(surfaces[i]));
+          surfaces = std::move(kept);
         }
       }
 
@@ -8527,12 +8883,15 @@ private:
 
   /**
    * Auto's tolerance (ADR-0097, slice D2): segmentMesh at each step of
-   * MESH_AUTO_LADDER in order and stop at the first whose unfit share is at
-   * most PRISMATIC_UNFIT_ALLOWED (the share the exact rebuild tolerates);
-   * that step's tolerance and segmentation are returned and reused, so the
-   * caller doesn't segment again. When no step qualifies, the one with the
-   * smallest unfit share (ties: the smaller tolerance). Fills `out` and
-   * meshReport_ (the chosen step's report, with its tolerance in slot 12).
+   * MESH_AUTO_LADDER in order, without the network rules, and stop at the
+   * first whose unfit share is at most PRISMATIC_UNFIT_ALLOWED (the share the
+   * exact rebuild tolerates); when no step qualifies, the one with the
+   * smallest unfit share (ties: the smaller tolerance). The chosen step is
+   * then segmented once more with the network rules, and that segmentation
+   * returned, so the caller doesn't segment again: with them at every step,
+   * Auto stops at finer steps where the hybrid explodes more regions
+   * (ADR-0097's 2026-11-04f amendment, rule 5). Fills `out` and meshReport_
+   * (the chosen step's report, with its tolerance in slot 12).
    * Each extra step costs a segmentation (~0.3 s on 20,000 triangles);
    * under TIMES (the spike harness) each step's tolerance, unfit share and
    * time is printed as "auto <tol>: unfit <share> %". Returns 1, or 0 with
@@ -8541,11 +8900,10 @@ private:
   int meshAutoTolerance(double& chosen, MeshSegmentation& out) {
     bool haveBest = false;
     double bestShare = 0;
-    std::vector<double> bestReport;
     for (double step : MESH_AUTO_LADDER) {
       MeshSegmentation seg;
       const double start = nowMs();
-      if (!segmentMesh(step, seg)) return 0;
+      if (!segmentMesh(step, seg, false)) return 0;
       const int tenths = static_cast<int>(std::lround(seg.unfitFraction * 1000));
       rebuildTimes_.push_back(
           {"auto " + millimetres(step) + ": unfit " + std::to_string(tenths / 10) + "." +
@@ -8553,19 +8911,16 @@ private:
            nowMs() - start});
       if (seg.unfitFraction <= PRISMATIC_UNFIT_ALLOWED) {
         chosen = step;
-        out = std::move(seg);
-        return 1;
+        break;
       }
       if (!haveBest || seg.unfitFraction < bestShare) {
         haveBest = true;
         bestShare = seg.unfitFraction;
         chosen = step;
-        out = std::move(seg);
-        bestReport = meshReport_;
       }
     }
-    meshReport_ = bestReport;
-    return 1;
+    out = MeshSegmentation();
+    return segmentMesh(chosen, out);
   }
 
   /**
@@ -13768,8 +14123,7 @@ private:
       BRepAdaptor_Surface surface(face);
       if (surface.GetType() != GeomAbs_Plane) continue;
       const gp_Pln plane = surface.Plane();
-      gp_Vec n(plane.Axis().Direction());
-      if (face.Orientation() == TopAbs_REVERSED) n.Reverse();
+      const gp_Vec n(outwardNormal(face, plane));
       const gp_Pnt at = plane.Location();
       double far = 0;
       for (double x : {x0, x1}) {
@@ -14009,8 +14363,7 @@ private:
       plugs.clear();
       for (int index : removed) {
         const TopoDS_Face face = TopoDS::Face(faces(index + 1));
-        gp_Dir n = BRepAdaptor_Surface(face).Plane().Axis().Direction();
-        if (face.Orientation() == TopAbs_REVERSED) n.Reverse();
+        const gp_Dir n = outwardNormal(face, BRepAdaptor_Surface(face).Plane());
         const double depth = perFace[static_cast<size_t>(index)] * factor;
         const double over = 0.5 * depth;
         // Inwards the wall is under the face, outwards over it; the prism runs `over` past both sides.
@@ -14916,8 +15269,7 @@ private:
       const TopoDS_Face& face = TopoDS::Face(faces(index + 1));
       BRepAdaptor_Surface surface(face, false);
       if (surface.GetType() != GeomAbs_Plane) return false;
-      gp_Dir normal = surface.Plane().Axis().Direction();
-      if (face.Orientation() == TopAbs_REVERSED) normal.Reverse();
+      const gp_Dir normal = outwardNormal(face, surface.Plane());
       for (TopExp_Explorer e(face, TopAbs_EDGE); e.More(); e.Next()) {
         const TopoDS_Edge edge = TopoDS::Edge(e.Current());
         const int at = edgeFaces.FindIndex(edge);
@@ -14967,8 +15319,7 @@ private:
       for (int index : picked) {
         const TopoDS_Face& face = TopoDS::Face(faces(index + 1));
         BRepAdaptor_Surface surface(face, false);
-        gp_Dir normal = surface.Plane().Axis().Direction();
-        if (face.Orientation() == TopAbs_REVERSED) normal.Reverse();
+        const gp_Dir normal = outwardNormal(face, surface.Plane());
         BRepPrimAPI_MakePrism prism(face, gp_Vec(normal.XYZ() * distance));
         if (!prism.IsDone()) return false;
         const TopoDS_Shape cap = prism.LastShape();
@@ -15766,6 +16117,18 @@ private:
     geometry_.push_back(static_cast<double>(n));
     for (int k = 1; k <= n; ++k) pushPoint(sampler.Value(k));
     return 1;
+  }
+
+  /**
+   * A flat face's normal out of the face: the plane's own normal (X ^ Y of its
+   * frame), turned for a reversed face. A left-handed frame (every plane of a
+   * mirrored body, some chamfer slopes) has its axis against that normal, so
+   * the axis alone points into the body there (ADR-0035 amendment 2026-11-04).
+   */
+  static gp_Dir outwardNormal(const TopoDS_Face& face, const gp_Pln& plane) {
+    gp_Dir normal = plane.Position().Direct() ? plane.Axis().Direction() : plane.Axis().Direction().Reversed();
+    if (face.Orientation() == TopAbs_REVERSED) normal.Reverse();
+    return normal;
   }
 
   /** A canonical sign for an axis or line direction: first non-zero component positive. */

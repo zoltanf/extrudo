@@ -3906,3 +3906,143 @@ No synthetic mesh tried made a region explode for edge tolerance (coarse tori 8 
 a box, a twisted cone band, a coarse filleted hole: none), so makita and micro-sd-keyring-inner pin the facets in the
 sweep. The OCCT input hash went `2093b9db170f` → `b3019374ded4` (CI 41795467145), then with three points →
 `98a3b9ae5c94` (CI 41812088740). Tables: `docs/plans/m2s-exploded-q1-2026-11-01.md`, "Run 6".
+
+### Amendment, 2026-11-04f: a fillet ring's torus, found over its whole network (makita-vacuum-holder's facets)
+
+**Finding.** makita-vacuum-holder at Auto (T 0.05; 3,306 faces, 2,486 facets) was measured with two new probes: spike
+`DUMP` (the segmentation as text: nodes, each triangle's region and surface, each surface's fit) and `SPLIT` prints
+in a facade copy (`splitComponent`'s seeds, pieces and leftovers). The kernel-staged mesh, numpy on the dump:
+
+| what | triangles | surface |
+|---|---|---|
+| unfit surface 641, rim part | 1,801 (579.8 mm²) | one torus, nodes 0.0000 mm off: axis Z through the origin, R 59.31, tube centre z 33, r 2 (the cup's inner rim round, between the drafted inner wall and the top) |
+| unfit surface 641, the rest | 654 + 651 (64.8 + 62.9 mm²) | the front slot's two top corners: r 2 rolling-ball blends between the drafted inner wall (a cone, 5.7°) and the slot's r 15 corner cylinders |
+| 12 exploding cones (311–324), 2 spheres, 14 planes | 216 + 36 + 83 | the same rim torus, its top rows; the cones' half-angles are 88.6–89.3° |
+| 5 exploding cones (326–330) | 89 | the bottom inner round: a torus R 56.21, z 2, r 2 (0.0000 off) |
+| 2 exploding cones (294, 297), torus 299 | 52 | the left side plate's round: the mirror of torus 291 (R 107.69, r 2), 0.002–0.026 off |
+
+So the network is 82 % one exact torus, and every "cone fitted on a fillet patch" is a near-flat cone on one of three
+tori. Why the segmentation misses them:
+
+1. `splitComponent` fits each seed patch (16 nodes) with the first kind that holds it. On the rim a patch is one
+   column of quads (2.2° of the ring, across the whole round), which a cylinder holds; a torus fit can't find the
+   axis from it (the flatness of g − ρn has its minimum at the sampling bound on 4° of the ring, a tilt of 16° on
+   10°; the axis comes out at 30°). The split of 641: 100 one-column cylinders, 61 planes, 3 spheres.
+2. One leftover component of 6 regions (3.2 mm², 0.45 % of the area) then makes the split return the whole
+   component unfit ("the split explains too little").
+3. The rim's top row is "large" (4 × the cluster's median region) and goes to the large regions' split, where
+   three regions at a time hold a near-flat cone.
+
+A trimmed fit over the whole of 641 (the flatness estimate and the circle, no Gauss–Newton; keep the regions within
+the larger of T and the 60th-percentile distance; refit) converges to the rim torus in 5 iterations.
+
+**Rule.**
+
+1. *A component's dominant torus.* Before its seeds, `splitComponent` fits one torus over the whole component by
+   trimming: the flatness estimate and the spine circle (gate 2e-2 instead of 1e-3, no Gauss–Newton), then the
+   regions whose nodes all lie within the larger of T and the 60th-percentile region distance, refitted, at most 12
+   times or until that set stands still. The regions within T of the last estimate, in their largest smooth piece,
+   become the split's first piece when they hold at least a quarter of the component's area and every one of their
+   triangles has its centroid within T too: the torus refitted over them (with Gauss–Newton) when that holds them
+   within T, else the estimate (on makita's rim the refit doesn't pass, and the estimate is R 59.301, r 1.993 against
+   the exact 59.31, 2). The seeds then split the rest as before. Only components of 16 regions or more.
+2. *A split with a dominant piece keeps its leftovers apart.* When one piece holds at least a quarter of the
+   component's area and the leftovers at most a tenth, the split stands: a leftover of 4 regions or more stays an
+   unfit piece of its own instead of making the whole component unfit. Without such a piece the old rule holds ("the
+   split explains too little").
+3. *Without it, the old split.* A split with the dominant torus that leaves the component whole and unfit is split
+   again without it (and then with spindle tori, as before, also without it): with the torus taken first, a remainder
+   can fragment where the old split held (makita's 311-region component: 19 % left over).
+4. *A dominant torus takes what lies on it.* After every cluster is settled, each torus from rule 1 (largest first)
+   takes the neighbouring surfaces, planes excepted, whose every node and every triangle's centroid lie within T of
+   it, refitted over the union when that holds within T. This turns the near-flat cones, spheres and unfit pieces on
+   the rim's top rows (the large regions' split) into the rim torus.
+5. *Auto keeps its step.* The ladder measures each step's unfit share without rules 1–4, then segments the step it
+   picked with them (one more segmentation). A fixed tolerance segments once, with them.
+
+**Rejected** (spike `F` over the 38 kernel-staged meshes at Auto; main's run gives the sweep baseline's totals
+exactly, prismatic faces 24,650 and facets 13,958):
+
+- *Every kind that holds a seed patch grows, the largest piece wins.* makita 878 faces, 32 facets, but the rim stays
+  151 small faces (84 cylinders, 54 planes), and over the corpus facets go up on five files (phone-stand-foldable 287
+  → 387, spaghetti-measure 36 → 106, spool-screw-v4.1 0 → 104 at a lower Auto step, puzzle-insert-circle 0 → 36,
+  battery-power-adapter 0 → 24) and the time by 23 % (some files 5–10 ×).
+- *Adjacent pieces merge when one surface holds both.* Two one-column cylinders don't fix a torus either: on top of
+  the variant above the rim stays 72 cylinders (makita 722 faces).
+- *The leftover rule alone* (any split whose leftovers hold at most a tenth stands): finer Auto steps pass their
+  unfit share, and the facets there explode (phone-stand-foldable 0.1 → 0.01 mm, 287 → 2,098 facets;
+  battery-power-adapter 0 → 1,050).
+- *Rule 4 for every torus and every kind.* A narrow plane within T of a fitted torus is a face of its own:
+  hole-filler-35mm went from the exact stage's 6 faces to the hybrid with 699 facets, peg-perego-button 0 → 1,068
+  facets.
+- *Rules 1–4 at every Auto step.* More of a mesh is recognised at the finer steps, so Auto stops there, where the
+  hybrid explodes more regions: phone-stand-foldable 0.1 → 0.01 mm (287 → 1,004 facets), spool-screw-v4.1 0.05 →
+  0.01 mm (0 → 1,234).
+- *The trimmed torus on its nodes alone.* A torus through a coarse patch's nodes need not follow its triangles:
+  track-straight-100mm (T 0.01) got a torus R 26.6, r 20.9 whose nodes lie 0.0007 mm off and whose triangle centroids
+  0.61 mm off; case `D`'s faces-to-mesh distance went 0.006 → 0.69 mm (mean 0.0013 → 0.22) and the exact stage ran
+  for 9 s before the hybrid (440 ms → 9.2 s). Requiring the strict refit instead loses makita's rim (2,486 facets
+  again). Hence the centroid condition in rules 1 and 4: on every torus kept in the corpus the centroids lie within T
+  (makita's rim 0.038 mm at T 0.05, battery-power-adapter's within 0.081 at 0.1).
+- *A pipe (canal) surface for the slot corners*: not needed at makita's step (tori of R ≈ 13 hold those blends
+  within T once their split stands), and a new surface kind through the hybrid's chart, chains and STEP is a task of
+  its own.
+
+**Results (prototype, spike `F`, Auto).** makita-vacuum-holder 3,306 → 950 faces, 2,486 → 128 facets (6 cones and 2
+tori still explode for edge tolerance, 1 plane for its outer loop; 40 unfit triangles), volume ratio 0.999861 →
+1.000000, 10.9 → 6.6 s; one torus face holds the rim. Over the 38 staged meshes faces 24,650 → 21,426, facets 13,958 →
+11,132, time −7 %; 8 converted files change, none gets more faces or facets or changes its Auto step.
+battery-power-adapter's volume ratio moves 0.997812 → 0.997161 with the same largest distances (case `D`: mesh nodes
+to body 0.118, faces to mesh 0.119 at T 0.1). The kernel sweep, the STEP round trips and case `D` on every changed
+file: the implementation's results below. Tables: `docs/plans/m2s-exploded-q1-2026-11-01.md`, "Run 7".
+
+**Results (implementation).** The sweep (`TOL=auto`, 41 files, against
+`baseline-2026-11-04e-chord-three-points-auto.jsonl`, written to `baseline-2026-11-04f-torus-rings-auto.jsonl`; 63
+passed, 1 skipped; `uptime` load 0.25 before, 1.20 after):
+
+    2026-11-04e three points: files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24650, prismatic facets 13958, prismatic ms 221048, faceted ms 105879, round trips failed 0
+    2026-11-04f torus rings: files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 21426, prismatic facets 11132, prismatic ms 228569, faceted ms 108729, round trips failed 0
+
+The eight files the spike named change, no other; none gets more faces or facets, every round trip passes:
+
+| file | faces | facets | Auto step | round trip (passes, read-back faces, volume ratio) | body/mesh volume | ms |
+|---|---|---|---|---|---|---|
+| own/battery-power-adapter | 581 → 512 | 0 → 0 | 0.1 | yes, 581, 1.000000 → yes, 512, 1.000000 | 0.997812 → 0.997161 | 2928 → 3094 |
+| own/kuglbahn-pillar-base | 3880 → 3559 | 3346 → 3346 | 0.1 | yes, 3880, 0.999975 → yes, 3559, 1.000005 | 1.001183 → 0.999514 | 11928 → 11437 |
+| own/peg-perego-button | 212 → 160 | 0 → 0 | 0.02 | yes, 212, 0.999996 → yes, 160, 0.999996 | 1.002930 → 1.002952 | 1652 → 1493 |
+| own/phone-stand-foldable | 868 → 862 | 287 → 287 | 0.1 | yes, 868, 0.999982 → yes, 862, 0.999982 | 0.998266 → 1.000038 | 4869 → 5792 |
+| own/track-straight-100mm | 306 → 101 | 237 → 0 | 0.01 | yes, 306, 1.000000 → yes, 101, 1.000000 | 1.000041 → 1.000003 | 434 → 1116 |
+| own/whiteboard-tray-v5 | 2586 → 2547 | 1900 → 1865 | 0.02 | yes, 2586, 1.000000 → yes, 2547, 1.000000 | 1.000063 → 1.000047 | 14750 → 15467 |
+| third-party/hot-wheels-connector | 1928 → 1752 | 1745 → 1549 | 0.01 | yes, 1928, 1.000006 → yes, 1752, 1.000006 | 0.999856 → 0.999857 | 1891 → 2101 |
+| third-party/makita-vacuum-holder | 3306 → 950 | 2486 → 128 | 0.05 | yes, 3306, 0.999997 → yes, 950, 0.999998 | 0.999861 → 1.000001 | 10160 → 7672 |
+
+Case `D` (spike, body against mesh) on the eight, main's facade (89139d15) → the branch's, at each file's Auto step
+(faces to mesh: the worst face's max, the mean over all faces' triangulation nodes; up to three cases ran at once, so
+the times are rough):
+
+| file, T | nodes to body max / mean | faces to mesh max / mean | body/mesh volume | ms |
+|---|---|---|---|---|
+| own/battery-power-adapter, 0.1 | 0.118 / 0.0107 → 0.118 / 0.0104 | 0.119 / 0.00457 → 0.119 / 0.00842 | 0.997812 → 0.997161 | 2308 → 2197 |
+| own/kuglbahn-pillar-base, 0.1 | 0.0939 / 0.00475 → 0.0932 / 0.00563 | 0.0731 / 0.00408 → 0.0884 / 0.00988 | 1.001184 → 0.999514 | 10967 → 10687 |
+| own/peg-perego-button, 0.02 | 0.0136 / 0.000767 → 0.0136 / 0.000373 | 1.05 / 0.0662 → 1.05 / 0.0555 | 1.002930 → 1.002952 | 2226 → 1633 |
+| own/phone-stand-foldable, 0.1 | 0.149 / 0.00881 → 0.129 / 0.00634 | 0.227 / 0.0304 → 0.227 / 0.0268 | 0.998266 → 1.000038 | 5757 → 4827 |
+| own/track-straight-100mm, 0.01 | 8.37e-05 / 7.76e-06 → 0.000345 / 0.000118 | 0.00604 / 0.00134 → 0.00617 / 0.00226 | 1.000041 → 1.000003 | 799 → 1778 |
+| own/whiteboard-tray-v5, 0.02 | 0.0283 / 0.000922 → 0.0283 / 0.000899 | 0.295 / 0.00318 → 0.0755 / 0.0028 | 1.000063 → 1.000047 | 16898 → 16098 |
+| third-party/hot-wheels-connector, 0.01 | 0.00882 / 0.000148 → 0.00882 / 0.00016 | 0.00609 / 0.000209 → 0.00609 / 0.000217 | 0.999856 → 0.999857 | 2314 → 2327 |
+| third-party/makita-vacuum-holder, 0.05 | 0.0605 / 0.00242 → 0.0605 / 0.00294 | 0.312 / 0.00501 → 0.312 / 0.00624 | 0.999861 → 1.000001 | 9791 → 6337 |
+
+No file's branch maximum, either one, is above main's by more than 10 % and above T: kuglbahn-pillar-base's faces to
+mesh go 0.0731 → 0.0884 (T 0.1). The maxima above T are main's too (peg-perego-button 1.05, makita 0.312), and
+whiteboard-tray-v5's goes 0.295 → 0.0755. track-straight-100mm's two tori lie 0.0056 and 0.0055 mm from the mesh at
+most (mean 0.0021, T 0.01).
+
+The OCCT input hash went `occt-64796ff75660` → `occt-57616976e23c` (CI 41927657163). Test: `mesh-to-solid.test.ts`
+"finds a fillet ring's torus over the network it borders, so the rim is one torus (2026-11-04f)": a tube about Z on
+160 segments with an inner rim round (a torus R 55, r 2, 8 segments) carrying a 0.3 mm bump over 20°, at 0.05 mm;
+main leaves 2,234 of the round's 2,560 triangles unfit and fits two tori. Fixtures (`mesh-to-solid-files.test.ts`):
+peg-perego-button at 0.01 mm goes from 108 planes, 94 cylinders, 10 spheres and 2 tori to 80, 26, 2 and 4 (670 facets
+on both), and at Auto (0.02 mm) from 212 to 160 faces (1,738 → 1,390 edges); track-straight-100mm rebuilds exact at
+every step: 0.01 and 0.05 mm 101 faces (before the hybrid, 237 and 145 facets), 0.1 mm 75 faces (before the hybrid, 79
+faces, no facets), Auto 306 → 101 faces. At 0.1 mm the exact stage takes 10 s of `PRISMATIC_REBUILD_BUDGET_MS` (12 s;
+8.5 s classifying 208 cells, spike `TIMES`); CI's runner ran over it and the hybrid converted (the same counts, no
+facets), so that case accepts either rebuild.

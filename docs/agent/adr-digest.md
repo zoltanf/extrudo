@@ -452,7 +452,7 @@ area, length, radii, normal/axis, centre, tight box; for two, the
 distance with closest points, the angle, the centre distance) from new
 facade calls (`distance` leaves the closest points, `properties`,
 `surfaceGeometry`); **`measure()` keeps its loose, fast box** for
-extrude. The app's `apps/web/src/measure/` has `useInspection` (the
+extrude. **A flat face's normal is the facade's `outwardNormal`** (2026-11-04 amendment): never a plane's axis alone, which points into the body for a left-handed frame (every plane of a mirrored body, some chamfer slopes); `surfaceGeometry`, Shell's wall checks and the press-pull prism path use it. The app's `apps/web/src/measure/` has `useInspection` (the
 status bar's "Selection size"), the Measure tool (`I`, session tool
 `measure`, two plain clicks pick two things: `createMeasureSelect`), its
 panel and the in-view line. ADR-0036 (P2-14) added versions:
@@ -1260,11 +1260,25 @@ concave), and **any other face** (sphere, torus, free-form) takes the profiles
 the face's thick piece, a sphere's or torus's exactly concentric; refused past
 the face's edge or outline as seen from the sketch); the method is no input but
 an `EmbossReport` (`Preview.emboss`, the dialog's read-only "Method" line). A
-wrap may run up to a whole turn ("The profile is wider than the face's
-circumference."); "tangent to the face" and several faces stay deferred. Native
-harness `spikes/p4-12-emboss-faces/`. The tool is `emboss`, a tile of Solid ›
+cone also takes a sketch on a plane parallel to one of its tangent planes (the
+normal at 90° ± α to the axis), turned about `across` through the profiles'
+centroid until the plane runs along the axis first (`rollOntoAxis`); any other
+plane is refused with "Sketch on a plane parallel to the cone's axis, or to one
+of its tangent planes, to emboss on a round face." A wrap may run up to a whole
+turn ("The profile is wider than the face's circumference."). With `tangent` (a `bool` input, default off) the profiles are
+laid on the face first (`layTangent`): the anchor is the nearest `faceHit` of
+the line through their area centroid along the sketch's normal (a tie goes the
+way the normal points; no hit is "Tangent to the face needs the face in front
+of the profiles: the line through their centre along the sketch's normal misses
+it."), they fold about the centroid onto the face's outward normal there (a
+sketch facing away turns over about the sketch's up first, so up stays up), and
+the face's method runs on the laid profiles — a projected face moves them out
+by depth + 1 mm along the normal first. The report gains `anchor` (origin,
+normal) for the dialog's arrow; with `tangent` off the golden table stays
+byte-identical. Native
+harness `spikes/p4-12-emboss-faces/`. The second amendment's facade (2026-11-04): `faceHit` (the line's hit with the bounded face nearest the point either way, a tie the way the line points, and the outward normal there; `Kernel.faceHit` is `undefined` on a miss), `faceSlab` (a face's simple-offset slab, history `first`/`last` from the face and `generated` from each of its edges by the edge's index in the body) and `projectOnFace`'s last argument `clip` (no past-the-edge refusals, a partial sphere or torus takes the simple offset, walls of the slab get no history; with `clip` false every result must stay byte-identical). **Several faces** (B3, `embossOnFaces`): `face` takes faces of one body ("Pick faces of one body to emboss on."); each face's piece takes its method as alone, then the mixing rule (any projected face, a flat face not parallel to the profiles included, makes every face but the parallel flats projected), and is clipped to its face — moved and wrapped pieces `common` `faceSlab` (outward = emboss, for holes too), projected ones through `projectOnFace`'s clip (a part that misses that face is skipped on that exact message) — then `mergeTools` fuses the pieces; **one face takes the old path, unclipped, so its names, messages and the golden table never change**. A face with no piece warns "No letters land on face *k*."; none at all, or a tool that misses the body, is "The profiles don't touch the faces."; the walls with no history (from the slab or the clip) are renamed `emboss:<id>:clip:<k>` per piece (`renameFaces`, `naming/names.ts`; a face role in `EMBOSS_FACE_ROLES`) before the merge. `EmbossReport.faces` lists each face's method in order (`method` = `faces[0]`, also for one face), `embossMethodsText` the dialog's line. The tool is `emboss`, a tile of Solid ›
 Features (ADR-0079), no key; `e2e/emboss.spec.ts` covers both kinds of face
-in both modes. Native harness: `spikes/p4-04-harness/`.
+in both modes. The dialog (second amendment): **Faces takes several faces** (no `max`), `tangent` is stored only while on (`toInputs`), the method line is `embossMethodsText`, and the depth arrow stands at the report's `anchor` only with the toggle on. A flat face's outward normal for the emboss comes from `describe`, not `surfaceGeometry` (a chamfer face's plane axis points into the body: the pad grew inwards); `e2e/emboss.spec.ts` also has a tangent plane on a cone, Tangent to the face on a chamfer and two faces across a fillet's seam. Native harness: `spikes/p4-04-harness/`.
 ADR-0061 (P4-03b) added **user fonts as attachments**: `doc.attachments` holds
 only what each file *is* (name, file name, media type, SHA-256, size) and the
 bytes live beside the document — `projects/<id>/attachments/<sha256>` in the
@@ -2062,6 +2076,17 @@ counts them) and on a plane sketch. It doesn't depend on Auto-project. Keep
 `viewport.autoProjectFace` for new sketches in Settings and the app menu only.
 ADR-0125 adds `viewport.autoProjectSketches` and the `sketchCurve`/`sketchPoint`
 snap kinds; see its paragraph.
+**A pick-only edit's own step (ADR-0074's amendment, 2026-11-04)**: a commit whose
+constraints and dimensions all wait for a projection adds nothing, and
+`UndoHistory.record` keeps no empty step, so `lastStepId()` would be the user's
+previous step and the edit would join it (one undo then took a drawn rectangle with
+the dimensions placed on it later). `ToolHost.commit` compares `lastStepId()` before
+and after its dispatch: with no new step, the first `addProjection` or
+`reviveProjectionCurve` is **dispatched** under the edit's label and becomes the step;
+with none of those either (the projection is in, its curve not reported yet), the
+pendings carry `label` and no `step`, and `writePending` dispatches them as their own
+step when they land. Keep that: never pin a pending to a step id taken without
+checking the commit made the step.
 
 ADR-0075 (P6-01, slice 1) added **the Electron desktop app** (`apps/desktop`,
 GPL): electron-vite builds main, preload and renderer, the **renderer being the
@@ -3580,11 +3605,33 @@ Numbers in ADR-0097's 2026-11-01 amendment; all tables in `docs/plans/m2s-explod
   gardena-end's 594 such edges for the same body; a k T threshold or a facet-across rule loses gear-bearing-5's round
   trip.
 - Measured, not built: makita-vacuum-holder's facets are mostly one unfit fillet network (3,106 triangles, about 2,090
-  facets; no rolling-ball band fits) and 18 cone fits on fillet patches whose chords lie 1.2–3.4 mm off the cone.
+  facets; no rolling-ball band fits) and 18 cone fits on fillet patches whose chords lie 1.2–3.4 mm off the cone
+  (built: 2026-11-04f).
 - Test: `mesh-to-solid.test.ts` "gives a mesh edge that strays far from its straight pcurve the chord’s own image, so a
   coarse ball round-trips (2026-11-04d)". Sweep baseline from here on:
   `baseline-2026-11-04e-chord-three-points-auto.jsonl` (`prismatic faces 24650, prismatic facets 13958, prismatic ms
   221048, round trips failed 0`). Spike case `D` measures a body's distance from its mesh.
+
+**ADR-0097 amendment (2026-11-04f): a fillet ring's torus, found over its network.** `extrudo_facade.cpp`
+(`segmentMesh`'s `networks`, `splitComponent`, `fitMeshTorus`'s `gate` and `refine`, `meshAutoTolerance`). Rules:
+- Rule 1: a smooth component of `MESH_TORUS_TRIM_MIN_REGIONS` (16) regions or more first gets a dominant torus by a
+  trimmed fit (gate `MESH_TORUS_TRIM_FLATNESS`, no Gauss–Newton, the larger of T and the 60th-percentile region
+  distance, at most `MESH_TORUS_TRIM_ROUNDS`); its regions within T, in their largest smooth piece, are the split's
+  first piece when they hold `MESH_DOMINANT_SHARE` of the area.
+- The centroid condition is required: every triangle centroid of the dominant torus's regions (and of what it takes)
+  within T. Nodes alone gave track-straight-100mm a torus 0.61 mm off its triangles.
+- Rule 2: a split with a piece of `MESH_DOMINANT_SHARE` of the area and leftovers of at most `MESH_LEFTOVER_SHARE`
+  stands, its leftovers unfit pieces of their own; without such a piece, "the split explains too little" still holds.
+- Rule 3: a split with the dominant torus that leaves the component whole and unfit is split again without it (and the
+  spindle retry runs without it too).
+- Rule 4: only a dominant torus takes neighbours, never a plane: after the clusters settle, it takes the neighbouring
+  non-plane surfaces whose every node and triangle centroid lie within T. Every torus or every kind blew up
+  hole-filler-35mm and peg-perego-button.
+- Rule 5: the Auto ladder runs without the network rules (`segmentMesh(step, seg, false)`); the chosen step is
+  segmented once more with them. With them at every step Auto stops at finer steps where the hybrid explodes more.
+- Test: `mesh-to-solid.test.ts` "finds a fillet ring's torus over the network it borders, so the rim is one torus
+  (2026-11-04f)". Sweep baseline from here on: `baseline-2026-11-04f-torus-rings-auto.jsonl` (`prismatic faces 21426,
+  prismatic facets 11132, prismatic ms 228569, round trips failed 0`).
 
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,

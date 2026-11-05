@@ -111,6 +111,26 @@ function numberDuplicates(
   return names;
 }
 
+/**
+ * A table with every face named `from`, or one of its pieces `from#n`,
+ * renamed `to` (`to#n` where several are), and the edges and vertices named
+ * again after their faces: a several-face emboss's clip walls (ADR-0060's
+ * second amendment B3), which come out of their boolean as `…:new`.
+ */
+export function renameFaces(
+  names: TopoNames,
+  from: string,
+  to: string,
+  d: ShapeDescription,
+): TopoNames {
+  const renamed = (name: string) =>
+    name === from || (name.startsWith(`${from}#`) && /^\d+$/.test(name.slice(from.length + 1)));
+  return deriveNames(
+    names.faces.map((name) => (renamed(name) ? to : name)),
+    d,
+  );
+}
+
 export interface SweepNaming {
   /** Operation name in the IDs: `extrude`, `revolve`. */
   op: string;

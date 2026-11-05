@@ -224,8 +224,8 @@ export interface FeatureFaceRoles {
   coil: 'cap:start' | 'cap:end' | `side:${string}`;
   /** Thread: `cap:start`, `cap:end`, `side:<curve>`, `side:<piece>`. */
   thread: 'cap:start' | 'cap:end' | `side:${string}` | `side:${string}`;
-  /** Emboss: `cap:start`, `cap:end`, `side:<curve>`. */
-  emboss: 'cap:start' | 'cap:end' | `side:${string}`;
+  /** Emboss: `cap:start`, `cap:end`, `side:<curve>`, `clip:<n>`. */
+  emboss: 'cap:start' | 'cap:end' | `side:${string}` | `clip:${string}`;
   /** Rib: `cap:start`, `cap:end`, `side:<curve>`, `side:<line>:end0`, `side:<line>:end1`. */
   rib: 'cap:start' | 'cap:end' | `side:${string}` | `side:${string}:end0` | `side:${string}:end1`;
   /** Import: `face:<n>`, `mesh`. */
@@ -1231,14 +1231,16 @@ export interface FeatureMethods {
    * Emboss (create): one feature of the timeline.
    *
    * @param inputs.profiles The profiles and whole texts to emboss, all in one plane and parallel to the face.
-   * @param inputs.face The face to emboss on: the body that owns it is the only body touched.
+   * @param inputs.face The faces to emboss on, all of one body: each takes the part of the letters that lands on it. The body is the only one touched.
    * @param inputs.depth How far the letters stand out or go in; a length greater than 0.
    * @param inputs.mode Emboss joins material outwards, deboss cuts inwards. Default emboss.
+   * @param inputs.tangent Lay the profiles on the face first, as if sketched on its tangent plane straight in front of them: any sketch angle, the letters read the right way round from outside. Default false.
    *
    * The faces it makes, as `handle.face(role)` takes them:
    * - `cap:start` — The face the sweep starts at: the profile in its own place.
    * - `cap:end` — The face the sweep ends at.
    * - `side:<curve>` — A wall, one per edge of the profile: the sketch curve it came from, or the body edge it was swept from.
+   * - `clip:<n>` — A wall where the letters stop at the edge of the picked faces: n is the face's place in the Faces list.
    */
   emboss(inputs?: PlainInputs<EmbossInputs>, options?: FeatureOptions): FeatureHandle<'emboss'>;
   /**

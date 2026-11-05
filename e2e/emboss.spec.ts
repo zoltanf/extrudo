@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { primitive } from './benchmark-helpers';
+import { exportModel, objectsOf3mf, primitive, solidFacts, turnView } from './benchmark-helpers';
 import { clicker, kernelReady, mapping, openProject, pickTool, projector } from './helpers';
 
 // P4-04: Emboss and deboss (FR-FT-16, ADR-0060). A whole text from a sketch
@@ -26,6 +26,25 @@ test.beforeEach(async ({ page }) => {
 test.afterEach(() => {
   expect(errors).toEqual([]);
 });
+
+/** Hovers a world point until the view reports `hover`, then clicks it. */
+async function clickWhere(
+  page: Page,
+  at: At,
+  p: [number, number, number],
+  hover: RegExp,
+  dy: number,
+) {
+  const { x, y } = at(p);
+  let nudge = 0;
+  await expect
+    .poll(async () => {
+      await page.mouse.move(x, y + dy + (nudge++ % 2));
+      return attr(viewportOf(page), 'data-model-hover');
+    })
+    .toMatch(hover);
+  await page.mouse.click(x, y + dy + ((nudge - 1) % 2));
+}
 
 const attr = async (el: Locator, name: string) => (await el.getAttribute(name)) ?? '';
 const viewportOf = (page: Page) => page.getByRole('region', { name: 'Viewport' });
@@ -213,7 +232,7 @@ test('embosses a text on a flat face and presses it back in as a deboss', async 
   await expect(dialog.getByRole('button', { name: 'Profiles', exact: true })).toHaveText('1 text');
   // The box's top face, 40 mm below the letters.
   await clickFace(page, at, [0, 0, 10]);
-  await expect(dialog.getByRole('button', { name: 'Face', exact: true })).toHaveText('1 face');
+  await expect(dialog.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
   await dialog.getByRole('textbox', { name: 'Depth' }).fill('1 mm');
   await ok(page, dialog);
 
@@ -230,7 +249,7 @@ test('embosses a text on a flat face and presses it back in as a deboss', async 
   const edit = dialogOf(page, 'Edit Emboss1');
   await expect(edit).toBeVisible();
   await expect(edit.getByRole('button', { name: 'Profiles', exact: true })).toHaveText('1 text');
-  await expect(edit.getByRole('button', { name: 'Face', exact: true })).toHaveText('1 face');
+  await expect(edit.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
   await edit.getByRole('combobox', { name: 'Mode' }).selectOption('deboss');
   await ok(page, edit);
   const pressed = await bodies(page);
@@ -263,7 +282,7 @@ test('wraps a text round a cylinder wall, and presses it back in as a deboss', a
   // The wall the letters stand on: its own face, clear of them, and the one the
   // sketch plane looks at.
   await clickFace(page, at, [0, -10, 17]);
-  await expect(dialog.getByRole('button', { name: 'Face', exact: true })).toHaveText('1 face');
+  await expect(dialog.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
   await dialog.getByRole('textbox', { name: 'Depth' }).fill('1 mm');
   // The depth arrow stands on the wall among the letters, radially out of it.
   await expect(viewport.locator('[data-manipulators]')).toHaveAttribute(
@@ -337,7 +356,7 @@ test('wraps a text round a cone (a drafted cylinder), out and in', async ({ page
   // The cone's wall high up, clear of the letters: its radius there is 10 - 17 tan 10°.
   const r = 10 - 17 * Math.tan((10 * Math.PI) / 180);
   await clickFace(page, view, [0, -r * 0.99, 17]);
-  await expect(dialog.getByRole('button', { name: 'Face', exact: true })).toHaveText('1 face');
+  await expect(dialog.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
   await expect(method(dialog)).toHaveText('Wrapped round the cone', { timeout: 30_000 });
   await ok(page, dialog);
   const raised = await bodies(page);
@@ -419,7 +438,7 @@ test('projects a circle onto a sphere, out and in', async ({ page }) => {
   // The sphere where it looks at the home view's camera, clear of the disc.
   const s = 10 / Math.sqrt(3);
   await clickFace(page, at, [s, -s, s]);
-  await expect(dialog.getByRole('button', { name: 'Face', exact: true })).toHaveText('1 face');
+  await expect(dialog.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
   await expect(method(dialog)).toHaveText('Projected onto the face', { timeout: 30_000 });
   await ok(page, dialog);
   // The disc stands 1 mm off the top of the sphere.
@@ -440,4 +459,232 @@ test('projects a circle onto a sphere, out and in', async ({ page }) => {
   // Ø6 hole, √(10² − 3²) above the centre.
   expect(Math.abs((pressed[0]?.size[2] ?? 0) - (10 + Math.sqrt(91)))).toBeLessThan(0.15);
   expect(pressed[0]?.faces).toBeGreaterThan(1);
+});
+
+// P4-12 (ADR-0060's second amendment): a cone takes a sketch on a plane parallel
+// to one of its tangent planes, Tangent to the face lays a sketch at any angle on
+// a face, and the Faces field takes several faces of one body.
+const tangent = (dialog: Locator) =>
+  dialog.getByRole('checkbox', { name: 'Tangent to the face', exact: true });
+
+/** The volume of the one body, from a 3MF export. */
+async function volumeOf(page: Page): Promise<number> {
+  const objects = objectsOf3mf(await exportModel(page, '3MF'));
+  expect(objects).toHaveLength(1);
+  return solidFacts((objects[0] as (typeof objects)[number]).mesh).volume;
+}
+
+/** A construction feature's origin and normal, from the view's `data-construction`. */
+async function planeOf(viewport: Locator, name: string): Promise<{ o: number[]; n: number[] }> {
+  const entry = (await attr(viewport, 'data-construction'))
+    .split(' ')
+    .find((e) => e.startsWith(`${name}:plane:`));
+  if (!entry) throw new Error(`no ${name} in data-construction`);
+  const [, , o, n] = entry.split(':');
+  return { o: (o ?? '').split(',').map(Number), n: (n ?? '').split(',').map(Number) };
+}
+
+/** Starts a sketch on the (only) Offset Plane1 and waits for its frame. */
+async function sketchOnOffsetPlane(page: Page, viewport: Locator, frame: RegExp) {
+  await pickTool(page, 'Create Sketch');
+  await page
+    .getByRole('region', { name: 'Create Sketch' })
+    .getByRole('group', { name: 'Construction planes' })
+    .getByRole('button', { name: 'Offset Plane1' })
+    .click();
+  await expect(viewport).toHaveAttribute('data-sketch-frames', frame, { timeout: 15_000 });
+}
+
+test("wraps a text round a cone from a sketch on a tangent plane's offset", async ({ page }) => {
+  const viewport = await openProject(page);
+  await kernelReady(page);
+  await primitive(page, 'Cylinder', {});
+  const at = await settledProjector(viewport);
+  const half = Number(await viewport.getAttribute('data-camera-size')) * 0.16;
+
+  // The drafted cylinder, as in the cone test.
+  await pickTool(page, 'Draft');
+  const draft = dialogOf(page, 'Draft');
+  await expect(draft).toBeVisible();
+  await clickFace(page, at, [0, -10, 10]);
+  await draft.getByRole('button', { name: 'Plane', exact: true }).click();
+  await clickAt(page, at, [half * 0.75, -half * 0.75, 0]);
+  await expect(draft.getByRole('button', { name: 'Plane', exact: true })).toHaveText('XY plane');
+  await draft.getByRole('textbox', { name: 'Angle', exact: true }).fill('10 deg');
+  await ok(page, draft);
+
+  // A Tangent Plane on the wall, where the sketch should face.
+  const t10 = Math.tan((10 * Math.PI) / 180);
+  await pickTool(page, 'Tangent Plane');
+  const tangentPlane = dialogOf(page, 'Tangent Plane');
+  await expect(tangentPlane).toBeVisible();
+  await clickFace(page, at, [0, -(10 - 10 * t10) * 0.99, 10]);
+  await ok(page, tangentPlane);
+  const tp = await planeOf(viewport, 'Tangent_Plane1');
+
+  // An Offset Plane 5 mm out from it, picked by its square beside the touching line.
+  await pickTool(page, 'Offset Plane');
+  const offset = dialogOf(page, 'Offset Plane');
+  await expect(offset).toBeVisible();
+  const view = await settledProjector(viewport);
+  const [tx = 0, ty = 0, tz = 0] = tp.o;
+  await clickAt(page, view, [tx + 6, ty, tz]);
+  await expect(offset.getByRole('button', { name: 'Plane', exact: true })).toHaveText(
+    /Tangent_Plane1|Tangent Plane1/,
+  );
+  await offset.getByRole('textbox', { name: 'Distance' }).fill('5 mm');
+  await ok(page, offset);
+  const op = await planeOf(viewport, 'Offset_Plane1');
+
+  // "AB" on it, at the plane's origin.
+  // 5 mm out from the tangent plane: its origin is (0, -14.6, 2.6), normal tilted 10° up.
+  await sketchOnOffsetPlane(page, viewport, /:0,-14\.\d+,2\.\d+:0,-0\.98\d*,0\.17\d*$/);
+  const click = clicker(page, await mapping(viewport));
+  await page.keyboard.press('Shift+T');
+  await expect(page.getByRole('status', { name: 'Tool prompt' })).toBeVisible();
+  await click(0, 0);
+  await expect(textPanel(page)).toBeVisible();
+  await textPanel(page).getByRole('textbox', { name: 'Text' }).fill('AB');
+  await textPanel(page).getByRole('textbox', { name: 'Height' }).fill('5 mm');
+  await textPanel(page).getByRole('button', { name: 'OK' }).click();
+  await expect(textPanel(page)).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await expect(chip(page, 'Sketch1')).toBeVisible();
+  await kernelReady(page);
+
+  // A letter: the sketch's x is world X, its y runs up the plane.
+  const clear = await settledProjector(viewport);
+  const o = op.o as [number, number, number];
+  await pickText(page, viewport, clear, ([u, v]) => [
+    o[0] + u,
+    o[1] + v * (op.n[2] ?? 0),
+    o[2] - v * (op.n[1] ?? 0),
+  ]);
+  const plain = (await bodies(page))[0]?.faces ?? 0;
+
+  await pickTool(page, 'Emboss');
+  const dialog = dialogOf(page, 'Emboss');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Profiles', exact: true })).toHaveText('1 text');
+  const r = 10 - 17 * t10;
+  await clickFace(page, clear, [0, -r * 0.99, 17]);
+  await expect(dialog.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
+  await expect(tangent(dialog)).not.toBeChecked();
+  await expect(method(dialog)).toHaveText('Wrapped round the cone', { timeout: 30_000 });
+  await ok(page, dialog);
+  const raised = await bodies(page);
+  expect(raised).toHaveLength(1);
+  expect(raised[0]?.faces).toBeGreaterThan(plain);
+});
+
+test('lays a rectangle on a chamfer with Tangent to the face', async ({ page }) => {
+  const viewport = await openProject(page);
+  await kernelReady(page);
+  await primitive(page, 'Box', {});
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:20,20,20');
+
+  // The top front edge chamfered 6 mm: a 20 × 8.5 mm slope.
+  let at = await settledProjector(viewport);
+  await clickWhere(page, at, [0, -10, 20], /^edge:/, 2);
+  await pickTool(page, 'Chamfer');
+  const chamfer = dialogOf(page, 'Chamfer');
+  await expect(chamfer.getByRole('button', { name: 'Edges', exact: true })).toHaveText('1 edge');
+  await chamfer.getByRole('textbox', { name: 'Distance', exact: true }).fill('6 mm');
+  await ok(page, chamfer);
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:7:20,20,20');
+  const before = await volumeOf(page);
+
+  // A 10 × 3 mm rectangle 40 mm above the box, over the middle of the slope. The
+  // sketch view is a perspective one, so the corners are clicked through the
+  // projector (the plane's own scale), not the target plane's mapping.
+  await offsetPlane(page, 'XY', '40 mm', viewport);
+  await sketchOnOffsetPlane(page, viewport, /:0,0,40:0,0,1$/);
+  // Zoomed out so a plane 40 mm up (nearer the camera) still fits.
+  const box = await viewport.boundingBox();
+  await page.mouse.move(
+    (box?.x ?? 0) + (box?.width ?? 0) / 2,
+    (box?.y ?? 0) + (box?.height ?? 0) / 2,
+  );
+  await page.mouse.wheel(0, 600);
+  const sk = await settledProjector(viewport);
+  await page.keyboard.press('r');
+  // The first corner, then the size typed: the clicks' scale is the plane's own.
+  await clickAt(page, sk, [-5, -9, 40]);
+  const far = sk([5, -6, 40]);
+  await page.mouse.move(far.x, far.y);
+  const headsUp = page.getByRole('group', { name: 'Heads-up input' });
+  await expect(headsUp).toBeVisible();
+  await headsUp.getByRole('textbox', { name: 'Width' }).fill('10 mm');
+  await headsUp.getByRole('textbox', { name: 'Height' }).fill('3 mm');
+  await headsUp.getByRole('textbox', { name: 'Height' }).press('Enter');
+  await page.keyboard.press('Escape');
+  await expect(viewport).toHaveAttribute('data-sketch-profiles', 'profiles=1 holes=0');
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await expect(chip(page, 'Sketch1')).toBeVisible();
+  await kernelReady(page);
+  at = await turnView(page, 'Shift+1');
+  await clickWhere(page, at, [0, -7.5, 40], /^profile:/, 0);
+
+  await pickTool(page, 'Emboss');
+  const dialog = dialogOf(page, 'Emboss');
+  await expect(dialog).toBeVisible();
+  // The slope, clear of the rectangle's shadow: near its top end.
+  await clickFace(page, at, [-8, -5, 19]);
+  await expect(dialog.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
+  await dialog.getByRole('textbox', { name: 'Depth' }).fill('1 mm');
+  // Not tangent: a sketch parallel to the flat floor, not to the slope, is refused.
+  await expect(dialog).toHaveAttribute('data-preview-status', 'error', { timeout: 30_000 });
+  await expect(dialog.getByRole('button', { name: 'OK' })).toBeDisabled();
+
+  await tangent(dialog).check();
+  await expect(dialog).toHaveAttribute('data-preview-status', /^(ok|warning)$/, {
+    timeout: 30_000,
+  });
+  await ok(page, dialog);
+  // The body's meshes follow the recompute.
+  await expect
+    .poll(async () => (await bodies(page))[0]?.faces, { timeout: 30_000 })
+    .toBeGreaterThan(7);
+  expect(await bodies(page)).toHaveLength(1);
+  const after = await volumeOf(page);
+  expect(Math.abs((after - before - 30) / (before + 30))).toBeLessThan(1e-6);
+});
+
+test('takes the flat face and the fillet beside it, across their seam', async ({ page }) => {
+  const viewport = await openProject(page);
+  await kernelReady(page);
+  await primitive(page, 'Box', {});
+
+  // One vertical edge rounded, R 5: the front face runs on into the fillet at x = 5.
+  let at = await settledProjector(viewport);
+  await clickWhere(page, at, [10, -10, 10], /^edge:/, 2);
+  await pickTool(page, 'Fillet');
+  const fillet = dialogOf(page, 'Fillet');
+  await expect(fillet.getByRole('button', { name: 'Edges', exact: true })).toHaveText(/edge/);
+  await fillet.getByRole('textbox', { name: 'Radius', exact: true }).fill('5 mm');
+  await ok(page, fillet);
+  const before = await volumeOf(page);
+
+  // "AB" on a plane 30 mm in front, over the seam.
+  await offsetPlane(page, 'XZ', '30 mm', viewport);
+  await sketchText(page, viewport, /:0,-30,0:0,-1,0$/, 'AB', [3, 10], '5 mm');
+  at = await settledProjector(viewport);
+  await pickText(page, viewport, at, ([u, v]) => [u, -30, v]);
+
+  await pickTool(page, 'Emboss');
+  const dialog = dialogOf(page, 'Emboss');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Profiles', exact: true })).toHaveText('1 text');
+  await clickFace(page, at, [-5, -10, 17]);
+  await expect(dialog.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
+  const s = 5 / Math.SQRT2;
+  await clickFace(page, at, [5 + s, -5 - s, 17]);
+  await expect(dialog.getByRole('button', { name: 'Faces', exact: true })).toHaveText('2 faces');
+  await expect(method(dialog)).toHaveText('Moved onto the face, wrapped round the cylinder', {
+    timeout: 30_000,
+  });
+  await ok(page, dialog);
+  expect(await bodies(page)).toHaveLength(1);
+  expect(await volumeOf(page)).toBeGreaterThan(before);
 });
