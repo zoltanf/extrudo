@@ -297,3 +297,71 @@ after the person's own planes; everything here (clipping, caps, picking,
 the thickness mark) takes it unchanged. With it on, the person's own
 sections keep clipping in sketch mode too, where before a sketch was drawn
 without the section; with it off, that is unchanged.
+
+## Amendment (2026-11-06, P4-12): a named view keeps its section
+
+**Context.** §Rejected kept the section out of the document because a saved
+section would make every file open half-cut, and left "saved analyses with
+named views" as an optional key for later. Named views exist since ADR-0008's
+amendment of 2026-10-10, and restoring a view is something the person asks
+for, so a section stored on a view never cuts a file on opening.
+
+**Decision.**
+
+1. **The section is stored on the view.** `NamedView.section` is optional:
+   `{ kind: 'planes', planes }` with 1 to `MAX_SECTION_PLANES` (3) planes,
+   each `{ plane, offset, flip, on }` (a `GeomRef`, an expression in the
+   document's length unit, two booleans), or `{ kind: 'box', center, half,
+   on }` (two triples of expressions and a boolean). These are exactly the
+   view state's `SectionState` and `SectionBoxState`: core owns the schema
+   (`ViewSectionSchema` in `schema.ts`) and the limit, and the web app's
+   `MAX_SECTIONS` and its two state types are core's. Absent means the view
+   has no section. No version bump or migration (an optional key); an older
+   reader drops it (ADR-0050's lenient reading) and restores the camera only.
+2. **Saving takes what is on screen.** `saveView` and `updateView` take a
+   `section`. The app passes the viewport's section when at least one plane
+   row, or the box, is shown (`on`), with every row as it is, hidden rows
+   included, so restoring brings the panel back as it was; with nothing
+   shown it passes none. "Update to Current View" with no section shown
+   removes the view's section (`updateView`'s `section: null`); a rename
+   leaves it alone. There is no control for it: to save a view without the
+   cut, hide the section first. The sketch palette's Slice (a display
+   setting, the amendment of 2026-10-07) is never saved.
+3. **Restoring.** A view with a section replaces the section on screen with
+   its own (planes or box) and moves the camera; a view without one moves
+   only the camera and leaves the section on screen alone, as before. Both
+   stay view state, never a command. The Section Analysis panel isn't
+   opened; the browser's Analysis folder shows the section as it shows any.
+4. **References and expressions.** A view's plane is a `GeomRef` like a
+   feature's (an origin plane, a construction plane's feature ID, or a flat
+   face as a persistent reference), resolved by `sectionFrame` like a live
+   section's. Nothing checks it or is refused because of it: a deleted
+   construction plane or a lost face leaves the plane unresolved, and
+   restoring shows the panel's `lost` state. A parameter rename rewrites the
+   views' offsets and box expressions too (`updateParameter`, as it does
+   joint limits); deleting a parameter a view uses isn't refused, and the
+   restored offset shows its expression error.
+5. **The lists say which views keep a section.** The browser's view row and
+   the nav bar's Named views entry show the Section Analysis icon after the
+   name (title "Restores its section too"); the browser row adds a muted
+   "1 plane", "2 planes", "3 planes" or "box" on the right. Test hook:
+   `data-view-section` (`planes:<n>` or `box`) on the browser row and the
+   menu entry.
+6. **Unchanged:** opening a design restores no view, so it still opens
+   uncut; Render Picture with a named view uses its camera only (ADR-0101);
+   views stay out of the document API and the CLI.
+
+**Rejected.**
+
+- **A "Keep the section" checkbox in the Save prompt.** One more control
+  for a rare case; hiding the section before saving does the same.
+- **Clearing the section when a view without one is restored.** Sections
+  have no undo, and every view saved before this amendment would start
+  removing them.
+- **A separate list of saved analyses that views point to.** Two lists for
+  one idea; a view is the only place a saved section is wanted.
+- **Storing the resolved plane (a point and a normal in mm).** The saved cut
+  would stop following the model and its parameters, unlike a live section.
+
+**Open items** above: "saving a section with a named view" is done by this
+amendment.

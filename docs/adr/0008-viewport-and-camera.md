@@ -249,6 +249,10 @@ placeholders; nothing wrote to it. Now it works:
 - **Not here:** thumbnails per view, saving section or display settings with
   a view, and keyboard slots for views stay out (the owner's request was
   save/restore/rename/delete).
+- **Addendum, 2026-11-06:** a view may also keep the section on screen when it
+  is saved, and restoring it brings the section back (ADR-0045's amendment of
+  that day, `NamedView.section`). Display settings, thumbnails and keyboard
+  slots stay out.
 
 ## Amendment, 2026-10-11: presets renamed, Shift swaps, the menu moves
 
