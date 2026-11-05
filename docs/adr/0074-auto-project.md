@@ -475,3 +475,41 @@ app menu, unchanged.
   locks it with the hint, undone it switches off and the curves go; the
   preference test sets it from the app menu), `e2e/topbar.spec.ts` (disabled
   on a plane sketch).
+
+## Amendment, 2026-11-04: an edit that only waits for a projection gets its own step
+
+Found from a screen recording: in a sketch with a rectangle and dimensions to an
+earlier sketch's curves, one undo (labelled "Draw") took the rectangle and every
+dimension with it.
+
+A constraint or dimension tool commit whose picks are all on curves not projected
+yet adds nothing to the sketch at commit time: the constraint or dimension waits in
+a `PendingModelEdit`. The `addToSketch` it dispatches is then empty, and
+`UndoHistory.record` keeps no empty step, so the `lastStepId()` read after the
+dispatch was the user's *previous* step. The projection record was amended into it
+and the pending pinned to it, so the dimension became part of whatever the user did
+before (the rectangle's "Draw"). The same happened to a first pick on a datum axis
+(ADR-0093), which also projects.
+
+`ToolHost.commit` now reads `lastStepId()` before and after its dispatch. When the
+dispatch made no step, the first `addProjection` (or `reviveProjectionCurve`) is
+dispatched under the edit's label instead of amended, and that is the step the
+pendings pin to. When there is nothing to record either (the projection record is
+in, its curve not reported yet), the pendings carry the edit's label and no step,
+and `writePending` dispatches them as a step of their own when they land.
+
+### Rejected
+
+- **Recording empty steps in `UndoHistory`**: an undo that changes nothing on
+  screen, and every other caller relies on empty changes leaving no step.
+- **Writing the dimension at once on a stand-in entity**: the stand-in is
+  measured but not stored (P6-07 slice 2); storing it would need a second
+  rewrite to the projected curve.
+
+### Results
+
+- Unit tests: `apps/web/src/sketch/tools/host.test.ts`: the Coincident,
+  Parallel and Distance on body geometry and the dimension to the Y axis now
+  check that one undo leaves what was drawn before (they failed before the
+  fix), and a new test lands an edit on a projection not reported yet as its
+  own step.

@@ -252,7 +252,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   sketches" switch off the same click is a plain grid snap with no projection.
   The faint preview (ADR-0125 amendment 1): `data-carried-curves` (a segment
   count) is set only while a drawing tool runs with the switch on; absent with
-  the selection tool or the switch off.
+  the selection tool or the switch off. **The undo step (ADR-0074's 2026-11-04
+  amendment)**: Sketch1's Ctrl-held line at y = 30, Sketch2 (10 mm above) its
+  own line at y = 0; the Dimension tool picks the **dashed line first** (10,30)
+  (after a sketch line, a model curve is left for the label), then (10,0), then
+  places at (25,15); `dimensions=1` and `lines=2` (with the projected one) once
+  the recompute lands; Enter keeps the value; one Ctrl+Z leaves `lines=1`.
   **Face centre (issue #140)**: a Box with `X: '10 mm'` (so the top face's
   centre, sketch (10,0), is away from the sketch origin and its projection
   reads distinctly);

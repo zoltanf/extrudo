@@ -506,10 +506,17 @@ describe('constraint and dimension tools pick body geometry (P6-07 slice 2)', ()
     expect(Object.values(t.data().constraints)).toEqual([
       { type: 'coincident', a: 'p', b: projected },
     ]);
-    // One undo takes the constraint and the projection away together.
+    // One undo takes the constraint and the projection away together, and
+    // only them: the click changed nothing until the report, yet it has its
+    // own step, so the point drawn before stays.
     t.store.getState().undo();
     expect(t.data().constraints).toEqual({});
     expect(t.data().projections ?? {}).toEqual({});
+    expect(t.data().entities['p' as SketchEntityId]).toBeDefined();
+    t.store.getState().redo();
+    expect(Object.values(t.data().constraints)).toEqual([
+      { type: 'coincident', a: 'p', b: projected },
+    ]);
   });
 
   it('picks an already-projected vertex as an ordinary sketch entity', async () => {
@@ -545,6 +552,7 @@ describe('constraint and dimension tools pick body geometry (P6-07 slice 2)', ()
     t.store.getState().undo();
     expect(t.data().constraints).toEqual({});
     expect(t.data().projections ?? {}).toEqual({});
+    expect(t.byType('line')).toHaveLength(1);
   });
 
   it('measures a Distance from a sketch point to a body vertex', async () => {
@@ -570,9 +578,31 @@ describe('constraint and dimension tools pick body geometry (P6-07 slice 2)', ()
     t.store.getState().undo();
     expect(t.data().dimensions).toEqual({});
     expect(t.data().projections ?? {}).toEqual({});
+    expect(t.data().entities['p' as SketchEntityId]).toBeDefined();
   });
 
-  it('logs the clicks, the picks and a commit that added nothing (ADR-0127)', async () => {
+  it('lands an edit on a projection not reported yet as its own step', async () => {
+    const t = await setup({ tool: 'coincident' });
+    // The record is in, its curve not reported yet: the click adds nothing, not even a record.
+    t.store
+      .getState()
+      .dispatch(addProjection({ feature: t.id, id: 'proj' as ProjectionId, ref: vertexRef }));
+    drawPoint(t, 'p', 0, 0);
+    t.host.click(at(0, 0));
+    t.host.click({ ...at(5, 0.1), model: vertex });
+    expect(Object.values(t.data().constraints)).toHaveLength(0);
+    t.host.syncProjections({ [t.id]: vertexReport('proj') });
+    const projected = t.data().projections?.['proj' as ProjectionId]?.curves.vertex;
+    expect(Object.values(t.data().constraints)).toEqual([
+      { type: 'coincident', a: 'p', b: projected },
+    ]);
+    // One undo takes the constraint alone.
+    t.store.getState().undo();
+    expect(t.data().constraints).toEqual({});
+    expect(t.data().entities['p' as SketchEntityId]).toBeDefined();
+  });
+
+  it('logs the clicks, the picks and where a waiting commit lands (ADR-0127)', async () => {
     actionLog.clear();
     const t = await setup({ tool: 'dimension' });
     drawPoint(t, 'p', 0, 0);
@@ -587,8 +617,9 @@ describe('constraint and dimension tools pick body geometry (P6-07 slice 2)', ()
       'info pick: Click (dimension): sketch point',
       'info pick: Click (dimension): model vertex (not projected)',
       'info pick: Click (dimension): nothing picked',
+      // PR #199: the projection is the commit's own step, not the point's.
       expect.stringMatching(
-        /^warn sketch: Commit \(dimension\) added nothing to the sketch; 1 waiting on a projection and 1 new projection\(s\) join step \d+$/,
+        /^info sketch: Commit \(dimension\): 1 waiting on a projection, for step \d+$/,
       ),
       expect.stringMatching(
         /^warn sketch: Pending 1 dimension \(distance\) dropped: step \d+ is gone$/,
@@ -782,6 +813,13 @@ describe('constraint and dimension tools pick the origin and axes (ADR-0093)', (
     expect(Object.values(t.data().dimensions)).toEqual([
       expect.objectContaining({ type: 'distance', a: 'a', b: axis, expr: '20' }),
     ]);
+    // The dimension has its own undo step: an undo leaves the line drawn before.
+    t.store.getState().undo();
+    expect(t.data().dimensions).toEqual({});
+    expect(t.data().projections ?? {}).toEqual({});
+    expect(t.data().entities['a' as SketchEntityId]).toBeDefined();
+    t.store.getState().redo();
+    expect(Object.values(t.data().dimensions)).toHaveLength(1);
     // At the origin the projected axis gives way to the origin point.
     t.host.click(at(20, 10.1)); // the line's top end
     t.host.click(at(0.1, 0.1));

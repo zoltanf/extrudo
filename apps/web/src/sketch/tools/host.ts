@@ -374,6 +374,8 @@ interface PendingModelConstraint {
   kind: ModelSnapKind;
   /** The undo step that added the projection (P6-07): its constraint joins it there. */
   step?: number;
+  /** With no `step` (the commit changed nothing yet): the constraint lands as its own step, named so. */
+  label?: string;
 }
 
 /**
@@ -394,6 +396,8 @@ interface PendingModelEdit {
   cursor?: Vec2;
   /** The undo step that added the projections (P6-07): the edit joins it there. */
   step?: number;
+  /** With no `step` (the commit changed nothing yet): the edit lands as its own step, named so. */
+  label?: string;
 }
 
 export function createToolHost(options: ToolHostOptions): ToolHost {
@@ -955,30 +959,18 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       edit.replace !== undefined ||
       edit.remove !== undefined ||
       edit.exprs !== undefined;
-    const stepBefore = store.getState().lastStepId();
-    const added = dispatch(
-      modifies
-        ? modifySketch({
-            ...addition,
-            label: edit.label ?? 'Edit sketch',
-            update,
-            ...(edit.replace ? { replace: edit.replace } : {}),
-            ...(edit.remove ? { remove: edit.remove } : {}),
-            ...(edit.exprs ? { exprs: edit.exprs } : {}),
-          })
-        : addToSketch(addition),
-    );
-    if (added && store.getState().lastStepId() === stepBefore) {
-      // A silent no-op (ADR-0127): what follows the commit joins an older step.
-      const waits = pickBindings.length + deferredModels.length;
-      actionLog.warn(
-        'sketch',
-        `Commit (${state.getState().tool?.id ?? 'no tool'}) added nothing to the sketch` +
-          (waits > 0 || newProjections.length > 0
-            ? `; ${waits} waiting on a projection and ${newProjections.length} new projection(s) join step ${stepBefore ?? 'none'}`
-            : ''),
-      );
-    }
+    const command = modifies
+      ? modifySketch({
+          ...addition,
+          label: edit.label ?? 'Edit sketch',
+          update,
+          ...(edit.replace ? { replace: edit.replace } : {}),
+          ...(edit.remove ? { remove: edit.remove } : {}),
+          ...(edit.exprs ? { exprs: edit.exprs } : {}),
+        })
+      : addToSketch(addition);
+    const before = store.getState().lastStepId();
+    const added = dispatch(command);
     if (added) {
       state.setState({
         editing:
@@ -986,12 +978,26 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       });
       // The step that added the geometry: the projection records, the revived
       // records and the pending constraints follow from it, not from whatever
-      // step the user makes next (P6-07).
-      const step = store.getState().lastStepId();
+      // step the user makes next (P6-07). An edit whose additions all wait for
+      // the kernel (a dimension to a curve not projected yet) changed nothing,
+      // and the history keeps no empty step: its first record makes the step,
+      // under the edit's name, rather than joining the user's previous one.
+      const own = () => {
+        const id = store.getState().lastStepId();
+        return id === before ? undefined : id;
+      };
+      let step = own();
+      const record = (change: Command<unknown>) => {
+        if (step !== undefined) store.getState().amend(change);
+        else {
+          store.getState().dispatch({ ...change, label: command.label });
+          step = own();
+        }
+      };
       // The projection records join the step that added the geometry (P6-07).
       for (const entry of newProjections) {
         try {
-          store.getState().amend(
+          record(
             addProjection({
               feature: sketch.id,
               id: entry.id,
@@ -1006,15 +1012,16 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       }
       for (const entry of revived) {
         try {
-          store
-            .getState()
-            .amend(reviveProjectionCurve({ feature: sketch.id, id: entry.id, key: entry.key }));
+          record(reviveProjectionCurve({ feature: sketch.id, id: entry.id, key: entry.key }));
         } catch (error) {
           if (!(error instanceof CommandError)) throw error;
           console.warn('[sketch] could not revive an auto-projected curve:', error);
         }
       }
-      pendingModels.push(...deferredModels.map((pending) => ({ ...pending, step })));
+      // Still no step (the projections are in, their curves not reported yet):
+      // the pendings land as a step of their own.
+      const at = step !== undefined ? { step } : { label: command.label };
+      pendingModels.push(...deferredModels.map((pending) => ({ ...pending, ...at })));
       if (pickBindings.length > 0) {
         pendingEdits.push({
           feature: sketch.id,
@@ -1023,8 +1030,22 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
           dimensions: pendingDimensions,
           editDimension: edit.editDimension,
           cursor: edit.cursor,
-          step,
+          ...at,
         });
+      }
+      // ADR-0127: a commit that made no step of its own is a silent no-op unless
+      // something waits on the kernel; then say which step it will land in.
+      const tool = state.getState().tool?.id ?? 'no tool';
+      const waits = pickBindings.length + deferredModels.length;
+      if (own() === undefined && waits === 0 && newProjections.length + revived.length === 0) {
+        actionLog.warn('sketch', `Commit (${tool}) added nothing to the sketch`);
+      } else if (waits > 0) {
+        actionLog.info(
+          'sketch',
+          `Commit (${tool}): ${waits} waiting on a projection, for ${
+            step !== undefined ? `step ${step}` : 'a step of its own'
+          }`,
+        );
       }
     }
   };
@@ -1266,13 +1287,14 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
    * makes nonsense) is caught too, so it never leaves `syncProjections`.
    */
   const writePending = (
-    step: number | undefined,
+    { step, label }: { step?: number; label?: string },
     command: Command<unknown>,
     what: string,
   ): boolean => {
     try {
       if (step === undefined) {
-        store.getState().amend(command);
+        if (label !== undefined) store.getState().dispatch({ ...command, label });
+        else store.getState().amend(command);
         return true;
       }
       const written = store.getState().amendInto(step, command);
@@ -1336,7 +1358,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
           continue;
         }
         writePending(
-          pending.step,
+          pending,
           addToSketch({ feature, constraints: { [cid]: constraint } }),
           `${pending.kind} constraint`,
         );
@@ -1486,7 +1508,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
 
     if (Object.keys(constraints).length === 0 && Object.keys(dimensions).length === 0) return;
     const written = writePending(
-      pending.step,
+      pending,
       addToSketch({ feature, constraints, dimensions }),
       pendingText(pending),
     );

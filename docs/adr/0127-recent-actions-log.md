@@ -63,8 +63,10 @@ dimension", "Tool: none"), with "Design opened: N features" and "Design closed".
   `model sketchCurve (not projected)`, `model point`, `model axis`), or "nothing picked".
   Hover picks are not logged (the collector is set only inside `click`).
 - **Warnings** (kind `sketch`), the clear silent no-ops:
-  - a tool commit that adds nothing to the sketch (no new step), with how many picks wait
-    on a projection and which older step the new projections join (PR #199's case);
+  - a tool commit that made no step and leaves nothing waiting on the kernel. A commit
+    whose picks wait on a projection gets an info line instead, with the step they will
+    land in (since PR #199 the commit's first projection is its own step, or the pendings
+    make one: "Commit (dimension): 1 waiting on a projection, for step 14");
   - a pending constraint or dimension dropped: in `writePending` (its step is gone, or the
     write threw: the error's name only), by `syncProjections` (its step was undone, its
     sketch is gone) and when its projection is missing, lost or deleted;
