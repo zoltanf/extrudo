@@ -30,8 +30,8 @@ Copies around a center. Type the count and the angle.
 4. To set the pattern by numbers, type while the copies follow the pointer:
    a digit goes into the **Count** box beside the pointer, `Tab` moves to
    **Angle**.
-5. Click the center to place the copies. `Enter` does not place a circular
-   pattern. The pattern is one undo step, named Circular pattern. The tool is
+5. Click the center, or press `Enter` with the pointer on it, to place the
+   copies. The pattern is one undo step, named Circular pattern. The tool is
    back at the picking step with nothing picked.
 6. `Esc` steps back a stage: from the copies to the picking step (the picks
    stay), then it drops the picks, then it ends the tool. `Esc` inside a box

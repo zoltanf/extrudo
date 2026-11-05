@@ -7,7 +7,7 @@ order: 114
 
 # Smooth
 
-Join curves with no jump in curvature (G2).
+Join two curves without a corner, as Tangent does.
 
 | Where | Shortcut |
 |---|---|
@@ -54,7 +54,7 @@ Join curves with no jump in curvature (G2).
 ## Messages
 
 - "Pick a line, circle or arc.": the prompt.
-- "Pick a curve to make smooth (G2) with it.": the prompt after the first
+- "Pick a curve to make smooth with it.": the prompt after the first
   curve.
 - "Pick a straight edge, or project the edge first (P).": with
   Auto-project on, you clicked a curved body edge. Project it with `P`,

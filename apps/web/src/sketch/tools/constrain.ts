@@ -142,10 +142,9 @@ function axis(type: 'horizontal' | 'vertical'): Rule {
 
 /** Tangent or smooth: two lines, circles or arcs, not two lines. */
 function joint(type: 'tangent' | 'smooth'): Rule {
-  const word = type === 'tangent' ? 'tangent' : 'smooth (G2)';
   return {
     prompt: (p) =>
-      p.length === 0 ? 'Pick a line, circle or arc.' : `Pick a curve to make ${word} with it.`,
+      p.length === 0 ? 'Pick a line, circle or arc.' : `Pick a curve to make ${type} with it.`,
     accepts: (p, next) => smoothCurve(next) && !(p[0] && line(p[0].entity) && line(next)),
     make: ([a, b], context) => {
       if (!a || !b) return undefined;

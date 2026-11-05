@@ -86,7 +86,8 @@ export class CornerTool implements SketchTool {
         this.#first = { id: hit, at: pointer.cursor };
         return undefined;
       }
-      return { ...emptyEdit(), error: 'Those two lines make no corner to round.' };
+      const verb = this.mode === 'fillet' ? 'round' : 'cut';
+      return { ...emptyEdit(), error: `Those two lines make no corner to ${verb}.` };
     }
     this.#first = undefined;
     this.#corner = undefined;

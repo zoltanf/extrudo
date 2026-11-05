@@ -188,11 +188,11 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 - [Midpoint](./midpoint.md) — Put a point at the middle of a line or an arc.
 - [Fix/Unfix](./fix.md) — Lock something in place, or free it again.
 - [Parallel](./parallel.md) — Make lines parallel.
-- [Perpendicular](./perpendicular.md) — Make two lines meet at a right angle.
+- [Perpendicular](./perpendicular.md) — Set two lines at a right angle to each other.
 - [Horizontal](./horizontal.md) — Make a line horizontal, or line up two points.
 - [Vertical](./vertical.md) — Make a line vertical, or line up two points.
 - [Tangent](./tangent.md) — Make a curve touch another without a corner.
-- [Smooth](./smooth.md) — Join curves with no jump in curvature (G2).
+- [Smooth](./smooth.md) — Join two curves without a corner, as Tangent does.
 - [Equal](./equal.md) — Give lines the same length, or circles the same radius.
 - [Symmetric](./symmetric.md) — Mirror two things about a line.
 
