@@ -372,3 +372,187 @@ and the past-a-turn message replaces the half-way one, also in `wrap.test.ts`).
 - An inward offset of a free-form face where the face curves tighter than the
   depth folds the offset surface; the simple offset doesn't refuse it and the
   result's validity check is what catches it.
+
+## Second amendment (2026-11-04, P4-12): tangent to the face; several faces
+
+The first two items of A5 (branch `claude/emboss-tangent-multiface`; the plan,
+with the spike's numbers and the owner's five decisions:
+`docs/plans/emboss-tangent-multiface-2026-11-04.md`). Built in slices; B5 is
+filled in as they land.
+
+### B1. Cone tangent planes
+
+A sketch on a plane parallel to a cone's axis **or to one of its tangent
+planes** (the plane's normal at 90° ± α to the axis, α the half-angle, within
+1e-6) is wrapped. The second kind is first turned about the line through the
+profiles' area centroid along `across` until it runs along the axis: a rigid
+turn in TypeScript, then A1's map unchanged. So Construct › Tangent Plane →
+Sketch → Emboss works on a cone as on a cylinder. Any other plane is still
+refused: "Sketch on a plane parallel to the cone's axis, or to one of its
+tangent planes, to emboss on a round face." In the spike a 10 × 4 rectangle on
+the 20° cone's tangent plane, turned back, wraps to 40.939692662991646,
+identical to the same rectangle on the axis-parallel plane.
+
+### B2. Tangent to the face
+
+A new input `tangent` (boolean, default off). With it on, the profiles are
+first laid on the face; then the face's method runs as today.
+
+1. **Anchor**: the line through the profiles' area centroid along the sketch's
+   normal, met with the face (facade `faceHit`): the hit nearest the centroid,
+   either way along the line, a tie going to the side the normal points to.
+   Distance doesn't matter. No hit: "Tangent to the face needs the face in
+   front of the profiles: the line through their centre along the sketch's
+   normal misses it."
+2. **Fold**: about the centroid, the smallest turn that takes the sketch's normal to
+   the face's outward normal at the anchor, then a move of the centroid onto the
+   anchor. A sketch facing away from the face (the two normals more than 90° apart)
+   first turns over about its own up direction (its frame's y), so up stays up and a
+   sketch straight under a face doesn't land upside down at a slight tilt.
+3. **Method** from the laid profiles: moved (flat), wrapped (cylinder; a cone
+   through B1), or projected along the face's normal at the anchor (any other
+   face; the profiles are moved out by depth + 1 mm along it first, so that
+   `projectOnFace` finds the face in front of them).
+
+In one sentence: the letters land as if a Tangent Plane had been made at the
+point straight in front of them and they had been sketched there. With the
+toggle off nothing changes (the golden table stays byte-identical). The report
+gains `anchor` (origin, normal) for the dialog's arrow.
+
+### B3. Several faces
+
+- `face` takes several faces (`refsOf(EMBOSS_FACE_KINDS)`, the `1` goes), all
+  of one body ("Pick faces of one body to emboss on."). No `formatVersion`
+  bump: a one-face document is the same as before. An older Extrudo marks a
+  several-face emboss "Invalid inputs" and ignores `tangent` with its
+  unknown-input warning.
+- **Each face takes the part of the letters that lands on it**, by the method
+  it would take alone, **clipped to that face**: a moved or wrapped piece
+  `common` the face's slab (facade `faceSlab`), a projected one through
+  `projectOnFace`'s clip mode. The pieces fuse into one tool (`mergeTools`),
+  which joins or cuts the body.
+- **Mixing rule**: when any picked face takes a projection, every curved face
+  is projected too, so the letters line up at every seam. Otherwise flats are
+  moved and cylinders and cones wrapped; a flat face and a fillet tangent to it
+  line up exactly (the fillet's s = 0 is the seam). A letter across a sharp edge
+  between a wrap and a flat away from s = 0 jogs, and across a convex crease
+  between two projected faces an emboss has a V-notch: documented, not fixed.
+- A flat face that isn't parallel to the profiles (alone it is refused) is
+  projected in a set, and so counts as a projected face for the mixing rule.
+- **One face stays as today, unclipped** (owner, 2026-11-04), so existing
+  documents keep their geometry.
+- A face no letter reaches warns "No letters land on face *k*."; none reached
+  at all is an error: "The profiles don't touch the faces."
+- Tangent with several faces: one anchor (the nearest hit over all picked
+  faces) and one fold for all of them.
+- Names: the walls where the letters stop at a face's edge are
+  `emboss:<id>:clip:<k>` (*k* the face's place in the Faces list, from 1; a new
+  face role). `side:<curve>#n` across pieces follows the list's order, so a
+  reordered list renumbers them. `EmbossReport.faces` gives each face's method
+  in order (`method` stays, equal to `faces[0]`).
+
+### B4. Facade
+
+Beside `projectOnFace`. No OCCT type in a signature, and nothing that exists
+changes its results.
+
+- `faceHit(shape, face, p, d)`: the hit of the line through p along d with the
+  bounded face nearest p, either way, and the face's outward normal there
+  (6 numbers, or -1 with `lastError()`).
+- `faceSlab(shape, face, depth, outward)`: the solid between the face and its
+  simple offset by depth (`thickPiece`'s simple-offset branch). History: the
+  face gives `first` (its copy), `last` (the offset) and `generated` per edge
+  (the walls).
+- `projectOnFace(…, clip)`: with clip, the two "reaches past the face's edge"
+  refusals go and the piece stops at the face's edge; a partial sphere or
+  torus takes the simple offset, so a dome's piece stops at its rim.
+
+### B5. Results
+
+The spike (real OCCT in Vitest, not committed): a 40 × 40 × 10 box with one
+vertical edge filleted R 5 and a 10 × 4 rectangle across the seam between its
++Y face and the fillet, 1 mm. The flat piece is 20, the fillet's wrapped piece
+22 (A·d·(R + d/2)/R), and the fused tool one valid solid of 42; the body grows
+by exactly 42. As a deboss: 20 and 18, the body less 38.
+
+**S2, the facade** (native harness `spikes/p4-12-emboss-faces/` section 6,
+`run.sh` and `run.sh leaks 300`; every volume integrated to 1e-12 and checked
+against its formula to 1e-9 unless noted):
+
+- `faceHit`: a box's top face from above, the line either way: (5, 5, 10),
+  normal +Z; a R 20 cylinder's side from outside, ahead and behind, and from
+  inside: the nearer hit each time, its normal radial outwards; a line through
+  the axis (a tie) takes the hit the line points to, either way; the Sphere
+  primitive's pole from above and from below the sketch: (0, 0, 20), normal +Z
+  (second derivatives); a lofted B-spline side: on the face (< 1e-7) and on the
+  line, its normal unit and square to the face; a miss and a line past the
+  bounded face's edge: -1, "The line misses the face." All to 1e-9.
+- `faceSlab`: a 40 × 40 face, 1 mm out and in: 1600 exactly, 6 faces, history
+  first, last and 4 generated; a R 20 × 10 cylinder's side: 1288.0529881 /
+  1225.2211348 (A d (R ± d/2) / R); the 20° cone frustum's side (z from −8 to 8):
+  2189.9218486 / 2089.3908837 (Pappus, 2π l d ((r0 + r1)/2 ± d cos α / 2)); a
+  full cylinder's or cone's seam gets no wall (4 faces, 2 generated). The
+  coincident-surface case of the plan's §11: the A4 cone wrap `common` the cone's
+  slab is the wrap, 40.9396927 / 39.0603073, to 1e-9. A dome's slab (the
+  simple offset of a sphere face with a pole) is the exact hemispherical shell:
+  the simple offset takes the pole, so §11's fallback wasn't needed.
+- `projectOnFace(…, clip)`: a 20 × 10 rectangle half over the box's top face:
+  100 exactly, out and in, 6 faces, 3 walls with history (the fourth stands
+  past the face; the slab's wall there has none); still refused without clip.
+  A dome (a quarter disc turned about Z): a Ø6 circle over the pole, 28.4274489 /
+  28.4437625 against the column's 28.4274498 / 28.4437619, and a Ø10 circle
+  across the rim from the side, exactly half the column to 6e-9, its piece
+  stopping at the rim (z ≥ −1e-7); the dome's own pole and seam lie under these
+  profiles, so the boolean approximates its intersection there: 3e-8, held to
+  1e-7. Two B-spline faces of a loft (each section in two halves), an 8 mm
+  square across their seam: two clipped pieces (9.82 + 55.32 out, 9.68 + 55.43
+  in) fuse into one valid solid of 65.14 / 65.11 (the one-face loft's 65.15,
+  between 0.9 and 1.3 × 64), the boolean with the loft exact to 1e-6. The
+  Sphere primitive's shape: clip changes nothing, 28.4274498 / 28.4437619
+  identical to the bit.
+- The spike, natively: the flat piece (a prism `common` the +Y face's slab) 20,
+  the fillet's (`wrapOnCylinder` `common` the fillet's slab) 22 / 18, fused one
+  valid solid of 42 / 38, the body + 42 and − 38 exactly.
+- Every existing case of the harness and of `spikes/p4-04-harness/` passes as
+  before; `wrap.test.ts`, `emboss.test.ts` and `emboss-faces.test.ts` pass
+  unchanged against the new build.
+- Time: a plane slab 3 ms, a dome's clipped piece 14 ms, two clipped loft
+  pieces 0.53 s, the spike's two pieces and the fuse 51 ms.
+- Leaks: every case of the old and new rounds (491 ms a round) × 300, heap
+  7.9 MB at 60 and at 300 rounds (flat); the control grows 18.4 MB.
+
+The OCCT build `occt-29fa847938dc` grows 8.0 kB raw: 21,246,205 bytes raw,
+6,886,917 gzip, 4,798,723 brotli (21,238,180 / 6,884,168 / 4,796,791 for
+`occt-700b080c6fb2` before; Node's zlib, gzip level 9, brotli quality 11 as
+`scripts/measure-startup.mjs`). Wrapper tests: `packages/kernel/src/emboss-facade.test.ts`
+(real OCCT, no shape left after each case): `faceHit` on the plane, the
+cylinder both ways, the pole, a miss as `undefined`; `faceSlab` on the plane
+(history), the cylinder and the cone, out and in; `projectOnFace(…, true)` on
+the overhang and the Sphere primitive.
+
+The kernel tests of the later slices are added by them.
+
+### B6. Rejected
+
+- **Anchor at the face's nearest point** (Tangent Plane's own rule): it
+  depends on the distance, so a far sketch's off-centre text lands near the
+  face's middle.
+- **Tangent as an automatic fallback** where today's rules refuse: hidden, and
+  the flip would change results nobody asked to change.
+- **Always projecting onto several faces**: simplest, but a cylinder in the set
+  would narrow letters that the same face alone wraps.
+- **Clipping in the sketch plane before wrapping** (the faces' outlines
+  unrolled into the frame): more facade code than one `common` with the face's
+  slab, which the spike shows exact.
+- **A separate `moreFaces` input beside `face`**: two inputs for one thing (an
+  older reader would emboss only the first face).
+- **Clipping a single face too**: it changes existing documents.
+- **An "at point" placement** (a picked point, an angle, a flip handle): more
+  UI than the item needs; possible later on top of the anchor.
+
+### B7. Still deferred
+
+- Unrolling a smooth chain of faces (a text round a rounded box's corner onto
+  the next side): the true development across faces, a feature of its own.
+- Faces of several bodies in one emboss.
+- A5's last two items, unchanged.

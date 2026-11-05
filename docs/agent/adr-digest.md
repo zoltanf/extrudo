@@ -1260,11 +1260,25 @@ concave), and **any other face** (sphere, torus, free-form) takes the profiles
 the face's thick piece, a sphere's or torus's exactly concentric; refused past
 the face's edge or outline as seen from the sketch); the method is no input but
 an `EmbossReport` (`Preview.emboss`, the dialog's read-only "Method" line). A
-wrap may run up to a whole turn ("The profile is wider than the face's
-circumference."); "tangent to the face" and several faces stay deferred. Native
-harness `spikes/p4-12-emboss-faces/`. The tool is `emboss`, a tile of Solid ›
+cone also takes a sketch on a plane parallel to one of its tangent planes (the
+normal at 90° ± α to the axis), turned about `across` through the profiles'
+centroid until the plane runs along the axis first (`rollOntoAxis`); any other
+plane is refused with "Sketch on a plane parallel to the cone's axis, or to one
+of its tangent planes, to emboss on a round face." A wrap may run up to a whole
+turn ("The profile is wider than the face's circumference."). With `tangent` (a `bool` input, default off) the profiles are
+laid on the face first (`layTangent`): the anchor is the nearest `faceHit` of
+the line through their area centroid along the sketch's normal (a tie goes the
+way the normal points; no hit is "Tangent to the face needs the face in front
+of the profiles: the line through their centre along the sketch's normal misses
+it."), they fold about the centroid onto the face's outward normal there (a
+sketch facing away turns over about the sketch's up first, so up stays up), and
+the face's method runs on the laid profiles — a projected face moves them out
+by depth + 1 mm along the normal first. The report gains `anchor` (origin,
+normal) for the dialog's arrow; with `tangent` off the golden table stays
+byte-identical. Native
+harness `spikes/p4-12-emboss-faces/`. The second amendment's facade (2026-11-04): `faceHit` (the line's hit with the bounded face nearest the point either way, a tie the way the line points, and the outward normal there; `Kernel.faceHit` is `undefined` on a miss), `faceSlab` (a face's simple-offset slab, history `first`/`last` from the face and `generated` from each of its edges by the edge's index in the body) and `projectOnFace`'s last argument `clip` (no past-the-edge refusals, a partial sphere or torus takes the simple offset, walls of the slab get no history; with `clip` false every result must stay byte-identical). **Several faces** (B3, `embossOnFaces`): `face` takes faces of one body ("Pick faces of one body to emboss on."); each face's piece takes its method as alone, then the mixing rule (any projected face, a flat face not parallel to the profiles included, makes every face but the parallel flats projected), and is clipped to its face — moved and wrapped pieces `common` `faceSlab` (outward = emboss, for holes too), projected ones through `projectOnFace`'s clip (a part that misses that face is skipped on that exact message) — then `mergeTools` fuses the pieces; **one face takes the old path, unclipped, so its names, messages and the golden table never change**. A face with no piece warns "No letters land on face *k*."; none at all, or a tool that misses the body, is "The profiles don't touch the faces."; the walls with no history (from the slab or the clip) are renamed `emboss:<id>:clip:<k>` per piece (`renameFaces`, `naming/names.ts`; a face role in `EMBOSS_FACE_ROLES`) before the merge. `EmbossReport.faces` lists each face's method in order (`method` = `faces[0]`, also for one face), `embossMethodsText` the dialog's line. The tool is `emboss`, a tile of Solid ›
 Features (ADR-0079), no key; `e2e/emboss.spec.ts` covers both kinds of face
-in both modes. Native harness: `spikes/p4-04-harness/`.
+in both modes. The dialog (second amendment): **Faces takes several faces** (no `max`), `tangent` is stored only while on (`toInputs`), the method line is `embossMethodsText`, and the depth arrow stands at the report's `anchor` only with the toggle on. A flat face's outward normal for the emboss comes from `describe`, not `surfaceGeometry` (a chamfer face's plane axis points into the body: the pad grew inwards); `e2e/emboss.spec.ts` also has a tangent plane on a cone, Tangent to the face on a chamfer and two faces across a fillet's seam. Native harness: `spikes/p4-04-harness/`.
 ADR-0061 (P4-03b) added **user fonts as attachments**: `doc.attachments` holds
 only what each file *is* (name, file name, media type, SHA-256, size) and the
 bytes live beside the document — `projects/<id>/attachments/<sha256>` in the

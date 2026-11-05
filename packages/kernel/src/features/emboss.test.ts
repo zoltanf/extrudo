@@ -445,7 +445,8 @@ describe('emboss on a flat face', { timeout: 300_000 }, () => {
     ]);
     expect(status(cone, 'EM')).toMatchObject({
       status: 'error',
-      message: "Sketch on a plane parallel to the cone's axis to emboss on a round face.",
+      message:
+        "Sketch on a plane parallel to the cone's axis, or to one of its tangent planes, to emboss on a round face.",
     });
   });
 

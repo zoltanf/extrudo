@@ -26,6 +26,11 @@ export type Plane = { point: Vec3; normal: Vec3 };
 export interface Base {
   source: SweepSource;
   plane: Plane;
+  /**
+   * The sketch frame's y: which way is up in the sketch, for an emboss laid on
+   * its face (ADR-0060 B2).
+   */
+  up?: Vec3;
 }
 
 /** A feature's word in messages: "extrude", "revolve". */
@@ -94,6 +99,7 @@ function profilePart(ctx: EvalContext, ref: GeomRef, noun: FeatureNoun): Base {
   return {
     source: { shape: face, edgeSources: info.edges },
     plane: { point: data.frame.origin, normal: data.frame.normal },
+    up: data.frame.y,
   };
 }
 
@@ -129,6 +135,7 @@ function textParts(ctx: EvalContext, ref: GeomRef, noun: FeatureNoun): Base[] {
     parts.push({
       source: { shape: face, edgeSources: info.edges },
       plane: { point: data.frame.origin, normal: data.frame.normal },
+      up: data.frame.y,
     });
   }
   if (parts.length === 0) {
