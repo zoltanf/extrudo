@@ -258,6 +258,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   (after a sketch line, a model curve is left for the label), then (10,0), then
   places at (25,15); `dimensions=1` and `lines=2` (with the projected one) once
   the recompute lands; Enter keeps the value; one Ctrl+Z leaves `lines=1`.
+  Before the placing click, the dimension preview's label
+  (`[data-preview="dimension-label"]`, the overlay's) shows a measured number
+  (2026-11-05); its value is not exactly 30, since the clicks on the raised
+  plane land a little off, so match a number, not 30.
   **Face centre (issue #140)**: a Box with `X: '10 mm'` (so the top face's
   centre, sketch (10,0), is away from the sketch origin and its projection
   reads distinctly);

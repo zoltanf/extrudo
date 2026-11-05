@@ -101,12 +101,14 @@ export function SketchOverlay({ host, store, viewport, sketchId, frame }: Sketch
   // The dimension being placed (the Dimension tool), drawn like the sketch's own.
   const placing = (() => {
     const d = preview?.dimension;
-    const anchor = d && data && dimensionAnchor(data, d);
+    // A pick not projected yet lives only in the tool's view of the sketch.
+    const sketch = preview?.dimensionSketch ?? data;
+    const anchor = d && sketch && dimensionAnchor(sketch, d);
     const gap = anchor && pixelGap(toScreen, anchor);
-    const shape = d && data && gap !== undefined ? dimensionShape(data, d, gap) : undefined;
+    const shape = d && sketch && gap !== undefined ? dimensionShape(sketch, d, gap) : undefined;
     const at = shape && toScreen(shape.label);
-    return d && data && shape && at
-      ? { shape, at, text: dimensionText(d, measureDimension(data, d), doc.settings) }
+    return d && sketch && shape && at
+      ? { shape, at, text: dimensionText(d, measureDimension(sketch, d), doc.settings) }
       : undefined;
   })();
 
