@@ -3,7 +3,8 @@ import type { HistoryRecord } from '../history';
 import type { Vec3 } from '../kernel';
 import type { ShapeDescription } from './description';
 import { FINGERPRINT_THRESHOLD, fingerprintOf, fingerprintScore } from './fingerprint';
-import { deriveNames, nameSweep, positionalNames, propagateNames } from './names';
+import { deriveNames, nameSweep, positionalNames, propagateNames, renameFaces } from './names';
+import { edgeName } from './topo-id';
 
 /** Faces at the given centroids; edges between the listed faces; a vertex per edge end. */
 function shape(
@@ -17,6 +18,25 @@ function shape(
     vertices: vertices.map((v) => ({ point: v.at, faces: v.faces })),
   };
 }
+
+describe('renameFaces', () => {
+  it('renames a name and its pieces, numbers them again and names the edges after them', () => {
+    const d = shape(
+      [
+        [2, 0, 0],
+        [0, 0, 0],
+        [1, 0, 0],
+        [3, 0, 0],
+      ],
+      [{ faces: [0, 1], at: [1, 0, 0] }],
+    );
+    const before = deriveNames(['x:f:new', 'x:f:new', 'x:f:side:a', 'x:f:new#7'], d);
+    const after = renameFaces(before, 'x:f:new', 'x:f:clip:2', d);
+    expect(after.faces).toEqual(['x:f:clip:2#2', 'x:f:clip:2#1', 'x:f:side:a', 'x:f:clip:2#3']);
+    expect(after.edges).toEqual([edgeName(['x:f:clip:2#2', 'x:f:clip:2#1'])]);
+    expect(renameFaces(before, 'x:f:ne', 'y', d).faces).toEqual(before.faces);
+  });
+});
 
 describe('deriveNames', () => {
   it('numbers faces sharing a name by position: x, then y, then z', () => {

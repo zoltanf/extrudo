@@ -146,3 +146,30 @@ a face's surface or a closest point.
   `SIZE_DELAY_MS` (150 ms) after the last selection change before asking
   the kernel; inside it, it asks at once.
 
+
+## Amendment (2026-11-04): a flat face's normal on a left-handed plane
+
+`surfaceGeometry` took a plane's normal from its frame's axis, turned for a
+reversed face. A plane whose frame is left-handed (`gp_Ax3::Direct()` false)
+has its surface normal (X ^ Y) against that axis, so the "normal out of the
+face" pointed into the body. Every plane of a mirrored body has such a frame
+(a mirror flips handedness), and so do some chamfer slopes. Measured with
+real OCCT: all six faces of a box mirrored in x, and the slope of two of
+the three single-edge chamfers tried on a box.
+
+- **Decision:** the facade's `outwardNormal(face, plane)` gives the plane's
+  own normal (the axis, reversed for a left-handed frame), then turns it for
+  a reversed face, the same normal `describe` already took from the surface's
+  derivatives. `surfaceGeometry` and the facade's other sign-sensitive plane
+  normals use it: Shell's wall-thickness checks (`wallThicknesses`,
+  `explainShellFaces`) and the press-pull prism path (`prismOffsetGate`, its
+  prism). Right-handed planes give the same numbers as before.
+- **What changes for users:** Measure shows a mirrored or chamfered flat
+  face's normal outwards; a Shell with a different thickness on a wall of a
+  mirrored body works (it failed with "OCCT can't offset this body."); an
+  Emboss on such a face grows outwards (it changed nothing, a Deboss
+  reported that the cut removes nothing); a slider joint on such a face
+  slides outwards for positive values, so an existing one on a mirrored or
+  chamfered face reverses its direction.
+- **Rejected:** fixing each caller in TypeScript from `describe`'s direction:
+  it left the facade's own uses wrong and every new caller exposed.

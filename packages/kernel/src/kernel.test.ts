@@ -807,3 +807,43 @@ describe('the boolean merge', () => {
     expect(unmerged(-1, true)).toEqual([340, 350]);
   }, 60_000);
 });
+
+// A mirror gives every plane of a body a left-handed frame, and a chamfer's
+// slope may get one too: the plane's axis then points into the body, against
+// its normal (ADR-0035 amendment 2026-11-04).
+describe('flat faces on a left-handed plane (a mirror, a chamfer)', () => {
+  const MIRROR_X = [-1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
+  const dot = (a: readonly number[], b: readonly number[]) =>
+    a.reduce((sum, v, i) => sum + v * (b[i] ?? 0), 0);
+
+  it('surfaceGeometry gives the normal out of the face, as describe does', () => {
+    using scope = kernel.scope();
+    const box = scope.track(kernel.box([40, 30, 20]));
+    const mirrored = scope.track(kernel.transform(box, MIRROR_X));
+    const chamfered = Array.from({ length: 12 }, (_, edge) =>
+      scope.track(kernel.chamfer(box, [edge], { mode: 'equal', distance: 6 })),
+    );
+    let planes = 0;
+    for (const { shape } of [mirrored, ...chamfered]) {
+      kernel.describe(shape).faces.forEach((face, i) => {
+        const surface = kernel.surfaceGeometry(shape, i);
+        if (surface.type !== 'plane') return;
+        planes++;
+        expect(dot(surface.direction ?? [], face.direction ?? [])).toBeCloseTo(1, 9);
+      });
+    }
+    expect(planes).toBe(6 + 12 * 7);
+  });
+
+  it('shells a mirrored box with a thicker wall as it shells the box', () => {
+    using scope = kernel.scope();
+    const box = scope.track(kernel.box([20, 20, 20]));
+    const mirrored = scope.track(kernel.transform(box, MIRROR_X));
+    // Face 1 is the side on x = 20, mirrored to x = -20; face 5 the top, left open.
+    const walls = [{ face: 1, thickness: 5 }];
+    const plain = scope.track(kernel.shell(box, [5], 2, 'inside', walls));
+    const flipped = scope.track(kernel.shell(mirrored.shape, [5], 2, 'inside', walls));
+    expect(kernel.isValid(flipped.shape)).toBe(true);
+    expect(kernel.measure(flipped.shape).volume).toBeCloseTo(kernel.measure(plain.shape).volume, 6);
+  });
+});

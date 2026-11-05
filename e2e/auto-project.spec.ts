@@ -453,3 +453,41 @@ test("a circle's centre snaps to an earlier sketch's centre point (ADR-0125)", a
     .poll(() => attr(viewport, 'data-sketch-projected'))
     .toBe(`${sketch}:curves=0:x=20..20:y=0..0`);
 });
+
+// ADR-0074's 2026-11-04 amendment: a dimension whose pick waits for its
+// projection still gets its own undo step, so one undo takes the dimension and
+// leaves the line drawn before it (it used to take both).
+test("undoing a dimension to an earlier sketch's line leaves the line drawn before", async ({
+  page,
+}) => {
+  const viewport = viewportOf(page);
+  await sketchOnXY(page);
+  // Sketch1 on XY: a horizontal line at y = 30.
+  await rawLine(page, viewport, [-20, 30], [40, 30]);
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await kernelReady(page);
+
+  await sketchAboveXY(page);
+  const box = await viewport.boundingBox();
+  if (!box) throw new Error('no viewport');
+  await zoomOutTo(page, { x: box.x + box.width / 2, y: box.y + box.height / 2 }, 150);
+  await settled(viewport);
+  // Sketch2: its own line at y = 0.
+  await rawLine(page, viewport, [0, 0], [20, 0]);
+  await expect.poll(async () => (await counts(page)).lines).toBe(1);
+
+  // The distance from Sketch1's dashed line to it: pick, pick, place.
+  await page.keyboard.press('d');
+  await expect(viewport).toHaveAttribute('data-carried-curves', /^[1-9]\d*$/);
+  const click = clicker(page, await mapping(viewport));
+  await click(10, 30);
+  await click(10, 0);
+  await click(25, 15);
+  await expect.poll(async () => (await counts(page)).dimensions, { timeout: 60_000 }).toBe(1);
+  await page.keyboard.press('Enter'); // keep the measured value
+  await expect.poll(async () => (await counts(page)).lines).toBe(2); // with the projected one
+
+  await page.keyboard.press('Control+z');
+  await expect.poll(async () => (await counts(page)).dimensions).toBe(0);
+  await expect.poll(async () => (await counts(page)).lines).toBe(1);
+});
