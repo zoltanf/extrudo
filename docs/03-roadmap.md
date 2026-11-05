@@ -1609,8 +1609,8 @@ end to end, faster than in established desktop CAD.
   S3 add their own specs; the file-format doc and `pnpm api:generate` updated
   for `fractions`. Slices 1–3 done 2026-10-28, tool defaults in the design's
   unit 2026-10-29; the owner ticked it 2026-11-01.
-- [ ] **P6-19 Other CAD files through a bundled cadmpeg** (owner, 2026-10-30;
-  issue #141; ADR-0115). The desktop app bundles cadmpeg (Apache-2.0, pinned
+- [x] **P6-19 Other CAD files through a bundled cadmpeg** (owner, 2026-10-30;
+  issue #141; ADR-0115). Done 2026-11-06, after the check below. The desktop app bundles cadmpeg (Apache-2.0, pinned
   version and SHA-256 per target in `apps/desktop/cadmpeg.json`, fetched at
   build time) and converts `.sldprt .ipt .iam .catpart .fcstd .sat .smt .smb
   .sab .igs .iges .pvz` to STEP before the normal STEP import; the design
@@ -1622,11 +1622,15 @@ end to end, faster than in established desktop CAD.
     release checklist. *Done 2026-10-30.*
   - [x] **S2 Import flow.** `cadmpeg.ts` + `cadmpegService.ts` in main with the
     IPC channels, `Platform.convertCad`, `IMPORT_ACCEPT` and `pickImportFile`
-    in the renderer, unit tests with a fake spawn. *Done 2026-10-30.* Not yet
-    checked: a real `.sldprt` imported in the packaged app (no sample with a
-    usable license; cadmpeg's own `.sldprt` fixtures are synthetic and convert
-    to an empty STEP). Its `.FCStd` fixtures convert through
-    `convertWithCadmpeg` and read back in the kernel as solids.
+    in the renderer, unit tests with a fake spawn. *Done 2026-10-30.* Its
+    `.FCStd` fixtures convert through `convertWithCadmpeg` and read back in the
+    kernel as solids. *Checked 2026-11-06:* with cadmpeg 0.6.8 (#192) the
+    owner imported a `.sldprt` sample in the packaged Linux app as a STEP
+    attachment of one solid, and the desktop workflow passed on main on all
+    three OSes, the Windows smoke steps included, each running the bundled
+    `cadmpeg --version` (run 42128175397). A part cadmpeg reads only in part
+    imports its solids and says what was left out (ADR-0115's amendment of
+    2026-11-05).
   Acceptance: `pnpm check`; the desktop workflow green on all three OSes with
   `cadmpeg --version` passing in the smoke steps; a `.sldprt` sample imports
   in the packaged app as a STEP attachment; `docs/agent/adr-digest.md` has the

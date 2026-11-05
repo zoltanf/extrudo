@@ -1,0 +1,1 @@
+- 2026-11-05 · **Other CAD files (desktop)**: when a converted part comes in with some pieces missing (cadmpeg could only read them as open surfaces), the notice now says how many were left out and suggests exporting STEP from the program it was made in.

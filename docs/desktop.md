@@ -156,7 +156,10 @@ A file over 100 MB, a conversion that takes longer than 2 minutes or a file
 cadmpeg's own check refuses is not imported; the message is cadmpeg's last
 line of output. A conversion that gives no solid body (cadmpeg couldn't read
 the part's geometry) is not imported either: the app says so and suggests
-exporting STEP from the program the part was made in. During the conversion the file is written to a folder under the
+exporting STEP from the program the part was made in. A conversion that gives
+solids and also pieces cadmpeg could only write as open surfaces imports the
+solids, and the notice says how many pieces were left out, with the same
+suggestion. During the conversion the file is written to a folder under the
 OS temp directory (`extrudo-cadmpeg/`) and removed afterwards. To use another
 cadmpeg build, set `cadmpeg.path` in `preferences.json` in the app's user data
 directory:

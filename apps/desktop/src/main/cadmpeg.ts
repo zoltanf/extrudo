@@ -91,6 +91,23 @@ export function stepHasSolid(bytes: Uint8Array): boolean {
   return SOLID_ENTITIES.some((entity) => text.includes(entity));
 }
 
+/** The STEP entity cadmpeg writes a region as when it can't close its shells into a solid. */
+const SURFACE_MODEL = 'SHELL_BASED_SURFACE_MODEL';
+
+/**
+ * How many surface models STEP bytes hold. The import takes only solids, so
+ * beside a solid each one is a piece of the part left out (ADR-0115's
+ * amendment of 2026-11-05).
+ */
+export function stepSurfaceModels(bytes: Uint8Array): number {
+  const text = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let count = 0;
+  for (let at = text.indexOf(SURFACE_MODEL); at !== -1; at = text.indexOf(SURFACE_MODEL, at + 1)) {
+    count++;
+  }
+  return count;
+}
+
 const pathOf = (env: CadmpegEnv) => (env.platform === 'win32' ? win32 : posix);
 const exeName = (env: CadmpegEnv) => (env.platform === 'win32' ? 'cadmpeg.exe' : 'cadmpeg');
 
@@ -154,8 +171,9 @@ function capped(): { add(chunk: string): void; text(): string } {
 /**
  * Converts `file` to STEP: refuses what isn't convertible or is too large,
  * then runs cadmpeg in a fresh directory and returns the STEP or why there is
- * none (a STEP without a solid counts as none). Never throws; the directory
- * is removed whatever happened.
+ * none (a STEP without a solid counts as none), with how many pieces the
+ * import will leave out. Never throws; the directory is removed whatever
+ * happened.
  */
 export async function convertWithCadmpeg(
   env: CadmpegEnv,
@@ -192,7 +210,8 @@ export async function convertWithCadmpeg(
     const bytes = env.readFile(output);
     if (!bytes) return { ok: false, message: 'cadmpeg finished without a STEP file.' };
     if (!stepHasSolid(bytes)) return { ok: false, message: noSolidMessage(file.name) };
-    return { ok: true, name: stepNameFor(file.name), bytes };
+    const leftOut = stepSurfaceModels(bytes);
+    return { ok: true, name: stepNameFor(file.name), bytes, ...(leftOut > 0 && { leftOut }) };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { ok: false, message: message ? `Couldn't convert: ${message}` : "Couldn't convert." };
