@@ -1206,3 +1206,32 @@ VAB9 against main, the files that change (spike `F`, Auto; volume ratio body / m
 | **totals (38 files)** | 24,650 → 21,426 | 13,958 → 11,132 | | 225,174 → 209,650 | |
 
 The kernel sweep, the round trips and case `D` on every changed file follow in the implementation slice.
+
+### The sweep (implementation)
+
+`TOL=auto`, 41 files, against `baseline-2026-11-04e-chord-three-points-auto.jsonl`, written to
+`baseline-2026-11-04f-torus-rings-auto.jsonl` (63 passed, 1 skipped):
+
+    2026-11-04e three points: files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 24650, prismatic facets 13958, prismatic ms 221048, faceted ms 105879, round trips failed 0
+    2026-11-04f torus rings: files 41, prismatic converted 37 refused 4, faceted converted 26 refused 15, prismatic faces 21426, prismatic facets 11132, prismatic ms 228569, faceted ms 108729, round trips failed 0
+
+Case `D`, main's facade → the branch's, at each file's Auto step:
+
+| file, T | nodes to body max / mean | faces to mesh max / mean | body/mesh volume | ms |
+|---|---|---|---|---|
+| own/battery-power-adapter, 0.1 | 0.118 / 0.0107 → 0.118 / 0.0104 | 0.119 / 0.00457 → 0.119 / 0.00842 | 0.997812 → 0.997161 | 2308 → 2197 |
+| own/kuglbahn-pillar-base, 0.1 | 0.0939 / 0.00475 → 0.0932 / 0.00563 | 0.0731 / 0.00408 → 0.0884 / 0.00988 | 1.001184 → 0.999514 | 10967 → 10687 |
+| own/peg-perego-button, 0.02 | 0.0136 / 0.000767 → 0.0136 / 0.000373 | 1.05 / 0.0662 → 1.05 / 0.0555 | 1.002930 → 1.002952 | 2226 → 1633 |
+| own/phone-stand-foldable, 0.1 | 0.149 / 0.00881 → 0.129 / 0.00634 | 0.227 / 0.0304 → 0.227 / 0.0268 | 0.998266 → 1.000038 | 5757 → 4827 |
+| own/track-straight-100mm, 0.01 | 8.37e-05 / 7.76e-06 → 0.000345 / 0.000118 | 0.00604 / 0.00134 → 0.00617 / 0.00226 | 1.000041 → 1.000003 | 799 → 1778 |
+| own/whiteboard-tray-v5, 0.02 | 0.0283 / 0.000922 → 0.0283 / 0.000899 | 0.295 / 0.00318 → 0.0755 / 0.0028 | 1.000063 → 1.000047 | 16898 → 16098 |
+| third-party/hot-wheels-connector, 0.01 | 0.00882 / 0.000148 → 0.00882 / 0.00016 | 0.00609 / 0.000209 → 0.00609 / 0.000217 | 0.999856 → 0.999857 | 2314 → 2327 |
+| third-party/makita-vacuum-holder, 0.05 | 0.0605 / 0.00242 → 0.0605 / 0.00294 | 0.312 / 0.00501 → 0.312 / 0.00624 | 0.999861 → 1.000001 | 9791 → 6337 |
+
+No file's branch maximum, either one, is above main's by more than 10 % and above T: kuglbahn-pillar-base's faces to
+mesh go 0.0731 → 0.0884 (T 0.1). The maxima above T are main's too (peg-perego-button 1.05, makita 0.312), and
+whiteboard-tray-v5's goes 0.295 → 0.0755. track-straight-100mm's two tori lie 0.0056 and 0.0055 mm from the mesh at
+most (mean 0.0021, T 0.01).
+
+The per-file sweep table (faces, facets, round trips, volume, times): ADR-0097's 2026-11-04f amendment, "Results
+(implementation)".

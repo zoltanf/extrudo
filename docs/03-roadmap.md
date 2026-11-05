@@ -1241,7 +1241,12 @@ end to end, faster than in established desktop CAD.
   passes at Auto, facets 14,003 → 13,958 (makita-vacuum-holder 2,516 → 2,486,
   micro-sd-keyring-inner 18 → 3). Left: makita's unfit fillet network (about
   2,090 facets) and its 18 cone fits on fillet patches (ADR-0097's
-  2026-11-04d amendment).
+  2026-11-04d amendment). *2026-11-04f:* a fillet ring's torus is fitted
+  over its whole network, and the torus takes the near-flat cones on its
+  rows: makita-vacuum-holder 2,486 → 128 facets; over the corpus at Auto
+  facets 13,958 → 11,132 and faces 24,650 → 21,426, no file worse
+  (ADR-0097's 2026-11-04f amendment). Left: makita's 6 cones and 2 tori
+  exploded for edge tolerance and 40 unfit triangles.
 
 ## Phase 5 — Programmatic design (→ v0.6)
 
