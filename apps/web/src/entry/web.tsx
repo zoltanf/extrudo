@@ -12,10 +12,13 @@ import { applyInitialTheme, ToastsOnly, TooltipProvider } from '../design-system
 import { registerServiceWorker, webPlatform, webPreferences } from '../platform';
 import { RootBoundary } from '../RootBoundary';
 import { StartupError } from '../StartupError';
+import { startActionLog } from '../shell/startActionLog';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root element');
 
+// The recent-actions log first (ADR-0127): it keeps what follows, the boot included.
+startActionLog();
 // The theme first, so the first paint has the right colours.
 applyInitialTheme(webPreferences());
 const reactRoot = createRoot(root);

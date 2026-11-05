@@ -13,6 +13,7 @@ import {
 } from '@extrudo/core';
 import type { ModelSnap } from '@extrudo/sketch/inference';
 import { afterEach, describe, expect, it } from 'vitest';
+import { actionLog } from '../../shell/actionLog';
 import { TOOLS } from '../../shell/tools';
 import { finishSketch } from '../mode';
 import { CONSTRAINT_TOOLS } from './constrain';
@@ -599,6 +600,33 @@ describe('constraint and dimension tools pick body geometry (P6-07 slice 2)', ()
     t.store.getState().undo();
     expect(t.data().constraints).toEqual({});
     expect(t.data().entities['p' as SketchEntityId]).toBeDefined();
+  });
+
+  it('logs the clicks, the picks and where a waiting commit lands (ADR-0127)', async () => {
+    actionLog.clear();
+    const t = await setup({ tool: 'dimension' });
+    drawPoint(t, 'p', 0, 0);
+    t.host.click(at(0, 0));
+    t.host.click({ ...at(5, 0.1), model: vertex });
+    t.host.click(at(2.5, 4)); // place the label
+    // Undone before the kernel reports: the pending dimension is dropped, and says so.
+    t.store.getState().undo();
+    t.host.syncProjections({ [t.id]: { frame } });
+    const lines = actionLog.entries().map((e) => `${e.level} ${e.kind}: ${e.text}`);
+    expect(lines).toEqual([
+      'info pick: Click (dimension): sketch point',
+      'info pick: Click (dimension): model vertex (not projected)',
+      'info pick: Click (dimension): nothing picked',
+      // PR #199: the projection is the commit's own step, not the point's.
+      expect.stringMatching(
+        /^info sketch: Commit \(dimension\): 1 waiting on a projection, for step \d+$/,
+      ),
+      expect.stringMatching(
+        /^warn sketch: Pending 1 dimension \(distance\) dropped: step \d+ is gone$/,
+      ),
+    ]);
+    // Kinds and ids only: no coordinates.
+    expect(lines.join('\n')).not.toMatch(/2\.5|0\.1/);
   });
 
   it('measures a Distance between two body edges', async () => {

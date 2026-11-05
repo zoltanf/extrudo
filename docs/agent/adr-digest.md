@@ -4243,3 +4243,31 @@ Owner review: the callout is one card, a number tab (`Tab`, `data-annotation-bad
 left of the text body; with no text shown the tab alone, rounded all round; digits trimmed to
 cap height (`text-box`). A note behind the part keeps a dotted leader to a hollow dot; the
 editor is the body itself, one line growing (`field-sizing: content`).
+
+ADR-0127 (the owner, 2026-11-05): **the recent-actions log**, a ring buffer of the last 500
+events for bugs where nothing throws. Files: `packages/core/src/history.ts` (`HistoryEvent`;
+`record`/`commit` return the step id, `labelOf`, `undoStepId`, `redoStepId`,
+`transactionLabel`), `stores.ts` (`DocumentState.subscribeHistory`),
+`apps/web/src/shell/actionLog.ts` (`createActionLog`, `actionLog`, `historyEntry`,
+`redactLabel`, `watchActions`, `actionLines`, `persistsActions`), `shell/startActionLog.ts`,
+`platform/actionLogStorage.ts`, `sketch/tools/host.ts` (`clickPicks`, `logClick`,
+`writePending`'s `what`), `SketchOverlay.tsx`, `bugReport.ts` (`IssueFields.actions`,
+`consoleText`), `BugReportDialog.tsx`, `recomputeErrors.ts` (`failed`). **Rules:** core only
+emits (`subscribeHistory` after each history change, with the command's type and label and
+the step made or joined; a listener that throws is ignored; no DOM, no buffer in core); the
+buffer stays pure and tested (`actionLog.test.ts`). **Privacy is ADR-0092's**: command types,
+labels through `redactLabel` (add a label prefix that carries a user's name to
+`NAMED_LABELS`), step/feature ids, tool ids, entity types and pick kinds — never values,
+expressions, feature or design names, paths, coordinates or document content; errors are
+logged by feature id and type or error name, the message stays in the report's error list.
+Clicks are logged once per click (`Click (<tool>): …`, what `pick`/`pickModel` returned
+during it), never pointer moves or hovers. A silent no-op gets one `actionLog.warn('sketch',
+…)` where it happens (an empty commit, a dropped pending, an unanchored dimension preview),
+not a sweep. A repeat of the newest entry is counted (`repeat`, by `key` for a drag's
+steps). **Releases (`stable`) keep it in memory only; edge and dev persist** it under the
+localStorage key `extrudo.recentActions` (never `Preferences`; listed in the settings inventory's `NOT_IN_SETTINGS`), newest 500, one write per
+500 ms burst, flushed on `pagehide`; `startActionLog()` runs first in both entries. Report a
+Bug's **"Include recent actions"** is off by default (home screen too); `issueUrl` **cuts the
+actions first**, oldest whole lines, before `console`, `steps`, `what`; "Copy report" has
+them all. The read-only handle is `window.__extrudoRecentActions()` (the report's lines); a
+desktop MCP tool for it is deferred.

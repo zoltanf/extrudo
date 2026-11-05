@@ -14,6 +14,7 @@ import { applyInitialTheme, ToastsOnly, TooltipProvider } from '../design-system
 import type { Platform, Preferences } from '../platform';
 import { RootBoundary } from '../RootBoundary';
 import { StartupError } from '../StartupError';
+import { startActionLog } from '../shell/startActionLog';
 
 export function bootDesktop(
   createPlatform: () => Promise<Platform>,
@@ -23,6 +24,7 @@ export function bootDesktop(
   const root = document.getElementById('root');
   if (!root) throw new Error('Missing #root element');
 
+  startActionLog();
   applyInitialTheme(preferences);
   const reactRoot = createRoot(root);
 
