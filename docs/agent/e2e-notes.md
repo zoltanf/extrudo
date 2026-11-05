@@ -1033,6 +1033,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   into "Copied" for 1.6 s; "Open GitHub draft" opens a popup on the prefilled issue URL
   (github.com answered locally with `context.route`). Trap: grant `clipboard-read` and
   `clipboard-write`; the PNG is not read back, only the text copy and the popup URL.
+- **Recent actions** (ADR-0127): the checkbox "Include recent actions" (off, also on the home
+  screen) adds the block "Recent actions (oldest first; …)" to the preview; lines read
+  `   0.000 app: App started: …`, `kind: text`. `window.__extrudoRecentActions()` returns the same
+  lines (`page.evaluate`). The e2e build is channel `dev`, which keeps the log in localStorage
+  (`extrudo.recentActions`): dispatch `pagehide` before `page.reload()` so the write isn't
+  waiting on its 500 ms timer, then expect two "App started" lines.
 
 ### `e2e/hole.spec.ts`
 

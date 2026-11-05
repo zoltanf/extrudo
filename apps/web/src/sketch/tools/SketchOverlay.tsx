@@ -31,6 +31,7 @@ import {
 } from 'react';
 import { useStore } from 'zustand';
 import { ExpressionInput } from '../../parameters/ExpressionInput';
+import { actionLog } from '../../shell/actionLog';
 import { viewProject } from '../../viewport/camera';
 import type { ViewportStore } from '../../viewport/store';
 import { textDraftStore } from '../textDraft';
@@ -99,11 +100,22 @@ export function SketchOverlay({ host, store, viewport, sketchId, frame }: Sketch
   }, [doc, sketchId]);
   const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
   // The dimension being placed (the Dimension tool), drawn like the sketch's own.
+  const d = preview?.dimension;
+  // A pick not projected yet lives only in the tool's view of the sketch.
+  const sketch = preview?.dimensionSketch ?? data;
+  const anchor = d && sketch && dimensionAnchor(sketch, d);
+  // A preview its sketch can't anchor shows nothing, silently (ADR-0127): its
+  // entities are in neither the stored sketch nor the tool's view. Logged once per stretch.
+  const unanchored = d && sketch && !anchor ? d.type : undefined;
+  useEffect(() => {
+    if (unanchored) {
+      actionLog.warn(
+        'sketch',
+        `Dimension preview (${unanchored}) has no anchor in its sketch: nothing drawn`,
+      );
+    }
+  }, [unanchored]);
   const placing = (() => {
-    const d = preview?.dimension;
-    // A pick not projected yet lives only in the tool's view of the sketch.
-    const sketch = preview?.dimensionSketch ?? data;
-    const anchor = d && sketch && dimensionAnchor(sketch, d);
     const gap = anchor && pixelGap(toScreen, anchor);
     const shape = d && sketch && gap !== undefined ? dimensionShape(sketch, d, gap) : undefined;
     const at = shape && toScreen(shape.label);

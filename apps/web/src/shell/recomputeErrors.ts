@@ -56,6 +56,12 @@ export interface RecomputeErrorWatch<TBody> {
   edit(id: FeatureId): boolean;
   /** Whether `edit` can open this feature now. */
   canEdit(id: FeatureId): boolean;
+  /**
+   * Called with each error `notify` gets: the feature that newly failed, or
+   * undefined when the whole recompute failed (ADR-0127: the recent-actions
+   * log, which keeps ids, not the message).
+   */
+  failed?(feature: FeatureId | undefined): void;
 }
 
 /** Watches the model store; returns the unsubscribe. */
@@ -68,8 +74,10 @@ export function watchRecomputeErrors<TBody>(watch: RecomputeErrorWatch<TBody>): 
     const doc = store.getState().doc;
     // A failed recompute doesn't say which document it was for: it is news either way.
     if (s.status === 'failed') {
-      if (s.error && s.error !== failed)
+      if (s.error && s.error !== failed) {
+        watch.failed?.(undefined);
         notify('error', `The model couldn't be computed: ${s.error}`, { quiet: true });
+      }
       failed = s.error;
       return;
     }
@@ -79,6 +87,7 @@ export function watchRecomputeErrors<TBody>(watch: RecomputeErrorWatch<TBody>): 
     previous = s.features;
     if (!found) return;
     const { feature } = found;
+    watch.failed?.(feature);
     notify('error', found.text, {
       quiet: true,
       action: {

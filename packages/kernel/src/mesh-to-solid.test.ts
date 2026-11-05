@@ -1104,6 +1104,43 @@ function trianglesOf(solid: Manifold): { positions: Float64Array; indices: Uint3
 }
 
 /**
+ * A tube about Z, r 53 to 60 and 32 high, on 160 segments (2.25° each, the
+ * coarse ring steps of makita-vacuum-holder's rim), whose inner rim is
+ * rounded: a torus R 55, r 2 about (r 55, z 30) on 8 straight segments,
+ * tangent to the inner wall and the top. On 0°–20° about Z the round carries
+ * a smooth bump, `0.3 sin²(π φ / 20°)` mm outward from its tube circle (zero
+ * at both ends, so the mesh stays closed): the round's smooth component no
+ * longer fits one torus whole (ADR-0097's 2026-11-04f amendment).
+ */
+function roundedRimTube(): Manifold {
+  const outline: [number, number][] = [
+    [53, 0],
+    [60, 0],
+    [60, 32],
+  ];
+  for (let i = 0; i <= 8; i++) {
+    const angle = Math.PI / 2 + (i * Math.PI) / 16;
+    outline.push([55 + 2 * Math.cos(angle), 30 + 2 * Math.sin(angle)]);
+  }
+  const section = new manifold.CrossSection([outline]);
+  const tube = manifold.Manifold.revolve(section, 160);
+  const bumped = tube.warp((v) => {
+    const phi = (Math.atan2(v[1], v[0]) * 180) / Math.PI;
+    const rho = Math.hypot(v[0], v[1]);
+    const off = Math.hypot(rho - 55, v[2] - 30);
+    if (phi < 0 || phi > 20 || Math.abs(off - 2) > 1e-6) return;
+    const push = 0.3 * Math.sin((Math.PI * phi) / 20) ** 2;
+    const scale = (2 + push) / 2;
+    const rho2 = 55 + (rho - 55) * scale;
+    v[0] *= rho2 / rho;
+    v[1] *= rho2 / rho;
+    v[2] = 30 + (v[2] - 30) * scale;
+  });
+  for (const m of [section, tube]) m.delete();
+  return bumped;
+}
+
+/**
  * A 50 x 40 x 5 plate with a cylindrical boss r 10, 6 high (48 sides) at
  * (30, 20), and a square pyramid 2 deep cut radially into the boss's wall at
  * +x, its top corner on the boss's top rim at (40, 20, 11); beside them
@@ -2081,6 +2118,30 @@ describe('Kernel.meshRegions', { timeout: 300_000 }, () => {
     );
     expect(regions.planes).toBe(302);
     expect(report.faces).toBe(302);
+  });
+
+  it("finds a fillet ring's torus over the network it borders, so the rim is one torus (2026-11-04f)", () => {
+    const mesh = meshOf(roundedRimTube());
+    const view = kernel.mesh(mesh, { linearDeflection: 1, angularDeflection: 1 });
+    const regions = regionsOf(mesh, 0.05);
+    // The round's triangles: all three nodes within 2 mm of the tube circle
+    // (r 55, z 30), or up to the bump's 0.3 mm outside it (the bump included).
+    const onRound = (node: number) => {
+      const x = view.positions[3 * node] as number;
+      const y = view.positions[3 * node + 1] as number;
+      const z = view.positions[3 * node + 2] as number;
+      const off = Math.hypot(Math.hypot(x, y) - 55, z - 30);
+      return off > 2 - 1e-3 && off < 2.3 + 1e-3;
+    };
+    const triangles = view.indices.length / 3;
+    const round: number[] = [];
+    for (let t = 0; t < triangles; t++)
+      if ([0, 1, 2].every((k) => onRound(view.indices[3 * t + k] as number))) round.push(t);
+    expect(round.length).toBe(160 * 8 * 2);
+    const tori = Array.from(regions.kinds).flatMap((kind, s) => (kind === 4 ? [s] : []));
+    expect(tori).toHaveLength(1);
+    const onTorus = round.filter((t) => regions.surfaceOf[t] === tori[0]).length;
+    expect(onTorus / round.length).toBeGreaterThanOrEqual(0.8);
   });
 
   it('drops the mesh’s zero-volume flaps, so the preview matches the conversion (2026-10-25e)', () => {

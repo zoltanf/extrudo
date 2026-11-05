@@ -452,7 +452,7 @@ area, length, radii, normal/axis, centre, tight box; for two, the
 distance with closest points, the angle, the centre distance) from new
 facade calls (`distance` leaves the closest points, `properties`,
 `surfaceGeometry`); **`measure()` keeps its loose, fast box** for
-extrude. The app's `apps/web/src/measure/` has `useInspection` (the
+extrude. **A flat face's normal is the facade's `outwardNormal`** (2026-11-04 amendment): never a plane's axis alone, which points into the body for a left-handed frame (every plane of a mirrored body, some chamfer slopes); `surfaceGeometry`, Shell's wall checks and the press-pull prism path use it. The app's `apps/web/src/measure/` has `useInspection` (the
 status bar's "Selection size"), the Measure tool (`I`, session tool
 `measure`, two plain clicks pick two things: `createMeasureSelect`), its
 panel and the in-view line. ADR-0036 (P2-14) added versions:
@@ -3605,11 +3605,33 @@ Numbers in ADR-0097's 2026-11-01 amendment; all tables in `docs/plans/m2s-explod
   gardena-end's 594 such edges for the same body; a k T threshold or a facet-across rule loses gear-bearing-5's round
   trip.
 - Measured, not built: makita-vacuum-holder's facets are mostly one unfit fillet network (3,106 triangles, about 2,090
-  facets; no rolling-ball band fits) and 18 cone fits on fillet patches whose chords lie 1.2–3.4 mm off the cone.
+  facets; no rolling-ball band fits) and 18 cone fits on fillet patches whose chords lie 1.2–3.4 mm off the cone
+  (built: 2026-11-04f).
 - Test: `mesh-to-solid.test.ts` "gives a mesh edge that strays far from its straight pcurve the chord’s own image, so a
   coarse ball round-trips (2026-11-04d)". Sweep baseline from here on:
   `baseline-2026-11-04e-chord-three-points-auto.jsonl` (`prismatic faces 24650, prismatic facets 13958, prismatic ms
   221048, round trips failed 0`). Spike case `D` measures a body's distance from its mesh.
+
+**ADR-0097 amendment (2026-11-04f): a fillet ring's torus, found over its network.** `extrudo_facade.cpp`
+(`segmentMesh`'s `networks`, `splitComponent`, `fitMeshTorus`'s `gate` and `refine`, `meshAutoTolerance`). Rules:
+- Rule 1: a smooth component of `MESH_TORUS_TRIM_MIN_REGIONS` (16) regions or more first gets a dominant torus by a
+  trimmed fit (gate `MESH_TORUS_TRIM_FLATNESS`, no Gauss–Newton, the larger of T and the 60th-percentile region
+  distance, at most `MESH_TORUS_TRIM_ROUNDS`); its regions within T, in their largest smooth piece, are the split's
+  first piece when they hold `MESH_DOMINANT_SHARE` of the area.
+- The centroid condition is required: every triangle centroid of the dominant torus's regions (and of what it takes)
+  within T. Nodes alone gave track-straight-100mm a torus 0.61 mm off its triangles.
+- Rule 2: a split with a piece of `MESH_DOMINANT_SHARE` of the area and leftovers of at most `MESH_LEFTOVER_SHARE`
+  stands, its leftovers unfit pieces of their own; without such a piece, "the split explains too little" still holds.
+- Rule 3: a split with the dominant torus that leaves the component whole and unfit is split again without it (and the
+  spindle retry runs without it too).
+- Rule 4: only a dominant torus takes neighbours, never a plane: after the clusters settle, it takes the neighbouring
+  non-plane surfaces whose every node and triangle centroid lie within T. Every torus or every kind blew up
+  hole-filler-35mm and peg-perego-button.
+- Rule 5: the Auto ladder runs without the network rules (`segmentMesh(step, seg, false)`); the chosen step is
+  segmented once more with them. With them at every step Auto stops at finer steps where the hybrid explodes more.
+- Test: `mesh-to-solid.test.ts` "finds a fillet ring's torus over the network it borders, so the rim is one torus
+  (2026-11-04f)". Sweep baseline from here on: `baseline-2026-11-04f-torus-rings-auto.jsonl` (`prismatic faces 21426,
+  prismatic facets 11132, prismatic ms 228569, round trips failed 0`).
 
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
@@ -4221,3 +4243,31 @@ Owner review: the callout is one card, a number tab (`Tab`, `data-annotation-bad
 left of the text body; with no text shown the tab alone, rounded all round; digits trimmed to
 cap height (`text-box`). A note behind the part keeps a dotted leader to a hollow dot; the
 editor is the body itself, one line growing (`field-sizing: content`).
+
+ADR-0127 (the owner, 2026-11-05): **the recent-actions log**, a ring buffer of the last 500
+events for bugs where nothing throws. Files: `packages/core/src/history.ts` (`HistoryEvent`;
+`record`/`commit` return the step id, `labelOf`, `undoStepId`, `redoStepId`,
+`transactionLabel`), `stores.ts` (`DocumentState.subscribeHistory`),
+`apps/web/src/shell/actionLog.ts` (`createActionLog`, `actionLog`, `historyEntry`,
+`redactLabel`, `watchActions`, `actionLines`, `persistsActions`), `shell/startActionLog.ts`,
+`platform/actionLogStorage.ts`, `sketch/tools/host.ts` (`clickPicks`, `logClick`,
+`writePending`'s `what`), `SketchOverlay.tsx`, `bugReport.ts` (`IssueFields.actions`,
+`consoleText`), `BugReportDialog.tsx`, `recomputeErrors.ts` (`failed`). **Rules:** core only
+emits (`subscribeHistory` after each history change, with the command's type and label and
+the step made or joined; a listener that throws is ignored; no DOM, no buffer in core); the
+buffer stays pure and tested (`actionLog.test.ts`). **Privacy is ADR-0092's**: command types,
+labels through `redactLabel` (add a label prefix that carries a user's name to
+`NAMED_LABELS`), step/feature ids, tool ids, entity types and pick kinds — never values,
+expressions, feature or design names, paths, coordinates or document content; errors are
+logged by feature id and type or error name, the message stays in the report's error list.
+Clicks are logged once per click (`Click (<tool>): …`, what `pick`/`pickModel` returned
+during it), never pointer moves or hovers. A silent no-op gets one `actionLog.warn('sketch',
+…)` where it happens (an empty commit, a dropped pending, an unanchored dimension preview),
+not a sweep. A repeat of the newest entry is counted (`repeat`, by `key` for a drag's
+steps). **Releases (`stable`) keep it in memory only; edge and dev persist** it under the
+localStorage key `extrudo.recentActions` (never `Preferences`; listed in the settings inventory's `NOT_IN_SETTINGS`), newest 500, one write per
+500 ms burst, flushed on `pagehide`; `startActionLog()` runs first in both entries. Report a
+Bug's **"Include recent actions"** is off by default (home screen too); `issueUrl` **cuts the
+actions first**, oldest whole lines, before `console`, `steps`, `what`; "Copy report" has
+them all. The read-only handle is `window.__extrudoRecentActions()` (the report's lines); a
+desktop MCP tool for it is deferred.

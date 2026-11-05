@@ -312,3 +312,16 @@ the `QVTOP` (15) faces that move most. `QVFACE=i,j` compares those faces edge by
 Case `D` (review, 2026-11-04): one file (FILE, TOL) converted; per face its BRepGProp and triangulated area (deflection
 0.005), the mesh nodes' distance to the body (max, mean) and each face's triangulation nodes' distance to the mesh
 triangles; the body's BRepGProp and triangulated volume, and the conversion time.
+
+## The segmentation as text (Run 7, 2026-11-04)
+
+```sh
+STL_DIR=<staged meshes> FILE=third-party/makita-vacuum-holder.mesh TOL=0.05 DUMP=/w/build/dump-only.txt bash spikes/stl-to-solid/run.sh prismatic f
+```
+
+`DUMP=<path>` (a path inside the container: `/w` is this folder) writes `segmentMesh`'s result at TOL before the
+conversion: `T <tolerance>`, one `n x y z` line per node, one `t a b c region surface` line per triangle, and one
+`s index kind area ox oy oz dx dy dz radius majorRadius semiAngle sag deviation regions` line per surface (kind −1
+unfit, 0 plane … 4 torus). A path with `only` in it stops after the dump. Read it with numpy; the tables in
+`docs/plans/m2s-exploded-q1-2026-11-01.md`, "Run 7", came from it. At Auto (`TOL=auto`) the dump is skipped: give
+the step.

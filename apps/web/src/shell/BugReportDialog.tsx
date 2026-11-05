@@ -3,6 +3,7 @@ import { Bug, Camera, Check, Copy, Download, ExternalLink, Trash2 } from 'lucide
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Dialog, fieldClass, TextInput } from '../design-system';
 import { BUILD } from '../version';
+import { actionLines, actionLog } from './actionLog';
 import {
   type BugReportInput,
   buildReport,
@@ -56,6 +57,8 @@ export function BugReportDialog({
   const [what, setWhat] = useState('');
   const [steps, setSteps] = useState('');
   const [withTimeline, setWithTimeline] = useState(false);
+  const [withActions, setWithActions] = useState(false);
+  const [actions, setActions] = useState<readonly string[]>([]);
   const [removed, setRemoved] = useState(false);
   const [copied, setCopied] = useState(false);
   const [running, setRunning] = useState<InfoRow[]>([]);
@@ -65,6 +68,7 @@ export function BugReportDialog({
     if (!open) return;
     let live = true;
     setErrors(errorLog.recent());
+    setActions(actionLines(actionLog.entries()));
     void systemInfo(desktop, kernelInfo).then((r) => live && setRunning(r.running));
     return () => {
       live = false;
@@ -83,6 +87,7 @@ export function BugReportDialog({
     running,
     errors,
     ...(withTimeline && doc && { timeline: timelineSummary(doc) }),
+    ...(withActions && { actions }),
   };
   const report = buildReport(input);
 
@@ -92,6 +97,7 @@ export function BugReportDialog({
       setWhat('');
       setSteps('');
       setWithTimeline(false);
+      setWithActions(false);
       setRemoved(false);
     }
     onOpenChange(next);
@@ -230,6 +236,18 @@ export function BugReportDialog({
             <span className="text-sm text-muted">(feature names and types)</span>
           </label>
         )}
+        <label className="flex cursor-pointer items-center gap-2 text-base">
+          <input
+            type="checkbox"
+            checked={withActions}
+            onChange={(e) => setWithActions(e.target.checked)}
+            className="accent-(--x-accent)"
+          />
+          Include recent actions
+          <span className="text-sm text-muted">
+            (the last {actions.length} commands, tools and picks; no values or names)
+          </span>
+        </label>
 
         <div className="flex flex-col gap-1">
           <span className="text-sm font-medium">Report</span>

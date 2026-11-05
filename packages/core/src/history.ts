@@ -28,6 +28,43 @@ interface Level {
   redo: HistoryEntry[];
 }
 
+/**
+ * What a `DocumentState` change did to the undo history (ADR-0127), for the
+ * app's recent-actions log. Command types, labels and step ids only: never a
+ * payload. `step` is the step's id (`HistoryEntry.id`).
+ */
+export type HistoryEvent =
+  /** `dispatch`: the command made step `step`, or changed nothing (`step` undefined). */
+  | { type: 'dispatch'; command: string; label: string; step: number | undefined }
+  /**
+   * `amend` (`into` undefined: the latest step) or `amendInto` (`into`: the
+   * step asked for). `changed` false: the command changed nothing. `step` is
+   * the step it joined and `stepLabel` that step's label after the join;
+   * `step` undefined with `changed`: `amend` found no step and applied it
+   * without one, `amendInto` found its step gone and dropped it.
+   */
+  | {
+      type: 'amend';
+      command: string;
+      label: string;
+      into: number | undefined;
+      changed: boolean;
+      step: number | undefined;
+      stepLabel: string | undefined;
+      relabel: boolean;
+    }
+  /** `undo`/`redo` of step `step` (undefined: there was none to undo or redo). */
+  | { type: 'undo' | 'redo'; step: number | undefined; label: string | undefined }
+  /** `revertTo(target)` (ADR-0111); `changed` false when it refused. */
+  | { type: 'revert'; target: number | undefined; changed: boolean }
+  /** A transaction opened; `depth` counts open transactions after it. */
+  | { type: 'begin'; label: string; depth: number }
+  /** A transaction closed into step `step` (undefined: it had no steps). */
+  | { type: 'commit'; label: string; step: number | undefined; depth: number }
+  | { type: 'cancel'; label: string; depth: number }
+  /** `replaceDocument`: a new document, history cleared. */
+  | { type: 'replace' };
+
 export interface HistoryOptions {
   /** Most undo steps kept at the top level. Older ones are dropped. */
   limit?: number;
@@ -48,13 +85,18 @@ export class UndoHistory {
     return this.#levels.at(-1)!;
   }
 
-  /** Records a change that has already been applied. Clears the redo steps. */
-  record(entry: HistoryEntry): void {
-    if (entry.patches.length === 0) return;
+  /**
+   * Records a change that has already been applied. Clears the redo steps.
+   * Returns the new step's id, or undefined for an entry without patches.
+   */
+  record(entry: HistoryEntry): number | undefined {
+    if (entry.patches.length === 0) return undefined;
     const level = this.#top;
-    level.undo.push({ ...entry, id: this.#nextId++ });
+    const id = this.#nextId++;
+    level.undo.push({ ...entry, id });
     level.redo.length = 0;
     if (this.#levels.length === 1 && level.undo.length > this.#limit) level.undo.shift();
+    return id;
   }
 
   /**
@@ -110,6 +152,30 @@ export class UndoHistory {
   /** Whether a step with this id is still in an undo stack (P6-07). */
   hasStep(stepId: number): boolean {
     return this.#levels.some((level) => level.undo.some((e) => e.id === stepId));
+  }
+
+  /** The label of the step `stepId` in an undo stack, or undefined when it is gone (ADR-0127). */
+  labelOf(stepId: number): string | undefined {
+    for (const level of this.#levels) {
+      const step = level.undo.find((e) => e.id === stepId);
+      if (step) return step.label;
+    }
+    return undefined;
+  }
+
+  /** The id of the step `undo` would revert (the innermost level's latest), if any (ADR-0127). */
+  get undoStepId(): number | undefined {
+    return this.#top.undo.at(-1)?.id;
+  }
+
+  /** The id of the step `redo` would apply, if any (ADR-0127). */
+  get redoStepId(): number | undefined {
+    return this.#top.redo.at(-1)?.id;
+  }
+
+  /** The innermost open transaction's label; undefined at the timeline level (ADR-0127). */
+  get transactionLabel(): string | undefined {
+    return this.#levels.length > 1 ? this.#top.label : undefined;
   }
 
   #join(step: HistoryEntry, entry: HistoryEntry, relabel: boolean): void {
@@ -189,11 +255,14 @@ export class UndoHistory {
     this.#levels.push({ label, undo: [], redo: [] });
   }
 
-  /** Closes the innermost transaction; its steps become one step labelled with its label. */
-  commit(): void {
+  /**
+   * Closes the innermost transaction; its steps become one step labelled with
+   * its label. Returns that step's id, or undefined when it had no steps.
+   */
+  commit(): number | undefined {
     const level = this.#closeTransaction();
-    if (level.undo.length === 0) return;
-    this.record({
+    if (level.undo.length === 0) return undefined;
+    return this.record({
       label: level.label,
       patches: level.undo.flatMap((e) => e.patches),
       inversePatches: level.undo.toReversed().flatMap((e) => e.inversePatches),

@@ -9,6 +9,9 @@ test.use({ viewport: { width: 1440, height: 900 } });
 
 const dialog = (page: Page) => page.getByRole('dialog', { name: 'Report a bug' });
 const preview = (page: Page) => dialog(page).getByTestId('bug-report-preview');
+/** The recent-actions log's read-only handle (ADR-0127). The e2e config has no DOM types. */
+const recentActions = (page: Page) =>
+  page.evaluate('window.__extrudoRecentActions?.() ?? []') as Promise<string[]>;
 
 async function routeGithub(page: Page) {
   await page
@@ -63,6 +66,35 @@ test('Menu › Report a bug drafts the issue', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('Include recent actions adds the log, kept across a reload on a dev build', async ({
+  page,
+}) => {
+  // ADR-0127: off by default; the read-only handle gives the same lines.
+  await openProject(page);
+  await pickMenuItem(page, 'App', 'Report a bug');
+  const d = dialog(page);
+  const box = d.getByLabel('Include recent actions');
+  await expect(box).not.toBeChecked();
+  await expect(preview(page)).not.toContainText('Recent actions');
+  await box.check();
+  await expect(preview(page)).toContainText('Recent actions (oldest first');
+  await expect(preview(page)).toContainText('app: App started');
+  await expect(preview(page)).toContainText('app: Design opened');
+  const lines = await recentActions(page);
+  expect(lines.some((line) => line.includes('app: Design opened'))).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(d).toBeHidden();
+
+  // A dev (and edge) build keeps the log in browser storage: the reload adds a second start.
+  await page.evaluate("window.dispatchEvent(new Event('pagehide'))");
+  await page.reload();
+  await expect
+    .poll(async () =>
+      (await recentActions(page)).filter((line) => line.includes('app: App started')),
+    )
+    .toHaveLength(2);
+});
+
 test('Remove drops the screenshot and Take screenshot brings it back', async ({ page }) => {
   await openProject(page);
   await pickMenuItem(page, 'App', 'Report a bug');
@@ -92,4 +124,5 @@ test('the home screen has it, without a screenshot or a timeline', async ({ page
   await expect(d).toBeVisible();
   await expect(d.getByText('No screenshot')).toBeVisible();
   await expect(d.getByLabel('Include the timeline')).toHaveCount(0);
+  await expect(d.getByLabel('Include recent actions')).not.toBeChecked();
 });

@@ -1,0 +1,1 @@
+- 2026-11-05 · **Recent actions in bug reports**: Report a Bug can include the last 500 actions (commands and the undo step each joined, undo and redo, tools, what each sketch click picked, silent no-ops); off by default, no values or names, kept across a reload on edge builds (ADR-0127).

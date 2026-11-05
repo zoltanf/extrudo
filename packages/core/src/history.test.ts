@@ -262,4 +262,23 @@ describe('transactions', () => {
     history.clear();
     expect([history.depth, history.canUndo, history.canRedo]).toEqual([0, false, false]);
   });
+  it('names steps for the recent-actions log: ids, labels, the open transaction (ADR-0127)', () => {
+    const history = new UndoHistory();
+    const doc = sampleDocument();
+    const a = applyCommand(doc, renameDocument({ name: 'A' }));
+    const id = history.record({ label: 'Draw', ...a });
+    expect(id).toBe(history.lastStepId);
+    expect(history.record({ label: 'Nothing', patches: [], inversePatches: [] })).toBeUndefined();
+    expect([history.labelOf(id as number), history.undoStepId, history.redoStepId]).toEqual([
+      'Draw',
+      id,
+      undefined,
+    ]);
+    history.begin('Edit sketch');
+    expect([history.transactionLabel, history.undoStepId]).toEqual(['Edit sketch', undefined]);
+    expect(history.commit()).toBeUndefined();
+    expect(history.transactionLabel).toBeUndefined();
+    history.undo(a.doc);
+    expect([history.redoStepId, history.labelOf(id as number)]).toEqual([id, undefined]);
+  });
 });
