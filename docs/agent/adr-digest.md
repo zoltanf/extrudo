@@ -1541,7 +1541,14 @@ kernel (`FileSource.bytes`; the app side is `attachmentBytes` from
 `import` feature (core `import.ts`, kernel `features/import.ts`, STEP branch
 only) is `readStep` → the `up` turn (`transform`) → `splitSolids`, faces
 `import:<id>:face:<n>` from the file's face order, mesh media types refused
-with "Mesh import comes in a later version."; **no facade change**. **P4-12**:
+with "Mesh import comes in a later version."; **no facade change**. **Its
+amendment of 2026-11-04** adds `position` (`file` | `centre`): one `transform`
+after the `up` turn moves all of a file's bodies so their joint box (STEP:
+`properties`' exact box; mesh: the pieces' boxes) is centred over the origin,
+bottom on z = 0. Keep **absent = `file`** (stored designs never move; making
+absent mean `centre` needs a format bump), the dialog's default `centre`, one
+move for all bodies, and the mesh pieces ordered before the move (the body IDs
+don't change with the position). **P4-12**:
 a file that names a colour reports an `ImportReport` (`colors` per body ID,
 found through each body's first face name; `ModelState.imports`), and
 `followBodyNames` takes it into `BodyMeta.color` **only when it first names the

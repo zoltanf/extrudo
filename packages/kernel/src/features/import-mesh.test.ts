@@ -97,6 +97,7 @@ function design(options: {
   mediaType?: string;
   units?: 'auto' | 'mm' | 'cm' | 'in';
   up?: 'y';
+  position?: 'file' | 'centre';
   /** How many triangles the worker says the file has (the cap is tested). */
   fakeCount?: number;
 }): ExtrudoDocument {
@@ -119,6 +120,7 @@ function design(options: {
           file,
           ...(options.units && { units: options.units }),
           ...(options.up && { up: options.up }),
+          ...(options.position && { position: options.position }),
         }),
       },
     ]),
@@ -278,6 +280,42 @@ describe('importing a mesh (P4-06, ADR-0066 §3)', () => {
     const [body] = bodies(result);
     expect(body?.size).toEqual([20, 20, 20].map((v) => Number((v * 25.4).toFixed(3))));
     expect(body?.volume).toBeCloseTo((20 * 25.4) ** 3, 1);
+  });
+
+  it('centres the pieces together over the origin, on the XY plane, with position: centre', {
+    timeout: 60_000,
+  }, async () => {
+    const box = (result: Done) =>
+      result.bodies.map(({ id }) => {
+        const shape = (engine as RecomputeEngine).latestBody(id as BodyId);
+        if (shape === undefined) throw new Error(`no body ${id}`);
+        return kernel.measure(shape).bbox;
+      });
+    const one = box(await recompute(design({ position: 'centre' })));
+    expect(one).toHaveLength(1);
+    const [x0, y0, z0] = one[0]?.min ?? [];
+    const [x1, y1, z1] = one[0]?.max ?? [];
+    expect([(x0 as number) + (x1 as number), (y0 as number) + (y1 as number)]).toEqual([0, 0]);
+    expect(z0).toBe(0);
+    expect((z1 as number) - (z0 as number)).toBeCloseTo(20, 6);
+
+    // Two pieces move together: the same IDs, the same gap between them. (A
+    // cold engine: the cache knows a file by its record's hash, the cube's too.)
+    (engine as RecomputeEngine).clear();
+    const filed = await recompute(design({ bytes: TOUCHING_CUBES, fileName: 'touching.stl' }));
+    const ids = filed.bodies.map((b) => b.id);
+    const before = box(filed);
+    const centred = await recompute(
+      design({ bytes: TOUCHING_CUBES, fileName: 'touching.stl', position: 'centre' }),
+    );
+    expect(centred.bodies.map((b) => b.id)).toEqual(ids);
+    const after = box(centred);
+    expect(after).toHaveLength(2);
+    for (const k of [0, 1, 2]) {
+      const shift = (after[0]?.min[k] as number) - (before[0]?.min[k] as number);
+      expect((after[1]?.min[k] as number) - (before[1]?.min[k] as number)).toBeCloseTo(shift, 9);
+    }
+    expect(Math.min(after[0]?.min[2] as number, after[1]?.min[2] as number)).toBeCloseTo(0, 9);
   });
 
   it('separates surfaces that touch along an edge, with a warning', {

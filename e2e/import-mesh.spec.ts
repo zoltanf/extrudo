@@ -62,7 +62,11 @@ async function bodies(page: Page) {
 
 const sizes = async (page: Page) => (await bodies(page)).map((b) => b.size);
 
-/** The Insert tab's Import tile, then a file through the platform's picker. */
+/**
+ * The Insert tab's Import tile, then a file through the platform's picker, at
+ * the file's coordinates: the picks below know the cube as 0…20 mm, where its
+ * file has it (a new import is centred on the origin by default).
+ */
 async function importFile(page: Page, file: string): Promise<Locator> {
   const chooser = page.waitForEvent('filechooser');
   await selectTab(page, 'Home');
@@ -70,6 +74,9 @@ async function importFile(page: Page, file: string): Promise<Locator> {
   await (await chooser).setFiles(file);
   const panel = dialog(page);
   await expect(panel).toBeVisible();
+  const position = panel.getByRole('combobox', { name: 'Position' });
+  await expect(position).toHaveValue('centre');
+  await position.selectOption('file');
   return panel;
 }
 

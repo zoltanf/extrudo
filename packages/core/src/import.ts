@@ -7,8 +7,10 @@
  * mesh branch in its evaluator (ADR-0066 §3), so `units` is already an input;
  * STEP converts its own units and ignores it.
  *
- * No placement inputs: the body lands at the file's coordinates, and Move (or
- * Place on Bed) puts it elsewhere.
+ * `position` (ADR-0066's amendment of 2026-11-04) moves the file's bodies
+ * together so their box is centred over the origin and stands on the XY
+ * plane; without it they land at the file's coordinates, as every import
+ * stored before it did, and Move (or Place on Bed) puts them elsewhere.
  *
  * An OpenSCAD file (P5-04, ADR-0071) is a model the kernel compiles to a mesh
  * first, and the feature's **overrides** set its top-level variables to the
@@ -42,6 +44,14 @@ export const IMPORT_UNITS = ['auto', 'mm', 'cm', 'm', 'in'] as const;
 
 /** The `up` choices. */
 export const IMPORT_UP = ['z', 'y'] as const;
+
+/**
+ * The `position` choices: `file` keeps the file's coordinates (an import
+ * without the input, so every design stored before it), `centre` moves the
+ * bodies together so their box's centre is over the origin and its bottom on
+ * z = 0. The app's Import dialog writes `centre` (the owner, 2026-11-04).
+ */
+export const IMPORT_POSITIONS = ['file', 'centre'] as const;
 
 /** How many of an OpenSCAD file's variables an import can override (ADR-0071 §5). */
 export const SCAD_MAX_OVERRIDES = 32;
@@ -107,6 +117,12 @@ const importShape = {
   up: enumInput(IMPORT_UP)
     .optional()
     .describe("The file's up axis; `y` turns it +90° about X (Y-up to Z-up). Default z."),
+  /** Where the bodies land: the file's coordinates, or centred on the origin. */
+  position: enumInput(IMPORT_POSITIONS)
+    .optional()
+    .describe(
+      "Where the bodies land, after the `up` turn: `file` keeps the file's coordinates; `centre` moves them together so their box's centre is over the origin and its bottom on the XY plane; the app's Import dialog picks `centre`. Default file.",
+    ),
 };
 
 export const ImportInputsSchema = z.strictObject({
@@ -114,11 +130,12 @@ export const ImportInputsSchema = z.strictObject({
   ...overrides,
 }) as unknown as z.ZodType<ImportInputs>;
 
-/** An `import`'s inputs: the file, `units`, `up`, and an OpenSCAD file's overrides. */
+/** An `import`'s inputs: the file, `units`, `up`, `position`, and an OpenSCAD file's overrides. */
 export type ImportInputs = {
   file: FileInput;
   units?: { kind: 'enum'; value: (typeof IMPORT_UNITS)[number] };
   up?: { kind: 'enum'; value: (typeof IMPORT_UP)[number] };
+  position?: { kind: 'enum'; value: (typeof IMPORT_POSITIONS)[number] };
 } & Record<string, Input>; // and `scadName<n>` (an `enum` of a variable name), `scadValue<n>` (an `expr`)
 
 /** The units a mesh file's numbers are read in, and what each one means in mm. */
@@ -162,6 +179,8 @@ export interface ImportSettings {
   units: (typeof IMPORT_UNITS)[number];
   /** `z` unless the file is Y-up. */
   up: (typeof IMPORT_UP)[number];
+  /** `file` unless the import says `centre`. */
+  position: (typeof IMPORT_POSITIONS)[number];
 }
 
 export function importSettings(inputs: ImportInputs): ImportSettings {
@@ -169,6 +188,7 @@ export function importSettings(inputs: ImportInputs): ImportSettings {
     file: inputs.file.id,
     units: inputs.units?.value ?? 'auto',
     up: inputs.up?.value ?? 'z',
+    position: inputs.position?.value ?? 'file',
   };
 }
 
@@ -206,6 +226,8 @@ export interface ImportInputOptions {
   units?: (typeof IMPORT_UNITS)[number];
   /** The file's up axis. */
   up?: (typeof IMPORT_UP)[number];
+  /** Where the bodies land (absent: the file's coordinates). */
+  position?: (typeof IMPORT_POSITIONS)[number];
   /**
    * An OpenSCAD file's overrides, in order: a variable and an expression, and
    * the expression's unit (default `unitless`; a value bound to a length
@@ -224,6 +246,7 @@ export function importInputs(options: ImportInputOptions): ImportInputs {
     file: { kind: 'file', id: options.file },
     ...(options.units && { units: { kind: 'enum', value: options.units } }),
     ...(options.up && { up: { kind: 'enum', value: options.up } }),
+    ...(options.position && { position: { kind: 'enum', value: options.position } }),
   };
   (options.overrides ?? []).slice(0, SCAD_MAX_OVERRIDES).forEach((override, i) => {
     inputs[scadNameKey(i + 1)] = { kind: 'enum', value: override.name } satisfies EnumInput;

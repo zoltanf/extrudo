@@ -216,6 +216,7 @@ Faces: `cap:start` (The face the sweep starts at: the profile in its own place);
 | `file` | `string (an attachment ID)` | **required** | The file to import: an attachment of this design with a `model/*` media type or an OpenSCAD file (a STEP solid, a mesh, or a `.scad` file compiled to a mesh). |
 | `units` | `'auto' \| 'mm' \| 'cm' \| 'm' \| 'in'` | default `auto` | Meshes only: what unit the file's numbers are in (`auto` takes a 3MF's own). STEP converts its own units. |
 | `up` | `'z' \| 'y'` | default `z` | The file's up axis; `y` turns it +90° about X (Y-up to Z-up). |
+| `position` | `'file' \| 'centre'` | default `file` | Where the bodies land, after the `up` turn: `file` keeps the file's coordinates; `centre` moves them together so their box's centre is over the origin and its bottom on the XY plane; the app's Import dialog picks `centre`. |
 | `scadName` | `string` | optional | OpenSCAD files only: override 1's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value. |
 | `scadValue` | `string \| number \| ParameterHandle` | optional | OpenSCAD files only: override 1's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees; a parameter given as a handle keeps its own unit). Needs its variable. |
 | `scadName2` | `string` | optional | OpenSCAD files only: override 2's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value. |

@@ -54,6 +54,7 @@ function design(options: {
   mediaType?: string;
   units?: 'auto' | 'mm';
   up?: 'y';
+  position?: 'file' | 'centre';
   /** The worker doesn't get the bytes: the design names a file that isn't there. */
   unsent?: boolean;
 }): { doc: ExtrudoDocument; file: AttachmentId } {
@@ -72,6 +73,7 @@ function design(options: {
             file,
             ...(options.units && { units: options.units }),
             ...(options.up && { up: options.up }),
+            ...(options.position && { position: options.position }),
           }),
         },
       ]),
@@ -116,6 +118,24 @@ function bodies(result: Done, engine: RecomputeEngine) {
       faces: [...(mesh?.faceIds ?? [])],
     };
   });
+}
+
+/** Each body's exact box (`properties`'), in creation order. */
+function boxes(result: Done, engine: RecomputeEngine) {
+  return result.bodies.map(({ id }) => {
+    const shape = engine.latestBody(id as BodyId);
+    if (shape === undefined) throw new Error(`no body ${id}`);
+    return kernel.properties(shape).bbox;
+  });
+}
+
+/** The box around all of them. */
+function around(all: readonly { min: readonly number[]; max: readonly number[] }[]) {
+  const at = (i: number) => ({
+    min: Math.min(...all.map((b) => b.min[i] as number)),
+    max: Math.max(...all.map((b) => b.max[i] as number)),
+  });
+  return [at(0), at(1), at(2)];
 }
 
 /**
@@ -203,6 +223,37 @@ describe('the import feature (P4-06, ADR-0066 §2)', () => {
     if (back.status !== 'done') throw new Error('cancelled');
     expect(back.stats.evaluated).toEqual([]);
     expect(bodies(back, warm).map((x) => x.size)).toEqual(a.map((x) => x.size));
+  });
+
+  it('centres the bodies over the origin, on the XY plane, with position: centre (2026-11-04)', {
+    timeout: 60_000,
+  }, async () => {
+    const asFiled = await recompute(design({}).doc);
+    const filed = boxes(asFiled, engine as RecomputeEngine);
+    const names = bodies(asFiled, engine as RecomputeEngine).map((b) => [b.id, b.faces]);
+    const [fx, fy, fz] = around(filed);
+    if (!fx || !fy || !fz) throw new Error('no box');
+    // The file's B3 is not centred, so the move is a real one.
+    expect(Math.abs(fx.min + fx.max) + Math.abs(fy.min + fy.max)).toBeGreaterThan(1);
+
+    for (const up of [undefined, 'y'] as const) {
+      const centred = await recompute(design({ position: 'centre', ...(up && { up }) }).doc);
+      const moved = boxes(centred, engine as RecomputeEngine);
+      const [x, y, z] = around(moved);
+      if (!x || !y || !z) throw new Error('no box');
+      expect((x.min + x.max) / 2).toBeCloseTo(0, 6);
+      expect((y.min + y.max) / 2).toBeCloseTo(0, 6);
+      expect(z.min).toBeCloseTo(0, 6);
+      // Both bodies by the same move, so they keep their places, IDs and face names.
+      expect(bodies(centred, engine as RecomputeEngine).map((b) => [b.id, b.faces])).toEqual(names);
+      if (up) continue;
+      const by = [-(fx.min + fx.max) / 2, -(fy.min + fy.max) / 2, -fz.min];
+      for (const [i, box] of moved.entries()) {
+        for (const k of [0, 1, 2]) {
+          expect(box.min[k]).toBeCloseTo((filed[i]?.min[k] as number) + (by[k] as number), 6);
+        }
+      }
+    }
   });
 
   it('ignores `units` for a STEP file: the file brings its own', { timeout: 60_000 }, async () => {

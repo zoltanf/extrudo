@@ -298,6 +298,20 @@ export const importDialog = defineFeatureDialog({
       hint: 'Which way the file points up. Y-up files are turned a quarter turn about X.',
     },
     {
+      kind: 'choice',
+      name: 'position',
+      label: 'Position',
+      // Centred is the default for a new import (the owner, 2026-11-04); an
+      // import stored without the input is at the file's coordinates
+      // (`fromInputs`).
+      options: [
+        { value: 'centre', label: 'Centred on origin' },
+        { value: 'file', label: "File's coordinates" },
+      ],
+      default: 'centre',
+      hint: "Centred puts the middle of the model over the origin and its bottom on the XY plane. The file's coordinates keep it where the file has it, so parts of one assembly line up.",
+    },
+    {
       kind: 'toggle',
       name: 'solid',
       label: 'As solid',
@@ -317,6 +331,7 @@ export const importDialog = defineFeatureDialog({
       file: file?.id ?? ('' as AttachmentId),
       ...(units && values.choices.units && { units: values.choices.units as 'auto' | 'mm' }),
       up: (values.choices.up ?? 'z') as 'z' | 'y',
+      position: (values.choices.position ?? 'centre') as 'file' | 'centre',
     });
     // An OpenSCAD file's overrides, packed in the rows' order (ADR-0071 §5).
     return isScadMediaType(file?.attachment.mediaType)
@@ -328,6 +343,9 @@ export const importDialog = defineFeatureDialog({
     const scad = overrideValues(inputs);
     return {
       ...stored,
+      // An import stored without `position` is at the file's coordinates, not
+      // the dialog's default.
+      choices: { position: 'file', ...stored.choices },
       exprs: { ...stored.exprs, ...scad.exprs },
       labels: { ...stored.labels, ...scad.labels },
     };

@@ -1474,11 +1474,12 @@ than 1,000,000 triangles, is an error (the message names the file).
 | `file` | `file` | yes | The attachment ID of the file (section 4.5). Its media type must be `model/step`, `model/stl`, `model/3mf`, `model/obj` or `application/x-openscad`. |
 | `units` | `enum` | no | What unit the file's numbers are in: `auto` (default; a 3MF's own unit, STL, OBJ and OpenSCAD as millimetres), `mm`, `cm`, `m` or `in`. Meshes and OpenSCAD files only — a STEP file converts its own units, so the value has no effect there. |
 | `up` | `enum` | no | The file's up axis: `z` (default) or `y`. `y` turns the file +90° about X, so a Y-up file stands up in a Z-up design. |
+| `position` | `enum` | no | Where the bodies land, after the `up` turn: `file` (default: the file's coordinates) or `centre` (all of the file's bodies moved together, so the box around them has its centre over the origin and its bottom on the XY plane; ADR-0066's amendment of 2026-11-04). The app's Import dialog stores `centre` unless the user picks the file's coordinates. |
 | `scadName`, `scadName2` ... `scadName32` | `enum` | no | OpenSCAD files only (P5-04, ADR-0071 §5): override `n`'s variable, the name of a top-level variable of the file (`^\$?[A-Za-z_][A-Za-z0-9_]*$`, so `$fn` too). The value is free text, not one of a list. |
 | `scadValue`, `scadValue2` ... `scadValue32` | `expr` | no | OpenSCAD files only: override `n`'s value, an expression of any unit (`unit` says which: a length reaches OpenSCAD in millimetres, an angle in degrees, a plain number as it is). **`unit` is required here**, unlike every other `expr` input (where a missing one means a length, section 6.1): a reader refuses a `scadValue<n>` without one, since a plain `24` read as a length in an inch document would reach OpenSCAD as 609.6. A writer stores `unitless` for a plain value and the unit of the expression otherwise (the app's dialog stores what the expression evaluates to; the API a parameter's own unit). |
 
-There are no placement inputs: the bodies land at the file's coordinates, and
-Move or Place on Bed puts them elsewhere. An `import` is not patternable, but
+Apart from `position` there are no placement inputs: Move or Place on Bed puts
+the bodies elsewhere. An `import` is not patternable, but
 its bodies are, through Pattern › Bodies.
 
 **OpenSCAD files** (P5-04, ADR-0071): the file is compiled by OpenSCAD (its

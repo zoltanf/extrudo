@@ -150,7 +150,8 @@ and meshes:
 | `up` | choice `z`, `y` | `z` | The file's up axis; `y` turns it +90° about X (Y-up to Z-up), for OBJ/glTF-style files. |
 
 No placement inputs: the body lands at the file's coordinates, and Move (or
-Place on Bed for STEP) puts it elsewhere. `import` is not patternable (its tool
+Place on Bed for STEP) puts it elsewhere. (The amendment of 2026-11-04 adds
+`position`, which centres it on the origin.) `import` is not patternable (its tool
 is the file); its bodies are, through Pattern › Bodies.
 
 **Kernel** (`packages/kernel/src/features/import.ts`), STEP branch:
@@ -843,6 +844,47 @@ rest to the user's slicer.
 - **Imported curves free by default:** thousands of free curves with coincident
   constraints make the solver's diagnosis slow; fixed geometry costs nothing,
   and the user frees what they want to edit.
+
+## Amendment, 2026-11-04: an import is centred on the origin by default
+
+A part's file often puts it far from the origin (a sample `.sldprt` bracket
+came in well away from it, where the program's own STEP export of the part has
+it too), and the user then has to find the offset to move it. The owner asked
+for centring, on by default (2026-11-04).
+
+**Decision:** a new optional `enum` input, **`position`**. `file` keeps the
+file's coordinates. `centre` moves all of the file's bodies by one translation
+after the `up` turn, so the box around them all has its centre over the
+origin and its bottom on z = 0.
+
+- **The default.** An import without the input is at the file's coordinates,
+  so every design stored before this amendment keeps its bodies where they
+  are: an optional field may not change what an older file means
+  (`docs/file-format.md` section 3). The app's Import dialog has a
+  **Position** field ("Centred on origin" / "File's coordinates")
+  whose default is centred, so a new import made in the app stores `centre`.
+  Editing an import stored without the input shows "File's coordinates".
+  The API, the CLI and `importInputs` store it only when asked (the `.f3d`
+  body check keeps the file's coordinates, as it must).
+- **The box.** For STEP it is `properties`' box (from the exact geometry), so
+  the lowest face lands on z = 0; `measure`'s box adds the tolerances. For a
+  mesh it is the pieces' boxes (their vertices).
+- **One move for all.** A file's bodies move together, so the parts of a
+  multi-body file keep their places, and the move is worked out again on
+  every recompute. Face names don't change (`transform` keeps the sub-shape
+  order), and mesh pieces are ordered before the move, so the body IDs are
+  the same in either position.
+
+Rejected:
+
+- **Centring each body on its own:** the parts of a multi-body file would no
+  longer fit together.
+- **The centre of mass instead of the box's centre:** a mesh body has none
+  (§3), and the box is what stands on a print bed.
+- **A Move feature added by the dialog:** two features for one choice, and the
+  offset would be a number frozen at import time.
+- **Making an absent input mean `centre`:** it would move the bodies of every
+  stored design; that needs a format version and a migration, for no gain.
 
 ## Deferred
 
