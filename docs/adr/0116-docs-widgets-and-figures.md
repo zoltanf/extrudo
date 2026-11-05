@@ -193,3 +193,19 @@ batches, the 24 tools without a clip get one, and two more widgets join
   nothing on GitHub.
 - **A framework** (React, Lit) for widgets: a few hundred lines of DOM code
   each don't need one, and the site has none.
+
+## Amendment 1 (2026-11-04): the menu tools' clips
+
+Batch 5 records a clip for each of the 27 tools in the Sketch tab's Create ▾
+and Modify ▾ menus that had none (Import Drawing, a file picker whose page is
+the Home tab's, stays without). A menu item has no tooltip, so these clips play
+only on the tools' pages. `record-assets.spec.ts` starts the tool from its menu
+before the clip starts (`menuScene`), so no menu shows in the clip; a tool with
+a key (Text, Move) has it pressed in the clip, and Intersect's scene sinks a
+sphere below the sketch plane for the plane to cut. `demos.test.ts` checks
+that every tool of the Sketch tab's menus but Import Drawing has a clip.
+
+The clips' total budget in `demos.test.ts` goes from 4 MB to 6 MB: the 83
+clips were 3.73 MB, the 27 new ones are 1.45 MB (about 54 kB each), 5.18 MB in
+all. A visitor still fetches one clip at a time (a tooltip or a tool page), at
+most 150 kB.

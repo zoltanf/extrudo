@@ -13,6 +13,8 @@ A regular polygon sized across the flats, like a nut.
 |---|---|
 | Sketch › Create | None |
 
+<video src="demo:polygonCircumscribed" muted loop autoplay playsinline aria-label="Circumscribed Polygon demo"></video>
+
 <!-- notes -->
 ## Step by step
 

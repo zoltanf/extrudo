@@ -13,6 +13,8 @@ Mirror curves about a line; the copies stay symmetric.
 |---|---|
 | Sketch › Create | None |
 
+<video src="demo:sketchMirror" muted loop autoplay playsinline aria-label="Mirror demo"></video>
+
 <!-- notes -->
 ## Step by step
 

@@ -13,6 +13,8 @@ Lengthen a line or an arc to the next curve.
 |---|---|
 | Sketch › Modify | None |
 
+<video src="demo:extend" muted loop autoplay playsinline aria-label="Extend demo"></video>
+
 <!-- notes -->
 ## Step by step
 

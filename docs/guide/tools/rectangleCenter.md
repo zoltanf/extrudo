@@ -13,6 +13,8 @@ From the center out to a corner.
 |---|---|
 | Sketch › Create | None |
 
+<video src="demo:rectangleCenter" muted loop autoplay playsinline aria-label="Center Rectangle demo"></video>
+
 <!-- notes -->
 ## Step by step
 

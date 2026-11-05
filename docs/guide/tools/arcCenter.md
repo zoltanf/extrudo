@@ -13,6 +13,8 @@ The center, the start, then how far round.
 |---|---|
 | Sketch › Create | None |
 
+<video src="demo:arcCenter" muted loop autoplay playsinline aria-label="Center Point Arc demo"></video>
+
 <!-- notes -->
 ## Step by step
 

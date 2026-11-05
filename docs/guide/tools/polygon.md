@@ -13,6 +13,8 @@ A regular polygon from its center out to a corner. Tab to the number of sides.
 |---|---|
 | Sketch › Create | None |
 
+<video src="demo:polygon" muted loop autoplay playsinline aria-label="Inscribed Polygon demo"></video>
+
 <!-- notes -->
 ## Step by step
 

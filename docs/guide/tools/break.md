@@ -13,6 +13,8 @@ Split a curve where other curves cross it.
 |---|---|
 | Sketch › Modify | None |
 
+<video src="demo:break" muted loop autoplay playsinline aria-label="Break demo"></video>
+
 <!-- notes -->
 ## Step by step
 

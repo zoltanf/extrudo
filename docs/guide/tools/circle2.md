@@ -13,6 +13,8 @@ Across a diameter, from one side to the other.
 |---|---|
 | Sketch › Create | None |
 
+<video src="demo:circle2" muted loop autoplay playsinline aria-label="2-Point Circle demo"></video>
+
 <!-- notes -->
 ## Step by step
 

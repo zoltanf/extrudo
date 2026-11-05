@@ -13,6 +13,8 @@ A slot from one arc center to the other, then the width.
 |---|---|
 | Sketch › Create | None |
 
+<video src="demo:slot" muted loop autoplay playsinline aria-label="Center to Center Slot demo"></video>
+
 <!-- notes -->
 ## Step by step
 

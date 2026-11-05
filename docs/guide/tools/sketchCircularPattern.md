@@ -13,6 +13,8 @@ Copies around a center. Type the count and the angle.
 |---|---|
 | Sketch › Create | None |
 
+<video src="demo:sketchCircularPattern" muted loop autoplay playsinline aria-label="Circular Pattern demo"></video>
+
 <!-- notes -->
 ## Step by step
 

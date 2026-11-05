@@ -1065,7 +1065,7 @@ under reduced motion, removed on a load error); **demos are not precached**
 (`SKIPPED` in `precache-plugin.ts`, and `sw.js` leaves `/demos/` to the
 network); `DEMO_TOOLS` in `demos.ts` lists the tools that have one (every tile of the Solid, Modify, Construct, Make and
 Sketch tabs since the owner's UI review 3, R3-16; `WHOLE_TABS` in `demos.test.ts` checks it per
-tab) and `demos.test.ts` checks it against the files (150 kB each, 4 MB in all). **`pnpm demos`**
+tab; and every tool of the Sketch tab's ▾ menus but Import Drawing since ADR-0116's batch 5) and `demos.test.ts` checks it against the files (150 kB each, 6 MB in all). **`pnpm demos`**
 (`scripts/record-demos.mjs` → `e2e/record-assets.spec.ts`, which skips itself
 without `RECORD_ASSETS=1`; `-g "demo: extrude$"` records one) records the clips and the template pictures through
 the real app: a screenshot loop (`e2e/demo-recorder.ts`) piped into Playwright's
@@ -4115,7 +4115,10 @@ opening or closing a sketch clears it, **Help for This Tool** reads only a tool 
 anchor in `docsAnchors.json` must exist in the built page (site test); the desktop's
 `DOCS_PATH` accepts `/<guide>/` and `#<anchor>`. Tool pages stay generated: hand text between
 the `<!-- notes -->` markers (Step by step, Options, What it keeps, Messages; messages quoted
-from the app).
+from the app). **Amendment 1 (2026-11-04):** every tool of the Sketch tab's ▾ menus but Import
+Drawing has a clip (docs pages only: a menu item has no tooltip); `menuScene` in
+`record-assets.spec.ts` starts the tool from its menu before the clip, so no menu is in it;
+`demos.test.ts` checks the menus and holds all clips under 6 MB.
 
 ADR-0125 (issue #171, 2026-11-03): **project a sketch into another, and auto-project sketches.**
 Files: `packages/core/src/sketch/projection.ts` (`PROJECTABLE.project`, `REFUSED.project`,

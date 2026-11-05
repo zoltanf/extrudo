@@ -13,6 +13,8 @@ Type text on the sketch. Its letters are closed regions like any other profile.
 |---|---|
 | Sketch › Create | Shift+T |
 
+<video src="demo:text" muted loop autoplay playsinline aria-label="Text demo"></video>
+
 <!-- notes -->
 ## Step by step
 

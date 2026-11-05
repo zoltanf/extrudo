@@ -1645,7 +1645,7 @@ end to end, faster than in established desktop CAD.
   draws the selection box; a click, a double-click, a long press and a tool's drag stay
   the pointer's. Acceptance: `pnpm check` (`viewport/navigation.test.ts`,
   `viewport/pointer.test.ts`, `shell/AppMenu.test.tsx`), `e2e/viewport.spec.ts`.
-- [ ] **P6-22 Sketching docs with live widgets and drawn figures** (owner, 2026-11-01;
+- [x] **P6-22 Sketching docs with live widgets and drawn figures** (owner, 2026-11-01;
   FR-UX-04; ADR-0116). Pilot: `/docs/sketching/` and the Line, Dimension, Project, Trim and
   Sketch Fillet pages, with four widgets (`dof-playground`, `palette-switches`,
   `dimension-label`, `trim`), drawn `.figure.svg` figures, heading anchors, and F1 that
@@ -1670,6 +1670,8 @@ end to end, faster than in established desktop CAD.
   - [x] Batch 2: notes for the 25 Create tool pages (Point to Import Drawing); Intersect carries its figure.
   - [x] Batch 3: notes for the 7 remaining Modify tool pages (Extend to Sketch Scale) and Export Sketch.
   - [x] Batch 4: the `snap-explorer` and `profiles` widgets on the sketching page.
+  - [x] Batch 5: clips for the 27 tools of the Sketch tab's ▾ menus that had none (all but
+    Import Drawing), on their tool pages.
 
 - [x] **P6-23 Project a sketch into another sketch** (issue #171; FR-SK-12, FR-SK-17;
   ADR-0125). The Project tool picks a curve or point of an earlier sketch in the view and a

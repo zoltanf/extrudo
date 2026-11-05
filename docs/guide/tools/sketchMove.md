@@ -13,6 +13,8 @@ Move curves from one point to another; constraints come along.
 |---|---|
 | Sketch › Modify | M |
 
+<video src="demo:sketchMove" muted loop autoplay playsinline aria-label="Move demo"></video>
+
 <!-- notes -->
 ## Step by step
 

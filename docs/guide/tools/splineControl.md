@@ -13,6 +13,8 @@ A smooth curve guided by the points you click. Enter to finish.
 |---|---|
 | Sketch › Create | None |
 
+<video src="demo:splineControl" muted loop autoplay playsinline aria-label="Control Point Spline demo"></video>
+
 <!-- notes -->
 ## Step by step
 
