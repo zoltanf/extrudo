@@ -4232,7 +4232,7 @@ during it), never pointer moves or hovers. A silent no-op gets one `actionLog.wa
 …)` where it happens (an empty commit, a dropped pending, an unanchored dimension preview),
 not a sweep. A repeat of the newest entry is counted (`repeat`, by `key` for a drag's
 steps). **Releases (`stable`) keep it in memory only; edge and dev persist** it under the
-localStorage key `extrudo.recentActions` (never `Preferences`), newest 500, one write per
+localStorage key `extrudo.recentActions` (never `Preferences`; listed in the settings inventory's `NOT_IN_SETTINGS`), newest 500, one write per
 500 ms burst, flushed on `pagehide`; `startActionLog()` runs first in both entries. Report a
 Bug's **"Include recent actions"** is off by default (home screen too); `issueUrl` **cuts the
 actions first**, oldest whole lines, before `console`, `steps`, `what`; "Copy report" has

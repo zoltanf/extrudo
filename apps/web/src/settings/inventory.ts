@@ -117,6 +117,11 @@ export const SECTIONS: readonly SectionInfo[] = [
 export const NOT_IN_SETTINGS: readonly { key: string; reason: string }[] = [
   { key: 'settings.section', reason: "The dialog's own memory of the last section." },
   {
+    key: 'extrudo.recentActions',
+    reason:
+      'Not a preference: the recent-actions log an edge or dev build keeps in localStorage (ADR-0127).',
+  },
+  {
     key: 'export.script',
     reason: "The Export as script dialog's own memory: language and resolution of the last export.",
   },
