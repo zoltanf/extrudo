@@ -112,6 +112,12 @@ type Outcome =
        * makes it pass.
        */
       tripFails?: boolean;
+      /**
+       * The exact stage takes most of PRISMATIC_REBUILD_BUDGET_MS (12 s) here,
+       * so a slower machine converts with the hybrid instead (the same faces,
+       * no facets): either rebuild passes.
+       */
+      nearBudget?: boolean;
     }
   | { refusal: string; tolerance?: number };
 
@@ -153,6 +159,9 @@ const TRACK_01: Outcome = {
   spheres: 0,
   tori: 2,
   tolerance: 0.1,
+  // The exact stage: 10 s here (8.5 s classifying 208 cells), over the
+  // budget on CI's runner (12.5 s, the hybrid).
+  nearBudget: true,
 };
 const FLIGHT_COVER: Outcome = {
   // Slice D9 (splitComponent's spindle retry): the counts from before slice
@@ -245,7 +254,8 @@ describe('Mesh to Solid, prismatic on the fixtures', { timeout: 120_000 }, () =>
             spheres: outcome.spheres,
             tori: outcome.tori,
           });
-          expect(report.rebuild).toBe(outcome.hybrid ? 'hybrid' : 'exact');
+          if (outcome.nearBudget) expect(['exact', 'hybrid']).toContain(report.rebuild);
+          else expect(report.rebuild).toBe(outcome.hybrid ? 'hybrid' : 'exact');
           expect(report.facets).toBe(outcome.hybrid?.facets ?? 0);
           expect(report.unfit.regions).toBe(outcome.hybrid?.unfit ?? outcome.leftOut ?? 0);
           if (outcome.leftOut) expect(report.unfit.fraction).toBeLessThanOrEqual(0.02);

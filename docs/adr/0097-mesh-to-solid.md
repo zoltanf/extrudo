@@ -4043,4 +4043,6 @@ main leaves 2,234 of the round's 2,560 triangles unfit and fits two tori. Fixtur
 peg-perego-button at 0.01 mm goes from 108 planes, 94 cylinders, 10 spheres and 2 tori to 80, 26, 2 and 4 (670 facets
 on both), and at Auto (0.02 mm) from 212 to 160 faces (1,738 → 1,390 edges); track-straight-100mm rebuilds exact at
 every step: 0.01 and 0.05 mm 101 faces (before the hybrid, 237 and 145 facets), 0.1 mm 75 faces (before the hybrid, 79
-faces, no facets), Auto 306 → 101 faces.
+faces, no facets), Auto 306 → 101 faces. At 0.1 mm the exact stage takes 10 s of `PRISMATIC_REBUILD_BUDGET_MS` (12 s;
+8.5 s classifying 208 cells, spike `TIMES`); CI's runner ran over it and the hybrid converted (the same counts, no
+facets), so that case accepts either rebuild.
