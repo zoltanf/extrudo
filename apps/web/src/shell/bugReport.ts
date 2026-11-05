@@ -9,6 +9,7 @@
 import type { ExtrudoDocument } from '@extrudo/core';
 import type { BuildInfo } from '../../pwa/build-info';
 import { ISSUES_URL } from './aboutLinks';
+import { type ActionLog, actionLog } from './actionLog';
 import type { InfoRow } from './systemInfo';
 
 export interface BugReportInput {
@@ -22,6 +23,11 @@ export interface BugReportInput {
   errors: readonly string[];
   /** `timelineSummary(doc)` when the person ticked "Include the timeline"; else undefined. */
   timeline?: readonly string[];
+  /**
+   * `actionLines(actionLog.entries())` when the person ticked "Include recent
+   * actions" (ADR-0127); else undefined.
+   */
+  actions?: readonly string[];
 }
 
 /** One value per field of `.github/ISSUE_TEMPLATE/bug_report.yml`, by field id. */
@@ -33,12 +39,19 @@ export interface IssueFields {
   browser: string;
   os: string;
   console: string;
+  /**
+   * The recent actions' lines, oldest first, when included (ADR-0127): not a
+   * field of their own but the end of `console` (`consoleText`), and the
+   * first thing `issueUrl` cuts, oldest lines first.
+   */
+  actions?: readonly string[];
 }
 
 export const ISSUE_TEMPLATE = 'bug_report.yml';
 export const URL_LIMIT = 8000;
 export const CUT_MARK = '… (cut: see the copied report)';
 export const ERROR_LIMIT = 10;
+export const ACTIONS_HEADING = 'Recent actions (oldest first; seconds since the first):';
 
 const URL_PARAM_ORDER = ['title', 'what', 'steps', 'version', 'browser', 'os', 'console'] as const;
 type UrlParam = (typeof URL_PARAM_ORDER)[number];
@@ -74,7 +87,25 @@ export function issueFields(input: BugReportInput): IssueFields {
     browser: value('Browser') ?? 'unknown',
     os: value('System') ?? 'unknown',
     console: blocks.join('\n\n'),
+    ...(input.actions && { actions: input.actions }),
   };
+}
+
+/**
+ * The console field with the recent actions after it (ADR-0127), the
+ * `cut` oldest lines left out and counted: "… (12 older cut: see the copied
+ * report)".
+ */
+export function consoleText(fields: Pick<IssueFields, 'console' | 'actions'>, cut = 0): string {
+  const { actions } = fields;
+  if (!actions) return fields.console;
+  const kept = actions.slice(cut);
+  const lines = [
+    ACTIONS_HEADING,
+    ...(cut > 0 ? [`… (${cut} older cut: see the copied report)`] : []),
+    ...(kept.length === 0 && cut === 0 ? ['(none)'] : kept),
+  ];
+  return `${fields.console}\n\n${lines.join('\n')}`;
 }
 
 /** The Markdown report "Copy report" copies: the form's sections, in the form's order. */
@@ -104,33 +135,51 @@ export function buildReport(input: BugReportInput): string {
     '### Console errors',
     '',
     '```text',
-    fields.console,
+    consoleText(fields),
     '```',
     '',
   ].join('\n');
 }
 
 /**
- * The prefilled issue-form URL. Cuts `console`, then `steps`, then `what`
- * (longest fitting prefix plus the cut mark, searched again per prefix on
- * the original value) until the URL fits; a field that cannot be made to
- * fit stays as the mark alone. Never cut: title, version, browser, os.
+ * The prefilled issue-form URL. Cuts the recent actions first (ADR-0127: the
+ * fewest oldest lines that make it fit, all of them if none do), then
+ * `console`, then `steps`, then `what` (longest fitting prefix plus the cut
+ * mark, searched again per prefix on the original value) until the URL fits;
+ * a field that cannot be made to fit stays as the mark alone. Never cut:
+ * title, version, browser, os.
  */
 export function issueUrl(
   fields: IssueFields,
   base: string = ISSUES_URL,
   limit: number = URL_LIMIT,
 ): string {
-  const build = (values: IssueFields): string => {
+  let cut = 0;
+  const build = (values: IssueFields, actionsCut = cut): string => {
     const params = new URLSearchParams();
     params.set('template', ISSUE_TEMPLATE);
     for (const key of URL_PARAM_ORDER) {
-      const value = values[key];
+      const value = key === 'console' ? consoleText(values, actionsCut) : values[key];
       if (value) params.set(key, value);
     }
     return `${base}?${params}`;
   };
-  const fits = (values: IssueFields): boolean => build(values).length <= limit;
+  const fits = (values: IssueFields, actionsCut = cut): boolean =>
+    build(values, actionsCut).length <= limit;
+  const actions = fields.actions?.length ?? 0;
+  if (actions > 0 && !fits(fields)) {
+    if (!fits(fields, actions)) cut = actions;
+    else {
+      let low = 1;
+      let high = actions;
+      while (low < high) {
+        const mid = Math.floor((low + high) / 2);
+        if (fits(fields, mid)) high = mid;
+        else low = mid + 1;
+      }
+      cut = low;
+    }
+  }
   const cutTo = (values: IssueFields, key: CuttableParam, original: string): string => {
     const marked = { ...values, [key]: CUT_MARK };
     if (!fits(marked)) return CUT_MARK;
@@ -197,20 +246,29 @@ export function errorText(reason: unknown): string {
 
 /**
  * Records uncaught errors (`error` events: `event.error ?? event.message`) and
- * unhandled rejections (`unhandledrejection` events: `event.reason`) in `log`.
- * Returns the unsubscribe. `target` is `window` in the app and a plain
- * `EventTarget` in tests.
+ * unhandled rejections (`unhandledrejection` events: `event.reason`) in `log`,
+ * and a line in the recent-actions log `actions` (ADR-0127: the error's name
+ * only; its message is in the report's error list). Returns the unsubscribe.
+ * `target` is `window` in the app and a plain `EventTarget` in tests.
  */
 export function watchWindowErrors(
   log: ErrorLog,
   target: Pick<EventTarget, 'addEventListener' | 'removeEventListener'> = window,
+  actions: ActionLog = actionLog,
 ): () => void {
+  const name = (reason: unknown) => (reason instanceof Error ? reason.name : 'error');
   const onError = (event: Event) => {
     const e = event as ErrorEvent;
     log.record(errorText(e.error ?? e.message));
+    actions.error('error', `Uncaught ${name(e.error)}: its message is in the error list`);
   };
   const onRejection = (event: Event) => {
-    log.record(errorText((event as PromiseRejectionEvent).reason));
+    const { reason } = event as PromiseRejectionEvent;
+    log.record(errorText(reason));
+    actions.error(
+      'error',
+      `Unhandled rejection (${name(reason)}): its message is in the error list`,
+    );
   };
   target.addEventListener('error', onError);
   target.addEventListener('unhandledrejection', onRejection);

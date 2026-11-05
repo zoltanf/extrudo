@@ -3,7 +3,9 @@ import type { Feature, FeatureId } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import type { BuildInfo } from '../../pwa/build-info';
 import { ISSUES_URL } from './aboutLinks';
+import { createActionLog } from './actionLog';
 import {
+  ACTIONS_HEADING,
   type BugReportInput,
   buildReport,
   CUT_MARK,
@@ -275,6 +277,60 @@ describe('issueUrl cutting', () => {
   });
 });
 
+describe('recent actions in the report (ADR-0127)', () => {
+  const lines = Array.from(
+    { length: 300 },
+    (_, i) => `${String(i).padStart(8)} history: step ${i}`,
+  );
+  const decoded = (url: string, key: string) => new URL(url).searchParams.get(key);
+
+  it('adds the block after the console only when included, and Copy report has every line', () => {
+    expect(issueFields(input()).actions).toBeUndefined();
+    expect(buildReport(input())).not.toContain(ACTIONS_HEADING);
+    const report = buildReport(input({ actions: lines }));
+    expect(report).toContain(`${ACTIONS_HEADING}\n${lines[0]}`);
+    for (const line of lines) expect(report).toContain(line);
+    expect(report.indexOf('(none)')).toBeLessThan(report.indexOf(ACTIONS_HEADING));
+    expect(buildReport(input({ actions: [] }))).toContain(`${ACTIONS_HEADING}\n(none)`);
+  });
+
+  it('cuts the oldest actions first, keeping the newest, the errors, what and steps', () => {
+    const fields = issueFields(
+      input({ errors: ['Extrude1: no profile'], what: 'W'.repeat(50), actions: lines }),
+    );
+    const url = issueUrl(fields, ISSUES_URL, 4000);
+    expect(url.length).toBeLessThanOrEqual(4000);
+    const console = decoded(url, 'console') ?? '';
+    expect(console.startsWith('Extrude1: no profile')).toBe(true);
+    expect(console).toContain(lines.at(-1));
+    expect(console).not.toContain(lines[0]);
+    const cut = Number(console.match(/… \((\d+) older cut: see the copied report\)/)?.[1]);
+    expect(cut).toBeGreaterThan(0);
+    // Whole lines: the newest `300 - cut` are all there.
+    for (const line of lines.slice(cut)) expect(console).toContain(line);
+    expect(decoded(url, 'what')).toBe(fields.what);
+    expect(decoded(url, 'steps')).toBe(fields.steps);
+  });
+
+  it('cuts every action before it cuts the console', () => {
+    const fields = issueFields(input({ errors: ['E'.repeat(200)], actions: lines }));
+    // Just too short for the console with the actions' heading and mark.
+    const limit = issueUrl({ ...fields, actions: undefined }).length + 5;
+    const console = decoded(issueUrl(fields, ISSUES_URL, limit), 'console') ?? '';
+    expect(console).toContain('300 older cut');
+    expect(console).not.toContain('history: step');
+    expect(console.startsWith('E'.repeat(10))).toBe(true);
+    expect(console).toContain(CUT_MARK);
+  });
+
+  it('keeps a real report with 500 actions under the URL limit', () => {
+    const many = Array.from({ length: 500 }, (_, i) => `${i} pick: Click (dimension): model edge`);
+    const url = issueUrl(issueFields(input({ actions: many })));
+    expect(url.length).toBeLessThanOrEqual(8000);
+    expect(decoded(url, 'console')).toContain(many.at(-1));
+  });
+});
+
 describe('timelineSummary', () => {
   it('lists every feature in timeline order, with its type and suppression', () => {
     const feature = (id: string, type: string, name: string, suppressed = false): Feature => ({
@@ -344,6 +400,19 @@ describe('watchWindowErrors', () => {
     stop();
     target.dispatchEvent(Object.assign(new Event('error'), { message: 'after' }));
     expect(log.recent()).toEqual(['TypeError: boom', 'just a message', 'Error: nope']);
+  });
+
+  it('notes each in the recent-actions log by name only (ADR-0127)', () => {
+    const target = new EventTarget();
+    const actions = createActionLog();
+    const stop = watchWindowErrors(createErrorLog(), target, actions);
+    target.dispatchEvent(Object.assign(new Event('error'), { error: new TypeError('secret') }));
+    target.dispatchEvent(Object.assign(new Event('unhandledrejection'), { reason: 'x' }));
+    stop();
+    expect(actions.entries().map((e) => [e.level, e.kind, e.text])).toEqual([
+      ['error', 'error', 'Uncaught TypeError: its message is in the error list'],
+      ['error', 'error', 'Unhandled rejection (error): its message is in the error list'],
+    ]);
   });
 });
 

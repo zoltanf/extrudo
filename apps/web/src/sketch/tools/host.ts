@@ -110,6 +110,7 @@ import {
 } from '@extrudo/sketch/inference';
 import { profileAt } from '@extrudo/sketch/profiles';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import { actionLog } from '../../shell/actionLog';
 import { gridStep } from '../../viewport/grid';
 import type { ViewportStore } from '../../viewport/store';
 import { type DatumSource, datumSnapsAt } from '../datums';
@@ -551,12 +552,30 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     );
   };
 
+  /**
+   * What `context.pick` and `context.pickModel` returned during the click being
+   * handled (ADR-0127), for the recent-actions log; undefined between clicks,
+   * so hover picks aren't logged.
+   */
+  let clickPicks: string[] | undefined;
+  /** Logs a tool's click: what it snapped to and what it picked, kinds only (no coordinates). */
+  const logClick = (tool: SketchTool, inference: Inference, picks: readonly string[]) => {
+    const parts = [...picks];
+    if (!tool.picks) parts.unshift(snapText(inference, activeSketch()?.data));
+    actionLog.info('pick', `Click (${tool.id}): ${parts.join(', ') || 'nothing picked'}`);
+  };
+
   const context: ToolContext = {
     sketch: () => activeSketch()?.data ?? { entities: {}, constraints: {}, dimensions: {} },
     newId,
     construction: () => state.getState().construction,
     settings: () => store.getState().doc.settings,
-    pick: (cursor, accept) => pickSketch(context.sketch(), cursor, SNAP_PIXELS * perPixel, accept),
+    pick: (cursor, accept) => {
+      const sketch = context.sketch();
+      const id = pickSketch(sketch, cursor, SNAP_PIXELS * perPixel, accept);
+      if (clickPicks && id) clickPicks.push(`sketch ${sketch.entities[id]?.type ?? 'entity'}`);
+      return id;
+    },
     selection: () => {
       const data = activeSketch()?.data;
       return data ? selectedEntities(data) : [];
@@ -591,6 +610,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       }
       const existing = projectionFor(data, snap.ref, snap.kind);
       const curve = existing ? projectionCurve(existing[1], snap.kind) : undefined;
+      clickPicks?.push(`model ${snap.kind} (${projectedText(curve)})`);
       return { ...snap, ...(typeof curve === 'string' ? { entityId: curve } : {}) };
     },
   };
@@ -935,6 +955,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       edit.replace !== undefined ||
       edit.remove !== undefined ||
       edit.exprs !== undefined;
+    const stepBefore = store.getState().lastStepId();
     const added = dispatch(
       modifies
         ? modifySketch({
@@ -947,6 +968,17 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
           })
         : addToSketch(addition),
     );
+    if (added && store.getState().lastStepId() === stepBefore) {
+      // A silent no-op (ADR-0127): what follows the commit joins an older step.
+      const waits = pickBindings.length + deferredModels.length;
+      actionLog.warn(
+        'sketch',
+        `Commit (${state.getState().tool?.id ?? 'no tool'}) added nothing to the sketch` +
+          (waits > 0 || newProjections.length > 0
+            ? `; ${waits} waiting on a projection and ${newProjections.length} new projection(s) join step ${stepBefore ?? 'none'}`
+            : ''),
+      );
+    }
     if (added) {
       state.setState({
         editing:
@@ -1233,15 +1265,22 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
    * any other throw (a solver that rejects a constraint the mapped geometry
    * makes nonsense) is caught too, so it never leaves `syncProjections`.
    */
-  const writePending = (step: number | undefined, command: Command<unknown>): boolean => {
+  const writePending = (
+    step: number | undefined,
+    command: Command<unknown>,
+    what: string,
+  ): boolean => {
     try {
       if (step === undefined) {
         store.getState().amend(command);
         return true;
       }
-      return store.getState().amendInto(step, command);
+      const written = store.getState().amendInto(step, command);
+      if (!written) actionLog.warn('sketch', `Pending ${what} dropped: step ${step} is gone`);
+      return written;
     } catch (error) {
       console.warn('[sketch] could not hold geometry on an auto-projected curve:', error);
+      actionLog.warn('sketch', `Pending ${what} refused: ${errorName(error)}`);
       return false;
     }
   };
@@ -1265,6 +1304,10 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       const projection = data.projections?.[pending.projection];
       if (!projection || report?.projections?.[pending.projection]?.lost) {
         pendingModels.splice(i, 1);
+        actionLog.warn(
+          'sketch',
+          `Pending ${pending.kind} constraint dropped: its projection is ${projection ? 'lost' : 'missing'}`,
+        );
         continue;
       }
       const curve = projectionCurve(projection, pending.kind);
@@ -1292,7 +1335,11 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
           });
           continue;
         }
-        writePending(pending.step, addToSketch({ feature, constraints: { [cid]: constraint } }));
+        writePending(
+          pending.step,
+          addToSketch({ feature, constraints: { [cid]: constraint } }),
+          `${pending.kind} constraint`,
+        );
       } catch (error) {
         console.warn('[sketch] could not hold a point to an auto-projected curve:', error);
         state.setState({
@@ -1340,7 +1387,13 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       }
       if (status === 'waiting') continue;
       pendingEdits.splice(i, 1);
-      if (status === 'drop') continue;
+      if (status === 'drop') {
+        actionLog.warn(
+          'sketch',
+          `Pending ${pendingText(pending)} dropped: a projection is missing, lost or deleted`,
+        );
+        continue;
+      }
       try {
         resolveEdit(feature, data, pending);
       } catch (error) {
@@ -1432,7 +1485,11 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     }
 
     if (Object.keys(constraints).length === 0 && Object.keys(dimensions).length === 0) return;
-    const written = writePending(pending.step, addToSketch({ feature, constraints, dimensions }));
+    const written = writePending(
+      pending.step,
+      addToSketch({ feature, constraints, dimensions }),
+      pendingText(pending),
+    );
     if (written && pending.editDimension && pending.editDimension in dimensions) {
       if (session.getState().activeSketchId === feature) {
         state.setState({ editing: pending.editDimension });
@@ -1546,7 +1603,13 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         const inference = inferAt(pointer, tool);
         // A new click answers the last refusal.
         state.setState({ pointer: inference, screen: pointer.screen, error: undefined });
-        return tool.click(inference);
+        clickPicks = [];
+        try {
+          return tool.click(inference);
+        } finally {
+          logClick(tool, inference, clickPicks);
+          clickPicks = undefined;
+        }
       });
     },
     dragStart(pointer) {
@@ -1763,6 +1826,14 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
               (pending.step !== undefined && !store.getState().hasStep(pending.step))
             ) {
               list.splice(i, 1);
+              actionLog.warn(
+                'sketch',
+                `Pending ${'projection' in pending ? `${pending.kind} constraint` : pendingText(pending)} dropped: ${
+                  present.has(pending.feature)
+                    ? `step ${pending.step} is gone`
+                    : 'its sketch is gone'
+                }`,
+              );
             }
           }
         }
@@ -1976,6 +2047,38 @@ function projectionCurve(
   const key = projectionCurveKey(projection, kind);
   return key === undefined ? undefined : projection.curves[key];
 }
+
+/** "1 dimension (distance)", "2 constraints (parallel, coincident)": a pending edit by type (ADR-0127). */
+function pendingText(pending: PendingModelEdit): string {
+  const constraints = Object.values(pending.constraints).map((c) => c.type);
+  const dimensions = pending.dimensions.map((d) => d.shape.type);
+  const part = (noun: string, types: string[]) =>
+    types.length === 0
+      ? []
+      : [`${types.length} ${noun}${types.length === 1 ? '' : 's'} (${types.join(', ')})`];
+  return (
+    [...part('constraint', constraints), ...part('dimension', dimensions)].join(' and ') || 'edit'
+  );
+}
+
+/** Whether a model pick's ref is projected already (ADR-0127's pick lines). */
+function projectedText(curve: string | null | undefined): string {
+  if (typeof curve === 'string') return 'projected';
+  return curve === null ? 'projected, curve deleted' : 'not projected';
+}
+
+/** A click's snap as the recent-actions log says it: its kind and a model source's kind. */
+function snapText(inference: Inference, data: SketchData | undefined): string {
+  const snap = inference.snap;
+  if (!snap) return 'free point';
+  if (!snap.model) return `snap ${snap.kind}`;
+  const kind = snap.modelKind;
+  const existing = data && kind ? projectionFor(data, snap.model, kind) : undefined;
+  const curve = existing && kind ? projectionCurve(existing[1], kind) : undefined;
+  return `snap ${snap.kind} on model ${kind ?? 'geometry'} (${projectedText(curve)})`;
+}
+
+const errorName = (error: unknown) => (error instanceof Error ? error.name : 'error');
 
 /**
  * The projection record a sketch already holds for a model snap's ref, with

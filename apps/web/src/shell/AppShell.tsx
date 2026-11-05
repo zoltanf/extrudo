@@ -221,6 +221,7 @@ import type { PlanePicker, SketchInput } from '../viewport/Viewport';
 import { ViewportBoundary } from '../viewport/ViewportBoundary';
 import { AboutDialog } from './AboutDialog';
 import { AppBar, type FileActions } from './AppBar';
+import { actionLog, watchActions } from './actionLog';
 import { BROWSER_ID, BrowserPanel } from './BrowserPanel';
 import { BugReportDialog } from './BugReportDialog';
 import {
@@ -1348,6 +1349,8 @@ function Shell({
     await openBugReport();
   };
   useEffect(() => watchWindowErrors(errorLog), []);
+  // The recent-actions log (ADR-0127): commands, undo steps, mode and tool changes.
+  useEffect(() => watchActions({ store, session }), [store, session]);
   // The About dialog reads the kernel worker's status and WASM heap (the Recomputer's client).
   const kernelClient = kernel?.client;
   const kernelInfo = useMemo(
@@ -2218,6 +2221,15 @@ function Shell({
         notify: (tone, text, options) => {
           errorLog.record(text);
           notify(tone, text, options);
+        },
+        failed: (id) => {
+          const type = id && store.getState().doc.features.find((f) => f.id === id)?.type;
+          actionLog.error(
+            'error',
+            id
+              ? `Feature ${id} (${type ?? 'gone'}) failed: its message is in the error list`
+              : "The model couldn't be computed: the message is in the error list",
+          );
         },
         edit: (id) => featureActionsRef.current.edit(id),
         canEdit: (id) => {

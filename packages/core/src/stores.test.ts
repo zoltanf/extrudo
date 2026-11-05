@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CommandError } from './commands';
 import { createDocument } from './document';
 import { renameDocument, renameFeature } from './document-commands';
+import type { HistoryEvent } from './history';
 import type { ComponentId } from './ids';
 import { createDocumentStore, createModelStore, createSessionStore } from './stores';
 import { bid, fid, sampleDocument } from './testing';
@@ -97,6 +98,107 @@ describe('document store', () => {
     s().cancelTransaction();
     expect(s().doc.features[0]?.name).toBe('Sketch1');
     expect(s()).toMatchObject({ transactionDepth: 0, canRedo: true });
+  });
+
+  it('reports each history change: new step, joined step, undo, redo (ADR-0127)', () => {
+    const store = createDocumentStore(sampleDocument());
+    const s = () => store.getState();
+    const events: HistoryEvent[] = [];
+    const stop = s().subscribeHistory((e) => events.push(e));
+
+    s().dispatch(renameFeature({ id: fid('f1'), name: 'A' }));
+    const first = s().lastStepId();
+    expect(events.at(-1)).toEqual({
+      type: 'dispatch',
+      command: 'feature.rename',
+      label: 'Rename feature',
+      step: first,
+    });
+    // A command that changes nothing makes no step: `step` is undefined.
+    s().dispatch(renameFeature({ id: fid('f1'), name: 'A' }));
+    expect(events.at(-1)).toMatchObject({ type: 'dispatch', step: undefined });
+
+    // `amend` joins the latest step and names it (PR #199's bug: a dimension in "Draw").
+    s().amend(renameDocument({ name: 'B' }));
+    expect(events.at(-1)).toEqual({
+      type: 'amend',
+      command: 'document.rename',
+      label: 'Rename document',
+      into: undefined,
+      changed: true,
+      step: first,
+      stepLabel: 'Rename feature',
+      relabel: false,
+    });
+    s().amend(renameDocument({ name: 'C' }), { relabel: true });
+    expect(events.at(-1)).toMatchObject({ step: first, stepLabel: 'Rename document' });
+
+    // `amendInto` names the step asked for, even when it is not the latest.
+    s().dispatch(renameFeature({ id: fid('f1'), name: 'D' }));
+    const second = s().lastStepId();
+    s().amendInto(first as number, renameDocument({ name: 'E' }));
+    expect(events.at(-1)).toMatchObject({
+      type: 'amend',
+      into: first,
+      changed: true,
+      step: first,
+      stepLabel: 'Rename document',
+    });
+
+    s().undo();
+    expect(events.at(-1)).toEqual({ type: 'undo', step: second, label: 'Rename feature' });
+    // A gone step: `amendInto` drops the change and says so with `step` undefined.
+    s().amendInto(second as number, renameDocument({ name: 'F' }));
+    expect(events.at(-1)).toMatchObject({ into: second, changed: true, step: undefined });
+    expect(s().doc.name).toBe('E');
+    s().redo();
+    expect(events.at(-1)).toEqual({ type: 'redo', step: second, label: 'Rename feature' });
+
+    stop();
+    s().dispatch(renameFeature({ id: fid('f1'), name: 'G' }));
+    expect(events.at(-1)).toMatchObject({ type: 'redo' });
+  });
+
+  it('reports transactions, an empty amend and a missing step (ADR-0127)', () => {
+    const store = createDocumentStore(sampleDocument());
+    const s = () => store.getState();
+    const events: HistoryEvent[] = [];
+    s().subscribeHistory((e) => events.push(e));
+    // No step to join on a fresh document: applied without one.
+    s().amend(renameDocument({ name: 'Loaded' }));
+    expect(events.at(-1)).toMatchObject({ type: 'amend', changed: true, step: undefined });
+    s().amend(renameDocument({ name: 'Loaded' }));
+    expect(events.at(-1)).toMatchObject({ type: 'amend', changed: false });
+    s().undo();
+    expect(events.at(-1)).toEqual({ type: 'undo', step: undefined, label: undefined });
+
+    s().beginTransaction('Edit sketch');
+    expect(events.at(-1)).toEqual({ type: 'begin', label: 'Edit sketch', depth: 1 });
+    s().dispatch(renameFeature({ id: fid('f1'), name: 'A' }));
+    const inner = s().lastStepId();
+    s().commitTransaction();
+    const outer = s().lastStepId();
+    expect(outer).not.toBe(inner);
+    expect(events.at(-1)).toEqual({ type: 'commit', label: 'Edit sketch', step: outer, depth: 0 });
+    s().beginTransaction('Move');
+    s().commitTransaction();
+    expect(events.at(-1)).toMatchObject({ type: 'commit', label: 'Move', step: undefined });
+    s().beginTransaction('Radius');
+    s().cancelTransaction();
+    expect(events.at(-1)).toEqual({ type: 'cancel', label: 'Radius', depth: 0 });
+    s().revertTo(undefined);
+    expect(events.at(-1)).toEqual({ type: 'revert', target: undefined, changed: true });
+    s().replaceDocument(sampleDocument());
+    expect(events.at(-1)).toEqual({ type: 'replace' });
+  });
+
+  it('a listener that throws never blocks the change (ADR-0127)', () => {
+    const store = createDocumentStore(sampleDocument());
+    store.getState().subscribeHistory(() => {
+      throw new Error('broken logger');
+    });
+    store.getState().dispatch(renameDocument({ name: 'Bracket' }));
+    expect(store.getState().doc.name).toBe('Bracket');
   });
 
   it('replacing the document clears the history', () => {

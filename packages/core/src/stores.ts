@@ -16,7 +16,7 @@ import type { CanvasReport } from './canvas';
 import { applyCommand, type Command } from './commands';
 import type { BodyOrigins } from './components';
 import type { ConstructionReport } from './construction';
-import { type HistoryOptions, UndoHistory } from './history';
+import { type HistoryEvent, type HistoryOptions, UndoHistory } from './history';
 import type { AnnotationId, BodyId, ComponentId, FeatureId, JointId } from './ids';
 import type { ImportReport } from './import';
 import type { MeshToSolidReport } from './mesh-to-solid';
@@ -72,6 +72,13 @@ export interface DocumentState {
   cancelTransaction(): void;
   /** Replaces the document (open, load a version) and clears the history. */
   replaceDocument(doc: ExtrudoDocument): void;
+  /**
+   * Calls `listener` after each change to the undo history above, with what it
+   * did (ADR-0127: the recent-actions log): the command's type and label, the
+   * step it made or joined. Also for a command that changed nothing. Not for a
+   * command that threw. Returns the unsubscribe.
+   */
+  subscribeHistory(listener: (event: HistoryEvent) => void): () => void;
 }
 
 export type DocumentStore = StoreApi<DocumentState>;
@@ -89,29 +96,72 @@ export function createDocumentStore(
     transactionDepth: history.depth,
   });
 
+  const listeners = new Set<(event: HistoryEvent) => void>();
+  // After the store's own `set`, so a listener sees the new state. A listener
+  // that throws never undoes or blocks the change: logging is a bystander.
+  const emit = (event: HistoryEvent) => {
+    for (const listener of listeners) {
+      try {
+        listener(event);
+      } catch {
+        // ignored
+      }
+    }
+  };
+  const amended = (
+    command: Command<unknown>,
+    into: number | undefined,
+    changed: boolean,
+    step: number | undefined,
+    relabel: boolean,
+  ) =>
+    emit({
+      type: 'amend',
+      command: command.type,
+      label: command.label,
+      into,
+      changed,
+      step,
+      stepLabel: step === undefined ? undefined : history.labelOf(step),
+      relabel,
+    });
+
   return createStore<DocumentState>()((set, get) => ({
     doc: freeze(initial, true),
     ...historyState(),
     dispatch(command) {
       const { doc, patches, inversePatches } = applyCommand(get().doc, command);
-      history.record({ label: command.label, patches, inversePatches });
+      const step = history.record({ label: command.label, patches, inversePatches });
       set({ doc, ...historyState() });
+      emit({ type: 'dispatch', command: command.type, label: command.label, step });
     },
     amend(command, options) {
       const { doc, patches, inversePatches } = applyCommand(get().doc, command);
-      if (patches.length === 0) return;
-      history.amend({ label: command.label, patches, inversePatches }, options?.relabel);
+      const relabel = options?.relabel ?? false;
+      if (patches.length === 0) {
+        amended(command, undefined, false, history.lastStepId, relabel);
+        return;
+      }
+      const step = history.lastStepId;
+      history.amend({ label: command.label, patches, inversePatches }, relabel);
       set({ doc, ...historyState() });
+      amended(command, undefined, true, step, relabel);
     },
     amendInto(stepId, command, options) {
       const { doc, patches, inversePatches } = applyCommand(get().doc, command);
-      if (patches.length === 0) return history.hasStep(stepId);
+      const relabel = options?.relabel ?? false;
+      if (patches.length === 0) {
+        const there = history.hasStep(stepId);
+        amended(command, stepId, false, there ? stepId : undefined, relabel);
+        return there;
+      }
       const joined = history.amendInto(
         stepId,
         { label: command.label, patches, inversePatches },
-        options?.relabel,
+        relabel,
       );
       if (joined) set({ doc, ...historyState() });
+      amended(command, stepId, true, joined ? stepId : undefined, relabel);
       return joined;
     },
     lastStepId() {
@@ -121,33 +171,53 @@ export function createDocumentStore(
       return history.hasStep(stepId);
     },
     undo() {
+      const step = history.undoStepId;
+      const label = history.undoLabel;
       set({ doc: history.undo(get().doc), ...historyState() });
+      emit({ type: 'undo', step, label });
     },
     redo() {
+      const step = history.redoStepId;
+      const label = history.redoLabel;
       set({ doc: history.redo(get().doc), ...historyState() });
+      emit({ type: 'redo', step, label });
     },
     canRevertTo(stepId) {
       return history.canRevertTo(stepId);
     },
     revertTo(stepId) {
-      if (!history.canRevertTo(stepId)) return false;
+      if (!history.canRevertTo(stepId)) {
+        emit({ type: 'revert', target: stepId, changed: false });
+        return false;
+      }
       set({ doc: history.revertTo(get().doc, stepId), ...historyState() });
+      emit({ type: 'revert', target: stepId, changed: true });
       return true;
     },
     beginTransaction(label) {
       history.begin(label);
       set(historyState());
+      emit({ type: 'begin', label, depth: history.depth });
     },
     commitTransaction() {
-      history.commit();
+      const label = history.transactionLabel ?? '';
+      const step = history.commit();
       set(historyState());
+      emit({ type: 'commit', label, step, depth: history.depth });
     },
     cancelTransaction() {
+      const label = history.transactionLabel ?? '';
       set({ doc: history.cancel(get().doc), ...historyState() });
+      emit({ type: 'cancel', label, depth: history.depth });
     },
     replaceDocument(doc) {
       history.clear();
       set({ doc: freeze(doc, true), ...historyState() });
+      emit({ type: 'replace' });
+    },
+    subscribeHistory(listener) {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
     },
   }));
 }
