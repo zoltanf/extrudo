@@ -3605,11 +3605,33 @@ Numbers in ADR-0097's 2026-11-01 amendment; all tables in `docs/plans/m2s-explod
   gardena-end's 594 such edges for the same body; a k T threshold or a facet-across rule loses gear-bearing-5's round
   trip.
 - Measured, not built: makita-vacuum-holder's facets are mostly one unfit fillet network (3,106 triangles, about 2,090
-  facets; no rolling-ball band fits) and 18 cone fits on fillet patches whose chords lie 1.2–3.4 mm off the cone.
+  facets; no rolling-ball band fits) and 18 cone fits on fillet patches whose chords lie 1.2–3.4 mm off the cone
+  (built: 2026-11-04f).
 - Test: `mesh-to-solid.test.ts` "gives a mesh edge that strays far from its straight pcurve the chord’s own image, so a
   coarse ball round-trips (2026-11-04d)". Sweep baseline from here on:
   `baseline-2026-11-04e-chord-three-points-auto.jsonl` (`prismatic faces 24650, prismatic facets 13958, prismatic ms
   221048, round trips failed 0`). Spike case `D` measures a body's distance from its mesh.
+
+**ADR-0097 amendment (2026-11-04f): a fillet ring's torus, found over its network.** `extrudo_facade.cpp`
+(`segmentMesh`'s `networks`, `splitComponent`, `fitMeshTorus`'s `gate` and `refine`, `meshAutoTolerance`). Rules:
+- Rule 1: a smooth component of `MESH_TORUS_TRIM_MIN_REGIONS` (16) regions or more first gets a dominant torus by a
+  trimmed fit (gate `MESH_TORUS_TRIM_FLATNESS`, no Gauss–Newton, the larger of T and the 60th-percentile region
+  distance, at most `MESH_TORUS_TRIM_ROUNDS`); its regions within T, in their largest smooth piece, are the split's
+  first piece when they hold `MESH_DOMINANT_SHARE` of the area.
+- The centroid condition is required: every triangle centroid of the dominant torus's regions (and of what it takes)
+  within T. Nodes alone gave track-straight-100mm a torus 0.61 mm off its triangles.
+- Rule 2: a split with a piece of `MESH_DOMINANT_SHARE` of the area and leftovers of at most `MESH_LEFTOVER_SHARE`
+  stands, its leftovers unfit pieces of their own; without such a piece, "the split explains too little" still holds.
+- Rule 3: a split with the dominant torus that leaves the component whole and unfit is split again without it (and the
+  spindle retry runs without it too).
+- Rule 4: only a dominant torus takes neighbours, never a plane: after the clusters settle, it takes the neighbouring
+  non-plane surfaces whose every node and triangle centroid lie within T. Every torus or every kind blew up
+  hole-filler-35mm and peg-perego-button.
+- Rule 5: the Auto ladder runs without the network rules (`segmentMesh(step, seg, false)`); the chosen step is
+  segmented once more with them. With them at every step Auto stops at finer steps where the hybrid explodes more.
+- Test: `mesh-to-solid.test.ts` "finds a fillet ring's torus over the network it borders, so the rim is one torus
+  (2026-11-04f)". Sweep baseline from here on: `baseline-2026-11-04f-torus-rings-auto.jsonl` (`prismatic faces 21426,
+  prismatic facets 11132, prismatic ms 228569, round trips failed 0`).
 
 ADR-0099 (2026-10-23, #78, P4-13) adds **Remove Faces** (`removeFaces`,
 `packages/core/src/remove-faces.ts`, evaluator `packages/kernel/src/features/remove-faces.ts`,
