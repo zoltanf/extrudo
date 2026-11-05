@@ -1,0 +1,1 @@
+- 2026-11-05 · **Dimension preview on another sketch's curve**: after picking an earlier sketch's dashed curve, a body edge or a vertex, the Dimension tool shows the dimension following the cursor before the placing click, as it does for sketch geometry.

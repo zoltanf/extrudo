@@ -174,11 +174,16 @@ export class DimensionTool implements SketchTool {
     const second =
       this.#picked.length === 1 && first?.entity.type === 'line' && this.#hover !== undefined;
     const dimension = this.#cursor && !second ? this.#candidate(this.#cursor) : undefined;
+    // A pick not projected yet is a stand-in only this tool holds: the overlay
+    // draws the dimension in the same view it was measured in.
+    const sketch = this.context.sketch();
+    const view = dimension && this.#view(sketch);
     return {
       ...EMPTY_PREVIEW,
       picked: this.#picked.map((p) => p.id),
       hover: this.#hover?.id,
       dimension,
+      ...(view && view !== sketch && { dimensionSketch: view }),
       ...((this.#hover?.model ?? this.#hover?.marker) && {
         modelHover: this.#hover?.model ?? this.#hover?.marker,
       }),
