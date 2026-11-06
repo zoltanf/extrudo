@@ -396,7 +396,6 @@ export function ellipseAt(e: SketchEllipse, t: number): Vec2 {
   ];
 }
 
-/** Each curve, and where the sketch's other curves meet it (its parameter there). */
 /**
  * Where another curve meets a curve. `seam`: the touch of a coincident circle
  * at a closed curve's start, which the file counts there (first), not at the
@@ -408,6 +407,7 @@ interface Hit {
   seam?: true;
 }
 
+/** Each curve, and where the sketch's other curves meet it (its parameter there). */
 export interface SketchPieces {
   byKey: Map<string, { traced: Traced; hits: Hit[] }>;
 }
