@@ -32,11 +32,20 @@ published. Versions come from `git describe` of the last `v*` tag: stable shows
    shows after the update ("Updated to Extrudo X.Y.Z.", What's new; ADR-0133).
    The owner approves it with the release notes (step 8 reuses it); without
    it the update is quiet.
+   Push the commit straight to main (`git push origin HEAD:main`, after the
+   owner's go), not through a PR: CI's changelog check (ADR-0089) fails any
+   PR that edits `docs/CHANGELOG.md`.
 4. **Startup numbers** (ADR-0100): `pnpm build && node
    scripts/measure-startup.mjs`; compare with ADR-0100's baseline (a jump is
    a release blocker to investigate, a drift is noted in the release notes).
 5. **Wait for CI on main** for that commit (`gh run list -c <full sha>`; a
-   short SHA finds nothing). Only tag a commit whose CI passed.
+   short SHA finds nothing). Only tag a commit whose CI passed. If anything
+   since the last release touched the web app's build config (Vite plugins,
+   `apps/web/vite.config.ts`), also run the Desktop workflow on that commit
+   first (`gh workflow run desktop.yml --ref main`) and wait for its three
+   package jobs: PR CI never builds the desktop app, and its renderer has its
+   own config (`apps/desktop/electron.vite.config.ts`). v0.10.0's first tag
+   failed every package this way.
 6. **Tag:** `git tag -a vX.Y.Z -m "vX.Y.Z" <commit> && git push origin vX.Y.Z`.
    The tag deploys the stable app at <https://app.extrudo.org> (ADR-0057), and
    the `desktop` workflow builds the Linux (AppImage, deb), Windows (NSIS and
