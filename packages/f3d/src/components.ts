@@ -132,6 +132,28 @@ export class ComponentMapping {
     return undefined;
   }
 
+  /** The base feature a body move made to hold the body it moved, when the file says. */
+  base(feature: F3dFeature): number | undefined {
+    return this.#moves.get(feature.id)?.base;
+  }
+
+  /**
+   * Forgets that a body move's made body is the body it took: the made body is
+   * then its own (the base feature's body imported from the file).
+   */
+  unalias(feature: F3dFeature): void {
+    const move = this.#moves.get(feature.id);
+    if (!move) return;
+    for (const made of move.made) {
+      const source = this.aliases.get(made);
+      if (source === undefined) continue;
+      this.aliases.delete(made);
+      const copies = (this.#copies.get(source) ?? []).filter((b) => b !== made);
+      if (copies.length > 0) this.#copies.set(source, copies);
+      else this.#copies.delete(source);
+    }
+  }
+
   /** The body records a "Body to Component" moves (empty for any other feature). */
   moves(feature: F3dFeature): number[] {
     return this.#moves.get(feature.id)?.sources ?? [];

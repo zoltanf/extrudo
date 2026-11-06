@@ -311,13 +311,44 @@ generations.
 | `2BB3BB69…` | Hidden occurrence | references a component (first) and its occurrence; one per occurrence whose light bulb is off. Worked out from the samples alone: in each of them, the components these name are the ones a STEP export of the design leaves out |
 | `56225BC7…` | Body to Component (timeline item) | a body operand (`9716F783…` → body link → body) names the body it takes; it makes a new body record in the target component, whose body link names the item or one of its own records as the feature that made it. The body it took stays in its old component, hidden |
 | `BA3059E4…` | Cut and paste of bodies (`CutPasteBodies`, timeline item) | the same shape as Body to Component (body operand → body link → the body it takes; a new body record in the target component whose body link names one of the item's own records); its scope has **no history state**, like a sketch, so a missing state doesn't mean suppressed. The plain cut and paste (`D57B1A22…`, `CutPaste`) names no body operand and is not read |
+| `D7015B81…` | Base feature (v3, v4; scope kind `Base Feature`) | a body kept without history. On the timeline, or off it: then a Body to Component or a cut and paste of bodies made it: the move's second reference is the base feature (a cut and paste's base feature references the move back, its last reference). A base feature that holds a body references two body records, each opening with a one-entry property block (key, type `PassiveRefMetaType`, a reference to the other body): `BASEFEAT_DM_BODY_REF` is the design body it made (in its component's body container; its body link names the base feature as creator; later features change it), `BASEFEAT_PM_BODY_REF` a hidden body with **its own body container and B-rep stream: the body as the base feature left it**. That stream can hold more solids (the pasted source, earlier states, loose faces): the body is the one whose faces carry the base feature's operation, earlier states carrying a strict subset of its operations. One that references no body holds none: no face of any stream carries its operation. See below |
+| `A917FE80…` | Group of timeline items (v1) | its references are the timeline items that follow it, in order (once in its members, once more in a list); no feature tail, no geometry of its own |
 
 Seen in the samples: no component placed twice, nesting in a few designs, and placed
 occurrences away from the origin only in a design with no timeline.
 
 A body's index sits after a −1.0 double in most files (payload offset 10 in
 class version 16); in some it is 16 bytes after the body's GUID string, behind
-other numbers.
+other numbers. A base feature's body record in 2018–19 files (class version 16) opens
+with its property block instead: the index then follows a u32 2 that comes
+right after the block's reference, or after one more zero u32 (read from the six
+such records of the corpus: two designs whose references carry their target's
+type GUID, and one whose do not).
+
+### Base features
+
+Read from the corpus's 20 designs with base feature records (29 records,
+2026-11-06), by following each record's references and the streams their bodies'
+containers name, then writing the kept solid as STEP and measuring it:
+
+- 22 off-timeline base features, every one named by a body move (12 cuts and
+  pastes of bodies, each referenced back, and 10 Body to Component); 7 on the
+  timeline, of which 6 hold no body.
+- The kept stream is the body as the base feature left it: in a phone case, the
+  kept body (3,448 faces, operations {178, 301}, 301 the base feature's) is the
+  final body (3,750 faces, {178, 301, 302, 303}) before its two chamfers (302,
+  303), 7,190.8 mm³ against the final 6,994.9 mm³ (the reference export's); where
+  no feature follows (four designs of boxes and lids) the kept bodies measure as
+  the reference export, exactly (their volumes sum to its volume).
+- A face of the kept body keeps the tags of the operation that first made it,
+  with the base feature as a later change: a chamfer after it names a face
+  `2439@[178, -301]`, 178 being no record of the operation table.
+- Written as STEP in the kept solid's face order, the faces come back from a
+  STEP reader in that order (3,448 of 3,448 in the phone case, each face's
+  surface type and plane checked).
+- A cut and paste whose source body no record names any more (the body was cut
+  out of a base feature, which is then empty) is the case of three designs of
+  one power-supply family.
 
 ## ASM B-rep
 

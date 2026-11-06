@@ -7,6 +7,7 @@
 import { designSegments, type Entries, type SegmentFiles, unzip } from './archive';
 import { type AsmCurve, type AsmFace, type AsmSurface, asmFaces, readAsm } from './asm';
 import { F3dFormatError, finite, Reader } from './bytes';
+import { BASE_FEATURE, type F3dBase, readBase } from './decode/base';
 import { BODY, type BodyFlags, readBody } from './decode/body';
 import { type CombineRead, type MoveRead, readCombine, readMove } from './decode/combine';
 import {
@@ -134,9 +135,14 @@ import { Segment } from './segment';
 export const SKETCH_CONTAINER = '44A64366-4BD3-4B24-881A-F94C206E8F2D';
 export const SKETCH_PLACEMENT = 'F47A46FB-DA27-4AFA-8A72-1B38FA596E23';
 /** Timeline items that are not features, by type. */
+/** A group of timeline items (no feature tail, no geometry of its own). */
+export const TIMELINE_GROUP = 'A917FE80-93D6-45AD-B741-93BB1ACA5E61';
+
 const TIMELINE_LABELS: Record<string, string> = {
   '54F9ACE8-B5B8-4A6E-B582-64F629511DE4': 'Component',
   '56225BC7-69B7-446A-9AEA-6AA25BC7806E': 'Body to Component',
+  // A group of timeline items: it references the items that follow it, in order.
+  [TIMELINE_GROUP]: 'Group',
 };
 
 /** Operation ID → feature record (what face tags point at). */
@@ -357,8 +363,15 @@ export interface F3dMove extends FeatureBase, MoveRead {
   type: 'move';
 }
 
+/** A base feature on the timeline: the body it holds, without history (`decode/base.ts`). */
+export interface F3dBaseFeature extends FeatureBase, Omit<F3dBase, 'id'> {
+  type: 'base';
+}
+
 export interface F3dOther extends FeatureBase {
   type: 'other';
+  /** A group of timeline items: no step of its own. */
+  group?: boolean;
 }
 
 export type F3dFeature =
@@ -379,6 +392,7 @@ export type F3dFeature =
   | F3dTorus
   | F3dCombine
   | F3dMove
+  | F3dBaseFeature
   | F3dOther;
 
 /** A body of the design: its number, whether it is shown, the feature that made it. */
@@ -406,6 +420,11 @@ export interface F3dDesign {
   components?: F3dComponent[];
   /** The "Body to Component" items, in timeline order. */
   bodyMoves?: F3dBodyMove[];
+  /**
+   * Every base feature that keeps a body, on the timeline or made by a body
+   * move, with the operation IDs that tag that body's faces.
+   */
+  bases?: (F3dBase & { ops: number[] })[];
   /** Records the reader could not decode, with why. */
   problems: string[];
   /** How many parameter value records failed to decode (their features fall back to defaults). */
@@ -751,6 +770,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         // A body move keeps no history state: none doesn't mean suppressed there.
         suppressed: scope ? scope.state === null && !BODY_MOVES.has(type?.guid ?? '') : false,
         parameters: byScope.get(id) ?? [],
+        ...(type?.guid === TIMELINE_GROUP ? { group: true } : {}),
       });
       continue;
     }
@@ -1057,6 +1077,14 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         readTorus(seg, scope, madeBy(id), insideOnce, participantsAll(scope)),
       );
       features.push(torus ? { type: 'torus', ...base, ...torus } : { type: 'other', ...base });
+    } else if (FEATURE_TYPES[type.guid] === 'BaseFeature') {
+      const { kept, made } = readBase(seg, id, refsOf(id));
+      features.push({
+        type: 'base',
+        ...base,
+        ...(kept !== undefined ? { kept } : {}),
+        ...(made !== undefined ? { made } : {}),
+      });
     } else features.push({ type: 'other', ...base });
   }
 
@@ -1109,6 +1137,17 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       if (component !== undefined) b.component = component;
     }
   }
+  // Base features: on the timeline, or the one a body move references (its
+  // second reference, and the base feature references the move back).
+  const bases: (F3dBase & { ops: number[] })[] = [];
+  for (const id of seg.idsOf(BASE_FEATURE)) {
+    const held = readBase(seg, id, refsOf(id));
+    if (held.kept !== undefined) bases.push({ ...held, ops: opsOf.get(id) ?? [] });
+  }
+  for (const move of bodyMoves) {
+    const base = refsOf(move.id).find((r) => seg.typeOf(r)?.guid === BASE_FEATURE);
+    if (base !== undefined) move.base = base;
+  }
 
   return {
     parameters,
@@ -1117,6 +1156,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     bodies,
     ...(tree ? { components: tree.components } : {}),
     bodyMoves,
+    ...(bases.length > 0 ? { bases } : {}),
     problems,
     unreadParameters,
   };

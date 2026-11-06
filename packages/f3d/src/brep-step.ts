@@ -20,8 +20,10 @@
  * This writer does not touch the importer's behaviour (`map.ts`): it is the
  * decoder slice a later change will feed through the `import` feature.
  */
+
+import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES } from '@extrudo/storage';
 import { designSegments, type Entries, unzip } from './archive';
-import { type AsmCurve, type AsmSurface, readAsm } from './asm';
+import { type AsmCurve, type AsmRecord, type AsmSurface, asmFaceTags, readAsm } from './asm';
 import {
   type AsmBodyEdge,
   type AsmBodyFace,
@@ -827,3 +829,152 @@ export function bodiesStep(entries: Entries, design: F3dDesign): BodyStep[] {
 /** A sphere or torus the file signs inward (a negative radius). */
 const inwardSurface = (s: AsmSurface): boolean =>
   ((s.kind === 'sphere' || s.kind === 'torus') && s.inward) || (s.kind === 'bspline' && s.reversed);
+
+/**
+ * A base feature's kept body (`decode/base.ts`) as STEP, for the `import` the
+ * importer puts at the base feature's place, with each written face's tags so
+ * later features' references can name the import's faces.
+ */
+export interface BaseStep {
+  /** The base feature record. */
+  feature: number;
+  /** The STEP text, when the body was written. */
+  step?: string;
+  /** Why the body was not written. */
+  reason?: string;
+  /**
+   * Per face in the STEP's order (the import names face `n` after the n-th):
+   * its tags as `token@operation` (the operation unsigned).
+   */
+  faces?: string[][];
+}
+
+/** The most solids of one stream that may carry a base feature's operation. */
+const MAX_BASE_CANDIDATES = 64;
+
+/**
+ * Every base feature's kept body as STEP. The body is the solid of its own
+ * stream whose faces carry the base feature's operation; solids whose
+ * operations are a strict subset of another's are earlier states of it, and
+ * of the rest the one with the most faces (the others are loose faces) is
+ * taken. Each kept body and each stream is read once; a body's STEP is at most
+ * `MAX_ATTACHMENT_BYTES` and all of them together `MAX_ATTACHMENTS_BYTES` (they
+ * are kept with the design), so a crafted file can't make this unbounded.
+ */
+export function baseBodiesStep(entries: Entries, design: F3dDesign): BaseStep[] {
+  const bases = design.bases ?? [];
+  if (bases.length === 0) return [];
+  const first = activeDesignSegment(designSegments(entries));
+  const streams = first
+    ? bodyStreams(new Segment(first.meta, first.bulk))
+    : new Map<number, { file: string; index: number }>();
+  const read = new Map<string, { records: AsmRecord[]; solids: AsmBodySolid[] } | string>();
+  const byBody = new Map<number, Omit<BaseStep, 'feature'>>();
+  let total = 0;
+  const out: BaseStep[] = [];
+  for (const base of bases) {
+    const kept = base.kept as number;
+    let done = byBody.get(kept);
+    if (!done) {
+      done = keptStep(entries, streams, read, base.ops, MAX_ATTACHMENTS_BYTES - total, kept);
+      // STEP text is ASCII: a character is a byte.
+      if (done.step !== undefined) total += done.step.length;
+      byBody.set(kept, done);
+    }
+    out.push({ feature: base.id, ...done });
+  }
+  return out;
+}
+
+/** One kept body's solid as STEP with its faces' tags, or why not. */
+function keptStep(
+  entries: Entries,
+  streams: Map<number, { file: string; index: number }>,
+  read: Map<string, { records: AsmRecord[]; solids: AsmBodySolid[] } | string>,
+  ops: readonly number[],
+  room: number,
+  kept?: number,
+): Omit<BaseStep, 'feature'> {
+  const link = kept === undefined ? undefined : streams.get(kept);
+  if (!link) return { reason: 'no B-rep stream for the body it holds' };
+  let stream = read.get(link.file);
+  if (stream === undefined) {
+    const data = entryFor(entries, link.file);
+    try {
+      if (!data) throw new Error(`stream ${link.file} is missing from the archive`);
+      const records = readAsm(data);
+      stream = { records, solids: asmBodies(records) };
+    } catch (error) {
+      stream = (error as Error).message;
+    }
+    read.set(link.file, stream);
+  }
+  if (typeof stream === 'string') return { reason: `its stream could not be read (${stream})` };
+  return keptBody(stream.records, stream.solids, ops, room);
+}
+
+/**
+ * Which of a stream's solids a base feature keeps, by the operations on each
+ * one's faces and its face count: those carrying one of `own` (the base
+ * feature's operations), less those whose operations are a strict subset of
+ * another's (earlier states), the one with the most faces (the others are
+ * loose faces); the index, or why none.
+ */
+export function keptSolidIndex(
+  solids: readonly { faces: number; ops: ReadonlySet<number> }[],
+  own: ReadonlySet<number>,
+): number | string {
+  const candidates: number[] = [];
+  for (const [i, s] of solids.entries()) {
+    if (![...s.ops].some((op) => own.has(op))) continue;
+    if (candidates.length >= MAX_BASE_CANDIDATES) return 'too many solids carry its operation';
+    candidates.push(i);
+  }
+  const of = (i: number) => solids[i] as (typeof solids)[number];
+  const latest = candidates.filter(
+    (i) =>
+      !candidates.some(
+        (o) => of(o).ops.size > of(i).ops.size && [...of(i).ops].every((op) => of(o).ops.has(op)),
+      ),
+  );
+  const chosen = latest.reduce<number | undefined>(
+    (best, i) => (best === undefined || of(i).faces > of(best).faces ? i : best),
+    undefined,
+  );
+  return chosen ?? 'the body it holds is not in its stream';
+}
+
+/** A base feature's kept body, of a stream read already: its STEP and its faces' tags, or why not. */
+export function keptBody(
+  records: AsmRecord[],
+  solids: readonly AsmBodySolid[],
+  ops: readonly number[],
+  /** The most bytes its STEP may take. */
+  room: number,
+): Omit<BaseStep, 'feature'> {
+  try {
+    const tagsOf = (face: AsmBodyFace) =>
+      face.record === undefined ? [] : asmFaceTags(records, face.record);
+    const facesOf = (s: AsmBodySolid) => [...s.faces, ...(s.voids ?? []).flat()];
+    const at = keptSolidIndex(
+      solids.map((solid) => {
+        const of = new Set<number>();
+        for (const face of facesOf(solid)) for (const t of tagsOf(face)) of.add(Math.abs(t.design));
+        return { faces: facesOf(solid).length, ops: of };
+      }),
+      new Set(ops),
+    );
+    if (typeof at === 'string') return { reason: at };
+    const solid = solids[at] as AsmBodySolid;
+    const written = solidStep(solid, Math.min(MAX_ATTACHMENT_BYTES, Math.max(0, room)));
+    if (written.step === undefined) return { reason: written.reason ?? 'not written' };
+    return {
+      step: written.step,
+      faces: facesOf(solid).map((face) =>
+        tagsOf(face).map((t) => `${t.token}@${Math.abs(t.design)}`),
+      ),
+    };
+  } catch (error) {
+    return { reason: (error as Error).message };
+  }
+}

@@ -195,19 +195,24 @@ export async function saveF3dImport(
   imported: ImportResult,
   check: BodyCheck,
 ): Promise<ProjectId> {
-  const { design, report, preview, steps = [], bodies: links = [] } = imported;
+  const { design, report, preview, steps = [], bodies: links = [], files } = imported;
   const replay = design.toJSON();
   let result: BodyCheckResult;
   if (steps.some((s) => s.step !== undefined)) {
     const notifications = appNotifications.getState();
     const toast = notifications.push('info', CHECKING_TEXT, { lifetime: 120_000 });
     try {
-      result = await check(design, steps, links);
+      result = await check(design, steps, links, files);
     } catch (error) {
       result = { error: describeError(error) };
     } finally {
       notifications.dismiss(toast);
     }
+  }
+  // The files the replayed design itself imports (a base feature's body), before the document.
+  for (const [attachment, bytes] of files ?? []) {
+    const record = replay.attachments?.[attachment];
+    if (record) await platform.projects.writeAttachment(replay.id, record.sha256, bytes);
   }
   const id = await createProject(
     platform,
@@ -223,7 +228,7 @@ export async function saveF3dImport(
     try {
       applyBodyPlan(design, plan, steps);
       const doc = design.toJSON();
-      for (const [attachment, bytes] of bodyFiles(design, steps)) {
+      for (const [attachment, bytes] of bodyFiles(design, steps, files)) {
         const record = doc.attachments?.[attachment];
         if (record) await platform.projects.writeAttachment(id, record.sha256, bytes);
       }
