@@ -55,6 +55,7 @@
 #include <BRepCheck_Analyzer.hxx>
 #include <BRepCheck_Result.hxx>
 #include <BRepClass3d_SolidClassifier.hxx>
+#include <BRepClass_FaceClassifier.hxx>
 #include <BRepExtrema_DistShapeShape.hxx>
 #include <BRepFilletAPI_MakeChamfer.hxx>
 #include <BRepFilletAPI_MakeFillet.hxx>
@@ -239,7 +240,9 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <optional>
 #include <type_traits>
+#include <utility>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -15499,11 +15502,41 @@ private:
    * no face of its own (none that isn't one of `a`'s or a piece of one): for
    * a cut that kept all of `a`'s solids, a wall it didn't cut; for a fuse,
    * a tool swallowed whole; and, for a fuse, when it stays a solid of its
-   * own. A common counts once when it has no solid. Only for solids; splits
-   * and booleans of faces count 0. Solids that don't meet have no contacts,
-   * so a tool that misses costs nothing; else a map lookup per face (0.15
-   * ms on 400 faces).
+   * own; a common, when it has no solid. Such a suspect counts only if a
+   * point just inside the tool lies inside `a` (outside it, for a swallowed
+   * one), so a tool that merely touches `a` counts 0. Only for solids;
+   * splits and booleans of faces count 0. Solids that don't meet have no
+   * contacts, so a tool that misses costs nothing; else a map lookup per
+   * face (0.3 ms on 400 faces), and the points only for a suspect (1 to 20
+   * ms on 6 to 400 faces, 0.1 s for a 44-face tool of letters).
    */
+  /**
+   * Points just inside `solid` (1e-3 mm in from the middle of each face whose
+   * middle lies on it) that `inA` classifies inside `a`, and outside it.
+   */
+  static std::pair<int, int> probeInside(BRepClass3d_SolidClassifier& inA, const TopoDS_Shape& solid) {
+    int in = 0, out = 0;
+    for (TopExp_Explorer e(solid, TopAbs_FACE); e.More(); e.Next()) {
+      const TopoDS_Face& face = TopoDS::Face(e.Current());
+      double u0 = 0, u1 = 0, v0 = 0, v1 = 0;
+      BRepTools::UVBounds(face, u0, u1, v0, v1);
+      const gp_Pnt2d middle(0.5 * (u0 + u1), 0.5 * (v0 + v1));
+      if (BRepClass_FaceClassifier(face, middle, 1e-7).State() != TopAbs_IN) continue;
+      BRepAdaptor_Surface surface(face, false);
+      gp_Pnt p;
+      gp_Vec du, dv;
+      surface.D1(middle.X(), middle.Y(), p, du, dv);
+      gp_Vec normal = du.Crossed(dv);
+      if (normal.Magnitude() < 1e-12) continue;
+      normal.Normalize();
+      if (face.Orientation() == TopAbs_REVERSED) normal.Reverse();
+      inA.Perform(p.Translated(-1e-3 * normal), 1e-7);
+      if (inA.State() == TopAbs_IN) ++in;
+      else if (inA.State() == TopAbs_OUT) ++out;
+    }
+    return {in, out};
+  }
+
   template <typename Builder>
   static int missedOverlaps(Builder& builder, const TopoDS_Shape& a, const TopoDS_Shape& b) {
     if constexpr (!std::is_base_of_v<BRepAlgoAPI_BooleanOperation, Builder>) {
@@ -15517,9 +15550,9 @@ private:
       const TopoDS_Shape& result = builder.Shape();
       const int after = countSubShapes(result, TopAbs_SOLID);
       const BOPAlgo_Operation op = builder.Operation();
-      if (op == BOPAlgo_COMMON) return after == 0 ? 1 : 0;
+      if (op == BOPAlgo_COMMON && after > 0) return 0;
       if (op == BOPAlgo_CUT && (after == 0 || after < before)) return 0;  // all gone, or a whole solid
-      if (op != BOPAlgo_CUT && op != BOPAlgo_FUSE) return 0;
+      if (op != BOPAlgo_CUT && op != BOPAlgo_FUSE && op != BOPAlgo_COMMON) return 0;
       // Which solid of b each of its sub-shapes belongs to, and which of them met a.
       const BOPDS_PDS& ds = filler->PDS();
       NCollection_DataMap<TopoDS_Shape, int, TopTools_ShapeMapHasher> solidOf;
@@ -15576,9 +15609,19 @@ private:
         }
         if (ownOnly && owner >= 0) apart[owner] = 1;
       }
+      // A suspect is only a miss when the tool really reaches into a: a point
+      // just inside it lies inside a (a wall it didn't cut, a solid left
+      // apart, an empty common), or one lies outside a (a fuse that swallowed
+      // the whole tool). A tool that only touches a has neither.
       int missed = 0;
+      std::optional<BRepClass3d_SolidClassifier> inA;
       for (size_t k = 0; k < solids.size(); ++k) {
-        if (met[k] && (!wall[k] || (op == BOPAlgo_FUSE && apart[k]))) ++missed;
+        if (!met[k]) continue;
+        const bool swallowed = op == BOPAlgo_FUSE && !wall[k];
+        if (!swallowed && wall[k] && !apart[k] && op != BOPAlgo_COMMON) continue;
+        if (!inA) inA.emplace(a);
+        const auto [in, out] = probeInside(*inA, solids[k]);
+        if (swallowed ? out > 0 : in > 0) ++missed;
       }
       return missed;
     }
