@@ -1965,7 +1965,8 @@ export function selectProfiles(
             : 'by curves';
       regionStats[how] = (regionStats[how] ?? 0) + 1;
       if (found) {
-        for (const ref of found) if (!profiles.some((p) => p.id === ref.id)) profiles.push(ref);
+        for (const ref of [...found, ...textsInside(sketch, want)])
+          if (!profiles.some((p) => p.id === ref.id)) profiles.push(ref);
         continue;
       }
       if (want.outline) continue;
@@ -2991,6 +2992,32 @@ function exactRegions(
       out.push({ kind: 'profile', id: `${entry.handle.id}/${r.id}` });
   }
   return out.length > 0 ? out : undefined;
+}
+
+/**
+ * The texts inside a region of the file (its pieces enclose the text's
+ * middle). The file's regions run round curves only, so a text in one is
+ * part of it; Extrudo's region has the letters cut out, and their ink is
+ * added back to make the same solid.
+ */
+function textsInside(entry: SketchEntry, want: ProfileRegion): GeomRef[] {
+  if (entry.source.texts.length === 0 || !entry.pieces) return [];
+  const lines = regionPieces(entry.pieces, [...want.outerPieces, ...want.innerPieces]);
+  if (!lines) return [];
+  const out: GeomRef[] = [];
+  for (const t of entry.source.texts) {
+    const id = entry.texts.get(t.id);
+    if (id === undefined) continue;
+    // The box's middle: `width` along the baseline (an older text: its box), `height` across.
+    const w = t.width || t.old?.box?.[0] || 0;
+    const h = t.height || t.old?.box?.[1] || 0;
+    const c = Math.cos(t.angle);
+    const s = Math.sin(t.angle);
+    const middle: Vec2 = [t.at[0] + (c * w - s * h) / 2, t.at[1] + (s * w + c * h) / 2];
+    if (insidePieces(lines, middle))
+      out.push({ kind: 'sketchEntity', id: `${entry.handle.id}/${id}` });
+  }
+  return out;
 }
 
 /**

@@ -1641,6 +1641,32 @@ describe('profile regions whose record the sketch has outgrown', () => {
     expect(await volumes(f3d)).toEqual([expect.closeTo(400 * 0.8, 3)]);
   });
 
+  it('keeps a text inside a picked region solid, as the file does', async () => {
+    // A 4 × 2 rectangle with an "H" in it. The file's region runs round the
+    // rectangle only; Extrudo's has the letter cut out, so its ink is added.
+    const f3d = design(
+      [
+        { tag: 1n, from: [0, 0], to: [4, 0] },
+        { tag: 2n, from: [4, 0], to: [4, 2] },
+        { tag: 3n, from: [4, 2], to: [0, 2] },
+        { tag: 4n, from: [0, 2], to: [0, 0] },
+      ],
+      [],
+      [
+        pieces([
+          [1n, 1, 1],
+          [2n, 1, 1],
+          [3n, 1, 1],
+          [4n, 1, 1],
+        ]),
+      ],
+    );
+    (f3d.features[0] as F3dSketchFeature).sketch.texts = [
+      { id: 50, text: 'H', font: 'Arial', height: 1, angle: 0, at: [1, 0.5], width: 0.722 },
+    ];
+    expect(await volumes(f3d)).toEqual([expect.closeTo(800 * 0.8, 3)]);
+  });
+
   it('keeps a thin ring round a picked circle out of it', async () => {
     // A circle (r 17.5 mm) and a ring round it to r 18; the record picks the
     // circle. The ring's inner point can come out between its sampled hole
