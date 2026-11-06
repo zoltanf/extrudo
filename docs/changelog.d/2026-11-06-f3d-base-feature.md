@@ -1,0 +1,1 @@
+- 2026-11-06 · **f3d import**: a base feature (a body the file keeps without history) comes in as the file's own shape at its place in the timeline, so the features after it act on it; a body pasted into another component comes in the same way when the body it was cut from is gone, and groups of timeline items no longer show as not imported.
