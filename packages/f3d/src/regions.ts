@@ -219,6 +219,10 @@ function lineCircle(a: Vec2, b: Vec2, c: Vec2, r: number): Vec2[] {
   const slack = 4 * A * 2 * r * 10 * TOL;
   if (disc < -slack) return [];
   disc = Math.max(0, disc);
+  // Two roots closer than the tolerance along the line are one touch: a line
+  // tangent to an arc (a rounded corner) gives two roots a hair apart, and
+  // the one inside the arc would cut it.
+  if (Math.sqrt(disc / A) < 10 * TOL) disc = 0;
   const root = Math.sqrt(disc);
   const ts = disc === 0 ? [-B / (2 * A)] : [(-B - root) / (2 * A), (-B + root) / (2 * A)];
   return ts.map((t) => [a[0] + t * d[0], a[1] + t * d[1]] as Vec2);
@@ -393,8 +397,38 @@ export function ellipseAt(e: SketchEllipse, t: number): Vec2 {
 }
 
 /** Each curve, and where the sketch's other curves meet it (its parameter there). */
+/**
+ * Where another curve meets a curve. `seam`: the touch of a coincident circle
+ * at a closed curve's start, which the file counts there (first), not at the
+ * end of the turn.
+ */
+interface Hit {
+  other: string;
+  t: number;
+  seam?: true;
+}
+
 export interface SketchPieces {
-  byKey: Map<string, { traced: Traced; hits: { other: string; t: number }[] }>;
+  byKey: Map<string, { traced: Traced; hits: Hit[] }>;
+}
+
+/** Two arcs on one circle (same centre and radius). */
+function coincident(a: Traced, b: Traced): boolean {
+  const A = a.curve;
+  const B = b.curve;
+  return (
+    A.kind === 'arc' && B.kind === 'arc' && dist2(A.c, B.c) < TOL && Math.abs(A.r - B.r) < 10 * TOL
+  );
+}
+
+/** Where two arcs on one circle touch: each one's ends (a closed one's start, its seam). */
+function coincidentTouches(a: Traced, b: Traced): Vec2[] {
+  const out: Vec2[] = [];
+  for (const t of [a, b]) {
+    out.push(at(t.curve, t.t0));
+    if (!t.closed) out.push(at(t.curve, t.t1));
+  }
+  return out;
 }
 
 export function sketchPieces(s: F3dSketch, profileCurves: Set<string>): SketchPieces {
@@ -402,18 +436,20 @@ export function sketchPieces(s: F3dSketch, profileCurves: Set<string>): SketchPi
   const byKey: SketchPieces['byKey'] = new Map();
   const overlap = (a: Traced, b: Traced) =>
     a.box[0] <= b.box[2] && b.box[0] <= a.box[2] && a.box[1] <= b.box[3] && b.box[1] <= a.box[3];
-  const hits = new Map<Traced, { other: string; t: number }[]>(traced.map((t) => [t, []]));
+  const hits = new Map<Traced, Hit[]>(traced.map((t) => [t, []]));
   for (let i = 0; i < traced.length; i++)
     for (let j = i + 1; j < traced.length; j++) {
       const a = traced[i] as Traced;
       const b = traced[j] as Traced;
       if (!overlap(a, b)) continue;
-      for (const p of crossings(a, b)) {
+      // Arcs on one circle have no crossing; they touch where one of them ends.
+      const same = coincident(a, b);
+      for (const p of same ? coincidentTouches(a, b) : crossings(a, b)) {
         const ta = paramOn(a, p);
         const tb = paramOn(b, p);
         if (ta === undefined || tb === undefined) continue;
-        hits.get(a)?.push({ other: b.key, t: ta });
-        hits.get(b)?.push({ other: a.key, t: tb });
+        hits.get(a)?.push({ other: b.key, t: ta, ...(same && { seam: true as const }) });
+        hits.get(b)?.push({ other: a.key, t: tb, ...(same && { seam: true as const }) });
       }
     }
   // Two curves under one key (a duplicate): neither can be told apart.
@@ -430,14 +466,15 @@ export function sketchPieces(s: F3dSketch, profileCurves: Set<string>): SketchPi
  * Where a curve is cut by the given other curves: the distinct parameters
  * inside it, in order (on a closed curve, all of them).
  */
-function cutsBy(entry: { traced: Traced; hits: { other: string; t: number }[] }, by: Set<string>) {
+function cutsBy(entry: { traced: Traced; hits: Hit[] }, by: Set<string>) {
   const t = entry.traced;
   const span = Math.abs(t.t1 - t.t0);
   const eps = span * 1e-7 + 1e-9;
   const own = entry.hits
     .filter((h) => h.other !== t.key && by.has(h.other))
-    // On a closed curve, a cut at its start is the one at its end: (t0, t1].
-    .map((h) => (t.closed && h.t < t.t0 + eps ? h.t + span : h.t))
+    // On a closed curve, a cut at its start is the one at its end: (t0, t1];
+    // a coincident circle's touch at the seam stays at the start.
+    .map((h) => (t.closed && h.t < t.t0 + eps && !h.seam ? h.t + span : h.t))
     .filter((x) => t.closed || (x > t.t0 + eps && x < t.t1 - eps))
     .sort((a, b) => a - b);
   const distinct: number[] = [];
