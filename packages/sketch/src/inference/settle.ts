@@ -182,7 +182,8 @@ function moved(
  * didn't move:
  *
  * - **`'changed'`** (the default, the app's rule): a sketch whose values are the
- *   same as `before` is left alone without a solve. This runs on every
+ *   same as `before`, and that kept all its constraints, is left alone without
+ *   a solve (a deleted constraint or dimension re-solves). This runs on every
  *   parameter write, every dimension edit and every step of a customizer
  *   slider drag (ADR-0016, ADR-0059), so it costs a solve only in the sketches
  *   a change actually moves — and an unrelated parameter can't store geometry
@@ -231,8 +232,13 @@ export function settleSketches(options: {
     const oldView = old && readSketch(old);
     const values = dimensionValues(view.data, now, feature.id);
     const oldValues = oldView ? dimensionValues(oldView.data, was, feature.id) : {};
-    // Whether this sketch's own dimensions are what moved.
-    const driven = !oldView || !sameValues(values, oldValues);
+    // Whether this sketch's own dimensions are what moved, or it lost a
+    // constraint: what that constraint held off (an over-constrained sketch's
+    // unmet dimension) is solved for again.
+    const lostConstraint =
+      oldView !== undefined &&
+      Object.keys(oldView.data.constraints).some((id) => !(id in view.data.constraints));
+    const driven = !oldView || lostConstraint || !sameValues(values, oldValues);
     // The app's rule: a sketch this change doesn't move isn't solved at all
     // (a slider drag runs this on every step), so no unrelated geometry move
     // can reach the undo step.

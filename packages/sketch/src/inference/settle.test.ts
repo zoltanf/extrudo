@@ -5,6 +5,7 @@
 // satisfies its own constraints because something else moved it.
 import {
   applyCommand,
+  type ConstraintId,
   createDocument,
   type DimensionId,
   type ExtrudoDocument,
@@ -13,6 +14,7 @@ import {
   insertFeature,
   measureDimension,
   readSketch,
+  removeFromSketch,
   type SketchData,
   type SketchEntityId,
   setSketchGeometry,
@@ -235,6 +237,47 @@ describe('settleSketches', () => {
     expect(changes.map((change) => change.name)).toEqual(['Sketch1']);
     // Stored, the width holds again: the shape is never left stale.
     expect(measured(apply(moved, changes))).toEqual({ width: 20, height: 10 });
+  });
+
+  it('solves a sketch that lost a dimension, so a value the removed one held off is met again', () => {
+    // A redundant dimension stored at its rounded measurement pulled the
+    // corner 0.0015 mm off the height; the sketch showed over-constrained.
+    // Deleting it must re-solve, or the height stays unmet and the sketch red.
+    const { doc } = rectangleDocument();
+    // The top side, both corners, 0.0015 mm low: still a rectangle.
+    const top = Object.entries(pointsOf(doc)).filter(([, p]) => p.y === 10);
+    const off = applyCommand(
+      doc,
+      setSketchGeometry({
+        feature: 'f1' as FeatureId,
+        points: Object.fromEntries(top.map(([id, p]) => [id, { x: p.x, y: 9.9985 }])),
+        radii: {},
+      }),
+    ).doc;
+    const data = readSketch(off.features[0] as Feature)?.data as SketchData;
+    const width = Object.keys(data.dimensions).find(
+      (id) => data.dimensions[id as DimensionId]?.paramName === 'width',
+    ) as DimensionId;
+    const after = applyCommand(
+      off,
+      removeFromSketch({ feature: 'f1' as FeatureId, dimensions: [width] }),
+    ).doc;
+    expect(measured(after).height).not.toBeCloseTo(10, 4);
+    const changes = settleSketches({ solver, before: off, after });
+    expect(measured(apply(after, changes)).height).toBeCloseTo(10, 6);
+  });
+
+  it('solves a sketch that lost a constraint, though its dimension values are the same', () => {
+    const { doc } = rectangleDocument();
+    const moved = outOfShape(doc);
+    const data = readSketch(moved.features[0] as Feature)?.data as SketchData;
+    const top = Object.entries(data.constraints).find(([, c]) => c.type === 'horizontal')?.[0];
+    const after = applyCommand(
+      moved,
+      removeFromSketch({ feature: 'f1' as FeatureId, constraints: [top as ConstraintId] }),
+    ).doc;
+    const changes = settleSketches({ solver, before: moved, after });
+    expect(measured(apply(after, changes)).width).toBeCloseTo(20, 6);
   });
 
   it("refuses a change a sketch cannot take, in the app's words", () => {

@@ -5,6 +5,7 @@ import {
   CommandError,
   type ConstraintId,
   type DimensionId,
+  dimensionAnchor,
   evaluateParameters,
   measureDimension,
   originAxisRef,
@@ -76,6 +77,8 @@ describe('Dimension tool', () => {
       a: 'a',
       expr: '20',
     });
+    // Sketch geometry only: the overlay draws it in the stored sketch.
+    expect(t.host.state.getState().tool?.preview().dimensionSketch).toBeUndefined();
     t.host.click(at(10, 6));
     expect(dims(t)).toEqual([
       {
@@ -678,5 +681,37 @@ describe('Dimension tool with body geometry (P6-07 slice 2)', () => {
     t.host.click(at(5, 5)); // place the label
     expect(Object.keys(t.data().projections ?? {})).toHaveLength(1);
     expect(Object.values(t.data().dimensions)).toHaveLength(0); // pending
+  });
+
+  it('previews the distance from a body edge while the label is placed', async () => {
+    const t = await setup({ tool: DIMENSION_TOOL });
+    draw(t, { a0: pt(0, 0), a1: pt(20, 0), a: line('a0', 'a1') });
+    t.host.click({ ...at(10, 6), model: edgeAt(6) }); // the edge first
+    t.host.click(at(10, 0.2)); // then the line
+    t.host.move(at(25, 3));
+    const preview = t.host.state.getState().tool?.preview();
+    const d = preview?.dimension;
+    expect(d).toMatchObject({ type: 'distance', b: 'a', expr: '6' });
+    // The edge's stand-in is not in the stored sketch: the preview carries
+    // the sketch it was measured in, so the overlay can draw it.
+    expect(d && dimensionAnchor(t.data(), d)).toBeUndefined();
+    const sketch = preview?.dimensionSketch;
+    expect(d && sketch && dimensionAnchor(sketch, d)).toBeDefined();
+    expect(d && sketch && measureDimension(sketch, d)).toBeCloseTo(6, 6);
+  });
+
+  it('previews the distance to the origin point before it is projected', async () => {
+    const t = await setup({ tool: DIMENSION_TOOL });
+    draw(t, { p: pt(10, 5) });
+    t.host.click(at(10, 5.1)); // the point
+    t.host.click(at(0.1, 0.1)); // the origin, not projected yet
+    t.host.move(at(5, 8)); // above the span: horizontal
+    const preview = t.host.state.getState().tool?.preview();
+    const d = preview?.dimension;
+    expect(d).toMatchObject({ type: 'distance', orientation: 'horizontal', a: 'p', expr: '10' });
+    expect(t.data().projections ?? {}).toEqual({});
+    const sketch = preview?.dimensionSketch;
+    expect(d && dimensionAnchor(t.data(), d)).toBeUndefined();
+    expect(d && sketch && dimensionAnchor(sketch, d)).toBeDefined();
   });
 });

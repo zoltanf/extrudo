@@ -358,7 +358,7 @@ export const TOOLS = {
     label: 'Perpendicular',
     icon: 'perpendicular',
     category: 'sketch',
-    hint: 'Make two lines meet at a right angle.',
+    hint: 'Set two lines at a right angle to each other.',
   },
   horizontal: {
     id: 'horizontal',
@@ -386,7 +386,7 @@ export const TOOLS = {
     label: 'Smooth',
     icon: 'smooth',
     category: 'sketch',
-    hint: 'Join curves with no jump in curvature (G2).',
+    hint: 'Join two curves without a corner, as Tangent does.',
   },
   equal: {
     id: 'equal',

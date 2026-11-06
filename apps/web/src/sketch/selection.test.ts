@@ -120,6 +120,20 @@ describe('deleting selected dimensions', () => {
     expect(t.dimensions().sort()).toEqual(['k1', 'k2']);
   });
 
+  it("goes through the host's apply when given, so the sketch re-solves in the step", () => {
+    const t = setup();
+    t.session.getState().select([{ kind: 'dimension', id: 'k2' }]);
+    const applied: string[] = [];
+    expect(
+      deleteSelection(t, (command) => {
+        applied.push(command.type);
+        t.store.getState().dispatch(command);
+      }),
+    ).toBe(true);
+    expect(applied).toEqual(['sketch.remove']);
+    expect(t.dimensions()).toEqual(['k1']);
+  });
+
   it('refuses to delete a dimension whose parameter is still used', () => {
     const t = setup();
     // k2 is driven, so it doesn't count; a user parameter does.

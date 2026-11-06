@@ -509,23 +509,17 @@ export class CircularPatternTool implements SketchTool {
       this.#objects.click(pointer.cursor);
       return undefined;
     }
-    const objects = this.#objects.resolved();
-    const { n, total } = this.#settings();
-    this.#placing = false;
-    this.#objects.clear();
-    return attempt(() =>
-      toEdit(
-        circularPattern(this.context.sketch(), objects, pointer.point, n, total, () =>
-          this.context.newId(),
-        ),
-        'Circular pattern',
-      ),
-    );
+    return this.#place(pointer.point);
   }
 
-  enter(): undefined {
-    if (!this.#placing && !this.#objects.empty) this.#placing = true;
-    return undefined;
+  /** Enter ends the picking; then it places the copies round the pointer, as a click does. */
+  enter(): SketchEdit | undefined {
+    if (!this.#placing) {
+      if (!this.#objects.empty) this.#placing = true;
+      return undefined;
+    }
+    const center = this.#pointer?.point;
+    return center ? this.#place(center) : undefined;
   }
 
   fields(): HeadsUpField[] {
@@ -578,6 +572,21 @@ export class CircularPatternTool implements SketchTool {
   /** The number of instances (typed, or 6) and the angle they spread over (typed, or a full turn). */
   #settings(): { n: number; total: number } {
     return { n: count(this.#count, 6, 2), total: (this.#angle?.value ?? 360) * DEG };
+  }
+
+  #place(center: Vec2): SketchEdit {
+    const objects = this.#objects.resolved();
+    const { n, total } = this.#settings();
+    this.#placing = false;
+    this.#objects.clear();
+    return attempt(() =>
+      toEdit(
+        circularPattern(this.context.sketch(), objects, center, n, total, () =>
+          this.context.newId(),
+        ),
+        'Circular pattern',
+      ),
+    );
   }
 }
 

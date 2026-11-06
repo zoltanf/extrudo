@@ -135,6 +135,12 @@ export interface ToolPreview {
   accent?: Vec2[][];
   /** A dimension being placed (P1-07), drawn like the sketch's own. */
   dimension?: SketchDimension;
+  /**
+   * The sketch `dimension` is drawn in when a pick not projected yet (a body
+   * edge, an earlier sketch's curve, a datum axis) stands in for an entity the
+   * stored sketch lacks. Absent: the stored sketch.
+   */
+  dimensionSketch?: SketchData;
 }
 
 export interface ToolContext {

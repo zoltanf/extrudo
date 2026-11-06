@@ -479,9 +479,16 @@ test("undoing a dimension to an earlier sketch's line leaves the line drawn befo
   // The distance from Sketch1's dashed line to it: pick, pick, place.
   await page.keyboard.press('d');
   await expect(viewport).toHaveAttribute('data-carried-curves', /^[1-9]\d*$/);
-  const click = clicker(page, await mapping(viewport));
+  const at = await mapping(viewport);
+  const click = clicker(page, at);
   await click(10, 30);
   await click(10, 0);
+  // Before the placing click, the dimension follows the cursor like any other.
+  const label = page.locator('[data-preview="dimension-label"]');
+  await page.mouse.move(at(24, 15).x, at(24, 15).y);
+  await page.mouse.move(at(25, 15).x, at(25, 15).y);
+  await expect(label).toBeVisible();
+  await expect(label).toHaveText(/^\d+\.\d+$/); // measured, not '?'
   await click(25, 15);
   await expect.poll(async () => (await counts(page)).dimensions, { timeout: 60_000 }).toBe(1);
   await page.keyboard.press('Enter'); // keep the measured value
