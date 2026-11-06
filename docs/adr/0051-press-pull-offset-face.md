@@ -723,3 +723,104 @@ at 185°, both profiles symmetric 10 mm as a new body, one of them symmetric
 20 mm as a join: 10 faces (18 on the old facade), one `side:<r20 arc>` face
 (four pieces before), and a 1 mm chamfer and fillet on every edge of the
 first extrude's caps (the concave ones refused before).
+
+## Amendment 2026-11-06: a boolean that met its tool and shows no overlap is built again with a fuzzy value
+
+**Found** while replaying two f3d designs of one family: a cut
+extrude whose prism overlaps the body removed nothing, so the designs came
+out 24.7 % and 40 % off. The prism's far side, the plane x = 74, lies
+1.65e-6 mm inside the body's rounded end (a cylinder of r 20.47 mm reaching
+x = 74), and its top runs from 5e-6 mm above to 3.4e-7 mm below the body's
+top plane, tilted across it; so one of the prism's edges lies within a
+micrometre of the body's edge where the cylinder meets the top, along the
+tangent line. With the sketch points moved from 74 to 74.05 by hand the cut
+is right and the designs come out at 0.34 % and 0.62 %.
+
+**What OCCT does** (the pinned 8.0.1 image, natively; the body and the prism
+written to STEP and read back still show it). `BRepAlgoAPI_Cut` splits the
+body's faces where the prism meets them (19 faces from 18) and then
+classifies the overlap as outside: the result has the body's volume, valid,
+with no error and, for the f3d shapes, no warning; `BRepAlgoAPI_Common`
+returns nothing and `BRepAlgoAPI_Fuse` leaves the prism out (or, in the
+synthetic case, returns the two solids side by side). A synthetic plate and
+prism show it only when both near-coincidences are there: the side alone
+(1.65e-6 mm inside) or the tilted top alone is fine; with both, any side
+from 1e-6 to 1e-3 mm inside fails, 3e-7 mm inside or any distance outside is
+fine, and a top that doesn't cross the plate's, or crosses it at 2e-5 mm or
+more, is fine. Measured remedies: fuzzy 1e-7 no; 1e-6 a wrong volume with
+self-intersection alerts (or a sliver face); **1e-5 right on the f3d shapes
+and one synthetic case, invalid on another**; **1e-4 right on every case**
+(cut, common and fuse, on the f3d shapes, two synthetic ones and plates with
+120 and 400 holes; valid, the cut's and the common's volumes adding up to
+the body's to 2e-8); 1e-3 right on the cuts tried. Glue and non-destructive
+mode change nothing. Moving the tool by 1e-5 mm works only outward, a direction the
+facade can't know; moving it inward by 1e-4 mm still fails.
+
+**Decision.** `finishBoolean` counts the overlaps a built boolean missed
+(`missedOverlaps`) and, only when that is more than 0, builds the same
+boolean again with **fuzzy value 1e-4 mm** (the app's `TOUCH`, the distance
+at which bodies count as touching) on the same inputs (the copies, for a
+simplified one). The retried result replaces the first only if it is valid
+(`BRepCheck_Analyzer`) and misses fewer; its builder then goes through the
+rest unchanged (merge, circles, the merge's validity fallback, history), so
+**the names come from the boolean that is kept**. Otherwise the first result
+stays, so a tool that only touches the body still "removes nothing" with
+today's message.
+
+- *Only solids, only where they met.* Booleans of faces (a sketch's profile
+  union) and splits count 0. A solid of the tool counts only if the pave
+  filler's interference table has a pair with one of its sub-shapes; shapes
+  with no contact have none, so a tool that misses the body costs nothing
+  more.
+- *Per solid of the tool*, because an extrude of several profiles cuts with
+  one boolean whose tool is a compound: in the f3d design one prism cut its
+  wall and the tangent one didn't, so a test of the whole result saw a wall
+  and passed. A met tool solid is a **suspect** when the result has no face
+  of its own (none that isn't one of the body's faces or a piece of one): for
+  a cut that kept the body's solids, a wall it didn't cut; for a fuse, a tool
+  swallowed whole; and, for a fuse, when it stays a solid of its own; a
+  common is a suspect when it has no solid.
+- *A suspect counts only if the tool really reaches into the body:* a point
+  1e-2 mm inside the tool, from the middle of each of its faces, classifies
+  inside the body (outside it, for a swallowed fuse tool). A tool that only
+  touches has no such point and doesn't retry: a cut with a 44-face tool of
+  letters resting on a body took 1.17 s and twice that with a retry; the
+  points cost 0.1 s there. Not 1e-3 mm: letters cut a second time into the
+  pockets they had cut lay within a micrometre of the pockets' walls, and one
+  point 1e-3 mm in (none at 5e-4 or 2e-3) fell into that sliver of the body,
+  so the cut ran twice for nothing (1.4 s to 3.1 s).
+- Cost on an ordinary boolean whose operands met: 0.03 to 0.26 ms (plates of
+  126 and 406 faces whose booleans take 30 to 330 ms); the points, on a
+  suspect only, 1 to 20 ms on bodies of 6 to 406 faces; the retry, one more
+  boolean and one analysis, only when a point says the overlap was missed.
+
+**Corpus** (252 f3d designs replayed, ADR-0083's gate): the two designs
+above go from 24.7 % and 40.0 % off to 0.33 % (a match) and 0.60 %, their
+bodies from frozen to editable; no other design changes, by verdict, volume
+or body. The replay's summed time is 9 % lower and the gate's wall time 5 %
+(within the noise of the machine; one of the two designs now builds its
+later features and takes 15.5 s instead of 8.9). The two designs whose
+fillet hung under the non-destructive mode (2026-10-29), timed alone: 2.66 s
+and 3.02 s, against 2.68 s and 2.90 s before (the second has a cut by a tool
+of letters that only touches the body: the points cost it 0.1 s).
+
+**Rejected.** Comparing volumes before and after: as slow as the boolean
+itself (36 ms on 126 faces, 126 ms on 406). OCCT's history
+`IsDeleted(toolFace)`: false for the prism's untouched faces, which aren't in
+the result. OCCT's alerts: `BOPAlgo_AlertFaceBuilderUnusedEdges` comes with
+the synthetic case only, not with the f3d one. Retrying every suspect
+without the points: doubles every cut, common or fuse whose tool only
+touches a body. A fuzzy value on every boolean: changes results and
+tolerances everywhere (the 2026-10-29 amendment saw a fillet hang after a
+change of tolerances). A ladder 1e-5 then 1e-4: a second boolean for nothing
+1e-4 alone doesn't do.
+
+**Test.** `tangent-boolean.test.ts`: a plate with a rounded end and the
+prism above, built with the kernel (no file data). The cut, the common and
+the fuse come out at the analytic volumes to 1e-6, valid, one solid, the
+plate's faces keeping their names and the prism's walls carrying the
+prism's; a tool of that prism and an ordinary one cuts both; a prism whose
+side lies on the tangent line from outside still removes nothing.
+`combine.test.ts`: a Combine cut by a block touching a half-round end from
+outside still says the cut removes nothing. On the facade before this
+amendment the cut, the common and the two-prism cut fail.
