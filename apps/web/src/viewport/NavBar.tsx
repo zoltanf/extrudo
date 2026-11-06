@@ -25,7 +25,9 @@ import {
   MenuSeparator,
   Popover,
   TextInput,
+  ToolIcon,
 } from '../design-system';
+import { viewSectionMark } from '../section/viewSection';
 import { FILTER_KINDS, isFiltered } from '../selection/filter';
 import { namedViewSaveStore } from './namedViewSave';
 import type { NavAction } from './navigation';
@@ -240,8 +242,21 @@ export function NavBar({ store, commandRunning = false, onStopCommand, namedView
                   <p className="px-2 pt-1.5 pb-1 text-sm text-muted">No named views yet.</p>
                 )}
                 {views.map((view) => (
-                  <MenuItem key={view.id} onSelect={() => namedViews.restore(view.id)}>
+                  <MenuItem
+                    key={view.id}
+                    onSelect={() => namedViews.restore(view.id)}
+                    data-view-section={viewSectionMark(view.section)}
+                  >
                     {view.name}
+                    {view.section && (
+                      <span
+                        aria-hidden
+                        title="Restores its section too"
+                        className="ml-1.5 inline-block align-middle text-muted"
+                      >
+                        <ToolIcon name="section" category="inspect" size={14} />
+                      </span>
+                    )}
                   </MenuItem>
                 ))}
                 <MenuSeparator />

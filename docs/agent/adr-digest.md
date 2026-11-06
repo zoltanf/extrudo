@@ -78,7 +78,8 @@ restore the camera: core's `saveView`/`updateView`/`removeView` commands over
 `doc.views` (a view camera is `projection`/`position`/`target`/`up`, plus
 `size` for orthographic only; the conversion is `viewport/namedView.ts`), the
 nav bar's Named views menu and the browser's rows restore, update, rename and
-delete (one undo step; restoring is view state, never a command). ADR-0009 (P0-08) set storage (`packages/storage`):
+delete (one undo step; restoring is view state, never a command); a view may
+keep a section (ADR-0045's amendment of 2026-11-06). ADR-0009 (P0-08) set storage (`packages/storage`):
 `ProjectStore` over an IndexedDB index and OPFS files, `.extrudo` zips through
 core's migrations; in the web app, an async `webPlatform()` with projects,
 persistent storage and file download/pick, autosave (`project/autosave.ts`;
@@ -718,7 +719,21 @@ The panel lists
 rows (plane, Offset, Flip, Show, Change, Remove from the second row) with "Add
 plane" and "Box"; `SectionOverlay` has one handle per drawn plane or box face;
 `SectionBoxWire` draws the box's edges. Section Here adds a plane (replaces
-the only one, the last at the limit, a box).
+the only one, the last at the limit, a box). **A named view keeps its section
+(ADR-0045's amendment of 2026-11-06):** `NamedView.section` (optional, core's
+`ViewSectionSchema`: `kind: 'planes'` with 1–`MAX_SECTION_PLANES` of
+`{ plane, offset, flip, on }`, or `kind: 'box'` with `center`/`half`
+expressions and `on`) is exactly the view state's `SectionState` /
+`SectionBoxState`, **which are core's types, and `MAX_SECTIONS` is core's
+limit**. Save and Update to Current View store the section **only while a plane
+or the box is shown**, all rows as they are (Update with none shown removes it:
+`updateView`'s `section: null`); restoring a view with a section replaces the
+one on screen, **a view without one leaves it alone**; both stay view state. A
+view's `GeomRef` is never checked or refused (a lost plane restores into the
+panel's `lost` state); **a parameter rename must rewrite views' section
+expressions too**, a parameter delete isn't refused by them. The browser row and
+the nav bar entry carry the section icon and `data-view-section` (`planes:<n>`
+or `box`). Render Picture and the API ignore it.
 ADR-0046 (P3-03) added shell: `packages/core/src/shell.ts` (inputs `faces`,
 `bodies` (bodies hollowed closed), `thickness`, `direction` inside/outside:
 `shellSettings`, `shellInputs`), the evaluator

@@ -930,7 +930,8 @@ end to end, faster than in established desktop CAD.
     the apex, the halves unify into one face and makita reads back.
   - ~~Section analysis on several planes, a section box~~ **done
     (P4-12, 2026-10-06, ADR-0045's amendment: up to three planes, a box of
-    six)**; sections saved with named views, a hatch per material (ADR-0045).
+    six)**; ~~sections saved with named views~~ **done 2026-11-06 (ADR-0045's
+    amendment of that day)**; a hatch per material (ADR-0045).
   - ~~Threads: a thread of about 400 turns traps the WASM heap~~ **done in
     ADR-0067 §H2 (P4-12, 2026-10-05): it is OCCT's boolean running out of
     memory** (the heap 403 MB → 1903 MB at 350 turns, over 2 GB at 400), found

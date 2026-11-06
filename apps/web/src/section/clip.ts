@@ -14,31 +14,23 @@ import {
   type ConstructionReports,
   fingerprintFrame,
   type GeomRef,
+  MAX_SECTION_PLANES,
   planeFrame,
   type Vec3,
+  type ViewSectionBox,
+  type ViewSectionPlane,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import { type Frame, faceFrame } from '../features/geometry';
 
 /**
- * The section as the view keeps it (viewport state, never in the document):
- * the plane it lies on, the offset along that plane's normal, which side
- * goes, and whether the view is clipped at all. Turning the section off
- * keeps the rest, so it comes back as it was.
+ * The section as the view keeps it (viewport state; a named view stores it too, ADR-0045's
+ * amendment of 2026-11-06): the plane it lies on (an origin plane, a construction plane or a flat
+ * face), the offset along that plane's normal (an expression in the document's length unit), which
+ * side goes (the one the plane's normal points away from), and whether the view is clipped at all.
+ * Turning the section off keeps the rest, so it comes back as it was. Core's type.
  */
-export interface SectionState {
-  /**
-   * An origin plane (`origin:xy`), a construction plane (its feature's ID) or a flat
-   * face (a persistent reference: it follows the model through recomputes).
-   */
-  plane: GeomRef;
-  /** An expression in the document's length unit ("10 mm", "wall / 2"). */
-  offset: string;
-  /** The side that is removed is the one the plane's normal points away from. */
-  flip: boolean;
-  /** The view is clipped. */
-  on: boolean;
-}
+export type SectionState = ViewSectionPlane;
 
 /**
  * A section plane in the world: the point `origin` and the unit `normal`,
@@ -50,17 +42,13 @@ export interface SectionClip {
 }
 
 /** At most this many planes at once; a box counts as six, so it is exclusive (ADR-0045, P4-12). */
-export const MAX_SECTIONS = 3;
+export const MAX_SECTIONS = MAX_SECTION_PLANES;
 
 /**
  * The section box as the view keeps it: a box in world axes from a centre and three half-sizes,
- * each an expression in the document's length unit.
+ * each an expression in the document's length unit. Core's type.
  */
-export interface SectionBoxState {
-  center: readonly [string, string, string];
-  half: readonly [string, string, string];
-  on: boolean;
-}
+export type SectionBoxState = ViewSectionBox;
 
 /** The box in mm. */
 export interface SectionBox {

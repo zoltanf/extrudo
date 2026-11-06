@@ -17,6 +17,7 @@ import {
   type Feature,
   type FeatureInputs,
   type LengthUnit,
+  MAX_SECTION_PLANES,
   type NamedView,
   PARAMETER_NAME,
   type Parameter,
@@ -24,6 +25,8 @@ import {
   RenderSettingsSchema,
   type Settings,
   type ViewCamera,
+  type ViewSection,
+  ViewSectionSchema,
 } from './schema';
 import { dimensionUnit } from './sketch/dimensions';
 import { referencedFeatures } from './timeline';
@@ -170,6 +173,20 @@ export const updateParameter = defineCommand<{
         if (limit && mentions(limit.expr, oldName)) {
           limit.expr = renameReferences(limit.expr, oldName, newName);
         }
+      }
+    }
+    // A named view's section (ADR-0045's amendment of 2026-11-06).
+    const rename = (text: string) =>
+      mentions(text, oldName) ? renameReferences(text, oldName, newName) : text;
+    for (const view of draft.views) {
+      const section = view.section;
+      if (section?.kind === 'planes') {
+        for (const plane of section.planes) plane.offset = rename(plane.offset);
+      } else if (section?.kind === 'box') {
+        const [cx, cy, cz] = section.center;
+        const [hx, hy, hz] = section.half;
+        section.center = [rename(cx), rename(cy), rename(cz)];
+        section.half = [rename(hx), rename(hy), rename(hz)];
       }
     }
   }
@@ -424,36 +441,58 @@ function findView(draft: DocumentDraft, id: ViewId) {
   return view;
 }
 
-/**
- * Saves the current camera as a named view (ADR-0008's amendment). The
- * caller (the app) reads the camera from the viewport store and puts a fresh
- * ID in the payload. A name taken by another view is uniquified ("Front" →
- * "Front 2"); the name can't be empty.
- */
-export const saveView = defineCommand<{ id: ViewId; name: string; camera: ViewCamera }>(
-  'view.save',
-  'Save view',
-  (draft, { id, name, camera }) => {
-    if (draft.views.some((v) => v.id === id)) {
-      throw new CommandError(`View ${id} already exists.`);
+/** The section as the schema accepts it, or a plain refusal (no planes, too many). */
+function checkedSection(section: ViewSection): ViewSection {
+  const parsed = ViewSectionSchema.safeParse(section);
+  if (parsed.success) return parsed.data;
+  if (section.kind === 'planes') {
+    if (section.planes.length === 0) throw new CommandError('A section needs at least one plane.');
+    if (section.planes.length > MAX_SECTION_PLANES) {
+      throw new CommandError(`A section has at most ${MAX_SECTION_PLANES} planes.`);
     }
-    draft.views.push({ id, name: uniqueViewName(draft.views, name), camera });
-  },
-);
+  }
+  throw new CommandError("The view's section is invalid.");
+}
+
+/**
+ * Saves the current camera, and the section shown with it when `section` is
+ * given, as a named view (ADR-0008's amendment, ADR-0045's amendment of
+ * 2026-11-06). The caller (the app) reads both from the viewport store and
+ * puts a fresh ID in the payload. A name taken by another view is uniquified
+ * ("Front" → "Front 2"); the name can't be empty.
+ */
+export const saveView = defineCommand<{
+  id: ViewId;
+  name: string;
+  camera: ViewCamera;
+  section?: ViewSection;
+}>('view.save', 'Save view', (draft, { id, name, camera, section }) => {
+  if (draft.views.some((v) => v.id === id)) {
+    throw new CommandError(`View ${id} already exists.`);
+  }
+  const view: NamedView = { id, name: uniqueViewName(draft.views, name), camera };
+  if (section !== undefined) view.section = checkedSection(section);
+  draft.views.push(view);
+});
 
 /**
  * Renames a view, or overwrites its camera with the current one (the
- * browser's "Update to Current View"), or both. One undo step.
+ * browser's "Update to Current View"), or its section, or any of them. For
+ * `section`, `undefined` leaves it alone, `null` removes it, a value replaces
+ * it. One undo step.
  */
-export const updateView = defineCommand<{ id: ViewId; name?: string; camera?: ViewCamera }>(
-  'view.update',
-  'Update view',
-  (draft, { id, name, camera }) => {
-    const view = findView(draft, id);
-    if (name !== undefined) view.name = uniqueViewName(draft.views, name, id);
-    if (camera !== undefined) view.camera = camera;
-  },
-);
+export const updateView = defineCommand<{
+  id: ViewId;
+  name?: string;
+  camera?: ViewCamera;
+  section?: ViewSection | null;
+}>('view.update', 'Update view', (draft, { id, name, camera, section }) => {
+  const view = findView(draft, id);
+  if (name !== undefined) view.name = uniqueViewName(draft.views, name, id);
+  if (camera !== undefined) view.camera = camera;
+  if (section === null) delete view.section;
+  else if (section !== undefined) view.section = checkedSection(section);
+});
 
 /** Deletes a named view. Nothing refers to one, so nothing is refused. */
 export const removeView = defineCommand<{ id: ViewId }>(

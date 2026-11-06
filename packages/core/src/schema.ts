@@ -260,10 +260,46 @@ export const ViewCameraSchema = z.strictObject({
 });
 export type ViewCamera = z.infer<typeof ViewCameraSchema>;
 
+/** At most this many section planes at once; a box counts as six, so it is exclusive (ADR-0045). */
+export const MAX_SECTION_PLANES = 3;
+
+/** One section plane as the view state holds it (ADR-0045's amendment of 2026-11-06). */
+export const ViewSectionPlaneSchema = z.strictObject({
+  /** An origin plane, a construction plane (its feature's ID) or a flat face. */
+  plane: GeomRefSchema,
+  /** An expression in the document's length unit. */
+  offset: z.string(),
+  flip: z.boolean(),
+  on: z.boolean(),
+});
+const SectionExprs = z.tuple([z.string(), z.string(), z.string()]);
+export const ViewSectionSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('planes'),
+    planes: z.array(ViewSectionPlaneSchema).min(1).max(MAX_SECTION_PLANES),
+  }),
+  z.strictObject({
+    kind: z.literal('box'),
+    center: SectionExprs,
+    half: SectionExprs,
+    on: z.boolean(),
+  }),
+]);
+export type ViewSectionPlane = z.infer<typeof ViewSectionPlaneSchema>;
+export type ViewSection = z.infer<typeof ViewSectionSchema>;
+/** The box without its `kind`: the view state's `SectionBoxState`. */
+export type ViewSectionBox = Omit<Extract<ViewSection, { kind: 'box' }>, 'kind'>;
+
 export const NamedViewSchema = z.strictObject({
   id: ViewIdSchema,
   name: z.string().min(1),
   camera: ViewCameraSchema,
+  /**
+   * The section shown when the view was saved (ADR-0045's amendment of
+   * 2026-11-06); absent: the view has no section, and restoring it leaves
+   * the one on screen alone.
+   */
+  section: ViewSectionSchema.optional(),
 });
 export type NamedView = z.infer<typeof NamedViewSchema>;
 

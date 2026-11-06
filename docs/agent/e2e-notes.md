@@ -1497,6 +1497,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   clicks it when `aria-expanded` is `false` (a second click closes it).
   Rows are buttons named after the view inside the `complementary` "Browser"
   (`data-view` on the row); their right-click menu is `menu` "<name> menu".
+  **Section (ADR-0045's amendment of 2026-11-06):** a view with a section has
+  `data-view-section="planes:<n>"` or `"box"` on the row and on its nav-bar
+  `menuitem`; the section icon (`title` "Restores its section too") and the
+  count label ("1 plane", "box") sit **outside** the restore button, so its
+  name stays the view's name. Wait for the camera to settle (size, target,
+  direction, shift unchanged between polls) before reading it to compare.
 
 ### `e2e/notifications.spec.ts`
 

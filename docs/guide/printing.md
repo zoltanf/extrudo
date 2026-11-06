@@ -115,6 +115,10 @@ plane, a construction plane or a flat face, then drag the arrow or type an **Off
 planes, and **Box** clips to a box instead. Box is also offered on the empty panel beside the
 planes, so a box section needs no plane first.
 
+Save Current View… keeps the section that is shown, and restoring that
+[named view](./getting-started.md) brings the cut back with the camera. Update to Current View
+refreshes it, or removes it when no section is shown.
+
 Section is only a view. It changes nothing in the model and is not part of an export. Its
 entry in the browser's **Analysis** folder has an eye to switch it off and on.
 
