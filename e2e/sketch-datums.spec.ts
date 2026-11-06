@@ -45,13 +45,16 @@ test('dimensions a line to the Y axis and its end to the origin', async ({ page 
   await click(30, 10);
   await page.keyboard.press('Escape');
 
-  // Dimension: the line, then the parallel Y axis: no placement click (ADR-0093).
+  // Dimension: the line, then the parallel Y axis, then where the label goes:
+  // a placement click like any other dimension (ADR-0093, amended 2026-11-06).
   await page.keyboard.press('d');
   await click(30, 5);
   await expect(toolPrompt(page)).toHaveText(
     'Click to place the length, or pick a second line, a point or a circle.',
   );
   await click(0, 25);
+  await expect(toolPrompt(page)).toHaveText('Click to place the dimension.');
+  await click(15, 15);
   // The dimension lands once the kernel has projected the axis, and opens for editing.
   const value = page.getByRole('textbox', { name: 'Value of d1' });
   await expect(value).toBeFocused({ timeout: 60_000 });

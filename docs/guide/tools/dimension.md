@@ -56,8 +56,6 @@ Drag the label: where it sits decides what it measures.
   extension lines start at the edge point.
 - **Driven (measures only)** (value box): tick it and the dimension only
   shows the measurement, in grey and brackets, without holding anything.
-- A line to an axis parallel to it, or a point to an axis, is dimensioned at
-  once, with no click to place the label.
 
 ## What it keeps
 

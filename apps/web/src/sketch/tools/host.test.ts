@@ -17,11 +17,10 @@ import { actionLog } from '../../shell/actionLog';
 import { TOOLS } from '../../shell/tools';
 import { finishSketch } from '../mode';
 import { CONSTRAINT_TOOLS } from './constrain';
-import { lineAxisCursor } from './dimensionLayout';
-import { HOST_TOOL_IDS, SNAP_PIXELS } from './host';
+import { HOST_TOOL_IDS } from './host';
 import { CONSTRAINT_TOOL_IDS, isConstraintTool, isSketchTool, SKETCH_TOOL_IDS } from './ids';
 import { LINE_TOOL } from './line';
-import { at, disposeHosts, PER_PIXEL, setup } from './testing';
+import { at, disposeHosts, setup } from './testing';
 
 afterEach(disposeHosts);
 
@@ -803,7 +802,10 @@ describe('constraint and dimension tools pick the origin and axes (ADR-0093)', (
     const t = await setup({ tool: 'dimension' });
     drawLine(t);
     t.host.click(at(20.1, 0)); // the line
-    t.host.click(at(0.1, 5)); // the Y axis: commits, no placement click
+    t.host.click(at(0.1, 5)); // the Y axis: waits for its placement, like any dimension
+    expect(t.host.state.getState().editing).toBeUndefined();
+    expect(t.data().projections ?? {}).toEqual({});
+    t.host.click(at(10, 15)); // the label
     expect(t.data().dimensions).toEqual({});
     const { projection } = project(t, yAxis);
     expect(t.host.state.getState().editing).toBeDefined(); // the value field
@@ -828,18 +830,8 @@ describe('constraint and dimension tools pick the origin and axes (ADR-0093)', (
     expect(refs).toEqual(['origin:y', 'origin:point']);
   });
 
-  /** The stored dimension's label sits where `lineAxisCursor` placed it (an off-centre line). */
-  const expectLabelAtCursor = (t: T, d: SketchDimension) => {
-    const ends: [Vec2, Vec2] = [
-      [20, 20],
-      [20, 40],
-    ];
-    const axisEnds: [Vec2, Vec2] = [
-      [0, -50],
-      [0, 50],
-    ];
-    const want = lineAxisCursor(ends, axisEnds, 3 * SNAP_PIXELS * PER_PIXEL);
-    if (!want) throw new Error('no cursor');
+  /** The stored dimension's label sits where the placement click put it. */
+  const expectLabelAt = (t: T, d: SketchDimension, want: Vec2) => {
     const anchor = dimensionAnchor(t.data(), d);
     if (!anchor) throw new Error('no anchor');
     expect(anchor[0] + (d.label?.x ?? Number.NaN)).toBeCloseTo(want[0], 6);
@@ -853,11 +845,12 @@ describe('constraint and dimension tools pick the origin and axes (ADR-0093)', (
       a: { type: 'line', start: 'a0', end: 'a1', construction: false },
     });
 
-  it('keeps a fresh axis dimension label where it placed it, off-centre line', async () => {
+  it('keeps a fresh axis dimension label where it was placed, off-centre line', async () => {
     const t = await setup({ tool: 'dimension' });
     drawOffCentreLine(t);
     t.host.click(at(20.1, 30)); // the line
-    t.host.click(at(0.1, 30)); // the Y axis, not stored yet: commits, no placement click
+    t.host.click(at(0.1, 30)); // the Y axis, not stored yet
+    t.host.click(at(10, 45)); // the label
     expect(t.data().dimensions).toEqual({});
     const { projection } = project(t, yAxis);
     const axis = projection?.curves.axis as SketchEntityId;
@@ -865,10 +858,10 @@ describe('constraint and dimension tools pick the origin and axes (ADR-0093)', (
     const [d] = Object.values(t.data().dimensions);
     expect(d).toMatchObject({ type: 'distance', a: 'a', b: axis, expr: '20' });
     if (!d) throw new Error('no dimension');
-    expectLabelAtCursor(t, d);
+    expectLabelAt(t, d, [10, 45]);
   });
 
-  it('places the same label for an already stored Y axis', async () => {
+  it('places the label where it is clicked for an already stored Y axis', async () => {
     const t = await setup({ tool: 'dimension' });
     drawOffCentreLine(t);
     t.store
@@ -879,18 +872,21 @@ describe('constraint and dimension tools pick the origin and axes (ADR-0093)', (
     project(t, yAxis);
     const axis = t.data().projections?.['py' as ProjectionId]?.curves.axis as SketchEntityId;
     t.host.click(at(20.1, 30)); // the line
-    t.host.click(at(0.1, 30)); // the stored Y axis: commits, no placement click
+    t.host.click(at(0.1, 30)); // the stored Y axis
+    t.host.click(at(10, 45)); // the label
     const [d] = Object.values(t.data().dimensions);
     expect(d).toMatchObject({ type: 'distance', a: 'a', b: axis, expr: '20' });
     if (!d) throw new Error('no dimension');
-    expectLabelAtCursor(t, d);
+    expectLabelAt(t, d, [10, 45]);
   });
 
-  it('dimensions a point to the X axis on the second pick', async () => {
+  it('dimensions a point to the X axis after a placement click', async () => {
     const t = await setup({ tool: 'dimension' });
     draw(t, { p: { type: 'point', x: 3, y: 4 } });
     t.host.click(at(3, 4.1));
-    t.host.click(at(10, 0.1)); // the X axis: no placement click
+    t.host.click(at(10, 0.1)); // the X axis
+    expect(t.host.state.getState().editing).toBeUndefined();
+    t.host.click(at(6, 2)); // the label
     const { projection } = project(t, { axis: { type: 'line', a: [-50, 0], b: [50, 0] } });
     expect(Object.values(t.data().dimensions)).toEqual([
       expect.objectContaining({
@@ -1221,7 +1217,8 @@ describe('constraint tools refuse a datum axis line (ADR-0093)', () => {
     const t = await setup({ tool: 'dimension' });
     drawLine(t);
     t.host.click(at(20.1, 0)); // the line
-    t.host.click(at(0.1, 5)); // the Y axis: the dimension commits
+    t.host.click(at(0.1, 5)); // the Y axis
+    t.host.click(at(10, 15)); // the label: the dimension commits
     const { projection } = project(t, yAxis);
     const axis = projection?.curves.axis as SketchEntityId;
     expect(t.data().entities[axis]).toMatchObject({ type: 'line', construction: true });
