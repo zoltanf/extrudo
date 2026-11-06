@@ -4,9 +4,11 @@
  * box-selected in the view (P1-09, the tool host).
  */
 import {
+  type Command,
   type ConstraintId,
   type DimensionId,
   type DocumentStore,
+  type RemoveFromSketchPayload,
   readSketch,
   removeFromSketch,
   type SessionStore,
@@ -62,16 +64,24 @@ export function selectedDimensions(stores: SketchSelectionStores): DimensionId[]
  * dimensions with it (`removeFromSketch`). Returns false, changing nothing,
  * if none is selected. Throws the command's `CommandError`, changing
  * nothing, if a dimension's parameter is still used elsewhere.
+ *
+ * `apply` is the tool host's (`ToolHost.apply`): it re-solves the sketch in
+ * the same step, so what a deleted constraint or dimension held off (an
+ * over-constrained sketch's unmet dimension) is met again. Without it the
+ * command is dispatched as it is.
  */
-export function deleteSelection(stores: SketchSelectionStores): boolean {
+export function deleteSelection(
+  stores: SketchSelectionStores,
+  apply?: (command: Command<RemoveFromSketchPayload>) => void,
+): boolean {
   const feature = stores.session.getState().activeSketchId;
   const entities = selectedEntities(stores);
   const constraints = selectedConstraints(stores);
   const dimensions = selectedDimensions(stores);
   if (!feature || entities.length + constraints.length + dimensions.length === 0) return false;
-  stores.store
-    .getState()
-    .dispatch(removeFromSketch({ feature, entities, constraints, dimensions }));
+  const command = removeFromSketch({ feature, entities, constraints, dimensions });
+  if (apply) apply(command);
+  else stores.store.getState().dispatch(command);
   stores.session.getState().clearSelection();
   return true;
 }

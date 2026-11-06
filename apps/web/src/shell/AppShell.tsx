@@ -1199,7 +1199,8 @@ function Shell({
       }
       try {
         if (notes.length > 0) state.dispatch(removeAnnotation({ ids: notes }));
-        deleteSelection(stores);
+        // Through the host, so the sketch re-solves in the same step.
+        deleteSelection(stores, host && ((command) => host.apply(command)));
         if (both) state.commitTransaction();
       } catch (error) {
         if (both) state.cancelTransaction();
@@ -1207,7 +1208,7 @@ function Shell({
         notify('error', error.message);
       }
     },
-    [stores, notify],
+    [stores, notify, host],
   );
   // Parameter edits re-solve the sketches whose dimensions they change (P1-07).
   const apply = (command: Command<unknown>) => {
