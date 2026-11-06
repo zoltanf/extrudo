@@ -15574,15 +15574,17 @@ private:
       return fail("Boolean failed: OCCT could not combine these shapes.");
     }
     // Only when the operands met and the result shows no overlap
-    // (`missedOverlap`): the same boolean again with a fuzzy value of 1e-5
-    // mm, which classifies a tool side along a rounded face right (1e-6 still
-    // came out wrong). Its result replaces the first only if it is sound and
-    // shows the overlap; a tool that only touches the body keeps the first
-    // result, and with it the message that the cut removes nothing. The
-    // history, and so the names, come from the boolean that is kept.
+    // (`missedOverlap`): the same boolean again with a fuzzy value of 1e-4
+    // mm (the distance at which the app counts bodies as touching), which
+    // classifies a tool side along a rounded face right; 1e-6 and 1e-5 still
+    // came out wrong or broken on some of the cases measured. Its result
+    // replaces the first only if it is sound and shows the overlap; a tool
+    // that only touches the body keeps the first result, and with it the
+    // message that the cut removes nothing. The history, and so the names,
+    // come from the boolean that is kept.
     if (missedOverlap(builder, inA)) {
       Builder retry;
-      buildBoolean(retry, inA, inB, 1e-5);
+      buildBoolean(retry, inA, inB, 1e-4);
       if (retry.IsDone() && !retry.HasErrors() && !missedOverlap(retry, inA) &&
           BRepCheck_Analyzer(retry.Shape()).IsValid()) {
         return finishBuilt(retry, a, b, inA, inB, simplify);
