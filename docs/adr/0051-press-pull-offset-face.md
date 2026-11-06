@@ -794,6 +794,16 @@ today's message.
   suspect only, 1 to 20 ms on bodies of 6 to 406 faces; the retry, one more
   boolean and one analysis, only when a point says the overlap was missed.
 
+**Corpus** (252 f3d designs replayed, ADR-0083's gate): the two designs
+above go from 24.7 % and 40.0 % off to 0.33 % (a match) and 0.60 %, their
+bodies from frozen to editable; no other design changes, by verdict, volume
+or body. The replay's summed time is 9 % lower and the gate's wall time 5 %
+(within the noise of the machine; one of the two designs now builds its
+later features and takes 15.5 s instead of 8.9). The two designs whose
+fillet hung under the non-destructive mode (2026-10-29), timed alone: 2.66 s
+and 3.02 s, against 2.68 s and 2.90 s before (the second has a cut by a tool
+of letters that only touches the body: the points cost it 0.1 s).
+
 **Rejected.** Comparing volumes before and after: as slow as the boolean
 itself (36 ms on 126 faces, 126 ms on 406). OCCT's history
 `IsDeleted(toolFace)`: false for the prism's untouched faces, which aren't in
