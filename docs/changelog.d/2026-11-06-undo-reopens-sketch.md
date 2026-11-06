@@ -1,1 +1,0 @@
-- 2026-11-06 · **Undo after Finish Sketch reopens the sketch**: the first Undo opens it again as you left it, and each further Undo takes back one edit, instead of one Undo emptying the sketch.

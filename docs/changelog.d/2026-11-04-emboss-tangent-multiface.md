@@ -1,1 +1,0 @@
-- 2026-11-04 · **Emboss on several faces, and Tangent to the face**: the Faces field takes several faces of one body, each taking the part of the letters in front of it and stopping at its edges; Tangent to the face lays letters sketched at any angle on the face, the right way round; a cone also takes a sketch on a plane parallel to one of its tangent planes (ADR-0060).

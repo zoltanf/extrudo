@@ -1,1 +1,0 @@
-- 2026-11-03 · **Mesh to Solid cuts a curved face whose two holes touch each other**: such a face was left whole and written to STEP with a vertex its two loops share, which a STEP reader may then read as two crossing loops; it is now cut in two like a hole touching the face's outline (ADR-0097 slice D11 follow-up).

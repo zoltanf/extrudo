@@ -1,1 +1,0 @@
-- 2026-11-05 · **Mesh to Solid finds rounded rims**: a rounded edge that runs around a ring, like a cup's inner rim or a socket's lip, now becomes one smooth face instead of hundreds of small facets (one test file went from 2,486 facets to 128).

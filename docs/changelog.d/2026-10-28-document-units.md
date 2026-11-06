@@ -1,1 +1,0 @@
-- 2026-10-28 · **Document units**: the browser's Document settings folder sets a design's unit (mm, cm, m, in) and precision, undoably and without resizing anything (plain numbers get the old unit written out); the New design card picks the unit of a new design and remembers it.

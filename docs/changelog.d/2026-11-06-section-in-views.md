@@ -1,1 +1,0 @@
-- 2026-11-06 · **Named views keep their section**: a view saved while a section plane or box is shown brings it back when you restore it, and Update to Current View refreshes it. The browser and the Named views menu mark such views with the section icon; a view without a section leaves the one on screen alone.

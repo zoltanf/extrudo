@@ -1,1 +1,0 @@
-- 2026-11-04 · **Two more live pictures in the sketching guide**: move the pointer over a small sketch to see what it snaps to and which constraint the click adds, and click the shaded regions of another to see which loops make a profile, with switches that open a slot or turn a circle into construction geometry.

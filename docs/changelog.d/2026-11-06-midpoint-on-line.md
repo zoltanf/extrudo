@@ -1,1 +1,0 @@
-- 2026-11-06 · **Midpoint centres a line on another line or an axis**: pick a line, then another line or an axis (or the axis first), and the line's middle stays on it (ADR-0129).

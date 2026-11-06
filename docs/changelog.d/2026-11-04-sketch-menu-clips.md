@@ -1,1 +1,0 @@
-- 2026-11-04 · **Every sketch tool page shows the tool at work**: the 27 tools in the Sketch tab's Create and Modify menus, from Point and Ellipse to Break and Sketch Scale, have a short clip on their page in the guide.

@@ -1,1 +1,0 @@
-- 2026-11-04 · **Undo keeps your drawing after a dimension to another sketch**: a dimension or constraint picked on an earlier sketch's curve, a body edge or an axis no longer joins the previous undo step, so undoing it no longer removes the rectangle (or whatever you drew before) with it (ADR-0074's amendment).

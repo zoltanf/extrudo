@@ -1,1 +1,0 @@
-- 2026-11-03 · **STEP export: rounded rims read right everywhere**: a fillet on a cylinder's bottom rim (or a cone's base) was written with a face bound that a reader trusting it turns into a cove; such faces are now written so every edge is used both ways (ADR-0034).

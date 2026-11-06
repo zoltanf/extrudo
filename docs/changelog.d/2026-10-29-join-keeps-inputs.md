@@ -1,1 +1,0 @@
-- 2026-10-29 · **Joins keep their inputs intact**: the face merge after a join no longer changes the body being joined to (a filleted plate came out of a failed join broken), and a join whose face merge would break the solid keeps the unmerged, sound result.
