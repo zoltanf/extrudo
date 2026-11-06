@@ -1,1 +1,0 @@
-- 2026-11-06 · **Deleting re-solves the sketch**: deleting the dimension or constraint that over-constrained a sketch solves it again, so a dimension it held slightly off is met and the "Over-constrained" message goes.

@@ -64,7 +64,7 @@ const step = (text: string): BodyStep[] => [{ record: 1, name: 'Body1', step: te
 describe('checkF3dBodies', () => {
   it('keeps a replayed body that matches the file body editable', async () => {
     let terminated = false;
-    const plan = await checkF3dBodies(replay, step(same), [link], {
+    const plan = await checkF3dBodies(replay, step(same), [link], new Map(), {
       spawn: () => inProcess(() => (terminated = true)),
       fonts: noFonts,
     });
@@ -73,7 +73,7 @@ describe('checkF3dBodies', () => {
   }, 60_000);
 
   it('freezes a file body the replay made differently and takes the replayed one out', async () => {
-    const plan = await checkF3dBodies(replay, step(other), [link], {
+    const plan = await checkF3dBodies(replay, step(other), [link], new Map(), {
       spawn: () => inProcess(),
       fonts: noFonts,
     });
@@ -88,6 +88,7 @@ describe('checkF3dBodies', () => {
       replay,
       [{ record: 1, name: 'Body1', reason: 'spline surfaces' }],
       [link],
+      new Map(),
       {
         spawn: () => {
           spawned = true;
@@ -100,7 +101,7 @@ describe('checkF3dBodies', () => {
   });
 
   it('says why when the kernel cannot start', async () => {
-    const result = await checkF3dBodies(replay, step(same), [link], {
+    const result = await checkF3dBodies(replay, step(same), [link], new Map(), {
       spawn: () => {
         throw new Error('no WebAssembly');
       },
@@ -120,7 +121,7 @@ describe('checkF3dBodies', () => {
       },
       onFatal: () => {},
     });
-    const result = await checkF3dBodies(replay, step(same), [link], {
+    const result = await checkF3dBodies(replay, step(same), [link], new Map(), {
       spawn: stuck,
       fonts: noFonts,
       timeoutMs: 50,

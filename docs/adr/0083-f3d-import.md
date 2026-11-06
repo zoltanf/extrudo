@@ -1788,6 +1788,99 @@ skips a hole at or past half the thread's major diameter, and the face name's
 radius (only the skip read it) is gone. `map-more.test.ts` imports the
 washer's M4 in its Ø4.2 hole instead of leaving it out.
 
+## Amendment, 2026-11-06: a base feature's body at its place in the timeline
+
+A base feature is a body the file keeps without history, as a step of the
+timeline, or off it where a body move (Body to Component, a cut and paste of
+bodies into another component) made one to hold the body it moved. The import
+left base features out ("not supported yet"), so nothing after one had a body
+to work on: a phone case modelled as one base feature and two chamfers came in
+with no body at all, and in three designs of one power-supply family the body
+a cut and paste had pasted was missing, so the extrudes and chamfers after it
+had nothing to join to.
+
+**What the file keeps** (`FORMAT.md`, "Base features"): a base feature that
+holds a body names two body records. One is the design's body, which later
+features change. The other is a hidden body with its own body container and
+B-rep stream, and that stream holds **the body as the base feature left it**:
+the phone case's kept body is its final body before the two chamfers. So no
+guess is needed: neither the final body twice changed (it plus a replay of the
+features after it) nor a final body put back in time.
+
+**Now:**
+
+- `decode/base.ts` reads a base feature's two bodies by their role (the body
+  record's property block: `BASEFEAT_PM_BODY_REF` kept, `BASEFEAT_DM_BODY_REF`
+  made); `model.ts` gives a base feature on the timeline the type `base`
+  (`F3dBaseFeature`), every base feature that keeps a body goes into
+  `F3dDesign.bases` with its operations, and a body move gets the base feature
+  it names (`F3dBodyMove.base`). `readBody` reads such a body record's index in
+  2018–19 files too (it follows a `u32 2` after the property block): in two
+  designs the moved body had not been read at all, so the body check did not
+  know the design had it.
+- `baseBodiesStep` (`brep-step.ts`) writes each kept body as STEP: the solid of
+  its stream whose faces carry the base feature's operation, earlier states
+  (a strict subset of the operations) and loose faces left out
+  (`keptSolidIndex`), with every face's tags in the STEP's order.
+- `f3dToDesign` (option `bases`; `importF3d` sets it) puts one `import` of that
+  STEP at the base feature's place, named after it, and its body is the
+  design body the base feature made: later features join, cut, chamfer and
+  move it. A body move whose bodies are not known here (none named any more,
+  or one not imported) imports the body it pasted the same way, named after
+  the move; where the bodies it took are known it stays what it was (the moved
+  body is the replayed one, history kept). A face of the imported body is
+  named `import:<id>:face:<n>` by its first tag (`keptFaceName`): a reference
+  names a face by the operation that first made it, which the kept body's
+  faces keep (the base feature is a later change on them), and the STEP keeps
+  the solid's face order through a STEP reader. A tag two faces carry names
+  neither. A base feature that holds no body is imported as nothing (it adds
+  nothing, so it is neither left out nor noted; the owner, 2026-11-06); one
+  whose body the writer can't write is left out with the writer's reason.
+- The STEP bytes come back as `ImportResult.files`. `saveF3dImport` writes them
+  before the first document that names them; the body check's probe
+  (`probeDocument`'s `own`) and `bodyFiles` carry them, so the base body is a
+  replayed body like any other: it is measured and paired, never probed or
+  frozen in its place, and its attachment is written once.
+- A group of timeline items (`A917FE80…`, `TIMELINE_GROUP`) is imported as
+  nothing, like a component's item: it has no geometry.
+
+**Hostile files:** the property block is read for its two short strings and
+one reference; each kept body and each stream is read once; at most
+`MAX_BASE_CANDIDATES` (64) solids of a stream may carry the operation; each
+STEP is at most `MAX_ATTACHMENT_BYTES` (25 MB) and all of them together
+`MAX_ATTACHMENTS_BYTES` (100 MB), since they are kept with the design.
+
+**Measured** on the owner's 252 files against the reference STEP, before
+(main at `a887b70b`) and after, per design:
+
+- The replay: match 163 → 164, matching despite skips 2 → 2, partial
+  25 → 22, mismatch 48 → 51, no body 5 → 4; features left out (not counting
+  suppressed ones) 77 → 61. Seven designs changed, none for the worse (two
+  count as mismatch instead of partial only because nothing is left out of
+  them any more: their volumes are closer or the same). The
+  power-supply family's main body went from partial (67.6 % off) to
+  matching; one sibling from 60.5 % to 3.7 % off, the other stays 1.9 % off
+  (that is its other components) with its body now made; a carrying case
+  from 72.4 % to 1.6 % and a printer accessory from 8.9 % to 0.6 % (the moved body
+  is read now; what is left is their fillets and chamfers); the phone case from
+  no body to one 2.8 % over: its chamfers name all 57 of their edges, but the
+  kernel reads the kept body as not quite a sound solid and can't chamfer it.
+  A base feature that holds no body is imported as nothing (6 on the
+  corpus's timelines, in 4 designs), so it no longer counts as left out.
+- The body check: designs matching before it 165 → 166, after it 225 → 227
+  (the carrying case and the printer accessory); file bodies editable 232 → 235,
+  frozen 124 → 124 (two that the timeline now makes, two more that the
+  importer now knows), unchecked 26 → 26, missing 0 → 1 (a design with no
+  timeline now knows two more of its bodies: one is frozen, one the writer
+  can't write; its volume went from 86.6 % to 5.1 % off). No body went from
+  editable to frozen; the one design worse after the check than before it is
+  the same as before this change (its bodies are not read).
+- The two files of issue #93 import exactly as before. No kernel crash.
+
+**Not done:** a base feature is never imported from its final body (that
+would put the later features' changes in twice); the phone case's chamfers
+wait on the kernel.
+
 ## Amendment, 2026-11-06: profile regions from stale records
 
 A profile region record is written when the profile is picked and is not

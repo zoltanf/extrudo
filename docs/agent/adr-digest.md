@@ -93,6 +93,11 @@ them) plus every constraint and dimension type, as records keyed by ID;
 origin plane frames match the ViewCube. Sketch mode (`apps/web/src/sketch/`)
 is session state plus one undo transaction; the viewport draws sketches,
 makes the origin planes pickable and puts the grid on the sketch plane.
+**Amendment 2026-11-06:** the transaction is tagged (`beginTransaction('Edit sketch',
+{ reopen: id })`), its committed step keeps the entries (`HistoryEntry.session`; `#join`
+keeps them adding up), and the shell's Undo while that step is the latest calls
+`reopenSketch` (reopen, enter, look at) instead of reverting it; the agent's undo and the
+timeline revert still revert whole steps.
 ADR-0011 (P1-03) built the solver adapter in `packages/sketch/src/solver/`:
 `SketchSolver.solve(sketch, values)` maps every type to planegcs, treats
 fixed geometry as constants, keeps one system per component and solves only
@@ -1498,7 +1503,7 @@ conflicts only). **A link made while the project is open** (desktop Save As…)
 goes through **`LinkedProject.adopt`** (`useLinkedFolder`'s `adopt`), never
 `ProjectStore.link` alone: the open project reads the link only when it opens,
 and kept writing (and re-recording) the old file until it was opened again.
-**2026-10-29:** in the kernel's booleans (`finishBoolean`: fuse, cut, common, split) a **simplified** one runs **on copies of both inputs** (the face merge, `UnifySameDomain`, changed sub-shapes shared with the live body in place, safe input mode or not) and **checks the merged result, falling back to the plain boolean built again from the inputs** when the merge broke it (faces on one cylinder came out unorientable); **never `SetNonDestructive(true)`** on a boolean (a fillet after such a cut ran forever); the recompute engine's **`#checkSound`** refuses a feature whose fresh body fails `Kernel.isValid` or has no face ("The <feature> made a broken body …", "… an empty body …"), releases its handles and keeps the bodies before it, so **no evaluator ever gets a broken body** (a body read from a file is kept with a warning instead: `keepsBrokenBodies`, set only by the import feature); `Kernel.brokenSolidForTests` / the `test-broken`, `test-empty` and `test-broken-kept` features exist for those tests only. **2026-11-04 (#181):** after the merge, an open arc the merge rebuilt gets its input edge's circle back (same arc and direction, input 0 first) when all its faces are planar (`keepInputCircles`, between `SimplifyResult` and the validity check), so an extrude of several profiles is parametrized like its sketch and a later join merges its cylinders; never leave a merged arc on OCCT's new circle.
+**2026-10-29:** in the kernel's booleans (`finishBoolean`: fuse, cut, common, split) a **simplified** one runs **on copies of both inputs** (the face merge, `UnifySameDomain`, changed sub-shapes shared with the live body in place, safe input mode or not) and **checks the merged result, falling back to the plain boolean built again from the inputs** when the merge broke it (faces on one cylinder came out unorientable); **never `SetNonDestructive(true)`** on a boolean (a fillet after such a cut ran forever); the recompute engine's **`#checkSound`** refuses a feature whose fresh body fails `Kernel.isValid` or has no face ("The <feature> made a broken body …", "… an empty body …"), releases its handles and keeps the bodies before it, so **no evaluator ever gets a broken body** (a body read from a file is kept with a warning instead: `keepsBrokenBodies`, set only by the import feature); `Kernel.brokenSolidForTests` / the `test-broken`, `test-empty` and `test-broken-kept` features exist for those tests only. **2026-11-04 (#181):** after the merge, an open arc the merge rebuilt gets its input edge's circle back (same arc and direction, input 0 first) when all its faces are planar (`keepInputCircles`, between `SimplifyResult` and the validity check), so an extrude of several profiles is parametrized like its sketch and a later join merges its cylinders; never leave a merged arc on OCCT's new circle. **2026-11-06:** `finishBoolean` counts the overlaps a boolean **missed** (`missedOverlaps`: solids only, per solid of the tool that **met** the target in the pave filler's interference table; a suspect is a cut wall the result lacks, a fuse tool swallowed or left apart, an empty common; it counts only if a point 1e-2 mm inside the tool (not closer: near-coincident pockets leave micrometre slivers) classifies inside the target, outside for a swallowed one) and, when > 0, **builds the boolean once more with fuzzy value 1e-4** (`TOUCH`; 1e-6 and 1e-5 came out wrong or invalid); the retry is kept only if valid and missing fewer, and its history names the result. Operands with no contact, and tools that only touch, never retry; never detect it by volume (as slow as the boolean), by `IsDeleted` (false for untouched tool faces), by OCCT's alerts (none in the f3d case) or on the whole result (an extrude's compound tool hides a missed prism behind one that cut).
 
 ADR-0066 (P4-06, slice 1) added **drawings into a sketch**: `@extrudo/io`
 gained `readSvg` / `readDxf` (`xml.ts` is our own small tokenizer, no
@@ -2509,6 +2514,8 @@ Parameter value records are read in class versions 5–7 and 9 (2026-10-20, #93)
 
 **Amendment of 2026-10-23 (failed face deletions leave the timeline):** after the probe's recompute, `failedDeletions(design, features)` (`body-check.ts`) lists the `removeFaces` steps that ended in error; `checkF3dBodies` puts them in `BodyPlan.dropped`, `applyBodyPlan` removes them first and `saveF3dImport` moves them from `imported` to `skipped` (kind `DeleteFace`, reason `Extrudo couldn't remove its faces: <kernel message, first sentence>`). Only face deletions; no geometry changes, so the plan must stay identical with and without (test). No written body, no check, deletions stay.
 
+**Amendment of 2026-11-06 (base features):** a base feature (`D7015B81…`, `decode/base.ts`) names two body records told apart by their property block: `BASEFEAT_PM_BODY_REF` (kept: hidden, its own container and stream = the body as the base feature left it) and `BASEFEAT_DM_BODY_REF` (made: the design body). `model.ts`: `F3dBaseFeature` (type `base`) on the timeline, `F3dDesign.bases` (every one that keeps a body, with its ops), `F3dBodyMove.base`. `baseBodiesStep` (`brep-step.ts`) writes the kept solid (`keptSolidIndex`: carries the base op, no strict-subset earlier state, most faces; ≤ `MAX_BASE_CANDIDATES`, each STEP ≤ 25 MB, all ≤ 100 MB, each body and stream read once) with each face's `token@op` tags in STEP order. `f3dToDesign({ bases })` (`importF3d` sets it) makes one `import` named after the base feature at its place (`replayable` → the made body's `bodyOf`); a body move falls back to that only when its own mapping fails (`components.unalias`), never instead of it. Faces of the import are `import:<id>:face:<n>` by the reference's first tag (`keptFaceName`; ambiguous tag → no name). `ImportResult.files` (attachment → bytes) must reach storage before the first document (`saveF3dImport`), the probe (`probeDocument(…, own)`) and `bodyFiles(…, own)`; the base body is a replayed body for the check. `TIMELINE_GROUP` (`A917FE80…`) imports as nothing. Never import the final body at a base feature's place (later features would change it twice).
+
 **Amendment of 2026-11-06 (profile regions from stale records):** a region record is never rewritten when its sketch is edited later, so pieces that don't rebuild mean a stale record, not a bad file. Order in `selectProfiles` (`map.ts`): `exactRegions` (pieces, even-odd; probe by `clearProbeOf`, moved inward only when within `PROBE_CLEARANCE` 0.05 mm of an edge — always using the margin hangs on long spline outlines), then `overlapRegion` (the one region maximising F·G over `listedPieces`, sampled every 0.5 mm, `OVERLAP_TOLERANCE` 0.05 mm, `OVERLAP_MIN_SHARE` 0.3, accepted at `OVERLAP_SCORE` 0.5), then `matchRegions`/`staleRegion` (which counts a listed line an outline edge overlaps collinearly: `onLine`). `regions.ts`: arcs on one circle touch at their ends, a closed one's seam touch counts first in the turn (`Hit.seam`; never for other cuts at the start — that harmed six designs); line–circle roots < 10·TOL apart are one touch (not the discriminant slack: it also swallows a 64 µm chord). `textsInside`: a text whose box middle a pieces-found region encloses is added as a `sketchEntity` profile (the file's regions never hole a text). Gate: replay 168/44/22/4 (from 163/48/25/2), bodies 241/115/26 (from 232/124/26), no match or body lost.
 
 ADR-0084 (the owner, 2026-10-14) **checks each body an `.f3d` import rebuilt against the
@@ -2914,9 +2921,8 @@ resolve them in the kernel): the host takes a `constructionDatums` getter (`Datu
 from current state at every pick), and `constructionDatumSources` in `datums.ts` offers only the
 features **before the active sketch in the timeline**, before the marker, not suppressed and
 shown, whose report is an axis or a point — a later one would make the sketch depend on a later
-feature. Owner's test (2026-10-19): a datum **axis** with a parallel line or a point commits at
-the second pick (`DimensionTool.#datumCursor`; label via `lineAxisCursor`/`pointAxisCursor` in
-`dimensionLayout.ts`), with no placement click; origin/datum points and angles keep it.
+feature. A datum distance takes a **placement click like every other dimension** (the 2026-10-19
+second-pick commit was reversed on 2026-11-06), its live preview following the cursor.
 `sketchSegments` skips the entities of datum projections (and their points) unless `datums`
 (`curveSegments`, the hover/selection overlay, passes it). In the constraint tools
 (`tools/constrain.ts`), an axis has no length or middle: **Equal, Midpoint and
@@ -4302,3 +4308,34 @@ Bug's **"Include recent actions"** is off by default (home screen too); `issueUr
 actions first**, oldest whole lines, before `console`, `steps`, `what`; "Copy report" has
 them all. The read-only handle is `window.__extrudoRecentActions()` (the report's lines); a
 desktop MCP tool for it is deferred.
+
+ADR-0129 (the owner, 2026-11-06): **`midpointOnLine` `{ a, b }`**, line `a`'s middle on line
+`b` taken as endless (an axis's projected line, a body edge, another sketch line). Files:
+`packages/core/src/sketch/schema.ts` (the type, `CONSTRAINT_LABELS`, the kind check),
+`packages/sketch/src/solver/mapping.ts` (planegcs `midpoint_on_line_ll`, `l1` = `a`),
+`apps/web/src/sketch/tools/constrain.ts` (the Midpoint rule, `Pick.datum`,
+`ConstraintTool.#refusesDatum`), `tools/glyphs.ts`, `packages/sketch/src/modify/split.ts`,
+`corner.ts`, `packages/api/src/sketch.ts` (`midpointOnLine`), `api/src/emit/sketch.ts`.
+**Rules:** a separate type, never `midpoint` with a line in `point` (code reads
+`midpoint.point` as a point). The Midpoint tool makes it from a sketch line then a line or
+an axis, or an axis then a sketch line; the axis is always `b`. Midpoint refuses an axis
+after a point, an arc or another axis (`DATUM_LINE_HINT`); Equal and Horizontal/Vertical
+still refuse axes outright (`NO_DATUM_LINE`). The glyph sits on `a`. Cutting `a` drops it;
+cutting `b` keeps it on the piece that keeps `b`'s ID; a fillet or chamfer drops it when `a`
+is a corner's line.
+
+ADR-0133 (the owner, 2026-11-06): **What's new after an update.** `apps/web/pwa/release-notes.ts`
+(Vite plugin, `virtual:release-notes`, declared in `src/release-notes.d.ts`) builds in the package
+version's `docs/release-highlights/X.Y.Z.md` bullets and CHANGELOG `## vX.Y.Z` bullets (date
+prefix stripped); no highlights file → `null` → the app says nothing. `src/shell/whatsNew.ts`:
+`checkWhatsNew` keeps `whatsNew.lastVersion` (base X.Y.Z), announces only a newer version, or
+with no stored version only when `returning` (a stored design or the tour answered, read by
+`useWhatsNew` at the first page's mount, before a click can create a design); edge never announces or records; dev behaves as stable. The toast is info "Updated to
+Extrudo X.Y.Z." with the What's new button; `whatsNewStore` opens `WhatsNewDialog`, which the
+home screen and `AppShell` mount and About's footer button opens. `useWhatsNew` runs once per
+session. Notes render `**bold**` and `` `code` `` only. Keep: a release commit adds the
+highlights file; the preference stays in `NOT_IN_SETTINGS`; `apps/desktop/electron.vite.config.ts`'s
+renderer has `releaseNotesPlugin` too (its own Vite config; `src/renderer/config.test.ts`). Amendment 2026-11-06: `virtual:release-history`
+(`releaseHistory`: every `## ` section but Unreleased and this version, with highlights where a
+file exists) is a separate lazy chunk behind the dialog's "Earlier versions"; the Menu's App
+column has What's new above About, and the `whatsNew` command (Help) is agent-denied.

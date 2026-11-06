@@ -1,1 +1,0 @@
-- 2026-11-04 · **Sketch tools say what they do**: `Enter` places a sketch circular pattern round the pointer, as a click does; Chamfer says "Those two lines make no corner to cut."; Smooth's and Perpendicular's tooltips no longer promise curvature matching or that the lines meet.

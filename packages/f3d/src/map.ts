@@ -18,10 +18,14 @@ import {
   type SketchHandle,
 } from '@extrudo/api';
 import {
+  type AttachmentId,
+  addAttachment,
   type BodyId,
   type ComponentId,
   evaluateParameters,
   faceSketchFrame,
+  importInputs,
+  newId,
   ORIGIN_PLANES,
   type SketchData,
   updateBody,
@@ -33,8 +37,9 @@ import {
   interiorPoint,
   type Profile,
 } from '@extrudo/sketch/profiles';
+import { sha256Hex } from '@extrudo/storage';
 import type { AsmSurface } from './asm';
-import type { BodyStep } from './brep-step';
+import type { BaseStep, BodyStep } from './brep-step';
 import { firstFace } from './chamfer-side';
 import { ComponentMapping } from './components';
 import type { ProfileOperand, ProfileRegion } from './decode/extrude';
@@ -195,6 +200,12 @@ export interface ImportResult {
   bodies?: BodyLink[];
   /** The B-rep writer's steps (record, name, component, step/reason); only with `{ bodies: true }`. */
   steps?: BodyStep[];
+  /**
+   * The bytes of the files the design itself imports (a base feature's body, as
+   * STEP), by attachment ID: stored before the document, and what a kernel's
+   * file source gives its `import` steps. Absent when there are none.
+   */
+  files?: Map<AttachmentId, Uint8Array>;
 }
 
 type ReadonlyVec3 = readonly [number, number, number];
@@ -283,6 +294,12 @@ interface FaceNaming {
   tori: Map<number, string>;
   /** Imported sweeps: Extrudo's id and, where the path lets them be told, what names their faces. */
   sweeps: Map<number, { id: string; faces?: SweptFaces }>;
+  /**
+   * Base features' bodies imported from the file's B-rep, by f3d record: the
+   * `import`'s id and, per `token@operation` tag, the faces (0-based, the
+   * STEP's order) that carry it.
+   */
+  bases: Map<number, { id: string; faces: Map<string, number[]> }>;
 }
 
 /** An imported hole: where its holes are and their sizes, for naming their faces. */
@@ -428,6 +445,11 @@ export interface ImportOptions {
    * decoded twice.
    */
   bodies?: boolean;
+  /**
+   * The base features' kept bodies as STEP (`baseBodiesStep`): each is
+   * imported at its base feature's place. `importF3d` sets this.
+   */
+  bases?: readonly BaseStep[];
 }
 
 export function f3dToDesign(
@@ -538,6 +560,7 @@ export function f3dToDesign(
     holes: new Map(),
     tori: new Map(),
     sweeps: new Map(),
+    bases: new Map(),
   };
   /** f3d feature record → the Extrudo feature a pattern can replay for it. */
   const replayable = new Map<number, { id: string; name: string }>();
@@ -631,6 +654,43 @@ export function f3dToDesign(
     }
     return now.map((id) => ({ kind: 'body', id }));
   };
+  // A base feature's body as the file's B-rep keeps it, at its place: one
+  // `import` of its STEP, named after the step, whose body is the design body
+  // the base feature made (later features act on it and name its faces).
+  const baseSteps = new Map((options.bases ?? []).map((b) => [b.feature, b]));
+  const files = new Map<AttachmentId, Uint8Array>();
+  const keepBase = (record: number, name: string): string | undefined => {
+    const step = baseSteps.get(record);
+    if (step?.step === undefined)
+      return step?.reason
+        ? `the body it holds could not be read (${step.reason})`
+        : 'the body it holds was not found';
+    const bytes = new TextEncoder().encode(step.step);
+    const attachment = newId<AttachmentId>();
+    d.state.dispatch(
+      addAttachment({
+        id: attachment,
+        attachment: {
+          name,
+          fileName: `${name}.step`,
+          mediaType: 'model/step',
+          sha256: sha256Hex(bytes),
+          size: bytes.length,
+        },
+      }),
+    );
+    const made = d.add('import', importInputs({ file: attachment, up: 'z' }), { name });
+    files.set(attachment, bytes);
+    replayable.set(record, { id: made.id, name });
+    const faces = new Map<string, number[]>();
+    (step.faces ?? []).forEach((tags, i) => {
+      for (const tag of new Set(tags)) faces.set(tag, [...(faces.get(tag) ?? []), i]);
+    });
+    naming.bases.set(record, { id: made.id, faces });
+    report.notes.push(`${name}: its body is the file's own shape, without history.`);
+    return undefined;
+  };
+
   // Curves the file's own profiles run along are never construction geometry,
   // whatever the flag reading says.
   const profileCurves = new Map<number, Set<string>>();
@@ -903,11 +963,27 @@ export function f3dToDesign(
           naming.rounds.set(feature.id, made);
           report.imported.push(feature.name);
         }
-      } else if (feature.kind === 'Component' || feature.kind === 'CreateComponent') {
+      } else if (feature.type === 'base') {
+        // One that holds no body adds nothing: imported as it is, as nothing.
+        const reason = feature.kept === undefined ? undefined : keepBase(feature.id, feature.name);
+        if (reason) report.skipped.push(skippedFeature(feature.name, feature.kind, reason));
+        else report.imported.push(feature.name);
+      } else if (
+        feature.kind === 'Component' ||
+        feature.kind === 'CreateComponent' ||
+        (feature.type === 'other' && feature.group)
+      ) {
         // An Extrudo component already stands for it; its features follow on this timeline.
         report.imported.push(feature.name);
       } else if (components.isBodyMove(feature)) {
-        const reason = components.bodyMove(feature, bodyOf);
+        let reason = components.bodyMove(feature, bodyOf);
+        // The bodies it moves are not known here, but the body it made is kept
+        // in the file, as the base feature it made holds it: that, at its place.
+        const base = components.base(feature);
+        if (reason && base !== undefined && baseSteps.get(base)?.step !== undefined) {
+          components.unalias(feature);
+          reason = keepBase(base, feature.name);
+        }
         if (reason) report.skipped.push(skippedFeature(feature.name, feature.kind, reason));
         else report.imported.push(feature.name);
         // `finish` leaves such a body where the feature that made it put it.
@@ -976,7 +1052,7 @@ export function f3dToDesign(
       ...(hint !== undefined ? { hint } : {}),
     });
   }
-  return { design: d, report, bodies };
+  return { design: d, report, bodies, ...(files.size > 0 ? { files } : {}) };
 }
 
 /** The Extrudo frame of a sketch plane: its origin, axes and normal (mm). */
@@ -2359,8 +2435,16 @@ function faceName(
   hint?: Vec3,
   crest?: { radius: number; slack: number },
 ): string | undefined {
+  // A face of a base feature's body (or of a feature not in the file's
+  // operation table, which a base body's faces keep from before it).
+  const kept =
+    face.feature === undefined || naming.bases.has(face.feature)
+      ? keptFaceName(face, naming)
+      : undefined;
+  if (kept !== undefined) return kept;
   const name = faceNameIn(face, naming, hint, crest);
-  if (name !== undefined || !face.states) return name;
+  if (name !== undefined) return name;
+  if (!face.states) return keptFaceName(face, naming);
   // The surface the reference means names nothing (an offset moved the
   // face off its sketch curve): its other states, nearest first. An offset
   // keeps a face's name, in the file and in Extrudo.
@@ -2370,6 +2454,28 @@ function faceName(
     if (other !== undefined) return other;
   }
   lastMiss = why;
+  return keptFaceName(face, naming);
+}
+
+/**
+ * The name of a face of a base feature's imported body, `import:<id>:face:<n>`:
+ * the one face of that body carrying the reference's first tag (its token and
+ * the operation that made it). The base feature's own body first, else the
+ * latest imported one that has the tag; a tag two faces of one body carry
+ * names neither.
+ */
+function keptFaceName(face: F3dFace, naming: FaceNaming): string | undefined {
+  if (naming.bases.size === 0 || face.instance) return undefined;
+  const first = face.tags[0];
+  const op = first?.designs[0];
+  if (!first || op === undefined) return undefined;
+  const key = `${first.token}@${Math.abs(op)}`;
+  const own = face.feature === undefined ? undefined : naming.bases.get(face.feature);
+  for (const base of own ? [own] : [...naming.bases.values()].reverse()) {
+    const at = base.faces.get(key);
+    if (at?.length === 1) return `import:${base.id}:face:${(at[0] as number) + 1}`;
+    if (at) return miss('base body: two faces carry its tag');
+  }
   return undefined;
 }
 

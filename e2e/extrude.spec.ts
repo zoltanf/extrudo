@@ -262,11 +262,16 @@ test('undo with the Extrude dialog open cancels the dialog and keeps the sketch'
   await undo.click();
   await expect(dialog).toBeHidden();
 
-  // The profile is still there; with no dialog open, undo takes the sketch's edits.
+  // The profile is still there; with no dialog open, undo reopens the sketch at its
+  // last edit (ADR-0010's amendment of 2026-11-06), and the next takes the rectangle back.
   await extrude();
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
   await page.keyboard.press('Control+z');
+  const finish = page.getByRole('button', { name: 'Finish Sketch' }).last();
+  await expect(finish).toBeVisible();
+  await page.keyboard.press('Control+z');
+  await finish.click();
   await page.mouse.move(plate.x, plate.y);
   await page.mouse.click(plate.x, plate.y);
   await expect.poll(() => attr(viewport, 'data-model-selection')).not.toMatch(/^profile:/);

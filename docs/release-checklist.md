@@ -27,11 +27,25 @@ published. Versions come from `git describe` of the last `v*` tag: stable shows
    tags (`<span class="tag">`) off `apps/site/features/index.html` for the
    features the release ships: the site deploys from main, so they mark what
    app.extrudo.org doesn't have yet (ADR-0057's amendment of 2026-10-11).
+   Also add `docs/release-highlights/X.Y.Z.md`: the release's highlights, a
+   short Markdown list (`- **Title**: text`, bold and code only) that the app
+   shows after the update ("Updated to Extrudo X.Y.Z.", What's new; ADR-0133).
+   The owner approves it with the release notes (step 8 reuses it); without
+   it the update is quiet.
+   Push the commit straight to main (`git push origin HEAD:main`, after the
+   owner's go), not through a PR: CI's changelog check (ADR-0089) fails any
+   PR that edits `docs/CHANGELOG.md`.
 4. **Startup numbers** (ADR-0100): `pnpm build && node
    scripts/measure-startup.mjs`; compare with ADR-0100's baseline (a jump is
    a release blocker to investigate, a drift is noted in the release notes).
 5. **Wait for CI on main** for that commit (`gh run list -c <full sha>`; a
-   short SHA finds nothing). Only tag a commit whose CI passed.
+   short SHA finds nothing). Only tag a commit whose CI passed. If anything
+   since the last release touched the web app's build config (Vite plugins,
+   `apps/web/vite.config.ts`), also run the Desktop workflow on that commit
+   first (`gh workflow run desktop.yml --ref main`) and wait for its three
+   package jobs: PR CI never builds the desktop app, and its renderer has its
+   own config (`apps/desktop/electron.vite.config.ts`). v0.10.0's first tag
+   failed every package this way.
 6. **Tag:** `git tag -a vX.Y.Z -m "vX.Y.Z" <commit> && git push origin vX.Y.Z`.
    The tag deploys the stable app at <https://app.extrudo.org> (ADR-0057), and
    the `desktop` workflow builds the Linux (AppImage, deb), Windows (NSIS and
@@ -41,7 +55,7 @@ published. Versions come from `git describe` of the last `v*` tag: stable shows
    `smoke: OK`; GPU errors under xvfb in the same log are expected), and so did the Windows job's two (it installs the NSIS installer and smoke-tests the installed app, then the portable exe). The draft
    holds the installers and `latest.yml`, `latest-mac.yml` and
    `latest-linux.yml`: the updater reads them, and without them nobody updates.
-8. **Release notes** on the draft: a short highlights list, then the
+8. **Release notes** on the draft: the highlights list (`docs/release-highlights/X.Y.Z.md`), then the
    CHANGELOG's section for the version. Say the installers are unsigned
    (signing is deferred until the app has users; owner, 2026-10-07): macOS
    asks before the first open (`docs/desktop.md` has the steps), Windows shows

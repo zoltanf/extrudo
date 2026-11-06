@@ -1,1 +1,0 @@
-- 2026-11-04 · **Other CAD files (desktop)**: cadmpeg 0.6.8 converts `.sldprt` parts that 0.6.7 turned into an empty STEP, and a conversion that gives no solid body now says the geometry couldn't be read and to export STEP from the program it was made in, instead of calling the part a file of surfaces.

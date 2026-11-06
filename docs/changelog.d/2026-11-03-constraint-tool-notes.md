@@ -1,1 +1,0 @@
-- 2026-11-03 · **Constraint tool pages**: the 13 constraint tools (Coincident to Symmetric) each have step-by-step notes, what the constraint keeps, every message they can show, and their drawn figure.

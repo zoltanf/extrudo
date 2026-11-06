@@ -5,7 +5,9 @@
  * mode, a feature dialog), undo and redo step through that transaction's own
  * entries only. Committing collapses them into one entry of the enclosing
  * level, so a whole sketch session becomes one timeline step; cancelling
- * reverts them.
+ * reverts them. A transaction begun with a `reopen` tag (a sketch session)
+ * keeps its entries on that step, and `reopen` turns the step back into the
+ * open transaction (ADR-0010's amendment of 2026-11-06).
  */
 import { applyPatches, type Patch } from 'immer';
 import type { ExtrudoDocument } from './schema';
@@ -20,12 +22,20 @@ export interface HistoryEntry {
    * (an auto-projected constraint) can join that step, not the latest one.
    */
   id?: number;
+  /**
+   * The entries of the transaction this step was committed from, when it was
+   * begun with a `reopen` tag (ADR-0010's amendment of 2026-11-06): `reopen`
+   * makes them the open transaction's undo stack again.
+   */
+  session?: { tag: string; entries: HistoryEntry[] };
 }
 
 interface Level {
   label: string;
   undo: HistoryEntry[];
   redo: HistoryEntry[];
+  /** Set for a transaction whose step can be reopened (`begin`'s `reopen`). */
+  tag?: string;
 }
 
 /**
@@ -62,6 +72,8 @@ export type HistoryEvent =
   /** A transaction closed into step `step` (undefined: it had no steps). */
   | { type: 'commit'; label: string; step: number | undefined; depth: number }
   | { type: 'cancel'; label: string; depth: number }
+  /** The latest step `step`, a sketch session, reopened as its transaction (`reopen`). */
+  | { type: 'reopen'; label: string; step: number | undefined; depth: number }
   /** `replaceDocument`: a new document, history cleared. */
   | { type: 'replace' };
 
@@ -182,6 +194,9 @@ export class UndoHistory {
     if (relabel) step.label = entry.label;
     step.patches = [...step.patches, ...entry.patches];
     step.inversePatches = [...entry.inversePatches, ...step.inversePatches];
+    // A reopenable step's entries must add up to it: the change joins the last one.
+    const last = step.session?.entries.at(-1);
+    if (last) this.#join(last, entry, false);
   }
 
   get canUndo(): boolean {
@@ -251,8 +266,12 @@ export class UndoHistory {
     return result;
   }
 
-  begin(label: string): void {
-    this.#levels.push({ label, undo: [], redo: [] });
+  /**
+   * Opens a transaction. With `reopen` (a sketch session's feature id), the
+   * step it commits to keeps its entries, so `reopen` can open it again.
+   */
+  begin(label: string, reopen?: string): void {
+    this.#levels.push({ label, undo: [], redo: [], ...(reopen !== undefined && { tag: reopen }) });
   }
 
   /**
@@ -266,7 +285,30 @@ export class UndoHistory {
       label: level.label,
       patches: level.undo.flatMap((e) => e.patches),
       inversePatches: level.undo.toReversed().flatMap((e) => e.inversePatches),
+      ...(level.tag !== undefined && { session: { tag: level.tag, entries: level.undo } }),
     });
+  }
+
+  /**
+   * The tag of the step `undo` would revert, when it is a reopenable session
+   * (`begin`'s `reopen`) and no transaction is open; undefined otherwise.
+   */
+  get reopenTag(): string | undefined {
+    return this.#levels.length === 1 ? this.#top.undo.at(-1)?.session?.tag : undefined;
+  }
+
+  /**
+   * Turns the latest step, a reopenable session (`reopenTag`), back into the
+   * open transaction it was committed from: its entries are that
+   * transaction's undo stack again, the document is unchanged. Returns the
+   * tag, or undefined (changing nothing) when the latest step isn't one.
+   */
+  reopen(): string | undefined {
+    const tag = this.reopenTag;
+    const step = tag === undefined ? undefined : this.#top.undo.pop();
+    if (!step?.session) return undefined;
+    this.#levels.push({ label: step.label, undo: step.session.entries, redo: [], tag });
+    return tag;
   }
 
   /** Closes the innermost transaction and reverts its steps. */

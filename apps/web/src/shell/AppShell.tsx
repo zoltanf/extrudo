@@ -177,6 +177,7 @@ import {
   createSketchOn,
   finishSketch,
   lookAtSketch,
+  reopenSketch,
   type SketchModeStores,
   startCreateSketch,
 } from '../sketch/mode';
@@ -260,6 +261,7 @@ import {
 } from './timelineGroups';
 import { FILE_COMMANDS, isFileCommand, TOOLS, type ToolId } from './tools';
 import { useMarkingSlots, useMarkingStyle, useViewMenu } from './viewMenu';
+import { WhatsNewDialog } from './WhatsNewDialog';
 
 /** The search's pins until the user changes them (P1-14, R3-05). */
 const DEFAULT_PINS = ['sketch', 'line', 'rectangle', 'circle', 'dimension', 'trim', 'parameters'];
@@ -1369,12 +1371,14 @@ function Shell({
   // draft is the change on screen but isn't in the history, so undo took the step before
   // it, often a whole sketch's edits (issue #176). Redo ends the dialog, then redoes. The
   // keys, the search, the marking menu and the top bar's buttons all run these.
+  // Undo right after Finish Sketch reopens the sketch at its last edit (ADR-0010's
+  // amendment of 2026-11-06); the next Undo takes back one edit.
   const undo = useCallback(() => {
     if (dialogOpen || jointOpen) {
       dialog?.cancel();
       jointDialog?.cancel();
-    } else store.getState().undo();
-  }, [dialog, dialogOpen, jointDialog, jointOpen, store]);
+    } else if (!reopenSketch(stores)) store.getState().undo();
+  }, [dialog, dialogOpen, jointDialog, jointOpen, store, stores]);
   const redo = useCallback(() => {
     dialog?.cancel();
     jointDialog?.cancel();
@@ -3291,6 +3295,7 @@ function Shell({
         openLink={platform.openLink}
         onReportBug={() => void openBugReport()}
       />
+      <WhatsNewDialog />
       <BugReportDialog
         open={bugReport.open}
         onOpenChange={(open) => setBugReport((s) => ({ ...s, open }))}

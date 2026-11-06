@@ -158,9 +158,9 @@ space after picking it.
 
 The origin point and the X, Y and Z axes count as things to click, for dimensions and for the
 constraint tools. A line and the Y axis give the line's distance from the axis; pick the axis
-first for an angle to a line across it. A point and the origin give its distance from there. A line
-and a parallel axis, or a point and an axis, are dimensioned at once, with no click to place the
-label. Coincident puts a point on the origin or on an axis.
+first for an angle to a line across it. A point and the origin give its distance from there. As
+with any dimension, a last click places the label. Coincident puts a point on the origin or on an
+axis.
 
 The axis or point you pick comes into the sketch as fixed construction geometry that follows it.
 The projected datum isn't drawn: the axis you see is the datum itself. Construction axes and points
@@ -337,6 +337,7 @@ stays, and the switch says why. See [Project and Intersect](#project-and-interse
 ## Finish Sketch
 
 **Finish Sketch** (the green button in the palette) closes the sketch. Everything you did in it
-is one undo step, so `Ctrl+Z` takes the whole session back. Extrude, Revolve and the other
+is one step in the history. `Ctrl+Z` right after Finish opens the sketch again as you left it,
+and each further `Ctrl+Z` takes back one thing you did in it. Extrude, Revolve and the other
 features read the profiles from the finished sketch; once a feature uses one, the sketch hides
 itself so it doesn't sit in front of the new faces. The browser's eye shows it again.

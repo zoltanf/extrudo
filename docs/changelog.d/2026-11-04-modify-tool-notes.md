@@ -1,1 +1,0 @@
-- 2026-11-04 · **Sketch Modify tool pages**: Extend, Break, Sketch Chamfer, Offset, Move, Copy, Sketch Scale and Export Sketch each have step-by-step notes, their options, what they keep and change, and every message they can show.

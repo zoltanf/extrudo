@@ -6,6 +6,7 @@ import pkg from './package.json' with { type: 'json' };
 import { buildInfo } from './pwa/build-info.ts';
 import { parseHeaders } from './pwa/headers.ts';
 import { precachePlugin } from './pwa/precache-plugin.ts';
+import { releaseNotesPlugin } from './pwa/release-notes.ts';
 import { sitePlugin } from './pwa/site.ts';
 
 // The live site's global headers (COOP/COEP, CSP…; public/_headers, ADR-0054) also apply to
@@ -30,6 +31,8 @@ export default defineConfig({
     }),
     tailwindcss(),
     sitePlugin(),
+    // The release's highlights and changelog, for What's new (ADR-0133).
+    releaseNotesPlugin(pkg.version),
     precachePlugin(),
   ],
   preview: {

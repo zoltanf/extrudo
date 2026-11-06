@@ -13,6 +13,7 @@
  * A body link holds the body's GUID, then references to the body record and
  * to the feature that made the body.
  */
+import { Reader } from '../bytes';
 import type { Segment } from '../segment';
 
 export const BODY = 'D3937028-C20C-4E65-B010-94AD418A5C20';
@@ -36,9 +37,13 @@ export function readBody(seg: Segment, id: number): BodyFlags | undefined {
   // in some the index is just 16 bytes after the body's GUID string, behind
   // other numbers.
   const guid = guidEnd(b, f.start, f.end);
+  // A base feature's body (2018–19 files, class version 16) opens with its
+  // role in a property block; the index follows a u32 2 at most 4 bytes after it.
+  const after = baseBodyRole(seg, id)?.after ?? -1;
   const anchors = [
     (p: number) => (b[p - 2] === 0xf0 && b[p - 1] === 0xbf) || p - f.start === 10,
     (p: number) => p === guid + 16,
+    (p: number) => after >= 0 && p >= after + 4 && p <= after + 8 && u32(p - 4) === 2,
   ];
   for (const anchored of anchors)
     for (let p = f.start; p + 14 <= f.end; p++) {
@@ -69,4 +74,32 @@ function guidEnd(b: Uint8Array, start: number, end: number): number {
     if (guid) return p + 76;
   }
   return -1;
+}
+
+/** The property key of the body as the base feature left it. */
+const KEPT = 'BASEFEAT_PM_BODY_REF';
+/** The property key of the design body the base feature made. */
+const MADE = 'BASEFEAT_DM_BODY_REF';
+
+/**
+ * A body record's role in a base feature, read from its property block (one
+ * entry, a reference), and where the members after it start; `undefined` for
+ * any other body. Reads at most the block's two short strings and one reference.
+ */
+export function baseBodyRole(
+  seg: Segment,
+  id: number,
+): { role: 'kept' | 'made'; after: number } | undefined {
+  try {
+    const f = seg.frame(id);
+    const r = new Reader(seg.bulk, f.start, f.end);
+    if (r.bool() || !r.bool() || r.u32() !== 1) return undefined;
+    const key = r.str8(64);
+    if (key !== KEPT && key !== MADE) return undefined;
+    r.str8(64);
+    r.ref();
+    return { role: key === KEPT ? 'kept' : 'made', after: r.pos };
+  } catch {
+    return undefined;
+  }
 }

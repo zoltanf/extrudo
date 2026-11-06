@@ -236,6 +236,32 @@ describe('combine cut', { timeout: 120_000 }, () => {
     const all = await run([...A, ...big, combine('K', 'A:0', ['E:0'], { operation: 'cut' })]);
     expect(status(all, 'K').message).toMatch(/whole target/);
   });
+
+  it('refuses a cut whose tool only touches a rounded end from outside', async () => {
+    // A plate with a half-round end reaching x = 74 and a block from x = 74 on: they meet
+    // along the tangent line only. The boolean retries such a contact with a fuzzy value
+    // (ADR-0051, 2026-11-06) and must still find nothing to remove.
+    const b = new SketchBuilder();
+    b.line(0, 0, 54, 0);
+    b.arc(54, 20, 20, -90, 90);
+    b.line(54, 40, 0, 40);
+    b.line(0, 40, 0, 0);
+    const [found] = detectProfiles(b.sketch);
+    if (!found) throw new Error('no profile');
+    const plate = [
+      sketch('SP', b.sketch),
+      {
+        ...testFeature('P', 'extrude'),
+        inputs: extrudeInputs([{ kind: 'profile', id: `SP/${found.id}` }], { distance: '15 mm' }),
+      },
+    ];
+    const touching = await run([
+      ...plate,
+      ...block('T', 74, 0, 12, 40, 15),
+      combine('K', 'P:0', ['T:0'], { operation: 'cut' }),
+    ]);
+    expect(status(touching, 'K').message).toMatch(/removes nothing/);
+  });
 });
 
 // ---------------------------------------------------------------- intersect

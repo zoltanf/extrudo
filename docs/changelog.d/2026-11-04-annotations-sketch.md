@@ -1,1 +1,0 @@
-- 2026-11-04 · **Annotations in sketches**: Annotate (`N`) works in an open sketch too: a note on a point, curve or text follows it while you drag, a note on the plane stays put, the palette's Notes switch hides them, and finished sketches show their notes in the 3D view (ADR-0126).

@@ -1,1 +1,0 @@
-- 2026-11-03 · **Create tool pages**: the 25 Create tools (points, arcs, circles, ellipse, conic, rectangles, polygons, slots, splines, text, mirror and patterns, Import Drawing, Intersect) each have step-by-step notes, their options, what they add by themselves, and every message they can show.

@@ -12,18 +12,10 @@ import { REVISION } from 'three';
 import type { BuildChannel } from '../../pwa/build-info';
 import { IconButton, Wordmark } from '../design-system';
 import { BUILD } from '../version';
-import {
-  CHANGELOG_URL,
-  COMMIT_URL,
-  CREDITS,
-  ISSUES_URL,
-  LICENSE_URL,
-  NOTICE_URL,
-  REPO,
-  SITE,
-} from './aboutLinks';
+import { COMMIT_URL, CREDITS, ISSUES_URL, LICENSE_URL, NOTICE_URL, REPO, SITE } from './aboutLinks';
 import { LogoReplay } from './LogoReplay';
 import { type InfoRow, type KernelInfo, systemInfo } from './systemInfo';
+import { openWhatsNew } from './whatsNew';
 
 const CHANNELS: Record<BuildChannel, { badge: string; label: string; tone: string }> = {
   stable: { badge: 'Stable', label: 'Stable, app.extrudo.org', tone: 'bg-success/15 text-success' },
@@ -228,9 +220,17 @@ export function AboutDialog({
             <LinkButton href={SITE} onOpen={opener} icon={<Globe size={14} />}>
               extrudo.org
             </LinkButton>
-            <LinkButton href={CHANGELOG_URL} onOpen={opener} icon={<ScrollText size={14} />}>
+            <button
+              type="button"
+              onClick={() => {
+                onOpenChange(false);
+                openWhatsNew();
+              }}
+              className={FOOTER_ITEM}
+            >
+              <ScrollText size={14} />
               What's new
-            </LinkButton>
+            </button>
             <LinkButton href={REPO} onOpen={opener} icon={<FolderGit2 size={14} />}>
               GitHub
             </LinkButton>

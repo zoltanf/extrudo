@@ -24,6 +24,14 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   docker` (after `pnpm build`). Arch and Ubuntu differ by about 12 pixels per
   shot; the tolerance is 0.1 %.
 
+- **Undo right after Finish Sketch reopens the sketch** (ADR-0010's
+  2026-11-06 amendment): the first `Control+z` changes nothing in the
+  document and shows Finish Sketch again; the next one takes back the last
+  edit (with whatever joined its step, such as an auto-projection). To check
+  that an edit undoes as one step, press `Control+z` twice, read
+  `data-sketch-summary` (the `counts` helper), then Finish
+  (`auto-project.spec.ts`'s `undoTheEdit`).
+
 - **Hover is reported on the next animation frame** (ADR-0102 §2,
   `viewport/pointer.ts`): a `page.mouse.move` over the view updates
   `data-model-hover` (and a sketch tool's preview) one frame later, not
@@ -1021,6 +1029,20 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `href` and open through `Platform.openLink` (a popup on the web): the
   github.com host is answered locally with `context.route`, as in
   help-links. The home bar's About button opens the same dialog.
+
+### `e2e/whats-new.spec.ts`
+
+- **What's new e2e** (`e2e/whats-new.spec.ts`, ADR-0133): the preview build is `dev`, which
+  announces like stable. An init script sets `extrudo.whatsNew.lastVersion` only when it is
+  unset (it reruns on reload), so the first load sees an older version and the reload sees the
+  recorded one. The toast is the text "Updated to Extrudo X.Y.Z." (X.Y.Z read from
+  `apps/web/package.json`) with the button "What's new"; the dialog is named "What's new in
+  Extrudo X.Y.Z", its highlights and changes are `listitem`s, the disclosure is the button
+  /^Full changelog \(\d+ changes\)$/ with `aria-expanded`, and "Got it" closes it. The
+  package version needs a `docs/release-highlights/` file, or nothing shows.
+  `pickMenuItem(page, 'App', "What's new")` opens it from the Menu. "Earlier versions" is a
+  disclosure button; each release is a button "v0.4.0 (2026-10-08) · N changes" (the oldest
+  "Phases 0 to 2 … · N changes") with `aria-expanded`, one open at a time.
 
 ### `e2e/bug-report.spec.ts`
 
@@ -2269,9 +2291,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 - ADR-0093 (#61): `sketchOnXY`, a Line (30,-10)-(30,10) (inference makes it
   vertical; one Esc leaves the tool's next segment, the prompt stays), then
-  `d`: the line at (30,5), the **Y axis at (0,25)** (a datum pick; a line
-  and its parallel axis, or a point and an axis, need **no placement click**:
-  the second pick commits, ADR-0093). The dimension lands only after the
+  `d`: the line at (30,5), the **Y axis at (0,25)** (a datum pick; the prompt
+  turns to "Click to place the dimension."), then the label at (15,15): a datum
+  distance takes the placement click like any other (ADR-0093, amended
+  2026-11-06). The dimension lands only after the
   kernel reports the projected axis, then opens "Value of d1" (wait up to 60 s for
   focus); `20` + Enter moves the line to x = 20 (`[data-dimension]` reads
   `20.00`, the last `[data-dimension-graphic] line` is 20 mm). The active
@@ -2279,7 +2302,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   100 mm construction line; the origin point adds no curve). Then the line's
   top end (20,10), the **origin (0,0)** (the projected axis gives way to the
   origin there) and a label at (-8,5), left of both: a vertical distance,
-  "Value of d2" = `10` (point ↔ origin still waits for the placement click).
+  "Value of d2" = `10`.
   `data-sketch-projected` lists projected entities, not drawn segments, so
   "datum projections are not drawn" is a unit test (`sketchGeometry.test.ts`).
 

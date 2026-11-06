@@ -15,6 +15,8 @@
     "pwa/headers.test.ts",
     "pwa/build-info.test.ts",
     "pwa/site.ts",
-    "pwa/site.test.ts"
+    "pwa/site.test.ts",
+    "pwa/release-notes.ts",
+    "pwa/release-notes.test.ts"
   ]
 }
