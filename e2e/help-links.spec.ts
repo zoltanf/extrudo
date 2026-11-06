@@ -189,6 +189,7 @@ test('the App column holds About Extrudo; the strip shows the version and GitHub
     /^Search…/,
     /^Settings…/,
     'Report a bug',
+    "What's new",
     'About Extrudo',
     'Close design',
   ]);
