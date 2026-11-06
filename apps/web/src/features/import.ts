@@ -101,6 +101,21 @@ export function pendingImport(): PendingImport | undefined {
 }
 
 /**
+ * What the app says once a file is converted to STEP (ADR-0115 §1), and that
+ * pieces were left out when there were (its amendment of 2026-11-05).
+ */
+export function convertedMessage(name: string, leftOut = 0): string {
+  if (leftOut === 0) {
+    return `${name} was converted to STEP: shapes only, without colours, names or history.`;
+  }
+  const pieces =
+    leftOut === 1
+      ? "1 piece that isn't a closed solid was"
+      : `${leftOut} pieces that aren't closed solids were`;
+  return `${name} was converted to STEP (shapes only, without colours, names or history), but some of its faces couldn't be read: ${pieces} left out. For the whole part, export it as STEP from the program it was made in.`;
+}
+
+/**
  * Picks a model file and puts its bytes with the design (ADR-0061 §2), ready
  * for the dialog to preview: the new attachment's ID, its record, and the
  * bytes in the app's cache under that ID. `undefined` when the user cancels or
@@ -126,6 +141,7 @@ export async function pickImportFile(deps: {
   // Another CAD program's file becomes STEP first (ADR-0115 §1): the design
   // only ever holds the STEP, so everything below is the STEP path.
   let converted = false;
+  let leftOut = 0;
   if (isConvertibleCad(picked.name) && deps.convertCad) {
     deps.notify('info', `Converting ${picked.name}…`);
     const result = await deps.convertCad({
@@ -138,6 +154,7 @@ export async function pickImportFile(deps: {
     }
     file = new File([result.bytes as Uint8Array<ArrayBuffer>], result.name);
     converted = true;
+    leftOut = result.leftOut ?? 0;
   }
   const mediaType = mediaTypeOf(file.name);
   if (!modelKind(mediaType)) {
@@ -150,12 +167,7 @@ export async function pickImportFile(deps: {
   // The same file twice is one attachment (the bytes are content-addressed).
   const stored = Object.entries(doc.attachments ?? {}).find(([, a]) => a.sha256 === sha256);
   const convertedNotice = () => {
-    if (converted) {
-      deps.notify(
-        'info',
-        `${picked.name} was converted to STEP: shapes only, without colours, names or history.`,
-      );
-    }
+    if (converted) deps.notify('info', convertedMessage(picked.name, leftOut));
   };
   if (stored) {
     const pending = { id: stored[0] as AttachmentId, attachment: stored[1] as Attachment };

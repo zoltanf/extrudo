@@ -16,6 +16,7 @@ import type { ProjectStore } from '@extrudo/storage';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   clearPendingImport,
+  convertedMessage,
   formatSize,
   IMPORT_ACCEPT,
   IMPORT_REFUSED,
@@ -371,6 +372,32 @@ describe('Import Model with another CAD file (P6-19, ADR-0115 §1)', () => {
         'Bracket.SLDPRT was converted to STEP: shapes only, without colours, names or history.',
       ],
     ]);
+    clearPendingImport();
+  });
+
+  it('says which pieces a partial conversion left out (2026-11-05)', async () => {
+    const file = new File([new Uint8Array([7])], 'COIL WIRING.SLDPRT');
+    const convertCad = vi.fn(async () => ({
+      ok: true as const,
+      name: 'COIL WIRING.step',
+      bytes: STEP,
+      leftOut: 3,
+    }));
+    const t = deps(file, { convertCad });
+    const picked = await pickImportFile(t.deps);
+    // The import goes on: the solids are there, and the notice says what is not.
+    expect(picked?.attachment.fileName).toBe('COIL WIRING.step');
+    expect(t.notify.mock.calls).toEqual([
+      ['info', 'Converting COIL WIRING.SLDPRT…'],
+      [
+        'info',
+        "COIL WIRING.SLDPRT was converted to STEP (shapes only, without colours, names or history), but some of its faces couldn't be read: 3 pieces that aren't closed solids were left out. For the whole part, export it as STEP from the program it was made in.",
+      ],
+    ]);
+    expect(convertedMessage('part.ipt', 1)).toContain(
+      "1 piece that isn't a closed solid was left out.",
+    );
+    expect(convertedMessage('part.ipt')).toBe(convertedMessage('part.ipt', 0));
     clearPendingImport();
   });
 

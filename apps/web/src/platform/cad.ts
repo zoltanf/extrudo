@@ -43,7 +43,17 @@ export interface CadFile {
 
 /** A conversion's answer: the STEP (`name` is `<base>.step`), or why there is none. */
 export type CadConvertResult =
-  | { ok: true; name: string; bytes: Uint8Array }
+  | {
+      ok: true;
+      name: string;
+      bytes: Uint8Array;
+      /**
+       * Pieces of the part cadmpeg could only write as open surfaces, which
+       * the import leaves out (ADR-0115's amendment of 2026-11-05); absent
+       * when there are none.
+       */
+      leftOut?: number;
+    }
   | { ok: false; message: string };
 
 export type ConvertCad = (file: CadFile) => Promise<CadConvertResult>;

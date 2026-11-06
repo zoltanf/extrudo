@@ -14,6 +14,7 @@ import {
   noSolidMessage,
   safeInputName,
   stepHasSolid,
+  stepSurfaceModels,
 } from './cadmpeg';
 
 interface FakeProcess extends ConvertProcess {
@@ -318,6 +319,40 @@ describe('convertWithCadmpeg (ADR-0115 §2)', () => {
     expect(noSolidMessage('GEAR 32.SLDPRT')).toBe(
       "Couldn't read the geometry of GEAR 32.SLDPRT: converting it gave no solid body. Export it as STEP from the program it was made in, then import that file.",
     );
+  });
+
+  it('counts the pieces a partial conversion leaves out (2026-11-05)', async () => {
+    // A part read in part: solids, and regions written as surface models.
+    const shell = (n: number) => [
+      `#${40 + n} = OPEN_SHELL('',(#30));`,
+      `#${50 + n} = SHELL_BASED_SURFACE_MODEL('',(#${40 + n}));`,
+    ];
+    const partial = step(
+      "#20 = MANIFOLD_SOLID_BREP('',#21);",
+      "#21 = CLOSED_SHELL('',(#30));",
+      ...shell(1),
+      ...shell(2),
+      ...shell(3),
+    );
+    const f = fake({
+      script: writes(
+        partial,
+        '  [error/topology] region #86 was written as a surface model because its solid shells are incomplete or open\n',
+      ),
+    });
+    expect(await convertWithCadmpeg(f.env, INPUT)).toEqual({
+      ok: true,
+      name: 'My Part (v2).step',
+      bytes: partial,
+      leftOut: 3,
+    });
+    expect(f.removed).toEqual(f.dirs);
+    expect(stepSurfaceModels(partial)).toBe(3);
+    expect(stepSurfaceModels(STEP)).toBe(0);
+    // A view into a larger buffer counts only its own bytes.
+    const tail = new TextEncoder().encode('SHELL_BASED_SURFACE_MODEL');
+    const joined = new Uint8Array([...STEP, ...tail]);
+    expect(stepSurfaceModels(joined.subarray(0, joined.length - tail.length))).toBe(0);
   });
 
   it('takes manifold_solid_brep and its subtypes as a solid', () => {

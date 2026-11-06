@@ -4096,6 +4096,10 @@ characters). Exit 0 counts only with a STEP that holds a solid (`stepHasSolid`: 
 `BREP_WITH_VOIDS` or `FACETED_BREP`); without one the answer is `noSolidMessage` (the geometry couldn't
 be read, export STEP from the program it was made in), never the kernel's "surfaces" (amendment
 2026-11-04: cadmpeg exits 0 with an empty STEP or an open shell when it can't read a part's B-rep).
+With a solid, the `SHELL_BASED_SURFACE_MODEL`s beside it are pieces the import leaves out
+(amendment 2026-11-05): `stepSurfaceModels` counts them into the result's `leftOut` (absent when 0),
+and `pickImportFile`'s notice is `convertedMessage(name, leftOut)`, which says they were left out
+and to export STEP from the program it was made in; the import still goes on.
 
 ADR-0116 (the owner, 2026-11-01): **Live widgets and drawn figures in the docs** (P6-22;
 amends ADR-0080's "only raw HTML is `<video>`, no script" and ADR-0057's policy use). Files:

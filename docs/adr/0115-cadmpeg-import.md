@@ -149,3 +149,25 @@ their author exported.
 Rejected: matching cadmpeg's "no geometry was written" line (its wording is no
 interface, and it misses the open shells); `--reject-lossy=export` (it refuses
 the parts that convert well too, over losses such as colours and attributes).
+
+## Amendment, 2026-11-05: a partial conversion says what it left out
+
+A sample `.sldprt` part converts to 21 solids and 3 regions cadmpeg could only
+write as open surfaces (`SHELL_BASED_SURFACE_MODEL`). The import takes the
+solids and drops the surfaces without a word, so the part comes in with pieces
+missing.
+
+`convertWithCadmpeg` counts the surface models in a STEP that has a solid
+(`stepSurfaceModels`) and returns the count as `leftOut` on the result (absent
+when 0). The app's notice after the conversion then says so instead of the
+plain one (`convertedMessage`): "*file* was converted to STEP (shapes only,
+without colours, names or history), but some of its faces couldn't be read: 3
+pieces that aren't closed solids were left out. For the whole part, export it
+as STEP from the program it was made in." The import goes on with the solids. A
+STEP with no solid is still refused with `noSolidMessage`, and a full conversion
+gets the plain notice.
+
+Rejected: refusing a partial conversion (the solids that were read are often
+most of the part); a warning on the import feature for any STEP with surfaces
+(a STEP exported by a CAD program may carry construction surfaces on purpose,
+and only a conversion knows the surfaces stand for pieces of the part).
