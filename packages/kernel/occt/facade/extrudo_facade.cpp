@@ -15492,25 +15492,6 @@ private:
   }
 
   /**
-   * How many places a built boolean of `a` and `b` missed an overlap
-   * (ADR-0051, 2026-11-06): 0 when it shows every overlap it met. OCCT
-   * returns such a result, with no error and often no warning, when a side
-   * of the tool runs along a rounded face of the body and an edge of the
-   * tool lies within a micrometre of one of the body's: it splits the faces
-   * there and then classifies the overlap as outside. A solid of `b` the
-   * General Fuse found in contact with `a` counts once when the result has
-   * no face of its own (none that isn't one of `a`'s or a piece of one): for
-   * a cut that kept all of `a`'s solids, a wall it didn't cut; for a fuse,
-   * a tool swallowed whole; and, for a fuse, when it stays a solid of its
-   * own; a common, when it has no solid. Such a suspect counts only if a
-   * point just inside the tool lies inside `a` (outside it, for a swallowed
-   * one), so a tool that merely touches `a` counts 0. Only for solids;
-   * splits and booleans of faces count 0. Solids that don't meet have no
-   * contacts, so a tool that misses costs nothing; else a map lookup per
-   * face (0.3 ms on 400 faces), and the points only for a suspect (1 to 20
-   * ms on 6 to 400 faces, 0.1 s for a 44-face tool of letters).
-   */
-  /**
    * Points just inside `solid` (1e-2 mm in from the middle of each face whose
    * middle lies on it) that `inA` classifies inside `a`, and outside it. Not
    * closer: letters cut again into pockets they had cut lay within a
@@ -15540,6 +15521,25 @@ private:
     return {in, out};
   }
 
+  /**
+   * How many places a built boolean of `a` and `b` missed an overlap
+   * (ADR-0051, 2026-11-06): 0 when it shows every overlap it met. OCCT
+   * returns such a result, with no error and often no warning, when a side
+   * of the tool runs along a rounded face of the body and an edge of the
+   * tool lies within a micrometre of one of the body's: it splits the faces
+   * there and then classifies the overlap as outside. A solid of `b` the
+   * General Fuse found in contact with `a` counts once when the result has
+   * no face of its own (none that isn't one of `a`'s or a piece of one): for
+   * a cut that kept all of `a`'s solids, a wall it didn't cut; for a fuse,
+   * a tool swallowed whole; and, for a fuse, when it stays a solid of its
+   * own; a common, when it has no solid. Such a suspect counts only if a
+   * point just inside the tool lies inside `a` (outside it, for a swallowed
+   * one), so a tool that merely touches `a` counts 0. Only for solids;
+   * splits and booleans of faces count 0. Solids that don't meet have no
+   * contacts, so a tool that misses costs nothing; else a map lookup per
+   * face (0.3 ms on 400 faces), and the points only for a suspect (1 to 20
+   * ms on 6 to 400 faces, 0.1 s for a 44-face tool of letters).
+   */
   template <typename Builder>
   static int missedOverlaps(Builder& builder, const TopoDS_Shape& a, const TopoDS_Shape& b) {
     if constexpr (!std::is_base_of_v<BRepAlgoAPI_BooleanOperation, Builder>) {
