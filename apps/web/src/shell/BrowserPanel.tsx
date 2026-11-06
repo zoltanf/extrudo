@@ -70,6 +70,7 @@ import {
 } from '../design-system';
 import type { JointActions } from '../joints/jointActions';
 import type { JointRow } from '../joints/jointRows';
+import { viewSectionMark } from '../section/viewSection';
 import { PLANE_AXIS_COLOR, TOKENS } from '../viewport/colors';
 import { ProgressCube } from '../viewport/ModelProgress';
 import { activeFeatureCount } from '../viewport/progressRules';
@@ -784,23 +785,19 @@ function PendingBodyLeaf({ body, actions }: { body: BodyEntry; actions: BodyActi
   );
 }
 
-/**
- * A named view's row (ADR-0008's amendment, 2026-10-10): a click restores the
- * saved camera (an animated move, not a command), F2 or Rename renames it,
- * Update to Current View overwrites its camera, Delete removes it.
- */
-/** `planes:<n>` or `box`: the hook the e2e reads (absent for a view without a section). */
-function sectionMark(section: NamedView['section']) {
-  if (!section) return undefined;
-  return section.kind === 'box' ? 'box' : `planes:${section.planes.length}`;
-}
-
+/** The muted count at a named view's row: "1 plane", "2 planes" or "box". */
 function sectionLabel(section: NonNullable<NamedView['section']>) {
   if (section.kind === 'box') return 'box';
   const n = section.planes.length;
   return n === 1 ? '1 plane' : `${n} planes`;
 }
 
+/**
+ * A named view's row (ADR-0008's amendment, 2026-10-10): a click restores the
+ * saved camera (an animated move, not a command) and the view's section if it
+ * has one (ADR-0045's amendment of 2026-11-06), F2 or Rename renames it,
+ * Update to Current View overwrites its camera and section, Delete removes it.
+ */
 function ViewLeaf({ view, actions }: { view: NamedView; actions: ViewActions }) {
   const [renaming, setRenaming] = useState(false);
   const onKeyDown = (event: KeyboardEvent) => {
@@ -816,7 +813,7 @@ function ViewLeaf({ view, actions }: { view: NamedView; actions: ViewActions }) 
       label={`${view.name} menu`}
       disabled={renaming}
       trigger={
-        <Leaf data-view={view.id} data-view-section={sectionMark(view.section)}>
+        <Leaf data-view={view.id} data-view-section={viewSectionMark(view.section)}>
           {renaming ? (
             <RenameField
               name={view.name}

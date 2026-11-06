@@ -27,6 +27,7 @@ import {
   TextInput,
   ToolIcon,
 } from '../design-system';
+import { viewSectionMark } from '../section/viewSection';
 import { FILTER_KINDS, isFiltered } from '../selection/filter';
 import { namedViewSaveStore } from './namedViewSave';
 import type { NavAction } from './navigation';
@@ -244,13 +245,7 @@ export function NavBar({ store, commandRunning = false, onStopCommand, namedView
                   <MenuItem
                     key={view.id}
                     onSelect={() => namedViews.restore(view.id)}
-                    data-view-section={
-                      view.section
-                        ? view.section.kind === 'box'
-                          ? 'box'
-                          : `planes:${view.section.planes.length}`
-                        : undefined
-                    }
+                    data-view-section={viewSectionMark(view.section)}
                   >
                     {view.name}
                     {view.section && (

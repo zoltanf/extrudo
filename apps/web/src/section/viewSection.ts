@@ -23,6 +23,12 @@ export function sectionForView(
   return { kind: 'planes', planes: planes.map((p) => ({ ...p, plane: { ...p.plane } })) };
 }
 
+/** `planes:<n>` or `box`: the rows' and menu entries' `data-view-section` (none without a section). */
+export function viewSectionMark(section: ViewSection | undefined): string | undefined {
+  if (!section) return undefined;
+  return section.kind === 'box' ? 'box' : `planes:${section.planes.length}`;
+}
+
 /**
  * Puts a view's section on screen through the viewport store: planes replace the planes (and
  * clear a box), a box replaces the box (and clears the planes).

@@ -147,9 +147,9 @@ export interface MenuItemProps {
   disabled?: boolean;
   icon?: ReactNode;
   shortcut?: string;
-  /** A test hook on the item (`data-view-section` on a named view's entry). */
-  'data-view-section'?: string;
   children: ReactNode;
+  /** Test hooks on the item, e.g. a named view's `data-view-section`. */
+  [data: `data-${string}`]: string | undefined;
 }
 
 export function MenuItem({
@@ -158,18 +158,12 @@ export function MenuItem({
   disabled,
   icon,
   shortcut,
-  'data-view-section': viewSection,
   children,
+  ...data
 }: MenuItemProps) {
   const Item = useContext(InContextMenu) ? RadixContext.Item : Radix.Item;
   return (
-    <Item
-      className={item}
-      disabled={disabled}
-      onSelect={onSelect}
-      onFocus={onHighlight}
-      data-view-section={viewSection}
-    >
+    <Item {...data} className={item} disabled={disabled} onSelect={onSelect} onFocus={onHighlight}>
       <span className="grid w-4 place-items-center text-muted">{icon}</span>
       <span className="flex-1">{children}</span>
       {shortcut && <kbd className="font-mono text-xs text-muted">{shortcut}</kbd>}
