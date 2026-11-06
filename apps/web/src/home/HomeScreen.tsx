@@ -53,7 +53,9 @@ import { BugReportDialog } from '../shell/BugReportDialog';
 import { errorLog, watchWindowErrors } from '../shell/bugReport';
 import { docsPath, docsUrl, REPO_URL } from '../shell/docsLinks';
 import { useUpdateNotice } from '../shell/useUpdateNotice';
+import { useWhatsNew } from '../shell/useWhatsNew';
 import { useMarkingStyle } from '../shell/viewMenu';
+import { WhatsNewDialog } from '../shell/WhatsNewDialog';
 import { APP_VERSION, BUILD } from '../version';
 import { webglSupport } from '../viewport/webglSupport';
 import { EXAMPLES } from './examples';
@@ -142,6 +144,8 @@ export function HomeScreen({ platform }: { platform: Platform }) {
   const persistence = usePersistence(platform);
   const { toasts, push, dismiss, keep } = useToasts();
   useUpdateNotice(push, platform);
+  // "Updated to Extrudo X.Y.Z." once per update (ADR-0133).
+  useWhatsNew(push, platform);
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<Sort>('modified');
   const [showTrash, setShowTrash] = useState(false);
@@ -284,6 +288,7 @@ export function HomeScreen({ platform }: { platform: Platform }) {
         openLink={platform.openLink}
         onReportBug={() => void openBugReport()}
       />
+      <WhatsNewDialog />
       <BugReportDialog
         open={bugReport.open}
         onOpenChange={(open) => setBugReport((s) => ({ ...s, open }))}

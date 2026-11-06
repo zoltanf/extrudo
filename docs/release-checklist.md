@@ -27,6 +27,11 @@ published. Versions come from `git describe` of the last `v*` tag: stable shows
    tags (`<span class="tag">`) off `apps/site/features/index.html` for the
    features the release ships: the site deploys from main, so they mark what
    app.extrudo.org doesn't have yet (ADR-0057's amendment of 2026-10-11).
+   Also add `docs/release-highlights/X.Y.Z.md`: the release's highlights, a
+   short Markdown list (`- **Title**: text`, bold and code only) that the app
+   shows after the update ("Updated to Extrudo X.Y.Z.", What's new; ADR-0133).
+   The owner approves it with the release notes (step 8 reuses it); without
+   it the update is quiet.
 4. **Startup numbers** (ADR-0100): `pnpm build && node
    scripts/measure-startup.mjs`; compare with ADR-0100's baseline (a jump is
    a release blocker to investigate, a drift is noted in the release notes).
@@ -41,7 +46,7 @@ published. Versions come from `git describe` of the last `v*` tag: stable shows
    `smoke: OK`; GPU errors under xvfb in the same log are expected), and so did the Windows job's two (it installs the NSIS installer and smoke-tests the installed app, then the portable exe). The draft
    holds the installers and `latest.yml`, `latest-mac.yml` and
    `latest-linux.yml`: the updater reads them, and without them nobody updates.
-8. **Release notes** on the draft: a short highlights list, then the
+8. **Release notes** on the draft: the highlights list (`docs/release-highlights/X.Y.Z.md`), then the
    CHANGELOG's section for the version. Say the installers are unsigned
    (signing is deferred until the app has users; owner, 2026-10-07): macOS
    asks before the first open (`docs/desktop.md` has the steps), Windows shows

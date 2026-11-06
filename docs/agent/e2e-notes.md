@@ -1030,6 +1030,17 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   github.com host is answered locally with `context.route`, as in
   help-links. The home bar's About button opens the same dialog.
 
+### `e2e/whats-new.spec.ts`
+
+- **What's new e2e** (`e2e/whats-new.spec.ts`, ADR-0133): the preview build is `dev`, which
+  announces like stable. An init script sets `extrudo.whatsNew.lastVersion` only when it is
+  unset (it reruns on reload), so the first load sees an older version and the reload sees the
+  recorded one. The toast is the text "Updated to Extrudo X.Y.Z." (X.Y.Z read from
+  `apps/web/package.json`) with the button "What's new"; the dialog is named "What's new in
+  Extrudo X.Y.Z", its highlights and changes are `listitem`s, the disclosure is the button
+  /^Full changelog \(\d+ changes\)$/ with `aria-expanded`, and "Got it" closes it. The
+  package version needs a `docs/release-highlights/` file, or nothing shows.
+
 ### `e2e/bug-report.spec.ts`
 
 - **Report a bug e2e** (`e2e/bug-report.spec.ts`, ADR-0092): `pickMenuItem(page, 'App',

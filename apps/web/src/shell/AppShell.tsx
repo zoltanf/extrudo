@@ -261,6 +261,7 @@ import {
 } from './timelineGroups';
 import { FILE_COMMANDS, isFileCommand, TOOLS, type ToolId } from './tools';
 import { useMarkingSlots, useMarkingStyle, useViewMenu } from './viewMenu';
+import { WhatsNewDialog } from './WhatsNewDialog';
 
 /** The search's pins until the user changes them (P1-14, R3-05). */
 const DEFAULT_PINS = ['sketch', 'line', 'rectangle', 'circle', 'dimension', 'trim', 'parameters'];
@@ -3294,6 +3295,7 @@ function Shell({
         openLink={platform.openLink}
         onReportBug={() => void openBugReport()}
       />
+      <WhatsNewDialog />
       <BugReportDialog
         open={bugReport.open}
         onOpenChange={(open) => setBugReport((s) => ({ ...s, open }))}
