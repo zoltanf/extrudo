@@ -1,0 +1,1 @@
+- 2026-11-06 · **Cuts along a rounded face**: a cut, join or intersection whose tool has a side just touching a rounded face of the body now removes, adds or keeps what it should, instead of nothing (ADR-0051).
