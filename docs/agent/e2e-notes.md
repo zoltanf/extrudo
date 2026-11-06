@@ -24,6 +24,14 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   docker` (after `pnpm build`). Arch and Ubuntu differ by about 12 pixels per
   shot; the tolerance is 0.1 %.
 
+- **Undo right after Finish Sketch reopens the sketch** (ADR-0010's
+  2026-11-06 amendment): the first `Control+z` changes nothing in the
+  document and shows Finish Sketch again; the next one takes back the last
+  edit (with whatever joined its step, such as an auto-projection). To check
+  that an edit undoes as one step, press `Control+z` twice, read
+  `data-sketch-summary` (the `counts` helper), then Finish
+  (`auto-project.spec.ts`'s `undoTheEdit`).
+
 - **Hover is reported on the next animation frame** (ADR-0102 §2,
   `viewport/pointer.ts`): a `page.mouse.move` over the view updates
   `data-model-hover` (and a sketch tool's preview) one frame later, not

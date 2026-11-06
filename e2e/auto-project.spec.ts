@@ -75,6 +75,15 @@ async function sketchOnTopFace(page: Page): Promise<string> {
   return id;
 }
 
+const FINISH = (page: Page) => page.getByRole('button', { name: 'Finish Sketch' }).last();
+
+/** After Finish: the first undo reopens the sketch, the second takes back its last edit. */
+async function undoTheEdit(page: Page) {
+  await page.keyboard.press('Control+z');
+  await expect(FINISH(page)).toBeVisible();
+  await page.keyboard.press('Control+z');
+}
+
 /** Draws a Line from the top-right corner (a body vertex) to (5,0) and ends the tool. */
 async function lineFromCorner(page: Page) {
   const viewport = viewportOf(page);
@@ -108,10 +117,14 @@ test('a Line end snapping to a Box vertex projects it and holds the point on it'
     .poll(() => attr(viewport, 'data-sketch-projected'))
     .toBe(`${sketch}:curves=0:x=20..20:y=20..20`);
 
-  // One undo takes the line, the projection and the constraint away.
-  await page.keyboard.press('Control+z');
-  await expect.poll(() => attr(viewport, 'data-sketch-projected')).toBe('');
+  // Undo reopens the sketch (ADR-0010's 2026-11-06 amendment); the next undo
+  // takes the line, the projection and the constraint away together.
+  await undoTheEdit(page);
+  await expect.poll(() => counts(page)).toMatchObject({ points: 0, lines: 0, constraints: 0 });
   await page.keyboard.press('Control+Shift+z');
+  await expect.poll(async () => (await counts(page)).constraints).toBe(1);
+  await FINISH(page).click();
+  await kernelReady(page);
   await expect.poll(() => attr(viewport, 'data-sketch-projected')).toContain(`${sketch}:curves=0`);
 
   // Reopening the sketch shows the coincidence the projection brought.
@@ -270,10 +283,14 @@ test('Coincident between a sketch point and a Box vertex projects it', async ({ 
     .poll(() => attr(viewport, 'data-sketch-projected'))
     .toBe(`${sketch}:curves=0:x=20..20:y=20..20`);
 
-  // One undo takes the coincidence and the projection away together.
-  await page.keyboard.press('Control+z');
-  await expect.poll(() => attr(viewport, 'data-sketch-projected')).toBe('');
+  // Undo reopens the sketch; the next undo takes the coincidence and the
+  // projected vertex away together, leaving the line.
+  await undoTheEdit(page);
+  await expect.poll(() => counts(page)).toMatchObject({ points: 2, lines: 1, constraints: 0 });
   await page.keyboard.press('Control+Shift+z');
+  await expect.poll(async () => (await counts(page)).constraints).toBe(1);
+  await FINISH(page).click();
+  await kernelReady(page);
   await expect.poll(() => attr(viewport, 'data-sketch-projected')).toContain(`${sketch}:curves=0`);
 });
 
@@ -297,7 +314,12 @@ test('Parallel to a Box edge projects the edge', async ({ page }) => {
     .poll(() => attr(viewport, 'data-sketch-projected'), { timeout: 60_000 })
     .toContain(`${sketch}:curves=1`);
 
-  await page.keyboard.press('Control+z');
+  // Undo reopens the sketch; the next undo takes the parallel and the
+  // projected edge away together.
+  await undoTheEdit(page);
+  await expect.poll(() => counts(page)).toMatchObject({ lines: 1, constraints: 0 });
+  await FINISH(page).click();
+  await kernelReady(page);
   await expect.poll(() => attr(viewport, 'data-sketch-projected')).toBe('');
 });
 
@@ -323,7 +345,12 @@ test('a Dimension from a sketch point to a Box vertex projects it', async ({ pag
     .poll(() => attr(viewport, 'data-sketch-projected'), { timeout: 60_000 })
     .toBe(`${sketch}:curves=0:x=20..20:y=20..20`);
 
-  await page.keyboard.press('Control+z');
+  // Undo reopens the sketch; the next undo takes the dimension and the
+  // projected vertex away together.
+  await undoTheEdit(page);
+  await expect.poll(() => counts(page)).toMatchObject({ points: 2, lines: 1, dimensions: 0 });
+  await FINISH(page).click();
+  await kernelReady(page);
   await expect.poll(() => attr(viewport, 'data-sketch-projected')).toBe('');
 });
 
