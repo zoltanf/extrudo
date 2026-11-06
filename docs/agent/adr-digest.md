@@ -4319,3 +4319,15 @@ after a point, an arc or another axis (`DATUM_LINE_HINT`); Equal and Horizontal/
 still refuse axes outright (`NO_DATUM_LINE`). The glyph sits on `a`. Cutting `a` drops it;
 cutting `b` keeps it on the piece that keeps `b`'s ID; a fillet or chamfer drops it when `a`
 is a corner's line.
+
+ADR-0133 (the owner, 2026-11-06): **What's new after an update.** `apps/web/pwa/release-notes.ts`
+(Vite plugin, `virtual:release-notes`, declared in `src/release-notes.d.ts`) builds in the package
+version's `docs/release-highlights/X.Y.Z.md` bullets and CHANGELOG `## vX.Y.Z` bullets (date
+prefix stripped); no highlights file → `null` → the app says nothing. `src/shell/whatsNew.ts`:
+`checkWhatsNew` keeps `whatsNew.lastVersion` (base X.Y.Z), announces only a newer version, or
+with no stored version only when `returning` (a stored design or the tour answered, read by
+`useWhatsNew` at the first page's mount, before a click can create a design); edge never announces or records; dev behaves as stable. The toast is info "Updated to
+Extrudo X.Y.Z." with the What's new button; `whatsNewStore` opens `WhatsNewDialog`, which the
+home screen and `AppShell` mount and About's footer button opens. `useWhatsNew` runs once per
+session. Notes render `**bold**` and `` `code` `` only. Keep: a release commit adds the
+highlights file; the preference stays in `NOT_IN_SETTINGS`.

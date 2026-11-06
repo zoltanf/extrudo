@@ -19,6 +19,7 @@ import type { FileActions } from '../shell/AppBar';
 import { AppShell } from '../shell/AppShell';
 import { useSoftwareNotice } from '../shell/useSoftwareNotice';
 import { useUpdateNotice } from '../shell/useUpdateNotice';
+import { useWhatsNew } from '../shell/useWhatsNew';
 import { useDocumentFonts, useFontAttachments } from '../sketch/fonts';
 import { createViewportStore, type ViewportStore } from '../viewport/store';
 import {
@@ -131,6 +132,8 @@ function ProjectEditor({
   const autosave = useAutosave(store, viewport, model, platform);
   const { toasts, push, dismiss, keep, notifications } = useToasts();
   useUpdateNotice(push, platform);
+  // "Updated to Extrudo X.Y.Z." once per update (ADR-0133).
+  useWhatsNew(push, platform);
   useSoftwareNotice(push, platform);
   // The linked folder (P4-09, ADR-0065 §3): a file on disk this project is
   // written back to, and the command that links one for the first time.
