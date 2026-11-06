@@ -1500,3 +1500,159 @@ describe('f3dToDesign', () => {
     });
   });
 });
+
+describe('profile regions whose record the sketch has outgrown', () => {
+  type P2 = [number, number];
+  /** A design of one sketch (lines and full or partial circles, cm) and one 0.8 mm extrude of `regions`. */
+  function design(
+    lines: { tag: bigint; from: P2; to: P2 }[],
+    circles: { tag: bigint; centre: P2; radius: number }[],
+    regions: ProfileRegion[],
+  ): F3dDesign {
+    const f3d = washer();
+    const sketch = f3d.features[0] as F3dSketchFeature;
+    let id = 100;
+    sketch.sketch.points = [];
+    const point = (at: P2) => {
+      const p = { id: id++, at: [...at, 0] as Vec3, incidence: 0 };
+      sketch.sketch.points.push(p);
+      return p.id;
+    };
+    sketch.sketch.lines = lines.map((l) => ({
+      id: id++,
+      tag: l.tag,
+      start: [...l.from, 0] as Vec3,
+      end: [...l.to, 0] as Vec3,
+      startPoint: point(l.from),
+      endPoint: point(l.to),
+      construction: false,
+    }));
+    sketch.sketch.circulars = circles.map((c) => ({
+      id: id++,
+      tag: c.tag,
+      center: [...c.centre, 0] as Vec3,
+      normal: [0, 0, 1] as Vec3,
+      xAxis: [1, 0, 0] as Vec3,
+      radius: c.radius,
+      startAngle: 0,
+      endAngle: 2 * Math.PI,
+      centerPoint: point(c.centre),
+      construction: false,
+    }));
+    (f3d.features[1] as F3dExtrude).profiles = [{ id: 30, sketch: 5, regions }];
+    return f3d;
+  }
+  const pieces = (members: [bigint, number, number][]): ProfileRegion => {
+    const loop = members.map(([tag, piece, of]) => ({ tag, secondary: 0n, piece, of }));
+    return { outer: [loop.map((m) => m.tag)], inner: [], outerPieces: [loop], innerPieces: [] };
+  };
+
+  it('takes the region the remaining pieces run along, not the largest the curves close', async () => {
+    // A figure: an axis line through a head circle, a base, and a side line
+    // from the base to the circle. The record names the body (axis piece 1 of
+    // 3, base, side, the circle's arc between the axis and the side), but the
+    // side was redrawn under another id since. The curves still listed close
+    // only the head's halves; the axis and the base still run along the body.
+    const side: P2 = [0.6, 4.2];
+    const f3d = design(
+      [
+        { tag: 1n, from: [0, 0], to: [0, 7] },
+        { tag: 2n, from: [0, 0], to: [2, 0] },
+        { tag: 5n, from: [2, 0], to: side },
+      ],
+      [{ tag: 3n, centre: [0, 5], radius: 1 }],
+      [
+        pieces([
+          [1n, 1, 3],
+          [2n, 1, 1],
+          [4n, 1, 1],
+          [3n, 3, 3],
+        ]),
+      ],
+    );
+    // The quadrilateral less the circle's segment above the side's end.
+    const theta = 2 * Math.asin(Math.hypot(0.6, 0.2) / 2);
+    const area = (5.4 - (theta - Math.sin(theta)) / 2) * 100;
+    expect(await volumes(f3d)).toEqual([expect.closeTo(area * 0.8, 1)]);
+  });
+
+  it('takes the thin sector between two lines that now run past the outer circle', async () => {
+    // Two circles (r 1.9 and 2) and two lines from the centre at 90° and
+    // 120°, 0.5 mm past the outer circle. The record counts each line in 2
+    // pieces (as when they ended on the outer circle): they are in 3 now. The
+    // arcs between the lines still fit.
+    const at = (deg: number, r: number): P2 => [
+      r * Math.cos((deg * Math.PI) / 180),
+      r * Math.sin((deg * Math.PI) / 180),
+    ];
+    const f3d = design(
+      [
+        { tag: 3n, from: [0, 0], to: at(90, 2.05) },
+        { tag: 4n, from: [0, 0], to: at(120, 2.05) },
+      ],
+      [
+        { tag: 1n, centre: [0, 0], radius: 1.9 },
+        { tag: 2n, centre: [0, 0], radius: 2 },
+      ],
+      [
+        pieces([
+          [3n, 2, 2],
+          [4n, 2, 2],
+          [1n, 2, 2],
+          [2n, 2, 2],
+        ]),
+      ],
+    );
+    const area = Math.PI * (2 ** 2 - 1.9 ** 2) * (30 / 360) * 100;
+    expect(await volumes(f3d)).toEqual([expect.closeTo(area * 0.8, 1)]);
+  });
+
+  it('counts a listed line the outline runs along on a collinear one', async () => {
+    // A 4 × 1 rectangle with two short lines lying on its top at its ends;
+    // the sketch keeps the overlap as the top's (the lower curve ID), so the
+    // short lines are on no outline. The record
+    // lists the right side, the top, the two short lines, a line elsewhere
+    // and two curves since deleted: three of the five left must be on the
+    // outline, and the short ones are only through the top.
+    const f3d = design(
+      [
+        { tag: 1n, from: [0, 0], to: [4, 0] },
+        { tag: 2n, from: [4, 0], to: [4, 1] },
+        { tag: 4n, from: [0, 1], to: [0, 0] },
+        { tag: 3n, from: [4, 1], to: [0, 1] },
+        { tag: 7n, from: [0, 3], to: [4, 3] },
+        { tag: 5n, from: [4, 1], to: [3.5, 1] },
+        { tag: 6n, from: [0.5, 1], to: [0, 1] },
+      ],
+      [],
+      [
+        pieces([
+          [9n, 1, 1],
+          [2n, 1, 1],
+          [3n, 1, 1],
+          [5n, 1, 1],
+          [6n, 1, 1],
+          [7n, 1, 1],
+          [10n, 1, 1],
+        ]),
+      ],
+    );
+    expect(f3dToDesign(f3d, 'Strip').report.skipped).toEqual([]);
+    expect(await volumes(f3d)).toEqual([expect.closeTo(400 * 0.8, 3)]);
+  });
+
+  it('keeps a thin ring round a picked circle out of it', async () => {
+    // A circle (r 17.5 mm) and a ring round it to r 18; the record picks the
+    // circle. The ring's inner point can come out between its sampled hole
+    // and the true circle, inside the circle's pieces.
+    const f3d = design(
+      [],
+      [
+        { tag: 1n, centre: [5, 1], radius: 1.75 },
+        { tag: 2n, centre: [5, 1], radius: 1.8 },
+      ],
+      [pieces([[1n, 1, 1]])],
+    );
+    expect(await volumes(f3d)).toEqual([expect.closeTo(Math.PI * 17.5 ** 2 * 0.8, 0)]);
+  });
+});

@@ -562,6 +562,27 @@ export function regionPieces(pieces: SketchPieces, loops: RegionPiece[][]): Vec2
   return out;
 }
 
+/**
+ * The listed pieces that can still be found as the file counted them, as
+ * polylines (sketch frame), once each: a region record written before its
+ * sketch was edited names curves that are gone or cut differently now, and
+ * the rest still say where its boundary ran.
+ */
+export function listedPieces(pieces: SketchPieces, loops: RegionPiece[][]): Vec2[][] {
+  const own = new Set(loops.flat().map((m) => keyOf(m.tag, m.secondary)));
+  const out: Vec2[][] = [];
+  const done = new Set<string>();
+  for (const m of loops.flat()) {
+    const name = `${keyOf(m.tag, m.secondary)}#${m.piece}/${m.of}`;
+    if (done.has(name)) continue;
+    done.add(name);
+    const entry = pieces.byKey.get(keyOf(m.tag, m.secondary));
+    const line = entry && piece(entry.traced, cutsBy(entry, own), m.piece, m.of);
+    if (line) out.push(line);
+  }
+  return out;
+}
+
 /** The mean of a polyline's points. */
 function centre(line: Vec2[]): Vec2 {
   let x = 0;

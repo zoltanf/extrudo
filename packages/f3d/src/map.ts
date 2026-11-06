@@ -79,7 +79,14 @@ import type {
   F3dSketchFeature,
   Matrix,
 } from './model';
-import { insidePieces, nurbsAt, regionPieces, type SketchPieces, sketchPieces } from './regions';
+import {
+  insidePieces,
+  listedPieces,
+  nurbsAt,
+  regionPieces,
+  type SketchPieces,
+  sketchPieces,
+} from './regions';
 import {
   addSketchConstraints,
   type ConstraintContext,
@@ -1946,14 +1953,23 @@ export function selectProfiles(
       if (want.outline && !whole.has(want.group)) continue;
       if (!want.outline && !exact.get(want) && covered.has(want.group)) continue;
       const found = exact.get(want);
-      const how = found ? 'exact' : want.outline ? 'outline skipped' : 'by curves';
+      // Not found as counted: the region whose boundary follows the listed
+      // pieces best, else the region the listed curves close.
+      const near = found || want.outline ? undefined : overlapRegion(sketch, regions, want);
+      const how = found
+        ? 'exact'
+        : want.outline
+          ? 'outline skipped'
+          : near
+            ? 'by overlap'
+            : 'by curves';
       regionStats[how] = (regionStats[how] ?? 0) + 1;
       if (found) {
         for (const ref of found) if (!profiles.some((p) => p.id === ref.id)) profiles.push(ref);
         continue;
       }
       if (want.outline) continue;
-      const refs = matchRegions(sketch.handle, regions, sketch.tags, want);
+      const refs = near ?? matchRegions(sketch.handle, regions, sketch.tags, want);
       if (refs.length === 0) {
         // Every curve around it was deleted after the pick: the file lost this
         // region too, and the operand's other regions make the profile.
@@ -2948,6 +2964,7 @@ const SLIVER = 0.01;
 /** How profile regions were found, counted (for the corpus tools). */
 export const regionStats: Record<string, number> = {
   exact: 0,
+  'by overlap': 0,
   'by curves': 0,
   'outline skipped': 0,
 };
@@ -2969,11 +2986,166 @@ function exactRegions(
   const out: GeomRef[] = [];
   for (const r of regions) {
     if (r.text !== undefined || Math.abs(r.area) < SLIVER) continue;
-    const p = probeOf(r);
+    const p = clearProbeOf(r);
     if (p && insidePieces(mapped, p))
       out.push({ kind: 'profile', id: `${entry.handle.id}/${r.id}` });
   }
   return out.length > 0 ? out : undefined;
+}
+
+/**
+ * How far (mm) a probe keeps from the region's edges. A region's polygons
+ * sample its arcs; the pieces of the file's region sample them otherwise, and
+ * a probe nearer an arc than the sampling's sag (a thin ring round a circle)
+ * can fall on the wrong side of the other polygon.
+ */
+const PROBE_CLEARANCE = 0.05;
+
+/** A point as profiles keep them. */
+type Pt = readonly [number, number];
+
+/** The distance from a point to the nearest edge of some closed polygons. */
+function edgeDistance(rings: readonly (readonly Pt[])[], p: Pt): number {
+  let best = Number.POSITIVE_INFINITY;
+  for (const ring of rings)
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i] as Pt;
+      const b = ring[(i + 1) % ring.length] as Pt;
+      best = Math.min(best, segmentDistance(p, a, b));
+    }
+  return best;
+}
+
+function segmentDistance(p: Pt, a: Pt, b: Pt): number {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len2 = dx * dx + dy * dy;
+  const t =
+    len2 > 0 ? Math.min(1, Math.max(0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2)) : 0;
+  return Math.hypot(a[0] + t * dx - p[0], a[1] + t * dy - p[1]);
+}
+
+/**
+ * `probeOf`, moved off the edges when it lies within `PROBE_CLEARANCE` of
+ * one (only then: a clearance search is slow on long spline outlines).
+ */
+const clearProbes = new WeakMap<Profile, readonly [number, number] | undefined>();
+function clearProbeOf(r: Profile): readonly [number, number] | undefined {
+  if (clearProbes.has(r)) return clearProbes.get(r);
+  const p = probeOf(r);
+  const rings = [r.outer.polygon, ...r.holes.map((h) => h.polygon)];
+  const clear =
+    p && edgeDistance(rings, p) < PROBE_CLEARANCE
+      ? (interiorPoint(
+          r.outer.polygon,
+          r.holes.map((h) => h.polygon),
+          PROBE_CLEARANCE,
+        ) ?? p)
+      : p;
+  clearProbes.set(r, clear);
+  return clear;
+}
+
+/**
+ * How well a region's boundary must follow the listed pieces to stand in for
+ * a region the file names by a record its sketch has outgrown: the share of
+ * those pieces' length along the region's boundary times the share of the
+ * boundary along them. A region the record named with a curve or two since
+ * redrawn scores 0.5 to 1 (measured on the corpus's stale records); a
+ * neighbour sharing a side scores far less.
+ */
+const OVERLAP_SCORE = 0.5;
+/** A region along less than this share of the listed pieces is not looked at further. */
+const OVERLAP_MIN_SHARE = 0.3;
+/** How near (mm) a boundary point must be to a piece to run along it. */
+const OVERLAP_TOLERANCE = 0.05;
+
+/**
+ * The one region of the sketch whose boundary best runs along the listed
+ * pieces that are still there (`listedPieces`), for a region whose record
+ * no longer fits the sketch (curves deleted, trimmed, lengthened since the
+ * pick); undefined when none scores `OVERLAP_SCORE`.
+ */
+function overlapRegion(
+  entry: SketchEntry,
+  regions: SketchHandle['regions'],
+  want: ProfileRegion,
+): GeomRef[] | undefined {
+  entry.pieces ??= sketchPieces(entry.source, entry.profileCurves);
+  const pieces = listedPieces(entry.pieces, [...want.outerPieces, ...want.innerPieces]).map(
+    (line) => line.map(([u, v]) => entry.placement.map(u, v)),
+  );
+  if (pieces.length === 0) return undefined;
+  const near = (p: Pt, lines: readonly (readonly Pt[])[], closed: boolean) =>
+    lines.some((line) => {
+      const n = closed ? line.length : line.length - 1;
+      for (let i = 0; i < n; i++)
+        if (
+          segmentDistance(p, line[i] as Pt, line[(i + 1) % line.length] as Pt) < OVERLAP_TOLERANCE
+        )
+          return true;
+      return false;
+    });
+  const piecePoints = pieces.flatMap((line) => samples(line, false));
+  const pieceLength = piecePoints.reduce((sum, s) => sum + s.weight, 0);
+  if (pieceLength <= 0) return undefined;
+  const box = boundsOf(pieces);
+  let best: { region: SketchHandle['regions'][number]; score: number } | undefined;
+  for (const r of regions) {
+    if (r.text !== undefined || Math.abs(r.area) < SLIVER) continue;
+    const rings = [r.outer.polygon, ...r.holes.map((h) => h.polygon)];
+    const rb = boundsOf(rings);
+    if (rb[0] > box[2] || box[0] > rb[2] || rb[1] > box[3] || box[1] > rb[3]) continue;
+    const along = piecePoints
+      .filter((s) => near(s.at, rings, true))
+      .reduce((sum, s) => sum + s.weight, 0);
+    const share = along / pieceLength;
+    if (share < OVERLAP_MIN_SHARE) continue;
+    const boundary = rings.flatMap((ring) => samples(ring, true));
+    const total = boundary.reduce((sum, s) => sum + s.weight, 0);
+    const on = boundary
+      .filter((s) => near(s.at, pieces, false))
+      .reduce((sum, s) => sum + s.weight, 0);
+    const score = share * (total > 0 ? on / total : 0);
+    if (!best || score > best.score) best = { region: r, score };
+  }
+  if (!best || best.score < OVERLAP_SCORE) return undefined;
+  return [{ kind: 'profile', id: `${entry.handle.id}/${best.region.id}` }];
+}
+
+/** Points along a polyline (closed: back to its start), each weighted by the length it stands for. */
+function samples(line: readonly Pt[], closed: boolean): { at: Vec2; weight: number }[] {
+  const out: { at: Vec2; weight: number }[] = [];
+  const n = closed ? line.length : line.length - 1;
+  for (let i = 0; i < n; i++) {
+    const a = line[i] as Pt;
+    const b = line[(i + 1) % line.length] as Pt;
+    const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    // About every half millimetre; a long edge at most 200 points.
+    const k = Math.min(200, Math.max(1, Math.ceil(length / 0.5)));
+    for (let j = 0; j < k; j++) {
+      const t = (j + 0.5) / k;
+      out.push({ at: [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])], weight: length / k });
+    }
+  }
+  return out;
+}
+
+function boundsOf(lines: readonly (readonly Pt[])[]): [number, number, number, number] {
+  const box: [number, number, number, number] = [
+    Number.POSITIVE_INFINITY,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ];
+  for (const line of lines)
+    for (const [x, y] of line) {
+      box[0] = Math.min(box[0], x);
+      box[1] = Math.min(box[1], y);
+      box[2] = Math.max(box[2], x);
+      box[3] = Math.max(box[3], y);
+    }
+  return box;
 }
 
 /**
@@ -3050,10 +3222,38 @@ function staleRegion(
   const left = new Set([...tags.values()].map(String).filter((t) => outerTags.has(t)));
   if (left.size === 0) return [];
   const need = Math.max(Math.min(2, left.size), Math.ceil(left.size / 2));
+  // The listed lines, to count one an outline runs along on a collinear
+  // duplicate (the outline's edge then belongs to the other line).
+  const ends = (id: string): [Vec2, Vec2] | undefined => {
+    const e = handle.data.entities[id as keyof typeof handle.data.entities] as
+      | { type: string; start?: string; end?: string }
+      | undefined;
+    if (e?.type !== 'line' || !e.start || !e.end) return undefined;
+    const point = (ref: string) =>
+      handle.data.entities[ref as keyof typeof handle.data.entities] as
+        | { type: string; x: number; y: number }
+        | undefined;
+    const a = point(e.start);
+    const b = point(e.end);
+    return a?.type === 'point' && b?.type === 'point'
+      ? [
+          [a.x, a.y],
+          [b.x, b.y],
+        ]
+      : undefined;
+  };
+  const lines = [...tags]
+    .filter(([, tag]) => left.has(String(tag)))
+    .flatMap(([id, tag]) => {
+      const line = ends(id);
+      return line ? [{ tag: String(tag), line }] : [];
+    });
   let best: { region: SketchHandle['regions'][number]; covered: number } | undefined;
   for (const r of regions) {
     if (r.text !== undefined) continue;
     const along = new Set(r.outer.edges.map((e) => String(tags.get(e.curve))));
+    for (const { tag, line } of lines)
+      if (!along.has(tag) && r.outer.edges.some((e) => onLine(e.points, line))) along.add(tag);
     const covered = [...left].filter((t) => along.has(t)).length;
     if (covered < need) continue;
     if (
@@ -3064,4 +3264,21 @@ function staleRegion(
       best = { region: r, covered };
   }
   return best ? [{ kind: 'profile', id: `${handle.id}/${best.region.id}` }] : [];
+}
+
+/** Whether a straight edge lies along a line and overlaps it (more than a touch at an end). */
+function onLine(points: readonly Pt[], [a, b]: [Vec2, Vec2]): boolean {
+  const p = points[0];
+  const q = points.at(-1);
+  if (!p || !q) return false;
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-9) return false;
+  const off = (s: Pt) => Math.abs((s[0] - a[0]) * dy - (s[1] - a[1]) * dx) / len;
+  if (off(p) > 1e-4 || off(q) > 1e-4) return false;
+  const t = (s: Pt) => ((s[0] - a[0]) * dx + (s[1] - a[1]) * dy) / (len * len);
+  const lo = Math.max(0, Math.min(t(p), t(q)));
+  const hi = Math.min(1, Math.max(t(p), t(q)));
+  return (hi - lo) * len > 1e-4;
 }
