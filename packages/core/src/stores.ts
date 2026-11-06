@@ -33,6 +33,11 @@ export interface DocumentState {
   redoLabel: string | undefined;
   /** Open transactions (sketch mode, feature dialog). 0 at the timeline level. */
   transactionDepth: number;
+  /**
+   * The tag (a sketch's feature id) of the step `undo` would revert when it is
+   * a reopenable sketch session (`UndoHistory.reopenTag`); undefined otherwise.
+   */
+  reopenTag: string | undefined;
   /** Applies a command and records it for undo. Throws `CommandError` and leaves the document unchanged if the command is invalid. */
   dispatch<P>(command: Command<P>): void;
   /**
@@ -67,9 +72,16 @@ export interface DocumentState {
    * one document change. Returns whether it changed the document.
    */
   revertTo(stepId: number | undefined): boolean;
-  beginTransaction(label: string): void;
+  /** Opens a transaction; `reopen` makes its step reopenable (`UndoHistory.begin`). */
+  beginTransaction(label: string, options?: { reopen?: string }): void;
   commitTransaction(): void;
   cancelTransaction(): void;
+  /**
+   * Reopens the latest step as the transaction it was committed from
+   * (`UndoHistory.reopen`), the document unchanged. Returns its tag, or
+   * undefined when the latest step isn't a reopenable session.
+   */
+  reopenTransaction(): string | undefined;
   /** Replaces the document (open, load a version) and clears the history. */
   replaceDocument(doc: ExtrudoDocument): void;
   /**
@@ -94,6 +106,7 @@ export function createDocumentStore(
     undoLabel: history.undoLabel,
     redoLabel: history.redoLabel,
     transactionDepth: history.depth,
+    reopenTag: history.reopenTag,
   });
 
   const listeners = new Set<(event: HistoryEvent) => void>();
@@ -194,8 +207,8 @@ export function createDocumentStore(
       emit({ type: 'revert', target: stepId, changed: true });
       return true;
     },
-    beginTransaction(label) {
-      history.begin(label);
+    beginTransaction(label, options) {
+      history.begin(label, options?.reopen);
       set(historyState());
       emit({ type: 'begin', label, depth: history.depth });
     },
@@ -204,6 +217,14 @@ export function createDocumentStore(
       const step = history.commit();
       set(historyState());
       emit({ type: 'commit', label, step, depth: history.depth });
+    },
+    reopenTransaction() {
+      const step = history.undoStepId;
+      const tag = history.reopen();
+      if (tag === undefined) return undefined;
+      set(historyState());
+      emit({ type: 'reopen', label: history.transactionLabel ?? '', step, depth: history.depth });
+      return tag;
     },
     cancelTransaction() {
       const label = history.transactionLabel ?? '';

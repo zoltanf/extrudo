@@ -19,6 +19,7 @@ import {
   createSketchOn,
   editSketch,
   finishSketch,
+  reopenSketch,
   startCreateSketch,
 } from './mode';
 
@@ -101,6 +102,40 @@ describe('sketch mode', () => {
     expect(t.store.getState().undoLabel).toBe('Create sketch');
     t.store.getState().undo();
     expect(t.doc().features).toEqual([]);
+  });
+
+  it('Undo after Finish reopens the sketch at its last edit, then takes back one edit', () => {
+    // ADR-0010's amendment of 2026-11-06: the owner's recording showed one
+    // Undo emptying a just-finished sketch.
+    const t = setup();
+    const id = createSketchOn(t, originPlaneRef('origin:xy'));
+    const { dispatch } = t.store.getState();
+    dispatch(renameFeature({ id, name: 'Base' }));
+    dispatch(renameDocument({ name: 'Bracket' }));
+    finishSketch(t);
+    t.viewport.getState().lookFrom([1, 0, 0], [0, 0, 1]); // looked away meanwhile
+    expect(t.store.getState().reopenTag).toBe(id);
+    expect(reopenSketch(t)).toBe(true);
+    expect(t.mode()).toEqual({ mode: 'sketch', activeSketchId: id, activeTool: undefined });
+    expect(t.doc()).toMatchObject({ name: 'Bracket', features: [{ name: 'Base' }] });
+    expect(t.direction().back).toEqual([0, 0, 1]); // facing the sketch again
+    expect(t.store.getState()).toMatchObject({ transactionDepth: 1, undoLabel: 'Rename document' });
+    t.store.getState().undo();
+    expect(t.doc()).toMatchObject({ name: 'Untitled', features: [{ name: 'Base' }] });
+    // Inside a sketch there is nothing to reopen; Finish makes it one step again.
+    expect(reopenSketch(t)).toBe(false);
+    finishSketch(t);
+    expect(t.store.getState()).toMatchObject({ undoLabel: 'Edit sketch', reopenTag: id });
+  });
+
+  it('does not reopen anything when the latest step is not a sketch session', () => {
+    const t = setup();
+    createSketchOn(t, originPlaneRef('origin:xy'));
+    finishSketch(t);
+    t.store.getState().dispatch(renameDocument({ name: 'After' }));
+    expect(reopenSketch(t)).toBe(false);
+    expect(t.mode().mode).toBe('model');
+    expect(t.store.getState().transactionDepth).toBe(0);
   });
 
   it('leaves no extra undo step when nothing changed in the sketch', () => {

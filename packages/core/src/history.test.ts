@@ -282,3 +282,78 @@ describe('transactions', () => {
     expect([history.redoStepId, history.labelOf(id as number)]).toEqual([id, undefined]);
   });
 });
+
+describe('reopening a sketch session (ADR-0010 amendment, 2026-11-06)', () => {
+  /** A session tagged `s1` that renamed the document A then B, committed. */
+  function finished() {
+    const history = new UndoHistory();
+    const start = sampleDocument();
+    history.begin('Edit sketch', 's1');
+    let doc = run(history, start, renameDocument({ name: 'A' }));
+    doc = run(history, doc, renameDocument({ name: 'B' }));
+    history.commit();
+    return { history, start, doc };
+  }
+
+  it('keeps the edits on the step, and reopens it with the document unchanged', () => {
+    const { history, doc } = finished();
+    expect([history.depth, history.undoLabel, history.reopenTag]).toEqual([0, 'Edit sketch', 's1']);
+    expect(history.reopen()).toBe('s1');
+    expect([history.depth, history.transactionLabel, history.reopenTag]).toEqual([
+      1,
+      'Edit sketch',
+      undefined,
+    ]);
+    // Inside, undo takes back one edit at a time.
+    let d = history.undo(doc);
+    expect(d.name).toBe('A');
+    d = history.redo(d);
+    expect(d.name).toBe('B');
+    // Committed again, the step is reopenable again.
+    history.commit();
+    expect(history.reopenTag).toBe('s1');
+  });
+
+  it('undoes every edit after reopening, and an empty commit leaves no step', () => {
+    const { history, start, doc } = finished();
+    history.reopen();
+    const d = history.undo(history.undo(doc));
+    expect(d).toEqual(start);
+    expect(history.canUndo).toBe(false);
+    expect(history.commit()).toBeUndefined();
+    expect(history.canUndo).toBe(false);
+  });
+
+  it('keeps the edits in step with a change amended into the step after Finish', () => {
+    const { history, start, doc } = finished();
+    const amended = applyCommand(doc, renameFeature({ id: fid('f1'), name: 'Later' }));
+    history.amend({ label: 'Name', ...amended });
+    history.reopen();
+    const d = history.undo(history.undo(amended.doc));
+    expect(d).toEqual(start);
+  });
+
+  it('is not offered for an untagged transaction, nor inside a transaction', () => {
+    const history = new UndoHistory();
+    history.begin('Dialog');
+    const doc = run(history, sampleDocument(), renameDocument({ name: 'A' }));
+    history.commit();
+    expect(history.reopenTag).toBeUndefined();
+    expect(history.reopen()).toBeUndefined();
+    expect(history.depth).toBe(0);
+    history.begin('Edit sketch', 's1');
+    run(history, doc, renameDocument({ name: 'B' }));
+    history.commit();
+    history.begin('Other');
+    expect(history.reopenTag).toBeUndefined();
+  });
+
+  it('a plain undo still reverts the whole session, and redo brings it back reopenable', () => {
+    const { history, start, doc } = finished();
+    const d = history.undo(doc);
+    expect(d).toEqual(start);
+    expect(history.reopenTag).toBeUndefined();
+    expect(history.redo(d).name).toBe('B');
+    expect(history.reopenTag).toBe('s1');
+  });
+});

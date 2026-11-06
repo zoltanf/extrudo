@@ -117,3 +117,30 @@ collapses them into one step at the end.
   sketch visibility toggles and hover highlighting in the browser (P1-12),
   sketches on faces (P2-09), dimensions in the parameters table and in
   parameter renames (P1-07), turning off Look At as a preference.
+
+## Amendment (2026-11-06): Undo after Finish reopens the sketch
+
+The owner's screen recording: one Undo right after Finish Sketch emptied the sketch
+(the whole session was one step), and after reopening it, Undo was greyed out, so the
+session's edits couldn't be stepped back one at a time.
+
+- **The session's step keeps its edits.** `editSketch` opens the transaction with a
+  `reopen` tag (the sketch's feature id); `UndoHistory.commit` keeps the transaction's
+  entries on the collapsed step (`HistoryEntry.session`). A change amended into that
+  step later (`amend`, `amendInto`) also joins its last entry, so the entries always add
+  up to the step.
+- **Undo while that step is the latest reopens the sketch** (`reopenSketch` in
+  `sketch/mode.ts`, from the shell's Undo: keys, the top bar, the marking menu): the
+  step becomes the open transaction again with its entries as the undo stack, the
+  document unchanged, sketch mode entered and the view turned to the sketch. The next
+  Undo takes back the last edit, and so on; Finish makes the edits one step again. This
+  holds whenever the sketch step is the latest, also after undoing later steps.
+- **Taking a whole sketch back** is now: reopen, undo its edits, Finish (no step is
+  left), then Undo removes "Create sketch".
+- **An agent's undo** (the desktop MCP server, `useAgentHost`) still reverts the whole
+  session in one step: reopening sketch mode would leave the agent in a mode its tools
+  refuse. The timeline's revert (ADR-0111) also reverts whole steps.
+- **Rejected: keeping every edit as its own timeline step after Finish.** The timeline
+  would fill with Draw steps, and one undo could leave a sketch half drawn outside
+  sketch mode.
+

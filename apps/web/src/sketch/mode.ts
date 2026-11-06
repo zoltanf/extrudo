@@ -9,6 +9,9 @@
  * - **Entering** a sketch opens an undo transaction: undo steps through the
  *   sketch's edits only. The camera looks at the plane, sketch X to the right.
  * - **Finish Sketch** commits the transaction, so the edits become one step.
+ *   That step keeps the edits: an Undo while it is the latest step reopens the
+ *   sketch with them as its undo steps (`reopenSketch`, ADR-0010's amendment of
+ *   2026-11-06), instead of reverting them all at once.
  */
 import {
   addProjection,
@@ -98,10 +101,31 @@ export function editSketch(stores: SketchModeStores, id: FeatureId): boolean {
     finishSketch(stores);
   }
   cancelCreateSketch(stores);
-  store.getState().beginTransaction('Edit sketch');
+  store.getState().beginTransaction('Edit sketch', { reopen: id });
   session.getState().enterSketch(id);
   // The remembered help target named the closed context; F1 right after a
   // sketch opens goes to the sketching guide (P6-22 S2, ADR-0116 §4).
+  clearHelpTarget();
+  lookAtSketch(stores);
+  return true;
+}
+
+/**
+ * Undo when the latest step is a finished sketch's edits (ADR-0010's amendment
+ * of 2026-11-06): reopens that sketch with its edits as the undo steps, the
+ * document unchanged, so the next Undo takes back its last edit only. Returns
+ * false, changing nothing, when the latest step isn't a sketch session or a
+ * sketch is open.
+ */
+export function reopenSketch(stores: SketchModeStores): boolean {
+  const { store, session } = stores;
+  const id = store.getState().reopenTag as FeatureId | undefined;
+  if (id === undefined || session.getState().mode === 'sketch') return false;
+  const feature = store.getState().doc.features.find((f) => f.id === id);
+  if (!feature || !readSketch(feature)) return false;
+  cancelCreateSketch(stores);
+  store.getState().reopenTransaction();
+  session.getState().enterSketch(id);
   clearHelpTarget();
   lookAtSketch(stores);
   return true;

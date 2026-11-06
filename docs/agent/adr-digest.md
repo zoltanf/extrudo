@@ -93,6 +93,11 @@ them) plus every constraint and dimension type, as records keyed by ID;
 origin plane frames match the ViewCube. Sketch mode (`apps/web/src/sketch/`)
 is session state plus one undo transaction; the viewport draws sketches,
 makes the origin planes pickable and puts the grid on the sketch plane.
+**Amendment 2026-11-06:** the transaction is tagged (`beginTransaction('Edit sketch',
+{ reopen: id })`), its committed step keeps the entries (`HistoryEntry.session`; `#join`
+keeps them adding up), and the shell's Undo while that step is the latest calls
+`reopenSketch` (reopen, enter, look at) instead of reverting it; the agent's undo and the
+timeline revert still revert whole steps.
 ADR-0011 (P1-03) built the solver adapter in `packages/sketch/src/solver/`:
 `SketchSolver.solve(sketch, values)` maps every type to planegcs, treats
 fixed geometry as constants, keeps one system per component and solves only

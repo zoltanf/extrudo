@@ -337,6 +337,7 @@ stays, and the switch says why. See [Project and Intersect](#project-and-interse
 ## Finish Sketch
 
 **Finish Sketch** (the green button in the palette) closes the sketch. Everything you did in it
-is one undo step, so `Ctrl+Z` takes the whole session back. Extrude, Revolve and the other
+is one step in the history. `Ctrl+Z` right after Finish opens the sketch again as you left it,
+and each further `Ctrl+Z` takes back one thing you did in it. Extrude, Revolve and the other
 features read the profiles from the finished sketch; once a feature uses one, the sketch hides
 itself so it doesn't sit in front of the new faces. The browser's eye shows it again.
