@@ -149,8 +149,14 @@ function createShellHost(designId: string, current: { current: AgentShell }): Ag
         ...(unavailable !== undefined && { unavailable }),
         run,
       })),
-    // The shell's own Undo and Redo: they close an open dialog first.
-    undo: () => (command('undo')?.run ?? (() => shell().store.getState().undo()))(),
+    // The shell's own Undo and Redo: they close an open dialog first. A finished
+    // sketch's edits are one step for an agent: its Undo reverts them, where the
+    // person's reopens the sketch (ADR-0010's amendment of 2026-11-06).
+    undo: () => {
+      const store = shell().store.getState();
+      const run = store.reopenTag === undefined ? command('undo')?.run : undefined;
+      (run ?? (() => store.undo()))();
+    },
     redo: () => (command('redo')?.run ?? (() => shell().store.getState().redo()))(),
     save: () => shell().save(),
     async exportModel(format: AgentExportFormat) {

@@ -255,6 +255,11 @@ export function historyEntry(event: HistoryEvent): {
       };
     case 'cancel':
       return { level: 'info', text: `Cancel ${quoted(event.label)}` };
+    case 'reopen':
+      return {
+        level: 'info',
+        text: `Reopen ${quoted(event.label)}: step ${event.step} (depth ${event.depth})`,
+      };
     case 'replace':
       return { level: 'info', text: 'Document replaced: history cleared' };
   }
