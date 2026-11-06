@@ -15531,11 +15531,6 @@ private:
       normal.Normalize();
       if (face.Orientation() == TopAbs_REVERSED) normal.Reverse();
       inA.Perform(p.Translated(-1e-3 * normal), 1e-7);
-      {
-        const gp_Pnt q = p.Translated(-1e-3 * normal);
-        std::fprintf(stderr, "PROBE type %d ori %d p %.6f %.6f %.6f n %.4f %.4f %.4f state %d\n", int(surface.GetType()),
-                     int(face.Orientation()), q.X(), q.Y(), q.Z(), normal.X(), normal.Y(), normal.Z(), int(inA.State()));
-      }
       if (inA.State() == TopAbs_IN) ++in;
       else if (inA.State() == TopAbs_OUT) ++out;
     }
@@ -15625,7 +15620,6 @@ private:
         const bool swallowed = op == BOPAlgo_FUSE && !wall[k];
         if (!swallowed && wall[k] && !apart[k] && op != BOPAlgo_COMMON) continue;
         if (!inA) inA.emplace(a);
-        std::fprintf(stderr, "SUSPECT op %d solid %d of %d wall %d apart %d\n", int(op), int(k), int(solids.size()), int(wall[k]), int(apart[k]));
         const auto [in, out] = probeInside(*inA, solids[k]);
         if (swallowed ? out > 0 : in > 0) ++missed;
       }
@@ -15677,7 +15671,6 @@ private:
     // message that the cut removes nothing. The history, and so the names,
     // come from the boolean that is kept.
     if (const int missed = missedOverlaps(builder, inA, inB); missed > 0) {
-      std::fprintf(stderr, "RETRY missed %d\n", missed);
       Builder retry;
       buildBoolean(retry, inA, inB, 1e-4);
       if (retry.IsDone() && !retry.HasErrors() && missedOverlaps(retry, inA, inB) < missed &&
