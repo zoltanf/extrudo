@@ -1,1 +1,0 @@
-- 2026-10-30 · **Mesh to Solid STEP read-back diagnosis**: shadow-only harness probe (Q15–Q17) classifying the flagged wires' self-intersections (ADR-0097 2026-10-30b amendment; no converter change).

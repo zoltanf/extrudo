@@ -1,1 +1,0 @@
-- 2026-11-04 · **Auto-project Sketches shows what you can snap to**: while a drawing tool runs, the curves of earlier sketches show faint and dashed on the open sketch's plane; nothing is added until you snap to one.

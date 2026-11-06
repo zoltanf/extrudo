@@ -1,1 +1,0 @@
-- 2026-11-06 · **A dimension to an axis is placed like any other**: after the line or point and the axis, a third click places the label, with the live preview following the cursor (it used to land on the second pick, label placed for you).

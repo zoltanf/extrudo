@@ -1,1 +1,0 @@
-- 2026-10-31 · **Desktop tooltip clips**: the desktop app's tooltips play their tool clips, as the browser's do (the desktop build now carries the web app's public folder).

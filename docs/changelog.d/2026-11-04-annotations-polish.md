@@ -1,1 +1,0 @@
-- 2026-11-04 · **Annotations polish**: drag a note's dot onto other geometry to move it (a lost note is fixed the same way, and the status bar says when one is lost), "Delete all done" in the Annotations folder, `screenshot` can draw the notes' numbers for an agent, and a new example, Plate with notes (ADR-0126).
