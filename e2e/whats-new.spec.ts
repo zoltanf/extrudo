@@ -39,7 +39,7 @@ test("an update says so once, and What's new shows its notes", async ({ page }) 
   await expect(notes).toBeVisible();
   const highlights = await notes.getByRole('listitem').count();
   expect(highlights).toBeGreaterThan(0);
-  const full = notes.getByRole('button', { name: /^Full changelog \(\d+ changes\)$/ });
+  const full = notes.getByRole('button', { name: /^Full changelog \(\d+ changes?\)$/ });
   await expect(full).toHaveAttribute('aria-expanded', 'false');
   await full.click();
   await expect(full).toHaveAttribute('aria-expanded', 'true');
@@ -78,4 +78,26 @@ test("About › What's new opens the notes in the app", async ({ page }) => {
   await expect(dialog(page).getByRole('listitem').first()).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(dialog(page)).toBeHidden();
+});
+
+test("Menu › What's new opens the notes, and Earlier versions lists every release", async ({
+  page,
+}) => {
+  await page.goto('./');
+  await pickMenuItem(page, 'App', "What's new");
+  const notes = dialog(page);
+  await expect(notes).toBeVisible();
+  const earlier = notes.getByRole('button', { name: 'Earlier versions' });
+  await earlier.click();
+  await expect(earlier).toHaveAttribute('aria-expanded', 'true');
+  // The oldest section is the pre-release phases; every release before this one is a row.
+  const oldest = notes.getByRole('button', { name: /^Phases 0 to 2 .* · \d+ changes?$/ });
+  await expect(oldest).toBeVisible();
+  const row = notes.getByRole('button', { name: /^v0\.4\.0 \(2026-10-08\) · \d+ changes?$/ });
+  const before = await notes.getByRole('listitem').count();
+  await row.click();
+  await expect(row).toHaveAttribute('aria-expanded', 'true');
+  expect(await notes.getByRole('listitem').count()).toBeGreaterThan(before);
+  await row.click();
+  await expect(row).toHaveAttribute('aria-expanded', 'false');
 });

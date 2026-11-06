@@ -1,7 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import pkg from '../package.json' with { type: 'json' };
-import { bullets, changelogPath, changelogSection, releaseNotes } from './release-notes';
+import {
+  bullets,
+  changelogPath,
+  changelogSection,
+  releaseHistory,
+  releaseNotes,
+} from './release-notes';
 
 const CHANGELOG = `# Changelog
 
@@ -48,6 +54,27 @@ describe('release notes (ADR-0133)', () => {
       highlights: ['**Big**: news.'],
       changes: ['**One**: first.', '**Two**: second, continued.'],
     });
+  });
+
+  it('lists every earlier section, newest first, with highlights where they exist', () => {
+    const files: Record<string, string> = {
+      '/r/docs/release-highlights/0.9.0.md': '- **Was big**: then.\n',
+      '/r/docs/CHANGELOG.md': `${CHANGELOG}\n## Phases 0 to 2 (v0.0 to v0.2)\n\n### P0\n\n- Start.\n`,
+    };
+    expect(releaseHistory('0.10.0', (p) => files[p], '/r/')).toEqual([
+      {
+        title: 'v0.9.0 (2026-10-26)',
+        highlights: ['**Was big**: then.'],
+        changes: ['**Old**: older.'],
+      },
+      { title: 'Phases 0 to 2 (v0.0 to v0.2)', highlights: [], changes: ['Start.'] },
+    ]);
+  });
+
+  it('the real CHANGELOG reads back to its first section', () => {
+    const history = releaseHistory('0.0.0');
+    expect(history.at(-1)?.title).toMatch(/^Phases 0 to 2/);
+    expect(history.every((h) => h.changes.length > 0)).toBe(true);
   });
 
   it("the package version's section exists in the real CHANGELOG", () => {

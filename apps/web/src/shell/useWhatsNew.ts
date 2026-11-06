@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { tourOffered } from '../onboarding/state';
 import type { Platform } from '../platform';
 import type { Push } from '../platform/updateNotice';
-import { BUILD } from '../version';
+import { APP_VERSION, BUILD } from '../version';
 import { announceUpdate } from './whatsNew';
 
 /** Once per session, on whichever page mounts first (ADR-0133). */
@@ -30,7 +30,8 @@ export function useWhatsNew(push: Push, platform: Pick<Platform, 'preferences' |
           platform.preferences,
           {
             channel: BUILD.channel,
-            version: BUILD.version,
+            // The package version: the one the built-in notes are for (a tagged build's too).
+            version: APP_VERSION,
             returning: answeredTour || hasDesigns,
           },
           push,

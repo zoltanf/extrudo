@@ -63,3 +63,21 @@ short summary first.
   notes. A release without one updates quietly.
 - People who update from v0.9.0 to v0.10.0 see it: v0.9.0 wrote no
   `lastVersion`, so `returning` decides.
+
+## Amendment 2026-11-06: earlier versions and a menu item
+
+The owner, the same day: the dialog also shows every earlier version's
+changelog, and What's new gets a menu item.
+
+- **Earlier versions.** The plugin serves a second virtual module,
+  `virtual:release-history`: every CHANGELOG `## ` section except `Unreleased`
+  and this version, newest first (down to "Phases 0 to 2"), each with its
+  highlights file's bullets where one exists (`releaseHistory`). It is the
+  whole CHANGELOG (about 210 kB raw), so it is a chunk of its own, loaded only
+  when the dialog's "Earlier versions" disclosure opens. Each release is a row
+  "v0.9.0 (2026-10-26) · 28 changes" that folds out its highlights and changes,
+  one at a time.
+- **Menu item.** The Menu's App column has What's new above About Extrudo
+  (home screen and project), and the command registry has `whatsNew` ("What's
+  New", Help), so Ctrl+K finds it and the desktop's Help menu lists it. Agents
+  can't run it (`AGENT_DENIED_COMMANDS`, like `about`).

@@ -82,6 +82,7 @@ describe('the app menu panel', () => {
       'Search…',
       'Settings…',
       'Report a bug',
+      'What&#x27;s new',
       'About Extrudo',
     ]);
     expect(itemTexts(html, 'Learn')).toEqual([
@@ -100,6 +101,7 @@ describe('the app menu panel', () => {
     expect(itemTexts(html, 'App')).toEqual([
       'Settings…',
       'Report a bug',
+      'What&#x27;s new',
       'About Extrudo',
       'Close design',
     ]);

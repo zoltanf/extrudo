@@ -10,7 +10,7 @@
 /// <reference path="../release-notes.d.ts" />
 import { createStore } from 'zustand/vanilla';
 import type { BuildChannel } from '../../pwa/build-info';
-import type { ReleaseNotes } from '../../pwa/release-notes';
+import type { ReleaseHistoryEntry, ReleaseNotes } from '../../pwa/release-notes';
 import type { Preferences } from '../platform/preferences';
 import type { Push } from '../platform/updateNotice';
 
@@ -35,7 +35,7 @@ export function compareVersions(a: string, b: string): number {
 
 export interface WhatsNewCheck {
   channel: BuildChannel;
-  /** The build's version (`BUILD.version`). */
+  /** The app's package version (`APP_VERSION`), the one the built-in notes are for. */
   version: string;
   /**
    * Someone who used the app before this check could run (a version without
@@ -70,6 +70,10 @@ export const setWhatsNewOpen = (open: boolean) => whatsNewStore.setState({ open 
 /** The build's notes, a chunk of their own loaded on first use. */
 export const loadReleaseNotes = (): Promise<ReleaseNotes | null> =>
   import('virtual:release-notes').then((m) => m.default);
+
+/** Every earlier release's section, a bigger chunk loaded only when Earlier versions opens. */
+export const loadReleaseHistory = (): Promise<ReleaseHistoryEntry[]> =>
+  import('virtual:release-history').then((m) => m.default);
 
 /**
  * The once-per-update toast. `notes` is only asked for when the version is
