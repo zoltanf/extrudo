@@ -4330,4 +4330,7 @@ with no stored version only when `returning` (a stored design or the tour answer
 Extrudo X.Y.Z." with the What's new button; `whatsNewStore` opens `WhatsNewDialog`, which the
 home screen and `AppShell` mount and About's footer button opens. `useWhatsNew` runs once per
 session. Notes render `**bold**` and `` `code` `` only. Keep: a release commit adds the
-highlights file; the preference stays in `NOT_IN_SETTINGS`.
+highlights file; the preference stays in `NOT_IN_SETTINGS`. Amendment 2026-11-06: `virtual:release-history`
+(`releaseHistory`: every `## ` section but Unreleased and this version, with highlights where a
+file exists) is a separate lazy chunk behind the dialog's "Earlier versions"; the Menu's App
+column has What's new above About, and the `whatsNew` command (Help) is agent-denied.

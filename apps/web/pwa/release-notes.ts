@@ -33,15 +33,50 @@ export function bullets(lines: readonly string[]): string[] {
   return items;
 }
 
-/** The bullets under `## vX.Y.Z`, up to the next `## ` heading, without "2026-11-06 · ". */
-export function changelogSection(markdown: string, version: string): string[] {
+/** Every `## ` section of the CHANGELOG: its heading's text and its bullets, without "2026-11-06 · ". */
+export function changelogSections(markdown: string): { title: string; changes: string[] }[] {
   const lines = markdown.split(/\r?\n/);
-  const start = lines.findIndex((l) => l === `## v${version}` || l.startsWith(`## v${version} `));
-  if (start < 0) return [];
-  const end = lines.findIndex((l, i) => i > start && l.startsWith('## '));
-  return bullets(lines.slice(start + 1, end < 0 ? undefined : end)).map((b) =>
-    b.replace(/^\d{4}-\d{2}-\d{2} · /, ''),
+  const starts = lines.flatMap((l, i) => (l.startsWith('## ') ? [i] : []));
+  return starts.map((start, n) => ({
+    title: (lines[start] ?? '').slice(3).trim(),
+    changes: bullets(lines.slice(start + 1, starts[n + 1])).map((b) =>
+      b.replace(/^\d{4}-\d{2}-\d{2} · /, ''),
+    ),
+  }));
+}
+
+/** The version a heading names (`v0.9.0 (2026-10-26)` → `0.9.0`), if any. */
+export const headingVersion = (title: string) => /^v(\d+\.\d+\.\d+)\b/.exec(title)?.[1];
+
+/** The bullets under `## vX.Y.Z`. */
+export function changelogSection(markdown: string, version: string): string[] {
+  return (
+    changelogSections(markdown).find((s) => headingVersion(s.title) === version)?.changes ?? []
   );
+}
+
+/** An earlier release in What's new's list (ADR-0133's amendment). */
+export interface ReleaseHistoryEntry {
+  /** The CHANGELOG heading without `## `: `v0.9.0 (2026-10-26)`. */
+  title: string;
+  /** Its highlights file's bullets, where there is one. */
+  highlights: string[];
+  changes: string[];
+}
+
+/** Every CHANGELOG section before `version`, newest first, with highlights where they exist. */
+export function releaseHistory(
+  version: string,
+  read: (path: string) => string | undefined = readOrUndefined,
+  root = ROOT,
+): ReleaseHistoryEntry[] {
+  return changelogSections(read(changelogPath(root)) ?? '')
+    .filter((s) => s.title !== 'Unreleased' && headingVersion(s.title) !== version)
+    .map((s) => {
+      const v = headingVersion(s.title);
+      const highlights = v === undefined ? undefined : read(highlightsPath(v, root));
+      return { ...s, highlights: highlights ? bullets(highlights.split(/\r?\n/)) : [] };
+    });
 }
 
 /** The notes for `version` (X.Y.Z), or `null` without a highlights file. */
@@ -67,21 +102,26 @@ function readOrUndefined(path: string): string | undefined {
   }
 }
 
-const ID = 'virtual:release-notes';
-const RESOLVED = `\0${ID}`;
+const NOTES = 'virtual:release-notes';
+const HISTORY = 'virtual:release-history';
 
-/** Serves `virtual:release-notes` for the package version `version` (its X.Y.Z). */
+/**
+ * Serves `virtual:release-notes` (this version) and `virtual:release-history`
+ * (every earlier CHANGELOG section, a bigger chunk loaded only when asked for)
+ * for the package version `version` (its X.Y.Z).
+ */
 export function releaseNotesPlugin(version: string): Plugin {
   const base = version.split('+')[0] ?? version;
   return {
     name: 'extrudo-release-notes',
-    resolveId: (id) => (id === ID ? RESOLVED : undefined),
+    resolveId: (id) => (id === NOTES || id === HISTORY ? `\0${id}` : undefined),
     load(id) {
-      if (id !== RESOLVED) return undefined;
-      // Rebuilt in dev when either file changes.
-      this.addWatchFile(highlightsPath(base));
+      if (id !== `\0${NOTES}` && id !== `\0${HISTORY}`) return undefined;
+      // Rebuilt in dev when the CHANGELOG or a highlights file changes.
       this.addWatchFile(changelogPath());
-      return `export default ${JSON.stringify(releaseNotes(base))};`;
+      this.addWatchFile(highlightsPath(base));
+      const data = id === `\0${NOTES}` ? releaseNotes(base) : releaseHistory(base);
+      return `export default ${JSON.stringify(data)};`;
     },
   };
 }

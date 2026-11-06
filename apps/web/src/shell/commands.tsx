@@ -28,6 +28,7 @@ import {
   RefreshCw,
   Repeat2,
   ScanEye,
+  ScrollText,
   Settings,
   Shapes,
   Sun,
@@ -56,6 +57,7 @@ import {
   type ToolId,
   visibleTabs,
 } from './tools';
+import { openWhatsNew } from './whatsNew';
 
 export interface AppCommand extends Searchable {
   /** A tool ID, or a keymap ID such as `undo` or `viewTop`. */
@@ -547,6 +549,10 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
       keywords: 'Help bug report issue problem crash github feedback screenshot',
     });
   }
+  plain('whatsNew', "What's New", 'Help', openWhatsNew, {
+    icon: icon(ScrollText),
+    keywords: 'Help whats new release notes changelog changes version update history',
+  });
   if (ctx.about) {
     plain('about', 'About Extrudo', 'Help', ctx.about, {
       icon: icon(Info),

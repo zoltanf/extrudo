@@ -1040,6 +1040,9 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   Extrudo X.Y.Z", its highlights and changes are `listitem`s, the disclosure is the button
   /^Full changelog \(\d+ changes\)$/ with `aria-expanded`, and "Got it" closes it. The
   package version needs a `docs/release-highlights/` file, or nothing shows.
+  `pickMenuItem(page, 'App', "What's new")` opens it from the Menu. "Earlier versions" is a
+  disclosure button; each release is a button "v0.4.0 (2026-10-08) · N changes" (the oldest
+  "Phases 0 to 2 … · N changes") with `aria-expanded`, one open at a time.
 
 ### `e2e/bug-report.spec.ts`
 

@@ -11,6 +11,7 @@ import {
   MessageSquareText,
   Monitor,
   Moon,
+  ScrollText,
   Search,
   Settings,
   Shapes,
@@ -39,6 +40,7 @@ import {
   SpindleIcon,
   TrackpadIcon,
 } from './mouseIcons';
+import { openWhatsNew } from './whatsNew';
 
 /** The Learn column's first item: the docs page of the tool last hovered or focused. */
 export interface HelpTool {
@@ -417,6 +419,9 @@ export function MenuPanel({
               Report a bug
             </Item>
           )}
+          <Item icon={<ScrollText />} onClick={choose(openWhatsNew)}>
+            What's new
+          </Item>
           <Item icon={<Info />} onClick={choose(onAbout)}>
             About Extrudo
           </Item>

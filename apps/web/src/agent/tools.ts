@@ -102,6 +102,7 @@ export const AGENT_DENIED_COMMANDS: ReadonlySet<string> = new Set([
   'customizeMarkingMenu',
   'plugins',
   'about',
+  'whatsNew',
   'help',
   'docsGuide',
   'docsTools',
