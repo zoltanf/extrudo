@@ -293,6 +293,19 @@ a view, so deleting one is always allowed.
 | `id` | ID | yes | Unique among views. |
 | `name` | string | yes | Non-empty. Defaults are `View1`, `View2`, ... the lowest number no view uses; a name taken by another view is saved as the next free "`<name>` 2". |
 | `camera` | object | yes | `projection` (`"perspective"` or `"orthographic"`), `position`, `target`, `up`: each of the last three is a `[x, y, z]` array of three numbers, in world millimetres. The world is **Z up**. `position` is the camera's own point; `up` the camera's up direction. An optional `size` (number, positive) holds the visible height through the target in mm — **orthographic views only**: their camera sits far back at a distance that depends on the zoom, so `position`, `target` and `up` alone don't fix the view's size. A perspective view needs no `size`: its position's distance from the target already fixes it. |
+| `section` | object | no | The section shown when the view was saved (ADR-0045's amendment of 2026-11-06). Absent: the view has no section, and restoring it leaves the section on screen alone. Shape below. |
+
+The `section` object has a `kind`:
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `kind` | string | yes | `"planes"` or `"box"`. |
+| `planes` | array | `planes` only | 1 to 3 section planes. Each has `plane` (a reference as in [section 8](#8-references): an origin plane `origin:xy`/`origin:yz`/`origin:xz`, a construction plane feature's ID, or a flat face), `offset` (an expression in the document's length unit, along the plane's normal), `flip` (boolean: the removed side is the one the normal points away from, unless flipped) and `on` (boolean: clipped, or kept but switched off). |
+| `center` | array of 3 expressions | `box` only | The box's centre `[x, y, z]`, each an expression in the document's length unit, world axes (Z up). |
+| `half` | array of 3 expressions | `box` only | The box's half-sizes along x, y and z, expressions in the document's length unit. |
+| `on` | boolean | `box` only | The box clips, or is switched off. |
+
+A parameter rename rewrites the expressions here; deleting a parameter a section uses is not refused. A plane reference that no longer resolves is not an error: the view restores it as a lost plane.
 
 ### 4.4 `meta`
 
@@ -2011,6 +2024,22 @@ test parses this block against the real schema, so it stays valid.)
         "target": [0, 0, 0],
         "up": [0, 0, 1],
         "size": 100
+      }
+    },
+    {
+      "id": "view-2",
+      "name": "Cut at 10",
+      "camera": {
+        "projection": "perspective",
+        "position": [120, -120, 120],
+        "target": [0, 0, 0],
+        "up": [0, 0, 1]
+      },
+      "section": {
+        "kind": "planes",
+        "planes": [
+          { "plane": { "kind": "plane", "id": "origin:xy" }, "offset": "10 mm", "flip": false, "on": true }
+        ]
       }
     }
   ],

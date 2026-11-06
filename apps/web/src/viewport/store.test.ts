@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { memoryPreferences } from '../platform';
+import type { SectionBoxState } from '../section/clip';
 import { basis, orientationFor, sameView, type View, viewProject, viewRay } from './camera';
 import { gridLevels, gridStep, INCH_LEVELS, METRIC_LEVELS } from './grid';
 import { createViewportStore, DEFAULT_SETTINGS, shownOrigin, TRANSITION_MS } from './store';
@@ -262,7 +263,7 @@ describe('section analysis', () => {
 
   it('keeps the box and the planes apart', () => {
     const { store } = setup();
-    const box = { center: ['0', '0', '0'], half: ['5', '5', '5'], on: true } as const;
+    const box: SectionBoxState = { center: ['0', '0', '0'], half: ['5', '5', '5'], on: true };
     store.getState().addSection({ plane, offset: '1 mm', flip: false, on: true });
     store.getState().setSectionBox(box);
     expect(store.getState().section).toEqual([]);
