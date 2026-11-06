@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'electron-vite';
 import pkg from '../web/package.json' with { type: 'json' };
 import { buildInfo } from '../web/pwa/build-info.ts';
+import { releaseNotesPlugin } from '../web/pwa/release-notes.ts';
 
 /**
  * The Electron build (P6-01, ADR-0075 §1). Main and preload are CommonJS
@@ -44,7 +45,8 @@ export default defineConfig({
     publicDir: resolve(import.meta.dirname, '../web/public'),
     // The version, channel and commit the About dialog shows (`apps/web/src/version.ts`).
     define: { __EXTRUDO_BUILD__: JSON.stringify(buildInfo(pkg.version)) },
-    plugins: [react(), tailwindcss()],
+    // What's new's built-in notes (ADR-0133), as in the web build.
+    plugins: [react(), tailwindcss(), releaseNotesPlugin(pkg.version)],
     // Module workers, as on the web: the kernel worker's dynamic imports stay
     // chunks of their own (ADR-0070 §2).
     worker: { format: 'es' },
