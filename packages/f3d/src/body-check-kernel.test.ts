@@ -561,16 +561,22 @@ describe('base features', () => {
 
   it('says why a base feature is left out', () => {
     const { f3d } = baseDesign();
-    const reason = (bases: BaseStep[], kept = true) => {
-      const copy = structuredClone(f3d);
-      if (!kept) delete (copy.features[0] as F3dBaseFeature).kept;
-      return f3dToDesign(copy, 'Box', { bases }).report.skipped[0]?.reason;
-    };
+    const reason = (bases: BaseStep[]) =>
+      f3dToDesign(structuredClone(f3d), 'Box', { bases }).report.skipped[0]?.reason;
     expect(reason([{ feature: 40, reason: 'unsupported geometry (helix)' }])).toBe(
       'the body it holds could not be read (unsupported geometry (helix))',
     );
     expect(reason([])).toBe('the body it holds was not found');
-    expect(reason([], false)).toBe('it holds no body');
+  });
+
+  it('imports a base feature that holds no body as nothing, with no note', () => {
+    const { f3d } = baseDesign();
+    delete (f3d.features[0] as F3dBaseFeature).kept;
+    const { design, report } = f3dToDesign(f3d, 'Box');
+    expect(report.imported).toEqual(['Base Feature1']);
+    expect(report.skipped).toEqual([]);
+    expect(report.notes).toEqual([]);
+    expect(design.doc.features).toEqual([]);
   });
 
   it('names no face of the base body that two faces tag alike', () => {

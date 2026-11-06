@@ -957,8 +957,8 @@ export function f3dToDesign(
           report.imported.push(feature.name);
         }
       } else if (feature.type === 'base') {
-        const reason =
-          feature.kept === undefined ? 'it holds no body' : keepBase(feature.id, feature.name);
+        // One that holds no body adds nothing: imported as it is, as nothing.
+        const reason = feature.kept === undefined ? undefined : keepBase(feature.id, feature.name);
         if (reason) report.skipped.push(skippedFeature(feature.name, feature.kind, reason));
         else report.imported.push(feature.name);
       } else if (

@@ -1833,8 +1833,9 @@ features after it) nor a final body put back in time.
   names a face by the operation that first made it, which the kept body's
   faces keep (the base feature is a later change on them), and the STEP keeps
   the solid's face order through a STEP reader. A tag two faces carry names
-  neither. A base feature that holds no body is left out with "it holds no
-  body"; one whose body the writer can't write, with the writer's reason.
+  neither. A base feature that holds no body is imported as nothing (it adds
+  nothing, so it is neither left out nor noted; the owner, 2026-11-06); one
+  whose body the writer can't write is left out with the writer's reason.
 - The STEP bytes come back as `ImportResult.files`. `saveF3dImport` writes them
   before the first document that names them; the body check's probe
   (`probeDocument`'s `own`) and `bodyFiles` carry them, so the base body is a
@@ -1852,9 +1853,11 @@ STEP is at most `MAX_ATTACHMENT_BYTES` (25 MB) and all of them together
 **Measured** on the owner's 252 files against the reference STEP, before
 (main at `a887b70b`) and after, per design:
 
-- The replay: 163 match either way; matching despite skips 2 → 3, partial
-  25 → 24, mismatch 48 → 49, no body 5 → 4; features left out (not counting
-  suppressed ones) 77 → 67. Seven designs changed, none for the worse. The
+- The replay: match 163 → 164, matching despite skips 2 → 2, partial
+  25 → 22, mismatch 48 → 51, no body 5 → 4; features left out (not counting
+  suppressed ones) 77 → 61. Seven designs changed, none for the worse (two
+  count as mismatch instead of partial only because nothing is left out of
+  them any more: their volumes are closer or the same). The
   power-supply family's main body went from partial (67.6 % off) to
   matching; one sibling from 60.5 % to 3.7 % off, the other stays 1.9 % off
   (that is its other components) with its body now made; a carrying case
@@ -1862,7 +1865,8 @@ STEP is at most `MAX_ATTACHMENT_BYTES` (25 MB) and all of them together
   is read now; what is left is their fillets and chamfers); the phone case from
   no body to one 2.8 % over: its chamfers name all 57 of their edges, but the
   kernel reads the kept body as not quite a sound solid and can't chamfer it.
-  A design whose base features hold no body only changes its reason.
+  A base feature that holds no body is imported as nothing (6 on the
+  corpus's timelines, in 4 designs), so it no longer counts as left out.
 - The body check: designs matching before it 165 → 166, after it 225 → 227
   (the carrying case and the printer accessory); file bodies editable 232 → 235,
   frozen 124 → 124 (two that the timeline now makes, two more that the
@@ -1874,6 +1878,5 @@ STEP is at most `MAX_ATTACHMENT_BYTES` (25 MB) and all of them together
 - The two files of issue #93 import exactly as before. No kernel crash.
 
 **Not done:** a base feature is never imported from its final body (that
-would put the later features' changes in twice); an empty base feature (6 on
-the corpus's timelines) stays out with its reason; the phone case's chamfers
+would put the later features' changes in twice); the phone case's chamfers
 wait on the kernel.
