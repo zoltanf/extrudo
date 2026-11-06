@@ -365,3 +365,13 @@ for, so a section stored on a view never cuts a file on opening.
 
 **Open items** above: "saving a section with a named view" is done by this
 amendment.
+
+**Results (2026-11-06).** Slice 1 (core): `ViewSectionSchema` and
+`NamedView.section`, `saveView`/`updateView` (`section: null` removes it), the
+rename rewrite, `docs/file-format.md` §4.3. Slice 2 (app):
+`apps/web/src/section/viewSection.ts` (`sectionForView`, `showViewSection`),
+`shell/namedViews.ts`, the browser row and the nav-bar entry. A malformed
+`section` fails the whole load like any malformed value in the document (an
+unknown key inside `section` is dropped), as the rest of the document does.
+Tests: `views.test.ts` (7 added), `shell/namedViews.test.ts` (9; `pnpm check`: 6440 passed, 24 skipped), and an e2e
+test in `named-views.spec.ts` (7 of 7 pass locally; section.spec.ts passes apart from its two Ubuntu-baseline screenshots, which CI judges); the code matches the points above.

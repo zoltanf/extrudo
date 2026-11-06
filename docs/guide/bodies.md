@@ -66,7 +66,9 @@ Two more folders, **Document settings** and **Named views**, sit collapsed at th
 sets the design's unit and precision, and in an inch design whether lengths show as fractions (see
 [Units](./parameters.md#units)). **Named views** lists the views saved from the navigation bar's Named
 views menu (see [moving the view](./getting-started.md)): a click on a row restores it, and its
-right-click menu has Restore, Update to Current View, Rename (`F2`) and Delete.
+right-click menu has Restore, Update to Current View, Rename (`F2`) and Delete. A view that
+keeps a section shows the section icon after its name and, at the right, how many planes it has
+("1 plane", "2 planes") or "box".
 
 While a design opens, the Bodies folder shows the bodies the last session made as faint rows
 and the view says "Preparing your design…". They turn solid when the model has been computed.

@@ -183,8 +183,10 @@ export const updateParameter = defineCommand<{
       if (section?.kind === 'planes') {
         for (const plane of section.planes) plane.offset = rename(plane.offset);
       } else if (section?.kind === 'box') {
-        section.center = section.center.map(rename) as typeof section.center;
-        section.half = section.half.map(rename) as typeof section.half;
+        const [cx, cy, cz] = section.center;
+        const [hx, hy, hz] = section.half;
+        section.center = [rename(cx), rename(cy), rename(cz)];
+        section.half = [rename(hx), rename(hy), rename(hz)];
       }
     }
   }

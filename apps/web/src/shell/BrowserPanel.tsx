@@ -789,6 +789,18 @@ function PendingBodyLeaf({ body, actions }: { body: BodyEntry; actions: BodyActi
  * saved camera (an animated move, not a command), F2 or Rename renames it,
  * Update to Current View overwrites its camera, Delete removes it.
  */
+/** `planes:<n>` or `box`: the hook the e2e reads (absent for a view without a section). */
+function sectionMark(section: NamedView['section']) {
+  if (!section) return undefined;
+  return section.kind === 'box' ? 'box' : `planes:${section.planes.length}`;
+}
+
+function sectionLabel(section: NonNullable<NamedView['section']>) {
+  if (section.kind === 'box') return 'box';
+  const n = section.planes.length;
+  return n === 1 ? '1 plane' : `${n} planes`;
+}
+
 function ViewLeaf({ view, actions }: { view: NamedView; actions: ViewActions }) {
   const [renaming, setRenaming] = useState(false);
   const onKeyDown = (event: KeyboardEvent) => {
@@ -804,7 +816,7 @@ function ViewLeaf({ view, actions }: { view: NamedView; actions: ViewActions }) 
       label={`${view.name} menu`}
       disabled={renaming}
       trigger={
-        <Leaf data-view={view.id}>
+        <Leaf data-view={view.id} data-view-section={sectionMark(view.section)}>
           {renaming ? (
             <RenameField
               name={view.name}
@@ -822,6 +834,16 @@ function ViewLeaf({ view, actions }: { view: NamedView; actions: ViewActions }) 
             >
               {view.name}
             </button>
+          )}
+          {view.section && !renaming && (
+            <>
+              <span title="Restores its section too" className="shrink-0 text-muted">
+                <ToolIcon name="section" category="inspect" size={14} />
+              </span>
+              <span className="ml-auto shrink-0 whitespace-nowrap text-sm text-muted">
+                {sectionLabel(view.section)}
+              </span>
+            </>
           )}
         </Leaf>
       }

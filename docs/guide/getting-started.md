@@ -94,8 +94,9 @@ navigation bar's **Named views** menu lists them to restore, and **Save Current 
 where the camera is now (name, then Save). A saved view comes back exactly — including whether
 it was orthographic — as one entry of the design, so it survives undo, reload and export. The
 browser's **Named views** folder has the same views: a click restores, and the right-click menu
-updates one to where the camera is now, renames it or deletes it. Views hold only the camera: a
-section plane or a hidden body is not part of one.
+updates one to where the camera is now, renames it or deletes it. A view saved while a
+[section](./tools/section.md) is shown keeps it and brings it back when restored; restoring a view
+without one leaves the section on screen alone. A hidden body is not part of a view.
 
 The browser's **Document settings** folder holds the design's **unit** (`mm`, `cm`, `m` or `in`:
 what a plain number means and what dimensions show) and **precision** (decimal places). Changing
