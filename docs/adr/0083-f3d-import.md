@@ -1937,6 +1937,7 @@ now one body as in the file, and closer, while the case's total is short
 elsewhere.
 Not import problems, left to the owner: the kernel's sketch faces and the
 sketch's regions disagree (a curve end within the kernel's fuzzy value of a
-circle; one face where the sketch has two regions), a cut whose side is tangent
-to the body's cylinder removes nothing, sketch planes in no origin-axis
-direction, and a self-crossing spline chain that makes no region.
+circle; one face where the sketch has two regions), sketch planes in no
+origin-axis direction, and a self-crossing spline chain that makes no region.
+(A cut whose side is tangent to the body's cylinder, which removed nothing, is
+built again with a fuzzy value since the kernel's 2026-11-06 change.)
