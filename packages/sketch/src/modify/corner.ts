@@ -287,7 +287,11 @@ function cutCorner(b: ChangeBuilder, corner: Corner, ta: Vec2, tb: Vec2): Sketch
     const refs = constraintRefs(c);
     const onLine = refs.find((r) => lines.has(r));
     if (onLine !== undefined) {
-      if (c.type === 'midpoint' || c.type === 'equal') {
+      if (
+        c.type === 'midpoint' ||
+        c.type === 'equal' ||
+        (c.type === 'midpointOnLine' && lines.has(c.a))
+      ) {
         b.removeConstraint(id);
         continue;
       }

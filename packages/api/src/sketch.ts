@@ -877,6 +877,11 @@ export class SketchBuilder {
     return this.#constraint({ type: 'midpoint', point: idOf(point), of: idOf(of) });
   }
 
+  /** A line's middle lies on another line, taken as endless (an axis, an edge; ADR-0129). */
+  midpointOnLine(line: EntityLike, on: EntityLike): ConstraintId {
+    return this.#constraint({ type: 'midpointOnLine', a: idOf(line), b: idOf(on) });
+  }
+
   /** An entity stays where it is (a projected curve, or geometry to solve around). */
   fix(entity: EntityLike): ConstraintId {
     return this.#constraint({ type: 'fix', entity: idOf(entity) });

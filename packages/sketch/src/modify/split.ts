@@ -623,6 +623,10 @@ function resplit(b: ChangeBuilder, span: Span, pieces: Piece[], joined: boolean)
       case 'midpoint':
         b.removeConstraint(cid);
         break;
+      case 'midpointOnLine':
+        // Its middle moves with a cut; the line it lies on stays the same line.
+        if (c.a === span.id) b.removeConstraint(cid);
+        break;
       case 'symmetric':
         if (c.axis !== span.id) b.removeConstraint(cid);
         break;

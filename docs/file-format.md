@@ -1776,6 +1776,7 @@ Field values are entity IDs. "Kind" says what entity types are allowed.
 | `collinear` | `a`, `b` | Two distinct lines. |
 | `concentric` | `a`, `b` | Two distinct circles or arcs. |
 | `midpoint` | `point`, `of` | `point` a point; `of` a line or an arc. |
+| `midpointOnLine` | `a`, `b` | Two distinct lines: `a`'s middle lies on `b`, taken as endless (ADR-0129). |
 | `fix` | `entity` | Any entity (point, line, circle, arc, ellipse, spline — not `text`). Splines take only `fix`. |
 | `parallel` | `a`, `b` | Two distinct lines. |
 | `perpendicular` | `a`, `b` | Two distinct lines. |

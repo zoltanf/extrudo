@@ -135,6 +135,23 @@ describe('constraints (one per type)', () => {
     close(dist(s.p(m2), s.p(arc.start)), dist(s.p(m2), s.p(arc.end)));
   });
 
+  it("midpointOnLine puts line a's middle on line b, taken as endless (ADR-0129)", () => {
+    const b = new SketchBuilder();
+    const top = b.line(3, 10, 23, 10);
+    // A short vertical line well below the top line's span: b counts as endless.
+    const axis = b.line(0, -40, 0, -30);
+    b.constrain({ type: 'fix', entity: axis.id });
+    b.constrain({ type: 'horizontal', a: top.id });
+    b.constrain({ type: 'midpointOnLine', a: top.id, b: axis.id });
+    const s = solve(b);
+    clean(s, 2); // the top line's 4, less horizontal and the midpoint
+    const [ts, te] = [s.p(top.start), s.p(top.end)];
+    close((ts.x + te.x) / 2, 0);
+    // The axis itself did not move to the top line's middle.
+    close(s.p(axis.start).x, 0);
+    close(s.p(axis.start).y, -40);
+  });
+
   it('fix keeps a point, a line and a circle where they are', () => {
     const b = new SketchBuilder();
     const p = b.point(1, 2);
