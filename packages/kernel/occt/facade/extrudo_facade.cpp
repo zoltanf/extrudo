@@ -15511,8 +15511,11 @@ private:
    * ms on 6 to 400 faces, 0.1 s for a 44-face tool of letters).
    */
   /**
-   * Points just inside `solid` (1e-3 mm in from the middle of each face whose
-   * middle lies on it) that `inA` classifies inside `a`, and outside it.
+   * Points just inside `solid` (1e-2 mm in from the middle of each face whose
+   * middle lies on it) that `inA` classifies inside `a`, and outside it. Not
+   * closer: letters cut again into pockets they had cut lay within a
+   * micrometre of the pockets' walls, and a point 1e-3 mm in fell into that
+   * sliver of the body.
    */
   static std::pair<int, int> probeInside(BRepClass3d_SolidClassifier& inA, const TopoDS_Shape& solid) {
     int in = 0, out = 0;
@@ -15530,7 +15533,7 @@ private:
       if (normal.Magnitude() < 1e-12) continue;
       normal.Normalize();
       if (face.Orientation() == TopAbs_REVERSED) normal.Reverse();
-      inA.Perform(p.Translated(-1e-3 * normal), 1e-7);
+      inA.Perform(p.Translated(-1e-2 * normal), 1e-7);
       if (inA.State() == TopAbs_IN) ++in;
       else if (inA.State() == TopAbs_OUT) ++out;
     }

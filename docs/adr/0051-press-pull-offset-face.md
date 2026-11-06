@@ -781,11 +781,14 @@ today's message.
   swallowed whole; and, for a fuse, when it stays a solid of its own; a
   common is a suspect when it has no solid.
 - *A suspect counts only if the tool really reaches into the body:* a point
-  1e-3 mm inside the tool, from the middle of each of its faces, classifies
+  1e-2 mm inside the tool, from the middle of each of its faces, classifies
   inside the body (outside it, for a swallowed fuse tool). A tool that only
   touches has no such point and doesn't retry: a cut with a 44-face tool of
   letters resting on a body took 1.17 s and twice that with a retry; the
-  points cost 0.1 s there.
+  points cost 0.1 s there. Not 1e-3 mm: letters cut a second time into the
+  pockets they had cut lay within a micrometre of the pockets' walls, and one
+  point 1e-3 mm in (none at 5e-4 or 2e-3) fell into that sliver of the body,
+  so the cut ran twice for nothing (1.4 s to 3.1 s).
 - Cost on an ordinary boolean whose operands met: 0.03 to 0.26 ms (plates of
   126 and 406 faces whose booleans take 30 to 330 ms); the points, on a
   suspect only, 1 to 20 ms on bodies of 6 to 406 faces; the retry, one more
