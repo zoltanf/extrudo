@@ -341,6 +341,8 @@ export interface F3dBodyMove {
   sources: number[];
   made: number[];
   target?: number;
+  /** The base feature it made to hold the moved body (its record, `decode/base.ts`). */
+  base?: number;
 }
 
 /**

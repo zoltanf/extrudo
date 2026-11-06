@@ -209,12 +209,18 @@ export function fileBodies(
  * body, so a kernel computes the replayed bodies and the file's
  * own shapes together. Only bodies the writer could write are probed; the rest
  * stay unchecked. The probe is thrown away after measuring: it is not the
- * project's document.
+ * project's document. A base feature's body the replay imports (`own`) is a
+ * replayed body like any other: it is measured and paired, never probed.
  */
-export function probeDocument(replay: Design, steps: readonly BodyStep[]): BodyProbe {
+export function probeDocument(
+  replay: Design,
+  steps: readonly BodyStep[],
+  /** The bytes of the files the replay itself imports (`ImportResult.files`). */
+  own: ReadonlyMap<AttachmentId, Uint8Array> = new Map(),
+): BodyProbe {
   const design = Design.from(replay.toJSON());
   const bodies: ProbeBody[] = [];
-  const files = new Map<AttachmentId, Uint8Array>();
+  const files = new Map<AttachmentId, Uint8Array>(own);
   design.transaction('Probe the file bodies', () => {
     for (const step of steps) {
       if (step.step === undefined) continue;
@@ -550,6 +556,8 @@ export function applyBodyPlan(design: Design, plan: BodyPlan, steps: readonly Bo
 export function bodyFiles(
   design: Design,
   steps: readonly BodyStep[],
+  /** The bytes of the files the replay itself imports (`ImportResult.files`), kept as they are. */
+  own: ReadonlyMap<AttachmentId, Uint8Array> = new Map(),
 ): Map<AttachmentId, Uint8Array> {
   const byHash = new Map<string, Uint8Array>();
   for (const step of steps) {
@@ -559,7 +567,7 @@ export function bodyFiles(
   }
   const files = new Map<AttachmentId, Uint8Array>();
   for (const [id, attachment] of Object.entries(design.doc.attachments ?? {})) {
-    const bytes = byHash.get(attachment.sha256);
+    const bytes = own.get(id as AttachmentId) ?? byHash.get(attachment.sha256);
     if (bytes) files.set(id as AttachmentId, bytes);
   }
   return files;

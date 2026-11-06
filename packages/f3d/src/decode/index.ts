@@ -1,4 +1,5 @@
 /** Every record decoder, keyed by the type GUID it reads. */
+import { BASE_FEATURE } from './base';
 import { COMBINE, MOVE } from './combine';
 import type { RecordDecoder } from './common';
 import { PARAMETER_VALUE, parameterValue } from './parameters';
@@ -36,6 +37,7 @@ export const FEATURE_TYPES: Record<string, string> = {
   '13BE0EF0-467B-4F5A-BFFB-E0976171B678': 'TorusPrimitive',
   [COMBINE]: 'Combine',
   [MOVE]: 'Move',
+  [BASE_FEATURE]: 'BaseFeature',
 };
 
 const scopeDecoder: RecordDecoder<unknown> = { name: 'feature scope', decode: readScope };

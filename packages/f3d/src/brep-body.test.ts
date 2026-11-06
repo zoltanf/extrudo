@@ -9,7 +9,7 @@ import { readAsm } from './asm';
 import { type AsmBodySolid, asmBodies } from './asm-body';
 import { splinePoint } from './asm-spline';
 import { fileBodies } from './body-check';
-import { solidStep, torusSpline, utf16StreamName } from './brep-step';
+import { keptBody, keptSolidIndex, solidStep, torusSpline, utf16StreamName } from './brep-step';
 import { F3dFormatError } from './bytes';
 
 type V = [number, number, number];
@@ -89,6 +89,8 @@ interface FaceIn {
   /** The raw face-record flag (its forward sense); overrides `reversed` when set. */
   forward?: boolean;
   loops: Occurrence[][];
+  /** A face tag (`generic_tag_attrib_def`): its token and the operation that made the face. */
+  tag?: { token: string; op: number };
 }
 
 const enc = new TextEncoder();
@@ -307,6 +309,11 @@ function solidStream(
   const SURFACE = CURVE + curves.length;
 
   const records: number[][] = new Array(SURFACE + surfaces.length);
+  // Face tags go after everything else, one attribute record each.
+  const tagAt = new Map<number, number>();
+  faces.forEach((f, fi) => {
+    if (f.tag) tagAt.set(fi, SURFACE + surfaces.length + tagAt.size);
+  });
   records[BODY] = rec('body', ptr(-1), int(1), ptr(-1), ptr(LUMP), ptr(-1), ptr(-1));
   for (let li = 0; li < lumps; li++)
     records[LUMP + li] = rec('lump', ptr(-1), int(-1), ptr(-1), ptr(SHELL), ptr(BODY));
@@ -385,7 +392,7 @@ function solidStream(
     const next = fi + 1 < end ? FACE + fi + 1 : opts.faceCycle ? FACE + first : -1;
     records[FACE + fi] = rec(
       'face',
-      ptr(-1),
+      ptr(faces[fi]?.tag ? (tagAt.get(fi) ?? -1) : -1),
       int(-1),
       ptr(next),
       ptr(loopIds[fi]?.[0] ?? -1),
@@ -500,6 +507,23 @@ function solidStream(
       );
     else if (s.t === 'spline') records[SURFACE + si] = splineSurface(s);
     else records[SURFACE + si] = rec(s.type, ptr(-1), int(-1), ptr(-1));
+  }
+  for (const [fi] of tagAt) {
+    const t = faces[fi]?.tag as { token: string; op: number };
+    records.push(
+      rec(
+        'ATTRIB_CUSTOM-attrib',
+        ptr(-1),
+        ptr(-1),
+        str('generic_tag_attrib_def '),
+        int(1),
+        int(0),
+        str(t.token),
+        int(0),
+        int(1),
+        int(t.op),
+      ),
+    );
   }
   if (opts.staleLump) {
     // An earlier lump record: its shell names the live lump and chains into
@@ -1542,6 +1566,40 @@ describe('shared records cost once', () => {
   it('refuses a body whose STEP text passes the cap, with a reason', () => {
     expect(solidStep(firstSolid(solidStream(boxFaces())), 1000).reason).toBe(
       'unsupported geometry (a body of more than 1000 bytes of STEP)',
+    );
+  });
+});
+
+describe("a base feature's kept body", () => {
+  const tagged = (op: number) =>
+    boxFaces().map((f, i) => ({ ...f, tag: { token: `${i + 1}`, op } }));
+
+  it('writes the solid that carries its operation, with each face’s tags in the STEP’s order', () => {
+    const records = readAsm(solidStream(tagged(301)));
+    const kept = keptBody(records, asmBodies(records), [301], 1 << 20);
+    expect(kept.reason).toBeUndefined();
+    expect(kept.step).toContain('MANIFOLD_SOLID_BREP');
+    expect(kept.faces).toEqual([['1@301'], ['2@301'], ['3@301'], ['4@301'], ['5@301'], ['6@301']]);
+  });
+
+  it('refuses a stream with no solid of its operation, and a STEP past the room left', () => {
+    const records = readAsm(solidStream(tagged(301)));
+    expect(keptBody(records, asmBodies(records), [999], 1 << 20)).toEqual({
+      reason: 'the body it holds is not in its stream',
+    });
+    expect(keptBody(records, asmBodies(records), [301], 100).step).toBeUndefined();
+  });
+
+  it('takes the latest state, and the body over loose faces', () => {
+    const own = new Set([315]);
+    const state = (faces: number, ...ops: number[]) => ({ faces, ops: new Set(ops) });
+    // An earlier state (a strict subset of the operations), the body, a loose face.
+    expect(
+      keptSolidIndex([state(22, 303, 315), state(22, 303, 305, 315), state(1, 303, 305, 315)], own),
+    ).toBe(1);
+    expect(keptSolidIndex([state(6, 300)], own)).toBe('the body it holds is not in its stream');
+    expect(keptSolidIndex(new Array(65).fill(state(1, 315)), own)).toBe(
+      'too many solids carry its operation',
     );
   });
 });

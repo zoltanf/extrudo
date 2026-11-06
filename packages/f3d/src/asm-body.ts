@@ -68,6 +68,8 @@ export interface AsmBodyLoop {
 }
 
 export interface AsmBodyFace {
+  /** The face record in its stream (its tags are read from it). */
+  record?: number;
   surface: AsmSurface;
   /** The face sense flag: true when the surface normal runs against the face. */
   reversed: boolean;
@@ -322,7 +324,7 @@ function readFace(records: AsmRecord[], walk: Walk, face: number): AsmBodyFace {
     ((surface.kind === 'sphere' || surface.kind === 'torus') && surface.inward) ||
     (surface.kind === 'bspline' && surface.reversed);
   const forward = (bools(records[face])[0] ?? true) !== inward;
-  return { surface, reversed: !forward, loops: readLoops(records, walk, face) };
+  return { record: face, surface, reversed: !forward, loops: readLoops(records, walk, face) };
 }
 
 /** The faces of one shell: its first face, then the face chain. */

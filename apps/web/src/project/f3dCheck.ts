@@ -11,7 +11,12 @@
  * main chunk.
  */
 import type { Design } from '@extrudo/api';
-import { type BodyId, createDocumentStore, createModelStore } from '@extrudo/core';
+import {
+  type AttachmentId,
+  type BodyId,
+  createDocumentStore,
+  createModelStore,
+} from '@extrudo/core';
 import {
   type BodyLink,
   type BodyMeasure,
@@ -48,6 +53,8 @@ export type BodyCheck = (
   replay: Design,
   steps: readonly BodyStep[],
   links: readonly BodyLink[],
+  /** The bytes of the files the replay itself imports (a base feature's body). */
+  files?: ReadonlyMap<AttachmentId, Uint8Array>,
 ) => Promise<BodyCheckResult>;
 
 export interface BodyCheckOptions {
@@ -65,9 +72,10 @@ export async function checkF3dBodies(
   replay: Design,
   steps: readonly BodyStep[],
   links: readonly BodyLink[],
+  files: ReadonlyMap<AttachmentId, Uint8Array> = new Map(),
   options: BodyCheckOptions = {},
 ): Promise<BodyCheckResult> {
-  const probe = probeDocument(replay, steps);
+  const probe = probeDocument(replay, steps, files);
   if (probe.bodies.length === 0) return undefined;
   const document = createDocumentStore(probe.design.toJSON());
   const model = createModelStore<BodyMesh>();

@@ -26,9 +26,9 @@ import {
   planBodies,
   probeDocument,
 } from './body-check';
-import { type BodyStep, solidStep } from './brep-step';
+import { type BaseStep, type BodyStep, solidStep } from './brep-step';
 import { f3dToDesign } from './map';
-import type { F3dExtrude, F3dSketchFeature } from './model';
+import type { F3dBaseFeature, F3dEdgeFeature, F3dExtrude, F3dSketchFeature } from './model';
 import { type F3dDesign, IDENTITY } from './model';
 
 type V = [number, number, number];
@@ -289,9 +289,10 @@ async function check(
   design: Design,
   links: ReturnType<typeof f3dToDesign>['bodies'],
   steps: BodyStep[],
+  own?: Map<AttachmentId, Uint8Array>,
 ) {
-  const replay = await measureDesign(design);
-  const probe = probeDocument(design, steps);
+  const replay = await measureDesign(design, own);
+  const probe = probeDocument(design, steps, own);
   const probeMeasures = await measureDesign(probe.design, probe.files);
   const measured = new Map<number, BodyMeasure>();
   for (const body of probe.bodies) {
@@ -456,5 +457,165 @@ describe('body check with a kernel', () => {
     expect(Object.values(after.features).every((f) => f.status === 'ok')).toBe(true);
     expect(after.bodies).toEqual(before.bodies);
     expect(planOf(after)).toEqual(planBefore);
+  });
+});
+
+/**
+ * A base feature (record 40) holding a 10 mm box whose faces the file tags
+ * `<k>@900` (k the face's place in `boxSolid`), the design body (51) it made,
+ * and the box's STEP as the writer gives it.
+ */
+function baseDesign(): { f3d: F3dDesign; bases: BaseStep[] } {
+  const base: F3dBaseFeature = {
+    type: 'base',
+    id: 40,
+    kind: 'Base Feature',
+    name: 'Base Feature1',
+    suppressed: false,
+    parameters: [],
+    kept: 50,
+    made: 51,
+  };
+  const step = solidStep(boxSolid(1)).step as string;
+  return {
+    f3d: {
+      parameters: [],
+      userParameters: [],
+      features: [base],
+      bodies: [{ id: 51, index: 1, visible: true, creator: 40, ops: [900] }],
+      problems: [],
+      unreadParameters: 0,
+    },
+    bases: [{ feature: 40, step, faces: [1, 2, 3, 4, 5, 6].map((k) => [`${k}@900`]) }],
+  };
+}
+
+/** A 1 mm chamfer on the box's top edge along +x (between faces 2 and 6). */
+function topChamfer(): F3dEdgeFeature {
+  const face = (token: string, point: V, normal: V) => ({
+    // The file names the face by the operation that first made it, the base
+    // feature as a later change (`[op, -base]`): here an operation of no record.
+    tags: [{ token, designs: [900, -901] }],
+    surface: { kind: 'plane' as const, point, normal },
+  });
+  return {
+    type: 'chamfer',
+    id: 41,
+    kind: 'Chamfer',
+    name: 'Chamfer1',
+    suppressed: false,
+    parameters: [],
+    sets: [
+      {
+        size: {
+          name: 'd1',
+          expression: '1 mm',
+          kind: 'Distance',
+          unit: 'cm',
+          value: 0.1,
+          comment: '',
+          user: false,
+          number: 1,
+          id: 0,
+        },
+        edges: [
+          { faces: [face('2', [0, 0, 1], [0, 0, 1]), face('6', [1, 0, 0], [1, 0, 0])], bounds: [] },
+        ],
+      },
+    ],
+  };
+}
+
+describe('base features', () => {
+  it("imports a base feature's body at its place; a chamfer after it names its edge", async () => {
+    const { f3d, bases } = baseDesign();
+    f3d.features.push(topChamfer());
+    const { design, report, files } = f3dToDesign(f3d, 'Box', { bases });
+    expect(report.imported).toEqual(['Base Feature1', 'Chamfer1']);
+    const [made, chamfer] = design.doc.features;
+    expect(made).toMatchObject({ type: 'import', name: 'Base Feature1' });
+    const edges = chamfer?.inputs.edges as { refs: GeomRef[] } | undefined;
+    const ref = edges?.refs[0]?.id;
+    expect(ref).toContain(`import:${made?.id}:face:2`);
+    expect(ref).toContain(`import:${made?.id}:face:6`);
+    expect(files?.size).toBe(1);
+    const after = await measureDesign(design, files);
+    // The box less a 1 mm × 1 mm × ½ prism along its 10 mm edge.
+    expect(([...after.values()][0] as BodyMeasure).volume).toBeCloseTo(995, 3);
+  });
+
+  it('counts the base body as made by the timeline: editable, not frozen or written again', async () => {
+    const { f3d, bases } = baseDesign();
+    const { design, bodies, files } = f3dToDesign(f3d, 'Box', { bases });
+    const steps: BodyStep[] = [{ record: 51, name: 'Body1', step: bases[0]?.step as string }];
+    const { plan } = await check(design, bodies, steps, files);
+    const id = design.doc.features[0]?.id as string;
+    expect(plan.matched).toEqual([{ body: `${id}:0`, record: 51, name: 'Body1' }]);
+    expect(plan.frozen).toEqual([]);
+    expect(plan.remove).toEqual([]);
+    applyBodyPlan(design, plan, steps);
+    expect(design.doc.features.map((f) => f.type)).toEqual(['import']);
+    expect(Object.keys(design.doc.attachments ?? {})).toHaveLength(1);
+    expect([...bodyFiles(design, steps, files).keys()]).toEqual([...(files?.keys() ?? [])]);
+  });
+
+  it('says why a base feature is left out', () => {
+    const { f3d } = baseDesign();
+    const reason = (bases: BaseStep[], kept = true) => {
+      const copy = structuredClone(f3d);
+      if (!kept) delete (copy.features[0] as F3dBaseFeature).kept;
+      return f3dToDesign(copy, 'Box', { bases }).report.skipped[0]?.reason;
+    };
+    expect(reason([{ feature: 40, reason: 'unsupported geometry (helix)' }])).toBe(
+      'the body it holds could not be read (unsupported geometry (helix))',
+    );
+    expect(reason([])).toBe('the body it holds was not found');
+    expect(reason([], false)).toBe('it holds no body');
+  });
+
+  it('names no face of the base body that two faces tag alike', () => {
+    const { f3d, bases } = baseDesign();
+    f3d.features.push(topChamfer());
+    const faces = bases[0]?.faces?.map(() => ['2@900']);
+    const { report } = f3dToDesign(f3d, 'Box', { bases: [{ ...bases[0], feature: 40, faces }] });
+    expect(report.imported).toEqual(['Base Feature1']);
+  });
+
+  it("imports the body a body move pasted when the bodies it took aren't known", async () => {
+    const { f3d, bases } = baseDesign();
+    // A cut and paste of bodies that made base feature 40 off the timeline; the body it cut is gone.
+    f3d.features = [
+      {
+        type: 'other',
+        id: 45,
+        kind: 'CutPasteBodies',
+        name: 'CutPasteBodies1',
+        suppressed: false,
+        parameters: [],
+      },
+      {
+        type: 'other',
+        id: 46,
+        kind: 'Group',
+        name: 'Group',
+        suppressed: false,
+        parameters: [],
+        group: true,
+      },
+    ];
+    f3d.bodyMoves = [{ id: 45, sources: [], made: [51], base: 40 }];
+    const without = f3dToDesign(structuredClone(f3d), 'Box');
+    expect(without.report.skipped).toEqual([
+      {
+        name: 'CutPasteBodies1',
+        kind: 'CutPasteBodies',
+        reason: 'the bodies it moves were not found',
+      },
+    ]);
+    const { design, report, files, bodies } = f3dToDesign(f3d, 'Box', { bases });
+    expect(report.imported).toEqual(['CutPasteBodies1', 'Group']);
+    expect(design.doc.features).toMatchObject([{ type: 'import', name: 'CutPasteBodies1' }]);
+    expect(bodies?.[0]?.hint).toBe(`${design.doc.features[0]?.id}:0`);
+    expect([...(await measureDesign(design, files)).values()][0]?.volume).toBeCloseTo(1000, 3);
   });
 });
