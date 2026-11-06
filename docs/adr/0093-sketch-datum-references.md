@@ -102,9 +102,10 @@ as before. To place a length near an axis, click away from the axis.
   origin stays pickable where projected axes cross it.
 - **Slice 2:** construction axes and points before the sketch in the timeline,
   shown and not suppressed, are offered like the origin's (`constructionDatums`).
-- **No placement click for a datum distance** (owner's test, 2026-10-19): line ↔
+- ~~**No placement click for a datum distance** (owner's test, 2026-10-19): line ↔
   parallel axis and point ↔ axis commit on the second pick with the label past the
-  line's end; point ↔ point and angles keep the placement click.
+  line's end; point ↔ point and angles keep the placement click.~~ Reversed on
+  2026-11-06 (amendment below).
 - **Datum projections are not drawn** (the view draws the datum).
 - **A stored axis is never drawn as a segment**, not even highlighted; a tool
   hovering or picking it shows the same marker as an axis not yet stored; the origin
@@ -130,6 +131,15 @@ as before. To place a length near an axis, click away from the axis.
   construction entities, listed like any projection.
 - Picking near the origin now prefers the datum to empty space, which changes
   where a Dimension click on an axis goes (point 4).
+
+### Amendment (2026-11-06): every dimension takes a placement click
+
+Owner's review of a screen recording: a line ↔ parallel axis or point ↔ axis
+dimension committing on the second pick worked differently from every other
+dimension (two clicks instead of three), and its value field opened at a label
+the tool placed, away from the cursor. A datum distance now waits for the
+placement click like any other, with the live preview following the cursor;
+`DimensionTool.#datumCursor` and `lineAxisCursor`/`pointAxisCursor` are gone.
 
 ## Deferred
 

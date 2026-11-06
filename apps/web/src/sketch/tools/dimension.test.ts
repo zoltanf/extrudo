@@ -714,4 +714,38 @@ describe('Dimension tool with body geometry (P6-07 slice 2)', () => {
     expect(d && dimensionAnchor(t.data(), d)).toBeUndefined();
     expect(d && sketch && dimensionAnchor(sketch, d)).toBeDefined();
   });
+
+  it('previews a line to the Y axis while it is placed, the label at the cursor', async () => {
+    // Every dimension takes a placement click, a datum distance too (ADR-0093
+    // amendment, 2026-11-06), and its preview follows the cursor until then.
+    const t = await setup({ tool: DIMENSION_TOOL });
+    draw(t, {
+      a0: pt(20, -10),
+      a1: pt(20, 10),
+      a: {
+        type: 'line',
+        start: 'a0' as SketchEntityId,
+        end: 'a1' as SketchEntityId,
+        construction: false,
+      },
+    });
+    t.host.click(at(20.1, 0)); // the line
+    t.host.click(at(0.1, 30)); // the Y axis, not projected yet
+    expect(t.data().dimensions).toEqual({});
+    expect(t.host.state.getState().tool?.prompt()).toBe('Click to place the dimension.');
+    for (const cursor of [
+      [10, 25],
+      [8, -18],
+    ] as const) {
+      t.host.move(at(cursor[0], cursor[1]));
+      const preview = t.host.state.getState().tool?.preview();
+      const d = preview?.dimension;
+      expect(d).toMatchObject({ type: 'distance', a: 'a', expr: '20' });
+      const sketch = preview?.dimensionSketch;
+      const anchor = d && sketch && dimensionAnchor(sketch, d);
+      if (!anchor) throw new Error('no anchor');
+      expect(anchor[0] + (d.label?.x ?? Number.NaN)).toBeCloseTo(cursor[0], 1);
+      expect(anchor[1] + (d.label?.y ?? Number.NaN)).toBeCloseTo(cursor[1], 1);
+    }
+  });
 });

@@ -6,7 +6,7 @@
  * - a line: its length (click on empty space to place it); a second line
  *   makes an angle, or the distance if the lines are parallel; a point makes
  *   the point's distance to the line; a datum axis with a parallel line or a
- *   point (ADR-0093) is placed by the second pick, with no placement click;
+ *   point (ADR-0093) makes their distance, placed like any other;
  * - a circle: its diameter; an arc: its radius (click on empty space to
  *   place it); a second pick, a point, a line or another circle or arc, makes
  *   the distance from its edge (ADR-0112): the edge facing the other entity
@@ -40,7 +40,7 @@ import {
   type Vec2,
 } from '@extrudo/core';
 import type { Inference, ModelSnap } from '@extrudo/sketch/inference';
-import { labelOffset, lineAxisCursor, pointAxisCursor } from './dimensionLayout';
+import { labelOffset } from './dimensionLayout';
 import {
   EMPTY_PREVIEW,
   emptyEdit,
@@ -115,10 +115,7 @@ export class DimensionTool implements SketchTool {
       if (pick) {
         this.#picked.push({ ...pick, at: pointer.cursor });
         this.#hover = undefined;
-        // A datum distance has nothing left to decide: no placement click.
-        const auto = this.#datumCursor();
-        if (!auto) return undefined;
-        return this.#commit(auto);
+        return undefined;
       }
       // Empty space after a line places its length, after a circle or an arc
       // its size; otherwise a click needs a pick.
@@ -194,32 +191,6 @@ export class DimensionTool implements SketchTool {
   /** The picks make a dimension without another pick: two entities. */
   #placing(): boolean {
     return this.#picked[1] !== undefined;
-  }
-
-  /**
-   * The label position when the two picks are a datum axis and a point, or a
-   * line parallel to it (ADR-0093): the distance needs no placement click.
-   */
-  #datumCursor(): Vec2 | undefined {
-    const [first, second] = this.#picked;
-    if (!first || !second || this.#picked.length !== 2) return undefined;
-    const view = this.#view(this.context.sketch());
-    const isAxis = (p: Pick) => {
-      if (p.entity.type !== 'line') return false;
-      if (p.model) return p.model.kind === 'axis';
-      const ref = projectionOf(view, p.id)?.projection.ref;
-      return ref !== undefined && isDatumRef(ref);
-    };
-    const [axis, other] = isAxis(second) && !isAxis(first) ? [second, first] : [first, second];
-    if (!isAxis(axis) || isAxis(other)) return undefined;
-    const axisEnds = lineEnds(view, axis.id);
-    if (!axisEnds) return undefined;
-    const step = 3 * (this.context.snapDistance?.() ?? 1);
-    if (other.entity.type === 'point') {
-      return pointAxisCursor([other.entity.x, other.entity.y], axisEnds, step);
-    }
-    const ends = lineEnds(view, other.id);
-    return ends && parallel(ends, axisEnds) ? lineAxisCursor(ends, axisEnds, step) : undefined;
   }
 
   #pickAt(cursor: Vec2): Pick | undefined {
