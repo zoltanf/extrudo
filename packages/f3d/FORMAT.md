@@ -241,13 +241,39 @@ along the boundary are each listed. Members are not in boundary order. A
 curve trimmed after it was drawn keeps its primary id; its pieces get new
 secondary ids.
 
+The record is **not rewritten when the sketch is edited after the pick**: it
+keeps naming curves the sketch no longer holds and counts pieces as they were
+then. Verified 2026-11-06 by scanning every record's `crv_primary_id`: three
+designs' records name curve ids no record of the file carries any more (the
+curves were deleted and redrawn under new ids), two name primary ids whose
+secondaries have changed (a curve trimmed in two); in each, the body the
+replay makes agrees with the file's (volume, box) only with the region whose
+boundary follows the pieces still listed. A sixth counts lines in 2
+pieces that the sketch now cuts in 3: the lines run 0.5 mm past the circle
+they would end on (inferred: they were lengthened after the pick).
+
+Two copies of one circle (same centre and radius) cut each other where each
+one starts: a full circle's seam counts as a cut where the other circle
+touches it, and that cut is the **first** of the turn (piece 1 ends there),
+unlike a crossing at the start, which counts at 2π. Inferred from one design
+(two identical circles and three radial lines; all three of its records
+rebuild exactly by this rule and by no other tried).
+
+A line tangent to an arc (a rounded corner) touches it once: the arc is not
+cut there (verified on a design whose corner arcs are piece 1 of 1).
+
+A text in the sketch is never part of a region's loops (the record lists
+sketch curves only): the region is solid where the text lies. Seen in 7
+regions of 6 designs; on one the file's body is solid there (its volume).
+
 This package cuts the decoded curves the same way (`regions.ts`), checks that
 the pieces close, and takes every region of the Extrudo sketch inside them by
-the even-odd rule. Where the sketch changed after the pick (curves gone, new
-secondary ids, other counts), it falls back to the curves alone: the region
-those curves close, every region inside it; failing that, the region whose
-outline runs along the most listed curves still there. A region whose curves
-are all gone is left out.
+the even-odd rule. Where the record no longer fits the sketch, it takes the
+one region whose boundary best runs along the listed pieces still found as
+counted; failing that, the region those curves close and every region inside
+it; failing that, the region whose outline runs along the most listed curves
+still there (a listed line lying on an outline edge collinearly counts). A
+region whose curves are all gone is left out.
 
 ### Construction curves
 

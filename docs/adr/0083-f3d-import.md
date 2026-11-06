@@ -1787,3 +1787,63 @@ file's own resize of the hole did, so `map-more.ts`'s `thread()` no longer
 skips a hole at or past half the thread's major diameter, and the face name's
 radius (only the skip read it) is gone. `map-more.test.ts` imports the
 washer's M4 in its Ø4.2 hole instead of leaving it out.
+
+## Amendment, 2026-11-06: profile regions from stale records
+
+A profile region record is written when the profile is picked and is not
+rewritten when the sketch is edited later (FORMAT.md, "Profile regions"):
+curves deleted and redrawn, trimmed into new secondary ids, lengthened past
+the curve they ended on, a notch added. The pieces then don't rebuild, and the
+fallback took the largest region the listed curves still close — often a
+corner, an opening or the whole plate instead of the region meant. Six rules
+(`regions.ts`, `map.ts`):
+
+1. **Overlap fallback** (`overlapRegion`, before `matchRegions`): of the listed
+   pieces, those still found as the file counted them (`listedPieces`) say
+   where the boundary ran. The one region maximising *F · G* is taken, F the
+   share of those pieces' length lying on the region's boundary (holes
+   included), G the share of the boundary lying on them; points every 0.5 mm,
+   within `OVERLAP_TOLERANCE` 0.05 mm; regions under `OVERLAP_MIN_SHARE` 0.3 of F
+   are not scored; accepted at `OVERLAP_SCORE` 0.5. The corpus's stale records
+   score 0.52 to 0.97 for the region meant; a neighbour sharing one side scores
+   far less. Below the score the old fallbacks run as before.
+2. **Collinear duplicates in the curve count** (`staleRegion`): a listed line an
+   outline edge runs along collinearly counts as on the outline, though the
+   sketch keeps the overlap as the other line's edge (the lowest curve ID's).
+3. **Coincident circles** (`sketchPieces`): two arcs with the same centre and
+   radius touch at each one's ends (a full circle's seam), and that touch on a
+   closed curve counts first in the turn, not at 2π. A global "a cut at the
+   start counts first" was tried and rejected: it harmed six matching designs.
+4. **Tangent touch** (`lineCircle`): two roots closer than 10·TOL (0.1 µm
+   along the line) are one. The existing discriminant slack is not the test: it
+   also calls a real 64 µm chord tangent.
+5. **Probe clearance** (`clearProbeOf`): a region's probe point nearer than
+   `PROBE_CLEARANCE` 0.05 mm to its edges is moved inward (`interiorPoint` with
+   that margin, only then: always using it was too slow on long spline outlines);
+   a thin ring round a picked circle had its probe in the sag between its
+   sampled hole and the true circle, inside the circle's pieces.
+6. **Text inside a region** (`textsInside`): the file's regions run round
+   curves only, so a text in one is solid there; Extrudo's region has the
+   letters cut out (ADR-0058 §5). For a region found from its pieces, every text
+   whose box middle they enclose is added as a `sketchEntity` profile. In the
+   corpus 7 regions of 6 designs enclose a text; 3 change, all closer.
+
+Corpus (the private corpus of 252 files, replay and full body check against
+the same day's main): replay 163 match / 48 mismatch / 25 partial / 2 match
+despite skips → 168 / 44 / 22 / 4 (no match lost); bodies 232 editable / 124
+frozen / 26 unchecked → 241 / 115 / 26 (no body worse). A drawer insert, a boat
+toy, a towel holder, a name tag and a drain adapter now match; a doll and a
+keychain match despite their skips; a vent cover goes from 432 % to 2.9 %, a
+meter case from 57 % to 2 %. Two designs move away while their bodies get
+closer: a cabinet loses a skip (a region now found; its total is closer too, but
+a skip-free mismatch ranks below a partial), and a part whose second body is
+now exact still lacks the copy the file's Move keeps. A multi-part case moves
+from 3.9 % to 4.1 %: rule 4 gives one extrude the file's four small regions
+(4.3 mm² each, the file's 4.4) where two came with 81 mm² more; its body is
+now one body as in the file, and closer, while the case's total is short
+elsewhere.
+Not import problems, left to the owner: the kernel's sketch faces and the
+sketch's regions disagree (a curve end within the kernel's fuzzy value of a
+circle; one face where the sketch has two regions), a cut whose side is tangent
+to the body's cylinder removes nothing, sketch planes in no origin-axis
+direction, and a self-crossing spline chain that makes no region.
