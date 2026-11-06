@@ -1330,6 +1330,57 @@ describe('constraint tools refuse a datum axis line (ADR-0093)', () => {
     expect(t.point('a1' as SketchEntityId)[1]).toBeCloseTo(10, 6);
   });
 
+  /** A horizontal line at y = 10 from x = 3 to 23, off the Y axis. */
+  const drawTop = (t: T) =>
+    draw(t, {
+      h0: { type: 'point', x: 3, y: 10 },
+      h1: { type: 'point', x: 23, y: 10 },
+      h: { type: 'line', start: 'h0', end: 'h1', construction: false },
+    });
+  const middleX = (t: T) =>
+    (t.point('h0' as SketchEntityId)[0] + t.point('h1' as SketchEntityId)[0]) / 2;
+
+  it("Midpoint puts a line's middle on the Y axis, the line first (ADR-0129)", async () => {
+    const t = await setup({ tool: 'midpoint' });
+    drawTop(t);
+    t.host.click(at(13, 10.1)); // the line
+    expect(t.host.state.getState().tool?.prompt()).toBe(
+      'Pick the point to put at its middle, or a line or an axis to put its middle on.',
+    );
+    t.host.click(at(0.1, 30)); // the Y axis, away from the line
+    expect(t.host.state.getState().error).toBeUndefined();
+    const { projection } = project(t, yAxis);
+    const axis = projection?.curves.axis as SketchEntityId;
+    expect(Object.values(t.data().constraints)).toEqual([
+      { type: 'midpointOnLine', a: 'h', b: axis },
+    ]);
+    expect(middleX(t)).toBeCloseTo(0, 6);
+  });
+
+  it("Midpoint puts a line's middle on the Y axis, the axis first", async () => {
+    const t = await setup({ tool: 'midpoint' });
+    drawTop(t);
+    t.host.click(at(0.1, 30)); // the Y axis
+    expect(t.host.state.getState().tool?.prompt()).toBe(
+      'Pick the line to put its middle on the axis.',
+    );
+    t.host.click(at(13, 10.1)); // the line
+    const { projection } = project(t, yAxis);
+    const axis = projection?.curves.axis as SketchEntityId;
+    expect(Object.values(t.data().constraints)).toEqual([
+      { type: 'midpointOnLine', a: 'h', b: axis },
+    ]);
+    expect(middleX(t)).toBeCloseTo(0, 6);
+  });
+
+  it('Midpoint refuses a second axis after an axis', async () => {
+    const t = await setup({ tool: 'midpoint' });
+    t.host.click(at(0.1, 30)); // the Y axis
+    t.host.click(at(30, 0.1)); // the X axis
+    expect(t.host.state.getState().error).toBe(HINT);
+    expect(t.data().constraints).toEqual({});
+  });
+
   it('Horizontal lines a sketch point up with the origin', async () => {
     const t = await setup({ tool: 'horizontal' });
     draw(t, { p: { type: 'point', x: 3, y: 4 } });

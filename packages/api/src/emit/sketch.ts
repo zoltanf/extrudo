@@ -317,6 +317,8 @@ function constraintExpr(constraint: SketchConstraint, refs: ReadonlyMap<string, 
       return call('k.concentric', [a(constraint.a), a(constraint.b)]);
     case 'midpoint':
       return call('k.midpoint', [a(constraint.point), a(constraint.of)]);
+    case 'midpointOnLine':
+      return call('k.midpointOnLine', [a(constraint.a), a(constraint.b)]);
     case 'fix':
       return call('k.fix', [a(constraint.entity)]);
     case 'parallel':

@@ -59,19 +59,18 @@ interface Pick {
   model?: ModelSnap;
   /** The marker for a stored datum axis line (ADR-0093), drawn like a fresh axis pick. */
   marker?: ModelSnap;
+  /** Set when the pick is a datum axis's line (ADR-0093): no length or middle of its own. */
+  datum?: boolean;
 }
 
 /**
  * The tools that refuse a datum axis line (ADR-0093): an axis has no length
- * or middle, so Equal, Midpoint and Horizontal/Vertical can't use one. The
- * origin point is not a line and stays allowed everywhere.
+ * or middle, so Equal and Horizontal/Vertical can't use one. Midpoint takes
+ * one only as the line a sketch line's middle goes on (ADR-0129,
+ * `ConstraintTool.#refusesDatum`). The origin point is not a line and stays
+ * allowed everywhere.
  */
-const NO_DATUM_LINE: ReadonlySet<ConstraintToolId> = new Set([
-  'equal',
-  'midpoint',
-  'horizontal',
-  'vertical',
-]);
+const NO_DATUM_LINE: ReadonlySet<ConstraintToolId> = new Set(['equal', 'horizontal', 'vertical']);
 
 /** Why a click on a datum axis's line changes nothing. */
 const DATUM_LINE_HINT = 'An axis has no length or middle; pick a sketch line.';
@@ -183,20 +182,32 @@ const RULES: Record<ConstraintToolId, Rule> = {
     'Pick a circle or an arc.',
     'Pick a circle or an arc to share its center.',
   ),
+  // A point at the middle of a line or arc, or a line's middle on another
+  // line or an axis (`midpointOnLine`, ADR-0129), the axis picked first or second.
   midpoint: {
-    prompt: (p) =>
-      p.length === 0
-        ? 'Pick a point, or the line or arc to put one at the middle of.'
-        : point(p[0]?.entity)
-          ? 'Pick the line or arc to put it at the middle of.'
-          : 'Pick the point to put at its middle.',
+    prompt: (p) => {
+      const first = p[0];
+      if (!first) return 'Pick a point, or the line or arc to put one at the middle of.';
+      if (point(first.entity)) return 'Pick the line or arc to put it at the middle of.';
+      if (first.datum) return 'Pick the line to put its middle on the axis.';
+      if (line(first.entity)) {
+        return 'Pick the point to put at its middle, or a line or an axis to put its middle on.';
+      }
+      return 'Pick the point to put at its middle.';
+    },
     accepts: (p, next) => {
-      const first = p[0]?.entity;
+      const first = p[0];
       if (!first) return point(next) || is('line', 'arc')(next);
-      return point(first) ? is('line', 'arc')(next) : point(next);
+      if (point(first.entity)) return is('line', 'arc')(next);
+      if (first.datum) return line(next);
+      return line(first.entity) ? point(next) || line(next) : point(next);
     },
     make: ([a, b]) => {
       if (!a || !b) return undefined;
+      if (line(a.entity) && line(b.entity)) {
+        const [mid, on] = a.datum ? [b, a] : [a, b];
+        return { type: 'midpointOnLine', a: mid.id, b: on.id };
+      }
       const [p, of] = point(a.entity) ? [a, b] : [b, a];
       return { type: 'midpoint', point: p.id, of: of.id };
     },
@@ -334,7 +345,7 @@ export class ConstraintTool implements SketchTool {
     const accepted = (entity: SketchEntity) => this.#rule.accepts(this.#picked, entity);
     // A datum axis's line has no length or middle (ADR-0093): the tools that
     // need one refuse it, and a click on one says why.
-    const noDatumLine = NO_DATUM_LINE.has(this.id);
+    const noDatumLine = this.#refusesDatum();
     const refused = (id: SketchEntityId, model?: ModelSnap): boolean => {
       if (!noDatumLine || !isDatumLine(sketch, id, model)) return false;
       this.#datumLine = true;
@@ -346,7 +357,10 @@ export class ConstraintTool implements SketchTool {
     );
     if (id) {
       const entity = sketch.entities[id];
-      if (entity) return { id, entity, marker: storedDatumMarker(sketch, id, cursor) };
+      if (entity) {
+        const marker = storedDatumMarker(sketch, id, cursor);
+        return { id, entity, marker, ...(isDatumLine(sketch, id) && { datum: true }) };
+      }
     }
     const model = this.context.pickModel(cursor);
     if (!model) return undefined;
@@ -363,13 +377,31 @@ export class ConstraintTool implements SketchTool {
           id: model.entityId,
           entity,
           marker: storedDatumMarker(sketch, model.entityId, cursor),
+          ...(isDatumLine(sketch, model.entityId, model) && { datum: true }),
         };
       }
       return undefined;
     }
     const stand = modelStandIn(this.context, model);
     if (refused(stand.id, model)) return undefined;
-    return accepted(stand.entity) ? { id: stand.id, entity: stand.entity, model } : undefined;
+    if (!accepted(stand.entity)) return undefined;
+    return {
+      id: stand.id,
+      entity: stand.entity,
+      model,
+      ...(isDatumLine(sketch, stand.id, model) && { datum: true }),
+    };
+  }
+
+  /**
+   * Whether the next pick may not be a datum axis's line. Midpoint takes an
+   * axis as the line a sketch line's middle goes on (ADR-0129): as the first
+   * pick, or right after a sketch line; never after a point, an arc or another axis.
+   */
+  #refusesDatum(): boolean {
+    if (this.id !== 'midpoint') return NO_DATUM_LINE.has(this.id);
+    const [first] = this.#picked;
+    return first !== undefined && (first.datum === true || !line(first.entity));
   }
 
   #edit(constraint: SketchConstraint, picks: readonly Pick[]): SketchEdit {

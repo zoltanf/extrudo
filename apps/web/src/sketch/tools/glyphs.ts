@@ -75,6 +75,7 @@ const ICONS: Record<SketchConstraintType, IconName> = {
   collinear: 'collinear',
   concentric: 'concentric',
   midpoint: 'midpoint',
+  midpointOnLine: 'midpoint',
   fix: 'fix',
   parallel: 'parallel',
   perpendicular: 'perpendicular',
@@ -182,6 +183,9 @@ function glyphEntities(sketch: SketchData, c: SketchConstraint): SketchEntityId[
     case 'pointOnCurve':
     case 'midpoint':
       return [c.point];
+    case 'midpointOnLine':
+      // On the line whose middle it holds; the other may be an axis.
+      return [c.a];
     case 'fix':
       return [c.entity];
     case 'horizontal':

@@ -4300,3 +4300,18 @@ Bug's **"Include recent actions"** is off by default (home screen too); `issueUr
 actions first**, oldest whole lines, before `console`, `steps`, `what`; "Copy report" has
 them all. The read-only handle is `window.__extrudoRecentActions()` (the report's lines); a
 desktop MCP tool for it is deferred.
+
+ADR-0129 (the owner, 2026-11-06): **`midpointOnLine` `{ a, b }`**, line `a`'s middle on line
+`b` taken as endless (an axis's projected line, a body edge, another sketch line). Files:
+`packages/core/src/sketch/schema.ts` (the type, `CONSTRAINT_LABELS`, the kind check),
+`packages/sketch/src/solver/mapping.ts` (planegcs `midpoint_on_line_ll`, `l1` = `a`),
+`apps/web/src/sketch/tools/constrain.ts` (the Midpoint rule, `Pick.datum`,
+`ConstraintTool.#refusesDatum`), `tools/glyphs.ts`, `packages/sketch/src/modify/split.ts`,
+`corner.ts`, `packages/api/src/sketch.ts` (`midpointOnLine`), `api/src/emit/sketch.ts`.
+**Rules:** a separate type, never `midpoint` with a line in `point` (code reads
+`midpoint.point` as a point). The Midpoint tool makes it from a sketch line then a line or
+an axis, or an axis then a sketch line; the axis is always `b`. Midpoint refuses an axis
+after a point, an arc or another axis (`DATUM_LINE_HINT`); Equal and Horizontal/Vertical
+still refuse axes outright (`NO_DATUM_LINE`). The glyph sits on `a`. Cutting `a` drops it;
+cutting `b` keeps it on the piece that keeps `b`'s ID; a fillet or chamfer drops it when `a`
+is a corner's line.
