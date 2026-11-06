@@ -332,6 +332,8 @@ export function mapSketch(sketch: SketchData, values: DimensionValues = {}): Map
           },
         ];
       }
+      case 'midpointOnLine':
+        return [{ id, type: 'midpoint_on_line_ll', l1_id: c.a, l2_id: c.b }];
       case 'fix':
         // Fixed parameters instead of equations (see `fixed`), so a fixed
         // entity links nothing and joins no component.

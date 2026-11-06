@@ -113,9 +113,9 @@ with the same constraints.
 
 One method per constraint type of the sketch schema, each returning its ID:
 
-`coincident`, `pointOnCurve`, `collinear`, `concentric`, `midpoint`, `fix`,
-`parallel`, `perpendicular`, `horizontal`, `vertical`, `tangent`, `smooth`,
-`equal`, `symmetric`.
+`coincident`, `pointOnCurve`, `collinear`, `concentric`, `midpoint`,
+`midpointOnLine`, `fix`, `parallel`, `perpendicular`, `horizontal`, `vertical`,
+`tangent`, `smooth`, `equal`, `symmetric`.
 
 ```ts
 import { Design } from '@extrudo/api';

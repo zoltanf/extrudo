@@ -19,8 +19,10 @@ Put a point at the middle of a line or an arc.
 ## Step by step
 
 1. Press `K` then `M` and click a point and a line or an arc, in either
-   order. Hovering shows what a click would pick; picks stay lit. The
-   pointer does not snap while you pick.
+   order. To centre a line on another line or an axis, click the line,
+   then the other line or the axis (or the axis first). Hovering shows what
+   a click would pick; picks stay lit. The pointer does not snap while you
+   pick.
 2. The second pick adds the constraint and the sketch settles.
 3. The tool stays on for the next pair. `Esc` drops the last pick; with no
    pick left, `Esc` ends the tool.
@@ -32,14 +34,17 @@ Put a point at the middle of a line or an arc.
 
 - On a line, the point stays halfway between the line's two ends. On an arc,
   the point stays on the arc, equally far from both ends.
+- A line's middle on another line or an axis stays on it, however far along:
+  the other line counts as endless. Breaking or trimming the centred line
+  removes the constraint.
 - The solver decides what moves to make it true. A fixed or projected
   point, line or arc does not move.
 - The glyph sits on the point. To remove
   the constraint, press `Esc` to leave the tool (glyphs take clicks only
   while no tool runs), then click the glyph and press `Delete`, or
   right-click it for a menu with Delete.
-- A datum axis has no length or middle, so it can't be the line. The
-  origin point can be the point.
+- A datum axis has no length or middle, so a point can't go at its middle,
+  but a line's middle can go on it. The origin point can be the point.
 - With [Auto-project](../sketching.md#auto-project) on, a body vertex works
   as the point and a straight body edge as the line. The edge or vertex is
   projected into the sketch and the constraint is added once the
@@ -51,9 +56,13 @@ Put a point at the middle of a line or an arc.
   prompt.
 - "Pick the line or arc to put it at the middle of.": the prompt after a
   point.
-- "Pick the point to put at its middle.": the prompt after a line or an arc.
+- "Pick the point to put at its middle, or a line or an axis to put its
+  middle on.": the prompt after a line.
+- "Pick the point to put at its middle.": the prompt after an arc.
+- "Pick the line to put its middle on the axis.": the prompt after an axis.
 - "An axis has no length or middle; pick a sketch line.": you clicked a
-  datum axis. Pick a line you drew, or a body edge.
+  datum axis after a point, an arc or another axis. Pick a line you drew, or
+  a body edge.
 - "Pick a straight edge, or project the edge first (P).": with
   Auto-project on, you clicked a curved body edge. Project it with `P`,
   then pick the projected arc.

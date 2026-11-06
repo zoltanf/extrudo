@@ -2917,9 +2917,8 @@ resolve them in the kernel): the host takes a `constructionDatums` getter (`Datu
 from current state at every pick), and `constructionDatumSources` in `datums.ts` offers only the
 features **before the active sketch in the timeline**, before the marker, not suppressed and
 shown, whose report is an axis or a point — a later one would make the sketch depend on a later
-feature. Owner's test (2026-10-19): a datum **axis** with a parallel line or a point commits at
-the second pick (`DimensionTool.#datumCursor`; label via `lineAxisCursor`/`pointAxisCursor` in
-`dimensionLayout.ts`), with no placement click; origin/datum points and angles keep it.
+feature. A datum distance takes a **placement click like every other dimension** (the 2026-10-19
+second-pick commit was reversed on 2026-11-06), its live preview following the cursor.
 `sketchSegments` skips the entities of datum projections (and their points) unless `datums`
 (`curveSegments`, the hover/selection overlay, passes it). In the constraint tools
 (`tools/constrain.ts`), an axis has no length or middle: **Equal, Midpoint and
@@ -4305,3 +4304,18 @@ Bug's **"Include recent actions"** is off by default (home screen too); `issueUr
 actions first**, oldest whole lines, before `console`, `steps`, `what`; "Copy report" has
 them all. The read-only handle is `window.__extrudoRecentActions()` (the report's lines); a
 desktop MCP tool for it is deferred.
+
+ADR-0129 (the owner, 2026-11-06): **`midpointOnLine` `{ a, b }`**, line `a`'s middle on line
+`b` taken as endless (an axis's projected line, a body edge, another sketch line). Files:
+`packages/core/src/sketch/schema.ts` (the type, `CONSTRAINT_LABELS`, the kind check),
+`packages/sketch/src/solver/mapping.ts` (planegcs `midpoint_on_line_ll`, `l1` = `a`),
+`apps/web/src/sketch/tools/constrain.ts` (the Midpoint rule, `Pick.datum`,
+`ConstraintTool.#refusesDatum`), `tools/glyphs.ts`, `packages/sketch/src/modify/split.ts`,
+`corner.ts`, `packages/api/src/sketch.ts` (`midpointOnLine`), `api/src/emit/sketch.ts`.
+**Rules:** a separate type, never `midpoint` with a line in `point` (code reads
+`midpoint.point` as a point). The Midpoint tool makes it from a sketch line then a line or
+an axis, or an axis then a sketch line; the axis is always `b`. Midpoint refuses an axis
+after a point, an arc or another axis (`DATUM_LINE_HINT`); Equal and Horizontal/Vertical
+still refuse axes outright (`NO_DATUM_LINE`). The glyph sits on `a`. Cutting `a` drops it;
+cutting `b` keeps it on the piece that keeps `b`'s ID; a fillet or chamfer drops it when `a`
+is a corner's line.

@@ -214,6 +214,8 @@ const joint = <T extends string>(type: T) =>
  * point on a line, circle, arc or ellipse (the UI calls both "coincident").
  * Splines take only `fix` for now: their shape follows their points.
  * `horizontal` and `vertical` take a line (`a`) or two points (`a`, `b`).
+ * `midpointOnLine` puts line `a`'s middle on line `b`, taken as endless (an
+ * axis, a body edge or another sketch line; ADR-0129).
  */
 export const SketchConstraintSchema = z.discriminatedUnion('type', [
   pair('coincident'),
@@ -221,6 +223,7 @@ export const SketchConstraintSchema = z.discriminatedUnion('type', [
   pair('collinear'),
   pair('concentric'),
   z.strictObject({ type: z.literal('midpoint'), point: ref, of: ref }),
+  pair('midpointOnLine'),
   z.strictObject({ type: z.literal('fix'), entity: ref }),
   pair('parallel'),
   pair('perpendicular'),
@@ -244,6 +247,7 @@ export const CONSTRAINT_LABELS: Readonly<Record<SketchConstraintType, string>> =
   collinear: 'Collinear',
   concentric: 'Concentric',
   midpoint: 'Midpoint',
+  midpointOnLine: 'Midpoint',
   fix: 'Fix',
   parallel: 'Parallel',
   perpendicular: 'Perpendicular',
@@ -673,6 +677,7 @@ export function sketchIssues(sketch: {
       case 'collinear':
       case 'parallel':
       case 'perpendicular':
+      case 'midpointOnLine':
         e('a', c.a, LINE);
         e('b', c.b, LINE);
         distinct('constraints', id, [c.a, c.b]);

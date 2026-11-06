@@ -193,10 +193,22 @@ describe('constraint tools', () => {
   it('puts a point at the middle of a line from either pick order', async () => {
     const t = await twoLines('midpoint');
     t.host.click(at(10, 0)); // the line first
-    expect(prompt(t)).toBe('Pick the point to put at its middle.');
+    expect(prompt(t)).toBe(
+      'Pick the point to put at its middle, or a line or an axis to put its middle on.',
+    );
     t.host.click(at(0, 10)); // b0
     expect(Object.values(t.data().constraints)).toEqual([
       { type: 'midpoint', point: 'b0', of: 'a' },
+    ]);
+    expect(t.report().ok).toBe(true);
+  });
+
+  it("puts a line's middle on another line (ADR-0129)", async () => {
+    const t = await twoLines('midpoint');
+    t.host.click(at(10, 0)); // line a
+    t.host.click(at(10, 12)); // line b, away from its ends
+    expect(Object.values(t.data().constraints)).toEqual([
+      { type: 'midpointOnLine', a: 'a', b: 'b' },
     ]);
     expect(t.report().ok).toBe(true);
   });

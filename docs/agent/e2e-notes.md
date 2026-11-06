@@ -2277,9 +2277,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 - ADR-0093 (#61): `sketchOnXY`, a Line (30,-10)-(30,10) (inference makes it
   vertical; one Esc leaves the tool's next segment, the prompt stays), then
-  `d`: the line at (30,5), the **Y axis at (0,25)** (a datum pick; a line
-  and its parallel axis, or a point and an axis, need **no placement click**:
-  the second pick commits, ADR-0093). The dimension lands only after the
+  `d`: the line at (30,5), the **Y axis at (0,25)** (a datum pick; the prompt
+  turns to "Click to place the dimension."), then the label at (15,15): a datum
+  distance takes the placement click like any other (ADR-0093, amended
+  2026-11-06). The dimension lands only after the
   kernel reports the projected axis, then opens "Value of d1" (wait up to 60 s for
   focus); `20` + Enter moves the line to x = 20 (`[data-dimension]` reads
   `20.00`, the last `[data-dimension-graphic] line` is 20 mm). The active
@@ -2287,7 +2288,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   100 mm construction line; the origin point adds no curve). Then the line's
   top end (20,10), the **origin (0,0)** (the projected axis gives way to the
   origin there) and a label at (-8,5), left of both: a vertical distance,
-  "Value of d2" = `10` (point ↔ origin still waits for the placement click).
+  "Value of d2" = `10`.
   `data-sketch-projected` lists projected entities, not drawn segments, so
   "datum projections are not drawn" is a unit test (`sketchGeometry.test.ts`).
 

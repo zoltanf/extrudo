@@ -355,6 +355,23 @@ describe('break', () => {
     clean(after);
   });
 
+  it("drops a line's midpoint-on-line when it is cut, keeps it when the line it lies on is (ADR-0129)", () => {
+    const b = new SketchBuilder();
+    const h = b.line(0, 0, 30, 0);
+    const v = b.line(10, -10, 10, 10);
+    b.line(20, -10, 20, 10);
+    b.constrain({ type: 'midpointOnLine', a: h.id, b: v.id });
+    const before = data(b);
+    const cutMiddle = apply(before, breakCurve(before, id(h.id), [15, 0], newId));
+    expect(constraintTypes(cutMiddle)).not.toContain('midpointOnLine');
+    const cutOn = apply(before, breakCurve(before, id(v.id), [10, 5], newId));
+    expect(Object.values(cutOn.constraints)).toContainEqual({
+      type: 'midpointOnLine',
+      a: h.id,
+      b: v.id,
+    });
+  });
+
   it('refuses where nothing crosses', () => {
     const b = new SketchBuilder();
     const h = b.line(0, 0, 30, 0);
