@@ -32,6 +32,8 @@
 #include <BRepAlgoAPI_Common.hxx>
 #include <BRepAlgoAPI_Defeaturing.hxx>
 #include <BOPAlgo_Alerts.hxx>
+#include <BOPAlgo_PaveFiller.hxx>
+#include <BOPDS_DS.hxx>
 #include <TopoDS_AlertWithShape.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
@@ -15479,6 +15481,76 @@ private:
     }
   }
 
+  /** How many sub-shapes of `type` `shape` has. */
+  static int countSubShapes(const TopoDS_Shape& shape, TopAbs_ShapeEnum type) {
+    int n = 0;
+    for (TopExp_Explorer e(shape, type); e.More(); e.Next()) ++n;
+    return n;
+  }
+
+  /** Whether the result has a face that is neither one of `a`'s nor a piece of one: a wall from the tool. */
+  template <typename Builder>
+  static bool hasToolFace(Builder& builder, const TopoDS_Shape& a) {
+    NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> fromA;
+    for (TopExp_Explorer e(a, TopAbs_FACE); e.More(); e.Next()) {
+      fromA.Add(e.Current());
+      for (NCollection_List<TopoDS_Shape>::Iterator it(builder.Modified(e.Current())); it.More(); it.Next()) {
+        fromA.Add(it.Value());
+      }
+    }
+    for (TopExp_Explorer e(builder.Shape(), TopAbs_FACE); e.More(); e.Next()) {
+      if (!fromA.Contains(e.Current())) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Whether a built boolean of `a` and its tool met the tool and still shows
+   * no overlap (ADR-0051, 2026-11-06): the General Fuse found contacts
+   * between them, yet a cut kept every solid and has no wall from the tool,
+   * a common has no solid, or a fuse has more solids than `a` or no face
+   * from the tool. That is what OCCT returns, with no error and often no
+   * warning, when a side of the tool runs along a rounded face of the body
+   * and an edge of the tool lies within a micrometre of one of the body's:
+   * it splits the faces there and then classifies the overlap as outside.
+   * Shapes that don't meet have no contacts, so this costs a map lookup per
+   * face only after a boolean whose operands met (0.15 ms on 400 faces).
+   * Splits are left alone.
+   */
+  template <typename Builder>
+  static bool missedOverlap(Builder& builder, const TopoDS_Shape& a) {
+    if constexpr (!std::is_base_of_v<BRepAlgoAPI_BooleanOperation, Builder>) {
+      return false;
+    } else {
+      const BOPAlgo_PPaveFiller& filler = builder.DSFiller();
+      if (filler == nullptr || filler->PDS()->Interferences().IsEmpty()) return false;
+      const int before = countSubShapes(a, TopAbs_SOLID);
+      const int after = countSubShapes(builder.Shape(), TopAbs_SOLID);
+      switch (builder.Operation()) {
+        case BOPAlgo_CUT:
+          return after > 0 && after == before && !hasToolFace(builder, a);
+        case BOPAlgo_COMMON:
+          return after == 0;
+        case BOPAlgo_FUSE:
+          return after > before || !hasToolFace(builder, a);
+        default:
+          return false;
+      }
+    }
+  }
+
+  template <typename Builder>
+  static void buildBoolean(Builder& builder, const TopoDS_Shape& a, const TopoDS_Shape& b, double fuzzy) {
+    NCollection_List<TopoDS_Shape> arguments, tools;
+    arguments.Append(a);
+    tools.Append(b);
+    builder.SetArguments(arguments);
+    builder.SetTools(tools);
+    builder.SetRunParallel(false);
+    if (fuzzy > 0) builder.SetFuzzyValue(fuzzy);
+    builder.Build();
+  }
+
   template <typename Builder>
   int finishBoolean(Builder& builder, const TopoDS_Shape& a, const TopoDS_Shape& b, bool simplify) {
     // Set the arguments here, not in the builder's constructor: the
@@ -15497,16 +15569,32 @@ private:
     // that a fillet after a cut ran forever on two designs of the corpus.
     const TopoDS_Shape inA = simplify ? BRepBuilderAPI_Copy(a, true, true).Shape() : a;
     const TopoDS_Shape inB = simplify ? BRepBuilderAPI_Copy(b, true, true).Shape() : b;
-    NCollection_List<TopoDS_Shape> arguments, tools;
-    arguments.Append(inA);
-    tools.Append(inB);
-    builder.SetArguments(arguments);
-    builder.SetTools(tools);
-    builder.SetRunParallel(false);
-    builder.Build();
+    buildBoolean(builder, inA, inB, 0);
     if (!builder.IsDone() || builder.HasErrors()) {
       return fail("Boolean failed: OCCT could not combine these shapes.");
     }
+    // Only when the operands met and the result shows no overlap
+    // (`missedOverlap`): the same boolean again with a fuzzy value of 1e-5
+    // mm, which classifies a tool side along a rounded face right (1e-6 still
+    // came out wrong). Its result replaces the first only if it is sound and
+    // shows the overlap; a tool that only touches the body keeps the first
+    // result, and with it the message that the cut removes nothing. The
+    // history, and so the names, come from the boolean that is kept.
+    if (missedOverlap(builder, inA)) {
+      Builder retry;
+      buildBoolean(retry, inA, inB, 1e-5);
+      if (retry.IsDone() && !retry.HasErrors() && !missedOverlap(retry, inA) &&
+          BRepCheck_Analyzer(retry.Shape()).IsValid()) {
+        return finishBuilt(retry, a, b, inA, inB, simplify);
+      }
+    }
+    return finishBuilt(builder, a, b, inA, inB, simplify);
+  }
+
+  /** The rest of `finishBoolean` for the builder whose result is kept. */
+  template <typename Builder>
+  int finishBuilt(Builder& builder, const TopoDS_Shape& a, const TopoDS_Shape& b, const TopoDS_Shape& inA,
+                  const TopoDS_Shape& inB, bool simplify) {
     if (simplify) {
       builder.SimplifyResult();
       keepInputCircles(builder, inA, inB);
