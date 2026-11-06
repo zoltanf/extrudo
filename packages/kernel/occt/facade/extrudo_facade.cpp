@@ -15488,54 +15488,99 @@ private:
     return n;
   }
 
-  /** Whether the result has a face that is neither one of `a`'s nor a piece of one: a wall from the tool. */
-  template <typename Builder>
-  static bool hasToolFace(Builder& builder, const TopoDS_Shape& a) {
-    NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> fromA;
-    for (TopExp_Explorer e(a, TopAbs_FACE); e.More(); e.Next()) {
-      fromA.Add(e.Current());
-      for (NCollection_List<TopoDS_Shape>::Iterator it(builder.Modified(e.Current())); it.More(); it.Next()) {
-        fromA.Add(it.Value());
-      }
-    }
-    for (TopExp_Explorer e(builder.Shape(), TopAbs_FACE); e.More(); e.Next()) {
-      if (!fromA.Contains(e.Current())) return true;
-    }
-    return false;
-  }
-
   /**
-   * Whether a built boolean of `a` and its tool met the tool and still shows
-   * no overlap (ADR-0051, 2026-11-06): the General Fuse found contacts
-   * between them, yet a cut kept every solid and has no wall from the tool,
-   * a common has no solid, or a fuse has more solids than `a` or no face
-   * from the tool. That is what OCCT returns, with no error and often no
-   * warning, when a side of the tool runs along a rounded face of the body
-   * and an edge of the tool lies within a micrometre of one of the body's:
-   * it splits the faces there and then classifies the overlap as outside.
-   * Shapes that don't meet have no contacts, so this costs a map lookup per
-   * face only after a boolean whose operands met (0.15 ms on 400 faces).
-   * Splits are left alone.
+   * How many places a built boolean of `a` and `b` missed an overlap
+   * (ADR-0051, 2026-11-06): 0 when it shows every overlap it met. OCCT
+   * returns such a result, with no error and often no warning, when a side
+   * of the tool runs along a rounded face of the body and an edge of the
+   * tool lies within a micrometre of one of the body's: it splits the faces
+   * there and then classifies the overlap as outside. A solid of `b` the
+   * General Fuse found in contact with `a` counts once when the result has
+   * no face of its own (none that isn't one of `a`'s or a piece of one): for
+   * a cut that kept all of `a`'s solids, a wall it didn't cut; for a fuse,
+   * a tool swallowed whole; and, for a fuse, when it stays a solid of its
+   * own. A common counts once when it has no solid. Only for solids; splits
+   * and booleans of faces count 0. Solids that don't meet have no contacts,
+   * so a tool that misses costs nothing; else a map lookup per face (0.15
+   * ms on 400 faces).
    */
   template <typename Builder>
-  static bool missedOverlap(Builder& builder, const TopoDS_Shape& a) {
+  static int missedOverlaps(Builder& builder, const TopoDS_Shape& a, const TopoDS_Shape& b) {
     if constexpr (!std::is_base_of_v<BRepAlgoAPI_BooleanOperation, Builder>) {
-      return false;
+      return 0;
     } else {
       const BOPAlgo_PPaveFiller& filler = builder.DSFiller();
-      if (filler == nullptr || filler->PDS()->Interferences().IsEmpty()) return false;
+      if (filler == nullptr || filler->PDS()->Interferences().IsEmpty()) return 0;
       const int before = countSubShapes(a, TopAbs_SOLID);
-      const int after = countSubShapes(builder.Shape(), TopAbs_SOLID);
-      switch (builder.Operation()) {
-        case BOPAlgo_CUT:
-          return after > 0 && after == before && !hasToolFace(builder, a);
-        case BOPAlgo_COMMON:
-          return after == 0;
-        case BOPAlgo_FUSE:
-          return after > before || !hasToolFace(builder, a);
-        default:
-          return false;
+      const int tools = countSubShapes(b, TopAbs_SOLID);
+      if (before == 0 || tools == 0) return 0;
+      const TopoDS_Shape& result = builder.Shape();
+      const int after = countSubShapes(result, TopAbs_SOLID);
+      const BOPAlgo_Operation op = builder.Operation();
+      if (op == BOPAlgo_COMMON) return after == 0 ? 1 : 0;
+      if (op == BOPAlgo_CUT && (after == 0 || after < before)) return 0;  // all gone, or a whole solid
+      if (op != BOPAlgo_CUT && op != BOPAlgo_FUSE) return 0;
+      // Which solid of b each of its sub-shapes belongs to, and which of them met a.
+      const BOPDS_PDS& ds = filler->PDS();
+      NCollection_DataMap<TopoDS_Shape, int, TopTools_ShapeMapHasher> solidOf;
+      std::vector<TopoDS_Shape> solids;
+      for (TopExp_Explorer s(b, TopAbs_SOLID); s.More(); s.Next()) {
+        const int k = static_cast<int>(solids.size());
+        solids.push_back(s.Current());
+        solidOf.TryBind(s.Current(), k);
+        for (TopAbs_ShapeEnum type : {TopAbs_FACE, TopAbs_EDGE, TopAbs_VERTEX}) {
+          for (TopExp_Explorer e(s.Current(), type); e.More(); e.Next()) solidOf.TryBind(e.Current(), k);
+        }
       }
+      std::vector<char> met(solids.size(), 0);
+      for (NCollection_Map<BOPDS_Pair>::Iterator it(ds->Interferences()); it.More(); it.Next()) {
+        int i1 = 0, i2 = 0;
+        it.Value().Indices(i1, i2);
+        for (int i : {i1, i2}) {
+          if (i < 0 || i >= ds->NbSourceShapes() || ds->Rank(i) != 1) continue;
+          if (const int* k = solidOf.Seek(ds->Shape(i))) met[*k] = 1;
+        }
+      }
+      // a's faces and their pieces; the result's faces that aren't among them, by tool solid.
+      NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> fromA;
+      for (TopExp_Explorer e(a, TopAbs_FACE); e.More(); e.Next()) {
+        fromA.Add(e.Current());
+        for (NCollection_List<TopoDS_Shape>::Iterator it(builder.Modified(e.Current())); it.More(); it.Next()) {
+          fromA.Add(it.Value());
+        }
+      }
+      NCollection_DataMap<TopoDS_Shape, int, TopTools_ShapeMapHasher> toolFace;
+      for (size_t k = 0; k < solids.size(); ++k) {
+        if (!met[k]) continue;
+        for (TopExp_Explorer e(solids[k], TopAbs_FACE); e.More(); e.Next()) {
+          const NCollection_List<TopoDS_Shape>& images = builder.Modified(e.Current());
+          if (images.IsEmpty()) toolFace.TryBind(e.Current(), static_cast<int>(k));
+          for (NCollection_List<TopoDS_Shape>::Iterator it(images); it.More(); it.Next()) {
+            toolFace.TryBind(it.Value(), static_cast<int>(k));
+          }
+        }
+      }
+      std::vector<char> wall(solids.size(), 0), apart(solids.size(), 0);
+      for (TopExp_Explorer s(result, TopAbs_SOLID); s.More(); s.Next()) {
+        bool ownOnly = true;
+        int owner = -1;
+        for (TopExp_Explorer e(s.Current(), TopAbs_FACE); e.More(); e.Next()) {
+          if (fromA.Contains(e.Current())) {
+            ownOnly = false;
+            continue;
+          }
+          if (const int* k = toolFace.Seek(e.Current())) {
+            wall[*k] = 1;
+            owner = *k;
+          }
+        }
+        if (ownOnly && owner >= 0) apart[owner] = 1;
+      }
+      int missed = 0;
+      for (size_t k = 0; k < solids.size(); ++k) {
+        if (met[k] && (!wall[k] || (op == BOPAlgo_FUSE && apart[k]))) ++missed;
+      }
+      return missed;
     }
   }
 
@@ -15573,19 +15618,19 @@ private:
     if (!builder.IsDone() || builder.HasErrors()) {
       return fail("Boolean failed: OCCT could not combine these shapes.");
     }
-    // Only when the operands met and the result shows no overlap
-    // (`missedOverlap`): the same boolean again with a fuzzy value of 1e-4
+    // Only when the operands met and the result misses an overlap
+    // (`missedOverlaps`): the same boolean again with a fuzzy value of 1e-4
     // mm (the distance at which the app counts bodies as touching), which
     // classifies a tool side along a rounded face right; 1e-6 and 1e-5 still
     // came out wrong or broken on some of the cases measured. Its result
-    // replaces the first only if it is sound and shows the overlap; a tool
+    // replaces the first only if it is sound and misses fewer; a tool
     // that only touches the body keeps the first result, and with it the
     // message that the cut removes nothing. The history, and so the names,
     // come from the boolean that is kept.
-    if (missedOverlap(builder, inA)) {
+    if (const int missed = missedOverlaps(builder, inA, inB); missed > 0) {
       Builder retry;
       buildBoolean(retry, inA, inB, 1e-4);
-      if (retry.IsDone() && !retry.HasErrors() && !missedOverlap(retry, inA) &&
+      if (retry.IsDone() && !retry.HasErrors() && missedOverlaps(retry, inA, inB) < missed &&
           BRepCheck_Analyzer(retry.Shape()).IsValid()) {
         return finishBuilt(retry, a, b, inA, inB, simplify);
       }

@@ -167,6 +167,30 @@ describe('a tool side along a rounded face', { timeout: 60_000 }, () => {
     expect(kernel.isValid(fuse.shape)).toBe(true);
   });
 
+  it('cuts with a tool of two prisms, one of them along the rounded end', () => {
+    // As an extrude of two profiles cuts: one boolean with both solids. The first
+    // try cuts the ordinary one and misses the other.
+    const p = plate();
+    const t = tool('T', [
+      [X0, 3],
+      [X1, 3],
+      [X1, T1],
+      [X0, T0],
+    ]);
+    const other = tool('U', [
+      [10, 3],
+      [20, 3],
+      [20, H],
+      [10, H],
+    ]);
+    const both = kernel.compound([t.shape, other.shape]);
+    live.push(both);
+    const cut = kernel.cut(p.shape, both);
+    live.push(cut.shape);
+    close(kernel.properties(cut.shape).volume, PLATE - OVERLAP - 10 * 12 * 40);
+    expect(kernel.isValid(cut.shape)).toBe(true);
+  });
+
   it('removes nothing with a tool that only touches the rounded end from outside', () => {
     const p = plate();
     // Its near side on the tangent line x = 74, the rest beyond the plate.
