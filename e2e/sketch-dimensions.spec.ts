@@ -332,9 +332,15 @@ test('the Parameters dialog renames a model parameter, and the expressions follo
   await name.press('Enter');
   await dialog.getByRole('button', { name: 'Make width a user parameter' }).click();
   await expect(await parameterExpression(page, 'width')).toHaveValue(/40/);
-  await selectParameter(page, 'd1');
+  // d1 now only follows `width`, so the list keeps it behind a Show line
+  // (ADR-0142 §6); a selected one stays until something else is selected.
+  await expect(dialog.locator('[data-parameter-row="d1"]')).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Show 1 that follows a user parameter' }).click();
   await expect(await parameterExpression(page, 'd1')).toHaveValue('width');
+  await dialog.getByRole('button', { name: 'Hide those that follow a user parameter' }).click();
+  await expect(dialog.locator('[data-parameter-row="d1"]')).toHaveCount(1);
   await expect(await parameterExpression(page, 'half')).toHaveValue('width / 2');
+  await expect(dialog.locator('[data-parameter-row="d1"]')).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Undo' }).click();
   await expect(dialog.locator('[data-parameter-row="width"]')).toHaveCount(1);
   await expect(await parameterExpression(page, 'half')).toHaveValue('width / 2');

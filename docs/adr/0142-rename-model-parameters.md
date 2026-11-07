@@ -39,9 +39,23 @@ the Parameters dialog and found the pair redundant.
    lowest free `dN` (`lowestFreeModelParameterName`) and rewrites users. The original auto name
    is not stored (no schema change), so this is usually the original but can differ when
    several parameters were renamed. The button shows only for names that aren't `dN`.
+6. **A model parameter that only follows a user parameter is hidden from the list**
+   (amendment, 2026-11-07, the owner's call): its expression is a user parameter's name alone
+   and nothing refers to the model parameter itself (`followsUserParameter` in
+   `apps/web/src/parameters/list.ts`). Such a row says nothing the user parameter's "Used by"
+   doesn't, and in the benchmark files they are a quarter of the model parameters or more.
+   A line under the model rows, "Show N that follow a user parameter", shows them, and "Hide
+   those that follow a user parameter" hides them again. The selected one stays in the list
+   until something else is selected, so a row doesn't vanish while its expression is typed.
+   **Display only:** the dimension keeps its `paramName` (it still needs a name once a number
+   is typed into it again, and its name stays taken).
 
 ## Rejected
 
 - Keeping both parameters: nothing needs the indirection, since a rename rewrites every user.
 - Making the editor's rename also convert old `d1 = diameter` pairs: it would rewrite
   documents the user did not touch.
+- Dropping `paramName` from a dimension that follows a user parameter (instead of hiding the
+  row): nothing names a dimension again once it is placed, so typing a number into it later
+  would leave a driving value with no name and no row, and any expression using `d3` breaks.
+- Hiding model-to-model links (`d4 = d2`, from linked dimensions) too: left for later.

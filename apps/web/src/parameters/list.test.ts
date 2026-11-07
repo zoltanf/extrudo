@@ -1,6 +1,21 @@
-import type { Parameter, ParameterId, ParameterUse } from '@extrudo/core';
+import {
+  createDocument,
+  type ExtrudoDocument,
+  evaluateParameters,
+  type FeatureId,
+  type Parameter,
+  type ParameterId,
+  type ParameterUse,
+} from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
-import { dropIndex, groupNames, labelOfUse, listSections, stepIndex } from './list';
+import {
+  dropIndex,
+  followsUserParameter,
+  groupNames,
+  labelOfUse,
+  listSections,
+  stepIndex,
+} from './list';
 
 /**
  * ADR-0086: the Parameters dialog's list as data. The dialog draws in a
@@ -94,5 +109,42 @@ describe('labelOfUse', () => {
       'Extrude1',
       'Hinge · minimum angle',
     ]);
+  });
+});
+
+describe('followsUserParameter', () => {
+  /** Which of the document's parameters the list hides (ADR-0142 §6). */
+  const hidden = (doc: ExtrudoDocument) => {
+    const evaluation = evaluateParameters(doc);
+    return [...evaluation.parameters.values()]
+      .filter((p) => followsUserParameter(doc, evaluation, p))
+      .map((p) => p.name);
+  };
+  const doc = (parameters: Parameter[]): ExtrudoDocument => ({
+    ...createDocument(),
+    parameters,
+    features: [
+      {
+        id: 'f1' as FeatureId,
+        type: 'extrude',
+        name: 'Extrude1',
+        suppressed: false,
+        inputs: {
+          distance: { kind: 'expr', expr: 'width', paramName: 'd1' },
+          taper: { kind: 'expr', expr: 'width * 2', paramName: 'd2' },
+          offset: { kind: 'expr', expr: 'd2', paramName: 'd3' },
+        },
+      },
+    ],
+    timelineMarker: 1,
+  });
+  const width: Parameter = { ...param('width'), expression: '10 mm' };
+
+  it('hides a model parameter whose expression is a user parameter alone', () => {
+    expect(hidden(doc([width]))).toEqual(['d1']);
+  });
+
+  it('keeps it once something refers to it', () => {
+    expect(hidden(doc([width, { ...param('half'), expression: 'd1 / 2' }]))).toEqual([]);
   });
 });

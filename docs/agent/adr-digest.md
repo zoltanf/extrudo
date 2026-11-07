@@ -4349,4 +4349,8 @@ dimension without a name keeps the user-parameter path); the Parameters dialog's
 list row focuses it (`focusName`). **Make user parameter** (`makeUserParameter({ name, id })`): the user parameter
 takes the name and expression, the holder's expr becomes `name` and its `paramName` a fresh `dN`; one-way (undo only).
 **Reset name** (`resetModelParameterName`): lowest free `dN` via `lowestFreeModelParameterName`, not stored, so it may
-differ from the original; shown only for non-`dN` names. No schema change.
+differ from the original; shown only for non-`dN` names. **A model parameter that only follows a user parameter is
+hidden from the dialog's list** (`followsUserParameter` in `parameters/list.ts`: expression is a user parameter's name
+alone, and `parameterUsers` of it is empty) behind "Show N that follow(s) a user parameter" / "Hide those that follow a
+user parameter"; the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
+clicks the Show line when a row is hidden. No schema change.

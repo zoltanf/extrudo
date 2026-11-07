@@ -112,6 +112,11 @@ the one it started with. **Make user parameter** turns a model parameter into a 
 of the same name and value, so it gets a slider and a group; the dimension or input keeps
 using it and gets a new `d` name. That can't be turned back into a model parameter, only undone.
 
+A model parameter that is just a user parameter's name, such as `d3 = width`, says nothing new, so
+the list leaves it out. **Show 2 that follow a user parameter**, under the model parameters, lists
+them again, and the user parameter's **Used by** lists them too. Once anything else uses `d3`, or
+its expression is more than the name, it is back in the list.
+
 Changing a parameter is one undo step, however many sketches and features it moves. Deleting one
 that something uses is refused, and the message lists what uses it.
 

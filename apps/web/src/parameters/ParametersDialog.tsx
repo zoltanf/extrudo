@@ -24,7 +24,14 @@ import {
   MenuItem,
   MenuSeparator,
 } from '../design-system';
-import { dropIndex, featureName, listSections, starCommand, stepIndex } from './list';
+import {
+  dropIndex,
+  featureName,
+  followsUserParameter,
+  listSections,
+  starCommand,
+  stepIndex,
+} from './list';
 import { Message } from './Message';
 import {
   ModelInspector,
@@ -255,6 +262,25 @@ function ParameterList({
   const [drop, setDrop] = useState<DropTarget>();
   const [modelOpen, setModelOpen] = useState(false);
   const showModel = modelOpen || selection.kind === 'model';
+  // Model parameters that only follow a user parameter stay out of the list
+  // behind a Show line (ADR-0142 §6), apart from the selected one.
+  const [followersOpen, setFollowersOpen] = useState(false);
+  const followers = useMemo(
+    () =>
+      new Set(
+        [...evaluation.parameters.values()]
+          .filter((p) => followsUserParameter(doc, evaluation, p))
+          .map((p) => p.name),
+      ),
+    [doc, evaluation],
+  );
+  const shownModel = model.filter(
+    (p) =>
+      followersOpen ||
+      !followers.has(p.name) ||
+      (selection.kind === 'model' && selection.name === p.name),
+  );
+  const hiddenFollowers = model.length - shownModel.length;
   const sections = listSections(doc.parameters, dragging !== undefined);
   const grouped = sections.length > 1 || sections[0]?.title !== 'User parameters';
   const settings = doc.settings;
@@ -479,7 +505,7 @@ function ParameterList({
             </button>
             {showModel && (
               <ul>
-                {model.map((p) => (
+                {shownModel.map((p) => (
                   <li key={p.name}>
                     <button
                       type="button"
@@ -503,6 +529,18 @@ function ParameterList({
                   </li>
                 ))}
               </ul>
+            )}
+            {showModel && (followersOpen || hiddenFollowers > 0) && (
+              <button
+                type="button"
+                aria-expanded={followersOpen}
+                onClick={() => setFollowersOpen(!followersOpen)}
+                className="h-7 w-full rounded-control pr-2.5 pl-7 text-left text-sm text-muted hover:bg-line/50 hover:text-ink"
+              >
+                {followersOpen
+                  ? 'Hide those that follow a user parameter'
+                  : `Show ${hiddenFollowers} that ${hiddenFollowers === 1 ? 'follows' : 'follow'} a user parameter`}
+              </button>
             )}
           </section>
         )}

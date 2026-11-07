@@ -1574,8 +1574,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `[data-parameter-row="<name>"]` (`aria-current="true"` when selected),
   sections `[data-parameter-section="<title>"]` ("User parameters" while
   flat; "General", then groups); model parameters sit in the collapsed
-  "Model parameters" section. Use `selectParameter(page, name)` and
-  `parameterExpression(page, name)` (both open Model parameters when needed)
+  "Model parameters" section, and one whose expression is only a user
+  parameter's name (`d1 = width` in the Wall bracket) is hidden behind the
+  button "Show N that follow(s) a user parameter" (ADR-0142 §6), so a missing
+  row there is expected. Use `selectParameter(page, name)` and
+  `parameterExpression(page, name)` (both open Model parameters and the Show
+  line when needed)
   and `addUserParameter(page, name, expression, unit?)` from `helpers.ts`
   (the form's "New parameter name"/"New parameter expression", the radio
   group "New parameter unit", "Add"; the new parameter is selected after).
