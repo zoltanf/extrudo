@@ -31,6 +31,8 @@ import {
   DocumentSchema,
   draftFeature,
   EMBOSS_MODES,
+  EmbeddedDesignSchema,
+  EmbeddedFeatureSchema,
   EXTRUDE_DIRECTIONS,
   EXTRUDE_EXTENTS,
   ExprInputSchema,
@@ -46,6 +48,7 @@ import {
   HOLE_KINDS,
   holeFeature,
   InputSchema,
+  insertDesignFeature,
   JointFrameSchema,
   JointSchema,
   LengthUnitSchema,
@@ -165,6 +168,7 @@ const FEATURES = [
   torusFeature,
   ribFeature,
   meshToSolidFeature,
+  insertDesignFeature,
   ...Object.values(CONSTRUCTION_FEATURES),
 ];
 
@@ -246,6 +250,8 @@ describe('docs/file-format.md', () => {
       ...keys(CustomizerSchema),
       ...keys(ConfigurationSchema),
       ...keys(FeatureSchema),
+      ...keys(EmbeddedDesignSchema),
+      ...keys(EmbeddedFeatureSchema),
       ...keys(GroupSchema),
       ...keys(ComponentSchema),
       ...keys(JointSchema),

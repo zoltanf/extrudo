@@ -56,6 +56,7 @@ export {
 export * from './hole';
 export * from './ids';
 export * from './import';
+export * from './insert-design';
 export * from './joints';
 export * from './loft';
 export * from './media-types';

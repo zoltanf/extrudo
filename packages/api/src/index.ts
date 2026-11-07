@@ -83,6 +83,7 @@ export type {
   InputMeta,
   OpenInputValue,
   OpenInputValues,
+  PlainDesign,
   RefValue,
 } from './inputs';
 export {

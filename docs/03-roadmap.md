@@ -1698,6 +1698,15 @@ end to end, faster than in established desktop CAD.
   - [x] S3 Sketch mode.
   - [x] S4 Polish: re-anchor by drag, `screenshot { annotations }`, example file.
 
+- [x] **P6-26 Insert Design, Copied** (issue #75; ADR-0140; pilot 2026-11-07, the owner to
+  review). Solid › Assemble › Insert Design picks another `.extrudo` file; its design comes in
+  as one `insertDesign` feature whose bodies make one component named after the file, with no
+  link kept, placed by Move. The copy is stored as JSON in the feature (`design` input) and
+  expanded by the kernel like a Script's features, isolated to its own bodies, with its own IDs
+  (`<insert>.<id>`) and parameters, so nothing clashes. Acceptance: `pnpm check`,
+  `e2e/insert-design.spec.ts`. Later (not ticked): Linked mode (ADR-0140 §7), parameter
+  overrides, nested inserts, the tile's tooltip clip.
+
 ## Phase 7 — Later (lowest priority, after everything else)
 
 **Owner, 2026-10-14: the last work on the roadmap.** Don't pick a task here

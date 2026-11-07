@@ -360,6 +360,9 @@ function readInput(property: JsonProperty): { type: string; kinds?: string[]; fa
     // A Script's source (P5-02): the text itself.
     case 'code':
       return { type: 'string', fallback };
+    // An inserted design's copy (ADR-0140): the copied design itself.
+    case 'design':
+      return { type: 'PlainDesign', fallback };
     default:
       return { type: property.type ?? 'unknown', fallback };
   }

@@ -2,7 +2,7 @@
 title: Center Diameter Circle
 section: Tools
 category: Sketch
-order: 70
+order: 71
 ---
 
 # Center Diameter Circle

@@ -1,0 +1,1 @@
+- 2026-11-07 · **Insert Design** (Solid › Assemble): another Extrudo design comes in as a component named after its file, from one feature in the timeline; it is a copy with its own parameters, and Move puts it in place.

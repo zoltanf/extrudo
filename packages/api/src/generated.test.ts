@@ -227,6 +227,15 @@ describe('the whole registry', () => {
       canvas: { image: { kind: 'file', id: attachment(design, 'plan.png', 'image/png') } },
       // A Script's source, as the text itself (P5-02).
       script: { code: 'design.box({});' },
+      // An inserted design's copy, as the copied design itself (ADR-0140).
+      insertDesign: {
+        design: {
+          name: 'Spacer',
+          units: 'mm',
+          parameters: [],
+          features: [{ id: 'b1', type: 'box', name: 'Box1', suppressed: false, inputs: {} }],
+        },
+      },
       // A plugin feature's file and handler (P6-03, ADR-0077 §3).
       plugin: {
         plugin: {

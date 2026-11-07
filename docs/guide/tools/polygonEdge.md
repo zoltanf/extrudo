@@ -2,7 +2,7 @@
 title: Edge Polygon
 section: Tools
 category: Sketch
-order: 82
+order: 83
 ---
 
 # Edge Polygon

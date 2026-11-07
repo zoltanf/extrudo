@@ -2,7 +2,7 @@
 title: Equal
 section: Tools
 category: Sketch
-order: 115
+order: 116
 ---
 
 # Equal

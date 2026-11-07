@@ -25,6 +25,7 @@ import {
   type FeatureInputs,
   type GeomFingerprint,
   type GeomRef,
+  INSERT_DESIGN_TYPE,
   type Joint,
   type JointId,
   readSketch,
@@ -128,7 +129,11 @@ export function emitScript(doc: ExtrudoDocument, options: EmitOptions = {}): str
   for (const feature of features) {
     if (skipped.has(feature.id)) {
       statements.push(
-        comment(`${feature.name} reads an attachment, which a script can't carry: add it by hand.`),
+        comment(
+          feature.type === INSERT_DESIGN_TYPE
+            ? `${feature.name} inserts another design, which a script can't carry: insert it by hand.`
+            : `${feature.name} reads an attachment, which a script can't carry: add it by hand.`,
+        ),
       );
       continue;
     }
@@ -452,6 +457,9 @@ function inputExpr(
     }
     case 'sketchData':
       throw new Error(`${type}.${name} is a sketch's content; only a sketch feature has one.`);
+    case 'design':
+      // Skipped before this runs, like a file input (see `hasAttachmentInput`).
+      throw new Error(`${type}.${name} is a copied design, which a script can't carry.`);
     default:
       // Only reachable with a hand-mangled document: name the input rather
       // than crash the printer with `undefined`.
@@ -463,7 +471,10 @@ function inputExpr(
 
 /** Whether a feature reads a file of the design (an import, a canvas image). */
 function hasAttachmentInput(feature: Feature): boolean {
-  return Object.values(feature.inputs).some((input) => input.kind === 'file');
+  // An inserted design (ADR-0140) is a whole design of its own, and it may name files too.
+  return Object.values(feature.inputs).some(
+    (input) => input.kind === 'file' || input.kind === 'design',
+  );
 }
 
 /** The `design.group(...)` calls for groups that lie inside the selection. */

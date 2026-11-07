@@ -225,6 +225,7 @@ function toolCommand(id: ToolId, group: string, ctx: CommandContext): AppCommand
 /** Words search also finds a tool by, beyond its group and hint: what people call it (#74). */
 const TOOL_KEYWORDS: Partial<Record<ToolId, string>> = {
   newComponent: 'assembly part',
+  insertDesign: 'assembly part import extrudo file copy',
   joint: 'assembly hinge slider rigid revolute',
   removeFaces: 'defeature delete face remove fillet remove hole simplify',
 };

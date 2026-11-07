@@ -67,6 +67,21 @@ feature never changes the component it belongs to. Move a body by hand and the m
 - **Copies** (Copy Component, a pattern or a mirror with copies) are new bodies that follow the
   rule above. Copy Component makes the copy and a component named "Lid (2)" in one undo step.
 
+## Inserting another design
+
+**Insert Design** (Solid › Assemble) brings another Extrudo design (`.extrudo`) in as a
+component: pick the file and its bodies arrive as one new component named after the file, with
+their names and colours, from one feature in the timeline. Insert the same file again and you get
+a second component, "hinge (2)". Undo takes the whole insert back in one step.
+
+The insert is a **copy**: the design is saved inside this one, and later changes to the file don't
+reach it. Its features run on their own, with the design's own parameters: a `width` in the
+inserted design is not the `width` of this one, and a join or cut inside it never touches your
+other bodies. Its bodies land where they were in their own design; put them in place with Move
+Component, below. To change an inserted part, change its file and insert it again.
+
+A design that uses a Script or a plugin feature can't be inserted yet.
+
 ## Moving and placing
 
 Because a component has no transform, **Move Component** is the [Move](./tools/move.md) tool
@@ -175,5 +190,5 @@ On a 130-face hinge the whole turn takes about 16 s, with progress and a Cancel 
 - Joint types beyond rigid, revolute and slider (cylindrical, ball, planar, pin-slot).
 - Joints inside a nested component, and components inside components.
 - An automatic plate layout. Use the "Print layout" group above.
-- Inserting another Extrudo design as a component. Model the parts in one design, or bring a
-  part in as STEP.
+- A linked insert that follows its file when it changes (Insert Design makes a copy), and
+  setting an inserted design's parameters from this one.

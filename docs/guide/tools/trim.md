@@ -2,7 +2,7 @@
 title: Trim
 section: Tools
 category: Sketch
-order: 96
+order: 97
 ---
 
 # Trim

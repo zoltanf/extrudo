@@ -80,6 +80,7 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 ### Assemble
 
 - [New Component](./newComponent.md) — Gather the selected bodies into a named component, to show, hide and export as one part.
+- [Insert Design](./insertDesign.md) — Bring another Extrudo design in as a component, named after its file. It is a copy: Move puts it in place.
 - [Joint](./joint.md) — Join two components where they are: a hinge, a slide or a rigid link, to pose and check.
 
 ## Modify

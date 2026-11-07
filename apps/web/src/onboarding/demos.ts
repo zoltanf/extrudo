@@ -137,8 +137,8 @@ export const DEMO_TOOLS: readonly string[] = [
   'sketchScale',
 ];
 
-/** Tiles whose clip is still to record; empty now. */
-export const DEMO_CLIPS_PENDING: readonly string[] = [];
+/** Tiles whose clip is still to record: Insert Design (ADR-0140), a pilot. */
+export const DEMO_CLIPS_PENDING: readonly string[] = ['insertDesign'];
 
 /** Where a tool's clip is, or `undefined` if it has none. */
 export function demoUrl(tool: string): string | undefined {

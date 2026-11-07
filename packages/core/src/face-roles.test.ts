@@ -32,6 +32,8 @@ const NAMES_NO_FACE: Readonly<Record<string, string>> = {
     'a script names no face itself: the features it generates do, under their own IDs (ADR-0070)',
   plugin:
     "a plugin feature names no face itself: its handler's features do, under their own IDs (ADR-0077)",
+  insertDesign:
+    "an inserted design names no face itself: the copy's features do, under their own IDs (ADR-0140)",
 };
 
 describe('the face roles of the registry', () => {

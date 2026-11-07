@@ -64,6 +64,7 @@ import { isEditable, useShortcuts } from '../commands/shortcuts';
 import { followComponentSession } from '../components/active';
 import { createComponentActions } from '../components/componentActions';
 import { componentRows, componentsSummary } from '../components/componentRows';
+import { insertDesignFile } from '../components/insertDesign';
 import { createPlacementActions } from '../components/placement';
 import { CustomizerPanel } from '../customizer/CustomizerPanel';
 import { CUSTOMIZER_TOOL, useCustomizer } from '../customizer/useCustomizer';
@@ -1890,6 +1891,14 @@ function Shell({
           .selection.filter((item) => item.kind === 'body')
           .map((item) => item.id as BodyId),
       );
+      return;
+    }
+    // P6-26 (ADR-0140): Insert Design picks an .extrudo file and copies its design in as a component.
+    if (tool === 'insertDesign') {
+      if (mode !== 'model') return;
+      if (picking) cancelCreateSketch(stores);
+      dialog?.cancel();
+      void insertDesignFile({ files: platform.files, projects: platform.projects, store, notify });
       return;
     }
     if (tool === 'stopMacro') {

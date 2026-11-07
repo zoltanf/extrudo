@@ -143,6 +143,13 @@ export interface Expansion {
   features: readonly Feature[];
   /** What the feature printed (a script's `console.log`). */
   log: readonly string[];
+  /**
+   * The features see only the bodies they make themselves (an inserted
+   * design, ADR-0140 §3): each is evaluated on the bodies whose IDs start with
+   * the owner's ID and `.`, its result merged back after the others, and its
+   * cache key leaves the bodies before the owner out.
+   */
+  isolated?: boolean;
 }
 
 /** What `prepare` may read: the inputs, their values, the design's files and the compilers. */
