@@ -202,11 +202,13 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
           onStep={step}
           history={history}
         />
-        <div className="flex min-h-0 flex-col overflow-y-auto px-6 py-4">
-          <p className={message ? 'mb-3 text-sm text-error' : ''} role="alert">
+        {/* The alert line stays out of the scrolling part, so a message is
+            always in view and never pushes the inspector's footer down. */}
+        <div className="flex min-h-0 flex-col">
+          <p className={message ? 'px-6 pt-4 text-sm text-error' : ''} role="alert">
             <Message text={message} />
           </p>
-          {inspector}
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-4">{inspector}</div>
         </div>
       </div>
     </Dialog>

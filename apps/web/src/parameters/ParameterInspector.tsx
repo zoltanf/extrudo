@@ -86,7 +86,7 @@ export function UserInspector({
   const format = formatOf(doc);
   const uses = useMemo(() => parameterUsers(doc, name), [doc, name]);
   return (
-    <div className="flex min-h-full flex-col gap-4">
+    <div className="flex flex-1 flex-col gap-4">
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
         <Field label="Name">
           <TextField
@@ -140,7 +140,8 @@ export function UserInspector({
 
       <CustomizerCard parameter={parameter} evaluation={evaluation} format={format} run={run} />
 
-      <div className="mt-auto flex items-center gap-1 border-t border-line pt-3">
+      {/* Pinned to the pane's bottom while the fields scroll under it. */}
+      <div className="sticky bottom-0 -mb-4 mt-auto flex items-center gap-1 border-t border-line bg-raised pt-3 pb-4">
         <IconButton
           label={`Move ${name} up`}
           shortcut="Alt+↑"

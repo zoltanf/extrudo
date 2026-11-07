@@ -189,6 +189,10 @@ test('adds, renames and deletes parameters', async ({ page }) => {
   await expect(dialog.getByRole('alert')).toHaveText(
     'thickness is used by inner, Extrude2 and Fillet1. Change those first.',
   );
+  // The message doesn't push the footer out of view.
+  await expect(dialog.getByRole('button', { name: 'Delete thickness' })).toBeInViewport({
+    ratio: 1,
+  });
   await selectParameter(page, 'lid');
   await dialog.getByRole('button', { name: 'Delete lid' }).click();
   await expect(row(page, 'lid')).toHaveCount(0);

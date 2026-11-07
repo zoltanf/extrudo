@@ -1,0 +1,1 @@
+- 2026-11-07 · **Parameters dialog message**: a refusal such as deleting a parameter in use no longer pushes the inspector's buttons out of view; the message stays above the scrolling part and the buttons stay at the bottom (ADR-0086).
