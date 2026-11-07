@@ -54,6 +54,7 @@ import type {
   ScaleInputs,
   ScriptInputs,
   ShellInputs,
+  SimplifyForPrintInputs,
   SphereInputs,
   SplitBodyInputs,
   SweepInputs,
@@ -102,6 +103,7 @@ export const FEATURE_TYPES = [
   'hole',
   'offsetFace',
   'removeFaces',
+  'simplifyForPrint',
   'splitBody',
   'scale',
   'draft',
@@ -156,6 +158,7 @@ export const FEATURE_METHOD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   hole: 'Hole (create): one feature of the timeline.',
   offsetFace: 'Offset Face (modify): one feature of the timeline.',
   removeFaces: 'Remove Faces (modify): one feature of the timeline.',
+  simplifyForPrint: 'Simplify for Print (modify): one feature of the timeline.',
   splitBody: 'Split Body (modify): one feature of the timeline.',
   scale: 'Scale (modify): one feature of the timeline.',
   draft: 'Draft (modify): one feature of the timeline.',
@@ -1105,6 +1108,19 @@ export interface FeatureMethods {
     options?: FeatureOptions,
   ): FeatureHandle<'removeFaces'>;
   /**
+   * Simplify for Print (modify): one feature of the timeline.
+   *
+   * @param inputs.bodies The solid bodies to simplify. Required.
+   * @param inputs.rounds Remove rounds (fillets: cylinder, torus and sphere faces in a smooth chain) up to maxRoundRadius; false keeps them and the limit. Absent: on while maxRoundRadius is given.
+   * @param inputs.maxRoundRadius The largest round radius removed, in mm (a torus by its tube radius). Absent: no round is removed.
+   * @param inputs.holes Remove holes (closed cylindrical walls and the faces they enclose) up to maxHoleDiameter; false keeps them and the limit. Absent: on while maxHoleDiameter is given.
+   * @param inputs.maxHoleDiameter The largest hole diameter removed, in mm (a counterbored hole by its widest wall). Absent: no hole is removed.
+   */
+  simplifyForPrint(
+    inputs: PlainInputs<SimplifyForPrintInputs>,
+    options?: FeatureOptions,
+  ): FeatureHandle<'simplifyForPrint'>;
+  /**
    * Split Body (modify): one feature of the timeline.
    *
    * @param inputs.bodies The bodies to split. Required.
@@ -1455,6 +1471,8 @@ export function featureMethods(design: FeatureMethodTarget): FeatureMethods {
       design.add('offsetFace', inputs, options) as FeatureHandle<'offsetFace'>,
     removeFaces: (inputs, options?: FeatureOptions) =>
       design.add('removeFaces', inputs, options) as FeatureHandle<'removeFaces'>,
+    simplifyForPrint: (inputs, options?: FeatureOptions) =>
+      design.add('simplifyForPrint', inputs, options) as FeatureHandle<'simplifyForPrint'>,
     splitBody: (inputs, options?: FeatureOptions) =>
       design.add('splitBody', inputs, options) as FeatureHandle<'splitBody'>,
     scale: (inputs, options?: FeatureOptions) =>
@@ -1620,6 +1638,9 @@ export function featureExamples(d: Design): void {
 
   // Remove Faces.
   d.removeFaces({ faces: face });
+
+  // Simplify for Print.
+  d.simplifyForPrint({ bodies: [body], maxRoundRadius: '1 mm', maxHoleDiameter: '3 mm' });
 
   // Split Body.
   d.splitBody({ bodies: [body], plane: d.origin.yz });

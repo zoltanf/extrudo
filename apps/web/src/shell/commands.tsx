@@ -227,6 +227,7 @@ const TOOL_KEYWORDS: Partial<Record<ToolId, string>> = {
   newComponent: 'assembly part',
   joint: 'assembly hinge slider rigid revolute',
   removeFaces: 'defeature delete face remove fillet remove hole simplify',
+  simplifyForPrint: 'defeature remove fillets remove holes remove rounds simplify small features',
 };
 
 /** Words search also finds a file command by (ADR-0079), beyond its group and hint. */

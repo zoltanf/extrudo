@@ -1,0 +1,1 @@
+- 2026-11-07 · **Simplify for Print** (Make › Prepare): removes every round under a radius and every hole under a diameter on the chosen bodies at once; each one that can't be removed is listed while the rest still go (#79).

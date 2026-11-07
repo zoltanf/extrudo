@@ -38,6 +38,7 @@ import { ribFeature } from './rib';
 import { scaleFeature } from './scale';
 import { scriptFeature } from './script';
 import { shellFeature } from './shell';
+import { simplifyForPrintFeature } from './simplify-for-print';
 import { sketchFeature } from './sketch/feature';
 import { splitBodyFeature } from './split-body';
 import { sweepFeature } from './sweep';
@@ -79,6 +80,8 @@ export function documentFeatures(): FeatureRegistry<FeatureDefinition> {
   registry.register(offsetFaceFeature);
   // Remove Faces (ADR-0099).
   registry.register(removeFacesFeature);
+  // Simplify for Print: small rounds and holes removed at once (ADR-0141, #79).
+  registry.register(simplifyForPrintFeature);
   // Split Body, Scale and Draft (P3-08, second half).
   registry.register(splitBodyFeature).register(scaleFeature).register(draftFeature);
   // Sweep, loft and coil (P4-01, ADR-0055).

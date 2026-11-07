@@ -840,6 +840,16 @@ Faces: `<label>:from:(<face>)` (A face of a copy: the label is the instance's ow
 | --- | --- | --- | --- |
 | `faces` | `GeomRef \| GeomRef[]` (`face`) | **required** | The faces to remove; their neighbours are extended to close the gap. A round or a hole needs all its faces. |
 
+### `simplifyForPrint` — Simplify for Print
+
+| Input | Type | Required or default | What it does |
+| --- | --- | --- | --- |
+| `bodies` | `GeomRef \| GeomRef[]` (`body`) | **required** | The solid bodies to simplify. |
+| `rounds` | `boolean` | optional | Remove rounds (fillets: cylinder, torus and sphere faces in a smooth chain) up to maxRoundRadius; false keeps them and the limit. Absent: on while maxRoundRadius is given. |
+| `maxRoundRadius` | `string \| number \| ParameterHandle` | optional | The largest round radius removed, in mm (a torus by its tube radius). Absent: no round is removed. |
+| `holes` | `boolean` | optional | Remove holes (closed cylindrical walls and the faces they enclose) up to maxHoleDiameter; false keeps them and the limit. Absent: on while maxHoleDiameter is given. |
+| `maxHoleDiameter` | `string \| number \| ParameterHandle` | optional | The largest hole diameter removed, in mm (a counterbored hole by its widest wall). Absent: no hole is removed. |
+
 ### `splitBody` — Split Body
 
 | Input | Type | Required or default | What it does |

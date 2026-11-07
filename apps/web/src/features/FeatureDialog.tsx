@@ -291,6 +291,7 @@ function FieldRow({
       const ctx = controller.context();
       const text = ctx ? field.text(open.values, ctx) : '';
       const legend = (ctx && field.legend?.(open.values, ctx)) ?? [];
+      const lines = (ctx && field.lines?.(open.values, ctx)) ?? [];
       control = (
         <>
           <p data-info={field.name} className="truncate pt-1.5 text-sm">
@@ -309,6 +310,16 @@ function FieldRow({
                     style={{ background: LEGEND_TOKENS[entry.tone] }}
                   />
                   {entry.label}
+                </li>
+              ))}
+            </ul>
+          )}
+          {lines.length > 0 && (
+            <ul data-lines={field.name} className="space-y-0.5 text-xs text-muted">
+              {lines.map((line, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: lines have no identity; a new report replaces them all.
+                <li key={i} className="truncate" title={line}>
+                  {line}
                 </li>
               ))}
             </ul>

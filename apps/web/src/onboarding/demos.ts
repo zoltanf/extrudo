@@ -137,8 +137,8 @@ export const DEMO_TOOLS: readonly string[] = [
   'sketchScale',
 ];
 
-/** Tiles whose clip is still to record; empty now. */
-export const DEMO_CLIPS_PENDING: readonly string[] = [];
+/** Tiles whose clip is still to record (`pnpm demos`): Simplify for Print's (ADR-0141). */
+export const DEMO_CLIPS_PENDING: readonly string[] = ['simplifyForPrint'];
 
 /** Where a tool's clip is, or `undefined` if it has none. */
 export function demoUrl(tool: string): string | undefined {

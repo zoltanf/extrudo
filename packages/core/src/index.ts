@@ -90,6 +90,7 @@ export * from './scale';
 export * from './schema';
 export * from './script';
 export * from './shell';
+export * from './simplify-for-print';
 export * from './sketch/commands';
 export * from './sketch/curves';
 export * from './sketch/dimensions';

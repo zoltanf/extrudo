@@ -45,6 +45,7 @@ import {
   type PatternReport,
   PLUGIN_MEDIA_TYPE,
   pluginFileOf,
+  type SimplifyReport,
   type SketchReport,
   type SweepReport,
   type ThreadReport,
@@ -59,6 +60,7 @@ import {
 import { isMeshToSolidReport, type MeshToSolidFeatureReport } from './features/mesh-to-solid';
 import type { SmoothFaces } from './features/offset-face';
 import { isOperationReport, type OperationReport } from './features/operation';
+import { isSimplifyReport, type SimplifyFeatureReport } from './features/simplify-for-print';
 import type { SmoothKind, SubShapeKind } from './history';
 import type { Inspection, InspectTarget } from './inspect';
 import type { Interference } from './interference';
@@ -224,6 +226,8 @@ export interface Preview {
   sweep?: SweepReport;
   /** The draft's report when it is a Mesh to Solid that computed (ADR-0097 §4): the dialog's Result line. */
   meshToSolid?: MeshToSolidReport;
+  /** The draft's report when it is a Simplify for Print that computed (ADR-0141 §4): the dialog's count and list. */
+  simplify?: SimplifyReport;
 }
 
 export class Recomputer {
@@ -507,6 +511,7 @@ export class Recomputer {
       ...(isThreadReport(own) && { thread: own }),
       ...(isSweepReport(own) && { sweep: own }),
       ...(isMeshToSolidReport(own) && { meshToSolid: withoutKind(own) }),
+      ...(isSimplifyReport(own) && { simplify: simplifyOf(own) }),
     };
   }
 
@@ -985,6 +990,10 @@ export class Recomputer {
       else if (isMeshToSolidReport(report)) {
         const status = features[id as FeatureId];
         if (status) features[id as FeatureId] = { ...status, meshToSolid: withoutKind(report) };
+      } else if (isSimplifyReport(report)) {
+        // So is Simplify for Print's (ADR-0141 §4).
+        const status = features[id as FeatureId];
+        if (status) features[id as FeatureId] = { ...status, simplify: simplifyOf(report) };
       } else sketches[id] = report;
     }
     const bodies = Object.fromEntries([...meshes].map(([id, { mesh }]) => [id, mesh]));
@@ -1145,13 +1154,18 @@ function sameStatuses(
         x?.status === y?.status &&
         x?.message === y?.message &&
         JSON.stringify(x?.refs) === JSON.stringify(y?.refs) &&
-        JSON.stringify(x?.meshToSolid) === JSON.stringify(y?.meshToSolid)
+        JSON.stringify(x?.meshToSolid) === JSON.stringify(y?.meshToSolid) &&
+        JSON.stringify(x?.simplify) === JSON.stringify(y?.simplify)
       );
     })
   );
 }
 
 /** Mesh to Solid's feature report as the status and the preview carry it: without its `kind`. */
+function simplifyOf({ kind: _, ...report }: SimplifyFeatureReport): SimplifyReport {
+  return report;
+}
+
 function withoutKind({ kind: _, ...report }: MeshToSolidFeatureReport): MeshToSolidReport {
   return report;
 }

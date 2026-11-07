@@ -21,6 +21,7 @@ import type { AnnotationId, BodyId, ComponentId, FeatureId, JointId } from './id
 import type { ImportReport } from './import';
 import type { MeshToSolidReport } from './mesh-to-solid';
 import type { ExtrudoDocument, GeomRef, GeomRefKind } from './schema';
+import type { SimplifyReport } from './simplify-for-print';
 import type { Vec3 } from './sketch/planes';
 import type { SketchReport } from './sketch/projection';
 
@@ -387,6 +388,11 @@ export interface FeatureStatus {
    * by surface kind. Absent for every other feature and when it failed.
    */
   meshToSolid?: MeshToSolidReport;
+  /**
+   * A Simplify for Print feature's report (ADR-0141 §4): the rounds and holes
+   * it found, each removed or not. Absent for every other feature and when it failed.
+   */
+  simplify?: SimplifyReport;
 }
 
 /** What a Script feature's run did (`FeatureStatus.script`, ADR-0070). */

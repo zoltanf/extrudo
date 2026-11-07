@@ -4337,3 +4337,29 @@ renderer has `releaseNotesPlugin` too (its own Vite config; `src/renderer/config
 (`releaseHistory`: every `## ` section but Unreleased and this version, with highlights where a
 file exists) is a separate lazy chunk behind the dialog's "Earlier versions"; the Menu's App
 column has What's new above About, and the `whatsNew` command (Help) is agent-denied.
+
+ADR-0141 (#79, 2026-11-07, pilot): **Simplify for Print** (`simplifyForPrint`,
+`packages/core/src/simplify-for-print.ts`, evaluator and detection
+`packages/kernel/src/features/simplify-for-print.ts`, dialog
+`apps/web/src/features/simplify-for-print.ts`, tool in Make › Prepare). Rules: the feature
+**stores bodies and limits, never faces** (`bodies`, `rounds` + `maxRoundRadius`, `holes` +
+`maxHoleDiameter`; a kind is on while its limit is given and its toggle isn't false,
+`simplifyKinds`); detection runs in the kernel on every recompute with **existing facade queries
+only** (`surfaceGeometry`, `threadFace`, `tangentFaces`; no new WASM). `findSimplifyGroups` is
+pure: holes = an inside cylinder all the way round, or a closed **ring** of coaxial inside
+pieces of one radius (shared edges ≥ pieces), with `removeFacesPick`'s hole faces; size = twice
+the widest inside cylinder's radius, over the limit the whole hole stays; rounds = cylinders
+not all the way round, tori (minor radius), spheres, ≤ the limit, not in a hole, with a smooth
+chain beyond themselves, joined where one is in the other's chain; cones never; no face in two
+groups; rounds before holes; a group of every face is skipped. Removal per body: **all groups in
+one `removeFaces` first; on `RemoveFacesError` each group alone**, on the shape the earlier ones
+left, its faces found again **by name**; a failure leaves the shape and goes on (other errors
+propagate); keep shapes only after the last throwing call. Report `{ kind: 'simplifyForPrint',
+groups }` (`SimplifyGroup`: kind, body, size, faces, removed) goes to `FeatureStatus.simplify`
+and `Preview.simplify` → `DialogContext.draftSimplify`; nothing found and failures are
+**warnings**, not errors. Preview: one `cut` preview tool, the compound of the removed faces of
+the input. The dialog's Found line is `simplifySummary`; `InfoField.lines` (new: a small list
+under an info line) shows `simplifyGroupLine` per group, what stayed first, at most 8. Tooltip
+clip pending (`DEMO_CLIPS_PENDING`). Tests: `simplify-for-print.test.ts` in kernel (OCCT: small
+fillets, through and blind holes, a stadium's ends that can't be removed, on another body and
+on the same body) and web.

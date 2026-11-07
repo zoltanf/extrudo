@@ -30,6 +30,7 @@ import type {
   GeomRefKind,
   MeshToSolidReport,
   PatternReport,
+  SimplifyReport,
   SketchReport,
   SweepReport,
   ThreadReport,
@@ -170,6 +171,11 @@ export interface InfoField extends FieldBase {
    * §5), each a theme token's colour and what it means. Empty or absent: none.
    */
   legend?(values: DialogValues, ctx: DialogContext): readonly LegendEntry[];
+  /**
+   * Smaller lines under it, one per item (Simplify for Print's rounds and
+   * holes, ADR-0141 §4). Empty or absent: none.
+   */
+  lines?(values: DialogValues, ctx: DialogContext): readonly string[];
 }
 
 /** One swatch of an info field's legend: a category colour token and its label. */
@@ -285,6 +291,8 @@ export interface DialogContext {
   draftSweep?: SweepReport;
   /** The draft's Mesh to Solid report (ADR-0097 §4). Absent for anything else and while the draft fails. */
   draftMeshToSolid?: MeshToSolidReport;
+  /** The draft's Simplify for Print report (ADR-0141 §4). Absent for anything else and while the draft fails. */
+  draftSimplify?: SimplifyReport;
   /**
    * The region preview's latest answer (`FeatureDialogSpec.regions`, ADR-0097
    * §5). Absent while there is none, for any other dialog, and when the spec
