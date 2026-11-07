@@ -100,7 +100,7 @@ selected, `Alt+↑` and `Alt+↓` move it within its group. The order is also th
 and sketch dimensions. Click a parameter there to go to it.
 
 **Model parameters** are the values in the design that already have names, in the collapsed
-section below the list, each with the feature it belongs to. A dimension you placed in a sketch
+section below the list (click its heading to open or close it), each with the feature it belongs to. A dimension you placed in a sketch
 is `d1`, `d2` and so on, and so are the values in feature dialogs. You can edit them here, and
 use them in other expressions. To rename one, select it and edit **Name**, or double-click its row.
 Every expression that used the old name follows, in one undo step. A name that is taken, or is a

@@ -270,8 +270,15 @@ function ParameterList({
 }) {
   const [dragging, setDragging] = useState<ParameterId>();
   const [drop, setDrop] = useState<DropTarget>();
-  const [modelOpen, setModelOpen] = useState(false);
-  const showModel = modelOpen || selection.kind === 'model';
+  // Selecting a model parameter (in the list, or from Used by) opens its
+  // section; the header still collapses it while that row stays selected.
+  const selectedModel = selection.kind === 'model' ? selection.name : undefined;
+  const [showModel, setShowModel] = useState(selectedModel !== undefined);
+  const [openedFor, setOpenedFor] = useState(selectedModel);
+  if (selectedModel !== openedFor) {
+    setOpenedFor(selectedModel);
+    if (selectedModel !== undefined) setShowModel(true);
+  }
   // Model parameters that only follow a user parameter stay out of the list
   // behind a Show line (ADR-0142 §6), apart from the selected one.
   const [followersOpen, setFollowersOpen] = useState(false);
@@ -500,7 +507,7 @@ function ParameterList({
             <button
               type="button"
               aria-expanded={showModel}
-              onClick={() => setModelOpen(!showModel)}
+              onClick={() => setShowModel(!showModel)}
               className="flex h-8 w-full items-center justify-between rounded-control px-2 text-base text-muted hover:bg-line/50 hover:text-ink"
             >
               <span className="flex items-center gap-1.5">

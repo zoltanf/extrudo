@@ -696,7 +696,8 @@ A list on the left, the selected parameter on the right.
 - **List.** User parameters, one flat "User parameters" section until a
   parameter has a group, then a section per group with "General" (no group)
   first; below them "New parameter" and a collapsed "Model parameters"
-  section. A row: a drag grip, a star (filled = in the Customizer), the name
+  section (selecting one of its parameters, from Used by too, opens it; its
+  header collapses it again, the selection and inspector staying). A row: a drag grip, a star (filled = in the Customizer), the name
   in mono, `ƒx` for a formula, the value right-aligned (red "loop" for a
   cycle, "error" otherwise). The selected row is `accent-soft`. Dragging a
   row shows a 2 px accent line where it lands and moves it, into another

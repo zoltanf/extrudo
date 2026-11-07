@@ -299,6 +299,14 @@ test('the Parameters dialog renames a model parameter, and the expressions follo
     await expect(name).toHaveValue('d1');
   }
 
+  // The section collapses with one of its rows selected; the inspector stays.
+  const section = dialog.getByRole('button', { name: /^Model parameters/ });
+  await section.click();
+  await expect(section).toHaveAttribute('aria-expanded', 'false');
+  await expect(dialog.locator('[data-parameter-row="d1"]')).toHaveCount(0);
+  await expect(name).toHaveValue('d1');
+  await section.click();
+
   // Double-clicking a row puts the caret in the name field.
   await dialog.locator('[data-parameter-row="d1"]').dblclick();
   await expect(name).toBeFocused();
