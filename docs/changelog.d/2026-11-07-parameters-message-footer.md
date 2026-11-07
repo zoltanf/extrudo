@@ -1,1 +1,1 @@
-- 2026-11-07 · **Parameters dialog message**: a refusal such as deleting a parameter in use no longer pushes the inspector's buttons out of view; the message stays above the scrolling part and the buttons stay at the bottom (ADR-0086).
+- 2026-11-07 · **Parameters dialog messages in place**: a refusal shows where you acted (a taken name under the name field, which keeps what you typed; a delete of a parameter in use beside the Delete button) instead of in a line that pushed the whole inspector down (ADR-0086).

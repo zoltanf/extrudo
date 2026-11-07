@@ -35,6 +35,7 @@ import { withRangeField } from './customizer';
 import { withDimensionExpr } from './drafts';
 import { ExpressionInput } from './ExpressionInput';
 import { featureName, groupNames, labelOfUse, starCommand } from './list';
+import { Message } from './Message';
 
 /** What the dialog's right side shows. */
 export type Selection =
@@ -42,7 +43,19 @@ export type Selection =
   | { kind: 'model'; name: string }
   | { kind: 'new' };
 
-type Run = (command: Command<unknown>) => boolean;
+/**
+ * Where a refused command's message shows: under the name field, or by the
+ * inspector's buttons (the footer's hint line, or under the model actions).
+ */
+export type Spot = 'name' | 'actions';
+
+/** A refused command's message and its spot. */
+export interface Refusal {
+  spot: Spot;
+  text: string;
+}
+
+type Run = (command: Command<unknown>, spot?: Spot) => boolean;
 
 const UNITS: [UnitKind, string][] = [
   ['length', 'Length'],
@@ -68,6 +81,8 @@ export function UserInspector({
   evaluation,
   parameter,
   run,
+  refusal,
+  onDismiss,
   onSelect,
   canMoveUp,
   canMoveDown,
@@ -77,6 +92,8 @@ export function UserInspector({
   evaluation: ParameterEvaluation;
   parameter: Parameter;
   run: Run;
+  refusal: Refusal | undefined;
+  onDismiss(): void;
   onSelect(selection: Selection): void;
   canMoveUp: boolean;
   canMoveDown: boolean;
@@ -87,22 +104,29 @@ export function UserInspector({
   const uses = useMemo(() => parameterUsers(doc, name), [doc, name]);
   return (
     <div className="flex flex-1 flex-col gap-4">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
-        <Field label="Name">
-          <TextField
-            label={`Name of ${name}`}
-            value={name}
-            className="h-9 font-mono text-md"
-            onCommit={(next) => run(updateParameter({ id, changes: { name: next.trim() } }))}
-          />
-        </Field>
-        <Field label="Unit">
-          <UnitPicker
-            label={`Unit of ${name}`}
-            value={parameter.unit}
-            onChange={(unit) => run(updateParameter({ id, changes: { unit } }))}
-          />
-        </Field>
+      <div className="flex flex-col gap-1">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
+          <Field label="Name">
+            <TextField
+              label={`Name of ${name}`}
+              value={name}
+              className="h-9 font-mono text-md"
+              invalid={refusal?.spot === 'name'}
+              onEdit={onDismiss}
+              onCommit={(next) =>
+                run(updateParameter({ id, changes: { name: next.trim() } }), 'name')
+              }
+            />
+          </Field>
+          <Field label="Unit">
+            <UnitPicker
+              label={`Unit of ${name}`}
+              value={parameter.unit}
+              onChange={(unit) => run(updateParameter({ id, changes: { unit } }))}
+            />
+          </Field>
+        </div>
+        <Refused refusal={refusal} spot="name" />
       </div>
 
       <Field label="Expression">
@@ -158,8 +182,14 @@ export function UserInspector({
         >
           <ArrowDown size={16} strokeWidth={1.75} />
         </IconButton>
-        <span className="ml-1 text-sm text-muted">Order in this list and in the Customizer</span>
-        <span className="flex-1" />
+        {/* A refused delete (or any other refusal here) takes the hint's place. */}
+        <div className="ml-1 min-w-0 flex-1">
+          {refusal?.spot === 'actions' ? (
+            <Refused refusal={refusal} spot="actions" />
+          ) : (
+            <span className="text-sm text-muted">Order in this list and in the Customizer</span>
+          )}
+        </div>
         <Button
           variant="ghost"
           aria-label={`Delete ${name}`}
@@ -279,11 +309,15 @@ export function ModelInspector({
   doc,
   evaluated,
   run,
+  refusal,
+  onDismiss,
   onSelect,
 }: {
   doc: ExtrudoDocument;
   evaluated: EvaluatedParameter;
   run: Run;
+  refusal: Refusal | undefined;
+  onDismiss(): void;
   onSelect(selection: Selection): void;
 }) {
   const { name, owner } = evaluated;
@@ -319,18 +353,21 @@ export function ModelInspector({
         <span className="text-xs font-semibold tracking-[0.08em] text-muted uppercase">
           Model parameter
         </span>
-        <div className="mt-1">
+        <div className="mt-1 flex flex-col gap-1">
           <TextField
             label={`Name of ${name}`}
             value={name}
             className="h-9 font-mono text-md"
+            invalid={refusal?.spot === 'name'}
+            onEdit={onDismiss}
             onCommit={(next) => {
               const newName = next.trim();
-              const done = run(renameModelParameter({ name, newName }));
+              const done = run(renameModelParameter({ name, newName }), 'name');
               if (done) onSelect({ kind: 'model', name: newName });
               return done;
             }}
           />
+          <Refused refusal={refusal} spot="name" />
         </div>
         <p className="mt-1 text-sm text-muted">
           {owner.type === 'dimension' ? 'A dimension' : 'An input'} of {feature}. Expressions use it
@@ -364,6 +401,7 @@ export function ModelInspector({
             Make user parameter
           </Button>
         </div>
+        <Refused refusal={refusal} spot="actions" className="mt-1" />
       </div>
       <Field label="Expression">
         <ExpressionInput
@@ -403,11 +441,15 @@ export function NewParameterForm({
   doc,
   evaluation,
   run,
+  refusal,
+  onDismiss,
   onAdded,
 }: {
   doc: ExtrudoDocument;
   evaluation: ParameterEvaluation;
   run: Run;
+  refusal: Refusal | undefined;
+  onDismiss(): void;
   onAdded(id: ParameterId): void;
 }) {
   const [name, setName] = useState('');
@@ -430,6 +472,7 @@ export function NewParameterForm({
           ...(comment ? { comment } : {}),
         },
       }),
+      'name',
     );
     if (!added) return;
     onAdded(id);
@@ -453,19 +496,26 @@ export function NewParameterForm({
       }}
     >
       <h3 className="text-md font-semibold">New parameter</h3>
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
-        <Field label="Name">
-          <TextInput
-            aria-label="New parameter name"
-            placeholder="e.g. wall"
-            className="h-9 font-mono text-md"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </Field>
-        <Field label="Unit">
-          <UnitPicker label="New parameter unit" value={unit} onChange={setUnit} />
-        </Field>
+      <div className="flex flex-col gap-1">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
+          <Field label="Name">
+            <TextInput
+              aria-label="New parameter name"
+              placeholder="e.g. wall"
+              className="h-9 font-mono text-md"
+              value={name}
+              aria-invalid={refusal?.spot === 'name' || undefined}
+              onChange={(e) => {
+                setName(e.target.value);
+                onDismiss();
+              }}
+            />
+          </Field>
+          <Field label="Unit">
+            <UnitPicker label="New parameter unit" value={unit} onChange={setUnit} />
+          </Field>
+        </div>
+        <Refused refusal={refusal} spot="name" />
       </div>
       <Field label="Expression">
         <ExpressionInput
@@ -706,38 +756,71 @@ function evaluateDraft(
   return result ?? { ok: true, value: 0, dim: { length: 0, angle: 0 } };
 }
 
-/** A text field that commits on Enter or blur and reverts on Esc. */
+/**
+ * A text field that commits on Enter or blur and reverts on Esc. A refused
+ * value stays in the field (`invalid`, its message under it) to be fixed;
+ * `onEdit` runs on every change and on Esc, to clear that message.
+ */
 function TextField({
   label,
   value,
   placeholder,
   className,
+  invalid,
+  onEdit,
   onCommit,
 }: {
   label: string;
   value: string;
   placeholder?: string;
   className?: string;
+  invalid?: boolean;
+  onEdit?(): void;
   onCommit(value: string): boolean;
 }) {
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
   const commit = () => {
-    if (draft !== value && !onCommit(draft)) setDraft(value);
+    if (draft !== value) onCommit(draft);
   };
   return (
     <TextInput
       aria-label={label}
+      aria-invalid={invalid || undefined}
       className={className}
       placeholder={placeholder}
       value={draft}
       data-keep-escape={draft !== value || undefined}
-      onChange={(e) => setDraft(e.target.value)}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        onEdit?.();
+      }}
       onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === 'Enter') e.currentTarget.blur();
-        if (e.key === 'Escape' && draft !== value) setDraft(value);
+        if (e.key === 'Escape' && draft !== value) {
+          setDraft(value);
+          onEdit?.();
+        }
       }}
     />
+  );
+}
+
+/** A refused command's message, when it belongs at `spot` (ADR-0086 amendment). */
+function Refused({
+  refusal,
+  spot,
+  className = '',
+}: {
+  refusal: Refusal | undefined;
+  spot: Spot;
+  className?: string;
+}) {
+  if (refusal?.spot !== spot) return null;
+  return (
+    <p role="alert" className={`text-sm text-error ${className}`}>
+      <Message text={refusal.text} />
+    </p>
   );
 }

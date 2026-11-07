@@ -712,7 +712,11 @@ A list on the left, the selected parameter on the right.
   read-only note instead), and a footer with Move up/down and Delete.
 - **New parameter.** The same fields as a form; Add or `Enter` adds it and
   selects it. A design without parameters opens on the form.
-- A refused change shows its message at the top of the inspector.
+- A refused change shows its message where it was made, so nothing moves: a
+  refused name under the name field (red outline, the typed name kept until
+  Esc or the next edit), anything else (a delete of a parameter in use) in place
+  of the footer's hint beside Delete, or under a model parameter's buttons.
+  The footer stays at the pane's bottom while the fields scroll.
 
 ### 3.6 Annotations (P6-23, ADR-0126)
 

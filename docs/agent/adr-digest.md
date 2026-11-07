@@ -2578,7 +2578,15 @@ parameter has no range fields. A migration from format 1 spells out the base uni
 (`25.4` → `25.4 mm`, `30` → `30 deg`) and moves `customizer.group`. e2e: rows are
 `[data-parameter-row="<name>"]` (`aria-current` when selected), sections
 `[data-parameter-section]`; select a row before its fields exist (`selectParameter`,
-`parameterExpression`, `addUserParameter` in `e2e/helpers.ts`).
+`parameterExpression`, `addUserParameter` in `e2e/helpers.ts`). Amendment 2026-11-07:
+**a refusal shows where the action was taken**, never in a line above the inspector
+(`run(command, spot)` → `Refusal { spot: 'name' | 'actions', text }`, rendered by
+`Refused`): `name` under the name field (rename, add; the field is `aria-invalid`
+and keeps the typed name, typing or Esc clears it), `actions` (the default) in place
+of the footer hint beside Delete, or under a model parameter's buttons. A row menu's
+Delete selects the row first. The dialog has no `role="alert"` until something is
+refused, so specs check `toHaveCount(0)`, not empty text. The footer is sticky at the
+pane's bottom.
 
 ADR-0087 (P6-08, 2026-10-15) added **the desktop MCP server and its skill** (no
 schema or file-format change). **Main** hosts it (`apps/desktop/src/main/mcp/`):

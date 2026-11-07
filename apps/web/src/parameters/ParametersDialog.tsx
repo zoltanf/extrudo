@@ -42,11 +42,12 @@ import {
   starCommand,
   stepIndex,
 } from './list';
-import { Message } from './Message';
 import {
   ModelInspector,
   NewParameterForm,
+  type Refusal,
   type Selection,
+  type Spot,
   UserInspector,
 } from './ParameterInspector';
 
@@ -86,19 +87,23 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
   const doc = useStore(store, (s) => s.doc);
   const { canUndo, canRedo, undoLabel, redoLabel, undo, redo } = useStore(store);
   const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
-  const [message, setMessage] = useState('');
+  const [refusal, setRefusal] = useState<Refusal>();
+  const dismiss = () => setRefusal(undefined);
   const [chosen, setChosen] = useState<Selection>();
 
-  /** Dispatches a command; a rejected one shows its message instead of throwing. */
-  const run = (command: Command<unknown>): boolean => {
+  /**
+   * Dispatches a command; a rejected one shows its message at `spot` (under
+   * the name field, or by the inspector's buttons) instead of throwing.
+   */
+  const run = (command: Command<unknown>, spot: Spot = 'actions'): boolean => {
     try {
       if (apply) apply(command);
       else store.getState().dispatch(command);
-      setMessage('');
+      setRefusal(undefined);
       return true;
     } catch (error) {
       if (!(error instanceof CommandError)) throw error;
-      setMessage(error.message);
+      setRefusal({ spot, text: error.message });
       return false;
     }
   };
@@ -107,7 +112,7 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
   const selection = resolveSelection(chosen, doc, model);
   const select = (next: Selection) => {
     setChosen(next);
-    setMessage('');
+    setRefusal(undefined);
   };
   /** Moves a user parameter past its neighbour in its group (Move up, Move down, Alt+arrows). */
   const step = (id: ParameterId, direction: -1 | 1) => {
@@ -126,6 +131,8 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
         evaluation={evaluation}
         parameter={parameter}
         run={run}
+        refusal={refusal}
+        onDismiss={dismiss}
         onSelect={select}
         canMoveUp={stepIndex(doc.parameters, parameter.id, -1) !== undefined}
         canMoveDown={stepIndex(doc.parameters, parameter.id, 1) !== undefined}
@@ -140,6 +147,8 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
         doc={doc}
         evaluated={evaluated}
         run={run}
+        refusal={refusal}
+        onDismiss={dismiss}
         onSelect={select}
       />
     ) : null;
@@ -149,6 +158,8 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
         doc={doc}
         evaluation={evaluation}
         run={run}
+        refusal={refusal}
+        onDismiss={dismiss}
         onAdded={(id) => select({ kind: 'user', id })}
       />
     );
@@ -158,7 +169,7 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) setMessage('');
+        if (!next) setRefusal(undefined);
         onOpenChange(next);
       }}
       title="Parameters"
@@ -202,14 +213,7 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
           onStep={step}
           history={history}
         />
-        {/* The alert line stays out of the scrolling part, so a message is
-            always in view and never pushes the inspector's footer down. */}
-        <div className="flex min-h-0 flex-col">
-          <p className={message ? 'px-6 pt-4 text-sm text-error' : ''} role="alert">
-            <Message text={message} />
-          </p>
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-4">{inspector}</div>
-        </div>
+        <div className="flex min-h-0 flex-col overflow-y-auto px-6 py-4">{inspector}</div>
       </div>
     </Dialog>
   );
@@ -462,7 +466,13 @@ function ParameterList({
                       </MenuItem>
                       <MenuItem
                         icon={<Trash2 size={14} />}
-                        onSelect={() => run(removeParameter({ id }))}
+                        onSelect={() => {
+                          // A refusal shows by the inspector's Delete button, so the
+                          // row is selected first, and the old selection comes back
+                          // if the delete goes through.
+                          onSelect({ kind: 'user', id });
+                          if (run(removeParameter({ id }))) onSelect(selection);
+                        }}
                       >
                         Delete {parameter.name}
                       </MenuItem>

@@ -104,7 +104,8 @@ section below the list (click its heading to open or close it), each with the fe
 is `d1`, `d2` and so on, and so are the values in feature dialogs. You can edit them here, and
 use them in other expressions. To rename one, select it and edit **Name**, or double-click its row.
 Every expression that used the old name follows, in one undo step. A name that is taken, or is a
-unit or function, is refused with a message. You can also type `name = value` in a dimension's
+unit or function, is refused with a message under the field, which keeps what you typed so you can
+fix it (Esc puts the old name back). You can also type `name = value` in a dimension's
 editor, as described in [sketching](./sketching.md).
 
 **Reset name** gives a renamed model parameter the lowest free `d1`, `d2`… name again, usually
@@ -119,7 +120,7 @@ them too. Once anything else uses `d3`, or
 its expression is more than the name, it is back in the list.
 
 Changing a parameter is one undo step, however many sketches and features it moves. Deleting one
-that something uses is refused, and the message lists what uses it.
+that something uses is refused, and the message beside **Delete parameter** lists what uses it.
 
 ## The Customizer
 
