@@ -128,7 +128,7 @@ test('Simplify for Print removes the small round and hole, and says what it foun
     ],
     'body',
   );
-  await expect(dialog.getByRole('button', { name: 'Bodies', exact: true })).toHaveText('1 body');
+  await expect(dialog.getByRole('button', { name: 'Bodies', exact: true })).toHaveText('Body1');
   await dialog.getByRole('textbox', { name: 'Max radius', exact: true }).fill('4 mm');
   await dialog.getByRole('textbox', { name: 'Max diameter', exact: true }).fill('15 mm');
 
