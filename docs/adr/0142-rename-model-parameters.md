@@ -28,6 +28,17 @@ the Parameters dialog and found the pair redundant.
    and sets its value (rename, then `expr = value`, one step) instead of adding a user
    parameter. A dimension without a name (driven) keeps the old path: a user parameter
    and `expr = name`. Existing documents are unchanged: a saved `d1 = diameter` still loads.
+4. **Make user parameter** (amendment, 2026-11-07): `makeUserParameter({ name, id })` (core, one
+   undo step) adds a user parameter `name` holding the dimension's or input's expression (unit
+   from the dimension or input), sets that expression to `name`, and gives it a fresh model
+   name (`nextModelParameterName`). Expressions that used `name` need no change. The
+   Parameters dialog offers it as a button in the model inspector. It selects the new user
+   row. There is **no way back** (undo only): inlining a user parameter that several
+   expressions use is ambiguous.
+5. **Reset name** (amendment, 2026-11-07): `resetModelParameterName({ name })` renames to the
+   lowest free `dN` (`lowestFreeModelParameterName`) and rewrites users. The original auto name
+   is not stored (no schema change), so this is usually the original but can differ when
+   several parameters were renamed. The button shows only for names that aren't `dN`.
 
 ## Rejected
 

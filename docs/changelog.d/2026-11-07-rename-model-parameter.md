@@ -1,1 +1,1 @@
-- 2026-11-07 · **Rename model parameters**: rename `d1` and the like in the Parameters dialog (Name field or double-click); typing `name = value` in a dimension renames its own parameter instead of adding a second one (ADR-0142, #203).
+- 2026-11-07 · **Rename model parameters**: rename `d1` and the like in the Parameters dialog (Name field or double-click); typing `name = value` in a dimension renames its own parameter instead of adding a second one plus a "Make user parameter" button and "Reset name" (ADR-0142, #203).

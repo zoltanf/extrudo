@@ -11,6 +11,7 @@ import {
   bodyDisplay,
   insertFeature,
   isFeatureVisible,
+  makeUserParameter,
   moveTimelineMarker,
   nameBodies,
   newBodyNames,
@@ -19,6 +20,7 @@ import {
   renameDocument,
   renameFeature,
   renameModelParameter,
+  resetModelParameterName,
   restoreVersion,
   setFeatureSuppressed,
   setFeatureVisibility,
@@ -324,6 +326,55 @@ describe('document commands', () => {
     expect(() => apply(doc, renameModelParameter({ name: 'nope', newName: 'x' }))).toThrow(
       CommandError,
     );
+  });
+
+  it('hand a model parameter to a user parameter, or reset its name', () => {
+    const data = emptySketchData();
+    data.dimensions = {
+      ['a' as DimensionId]: {
+        type: 'distance',
+        orientation: 'aligned',
+        a: 'l' as SketchEntityId,
+        expr: '10 mm',
+        driven: false,
+        paramName: 'width',
+      },
+      ['b' as DimensionId]: {
+        type: 'distance',
+        orientation: 'aligned',
+        a: 'm' as SketchEntityId,
+        expr: 'width * 2',
+        driven: false,
+        paramName: 'd2',
+      },
+    };
+    const sketch: Feature = {
+      ...feature('f1', 'sketch', 'Sketch1'),
+      inputs: { sketch: { kind: 'sketchData', sketch: data } },
+    };
+    const doc: ExtrudoDocument = { ...sampleDocument(), features: [sketch], timelineMarker: 1 };
+    const dimsOf = (d: ExtrudoDocument) => {
+      const input = d.features[0]?.inputs.sketch;
+      return (input as { sketch: typeof data }).sketch.dimensions;
+    };
+    const made = apply(doc, makeUserParameter({ name: 'width', id: pid('p9') }));
+    const dims = dimsOf(made);
+    expect(made.parameters.find((p) => p.id === pid('p9'))).toMatchObject({
+      name: 'width',
+      expression: '10 mm',
+      unit: 'length',
+    });
+    expect(dims[did('a')]).toMatchObject({ expr: 'width', paramName: 'd3' });
+    expect(dims[did('b')]?.expr).toBe('width * 2');
+    expect(() => apply(made, makeUserParameter({ name: 'width', id: pid('p8') }))).toThrow(
+      CommandError,
+    );
+    // Reset: the lowest free dN, and the expressions follow.
+    const reset = apply(doc, resetModelParameterName({ name: 'width' }));
+    const resetDims = dimsOf(reset);
+    expect(resetDims[did('a')]?.paramName).toBe('d1');
+    expect(resetDims[did('b')]?.expr).toBe('d1 * 2');
+    expect(() => apply(doc, resetModelParameterName({ name: 'nope' }))).toThrow(CommandError);
   });
 
   it('keep the timeline marker within the timeline', () => {

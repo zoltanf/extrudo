@@ -314,6 +314,30 @@ test('the Parameters dialog renames a model parameter, and the expressions follo
   await dialog.getByRole('button', { name: 'Undo' }).click();
   await expect(dialog.locator('[data-parameter-row="d1"]')).toHaveCount(1);
   await expect(await parameterExpression(page, 'half')).toHaveValue('d1 / 2');
+
+  // A renamed parameter goes back to its auto name with Reset name; only a
+  // renamed one offers it.
+  await selectParameter(page, 'd1');
+  await expect(dialog.getByRole('button', { name: /Reset name of/ })).toHaveCount(0);
+  await name.fill('width');
+  await name.press('Enter');
+  await dialog.getByRole('button', { name: 'Reset name of width' }).click();
+  await expect(dialog.locator('[data-parameter-row="d1"]')).toHaveAttribute('aria-current', 'true');
+  await expect(await parameterExpression(page, 'half')).toHaveValue('d1 / 2');
+
+  // Make user parameter: the name and value move to a user parameter, the
+  // dimension points at it and gets a fresh name.
+  await selectParameter(page, 'd1');
+  await name.fill('width');
+  await name.press('Enter');
+  await dialog.getByRole('button', { name: 'Make width a user parameter' }).click();
+  await expect(await parameterExpression(page, 'width')).toHaveValue(/40/);
+  await selectParameter(page, 'd1');
+  await expect(await parameterExpression(page, 'd1')).toHaveValue('width');
+  await expect(await parameterExpression(page, 'half')).toHaveValue('width / 2');
+  await dialog.getByRole('button', { name: 'Undo' }).click();
+  await expect(dialog.locator('[data-parameter-row="width"]')).toHaveCount(1);
+  await expect(await parameterExpression(page, 'half')).toHaveValue('width / 2');
 });
 
 test('the editor creates a parameter from an unknown name, and completes functions (ADR-0096)', async ({

@@ -6,7 +6,13 @@
 import { removeAnnotationsFrom } from './annotations';
 import { CommandError, type DocumentDraft, defineCommand } from './commands';
 import { isReservedName } from './expr/evaluate';
-import { mentions, parameterNames, renameReferences } from './expr/parameters';
+import {
+  lowestFreeModelParameterName,
+  mentions,
+  nextModelParameterName,
+  parameterNames,
+  renameReferences,
+} from './expr/parameters';
 import { spellOutUnit } from './expr/spell-unit';
 import { dropFeatureFromGroups, normalizeGroupsInPlace } from './groups';
 import type { BodyId, FeatureId, ParameterId, ViewId } from './ids';
@@ -24,11 +30,13 @@ import {
   type RenderSettings,
   RenderSettingsSchema,
   type Settings,
+  type UnitKind,
   type ViewCamera,
   type ViewSection,
   ViewSectionSchema,
 } from './schema';
 import { dimensionUnit } from './sketch/dimensions';
+import type { SketchDimension } from './sketch/schema';
 import { referencedFeatures } from './timeline';
 
 export const renameDocument = defineCommand<{ name: string }>(
@@ -157,13 +165,53 @@ export const renameModelParameter = defineCommand<{ name: string; newName: strin
   'parameter.renameModel',
   'Rename parameter',
   (draft, { name, newName }) => {
-    let holder: { paramName?: string } | undefined;
-    for (const entry of featureExpressions(draft)) {
-      if (!entry.holder.driven && entry.holder.paramName === name) holder = entry.holder;
-    }
-    if (!holder) throw new CommandError(`There is no model parameter named "${name}".`);
+    const { holder } = modelParameterHolder(draft, name);
     if (newName === name) return;
     checkParameterName(draft, newName);
+    holder.paramName = newName;
+    rewriteReferences(draft, name, newName);
+  },
+);
+
+/** The non-driven dimension or `expr` input that carries the model parameter `name`. */
+function modelParameterHolder(draft: DocumentDraft, name: string) {
+  for (const entry of featureExpressions(draft)) {
+    if (!entry.holder.driven && entry.holder.paramName === name) return entry;
+  }
+  throw new CommandError(`There is no model parameter named "${name}".`);
+}
+
+/**
+ * Hands a model parameter's name and value to a new user parameter (ADR-0142):
+ * the user parameter `name` takes the expression, the dimension or input
+ * keeps pointing at it by name and gets a fresh `dN` of its own. Expressions
+ * that used `name` need no change. There is no way back; undo is the way.
+ */
+export const makeUserParameter = defineCommand<{ name: string; id: ParameterId }>(
+  'parameter.makeUser',
+  'Make user parameter',
+  (draft, { name, id }) => {
+    const { holder, dimension } = modelParameterHolder(draft, name);
+    const expression = holder.expr;
+    const unit = dimension
+      ? dimensionUnit(holder as SketchDimension)
+      : ((holder as { unit?: UnitKind }).unit ?? 'length');
+    holder.paramName = nextModelParameterName(draft as ExtrudoDocument);
+    holder.expr = name;
+    draft.parameters.push({ id, name, expression, unit });
+  },
+);
+
+/**
+ * Gives a renamed model parameter the lowest free `dN` again (ADR-0142),
+ * usually the name it was born with; expressions follow.
+ */
+export const resetModelParameterName = defineCommand<{ name: string }>(
+  'parameter.resetModelName',
+  'Reset parameter name',
+  (draft, { name }) => {
+    const { holder } = modelParameterHolder(draft, name);
+    const newName = lowestFreeModelParameterName(draft as ExtrudoDocument);
     holder.paramName = newName;
     rewriteReferences(draft, name, newName);
   },

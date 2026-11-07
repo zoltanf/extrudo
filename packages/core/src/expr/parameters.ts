@@ -335,6 +335,18 @@ export function nextModelParameterName(doc: ExtrudoDocument): string {
   return `d${highest + 1}`;
 }
 
+/**
+ * The lowest free `dN`: what "reset name" gives a renamed model parameter
+ * (ADR-0142). Usually its original, since auto names are handed out upwards
+ * and its own was freed by the rename.
+ */
+export function lowestFreeModelParameterName(doc: ExtrudoDocument): string {
+  const used = parameterNames(doc);
+  let n = 1;
+  while (used.has(`d${n}`)) n++;
+  return `d${n}`;
+}
+
 /** Every parameter name in use, user and model. */
 export function parameterNames(doc: ExtrudoDocument): Set<string> {
   return new Set(sourcesOf(doc).map((s) => s.name));

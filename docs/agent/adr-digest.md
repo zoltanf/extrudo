@@ -4346,4 +4346,7 @@ parameter's name); a driven dimension has no name; **`name = value` in a driving
 (`DimensionLabels.tsx` `commit`) renames its own parameter and sets the value** (no second user parameter; a
 dimension without a name keeps the user-parameter path); the Parameters dialog's `ModelInspector` has a Name field
 (`Name of <name>`, errors in the dialog's alert, row stays selected under the new name), and a double-click on any
-list row focuses it (`focusName`). No schema change.
+list row focuses it (`focusName`). **Make user parameter** (`makeUserParameter({ name, id })`): the user parameter
+takes the name and expression, the holder's expr becomes `name` and its `paramName` a fresh `dN`; one-way (undo only).
+**Reset name** (`resetModelParameterName`): lowest free `dN` via `lowestFreeModelParameterName`, not stored, so it may
+differ from the original; shown only for non-`dN` names. No schema change.

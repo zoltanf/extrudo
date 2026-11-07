@@ -107,6 +107,11 @@ Every expression that used the old name follows, in one undo step. A name that i
 unit or function, is refused with a message. You can also type `name = value` in a dimension's
 editor, as described in [sketching](./sketching.md).
 
+**Reset name** gives a renamed model parameter the lowest free `d1`, `d2`… name again, usually
+the one it started with. **Make user parameter** turns a model parameter into a user parameter
+of the same name and value, so it gets a slider and a group; the dimension or input keeps
+using it and gets a new `d` name. That can't be turned back into a model parameter, only undone.
+
 Changing a parameter is one undo step, however many sketches and features it moves. Deleting one
 that something uses is refused, and the message lists what uses it.
 

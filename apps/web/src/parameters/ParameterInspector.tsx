@@ -8,6 +8,8 @@ import {
   evaluateRange,
   formatQuantity,
   isPlainValue,
+  lowestFreeModelParameterName,
+  makeUserParameter,
   newId,
   type Parameter,
   type ParameterEvaluation,
@@ -18,6 +20,7 @@ import {
   type RangeField,
   removeParameter,
   renameModelParameter,
+  resetModelParameterName,
   setParameterCustomizer,
   setParameterGroup,
   type UnitKind,
@@ -332,6 +335,34 @@ export function ModelInspector({
           {owner.type === 'dimension' ? 'A dimension' : 'An input'} of {feature}. Expressions use it
           by this name; rename it here.
         </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {/^d\d+$/.test(name) ? null : (
+            <Button
+              variant="ghost"
+              aria-label={`Reset name of ${name}`}
+              title={`Back to ${lowestFreeModelParameterName(doc)}`}
+              onClick={() => {
+                const next = lowestFreeModelParameterName(doc);
+                if (run(resetModelParameterName({ name }))) {
+                  onSelect({ kind: 'model', name: next });
+                }
+              }}
+            >
+              Reset name
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            aria-label={`Make ${name} a user parameter`}
+            title="Moves the name and value to a user parameter, with a slider and a group. This can't be turned back, only undone."
+            onClick={() => {
+              const id = newId<ParameterId>();
+              if (run(makeUserParameter({ name, id }))) onSelect({ kind: 'user', id });
+            }}
+          >
+            Make user parameter
+          </Button>
+        </div>
       </div>
       <Field label="Expression">
         <ExpressionInput
