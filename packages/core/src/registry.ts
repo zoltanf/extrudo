@@ -80,7 +80,7 @@ export function documentFeatures(): FeatureRegistry<FeatureDefinition> {
   registry.register(offsetFaceFeature);
   // Remove Faces (ADR-0099).
   registry.register(removeFacesFeature);
-  // Simplify for Print: small rounds and holes removed at once (ADR-0141, #79).
+  // Simplify for Print: small rounds, chamfers and holes removed at once (ADR-0141, #79).
   registry.register(simplifyForPrintFeature);
   // Split Body, Scale and Draft (P3-08, second half).
   registry.register(splitBodyFeature).register(scaleFeature).register(draftFeature);

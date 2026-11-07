@@ -13,7 +13,7 @@ import type { InfoField } from './spec';
 import { BOX, settle, setupDialogs } from './testing';
 import { shownFields } from './values';
 
-const group = (kind: 'round' | 'hole', size: number, removed = true): SimplifyGroup => ({
+const group = (kind: SimplifyGroup['kind'], size: number, removed = true): SimplifyGroup => ({
   kind,
   body: BOX,
   size,
@@ -31,19 +31,21 @@ function started() {
 describe('the simplify for print dialog (ADR-0141)', () => {
   const found = simplifyForPrintDialog.fields.find((f) => f.name === 'found') as InfoField;
 
-  it('is the app’s dialog for the tool, with both limits on by default', () => {
+  it('is the app’s dialog for the tool, with every limit on by default', () => {
     expect(specForCommand(featureDialogs(), 'simplifyForPrint')?.type).toBe('simplifyForPrint');
     const t = started();
     const inputs = t.open()?.draft.inputs ?? {};
     expect(SimplifyForPrintInputsSchema.safeParse(inputs).success).toBe(true);
     expect(Object.keys(inputs).sort()).toEqual([
       'bodies',
+      'chamfers',
       'holes',
+      'maxChamferSize',
       'maxHoleDiameter',
       'maxRoundRadius',
       'rounds',
     ]);
-    expect(simplifyKinds(inputs as never)).toEqual({ rounds: true, holes: true });
+    expect(simplifyKinds(inputs as never)).toEqual({ rounds: true, chamfers: true, holes: true });
     expect(t.controller.ok()).toBe(true);
     expect(t.store.getState().doc.features.at(-1)?.name).toBe('Simplify for Print1');
   });
@@ -59,7 +61,7 @@ describe('the simplify for print dialog (ADR-0141)', () => {
     );
     const inputs = open.draft.inputs;
     expect(inputs.maxHoleDiameter).toBeUndefined();
-    expect(simplifyKinds(inputs as never)).toEqual({ rounds: true, holes: false });
+    expect(simplifyKinds(inputs as never)).toEqual({ rounds: true, chamfers: true, holes: false });
   });
 
   it('counts what goes and lists each round or hole, what stayed first', async () => {
@@ -88,10 +90,17 @@ describe('the simplify for print dialog (ADR-0141)', () => {
   });
 
   it('words the count line and caps the list', () => {
-    expect(simplifySummary({ groups: [] })).toBe('No rounds or holes under the limits');
-    expect(simplifySummary({ groups: [group('round', 1), group('round', 1)] })).toBe(
-      '2 rounds, 0 holes',
+    expect(simplifySummary({ groups: [] })).toBe('Nothing under the limits');
+    expect(simplifySummary({ groups: [group('round', 1), group('round', 1)] })).toBe('2 rounds');
+    expect(simplifySummary({ groups: [group('chamfer', 1), group('hole', 2, false)] })).toBe(
+      "1 chamfer · 1 couldn't be removed",
     );
+    expect(simplifySummary({ groups: [group('hole', 2, false)] })).toBe(
+      "Nothing removed · 1 couldn't be removed",
+    );
+    expect(simplifyLines({ groups: [group('chamfer', 0.5)] })).toEqual([
+      'Chamfer 0.5 mm, 2 faces: removed',
+    ]);
     const many = { groups: Array.from({ length: 11 }, () => group('hole', 2)) };
     const lines = simplifyLines(many);
     expect(lines).toHaveLength(9);

@@ -863,7 +863,7 @@ export const TOOLS = {
     short: 'Simplify',
     icon: 'simplify-for-print',
     category: 'export',
-    hint: 'Remove every round under a radius and every hole under a diameter at once: for parts imported from engineering CAD.',
+    hint: 'Remove every small round, chamfer and hole at once: for parts imported from engineering CAD.',
   },
   slicer: {
     id: 'slicer',

@@ -1,10 +1,11 @@
 // Simplify for Print (ADR-0141, #79) through the recompute engine with real
-// OCCT: small fillets and small through and blind holes found and removed,
-// large ones kept, a round that can't be removed reported while the rest go,
+// OCCT: small fillets, chamfers and small through and blind holes found and
+// removed, large ones kept, a hole's rounded mouth taken with it, a round that can't be removed reported while the rest go,
 // and the limits' toggles. The detection rule's split-wall ring is also
 // tested on a hand-built description, without WASM.
 import {
   type BodyId,
+  chamferInputs,
   type ExtrudoDocument,
   extrudeInputs,
   type Feature,
@@ -76,10 +77,9 @@ describe('the Simplify for Print detection rule (plain data)', () => {
     };
   }
   const surfaceOf = (face: number) => (face >= 2 ? half(1.5) : undefined);
-  const chain = () => [2, 3];
 
   it('two coaxial halves closing a ring are a hole, not a round', () => {
-    const groups = findSimplifyGroups(splitHole(), surfaceOf, chain, {
+    const groups = findSimplifyGroups(splitHole(), surfaceOf, {
       maxRoundRadius: 5,
       maxHoleDiameter: 3,
     });
@@ -88,13 +88,13 @@ describe('the Simplify for Print detection rule (plain data)', () => {
 
   it('a hole over the limit stays, and its halves are no round either', () => {
     const limits = { maxRoundRadius: 5, maxHoleDiameter: 2.9 };
-    expect(findSimplifyGroups(splitHole(), surfaceOf, chain, limits)).toEqual([]);
+    expect(findSimplifyGroups(splitHole(), surfaceOf, limits)).toEqual([]);
   });
 
   it('one half alone (an open arc) is a round', () => {
     const open = splitHole();
     open.edges = open.edges.slice(0, 7);
-    const groups = findSimplifyGroups(open, surfaceOf, chain, {
+    const groups = findSimplifyGroups(open, surfaceOf, {
       maxRoundRadius: 2,
       maxHoleDiameter: undefined,
     });
@@ -312,7 +312,7 @@ describe('simplify for print', { timeout: 120_000 }, () => {
     );
     const own = status(result, 'P');
     expect(own.status).toBe('warning');
-    expect(own.message).toContain("2 of the 4 rounds and holes found couldn't be removed");
+    expect(own.message).toContain("2 of the 4 found couldn't be removed");
     const groups = report(result)?.groups ?? [];
     expect(groups.map((g) => [g.body, g.removed])).toEqual([
       ['B:0', true],
@@ -353,12 +353,137 @@ describe('simplify for print', { timeout: 120_000 }, () => {
     );
     expect(status(none, 'P')).toMatchObject({
       status: 'warning',
-      message: 'No rounds or holes under the limits: nothing changed.',
+      message: 'Nothing under the limits: the body is unchanged.',
     });
     const off = await run(testDocument([...features, simplify(['B:0'], {})]));
     expect(status(off, 'P')).toMatchObject({
       status: 'error',
-      message: 'Turn on rounds or holes (or both) to simplify.',
+      message: 'Turn on rounds, chamfers or holes to simplify.',
     });
+  });
+
+  const cap = 'extrude:B:cap:end';
+  const bottom = 'extrude:B:cap:start';
+  const topEdge = (line: string): GeomRef => ({ kind: 'edge', id: edgeName([cap, side(line)]) });
+  const bottomEdge = (line: string): GeomRef => ({
+    kind: 'edge',
+    id: edgeName([bottom, side(line)]),
+  });
+  const chamfered = (sets: Parameters<typeof chamferInputs>[0]): Feature[] => [
+    ...block().features,
+    { ...testFeature('C', 'chamfer'), inputs: chamferInputs(sets) },
+  ];
+
+  it('(e) removes the chamfers up to their longer leg; the face between two is none', async () => {
+    const { front, back } = block().lines;
+    const features = chamfered([
+      { edges: [topEdge(front)], distance: '1 mm' },
+      { edges: [topEdge(back)], mode: 'two-distances', distance: '1 mm', distanceB: '2 mm' },
+      { edges: [bottomEdge(front)], distance: '3 mm' },
+    ]);
+    const result = await run(
+      testDocument([...features, simplify(['B:0'], { maxChamferSize: '2 mm' })]),
+    );
+    expect(status(result, 'P')).toMatchObject({ status: 'ok' });
+    const groups = report(result)?.groups ?? [];
+    expect(
+      groups.map((g) => [g.kind, Number(g.size.toFixed(6)), g.faces, g.removed]).sort(),
+    ).toEqual([
+      ['chamfer', 1, 1, true],
+      ['chamfer', 2, 1, true],
+    ]);
+    // A chamfer of legs a and b along the 40 mm edge takes a b / 2 × 40; the 3 mm one stays.
+    expect(relative(volume(B0), BOX - 4.5 * 40)).toBeLessThan(1e-6);
+    // The limit over all three: the front face between two chamfers is no chamfer itself.
+    const all = await run(
+      testDocument([...features, simplify(['B:0'], { maxChamferSize: '5 mm' })]),
+    );
+    expect(report(all)?.groups.map((g) => g.faces)).toEqual([1, 1, 1]);
+    expect(relative(volume(B0), BOX)).toBeLessThan(1e-6);
+  });
+
+  it('(e2) every edge chamfered: one chamfer, corner patches and all', async () => {
+    const { front, right, back, left } = block().lines;
+    const loop = [front, right, back, left];
+    const vertical = loop.map(
+      (line, i): GeomRef => ({
+        kind: 'edge',
+        id: edgeName([side(line), side(loop[(i + 1) % 4] ?? '')]),
+      }),
+    );
+    const features = chamfered([
+      { edges: [...loop.map(topEdge), ...loop.map(bottomEdge), ...vertical], distance: '1 mm' },
+    ]);
+    const result = await run(
+      testDocument([...features, simplify(['B:0'], { maxChamferSize: '1 mm' })]),
+    );
+    expect(status(result, 'P')).toMatchObject({ status: 'ok' });
+    const groups = report(result)?.groups ?? [];
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ kind: 'chamfer', faces: 20, removed: true });
+    expect(relative(volume(B0), BOX)).toBeLessThan(1e-6);
+    expect(faceNames(result, B0)).toHaveLength(6);
+  });
+
+  it("(f) a countersink is a chamfer with holes off, and the hole's with them on", async () => {
+    const features = [
+      ...block().features,
+      hole('H1', {
+        extent: 'through',
+        type: 'countersink',
+        numbers: {
+          diameter: '3 mm',
+          csDiameter: '6 mm',
+          csAngle: '90 deg',
+          x: '20 mm',
+          y: '15 mm',
+        },
+      }),
+    ];
+    const chamferOnly = await run(
+      testDocument([...features, simplify(['B:0'], { maxChamferSize: '2 mm' })]),
+    );
+    expect(report(chamferOnly)?.groups).toEqual([
+      { kind: 'chamfer', body: 'B:0', size: expect.closeTo(1.5, 6), faces: 1, removed: true },
+    ]);
+    // A plain Ø3 hole is left.
+    expect(relative(volume(B0), BOX - Math.PI * 1.5 ** 2 * 10)).toBeLessThan(1e-6);
+    const both = await run(
+      testDocument([
+        ...features,
+        simplify(['B:0'], { maxChamferSize: '2 mm', maxHoleDiameter: '5 mm' }),
+      ]),
+    );
+    expect(report(both)?.groups).toEqual([
+      { kind: 'hole', body: 'B:0', size: expect.closeTo(3, 6), faces: 2, removed: true },
+    ]);
+    expect(relative(volume(B0), BOX)).toBeLessThan(1e-6);
+  });
+
+  it("(g) a hole's rounded mouth goes with the hole, whatever the round limit", async () => {
+    const features = [
+      ...block().features,
+      hole('H1', { extent: 'through', numbers: { diameter: '3 mm', x: '20 mm', y: '15 mm' } }),
+      {
+        ...testFeature('F', 'fillet'),
+        inputs: filletInputs([
+          {
+            edges: [{ kind: 'edge', id: edgeName([cap, 'hole:H1:side:wall']) }],
+            radius: '1 mm',
+          },
+        ]),
+      },
+    ];
+    const result = await run(
+      testDocument([
+        ...features,
+        simplify(['B:0'], { maxRoundRadius: '0.5 mm', maxHoleDiameter: '5 mm' }),
+      ]),
+    );
+    expect(status(result, 'P')).toMatchObject({ status: 'ok' });
+    expect(report(result)?.groups).toEqual([
+      { kind: 'hole', body: 'B:0', size: expect.closeTo(3, 6), faces: 2, removed: true },
+    ]);
+    expect(relative(volume(B0), BOX)).toBeLessThan(1e-6);
   });
 });

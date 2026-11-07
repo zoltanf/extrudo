@@ -1,1 +1,1 @@
-- 2026-11-07 · **Simplify for Print** (Make › Prepare): removes every round under a radius and every hole under a diameter on the chosen bodies at once; each one that can't be removed is listed while the rest still go (#79).
+- 2026-11-07 · **Simplify for Print** (Make › Prepare): removes every small round, chamfer and hole on the chosen bodies at once, each kind with its own limit; each one that can't be removed is listed while the rest still go (#79).

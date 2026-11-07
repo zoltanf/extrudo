@@ -389,7 +389,7 @@ export interface FeatureStatus {
    */
   meshToSolid?: MeshToSolidReport;
   /**
-   * A Simplify for Print feature's report (ADR-0141 §4): the rounds and holes
+   * A Simplify for Print feature's report (ADR-0141 §4): the rounds, chamfers and holes
    * it found, each removed or not. Absent for every other feature and when it failed.
    */
   simplify?: SimplifyReport;

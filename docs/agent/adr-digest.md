@@ -4342,17 +4342,27 @@ ADR-0141 (#79, 2026-11-07, pilot): **Simplify for Print** (`simplifyForPrint`,
 `packages/core/src/simplify-for-print.ts`, evaluator and detection
 `packages/kernel/src/features/simplify-for-print.ts`, dialog
 `apps/web/src/features/simplify-for-print.ts`, tool in Make › Prepare). Rules: the feature
-**stores bodies and limits, never faces** (`bodies`, `rounds` + `maxRoundRadius`, `holes` +
-`maxHoleDiameter`; a kind is on while its limit is given and its toggle isn't false,
+**stores bodies and limits, never faces** (`bodies`, `rounds` + `maxRoundRadius`, `chamfers` +
+`maxChamferSize`, `holes` + `maxHoleDiameter`; a kind is on while its limit is given and its toggle isn't false,
 `simplifyKinds`); detection runs in the kernel on every recompute with **existing facade queries
-only** (`surfaceGeometry`, `threadFace`, `tangentFaces`; no new WASM). `findSimplifyGroups` is
+only** (`surfaceGeometry`, `threadFace`; no new WASM; **not `tangentFaces`**: ~340 ms a call on
+a Mesh to Solid body); faces meet smoothly when their normals at the edge midpoint are within ~2°
+(`smoothAcross`/`normalAt`). `findSimplifyGroups` is
 pure: holes = an inside cylinder all the way round, or a closed **ring** of coaxial inside
-pieces of one radius (shared edges ≥ pieces), with `removeFacesPick`'s hole faces; size = twice
+pieces of one radius (shared edges ≥ pieces), with `removeFacesPick`'s hole faces and its mouth
+torus (coaxial, next to a wall: `withMouth`, whatever the round limit); size = twice
 the widest inside cylinder's radius, over the limit the whole hole stays; rounds = cylinders
-not all the way round, tori (minor radius), spheres, ≤ the limit, not in a hole, with a smooth
-chain beyond themselves, joined where one is in the other's chain; cones never; no face in two
-groups; rounds before holes; a group of every face is skipped. Removal per body: **all groups in
-one `removeFaces` first; on `RemoveFacesError` each group alone**, on the shape the earlier ones
+not all the way round, tori (minor radius), spheres, ≤ the limit, not in a hole, meeting a
+neighbour smoothly, joined across smooth edges; cones never; chamfers
+(`bevelOf`) = a plane strip between two parallel straight edges on two non-parallel flat
+neighbours (normal cosines 0.05–0.99985, every vertex inside the strip), size = the **longer
+leg** to the neighbours' meeting line, or a cone with circles at two levels meeting no neighbour smoothly
+(legs Δradius, Δheight); a face between two bevels is none when one of them is a bevel ≤ its
+size; touching chamfers are one group with **corner patches** (all neighbours chamfers,
+vertices within 2× their size of the centroid); no face in two groups; holes found first (a
+countersink is the hole's); output rounds, chamfers, holes; a group of every face is skipped. Removal per body: **all groups in
+one `removeFaces` first; on `RemoveFacesError` all but the groups `error.failed` names in one,
+then those alone; if that fails too, each group alone**, on the shape the earlier ones
 left, its faces found again **by name**; a failure leaves the shape and goes on (other errors
 propagate); keep shapes only after the last throwing call. Report `{ kind: 'simplifyForPrint',
 groups }` (`SimplifyGroup`: kind, body, size, faces, removed) goes to `FeatureStatus.simplify`
@@ -4362,4 +4372,5 @@ the input. The dialog's Found line is `simplifySummary`; `InfoField.lines` (new:
 under an info line) shows `simplifyGroupLine` per group, what stayed first, at most 8. Tooltip
 clip pending (`DEMO_CLIPS_PENDING`). Tests: `simplify-for-print.test.ts` in kernel (OCCT: small
 fillets, through and blind holes, a stadium's ends that can't be removed, on another body and
-on the same body) and web.
+on the same body, chamfers by longer leg and the octagon rule, every edge chamfered with corner
+patches, a countersink as chamfer or hole, a rounded hole mouth) and web.

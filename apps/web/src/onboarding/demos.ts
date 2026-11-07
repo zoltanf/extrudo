@@ -79,6 +79,7 @@ export const DEMO_TOOLS: readonly string[] = [
   'tolerance',
   'overhang',
   'wallThickness',
+  'simplifyForPrint',
   'export',
   'slicer',
   'render',
@@ -137,8 +138,8 @@ export const DEMO_TOOLS: readonly string[] = [
   'sketchScale',
 ];
 
-/** Tiles whose clip is still to record (`pnpm demos`): Simplify for Print's (ADR-0141). */
-export const DEMO_CLIPS_PENDING: readonly string[] = ['simplifyForPrint'];
+/** Tiles whose clip is still to record (`pnpm demos`): none now. */
+export const DEMO_CLIPS_PENDING: readonly string[] = [];
 
 /** Where a tool's clip is, or `undefined` if it has none. */
 export function demoUrl(tool: string): string | undefined {

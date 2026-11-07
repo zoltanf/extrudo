@@ -144,7 +144,7 @@ test('Simplify for Print removes the small round and hole, and says what it foun
   // Limits below both: nothing found, a warning.
   await dialog.getByRole('textbox', { name: 'Max radius', exact: true }).fill('2 mm');
   await dialog.getByRole('textbox', { name: 'Max diameter', exact: true }).fill('10 mm');
-  await expect(found).toHaveText('No rounds or holes under the limits', { timeout: 30_000 });
+  await expect(found).toHaveText('Nothing under the limits', { timeout: 30_000 });
   await expect(dialog).toHaveAttribute('data-preview-status', 'warning');
 
   // Up again, and OK: the plain cube.

@@ -1,9 +1,9 @@
 /**
- * The Simplify for Print dialog (ADR-0141, #79): bodies, and a limit for
- * rounds and one for holes, each with its own toggle. The live preview
- * draws the faces that go in red (the kernel's preview tool); the Found line
- * counts them ("12 rounds, 3 holes") and its lines say, per round or
- * hole, whether it was removed. Fields are named like the feature's
+ * The Simplify for Print dialog (ADR-0141, #79): bodies, and a limit each
+ * for rounds, chamfers and holes, each with its own toggle. The live
+ * preview draws the faces that go in red (the kernel's preview tool); the
+ * Found line counts them ("12 rounds, 3 holes") and its lines say, per
+ * round, chamfer or hole, whether it was removed. Fields are named like the feature's
  * inputs, so the framework's default mapping turns them into inputs and
  * back; a limit whose toggle is off is hidden and makes no input.
  */
@@ -62,10 +62,26 @@ export const simplifyForPrintDialog = defineFeatureDialog({
     },
     {
       kind: 'toggle',
+      name: 'chamfers',
+      label: 'Chamfers',
+      default: true,
+      hint: 'Remove chamfers: narrow flat or conical bevels between two faces that meet at an angle.',
+    },
+    {
+      kind: 'expression',
+      name: 'maxChamferSize',
+      label: 'Max size',
+      unit: 'length',
+      default: '1 mm',
+      hint: 'Chamfers that cut back up to this far into either face go; larger ones stay.',
+      shown: (values) => values.toggles.chamfers ?? true,
+    },
+    {
+      kind: 'toggle',
       name: 'holes',
       label: 'Holes',
       default: true,
-      hint: 'Remove holes: closed cylindrical walls and their floor, counterbore or countersink.',
+      hint: 'Remove holes: closed cylindrical walls with their floor, counterbore, countersink and rounded edge.',
     },
     {
       kind: 'expression',
@@ -80,7 +96,7 @@ export const simplifyForPrintDialog = defineFeatureDialog({
       kind: 'info',
       name: 'found',
       label: 'Found',
-      hint: 'What goes, drawn red in the view. A round or hole whose neighbours cannot be extended to meet stays, and is listed below.',
+      hint: 'What goes, drawn red in the view. One whose neighbours cannot be extended to meet stays, and is listed below.',
       shown: (_values, ctx) => reportOf(ctx) !== undefined,
       text: (_values, ctx) => {
         const report = reportOf(ctx);

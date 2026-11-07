@@ -1,14 +1,14 @@
 /**
  * The Simplify for Print feature (ADR-0141, #79): on the chosen bodies,
- * removes every round under a radius and every hole under a diameter at
- * once, with Remove Faces' defeaturing (ADR-0099). Meant for parts imported
- * from engineering CAD, whose small rounds and holes a print doesn't need.
+ * removes every round under a radius, every chamfer under a size and every
+ * hole under a diameter at once, with Remove Faces' defeaturing (ADR-0099). Meant for parts imported
+ * from engineering CAD, whose small rounds, chamfers and holes a print doesn't need.
  *
  * The feature stores the bodies and the limits, never faces: the kernel
- * finds the rounds and holes on every recompute, so a changed limit or an
+ * finds them on every recompute, so a changed limit or an
  * upstream edit finds them again. Each round or hole is its own attempt, so
  * one that can't be removed doesn't stop the rest; the report says which
- * went and which stayed. Either limit can be off (`rounds` / `holes`).
+ * went and which stayed. Each kind can be off (`rounds` / `chamfers` / `holes`).
  *
  * The kernel adds its evaluator and the web app its dialog, each in its own
  * registry keyed by `SIMPLIFY_FOR_PRINT_TYPE` (ADR-0003).
@@ -34,9 +34,19 @@ export const SimplifyForPrintInputsSchema = z.strictObject({
     .describe(
       'The largest round radius removed, in mm (a torus by its tube radius). Absent: no round is removed.',
     ),
+  /** Remove chamfers (default true while `maxChamferSize` is set). */
+  chamfers: BoolInputSchema.optional().describe(
+    'Remove chamfers (narrow flat or conical bevels between two faces that meet at an angle) up to maxChamferSize; false keeps them and the limit. Absent: on while maxChamferSize is given.',
+  ),
+  /** The largest chamfer removed, by its longer leg. Absent: chamfers stay. */
+  maxChamferSize: exprOf('length')
+    .optional()
+    .describe(
+      'The largest chamfer removed, in mm, by its longer leg (how far it cuts back into either face). Absent: no chamfer is removed.',
+    ),
   /** Remove holes (default true while `maxHoleDiameter` is set). */
   holes: BoolInputSchema.optional().describe(
-    'Remove holes (closed cylindrical walls and the faces they enclose) up to maxHoleDiameter; false keeps them and the limit. Absent: on while maxHoleDiameter is given.',
+    'Remove holes (closed cylindrical walls, the faces they enclose and the round at their mouth) up to maxHoleDiameter; false keeps them and the limit. Absent: on while maxHoleDiameter is given.',
   ),
   /** The largest hole diameter removed. Absent: holes stay. */
   maxHoleDiameter: exprOf('length')
@@ -58,13 +68,19 @@ export const simplifyForPrintFeature: FeatureDefinition<SimplifyForPrintInputs> 
 /** The limits a simplification works with, in mm; undefined where that kind is off. */
 export interface SimplifyLimits {
   maxRoundRadius: number | undefined;
+  maxChamferSize: number | undefined;
   maxHoleDiameter: number | undefined;
 }
 
 /** Which kinds are on: a kind is on while its limit is given and its toggle isn't false. */
-export function simplifyKinds(inputs: SimplifyForPrintInputs): { rounds: boolean; holes: boolean } {
+export function simplifyKinds(inputs: SimplifyForPrintInputs): {
+  rounds: boolean;
+  chamfers: boolean;
+  holes: boolean;
+} {
   return {
     rounds: inputs.maxRoundRadius !== undefined && inputs.rounds?.value !== false,
+    chamfers: inputs.maxChamferSize !== undefined && inputs.chamfers?.value !== false,
     holes: inputs.maxHoleDiameter !== undefined && inputs.holes?.value !== false,
   };
 }
@@ -72,6 +88,8 @@ export function simplifyKinds(inputs: SimplifyForPrintInputs): { rounds: boolean
 export interface SimplifyInputOptions {
   /** A length expression: `'1 mm'`, `'r_max'`. Absent: rounds stay. */
   maxRoundRadius?: string;
+  /** A length expression. Absent: chamfers stay. */
+  maxChamferSize?: string;
   /** A length expression. Absent: holes stay. */
   maxHoleDiameter?: string;
 }
@@ -87,6 +105,10 @@ export function simplifyForPrintInputs(
   if (options.maxRoundRadius !== undefined) {
     inputs.rounds = { kind: 'bool', value: true };
     inputs.maxRoundRadius = { kind: 'expr', expr: options.maxRoundRadius, unit: 'length' };
+  }
+  if (options.maxChamferSize !== undefined) {
+    inputs.chamfers = { kind: 'bool', value: true };
+    inputs.maxChamferSize = { kind: 'expr', expr: options.maxChamferSize, unit: 'length' };
   }
   if (options.maxHoleDiameter !== undefined) {
     inputs.holes = { kind: 'bool', value: true };
@@ -111,12 +133,12 @@ export function simplifyForPrintFeatureOf(
   };
 }
 
-/** One round or hole the kernel found (ADR-0141 §3): one removal attempt. */
+/** One round, chamfer or hole the kernel found (ADR-0141 §3): one removal attempt. */
 export interface SimplifyGroup {
-  kind: 'round' | 'hole';
+  kind: 'round' | 'chamfer' | 'hole';
   /** The body it is on. */
   body: string;
-  /** A round's radius or a hole's diameter, mm. */
+  /** A round's radius, a chamfer's longer leg or a hole's diameter, mm. */
   size: number;
   /** How many faces it has. */
   faces: number;
@@ -135,20 +157,30 @@ export interface SimplifyReport {
 
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
-/** The count line: "12 rounds, 3 holes", with what stayed: "· 2 couldn't be removed". */
+/**
+ * The count line of what went, by kind: "12 rounds, 3 holes", "2 chamfers";
+ * with what stayed: "· 2 couldn't be removed".
+ */
 export function simplifySummary(report: SimplifyReport): string {
   const removed = report.groups.filter((g) => g.removed);
   const failed = report.groups.length - removed.length;
-  if (report.groups.length === 0) return 'No rounds or holes under the limits';
-  const rounds = removed.filter((g) => g.kind === 'round').length;
-  const holes = removed.length - rounds;
-  const line = `${plural(rounds, 'round')}, ${plural(holes, 'hole')}`;
+  if (report.groups.length === 0) return 'Nothing under the limits';
+  const counts = (['round', 'chamfer', 'hole'] as const)
+    .map((kind) => [kind, removed.filter((g) => g.kind === kind).length] as const)
+    .filter(([, n]) => n > 0)
+    .map(([kind, n]) => plural(n, kind));
+  const line = counts.length > 0 ? counts.join(', ') : 'Nothing removed';
   return failed > 0 ? `${line} · ${failed} couldn't be removed` : line;
 }
 
 /** A group's line: "Hole Ø3 mm, 2 faces: removed". */
 export function simplifyGroupLine(group: SimplifyGroup): string {
   const size = Number(group.size.toFixed(3));
-  const what = group.kind === 'round' ? `Round R${size} mm` : `Hole Ø${size} mm`;
+  const what =
+    group.kind === 'round'
+      ? `Round R${size} mm`
+      : group.kind === 'chamfer'
+        ? `Chamfer ${size} mm`
+        : `Hole Ø${size} mm`;
   return `${what}, ${plural(group.faces, 'face')}: ${group.removed ? 'removed' : "couldn't be removed"}`;
 }

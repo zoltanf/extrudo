@@ -1113,7 +1113,9 @@ export interface FeatureMethods {
    * @param inputs.bodies The solid bodies to simplify. Required.
    * @param inputs.rounds Remove rounds (fillets: cylinder, torus and sphere faces in a smooth chain) up to maxRoundRadius; false keeps them and the limit. Absent: on while maxRoundRadius is given.
    * @param inputs.maxRoundRadius The largest round radius removed, in mm (a torus by its tube radius). Absent: no round is removed.
-   * @param inputs.holes Remove holes (closed cylindrical walls and the faces they enclose) up to maxHoleDiameter; false keeps them and the limit. Absent: on while maxHoleDiameter is given.
+   * @param inputs.chamfers Remove chamfers (narrow flat or conical bevels between two faces that meet at an angle) up to maxChamferSize; false keeps them and the limit. Absent: on while maxChamferSize is given.
+   * @param inputs.maxChamferSize The largest chamfer removed, in mm, by its longer leg (how far it cuts back into either face). Absent: no chamfer is removed.
+   * @param inputs.holes Remove holes (closed cylindrical walls, the faces they enclose and the round at their mouth) up to maxHoleDiameter; false keeps them and the limit. Absent: on while maxHoleDiameter is given.
    * @param inputs.maxHoleDiameter The largest hole diameter removed, in mm (a counterbored hole by its widest wall). Absent: no hole is removed.
    */
   simplifyForPrint(
@@ -1640,7 +1642,12 @@ export function featureExamples(d: Design): void {
   d.removeFaces({ faces: face });
 
   // Simplify for Print.
-  d.simplifyForPrint({ bodies: [body], maxRoundRadius: '1 mm', maxHoleDiameter: '3 mm' });
+  d.simplifyForPrint({
+    bodies: [body],
+    maxRoundRadius: '1 mm',
+    maxChamferSize: '0.5 mm',
+    maxHoleDiameter: '3 mm',
+  });
 
   // Split Body.
   d.splitBody({ bodies: [body], plane: d.origin.yz });

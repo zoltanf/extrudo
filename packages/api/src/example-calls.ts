@@ -124,7 +124,7 @@ const EXAMPLE_INPUTS: Readonly<Record<string, string>> = {
   scale: `{ bodies: [body], factor: 1.5 }`,
   script: `{ code: "for (let i = 0; i < 3; i++) design.cylinder({ diameter: '6 mm', height: '4 mm', x: i * 10 });" }`,
   shell: `{ faces: face, thickness: '2 mm' }`,
-  simplifyForPrint: `{ bodies: [body], maxRoundRadius: '1 mm', maxHoleDiameter: '3 mm' }`,
+  simplifyForPrint: `{ bodies: [body], maxRoundRadius: '1 mm', maxChamferSize: '0.5 mm', maxHoleDiameter: '3 mm' }`,
   splitBody: `{ bodies: [body], plane: d.origin.yz }`,
   sphere: `{ diameter: '30 mm' }`,
   sweep: `{ profiles: profile, path: line }`,
