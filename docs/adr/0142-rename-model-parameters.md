@@ -45,7 +45,8 @@ the Parameters dialog and found the pair redundant.
    `apps/web/src/parameters/list.ts`). Such a row says nothing the user parameter's "Used by"
    doesn't, and in the benchmark files they are a quarter of the model parameters or more.
    A line under the model rows, "Show N that follow a user parameter", shows them, and "Hide
-   those that follow a user parameter" hides them again. The selected one stays in the list
+   those that follow a user parameter" hides them again. Shown, such a row has a link mark
+   (titled "Follows `<name>`") in place of "ƒx". The selected one stays in the list
    until something else is selected, so a row doesn't vanish while its expression is typed.
    **Display only:** the dimension keeps its `paramName` (it still needs a name once a number
    is typed into it again, and its name stays taken).

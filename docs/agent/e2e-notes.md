@@ -1577,7 +1577,8 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   "Model parameters" section, and one whose expression is only a user
   parameter's name (`d1 = width` in the Wall bracket) is hidden behind the
   button "Show N that follow(s) a user parameter" (ADR-0142 §6), so a missing
-  row there is expected. Use `selectParameter(page, name)` and
+  row there is expected; shown, it has `[title="Follows <name>"]` instead of
+  the formula mark `[title="A formula"]`. Use `selectParameter(page, name)` and
   `parameterExpression(page, name)` (both open Model parameters and the Show
   line when needed)
   and `addUserParameter(page, name, expression, unit?)` from `helpers.ts`

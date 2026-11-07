@@ -4352,5 +4352,6 @@ takes the name and expression, the holder's expr becomes `name` and its `paramNa
 differ from the original; shown only for non-`dN` names. **A model parameter that only follows a user parameter is
 hidden from the dialog's list** (`followsUserParameter` in `parameters/list.ts`: expression is a user parameter's name
 alone, and `parameterUsers` of it is empty) behind "Show N that follow(s) a user parameter" / "Hide those that follow a
-user parameter"; the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
+user parameter"; shown, such a row has `FollowsMark` (link icon, title "Follows <name>") instead of `FormulaMark`;
+the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
 clicks the Show line when a row is hidden. No schema change.

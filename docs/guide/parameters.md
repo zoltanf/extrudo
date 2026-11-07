@@ -114,7 +114,8 @@ using it and gets a new `d` name. That can't be turned back into a model paramet
 
 A model parameter that is just a user parameter's name, such as `d3 = width`, says nothing new, so
 the list leaves it out. **Show 2 that follow a user parameter**, under the model parameters, lists
-them again, and the user parameter's **Used by** lists them too. Once anything else uses `d3`, or
+them again, each with a link mark instead of **ƒx**, and the user parameter's **Used by** lists
+them too. Once anything else uses `d3`, or
 its expression is more than the name, it is back in the list.
 
 Changing a parameter is one undo step, however many sketches and features it moves. Deleting one

@@ -12,7 +12,17 @@ import {
   type ParameterId,
   removeParameter,
 } from '@extrudo/core';
-import { ChevronRight, GripVertical, Plus, Redo2, Star, Trash2, Undo2, X } from 'lucide-react';
+import {
+  ChevronRight,
+  GripVertical,
+  Link2,
+  Plus,
+  Redo2,
+  Star,
+  Trash2,
+  Undo2,
+  X,
+} from 'lucide-react';
 import { type DragEvent, type ReactElement, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
 import { shortcutLabel } from '../commands/shortcuts';
@@ -519,7 +529,11 @@ function ParameterList({
                     >
                       <span className="flex min-w-0 items-center gap-2">
                         <span className="font-mono text-field">{p.name}</span>
-                        {!isPlainValue(p.expression) && <FormulaMark />}
+                        {followers.has(p.name) ? (
+                          <FollowsMark name={p.expression.trim()} />
+                        ) : (
+                          !isPlainValue(p.expression) && <FormulaMark />
+                        )}
                         <span className="truncate text-sm text-muted group-aria-[current]:text-ink">
                           {featureName(doc, p)}
                         </span>
@@ -557,6 +571,22 @@ export function FormulaMark() {
       className="shrink-0 rounded-[4px] border border-sketch/60 px-1 font-mono text-xs text-ink italic"
     >
       ƒx
+    </span>
+  );
+}
+
+/**
+ * The small link a model parameter gets in the list when it only follows the
+ * user parameter `name` (ADR-0142 §6), in place of "ƒx".
+ */
+function FollowsMark({ name }: { name: string }) {
+  return (
+    <span
+      title={`Follows ${name}`}
+      className="inline-flex h-[18px] shrink-0 items-center rounded-[4px] border border-accent/70 px-1 text-ink"
+    >
+      <Link2 size={12} aria-hidden />
+      <span className="sr-only">Follows {name}</span>
     </span>
   );
 }
