@@ -102,8 +102,10 @@ and sketch dimensions. Click a parameter there to go to it.
 **Model parameters** are the values in the design that already have names, in the collapsed
 section below the list, each with the feature it belongs to. A dimension you placed in a sketch
 is `d1`, `d2` and so on, and so are the values in feature dialogs. You can edit them here, and
-use them in other expressions. Rename a dimension by typing `name = value` in its editor, as
-described in [sketching](./sketching.md).
+use them in other expressions. To rename one, select it and edit **Name**, or double-click its row.
+Every expression that used the old name follows, in one undo step. A name that is taken, or is a
+unit or function, is refused with a message. You can also type `name = value` in a dimension's
+editor, as described in [sketching](./sketching.md).
 
 Changing a parameter is one undo step, however many sketches and features it moves. Deleting one
 that something uses is refused, and the message lists what uses it.

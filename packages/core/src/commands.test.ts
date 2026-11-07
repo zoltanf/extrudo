@@ -18,6 +18,7 @@ import {
   removeParameter,
   renameDocument,
   renameFeature,
+  renameModelParameter,
   restoreVersion,
   setFeatureSuppressed,
   setFeatureVisibility,
@@ -282,6 +283,46 @@ describe('document commands', () => {
     doc = apply(doc, addParameter({ parameter: parameter('p3', 'depth', 'd2 + 1 mm') }));
     expect(() => apply(doc, removeFeature({ id: fid('f1') }))).toThrow(
       "Can't delete Sketch1: `d2` is used by `depth`. Change that first.",
+    );
+  });
+
+  it('rename a model parameter and every expression that uses it, in one step', () => {
+    const data = emptySketchData();
+    const dim = (expr: string, paramName: string) => ({
+      type: 'distance' as const,
+      orientation: 'aligned' as const,
+      a: 'l' as SketchEntityId,
+      expr,
+      driven: false,
+      paramName,
+    });
+    data.dimensions = {
+      ['a' as DimensionId]: dim('10 mm', 'd1'),
+      ['b' as DimensionId]: dim('d1 * 2', 'd2'),
+    };
+    const sketch: Feature = {
+      ...feature('f1', 'sketch', 'Sketch1'),
+      inputs: { sketch: { kind: 'sketchData', sketch: data } },
+    };
+    let doc: ExtrudoDocument = { ...sampleDocument(), features: [sketch], timelineMarker: 1 };
+    doc = apply(doc, addParameter({ parameter: parameter('p3', 'depth', 'd1 + 1 mm') }));
+    const result = applyCommand(doc, renameModelParameter({ name: 'd1', newName: 'diameter' }));
+    const input = result.doc.features[0]?.inputs.sketch;
+    const dims = (input as { sketch: typeof data }).sketch.dimensions;
+    expect(dims[did('a')]?.paramName).toBe('diameter');
+    expect(dims[did('b')]?.expr).toBe('diameter * 2');
+    expect(result.doc.parameters.find((p) => p.name === 'depth')?.expression).toBe(
+      'diameter + 1 mm',
+    );
+    // Renaming back restores everything.
+    expect(
+      applyCommand(result.doc, renameModelParameter({ name: 'diameter', newName: 'd1' })).doc,
+    ).toEqual(doc);
+    for (const newName of ['depth', 'd2', 'sin', 'mm', 'pi', '1x', 'a b', '']) {
+      expect(() => apply(doc, renameModelParameter({ name: 'd1', newName }))).toThrow(CommandError);
+    }
+    expect(() => apply(doc, renameModelParameter({ name: 'nope', newName: 'x' }))).toThrow(
+      CommandError,
     );
   });
 

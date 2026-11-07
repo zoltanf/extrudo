@@ -17,6 +17,7 @@ import {
   RANGE_FIELDS,
   type RangeField,
   removeParameter,
+  renameModelParameter,
   setParameterCustomizer,
   setParameterGroup,
   type UnitKind,
@@ -314,10 +315,22 @@ export function ModelInspector({
         <span className="text-xs font-semibold tracking-[0.08em] text-muted uppercase">
           Model parameter
         </span>
-        <div className="font-mono text-md">{name}</div>
-        <p className="text-sm text-muted">
+        <div className="mt-1">
+          <TextField
+            label={`Name of ${name}`}
+            value={name}
+            className="h-9 font-mono text-md"
+            onCommit={(next) => {
+              const newName = next.trim();
+              const done = run(renameModelParameter({ name, newName }));
+              if (done) onSelect({ kind: 'model', name: newName });
+              return done;
+            }}
+          />
+        </div>
+        <p className="mt-1 text-sm text-muted">
           {owner.type === 'dimension' ? 'A dimension' : 'An input'} of {feature}. Expressions use it
-          by this name.
+          by this name; rename it here.
         </p>
       </div>
       <Field label="Expression">

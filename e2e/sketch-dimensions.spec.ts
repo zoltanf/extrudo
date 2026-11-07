@@ -253,10 +253,67 @@ test('a dimension is a parameter: the Parameters dialog edits it, and it takes e
   await value.fill('len = 35');
   await expect(editor(page)).toContainText('= 35.00 mm');
   await value.press('Enter');
-  await expect(labels(page)).toHaveText(['fx: 35.00']);
-  await expect(labels(page).first()).toHaveAttribute('title', 'd1 = len');
+  await expect(labels(page)).toHaveText(['35.00']);
+  // The dimension's own parameter takes the name: no second parameter (ADR-0142).
+  await expect(labels(page).first()).toHaveAttribute('title', 'len = 35');
   await page.keyboard.press('Control+Z');
   await expect(labels(page)).toHaveText(['fx: 30.00']);
+  await expect(labels(page).first()).toHaveAttribute('title', 'd1 = w * 2');
+});
+
+test('the Parameters dialog renames a model parameter, and the expressions follow (issue #203)', async ({
+  page,
+}) => {
+  const at = await sketchOnXY(page);
+  const click = clicker(page, at);
+  await page.keyboard.press('l');
+  await click(-20, 0);
+  await click(20, 0);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('d');
+  await click(0, 0);
+  await click(0, 12);
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+
+  await pickTool(page, 'Parameters');
+  const dialog = page.getByRole('dialog', { name: 'Parameters' });
+  await addUserParameter(page, 'half', 'd1 / 2');
+  await selectParameter(page, 'd1');
+  const name = dialog.getByRole('textbox', { name: 'Name of d1' });
+
+  // A clash, a unit name and a bad identifier are refused with a message.
+  const refused: [string, string][] = [
+    ['half', 'A parameter named "half" already exists.'],
+    ['mm', '"mm" is a unit, function or constant; pick another name.'],
+    [
+      '1x',
+      '"1x" isn\'t a valid parameter name: use a letter or _ followed by letters, digits or _.',
+    ],
+  ];
+  for (const [bad, message] of refused) {
+    await name.fill(bad);
+    await name.press('Enter');
+    await expect(dialog.getByRole('alert')).toHaveText(message);
+    await expect(name).toHaveValue('d1');
+  }
+
+  // Double-clicking a row puts the caret in the name field.
+  await dialog.locator('[data-parameter-row="d1"]').dblclick();
+  await expect(name).toBeFocused();
+  await name.fill('width');
+  await name.press('Enter');
+  await expect(dialog.locator('[data-parameter-row="width"]')).toHaveAttribute(
+    'aria-current',
+    'true',
+  );
+  await expect(dialog.locator('[data-parameter-row="d1"]')).toHaveCount(0);
+  await expect(await parameterExpression(page, 'half')).toHaveValue('width / 2');
+
+  await dialog.getByRole('button', { name: 'Undo' }).click();
+  await expect(dialog.locator('[data-parameter-row="d1"]')).toHaveCount(1);
+  await expect(await parameterExpression(page, 'half')).toHaveValue('d1 / 2');
 });
 
 test('the editor creates a parameter from an unknown name, and completes functions (ADR-0096)', async ({

@@ -222,6 +222,15 @@ interface History {
   redo(): void;
 }
 
+/** Double-clicking a row puts the caret in the inspector's name field (issue #203). */
+function focusName() {
+  requestAnimationFrame(() => {
+    const field = document.querySelector<HTMLInputElement>('input[aria-label^="Name of "]');
+    field?.focus();
+    field?.select();
+  });
+}
+
 /** The list on the left: user parameters by section, New parameter, model parameters. */
 function ParameterList({
   doc,
@@ -357,6 +366,7 @@ function ParameterList({
                         data-parameter-row={parameter.name}
                         aria-current={selected ? 'true' : undefined}
                         onClick={() => onSelect({ kind: 'user', id })}
+                        onDoubleClick={focusName}
                         onKeyDown={(event) => {
                           if (
                             !event.altKey ||
@@ -478,6 +488,7 @@ function ParameterList({
                         selection.kind === 'model' && selection.name === p.name ? 'true' : undefined
                       }
                       onClick={() => onSelect({ kind: 'model', name: p.name })}
+                      onDoubleClick={focusName}
                       className="group grid h-8 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-control pr-2.5 pl-7 text-left hover:bg-line/50 aria-[current]:bg-accent-soft aria-[current]:hover:bg-accent-soft"
                     >
                       <span className="flex min-w-0 items-center gap-2">

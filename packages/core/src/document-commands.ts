@@ -145,52 +145,75 @@ export const updateParameter = defineCommand<{
   Object.assign(parameter, changes);
   // A rename carries over to every expression that uses the parameter,
   // sketch dimensions included.
-  const newName = parameter.name;
-  if (newName !== oldName) {
-    for (const p of draft.parameters) {
-      if (mentions(p.expression, oldName)) {
-        p.expression = renameReferences(p.expression, oldName, newName);
-      }
+  if (parameter.name !== oldName) rewriteReferences(draft, oldName, parameter.name);
+});
+
+/**
+ * Renames a model parameter (`d1`, ADR-0142): the name a sketch dimension or
+ * a feature input carries. Same name rules as a user parameter; every
+ * expression that used the old name follows, in the same undo step.
+ */
+export const renameModelParameter = defineCommand<{ name: string; newName: string }>(
+  'parameter.renameModel',
+  'Rename parameter',
+  (draft, { name, newName }) => {
+    let holder: { paramName?: string } | undefined;
+    for (const entry of featureExpressions(draft)) {
+      if (!entry.holder.driven && entry.holder.paramName === name) holder = entry.holder;
     }
-    // Slider ranges too (ADR-0086 §2).
-    for (const p of draft.parameters) {
-      const range = p.customizer;
-      if (!range) continue;
-      for (const field of ['min', 'step', 'max'] as const) {
-        const text = range[field];
-        if (text !== undefined && mentions(text, oldName)) {
-          range[field] = renameReferences(text, oldName, newName);
-        }
-      }
+    if (!holder) throw new CommandError(`There is no model parameter named "${name}".`);
+    if (newName === name) return;
+    checkParameterName(draft, newName);
+    holder.paramName = newName;
+    rewriteReferences(draft, name, newName);
+  },
+);
+
+/** Rewrites `oldName` to `newName` in every expression that names it. */
+function rewriteReferences(draft: DocumentDraft, oldName: string, newName: string): void {
+  for (const p of draft.parameters) {
+    if (mentions(p.expression, oldName)) {
+      p.expression = renameReferences(p.expression, oldName, newName);
     }
-    for (const { holder } of featureExpressions(draft)) {
-      if (mentions(holder.expr, oldName))
-        holder.expr = renameReferences(holder.expr, oldName, newName);
-    }
-    // A joint's limits too (ADR-0081 §4).
-    for (const joint of draft.joints ?? []) {
-      for (const limit of [joint.min, joint.max]) {
-        if (limit && mentions(limit.expr, oldName)) {
-          limit.expr = renameReferences(limit.expr, oldName, newName);
-        }
-      }
-    }
-    // A named view's section (ADR-0045's amendment of 2026-11-06).
-    const rename = (text: string) =>
-      mentions(text, oldName) ? renameReferences(text, oldName, newName) : text;
-    for (const view of draft.views) {
-      const section = view.section;
-      if (section?.kind === 'planes') {
-        for (const plane of section.planes) plane.offset = rename(plane.offset);
-      } else if (section?.kind === 'box') {
-        const [cx, cy, cz] = section.center;
-        const [hx, hy, hz] = section.half;
-        section.center = [rename(cx), rename(cy), rename(cz)];
-        section.half = [rename(hx), rename(hy), rename(hz)];
+  }
+  // Slider ranges too (ADR-0086 §2).
+  for (const p of draft.parameters) {
+    const range = p.customizer;
+    if (!range) continue;
+    for (const field of ['min', 'step', 'max'] as const) {
+      const text = range[field];
+      if (text !== undefined && mentions(text, oldName)) {
+        range[field] = renameReferences(text, oldName, newName);
       }
     }
   }
-});
+  for (const { holder } of featureExpressions(draft)) {
+    if (mentions(holder.expr, oldName))
+      holder.expr = renameReferences(holder.expr, oldName, newName);
+  }
+  // A joint's limits too (ADR-0081 §4).
+  for (const joint of draft.joints ?? []) {
+    for (const limit of [joint.min, joint.max]) {
+      if (limit && mentions(limit.expr, oldName)) {
+        limit.expr = renameReferences(limit.expr, oldName, newName);
+      }
+    }
+  }
+  // A named view's section (ADR-0045's amendment of 2026-11-06).
+  const rename = (text: string) =>
+    mentions(text, oldName) ? renameReferences(text, oldName, newName) : text;
+  for (const view of draft.views) {
+    const section = view.section;
+    if (section?.kind === 'planes') {
+      for (const plane of section.planes) plane.offset = rename(plane.offset);
+    } else if (section?.kind === 'box') {
+      const [cx, cy, cz] = section.center;
+      const [hx, hy, hz] = section.half;
+      section.center = [rename(cx), rename(cy), rename(cz)];
+      section.half = [rename(hx), rename(hy), rename(hz)];
+    }
+  }
+}
 
 /**
  * Deletes a parameter and every value a configuration stored for it, so no

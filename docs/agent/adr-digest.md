@@ -4337,3 +4337,13 @@ renderer has `releaseNotesPlugin` too (its own Vite config; `src/renderer/config
 (`releaseHistory`: every `## ` section but Unreleased and this version, with highlights where a
 file exists) is a separate lazy chunk behind the dialog's "Earlier versions"; the Menu's App
 column has What's new above About, and the `whatsNew` command (Help) is agent-denied.
+
+ADR-0142 (issue #203, 2026-11-07) **renames model parameters**. Core `renameModelParameter({ name, newName })`
+(`document-commands.ts`) sets `paramName` on the dimension or feature input and rewrites every user via
+`rewriteReferences` (shared with `updateParameter`: parameters, ranges, inputs, dimensions, joint limits, view
+sections), one undo step. Rules: **new names go through `checkParameterName`** (identifier, not reserved, not any
+parameter's name); a driven dimension has no name; **`name = value` in a driving dimension's editor
+(`DimensionLabels.tsx` `commit`) renames its own parameter and sets the value** (no second user parameter; a
+dimension without a name keeps the user-parameter path); the Parameters dialog's `ModelInspector` has a Name field
+(`Name of <name>`, errors in the dialog's alert, row stays selected under the new name), and a double-click on any
+list row focuses it (`focusName`). No schema change.

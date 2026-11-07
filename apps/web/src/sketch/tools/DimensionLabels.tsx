@@ -19,6 +19,7 @@ import {
   type ParameterId,
   parameterNames,
   readSketch,
+  renameModelParameter,
   type SessionStore,
   type SketchData,
   type SketchDimension,
@@ -397,8 +398,9 @@ export function DimensionGraphic({
 /**
  * Edits a dimension in place: its value as an expression (driving ones),
  * and whether it drives. Enter or leaving the field commits; Esc closes.
- * `name = value` creates the user parameter `name` and puts `name` in the
- * dimension (FR-PAR-03).
+ * `name = value` renames the dimension's own parameter (`d1`) to `name` and
+ * sets the value (ADR-0142); a dimension without one gets the user parameter
+ * `name` and holds `name` (FR-PAR-03).
  */
 function DimensionEditor({
   id,
@@ -449,6 +451,18 @@ function DimensionEditor({
   const commit = (expr: string) => {
     const inline = inlineParameter(expr);
     if (!inline) return apply({ expr });
+    // A dimension that has its own parameter (`d1`) takes the typed name
+    // instead of getting a second one (ADR-0142).
+    if (d.paramName !== undefined && !d.driven) {
+      return run([
+        renameModelParameter({ name: d.paramName, newName: inline.name }),
+        updateSketchDimension({
+          feature: sketchId,
+          id,
+          changes: { expr: inline.expression.trim() },
+        }),
+      ]);
+    }
     run([
       updateSketchDimension({ feature: sketchId, id, changes: { expr: inline.name } }),
       addParameter({
