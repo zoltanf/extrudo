@@ -50,7 +50,8 @@ These are in the Home tab's **Import** group.
 
 - **Import Design** opens an `.extrudo` file as a new design. The home screen's **Import…**
   card does the same, and takes `.f3d` and the model files below too: a model file becomes a
-  new design with the Import Model dialog open.
+  new design with the Import Model dialog open. A design downloaded from a GitHub issue is
+  often an `.extrudo.gz`: import it as it is, no need to unpack it first.
 - **Import Model** brings in a STEP file, an STL, 3MF or OBJ mesh, or an OpenSCAD `.scad`
   file, as bodies in the current design. A STEP file keeps its exact surfaces. A mesh becomes a
   [mesh body](./bodies.md) and must be closed. **Mesh to Solid** turns it into a solid with
