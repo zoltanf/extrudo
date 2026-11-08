@@ -377,15 +377,16 @@ test('the editor creates a parameter from an unknown name, and completes functio
   await page.keyboard.press('Enter');
   await page.keyboard.press('Escape');
 
-  // An unknown name alone: the list offers it as a new parameter with the
-  // dimension's value; Enter writes `name = value` with the value selected.
+  // An unknown name alone: the list offers it with the dimension's value;
+  // Enter writes `name = value` with the value selected.
   await labels(page).first().dblclick();
   const value = page.getByRole('textbox', { name: 'Value of d1' });
   await value.fill('width');
   const list = page.getByRole('listbox', { name: 'Parameters for Value of d1' });
-  await expect(list.getByRole('option')).toHaveText(['+ New parameter width = 40.00 mm']);
+  // d1 is the dimension's own parameter, so the row renames it (ADR-0142).
+  await expect(list.getByRole('option')).toHaveText(['Rename to width = 40.00 mm']);
   // The open list would cover the link, so the link waits until it closes.
-  await expect(editor(page).getByRole('button', { name: /Create width/ })).toHaveCount(0);
+  await expect(editor(page).getByRole('button', { name: /Rename to width/ })).toHaveCount(0);
   await value.press('Enter');
   await expect(value).toHaveValue('width = 40');
   await value.pressSequentially('45');
@@ -402,7 +403,7 @@ test('the editor creates a parameter from an unknown name, and completes functio
   await renamed.fill('depth');
   await renamed.press('Escape');
   await expect(renamedList).toBeHidden();
-  const link = editor(page).getByRole('button', { name: /Create depth = 45\.00 mm/ });
+  const link = editor(page).getByRole('button', { name: /Rename to depth = 45\.00 mm/ });
   await expect(link).toBeVisible();
   await renamed.press('Control+Enter');
   await expect(renamed).toHaveValue('depth = 45');
@@ -410,10 +411,7 @@ test('the editor creates a parameter from an unknown name, and completes functio
 
   // Functions complete by prefix and get their brackets, the caret inside.
   await renamed.fill('sq');
-  await expect(renamedList.getByRole('option')).toHaveText([
-    'sqrt(x)',
-    '+ New parameter sq = 45.00 mm',
-  ]);
+  await expect(renamedList.getByRole('option')).toHaveText(['sqrt(x)', 'Rename to sq = 45.00 mm']);
   await renamed.press('Tab');
   await expect(renamed).toHaveValue('sqrt()');
   await renamed.pressSequentially('2025');

@@ -491,7 +491,9 @@ Crank or Glide. Since the right button drags, the right-click marking menu
   40.00 mm  Ctrl+Enter". The row
   (Enter when it is the only row, or picked) and the link both rewrite the
   field to `width = 40` with the value selected; Enter then creates the
-  parameter and uses it, in one undo step.
+  parameter and uses it, in one undo step. A dimension that has its own
+  parameter (`d1`, every driving one the app makes) gets "Rename to width =
+  40.00 mm" in both places instead: Enter renames `d1` to `width` (ADR-0142).
 - OK commits one undoable step and adds (or updates) the timeline chip.
   A new feature that used sketch profiles hides those sketches in the same
   step (as is usual in CAD), so a used profile doesn't float in front of the

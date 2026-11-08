@@ -28,6 +28,10 @@ the Parameters dialog and found the pair redundant.
    and sets its value (rename, then `expr = value`, one step) instead of adding a user
    parameter. A dimension without a name (driven) keeps the old path: a user parameter
    and `expr = name`. Existing documents are unchanged: a saved `d1 = diameter` still loads.
+   For a dimension with a name, the editor's offer for a bare unknown name (ADR-0096's
+   amendment) reads **Rename to `width` = 40.00 mm**, in the list and in the link under the
+   error, since "New parameter" and "Create" no longer describe what it does (amendment,
+   2026-11-08).
 4. **Make user parameter** (amendment, 2026-11-07): `makeUserParameter({ name, id })` (core, one
    undo step) adds a user parameter `name` holding the dimension's or input's expression (unit
    from the dimension or input), sets that expression to `name`, and gives it a fresh model

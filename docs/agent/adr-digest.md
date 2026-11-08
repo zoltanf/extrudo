@@ -2986,6 +2986,7 @@ a last option "+ New parameter …" (Enter when it is the only row) and a "+ Cre
 under the message, only while the list is closed (the list covers it; Ctrl/Cmd+Enter
 always works); both set the draft to `name = value` with the value
 selected. Keep `newParameter` off fields whose `evaluate`/`onCommit` don't take `name = value`.
+With `renames` (ADR-0142) the row and the button read "Rename to …" instead.
 
 ADR-0097 (P4-13, issue #95) adds **Mesh to Solid**: feature `meshToSolid`
 (`packages/kernel/src/features/mesh-to-solid.ts`, core `meshToSolidFeature`)
@@ -4352,8 +4353,10 @@ ADR-0142 (issue #203, 2026-11-07) **renames model parameters**. Core `renameMode
 sections), one undo step. Rules: **new names go through `checkParameterName`** (identifier, not reserved, not any
 parameter's name); a driven dimension has no name; **`name = value` in a driving dimension's editor
 (`DimensionLabels.tsx` `commit`) renames its own parameter and sets the value** (no second user parameter; a
-dimension without a name keeps the user-parameter path); the Parameters dialog's `ModelInspector` has a Name field
-(`Name of <name>`, errors in the dialog's alert, row stays selected under the new name), and a double-click on any
+dimension without a name keeps the user-parameter path), and for such a dimension the editor passes
+`ExpressionInput`'s `renames`, so the offer for a bare name reads "Rename to …" in the list and the link (keep
+`renames` in step with `commit`'s rename condition); the Parameters dialog's `ModelInspector` has a Name field
+(`Name of <name>`, a refusal under the field, row stays selected under the new name), and a double-click on any
 list row focuses it (`focusName`). **Make user parameter** (`makeUserParameter({ name, id })`): the user parameter
 takes the name and expression, the holder's expr becomes `name` and its `paramName` a fresh `dN`; one-way (undo only).
 **Reset name** (`resetModelParameterName`): lowest free `dN` via `lowestFreeModelParameterName`, not stored, so it may
