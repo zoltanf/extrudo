@@ -4358,8 +4358,10 @@ neighbour smoothly, joined across smooth edges; cones never; chamfers
 neighbours (normal cosines 0.05–0.99985, every vertex inside the strip), size = the **longer
 leg** to the neighbours' meeting line, or a cone with circles at two levels meeting no neighbour smoothly
 (legs Δradius, Δheight); a face between two bevels is none when one of them is a bevel ≤ its
-size; touching chamfers are one group with **corner patches** (all neighbours chamfers,
-vertices within 2× their size of the centroid); no face in two groups; holes found first (a
+size; touching chamfers are one group with **corner patches** (chamfers on more than half
+its sides, two at least, vertices within 2× their size of the centroid; **any surface type**:
+unequal chamfers meet in a B-spline patch that also touches a flat face, and one left behind is
+stretched along the edges); no face in two groups; holes found first (a
 countersink is the hole's); output rounds, chamfers, holes; a group of every face is skipped. Removal per body: **all groups in
 one `removeFaces` first; on `RemoveFacesError` all but the groups `error.failed` names in one,
 then those alone; if that fails too, each group alone**, on the shape the earlier ones

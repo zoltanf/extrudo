@@ -82,10 +82,14 @@ detection.
      chamfer). Between two bevel-shaped faces (an octagon's side between two
      chamfers), a face is **no chamfer when one of the two faces it bevels
      between is a bevel at most its size**: the narrower wins. Touching
-     chamfers are one group, with any **corner patch**: a plane whose every
-     neighbour is a chamfer and whose vertices lie within twice their size
-     of its centroid (the triangle where three chamfers meet; not a face
-     ringed by chamfers). Size: the largest.
+     chamfers are one group, with any **corner patch**: a face with
+     chamfers on more than half its sides (two at least) and whose vertices
+     lie within twice their size of its centroid (the triangle where three
+     chamfers meet; not a face ringed by chamfers). Amended 2026-11-08: any
+     surface type, and not only chamfers all round, because where chamfers
+     of unequal sizes meet OCCT's patch is a B-spline that also touches a
+     flat face, and a patch left behind is stretched along the edges the
+     chamfers leave. Size: the largest.
    - A group of every face of the body is skipped. No face is in two groups.
      Groups come rounds, chamfers, then holes; holes are found first, so a
      countersink is the hole's.

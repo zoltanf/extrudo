@@ -425,6 +425,28 @@ describe('simplify for print', { timeout: 120_000 }, () => {
     expect(faceNames(result, B0)).toHaveLength(6);
   });
 
+  it('(e3) unequal chamfers: the curved corner patch goes too, the large ones stay', async () => {
+    const { front, right, back, left } = block().lines;
+    const vertical = (a: string, b: string): GeomRef => ({
+      kind: 'edge',
+      id: edgeName([side(a), side(b)]),
+    });
+    // Where the 1 mm top chamfers meet the 0.5 mm verticals, OCCT's corner patch is a B-spline.
+    const features = chamfered([
+      { edges: [front, right, back, left].map(topEdge), distance: '1 mm' },
+      { edges: [vertical(left, front), vertical(front, right)], distance: '0.5 mm' },
+      { edges: [vertical(right, back), vertical(back, left)], distance: '3 mm' },
+    ]);
+    const result = await run(
+      testDocument([...features, simplify(['B:0'], { maxChamferSize: '1 mm' })]),
+    );
+    expect(status(result, 'P')).toMatchObject({ status: 'ok' });
+    expect(report(result)?.groups.every((g) => g.kind === 'chamfer' && g.removed)).toBe(true);
+    // The block with its two 3 mm verticals (3 × 3 / 2 × 10 each) and nothing else.
+    expect(relative(volume(B0), BOX - 90)).toBeLessThan(1e-6);
+    expect(faceNames(result, B0)).toHaveLength(8);
+  });
+
   it("(f) a countersink is a chamfer with holes off, and the hole's with them on", async () => {
     const features = [
       ...block().features,

@@ -19,8 +19,9 @@
  * - a **chamfer** is a narrow flat strip between two flat faces that meet
  *   at an angle, or a cone between two circles that meets its neighbours
  *   at an angle; its size is its longer leg (how far it cuts back into
- *   either face); touching chamfers are one, with any flat corner patch
- *   among them.
+ *   either face); touching chamfers are one, with any corner patch among
+ *   them (chamfers on most of its sides; flat, or the curved one OCCT makes
+ *   where unequal chamfers meet).
  *
  * Removal (§3): rounds, chamfers, then holes, all in one defeaturing first;
  * when that fails, all but the ones OCCT names in one, then those alone
@@ -228,7 +229,7 @@ export function findSimplifyGroups(
     }
   }
 
-  // Chamfers: narrow bevels, joined where they touch, with the flat corner patches among them.
+  // Chamfers: narrow bevels, joined where they touch, with the corner patches among them.
   const chamfers: FoundGroup[] = [];
   const maxChamfer = limits.maxChamferSize;
   if (maxChamfer !== undefined) {
@@ -247,13 +248,14 @@ export function findSimplifyGroups(
     }
     const members = new Set(sizes.keys());
     for (let face = 0; face < faceCount; face++) {
-      if (members.has(face) || taken.has(face) || description.faces[face]?.type !== 'plane') {
-        continue;
-      }
-      // A corner patch: chamfers all round, and about their size (not the face they ring).
+      if (members.has(face) || taken.has(face) || ringFaces.has(face)) continue;
+      // A corner patch: chamfers on most sides (two at least), and about their size (not the face
+      // they ring). Where unequal chamfers meet, OCCT's patch is a B-spline that also touches a
+      // flat face; one left behind is stretched along the edges the chamfers leave.
       const next = around.get(face) ?? [];
-      if (next.length === 0 || !next.every((n) => sizes.has(n))) continue;
-      const reach = 2 * Math.max(...next.map((n) => sizes.get(n) ?? 0));
+      const beside = next.filter((n) => sizes.has(n));
+      if (beside.length < 2 || 2 * beside.length <= next.length) continue;
+      const reach = 2 * Math.max(...beside.map((n) => sizes.get(n) ?? 0));
       const centre = description.faces[face]?.centroid ?? [0, 0, 0];
       if ((index.corners.get(face) ?? []).every((p) => length(sub(p, centre)) <= reach)) {
         members.add(face);
