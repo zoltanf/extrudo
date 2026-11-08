@@ -133,6 +133,20 @@ detection.
    ("Hole Ø3 mm, 2 faces: removed"), what stayed first, at most 8 and "and N
    more".
 
+   **Amended 2026-11-08 (owner's review):** each limit's row reads **"Remove
+   up to"** (the limit is inclusive: a 1 mm chamfer goes at 1 mm), with the
+   input named "Round radius", "Chamfer size" and "Hole diameter"
+   (`ExpressionField.inputName`), and a **slider** under it
+   (`ExpressionField.stops`) that stops at **every size of that kind on the
+   bodies**: the report's `sizes`, found with that kind's limit at infinity and
+   the other kinds off, **per face** (a round face's radius, a chamfer face's
+   leg, a hole's diameter; touching chamfers of 0.5, 1 and 3 mm are one group
+   with no limit, but a limit of 1 takes two of them), to 0.001 mm and never
+   rounded below a size (`distinctSizes`). Dragging shows the stop in the field
+   and **letting go sets it**: one preview per drag, since defeaturing can take
+   seconds. A typed value is kept; the slider sits at the stop at or under it.
+   Fewer than two sizes: no slider.
+
 ## Rejected
 
 - **Storing the found faces** (as Remove Faces does): the feature would be
@@ -151,6 +165,12 @@ detection.
 - **A chamfer's size as its face's width**: a 1 mm 45° chamfer is 1.41 mm
   wide, so a "1 mm" limit wouldn't find it; the Chamfer tool's distance is
   the leg.
+- **Fixed slider ends** (0.1–5 mm for rounds and chamfers, 0.5–10 mm for
+  holes): simpler, but most of the range would change nothing on a given
+  body, and its sizes would sit between steps. The body's own sizes make
+  every stop change what goes.
+- **A preview on every slider move**: one defeaturing can take seconds on a
+  big body.
 - **Chamfers between curved faces** (a flat chamfer on a cylinder's
   straight edge, a chamfer along a spline): the legs need the neighbours'
   meeting line; only plane–plane strips and cones for now.

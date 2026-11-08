@@ -143,6 +143,20 @@ export interface ExpressionField extends FieldBase {
   kind: 'expression';
   unit: UnitKind;
   default: string;
+  /**
+   * The field's own name where rows share a label (Simplify for Print's
+   * "Remove up to", one per kind): the input's and slider's accessible name,
+   * and the name its errors give. Default: the label.
+   */
+  inputName?: string;
+  /**
+   * Values a slider under the field stops at, ascending, in the unit's base
+   * (mm, degrees): Simplify for Print's found sizes (ADR-0141 §4). Fewer than
+   * two: no slider. Dragging shows the stop in the field; letting go sets it,
+   * so the preview runs once per drag, not per move. A typed value is kept,
+   * and the slider sits at the last stop at or under it.
+   */
+  stops?(values: DialogValues, ctx: DialogContext): readonly number[] | undefined;
 }
 
 /** A dropdown (an `enum` input). */

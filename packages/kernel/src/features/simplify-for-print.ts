@@ -36,6 +36,7 @@ import {
   type SimplifyForPrintInputs,
   type SimplifyGroup,
   type SimplifyReport,
+  type SimplifySizes,
   simplifyForPrintFeature,
   simplifyKinds,
 } from '@extrudo/core';
@@ -126,12 +127,15 @@ const SMOOTH_COS = Math.cos((2 * Math.PI) / 180);
 /**
  * The rounds, chamfers and holes of a body under the limits (ADR-0141 §2),
  * in that order, each its faces once: no face is in two groups. `surface`
- * answers for curved faces, asked only for faces that need it.
+ * answers for curved faces, asked only for faces that need it. `seen` hears
+ * each size the limits are held against: a hole's diameter, each round face's
+ * radius and each chamfer face's leg (a group's size is its largest).
  */
 export function findSimplifyGroups(
   description: ShapeDescription,
   surface: (face: number) => SimplifySurface | undefined,
   limits: DetectLimits,
+  seen?: (kind: FoundGroup['kind'], size: number) => void,
 ): FoundGroup[] {
   const around = neighbours(description);
   const surfaces = new Map<number, SimplifySurface | undefined>();
@@ -206,6 +210,7 @@ export function findSimplifyGroups(
       if (size > limits.maxHoleDiameter + SIZE_TOLERANCE) continue;
       for (const face of faces) taken.add(face);
       holes.push({ kind: 'hole', faces, size });
+      seen?.('hole', size);
     }
   }
 
@@ -221,6 +226,7 @@ export function findSimplifyGroups(
       if (s.type === 'cylinder' && s.whole) continue;
       if (smoothOf(face).size === 0) continue;
       candidates.add(face);
+      seen?.('round', s.radius);
     }
     for (const faces of components(candidates, around, (a, b) => smoothOf(a).has(b))) {
       if (faces.length >= faceCount) continue;
@@ -245,6 +251,7 @@ export function findSimplifyGroups(
       if (size > maxChamfer + NEAR) continue;
       if (between.some((other) => (bevels.get(other)?.size ?? Infinity) <= size + NEAR)) continue;
       sizes.set(face, size);
+      seen?.('chamfer', size);
     }
     const members = new Set(sizes.keys());
     for (let face = 0; face < faceCount; face++) {
@@ -618,6 +625,7 @@ function evaluateSimplify(ctx: EvalContext<SimplifyForPrintInputs>): FeatureOutp
   const bodies = new Map(ctx.bodies);
   const names = new Map<BodyId, TopoNames>();
   const groups: SimplifyGroup[] = [];
+  const sizes: SimplifySizes = { round: [], chamfer: [], hole: [] };
   const gone: ShapeHandle[] = [];
   for (const id of ids) {
     const shape = ctx.bodies.get(id) as ShapeHandle;
@@ -627,11 +635,9 @@ function evaluateSimplify(ctx: EvalContext<SimplifyForPrintInputs>): FeatureOutp
       );
     }
     const description = ctx.describe(shape);
-    const found = findSimplifyGroups(
-      description,
-      kernelSimplifySurface(kernel, shape, description),
-      limits,
-    );
+    const surface = memo(kernelSimplifySurface(kernel, shape, description));
+    for (const kind of KINDS) sizes[kind].push(...foundSizes(description, surface, kind));
+    const found = findSimplifyGroups(description, surface, limits);
     if (found.length === 0) continue;
     const result = removeGroups(ctx, shape, ctx.names(id), found);
     if (result.shape !== shape) {
@@ -667,8 +673,52 @@ function evaluateSimplify(ctx: EvalContext<SimplifyForPrintInputs>): FeatureOutp
   // Kept only after the last thing that can throw: a failure releases them with the scope.
   for (const id of names.keys()) scope.keep(bodies.get(id) as ShapeHandle);
   for (const tool of previewTools) scope.keep(tool.shape);
-  const report: SimplifyFeatureReport = { kind: 'simplifyForPrint', groups };
+  for (const kind of KINDS) sizes[kind] = distinctSizes(sizes[kind]);
+  const report: SimplifyFeatureReport = { kind: 'simplifyForPrint', groups, sizes };
   return { bodies, names, report, previewTools };
+}
+
+const KINDS = ['round', 'chamfer', 'hole'] as const;
+
+/**
+ * One kind's sizes on a body, with no limit and the other kinds off: where its
+ * slider stops. Per face, not per group: touching chamfers of 0.5, 1 and 3 mm
+ * are one group with no limit, but a limit of 1 takes two of them.
+ */
+function foundSizes(
+  description: ShapeDescription,
+  surface: (face: number) => SimplifySurface | undefined,
+  kind: (typeof KINDS)[number],
+): number[] {
+  const limits: DetectLimits = {
+    maxRoundRadius: kind === 'round' ? Infinity : undefined,
+    maxChamferSize: kind === 'chamfer' ? Infinity : undefined,
+    maxHoleDiameter: kind === 'hole' ? Infinity : undefined,
+  };
+  const out: number[] = [];
+  findSimplifyGroups(description, surface, limits, (k, size) => k === kind && out.push(size));
+  return out;
+}
+
+/**
+ * Sizes to 0.001 mm, distinct and ascending. One rounded below its size goes
+ * up a step, so a limit set to it still takes it (1.2344 is 1.235).
+ */
+export function distinctSizes(sizes: readonly number[]): number[] {
+  const steps = sizes.map((size) => {
+    const step = Math.round(size * 1000);
+    return step / 1000 < size - SIZE_TOLERANCE ? step + 1 : step;
+  });
+  return [...new Set(steps)].sort((a, b) => a - b).map((step) => step / 1000);
+}
+
+/** `fn` asked once per face. */
+function memo<T>(fn: (face: number) => T): (face: number) => T {
+  const cache = new Map<number, T>();
+  return (face) => {
+    if (!cache.has(face)) cache.set(face, fn(face));
+    return cache.get(face) as T;
+  };
 }
 
 function positive(value: number, what: string): number {

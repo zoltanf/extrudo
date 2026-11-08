@@ -2,8 +2,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { TooltipProvider } from '../design-system';
 import type { OpenDialog } from './dialog';
-import { DIALOG_COLUMN, FeatureDialogPanel } from './FeatureDialog';
-import { faceItem, setupDialogs } from './testing';
+import { DIALOG_COLUMN, FeatureDialogPanel, stopExpression, stopIndex } from './FeatureDialog';
+import { simplifyForPrintDialog } from './simplify-for-print';
+import { BOX, faceItem, settle, setupDialogs } from './testing';
 
 const settings = { units: 'mm', precision: 2 } as const;
 
@@ -74,5 +75,41 @@ describe('the dialog panel', () => {
     );
     expect(html).toContain('data-preview-status="error"');
     expect(html).toContain('Too thin.');
+  });
+});
+
+describe("a slider at an expression field's stops", () => {
+  it('sits at the last stop at or under the value; a stop is an expression', () => {
+    expect(stopIndex([0.5, 1, 3], 1)).toBe(1);
+    expect(stopIndex([0.5, 1, 3], 2)).toBe(1);
+    expect(stopIndex([0.5, 1, 3], 0.1)).toBe(0);
+    expect(stopIndex([0.5, 1, 3], 9)).toBe(2);
+    expect(stopIndex([0.5, 1, 3], undefined)).toBe(0);
+    expect(stopExpression('length', 1.2350000001)).toBe('1.235 mm');
+    expect(stopExpression('angle', 45)).toBe('45 deg');
+    expect(stopExpression('unitless', 2)).toBe('2');
+  });
+
+  it("shows under Simplify for Print's limits once the preview found two sizes or more", async () => {
+    const t = setupDialogs([simplifyForPrintDialog]);
+    t.session.getState().select([{ kind: 'body', id: BOX }]);
+    t.controller.start('simplifyForPrint');
+    expect(render(t.open() as OpenDialog, t)).not.toContain('data-stops');
+    t.kernel.previews.at(-1)?.resolve({
+      features: {},
+      bodies: {},
+      tools: [],
+      simplify: { groups: [], sizes: { round: [0.5, 1, 4], chamfer: [2], hole: [] } },
+    });
+    await settle();
+    const html = render(t.open() as OpenDialog, t);
+    expect(html).toContain('data-stops="maxRoundRadius"');
+    expect(html).not.toContain('data-stops="maxChamferSize"');
+    // The 1 mm default sits at the middle stop; the ends read in the document's unit.
+    expect(html).toMatch(
+      /type="range" aria-label="Round radius" aria-valuetext="1.00 mm"[^>]*max="2"/,
+    );
+    expect(html).toContain('<span>0.50 mm</span><span>4.00 mm</span>');
+    expect(html.match(/>Remove up to</g)).toHaveLength(3);
   });
 });

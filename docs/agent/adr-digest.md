@@ -4367,12 +4367,19 @@ one `removeFaces` first; on `RemoveFacesError` all but the groups `error.failed`
 then those alone; if that fails too, each group alone**, on the shape the earlier ones
 left, its faces found again **by name**; a failure leaves the shape and goes on (other errors
 propagate); keep shapes only after the last throwing call. Report `{ kind: 'simplifyForPrint',
-groups }` (`SimplifyGroup`: kind, body, size, faces, removed) goes to `FeatureStatus.simplify`
+groups, sizes }` (`SimplifyGroup`: kind, body, size, faces, removed; `sizes`: every size per kind
+whatever the limits, **per face** via `findSimplifyGroups`'s `seen` with that kind's limit at
+infinity and the others off, `distinctSizes` to 0.001 mm never rounded below) goes to `FeatureStatus.simplify`
 and `Preview.simplify` → `DialogContext.draftSimplify`; nothing found and failures are
 **warnings**, not errors. Preview: one `cut` preview tool, the compound of the removed faces of
 the input. The dialog's Found line is `simplifySummary`; `InfoField.lines` (new: a small list
-under an info line) shows `simplifyGroupLine` per group, what stayed first, at most 8. Tooltip
-clip pending (`DEMO_CLIPS_PENDING`). Tests: `simplify-for-print.test.ts` in kernel (OCCT: small
+under an info line) shows `simplifyGroupLine` per group, what stayed first, at most 8. Limits
+read **"Remove up to"** (inclusive), inputs named "Round radius" / "Chamfer size" / "Hole
+diameter" (`ExpressionField.inputName`), each with a **slider** at `ExpressionField.stops`
+(the report's sizes; < 2: none) that shows the stop while dragging and **sets it on release**
+(pointer capture, keyup, blur: one preview per drag); a typed value is kept, the slider at the
+stop at or under it (`stopIndex`, `stopExpression` in `FeatureDialog.tsx`). Tooltip
+clip `demo: simplifyForPrint` (frames the model, not the dialog). Tests: `simplify-for-print.test.ts` in kernel (OCCT: small
 fillets, through and blind holes, a stadium's ends that can't be removed, on another body and
 on the same body, chamfers by longer leg and the octagon rule, every edge chamfered with corner
 patches, a countersink as chamfer or hole, a rounded hole mouth) and web.

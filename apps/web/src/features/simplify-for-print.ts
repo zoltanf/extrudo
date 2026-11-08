@@ -1,6 +1,7 @@
 /**
  * The Simplify for Print dialog (ADR-0141, #79): bodies, and a limit each
- * for rounds, chamfers and holes, each with its own toggle. The live
+ * for rounds, chamfers and holes ("Remove up to"), each with its own toggle
+ * and a slider that stops at the sizes found on the bodies. The live
  * preview draws the faces that go in red (the kernel's preview tool); the
  * Found line counts them ("12 rounds, 3 holes") and its lines say, per
  * round, chamfer or hole, whether it was removed. Fields are named like the feature's
@@ -19,7 +20,7 @@ import { type DialogContext, defineFeatureDialog } from './spec';
 const LIST_LINES = 8;
 
 /** The list under the count: what stayed first (it is what to act on), then what went. */
-export function simplifyLines(report: SimplifyReport): string[] {
+export function simplifyLines(report: Pick<SimplifyReport, 'groups'>): string[] {
   const ordered = [
     ...report.groups.filter((g) => !g.removed),
     ...report.groups.filter((g) => g.removed),
@@ -54,11 +55,13 @@ export const simplifyForPrintDialog = defineFeatureDialog({
     {
       kind: 'expression',
       name: 'maxRoundRadius',
-      label: 'Max radius',
+      label: 'Remove up to',
+      inputName: 'Round radius',
       unit: 'length',
       default: '1 mm',
-      hint: 'Rounds up to this radius go; larger ones stay.',
+      hint: 'Rounds up to this radius go; larger ones stay. The slider stops at each radius on the bodies.',
       shown: (values) => values.toggles.rounds ?? true,
+      stops: (_values, ctx) => reportOf(ctx)?.sizes.round,
     },
     {
       kind: 'toggle',
@@ -70,11 +73,13 @@ export const simplifyForPrintDialog = defineFeatureDialog({
     {
       kind: 'expression',
       name: 'maxChamferSize',
-      label: 'Max size',
+      label: 'Remove up to',
+      inputName: 'Chamfer size',
       unit: 'length',
       default: '1 mm',
-      hint: 'Chamfers that cut back up to this far into either face go; larger ones stay.',
+      hint: 'Chamfers that cut back up to this far into either face go; larger ones stay. The slider stops at each size on the bodies.',
       shown: (values) => values.toggles.chamfers ?? true,
+      stops: (_values, ctx) => reportOf(ctx)?.sizes.chamfer,
     },
     {
       kind: 'toggle',
@@ -86,11 +91,13 @@ export const simplifyForPrintDialog = defineFeatureDialog({
     {
       kind: 'expression',
       name: 'maxHoleDiameter',
-      label: 'Max diameter',
+      label: 'Remove up to',
+      inputName: 'Hole diameter',
       unit: 'length',
       default: '3 mm',
-      hint: 'Holes up to this diameter go (a counterbored hole by its widest part); larger ones stay.',
+      hint: 'Holes up to this diameter go (a counterbored hole by its widest part); larger ones stay. The slider stops at each diameter on the bodies.',
       shown: (values) => values.toggles.holes ?? true,
+      stops: (_values, ctx) => reportOf(ctx)?.sizes.hole,
     },
     {
       kind: 'info',

@@ -2,9 +2,16 @@
 // (`context()`) while drawing: the React Compiler must not memoise them (ADR-0102 §5).
 'use no memo';
 
-import { type ExtrudoDocument, formatQuantity } from '@extrudo/core';
+import { dimOfKind, type ExtrudoDocument, formatQuantity, type UnitKind } from '@extrudo/core';
 import { CircleAlert, X } from 'lucide-react';
-import { type KeyboardEvent, type PointerEvent, type ReactNode, useRef, useState } from 'react';
+import {
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+  useId,
+  useRef,
+  useState,
+} from 'react';
 import { useStore } from 'zustand';
 import { Button, Select, ToolIcon, Tooltip } from '../design-system';
 import { ExpressionInput } from '../parameters/ExpressionInput';
@@ -16,6 +23,7 @@ import { pickName } from './pickName';
 import type {
   DialogField,
   DialogRegions,
+  ExpressionField,
   FeatureDialogSpec,
   FeatureListField,
   LabelsField,
@@ -248,13 +256,7 @@ function FieldRow({
       break;
     case 'expression':
       control = (
-        <FieldExpression
-          field={field.name}
-          label={field.label}
-          open={open}
-          controller={controller}
-          settings={settings}
-        />
+        <ExpressionControl field={field} open={open} controller={controller} settings={settings} />
       );
       break;
     case 'choice':
@@ -343,6 +345,95 @@ function FieldRow({
         )}
       </div>
     </div>
+  );
+}
+
+/** A slider stop as an expression: three decimals at most, in the unit's base. */
+export function stopExpression(unit: UnitKind, value: number): string {
+  const n = String(Number(value.toFixed(3)));
+  return unit === 'length' ? `${n} mm` : unit === 'angle' ? `${n} deg` : n;
+}
+
+/** The slider position for `value`: the last stop at or under it (the first when under all). */
+export function stopIndex(stops: readonly number[], value: number | undefined): number {
+  let index = 0;
+  if (value === undefined) return index;
+  for (const [i, stop] of stops.entries()) if (stop <= value + 1e-9) index = i;
+  return index;
+}
+
+/**
+ * An expression field, with a slider under it at the spec's stops (two or
+ * more). Dragging shows the stop in the field; letting go, or a key, sets it.
+ */
+function ExpressionControl({
+  field,
+  open,
+  controller,
+  settings,
+}: {
+  field: ExpressionField;
+  open: OpenDialog;
+  controller: DialogController;
+  settings: ExtrudoDocument['settings'];
+}) {
+  const [dragged, setDragged] = useState<string>();
+  const listId = useId();
+  const ctx = controller.context();
+  const stops = (ctx && field.stops?.(open.values, ctx)) ?? [];
+  const name = field.inputName ?? field.label;
+  const expr = dragged ?? open.values.exprs[field.name] ?? '';
+  const evaluated = controller.evaluate(field.name, expr);
+  const index = stopIndex(stops, evaluated.ok ? evaluated.value : undefined);
+  const show = (value: number) => formatQuantity(value, dimOfKind(field.unit), settings);
+  const commit = () => {
+    if (dragged === undefined) return;
+    setDragged(undefined);
+    controller.setExpr(field.name, dragged);
+  };
+  return (
+    <>
+      <FieldExpression
+        field={field.name}
+        label={name}
+        open={open}
+        controller={controller}
+        settings={settings}
+        {...(dragged !== undefined && { value: dragged })}
+      />
+      {stops.length >= 2 && (
+        <div className="flex min-w-0 flex-col pt-1" data-stops={field.name}>
+          <input
+            type="range"
+            aria-label={name}
+            aria-valuetext={show(stops[index] ?? 0)}
+            list={listId}
+            min={0}
+            max={stops.length - 1}
+            step={1}
+            value={index}
+            // Letting go outside the slider still reaches it.
+            onPointerDown={(event) => event.currentTarget.setPointerCapture(event.pointerId)}
+            onChange={(event) =>
+              setDragged(stopExpression(field.unit, stops[event.currentTarget.valueAsNumber] ?? 0))
+            }
+            onPointerUp={commit}
+            onKeyUp={commit}
+            onBlur={commit}
+            className="w-full accent-(--x-accent)"
+          />
+          <datalist id={listId}>
+            {stops.map((stop, i) => (
+              <option key={stop} value={i} />
+            ))}
+          </datalist>
+          <div className="flex justify-between text-xs text-muted">
+            <span>{show(stops[0] ?? 0)}</span>
+            <span>{show(stops.at(-1) ?? 0)}</span>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -508,6 +599,7 @@ export function FieldExpression({
   controller,
   settings,
   className,
+  value,
 }: {
   field: string;
   label: string;
@@ -515,6 +607,8 @@ export function FieldExpression({
   controller: DialogController;
   settings: ExtrudoDocument['settings'];
   className?: string;
+  /** Shown instead of the field's value: a slider's stop while it is dragged. */
+  value?: string;
 }) {
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     // A valid draft blurred its field on Enter (committing it): Enter also means OK.
@@ -529,7 +623,7 @@ export function FieldExpression({
     <div onKeyDown={onKeyDown} onFocus={() => controller.activate(field)} className="min-w-0">
       <ExpressionInput
         label={label}
-        value={open.values.exprs[field] ?? ''}
+        value={value ?? open.values.exprs[field] ?? ''}
         evaluate={(expr) => controller.evaluate(field, expr)}
         format={(r) => formatQuantity(r.value, r.dim, settings)}
         onDraftChange={(expr, valid) => {

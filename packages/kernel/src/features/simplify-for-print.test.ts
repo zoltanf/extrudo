@@ -34,7 +34,7 @@ import { loadOcct } from '../occt/load';
 import { RecomputeEngine } from '../recompute/engine';
 import { testDocument, testFeature, testFeatures } from '../recompute/testing';
 import type { KernelFeatureDefinition, RecomputeResult } from '../recompute/types';
-import { findSimplifyGroups, type SimplifySurface } from './simplify-for-print';
+import { distinctSizes, findSimplifyGroups, type SimplifySurface } from './simplify-for-print';
 
 // ------------------------------------------------------------ plain data
 
@@ -89,6 +89,13 @@ describe('the Simplify for Print detection rule (plain data)', () => {
   it('a hole over the limit stays, and its halves are no round either', () => {
     const limits = { maxRoundRadius: 5, maxHoleDiameter: 2.9 };
     expect(findSimplifyGroups(splitHole(), surfaceOf, limits)).toEqual([]);
+  });
+
+  it('sizes for the sliders: distinct to 0.001 mm, never rounded below a size', () => {
+    expect(distinctSizes([3, 1.0000000000000036, 1.2344, 0.5, 0.5000001, 1])).toEqual([
+      0.5, 1, 1.235, 3,
+    ]);
+    expect(distinctSizes([])).toEqual([]);
   });
 
   it('one half alone (an open arc) is a round', () => {
@@ -269,6 +276,8 @@ describe('simplify for print', { timeout: 120_000 }, () => {
       { kind: 'round', body: 'B:0', size: expect.closeTo(1, 6), faces: 1, removed: true },
       { kind: 'round', body: 'B:0', size: expect.closeTo(1, 6), faces: 1, removed: true },
     ]);
+    // The slider's stops: every radius, whatever the limit.
+    expect(report(result)?.sizes).toEqual({ round: [1, 3], chamfer: [], hole: [] });
     // Only the two r 3 rounds are left.
     expect(relative(volume(B0), BOX - roundLoss(3))).toBeLessThan(1e-6);
     expect(faceNames(result, B0).filter((n) => n.startsWith('fillet:'))).toHaveLength(2);
@@ -299,6 +308,7 @@ describe('simplify for print', { timeout: 120_000 }, () => {
       ['hole', 3, 1, true],
       ['hole', 4, 2, true],
     ]);
+    expect(report(result)?.sizes.hole).toEqual([3, 4, 10]);
     expect(relative(volume(B0), BOX - Math.PI * 25 * 10)).toBeLessThan(1e-6);
     const names = faceNames(result, B0);
     expect(names).toContain('extrude:B:cap:end');
@@ -442,6 +452,8 @@ describe('simplify for print', { timeout: 120_000 }, () => {
     );
     expect(status(result, 'P')).toMatchObject({ status: 'ok' });
     expect(report(result)?.groups.every((g) => g.kind === 'chamfer' && g.removed)).toBe(true);
+    // Each chamfer face's size is a stop, though with no limit they touch as one group.
+    expect(report(result)?.sizes.chamfer).toEqual([0.5, 1, 3]);
     // The block with its two 3 mm verticals (3 × 3 / 2 × 10 each) and nothing else.
     expect(relative(volume(B0), BOX - 90)).toBeLessThan(1e-6);
     expect(faceNames(result, B0)).toHaveLength(8);

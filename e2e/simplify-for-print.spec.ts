@@ -129,8 +129,8 @@ test('Simplify for Print removes the small round and hole, and says what it foun
     'body',
   );
   await expect(dialog.getByRole('button', { name: 'Bodies', exact: true })).toHaveText('Body1');
-  await dialog.getByRole('textbox', { name: 'Max radius', exact: true }).fill('4 mm');
-  await dialog.getByRole('textbox', { name: 'Max diameter', exact: true }).fill('15 mm');
+  await dialog.getByRole('textbox', { name: 'Round radius', exact: true }).fill('4 mm');
+  await dialog.getByRole('textbox', { name: 'Hole diameter', exact: true }).fill('15 mm');
 
   const found = dialog.locator('[data-info="found"]');
   await expect(found).toHaveText('1 round, 1 hole', { timeout: 30_000 });
@@ -140,16 +140,18 @@ test('Simplify for Print removes the small round and hole, and says what it foun
   ]);
   // The faces that go are drawn as a cut, not the simplified body.
   await expect(viewport).toHaveAttribute('data-preview', 'cut');
+  // One round and one hole: one size each, so no slider (it needs two stops).
+  await expect(dialog.locator('[data-stops]')).toHaveCount(0);
 
   // Limits below both: nothing found, a warning.
-  await dialog.getByRole('textbox', { name: 'Max radius', exact: true }).fill('2 mm');
-  await dialog.getByRole('textbox', { name: 'Max diameter', exact: true }).fill('10 mm');
+  await dialog.getByRole('textbox', { name: 'Round radius', exact: true }).fill('2 mm');
+  await dialog.getByRole('textbox', { name: 'Hole diameter', exact: true }).fill('10 mm');
   await expect(found).toHaveText('Nothing under the limits', { timeout: 30_000 });
   await expect(dialog).toHaveAttribute('data-preview-status', 'warning');
 
   // Up again, and OK: the plain cube.
-  await dialog.getByRole('textbox', { name: 'Max radius', exact: true }).fill('4 mm');
-  await dialog.getByRole('textbox', { name: 'Max diameter', exact: true }).fill('15 mm');
+  await dialog.getByRole('textbox', { name: 'Round radius', exact: true }).fill('4 mm');
+  await dialog.getByRole('textbox', { name: 'Hole diameter', exact: true }).fill('15 mm');
   await expect(found).toHaveText('1 round, 1 hole', { timeout: 30_000 });
   await ok(page, dialog);
   await expect(

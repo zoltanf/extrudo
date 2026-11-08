@@ -9,7 +9,7 @@ import type { Preview } from '@extrudo/kernel';
 import { describe, expect, it } from 'vitest';
 import { featureDialogs, specForCommand } from './registry';
 import { simplifyForPrintDialog, simplifyLines } from './simplify-for-print';
-import type { InfoField } from './spec';
+import type { ExpressionField, InfoField } from './spec';
 import { BOX, settle, setupDialogs } from './testing';
 import { shownFields } from './values';
 
@@ -68,6 +68,7 @@ describe('the simplify for print dialog (ADR-0141)', () => {
     const t = started();
     const report = {
       groups: [group('round', 0.5), group('round', 1, false), group('hole', 3), group('hole', 2.5)],
+      sizes: { round: [0.5, 1, 4], chamfer: [], hole: [2.5, 3] },
     };
     const preview: Preview = {
       features: { [t.open()?.id as FeatureId]: { status: 'warning' } },
@@ -87,6 +88,15 @@ describe('the simplify for print dialog (ADR-0141)', () => {
       'Hole Ø3 mm, 2 faces: removed',
       'Hole Ø2.5 mm, 2 faces: removed',
     ]);
+    // The sliders stop at the sizes found, whatever the limits.
+    const stops = (name: string) =>
+      (simplifyForPrintDialog.fields.find((f) => f.name === name) as ExpressionField).stops?.(
+        open.values,
+        ctx,
+      );
+    expect(stops('maxRoundRadius')).toEqual([0.5, 1, 4]);
+    expect(stops('maxChamferSize')).toEqual([]);
+    expect(stops('maxHoleDiameter')).toEqual([2.5, 3]);
   });
 
   it('words the count line and caps the list', () => {

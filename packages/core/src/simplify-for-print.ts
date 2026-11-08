@@ -153,7 +153,16 @@ export interface SimplifyGroup {
  */
 export interface SimplifyReport {
   groups: SimplifyGroup[];
+  /**
+   * Every size of each kind on the bodies, whatever the limits and toggles:
+   * distinct to 0.001 mm (never rounded below a size), ascending, mm. The
+   * dialog's sliders stop at these (ADR-0141 §4).
+   */
+  sizes: SimplifySizes;
 }
+
+/** Sizes per kind: rounds' radii, chamfers' longer legs, holes' diameters. */
+export type SimplifySizes = Record<SimplifyGroup['kind'], number[]>;
 
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
@@ -161,7 +170,7 @@ const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
  * The count line of what went, by kind: "12 rounds, 3 holes", "2 chamfers";
  * with what stayed: "· 2 couldn't be removed".
  */
-export function simplifySummary(report: SimplifyReport): string {
+export function simplifySummary(report: Pick<SimplifyReport, 'groups'>): string {
   const removed = report.groups.filter((g) => g.removed);
   const failed = report.groups.length - removed.length;
   if (report.groups.length === 0) return 'Nothing under the limits';
