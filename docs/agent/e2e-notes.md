@@ -1881,8 +1881,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `.previous-precache` when it activates); the toast "A new version of Extrudo is
   ready." has the button "Reload" (`exact: true`). After it the new version is
   active and the page reloaded; a project rename made just before survives.
+  The app menu's strip then has "Reload" before "GitHub" (`[data-update-strip]`,
+  `data-update-word` "Update ready"); clicking it activates the new version too.
   Unit tests: `platform/updates.test.ts`, `updateNotice.test.ts`,
-  `project/autosave.test.ts` (`saveEverything`).
+  `project/autosave.test.ts` (`saveEverything`), `shell/AppMenu.update.test.tsx`.
 
 ### `e2e/recompute.spec.ts`
 
