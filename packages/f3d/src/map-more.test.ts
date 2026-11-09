@@ -619,6 +619,124 @@ describe('f3dToDesign: copying features', () => {
     expect(volume).toBeLessThan(RING - 2 * HOLE);
   });
 
+  it('replays the features a mirror copies in timeline order, not in the order the file lists them', async () => {
+    // The hole is cut, then a 1.4 mm plug joined over it fills it again: the
+    // ring is whole. The mirror lists the plug first; replayed in that order
+    // its copy would join solid material and the cut copy leave a hole.
+    const f3d = washerWithHole();
+    f3d.features.push(sketch(5, 7, 'Sketch3', [circle(50, 501n, 0.07, 0.38)]), {
+      ...extrude(6, 'Extrude3', 7, 'join', 501n),
+    });
+    f3d.features.push({
+      ...base,
+      type: 'mirror',
+      id: 8,
+      kind: 'Mirror',
+      name: 'Mirror1',
+      objects: 'features',
+      features: [6, 4],
+      plane: { origin: [0, 0, 0], x: [0, 1, 0], y: [0, 0, 1] },
+    });
+    const { design } = f3dToDesign(f3d, 'Washer');
+    const doc = design.toJSON();
+    const id = (name: string) => doc.features.find((f) => f.name === name)?.id;
+    const mirror = doc.features.find((f) => f.name === 'Mirror1');
+    expect(mirror?.inputs.features).toMatchObject({
+      refs: [
+        { kind: 'feature', id: id('Extrude2') },
+        { kind: 'feature', id: id('Extrude3') },
+      ],
+    });
+    expect(await volumes(f3d)).toEqual([expect.closeTo(RING, 3)]);
+  });
+
+  it('repeats a fillet a pattern copies on the copies, on the edges between the copied faces', async () => {
+    // A 1 mm boss at (3.8, 0) mm, 1.2 mm tall on the 0.8 mm ring, its top rim
+    // rounded 0.1 mm; the pattern repeats the boss and the round half a turn on.
+    const boss = (): F3dDesign => {
+      const f3d = washerWithHole();
+      f3d.features.splice(2);
+      f3d.features.push(sketch(5, 7, 'Sketch3', [circle(50, 501n, 0.05, 0.38)]), {
+        ...extrude(6, 'Extrude3', 7, 'join', 501n),
+        parameters: [parameter({ name: 'd6', kind: 'AlongDistance', value: 0.12 })],
+      });
+      f3d.features.push({
+        ...base,
+        type: 'fillet',
+        id: 7,
+        kind: 'Fillet',
+        name: 'Fillet1',
+        sets: [
+          {
+            size: parameter({ name: 'd7', kind: 'Radius', value: 0.01 }),
+            edges: [
+              {
+                faces: [
+                  {
+                    tags: [{ token: '2', designs: [601] }],
+                    feature: 6,
+                    surface: { kind: 'plane', point: [0.38, 0, 0.12], normal: [0, 0, 1] },
+                  },
+                  {
+                    tags: [{ token: '3', designs: [601] }],
+                    feature: 6,
+                    surface: {
+                      kind: 'cone',
+                      center: [0.38, 0, 0],
+                      axis: [0, 0, 1],
+                      radius: 0.05,
+                      cylinder: true,
+                      slope: 0,
+                    },
+                  },
+                ],
+                bounds: [],
+              },
+            ],
+          },
+        ],
+      });
+      return f3d;
+    };
+    const single = boss();
+    const [one] = await volumes(single);
+    const f3d = boss();
+    f3d.features.push({
+      ...base,
+      type: 'circular-pattern',
+      id: 8,
+      kind: 'C-Pattern',
+      name: 'C-Pattern1',
+      parameters: [parameter({ name: 'd8', kind: 'TotalAngle', unit: 'deg', value: 2 * Math.PI })],
+      objects: 'features',
+      features: [6, 7],
+      axis: { point: [0, 0, 0], direction: [0, 0, 1] },
+      count: parameter({ name: 'countU', kind: 'countU', unit: '', value: 2 }),
+    });
+    const { design, report } = f3dToDesign(f3d, 'Washer');
+    const doc = design.toJSON();
+    const id = (name: string) => doc.features.find((f) => f.name === name)?.id;
+    const again = doc.features.find((f) => f.name === 'Fillet1 (C-Pattern1)');
+    // The original's edge, its faces swapped for their copies.
+    const original = (
+      doc.features.find((f) => f.name === 'Fillet1')?.inputs.edges as
+        | { refs: { id: string }[] }
+        | undefined
+    )?.refs[0]?.id as string;
+    const faces = original.slice(2, -1).split('|');
+    expect(faces).toHaveLength(2);
+    const copy = (face: string) => `pattern:${id('C-Pattern1')}:1:from:(${face})`;
+    expect(faces.every((face) => face.startsWith(`extrude:${id('Extrude3')}:`))).toBe(true);
+    expect(again?.inputs.edges).toMatchObject({
+      refs: [{ kind: 'edge', id: `e[${faces.map(copy).sort().join('|')}]` }],
+    });
+    expect(again?.inputs.radius).toMatchObject({ expr: '0.1 mm' });
+    expect(report.notes.join(' ')).not.toMatch(/left out/);
+    // The copy is rounded as the original is: twice the original's material on the ring.
+    const [both] = await volumes(f3d);
+    expect(both).toBeCloseTo(RING + 2 * ((one as number) - RING), 4);
+  });
+
   it('repeats a cut along a sketch line, walked from the start point the file gives', async () => {
     for (const [start, flip] of [
       [[0, 0, 0], false],

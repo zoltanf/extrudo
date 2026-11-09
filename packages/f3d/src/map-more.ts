@@ -91,6 +91,24 @@ function planeRef(
   return placed?.plane;
 }
 
+/**
+ * The imported features a mirror or pattern copies, in timeline order (the
+ * order `made` was filled in), and how many it can't. The file lists them in
+ * the order they were picked, but the kernel replays them in the order given,
+ * each on what the last left: a join picked before the cut it sits in would
+ * be cut away again.
+ */
+export function copiedFeatures(
+  records: readonly number[],
+  made: ReadonlyMap<number, { id: string }>,
+): { features: GeomRef[]; left: number } {
+  const wanted = new Set(records);
+  const features: GeomRef[] = [];
+  for (const [record, feature] of made)
+    if (wanted.has(record)) features.push({ kind: 'feature', id: feature.id });
+  return { features, left: wanted.size - features.length };
+}
+
 /** The features or bodies a mirror or pattern copies, as Extrudo inputs; or why not. */
 function copiedInputs(
   f: CopiedObjects & { name: string },
@@ -102,18 +120,9 @@ function copiedInputs(
     if (!bodies) return 'a body it copies was not imported as one body of one feature';
     return { objects: 'bodies', bodies };
   }
-  const features: GeomRef[] = [];
-  let left = 0;
-  for (const record of f.features) {
-    const feature = context.made.get(record);
-    if (feature) features.push({ kind: 'feature', id: feature.id });
-    else left++;
-  }
+  const { features } = copiedFeatures(f.features, context.made);
+  // The ones left out get their note from the caller, after the rounds it repeats (`copyRounds`).
   if (features.length === 0) return 'none of the features it copies was imported';
-  if (left)
-    context.report.notes.push(
-      `${f.name}: ${left} of the ${f.features.length} features it copies left out (not imported, or a fillet or chamfer).`,
-    );
   return { objects: 'features', features };
 }
 
@@ -123,6 +132,8 @@ export interface MadeCopies {
   id: string;
   /** Extrudo's label of the file's instance code. */
   label: (code: number) => string | undefined;
+  /** Every copy's label (the original left out), where they are known. */
+  labels?: string[];
 }
 
 /** A mirror of features or bodies in a plane. */
@@ -133,7 +144,7 @@ export function mirror(d: Design, f: F3dMirror, context: CopyContext): string | 
   const plane = planeRef(d, f.plane, f.name, context.report, 'mirrors in');
   if (!plane) return 'its plane is not along an origin axis';
   const made = d.mirror({ ...copied, plane } as Parameters<Design['mirror']>[0], { name: f.name });
-  return { op: 'mirror', id: made.id, label: () => '' };
+  return { op: 'mirror', id: made.id, label: () => '', labels: [''] };
 }
 
 /**
@@ -178,7 +189,12 @@ export function rectangularPattern(
     const [u, v] = cantorPair(code);
     return row && v === 0 && u >= 2 ? String(u - 1) : undefined;
   };
-  return { op: 'pattern', id: made.id, label };
+  const count = f.counts[0]?.value ?? 0;
+  const labels =
+    row && Number.isInteger(count) && count >= 2 && count <= 1000
+      ? Array.from({ length: count - 1 }, (_, i) => String(i + 1))
+      : undefined;
+  return { op: 'pattern', id: made.id, label, ...(labels && { labels }) };
 }
 
 /**
