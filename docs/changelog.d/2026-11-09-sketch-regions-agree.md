@@ -1,0 +1,1 @@
+- 2026-11-09 · **Profiles that went missing**: an extrude no longer loses its profile when a sketch outline has a spline that doubles back over itself, or a line that starts on a circle and leaves it again a hair further on; every region the sketch shows can be extruded (ADR-0025).
