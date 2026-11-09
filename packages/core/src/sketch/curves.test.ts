@@ -890,7 +890,7 @@ describe('end tangents and degree (ADR-0063, third amendment)', () => {
   });
 });
 
-describe('splineFolds (ADR-0020, amendment of 2026-11-09)', () => {
+describe('splineFolds (ADR-0025, amendment of 2026-11-09)', () => {
   const bezier = (poles: Vec2[]) => ({ degree: 3, poles, knots: [0, 0, 0, 0, 1, 1, 1, 1] });
 
   it('finds where poles in a line go back before they go on', () => {

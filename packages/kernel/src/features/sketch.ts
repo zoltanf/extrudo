@@ -706,7 +706,7 @@ export function planarCurves(data: SketchData): { curves: PlanarCurve[]; ids: Sk
  * kernel's fuse doesn't split an edge where it runs back over its own track,
  * so the face builder drops the whole chain such a spline sits in and joins
  * the regions on both sides into one face, which then answers to neither of
- * the IDs `detectProfiles` gives them (ADR-0020's amendment of 2026-11-09).
+ * the IDs `detectProfiles` gives them (ADR-0025's amendment of 2026-11-09).
  * Pieces of one curve make the same profile key, so other faces keep their IDs.
  */
 function unfolded(curve: PlanarCurve): PlanarCurve[] {
@@ -788,11 +788,13 @@ function planarCurve(
  * again among the faces made with a fuzzy value ten times finer, and only
  * the faces that are such a region are taken from that run, so every other
  * face, and its ID, is the first run's. The fuse at `PROFILE_TOLERANCE`
- * joins two curves that run within it of each other into one edge; where a
- * line cuts so thin a sliver off a circle that its chord is such an edge
- * (a line ending on the circle a hair inside it), the face builder loses
- * the region on the far side of the chord as well (ADR-0020's amendment of
- * 2026-11-09). Sketches whose regions all have a face make one run only.
+ * joins two curves that run within it of each other into one edge: a line
+ * that starts on a circle and leaves it again a few hundredths of a mm on
+ * (a chord less than twice the fuzzy value from the arc) becomes one edge
+ * with that arc, and the face builder then loses the region on the other
+ * side of the chord as well, when the line comes first among the curves
+ * (ADR-0025's amendment of 2026-11-09). Sketches whose regions all have a
+ * face make one run only.
  */
 function sketchFaces(
   kernel: EvalContext['kernel'],

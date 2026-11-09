@@ -548,7 +548,7 @@ const FOLD_COS = -Math.cos(Math.PI / 6);
  * at which its direction turns round (a cusp, or poles in a line that go
  * forward and back, as a traced outline brings). The curve then runs over
  * its own track, which the kernel's face builder can't bound a region with
- * (ADR-0020's amendment of 2026-11-09). Found where the tangent turns by
+ * (ADR-0025's amendment of 2026-11-09). Found where the tangent turns by
  * more than 150° between neighbouring samples (16 per knot span), then
  * bisected to where the derivative stops going forward. A smooth curve
  * never turns that fast, so for one this is empty.

@@ -436,7 +436,7 @@ describe('the sketch evaluator', () => {
 
 /**
  * Two sketches where the kernel's faces and `detectProfiles` used to part
- * (ADR-0020's amendment of 2026-11-09): an extrude of a region the sketch
+ * (ADR-0025's amendment of 2026-11-09): an extrude of a region the sketch
  * shows found no face for it ("Can't find one of its profiles any more").
  */
 describe('regions the kernel used to lose', () => {
