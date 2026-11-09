@@ -2829,12 +2829,15 @@ function offsetFaces(
   report: ImportReport,
 ): string | undefined {
   if (!f.distance) return 'its distance was not found';
+  // An offset by 0 moves nothing: imported as nothing (Extrudo refuses one).
+  if (Math.abs(f.distance.value) < 1e-12) {
+    report.notes.push(`${f.name}: its distance is 0, so it changes nothing; imported as nothing.`);
+    return undefined;
+  }
   // The one such offset in the files seen fails in the kernel: its body has a
   // notch across a cylinder's seam, where Offset Face refuses every face.
   if (f.faces.some((face) => face.instance))
     return 'it moves faces a pattern or mirror copied (not imported yet)';
-  if (Math.abs(f.distance.value) < 1e-12)
-    return 'its distance is 0 (Extrudo refuses an offset that moves nothing)';
   // Named by the face as the offset saw it (`surface`, the state before the
   // offset: an extrude's cap is still at its cap), and failing that by its
   // solved state. Not by the face's other states: the faces those name had

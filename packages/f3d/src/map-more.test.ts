@@ -975,6 +975,26 @@ describe('f3dToDesign: copying features', () => {
     });
   });
 
+  it('imports an offset of faces by 0 as nothing, with no skip', () => {
+    const f3d = washerWithHole();
+    f3d.features.push({
+      ...base,
+      type: 'offset-faces',
+      id: 8,
+      kind: 'OffsetFaces',
+      name: 'OffsetFaces1',
+      distance: parameter({ name: 'd9', kind: 'distance', value: 0 }),
+      faces: [{ tags: [{ token: '3', designs: [303] }], feature: 4 }],
+    });
+    const { design, report } = f3dToDesign(f3d, 'Washer');
+    expect(report.skipped).toEqual([]);
+    expect(report.imported).toContain('OffsetFaces1');
+    expect(report.notes).toContain(
+      'OffsetFaces1: its distance is 0, so it changes nothing; imported as nothing.',
+    );
+    expect(design.toJSON().features.some((f) => f.type === 'offsetFace')).toBe(false);
+  });
+
   /** A deletion of Extrude2's hole wall (a cylinder, 0.5 mm radius round (3.8, 0) mm), as the file records it. */
   const holeWall = (): F3dFace => ({
     tags: [{ token: '3', designs: [4] }],
