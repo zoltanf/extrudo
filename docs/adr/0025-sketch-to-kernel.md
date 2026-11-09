@@ -179,7 +179,10 @@ corpus three sketches besides the two above, which it doesn't help (a
 self-crossing spline chain, and a 0.0001 mm² sliver in two files); the
 largest of them took 440 ms instead of 245. Summed over all 1045
 sketches the evaluator took 5 % longer, those three sketches included;
-`detectProfiles` is untouched.
+`detectProfiles` is untouched. Looking for folds adds 4 ms to
+`planarCurves` for a sketch with 264 splines (0.7 → 4.9 ms) and 16 ms for
+a synthetic one with 3000 (8.7 → 25 ms), against hundreds of ms for the
+faces themselves.
 
 **Tried and dropped.**
 - *A face equal to the union of unclaimed regions answers to all their
