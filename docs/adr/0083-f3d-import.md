@@ -2007,3 +2007,13 @@ its bore at the thread's minor all along), a screw and nut 14.1 % → 5.0 %, a
 filament hole-through 1.2 % → 0.6 %, the light housing 0.44 % → 0.004 %, a
 drain cover 1.49 % → 1.47 % (its pattern's round copies; the rest is an
 unnamed offset face). No `RuntimeError`; the two files of #93 are unchanged.
+
+**55° threads** (the same day, its own commit): a thread whose profile angle is
+55° imports with Extrudo's new `whitworth` profile (ADR-0056's amendment of
+2026-11-10) instead of the 60° ISO one with a note. In a hole between the
+Whitworth tooth's basic crest and the file's minor (the class's, wider), the
+tooth moves out to the hole by `tolerance` instead of the hole being filled in
+(a pipe input's 12 mm hole, resized to Ø18.9015 by item 3, would otherwise get
+a 0.13 mm sleeve that a later cut left as a loose 24 mm³ body). Corpus: a pipe
+adapter 1.505 % → 1.604 % (still a mismatch; its knurl pattern also leaves 7
+loose slivers, a separate cause), nothing else changes.

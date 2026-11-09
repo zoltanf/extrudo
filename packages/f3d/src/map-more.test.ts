@@ -626,6 +626,63 @@ describe('f3dToDesign: copying features', () => {
     expect(whole.some((f) => f.type === 'offsetFace')).toBe(false);
   });
 
+  it('imports a 55° thread with the Whitworth profile, its tooth out at a hole the class widened', () => {
+    // A 55° Ø4.8 × 1 thread in the washer's Ø4.2 hole, its class's minor Ø3.6
+    // wider than the basic Whitworth crest (Ø3.519): the hole is resized to
+    // Ø3.6 along all of it, and the tooth moves out to it (a tolerance)
+    // instead of filling it in.
+    const f3d = washerWithHole();
+    f3d.features.push({
+      ...base,
+      type: 'thread',
+      id: 7,
+      kind: 'Thread',
+      name: 'Thread1',
+      parameters: [
+        parameter({ name: 'd7', kind: 'ThreadLength', value: 0.05 }),
+        parameter({ name: 'd8', kind: 'ThreadOffset', value: 0 }),
+      ],
+      spec: {
+        angle: 55,
+        external: false,
+        designation: 'W 4.8x1',
+        family: 'Whitworth',
+        full: false,
+        major: 0.48,
+        minor: 0.36,
+        pitch: 0.1,
+      },
+      faces: [
+        {
+          tags: [{ token: '4', designs: [301] }],
+          feature: 2,
+          surface: {
+            kind: 'cone',
+            center: [0, 0, 0],
+            axis: [0, 0, 1],
+            radius: 0.21,
+            cylinder: true,
+            slope: 0,
+          },
+        },
+      ],
+    });
+    const { design, report } = f3dToDesign(f3d, 'Washer');
+    const features = design.toJSON().features;
+    const thread = features.find((f) => f.name === 'Thread1');
+    expect(thread?.inputs.profile).toEqual({ kind: 'enum', value: 'whitworth' });
+    expect(report.notes.join(' ')).not.toMatch(/55° profile/);
+    expect(features.find((f) => f.name === 'Thread1 face')?.inputs.distance).toMatchObject({
+      expr: '0.3 mm',
+    });
+    // The basic crest is 2.4 − (2/3) · 1 / (2 tan 27.5°) mm from the axis; lifted to the 1.8 mm hole.
+    const crest = 2.4 - 1 / (3 * Math.tan((27.5 * Math.PI) / 180));
+    const tolerance = Number.parseFloat(
+      (thread?.inputs.tolerance as { expr: string } | undefined)?.expr ?? '',
+    );
+    expect(tolerance).toBeCloseTo(1.8 - crest, 9);
+  });
+
   it("names a face a pattern copied after the copy, as Extrudo's pattern names it", async () => {
     const f3d = washerWithHole();
     f3d.features.push(

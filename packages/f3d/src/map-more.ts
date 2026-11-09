@@ -5,7 +5,7 @@
  * returns why it was left out, or what it made.
  */
 import type { Design, GeomRef } from '@extrudo/api';
-import { ORIGIN_PLANES } from '@extrudo/core';
+import { ORIGIN_PLANES, threadRadii } from '@extrudo/core';
 import { type CopiedObjects, cantorPair } from './decode/copies';
 import type { ModelPlane } from './decode/hole';
 import type { ParameterValue } from './decode/parameters';
@@ -376,8 +376,8 @@ export function moveBodies(d: Design, f: F3dMove, context: CopyContext): string 
 /**
  * A modeled thread on cylindrical faces, at the file's major diameter and
  * pitch with no clearance (the file's diameters are the thread's own).
- * Extrudo's tooth is the 60° ISO profile: a 55° pipe thread comes out a
- * little deeper. The file resizes the whole face to the thread's crest (its
+ * Extrudo's tooth is the 60° ISO profile, or for a 55° one (the BSP G pipe
+ * threads) the Whitworth profile. The file resizes the whole face to the thread's crest (its
  * minor diameter inside, major outside). Extrudo fills a wider hole in (or
  * builds a thinner shaft up) to it along the thread (ADR-0056's fifth
  * amendment), which is the whole face for a thread along all of it; a thread
@@ -415,9 +415,12 @@ export function thread(
     if (length) inputs.length = expressionOf(length);
     if (offset && Math.abs(offset.value) > 1e-12) inputs.offset = expressionOf(offset);
   }
+  // The hole's radius (cm) as it is threaded: one radius for every face, moved to the crest below.
+  let hole = holeRadius(f);
   if (!spec.full) {
     const resize = crestOffset(f);
     if (resize !== undefined) {
+      hole = crestRadius(spec);
       // The file resizes the whole face to the thread's crest, not only along
       // the thread: the face is moved there first, then threaded.
       d.offsetFace(
@@ -429,10 +432,24 @@ export function thread(
       );
     }
   }
-  if (Math.abs(spec.angle - 60) > 1e-6)
+  // A 55° thread is a Whitworth form (the BSP G pipe threads); another angle has no profile here.
+  const profile = Math.abs(spec.angle - 55) < 1e-6 ? 'whitworth' : 'iso';
+  if (profile !== 'iso') inputs.profile = profile;
+  else if (Math.abs(spec.angle - 60) > 1e-6)
     report.notes.push(
       `${f.name}: ${spec.designation} has a ${spec.angle}° profile; imported with Extrudo's 60° one.`,
     );
+  if (profile === 'whitworth' && !spec.external && hole !== undefined) {
+    // The file's minor diameter is its class's, for a pipe thread well wider
+    // than the basic profile's crest. A hole between the two would be filled
+    // in to the crest, a sleeve that a later cut can leave loose: the whole
+    // tooth moves out to the hole instead, as a tolerance does (the root goes
+    // as much deeper). A hole wider than the file's minor is filled in as
+    // before; ISO threads are left as they were.
+    const { crest } = threadRadii(profile, spec.major * 10, spec.pitch * 10, 0, true);
+    const lift = hole * 10 - crest;
+    if (lift > 1e-6 && hole <= spec.minor / 2 + 1e-9) inputs.tolerance = mm(lift / 10);
+  }
   d.thread(inputs as Parameters<Design['thread']>[0], { name: f.name });
   return undefined;
 }
@@ -440,6 +457,18 @@ export function thread(
 /** The radius (cm) a thread's face has to have: its crest's, the major outside, the minor inside. */
 function crestRadius(spec: F3dThread['spec']): number {
   return (spec.external ? spec.major : spec.minor) / 2;
+}
+
+/** The one radius (cm) of a thread's cylindrical faces, where they all have it. */
+function holeRadius(f: F3dThread): number | undefined {
+  let radius: number | undefined;
+  for (const face of f.faces) {
+    const s = face.surface;
+    if (s?.kind !== 'cone' || !s.cylinder) return undefined;
+    if (radius !== undefined && Math.abs(radius - s.radius) > 1e-9) return undefined;
+    radius = s.radius;
+  }
+  return radius;
 }
 
 /**

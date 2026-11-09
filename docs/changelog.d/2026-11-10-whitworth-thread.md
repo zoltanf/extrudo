@@ -1,0 +1,1 @@
+- 2026-11-10 · **Thread**: a Whitworth profile (55°, the form of the BSP G pipe threads); the f3d import cuts 55° threads with it.
