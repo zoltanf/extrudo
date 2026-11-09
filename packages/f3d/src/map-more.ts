@@ -377,10 +377,12 @@ export function moveBodies(d: Design, f: F3dMove, context: CopyContext): string 
  * A modeled thread on cylindrical faces, at the file's major diameter and
  * pitch with no clearance (the file's diameters are the thread's own).
  * Extrudo's tooth is the 60° ISO profile: a 55° pipe thread comes out a
- * little deeper. The file resizes the face to the thread's crest; Extrudo
- * fills a wider hole in (or builds a thinner shaft up) to it along the
- * thread (ADR-0056's fifth amendment), so the thread is imported as drawn,
- * at the file's diameters.
+ * little deeper. The file resizes the whole face to the thread's crest (its
+ * minor diameter inside, major outside). Extrudo fills a wider hole in (or
+ * builds a thinner shaft up) to it along the thread (ADR-0056's fifth
+ * amendment), which is the whole face for a thread along all of it; a thread
+ * along part of it gets an Offset Face that moves the face to the crest first
+ * (`crestOffset`), so the face beyond the thread is the file's too.
  */
 export function thread(
   d: Design,
@@ -413,12 +415,50 @@ export function thread(
     if (length) inputs.length = expressionOf(length);
     if (offset && Math.abs(offset.value) > 1e-12) inputs.offset = expressionOf(offset);
   }
+  if (!spec.full) {
+    const resize = crestOffset(f);
+    if (resize !== undefined) {
+      // The file resizes the whole face to the thread's crest, not only along
+      // the thread: the face is moved there first, then threaded.
+      d.offsetFace(
+        { faces, distance: mm(resize), keepRounds: true } as Parameters<Design['offsetFace']>[0],
+        { name: `${f.name} face` },
+      );
+      report.notes.push(
+        `${f.name}: its face is moved to the thread's ${spec.external ? 'major' : 'minor'} diameter (${Number((crestRadius(spec) * 20).toPrecision(6))} mm) along its whole length, as the file does, then threaded.`,
+      );
+    }
+  }
   if (Math.abs(spec.angle - 60) > 1e-6)
     report.notes.push(
       `${f.name}: ${spec.designation} has a ${spec.angle}° profile; imported with Extrudo's 60° one.`,
     );
   d.thread(inputs as Parameters<Design['thread']>[0], { name: f.name });
   return undefined;
+}
+
+/** The radius (cm) a thread's face has to have: its crest's, the major outside, the minor inside. */
+function crestRadius(spec: F3dThread['spec']): number {
+  return (spec.external ? spec.major : spec.minor) / 2;
+}
+
+/**
+ * How far (cm, along the face's outward normal) a thread's faces move to its
+ * crest: one distance for all of them, or none where they are there already
+ * (within 1e-5 cm), aren't cylinders, or would move apart.
+ */
+function crestOffset(f: F3dThread): number | undefined {
+  const crest = crestRadius(f.spec);
+  let offset: number | undefined;
+  for (const face of f.faces) {
+    const s = face.surface;
+    if (s?.kind !== 'cone' || !s.cylinder) return undefined;
+    // Outside, the outward normal points away from the axis; inside, towards it.
+    const d = f.spec.external ? crest - s.radius : s.radius - crest;
+    if (offset !== undefined && Math.abs(d - offset) > 1e-9) return undefined;
+    offset = d;
+  }
+  return offset !== undefined && Math.abs(offset) > 1e-5 ? offset : undefined;
 }
 
 /** A sketch point (cm) in model space through the sketch's frame. */

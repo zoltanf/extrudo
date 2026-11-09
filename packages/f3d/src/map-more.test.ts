@@ -545,6 +545,87 @@ describe('f3dToDesign: copying features', () => {
     });
   });
 
+  it("moves a part-length thread's face to the crest along its whole length first, as the file does", async () => {
+    // M4, 0.5 mm of the washer's Ø4.2 hole: the file resizes the whole hole to
+    // the crest (Ø3.3), not only where the thread runs.
+    const threaded = (full: boolean): F3dDesign => {
+      const f3d = washerWithHole();
+      f3d.features.push({
+        ...base,
+        type: 'thread',
+        id: 7,
+        kind: 'Thread',
+        name: 'Thread1',
+        parameters: full
+          ? []
+          : [
+              parameter({ name: 'd7', kind: 'ThreadLength', value: 0.05 }),
+              parameter({ name: 'd8', kind: 'ThreadOffset', value: 0 }),
+            ],
+        spec: {
+          angle: 60,
+          external: false,
+          designation: 'M4x0.7',
+          family: 'ISO Metric profile',
+          full,
+          major: 0.4,
+          minor: 0.33,
+          pitch: 0.07,
+        },
+        faces: [
+          {
+            tags: [{ token: '4', designs: [301] }],
+            feature: 2,
+            surface: {
+              kind: 'cone',
+              center: [0, 0, 0],
+              axis: [0, 0, 1],
+              radius: 0.21,
+              cylinder: true,
+              slope: 0,
+            },
+          },
+        ],
+      });
+      return f3d;
+    };
+    const { design, report } = f3dToDesign(threaded(false), 'Washer');
+    const features = design.toJSON().features;
+    const at = (name: string) => features.findIndex((f) => f.name === name);
+    const resize = features[at('Thread1 face')];
+    const thread = features[at('Thread1')];
+    expect(at('Thread1 face')).toBe(at('Thread1') - 1);
+    // Towards the axis (along the hole wall's outward normal) by 2.1 − 1.65 mm.
+    expect(resize).toMatchObject({
+      type: 'offsetFace',
+      inputs: { faces: thread?.inputs.faces, distance: { expr: '0.45 mm' } },
+    });
+    expect(report.notes).toContain(
+      "Thread1: its face is moved to the thread's minor diameter (3.3 mm) along its whole length, as the file does, then threaded.",
+    );
+    // The face keeps its name through the offset: the thread still finds it.
+    const engine = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
+    try {
+      const doc = design.toJSON();
+      const result = await engine.recompute({
+        doc: { ...doc, features: doc.features.slice(0, at('Thread1 face') + 1) },
+      });
+      if (result.status !== 'done') throw new Error(`recompute ${result.status}`);
+      expect(Object.values(result.features).filter((s) => s.status !== 'ok')).toEqual([]);
+      const [body] = result.bodies;
+      const shape = body && engine.latestBody(body.id);
+      expect(shape && kernel.measure(shape).volume).toBeCloseTo(
+        Math.PI * (5.5 ** 2 - 1.65 ** 2) * 0.8 - HOLE,
+        3,
+      );
+    } finally {
+      engine.clear();
+    }
+    // A thread along the whole face is filled in to its crest by Extrudo's thread itself.
+    const whole = f3dToDesign(threaded(true), 'Washer').design.toJSON().features;
+    expect(whole.some((f) => f.type === 'offsetFace')).toBe(false);
+  });
+
   it("names a face a pattern copied after the copy, as Extrudo's pattern names it", async () => {
     const f3d = washerWithHole();
     f3d.features.push(
