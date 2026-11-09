@@ -85,6 +85,7 @@ import type {
   Matrix,
 } from './model';
 import {
+  chargeProbes,
   insidePieces,
   listedPieces,
   nurbsAt,
@@ -2016,6 +2017,9 @@ export function selectProfiles(
     const exact = new Map(
       operand.regions.map((want) => [want, exactRegions(sketch, regions, want)]),
     );
+    // A crafted sketch whose curves cost too much to cut: its regions are not
+    // looked for again (`MAX_PIECE_WORK`).
+    if (sketch.pieces?.overBudget) return TOO_MANY_CROSSINGS;
     const whole = new Set(
       operand.regions.filter((want) => !want.outline && !exact.get(want)).map((want) => want.group),
     );
@@ -2074,6 +2078,7 @@ export function selectProfiles(
       }
       for (const ref of refs) if (!profiles.some((p) => p.id === ref.id)) profiles.push(ref);
     }
+    if (sketch.pieces?.overBudget) return TOO_MANY_CROSSINGS;
     if (missed && profiles.length === before) return missed;
     if (lost && profiles.length === before)
       return 'the curves around its profile regions were deleted';
@@ -3076,6 +3081,9 @@ export const regionStats: Record<string, number> = {
   'outline skipped': 0,
 };
 
+/** Why a feature's profile was not found when its sketch's region matching ran out of budget. */
+export const TOO_MANY_CROSSINGS = 'its sketch has too many curve crossings to find its profile';
+
 /**
  * The Extrudo regions inside an f3d region rebuilt from its pieces of
  * curves (`regions.ts`); undefined when the pieces are not found as the file
@@ -3090,6 +3098,9 @@ function exactRegions(
   const lines = regionPieces(entry.pieces, [...want.outerPieces, ...want.innerPieces]);
   if (!lines) return undefined;
   const mapped = lines.map((line) => line.map(([u, v]) => entry.placement.map(u, v)));
+  // Each region's probe walks every point of the pieces.
+  const points = lines.reduce((sum, line) => sum + line.length, 0);
+  if (!chargeProbes(entry.pieces, points * regions.length)) return undefined;
   const out: GeomRef[] = [];
   for (const r of regions) {
     if (r.text !== undefined || Math.abs(r.area) < SLIVER) continue;
@@ -3110,6 +3121,8 @@ function textsInside(entry: SketchEntry, want: ProfileRegion): GeomRef[] {
   if (entry.source.texts.length === 0 || !entry.pieces) return [];
   const lines = regionPieces(entry.pieces, [...want.outerPieces, ...want.innerPieces]);
   if (!lines) return [];
+  const points = lines.reduce((sum, line) => sum + line.length, 0);
+  if (!chargeProbes(entry.pieces, points * entry.source.texts.length)) return [];
   const out: GeomRef[] = [];
   for (const t of entry.source.texts) {
     const id = entry.texts.get(t.id);
@@ -3229,12 +3242,16 @@ function overlapRegion(
     const rings = [r.outer.polygon, ...r.holes.map((h) => h.polygon)];
     const rb = boundsOf(rings);
     if (rb[0] > box[2] || box[0] > rb[2] || rb[1] > box[3] || box[1] > rb[3]) continue;
+    // Each sample of one side is held against every segment of the other.
+    const ringPoints = rings.reduce((sum, ring) => sum + ring.length, 0);
+    if (!chargeProbes(entry.pieces, piecePoints.length * ringPoints)) return undefined;
     const along = piecePoints
       .filter((s) => near(s.at, rings, true))
       .reduce((sum, s) => sum + s.weight, 0);
     const share = along / pieceLength;
     if (share < OVERLAP_MIN_SHARE) continue;
     const boundary = rings.flatMap((ring) => samples(ring, true));
+    if (!chargeProbes(entry.pieces, boundary.length * piecePoints.length)) return undefined;
     const total = boundary.reduce((sum, s) => sum + s.weight, 0);
     const on = boundary
       .filter((s) => near(s.at, pieces, false))
