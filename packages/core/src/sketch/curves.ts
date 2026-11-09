@@ -538,6 +538,63 @@ export function splineDerivative(spline: BSpline): BSpline {
   return { degree: p - 1, poles: out, knots: knots.slice(1, -1) };
 }
 
+/** Samples per knot span that `splineFolds` compares directions at. */
+const FOLD_SAMPLES = 16;
+/** A turn sharper than this between neighbouring samples is a fold (cos 150°). */
+const FOLD_COS = -Math.cos(Math.PI / 6);
+
+/**
+ * Where a B-spline doubles back on itself: the parameters, strictly inside,
+ * at which its direction turns round (a cusp, or poles in a line that go
+ * forward and back, as a traced outline brings). The curve then runs over
+ * its own track, which the kernel's face builder can't bound a region with
+ * (ADR-0020's amendment of 2026-11-09). Found where the tangent turns by
+ * more than 150° between neighbouring samples (16 per knot span), then
+ * bisected to where the derivative stops going forward. A smooth curve
+ * never turns that fast, so for one this is empty.
+ */
+export function splineFolds(spline: BSpline): number[] {
+  const derivative = splineDerivative(spline);
+  const distinct = [...new Set(spline.knots)];
+  const start = distinct[0] as number;
+  const end = distinct[distinct.length - 1] as number;
+  const at = (u: number): Vec2 => splinePoint(derivative, u);
+  const unit = (d: Vec2): Vec2 | undefined => {
+    const n = Math.hypot(d[0], d[1]);
+    return n > 1e-12 ? [d[0] / n, d[1] / n] : undefined;
+  };
+  const folds: number[] = [];
+  let prev: { u: number; dir: Vec2 } | undefined;
+  for (let i = 1; i < distinct.length; i++) {
+    const u0 = distinct[i - 1] as number;
+    const u1 = distinct[i] as number;
+    for (let k = i === 1 ? 0 : 1; k <= FOLD_SAMPLES; k++) {
+      const u = u0 + ((u1 - u0) * k) / FOLD_SAMPLES;
+      const dir = unit(at(u));
+      if (!dir) continue;
+      if (prev && dir[0] * prev.dir[0] + dir[1] * prev.dir[1] < FOLD_COS) {
+        // The derivative goes forward (along the earlier direction) at `lo`, back at `hi`.
+        const ahead = prev.dir;
+        let lo = prev.u;
+        let hi = u;
+        for (let n = 0; n < 60; n++) {
+          const mid = (lo + hi) / 2;
+          const d = at(mid);
+          if (d[0] * ahead[0] + d[1] * ahead[1] > 0) lo = mid;
+          else hi = mid;
+        }
+        const fold = (lo + hi) / 2;
+        const last = folds[folds.length - 1];
+        if (fold > start && fold < end && (last === undefined || fold - last > 1e-9)) {
+          folds.push(fold);
+        }
+      }
+      prev = { u, dir };
+    }
+  }
+  return folds;
+}
+
 /**
  * The poles of a control-point spline (`controlSpline`'s uniform knots) that
  * runs within `tolerance` (mm) of every point of `points`, in order (P4-12:

@@ -6,6 +6,7 @@ import {
   type FeatureId,
   faceSketchFrame,
   type GeomRef,
+  normalizeSpline,
   originPlane,
   type ProjectedCurve,
   type ProjectionId,
@@ -21,6 +22,8 @@ import {
   sketchFeature,
   sketchToWorld,
   splineCurve,
+  splineFolds,
+  splitSpline,
   type Vec2,
 } from '@extrudo/core';
 import {
@@ -30,7 +33,7 @@ import {
   profileIds,
   profileKey,
 } from '@extrudo/sketch/profiles';
-import { KernelError, MeshBodyError, type ShapeHandle } from '../kernel';
+import { KernelError, MeshBodyError, type ShapeHandle, type ShapeScope } from '../kernel';
 import { LostReferenceError } from '../naming/resolve';
 import type { PlanarCurve, PlanarFace } from '../planar';
 import type { EvalContext, KernelFeatureDefinition } from '../recompute/types';
@@ -156,9 +159,7 @@ export const kernelSketch: KernelFeatureDefinition<SketchInputs> = {
     const projections = projectAll(ctx, data, frame);
     const { curves, ids } = planarCurves(data);
     using scope = kernel.scope();
-    const { faces } = kernel.planarFaces(curves, frame, PROFILE_TOLERANCE);
-    for (const face of faces) scope.track(face.shape);
-    const { ids: regionIds, textOf } = profileFaceIds(faces, ids, data);
+    const { faces, regionIds, textOf } = sketchFaces(kernel, scope, curves, ids, data, frame);
 
     const order = faces
       .map((_, i) => i)
@@ -666,7 +667,7 @@ function textWarnings(data: SketchData): string[] {
  * `detectProfiles` walks them), without points and construction geometry.
  * A text entity contributes its placed sub-curves in order, named by their
  * sub-IDs (`<text>.<k>`, ADR-0058 §2). `ids[i]` is the entity of
- * `curves[i]`.
+ * `curves[i]`; a spline that doubles back is several curves (`unfolded`).
  */
 export function planarCurves(data: SketchData): { curves: PlanarCurve[]; ids: SketchEntityId[] } {
   const curves: PlanarCurve[] = [];
@@ -691,10 +692,42 @@ export function planarCurves(data: SketchData): { curves: PlanarCurve[]; ids: Sk
     }
     const curve = planarCurve(e, point);
     if (!curve) continue;
-    curves.push(curve);
-    ids.push(id);
+    for (const piece of unfolded(curve)) {
+      curves.push(piece);
+      ids.push(id);
+    }
   }
   return { curves, ids };
+}
+
+/**
+ * A spline that doubles back on itself (`splineFolds`) as its pieces between
+ * the folds, each under the spline's own ID; any other curve as it is. The
+ * kernel's fuse doesn't split an edge where it runs back over its own track,
+ * so the face builder drops the whole chain such a spline sits in and joins
+ * the regions on both sides into one face, which then answers to neither of
+ * the IDs `detectProfiles` gives them (ADR-0020's amendment of 2026-11-09).
+ * Pieces of one curve make the same profile key, so other faces keep their IDs.
+ */
+function unfolded(curve: PlanarCurve): PlanarCurve[] {
+  if (curve.kind !== 'spline') return [curve];
+  const spline = { degree: curve.degree, poles: [...curve.poles], knots: [...curve.knots] };
+  const folds = splineFolds(spline);
+  if (folds.length === 0) return [curve];
+  const out: PlanarCurve[] = [];
+  let rest = spline;
+  for (const fold of folds) {
+    // On a knot already there (to rounding), split at the knot itself.
+    const u = rest.knots.find((k) => Math.abs(k - fold) < 1e-12) ?? fold;
+    const first = rest.knots[0] as number;
+    const last = rest.knots[rest.knots.length - 1] as number;
+    if (u <= first || u >= last) continue;
+    const [before, after] = splitSpline(rest, u);
+    out.push({ kind: 'spline', ...normalizeSpline(before) });
+    rest = after;
+  }
+  out.push({ kind: 'spline', ...normalizeSpline(rest) });
+  return out;
 }
 
 function planarCurve(
@@ -750,6 +783,67 @@ function planarCurve(
 }
 
 /**
+ * The kernel's faces of a sketch, with their region IDs. A region
+ * `detectProfiles` finds that no face answers to (`missing`) is looked for
+ * again among the faces made with a fuzzy value ten times finer, and only
+ * the faces that are such a region are taken from that run, so every other
+ * face, and its ID, is the first run's. The fuse at `PROFILE_TOLERANCE`
+ * joins two curves that run within it of each other into one edge; where a
+ * line cuts so thin a sliver off a circle that its chord is such an edge
+ * (a line ending on the circle a hair inside it), the face builder loses
+ * the region on the far side of the chord as well (ADR-0020's amendment of
+ * 2026-11-09). Sketches whose regions all have a face make one run only.
+ */
+function sketchFaces(
+  kernel: EvalContext['kernel'],
+  scope: ShapeScope,
+  curves: readonly PlanarCurve[],
+  ids: readonly SketchEntityId[],
+  data: SketchData,
+  frame: SketchFrame,
+): { faces: PlanarFace[]; regionIds: string[]; textOf: Map<string, SketchEntityId> } {
+  const { faces } = kernel.planarFaces(curves, frame, PROFILE_TOLERANCE);
+  for (const face of faces) scope.track(face.shape);
+  const detected = detectedRegions(data);
+  const first = profileFaceIds(faces, ids, data, detected);
+  if (first.missing.length === 0) {
+    return { faces: [...faces], regionIds: first.ids, textOf: first.textOf };
+  }
+  const retry = kernel.planarFaces(curves, frame, PROFILE_TOLERANCE / 10).faces;
+  for (const face of retry) scope.track(face.shape);
+  const again = profileFaceIds(retry, ids, data, first.missing);
+  const wanted = new Map(first.missing.map((r) => [r.id, r]));
+  const out = [...faces];
+  const outIds = [...first.ids];
+  retry.forEach((face, i) => {
+    const id = again.ids[i] as string;
+    const region = wanted.get(id);
+    if (!region || !sameRegion(face, region)) return;
+    wanted.delete(id);
+    out.push(face);
+    outIds.push(id);
+  });
+  return { faces: out, regionIds: outIds, textOf: first.textOf };
+}
+
+/** A region of `detectProfiles` as `profileFaceIds` matches faces to it. */
+interface DetectedRegion {
+  id: string;
+  area: number;
+  centroid: Vec2;
+  text?: SketchEntityId;
+}
+
+function detectedRegions(data: SketchData): DetectedRegion[] {
+  return detectProfiles(data).map((p) => ({
+    id: p.id,
+    area: p.area,
+    centroid: profileCentroid(p),
+    ...(p.text && { text: p.text }),
+  }));
+}
+
+/**
  * Region IDs for the kernel's faces of a sketch. Each face is keyed by the
  * curves around its outer loop and their directions, exactly as
  * `detectProfiles` keys its regions (ADR-0020), so the IDs agree with the
@@ -766,7 +860,14 @@ export function profileFaceIds(
   faces: readonly PlanarFace[],
   curveIds: readonly SketchEntityId[],
   data: SketchData,
-): { ids: string[]; reassigned: number; textOf: Map<string, SketchEntityId> } {
+  detected: readonly DetectedRegion[] = detectedRegions(data),
+): {
+  ids: string[];
+  reassigned: number;
+  textOf: Map<string, SketchEntityId>;
+  /** The detected regions no face answers to. */
+  missing: DetectedRegion[];
+} {
   const own = profileIds(
     faces.map((face) => ({
       key: profileKey(
@@ -778,12 +879,6 @@ export function profileFaceIds(
       centroid: face.centroid,
     })),
   );
-  const detected = detectProfiles(data).map((p) => ({
-    id: p.id,
-    area: p.area,
-    centroid: profileCentroid(p),
-    ...(p.text && { text: p.text }),
-  }));
   const byId = new Map(detected.map((p) => [p.id, p]));
   const claimed = new Set<string>();
   const ids: (string | undefined)[] = faces.map((face, i) => {
@@ -797,7 +892,7 @@ export function profileFaceIds(
   let reassigned = 0;
   faces.forEach((face, i) => {
     if (ids[i] !== undefined) return;
-    let best: (typeof detected)[number] | undefined;
+    let best: DetectedRegion | undefined;
     for (const region of detected) {
       if (claimed.has(region.id) || !sameRegion(face, region)) continue;
       if (
@@ -816,7 +911,8 @@ export function profileFaceIds(
   const textOf = new Map<string, SketchEntityId>(
     detected.flatMap((p) => (p.text ? [[p.id, p.text as SketchEntityId] as const] : [])),
   );
-  return { ids: ids as string[], reassigned, textOf };
+  const missing = detected.filter((r) => !claimed.has(r.id));
+  return { ids: ids as string[], reassigned, textOf, missing };
 }
 
 const distance = (a: Vec2, b: Vec2) => Math.hypot(a[0] - b[0], a[1] - b[1]);

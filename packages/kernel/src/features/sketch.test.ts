@@ -1,4 +1,5 @@
 import {
+  extrudeInputs,
   type FeatureId,
   originPlaneRef,
   type SketchData,
@@ -430,5 +431,152 @@ describe('the sketch evaluator', () => {
       message: expect.stringMatching(/profile/),
     });
     engine.clear();
+  });
+});
+
+/**
+ * Two sketches where the kernel's faces and `detectProfiles` used to part
+ * (ADR-0020's amendment of 2026-11-09): an extrude of a region the sketch
+ * shows found no face for it ("Can't find one of its profiles any more").
+ */
+describe('regions the kernel used to lose', () => {
+  /**
+   * A 20 × 10 rectangle split at y = 5 by a traced chain: short lines and,
+   * in the middle, a control spline whose poles lie in a line and go back
+   * before they go on, so the curve runs back over its own track.
+   */
+  function slit(): SketchData {
+    const b = new SketchBuilder();
+    rect(b, 0, 0, 20, 10);
+    // From the right side to x = 10, where the spline starts back towards the
+    // right, turns and runs on to the left.
+    b.line(20, 5, 10.04, 5);
+    b.line(10.04, 5, 10.02, 5);
+    b.line(10.02, 5, 10, 5);
+    b.spline(
+      [
+        [10, 5],
+        [10.01, 5],
+        [9.99, 5],
+        [9.98, 5],
+      ],
+      { mode: 'control' },
+    );
+    b.line(9.98, 5, 9.96, 5);
+    b.line(9.96, 5, 0, 5);
+    return b.sketch;
+  }
+
+  /**
+   * A ring between circles of r 3.95 and r 5.15, with a line along y =
+   * 5.15 − 5.8e-5 that starts on the outer circle, cuts a chord of 0.049 mm
+   * off it (a sliver under the fuzzy value thick) and runs on to close a
+   * region outside it. The line's ID sorts before the circle's, so the fuse
+   * takes the line for the chord.
+   */
+  function chord(): SketchData {
+    const b = new SketchBuilder();
+    const r = 5.15;
+    const y = r - 5.8e-5;
+    const x = Math.sqrt(r * r - y * y);
+    b.line(-x, y, 20, y);
+    b.line(20, y, 20, -10);
+    b.line(20, -10, 0, -10);
+    b.line(0, -10, 0, -r);
+    const outer = b.circle(0, 0, r);
+    b.circle(0, 0, 3.95);
+    // The circle under an ID after every line's.
+    const sketch = b.sketch;
+    sketch.entities['z' as SketchEntityId] = sketch.entities[
+      outer.id as SketchEntityId
+    ] as SketchData['entities'][SketchEntityId];
+    delete sketch.entities[outer.id as SketchEntityId];
+    return sketch;
+  }
+
+  async function extrudeOf(data: SketchData, regions: string[]) {
+    const { registry, seen } = testFeatures();
+    const engine = new RecomputeEngine(kernel, registry, { strictLeaks: true });
+    const sketch = {
+      ...testFeature('s1', 'sketch'),
+      inputs: sketchInputs(originPlaneRef('origin:xy'), data),
+    };
+    const extrude = {
+      ...testFeature('e1', 'extrude'),
+      inputs: extrudeInputs(
+        regions.map((id) => ({ kind: 'profile' as const, id: `s1/${id}` })),
+        { distance: '2 mm' },
+      ),
+    };
+    // A test sheet of the first region hands over the sketch's output.
+    const sheet = testFeature(
+      'sheet',
+      'test-sheet',
+      {},
+      { profile: { kind: 'ref', refs: [{ kind: 'profile', id: `s1/${regions[0]}` }] } },
+    );
+    const result = await engine.recompute({ doc: testDocument([sketch, extrude, sheet]) });
+    if (result.status !== 'done') throw new Error('cancelled');
+    const body = result.bodies.find((b) => b.id.startsWith('e1'));
+    const shape = body && engine.latestBody(body.id);
+    const volume = shape === undefined ? undefined : kernel.measure(shape).volume;
+    const output = seen.at(-1)?.data as SketchOutputData;
+    engine.clear();
+    expect(kernel.stats().liveShapes).toBe(0);
+    return { status: result.features['e1' as FeatureId], volume, output };
+  }
+
+  it('gives each half of a rectangle split by a chain that doubles back its own face', async () => {
+    const data = slit();
+    const detected = detectProfiles(data);
+    expect(detected.map((p) => p.area)).toEqual([expect.closeTo(100, 9), expect.closeTo(100, 9)]);
+    const { faces, reassigned } = kernelProfiles(data);
+    expect(reassigned).toBe(0);
+    expect(faces.map((f) => f.id).sort()).toEqual(detected.map((p) => p.id).sort());
+    for (const face of faces) expect(face.area).toBeCloseTo(100, 9);
+
+    // Both halves: the whole rectangle, each face once.
+    const both = await extrudeOf(
+      data,
+      detected.map((p) => p.id),
+    );
+    expect(both.status).toEqual({ status: 'ok' });
+    expect(both.volume).toBeCloseTo(400, 6);
+    expect(both.output.profiles.map((p) => p.id).sort()).toEqual(detected.map((p) => p.id).sort());
+    // One half: that half only.
+    const one = await extrudeOf(data, [detected[0]?.id as string]);
+    expect(one.status).toEqual({ status: 'ok' });
+    expect(one.volume).toBeCloseTo(200, 6);
+  });
+
+  it('keeps the ring a line ending on its circle cuts a sliver off', async () => {
+    const data = chord();
+    const detected = detectProfiles(data);
+    const ring = detected.find((p) => p.holes.length === 1);
+    expect(ring?.area).toBeCloseTo(Math.PI * (5.15 ** 2 - 3.95 ** 2), 4);
+    const { output, status, volume } = await extrudeOf(data, [ring?.id as string]);
+    // Every region the sketch shows has a face under its ID, with its area.
+    for (const region of detected) {
+      const face = output.profiles.find((p) => p.id === region.id);
+      expect(face?.area).toBeCloseTo(region.area, 4);
+    }
+    expect(status).toEqual({ status: 'ok' });
+    expect(volume).toBeCloseTo(2 * (ring?.area ?? 0), 4);
+  });
+
+  it('leaves the region IDs of plain sketches as they were', () => {
+    // Fixed IDs: a stored profile reference names these, so they must never move.
+    const ids = (name: string) =>
+      kernelProfiles(build(CASES[name] as (b: SketchBuilder) => void))
+        .faces.map((f) => f.id)
+        .sort();
+    expect(ids('circle inside a rectangle')).toEqual(['2di1m5wfq1j', '2edemzww1vw']);
+    expect(ids('two lines across')).toEqual(['1tpho1ox6jc', '26ovw766pcs', '2ehi7l269om']);
+    expect(ids('spline weaving across a line')).toEqual([
+      '1mjmodi9xn1',
+      '43eq2svn70',
+      'swe54mzxju',
+    ]);
+    expect(ids('circle, ellipse and slot')).toEqual(['1kcsz3cimsb', '29pm0ble4ok', '2atq8311xn2']);
   });
 });
