@@ -1576,7 +1576,19 @@ after the `up` turn moves all of a file's bodies so their joint box (STEP:
 bottom on z = 0. Keep **absent = `file`** (stored designs never move; making
 absent mean `centre` needs a format bump), the dialog's default `centre`, one
 move for all bodies, and the mesh pieces ordered before the move (the body IDs
-don't change with the position). **P4-12**:
+don't change with the position). **Its amendment of 2026-11-10** (a STEP file's
+hidden solids): the facade's `readStepHidden(text)` (`Kernel.readStepHidden`,
+booleans) says per solid, in `readStep`'s order, whether an `INVISIBILITY` lists
+the solid itself, a styled item of it or a layer it is on; the lists are scanned
+from the text (`stepInvisibleIds`: OCCT drops a solid listed directly, which is
+what cadmpeg writes) and resolved through OCCT's model and transfer process. The
+import calls it only when the text has `INVISIBILITY(` and reports
+`ImportReport.hidden` (body IDs); `followBodyNames` (`importedHidden`) stores
+`visible: false`. Keep: **every solid stays a body** (never drop one for being
+hidden: stored designs would lose bodies and IDs would shift), the plain reader
+(the same solids as `readStep`) and the count guard, a file that hides every
+solid hides none, and the eye set **only when the body is first named**.
+**P4-12**:
 a file that names a colour reports an `ImportReport` (`colors` per body ID,
 found through each body's first face name; `ModelState.imports`), and
 `followBodyNames` takes it into `BodyMeta.color` **only when it first names the
