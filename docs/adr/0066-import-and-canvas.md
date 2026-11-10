@@ -886,6 +886,89 @@ Rejected:
 - **Making an absent input mean `centre`:** it would move the bodies of every
   stored design; that needs a format version and a migration, for no gain.
 
+## Amendment, 2026-11-10: a STEP file's hidden solids come in hidden
+
+A STEP file can say which of its items are not shown: an `INVISIBILITY` entity
+lists them. Nothing in the import read it, so a solid the file hides became a
+body in plain sight. It showed with cadmpeg (ADR-0115), which writes every
+shape a `.fcstd` file stores, the intermediate states of its features and their
+tool shapes included, and hides all but the final ones: a sample one-body part
+converts to 9 solids, 8 of them hidden, and all 9 arrived on top of each other.
+
+**Decision (the owner, 2026-11-10): every solid is still a body, and a body
+whose solid the file hides starts hidden.**
+
+- **Reading.** A new facade call, `readStepHidden(text)`, reads the same text
+  as `readStep` with the same plain `STEPControl_Reader`, so its solids are
+  `readStep`'s own, and answers 1 or 0 per solid in `readStep`'s order
+  (`geometryPtr/Size`; `Kernel.readStepHidden` gives booleans). A solid is
+  hidden when an `INVISIBILITY` (or `CONTEXT_DEPENDENT_INVISIBILITY`) lists
+  the solid's own entity, a `STYLED_ITEM` whose item it is, or a
+  `PRESENTATION_LAYER_ASSIGNMENT` it is assigned to. The shape each listed
+  entity was translated to comes from the reader's transfer process
+  (`TransferBRep::ShapeResult`); every solid in it counts, compared without
+  its location. A hidden face, shell or curve holds no solid and hides no body.
+- **The lists come from the text.** The schema allows only styled items,
+  layers and representations in an `INVISIBILITY`. cadmpeg lists the solids
+  themselves, and OCCT's reader drops a reference whose type the schema
+  doesn't allow (`StepVisual_InvisibleItem`), so neither the parsed entity nor
+  XDE's visibility flag knows of them. `stepInvisibleIds` scans the text for
+  the keyword and its list of `#n` (strings and comments are passed over), and
+  the entities are then found in OCCT's model by number
+  (`StepData_StepModel::IdentLabel`), so styled items and layers are still
+  followed through the model, not the text.
+- **The import feature** calls it only when the text has `INVISIBILITY(` (as
+  colours and names are gated, so any other file computes exactly as before),
+  with the same count guard, and finds each solid's body as colours do (the
+  body's first face name). `ImportReport.hidden` lists the bodies. The
+  geometry, the body IDs and the face names are what they were without it.
+- **The app** (`followBodyNames`, `importedHidden`) stores `visible: false`
+  for such a body **only when it first names it**, as it takes a colour or a
+  part name. A body the user shows stays shown, and a design stored before
+  this amendment keeps all its bodies in sight, since they have their names
+  already. A hidden body is in the browser with its eye off and is shown,
+  renamed or removed like any other; exports leave hidden bodies out by default.
+- **A file that hides every solid hides none:** an import that shows nothing
+  looks like one that failed.
+
+Limits: a solid an assembly places several times is hidden in all its places
+when one of them is (the comparison ignores locations, and a
+`CONTEXT_DEPENDENT_INVISIBILITY`'s context is not read). Only the app hides the
+bodies; the kernel's result has them all, with the list in the report. The
+Import dialog's preview draws every solid: the eye is body metadata, and a
+preview's bodies have none yet.
+
+Results (2026-11-10): the sample part's converted STEP (147 kB) has one
+`INVISIBILITY` with 12 items, 8 solids and 4 wireframe models.
+`readStepHidden` answers 9 solids with 8 hidden in about 0.5 s (the WASM under
+Node), and the import gives 9 bodies with 8 in `ImportReport.hidden`; the one
+that shows is the part (583,719 mm³; one of the hidden solids has the same
+volume). Tests: `features/import-hidden.test.ts` (a solid listed itself,
+through a styled item and on a layer; a face, a string and a comment that hide
+nothing; the report beside colours and names; every solid hidden; a file
+without the entity is not read again), `shell/bodies.test.ts` (hidden when
+first named, never again), `memory.test.ts` (the call in the heap-growth loop)
+and `e2e/import-step.spec.ts` (the row's eye, and that a body the user shows
+stays shown through a recompute).
+
+Rejected:
+
+- **Leaving hidden solids out** (no body for them, a warning with the count):
+  right for cadmpeg's intermediate shapes, but a file's hidden solid may be a
+  part the user wants (a reference part, a fastener), a design that already
+  imported such a file would lose bodies on its next recompute, and a hidden
+  body is one click to remove.
+- **An Import dialog field (leave out / import hidden):** a schema input, a
+  dialog field and API pages for a choice the body's eye already gives.
+- **XDE's flag** (`XCAFDoc_ColorTool::IsVisible` after a
+  `STEPCAFControl_Reader`): it is set only from styled items the schema
+  allows, so it misses cadmpeg's lists, the case this is for.
+- **Reading styled items and layers from the text as well:** a STEP parser of
+  our own, where OCCT's model already holds them.
+- **Folding it into `readStep`** (the flags left in a buffer by the last read):
+  it saves the second translation, but ties two calls together through state,
+  and only a file with the entity pays for the second read.
+
 ## Deferred
 
 - Replacing an imported file (re-import keeping references), names and colours
