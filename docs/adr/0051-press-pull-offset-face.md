@@ -824,3 +824,70 @@ side lies on the tangent line from outside still removes nothing.
 `combine.test.ts`: a Combine cut by a block touching a half-round end from
 outside still says the cut removes nothing. On the facade before this
 amendment the cut, the common and the two-prism cut fail.
+
+## Amendment 2026-11-10: a fuse that leaves a tool apart within the touching distance is built again with a fuzzy value
+
+**Found** while replaying an f3d design (a lid): a revolve joined to the
+body made a second body instead. The revolve's profile has a free sketch
+point that carries a drift of 2.4e-6 mm, so the profile's base, and the
+revolved solid's bottom face, lie 2.4e-6 mm above the body's top face.
+`touchingBodies` (at `TOUCH`, 1e-4 mm) says the two touch, so the join goes
+ahead; the fuse leaves two solids; `splitSolids` gives the larger the
+body's id and the old body becomes a new one. The touching test and the
+fuse used different distances for "touching". Any join can meet it
+(extrude, revolve, sweep, loft, Combine), not only an import.
+
+**What OCCT does** (the pinned image, natively, and the app's WASM; box
+and box, box and an upright cylinder, a tool of two solids, a plate of 222
+faces). `BRepAlgoAPI_Fuse` with a gap g between two faces: for g ≤ 1e-7 mm
+(OCCT's confusion tolerance) one solid; for g from 1e-6 to 1e-4 mm no error,
+no warning, an **empty interference table** (the General Fuse found no
+contact at all) and both solids side by side, volume the sum. With
+`SetFuzzyValue(1e-4)`: one solid, valid, the face count of the exact join
+(11 for box and box, 8 for the cylinder, 227 on the plate), edge tolerances
+about g, the volume the sum plus the thin slab of the gap (2.5e-7 relative
+at g = 1e-4, 5e-9 at 2.4e-6); the face merge after it is valid too. A tool
+that meets the body along an edge or a line (a block on its edge, a
+cylinder lying on the face) comes out as two solids at g = 0 already, and
+at any fuzzy value: no single solid is their union. Cut and common in the
+band are right as they are (the tool is apart: the cut removes nothing and
+the common is empty, as at 1e-3 mm), so only the fuse needs it.
+
+**Decision.** `finishBoolean` counts, for a fuse of solids, the solids of
+the tool it **stranded** (`strandedTools`): a solid of the result made only
+of one tool solid's faces, a tool solid that met nothing of the target (no
+pair in the pave filler's interference table; one that met it along a line
+stays apart at any fuzzy value), whose boxes lie within `kTouch` and whose
+exact distance to the target (`BRepExtrema_DistShapeShape`) is at most
+`kTouch`. When that is more than 0 the boolean is built once more with the
+fuzzy value `kTouch`, the same single retry as for a missed overlap
+(2026-11-06); the retry is kept if it is valid and either misses fewer
+overlaps or, with a stranded tool, misses no more and has fewer solids. Its
+history names the result, so the faces and edges carry the names the exact
+join gives them. `kTouch` (1e-4 mm) is the facade's one constant for both
+retries; `TOUCH` in `features/operation.ts` is the kernel's, and the comments
+of both say to change them together; the test below joins at 0.9 × `TOUCH`, so a smaller `kTouch` fails it.
+
+**Cost.** The stranded test is a map lookup per face (0.01 ms on 222 faces)
+and returns at once for anything but a fuse; the boxes and the distance only
+for a tool solid left apart (1 to 6 ms on small shapes, 24 ms on 222 faces
+whose fuse takes 105 ms); the retry only when that distance is within
+`kTouch` (129 ms there, its check 235 ms). A join that fuses at the first
+try is built once, as before; a tool apart by more than `kTouch` keeps
+today's result and message; a tool on an edge within the gap pays one more
+fuse and keeps the first result.
+
+**Rejected.** Passing `TOUCH` into the facade's boolean: a new argument on
+every boolean call and binding for a value that never changes. Narrowing
+`TOUCH` to OCCT's 1e-7: the lid's join and any drift of a sketch point
+would make a new body without a word. A fuzzy value on every boolean: the
+2026-11-06 amendment's reasons. Retrying every fuse that left more solids
+than it got: a join of a tool with a separate, far piece would run twice.
+
+**Test.** `features/join-gap.test.ts`: a block and a tool whose bottom
+lies 2.4e-6 mm above its top: an extrude join, a revolve join and a
+Combine join give one body with the block's id, valid, one solid, the volume
+the sum to 1e-6, and the extrude's and revolve's face and edge names equal
+those of the same join with no gap; a tool 1e-3 mm off makes a new body
+(extrude, revolve) or refuses ("doesn't touch", Combine) as before. On the
+facade before this amendment the three joins make two bodies.
