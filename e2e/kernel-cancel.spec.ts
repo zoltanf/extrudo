@@ -8,7 +8,8 @@ import { parameterExpression, parametersDialog, pickTool } from './helpers';
 // "Preparing your design…" has no Cancel. Traps are in docs/agent/e2e-notes.md.
 
 test.use({ viewport: { width: 1440, height: 900 } });
-test.setTimeout(120_000);
+// Worst case of the waits below: 30 + 60 + 40 s, plus the dialogs.
+test.setTimeout(180_000);
 
 const kernel = (page: Page) => page.getByRole('status', { name: 'Kernel' });
 
@@ -49,9 +50,12 @@ test('Cancel on a long update undoes the edit, and Redo brings it back', async (
   // The toast comes with the click and may be gone before the kernel is ready.
   await expect(page.locator('[data-toast]').filter({ hasText: 'Update cancelled' })).toHaveCount(1);
   // Cancel waits for the feature in flight (the heavy thread) and then replays
-  // from the cache (ADR-0111): about 1-3.5 s on CI, more on a busy runner, so
-  // the budget is generous and the time is logged rather than asserted.
-  await expect(kernel(page)).toHaveAttribute('data-model-status', 'ready', { timeout: 20_000 });
+  // from the cache (ADR-0111), so the time is bimodal: 0.7-3.6 s when the click
+  // lands outside that feature, 11-21.5 s when inside it (18 CI runs, 2026-11:
+  // 0.7-3.6 s in nine, 11-21.5 s in nine; five local runs 0.4-0.6 s, once 11 s).
+  // Budget: 40 s, about 1.9 x the worst seen (21.5 s, measured with the toast
+  // check). The time is logged rather than asserted.
+  await expect(kernel(page)).toHaveAttribute('data-model-status', 'ready', { timeout: 40_000 });
   const ms = Date.now() - clicked;
   test.info().annotations.push({ type: 'click to ready', description: `${ms} ms` });
   console.log(`kernel-cancel: click to ready ${ms} ms`);
