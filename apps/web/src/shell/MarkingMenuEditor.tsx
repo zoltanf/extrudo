@@ -1,11 +1,6 @@
+import type { EditMode } from '@extrudo/core';
 import { useEffect, useId, useMemo, useState } from 'react';
-import {
-  type MarkingOverrides,
-  MODEL_SLOTS,
-  type ResolvedSlot,
-  resolveSlots,
-  SKETCH_SLOTS,
-} from '../commands/marking';
+import { type MarkingOverrides, type ResolvedSlot, resolveSlots } from '../commands/marking';
 import { searchCommands } from '../commands/search';
 import {
   RING_INNER,
@@ -15,15 +10,12 @@ import {
   wedgePath,
 } from '../design-system/marking';
 import type { AppCommand } from './commands';
+import { EDIT_MODES, MODES } from './modes';
 
-export type MarkingMode = 'model' | 'sketch';
+/** The marking menu's modes: the edit modes, each with its own wedges (`MODES`). */
+export type MarkingMode = EditMode;
 type Mode = MarkingMode;
 
-const MODES: readonly { mode: Mode; label: string }[] = [
-  { mode: 'model', label: 'Model' },
-  { mode: 'sketch', label: 'Sketch' },
-];
-const TABLES = { model: MODEL_SLOTS, sketch: SKETCH_SLOTS } as const;
 /** The wedge buttons sit on the ring's label radius. */
 const BUTTON = { width: 92, height: 44 };
 const RADIUS = (RING_INNER + RING_OUTER) / 2;
@@ -53,7 +45,7 @@ export function MarkingMenuEditor({
   const [mode, setMode] = useState<Mode>('model');
   const [picking, setPicking] = useState<number>();
   const resolved = useMemo(
-    () => resolveSlots(TABLES[mode], commands[mode], overrides[mode]),
+    () => resolveSlots(MODES[mode].markingSlots, commands[mode], overrides[mode]),
     [mode, commands, overrides],
   );
   const customised = (overrides[mode] ?? []).some((c) => typeof c === 'string' && c !== '');
@@ -61,19 +53,19 @@ export function MarkingMenuEditor({
     <section aria-label="Customize Marking Menu" className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-line px-3 py-2">
         <div role="tablist" aria-label="Mode" className="flex gap-1">
-          {MODES.map((m) => (
+          {EDIT_MODES.map((m) => (
             <button
-              key={m.mode}
+              key={m}
               type="button"
               role="tab"
-              aria-selected={mode === m.mode}
+              aria-selected={mode === m}
               onClick={() => {
-                setMode(m.mode);
+                setMode(m);
                 setPicking(undefined);
               }}
-              className={`h-8 rounded-control px-3 text-sm ${mode === m.mode ? 'bg-accent-soft text-ink' : 'text-muted hover:text-ink'}`}
+              className={`h-8 rounded-control px-3 text-sm ${mode === m ? 'bg-accent-soft text-ink' : 'text-muted hover:text-ink'}`}
             >
-              {m.label}
+              {MODES[m].label}
             </button>
           ))}
         </div>

@@ -256,8 +256,18 @@ export interface SelectionItem {
 
 export type SelectMode = 'replace' | 'add' | 'toggle';
 
+/**
+ * The shell's edit modes (ADR-0143's S1a amendment): the model, or an open sketch. What each
+ * shows (tabs, Finish tile, keymap and marking-menu mode) is the web app's `MODES` table
+ * (`apps/web/src/shell/modes.ts`); a mode is entered and left with `enterMode`/`exitMode`.
+ */
+export type EditMode = 'model' | 'sketch';
+
+/** The session fields a mode other than the model owns; cleared on every mode change. */
+type ModeFields = Pick<SessionState, 'activeSketchId'>;
+
 export interface SessionState {
-  mode: 'model' | 'sketch';
+  mode: EditMode;
   /** The sketch being edited while `mode` is `sketch`. */
   activeSketchId: FeatureId | undefined;
   /** Command-registry ID of the active tool, if any. */
@@ -280,7 +290,17 @@ export interface SessionState {
   activeComponent: ComponentId | undefined;
   /** The only component the view draws and picks while set (ADR-0081 §6). Session state. */
   isolatedComponent: ComponentId | undefined;
+  /**
+   * Enters a mode other than the model with its own fields (`activeSketchId` for a sketch).
+   * Every mode change clears the tool, the selection, the slice side and the other modes'
+   * fields, in one store update.
+   */
+  enterMode(mode: Exclude<EditMode, 'model'>, fields?: Partial<ModeFields>): void;
+  /** Back to the model, clearing what `enterMode` clears. */
+  exitMode(): void;
+  /** `enterMode('sketch', { activeSketchId: id })`. */
   enterSketch(id: FeatureId): void;
+  /** `exitMode()`. */
   exitSketch(): void;
   setTool(tool: string | undefined): void;
   select(items: readonly SelectionItem[], mode?: SelectMode): void;
@@ -303,23 +323,17 @@ export function createSessionStore(): SessionStore {
     sketchSliceFlip: undefined,
     activeComponent: undefined,
     isolatedComponent: undefined,
+    enterMode(mode, fields) {
+      set({ ...modeReset(), mode, ...fields });
+    },
+    exitMode() {
+      set({ ...modeReset(), mode: 'model' });
+    },
     enterSketch(id) {
-      set({
-        mode: 'sketch',
-        activeSketchId: id,
-        activeTool: undefined,
-        selection: [],
-        sketchSliceFlip: undefined,
-      });
+      get().enterMode('sketch', { activeSketchId: id });
     },
     exitSketch() {
-      set({
-        mode: 'model',
-        activeSketchId: undefined,
-        activeTool: undefined,
-        selection: [],
-        sketchSliceFlip: undefined,
-      });
+      get().exitMode();
     },
     setTool(tool) {
       set({ activeTool: tool });
@@ -345,6 +359,17 @@ export function createSessionStore(): SessionStore {
       if (isolatedComponent !== get().isolatedComponent) set({ isolatedComponent });
     },
   }));
+}
+
+/** What every mode change clears (`enterMode`, `exitMode`). */
+function modeReset(): Pick<SessionState, 'activeTool' | 'selection' | 'sketchSliceFlip'> &
+  ModeFields {
+  return {
+    activeSketchId: undefined,
+    activeTool: undefined,
+    selection: [],
+    sketchSliceFlip: undefined,
+  };
 }
 
 function sameItem(a: SelectionItem, b: SelectionItem): boolean {

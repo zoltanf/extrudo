@@ -7,6 +7,7 @@ import {
   CommandError,
   type ComponentId,
   type DocumentStore,
+  type EditMode,
   evaluateParameters,
   type Feature,
   type FeatureId,
@@ -248,6 +249,7 @@ import { createFeatureActions } from './featureActions';
 import { createGroupActions } from './groupActions';
 import { sketchesWithHover } from './hoverDrawings';
 import { menuModel, NATIVE_MENU_OWN, QUIT_ID, SAVE_AS_ID } from './menuModel';
+import { MODES, perMode } from './modes';
 import { createViewActions } from './namedViews';
 import { Splitter, usePanel } from './panels';
 import { watchRecomputeErrors } from './recomputeErrors';
@@ -1163,10 +1165,11 @@ function Shell({
   useEffect(() => {
     if (dialogOpen || jointOpen) viewport.getState().setTool(undefined);
   }, [dialogOpen, jointOpen, viewport]);
-  // Feature dialogs belong to the model: opening a sketch (from the timeline, say) ends one.
+  // Feature dialogs belong to the model: entering another mode (opening a sketch from the
+  // timeline, say) ends one.
   useEffect(() => {
-    if (mode === 'sketch') dialog?.cancel();
-    if (mode === 'sketch') jointDialog?.cancel();
+    if (mode !== 'model') dialog?.cancel();
+    if (mode !== 'model') jointDialog?.cancel();
   }, [mode, dialog, jointDialog]);
 
   // A document change can make a notification's action stale (or valid again): an open
@@ -1390,7 +1393,7 @@ function Shell({
   // `listing` builds a mode's commands for the Customize Marking Menu dialog: what the mode
   // offers whatever is selected now (Delete, Repeat last and the construction toggle included).
   const commandBuilder = useMemo(
-    () => (m: 'model' | 'sketch', listing: boolean) =>
+    () => (m: EditMode, listing: boolean) =>
       buildCommands({
         mode: m,
         runTool: (tool) => {
@@ -1477,7 +1480,7 @@ function Shell({
         theme: { choice, set: setChoice },
         settings: { open: () => setSettingsOpen(true) },
         ...(listing
-          ? { repeat: { id: m === 'model' ? 'extrude' : 'line' } }
+          ? { repeat: { id: MODES[m].repeatSample } }
           : lastTool && { repeat: { id: lastTool } }),
         markingMenu: {
           radial: markingStyle.radial,
@@ -1610,11 +1613,8 @@ function Shell({
     () =>
       // Built only while Settings is open: its Marking menu section lists them.
       settingsOpen !== false
-        ? {
-            model: relabelRepeat(commandBuilder('model', true)),
-            sketch: relabelRepeat(commandBuilder('sketch', true)),
-          }
-        : { model: [], sketch: [] },
+        ? perMode((m) => relabelRepeat(commandBuilder(m, true)))
+        : perMode(() => []),
     [settingsOpen, commandBuilder, keymap],
   );
   const searchAtPointer = useMemo(
@@ -2315,10 +2315,11 @@ function Shell({
       jointOpen,
     ],
   );
-  // Posing (P6-05 J2, ADR-0081 §4): any tool, dialog or sketch puts the joint back, so nothing
-  // is ever modelled against a posed body; a joint that goes away closes its panel.
+  // Posing (P6-05 J2, ADR-0081 §4): any tool, dialog or mode other than the model (a sketch)
+  // puts the joint back, so nothing is ever modelled against a posed body; a joint that goes
+  // away closes its panel.
   useEffect(() => {
-    if (activeTool !== undefined || dialogOpen || jointOpen || mode === 'sketch') closePose();
+    if (activeTool !== undefined || dialogOpen || jointOpen || mode !== 'model') closePose();
   }, [activeTool, dialogOpen, jointOpen, mode, closePose]);
   useEffect(() => {
     if (poseJointId && !doc.joints?.some((j) => j.id === poseJointId)) closePose();
