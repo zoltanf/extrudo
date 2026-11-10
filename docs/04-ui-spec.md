@@ -491,7 +491,9 @@ Crank or Glide. Since the right button drags, the right-click marking menu
   40.00 mm  Ctrl+Enter". The row
   (Enter when it is the only row, or picked) and the link both rewrite the
   field to `width = 40` with the value selected; Enter then creates the
-  parameter and uses it, in one undo step.
+  parameter and uses it, in one undo step. A dimension that has its own
+  parameter (`d1`, every driving one the app makes) gets "Rename to width =
+  40.00 mm" in both places instead: Enter renames `d1` to `width` (ADR-0142).
 - OK commits one undoable step and adds (or updates) the timeline chip.
   A new feature that used sketch profiles hides those sketches in the same
   step (as is usual in CAD), so a used profile doesn't float in front of the
@@ -696,7 +698,8 @@ A list on the left, the selected parameter on the right.
 - **List.** User parameters, one flat "User parameters" section until a
   parameter has a group, then a section per group with "General" (no group)
   first; below them "New parameter" and a collapsed "Model parameters"
-  section. A row: a drag grip, a star (filled = in the Customizer), the name
+  section (selecting one of its parameters, from Used by too, opens it; its
+  header collapses it again, the selection and inspector staying). A row: a drag grip, a star (filled = in the Customizer), the name
   in mono, `ƒx` for a formula, the value right-aligned (red "loop" for a
   cycle, "error" otherwise). The selected row is `accent-soft`. Dragging a
   row shows a 2 px accent line where it lands and moves it, into another
@@ -711,7 +714,11 @@ A list on the left, the selected parameter on the right.
   read-only note instead), and a footer with Move up/down and Delete.
 - **New parameter.** The same fields as a form; Add or `Enter` adds it and
   selects it. A design without parameters opens on the form.
-- A refused change shows its message at the top of the inspector.
+- A refused change shows its message where it was made, so nothing moves: a
+  refused name under the name field (red outline, the typed name kept until
+  Esc or the next edit), anything else (a delete of a parameter in use) in place
+  of the footer's hint beside Delete, or under a model parameter's buttons.
+  The footer stays at the pane's bottom while the fields scroll.
 
 ### 3.6 Annotations (P6-23, ADR-0126)
 

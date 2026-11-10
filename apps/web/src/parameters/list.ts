@@ -9,8 +9,10 @@ import {
   type EvaluatedParameter,
   type ExtrudoDocument,
   type Parameter,
+  type ParameterEvaluation,
   type ParameterId,
   type ParameterUse,
+  parameterUsers,
   setParameterCustomizer,
 } from '@extrudo/core';
 
@@ -30,6 +32,24 @@ export function featureName(doc: ExtrudoDocument, p: EvaluatedParameter): string
   if (p.owner.type === 'user') return '';
   const { featureId } = p.owner;
   return doc.features.find((f) => f.id === featureId)?.name ?? '';
+}
+
+/**
+ * Whether a model parameter only follows a user parameter (ADR-0142 §6): its
+ * expression is that parameter's name alone, and nothing refers to the model
+ * parameter itself. The list hides such rows behind a "Show" line, since the
+ * user parameter's "Used by" already says the same.
+ */
+export function followsUserParameter(
+  doc: ExtrudoDocument,
+  evaluation: ParameterEvaluation,
+  p: EvaluatedParameter,
+): boolean {
+  if (p.owner.type === 'user' || p.refs.length !== 1) return false;
+  const [ref] = p.refs;
+  if (ref === undefined || p.expression.trim() !== ref) return false;
+  if (evaluation.parameters.get(ref)?.owner.type !== 'user') return false;
+  return parameterUsers(doc, p.name).length === 0;
 }
 
 /** One section of the user parameters: a group, or every parameter when none has one. */

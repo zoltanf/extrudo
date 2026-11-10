@@ -1341,7 +1341,7 @@ repeat it as a feature (6.16). No new keys.
 | `offset` | `expr` | no | Length, default 0: from the face's end to where the thread starts |
 | `flip` | `bool` | no | Default `false`: `offset` and `length` run from the face's lower end along its axis (the axis taken with its first non-zero component positive: a vertical shaft's bottom end); `true` from the other end |
 | `hand` | `enum` | no | `right` (default) or `left` |
-| `profile` | `enum` | no | `iso` (default: ISO 68-1, 60°), `trapezoidal` (ISO 2901 / DIN 103 Tr), `buttress` (DIN 513 S), `bottle` (the PCO-1881 finish, a rounded trapezoid) or `print45` (made for printing: 45° flanks, flat crest and root) |
+| `profile` | `enum` | no | `iso` (default: ISO 68-1, 60°), `trapezoidal` (ISO 2901 / DIN 103 Tr), `buttress` (DIN 513 S), `bottle` (the PCO-1881 finish, a rounded trapezoid), `print45` (made for printing: 45° flanks, flat crest and root) or `whitworth` (55°, BS 84: the form of the BSP G pipe threads) |
 | `loadFlank` | `enum` | no | Buttress only: `start` or `end` (default), the end the steep 3° load flank faces |
 | `starts` | `expr` | no | Unitless, 1 (default, never stored) to 8: helices round the face, lead = `starts × pitch` (6.33) |
 | `tolerance` | `expr` | no | Length, default 0.1 mm, not negative: the print clearance. The whole profile moves this far radially into the part's material, so an external thread's diameters shrink by twice it and an internal one's grow by twice it |
@@ -1356,7 +1356,10 @@ and a 30° trailing flank at a 0.75 P load-bearing depth; bottle is a rounded
 20° trapezoid 0.45 P deep with arcs on its crest and root; print45 is the
 printing profile: 45° flanks, a flat crest and root each 0.2 P, 0.3 P deep,
 so the tooth tiles one pitch and the flats are the same inside and out — a
-screw and a nut are exact complements, and it mates only with itself. All are
+screw and a nut are exact complements, and it mates only with itself;
+whitworth is BS 84's 55° triangle cut by a sixth of its height at the crest
+and the root, 0.640 P deep with flats P/6 wide, the same inside and out (the
+standard rounds crest and root; the flats stand in for the arcs). All are
 moved by `tolerance`. A shaft thicker than the thread is turned
 down to it (a warning when much thicker); a hole wider than the thread's
 minor diameter (as a bore drawn at a size's own diameter is, one at or past

@@ -8,8 +8,15 @@ import { Kernel } from '@extrudo/kernel';
 import { kernelFeatures, loadOcct, RecomputeEngine } from '@extrudo/kernel/node';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ParameterValue } from './decode/parameters';
-import { f3dToDesign } from './map';
-import { type F3dDesign, type F3dExtrude, type F3dFace, type F3dFeature, IDENTITY } from './model';
+import { f3dToDesign, MAX_REPEATED_ROUND_REFS, MAX_ROUND_EDGES } from './map';
+import {
+  type F3dDesign,
+  type F3dEdge,
+  type F3dExtrude,
+  type F3dFace,
+  type F3dFeature,
+  IDENTITY,
+} from './model';
 
 let kernel: KernelType;
 beforeAll(async () => {
@@ -545,6 +552,144 @@ describe('f3dToDesign: copying features', () => {
     });
   });
 
+  it("moves a part-length thread's face to the crest along its whole length first, as the file does", async () => {
+    // M4, 0.5 mm of the washer's Ø4.2 hole: the file resizes the whole hole to
+    // the crest (Ø3.3), not only where the thread runs.
+    const threaded = (full: boolean): F3dDesign => {
+      const f3d = washerWithHole();
+      f3d.features.push({
+        ...base,
+        type: 'thread',
+        id: 7,
+        kind: 'Thread',
+        name: 'Thread1',
+        parameters: full
+          ? []
+          : [
+              parameter({ name: 'd7', kind: 'ThreadLength', value: 0.05 }),
+              parameter({ name: 'd8', kind: 'ThreadOffset', value: 0 }),
+            ],
+        spec: {
+          angle: 60,
+          external: false,
+          designation: 'M4x0.7',
+          family: 'ISO Metric profile',
+          full,
+          major: 0.4,
+          minor: 0.33,
+          pitch: 0.07,
+        },
+        faces: [
+          {
+            tags: [{ token: '4', designs: [301] }],
+            feature: 2,
+            surface: {
+              kind: 'cone',
+              center: [0, 0, 0],
+              axis: [0, 0, 1],
+              radius: 0.21,
+              cylinder: true,
+              slope: 0,
+            },
+          },
+        ],
+      });
+      return f3d;
+    };
+    const { design, report } = f3dToDesign(threaded(false), 'Washer');
+    const features = design.toJSON().features;
+    const at = (name: string) => features.findIndex((f) => f.name === name);
+    const resize = features[at('Thread1 face')];
+    const thread = features[at('Thread1')];
+    expect(at('Thread1 face')).toBe(at('Thread1') - 1);
+    // Towards the axis (along the hole wall's outward normal) by 2.1 − 1.65 mm.
+    expect(resize).toMatchObject({
+      type: 'offsetFace',
+      inputs: { faces: thread?.inputs.faces, distance: { expr: '0.45 mm' } },
+    });
+    expect(report.notes).toContain(
+      "Thread1: its face is moved to the thread's minor diameter (3.3 mm) along its whole length, as the file does, then threaded.",
+    );
+    // The face keeps its name through the offset: the thread still finds it.
+    const engine = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
+    try {
+      const doc = design.toJSON();
+      const result = await engine.recompute({
+        doc: { ...doc, features: doc.features.slice(0, at('Thread1 face') + 1) },
+      });
+      if (result.status !== 'done') throw new Error(`recompute ${result.status}`);
+      expect(Object.values(result.features).filter((s) => s.status !== 'ok')).toEqual([]);
+      const [body] = result.bodies;
+      const shape = body && engine.latestBody(body.id);
+      expect(shape && kernel.measure(shape).volume).toBeCloseTo(
+        Math.PI * (5.5 ** 2 - 1.65 ** 2) * 0.8 - HOLE,
+        3,
+      );
+    } finally {
+      engine.clear();
+    }
+    // A thread along the whole face is filled in to its crest by Extrudo's thread itself.
+    const whole = f3dToDesign(threaded(true), 'Washer').design.toJSON().features;
+    expect(whole.some((f) => f.type === 'offsetFace')).toBe(false);
+  });
+
+  it('imports a 55° thread with the Whitworth profile, its tooth out at a hole the class widened', () => {
+    // A 55° Ø4.8 × 1 thread in the washer's Ø4.2 hole, its class's minor Ø3.6
+    // wider than the basic Whitworth crest (Ø3.519): the hole is resized to
+    // Ø3.6 along all of it, and the tooth moves out to it (a tolerance)
+    // instead of filling it in.
+    const f3d = washerWithHole();
+    f3d.features.push({
+      ...base,
+      type: 'thread',
+      id: 7,
+      kind: 'Thread',
+      name: 'Thread1',
+      parameters: [
+        parameter({ name: 'd7', kind: 'ThreadLength', value: 0.05 }),
+        parameter({ name: 'd8', kind: 'ThreadOffset', value: 0 }),
+      ],
+      spec: {
+        angle: 55,
+        external: false,
+        designation: 'W 4.8x1',
+        family: 'Whitworth',
+        full: false,
+        major: 0.48,
+        minor: 0.36,
+        pitch: 0.1,
+      },
+      faces: [
+        {
+          tags: [{ token: '4', designs: [301] }],
+          feature: 2,
+          surface: {
+            kind: 'cone',
+            center: [0, 0, 0],
+            axis: [0, 0, 1],
+            radius: 0.21,
+            cylinder: true,
+            slope: 0,
+          },
+        },
+      ],
+    });
+    const { design, report } = f3dToDesign(f3d, 'Washer');
+    const features = design.toJSON().features;
+    const thread = features.find((f) => f.name === 'Thread1');
+    expect(thread?.inputs.profile).toEqual({ kind: 'enum', value: 'whitworth' });
+    expect(report.notes.join(' ')).not.toMatch(/55° profile/);
+    expect(features.find((f) => f.name === 'Thread1 face')?.inputs.distance).toMatchObject({
+      expr: '0.3 mm',
+    });
+    // The basic crest is 2.4 − (2/3) · 1 / (2 tan 27.5°) mm from the axis; lifted to the 1.8 mm hole.
+    const crest = 2.4 - 1 / (3 * Math.tan((27.5 * Math.PI) / 180));
+    const tolerance = Number.parseFloat(
+      (thread?.inputs.tolerance as { expr: string } | undefined)?.expr ?? '',
+    );
+    expect(tolerance).toBeCloseTo(1.8 - crest, 9);
+  });
+
   it("names a face a pattern copied after the copy, as Extrudo's pattern names it", async () => {
     const f3d = washerWithHole();
     f3d.features.push(
@@ -618,6 +763,228 @@ describe('f3dToDesign: copying features', () => {
     const [volume] = await volumes(f3d);
     expect(volume).toBeLessThan(RING - 2 * HOLE);
   });
+
+  it('replays the features a mirror copies in timeline order, not in the order the file lists them', async () => {
+    // The hole is cut, then a 1.4 mm plug joined over it fills it again: the
+    // ring is whole. The mirror lists the plug first; replayed in that order
+    // its copy would join solid material and the cut copy leave a hole.
+    const f3d = washerWithHole();
+    f3d.features.push(sketch(5, 7, 'Sketch3', [circle(50, 501n, 0.07, 0.38)]), {
+      ...extrude(6, 'Extrude3', 7, 'join', 501n),
+    });
+    f3d.features.push({
+      ...base,
+      type: 'mirror',
+      id: 8,
+      kind: 'Mirror',
+      name: 'Mirror1',
+      objects: 'features',
+      features: [6, 4],
+      plane: { origin: [0, 0, 0], x: [0, 1, 0], y: [0, 0, 1] },
+    });
+    const { design } = f3dToDesign(f3d, 'Washer');
+    const doc = design.toJSON();
+    const id = (name: string) => doc.features.find((f) => f.name === name)?.id;
+    const mirror = doc.features.find((f) => f.name === 'Mirror1');
+    expect(mirror?.inputs.features).toMatchObject({
+      refs: [
+        { kind: 'feature', id: id('Extrude2') },
+        { kind: 'feature', id: id('Extrude3') },
+      ],
+    });
+    expect(await volumes(f3d)).toEqual([expect.closeTo(RING, 3)]);
+  });
+
+  it('repeats a fillet a pattern copies on the copies, on the edges between the copied faces', async () => {
+    // A 1 mm boss at (3.8, 0) mm, 1.2 mm tall on the 0.8 mm ring, its top rim
+    // rounded 0.1 mm; the pattern repeats the boss and the round half a turn on.
+    const boss = (): F3dDesign => {
+      const f3d = washerWithHole();
+      f3d.features.splice(2);
+      f3d.features.push(sketch(5, 7, 'Sketch3', [circle(50, 501n, 0.05, 0.38)]), {
+        ...extrude(6, 'Extrude3', 7, 'join', 501n),
+        parameters: [parameter({ name: 'd6', kind: 'AlongDistance', value: 0.12 })],
+      });
+      f3d.features.push({
+        ...base,
+        type: 'fillet',
+        id: 7,
+        kind: 'Fillet',
+        name: 'Fillet1',
+        sets: [
+          {
+            size: parameter({ name: 'd7', kind: 'Radius', value: 0.01 }),
+            edges: [
+              {
+                faces: [
+                  {
+                    tags: [{ token: '2', designs: [601] }],
+                    feature: 6,
+                    surface: { kind: 'plane', point: [0.38, 0, 0.12], normal: [0, 0, 1] },
+                  },
+                  {
+                    tags: [{ token: '3', designs: [601] }],
+                    feature: 6,
+                    surface: {
+                      kind: 'cone',
+                      center: [0.38, 0, 0],
+                      axis: [0, 0, 1],
+                      radius: 0.05,
+                      cylinder: true,
+                      slope: 0,
+                    },
+                  },
+                ],
+                bounds: [],
+              },
+            ],
+          },
+        ],
+      });
+      return f3d;
+    };
+    const single = boss();
+    const [one] = await volumes(single);
+    const f3d = boss();
+    f3d.features.push({
+      ...base,
+      type: 'circular-pattern',
+      id: 8,
+      kind: 'C-Pattern',
+      name: 'C-Pattern1',
+      parameters: [parameter({ name: 'd8', kind: 'TotalAngle', unit: 'deg', value: 2 * Math.PI })],
+      objects: 'features',
+      features: [6, 7],
+      axis: { point: [0, 0, 0], direction: [0, 0, 1] },
+      count: parameter({ name: 'countU', kind: 'countU', unit: '', value: 2 }),
+    });
+    const { design, report } = f3dToDesign(f3d, 'Washer');
+    const doc = design.toJSON();
+    const id = (name: string) => doc.features.find((f) => f.name === name)?.id;
+    const again = doc.features.find((f) => f.name === 'Fillet1 (C-Pattern1)');
+    // The original's edge, its faces swapped for their copies.
+    const original = (
+      doc.features.find((f) => f.name === 'Fillet1')?.inputs.edges as
+        | { refs: { id: string }[] }
+        | undefined
+    )?.refs[0]?.id as string;
+    const faces = original.slice(2, -1).split('|');
+    expect(faces).toHaveLength(2);
+    const copy = (face: string) => `pattern:${id('C-Pattern1')}:1:from:(${face})`;
+    expect(faces.every((face) => face.startsWith(`extrude:${id('Extrude3')}:`))).toBe(true);
+    expect(again?.inputs.edges).toMatchObject({
+      refs: [{ kind: 'edge', id: `e[${faces.map(copy).sort().join('|')}]` }],
+    });
+    expect(again?.inputs.radius).toMatchObject({ expr: '0.1 mm' });
+    expect(report.notes.join(' ')).not.toMatch(/left out/);
+    // The copy is rounded as the original is: twice the original's material on the ring.
+    const [both] = await volumes(f3d);
+    expect(both).toBeCloseTo(RING + 2 * ((one as number) - RING), 4);
+  });
+
+  it.each([
+    // 999 copies × 11 edges: over MAX_REPEATED_ROUND_REFS.
+    [1000, () => MAX_REPEATED_ROUND_REFS],
+    // 199 copies × 11 edges: under it, but over the edges any imported round may have.
+    [200, () => MAX_ROUND_EDGES],
+  ])(
+    'leaves out a round whose repeat would take too many references (%i copies), and returns quickly',
+    (copies, bound) => {
+      // Eleven 0.4 mm bosses round the ring, their top rims rounded, repeated
+      // 1000 times: 999 copies × 11 edges is over MAX_REPEATED_ROUND_REFS.
+      const count = 11;
+      const at = (i: number): [number, number] => [
+        0.38 * Math.cos((2 * Math.PI * i) / count),
+        0.38 * Math.sin((2 * Math.PI * i) / count),
+      ];
+      const f3d = washerWithHole();
+      f3d.features.splice(2);
+      const circles = Array.from({ length: count }, (_, i) =>
+        circle(50 + 2 * i, BigInt(501 + i), 0.02, ...at(i)),
+      );
+      const bosses = extrude(6, 'Extrude3', 7, 'join', 501n);
+      bosses.parameters = [parameter({ name: 'd6', kind: 'AlongDistance', value: 0.12 })];
+      const tags = circles.map((_, i) => [[BigInt(501 + i)]]);
+      bosses.profiles = [
+        {
+          id: 106,
+          sketch: 7,
+          regions: tags.map((o) => ({
+            outer: o,
+            inner: [],
+            outerPieces: whole(o),
+            innerPieces: [],
+          })),
+        },
+      ];
+      f3d.features.push(sketch(5, 7, 'Sketch3', circles), bosses, {
+        ...base,
+        type: 'fillet',
+        id: 7,
+        kind: 'Fillet',
+        name: 'Fillet1',
+        sets: [
+          {
+            size: parameter({ name: 'd7', kind: 'Radius', value: 0.005 }),
+            edges: circles.map((_, i) => {
+              const [x, y] = at(i);
+              return {
+                faces: [
+                  {
+                    tags: [{ token: '2', designs: [601] }],
+                    feature: 6,
+                    surface: { kind: 'plane', point: [x, y, 0.12], normal: [0, 0, 1] },
+                  },
+                  {
+                    tags: [{ token: '3', designs: [601] }],
+                    feature: 6,
+                    surface: {
+                      kind: 'cone',
+                      center: [x, y, 0],
+                      axis: [0, 0, 1],
+                      radius: 0.02,
+                      cylinder: true,
+                      slope: 0,
+                    },
+                  },
+                ],
+                bounds: [],
+              } as F3dEdge;
+            }),
+          },
+        ],
+      } as F3dFeature);
+      f3d.features.push({
+        ...base,
+        type: 'circular-pattern',
+        id: 8,
+        kind: 'C-Pattern',
+        name: 'C-Pattern1',
+        parameters: [
+          parameter({ name: 'd8', kind: 'TotalAngle', unit: 'deg', value: 2 * Math.PI }),
+        ],
+        objects: 'features',
+        features: [6, 7],
+        axis: { point: [0, 0, 0], direction: [0, 0, 1] },
+        count: parameter({ name: 'countU', kind: 'countU', unit: '', value: copies }),
+      });
+      const started = performance.now();
+      const { design, report } = f3dToDesign(f3d, 'Washer');
+      expect(performance.now() - started).toBeLessThan(10_000);
+      const doc = design.toJSON();
+      const original = doc.features.find((f) => f.name === 'Fillet1')?.inputs.edges as
+        | { refs: unknown[] }
+        | undefined;
+      // The original rounds all eleven rims, so its repeat would take (copies − 1) × 11 references.
+      expect(original?.refs).toHaveLength(count);
+      expect((copies - 1) * count).toBeGreaterThan(bound());
+      expect((copies - 1) * count > MAX_REPEATED_ROUND_REFS).toBe(copies === 1000);
+      expect(doc.features.some((f) => f.name === 'Fillet1 (C-Pattern1)')).toBe(false);
+      expect(report.notes).toContain(
+        'C-Pattern1: 1 of the 2 features it repeats left out (not imported, or a fillet or chamfer).',
+      );
+    },
+  );
 
   it('repeats a cut along a sketch line, walked from the start point the file gives', async () => {
     for (const [start, flip] of [
@@ -855,6 +1222,26 @@ describe('f3dToDesign: copying features', () => {
       kind: 'OffsetFaces',
       reason: 'it moves faces a pattern or mirror copied (not imported yet)',
     });
+  });
+
+  it('imports an offset of faces by 0 as nothing, with no skip', () => {
+    const f3d = washerWithHole();
+    f3d.features.push({
+      ...base,
+      type: 'offset-faces',
+      id: 8,
+      kind: 'OffsetFaces',
+      name: 'OffsetFaces1',
+      distance: parameter({ name: 'd9', kind: 'distance', value: 0 }),
+      faces: [{ tags: [{ token: '3', designs: [303] }], feature: 4 }],
+    });
+    const { design, report } = f3dToDesign(f3d, 'Washer');
+    expect(report.skipped).toEqual([]);
+    expect(report.imported).toContain('OffsetFaces1');
+    expect(report.notes).toContain(
+      'OffsetFaces1: its distance is 0, so it changes nothing; imported as nothing.',
+    );
+    expect(design.toJSON().features.some((f) => f.type === 'offsetFace')).toBe(false);
   });
 
   /** A deletion of Extrude2's hole wall (a cylinder, 0.5 mm radius round (3.8, 0) mm), as the file records it. */

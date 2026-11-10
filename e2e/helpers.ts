@@ -375,13 +375,18 @@ export const parametersDialog = (page: Page) => page.getByRole('dialog', { name:
 
 /**
  * Selects a parameter in the Parameters dialog's list, so its fields show on
- * the right; a model parameter opens the collapsed Model parameters first.
+ * the right; a model parameter opens the collapsed Model parameters first,
+ * and the Show line if it only follows a user parameter (ADR-0142 §6).
  */
 export async function selectParameter(page: Page, name: string) {
   const dialog = parametersDialog(page);
   const row = dialog.locator(`[data-parameter-row="${name}"]`);
   if ((await row.count()) === 0) {
-    await dialog.getByRole('button', { name: /^Model parameters/ }).click();
+    const section = dialog.getByRole('button', { name: /^Model parameters/ });
+    if ((await section.getAttribute('aria-expanded')) !== 'true') await section.click();
+    await expect(section).toHaveAttribute('aria-expanded', 'true');
+    const show = dialog.getByRole('button', { name: /^Show \d+ that follows? a user parameter$/ });
+    if ((await row.count()) === 0 && (await show.count()) > 0) await show.click();
   }
   await row.click();
   await expect(row).toHaveAttribute('aria-current', 'true');
