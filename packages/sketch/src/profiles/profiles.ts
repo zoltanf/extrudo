@@ -768,14 +768,15 @@ function detect(data: SketchData, allPairs: boolean): Profile[] {
   // Each group's outline is a hole in the smallest region of another group around it.
   // A probe outside a region's box (by more than rounding, sideways) is
   // outside its polygon: the box only passes over tests that answer no.
-  const boxes = regions.map((r) => polygonBox(r.loop.polygon));
+  // Worth making only when there are several outlines to place.
+  const boxes = outlines.length > 1 ? regions.map((r) => polygonBox(r.loop.polygon)) : undefined;
   for (const outline of outlines) {
     const probe = outline.loop.polygon[0] as Vec2;
     let best: (typeof regions)[number] | undefined;
     for (let k = 0; k < regions.length; k++) {
       const r = regions[k] as (typeof regions)[number];
       if (r.group === outline.group || (best && r.loop.area >= best.loop.area)) continue;
-      if (outsideBox(boxes[k] as PolygonBox, probe)) continue;
+      if (boxes && outsideBox(boxes[k] as PolygonBox, probe)) continue;
       if (insidePolygon(r.loop.polygon, probe)) best = r;
     }
     best?.holes.push(outline.loop);
