@@ -56,7 +56,8 @@ open designs). On a Mac these keys are `⌘`.
 **Opening `.extrudo` files.** Double-click an `.extrudo` file in your file manager and it opens in Extrudo. A design opened this way, or saved with **Save As…**,
 stays linked to that file: every autosave writes the file as well. If the file changed on disk
 in the meantime, nothing is overwritten and you choose between loading the disk's version and
-overwriting it, just as with a [linked folder](./files.md).
+overwriting it, just as with a [linked folder](./files.md). **Open…** also takes an
+`.extrudo.gz` (a design from a GitHub issue); that one opens as a copy, not linked to the file.
 
 **Send to Slicer.** In the Make tab's Output group, **Send to Slicer** (and the **Open in
 slicer** button in the Export dialog) hands the model to PrusaSlicer, OrcaSlicer, Bambu Studio
