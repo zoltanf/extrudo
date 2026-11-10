@@ -147,6 +147,26 @@ file and body-metadata steps. References into the insert keep resolving through
 the topological naming of the copy's own features, which keep their IDs across
 an update. Breaking the link drops the `link` input: the insert becomes Copied.
 
+**A linked file that is gone** (deleted, moved, renamed, or on a drive that isn't
+there; the owner, 2026-11-10):
+
+1. **The last copy stays the truth.** A linked insert always keeps the `design`
+   it last read, so a missing file never breaks the geometry: the insert keeps
+   computing from that copy, exactly as a Copied one does, and nothing that
+   refers to its faces or bodies is lost.
+2. **The app says so and offers the way out** (to build with Linked mode): on
+   open, a notice names the insert and the file it can't find, with
+   **Relink…** (pick the file where it is now; the hash check then runs as for
+   "changed on disk", so a relinked file that differs offers Update) and **Break
+   link** (drop the `link` input: the insert becomes Copied, one undo step). The
+   insert's status shows it too (a warning, not an error: its geometry is
+   fine), so it isn't lost once the notice is closed.
+3. **Where the link can be re-read.** The desktop stores a path and re-reads it
+   on open. The web has no path to give: a link there needs a stored file handle
+   (File System Access, which asks again for permission) or the design's linked
+   folder (ADR-0075's), so Linked is likely desktop first, with the web offering
+   Relink… each session or keeping inserts Copied.
+
 ### 8. The `.f3d` import's occurrences (not changed in this pass)
 
 The `.f3d` import (ADR-0083) writes each of the file's components as features of

@@ -4365,4 +4365,6 @@ command; same SHA = the host's ID; an ID the host gives other bytes is renamed i
 `schema.ts`'s `featuresWithEmbedded` checks them and `usedAttachments`/`removeAttachment` see the
 copy's texts. **A future format bump must migrate features inside `design` inputs too.** The
 emitter skips an insert like a file feature. Linked mode (§7) adds a `link` input and Update
-replaces `design`; the `.f3d` import is unchanged (§8).
+replaces `design`; **a linked file that is gone keeps the last copy as the truth** (geometry
+unchanged, a warning, a notice with Relink… / Break link; owner 2026-11-10); the `.f3d`
+import is unchanged (§8).
