@@ -1698,6 +1698,32 @@ end to end, faster than in established desktop CAD.
   - [x] S3 Sketch mode.
   - [x] S4 Polish: re-anchor by drag, `screenshot { annotations }`, example file.
 
+- [ ] **P6-24 Drawings: 2D sheets made from the model** (owner, 2026-11-10; FR-DR-01 to
+  FR-DR-08; ADR-0143). A drawing mode that works like sketch mode (tabs Home + Drawing, the
+  sheet in place of the 3D view, sheet tabs in place of the timeline, Finish Drawing):
+  sheets with a border and title block, views of chosen bodies with exact visible and
+  hidden lines, dimensions that follow the model, notes, sticky notes, a parts list with
+  balloons, and export to PDF and SVG. Sheets are saved in the document (`doc.sheets`,
+  additive) and every edit is undoable. The specification, the mock-ups and what each slice
+  is done by: `docs/plans/drawings-2026-11-10.md` (§10). **First release: S1 to S5.**
+  Acceptance per slice: the plan's "Done when", `pnpm check`, the affected e2e specs, CI
+  green, and an amendment to ADR-0143. *Deps:* S1 needs S1a; S2 needs S0's answer; S0 and
+  S1a can run side by side.
+  - [ ] S0 Spikes: hidden-line spans timed on B1–B10 (time, heap, correctness); `writePdf`
+    with outlined text and a selectable layer.
+  - [ ] S1a Modes: `'model' | 'sketch'` becomes an `EditMode` type and a per-mode table. No
+    behaviour change; every existing test passes untouched.
+  - [ ] S1 Sheets: schema, commands, cascades; the mode; Sheet Setup, border, title block,
+    text; Export PDF/SVG; Import Drawing renamed Import SVG/DXF.
+  - [ ] S2 Views: the facade's spans, the view evaluator, the worker call and its cache;
+    Base and Projected View; Standard views.
+  - [ ] S3 Dimensions: anchors resolved; the Dimension tool; detached and moved states.
+  - [ ] S4 Notes: leader notes, sticky notes, centre marks and centre lines; snapping.
+  - [ ] S5 Lists: parts list with merged quantities and Size; balloons; free table; text
+    fields.
+  - [ ] S6 Outside: API, emitter, CLI, MCP tools and skill text; guide page; tooltip clips;
+    an example design with a sheet.
+
 ## Phase 7 — Later (lowest priority, after everything else)
 
 **Owner, 2026-10-14: the last work on the roadmap.** Don't pick a task here

@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Drawing mode</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#5AA9FF}a:hover{color:#A4CFFF}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+.tab{height:40px;padding:0 10px;font-size:11.5px;font-weight:600;letter-spacing:.08em;color:#939CAD;border-bottom:2px solid transparent;box-sizing:border-box}
+.tab.on{color:#E9EDF3;border-bottom-color:#FFB23E}
+.ib{width:32px;height:32px;display:grid;place-items:center;border-radius:8px;color:#939CAD;flex:none}
+.ib svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.ib.on{background:rgba(255,178,62,.16);color:#FFB23E}
+.grp{display:flex;flex-direction:column;align-items:center;padding:0 6px;border-right:1px solid #343B4A}
+.tiles{display:flex;gap:2px}
+.gl{font-size:10.5px;font-weight:600;letter-spacing:.08em;color:#939CAD;text-transform:uppercase;margin-top:2px}
+.tile{width:64px;height:64px;display:flex;flex-direction:column;align-items:center;gap:5px;padding-top:8px;border-radius:9px;font-size:11px;line-height:1.15;color:#E9EDF3;text-align:center;box-sizing:border-box}
+.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.ic .f{fill:currentColor;fill-opacity:.22}
+.cv{color:#3DD6A3}.cd{color:#7C9BFF}.cn{color:#3CC7D4}.ct{color:#FF7EB6}.cs{color:#A7B0C2}.co{color:#FFC93C}.cf{color:#3DD68C}
+.row{height:28px;display:flex;align-items:center;gap:6px;padding-right:10px;border-radius:6px;white-space:nowrap}
+.row svg{width:14px;height:14px;fill:none;stroke:#939CAD;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.row .sp{flex:1}
+.mu{color:#939CAD}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.bdg{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10.5px;color:#939CAD;background:#282E3A;border-radius:999px;padding:1px 6px}
+.sw{width:26px;height:14px;border-radius:999px;background:#343B4A;position:relative;flex:none}
+.sw.on{background:#FFB23E}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:50%;background:#E9EDF3}
+.sw.on::after{left:14px;background:#15171C}
+.fld{height:28px;border:1px solid #343B4A;border-radius:6px;background:#1B1F27;display:flex;align-items:center;justify-content:space-between;padding:0 8px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;box-sizing:border-box;width:100%}
+.fld svg{width:12px;height:12px;fill:none;stroke:#939CAD;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.pl{font-size:10.5px;font-weight:600;letter-spacing:.08em;color:#939CAD;text-transform:uppercase}
+.prow{display:flex;align-items:center;justify-content:space-between;gap:8px;height:26px}
+.seg{flex:1;height:30px;display:grid;place-items:center;border-radius:6px;color:#939CAD}
+.seg.on{background:rgba(255,178,62,.16);color:#FFB23E}
+.seg svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.chk{width:14px;height:14px;border-radius:4px;background:#FFB23E;display:grid;place-items:center;flex:none}
+.chk svg{width:10px;height:10px;fill:none;stroke:#15171C;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.pg{height:34px;display:flex;align-items:center;gap:8px;padding:0 10px 0 6px;border-radius:9px;border:1px solid #343B4A;background:#1B1F27;font-size:12px}
+.pg.on{border-color:#FFB23E;background:rgba(255,178,62,.16)}
+.pg svg{width:26px;height:19px;flex:none}
+.vis{stroke:#111318;stroke-width:.5;fill:none;stroke-linejoin:round;stroke-linecap:round}
+.vi2{stroke:#111318;stroke-width:.35;fill:none;stroke-linejoin:round;stroke-linecap:round}
+.thn{stroke:#111318;stroke-width:.18;fill:none}
+.hid{stroke:#111318;stroke-width:.25;fill:none;stroke-dasharray:2 1}
+.ctr{stroke:#111318;stroke-width:.18;fill:none;stroke-dasharray:6 1.2 .8 1.2}
+.dim{stroke:#111318;stroke-width:.2;fill:none}
+.arr{fill:#111318}
+.tx{font-family:'Instrument Sans',system-ui,sans-serif;fill:#111318;font-size:4px}
+.mid{text-anchor:middle}
+.lbl{font-family:'Instrument Sans',system-ui,sans-serif;fill:#5B6375;font-size:2.2px;letter-spacing:.08em}
+.lnk{stroke:#2F86F0;stroke-width:.3;fill:none;stroke-dasharray:1.6 1.2}
+.sel{stroke:#E08A1E;stroke-width:.45;fill:rgba(224,138,30,.06);stroke-dasharray:2.4 1.4}
+</style>
+</helmet>
+<div style="width:100%; height:900px; display:flex; flex-direction:column; background:#1B1F27; color:#E9EDF3; font-family:'Instrument Sans',system-ui,sans-serif; font-size:13px; line-height:1.3; overflow:hidden">
+
+  <header style="height:40px; flex:none; display:flex; align-items:center; gap:2px; padding:0 10px 0 12px; border-bottom:1px solid #343B4A; box-sizing:border-box">
+    <svg viewBox="0 0 64 64" style="width:20px; height:20px; flex:none" aria-hidden="true"><path d="M10 24 24 10H52L38 24Z" fill="#FFC76A"></path><path d="M38 24 52 10V38L38 52Z" fill="#E0922A"></path><rect x="10" y="24" width="28" height="28" rx="1" fill="rgba(90,169,255,.16)" stroke="#5AA9FF" style="stroke-width:2; stroke-dasharray:3.2 2.6"></rect></svg>
+    <span style="font-weight:600; font-size:15px; letter-spacing:-.02em; margin:0 14px 0 6px">extrudo<span style="color:#FFB23E">.</span></span>
+    <button class="tab">HOME</button>
+    <button class="tab on" aria-current="page">DRAWING</button>
+    <span style="width:1px; height:18px; background:#343B4A; margin:0 8px"></span>
+    <button class="ib" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"></path><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"></path></svg></button>
+    <button class="ib" aria-label="Redo"><svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"></path><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"></path></svg></button>
+    <div style="flex:1; display:flex; align-items:center; justify-content:center; gap:8px; min-width:0">
+      <span style="font-weight:600">Box with a lid</span>
+      <span style="width:6px; height:6px; border-radius:50%; background:#3DD68C"></span>
+      <span class="mu" style="font-size:11.5px">Saved</span>
+    </div>
+    <button class="ib" aria-label="Version history"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l3 2"></path></svg></button>
+    <button class="ib" aria-label="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg></button>
+    <button class="ib" aria-label="Menu"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"></rect><rect x="14" y="4" width="6" height="6" rx="1"></rect><rect x="4" y="14" width="6" height="6" rx="1"></rect><rect x="14" y="14" width="6" height="6" rx="1"></rect></svg></button>
+  </header>
+
+  <div style="height:92px; flex:none; display:flex; align-items:flex-start; padding:6px 6px 0; border-bottom:1px solid #343B4A; box-sizing:border-box; overflow:hidden">
+    <div class="grp">
+      <div class="tiles">
+        <button class="tile"><svg class="ic cv" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5" style="stroke-dasharray:3 2.6"></rect><path class="f" d="M8 9H16V15H8Z"></path></svg>Base View</button>
+        <button class="tile"><svg class="ic cv" viewBox="0 0 24 24"><rect class="f" x="3" y="8" width="8" height="8" rx="1.5"></rect><rect x="15" y="8" width="6" height="8" rx="1.5" style="stroke-dasharray:3 2.6"></rect><path d="M11.5 12H14.5"></path></svg>Projected View</button>
+        <button class="tile"><svg class="ic cv" viewBox="0 0 24 24"><rect class="f" x="4" y="9" width="16" height="11" rx="2"></rect><path d="M8 20 13 9M13 20 18 9"></path><path d="M2.5 5H21.5" style="stroke-dasharray:5 2 1.5 2"></path></svg>Section View</button>
+        <button class="tile"><svg class="ic cv" viewBox="0 0 24 24"><circle cx="8" cy="15.5" r="3.5"></circle><circle class="f" cx="16" cy="8" r="5.5"></circle><path d="M10.5 13 12 11.5"></path></svg>Detail View</button>
+      </div>
+      <span class="gl">Views</span>
+    </div>
+    <div class="grp">
+      <div class="tiles">
+        <button class="tile"><svg class="ic cd" viewBox="0 0 24 24"><path d="M4 9V20M20 9V20"></path><path d="M4 16H20M7 13.5 4 16 7 18.5M17 13.5 20 16 17 18.5"></path><rect class="f" x="7.5" y="3" width="9" height="7" rx="1.8"></rect></svg>Dimension</button>
+        <button class="tile"><svg class="ic cd" viewBox="0 0 24 24"><circle class="f" cx="12" cy="12" r="6.5"></circle><path d="M12 2.5V21.5M2.5 12H21.5" style="stroke-dasharray:5 2 1.5 2"></path></svg>Centre Mark</button>
+        <button class="tile"><svg class="ic cd" viewBox="0 0 24 24"><path class="f" d="M4 6H20V18H4Z" style="stroke:none"></path><path d="M4 6H20M4 18H20"></path><path d="M2.5 12H21.5" style="stroke-dasharray:5 2 1.5 2"></path></svg>Centreline</button>
+      </div>
+      <span class="gl">Dimensions</span>
+    </div>
+    <div class="grp">
+      <div class="tiles">
+        <button class="tile"><svg class="ic cn" viewBox="0 0 24 24"><rect class="f" x="3" y="4" width="18" height="16" rx="3"></rect><path d="M8 9H16M12 9V16"></path></svg>Text</button>
+        <button class="tile"><svg class="ic cn" viewBox="0 0 24 24"><rect class="f" x="8" y="3" width="13" height="9.5" rx="2"></rect><path d="M11 6.5H18M11 9.5H15.5"></path><path d="M8.5 12 5.5 17.5"></path><circle cx="4.5" cy="19.5" r="1.5"></circle></svg>Leader Note</button>
+        <button class="tile"><svg class="ic cn" viewBox="0 0 24 24"><circle class="f" cx="15" cy="9" r="6"></circle><path d="M10.5 13.5 4 20"></path><path d="M14 7.2 15.5 6.5V12"></path></svg>Balloon</button>
+        <button class="tile"><svg class="ic cn" viewBox="0 0 24 24"><path class="f" d="M4 4H20V14L14 20H4Z"></path><path d="M20 14H14V20"></path><path d="M8 9H16"></path></svg>Sticky Note</button>
+      </div>
+      <span class="gl">Notes</span>
+    </div>
+    <div class="grp">
+      <div class="tiles">
+        <button class="tile"><svg class="ic ct" viewBox="0 0 24 24"><rect class="f" x="3" y="4" width="18" height="16" rx="2.5"></rect><path d="M3 9.5H21M3 14.5H21M9 9.5V20"></path></svg>Parts List</button>
+        <button class="tile"><svg class="ic ct" viewBox="0 0 24 24"><path class="f" d="M3 4H12V12H3Z" style="stroke:none"></path><rect x="3" y="4" width="18" height="16" rx="2.5"></rect><path d="M3 12H21M12 4V20"></path></svg>Table</button>
+      </div>
+      <span class="gl">Tables</span>
+    </div>
+    <div class="grp">
+      <div class="tiles">
+        <button class="tile"><svg class="ic cs" viewBox="0 0 24 24"><path class="f" d="M5 3H15L19 7V21H5Z"></path><path d="M12 10V16M9 13H15"></path></svg>New Sheet</button>
+        <button class="tile"><svg class="ic cs" viewBox="0 0 24 24"><rect class="f" x="3" y="6" width="18" height="12" rx="2"></rect><path d="M13 13.5H21M13 13.5V18"></path></svg>Sheet Setup</button>
+      </div>
+      <span class="gl">Sheet</span>
+    </div>
+    <div class="grp">
+      <div class="tiles">
+        <button class="tile"><svg class="ic co" viewBox="0 0 24 24"><path d="M12 3V13M8 9.5 12 13.5 16 9.5"></path><path class="f" d="M4 15.5V18.5A2.5 2.5 0 0 0 6.5 21H17.5A2.5 2.5 0 0 0 20 18.5V15.5Z"></path></svg>Export PDF</button>
+        <button class="tile"><svg class="ic co" viewBox="0 0 24 24"><path d="M7 8V3.5H17V8"></path><rect class="f" x="3" y="8" width="18" height="9" rx="2.5"></rect><path d="M7 14H17V20.5H7Z"></path></svg>Print</button>
+      </div>
+      <span class="gl">Output</span>
+    </div>
+    <div class="grp" style="border-right:0">
+      <div class="tiles">
+        <button class="tile"><svg class="ic cf" viewBox="0 0 24 24"><rect class="f" x="3" y="3" width="18" height="18" rx="4.5"></rect><path d="M7.5 12.5 10.5 15.5 16.5 8.5"></path></svg>Finish Drawing</button>
+      </div>
+      <span class="gl">Finish</span>
+    </div>
+  </div>
+
+  <div style="flex:1; min-height:0; display:flex">
+    <aside style="flex:0 0 248px; background:#20252F; border-right:1px solid #343B4A; padding:10px 6px 10px 8px; box-sizing:border-box; overflow:hidden">
+      <div class="row" style="height:24px; padding-left:4px"><span class="pl">Browser</span><span class="sp"></span><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M10 4v16M16 10l-2 2 2 2"></path></svg></div>
+      <div class="row" style="padding-left:4px"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg><svg viewBox="0 0 24 24" style="stroke:#A7B0C2"><path d="M6 3h8l4 4v14H6Z"></path><path d="M14 3v4h4"></path></svg><span>Sheets</span><span class="bdg">2</span></div>
+      <div class="row" style="padding-left:20px"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg><span style="font-weight:600">1 · Assembly</span><span class="mu" style="font-size:11px">editing</span></div>
+      <div class="row" style="padding-left:36px"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg><span>Views</span></div>
+      <div class="row" style="padding-left:58px; background:rgba(255,178,62,.16)"><span>Front</span><span class="mu mono" style="font-size:11px">1:2</span><span class="sp"></span><svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg></div>
+      <div class="row" style="padding-left:58px"><span>Top</span><svg viewBox="0 0 24 24" style="stroke:#5AA9FF"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"></path><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"></path></svg><span class="sp"></span><svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg></div>
+      <div class="row" style="padding-left:58px"><span>Left</span><svg viewBox="0 0 24 24" style="stroke:#5AA9FF"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"></path><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"></path></svg><span class="sp"></span><svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg></div>
+      <div class="row" style="padding-left:58px"><span>Isometric</span><span class="mu mono" style="font-size:11px">1:4</span><span class="sp"></span><svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg></div>
+      <div class="row" style="padding-left:36px"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg><span>Dimensions</span><span class="bdg">8</span></div>
+      <div class="row" style="padding-left:36px"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg><span>Notes</span><span class="bdg">4</span></div>
+      <div class="row" style="padding-left:56px"><span>Parts list</span></div>
+      <div class="row" style="padding-left:56px"><span>Title block</span></div>
+      <div class="row" style="padding-left:20px"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg><span>2 · Lid</span></div>
+      <div class="row" style="padding-left:4px; margin-top:6px"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg><svg viewBox="0 0 24 24" style="stroke:#A7B0C2"><path d="M12 3 20 7.5v9L12 21 4 16.5v-9Z"></path><path d="M4 7.5 12 12l8-4.5M12 12v9"></path></svg><span>Bodies</span><span class="bdg">2</span></div>
+      <div class="row" style="padding-left:40px"><span style="width:8px; height:8px; border-radius:50%; background:#A7B0C2"></span><span>Box</span></div>
+      <div class="row" style="padding-left:40px"><span style="width:8px; height:8px; border-radius:50%; background:#A7B0C2"></span><span>Lid</span></div>
+      <p class="mu" style="margin:10px 6px 0; padding:8px 10px; border:1px solid #343B4A; border-radius:8px; font-size:11.5px; line-height:1.4">Drag a body onto the sheet to add a view of just that part.</p>
+    </aside>
+
+    <main style="flex:999 1 560px; min-width:0; position:relative; background:radial-gradient(90% 80% at 45% 42%, #46557A 0%, #29313F 50%, #15181F 100%); display:flex; align-items:center; padding:0 284px 0 28px; box-sizing:border-box; overflow:hidden">
+
+      <svg viewBox="0 0 420 297" role="img" aria-label="Sheet 1: front, top, left and isometric views of a box with a lid, with dimensions, a parts list, a sticky note and a title block" style="width:100%; max-width:880px; height:auto; aspect-ratio:420 / 297; background:#FFFFFF; border-radius:2px; box-shadow:0 22px 44px -18px rgba(0,0,0,.75), 0 0 0 1px rgba(0,0,0,.3)">
+        <rect x="10" y="10" width="400" height="277" class="vis"></rect>
+        <path class="thn" d="M210 4V10M210 287V293M4 148.5H10M410 148.5H416"></path>
+
+        <path class="lnk" d="M110 108V132M175 74H202"></path>
+        <rect class="sel" x="46" y="41" width="128" height="66" rx="2"></rect>
+        <rect x="46" y="32.5" width="34" height="7" rx="1.6" fill="#E08A1E"></rect>
+        <text class="tx" x="48.5" y="37.6" style="font-size:3.4px; font-weight:600; fill:#15171C">Front · 1:2</text>
+        <path class="vis" d="M50 53H170V103H50ZM50 53V45H170V53"></path>
+        <path class="thn" d="M58 45V103M162 45V103"></path>
+        <path class="hid" d="M51.5 53V101.5H168.5V53M53 53V57H167V53M100 45V53M120 45V53"></path>
+        <path class="ctr" d="M110 41V107"></path>
+
+        <path class="vis" d="M205 53H285V103H205ZM205 53V45H285V53"></path>
+        <path class="thn" d="M213 45V103M277 45V103"></path>
+        <path class="hid" d="M206.5 53V101.5H283.5V53M208 53V57H282V53M235 45V53M255 45V53"></path>
+        <path class="ctr" d="M245 41V107"></path>
+
+        <rect class="vis" x="50" y="135" width="120" height="80" rx="8"></rect>
+        <rect class="hid" x="51.5" y="136.5" width="117" height="77" rx="6.5"></rect>
+        <circle class="vis" cx="110" cy="175" r="10"></circle>
+        <path class="ctr" d="M94 175H126M110 159V191"></path>
+
+        <path d="M307.09 62 308.82 64 353.86 90 357.32 91.2V120.2L353.86 119 308.82 93 307.09 91Z" fill="#D5DAE3"></path>
+        <path d="M357.32 91.2 360.78 90 388.5 74 390.23 72V101L388.5 103 360.78 119 357.32 120.2Z" fill="#B4BCCA"></path>
+        <path d="M343.46 44 388.5 70Q391.96 72 388.5 74L360.78 90Q357.32 92 353.86 90L308.82 64Q305.36 62 308.82 60L336.54 44Q340 42 343.46 44Z" fill="#EEF1F5" class="vi2"></path>
+        <path class="vi2" d="M307.09 66 308.82 68 353.86 94Q357.32 96 360.78 94L388.5 78 390.23 76M307.09 91 308.82 93 353.86 119Q357.32 121 360.78 119L388.5 103 390.23 101M307.09 62V91M390.23 72V101"></path>
+        <path class="thn" d="M353.86 90V119M360.78 90V119"></path>
+        <ellipse cx="348.66" cy="67" rx="6.12" ry="3.54" fill="#8A93A6" class="vi2"></ellipse>
+        <text class="tx mid" x="348.66" y="129" style="font-size:3.2px; fill:#5B6375">Isometric (1:4)</text>
+
+        <path class="dim" d="M394.6 50.4 372 64.5M394.6 105.4 380 94"></path>
+        <circle cx="372" cy="64.5" r=".8" class="arr"></circle>
+        <circle cx="380" cy="94" r=".8" class="arr"></circle>
+        <circle cx="399" cy="48" r="5" fill="#FFFFFF" class="vi2"></circle>
+        <circle cx="399" cy="108" r="5" fill="#FFFFFF" class="vi2"></circle>
+        <text class="tx mid" x="399" y="49.5" style="font-weight:600">2</text>
+        <text class="tx mid" x="399" y="109.5" style="font-weight:600">1</text>
+
+        <path class="dim" d="M50 217V231M170 217V231M50 228H170"></path>
+        <path class="arr" d="M50 228l3-.6v1.2ZM170 228l-3-.6v1.2Z"></path>
+        <text class="tx mid" x="110" y="226.6">240</text>
+
+        <path class="dim" d="M48 135H33M48 215H33M36 135V215"></path>
+        <path class="arr" d="M36 135l-.6 3h1.2ZM36 215l-.6-3h1.2Z"></path>
+        <text class="tx mid" x="34.6" y="175" transform="rotate(-90 34.6 175)">160</text>
+
+        <path class="dim" d="M48 45H27M48 103H27M30 45V103M48 53H37M40 53V103"></path>
+        <path class="arr" d="M30 45l-.6 3h1.2ZM30 103l-.6-3h1.2ZM40 53l-.6 3h1.2ZM40 103l-.6-3h1.2Z"></path>
+        <text class="tx mid" x="28.6" y="74" transform="rotate(-90 28.6 74)">116</text>
+        <text class="tx mid" x="38.6" y="78" transform="rotate(-90 38.6 78)">100</text>
+
+        <path class="dim" d="M205 105V119M285 105V119M205 116H285"></path>
+        <path class="arr" d="M205 116l3-.6v1.2ZM285 116l-3-.6v1.2Z"></path>
+        <text class="tx mid" x="245" y="114.6">160</text>
+
+        <path class="dim" d="M287 45H298M287 53H298M295 45V53"></path>
+        <path class="arr" d="M295 45l-.6 2.4h1.2ZM295 53l-.6-2.4h1.2Z"></path>
+        <text class="tx" x="290.4" y="42.6">16</text>
+
+        <path class="dim" d="M117.07 167.93 134 151H150"></path>
+        <path class="arr" d="M117.07 167.93 119.61 166.23 118.77 165.39Z"></path>
+        <text class="tx" x="135.5" y="149.6">Ø40</text>
+
+        <path class="dim" d="M167.66 137.34 178 127H192"></path>
+        <path class="arr" d="M167.66 137.34 170.2 135.64 169.36 134.8Z"></path>
+        <text class="tx" x="179.5" y="125.6">R16</text>
+
+        <text class="tx" x="205" y="140" style="font-size:3.2px; font-weight:600; letter-spacing:.06em">NOTES</text>
+        <text class="tx" x="205" y="146.5" style="font-size:3.4px">1. The lid lip clears the box by 0.20 mm all round.</text>
+        <text class="tx" x="205" y="152" style="font-size:3.4px">2. Wall and floor 3 mm.</text>
+
+        <g transform="rotate(-2.5 240 185)">
+          <rect x="207.2" y="165.6" width="62" height="40" fill="rgba(17,19,24,.16)"></rect>
+          <rect x="206" y="164" width="62" height="40" fill="#FFE27A"></rect>
+          <text class="tx" x="210" y="172.5" style="font-size:3.8px; font-weight:600">Check the lid fit</text>
+          <text class="tx" x="210" y="178.5" style="font-size:3.6px">after the first print.</text>
+          <text class="tx" x="210" y="184.5" style="font-size:3.6px">Try clearance 0.25 if tight.</text>
+          <path d="M210 195.2l6.4 4M210.8 199.4s2.4-2.6 2.4-2.6" style="stroke:#7A6410; stroke-width:.35; fill:none"></path>
+          <text class="tx" x="218.5" y="199" style="font-size:2.8px; fill:#7A6410">On screen only · not printed</text>
+        </g>
+
+        <rect x="250" y="234" width="160" height="7" fill="#EEF1F5"></rect>
+        <path class="vi2" d="M250 234H410V255H250ZM250 241H410M250 248H410M264 234V255M278 234V255M330 234V255M360 234V255"></path>
+        <text class="lbl" x="252" y="238.8">ITEM</text><text class="lbl" x="266" y="238.8">QTY</text><text class="lbl" x="280" y="238.8">NAME</text><text class="lbl" x="332" y="238.8">MATERIAL</text><text class="lbl" x="362" y="238.8">SIZE (MM)</text>
+        <text class="tx" x="252" y="246" style="font-size:3.4px">1</text><text class="tx" x="266" y="246" style="font-size:3.4px">1</text><text class="tx" x="280" y="246" style="font-size:3.4px">Box</text><text class="tx" x="332" y="246" style="font-size:3.4px">PLA</text><text class="tx" x="362" y="246" style="font-size:3.4px">240 × 160 × 100</text>
+        <text class="tx" x="252" y="253" style="font-size:3.4px">2</text><text class="tx" x="266" y="253" style="font-size:3.4px">1</text><text class="tx" x="280" y="253" style="font-size:3.4px">Lid</text><text class="tx" x="332" y="253" style="font-size:3.4px">PLA</text><text class="tx" x="362" y="253" style="font-size:3.4px">240 × 160 × 20</text>
+
+        <path class="vis" d="M250 255H410V287H250Z"></path>
+        <path class="vi2" d="M250 271H410M340 255V287M375 255V287M295 271V287"></path>
+        <text class="lbl" x="252" y="259.4">TITLE</text>
+        <text class="tx" x="252" y="267.6" style="font-size:6.4px; font-weight:600">Box with a lid</text>
+        <text class="lbl" x="252" y="275.4">DRAWN BY</text><text class="tx" x="252" y="283.4" style="font-size:3.8px">J. Maker</text>
+        <text class="lbl" x="297" y="275.4">DATE</text><text class="tx" x="297" y="283.4" style="font-size:3.8px">2026-11-10</text>
+        <text class="lbl" x="342" y="259.4">SCALE</text><text class="tx" x="342" y="267.6" style="font-size:5px; font-weight:600">1:2</text>
+        <text class="lbl" x="377" y="259.4">SHEET</text><text class="tx" x="377" y="267.6" style="font-size:5px; font-weight:600">1 / 2</text>
+        <text class="lbl" x="342" y="275.4">UNITS</text><text class="tx" x="342" y="283.4" style="font-size:3.8px">mm</text>
+        <text class="lbl" x="377" y="275.4">VERSION</text><text class="tx" x="377" y="283.4" style="font-size:3.8px">V3</text>
+      </svg>
+
+      <section aria-label="View properties" style="position:absolute; top:16px; right:16px; width:252px; background:#282E3A; border:1px solid #343B4A; border-radius:12px; box-shadow:0 14px 30px -16px rgba(0,0,0,.6); padding:12px; box-sizing:border-box; display:flex; flex-direction:column; gap:10px">
+        <div style="display:flex; align-items:center; gap:8px">
+          <svg class="ic cv" viewBox="0 0 24 24" style="width:18px; height:18px"><rect x="3" y="4" width="18" height="16" rx="2.5" style="stroke-dasharray:3 2.6"></rect><path class="f" d="M8 9H16V15H8Z"></path></svg>
+          <span style="font-weight:600; flex:1">Front</span>
+          <span class="mu" style="font-size:11.5px">base view</span>
+        </div>
+        <div style="display:grid; grid-template-columns:86px 1fr; gap:6px 8px; align-items:center">
+          <span class="mu">Looking from</span>
+          <button class="fld"><span>Front</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg></button>
+          <span class="mu">Scale</span>
+          <button class="fld"><span>Sheet · 1:2</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg></button>
+        </div>
+        <div>
+          <span class="pl">Style</span>
+          <div style="display:flex; gap:2px; margin-top:4px; padding:2px; border:1px solid #343B4A; border-radius:8px; background:#1B1F27">
+            <button class="seg" aria-label="Visible edges"><svg viewBox="0 0 24 24"><path d="M12 3 20 7.5v9L12 21 4 16.5v-9Z"></path><path d="M4 7.5 12 12l8-4.5M12 12v9"></path></svg></button>
+            <button class="seg on" aria-label="Visible and hidden edges" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M12 3 20 7.5v9L12 21 4 16.5v-9Z"></path><path d="M4 7.5 12 12l8-4.5M12 12v9"></path><path d="M4 16.5 12 12l8 4.5M12 3v9" style="stroke-dasharray:2 2.4"></path></svg></button>
+            <button class="seg" aria-label="Shaded"><svg viewBox="0 0 24 24"><path d="M12 3 20 7.5v9L12 21 4 16.5v-9Z" style="fill:currentColor; fill-opacity:.35; stroke:none"></path><path d="M12 12v9l8-4.5v-9Z" style="fill:currentColor; fill-opacity:.4; stroke:none"></path></svg></button>
+            <button class="seg" aria-label="Shaded with edges"><svg viewBox="0 0 24 24"><path d="M12 3 20 7.5v9L12 21 4 16.5v-9Z" style="fill:currentColor; fill-opacity:.25"></path><path d="M4 7.5 12 12l8-4.5M12 12v9"></path></svg></button>
+          </div>
+        </div>
+        <div>
+          <span class="pl">Show</span>
+          <div class="prow"><span>Hidden lines</span><button class="sw on" role="switch" aria-checked="true" aria-label="Hidden lines"></button></div>
+          <div class="prow"><span>Tangent edges</span><button class="sw on" role="switch" aria-checked="true" aria-label="Tangent edges"></button></div>
+          <div class="prow"><span>Centre lines</span><button class="sw on" role="switch" aria-checked="true" aria-label="Centre lines"></button></div>
+          <div class="prow"><span>View label</span><button class="sw" role="switch" aria-checked="false" aria-label="View label"></button></div>
+        </div>
+        <div>
+          <span class="pl">Bodies</span>
+          <div class="prow"><span style="display:flex; align-items:center; gap:8px"><span class="chk"><svg viewBox="0 0 24 24"><path d="M5 12.5 10 17.5 19 7"></path></svg></span>Box</span></div>
+          <div class="prow"><span style="display:flex; align-items:center; gap:8px"><span class="chk"><svg viewBox="0 0 24 24"><path d="M5 12.5 10 17.5 19 7"></path></svg></span>Lid</span></div>
+        </div>
+        <p style="margin:0; font-size:11.5px; line-height:1.4; color:#5AA9FF">Top and Left follow this view: they move, scale and restyle with it.</p>
+        <button style="height:34px; border:1px solid #3DD68C; border-radius:8px; color:#3DD68C; font-weight:600; display:flex; align-items:center; justify-content:center; gap:8px"><svg class="ic" viewBox="0 0 24 24" style="width:16px; height:16px"><rect class="f" x="3" y="3" width="18" height="18" rx="4.5"></rect><path d="M7.5 12.5 10.5 15.5 16.5 8.5"></path></svg>Finish Drawing</button>
+      </section>
+
+      <div style="position:absolute; left:50%; bottom:14px; transform:translateX(-50%); display:flex; align-items:center; gap:2px; padding:4px 8px; background:rgba(40,46,58,.9); border:1px solid #343B4A; border-radius:999px; box-shadow:0 14px 30px -16px rgba(0,0,0,.6)">
+        <button class="ib on" aria-label="Select" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M5 3l14 7-6 2-2 6Z"></path></svg></button>
+        <button class="ib" aria-label="Pan"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-2.5 2.5M12 3l2.5 2.5M12 21l-2.5-2.5M12 21l2.5-2.5M3 12l2.5-2.5M3 12l2.5 2.5M21 12l-2.5-2.5M21 12l-2.5 2.5"></path></svg></button>
+        <button class="ib" aria-label="Zoom"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5M8 11h6M11 8v6"></path></svg></button>
+        <button class="ib" aria-label="Fit sheet"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg></button>
+        <span class="mono mu" style="font-size:11.5px; padding:0 8px; border-left:1px solid #343B4A; border-right:1px solid #343B4A">62%</span>
+        <button class="ib on" aria-label="Snap" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M6 4v8a6 6 0 0 0 12 0V4h-4v8a2 2 0 0 1-4 0V4Z"></path></svg></button>
+        <button class="ib" aria-label="Show sticky notes"><svg viewBox="0 0 24 24"><path d="M4 4H20V14L14 20H4Z"></path><path d="M20 14H14V20"></path></svg></button>
+      </div>
+    </main>
+  </div>
+
+  <footer style="height:48px; flex:none; display:flex; align-items:center; gap:6px; padding:0 12px; background:#20252F; border-top:1px solid #343B4A; box-sizing:border-box">
+    <button class="pg on" aria-current="page"><svg viewBox="0 0 26 19" aria-hidden="true"><rect x=".5" y=".5" width="25" height="18" rx="1.5" fill="#FFFFFF" stroke="#939CAD"></rect><path d="M4 4h7v4H4ZM4 10h7v5H4ZM14 4h4v4h-4ZM16 12h7v4h-7Z" fill="none" stroke="#111318" style="stroke-width:.8"></path></svg><span style="font-weight:600">1 · Assembly</span></button>
+    <button class="pg"><svg viewBox="0 0 26 19" aria-hidden="true"><rect x=".5" y=".5" width="25" height="18" rx="1.5" fill="#FFFFFF" stroke="#939CAD"></rect><path d="M4 5h9v3H4ZM4 10h9v5H4ZM16 12h7v4h-7Z" fill="none" stroke="#111318" style="stroke-width:.8"></path></svg><span>2 · Lid</span></button>
+    <button class="ib" aria-label="New sheet" style="border:1px dashed #343B4A"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg></button>
+    <span style="flex:1"></span>
+    <span class="mono mu" style="font-size:11.5px">Editing drawing · sheet 1 of 2 · A3 landscape · 1:2 · mm</span>
+    <button class="ib" aria-label="Notification history"><svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15Z"></path><path d="M10 21h4"></path></svg></button>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
