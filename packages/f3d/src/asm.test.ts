@@ -337,6 +337,81 @@ describe('readAsm memory', () => {
     }
   });
 
+  it('keeps a stream of many small records within a small multiple of its size', () => {
+    // A record every 16 bytes holding three two-character strings: 27 times
+    // its size in heap (after a collection) when each string was an object
+    // and each record's values array kept room for 17 values; about 8 now.
+    const unit = [
+      0x11,
+      ...className('a'),
+      0x07,
+      2,
+      0x41,
+      0x42,
+      0x07,
+      2,
+      0x43,
+      0x44,
+      0x07,
+      2,
+      0x45,
+      0x46,
+    ];
+    const head = [...header(), ...className('a')];
+    const n = Math.floor((4 * MB) / unit.length);
+    const bytes = new Uint8Array(head.length + unit.length * n + 1);
+    bytes.set(head);
+    for (let i = 0, at = head.length; i < n; i++, at += unit.length) bytes.set(unit, at);
+    bytes[bytes.length - 1] = 0x11;
+    const before = process.memoryUsage().heapUsed;
+    const records = readAsm(bytes);
+    const grown = process.memoryUsage().heapUsed - before;
+    expect(records).toHaveLength(n + 1);
+    expect(grown / bytes.length).toBeLessThan(20);
+  });
+
+  it('shares one value for each string and class name of at most two characters', () => {
+    const values = readAsm(
+      stream([
+        ...className('a'),
+        0x07,
+        2,
+        0x41,
+        0x42,
+        0x0f,
+        0x0e,
+        1,
+        0x62,
+        0x07,
+        2,
+        0x41,
+        0x42,
+        0x0e,
+        1,
+        0x62,
+        0x07,
+        3,
+        0x41,
+        0x42,
+        0x43,
+        0x10,
+        0x11,
+      ]),
+    )[0]?.values;
+    expect(values?.[0]).toBe(values?.[3]);
+    expect(values?.[2]).toBe(values?.[4]);
+    expect(Object.isFrozen(values?.[0])).toBe(true);
+    expect(values).toEqual([
+      { t: 'str', v: 'AB' },
+      { t: 'open' },
+      { t: 'name', v: 'b' },
+      { t: 'str', v: 'AB' },
+      { t: 'name', v: 'b' },
+      { t: 'str', v: 'ABC' },
+      { t: 'close' },
+    ]);
+  });
+
   it('shares one object for each one-byte value', () => {
     const values = readAsm(stream([...className('a'), 0x0a, 0x0b, 0x02, 3, 0x0a, 0x02, 3, 0x11]))[0]
       ?.values;

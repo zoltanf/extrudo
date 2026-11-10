@@ -1941,3 +1941,65 @@ circle; one face where the sketch has two regions), sketch planes in no
 origin-axis direction, and a self-crossing spline chain that makes no region.
 (A cut whose side is tangent to the body's cylinder, which removed nothing, is
 built again with a fuzzy value since the kernel's 2026-11-06 change.)
+
+## Amendment, 2026-11-10: hostile files, round 3
+
+The leftovers of the second review's mapping and kernel findings, each
+measured on the base (main at 14e9530b) first, with synthetic inputs only.
+
+- **Profile-region matching** (`regions.ts`; review B, finding 2). Two
+  curves sampled as polylines were compared segment by segment, with the
+  second curve's segments rebuilt for every segment of the first; a spline's
+  span and a polyline's segment were searched for linearly; and a curve's box
+  was a spread of all its points, which overflows the stack past about
+  100,000 of them. Two crossing zig-zag splines took 2.0 s at 500 poles each,
+  7.9 s at 1,000 and 40 s at 2,000 (a test with 5,000 was stopped after
+  120 s); at 20,000 the spread threw. Now:
+  - a grid over where the two curves' boxes meet hands each segment of one
+    only the segments of the other whose boxes (widened by the crossing
+    tolerance) touch its own, in the order the old loop tested them, so the
+    crossings found are the same;
+  - spans and segments are found by halving, and boxes by a loop;
+  - every question asked of one sketch's pieces (cutting, finding a piece,
+    the mapping's point-in-region probes, at a tenth of a unit each: 4 ns
+    against 40 ns measured) spends one budget, `MAX_PIECE_WORK` = 30 million
+    units, about a second. Past it the sketch's regions are not looked for
+    again (`overBudget`) and a feature on them is left out: "its sketch has
+    too many curve crossings to find its profile".
+
+  The 20,000-pole pair is refused in about 1 s, 1,000 and 2,000 poles in
+  1.2 s; 500 poles now take 0.66 s. On 3,000 random sketches of lines, arcs,
+  circles, splines and ellipses the old and new code found the same 1,019,428
+  crossings and the same 304,263 region and listed pieces. On the corpus the
+  dearest sketch spends 3.96 million units (99th percentile 1.2 million), so
+  the budget has a margin of 7.6; every design imports to the same document
+  (its JSON without the dates, with seeded IDs), the same profile references
+  and the same skipped features, and the import of all designs took
+  68.4 s → 63.8 s. Still open, in the sketch package and not the import's:
+  Extrudo's own profile detection (`packages/sketch` `cutSegments`) also
+  tests every pair of segments of a sketch (71 s for the 2,000-pole pair) and
+  spreads them (`detectProfiles`, a `RangeError` at 20,000), and the import
+  runs it for every sketch it maps; the import worker's 30 s budget is what
+  stops it in the app.
+- **Rounds of very many edges** (`map.ts` `edgeTreatment`; review B,
+  finding 4). A fillet or chamfer of more than `MAX_ROUND_EDGES` = 2,000
+  edges (all its sets together) is left out: "it rounds N edges, more than
+  2000". The corpus's largest round has 224 edges (median 4, 1,090 rounds).
+  The kernel's side of the finding, a budget of builds for a failing round's
+  retries, is ADR-0038's amendment of the same day.
+- **B-rep value storage** (`asm.ts` `readAsm`; round two's fix 2). Within
+  round two's caps a crafted stream of a record every 16 bytes, each holding
+  three two-character strings, still cost 27 times its size in heap (after a
+  collection, `--expose-gc`, 16 MB streams): an object and a string for each
+  value, and a values array that kept room for 17 values. Strings and class
+  names of at most two characters now share one frozen value each (at most
+  65,793 of them), a class name inside a block is decoded once, and a record
+  keeps an exact-size copy of its values. The dearest crafted stream measured
+  within the caps (a record every 16 bytes of two four-character strings) now
+  costs 15.6 times its size (was 23.1), three-character strings 14.4, floats
+  12.8; the corpus's eight largest streams 5.6 to 6.0 (were 6.0 to 6.5). Every
+  one of the corpus's 670 B-rep streams reads to the same records.
+
+The corpus gate (replay and body check, all designs) is unchanged design by
+design. The other leftovers: a kernel crash loop is ADR-0024's amendment of
+this day, the WASM download check ADR-0001's.
