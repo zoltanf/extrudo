@@ -117,3 +117,79 @@ usual in CAD.
   pass.
 - Polygon containment is exact to about 1 µm; two separate curve groups
   closer than that could nest wrongly.
+
+## Amendment 2026-11-10: the pair search
+
+**What.** `cutSegments` tested every pair of segments for a crossing. A
+sketch's ellipses and splines are polylines (16 segments per spline pole),
+so two crossing splines of 2,000 poles (64,000 segments, two billion pairs)
+took 66 s, and the f3d import met such sketches. Now, from 32 segments on,
+`nearPairsWithin` (`packages/sketch/src/profiles/pairs.ts`) puts the
+segments' boxes in a grid and yields only the pairs whose boxes meet; below
+32, every pair is tested as before. Three more spots went too: the
+segments were gathered with a spread (`push(...)`), which throws a
+RangeError past about 120,000 segments (a spline of 8,000 poles); the hole
+search ran `insidePolygon` for every outline against every region (1,000
+separate circles took 0.9 s, 5,000 took 28 s); `profileIds` copied each key's list for every
+region (k regions sharing a key cost k²).
+
+**The output must not change.** Region IDs are stored in designs, so the
+regions, their order, keys, IDs and every coordinate stay bit for bit as
+they were. Rules for any change here:
+
+- The grid only **leaves out pairs whose boxes are apart**; every pair it
+  yields goes through the same `overlap` test (0.1 µm) and the same cut code
+  (`cutPair`) as before. Its boxes are widened by twice that tolerance, so
+  rounding can't make it drop a pair `overlap` would keep. A sketch with a
+  box that isn't finite (beyond ±1e300 or NaN) tests every pair.
+- Pairs come **in the order of the all-pairs loop** (`i` ascending, then
+  `j`): a segment's cuts are pushed in the same order, and equal cuts (a
+  `-0`, a `NaN` from a degenerate curve) sort the same way.
+- The hole search skips a region only when the probe is outside its
+  polygon's box: above or below it (exact: no edge straddles the row), or
+  sideways by more than 1e-9 × the box's coordinates (every straddling edge
+  is crossed or none is, and a closed polygon has an even number). A NaN box
+  never skips. The boxes are made only when there are several outlines.
+- `detectProfilesAllPairs` is the reference: `pairs.test.ts` compares it
+  with `detectProfiles` on 250 seeded random sketches (lines, arcs, circles,
+  open and closed splines on a coarse lattice, so they cross, touch, overlap
+  and share ends) with `toStrictEqual`, and `nearPairsWithin` with a test of
+  every pair on 300 random box sets (clustered, degenerate, long and thin).
+
+**The grid.** The cell's side is the median of the boxes' larger sides, so a
+segment covers a few cells whatever the sketch's extent (a dense spline in a
+large plate); a box covering more than 16 cells (a long line among short
+spline segments) stays out of the grid and is a candidate of every box.
+Cells live in a `Map` keyed by `row × columns + column` (at most 2²⁰ per
+side). Within a cell the list ascends, so a binary search skips to `j > i`;
+the box test comes before the sort.
+
+**Numbers** (Ubuntu machine, Node 24). Two crossing splines of 500 / 2,000 /
+20,000 poles: 1.8 s / 66.5 s / RangeError before; 0.25 s / 0.83 s / 10.3 s
+now (the last is linear work on 640,000 segments: vertices, pieces, loops).
+1,000 / 5,000 separate circles: 0.9 s / 28.5 s before; 57 ms / 0.35 s now.
+1,045 sketches of 310 designs (an f3d corpus and the repository's
+fixtures): the same output bit for bit (a digest of the whole output per
+sketch), the whole Vitest suite run with every `detectProfiles` call
+checked against the reference (7,332 sketches) the same; per-sketch time
+median 0.209 → 0.211 ms (within noise either way round), sketches of 5–20
+curves median ratio 1.00, sum over all sketches 7.9 s → 3.2 s, the dearest
+1.25 s → 0.55 s.
+
+**Still unbounded:** the output itself. n lines that all cross each other
+make about n²/2 regions: 1,000 lines 0.49 million regions in 10 s (11 s before) and 2 GB,
+2,000 lines 2 million regions in 60 s and 7.3 GB; 5,000 would need about
+12 million regions and some 45 GB. No limit was added (the largest sketch of
+the census has 456 regions); a limit is an open question below.
+
+**Tried and dropped.** Sharing the f3d import's grid (`nearPairs` in
+`packages/f3d/src/regions.ts`, ADR-0083): it is sized by the two curves'
+common extent with at most 1,024 cells a side, which on one long thin sketch
+put about a thousand candidates in each cell (two 20,000-pole splines spent
+5 s in it), breaks down the same way on a dense curve inside a large
+outline, and charges the import's work budget, whose verdicts must not
+move. A sweep on x: quadratic on a hatch of parallel lines.
+
+**Open.** A limit for sketches whose regions run into the millions (refuse
+past a number of pieces, with a message on the sketch, and the kernel
+refusing the same way).

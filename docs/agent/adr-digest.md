@@ -172,7 +172,7 @@ direction) set. The app caches per `SketchData` (`sketch/profiles.ts`),
 shades them (`--x-profile-fill`, palette "Show profiles"), and with no
 tool the host hovers/selects a profile where no entity is (kind
 `profile`, ID `profileRefId(sketch, region)`); the properties panel shows
-the area. ADR-0021 (P1-12) added the timeline and browser menus
+the area. **Its amendment (2026-11-10), the pair search:** from 32 segments `cutSegments` takes its pairs from `nearPairsWithin` (`profiles/pairs.ts`, a grid sized by the median box); **the output must stay bit for bit** (IDs are stored): the grid may only leave out pairs whose boxes are apart (its boxes widened 2 × `PROFILE_TOLERANCE`, then the same `overlap` and `cutPair`), pairs come in the all-pairs order (`i`, then `j`), a non-finite box falls back to every pair, the hole search skips a region only outside its polygon's box (y exact, x by a margin, NaN never), no spreads of segment lists; `pairs.test.ts` checks against `detectProfilesAllPairs`. ADR-0021 (P1-12) added the timeline and browser menus
 (`shell/featureActions.ts` shared by both, `FeatureMenu.tsx`, design
 system `ContextMenu`): rename (F2, popover on a chip, field in a row),
 optional `Feature.visible` (`setFeatureVisibility`, one undo step per eye

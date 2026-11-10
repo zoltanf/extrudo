@@ -1,0 +1,1 @@
+- 2026-11-10 · **Large sketches find their regions fast**: a sketch with long crossing splines (thousands of points) shows its regions in about a second instead of a minute, and a spline too long to handle before no longer breaks region detection; every region keeps its ID.
