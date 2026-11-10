@@ -840,7 +840,7 @@ fuse used different distances for "touching". Any join can meet it
 **What OCCT does** (the pinned image, natively, and the app's WASM; box
 and box, box and an upright cylinder, a tool of two solids, a plate of 222
 faces). `BRepAlgoAPI_Fuse` with a gap g between two faces: for g ≤ 1e-7 mm
-(OCCT's confusion tolerance) one solid; for g from 1e-6 to 1e-4 mm no error,
+(OCCT's smallest tolerance) one solid; for g from 1e-6 to 1e-4 mm no error,
 no warning, an **empty interference table** (the General Fuse found no
 contact at all) and both solids side by side, volume the sum. With
 `SetFuzzyValue(1e-4)`: one solid, valid, the face count of the exact join
