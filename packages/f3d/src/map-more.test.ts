@@ -8,7 +8,7 @@ import { Kernel } from '@extrudo/kernel';
 import { kernelFeatures, loadOcct, RecomputeEngine } from '@extrudo/kernel/node';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ParameterValue } from './decode/parameters';
-import { f3dToDesign, MAX_REPEATED_ROUND_REFS } from './map';
+import { f3dToDesign, MAX_REPEATED_ROUND_REFS, MAX_ROUND_EDGES } from './map';
 import {
   type F3dDesign,
   type F3dEdge,
@@ -882,93 +882,109 @@ describe('f3dToDesign: copying features', () => {
     expect(both).toBeCloseTo(RING + 2 * ((one as number) - RING), 4);
   });
 
-  it('leaves out a round whose repeat would take too many references, and returns quickly', () => {
-    // Eleven 0.4 mm bosses round the ring, their top rims rounded, repeated
-    // 1000 times: 999 copies × 11 edges is over MAX_REPEATED_ROUND_REFS.
-    const count = 11;
-    const at = (i: number): [number, number] => [
-      0.38 * Math.cos((2 * Math.PI * i) / count),
-      0.38 * Math.sin((2 * Math.PI * i) / count),
-    ];
-    const f3d = washerWithHole();
-    f3d.features.splice(2);
-    const circles = Array.from({ length: count }, (_, i) =>
-      circle(50 + 2 * i, BigInt(501 + i), 0.02, ...at(i)),
-    );
-    const bosses = extrude(6, 'Extrude3', 7, 'join', 501n);
-    bosses.parameters = [parameter({ name: 'd6', kind: 'AlongDistance', value: 0.12 })];
-    const tags = circles.map((_, i) => [[BigInt(501 + i)]]);
-    bosses.profiles = [
-      {
-        id: 106,
-        sketch: 7,
-        regions: tags.map((o) => ({ outer: o, inner: [], outerPieces: whole(o), innerPieces: [] })),
-      },
-    ];
-    f3d.features.push(sketch(5, 7, 'Sketch3', circles), bosses, {
-      ...base,
-      type: 'fillet',
-      id: 7,
-      kind: 'Fillet',
-      name: 'Fillet1',
-      sets: [
+  it.each([
+    // 999 copies × 11 edges: over MAX_REPEATED_ROUND_REFS.
+    [1000, () => MAX_REPEATED_ROUND_REFS],
+    // 199 copies × 11 edges: under it, but over the edges any imported round may have.
+    [200, () => MAX_ROUND_EDGES],
+  ])(
+    'leaves out a round whose repeat would take too many references (%i copies), and returns quickly',
+    (copies, bound) => {
+      // Eleven 0.4 mm bosses round the ring, their top rims rounded, repeated
+      // 1000 times: 999 copies × 11 edges is over MAX_REPEATED_ROUND_REFS.
+      const count = 11;
+      const at = (i: number): [number, number] => [
+        0.38 * Math.cos((2 * Math.PI * i) / count),
+        0.38 * Math.sin((2 * Math.PI * i) / count),
+      ];
+      const f3d = washerWithHole();
+      f3d.features.splice(2);
+      const circles = Array.from({ length: count }, (_, i) =>
+        circle(50 + 2 * i, BigInt(501 + i), 0.02, ...at(i)),
+      );
+      const bosses = extrude(6, 'Extrude3', 7, 'join', 501n);
+      bosses.parameters = [parameter({ name: 'd6', kind: 'AlongDistance', value: 0.12 })];
+      const tags = circles.map((_, i) => [[BigInt(501 + i)]]);
+      bosses.profiles = [
         {
-          size: parameter({ name: 'd7', kind: 'Radius', value: 0.005 }),
-          edges: circles.map((_, i) => {
-            const [x, y] = at(i);
-            return {
-              faces: [
-                {
-                  tags: [{ token: '2', designs: [601] }],
-                  feature: 6,
-                  surface: { kind: 'plane', point: [x, y, 0.12], normal: [0, 0, 1] },
-                },
-                {
-                  tags: [{ token: '3', designs: [601] }],
-                  feature: 6,
-                  surface: {
-                    kind: 'cone',
-                    center: [x, y, 0],
-                    axis: [0, 0, 1],
-                    radius: 0.02,
-                    cylinder: true,
-                    slope: 0,
-                  },
-                },
-              ],
-              bounds: [],
-            } as F3dEdge;
-          }),
+          id: 106,
+          sketch: 7,
+          regions: tags.map((o) => ({
+            outer: o,
+            inner: [],
+            outerPieces: whole(o),
+            innerPieces: [],
+          })),
         },
-      ],
-    } as F3dFeature);
-    f3d.features.push({
-      ...base,
-      type: 'circular-pattern',
-      id: 8,
-      kind: 'C-Pattern',
-      name: 'C-Pattern1',
-      parameters: [parameter({ name: 'd8', kind: 'TotalAngle', unit: 'deg', value: 2 * Math.PI })],
-      objects: 'features',
-      features: [6, 7],
-      axis: { point: [0, 0, 0], direction: [0, 0, 1] },
-      count: parameter({ name: 'countU', kind: 'countU', unit: '', value: 1000 }),
-    });
-    const started = performance.now();
-    const { design, report } = f3dToDesign(f3d, 'Washer');
-    expect(performance.now() - started).toBeLessThan(10_000);
-    const doc = design.toJSON();
-    const original = doc.features.find((f) => f.name === 'Fillet1')?.inputs.edges as
-      | { refs: unknown[] }
-      | undefined;
-    // The original rounds all eleven rims, so its repeat would take 999 × 11 references.
-    expect(original?.refs).toHaveLength(count);
-    expect(999 * count).toBeGreaterThan(MAX_REPEATED_ROUND_REFS);
-    expect(doc.features.some((f) => f.name === 'Fillet1 (C-Pattern1)')).toBe(false);
-    expect(report.notes).toContain(
-      'C-Pattern1: 1 of the 2 features it repeats left out (not imported, or a fillet or chamfer).',
-    );
-  });
+      ];
+      f3d.features.push(sketch(5, 7, 'Sketch3', circles), bosses, {
+        ...base,
+        type: 'fillet',
+        id: 7,
+        kind: 'Fillet',
+        name: 'Fillet1',
+        sets: [
+          {
+            size: parameter({ name: 'd7', kind: 'Radius', value: 0.005 }),
+            edges: circles.map((_, i) => {
+              const [x, y] = at(i);
+              return {
+                faces: [
+                  {
+                    tags: [{ token: '2', designs: [601] }],
+                    feature: 6,
+                    surface: { kind: 'plane', point: [x, y, 0.12], normal: [0, 0, 1] },
+                  },
+                  {
+                    tags: [{ token: '3', designs: [601] }],
+                    feature: 6,
+                    surface: {
+                      kind: 'cone',
+                      center: [x, y, 0],
+                      axis: [0, 0, 1],
+                      radius: 0.02,
+                      cylinder: true,
+                      slope: 0,
+                    },
+                  },
+                ],
+                bounds: [],
+              } as F3dEdge;
+            }),
+          },
+        ],
+      } as F3dFeature);
+      f3d.features.push({
+        ...base,
+        type: 'circular-pattern',
+        id: 8,
+        kind: 'C-Pattern',
+        name: 'C-Pattern1',
+        parameters: [
+          parameter({ name: 'd8', kind: 'TotalAngle', unit: 'deg', value: 2 * Math.PI }),
+        ],
+        objects: 'features',
+        features: [6, 7],
+        axis: { point: [0, 0, 0], direction: [0, 0, 1] },
+        count: parameter({ name: 'countU', kind: 'countU', unit: '', value: copies }),
+      });
+      const started = performance.now();
+      const { design, report } = f3dToDesign(f3d, 'Washer');
+      expect(performance.now() - started).toBeLessThan(10_000);
+      const doc = design.toJSON();
+      const original = doc.features.find((f) => f.name === 'Fillet1')?.inputs.edges as
+        | { refs: unknown[] }
+        | undefined;
+      // The original rounds all eleven rims, so its repeat would take (copies − 1) × 11 references.
+      expect(original?.refs).toHaveLength(count);
+      expect((copies - 1) * count).toBeGreaterThan(bound());
+      expect((copies - 1) * count > MAX_REPEATED_ROUND_REFS).toBe(copies === 1000);
+      expect(doc.features.some((f) => f.name === 'Fillet1 (C-Pattern1)')).toBe(false);
+      expect(report.notes).toContain(
+        'C-Pattern1: 1 of the 2 features it repeats left out (not imported, or a fillet or chamfer).',
+      );
+    },
+  );
 
   it('repeats a cut along a sketch line, walked from the start point the file gives', async () => {
     for (const [start, flip] of [

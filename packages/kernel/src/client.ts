@@ -28,6 +28,13 @@ export interface KernelClientOptions {
    * the document here and marks the feature that crashed as an error.
    */
   onRestart?: (restarts: number) => void;
+  /**
+   * Whether a crash counts against `maxRestarts`; counted when not given. The
+   * recomputer leaves out a crash that named a new feature to skip, so a
+   * design with several features that trap the kernel still opens (each
+   * crash is one feature fewer to try).
+   */
+  counts?: (error: Error) => boolean;
 }
 
 /**
@@ -154,7 +161,11 @@ export class KernelClient {
     this.#connection = undefined;
     const now = Date.now();
     const window = this.#options.restartWindowMs ?? 60_000;
-    this.#crashTimes = [...this.#crashTimes.filter((t) => now - t < window), now];
+    const counted = this.#options.counts?.(error) ?? true;
+    this.#crashTimes = [
+      ...this.#crashTimes.filter((t) => now - t < window),
+      ...(counted ? [now] : []),
+    ];
     if (this.#crashTimes.length > (this.#options.maxRestarts ?? 3)) {
       this.#ready = Promise.reject(
         new KernelCrashError(`The kernel keeps stopping; last error: ${error.message}`),
