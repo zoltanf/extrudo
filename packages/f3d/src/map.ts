@@ -2875,13 +2875,22 @@ function offsetFaces(
 }
 
 /**
+ * The most references one repeated round may get, all copies of all its
+ * inputs together (`copyRounds`). The corpus's largest is 18.
+ */
+export const MAX_REPEATED_ROUND_REFS = 10_000;
+
+/**
  * The fillets and chamfers a mirror or pattern of features copies, repeated
  * on every copy (the kernel copies only the tools of solid features). Each
  * becomes one more round after the copying feature, named `<round> (<copy>)`,
  * on the copies of its edges: an edge between faces of the copied features
  * is the edge between those faces' copies, `<op>:<copy>:<label>:from:(<face>)`.
  * A round with an edge on any other face (the body's, an earlier round's)
- * can't be told on the copies and stays left out, as the note says.
+ * can't be told on the copies and stays left out, as the note says; so does
+ * one whose repeat would take more than `MAX_REPEATED_ROUND_REFS` references
+ * (copies × its edges and faces; a hostile file's count must not make the
+ * import hang, ADR-0083 "Hostile files").
  */
 function copyRounds(
   d: Design,
@@ -2926,10 +2935,17 @@ function copyRounds(
     if (!wanted.has(record)) continue;
     const source = d.doc.features.find((x) => x.id === round.id);
     if (!source) continue;
+    // The repeat's references, all copies of all its inputs together: past the cap, left out.
+    const refsOf = (input: unknown) => (input as { refs?: GeomRef[] } | undefined)?.refs;
+    let total = 0;
+    for (const [key, input] of Object.entries(source.inputs))
+      if (/^(edges|face)\d*$/.test(key)) total += refsOf(input)?.length ?? 0;
+    if (total * labels.length > MAX_REPEATED_ROUND_REFS) continue;
     const inputs: Record<string, unknown> = {};
     let whole = true;
     for (const [key, input] of Object.entries(source.inputs)) {
-      const refs = (input as { kind?: string; refs?: GeomRef[] }).refs;
+      if (!whole) break;
+      const refs = refsOf(input);
       if (!/^(edges|face)\d*$/.test(key) || !refs) {
         // An expression without its parameter name: that stays the original's.
         const { paramName: _, ...rest } = input as { paramName?: string };
@@ -2939,12 +2955,16 @@ function copyRounds(
       // A chamfer's distance face is one face: one per copy can't be said in one round.
       if (key.startsWith('face') && labels.length > 1) whole = false;
       const out: GeomRef[] = [];
+      const seen = new Set<string>();
       for (const label of labels)
         for (const ref of refs) {
           const id = ref.kind === 'edge' ? edgeCopy(ref.id, label) : copyOf(ref.id, label);
           if (id === undefined) whole = false;
           // Without the original's fingerprint: a lost copy is left out, not matched to the original.
-          else if (!out.some((r) => r.id === id)) out.push({ kind: ref.kind, id } as GeomRef);
+          else if (!seen.has(id)) {
+            seen.add(id);
+            out.push({ kind: ref.kind, id } as GeomRef);
+          }
         }
       inputs[key] = { kind: 'ref', refs: out };
     }

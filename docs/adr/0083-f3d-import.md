@@ -1966,7 +1966,10 @@ test that fails before it (`map-more.test.ts`).
    body's), a grid or a path pattern keep the note. The repeat carries no
    fingerprint (a lost copy is left out, not matched to the original), and its
    expressions drop their parameter names. A chamfer with a distance face is
-   repeated for a mirror only (one face can't serve several copies).
+   repeated for a mirror only (one face can't serve several copies). A repeat
+   that would take more than `MAX_REPEATED_ROUND_REFS` (10 000) references,
+   copies × edges and faces, is left out with the note (the corpus's largest
+   is 18), so a hostile file's count can't make the import hang.
 3. **A thread along part of a face moves the whole face to the crest first.**
    The file resizes the whole face to the thread's crest (its minor diameter
    in a hole, its major on a shaft), not only along the thread (FORMAT.md, the
