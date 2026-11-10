@@ -1289,6 +1289,14 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   imported into a new design reads `data-body-appearance`
   `Body1:#c81e28:1` (`Body1:<n>:40,80,60`); recoloured `#22b3c2` and its chip's
   Up set to `y` (`40,60,80`), it stays `#22b3c2`.
+  **The hidden-solid test** (ADR-0066's amendment of 2026-11-10) builds its
+  file in the test: b3.step's text with `#9100 = INVISIBILITY((#<the second
+  MANIFOLD_SOLID_BREP>));` before the last `ENDSEC;`, given to the chooser as
+  `{ name, mimeType: 'model/step', buffer }`. After OK the browser has both
+  rows: `[data-body]` filtered by the name button ("Stand rest", `exact: true`)
+  reads `data-body-display="hidden"`, "Stand base" `shown`, and `data-bodies`
+  lists only "Stand base". The eye "Show Stand rest" draws it, and it stays
+  `shown` after the chip's Up is set to `y`.
   Slice 5 added the **canvas** (`features/canvas.tsx`, `viewport/Canvas.tsx`,
   `viewport/canvasGeometry.ts`, `viewport/canvasImages.ts`): a canvas is **view
   geometry from a report, never picked** — the kernel evaluator reads the plane

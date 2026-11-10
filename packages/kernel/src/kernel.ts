@@ -2155,6 +2155,23 @@ export class Kernel {
     return solids;
   }
 
+  /**
+   * Which of a STEP file's solids the file hides (ADR-0066's amendment of
+   * 2026-11-10): per solid in the order `solids(readStep(text))` lists them,
+   * `true` when one of the file's `INVISIBILITY` entities lists the solid
+   * itself, a styled item of it or a layer it is on. Read with the plain
+   * reader, as `readStep` reads, so the two always list the same solids.
+   */
+  readStepHidden(text: string): boolean[] {
+    const f = this.#facade;
+    const n = f.readStepHidden(text);
+    if (n < 0) {
+      throw new KernelError(f.lastError() || "Couldn't read the STEP file's hidden bodies.");
+    }
+    const values = this.#copy(Float64Array, f.geometryPtr(), f.geometrySize());
+    return Array.from({ length: n }, (_, i) => values[i] === 1);
+  }
+
   release(...shapes: ShapeHandle[]): void {
     for (const shape of shapes) {
       const manifold = this.#meshes.get(shape);
