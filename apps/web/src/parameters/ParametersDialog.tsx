@@ -12,7 +12,17 @@ import {
   type ParameterId,
   removeParameter,
 } from '@extrudo/core';
-import { ChevronRight, GripVertical, Plus, Redo2, Star, Trash2, Undo2, X } from 'lucide-react';
+import {
+  ChevronRight,
+  GripVertical,
+  Link2,
+  Plus,
+  Redo2,
+  Star,
+  Trash2,
+  Undo2,
+  X,
+} from 'lucide-react';
 import { type DragEvent, type ReactElement, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
 import { shortcutLabel } from '../commands/shortcuts';
@@ -24,12 +34,20 @@ import {
   MenuItem,
   MenuSeparator,
 } from '../design-system';
-import { dropIndex, featureName, listSections, starCommand, stepIndex } from './list';
-import { Message } from './Message';
+import {
+  dropIndex,
+  featureName,
+  followsUserParameter,
+  listSections,
+  starCommand,
+  stepIndex,
+} from './list';
 import {
   ModelInspector,
   NewParameterForm,
+  type Refusal,
   type Selection,
+  type Spot,
   UserInspector,
 } from './ParameterInspector';
 
@@ -69,19 +87,23 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
   const doc = useStore(store, (s) => s.doc);
   const { canUndo, canRedo, undoLabel, redoLabel, undo, redo } = useStore(store);
   const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
-  const [message, setMessage] = useState('');
+  const [refusal, setRefusal] = useState<Refusal>();
+  const dismiss = () => setRefusal(undefined);
   const [chosen, setChosen] = useState<Selection>();
 
-  /** Dispatches a command; a rejected one shows its message instead of throwing. */
-  const run = (command: Command<unknown>): boolean => {
+  /**
+   * Dispatches a command; a rejected one shows its message at `spot` (under
+   * the name field, or by the inspector's buttons) instead of throwing.
+   */
+  const run = (command: Command<unknown>, spot: Spot = 'actions'): boolean => {
     try {
       if (apply) apply(command);
       else store.getState().dispatch(command);
-      setMessage('');
+      setRefusal(undefined);
       return true;
     } catch (error) {
       if (!(error instanceof CommandError)) throw error;
-      setMessage(error.message);
+      setRefusal({ spot, text: error.message });
       return false;
     }
   };
@@ -90,7 +112,7 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
   const selection = resolveSelection(chosen, doc, model);
   const select = (next: Selection) => {
     setChosen(next);
-    setMessage('');
+    setRefusal(undefined);
   };
   /** Moves a user parameter past its neighbour in its group (Move up, Move down, Alt+arrows). */
   const step = (id: ParameterId, direction: -1 | 1) => {
@@ -109,6 +131,8 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
         evaluation={evaluation}
         parameter={parameter}
         run={run}
+        refusal={refusal}
+        onDismiss={dismiss}
         onSelect={select}
         canMoveUp={stepIndex(doc.parameters, parameter.id, -1) !== undefined}
         canMoveDown={stepIndex(doc.parameters, parameter.id, 1) !== undefined}
@@ -123,6 +147,8 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
         doc={doc}
         evaluated={evaluated}
         run={run}
+        refusal={refusal}
+        onDismiss={dismiss}
         onSelect={select}
       />
     ) : null;
@@ -132,6 +158,8 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
         doc={doc}
         evaluation={evaluation}
         run={run}
+        refusal={refusal}
+        onDismiss={dismiss}
         onAdded={(id) => select({ kind: 'user', id })}
       />
     );
@@ -141,7 +169,7 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) setMessage('');
+        if (!next) setRefusal(undefined);
         onOpenChange(next);
       }}
       title="Parameters"
@@ -185,12 +213,7 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
           onStep={step}
           history={history}
         />
-        <div className="flex min-h-0 flex-col overflow-y-auto px-6 py-4">
-          <p className={message ? 'mb-3 text-sm text-error' : ''} role="alert">
-            <Message text={message} />
-          </p>
-          {inspector}
-        </div>
+        <div className="flex min-h-0 flex-col overflow-y-auto px-6 py-4">{inspector}</div>
       </div>
     </Dialog>
   );
@@ -222,6 +245,15 @@ interface History {
   redo(): void;
 }
 
+/** Double-clicking a row puts the caret in the inspector's name field (issue #203). */
+function focusName() {
+  requestAnimationFrame(() => {
+    const field = document.querySelector<HTMLInputElement>('input[aria-label^="Name of "]');
+    field?.focus();
+    field?.select();
+  });
+}
+
 /** The list on the left: user parameters by section, New parameter, model parameters. */
 function ParameterList({
   doc,
@@ -244,8 +276,34 @@ function ParameterList({
 }) {
   const [dragging, setDragging] = useState<ParameterId>();
   const [drop, setDrop] = useState<DropTarget>();
-  const [modelOpen, setModelOpen] = useState(false);
-  const showModel = modelOpen || selection.kind === 'model';
+  // Selecting a model parameter (in the list, or from Used by) opens its
+  // section; the header still collapses it while that row stays selected.
+  const selectedModel = selection.kind === 'model' ? selection.name : undefined;
+  const [showModel, setShowModel] = useState(selectedModel !== undefined);
+  const [openedFor, setOpenedFor] = useState(selectedModel);
+  if (selectedModel !== openedFor) {
+    setOpenedFor(selectedModel);
+    if (selectedModel !== undefined) setShowModel(true);
+  }
+  // Model parameters that only follow a user parameter stay out of the list
+  // behind a Show line (ADR-0142 §6), apart from the selected one.
+  const [followersOpen, setFollowersOpen] = useState(false);
+  const followers = useMemo(
+    () =>
+      new Set(
+        [...evaluation.parameters.values()]
+          .filter((p) => followsUserParameter(doc, evaluation, p))
+          .map((p) => p.name),
+      ),
+    [doc, evaluation],
+  );
+  const shownModel = model.filter(
+    (p) =>
+      followersOpen ||
+      !followers.has(p.name) ||
+      (selection.kind === 'model' && selection.name === p.name),
+  );
+  const hiddenFollowers = model.length - shownModel.length;
   const sections = listSections(doc.parameters, dragging !== undefined);
   const grouped = sections.length > 1 || sections[0]?.title !== 'User parameters';
   const settings = doc.settings;
@@ -357,6 +415,7 @@ function ParameterList({
                         data-parameter-row={parameter.name}
                         aria-current={selected ? 'true' : undefined}
                         onClick={() => onSelect({ kind: 'user', id })}
+                        onDoubleClick={focusName}
                         onKeyDown={(event) => {
                           if (
                             !event.altKey ||
@@ -407,7 +466,13 @@ function ParameterList({
                       </MenuItem>
                       <MenuItem
                         icon={<Trash2 size={14} />}
-                        onSelect={() => run(removeParameter({ id }))}
+                        onSelect={() => {
+                          // A refusal shows by the inspector's Delete button, so the
+                          // row is selected first, and the old selection comes back
+                          // if the delete goes through.
+                          onSelect({ kind: 'user', id });
+                          if (run(removeParameter({ id }))) onSelect(selection);
+                        }}
                       >
                         Delete {parameter.name}
                       </MenuItem>
@@ -454,7 +519,7 @@ function ParameterList({
             <button
               type="button"
               aria-expanded={showModel}
-              onClick={() => setModelOpen(!showModel)}
+              onClick={() => setShowModel(!showModel)}
               className="flex h-8 w-full items-center justify-between rounded-control px-2 text-base text-muted hover:bg-line/50 hover:text-ink"
             >
               <span className="flex items-center gap-1.5">
@@ -469,7 +534,7 @@ function ParameterList({
             </button>
             {showModel && (
               <ul>
-                {model.map((p) => (
+                {shownModel.map((p) => (
                   <li key={p.name}>
                     <button
                       type="button"
@@ -478,11 +543,16 @@ function ParameterList({
                         selection.kind === 'model' && selection.name === p.name ? 'true' : undefined
                       }
                       onClick={() => onSelect({ kind: 'model', name: p.name })}
+                      onDoubleClick={focusName}
                       className="group grid h-8 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-control pr-2.5 pl-7 text-left hover:bg-line/50 aria-[current]:bg-accent-soft aria-[current]:hover:bg-accent-soft"
                     >
                       <span className="flex min-w-0 items-center gap-2">
                         <span className="font-mono text-field">{p.name}</span>
-                        {!isPlainValue(p.expression) && <FormulaMark />}
+                        {followers.has(p.name) ? (
+                          <FollowsMark name={p.expression.trim()} />
+                        ) : (
+                          !isPlainValue(p.expression) && <FormulaMark />
+                        )}
                         <span className="truncate text-sm text-muted group-aria-[current]:text-ink">
                           {featureName(doc, p)}
                         </span>
@@ -492,6 +562,18 @@ function ParameterList({
                   </li>
                 ))}
               </ul>
+            )}
+            {showModel && (followersOpen || hiddenFollowers > 0) && (
+              <button
+                type="button"
+                aria-expanded={followersOpen}
+                onClick={() => setFollowersOpen(!followersOpen)}
+                className="h-7 w-full rounded-control pr-2.5 pl-7 text-left text-sm text-muted hover:bg-line/50 hover:text-ink"
+              >
+                {followersOpen
+                  ? 'Hide those that follow a user parameter'
+                  : `Show ${hiddenFollowers} that ${hiddenFollowers === 1 ? 'follows' : 'follow'} a user parameter`}
+              </button>
             )}
           </section>
         )}
@@ -508,6 +590,22 @@ export function FormulaMark() {
       className="shrink-0 rounded-[4px] border border-sketch/60 px-1 font-mono text-xs text-ink italic"
     >
       ƒx
+    </span>
+  );
+}
+
+/**
+ * The small link a model parameter gets in the list when it only follows the
+ * user parameter `name` (ADR-0142 §6), in place of "ƒx".
+ */
+function FollowsMark({ name }: { name: string }) {
+  return (
+    <span
+      title={`Follows ${name}`}
+      className="inline-flex h-[18px] shrink-0 items-center rounded-[4px] border border-accent/70 px-1 text-ink"
+    >
+      <Link2 size={12} aria-hidden />
+      <span className="sr-only">Follows {name}</span>
     </span>
   );
 }

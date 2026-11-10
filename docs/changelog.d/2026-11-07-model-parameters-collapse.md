@@ -1,0 +1,1 @@
+- 2026-11-07 · **Model parameters collapse**: the Parameters dialog's Model parameters section now closes from its header while one of its parameters is selected, instead of staying open (ADR-0086).
