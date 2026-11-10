@@ -2602,7 +2602,10 @@ const HLR_KINDS: readonly HlrKind[] = ['sharp', 'smooth', 'seam', 'outline'];
 
 /** One model edge piece or outline of a view (`Kernel.hlrSpans`). */
 export interface HlrEdge {
-  /** The model edge's sub-shape index; left out for an outline HLR added. */
+  /**
+   * The model edge's sub-shape index; left out for an outline HLR added. An
+   * outline can have one: a smooth edge or seam that a face turns away at.
+   */
   edge?: number;
   kind: HlrKind;
   /** An outline's face (sub-shape index); also set on a model edge HLR uses as a face's outline. */

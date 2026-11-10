@@ -2134,8 +2134,10 @@ public:
    * left out). An edge HLR split at an outline point keeps its model edge
    * and parameters, one record per piece:
    *
-   * hlrInts, 6 per record: edge (sub-shape index, -1 for an outline), kind
-   * (0 sharp, 1 smooth, 2 seam: a joint of continuity above G1, 3 outline),
+   * hlrInts, 6 per record: edge (sub-shape index, -1 for an outline HLR
+   * added), kind (0 sharp, 1 smooth, 2 seam: a joint of continuity above
+   * G1, 3 outline: one HLR added, or a smooth edge or seam a face turns away
+   * at),
    * face (an outline's face, or -1; also set for a model edge HLR uses as a
    * face's outline), visible spans, hidden spans, curve (an outline's offset
    * in the curve block, else -1).
@@ -2203,7 +2205,12 @@ public:
         if (iso[ie] || ed.Vertical()) continue;
         const int model = indexIn(edges, data->EdgeMap()(ie));
         if (model == 0 && !outline[ie]) continue;
-        const int kind = model == 0 ? 3 : ed.RgNLine() ? 2 : ed.Rg1Line() ? 1 : 0;
+        // A smooth edge or seam that a face turns away at is that face's outline
+        // (HLRToShape draws it with the sharp edges): kind outline, edge kept.
+        const bool smooth = ed.RgNLine() || ed.Rg1Line();
+        const int kind = model == 0 || (smooth && outline[ie]) ? 3 : ed.RgNLine() ? 2 : ed.Rg1Line() ? 1 : 0;
+        // The status intervals are in the 3D curve's parameter already (HLRBRep::MakeEdge
+        // turns them into the 2D curve's with Parameter2d), so they pass through as they are.
         const HLRBRep_Curve& curve = ed.Geometry();
         // The whole edge's parameter range first (a model edge's, not a split piece's).
         const BRepAdaptor_Curve whole =
@@ -2216,13 +2223,13 @@ public:
         for (it.InitVisible(ed.Status()); it.MoreVisible(); it.NextVisible()) {
           it.Visible(sta, tolsta, end, tolend);
           if (std::abs(end - sta) <= Precision::PConfusion()) continue;
-          spans.insert(spans.end(), {curve.Parameter3d(sta), curve.Parameter3d(end)});
+          spans.insert(spans.end(), {sta, end});
           ++visible;
         }
         for (it.InitHidden(ed.Status()); it.MoreHidden(); it.NextHidden()) {
           it.Hidden(sta, tolsta, end, tolend);
           if (std::abs(end - sta) <= Precision::PConfusion()) continue;
-          spans.insert(spans.end(), {curve.Parameter3d(sta), curve.Parameter3d(end)});
+          spans.insert(spans.end(), {sta, end});
           ++hidden;
         }
         if (visible + hidden == 0) {

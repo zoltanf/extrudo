@@ -110,6 +110,52 @@ describe('hlrSpans', () => {
     expect(near.every((p) => Math.abs(p[2] - 20) < 1e-9)).toBe(true);
   });
 
+  it('keeps every span inside its edge, in views that foreshorten lines and turn circles into ellipses', () => {
+    for (const [shape, d] of [
+      [box, [1, 1, 1]],
+      [box, [1, -2, 0.5]],
+      [cylinder, [1, 1, 1]],
+    ] as [ShapeHandle, Vec3][]) {
+      const view = kernel.hlrSpans(shape, d);
+      expect(view.length).toBeGreaterThan(0);
+      for (const e of view) {
+        const [a, b] = [Math.min(...e.range), Math.max(...e.range)];
+        for (const [t0, t1] of [...e.visible, ...e.hidden]) {
+          expect(Math.min(t0, t1)).toBeGreaterThanOrEqual(a - 1e-9);
+          expect(Math.max(t0, t1)).toBeLessThanOrEqual(b + 1e-9);
+        }
+      }
+    }
+    // A box from a corner: every edge whole, so each span is its range.
+    for (const e of kernel.hlrSpans(box, [1, 1, 1])) {
+      const [span] = [...e.visible, ...e.hidden];
+      expect(span?.[0]).toBeCloseTo(e.range[0], 9);
+      expect(span?.[1]).toBeCloseTo(e.range[1], 9);
+    }
+    // A cylinder from a corner: each circle's pieces cover it once.
+    const circles = new Map<number, [number, number][]>();
+    for (const e of kernel.hlrSpans(cylinder, [1, 1, 1])) {
+      if (e.edge === undefined || e.kind !== 'sharp') continue;
+      circles.set(e.edge, [...(circles.get(e.edge) ?? []), ...e.visible, ...e.hidden]);
+    }
+    expect(circles.size).toBe(2);
+    for (const spans of circles.values()) expect(total(spans)).toBeCloseTo(2 * Math.PI, 6);
+  });
+
+  it('draws a seam that lies on the outline of a face as that outline', () => {
+    // A box with a vertical hole: its cylinder's seam (at +x) is on the hole's outline seen from -y.
+    const block = kernel.box([40, 20, 20], [-20, -10, 0]);
+    const pin = kernel.cylinder(5, 20, [0, 0, 5]);
+    const holed = kernel.cut(block, pin).shape;
+    const outlines = kernel.hlrSpans(holed, [0, -1, 0]).filter((e) => e.kind === 'outline');
+    // Two outlines of the hole, both hidden: one HLR added, one the seam (its edge kept).
+    expect(outlines).toHaveLength(2);
+    expect(outlines.filter((e) => e.edge !== undefined)).toHaveLength(1);
+    expect(new Set(outlines.map((e) => e.face)).size).toBe(1);
+    for (const e of outlines) expect(total(e.hidden)).toBeCloseTo(15, 6);
+    kernel.release(block, pin, holed);
+  });
+
   it('refuses a direction with no length', () => {
     expect(() => kernel.hlrSpans(box, [0, 0, 0])).toThrow(/no length/);
   });

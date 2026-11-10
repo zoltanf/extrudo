@@ -162,6 +162,45 @@ describe.runIf(ENV.HLR_PDF)('hidden-line views drawn', () => {
         }
       });
       pages.push({ width: 420, height: 297, items });
+      // The same views from the polygonal run, for comparison (HLR_POLY=1).
+      if (ENV.HLR_POLY) {
+        const poly: PdfItem[] = [];
+        VIEWS.forEach(([, d, up], v) => {
+          const right = unit(cross(up, d));
+          const top = cross(d, right);
+          const pieces = kernel
+            .hlrPolySpans(all, d, 0.02)
+            .filter((p) => p.kind !== 'seam' && p.kind !== 'smooth');
+          const flat = (p: Vec3): [number, number] => [dot(p, right), dot(p, top)];
+          const xs = pieces.flatMap((p) => [flat(p.from)[0], flat(p.to)[0]]);
+          const ys = pieces.flatMap((p) => [flat(p.from)[1], flat(p.to)[1]]);
+          const [x0, x1, y0, y1] = [
+            Math.min(...xs),
+            Math.max(...xs),
+            Math.min(...ys),
+            Math.max(...ys),
+          ];
+          const scale = Math.min(170 / (x1 - x0 || 1), 115 / (y1 - y0 || 1));
+          const cx = 20 + (v % 2) * 200 + 90;
+          const cy = 297 - (20 + Math.floor(v / 2) * 135 + 70);
+          const map = (p: Vec3): [number, number] => {
+            const [x, y] = flat(p);
+            return [cx + (x - (x0 + x1) / 2) * scale, cy + (y - (y0 + y1) / 2) * scale];
+          };
+          for (const p of pieces) {
+            poly.push({
+              type: 'path',
+              contours: [
+                { start: map(p.from), segments: [{ type: 'line', to: map(p.to) }], closed: false },
+              ],
+              stroke: p.visible
+                ? { width: 0.35 }
+                : { width: 0.18, dash: [1.5, 0.8], color: '#555555' },
+            });
+          }
+        });
+        pages.push({ width: 420, height: 297, items: poly });
+      }
       held.release();
       kernel.dispose();
       expect(items.length, name).toBeGreaterThan(0);
