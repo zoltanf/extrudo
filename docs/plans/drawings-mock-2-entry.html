@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Getting to drawing mode from the model</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#5AA9FF}a:hover{color:#A4CFFF}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+.tab{height:40px;padding:0 10px;font-size:11.5px;font-weight:600;letter-spacing:.08em;color:#939CAD;border-bottom:2px solid transparent;box-sizing:border-box}
+.tab.on{color:#E9EDF3;border-bottom-color:#FFB23E}
+.ib{width:32px;height:32px;display:grid;place-items:center;border-radius:8px;color:#939CAD;flex:none}
+.ib svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.ib.on{background:rgba(255,178,62,.16);color:#FFB23E}
+.grp{display:flex;flex-direction:column;align-items:center;padding:0 6px;border-right:1px solid #343B4A}
+.tiles{display:flex;gap:2px}
+.gl{font-size:10.5px;font-weight:600;letter-spacing:.08em;color:#939CAD;text-transform:uppercase;margin-top:2px}
+.tile{width:64px;height:64px;display:flex;flex-direction:column;align-items:center;gap:5px;padding-top:8px;border-radius:9px;font-size:11px;line-height:1.15;color:#E9EDF3;text-align:center;box-sizing:border-box}
+.tile.on{background:rgba(255,178,62,.16)}
+.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.ic .f{fill:currentColor;fill-opacity:.22}
+.cn{color:#3CC7D4}.co{color:#FFC93C}
+.row{height:28px;display:flex;align-items:center;gap:6px;padding-right:10px;border-radius:6px;white-space:nowrap}
+.row svg{width:14px;height:14px;fill:none;stroke:#939CAD;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.row .sp{flex:1}
+.mu{color:#939CAD}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.bdg{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10.5px;color:#939CAD;background:#282E3A;border-radius:999px;padding:1px 6px}
+.pl{font-size:10.5px;font-weight:600;letter-spacing:.08em;color:#939CAD;text-transform:uppercase}
+.fld{height:30px;border:1px solid #343B4A;border-radius:6px;background:#1B1F27;display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-size:13px;box-sizing:border-box;width:100%}
+.fld svg{width:12px;height:12px;fill:none;stroke:#939CAD;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.seg2{flex:1;height:26px;border-radius:5px;color:#939CAD;font-size:12.5px}
+.seg2.on{background:rgba(255,178,62,.16);color:#FFB23E;font-weight:600}
+.card{flex:1;border:1px solid #343B4A;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;text-align:left;background:#1B1F27}
+.card.on{border-color:#FFB23E;background:rgba(255,178,62,.1)}
+.card svg{width:100%;height:auto;background:#FFFFFF;border-radius:3px}
+.card b{font-weight:600}
+.chip{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;flex:none}
+.chip span{width:12px;height:12px;border-radius:3px;border:1.75px solid currentColor}
+.pv{stroke:#111318;stroke-width:1;fill:none}
+</style>
+</helmet>
+<div style="width:100%; height:900px; display:flex; flex-direction:column; background:#1B1F27; color:#E9EDF3; font-family:'Instrument Sans',system-ui,sans-serif; font-size:13px; line-height:1.3; overflow:hidden">
+
+  <header style="height:40px; flex:none; display:flex; align-items:center; gap:2px; padding:0 10px 0 12px; border-bottom:1px solid #343B4A; box-sizing:border-box">
+    <svg viewBox="0 0 64 64" style="width:20px; height:20px; flex:none" aria-hidden="true"><path d="M10 24 24 10H52L38 24Z" fill="#FFC76A"></path><path d="M38 24 52 10V38L38 52Z" fill="#E0922A"></path><rect x="10" y="24" width="28" height="28" rx="1" fill="rgba(90,169,255,.16)" stroke="#5AA9FF" style="stroke-width:2; stroke-dasharray:3.2 2.6"></rect></svg>
+    <span style="font-weight:600; font-size:15px; letter-spacing:-.02em; margin:0 14px 0 6px">extrudo<span style="color:#FFB23E">.</span></span>
+    <button class="tab">HOME</button>
+    <button class="tab">SOLID</button>
+    <button class="tab">MODIFY</button>
+    <button class="tab">CONSTRUCT</button>
+    <button class="tab on" aria-current="page">MAKE</button>
+    <span style="width:1px; height:18px; background:#343B4A; margin:0 8px"></span>
+    <button class="ib" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"></path><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"></path></svg></button>
+    <button class="ib" aria-label="Redo"><svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"></path><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"></path></svg></button>
+    <div style="flex:1; display:flex; align-items:center; justify-content:center; gap:8px; min-width:0">
+      <span style="font-weight:600">Box with a lid</span>
+      <span style="width:6px; height:6px; border-radius:50%; background:#3DD68C"></span>
+      <span class="mu" style="font-size:11.5px">Saved</span>
+    </div>
+    <button class="ib" aria-label="Version history"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l3 2"></path></svg></button>
+    <button class="ib" aria-label="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg></button>
+    <button class="ib" aria-label="Menu"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"></rect><rect x="14" y="4" width="6" height="6" rx="1"></rect><rect x="4" y="14" width="6" height="6" rx="1"></rect><rect x="14" y="14" width="6" height="6" rx="1"></rect></svg></button>
+  </header>
+
+  <div style="height:92px; flex:none; display:flex; align-items:flex-start; padding:6px 6px 0; border-bottom:1px solid #343B4A; box-sizing:border-box; overflow:hidden">
+    <div class="grp">
+      <div class="tiles">
+        <button class="tile"><svg class="ic co" viewBox="0 0 24 24"><rect class="f" x="7" y="7" width="10" height="9" rx="1.5"></rect><path d="M3 20H21"></path></svg>Place on Bed</button>
+        <button class="tile"><svg class="ic cn" viewBox="0 0 24 24"><path d="M4 8V16M20 8V16M4 12H20"></path><rect class="f" x="8" y="9" width="8" height="6" rx="1.5"></rect></svg>Measure</button>
+        <button class="tile"><svg class="ic co" viewBox="0 0 24 24"><path class="f" d="M6 10H18L20 20H4Z"></path><path d="M9 10V7a3 3 0 0 1 6 0v3M12 13v4"></path></svg>Print Info</button>
+        <button class="tile"><svg class="ic co" viewBox="0 0 24 24"><circle class="f" cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="8.5" style="stroke-dasharray:3 2.6"></circle></svg>Tolerance</button>
+        <button class="tile"><svg class="ic co" viewBox="0 0 24 24"><path class="f" d="M5 20V5H16L10 20Z"></path><path d="M14 20h6"></path></svg>Overhang Analysis</button>
+        <button class="tile"><svg class="ic co" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect class="f" x="8" y="8" width="8" height="8" rx="1"></rect></svg>Wall Thickness</button>
+      </div>
+      <span class="gl">Prepare</span>
+    </div>
+    <div class="grp" style="border-right:0">
+      <div class="tiles">
+        <button class="tile"><svg class="ic co" viewBox="0 0 24 24"><path d="M12 3V13M8 9.5 12 13.5 16 9.5"></path><path class="f" d="M4 15.5V18.5A2.5 2.5 0 0 0 6.5 21H17.5A2.5 2.5 0 0 0 20 18.5V15.5Z"></path></svg>Export</button>
+        <button class="tile" style="opacity:.45"><svg class="ic co" viewBox="0 0 24 24"><path d="M12 4 20 8.5 12 13 4 8.5Z"></path><path d="M4 12.5 12 17l8-4.5M4 16.5 12 21l8-4.5"></path></svg>Send to Slicer</button>
+        <button class="tile"><svg class="ic co" viewBox="0 0 24 24"><rect class="f" x="3" y="5" width="18" height="14" rx="2.5"></rect><circle cx="9" cy="10" r="1.6"></circle><path d="M4 17 10 12.5 14 15.5 17 13 20 15.5"></path></svg>Render Picture</button>
+        <button class="tile on" aria-pressed="true"><svg class="ic co" viewBox="0 0 24 24"><rect class="f" x="3" y="5" width="18" height="14" rx="2"></rect><path d="M6.5 8.5H12V13H6.5Z"></path><path d="M14 15H21M14 15V19"></path></svg>Drawing</button>
+      </div>
+      <span class="gl">Output</span>
+    </div>
+  </div>
+
+  <div style="flex:1; min-height:0; display:flex">
+    <aside style="flex:0 0 248px; background:#20252F; border-right:1px solid #343B4A; padding:10px 6px 10px 8px; box-sizing:border-box; overflow:hidden">
+      <div class="row" style="height:24px; padding-left:4px"><span class="pl">Browser</span><span class="sp"></span><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M10 4v16M16 10l-2 2 2 2"></path></svg></div>
+      <div class="row" style="padding-left:4px"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg><span>Document settings</span></div>
+      <div class="row" style="padding-left:4px"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg><span>Named views</span></div>
+      <div class="row" style="padding-left:4px"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg><span>Origin</span><span class="sp"></span><svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg></div>
+      <div class="row" style="padding-left:4px"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg><span>Sketches</span></div>
+      <div class="row mu" style="padding-left:26px">No sketches yet</div>
+      <div class="row" style="padding-left:4px"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg><span>Bodies</span><span class="bdg">2</span><span class="sp"></span><svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg></div>
+      <div class="row" style="padding-left:26px"><span style="width:8px; height:8px; border-radius:50%; background:#A7B0C2"></span><span>Box</span><span class="sp"></span><svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg></div>
+      <div class="row" style="padding-left:26px"><span style="width:8px; height:8px; border-radius:50%; background:#A7B0C2"></span><span>Lid</span><span class="sp"></span><svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg></div>
+      <div class="row" style="padding-left:4px; margin-top:4px; background:rgba(255,178,62,.1)"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg><svg viewBox="0 0 24 24" style="stroke:#FFC93C"><path d="M6 3h8l4 4v14H6Z"></path><path d="M14 3v4h4"></path></svg><span>Drawings</span></div>
+      <div class="row mu" style="padding-left:26px">No sheets yet</div>
+      <p class="mu" style="margin:10px 6px 0; padding:8px 10px; border:1px solid #343B4A; border-radius:8px; font-size:11.5px; line-height:1.4">Sheets you make show up here. Double-click one to open it.</p>
+    </aside>
+
+    <main style="flex:999 1 560px; min-width:0; position:relative; background:radial-gradient(90% 80% at 45% 42%, #46557A 0%, #29313F 50%, #15181F 100%); overflow:hidden">
+      <svg viewBox="296 34 106 96" aria-hidden="true" style="position:absolute; left:50%; top:50%; width:620px; max-width:80%; transform:translate(-50%,-50%)">
+        <path d="M307.09 62 308.82 64 353.86 90 357.32 91.2V120.2L353.86 119 308.82 93 307.09 91Z" fill="#8A93A6"></path>
+        <path d="M357.32 91.2 360.78 90 388.5 74 390.23 72V101L388.5 103 360.78 119 357.32 120.2Z" fill="#6B7488"></path>
+        <path d="M343.46 44 388.5 70Q391.96 72 388.5 74L360.78 90Q357.32 92 353.86 90L308.82 64Q305.36 62 308.82 60L336.54 44Q340 42 343.46 44Z" fill="#B4BCCA"></path>
+        <path d="M307.09 66 308.82 68 353.86 94Q357.32 96 360.78 94L388.5 78 390.23 76M307.09 62V91M390.23 72V101M343.46 44 388.5 70Q391.96 72 388.5 74L360.78 90Q357.32 92 353.86 90L308.82 64Q305.36 62 308.82 60L336.54 44Q340 42 343.46 44Z" fill="none" stroke="rgba(233,237,243,.55)" style="stroke-width:.25"></path>
+        <ellipse cx="348.66" cy="67" rx="6.12" ry="3.54" fill="#4A5262"></ellipse>
+      </svg>
+
+      <div style="position:absolute; inset:0; background:rgba(10,12,16,.5)"></div>
+
+      <section role="dialog" aria-label="New drawing" style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:560px; max-width:calc(100% - 32px); background:#282E3A; border:1px solid #343B4A; border-radius:12px; box-shadow:0 14px 30px -16px rgba(0,0,0,.6); box-sizing:border-box">
+        <div style="display:flex; align-items:center; gap:10px; padding:14px 16px; border-bottom:1px solid #343B4A">
+          <svg class="ic co" viewBox="0 0 24 24" style="width:20px; height:20px"><rect class="f" x="3" y="5" width="18" height="14" rx="2"></rect><path d="M6.5 8.5H12V13H6.5Z"></path><path d="M14 15H21M14 15V19"></path></svg>
+          <h2 style="margin:0; font-size:15px; font-weight:600; letter-spacing:-.01em; flex:1">New drawing</h2>
+          <button class="ib" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+        </div>
+        <div style="padding:16px; display:flex; flex-direction:column; gap:16px">
+          <div>
+            <span class="pl">Start with</span>
+            <div style="display:flex; gap:10px; margin-top:6px">
+              <button class="card on" aria-pressed="true">
+                <svg viewBox="0 0 84 56" aria-hidden="true"><path class="pv" d="M8 8h26v14H8ZM8 30h26v18H8ZM42 8h14v14H42ZM60 34l10-6 8 5v10l-10 6-8-5Z"></path></svg>
+                <span><b>Standard views</b><br><span class="mu" style="font-size:11.5px">Front, top, side and an isometric, scaled to fit.</span></span>
+              </button>
+              <button class="card">
+                <svg viewBox="0 0 84 56" aria-hidden="true"><path class="pv" d="M22 14h40v28H22Z"></path></svg>
+                <span><b>One view</b><br><span class="mu" style="font-size:11.5px">Place a base view yourself and build from it.</span></span>
+              </button>
+              <button class="card">
+                <svg viewBox="0 0 84 56" aria-hidden="true"><path d="M50 40h30v12H50Z" fill="none" stroke="#939CAD" style="stroke-width:1"></path></svg>
+                <span><b>Empty sheet</b><br><span class="mu" style="font-size:11.5px">Just the border and the title block.</span></span>
+              </button>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px 16px">
+            <label style="display:flex; flex-direction:column; gap:4px"><span class="mu">Sheet size</span><button class="fld"><span>A3 · 420 × 297 mm</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg></button></label>
+            <div style="display:flex; flex-direction:column; gap:4px"><span class="mu">Orientation</span>
+              <div style="display:flex; gap:2px; padding:2px; border:1px solid #343B4A; border-radius:6px; background:#1B1F27; height:30px; box-sizing:border-box"><button class="seg2 on" aria-pressed="true">Landscape</button><button class="seg2">Portrait</button></div>
+            </div>
+            <label style="display:flex; flex-direction:column; gap:4px"><span class="mu">Title block</span><button class="fld"><span>Simple</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg></button></label>
+            <label style="display:flex; flex-direction:column; gap:4px"><span class="mu">Bodies</span><button class="fld"><span>All shown (2)</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg></button></label>
+            <label style="display:flex; flex-direction:column; gap:4px"><span class="mu">Scale</span><button class="fld"><span>Fit the sheet · 1:2</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg></button></label>
+            <div style="display:flex; flex-direction:column; gap:4px"><span class="mu">Views are laid out</span>
+              <div style="display:flex; gap:2px; padding:2px; border:1px solid #343B4A; border-radius:6px; background:#1B1F27; height:30px; box-sizing:border-box"><button class="seg2 on" aria-pressed="true">First angle</button><button class="seg2">Third angle</button></div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px; padding:12px 16px; border-top:1px solid #343B4A">
+          <span class="mu" style="flex:1; font-size:11.5px">4 views of 2 bodies on one A3 sheet.</span>
+          <button style="height:32px; padding:0 14px; border-radius:8px; border:1px solid #343B4A">Cancel <span class="mu mono" style="font-size:11px">Esc</span></button>
+          <button style="height:32px; padding:0 14px; border-radius:8px; background:#FFB23E; color:#15171C; font-weight:600">Create Drawing</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer style="height:48px; flex:none; display:flex; align-items:center; gap:6px; padding:0 12px; background:#20252F; border-top:1px solid #343B4A; box-sizing:border-box">
+    <span class="chip" style="background:rgba(165,144,255,.16); color:#A590FF"><span></span></span>
+    <span class="chip" style="background:rgba(61,214,163,.16); color:#3DD6A3"><span></span></span>
+    <span class="chip" style="background:rgba(255,138,120,.16); color:#FF8A78"><span></span></span>
+    <span class="chip" style="background:rgba(255,138,120,.16); color:#FF8A78"><span></span></span>
+    <span class="chip" style="background:rgba(61,214,163,.16); color:#3DD6A3"><span></span></span>
+    <span class="chip" style="background:rgba(61,214,163,.16); color:#3DD6A3"><span></span></span>
+    <span class="chip" style="background:rgba(255,138,120,.16); color:#FF8A78"><span></span></span>
+    <span style="width:2px; height:28px; background:#FFB23E; border-radius:2px"></span>
+    <span style="flex:1"></span>
+    <span class="mono mu" style="font-size:11.5px">7 features · mm</span>
+    <button class="ib" aria-label="Notification history"><svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15Z"></path><path d="M10 21h4"></path></svg></button>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
