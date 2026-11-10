@@ -1941,3 +1941,69 @@ circle; one face where the sketch has two regions), sketch planes in no
 origin-axis direction, and a self-crossing spline chain that makes no region.
 (A cut whose side is tangent to the body's cylinder, which removed nothing, is
 built again with a fuzzy value since the kernel's 2026-11-06 change.)
+
+## Amendment, 2026-11-10: copies of rounds, the order of copied features, a thread's whole face, an offset by 0
+
+Small fixes from the corpus's remaining mismatches, each with a synthetic
+test that fails before it (`map-more.test.ts`).
+
+1. **A mirror or pattern replays its features in timeline order**
+   (`copiedFeatures`). The file lists the features it copies in the order they
+   were picked; the kernel replays them in the order given, each on what the
+   last left (ADR-0047). A light housing's mirror listed a join before the cut
+   it sits in: the join's copies came out as two loose 619 mm³ bodies and the
+   cut's copy then removed the material they stood on (the body 6.3 % short).
+   The features are now taken in the order the import made them.
+2. **Its fillets and chamfers are repeated on the copies** (`copyRounds`). The
+   kernel copies only the tools of solid features, so a round the file copies
+   was left out with a note. Each one is now one more round after the copying
+   feature, `<round> (<copy>)`, on the copies of its edges: an edge between
+   faces of the copied features is the edge between those faces' copies
+   (`<op>:<copy>:<label>:from:(<face>)`, the names the kernel's pattern gives
+   them), and a face of a round repeated already is the repeat's face from the
+   copy of its edge. The copy's labels are known for a mirror (one copy), a
+   circular pattern and a row; a round with an edge on any other face (the
+   body's), a grid or a path pattern keep the note. The repeat carries no
+   fingerprint (a lost copy is left out, not matched to the original), and its
+   expressions drop their parameter names. A chamfer with a distance face is
+   repeated for a mirror only (one face can't serve several copies).
+3. **A thread along part of a face moves the whole face to the crest first.**
+   The file resizes the whole face to the thread's crest (its minor diameter
+   in a hole, its major on a shaft), not only along the thread (FORMAT.md, the
+   reference STEPs). Extrudo's thread fills or bores along its own run only
+   (ADR-0056's fifth amendment), which is the whole face for a thread along all
+   of it. A thread with a length now gets an Offset Face, `<thread> face`,
+   before it (`crestOffset`: along the face's outward normal, so a narrower
+   hole moves outwards and a wider one or a thicker shaft inwards), when every
+   face is a cylinder off the crest by more than 1e-5 cm by the same amount.
+4. **An offset of faces by 0 is imported as nothing**, with a note, not
+   skipped: it changes nothing (four fraction models).
+
+Found, not changed:
+
+- **A revolve that joins leaves a copy of the target** (a bird feeder top): the
+  revolve's profile comes from a free sketch point the file keeps 2.4e-6 mm
+  above the target's top face. The kernel counts the two as touching (1e-4
+  mm), but OCCT's fuse, at its own tolerance, finds no contact and keeps two
+  solids, and the split after it gives the bigger one the target's ID and the
+  old target a new one. The facade's retry with a fuzzy value
+  (ADR-0051, 2026-11-06) only runs when the operands met. A fix is in the
+  facade (a fuse that keeps operands apart that lie within 1e-4 mm is built
+  again with that fuzzy value) and needs a WASM build: not in this change.
+- **A text cut that removed nothing** (a hinge part, 2026-10-21's amendment):
+  already fixed on main; the cut removes 25.7 mm³ and the body is within
+  0.15 %. The design's mismatch is its Move, which keeps the moved body's
+  original in the file (a copy) and moves it in Extrudo.
+- **A hole wider than its thread** has imported since 2026-11-03.
+
+Corpus (252 files, replay and body check against main 14e9530b): replay
+169 match / 43 mismatch / 22 partial / 4 match despite skips → 169 / 47 / 18 / 4,
+the four fraction models moving from partial to mismatch only because their one
+skip is gone (the same volumes); skipped features 66 → 62. Bodies 244 editable
+/ 115 frozen / 26 unchecked / 1 missing → 245 / 114 / 26 / 1 (the light
+housing's second body frozen → editable; no body worse). By design: a pipe
+input 28.0 % → 2.5 % (its 12 mm hole threaded G 1/2 over 16 of 49 mm now has
+its bore at the thread's minor all along), a screw and nut 14.1 % → 5.0 %, a
+filament hole-through 1.2 % → 0.6 %, the light housing 0.44 % → 0.004 %, a
+drain cover 1.49 % → 1.47 % (its pattern's round copies; the rest is an
+unnamed offset face). No `RuntimeError`; the two files of #93 are unchanged.
