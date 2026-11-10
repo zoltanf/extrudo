@@ -53,7 +53,12 @@ detection.
    - **Holes**: a hole wall is an inside cylinder all the way round, or a
      **ring** of inside cylinder pieces on one axis with one radius whose
      shared edges close the ring (n pieces, ≥ n shared edges: imports often
-     split a wall in halves). Each wall takes the faces `removeFacesPick`'s
+     split a wall in halves), or a **tapered wall**: an inside cone all the
+     way round, steeper than 45° (it changes more along the axis than in
+     radius, as a drafted or tapered cut makes; amended 2026-11-10 after the
+     Wall bracket template's 5° holes read as 2.4 mm chamfers), sized by its
+     wider end and never a chamfer; a countersink (90° and wider) is not a
+     wall. Each wall takes the faces `removeFacesPick`'s
      hole rule takes (ring pieces count as whole there), plus its **mouth
      round**: a torus on the hole's axis next to one of its walls (an inside
      cylinder or cone), whatever the round limit, so a hole with a rounded

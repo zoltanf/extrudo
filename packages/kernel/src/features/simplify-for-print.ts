@@ -9,7 +9,8 @@
  * two faces meet smoothly across an edge when their normals at its midpoint
  * are parallel (`smoothAcross`):
  * - a **hole** is a closed cylindrical wall (one face all the way round, or
- *   a ring of coaxial pieces of one radius) with the faces Remove Faces'
+ *   a ring of coaxial pieces of one radius) or a tapered one (a steep inside
+ *   cone all the way round, by its wider end) with the faces Remove Faces'
  *   hole rule takes with it (`removeFacesPick`: floor, counterbore,
  *   countersink, drill point) and the round at its mouth (a torus on its
  *   axis next to its wall); its size is the widest wall's diameter;
@@ -167,11 +168,21 @@ export function findSimplifyGroups(
     return set;
   };
 
-  // Hole walls: whole inside cylinders, and rings of coaxial inside pieces of one radius.
+  // Hole walls: whole inside cylinders, rings of coaxial inside pieces of one radius, and
+  // tapered walls (steep whole inside cones), each by its widest radius.
   const walls: number[][] = [];
   const pieces = new Set<number>();
+  const taperedWidest = new Map<number, number>();
   for (let face = 0; face < faceCount; face++) {
     const s = surfaceOf(face);
+    if (s?.type === 'cone') {
+      const cone = coneOf(face, index, s);
+      if (cone?.tapered) {
+        walls.push([face]);
+        taperedWidest.set(face, cone.widest);
+      }
+      continue;
+    }
     if (s?.type !== 'cylinder' || !s.inside) continue;
     if (s.whole) walls.push([face]);
     else pieces.add(face);
@@ -205,6 +216,7 @@ export function findSimplifyGroups(
       for (const face of faces) {
         const s = surfaceOf(face);
         if (s?.type === 'cylinder' && s.inside) radius = Math.max(radius, s.radius);
+        radius = Math.max(radius, taperedWidest.get(face) ?? 0);
       }
       const size = 2 * radius;
       if (size > limits.maxHoleDiameter + SIZE_TOLERANCE) continue;
@@ -307,6 +319,52 @@ interface Bevel {
   between: number[];
 }
 
+/** A cone face between two circles: its legs, widest radius and neighbours across them. */
+interface ConeFace {
+  /** The change in radius between the circles. */
+  radial: number;
+  /** The change along the axis. */
+  height: number;
+  /** The larger circle's radius. */
+  widest: number;
+  between: number[];
+  /**
+   * A **tapered hole's wall**: inside, all the way round and steeper than
+   * 45° (it changes more along the axis than in radius), as a drafted or
+   * tapered cut makes; a countersink (90° and wider) is a chamfer or part of
+   * its hole, never a wall.
+   */
+  tapered: boolean;
+}
+
+/** A cone face's two circles, or undefined unless it has circles at two levels. */
+function coneOf(face: number, index: FaceIndex, own: SimplifySurface): ConeFace | undefined {
+  const levels: [number, number][] = [];
+  const between = new Set<number>();
+  for (const edge of index.edges.get(face) ?? []) {
+    if (edge.type !== 'circle') continue;
+    for (const other of edge.faces) if (other !== face) between.add(other);
+    const v = sub(edge.midpoint, own.axis.origin);
+    const level: [number, number] = [
+      distanceToAxis(edge.midpoint, own.axis),
+      dot(v, unit(own.axis.direction)),
+    ];
+    if (!levels.some((l) => Math.abs(l[0] - level[0]) <= NEAR && Math.abs(l[1] - level[1]) <= NEAR))
+      levels.push(level);
+  }
+  const [a, b] = levels;
+  if (levels.length !== 2 || !a || !b) return undefined;
+  const radial = Math.abs(a[0] - b[0]);
+  const height = Math.abs(a[1] - b[1]);
+  return {
+    radial,
+    height,
+    widest: Math.max(a[0], b[0]),
+    between: [...between],
+    tapered: own.inside && own.whole && height > radial + NEAR,
+  };
+}
+
 /**
  * A face's chamfer shape, or undefined when it has none (ADR-0141 §2):
  * - a plane with two parallel straight edges on two flat neighbours that
@@ -326,28 +384,12 @@ function bevelOf(
   const info = description.faces[face];
   if (info?.type === 'cone') {
     const own = surfaceOf(face);
-    if (!own) return undefined;
-    const levels: [number, number][] = [];
-    const between = new Set<number>();
-    for (const edge of index.edges.get(face) ?? []) {
-      if (edge.type !== 'circle') continue;
-      for (const other of edge.faces) if (other !== face) between.add(other);
-      const v = sub(edge.midpoint, own.axis.origin);
-      const level: [number, number] = [
-        distanceToAxis(edge.midpoint, own.axis),
-        dot(v, unit(own.axis.direction)),
-      ];
-      if (
-        !levels.some((l) => Math.abs(l[0] - level[0]) <= NEAR && Math.abs(l[1] - level[1]) <= NEAR)
-      )
-        levels.push(level);
-    }
-    const [a, b] = levels;
-    if (levels.length !== 2 || !a || !b) return undefined;
-    const legs = [Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1])];
+    const cone = own && coneOf(face, index, own);
+    if (!cone || cone.tapered) return undefined;
+    const legs = [cone.radial, cone.height];
     if (legs.some((leg) => leg <= NEAR)) return undefined;
     if (smoothOf(face).size > 0) return undefined;
-    return { size: Math.max(...legs), between: [...between] };
+    return { size: Math.max(...legs), between: cone.between };
   }
   if (info?.type !== 'plane' || !info.direction) return undefined;
   const normal = unit(info.direction);

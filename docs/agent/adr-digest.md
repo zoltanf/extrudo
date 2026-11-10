@@ -4349,7 +4349,9 @@ only** (`surfaceGeometry`, `threadFace`; no new WASM; **not `tangentFaces`**: ~3
 a Mesh to Solid body); faces meet smoothly when their normals at the edge midpoint are within ~2°
 (`smoothAcross`/`normalAt`). `findSimplifyGroups` is
 pure: holes = an inside cylinder all the way round, or a closed **ring** of coaxial inside
-pieces of one radius (shared edges ≥ pieces), with `removeFacesPick`'s hole faces and its mouth
+pieces of one radius (shared edges ≥ pieces), or a **tapered wall** (an inside whole cone
+steeper than 45°, Δheight > Δradius: `coneOf(...).tapered`; sized by its wider end, never a
+chamfer; a countersink isn't one), with `removeFacesPick`'s hole faces and its mouth
 torus (coaxial, next to a wall: `withMouth`, whatever the round limit); size = twice
 the widest inside cylinder's radius, over the limit the whole hole stays; rounds = cylinders
 not all the way round, tori (minor radius), spheres, ≤ the limit, not in a hole, meeting a

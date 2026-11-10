@@ -459,6 +459,41 @@ describe('simplify for print', { timeout: 120_000 }, () => {
     expect(faceNames(result, B0)).toHaveLength(8);
   });
 
+  it('(h) a tapered hole (a steep cone wall) is a hole by its widest end, not a chamfer', async () => {
+    const b = new SketchBuilder();
+    b.circle(10, 15, 2.5);
+    const [profile] = detectProfiles(b.sketch);
+    if (!profile) throw new Error('no profile');
+    const cut: Feature = {
+      ...testFeature('T', 'extrude'),
+      inputs: extrudeInputs([{ kind: 'profile', id: `ST/${profile.id}` }], {
+        distance: '12 mm',
+        taper: '5 deg',
+        operation: 'cut',
+      }),
+    };
+    const features = [...block().features, sketch('ST', b.sketch), cut];
+    const result = await run(
+      testDocument([
+        ...features,
+        simplify(['B:0'], { maxHoleDiameter: '8 mm', maxChamferSize: '5 mm' }),
+      ]),
+    );
+    expect(status(result, 'P')).toMatchObject({ status: 'ok' });
+    const groups = report(result)?.groups ?? [];
+    expect(groups.map((g) => [g.kind, g.removed])).toEqual([['hole', true]]);
+    // Ø5 at the sketch, wider or narrower by 2 × 10 tan 5° through the 10 mm block: the widest end.
+    const flare = 2 * 10 * Math.tan((5 * Math.PI) / 180);
+    expect(
+      [5 + flare, 5 - flare].some((d) => Math.abs((groups[0]?.size ?? 0) - Math.max(d, 5)) < 1e-3),
+    ).toBe(true);
+    // The cone is no chamfer, even with holes off.
+    expect(report(result)?.sizes.chamfer).toEqual([]);
+    expect(report(result)?.sizes.hole).toHaveLength(1);
+    expect(relative(volume(B0), BOX)).toBeLessThan(1e-6);
+    expect(faceNames(result, B0)).toHaveLength(6);
+  });
+
   it("(f) a countersink is a chamfer with holes off, and the hole's with them on", async () => {
     const features = [
       ...block().features,
