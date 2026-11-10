@@ -234,7 +234,15 @@ and dangling pieces, and makes one face per region placed in the plane;
 IDs** (a geometric fallback covers the rest; tests expect none). The
 output's `shapes` are the faces by region ID, `data` a
 `SketchOutputData` (frame; per profile area, holes and the sketch curve
-of each face edge). ADR-0026 (P2-03) added model-mode selection
+of each face edge). Its 2026-11-09 amendment: **every region `detectProfiles`
+shows must have a kernel face under its ID** (the UI picks from
+`detectProfiles`; `detectProfiles` itself must not change for this, IDs
+are stored). `planarCurves` stages a spline that folds back on itself
+(`splineFolds` in core) as its pieces between the folds, same ID; when a
+detected region still has no face, `sketchFaces` runs `planarFaces` once
+more at `PROFILE_TOLERANCE / 10` and takes only faces that are missing
+regions. A sketch with no missing region must keep exactly one run and
+identical faces. ADR-0026 (P2-03) added model-mode selection
 (`apps/web/src/selection/`): topology items `{kind, body, index}` in the
 session selection as `<body>:<index>`, `GeomRef`s via
 `topologyRef`/`selectionRefs` from `BodyMesh.faceIds/edgeIds/vertexIds`
