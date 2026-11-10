@@ -484,13 +484,20 @@ Crank or Glide. Since the right button drags, the right-click marking menu
   parameters come the functions (`sqrt(x)`, `max(a, b, …)`) and `pi` that
   start with the word; a function goes in with its brackets and the caret
   between them.
-- **Slider stops (ADR-0141's amendment):** an expression field can have a
-  slider under it whose stops a spec gives (Simplify for Print: the sizes
-  found on the bodies), with the first and last stop's values under its ends.
-  Dragging shows the stop in the field; letting go (or a key: arrows,
-  Home, End) sets it, so the preview runs once per drag. A typed value is
-  kept, and the slider sits at the last stop at or under it. Fewer than two
-  stops: no slider.
+- **Slider stops (ADR-0141's amendments):** an expression field can have a
+  slider whose stops a spec gives (Simplify for Print: the sizes found on the
+  bodies), with the first and last stop under its ends. A field whose empty
+  value means something (Simplify for Print's **Keep**: that kind stays) has
+  that as the first stop and as its placeholder. Dragging shows the stop in
+  the field; letting go (or a key: arrows, Home, End) sets it, so the preview
+  runs once per drag. A typed value is kept, and the slider sits at the last
+  stop at or under it. Fewer than two stops: no slider.
+- **Field cards (ADR-0141):** a field can be a card instead of a label and a
+  control: its name with an icon, a badge at the right ("1 go"), the slider
+  beside the field, and small notes under them ("R1.2 mm goes · R3.6 mm
+  stays"; what couldn't be removed in the warning colour). With nothing to
+  set (Simplify for Print: none of that kind on the bodies) the card is one
+  muted line.
 - **New parameter from a dimension (ADR-0096's amendment):** in a sketch
   dimension's editor, an unknown name alone in the field gets a last list row
   "+ New parameter width = 40.00 mm" (the dimension's current value) and,

@@ -4372,13 +4372,17 @@ whatever the limits, **per face** via `findSimplifyGroups`'s `seen` with that ki
 infinity and the others off, `distinctSizes` to 0.001 mm never rounded below) goes to `FeatureStatus.simplify`
 and `Preview.simplify` → `DialogContext.draftSimplify`; nothing found and failures are
 **warnings**, not errors. Preview: one `cut` preview tool, the compound of the removed faces of
-the input. The dialog's Found line is `simplifySummary`; `InfoField.lines` (new: a small list
-under an info line) shows `simplifyGroupLine` per group, what stayed first, at most 8. Limits
-read **"Remove up to"** (inclusive), inputs named "Round radius" / "Chamfer size" / "Hole
-diameter" (`ExpressionField.inputName`), each with a **slider** at `ExpressionField.stops`
-(the report's sizes; < 2: none) that shows the stop while dragging and **sets it on release**
+the input. The dialog is Bodies plus **a card per kind** (`ExpressionField.card`: title, icon,
+badge "N go" / "Keep", the **slider** at `ExpressionField.stops` beside the limit's field, notes:
+sizes that go and stay, then what couldn't be removed, ≤ 3; "None on these bodies" when the
+kind has no sizes), inputs named "Round radius" / "Chamfer size" / "Hole diameter"
+(`ExpressionField.inputName`). **No toggles and no Found list**: the slider's first stop is
+**Keep** (`ExpressionField.empty`, an empty limit makes **no input**, an absent input reads back
+empty; a stored toggle that is off reads back as Keep via the spec's `fromInputs`); all three
+kept is a `validate` issue. The slider shows the stop while dragging and **sets it on release**
 (pointer capture, keyup, blur: one preview per drag); a typed value is kept, the slider at the
-stop at or under it (`stopIndex`, `stopExpression` in `FeatureDialog.tsx`). Tooltip
+stop at or under it, a value under every size at Keep (`stopSlider`, `stopIndex`,
+`stopExpression` in `FeatureDialog.tsx`); `ExpressionInput.allowEmpty` lets an empty field commit. Tooltip
 clip `demo: simplifyForPrint` (frames the model, not the dialog). Tests: `simplify-for-print.test.ts` in kernel (OCCT: small
 fillets, through and blind holes, a stadium's ends that can't be removed, on another body and
 on the same body, chamfers by longer leg and the octagon rule, every edge chamfered with corner

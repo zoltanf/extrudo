@@ -21,11 +21,13 @@ import { canCommit, commitProblem, type DialogController, type OpenDialog } from
 import { repeatableFeatures } from './featureList';
 import { pickName } from './pickName';
 import type {
+  CardNote,
   DialogField,
   DialogRegions,
   ExpressionField,
   FeatureDialogSpec,
   FeatureListField,
+  FieldCard,
   LabelsField,
   LegendEntry,
   SelectionField,
@@ -246,6 +248,18 @@ function FieldRow({
     (field.min ?? 1) > 0 &&
     (open.values.refs[field.name]?.length ?? 0) === 0;
   const issue = empty ? undefined : open.checked.fields[field.name];
+  if (field.kind === 'expression' && field.card) {
+    return (
+      <ExpressionCard
+        field={field}
+        card={field.card}
+        open={open}
+        controller={controller}
+        settings={settings}
+        issue={issue}
+      />
+    );
+  }
   let control: ReactNode;
   switch (field.kind) {
     case 'selection':
@@ -293,7 +307,6 @@ function FieldRow({
       const ctx = controller.context();
       const text = ctx ? field.text(open.values, ctx) : '';
       const legend = (ctx && field.legend?.(open.values, ctx)) ?? [];
-      const lines = (ctx && field.lines?.(open.values, ctx)) ?? [];
       control = (
         <>
           <p data-info={field.name} className="truncate pt-1.5 text-sm">
@@ -312,16 +325,6 @@ function FieldRow({
                     style={{ background: LEGEND_TOKENS[entry.tone] }}
                   />
                   {entry.label}
-                </li>
-              ))}
-            </ul>
-          )}
-          {lines.length > 0 && (
-            <ul data-lines={field.name} className="space-y-0.5 text-xs text-muted">
-              {lines.map((line, i) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: lines have no identity; a new report replaces them all.
-                <li key={i} className="truncate" title={line}>
-                  {line}
                 </li>
               ))}
             </ul>
@@ -362,10 +365,108 @@ export function stopIndex(stops: readonly number[], value: number | undefined): 
   return index;
 }
 
+/** A slider's stops (`undefined`: the empty field, first) and where it sits. */
+export interface StopSlider {
+  stops: readonly (number | undefined)[];
+  index: number;
+}
+
 /**
- * An expression field, with a slider under it at the spec's stops (two or
- * more). Dragging shows the stop in the field; letting go, or a key, sets it.
+ * The slider for a field: its spec's stops, after the empty field's where that
+ * means something; none for fewer than two stops in all. An empty field, or a
+ * value under every stop (it takes nothing either), sits at the empty stop.
  */
+export function stopSlider(
+  field: Pick<ExpressionField, 'empty'>,
+  values: readonly number[] | undefined,
+  expr: string,
+  value: number | undefined,
+): StopSlider | undefined {
+  if (!values) return undefined;
+  if (field.empty === undefined) {
+    return values.length >= 2 ? { stops: values, index: stopIndex(values, value) } : undefined;
+  }
+  if (values.length === 0) return undefined;
+  const first = values[0] as number;
+  const under = expr.trim() === '' || value === undefined || value < first - 1e-9;
+  return { stops: [undefined, ...values], index: under ? 0 : 1 + stopIndex(values, value) };
+}
+
+/**
+ * A field's slider state: the stop being dragged shows in the field, and
+ * letting go (or a key) sets it, so the preview runs once per drag.
+ */
+function useStops(field: ExpressionField, open: OpenDialog, controller: DialogController) {
+  const [dragged, setDragged] = useState<string>();
+  const ctx = controller.context();
+  const values = ctx ? field.stops?.(open.values, ctx) : undefined;
+  const expr = dragged ?? open.values.exprs[field.name] ?? '';
+  const evaluated = expr.trim() === '' ? undefined : controller.evaluate(field.name, expr);
+  const slider = stopSlider(field, values, expr, evaluated?.ok ? evaluated.value : undefined);
+  const drag = (index: number) => {
+    const stop = slider?.stops[index];
+    setDragged(stop === undefined ? '' : stopExpression(field.unit, stop));
+  };
+  const commit = () => {
+    if (dragged === undefined) return;
+    setDragged(undefined);
+    controller.setExpr(field.name, dragged);
+  };
+  return { values, slider, dragged, drag, commit };
+}
+
+/** A slider at a field's stops, with the first and last stop under its ends. */
+function StopSliderControl({
+  field,
+  slider,
+  settings,
+  onDrag,
+  onCommit,
+}: {
+  field: ExpressionField;
+  slider: StopSlider;
+  settings: ExtrudoDocument['settings'];
+  onDrag(index: number): void;
+  onCommit(): void;
+}) {
+  const listId = useId();
+  const show = (stop: number | undefined) =>
+    stop === undefined
+      ? (field.empty ?? '')
+      : formatQuantity(stop, dimOfKind(field.unit), settings);
+  return (
+    <div className="flex min-w-0 flex-1 flex-col pt-1" data-stops={field.name}>
+      <input
+        type="range"
+        aria-label={field.inputName ?? field.label}
+        aria-valuetext={show(slider.stops[slider.index])}
+        list={listId}
+        min={0}
+        max={slider.stops.length - 1}
+        step={1}
+        value={slider.index}
+        // Letting go outside the slider still reaches it.
+        onPointerDown={(event) => event.currentTarget.setPointerCapture(event.pointerId)}
+        onChange={(event) => onDrag(event.currentTarget.valueAsNumber)}
+        onPointerUp={onCommit}
+        onKeyUp={onCommit}
+        onBlur={onCommit}
+        className="w-full accent-(--x-accent)"
+      />
+      <datalist id={listId}>
+        {slider.stops.map((stop, i) => (
+          <option key={stop ?? 'empty'} value={i} />
+        ))}
+      </datalist>
+      <div className="flex justify-between text-xs text-muted">
+        <span>{show(slider.stops[0])}</span>
+        <span>{show(slider.stops.at(-1))}</span>
+      </div>
+    </div>
+  );
+}
+
+/** An expression field, with a slider under it at the spec's stops. */
 function ExpressionControl({
   field,
   open,
@@ -377,63 +478,134 @@ function ExpressionControl({
   controller: DialogController;
   settings: ExtrudoDocument['settings'];
 }) {
-  const [dragged, setDragged] = useState<string>();
-  const listId = useId();
-  const ctx = controller.context();
-  const stops = (ctx && field.stops?.(open.values, ctx)) ?? [];
-  const name = field.inputName ?? field.label;
-  const expr = dragged ?? open.values.exprs[field.name] ?? '';
-  const evaluated = controller.evaluate(field.name, expr);
-  const index = stopIndex(stops, evaluated.ok ? evaluated.value : undefined);
-  const show = (value: number) => formatQuantity(value, dimOfKind(field.unit), settings);
-  const commit = () => {
-    if (dragged === undefined) return;
-    setDragged(undefined);
-    controller.setExpr(field.name, dragged);
-  };
+  const { slider, dragged, drag, commit } = useStops(field, open, controller);
   return (
     <>
       <FieldExpression
         field={field.name}
-        label={name}
+        label={field.inputName ?? field.label}
         open={open}
         controller={controller}
         settings={settings}
+        {...(field.empty !== undefined && { empty: field.empty })}
         {...(dragged !== undefined && { value: dragged })}
       />
-      {stops.length >= 2 && (
-        <div className="flex min-w-0 flex-col pt-1" data-stops={field.name}>
-          <input
-            type="range"
-            aria-label={name}
-            aria-valuetext={show(stops[index] ?? 0)}
-            list={listId}
-            min={0}
-            max={stops.length - 1}
-            step={1}
-            value={index}
-            // Letting go outside the slider still reaches it.
-            onPointerDown={(event) => event.currentTarget.setPointerCapture(event.pointerId)}
-            onChange={(event) =>
-              setDragged(stopExpression(field.unit, stops[event.currentTarget.valueAsNumber] ?? 0))
-            }
-            onPointerUp={commit}
-            onKeyUp={commit}
-            onBlur={commit}
-            className="w-full accent-(--x-accent)"
-          />
-          <datalist id={listId}>
-            {stops.map((stop, i) => (
-              <option key={stop} value={i} />
-            ))}
-          </datalist>
-          <div className="flex justify-between text-xs text-muted">
-            <span>{show(stops[0] ?? 0)}</span>
-            <span>{show(stops.at(-1) ?? 0)}</span>
+      {slider && (
+        <StopSliderControl
+          field={field}
+          slider={slider}
+          settings={settings}
+          onDrag={drag}
+          onCommit={commit}
+        />
+      )}
+    </>
+  );
+}
+
+const BADGE_TONES: Record<NonNullable<CardNote['tone']>, string> = {
+  accent: 'bg-accent-soft text-ink',
+  muted: 'bg-panel text-muted',
+  warning: 'bg-panel text-warning',
+};
+
+const NOTE_TONES: Record<NonNullable<CardNote['tone']>, string> = {
+  accent: 'text-ink',
+  muted: 'text-muted',
+  warning: 'text-warning',
+};
+
+/**
+ * An expression field as a card (ADR-0141 §6): the title and its badge, the
+ * slider beside the field, and the notes. With the stops known and none, the
+ * card says so in one line instead.
+ */
+function ExpressionCard({
+  field,
+  card,
+  open,
+  controller,
+  settings,
+  issue,
+}: {
+  field: ExpressionField;
+  card: FieldCard;
+  open: OpenDialog;
+  controller: DialogController;
+  settings: ExtrudoDocument['settings'];
+  issue: string | undefined;
+}) {
+  const { values, slider, dragged, drag, commit } = useStops(field, open, controller);
+  const ctx = controller.context();
+  const none = card.none !== undefined && values?.length === 0;
+  const badge = ctx && !none ? card.badge?.(open.values, ctx) : undefined;
+  const notes = (ctx && !none && card.notes?.(open.values, ctx)) || [];
+  const Icon = card.icon;
+  return (
+    <section
+      aria-label={field.label}
+      data-field={field.name}
+      data-card={none ? 'none' : 'open'}
+      className="flex min-w-0 flex-col gap-1 rounded-[8px] border border-line p-2"
+    >
+      <div className="flex items-center gap-1.5">
+        {Icon && <Icon size={14} className={none ? 'text-muted' : 'text-ink'} />}
+        <span className={`text-sm font-medium ${none ? 'text-muted' : ''}`} title={field.hint}>
+          {field.label}
+        </span>
+        {none ? (
+          <span className="ml-auto text-xs text-muted">{card.none}</span>
+        ) : (
+          badge && (
+            <span
+              data-badge={badge.tone ?? 'muted'}
+              className={`ml-auto rounded-full px-2 py-px text-xs ${BADGE_TONES[badge.tone ?? 'muted']}`}
+            >
+              {badge.text}
+            </span>
+          )
+        )}
+      </div>
+      {!none && (
+        <div className="flex min-w-0 items-start gap-2">
+          {slider && (
+            <StopSliderControl
+              field={field}
+              slider={slider}
+              settings={settings}
+              onDrag={drag}
+              onCommit={commit}
+            />
+          )}
+          <div className={slider ? 'w-[92px] shrink-0' : 'min-w-0 flex-1'}>
+            <FieldExpression
+              field={field.name}
+              label={field.inputName ?? field.label}
+              open={open}
+              controller={controller}
+              settings={settings}
+              {...(field.empty !== undefined && { empty: field.empty })}
+              {...(dragged !== undefined && { value: dragged })}
+            />
           </div>
         </div>
       )}
-    </>
+      {notes.map((note) => (
+        <p
+          key={note.text}
+          data-note={note.tone ?? 'muted'}
+          className={`truncate text-xs ${NOTE_TONES[note.tone ?? 'muted']}`}
+          title={note.text}
+        >
+          {note.text}
+        </p>
+      ))}
+      {issue && (
+        <p className="text-xs text-error">
+          <Message text={issue} />
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -600,6 +772,7 @@ export function FieldExpression({
   settings,
   className,
   value,
+  empty,
 }: {
   field: string;
   label: string;
@@ -609,6 +782,8 @@ export function FieldExpression({
   className?: string;
   /** Shown instead of the field's value: a slider's stop while it is dragged. */
   value?: string;
+  /** What an empty field means ("Keep"): the placeholder, and a value of its own. */
+  empty?: string;
 }) {
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     // A valid draft blurred its field on Enter (committing it): Enter also means OK.
@@ -627,7 +802,7 @@ export function FieldExpression({
         evaluate={(expr) => controller.evaluate(field, expr)}
         format={(r) => formatQuantity(r.value, r.dim, settings)}
         onDraftChange={(expr, valid) => {
-          if (valid) controller.setExpr(field, expr);
+          if (valid) controller.setExpr(field, expr.trim() === '' ? '' : expr);
           else {
             const result = controller.evaluate(field, expr);
             controller.setTyping(
@@ -637,6 +812,7 @@ export function FieldExpression({
           }
         }}
         onCommit={(expr) => controller.setExpr(field, expr)}
+        {...(empty !== undefined && { placeholder: empty, allowEmpty: true })}
         {...(className && { className })}
       />
     </div>

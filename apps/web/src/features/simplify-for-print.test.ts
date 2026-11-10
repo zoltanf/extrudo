@@ -2,16 +2,17 @@ import {
   type FeatureId,
   SimplifyForPrintInputsSchema,
   type SimplifyGroup,
+  type SimplifyReport,
+  simplifyForPrintFeatureOf,
   simplifyKinds,
-  simplifySummary,
 } from '@extrudo/core';
 import type { Preview } from '@extrudo/kernel';
 import { describe, expect, it } from 'vitest';
 import { featureDialogs, specForCommand } from './registry';
-import { simplifyForPrintDialog, simplifyLines } from './simplify-for-print';
-import type { ExpressionField, InfoField } from './spec';
+import { simplifyBadge, simplifyForPrintDialog, simplifyNotes } from './simplify-for-print';
+import type { ExpressionField } from './spec';
 import { BOX, settle, setupDialogs } from './testing';
-import { shownFields } from './values';
+import { valuesFor } from './values';
 
 const group = (kind: SimplifyGroup['kind'], size: number, removed = true): SimplifyGroup => ({
   kind,
@@ -21,6 +22,9 @@ const group = (kind: SimplifyGroup['kind'], size: number, removed = true): Simpl
   removed,
 });
 
+const field = (name: string) =>
+  simplifyForPrintDialog.fields.find((f) => f.name === name) as ExpressionField;
+
 function started() {
   const t = setupDialogs([simplifyForPrintDialog]);
   t.session.getState().select([{ kind: 'body', id: BOX }]);
@@ -29,44 +33,67 @@ function started() {
 }
 
 describe('the simplify for print dialog (ADR-0141)', () => {
-  const found = simplifyForPrintDialog.fields.find((f) => f.name === 'found') as InfoField;
-
-  it('is the app’s dialog for the tool, with every limit on by default', () => {
+  it('is the app’s dialog for the tool: a card per kind, every limit on by default', () => {
     expect(specForCommand(featureDialogs(), 'simplifyForPrint')?.type).toBe('simplifyForPrint');
+    expect(simplifyForPrintDialog.fields.map((f) => f.kind)).toEqual([
+      'selection',
+      'expression',
+      'expression',
+      'expression',
+    ]);
     const t = started();
     const inputs = t.open()?.draft.inputs ?? {};
     expect(SimplifyForPrintInputsSchema.safeParse(inputs).success).toBe(true);
     expect(Object.keys(inputs).sort()).toEqual([
       'bodies',
-      'chamfers',
-      'holes',
       'maxChamferSize',
       'maxHoleDiameter',
       'maxRoundRadius',
-      'rounds',
     ]);
     expect(simplifyKinds(inputs as never)).toEqual({ rounds: true, chamfers: true, holes: true });
     expect(t.controller.ok()).toBe(true);
     expect(t.store.getState().doc.features.at(-1)?.name).toBe('Simplify for Print1');
   });
 
-  it('a limit turned off is hidden and makes no input', () => {
+  it('Keep (an empty limit) makes no input; all three kept is an issue', () => {
     const t = started();
-    t.controller.setToggle('holes', false);
-    const open = t.open();
-    const ctx = t.controller.context();
-    if (!open || !ctx) throw new Error('no dialog');
-    expect(shownFields(simplifyForPrintDialog, open.values, ctx).map((f) => f.name)).not.toContain(
-      'maxHoleDiameter',
-    );
-    const inputs = open.draft.inputs;
+    t.controller.setExpr('maxHoleDiameter', '');
+    const inputs = t.open()?.draft.inputs ?? {};
     expect(inputs.maxHoleDiameter).toBeUndefined();
     expect(simplifyKinds(inputs as never)).toEqual({ rounds: true, chamfers: true, holes: false });
+    expect(t.open()?.checked.first).toBeUndefined();
+    t.controller.setExpr('maxRoundRadius', '');
+    t.controller.setExpr('maxChamferSize', '');
+    expect(t.open()?.checked.first?.message).toBe(
+      'Everything is kept: move a slider off Keep, or type a limit.',
+    );
+    expect(t.controller.ok()).toBe(false);
   });
 
-  it('counts what goes and lists each round or hole, what stayed first', async () => {
+  it('reads a stored feature back: no limit, or a toggle turned off, is Keep', () => {
     const t = started();
-    const report = {
+    const ctx = t.controller.context();
+    if (!ctx) throw new Error('no dialog');
+    const built = simplifyForPrintFeatureOf('f9' as FeatureId, 'Simplify for Print1', [BOX], {
+      maxRoundRadius: '2 mm',
+      maxChamferSize: '1 mm',
+    });
+    // An older file's chamfers toggle, off with its limit kept.
+    const feature = {
+      ...built,
+      inputs: { ...built.inputs, chamfers: { kind: 'bool' as const, value: false } },
+    };
+    const values = valuesFor(simplifyForPrintDialog, feature, ctx);
+    expect(values.exprs).toMatchObject({
+      maxRoundRadius: '2 mm',
+      maxChamferSize: '',
+      maxHoleDiameter: '',
+    });
+  });
+
+  it("each card's slider stops at the sizes found, its badge counts, its note says what goes", async () => {
+    const t = started();
+    const report: SimplifyReport = {
       groups: [group('round', 0.5), group('round', 1, false), group('hole', 3), group('hole', 2.5)],
       sizes: { round: [0.5, 1, 4], chamfer: [], hole: [2.5, 3] },
     };
@@ -81,39 +108,37 @@ describe('the simplify for print dialog (ADR-0141)', () => {
     const ctx = t.controller.context();
     const open = t.open();
     if (!open || !ctx) throw new Error('no dialog');
-    expect(found.text(open.values, ctx)).toBe("1 round, 2 holes · 1 couldn't be removed");
-    expect(found.lines?.(open.values, ctx)).toEqual([
-      "Round R1 mm, 1 face: couldn't be removed",
-      'Round R0.5 mm, 1 face: removed',
-      'Hole Ø3 mm, 2 faces: removed',
-      'Hole Ø2.5 mm, 2 faces: removed',
+    expect(field('maxRoundRadius').stops?.(open.values, ctx)).toEqual([0.5, 1, 4]);
+    expect(field('maxChamferSize').stops?.(open.values, ctx)).toEqual([]);
+    const card = field('maxRoundRadius').card;
+    expect(card?.badge?.(open.values, ctx)).toEqual({ text: '1 go', tone: 'accent' });
+    // The 1 mm default: 0.5 and 1 go (one of them couldn't be removed), 4 stays.
+    expect(card?.notes?.(open.values, ctx)).toEqual([
+      { text: 'R0.5, R1 mm go · R4 mm stays' },
+      { text: "Round R1 mm, 1 face: couldn't be removed", tone: 'warning' },
     ]);
-    // The sliders stop at the sizes found, whatever the limits.
-    const stops = (name: string) =>
-      (simplifyForPrintDialog.fields.find((f) => f.name === name) as ExpressionField).stops?.(
-        open.values,
-        ctx,
-      );
-    expect(stops('maxRoundRadius')).toEqual([0.5, 1, 4]);
-    expect(stops('maxChamferSize')).toEqual([]);
-    expect(stops('maxHoleDiameter')).toEqual([2.5, 3]);
+    expect(field('maxChamferSize').card?.none).toBe('None on these bodies');
   });
 
-  it('words the count line and caps the list', () => {
-    expect(simplifySummary({ groups: [] })).toBe('Nothing under the limits');
-    expect(simplifySummary({ groups: [group('round', 1), group('round', 1)] })).toBe('2 rounds');
-    expect(simplifySummary({ groups: [group('chamfer', 1), group('hole', 2, false)] })).toBe(
-      "1 chamfer · 1 couldn't be removed",
-    );
-    expect(simplifySummary({ groups: [group('hole', 2, false)] })).toBe(
-      "Nothing removed · 1 couldn't be removed",
-    );
-    expect(simplifyLines({ groups: [group('chamfer', 0.5)] })).toEqual([
-      'Chamfer 0.5 mm, 2 faces: removed',
+  it('words the badge and the notes', () => {
+    const report: SimplifyReport = {
+      groups: [group('hole', 2), ...Array.from({ length: 5 }, () => group('hole', 3, false))],
+      sizes: { round: [], chamfer: [0.5, 1, 1.5, 2], hole: [2, 3, 6] },
+    };
+    expect(simplifyBadge(report, 'hole', true)).toEqual({ text: 'Keep', tone: 'muted' });
+    expect(simplifyBadge(report, 'chamfer', false)).toEqual({ text: '0 go', tone: 'muted' });
+    expect(simplifyBadge(undefined, 'hole', false)).toBeUndefined();
+    expect(simplifyNotes(report, 'chamfer', undefined)).toEqual([
+      { text: '4 sizes 0.5–2 mm stay' },
     ]);
-    const many = { groups: Array.from({ length: 11 }, () => group('hole', 2)) };
-    const lines = simplifyLines(many);
-    expect(lines).toHaveLength(9);
-    expect(lines.at(-1)).toBe('and 3 more');
+    expect(simplifyNotes(report, 'chamfer', 5)).toEqual([{ text: '4 sizes 0.5–2 mm go' }]);
+    const holes = simplifyNotes(report, 'hole', 3);
+    expect(holes[0]).toEqual({ text: 'Ø2, Ø3 mm go · Ø6 mm stays' });
+    expect(holes.slice(1).map((n) => n.text)).toEqual([
+      "Hole Ø3 mm, 2 faces: couldn't be removed",
+      "Hole Ø3 mm, 2 faces: couldn't be removed",
+      "Hole Ø3 mm, 2 faces: couldn't be removed",
+      "and 2 more couldn't be removed",
+    ]);
   });
 });

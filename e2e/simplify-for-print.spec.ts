@@ -3,9 +3,10 @@ import { kernelReady, openProject, pickTool, projector } from './helpers';
 
 // ADR-0141 (#79): Simplify for Print. A 40 mm cube with a Ø12 through hole
 // and a 3 mm round on the top front edge: with the limits up to both, the
-// Make tab's tool finds one round and one hole, draws the faces that go in
-// red (a `cut` preview), and OK gives the plain cube back; the limits down
-// find nothing, which is a warning, not an error.
+// Make tab's tool finds one round and one hole (each kind's card counts what
+// goes and says which sizes go and stay), draws the faces that go in red (a
+// `cut` preview), and OK gives the plain cube back; a slider's Keep stop keeps
+// that kind; the limits down find nothing, which is a warning, not an error.
 
 test.use({ viewport: { width: 1440, height: 900 } });
 test.describe.configure({ timeout: 240_000 });
@@ -129,30 +130,47 @@ test('Simplify for Print removes the small round and hole, and says what it foun
     'body',
   );
   await expect(dialog.getByRole('button', { name: 'Bodies', exact: true })).toHaveText('Body1');
-  await dialog.getByRole('textbox', { name: 'Round radius', exact: true }).fill('4 mm');
-  await dialog.getByRole('textbox', { name: 'Hole diameter', exact: true }).fill('15 mm');
+  const rounds = dialog.getByRole('region', { name: 'Rounds', exact: true });
+  const holes = dialog.getByRole('region', { name: 'Holes', exact: true });
+  await rounds.getByRole('textbox', { name: 'Round radius', exact: true }).fill('4 mm');
+  await holes.getByRole('textbox', { name: 'Hole diameter', exact: true }).fill('15 mm');
 
-  const found = dialog.locator('[data-info="found"]');
-  await expect(found).toHaveText('1 round, 1 hole', { timeout: 30_000 });
-  await expect(dialog.locator('[data-lines="found"] li')).toHaveText([
-    'Round R3 mm, 1 face: removed',
-    'Hole Ø12 mm, 1 face: removed',
-  ]);
+  // A card per kind: what goes, which sizes go and which stay; no chamfers on this cube.
+  await expect(rounds.locator('[data-badge]')).toHaveText('1 go', { timeout: 30_000 });
+  await expect(holes.locator('[data-badge]')).toHaveText('1 go');
+  await expect(rounds.locator('[data-note]')).toHaveText('R3 mm goes');
+  await expect(holes.locator('[data-note]')).toHaveText('Ø12 mm goes');
+  await expect(dialog.locator('[data-field="maxChamferSize"]')).toHaveAttribute(
+    'data-card',
+    'none',
+  );
   // The faces that go are drawn as a cut, not the simplified body.
   await expect(viewport).toHaveAttribute('data-preview', 'cut');
-  // One round and one hole: one size each, so no slider (it needs two stops).
-  await expect(dialog.locator('[data-stops]')).toHaveCount(0);
 
-  // Limits below both: nothing found, a warning.
-  await dialog.getByRole('textbox', { name: 'Round radius', exact: true }).fill('2 mm');
-  await dialog.getByRole('textbox', { name: 'Hole diameter', exact: true }).fill('10 mm');
-  await expect(found).toHaveText('Nothing under the limits', { timeout: 30_000 });
-  await expect(dialog).toHaveAttribute('data-preview-status', 'warning');
+  // The slider's first stop is Keep: that kind stays, and the field empties.
+  const slider = rounds.getByRole('slider', { name: 'Round radius', exact: true });
+  await slider.focus();
+  await page.keyboard.press('Home');
+  await expect(rounds.locator('[data-badge]')).toHaveText('Keep');
+  await expect(rounds.getByRole('textbox', { name: 'Round radius', exact: true })).toHaveValue('');
+  await expect(rounds.locator('[data-note]')).toHaveText('R3 mm stays', { timeout: 30_000 });
+  await page.keyboard.press('End');
+  await expect(rounds.getByRole('textbox', { name: 'Round radius', exact: true })).toHaveValue(
+    '3 mm',
+  );
+  await expect(rounds.locator('[data-badge]')).toHaveText('1 go', { timeout: 30_000 });
+
+  // Limits below both: nothing goes, a warning.
+  await rounds.getByRole('textbox', { name: 'Round radius', exact: true }).fill('2 mm');
+  await holes.getByRole('textbox', { name: 'Hole diameter', exact: true }).fill('10 mm');
+  await expect(dialog).toHaveAttribute('data-preview-status', 'warning', { timeout: 30_000 });
+  await expect(rounds.locator('[data-badge]')).toHaveText('0 go');
+  await expect(holes.locator('[data-note]')).toHaveText('Ø12 mm stays');
 
   // Up again, and OK: the plain cube.
-  await dialog.getByRole('textbox', { name: 'Round radius', exact: true }).fill('4 mm');
-  await dialog.getByRole('textbox', { name: 'Hole diameter', exact: true }).fill('15 mm');
-  await expect(found).toHaveText('1 round, 1 hole', { timeout: 30_000 });
+  await rounds.getByRole('textbox', { name: 'Round radius', exact: true }).fill('4 mm');
+  await holes.getByRole('textbox', { name: 'Hole diameter', exact: true }).fill('15 mm');
+  await expect(holes.locator('[data-badge]')).toHaveText('1 go', { timeout: 30_000 });
   await ok(page, dialog);
   await expect(
     page.getByRole('list', { name: 'Features' }).getByRole('button', {

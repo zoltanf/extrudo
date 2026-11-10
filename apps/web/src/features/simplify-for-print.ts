@@ -1,37 +1,129 @@
 /**
- * The Simplify for Print dialog (ADR-0141, #79): bodies, and a limit each
- * for rounds, chamfers and holes ("Remove up to"), each with its own toggle
- * and a slider that stops at the sizes found on the bodies. The live
- * preview draws the faces that go in red (the kernel's preview tool); the
- * Found line counts them ("12 rounds, 3 holes") and its lines say, per
- * round, chamfer or hole, whether it was removed. Fields are named like the feature's
- * inputs, so the framework's default mapping turns them into inputs and
- * back; a limit whose toggle is off is hidden and makes no input.
+ * The Simplify for Print dialog (ADR-0141, #79): bodies, then a card per kind
+ * (rounds, chamfers, holes). Each card's slider starts at **Keep** and stops
+ * at every size of its kind found on the bodies, with the limit's field
+ * beside it; its badge says how many go, and its note which sizes go and
+ * which stay, and what couldn't be removed. Keep is an empty limit: it makes
+ * no input, so that kind stays (the feature's toggles are only read back from
+ * older files). The live preview draws the faces that go in red (the
+ * kernel's preview tool).
  */
 import {
+  type SimplifyGroup,
   type SimplifyReport,
   simplifyForPrintFeature,
   simplifyGroupLine,
-  simplifySummary,
 } from '@extrudo/core';
-import { type DialogContext, defineFeatureDialog } from './spec';
+import { CircleDot, Octagon, SquareRoundCorner } from 'lucide-react';
+import {
+  type CardNote,
+  type DialogContext,
+  type DialogValues,
+  defineFeatureDialog,
+  type ExpressionField,
+} from './spec';
+import { defaultFromInputs } from './values';
 
-/** Lines of the per-group list shown at most; the rest are counted. */
-const LIST_LINES = 8;
+type Kind = SimplifyGroup['kind'];
 
-/** The list under the count: what stayed first (it is what to act on), then what went. */
-export function simplifyLines(report: Pick<SimplifyReport, 'groups'>): string[] {
-  const ordered = [
-    ...report.groups.filter((g) => !g.removed),
-    ...report.groups.filter((g) => g.removed),
-  ];
-  const lines = ordered.slice(0, LIST_LINES).map(simplifyGroupLine);
-  const more = ordered.length - lines.length;
-  if (more > 0) lines.push(`and ${more} more`);
-  return lines;
-}
+/** An empty limit: the kind stays. */
+const KEEP = 'Keep';
+
+/** Each kind's limit input, the toggle older files may have, and how its sizes read. */
+const KINDS = {
+  round: { limit: 'maxRoundRadius', toggle: 'rounds', prefix: 'R' },
+  chamfer: { limit: 'maxChamferSize', toggle: 'chamfers', prefix: '' },
+  hole: { limit: 'maxHoleDiameter', toggle: 'holes', prefix: 'Ø' },
+} as const;
+
+/** Notes at most for what couldn't be removed; the rest are counted. */
+const FAILED_LINES = 3;
 
 const reportOf = (ctx: DialogContext | undefined) => ctx?.draftSimplify;
+
+const kept = (values: Pick<DialogValues, 'exprs'>, kind: Kind) =>
+  (values.exprs[KINDS[kind].limit] ?? '').trim() === '';
+
+/** "R0.5, R1 mm"; more than three: "6 sizes R0.5–R3 mm". */
+function sizeList(kind: Kind, sizes: readonly number[]): string {
+  const { prefix } = KINDS[kind];
+  const one = (size: number) => `${prefix}${Number(size.toFixed(3))}`;
+  if (sizes.length <= 3) return `${sizes.map(one).join(', ')} mm`;
+  return `${sizes.length} sizes ${one(sizes[0] as number)}–${one(sizes.at(-1) as number)} mm`;
+}
+
+/** The pill: "Keep" while kept, else how many of the kind go. */
+export function simplifyBadge(
+  report: SimplifyReport | undefined,
+  kind: Kind,
+  isKept: boolean,
+): CardNote | undefined {
+  if (isKept) return { text: KEEP, tone: 'muted' };
+  if (!report) return undefined;
+  const removed = report.groups.filter((g) => g.kind === kind && g.removed).length;
+  return { text: `${removed} go`, tone: removed > 0 ? 'accent' : 'muted' };
+}
+
+/**
+ * The notes: which sizes found go under `limit` and which stay ("R1.2 mm goes
+ * · R3.6 mm stays"; no limit: all stay), then each one that couldn't be
+ * removed, at most three and a count.
+ */
+export function simplifyNotes(
+  report: SimplifyReport | undefined,
+  kind: Kind,
+  limit: number | undefined,
+): CardNote[] {
+  if (!report) return [];
+  const sizes = report.sizes[kind];
+  const goes = limit === undefined ? [] : sizes.filter((size) => size <= limit + 1e-6);
+  const stays = sizes.filter((size) => !goes.includes(size));
+  const parts: string[] = [];
+  if (goes.length > 0) parts.push(`${sizeList(kind, goes)} ${goes.length === 1 ? 'goes' : 'go'}`);
+  if (stays.length > 0) {
+    parts.push(`${sizeList(kind, stays)} ${stays.length === 1 ? 'stays' : 'stay'}`);
+  }
+  const notes: CardNote[] = parts.length > 0 ? [{ text: parts.join(' · ') }] : [];
+  const failed = report.groups.filter((g) => g.kind === kind && !g.removed);
+  for (const group of failed.slice(0, FAILED_LINES)) {
+    notes.push({ text: simplifyGroupLine(group), tone: 'warning' });
+  }
+  if (failed.length > FAILED_LINES) {
+    notes.push({
+      text: `and ${failed.length - FAILED_LINES} more couldn't be removed`,
+      tone: 'warning',
+    });
+  }
+  return notes;
+}
+
+function kindField(
+  kind: Kind,
+  options: Pick<ExpressionField, 'label' | 'inputName' | 'default' | 'hint'> & {
+    icon: NonNullable<ExpressionField['card']>['icon'];
+  },
+): ExpressionField {
+  const { icon, ...rest } = options;
+  return {
+    kind: 'expression',
+    name: KINDS[kind].limit,
+    unit: 'length',
+    empty: KEEP,
+    ...rest,
+    stops: (_values, ctx) => reportOf(ctx)?.sizes[kind],
+    card: {
+      icon,
+      none: 'None on these bodies',
+      badge: (values, ctx) => simplifyBadge(reportOf(ctx), kind, kept(values, kind)),
+      notes: (values, ctx) =>
+        simplifyNotes(
+          reportOf(ctx),
+          kind,
+          kept(values, kind) ? undefined : ctx.value(KINDS[kind].limit),
+        ),
+    },
+  };
+}
 
 export const simplifyForPrintDialog = defineFeatureDialog({
   ...simplifyForPrintFeature,
@@ -45,74 +137,39 @@ export const simplifyForPrintDialog = defineFeatureDialog({
       prompt: 'Pick bodies',
       hint: 'Solid bodies; an imported mesh needs Mesh to Solid first.',
     },
-    {
-      kind: 'toggle',
-      name: 'rounds',
+    kindField('round', {
       label: 'Rounds',
-      default: true,
-      hint: 'Remove fillets and other rounds: curved faces that blend smoothly into their neighbours.',
-    },
-    {
-      kind: 'expression',
-      name: 'maxRoundRadius',
-      label: 'Remove up to',
       inputName: 'Round radius',
-      unit: 'length',
       default: '1 mm',
-      hint: 'Rounds up to this radius go; larger ones stay. The slider stops at each radius on the bodies.',
-      shown: (values) => values.toggles.rounds ?? true,
-      stops: (_values, ctx) => reportOf(ctx)?.sizes.round,
-    },
-    {
-      kind: 'toggle',
-      name: 'chamfers',
+      icon: SquareRoundCorner,
+      hint: 'Fillets and other rounds: curved faces that blend smoothly into their neighbours. Rounds up to this radius go; Keep keeps them all.',
+    }),
+    kindField('chamfer', {
       label: 'Chamfers',
-      default: true,
-      hint: 'Remove chamfers: narrow flat or conical bevels between two faces that meet at an angle.',
-    },
-    {
-      kind: 'expression',
-      name: 'maxChamferSize',
-      label: 'Remove up to',
       inputName: 'Chamfer size',
-      unit: 'length',
       default: '1 mm',
-      hint: 'Chamfers that cut back up to this far into either face go; larger ones stay. The slider stops at each size on the bodies.',
-      shown: (values) => values.toggles.chamfers ?? true,
-      stops: (_values, ctx) => reportOf(ctx)?.sizes.chamfer,
-    },
-    {
-      kind: 'toggle',
-      name: 'holes',
+      icon: Octagon,
+      hint: 'Narrow flat or conical bevels between two faces that meet at an angle. Chamfers that cut back up to this far into either face go; Keep keeps them all.',
+    }),
+    kindField('hole', {
       label: 'Holes',
-      default: true,
-      hint: 'Remove holes: closed cylindrical walls with their floor, counterbore, countersink and rounded edge.',
-    },
-    {
-      kind: 'expression',
-      name: 'maxHoleDiameter',
-      label: 'Remove up to',
       inputName: 'Hole diameter',
-      unit: 'length',
       default: '3 mm',
-      hint: 'Holes up to this diameter go (a counterbored hole by its widest part); larger ones stay. The slider stops at each diameter on the bodies.',
-      shown: (values) => values.toggles.holes ?? true,
-      stops: (_values, ctx) => reportOf(ctx)?.sizes.hole,
-    },
-    {
-      kind: 'info',
-      name: 'found',
-      label: 'Found',
-      hint: 'What goes, drawn red in the view. One whose neighbours cannot be extended to meet stays, and is listed below.',
-      shown: (_values, ctx) => reportOf(ctx) !== undefined,
-      text: (_values, ctx) => {
-        const report = reportOf(ctx);
-        return report ? simplifySummary(report) : '';
-      },
-      lines: (_values, ctx) => {
-        const report = reportOf(ctx);
-        return report ? simplifyLines(report) : [];
-      },
-    },
+      icon: CircleDot,
+      hint: 'Closed cylindrical walls with their floor, counterbore, countersink and rounded edge. Holes up to this diameter go (a counterbored one by its widest part); Keep keeps them all.',
+    }),
   ],
+  // A kind an older file turned off with its toggle reads as Keep.
+  fromInputs: (inputs) => {
+    const values = defaultFromInputs(simplifyForPrintDialog, inputs);
+    for (const { limit, toggle } of Object.values(KINDS)) {
+      const input = inputs[toggle];
+      if (input?.kind === 'bool' && !input.value) values.exprs = { ...values.exprs, [limit]: '' };
+    }
+    return values;
+  },
+  validate: (values) =>
+    (Object.keys(KINDS) as Kind[]).every((kind) => kept(values, kind))
+      ? { message: 'Everything is kept: move a slider off Keep, or type a limit.' }
+      : undefined,
 });

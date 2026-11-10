@@ -368,7 +368,7 @@ describe('simplify for print', { timeout: 120_000 }, () => {
     const off = await run(testDocument([...features, simplify(['B:0'], {})]));
     expect(status(off, 'P')).toMatchObject({
       status: 'error',
-      message: 'Turn on rounds, chamfers or holes to simplify.',
+      message: 'Rounds, chamfers and holes are all kept: give at least one a limit.',
     });
   });
 

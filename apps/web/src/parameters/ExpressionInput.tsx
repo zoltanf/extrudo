@@ -52,6 +52,11 @@ export interface ExpressionInputProps {
   label: string;
   /** With a placeholder, an empty field counts as "not filled in yet" rather than an error. */
   placeholder?: string;
+  /**
+   * An empty field is a value of its own (Simplify for Print's "Keep"): it
+   * commits as `''` and counts as valid in `onDraftChange`.
+   */
+  allowEmpty?: boolean;
   className?: string;
 }
 
@@ -78,6 +83,7 @@ export function ExpressionInput({
   newParameter,
   label,
   placeholder,
+  allowEmpty,
   className,
 }: ExpressionInputProps) {
   const [draft, setDraft] = useState(value);
@@ -101,10 +107,11 @@ export function ExpressionInput({
   const error = result.ok || pending ? undefined : result.error;
 
   // An invalid draft stays in the field (still "editing") so it can be fixed.
+  const empty = allowEmpty === true && draft.trim() === '';
   const commit = () => {
-    if (!result.ok) return;
+    if (!result.ok && !empty) return;
     setEditing(false);
-    if (draft !== value) onCommit(draft);
+    if (draft !== value) onCommit(empty ? '' : draft);
   };
 
   // In scope for this field: the field's own evaluation knows the name and it
@@ -158,7 +165,7 @@ export function ExpressionInput({
   const change = (next: string) => {
     setEditing(true);
     setDraft(next);
-    onDraftChange?.(next, evaluate(next).ok);
+    onDraftChange?.(next, evaluate(next).ok || (allowEmpty === true && next.trim() === ''));
   };
 
   const insert = (entry: NameEntry) => {

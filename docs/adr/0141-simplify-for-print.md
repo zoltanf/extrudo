@@ -147,6 +147,25 @@ detection.
    seconds. A typed value is kept; the slider sits at the stop at or under it.
    Fewer than two sizes: no slider.
 
+   **Amended again 2026-11-08 (owner's pick of three designs): a card per
+   kind, and Keep instead of the toggles.** Each kind is a card
+   (`ExpressionField.card`): its name and icon, a badge with how many go
+   ("1 go"; "Keep" while kept), the slider beside the limit's field, and a
+   note with which sizes found go and which stay ("R1.2 mm goes · R3.6 mm
+   stays"; more than three: "6 sizes R0.5–R3 mm") and each one that couldn't
+   be removed (at most three, then a count). A kind with no sizes on the
+   bodies is one line: "None on these bodies". The slider's **first stop is
+   Keep** (`ExpressionField.empty`): an empty limit, which makes no input, so
+   that kind stays (`simplifyKinds`: absent limit, kind off); one size is now
+   enough for a slider (Keep and it). A value under every size also sits at
+   Keep (it takes nothing either). So the **Rounds, Chamfers and Holes
+   toggles are gone** from the dialog and so is the Found list (with
+   `simplifySummary` and `InfoField.lines`); the feature's toggle inputs stay
+   for files and the API, and a toggle that is off reads back as Keep. All
+   three kept is an issue that holds OK back ("Everything is kept: move a
+   slider off Keep, or type a limit."), and the kernel's error for it reads
+   "Rounds, chamfers and holes are all kept: give at least one a limit."
+
 ## Rejected
 
 - **Storing the found faces** (as Remove Faces does): the feature would be
@@ -171,6 +190,10 @@ detection.
   every stop change what goes.
 - **A preview on every slider move**: one defeaturing can take seconds on a
   big body.
+- **Segmented stops** (a button per size): one click each, but a body with
+  many sizes needs a second row; and **the slider with a checkbox per kind**:
+  Keep says the same in the slider itself. Counts per kind on a card were
+  picked over a single Found list.
 - **Chamfers between curved faces** (a flat chamfer on a cylinder's
   straight edge, a chamfer along a spline): the legs need the neighbours'
   meeting line; only plane–plane strips and cones for now.

@@ -606,7 +606,7 @@ function evaluateSimplify(ctx: EvalContext<SimplifyForPrintInputs>): FeatureOutp
   const { kernel } = ctx;
   const kinds = simplifyKinds(ctx.inputs);
   if (!kinds.rounds && !kinds.chamfers && !kinds.holes) {
-    throw new KernelError('Turn on rounds, chamfers or holes to simplify.');
+    throw new KernelError('Rounds, chamfers and holes are all kept: give at least one a limit.');
   }
   const limits: DetectLimits = {
     maxRoundRadius: kinds.rounds

@@ -166,22 +166,6 @@ export type SimplifySizes = Record<SimplifyGroup['kind'], number[]>;
 
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
-/**
- * The count line of what went, by kind: "12 rounds, 3 holes", "2 chamfers";
- * with what stayed: "· 2 couldn't be removed".
- */
-export function simplifySummary(report: Pick<SimplifyReport, 'groups'>): string {
-  const removed = report.groups.filter((g) => g.removed);
-  const failed = report.groups.length - removed.length;
-  if (report.groups.length === 0) return 'Nothing under the limits';
-  const counts = (['round', 'chamfer', 'hole'] as const)
-    .map((kind) => [kind, removed.filter((g) => g.kind === kind).length] as const)
-    .filter(([, n]) => n > 0)
-    .map(([kind, n]) => plural(n, kind));
-  const line = counts.length > 0 ? counts.join(', ') : 'Nothing removed';
-  return failed > 0 ? `${line} · ${failed} couldn't be removed` : line;
-}
-
 /** A group's line: "Hole Ø3 mm, 2 faces: removed". */
 export function simplifyGroupLine(group: SimplifyGroup): string {
   const size = Number(group.size.toFixed(3));

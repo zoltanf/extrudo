@@ -151,12 +151,42 @@ export interface ExpressionField extends FieldBase {
   inputName?: string;
   /**
    * Values a slider under the field stops at, ascending, in the unit's base
-   * (mm, degrees): Simplify for Print's found sizes (ADR-0141 §4). Fewer than
-   * two: no slider. Dragging shows the stop in the field; letting go sets it,
-   * so the preview runs once per drag, not per move. A typed value is kept,
-   * and the slider sits at the last stop at or under it.
+   * (mm, degrees): Simplify for Print's found sizes (ADR-0141 §4). With
+   * `empty`, the slider's first stop is the empty field. Fewer than two stops
+   * in all: no slider. Dragging shows the stop in the field; letting go sets
+   * it, so the preview runs once per drag, not per move. A typed value is
+   * kept, and the slider sits at the last stop at or under it.
    */
   stops?(values: DialogValues, ctx: DialogContext): readonly number[] | undefined;
+  /**
+   * An empty field is a value, and this says what it means (Simplify for
+   * Print's "Keep"): it shows as the placeholder, makes no input (an absent
+   * input reads back as empty), and is the slider's first stop.
+   */
+  empty?: string;
+  /** The field as a card instead of a label and a control (ADR-0141 §6). */
+  card?: FieldCard;
+}
+
+/**
+ * A field drawn as a card (Simplify for Print's kinds): the label as its
+ * title with `icon`, `badge` at the right, the slider and the field on one
+ * line, and `notes` under them.
+ */
+export interface FieldCard {
+  icon?: ComponentType<{ size?: number; className?: string }>;
+  /** The pill right of the title ("2 go"). */
+  badge?(values: DialogValues, ctx: ManipulatorContext): CardNote | undefined;
+  /** Small lines under the slider ("R1.2 mm goes · R3.6 mm stays"); `ctx.value` reads a limit. */
+  notes?(values: DialogValues, ctx: ManipulatorContext): readonly CardNote[];
+  /** In place of the slider and the field once the stops are known and there are none. */
+  none?: string;
+}
+
+/** A card's badge or note: its text, and a tone (default `muted`). */
+export interface CardNote {
+  text: string;
+  tone?: 'accent' | 'muted' | 'warning';
 }
 
 /** A dropdown (an `enum` input). */
@@ -185,11 +215,6 @@ export interface InfoField extends FieldBase {
    * §5), each a theme token's colour and what it means. Empty or absent: none.
    */
   legend?(values: DialogValues, ctx: DialogContext): readonly LegendEntry[];
-  /**
-   * Smaller lines under it, one per item (Simplify for Print's rounds and
-   * holes, ADR-0141 §4). Empty or absent: none.
-   */
-  lines?(values: DialogValues, ctx: DialogContext): readonly string[];
 }
 
 /** One swatch of an info field's legend: a category colour token and its label. */
