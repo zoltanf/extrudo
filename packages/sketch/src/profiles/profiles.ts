@@ -41,6 +41,7 @@ import {
   TAU,
 } from '../inference/geometry';
 import { interiorPoint, windingNumber } from './ink';
+import { nearPairsWithin } from './pairs';
 
 /** Positions closer than this (mm) are the same vertex. */
 export const PROFILE_TOLERANCE = 1e-4;
@@ -257,25 +258,56 @@ const overlap = (a: Segment['box'], b: Segment['box']) =>
   a[1] <= b[3] + PROFILE_TOLERANCE &&
   b[1] <= a[3] + PROFILE_TOLERANCE;
 
+/**
+ * From this many segments on, only the pairs whose boxes are near are
+ * tested (a grid, `nearPairsWithin`); below, every pair. Either way a pair
+ * whose boxes are apart by more than the tolerance is passed over, so the
+ * cuts are the same, in the same order (ADR-0020's amendment of 2026-11-10).
+ */
+const PAIR_GRID_MIN = 32;
+
 /** Cuts every segment where another crosses or touches it, or ends on it. */
-function cutSegments(segments: readonly Segment[]): void {
-  const ends = (s: Segment): Vec2[] => (s.closed ? [] : [s.at(0), s.at(s.max)]);
-  for (let i = 0; i < segments.length; i++) {
-    const si = segments[i] as Segment;
-    for (let j = i + 1; j < segments.length; j++) {
-      const sj = segments[j] as Segment;
-      if (!overlap(si.box, sj.box)) continue;
-      for (const p of intersectCurves(si.shape, sj.shape)) {
-        si.cuts.push(si.param(p));
-        sj.cuts.push(sj.param(p));
-      }
-      for (const p of ends(si)) {
-        if (dist(p, nearestOnCurve(sj.shape, p)) < PROFILE_TOLERANCE) sj.cuts.push(sj.param(p));
-      }
-      for (const p of ends(sj)) {
-        if (dist(p, nearestOnCurve(si.shape, p)) < PROFILE_TOLERANCE) si.cuts.push(si.param(p));
+function cutSegments(segments: readonly Segment[], allPairs: boolean): void {
+  const n = segments.length;
+  if (n >= PAIR_GRID_MIN && !allPairs) {
+    // The grid's boxes are wider than `overlap`'s tolerance: it may only
+    // pass over pairs that `overlap` refuses too.
+    const boxes = new Float64Array(4 * n);
+    let finite = true;
+    for (let i = 0; i < n; i++) {
+      const b = (segments[i] as Segment).box;
+      for (let k = 0; k < 4; k++) {
+        const v = b[k] as number;
+        if (!(Math.abs(v) <= 1e300)) finite = false;
+        boxes[4 * i + k] = k < 2 ? v - 2 * PROFILE_TOLERANCE : v + 2 * PROFILE_TOLERANCE;
       }
     }
+    if (finite) {
+      for (const [i, j] of nearPairsWithin(boxes))
+        cutPair(segments[i] as Segment, segments[j] as Segment);
+      return;
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    const si = segments[i] as Segment;
+    for (let j = i + 1; j < n; j++) cutPair(si, segments[j] as Segment);
+  }
+}
+
+const ends = (s: Segment): Vec2[] => (s.closed ? [] : [s.at(0), s.at(s.max)]);
+
+/** Cuts two segments where they cross or touch, or where an end of one lies on the other. */
+function cutPair(si: Segment, sj: Segment): void {
+  if (!overlap(si.box, sj.box)) return;
+  for (const p of intersectCurves(si.shape, sj.shape)) {
+    si.cuts.push(si.param(p));
+    sj.cuts.push(sj.param(p));
+  }
+  for (const p of ends(si)) {
+    if (dist(p, nearestOnCurve(sj.shape, p)) < PROFILE_TOLERANCE) sj.cuts.push(sj.param(p));
+  }
+  for (const p of ends(sj)) {
+    if (dist(p, nearestOnCurve(si.shape, p)) < PROFILE_TOLERANCE) si.cuts.push(si.param(p));
   }
 }
 
@@ -511,6 +543,34 @@ function loopOf(pieces: readonly Piece[], cycle: readonly number[]): ProfileLoop
   return { edges, polygon, area };
 }
 
+type PolygonBox = [x0: number, y0: number, x1: number, y1: number, margin: number];
+
+/** A polygon's box, and how far `insidePolygon`'s crossings can round past its sides. */
+function polygonBox(polygon: readonly Vec2[]): PolygonBox {
+  let x0 = Number.POSITIVE_INFINITY;
+  let y0 = Number.POSITIVE_INFINITY;
+  let x1 = Number.NEGATIVE_INFINITY;
+  let y1 = Number.NEGATIVE_INFINITY;
+  // Math.min and max keep a NaN, and a NaN box never passes over a test.
+  for (const p of polygon) {
+    x0 = Math.min(x0, p[0]);
+    y0 = Math.min(y0, p[1]);
+    x1 = Math.max(x1, p[0]);
+    y1 = Math.max(y1, p[1]);
+  }
+  return [x0, y0, x1, y1, 1e-9 * (1 + Math.abs(x0) + Math.abs(x1))];
+}
+
+/**
+ * Whether `insidePolygon` must say no for `p`: below or above the box no
+ * edge straddles `p`'s row (an exact test), and left or right of it by more
+ * than the margin every straddling edge is crossed, or none is, and a
+ * closed polygon has an even number of them.
+ */
+function outsideBox(b: PolygonBox, p: Vec2): boolean {
+  return p[1] < b[1] || p[1] > b[3] || p[0] < b[0] - b[4] || p[0] > b[2] + b[4];
+}
+
 /** Whether `p` is inside a polygon (even-odd). */
 export function insidePolygon(polygon: readonly Vec2[], p: Vec2): boolean {
   let inside = false;
@@ -543,7 +603,9 @@ export function profileKey(edges: readonly Pick<ProfileEdge, 'curve' | 'reversed
 export function profileIds(regions: readonly { key: string; centroid: Vec2 }[]): string[] {
   const byKey = new Map<string, number[]>();
   regions.forEach((r, i) => {
-    byKey.set(r.key, [...(byKey.get(r.key) ?? []), i]);
+    const same = byKey.get(r.key);
+    if (same) same.push(i);
+    else byKey.set(r.key, [i]);
   });
   const out = new Array<string>(regions.length);
   for (const [key, same] of byKey) {
@@ -641,14 +703,24 @@ function soleTextOf(curveIds: Iterable<string>, data: SketchData): SketchEntityI
  * region of its own.
  */
 export function detectProfiles(data: SketchData): Profile[] {
+  return detect(data, false);
+}
+
+/** `detectProfiles` with every pair of segments tested: the reference of the pair search's tests. */
+export function detectProfilesAllPairs(data: SketchData): Profile[] {
+  return detect(data, true);
+}
+
+function detect(data: SketchData, allPairs: boolean): Profile[] {
   const segments: Segment[] = [];
   for (const id of Object.keys(data.entities).sort() as SketchEntityId[]) {
     const e = data.entities[id] as SketchEntity;
     if (e.type === 'point' || e.construction) continue;
-    segments.push(...segmentsOf(data, id, e));
+    // A loop, not a spread: a long spline has more segments than a call takes arguments.
+    for (const segment of segmentsOf(data, id, e)) segments.push(segment);
   }
   if (segments.length === 0) return [];
-  cutSegments(segments);
+  cutSegments(segments, allPairs);
   const vertices = new Vertices();
   const pieces = piecesOf(segments, vertices);
   const vertexCount = vertices.points.length;
@@ -694,11 +766,16 @@ export function detectProfiles(data: SketchData): Profile[] {
   }
 
   // Each group's outline is a hole in the smallest region of another group around it.
+  // A probe outside a region's box (by more than rounding, sideways) is
+  // outside its polygon: the box only passes over tests that answer no.
+  const boxes = regions.map((r) => polygonBox(r.loop.polygon));
   for (const outline of outlines) {
     const probe = outline.loop.polygon[0] as Vec2;
     let best: (typeof regions)[number] | undefined;
-    for (const r of regions) {
+    for (let k = 0; k < regions.length; k++) {
+      const r = regions[k] as (typeof regions)[number];
       if (r.group === outline.group || (best && r.loop.area >= best.loop.area)) continue;
+      if (outsideBox(boxes[k] as PolygonBox, probe)) continue;
       if (insidePolygon(r.loop.polygon, probe)) best = r;
     }
     best?.holes.push(outline.loop);
