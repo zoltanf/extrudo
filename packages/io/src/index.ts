@@ -6,7 +6,8 @@
  * and DXF R12 writers. P2-12: triangle meshes, binary STL, 3MF and a
  * manifold check. P4-06: the SVG and DXF readers drawings are imported from,
  * and the ASCII STL and OBJ readers mesh bodies are imported from. P6-15: the
- * OBJ + MTL writer Render Picture hands to Blender.
+ * OBJ + MTL writer Render Picture hands to Blender. P6-24: the PDF writer
+ * drawings' sheets are exported with.
  */
 export {
   type Bounds,
@@ -40,6 +41,14 @@ export {
   triangleNormal,
 } from './mesh';
 export { type ObjOptions, readObj, writeObj } from './obj';
+export {
+  type PdfFill,
+  type PdfItem,
+  type PdfOptions,
+  type PdfPage,
+  type PdfStroke,
+  writePdf,
+} from './pdf';
 export {
   readStl,
   type StlFile,

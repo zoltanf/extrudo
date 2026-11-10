@@ -1,7 +1,8 @@
 # ADR-0143: Drawings: 2D sheets made from the model
 
 - **Status:** Accepted, 2026-11-10 (the owner: the 14 decisions of the plan's §12, all as
-  proposed). **Nothing is built yet.** Each slice lands with an amendment here.
+  proposed). S0 (spikes) done, see the amendment at the end; nothing else is built. Each
+  slice lands with an amendment here.
 - **Task:** P6-24 (`docs/03-roadmap.md`); FR-DR-01 to FR-DR-08.
 - **Specification and mock-ups:** `docs/plans/drawings-2026-11-10.md` and the five
   `docs/plans/drawings-mock-*.html` pages beside it. This ADR records what was decided and
@@ -166,3 +167,38 @@ The plan's §10 has what each is done by. S0 and S1a can run side by side.
   text per row is enough for the first release and does not close that door.
 - **Third angle, printed sticky notes and hidden lines off as defaults.** Each stays a
   setting.
+
+## Amendment (S0), 2026-11-10: what HLR costs, the spans method, our PDF writer
+
+The spikes' numbers and readers are in the plan's §13.
+
+- **HLR cost does not follow size.** Through `edgeVisibility` (the same `HLRBRep_Algo` run
+  the spans need) six axis views take 18–420 ms on B2–B6, B8, B10 and a 209-face assembly
+  (318 ms), but 15–25 s on B7 (about 4 s per side view of the knurl) and 5.5–6 s on B9 (4 s
+  along the thread's axis); the isometric views of the same bodies take 27–275 ms. The heap
+  top did not move in any case. A view is one call that can't be interrupted.
+  **Consequence for S2:** views are computed one at a time with progress per view, cancel
+  acts between views, the cache per direction (§6.2.3) is required rather than nice, and
+  S2 starts by measuring `HLRBRep_PolyAlgo` as the path for slow views (or a quick first
+  result), since that measurement needs the same OCCT build as the spans.
+- **The facade method is our own walk of HLR's data**, `hlrSpans(shape, direction)`: per
+  edge record, the model edge's index (0 for an outline), its kind (sharp, smooth, seam,
+  outline), an outline's face, and the visible and hidden intervals in the 3D curve's own
+  parameter; outline curves in a block encoded like `edgeGeometry`. Flat ints and doubles
+  (ADR-0001). Not built in S0: it needs a new OCCT WASM, which on the machine S0 ran on
+  means a pushed branch and CI, and that waits for the owner's OK.
+- **Rejected: `HLRBRep_HLRToShape`.** It runs after the same `Hide` and builds a new edge per
+  span, so it can't be faster, and its compounds carry no link to the model edges, so
+  dimension anchors would need geometric matching to get a topological name back.
+- **`writePdf` is in `@extrudo/io`** (`pdf.ts`): PDF 1.4, page size in mm, deflated
+  streams, Béziers for arcs, a `text` item that fills the caller's glyph outlines and adds
+  the string invisibly (render mode 3) in non-embedded Helvetica, WinAnsi-encoded and
+  stretched with `Tz` to the outlines' width. A two-page A3/A4 sample opens, renders and
+  gives its text back (Ø, ±, ° included) in poppler, Ghostscript and Chromium's PDFium, and
+  passes `qpdf --check`. Characters outside WinAnsi draw (outlines) but are `?` in the
+  selectable layer; a ToUnicode map can lift that later if it matters.
+- **Kept code:** `packages/io/src/pdf.ts` with its tests, the sample
+  (`packages/sketch/src/text/pdf-sample.test.ts`, `PDF_OUT=<file>` writes it) and the gated
+  measurement `packages/kernel/src/hlr-bench.test.ts` (`HLR_BENCH=1`).
+- The S0 roadmap box stays open until the spans method is built and checked for
+  correctness (plan §13.4, items 1 and 2).
