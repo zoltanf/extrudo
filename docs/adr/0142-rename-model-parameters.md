@@ -1,6 +1,6 @@
 # ADR-0142: Renaming model parameters
 
-- **Status:** Accepted, 2026-11-07 (issue #203; pilot, awaiting the owner's review)
+- **Status:** Accepted, 2026-11-07 (issue #203), reviewed by the owner 2026-11-10
 - **Builds on:** ADR-0086 (the Parameters dialog), ADR-0096 and its amendment of
   2026-10-31 (`name = value` in a dimension's editor).
 - **No schema or file-format change.** `paramName` already exists on dimensions and inputs.
