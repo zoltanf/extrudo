@@ -6,7 +6,7 @@
  * the same way as its key.
  */
 
-import type { ViewId } from '@extrudo/core';
+import type { EditMode, ViewId } from '@extrudo/core';
 import {
   Bell,
   BookOpen,
@@ -77,7 +77,7 @@ export interface AppCommand extends Searchable {
 }
 
 export interface CommandContext {
-  mode: 'model' | 'sketch';
+  mode: EditMode;
   /** Starts a tool (a sketch tool restarts if it's running; the toolbar toggles instead). */
   runTool(id: ToolId): void;
   notify(tone: 'info' | 'error', text: string): void;

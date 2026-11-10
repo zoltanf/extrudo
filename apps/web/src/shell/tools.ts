@@ -4,7 +4,9 @@
  * the shell shows the real layout (UI spec §2) without pretending they work.
  * Their keys are in `commands/keymap.ts`.
  */
+import type { EditMode } from '@extrudo/core';
 import type { IconName, ToolCategory } from '../design-system';
+import { MODES } from './modes';
 
 export interface Tool {
   id: string;
@@ -1156,27 +1158,21 @@ export const TABS: Tab[] = [
 ];
 
 /**
- * The tabs a sketch shows (ADR-0079 §2): Home and its own. The others' tools work
- * on bodies; Make went from sketch mode in the owner's UI review 3 (R3-11),
- * since the Sketch tab's Export covers what a sketch exports.
+ * The tabs shown in a mode, in order (its `MODES` row): Home, Solid, Modify, Construct and
+ * Make in the model; Home and Sketch while a sketch is open.
  */
-const SKETCH_TABS: ReadonlySet<TabId> = new Set(['home', 'sketch']);
-
-/**
- * The tabs shown in a mode, in order: Home, Solid, Modify, Construct and Make
- * in the model; Home and Sketch while a sketch is open.
- */
-export function visibleTabs(mode: 'model' | 'sketch'): Tab[] {
-  return TABS.filter((t) => (mode === 'sketch' ? SKETCH_TABS.has(t.id) : t.id !== 'sketch'));
+export function visibleTabs(mode: EditMode): Tab[] {
+  const shown = MODES[mode].tabs;
+  return TABS.filter((t) => shown.has(t.id));
 }
 
 /** The tab a mode opens on: Solid in the model, Sketch in a sketch. */
-export function defaultTab(mode: 'model' | 'sketch'): TabId {
-  return mode === 'sketch' ? 'sketch' : 'solid';
+export function defaultTab(mode: EditMode): TabId {
+  return MODES[mode].defaultTab;
 }
 
 /** The first visible tab whose groups list a tool (as a tile or in a menu). */
-export function tabOfTool(id: string, mode: 'model' | 'sketch'): TabId | undefined {
+export function tabOfTool(id: string, mode: EditMode): TabId | undefined {
   return visibleTabs(mode).find((tab) =>
     tab.groups.some((g) => [...g.tools, ...(g.more ?? [])].includes(id as ToolId)),
   )?.id;

@@ -1711,8 +1711,9 @@ end to end, faster than in established desktop CAD.
   S1a can run side by side.
   - [ ] S0 Spikes: hidden-line spans timed on B1–B10 (time, heap, correctness); `writePdf`
     with outlined text and a selectable layer.
-  - [ ] S1a Modes: `'model' | 'sketch'` becomes an `EditMode` type and a per-mode table. No
-    behaviour change; every existing test passes untouched.
+  - [x] S1a Modes: `'model' | 'sketch'` becomes an `EditMode` type and a per-mode table. No
+    behaviour change; every existing test passes untouched. Done 2026-11-10: `EditMode`,
+    `MODES` (`apps/web/src/shell/modes.ts`), `enterMode`/`exitMode` (ADR-0143's S1a amendment).
   - [ ] S1 Sheets: schema, commands, cascades; the mode; Sheet Setup, border, title block,
     text; Export PDF/SVG; Import Drawing renamed Import SVG/DXF.
   - [ ] S2 Views: the facade's spans, the view evaluator, the worker call and its cache;

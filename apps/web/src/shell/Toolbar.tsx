@@ -1,3 +1,4 @@
+import type { EditMode } from '@extrudo/core';
 import { ChevronDown } from 'lucide-react';
 import {
   type ButtonHTMLAttributes,
@@ -23,6 +24,7 @@ import {
 import { ToolDemo } from '../onboarding/ToolDemo';
 import { isToolReady } from './commands';
 import { clearHelpTarget, helpTarget, setHelpTarget } from './helpTarget';
+import { MODES } from './modes';
 import { measureTileText, TILE_TEXT_WIDTH, tileLabel } from './tileLabel';
 import { type FitGroup, fitToolbar, groupWidth } from './toolbarFit';
 import {
@@ -37,7 +39,7 @@ import {
 
 export interface ToolbarProps {
   /** `sketch` while a sketch is open: the Sketch tab replaces Solid (UI spec §2). */
-  mode?: 'model' | 'sketch';
+  mode?: EditMode;
   /** The selected tab (`useToolbarTab`); the tabs themselves are in the top bar (ADR-0079). */
   tab: TabId;
   /** The running tool, shown pressed (Create Sketch while it waits for a plane). */
@@ -122,7 +124,7 @@ function trackTool(id: string) {
  * The selected toolbar tab: the mode's default (Solid, or Sketch in a sketch),
  * brought forward again whenever a sketch opens or closes.
  */
-export function useToolbarTab(mode: 'model' | 'sketch') {
+export function useToolbarTab(mode: EditMode) {
   const home = defaultTab(mode);
   const [tab, setTab] = useState<TabId>(home);
   // Entering or leaving a sketch brings its tab forward.
@@ -138,7 +140,7 @@ export function ToolbarTabs({
   tab,
   onTab,
 }: {
-  mode?: 'model' | 'sketch';
+  mode?: EditMode;
   tab: TabId;
   onTab(tab: TabId): void;
 }) {
@@ -227,12 +229,12 @@ export function Toolbar({
     fresh && width !== undefined
       ? fitToolbar(fresh.groups, width, fresh.chrome)
       : groups.map(() => 0);
-  const finishLabel = tileLabel(
-    TOOLS.finishSketch.label,
-    TOOLS.finishSketch.label,
-    TILE_TEXT_WIDTH,
-    measureTileText,
-  );
+  // The mode's Finish tile (its `MODES` row), after the groups of its own tab.
+  const finishSpec = MODES[mode].finish;
+  const finishId = finishSpec && active?.id === finishSpec.tab ? finishSpec.tool : undefined;
+  const finish: Tool | undefined = finishId && TOOLS[finishId];
+  const finishLabel =
+    finish && tileLabel(finish.label, finish.label, TILE_TEXT_WIDTH, measureTileText);
 
   // Measure every tile with nothing hidden, once per set of tiles (labels differ).
   useLayoutEffect(() => {
@@ -414,27 +416,27 @@ export function Toolbar({
             </div>
           );
         })}
-        {active?.id === 'sketch' && (
+        {finishId && finish && finishLabel && (
           <div className="flex items-stretch">
             <div className="mx-1.5 my-1.5 w-px bg-line" aria-hidden="true" />
             <fieldset aria-label="Finish" className="m-0 flex flex-col items-center border-0 p-0">
               <Tooltip
-                label={TOOLS.finishSketch.label}
-                hint={TOOLS.finishSketch.hint}
-                demo={<ToolDemo tool="finishSketch" />}
+                label={finish.label}
+                hint={finish.hint}
+                demo={<ToolDemo tool={finishId} />}
                 footer="F1 for more"
               >
                 <ToolTile
-                  data-tool="finishSketch"
-                  data-label={TOOLS.finishSketch.label}
+                  data-tool={finishId}
+                  data-label={finish.label}
                   aria-label={finishLabel.lines.join(' ')}
                   className="text-ink"
-                  onClick={() => onRun('finishSketch')}
-                  {...trackTool('finishSketch')}
+                  onClick={() => onRun(finishId)}
+                  {...trackTool(finishId)}
                 >
                   <ToolIcon
-                    name={TOOLS.finishSketch.icon}
-                    category="sketch"
+                    name={finish.icon}
+                    category={finish.category}
                     size={32}
                     color="var(--x-success)"
                   />

@@ -4397,4 +4397,12 @@ new facade method (flat arrays, ADR-0001), the evaluator lives in `packages/kern
 **dimensions are measured, never driving**. **Output:** one display list drives screen, PDF and SVG; `writePdf` is our own
 writer in `@extrudo/io` (MIT: no GPL import, no PDF library), text as glyph outlines of the bundled Inter; `@extrudo/sheets`
 (no DOM, Node) goes into `scripts/check-boundaries.mjs`. **Defaults:** paper white in both themes, first angle per sheet,
-hidden + tangent + centre lines on, title block "Simple", zone border off, sticky notes not printed.
+hidden + tangent + centre lines on, title block "Simple", zone border off, sticky notes not printed. **S1a (modes, done, no
+behaviour change):** `EditMode` (`packages/core/src/stores.ts`) is the only spelling of the mode union (`KeymapMode` and
+`MarkingMode` alias it); `MODES` in `apps/web/src/shell/modes.ts` is one row per mode (`label`, `tabs`, `defaultTab`,
+`markingSlots`, `repeatSample`, `finish`), read by `visibleTabs`/`defaultTab` (`tools.ts`), the Finish tile (`Toolbar.tsx`),
+`viewMenu.tsx`, `MarkingMenuEditor.tsx`, `settings/KeyboardPage.tsx` and AppShell's marking listing (`EDIT_MODES`,
+`perMode`); the session's `enterMode(mode, fields)`/`exitMode()` are the only way in and out (`enterSketch`/`exitSketch`
+call them). **To add a mode:** extend `EditMode`, add its `MODES` row and its `ModeFields`, enter it through
+`enterMode`; never branch on the mode for tabs, Finish, keymap or marking slots; `mode !== 'model'` covers a new mode,
+`mode === 'sketch'` stays about sketching.
