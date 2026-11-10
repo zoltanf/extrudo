@@ -57,7 +57,7 @@ toolchain 3.1.0 since 2026-10-16 (ADR-0001's addendum of that day): `delete()`
 frees for real, so never delete a handle OCCT still references. The facade
 stays the only binding (ADR-0037); the only OCCT `delete()` in
 `packages/kernel/src` is the facade's own in `Kernel.dispose()`, after
-`releaseAll()`. ADR-0002 chose planegcs from our own WASM build, one solver system per independent sketch component
+`releaseAll()`. `pnpm wasm` (`scripts/wasm-release.mjs`) unpacks a release only when its tarball has the SHA-256 the releases API reports (`checkDigest`, fails closed; 2026-11-10). ADR-0002 chose planegcs from our own WASM build, one solver system per independent sketch component
 (`docs/adr/0002-sketch-solver.md`). ADR-0003 (P0-06) set the document model in
 `packages/core`: strict zod schema, migrations on raw JSON, deterministic
 commands with Immer patches, nested undo transactions, vanilla Zustand stores.
@@ -220,7 +220,7 @@ must release every shape it doesn't return** (`kernel.scope()`,
 yield before each evaluation; `preview` walks a trial timeline. On the UI
 thread `Recomputer` (`src/recomputer.ts`, started by `useRecompute` in
 `project/ProjectPage.tsx`) owns the kernel client, fills the model store,
-and marks a feature that crashed the kernel as an error until it changes.
+and marks a feature that crashed the kernel as an error until it changes. Since ADR-0024's amendment of 2026-11-10 a crash in a document feature (of `#sent`) not yet in `#crashed` doesn't count against `KernelClient`'s restart budget (`KernelClientOptions.counts`), for up to `MAX_CRASHED_FEATURES` (8) per open document; keep that test against the sent document, or a culprit no list skips (a script's generated feature) restarts the kernel forever.
 Timeline chips show ✕/⚠ with the message in the tooltip; the status bar
 counts errors and shows the kernel state. Engine tests use the test
 features in `recompute/testing.ts` (real OCCT, call counters). ADR-0025
@@ -571,7 +571,7 @@ closed, broken or mixed-direction chain gives **no** arrows; swapped, the
 them, since its keydown listener runs before the shell's and prevented the
 default — which is why B8's fourth fillet edge (picked from the back view)
 found nothing. A key with a modifier is a command, so the box takes plain
-typing only (`e2e/fillet.spec.ts` covers Shift+4). **Amendments of 2026-10-11 and 2026-10-12 added `skipLostEdges`** (the chamfer takes the same input, ADR-0043's amendments): an optional bool input; with it true the evaluator resolves the edges and builds from the ones still found, and a `too-large`/`unfilletable` diagnosis drops at most a third of the edges (the chains that build), warning which were left out instead of failing the whole feature; the `.f3d` import sets it on every round it writes (`docs/file-format.md` §6.9). **Amendments of 2026-10-14** (`round-fallback.ts`, all only with `skipLostEdges`): before any chain is dropped, edges OCCT can't round at any size (`unfilletable`/`unchamferable`: smooth, or not between two faces) are left out first and don't count toward the third; then a round whose every problem is `too-large` with a share ≥ `NEAR_LIMIT` (0.99), or a lone `together` with a factor ≥ 0.99, is built a hair under (× `UNDER_LIMIT`), else at the share found working, with a warning; only then are chains dropped. Keep the order (a round at its limit is built smaller, not dropped). Rejected with numbers in ADR-0038's amendment: two passes, another edge order, healing unsound OCCT results (it broke a later offset), relaxing `filletRollsOff`.
+typing only (`e2e/fillet.spec.ts` covers Shift+4). **Amendments of 2026-10-11 and 2026-10-12 added `skipLostEdges`** (the chamfer takes the same input, ADR-0043's amendments): an optional bool input; with it true the evaluator resolves the edges and builds from the ones still found, and a `too-large`/`unfilletable` diagnosis drops at most a third of the edges (the chains that build), warning which were left out instead of failing the whole feature; the `.f3d` import sets it on every round it writes (`docs/file-format.md` §6.9). **Amendments of 2026-10-14** (`round-fallback.ts`, all only with `skipLostEdges`): before any chain is dropped, edges OCCT can't round at any size (`unfilletable`/`unchamferable`: smooth, or not between two faces) are left out first and don't count toward the third; then a round whose every problem is `too-large` with a share ≥ `NEAR_LIMIT` (0.99), or a lone `together` with a factor ≥ 0.99, is built a hair under (× `UNDER_LIMIT`), else at the share found working, with a warning; only then are chains dropped. Keep the order (a round at its limit is built smaller, not dropped). **Amendment of 2026-11-10:** a round feature's builds share `MAX_ROUND_BUILDS` (1,000) across its bodies (`RoundBudget`, passed as `budget` with `cost: diagnosisCost(problems)`); a retry runs only while the budget holds the last failure's cost, else the original error stands with `CUT_SHORT` appended. The first build of each body always runs. The facade's diagnosis itself is not budgeted (needs a facade flag). Rejected with numbers in ADR-0038's amendment: two passes, another edge order, healing unsound OCCT results (it broke a later offset), relaxing `filletRollsOff`.
 ADR-0041 (P3-16) added the notification history: the toasts'
 store (`design-system/notifications.ts`, vanilla Zustand, `useToasts()`
 returns it as `notifications`) records every `push` for the session
@@ -2506,7 +2506,7 @@ characters, never a list in braces: `skippedFeature`, R3-18) and `detail` the te
 **Amendment of 2026-10-14 (skipped features):** an edge recipe whose first face has a negative token runs between its second face and the single one after it (`edgeFaces`, `decode/edges.ts`); a fillet/chamfer none of whose edges passes the weak-edge rule gets one second try (`loose`) by its two faces' names alone, no fingerprint, relying on `skipLostEdges`; a profile region nothing finds is left out with a note only while the operand's other regions are found (else the extrude is skipped as before); a hole without centre points takes them from its own cylinders' axes (`centresFromCylinders`, at most `MAX_FOUND_CENTRES`, never a pattern's copies), and a hole on a body face takes its placement's point and normal only when the recipe's B-rep plane agrees (`readHolePlacement`, `planeThrough`); an extrude head is also looked for at offset 57, after every other offset.
 Parameter value records are read in class versions 5–7 and 9 (2026-10-20, #93). A decode problem must never be silent: `F3dDesign.problems` reach `ImportReport.problems` and one `importNotices` line, and a through-all fallback for a missing distance (`throughAll` in `map.ts`) adds a note when `unreadParameters > 0`.
 
-**Amendment of 2026-10-15 (hostile files, round 2):** every reader stays linear in its input. `readAsm` shares one-byte values and small ints (frozen objects: never mutate an `AsmValue`), needs a class per record and caps values (1 per 4 bytes, 16 M), records (1 per 16 bytes); `asmFaceTags` returns a per-stream shared array (don't mutate it) and, like `asmFaces`' loop walk, spends a per-stream budget; `asm-body` reads each surface, curve and edge record once per stream (`Walk.surfaces/curves/edges`), `asm-spline` each B-spline block once (WeakMap by values array), and `brep-step` writes a B-spline once per body (`shared`, keyed by the spline object; analytic geometry per use) within `MAX_STEP_BYTES`. `archive.ts` inflates streaming into the declared size and must fill it, refuses a declared size over `MAX_RATIO` × compressed + 4 kB before allocating, and walks a Zstandard frame's headers first (one frame, no dictionary, window ≤ `MAX_ZSTD_WINDOW`). `readSegment`: `readOperationTable` spends one budget per segment; timeline items and type-table ids are deduplicated; `scopeOf` memoises `readScope`; `madeBy` is indexed; `refsOf` frames a record under `tryDecode`. Numbers from the file go through `finite` (`bytes.ts`) at decode. Core's expression parser refuses nesting past `MAX_DEPTH` = 256 (parser depth and node height). A new reader keeps to this: no per-byte objects, no walk repeated per referrer, a budget where a search tries every offset.
+**Amendment of 2026-10-15 (hostile files, round 2):** every reader stays linear in its input. `readAsm` shares one-byte values and small ints (frozen objects: never mutate an `AsmValue`), needs a class per record and caps values (1 per 4 bytes, 16 M), records (1 per 16 bytes); `asmFaceTags` returns a per-stream shared array (don't mutate it) and, like `asmFaces`' loop walk, spends a per-stream budget; `asm-body` reads each surface, curve and edge record once per stream (`Walk.surfaces/curves/edges`), `asm-spline` each B-spline block once (WeakMap by values array), and `brep-step` writes a B-spline once per body (`shared`, keyed by the spline object; analytic geometry per use) within `MAX_STEP_BYTES`. `archive.ts` inflates streaming into the declared size and must fill it, refuses a declared size over `MAX_RATIO` × compressed + 4 kB before allocating, and walks a Zstandard frame's headers first (one frame, no dictionary, window ≤ `MAX_ZSTD_WINDOW`). `readSegment`: `readOperationTable` spends one budget per segment; timeline items and type-table ids are deduplicated; `scopeOf` memoises `readScope`; `madeBy` is indexed; `refsOf` frames a record under `tryDecode`. Numbers from the file go through `finite` (`bytes.ts`) at decode. Core's expression parser refuses nesting past `MAX_DEPTH` = 256 (parser depth and node height). A new reader keeps to this: no per-byte objects, no walk repeated per referrer, a budget where a search tries every offset. **Amendment of 2026-11-10 (hostile files, round 3):** `regions.ts` spends one budget per sketch's pieces (`MAX_PIECE_WORK`, `SketchPieces.budget`, shared by `sketchPieces`, `regionPieces`, `listedPieces` and the mapping's probes through `chargeProbes`); past it `overBudget` is set and `selectProfiles` returns `TOO_MANY_CROSSINGS` — new work on a sketch's pieces charges the budget too. Polyline crossings go through `nearPairs` (a grid, pairs in the old loop's order, so the same crossings); spans and segments are found by halving; never spread a file-sized array. `edgeTreatment` leaves out a round of more than `MAX_ROUND_EDGES` (2,000) edges. `readAsm` shares a frozen value per string or class name of at most two characters and stores each record's values exact-size (`values.slice()`).
 
 **Amendment of 2026-10-16 (import in a worker):** the app never calls `importF3d` on the UI thread: `importF3dFile` takes an `ImportRunner` (`project/f3dImport.ts`; tests pass one that runs inline), and the default starts `f3dWorker.ts` per import, transfers the bytes, gets `{ result }` with the design as its document (rebuilt with `Design.from`) or `{ error }`, and terminates the worker on answer, `error` event or `F3D_IMPORT_TIMEOUT_MS` (30 s, about 6× the corpus's slowest import). Anything added to `ImportResult` must stay structured-cloneable, or be converted at that boundary. A JS-heap OOM in a worker crashes the renderer without an error event (measured): only the time budget stops it.
 
@@ -2588,7 +2588,15 @@ parameter has no range fields. A migration from format 1 spells out the base uni
 (`25.4` → `25.4 mm`, `30` → `30 deg`) and moves `customizer.group`. e2e: rows are
 `[data-parameter-row="<name>"]` (`aria-current` when selected), sections
 `[data-parameter-section]`; select a row before its fields exist (`selectParameter`,
-`parameterExpression`, `addUserParameter` in `e2e/helpers.ts`).
+`parameterExpression`, `addUserParameter` in `e2e/helpers.ts`). Amendment 2026-11-07:
+**a refusal shows where the action was taken**, never in a line above the inspector
+(`run(command, spot)` → `Refusal { spot: 'name' | 'actions', text }`, rendered by
+`Refused`): `name` under the name field (rename, add; the field is `aria-invalid`
+and keeps the typed name, typing or Esc clears it), `actions` (the default) in place
+of the footer hint beside Delete, or under a model parameter's buttons. A row menu's
+Delete selects the row first. The dialog has no `role="alert"` until something is
+refused, so specs check `toHaveCount(0)`, not empty text. The footer is sticky at the
+pane's bottom.
 
 ADR-0087 (P6-08, 2026-10-15) added **the desktop MCP server and its skill** (no
 schema or file-format change). **Main** hosts it (`apps/desktop/src/main/mcp/`):
@@ -2988,6 +2996,7 @@ a last option "+ New parameter …" (Enter when it is the only row) and a "+ Cre
 under the message, only while the list is closed (the list covers it; Ctrl/Cmd+Enter
 always works); both set the draft to `name = value` with the value
 selected. Keep `newParameter` off fields whose `evaluate`/`onCommit` don't take `name = value`.
+With `renames` (ADR-0142) the row and the button read "Rename to …" instead.
 
 ADR-0097 (P4-13, issue #95) adds **Mesh to Solid**: feature `meshToSolid`
 (`packages/kernel/src/features/mesh-to-solid.ts`, core `meshToSolidFeature`)
@@ -4347,3 +4356,23 @@ renderer has `releaseNotesPlugin` too (its own Vite config; `src/renderer/config
 (`releaseHistory`: every `## ` section but Unreleased and this version, with highlights where a
 file exists) is a separate lazy chunk behind the dialog's "Earlier versions"; the Menu's App
 column has What's new above About, and the `whatsNew` command (Help) is agent-denied.
+
+ADR-0142 (issue #203, 2026-11-07) **renames model parameters**. Core `renameModelParameter({ name, newName })`
+(`document-commands.ts`) sets `paramName` on the dimension or feature input and rewrites every user via
+`rewriteReferences` (shared with `updateParameter`: parameters, ranges, inputs, dimensions, joint limits, view
+sections), one undo step. Rules: **new names go through `checkParameterName`** (identifier, not reserved, not any
+parameter's name); a driven dimension has no name; **`name = value` in a driving dimension's editor
+(`DimensionLabels.tsx` `commit`) renames its own parameter and sets the value** (no second user parameter; a
+dimension without a name keeps the user-parameter path), and for such a dimension the editor passes
+`ExpressionInput`'s `renames`, so the offer for a bare name reads "Rename to …" in the list and the link (keep
+`renames` in step with `commit`'s rename condition); the Parameters dialog's `ModelInspector` has a Name field
+(`Name of <name>`, a refusal under the field, row stays selected under the new name), and a double-click on any
+list row focuses it (`focusName`). **Make user parameter** (`makeUserParameter({ name, id })`): the user parameter
+takes the name and expression, the holder's expr becomes `name` and its `paramName` a fresh `dN`; one-way (undo only).
+**Reset name** (`resetModelParameterName`): lowest free `dN` via `lowestFreeModelParameterName`, not stored, so it may
+differ from the original; shown only for non-`dN` names. **A model parameter that only follows a user parameter is
+hidden from the dialog's list** (`followsUserParameter` in `parameters/list.ts`: expression is a user parameter's name
+alone, and `parameterUsers` of it is empty) behind "Show N that follow(s) a user parameter" / "Hide those that follow a
+user parameter"; shown, such a row has `FollowsMark` (link icon, title "Follows <name>") instead of `FormulaMark`;
+the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
+clicks the Show line when a row is hidden. No schema change.

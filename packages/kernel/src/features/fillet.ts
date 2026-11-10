@@ -11,7 +11,13 @@ import type { TopoNames } from '../naming/names';
 import { type NamedShape, withHistory } from '../naming/ops';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { edgeResolver } from './lost-edges';
-import { buildRound, type RoundLimit } from './round-fallback';
+import {
+  buildRound,
+  CUT_SHORT,
+  diagnosisCost,
+  type RoundBudget,
+  type RoundLimit,
+} from './round-fallback';
 
 /**
  * The fillet feature in the kernel (P3-01, ADR-0038): rounds the picked
@@ -136,6 +142,8 @@ function evaluateFillet(ctx: EvalContext<FilletInputs>): FeatureOutput {
   const variable = sets.some((set) => set.radiusEnd !== undefined);
 
   using scope = kernel.scope();
+  // One budget of builds for the feature's retries, across its bodies.
+  const budget: RoundBudget = { builds: 0 };
   const bodies = new Map(ctx.bodies);
   const names = new Map<BodyId, TopoNames>();
   const made = new Map<BodyId, NamedShape>();
@@ -161,6 +169,8 @@ function evaluateFillet(ctx: EvalContext<FilletInputs>): FeatureOutput {
         reason: (error) => (error instanceof FilletError ? filletMessage(error, picks) : ''),
         feature: 'fillet',
         skip,
+        budget,
+        cost: (error) => (error instanceof FilletError ? diagnosisCost(error.problems) : 1),
         warn: (message) => ctx.warn(message),
         limit: (error) => filletLimit(error, picks),
         stuck: (error) => stuckEdges(error),
@@ -173,7 +183,10 @@ function evaluateFillet(ctx: EvalContext<FilletInputs>): FeatureOutput {
         sizeName: 'radius',
       });
     } catch (error) {
-      if (error instanceof FilletError) throw new KernelError(filletMessage(error, picks));
+      if (error instanceof FilletError) {
+        const message = filletMessage(error, picks);
+        throw new KernelError(budget.cutShort ? `${message} ${CUT_SHORT}` : message);
+      }
       throw error;
     }
     scope.track(result);

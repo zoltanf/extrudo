@@ -51,7 +51,7 @@ const CLOSE: AsmValue = Object.freeze({ t: 'close' });
  * `BYTES_PER_RECORD` and `MAX_VALUES` values in all. The files' streams have
  * at least 8 bytes per value, 90 per record and 2.6 million values, and cost
  * about 6.5 times their size in heap; a crafted stream within the caps costs
- * at most about 18 times (2-character strings, an object each).
+ * at most about 15 times (measured, `--expose-gc`; short strings are shared).
  */
 const BYTES_PER_VALUE = 4;
 const BYTES_PER_RECORD = 16;
@@ -107,7 +107,23 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
     }
     return out;
   };
-  let values: AsmValue[] = [];
+  // Strings and names of at most two characters, one value each (at most
+  // 65,793 of them): a record every 16 bytes of such strings cost 27 times
+  // its size in heap, an object and a string each (2026-11-10).
+  const shortStrs = new Map<string, AsmValue>();
+  const shortNames = new Map<string, AsmValue>();
+  const text = (kind: 'str' | 'name', v: string): AsmValue => {
+    if (v.length > 2) return { t: kind, v };
+    const shared = kind === 'str' ? shortStrs : shortNames;
+    const known = shared.get(v);
+    if (known) return known;
+    const out: AsmValue = Object.freeze({ t: kind, v });
+    shared.set(v, out);
+    return out;
+  };
+  // The record being read; each record keeps an exact-size copy (a grown
+  // array keeps room for 17 values or more, most of a small record's heap).
+  const values: AsmValue[] = [];
   let names: string[] = [];
   let type = '';
   let derived = '';
@@ -125,8 +141,9 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
         need(1);
         const n = bytes[p] as number;
         need(1 + n);
-        names.push(str(n, p + 1));
-        if (depth > 0) values.push({ t: 'name', v: str(n, p + 1) });
+        const name = str(n, p + 1);
+        names.push(name);
+        if (depth > 0) values.push(text('name', name));
         p += 1 + n;
         if (t === 0x0d) {
           const joined = names.join('-');
@@ -145,9 +162,9 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
           throw new F3dFormatError(
             `ASM: more than ${maxRecords} records in ${bytes.length} bytes.`,
           );
-        records.push({ type, derived: derived || type, values });
+        records.push({ type, derived: derived || type, values: values.slice() });
         if (type === 'End-of-ASM-data') return records;
-        values = [];
+        values.length = 0;
         type = '';
         derived = '';
         depth = 0;
@@ -191,7 +208,7 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
         need(1);
         const n = bytes[p] as number;
         need(1 + n);
-        values.push({ t: 'str', v: str(n, p + 1) });
+        values.push(text('str', str(n, p + 1)));
         p += 1 + n;
         break;
       }
@@ -199,7 +216,7 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
         need(2);
         const n = view.getUint16(p, true);
         need(2 + n);
-        values.push({ t: 'str', v: str(n, p + 2) });
+        values.push(text('str', str(n, p + 2)));
         p += 2 + n;
         break;
       }
@@ -211,7 +228,7 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
         // on the same tag; a length past the end reads junk.
         if (n < 0 || 8 + n > bytes.length - p)
           throw new F3dFormatError(`ASM: string length ${n} at ${p} is out of bounds.`);
-        values.push({ t: 'str', v: str(n, p + 8) });
+        values.push(text('str', str(n, p + 8)));
         p += 8 + n;
         break;
       }
