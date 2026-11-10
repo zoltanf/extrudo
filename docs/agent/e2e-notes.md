@@ -1470,9 +1470,9 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   (the notice is `pointer-events: none`, the button alone takes the click) is
   clicked. The toast (`[data-toast]` with "Update cancelled") comes with the
   click and is gone again after a few seconds, so check it **before** waiting
-  for ready. The Kernel status must then be `ready` within 20 s: Cancel waits
+  for ready. The Kernel status must then be `ready` within 40 s: Cancel waits
   for the feature in flight (the heavy thread) and then replays from the cache
-  (ADR-0111), 1-3.5 s on GitHub's runners, about 4.5 s on the Arch ARM VM and
+  (ADR-0111), 0.7-3.6 s on GitHub's runners when the click misses the long feature, 11-21.5 s when it hits it; about 4.5 s on the Arch ARM VM and
   5.5-7.5 s under load; the spec logs the measured time instead of asserting
   it (a 4 s budget failed on main repeatedly). `capDia` is read back by reopening
   Parameters (`parameterExpression(…).toHaveValue`) and closing it with
