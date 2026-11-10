@@ -2118,8 +2118,13 @@ export class Kernel {
   readBrep(text: string): ShapeHandle {
     // An unbounded line's range is ±2e100, and some writers print it in full:
     // a hundred digits. OCCT's number reader in this build never returns from
-    // one, so long integer parts go in as the same number in its short form.
-    const short = text.replace(/-?\d{18,}(?:\.\d*)?/g, (number) => String(Number(number)));
+    // one, so a number with a long integer part goes in as the same number in
+    // its short form. Only at a number's start: digits after a decimal point
+    // (0.00000000000000000061) are no integer part and are left alone.
+    const short = text.replace(
+      /(?<![\d.eE+-])-?\d{18,}(?:\.\d*)?(?:[eE][+-]?\d+)?/g,
+      (number) => String(Number(number)),
+    );
     return this.#check(this.#facade.readBrep(short));
   }
 

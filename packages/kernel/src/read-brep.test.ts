@@ -336,16 +336,14 @@ describe('readBrep', () => {
     expect(kernel.measure(back).volume).toBeCloseTo(6000, 6);
   });
 
-  it('reads an unbounded line whose range is written out in full', () => {
-    // ±2e100, as old writers print it: a hundred digits and fifteen decimals.
-    const far = `${BigInt(2e100)}.000000000000000`;
-    expect(far).toHaveLength(117);
-    const line = [
+  /** One edge on the line through (`x`, 0, 0) along z, from `first` to `last`. */
+  const lineEdge = (x: string, first: string, last: string) =>
+    [
       'CASCADE Topology V1, (c) Matra-Datavision',
       'Locations 0',
       'Curve2ds 0',
       'Curves 1',
-      '1 0 0 0 0 0 1 ',
+      `1 ${x} 0 0 0 0 1 `,
       'Polygon3D 0',
       'PolygonOnTriangulations 0',
       'Surfaces 0',
@@ -354,7 +352,7 @@ describe('readBrep', () => {
       'TShapes 1',
       'Ed',
       ' 1e-07 1 1 0',
-      `1  1 0 -${far} ${far}`,
+      `1  1 0 ${first} ${last}`,
       '0',
       '',
       '1101000',
@@ -363,11 +361,30 @@ describe('readBrep', () => {
       '+1 0',
       '',
     ].join('\n');
+
+  it('reads an unbounded line whose range is written out in full', () => {
+    // ±2e100, as old writers print it: a hundred digits and fifteen decimals.
+    const far = `${BigInt(2e100)}.000000000000000`;
+    expect(far).toHaveLength(117);
     using scope = kernel.scope();
-    const shape = scope.track(kernel.readBrep(line));
+    const shape = scope.track(kernel.readBrep(lineEdge('0', `-${far}`, far)));
     const { faces, edges } = kernel.describe(shape);
     expect(faces).toHaveLength(0);
     expect(edges).toHaveLength(1);
+  });
+
+  it('leaves long runs of digits after a decimal point as they are', () => {
+    // Eighteen decimals with a leading zero, as old writers print a coordinate
+    // (read as an integer part it would lose that zero), and a length with
+    // more digits than a double holds.
+    using scope = kernel.scope();
+    const shape = scope.track(
+      kernel.readBrep(lineEdge('0.053768262192804533', '0', '3.000000000000000000001')),
+    );
+    const edge = kernel.describe(shape).edges[0];
+    expect(edge?.midpoint[0]).toBeCloseTo(0.053768262192804533, 12);
+    expect(edge?.midpoint[2]).toBeCloseTo(1.5, 12);
+    expect(edge?.length).toBeCloseTo(3, 12);
   });
 
   it('refuses text that is not a B-rep, and leaves no shape behind', () => {
