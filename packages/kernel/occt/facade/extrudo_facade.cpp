@@ -15630,6 +15630,97 @@ private:
     }
   }
 
+  /**
+   * The distance (mm) at or below which two shapes touch: `TOUCH` in the
+   * kernel's `features/operation.ts`, which decides that a join's tool and
+   * its target touch. A fuse whose operands lie that close is built again
+   * with it as the fuzzy value (`missedOverlaps`, `strandedTools`), so the
+   * join and the touching test agree. Change both together.
+   */
+  static constexpr double kTouch = 1e-4;
+
+  /**
+   * How many solids of `b` a fuse left as solids of their own although they
+   * lie within `kTouch` of `a` (ADR-0051, 2026-11-10): 0 for anything but a
+   * fuse of solids. A tool whose face lies a hair off the target's (a
+   * profile 2.4e-6 mm above the face it stands on) gives the General Fuse no
+   * contact at all (its tolerance is 1e-7 mm), so the fuse returns both
+   * solids side by side, while the app's touching test, at 1e-4 mm, had
+   * called them touching: a join made two bodies. A solid counts when the
+   * result has a solid made only of its faces, it met nothing of `a` (a
+   * solid that met `a` along an edge or a line stays apart at any fuzzy
+   * value: no single solid has such a union), and the exact distance to `a`
+   * is within `kTouch`, boxes first. Cost: a map lookup per face (0.01 ms on
+   * 222 faces); the distance only for a solid left apart near `a` (1 to 24
+   * ms on 6 to 222 faces).
+   */
+  template <typename Builder>
+  static int strandedTools(Builder& builder, const TopoDS_Shape& a, const TopoDS_Shape& b) {
+    if constexpr (!std::is_base_of_v<BRepAlgoAPI_BooleanOperation, Builder>) {
+      return 0;
+    } else {
+      if (builder.Operation() != BOPAlgo_FUSE) return 0;
+      if (countSubShapes(a, TopAbs_SOLID) == 0) return 0;
+      std::vector<TopoDS_Shape> solids;
+      NCollection_DataMap<TopoDS_Shape, int, TopTools_ShapeMapHasher> solidOf, faceOf;
+      for (TopExp_Explorer s(b, TopAbs_SOLID); s.More(); s.Next()) {
+        const int k = static_cast<int>(solids.size());
+        solids.push_back(s.Current());
+        solidOf.TryBind(s.Current(), k);
+        for (TopAbs_ShapeEnum type : {TopAbs_FACE, TopAbs_EDGE, TopAbs_VERTEX}) {
+          for (TopExp_Explorer e(s.Current(), type); e.More(); e.Next()) solidOf.TryBind(e.Current(), k);
+        }
+        for (TopExp_Explorer e(s.Current(), TopAbs_FACE); e.More(); e.Next()) {
+          const NCollection_List<TopoDS_Shape>& images = builder.Modified(e.Current());
+          if (images.IsEmpty()) faceOf.TryBind(e.Current(), k);
+          for (NCollection_List<TopoDS_Shape>::Iterator it(images); it.More(); it.Next()) faceOf.TryBind(it.Value(), k);
+        }
+      }
+      if (solids.empty()) return 0;
+      // The result's solids made only of one tool solid's faces.
+      std::vector<char> apart(solids.size(), 0);
+      for (TopExp_Explorer s(builder.Shape(), TopAbs_SOLID); s.More(); s.Next()) {
+        int owner = -1;
+        for (TopExp_Explorer e(s.Current(), TopAbs_FACE); e.More(); e.Next()) {
+          const int* k = faceOf.Seek(e.Current());
+          if (k == nullptr || (owner >= 0 && *k != owner)) {
+            owner = -1;
+            break;
+          }
+          owner = *k;
+        }
+        if (owner >= 0) apart[owner] = 1;
+      }
+      if (std::find(apart.begin(), apart.end(), 1) == apart.end()) return 0;
+      // Those that met a (any interference with one of their sub-shapes) stay apart at any fuzzy value.
+      const BOPAlgo_PPaveFiller& filler = builder.DSFiller();
+      if (filler != nullptr) {
+        const BOPDS_PDS& ds = filler->PDS();
+        for (NCollection_Map<BOPDS_Pair>::Iterator it(ds->Interferences()); it.More(); it.Next()) {
+          int i1 = 0, i2 = 0;
+          it.Value().Indices(i1, i2);
+          for (int i : {i1, i2}) {
+            if (i < 0 || i >= ds->NbSourceShapes() || ds->Rank(i) != 1) continue;
+            if (const int* k = solidOf.Seek(ds->Shape(i))) apart[*k] = 0;
+          }
+        }
+      }
+      Bnd_Box boxA;
+      BRepBndLib::Add(a, boxA);
+      int stranded = 0;
+      for (size_t k = 0; k < solids.size(); ++k) {
+        if (!apart[k]) continue;
+        Bnd_Box box;
+        BRepBndLib::Add(solids[k], box);
+        box.Enlarge(kTouch);
+        if (boxA.IsOut(box)) continue;
+        BRepExtrema_DistShapeShape measure(a, solids[k], Extrema_ExtFlag_MIN);
+        if (measure.IsDone() && measure.Value() <= kTouch) ++stranded;
+      }
+      return stranded;
+    }
+  }
+
   template <typename Builder>
   static void buildBoolean(Builder& builder, const TopoDS_Shape& a, const TopoDS_Shape& b, double fuzzy) {
     NCollection_List<TopoDS_Shape> arguments, tools;
@@ -15665,20 +15756,32 @@ private:
       return fail("Boolean failed: OCCT could not combine these shapes.");
     }
     // Only when the operands met and the result misses an overlap
-    // (`missedOverlaps`): the same boolean again with a fuzzy value of 1e-4
-    // mm (the distance at which the app counts bodies as touching), which
-    // classifies a tool side along a rounded face right; 1e-6 and 1e-5 still
-    // came out wrong or broken on some of the cases measured. Its result
-    // replaces the first only if it is sound and misses fewer; a tool
-    // that only touches the body keeps the first result, and with it the
-    // message that the cut removes nothing. The history, and so the names,
-    // come from the boolean that is kept.
-    if (const int missed = missedOverlaps(builder, inA, inB); missed > 0) {
+    // (`missedOverlaps`), or a fuse left a tool solid apart that lies within
+    // the touching distance (`strandedTools`): the same boolean again, once,
+    // with a fuzzy value of `kTouch` (1e-4 mm, the distance at which the app
+    // counts bodies as touching). It classifies a tool side along a rounded
+    // face right (1e-6 and 1e-5 still came out wrong or broken on some of the
+    // cases measured), and it joins a tool that stands a hair off the face it
+    // was drawn on. Its result replaces the first only if it is sound and
+    // misses fewer, or misses no more and has fewer solids where a tool was
+    // stranded; a tool that only touches the body, or touches it along a
+    // line, keeps the first result, and with it the message that the cut
+    // removes nothing. The history, and so the names, come from the boolean
+    // that is kept.
+    const int missed = missedOverlaps(builder, inA, inB);
+    const int stranded = strandedTools(builder, inA, inB);
+    if (missed > 0 || stranded > 0) {
       Builder retry;
-      buildBoolean(retry, inA, inB, 1e-4);
-      if (retry.IsDone() && !retry.HasErrors() && missedOverlaps(retry, inA, inB) < missed &&
-          BRepCheck_Analyzer(retry.Shape()).IsValid()) {
-        return finishBuilt(retry, a, b, inA, inB, simplify);
+      buildBoolean(retry, inA, inB, kTouch);
+      if (retry.IsDone() && !retry.HasErrors()) {
+        const int missedAgain = missedOverlaps(retry, inA, inB);
+        const bool better =
+            missedAgain < missed ||
+            (stranded > 0 && missedAgain <= missed &&
+             countSubShapes(retry.Shape(), TopAbs_SOLID) < countSubShapes(builder.Shape(), TopAbs_SOLID));
+        if (better && BRepCheck_Analyzer(retry.Shape()).IsValid()) {
+          return finishBuilt(retry, a, b, inA, inB, simplify);
+        }
       }
     }
     return finishBuilt(builder, a, b, inA, inB, simplify);

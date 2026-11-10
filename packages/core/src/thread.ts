@@ -61,8 +61,9 @@ export type ThreadHand = (typeof THREAD_HANDS)[number];
 /**
  * The thread's tooth profile (P4-12, ADR-0056's amendment). `iso` is what
  * there was (ISO 68-1, 60°, UNC and UNF included); the others are:
- * `trapezoidal` (ISO 2901 / DIN 103 Tr), `buttress` (DIN 513) and `bottle`
- * (the PCO-1881 soft-drink finish). The profile is one table here
+ * `trapezoidal` (ISO 2901 / DIN 103 Tr), `buttress` (DIN 513), `bottle`
+ * (the PCO-1881 soft-drink finish), `print45` and `whitworth` (55°: BS 84,
+ * the form of the ISO 228 / BSP G pipe threads). The profile is one table here
  * (`threadProfile`); the kernel knows no angles of its own.
  */
 export const THREAD_PROFILE_NAMES = [
@@ -71,6 +72,7 @@ export const THREAD_PROFILE_NAMES = [
   'buttress',
   'bottle',
   'print45',
+  'whitworth',
 ] as const;
 export type ThreadProfileName = (typeof THREAD_PROFILE_NAMES)[number];
 
@@ -107,6 +109,12 @@ export const THREAD_PROFILES: readonly ThreadProfileOption[] = [
     label: '3D printing (45°)',
     description:
       '45° flanks, flat crest and root a fifth of the pitch, 0.3 P deep: prints upright without supports and mates only with itself.',
+  },
+  {
+    value: 'whitworth',
+    label: 'Whitworth (55°)',
+    description:
+      'BS 84, the form of the BSP (G) pipe threads: 55°, 0.640 P deep, crest and root flat where the standard rounds them.',
   },
 ];
 
@@ -190,7 +198,7 @@ export const ThreadInputsSchema = z.strictObject({
   profile: enumInput(THREAD_PROFILE_NAMES)
     .optional()
     .describe(
-      'The tooth profile: iso (the default, 60°), trapezoidal (Tr), buttress (DIN 513), bottle (PCO-1881) or print45 (3D printing, 45°).',
+      'The tooth profile: iso (the default, 60°), trapezoidal (Tr), buttress (DIN 513), bottle (PCO-1881), print45 (3D printing, 45°) or whitworth (55°, the BSP G pipe threads).',
     ),
   /** With `profile: buttress`; default `end`. */
   loadFlank: enumInput(THREAD_LOAD_FLANKS)
@@ -489,6 +497,22 @@ export function threadProfile(
       return bottleProfile(pitch);
     case 'print45':
       return print45Profile(pitch);
+    case 'whitworth': {
+      // BS 84: a 55° triangle H = P / (2 tan 27.5°) = 0.960491 P high, cut
+      // by H/6 at the crest and the root, so 2H/3 = 0.640327 P deep with
+      // flats P/12 wide each side of the centre. The standard rounds both
+      // (r = 0.137329 P, tangent to the flanks at those flats): not
+      // modelled, as buttress's root isn't. The same inside and out.
+      const flank = (27.5 * Math.PI) / 180;
+      const H = pitch / (2 * Math.tan(flank));
+      return straightTooth(pitch, {
+        depth: (2 * H) / 3,
+        crestHalf: pitch / 12,
+        rootHalf: pitch / 12,
+        flank0: flank,
+        flank1: flank,
+      });
+    }
     default:
       return isoProfile(pitch, options.internal ?? false);
   }
