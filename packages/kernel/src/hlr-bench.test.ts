@@ -6,7 +6,8 @@
 // raises the heap top by 16 MB blocks). Gated, as heap-bound.test.ts is:
 //   HLR_BENCH=1 pnpm vitest run packages/kernel/src/hlr-bench
 // It prints the table as a soft failure (the numbers are the point).
-// HLR_ONLY=B7,B9 limits it to some cases.
+// HLR_ONLY=B7,B9 limits it to some cases; HLR_METHODS=1 adds hlrSpans,
+// hlrPolySpans and hlrToShapeCount per view.
 import type { BodyId, ExtrudoDocument } from '@extrudo/core';
 import { loadDocument } from '@extrudo/core';
 import { DEFAULT_FONT } from '@extrudo/fonts';
@@ -104,6 +105,20 @@ describe.runIf(ENV.HLR_BENCH)('hidden-line removal cost', () => {
     const maker = new Kernel(await loadOcct());
     try {
       for (const [name, dataUrl] of FIXTURES) steps.set(name, await stepOf(maker, dataUrl));
+      // STEP_OUT=<dir> also writes them, for a native harness.
+      if (ENV.STEP_OUT) {
+        const fs = (
+          globalThis as {
+            process?: {
+              getBuiltinModule(id: string): { writeFileSync(p: string, d: string): void };
+            };
+          }
+        ).process?.getBuiltinModule('node:fs');
+        const writeFileSync = (p: string, d: string) => fs?.writeFileSync(p, d);
+        for (const [name, text] of steps)
+          if (text) writeFileSync(`${ENV.STEP_OUT}/${name}.step`, text);
+        return;
+      }
     } finally {
       maker.dispose();
     }
@@ -165,6 +180,27 @@ describe.runIf(ENV.HLR_BENCH)('hidden-line removal cost', () => {
         if (sum(second) > 1000) {
           rows.push(
             `  ${name} per view: ${DIRECTIONS.map(([d], i) => `${d} ${second[i]?.toFixed(0)}`).join(', ')}`,
+          );
+        }
+        // HLR_METHODS=1: per view, the spans walk (exact), the polygonal run on the
+        // display-like mesh made first, and OCCT's HLRToShape after the exact run.
+        if (ENV.HLR_METHODS) {
+          const t = performance.now();
+          kernel.mesh(all, { linearDeflection: 0.02, angularDeflection: (15 * Math.PI) / 180 });
+          const meshed = performance.now() - t;
+          const cells = DIRECTIONS.map(([dir, d]) => {
+            const time = (run: () => number) => {
+              const t0 = performance.now();
+              const n = run();
+              return [performance.now() - t0, n] as const;
+            };
+            const [te, ne] = time(() => kernel.hlrSpans(all, d).length);
+            const [tp, np] = time(() => kernel.hlrPolySpans(all, d, 0.02).length);
+            const [ts, ns] = time(() => kernel.hlrToShapeCount(all, d));
+            return `${dir} ${te.toFixed(0)}/${tp.toFixed(1)}/${ts.toFixed(0)} (${ne}/${np}/${ns})`;
+          });
+          rows.push(
+            `  ${name} spans/poly/toShape ms (records/pieces/edges), mesh ${meshed.toFixed(0)} ms: ${cells.join(', ')}`,
           );
         }
         kernel.release(...solids, all, ...shapes);
