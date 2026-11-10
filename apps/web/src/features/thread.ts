@@ -93,7 +93,7 @@ const HINTS: Record<string, string> = {
   length: 'How long the thread is, from where it starts.',
   offset: 'How far from the face’s end the thread starts.',
   profile:
-    'The tooth shape: ISO metric (60°, the default), Trapezoidal (Tr), Buttress (DIN 513), Bottle (the PCO-1881 soft-drink finish) or 3D printing (45° flanks, flat crest and root: prints upright, mates only with itself).',
+    'The tooth shape: ISO metric (60°, the default), Trapezoidal (Tr), Buttress (DIN 513), Bottle (the PCO-1881 soft-drink finish), 3D printing (45° flanks, flat crest and root: prints upright, mates only with itself) or Whitworth (55°, the BSP G pipe threads).',
   loadFlank: 'Buttress only: which end of the thread the steep 3° load flank faces.',
   tolerance:
     'Clearance for printing: the whole thread moves this far into the part (a shaft’s thread gets thinner, a hole’s wider). 0.1 mm on both parts leaves 0.4 mm between their diameters.',

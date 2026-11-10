@@ -286,7 +286,9 @@ export function designation(
               ? 'S'
               : profile === 'print45'
                 ? 'Print'
-                : 'PCO'
+                : profile === 'whitworth'
+                  ? 'W'
+                  : 'PCO'
         } `;
   const tapered = Math.abs(taper) > 1e-9 ? `, taper ${taperDegrees(taper)}` : '';
   return `${prefix}Ø${round(diameter)} × ${round(pitch)}${tapered}`;

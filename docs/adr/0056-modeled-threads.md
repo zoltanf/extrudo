@@ -714,3 +714,42 @@ counterbore's wall); the plain countersunk holes keep their 2.98 mouth (the
 block's sides, found through the plate's top, are far out of reach). The Ø4 and Ø5 flat-ended pins: 107 faces, 292.577 mm³, as
 before; the golden table `thread-options.json` is unchanged (no row has a
 chamfered end).
+
+## Amendment, 2026-11-10: the Whitworth profile
+
+**What.** A sixth tooth profile, `whitworth`: BS 84's 55° form, the one the
+BSP (G, ISO 228) pipe threads share. The sharp triangle is
+`H = P / (2 tan 27.5°) = 0.960491 P` high, cut by `H/6` at the crest and the
+root: `2H/3 = 0.640327 P` deep with flats `P/12` either side of the centre,
+the same inside and out (`threadProfile`, through `straightTooth` like
+trapezoidal and buttress). The standard rounds crest and root with
+`r = 0.137329 P` tangent to the flanks at those flats; the flats stand in for
+the arcs, as buttress's root radius isn't modelled either. No presets (G
+sizes are a later step); without a size it is refused like the other
+non-ISO profiles; `designation` writes `W Ø… × …`.
+
+**Why.** The f3d import met 55° pipe threads (ADR-0083, 2026-11-10) and could
+only cut them with the 60° ISO tooth, and printed hose and pipe fittings are a
+common use. A new stored enum value is a file-format change (`docs/file-format.md`,
+`profile`): an older Extrudo reading a file with `whitworth` refuses the
+input like any unknown value. It is the last commit of its branch so it can
+be left out.
+
+**Rejected.** The rounded crest and root (`roundLoop`, as bottle does): at
+`r = 0.137329 P` the two crest arcs meet with no flat between them, a
+zero-length edge in the outline; and the volume between arc and flat is a
+small fraction of the groove. Mapping a 55° thread to `iso` with a note (what
+the import did): kept for any other angle.
+
+**Results.** Core's profile tests take `whitworth` in their loops (closed,
+within a pitch, depth 0.640327 P, flanks at 27.5°, no arcs); the kernel's
+"cuts two turns of each profile by its own section area" builds it and cuts
+within 10 % of its section. On the corpus's two designs with G threads the
+volume did not get closer: the file's tooth is its class's, cut off at the
+class's wider minor (G 1 1/4 inside: Ø39.272 against the basic 38.952), so the
+whole Whitworth tooth stands further in. A pipe adapter whose threads survive
+went from 1.505 % to 1.604 % (ISO's shallower 60° tooth happened to come
+closer); a pipe input is unchanged at 2.506 % (its thread is cut away later).
+The import's tolerance lift (ADR-0083, 2026-11-10) keeps a hole the class
+widened from being filled in; lifting every internal Whitworth thread to the
+class's minor was tried and made the adapter −1.0 %.
