@@ -39,7 +39,7 @@ import {
   withExpr,
 } from './recompute/testing';
 import type { RecomputeRequest } from './recompute/types';
-import { type FileSource, type FontSource, Recomputer } from './recomputer';
+import { type FileSource, type FontSource, MAX_CRASHED_FEATURES, Recomputer } from './recomputer';
 import { NO_SCRIPT_HOST } from './script-host';
 import { KernelService } from './service';
 
@@ -347,6 +347,47 @@ describe('Recomputer', () => {
     document.getState().dispatch(renameFeature({ id: 'boom' as FeatureId, name: 'Boom' }));
     await until(() => spawned() === 3 && ready(model));
     expect(requests.at(-1)?.crashed).toEqual(['boom']);
+  });
+
+  // Review finding: four features that trap the kernel used to spend the
+  // restart budget (3 a minute) and leave it failed, on every open (the
+  // crashed list lives in memory only).
+  it('goes past more crashing features than the restart budget, naming each once', {
+    timeout: 120_000,
+  }, async () => {
+    const booms = ['boom1', 'boom2', 'boom3', 'boom4', 'boom5'];
+    const doc = testDocument([
+      testFeature('a', 'test-box', { size: '10 mm' }),
+      ...booms.map((id) => testFeature(id, 'test-crash')),
+      testFeature('grow', 'test-grow', { height: '1 mm' }),
+    ]);
+    const { model, requests, spawned } = setup(doc);
+    await until(() => ready(model) || model.getState().status === 'failed', 100_000);
+    expect(model.getState().status).toBe('ready');
+    // One kernel per crash, and the one that built the rest.
+    expect(spawned()).toBe(booms.length + 1);
+    expect(requests.at(-1)?.crashed).toEqual(booms);
+    for (const id of booms)
+      expect(model.getState().features[id as FeatureId]).toEqual({
+        status: 'error',
+        message: expect.stringMatching(/^The kernel stopped/),
+      });
+    expect(model.getState().features['grow' as FeatureId]).toEqual({ status: 'ok' });
+  });
+
+  it('gives up once more features crash than MAX_CRASHED_FEATURES and the budget allow', {
+    timeout: 120_000,
+  }, async () => {
+    const booms = Array.from({ length: MAX_CRASHED_FEATURES + 4 }, (_, i) => `boom${i + 1}`);
+    const doc = testDocument([
+      testFeature('a', 'test-box', { size: '10 mm' }),
+      ...booms.map((id) => testFeature(id, 'test-crash')),
+    ]);
+    const { model, spawned } = setup(doc);
+    await until(() => model.getState().status === 'failed', 100_000);
+    // The named ones were free; the next three are the budget; the fourth gives up.
+    expect(spawned()).toBe(MAX_CRASHED_FEATURES + 4);
+    expect(model.getState().error).toMatch(/^The kernel stopped/);
   });
 
   it('sends a font once, before the recompute that needs it, and again after a restart', {

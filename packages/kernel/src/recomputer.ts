@@ -7,6 +7,8 @@
  * while another runs cancels it in the worker. Meshes of bodies that didn't
  * change stay here: each request says which versions it has. When a feature
  * crashes the kernel, it is marked as an error and skipped until it changes.
+ * Such a crash doesn't count against the kernel client's restart budget, for
+ * up to `MAX_CRASHED_FEATURES` features: each is one feature fewer to try.
  */
 import {
   type Annotation,
@@ -127,6 +129,14 @@ export interface RecomputerOptions {
  * recycling heavy documents more often would pause them for no safety gain.
  */
 export const HEAP_RECYCLE_BYTES = 1024 * 1024 * 1024;
+
+/**
+ * The features that crashed the kernel whose crashes don't count against its
+ * restart budget (3 a minute), per open document: past them the budget
+ * applies again, so a design whose every feature traps the kernel still
+ * stops (ADR-0024's amendment of 2026-11-10).
+ */
+export const MAX_CRASHED_FEATURES = 8;
 
 /** Where the bytes of the fonts a design uses come from (ADR-0058 §4). */
 export interface FontSource {
@@ -323,6 +333,18 @@ export class Recomputer {
         }
       },
       onRestart: () => this.#resend(),
+      // A crash in a feature of the document not known to crash is free (it
+      // is skipped from now on), up to MAX_CRASHED_FEATURES of them; any other
+      // one counts (a script's generated feature, say, which no list skips).
+      counts: () => {
+        const id = this.#current;
+        return !(
+          id !== undefined &&
+          !this.#crashed.has(id) &&
+          this.#crashed.size < MAX_CRASHED_FEATURES &&
+          (this.#sent?.features.some((f) => f.id === id) ?? false)
+        );
+      },
     });
   }
 
