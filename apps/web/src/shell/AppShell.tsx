@@ -260,6 +260,7 @@ import {
   type TimelineSelectionStore,
 } from './timelineGroups';
 import { FILE_COMMANDS, isFileCommand, TOOLS, type ToolId } from './tools';
+import { applyUpdate } from './useUpdateNotice';
 import { useMarkingSlots, useMarkingStyle, useViewMenu } from './viewMenu';
 import { WhatsNewDialog } from './WhatsNewDialog';
 
@@ -1288,6 +1289,8 @@ function Shell({
       ]),
     [recording, fileActions],
   );
+  // The waiting update (the toast and the app menu strip's Restart / Reload).
+  const updates = platform.updates;
   // The desktop app's own commands (ADR-0075, 2026-10-09). Quit saves every design first, as
   // the update toast's Restart does, and refuses when a save failed.
   const desktop = platform.desktop;
@@ -2715,8 +2718,9 @@ function Shell({
             : undefined;
         }}
         version={BUILD.version}
-        updates={platform.updates}
+        updates={updates}
         {...(platform.updates?.check && { onCheckUpdates: () => platform.updates?.check?.() })}
+        onApplyUpdate={updates && (() => void applyUpdate(updates, notify))}
         markingRadial={markingStyle.radial}
         onMarkingRadial={(radial) => {
           if (radial !== markingStyle.radial) markingStyle.toggle();

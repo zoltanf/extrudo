@@ -2815,8 +2815,10 @@ tile was hovered; then User Guide, Tutorial, **Online Tutorials** (the `docsTuto
 label everywhere), Examples, Tool Reference); the **strip** `[data-update-strip]`
 (`data-update-word`: "Update ready: <v>" / "Checking…" / "Up to date" / nothing, from
 `UpdateState.waiting` and the new `UpdateState.check` the desktop's `desktopUpdates`
-sets; a dot colour plus the word, never colour alone), the version, **Check now**
-(desktop only, stays open) and **GitHub**. Rail controls change preferences through
+sets; a dot colour plus the word, never colour alone), the version, **Restart** /
+**Reload** (`updates.action`; only while `waiting`, first in the group, accent; closes the
+panel and runs `applyUpdate`, the toast's save-then-apply path, so a failed save applies
+nothing), **Check now** (desktop only, stays open) and **GitHub**. Rail controls change preferences through
 `display.set`, `onThemeChange` and the marking toggle and leave the panel open; an item
 closes it and keeps the focus where it went (`onCloseAutoFocus`); Escape returns it to
 the Menu button. On open the panel itself takes the focus (no tooltip opens); arrows

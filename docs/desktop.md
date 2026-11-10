@@ -233,7 +233,7 @@ so publishing the release is what ships an update. Prereleases are ignored.
 
 | Install | What happens |
 |---|---|
-| Linux AppImage | downloads in the background; "Extrudo 0.5.0 is ready." with **Restart** (saves every open design, then installs and relaunches), or installs on the next quit |
+| Linux AppImage | downloads in the background; "Extrudo 0.5.0 is ready." with **Restart** (saves every open design, then installs and relaunches; the Menu strip has the same **Restart** while the update waits), or installs on the next quit |
 | Windows (NSIS) | the same |
 | Windows portable exe | the same as a deb: there is no installer to run, so it says a version is out and offers the release page; download the new exe and keep the `Extrudo-data` folder beside it |
 | Linux deb | "Extrudo 0.5.0 is available." with **Open the release page**: the package manager owns a deb, so nothing is downloaded |
