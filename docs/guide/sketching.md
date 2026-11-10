@@ -176,9 +176,11 @@ without holding anything.
 
 Every driving dimension is a parameter named `d1`, `d2` and so on, and other fields can use it.
 To give one a better name, type `name = value` in its editor, for example `width = 40 mm`. That
-makes a [user parameter](./parameters.md) and sets the dimension to it, in one step.
+renames the dimension's own parameter (`d1` becomes `width`) and sets its value, in one step; you
+can also rename it in the [Parameters dialog](./parameters.md). Every expression that used `d1`
+follows.
 
-Quicker: type only the new name. The list under the field offers **New parameter width = 40.00
+Quicker: type only the new name. The list under the field offers **Rename to width = 40.00
 mm**, with the value the dimension has now. With the list closed (Escape), a link under the
 "Unknown name" message does the same, and so does Ctrl+Enter at any time. Either one fills in `width = 40` with the value selected: press Enter to keep it, or
 type another value first.

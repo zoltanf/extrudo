@@ -2588,7 +2588,15 @@ parameter has no range fields. A migration from format 1 spells out the base uni
 (`25.4` → `25.4 mm`, `30` → `30 deg`) and moves `customizer.group`. e2e: rows are
 `[data-parameter-row="<name>"]` (`aria-current` when selected), sections
 `[data-parameter-section]`; select a row before its fields exist (`selectParameter`,
-`parameterExpression`, `addUserParameter` in `e2e/helpers.ts`).
+`parameterExpression`, `addUserParameter` in `e2e/helpers.ts`). Amendment 2026-11-07:
+**a refusal shows where the action was taken**, never in a line above the inspector
+(`run(command, spot)` → `Refusal { spot: 'name' | 'actions', text }`, rendered by
+`Refused`): `name` under the name field (rename, add; the field is `aria-invalid`
+and keeps the typed name, typing or Esc clears it), `actions` (the default) in place
+of the footer hint beside Delete, or under a model parameter's buttons. A row menu's
+Delete selects the row first. The dialog has no `role="alert"` until something is
+refused, so specs check `toHaveCount(0)`, not empty text. The footer is sticky at the
+pane's bottom.
 
 ADR-0087 (P6-08, 2026-10-15) added **the desktop MCP server and its skill** (no
 schema or file-format change). **Main** hosts it (`apps/desktop/src/main/mcp/`):
@@ -2988,6 +2996,7 @@ a last option "+ New parameter …" (Enter when it is the only row) and a "+ Cre
 under the message, only while the list is closed (the list covers it; Ctrl/Cmd+Enter
 always works); both set the draft to `name = value` with the value
 selected. Keep `newParameter` off fields whose `evaluate`/`onCommit` don't take `name = value`.
+With `renames` (ADR-0142) the row and the button read "Rename to …" instead.
 
 ADR-0097 (P4-13, issue #95) adds **Mesh to Solid**: feature `meshToSolid`
 (`packages/kernel/src/features/mesh-to-solid.ts`, core `meshToSolidFeature`)
@@ -4347,3 +4356,23 @@ renderer has `releaseNotesPlugin` too (its own Vite config; `src/renderer/config
 (`releaseHistory`: every `## ` section but Unreleased and this version, with highlights where a
 file exists) is a separate lazy chunk behind the dialog's "Earlier versions"; the Menu's App
 column has What's new above About, and the `whatsNew` command (Help) is agent-denied.
+
+ADR-0142 (issue #203, 2026-11-07) **renames model parameters**. Core `renameModelParameter({ name, newName })`
+(`document-commands.ts`) sets `paramName` on the dimension or feature input and rewrites every user via
+`rewriteReferences` (shared with `updateParameter`: parameters, ranges, inputs, dimensions, joint limits, view
+sections), one undo step. Rules: **new names go through `checkParameterName`** (identifier, not reserved, not any
+parameter's name); a driven dimension has no name; **`name = value` in a driving dimension's editor
+(`DimensionLabels.tsx` `commit`) renames its own parameter and sets the value** (no second user parameter; a
+dimension without a name keeps the user-parameter path), and for such a dimension the editor passes
+`ExpressionInput`'s `renames`, so the offer for a bare name reads "Rename to …" in the list and the link (keep
+`renames` in step with `commit`'s rename condition); the Parameters dialog's `ModelInspector` has a Name field
+(`Name of <name>`, a refusal under the field, row stays selected under the new name), and a double-click on any
+list row focuses it (`focusName`). **Make user parameter** (`makeUserParameter({ name, id })`): the user parameter
+takes the name and expression, the holder's expr becomes `name` and its `paramName` a fresh `dN`; one-way (undo only).
+**Reset name** (`resetModelParameterName`): lowest free `dN` via `lowestFreeModelParameterName`, not stored, so it may
+differ from the original; shown only for non-`dN` names. **A model parameter that only follows a user parameter is
+hidden from the dialog's list** (`followsUserParameter` in `parameters/list.ts`: expression is a user parameter's name
+alone, and `parameterUsers` of it is empty) behind "Show N that follow(s) a user parameter" / "Hide those that follow a
+user parameter"; shown, such a row has `FollowsMark` (link icon, title "Follows <name>") instead of `FormulaMark`;
+the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
+clicks the Show line when a row is hidden. No schema change.

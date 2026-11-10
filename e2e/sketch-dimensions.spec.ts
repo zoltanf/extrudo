@@ -224,7 +224,7 @@ test('a dimension is a parameter: the Parameters dialog edits it, and it takes e
   const fromW = await parameterExpression(page, 'd1');
   await fromW.fill('w * 2');
   await fromW.press('Enter');
-  await expect(dialog.getByRole('alert')).toHaveText('');
+  await expect(dialog.getByRole('alert')).toHaveCount(0);
   // Deleting `w` is refused while d1 uses it.
   await selectParameter(page, 'w');
   await dialog.getByRole('button', { name: 'Delete w' }).click();
@@ -253,10 +253,113 @@ test('a dimension is a parameter: the Parameters dialog edits it, and it takes e
   await value.fill('len = 35');
   await expect(editor(page)).toContainText('= 35.00 mm');
   await value.press('Enter');
-  await expect(labels(page)).toHaveText(['fx: 35.00']);
-  await expect(labels(page).first()).toHaveAttribute('title', 'd1 = len');
+  await expect(labels(page)).toHaveText(['35.00']);
+  // The dimension's own parameter takes the name: no second parameter (ADR-0142).
+  await expect(labels(page).first()).toHaveAttribute('title', 'len = 35');
   await page.keyboard.press('Control+Z');
   await expect(labels(page)).toHaveText(['fx: 30.00']);
+  await expect(labels(page).first()).toHaveAttribute('title', 'd1 = w * 2');
+});
+
+test('the Parameters dialog renames a model parameter, and the expressions follow (issue #203)', async ({
+  page,
+}) => {
+  const at = await sketchOnXY(page);
+  const click = clicker(page, at);
+  await page.keyboard.press('l');
+  await click(-20, 0);
+  await click(20, 0);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('d');
+  await click(0, 0);
+  await click(0, 12);
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+
+  await pickTool(page, 'Parameters');
+  const dialog = page.getByRole('dialog', { name: 'Parameters' });
+  await addUserParameter(page, 'half', 'd1 / 2');
+  await selectParameter(page, 'd1');
+  const name = dialog.getByRole('textbox', { name: 'Name of d1' });
+
+  // A clash, a unit name and a bad identifier are refused with a message under
+  // the field, which keeps the typed name until Esc.
+  const refused: [string, string][] = [
+    ['half', 'A parameter named "half" already exists.'],
+    ['mm', '"mm" is a unit, function or constant; pick another name.'],
+    [
+      '1x',
+      '"1x" isn\'t a valid parameter name: use a letter or _ followed by letters, digits or _.',
+    ],
+  ];
+  for (const [bad, message] of refused) {
+    await name.fill(bad);
+    await name.press('Enter');
+    await expect(dialog.getByRole('alert')).toHaveText(message);
+    await expect(name).toHaveValue(bad);
+    await expect(name).toHaveAttribute('aria-invalid', 'true');
+  }
+  await name.press('Escape');
+  await expect(name).toHaveValue('d1');
+  await expect(dialog.getByRole('alert')).toHaveCount(0);
+
+  // The section collapses with one of its rows selected; the inspector stays.
+  const section = dialog.getByRole('button', { name: /^Model parameters/ });
+  await section.click();
+  await expect(section).toHaveAttribute('aria-expanded', 'false');
+  await expect(dialog.locator('[data-parameter-row="d1"]')).toHaveCount(0);
+  await expect(name).toHaveValue('d1');
+  await section.click();
+
+  // Double-clicking a row puts the caret in the name field.
+  await dialog.locator('[data-parameter-row="d1"]').dblclick();
+  await expect(name).toBeFocused();
+  await name.fill('width');
+  await name.press('Enter');
+  await expect(dialog.locator('[data-parameter-row="width"]')).toHaveAttribute(
+    'aria-current',
+    'true',
+  );
+  await expect(dialog.locator('[data-parameter-row="d1"]')).toHaveCount(0);
+  await expect(await parameterExpression(page, 'half')).toHaveValue('width / 2');
+
+  await dialog.getByRole('button', { name: 'Undo' }).click();
+  await expect(dialog.locator('[data-parameter-row="d1"]')).toHaveCount(1);
+  await expect(await parameterExpression(page, 'half')).toHaveValue('d1 / 2');
+
+  // A renamed parameter goes back to its auto name with Reset name; only a
+  // renamed one offers it.
+  await selectParameter(page, 'd1');
+  await expect(dialog.getByRole('button', { name: /Reset name of/ })).toHaveCount(0);
+  await name.fill('width');
+  await name.press('Enter');
+  await dialog.getByRole('button', { name: 'Reset name of width' }).click();
+  await expect(dialog.locator('[data-parameter-row="d1"]')).toHaveAttribute('aria-current', 'true');
+  await expect(await parameterExpression(page, 'half')).toHaveValue('d1 / 2');
+
+  // Make user parameter: the name and value move to a user parameter, the
+  // dimension points at it and gets a fresh name.
+  await selectParameter(page, 'd1');
+  await name.fill('width');
+  await name.press('Enter');
+  await dialog.getByRole('button', { name: 'Make width a user parameter' }).click();
+  await expect(await parameterExpression(page, 'width')).toHaveValue(/40/);
+  // d1 now only follows `width`, so the list keeps it behind a Show line
+  // (ADR-0142 §6); a selected one stays until something else is selected.
+  await expect(dialog.locator('[data-parameter-row="d1"]')).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Show 1 that follows a user parameter' }).click();
+  // Shown, it has a link mark in place of "ƒx".
+  await expect(dialog.locator('[data-parameter-row="d1"] [title="Follows width"]')).toHaveCount(1);
+  await expect(dialog.locator('[data-parameter-row="d1"] [title="A formula"]')).toHaveCount(0);
+  await expect(await parameterExpression(page, 'd1')).toHaveValue('width');
+  await dialog.getByRole('button', { name: 'Hide those that follow a user parameter' }).click();
+  await expect(dialog.locator('[data-parameter-row="d1"]')).toHaveCount(1);
+  await expect(await parameterExpression(page, 'half')).toHaveValue('width / 2');
+  await expect(dialog.locator('[data-parameter-row="d1"]')).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Undo' }).click();
+  await expect(dialog.locator('[data-parameter-row="width"]')).toHaveCount(1);
+  await expect(await parameterExpression(page, 'half')).toHaveValue('width / 2');
 });
 
 test('the editor creates a parameter from an unknown name, and completes functions (ADR-0096)', async ({
@@ -274,43 +377,47 @@ test('the editor creates a parameter from an unknown name, and completes functio
   await page.keyboard.press('Enter');
   await page.keyboard.press('Escape');
 
-  // An unknown name alone: the list offers it as a new parameter with the
-  // dimension's value; Enter writes `name = value` with the value selected.
+  // An unknown name alone: the list offers it with the dimension's value;
+  // Enter writes `name = value` with the value selected.
   await labels(page).first().dblclick();
   const value = page.getByRole('textbox', { name: 'Value of d1' });
   await value.fill('width');
   const list = page.getByRole('listbox', { name: 'Parameters for Value of d1' });
-  await expect(list.getByRole('option')).toHaveText(['+ New parameter width = 40.00 mm']);
+  // d1 is the dimension's own parameter, so the row renames it (ADR-0142).
+  await expect(list.getByRole('option')).toHaveText(['Rename to width = 40.00 mm']);
   // The open list would cover the link, so the link waits until it closes.
-  await expect(editor(page).getByRole('button', { name: /Create width/ })).toHaveCount(0);
+  await expect(editor(page).getByRole('button', { name: /Rename to width/ })).toHaveCount(0);
   await value.press('Enter');
   await expect(value).toHaveValue('width = 40');
   await value.pressSequentially('45');
   await expect(value).toHaveValue('width = 45');
   await value.press('Enter');
-  await expect(labels(page)).toHaveText(['fx: 45.00']);
-  await expect(labels(page).first()).toHaveAttribute('title', 'd1 = width');
+  // The dimension's own parameter takes the name (ADR-0142 §3): no second one.
+  await expect(labels(page)).toHaveText(['45.00']);
+  await expect(labels(page).first()).toHaveAttribute('title', 'width = 45');
 
   // With the list closed, the link under the error does the same (Ctrl+Enter).
   await labels(page).first().dblclick();
-  await value.fill('depth');
-  await value.press('Escape');
-  await expect(list).toBeHidden();
-  const link = editor(page).getByRole('button', { name: /Create depth = 45\.00 mm/ });
+  const renamed = page.getByRole('textbox', { name: 'Value of width' });
+  const renamedList = page.getByRole('listbox', { name: 'Parameters for Value of width' });
+  await renamed.fill('depth');
+  await renamed.press('Escape');
+  await expect(renamedList).toBeHidden();
+  const link = editor(page).getByRole('button', { name: /Rename to depth = 45\.00 mm/ });
   await expect(link).toBeVisible();
-  await value.press('Control+Enter');
-  await expect(value).toHaveValue('depth = width');
+  await renamed.press('Control+Enter');
+  await expect(renamed).toHaveValue('depth = 45');
   await expect(link).toBeHidden();
 
   // Functions complete by prefix and get their brackets, the caret inside.
-  await value.fill('sq');
-  await expect(list.getByRole('option')).toHaveText(['sqrt(x)', '+ New parameter sq = 45.00 mm']);
-  await value.press('Tab');
-  await expect(value).toHaveValue('sqrt()');
-  await value.pressSequentially('2025');
-  await value.press('Enter');
+  await renamed.fill('sq');
+  await expect(renamedList.getByRole('option')).toHaveText(['sqrt(x)', 'Rename to sq = 45.00 mm']);
+  await renamed.press('Tab');
+  await expect(renamed).toHaveValue('sqrt()');
+  await renamed.pressSequentially('2025');
+  await renamed.press('Enter');
   await expect(labels(page)).toHaveText(['fx: 45.00']);
-  await expect(labels(page).first()).toHaveAttribute('title', 'd1 = sqrt(2025)');
+  await expect(labels(page).first()).toHaveAttribute('title', 'width = sqrt(2025)');
 });
 
 test("a distance from a circle's edge to a line drives the circle (ADR-0112)", async ({ page }) => {

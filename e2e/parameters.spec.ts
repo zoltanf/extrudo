@@ -174,7 +174,12 @@ test('adds, renames and deletes parameters', async ({ page }) => {
   await dialog.getByRole('textbox', { name: 'New parameter name' }).fill('width');
   await newExpression.fill('1 mm');
   await dialog.getByRole('button', { name: 'Add', exact: true }).click();
+  // The message shows under the name field, which keeps what was typed.
   await expect(dialog.getByRole('alert')).toHaveText('A parameter named "width" already exists.');
+  await expect(dialog.getByRole('textbox', { name: 'New parameter name' })).toHaveAttribute(
+    'aria-invalid',
+    'true',
+  );
 
   // Renaming carries over to the expressions that use the parameter.
   await selectParameter(page, 'wall');
@@ -189,6 +194,16 @@ test('adds, renames and deletes parameters', async ({ page }) => {
   await expect(dialog.getByRole('alert')).toHaveText(
     'thickness is used by inner, Extrude2 and Fillet1. Change those first.',
   );
+  // The message takes the footer hint's place, by the button, so nothing moves.
+  await expect(dialog.getByText('Order in this list and in the Customizer')).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Delete thickness' })).toBeInViewport({
+    ratio: 1,
+  });
+  // Deleting from a row's menu selects that row, so its refusal shows there too.
+  await row(page, 'width').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Delete width' }).click();
+  await expect(row(page, 'width')).toHaveAttribute('aria-current', 'true');
+  await expect(dialog.getByRole('alert')).toHaveText(/^width is used by /);
   await selectParameter(page, 'lid');
   await dialog.getByRole('button', { name: 'Delete lid' }).click();
   await expect(row(page, 'lid')).toHaveCount(0);

@@ -19,6 +19,7 @@ export { evaluateInline, type InlineParameter, inlineParameter } from './inline'
 export {
   type EvaluatedParameter,
   evaluateParameters,
+  lowestFreeModelParameterName,
   mentions,
   nextModelParameterName,
   type ParameterEvaluation,
