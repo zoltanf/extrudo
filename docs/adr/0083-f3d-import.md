@@ -1880,3 +1880,126 @@ STEP is at most `MAX_ATTACHMENT_BYTES` (25 MB) and all of them together
 **Not done:** a base feature is never imported from its final body (that
 would put the later features' changes in twice); the phone case's chamfers
 wait on the kernel.
+
+## Amendment, 2026-11-06: profile regions from stale records
+
+A profile region record is written when the profile is picked and is not
+rewritten when the sketch is edited later (FORMAT.md, "Profile regions"):
+curves deleted and redrawn, trimmed into new secondary ids, lengthened past
+the curve they ended on, a notch added. The pieces then don't rebuild, and the
+fallback took the largest region the listed curves still close — often a
+corner, an opening or the whole plate instead of the region meant. Six rules
+(`regions.ts`, `map.ts`):
+
+1. **Overlap fallback** (`overlapRegion`, before `matchRegions`): of the listed
+   pieces, those still found as the file counted them (`listedPieces`) say
+   where the boundary ran. The one region maximising *F · G* is taken, F the
+   share of those pieces' length lying on the region's boundary (holes
+   included), G the share of the boundary lying on them; points every 0.5 mm,
+   within `OVERLAP_TOLERANCE` 0.05 mm; regions under `OVERLAP_MIN_SHARE` 0.3 of F
+   are not scored; accepted at `OVERLAP_SCORE` 0.5. The corpus's stale records
+   score 0.52 to 0.97 for the region meant; a neighbour sharing one side scores
+   far less. Below the score the old fallbacks run as before.
+2. **Collinear duplicates in the curve count** (`staleRegion`): a listed line an
+   outline edge runs along collinearly counts as on the outline, though the
+   sketch keeps the overlap as the other line's edge (the lowest curve ID's).
+3. **Coincident circles** (`sketchPieces`): two arcs with the same centre and
+   radius touch at each one's ends (a full circle's seam), and that touch on a
+   closed curve counts first in the turn, not at 2π. A global "a cut at the
+   start counts first" was tried and rejected: it harmed six matching designs.
+4. **Tangent touch** (`lineCircle`): two roots closer than 10·TOL (0.1 µm
+   along the line) are one. The existing discriminant slack is not the test: it
+   also calls a real 64 µm chord tangent.
+5. **Probe clearance** (`clearProbeOf`): a region's probe point nearer than
+   `PROBE_CLEARANCE` 0.05 mm to its edges is moved inward (`interiorPoint` with
+   that margin, only then: always using it was too slow on long spline outlines);
+   a thin ring round a picked circle had its probe in the sag between its
+   sampled hole and the true circle, inside the circle's pieces.
+6. **Text inside a region** (`textsInside`): the file's regions run round
+   curves only, so a text in one is solid there; Extrudo's region has the
+   letters cut out (ADR-0058 §5). For a region found from its pieces, every text
+   whose box middle they enclose is added as a `sketchEntity` profile. In the
+   corpus 7 regions of 6 designs enclose a text; 3 change, all closer.
+
+Corpus (the private corpus of 252 files, replay and full body check against
+the same day's main): replay 163 match / 48 mismatch / 25 partial / 2 match
+despite skips → 168 / 44 / 22 / 4 (no match lost); bodies 232 editable / 124
+frozen / 26 unchecked → 241 / 115 / 26 (no body worse). A drawer insert, a boat
+toy, a towel holder, a name tag and a drain adapter now match; a doll and a
+keychain match despite their skips; a vent cover goes from 432 % to 2.9 %, a
+meter case from 57 % to 2 %. Two designs move away while their bodies get
+closer: a cabinet loses a skip (a region now found; its total is closer too, but
+a skip-free mismatch ranks below a partial), and a part whose second body is
+now exact still lacks the copy the file's Move keeps. A multi-part case moves
+from 3.9 % to 4.1 %: rule 4 gives one extrude the file's four small regions
+(4.3 mm² each, the file's 4.4) where two came with 81 mm² more; its body is
+now one body as in the file, and closer, while the case's total is short
+elsewhere.
+Not import problems, left to the owner: the kernel's sketch faces and the
+sketch's regions disagree (a curve end within the kernel's fuzzy value of a
+circle; one face where the sketch has two regions), sketch planes in no
+origin-axis direction, and a self-crossing spline chain that makes no region.
+(A cut whose side is tangent to the body's cylinder, which removed nothing, is
+built again with a fuzzy value since the kernel's 2026-11-06 change.)
+
+## Amendment, 2026-11-10: hostile files, round 3
+
+The leftovers of the second review's mapping and kernel findings, each
+measured on the base (main at 14e9530b) first, with synthetic inputs only.
+
+- **Profile-region matching** (`regions.ts`; review B, finding 2). Two
+  curves sampled as polylines were compared segment by segment, with the
+  second curve's segments rebuilt for every segment of the first; a spline's
+  span and a polyline's segment were searched for linearly; and a curve's box
+  was a spread of all its points, which overflows the stack past about
+  100,000 of them. Two crossing zig-zag splines took 2.0 s at 500 poles each,
+  7.9 s at 1,000 and 40 s at 2,000 (a test with 5,000 was stopped after
+  120 s); at 20,000 the spread threw. Now:
+  - a grid over where the two curves' boxes meet hands each segment of one
+    only the segments of the other whose boxes (widened by the crossing
+    tolerance) touch its own, in the order the old loop tested them, so the
+    crossings found are the same;
+  - spans and segments are found by halving, and boxes by a loop;
+  - every question asked of one sketch's pieces (cutting, finding a piece,
+    the mapping's point-in-region probes, at a tenth of a unit each: 4 ns
+    against 40 ns measured) spends one budget, `MAX_PIECE_WORK` = 30 million
+    units, about a second. Past it the sketch's regions are not looked for
+    again (`overBudget`) and a feature on them is left out: "its sketch has
+    too many curve crossings to find its profile".
+
+  The 20,000-pole pair is refused in about 1 s, 1,000 and 2,000 poles in
+  1.2 s; 500 poles now take 0.66 s. On 3,000 random sketches of lines, arcs,
+  circles, splines and ellipses the old and new code found the same 1,019,428
+  crossings and the same 304,263 region and listed pieces. On the corpus the
+  dearest sketch spends 3.96 million units (99th percentile 1.2 million), so
+  the budget has a margin of 7.6; every design imports to the same document
+  (its JSON without the dates, with seeded IDs), the same profile references
+  and the same skipped features, and the import of all designs took
+  68.4 s → 63.8 s. Still open, in the sketch package and not the import's:
+  Extrudo's own profile detection (`packages/sketch` `cutSegments`) also
+  tests every pair of segments of a sketch (71 s for the 2,000-pole pair) and
+  spreads them (`detectProfiles`, a `RangeError` at 20,000), and the import
+  runs it for every sketch it maps; the import worker's 30 s budget is what
+  stops it in the app.
+- **Rounds of very many edges** (`map.ts` `edgeTreatment`; review B,
+  finding 4). A fillet or chamfer of more than `MAX_ROUND_EDGES` = 2,000
+  edges (all its sets together) is left out: "it rounds N edges, more than
+  2000". The corpus's largest round has 224 edges (median 4, 1,090 rounds).
+  The kernel's side of the finding, a budget of builds for a failing round's
+  retries, is ADR-0038's amendment of the same day.
+- **B-rep value storage** (`asm.ts` `readAsm`; round two's fix 2). Within
+  round two's caps a crafted stream of a record every 16 bytes, each holding
+  three two-character strings, still cost 27 times its size in heap (after a
+  collection, `--expose-gc`, 16 MB streams): an object and a string for each
+  value, and a values array that kept room for 17 values. Strings and class
+  names of at most two characters now share one frozen value each (at most
+  65,793 of them), a class name inside a block is decoded once, and a record
+  keeps an exact-size copy of its values. The dearest crafted stream measured
+  within the caps (a record every 16 bytes of two four-character strings) now
+  costs 15.6 times its size (was 23.1), three-character strings 14.4, floats
+  12.8; the corpus's eight largest streams 5.6 to 6.0 (were 6.0 to 6.5). Every
+  one of the corpus's 670 B-rep streams reads to the same records.
+
+The corpus gate (replay and body check, all designs) is unchanged design by
+design. The other leftovers: a kernel crash loop is ADR-0024's amendment of
+this day, the WASM download check ADR-0001's.

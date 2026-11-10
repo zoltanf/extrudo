@@ -122,3 +122,80 @@ while the kernel must be exact, so the two can't share one computation.
 - Sketches on faces and construction planes (P2-09, P3-05): the evaluator
   still refuses a face and knows only the origin planes' frames.
 - Model-mode profile picking (the Extrude dialog, P2-05/P2-06).
+
+## Amendment, 2026-11-09 — the kernel's faces answer to every region the sketch shows
+
+**What.** The app shows and picks a sketch's regions from `detectProfiles`
+(`apps/web/src/sketch/profiles.ts`), and a profile reference stores that
+region ID; an extrude then reads the kernel's face under the same ID.
+Two sketches from imported files showed a region with no face, so the
+extrude failed with "Can't find one of its profiles any more". In both the
+arrangement was right and the kernel lost the region:
+
+1. **A spline that doubles back.** A traced outline split a region in two
+   with a chain of 86 short curves, one of them a control spline whose
+   poles lie in a line and go 3 µm forward before they turn and run on
+   back: the curve runs over its own track. The facade cuts a spline where
+   it crosses itself (Decision 1), but not where it folds onto itself, so
+   General Fuse keeps it one edge and the face builder drops the whole
+   chain as a dangling one: one face of both halves' area (1089.68 mm² =
+   769.48 + 320.20), under neither ID. Now `planarCurves` stages such a
+   spline as its pieces between the folds (`unfolded`), all under the
+   spline's own ID. `splineFolds` in core's `curves.ts` finds a fold where
+   the tangent turns by more than 150° between neighbouring samples (16 per
+   knot span) and bisects to where the derivative stops going forward; a
+   smooth curve gives none, so no other sketch is staged differently. Two
+   pieces of one curve make the same profile key, so the IDs agree with no
+   reassignment.
+2. **A thin chord off a circle.** A line starts on a circle (r 5.15) and
+   leaves it again 0.049 mm on, so the chord is 0.058 µm from the arc,
+   under the fuzzy value. The fuse makes chord and arc one edge, and when
+   the line comes first among the curves (its ID sorts first) the face
+   builder loses the ring on the other side of the chord too: 9 faces for
+   10 regions. Why the order matters inside OCCT was not followed up. Measured on a
+   synthetic ring: lost while the chord's sagitta is under about twice the
+   fuzzy value, kept with the circle first, kept at a fuzzy value of 1e-5
+   or less. The evaluator (`sketchFaces`) now builds the faces once more
+   at a tenth of `PROFILE_TOLERANCE` when a detected region has no face,
+   and takes from that run only the faces that are such a region (by key,
+   or by area and centroid, as the safety net, Decision 5); every other
+   face, and its ID, is the first run's. A sketch whose regions all have a
+   face makes one run, as before.
+
+**Region IDs.** `detectProfiles` is unchanged, so no ID a design stores can
+change. On the kernel side: all 1045 sketches of the 58 designs in
+`fixtures/` and of a private corpus of 252 imported files give the same
+faces under the same IDs before and after, apart from the five sketches
+of the two designs above, which gain the faces they lacked (the halves
+replace the joined face). The tests: `splineFolds` in `curves.test.ts`;
+"regions the kernel used to lose" in `sketch.test.ts` (a rectangle split
+by a chain with a folded spline: both halves have a face, both extrude to
+the whole, one to its half; the ring and chord: every region has a face,
+the ring extrudes; and the fixed IDs of four plain sketches). Both
+sketches fail on the code before.
+
+**Cost.** A second run only where a detected region has no face: in the
+corpus three sketches besides the two above, which it doesn't help (a
+self-crossing spline chain, and a 0.0001 mm² sliver in two files); the
+largest of them took 440 ms instead of 245. Summed over all 1045
+sketches the evaluator took 5 % longer, those three sketches included;
+`detectProfiles` is untouched. Looking for folds adds 4 ms to
+`planarCurves` for a sketch with 264 splines (0.7 → 4.9 ms) and 16 ms for
+a synthetic one with 3000 (8.7 → 25 ms), against hundreds of ms for the
+faces themselves.
+
+**Tried and dropped.**
+- *A face equal to the union of unclaimed regions answers to all their
+  IDs* (a rule in `profileFaceIds`, prototyped on the corpus first). It
+  hides the cause, extrudes the whole face when a feature picks only one
+  of the regions, and needs a bound on the combinations it tries; with
+  the fold split the kernel makes the two faces itself.
+- *Make `detectProfiles` treat a curve end within the tolerance of a
+  curve as on it.* It already does (`cutSegments`); the line's end was on
+  the circle exactly, so the rule wasn't the difference.
+- *Stage the curves in another order* (circles before lines). It would
+  help the chord, but the facade names a piece shared by two curves after
+  the lowest index (Decision 4), so it would move IDs of other sketches.
+- *A finer fuzzy value for every sketch.* It keeps the ring, but leaves a
+  sliver face the arrangement doesn't have, and the value matches the
+  arrangement's vertex tolerance on purpose (Decision 1).

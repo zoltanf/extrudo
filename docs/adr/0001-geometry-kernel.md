@@ -282,6 +282,13 @@ decided or learned on the way:
   committing the 20 MB `.wasm` to git (repository bloat on every facade change);
   a CI cache (evicted after a week unused, and not available to local
   checkouts).
+  Since 2026-11-10 a download must have the SHA-256 the releases API reports
+  for the asset (`digest`) before anything is unpacked, or it fails
+  (`checkDigest` in `scripts/wasm-release.mjs`, also for planegcs and
+  OpenSCAD's mirror; the security review of 2026-10-15, finding C7). The digest
+  comes from the same release, so this catches a damaged or altered download,
+  not a replaced release; pinning the digests in the repository or attesting
+  the builds needs a CI change and is open.
 - **Crash recovery (NFR-03).** A `WebAssembly.RuntimeError` (OCCT abort, out of
   memory trap) marks the instance dead and surfaces as `KernelCrashError`.
   `KernelClient` then terminates the worker and starts a new one; a worker that
