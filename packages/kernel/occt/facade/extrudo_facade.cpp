@@ -111,6 +111,7 @@
 #include <BRepTools.hxx>
 #include <BRepTools_History.hxx>
 #include <BRepTools_ReShape.hxx>
+#include <BRepTools_ShapeSet.hxx>
 #include <BRepLib.hxx>
 #include <BRepLib_MakeEdge.hxx>
 #include <BRepTopAdaptor_FClass2d.hxx>
@@ -247,6 +248,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <exception>
 #include <map>
 #include <set>
@@ -2736,6 +2738,40 @@ public:
       return store(reader.OneShape());
     } catch (...) {
       return failFromException("STEP import failed");
+    }
+  }
+
+  /**
+   * Reads OCCT's own B-rep text (what BRepTools::Write makes: a
+   * "CASCADE Topology V1" to V3 line, with any lines before it skipped, then
+   * the locations, curves, surfaces and shapes) into one shape, as stored:
+   * nothing is healed or reordered, so the sub-shapes come out in the order
+   * the text lists them (TopExp::MapShapes, as count()/subShape() index them).
+   * Returns a handle, or 0.
+   */
+  int readBrep(const char* text) {
+    beginOp();
+    quietMessages();
+    try {
+      // BRepTools::Read, in its two steps: the shape set carries on after a
+      // table it couldn't read and then indexes its (empty) list of shapes, so
+      // text without the format line or without a shape is refused first.
+      if (text == nullptr || std::strstr(text, "CASCADE Topology V") == nullptr) {
+        return fail("B-rep import failed: the text is not a B-rep.");
+      }
+      std::istringstream in(text);
+      BRep_Builder builder;
+      BRepTools_ShapeSet set(builder);
+      set.Read(in);
+      if (in.fail() || set.NbShapes() <= 0) {
+        return fail("B-rep import failed: the text couldn't be read.");
+      }
+      TopoDS_Shape shape;
+      set.Read(shape, in);
+      if (shape.IsNull()) return fail("B-rep import failed: the text has no shape.");
+      return store(shape);
+    } catch (...) {
+      return failFromException("B-rep import failed");
     }
   }
 

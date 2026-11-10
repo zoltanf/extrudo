@@ -234,6 +234,7 @@ export interface FacadeBinding {
   pushStepGroupName(name: string): void;
   writeStep(): number;
   readStep(text: string): number;
+  readBrep(text: string): number;
   meshNodes(count: number): number;
   meshNodesPtr(): number;
   meshTriangles(count: number): number;

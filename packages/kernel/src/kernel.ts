@@ -2111,6 +2111,15 @@ export class Kernel {
   }
 
   /**
+   * Reads OCCT B-rep text ("CASCADE Topology V1" to V3) into one shape, as
+   * stored: nothing is healed, and its faces and edges keep the order the text
+   * lists them in. Release it when done.
+   */
+  readBrep(text: string): ShapeHandle {
+    return this.#check(this.#facade.readBrep(text));
+  }
+
+  /**
    * The colours of a STEP file's solids (P4-12, ADR-0034's amendment), read
    * through XDE: per solid in the order `solids(readStep(text))` lists them,
    * its colour as `#rrggbb` or `undefined` (the solid's own, else its part's,
