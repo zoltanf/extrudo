@@ -4,7 +4,9 @@
 //
 // A build needs Docker and takes minutes, so it is keyed by a hash of its
 // inputs. CI builds each new hash once and publishes `dist/` as a GitHub
-// release asset tagged `<name>-<hash>`. Everyone else downloads it.
+// release asset tagged `<name>-<hash>`. Everyone else downloads it, and the
+// download must have the SHA-256 GitHub reports for the asset (`digest`),
+// or nothing is unpacked (fail closed; review C finding 7, 2026-11-10).
 //
 // Commands every build gets:
 //   hash      print the input hash
@@ -19,6 +21,48 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join, relative } from 'node:path';
 
 const REPO = 'zoltanf/extrudo';
+
+/** The SHA-256 of `bytes`, as GitHub writes an asset's digest: `sha256:<hex>`. */
+export function sha256Digest(bytes) {
+  return `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+}
+
+/**
+ * Throws unless `bytes` has the `expected` digest (`sha256:<64 hex>`, as the
+ * releases API reports it). A missing or malformed digest fails too: a
+ * download that can't be checked is not used.
+ */
+export function checkDigest(bytes, expected, name) {
+  if (typeof expected !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(expected)) {
+    throw new Error(
+      `${name}: the release reports no SHA-256 digest for it, so it can't be checked`,
+    );
+  }
+  const actual = sha256Digest(bytes);
+  if (actual !== expected) {
+    throw new Error(`${name}: the download's SHA-256 is ${actual}, the release says ${expected}`);
+  }
+}
+
+/** The digest GitHub reports for the asset `name` of release `tag`, or undefined. */
+export async function releaseDigest(tag, name, hasGh) {
+  let release;
+  if (hasGh) {
+    const out = spawnSync('gh', ['api', `repos/${REPO}/releases/tags/${tag}`], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'inherit'],
+    });
+    if (out.error) throw out.error;
+    if (out.status !== 0) throw new Error(`gh api releases/tags/${tag} exited with ${out.status}`);
+    release = JSON.parse(out.stdout);
+  } else {
+    const url = `https://api.github.com/repos/${REPO}/releases/tags/${tag}`;
+    const response = await fetch(url, { headers: { accept: 'application/vnd.github+json' } });
+    if (!response.ok) throw new Error(`GET ${url}: ${response.status}`);
+    release = await response.json();
+  }
+  return release.assets?.find((a) => a.name === name)?.digest ?? undefined;
+}
 
 /** Every file under `dir`, sorted, so the hash doesn't depend on directory order. */
 export function filesIn(dir) {
@@ -80,7 +124,8 @@ export async function wasmRelease(spec) {
     mkdirSync(tmp, { recursive: true });
     const tarball = join(tmp, asset(hash));
     try {
-      if (hasGh()) {
+      const gh = hasGh();
+      if (gh) {
         // Works for the private repo too, with the user's (or CI's) gh auth.
         run('gh', ['release', 'download', tag(hash), '-R', REPO, '-p', asset(hash), '-D', tmp]);
       } else {
@@ -89,6 +134,12 @@ export async function wasmRelease(spec) {
         if (!response.ok) throw new Error(`GET ${url}: ${response.status}`);
         writeFileSync(tarball, Buffer.from(await response.arrayBuffer()));
       }
+      // Checked before anything is unpacked: dist/ stays as it was on a mismatch.
+      checkDigest(
+        readFileSync(tarball),
+        await releaseDigest(tag(hash), asset(hash), gh),
+        asset(hash),
+      );
       rmSync(DIST, { recursive: true, force: true });
       mkdirSync(DIST, { recursive: true });
       // A path relative to the working directory: GNU tar (Git Bash on Windows
