@@ -494,7 +494,14 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 ### `e2e/benchmark-b9.spec.ts`
 
 - **Benchmark B9 e2e** (`e2e/benchmark-b9.spec.ts`, P4-11): a threaded bottle
-  cap and its thread adapter, 240 s timeout, about 60 s alone. Facts a later
+  cap and its thread adapter, 300 s timeout, about 52 s alone locally and
+  54-124 s on CI. The spec logs `b9: <wait> N ms` for the long waits (also
+  in the JSON report's stdout and annotations). The Kernel `ready` wait after
+  the parameter change rebuilds all four threads: 10.4-10.9 s locally, 20.5-22.7
+  s on CI when it passed, over 30 s in 3 of 26 first attempts in the JSON reports (a 4th, 42827866401, was rerun), so
+  it has a 60 s budget (`kernelReady(page, 60_000)`; the helper's default
+  stays 30 s). Thread2's preview takes 14-15 s locally, 27 s on CI (budget
+  60 s). Facts a later
   agent needs: **a Shell that removes the bottom face leaves the cup open
   below and closed at the top**, so the inside wall is only pickable from the
   bottom view (Shift+3, still the current one after the shell) and only *on the
