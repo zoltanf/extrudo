@@ -59,6 +59,7 @@ import { continues, type EdgeShape, edgeShape } from './edge-shape';
 import {
   type CopyContext,
   combineBodies,
+  copiedFeatures,
   type MadeCopies,
   mirror,
   moveBodies,
@@ -864,13 +865,31 @@ export function f3dToDesign(
         if (reason) report.skipped.push(skippedFeature(feature.name, feature.kind, reason));
         else report.imported.push(feature.name);
       } else if (feature.type === 'circular-pattern') {
-        const made = circularPattern(d, feature, replayable, sketches, expressionOf, report);
+        const made = circularPattern(d, feature, replayable, sketches, expressionOf);
         if (typeof made === 'string')
           report.skipped.push(skippedFeature(feature.name, feature.kind, made));
         else {
           // The file numbers instances from 1, the original; Extrudo from 0.
           const label = (code: number) => (code >= 2 ? String(code - 1) : undefined);
-          naming.copies.set(feature.id, { op: 'pattern', id: made.id, label });
+          const count = feature.count?.value ?? 0;
+          const labels =
+            Number.isInteger(count) && count >= 2 && count <= 1000
+              ? Array.from({ length: count - 1 }, (_, i) => String(i + 1))
+              : undefined;
+          const copies: MadeCopies = {
+            op: 'pattern',
+            id: made.id,
+            label,
+            ...(labels && { labels }),
+          };
+          naming.copies.set(feature.id, copies);
+          leftOut(
+            feature,
+            'repeats',
+            replayable,
+            copyRounds(d, feature, copies, replayable, naming.rounds, report),
+            report,
+          );
           report.imported.push(feature.name);
         }
       } else if (feature.type === 'thread') {
@@ -953,6 +972,10 @@ export function f3dToDesign(
             report.skipped.push(skippedFeature(feature.name, feature.kind, made));
           else {
             naming.copies.set(feature.id, made);
+            if (feature.objects === 'features') {
+              const again = copyRounds(d, feature, made, replayable, naming.rounds, report);
+              leftOut(feature, 'copies', replayable, again, report);
+            }
             report.imported.push(feature.name);
           }
         }
@@ -2314,8 +2337,9 @@ function revolve(
 /**
  * A circular pattern of features: the tools of the imported features it
  * repeats, replayed round an origin axis or a sketch line and joined or cut
- * as each feature was. Features Extrudo does not replay (fillets, chamfers)
- * or did not import are left out with a note.
+ * as each feature was. Its fillets and chamfers are repeated after it
+ * (`copyRounds`); features it can't repeat or did not import are left out
+ * with a note (`leftOut`).
  */
 function circularPattern(
   d: Design,
@@ -2323,24 +2347,13 @@ function circularPattern(
   made: Map<number, { id: string; name: string }>,
   sketches: Map<number, SketchEntry>,
   expressionOf: (p: ParameterValue, negate?: boolean) => string,
-  report: ImportReport,
 ): string | { id: string } {
   if (f.objects !== 'features' || f.features.length === 0)
     return 'it repeats faces (only features are imported)';
   if (!f.axis) return 'its axis was not found';
   if (!f.count) return 'its count was not found';
-  const features: GeomRef[] = [];
-  let left = 0;
-  for (const record of f.features) {
-    const feature = made.get(record);
-    if (feature) features.push({ kind: 'feature', id: feature.id });
-    else left++;
-  }
+  const { features } = copiedFeatures(f.features, made);
   if (features.length === 0) return 'none of the features it repeats was imported';
-  if (left)
-    report.notes.push(
-      `${f.name}: ${left} of the ${f.features.length} features it repeats left out (not imported, or a fillet or chamfer).`,
-    );
   const axis = axisRef(f.axis, sketches);
   if (!axis) return 'its axis is not an origin axis or a sketch line';
   const angle = f.parameters.find((p) => p.kind === 'TotalAngle');
@@ -2821,12 +2834,15 @@ function offsetFaces(
   report: ImportReport,
 ): string | undefined {
   if (!f.distance) return 'its distance was not found';
+  // An offset by 0 moves nothing: imported as nothing (Extrudo refuses one).
+  if (Math.abs(f.distance.value) < 1e-12) {
+    report.notes.push(`${f.name}: its distance is 0, so it changes nothing; imported as nothing.`);
+    return undefined;
+  }
   // The one such offset in the files seen fails in the kernel: its body has a
   // notch across a cylinder's seam, where Offset Face refuses every face.
   if (f.faces.some((face) => face.instance))
     return 'it moves faces a pattern or mirror copied (not imported yet)';
-  if (Math.abs(f.distance.value) < 1e-12)
-    return 'its distance is 0 (Extrudo refuses an offset that moves nothing)';
   // Named by the face as the offset saw it (`surface`, the state before the
   // offset: an extrude's cap is still at its cap), and failing that by its
   // solved state. Not by the face's other states: the faces those name had
@@ -2861,6 +2877,155 @@ function offsetFaces(
     },
   );
   return undefined;
+}
+
+/**
+ * The most references one repeated round may get, all copies of all its
+ * inputs together (`copyRounds`). The corpus's largest is 18.
+ */
+export const MAX_REPEATED_ROUND_REFS = 10_000;
+
+/**
+ * The fillets and chamfers a mirror or pattern of features copies, repeated
+ * on every copy (the kernel copies only the tools of solid features). Each
+ * becomes one more round after the copying feature, named `<round> (<copy>)`,
+ * on the copies of its edges: an edge between faces of the copied features
+ * is the edge between those faces' copies, `<op>:<copy>:<label>:from:(<face>)`.
+ * A round with an edge on any other face (the body's, an earlier round's)
+ * can't be told on the copies and stays left out, as the note says; so does
+ * one whose repeat would take more than `MAX_REPEATED_ROUND_REFS` references
+ * (copies × its edges and faces; a hostile file's count must not make the
+ * import hang, ADR-0083 "Hostile files") or more than `MAX_ROUND_EDGES`
+ * edges (the bound every imported round has).
+ */
+function copyRounds(
+  d: Design,
+  f: { name: string; features: number[] },
+  copies: MadeCopies,
+  made: ReadonlyMap<number, { id: string }>,
+  rounds: ReadonlyMap<number, ImportedRound>,
+  report: ImportReport,
+): number {
+  const labels = copies.labels;
+  if (!labels || labels.length === 0) return 0;
+  const copied = new Set<string>();
+  for (const record of f.features) {
+    const id = made.get(record)?.id;
+    if (id) copied.add(id);
+  }
+  // The repeated rounds so far: the original's id → the repeat's.
+  const repeated = new Map<string, string>();
+  const copyOf = (face: string, label: string): string | undefined => {
+    const [op, owner] = face.split(':', 2);
+    if (!op || !owner) return undefined;
+    const copy = (name: string) =>
+      `${copies.op}:${copies.id}:${label === '' ? '' : `${label}:`}from:(${name})`;
+    if (copied.has(owner)) return /[()|#[\]]/.test(face) ? undefined : copy(face);
+    // A face of a round repeated already: the repeat's face from the copy of its edge.
+    const again = repeated.get(owner);
+    const from = `${op}:${owner}:from:(`;
+    if (!again || !face.startsWith(from) || !face.endsWith(')')) return undefined;
+    const edge = edgeCopy(face.slice(from.length, -1), label);
+    return edge && `${op}:${again}:from:(${edge})`;
+  };
+  const edgeCopy = (edge: string, label: string): string | undefined => {
+    const m = /^e\[(.*)\](@\d+)?$/.exec(edge);
+    if (!m) return undefined;
+    const faces = topLevel(m[1] as string).map((face) => copyOf(face, label));
+    if (faces.length === 0 || faces.some((face) => face === undefined)) return undefined;
+    return `e[${[...new Set(faces as string[])].sort().join('|')}]${m[2] ?? ''}`;
+  };
+  const wanted = new Set(f.features);
+  // In timeline order: a round on an earlier one's faces comes after it.
+  for (const [record, round] of rounds) {
+    if (!wanted.has(record)) continue;
+    const source = d.doc.features.find((x) => x.id === round.id);
+    if (!source) continue;
+    // The repeat's references, all copies of all its inputs together: past the cap, left out.
+    const refsOf = (input: unknown) => (input as { refs?: GeomRef[] } | undefined)?.refs;
+    // It is built here, not by `edgeTreatment`, so its edges are held to
+    // that round's `MAX_ROUND_EDGES` here too.
+    let total = 0;
+    let edgeRefs = 0;
+    for (const [key, input] of Object.entries(source.inputs)) {
+      const n = /^(edges|face)\d*$/.test(key) ? (refsOf(input)?.length ?? 0) : 0;
+      total += n;
+      if (key.startsWith('edges')) edgeRefs += n;
+    }
+    if (total * labels.length > MAX_REPEATED_ROUND_REFS) continue;
+    if (edgeRefs * labels.length > MAX_ROUND_EDGES) continue;
+    const inputs: Record<string, unknown> = {};
+    let whole = true;
+    for (const [key, input] of Object.entries(source.inputs)) {
+      if (!whole) break;
+      const refs = refsOf(input);
+      if (!/^(edges|face)\d*$/.test(key) || !refs) {
+        // An expression without its parameter name: that stays the original's.
+        const { paramName: _, ...rest } = input as { paramName?: string };
+        inputs[key] = rest;
+        continue;
+      }
+      // A chamfer's distance face is one face: one per copy can't be said in one round.
+      if (key.startsWith('face') && labels.length > 1) whole = false;
+      const out: GeomRef[] = [];
+      const seen = new Set<string>();
+      for (const label of labels)
+        for (const ref of refs) {
+          const id = ref.kind === 'edge' ? edgeCopy(ref.id, label) : copyOf(ref.id, label);
+          if (id === undefined) whole = false;
+          // Without the original's fingerprint: a lost copy is left out, not matched to the original.
+          else if (!seen.has(id)) {
+            seen.add(id);
+            out.push({ kind: ref.kind, id } as GeomRef);
+          }
+        }
+      inputs[key] = { kind: 'ref', refs: out };
+    }
+    if (!whole) continue;
+    const name = `${source.name} (${f.name})`;
+    const again =
+      round.op === 'fillet'
+        ? d.fillet(inputs as Parameters<Design['fillet']>[0], { name })
+        : d.chamfer(inputs as Parameters<Design['chamfer']>[0], { name });
+    repeated.set(round.id, again.id);
+    report.notes.push(`${f.name}: ${source.name} is repeated on its copies as ${name}.`);
+  }
+  return repeated.size;
+}
+
+/** The note on the features a mirror or pattern copies that it leaves out: neither imported nor repeated (`copyRounds`). */
+function leftOut(
+  f: { name: string; features: number[] },
+  verb: string,
+  made: ReadonlyMap<number, { id: string }>,
+  repeated: number,
+  report: ImportReport,
+): void {
+  const left = copiedFeatures(f.features, made).left - repeated;
+  if (left > 0)
+    report.notes.push(
+      `${f.name}: ${left} of the ${f.features.length} features it ${verb} left out (not imported, or a fillet or chamfer).`,
+    );
+}
+
+/** The names a compound name joins with `|`, split at its own level (not inside `(…)` or `[…]`). */
+function topLevel(names: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let from = 0;
+  for (let i = 0; i < names.length; i++) {
+    const c = names[i];
+    if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    else if (c === '|' && depth === 0) {
+      out.push(names.slice(from, i));
+      from = i + 1;
+    }
+    if (depth < 0) return [];
+  }
+  if (depth !== 0) return [];
+  out.push(names.slice(from));
+  return out;
 }
 
 /**

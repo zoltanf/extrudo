@@ -1,0 +1,1 @@
+- 2026-11-10 · **f3d import**: a mirror or pattern replays the features it copies in timeline order and repeats their fillets and chamfers on the copies; a thread along part of a face makes the whole face the thread's size, as the file does; an offset of faces by 0 is imported as nothing instead of skipped.

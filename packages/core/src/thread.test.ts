@@ -101,6 +101,7 @@ describe('thread profiles', () => {
     buttress: 0.75 * P,
     bottle: 0.45 * P,
     print45: 0.3 * P,
+    whitworth: (2 * P) / (3 * 2 * Math.tan((27.5 * Math.PI) / 180)),
   };
   const flanks: Record<string, [number, number]> = {
     iso: [30, 30],
@@ -108,6 +109,7 @@ describe('thread profiles', () => {
     buttress: [30, 3],
     bottle: [20, 20],
     print45: [45, 45],
+    whitworth: [27.5, 27.5],
   };
 
   /** The outline's vertices, in order, from each segment's `to` (the loop is closed). */
