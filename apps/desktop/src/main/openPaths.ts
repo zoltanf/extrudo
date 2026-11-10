@@ -7,9 +7,20 @@
  * Node.
  */
 
-/** Whether a path names an `.extrudo` file (the association only opens those). */
+/**
+ * Whether a path names an `.extrudo` file, or one gzipped (`.extrudo.gz`, how
+ * a design comes from a GitHub issue). The association only claims `.extrudo`.
+ */
 export function isExtrudoPath(path: string): boolean {
-  return path.toLowerCase().endsWith('.extrudo');
+  return /\.extrudo(\.gz)?$/i.test(path);
+}
+
+/**
+ * Whether a path names a gzipped `.extrudo`. It opens as a copy: saving writes
+ * a plain zip, which must not go back into a file named `.gz`.
+ */
+export function isGzippedExtrudoPath(path: string): boolean {
+  return /\.extrudo\.gz$/i.test(path);
 }
 
 /** The `.extrudo` path in a command line, if there is one (Windows/Linux argv). */

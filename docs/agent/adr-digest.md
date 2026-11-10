@@ -4390,3 +4390,23 @@ alone, and `parameterUsers` of it is empty) behind "Show N that follow(s) a user
 user parameter"; shown, such a row has `FollowsMark` (link icon, title "Follows <name>") instead of `FormulaMark`;
 the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
 clicks the Show line when a row is hidden. No schema change.
+
+ADR-0143 (the owner, 2026-11-10; **accepted, nothing built yet**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
+made from the model. The detailed spec is `docs/plans/drawings-2026-11-10.md` (mock-ups: `docs/plans/drawings-mock-*.html`);
+each slice (S0 spikes, S1a modes, S1 sheets, S2 views, S3 dimensions, S4 notes, S5 lists, S6 outside) amends the ADR and
+adds its files and rules to this paragraph. Rules already fixed: **words:** the interface says "Drawing" (mode, tab) and
+"sheet" (page); **code says `sheet` only** (`doc.sheets`, `SheetSchema`, mode `'sheet'`, `apps/web/src/sheets/`,
+`@extrudo/sheets`), never a new `drawing` identifier (io's `Drawing` type and AppShell's `drawing` flag exist); Import
+Drawing becomes "Import SVG/DXF" with S1. **Shell:** a mode like sketch (tabs HOME + DRAWING, the sheet in place of the 3D
+view, sheet tabs in place of the timeline, Finish Drawing); S1a generalises `'model' | 'sketch'` to an `EditMode` type and a
+per-mode table **with no behaviour change** before any drawing code; the sheet is SVG and must work without WebGL.
+**Document:** one optional top-level `sheets` list (no `formatVersion` bump); **nothing derived is stored** (no projected
+lines, no measured values, no cache); anchors are `GeomRef`s with a fingerprint, never `index:`, resolved like annotations
+(`ok`/`moved`/`detached`), and a lost anchor never fails a recompute or refuses a delete; layout numbers are stored
+evaluated; the author's name is written only when typed. **Undo:** every sheet edit is its own command and undo step, no
+open transaction, Finish is not a step. **Geometry:** views show the bodies at the marker; hidden-line spans come from a
+new facade method (flat arrays, ADR-0001), the evaluator lives in `packages/kernel/src/sheets/` and runs in Node;
+**dimensions are measured, never driving**. **Output:** one display list drives screen, PDF and SVG; `writePdf` is our own
+writer in `@extrudo/io` (MIT: no GPL import, no PDF library), text as glyph outlines of the bundled Inter; `@extrudo/sheets`
+(no DOM, Node) goes into `scripts/check-boundaries.mjs`. **Defaults:** paper white in both themes, first angle per sheet,
+hidden + tangent + centre lines on, title block "Simple", zone border off, sticky notes not printed.

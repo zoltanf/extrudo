@@ -61,6 +61,12 @@ that common zip libraries support (stored or deflate).
 | `versions/<n>.json` | one per index entry | The complete document as it was when version `n` was saved. Same schema as `document.json`. |
 | `attachments/<sha256>` | one per file the document or a version names | The bytes of an attachment (section 4.5), named by their SHA-256. Stored uncompressed (fonts are already compressed). Written only when the design has attachments. |
 
+**Gzipped files.** The app also opens an `.extrudo` that was gzipped whole
+(`<name>.extrudo.gz`, RFC 1952), the way a design comes as a GitHub issue
+attachment: bytes that start with gzip's magic number `1f 8b` are unpacked
+(at most 256 MB) and then read as the zip above. Extrudo never writes one; on
+the desktop such a file opens as a copy that isn't linked to its path.
+
 Reserved for later, not written or read by format version 2: `cache/`
 (kernel-derived data that a reader may drop). A reader must **ignore any entry
 it does not know**, including that one; a writer that copies a file it edited

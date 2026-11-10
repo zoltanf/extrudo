@@ -11,7 +11,7 @@ import {
   type LoadResult,
   loadDocument,
 } from '@extrudo/core';
-import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
+import { Gunzip, strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { SHA256_PATTERN, sha256Hex } from './sha256';
 import { ArchiveError } from './types';
 import { readVersionIndex, type StoredVersion, writeVersionIndex } from './versions';
@@ -106,13 +106,66 @@ export function writeArchive(
 }
 
 /**
+ * The most a gzipped `.extrudo` may unpack to. GitHub doesn't take `.extrudo`
+ * attachments, so a design shared in an issue arrives as `<name>.extrudo.gz`;
+ * the app opens that as it is. The limit stops a small `.gz` from unpacking
+ * to gigabytes in memory: a design's attachments are at most 100 MB per state.
+ */
+export const MAX_GUNZIPPED_BYTES = 256 * 1024 * 1024;
+
+/**
+ * How much compressed input is unpacked at a time. Deflate expands at most
+ * about 1032 times, so one step holds at most ~16 MB before the limit is checked.
+ */
+const GUNZIP_STEP = 16 * 1024;
+
+/** Whether bytes start with gzip's magic number (RFC 1952). */
+export function isGzip(bytes: Uint8Array): boolean {
+  return bytes[0] === 0x1f && bytes[1] === 0x8b;
+}
+
+/** Unpacks gzip bytes, refusing more than `max` bytes of output. */
+export function gunzipLimited(bytes: Uint8Array, max = MAX_GUNZIPPED_BYTES): Uint8Array {
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  const gunzip = new Gunzip((chunk) => {
+    size += chunk.byteLength;
+    if (size > max) {
+      throw new ArchiveError(
+        'too-large',
+        `This compressed file unpacks to more than ${max / (1024 * 1024)} MB, too large to open.`,
+      );
+    }
+    chunks.push(chunk);
+  });
+  try {
+    for (let at = 0; at < bytes.byteLength; at += GUNZIP_STEP) {
+      const end = Math.min(at + GUNZIP_STEP, bytes.byteLength);
+      gunzip.push(bytes.subarray(at, end), end === bytes.byteLength);
+    }
+  } catch (error) {
+    if (error instanceof ArchiveError) throw error;
+    throw new ArchiveError('damaged', "This compressed file is damaged: it can't be unpacked.");
+  }
+  const out = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return out;
+}
+
+/**
  * Reads `.extrudo` bytes: checks the manifest, then loads the document
  * through core's migrations and validation (which throw `DocumentLoadError`).
+ * Gzipped bytes (an `.extrudo.gz`) are unpacked first.
  */
 export function readArchive(bytes: Uint8Array): Archive {
+  const zip = isGzip(bytes) ? gunzipLimited(bytes) : bytes;
   let entries: Record<string, Uint8Array>;
   try {
-    entries = unzipSync(bytes);
+    entries = unzipSync(zip);
   } catch {
     throw new ArchiveError(
       'not-a-zip',

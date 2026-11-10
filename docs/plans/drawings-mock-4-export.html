@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Export drawing dialog</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#5AA9FF}a:hover{color:#A4CFFF}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+.mu{color:#939CAD}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.pl{font-size:10.5px;font-weight:600;letter-spacing:.08em;color:#939CAD;text-transform:uppercase}
+.ic{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.ic .f{fill:currentColor;fill-opacity:.22}
+.ib{width:32px;height:32px;display:grid;place-items:center;border-radius:8px;color:#939CAD;flex:none}
+.ib svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.segs{display:flex;gap:2px;padding:2px;border:1px solid #343B4A;border-radius:8px;background:#1B1F27}
+.seg{flex:1;height:28px;border-radius:6px;color:#939CAD;font-size:12.5px}
+.seg.on{background:rgba(255,178,62,.16);color:#FFB23E;font-weight:600}
+.fld{height:30px;border:1px solid #343B4A;border-radius:6px;background:#1B1F27;display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-size:13px;box-sizing:border-box;width:100%}
+.fld svg{width:12px;height:12px;fill:none;stroke:#939CAD;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.sw{width:26px;height:14px;border-radius:999px;background:#343B4A;position:relative;flex:none}
+.sw.on{background:#FFB23E}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:50%;background:#E9EDF3}
+.sw.on::after{left:14px;background:#15171C}
+.prow{display:flex;align-items:center;justify-content:space-between;gap:8px;height:28px}
+.sheet{display:flex;gap:10px;align-items:center;padding:8px;border:1px solid #343B4A;border-radius:10px;background:#1B1F27;text-align:left;width:100%;box-sizing:border-box}
+.sheet.on{border-color:#FFB23E}
+.sheet svg.pv{width:104px;height:74px;flex:none;background:#FFFFFF;border-radius:2px}
+.chk{width:16px;height:16px;border-radius:4px;background:#FFB23E;display:grid;place-items:center;flex:none}
+.chk svg{width:11px;height:11px;fill:none;stroke:#15171C;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.ln{stroke:#111318;stroke-width:1;fill:none}
+</style>
+</helmet>
+<div style="width:720px; height:560px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; background:#12151B; color:#E9EDF3; font-family:'Instrument Sans',system-ui,sans-serif; font-size:13px; line-height:1.3">
+  <section role="dialog" aria-label="Export drawing" style="width:656px; background:#282E3A; border:1px solid #343B4A; border-radius:12px; box-shadow:0 14px 30px -16px rgba(0,0,0,.6)">
+    <div style="display:flex; align-items:center; gap:10px; padding:14px 16px; border-bottom:1px solid #343B4A">
+      <svg class="ic" viewBox="0 0 24 24" style="color:#FFC93C"><path d="M12 3V13M8 9.5 12 13.5 16 9.5"></path><path class="f" d="M4 15.5V18.5A2.5 2.5 0 0 0 6.5 21H17.5A2.5 2.5 0 0 0 20 18.5V15.5Z"></path></svg>
+      <h2 style="margin:0; font-size:15px; font-weight:600; letter-spacing:-.01em; flex:1">Export drawing</h2>
+      <button class="ib" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+    </div>
+
+    <div style="display:flex; gap:20px; padding:16px">
+      <div style="flex:0 0 264px; display:flex; flex-direction:column; gap:8px">
+        <span class="pl">Sheets</span>
+        <button class="sheet on" aria-pressed="true">
+          <span class="chk"><svg viewBox="0 0 24 24"><path d="M5 12.5 10 17.5 19 7"></path></svg></span>
+          <svg class="pv" viewBox="0 0 104 74" aria-hidden="true"><path class="ln" d="M3 3h98v68H3ZM12 11h30v14H12ZM12 33h30v20H12ZM50 11h20v14H50ZM76 22l9-5 9 5v10l-9 5-9-5ZM62 63h39M62 57h39M62 57v14" style="stroke-width:.8"></path></svg>
+          <span><span style="font-weight:600">1 · Assembly</span><br><span class="mu" style="font-size:11.5px">A3 landscape · 1:2</span></span>
+        </button>
+        <button class="sheet on" aria-pressed="true">
+          <span class="chk"><svg viewBox="0 0 24 24"><path d="M5 12.5 10 17.5 19 7"></path></svg></span>
+          <svg class="pv" viewBox="0 0 104 74" aria-hidden="true"><path class="ln" d="M3 3h98v68H3ZM14 12h40v8H14ZM14 30h40v26H14ZM66 30h22v8H66ZM62 63h39M62 57h39M62 57v14" style="stroke-width:.8"></path></svg>
+          <span><span style="font-weight:600">2 · Lid</span><br><span class="mu" style="font-size:11.5px">A3 landscape · 1:1</span></span>
+        </button>
+        <span class="mu" style="font-size:11.5px">Both sheets go into one file, in this order.</span>
+      </div>
+
+      <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:14px">
+        <div style="display:flex; flex-direction:column; gap:4px">
+          <span class="pl">Format</span>
+          <div class="segs"><button class="seg on" aria-pressed="true">PDF</button><button class="seg">SVG</button><button class="seg">DXF</button><button class="seg">PNG</button></div>
+          <span class="mu" style="font-size:11.5px">For printing and sharing. Lines stay sharp at any size.</span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:4px">
+          <span class="pl">Lines</span>
+          <div class="segs"><button class="seg on" aria-pressed="true">Black</button><button class="seg">As on screen</button></div>
+        </div>
+        <div>
+          <div class="prow"><span>Text you can select and search</span><button class="sw on" role="switch" aria-checked="true" aria-label="Text you can select and search"></button></div>
+          <div class="prow"><span>Shaded views as pictures, 300 dpi</span><button class="sw on" role="switch" aria-checked="true" aria-label="Shaded views as pictures, 300 dpi"></button></div>
+          <div class="prow"><span>Sticky notes</span><button class="sw" role="switch" aria-checked="false" aria-label="Sticky notes"></button></div>
+        </div>
+        <label style="display:flex; flex-direction:column; gap:4px"><span class="mu">File name</span><span class="fld"><span>Box with a lid</span><span class="mu mono" style="font-size:12px">.pdf</span></span></label>
+      </div>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:10px; padding:12px 16px; border-top:1px solid #343B4A">
+      <span class="mu" style="flex:1; font-size:11.5px">2 pages · A3 landscape · 1 sticky note left out</span>
+      <button style="height:32px; padding:0 14px; border-radius:8px; border:1px solid #343B4A">Cancel <span class="mu mono" style="font-size:11px">Esc</span></button>
+      <button style="height:32px; padding:0 16px; border-radius:8px; background:#FFB23E; color:#15171C; font-weight:600">Export</button>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":720,"height":560}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
