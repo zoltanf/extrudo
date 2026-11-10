@@ -1853,9 +1853,11 @@ export class Kernel {
     if (n < 0) throw new KernelError(f.lastError() || 'Unknown shape.');
     const ints = this.#copy(Int32Array, f.hlrIntsPtr(), f.hlrIntsSize());
     const numbers = this.#copy(Float64Array, f.hlrNumbersPtr(), f.hlrNumbersSize());
-    let spanCount = 0;
-    for (let i = 0; i < n; i++)
-      spanCount += (ints[6 * i + 3] as number) + (ints[6 * i + 4] as number);
+    // Per record: its range, then its spans; the outlines' curves after all of them.
+    let curves = 0;
+    for (let i = 0; i < n; i++) {
+      curves += 2 + 2 * ((ints[6 * i + 3] as number) + (ints[6 * i + 4] as number));
+    }
     const out: HlrEdge[] = [];
     let k = 0;
     const span = (): [number, number] => [numbers[k++] as number, numbers[k++] as number];
@@ -1863,13 +1865,14 @@ export class Kernel {
       const [edge, kind, face, visible, hidden, curve] = ints.subarray(6 * i, 6 * i + 6);
       const entry: HlrEdge = {
         kind: HLR_KINDS[kind as number] ?? 'sharp',
+        range: span(),
         visible: Array.from({ length: visible as number }, span),
         hidden: Array.from({ length: hidden as number }, span),
       };
       if ((edge as number) >= 0) entry.edge = edge as number;
       if ((face as number) >= 0) entry.face = face as number;
       if ((curve as number) >= 0) {
-        entry.curve = decodeEdgeGeometry(numbers.subarray(2 * spanCount + (curve as number)));
+        entry.curve = decodeEdgeGeometry(numbers.subarray(curves + (curve as number)));
       }
       out.push(entry);
     }
@@ -2604,6 +2607,8 @@ export interface HlrEdge {
   kind: HlrKind;
   /** An outline's face (sub-shape index); also set on a model edge HLR uses as a face's outline. */
   face?: number;
+  /** The whole edge's parameter range, [first, last] (a split edge's whole range). */
+  range: [number, number];
   /** Visible stretches, [t0, t1] in the edge's own curve parameter. */
   visible: [number, number][];
   /** Hidden stretches, the same way. */

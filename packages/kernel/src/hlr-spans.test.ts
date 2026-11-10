@@ -44,6 +44,9 @@ describe('hlrSpans', () => {
         6,
       );
       expect(z.every((v) => Math.abs(v - (e.visible.length > 0 ? 30 : 0)) < 1e-9)).toBe(true);
+      // A whole edge: its one span is its range.
+      expect(ink[0]?.[0]).toBeCloseTo(e.range[0], 9);
+      expect(ink[0]?.[1]).toBeCloseTo(e.range[1], 9);
     }
   });
 
@@ -86,6 +89,10 @@ describe('hlrSpans', () => {
     expect(circles.size).toBe(2);
     for (const pieces of circles.values()) {
       expect(pieces.length).toBeGreaterThan(1);
+      for (const p of pieces) {
+        expect(p.range[0]).toBeCloseTo(0, 9);
+        expect(p.range[1]).toBeCloseTo(2 * Math.PI, 9);
+      }
       expect(total(pieces.flatMap((p) => p.visible))).toBeCloseTo(Math.PI, 6);
       expect(total(pieces.flatMap((p) => p.hidden))).toBeCloseTo(Math.PI, 6);
     }

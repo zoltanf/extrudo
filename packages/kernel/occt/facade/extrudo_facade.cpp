@@ -2140,8 +2140,9 @@ public:
    * face's outline), visible spans, hidden spans, curve (an outline's offset
    * in the curve block, else -1).
    *
-   * hlrNumbers: every record's spans in order, [t0, t1] per visible span and
-   * then per hidden span, in the parameter of the edge's own 3D curve; then
+   * hlrNumbers: per record in order, the edge's parameter range [first,
+   * last] (a split model edge's whole range), then [t0, t1] per visible span
+   * and per hidden span, in the parameter of the edge's own 3D curve; then
    * the curve block: each outline as edgeGeometry encodes an edge (a line or
    * circle or ellipse exactly, else `samples` points).
    */
@@ -2150,10 +2151,16 @@ public:
     hlrInts_.clear();
     hlrNumbers_.clear();
     const TopoDS_Shape* s = find(shape);
-    if (s == nullptr) return fail("Unknown shape.");
+    if (s == nullptr) {
+      fail("Unknown shape.");
+      return -1;
+    }
     try {
       const gp_Vec view(dx, dy, dz);
-      if (view.Magnitude() <= Precision::Confusion()) return fail("The view direction has no length.");
+      if (view.Magnitude() <= Precision::Confusion()) {
+        fail("The view direction has no length.");
+        return -1;
+      }
       NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges, faces;
       TopExp::MapShapes(*s, TopAbs_EDGE, edges);
       TopExp::MapShapes(*s, TopAbs_FACE, faces);
@@ -2198,6 +2205,10 @@ public:
         if (model == 0 && !outline[ie]) continue;
         const int kind = model == 0 ? 3 : ed.RgNLine() ? 2 : ed.Rg1Line() ? 1 : 0;
         const HLRBRep_Curve& curve = ed.Geometry();
+        // The whole edge's parameter range first (a model edge's, not a split piece's).
+        const BRepAdaptor_Curve whole =
+            model == 0 ? curve.GetCurve() : BRepAdaptor_Curve(TopoDS::Edge(edges(model)));
+        spans.insert(spans.end(), {whole.FirstParameter(), whole.LastParameter()});
         int visible = 0, hidden = 0;
         double sta = 0, end = 0;
         float tolsta = 0, tolend = 0;
@@ -2214,7 +2225,10 @@ public:
           spans.insert(spans.end(), {curve.Parameter3d(sta), curve.Parameter3d(end)});
           ++hidden;
         }
-        if (visible + hidden == 0) continue;
+        if (visible + hidden == 0) {
+          spans.resize(spans.size() - 2);
+          continue;
+        }
         int at = -1;
         if (model == 0) {
           at = static_cast<int>(curves.size());
@@ -2229,7 +2243,8 @@ public:
     } catch (...) {
       hlrInts_.clear();
       hlrNumbers_.clear();
-      return failFromException("Hidden-line removal failed");
+      failFromException("Hidden-line removal failed");
+      return -1;
     }
   }
 
@@ -2247,10 +2262,16 @@ public:
     hlrInts_.clear();
     hlrNumbers_.clear();
     const TopoDS_Shape* s = find(shape);
-    if (s == nullptr) return fail("Unknown shape.");
+    if (s == nullptr) {
+      fail("Unknown shape.");
+      return -1;
+    }
     try {
       const gp_Vec view(dx, dy, dz);
-      if (view.Magnitude() <= Precision::Confusion()) return fail("The view direction has no length.");
+      if (view.Magnitude() <= Precision::Confusion()) {
+        fail("The view direction has no length.");
+        return -1;
+      }
       bool meshed = true;
       for (TopExp_Explorer x(*s, TopAbs_FACE); x.More() && meshed; x.Next()) {
         TopLoc_Location loc;
@@ -2298,7 +2319,8 @@ public:
     } catch (...) {
       hlrInts_.clear();
       hlrNumbers_.clear();
-      return failFromException("Hidden-line removal failed");
+      failFromException("Hidden-line removal failed");
+      return -1;
     }
   }
 
@@ -2311,10 +2333,16 @@ public:
   int hlrToShapeCount(int shape, double dx, double dy, double dz) {
     beginOp();
     const TopoDS_Shape* s = find(shape);
-    if (s == nullptr) return fail("Unknown shape.");
+    if (s == nullptr) {
+      fail("Unknown shape.");
+      return -1;
+    }
     try {
       const gp_Vec view(dx, dy, dz);
-      if (view.Magnitude() <= Precision::Confusion()) return fail("The view direction has no length.");
+      if (view.Magnitude() <= Precision::Confusion()) {
+        fail("The view direction has no length.");
+        return -1;
+      }
       HLRAlgo_Projector projector(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(view)));
       occ::handle<HLRBRep_Algo> algo = new HLRBRep_Algo();
       algo->Add(*s, 0);
@@ -2331,7 +2359,8 @@ public:
       }
       return n;
     } catch (...) {
-      return failFromException("Hidden-line removal failed");
+      failFromException("Hidden-line removal failed");
+      return -1;
     }
   }
 
