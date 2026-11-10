@@ -2116,7 +2116,11 @@ export class Kernel {
    * lists them in. Release it when done.
    */
   readBrep(text: string): ShapeHandle {
-    return this.#check(this.#facade.readBrep(text));
+    // An unbounded line's range is ±2e100, and some writers print it in full:
+    // a hundred digits. OCCT's number reader in this build never returns from
+    // one, so long integer parts go in as the same number in its short form.
+    const short = text.replace(/-?\d{18,}(?:\.\d*)?/g, (number) => String(Number(number)));
+    return this.#check(this.#facade.readBrep(short));
   }
 
   /**

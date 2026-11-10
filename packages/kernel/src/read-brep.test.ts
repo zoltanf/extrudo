@@ -336,6 +336,40 @@ describe('readBrep', () => {
     expect(kernel.measure(back).volume).toBeCloseTo(6000, 6);
   });
 
+  it('reads an unbounded line whose range is written out in full', () => {
+    // ±2e100, as old writers print it: a hundred digits and fifteen decimals.
+    const far = `${BigInt(2e100)}.000000000000000`;
+    expect(far).toHaveLength(117);
+    const line = [
+      'CASCADE Topology V1, (c) Matra-Datavision',
+      'Locations 0',
+      'Curve2ds 0',
+      'Curves 1',
+      '1 0 0 0 0 0 1 ',
+      'Polygon3D 0',
+      'PolygonOnTriangulations 0',
+      'Surfaces 0',
+      'Triangulations 0',
+      '',
+      'TShapes 1',
+      'Ed',
+      ' 1e-07 1 1 0',
+      `1  1 0 -${far} ${far}`,
+      '0',
+      '',
+      '1101000',
+      '*',
+      '',
+      '+1 0',
+      '',
+    ].join('\n');
+    using scope = kernel.scope();
+    const shape = scope.track(kernel.readBrep(line));
+    const { faces, edges } = kernel.describe(shape);
+    expect(faces).toHaveLength(0);
+    expect(edges).toHaveLength(1);
+  });
+
   it('refuses text that is not a B-rep, and leaves no shape behind', () => {
     const before = kernel.stats().liveShapes;
     for (const text of ['', 'hello', 'CASCADE Topology V1, (c) Matra-Datavision\nLocations 0\n']) {
