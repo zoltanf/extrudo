@@ -1711,8 +1711,9 @@ end to end, faster than in established desktop CAD.
   S1a can run side by side.
   - [ ] S0 Spikes: hidden-line spans timed on B1–B10 (time, heap, correctness); `writePdf`
     with outlined text and a selectable layer.
-    *2026-11-10:* `writePdf` done and checked in three readers; HLR timed (plan §13) and the
-    spans method designed; open until `hlrSpans` is built through CI and checked.
+    *2026-11-10:* `writePdf` done and checked in three readers; HLR timed (plan §13);
+    `hlrSpans` built and checked against known views and drawings; open until the CI build
+    with its last two fixes passes (plan §13.4).
   - [ ] S1a Modes: `'model' | 'sketch'` becomes an `EditMode` type and a per-mode table. No
     behaviour change; every existing test passes untouched.
   - [ ] S1 Sheets: schema, commands, cascades; the mode; Sheet Setup, border, title block,

@@ -170,26 +170,28 @@ The plan's §10 has what each is done by. S0 and S1a can run side by side.
 
 ## Amendment (S0), 2026-11-10: what HLR costs, the spans method, our PDF writer
 
-The spikes' numbers and readers are in the plan's §13.
+The spikes' numbers, drawings and readers are in the plan's §13.
 
-- **HLR cost does not follow size.** Through `edgeVisibility` (the same `HLRBRep_Algo` run
-  the spans need) six axis views take 18–420 ms on B2–B6, B8, B10 and a 209-face assembly
-  (318 ms), but 15–25 s on B7 (about 4 s per side view of the knurl) and 5.5–6 s on B9 (4 s
-  along the thread's axis); the isometric views of the same bodies take 27–275 ms. The heap
-  top did not move in any case. A view is one call that can't be interrupted.
-  **Consequence for S2:** views are computed one at a time with progress per view, cancel
-  acts between views, the cache per direction (§6.2.3) is required rather than nice, and
-  S2 starts by measuring `HLRBRep_PolyAlgo` as the path for slow views (or a quick first
-  result), since that measurement needs the same OCCT build as the spans.
-- **The facade method is our own walk of HLR's data**, `hlrSpans(shape, direction)`: per
-  edge record, the model edge's index (0 for an outline), its kind (sharp, smooth, seam,
-  outline), an outline's face, and the visible and hidden intervals in the 3D curve's own
-  parameter; outline curves in a block encoded like `edgeGeometry`. Flat ints and doubles
-  (ADR-0001). Not built in S0: it needs a new OCCT WASM, which on the machine S0 ran on
-  means a pushed branch and CI, and that waits for the owner's OK.
-- **Rejected: `HLRBRep_HLRToShape`.** It runs after the same `Hide` and builds a new edge per
-  span, so it can't be faster, and its compounds carry no link to the model edges, so
-  dimension anchors would need geometric matching to get a topological name back.
+- **HLR cost does not follow size.** OCCT's exact hidden-line removal (`Update` + `Hide`)
+  takes 7–362 ms for six axis views of B2–B6, B8, B10 and a 209-face assembly (249 ms), but
+  13.5 s on B7 (3.3–3.5 s per side view of the knurl), 5.1 s on B9 (3.8 s along the
+  thread's axis) and 1.7 s on P4-01; isometric views of the same bodies take 1–250 ms. The
+  heap top did not move. A view is one call that can't be interrupted.
+- **The facade method is our own walk of HLR's data** (`hlrSpans`, built): per entry the
+  model edge (split pieces mapped back through the outliner's `NewSOldS`), its kind (sharp,
+  smooth, seam, outline), an outline's face, the edge's parameter range, and the visible and
+  hidden spans in the edge's own 3D parameter; outlines HLR adds carry their curve. A smooth
+  edge or seam that a face turns away at is an outline that keeps its edge. HLR's status
+  intervals are used as they are: they are already 3D parameters.
+- **Rejected: `HLRBRep_HLRToShape`.** Its edge building after `Hide` takes under a
+  millisecond, so it is no faster, and its compounds carry no link to the model edges or
+  faces, so dimension anchors would need geometric matching to get a name back.
+- **`hlrPolySpans` (`HLRBRep_PolyAlgo` on the faces' triangulation) is the quick path:**
+  2.5 ms for B7's side view and 8 ms for B9's axis view, against 3.4 s and 3.8 s, with each
+  piece's source edge, but chords of the mesh with small artefacts. **For S2:** a view is
+  drawn from it at once and replaced by `hlrSpans` when that finishes; only the exact result
+  feeds dimensions and snapping. Views compute one at a time with progress, cancel acts
+  between views, and the per-direction cache (§6.2.3) is required.
 - **`writePdf` is in `@extrudo/io`** (`pdf.ts`): PDF 1.4, page size in mm, deflated
   streams, Béziers for arcs, a `text` item that fills the caller's glyph outlines and adds
   the string invisibly (render mode 3) in non-embedded Helvetica, WinAnsi-encoded and
@@ -197,8 +199,10 @@ The spikes' numbers and readers are in the plan's §13.
   gives its text back (Ø, ±, ° included) in poppler, Ghostscript and Chromium's PDFium, and
   passes `qpdf --check`. Characters outside WinAnsi draw (outlines) but are `?` in the
   selectable layer; a ToUnicode map can lift that later if it matters.
-- **Kept code:** `packages/io/src/pdf.ts` with its tests, the sample
-  (`packages/sketch/src/text/pdf-sample.test.ts`, `PDF_OUT=<file>` writes it) and the gated
-  measurement `packages/kernel/src/hlr-bench.test.ts` (`HLR_BENCH=1`).
-- The S0 roadmap box stays open until the spans method is built and checked for
-  correctness (plan §13.4, items 1 and 2).
+- **Kept code:** the three facade methods and their `Kernel` wrappers (`hlrToShapeCount`
+  for the comparison only), their tests (`hlr-spans.test.ts`), `pdf.ts` with its tests, the
+  PDF sample (`packages/sketch/src/text/pdf-sample.test.ts`, `PDF_OUT=<file>`), and two gated
+  tools: `hlr-bench.test.ts` (`HLR_BENCH=1`, `HLR_METHODS=1`) and `hlr-views.test.ts`
+  (`HLR_PDF=<file>`, `HLR_POLY=1`), which draws views from the spans.
+- The S0 roadmap box stays open until the WASM build with the walk's last two fixes has run
+  in CI and its tests pass (plan §13.4).

@@ -4398,13 +4398,17 @@ new facade method (flat arrays, ADR-0001), the evaluator lives in `packages/kern
 writer in `@extrudo/io` (MIT: no GPL import, no PDF library), text as glyph outlines of the bundled Inter; `@extrudo/sheets`
 (no DOM, Node) goes into `scripts/check-boundaries.mjs`. **Defaults:** paper white in both themes, first angle per sheet,
 hidden + tangent + centre lines on, title block "Simple", zone border off, sticky notes not printed. **S0 (plan §13):** HLR cost
-follows overlapping curved edges, not size (B7's side views about 4 s each, B9 along its axis 4 s, a 209-face assembly
-0.3 s for six views), and one view is one uninterruptible call: views compute one at a time with progress, cancel acts
-between views, the per-direction cache is required; measure `HLRBRep_PolyAlgo` for slow views first in S2. The spans
-method is **our own walk of `HLRBRep_Algo`'s data** (`hlrSpans`: model edge index or 0, kind, an outline's face, visible
-and hidden intervals in the 3D curve's parameter, flat arrays), **never `HLRBRep_HLRToShape`** (no faster, and its edges
-lose the model edge's name). `writePdf(pages)` (`packages/io/src/pdf.ts`) takes paths and `text` items that carry the
-caller's glyph outlines **and** the string: outlines filled, the string invisible (`3 Tr`) in non-embedded Helvetica,
-WinAnsi, stretched with `Tz` to the outline width; keep it dependency-free beyond fflate, deterministic, and keep text
-selectable (the sample, `packages/sketch/src/text/pdf-sample.test.ts`, is how to check readers: `PDF_OUT=<file>`).
-`HLR_BENCH=1 pnpm vitest run packages/kernel/src/hlr-bench` re-times HLR.
+follows overlapping curved edges, not size (B7's side views about 3.4 s each, B9 along its axis 3.8 s, a 209-face
+assembly 0.25 s for six views), and one view is one uninterruptible call: views compute one at a time with progress,
+cancel acts between views, the per-direction cache is required. Views come from **`Kernel.hlrSpans`** (our own walk of
+`HLRBRep_Algo`'s data: edge index, kind, an outline's face, range, visible and hidden spans in the edge's 3D parameter),
+**never `HLRBRep_HLRToShape`** (no faster, and its edges lose the model edge's name). Rules in the walk: HLR's status
+intervals are already 3D parameters (never convert them with `Parameter3d`); split edges map back through the
+outliner's `NewSOldS`; a smooth edge or seam a face turns away at is an outline that keeps its edge. `hlrPolySpans`
+(`HLRBRep_PolyAlgo`, milliseconds) may draw a view first, but only the exact result feeds dimensions and snapping.
+`writePdf(pages)` (`packages/io/src/pdf.ts`) takes paths and `text` items that carry the caller's glyph outlines **and**
+the string: outlines filled, the string invisible (`3 Tr`) in non-embedded Helvetica, WinAnsi, stretched with `Tz` to the
+outline width; keep it dependency-free beyond fflate, deterministic, and keep text selectable (check readers with the
+sample: `PDF_OUT=<file> pnpm vitest run packages/sketch/src/text/pdf-sample`). Gated tools: `HLR_BENCH=1` (+
+`HLR_METHODS=1`) `pnpm vitest run packages/kernel/src/hlr-bench` re-times HLR; `HLR_PDF=<file>` (+ `HLR_POLY=1`) `pnpm
+vitest run packages/kernel/src/hlr-views` draws views from the spans to look at.
