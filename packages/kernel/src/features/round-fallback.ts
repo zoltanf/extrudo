@@ -36,7 +36,55 @@
  *
  * Without `skipLostEdges` nothing here runs: the error is rethrown and the
  * feature fails as before.
+ *
+ * **A budget of builds (2026-11-10).** A failed build costs the facade's
+ * diagnosis too: each chain built alone, and a bisection of each that fails
+ * (about nine builds a chain), and every failed retry diagnoses again. A
+ * feature's retries (all its bodies, the stuck, hair-under and drop builds)
+ * share `MAX_ROUND_BUILDS`, counted from what each failure's diagnosis shows
+ * it took at least (`diagnosisCost`): a retry that would pass it is not tried,
+ * the original error stands, and `budget.cutShort` is set for the message.
+ * The first build of each body always runs.
  */
+
+/**
+ * The builds a round feature's failures and retries may take, counted by
+ * `diagnosisCost` (at least, per failure). The dearest round of the kernel
+ * and f3d tests takes 37, of the f3d corpus's replay 181 (ADR-0038's
+ * amendment of 2026-11-10).
+ */
+export const MAX_ROUND_BUILDS = 1000;
+
+/** What a round feature has spent of `MAX_ROUND_BUILDS`, shared by its bodies. */
+export interface RoundBudget {
+  builds: number;
+  /** Set when a retry was not tried for the budget. */
+  cutShort?: true;
+}
+
+/**
+ * At least how many builds a failed build took, the facade's diagnosis
+ * included: the build itself; for each chain too large alone, its build
+ * alone and the bisection (one probe at 1/128 of the size, then seven when
+ * that works); for chains that only fail together, the bisection of the
+ * common scale. Chains that build alone cost one more each, which the
+ * diagnosis doesn't list (so this is a lower bound).
+ */
+export function diagnosisCost(
+  problems: readonly { kind: string; max?: number; factor?: number }[],
+): number {
+  let n = 1;
+  for (const p of problems) {
+    const works = (p.max ?? p.factor ?? 0) > 0;
+    if (p.kind === 'too-large') n += works ? 9 : 2;
+    else if (p.kind === 'together') n += works ? 8 : 1;
+  }
+  return n;
+}
+
+/** The sentence a round's error message gets when its retries were cut short. */
+export const CUT_SHORT =
+  'The diagnosis was cut short: the round took too many builds to try the rest.';
 
 /** The share of the asked size the diagnosis must find working for the hair-under retry. */
 export const NEAR_LIMIT = 0.99;
@@ -76,6 +124,10 @@ export interface RoundBuild<P extends { index: number }, R> {
   /** The pick's size in mm, for the warning, and what it is ("radius", "distance"). */
   size?: (pick: P) => number;
   sizeName?: string;
+  /** At least how many builds a failure took (`diagnosisCost`); 1 when not given. */
+  cost?: (error: unknown) => number;
+  /** The feature's budget of builds, shared by its bodies; no budget when not given. */
+  budget?: RoundBudget;
 }
 
 /** The chains at their limit and the smallest share of their size that works. */
@@ -88,18 +140,40 @@ export interface RoundLimit {
 
 export function buildRound<P extends { index: number }, R>(
   picks: readonly P[],
-  options: RoundBuild<P, R>,
+  given: RoundBuild<P, R>,
 ): R {
+  const { budget } = given;
+  // Every build is counted, a failure by what its diagnosis took.
+  const options: RoundBuild<P, R> = {
+    ...given,
+    build: (kept) => {
+      try {
+        const result = given.build(kept);
+        if (budget) budget.builds += 1;
+        return result;
+      } catch (error) {
+        if (budget) budget.builds += given.cost?.(error) ?? 1;
+        throw error;
+      }
+    },
+  };
   try {
     return options.build(picks);
   } catch (error) {
     if (!options.skip) throw error;
+    // A retry is expected to cost what this failure did.
+    const affordable = () => {
+      if (!budget || budget.builds + (given.cost?.(error) ?? 1) <= MAX_ROUND_BUILDS) return true;
+      budget.cutShort = true;
+      return false;
+    };
     const stuck = options.stuck?.(error) ?? [];
     if (stuck.length > 0) {
       const kept = picks.filter((p) => !stuck.includes(p.index));
       if (kept.length === 0 || kept.length === picks.length) throw error;
+      if (!affordable()) throw error;
       // Once: the facade names every such edge at once, before it builds.
-      const result = buildRound(kept, { ...options, stuck: undefined });
+      const result = buildRound(kept, { ...given, stuck: undefined });
       options.warn(
         leftOutWarning(
           picks.length - kept.length,
@@ -110,7 +184,7 @@ export function buildRound<P extends { index: number }, R>(
       );
       return result;
     }
-    const hair = underLimit(picks, error, options);
+    const hair = underLimit(picks, error, options, affordable);
     if (hair) return hair;
     const blamed = options.blame(error);
     if (blamed === undefined || blamed.length === 0) throw error;
@@ -119,6 +193,7 @@ export function buildRound<P extends { index: number }, R>(
     // Leave out at most a third of the edges: dropping much of a round changed
     // downstream geometry in the corpus (a later cut removed a whole body).
     if (kept.length === 0 || dropped * 3 > picks.length) throw error;
+    if (!affordable()) throw error;
     try {
       const result = options.build(kept);
       options.warn(leftOutWarning(dropped, picks.length, options.feature, options.reason(error)));
@@ -139,6 +214,7 @@ function underLimit<P extends { index: number }, R>(
   picks: readonly P[],
   error: unknown,
   options: RoundBuild<P, R>,
+  affordable: () => boolean,
 ): R | undefined {
   const { limit, under, size } = options;
   const near = limit?.(error);
@@ -150,6 +226,7 @@ function underLimit<P extends { index: number }, R>(
     [UNDER_LIMIT, 'a hair under'],
     [near.share, 'just under'],
   ] as const) {
+    if (!affordable()) return undefined;
     let result: R;
     try {
       result = options.build(picks.map((p) => (blamed.includes(p) ? under(p, factor) : p)));

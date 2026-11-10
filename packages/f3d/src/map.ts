@@ -2864,6 +2864,13 @@ function offsetFaces(
 }
 
 /**
+ * The edges a fillet or chamfer may round at import (all its sets together):
+ * the corpus's largest rounds 224 (median 4). Past it the feature is left out
+ * with a reason (ADR-0083's amendment of 2026-11-10).
+ */
+export const MAX_ROUND_EDGES = 2000;
+
+/**
  * Adds a fillet or chamfer on the edges that can be named; returns why not
  * when none can, or the feature and its edges' names (for its faces' names).
  * `loose`: the second try of a round none of whose edges passed the first,
@@ -2878,6 +2885,10 @@ function edgeTreatment(
   report: ImportReport,
   loose = false,
 ): string | ImportedRound {
+  // A crafted round of very many edges would cost the kernel's diagnosis
+  // hours when it fails (about nine builds a chain).
+  const count = f.sets.reduce((n, s) => n + s.edges.length, 0);
+  if (count > MAX_ROUND_EDGES) return `it rounds ${count} edges, more than ${MAX_ROUND_EDGES}`;
   const inputs: Record<string, unknown> = {};
   const edges: (string | undefined)[] = [];
   const shapes: (EdgeShape | undefined)[] = [];
