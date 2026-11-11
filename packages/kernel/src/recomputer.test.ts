@@ -196,6 +196,8 @@ function bind(service: KernelService) {
     resolveAnnotation: service.resolveAnnotation.bind(service),
     checkJoint: service.checkJoint.bind(service),
     cancelCheck: () => service.cancelCheck(),
+    sheetViews: service.sheetViews.bind(service),
+    cancelSheetViews: () => service.cancelSheetViews(),
     debugTestPart: () => service.debugTestPart(),
     debugCrash: () => service.debugCrash(),
     stats: () => service.stats(),
