@@ -4,7 +4,7 @@
 // (P6-24 S2, ADR-0143's S2 amendment): one file per fixture, the four views
 // at one scale, visible lines solid, outlines solid, tangent edges thin,
 // hidden lines dashed. Open them in a browser to review. Rewrite with
-//   pnpm vitest run -u packages/kernel/src/sheets/golden
+//   pnpm vitest run packages/kernel/src/sheets/golden --update
 // and look at the diff and the pictures. `SHEET_TIMES=1` prints each view's
 // time, exact and quick; `SHEET_QUICK=<dir>` writes the quick placeholders
 // there to compare.
