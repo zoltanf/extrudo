@@ -34,6 +34,7 @@ import {
   addConfiguration,
   addJoint,
   addParameter,
+  addSheet,
   annotationByNumber,
   type BodyId,
   type Command,
@@ -84,6 +85,7 @@ import {
   removeFeature,
   removeParameter,
   renameFeature,
+  type SheetId,
   SKETCH_TYPE,
   type SketchDimension,
   setBodyComponent,
@@ -110,8 +112,16 @@ import {
   ParameterHandle,
   ref,
 } from './handles';
-import { CounterIds, type IdFactory } from './ids';
+import { CounterIds, type IdFactory, type IdKind } from './ids';
 import { type FeatureInputValue, storedInputs } from './inputs';
+import {
+  findSheet,
+  newApiSheet,
+  SheetHandle,
+  type SheetHandleContext,
+  type SheetLike,
+  type SheetOptions,
+} from './sheets';
 import { SketchBuilder, SketchHandle, type SketchOptions } from './sketch';
 
 /** What a feature may be named besides its default, and where it goes. */
@@ -868,6 +878,49 @@ export class Design {
       at: [at[0], at[1], at[2]],
     };
   }
+
+  // ------------------------------------------------------------------- sheets
+
+  /**
+   * A drawing sheet (P6-24, ADR-0143) and a handle to it (IDs `sh1`…): A3
+   * landscape at 1:1, first angle, one decimal, a border and the Simple title
+   * block unless `options` say otherwise. `start: 'standard'` adds the four
+   * standard views in the same step:
+   *
+   * ```ts
+   * const sheet = d.addSheet('Plate', { size: 'A4', start: 'standard' });
+   * sheet.view('Front')?.addDimension('linear', [edgeA, edgeB], [20, -12]);
+   * ```
+   */
+  addSheet(name: string, options: SheetOptions = {}): SheetHandle {
+    const id = (options.id ?? this.#ids('sheet')) as SheetId;
+    const sheet = newApiSheet(this.#sheetContext, id, name, options);
+    this.#dispatch(
+      addSheet({ sheet, ...(options.index !== undefined && { index: options.index }) }),
+    );
+    return new SheetHandle(this.#sheetContext, id);
+  }
+
+  /** The design's sheets, in page order. */
+  sheets(): SheetHandle[] {
+    return (this.doc.sheets ?? []).map((s) => new SheetHandle(this.#sheetContext, s.id));
+  }
+
+  /** A sheet by ID or (case-insensitive) name, or `undefined`. */
+  sheet(sheet: SheetLike): SheetHandle | undefined {
+    const found = findSheet(this.doc, sheet);
+    return found && new SheetHandle(this.#sheetContext, found.id);
+  }
+
+  /** What the sheet handles change the design through, kept off `Design`'s own surface. */
+  readonly #sheetContext: SheetHandleContext = ((design: Design) => ({
+    get doc() {
+      return design.doc;
+    },
+    dispatch: <P>(command: Command<P>) => design.#dispatch(command),
+    ids: (kind: IdKind) => design.#ids(kind),
+    bodyId: (body: GeomRef | string) => design.#bodyIdOf(body),
+  }))(this);
 
   // -------------------------------------------------------------------- other
 

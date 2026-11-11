@@ -36,6 +36,7 @@ export const DOCS_DIR = join(ROOT, 'docs/api/features');
  */
 export const RESERVED_NAMES: readonly string[] = [
   'add',
+  'addSheet',
   'annotate',
   'annotation',
   'annotationCounter',
@@ -55,6 +56,8 @@ export const RESERVED_NAMES: readonly string[] = [
   'removeParameter',
   'rename',
   'setParameter',
+  'sheet',
+  'sheets',
   'state',
   'suppress',
   'toFile',

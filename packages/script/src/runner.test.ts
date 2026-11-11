@@ -266,6 +266,19 @@ describe('what a script may not do', () => {
     ).toBe("A script's features go into the Script's own component.");
   });
 
+  it('refuses the sheets, as it refuses annotations (P6-24 S6)', () => {
+    const design = emptyDesign();
+    design.addSheet('Plate');
+    for (const [call, what] of [
+      ['design.addSheet("Other");', 'design.addSheet() would add a sheet'],
+      ['design.sheet("Plate");', 'design.sheet() would read a sheet'],
+      ['design.sheets();', 'design.sheets() would read the sheets'],
+    ] as const) {
+      expect(failure(run(call, { design }).result).message).toBe(`${REFUSAL_RULE}: ${what}.`);
+    }
+    expect(design.doc.sheets?.map((sheet) => sheet.name)).toEqual(['Plate']);
+  });
+
   it('offers the generated feature methods, sketch and origin', () => {
     expect(SCRIPT_METHODS).toContain('box');
     expect(SCRIPT_METHODS).toContain('hole');
