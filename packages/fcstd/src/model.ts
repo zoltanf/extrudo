@@ -723,6 +723,13 @@ export function storedShapeEntry(
   return value?.kind === 'shape' && value.entry !== '' ? value.entry : undefined;
 }
 
+/**
+ * The most B-rep text a stored shape may be: the kernel's `MAX_BREP_BYTES`
+ * (`packages/kernel/src/kernel.ts`, 32 MB), which this package can't import;
+ * `history.test.ts` checks the two are equal. A larger entry is never decoded.
+ */
+export const MAX_STORED_BREP_BYTES = 32 * 1024 * 1024;
+
 /** The B-rep text format line: `CASCADE Topology V1, (c) Matra-Datavision` and its later versions. */
 const BREP_TEXT = /^(?:DBRep_DrawableShape\s*)?\s*CASCADE Topology V\d/;
 
@@ -751,6 +758,14 @@ export function storedShapeText(
   const what = `${typeof object === 'string' ? object : object.name}.${property}`;
   if (entry === undefined) {
     doc.problems.push(`${what}: no stored shape.`);
+    return undefined;
+  }
+  // Checked by the archive's own size before anything is inflated or decoded.
+  const size = doc.entries.size(entry);
+  if (size !== undefined && size > MAX_STORED_BREP_BYTES) {
+    doc.problems.push(
+      `${what}: its stored shape is ${Math.round(size / (1024 * 1024))} MB, more than the ${MAX_STORED_BREP_BYTES / (1024 * 1024)} MB the import's kernel reads.`,
+    );
     return undefined;
   }
   let bytes: Uint8Array | undefined;

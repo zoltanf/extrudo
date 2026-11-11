@@ -78,7 +78,8 @@ const isIdentity = (m: Matrix12) =>
  */
 export function measureShape(kernel: Kernel, shape: ShapeHandle): StoredShapeMeasure {
   const solids = kernel.solids(shape);
-  kernel.release(...solids);
+  // One by one: a spread of a huge count overflows the stack and leaks the handles.
+  for (const solid of solids) kernel.release(solid);
   const { volume, area, bbox } = kernel.properties(shape);
   return {
     solids: solids.length,

@@ -94,10 +94,13 @@ export class KernelBudget {
     let outcome: CallOutcome<T>;
     try {
       const raced = await Promise.race([
-        work().then(
-          (value) => ({ value }),
-          (error: unknown) => ({ error: message(error) }),
-        ),
+        // A `work` that throws before it returns a promise fails like one that rejects.
+        Promise.resolve()
+          .then(work)
+          .then(
+            (value) => ({ value }),
+            (error: unknown) => ({ error: message(error) }),
+          ),
         late,
       ]);
       if (raced === 'time') {

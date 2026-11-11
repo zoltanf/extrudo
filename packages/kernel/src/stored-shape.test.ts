@@ -12,7 +12,7 @@ import { BOX, boxBrep, cylinderBrep, LOCATED_FACE_PLACED } from './read-brep-tes
 import { testDocument, testFeature } from './recompute/testing';
 import type { KernelApi } from './service';
 import { KernelService } from './service';
-import { chainMatrix, placementMatrix, type ShapePlacement } from './stored-shape';
+import { chainMatrix, measureShape, placementMatrix, type ShapePlacement } from './stored-shape';
 
 let normal: KernelService;
 let importer: KernelService;
@@ -158,6 +158,22 @@ describe('measureStoredShape and measureBodies (S5)', () => {
     expect(stored.area).toBeCloseTo(body.area, 9);
     expectBox(stored.box, [...body.box.min, ...body.box.max], 9);
     await expect(importer.measureBodies(['nothing' as BodyId])).rejects.toThrow(/no longer/);
+    // The IDs are the caller's strings: the record has no prototype for one to reach.
+    expect(Object.getPrototypeOf(measured)).toBeNull();
+  });
+
+  it('releases every solid of a shape with a huge solid count, one by one', () => {
+    let released = 0;
+    const count = 500_000;
+    const kernel = {
+      solids: () => Array.from({ length: count }, (_, i) => i),
+      release: (...shapes: unknown[]) => {
+        released += shapes.length;
+      },
+      properties: () => ({ volume: 1, area: 2, bbox: { min: [0, 0, 0], max: [1, 1, 1] } }),
+    } as unknown as Parameters<typeof measureShape>[0];
+    expect(measureShape(kernel, 0 as never).solids).toBe(count);
+    expect(released).toBe(count);
   });
 });
 

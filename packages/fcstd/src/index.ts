@@ -29,11 +29,15 @@ export {
   type HistoryStop,
   importBodies,
   MAX_BODY_FEATURES,
+  MAX_BODY_ID_LENGTH,
+  MAX_FEATURE_EXPRESSIONS,
   MAX_FILE_FEATURES,
+  MAX_PROFILE_CURVES,
   MAX_PROFILE_REGIONS,
   MAX_REBUILD_BODIES,
   type MappedFeature,
   profileRefs,
+  saneRebuild,
 } from './bodies';
 export { type BudgetOptions, type CallOutcome, KernelBudget } from './budget';
 export {
@@ -98,6 +102,7 @@ export {
   type FcSub,
   type FcUnit,
   type FcValue,
+  MAX_STORED_BREP_BYTES,
   objectNamed,
   parseVersion,
   placementOf,

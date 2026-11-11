@@ -694,6 +694,35 @@ The app's worker loads planegcs for `addSketch`, as the f3d worker does.
   longest chain is 17) and 2,000 per file (`MAX_FILE_FEATURES`; the library's
   most is 28): past them the history stops with `limit`. The chain is followed
   once (a set of names seen), so a `BaseFeature` loop costs its length.
+- **Hardening (review, 2026-11-11):** a rebuild's body IDs are taken only as
+  `<ID of a feature in the document sent>:<whole number>`, at most 200
+  characters (`MAX_BODY_ID_LENGTH`), its measures only under own keys, into a
+  `Map`; anything else is a kernel failure (`saneRebuild`), and the kernel's
+  `measureBodies` answers in a prototype-free record. A `work` that throws
+  before returning a promise is a kernel failure with a restart, and anything a
+  feature's own work throws stops that body (`failed`, clipped), never the
+  import. The budget is checked before each feature's work and before each S3
+  shape is decoded. Each FreeCAD feature and sketch is walked for one body per
+  file: another body reaching it stops with `chain`, so a sketch is decoded and
+  tried once per import (the decode is shared with `addSketch`, its new
+  `decoded` option). A stored shape over the kernel's `MAX_BREP_BYTES` (32 MB,
+  `MAX_STORED_BREP_BYTES` here, a test keeps them equal) is refused by the
+  archive's size before it is inflated or decoded. A mapped feature keeps at
+  most 64 expressions (`MAX_FEATURE_EXPRESSIONS`; the library's most on one
+  PartDesign feature is 2) and counts the rest (`expressionsDropped`). A profile
+  sketch may draw at most 200 curves (`MAX_PROFILE_CURVES`; the library's
+  largest profile sketch draws 25), checked before its regions are detected;
+  `profileRefs` finds a region's point from at most 8 scan lines (linear in its
+  vertices; `@extrudo/sketch`'s `interiorPoint` tries every height, the square,
+  8.5 s for 200 concentric circles) and tests a loop only where its box holds
+  the point. Measured at the cap (`history-hardening.test.ts`): a grid of 200
+  crossing lines 0.2 s (9,801 regions, refused by `MAX_PROFILE_REGIONS` after
+  the detection), 200 concentric circles 0.6 s. The library's numbers are
+  unchanged and no cap touches a library file.
+- **Known limit (for S13):** the design so far is serialised and sent to the
+  kernel for every feature, so a file's cost grows with features × design
+  size; the feature caps, the curve and region caps and the import's time
+  bound it.
 
 ### The report and the app
 

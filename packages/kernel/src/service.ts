@@ -652,7 +652,8 @@ export class KernelService implements KernelApi {
 
   measureBodies(bodies: readonly BodyId[]): Promise<Record<BodyId, StoredShapeMeasure>> {
     return this.#run((kernel) => {
-      const out: Record<BodyId, StoredShapeMeasure> = {};
+      // No prototype: the IDs are the caller's strings.
+      const out = Object.create(null) as Record<BodyId, StoredShapeMeasure>;
       for (const id of bodies) out[id] = measureShape(kernel, this.#bodyShape(id, 'measure'));
       return out;
     });

@@ -13,7 +13,12 @@ import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES, sha256Hex } from '@extrudo
 import { KernelBudget } from './budget';
 import type { FinalShape } from './final-shapes';
 import type { ImportKernel, ShapeMeasure, StoredShapeStep } from './import-kernel';
-import { binaryFormProblem, type FcDocument, storedShapeText } from './model';
+import {
+  binaryFormProblem,
+  type FcDocument,
+  MAX_STORED_BREP_BYTES,
+  storedShapeText,
+} from './model';
 import { cleanName, clip, stepFileName } from './names';
 
 /**
@@ -187,10 +192,10 @@ export function volumeDrift(read: ShapeMeasure, back: ShapeMeasure): number {
  * The B-rep text of a final shape, or why there is none. Problems the reader
  * records on the way become the left-out line's detail, not a second line.
  */
-function textOf(
+function precheck(
   doc: FcDocument,
   shape: FinalShape,
-): { text: string } | { reason: LeftOutReason; detail?: string } {
+): { text: '' } | { reason: LeftOutReason; detail?: string } {
   if (shape.format === 'mesh') return { reason: 'mesh' };
   if (shape.entry === undefined) return { reason: 'empty' };
   // The sizes are the archive's own: nothing is inflated until the text is read.
@@ -199,6 +204,19 @@ function textOf(
     return { reason: 'unreadable', detail: 'its stored shape is missing from the file' };
   if (size === 0) return { reason: 'empty' };
   if (shape.entry.endsWith('.bin')) return { reason: 'binary' };
+  if (size > MAX_STORED_BREP_BYTES)
+    return {
+      reason: 'unreadable',
+      detail: `its stored shape is ${Math.round(size / (1024 * 1024))} MB, more than the import's kernel reads`,
+    };
+  return { text: '' };
+}
+
+/** The B-rep text of a shape `precheck` passed, decoded now (after the budget's own check). */
+function decodeText(
+  doc: FcDocument,
+  shape: FinalShape,
+): { text: string } | { reason: LeftOutReason; detail?: string } {
   const before = doc.problems.length;
   const text = storedShapeText(doc, shape.source);
   const said = doc.problems.splice(before);
@@ -254,7 +272,21 @@ export async function importShapes(
         ...(detail ? { detail: clip(detail) } : {}),
       });
     try {
-      const found = textOf(doc, shape);
+      const checked = precheck(doc, shape);
+      if (!('text' in checked)) {
+        leave(checked.reason, checked.detail);
+        continue;
+      }
+      // Nothing is decoded once the kernel has failed too often or the time is up.
+      if (budget.broken) {
+        leave('restarts');
+        continue;
+      }
+      if (budget.left() <= 0) {
+        leave('import-time');
+        continue;
+      }
+      const found = decodeText(doc, shape);
       if (!('text' in found)) {
         leave(found.reason, found.detail);
         continue;

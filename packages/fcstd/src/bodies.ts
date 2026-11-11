@@ -25,7 +25,7 @@ import {
   sketchEntityRefId,
 } from '@extrudo/core';
 import type { SketchSolver } from '@extrudo/sketch';
-import { insidePolygon, interiorPoint } from '@extrudo/sketch/profiles';
+import { insidePolygon } from '@extrudo/sketch/profiles';
 import type { CallOutcome, KernelBudget } from './budget';
 import { combined, type Drift, drift, historyDisagreement, saneMeasure } from './check';
 import {
@@ -35,7 +35,7 @@ import {
   type FeatureRefusal,
 } from './features';
 import { type FinalShape, linkedObjects } from './final-shapes';
-import type { ShapeMeasure } from './import-kernel';
+import type { RebuildResult, ShapeMeasure } from './import-kernel';
 import {
   binaryFormProblem,
   type FcDocument,
@@ -45,7 +45,7 @@ import {
 } from './model';
 import { cleanName, clip } from './names';
 import { setBodies } from './shapes';
-import { decodeSketch } from './sketch-decode';
+import { type DecodedSketch, decodeSketch } from './sketch-decode';
 import { containerChain, forgetRemovedPlanes } from './sketch-place';
 import { type AddSketchResult, addSketch, type SketchOutcome } from './sketches';
 
@@ -53,6 +53,12 @@ import { type AddSketchResult, addSketch, type SketchOutcome } from './sketches'
 export const MAX_BODY_FEATURES = 500;
 /** The most features the walk takes over a whole file. */
 export const MAX_FILE_FEATURES = 2_000;
+/**
+ * The most drawn (not construction) curves a profile sketch may have
+ * (the library's largest has 25): it bounds the region detection and the
+ * face picking below (ADR-0144's S5 amendment has the measured worst cases).
+ */
+export const MAX_PROFILE_CURVES = 200;
 /** The most closed regions a profile sketch may have for its faces to be picked (each pick tests every region). */
 export const MAX_PROFILE_REGIONS = 1_000;
 /** The most bodies one rebuild may answer with: more means the kernel read something it shouldn't have. */
@@ -91,8 +97,10 @@ export interface MappedFeature {
   readonly sketch: string;
   /** Which FreeCAD property each Extrudo input came from (for S10). */
   readonly sources: Readonly<Record<string, string>>;
-  /** The feature's expressions, as stored (not evaluated; S10). */
+  /** The feature's expressions, as stored (not evaluated; S10), at most `MAX_FEATURE_EXPRESSIONS`. */
   readonly expressions: readonly FcExpression[];
+  /** How many expressions past `MAX_FEATURE_EXPRESSIONS` were left out (S10 must know). */
+  readonly expressionsDropped?: number;
   /** How far the rebuild is from the stored shape. */
   readonly drift: Drift;
 }
@@ -186,48 +194,181 @@ function storedText(doc: FcDocument, o: FcObject): { text: string } | { detail: 
   };
 }
 
-/** Whether a rebuild's reply has the shape it must (types, finite measures, counts in range). */
-function saneRebuild(reply: unknown): reply is {
-  ids: string[];
-  bodies: Record<string, ShapeMeasure>;
-  failed: { feature: string; message: string }[];
-} {
-  if (typeof reply !== 'object' || reply === null) return false;
-  const r = reply as { ids?: unknown; bodies?: unknown; failed?: unknown };
-  if (!Array.isArray(r.ids) || r.ids.length > MAX_REBUILD_BODIES) return false;
-  if (!r.ids.every((id) => typeof id === 'string')) return false;
-  if (typeof r.bodies !== 'object' || r.bodies === null) return false;
-  const ids = new Set(r.ids as string[]);
-  for (const [id, m] of Object.entries(r.bodies)) if (!ids.has(id) || !saneMeasure(m)) return false;
-  if (!Array.isArray(r.failed) || r.failed.length > MAX_REBUILD_BODIES) return false;
-  return r.failed.every(
-    (f) =>
-      typeof f === 'object' &&
-      f !== null &&
-      typeof (f as { feature?: unknown }).feature === 'string' &&
-      typeof (f as { message?: unknown }).message === 'string',
-  );
+/** A rebuild's reply once checked: body IDs of the document's features, measures by ID. */
+interface SaneRebuild {
+  readonly ids: readonly string[];
+  readonly bodies: ReadonlyMap<string, ShapeMeasure>;
+  readonly failed: readonly { readonly feature: string; readonly message: string }[];
 }
+
+/** The longest body ID a reply may name (a feature ID, a colon, a body number). */
+export const MAX_BODY_ID_LENGTH = 200;
+const BODY_ID = /^(.+):(\d{1,9})$/;
+
+/**
+ * A rebuild's reply checked, or `undefined` when it makes no sense: every
+ * body ID `<ID of a feature in the document sent>:<whole number>` and at most
+ * `MAX_BODY_ID_LENGTH` long, at most `MAX_REBUILD_BODIES` of them, every
+ * measure keyed by one of them (own keys only) and sane, every failure a
+ * feature ID and a message. The kernel's strings are never used to index a
+ * plain object.
+ */
+export function saneRebuild(
+  reply: unknown,
+  features: ReadonlySet<string>,
+): SaneRebuild | undefined {
+  if (typeof reply !== 'object' || reply === null) return undefined;
+  const r = reply as { ids?: unknown; bodies?: unknown; failed?: unknown };
+  if (!Array.isArray(r.ids) || r.ids.length > MAX_REBUILD_BODIES) return undefined;
+  const ids: string[] = [];
+  for (const id of r.ids) {
+    if (typeof id !== 'string' || id.length > MAX_BODY_ID_LENGTH) return undefined;
+    const m = BODY_ID.exec(id);
+    if (!m || !features.has(m[1] as string)) return undefined;
+    ids.push(id);
+  }
+  if (typeof r.bodies !== 'object' || r.bodies === null || Array.isArray(r.bodies))
+    return undefined;
+  const known = new Set(ids);
+  const keys = Object.keys(r.bodies);
+  if (keys.length > ids.length) return undefined;
+  const bodies = new Map<string, ShapeMeasure>();
+  for (const key of keys) {
+    if (!known.has(key)) return undefined;
+    const m = (r.bodies as Record<string, unknown>)[key];
+    if (!Object.hasOwn(r.bodies, key) || !saneMeasure(m)) return undefined;
+    bodies.set(key, m);
+  }
+  if (!Array.isArray(r.failed) || r.failed.length > MAX_REBUILD_BODIES) return undefined;
+  const failed: { feature: string; message: string }[] = [];
+  for (const f of r.failed) {
+    if (typeof f !== 'object' || f === null) return undefined;
+    const { feature, message } = f as { feature?: unknown; message?: unknown };
+    if (typeof feature !== 'string' || typeof message !== 'string') return undefined;
+    failed.push({ feature, message: clip(message) });
+  }
+  return { ids, bodies, failed };
+}
+
+/** The most expressions kept per mapped feature (the library's most on one PartDesign feature is 2). */
+export const MAX_FEATURE_EXPRESSIONS = 64;
+
+/** A feature's expressions on the properties its inputs came from, at most `MAX_FEATURE_EXPRESSIONS`. */
+function expressionsOf(
+  f: FcObject,
+  sources: Readonly<Record<string, string>>,
+): { expressions: FcExpression[]; expressionsDropped?: number } {
+  const used = new Set(Object.values(sources));
+  const all = f.expressions.filter((e) => used.has(e.path.split('.')[0] as string));
+  const expressions = all.slice(0, MAX_FEATURE_EXPRESSIONS);
+  const dropped = all.length - expressions.length;
+  return { expressions, ...(dropped > 0 ? { expressionsDropped: dropped } : {}) };
+}
+
+type Pt = readonly [number, number];
+
+/** Where a ring's edges cross the horizontal line at `y` (a height through no vertex). */
+function crossingsAt(ring: readonly Pt[], y: number): number[] {
+  const xs: number[] = [];
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [ax, ay] = ring[j] as Pt;
+    const [bx, by] = ring[i] as Pt;
+    if (ay > y !== by > y) xs.push(ax + ((y - ay) * (bx - ax)) / (by - ay));
+  }
+  return xs.sort((m, n) => m - n);
+}
+
+/** How many scan lines a region's interior point tries. */
+const SCAN_LINES = 8;
+
+/**
+ * A point inside a region (its outer ring less its holes), from at most
+ * `SCAN_LINES` horizontal lines between distinct vertex heights near the
+ * middle of the region: each costs the rings' vertices once, so a region is
+ * linear in its size. (`interiorPoint` in `@extrudo/sketch` tries every height,
+ * the square of the vertices, which a ring of large circles makes seconds.)
+ */
+function insidePoint(outer: readonly Pt[], holes: readonly (readonly Pt[])[]): Pt | undefined {
+  const ys = [...new Set(outer.map((p) => p[1]))].sort((m, n) => m - n);
+  const holeYs = new Set(holes.flatMap((h) => h.map((p) => p[1])));
+  const middle = Math.floor(ys.length / 2);
+  for (let k = 0; k < SCAN_LINES; k++) {
+    // Alternate around the middle: m, m+1, m-1, m+2 ...
+    const at = middle + (k % 2 === 0 ? k / 2 : -(k + 1) / 2);
+    const lo = ys[at - 1];
+    const hi = ys[at];
+    if (lo === undefined || hi === undefined || hi - lo <= 1e-9) continue;
+    const y = (lo + hi) / 2;
+    if (holeYs.has(y)) continue;
+    const outerX = crossingsAt(outer, y);
+    if (outerX.length < 2 || outerX.length % 2 !== 0) continue;
+    const blocked = holes.flatMap((h) => {
+      const xs = crossingsAt(h, y);
+      const spans: [number, number][] = [];
+      for (let i = 0; i + 1 < xs.length; i += 2) spans.push([xs[i] as number, xs[i + 1] as number]);
+      return spans;
+    });
+    let best: { x: number; width: number } | undefined;
+    for (let i = 0; i + 1 < outerX.length; i += 2) {
+      // The free parts of [x0, x1] once the holes' spans are taken out.
+      let free: [number, number][] = [[outerX[i] as number, outerX[i + 1] as number]];
+      for (const [b0, b1] of blocked)
+        free = free.flatMap(([f0, f1]): [number, number][] =>
+          b1 <= f0 || b0 >= f1
+            ? [[f0, f1]]
+            : [
+                ...(b0 > f0 ? [[f0, b0] as [number, number]] : []),
+                ...(b1 < f1 ? [[b1, f1] as [number, number]] : []),
+              ],
+        );
+      for (const [f0, f1] of free)
+        if (f1 - f0 > 1e-9 && (!best || f1 - f0 > best.width))
+          best = { x: (f0 + f1) / 2, width: f1 - f0 };
+    }
+    if (best) return [best.x, y];
+  }
+  return undefined;
+}
+
+const boxOf = (ring: readonly Pt[]) => {
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const [x, y] of ring) {
+    x0 = Math.min(x0, x);
+    y0 = Math.min(y0, y);
+    x1 = Math.max(x1, x);
+    y1 = Math.max(y1, y);
+  }
+  return { x0, y0, x1, y1 };
+};
 
 /**
  * The sketch's regions FreeCAD makes faces of: inside an odd number of
  * outer loops (Bullseye, `AllowMultiFace`), or exactly one (the first level).
+ * Bounded by `MAX_PROFILE_CURVES` (the caller's) and `MAX_PROFILE_REGIONS`:
+ * a point per region from a few scan lines, and a loop's containment tested
+ * only where its box holds the point.
  */
 export function profileRefs(handle: SketchHandle, multiFace: boolean): GeomRef[] | string {
   const regions = handle.regions.filter((r) => !r.text);
   if (regions.length > MAX_PROFILE_REGIONS)
     return `its sketch has ${regions.length} closed regions, more than ${MAX_PROFILE_REGIONS}`;
+  const boxes = regions.map((r) => boxOf(r.outer.polygon));
   const out: GeomRef[] = [];
-  for (const r of regions) {
-    const p = interiorPoint(
+  regions.forEach((r) => {
+    const p = insidePoint(
       r.outer.polygon,
       r.holes.map((h) => h.polygon),
     );
-    if (!p) continue;
-    const depth = regions.filter((q) => insidePolygon(q.outer.polygon, p)).length;
+    if (!p) return;
+    let depth = 0;
+    regions.forEach((q, k) => {
+      const b = boxes[k] as ReturnType<typeof boxOf>;
+      if (p[0] < b.x0 || p[0] > b.x1 || p[1] < b.y0 || p[1] > b.y1) return;
+      if (insidePolygon(q.outer.polygon, p as [number, number])) depth++;
+    });
     if (multiFace ? depth % 2 === 1 : depth === 1)
       out.push({ kind: 'profile', id: profileRefId(handle.id, r.id) });
-  }
+  });
   return out;
 }
 
@@ -255,6 +396,9 @@ export async function importBodies(
   /** Every Extrudo body the last rebuild had. */
   let known: string[] = [];
   let walked = 0;
+  /** The body each FreeCAD feature and sketch was walked for: one object, one body, once per file. */
+  const owner = new Map<string, string>();
+  const decodedSketches = new Map<string, DecodedSketch>();
 
   for (const shape of shapes) {
     if (shape.kind !== 'body' || shape.object.type !== 'PartDesign::Body') continue;
@@ -282,23 +426,29 @@ export async function importBodies(
     /** The sketches imported for this body's kept features, by FreeCAD name. */
     const sketches = new Map<string, Extract<AddSketchResult, { imported: true }>>();
 
-    for (let i = 0; i < features.length && !stopped; i++) {
-      const f = features[i] as FcObject;
-      if (i >= maxBody || walked >= maxFile) {
-        stop(f, 'limit', `more than ${i >= maxBody ? maxBody : maxFile} features`);
-        break;
-      }
-      walked++;
-      options.onStep?.();
+    /** One feature: mapped, rebuilt and checked, or `stop` called. */
+    const walk = async (f: FcObject, i: number): Promise<void> => {
       const frame = containerChain(doc, f);
       if (!frame) {
         stop(f, 'chain', 'its containers hold each other in a loop');
-        break;
+        return;
       }
       const sketchObject = sketchOfFeature(doc, f);
-      // Only a revolve looks into its sketch here (for an axis line); addSketch decodes it anyway.
-      const turns = f.type === 'PartDesign::Revolution' || f.type === 'PartDesign::Groove';
-      const decodedSketch = sketchObject && turns ? decodeSketch(sketchObject) : undefined;
+      if (sketchObject) {
+        // A sketch is imported for one body only: another body's sketch is not tried again.
+        const of = owner.get(sketchObject.name);
+        if (of !== undefined && of !== body.name) {
+          stop(f, 'chain', `its sketch ${sketchObject.name} belongs to another body, ${of}`);
+          return;
+        }
+        owner.set(sketchObject.name, body.name);
+      }
+      // Each sketch is decoded once per import (the axis lookup here and addSketch share it).
+      let decodedSketch = sketchObject ? decodedSketches.get(sketchObject.name) : undefined;
+      if (sketchObject && !decodedSketch) {
+        decodedSketch = decodeSketch(sketchObject);
+        decodedSketches.set(sketchObject.name, decodedSketch);
+      }
       const decoded = decodeFeature(doc, f, {
         body,
         moved: frame.moved,
@@ -306,22 +456,33 @@ export async function importBodies(
       });
       if (!decoded.ok) {
         stop(f, decoded.reason, decoded.detail);
-        break;
+        return;
       }
       const feature = decoded.feature;
+      const drawnCurves = (decodedSketch?.geometry ?? []).filter(
+        (g) => g !== undefined && !g.construction && g.internal === 0 && g.kind !== 'point',
+      ).length;
+      if (drawnCurves > MAX_PROFILE_CURVES) {
+        stop(
+          f,
+          'sketch',
+          `its sketch draws ${drawnCurves} curves, more than ${MAX_PROFILE_CURVES}`,
+        );
+        return;
+      }
       if (i === 0 && 'startsFrom' in chain && chain.startsFrom) {
         stop(f, 'chain', `it builds on ${chain.startsFrom}, a solid outside the body`);
-        break;
+        return;
       }
       const additive = feature.kind === 'pad' || feature.kind === 'revolution';
       if (!additive && mine.length === 0) {
         stop(f, 'no-base', 'there is nothing before it to cut');
-        break;
+        return;
       }
       const stored = storedText(doc, f);
       if (!('text' in stored)) {
         stop(f, 'stored', stored.detail);
-        break;
+        return;
       }
 
       // Everything this feature adds is one transaction, taken back if it doesn't hold.
@@ -329,10 +490,19 @@ export async function importBodies(
       design.state.beginTransaction(`Import ${cleanName(f.label, f.name)}`);
       let committed = false;
       try {
-        const added = addFeature(doc, design, f, feature, sketches, mine, options.solver);
+        const added = addFeature(
+          doc,
+          design,
+          f,
+          feature,
+          sketches,
+          mine,
+          options.solver,
+          decodedSketch,
+        );
         if ('stop' in added) {
           stop(f, added.stop, added.detail);
-          break;
+          return;
         }
         const measuredStored = await budget.call(
           () => budget.kernel.measureStoredShape(stored.text, frame.chain),
@@ -344,34 +514,41 @@ export async function importBodies(
             callStop(measuredStored),
             'detail' in measuredStored ? measuredStored.detail : undefined,
           );
-          break;
+          return;
         }
+        // The body IDs a reply may name: `<feature of the document sent>:<n>`.
+        let sentFeatures = new Set<string>();
         const rebuilt = await budget.call(
-          () => budget.kernel.rebuild(design.toJSON(), new Map(), [...settled]),
-          saneRebuild,
+          () => {
+            const sent = design.toJSON();
+            sentFeatures = new Set(sent.features.map((x) => x.id));
+            return budget.kernel.rebuild(sent, new Map(), [...settled]);
+          },
+          (reply: unknown): reply is RebuildResult =>
+            saneRebuild(reply, sentFeatures) !== undefined,
         );
         if (rebuilt.kind !== 'done') {
           stop(f, callStop(rebuilt), 'detail' in rebuilt ? rebuilt.detail : undefined);
-          break;
+          return;
         }
-        const r = rebuilt.value;
+        const r = saneRebuild(rebuilt.value, sentFeatures) as SaneRebuild;
         const fresh = new Set(design.doc.features.map((x) => x.id).filter((id) => !before.has(id)));
         const failure = r.failed.find((x) => fresh.has(x.feature as FeatureId));
         if (failure) {
           stop(f, 'failed', failure.message);
-          break;
+          return;
         }
         const now = r.ids.filter((id) => !settled.has(id));
-        const measures = now.map((id) => r.bodies[id]);
+        const measures = now.map((id) => r.bodies.get(id));
         if (measures.some((m) => m === undefined)) {
           stop(f, 'kernel', "the kernel didn't measure every body");
-          break;
+          return;
         }
         const rebuiltBody = combined(measures as ShapeMeasure[]);
         const wrong = historyDisagreement(rebuiltBody, measuredStored.value);
         if (wrong) {
           stop(f, 'differs', wrong, drift(rebuiltBody, measuredStored.value));
-          break;
+          return;
         }
         design.state.commitTransaction();
         committed = true;
@@ -384,9 +561,7 @@ export async function importBodies(
           feature: added.feature,
           sketch: added.sketch,
           sources: feature.sources,
-          expressions: f.expressions.filter((e) =>
-            Object.values(feature.sources).includes(e.path.split('.')[0] as string),
-          ),
+          ...expressionsOf(f, feature.sources),
           drift: drift(rebuiltBody, measuredStored.value),
         });
       } finally {
@@ -396,6 +571,39 @@ export async function importBodies(
           for (const [key, s] of sketches)
             if (!design.doc.features.some((x) => x.id === s.id)) sketches.delete(key);
         }
+      }
+    };
+
+    for (let i = 0; i < features.length && !stopped; i++) {
+      const f = features[i] as FcObject;
+      if (i >= maxBody || walked >= maxFile) {
+        stop(f, 'limit', `more than ${i >= maxBody ? maxBody : maxFile} features`);
+        break;
+      }
+      // Nothing of a feature runs once the kernel has failed too often or the time is up.
+      if (budget.broken) {
+        stop(f, 'restarts', 'the geometry kernel failed too often');
+        break;
+      }
+      if (budget.left() <= 0) {
+        stop(f, 'import-time', 'the import ran out of time');
+        break;
+      }
+      // A feature of another body (a chain that crosses bodies) is never mapped twice.
+      const other = owner.get(f.name);
+      if (other !== undefined && other !== body.name) {
+        stop(f, 'chain', `it is a feature of another body, ${other}`);
+        break;
+      }
+      owner.set(f.name, body.name);
+      walked++;
+      options.onStep?.();
+      try {
+        await walk(f, i);
+      } catch (error) {
+        // Nothing a feature's own work throws ends the import: it stops this body.
+        if (!stopped)
+          stop(f, 'failed', `importing it failed: ${(error as Error)?.message ?? String(error)}`);
       }
     }
     if (features.length === 0 && !stopped) stop(undefined, 'chain', 'it has no features');
@@ -438,6 +646,7 @@ function addFeature(
   sketches: Map<string, Extract<AddSketchResult, { imported: true }>>,
   mine: readonly string[],
   solver: SketchSolver | undefined,
+  decoded: DecodedSketch | undefined,
 ): Added {
   const wantsAxis =
     (feature.kind === 'revolution' || feature.kind === 'groove') &&
@@ -455,6 +664,7 @@ function addFeature(
     const object = doc.byName.get(feature.sketch) as FcObject;
     const result = addSketch(design, doc, object, {
       ...(solver ? { solver } : {}),
+      ...(decoded ? { decoded } : {}),
       name: cleanName(object.label, object.name),
       ...(wantsAxis ? { axes: [wantsAxis] } : {}),
     });

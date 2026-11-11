@@ -14,7 +14,7 @@ import type { Design } from '@extrudo/api';
 import { type FeatureId, parameterNames } from '@extrudo/core';
 import type { SketchSolver } from '@extrudo/sketch';
 import type { FcDocument, FcObject } from './model';
-import { decodeSketch } from './sketch-decode';
+import { type DecodedSketch, decodeSketch } from './sketch-decode';
 import {
   type ConstraintOutcome,
   type LeftOut,
@@ -100,6 +100,8 @@ export interface AddSketchOptions {
   readonly solver?: SketchSolver;
   /** The Extrudo sketch's name; the object's label by default. */
   readonly name?: string;
+  /** The sketch already decoded (`decodeSketch(object)`), so an importer decodes each sketch once. */
+  readonly decoded?: DecodedSketch;
   /** Sketch axes to draw as fixed construction lines even when no constraint names them (S5: a revolve's axis). */
   readonly axes?: readonly ('h' | 'v')[];
 }
@@ -194,7 +196,7 @@ export function addSketch(
   object: FcObject,
   options: AddSketchOptions = {},
 ): AddSketchResult {
-  const decoded = decodeSketch(object);
+  const decoded = options.decoded ?? decodeSketch(object);
   const problems = [...decoded.problems];
   const names = decoded.constraints.map((c) => c?.name);
   const types = decoded.constraints.map((c) => c?.type);

@@ -4773,4 +4773,12 @@ S3, a body with its whole history has no `import`; nothing else changes for shap
 `MAX_PROFILE_REGIONS` 1,000, `MAX_FEATURE_LENGTH` 10 km. A revolve's sketch axis is drawn by `addSketch`'s `axes`
 option (never by editing the sketch afterwards); `AddSketchResult` gives `lines` (per geometry index) and `axes`.
 Mapped features record `sources` (Extrudo input → FreeCAD property) for S10. Fixtures: `history-fixtures.ts` (stored
-shapes from the kernel's `boxBrep`/`cylinderBrep`); the app words `HistoryStop` in `actions.ts` (`HISTORY_STOP`).
+shapes from the kernel's `boxBrep`/`cylinderBrep`); the app words `HistoryStop` in `actions.ts` (`HISTORY_STOP`). **Hardening:** never index a plain object by a kernel string: body IDs only `<feature of the document
+sent>:<n>`, ≤ `MAX_BODY_ID_LENGTH` 200, measures by own key into a `Map` (`saneRebuild`); `KernelBudget.call` turns a
+synchronous throw into a kernel failure, and a throw from a feature's own work stops only that body (`failed`); the budget
+is checked before a feature's work and before an S3 shape is decoded; one FreeCAD feature or sketch belongs to one body
+per file (`chain` for another), each sketch decoded once (`AddSketchOptions.decoded`); stored text over
+`MAX_STORED_BREP_BYTES` (= the kernel's `MAX_BREP_BYTES`, kept equal by a test) is refused by its archive size, never
+decoded; `MAX_FEATURE_EXPRESSIONS` 64 (`expressionsDropped`); `MAX_PROFILE_CURVES` 200 drawn curves before regions are
+detected, and `profileRefs` stays linear per region (its own scan-line point, box prefilter; never `interiorPoint`
+there). Known limit: the document is sent per feature (cost features × design size, bounded by the caps and the time).

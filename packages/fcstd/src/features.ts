@@ -297,6 +297,18 @@ const upTo = (t: string) =>
         ? 'up to a face'
         : 'up to a shape';
 
+/** An origin's features by name, built once per origin object (a file's objects live as long as its import). */
+const originSets = new WeakMap<FcObject, Set<string>>();
+function originFeatures(origin: FcObject): Set<string> {
+  let set = originSets.get(origin);
+  if (!set) {
+    const v = origin.properties.OriginFeatures?.value;
+    set = new Set(v ? linkedObjects(v) : []);
+    originSets.set(origin, set);
+  }
+  return set;
+}
+
 const ORIGIN_ROLE = /^([XYZ])_Axis(?:\d{0,6})$/;
 
 /** A revolve's `ReferenceAxis` in the terms this slice maps, or a refusal. */
@@ -349,8 +361,7 @@ function axisOf(
     originName?.kind === 'link' && originName.object
       ? doc.byName.get(originName.object)
       : undefined;
-  const features = origin?.properties.OriginFeatures?.value;
-  if (!features || !linkedObjects(features).includes(target.name))
+  if (!origin || !originFeatures(origin).has(target.name))
     return refuse('axis', "its axis is not an origin axis of the feature's body");
   const role = target.properties.Role?.value;
   const m = ORIGIN_ROLE.exec(role?.kind === 'string' ? role.value : target.name);
