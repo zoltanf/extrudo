@@ -39,6 +39,7 @@ import {
   type SheetAnchorReport,
   type SheetAnchors,
   type SheetItemId,
+  type SheetParts,
   type SheetRefAnchor,
   type SheetSilhouetteAnchor,
   scriptOfGenerated,
@@ -72,7 +73,12 @@ import { type ScriptHost, ScriptRunError } from '../script-host';
 import { faceAs, lostFeature, resolveSheetAnchor } from '../sheets/anchors';
 import { exactView, quickView, type ViewBody } from '../sheets/evaluate';
 import type { SkippedBody, ViewGeometry } from '../sheets/geometry';
-import { type SheetViewRequest, type SheetViewResult, shownBodies } from '../sheets/views';
+import {
+  type SheetViewRequest,
+  type SheetViewResult,
+  sheetListBodies,
+  shownBodies,
+} from '../sheets/views';
 import { hashOf } from './hash';
 import {
   type BodyResult,
@@ -391,7 +397,7 @@ export class RecomputeEngine {
 
   /**
    * A sheet's anchors (`sheetItemAnchors`: dimensions, leader notes, centre
-   * marks and lines) against the bodies at the marker of the last finished
+   * marks and lines, balloons) against the bodies at the marker of the last finished
    * recompute (P6-24 S3 and S4, ADR-0143's S3 and S4 amendments), resolved
    * like an annotation's (`ok`, `moved`, `detached`), each with the 3D
    * geometry it stands for, except that an anchor on a deleted or
@@ -418,6 +424,37 @@ export class RecomputeEngine {
           return { status: 'detached' };
         }
       });
+    }
+    return out;
+  }
+
+  /**
+   * What a sheet's parts lists need of the bodies at the marker of the last
+   * finished recompute (P6-24 S5, ADR-0143's S5 amendment): per list, its
+   * view's bodies in order (`sheetListBodies`), and each one's volume and
+   * tight box, as Print Info measures them (`Kernel.properties`). A body
+   * whose measure fails has none (its row has no size). Nothing is
+   * evaluated or cached; empty before the first recompute.
+   */
+  sheetParts(sheet: Sheet): SheetParts {
+    const out: SheetParts = { lists: {}, bodies: {} };
+    const at = this.#atMarker;
+    if (!at) return out;
+    const live = new Set(this.#latest.keys());
+    for (const item of sheet.items) {
+      if (item.kind !== 'partsList') continue;
+      const ids = sheetListBodies(at.doc, sheet, item.view, live);
+      out.lists[item.id] = ids;
+      for (const id of ids) {
+        const shape = this.#latest.get(id);
+        if (!shape || id in out.bodies) continue;
+        try {
+          const { volume, bbox } = this.#kernel.properties(shape);
+          out.bodies[id] = { volume, box: { min: [...bbox.min], max: [...bbox.max] } };
+        } catch (error) {
+          if (!(error instanceof KernelError)) throw error;
+        }
+      }
     }
     return out;
   }

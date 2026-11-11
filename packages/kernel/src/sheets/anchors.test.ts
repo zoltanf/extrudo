@@ -181,6 +181,7 @@ describe('a box, 10 × 20 × 30 (centred on the XY plane, z up)', () => {
       {
         status: 'ok',
         resolved: across,
+        body: 'Box1:0',
         message: 'The edge has no centre: it is not a circle or an ellipse.',
       },
     ]);

@@ -445,6 +445,98 @@ change.
   fall anywhere); a sticky note's "On screen only" left to the screen (the screen draws the
   list as it is and derives nothing, S1's rule).
 
+## Amendment (S5, lists: document, rows, fields, layout), 2026-11-11
+
+Package 1 of S5: parts lists, balloons, free tables and text fields without UI (no tools,
+no API, CLI or MCP tools). Files: `packages/core/src/sheet-schema.ts` (three item schemas,
+`SHEET_PARTS_COLUMNS`, the rules), the new `core/src/sheet-fields.ts`, `SheetParts` and
+`SheetAnchorReport.body` in `core/src/sheet-anchors.ts`, `remintSheets`, the balloon
+cascade in `core/src/sheets.ts`, `rewriteReferences` in `core/src/document-commands.ts`,
+`sheetListBodies` in `kernel/src/sheets/views.ts`, `RecomputeEngine.sheetParts`,
+`KernelApi.sheetParts`, `Recomputer.sheetParts`, and in `@extrudo/sheets` the new `parts.ts`
+and `sheetFieldValues` in `layout.ts`. No facade change: the measure is `Kernel.properties`,
+Print Info's.
+
+- **The items** follow plan §5.1. `partsList`: `view`, `at` (sheet mm, top-left),
+  `columns` (from `item`, `qty`, `name`, `material`, `size`, `mass`, each once, **shown in
+  the order listed**; absent: all six) and `rows`, a record from a body ID to what was typed
+  over that row (`name`, `material`, free text up to 200 characters each, decision 11).
+  `balloon`: `view`, one `anchor`, `at` (the circle's centre, view mm, as a leader's) and
+  `list`. `table`: `at` (sheet mm), `columns` (widths, 1 to 1000 mm, 1 to 50 of them) and
+  `rows` (1 to 500, cell texts that may be empty). Rules in `sheetProblems` and
+  `sheetItemProblems`: an item's `view` on its sheet (as before); a balloon's `list` a
+  **parts list of the same sheet**, its anchor on geometry (never `free`: it numbers a
+  body); a parts list names each column once; every table row has one cell per column.
+  **Deleting a parts list deletes its balloons** in the same step (`removeSheetItems`, and
+  `removeSheetView` when the list belongs to the view), so the rule never refuses a delete.
+  `sheetItemAnchors`/`mapSheetItemAnchors` cover the balloon; `remintSheets` also renames the
+  body IDs a parts list's `rows` are keyed by.
+- **Rows from the model** (nothing derived is stored). `KernelApi.sheetParts(sheet)` gives,
+  per parts list, its view's bodies at the marker in order (`sheetListBodies`: the base
+  view's `bodies` as listed, else every shown body **in timeline order**, the order of the
+  features that made them, then the body number) and each one's volume and tight
+  axis-aligned box (`Kernel.properties`, as Print Info); a body whose measure fails has none.
+  `sheetPartBodies(doc, report)` adds the names and component names the document holds;
+  `sheetPartsRows(list, bodies)` merges: a body joins the first earlier row whose first body
+  has an **equal volume (to a millionth) and box (its three sides sorted, to 0.001 mm, so a
+  quarter-turned copy merges) and either the same component name or the same name stem**
+  (`sheetNameStem`: the name without a trailing number and its separator, compared without
+  case). A body never measured never merges. Rows keep the order of their first bodies and
+  are numbered from 1. A row's name is what was typed over it (under any of its bodies, the
+  first in order), else its one body's name, else the merged bodies' shared stem
+  ("Leg 1" + "Leg 2" → "Leg"), else their component's name; typing never splits a row.
+  Size is the box's sides, longest first, in the design's unit at the sheet's decimals, the
+  unit in the header ("SIZE (MM)"). **Mass** is one piece's, from `context.density` (g/cm³,
+  the app's filament preference); without it the cells are empty. A balloon's number is the
+  item of the row holding the body its anchor resolved on (`SheetAnchorReport.body`, kept
+  by `keepLastAnchors`).
+- **Text fields** (plan §5.3; `sheet-fields.ts`): `{name}`, `{sheet}`, `{sheets}`, `{scale}`,
+  `{date}`, `{version}` and `{= expr}`. **`mapSheetFieldTexts` is the one place that says
+  which texts take fields**: text items, leader notes, table cells and the title block's
+  typed fields (not sticky notes, dimensions' before/after or parts list cells). Layout fills
+  them before drawing (`sheetFieldValues(sheet, context)`): the design's name, page and count
+  from `context.sheets`, the sheet's scale, and from the context `date`, `version` and
+  `evaluate` (core's `evaluateParameters(doc).evaluate`), an expression written with its unit
+  at the sheet's decimals (`formatQuantity`). A field with no value, an unknown field and an
+  expression that doesn't evaluate are left as typed. `rewriteReferences` renames a parameter
+  inside `{= …}` only, through the same map, in the rename's undo step. Deleting a parameter
+  a field uses is not refused: the field shows as typed.
+- **Layout** (`parts.ts`, keys `item:<id>`). A **parts list**: a header row filled
+  `#eef1f5` with 2.2 mm capitals in the muted colour, then one 7 mm row per row, 3.5 mm
+  text, 2 mm padding, grid 0.25 mm and outline 0.5 mm as the title block; **one line per
+  cell, fitted**: a column is as wide as its widest text (at least 8 mm), a name or material
+  at most 60 mm, a longer one shrinking to 2.5 mm and then cut with "…" (`fitLine`). With no
+  bodies known yet it is its header alone. A **free table**: its stored widths, **each cell
+  wrapped** inside its column (`wrapText`), a row as tall as its tallest cell (7 mm plus a
+  line spacing per extra line), no header row. A **balloon**: a 0.18 mm circle of 4 mm
+  radius (more for a long number) round `at`, its number centred, and a leader from the
+  circle's edge to the anchor's nearest point (a leader note's rule), ending in a 3 × 1 mm
+  arrowhead on an edge or a point and a 0.75 mm dot on a face. Its state follows its anchor
+  as a leader's (`moved`, `detached`; lost with nothing kept, the circle alone); its number
+  is `?` until the list's bodies are known, and `invalid` with "This balloon points at a
+  body that isn't in its parts list." when the row isn't there. `layoutSheet` takes the rows'
+  data through `context.parts` as it takes anchors.
+- **For the tools**: `sheetParts` (kernel), `sheetPartBodies`, `sheetPartsRows`,
+  `sheetPartsCells`, `sheetPartsHeader`, `sheetNameStem`, `sheetBalloonStatus`,
+  `layoutSheetPartsList`, `layoutSheetTable`, `layoutSheetBalloon`, `SHEET_TABLE`,
+  `sheetFieldValues`; core's `fillSheetFields`, `mapSheetFieldTexts`,
+  `renameSheetFieldReferences`, `sheetFieldExpressions`, `SHEET_FIELDS`;
+  `sheetItemStatus(…, { parts })` for a balloon's browser row.
+- **Tests**: `sheet-schema.test.ts`, `sheets.test.ts` (shapes, rules, the balloon cascade,
+  remint), `sheet-fields.test.ts` (filling, what stays typed, a parameter rename through
+  `updateParameter` and its undo); `sheets/src/parts.test.ts` (merging and numbering: two
+  identical bodies, a quarter-turned copy, a component, a typed name and material; cells in
+  mm and inches, mass; positions of each kind; fields through `layoutSheet`; a golden SVG
+  per kind); `sheets/src/parts.kernel.test.ts` (a base frame the kernel builds: sizes and
+  quantities, balloons on their bodies, taller legs; `SHEETS_OUT=<dir>` writes `lists.pdf`,
+  checked with `pdftoppm`).
+- **Rejected**: storing a parts list's rows or numbers (derived data, which a sheet never
+  stores); `BodyMeta.material` (decision 11, not now); the box in the body's own frame
+  (none exists for a body; a copy turned by other than a quarter keeps its own row);
+  wrapping parts list cells (rows of one height read as a list; a table's cells are prose and
+  wrap); a balloon on a free point (it numbers a body); a balloon left on the sheet with its
+  list gone (the rule would refuse the delete, and a number from no list means nothing).
+
 ## Amendment (S1a, 2026-11-10): one `EditMode` and a table per mode
 
 Built with no behaviour change, before any drawing code.

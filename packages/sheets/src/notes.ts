@@ -43,6 +43,7 @@ import {
   viewToSheet,
 } from './anchored';
 import { measureSheetDimension, type SheetDimensionOptions } from './dimensions';
+import { type SheetPartsBodies, sheetBalloonStatus } from './parts';
 import { fitLine, LINE_SPACING, textRun, textWidth, wrapText } from './text';
 
 /** Paper sizes of notes and centre lines, mm. */
@@ -135,15 +136,21 @@ export interface SheetItemStatus {
 /**
  * Any item's state from the resolved anchors: a dimension's from
  * `measureSheetDimension`, a leader's, centre mark's or centre line's from
- * its anchors and what they make; a text or a sticky note is always `ok`.
+ * its anchors and what they make, a balloon's from its anchor and its
+ * body's row (`sheetBalloonStatus`, with `options.parts`); a text, a sticky
+ * note, a parts list and a table are always `ok`.
  */
 export function sheetItemStatus(
   sheet: Sheet,
   item: SheetItem,
   anchors: SheetAnchors | undefined,
-  options: SheetDimensionOptions = {},
+  options: SheetDimensionOptions & { parts?: SheetPartsBodies } = {},
 ): SheetItemStatus {
   switch (item.kind) {
+    case 'balloon': {
+      const { state, message } = sheetBalloonStatus(sheet, item, anchors, options.parts);
+      return { state, ...(message && { message }) };
+    }
     case 'dimension': {
       const { state, message } = measureSheetDimension(sheet, item, anchors, options);
       return { state, ...(message && { message }) };

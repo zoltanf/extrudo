@@ -49,6 +49,7 @@ import {
   pluginFileOf,
   type Sheet,
   type SheetAnchors,
+  type SheetParts,
   type SketchReport,
   type SweepReport,
   type ThreadReport,
@@ -774,6 +775,21 @@ export class Recomputer {
     try {
       return await this.#wait("Reading the sheet's dimensions…", options, () =>
         this.client.call((api) => api.resolveSheet(sheet)),
+      );
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * What a sheet's parts lists need of the model (P6-24 S5): per list, its
+   * view's bodies and their measures. Undefined if the kernel can't say
+   * (keep the last result then).
+   */
+  async sheetParts(sheet: Sheet, options?: WaitOptions): Promise<SheetParts | undefined> {
+    try {
+      return await this.#wait("Reading the sheet's parts lists…", options, () =>
+        this.client.call((api) => api.sheetParts(sheet)),
       );
     } catch {
       return undefined;

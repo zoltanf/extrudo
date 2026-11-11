@@ -4487,6 +4487,23 @@ default of `sheetsToPdf`/`sheetToSvg`; `layoutSheet` defaults to `screen`, which
 `centreLines: false` hides its centre marks and lines; centre lines are dash-dot **built as segments** with a long
 dash at each end; a lost or invalid centre mark or line draws nothing (the browser row says why), a lost leader its
 text alone at `at`; **nothing is generated for a view by itself** (no automatic centre marks).
+**S5 lists (package 1, no UI):** items `partsList` (`view`, `at` sheet mm, `columns` from `SHEET_PARTS_COLUMNS` shown in
+the order listed, `rows` = only what was typed over a row, by body ID: `name`, `material` free text), `balloon` (`view`,
+one `anchor` never `free`, `at` view mm, `list` = a parts list of the same sheet) and `table` (`at`, column widths,
+`rows` with one cell per column) in `core/src/sheet-schema.ts`; `core/src/sheet-fields.ts` (`fillSheetFields`,
+`mapSheetFieldTexts`, `renameSheetFieldReferences`); `KernelApi.sheetParts` (`RecomputeEngine.sheetParts`,
+`sheetListBodies` in `kernel/src/sheets/views.ts`: per list its view's bodies, base view's `bodies` as listed else shown
+bodies in timeline order, with volume and tight box from `Kernel.properties`, Print Info's) and `sheets/src/parts.ts`
+(`sheetPartBodies`, `sheetPartsRows`, `sheetPartsCells`, `sheetBalloonStatus`, `layoutSheetPartsList`,
+`layoutSheetTable`, `layoutSheetBalloon`). Rules a change must keep: **a parts list's rows, quantities, sizes, masses
+and a balloon's number are computed each time, never stored**; rows merge on equal volume and box (sides sorted) **and**
+the same component name or name stem (`sheetNameStem`), typed values never split a row; a balloon's number comes from
+`SheetAnchorReport.body` (set by `resolveSheetAnchor`, kept by `keepLastAnchors`); **deleting a parts list (or its view)
+deletes its balloons** in the same step; mass needs `context.density` (an app preference, never in the document);
+**`mapSheetFieldTexts` is the one place that says which texts take fields** (text items, leader notes, table cells,
+typed title-block fields): layout fills them through it and `rewriteReferences` renames `{= …}` through it; a field
+without a value, an unknown one and a failing expression stay as typed; `{date}`/`{version}`/`{= …}` values come
+through the layout context (`date`, `version`, `evaluate`); parts list cells are one fitted line, table cells wrap.
 **S1a (modes, done, no
 behaviour change):** `EditMode` (`packages/core/src/stores.ts`) is the only spelling of the mode union (`KeymapMode` and
 `MarkingMode` alias it); `MODES` in `apps/web/src/shell/modes.ts` is one row per mode (`label`, `tabs`, `defaultTab`,
