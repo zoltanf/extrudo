@@ -16,6 +16,11 @@
  * item kind. While dragging, the moved items' paths are shifted in the DOM; the document
  * changes once, on release.
  *
+ * **Placing a view** (Base View, S2): the frame of the new view's lines follows the pointer
+ * (`[data-sheet-placing]`, its transform written directly) and a click places it
+ * (`onPlace` with the view's `at`); nothing is selected meanwhile. **Notices** (a view
+ * being drawn, a body gone) are written under their target's frame, on screen only.
+ *
  * Test hooks: the region "Sheet" (`data-sheet-canvas`, `data-sheet` the sheet ID,
  * `data-paper` "420x297", `data-zoom` "62%", `data-hover` and `data-selected` the targets),
  * each drawn item's `data-key` (the display item's `key`: `paper`, `border`, `title-block`,
@@ -23,8 +28,10 @@
  * (`data-sheet-text`), and the selection layer's frames (`[data-sheet-frame]` = target,
  * `data-state` `hover` or `selected`).
  */
+import type { Vec2 } from '@extrudo/core';
 import type { DisplayItem, DisplayList, DisplayText } from '@extrudo/io';
 import { displayPaint, displayPathData, displayTextLayer } from '@extrudo/io';
+import type { SheetViewLines } from '@extrudo/sheets';
 import { memo, type RefObject, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import {
   dragAction,
@@ -52,6 +59,14 @@ import {
   zoomText,
 } from './sheetView';
 import { sheetSnapshot } from './snapshot';
+import { placedAt } from './views';
+
+/** A view being placed: its lines (when known) at scale `k`; a click calls `onPlace`. */
+export interface SheetPlacing {
+  lines?: SheetViewLines;
+  k: number;
+  onPlace(at: Vec2): void;
+}
 
 /** What the shell can ask of the canvas: F6 and the floating bar's Fit; Report a Bug's picture. */
 export interface SheetCanvasControl {
@@ -87,6 +102,10 @@ export interface SheetCanvasProps {
    * when nothing changed (the drawn shift is undone at once).
    */
   onMove?: (targets: SheetTarget[], dx: number, dy: number) => boolean;
+  /** A view tool's frame following the pointer; selecting is off meanwhile. */
+  placing?: SheetPlacing;
+  /** What the screen says under a target (a view being drawn, a body gone). */
+  notices?: ReadonlyMap<SheetTarget, string>;
 }
 
 const NONE: readonly SheetTarget[] = [];
@@ -110,6 +129,8 @@ export function SheetCanvas({
   onHover,
   onSelect,
   onMove,
+  placing,
+  notices,
 }: SheetCanvasProps) {
   const host = useRef<HTMLElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
@@ -120,8 +141,17 @@ export function SheetCanvas({
     () => (list ? targetBoxes(list) : new Map<SheetTarget, SheetBox>()),
     [list],
   );
-  const latest = useRef({ paper, insets, preset, tool, onMenu, boxes, selected, hovered });
-  latest.current = { paper, insets, preset, tool, onMenu, boxes, selected, hovered };
+  const latest = useRef({ paper, insets, preset, tool, onMenu, boxes, selected, hovered, placing });
+  latest.current = { paper, insets, preset, tool, onMenu, boxes, selected, hovered, placing };
+  const ghost = useRef<SVGGElement>(null);
+  /** Moves the placing frame so the middle of its lines is under the sheet point. */
+  const follow = (point: [number, number]) => {
+    const p = latest.current.placing;
+    if (!p || !ghost.current) return;
+    const [x, y] = placedAt(point, p.lines?.bounds, p.k);
+    ghost.current.setAttribute('transform', `translate(${x} ${y})`);
+    ghost.current.style.display = '';
+  };
   const events = useRef({ onHover, onSelect, onMove });
   events.current = { onHover, onSelect, onMove };
   const svg = useRef<SVGSVGElement>(null);
@@ -266,7 +296,9 @@ export function SheetCanvas({
           last: { x: event.clientX, y: event.clientY },
           moved: false,
         };
-        if (event.button === 0 && !action) {
+        if (event.button === 0 && !action && latest.current.placing) {
+          // A view tool: the press places on release, never selects.
+        } else if (event.button === 0 && !action) {
           const { boxes: b, selected: chosen } = latest.current;
           const from = at(event.clientX, event.clientY);
           const target = hitTarget(b, from[0], from[1], Math.max(0.8, 5 / view.current.scale));
@@ -290,9 +322,10 @@ export function SheetCanvas({
       }}
       onPointerMove={(event) => {
         const d = drag.current;
+        if (latest.current.placing) follow(at(event.clientX, event.clientY));
         if (!d) {
           // No button down: pre-highlight what a click would take.
-          if (event.buttons !== 0) return;
+          if (event.buttons !== 0 || latest.current.placing) return;
           const [x, y] = at(event.clientX, event.clientY);
           const { boxes: b, hovered: was } = latest.current;
           const now = hitTarget(b, x, y, Math.max(0.8, 5 / view.current.scale));
@@ -341,6 +374,11 @@ export function SheetCanvas({
         if (d.button === 2 && !d.moved) {
           latest.current.onMenu?.({ x: event.clientX, y: event.clientY });
         }
+        const place = latest.current.placing;
+        if (place && d.button === 0 && !d.action && !d.moved) {
+          place.onPlace(placedAt(at(event.clientX, event.clientY), place.lines?.bounds, place.k));
+          return;
+        }
         const pick = d.select;
         if (!pick) return;
         const [x, y] = at(event.clientX, event.clientY);
@@ -386,6 +424,7 @@ export function SheetCanvas({
       }}
       onPointerLeave={() => {
         if (!drag.current && latest.current.hovered) events.current.onHover?.(undefined);
+        if (ghost.current) ghost.current.style.display = 'none';
       }}
     >
       <div
@@ -424,6 +463,27 @@ export function SheetCanvas({
               )
             );
           })}
+          {notices &&
+            [...notices].map(([target, text]) => {
+              const box = boxes.get(target);
+              return (
+                box && (
+                  <text
+                    key={target}
+                    data-sheet-notice={target}
+                    x={(box.minX + box.maxX) / 2}
+                    y={box.maxY + 4.5}
+                    textAnchor="middle"
+                    fontSize={3.2}
+                    fill="var(--x-muted)"
+                    fontFamily="Inter, sans-serif"
+                  >
+                    {text}
+                  </text>
+                )
+              );
+            })}
+          {placing && <PlacingFrame ref={ghost} placing={placing} />}
           <rect
             ref={band}
             data-sheet-band=""
@@ -486,9 +546,74 @@ const SheetSvg = memo(function SheetSvg({
   );
 });
 
-function DisplayPath({ item }: { item: DisplayItem }) {
+/**
+ * One item. Memoised by the item: layout gives back the same items for a view that did not
+ * change, so a sheet laid out again redraws only what changed.
+ */
+const DisplayPath = memo(function DisplayPath({ item }: { item: DisplayItem }) {
   const contours = item.type === 'text' ? item.outline : item.contours;
-  return <path d={displayPathData(contours)} {...displayPaint(item)} data-key={item.key} />;
+  return (
+    <path
+      d={displayPathData(contours)}
+      {...displayPaint(item)}
+      data-key={item.key}
+      data-state={item.state}
+      opacity={item.state === 'stale' ? 0.35 : undefined}
+    />
+  );
+});
+
+/**
+ * The new view's frame and lines in the accent, from the view's origin (moved with the
+ * pointer through its transform): the quick lines' box, else a placeholder's size.
+ */
+function PlacingFrame({
+  placing,
+  ref,
+}: {
+  placing: SheetPlacing;
+  ref: RefObject<SVGGElement | null>;
+}) {
+  const { lines, k } = placing;
+  const b = lines?.bounds;
+  const [x0, y0, x1, y1] = b
+    ? [k * b.min[0], -k * b.max[1], k * b.max[0], -k * b.min[1]]
+    : [-30, -20, 30, 20];
+  const d = useMemo(
+    () =>
+      lines
+        ? displayPathData(
+            lines.curves.filter((c) => c.kind !== 'hidden').flatMap((c) => c.contours),
+          )
+        : '',
+    [lines],
+  );
+  return (
+    <g ref={ref} data-sheet-placing="" style={{ display: 'none' }}>
+      <rect
+        x={x0 - FRAME_GAP}
+        y={y0 - FRAME_GAP}
+        width={x1 - x0 + 2 * FRAME_GAP}
+        height={y1 - y0 + 2 * FRAME_GAP}
+        rx={1}
+        fill="color-mix(in srgb, var(--x-accent) 6%, transparent)"
+        stroke="var(--x-accent)"
+        strokeWidth={1.5}
+        strokeDasharray="6 4"
+        vectorEffect="non-scaling-stroke"
+      />
+      {d && (
+        <path
+          d={d}
+          transform={`matrix(${k} 0 0 ${-k} 0 0)`}
+          fill="none"
+          stroke="var(--x-accent)"
+          strokeWidth={1}
+          vectorEffect="non-scaling-stroke"
+        />
+      )}
+    </g>
+  );
 }
 
 /** The space between a target and its frame, mm. */

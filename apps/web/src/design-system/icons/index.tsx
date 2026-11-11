@@ -120,6 +120,8 @@ export const ICON_NAMES = [
   'send-to-slicer',
   'render-picture',
   'sheets',
+  'base-view',
+  'projected-view',
   'new-sheet',
   'sheet-setup',
   'export-pdf',

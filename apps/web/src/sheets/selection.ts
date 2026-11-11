@@ -22,7 +22,7 @@ import {
   updateSheetItem,
   updateSheetView,
 } from '@extrudo/core';
-import { type DisplayList, flattenContour } from '@extrudo/io';
+import { type DisplayItem, type DisplayList, flattenContour } from '@extrudo/io';
 
 export type SheetTarget = string;
 
@@ -55,28 +55,55 @@ export const sheetSelection = (targets: readonly SheetTarget[]): SelectionItem[]
 export const selectedTargets = (selection: readonly SelectionItem[]): SheetTarget[] =>
   selection.filter((item) => item.kind === 'sheet').map((item) => item.id);
 
+/**
+ * Each drawn item's box, strokes included, by the item: layout gives back the same items
+ * for a view that did not change, so a sheet laid out again (a text dragged) flattens only
+ * the items that are new.
+ */
+const itemBoxes = new WeakMap<DisplayItem, SheetBox | null>();
+
+function itemBox(item: DisplayItem): SheetBox | undefined {
+  const cached = itemBoxes.get(item);
+  if (cached !== undefined) return cached ?? undefined;
+  const contours = item.type === 'text' ? item.outline : item.contours;
+  const pad = item.type === 'path' ? (item.stroke?.width ?? 0) / 2 : 0;
+  let [minX, minY, maxX, maxY] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const contour of contours) {
+    for (const [x, y] of flattenContour(contour, 0.2)) {
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+  }
+  const box =
+    minX <= maxX
+      ? { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad }
+      : null;
+  itemBoxes.set(item, box);
+  return box ?? undefined;
+}
+
 /** Each target's box: the union of its drawn items, strokes included. */
 export function targetBoxes(list: DisplayList): Map<SheetTarget, SheetBox> {
   const boxes = new Map<SheetTarget, SheetBox>();
   for (const item of list.items) {
     const target = sheetTarget(item.key);
     if (!target) continue;
-    const contours = item.type === 'text' ? item.outline : item.contours;
-    const pad = item.type === 'path' ? (item.stroke?.width ?? 0) / 2 : 0;
-    let box = boxes.get(target);
-    for (const contour of contours) {
-      for (const [x, y] of flattenContour(contour, 0.2)) {
-        box = box
-          ? {
-              minX: Math.min(box.minX, x - pad),
-              minY: Math.min(box.minY, y - pad),
-              maxX: Math.max(box.maxX, x + pad),
-              maxY: Math.max(box.maxY, y + pad),
-            }
-          : { minX: x - pad, minY: y - pad, maxX: x + pad, maxY: y + pad };
-      }
-    }
-    if (box) boxes.set(target, box);
+    const b = itemBox(item);
+    if (!b) continue;
+    const box = boxes.get(target);
+    boxes.set(
+      target,
+      box
+        ? {
+            minX: Math.min(box.minX, b.minX),
+            minY: Math.min(box.minY, b.minY),
+            maxX: Math.max(box.maxX, b.maxX),
+            maxY: Math.max(box.maxY, b.maxY),
+          }
+        : b,
+    );
   }
   return boxes;
 }

@@ -223,6 +223,10 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 
 ## Drawing
 
+### Views
+
+- [Base View](./baseView.md) — A view of the model from a direction you choose: the frame follows the pointer, a click places it.
+
 ### Sheet
 
 - [New Sheet](./newSheet.md) — Add an empty sheet after this one.
