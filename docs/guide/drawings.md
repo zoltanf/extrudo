@@ -180,8 +180,9 @@ left as you typed it.
 
 A design can have as many sheets as you like. [New Sheet](./tools/newSheet.md) adds one after
 the open sheet. The sheet tabs at the bottom switch between them: double-click a tab to rename
-it, drag it to change the order, and use its menu to duplicate, export or delete it.
-`Ctrl+PageUp` and `Ctrl+PageDown` step through them.
+it, drag it to change the order, and use its menu to duplicate, export or delete it. In the
+desktop app `Ctrl+PageUp` and `Ctrl+PageDown` step through them; a browser may keep those keys
+for its own tabs, and the sheet tabs are always clickable.
 
 With nothing selected, the right column is [Sheet Setup](./tools/sheetSetup.md): the sheet's
 name, its paper (a standard size or your own), landscape or portrait, the border, the scale the
