@@ -1,8 +1,8 @@
 # ADR-0143: Drawings: 2D sheets made from the model
 
 - **Status:** Accepted, 2026-11-10 (the owner: the 14 decisions of the plan's §12, all as
-  proposed). S1a (modes) and S0 (spikes) are done, see the amendments at the end; nothing
-  else is built. Each slice lands with an amendment here.
+  proposed). S1a (modes) and S0 (spikes) are done, and S1's document and its layout and
+  output (no UI yet), see the amendments at the end. Each slice lands with an amendment here.
 - **Task:** P6-24 (`docs/03-roadmap.md`); FR-DR-01 to FR-DR-08.
 - **Specification and mock-ups:** `docs/plans/drawings-2026-11-10.md` and the five
   `docs/plans/drawings-mock-*.html` pages beside it. This ADR records what was decided and
@@ -317,3 +317,84 @@ style inside `from.base` (structural, but further from the accepted shape: a
 rule does the same); rows in the `unique` table (the commands need the same
 rules, so they live in `sheetProblems`); a label per item kind (one more table
 per kind; callers relabel); trimming a text (spaces may be meant).
+
+## Amendment (S1, layout and output), 2026-11-11
+
+A sheet becomes one display list, written as PDF and SVG; no UI. Files:
+`packages/io/src/display.ts` (MIT), the new package `packages/sheets/` (`layout.ts`,
+`title-block.ts`, `text.ts`, `output.ts`), `measureText` in `packages/sketch/src/text`.
+
+**The display list is a layer above `writePdf`'s items, in io** (`DisplayList`,
+`DisplayPath`, `DisplayText`, `DisplayStroke`, `DisplayFill`). It keeps `PdfItem`'s paint
+model (stroke width, colour, dash, cap, join; fill and rule; a text run's string, glyph
+outlines, baseline start, cap height, advance width, angle) and differs in two things: it
+is in **sheet mm from the top-left with y down**, the document's and the screen's frame,
+and each item may carry a `key` naming what it is part of, for the screen's picking.
+`displayPdfPage` is the only place y is flipped for PDF (y → height − y, arcs' sweep and
+angles negated through io's `transformContour`); `writeDisplayPdf` and `writeDisplaySvg`
+write lists. The screen uses `displayPathData` (the path data `writeDisplaySvg` writes),
+`displayPaint` (its presentation attributes in React's spelling) and `displayTextLayer`, so
+it never derives anything of its own.
+
+**SVG text:** each run is its outlines as a `<path>` plus an invisible `<text>`
+(`fill-opacity` 0, Inter or a sans-serif, sized to the cap height, `textLength` with
+`lengthAdjust="spacingAndGlyphs"` onto the outline width), in one group after the drawing.
+Chromium printing such an SVG to PDF gives text that `pdftotext` reads back.
+
+**`@extrudo/sheets`** (GPL; `core`, `sketch`, `io`, `fonts`; no DOM): `layoutSheet(sheet,
+context)` with `context = { name?, sheets?, views? }` lays out, in order: the white paper;
+the border 10 mm in (a twentieth of the short side on a small sheet), centring marks, and
+with `zones` an even number of zones of about 50 mm, numbered left to right and lettered
+top to bottom without I and O; the title block in the lower right corner against the
+border; the views; the items. `sheetsToPdf(sheets, context)` writes one page per sheet in
+the order given, titled with `context.name`; `sheetToSvg(sheet, context)` one SVG.
+
+- **Title blocks** (`SHEET_TITLE_BLOCKS`): `simple`, 160 × 32 mm, cells `title`, `scale`,
+  `sheet`, `drawnBy`, `date`, `units`, `version` (decision 8's fields); `full`, 180 × 40 mm,
+  adds `checkedBy`, `approvedBy`, `company`, `material`, `partNumber` and `projection`. A
+  cell draws its label in capitals (1.6 mm, muted) and its value below it, shrunk to fit
+  down to 1.8 mm and then cut with an ellipsis; an empty field draws its label alone.
+  `scale` (the sheet's), `sheet` ("n / N" among `context.sheets`) and `projection` ("First
+  angle" / "Third angle") are derived and never read from `fields`. Units and version are
+  typed fields until S5's `{version}`. `sheetTitleFields(template)` lists the typed ones.
+- **Text**: Inter Regular and Bold (`SHEET_FONTS`) through `shapeText` and the new
+  `measureText` (a line's advance in cap heights, kerning included); the caller loads the
+  fonts, and layout throws if they are not loaded. A text item's first baseline is one
+  letter height below its `at`, lines are 1.6 letter heights apart, it breaks at newlines
+  and, with `width`, before a word that would end past it (a longer word breaks between
+  characters).
+- **Lines** (plan §4.2): visible and outline 0.5 mm, hidden 0.25 mm dashed 3/1.5, tangent
+  and centre 0.18 mm (centre dash-dot 8/1.5/1/1.5), border and title-block frame 0.5,
+  title-block cells and zone ticks 0.25.
+- **Views**: lines come in through `context.views`, by view ID, as `SheetViewLines`: curves
+  with a kind (`visible`, `hidden`, `outline`, `tangent`, `centre`), an optional edge name,
+  and io contours in the view's own frame (mm at 1:1, y up the sheet, origin at the view's
+  `at`), so S2 adds geometry without changing the signature. Layout scales them by the
+  view's scale (a projected view's base view's), flips y and moves them to `at`, one path
+  per kind; the base view's style `visible` (and the shaded ones, for now) leaves hidden
+  lines out, `tangentEdges` and `centreLines` false leave theirs out; `label` writes the name
+  under the lowest line, with the scale when it differs from the sheet's. A view with no
+  lines yet is a thin 60 × 40 mm frame with its name.
+- **Keys**: `paper`, `border`, `title-block`, `title-block:<field>`, `view:<id>`,
+  `item:<id>` (`SheetDisplayKey`).
+
+**Checked:** the sample (`SHEETS_OUT=<dir> pnpm vitest run packages/sheets/src/sample`:
+an A3 landscape with zones, the full block, wrapped text and two views; an A4 portrait with
+the simple block; a 150 × 100 sheet) opens in poppler (`pdfinfo`: 3 pages, A3 first, title
+set), renders as expected (`pdftoppm`, looked at each page) and gives back every string
+(`pdftotext`, Ø, ± and ° included); `rsvg-convert` draws the A3 SVG the same as the PDF.
+
+**Rejected:**
+
+- **`PdfItem` and `PdfPage` under neutral names as the display list.** One type fewer, but
+  every consumer would work in y up: the screen and SVG would flip, and so would layout
+  (sheets measure from the top-left), three flips instead of one.
+- **A display list in `@extrudo/sheets`.** The writers that read it are io's, and io must not
+  import a GPL package.
+- **Display items per view curve.** One path per view and line kind (plan §7) keeps the
+  screen's DOM small; picking a curve for a dimension (S3) uses the view's lines, not the
+  display list.
+- **A text measurer handed in through the context.** The plan routes text through the
+  text module; one function there (`measureText`) is less to wire than an interface.
+- **The ISO projection symbol in the full title block.** Words ("First angle") can't be
+  drawn the wrong way round; the symbol can come with a title-block editor.
