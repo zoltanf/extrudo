@@ -281,6 +281,9 @@ importers:
       '@extrudo/script':
         specifier: workspace:*
         version: link:../../packages/script
+      '@extrudo/sheets':
+        specifier: workspace:*
+        version: link:../../packages/sheets
       '@extrudo/sketch':
         specifier: workspace:*
         version: link:../../packages/sketch

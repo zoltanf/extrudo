@@ -175,6 +175,18 @@ export interface CommandContext {
     save(): void;
     restore(id: ViewId): void;
   };
+  /**
+   * The drawing (P6-24, ADR-0143): its sheets for Ctrl+K ("New Drawing", "Open Drawing",
+   * "Sheet: <name>"), and in the drawing F6 (fit the sheet) and the sheet tabs' keys.
+   */
+  sheets?: {
+    list: readonly { id: string; name: string }[];
+    open(id: string): void;
+    newSheets(): void;
+    openSheets(): void;
+    fit(): void;
+    step(delta: 1 | -1): void;
+  };
 }
 
 /** A plugin command as the shell offers it (`plugins/runCommand.ts` builds them). */
@@ -301,10 +313,11 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
         const command = toolCommand(id, where, ctx);
         if (id === 'importDrawing' && ctx.mode !== 'sketch') add(noDrawing(ctx, command));
         else if (id === 'joint' && (ctx.componentCount ?? 0) < 2) add(noJoint(ctx, command));
-        else if (MODEL_ONLY.has(id) && ctx.mode === 'sketch') add(modelOnly(ctx, command));
+        else if (MODEL_ONLY_TOOLS.has(id) && ctx.mode !== 'model') add(modelOnly(ctx, command));
         else add(command);
       }
     }
+    if (tab.id === 'sheet') add(toolCommand('finishDrawing', 'Drawing › Finish', ctx));
     if (tab.id === 'sketch') {
       add(toolCommand('finishSketch', 'Sketch › Finish', ctx));
       if (ctx.construction) {
@@ -383,17 +396,20 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
   if (ctx.remove) plain('delete', 'Delete', 'Edit', ctx.remove, { icon: icon(Trash2) });
 
   const view = () => ctx.viewport.getState();
-  plain('fit', 'Fit', 'View', () => view().fit(), {
+  const sheet = ctx.mode === 'sheet' ? ctx.sheets : undefined;
+  plain('fit', 'Fit', 'View', sheet ? sheet.fit : () => view().fit(), {
     icon: icon(Maximize),
-    keywords: 'View zoom all extents',
+    keywords: sheet ? 'View zoom all sheet page' : 'View zoom all extents',
   });
-  if (ctx.lookAtSelection) {
+  if (ctx.sheets) sheetCommands(ctx, ctx.sheets, plain);
+  // The camera's views mean nothing on a sheet (P6-24): the drawing offers only Fit.
+  if (ctx.lookAtSelection && ctx.mode !== 'sheet') {
     plain('lookAtSelection', 'Look at Selection', 'View', ctx.lookAtSelection, {
       icon: icon(ScanEye),
       keywords: 'View camera zoom selected selection focus face edge body',
     });
   }
-  for (const v of VIEWS) {
+  for (const v of ctx.mode === 'sheet' ? [] : VIEWS) {
     const face = FACES.find((f) => f.name === v.face);
     plain(v.id, v.label, 'View', face ? () => view().lookFrom(face.normal) : () => view().home(), {
       icon: icon(face ? Box : House),
@@ -401,7 +417,7 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     });
   }
   // Named views (ADR-0008's amendment): save the camera now, or restore one.
-  if (ctx.views) {
+  if (ctx.views && ctx.mode !== 'sheet') {
     plain('saveNamedView', 'Save Current View…', 'View', ctx.views.save, {
       icon: icon(Video),
       keywords: 'View named save camera recall orientation store',
@@ -580,12 +596,67 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
  * The Home tab's tools that work on the model (ADR-0079): the tab stays in a sketch,
  * so they are there, saying why they can't run, like the drawing import outside one.
  */
-const MODEL_ONLY: ReadonlySet<string> = new Set(['importBody', 'canvas', 'customizer']);
+export const MODEL_ONLY_TOOLS: ReadonlySet<string> = new Set([
+  'importBody',
+  'canvas',
+  'customizer',
+]);
 
 /** A model-only tool in a sketch: the command with the reason it can't run. */
 function modelOnly(ctx: CommandContext, command: AppCommand): AppCommand {
-  const reason = `Finish the sketch to use ${command.label}.`;
+  const reason = modelOnlyText(ctx.mode, command.label);
   return { ...command, unavailable: reason, run: () => ctx.notify('info', reason) };
+}
+
+/**
+ * What a model-only tool says in another mode: "Finish the drawing to use Canvas." (a
+ * label's "…" is left out before the full stop).
+ */
+export function modelOnlyText(mode: EditMode, label: string): string {
+  const finish = mode === 'sheet' ? 'Finish the drawing to use' : 'Finish the sketch to use';
+  return `${finish} ${label.replace(/…$/, '')}.`;
+}
+
+/**
+ * The drawing's commands (P6-24, plan §3.2): New Drawing and Open Drawing, a command per
+ * sheet, and in the drawing the next and previous sheet (Ctrl+PageDown, Ctrl+PageUp).
+ */
+function sheetCommands(
+  ctx: CommandContext,
+  sheets: NonNullable<CommandContext['sheets']>,
+  plain: (
+    id: string,
+    label: string,
+    group: string,
+    run: () => void,
+    extra?: Partial<AppCommand>,
+  ) => void,
+): void {
+  const sheetsIcon = <ToolIcon name="sheets" category="export" size={16} />;
+  plain('newSheets', 'New Drawing', 'Drawing', sheets.newSheets, {
+    icon: sheetsIcon,
+    keywords: 'Drawing new sheet page paper print pdf blueprint 2d engineering',
+  });
+  if (sheets.list.length > 0 && ctx.mode !== 'sheet') {
+    plain('openSheets', 'Open Drawing', 'Drawing', sheets.openSheets, {
+      icon: sheetsIcon,
+      keywords: 'Drawing open sheet page paper print pdf blueprint 2d engineering',
+    });
+  }
+  for (const sheet of sheets.list) {
+    plain(`sheet:${sheet.id}`, `Sheet: ${sheet.name}`, 'Drawing', () => sheets.open(sheet.id), {
+      icon: sheetsIcon,
+      keywords: `Drawing sheet page open ${sheet.name}`,
+    });
+  }
+  if (ctx.mode === 'sheet' && sheets.list.length > 1) {
+    plain('nextSheet', 'Next Sheet', 'Drawing', () => sheets.step(1), {
+      keywords: 'Drawing sheet tab next page',
+    });
+    plain('previousSheet', 'Previous Sheet', 'Drawing', () => sheets.step(-1), {
+      keywords: 'Drawing sheet tab previous page',
+    });
+  }
 }
 
 /** The drawing import outside a sketch: the command with the reason it can't run. */
