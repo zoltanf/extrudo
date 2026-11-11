@@ -5,6 +5,7 @@ import {
   type Sheet,
   type SheetDimensionItem,
   type SheetId,
+  type SheetItem,
   type SheetItemId,
   type SheetView,
   type SheetViewId,
@@ -16,6 +17,7 @@ import {
   hitTarget,
   keyOfTarget,
   movable,
+  moveCommands,
   moveTargets,
   selectedTargets,
   sheetSelection,
@@ -103,6 +105,9 @@ function withSheet() {
   return { store, now };
 }
 
+/** An item's `at`, for the kinds that have one (a centre mark or line has none). */
+const atOf = (item: unknown) => (item as { at?: unknown } | undefined)?.at;
+
 describe('sheet targets (selection by display key, P6-24)', () => {
   it('maps display keys to targets; the paper and the border are not selectable', () => {
     expect(sheetTarget('item:t1')).toBe('item:t1');
@@ -145,14 +150,14 @@ describe('sheet targets (selection by display key, P6-24)', () => {
     expect(movable('item:t1') && movable('view:v1')).toBe(true);
     expect(movable('title-block')).toBe(false);
     moveTargets(store, ['item:t1', 'view:v1', 'title-block'], 2.5, -1.25);
-    expect(now().items[0]?.at).toEqual([62.5, 58.75]);
+    expect(atOf(now().items[0])).toEqual([62.5, 58.75]);
     expect(now().views[0]?.at).toEqual([102.5, 83.75]);
     expect(store.getState().undoLabel).toBe('Move on sheet');
     store.getState().undo();
     expect(now()).toEqual(sheet);
     // One target is a single command, with the same label.
     moveTargets(store, ['item:t2'], 1, 0);
-    expect(now().items[1]?.at).toEqual([21, 200]);
+    expect(atOf(now().items[1])).toEqual([21, 200]);
     expect(store.getState().undoLabel).toBe('Move on sheet');
   });
 
@@ -176,12 +181,28 @@ describe('sheet targets (selection by display key, P6-24)', () => {
     // The projected view draws at its base view's 1:2: 2 mm right on the sheet is 4 model mm,
     // 3 mm down is 6 model mm down (y up).
     moveTargets(store, ['item:d1'], 2, 3);
-    expect(now().items[0]?.at).toEqual([14, 2]);
+    expect(atOf(now().items[0])).toEqual([14, 2]);
     // With its view selected too, only the view moves; the dimension follows it.
     moveTargets(store, ['view:v2', 'item:d1'], 5, 0);
     expect(now().views[1]?.at).toEqual([225, 85]);
-    expect(now().items[0]?.at).toEqual([14, 2]);
+    expect(atOf(now().items[0])).toEqual([14, 2]);
     expect(targetName(now(), 'item:d1')).toBe('Dimension');
+  });
+
+  it('leaves a centre mark where it is: it sits on its geometry and has no place of its own', () => {
+    const store = createDocumentStore(createDocument());
+    const mark: SheetItem = {
+      kind: 'centreMark',
+      id: 'c1' as SheetItemId,
+      view: 'v1' as SheetViewId,
+      anchors: [
+        {
+          ref: { kind: 'edge', id: 'e[a|b]', fingerprint: { type: 'circle', at: [0, 0, 0] } },
+        },
+      ],
+    };
+    store.getState().dispatch(addSheet({ sheet: { ...sheet, items: [mark] } }));
+    expect(moveCommands(store.getState().doc.sheets ?? [], ['item:c1'], 2, 3)).toEqual([]);
   });
 
   it('deletes items and views (with the views projected from them) as one undo step', () => {
