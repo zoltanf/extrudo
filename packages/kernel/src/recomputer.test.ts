@@ -189,6 +189,7 @@ function bind(service: KernelService) {
     removeFacesPick: service.removeFacesPick.bind(service),
     exportMeshes: service.exportMeshes.bind(service),
     exportStep: service.exportStep.bind(service),
+    storedShapeToStep: service.storedShapeToStep.bind(service),
     exportScad: service.exportScad.bind(service),
     inspect: service.inspect.bind(service),
     interference: service.interference.bind(service),

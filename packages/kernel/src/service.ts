@@ -49,6 +49,12 @@ import {
   type SheetViewResult,
   SheetViewsCancelledError,
 } from './sheets/views';
+import {
+  type ShapePlacement,
+  type StoredShapeOptions,
+  type StoredShapeStep,
+  storedShapeToStep,
+} from './stored-shape';
 import { makeTestPart, type TestPart } from './test-part';
 
 export interface KernelInfo {
@@ -204,6 +210,19 @@ export interface KernelApi {
   /** Bodies of the last finished recompute as one STEP AP242 file, each a named product. */
   exportStep(bodies: readonly StepBody[]): Promise<string>;
   /**
+   * A third-party file's stored B-rep text as STEP (P6-25 S3, ADR-0144
+   * decision 5): read, placed by `chain` (outermost first), written with our
+   * STEP writer and read back in the same call; the result measures both, so
+   * the caller can compare them. Only a kernel started as an import kernel
+   * (`KernelServiceOptions.importKernel`) runs it: any other refuses with a
+   * `KernelError`, so B-rep text never reaches a project's kernel.
+   */
+  storedShapeToStep(
+    text: string,
+    chain: readonly ShapePlacement[],
+    options?: StoredShapeOptions,
+  ): Promise<StoredShapeStep>;
+  /**
    * Bodies of the last finished recompute as an OpenSCAD file (P6-09,
    * ADR-0088): OpenSCAD code where the features translate, polyhedra at the
    * options' tessellation where they don't. Rejects if a body is no longer
@@ -340,6 +359,13 @@ export interface KernelServiceOptions {
    * `enableOpenscad()` refuses and a `.scad` import says it can't compile.
    */
   openscad?: () => ScadCompiler | Promise<ScadCompiler>;
+  /**
+   * Starts the kernel as an import's throwaway kernel (P6-25 S3, ADR-0144
+   * decision 5): only then does `storedShapeToStep` read third-party B-rep
+   * text. Set only by the import's own worker entry and by tests; a project's
+   * kernel never sets it.
+   */
+  importKernel?: boolean;
 }
 
 export class KernelService implements KernelApi {
@@ -566,6 +592,21 @@ export class KernelService implements KernelApi {
         groups,
       ),
     );
+  }
+
+  storedShapeToStep(
+    text: string,
+    chain: readonly ShapePlacement[],
+    options: StoredShapeOptions = {},
+  ): Promise<StoredShapeStep> {
+    if (!this.#options.importKernel) {
+      return Promise.reject(
+        new KernelError(
+          "This kernel doesn't read stored shapes: only an import's own kernel does (ADR-0144).",
+        ),
+      );
+    }
+    return this.#run((kernel) => storedShapeToStep(kernel, text, chain, options));
   }
 
   exportScad(options: ScadExportOptions): Promise<string> {
