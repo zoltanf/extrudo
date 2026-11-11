@@ -198,6 +198,7 @@ function bind(service: KernelService) {
     cancelCheck: () => service.cancelCheck(),
     sheetViews: service.sheetViews.bind(service),
     cancelSheetViews: () => service.cancelSheetViews(),
+    resolveSheet: service.resolveSheet.bind(service),
     debugTestPart: () => service.debugTestPart(),
     debugCrash: () => service.debugCrash(),
     stats: () => service.stats(),

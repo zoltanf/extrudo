@@ -18,7 +18,7 @@ import {
   type SheetViewId,
   SheetViewIdSchema,
 } from './ids';
-import { Vec3Schema } from './refs';
+import { GeomFingerprintSchema, GeomRefSchema, Vec3Schema } from './refs';
 import { z } from './zod';
 
 /** A point on a sheet, mm from its top-left corner, Y down. */
@@ -188,12 +188,133 @@ export const SheetTextItemSchema = z.strictObject({
 });
 export type SheetTextItem = z.infer<typeof SheetTextItemSchema>;
 
+/** The geometry kinds a sheet anchor may name. */
+export const SHEET_ANCHOR_REF_KINDS = ['vertex', 'edge', 'face'] as const;
+
+/**
+ * An anchor's reference: a vertex, an edge or a face by its persistent name
+ * (ADR-0005), always with its fingerprint, never an `index:` one (those are
+ * valid only for the mesh they were picked on), as an annotation's.
+ */
+export const SheetAnchorRefSchema = GeomRefSchema.extend({
+  kind: z.enum(SHEET_ANCHOR_REF_KINDS).describe('What the anchor is on.'),
+  fingerprint: GeomFingerprintSchema.describe(
+    'What the geometry looked like when it was picked: the fallback when the name is gone.',
+  ),
+})
+  .refine((ref) => !ref.id.startsWith('index:'), {
+    message: "is an index reference, which a sheet can't keep: pick the geometry again",
+    path: ['id'],
+  })
+  .describe('The geometry, by its persistent name, with its fingerprint.');
+
+/** Which point of an edge an anchor takes. */
+export const SHEET_ANCHOR_POINTS = ['start', 'end', 'middle', 'centre'] as const;
+export type SheetAnchorPoint = (typeof SHEET_ANCHOR_POINTS)[number];
+
+/** On a vertex, on an edge (the whole edge, or one of its points), or on a cylinder's face. */
+export const SheetRefAnchorSchema = z.strictObject({
+  ref: SheetAnchorRefSchema,
+  at: z
+    .enum(SHEET_ANCHOR_POINTS)
+    .optional()
+    .describe(
+      "An edge's start, end, middle or centre (a circle's); absent: the whole edge, the vertex, the face.",
+    ),
+});
+
+/**
+ * On the outline of a cylinder or a cone as the dimension's view sees it:
+ * `1` the outline on the side `axis × direction` points to (the face's axis
+ * with its canonical sign, the view's direction), `-1` the other one.
+ */
+export const SheetSilhouetteAnchorSchema = z.strictObject({
+  ref: SheetAnchorRefSchema,
+  silhouette: z
+    .union([z.literal(1), z.literal(-1)])
+    .describe("Which of the face's two outlines in the view: 1 or -1."),
+});
+
+/** A point of the view not tied to the model, in the view's own mm (model size, x right, y up). */
+export const SheetFreeAnchorSchema = z.strictObject({
+  free: SheetPointSchema.describe("The point in the view's own mm: model size, x right, y up."),
+});
+
+/** What a dimension measures from (ADR-0143 §4): geometry, an outline, or a free point. */
+export const SheetAnchorSchema = z
+  .union([SheetRefAnchorSchema, SheetSilhouetteAnchorSchema, SheetFreeAnchorSchema])
+  .describe('On a vertex, an edge or a face; on an outline; or a free point of the view.');
+export type SheetAnchor = z.infer<typeof SheetAnchorSchema>;
+export type SheetRefAnchor = z.infer<typeof SheetRefAnchorSchema>;
+export type SheetSilhouetteAnchor = z.infer<typeof SheetSilhouetteAnchorSchema>;
+export type SheetFreeAnchor = z.infer<typeof SheetFreeAnchorSchema>;
+
+/** The kinds of dimension. */
+export const SHEET_DIMENSION_TYPES = ['linear', 'radius', 'diameter', 'angle'] as const;
+export type SheetDimensionType = (typeof SHEET_DIMENSION_TYPES)[number];
+
+/** Which way a linear dimension measures; absent: chosen from where it is placed. */
+export const SHEET_DIMENSION_DIRECTIONS = ['horizontal', 'vertical', 'aligned'] as const;
+export type SheetDimensionDirection = (typeof SHEET_DIMENSION_DIRECTIONS)[number];
+
+/** The longest text before or after a dimension's value. */
+export const SHEET_AFFIX_MAX = 100;
+
+/**
+ * A dimension in a view (P6-24 S3, ADR-0143): measured from the model, never
+ * driving it, and its value never stored.
+ */
+export const SheetDimensionItemSchema = z.strictObject({
+  kind: z.literal('dimension').describe('A dimension.'),
+  id: SheetItemIdSchema.describe('A UUID, for life; unique in the design.'),
+  view: SheetViewIdSchema.describe('The view it measures in, on the same sheet.'),
+  type: z
+    .enum(SHEET_DIMENSION_TYPES)
+    .describe('linear: a distance; radius, diameter: a circle; angle: between two lines.'),
+  direction: z
+    .enum(SHEET_DIMENSION_DIRECTIONS)
+    .optional()
+    .describe('A linear one: horizontal, vertical or aligned; absent: from where it is placed.'),
+  anchors: z
+    .array(SheetAnchorSchema)
+    .min(1)
+    .max(2)
+    .describe('What it measures: one or two anchors, as its type takes.'),
+  at: SheetPointSchema.describe(
+    "Where its text is, in the view's own mm (model size, x right, y up); it follows the anchors when they move.",
+  ),
+  decimals: z
+    .int()
+    .min(0)
+    .max(SHEET_DECIMALS_MAX)
+    .optional()
+    .describe("Decimals shown, 0 to 4; absent: the sheet's."),
+  before: z
+    .string()
+    .max(SHEET_AFFIX_MAX)
+    .optional()
+    .describe('Text before the value (and before R or Ø), up to 100 characters.'),
+  after: z
+    .string()
+    .max(SHEET_AFFIX_MAX)
+    .optional()
+    .describe('Text after the value, up to 100 characters.'),
+  reference: z
+    .literal(true)
+    .optional()
+    .describe('A reference dimension: drawn in brackets (only as true).'),
+});
+export type SheetDimensionItem = z.infer<typeof SheetDimensionItemSchema>;
+
 /**
  * Every item kind this version knows. A later slice adds a kind by adding its
  * schema here; a file with a kind this version doesn't know loses that item
  * on load and says so (`parseLeniently`), never failing the design.
  */
-export const SheetItemSchema = z.discriminatedUnion('kind', [SheetTextItemSchema]);
+export const SheetItemSchema = z.discriminatedUnion('kind', [
+  SheetTextItemSchema,
+  SheetDimensionItemSchema,
+]);
 export type SheetItem = z.infer<typeof SheetItemSchema>;
 export type SheetItemKind = SheetItem['kind'];
 
@@ -217,7 +338,7 @@ export const SheetSchema = z.strictObject({
   views: z.array(SheetViewSchema).describe('The views, drawn in order.'),
   items: z
     .array(SheetItemSchema)
-    .describe('Texts and later dimensions and notes, drawn in order after the views.'),
+    .describe('Texts and dimensions (later notes and lists), drawn in order after the views.'),
 });
 export type Sheet = z.infer<typeof SheetSchema>;
 
@@ -272,9 +393,11 @@ const fold = (name: string) => name.toLowerCase();
  * their sheet (case-insensitively); a projected view's parent a view of the
  * same sheet, not itself, with no cycle; scale and style only on a base view;
  * a base view's two directions not zero and not parallel; a body named once
- * per view. A body a view names that the design doesn't have is not a problem
- * (it is skipped when the view is drawn), so deleting a body never touches a
- * sheet.
+ * per view; a dimension's view a view of its sheet and its anchors fitting
+ * its type (`dimensionProblems`). A body a view names that the design doesn't
+ * have is not a problem (it is skipped when the view is drawn), nor is an
+ * anchor whose geometry is gone (it is drawn detached), so deleting a body or
+ * a feature never touches a sheet.
  */
 export function sheetProblems(sheets: readonly Sheet[]): SheetProblem[] {
   const problems: SheetProblem[] = [];
@@ -357,8 +480,100 @@ export function sheetProblems(sheets: readonly Sheet[]): SheetProblem[] {
     });
     sheet.items.forEach((item, i) => {
       once(itemIds, item.id, [s, 'items', i, 'id'], `is ${item.id}, which another item has`);
+      if (item.kind !== 'dimension') return;
+      const at = [s, 'items', i];
+      if (!views.has(item.view)) {
+        problems.push({
+          path: [...at, 'view'],
+          message: `is ${item.view}, which is not a view of this sheet`,
+        });
+      }
+      for (const { path, message } of dimensionProblems(item)) {
+        problems.push({ path: [...at, ...path], message });
+      }
     });
   });
+  return problems;
+}
+
+/** "a radius", "an edge". */
+const an = (word: string) => `${/^[aeiou]/.test(word) ? 'an' : 'a'} ${word}`;
+
+/** What an anchor stands for in a dimension: a point, a line, a circle, or nothing it can take. */
+function anchorRole(anchor: SheetAnchor): 'point' | 'line' | 'circle' | 'edge' | undefined {
+  if ('free' in anchor) return 'point';
+  if ('silhouette' in anchor) return anchor.ref.kind === 'face' ? 'line' : undefined;
+  const { ref, at } = anchor;
+  if (ref.kind === 'vertex') return at === undefined ? 'point' : undefined;
+  if (ref.kind === 'face') return at === undefined ? 'circle' : undefined;
+  // An edge: one of its points, or the whole edge (a line or a circle, told when it resolves).
+  return at === undefined ? 'edge' : 'point';
+}
+
+/**
+ * Whether a dimension's anchors fit its type (ADR-0143's S3 amendment). Each
+ * anchor is a point (a vertex, an edge's `at` point, a free point), a line
+ * (a whole edge, an outline) or a circle (a whole edge, a cylinder's face):
+ *
+ * - `linear`: one whole edge (its length) or an outline, or two anchors that
+ *   are points or lines;
+ * - `radius`: one circle (a whole edge or a face);
+ * - `diameter`: one circle, or two outlines (a cylinder seen from the side);
+ * - `angle`: two lines (whole edges or outlines).
+ *
+ * A face is taken only whole for a radius or diameter, or as an outline; a
+ * vertex only whole. `direction` is for a linear dimension only. Whether a
+ * whole edge is a line or a circle is the geometry's to tell, when it resolves.
+ */
+export function dimensionProblems(item: SheetDimensionItem): SheetProblem[] {
+  const problems: SheetProblem[] = [];
+  const roles = item.anchors.map(anchorRole);
+  roles.forEach((role, a) => {
+    if (role !== undefined) return;
+    const anchor = item.anchors[a] as SheetRefAnchor | SheetSilhouetteAnchor;
+    const message =
+      'silhouette' in anchor
+        ? `is an outline of ${an(anchor.ref.kind)}: only a face has outlines`
+        : `takes the ${anchor.at} of ${an(anchor.ref.kind)}: only an edge has one`;
+    problems.push({ path: ['anchors', a], message });
+  });
+  if (problems.length > 0) return problems;
+  const n = roles.length;
+  const lineLike = (r: (typeof roles)[number]) => r === 'line' || r === 'edge';
+  const circleLike = (r: (typeof roles)[number]) => r === 'circle' || r === 'edge';
+  const outline = (a: SheetAnchor) => 'silhouette' in a;
+  let fits: boolean;
+  let wants: string;
+  switch (item.type) {
+    case 'linear':
+      fits = n === 1 ? lineLike(roles[0]) : roles.every((r) => r === 'point' || lineLike(r));
+      wants = 'a whole edge or an outline, or two points, edges or outlines';
+      break;
+    case 'radius':
+      fits = n === 1 && circleLike(roles[0]);
+      wants = 'one whole edge or a face';
+      break;
+    case 'diameter':
+      fits = n === 1 ? circleLike(roles[0]) : item.anchors.every(outline);
+      wants = 'one whole edge or a face, or two outlines';
+      break;
+    case 'angle':
+      fits = n === 2 && roles.every(lineLike);
+      wants = 'two whole edges or outlines';
+      break;
+  }
+  if (!fits) {
+    problems.push({
+      path: ['anchors'],
+      message: `don't fit ${an(item.type)} dimension: it takes ${wants}`,
+    });
+  }
+  if (item.direction !== undefined && item.type !== 'linear') {
+    problems.push({
+      path: ['direction'],
+      message: `is set on ${an(item.type)} dimension: only a linear one has a direction`,
+    });
+  }
   return problems;
 }
 

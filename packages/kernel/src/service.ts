@@ -7,6 +7,8 @@ import type {
   GeomRef,
   Joint,
   JointReport,
+  Sheet,
+  SheetAnchors,
 } from '@extrudo/core';
 import type { ScadCompiler, ScadParametersResult } from '@extrudo/openscad';
 import { kernelFeatures } from './features';
@@ -260,6 +262,14 @@ export interface KernelApi {
   ): Promise<SheetViewResult[]>;
   /** Stops every running `sheetViews` before its next view. */
   cancelSheetViews(): Promise<void>;
+  /**
+   * A sheet's dimension anchors against the bodies at the marker of the last
+   * finished recompute (P6-24 S3, ADR-0143's S3 amendment): per dimension, per
+   * anchor, `ok`, `moved` or `detached` and the 3D geometry it stands for,
+   * which `@extrudo/sheets` measures and lays out. Never rejects for a lost
+   * anchor. Evaluates nothing.
+   */
+  resolveSheet(sheet: Sheet): Promise<SheetAnchors>;
   /** Builds, measures and meshes the P0-02 test part. */
   debugTestPart(): Promise<TestPart>;
   /** Aborts the WASM instance, to exercise crash recovery (NFR-03). */
@@ -657,6 +667,10 @@ export class KernelService implements KernelApi {
 
   async cancelSheetViews(): Promise<void> {
     this.#sheetRuns++;
+  }
+
+  resolveSheet(sheet: Sheet): Promise<SheetAnchors> {
+    return this.#run(() => this.#engineOf().resolveSheet(sheet));
   }
 
   async debugTestPart(): Promise<TestPart> {

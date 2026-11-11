@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import type { BodyId, SheetItemId, SheetViewId } from './ids';
 import { loadDocument, loadNotice } from './migrations';
 import { DocumentSchema, type ExtrudoDocument } from './schema';
-import { projectedFrom, type Sheet, sheetItemView, sheetPaperSize } from './sheet-schema';
+import {
+  dimensionProblems,
+  projectedFrom,
+  type Sheet,
+  type SheetDimensionItem,
+  sheetItemView,
+  sheetPaperSize,
+} from './sheet-schema';
 import { front, projected, sampleDocument, sheet } from './testing';
 
 const vid = (id: string) => id as SheetViewId;
@@ -268,5 +275,120 @@ describe('loading a sheet item of a kind this version does not know (ADR-0143)',
     const damaged = JSON.parse(JSON.stringify(withSheets([full()])));
     damaged.sheets[0].items[0].size = -1;
     expect(() => loadDocument(damaged)).toThrow(/damaged/);
+  });
+});
+
+describe('dimension items (ADR-0143, S3)', () => {
+  const fp = { type: 'line', at: [0, 0, 5] as [number, number, number], size: 10 };
+  const edge = (id = 'e[a|b]') => ({ ref: { kind: 'edge' as const, id, fingerprint: fp } });
+  const face = (id = 'f[c]') => ({
+    ref: {
+      kind: 'face' as const,
+      id,
+      fingerprint: { type: 'cylinder', at: [0, 0, 0] as [number, number, number] },
+    },
+  });
+  const vertex = {
+    ref: {
+      kind: 'vertex' as const,
+      id: 'v[a|b|c]',
+      fingerprint: { type: 'point', at: [1, 2, 3] as [number, number, number] },
+    },
+  };
+  const dim = (extra: Partial<SheetDimensionItem> = {}): SheetDimensionItem => ({
+    kind: 'dimension',
+    id: iid('d1'),
+    view: vid('v1'),
+    type: 'linear',
+    anchors: [edge()],
+    at: [0, 20],
+    ...extra,
+  });
+  const on = (...items: SheetDimensionItem[]) =>
+    withSheets([sheet('s1', 'A', { views: [front()], items })]);
+
+  it('reads back every type and anchor kind, with every option, through JSON', () => {
+    const doc = on(
+      dim({ direction: 'horizontal', decimals: 2, before: '2× ', after: ' max', reference: true }),
+      dim({ id: iid('d2'), anchors: [{ ...edge(), at: 'start' }, vertex] }),
+      dim({ id: iid('d3'), anchors: [{ free: [5, 5] }, { ...edge(), at: 'centre' }] }),
+      dim({ id: iid('d4'), type: 'radius', anchors: [edge()] }),
+      dim({ id: iid('d5'), type: 'diameter', anchors: [face()] }),
+      dim({
+        id: iid('d6'),
+        type: 'diameter',
+        anchors: [
+          { ...face(), silhouette: 1 },
+          { ...face(), silhouette: -1 },
+        ],
+      }),
+      dim({ id: iid('d7'), type: 'angle', anchors: [edge('e1'), { ...face(), silhouette: 1 }] }),
+    );
+    const parsed = DocumentSchema.safeParse(JSON.parse(JSON.stringify(doc)));
+    expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+    expect(parsed.data).toEqual(doc);
+    expect(sheetItemView(dim())).toBe('v1');
+  });
+
+  it('refuses a ref without a fingerprint, an index ref, and a kind no anchor takes', () => {
+    const bare = { ref: { kind: 'edge', id: 'e1' } };
+    const index = { ref: { ...edge().ref, id: 'index:edge:3' } };
+    const plane = { ref: { kind: 'plane', id: 'origin:xy', fingerprint: fp } };
+    const found = [bare, index, plane].map((anchor) =>
+      issues(on(dim({ anchors: [anchor as never] }))).join('\n'),
+    );
+    expect(found[0]).toMatch(/sheets\.0\.items\.0\.anchors\.0/);
+    expect(found[1]).toMatch(/index reference/);
+    expect(found[2]).toMatch(/sheets\.0\.items\.0\.anchors\.0/);
+  });
+
+  it('refuses a view of another sheet or none, and a direction on anything but a linear one', () => {
+    const other = withSheets([
+      sheet('s1', 'A', { views: [front()] }),
+      sheet('s2', 'B', { items: [dim()] }),
+    ]);
+    expect(issues(other)).toEqual([
+      'sheets.1.items.0.view is v1, which is not a view of this sheet',
+    ]);
+    expect(issues(on(dim({ type: 'radius', direction: 'aligned' })))).toEqual([
+      'sheets.0.items.0.direction is set on a radius dimension: only a linear one has a direction',
+    ]);
+  });
+
+  it('refuses anchors that do not fit the type', () => {
+    const cases: [Partial<SheetDimensionItem>, string][] = [
+      [{ anchors: [vertex] }, "anchors don't fit a linear dimension"],
+      [{ anchors: [{ ...edge(), at: 'middle' }] }, "anchors don't fit a linear dimension"],
+      [{ anchors: [face()] }, "anchors don't fit a linear dimension"],
+      [{ type: 'radius', anchors: [edge(), edge('e2')] }, "anchors don't fit a radius"],
+      [{ type: 'radius', anchors: [{ ...face(), silhouette: 1 }] }, "anchors don't fit a radius"],
+      [
+        { type: 'diameter', anchors: [edge(), { ...face(), silhouette: 1 }] },
+        "anchors don't fit a diameter",
+      ],
+      [{ type: 'angle', anchors: [edge()] }, "anchors don't fit an angle"],
+      [{ type: 'angle', anchors: [edge(), { free: [0, 0] }] }, "anchors don't fit an angle"],
+      [{ anchors: [{ ...vertex, at: 'start' }, edge()] }, 'anchors.0 takes the start of a vertex'],
+      [{ anchors: [{ ...face(), at: 'centre' }, edge()] }, 'anchors.0 takes the centre of a face'],
+      [{ anchors: [{ ...edge(), silhouette: 1 }, edge()] }, 'anchors.0 is an outline of an edge'],
+    ];
+    for (const [extra, message] of cases) {
+      expect(issues(on(dim(extra))).join('\n'), JSON.stringify(extra)).toMatch(
+        new RegExp(`sheets\\.0\\.items\\.0\\.${message}`),
+      );
+    }
+    expect(issues(on(dim({ anchors: [] })))).not.toEqual([]);
+    expect(issues(on(dim({ anchors: [edge(), edge(), edge()] })))).not.toEqual([]);
+    expect(dimensionProblems(dim({ type: 'angle', anchors: [edge(), edge('e2')] }))).toEqual([]);
+  });
+
+  it('refuses out-of-range decimals and a long affix', () => {
+    expect(issues(on(dim({ decimals: 5 })))).not.toEqual([]);
+    expect(issues(on(dim({ decimals: 1.5 })))).not.toEqual([]);
+    expect(issues(on(dim({ before: 'x'.repeat(101) })))).not.toEqual([]);
+  });
+
+  it('accepts an anchor whose geometry the design no longer has (it is drawn detached)', () => {
+    expect(issues(on(dim({ anchors: [edge('e[gone|gone]')] })))).toEqual([]);
   });
 });
