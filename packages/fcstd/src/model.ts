@@ -306,7 +306,8 @@ function propertyValue(p: XmlElement, type: string, what: string, ctx: Context):
       return { kind: 'integer', value: integer(what, a.value) };
     }
     case 'Float': {
-      const unit = UNITS[type];
+      // The type is the file's text: only the table's own keys count (not `constructor`).
+      const unit = Object.hasOwn(UNITS, type) ? UNITS[type] : undefined;
       return { kind: 'float', value: finite(what, a.value) ?? 0, ...(unit ? { unit } : {}) };
     }
     case 'Bool':

@@ -278,6 +278,26 @@ describe('hostile values', () => {
     ]);
   });
 
+  it('reads a property type named like an object member as no unit', () => {
+    const doc = readFcstd(
+      docWith(
+        documentXml([
+          {
+            name: 'A',
+            type: 'Part::Box',
+            props: [
+              prop('Length', 'constructor', '<Float value="2"/>'),
+              prop('Width', '__proto__', '<Float value="3"/>'),
+            ],
+          },
+        ]),
+      ),
+    );
+    const a = doc.byName.get('A');
+    expect(a?.properties.Length?.value).toEqual({ kind: 'float', value: 2 });
+    expect(a?.properties.Width?.value).toEqual({ kind: 'float', value: 3 });
+  });
+
   it('ends the final-shape walk on links to nothing and on cycles', () => {
     const xlink = (target: string) =>
       prop('LinkedObject', 'App::PropertyXLink', `<XLink file="" stamp="" name="${target}"/>`);
