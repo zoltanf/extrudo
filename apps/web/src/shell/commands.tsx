@@ -205,7 +205,7 @@ const icon = (Icon: typeof Box) => <Icon size={16} strokeWidth={1.75} />;
  * drawing becomes the open sketch's curves, so there is nothing for it to
  * join. The tile is there either way and says this.
  */
-export const DRAWING_IMPORT_UNAVAILABLE = 'Open a sketch to import a drawing into it.';
+export const DRAWING_IMPORT_UNAVAILABLE = 'Open a sketch to import an SVG or DXF file into it.';
 
 const VIEWS: { id: string; face?: FaceName; label: string }[] = [
   { id: 'viewHome', label: 'Home View' },
@@ -615,6 +615,16 @@ function modelOnly(ctx: CommandContext, command: AppCommand): AppCommand {
 export function modelOnlyText(mode: EditMode, label: string): string {
   const finish = mode === 'sheet' ? 'Finish the drawing to use' : 'Finish the sketch to use';
   return `${finish} ${label.replace(/…$/, '')}.`;
+}
+
+/**
+ * Why the tool `id` doesn't run in `mode`: a model-only tool's message in a sketch or the
+ * drawing (its tile, search result or key), else `undefined`. Any ID may come in (a
+ * plugin's feature is not in `TOOLS`); only a model-only tool's label is read.
+ */
+export function modelOnlyReason(mode: EditMode, id: string): string | undefined {
+  if (mode === 'model' || !MODEL_ONLY_TOOLS.has(id)) return undefined;
+  return modelOnlyText(mode, TOOLS[id as ToolId].label);
 }
 
 /**

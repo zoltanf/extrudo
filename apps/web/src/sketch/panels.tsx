@@ -1061,8 +1061,8 @@ export function ImportDrawingPanel({ store, host }: ImportDrawingPanelProps) {
         }
       }}
     >
-      <FloatingPanel label="Import drawing">
-        <h2 className="text-base font-semibold">Import drawing</h2>
+      <FloatingPanel label="Import SVG/DXF">
+        <h2 className="text-base font-semibold">Import SVG/DXF</h2>
         <p className="truncate text-sm text-muted" title={draft.fileName}>
           {draft.fileName || 'No file'}
         </p>

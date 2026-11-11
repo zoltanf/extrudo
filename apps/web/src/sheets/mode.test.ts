@@ -12,6 +12,7 @@ import { memoryPreferences } from '../platform';
 import { createSketchOn } from '../sketch/mode';
 import { createViewportStore } from '../viewport/store';
 import { copyName, copySheet, newSheet, nextSheetName, sheetNameProblem } from './defaults';
+import { defaultExportName, sheetExportPlan } from './exportSheets';
 import {
   activeSheet,
   addNewSheet,
@@ -28,6 +29,7 @@ import {
 } from './mode';
 import { sheetStatus } from './SheetTabs';
 import { fitSheet, panSheet, sheetPoint, TRUE_SIZE, zoomSheetAt, zoomText } from './sheetView';
+import { snapshotSize } from './snapshot';
 
 const DAY = new Date(2026, 10, 11);
 
@@ -298,5 +300,59 @@ describe('the sheet on screen (pan and zoom)', () => {
     expect(zoomSheetAt({ x: 0, y: 0, scale: TRUE_SIZE }, 0.001, 0, 0).scale).toBeCloseTo(
       0.05 * TRUE_SIZE,
     );
+  });
+});
+
+describe('the export plan (mock-up 4)', () => {
+  const doc = (() => {
+    const base = createDocument();
+    const a = { ...newSheet(base, 'a' as SheetId, DAY), name: 'Assembly' };
+    const b = {
+      ...newSheet(base, 'b' as SheetId, DAY, { size: 'A4', orientation: 'portrait' }),
+      name: 'Lid',
+    };
+    return { name: 'Box: lid/base', sheets: [a, b] };
+  })();
+  const ids = (...list: string[]) => new Set(list as SheetId[]);
+
+  it('writes one PDF of the chosen sheets, in the drawing’s order', () => {
+    expect(sheetExportPlan(doc, ids('b', 'a'), 'pdf', 'Box')).toMatchObject({
+      files: ['Box.pdf'],
+      summary: '2 pages · A3 landscape, A4 portrait',
+    });
+    expect(sheetExportPlan(doc, ids('b', 'a'), 'pdf', 'Box').sheets.map((s) => s.id)).toEqual([
+      'a',
+      'b',
+    ]);
+  });
+
+  it('writes an SVG per sheet, named after the sheet when there are several', () => {
+    expect(sheetExportPlan(doc, ids('a', 'b'), 'svg', 'Box').files).toEqual([
+      'Box - Assembly.svg',
+      'Box - Lid.svg',
+    ]);
+    expect(sheetExportPlan(doc, ids('b'), 'svg', 'Box')).toMatchObject({
+      files: ['Box.svg'],
+      summary: '1 SVG file · A4 portrait',
+    });
+    expect(sheetExportPlan(doc, ids(), 'svg', 'Box')).toMatchObject({
+      files: [],
+      summary: 'Choose at least one sheet.',
+    });
+  });
+
+  it('names the file after the design, and the sheet for one of several; never a path', () => {
+    expect(defaultExportName(doc)).toBe('Box: lid/base');
+    expect(defaultExportName(doc, ['b' as SheetId])).toBe('Box: lid/base - Lid');
+    expect(sheetExportPlan(doc, ids('a'), 'pdf', defaultExportName(doc)).files).toEqual([
+      'Box lid base.pdf',
+    ]);
+  });
+});
+
+describe('the sheet’s picture for Report a Bug', () => {
+  it('keeps the paper’s shape, its longer side the size asked for', () => {
+    expect(snapshotSize({ width: 420, height: 297 }, 1600)).toEqual({ width: 1600, height: 1131 });
+    expect(snapshotSize({ width: 210, height: 297 }, 1600)).toEqual({ width: 1131, height: 1600 });
   });
 });

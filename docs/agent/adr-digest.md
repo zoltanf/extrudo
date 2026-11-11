@@ -4399,7 +4399,7 @@ user parameter"; shown, such a row has `FollowsMark` (link icon, title "Follows 
 the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
 clicks the Show line when a row is hidden. No schema change.
 
-ADR-0143 (the owner, 2026-11-10; **accepted; S1a modes and S0 spikes done, S1's document and layout built, its UI not**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
+ADR-0143 (the owner, 2026-11-10; **accepted; S1a modes, S0 spikes and S1 done, S2's kernel views built**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
 made from the model. The detailed spec is `docs/plans/drawings-2026-11-10.md` (mock-ups: `docs/plans/drawings-mock-*.html`);
 each slice (S0 spikes, S1a modes, S1 sheets, S2 views, S3 dimensions, S4 notes, S5 lists, S6 outside) amends the ADR and
 adds its files and rules to this paragraph. Rules already fixed: **words:** the interface says "Drawing" (mode, tab) and
@@ -4427,8 +4427,8 @@ intervals are already 3D parameters (never convert them with `Parameter3d`); spl
 outliner's `NewSOldS`; a smooth edge or seam a face turns away at is an outline that keeps its edge. `hlrPolySpans`
 (`HLRBRep_PolyAlgo`, milliseconds) may draw a view first, but only the exact result feeds dimensions and snapping.
 `writePdf(pages)` (`packages/io/src/pdf.ts`) takes paths and `text` items that carry the caller's glyph outlines **and**
-the string: outlines filled, the string invisible (`3 Tr`) in non-embedded Courier (monospaced: no width table; Adobe's Helvetica widths would need
-a NOTICE entry), WinAnsi, stretched with `Tz` to the outline width; keep it dependency-free beyond fflate, deterministic, and keep text selectable (check readers with the
+the string: outlines filled, the string invisible (`3 Tr`) in non-embedded Courier (monospaced: no width table; decided 2026-11-11, Courier stays: Adobe's Helvetica widths
+are rejected, third-party data needing a NOTICE entry for slightly better selection boxes), WinAnsi, stretched with `Tz` to the outline width; keep it dependency-free beyond fflate, deterministic, and keep text selectable (check readers with the
 sample: `PDF_OUT=<file> pnpm vitest run packages/sketch/src/text/pdf-sample`). Gated tools: `HLR_BENCH=1` (+
 `HLR_METHODS=1`) `pnpm vitest run packages/kernel/src/hlr-bench` re-times HLR; `HLR_PDF=<file>` (+ `HLR_POLY=1`) `pnpm
 vitest run packages/kernel/src/hlr-views` draws views from the spans to look at.
@@ -4520,7 +4520,21 @@ never read `fields`; sizes are cap heights; text only through `@extrudo/sketch/t
 `SHEET_FONTS` (Inter Regular and Bold), which the caller loads; every item carries a `SheetDisplayKey` (`paper`,
 `border`, `title-block`, `title-block:<field>`, `view:<id>`, `item:<id>`); layout is pure and deterministic (golden
 `packages/sheets/src/golden/small-sheet.svg`, `UPDATE_GOLDEN=1`). Sample: `SHEETS_OUT=<dir> pnpm vitest run
-packages/sheets/src/sample` writes `sheets.pdf` and one SVG per sheet.
+packages/sheets/src/sample` writes `sheets.pdf` and one SVG per sheet. **S1 the mode (done):** `EditMode` `'sheet'` with
+`activeSheetId`; `apps/web/src/sheets/` holds `mode.ts` (`openSheet`, `openSheets`, `finishDrawing`, `leaveSketch`,
+`keepSheetOpen`, `createSheet`, `addNewSheet`, `duplicateSheet`, `deleteSheet`, `renameSheet`, `moveSheetTo`, `stepSheet`,
+`changeSheet`), `selection.ts` (targets by display key), `exportSheets.ts` and the lazy `SheetWorkspace` (`SheetCanvas`,
+`SheetSetup`, `SheetTabs`, `SheetsTree`, `NewSheetsDialog`, `SheetExportDialog`); UI spec §4a. Rules a change must keep:
+**`sheet` in code, except the tool `finishDrawing`**; every sheet command calls `leaveSketch` before its first dispatch
+and is one undo step with its own label, Finish Drawing none; undo in the mode is a plain undo (never `reopenSketch`);
+the screen draws `layoutSheet`'s list and nothing of its own, and moves the paper through the DOM, not React state;
+**selection is by display key** (`item:<id>`, `view:<id>`, `title-block`; session item `{ kind: 'sheet', id }`), never by
+item kind, and a multi-target move or delete is one undo step (`runAsOneStep`); an item tied to a view moves in the
+view's frame (scaled, y flipped) and not again with its view; `@extrudo/sheets` loads lazily only
+(`SheetWorkspace`, `exportSheets`); the model's browser folders stay mounted (hidden `Activity`) in the mode; a tool
+that enters or leaves the mode or only opens a dialog is in `NOT_REPEATABLE`; a new model-only Home tool joins
+`MODEL_ONLY_TOOLS`; S2 to S5 put their tools on the Drawing tab, in `SHEET_SLOTS` and in AppShell's `run()` beside
+`newSheet`. e2e: `e2e/sheets.spec.ts`.
 
 ADR-0144 (the owner, 2026-11-11): **FreeCAD file import (`.FCStd`), with history** (P6-25; slices S1–S13 in the ADR,
 background in `docs/plans/freecad-import-2026-11-10.md`). `packages/fcstd` (`@extrudo/fcstd`, pure TS; kernel test-only)
@@ -4550,3 +4564,23 @@ the array first and writes past it) — the import's throwaway kernel and time b
 `read-brep-hostile.test.ts` keeps them as `it.skip`. Every hostile case there must end in a shape or a `KernelError`
 under 5 s with `liveShapes` unchanged and the good box readable next. A new check must keep all of the library's
 stored shapes reading (S1: all of them, see the amendment).
+
+**ADR-0144, S2 (reader):** `packages/fcstd` (`@extrudo/fcstd`, deps `fflate` only so far; registered in
+`scripts/check-boundaries.mjs`) reads an `.FCStd` into plain data and knows nothing of Extrudo's document, API or
+kernel; the format is `packages/fcstd/FORMAT.md` (update it with anything newly read). `archive.ts` `unzipFcstd` walks
+the central directory itself and checks every entry before inflating any (`MAX_ENTRIES` 20,000, `MAX_ENTRY_BYTES`
+128 MB, `MAX_TOTAL_BYTES` 512 MB declared, `MAX_RATIO` 500 + 4 kB; stored/deflate only; ZIP64, encryption, several
+disks, shared local headers refused); entries inflate **only on `get`**, streaming into the declared size, which they
+must fill, CRC-32 checked; names are keys only (a non-plain name or a second entry of a name is left out with a
+problem). `xml.ts` is our own reader: no DTD, no entity but the five predefined and numeric references, limits
+`MAX_DEPTH` 256, `MAX_ATTRIBUTES` 256, `MAX_NODES` 4 M, a tree in one forward pass, null-prototype attribute records
+(keep them so: names come from the file). `model.ts` `readFcstd` decodes a property **by its value element, never its
+declared type**; numbers through `finite` (a bad number drops that property with a problem, never the file); an unknown
+element is kept raw (`kind: 'unknown'`) and counted in `unknownTypes`, never an error; sketch geometry and constraints
+stay raw records (S4 interprets them); a Python proxy's value is never decoded. Stored shapes: follow the property's
+`file` attribute (`storedShapeEntry`), never derive an entry name; `storedShapeText` never parses B-rep text (only the
+import's kernel does) and gives `undefined` plus a problem for empty, missing, binary or non-B-rep entries.
+`finalShapes` (decision 7, rule in FORMAT.md) is O(objects + links) with indexes built once, ends on container loops
+and link cycles (`MAX_LINK_HOPS` 32) with a problem, and must keep the library's count (383 objects, the same per
+file as the investigation's; change the rule only with the corpus run's new numbers). Everything left out goes to
+`FcDocument.problems`. `corpus.test.ts` runs with `FCSTD_SAMPLES` (`FCSTD_REPORT`, `FCSTD_CENSUS` optional).

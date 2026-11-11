@@ -1716,8 +1716,11 @@ end to end, faster than in established desktop CAD.
   - [x] S1a Modes: `'model' | 'sketch'` becomes an `EditMode` type and a per-mode table. No
     behaviour change; every existing test passes untouched. Done 2026-11-10: `EditMode`,
     `MODES` (`apps/web/src/shell/modes.ts`), `enterMode`/`exitMode` (ADR-0143's S1a amendment).
-  - [ ] S1 Sheets: schema, commands, cascades; the mode; Sheet Setup, border, title block,
-    text; Export PDF/SVG; Import Drawing renamed Import SVG/DXF.
+  - [x] S1 Sheets: schema, commands, cascades; the mode; Sheet Setup, border, title block,
+    text; Export PDF/SVG; Import Drawing renamed Import SVG/DXF. Done 2026-11-11: the
+    document, layout and output, and the Drawing mode (ADR-0143's three S1 amendments); a
+    text item is drawn, selected, moved, deleted and exported, but no tool in the app places
+    one yet.
   - [ ] S2 Views: the facade's spans, the view evaluator, the worker call and its cache;
     Base and Projected View; Standard views.
   - [ ] S3 Dimensions: anchors resolved; the Dimension tool; detached and moved states.
@@ -1740,8 +1743,8 @@ end to end, faster than in established desktop CAD.
   - [x] S1 Kernel: `readBrep` (limits, docs, tests); the STEP writer keeps the solid of a
     shape whose root carries a location. *Done 2026-11-11 (ADR-0144's S1 amendment,
     ADR-0034's fourth amendment).*
-  - [ ] S2 Reader package `@extrudo/fcstd`: archive, XML, object model, final-shape rule,
-    `FORMAT.md`.
+  - [x] S2 Reader package `@extrudo/fcstd`: archive, XML, object model, final-shape rule,
+    `FORMAT.md` (2026-11-11; ADR-0144's S2 amendment).
   - [ ] S3 Shapes-only import end to end: final shapes with names, colours and visibility;
     the app flow and report; the cadmpeg route no longer takes this format.
   - [ ] S4 Sketches: geometry, constraints, placement.

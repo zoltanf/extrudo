@@ -96,7 +96,7 @@ brief, voice) is in **`05-brand.md`**. In short:
   printing "mode".
 - **Tabs** (ADR-0079): `HOME` (the design as a whole: New Design, All
   Designs; Save Version, Version History; **Import**: Import .extrudo, Import
-  Model, Import Drawing, Canvas; **Export**: Export .extrudo, Export as Script,
+  Model, Import SVG/DXF, Canvas; **Export**: Export .extrudo, Export as Script,
   Export Model, Save to Linked Folder (two groups since the owner's UI
   review 3, R3-09, where there was one Files group); Parameters, Customizer),
   `SOLID` (default: Create, Primitives, Features, Pattern, Program, Component),
@@ -110,7 +110,8 @@ brief, voice) is in **`05-brand.md`**. In short:
   Export Sketch. A sketch selects SKETCH whichever tab was selected, and
   finishing it brings the model's tabs back with SOLID selected. Home's
   model-only tools (Import, Canvas, Customizer) say "Finish the sketch to use
-  …" in a sketch.
+  …" in a sketch: in search, by their keys, and as a message when their tile is
+  clicked, as the drawing's "Finish the drawing to use …" does.
 - **Toolbars fit the window** (ADR-0079 §3): when the selected tab's groups
   are wider than the window, the group with the most visible tiles moves its
   last tile to the front of its ▾ menu, one at a time (equally full: the
@@ -885,6 +886,72 @@ no text shown the tab alone is the callout, rounded on all four corners. A
   cursor. Datum projections are not drawn; they show
   while hovered or selected.
 
+## 4a. Drawing mode (P6-24, ADR-0143)
+
+A design's 2D sheets, made from the model (slice S1: sheets, Sheet Setup, the
+title block, text items and export; views, dimensions and notes come with S2 to
+S5). The UI says "drawing" and "sheet"; code says `sheet`.
+
+- **Ways in:** Make › **Drawing** (New drawing when the design has no sheet,
+  else the sheet edited last); the browser's **Drawings** folder below
+  Annotations (a row "n · name" with its size; double-click or Enter opens;
+  its menu has Open, Rename, Duplicate, Export and Delete); Ctrl+K "New
+  Drawing", "Open Drawing" and "Sheet: name". Entering, and any sheet command
+  run from a sketch, ends the open sketch (one undo step), a waiting Create
+  Sketch and a feature dialog first.
+- **New drawing** (mock-up 2): paper, orientation, title block (Simple, Full,
+  None) and first or third angle; one empty sheet. A new sheet is A3
+  landscape, 1:1, first angle, one decimal, the simple title block, a border
+  without zones, with the design's name, today's date and the units filled in.
+  "Drawn by" is never filled in by itself: the last name typed there is
+  offered as a "Use …" button.
+- **The screen:** tabs Home and **Drawing** (New Sheet, Sheet Setup, Export
+  PDF, Finish Drawing). The sheet takes the 3D view's place (the view stays
+  mounted underneath, inert): white paper in both themes with a shadow, a
+  floating bar with Select, Pan, Zoom, Fit and the zoom level. Pan and zoom
+  follow the mouse preset's bindings (no orbit), the wheel zooms at the
+  pointer, F6 fits the sheet. Right-click opens the marking menu with the
+  sheet's wedges. Esc stops Pan or Zoom, then clears the selection; it never
+  leaves the mode.
+- **Sheet tabs** replace the timeline: "n · name" with a page in the sheet's
+  orientation; a click switches, double-click or F2 renames, a drag onto
+  another tab moves the sheet, `+` adds one; the menu has Rename, Duplicate,
+  Export This Sheet and Delete. **Ctrl+PageUp / Ctrl+PageDown** step through
+  them; a browser may keep those keys for its own tabs, and the sheet tabs are
+  always clickable. The status text and the bell stay on the right.
+- **The browser** lists the Sheets tree (each sheet with its views and title
+  block), then Bodies. The model's folders keep their open or closed state
+  for when the drawing ends.
+- **Selecting on the sheet** (Select, no nav tool), by what each drawn item
+  belongs to, so it is the same for every item kind: the pointer
+  pre-highlights the item, view or title block under it; a click selects it,
+  Shift or Ctrl/⌘ toggles; a drag on empty paper selects what lies wholly in
+  its box; a click on empty paper clears. A drag on a selected item or view
+  moves the selection; the arrow keys nudge it 1 mm (10 mm with Shift);
+  Delete deletes the selected items and views (a view with the views
+  projected from it). The paper and the border can't be selected; the title
+  block can't be moved or deleted (Sheet Setup's Title block "None" removes
+  it). A selected view shows its name in a tag above its frame.
+- **The right column** is Sheet Setup with nothing selected (name, paper or a
+  custom size, orientation, border and zones, default scale, decimals,
+  projection, title block and its typed fields, Finish Drawing); a selection
+  card (its name, Delete) otherwise; the title block alone selected shows its
+  template and fields.
+- **Undo:** every sheet edit is one undo step with its own label; Finish
+  Drawing is none. Undo in the drawing is a plain undo (it doesn't reopen a
+  sketch finished before). An undo that takes the open sheet away opens its
+  neighbour, or ends the drawing with the last sheet.
+- **Export drawing** (Export PDF, Ctrl+E; Export This Sheet): the sheets as
+  checkboxes, **PDF** (one file, a page per chosen sheet) or **SVG** (a file
+  per sheet), the file name and a summary ("2 pages · A3 landscape, A4
+  landscape"); no sheet chosen can't export. The format is remembered.
+- **Model-only tools** (Import, Canvas, Customizer) say "Finish the drawing to
+  use …"; Parameters stays available; camera and named views are not offered.
+  An Edit that opens a sketch or a feature dialog (a recompute error's Edit)
+  ends the drawing first. Repeat last skips Make › Drawing, Finish Drawing,
+  Sheet Setup and Export PDF; New Sheet repeats. Report a Bug attaches the
+  sheet, not the 3D view, in the web build.
+
 ## 5. Default keyboard shortcuts
 
 Follow mainstream CAD tools where they have a shortcut; remappable in settings.
@@ -910,7 +977,8 @@ position (they work on any layout). The keys live in one table,
 `apps/web/src/commands/keymap.ts`; P is Project (P2-09), Shift+P Intersect in a
 sketch (P4-12; Offset Plane on the model); Shift+S is Section
 Analysis (P3-09); Q is Press/Pull (P3-08) and J the Joint dialog (P6-05,
-ADR-0081 §4).
+ADR-0081 §4). In the drawing (§4a): Ctrl+E Export PDF, Ctrl+PageDown and
+Ctrl+PageUp the next and previous sheet.
 
 The sketch constraints have no usual keys in mainstream CAD, so they are **K, then a
 letter** (a chord; ADR-0023's amendment of 2026-10-18): K C Coincident, K L Collinear,

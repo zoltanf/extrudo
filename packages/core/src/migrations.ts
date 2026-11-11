@@ -302,6 +302,9 @@ export function loadDocument(raw: unknown, ctx?: Partial<MigrationContext>): Loa
  * saving does to the source: `'drops'` when the source itself is
  * overwritten (a stored project), `'copy'` when it isn't (an imported file).
  */
+/** A dropped path that is a whole sheet item: `sheets.<n>.items.<n>`. */
+const SHEET_ITEM_PATH = /^sheets\.\d+\.items\.\d+$/;
+
 export function loadNotice(result: LoadResult, saving: 'drops' | 'copy'): string | undefined {
   const newer = result.loadedVersion > FORMAT_VERSION;
   if (!newer && result.dropped.length === 0) return undefined;
@@ -309,10 +312,20 @@ export function loadNotice(result: LoadResult, saving: 'drops' | 'copy'): string
     ? `a newer Extrudo (file format ${result.loadedVersion}; this version reads ${FORMAT_VERSION})`
     : 'a newer Extrudo';
   const count = result.dropped.length;
+  // A sheet item of an unknown kind is dropped whole (`sheets.0.items.2`, ADR-0143): it is
+  // an item on a sheet, not a setting.
+  const items = result.dropped.filter((path) => SHEET_ITEM_PATH.test(path)).length;
+  const settings = count - items;
+  const noun = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   const what =
     count === 0
       ? 'Everything in it is known here'
-      : `${count} ${count === 1 ? 'setting' : 'settings'} this version doesn't know ${count === 1 ? 'was' : 'were'} left out`;
+      : `${[
+          items > 0 && noun(items, 'sheet item', 'sheet items'),
+          settings > 0 && noun(settings, 'setting', 'settings'),
+        ]
+          .filter(Boolean)
+          .join(' and ')} this version doesn't know ${count === 1 ? 'was' : 'were'} left out`;
   const after =
     saving === 'drops'
       ? count === 0

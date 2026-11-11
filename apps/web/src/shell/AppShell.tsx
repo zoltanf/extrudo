@@ -167,7 +167,6 @@ import { useModelSelection } from '../selection/useModelSelection';
 import { storeAccess } from '../settings/displaySettings';
 import type { SectionId } from '../settings/inventory';
 import { SettingsDialog } from '../settings/SettingsDialog';
-import { exportSheetsPdf } from '../sheets/exportSheets';
 import {
   addNewSheet,
   createSheet,
@@ -183,8 +182,10 @@ import {
 } from '../sheets/mode';
 import { NewSheetsDialog } from '../sheets/NewSheetsDialog';
 import type { SheetCanvasControl } from '../sheets/SheetCanvas';
+import { SheetExportDialog, type SheetExportRequest } from '../sheets/SheetExportDialog';
 import { type SheetRowActions, SheetsFolder, SheetsTree } from '../sheets/SheetsTree';
 import { SheetTabs } from '../sheets/SheetTabs';
+import { deleteTargets, movable, moveTargets, selectedTargets } from '../sheets/selection';
 import type { FontPicker } from '../sketch/addFont';
 import { useBodiesBefore } from '../sketch/baseBodies';
 import { constructionDatumSources } from '../sketch/datums';
@@ -263,8 +264,7 @@ import {
   buildCommands,
   commandShortcuts,
   DRAWING_IMPORT_UNAVAILABLE,
-  MODEL_ONLY_TOOLS,
-  modelOnlyText,
+  modelOnlyReason,
 } from './commands';
 import type { DocsPage } from './docsLinks';
 import { docsPath } from './docsLinks';
@@ -605,6 +605,7 @@ function Shell({
   const activeSheetId = useStore(session, (s) => s.activeSheetId);
   const sheetMode = mode === 'sheet' && activeSheetId !== undefined;
   const [newSheetsOpen, setNewSheetsOpen] = useState(false);
+  const [sheetExport, setSheetExport] = useState<SheetExportRequest>();
   const sheetControl = useRef<SheetCanvasControl | undefined>(undefined);
   const sheetNameField = useRef<HTMLInputElement>(null);
   const [sheetMenu, setSheetMenu] = useState<{
@@ -1380,17 +1381,21 @@ function Shell({
     open: false,
     screenshot: null,
   });
+  // In the drawing the web build attaches the sheet, not the 3D view hidden under it.
   const capture = useCallback(async (): Promise<Blob | null> => {
     try {
+      const inSheet = session.getState().mode === 'sheet';
       return (
         (await platform.desktop?.capturePage()) ??
-        (await viewport.getState().snapshot?.(1600)) ??
+        (inSheet
+          ? await sheetControl.current?.snapshot(1600)
+          : await viewport.getState().snapshot?.(1600)) ??
         null
       );
     } catch {
       return null;
     }
-  }, [platform.desktop, viewport]);
+  }, [platform.desktop, viewport, session]);
   // Two frames before a capture, so the menu that was just closed (or the dialog and its
   // overlay on a retake) are gone from the window capture.
   const openBugReport = useCallback(async () => {
@@ -1425,16 +1430,35 @@ function Shell({
   // Undo right after Finish Sketch reopens the sketch at its last edit (ADR-0010's
   // amendment of 2026-11-06); the next Undo takes back one edit.
   // The drawing's sheet actions (P6-24): the sheet tabs', the browser rows' and Ctrl+K's.
+  // Export PDF and Export This Sheet open the export dialog (mock-up 4) on those sheets.
   const exportSheets = useCallback(
-    (ids?: readonly SheetId[]) => {
-      exportSheetsPdf(store.getState().doc, platform.files, ids).catch((error: unknown) => {
-        notify(
-          'error',
-          `The PDF couldn't be written: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      });
+    (ids?: readonly SheetId[]) => setSheetExport(ids ? { ids } : {}),
+    [],
+  );
+  // What is selected on the sheet (P6-24): Delete takes it away, the arrow keys nudge it,
+  // each one undo step. The title block is neither deleted nor moved here.
+  const sheetTargets = useMemo(
+    () => (mode === 'sheet' ? selectedTargets(selection) : []),
+    [mode, selection],
+  );
+  const sheetChange = useCallback(
+    (change: () => void) => {
+      try {
+        change();
+      } catch (error) {
+        if (!(error instanceof CommandError)) throw error;
+        notify('error', error.message);
+      }
     },
-    [store, platform.files, notify],
+    [notify],
+  );
+  const removeSheetSelection = useCallback(
+    () =>
+      sheetChange(() => {
+        deleteTargets(store, sheetTargets);
+        session.getState().clearSelection();
+      }),
+    [sheetChange, store, sheetTargets, session],
   );
   const sheetActions = useMemo<SheetRowActions>(
     () => ({
@@ -1444,8 +1468,11 @@ function Shell({
       exportOne: (id) => exportSheets([id]),
       remove: (id) => deleteSheet(stores, id),
       notify,
+      select: (id, target) => {
+        if (openSheet(stores, id)) session.getState().select([{ kind: 'sheet', id: target }]);
+      },
     }),
-    [stores, exportSheets, notify],
+    [stores, exportSheets, notify, session],
   );
   // In the drawing an undo stays there: it never reopens the sketch finished before it.
   const undo = useCallback(() => {
@@ -1479,6 +1506,9 @@ function Shell({
         undo,
         redo,
         ...(listing ? { remove: () => {} } : m === 'sketch' && !drawing && { remove }),
+        ...(!listing &&
+          m === 'sheet' &&
+          sheetTargets.some((t) => t !== 'title-block') && { remove: removeSheetSelection }),
         // Delete in the model (P2-08, P4-13, ADR-0126 §6): notes, bodies, faces of solid bodies.
         ...(!listing &&
           m === 'model' &&
@@ -1641,6 +1671,8 @@ function Shell({
       facesRemovable,
       selectedNotes,
       removeModelSelection,
+      sheetTargets,
+      removeSheetSelection,
       selectedComponent,
       selectedComponentName,
       activeComponent,
@@ -1807,6 +1839,25 @@ function Shell({
             },
           ]
         : []),
+      // The arrow keys nudge what is selected on the sheet by 1 mm (with Shift 10 mm).
+      ...(mode === 'sheet' && sheetTargets.some(movable)
+        ? (
+            [
+              ['ArrowLeft', -1, 0],
+              ['ArrowRight', 1, 0],
+              ['ArrowUp', 0, -1],
+              ['ArrowDown', 0, 1],
+            ] as const
+          ).flatMap(([key, x, y]) =>
+            [1, 10].map((step) => ({
+              keys: step === 1 ? key : `Shift+${key}`,
+              run: () =>
+                sheetChange(() =>
+                  moveTargets(store, sheetTargets.filter(movable), x * step, y * step),
+                ),
+            })),
+          )
+        : []),
       // In the drawing, Esc stops Pan or Zoom, or else clears the selection; it never leaves
       // the mode (plan §3.2).
       ...(mode === 'sheet'
@@ -1854,6 +1905,9 @@ function Shell({
       dialog,
       jointOpen,
       jointDialog,
+      sheetTargets,
+      sheetChange,
+      store,
     ],
   );
   const chordPrefix = useShortcuts(shortcuts);
@@ -1945,9 +1999,10 @@ function Shell({
       }
       return;
     }
-    // Home's model-only tools say why they don't run in the drawing (plan §3.1).
-    if (mode === 'sheet' && MODEL_ONLY_TOOLS.has(tool)) {
-      notify('info', modelOnlyText(mode, TOOLS[tool].label));
+    // Home's model-only tools say why they don't run in a sketch or the drawing (plan §3.1).
+    const modelOnly = modelOnlyReason(mode, tool);
+    if (modelOnly) {
+      notify('info', modelOnly);
       return;
     }
     // Press Pull (P3-08) runs the tool that fits the selection; Repeat last repeats Press Pull.
@@ -2915,6 +2970,7 @@ function Shell({
                 <SheetsTree
                   sheets={doc.sheets ?? []}
                   active={activeSheetId}
+                  selected={sheetTargets}
                   actions={sheetActions}
                 />
               ),
@@ -3442,6 +3498,14 @@ function Shell({
           }
         />
       )}
+      <SheetExportDialog
+        request={sheetExport}
+        doc={doc}
+        files={platform.files}
+        preferences={platform.preferences}
+        notify={notify}
+        onClose={() => setSheetExport(undefined)}
+      />
       <NewSheetsDialog
         open={newSheetsOpen}
         onOpenChange={setNewSheetsOpen}

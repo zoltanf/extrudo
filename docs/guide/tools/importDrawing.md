@@ -1,13 +1,13 @@
 ---
-title: Import Drawing
+title: Import SVG/DXF
 section: Tools
 category: Home
 order: 9
 ---
 
-# Import Drawing
+# Import SVG/DXF
 
-Bring an SVG or DXF drawing into the sketch as ordinary curves.
+Bring an SVG or DXF file into the sketch as ordinary curves.
 
 | Where | Shortcut |
 |---|---|
@@ -16,9 +16,9 @@ Bring an SVG or DXF drawing into the sketch as ordinary curves.
 <!-- notes -->
 ## Step by step
 
-1. Open a sketch and choose **Import Drawing**. A file dialog asks for an
+1. Open a sketch and choose **Import SVG/DXF**. A file dialog asks for an
    `.svg` or `.dxf` file. Cancel it and nothing happens.
-2. An **Import drawing** panel opens beside the view with the file's name and
+2. An **Import SVG/DXF** panel opens beside the view with the file's name and
    a line saying how many curves it holds. The drawing previews in the view,
    where it will land. If the file can't be used, the panel says why, a
    notification names the file, and **OK** stays disabled.
@@ -62,7 +62,7 @@ Bring an SVG or DXF drawing into the sketch as ordinary curves.
 
 - "Check the drawing in the panel, then OK. Esc cancels.": the prompt while
   the panel is open.
-- "Open a sketch to import a drawing into it.": you chose the tool outside a
+- "Open a sketch to import an SVG or DXF file into it.": you chose the tool outside a
   sketch. Open or create a sketch first.
 - "No drawing loaded.": the panel has no drawing to count.
 - "Extrudo imports SVG and DXF drawings.": the file's name doesn't end in

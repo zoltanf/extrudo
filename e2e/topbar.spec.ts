@@ -6,6 +6,7 @@ import {
   openAppMenu,
   openProject,
   pickMenuItem,
+  pickTool,
   railToggle,
   saveStatus,
 } from './helpers';
@@ -117,6 +118,10 @@ test('a sketch shows Home and Sketch only (R3-11)', async ({ page }) => {
     .click();
   await expect(tabs(page)).toHaveText(['Home', 'Sketch']);
   await expect(tabs(page).filter({ hasText: 'Sketch' })).toHaveAttribute('aria-selected', 'true');
+  // Home's model-only tiles say why they do nothing in a sketch.
+  await tabs(page).filter({ hasText: 'Home' }).click();
+  await pickTool(page, 'Canvas');
+  await expect(page.getByText('Finish the sketch to use Canvas.')).toBeVisible();
   // Finishing it brings the model's tabs back.
   await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
   await expect(tabs(page)).toHaveText(['Home', 'Solid', 'Modify', 'Construct', 'Make']);
@@ -533,7 +538,7 @@ test('Home and Construct show every tool as a tile at 1440 px, each 64 px wide',
   );
   await expect(toolbar.locator('[data-toolbar-group="Files"]')).toHaveCount(0);
   await expect(toolbar.locator('[data-toolbar-group="Extend"]')).toHaveCount(0);
-  for (const name of ['Import .extrudo', 'Import Model', 'Import Drawing', 'Export Model']) {
+  for (const name of ['Import .extrudo', 'Import Model', 'Import SVG/DXF', 'Export Model']) {
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
   }
   await page.getByRole('tab', { name: 'Construct' }).click();

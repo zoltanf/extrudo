@@ -196,7 +196,7 @@ describe("the panel's choices", () => {
   });
 });
 
-describe('Import Drawing tool', () => {
+describe('Import SVG/DXF tool', () => {
   /** The tool with a drawing in the draft, and OK pressed. */
   async function commit(patch: Partial<typeof DEFAULT_IMPORT_DRAFT> = {}) {
     const t = await setup({ tool: IMPORT_DRAWING_TOOL });

@@ -282,3 +282,44 @@ curve": stored shapes that are a single edge with no curve at all (an empty
 `Curves` table), so there is nothing to show. The first run of the checks
 refused 29 more, every one for a degenerate edge's null 3D curve (a sphere's
 pole), which is legitimate; the check allows it since.
+
+## Amendment (S2, 2026-11-11): the reader package
+
+`packages/fcstd` has its first layer: `unzipFcstd`, our own XML reader,
+`readFcstd` and `finalShapes`, written fresh to the rules of ADR-0083's
+hostile-file amendments (the prototype was a reference for the rules only).
+The format as read is in `packages/fcstd/FORMAT.md`.
+
+- **Limits, set from the library with room:** 20,000 entries (largest file
+  1,657), 128 MB per entry (largest 6.3 MB, a `Document.xml`), 512 MB declared
+  in total (largest file 25 MB), 500 to 1 per entry (highest 145; deflate's
+  ceiling is about 1,032), stored and deflate only. ZIP64, encryption and
+  multi-disk archives are refused: FreeCAD writes none of them. Entries are
+  inflated only when asked for, so a file's element maps and side lists cost
+  nothing. XML: 256 levels (library 9), 256 attributes per element (17),
+  4 M elements (55,138).
+- **A tree, not events.** The model needs two passes over the objects (types
+  in `Objects`, properties in `ObjectData`) and looks properties up by name.
+  The library's largest `Document.xml` (6.3 MB) parses in about 80 ms into a
+  27 MB tree (34 MB with the model on top); the whole read of that file,
+  `GuiDocument.xml` included, about 0.3 s, and the slowest file read plus its
+  final shapes about 0.4 s. Events would save the tree's memory and cost a
+  second reader shape for no measured need.
+- **Values by element.** A property is decoded by its value element, not its
+  declared type (FreeCAD retyped properties over the versions). Unknown
+  elements are kept raw and counted: in the library only three display-only
+  types (column widths and row heights, 5 each, and the sketcher's layer list,
+  71).
+- **Not read yet:** sketch geometry and constraints stay raw records (S4), mesh
+  kernels, colour lists past the first colour, list side entries, element
+  maps, link arrays (one instance and a problem), links to other documents,
+  the binary shape form.
+- **Library numbers** (`FCSTD_SAMPLES`): all 60 files read; 2,547 objects,
+  221 sketches and 1,784 non-empty stored shapes, equal to the investigation's
+  census per file; 383 final shapes (35 bodies, 14 chain tips, 236 other
+  shapes, 13 links, 85 meshes; 27 hidden), equal to the study's count per file
+  and in hidden ones. No problems recorded on any library file.
+- **Solid check without a kernel.** The final-shape rule needs "has a solid"
+  for objects outside bodies; the study took it from FreeCAD's own counts. The
+  reader looks for a solid record in the B-rep text's shape table
+  (`brepHasSolid`), one forward scan, no parsing; it selects the same objects.
