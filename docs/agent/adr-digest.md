@@ -4393,7 +4393,7 @@ user parameter"; shown, such a row has `FollowsMark` (link icon, title "Follows 
 the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
 clicks the Show line when a row is hidden. No schema change.
 
-ADR-0143 (the owner, 2026-11-10; **accepted; S1a modes and S0 spikes done, nothing else built**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
+ADR-0143 (the owner, 2026-11-10; **accepted; S1a modes and S0 spikes done, S1's document and layout built, its UI not**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
 made from the model. The detailed spec is `docs/plans/drawings-2026-11-10.md` (mock-ups: `docs/plans/drawings-mock-*.html`);
 each slice (S0 spikes, S1a modes, S1 sheets, S2 views, S3 dimensions, S4 notes, S5 lists, S6 outside) amends the ADR and
 adds its files and rules to this paragraph. Rules already fixed: **words:** the interface says "Drawing" (mode, tab) and
@@ -4446,4 +4446,17 @@ commands agree; sheet, view and item IDs are **unique in the whole design**; a n
 `removeSheetView` cascade find it); **an unknown item `kind` is dropped on load** (`parseLeniently`, listed in
 `dropped`), never fails the design; deleting a feature or body never touches or refuses on a sheet (an unknown
 `bodies` entry is skipped when drawn); `restoreVersion` copies `sheets`, `remintSheets` renames copied bodies, and
-the script and plugin-command documents leave `sheets` out (`recompute/engine.ts`, `recomputer.ts`).
+the script and plugin-command documents leave `sheets` out (`recompute/engine.ts`, `recomputer.ts`). **S1 layout and
+output (done, no UI):** the display list is io's `DisplayList` (`packages/io/src/display.ts`: `DisplayPath`,
+`DisplayText`, sheet mm, **origin top-left, y down**); `@extrudo/sheets` (`packages/sheets/`, GPL, no DOM, Node;
+`core, sketch, io, fonts`) has `layoutSheet(sheet, { name?, sheets?, views? })`, `sheetsToPdf`, `sheetToSvg`, the title
+block templates (`title-block.ts`: `SHEET_TITLE_BLOCKS`, `sheetTitleFields`) and text (`text.ts`). Rules a change must
+keep: **the screen, the SVG and the PDF draw the same list** (the screen through `displayPathData`, `displayPaint`,
+`displayTextLayer`, never its own layout); **`displayPdfPage` is the only y flip** into `writePdf`; a view's lines come
+in through `context.views` as `SheetViewLines` (io contours in the view's frame, mm at 1:1, y up, origin at the view's
+`at`) and layout alone scales, flips and places them; derived title-block cells (`scale`, `sheet`, `projection`)
+never read `fields`; sizes are cap heights; text only through `@extrudo/sketch/text` (`shapeText`, `measureText`) in
+`SHEET_FONTS` (Inter Regular and Bold), which the caller loads; every item carries a `SheetDisplayKey` (`paper`,
+`border`, `title-block`, `title-block:<field>`, `view:<id>`, `item:<id>`); layout is pure and deterministic (golden
+`packages/sheets/src/golden/small-sheet.svg`, `UPDATE_GOLDEN=1`). Sample: `SHEETS_OUT=<dir> pnpm vitest run
+packages/sheets/src/sample` writes `sheets.pdf` and one SVG per sheet.

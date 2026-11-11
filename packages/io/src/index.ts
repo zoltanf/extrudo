@@ -7,8 +7,27 @@
  * manifold check. P4-06: the SVG and DXF readers drawings are imported from,
  * and the ASCII STL and OBJ readers mesh bodies are imported from. P6-15: the
  * OBJ + MTL writer Render Picture hands to Blender. P6-24: the PDF writer
- * drawings' sheets are exported with.
+ * drawings' sheets are exported with, and the display list (a page of paths
+ * and text runs, y down) the screen, SVG and PDF all draw.
  */
+
+export {
+  type DisplayFill,
+  type DisplayItem,
+  type DisplayList,
+  type DisplayPaint,
+  type DisplayPath,
+  type DisplayStroke,
+  type DisplaySvgOptions,
+  type DisplayText,
+  type DisplayTextLayer,
+  displayPaint,
+  displayPathData,
+  displayPdfPage,
+  displayTextLayer,
+  writeDisplayPdf,
+  writeDisplaySvg,
+} from './display';
 export {
   type Bounds,
   type Contour,
@@ -70,3 +89,4 @@ export {
   type ThreeMfOptions,
   write3mf,
 } from './threemf';
+export { type Matrix, transformContour } from './transform';
