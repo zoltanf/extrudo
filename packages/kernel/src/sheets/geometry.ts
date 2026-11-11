@@ -128,7 +128,9 @@ export function conicMinorDirection(g: EdgeGeometry): Vec3 | undefined {
   const n = g.points.length;
   for (const s of [1, -1]) {
     const ys: Vec3 = [y[0] * s, y[1] * s, y[2] * s];
-    const fits = [0, Math.floor(n / 2), n - 1].every((i) => {
+    // Not only the ends and the middle: on a whole circle those are 0, π and
+    // 2π, where both senses agree.
+    const fits = [0, Math.max(1, Math.floor(n / 3)), n - 1].every((i) => {
       const t = c.first + ((c.last - c.first) * i) / (n - 1);
       const p = conicAt(c, ys, t);
       const q = g.points[i] as Vec3;
@@ -344,7 +346,7 @@ export function boundsOf(pieces: Iterable<ViewPiece>): ViewBounds | undefined {
 
 /** Closer than this (mm), a hidden stretch lies on a visible one. */
 const ON = 1e-6;
-/** Hidden stretches shorter than this (mm, or rad × radius) after the cover is taken out are dropped. */
+/** Hidden stretches shorter than this (mm, or rad × radius) after the cover is taken out are dropped: slivers where ends nearly meet. */
 const SLIVER = 1e-5;
 
 /** `[a, b]` minus the union of `cuts`, in order. */
@@ -378,7 +380,7 @@ export function uncovered(hidden: ViewPiece, drawn: readonly ViewPiece[]): ViewP
     for (const d of drawn) {
       if (d.type !== 'line' || off(d.a) > ON || off(d.b) > ON) continue;
       const [s, t] = [along(d.a), along(d.b)];
-      cuts.push([Math.min(s, t) - ON, Math.max(s, t) + ON]);
+      cuts.push([Math.min(s, t), Math.max(s, t)]);
     }
     if (cuts.length === 0) return [hidden];
     return remaining(0, length, cuts)
@@ -396,12 +398,11 @@ export function uncovered(hidden: ViewPiece, drawn: readonly ViewPiece[]): ViewP
       if (d.type !== 'arc') continue;
       if (Math.abs(d.radius - hidden.radius) > ON) continue;
       if (Math.hypot(d.center[0] - hidden.center[0], d.center[1] - hidden.center[1]) > ON) continue;
-      const slack = ON / Math.max(hidden.radius, ON);
+      // The drawn arc's span measured from the hidden one's start, once round.
       const x0 = d.start - hidden.start - TAU * Math.floor((d.start - hidden.start) / TAU);
       const w = d.end - d.start;
-      cuts.push([x0 - slack, x0 + w + slack]);
-      if (x0 + w > TAU) cuts.push([-slack, x0 + w - TAU + slack]);
-      if (x0 + slack > TAU) cuts.push([-slack, x0 + slack - TAU]);
+      cuts.push([x0, x0 + w]);
+      if (x0 + w > TAU) cuts.push([0, x0 + w - TAU]);
     }
     if (cuts.length === 0) return [hidden];
     return remaining(0, sweep, cuts)
@@ -430,22 +431,16 @@ const near = (a: Vec2, b: Vec2) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= ON;
 /** `b` continuing `a`, as one piece, or `undefined`. */
 function chained(a: ViewPiece, b: ViewPiece): ViewPiece | undefined {
   if (a.type === 'line' && b.type === 'line') {
-    // Collinear lines sharing an end, either way round.
-    for (const [p, q] of [
-      [a.a, a.b],
-      [a.b, a.a],
-    ] as const) {
-      for (const [s, t] of [
-        [b.a, b.b],
-        [b.b, b.a],
-      ] as const) {
-        if (!near(q, s)) continue;
-        const cross = (q[0] - p[0]) * (t[1] - p[1]) - (q[1] - p[1]) * (t[0] - p[0]);
-        const length = Math.hypot(t[0] - p[0], t[1] - p[1]);
-        if (Math.abs(cross) <= ON * Math.max(length, 1)) return { type: 'line', a: p, b: t };
-      }
-    }
-    return undefined;
+    // Collinear lines sharing an end: their union, from the farthest ends
+    // (two halves of a circle seen edge-on lie on top of each other).
+    if (!near(a.a, b.a) && !near(a.a, b.b) && !near(a.b, b.a) && !near(a.b, b.b)) return undefined;
+    const length = Math.hypot(a.b[0] - a.a[0], a.b[1] - a.a[1]);
+    const u: Vec2 = [(a.b[0] - a.a[0]) / length, (a.b[1] - a.a[1]) / length];
+    const off = (p: Vec2) => Math.abs((p[0] - a.a[0]) * u[1] - (p[1] - a.a[1]) * u[0]);
+    if (off(b.a) > ON || off(b.b) > ON) return undefined;
+    const along = (p: Vec2) => (p[0] - a.a[0]) * u[0] + (p[1] - a.a[1]) * u[1];
+    const ends = [a.a, a.b, b.a, b.b].sort((p, q) => along(p) - along(q));
+    return { type: 'line', a: ends[0] as Vec2, b: ends[3] as Vec2 };
   }
   if ((a.type === 'arc' && b.type === 'arc') || (a.type === 'ellipse' && b.type === 'ellipse')) {
     if (!near(a.center, b.center)) return undefined;

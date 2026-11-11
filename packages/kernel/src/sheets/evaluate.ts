@@ -214,13 +214,7 @@ export function quickView(
     using scope = kernel.scope();
     const all = together(kernel, bodies, scope);
     const eye: Vec3 = [-frame.direction[0], -frame.direction[1], -frame.direction[2]];
-    const byKey = new Map<string, ViewCurve>();
-    let open: { key: string; points: Vec2[] } | undefined;
-    const flush = () => {
-      const curve = open && byKey.get(open.key);
-      if (open && curve) curve.pieces.push(...polyline(open.points));
-      open = undefined;
-    };
+    const byKey = new Map<string, { curve: ViewCurve; segments: [Vec2, Vec2][] }>();
     for (const piece of kernel.hlrPolySpans(all.shape, eye, deflection)) {
       const kind = kindOf(piece.kind, piece.visible);
       const owner =
@@ -231,24 +225,60 @@ export function quickView(
             : undefined;
       if (!kind || !owner) continue;
       const key = `${piece.edge !== undefined ? 'e' : 'f'}:${owner.body}:${owner.index}:${kind}`;
-      if (!byKey.has(key)) {
+      let group = byKey.get(key);
+      if (!group) {
         const curve: ViewCurve = { kind, body: (bodies[owner.body] as ViewBody).id, pieces: [] };
-        byKey.set(key, curve);
+        group = { curve, segments: [] };
+        byKey.set(key, group);
         curves.push(curve);
       }
-      const a = toView(frame, piece.from);
-      const b = toView(frame, piece.to);
-      const end = open?.points[open.points.length - 1];
-      if (open?.key === key && end && Math.hypot(a[0] - end[0], a[1] - end[1]) <= TINY) {
-        open.points.push(b);
-      } else {
-        flush();
-        open = { key, points: [a, b] };
-      }
+      group.segments.push([toView(frame, piece.from), toView(frame, piece.to)]);
     }
-    flush();
+    for (const { curve, segments } of byKey.values()) {
+      for (const points of chain(segments)) curve.pieces.push(...polyline(points));
+    }
   }
   return finish(curves, skipped, false);
+}
+
+/**
+ * Segments joined end to end into runs (either way round), through a table
+ * of their ends rounded to 1e-6 mm: linear in their number.
+ */
+function chain(segments: readonly [Vec2, Vec2][]): Vec2[][] {
+  const keyOf = ([x, y]: Vec2) => `${Math.round(x / TINY)},${Math.round(y / TINY)}`;
+  const at = new Map<string, number[]>();
+  segments.forEach(([a, b], i) => {
+    for (const p of [a, b]) {
+      const k = keyOf(p);
+      const list = at.get(k);
+      if (list) list.push(i);
+      else at.set(k, [i]);
+    }
+  });
+  const used = new Uint8Array(segments.length);
+  /** Walks on from `end`, adding the far end of each unused segment there. */
+  const extend = (run: Vec2[], end: Vec2) => {
+    for (let p = end; ; ) {
+      const next = at.get(keyOf(p))?.find((j) => !used[j]);
+      if (next === undefined) return;
+      used[next] = 1;
+      const [a, b] = segments[next] as [Vec2, Vec2];
+      p = keyOf(a) === keyOf(p) ? b : a;
+      run.push(p);
+    }
+  };
+  const runs: Vec2[][] = [];
+  segments.forEach(([a, b], i) => {
+    if (used[i]) return;
+    used[i] = 1;
+    const forward: Vec2[] = [a, b];
+    extend(forward, b);
+    const backward: Vec2[] = [];
+    extend(backward, a);
+    runs.push([...backward.reverse(), ...forward]);
+  });
+  return runs;
 }
 
 function finish(all: ViewCurve[], skipped: readonly SkippedBody[], exact: boolean): ViewGeometry {
