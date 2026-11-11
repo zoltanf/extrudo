@@ -891,7 +891,8 @@ no text shown the tab alone is the callout, rounded on all four corners. A
 A design's 2D sheets, made from the model (slice S1: sheets, Sheet Setup, the
 title block, text items and export; S2: views drawn from the model, Base View,
 Projected View, Standard views and the view card; S3: dimensions and the Dimension tool;
-notes and lists come with S4 and S5). The UI says "drawing" and "sheet"; code says `sheet`.
+S4: notes, centre marks and lines, snapping; S5: parts lists, balloons, free tables and
+text fields). The UI says "drawing" and "sheet"; code says `sheet`.
 
 - **Ways in:** Make › **Drawing** (New drawing when the design has no sheet,
   else the sheet edited last); the browser's **Drawings** folder below
@@ -918,8 +919,8 @@ notes and lists come with S4 and S5). The UI says "drawing" and "sheet"; code sa
   "Drawn by" is never filled in by itself: the last name typed there is
   offered as a "Use …" button.
 - **The screen:** tabs Home and **Drawing** (Views: Base View, Projected View; Dimensions:
-  Dimension, Centre Mark, Centreline; Notes: Text, Leader Note, Sticky Note; Sheet: New Sheet,
-  Sheet Setup; Output: Export PDF; Finish Drawing). The sheet takes the 3D view's place (the view stays
+  Dimension, Centre Mark, Centreline; Notes: Text, Leader Note, Balloon, Sticky Note; Tables:
+  Parts List, Table; Sheet: New Sheet, Sheet Setup; Output: Export PDF; Finish Drawing). The sheet takes the 3D view's place (the view stays
   mounted underneath, inert): white paper in both themes with a shadow, a
   floating bar with Select, Pan, Zoom, Fit, the zoom level, **Snap** (on by default) and
   **Show sticky notes** (on by default; screen only, never stored). Pan and zoom
@@ -934,8 +935,9 @@ notes and lists come with S4 and S5). The UI says "drawing" and "sheet"; code sa
   them; a browser may keep those keys for its own tabs, and the sheet tabs are
   always clickable. The status text and the bell stay on the right.
 - **The browser** lists the Sheets tree (each sheet with its views, a Dimensions
-  folder, a **Notes** folder with its texts, leader notes, sticky notes, centre marks
-  and centre lines, and its title block), then Bodies. The model's folders keep their open or closed state
+  folder, a **Notes** folder with its texts, leader notes, balloons ("Balloon 2 Front"),
+  sticky notes, centre marks and centre lines, a **Tables** folder with its parts lists
+  ("Parts list Front") and free tables ("Table 3 × 2"), and its title block), then Bodies. The model's folders keep their open or closed state
   for when the drawing ends.
 - **Selecting on the sheet** (Select, no nav tool), by what each drawn item
   belongs to, so it is the same for every item kind: the pointer
@@ -984,7 +986,8 @@ notes and lists come with S4 and S5). The UI says "drawing" and "sheet"; code sa
   on, is suppressed. Unsuppress it to show the dimension again.", "…, has an
   error. Fix it to show the dimension again.") or "This dimension lost its
   edge: drag an end onto an edge, or delete it.". The export resolves the
-  anchors again and writes only the model as it is now, in black: a lost
+  anchors (and the parts lists' rows, and the fields as of now) again and writes only the
+  model as it is now, in black: a lost
   dimension is its text alone with "?" for the value, a lost leader note its
   text without the arrow, a lost centre mark or line nothing; its summary adds
   "· 1 dimension detached, written as ?" when some are. If the model can't be
@@ -1061,10 +1064,48 @@ notes and lists come with S4 and S5). The UI says "drawing" and "sheet"; code sa
   line says why (the kernel's reason when it gives one: "The feature this was drawn on
   is deleted.") and has a handle per anchor: dragging it onto what its tool takes picks
   that again ("Pick again"). The browser's row and the status text say why too.
+- **Parts List** (no key): a click on a view chooses it (the view under the pointer is
+  framed, dashed; a view selected when the tool starts is taken at once), then the list
+  follows the pointer in blue by its top-left corner with its rows, and a click places it
+  (one undo step, "Parts list"); the first Esc drops the view, the next ends the tool. Its
+  rows are the view's bodies as the model has them each time it is drawn (nothing derived is
+  stored): equal bodies (volume and box, and the same component or name stem) are one row
+  with a quantity. Columns Item, Qty, Name, Material, Size (each part's box along the model's
+  axes, longest side first, in the design's unit at the sheet's decimals) and Mass (one
+  piece, from Print Info's filament; empty without a density).
+- **Balloon** (`B`): a pick like a Leader Note's (an edge, a point, an outline or a face) on
+  a body of a view that has a parts list, then the balloon follows the pointer with its
+  number and a click places it ("Balloon"). The number is the row of the body it points at.
+  The panel says when the sheet has no parts list yet ("place one with Parts List first")
+  and, per view, which list numbers it: the first one placed for that view when it has
+  several (a balloon's card can choose another list of the sheet). Deleting a parts list
+  deletes its balloons in the same step. A lost balloon is red and dashed, "?" as its
+  number, and is picked again like any anchored item.
+- **Table** (no key): a click places a free table there (two columns of 25 and 45 mm,
+  three empty rows; one undo step, "Table"). **A double-click on a cell** types it in place
+  with the same keys as other text (one undo step, "Edit cell"; a cell may be left empty);
+  a cell's text wraps inside its column and its row grows.
+- **A list selected** shows its card, each change one undo step: a **parts list** its view,
+  which columns are shown (at least one), per row the Name and Material typed over it (the
+  model's name as the placeholder; empty, or the round arrow, goes back to the model's), and
+  how many balloons Delete takes along; a **balloon** its number, the list it is numbered by
+  (a choice when the sheet has several), its view, why it is lost or moved; a **table** its
+  size, Add row, Remove row, Add column, Remove column (at the end; never the last one) and
+  each column's width as an expression field. All have Delete.
+- **Text fields in braces** (S5): a text, a leader note, a table cell and a typed
+  title-block field may hold `{name}` (the design's), `{sheet}`, `{sheets}`, `{scale}`,
+  `{date}` (today), `{version}` (the newest saved version, "V3") and `{= expr}` (a parameter
+  expression with its unit, at the sheet's decimals). The sheet and the export show them
+  filled; typing in place and the cards show what was typed. A field without a value is left
+  as typed. The Text and Leader note cards and Sheet Setup's title block have **Insert
+  field** (the six fields, then each parameter): it writes at the caret of the field left
+  last (in Sheet Setup, the title field left last; the Title when none). Renaming a
+  parameter rewrites it inside `{= …}` in the same step.
 - **Snap** (plan §4.2): a dragged selection snaps to the other items' and views' edges
   and middles, and a dimension to rows an even 10 mm from another dimension of its
   direction (or onto its row), each axis on its own, within 5 px; a placed text, note
-  or a dimension or leader following the pointer snaps the same way. Dashed guides show
+  or a dimension, leader, balloon, parts list or table following the pointer snaps the same
+  way. Dashed guides show
   where. Snap off in the floating bar turns it all off; arrow keys never snap.
 - **A view's menu** (right-click on a view): Projected View from This, Fit
   Scale (the largest standard scale at which its base view fits inside the
@@ -1138,7 +1179,7 @@ sketch (P4-12; Offset Plane on the model); Shift+S is Section
 Analysis (P3-09); Q is Press/Pull (P3-08) and J the Joint dialog (P6-05,
 ADR-0081 §4). In the drawing (§4a): V Base View, P Projected View, D Dimension (Sketch
 Dimension's key: a sketch and the drawing are never open together), T Text (Trim's in a
-sketch), N Leader Note (Annotate's on the model), Ctrl+E Export PDF,
+sketch), N Leader Note (Annotate's on the model), B Balloon, Ctrl+E Export PDF,
 Ctrl+PageDown and Ctrl+PageUp the next and previous sheet.
 
 The sketch constraints have no usual keys in mainstream CAD, so they are **K, then a

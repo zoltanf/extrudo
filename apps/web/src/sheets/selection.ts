@@ -252,7 +252,8 @@ export function moveCommands(
     // A centre mark or line has no place of its own: it sits on its geometry.
     if (!sheet || !item || !('at' in item)) continue;
     const [x, y] = item.at;
-    const view = sheetItemView(item);
+    // A parts list names its view but sits on the sheet (its `at` is sheet mm, S5).
+    const view = item.kind === 'partsList' ? undefined : sheetItemView(item);
     if (view === undefined) {
       out.push(updateSheetItem({ id, changes: { at: [round(x + dx), round(y + dy)] } }));
     } else if (!deltas.has(view)) {
@@ -358,6 +359,14 @@ export function targetName(sheet: Sheet | undefined, target: SheetTarget): strin
       return 'Centre mark';
     case 'centreLine':
       return 'Centre line';
+    case 'partsList': {
+      const view = sheet?.views.find((v) => v.id === item.view)?.name ?? 'no view';
+      return `Parts list of ${view}`;
+    }
+    case 'balloon':
+      return 'Balloon';
+    case 'table':
+      return 'Table';
     default:
       return 'Item';
   }

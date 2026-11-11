@@ -45,6 +45,9 @@ export const SHEET_TOOLS: ReadonlySet<string> = new Set([
   'sheetText',
   'sheetLeader',
   'sheetSticky',
+  'sheetBalloon',
+  'sheetPartsList',
+  'sheetTable',
 ]);
 
 /** The stores the drawing mode works on: the sketch mode's (it may have to finish a sketch). */

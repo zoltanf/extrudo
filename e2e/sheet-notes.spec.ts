@@ -204,7 +204,7 @@ async function exportPdf(page: Page, summary: RegExp) {
 }
 
 /** The wall bracket's drawing with New drawing's Standard views: the views' IDs by name. */
-async function bracketDrawing(page: Page) {
+async function bracketSheet(page: Page) {
   await openProject(page, 'wall-bracket');
   await kernelReady(page);
   await selectTab(page, 'Make');
@@ -228,7 +228,7 @@ async function bracketDrawing(page: Page) {
 test('the notes tools rebuild mock-up 1 by hand: each item one undo step, typed in place, lost and picked again, exported', async ({
   page,
 }) => {
-  const { front, top } = await bracketDrawing(page);
+  const { front, top } = await bracketSheet(page);
   // The front view: x right, z up (the wall at the left, the foot along the bottom); the top
   // view: x right, y up (the holes at x 25, y ±20; the foot 80 wide).
   const [fx0, fy0, fx1, fy1] = await viewBox(page, front);

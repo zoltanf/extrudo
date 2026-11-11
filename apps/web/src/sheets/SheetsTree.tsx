@@ -6,13 +6,14 @@
  *   renames, its menu has Open, Rename, Duplicate, Export and Delete.
  * - **Sheets** (in the drawing, before Bodies): a folder per sheet, the open one marked
  *   "editing", with its views, a Dimensions folder (S3), a Notes folder (S4: texts, leader
- *   notes, sticky notes, centre marks and lines) and its title block; a click on a
+ *   notes, balloons, sticky notes, centre marks and lines), a Tables folder (S5: parts lists
+ *   and free tables) and its title block; a click on a
  *   sheet opens it. A dimension's row reads its text and its view ("74 · Front"); on the
  *   open sheet a moved one has a warning ("moved") and a lost one is red ("lost its edge"),
  *   the reason in its tooltip (`sheetItemsStore`, what the workspace found).
  *
  * Test hooks: the folders "Drawings" and "Sheets", each sheet's row `data-sheet-row` (the
- * sheet ID), a view's `data-sheet-view-row`, the folders "Dimensions" and "Notes", an item's
+ * sheet ID), a view's `data-sheet-view-row`, the folders "Dimensions", "Notes" and "Tables", an item's
  * `data-sheet-item-row` (the item ID) with `data-state` (`ok`, `moved`, `detached`,
  * `invalid`), the title block's `data-sheet-title-row`.
  */
@@ -241,6 +242,11 @@ export function SheetsTree({
             isSelected={(target) => isSelected(sheet, target)}
             onSelect={(target) => actions.select?.(sheet.id, target)}
           />
+          <TableRows
+            sheet={sheet}
+            isSelected={(target) => isSelected(sheet, target)}
+            onSelect={(target) => actions.select?.(sheet.id, target)}
+          />
           {sheet.titleBlock && (
             <Leaf data-sheet-title-row={sheet.id} active={isSelected(sheet, 'title-block')}>
               <button
@@ -329,13 +335,17 @@ function DimensionRows({
 const NOTE_KINDS: ReadonlySet<SheetItem['kind']> = new Set([
   'text',
   'leader',
+  'balloon',
   'sticky',
   'centreMark',
   'centreLine',
 ]);
 
-/** A note's row: what it is, and what it reads (its first line). */
-function noteLabel(item: SheetItem): { kind: string; text?: string } {
+/** A note's row: what it is, and what it reads (its first line; a balloon's number). */
+function noteLabel(
+  item: SheetItem,
+  row: SheetItemRow | undefined,
+): { kind: string; text?: string } {
   const first = 'text' in item ? item.text.split('\n')[0]?.trim() : undefined;
   switch (item.kind) {
     case 'text':
@@ -351,6 +361,8 @@ function noteLabel(item: SheetItem): { kind: string; text?: string } {
       return { kind: 'Centre mark' };
     case 'centreLine':
       return { kind: 'Centre line' };
+    case 'balloon':
+      return { kind: `Balloon ${row?.text ?? '?'}` };
     default:
       return { kind: 'Item' };
   }
@@ -394,7 +406,7 @@ function NoteRows({
           'view' in item
             ? (sheet.views.find((v) => v.id === item.view)?.name ?? 'No view')
             : undefined;
-        const { kind, text } = noteLabel(item);
+        const { kind, text } = noteLabel(item, row);
         const note = NOTE_STATE[state];
         const warn = state !== 'ok';
         const after = [view, note].filter(Boolean).join(' · ');
@@ -425,6 +437,59 @@ function NoteRows({
                 className={`ml-auto shrink-0 ${state === 'moved' ? 'text-warning' : ''}`}
               />
             )}
+          </Leaf>
+        );
+      })}
+    </Folder>
+  );
+}
+
+/**
+ * A sheet's Tables folder (S5; plan §3.1 names "parts list" beside the notes, the Drawing
+ * tab groups them as Tables): one row per parts list ("Parts list · Front") and per free
+ * table ("Table · 3 × 2"), in the sheet's order; a click selects it on its sheet.
+ */
+function TableRows({
+  sheet,
+  isSelected,
+  onSelect,
+}: {
+  sheet: Sheet;
+  isSelected(target: string): boolean;
+  onSelect(target: string): void;
+}) {
+  const tables = sheet.items.filter((i) => i.kind === 'partsList' || i.kind === 'table');
+  if (tables.length === 0) return null;
+  return (
+    <Folder
+      nested
+      label="Tables"
+      icon={<ToolIcon name="parts-list" category="insert" size={16} />}
+      count={tables.length}
+    >
+      {tables.map((item) => {
+        const kind = item.kind === 'partsList' ? 'Parts list' : 'Table';
+        const after =
+          item.kind === 'partsList'
+            ? (sheet.views.find((v) => v.id === item.view)?.name ?? 'No view')
+            : item.kind === 'table'
+              ? `${item.rows.length} × ${item.columns.length}`
+              : '';
+        return (
+          <Leaf
+            key={item.id}
+            data-sheet-item-row={item.id}
+            data-state="ok"
+            active={isSelected(`item:${item.id}`)}
+          >
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 items-center gap-1.5 rounded-input text-left focus-visible:outline-2 focus-visible:outline-accent"
+              onClick={() => onSelect(`item:${item.id}`)}
+            >
+              <span className="shrink-0">{kind}</span>
+              <span className="min-w-0 truncate text-muted">{after}</span>
+            </button>
           </Leaf>
         );
       })}

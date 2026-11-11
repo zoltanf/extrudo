@@ -26,7 +26,8 @@ const PAPER = '#ffffff';
 
 /** What is being typed, and where. */
 export interface SheetTextEdit {
-  kind: 'text' | 'leader' | 'sticky';
+  /** A table's cell (S5) is typed like a text, wrapped inside its column. */
+  kind: 'text' | 'leader' | 'sticky' | 'cell';
   /** The item edited; absent for a new one (it is made on Enter). */
   id?: SheetItemId;
   /** Where the first line's baseline starts, sheet mm. */

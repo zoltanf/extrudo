@@ -98,6 +98,9 @@ export function itemRepick(
     case 'centreMark':
     case 'centreLine':
       return noteRepick(item, index, pick);
+    case 'balloon':
+      // A balloon takes any geometry on a body (S5): its number follows the body's row.
+      return { anchor: pickAnchor(pick) } as SheetItemChanges;
     default:
       return 'This item has nothing to pick.';
   }

@@ -50,7 +50,7 @@ const CARD_STYLE = { background: 'color-mix(in srgb, var(--x-raised) 92%, transp
 /** The paper's preview colour (mock-up 3): the dimension following the pointer. */
 export const PAPER_PREVIEW = '#2f86f0';
 /** The paper's accent for what is picked (the brand's orange; the paper is white in both themes). */
-const PAPER_ACCENT = '#e08a1e';
+export const PAPER_ACCENT = '#e08a1e';
 
 const DIRECTIONS: { value: SheetDimensionDirection | 'auto'; label: string; name?: string }[] = [
   { value: 'auto', label: 'Auto' },
