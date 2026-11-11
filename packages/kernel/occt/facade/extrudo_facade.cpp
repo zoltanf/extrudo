@@ -270,6 +270,7 @@
 #include <array>
 #include <unordered_set>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -2773,6 +2774,9 @@ public:
         return fail("B-rep import failed: the text is not a B-rep.");
       }
       std::istringstream in(text);
+      // A failed read throws: OCCT's loops re-test a variable the failed
+      // stream no longer writes (an edge's list of curves read on forever).
+      in.exceptions(std::ios::failbit | std::ios::badbit);
       BRep_Builder builder;
       CheckedShapeSet set(builder);
       set.Read(in);
@@ -2781,7 +2785,7 @@ public:
       }
       // The root reference, checked as CheckedShapeSet checks a sub-shape's.
       const std::streampos root = in.tellg();
-      if (!CheckedShapeSet::reference(in, set.NbShapes(), set.NbShapes())) {
+      if (CheckedShapeSet::reference(in, set.NbShapes(), set.NbShapes()) == 0) {
         return fail("B-rep import failed: the text has no shape.");
       }
       in.clear();
@@ -2789,12 +2793,16 @@ public:
       TopoDS_Shape shape;
       set.Read(shape, in);
       if (shape.IsNull()) return fail("B-rep import failed: the text has no shape.");
-      if (!completeGeometry(shape)) {
-        return fail("B-rep import failed: the text refers to a curve or surface it doesn't have.");
+      if (const char* missing = missingGeometry(shape)) {
+        return fail((std::string("B-rep import failed: ") + missing).c_str());
       }
       return store(shape);
+    } catch (const std::ios_base::failure&) {
+      return fail("B-rep import failed: the text is damaged or cut short.");
+    } catch (const std::runtime_error& e) {
+      return fail((std::string("B-rep import failed: ") + e.what()).c_str());
     } catch (...) {
-      return failFromException("B-rep import failed");
+      return fail("B-rep import failed: the text is damaged or cut short.");
     }
   }
 
@@ -6279,7 +6287,10 @@ private:
    * table. Here the flags and the list are read ahead and the stream put back:
    * every index must name a shape already read, every token fit OCCT's
    * 255-byte buffer, and the list end in "*". The declared count comes from
-   * the "TShapes n" line, peeked the same way after the geometry tables.
+   * the "TShapes n" line, peeked the same way after the geometry tables. The
+   * shapes may nest MAX_DEPTH deep: OCCT walks them recursively, and 10^5
+   * nested compounds overflow the WASM stack. A refusal throws
+   * std::runtime_error with the words readBrep() shows.
    */
   class CheckedShapeSet : public BRepTools_ShapeSet {
    public:
@@ -6291,51 +6302,59 @@ private:
       std::string word;
       long long count = -1;
       if (!(in >> word) || word != "TShapes" || !(in >> count) || count < 1 || count > INT_MAX) {
-        throw Standard_Failure("bad shape table");
+        throw std::runtime_error("the shape table is damaged.");
       }
       declared_ = static_cast<int>(count);
-      in.clear();
       in.seekg(at);
     }
 
     void ReadGeometry(const TopAbs_ShapeEnum type, Standard_IStream& in, TopoDS_Shape& shape) override {
       BRepTools_ShapeSet::ReadGeometry(type, in, shape);
       const std::streampos at = in.tellg();
+      const char* damaged = "a shape's list of parts is damaged or cut short.";
       std::string flags;
-      if (!(in >> flags) || flags.size() > 200) throw Standard_Failure("bad shape flags");
+      if (!(in >> flags) || flags.size() > 200) throw std::runtime_error(damaged);
+      int depth = 1;
       for (;;) {
         const std::streampos next = in.tellg();
         std::string word;
-        if (!(in >> word) || word.size() > 200) throw Standard_Failure("bad sub-shape list");
+        if (!(in >> word) || word.size() > 200) throw std::runtime_error(damaged);
         if (word[0] == '*') break;
-        in.clear();
         in.seekg(next);
-        if (!reference(in, declared_, NbShapes())) throw Standard_Failure("bad sub-shape");
+        const int position = reference(in, declared_, NbShapes());
+        if (position == 0) throw std::runtime_error(damaged);
+        depth = std::max(depth, depths_[position - 1] + 1);
       }
-      in.clear();
+      if (depth > MAX_DEPTH) throw std::runtime_error("the shapes nest too deep.");
+      depths_.push_back(depth);
       in.seekg(at);
     }
 
     /**
-     * Reads one "+N L" (or -, i, e) and whether OCCT's lookup of it stays in
-     * the table: of `declared` shapes, `read` are in it, and N counts from the
-     * end of the declared ones.
+     * Reads one "+N L" (or -, i, e): the table position OCCT looks it up at
+     * (from 1), or 0 when that is outside the shapes read so far. Of
+     * `declared` shapes, `read` are in the table; N counts from the end of
+     * the declared ones.
      */
-    static bool reference(std::istream& in, int declared, int read) {
+    static int reference(std::istream& in, int declared, int read) {
       std::string word;
       long long location = 0;
       if (!(in >> word) || word.size() < 2 || word.size() > 200 || std::strchr("+-ie", word[0]) == nullptr) {
-        return false;
+        return 0;
       }
       char* end = nullptr;
       const long long index = std::strtoll(word.c_str() + 1, &end, 10);
-      if (end == nullptr || *end != '\0') return false;
+      if (end == nullptr || *end != '\0') return 0;
       const long long position = static_cast<long long>(declared) - index + 1;
-      return position >= 1 && position <= read && static_cast<bool>(in >> location);
+      if (position < 1 || position > read || !(in >> location)) return 0;
+      return static_cast<int>(position);
     }
 
    private:
+    static constexpr int MAX_DEPTH = 256;
     int declared_ = 0;
+    /** Per shape read, from 1 for a vertex: how deep its parts nest. */
+    std::vector<int> depths_;
   };
 
   /**
@@ -6344,7 +6363,11 @@ private:
    * which the first check or mesh of the shape dereferences (a WASM trap). A
    * face with only a triangulation may have no surface.
    */
-  static bool completeGeometry(const TopoDS_Shape& shape) {
+  static const char* missingGeometry(const TopoDS_Shape& shape) {
+    const char* edgeMissing = "an edge lacks its curve.";
+    const char* pcurveMissing = "an edge lacks its curve on a face.";
+    const char* vertexMissing = "a point lacks the curve or surface it lies on.";
+    const char* faceMissing = "a face lacks its surface.";
     NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> all;
     TopExp::MapShapes(shape, all);
     for (int i = 1; i <= all.Extent(); ++i) {
@@ -6352,36 +6375,40 @@ private:
       if (s.ShapeType() == TopAbs_EDGE) {
         const TopoDS_Edge& edge = TopoDS::Edge(s);
         const Handle(BRep_TEdge) tedge = Handle(BRep_TEdge)::DownCast(edge.TShape());
-        if (tedge.IsNull()) return false;
+        if (tedge.IsNull()) return edgeMissing;
+        // OCCT's reader leaves a missing curve off the edge; the kernel's
+        // code expects every edge but a degenerate one to have a 3D curve (a
+        // degenerate edge, a sphere's pole, holds a null one).
+        const bool degenerate = BRep_Tool::Degenerated(edge);
         bool curve = false;
         for (const Handle(BRep_CurveRepresentation)& r : tedge->Curves()) {
-          if (r.IsNull()) return false;
-          if (r->IsCurve3D() && r->Curve3D().IsNull()) return false;
-          if (r->IsCurveOnSurface() && (r->PCurve().IsNull() || r->Surface().IsNull())) return false;
-          if (r->IsCurveOnClosedSurface() && r->PCurve2().IsNull()) return false;
-          curve = curve || r->IsCurve3D();
+          if (r.IsNull()) return edgeMissing;
+          if (r->IsCurve3D()) {
+            if (r->Curve3D().IsNull() && !degenerate) return edgeMissing;
+            curve = curve || !r->Curve3D().IsNull();
+          }
+          if (r->IsCurveOnSurface() && (r->PCurve().IsNull() || r->Surface().IsNull())) return pcurveMissing;
+          if (r->IsCurveOnClosedSurface() && r->PCurve2().IsNull()) return pcurveMissing;
         }
-        // OCCT's reader leaves a missing curve off the edge; the kernel's
-        // code expects every edge but a degenerate one to have a 3D curve.
-        if (!curve && !BRep_Tool::Degenerated(edge)) return false;
+        if (!curve && !degenerate) return edgeMissing;
       } else if (s.ShapeType() == TopAbs_VERTEX) {
         const Handle(BRep_TVertex) tvertex = Handle(BRep_TVertex)::DownCast(s.TShape());
-        if (tvertex.IsNull()) return false;
+        if (tvertex.IsNull()) return vertexMissing;
         for (const Handle(BRep_PointRepresentation)& r : tvertex->Points()) {
-          if (r.IsNull()) return false;
-          if (r->IsPointOnCurve() && r->Curve().IsNull()) return false;
-          if (r->IsPointOnCurveOnSurface() && (r->PCurve().IsNull() || r->Surface().IsNull())) return false;
-          if (r->IsPointOnSurface() && r->Surface().IsNull()) return false;
+          if (r.IsNull()) return vertexMissing;
+          if (r->IsPointOnCurve() && r->Curve().IsNull()) return vertexMissing;
+          if (r->IsPointOnCurveOnSurface() && (r->PCurve().IsNull() || r->Surface().IsNull())) return vertexMissing;
+          if (r->IsPointOnSurface() && r->Surface().IsNull()) return vertexMissing;
         }
       } else if (s.ShapeType() == TopAbs_FACE) {
         TopLoc_Location location;
         const TopoDS_Face& face = TopoDS::Face(s);
         if (BRep_Tool::Surface(face, location).IsNull() && BRep_Tool::Triangulation(face, location).IsNull()) {
-          return false;
+          return faceMissing;
         }
       }
     }
-    return true;
+    return nullptr;
   }
 
   /** Whether stageStepColor() gave any staged part a colour. */
