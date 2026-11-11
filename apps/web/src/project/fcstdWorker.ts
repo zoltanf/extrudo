@@ -3,7 +3,7 @@
 // kernel runs in a worker this one starts (`importKernel.ts`), so terminating
 // this worker ends both. It takes one request and answers once; the client
 // (`fcstdImport.ts`) then terminates it.
-import { FcstdFormatError, importFcstd } from '@extrudo/fcstd';
+import { clip, FcstdFormatError, importFcstd } from '@extrudo/fcstd';
 import { FCSTD_MEMORY_TEXT, type FcstdWorkerReply, type FcstdWorkerRequest } from './fcstdImport';
 import { workerImportKernel } from './importKernel';
 
@@ -25,13 +25,15 @@ self.onmessage = async ({ data }: MessageEvent<FcstdWorkerRequest>) => {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    // The message may quote the file: cut to the length the report allows a detail.
     post({
-      error:
+      error: clip(
         error instanceof RangeError && /allocation failed/i.test(message)
           ? FCSTD_MEMORY_TEXT
           : error instanceof FcstdFormatError
             ? `This file can't be read as a FreeCAD file: ${message}`
             : message,
+      ),
     });
   } finally {
     kernel.dispose();

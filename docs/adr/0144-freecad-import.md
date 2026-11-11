@@ -363,6 +363,17 @@ worker means the page's one `terminate()` (when the import ends, however it
 ends) also ends the kernel, and a restart is a `terminate()` and a new
 worker in the import's worker, with no relay through the page.
 
+**What protects the project, and what the check is.** The read-back check
+runs in the same import kernel that read the text, so it catches a wrong
+conversion, not an attacker who controls that kernel. What protects the
+project is that the import kernel is a separate, throwaway WASM instance in
+its own worker; that only STEP text and numbers leave it, and the importer
+checks their types and ranges before using them (a string STEP, whole solid
+counts up to `MAX_SOLIDS_PER_SHAPE`, 10,000, finite measures; anything else
+is a kernel failure, "the kernel's answer makes no sense", and restarts the
+kernel); and that the project's kernel reads that STEP as it reads any STEP a
+user imports.
+
 ### The check, and its tolerance
 
 Nothing is trusted because it converted. A shape comes in only when the STEP
@@ -395,6 +406,21 @@ for two stored solids).
   import's time, too many restarts. The report also lists the reader's
   problems and link arrays (one copy each).
 - A file with no final shape opens as an empty design, with a notice.
+- **Known limit:** a text the kernel refuses counts as a failure and restarts
+  the kernel, so a file with more than three refused shapes loses the shapes
+  after them (none in the library). S13 revisits it.
+- **Memory:** the limits apply as each shape passes, not at the end: its STEP
+  text is dropped once it is encoded, a shape over 25 MB or one whose new
+  bytes would pass 100 MB is left out there and then, and a copy of a kept
+  file costs nothing. The bytes held never pass the design's limit by more
+  than the shape at hand.
+- **Names from the file** (`names.ts`): labels lose control characters, white
+  space is collapsed, they are cut to 120 characters and fall back to the
+  object's internal name (`cleanName`), for every body, feature and
+  attachment name and the report. An attachment's file name follows the
+  export's `safeFileName` rule (`< > : " / \ | ? *` as spaces, leading dots
+  dropped) plus `.step`. Report details and the worker's error are cut to
+  300 characters.
 
 ### Names and colours
 

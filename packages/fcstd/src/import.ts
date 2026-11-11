@@ -5,9 +5,10 @@
  */
 import { Design } from '@extrudo/api';
 import type { AttachmentId } from '@extrudo/core';
-import { finalShapes } from './final-shapes';
+import { finalShapes, linkArrayProblem } from './final-shapes';
 import type { ImportKernel } from './import-kernel';
 import { readFcstd } from './model';
+import { cleanName } from './names';
 import { type ImportedShape, importShapes, type LeftOutShape } from './shapes';
 
 /**
@@ -75,11 +76,9 @@ export async function importFcstd(
     const count = o.properties.ElementCount?.value;
     return o.type === 'App::Link' && count?.kind === 'integer' && count.value > 0;
   });
-  const linkArrays = arrays.map((o) => o.label);
+  const linkArrays = arrays.map((o) => cleanName(o.label, o.name));
   // The reader notes each link array as a problem too; the report lists them on their own.
-  const arrayLines = new Set(
-    arrays.map((o) => `${o.name}: a link array; only the link itself is placed.`),
-  );
+  const arrayLines = new Set(arrays.map((o) => linkArrayProblem(o.name)));
   return {
     design,
     files: result.files,

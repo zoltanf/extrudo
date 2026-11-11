@@ -28,6 +28,7 @@ export {
   type FinalShapeKind,
   finalShapes,
   invert,
+  linkArrayProblem,
   linkedObjects,
   rotate,
 } from './final-shapes';
@@ -40,6 +41,7 @@ export {
 } from './import';
 export type { ImportKernel, ShapeMeasure, StoredShapeStep } from './import-kernel';
 export {
+  binaryFormProblem,
   brepHasSolid,
   DYNAMIC_PROPERTY,
   enumString,
@@ -65,6 +67,7 @@ export {
   type Vec3,
   versionAtLeast,
 } from './model';
+export { cleanName, clip, MAX_DETAIL_LENGTH, MAX_NAME_LENGTH, stepFileName } from './names';
 export {
   BOX_TOLERANCE,
   disagreement,
@@ -76,9 +79,12 @@ export {
   type LeftOutReason,
   type LeftOutShape,
   MAX_RESTARTS,
+  MAX_SOLIDS_PER_SHAPE,
+  NONSENSE_REPLY,
   SHAPE_TIMEOUT_MS,
   type ShapeImportOptions,
   type ShapeImportResult,
+  saneReply,
   VOLUME_TOLERANCE,
   volumeDrift,
 } from './shapes';

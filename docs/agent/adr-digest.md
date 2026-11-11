@@ -4553,7 +4553,15 @@ the STEP read back has the stored shape's solids, volume within `VOLUME_TOLERANC
 `BOX_TOLERANCE` (1e-4 of the diagonal + 1e-6 mm) — change them only with the library's new drift numbers; a call that
 throws or times out (`SHAPE_TIMEOUT_MS` 60 s, within `IMPORT_TIMEOUT_MS` 10 min) leaves its shape out and **restarts the
 kernel before the next shape** (at most `MAX_RESTARTS` 3, then the rest are left out); nothing a failed kernel returned is
-used; ADR-0066's 25 MB / 100 MB limits; attachments named by SHA-256 (copies share); no name or colour in the STEP (the
+used, and **a reply is used only when `saneReply` passes** (string `step`, integer solids 0…`MAX_SOLIDS_PER_SHAPE`,
+finite measures; else `kernel` / "the kernel's answer makes no sense" and a restart) — the read-back check runs in the
+same import kernel, so it catches wrong conversions, not a hostile kernel: the isolation (throwaway instance in its own
+worker, only STEP and numbers out, the project's kernel reading that STEP like any user STEP) is what protects the
+project; ADR-0066's 25 MB / 100 MB limits **applied as each shape passes** (its STEP text dropped once encoded; the bytes
+held never pass the design limit by more than one shape); labels only through `cleanName` (control characters, white
+space, 120 characters, fallback the internal name) and file names through `stepFileName` (the export's
+`safeFileName` rule); details and the worker's error `clip`ped to 300; the reader's problem wording only through
+`binaryFormProblem` / `linkArrayProblem`, never a copied sentence or a regex; attachments named by SHA-256 (copies share); no name or colour in the STEP (the
 body metadata carries them). App: `fcstdImport.ts` (client, 11 min), `fcstdWorker.ts` (reader and mapper), whose kernel
 is a **nested worker** (`importKernel.ts`), so terminating the import's worker ends it; `actions.ts`
 `importFcstdFile`/`saveFcstdImport`/`fcstdNotices`, `FCSTD_ACCEPT`, `isFcstd`, `MAX_FCSTD_BYTES` (100 MB before reading);

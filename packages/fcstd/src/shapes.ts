@@ -12,7 +12,8 @@ import { type AttachmentId, addAttachment, importInputs, newId } from '@extrudo/
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES, sha256Hex } from '@extrudo/storage';
 import type { FinalShape } from './final-shapes';
 import type { ImportKernel, ShapeMeasure, StoredShapeStep } from './import-kernel';
-import { type FcDocument, storedShapeText } from './model';
+import { binaryFormProblem, type FcDocument, storedShapeText } from './model';
+import { cleanName, clip, stepFileName } from './names';
 
 /**
  * How far the STEP read back may differ from the stored shape in volume,
@@ -29,6 +30,13 @@ export const SHAPE_TIMEOUT_MS = 60_000;
 export const IMPORT_TIMEOUT_MS = 10 * 60_000;
 /** How many times a failed kernel is replaced before the rest of the shapes are left out. */
 export const MAX_RESTARTS = 3;
+/**
+ * The most solids one stored shape may come back with. The import makes a
+ * body (and a metadata record) per solid, so the count bounds what one reply
+ * can make the design hold; the library's largest is 86. A reply above it
+ * comes from a kernel that read something it shouldn't have, and is refused.
+ */
+export const MAX_SOLIDS_PER_SHAPE = 10_000;
 
 export type LeftOutReason =
   /** A mesh object (S12). */
@@ -97,6 +105,8 @@ export interface ShapeImportResult {
   readonly files: Map<AttachmentId, Uint8Array>;
   /** How many times the kernel was replaced. */
   readonly restarts: number;
+  /** The most STEP bytes held at once while converting (kept files plus the shape at hand). */
+  readonly peakBytes: number;
 }
 
 /**
@@ -132,6 +142,40 @@ export function disagreement(read: ShapeMeasure, back: ShapeMeasure): string | u
   if (!(moved <= allowed)) return `the bounding box moved by ${moved.toPrecision(3)} mm`;
   return undefined;
 }
+
+const finiteMeasure = (m: unknown): boolean => {
+  if (typeof m !== 'object' || m === null) return false;
+  const { solids, volume, area, box } = m as Partial<ShapeMeasure>;
+  return (
+    Number.isInteger(solids) &&
+    (solids as number) >= 0 &&
+    (solids as number) <= MAX_SOLIDS_PER_SHAPE &&
+    Number.isFinite(volume) &&
+    Number.isFinite(area) &&
+    typeof box === 'object' &&
+    box !== null &&
+    Array.isArray(box.min) &&
+    Array.isArray(box.max) &&
+    box.min.length === 3 &&
+    box.max.length === 3 &&
+    [...box.min, ...box.max].every(Number.isFinite)
+  );
+};
+
+/**
+ * Whether a reply from the import kernel has the shape it must: a string
+ * STEP, whole solid counts from 0 to `MAX_SOLIDS_PER_SHAPE`, finite measures.
+ * The kernel may have been corrupted by the text it read, so nothing else
+ * about its reply is taken on trust.
+ */
+export function saneReply(reply: unknown): reply is StoredShapeStep {
+  if (typeof reply !== 'object' || reply === null) return false;
+  const r = reply as Partial<StoredShapeStep>;
+  return typeof r.step === 'string' && finiteMeasure(r) && finiteMeasure(r.read);
+}
+
+/** The left-out detail for a reply `saneReply` refuses. */
+export const NONSENSE_REPLY = "the kernel's answer makes no sense";
 
 /** `|Δvolume| / volume`. */
 export function volumeDrift(read: ShapeMeasure, back: ShapeMeasure): number {
@@ -185,19 +229,25 @@ function textOf(
   const text = storedShapeText(doc, shape.source);
   const said = doc.problems.splice(before);
   if (text !== undefined) return { text };
-  const detail = said.join(' ');
-  return { reason: /binary form/.test(detail) ? 'binary' : 'unreadable', detail };
+  const binary = said.includes(binaryFormProblem(`${shape.source.name}.Shape`));
+  return { reason: binary ? 'binary' : 'unreadable', detail: said.join(' ') };
 }
 
+/** A shape that passed: its measures and where its bytes are kept (no STEP text). */
 interface Converted {
   shape: FinalShape;
-  step: StoredShapeStep;
-  bytes: Uint8Array;
+  name: string;
+  solids: number;
+  drift: number;
+  sha256: string;
+  size: number;
 }
 
 /**
  * Converts the final shapes through the kernel, then adds one `import`
- * feature per shape that passed, in document order, as one undo step.
+ * feature per shape that passed, in document order, as one undo step. The
+ * attachment limits apply as each shape passes, so the bytes held never pass
+ * the design's limit by more than the one shape being looked at.
  */
 export async function importShapes(
   doc: FcDocument,
@@ -213,14 +263,29 @@ export async function importShapes(
   const start = now();
   const leftOut: LeftOutShape[] = [];
   const converted: Converted[] = [];
+  // The design's own attachments, by hash, and the bytes this import keeps.
+  const existing = new Map<string, AttachmentId>();
+  let total = 0;
+  for (const [id, a] of Object.entries(design.doc.attachments ?? {})) {
+    if (!existing.has(a.sha256)) total += a.size;
+    existing.set(a.sha256, id as AttachmentId);
+  }
+  const kept = new Map<string, Uint8Array>();
+  let keptBytes = 0;
+  let peakBytes = 0;
   let restarts = 0;
   let broken = false;
   let done = 0;
 
   for (const shape of shapes) {
-    const name = shape.name;
+    const name = cleanName(shape.name, shape.object.name);
     const leave = (reason: LeftOutReason, detail?: string) =>
-      leftOut.push({ object: shape.object.name, name, reason, ...(detail ? { detail } : {}) });
+      leftOut.push({
+        object: shape.object.name,
+        name,
+        reason,
+        ...(detail ? { detail: clip(detail) } : {}),
+      });
     try {
       const found = textOf(doc, shape);
       if (!('text' in found)) {
@@ -242,13 +307,18 @@ export async function importShapes(
         kernel.storedShapeToStep(found.text, shape.chain),
         Math.min(shapeMs, left),
       );
-      if (outcome.kind !== 'done') {
-        if (outcome.kind === 'time')
-          leave(
-            shapeMs <= left ? 'time' : 'import-time',
-            `over ${Math.round(Math.min(shapeMs, left) / 1000)} s`,
-          );
-        else leave('kernel', outcome.error);
+      let failed = outcome.kind !== 'done';
+      if (outcome.kind === 'time')
+        leave(
+          shapeMs <= left ? 'time' : 'import-time',
+          `over ${Math.round(Math.min(shapeMs, left) / 1000)} s`,
+        );
+      else if (outcome.kind === 'failed') leave('kernel', outcome.error);
+      else if (!saneReply(outcome.value)) {
+        leave('kernel', NONSENSE_REPLY);
+        failed = true;
+      }
+      if (failed || outcome.kind !== 'done') {
         // A failed kernel may be corrupted: nothing more from it.
         if (restarts >= maxRestarts) {
           broken = true;
@@ -273,7 +343,31 @@ export async function importShapes(
         leave('check', wrong);
         continue;
       }
-      converted.push({ shape, step, bytes: new TextEncoder().encode(step.step) });
+      // From here on only the bytes and the measures: the STEP text goes.
+      const bytes = new TextEncoder().encode(step.step);
+      peakBytes = Math.max(peakBytes, keptBytes + bytes.length);
+      if (bytes.length > MAX_ATTACHMENT_BYTES) {
+        leave('too-large', `${mb(bytes.length)} MB of STEP`);
+        continue;
+      }
+      const sha256 = sha256Hex(bytes);
+      if (!existing.has(sha256) && !kept.has(sha256)) {
+        if (total + bytes.length > MAX_ATTACHMENTS_BYTES) {
+          leave('design-full', `${mb(bytes.length)} MB of STEP`);
+          continue;
+        }
+        kept.set(sha256, bytes);
+        keptBytes += bytes.length;
+        total += bytes.length;
+      }
+      converted.push({
+        shape,
+        name,
+        solids: step.solids,
+        drift: volumeDrift(step.read, step),
+        sha256,
+        size: bytes.length,
+      });
     } finally {
       done++;
       options.onProgress?.(done, shapes.length);
@@ -282,61 +376,34 @@ export async function importShapes(
 
   const imported: ImportedShape[] = [];
   const files = new Map<AttachmentId, Uint8Array>();
-  if (converted.length === 0) return { imported, leftOut, files, restarts };
-  const sizes = new Map<string, number>();
-  for (const a of Object.values(design.doc.attachments ?? {})) sizes.set(a.sha256, a.size);
-  let total = [...sizes.values()].reduce((a, b) => a + b, 0);
-  const byHash = new Map<string, AttachmentId>();
-  for (const [id, a] of Object.entries(design.doc.attachments ?? {}))
-    byHash.set(a.sha256, id as AttachmentId);
-
+  if (converted.length === 0) return { imported, leftOut, files, restarts, peakBytes };
+  const byHash = new Map(existing);
   design.transaction("Import the file's shapes", () => {
-    for (const { shape, step, bytes } of converted) {
-      const name = shape.name;
-      if (bytes.length > MAX_ATTACHMENT_BYTES) {
-        leftOut.push({
-          object: shape.object.name,
-          name,
-          reason: 'too-large',
-          detail: `${mb(bytes.length)} MB of STEP`,
-        });
-        continue;
-      }
-      const sha256 = sha256Hex(bytes);
+    for (const { shape, name, solids, drift, sha256, size } of converted) {
       let attachment = byHash.get(sha256);
       if (attachment === undefined) {
-        if (total + bytes.length > MAX_ATTACHMENTS_BYTES) {
-          leftOut.push({
-            object: shape.object.name,
-            name,
-            reason: 'design-full',
-            detail: `${mb(bytes.length)} MB of STEP`,
-          });
-          continue;
-        }
         attachment = newId<AttachmentId>();
         design.state.dispatch(
           addAttachment({
             id: attachment,
             attachment: {
               name,
-              fileName: `${name}.step`,
+              fileName: stepFileName(name),
               mediaType: 'model/step',
               sha256,
-              size: bytes.length,
+              size,
             },
           }),
         );
-        total += bytes.length;
         byHash.set(sha256, attachment);
-        files.set(attachment, bytes);
+        files.set(attachment, kept.get(sha256) as Uint8Array);
       }
       const feature = design.add('import', importInputs({ file: attachment, up: 'z' }), {
         name: `Import ${name}`,
       });
       const colour = shape.colour ? hexColour(shape.colour) : undefined;
       // The import names a feature's bodies `<feature>:0`, `<feature>:1` … (ADR-0030).
-      for (let i = 0; i < step.solids; i++) {
+      for (let i = 0; i < solids; i++) {
         design.setBody(`${feature.id}:${i}`, {
           name: i === 0 ? name : `${name} ${i + 1}`,
           ...(colour && colour !== FREECAD_DEFAULT_COLOUR ? { color: colour } : {}),
@@ -350,13 +417,13 @@ export async function importShapes(
         object: shape.object.name,
         name,
         feature: feature.id,
-        solids: step.solids,
-        drift: volumeDrift(step.read, step),
-        stepBytes: bytes.length,
+        solids,
+        drift,
+        stepBytes: size,
       });
     }
   });
-  return { imported, leftOut, files, restarts };
+  return { imported, leftOut, files, restarts, peakBytes };
 }
 
 const mb = (bytes: number) => (bytes / (1024 * 1024)).toFixed(1);
