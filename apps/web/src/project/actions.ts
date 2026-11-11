@@ -406,7 +406,7 @@ export function fcstdNotices(
       .map(([reason]) => HISTORY_STOP[reason]);
     const partial = short.filter((b) => b.bodies.length > 0);
     out.push(
-      `Taken from the file's own shapes, without their whole history: ${listed(short.map((b) => b.name))}. Most often because ${common.join(', or ')}.${
+      `Taken from the file's own shapes, without their whole history: ${listed(short.map((b) => b.name))}${short.length === 1 ? ', because' : '. Most often because'} ${common.join(', or ')}.${
         partial.length > 0
           ? ' The features rebuilt before that stay in the timeline, ahead of a Remove that takes out what they made.'
           : ''
@@ -421,6 +421,12 @@ export function fcstdNotices(
       `Not imported: ${[...byReason]
         .map(([reason, names]) => `${listed(names)} (${LEFT_OUT[reason]})`)
         .join('; ')}.`,
+    );
+  // A body whose history stopped and whose own shape couldn't come in either: what was rebuilt stands in for it.
+  const partly = bodies.filter((b) => b.outcome === 'left-out' && b.bodies.length > 0);
+  if (partly.length > 0)
+    out.push(
+      `Only partly rebuilt, up to the feature where the history stopped: ${listed(partly.map((b) => b.name))}. ${partly.length === 1 ? 'It is' : 'They are'} not the whole shape from the file.`,
     );
   if (report.linkArrays.length > 0)
     out.push(`Of each link array only one copy came in: ${listed([...report.linkArrays])}.`);

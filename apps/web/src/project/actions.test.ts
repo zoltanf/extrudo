@@ -554,4 +554,20 @@ describe('fcstdNotices', () => {
       "Taken from the file's own shapes, without their whole history: Housing; Clip; Knob. Most often because it has a feature Extrudo doesn't rebuild from FreeCAD files yet, or a rebuilt feature didn't match the file's shape. The features rebuilt before that stay in the timeline, ahead of a Remove that takes out what they made.",
     ]);
   });
+
+  it('gives one body its one reason, and says when a body is only partly rebuilt', () => {
+    const notices = fcstdNotices({
+      ...base,
+      finalShapes: 2,
+      shapes: [shape('Clip')],
+      leftOut: [{ object: 'h', name: 'Housing', reason: 'check' }],
+      bodies: [body('Clip', 'shape', 'up-to'), body('Housing', 'left-out', 'type', ['b:0'])],
+    });
+    expect(notices).toEqual([
+      'Imported from the FreeCAD file: 1 of 2 shapes, as bodies without history.',
+      "Taken from the file's own shapes, without their whole history: Clip, because a feature goes up to a face or a shape.",
+      "Not imported: Housing (its shape didn't come through unchanged).",
+      'Only partly rebuilt, up to the feature where the history stopped: Housing. It is not the whole shape from the file.',
+    ]);
+  });
 });
