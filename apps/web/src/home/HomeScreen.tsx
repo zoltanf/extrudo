@@ -202,7 +202,7 @@ export function HomeScreen({ platform }: { platform: Platform }) {
     writeTour(platform.preferences, 'dismissed');
     setTourCard(false);
   };
-  // A design file, an .f3d or a model file (ADR-0083 §4): each opens as a design.
+  // A design file, an .f3d, a FreeCAD file or a model file (ADR-0083 §4): each opens as a design.
   const importFile = () =>
     importAnyFile(platform)
       .then((summary) => summary && open(summary.id))
@@ -366,7 +366,7 @@ export function HomeScreen({ platform }: { platform: Platform }) {
                 </div>
                 <StartCard
                   label="Import…"
-                  description=".extrudo, .f3d, STEP, mesh, OpenSCAD."
+                  description=".extrudo, .f3d, FreeCAD, STEP, mesh, OpenSCAD."
                   icon={<Import size={22} strokeWidth={1.75} />}
                   onClick={() => void importFile()}
                 />

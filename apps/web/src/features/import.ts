@@ -58,10 +58,11 @@ import { defaultFromInputs, shownFields } from './values';
 
 /**
  * The app's file picker: the model files of §0, and an
- * `.f3d` file, which opens as a new design instead (ADR-0083 §4). The desktop
+ * `.f3d` or FreeCAD file, which opens as a new design instead (ADR-0083 §4,
+ * ADR-0144 decision 9). The desktop
  * adds the other CAD files it converts (`importAccept`).
  */
-export const IMPORT_ACCEPT = '.step,.stp,.stl,.3mf,.obj,.scad,.f3d';
+export const IMPORT_ACCEPT = '.step,.stp,.stl,.3mf,.obj,.scad,.f3d,.fcstd';
 
 /**
  * The picker's `accept`: with the desktop's converter (ADR-0115 §1) also the
@@ -79,8 +80,8 @@ export function importRefused(convertCad: boolean): string {
   const base =
     'Extrudo imports STEP files (.step, .stp), meshes (.stl, .3mf, .obj), OpenSCAD files (.scad)';
   return convertCad
-    ? `${base}, .f3d files, and other CAD files (.sldprt, .ipt, .iam, .catpart, .fcstd, .sat, .smt, .smb, .sab, .igs, .iges, .pvz).`
-    : `${base} and .f3d files. The desktop app also imports .sldprt, .ipt, .iam, .catpart, .fcstd, .sat, .smt, .smb, .sab, .igs, .iges and .pvz files.`;
+    ? `${base}, .f3d files, FreeCAD files (.fcstd), and other CAD files (.sldprt, .ipt, .iam, .catpart, .sat, .smt, .smb, .sab, .igs, .iges, .pvz).`
+    : `${base}, .f3d files and FreeCAD files (.fcstd). The desktop app also imports .sldprt, .ipt, .iam, .catpart, .sat, .smt, .smb, .sab, .igs, .iges and .pvz files.`;
 }
 
 /** The web's refusal (`importRefused(false)`). */
@@ -119,21 +120,22 @@ export function convertedMessage(name: string, leftOut = 0): string {
  * Picks a model file and puts its bytes with the design (ADR-0061 §2), ready
  * for the dialog to preview: the new attachment's ID, its record, and the
  * bytes in the app's cache under that ID. `undefined` when the user cancels or
- * the file is refused, which it then says, or is an `.f3d`, which `openF3d`
- * opens as a new design.
+ * the file is refused, which it then says, or is an `.f3d` or FreeCAD file,
+ * which `openF3d` opens as a new design.
  */
 export async function pickImportFile(deps: {
   files: Pick<FileAccess, 'pick'>;
   projects: ProjectStore;
   store: DocumentStore;
   notify(tone: 'info' | 'error', message: string): void;
+  /** Opens an `.f3d` or FreeCAD file as a new design (the project page's `importF3d`). */
   openF3d?(file: File): void;
   /** The desktop's converter for other CAD files (ADR-0115 §1); absent on the web. */
   convertCad?: ConvertCad;
 }): Promise<PendingImport | undefined> {
   const picked = await deps.files.pick(importAccept(!!deps.convertCad));
   if (!picked) return undefined;
-  if (/\.f3d$/i.test(picked.name) && deps.openF3d) {
+  if (/\.(f3d|fcstd)$/i.test(picked.name) && deps.openF3d) {
     deps.openF3d(picked);
     return undefined;
   }

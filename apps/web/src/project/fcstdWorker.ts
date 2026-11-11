@@ -1,0 +1,39 @@
+// The FreeCAD import's module worker (P6-25 S3, ADR-0144 decision 9): the
+// reader and the mapper run here, off the UI thread, and the import's own
+// kernel runs in a worker this one starts (`importKernel.ts`), so terminating
+// this worker ends both. It takes one request and answers once; the client
+// (`fcstdImport.ts`) then terminates it.
+import { FcstdFormatError, importFcstd } from '@extrudo/fcstd';
+import { FCSTD_MEMORY_TEXT, type FcstdWorkerReply, type FcstdWorkerRequest } from './fcstdImport';
+import { workerImportKernel } from './importKernel';
+
+const post = (reply: FcstdWorkerReply, transfer: Transferable[] = []) =>
+  self.postMessage(reply, { transfer });
+
+self.onmessage = async ({ data }: MessageEvent<FcstdWorkerRequest>) => {
+  const kernel = workerImportKernel();
+  try {
+    const { design, files, report } = await importFcstd(new Uint8Array(data.bytes), data.name, {
+      ...data.options,
+      kernel,
+      onProgress: (done, total) => post({ progress: [done, total] }),
+    });
+    const list = [...files];
+    post(
+      { result: { doc: design.toJSON(), files: list, report } },
+      list.map(([, bytes]) => bytes.buffer as ArrayBuffer),
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    post({
+      error:
+        error instanceof RangeError && /allocation failed/i.test(message)
+          ? FCSTD_MEMORY_TEXT
+          : error instanceof FcstdFormatError
+            ? `This file can't be read as a FreeCAD file: ${message}`
+            : message,
+    });
+  } finally {
+    kernel.dispose();
+  }
+};

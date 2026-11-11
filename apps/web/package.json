@@ -35,6 +35,7 @@
     "@extrudo/api": "workspace:*",
     "@extrudo/core": "workspace:*",
     "@extrudo/f3d": "workspace:*",
+    "@extrudo/fcstd": "workspace:*",
     "@extrudo/fonts": "workspace:*",
     "@extrudo/io": "workspace:*",
     "@extrudo/kernel": "workspace:*",

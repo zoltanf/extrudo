@@ -99,6 +99,8 @@ const ALLOWED = {
     '@extrudo/api',
     // The .f3d import, loaded lazily when the user picks a file.
     '@extrudo/f3d',
+    // The FreeCAD import (ADR-0144), likewise: in its own module worker.
+    '@extrudo/fcstd',
     '@extrudo/core',
     '@extrudo/sketch',
     '@extrudo/kernel',
