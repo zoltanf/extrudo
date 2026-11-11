@@ -38,6 +38,7 @@ export {
   type SubShapeKind,
   type SubShapeRef,
 } from './history';
+export { type ImportRebuild, type ImportRebuilder, importRebuilder } from './import-rebuild';
 export {
   type Box,
   type Inspection,

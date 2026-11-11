@@ -53,7 +53,10 @@ import {
   SheetViewsCancelledError,
 } from './sheets/views';
 import {
+  measureShape,
+  measureStoredShape,
   type ShapePlacement,
+  type StoredShapeMeasure,
   type StoredShapeOptions,
   type StoredShapeStep,
   storedShapeToStep,
@@ -227,6 +230,19 @@ export interface KernelApi {
     options?: StoredShapeOptions,
   ): Promise<StoredShapeStep>;
   /**
+   * A third-party file's stored B-rep text, placed by `chain` and measured
+   * (solids, volume, area, tight box), with no STEP (P6-25 S5, ADR-0144): the
+   * shape a file stores for a feature, to compare with the body rebuilt for
+   * it. Refused like `storedShapeToStep` unless this is an import kernel.
+   */
+  measureStoredShape(text: string, chain: readonly ShapePlacement[]): Promise<StoredShapeMeasure>;
+  /**
+   * Bodies of the last finished recompute measured as `measureStoredShape`
+   * measures a stored shape (the same code), by ID (P6-25 S5, ADR-0144).
+   * Rejects if a body is no longer in the model.
+   */
+  measureBodies(bodies: readonly BodyId[]): Promise<Record<BodyId, StoredShapeMeasure>>;
+  /**
    * Bodies of the last finished recompute as an OpenSCAD file (P6-09,
    * ADR-0088): OpenSCAD code where the features translate, polyhedra at the
    * options' tessellation where they don't. Rejects if a body is no longer
@@ -387,6 +403,12 @@ export interface KernelServiceOptions {
    */
   importKernel?: boolean;
 }
+
+/** Why a project's kernel refuses third-party B-rep text (ADR-0144 decision 5). */
+const notAnImportKernel = () =>
+  new KernelError(
+    "This kernel doesn't read stored shapes: only an import's own kernel does (ADR-0144).",
+  );
 
 export class KernelService implements KernelApi {
   readonly #load: () => Promise<OcctModule>;
@@ -619,14 +641,21 @@ export class KernelService implements KernelApi {
     chain: readonly ShapePlacement[],
     options: StoredShapeOptions = {},
   ): Promise<StoredShapeStep> {
-    if (!this.#options.importKernel) {
-      return Promise.reject(
-        new KernelError(
-          "This kernel doesn't read stored shapes: only an import's own kernel does (ADR-0144).",
-        ),
-      );
-    }
+    if (!this.#options.importKernel) return Promise.reject(notAnImportKernel());
     return this.#run((kernel) => storedShapeToStep(kernel, text, chain, options));
+  }
+
+  measureStoredShape(text: string, chain: readonly ShapePlacement[]): Promise<StoredShapeMeasure> {
+    if (!this.#options.importKernel) return Promise.reject(notAnImportKernel());
+    return this.#run((kernel) => measureStoredShape(kernel, text, chain));
+  }
+
+  measureBodies(bodies: readonly BodyId[]): Promise<Record<BodyId, StoredShapeMeasure>> {
+    return this.#run((kernel) => {
+      const out: Record<BodyId, StoredShapeMeasure> = {};
+      for (const id of bodies) out[id] = measureShape(kernel, this.#bodyShape(id, 'measure'));
+      return out;
+    });
   }
 
   exportScad(options: ScadExportOptions): Promise<string> {

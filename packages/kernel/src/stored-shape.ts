@@ -70,7 +70,13 @@ export function chainMatrix(chain: readonly ShapePlacement[]): Matrix12 {
 const isIdentity = (m: Matrix12) =>
   m.every((v, i) => Math.abs(v - (IDENTITY[i] as number)) < 1e-15);
 
-function measured(kernel: Kernel, shape: ShapeHandle): StoredShapeMeasure {
+/**
+ * What a shape measures: its solids (counted, then released), the volume of
+ * those solids, its faces' area and its tight box (`Kernel.properties`). The
+ * one definition both sides of an import's checks use (ADR-0144): a stored
+ * shape and a rebuilt body are measured by this code only.
+ */
+export function measureShape(kernel: Kernel, shape: ShapeHandle): StoredShapeMeasure {
   const solids = kernel.solids(shape);
   kernel.release(...solids);
   const { volume, area, bbox } = kernel.properties(shape);
@@ -106,7 +112,7 @@ export function storedShapeToStep(
   const matrix = chainMatrix(chain);
   const read = scope.track(kernel.readBrep(text));
   const placed = isIdentity(matrix) ? read : scope.track(kernel.transform(read, matrix).shape);
-  const before = measured(kernel, placed);
+  const before = measureShape(kernel, placed);
   // Nothing to import: no STEP, and the caller says so (not a failure).
   if (before.solids === 0) return { step: '', ...before, read: before };
   const step = kernel.writeStep([
@@ -117,5 +123,23 @@ export function storedShapeToStep(
     },
   ]);
   const back = scope.track(kernel.readStep(step));
-  return { step: fixedStamp(step), ...measured(kernel, back), read: before };
+  return { step: fixedStamp(step), ...measureShape(kernel, back), read: before };
+}
+
+/**
+ * Reads `text` (`Kernel.readBrep`'s checks), places it by `chain` and
+ * measures it (`measureShape`), with no STEP: the shape a file stores for a
+ * feature, to compare with the body Extrudo rebuilt for it (ADR-0144 S5).
+ * Every shape is released before it returns or throws.
+ */
+export function measureStoredShape(
+  kernel: Kernel,
+  text: string,
+  chain: readonly ShapePlacement[],
+): StoredShapeMeasure {
+  using scope = kernel.scope();
+  const matrix = chainMatrix(chain);
+  const read = scope.track(kernel.readBrep(text));
+  const placed = isIdentity(matrix) ? read : scope.track(kernel.transform(read, matrix).shape);
+  return measureShape(kernel, placed);
 }
