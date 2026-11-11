@@ -212,6 +212,8 @@ export function useDimensionTool({
   }, [active, picks.length]);
 
   // The picks make a dimension: its anchors, resolved once, for the preview and the new item.
+  // Only the picks start a new candidate; the sheet changing under it changes nothing here.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the picks are the trigger.
   useEffect(() => {
     setCandidate(undefined);
     const made = dimensionOf(picks);
@@ -225,8 +227,6 @@ export function useDimensionTool({
     void kernel.resolveSheet(probe, { quiet: true }).then((anchors) => {
       if (n === asking.current && anchors) setCandidate({ picks, anchors });
     });
-    // Only the picks start a new candidate; the sheet moving under it changes nothing here.
-    // biome-ignore lint/correctness/useExhaustiveDependencies: the picks are the trigger.
   }, [picks, kernel]);
 
   const view = picks[0] ? sheet?.views.find((v) => v.id === picks[0]?.view) : undefined;
