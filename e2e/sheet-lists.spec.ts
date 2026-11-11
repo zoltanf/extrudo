@@ -295,7 +295,7 @@ test('the list tools rebuild the base-frame sheet: parts list, balloons, table, 
   await clickAt(page, (fx0 + fx1) / 2, (fy0 + fy1) / 2);
   await expect(step(page)).toHaveText(/^Click where the list of Front goes/);
   await expect(sheet(page).locator('[data-parts-view]')).toHaveCount(1);
-  const listAt = await onSheet(page, 300, 28);
+  const listAt = await onSheet(page, 272, 28);
   await page.mouse.move(listAt.x, listAt.y, { steps: 4 });
   await shot(page, 'parts-list-placing');
   await page.mouse.click(listAt.x, listAt.y);
