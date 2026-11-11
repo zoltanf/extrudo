@@ -751,6 +751,15 @@ export class Recomputer {
     );
   }
 
+  /**
+   * The version of each body the model store holds now (the last finished
+   * recompute's, `BodyResult.version`), which a sheet view result's
+   * `versions` are compared with to tell stale lines (P6-24 S2).
+   */
+  bodyVersions(): Record<BodyId, string> {
+    return this.#have();
+  }
+
   /** Stops running sheet views before their next view. */
   cancelSheetViews(): void {
     this.client.call((api) => api.cancelSheetViews()).catch(() => {});

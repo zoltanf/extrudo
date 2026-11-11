@@ -2131,6 +2131,35 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   title block alone is selected. Ctrl+click toggles; drag on empty paper is a box select;
   arrows nudge 1 mm (Shift 10 mm); Delete removes; each is one undo step.
 
+
+### `e2e/sheet-views.spec.ts`
+
+- **The view tools** (P6-24 S2, ADR-0143's S2 view-tools amendment). The Base View tile is
+  `#toolbar-groups [data-label="Base View"]` (key `V`); while it runs the right column is the
+  region "Base view" (comboboxes "Looking from", take `selectOption({ label: 'Top' })`, and
+  "Scale", values like `'1:2'`; the radio group "Style"), and the frame following the pointer is
+  `[data-sheet-placing]` (shown once the pointer moved over the sheet). A click places the view
+  with the middle of its lines at the pointer and selects it: read its ID from the region
+  "Sheet"'s `data-selected` (`view:<id>`).
+- **A view's lines** are `[data-sheet-paper] > svg path[data-key="view:<id>"][stroke-width]`
+  (the overlay svg has frames with the same keys: scope to the first svg; the label's outline is
+  a filled path with the same key: `[stroke-width]` leaves it out), one per line kind: `stroke-width`
+  0.5 (visible, outline), 0.25 with `stroke-dasharray="3 1.5"` (hidden), 0.18 (tangent).
+  `data-state="stale"` marks lines shown while the view is recomputed (dimmed); poll until no
+  path has it before reading sizes. `getBBox()` gives the geometry in sheet mm, strokes left out (a
+  40 mm edge at 1:2 reads 20).
+- **The card** is the region "View" (`exact: true`): textbox "View name", comboboxes "Looking
+  from" and "Scale", radio "Visible edges" / "Visible and hidden", switches "Tangent edges" and
+  "View label", checkboxes "All shown" and one per body by name. The label is a text in
+  `[data-sheet-text]` keyed `view:<id>` ("Front (1:2)" when its scale differs from the sheet's).
+- **The views notice** is `[data-sheet-views-progress]` (`running` after 300 ms, "View n of N",
+  button "Cancel drawing the views"; `cancelled`, "Some views are out of date", button "Draw the
+  views"). The cancel test uses B7 (`fixtures/benchmarks/b7-knurled-knob.extrudo`, read with
+  `readArchive`, a sheet added, `writeArchive`, home's "Import…"): its side views take seconds
+  each, so the run is still on the first exact view when Cancel is clicked. Re-run a timeout
+  alone before believing it.
+- **Export**: the PDF's content streams are deflated; inflate each `/FlateDecode` stream with
+  `zlib.inflateSync`. Hidden lines write `[3 1.5] 0 d`; the page is in mm (`0.5 w`).
 ### `e2e/shell-feature.spec.ts`
 
 - **Shell e2e** (`e2e/shell-feature.spec.ts`, P3-03; not `shell.spec.ts`, the

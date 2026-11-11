@@ -89,6 +89,17 @@ export interface SheetViewCurve {
 
 export interface SheetViewLines {
   curves: readonly SheetViewCurve[];
+  /**
+   * Around every curve, in the view's frame (mm at 1:1, y up): where the label
+   * goes, without flattening the curves. With no curves it is the frame the
+   * view keeps while it is empty (its body is gone).
+   */
+  bounds?: { min: Point; max: Point };
+  /**
+   * How the screen may mark the view's lines (`"stale"`: being recomputed,
+   * drawn dimmed), as a display item's `state`; writers ignore it.
+   */
+  state?: string;
 }
 
 export interface SheetContext {
@@ -308,6 +319,14 @@ function derived(cell: SheetTitleCell, sheet: Sheet, context: SheetContext): str
 /** The frame a view without lines is drawn as, mm, centred on its origin. */
 export const VIEW_PLACEHOLDER = { width: 60, height: 40 } as const;
 
+/**
+ * A view's items for the lines object they were made from, by what else they
+ * depend on: a sheet laid out again with the view unchanged (a text dragged, a
+ * field typed) gives back the same items, so nothing is transformed again and
+ * the screen's per-item caches hold.
+ */
+const viewCache = new WeakMap<SheetViewLines, { key: string; items: DisplayItem[] }>();
+
 function viewItems(
   sheet: Sheet,
   view: SheetView,
@@ -315,46 +334,72 @@ function viewItems(
 ): DisplayItem[] {
   const key = `view:${view.id}`;
   const [x, y] = view.at;
-  if (!lines) {
-    const { width: w, height: h } = VIEW_PLACEHOLDER;
+  const scale = sheetViewScale(sheet, view);
+  const k = scale[0] / scale[1];
+  if (!lines || lines.curves.length === 0) {
     const size = SHEET_TEXT_SIZE;
+    const b = lines?.bounds;
+    // The frame the view keeps while it is empty, else a placeholder centred on its origin.
+    const [x0, y0, x1, y1] = b
+      ? [x + k * b.min[0], y - k * b.max[1], x + k * b.max[0], y - k * b.min[1]]
+      : [
+          x - VIEW_PLACEHOLDER.width / 2,
+          y - VIEW_PLACEHOLDER.height / 2,
+          x + VIEW_PLACEHOLDER.width / 2,
+          y + VIEW_PLACEHOLDER.height / 2,
+        ];
     return [
       {
         type: 'path',
-        contours: [rect(x - w / 2, y - h / 2, x + w / 2, y + h / 2)],
+        contours: [rect(x0, y0, x1, y1)],
         stroke: { width: SHEET_LINE.thin, color: SHEET_MUTED, join: 'miter' },
         key,
       },
-      centred(view.name, [x, y + size / 2], size, { color: SHEET_MUTED, key }),
+      centred(view.name, [(x0 + x1) / 2, (y0 + y1) / 2 + size / 2], size, {
+        color: SHEET_MUTED,
+        key,
+      }),
     ];
   }
   const base = baseOf(sheet, view);
-  const scale = sheetViewScale(sheet, view);
-  const k = scale[0] / scale[1];
   const style = base?.style ?? 'hidden';
+  const own = formatSheetScale(scale);
+  const label = view.label
+    ? own === formatSheetScale(sheet.scale)
+      ? view.name
+      : `${view.name} (${own})`
+    : '';
+  const cacheKey = [x, y, k, style, view.tangentEdges, view.centreLines, label].join('|');
+  const cached = viewCache.get(lines);
+  if (cached?.key === cacheKey) return cached.items;
   // From the view's frame (y up, model size) to the sheet's (y down, at scale).
   const m: Matrix = [k, 0, 0, -k, x, y];
   const skip = new Set<SheetLineKind>();
   if (style !== 'hidden') skip.add('hidden');
   if (view.tangentEdges === false) skip.add('tangent');
   if (view.centreLines === false) skip.add('centre');
+  const state = lines.state ? { state: lines.state } : {};
   const out: DisplayItem[] = [];
-  let bottom = y;
+  let bottom = lines.bounds ? y - k * lines.bounds.min[1] : y;
   for (const kind of SHEET_LINE_KINDS) {
     if (skip.has(kind)) continue;
     const contours = lines.curves
       .filter((c) => c.kind === kind)
       .flatMap((c) => c.contours.map((contour) => transformContour(m, contour)));
     if (contours.length === 0) continue;
-    for (const c of contours)
-      for (const p of flattenContour(c, 0.05)) bottom = Math.max(bottom, p[1]);
-    out.push({ type: 'path', contours, stroke: STROKE[kind], key });
+    if (!lines.bounds) {
+      for (const c of contours)
+        for (const p of flattenContour(c, 0.05)) bottom = Math.max(bottom, p[1]);
+    }
+    out.push({ type: 'path', contours, stroke: STROKE[kind], key, ...state });
   }
-  if (view.label) {
-    const own = formatSheetScale(scale);
-    const text = own === formatSheetScale(sheet.scale) ? view.name : `${view.name} (${own})`;
-    out.push(centred(text, [x, bottom + 4 + SHEET_TEXT_SIZE], SHEET_TEXT_SIZE, { key }));
+  if (label) {
+    out.push({
+      ...centred(label, [x, bottom + 4 + SHEET_TEXT_SIZE], SHEET_TEXT_SIZE, { key }),
+      ...state,
+    });
   }
+  viewCache.set(lines, { key: cacheKey, items: out });
   return out;
 }
 

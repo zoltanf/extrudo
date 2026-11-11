@@ -1,0 +1,1 @@
+- 2026-11-11 · **Drawings: views of the model**: the sheet's views are drawn from the model (quick lines first, then exact ones, one view at a time, with Cancel), Base View places one with the pointer, a selected view has its card (direction, scale, style, tangent edges, label, bodies), and the export draws the same exact lines (P6-24 S2, ADR-0143).

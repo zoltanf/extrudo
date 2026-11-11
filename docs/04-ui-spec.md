@@ -889,8 +889,8 @@ no text shown the tab alone is the callout, rounded on all four corners. A
 ## 4a. Drawing mode (P6-24, ADR-0143)
 
 A design's 2D sheets, made from the model (slice S1: sheets, Sheet Setup, the
-title block, text items and export; views, dimensions and notes come with S2 to
-S5). The UI says "drawing" and "sheet"; code says `sheet`.
+title block, text items and export; S2: views drawn from the model, Base View
+and the view card; dimensions and notes come with S3 to S5). The UI says "drawing" and "sheet"; code says `sheet`.
 
 - **Ways in:** Make › **Drawing** (New drawing when the design has no sheet,
   else the sheet edited last); the browser's **Drawings** folder below
@@ -905,8 +905,8 @@ S5). The UI says "drawing" and "sheet"; code says `sheet`.
   without zones, with the design's name, today's date and the units filled in.
   "Drawn by" is never filled in by itself: the last name typed there is
   offered as a "Use …" button.
-- **The screen:** tabs Home and **Drawing** (New Sheet, Sheet Setup, Export
-  PDF, Finish Drawing). The sheet takes the 3D view's place (the view stays
+- **The screen:** tabs Home and **Drawing** (Views: Base View; Sheet: New
+  Sheet, Sheet Setup; Output: Export PDF; Finish Drawing). The sheet takes the 3D view's place (the view stays
   mounted underneath, inert): white paper in both themes with a shadow, a
   floating bar with Select, Pan, Zoom, Fit and the zoom level. Pan and zoom
   follow the mouse preset's bindings (no orbit), the wheel zooms at the
@@ -932,11 +932,43 @@ S5). The UI says "drawing" and "sheet"; code says `sheet`.
   projected from it). The paper and the border can't be selected; the title
   block can't be moved or deleted (Sheet Setup's Title block "None" removes
   it). A selected view shows its name in a tag above its frame.
+- **Views** are drawn from the model at the timeline marker whenever the
+  drawing is open: each view's lines are computed one view at a time, quick
+  polygonal lines first where a view has nothing current to show, then the
+  exact ones, once the model is computed. While a view is recomputed (a parameter changed, the view turned)
+  it keeps its last lines at a third of their strength; a view drawn for the
+  first time shows its thin frame and name with "Drawing the view…" under it.
+  After a moment a notice at the top middle of the sheet says "Drawing the views",
+  "View 2 of 4", with a bar and **Cancel**, which stops before the next view
+  (the one under way finishes); the views then keep what they show and the
+  notice says "Some views are out of date" with **Draw**. Moving a view,
+  changing its scale or style computes nothing. Under a view the screen says
+  "Box is gone. Choose bodies or delete the view." (a chosen body deleted: the
+  view keeps its frame), "Mesh bodies can't be drawn yet." or "No shown bodies
+  to draw."; these notes are on screen only. A hidden body leaves the views
+  that show all shown bodies and stays in a view that names it. With the
+  marker rolled back the status text ends "Showing the model at feature 5 of
+  7". Dimensions a file holds are drawn detached (their text with "?") until
+  the Dimension tool (S3).
+- **Base View** (`V`): the right column shows its choices (Looking from, Scale,
+  Style), a frame with the view's quick lines follows the pointer, a click
+  places the view with the middle of its lines there (one undo step, "Base
+  view") and selects it; Esc ends the tool. The choices are kept for the next
+  time in the session.
 - **The right column** is Sheet Setup with nothing selected (name, paper or a
   custom size, orientation, border and zones, default scale, decimals,
   projection, title block and its typed fields, Finish Drawing); a selection
   card (its name, Delete) otherwise; the title block alone selected shows its
-  template and fields.
+  template and fields. **A view alone selected** shows its card (mock-up 1):
+  its name; Looking from (the six standard views, four isometrics named by the
+  faces they show, the model's current view, each named view; "Custom
+  direction" when it matches none); Scale (the sheet's, 1:1 to 1:50, 2:1, 5:1,
+  or Custom with two number fields); Style (Visible edges, Visible and
+  hidden); Show: Tangent edges, View label; Bodies: All shown, then each body
+  at the marker (the last one can't be unticked); Delete and Finish Drawing.
+  A view still named after its direction takes the new direction's name; a new
+  scale keeps the middle of its lines in place. A projected view's card shows
+  its parent and its label only. Each change is one undo step.
 - **Undo:** every sheet edit is one undo step with its own label; Finish
   Drawing is none. Undo in the drawing is a plain undo (it doesn't reopen a
   sketch finished before). An undo that takes the open sheet away opens its
@@ -944,7 +976,10 @@ S5). The UI says "drawing" and "sheet"; code says `sheet`.
 - **Export drawing** (Export PDF, Ctrl+E; Export This Sheet): the sheets as
   checkboxes, **PDF** (one file, a page per chosen sheet) or **SVG** (a file
   per sheet), the file name and a summary ("2 pages · A3 landscape, A4
-  landscape"); no sheet chosen can't export. The format is remembered.
+  landscape"); no sheet chosen can't export. The format is remembered. Export
+  first draws every view of the chosen sheets exactly (the summary says
+  "Drawing the views · 2 of 4"; closing the dialog stops it and writes
+  nothing), so a file never holds the quick placeholder lines.
 - **Model-only tools** (Import, Canvas, Customizer) say "Finish the drawing to
   use …"; Parameters stays available; camera and named views are not offered.
   An Edit that opens a sketch or a feature dialog (a recompute error's Edit)

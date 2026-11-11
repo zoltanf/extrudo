@@ -258,6 +258,7 @@ export {
   type SheetViewResult,
   SheetViewsCancelledError,
   type SkippedBody,
+  shownBodies,
   shownCurves,
   type ViewBounds,
   type ViewCurve,

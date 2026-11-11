@@ -178,6 +178,7 @@ import {
   openSheet,
   openSheets,
   renameSheet,
+  SHEET_TOOLS,
   stepSheet,
 } from '../sheets/mode';
 import { NewSheetsDialog } from '../sheets/NewSheetsDialog';
@@ -186,6 +187,7 @@ import { SheetExportDialog, type SheetExportRequest } from '../sheets/SheetExpor
 import { type SheetRowActions, SheetsFolder, SheetsTree } from '../sheets/SheetsTree';
 import { SheetTabs } from '../sheets/SheetTabs';
 import { deleteTargets, movable, moveTargets, selectedTargets } from '../sheets/selection';
+import type { SheetViewsKernel } from '../sheets/viewRunner';
 import type { FontPicker } from '../sketch/addFont';
 import { useBodiesBefore } from '../sketch/baseBodies';
 import { constructionDatumSources } from '../sketch/datums';
@@ -388,7 +390,14 @@ export interface AppShellProps {
     Partial<
       Pick<
         Recomputer,
-        'interference' | 'resolveAnnotation' | 'waits' | 'canRevertToShown' | 'revertToShown'
+        | 'interference'
+        | 'resolveAnnotation'
+        | 'waits'
+        | 'canRevertToShown'
+        | 'revertToShown'
+        | 'sheetViews'
+        | 'cancelSheetViews'
+        | 'bodyVersions'
       >
     > &
     Partial<{
@@ -620,6 +629,8 @@ function Shell({
   const measuring = mode === 'model' && activeTool === MEASURE_TOOL;
   // Annotate runs in the model and in an open sketch (ADR-0126 §6–7).
   const annotating = activeTool === ANNOTATE_TOOL;
+  // A view tool running on the sheet (P6-24 S2).
+  const sheetToolRunning = mode === 'sheet' && SHEET_TOOLS.has(activeTool ?? '');
   // What is edited in place, or drafted by the Annotate tool (ADR-0126 §6): view state.
   const annotationsUi = useMemo(() => createAnnotationsUi(), []);
   // The open sketch for the browser rows and Look At, which run outside a render.
@@ -1858,14 +1869,15 @@ function Shell({
             })),
           )
         : []),
-      // In the drawing, Esc stops Pan or Zoom, or else clears the selection; it never leaves
-      // the mode (plan §3.2).
+      // In the drawing, Esc ends a view tool, stops Pan or Zoom, or else clears the
+      // selection; it never leaves the mode (plan §3.2).
       ...(mode === 'sheet'
         ? [
             {
               keys: 'Escape',
               run: () => {
-                if (viewport.getState().tool) viewport.getState().setTool(undefined);
+                if (sheetToolRunning) session.getState().setTool(undefined);
+                else if (viewport.getState().tool) viewport.getState().setTool(undefined);
                 else session.getState().clearSelection();
               },
             },
@@ -1897,6 +1909,7 @@ function Shell({
       overhanging,
       thickening,
       customizing,
+      sheetToolRunning,
       mode,
       drawing,
       host,
@@ -1988,6 +2001,14 @@ function Shell({
     }
     if (tool === 'exportSheets') {
       exportSheets();
+      return;
+    }
+    // Base View (P6-24 S2): the tool runs on the sheet until a click places the view or Esc.
+    if (tool === 'baseView') {
+      if (mode !== 'sheet') return;
+      viewport.getState().setTool(undefined);
+      session.getState().clearSelection();
+      session.getState().setTool(activeTool === tool ? undefined : tool);
       return;
     }
     if (tool === 'newSheet' || tool === 'sheetSetup') {
@@ -2927,7 +2948,8 @@ function Shell({
                 printing ||
                 overhanging ||
                 thickening ||
-                customizing
+                customizing ||
+                sheetToolRunning
               ? (activeTool as ToolId)
               : dialogOpen && typeof dialogOpen.spec.command === 'string'
                 ? dialogOpen.spec.command
@@ -3317,6 +3339,12 @@ function Shell({
               nameField={sheetNameField}
               preferences={platform.preferences}
               notify={notify}
+              model={model}
+              {...(kernel?.sheetViews &&
+                kernel.cancelSheetViews &&
+                kernel.bodyVersions && {
+                  kernel: kernel as SheetViewsKernel,
+                })}
               onMenu={(at) => {
                 const content = viewMenu?.open({ mode: 'sheet', stack: [] }, at);
                 if (content) setSheetMenu({ at, slots: content.slots, radial: content.radial });
@@ -3472,6 +3500,7 @@ function Shell({
           session={session}
           units={doc.settings.units}
           notify={notify}
+          marker={{ at: doc.timelineMarker, of: doc.features.length }}
           {...(history && { notifications: history })}
           actions={{
             ...sheetActions,
@@ -3502,6 +3531,14 @@ function Shell({
         request={sheetExport}
         doc={doc}
         files={platform.files}
+        {...(kernel?.sheetViews &&
+          kernel.cancelSheetViews &&
+          kernel.bodyVersions && {
+            views: {
+              kernel: kernel as SheetViewsKernel,
+              bodies: () => Object.keys(model.getState().bodies) as BodyId[],
+            },
+          })}
         preferences={platform.preferences}
         notify={notify}
         onClose={() => setSheetExport(undefined)}
