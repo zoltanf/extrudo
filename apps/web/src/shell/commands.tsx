@@ -618,6 +618,14 @@ export function modelOnlyText(mode: EditMode, label: string): string {
 }
 
 /**
+ * Why the tool `id` doesn't run in `mode`: a model-only tool's message in a sketch or the
+ * drawing (its tile, search result or key), else `undefined`.
+ */
+export function modelOnlyReason(mode: EditMode, id: string, label: string): string | undefined {
+  return mode !== 'model' && MODEL_ONLY_TOOLS.has(id) ? modelOnlyText(mode, label) : undefined;
+}
+
+/**
  * The drawing's commands (P6-24, plan §3.2): New Drawing and Open Drawing, a command per
  * sheet, and in the drawing the next and previous sheet (Ctrl+PageDown, Ctrl+PageUp).
  */
