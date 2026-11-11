@@ -619,10 +619,12 @@ export function modelOnlyText(mode: EditMode, label: string): string {
 
 /**
  * Why the tool `id` doesn't run in `mode`: a model-only tool's message in a sketch or the
- * drawing (its tile, search result or key), else `undefined`.
+ * drawing (its tile, search result or key), else `undefined`. Any ID may come in (a
+ * plugin's feature is not in `TOOLS`); only a model-only tool's label is read.
  */
-export function modelOnlyReason(mode: EditMode, id: string, label: string): string | undefined {
-  return mode !== 'model' && MODEL_ONLY_TOOLS.has(id) ? modelOnlyText(mode, label) : undefined;
+export function modelOnlyReason(mode: EditMode, id: string): string | undefined {
+  if (mode === 'model' || !MODEL_ONLY_TOOLS.has(id)) return undefined;
+  return modelOnlyText(mode, TOOLS[id as ToolId].label);
 }
 
 /**

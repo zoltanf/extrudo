@@ -326,16 +326,20 @@ describe('buildCommands', () => {
   });
 
   it('gives a model-only tile its reason in a sketch and the drawing, none in the model', () => {
-    expect(modelOnlyReason('sketch', 'importBody', 'Import Model…')).toBe(
-      'Finish the sketch to use Import Model.',
+    expect(modelOnlyReason('sketch', 'importBody')).toBe(
+      'Finish the sketch to use Import STEP, mesh, OpenSCAD or .f3d.',
     );
-    expect(modelOnlyReason('sketch', 'canvas', 'Canvas')).toBe('Finish the sketch to use Canvas.');
-    expect(modelOnlyReason('sheet', 'customizer', 'Customizer')).toBe(
-      'Finish the drawing to use Customizer.',
-    );
-    expect(modelOnlyReason('model', 'canvas', 'Canvas')).toBeUndefined();
+    expect(modelOnlyReason('sketch', 'canvas')).toBe('Finish the sketch to use Canvas.');
+    expect(modelOnlyReason('sheet', 'customizer')).toBe('Finish the drawing to use Customizer.');
+    expect(modelOnlyReason('model', 'canvas')).toBeUndefined();
     // Other Home tools run in a sketch.
-    expect(modelOnlyReason('sketch', 'parameters', 'Parameters')).toBeUndefined();
+    expect(modelOnlyReason('sketch', 'parameters')).toBeUndefined();
+  });
+
+  it('gives no reason, and does not throw, for an ID that is not a tool (a plugin feature)', () => {
+    for (const mode of ['model', 'sketch', 'sheet'] as const) {
+      expect(modelOnlyReason(mode, 'plugin:nameplate')).toBeUndefined();
+    }
   });
 
   it('starts tools through the context', () => {

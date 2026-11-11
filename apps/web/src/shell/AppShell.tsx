@@ -1945,7 +1945,7 @@ function Shell({
       return;
     }
     // Home's model-only tools say why they don't run in a sketch or the drawing (plan §3.1).
-    const modelOnly = modelOnlyReason(mode, tool, TOOLS[tool].label);
+    const modelOnly = modelOnlyReason(mode, tool);
     if (modelOnly) {
       notify('info', modelOnly);
       return;
