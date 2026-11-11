@@ -23,7 +23,6 @@ import {
   type Feature,
   type FeatureDefinition,
   type FeatureInputs,
-  type GeomFingerprint,
   type GeomRef,
   type Joint,
   type JointId,
@@ -48,7 +47,8 @@ import {
   statement,
   str,
 } from './emit/print';
-import { idExpr, refExpr } from './emit/refs';
+import { fingerprintExpr, idExpr, numbers, refExpr } from './emit/refs';
+import { sheetStatements } from './emit/sheets';
 import { sketchExpr } from './emit/sketch';
 import { inferUnit } from './expr';
 import { compact, inputMeta } from './inputs';
@@ -146,6 +146,12 @@ export function emitScript(doc: ExtrudoDocument, options: EmitOptions = {}): str
   statements.push(...jointStatements(joints, ctx));
   // Annotations last, a whole design only: a run replays into a design with its own (ADR-0126 §8).
   if (whole) statements.push(...annotationStatements(doc, ctx));
+  // Sheets after them, a whole design only too (P6-24 S6): their anchors name the bodies' faces.
+  if (whole) {
+    const variable = (name: string, fallback: string) =>
+      uniqueVariable(variableBase(name, fallback), used);
+    statements.push(...sheetStatements(doc, ctx, variable));
+  }
   return printProgram(statements);
 }
 
@@ -299,21 +305,6 @@ function annotationStatements(doc: ExtrudoDocument, ctx: EmitContext): Stmt[] {
     );
   }
   return statements;
-}
-
-const numbers = (values: readonly number[]): Expr => arr(values.map(num));
-
-/** A fingerprint as an object literal, its neighbours' names through their handles' IDs. */
-function fingerprintExpr(print: GeomFingerprint, ctx: EmitContext): Expr {
-  return obj([
-    ['type', str(print.type)],
-    ['at', numbers(print.at)],
-    ...(print.dir ? ([['dir', numbers(print.dir)]] as [string, Expr][]) : []),
-    ...(print.size !== undefined ? ([['size', num(print.size)]] as [string, Expr][]) : []),
-    ...(print.adj
-      ? ([['adj', arr(print.adj.map((name) => idExpr(name, ctx)))]] as [string, Expr][])
-      : []),
-  ]);
 }
 
 /** One joint side as `{ component: leaf, frame: … }`. */
