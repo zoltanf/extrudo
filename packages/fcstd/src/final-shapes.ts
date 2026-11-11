@@ -228,17 +228,13 @@ export function finalShapes(doc: FcDocument): FinalShape[] {
   ): FinalShape => {
     const look = object.gui?.colour ? object.gui : source.gui;
     const mesh = source.properties.Mesh?.value;
+    const isMesh = mesh?.kind === 'mesh';
     return {
       kind,
       object,
       source,
-      entry:
-        kind === 'mesh' || (kind === 'link' && mesh?.kind === 'mesh')
-          ? mesh?.kind === 'mesh' && mesh.entry !== ''
-            ? mesh.entry
-            : undefined
-          : storedShapeEntry(doc, source),
-      format: mesh?.kind === 'mesh' ? 'mesh' : 'brep',
+      entry: isMesh ? mesh.entry || undefined : storedShapeEntry(doc, source),
+      format: isMesh ? 'mesh' : 'brep',
       name: object.label,
       visible: object.gui?.visible ?? true,
       ...(look?.colour ? { colour: look.colour } : {}),
