@@ -9,6 +9,7 @@ import type {
   JointReport,
   Sheet,
   SheetAnchors,
+  SheetParts,
 } from '@extrudo/core';
 import type { ScadCompiler, ScadParametersResult } from '@extrudo/openscad';
 import { kernelFeatures } from './features';
@@ -270,6 +271,14 @@ export interface KernelApi {
    * anchor. Evaluates nothing.
    */
   resolveSheet(sheet: Sheet): Promise<SheetAnchors>;
+  /**
+   * What a sheet's parts lists need that the document doesn't hold (P6-24
+   * S5, ADR-0143's S5 amendment), against the bodies at the marker of the
+   * last finished recompute: per list, its view's bodies in order, and each
+   * one's volume and box (as Print Info measures them). `@extrudo/sheets`
+   * merges them into rows. Evaluates nothing.
+   */
+  sheetParts(sheet: Sheet): Promise<SheetParts>;
   /** Builds, measures and meshes the P0-02 test part. */
   debugTestPart(): Promise<TestPart>;
   /** Aborts the WASM instance, to exercise crash recovery (NFR-03). */
@@ -671,6 +680,10 @@ export class KernelService implements KernelApi {
 
   resolveSheet(sheet: Sheet): Promise<SheetAnchors> {
     return this.#run(() => this.#engineOf().resolveSheet(sheet));
+  }
+
+  sheetParts(sheet: Sheet): Promise<SheetParts> {
+    return this.#run(() => this.#engineOf().sheetParts(sheet));
   }
 
   async debugTestPart(): Promise<TestPart> {

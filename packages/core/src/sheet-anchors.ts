@@ -7,7 +7,7 @@
  * view's frame, measures and lays the item out, so the app and the CLI
  * give the same result. None of it is stored: it is derived.
  */
-import type { SheetItemId } from './ids';
+import type { BodyId, SheetItemId } from './ids';
 import type { GeomRef } from './refs';
 import type { Vec3 } from './sketch/planes';
 
@@ -50,6 +50,8 @@ export interface SheetAnchorReport {
   geometry?: SheetAnchorGeometry;
   /** What the reference resolved to now, with its fingerprint now ("keep closest match"). */
   resolved?: GeomRef;
+  /** The body that geometry is on (a balloon's number is that body's row). */
+  body?: BodyId;
   /**
    * Why a resolved anchor has no geometry ("The edge has no centre."), or why
    * one is detached when its feature is deleted or suppressed ("The feature
@@ -110,9 +112,30 @@ export function keepLastAnchors(
         status: 'detached',
         geometry: last.geometry,
         ...(last.resolved && { resolved: last.resolved }),
+        ...(last.body && { body: last.body }),
         ...(report.message && { message: report.message }),
       };
     });
   }
   return out;
+}
+
+/** A body's measures for a parts list, the kernel's (as Print Info's): mm³ and world mm. */
+export interface SheetPartMeasure {
+  volume: number;
+  /** The tight box round the body, axis-aligned in world mm. */
+  box: { min: Vec3; max: Vec3 };
+}
+
+/**
+ * What the kernel tells about a sheet's parts lists (P6-24 S5, ADR-0143's
+ * S5 amendment, `KernelApi.sheetParts`): per parts list, the bodies of its
+ * view at the marker in order (the base view's `bodies` as listed, else every
+ * shown body in timeline order; a body the model doesn't have is left out),
+ * and each listed body's volume and box. Derived, never stored.
+ */
+export interface SheetParts {
+  lists: Record<SheetItemId, BodyId[]>;
+  /** A body whose measure failed is absent: its row has no size and no mass. */
+  bodies: Record<BodyId, SheetPartMeasure>;
 }

@@ -41,6 +41,7 @@ const LOST_WORDS: Record<SheetAnchoredItem['kind'], { thing: string; verb: strin
   leader: { thing: 'note', verb: 'drawn' },
   centreMark: { thing: 'centre mark', verb: 'drawn' },
   centreLine: { thing: 'centre line', verb: 'drawn' },
+  balloon: { thing: 'balloon', verb: 'drawn' },
 };
 
 /**
@@ -79,13 +80,17 @@ export function lostFeature(
 /**
  * What a whole face (no `at`, no outline) stands for in an item: a circle
  * for a dimension and a centre mark (a cylinder's), the axis for a centre
- * line (a cylinder's or cone's), a point on it for a leader note (where its
- * dot goes).
+ * line (a cylinder's or cone's), a point on it for a leader note and a
+ * balloon (where the dot goes).
  */
 export type SheetFaceUse = 'circle' | 'axis' | 'point';
 
 export function faceAs(kind: SheetAnchoredItem['kind']): SheetFaceUse {
-  return kind === 'centreLine' ? 'axis' : kind === 'leader' ? 'point' : 'circle';
+  return kind === 'centreLine'
+    ? 'axis'
+    : kind === 'leader' || kind === 'balloon'
+      ? 'point'
+      : 'circle';
 }
 
 /** A reason the geometry can't give what the anchor asks; the anchor is not lost. */
@@ -117,6 +122,7 @@ export function resolveSheetAnchor(
       id: hit.id,
       fingerprint: fingerprintOf(description, ctx.names(hit.body), hit.kind, hit.index),
     },
+    body: hit.body,
   };
   try {
     report.geometry = geometryOf(ctx, anchor, hit, frame, face);
