@@ -4534,7 +4534,7 @@ view's frame (scaled, y flipped) and not again with its view; `@extrudo/sheets` 
 (`SheetWorkspace`, `exportSheets`); the model's browser folders stay mounted (hidden `Activity`) in the mode; a tool
 that enters or leaves the mode or only opens a dialog is in `NOT_REPEATABLE`; a new model-only Home tool joins
 `MODEL_ONLY_TOOLS`; S2 to S5 put their tools on the Drawing tab, in `SHEET_SLOTS` and in AppShell's `run()` beside
-`newSheet`. e2e: `e2e/sheets.spec.ts`. **S2 the view tools (package 2, part 1):** `apps/web/src/sheets/viewLines.ts`
+`newSheet`. e2e: `e2e/sheets.spec.ts`. **S2 the view tools (package 2):** `apps/web/src/sheets/viewLines.ts`
 (`sheetViewWants`, `sheetViewWant`, `sheetViewLines`, `pieceContour`, `linesAreCurrent`, `sheetViewNotice`),
 `viewRunner.ts` (`SheetViewRunner`, `sheetViewRunner(kernel)`: `want`, `cancel`, `retry`, `peek`, `exact`), `views.ts`
 (`LOOKING_FROM`, `lookingFromChoices`, `placedAt`, `rescaledAt`, `placeBaseView`, `changeSheetView`), `SheetViewCard.tsx`;
@@ -4547,7 +4547,14 @@ one run at a time, quick first for views with nothing current, exact after, `qui
 Cancel between views, Draw after a cancel); the runner never re-runs the same remaining work by itself; **an export computes
 every view exactly first** (`exact`) and never writes quick lines; notices under views are on screen only, never in the
 display list; layout's per-view items and the selection's per-item boxes must stay keyed by object identity (a new lines
-object per result, the same one while unchanged). e2e: `e2e/sheet-views.spec.ts`.
+object per result, the same one while unchanged). **Part 2:** `useProjectedView.ts`, `standardViews.ts` (lazy),
+`views.ts` (`projectedSide`, `projectedAt`, `projectedName`, `placeProjectedView`, `rescaleSheetView`, `fitScale`),
+`selection.ts` (`viewDeltas`). Rules: **a projected view beside its parent stores the parent's `at.y`, one above or below its
+`at.x`, exactly** (in the document, not only on screen); a drag keeps that line unless Alt or the parent moves too, and a
+moved or rescaled view carries the views projected from it in the same undo step; **layout of new views (Standard views, a
+dropped body, Projected View's place) uses exact bounds**, never the quick ones (stray pieces); Standard views are one base
+view and three projected from it; the view label is centred under the lines' bounds; template goldens fix the template's
+IDs (edge names, and so the curves' order and direction, follow them). e2e: `e2e/sheet-views.spec.ts`.
 
 ADR-0144 (the owner, 2026-11-11): **FreeCAD file import (`.FCStd`), with history** (P6-25; slices S1–S13 in the ADR,
 background in `docs/plans/freecad-import-2026-11-10.md`). `packages/fcstd` (`@extrudo/fcstd`, pure TS; kernel test-only)

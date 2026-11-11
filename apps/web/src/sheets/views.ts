@@ -21,6 +21,7 @@ import {
   type ExtrudoDocument,
   type NamedView,
   newId,
+  projectedFrom,
   SHEET_STANDARD_VIEWS,
   type Sheet,
   type SheetScale,
@@ -29,6 +30,7 @@ import {
   type SheetViewChanges,
   type SheetViewFrom,
   type SheetViewId,
+  type SheetViewSide,
   type SheetViewStyle,
   sheetBaseFrame,
   sheetProjectedFrame,
@@ -37,6 +39,7 @@ import {
   type Vec3,
 } from '@extrudo/core';
 import { leaveSketch, type SheetModeStores } from './mode';
+import { runAsOneStep } from './selection';
 
 type BaseFrom = Extract<SheetViewFrom, { kind: 'base' }>;
 
@@ -278,4 +281,136 @@ export function changeSheetView(
   label: string,
 ): string | undefined {
   return run(stores, { ...updateSheetView({ id, changes }), label });
+}
+
+// Projected views (S2 part 2) -----------------------------------------------------
+
+/**
+ * Where a projected view goes from where the pointer is against its parent's middle
+ * (`dx`, `dy` sheet mm, y down): mostly across gives left or right, mostly up or down gives
+ * above or below (plan §4.5), a diagonal (within a factor of two) an isometric corner.
+ */
+export function projectedSide(dx: number, dy: number): SheetViewSide {
+  const [ax, ay] = [Math.abs(dx), Math.abs(dy)];
+  if (ax >= 2 * ay) return dx >= 0 ? 'right' : 'left';
+  if (ay >= 2 * ax) return dy < 0 ? 'above' : 'below';
+  return `iso-${dy < 0 ? 'above' : 'below'}-${dx >= 0 ? 'right' : 'left'}`;
+}
+
+/**
+ * A projected view's `at` for the sheet point under the pointer: the middle of its lines
+ * there, but on its parent's line, exactly: one beside it shares the parent's `at.y`, one
+ * above or below its `at.x` (their frames share `up` or `right`, so the views line up). An
+ * isometric one goes where the pointer is.
+ */
+export function projectedAt(
+  side: SheetViewSide,
+  point: Vec2,
+  parentAt: readonly [number, number],
+  bounds: { min: readonly number[]; max: readonly number[] } | undefined,
+  k: number,
+): [number, number] {
+  const [x, y] = placedAt(point, bounds, k);
+  if (side === 'left' || side === 'right') return [x, parentAt[1]];
+  if (side === 'above' || side === 'below') return [parentAt[0], y];
+  return [x, y];
+}
+
+/** A projected view's name: the standard view it is ("Top", "Left"), else "Isometric" or "Projected". */
+export function projectedName(side: SheetViewSide, direction: Vec3): string {
+  if (side.startsWith('iso-')) return 'Isometric';
+  const match = LOOKING_FROM.slice(0, 6).find(
+    (c) => dot(unit(c.from.direction), direction) > 1 - 1e-9,
+  );
+  return match?.name ?? 'Projected';
+}
+
+/** Places a view projected from `parent` on `side` (one undo step, "Projected view"). */
+export function placeProjectedView(
+  stores: SheetModeStores,
+  sheet: Sheet,
+  parent: SheetViewId,
+  side: SheetViewSide,
+  at: [number, number],
+  name: string,
+): { id: SheetViewId } | { error: string } {
+  const id = newId<SheetViewId>();
+  const view: SheetView = {
+    id,
+    name: freeViewName(sheet, name),
+    at,
+    from: { kind: 'projected', parent, side },
+  };
+  const error = run(stores, {
+    ...addSheetView({ sheet: sheet.id, view }),
+    label: 'Projected view',
+  });
+  return error ? { error } : { id };
+}
+
+/**
+ * A base view's new scale as one undo step ("View scale"): the middle of its lines stays
+ * where it is (`rescaledAt`), and every view projected from it keeps its place against it,
+ * scaled with it, so the views stay lined up. `undefined` is the sheet's scale.
+ */
+export function rescaleSheetView(
+  stores: SheetModeStores,
+  sheet: Sheet,
+  id: SheetViewId,
+  scale: SheetScale | undefined,
+  bounds: { min: readonly number[]; max: readonly number[] } | undefined,
+  label = 'View scale',
+): string | undefined {
+  const view = sheet.views.find((v) => v.id === id);
+  if (!view) return undefined;
+  const [a, b] = view.scale ?? sheet.scale;
+  const [c, d] = scale ?? sheet.scale;
+  const [k, next] = [a / b, c / d];
+  const at = rescaledAt(view.at, bounds, k, next);
+  const r = next / k;
+  const steps = [
+    updateSheetView({ id, changes: { scale: scale ?? null, at } }),
+    ...projectedFrom(sheet, id).flatMap((child) => {
+      const v = sheet.views.find((w) => w.id === child);
+      if (!v) return [];
+      const moved: [number, number] = [
+        round(at[0] + (v.at[0] - view.at[0]) * r),
+        round(at[1] + (v.at[1] - view.at[1]) * r),
+      ];
+      return [updateSheetView({ id: child, changes: { at: moved } })];
+    }),
+  ];
+  try {
+    leaveSketch(stores);
+    runAsOneStep(
+      stores.store,
+      label,
+      steps.map((command) => () => command),
+    );
+    return undefined;
+  } catch (error) {
+    if (error instanceof CommandError) return error.message;
+    throw error;
+  }
+}
+
+/** The standard scales from the largest down: what "fit" tries in turn. */
+export const SCALES_DOWN: readonly SheetScale[] = [...STANDARD_SCALES].sort(
+  (p, q) => q[0] / q[1] - p[0] / p[1],
+);
+
+/**
+ * The largest standard scale at which something `width` × `height` mm (model size) fits in
+ * `room` × `roomHeight` sheet mm; the smallest standard one when none does.
+ */
+export function fitScale(
+  width: number,
+  height: number,
+  room: number,
+  roomHeight: number,
+): SheetScale {
+  const fits = SCALES_DOWN.find(
+    ([a, b]) => (width * a) / b <= room && (height * a) / b <= roomHeight,
+  );
+  return [...(fits ?? (SCALES_DOWN.at(-1) as SheetScale))] as SheetScale;
 }

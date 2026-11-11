@@ -394,8 +394,10 @@ function viewItems(
     out.push({ type: 'path', contours, stroke: STROKE[kind], key, ...state });
   }
   if (label) {
+    // Under the middle of the lines (their bounds), else under the view's origin.
+    const middle = lines.bounds ? x + (k * (lines.bounds.min[0] + lines.bounds.max[0])) / 2 : x;
     out.push({
-      ...centred(label, [x, bottom + 4 + SHEET_TEXT_SIZE], SHEET_TEXT_SIZE, { key }),
+      ...centred(label, [middle, bottom + 4 + SHEET_TEXT_SIZE], SHEET_TEXT_SIZE, { key }),
       ...state,
     });
   }

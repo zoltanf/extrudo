@@ -28,7 +28,6 @@
  * (`data-sheet-text`), and the selection layer's frames (`[data-sheet-frame]` = target,
  * `data-state` `hover` or `selected`).
  */
-import type { Vec2 } from '@extrudo/core';
 import type { DisplayItem, DisplayList, DisplayText } from '@extrudo/io';
 import { displayPaint, displayPathData, displayTextLayer } from '@extrudo/io';
 import type { SheetViewLines } from '@extrudo/sheets';
@@ -42,10 +41,10 @@ import {
 } from '../viewport/navigation';
 import {
   hitTarget,
-  keyOfTarget,
   movable,
   type SheetBox,
   type SheetTarget,
+  sheetTarget,
   targetBoxes,
   targetsInside,
 } from './selection';
@@ -61,12 +60,25 @@ import {
 import { sheetSnapshot } from './snapshot';
 import { placedAt } from './views';
 
-/** A view being placed: its lines (when known) at scale `k`; a click calls `onPlace`. */
+/**
+ * A view being placed: its lines (when known) at scale `k`; a click calls `onPlace` with
+ * the view's `at` and the sheet point. `locate` gives the `at` for a sheet point when it is
+ * not "the lines' middle under the pointer" (a projected view keeps its parent's line);
+ * `onPoint` hears where the pointer is (a projected view's side follows it).
+ */
 export interface SheetPlacing {
   lines?: SheetViewLines;
   k: number;
-  onPlace(at: Vec2): void;
+  locate?(point: [number, number]): [number, number];
+  onPoint?(point: [number, number]): void;
+  onPlace(at: [number, number], point: [number, number]): void;
 }
+
+/** A drag's move of each target, sheet mm. */
+export type SheetMoves = ReadonlyMap<SheetTarget, readonly [number, number]>;
+
+/** The type the browser's body rows carry when dragged (their IDs as JSON). */
+export const BODIES_MIME = 'application/x-extrudo-bodies';
 
 /** What the shell can ask of the canvas: F6 and the floating bar's Fit; Report a Bug's picture. */
 export interface SheetCanvasControl {
@@ -101,7 +113,17 @@ export interface SheetCanvasProps {
    * A drag of the selection ended: move these targets by (`dx`, `dy`) sheet mm. `false`
    * when nothing changed (the drawn shift is undone at once).
    */
-  onMove?: (targets: SheetTarget[], dx: number, dy: number) => boolean;
+  onMove?: (targets: SheetTarget[], dx: number, dy: number, free: boolean) => boolean;
+  /**
+   * How far each target and what follows it moves for a drag of (`dx`, `dy`) mm (`free`:
+   * Alt held): a projected view keeps to its parent's line, and its parent's moves carry
+   * it. Absent: every moved target by (`dx`, `dy`).
+   */
+  movesOf?: (targets: SheetTarget[], dx: number, dy: number, free: boolean) => SheetMoves;
+  /** A right-click without movement on a view, at window px: its own menu. */
+  onTargetMenu?: (target: SheetTarget, at: { x: number; y: number }) => void;
+  /** Bodies dragged from the browser and dropped at a sheet point. */
+  onDropBodies?: (ids: string[], point: [number, number]) => void;
   /** A view tool's frame following the pointer; selecting is off meanwhile. */
   placing?: SheetPlacing;
   /** What the screen says under a target (a view being drawn, a body gone). */
@@ -109,6 +131,7 @@ export interface SheetCanvasProps {
 }
 
 const NONE: readonly SheetTarget[] = [];
+const NO_MOVES: SheetMoves = new Map();
 
 /** How far a right-button press may move and still count as a click (the menu), px. */
 const CLICK_SLOP = 4;
@@ -129,6 +152,9 @@ export function SheetCanvas({
   onHover,
   onSelect,
   onMove,
+  movesOf,
+  onTargetMenu,
+  onDropBodies,
   placing,
   notices,
 }: SheetCanvasProps) {
@@ -148,12 +174,13 @@ export function SheetCanvas({
   const follow = (point: [number, number]) => {
     const p = latest.current.placing;
     if (!p || !ghost.current) return;
-    const [x, y] = placedAt(point, p.lines?.bounds, p.k);
+    p.onPoint?.(point);
+    const [x, y] = p.locate ? p.locate(point) : placedAt(point, p.lines?.bounds, p.k);
     ghost.current.setAttribute('transform', `translate(${x} ${y})`);
     ghost.current.style.display = '';
   };
-  const events = useRef({ onHover, onSelect, onMove });
-  events.current = { onHover, onSelect, onMove };
+  const events = useRef({ onHover, onSelect, onMove, movesOf, onTargetMenu, onDropBodies });
+  events.current = { onHover, onSelect, onMove, movesOf, onTargetMenu, onDropBodies };
   const svg = useRef<SVGSVGElement>(null);
   const overlay = useRef<SVGSVGElement>(null);
   const band = useRef<SVGRectElement>(null);
@@ -162,24 +189,28 @@ export function SheetCanvas({
     const box = host.current?.getBoundingClientRect();
     return sheetPoint(view.current, clientX - (box?.left ?? 0), clientY - (box?.top ?? 0));
   };
-  /** Shifts the drawn paths of `targets` (and their frames) by (`dx`, `dy`) mm, or back. */
-  const shift = (targets: readonly SheetTarget[], dx: number, dy: number) => {
-    const transform = dx === 0 && dy === 0 ? null : `translate(${dx} ${dy})`;
+  /** Each target's move for a drag of the selection by (`dx`, `dy`) mm. */
+  const movesFor = (targets: SheetTarget[], dx: number, dy: number, free: boolean): SheetMoves =>
+    events.current.movesOf?.(targets, dx, dy, free) ??
+    new Map(targets.map((t) => [t, [dx, dy] as const]));
+  /** Shifts the drawn paths of the moved targets (and their frames), or back with none. */
+  const shift = (moves: SheetMoves) => {
     for (const root of [svg.current, overlay.current]) {
       for (const el of root?.querySelectorAll<SVGElement>('[data-key], [data-sheet-frame]') ?? []) {
-        const key = el.dataset.key ?? el.dataset.sheetFrame;
-        if (!targets.some((t) => keyOfTarget(key, t))) continue;
-        if (transform) el.setAttribute('transform', transform);
-        else el.removeAttribute('transform');
+        const target = sheetTarget(el.dataset.key ?? el.dataset.sheetFrame);
+        const move = target === undefined ? undefined : moves.get(target);
+        if (move && (move[0] !== 0 || move[1] !== 0)) {
+          el.setAttribute('transform', `translate(${move[0]} ${move[1]})`);
+        } else el.removeAttribute('transform');
       }
     }
   };
   // A moved selection keeps its shift until the document's new list is drawn.
-  const shifted = useRef<readonly SheetTarget[]>(NONE);
+  const shifted = useRef<SheetMoves>(NO_MOVES);
   // biome-ignore lint/correctness/useExhaustiveDependencies: on a new list only.
   useLayoutEffect(() => {
-    if (shifted.current.length > 0) shift(shifted.current, 0, 0);
-    shifted.current = NONE;
+    if (shifted.current.size > 0) shift(NO_MOVES);
+    shifted.current = NO_MOVES;
   }, [list]);
 
   const apply = (next: SheetView) => {
@@ -343,7 +374,7 @@ export function SheetCanvas({
         if (pick && d.moved) {
           const [x, y] = at(event.clientX, event.clientY);
           if (pick.moving.length > 0) {
-            shift(pick.moving, x - pick.from[0], y - pick.from[1]);
+            shift(movesFor(pick.moving, x - pick.from[0], y - pick.from[1], event.altKey));
           } else if (band.current) {
             band.current.setAttribute('x', String(Math.min(x, pick.from[0])));
             band.current.setAttribute('y', String(Math.min(y, pick.from[1])));
@@ -372,11 +403,26 @@ export function SheetCanvas({
         if (!d || d.id !== event.pointerId) return;
         drag.current = undefined;
         if (d.button === 2 && !d.moved) {
-          latest.current.onMenu?.({ x: event.clientX, y: event.clientY });
+          // On a view: its own menu; elsewhere the marking menu.
+          const [px, py] = at(event.clientX, event.clientY);
+          const under = hitTarget(
+            latest.current.boxes,
+            px,
+            py,
+            Math.max(0.8, 5 / view.current.scale),
+          );
+          const menu = events.current.onTargetMenu;
+          if (under?.startsWith('view:') && menu)
+            menu(under, { x: event.clientX, y: event.clientY });
+          else latest.current.onMenu?.({ x: event.clientX, y: event.clientY });
         }
         const place = latest.current.placing;
         if (place && d.button === 0 && !d.action && !d.moved) {
-          place.onPlace(placedAt(at(event.clientX, event.clientY), place.lines?.bounds, place.k));
+          const point = at(event.clientX, event.clientY);
+          place.onPlace(
+            place.locate ? place.locate(point) : placedAt(point, place.lines?.bounds, place.k),
+            point,
+          );
           return;
         }
         const pick = d.select;
@@ -392,10 +438,10 @@ export function SheetCanvas({
           }
           const dx = x - pick.from[0];
           const dy = y - pick.from[1];
-          shifted.current = pick.moving;
-          if (events.current.onMove?.(pick.moving, dx, dy) !== true) {
-            shift(pick.moving, 0, 0);
-            shifted.current = NONE;
+          shifted.current = movesFor(pick.moving, dx, dy, event.altKey);
+          if (events.current.onMove?.(pick.moving, dx, dy, event.altKey) !== true) {
+            shift(NO_MOVES);
+            shifted.current = NO_MOVES;
           }
           return;
         }
@@ -418,9 +464,28 @@ export function SheetCanvas({
       }}
       onPointerCancel={() => {
         const pick = drag.current?.select;
-        if (pick?.moving.length) shift(pick.moving, 0, 0);
+        if (pick?.moving.length) shift(NO_MOVES);
         if (band.current) band.current.style.display = 'none';
         drag.current = undefined;
+      }}
+      onDragOver={(event) => {
+        if (!events.current.onDropBodies || !event.dataTransfer.types.includes(BODIES_MIME)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+      }}
+      onDrop={(event) => {
+        const drop = events.current.onDropBodies;
+        if (!drop || !event.dataTransfer.types.includes(BODIES_MIME)) return;
+        event.preventDefault();
+        let ids: unknown;
+        try {
+          ids = JSON.parse(event.dataTransfer.getData(BODIES_MIME));
+        } catch {
+          return;
+        }
+        if (!Array.isArray(ids)) return;
+        const bodies = ids.filter((id): id is string => typeof id === 'string');
+        if (bodies.length > 0) drop(bodies, at(event.clientX, event.clientY));
       }}
       onPointerLeave={() => {
         if (!drag.current && latest.current.hovered) events.current.onHover?.(undefined);

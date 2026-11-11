@@ -691,8 +691,9 @@ is the lazy `sheets/SheetWorkspace.tsx` chunk; UI spec §4a describes what a per
 
 ## Amendment (S2, the view tools), 2026-11-11
 
-Package 2 of S2, part 1: the views drawn from the model in the app, Base View, the view card
-and an export that draws the same lines. Files: `apps/web/src/sheets/viewLines.ts` (the
+Package 2 of S2: the views drawn from the model in the app, Base View, the view card and an
+export that draws the same lines (part 1); Projected View, aligned moves, New drawing's Start
+with, a dragged body and the view's menu (part 2, the last bullets). Files: `apps/web/src/sheets/viewLines.ts` (the
 adapter and the requests), `viewRunner.ts` (one run at a time), `views.ts` (Looking from,
 placing, the card's commands), `SheetViewCard.tsx`, `SheetWorkspace.tsx`, `SheetCanvas.tsx`
 (placing, notices), `exportSheets.ts`; `SheetViewLines.bounds` and `.state` in
@@ -704,8 +705,8 @@ UI spec §4a describes what a person sees.
   its lines. Views projected from one another then share a sheet coordinate exactly (a view
   above keeps its parent's `right`, so one `at.x` lines both up), a dimension never needs
   rewriting when its view moves, and a model change that grows the part never moves the
-  view. Placing puts the middle of the quick lines (computed before the click, `peek`) under
-  the pointer and stores the origin that gives, so the view does not jump when its exact
+  view. Placing puts the middle of the lines (computed before the click, `peek`: the quick
+  ones first, then the exact ones) under the pointer and stores the origin that gives, so the view does not jump when its exact
   lines arrive. A new scale moves `at` so the middle of the lines stays put (`rescaledAt`),
   in the same command.
 - **Requests** (`sheetViewWants`): the view's frame from `sheetViewFrame` and **always an
@@ -748,7 +749,7 @@ UI spec §4a describes what a person sees.
   Sheet Setup) is the session's `activeTool` `baseView` (`SHEET_TOOLS`): the right column
   shows Looking from, Scale and Style; the placing frame is in the canvas overlay, its
   transform written per pointer move; a click places ("Base view", one undo step) and
-  selects the view; Esc ends the tool. Not yet: carrying on as Projected View (part 2).
+  selects the view, and the tool carries on as Projected View from it; Esc ends the tool.
 - **The card** (mock-up 1) for one selected view: name, Looking from (six standard, four
   isometrics from the front's frame named by the faces they show, the model's current view
   from the viewport camera, each named view from its camera), Scale (sheet's, standard,
@@ -769,9 +770,50 @@ UI spec §4a describes what a person sees.
   notices, the runner's order, stale lines, cancel and export with a fake kernel);
   `templateViews.test.ts` (the wall bracket template's four standard views through the
   kernel, the adapter, layout and the SVG writer, golden
-  `apps/web/src/sheets/golden/wall-bracket-views.svg`; the other templates are the kernel's
-  B2, B4 and B5 goldens); `e2e/sheet-views.spec.ts`.
-- **Rejected**: `at` as the middle of the lines (a model change would move the view, aligned
+  `apps/web/src/sheets/golden/wall-bracket-views.svg`, the template's IDs fixed in the test);
+  `views.test.ts` (part 2's pure functions); `e2e/sheet-views.spec.ts`, with each template's
+  Standard views against a golden of its normalised SVG export.
+- **Part 2: Projected View** (`P`, `projectedView` in `SHEET_TOOLS`, `useProjectedView.ts`):
+  the parent is the view the tool is started from (Base View's, the menu's) or the selected
+  one. The side comes from the pointer against the middle of the parent's lines
+  (`projectedSide`: within a 2:1 cone of an axis beside, above or below, else the diagonal's
+  isometric); `projectedAt` puts the lines' middle under the pointer but takes the parent's
+  `at.y` (beside) or `at.x` (above, below) exactly, so aligned views share the coordinate in
+  the document, not only on screen. The eight sides' quick lines are peeked when the parent is
+  chosen, then their exact ones. Named by `projectedName` (the standard view it is, else
+  Isometric or Projected).
+- **Part 2: moving** (`viewDeltas` in `selection.ts`): a projected view moves only along its
+  parent's line unless Alt (`free`) or its parent moves too; the views projected from a moved
+  view follow along the coordinate they share (an isometric one fully), at any depth. A base
+  view's new scale (`rescaleSheetView`: the card, Fit Scale) moves each projected view so it
+  keeps its place against the parent, scaled, in one step (`runAsOneStep`).
+- **Part 2: Standard views** (`standardViews.ts`, loaded lazily with New drawing): one base
+  view (Front) and three projected from it (top below in first angle and above in third, the
+  side on the right, the isometric's direction above right) in a 2 × 2 grid: the front with
+  the side beside it, the top in the front's column and the isometric in the corner left
+  free, diagonal from the front (mock-up 2's picture; a row of front, side and isometric was
+  tried first and wasted the height the isometric needs). 20 mm gaps, inside the border less
+  10 mm and above the title block, at the largest standard scale that fits (5:1 and 2:1
+  first, so small parts are enlarged), centred. On A3 with the simple title block: the wall
+  bracket, the storage box and the PCB enclosure 1:1 (a front and top stacked in one column
+  are too tall for 2:1), the box with a lid 2:1. One view fits the sheet's
+  scale to the front view and starts Base View. The sheet with its views is one `addSheet`
+  ("New drawing").
+- **Part 2: quick bounds are not good enough for layout.** The polygonal run can return stray
+  pieces: the wall bracket's isometric once measured x from −36.6 mm instead of −28.3 (one run
+  in three). So New drawing's layout, a dropped body's place and Projected View's frames use
+  the **exact** lines' bounds (`peek(want, true)`); the quick ones only show a frame early.
+- **Part 2: a body dragged** from the browser (`application/x-extrudo-bodies`, the browser's
+  own drag data) makes a front base view of those bodies at the drop. **The view's menu**:
+  Projected View from This, Fit Scale (its base view, the room inside the border), Delete.
+  **The view label** is centred under the middle of the lines' bounds (layout), on screen and
+  in every export.
+- **Goldens of templates**: a template's feature IDs are new on every call and its edges'
+  names follow them, so the order and the direction of a view's curves change between runs.
+  The tests fix the IDs (`crypto.randomUUID` counted while the template is built); sorting
+  the curves was not enough.
+- **Rejected**: the quick lines' bounds for layout (above); aligning projected views only
+  while dragging, on screen (the document would drift apart); `at` as the middle of the lines (a model change would move the view, aligned
   views would line up only while their extents agree, and dimension `at`s are origin-based);
   requests without `bodies` (the app could not tell which bodies a result is for); the
   kernel wait notice with a Cancel (ADR-0111 keeps Cancel off kernel waits; this one changes

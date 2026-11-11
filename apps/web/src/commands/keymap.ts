@@ -77,6 +77,7 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   // The drawing (P6-24, ADR-0143): its view tools, Export PDF, and the sheet tabs as a
   // browser's tabs. V is no other command's key; P is Project, offered in a sketch only.
   baseView: ['V'],
+  projectedView: ['P'],
   exportSheets: ['Mod+E'],
   nextSheet: ['Mod+PageDown'],
   previousSheet: ['Mod+PageUp'],

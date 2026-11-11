@@ -889,8 +889,8 @@ no text shown the tab alone is the callout, rounded on all four corners. A
 ## 4a. Drawing mode (P6-24, ADR-0143)
 
 A design's 2D sheets, made from the model (slice S1: sheets, Sheet Setup, the
-title block, text items and export; S2: views drawn from the model, Base View
-and the view card; dimensions and notes come with S3 to S5). The UI says "drawing" and "sheet"; code says `sheet`.
+title block, text items and export; S2: views drawn from the model, Base View,
+Projected View, Standard views and the view card; dimensions and notes come with S3 to S5). The UI says "drawing" and "sheet"; code says `sheet`.
 
 - **Ways in:** Make › **Drawing** (New drawing when the design has no sheet,
   else the sheet edited last); the browser's **Drawings** folder below
@@ -899,13 +899,24 @@ and the view card; dimensions and notes come with S3 to S5). The UI says "drawin
   Drawing", "Open Drawing" and "Sheet: name". Entering, and any sheet command
   run from a sketch, ends the open sketch (one undo step), a waiting Create
   Sketch and a feature dialog first.
-- **New drawing** (mock-up 2): paper, orientation, title block (Simple, Full,
-  None) and first or third angle; one empty sheet. A new sheet is A3
+- **New drawing** (mock-up 2): **Start with** three cards: **Standard views**
+  (front, top, the side and an isometric: one base view and three projected
+  from it, laid out for first or third angle in a 2 × 2 grid with the
+  isometric in the free corner, lined up, at the largest standard scale that
+  fits above the title block, 5:1 and 2:1 included, centred), **One view** (the
+  sheet's scale fitted to the front view; Base View then runs to place it) or
+  **Empty sheet**; then paper, orientation, title block (Simple, Full, None),
+  Bodies ("All shown (n)" or one body), Scale ("Fit the sheet · 1:2" or a
+  standard one) and first or third angle. The summary says what Create makes
+  ("4 views of 3 bodies on one A3 landscape sheet."); while the views are
+  measured it says "Measuring the views…" and Create waits. A design with no
+  shown body starts with Empty sheet (the other cards are off). Create is one
+  undo step ("New drawing"). A new sheet is A3
   landscape, 1:1, first angle, one decimal, the simple title block, a border
   without zones, with the design's name, today's date and the units filled in.
   "Drawn by" is never filled in by itself: the last name typed there is
   offered as a "Use …" button.
-- **The screen:** tabs Home and **Drawing** (Views: Base View; Sheet: New
+- **The screen:** tabs Home and **Drawing** (Views: Base View, Projected View; Sheet: New
   Sheet, Sheet Setup; Output: Export PDF; Finish Drawing). The sheet takes the 3D view's place (the view stays
   mounted underneath, inert): white paper in both themes with a shadow, a
   floating bar with Select, Pan, Zoom, Fit and the zoom level. Pan and zoom
@@ -927,7 +938,11 @@ and the view card; dimensions and notes come with S3 to S5). The UI says "drawin
   pre-highlights the item, view or title block under it; a click selects it,
   Shift or Ctrl/⌘ toggles; a drag on empty paper selects what lies wholly in
   its box; a click on empty paper clears. A drag on a selected item or view
-  moves the selection; the arrow keys nudge it 1 mm (10 mm with Shift);
+  moves the selection; the arrow keys nudge it 1 mm (10 mm with Shift). A
+  projected view beside its parent moves only across, one above or below only
+  up and down, so it stays lined up (an isometric one moves freely); **Alt**
+  during the drag frees it. Moving or rescaling a view carries the views
+  projected from it along the line they share (an isometric one fully);
   Delete deletes the selected items and views (a view with the views
   projected from it). The paper and the border can't be selected; the title
   block can't be moved or deleted (Sheet Setup's Title block "None" removes
@@ -953,8 +968,26 @@ and the view card; dimensions and notes come with S3 to S5). The UI says "drawin
 - **Base View** (`V`): the right column shows its choices (Looking from, Scale,
   Style), a frame with the view's quick lines follows the pointer, a click
   places the view with the middle of its lines there (one undo step, "Base
-  view") and selects it; Esc ends the tool. The choices are kept for the next
-  time in the session.
+  view") and selects it, and the tool carries on as Projected View from it;
+  Esc ends the tool. The choices are kept for the next time in the session.
+- **Projected View** (`P`): its parent is the selected view (or the view Base
+  View just placed, or the menu's Projected View from This; with none, a
+  click on a view chooses it). The pointer's place against the parent's
+  middle chooses the side: beside, above or below gives that side's
+  orthographic view for the sheet's projection angle, a diagonal an
+  isometric; the right column (region "Projected view") names what a click
+  makes ("Top", "Isometric"). The frame of that view's lines follows the
+  pointer along the parent's line, exactly lined up; a click places it (one
+  undo step, "Projected view"). The tool stays on for the next one until Esc.
+- **A view's menu** (right-click on a view): Projected View from This, Fit
+  Scale (the largest standard scale at which its base view fits inside the
+  border, the views projected from it scaled with it, one undo step, "Fit
+  scale") and Delete.
+- **A body dragged** from the browser onto the sheet makes a front view of
+  those bodies alone (named after the body when it is one), its lines' middle
+  where it is dropped, at the sheet's scale (one undo step), and selects it.
+- **The view label** ("Front (1:2)") sits under the middle of the view's
+  lines, on screen and in the export.
 - **The right column** is Sheet Setup with nothing selected (name, paper or a
   custom size, orientation, border and zones, default scale, decimals,
   projection, title block and its typed fields, Finish Drawing); a selection

@@ -184,21 +184,26 @@ export class SheetViewRunner {
   }
 
   /**
-   * A view's lines before it is placed (Base View's frame): its current lines when there
-   * are any, else the quick ones, computed now. `undefined` if it can't be drawn.
+   * A view's lines before it is placed (a placing frame, New drawing's layout): its current
+   * exact lines when there are any, else the quick ones (`exact`: the exact ones), computed
+   * now. `undefined` if it can't be drawn. The quick lines can hold stray pieces of the
+   * polygonal run, so their bounds are only a first guess: what is laid out or kept uses
+   * the exact ones.
    */
-  async peek(want: SheetViewWant): Promise<SheetViewLines | undefined> {
+  async peek(want: SheetViewWant, exact = false): Promise<SheetViewLines | undefined> {
     const current = this.#kernel.bodyVersions();
     const entry = this.#cache.get(want.key);
     const have =
       this.#currentExact(want, current) ??
-      (entry?.quick && linesAreCurrent(entry.quick.geometry, entry.quick.versions, current)
+      (!exact &&
+      entry?.quick &&
+      linesAreCurrent(entry.quick.geometry, entry.quick.versions, current)
         ? entry.quick
         : undefined);
     if (have) return this.#linesOf(have, false);
     try {
       const [result] = await this.#kernel.sheetViews(
-        [{ ...want.request, quick: true }],
+        [{ ...want.request, ...(!exact && { quick: true }) }],
         undefined,
         { quiet: true },
       );

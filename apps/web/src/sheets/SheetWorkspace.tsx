@@ -21,11 +21,12 @@ import {
   type SheetViewId,
   sheetBaseFrame,
   sheetPaperSize,
+  sheetStandardFrom,
   type Vec3,
 } from '@extrudo/core';
 import type { DisplayList } from '@extrudo/io';
 import { type BodyMesh, shownBodies } from '@extrudo/kernel';
-import { layoutSheet, SHEET_FONTS, type SheetViewLines } from '@extrudo/sheets';
+import { layoutSheet, SHEET_FONTS, type SheetViewLines, sheetMargin } from '@extrudo/sheets';
 import { Hand, Maximize, MousePointer2, Trash2, ZoomIn } from 'lucide-react';
 import {
   type RefObject,
@@ -37,7 +38,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { useStore } from 'zustand';
-import { Button, IconButton } from '../design-system';
+import { Button, IconButton, MenuItem, MenuSeparator, PointMenu, ToolIcon } from '../design-system';
 import type { Preferences } from '../platform/preferences';
 import { ensureUiFonts, fontsStore } from '../sketch/fonts';
 import { basis } from '../viewport/camera';
@@ -47,7 +48,12 @@ import type { ViewportStore } from '../viewport/store';
 import { changeSheet, finishDrawing, renameSheet, type SheetModeStores } from './mode';
 import { SheetCanvas, type SheetCanvasControl } from './SheetCanvas';
 import { SheetSetup } from './SheetSetup';
-import { type BaseViewChoices, BaseViewPanel, SheetViewCard } from './SheetViewCard';
+import {
+  type BaseViewChoices,
+  BaseViewPanel,
+  ProjectedViewPanel,
+  SheetViewCard,
+} from './SheetViewCard';
 import {
   deleteTargets,
   moveTargets,
@@ -55,15 +61,25 @@ import {
   selectedTargets,
   sheetSelection,
   targetName,
+  viewDeltas,
 } from './selection';
-import { sheetViewNotice, sheetViewWant, sheetViewWants } from './viewLines';
+import { useProjectedView } from './useProjectedView';
+import { baseViewOf, sheetViewNotice, sheetViewWant, sheetViewWants } from './viewLines';
 import {
   NO_SHEET_VIEWS,
   type SheetViewsKernel,
   type SheetViewsState,
   sheetViewRunner,
 } from './viewRunner';
-import { changeSheetView, lookingFromChoices, placeBaseView } from './views';
+import {
+  changeSheetView,
+  fitScale,
+  lookingFromChoices,
+  placeBaseView,
+  placedAt,
+  rescaleSheetView,
+  scaleText,
+} from './views';
 
 export interface SheetWorkspaceProps {
   stores: SheetModeStores;
@@ -137,6 +153,26 @@ export default function SheetWorkspace({
     runner?.get ?? noViews,
   );
 
+  const one = selected.length === 1 ? selected[0] : undefined;
+  const selectedView = one?.startsWith('view:')
+    ? sheet?.views.find((v) => v.id === one.slice(5))
+    : undefined;
+  // Projected View (S2): from the selected view, or the one Base View just placed.
+  const projected = useProjectedView({
+    active: activeTool === 'projectedView',
+    sheet,
+    doc,
+    bodies: bodyIds,
+    runner,
+    geometry: views.geometry,
+    selectedView,
+    stores,
+    session,
+    notify,
+  });
+  // A view's own menu (right-click on it): Projected View from This, Fit Scale, Delete.
+  const [viewMenu, setViewMenu] = useState<{ id: SheetViewId; at: { x: number; y: number } }>();
+
   // Base View (S2): its choices and the frame's lines, drawn quick before the click.
   const placingTool = activeTool === 'baseView';
   const [choices, setChoices] = useState<BaseViewChoices>(BASE_VIEW_DEFAULTS);
@@ -158,9 +194,14 @@ export default function SheetWorkspace({
     let live = true;
     try {
       const frame = sheetBaseFrame(lookingChoice.from.direction, lookingChoice.from.up);
-      void runner
-        .peek(sheetViewWant('placing', frame, shownBodies(doc, bodyIds)))
-        .then((lines) => live && setPreview(lines));
+      const want = sheetViewWant('placing', frame, shownBodies(doc, bodyIds));
+      // The quick lines at once, then the exact ones (the quick bounds can be off).
+      void (async () => {
+        const quick = await runner.peek(want);
+        if (live && quick) setPreview(quick);
+        const exact = await runner.peek(want, true);
+        if (live && exact) setPreview(exact);
+      })();
     } catch {
       // A degenerate direction: the frame is a placeholder's.
     }
@@ -183,10 +224,11 @@ export default function SheetWorkspace({
         notify('error', result.error);
         return;
       }
-      session.getState().setTool(undefined);
+      // The tool carries on as Projected View from the new view (plan §4.5).
       session.getState().select(sheetSelection([`view:${result.id}`]));
+      projected.start(result.id);
     },
-    [sheet, lookingChoice, choices, stores, session, notify],
+    [sheet, lookingChoice, choices, stores, session, notify, projected],
   );
 
   useEffect(() => {
@@ -254,10 +296,54 @@ export default function SheetWorkspace({
     }
   };
   const insets = { left: browserInset, right: COLUMN, top: 0, bottom: 56 };
-  const one = selected.length === 1 ? selected[0] : undefined;
-  const selectedView = one?.startsWith('view:')
-    ? sheet.views.find((v) => v.id === one.slice(5))
-    : undefined;
+  /** Fit Scale: the largest standard scale at which the view's base view fits inside the border. */
+  const fitView = (id: SheetViewId) => {
+    const view = sheet.views.find((v) => v.id === id);
+    const base = view && baseViewOf(sheet, view);
+    const bounds = base && views.geometry.get(base.id)?.bounds;
+    if (!base || !bounds) {
+      notify('info', 'The view has no lines to fit yet.');
+      return;
+    }
+    const m = sheetMargin(sheet);
+    const scale = fitScale(
+      bounds.max[0] - bounds.min[0],
+      bounds.max[1] - bounds.min[1],
+      paper.width - 2 * m - 20,
+      paper.height - 2 * m - 20,
+    );
+    const same = scaleText(scale) === scaleText(sheet.scale);
+    const problem = rescaleSheetView(
+      stores,
+      sheet,
+      base.id,
+      same ? undefined : scale,
+      bounds,
+      'Fit scale',
+    );
+    if (problem) notify('error', problem);
+  };
+  /** Bodies dropped from the browser: a front view of them alone at the sheet's scale. */
+  const dropBodies = (ids: string[], point: [number, number]) => {
+    const chosen = ids.filter((id) => id in doc.bodies) as BodyId[];
+    if (chosen.length === 0 || !runner) return;
+    const from = sheetStandardFrom('front');
+    void runner
+      .peek(sheetViewWant('placing', sheetBaseFrame(from.direction, from.up), chosen), true)
+      .then((lines) => {
+        const now = store.getState().doc.sheets?.find((s) => s.id === sheet.id);
+        if (!now) return;
+        const [a, b] = now.scale;
+        const result = placeBaseView(stores, now, {
+          from,
+          name: chosen.length === 1 ? (doc.bodies[chosen[0] as BodyId]?.name ?? 'Front') : 'Front',
+          at: placedAt(point, lines?.bounds, a / b),
+          bodies: chosen,
+        });
+        if ('error' in result) notify('error', result.error);
+        else session.getState().select(sheetSelection([`view:${result.id}`]));
+      });
+  };
   const navTool = tool === 'pan' || tool === 'zoom' ? tool : undefined;
   return (
     <div className="absolute inset-0 z-[5]" data-sheet-workspace="">
@@ -288,10 +374,25 @@ export default function SheetWorkspace({
             onPlace,
           },
         })}
+        {...(projected.placing && { placing: projected.placing })}
+        movesOf={(targets, dx, dy, free) => {
+          const moves = new Map<string, readonly [number, number]>(
+            targets.map((t) => [t, [dx, dy] as const]),
+          );
+          for (const [id, move] of viewDeltas(sheets, targets, dx, dy, free)) {
+            moves.set(`view:${id}`, move);
+          }
+          return moves;
+        }}
+        onTargetMenu={(target, at) => {
+          session.getState().select(sheetSelection([target]));
+          setViewMenu({ id: target.slice(5) as SheetViewId, at });
+        }}
+        onDropBodies={dropBodies}
         notices={notices}
-        onMove={(targets, dx, dy) => {
+        onMove={(targets, dx, dy, free) => {
           try {
-            moveTargets(store, targets, dx, dy);
+            moveTargets(store, targets, dx, dy, free);
             return true;
           } catch (error) {
             fail(error);
@@ -307,6 +408,38 @@ export default function SheetWorkspace({
           onRetry={() => runner.retry()}
         />
       )}
+      <PointMenu
+        at={viewMenu?.at}
+        onClose={() => setViewMenu(undefined)}
+        label={`${sheet.views.find((v) => v.id === viewMenu?.id)?.name ?? 'View'} menu`}
+      >
+        <MenuItem
+          icon={<ToolIcon name="projected-view" category="create" size={14} />}
+          shortcut="P"
+          onSelect={() => viewMenu && projected.start(viewMenu.id)}
+        >
+          Projected View from This
+        </MenuItem>
+        <MenuItem icon={<Maximize size={14} />} onSelect={() => viewMenu && fitView(viewMenu.id)}>
+          Fit Scale
+        </MenuItem>
+        <MenuSeparator />
+        <MenuItem
+          icon={<Trash2 size={14} />}
+          shortcut="Del"
+          onSelect={() => {
+            if (!viewMenu) return;
+            try {
+              deleteTargets(store, [`view:${viewMenu.id}`]);
+              session.getState().clearSelection();
+            } catch (error) {
+              fail(error);
+            }
+          }}
+        >
+          Delete
+        </MenuItem>
+      </PointMenu>
       <nav
         aria-label="Sheet navigation"
         className="absolute bottom-3 flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-line px-2 py-1 backdrop-blur-[6px] transition-[left] duration-(--x-normal) ease-ui"
@@ -356,7 +489,13 @@ export default function SheetWorkspace({
         />
       </nav>
       <div className="pointer-events-none absolute top-3 right-3 bottom-3 z-10 flex w-64 flex-col gap-2 overflow-y-auto [scrollbar-width:none]">
-        {placingTool ? (
+        {activeTool === 'projectedView' ? (
+          <ProjectedViewPanel
+            {...(projected.parent && { parent: projected.parent.name })}
+            {...(projected.next && { side: projected.next })}
+            drawing={projected.drawing}
+          />
+        ) : placingTool ? (
           <BaseViewPanel
             doc={doc}
             sheet={sheet}
@@ -377,6 +516,15 @@ export default function SheetWorkspace({
               bounds: views.geometry.get(selectedView.id)?.bounds,
             })}
             change={(changes, label) => changeSheetView(stores, selectedView.id, changes, label)}
+            rescale={(scale) =>
+              rescaleSheetView(
+                stores,
+                sheet,
+                selectedView.id,
+                scale,
+                views.geometry.get(selectedView.id)?.bounds,
+              )
+            }
             notify={notify}
             onDelete={remove}
             onFinish={() => finishDrawing(stores)}
