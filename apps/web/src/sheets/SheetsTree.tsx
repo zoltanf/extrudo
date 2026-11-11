@@ -25,6 +25,8 @@ export interface SheetRowActions {
   exportOne(id: SheetId): void;
   remove(id: SheetId): void;
   notify(tone: 'info' | 'error', text: string): void;
+  /** A click on a view's or the title block's row selects it on its sheet (opening that sheet). */
+  select?(id: SheetId, target: string): void;
 }
 
 const sheetIcon = <ToolIcon name="sheets" category="export" size={16} />;
@@ -151,12 +153,17 @@ function SheetMenuItems({
 export function SheetsTree({
   sheets,
   active,
+  selected,
   actions,
 }: {
   sheets: readonly Sheet[];
   active: SheetId | undefined;
+  /** The targets selected on the open sheet. */
+  selected?: readonly string[];
   actions: SheetRowActions;
 }) {
+  const isSelected = (sheet: Sheet, target: string) =>
+    sheet.id === active && (selected ?? []).includes(target);
   return (
     <Folder label="Sheets" icon={sheetIcon} count={sheets.length}>
       {sheets.map((sheet) => (
@@ -201,14 +208,30 @@ export function SheetsTree({
             <Leaf muted>No views yet</Leaf>
           ) : (
             sheet.views.map((view) => (
-              <Leaf key={view.id} data-sheet-view-row={view.id}>
-                <span className="min-w-0 truncate">{view.name}</span>
+              <Leaf
+                key={view.id}
+                data-sheet-view-row={view.id}
+                active={isSelected(sheet, `view:${view.id}`)}
+              >
+                <button
+                  type="button"
+                  className="min-w-0 truncate rounded-input text-left focus-visible:outline-2 focus-visible:outline-accent"
+                  onClick={() => actions.select?.(sheet.id, `view:${view.id}`)}
+                >
+                  {view.name}
+                </button>
               </Leaf>
             ))
           )}
           {sheet.titleBlock && (
-            <Leaf data-sheet-title-row={sheet.id}>
-              <span className="min-w-0 truncate">Title block</span>
+            <Leaf data-sheet-title-row={sheet.id} active={isSelected(sheet, 'title-block')}>
+              <button
+                type="button"
+                className="min-w-0 truncate rounded-input text-left focus-visible:outline-2 focus-visible:outline-accent"
+                onClick={() => actions.select?.(sheet.id, 'title-block')}
+              >
+                Title block
+              </button>
             </Leaf>
           )}
         </Folder>

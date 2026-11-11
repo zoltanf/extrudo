@@ -185,6 +185,7 @@ import type { SheetCanvasControl } from '../sheets/SheetCanvas';
 import { SheetExportDialog, type SheetExportRequest } from '../sheets/SheetExportDialog';
 import { type SheetRowActions, SheetsFolder, SheetsTree } from '../sheets/SheetsTree';
 import { SheetTabs } from '../sheets/SheetTabs';
+import { deleteTargets, movable, moveTargets, selectedTargets } from '../sheets/selection';
 import type { FontPicker } from '../sketch/addFont';
 import { useBodiesBefore } from '../sketch/baseBodies';
 import { constructionDatumSources } from '../sketch/datums';
@@ -1431,6 +1432,31 @@ function Shell({
     (ids?: readonly SheetId[]) => setSheetExport(ids ? { ids } : {}),
     [],
   );
+  // What is selected on the sheet (P6-24): Delete takes it away, the arrow keys nudge it,
+  // each one undo step. The title block is neither deleted nor moved here.
+  const sheetTargets = useMemo(
+    () => (mode === 'sheet' ? selectedTargets(selection) : []),
+    [mode, selection],
+  );
+  const sheetChange = useCallback(
+    (change: () => void) => {
+      try {
+        change();
+      } catch (error) {
+        if (!(error instanceof CommandError)) throw error;
+        notify('error', error.message);
+      }
+    },
+    [notify],
+  );
+  const removeSheetSelection = useCallback(
+    () =>
+      sheetChange(() => {
+        deleteTargets(store, sheetTargets);
+        session.getState().clearSelection();
+      }),
+    [sheetChange, store, sheetTargets, session],
+  );
   const sheetActions = useMemo<SheetRowActions>(
     () => ({
       open: (id) => void openSheet(stores, id),
@@ -1439,8 +1465,11 @@ function Shell({
       exportOne: (id) => exportSheets([id]),
       remove: (id) => deleteSheet(stores, id),
       notify,
+      select: (id, target) => {
+        if (openSheet(stores, id)) session.getState().select([{ kind: 'sheet', id: target }]);
+      },
     }),
-    [stores, exportSheets, notify],
+    [stores, exportSheets, notify, session],
   );
   // In the drawing an undo stays there: it never reopens the sketch finished before it.
   const undo = useCallback(() => {
@@ -1474,6 +1503,9 @@ function Shell({
         undo,
         redo,
         ...(listing ? { remove: () => {} } : m === 'sketch' && !drawing && { remove }),
+        ...(!listing &&
+          m === 'sheet' &&
+          sheetTargets.some((t) => t !== 'title-block') && { remove: removeSheetSelection }),
         // Delete in the model (P2-08, P4-13, ADR-0126 §6): notes, bodies, faces of solid bodies.
         ...(!listing &&
           m === 'model' &&
@@ -1636,6 +1668,8 @@ function Shell({
       facesRemovable,
       selectedNotes,
       removeModelSelection,
+      sheetTargets,
+      removeSheetSelection,
       selectedComponent,
       selectedComponentName,
       activeComponent,
@@ -1802,6 +1836,25 @@ function Shell({
             },
           ]
         : []),
+      // The arrow keys nudge what is selected on the sheet by 1 mm (with Shift 10 mm).
+      ...(mode === 'sheet' && sheetTargets.some(movable)
+        ? (
+            [
+              ['ArrowLeft', -1, 0],
+              ['ArrowRight', 1, 0],
+              ['ArrowUp', 0, -1],
+              ['ArrowDown', 0, 1],
+            ] as const
+          ).flatMap(([key, x, y]) =>
+            [1, 10].map((step) => ({
+              keys: step === 1 ? key : `Shift+${key}`,
+              run: () =>
+                sheetChange(() =>
+                  moveTargets(store, sheetTargets.filter(movable), x * step, y * step),
+                ),
+            })),
+          )
+        : []),
       // In the drawing, Esc stops Pan or Zoom, or else clears the selection; it never leaves
       // the mode (plan §3.2).
       ...(mode === 'sheet'
@@ -1849,6 +1902,9 @@ function Shell({
       dialog,
       jointOpen,
       jointDialog,
+      sheetTargets,
+      sheetChange,
+      store,
     ],
   );
   const chordPrefix = useShortcuts(shortcuts);
@@ -2910,6 +2966,7 @@ function Shell({
                 <SheetsTree
                   sheets={doc.sheets ?? []}
                   active={activeSheetId}
+                  selected={sheetTargets}
                   actions={sheetActions}
                 />
               ),
