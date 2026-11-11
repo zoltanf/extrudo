@@ -23,7 +23,10 @@
  * (`pointer`) and draws what it shows in the `overlay`, sheet mm; nothing is selected
  * meanwhile. **Notices** (a view being drawn, a body gone) are written under their target's
  * frame, on screen only. **A double-click** on a target (no tool) opens it (`onOpen`: a text
- * typed in place, S4); the field is the `editor`, laid on the paper in mm.
+ * typed in place, S4); the field is the `editor`, laid on the paper in mm. **Snapping** (S4,
+ * `snap`): a dragged selection snaps to the other targets' edges and middles and a dimension
+ * to rows 10 mm apart (`snap.ts`), with dashed guides (`[data-sheet-guides]`) written in the
+ * DOM while dragging; a tool's own guides come in `guides`.
  *
  * Test hooks: the region "Sheet" (`data-sheet-canvas`, `data-sheet` the sheet ID,
  * `data-paper` "420x297", `data-zoom` "62%", `data-hover` and `data-selected` the targets),
@@ -69,6 +72,7 @@ import {
   zoomSheetAt,
   zoomText,
 } from './sheetView';
+import { guidePath, type SnapRow, snapMove, snapTargets } from './snap';
 import { sheetSnapshot } from './snapshot';
 import { placedAt } from './views';
 
@@ -165,6 +169,13 @@ export interface SheetCanvasProps {
   editor?: ReactNode;
   /** A double-click on a target with no tool running (plan §4.2: edit a text in place). */
   onOpen?: (target: SheetTarget) => void;
+  /**
+   * Snapping a dragged selection (S4, plan §4.2), with the dimensions' rows; absent when the
+   * floating bar's Snap is off.
+   */
+  snap?: { rows: ReadonlyMap<SheetTarget, SnapRow> };
+  /** Guides to show while a tool places something (snapped), sheet mm. */
+  guides?: string;
 }
 
 const NONE: readonly SheetTarget[] = [];
@@ -198,6 +209,8 @@ export function SheetCanvas({
   notices,
   editor,
   onOpen,
+  snap,
+  guides,
 }: SheetCanvasProps) {
   const host = useRef<HTMLElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
@@ -219,6 +232,7 @@ export function SheetCanvas({
     hovered,
     placing,
     pointer,
+    snap,
   });
   latest.current = {
     paper,
@@ -231,6 +245,7 @@ export function SheetCanvas({
     hovered,
     placing,
     pointer,
+    snap,
   };
   const ghost = useRef<SVGGElement>(null);
   /** Moves the placing frame so the middle of its lines is under the sheet point. */
@@ -264,6 +279,30 @@ export function SheetCanvas({
   const movesFor = (targets: SheetTarget[], dx: number, dy: number, free: boolean): SheetMoves =>
     events.current.movesOf?.(targets, dx, dy, free) ??
     new Map(targets.map((t) => [t, [dx, dy] as const]));
+  const guide = useRef<SVGPathElement>(null);
+  /** A drag of the selection by (`dx`, `dy`) mm, snapped when Snap is on; draws its guides. */
+  const snapped = (moving: SheetTarget[], dx: number, dy: number) => {
+    const on = latest.current.snap;
+    if (!on) return { dx, dy, guides: [] };
+    const set = new Set(moving);
+    const b = latest.current.boxes;
+    const own = moving.length === 1 ? on.rows.get(moving[0] as SheetTarget) : undefined;
+    const rows = [...on.rows].filter(([t]) => !set.has(t)).map(([, r]) => r);
+    return snapMove(
+      moving.flatMap((t) => b.get(t) ?? []),
+      snapTargets(b, set),
+      dx,
+      dy,
+      tolerance(),
+      own,
+      rows,
+    );
+  };
+  const showGuides = (d: string) => {
+    if (!guide.current) return;
+    guide.current.setAttribute('d', d);
+    guide.current.style.display = d ? '' : 'none';
+  };
   /** Shifts the drawn paths of the moved targets (and their frames), or back with none. */
   const shift = (moves: SheetMoves) => {
     for (const root of [svg.current, overlay.current]) {
@@ -448,7 +487,9 @@ export function SheetCanvas({
         if (pick && d.moved) {
           const [x, y] = at(event.clientX, event.clientY);
           if (pick.moving.length > 0) {
-            shift(movesFor(pick.moving, x - pick.from[0], y - pick.from[1], event.altKey));
+            const s = snapped(pick.moving, x - pick.from[0], y - pick.from[1]);
+            shift(movesFor(pick.moving, s.dx, s.dy, event.altKey));
+            showGuides(guidePath(s.guides));
           } else if (band.current) {
             band.current.setAttribute('x', String(Math.min(x, pick.from[0])));
             band.current.setAttribute('y', String(Math.min(y, pick.from[1])));
@@ -515,8 +556,8 @@ export function SheetCanvas({
             }
             return;
           }
-          const dx = x - pick.from[0];
-          const dy = y - pick.from[1];
+          const { dx, dy } = snapped(pick.moving, x - pick.from[0], y - pick.from[1]);
+          showGuides('');
           shifted.current = movesFor(pick.moving, dx, dy, event.altKey);
           if (events.current.onMove?.(pick.moving, dx, dy, event.altKey) !== true) {
             shift(NO_MOVES);
@@ -542,6 +583,7 @@ export function SheetCanvas({
         );
       }}
       onPointerCancel={() => {
+        showGuides('');
         const pick = drag.current?.select;
         if (pick?.moving.length) shift(NO_MOVES);
         if (band.current) band.current.style.display = 'none';
@@ -638,6 +680,17 @@ export function SheetCanvas({
             })}
           {placing && <PlacingFrame ref={ghost} placing={placing} />}
           {extra}
+          <path
+            ref={guide}
+            data-sheet-guides=""
+            d={guides ?? ''}
+            style={{ display: guides ? '' : 'none' }}
+            fill="none"
+            stroke="var(--x-accent)"
+            strokeWidth={1}
+            strokeDasharray="6 4"
+            vectorEffect="non-scaling-stroke"
+          />
           <rect
             ref={band}
             data-sheet-band=""

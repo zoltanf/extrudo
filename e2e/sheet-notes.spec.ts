@@ -104,6 +104,23 @@ async function viewBox(page: Page, id: string): Promise<[number, number, number,
   });
 }
 
+/** An item's drawn box in sheet mm. */
+function itemBox(page: Page, id: string): Promise<[number, number, number, number]> {
+  return paths(page, id).evaluateAll((all) => {
+    let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const p of all) {
+      const b = (
+        p as unknown as { getBBox(): { x: number; y: number; width: number; height: number } }
+      ).getBBox();
+      x0 = Math.min(x0, b.x);
+      y0 = Math.min(y0, b.y);
+      x1 = Math.max(x1, b.x + b.width);
+      y1 = Math.max(y1, b.y + b.height);
+    }
+    return [x0, y0, x1, y1] as [number, number, number, number];
+  });
+}
+
 /** Moves to sheet point (`x`, `y`) and waits for the tool to show what a click takes. */
 async function hoverAt(page: Page, x: number, y: number, what = '[data-dimension-hover]') {
   const at = await onSheet(page, x, y);
@@ -325,6 +342,22 @@ test('the notes tools rebuild mock-up 1 by hand: each item one undo step, typed 
   await oneStep(page, sticky);
   await page.keyboard.press('Escape');
   await expect(notes(page)).toBeVisible();
+
+  // Snap: the sticky note dragged down, its left edge half a millimetre off the text's, lands
+  // on it with a dashed guide; one undo step puts it back.
+  const [nx0] = await itemBox(page, note);
+  const [sx0, sy0, sx1, sy1] = await itemBox(page, sticky);
+  const grab = await onSheet(page, (sx0 + sx1) / 2, (sy0 + sy1) / 2);
+  const drop = await onSheet(page, (sx0 + sx1) / 2 + (nx0 + 0.5 - sx0), (sy0 + sy1) / 2 + 40);
+  await page.mouse.move(grab.x, grab.y);
+  await page.mouse.down();
+  await page.mouse.move(drop.x, drop.y, { steps: 10 });
+  await expect(sheet(page).locator('[data-sheet-guides]')).toBeVisible();
+  await page.mouse.up();
+  await expect.poll(async () => (await itemBox(page, sticky))[0]).toBeCloseTo(nx0, 1);
+  await page.keyboard.press('Control+z');
+  await expect.poll(async () => (await itemBox(page, sticky))[0]).toBeCloseTo(sx0, 1);
+  await page.keyboard.press('Escape');
   await shot(page, 'artboard-1');
 
   // A double-click types the text again where it is: one undo step.

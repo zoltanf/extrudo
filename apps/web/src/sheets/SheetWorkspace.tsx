@@ -50,7 +50,7 @@ import {
   sheetMargin,
   sheetViewScale,
 } from '@extrudo/sheets';
-import { Hand, Maximize, MousePointer2, StickyNote, Trash2, ZoomIn } from 'lucide-react';
+import { Hand, Magnet, Maximize, MousePointer2, StickyNote, Trash2, ZoomIn } from 'lucide-react';
 import {
   type RefObject,
   useCallback,
@@ -110,6 +110,7 @@ import {
   type SheetTarget,
   selectedTargets,
   sheetSelection,
+  targetBoxes,
   targetName,
   viewDeltas,
 } from './selection';
@@ -120,6 +121,7 @@ import {
   sheetItemsStore,
   useSheetAnchors,
 } from './sheetAnchors';
+import { dimensionRows, guidePath, rowOf, type SnapRow, snapPoint } from './snap';
 import { type DimensionKernel, useDimensionTool } from './useDimensionTool';
 import { type PickToolSpec, type PickToolState, usePickTool } from './usePickTool';
 import { useProjectedView } from './useProjectedView';
@@ -405,6 +407,9 @@ export default function SheetWorkspace({
   const [stickyColor, setStickyColor] = useState<SheetStickyColor>('yellow');
   // Sticky notes shown on screen (the floating bar's switch; never stored).
   const [showStickies, setShowStickies] = useState(true);
+  // Snapping (the floating bar's Snap, on by default) and a placing tool's guides.
+  const [snapOn, setSnapOn] = useState(true);
+  const [placeGuides, setPlaceGuides] = useState('');
   const pickedPoints = useMemo(() => {
     const out: [number, number][] = [];
     for (const pick of picker?.picks ?? []) {
@@ -541,6 +546,17 @@ export default function SheetWorkspace({
     asked,
     showStickies,
   ]);
+
+  // What a placed or dragged item snaps to: the targets' boxes and the dimensions' rows.
+  const boxes = useMemo(() => (list ? targetBoxes(list) : new Map()), [list]);
+  const dimensionTargets = useMemo(
+    () =>
+      new Set(
+        (sheet?.items ?? []).filter((i) => i.kind === 'dimension').map((i) => `item:${i.id}`),
+      ),
+    [sheet],
+  );
+  const snapRows = useMemo(() => dimensionRows(list, dimensionTargets), [list, dimensionTargets]);
 
   // Each item's text and state for the browser's rows and the status bar (plan §4.6).
   useEffect(() => {
@@ -783,16 +799,55 @@ export default function SheetWorkspace({
     }
   };
   const textTool = activeTool === 'sheetText' || activeTool === 'sheetSticky';
+  /**
+   * Where a tool places at `p` with snapping: a text's or note's corner, or a dimension's or
+   * leader's text while it follows the pointer (a dimension's row 10 mm from the others').
+   */
+  const placeAt = (p: Vec2, tolerance: number): [number, number] => {
+    const placing = picker
+      ? picker.preview !== undefined && picker.pointer !== undefined
+      : textTool;
+    if (!snapOn || !placing) {
+      if (placeGuides) setPlaceGuides('');
+      return [p[0], p[1]];
+    }
+    // The preview's row was laid out at the tool's last point: it moves with the pointer.
+    let row: SnapRow | undefined;
+    const run = picker?.preview?.items.find((i): i is DisplayText => i.type === 'text');
+    const was = picker?.pointer;
+    const r = dimensionTool && run ? rowOf(run) : undefined;
+    if (r && was)
+      row = { axis: r.axis, at: r.at + (r.axis === 'x' ? p[0] - was[0] : p[1] - was[1]) };
+    const snapped = snapPoint(p, [...boxes.values()], tolerance, row, [...snapRows.values()]);
+    const d = guidePath(snapped.guides);
+    if (d !== placeGuides) setPlaceGuides(d);
+    return snapped.point;
+  };
   const pointerTool = picker
     ? {
-        onPoint: picker.onPoint,
+        onPoint: (p: [number, number], tolerance: number) =>
+          picker.onPoint(placeAt(p, tolerance), tolerance),
         onClick: (p: [number, number], tolerance: number) => {
-          if (!busyTyping()) picker.onClick(p, tolerance);
+          if (busyTyping()) return;
+          picker.onClick(picker.preview ? placeAt(p, tolerance) : p, tolerance);
+          setPlaceGuides('');
         },
-        onLeave: picker.onLeave,
+        onLeave: () => {
+          picker.onLeave();
+          setPlaceGuides('');
+        },
       }
     : textTool
-      ? { onPoint: () => {}, onClick: (p: [number, number]) => placeText(p) }
+      ? {
+          onPoint: (p: [number, number], tolerance: number) => {
+            if (!editing) placeAt(p, tolerance);
+          },
+          onClick: (p: [number, number], tolerance: number) => {
+            placeText(placeAt(p, tolerance));
+            setPlaceGuides('');
+          },
+          onLeave: () => setPlaceGuides(''),
+        }
       : undefined;
   const overlay = picker ? (
     <>
@@ -876,6 +931,8 @@ export default function SheetWorkspace({
           ),
         })}
         onOpen={openTarget}
+        {...(snapOn && { snap: { rows: snapRows } })}
+        {...(placeGuides && pointerTool && { guides: placeGuides })}
         movesOf={(targets, dx, dy, free) => {
           const moves = new Map<string, readonly [number, number]>(
             targets.map((t) => [t, [dx, dy] as const]),
@@ -988,6 +1045,14 @@ export default function SheetWorkspace({
           aria-label="Zoom level"
           className="min-w-12 border-x border-line px-2 text-center font-mono text-xs text-muted tabular-nums"
         />
+        <IconButton
+          label="Snap"
+          hint="Moved and placed items snap to other items' edges and middles, dimensions to rows 10 mm apart."
+          pressed={snapOn}
+          onClick={() => setSnapOn((on) => !on)}
+        >
+          <Magnet size={16} strokeWidth={1.75} />
+        </IconButton>
         <IconButton
           label="Show sticky notes"
           hint="Sticky notes on the sheet: shown or hidden on screen. The export has its own switch."
