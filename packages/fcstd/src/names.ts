@@ -15,18 +15,15 @@ export const MAX_DETAIL_LENGTH = 300;
  * (the object's internal name) when nothing is left.
  */
 export function cleanName(label: string, fallback: string): string {
-  const clean = (text: string) =>
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: replacing them is the point
-    [
-      ...text
-        .replace(/[\u0000-\u001f\u007f]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim(),
-    ]
-      .slice(0, MAX_NAME_LENGTH)
-      .join('')
-      .trim();
-  return clean(label) || clean(fallback) || 'Shape';
+  return tidy(label) || tidy(fallback) || 'Shape';
+}
+
+// biome-ignore lint/suspicious/noControlCharactersInRegex: replacing them is the point
+const CONTROL = /[\u0000-\u001f\u007f]/g;
+
+function tidy(text: string): string {
+  const flat = text.replace(CONTROL, ' ').replace(/\s+/g, ' ').trim();
+  return [...flat].slice(0, MAX_NAME_LENGTH).join('').trim();
 }
 
 /**
