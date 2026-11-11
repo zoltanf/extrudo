@@ -434,15 +434,6 @@ export async function importBodies(
         return;
       }
       const sketchObject = sketchOfFeature(doc, f);
-      if (sketchObject) {
-        // A sketch is imported for one body only: another body's sketch is not tried again.
-        const of = owner.get(sketchObject.name);
-        if (of !== undefined && of !== body.name) {
-          stop(f, 'chain', `its sketch ${sketchObject.name} belongs to another body, ${of}`);
-          return;
-        }
-        owner.set(sketchObject.name, body.name);
-      }
       // Each sketch is decoded once per import (the axis lookup here and addSketch share it).
       let decodedSketch = sketchObject ? decodedSketches.get(sketchObject.name) : undefined;
       if (sketchObject && !decodedSketch) {
@@ -459,6 +450,13 @@ export async function importBodies(
         return;
       }
       const feature = decoded.feature;
+      // A sketch is imported for one body only: another body's sketch is not tried again.
+      const of = owner.get(feature.sketch);
+      if (of !== undefined && of !== body.name) {
+        stop(f, 'chain', `its sketch ${feature.sketch} belongs to another body, ${of}`);
+        return;
+      }
+      owner.set(feature.sketch, body.name);
       const drawnCurves = (decodedSketch?.geometry ?? []).filter(
         (g) => g !== undefined && !g.construction && g.internal === 0 && g.kind !== 'point',
       ).length;

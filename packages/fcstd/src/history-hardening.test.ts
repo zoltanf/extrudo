@@ -165,6 +165,18 @@ describe('one object, one body, once per file', () => {
     expect(r.report.bodies.map((x) => x.stop?.reason)).toEqual(['sketch', 'chain']);
     expect(r.report.bodies[1]?.stop?.detail).toMatch(/belongs to another body/);
   });
+
+  it('refuses a feature of a kind it does not map before looking at the sketch it names', async () => {
+    const b: BodySpec = {
+      ...padBody('B', 'Second', 'SketchB'),
+      features: [
+        { name: 'BPad', type: 'Pad', sketch: 'SketchB', length: 30, stored: BOX },
+        { name: 'BFillet', type: 'PartDesign::Fillet', sketch: 'Sketch', stored: BOX },
+      ],
+    };
+    const r = await run([padBody(), b]);
+    expect(r.report.bodies[1]?.stop).toMatchObject({ object: 'BFillet', reason: 'type' });
+  });
 });
 
 describe('stored shapes too large to read', () => {
