@@ -528,3 +528,78 @@ describe('notes and centre lines (ADR-0143, S4)', () => {
     expect(issues(on(centre('centreMark', [edge('e[gone|gone]')])))).toEqual([]);
   });
 });
+
+describe('parts lists, balloons and tables (ADR-0143, S5)', () => {
+  const face = {
+    ref: {
+      kind: 'face' as const,
+      id: 'f[box:f2:side:0]',
+      fingerprint: { type: 'plane', at: [0, 0, 0] as [number, number, number] },
+    },
+  };
+  const parts: SheetItem = {
+    kind: 'partsList',
+    id: iid('p1'),
+    view: vid('v1'),
+    at: [250, 220],
+    columns: ['item', 'qty', 'name', 'material', 'size'],
+    rows: { ['f2:0' as BodyId]: { name: 'Top', material: 'Birch ply' } },
+  };
+  const balloon: SheetItem = {
+    kind: 'balloon',
+    id: iid('b1'),
+    view: vid('v1'),
+    anchor: face,
+    at: [-40, 25],
+    list: iid('p1'),
+  };
+  const table: SheetItem = {
+    kind: 'table',
+    id: iid('k1'),
+    at: [20, 230],
+    columns: [30, 60],
+    rows: [
+      ['Clearance', '{= wall}'],
+      ['', 'Two\nlines'],
+    ],
+  };
+  const doc = (...items: SheetItem[]) =>
+    withSheets([sheet('s1', 'A', { views: [front()], items })]);
+
+  it('takes each kind, and a balloon with its anchor', () => {
+    expect(issues(doc(parts, balloon, table))).toEqual([]);
+    expect(sheetItemAnchors(balloon)).toEqual([face]);
+    expect(sheetItemAnchors(parts)).toEqual([]);
+    expect(sheetItemAnchors(table)).toEqual([]);
+    const moved = mapSheetItemAnchors(balloon, () => ({ free: [1, 2] }));
+    expect(moved).toEqual({ ...balloon, anchor: { free: [1, 2] } });
+    expect(sheetItemView(parts)).toBe('v1');
+    expect(sheetItemView(table)).toBeUndefined();
+  });
+
+  it('refuses a balloon without its parts list, on a free point, or numbered by a table', () => {
+    expect(issues(doc(balloon))).toEqual([
+      'sheets.0.items.0.list is p1, which is not a parts list of this sheet',
+    ]);
+    expect(issues(doc(table, { ...balloon, list: iid('k1') } as SheetItem))).toEqual([
+      'sheets.0.items.1.list is k1, which is not a parts list',
+    ]);
+    expect(issues(doc(parts, { ...balloon, anchor: { free: [0, 0] } } as SheetItem))).toEqual([
+      'sheets.0.items.1.anchor is a free point: a balloon points at a body',
+    ]);
+  });
+
+  it("refuses a column twice, an unknown column, and a table row that isn't as wide as its columns", () => {
+    expect(issues(doc({ ...parts, columns: ['name', 'qty', 'name'] } as SheetItem))).toEqual([
+      'sheets.0.items.0.columns.2 names the name column twice',
+    ]);
+    expect(issues(doc({ ...parts, columns: ['price'] } as unknown as SheetItem))).toHaveLength(1);
+    const narrow = { ...table, rows: [['a', 'b'], ['c'], ['d', 'e', 'f']] } as SheetItem;
+    expect(sheetItemProblems(narrow)).toEqual([
+      { path: ['rows', 1], message: 'has 1 cell, but the table has 2 columns' },
+      { path: ['rows', 2], message: 'has 3 cells, but the table has 2 columns' },
+    ]);
+    expect(issues(doc({ ...table, rows: [] } as SheetItem))).toHaveLength(1);
+    expect(issues(doc({ ...table, columns: [0.5, 30] } as SheetItem))).toHaveLength(1);
+  });
+});

@@ -33,7 +33,7 @@ export function fillSheetFields(text: string, values: SheetFieldValues): string 
   return text.replace(FIELD, (whole, eq: string | undefined, expr: string, name: string) => {
     if (eq !== undefined) {
       const source = expr.trim();
-      return (source && values.expression?.(source)) ?? whole;
+      return (source ? values.expression?.(source) : undefined) ?? whole;
     }
     if (!(SHEET_FIELDS as readonly string[]).includes(name)) return whole;
     return values[name as SheetFieldName] ?? whole;
