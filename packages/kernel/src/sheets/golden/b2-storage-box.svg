@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400mm" height="260mm" viewBox="0 0 400 260">
+<title>b2-storage-box: front, right, top, iso (first angle), 1:0.86</title>
+<rect width="400" height="260" fill="#fff"/>
+<g fill="none" stroke-linecap="round" stroke-linejoin="round">
+<text x="4" y="126" font-size="4" fill="#000" stroke="none">front</text>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M143.26 36.62L143.26 78.71"/>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M56.74 36.62L56.74 78.71"/>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M143.26 78.71L56.74 78.71"/>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M56.74 36.62L56.74 78.71"/>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M143.26 36.62L143.26 78.71"/>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M56.74 78.71L143.26 78.71"/>
+<path stroke="#000" stroke-width="0.35" d="M146.76 83.38L146.76 36.62"/>
+<path stroke="#000" stroke-width="0.35" d="M53.24 83.38L53.24 36.62"/>
+<path stroke="#000" stroke-width="0.35" d="M53.24 83.38L146.76 83.38"/>
+<path stroke="#000" stroke-width="0.35" d="M53.24 36.62L146.76 36.62"/>
+<text x="204" y="126" font-size="4" fill="#000" stroke="none">right</text>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M331.57 36.62L331.57 78.71"/>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M331.57 36.62L331.57 78.71"/>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M268.43 36.62L268.43 78.71"/>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M331.57 78.71L268.43 78.71"/>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M268.43 36.62L268.43 78.71"/>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M268.43 78.71L331.57 78.71"/>
+<path stroke="#000" stroke-width="0.35" d="M264.93 83.38L264.93 36.62"/>
+<path stroke="#000" stroke-width="0.35" d="M335.07 83.38L335.07 36.62"/>
+<path stroke="#000" stroke-width="0.35" d="M264.93 83.38L335.07 83.38"/>
+<path stroke="#000" stroke-width="0.35" d="M264.93 36.62L335.07 36.62"/>
+<text x="4" y="256" font-size="4" fill="#000" stroke="none">top</text>
+<path stroke="#000" stroke-width="0.35" d="M146.76 225.07L146.76 154.93"/>
+<path stroke="#000" stroke-width="0.35" d="M53.24 225.07L146.76 225.07"/>
+<path stroke="#000" stroke-width="0.35" d="M146.76 154.93L53.24 154.93"/>
+<path stroke="#000" stroke-width="0.35" d="M53.24 154.93L53.24 225.07"/>
+<path stroke="#000" stroke-width="0.35" d="M143.26 158.43L56.74 158.43"/>
+<path stroke="#000" stroke-width="0.35" d="M56.74 158.43L56.74 221.57"/>
+<path stroke="#000" stroke-width="0.35" d="M56.74 221.57L143.26 221.57"/>
+<path stroke="#000" stroke-width="0.35" d="M143.26 221.57L143.26 158.43"/>
+<text x="204" y="256" font-size="4" fill="#000" stroke="none">iso</text>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M291.73 175.68L291.73 174.73M291.73 140.36L291.73 137.5"/>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M357.87 213.86L291.73 175.68"/>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M291.73 175.68L242.13 204.32"/>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M352.91 175.68L352.91 210.05"/>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M352.91 210.05L323.15 192.86"/>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M247.09 166.14L247.09 200.5"/>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M276.85 183.32L247.09 200.5"/>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M308.27 201.45L308.27 204.32"/>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M247.09 200.5L308.27 235.82"/>
+<path stroke="#555" stroke-width="0.18" stroke-dasharray="1.5 0.8" d="M308.27 235.82L352.91 210.05"/>
+<path stroke="#000" stroke-width="0.35" d="M308.27 242.5L308.27 204.32"/>
+<path stroke="#000" stroke-width="0.35" d="M357.87 213.86L357.87 175.68"/>
+<path stroke="#000" stroke-width="0.35" d="M308.27 242.5L357.87 213.86"/>
+<path stroke="#000" stroke-width="0.35" d="M308.27 204.32L357.87 175.68"/>
+<path stroke="#000" stroke-width="0.35" d="M242.13 204.32L242.13 166.14"/>
+<path stroke="#000" stroke-width="0.35" d="M242.13 204.32L308.27 242.5"/>
+<path stroke="#000" stroke-width="0.35" d="M242.13 166.14L308.27 204.32"/>
+<path stroke="#000" stroke-width="0.35" d="M357.87 175.68L291.73 137.5"/>
+<path stroke="#000" stroke-width="0.35" d="M291.73 137.5L242.13 166.14"/>
+<path stroke="#000" stroke-width="0.35" d="M352.91 175.68L291.73 140.36"/>
+<path stroke="#000" stroke-width="0.35" d="M291.73 140.36L247.09 166.14"/>
+<path stroke="#000" stroke-width="0.35" d="M247.09 166.14L308.27 201.45"/>
+<path stroke="#000" stroke-width="0.35" d="M308.27 201.45L352.91 175.68"/>
+<path stroke="#000" stroke-width="0.35" d="M291.73 140.36L291.73 174.73"/>
+<path stroke="#000" stroke-width="0.35" d="M323.15 192.86L291.73 174.73"/>
+<path stroke="#000" stroke-width="0.35" d="M291.73 174.73L276.85 183.32"/>
+</g>
+</svg>

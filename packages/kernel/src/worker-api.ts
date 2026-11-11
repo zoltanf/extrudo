@@ -50,6 +50,8 @@ export function workerApi(service: KernelService): KernelApi {
     resolveAnnotation: (annotation) => service.resolveAnnotation(annotation),
     checkJoint: (request, onProgress) => service.checkJoint(request, onProgress),
     cancelCheck: () => service.cancelCheck(),
+    sheetViews: (requests, onView) => service.sheetViews(requests, onView),
+    cancelSheetViews: () => service.cancelSheetViews(),
     debugTestPart: async () => {
       const part = await service.debugTestPart();
       return Comlink.transfer(part, meshBuffers(part.mesh));

@@ -4432,6 +4432,22 @@ a NOTICE entry), WinAnsi, stretched with `Tz` to the outline width; keep it depe
 sample: `PDF_OUT=<file> pnpm vitest run packages/sketch/src/text/pdf-sample`). Gated tools: `HLR_BENCH=1` (+
 `HLR_METHODS=1`) `pnpm vitest run packages/kernel/src/hlr-bench` re-times HLR; `HLR_PDF=<file>` (+ `HLR_POLY=1`) `pnpm
 vitest run packages/kernel/src/hlr-views` draws views from the spans to look at.
+**S2 kernel views (package 1):** the frame in `core/src/sheet-frame.ts` (`SheetViewFrame`, `sheetBaseFrame`,
+`sheetProjectedFrame`, `sheetViewFrame`, `toSheetView`, `SHEET_STANDARD_VIEWS`, `sheetStandardFrom`; view coordinates
+are mm at model scale, x right, y up, world origin at 0, 0; third angle shows the side a view is placed on, first the
+opposite; **isometric sides are the same in both angles**), the evaluator in `kernel/src/sheets/` (`exactView` from
+`hlrSpans`, `quickView` from `hlrPolySpans`; `ViewGeometry` with curves `visible`/`hidden`/`outline`/`tangent`, pieces
+`line`/`arc`/`ellipse`/`polyline`, `edge`/`face` topological names, `partial` with `skipped` for mesh and missing
+bodies), `RecomputeEngine.sheetView` (cache of 64 by body versions, skipped bodies, direction, up, exact/quick) and
+`KernelApi.sheetViews(requests, onView)` / `cancelSheetViews()`. Rules a change must keep: **raw edge and face indices
+never leave `sheets/evaluate.ts`** (the compound's indices map back through `Kernel.locate`); **every kind of curve
+comes back** and style and tangent edges are the app's filters (`shownCurves`), never in the key; scale and position
+are never in the key; **a quick view never names a curve** (`exact: false`; nothing anchors, measures or snaps to it);
+**before `hlrPolySpans` a body gets its display mesh** if this engine never meshed it (`#meshed`), since the
+polygonal run would leave a mesh of its own that the display mesher keeps; views run one at a time with a yield
+between them, and only `onView`'s `false` or `cancelSheetViews()` stops a run (not a newer call, not a recompute: a
+later view draws the new bodies and its `versions` say so). Goldens: `pnpm vitest run
+packages/kernel/src/sheets/golden --update` (`-u` before the path takes the path as its value and runs every test).
 **S1a (modes, done, no
 behaviour change):** `EditMode` (`packages/core/src/stores.ts`) is the only spelling of the mode union (`KeymapMode` and
 `MarkingMode` alias it); `MODES` in `apps/web/src/shell/modes.ts` is one row per mode (`label`, `tabs`, `defaultTab`,
