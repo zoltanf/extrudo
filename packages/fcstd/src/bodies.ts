@@ -296,7 +296,9 @@ export async function importBodies(
         break;
       }
       const sketchObject = sketchOfFeature(doc, f);
-      const decodedSketch = sketchObject ? decodeSketch(sketchObject) : undefined;
+      // Only a revolve looks into its sketch here (for an axis line); addSketch decodes it anyway.
+      const turns = f.type === 'PartDesign::Revolution' || f.type === 'PartDesign::Groove';
+      const decodedSketch = sketchObject && turns ? decodeSketch(sketchObject) : undefined;
       const decoded = decodeFeature(doc, f, {
         body,
         moved: frame.moved,
