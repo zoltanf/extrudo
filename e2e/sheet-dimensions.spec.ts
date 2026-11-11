@@ -197,9 +197,11 @@ test("a file's dimensions are drawn from the model, follow a parameter, and are 
   await page.locator('#toolbar-groups [data-label="Export PDF"]').click();
   const dialog = page.getByRole('dialog', { name: 'Export drawing' });
   await expect(dialog.locator('[data-sheet-export-summary]')).toHaveText('1 page · A3 landscape');
-  const pdf = pdfContent(
-    await downloaded(page, () => dialog.getByRole('button', { name: 'Export' }).click()),
+  const bytes = await downloaded(page, () =>
+    dialog.getByRole('button', { name: 'Export' }).click(),
   );
+  if (process.env.SHEET_SHOTS) await writeFile(join(process.env.SHEET_SHOTS, 'export.pdf'), bytes);
+  const pdf = pdfContent(bytes);
   // The invisible text layer writes each string in hex ("74" is <3734>).
   const hex = (value: string) => Buffer.from(value, 'latin1').toString('hex').toUpperCase();
   for (const value of ['55', '80', '74']) expect(pdf).toContain(`<${hex(value)}> Tj`);
