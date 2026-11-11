@@ -352,11 +352,11 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   await timed('parameter change set', () =>
     setParameters(page, { capDia: '40 mm', adapterLow: '24 mm' }),
   );
-  // All four threads are rebuilt: 10.4-10.9 s locally, 20.5-22.7 s on CI's
-  // runners when it passed, and over the old 30 s in 3 of 26 first attempts
-  // (CI runs since 2026-11-06; the runner's speed, not the commit, decides:
-  // none touched threads). Budget 60 s: 2 x the 30 s it was seen to pass
-  // under, 2.6 x the slowest measured pass. The time is logged.
+  // All four threads are rebuilt: 10.4-10.9 s locally, 7-23 s on CI's runners
+  // when it passed, and over the old 30 s in the first attempt of four CI runs
+  // between 2026-11-06 and 2026-11-10 (the retry on the same commit passed each
+  // time, so the runner's speed decides). Budget 60 s: 2 x the 30 s it failed
+  // under, 2.6 x the slowest measured pass (22.7 s). The time is logged.
   await timed('parameter change to ready', () => kernelReady(page, 60_000));
   // The refitted cap thread notes that its bore is filled in: Ø36 is off
   // M36's minor by more than the thread's depth (ADR-0056's fifth amendment).
