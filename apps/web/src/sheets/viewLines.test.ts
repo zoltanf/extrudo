@@ -250,7 +250,12 @@ describe('SheetViewRunner', () => {
     const runner = new SheetViewRunner(k.kernel);
     const wants = sheetViewWants(doc, two, [A]);
     runner.want(wants);
-    expect(runner.get().progress).toEqual({ done: 0, total: 2, since: expect.any(Number) });
+    expect(runner.get().progress).toEqual({
+      done: 0,
+      total: 2,
+      since: expect.any(Number),
+      asked: false,
+    });
     await flush();
     expect(k.runs).toEqual([['f1q', 'f3q', 'f1', 'f3']]);
     const state = runner.get();
@@ -303,6 +308,30 @@ describe('SheetViewRunner', () => {
     await flush();
     expect(k.runs).toHaveLength(2);
     expect(runner.get().cancelled).toBe(false);
+    expect(runner.get().pending.size).toBe(0);
+  });
+
+  it('goes straight from cancelled to running on Draw, with no state between', async () => {
+    const k = fakeKernel((_, quick) => geometry({ exact: !quick }));
+    const runner = new SheetViewRunner(k.kernel);
+    k.hold();
+    runner.want(sheetViewWants(doc, two, [A]));
+    runner.cancel();
+    k.release();
+    await flush();
+    expect(runner.get().cancelled).toBe(true);
+    const seen: { cancelled: boolean; asked?: boolean }[] = [];
+    runner.subscribe(() => {
+      const { cancelled, progress } = runner.get();
+      seen.push({ cancelled, ...(progress && { asked: progress.asked }) });
+    });
+    k.hold();
+    runner.retry();
+    // Every state published while the run starts shows a notice: cancelled or asked.
+    expect(seen[0]).toEqual({ cancelled: false, asked: true });
+    k.release();
+    await flush();
+    expect(runner.get().progress).toBeUndefined();
     expect(runner.get().pending.size).toBe(0);
   });
 
