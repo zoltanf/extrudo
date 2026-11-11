@@ -648,12 +648,17 @@ describe('kernels that fail, hang and lie', () => {
   ];
   for (const [which, what, reason] of cases)
     it(`stops the history when ${which} ${what === 'lie' ? 'lies' : `${what}s`}, restarts and falls back`, async () => {
-      const r = await run([padBody()], { kernel: faulty(which, what), shapeTimeoutMs: 300 });
+      // Only a hang needs a short budget; the shapes import after the fallback has the same one,
+      // so it must leave room for a loaded machine's conversion of a box.
+      const r = await run([padBody()], {
+        kernel: faulty(which, what),
+        ...(what === 'hang' ? { shapeTimeoutMs: 5_000 } : {}),
+      });
       expect(only(r).stop).toMatchObject({ reason });
       expect(r.report.restarts).toBe(1);
       expect(only(r).outcome).toBe('shape');
       expect(r.features).toEqual(['import Import Bracket']);
-    });
+    }, 30_000);
 
   it('leaves the rest to the shapes import after too many restarts, which leaves it out', async () => {
     const r = await run([padBody()], {
