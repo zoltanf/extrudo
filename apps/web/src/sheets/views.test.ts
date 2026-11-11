@@ -159,15 +159,34 @@ describe('Standard views (New drawing)', () => {
 
   it('lays the four out lined up at the largest scale that fits, centred', () => {
     const { scale, fit, at } = standardLayout(room, boxes, 'first');
-    // Across 100 + 40 + 80 and two gaps; down 80 + 40 and a gap: 2:1 is 480 mm wide.
+    // Columns 100 and 80 wide, rows 50 and 80 high, a gap each: 2:1 is 380 mm wide but
+    // 280 high.
     expect(scale).toEqual([1, 1]);
     expect(fit).toEqual([1, 1]);
     expect(at.top[0]).toBe(at.front[0]);
     expect(at.side[1]).toBe(at.front[1]);
-    // First angle: the top view below the front.
+    // First angle: the top view below the front, the isometric beside the top view.
     expect(at.top[1]).toBeGreaterThan(at.front[1]);
-    // The grid (260 × 140 mm) is centred in the room: the front's left edge at 80.
-    expect(at.front[0] - 50).toBe(80);
+    expect(at.iso[0]).toBeGreaterThan(at.front[0]);
+    // The grid (200 × 150 mm) is centred in the room: the front's left edge at 110.
+    expect(at.front[0] - 50).toBe(110);
+  });
+
+  it('enlarges small parts: 2:1 and 5:1 are tried first', () => {
+    const half = Object.fromEntries(
+      Object.entries(boxes).map(([k, b]) => [
+        k,
+        { min: b.min.map((n) => n / 2), max: b.max.map((n) => n / 2) },
+      ]),
+    ) as typeof boxes;
+    expect(standardLayout(room, half, 'first').fit).toEqual([2, 1]);
+    const tiny = Object.fromEntries(
+      Object.entries(boxes).map(([k, b]) => [
+        k,
+        { min: b.min.map((n) => n / 10), max: b.max.map((n) => n / 10) },
+      ]),
+    ) as typeof boxes;
+    expect(standardLayout(room, tiny, 'first').fit).toEqual([5, 1]);
   });
 
   it('puts the top view above in third angle, and takes a given scale', () => {

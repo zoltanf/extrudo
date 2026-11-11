@@ -709,9 +709,14 @@ UI spec §4a describes what a person sees.
   keeps its place against the parent, scaled, in one step (`runAsOneStep`).
 - **Part 2: Standard views** (`standardViews.ts`, loaded lazily with New drawing): one base
   view (Front) and three projected from it (top below in first angle and above in third, the
-  side on the right, the isometric above right), a grid of front, side and isometric with the
-  top in the front's column, 20 mm gaps, inside the border less 10 mm and above the title
-  block, at the largest of the standard scales that fits, centred. One view fits the sheet's
+  side on the right, the isometric's direction above right) in a 2 × 2 grid: the front with
+  the side beside it, the top in the front's column and the isometric in the corner left
+  free, diagonal from the front (mock-up 2's picture; a row of front, side and isometric was
+  tried first and wasted the height the isometric needs). 20 mm gaps, inside the border less
+  10 mm and above the title block, at the largest standard scale that fits (5:1 and 2:1
+  first, so small parts are enlarged), centred. On A3 with the simple title block: the wall
+  bracket, the storage box and the PCB enclosure 1:1 (a front and top stacked in one column
+  are too tall for 2:1), the box with a lid 2:1. One view fits the sheet's
   scale to the front view and starts Base View. The sheet with its views is one `addSheet`
   ("New drawing").
 - **Part 2: quick bounds are not good enough for layout.** The polygonal run can return stray

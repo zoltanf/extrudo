@@ -7,7 +7,8 @@
  *
  * The four views are one base view (Front) and three views projected from it, so they stay
  * lined up when moved or rescaled; the top view shares the front's `at.x`, the side view its
- * `at.y`, exactly. Sizes come from the quick lines (milliseconds), computed before Create.
+ * `at.y`, exactly. Sizes come from the exact lines (the quick ones' bounds can hold stray
+ * pieces), computed before Create.
  */
 import {
   type BodyId,
@@ -92,10 +93,11 @@ const size = (b: ViewBox): [number, number] => [
 ];
 
 /**
- * The four views in a grid at `scale` (the largest standard one that fits when absent):
- * front, side and isometric in a row, the top view in the front's column, below it in first
- * angle and above it in third. The grid is centred in `room`. Returns the scale and each
- * view's `at`.
+ * The four views in a 2 × 2 grid at `scale` (the largest standard one that fits when
+ * absent, enlarging ones included): the front with the side view beside it, the top view in
+ * the front's column (below it in first angle, above it in third) and the isometric in the
+ * corner left free, diagonal from the front (mock-up 2's picture). The grid is centred in
+ * `room`. Returns the scale, the fitted one and each view's `at`.
  */
 export function standardLayout(
   room: SheetRoom,
@@ -107,26 +109,28 @@ export function standardLayout(
   const [wT, hT] = size(boxes.top);
   const [wS, hS] = size(boxes.side);
   const [wI, hI] = size(boxes.iso);
+  // Columns: front and top; side and isometric. Rows: front and side; top and isometric.
   const c1 = Math.max(wF, wT);
-  const row = Math.max(hF, hS, hI);
-  const across = c1 + wS + wI;
-  const down = row + hT;
+  const c2 = Math.max(wS, wI);
+  const r1 = Math.max(hF, hS);
+  const r2 = Math.max(hT, hI);
   const fits = SCALES_DOWN.find(([a, b]) => {
     const k = a / b;
-    return k * across + 2 * VIEW_GAP <= room.width && k * down + VIEW_GAP <= room.height;
+    return k * (c1 + c2) + VIEW_GAP <= room.width && k * (r1 + r2) + VIEW_GAP <= room.height;
   });
   const fit = [...(fits ?? (SCALES_DOWN.at(-1) as SheetScale))] as SheetScale;
   const chosen = scale ?? fit;
   const k = chosen[0] / chosen[1];
-  const x0 = room.x + (room.width - (k * across + 2 * VIEW_GAP)) / 2;
-  const y0 = room.y + (room.height - (k * down + VIEW_GAP)) / 2;
-  const rowY = projection === 'first' ? y0 : y0 + k * hT + VIEW_GAP;
-  const topY = projection === 'first' ? y0 + k * row + VIEW_GAP : y0;
-  const middleY = rowY + (k * row) / 2;
-  const front = placedAt([x0 + (k * c1) / 2, middleY], boxes.front, k);
-  const side = placedAt([x0 + k * c1 + VIEW_GAP + (k * wS) / 2, middleY], boxes.side, k);
-  const iso = placedAt([x0 + k * (c1 + wS) + 2 * VIEW_GAP + (k * wI) / 2, middleY], boxes.iso, k);
-  const top = placedAt([x0 + (k * c1) / 2, topY + (k * hT) / 2], boxes.top, k);
+  const x0 = room.x + (room.width - (k * (c1 + c2) + VIEW_GAP)) / 2;
+  const y0 = room.y + (room.height - (k * (r1 + r2) + VIEW_GAP)) / 2;
+  const firstY = projection === 'first' ? y0 : y0 + k * r2 + VIEW_GAP;
+  const secondY = projection === 'first' ? y0 + k * r1 + VIEW_GAP : y0;
+  const left = x0 + (k * c1) / 2;
+  const right = x0 + k * c1 + VIEW_GAP + (k * c2) / 2;
+  const front = placedAt([left, firstY + (k * r1) / 2], boxes.front, k);
+  const side = placedAt([right, firstY + (k * r1) / 2], boxes.side, k);
+  const top = placedAt([left, secondY + (k * r2) / 2], boxes.top, k);
+  const iso = placedAt([right, secondY + (k * r2) / 2], boxes.iso, k);
   return {
     scale: chosen,
     fit,

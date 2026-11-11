@@ -901,8 +901,9 @@ Projected View, Standard views and the view card; dimensions and notes come with
   Sketch and a feature dialog first.
 - **New drawing** (mock-up 2): **Start with** three cards: **Standard views**
   (front, top, the side and an isometric: one base view and three projected
-  from it, laid out for first or third angle, lined up, at the largest
-  standard scale that fits above the title block, centred), **One view** (the
+  from it, laid out for first or third angle in a 2 × 2 grid with the
+  isometric in the free corner, lined up, at the largest standard scale that
+  fits above the title block, 5:1 and 2:1 included, centred), **One view** (the
   sheet's scale fitted to the front view; Base View then runs to place it) or
   **Empty sheet**; then paper, orientation, title block (Simple, Full, None),
   Bodies ("All shown (n)" or one body), Scale ("Fit the sheet · 1:2" or a
