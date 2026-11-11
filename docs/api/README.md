@@ -141,6 +141,7 @@ happens to a name the kernel cannot resolve.
 | `d.feature(id)` | A handle for a feature that is already there |
 | `d.rename(f, name)`, `d.suppress(f)`, `d.move(f, index)`, `d.remove(f)` | The timeline, as the app's chip menu does it |
 | `d.group(first, last)` | A run of features under one name (ADR-0065) |
+| `d.setBody(body, { name, color, opacity, visible })` | A body's name, colour (`#rrggbb`), opacity (0.1–1) and visibility, as the browser's body menu sets them (ADR-0030) |
 | `d.transaction(label, fn)` | Several calls as one undo step; a throw rolls it all back |
 | `d.configuration(name, values)`, `d.applyConfiguration(name)` | Named value sets to switch between (ADR-0059) |
 | `d.validate()` | What is wrong with the document, as `ApiError`s |

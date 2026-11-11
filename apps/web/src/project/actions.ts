@@ -11,6 +11,7 @@ import {
   randomUuid,
 } from '@extrudo/core';
 import type { ImportReport, ImportResult } from '@extrudo/f3d';
+import type { FcstdImportReport, LeftOutReason } from '@extrudo/fcstd';
 import {
   ArchiveError,
   type ProjectId,
@@ -26,6 +27,7 @@ import { navigate, projectHref } from '../routes';
 import { APP_VERSION } from '../version';
 import type { BodyCheck, BodyCheckResult } from './f3dCheck';
 import type { ImportRunner } from './f3dImport';
+import type { FcstdImported, FcstdImportRunner } from './fcstdImport';
 
 /**
  * Saves a new project (blank, or the given document, with a picture for its card
@@ -96,16 +98,22 @@ export const DESIGN_ACCEPT = `${FILE_EXTENSION},.gz,application/zip,application/
 
 /**
  * Lets the user pick an `.extrudo` file (or takes `picked`) and imports it;
- * `undefined` if they cancel. An `.f3d` picked here is imported as one too.
+ * `undefined` if they cancel. An `.f3d` or FreeCAD file picked here is
+ * imported as one too.
  */
 export async function importProject(
   platform: Platform,
   picked?: File,
 ): Promise<Pick<ProjectSummary, 'id'> | undefined> {
-  const file = picked ?? (await platform.files.pick(`${DESIGN_ACCEPT},${F3D_ACCEPT}`));
+  const file =
+    picked ?? (await platform.files.pick(`${DESIGN_ACCEPT},${F3D_ACCEPT},${FCSTD_ACCEPT}`));
   if (!file) return undefined;
   if (/\.f3d$/i.test(file.name)) {
     const id = await importF3dFile(platform, file);
+    return id ? { id } : undefined;
+  }
+  if (isFcstd(file.name)) {
+    const id = await importFcstdFile(platform, file);
     return id ? { id } : undefined;
   }
   const notices: string[] = [];
@@ -124,7 +132,9 @@ export async function importProject(
 export async function importAnyFile(
   platform: Platform,
 ): Promise<Pick<ProjectSummary, 'id'> | undefined> {
-  const file = await platform.files.pick(`${DESIGN_ACCEPT},${importAccept(!!platform.convertCad)}`);
+  const file = await platform.files.pick(
+    `${DESIGN_ACCEPT},${importAccept(!!platform.convertCad)},${FCSTD_ACCEPT}`,
+  );
   if (!file) return undefined;
   // Another CAD program's file is a model too where the Import dialog converts it (ADR-0115 §1).
   const model =
@@ -249,6 +259,121 @@ export async function saveF3dImport(
   }
   for (const message of importNotices(report, removed)) noteOnOpen(id, message);
   return id;
+}
+
+/** What a FreeCAD file is picked as (any case: `.FCStd` is FreeCAD's own spelling). */
+export const FCSTD_ACCEPT = '.fcstd';
+
+/** Whether `fileName` is a FreeCAD file, by its extension in any case. */
+export function isFcstd(fileName: string): boolean {
+  return /\.fcstd$/i.test(fileName);
+}
+
+/**
+ * The most a FreeCAD file may be before it is read, as `MAX_F3D_BYTES`
+ * (`@extrudo/fcstd`'s `MAX_FCSTD_BYTES`; the import holds the bytes, the
+ * entries it inflates and the XML tree at once).
+ */
+export const MAX_FCSTD_BYTES = 100 * 1024 * 1024;
+
+/** What the busy toast says while the FreeCAD import runs. */
+export const FCSTD_READING_TEXT = "Importing the FreeCAD file's shapes…";
+
+/**
+ * Lets the user pick a FreeCAD file (or takes `picked`) and imports it as a
+ * new design named after the file (ADR-0144 decision 9): its final shapes as
+ * bodies, each a STEP attachment on an `import` feature, with a report shown
+ * when the design opens. The importer and its own kernel run in workers
+ * (`fcstdImport.ts`); `run` stands in for them in tests. `undefined` if they
+ * cancel.
+ */
+export async function importFcstdFile(
+  platform: Platform,
+  picked?: File,
+  run?: FcstdImportRunner,
+): Promise<ProjectId | undefined> {
+  const file = picked ?? (await platform.files.pick(FCSTD_ACCEPT));
+  if (!file) return undefined;
+  if (file.size > MAX_FCSTD_BYTES)
+    throw new Error(
+      `This FreeCAD file is too large to import (the limit is ${MAX_FCSTD_BYTES / (1024 * 1024)} MB).`,
+    );
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const name = file.name.replace(/\.fcstd$/i, '') || 'Imported design';
+  const notifications = appNotifications.getState();
+  const toast = notifications.push('info', FCSTD_READING_TEXT, { lifetime: 15 * 60_000 });
+  let imported: FcstdImported;
+  try {
+    imported = await (run ?? (await import('./fcstdImport')).fcstdImportRunner())(bytes, name, {
+      id: randomUuid(),
+      appVersion: APP_VERSION,
+    });
+  } finally {
+    notifications.dismiss(toast);
+  }
+  return saveFcstdImport(platform, imported);
+}
+
+/**
+ * Saves an imported FreeCAD design: the STEP files first, then the document
+ * that names them (ADR-0061), then the report for its page.
+ */
+export async function saveFcstdImport(
+  platform: Platform,
+  { design, files, report }: FcstdImported,
+): Promise<ProjectId> {
+  const doc = design.toJSON();
+  for (const [attachment, bytes] of files) {
+    const record = doc.attachments?.[attachment];
+    if (record) await platform.projects.writeAttachment(doc.id, record.sha256, bytes);
+  }
+  const id = await createProject(platform, doc);
+  for (const message of fcstdNotices(report)) noteOnOpen(id, message);
+  return id;
+}
+
+/** Why a shape was left out, in the app's words. */
+const LEFT_OUT: Record<LeftOutReason, string> = {
+  mesh: "a mesh, which Extrudo doesn't import from FreeCAD files yet",
+  empty: 'no shape',
+  binary: "stored in FreeCAD's binary form, which Extrudo can't read",
+  unreadable: "its shape can't be read from the file",
+  'no-solid': 'no solid',
+  check: "its shape didn't come through unchanged",
+  'too-large': 'over 25 MB as STEP',
+  'design-full': "the design's files would pass 100 MB",
+  kernel: "the geometry kernel couldn't read it",
+  time: 'it took too long',
+  'import-time': 'the import ran out of time',
+  restarts: 'the geometry kernel failed too often',
+};
+
+/** The FreeCAD import's report as a few readable notices. */
+export function fcstdNotices(
+  report: Pick<FcstdImportReport, 'shapes' | 'leftOut' | 'finalShapes' | 'problems' | 'linkArrays'>,
+): string[] {
+  if (report.finalShapes === 0)
+    return ['The FreeCAD file has no shapes to import, so the design is empty.'];
+  const out = [
+    `Imported from the FreeCAD file: ${report.shapes.length} of ${report.finalShapes} shapes, as bodies without history.`,
+  ];
+  const byReason = new Map<LeftOutReason, string[]>();
+  for (const l of report.leftOut)
+    byReason.set(l.reason, [...(byReason.get(l.reason) ?? []), l.name]);
+  if (byReason.size > 0)
+    out.push(
+      `Not imported: ${[...byReason]
+        .map(([reason, names]) => `${listed(names)} (${LEFT_OUT[reason]})`)
+        .join('; ')}.`,
+    );
+  if (report.linkArrays.length > 0)
+    out.push(`Of each link array only one copy came in: ${listed([...report.linkArrays])}.`);
+  const unread = report.problems.length;
+  if (unread > 0)
+    out.push(
+      `${unread} thing${unread === 1 ? '' : 's'} in the file could not be read; shapes that depend on them may be missing. Please report it with the file: Help › Report a Bug…`,
+    );
+  return out;
 }
 
 /** At most six items, then "and N more". */

@@ -2,7 +2,15 @@
  * The worker call's shapes (P6-24 S2, `KernelApi.sheetViews`): what a view
  * is asked with and what comes back, and which bodies "every shown body" is.
  */
-import { type BodyId, type ExtrudoDocument, effectiveBodyDisplay, type Vec3 } from '@extrudo/core';
+import {
+  type BodyId,
+  type ExtrudoDocument,
+  effectiveBodyDisplay,
+  type Sheet,
+  type SheetView,
+  scriptOfGenerated,
+  type Vec3,
+} from '@extrudo/core';
 import type { ViewGeometry } from './geometry';
 
 /** One view to compute against the bodies at the marker. */
@@ -70,4 +78,47 @@ export function shownBodies(doc: ExtrudoDocument, bodies: Iterable<BodyId>): Bod
       return effectiveBodyDisplay(meta, component) === 'shown';
     })
     .sort();
+}
+
+/**
+ * The bodies a parts list of view `viewId` lists, in its order (P6-24 S5):
+ * its base view's `bodies` as listed (a body the model doesn't have left
+ * out), else every shown body in timeline order (the order of the features
+ * that made them, then their number). `live` are the bodies at the marker.
+ */
+export function sheetListBodies(
+  doc: ExtrudoDocument,
+  sheet: Pick<Sheet, 'views'>,
+  viewId: string,
+  live: ReadonlySet<BodyId>,
+): BodyId[] {
+  const chosen = baseView(sheet, viewId)?.bodies;
+  if (chosen) return [...new Set(chosen)].filter((id) => live.has(id));
+  const ids = new Set<string>(doc.features.map((f) => f.id));
+  const position = new Map<string, number>(doc.features.map((f, i) => [f.id, i]));
+  const order = (id: BodyId): [number, number] => {
+    const colon = id.lastIndexOf(':');
+    const feature = colon < 0 ? id : id.slice(0, colon);
+    const n = Number(id.slice(colon + 1));
+    const at = position.get(scriptOfGenerated(feature, ids) ?? feature);
+    return [at ?? Number.POSITIVE_INFINITY, Number.isFinite(n) ? n : 0];
+  };
+  return shownBodies(doc, live).sort((a, b) => {
+    const [fa, na] = order(a);
+    const [fb, nb] = order(b);
+    return fa - fb || na - nb || (a < b ? -1 : a > b ? 1 : 0);
+  });
+}
+
+/** The base view a view takes its bodies from, through its parents (itself for a base view). */
+function baseView(sheet: Pick<Sheet, 'views'>, id: string): SheetView | undefined {
+  const seen = new Set<string>();
+  let view = sheet.views.find((v) => v.id === id);
+  while (view && view.from.kind === 'projected') {
+    if (seen.has(view.id)) return undefined;
+    seen.add(view.id);
+    const parent: string = view.from.parent;
+    view = sheet.views.find((v) => v.id === parent);
+  }
+  return view;
 }

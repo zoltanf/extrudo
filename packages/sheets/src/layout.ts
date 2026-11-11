@@ -2,8 +2,9 @@
  * A sheet as a display list (P6-24 S1, ADR-0143 §7): the paper, the border
  * (with zones when asked), the title block, the views (their lines once
  * slice S2 hands them in, a placeholder until then) and the items (texts,
- * dimensions, notes, centre marks and lines; for an export, sticky notes
- * only when printed), in sheet
+ * dimensions, notes, centre marks and lines, parts lists, balloons and
+ * tables; for an export, sticky notes only when printed), text fields
+ * filled in, in sheet
  * mm from the top-left corner with y down, the document's own frame. The
  * screen, `writeDisplaySvg` and `writeDisplayPdf` draw the result unchanged.
  *
@@ -12,9 +13,14 @@
  * from the sheets.
  */
 import {
+  type EvaluateResult,
+  fillSheetFields,
+  formatQuantity,
   type LengthUnit,
+  mapSheetFieldTexts,
   type Sheet,
   type SheetAnchors,
+  type SheetFieldValues,
   type SheetItem,
   type SheetScale,
   type SheetView,
@@ -40,6 +46,12 @@ import {
   type SheetOutput,
   sheetItemShown,
 } from './notes';
+import {
+  layoutSheetBalloon,
+  layoutSheetPartsList,
+  layoutSheetTable,
+  type SheetPartsBodies,
+} from './parts';
 import { fitLine, LINE_SPACING, type SheetFont, textRun, textWidth, wrapText } from './text';
 import {
   CELL_PAD,
@@ -122,6 +134,23 @@ export interface SheetContext {
    * default for `sheetsToPdf` and `sheetToSvg`) leaves those out.
    */
   output?: SheetOutput;
+  /**
+   * Each parts list's bodies (`KernelApi.sheetParts` joined with the
+   * document's names by `sheetPartBodies`), as anchors come; a list not
+   * here is its header alone and its balloons show `?`.
+   */
+  parts?: SheetPartsBodies;
+  /** The filament's density, g/cm³ (an app preference, not the document's); absent: no Mass. */
+  density?: number;
+  /** What `{date}` writes (today, as the app writes dates); absent: left as typed. */
+  date?: string;
+  /** What `{version}` writes (the newest saved version's name); absent: left as typed. */
+  version?: string;
+  /**
+   * Evaluates a `{= expr}` field against the design's parameters (core's
+   * `evaluateParameters(doc).evaluate`); absent: such fields are left as typed.
+   */
+  evaluate?: (expression: string) => EvaluateResult;
 }
 
 /**
@@ -166,7 +195,40 @@ function baseOf(sheet: Sheet, view: SheetView): SheetView | undefined {
   return at;
 }
 
-export function layoutSheet(sheet: Sheet, context: SheetContext = {}): DisplayList {
+/**
+ * What a sheet's text fields become in `context` (ADR-0143's S5 amendment):
+ * `{name}` the design's, `{sheet}` and `{sheets}` its page and the count,
+ * `{scale}` the sheet's, `{date}` and `{version}` the context's, `{= expr}`
+ * the expression's value with its unit at the sheet's decimals.
+ */
+export function sheetFieldValues(sheet: Sheet, context: SheetContext = {}): SheetFieldValues {
+  const all = context.sheets ?? [sheet];
+  const n = all.findIndex((s) => s.id === sheet.id);
+  const { evaluate } = context;
+  return {
+    ...(context.name !== undefined && { name: context.name }),
+    sheet: String(n < 0 ? 1 : n + 1),
+    sheets: String(n < 0 ? 1 : all.length),
+    scale: formatSheetScale(sheet.scale),
+    ...(context.date !== undefined && { date: context.date }),
+    ...(context.version !== undefined && { version: context.version }),
+    ...(evaluate && {
+      expression: (expression: string) => {
+        const result = evaluate(expression);
+        if (!result.ok || !Number.isFinite(result.value)) return undefined;
+        return formatQuantity(result.value, result.dim, {
+          units: context.units ?? 'mm',
+          precision: sheet.decimals,
+        });
+      },
+    }),
+  };
+}
+
+export function layoutSheet(input: Sheet, context: SheetContext = {}): DisplayList {
+  // Text fields filled in, never stored filled (ADR-0143's S5 amendment).
+  const values = sheetFieldValues(input, context);
+  const sheet = mapSheetFieldTexts(input, (text) => fillSheetFields(text, values));
   const { width, height } = sheetPaperSize(sheet);
   const items: DisplayItem[] = [
     {
@@ -420,6 +482,16 @@ function sheetItem(sheet: Sheet, item: SheetItem, context: SheetContext): Displa
       return layoutSheetCentre(sheet, item, context.anchors);
     case 'sticky':
       return layoutSheetSticky(item, { output: context.output ?? 'screen' });
+    case 'partsList':
+      return layoutSheetPartsList(item, context.parts?.[item.id], {
+        ...(context.units && { units: context.units }),
+        decimals: sheet.decimals,
+        ...(context.density !== undefined && { density: context.density }),
+      });
+    case 'balloon':
+      return layoutSheetBalloon(sheet, item, context.anchors, context.parts);
+    case 'table':
+      return layoutSheetTable(item);
     case 'text': {
       const size = item.size ?? SHEET_TEXT_SIZE;
       const key = `item:${item.id}`;

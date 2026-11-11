@@ -799,7 +799,7 @@ export const TOOLS = {
     short: 'Import Model',
     icon: 'insert-svg',
     category: 'insert',
-    hint: 'Bring in a STEP file, a mesh (STL, 3MF, OBJ) or an OpenSCAD file as bodies you can cut, combine and print. An .f3d file opens as a new design.',
+    hint: 'Bring in a STEP file, a mesh (STL, 3MF, OBJ) or an OpenSCAD file as bodies you can cut, combine and print. An .f3d or FreeCAD file opens as a new design.',
   },
   canvas: {
     id: 'canvas',

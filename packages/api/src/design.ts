@@ -91,6 +91,7 @@ import {
   setParameterExpressions,
   sketchInputs,
   updateAnnotation,
+  updateBody,
   updateParameter,
 } from '@extrudo/core';
 import { emptyAdd } from '@extrudo/sketch/build';
@@ -654,6 +655,41 @@ export class Design {
   setComponentBodies(component: ComponentId, bodies: readonly (GeomRef | string)[]): void {
     this.#dispatch(
       setBodyComponent({ ids: bodies.map((body) => this.#bodyIdOf(body)), component }),
+    );
+  }
+
+  /**
+   * A body's name, colour (`#rrggbb`), opacity (0.1–1) and visibility
+   * (`BodyMeta`, ADR-0030), as the browser's body menu sets them; what isn't
+   * given stays as it was. The body needn't have been computed yet: an
+   * importer names the bodies of the features it just added
+   * (`feature.body()`, `<feature>:<n>`).
+   *
+   * ```ts
+   * const box = d.box({ length: '10 mm', width: '10 mm', height: '10 mm' });
+   * d.setBody(box.body(), { name: 'Base', color: '#ff8800', visible: false });
+   * ```
+   */
+  setBody(
+    body: GeomRef | string,
+    changes: { name?: string; color?: string; opacity?: number; visible?: boolean },
+  ): void {
+    const { name, color, opacity, visible } = changes;
+    if (color !== undefined && !/^#[0-9a-f]{6}$/i.test(color))
+      throw new ApiError(`"${color}" is not a colour: give it as #rrggbb.`, { path: 'color' });
+    if (opacity !== undefined && !(opacity >= 0.1 && opacity <= 1))
+      throw new ApiError('An opacity is between 0.1 and 1.', { path: 'opacity' });
+    const id = this.#bodyIdOf(body);
+    this.#dispatch(
+      updateBody({
+        id,
+        changes: {
+          ...(name !== undefined && { name }),
+          ...(color !== undefined && { color: color.toLowerCase() }),
+          ...(opacity !== undefined && { opacity }),
+          ...(visible !== undefined && { visible }),
+        },
+      }),
     );
   }
 

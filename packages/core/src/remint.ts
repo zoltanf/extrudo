@@ -90,8 +90,8 @@ export function remintAnnotations(
 
 /**
  * Sheets that came with reminted features (ADR-0143): a view's `bodies`
- * (`<feature>:<n>`) and every item's anchor references (`sheetItemAnchors`)
- * name the new IDs,
+ * (`<feature>:<n>`), every item's anchor references (`sheetItemAnchors`) and
+ * the body IDs a parts list's typed-over `rows` are keyed by name the new IDs,
  * like `remintFeatures`' references.
  */
 export function remintSheets(
@@ -105,10 +105,16 @@ export function remintSheets(
     views: sheet.views.map((view) =>
       view.bodies ? { ...view, bodies: view.bodies.map((b) => rename(b) as BodyId) } : view,
     ),
-    items: sheet.items.map((item) =>
-      mapSheetItemAnchors(item, (anchor) =>
+    items: sheet.items.map((item) => {
+      const out = mapSheetItemAnchors(item, (anchor) =>
         'ref' in anchor ? { ...anchor, ref: { ...anchor.ref, id: rename(anchor.ref.id) } } : anchor,
-      ),
-    ),
+      );
+      // What was typed over a parts list's rows is keyed by body ID.
+      if (out.kind !== 'partsList' || !out.rows) return out;
+      const rows = Object.fromEntries(
+        Object.entries(out.rows).map(([body, row]) => [rename(body), row]),
+      );
+      return { ...out, rows };
+    }),
   }));
 }

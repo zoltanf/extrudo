@@ -488,3 +488,78 @@ describe('sheets and the rest of the document', () => {
     expect(roundTrip(doc, removeFeature({ id: 'f3' as FeatureId })).sheets).toEqual(doc.sheets);
   });
 });
+
+describe('parts lists, balloons and tables (ADR-0143, S5)', () => {
+  const fingerprint = { type: 'plane', at: [0, 0, 0] as [number, number, number] };
+  const onFace = (id: string) => ({ ref: { kind: 'face' as const, id, fingerprint } });
+  const list = (id: string, view = 'v1', extra: Partial<SheetItem> = {}): SheetItem =>
+    ({ kind: 'partsList', id: iid(id), view: vid(view), at: [250, 220], ...extra }) as SheetItem;
+  const balloon = (id: string, of: string, view = 'v1'): SheetItem => ({
+    kind: 'balloon',
+    id: iid(id),
+    view: vid(view),
+    anchor: onFace('f[box:f3:side:0]'),
+    at: [-40, 20],
+    list: iid(of),
+  });
+  const table: SheetItem = {
+    kind: 'table',
+    id: iid('k1'),
+    at: [20, 200],
+    columns: [30, 50],
+    rows: [
+      ['Clearance', '{= wall}'],
+      ['Sheet', '{sheet} of {sheets}'],
+    ],
+  };
+
+  it('adds each kind in one step and refuses a balloon whose list is no parts list of its sheet', () => {
+    const views = [front(), front('v2', 'Other')];
+    let doc = withSheets(sheet('s1', 'A', { views }), sheet('s2', 'B', { views: [front('v9')] }));
+    for (const item of [list('p1'), balloon('b1', 'p1'), table]) {
+      doc = roundTrip(doc, addSheetItem({ sheet: sid('s1'), item }));
+    }
+    expect(doc.sheets?.[0]?.items.map((i) => i.kind)).toEqual(['partsList', 'balloon', 'table']);
+    expect(refused(doc, addSheetItem({ sheet: sid('s1'), item: balloon('b2', 'k1') }))).toMatch(
+      /list is k1, which is not a parts list/,
+    );
+    // A parts list on another sheet doesn't number this one's balloons.
+    const other = roundTrip(doc, addSheetItem({ sheet: sid('s2'), item: list('p2', 'v9') }));
+    expect(refused(other, addSheetItem({ sheet: sid('s1'), item: balloon('b3', 'p2') }))).toMatch(
+      /list is p2, which is not a parts list of this sheet/,
+    );
+  });
+
+  it('deleting a parts list, or its view, deletes its balloons in the same step', () => {
+    const views = [front(), front('v2', 'Other')];
+    let doc = withSheets(sheet('s1', 'A', { views }));
+    const items = [list('p1'), list('p2', 'v2'), balloon('b1', 'p1', 'v2'), balloon('b2', 'p2')];
+    for (const item of items) doc = roundTrip(doc, addSheetItem({ sheet: sid('s1'), item }));
+    const ids = (d: ExtrudoDocument) => d.sheets?.[0]?.items.map((i) => i.id);
+    expect(ids(roundTrip(doc, removeSheetItems({ ids: [iid('p1')] })))).toEqual(['p2', 'b2']);
+    // The view takes p1 (its list) and b2 (on it), and b1, on v2, goes with its list.
+    expect(ids(roundTrip(doc, removeSheetView({ id: vid('v1') })))).toEqual(['p2']);
+    expect(ids(roundTrip(doc, removeSheetView({ id: vid('v2') })))).toEqual(['p1']);
+  });
+
+  it("remintSheets renames a parts list's typed rows and a balloon's anchor", () => {
+    const items: SheetItem[] = [
+      list('p1', 'v1', {
+        rows: {
+          ['cmd.f1:0' as BodyId]: { material: 'Oak' },
+          ['f2:0' as BodyId]: { name: 'Top' },
+        },
+      } as Partial<SheetItem>),
+      { ...balloon('b1', 'p1'), anchor: onFace('f[extrude:cmd.f1:side:0]') } as SheetItem,
+    ];
+    const [out] = remintSheets(
+      [sheet('s1', 'A', { views: [front()], items })],
+      [feature('cmd.f1')],
+      ['new1'] as FeatureId[],
+    );
+    expect(out?.items).toEqual([
+      { ...items[0], rows: { 'new1:0': { material: 'Oak' }, 'f2:0': { name: 'Top' } } },
+      { ...items[1], anchor: onFace('f[extrude:new1:side:0]') },
+    ]);
+  });
+});

@@ -30,7 +30,7 @@ export interface FileActions {
   home(): void;
   exportFile(): void;
   importFile(): void;
-  /** Opens an `.f3d` file Import Model picked as a new design (ADR-0083 §4). */
+  /** Opens an `.f3d` or FreeCAD file Import Model picked as a new design (ADR-0083 §4, ADR-0144). */
   importF3d?(file: File): void;
   /** Opens the model's export (STL, 3MF, STEP; P2-12). */
   exportModel?(): void;

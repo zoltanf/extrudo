@@ -142,7 +142,7 @@ the pictures stay in `<tmp>/extrudo-pictures/` for a look.
 
 ## Other CAD files
 
-The desktop app imports `.sldprt .ipt .iam .catpart .fcstd .sat .smt .smb .sab
+The desktop app imports `.sldprt .ipt .iam .catpart .sat .smt .smb .sab
 .igs .iges .pvz` by converting them to STEP with the bundled cadmpeg (P6-19,
 ADR-0115) and then importing that STEP: pick one with **Import…** (the Insert
 tab's tile, the File menu, or the home screen, which makes a new design for
@@ -152,9 +152,10 @@ Import dialog that follows is the one for a STEP file. The design stores the
 STEP, not the original file, so it opens in the browser too; the browser itself
 can't convert these files and says the desktop app does.
 
-A `.fcstd` file also stores the shapes its features went through. cadmpeg
-writes them as hidden solids, and they come in as hidden bodies (the eye is off
-in the browser): what shows is the part, and the hidden bodies can be removed.
+FreeCAD's `.FCStd` files no longer go through cadmpeg (ADR-0144, P6-25 S3):
+Extrudo reads them itself, in the desktop app and the browser alike, and makes
+a new design of the file's final shapes with their names, colours and
+visibility (the intermediate shapes a FreeCAD file stores stay out).
 
 A file over 100 MB, a conversion that takes longer than 2 minutes or a file
 cadmpeg's own check refuses is not imported; the message is cadmpeg's last

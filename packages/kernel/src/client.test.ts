@@ -68,6 +68,7 @@ describe('KernelClient', () => {
       removeFacesPick: async () => undefined,
       exportMeshes: async () => [],
       exportStep: async () => '',
+      storedShapeToStep: () => Promise.reject(new Error('not an import kernel')),
       exportScad: async () => '',
       inspect: async () => ({ items: [] }),
       interference: async () => [],
@@ -78,6 +79,7 @@ describe('KernelClient', () => {
       sheetViews: async () => [],
       cancelSheetViews: async () => {},
       resolveSheet: async () => ({}),
+      sheetParts: async () => ({ lists: {}, bodies: {} }),
     };
     const client = new KernelClient(() => {
       spawned++;
@@ -118,6 +120,7 @@ describe('KernelClient', () => {
       removeFacesPick: async () => undefined,
       exportMeshes: async () => [],
       exportStep: async () => '',
+      storedShapeToStep: () => Promise.reject(new Error('not an import kernel')),
       exportScad: async () => '',
       inspect: async () => ({ items: [] }),
       interference: async () => [],
@@ -128,6 +131,7 @@ describe('KernelClient', () => {
       sheetViews: async () => [],
       cancelSheetViews: async () => {},
       resolveSheet: async () => ({}),
+      sheetParts: async () => ({ lists: {}, bodies: {} }),
     };
     const client = new KernelClient(
       () => ({ api: crashing, terminate: () => {}, onFatal: () => {} }),

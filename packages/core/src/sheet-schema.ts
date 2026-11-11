@@ -396,6 +396,100 @@ export const SheetCentreLineItemSchema = z.strictObject({
 });
 export type SheetCentreLineItem = z.infer<typeof SheetCentreLineItemSchema>;
 
+/** A parts list's columns, in their default order (plan §4.5). */
+export const SHEET_PARTS_COLUMNS = ['item', 'qty', 'name', 'material', 'size', 'mass'] as const;
+export type SheetPartsColumn = (typeof SHEET_PARTS_COLUMNS)[number];
+
+/** The longest name or material typed over a parts list's row. */
+export const SHEET_PARTS_TEXT_MAX = 200;
+
+/** What was typed over one row of a parts list: its name, its material. */
+export const SheetPartsRowSchema = z.strictObject({
+  name: z
+    .string()
+    .max(SHEET_PARTS_TEXT_MAX)
+    .optional()
+    .describe("The row's name instead of the body's, up to 200 characters."),
+  material: z
+    .string()
+    .max(SHEET_PARTS_TEXT_MAX)
+    .optional()
+    .describe('The material, free text, up to 200 characters; absent: empty.'),
+});
+export type SheetPartsRow = z.infer<typeof SheetPartsRowSchema>;
+
+/**
+ * A parts list (P6-24 S5, ADR-0143's S5 amendment): a table filled from the
+ * bodies of a view each time it is drawn, identical bodies merged into one
+ * row with a quantity. Only what a person typed over a row is stored.
+ */
+export const SheetPartsListItemSchema = z.strictObject({
+  kind: z.literal('partsList').describe('A parts list.'),
+  id: SheetItemIdSchema.describe('A UUID, for life; unique in the design.'),
+  view: SheetViewIdSchema.describe('The view whose bodies it lists, on the same sheet.'),
+  at: SheetPointSchema.describe(
+    "The table's top-left corner, mm from the sheet's top-left, Y down.",
+  ),
+  columns: z
+    .array(z.enum(SHEET_PARTS_COLUMNS))
+    .min(1)
+    .optional()
+    .describe(
+      'The columns shown, in this order, each once: item, qty, name, material, size, mass; absent: all six.',
+    ),
+  rows: z
+    .record(BodyIdSchema, SheetPartsRowSchema)
+    .optional()
+    .describe(
+      "What was typed over a row, by the ID of the row's first body; a body the list no longer shows is ignored.",
+    ),
+});
+export type SheetPartsListItem = z.infer<typeof SheetPartsListItemSchema>;
+
+/**
+ * A balloon (P6-24 S5): a numbered circle with a leader to a body, its
+ * number that body's item in a parts list of the same sheet.
+ */
+export const SheetBalloonItemSchema = z.strictObject({
+  kind: z.literal('balloon').describe('A balloon.'),
+  id: SheetItemIdSchema.describe('A UUID, for life; unique in the design.'),
+  view: SheetViewIdSchema.describe('The view whose geometry it points at, on the same sheet.'),
+  anchor: SheetAnchorSchema.describe(
+    'What the leader points at, on the body it numbers: a vertex, an edge or one of its points, a face (a dot), or an outline.',
+  ),
+  at: SheetPointSchema.describe(
+    "The circle's centre, in the view's own mm (model size, x right, y up); it follows the anchor when it moves.",
+  ),
+  list: SheetItemIdSchema.describe('The parts list it takes its number from, on the same sheet.'),
+});
+export type SheetBalloonItem = z.infer<typeof SheetBalloonItemSchema>;
+
+/** The most columns and rows a free table has. */
+export const SHEET_TABLE_COLUMNS_MAX = 50;
+export const SHEET_TABLE_ROWS_MAX = 500;
+
+/** A free table (P6-24 S5): column widths and rows of cell texts, on the sheet. */
+export const SheetTableItemSchema = z.strictObject({
+  kind: z.literal('table').describe('A free table.'),
+  id: SheetItemIdSchema.describe('A UUID, for life; unique in the design.'),
+  at: SheetPointSchema.describe(
+    "The table's top-left corner, mm from the sheet's top-left, Y down.",
+  ),
+  columns: z
+    .array(z.number().min(1).max(1000))
+    .min(1)
+    .max(SHEET_TABLE_COLUMNS_MAX)
+    .describe("Each column's width, mm, 1 to 1000; 1 to 50 columns."),
+  rows: z
+    .array(z.array(z.string().max(SHEET_TEXT_MAX)))
+    .min(1)
+    .max(SHEET_TABLE_ROWS_MAX)
+    .describe(
+      "The rows, top to bottom, each one cell text per column (plain, may be empty, may contain newlines); a row's height fits its text.",
+    ),
+});
+export type SheetTableItem = z.infer<typeof SheetTableItemSchema>;
+
 /**
  * Every item kind this version knows. A later slice adds a kind by adding its
  * schema here; a file with a kind this version doesn't know loses that item
@@ -408,6 +502,9 @@ export const SheetItemSchema = z.discriminatedUnion('kind', [
   SheetStickyItemSchema,
   SheetCentreMarkItemSchema,
   SheetCentreLineItemSchema,
+  SheetPartsListItemSchema,
+  SheetBalloonItemSchema,
+  SheetTableItemSchema,
 ]);
 export type SheetItem = z.infer<typeof SheetItemSchema>;
 export type SheetItemKind = SheetItem['kind'];
@@ -433,7 +530,7 @@ export const SheetSchema = z.strictObject({
   items: z
     .array(SheetItemSchema)
     .describe(
-      'Texts, dimensions, notes, centre marks and lines (later lists), drawn in order after the views.',
+      'Texts, dimensions, notes, centre marks and lines, parts lists, balloons and tables, drawn in order after the views.',
     ),
 });
 export type Sheet = z.infer<typeof SheetSchema>;
@@ -459,15 +556,15 @@ export function sheetItemView(item: SheetItem): SheetViewId | undefined {
   return 'view' in item ? (item.view as SheetViewId) : undefined;
 }
 
-/** The item kinds tied to the model by anchors (ADR-0143's S3 and S4 amendments). */
+/** The item kinds tied to the model by anchors (ADR-0143's S3, S4 and S5 amendments). */
 export type SheetAnchoredItem = Extract<
   SheetItem,
-  { kind: 'dimension' | 'leader' | 'centreMark' | 'centreLine' }
+  { kind: 'dimension' | 'leader' | 'centreMark' | 'centreLine' | 'balloon' }
 >;
 
 /**
  * An item's anchors in their order, empty for an item with none (a text, a
- * sticky note). The one place that says which items have anchors: the
+ * sticky note, a parts list, a table). The one place that says which items have anchors: the
  * kernel resolves these, remint rewrites them, layout reads their reports
  * by this index.
  */
@@ -478,6 +575,7 @@ export function sheetItemAnchors(item: SheetItem): readonly SheetAnchor[] {
     case 'centreLine':
       return item.anchors;
     case 'leader':
+    case 'balloon':
       return [item.anchor];
     default:
       return [];
@@ -495,6 +593,7 @@ export function mapSheetItemAnchors<T extends SheetItem>(
     case 'centreLine':
       return { ...item, anchors: item.anchors.map(f) };
     case 'leader':
+    case 'balloon':
       return { ...item, anchor: f(item.anchor) };
     default:
       return item;
@@ -531,8 +630,8 @@ const fold = (name: string) => name.toLowerCase();
  * their sheet (case-insensitively); a projected view's parent a view of the
  * same sheet, not itself, with no cycle; scale and style only on a base view;
  * a base view's two directions not zero and not parallel; a body named once
- * per view; a dimension's view a view of its sheet and its anchors fitting
- * its type (`dimensionProblems`). A body a view names that the design doesn't
+ * per view; an item's view a view of its sheet and its anchors fitting
+ * its kind (`sheetItemProblems`); a balloon's list a parts list of its sheet. A body a view names that the design doesn't
  * have is not a problem (it is skipped when the view is drawn), nor is an
  * anchor whose geometry is gone (it is drawn detached), so deleting a body or
  * a feature never touches a sheet.
@@ -626,6 +725,17 @@ export function sheetProblems(sheets: readonly Sheet[]): SheetProblem[] {
           message: `is ${view}, which is not a view of this sheet`,
         });
       }
+      if (item.kind === 'balloon') {
+        const list = sheet.items.find((it) => it.id === item.list);
+        if (list?.kind !== 'partsList') {
+          problems.push({
+            path: [...at, 'list'],
+            message: list
+              ? `is ${item.list}, which is not a parts list`
+              : `is ${item.list}, which is not a parts list of this sheet`,
+          });
+        }
+      }
       for (const { path, message } of sheetItemProblems(item)) {
         problems.push({ path: [...at, ...path], message });
       }
@@ -668,8 +778,10 @@ function shapeProblems(anchors: readonly SheetAnchor[], path: string): SheetProb
  * a dimension's its type (`dimensionProblems`); a leader's any one anchor;
  * a centre mark's one circle (a whole edge, told a circle when it resolves,
  * or a cylinder's face); a centre line's two lines (whole edges or outlines)
- * or one cylinder's or cone's face (its axis). Texts and sticky notes have
- * no anchors.
+ * or one cylinder's or cone's face (its axis); a balloon's one anchor on
+ * geometry (never a free point: it numbers a body). A parts list names each
+ * column once; a free table's rows have one cell per column. Texts and
+ * sticky notes have no rules here.
  */
 export function sheetItemProblems(item: SheetItem): SheetProblem[] {
   switch (item.kind) {
@@ -677,6 +789,35 @@ export function sheetItemProblems(item: SheetItem): SheetProblem[] {
       return dimensionProblems(item);
     case 'leader':
       return shapeProblems([item.anchor], 'anchor');
+    case 'balloon':
+      if ('free' in item.anchor) {
+        return [{ path: ['anchor'], message: 'is a free point: a balloon points at a body' }];
+      }
+      return shapeProblems([item.anchor], 'anchor');
+    case 'partsList': {
+      const seen = new Set<string>();
+      const problems: SheetProblem[] = [];
+      for (const [c, column] of (item.columns ?? []).entries()) {
+        if (seen.has(column)) {
+          problems.push({ path: ['columns', c], message: `names the ${column} column twice` });
+        }
+        seen.add(column);
+      }
+      return problems;
+    }
+    case 'table': {
+      const n = item.columns.length;
+      const problems: SheetProblem[] = [];
+      for (const [r, row] of item.rows.entries()) {
+        if (row.length !== n) {
+          problems.push({
+            path: ['rows', r],
+            message: `has ${row.length} ${row.length === 1 ? 'cell' : 'cells'}, but the table has ${n} ${n === 1 ? 'column' : 'columns'}`,
+          });
+        }
+      }
+      return problems;
+    }
     case 'centreMark':
     case 'centreLine': {
       const problems = shapeProblems(item.anchors, 'anchors');

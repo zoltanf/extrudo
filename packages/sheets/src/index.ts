@@ -27,6 +27,7 @@ export {
   type SheetLineKind,
   type SheetViewCurve,
   type SheetViewLines,
+  sheetFieldValues,
   sheetMargin,
   sheetViewScale,
   VIEW_PLACEHOLDER,
@@ -46,6 +47,23 @@ export {
   sheetStickiesLeftOut,
 } from './notes';
 export { sheetsToPdf, sheetToSvg } from './output';
+export {
+  layoutSheetBalloon,
+  layoutSheetPartsList,
+  layoutSheetTable,
+  SHEET_TABLE,
+  type SheetBalloonStatus,
+  type SheetPartBody,
+  type SheetPartsBodies,
+  type SheetPartsOptions,
+  type SheetPartsRowData,
+  sheetBalloonStatus,
+  sheetNameStem,
+  sheetPartBodies,
+  sheetPartsCells,
+  sheetPartsHeader,
+  sheetPartsRows,
+} from './parts';
 export {
   LINE_SPACING,
   SHEET_FONT,

@@ -57,6 +57,7 @@ function connect(worker: Worker): KernelConnection {
     exportMeshes: (bodies, tessellation, onProgress) =>
       api.exportMeshes(bodies, tessellation, onProgress && Comlink.proxy(onProgress)),
     exportStep: (bodies) => api.exportStep(bodies),
+    storedShapeToStep: (text, chain, options) => api.storedShapeToStep(text, chain, options),
     exportScad: (options) => api.exportScad(options),
     inspect: (targets) => api.inspect(targets),
     interference: (bodies) => api.interference(bodies),
@@ -68,6 +69,7 @@ function connect(worker: Worker): KernelConnection {
     sheetViews: (requests, onView) => api.sheetViews(requests, onView && Comlink.proxy(onView)),
     cancelSheetViews: () => api.cancelSheetViews(),
     resolveSheet: (sheet) => api.resolveSheet(sheet),
+    sheetParts: (sheet) => api.sheetParts(sheet),
     debugTestPart: () => api.debugTestPart(),
     debugCrash: () => api.debugCrash(),
     stats: () => api.stats(),
