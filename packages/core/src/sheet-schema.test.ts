@@ -246,7 +246,7 @@ describe('loading a sheet item of a kind this version does not know (ADR-0143)',
     const result = loadDocument(newer());
     expect(result.dropped).toEqual(['sheets.1.items.0', 'sheets.0.items.1']);
     expect(result.doc).toEqual(withSheets([full(), sheet('s2', 'Sheet 2')]));
-    expect(loadNotice(result, 'drops')).toContain('2 settings this version doesn');
+    expect(loadNotice(result, 'drops')).toContain('2 sheet items this version doesn');
   });
 
   it('drops an unknown key inside a known item in the same load', () => {
@@ -259,6 +259,10 @@ describe('loading a sheet item of a kind this version does not know (ADR-0143)',
       'sheets.1.items.0',
     ]);
     expect(result.doc.sheets?.[0]?.items.map((i) => i.id)).toEqual(['t1', 't2']);
+    // The notice counts the whole items as items and the key as a setting.
+    expect(loadNotice(result, 'copy')).toContain(
+      "2 sheet items and 1 setting this version doesn't know were left out",
+    );
   });
 
   it('still refuses an item with no kind, or a known kind that is damaged', () => {

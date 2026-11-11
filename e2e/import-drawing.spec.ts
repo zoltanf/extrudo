@@ -22,7 +22,7 @@ test.afterEach(() => {
 });
 
 const viewport = (page: Page) => page.getByRole('region', { name: 'Viewport' });
-const panel = (page: Page) => page.getByRole('region', { name: 'Import drawing' });
+const panel = (page: Page) => page.getByRole('region', { name: 'Import SVG/DXF' });
 const summary = (page: Page) => panel(page).locator('[data-import-summary]');
 /** The fixtures `@extrudo/io`'s own tests read. */
 const FIXTURES = 'packages/io/src/fixtures/';
@@ -49,7 +49,7 @@ async function pickFile(
   file: string | { name: string; mimeType: string; buffer: Buffer },
 ): Promise<void> {
   const chooser = page.waitForEvent('filechooser');
-  await pickTool(page, 'Import Drawing…');
+  await pickTool(page, 'Import SVG/DXF…');
   await (await chooser).setFiles(file);
 }
 

@@ -205,7 +205,7 @@ const icon = (Icon: typeof Box) => <Icon size={16} strokeWidth={1.75} />;
  * drawing becomes the open sketch's curves, so there is nothing for it to
  * join. The tile is there either way and says this.
  */
-export const DRAWING_IMPORT_UNAVAILABLE = 'Open a sketch to import a drawing into it.';
+export const DRAWING_IMPORT_UNAVAILABLE = 'Open a sketch to import an SVG or DXF file into it.';
 
 const VIEWS: { id: string; face?: FaceName; label: string }[] = [
   { id: 'viewHome', label: 'Home View' },

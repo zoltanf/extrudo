@@ -212,11 +212,11 @@ export const TOOLS = {
   },
   importDrawing: {
     id: 'importDrawing',
-    label: 'Import Drawing…',
-    short: 'Import Drawing',
+    label: 'Import SVG/DXF…',
+    short: 'Import SVG/DXF',
     icon: 'insert-svg',
     category: 'sketch',
-    hint: 'Bring an SVG or DXF drawing into the sketch as ordinary curves.',
+    hint: 'Bring an SVG or DXF file into the sketch as ordinary curves.',
   },
   dimension: {
     id: 'dimension',

@@ -1115,11 +1115,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 ### `e2e/import-drawing.spec.ts`
 
 - **Import drawing e2e** (`e2e/import-drawing.spec.ts`, P4-06 slice 1): the tool
-  is `importDrawing` in the Sketch tab's Create menu ("Import Drawing…", no
+  is `importDrawing` in the Sketch tab's Create menu ("Import SVG/DXF…" since
+  ADR-0143's S1, before it "Import Drawing…"; no
   key); it opens the file dialog at once, so the spec waits for the
   `filechooser` **beside** the click (`chooser.setFiles('packages/io/src/
   fixtures/rect-circle.svg')`, the fixtures `@extrudo/io`'s own tests read). The
-  panel is the region "Import drawing": the file's name, the comboboxes "Units"
+  panel is the region "Import SVG/DXF": the file's name, the comboboxes "Units"
   (the file's own preselected: `mm`, `in`) and "Position" (`origin`/`centre`),
   the "Scale" textbox (an `ExpressionInput`, so `fill('2')`), the "Fixed"
   checkbox, `[data-import-summary]` ("5 curves", or the reason it can't be

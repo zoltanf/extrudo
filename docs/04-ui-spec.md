@@ -96,7 +96,7 @@ brief, voice) is in **`05-brand.md`**. In short:
   printing "mode".
 - **Tabs** (ADR-0079): `HOME` (the design as a whole: New Design, All
   Designs; Save Version, Version History; **Import**: Import .extrudo, Import
-  Model, Import Drawing, Canvas; **Export**: Export .extrudo, Export as Script,
+  Model, Import SVG/DXF, Canvas; **Export**: Export .extrudo, Export as Script,
   Export Model, Save to Linked Folder (two groups since the owner's UI
   review 3, R3-09, where there was one Files group); Parameters, Customizer),
   `SOLID` (default: Create, Primitives, Features, Pattern, Program, Component),
