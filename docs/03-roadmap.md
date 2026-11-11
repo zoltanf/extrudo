@@ -1728,8 +1728,10 @@ end to end, faster than in established desktop CAD.
   - [x] S3 Dimensions: anchors resolved; the Dimension tool; detached and moved states
     (ADR-0143's S3 amendments; `e2e/sheet-dimensions.spec.ts`).
   - [x] S4 Notes: leader notes, sticky notes, centre marks and centre lines; snapping.
-  - [ ] S5 Lists: parts list with merged quantities and Size; balloons; free table; text
-    fields.
+  - [x] S5 Lists: parts list with merged quantities and Size; balloons; free table; text
+    fields. Done 2026-11-11: the document, rows and layout (package 1) and the Parts List,
+    Balloon and Table tools with their cards, fields in the app and the export
+    (`e2e/sheet-lists.spec.ts` rebuilds the base-frame sheet; ADR-0143's S5 amendments).
   - [ ] S6 Outside: API, emitter, CLI, MCP tools and skill text; guide page; tooltip clips;
     an example design with a sheet.
 

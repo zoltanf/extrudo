@@ -12,7 +12,7 @@ import {
   type SheetRefAnchor,
   type SheetTableItem,
   type SheetViewId,
-  sheetItemProblems,
+  sheetProblems,
   sheetStandardFrom,
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
@@ -97,7 +97,7 @@ describe('Parts List', () => {
   it('makes a list of the clicked view at the click, every column, and says what comes next', () => {
     const item = partsListItem(LIST, FRONT, [300, 28]);
     expect(item).toEqual({ kind: 'partsList', id: LIST, view: FRONT, at: [300, 28] });
-    expect(sheetItemProblems(sheetWith([item]), item)).toEqual([]);
+    expect(sheetProblems([sheetWith([item])])).toEqual([]);
     expect(partsListStep(undefined)).toBe('Click a view: its bodies become the rows.');
     expect(partsListStep('Front')).toBe(
       'Click where the list of Front goes (its top-left corner).',
@@ -181,7 +181,7 @@ describe('Balloon', () => {
       at: [12, 30],
       list: LIST,
     });
-    expect(sheetItemProblems(sheet, item)).toEqual([]);
+    expect(sheetProblems([{ ...sheet, items: [...sheet.items, item] }])).toEqual([]);
     expect(balloonItem('b1' as SheetItemId, [], [0, 0], LIST)).toBeUndefined();
     expect(balloonItem('b1' as SheetItemId, [pick], [0, 0], undefined)).toBeUndefined();
     expect(balloonLists(sheet)).toEqual([
@@ -225,7 +225,7 @@ describe('Table', () => {
         ['', ''],
       ],
     });
-    expect(sheetItemProblems(sheetWith([table]), table)).toEqual([]);
+    expect(sheetProblems([sheetWith([table])])).toEqual([]);
     expect(targetName(sheetWith([table]), 'item:t1')).toBe('Table');
   });
 
@@ -266,7 +266,7 @@ describe('Table', () => {
     expect(withWidth(table, 1, 60)).toEqual([25, 60]);
     const grown = withRowAdded(table, 0);
     expect(
-      typeof grown !== 'string' && sheetItemProblems(sheetWith([]), { ...table, ...grown }),
+      typeof grown !== 'string' && sheetProblems([sheetWith([{ ...table, ...grown }])]),
     ).toEqual([]);
   });
 });
@@ -297,5 +297,5 @@ it('typed rows keep the parts list valid', () => {
     ...partsListItem(LIST, FRONT, [0, 0]),
     rows: withRowText(undefined, [LEG1], 'material', 'Pine') ?? {},
   };
-  expect(sheetItemProblems(sheetWith([list]), list)).toEqual([]);
+  expect(sheetProblems([sheetWith([list])])).toEqual([]);
 });
