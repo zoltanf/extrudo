@@ -53,6 +53,13 @@ describe('storedShapeToStep', () => {
     expect((await importer.stats()).liveShapes).toBe(0);
   });
 
+  it('writes the same STEP for the same shape, so imports can share an attachment', async () => {
+    const a = await importer.storedShapeToStep(BOX, []);
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    const b = await importer.storedShapeToStep(BOX, []);
+    expect(b.step).toBe(a.step);
+  });
+
   it('applies the placements outermost first', async () => {
     // Inner: a quarter turn about z. Outer: a move by (100, 0, 0).
     // The box (0..10, 0..20, 0..30) turned lands at (-20..0, 0..10), then moves.

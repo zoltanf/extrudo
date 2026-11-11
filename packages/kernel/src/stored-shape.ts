@@ -83,9 +83,18 @@ function measured(kernel: Kernel, shape: ShapeHandle): StoredShapeMeasure {
 }
 
 /**
+ * The header's time stamp set to a fixed one, so the same shape always gives
+ * the same bytes and two copies of it share one attachment (named by SHA-256,
+ * ADR-0066). Only the header's `FILE_NAME` changes.
+ */
+function fixedStamp(step: string): string {
+  return step.replace(/^(FILE_NAME\('(?:[^']|'')*',)'[^']*'/m, "$1'2000-01-01T00:00:00'");
+}
+
+/**
  * Reads `text` (`Kernel.readBrep`'s checks), places it by `chain`, writes it
  * as STEP and reads that back. Every shape is released before it returns or
- * throws. A shape without a solid throws: there is nothing to import.
+ * throws. A shape without a solid comes back with no STEP (`step: ''`, `solids: 0`).
  */
 export function storedShapeToStep(
   kernel: Kernel,
@@ -98,7 +107,8 @@ export function storedShapeToStep(
   const read = scope.track(kernel.readBrep(text));
   const placed = isIdentity(matrix) ? read : scope.track(kernel.transform(read, matrix).shape);
   const before = measured(kernel, placed);
-  if (before.solids === 0) throw new KernelError('The stored shape has no solid.');
+  // Nothing to import: no STEP, and the caller says so (not a failure).
+  if (before.solids === 0) return { step: '', ...before, read: before };
   const step = kernel.writeStep([
     {
       shape: placed,
@@ -107,5 +117,5 @@ export function storedShapeToStep(
     },
   ]);
   const back = scope.track(kernel.readStep(step));
-  return { step, ...measured(kernel, back), read: before };
+  return { step: fixedStamp(step), ...measured(kernel, back), read: before };
 }

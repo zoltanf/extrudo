@@ -32,6 +32,14 @@ export {
   rotate,
 } from './final-shapes';
 export {
+  type FcstdImportOptions,
+  type FcstdImportReport,
+  type FcstdImportResult,
+  importFcstd,
+  MAX_FCSTD_BYTES,
+} from './import';
+export type { ImportKernel, ShapeMeasure, StoredShapeStep } from './import-kernel';
+export {
   brepHasSolid,
   DYNAMIC_PROPERTY,
   enumString,
@@ -57,6 +65,23 @@ export {
   type Vec3,
   versionAtLeast,
 } from './model';
+export {
+  BOX_TOLERANCE,
+  disagreement,
+  FREECAD_DEFAULT_COLOUR,
+  hexColour,
+  IMPORT_TIMEOUT_MS,
+  type ImportedShape,
+  importShapes,
+  type LeftOutReason,
+  type LeftOutShape,
+  MAX_RESTARTS,
+  SHAPE_TIMEOUT_MS,
+  type ShapeImportOptions,
+  type ShapeImportResult,
+  VOLUME_TOLERANCE,
+  volumeDrift,
+} from './shapes';
 export {
   MAX_ATTRIBUTES,
   MAX_DEPTH,
