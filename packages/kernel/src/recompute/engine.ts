@@ -805,8 +805,9 @@ export class RecomputeEngine {
     starting: () => void,
   ): ScriptRun {
     const own = doc.features.findIndex((f) => f.id === feature.id);
-    // Annotations may name sketches after the script (ADR-0126); the script can't read them.
-    const { annotations: _notes, annotationCounter: _counter, ...rest } = doc;
+    // Annotations may name sketches after the script (ADR-0126) and sheets bodies after
+    // it (ADR-0143); the script can't read either.
+    const { annotations: _notes, annotationCounter: _counter, sheets: _sheets, ...rest } = doc;
     const before: ExtrudoDocument = {
       ...rest,
       features: doc.features.slice(0, Math.max(own, 0)),

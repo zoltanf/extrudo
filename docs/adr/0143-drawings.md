@@ -248,3 +248,72 @@ in `ModeFields` and enter it only through `enterMode`/`exitMode`; then add branc
 for what the mode does, never for which tabs, Finish tile, keymap or marking-menu mode it
 shows. A check written `mode !== 'model'` already covers the new mode; one written
 `mode === 'sketch'` does not and must stay about sketching.
+
+## Amendment (S1, the document), 2026-11-11
+
+`doc.sheets` and its commands, no UI. Files: `packages/core/src/sheet-schema.ts`
+(schemas, `sheetProblems`, helpers), `packages/core/src/sheets.ts` (commands),
+`SheetIdSchema`, `SheetViewIdSchema` and `SheetItemIdSchema` in `ids.ts`;
+`docs/file-format.md` §4.11.
+
+**Names and details that settled** (against plan §5.1):
+
+- **`from` is tagged**: `{ kind: 'base', direction, up }` or
+  `{ kind: 'projected', parent, side }`, like every other union in the document.
+  `direction` is the way the view looks, `up` the world direction that points up
+  the sheet; both any length, not zero, not parallel.
+- **Sides**: `left`, `right`, `above`, `below` and the isometric corners
+  `iso-above-left`, `iso-above-right`, `iso-below-left`, `iso-below-right`.
+  A projected view's parent may itself be projected; no cycle.
+- **Scale and style** are refused on a projected view (it takes both from its
+  parent), not only the scale.
+- **Size**: a named paper or a custom one's two sides, 10 to 10000 mm each;
+  `orientation` decides which side is across for both (`sheetPaperSize`).
+  `SHEET_PAPER_MM` holds the named sizes.
+- **IDs**: sheet, view and item IDs are unique in the whole design, not per
+  sheet, so a command names a view or an item by its ID alone. Sheet names are
+  unique case-insensitively, view names case-insensitively in their sheet.
+- **`bodies`**: at least one, each once; absent means every shown body.
+- **Title block fields**: names are a letter then up to 39 letters and digits
+  (`title`, `drawnBy`, so S5's `{field}` can name them), values up to 2000
+  characters. **Text item**: `at` is its top-left corner, `size` the letter
+  height (absent: 3.5 mm), `width` the wrap width; `text` up to 2000
+  characters, not blank, not trimmed.
+- **The rules live in one place**: `sheetProblems(sheets)` (IDs, names,
+  parents, cycles, projected-view fields, base directions, bodies) is applied by
+  `DocumentSchema` (`reportSheets`) and by every sheet command, which validates
+  the sheets it leaves and refuses with a `CommandError` naming the sheet and
+  view. So the sheet rows are not in `DocumentSchema`'s `unique` table, and a
+  command can never make a design the loader refuses.
+- **Commands**: `addSheet({ sheet, index? })` takes a whole sheet (views and
+  items included; core sets no defaults, the paper a new sheet gets is the
+  mode's choice), `updateSheet`, `updateSheetView` and `updateSheetItem` take
+  `changes` where `null` deletes an optional field and `id`, `kind`, `views`
+  and `items` are refused; `moveSheet({ id, index })`; `removeSheetView`
+  removes the views projected from it, at any depth, and every item whose
+  `view` names one of them (`sheetItemView`: a text has none);
+  `removeSheetItems({ ids })` takes items from any sheet. Labels are generic
+  ("New sheet item"); a caller may relabel a command. `sheets` is deleted with
+  the last sheet. Payloads are copied into the document.
+- **Cascades**: `restoreVersion` copies `sheets` (or deletes it);
+  `remintSheets` (`remint.ts`) renames the bodies of copied features in a view's
+  `bodies`; the documents a Script feature and a plugin command see leave
+  `sheets` out (`recompute/engine.ts`, `recomputer.ts`, beside the
+  annotations). Sheets are in no cache key.
+
+**Forward compatibility**: on load, a sheet item
+whose `kind` this version doesn't know is left out and listed in `dropped` by
+its path (`sheets.0.items.2`), the path an unknown key takes
+(`parseLeniently`), so `loadNotice` reports it; it never fails the design. An
+item with no `kind`, or a known kind that is damaged, still fails. A later
+slice adds a kind by adding its schema to `SheetItemSchema`'s union.
+
+**Bodies**: removing a feature or a body is never refused and never changes a
+sheet because a view names it. A `bodies` entry the design has no body for is
+skipped when the view is evaluated (S2); a view left with none draws nothing.
+
+**Rejected**: per-sheet IDs (a command would need the sheet too); scale and
+style inside `from.base` (structural, but further from the accepted shape: a
+rule does the same); rows in the `unique` table (the commands need the same
+rules, so they live in `sheetProblems`); a label per item kind (one more table
+per kind; callers relabel); trimming a text (spaces may be meant).
