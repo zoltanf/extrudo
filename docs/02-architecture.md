@@ -107,6 +107,8 @@ extrudo/
 │  ├─ storage/             ProjectStore interface + OPFS/IndexedDB impl +
 │  │                       .extrudo zip (de)serializer
 │  ├─ fonts/               bundled fonts for sketch text (data only; ADR-0058)
+│  ├─ f3d/                 .f3d import (ADR-0083)
+│  ├─ fcstd/               FreeCAD .FCStd import (ADR-0144; the reader so far)
 │  ├─ api/                 public document API, @extrudo/api (P5-01, ADR-0068)
 │  ├─ sheets/              drawing sheets as display lists, PDF/SVG output
 │  │                       (P6-24, ADR-0143). No DOM, runs in Node.
