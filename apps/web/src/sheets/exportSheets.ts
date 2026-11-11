@@ -34,6 +34,24 @@ export interface SheetExportViews {
 
 export type SheetExportFormat = 'pdf' | 'svg';
 
+/** The export dialog's switches besides the format. */
+export interface SheetExportOptions {
+  /**
+   * Every sticky note goes into the file, those on screen only as well (S4). Off: only the
+   * notes whose Print switch is on, as the document says.
+   */
+  stickies?: boolean;
+}
+
+/** The sheet as an export with every sticky note writes it (a copy: nothing is stored). */
+export function withEveryStickyNote(sheet: Sheet): Sheet {
+  if (!sheet.items.some((i) => i.kind === 'sticky' && !i.print)) return sheet;
+  return {
+    ...sheet,
+    items: sheet.items.map((i) => (i.kind === 'sticky' && !i.print ? { ...i, print: true } : i)),
+  };
+}
+
 /** The preference that remembers the export dialog's format. */
 export const SHEET_EXPORT_KEY = 'export.sheets';
 
@@ -86,6 +104,7 @@ export function sheetExportPlan(
  * the model first (S2: an export never holds the quick placeholder); a view that can't be
  * drawn is its frame, and the items' anchors are resolved again, nothing kept (S3: a lost
  * dimension is its text with "?"; the export fails when the kernel can't measure them).
+ * With `options.stickies` every sticky note is written, else only those switched to print.
  * Rejects with `isSheetViewsCancelled` when that is cancelled. Returns the file names.
  */
 export async function exportSheets(
@@ -94,8 +113,10 @@ export async function exportSheets(
   plan: SheetExportPlan,
   format: SheetExportFormat,
   views?: SheetExportViews,
+  options: SheetExportOptions = {},
 ): Promise<string[]> {
   if (plan.sheets.length === 0) throw new Error('Choose at least one sheet to export.');
+  const chosen = options.stickies ? plan.sheets.map(withEveryStickyNote) : plan.sheets;
   const all = doc.sheets ?? [];
   const sheets = await import('@extrudo/sheets');
   await ensureUiFonts(sheets.SHEET_FONTS);
@@ -118,10 +139,10 @@ export async function exportSheets(
     ...(anchors && { anchors }),
   };
   if (format === 'pdf') {
-    const bytes = sheets.sheetsToPdf(plan.sheets, context);
+    const bytes = sheets.sheetsToPdf(chosen, context);
     files.download(new Blob([bytes as BlobPart], { type: 'application/pdf' }), plan.files[0] ?? '');
   } else {
-    plan.sheets.forEach((sheet, i) => {
+    chosen.forEach((sheet, i) => {
       const svg = sheets.sheetToSvg(sheet, context);
       files.download(new Blob([svg], { type: 'image/svg+xml' }), plan.files[i] ?? '');
     });

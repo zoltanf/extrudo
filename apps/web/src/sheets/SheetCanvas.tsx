@@ -22,7 +22,8 @@
  * Dimension tool, S3) hears every pointer move and click in sheet mm with the pick tolerance
  * (`pointer`) and draws what it shows in the `overlay`, sheet mm; nothing is selected
  * meanwhile. **Notices** (a view being drawn, a body gone) are written under their target's
- * frame, on screen only.
+ * frame, on screen only. **A double-click** on a target (no tool) opens it (`onOpen`: a text
+ * typed in place, S4); the field is the `editor`, laid on the paper in mm.
  *
  * Test hooks: the region "Sheet" (`data-sheet-canvas`, `data-sheet` the sheet ID,
  * `data-paper` "420x297", `data-zoom` "62%", `data-hover` and `data-selected` the targets),
@@ -157,6 +158,13 @@ export interface SheetCanvasProps {
   overlay?: ReactNode;
   /** What the screen says under a target (a view being drawn, a body gone). */
   notices?: ReadonlyMap<SheetTarget, string>;
+  /**
+   * HTML laid on the paper (the text being typed): positioned in mm through the paper's
+   * `--sheet-mm` (px per mm, written with the zoom).
+   */
+  editor?: ReactNode;
+  /** A double-click on a target with no tool running (plan §4.2: edit a text in place). */
+  onOpen?: (target: SheetTarget) => void;
 }
 
 const NONE: readonly SheetTarget[] = [];
@@ -188,6 +196,8 @@ export function SheetCanvas({
   pointer,
   overlay: extra,
   notices,
+  editor,
+  onOpen,
 }: SheetCanvasProps) {
   const host = useRef<HTMLElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
@@ -232,8 +242,16 @@ export function SheetCanvas({
     ghost.current.setAttribute('transform', `translate(${x} ${y})`);
     ghost.current.style.display = '';
   };
-  const events = useRef({ onHover, onSelect, onMove, movesOf, onTargetMenu, onDropBodies });
-  events.current = { onHover, onSelect, onMove, movesOf, onTargetMenu, onDropBodies };
+  const events = useRef({
+    onHover,
+    onSelect,
+    onMove,
+    movesOf,
+    onTargetMenu,
+    onDropBodies,
+    onOpen,
+  });
+  events.current = { onHover, onSelect, onMove, movesOf, onTargetMenu, onDropBodies, onOpen };
   const svg = useRef<SVGSVGElement>(null);
   const overlay = useRef<SVGSVGElement>(null);
   const band = useRef<SVGRectElement>(null);
@@ -275,6 +293,7 @@ export function SheetCanvas({
       el.style.top = `${next.y}px`;
       el.style.width = `${p.width * next.scale}px`;
       el.style.height = `${p.height * next.scale}px`;
+      el.style.setProperty('--sheet-mm', `${next.scale}px`);
     }
     const text = zoomText(next);
     if (host.current) host.current.dataset.zoom = text;
@@ -547,6 +566,14 @@ export function SheetCanvas({
         const bodies = ids.filter((id): id is string => typeof id === 'string');
         if (bodies.length > 0) drop(bodies, at(event.clientX, event.clientY));
       }}
+      onDoubleClick={(event) => {
+        const open = events.current.onOpen;
+        if (!open || latest.current.placing || latest.current.pointer || latest.current.tool)
+          return;
+        const [x, y] = at(event.clientX, event.clientY);
+        const target = hitTarget(latest.current.boxes, x, y, Math.max(0.8, 5 / view.current.scale));
+        if (target) open(target);
+      }}
       onPointerLeave={() => {
         latest.current.pointer?.onLeave?.();
         if (!drag.current && latest.current.hovered) events.current.onHover?.(undefined);
@@ -622,6 +649,7 @@ export function SheetCanvas({
             vectorEffect="non-scaling-stroke"
           />
         </svg>
+        {editor}
       </div>
     </section>
   );

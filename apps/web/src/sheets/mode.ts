@@ -40,6 +40,11 @@ export const SHEET_TOOLS: ReadonlySet<string> = new Set([
   'baseView',
   'projectedView',
   'sheetDimension',
+  'sheetCentreMark',
+  'sheetCentreLine',
+  'sheetText',
+  'sheetLeader',
+  'sheetSticky',
 ]);
 
 /** The stores the drawing mode works on: the sketch mode's (it may have to finish a sketch). */

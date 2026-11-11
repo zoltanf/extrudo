@@ -7,13 +7,17 @@
  * - **A base view**: Looking from (the six standard views, four isometrics, the model's
  *   current view, each named view), Scale (the sheet's, the standard ones, custom), Style
  *   (visible edges; visible and hidden: the shaded styles come later), the switches
- *   Tangent edges and View label, and the bodies as checkboxes under "All shown".
- * - **A projected view**: its parent, and its own label only (it takes everything else
- *   from its base view).
+ *   Tangent edges, Centre lines and View label, and the bodies as checkboxes under "All
+ *   shown".
+ * - **A projected view**: its parent, and its own centre lines and label only (it takes
+ *   everything else from its base view).
+ *
+ * Centre lines (S4) only hides the view's own centre marks and centre lines: none is ever
+ * made for a view by itself.
  *
  * Test hooks: the regions "View" (the card) and "Base view" (the tool's panel); the
  * comboboxes "Looking from" and "Scale"; the radio group "Style"; the switches "Tangent
- * edges" and "View label"; the checkboxes "All shown" and one per body by its name; the
+ * edges", "Centre lines" and "View label"; the checkboxes "All shown" and one per body by its name; the
  * number fields "View scale: model" and "View scale: sheet" for a custom scale.
  */
 import {
@@ -318,6 +322,12 @@ export function SheetViewCard({
             Tangent edges
           </Switch>
         )}
+        <Switch
+          checked={view.centreLines !== false}
+          onChange={(on) => apply({ centreLines: on ? null : false }, 'Centre lines')}
+        >
+          Centre lines
+        </Switch>
         <Switch
           checked={view.label === true}
           onChange={(on) => apply({ label: on ? true : null }, 'View label')}

@@ -44,8 +44,11 @@ export interface SheetPickable {
   key: string;
   view: SheetViewId;
   body: BodyId;
-  /** A model edge (by its name), or a cylinder's or cone's outline (its face's name). */
-  kind: 'edge' | 'outline';
+  /**
+   * A model edge (by its name), a cylinder's or cone's outline (its face's name), or a face
+   * under the pointer (`faceHit`: a leader's dot; never in `sheetPickables`).
+   */
+  kind: 'edge' | 'outline' | 'face';
   name: string;
   shape: PickShape;
   /** Its pieces as polylines in sheet mm: hit-testing and the highlight. */
@@ -59,6 +62,8 @@ export interface SheetHit {
   pickable: SheetPickable;
   /** Index into `pickable.ends` when the pointer is at an end (a vertex). */
   end?: number;
+  /** Where on a face the pointer is, sheet mm (a face hit only). */
+  at?: Vec2;
 }
 
 /** A pick the kernel has named: what an anchor is made of. */
@@ -82,6 +87,15 @@ export type SheetPick =
       /** The outline's line in the view, view mm. */
       shape: Extract<PickShape, { type: 'line' }>;
       face: string;
+    }
+  | {
+      /** A face whole: a leader's dot, a cylinder's centre or axis. */
+      kind: 'face';
+      view: SheetViewId;
+      key: string;
+      ref: SheetRefAnchor['ref'];
+      /** Where it was picked, view mm (a leader's dot), when picked on the face itself. */
+      p?: Vec2;
     };
 
 /** The panel's choices for the next dimension (plan §4.3's card, before placing). */
@@ -292,17 +306,19 @@ export function pickAnchor(pick: SheetPick): SheetAnchor {
       return { ref: pick.ref, at: pick.at };
     case 'outline':
       return { ref: pick.ref, silhouette: pick.silhouette };
+    case 'face':
+      return { ref: pick.ref };
   }
 }
 
 /** A pick's line in the view, if it is one (a straight edge, an outline). */
-function lineOf(pick: SheetPick): Extract<PickShape, { type: 'line' }> | undefined {
+export function lineOf(pick: SheetPick): Extract<PickShape, { type: 'line' }> | undefined {
   if (pick.kind === 'outline') return pick.shape;
   if (pick.kind === 'edge' && pick.shape.type === 'line') return pick.shape;
   return undefined;
 }
 
-function parallel(
+export function parallel(
   a: Extract<PickShape, { type: 'line' }>,
   b: Extract<PickShape, { type: 'line' }>,
 ) {
@@ -327,7 +343,7 @@ export function dimensionOf(
   picks: readonly SheetPick[],
 ): Pick<SheetDimensionItem, 'type' | 'anchors'> | undefined {
   const [a, b] = picks;
-  if (!a) return undefined;
+  if (!a || picks.some((p) => p.kind === 'face')) return undefined;
   if (!b) {
     if (a.kind === 'outline') return { type: 'linear', anchors: [pickAnchor(a)] };
     if (a.kind !== 'edge') return undefined;

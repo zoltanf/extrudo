@@ -2021,8 +2021,9 @@ function Shell({
       exportSheets();
       return;
     }
-    // Base View, Projected View (P6-24 S2) and Dimension (S3): they run on the sheet until Esc.
-    if (tool === 'baseView' || tool === 'projectedView' || tool === 'sheetDimension') {
+    // Base View, Projected View (P6-24 S2), Dimension (S3) and the notes tools (S4): they run
+    // on the sheet until Esc.
+    if (SHEET_TOOLS.has(tool)) {
       if (mode !== 'sheet') return;
       viewport.getState().setTool(undefined);
       // Projected View starts from the view selected, if one is.
