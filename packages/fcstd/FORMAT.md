@@ -342,6 +342,59 @@ record keeps its slot.
 curves per sketch (the library's largest has 28), 20,000 constraints (71),
 1,000 poles per B-spline (3). A sketch over a limit is not decoded.
 
+## PartDesign bodies and their features
+
+A `PartDesign::Body` lists its members in `Group` (`Model` in files of the 0.14
+development branch): its origin, sketches, datums and features, in tree order.
+`Tip` names the feature whose shape is the body's result; features after it are
+rolled back. Every solid feature names the one before it in `BaseFeature` (a
+link, empty for the first), and that chain, followed back from the tip, is the
+body's order; the importer follows it once and stops on a loop, on a member
+missing from `Group` or from the file, and at the body's own `BaseFeature` (a
+solid outside the body the first feature builds on). The body's `Shape` is the
+tip's with the body's `Placement` applied; every feature's `Shape` is **the
+whole body after that feature**, in the body's coordinates (its container
+placements, outermost first, put it in the world), and is what each rebuilt
+step is compared with.
+
+**Common to Pad, Pocket, Revolution and Groove** (`ProfileBased`):
+
+| Property | Value element | Meaning |
+|---|---|---|
+| `Profile` | `LinkSub` | The sketch; no sub-names means every closed wire of it. Sub-names pick edges or wires; a solid's face (`Face6`) makes a face extrude. Files without bodies have `Sketch` (a `Link`) instead |
+| `Reversed` | `Bool` | The other way (below) |
+| `Midplane` | `Bool` | Symmetric about the sketch's plane; 1.1 reads it as `SideType` = Symmetric |
+| `AllowMultiFace` | `Bool` (0.19+) | Every nesting level of wires becomes a face (odd levels solid, even ones holes); without it only the first level |
+| `Suppressed` | `Bool` (1.0+) | The feature is skipped; its `Shape` is the one before it |
+| `Refine` | `Bool` | Merges faces after the boolean; no change to volume or area |
+
+**Pad and Pocket.** `Type` is an enumeration stored as its index: Pad 0
+Length, 1 UpToLast, 2 UpToFirst, 3 UpToFace, 4 TwoLengths (deprecated, kept
+for its index), 5 UpToShape; Pocket the same with 1 ThroughAll. `Length` and
+`Length2` (`Float`, mm) are the two sides; `SideType` (1.1+: 0 One side, 1 Two
+sides, 2 Symmetric) and `Type2` (side 2's method) replace TwoLengths and
+`Midplane`; FreeCAD checks TwoLengths first, then `Midplane`, then `SideType`.
+`TaperAngle` / `TaperAngle2` (0.21+, degrees), `UseCustomVector` with
+`Direction`, and `ReferenceAxis` (0.20+; the sketch's own `N_Axis` is the
+default direction) change the direction or the walls; `Offset` only matters for
+the up-to methods. The direction is the sketch's normal for a pad and its
+opposite for a pocket; `Reversed` turns it; a symmetric side is centred on the
+plane with `Length` the whole length; two lengths put `Length` along the
+direction and `Length2` against it. Through all goes past everything in the
+way. One 0.20 file stores a pad whose tool is tapered by half a degree without
+a `TaperAngle` property: the comparison catches it.
+
+**Revolution and Groove.** `Type` 0 is Angle (others: 1 UpToLast / ThroughAll
+for a groove, 2 UpToFirst, 3 UpToFace, 4 TwoAngles); `Angle` (`Float`,
+degrees, 360 by default) turns right-handed about the axis, `Reversed` the other
+way, `Midplane` centred on the profile. `ReferenceAxis` (`LinkSub`) is the
+sketch with `H_Axis` or `V_Axis` (its x or y axis), `N_Axis` (its normal),
+`AxisN` (its N-th construction line, counted from 0 over construction lines
+only) or `EdgeN` (its N-th curve, from 1); or an origin axis (`App::Line`,
+role `X_Axis` … in its `Role` or name, listed in the body's origin's
+`OriginFeatures`), a datum line or a solid's edge. `Base` and `Axis` (vectors,
+read-only) are the axis as FreeCAD resolved it.
+
 ## Not read yet
 
 - Sketches: external geometry (`ExternalGeometry`, `ExternalGeo`), `MapMode`
@@ -352,5 +405,8 @@ curves per sketch (the library's largest has 28), 20,000 constraints (71),
 - Link arrays (`ElementCount`, `PlacementList`, `LinkElement`s) and links to
   other documents: one instance or a problem.
 - FreeCAD's binary shape form.
+- PartDesign features other than Pad, Pocket, Revolution and Groove, and of
+  those the up-to methods, tapers, custom directions and axes other than the
+  sketch's, its lines and an origin axis (they are refused with a reason).
 - `ObjectDeps`, `Touched`/`Invalid` beyond the flag, the recompute log, the
   camera.

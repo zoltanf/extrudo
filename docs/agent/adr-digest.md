@@ -4701,3 +4701,30 @@ them. A dimension's value is the stored number (15 digits); expression bindings 
 here. `addSketch` never throws for file content and returns plain outcome data; IDs come from the caller's `Design`.
 Fixtures go in `sketch-fixtures.ts`. `sketch-corpus.test.ts` (`FCSTD_SAMPLES`, `FCSTD_REPORT`, `FCSTD_GT`) must keep
 219 of 221 placed, nothing kept moving, and the mapped count (2,744 of 2,984) unless a change explains the new one.
+
+**ADR-0144, S5 (Pad, Pocket, Revolution, Groove):** `packages/fcstd`: `features.ts` `decodeFeature` (typed data or a
+`FeatureRefusal` from a closed set; reads a property only by its value element, refuses when one it reads is missing,
+of the wrong kind, not finite or listed in `FcObject.unreadable`, never takes a default for those), `bodies.ts`
+`bodyChain` (from `Tip` back through `BaseFeature`, once; ends at the body's own `BaseFeature`) and `importBodies`
+(the walk), `check.ts` (`historyDisagreement`, `drift`, `combined`), `budget.ts` `KernelBudget` (S3's per-call time,
+import time and restart cap, **one budget for the walk and `importShapes`**; `importShapes` takes it as `budget`).
+`packages/kernel`: `measureStoredShape` (import kernel only, refused like `storedShapeToStep`) and `measureBodies` on
+`KernelApi` (`worker-api.ts`, `browser.ts`, fakes in tests), both through `measureShape` in `stored-shape.ts` —
+**the one measuring code for both sides of the check**; `importRebuilder` (`import-rebuild.ts`, exported from the
+kernel's index and `node.ts`) is the only rebuild implementation (app `importKernel.ts`, `nodeImportKernel`): a file
+once per kernel, `have` from the last recompute, a new one after a restart. `ImportKernel.rebuild(doc, files, skip?)`
+measures every body but `skip`. **Rules:** each feature's additions (sketch, plane, feature) are one transaction,
+cancelled when it doesn't hold, then `forgetRemovedPlanes`; join and cut name their participants (the FreeCAD body's
+own Extrudo bodies), never automatic; a history stops in **one place** (`stop` in `importBodies`; S8 changes that
+place only) with a `HistoryStop`; a feature stays only when the rebuilt bodies of its FreeCAD body, added up, have the
+stored shape's solids, volume and area within **1e-6** and the box within 1e-4 of the diagonal + 1e-6 mm (change only
+with the library's numbers, `history-corpus.test.ts`); every kernel reply through `saneMeasure` / `saneRebuild`, a
+failure restarts the kernel and stops that body's history; a body that stopped after a kept feature gets `Remove
+<label>` before the imports and its final shape the S3 way, a body whose first feature stops comes in exactly as in
+S3, a body with its whole history has no `import`; nothing else changes for shapes that aren't PartDesign bodies
+(`history-corpus.test.ts` asserts the 348 others are as S3 brings them; `corpus-shapes.test.ts` runs with
+`maxFileFeatures: 0` to keep S3's numbers). Limits `MAX_BODY_FEATURES` 500, `MAX_FILE_FEATURES` 2,000,
+`MAX_PROFILE_REGIONS` 1,000, `MAX_FEATURE_LENGTH` 10 km. A revolve's sketch axis is drawn by `addSketch`'s `axes`
+option (never by editing the sketch afterwards); `AddSketchResult` gives `lines` (per geometry index) and `axes`.
+Mapped features record `sources` (Extrudo input → FreeCAD property) for S10. Fixtures: `history-fixtures.ts` (stored
+shapes from the kernel's `boxBrep`/`cylinderBrep`); the app words `HistoryStop` in `actions.ts` (`HISTORY_STOP`).
