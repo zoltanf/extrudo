@@ -4393,7 +4393,7 @@ user parameter"; shown, such a row has `FollowsMark` (link icon, title "Follows 
 the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
 clicks the Show line when a row is hidden. No schema change.
 
-ADR-0143 (the owner, 2026-11-10; **accepted, nothing built yet**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
+ADR-0143 (the owner, 2026-11-10; **accepted; S1a modes and S0 spikes done, nothing else built**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
 made from the model. The detailed spec is `docs/plans/drawings-2026-11-10.md` (mock-ups: `docs/plans/drawings-mock-*.html`);
 each slice (S0 spikes, S1a modes, S1 sheets, S2 views, S3 dimensions, S4 notes, S5 lists, S6 outside) amends the ADR and
 adds its files and rules to this paragraph. Rules already fixed: **words:** the interface says "Drawing" (mode, tab) and
@@ -4411,7 +4411,22 @@ new facade method (flat arrays, ADR-0001), the evaluator lives in `packages/kern
 **dimensions are measured, never driving**. **Output:** one display list drives screen, PDF and SVG; `writePdf` is our own
 writer in `@extrudo/io` (MIT: no GPL import, no PDF library), text as glyph outlines of the bundled Inter; `@extrudo/sheets`
 (no DOM, Node) goes into `scripts/check-boundaries.mjs`. **Defaults:** paper white in both themes, first angle per sheet,
-hidden + tangent + centre lines on, title block "Simple", zone border off, sticky notes not printed. **S1a (modes, done, no
+hidden + tangent + centre lines on, title block "Simple", zone border off, sticky notes not printed. **S0 (plan §13):** HLR cost
+follows overlapping curved edges, not size (B7's side views about 3.4 s each, B9 along its axis 3.8 s, a 209-face
+assembly 0.25 s for six views), and one view is one uninterruptible call: views compute one at a time with progress,
+cancel acts between views, the per-direction cache is required. Views come from **`Kernel.hlrSpans`** (our own walk of
+`HLRBRep_Algo`'s data: edge index, kind, an outline's face, range, visible and hidden spans in the edge's 3D parameter),
+**never `HLRBRep_HLRToShape`** (no faster, and its edges lose the model edge's name). Rules in the walk: HLR's status
+intervals are already 3D parameters (never convert them with `Parameter3d`); split edges map back through the
+outliner's `NewSOldS`; a smooth edge or seam a face turns away at is an outline that keeps its edge. `hlrPolySpans`
+(`HLRBRep_PolyAlgo`, milliseconds) may draw a view first, but only the exact result feeds dimensions and snapping.
+`writePdf(pages)` (`packages/io/src/pdf.ts`) takes paths and `text` items that carry the caller's glyph outlines **and**
+the string: outlines filled, the string invisible (`3 Tr`) in non-embedded Courier (monospaced: no width table; Adobe's Helvetica widths would need
+a NOTICE entry), WinAnsi, stretched with `Tz` to the outline width; keep it dependency-free beyond fflate, deterministic, and keep text selectable (check readers with the
+sample: `PDF_OUT=<file> pnpm vitest run packages/sketch/src/text/pdf-sample`). Gated tools: `HLR_BENCH=1` (+
+`HLR_METHODS=1`) `pnpm vitest run packages/kernel/src/hlr-bench` re-times HLR; `HLR_PDF=<file>` (+ `HLR_POLY=1`) `pnpm
+vitest run packages/kernel/src/hlr-views` draws views from the spans to look at.
+**S1a (modes, done, no
 behaviour change):** `EditMode` (`packages/core/src/stores.ts`) is the only spelling of the mode union (`KeymapMode` and
 `MarkingMode` alias it); `MODES` in `apps/web/src/shell/modes.ts` is one row per mode (`label`, `tabs`, `defaultTab`,
 `markingSlots`, `repeatSample`, `finish`), read by `visibleTabs`/`defaultTab` (`tools.ts`), the Finish tile (`Toolbar.tsx`),

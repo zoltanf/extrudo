@@ -128,6 +128,11 @@
 #include <HLRBRep_Algo.hxx>
 #include <HLRBRep_Data.hxx>
 #include <HLRBRep_EdgeData.hxx>
+#include <HLRBRep_FaceIterator.hxx>
+#include <HLRBRep_PolyAlgo.hxx>
+#include <HLRBRep_ShapeBounds.hxx>
+#include <HLRTopoBRep_Data.hxx>
+#include <HLRTopoBRep_OutLiner.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
@@ -2126,6 +2131,217 @@ public:
 
   uintptr_t geometryPtr() const { return reinterpret_cast<uintptr_t>(geometry_.data()); }
   int geometrySize() const { return static_cast<int>(geometry_.size()); }
+
+  /**
+   * Hidden-line spans of a shape seen from the side (dx, dy, dz) points to
+   * (P6-24, ADR-0143's S0 amendment): OCCT's exact hidden-line removal
+   * (HLRBRep_Algo, as edgeVisibility), walked span by span. Returns the
+   * number of records, or -1. One record per edge of HLR's data that is a
+   * model edge or an outline HLR added (isolines and edges seen end-on are
+   * left out). An edge HLR split at an outline point keeps its model edge
+   * and parameters, one record per piece:
+   *
+   * hlrInts, 6 per record: edge (sub-shape index, -1 for an outline HLR
+   * added), kind (0 sharp, 1 smooth, 2 seam: a joint of continuity above
+   * G1, 3 outline: one HLR added, or a smooth edge or seam a face turns away
+   * at),
+   * face (an outline's face, or -1; also set for a model edge HLR uses as a
+   * face's outline), visible spans, hidden spans, curve (an outline's offset
+   * in the curve block, else -1).
+   *
+   * hlrNumbers: per record in order, the edge's parameter range [first,
+   * last] (a split model edge's whole range), then [t0, t1] per visible span
+   * and per hidden span, in the parameter of the edge's own 3D curve; then
+   * the curve block: each outline as edgeGeometry encodes an edge (a line or
+   * circle or ellipse exactly, else `samples` points).
+   */
+  int hlrSpans(int shape, double dx, double dy, double dz, int samples) {
+    beginOp();
+    hlrInts_.clear();
+    hlrNumbers_.clear();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) {
+      fail("Unknown shape.");
+      return -1;
+    }
+    try {
+      const gp_Vec view(dx, dy, dz);
+      if (view.Magnitude() <= Precision::Confusion()) {
+        fail("The view direction has no length.");
+        return -1;
+      }
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges, faces;
+      TopExp::MapShapes(*s, TopAbs_EDGE, edges);
+      TopExp::MapShapes(*s, TopAbs_FACE, faces);
+      HLRAlgo_Projector projector(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(view)));
+      occ::handle<HLRBRep_Algo> algo = new HLRBRep_Algo();
+      algo->Add(*s, 0);
+      algo->Projector(projector);
+      algo->Update();
+      algo->Hide();
+      occ::handle<HLRBRep_Data> data = algo->DataStructure();
+      if (data.IsNull()) return 0;
+      const int ne = data->NbEdges();
+      // HLR's outliner splits edges at outline points and rebuilds faces with
+      // their outlines; its data knows the shape each new one came from.
+      HLRTopoBRep_Data& topo = algo->ShapeBounds(1).Shape()->DataStructure();
+      auto indexIn = [&](const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& map,
+                         const TopoDS_Shape& x) {
+        const int i = map.FindIndex(x);
+        return i != 0 ? i : map.FindIndex(topo.NewSOldS(x));
+      };
+      // What the faces say about each edge: an isoline, or a face's outline.
+      std::vector<int> outlineOf(ne + 1, 0);
+      std::vector<char> outline(ne + 1, 0), iso(ne + 1, 0);
+      for (int f = 1; f <= data->NbFaces(); ++f) {
+        HLRBRep_FaceIterator it;
+        for (it.InitEdge(data->FDataArray().ChangeValue(f)); it.MoreEdge(); it.NextEdge()) {
+          const int ie = it.Edge();
+          if (ie < 1 || ie > ne) continue;
+          if (it.IsoLine()) iso[ie] = 1;
+          if (it.OutLine() || it.Internal()) {
+            outline[ie] = 1;
+            if (outlineOf[ie] == 0) outlineOf[ie] = indexIn(faces, data->FaceMap()(f));
+          }
+        }
+      }
+      std::vector<double> spans, curves;
+      int records = 0;
+      for (int ie = 1; ie <= ne; ++ie) {
+        HLRBRep_EdgeData& ed = data->EDataArray().ChangeValue(ie);
+        if (iso[ie] || ed.Vertical()) continue;
+        const int model = indexIn(edges, data->EdgeMap()(ie));
+        if (model == 0 && !outline[ie]) continue;
+        // A smooth edge or seam that a face turns away at is that face's outline
+        // (HLRToShape draws it with the sharp edges): kind outline, edge kept.
+        const bool smooth = ed.RgNLine() || ed.Rg1Line();
+        const int kind = model == 0 || (smooth && outline[ie]) ? 3 : ed.RgNLine() ? 2 : ed.Rg1Line() ? 1 : 0;
+        // The status intervals are in the 3D curve's parameter already (HLRBRep::MakeEdge
+        // turns them into the 2D curve's with Parameter2d), so they pass through as they are.
+        const HLRBRep_Curve& curve = ed.Geometry();
+        // The whole edge's parameter range first (a model edge's, not a split piece's).
+        const BRepAdaptor_Curve whole =
+            model == 0 ? curve.GetCurve() : BRepAdaptor_Curve(TopoDS::Edge(edges(model)));
+        spans.insert(spans.end(), {whole.FirstParameter(), whole.LastParameter()});
+        int visible = 0, hidden = 0;
+        double sta = 0, end = 0;
+        float tolsta = 0, tolend = 0;
+        HLRAlgo_EdgeIterator it;
+        for (it.InitVisible(ed.Status()); it.MoreVisible(); it.NextVisible()) {
+          it.Visible(sta, tolsta, end, tolend);
+          if (std::abs(end - sta) <= Precision::PConfusion()) continue;
+          spans.insert(spans.end(), {sta, end});
+          ++visible;
+        }
+        for (it.InitHidden(ed.Status()); it.MoreHidden(); it.NextHidden()) {
+          it.Hidden(sta, tolsta, end, tolend);
+          if (std::abs(end - sta) <= Precision::PConfusion()) continue;
+          spans.insert(spans.end(), {sta, end});
+          ++hidden;
+        }
+        if (visible + hidden == 0) {
+          spans.resize(spans.size() - 2);
+          continue;
+        }
+        int at = -1;
+        if (model == 0) {
+          at = static_cast<int>(curves.size());
+          encodeCurve(curve.GetCurve(), BRep_Tool::IsClosed(curve.GetCurve().Edge()), samples, curves);
+        }
+        hlrInts_.insert(hlrInts_.end(), {model - 1, kind, outlineOf[ie] - 1, visible, hidden, at});
+        ++records;
+      }
+      hlrNumbers_ = std::move(spans);
+      hlrNumbers_.insert(hlrNumbers_.end(), curves.begin(), curves.end());
+      return records;
+    } catch (...) {
+      hlrInts_.clear();
+      hlrNumbers_.clear();
+      failFromException("Hidden-line removal failed");
+      return -1;
+    }
+  }
+
+  /**
+   * Polygonal hidden-line removal (HLRBRep_PolyAlgo) of a shape along
+   * (dx, dy, dz), on the triangulation its faces have (meshed with
+   * `deflection` first where a face has none). Returns the number of
+   * pieces, or -1. hlrInts, 3 per piece: edge (sub-shape index, -1 when it
+   * is a face's outline), face (an outline's face, else -1), flags (1
+   * visible, 2 smooth, 4 seam, 8 outline). hlrNumbers, 6 per piece: its two
+   * ends in 3D (on the triangulation).
+   */
+  int hlrPolySpans(int shape, double dx, double dy, double dz, double deflection) {
+    beginOp();
+    hlrInts_.clear();
+    hlrNumbers_.clear();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) {
+      fail("Unknown shape.");
+      return -1;
+    }
+    try {
+      const gp_Vec view(dx, dy, dz);
+      if (view.Magnitude() <= Precision::Confusion()) {
+        fail("The view direction has no length.");
+        return -1;
+      }
+      bool meshed = true;
+      for (TopExp_Explorer x(*s, TopAbs_FACE); x.More() && meshed; x.Next()) {
+        TopLoc_Location loc;
+        if (BRep_Tool::Triangulation(TopoDS::Face(x.Current()), loc).IsNull()) meshed = false;
+      }
+      if (!meshed) {
+        BRepMesh_IncrementalMesh mesh(*s, deflection, false, 0.5, false);
+      }
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges, faces;
+      TopExp::MapShapes(*s, TopAbs_EDGE, edges);
+      TopExp::MapShapes(*s, TopAbs_FACE, faces);
+      const HLRAlgo_Projector projector(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(view)));
+      occ::handle<HLRBRep_PolyAlgo> algo = new HLRBRep_PolyAlgo(*s);
+      algo->Projector(projector);
+      algo->Update();
+      int pieces = 0;
+      HLRAlgo_EdgeStatus status;
+      TopoDS_Shape source;
+      bool reg1 = false, regn = false, outl = false, intl = false;
+      double sta = 0, end = 0;
+      float tolsta = 0, tolend = 0;
+      for (algo->InitHide(); algo->MoreHide(); algo->NextHide()) {
+        const HLRAlgo_BiPoint::PointsT& p = algo->Hide(status, source, reg1, regn, outl, intl);
+        const gp_XYZ a = p.Pnt1, b = p.Pnt2;
+        const int edge = intl ? -1 : edges.FindIndex(source) - 1;
+        const int face = intl ? faces.FindIndex(source) - 1 : -1;
+        const int base = (regn ? 4 : reg1 ? 2 : 0) | (outl || intl ? 8 : 0);
+        auto piece = [&](bool visible) {
+          const gp_XYZ u = a + (b - a) * sta, v = a + (b - a) * end;
+          hlrInts_.insert(hlrInts_.end(), {edge, face, base | (visible ? 1 : 0)});
+          hlrNumbers_.insert(hlrNumbers_.end(), {u.X(), u.Y(), u.Z(), v.X(), v.Y(), v.Z()});
+          ++pieces;
+        };
+        HLRAlgo_EdgeIterator it;
+        for (it.InitVisible(status); it.MoreVisible(); it.NextVisible()) {
+          it.Visible(sta, tolsta, end, tolend);
+          piece(true);
+        }
+        for (it.InitHidden(status); it.MoreHidden(); it.NextHidden()) {
+          it.Hidden(sta, tolsta, end, tolend);
+          piece(false);
+        }
+      }
+      return pieces;
+    } catch (...) {
+      hlrInts_.clear();
+      hlrNumbers_.clear();
+      failFromException("Hidden-line removal failed");
+      return -1;
+    }
+  }
+
+  uintptr_t hlrIntsPtr() const { return reinterpret_cast<uintptr_t>(hlrInts_.data()); }
+  int hlrIntsSize() const { return static_cast<int>(hlrInts_.size()); }
+  uintptr_t hlrNumbersPtr() const { return reinterpret_cast<uintptr_t>(hlrNumbers_.data()); }
+  int hlrNumbersSize() const { return static_cast<int>(hlrNumbers_.size()); }
 
   // ------------------------------------------------------------- sketches --
   //
@@ -6604,6 +6820,9 @@ private:
   std::vector<int32_t> describeInts_;
   std::vector<double> describeNumbers_;
   std::vector<double> geometry_;
+  /** hlrSpans' and hlrPolySpans' output (P6-24). */
+  std::vector<int32_t> hlrInts_;
+  std::vector<double> hlrNumbers_;
   /** Mesh to Solid's input (meshNodes, meshTriangles) and its report. */
   std::vector<double> meshNodes_;
   std::vector<uint32_t> meshTriangles_;
@@ -16396,6 +16615,33 @@ private:
         ends.Append(builder.LastShape(sub));
         appendRelation(ends, resultMaps, 0, kind, i - 1, 5);
       }
+    }
+  }
+
+  /** A curve in edgeGeometry's encoding: type, closed, n, points, then a circle's or ellipse's data. */
+  static void encodeCurve(const BRepAdaptor_Curve& curve, bool closed, int samples, std::vector<double>& out) {
+    const GeomAbs_CurveType type = curve.GetType();
+    const double first = curve.FirstParameter();
+    const double last = curve.LastParameter();
+    const int n = type == GeomAbs_Line ? 2 : std::max(2, samples);
+    out.push_back(static_cast<double>(type));
+    out.push_back(closed ? 1.0 : 0.0);
+    out.push_back(static_cast<double>(n));
+    auto point = [&](const gp_Pnt& p) { out.insert(out.end(), {p.X(), p.Y(), p.Z()}); };
+    auto dir = [&](const gp_Dir& d) { out.insert(out.end(), {d.X(), d.Y(), d.Z()}); };
+    for (int i = 0; i < n; ++i) point(curve.Value(i == n - 1 ? last : first + (last - first) * i / (n - 1)));
+    if (type == GeomAbs_Circle) {
+      const gp_Circ c = curve.Circle();
+      point(c.Location());
+      dir(c.Axis().Direction());
+      dir(c.XAxis().Direction());
+      out.insert(out.end(), {c.Radius(), first, last});
+    } else if (type == GeomAbs_Ellipse) {
+      const gp_Elips c = curve.Ellipse();
+      point(c.Location());
+      dir(c.Axis().Direction());
+      dir(c.XAxis().Direction());
+      out.insert(out.end(), {c.MajorRadius(), c.MinorRadius(), first, last});
     }
   }
 

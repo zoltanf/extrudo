@@ -1,7 +1,8 @@
 # ADR-0143: Drawings: 2D sheets made from the model
 
 - **Status:** Accepted, 2026-11-10 (the owner: the 14 decisions of the plan's §12, all as
-  proposed). **Nothing is built yet.** Each slice lands with an amendment here.
+  proposed). S1a (modes) and S0 (spikes) are done, see the amendments at the end; nothing
+  else is built. Each slice lands with an amendment here.
 - **Task:** P6-24 (`docs/03-roadmap.md`); FR-DR-01 to FR-DR-08.
 - **Specification and mock-ups:** `docs/plans/drawings-2026-11-10.md` and the five
   `docs/plans/drawings-mock-*.html` pages beside it. This ADR records what was decided and
@@ -166,6 +167,50 @@ The plan's §10 has what each is done by. S0 and S1a can run side by side.
   text per row is enough for the first release and does not close that door.
 - **Third angle, printed sticky notes and hidden lines off as defaults.** Each stays a
   setting.
+
+## Amendment (S0), 2026-11-10: what HLR costs, the spans method, our PDF writer
+
+The spikes' numbers, drawings and readers are in the plan's §13.
+
+- **HLR cost does not follow size.** OCCT's exact hidden-line removal (`Update` + `Hide`)
+  takes 7–362 ms for six axis views of B2–B6, B8, B10 and a 209-face assembly (249 ms), but
+  13.5 s on B7 (3.3–3.5 s per side view of the knurl), 5.1 s on B9 (3.8 s along the
+  thread's axis) and 1.7 s on P4-01; isometric views of the same bodies take 1–250 ms. The
+  heap top did not move. A view is one call that can't be interrupted.
+- **The facade method is our own walk of HLR's data** (`hlrSpans`, built): per entry the
+  model edge (split pieces mapped back through the outliner's `NewSOldS`), its kind (sharp,
+  smooth, seam, outline), an outline's face, the edge's parameter range, and the visible and
+  hidden spans in the edge's own 3D parameter; outlines HLR adds carry their curve. A smooth
+  edge or seam that a face turns away at is an outline that keeps its edge. HLR's status
+  intervals are used as they are: they are already 3D parameters.
+- **Rejected: `HLRBRep_HLRToShape`.** Its edge building after `Hide` takes under a
+  millisecond, so it is no faster, and its compounds carry no link to the model edges or
+  faces, so dimension anchors would need geometric matching to get a name back.
+- **Rejected: Helvetica with its advance widths** for the selectable text layer: better
+  per-letter selection boxes, but the widths are Adobe's AFM data and need a NOTICE entry;
+  open with the owner. Courier, monospaced, needs no table.
+- **`hlrPolySpans` (`HLRBRep_PolyAlgo` on the faces' triangulation) is the quick path:**
+  2.5 ms for B7's side view and 8 ms for B9's axis view, against 3.4 s and 3.8 s, with each
+  piece's source edge, but chords of the mesh with small artefacts. **For S2:** a view is
+  drawn from it at once and replaced by `hlrSpans` when that finishes; only the exact result
+  feeds dimensions and snapping. Views compute one at a time with progress, cancel acts
+  between views, and the per-direction cache (§6.2.3) is required.
+- **`writePdf` is in `@extrudo/io`** (`pdf.ts`): PDF 1.4, page size in mm, deflated
+  streams, Béziers for arcs, a `text` item that fills the caller's glyph outlines and adds
+  the string invisibly (render mode 3) in non-embedded Courier (sized by its cap height,
+  600/1000 em per glyph), WinAnsi-encoded and stretched with `Tz` to the outlines' width. A two-page A3/A4 sample opens, renders and
+  gives its text back (Ø, ±, ° included) in poppler, Ghostscript and Chromium's PDFium, and
+  passes `qpdf --check`. Characters outside WinAnsi draw (outlines) but are `?` in the
+  selectable layer; a ToUnicode map can lift that later if it matters.
+- **Kept code:** the facade methods `hlrSpans` and `hlrPolySpans` and their `Kernel`
+  wrappers (`hlrToShapeCount`, the probe of `HLRToShape`, was removed once timed), their
+  tests (`hlr-spans.test.ts`), `pdf.ts` with its tests, the PDF sample
+  (`packages/sketch/src/text/pdf-sample.test.ts`, `PDF_OUT=<file>`), and two gated tools:
+  `hlr-bench.test.ts` (`HLR_BENCH=1`, `HLR_METHODS=1`) and `hlr-views.test.ts`
+  (`HLR_PDF=<file>`, `HLR_POLY=1`), which draws views from the spans.
+- The WASM build with the walk's last fixes (`occt-f40f666098be`) passes `hlr-spans.test.ts`,
+  and views drawn from it match the polygonal ones. What S0 left unmeasured is in the plan's
+  §13.4.
 
 ## Amendment (S1a, 2026-11-10): one `EditMode` and a table per mode
 

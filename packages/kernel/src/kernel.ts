@@ -1836,6 +1836,88 @@ export class Kernel {
     return out;
   }
 
+  /**
+   * Hidden-line spans of a shape seen from the side `direction` points to
+   * (P6-24, ADR-0143's S0 amendment): OCCT's exact hidden-line removal, one
+   * entry per model edge piece or outline it draws, with the visible and
+   * hidden stretches in the edge's own curve parameter (so a view maps them
+   * through `edgeGeometry`, and a dimension anchors to the edge's name).
+   * Outlines HLR adds carry their face and their curve. Edges seen end-on
+   * and seams HLR doesn't draw are left out. `samples` points describe an
+   * outline that isn't a line, circle or ellipse.
+   */
+  hlrSpans(shape: ShapeHandle, direction: Vec3, samples = 24): HlrEdge[] {
+    this.#solid(shape, 'A drawing view');
+    const f = this.#facade;
+    const n = f.hlrSpans(shape, ...direction, samples);
+    if (n < 0) throw new KernelError(f.lastError() || 'Unknown shape.');
+    const ints = this.#copy(Int32Array, f.hlrIntsPtr(), f.hlrIntsSize());
+    const numbers = this.#copy(Float64Array, f.hlrNumbersPtr(), f.hlrNumbersSize());
+    // Per record: its range, then its spans; the outlines' curves after all of them.
+    let curves = 0;
+    for (let i = 0; i < n; i++) {
+      curves += 2 + 2 * ((ints[6 * i + 3] as number) + (ints[6 * i + 4] as number));
+    }
+    const out: HlrEdge[] = [];
+    let k = 0;
+    const span = (): [number, number] => [numbers[k++] as number, numbers[k++] as number];
+    for (let i = 0; i < n; i++) {
+      const [edge, kind, face, visible, hidden, curve] = ints.subarray(6 * i, 6 * i + 6);
+      const entry: HlrEdge = {
+        kind: HLR_KINDS[kind as number] ?? 'sharp',
+        range: span(),
+        visible: Array.from({ length: visible as number }, span),
+        hidden: Array.from({ length: hidden as number }, span),
+      };
+      if ((edge as number) >= 0) entry.edge = edge as number;
+      if ((face as number) >= 0) entry.face = face as number;
+      if ((curve as number) >= 0) {
+        entry.curve = decodeEdgeGeometry(numbers.subarray(curves + (curve as number)));
+      }
+      out.push(entry);
+    }
+    return out;
+  }
+
+  /**
+   * Polygonal hidden-line removal (HLRBRep_PolyAlgo) of a shape along
+   * `direction`, on its faces' triangulation (made with `deflection` mm
+   * where a face has none): straight pieces in 3D, each with the edge it
+   * comes from (or, for an outline, its face). Measured in S0 as the quick
+   * path for views the exact run makes slow (ADR-0143's S0 amendment).
+   */
+  hlrPolySpans(shape: ShapeHandle, direction: Vec3, deflection = 0.05): HlrPiece[] {
+    this.#solid(shape, 'A drawing view');
+    const f = this.#facade;
+    const n = f.hlrPolySpans(shape, ...direction, deflection);
+    if (n < 0) throw new KernelError(f.lastError() || 'Unknown shape.');
+    const ints = this.#copy(Int32Array, f.hlrIntsPtr(), f.hlrIntsSize());
+    const v = this.#copy(Float64Array, f.hlrNumbersPtr(), f.hlrNumbersSize());
+    const out: HlrPiece[] = [];
+    for (let i = 0; i < n; i++) {
+      const [edge, face, flags] = ints.subarray(3 * i, 3 * i + 3) as unknown as [
+        number,
+        number,
+        number,
+      ];
+      const p = (j: number): Vec3 => [
+        v[6 * i + j] as number,
+        v[6 * i + j + 1] as number,
+        v[6 * i + j + 2] as number,
+      ];
+      const piece: HlrPiece = {
+        visible: (flags & 1) !== 0,
+        kind: flags & 8 ? 'outline' : flags & 4 ? 'seam' : flags & 2 ? 'smooth' : 'sharp',
+        from: p(0),
+        to: p(3),
+      };
+      if (edge >= 0) piece.edge = edge;
+      if (face >= 0) piece.face = face;
+      out.push(piece);
+    }
+    return out;
+  }
+
   count(shape: ShapeHandle, kind: SubShapeKind): number {
     // A mesh body is one face and no edges or vertices (ADR-0066 §3).
     if (this.isMesh(shape)) return kind === 'face' ? 1 : 0;
@@ -2518,6 +2600,40 @@ export interface EdgeView {
   outline: boolean;
   /** Its faces meet at an angle (no seam, no smooth join). */
   sharp: boolean;
+}
+
+/** How a hidden-line entry is drawn (`Kernel.hlrSpans`). */
+export type HlrKind = 'sharp' | 'smooth' | 'seam' | 'outline';
+const HLR_KINDS: readonly HlrKind[] = ['sharp', 'smooth', 'seam', 'outline'];
+
+/** One model edge piece or outline of a view (`Kernel.hlrSpans`). */
+export interface HlrEdge {
+  /**
+   * The model edge's sub-shape index; left out for an outline HLR added. An
+   * outline can have one: a smooth edge or seam that a face turns away at.
+   */
+  edge?: number;
+  kind: HlrKind;
+  /** An outline's face (sub-shape index); also set on a model edge HLR uses as a face's outline. */
+  face?: number;
+  /** The whole edge's parameter range, [first, last] (a split edge's whole range). */
+  range: [number, number];
+  /** Visible stretches, [t0, t1] in the edge's own curve parameter. */
+  visible: [number, number][];
+  /** Hidden stretches, the same way. */
+  hidden: [number, number][];
+  /** An outline's curve; a model edge's comes from `edgeGeometry`. */
+  curve?: EdgeGeometry;
+}
+
+/** A straight piece of a polygonal view (`Kernel.hlrPolySpans`), in world mm. */
+export interface HlrPiece {
+  edge?: number;
+  face?: number;
+  kind: HlrKind;
+  visible: boolean;
+  from: Vec3;
+  to: Vec3;
 }
 
 /** A curve from `Kernel.faceSilhouettes` or `sectionWithPlane`, in world mm. */
