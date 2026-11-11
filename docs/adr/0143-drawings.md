@@ -236,10 +236,12 @@ The spikes' numbers, drawings and readers are in the plan's §13.
   gives its text back (Ø, ±, ° included) in poppler, Ghostscript and Chromium's PDFium, and
   passes `qpdf --check`. Characters outside WinAnsi draw (outlines) but are `?` in the
   selectable layer; a ToUnicode map can lift that later if it matters.
-- **Kept code:** the three facade methods and their `Kernel` wrappers (`hlrToShapeCount`
-  for the comparison only), their tests (`hlr-spans.test.ts`), `pdf.ts` with its tests, the
-  PDF sample (`packages/sketch/src/text/pdf-sample.test.ts`, `PDF_OUT=<file>`), and two gated
-  tools: `hlr-bench.test.ts` (`HLR_BENCH=1`, `HLR_METHODS=1`) and `hlr-views.test.ts`
+- **Kept code:** the facade methods `hlrSpans` and `hlrPolySpans` and their `Kernel`
+  wrappers (`hlrToShapeCount`, the probe of `HLRToShape`, was removed once timed), their
+  tests (`hlr-spans.test.ts`), `pdf.ts` with its tests, the PDF sample
+  (`packages/sketch/src/text/pdf-sample.test.ts`, `PDF_OUT=<file>`), and two gated tools:
+  `hlr-bench.test.ts` (`HLR_BENCH=1`, `HLR_METHODS=1`) and `hlr-views.test.ts`
   (`HLR_PDF=<file>`, `HLR_POLY=1`), which draws views from the spans.
-- The S0 roadmap box stays open until the WASM build with the walk's last two fixes has run
-  in CI and its tests pass (plan §13.4).
+- The WASM build with the walk's last fixes (`occt-f40f666098be`) passes `hlr-spans.test.ts`,
+  and views drawn from it match the polygonal ones. What S0 left unmeasured is in the plan's
+  §13.4.
