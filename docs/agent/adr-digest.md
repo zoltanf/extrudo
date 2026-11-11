@@ -4457,7 +4457,10 @@ packages/kernel/src/sheets/golden --update` (`-u` before the path takes the path
 `context.anchors` and `context.units`). Rules a change must keep: **no value is stored** (a dimension's text is measured
 each time; `at` and free anchors are view mm, so they move and scale with the view); **every anchor ref has a fingerprint
 and is never `index:`**; an anchor resolves through `#references` like an annotation (rolled back or not found:
-`detached`; related name or fingerprint: `moved`), **a lost anchor never throws, never fails a recompute and never
+`detached`; related name or fingerprint: `moved`) **except that an anchor naming a deleted or suppressed feature is
+`detached` with a `message` before any related-name or fingerprint search** (`lostFeature`, the features read from the
+name by `featuresOfName`; the owner, 2026-11-11: a missing number beats a wrong one; annotations still take the closest
+match), **a lost anchor never throws, never fails a recompute and never
 refuses a delete**; a resolved anchor whose geometry can't give what is asked (a line's centre, a flat face's radius)
 is `ok`/`moved` with a `message` and no `geometry`, which layout draws as `invalid`; **linear and angle values are
 measured in the view's plane, radius and diameter on the circle itself**; the text follows the anchors by the mean
@@ -4465,8 +4468,9 @@ move of their fingerprint points; display items carry `state` (`moved`, `detache
 a screen colour**; a detached dimension draws from the geometry the caller kept (`keepLastAnchors`), else its text alone
 at `at` with `?` for the value. The silhouette side is `sheetSilhouetteSide` (axis with canonical sign × view direction).
 `@extrudo/sheets` has the kernel as a devDependency only (`dimensions.kernel.test.ts`; `SHEETS_OUT=<dir>` writes a sample
-PDF). The naming service's fingerprint can re-find a near edge after its feature is deleted (B2's pocket floor →
-the box's bottom edge, `moved`); tests that need `detached` anchor to geometry with no near match.
+PDF). With every named feature there and active the fingerprint can still find another edge (B2's pocket made a
+through cut: the floor edge's dimension `moved` to the pocket's bottom edge); tests that need a plain `detached` anchor to
+geometry with no near match.
 **S1a (modes, done, no
 behaviour change):** `EditMode` (`packages/core/src/stores.ts`) is the only spelling of the mode union (`KeymapMode` and
 `MarkingMode` alias it); `MODES` in `apps/web/src/shell/modes.ts` is one row per mode (`label`, `tabs`, `defaultTab`,

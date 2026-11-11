@@ -633,7 +633,10 @@ What a dimension measures from: one of three shapes, told apart by their keys.
 
 An anchor whose geometry is gone is not an error: the file still loads and
 the dimension is drawn as detached (the reference resolves as a feature's
-does, section 10: by its name, a related name or its fingerprint).
+does, section 10: by its name, a related name or its fingerprint). An anchor
+on geometry of a feature the design no longer has, or one that is
+suppressed, is detached without that search: a close match there would be
+another edge.
 
 ```json
 "sheets": [

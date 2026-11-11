@@ -311,8 +311,8 @@ No facade change.
   outline or two points or lines; radius one circle; diameter one circle or two outlines; angle two
   lines. Whether a whole edge is a line or a circle is the model's to say at resolve time.
 - **`resolveSheet(sheet)`** resolves every anchor against all bodies at the marker as the annotation
-  pass does (`#references`; rolled back → `detached`; exact name `ok`; related name or fingerprint
-  `moved`; nothing → `detached`) and returns, per dimension and anchor, `{ status, geometry?, resolved?,
+  pass does (`#references`; rolled back → `detached`; on a deleted or suppressed feature → `detached`,
+  below; exact name `ok`; related name or fingerprint `moved`; nothing → `detached`) and returns, per dimension and anchor, `{ status, geometry?, resolved?,
   message? }`. Geometry: a `point`; a `line`'s ends; a `circle`'s centre, axis, x direction and radius (a
   cylinder face's centre on the axis, level with the face's middle); a `curve`'s ends; a `silhouette`
   (the named side's line from `faceSilhouettes`, the longest piece, and the opposite one). Plain data
@@ -336,14 +336,29 @@ No facade change.
   none (a file just opened) it is its text alone at `at`, `?` for the value, no extension lines.
 - **Tests**: `sheet-schema.test.ts` and `sheets.test.ts` (shapes, rules, commands, remint);
   `kernel/src/sheets/anchors.test.ts` (a box, a cylinder, B2 following `height`, a drain hole deleted,
-  rolled back and back again; the pocket case below); `sheets/src/dimensions.test.ts` (values,
+  rolled back and back again; the pocket deleted, suppressed and made a through cut, below); `sheets/src/dimensions.test.ts` (values,
   positions, text, states, a golden SVG); `sheets/src/dimensions.kernel.test.ts` (every type measured to
   known sizes on a part the kernel builds; `SHEETS_OUT=<dir>` writes a sample PDF, checked with
   `pdftoppm`).
 - **Found:** the naming service's fingerprint fallback re-finds a close edge after its feature is
-  deleted: deleting B2's pocket makes a dimension on the pocket floor's edge `moved` onto the box's
-  bottom edge (74 → 80), not `detached`. Annotations and features behave the same; it is kept, and
-  shown as a warning (plan §4.6).
+  deleted: deleting B2's pocket made a dimension on the pocket floor's edge `moved` onto the box's
+  bottom edge (74 → 80), not `detached`. Annotations and features behave the same and keep doing so;
+  for sheet anchors the owner chose to detach instead (next point).
+- **Deleted and suppressed features (the owner, 2026-11-11)**: before an anchor is looked for by a
+  related name or its fingerprint, the features its persistent name names are read from the name's
+  grammar (`featuresOfName` in `kernel/src/naming/topo-id.ts`: each created face's `feature`, nested
+  sources too; a script's generated feature counts as the script). If one is no longer in the
+  document, the anchor is `detached` with "The feature this was measured on is deleted."; if one is
+  suppressed, `detached` with "<name>, the feature this was measured on, is suppressed. Unsuppress it to
+  show the dimension again." (deleted outranks suppressed; `lostFeature` in `kernel/src/sheets/anchors.ts`).
+  No fingerprint search runs then. Why: the closest match on a drawing is another edge, and its number
+  is wrong without looking wrong (B2: 80 for 74); a missing number is safer than a wrong one. A
+  suppressed feature makes nothing while suppressed, so the same wrong match can happen. Rolled back
+  past the marker stays `detached` with no message, checked first. With every named feature there and
+  active nothing changes: exact name `ok`, related name or fingerprint `moved`, even when the
+  fingerprint finds another edge (B2 with `bottom` 0, the pocket a through cut: the floor edge's
+  dimension is `moved` onto the pocket's bottom edge at z = 0, still 74). `keepLastAnchors` keeps the
+  detached report's `message`. Annotations are unchanged: their pass still takes the closest match.
 - **Rejected**: `at` in sheet mm (moving a view would leave its dimensions behind); storing the last
   measured value or position for a detached dimension (derived data in the document); resolving only
   among the view's bodies (projected views would need the app's body rules in the kernel; annotations
