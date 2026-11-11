@@ -1,0 +1,1 @@
+- 2026-11-11 · **Drawings outside the app**: the document API makes and changes sheets, views and every kind of item, Export as Script writes a design's sheets, and the CLI lists them (`info`), exports them (`export --format pdf|svg`) and checks their anchors (`check --sheets`) (P6-24 S6, ADR-0143).

@@ -4608,7 +4608,25 @@ and the cards' Text (Enter finishes, Shift+Enter a new line, Esc leaves it); the
 a lost note's reason is the kernel's when it gives one (this replaces "notes keep their own words"); the export's Sticky
 notes switch writes a copy with every note printed, never a document change; **snapping is how the pointer is read, never
 stored**: box edges and middles and dimension rows `ROW_STEP` (10 mm) apart, within the pick tolerance, guides on screen
-only, off with Snap; arrow keys never snap. e2e: `e2e/sheet-notes.spec.ts`.
+only, off with Snap; arrow keys never snap. e2e: `e2e/sheet-notes.spec.ts`. **S6 the API, the script and the CLI
+(package 1):** `packages/api/src/sheets.ts` (`d.addSheet`/`sheets`/`sheet`, `SheetHandle`, `SheetViewHandle`,
+`SheetItemHandle`, `sheetAnchorOf`; IDs `sh`/`sv`/`si`), `emit/sheets.ts` (`sheetStatements`), `sheet-docs.ts`
+(`docs/api/sheets.md`, generated), the kernel's `sheets/lines.ts` (`sheetViewWants`, `sheetViewWant`, `baseViewOf`,
+`pieceContour`, `sheetViewLines`, `ViewLines`: moved from the app's `viewLines.ts`, which re-exports them) and
+`sheets/now.ts` (`sheetModelNow`, `SheetModelKernel`, `exportAnchorsOf`, `exportPartsOf`, `isAnchored`, `EXPORT_UNMEASURED`,
+`EXPORT_UNLISTED`), `@extrudo/sheets`' `export.ts` (`sheetFiles`, `sheetFileContext`, `withEveryStickyNote`,
+`chosenSheets`), the CLI's `DesignJob.exportSheets`/`checkSheets`, `ComputeResult.sheets`, `sheet-fixture.ts` and
+`fixtures/sheets/plate.extrudo`, `scripts/check-sheet-pdf.mjs` (CI). Rules a change must keep: **every API sheet call is
+one core command** (one undo step), and an anchor's ref is stored with its fingerprint or refused (the API never invents
+one); the API writes no date or author by itself and places standard views on a paper grid (it has no kernel); **scripts
+refuse `addSheet`, `sheet`, `sheets`**; Export as Script writes sheets for a whole design only, every setup field the API
+would not default (title-block fields always), views and items in stored order; **a sheet's outputs outside the app go
+through `sheetModelNow` then `sheetFiles`**, never a copy of the app's export: the kernel half asks the model (exact views,
+anchors and parts lists now, never kept), the sheets half is pure and kernel-free (`ViewLines` matches `SheetViewLines`
+structurally; neither package imports the other); the CLI's `{date}` defaults to the design's `meta.modified` day,
+`{version}` to the newest version in the file, Mass to none (`--date`, `--version-name`, `--density` change them), so a
+file and its flags always write the same bytes; `check --sheets` fails on a detached anchor only. The fixture is built
+through the API with fingerprints from a real recompute (`UPDATE_FIXTURE=1 pnpm vitest run packages/cli/src/sheets`).
 
 ADR-0144 (the owner, 2026-11-11): **FreeCAD file import (`.FCStd`), with history** (P6-25; slices S1–S13 in the ADR,
 background in `docs/plans/freecad-import-2026-11-10.md`). `packages/fcstd` (`@extrudo/fcstd`, pure TS; kernel test-only)

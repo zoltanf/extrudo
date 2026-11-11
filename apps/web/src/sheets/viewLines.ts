@@ -2,6 +2,8 @@
  * A sheet's views as the kernel draws them (P6-24 S2, plan §6): what each view asks
  * `Recomputer.sheetViews` for, and the result turned into the `SheetViewLines` that
  * `layoutSheet` draws. Pure: the view runner (`viewRunner.ts`) and the tests call these.
+ * The requests and the lines are the kernel's since S6 (`kernel/src/sheets/lines.ts`, so
+ * the CLI draws views the same way), re-exported here; the rest is the screen's.
  *
  * - A view's request has its frame (`sheetViewFrame`, through its parents) and always an
  *   explicit list of bodies: its base view's `bodies`, or every body the model shows (not
