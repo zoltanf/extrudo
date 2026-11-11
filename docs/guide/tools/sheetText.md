@@ -13,5 +13,7 @@ Text on the sheet: click where it starts and type. Enter finishes, Shift+Enter s
 |---|---|
 | Drawing › Notes | T |
 
+<video src="demo:sheetText" muted loop autoplay playsinline aria-label="Text demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

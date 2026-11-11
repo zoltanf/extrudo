@@ -13,5 +13,7 @@ A numbered circle pointing at a part, numbered by the view’s parts list: pick 
 |---|---|
 | Drawing › Notes | B |
 
+<video src="demo:sheetBalloon" muted loop autoplay playsinline aria-label="Balloon demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

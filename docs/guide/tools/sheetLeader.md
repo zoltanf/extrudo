@@ -13,5 +13,7 @@ A note with an arrow to the model: pick an edge, a point or a face, click where 
 |---|---|
 | Drawing › Notes | N |
 
+<video src="demo:sheetLeader" muted loop autoplay playsinline aria-label="Leader Note demo"></video>
+
 <!-- notes -->
 <!-- /notes -->
