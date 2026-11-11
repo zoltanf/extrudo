@@ -167,13 +167,11 @@ describe('sheet targets (selection by display key, P6-24)', () => {
       anchors: [{ free: [0, 0] }, { free: [20, 0] }],
       at: [10, 8],
     };
-    store
-      .getState()
-      .dispatch(
-        addSheet({
-          sheet: { ...sheet, views: [front, sheet.views[1] as SheetView], items: [dimension] },
-        }),
-      );
+    store.getState().dispatch(
+      addSheet({
+        sheet: { ...sheet, views: [front, sheet.views[1] as SheetView], items: [dimension] },
+      }),
+    );
     const now = () => store.getState().doc.sheets?.[0] as Sheet;
     // The projected view draws at its base view's 1:2: 2 mm right on the sheet is 4 model mm,
     // 3 mm down is 6 model mm down (y up).
