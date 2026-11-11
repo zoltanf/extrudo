@@ -124,7 +124,7 @@ test('PartDesign bodies come in with their history, or as far as it rebuilds', a
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Taken from the file's own shapes, without their whole history: Lid. Most often because it has a feature Extrudo doesn't rebuild from FreeCAD files yet. The features rebuilt before that stay in the timeline, ahead of a Remove that takes out what they made.",
+      "Taken from the file's own shapes, without their whole history: Lid, because it has a feature Extrudo doesn't rebuild from FreeCAD files yet. The features rebuilt before that stay in the timeline, ahead of a Remove that takes out what they made.",
     ),
   ).toBeVisible();
   const chips = page.getByRole('list', { name: 'Features' }).locator('[data-timeline-item="chip"]');
