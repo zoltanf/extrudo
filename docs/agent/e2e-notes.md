@@ -2160,6 +2160,22 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   alone before believing it.
 - **Export**: the PDF's content streams are deflated; inflate each `/FlateDecode` stream with
   `zlib.inflateSync`. Hidden lines write `[3 1.5] 0 d`; the page is in mm (`0.5 w`).
+- **Part 2** (Projected View and the rest). Base View carries on as Projected View: the
+  `baseView` helper presses Esc after the click unless `keep`. Projected View's column is the
+  region "Projected view"; `[data-projected-next]` holds the name a click makes now ("Top",
+  "Isometric") once the pointer moved: move the pointer to the side first, then wait for it.
+  A drag with Alt: `keyboard.down('Alt')` before `mouse.down()`. A view's menu is the menu
+  "<view name> menu" (items "Projected View from This", "Fit Scale", "Delete"), opened by a
+  right-click inside the view's lines. A body is dragged with `row.dragTo(paper, …)` from the
+  browser's `[data-body]` row (drag data `application/x-extrudo-bodies`). New drawing: the radio
+  group "Start with" ("Standard views", "One view", "Empty sheet"; the `newDrawing` helper picks
+  Empty sheet), the selects "Bodies" and "Scale" (first option "Fit the sheet · 1:N"), the
+  summary `[data-new-sheets-summary]`.
+- **The template goldens** (`<slug>-standard-views-chromium-linux.txt`): New drawing's Standard
+  views of each template, exported as SVG, paths and subpaths sorted. The template's IDs must be
+  fixed (`addInitScript` makes `crypto.randomUUID` count): its edges' names follow its feature
+  IDs, and with them the curves' order and direction. Rewrite with `--update-snapshots` and look
+  at the diff.
 ### `e2e/shell-feature.spec.ts`
 
 - **Shell e2e** (`e2e/shell-feature.spec.ts`, P3-03; not `shell.spec.ts`, the

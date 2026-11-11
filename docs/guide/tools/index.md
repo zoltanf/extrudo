@@ -226,6 +226,7 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 ### Views
 
 - [Base View](./baseView.md) — A view of the model from a direction you choose: the frame follows the pointer, a click places it.
+- [Projected View](./projectedView.md) — Views lined up with a view: beside, above or below it for that side, diagonally for an isometric.
 
 ### Sheet
 
