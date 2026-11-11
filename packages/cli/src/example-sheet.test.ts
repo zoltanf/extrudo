@@ -19,6 +19,7 @@ import { kernelFeatures, loadOcct, RecomputeEngine } from '@extrudo/kernel/node'
 import { readArchive } from '@extrudo/storage';
 import { describe, expect, it } from 'vitest';
 import { openDesign } from './headless';
+import { SPOOL_HOLDER_VIEWS, spoolHolderModel } from './spool-holder';
 
 const FILE = fileURLToPath(
   new URL('../../../fixtures/benchmarks/spool-holder.extrudo', import.meta.url),
@@ -35,33 +36,8 @@ function model() {
     now: '2026-11-11T00:00:00.000Z',
     ids,
   });
-  d.parameter('axle', '12 mm', { description: 'The axle’s diameter' });
-  d.parameter('clearance', '0.4 mm', { description: 'How much wider the bore is than the axle' });
-  // The bracket: a plate, a boss on it, the bore through both and two screw holes.
-  const plate = d.box({ length: '80 mm', width: '40 mm', height: '6 mm' }, { name: 'Plate' });
-  const boss = d.cylinder(
-    { diameter: '26 mm', height: '16 mm', operation: 'join' },
-    { name: 'Boss' },
-  );
-  const bore = d.cylinder(
-    { diameter: 'axle + clearance', height: '16 mm', operation: 'cut' },
-    { name: 'Bore' },
-  );
-  const screws = [-30, 30].map((x, i) =>
-    d.cylinder(
-      { x: `${x} mm`, diameter: '4.5 mm', height: '6 mm', operation: 'cut' },
-      { name: `Screw hole ${i + 1}` },
-    ),
-  );
-  // The axle: a shaft standing in the bore, and a flange on top that keeps the spool on.
-  const shaft = d.cylinder({ diameter: 'axle', height: '50 mm' }, { name: 'Axle' });
-  const flange = d.cylinder(
-    { diameter: '22 mm', height: '3 mm', offset: '50 mm', operation: 'join' },
-    { name: 'Flange' },
-  );
-  d.setBody(plate.body(), { name: 'Bracket' });
-  d.setBody(shaft.body(), { name: 'Axle' });
-  const [left, right] = screws as [FeatureHandle, FeatureHandle];
+  const { plate, boss, bore, screws, shaft, flange } = spoolHolderModel(d);
+  const [left, right] = screws;
   const wanted: Record<string, [FeatureHandle, GeomRef]> = {
     plateFront: [plate, plate.edge([plate.faceName('cap:start'), plate.faceName('side:front')])],
     plateSide: [plate, plate.edge([plate.faceName('side:right'), plate.faceName('side:front')])],
@@ -114,7 +90,7 @@ async function spoolHolder() {
   const sheet = d.addSheet('Spool holder', {
     size: 'A4',
     start: 'standard',
-    at: { front: [75, 82], top: [75, 140], side: [165, 82], iso: [240, 70] },
+    at: SPOOL_HOLDER_VIEWS,
     fields: { title: 'Spool holder', units: 'mm', date: '{date}' },
   });
   const front = sheet.view('Front');

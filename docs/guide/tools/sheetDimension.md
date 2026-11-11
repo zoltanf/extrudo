@@ -13,5 +13,7 @@ A length, distance, radius, diameter or angle measured from the model: pick, the
 |---|---|
 | Drawing › Dimensions | D |
 
+<video src="demo:sheetDimension" muted loop autoplay playsinline aria-label="Dimension demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

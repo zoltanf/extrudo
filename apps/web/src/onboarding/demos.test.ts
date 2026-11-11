@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { TABS, TOOLS } from '../shell/tools';
-import { DEMO_CLIPS_PENDING, DEMO_TOOLS, demoUrl } from './demos';
+import { DEMO_TOOLS, demoUrl } from './demos';
 import { ToolDemo } from './ToolDemo';
 
 /** The clips on disk, by file name (their loaders are never called except for sizes). */
@@ -30,14 +30,13 @@ const WANTED = [
   'rectangularPattern',
 ];
 
-/** The owner's UI review 3 (R3-16): every tile of these tabs has a clip. */
-const WHOLE_TABS = ['solid', 'modify', 'construct', 'print', 'sketch'];
+/** The owner's UI review 3 (R3-16): every tile of these tabs has a clip (the Drawing tab's since P6-24 S6). */
+const WHOLE_TABS = ['solid', 'modify', 'construct', 'print', 'sketch', 'sheet'];
 
 describe('tool demos', () => {
   it('lists exactly the clips on disk, each for a real tool', () => {
     expect([...DEMO_TOOLS].sort()).toEqual(names);
     for (const id of DEMO_TOOLS) expect(Object.keys(TOOLS)).toContain(id);
-    for (const id of DEMO_CLIPS_PENDING) expect(Object.keys(TOOLS)).toContain(id);
   });
 
   it('has a clip for the most used tools', () => {
@@ -51,12 +50,16 @@ describe('tool demos', () => {
       const tiles = groups.flatMap((group) => group.tools);
       expect({
         tab,
-        missing: tiles.filter((id) => !DEMO_TOOLS.includes(id) && !DEMO_CLIPS_PENDING.includes(id)),
+        missing: tiles.filter((id) => !DEMO_TOOLS.includes(id)),
       }).toEqual({
         tab,
         missing: [],
       });
     }
+  });
+
+  it("has a clip for the Drawing mode's Finish Drawing tile", () => {
+    expect(DEMO_TOOLS).toContain('finishDrawing');
   });
 
   it("has a clip for every tool of the Sketch tab's menus but Import SVG/DXF", () => {

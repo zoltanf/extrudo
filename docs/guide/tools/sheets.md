@@ -13,5 +13,7 @@ Sheets of the design to print or send: open the drawing, or start one.
 |---|---|
 | Make › Output | None |
 
+<video src="demo:sheets" muted loop autoplay playsinline aria-label="Drawing demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

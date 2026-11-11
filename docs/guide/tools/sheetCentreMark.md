@@ -13,5 +13,7 @@ A cross on the centre of a circle: click a circle, or a cylinder seen from the s
 |---|---|
 | Drawing › Dimensions | None |
 
+<video src="demo:sheetCentreMark" muted loop autoplay playsinline aria-label="Centre Mark demo"></video>
+
 <!-- notes -->
 <!-- /notes -->
