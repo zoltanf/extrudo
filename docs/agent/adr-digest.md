@@ -4433,3 +4433,23 @@ read only by the import's throwaway kernel**, never by the project's kernel and 
 nothing and keeps the text's sub-shape order (the references depend on it); readers stay linear in their input (ADR-0083's
 hostile-file amendments), the XML reader has no DTD or entities; **no library file, file name or content in the
 repository** (`FCSTD_SAMPLES=<dir>` runs the private corpus, authored files only in tests).
+
+**ADR-0144, S2 (reader):** `packages/fcstd` (`@extrudo/fcstd`, deps `fflate` only so far; registered in
+`scripts/check-boundaries.mjs`) reads an `.FCStd` into plain data and knows nothing of Extrudo's document, API or
+kernel; the format is `packages/fcstd/FORMAT.md` (update it with anything newly read). `archive.ts` `unzipFcstd` walks
+the central directory itself and checks every entry before inflating any (`MAX_ENTRIES` 20,000, `MAX_ENTRY_BYTES`
+128 MB, `MAX_TOTAL_BYTES` 512 MB declared, `MAX_RATIO` 500 + 4 kB; stored/deflate only; ZIP64, encryption, several
+disks, shared local headers refused); entries inflate **only on `get`**, streaming into the declared size, which they
+must fill, CRC-32 checked; names are keys only (a non-plain name or a second entry of a name is left out with a
+problem). `xml.ts` is our own reader: no DTD, no entity but the five predefined and numeric references, limits
+`MAX_DEPTH` 256, `MAX_ATTRIBUTES` 256, `MAX_NODES` 4 M, a tree in one forward pass, null-prototype attribute records
+(keep them so: names come from the file). `model.ts` `readFcstd` decodes a property **by its value element, never its
+declared type**; numbers through `finite` (a bad number drops that property with a problem, never the file); an unknown
+element is kept raw (`kind: 'unknown'`) and counted in `unknownTypes`, never an error; sketch geometry and constraints
+stay raw records (S4 interprets them); a Python proxy's value is never decoded. Stored shapes: follow the property's
+`file` attribute (`storedShapeEntry`), never derive an entry name; `storedShapeText` never parses B-rep text (only the
+import's kernel does) and gives `undefined` plus a problem for empty, missing, binary or non-B-rep entries.
+`finalShapes` (decision 7, rule in FORMAT.md) is O(objects + links) with indexes built once, ends on container loops
+and link cycles (`MAX_LINK_HOPS` 32) with a problem, and must keep the library's count (383 objects, the same per
+file as the investigation's; change the rule only with the corpus run's new numbers). Everything left out goes to
+`FcDocument.problems`. `corpus.test.ts` runs with `FCSTD_SAMPLES` (`FCSTD_REPORT`, `FCSTD_CENSUS` optional).

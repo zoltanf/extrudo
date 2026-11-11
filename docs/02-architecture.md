@@ -107,6 +107,8 @@ extrudo/
 │  ├─ storage/             ProjectStore interface + OPFS/IndexedDB impl +
 │  │                       .extrudo zip (de)serializer
 │  ├─ fonts/               bundled fonts for sketch text (data only; ADR-0058)
+│  ├─ f3d/                 .f3d import (ADR-0083)
+│  ├─ fcstd/               FreeCAD .FCStd import (ADR-0144; the reader so far)
 │  ├─ api/                 public document API, @extrudo/api (P5-01, ADR-0068)
 │  ├─ cli/                 headless recompute and export, `extrudo` (P5-03, ADR-0069)
 │  └─ script/              (P5-02, in progress) the Script feature's sandboxed runner

@@ -448,6 +448,12 @@ importers:
         specifier: workspace:*
         version: link:../kernel
 
+  packages/fcstd:
+    dependencies:
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+
   packages/fonts: {}
 
   packages/io:

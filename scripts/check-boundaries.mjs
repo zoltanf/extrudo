@@ -52,6 +52,17 @@ const ALLOWED = {
     '@extrudo/storage',
     '@extrudo/kernel',
   ],
+  // The FreeCAD importer (ADR-0144 decision 1): reads the archive and, from
+  // its mapping slice on, builds the design through the document API. The
+  // sketch package for profiles, storage for its hash; the kernel only in its
+  // tests (the import's geometry goes through an interface the caller supplies).
+  '@extrudo/fcstd': [
+    '@extrudo/api',
+    '@extrudo/core',
+    '@extrudo/sketch',
+    '@extrudo/storage',
+    '@extrudo/kernel',
+  ],
   // The script runner (ADR-0070): user code in QuickJS, building features
   // through @extrudo/api. Nothing of the kernel's: the kernel gets the runner
   // injected, so this package stays out of its dependency graph.
