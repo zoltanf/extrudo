@@ -29,6 +29,7 @@ import {
 } from './mode';
 import { sheetStatus } from './SheetTabs';
 import { fitSheet, panSheet, sheetPoint, TRUE_SIZE, zoomSheetAt, zoomText } from './sheetView';
+import { snapshotSize } from './snapshot';
 
 const DAY = new Date(2026, 10, 11);
 
@@ -346,5 +347,12 @@ describe('the export plan (mock-up 4)', () => {
     expect(sheetExportPlan(doc, ids('a'), 'pdf', defaultExportName(doc)).files).toEqual([
       'Box lid base.pdf',
     ]);
+  });
+});
+
+describe('the sheet’s picture for Report a Bug', () => {
+  it('keeps the paper’s shape, its longer side the size asked for', () => {
+    expect(snapshotSize({ width: 420, height: 297 }, 1600)).toEqual({ width: 1600, height: 1131 });
+    expect(snapshotSize({ width: 210, height: 297 }, 1600)).toEqual({ width: 1131, height: 1600 });
   });
 });

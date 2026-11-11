@@ -51,10 +51,13 @@ import {
   zoomSheetAt,
   zoomText,
 } from './sheetView';
+import { sheetSnapshot } from './snapshot';
 
-/** What the shell can ask of the canvas: F6 and the floating bar's Fit. */
+/** What the shell can ask of the canvas: F6 and the floating bar's Fit; Report a Bug's picture. */
 export interface SheetCanvasControl {
   fit(): void;
+  /** The sheet as a PNG, its longer side `size` px. */
+  snapshot(size: number): Promise<Blob | null>;
 }
 
 export interface SheetCanvasProps {
@@ -175,7 +178,9 @@ export function SheetCanvas({
       ),
     );
   };
-  control.current = { fit };
+  const snapshot = async (size: number) =>
+    svg.current ? sheetSnapshot(svg.current, latest.current.paper, size) : null;
+  control.current = { fit, snapshot };
 
   // A sheet shown for the first time, or one whose paper changed, is fitted.
   // biome-ignore lint/correctness/useExhaustiveDependencies: refit when these change only.

@@ -1382,17 +1382,21 @@ function Shell({
     open: false,
     screenshot: null,
   });
+  // In the drawing the web build attaches the sheet, not the 3D view hidden under it.
   const capture = useCallback(async (): Promise<Blob | null> => {
     try {
+      const inSheet = session.getState().mode === 'sheet';
       return (
         (await platform.desktop?.capturePage()) ??
-        (await viewport.getState().snapshot?.(1600)) ??
+        (inSheet
+          ? await sheetControl.current?.snapshot(1600)
+          : await viewport.getState().snapshot?.(1600)) ??
         null
       );
     } catch {
       return null;
     }
-  }, [platform.desktop, viewport]);
+  }, [platform.desktop, viewport, session]);
   // Two frames before a capture, so the menu that was just closed (or the dialog and its
   // overlay on a retake) are gone from the window capture.
   const openBugReport = useCallback(async () => {
