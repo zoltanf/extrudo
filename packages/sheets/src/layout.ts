@@ -1,7 +1,9 @@
 /**
  * A sheet as a display list (P6-24 S1, ADR-0143 §7): the paper, the border
  * (with zones when asked), the title block, the views (their lines once
- * slice S2 hands them in, a placeholder until then) and the items, in sheet
+ * slice S2 hands them in, a placeholder until then) and the items (texts,
+ * dimensions, notes, centre marks and lines; for an export, sticky notes
+ * only when printed), in sheet
  * mm from the top-left corner with y down, the document's own frame. The
  * screen, `writeDisplaySvg` and `writeDisplayPdf` draw the result unchanged.
  *
@@ -31,6 +33,13 @@ import {
   transformContour,
 } from '@extrudo/io';
 import { layoutSheetDimension } from './dimensions';
+import {
+  layoutSheetCentre,
+  layoutSheetLeader,
+  layoutSheetSticky,
+  type SheetOutput,
+  sheetItemShown,
+} from './notes';
 import { fitLine, LINE_SPACING, type SheetFont, textRun, textWidth, wrapText } from './text';
 import {
   CELL_PAD,
@@ -90,12 +99,18 @@ export interface SheetContext {
   /** Each view's lines by view ID, once computed; a view not here draws as a placeholder. */
   views?: ReadonlyMap<SheetViewId, SheetViewLines>;
   /**
-   * The dimensions' anchors (`KernelApi.resolveSheet`, kept across a lost
-   * anchor with `keepLastAnchors`); a dimension not here is drawn detached.
+   * The items' anchors (`KernelApi.resolveSheet`, kept across a lost anchor
+   * with `keepLastAnchors`); an item not here is drawn detached.
    */
   anchors?: SheetAnchors;
   /** The design's length unit, which dimensions are written in; absent: mm. */
   units?: LengthUnit;
+  /**
+   * What the list is for. `screen` (the default for `layoutSheet`) draws every
+   * sticky note and marks those not printed "On screen only"; `export` (the
+   * default for `sheetsToPdf` and `sheetToSvg`) leaves those out.
+   */
+  output?: SheetOutput;
 }
 
 /**
@@ -154,7 +169,9 @@ export function layoutSheet(sheet: Sheet, context: SheetContext = {}): DisplayLi
   if (sheet.titleBlock) items.push(...titleBlock(sheet, context, width, height));
   for (const view of sheet.views)
     items.push(...viewItems(sheet, view, context.views?.get(view.id)));
-  for (const item of sheet.items) items.push(...sheetItem(sheet, item, context));
+  for (const item of sheet.items) {
+    if (sheetItemShown(sheet, item, context.output)) items.push(...sheetItem(sheet, item, context));
+  }
   return { width, height, items };
 }
 
@@ -349,6 +366,13 @@ function sheetItem(sheet: Sheet, item: SheetItem, context: SheetContext): Displa
       return layoutSheetDimension(sheet, item, context.anchors, {
         ...(context.units && { units: context.units }),
       });
+    case 'leader':
+      return layoutSheetLeader(sheet, item, context.anchors);
+    case 'centreMark':
+    case 'centreLine':
+      return layoutSheetCentre(sheet, item, context.anchors);
+    case 'sticky':
+      return layoutSheetSticky(item, { output: context.output ?? 'screen' });
     case 'text': {
       const size = item.size ?? SHEET_TEXT_SIZE;
       const key = `item:${item.id}`;

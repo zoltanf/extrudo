@@ -24,14 +24,29 @@ import {
   type SheetDimensionItem,
   type SheetViewFrame,
   sheetViewFrame,
-  toSheetView,
   UNITS,
   type Vec2,
-  type Vec3,
 } from '@extrudo/core';
-import type { Contour, DisplayItem, Point } from '@extrudo/io';
-import { sheetViewScale } from './layout';
-import { textRun, textWidth } from './text';
+import type { DisplayItem, Point } from '@extrudo/io';
+import {
+  add,
+  anchorsState,
+  closest,
+  cross2,
+  Drawing,
+  dot,
+  EPS,
+  followAnchors,
+  len,
+  placeAnchors,
+  type Shape,
+  type SheetItemState,
+  scale,
+  sub,
+  unit,
+  viewToSheet,
+} from './anchored';
+import { textWidth } from './text';
 
 /** Paper sizes of a dimension, mm (plan §4.2; ISO 129's proportions). */
 export const SHEET_DIMENSION = {
@@ -50,14 +65,8 @@ export const SHEET_DIMENSION = {
   lift: 1,
 } as const;
 
-/**
- * How a dimension is drawn, for the screen: `moved` (an anchor found by its
- * fingerprint: drawn as usual, warned about elsewhere), `detached` (an
- * anchor is lost: the screen draws it in the error colour), `invalid` (the
- * anchors resolve but don't make this dimension, say two lines that aren't
- * parallel). The export draws every state the same.
- */
-export type SheetDimensionState = 'ok' | 'moved' | 'detached' | 'invalid';
+/** How a dimension is drawn, for the screen (`SheetItemState`, as every anchored item). */
+export type SheetDimensionState = SheetItemState;
 
 export interface SheetDimensionMeasure {
   /** Model mm for a length, degrees for an angle; undefined when it can't be measured. */
@@ -72,123 +81,6 @@ export interface SheetDimensionMeasure {
 export interface SheetDimensionOptions {
   /** The design's length unit, which values are written in; absent: mm. */
   units?: LengthUnit;
-}
-
-// The geometry in view mm -----------------------------------------------------------
-
-type Shape =
-  | { kind: 'point'; p: Vec2 }
-  | { kind: 'line'; a: Vec2; b: Vec2 }
-  | { kind: 'circle'; centre: Vec2; at: (dir: Vec2) => Vec2; radius: number };
-
-/** What a dimension's anchors give in its view, or why they give nothing. */
-type Placed =
-  | { shapes: (Shape | undefined)[]; problem?: undefined }
-  | { shapes?: undefined; problem: string };
-
-function place(
-  item: SheetDimensionItem,
-  reports: readonly SheetAnchorReport[] | undefined,
-  frame: SheetViewFrame,
-): Placed {
-  const shapes: (Shape | undefined)[] = [];
-  for (const [i, anchor] of item.anchors.entries()) {
-    if ('free' in anchor) {
-      shapes.push({ kind: 'point', p: anchor.free });
-      continue;
-    }
-    const report = reports?.[i];
-    const g = report?.geometry;
-    if (!g) {
-      if (report && report.status !== 'detached' && report.message) {
-        return { problem: report.message };
-      }
-      shapes.push(undefined);
-      continue;
-    }
-    const v = (p: Vec3) => toSheetView(frame, p);
-    switch (g.type) {
-      case 'point':
-        shapes.push({ kind: 'point', p: v(g.point) });
-        break;
-      case 'line':
-      case 'silhouette':
-      case 'curve': {
-        const a = v(g.start);
-        const b = v(g.end);
-        // A line seen end-on is a point.
-        shapes.push(len(sub(b, a)) < EPS ? { kind: 'point', p: a } : { kind: 'line', a, b });
-        break;
-      }
-      case 'circle': {
-        const { centre, axis, xDirection, radius } = g;
-        const y = cross(axis, xDirection);
-        const c = v(centre);
-        // The point of the circle furthest along `dir` as the view sees it.
-        const at = (dir: Vec2): Vec2 => {
-          let best = c;
-          let reach = -Infinity;
-          for (let k = 0; k < 360; k++) {
-            const t = (k * Math.PI) / 180;
-            const p = v(
-              add3(
-                centre,
-                add3(scale3(xDirection, radius * Math.cos(t)), scale3(y, radius * Math.sin(t))),
-              ),
-            );
-            const r = dot(sub(p, c), dir);
-            if (r > reach) [best, reach] = [p, r];
-          }
-          return best;
-        };
-        shapes.push({ kind: 'circle', centre: c, at, radius });
-        break;
-      }
-    }
-  }
-  return { shapes };
-}
-
-/** The worst of the anchors' states. */
-function stateOf(
-  reports: readonly SheetAnchorReport[] | undefined,
-  item: SheetDimensionItem,
-): SheetDimensionState {
-  let state: SheetDimensionState = 'ok';
-  for (const [i, anchor] of item.anchors.entries()) {
-    if ('free' in anchor) continue;
-    const status = reports?.[i]?.status ?? 'detached';
-    if (status === 'detached') return 'detached';
-    if (status === 'moved') state = 'moved';
-  }
-  return state;
-}
-
-/**
- * Where the dimension's text is now, view mm: its stored `at`, moved as far
- * as its anchors moved since they were picked (each one's fingerprint point
- * then and now, averaged), so a dimension placed above an edge stays above
- * it when a parameter moves the edge. Free anchors don't move it.
- */
-function placedAt(
-  item: SheetDimensionItem,
-  reports: readonly SheetAnchorReport[] | undefined,
-  frame: SheetViewFrame,
-): Vec2 {
-  let dx = 0;
-  let dy = 0;
-  let n = 0;
-  for (const [i, anchor] of item.anchors.entries()) {
-    if ('free' in anchor) continue;
-    const now = reports?.[i]?.resolved?.fingerprint?.at;
-    if (!now) continue;
-    const [x0, y0] = toSheetView(frame, anchor.ref.fingerprint.at);
-    const [x1, y1] = toSheetView(frame, now);
-    dx += x1 - x0;
-    dy += y1 - y0;
-    n++;
-  }
-  return n === 0 ? item.at : [item.at[0] + dx / n, item.at[1] + dy / n];
 }
 
 // Measuring ---------------------------------------------------------------------------
@@ -391,9 +283,9 @@ function solve(
 ): Solved {
   const frame = sheetViewFrame(sheet, item.view);
   if (!frame) return { state: 'detached', message: "The dimension's view is gone.", at: item.at };
-  let state: SheetDimensionState = stateOf(reports, item);
-  const at = placedAt(item, reports, frame);
-  const placed = place(item, reports, frame);
+  let state: SheetDimensionState = anchorsState(item.anchors, reports);
+  const at = followAnchors(item.at, item.anchors, reports, frame);
+  const placed = placeAnchors(item.anchors, reports, frame);
   if (placed.problem) return { state: 'invalid', message: placed.problem, frame, at };
   const shapes = placed.shapes ?? [];
   if (shapes.some((s) => s === undefined)) {
@@ -431,20 +323,12 @@ export function layoutSheetDimension(
   const view = sheet.views.find((v) => v.id === item.view);
   if (!view) return [];
   const solved = solve(sheet, item, anchors?.[item.id]);
-  const k = (() => {
-    const [a, b] = sheetViewScale(sheet, view);
-    return a / b;
-  })();
-  const [x0, y0] = view.at;
-  /** View mm to sheet mm. */
-  const S = (p: Vec2): Point => [x0 + k * p[0], y0 - k * p[1]];
-  /** A direction in view mm to one in sheet mm (y flips). */
-  const D = (d: Vec2): Vec2 => [d[0], -d[1]];
+  const { S, D } = viewToSheet(sheet, view);
   const m = solved.measured;
   const value = m && m.type !== 'invalid' ? m.value : undefined;
   const text = sheetDimensionText(sheet, item, value, options);
   const at = S(solved.at);
-  const draw = new Drawing(`item:${item.id}`, solved.state);
+  const draw = new Drawing(`item:${item.id}`, solved.state, SHEET_DIMENSION);
   if (!m || m.type === 'invalid') {
     draw.text(text, at, 0, 'centre');
     return draw.items();
@@ -473,91 +357,6 @@ export function layoutSheetDimension(
       break;
   }
   return draw.items();
-}
-
-/** Collects one dimension's lines, arrowheads and text. */
-class Drawing {
-  readonly #lines: Contour[] = [];
-  readonly #arrows: Contour[] = [];
-  readonly #texts: DisplayItem[] = [];
-  readonly #key: string;
-  readonly #state: SheetDimensionState;
-
-  constructor(key: string, state: SheetDimensionState) {
-    this.#key = key;
-    this.#state = state;
-  }
-
-  line(a: Point, b: Point): void {
-    if (len(sub(b, a)) < EPS) return;
-    this.#lines.push({ start: a, segments: [{ type: 'line', to: b }], closed: false });
-  }
-
-  arc(centre: Point, from: Point, sweep: number, to: Point): void {
-    this.#lines.push({
-      start: from,
-      segments: [{ type: 'arc', center: centre, sweep, to }],
-      closed: false,
-    });
-  }
-
-  /** A filled arrowhead with its tip at `tip`, pointing along `dir` (sheet). */
-  arrow(tip: Point, dir: Vec2): void {
-    const { arrow, arrowWidth } = SHEET_DIMENSION;
-    const back = sub(tip, scale(dir, arrow));
-    const side = scale([-dir[1], dir[0]], arrowWidth / 2);
-    this.#arrows.push({
-      start: tip,
-      segments: [
-        { type: 'line', to: add(back, side) },
-        { type: 'line', to: sub(back, side) },
-        { type: 'line', to: tip },
-      ],
-      closed: true,
-    });
-  }
-
-  /**
-   * The text with its baseline along `angle` (sheet, radians), centred on
-   * `at` and lifted off it (`centre`), or starting at it (`start`) or ending
-   * at it (`end`), lifted.
-   */
-  text(value: string, at: Point, angle: number, align: 'centre' | 'start' | 'end'): void {
-    const { text, lift } = SHEET_DIMENSION;
-    const w = textWidth(value, text);
-    const dir: Vec2 = [Math.cos(angle), Math.sin(angle)];
-    const up: Vec2 = [Math.sin(angle), -Math.cos(angle)];
-    const shift = align === 'centre' ? -w / 2 : align === 'end' ? -w : 0;
-    const start = add(add(at, scale(dir, shift)), scale(up, lift));
-    this.#texts.push(
-      textRun(value, start, text, { key: this.#key, ...(angle !== 0 && { angle }) }),
-    );
-  }
-
-  items(): DisplayItem[] {
-    const state = this.#state === 'ok' ? {} : { state: this.#state };
-    const out: DisplayItem[] = [];
-    if (this.#lines.length > 0) {
-      out.push({
-        type: 'path',
-        contours: this.#lines,
-        stroke: { width: SHEET_DIMENSION.line, cap: 'butt' },
-        key: this.#key,
-        ...state,
-      });
-    }
-    if (this.#arrows.length > 0) {
-      out.push({
-        type: 'path',
-        contours: this.#arrows,
-        fill: { color: '#000000', rule: 'nonzero' },
-        key: this.#key,
-        ...state,
-      });
-    }
-    for (const t of this.#texts) out.push({ ...t, ...state });
-    return out;
-  }
 }
 
 /** A text angle that reads from below or from the right: in [-90°, 90°). */
@@ -706,34 +505,6 @@ function angleItems(
     SHEET_DIMENSION.lift + (Math.abs(radial[0]) * w) / 2 + (Math.abs(radial[1]) * height) / 2;
   const centre = add(at, scale(radial, clear));
   draw.text(text, add(centre, [0, height / 2 - SHEET_DIMENSION.lift]), 0, 'centre');
-}
-
-// 2D and 3D arithmetic -------------------------------------------------------------
-
-const EPS = 1e-9;
-const add = (a: Vec2, b: Vec2): Vec2 => [a[0] + b[0], a[1] + b[1]];
-const sub = (a: Vec2, b: Vec2): Vec2 => [a[0] - b[0], a[1] - b[1]];
-const scale = (a: Vec2, k: number): Vec2 => [a[0] * k, a[1] * k];
-const dot = (a: Vec2, b: Vec2) => a[0] * b[0] + a[1] * b[1];
-const cross2 = (a: Vec2, b: Vec2) => a[0] * b[1] - a[1] * b[0];
-const len = (a: Vec2) => Math.hypot(a[0], a[1]);
-const unit = (a: Vec2): Vec2 | undefined => {
-  const l = len(a);
-  return l > EPS ? [a[0] / l, a[1] / l] : undefined;
-};
-const add3 = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
-const scale3 = (a: Vec3, k: number): Vec3 => [a[0] * k, a[1] * k, a[2] * k];
-const cross = (a: Vec3, b: Vec3): Vec3 => [
-  a[1] * b[2] - a[2] * b[1],
-  a[2] * b[0] - a[0] * b[2],
-  a[0] * b[1] - a[1] * b[0],
-];
-
-/** The point of a segment nearest `p`. */
-function closest(line: { a: Vec2; b: Vec2 }, p: Vec2): Vec2 {
-  const d = sub(line.b, line.a);
-  const t = Math.max(0, Math.min(1, dot(sub(p, line.a), d) / dot(d, d)));
-  return add(line.a, scale(d, t));
 }
 
 function nearestEnd(line: { a: Vec2; b: Vec2 }, p: Vec2): Vec2 {

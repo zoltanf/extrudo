@@ -612,27 +612,40 @@ An object whose **`kind`** says which of two it is:
 #### 4.11.3 `SheetItem`
 
 An object whose **`kind`** says what it is. Every item has an `id`, unique
-among every sheet's items. This version knows two kinds; later versions add
-more (notes, lists), and a reader leaves out an item of a kind it doesn't
-know (section 3).
+among every sheet's items. This version knows six kinds; later versions add
+more (balloons, lists, tables), and a reader leaves out an item of a kind it
+doesn't know (section 3). An item that belongs to a view names it in `view`, a
+view of the same sheet, and its positions are in the view's own mm (model
+size, x right, y up, the world origin at 0, 0), so it moves and scales with
+the view; removing the view removes it. An item on the sheet itself (a text,
+a sticky note) has its positions in sheet mm from the top-left, y down.
 
 | `kind` | Fields | Meaning |
 |---|---|---|
 | `text` | `at` ([x, y]), `text` (string), `size` (number, optional), `width` (number, optional) | A text placed on the sheet. `at` is its top-left corner, mm. `text` is plain, up to 2000 characters and not blank; it may contain newlines. `size` is the letter height in mm, absent means 3.5. `width`, when present, is the width it wraps at, in mm. |
 | `dimension` | `view` (ID), `type` (string), `direction` (string, optional), `anchors` (array of SheetAnchor, 4.11.4), `at` ([x, y]), `decimals` (integer, optional), `before` (string, optional), `after` (string, optional), `reference` (boolean, optional) | A dimension in a view, measured from the model and never driving it; **its value is not stored**, it is measured each time the sheet is drawn. `view` is a view of the same sheet (removing the view removes the dimension). `type` is `linear` (a distance), `radius` or `diameter` (a circle) or `angle` (between two lines). `direction`, for a linear one only: `horizontal`, `vertical` or `aligned`; absent means it follows where the dimension is placed. `anchors` are one or two, fitting the type: `linear` takes one whole edge or outline (its length) or two anchors that are points or lines; `radius` one circle (a whole circular edge or a cylinder's face); `diameter` one circle or two outlines (a cylinder seen from the side); `angle` two lines (whole edges or outlines). Whether a whole edge is a line or a circle is the model's to say when the sheet is drawn. `at` is where its text is, in the view's own mm (model size, x right, y up, the world origin at 0, 0), so it moves and scales with the view; when the anchors' geometry moves (a parameter changes), the text moves as far as their fingerprint points moved. `decimals` is 0 to 4, absent means the sheet's. `before` and `after` are written around the value (and before `R` or `Ø`), up to 100 characters each. `reference` (`true` only) writes it in brackets. |
+| `leader` | `view` (ID), `anchor` (SheetAnchor, 4.11.4), `at` ([x, y]), `text` (string) | A leader note: text with a line and an arrowhead to the model. `anchor` is any one anchor: a vertex or an edge's point (the arrow ends on it), a whole edge (on the edge's nearest point to the text, on a circle's rim towards it), a whole face (a dot on it), an outline, or a free point. `at` is where the leader line ends and the text starts, in the view's own mm; it follows the anchor as a dimension's text does. `text` is plain, up to 2000 characters and not blank; it may contain newlines. |
+| `sticky` | `at` ([x, y]), `size` ([number, number]), `text` (string), `color` (string, optional), `print` (boolean, optional) | A coloured note on the sheet. `at` is its top-left corner and `size` its width and height, mm, 5 to 1000 each. `text` is plain, up to 2000 characters and not blank, wrapped inside the note. `color` is `yellow`, `orange`, `pink`, `blue` or `green`; absent means yellow. `print` (`true` only) puts it in exports; absent, it is shown on screen only. |
+| `centreMark` | `view` (ID), `anchors` (array of SheetAnchor) | A cross on a circle's centre. `anchors` is one: a whole edge that is a circle, or a cylinder's face. |
+| `centreLine` | `view` (ID), `anchors` (array of SheetAnchor) | A dash-dot centre line. `anchors` are two lines (whole edges or outlines) that are parallel in the view, the line running midway between them, or one cylinder's or cone's face, the line along its axis. |
+
+The view's `centreLines` (`false`) leaves its centre marks and centre lines
+out. Nothing is added to a view by itself: every centre mark and line is an
+item someone placed.
 
 #### 4.11.4 `SheetAnchor`
 
-What a dimension measures from: one of three shapes, told apart by their keys.
+What a dimension measures from, or a leader note, a centre mark or a centre
+line is drawn on: one of three shapes, told apart by their keys.
 
 | Shape | Fields | Meaning |
 |---|---|---|
-| On geometry | `ref` (GeomRef), `at` (string, optional) | `ref` names a `vertex`, an `edge` or a `face` by its persistent name (section 10) and **must carry its `fingerprint`**; an `index:` reference is refused. `at` takes one point of an edge: `start`, `end`, `middle` or `centre` (a circle's or an ellipse's); absent means the whole edge, the vertex, or a cylinder's face (for a radius or diameter). A vertex and a face never have `at`. |
-| On an outline | `ref` (GeomRef), `silhouette` (`1` or `-1`) | The outline of a cylinder or cone `face` as the dimension's view sees it: `1` is the one on the side the face's axis (with its canonical sign: first non-zero component positive) crossed with the view's direction points to, `-1` the other. |
+| On geometry | `ref` (GeomRef), `at` (string, optional) | `ref` names a `vertex`, an `edge` or a `face` by its persistent name (section 10) and **must carry its `fingerprint`**; an `index:` reference is refused. `at` takes one point of an edge: `start`, `end`, `middle` or `centre` (a circle's or an ellipse's); absent means the whole edge, the vertex, or the face (a cylinder's circle for a radius, a diameter or a centre mark, its axis for a centre line, a point on it for a leader note). A vertex and a face never have `at`. |
+| On an outline | `ref` (GeomRef), `silhouette` (`1` or `-1`) | The outline of a cylinder or cone `face` as the item's view sees it: `1` is the one on the side the face's axis (with its canonical sign: first non-zero component positive) crossed with the view's direction points to, `-1` the other. |
 | Free | `free` ([x, y]) | A point in the view's own mm, tied to nothing. |
 
 An anchor whose geometry is gone is not an error: the file still loads and
-the dimension is drawn as detached (the reference resolves as a feature's
+the item is drawn as detached (the reference resolves as a feature's
 does, section 10: by its name, a related name or its fingerprint). An anchor
 on geometry of a feature the design no longer has, or one that is
 suppressed, is detached without that search: a close match there would be
@@ -658,7 +671,8 @@ another edge.
       {
         "kind": "dimension", "id": "9e04…", "view": "41c2…", "type": "linear", "at": [0, -12],
         "anchors": [{ "ref": { "kind": "edge", "id": "e[box:…:side:front|box:…:cap:start]", "fingerprint": { "type": "line", "at": [0, -20, 0], "dir": [1, 0, 0], "size": 60 } } }]
-      }
+      },
+      { "kind": "sticky", "id": "5f1d…", "at": [300, 30], "size": [50, 30], "text": "Check the fit after the first print." }
     ]
   }
 ]
