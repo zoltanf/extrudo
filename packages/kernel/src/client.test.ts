@@ -77,6 +77,7 @@ describe('KernelClient', () => {
       cancelCheck: async () => {},
       sheetViews: async () => [],
       cancelSheetViews: async () => {},
+      resolveSheet: async () => ({}),
     };
     const client = new KernelClient(() => {
       spawned++;
@@ -126,6 +127,7 @@ describe('KernelClient', () => {
       cancelCheck: async () => {},
       sheetViews: async () => [],
       cancelSheetViews: async () => {},
+      resolveSheet: async () => ({}),
     };
     const client = new KernelClient(
       () => ({ api: crashing, terminate: () => {}, onFatal: () => {} }),

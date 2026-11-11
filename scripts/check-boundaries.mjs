@@ -75,8 +75,16 @@ const ALLOWED = {
   // Drawing sheets (P6-24, ADR-0143 §7): layout into display lists and the
   // PDF/SVG output. The document's sheets, the text module (Inter's outlines
   // through `@extrudo/sketch/text`), io's display list and writers, the font
-  // IDs. No kernel: view lines are handed in.
-  '@extrudo/sheets': ['@extrudo/core', '@extrudo/sketch', '@extrudo/io', '@extrudo/fonts'],
+  // IDs. No kernel: view lines and resolved anchors are handed in; the
+  // kernel is a devDependency only, for the tests that measure dimensions on
+  // shapes it builds (`dimensions.kernel.test.ts`).
+  '@extrudo/sheets': [
+    '@extrudo/core',
+    '@extrudo/sketch',
+    '@extrudo/io',
+    '@extrudo/fonts',
+    '@extrudo/kernel',
+  ],
   // The landing page: no internal packages (ADR-0057).
   '@extrudo/site': [],
   // The Electron desktop app (P6-01, ADR-0075 §1): the web app's own UI and

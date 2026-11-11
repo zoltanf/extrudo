@@ -52,6 +52,7 @@ export function workerApi(service: KernelService): KernelApi {
     cancelCheck: () => service.cancelCheck(),
     sheetViews: (requests, onView) => service.sheetViews(requests, onView),
     cancelSheetViews: () => service.cancelSheetViews(),
+    resolveSheet: (sheet) => service.resolveSheet(sheet),
     debugTestPart: async () => {
       const part = await service.debugTestPart();
       return Comlink.transfer(part, meshBuffers(part.mesh));

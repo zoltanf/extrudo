@@ -1,0 +1,747 @@
+/**
+ * Dimensions on a sheet (P6-24 S3, ADR-0143's S3 amendment): from the
+ * anchors the kernel resolved (`KernelApi.resolveSheet`), the view's frame
+ * and scale, a dimension's value in model units and its display items
+ * (extension lines, the dimension line, filled arrowheads, the text). The
+ * app, its Dimension tool's preview and the CLI all go through here, so they
+ * give the same value and the same picture.
+ *
+ * What is measured is the geometry as the view shows it: a linear distance
+ * and an angle in the view's plane at model size, a radius or a diameter the
+ * circle's own. Nothing is stored: the value comes from the anchors each
+ * time.
+ *
+ * Frames: a dimension's `at` and a free anchor are in the view's own mm
+ * (model size, x right, y up, `toSheetView`); the display items are in sheet
+ * mm, y down. Sizes on paper (arrowheads, gaps, the text) are sheet mm and
+ * don't scale with the view.
+ */
+import {
+  type LengthUnit,
+  type Sheet,
+  type SheetAnchorReport,
+  type SheetAnchors,
+  type SheetDimensionItem,
+  type SheetViewFrame,
+  sheetViewFrame,
+  toSheetView,
+  UNITS,
+  type Vec2,
+  type Vec3,
+} from '@extrudo/core';
+import type { Contour, DisplayItem, Point } from '@extrudo/io';
+import { sheetViewScale } from './layout';
+import { textRun, textWidth } from './text';
+
+/** Paper sizes of a dimension, mm (plan §4.2; ISO 129's proportions). */
+export const SHEET_DIMENSION = {
+  /** Its lines (`SHEET_LINE.thin`; a literal, as layout.ts imports this file). */
+  line: 0.18,
+  /** The text's letter height. */
+  text: 3.5,
+  /** An arrowhead's length and width. */
+  arrow: 3,
+  arrowWidth: 1,
+  /** The gap between the geometry and an extension line. */
+  gap: 1,
+  /** How far an extension line runs past the dimension line. */
+  overshoot: 2,
+  /** The text's distance above its line. */
+  lift: 1,
+} as const;
+
+/**
+ * How a dimension is drawn, for the screen: `moved` (an anchor found by its
+ * fingerprint: drawn as usual, warned about elsewhere), `detached` (an
+ * anchor is lost: the screen draws it in the error colour), `invalid` (the
+ * anchors resolve but don't make this dimension, say two lines that aren't
+ * parallel). The export draws every state the same.
+ */
+export type SheetDimensionState = 'ok' | 'moved' | 'detached' | 'invalid';
+
+export interface SheetDimensionMeasure {
+  /** Model mm for a length, degrees for an angle; undefined when it can't be measured. */
+  value: number | undefined;
+  /** What is written: the value with its decimals, R or Ø, before and after, brackets. */
+  text: string;
+  state: SheetDimensionState;
+  /** Why it is detached or invalid. */
+  message?: string;
+}
+
+export interface SheetDimensionOptions {
+  /** The design's length unit, which values are written in; absent: mm. */
+  units?: LengthUnit;
+}
+
+// The geometry in view mm -----------------------------------------------------------
+
+type Shape =
+  | { kind: 'point'; p: Vec2 }
+  | { kind: 'line'; a: Vec2; b: Vec2 }
+  | { kind: 'circle'; centre: Vec2; at: (dir: Vec2) => Vec2; radius: number };
+
+/** What a dimension's anchors give in its view, or why they give nothing. */
+type Placed =
+  | { shapes: (Shape | undefined)[]; problem?: undefined }
+  | { shapes?: undefined; problem: string };
+
+function place(
+  item: SheetDimensionItem,
+  reports: readonly SheetAnchorReport[] | undefined,
+  frame: SheetViewFrame,
+): Placed {
+  const shapes: (Shape | undefined)[] = [];
+  for (const [i, anchor] of item.anchors.entries()) {
+    if ('free' in anchor) {
+      shapes.push({ kind: 'point', p: anchor.free });
+      continue;
+    }
+    const report = reports?.[i];
+    const g = report?.geometry;
+    if (!g) {
+      if (report && report.status !== 'detached' && report.message) {
+        return { problem: report.message };
+      }
+      shapes.push(undefined);
+      continue;
+    }
+    const v = (p: Vec3) => toSheetView(frame, p);
+    switch (g.type) {
+      case 'point':
+        shapes.push({ kind: 'point', p: v(g.point) });
+        break;
+      case 'line':
+      case 'silhouette':
+      case 'curve': {
+        const a = v(g.start);
+        const b = v(g.end);
+        // A line seen end-on is a point.
+        shapes.push(len(sub(b, a)) < EPS ? { kind: 'point', p: a } : { kind: 'line', a, b });
+        break;
+      }
+      case 'circle': {
+        const { centre, axis, xDirection, radius } = g;
+        const y = cross(axis, xDirection);
+        const c = v(centre);
+        // The point of the circle furthest along `dir` as the view sees it.
+        const at = (dir: Vec2): Vec2 => {
+          let best = c;
+          let reach = -Infinity;
+          for (let k = 0; k < 360; k++) {
+            const t = (k * Math.PI) / 180;
+            const p = v(
+              add3(
+                centre,
+                add3(scale3(xDirection, radius * Math.cos(t)), scale3(y, radius * Math.sin(t))),
+              ),
+            );
+            const r = dot(sub(p, c), dir);
+            if (r > reach) [best, reach] = [p, r];
+          }
+          return best;
+        };
+        shapes.push({ kind: 'circle', centre: c, at, radius });
+        break;
+      }
+    }
+  }
+  return { shapes };
+}
+
+/** The worst of the anchors' states. */
+function stateOf(
+  reports: readonly SheetAnchorReport[] | undefined,
+  item: SheetDimensionItem,
+): SheetDimensionState {
+  let state: SheetDimensionState = 'ok';
+  for (const [i, anchor] of item.anchors.entries()) {
+    if ('free' in anchor) continue;
+    const status = reports?.[i]?.status ?? 'detached';
+    if (status === 'detached') return 'detached';
+    if (status === 'moved') state = 'moved';
+  }
+  return state;
+}
+
+/**
+ * Where the dimension's text is now, view mm: its stored `at`, moved as far
+ * as its anchors moved since they were picked (each one's fingerprint point
+ * then and now, averaged), so a dimension placed above an edge stays above
+ * it when a parameter moves the edge. Free anchors don't move it.
+ */
+function placedAt(
+  item: SheetDimensionItem,
+  reports: readonly SheetAnchorReport[] | undefined,
+  frame: SheetViewFrame,
+): Vec2 {
+  let dx = 0;
+  let dy = 0;
+  let n = 0;
+  for (const [i, anchor] of item.anchors.entries()) {
+    if ('free' in anchor) continue;
+    const now = reports?.[i]?.resolved?.fingerprint?.at;
+    if (!now) continue;
+    const [x0, y0] = toSheetView(frame, anchor.ref.fingerprint.at);
+    const [x1, y1] = toSheetView(frame, now);
+    dx += x1 - x0;
+    dy += y1 - y0;
+    n++;
+  }
+  return n === 0 ? item.at : [item.at[0] + dx / n, item.at[1] + dy / n];
+}
+
+// Measuring ---------------------------------------------------------------------------
+
+/** A distance between two places along `u`, with where its extension lines start. */
+interface Linear {
+  /** The two places measured (their difference along `u` is the value). */
+  p: Vec2;
+  q: Vec2;
+  /** Unit, view mm. */
+  u: Vec2;
+}
+
+type Measured =
+  | { type: 'linear'; value: number; linear: Linear }
+  | { type: 'circle'; value: number; circle: Extract<Shape, { kind: 'circle' }> }
+  | { type: 'angle'; value: number; vertex: Vec2; a: Vec2; b: Vec2; ends: [Vec2[], Vec2[]] }
+  | { type: 'invalid'; message: string };
+
+function measure(item: SheetDimensionItem, shapes: Shape[], at: Vec2): Measured {
+  switch (item.type) {
+    case 'linear':
+      return linearOf(shapes, at, item.direction);
+    case 'radius':
+    case 'diameter': {
+      const [one] = shapes;
+      // A cylinder from the side: across its two outlines.
+      if (shapes.length === 2) return linearOf(shapes, at, 'aligned');
+      if (one?.kind !== 'circle') return { type: 'invalid', message: 'The edge is not a circle.' };
+      return {
+        type: 'circle',
+        value: item.type === 'radius' ? one.radius : 2 * one.radius,
+        circle: one,
+      };
+    }
+    case 'angle':
+      return angleOf(shapes, at);
+  }
+}
+
+const NOT_PARALLEL = "The lines aren't parallel: dimension their angle instead.";
+
+function linearOf(shapes: Shape[], at: Vec2, direction: SheetDimensionItem['direction']): Measured {
+  // A whole circular edge stands for its centre.
+  const s = shapes.map((x): Shape => (x.kind === 'circle' ? { kind: 'point', p: x.centre } : x));
+  const fixed = (d: SheetDimensionItem['direction']): Vec2 | undefined =>
+    d === 'horizontal' ? [1, 0] : d === 'vertical' ? [0, 1] : undefined;
+  const done = (p: Vec2, q: Vec2, u: Vec2): Measured => ({
+    type: 'linear',
+    value: Math.abs(dot(sub(q, p), u)),
+    linear: { p, q, u },
+  });
+  const [first, second] = s;
+  if (!first) return { type: 'invalid', message: 'There is nothing to measure.' };
+  // One line, or two points: from one end to the other.
+  const ends = !second
+    ? first.kind === 'line'
+      ? ([first.a, first.b] as const)
+      : undefined
+    : first.kind === 'point' && second.kind === 'point'
+      ? ([first.p, second.p] as const)
+      : undefined;
+  if (!second && !ends) return { type: 'invalid', message: 'A single point has no length.' };
+  if (ends) {
+    const [p, q] = ends;
+    const d = sub(q, p);
+    const u =
+      fixed(direction) ??
+      (direction === 'aligned' ? unit(d) : autoDirection(p, q, at)) ??
+      ([1, 0] as Vec2);
+    return done(p, q, u);
+  }
+  // A point and a line, or two lines.
+  const lines = s.filter((x): x is Extract<Shape, { kind: 'line' }> => x.kind === 'line');
+  const line = lines[0] as Extract<Shape, { kind: 'line' }>;
+  const along = unit(sub(line.b, line.a)) as Vec2;
+  const normal: Vec2 = [-along[1], along[0]];
+  const u = fixed(direction) ?? normal;
+  const square = Math.abs(dot(along, u)) < 1e-6;
+  if (lines.length === 2) {
+    const other = lines[1] as Extract<Shape, { kind: 'line' }>;
+    const d2 = unit(sub(other.b, other.a)) as Vec2;
+    if (Math.abs(cross2(along, d2)) > 1e-6 || !square)
+      return { type: 'invalid', message: NOT_PARALLEL };
+    // From the first line where it is nearest the text, straight across to the second.
+    const p = closest(line, at);
+    return done(p, closest(other, p), u);
+  }
+  const point = (s.find((x) => x.kind === 'point') as Extract<Shape, { kind: 'point' }>).p;
+  const q = square ? closest(line, point) : nearestEnd(line, point);
+  return first.kind === 'point' ? done(point, q, u) : done(q, point, u);
+}
+
+/**
+ * Which way an unset linear dimension measures: horizontal when its text is
+ * above or below the two points, vertical when beside them, else along them.
+ */
+function autoDirection(p: Vec2, q: Vec2, at: Vec2): Vec2 | undefined {
+  const inX = at[0] >= Math.min(p[0], q[0]) && at[0] <= Math.max(p[0], q[0]);
+  const inY = at[1] >= Math.min(p[1], q[1]) && at[1] <= Math.max(p[1], q[1]);
+  const d = sub(q, p);
+  if (Math.abs(d[1]) < EPS) return [1, 0];
+  if (Math.abs(d[0]) < EPS) return [0, 1];
+  if (inX && !inY) return [1, 0];
+  if (inY && !inX) return [0, 1];
+  return unit(d);
+}
+
+function angleOf(shapes: Shape[], at: Vec2): Measured {
+  const [a, b] = shapes;
+  if (a?.kind !== 'line' || b?.kind !== 'line') {
+    return { type: 'invalid', message: 'An angle is between two lines.' };
+  }
+  const da = unit(sub(a.b, a.a)) as Vec2;
+  const db = unit(sub(b.b, b.a)) as Vec2;
+  const det = cross2(da, db);
+  if (Math.abs(det) < 1e-9)
+    return { type: 'invalid', message: 'The lines are parallel: they make no angle.' };
+  // Where the lines cross.
+  const t = cross2(sub(b.a, a.a), db) / det;
+  const vertex = add(a.a, scale(da, t));
+  // The sector the text is in: each line's ray on the text's side.
+  const toAt = sub(at, vertex);
+  const [x, y] = inBasis(toAt, da, db);
+  const ra = scale(da, x < 0 ? -1 : 1);
+  const rb = scale(db, y < 0 ? -1 : 1);
+  const value = (Math.acos(Math.max(-1, Math.min(1, dot(ra, rb)))) * 180) / Math.PI;
+  return {
+    type: 'angle',
+    value,
+    vertex,
+    a: ra,
+    b: rb,
+    ends: [
+      [a.a, a.b],
+      [b.a, b.b],
+    ],
+  };
+}
+
+// The text ---------------------------------------------------------------------------
+
+/**
+ * A dimension's text (plan §4.5): the value at the item's decimals (else the
+ * sheet's), a length in the design's unit without the unit, R before a
+ * radius and Ø before a diameter, ° after an angle; `before` and `after`
+ * around it; in brackets for a reference dimension. `?` for a value that
+ * can't be measured.
+ */
+export function sheetDimensionText(
+  sheet: Pick<Sheet, 'decimals'>,
+  item: SheetDimensionItem,
+  value: number | undefined,
+  options: SheetDimensionOptions = {},
+): string {
+  const decimals = item.decimals ?? sheet.decimals;
+  let number = '?';
+  if (value !== undefined) {
+    const shown =
+      item.type === 'angle' ? value : value / (UNITS[options.units ?? 'mm']?.factor ?? 1);
+    number = shown.toFixed(decimals);
+    if (/^-0\.?0*$/.test(number)) number = number.slice(1);
+  }
+  const symbol = item.type === 'radius' ? 'R' : item.type === 'diameter' ? 'Ø' : '';
+  const unit = item.type === 'angle' ? '°' : '';
+  const text = `${item.before ?? ''}${symbol}${number}${unit}${item.after ?? ''}`;
+  return item.reference ? `(${text})` : text;
+}
+
+/** A dimension's value, text and state from the resolved anchors (`resolveSheet`). */
+export function measureSheetDimension(
+  sheet: Sheet,
+  item: SheetDimensionItem,
+  anchors: SheetAnchors | undefined,
+  options: SheetDimensionOptions = {},
+): SheetDimensionMeasure {
+  const solved = solve(sheet, item, anchors?.[item.id]);
+  const value = solved.measured?.type === 'invalid' ? undefined : solved.measured?.value;
+  return {
+    value,
+    text: sheetDimensionText(sheet, item, value, options),
+    state: solved.state,
+    ...(solved.message && { message: solved.message }),
+  };
+}
+
+interface Solved {
+  state: SheetDimensionState;
+  message?: string;
+  frame?: SheetViewFrame;
+  /** The text's place now, view mm. */
+  at: Vec2;
+  measured?: Measured;
+}
+
+function solve(
+  sheet: Sheet,
+  item: SheetDimensionItem,
+  reports: readonly SheetAnchorReport[] | undefined,
+): Solved {
+  const frame = sheetViewFrame(sheet, item.view);
+  if (!frame) return { state: 'detached', message: "The dimension's view is gone.", at: item.at };
+  let state: SheetDimensionState = stateOf(reports, item);
+  const at = placedAt(item, reports, frame);
+  const placed = place(item, reports, frame);
+  if (placed.problem) return { state: 'invalid', message: placed.problem, frame, at };
+  const shapes = placed.shapes ?? [];
+  if (shapes.some((s) => s === undefined)) {
+    return {
+      state: 'detached',
+      message: 'This dimension lost its edge: drag an end onto an edge, or delete it.',
+      frame,
+      at,
+    };
+  }
+  const measured = measure(item, shapes as Shape[], at);
+  let message: string | undefined;
+  if (measured.type === 'invalid') {
+    if (state !== 'detached') state = 'invalid';
+    message = measured.message;
+  } else if (state === 'detached') {
+    message = 'This dimension lost its edge: drag an end onto an edge, or delete it.';
+  }
+  return { state, frame, at, measured, ...(message && { message }) };
+}
+
+// Layout -----------------------------------------------------------------------------
+
+/**
+ * A dimension's display items in sheet mm, keyed `item:<id>`, each with the
+ * dimension's `state` unless it is `ok`. A dimension that can't be measured
+ * (detached with no geometry kept, or invalid) is its text alone at `at`.
+ */
+export function layoutSheetDimension(
+  sheet: Sheet,
+  item: SheetDimensionItem,
+  anchors: SheetAnchors | undefined,
+  options: SheetDimensionOptions = {},
+): DisplayItem[] {
+  const view = sheet.views.find((v) => v.id === item.view);
+  if (!view) return [];
+  const solved = solve(sheet, item, anchors?.[item.id]);
+  const k = (() => {
+    const [a, b] = sheetViewScale(sheet, view);
+    return a / b;
+  })();
+  const [x0, y0] = view.at;
+  /** View mm to sheet mm. */
+  const S = (p: Vec2): Point => [x0 + k * p[0], y0 - k * p[1]];
+  /** A direction in view mm to one in sheet mm (y flips). */
+  const D = (d: Vec2): Vec2 => [d[0], -d[1]];
+  const m = solved.measured;
+  const value = m && m.type !== 'invalid' ? m.value : undefined;
+  const text = sheetDimensionText(sheet, item, value, options);
+  const at = S(solved.at);
+  const draw = new Drawing(`item:${item.id}`, solved.state);
+  if (!m || m.type === 'invalid') {
+    draw.text(text, at, 0, 'centre');
+    return draw.items();
+  }
+  switch (m.type) {
+    case 'linear':
+      linearItems(draw, S(m.linear.p), S(m.linear.q), D(m.linear.u), at, text);
+      break;
+    case 'circle': {
+      const c = S(m.circle.centre);
+      const towards = unit(sub(at, c)) ?? ([Math.SQRT1_2, -Math.SQRT1_2] as Vec2);
+      // The circle's point furthest that way on the sheet (y flips back for the view).
+      const rim = (dir: Vec2) => S(m.circle.at([dir[0], -dir[1]]));
+      circleItems(
+        draw,
+        c,
+        rim(towards),
+        item.type === 'diameter' ? rim(scale(towards, -1)) : undefined,
+        at,
+        text,
+      );
+      break;
+    }
+    case 'angle':
+      angleItems(draw, S(m.vertex), D(m.a), D(m.b), [m.ends[0].map(S), m.ends[1].map(S)], at, text);
+      break;
+  }
+  return draw.items();
+}
+
+/** Collects one dimension's lines, arrowheads and text. */
+class Drawing {
+  readonly #lines: Contour[] = [];
+  readonly #arrows: Contour[] = [];
+  readonly #texts: DisplayItem[] = [];
+  readonly #key: string;
+  readonly #state: SheetDimensionState;
+
+  constructor(key: string, state: SheetDimensionState) {
+    this.#key = key;
+    this.#state = state;
+  }
+
+  line(a: Point, b: Point): void {
+    if (len(sub(b, a)) < EPS) return;
+    this.#lines.push({ start: a, segments: [{ type: 'line', to: b }], closed: false });
+  }
+
+  arc(centre: Point, from: Point, sweep: number, to: Point): void {
+    this.#lines.push({
+      start: from,
+      segments: [{ type: 'arc', center: centre, sweep, to }],
+      closed: false,
+    });
+  }
+
+  /** A filled arrowhead with its tip at `tip`, pointing along `dir` (sheet). */
+  arrow(tip: Point, dir: Vec2): void {
+    const { arrow, arrowWidth } = SHEET_DIMENSION;
+    const back = sub(tip, scale(dir, arrow));
+    const side = scale([-dir[1], dir[0]], arrowWidth / 2);
+    this.#arrows.push({
+      start: tip,
+      segments: [
+        { type: 'line', to: add(back, side) },
+        { type: 'line', to: sub(back, side) },
+        { type: 'line', to: tip },
+      ],
+      closed: true,
+    });
+  }
+
+  /**
+   * The text with its baseline along `angle` (sheet, radians), centred on
+   * `at` and lifted off it (`centre`), or starting at it (`start`) or ending
+   * at it (`end`), lifted.
+   */
+  text(value: string, at: Point, angle: number, align: 'centre' | 'start' | 'end'): void {
+    const { text, lift } = SHEET_DIMENSION;
+    const w = textWidth(value, text);
+    const dir: Vec2 = [Math.cos(angle), Math.sin(angle)];
+    const up: Vec2 = [Math.sin(angle), -Math.cos(angle)];
+    const shift = align === 'centre' ? -w / 2 : align === 'end' ? -w : 0;
+    const start = add(add(at, scale(dir, shift)), scale(up, lift));
+    this.#texts.push(
+      textRun(value, start, text, { key: this.#key, ...(angle !== 0 && { angle }) }),
+    );
+  }
+
+  items(): DisplayItem[] {
+    const state = this.#state === 'ok' ? {} : { state: this.#state };
+    const out: DisplayItem[] = [];
+    if (this.#lines.length > 0) {
+      out.push({
+        type: 'path',
+        contours: this.#lines,
+        stroke: { width: SHEET_DIMENSION.line, cap: 'butt' },
+        key: this.#key,
+        ...state,
+      });
+    }
+    if (this.#arrows.length > 0) {
+      out.push({
+        type: 'path',
+        contours: this.#arrows,
+        fill: { color: '#000000', rule: 'nonzero' },
+        key: this.#key,
+        ...state,
+      });
+    }
+    for (const t of this.#texts) out.push({ ...t, ...state });
+    return out;
+  }
+}
+
+/** A text angle that reads from below or from the right: in [-90°, 90°). */
+function readable(dir: Vec2): number {
+  let a = Math.atan2(dir[1], dir[0]);
+  if (a >= Math.PI / 2 - 1e-9) a -= Math.PI;
+  else if (a < -Math.PI / 2 - 1e-9) a += Math.PI;
+  return a;
+}
+
+/**
+ * A linear dimension (sheet mm): extension lines from `p` and `q` square to
+ * `u` out to the dimension line through `at`, the line with an arrowhead at
+ * each end (inside, or outside when there is no room), the text above it in
+ * its direction.
+ */
+function linearItems(draw: Drawing, p: Point, q: Point, u: Vec2, at: Point, text: string): void {
+  const { gap, overshoot, arrow, text: height } = SHEET_DIMENSION;
+  const n: Vec2 = [-u[1], u[0]];
+  const p2 = add(p, scale(n, dot(sub(at, p), n)));
+  const q2 = add(q, scale(n, dot(sub(at, q), n)));
+  for (const [from, to] of [
+    [p, p2],
+    [q, q2],
+  ] as const) {
+    const reach = len(sub(to, from));
+    if (reach <= gap) continue;
+    const out = scale(sub(to, from), 1 / reach);
+    draw.line(add(from, scale(out, gap)), add(to, scale(out, overshoot)));
+  }
+  const span = dot(sub(q2, p2), u);
+  const along = span >= 0 ? u : scale(u, -1);
+  const length = Math.abs(span);
+  // The text along the line, centred on `at`; the line reaches out to it when it is beyond an end.
+  const angle = readable(u);
+  const w = textWidth(text, height);
+  const t = dot(sub(at, p2), along);
+  const lo = Math.min(0, t - w / 2);
+  const hi = Math.max(length, t + w / 2);
+  if (length < EPS) {
+    draw.text(text, at, angle, 'centre');
+    return;
+  }
+  const inside = length >= 2 * arrow + 1;
+  if (inside) {
+    draw.line(add(p2, scale(along, Math.min(0, lo))), add(p2, scale(along, Math.max(length, hi))));
+    draw.arrow(p2, scale(along, -1));
+    draw.arrow(q2, along);
+  } else {
+    // No room: the arrowheads outside, pointing in, on stubs.
+    const stub = arrow + 2;
+    draw.line(
+      add(p2, scale(along, Math.min(-stub, lo))),
+      add(p2, scale(along, Math.max(length + stub, hi))),
+    );
+    draw.arrow(p2, along);
+    draw.arrow(q2, scale(along, -1));
+  }
+  draw.text(text, at, angle, 'centre');
+}
+
+/**
+ * A radius (no `back`) or a diameter (sheet mm): the line from the centre
+ * (from the far side for a diameter) through the rim towards `at`, an
+ * arrowhead at the rim (both rims for a diameter); outside the circle a
+ * short horizontal shelf under the text.
+ */
+function circleItems(
+  draw: Drawing,
+  c: Point,
+  rim: Point,
+  back: Point | undefined,
+  at: Point,
+  text: string,
+): void {
+  const { text: height } = SHEET_DIMENSION;
+  const r = len(sub(rim, c));
+  const out = unit(sub(rim, c)) ?? ([1, 0] as Vec2);
+  const reach = len(sub(at, c));
+  const far = reach > r ? at : rim;
+  draw.line(back ?? c, far);
+  draw.arrow(rim, out);
+  if (back) draw.arrow(back, unit(sub(back, c)) ?? scale(out, -1));
+  if (reach > r) {
+    const w = textWidth(text, height);
+    const right = out[0] >= 0;
+    const end = add(at, [right ? w + 1 : -(w + 1), 0]);
+    draw.line(at, end);
+    draw.text(text, right ? add(at, [0.5, 0]) : add(at, [-0.5, 0]), 0, right ? 'start' : 'end');
+  } else {
+    draw.text(text, at, 0, 'centre');
+  }
+}
+
+/**
+ * An angle (sheet mm): an arc about the lines' crossing through `at`, from
+ * one ray to the other, arrowheads at its ends, extension lines where the
+ * edges stop short of it, the text level, just outside the arc.
+ */
+function angleItems(
+  draw: Drawing,
+  vertex: Point,
+  ra: Vec2,
+  rb: Vec2,
+  ends: [Point[], Point[]],
+  at: Point,
+  text: string,
+): void {
+  const { gap, overshoot, text: height } = SHEET_DIMENSION;
+  const radius = Math.max(len(sub(at, vertex)), 1);
+  const from = add(vertex, scale(ra, radius));
+  const to = add(vertex, scale(rb, radius));
+  let sweep = Math.atan2(rb[1], rb[0]) - Math.atan2(ra[1], ra[0]);
+  while (sweep > Math.PI) sweep -= 2 * Math.PI;
+  while (sweep < -Math.PI) sweep += 2 * Math.PI;
+  draw.arc(vertex, from, sweep, to);
+  const turn = Math.sign(sweep) || 1;
+  // Tangent at each end, pointing away from the arc's middle.
+  draw.arrow(from, scale([-ra[1], ra[0]], -turn));
+  draw.arrow(to, scale([-rb[1], rb[0]], turn));
+  for (const [ray, pts] of [
+    [ra, ends[0]],
+    [rb, ends[1]],
+  ] as const) {
+    const along = pts.map((p) => dot(sub(p, vertex), ray));
+    const reach = Math.max(...along);
+    const start = Math.min(...along);
+    if (reach < radius - gap) {
+      // The edge stops short of the arc: out from its end to past the arc.
+      draw.line(
+        add(vertex, scale(ray, Math.max(reach, 0) + gap)),
+        add(vertex, scale(ray, radius + overshoot)),
+      );
+    } else if (start > radius + gap) {
+      // The edge starts beyond the arc: back from its start to inside the arc.
+      draw.line(
+        add(vertex, scale(ray, start - gap)),
+        add(vertex, scale(ray, Math.max(radius - overshoot, 0))),
+      );
+    }
+  }
+  // Level text just outside the arc, clear of it however the arc runs there.
+  const radial = unit(sub(at, vertex)) ?? ([0, -1] as Vec2);
+  const w = textWidth(text, height);
+  const clear =
+    SHEET_DIMENSION.lift + (Math.abs(radial[0]) * w) / 2 + (Math.abs(radial[1]) * height) / 2;
+  const centre = add(at, scale(radial, clear));
+  draw.text(text, add(centre, [0, height / 2 - SHEET_DIMENSION.lift]), 0, 'centre');
+}
+
+// 2D and 3D arithmetic -------------------------------------------------------------
+
+const EPS = 1e-9;
+const add = (a: Vec2, b: Vec2): Vec2 => [a[0] + b[0], a[1] + b[1]];
+const sub = (a: Vec2, b: Vec2): Vec2 => [a[0] - b[0], a[1] - b[1]];
+const scale = (a: Vec2, k: number): Vec2 => [a[0] * k, a[1] * k];
+const dot = (a: Vec2, b: Vec2) => a[0] * b[0] + a[1] * b[1];
+const cross2 = (a: Vec2, b: Vec2) => a[0] * b[1] - a[1] * b[0];
+const len = (a: Vec2) => Math.hypot(a[0], a[1]);
+const unit = (a: Vec2): Vec2 | undefined => {
+  const l = len(a);
+  return l > EPS ? [a[0] / l, a[1] / l] : undefined;
+};
+const add3 = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const scale3 = (a: Vec3, k: number): Vec3 => [a[0] * k, a[1] * k, a[2] * k];
+const cross = (a: Vec3, b: Vec3): Vec3 => [
+  a[1] * b[2] - a[2] * b[1],
+  a[2] * b[0] - a[0] * b[2],
+  a[0] * b[1] - a[1] * b[0],
+];
+
+/** The point of a segment nearest `p`. */
+function closest(line: { a: Vec2; b: Vec2 }, p: Vec2): Vec2 {
+  const d = sub(line.b, line.a);
+  const t = Math.max(0, Math.min(1, dot(sub(p, line.a), d) / dot(d, d)));
+  return add(line.a, scale(d, t));
+}
+
+function nearestEnd(line: { a: Vec2; b: Vec2 }, p: Vec2): Vec2 {
+  return len(sub(line.a, p)) <= len(sub(line.b, p)) ? line.a : line.b;
+}
+
+/** Coordinates of `v` in the basis (a, b). */
+function inBasis(v: Vec2, a: Vec2, b: Vec2): [number, number] {
+  const det = cross2(a, b);
+  return [cross2(v, b) / det, cross2(a, v) / det];
+}

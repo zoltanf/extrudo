@@ -90,8 +90,8 @@ export function remintAnnotations(
 
 /**
  * Sheets that came with reminted features (ADR-0143): a view's `bodies`
- * (`<feature>:<n>`) name the new IDs, like `remintFeatures`' references.
- * Nothing else in a sheet names a feature yet; anchors join with S3.
+ * (`<feature>:<n>`) and a dimension's anchor references name the new IDs,
+ * like `remintFeatures`' references.
  */
 export function remintSheets(
   sheets: readonly Sheet[],
@@ -103,6 +103,18 @@ export function remintSheets(
     ...sheet,
     views: sheet.views.map((view) =>
       view.bodies ? { ...view, bodies: view.bodies.map((b) => rename(b) as BodyId) } : view,
+    ),
+    items: sheet.items.map((item) =>
+      item.kind === 'dimension'
+        ? {
+            ...item,
+            anchors: item.anchors.map((anchor) =>
+              'ref' in anchor
+                ? { ...anchor, ref: { ...anchor.ref, id: rename(anchor.ref.id) } }
+                : anchor,
+            ),
+          }
+        : item,
     ),
   }));
 }
