@@ -25,7 +25,7 @@ function geometry(type: string, curve: string, o: CurveOptions = {}): string {
     form === 'legacy'
       ? ''
       : `<GeoExtensions count="1"><GeoExtension type="Sketcher::SketchGeometryExtension" id="1" internalGeometryType="${o.internal ?? 0}" geometryModeFlags="${flags}" geometryLayer="0"/></GeoExtensions>`;
-  // 1.0+ also writes the old element, after the curve, always 0 for old readers' sake.
+  // 1.0+ also writes the old element after the curve; 0 here, so a test shows the extension wins.
   const legacy =
     form === 'legacy'
       ? `<Construction value="${c ? 1 : 0}"/>`

@@ -233,3 +233,103 @@ The format as read is in `packages/fcstd/FORMAT.md`.
   for objects outside bodies; the study took it from FreeCAD's own counts. The
   reader looks for a solid record in the B-rep text's shape table
   (`brepHasSolid`), one forward scan, no parsing; it selects the same objects.
+
+## Amendment (S4, 2026-11-11): sketches
+
+`packages/fcstd` turns a sketch object into an Extrudo sketch through the API:
+`decodeSketch` (`sketch-decode.ts`) reads the geometry and constraint records
+into typed data, `sketchFrame` and `placeSketch` (`sketch-place.ts`) choose the
+plane, `mapSketch` (`sketch-map.ts`) draws and vets, and `addSketch`
+(`sketches.ts`) does one sketch and returns plain outcome data for S5.
+Written fresh; the prototype was a reference for the rules only.
+
+- **Placement.** The frame is the stored `Placement` times the placements of
+  the containers that move what they hold (bodies, parts, origins, coordinate
+  systems, PartDesign booleans, assemblies; folders pass through), outermost
+  first: the sketch lands where FreeCAD shows it, in world coordinates. The
+  frame becomes an origin plane when its normal is along one's (mirrored when
+  it points against it), that plane moved along its normal when the origin is
+  off it, or a plane turned about an origin axis from the origin plane through
+  it (moved likewise), as the f3d importer does. A frame tilted off every
+  origin axis gets no plane and the sketch is not imported, with the reason:
+  never a guessed plane. In the library that is the 2 tangent-plane sketches.
+  **Containers with a placement of their own** are applied, not kept: Extrudo
+  components carry no transform yet (ADR-0081), so the world frame is the
+  only one that puts the geometry where the author saw it. 101 of the 221
+  sketches sit in a container, 21 in one that is moved; 4 of those are turned
+  in their plane by it, so their horizontal and vertical constraints have no
+  Extrudo counterpart as such (below).
+- **Geometry.** Lines, circles, arcs, points and plain B-splines (not
+  periodic, all weights 1, clamped knots) are drawn through the 2D map; a
+  mirrored map draws an arc from its other end, so it still runs
+  counter-clockwise. Ellipses, arcs of ellipses, other conics, rational or
+  periodic B-splines, helper geometry (pole circles, knot points) and
+  zero-length lines are left out and counted, and so is every constraint on
+  them. The construction flag is read in each version's form.
+- **Constraints**, by FreeCAD's table: coincident, horizontal and vertical (a
+  line or two points; which is which follows the map, so a swapped frame
+  swaps them; in a frame turned in its plane a level line becomes parallel to
+  the drawn sketch axis, point pairs and X/Y distances are left out), parallel,
+  tangent (two curves; a joint as coincident + tangent or, for two lines,
+  collinear; a point on a curve as point-on-curve + tangent), distance (a
+  line, two points, a point and a line), X/Y distance (a line, two points, a
+  point's coordinate from the origin), angle (with `supplement` when a
+  direction is taken from a line's end; 0° or 180° as parallel), perpendicular
+  (two lines; a line and a circle as the line through its centre; at a joint
+  with a coincident), radius, diameter (an arc's as a radius), equal, point on
+  object, symmetric about a line, symmetric about a point when the two points
+  are one line's ends (as a midpoint), block (as fix). A reference dimension
+  comes in driven. A FreeCAD name becomes the dimension's parameter name when
+  it is a free, valid one. References to the origin and the two axes are
+  fixed construction geometry the importer draws (decision 8), kept only when
+  a kept constraint uses them.
+- **Vetting** follows the f3d importer (ADR-0083): a constraint goes in only
+  when the drawn geometry satisfies it (1e-6 mm, 1e-9 in sine or cosine,
+  1e-7°); the sketch is solved; what the solver calls redundant or
+  conflicting comes out, the latest first, one per component and round; while
+  a solve still moves a point or a radius by more than 1e-6 mm, each
+  candidate on what moved is tried out alone and the one without which the
+  sketch moves least comes out (the latest of equals; latest-first alone
+  took out 18 innocent constraints on the library before the culprit, this
+  takes out 4). A constraint stated twice is redundant without asking the
+  solver. Without a solver no constraint goes in. Every FreeCAD constraint
+  gets one outcome: `mapped`, or `unreadable`, `external` (S9), `geometry`,
+  `internal`, `unsupported`, `inactive`, `mismatch`, `overconstrains`,
+  `moves`, `limit`, `failed` or `unchecked`. Expressions on constraints are
+  not evaluated: the stored number goes in and the binding (sketch,
+  constraint index, name, expression, the dimension that holds it) comes back
+  for S10.
+- **Limits** (from the library, with room): 10,000 curves per sketch (largest
+  28), 20,000 constraints (71), 1,000 poles per B-spline (3); a sketch over
+  one is not imported. Vetting takes the first 1,000 constraints
+  (`MAX_CANDIDATES`, f3d's), at most 64 solve rounds (`MAX_VET_ROUNDS`), after
+  which everything still in trouble comes out at once, and at most 256 trial
+  solves. Every step is linear in the sketch's size.
+- **Library numbers** (`FCSTD_SAMPLES`, `sketch-corpus.test.ts`): 219 of 221
+  sketches placed (97 on an origin plane, 121 on an offset plane, 1 on a plane
+  at an angle; 27 mirrored; FreeCAD's axes on Extrudo's 207, swapped 7, turned
+  5), as the prototype. Constraints, on the placed sketches' 2,984 (the base
+  the prototype used; 3,114 over all 221): **2,744 mapped (92.0 %)** against
+  the prototype's 2,784, which mapped without vetting. The difference: 35 the
+  solver calls redundant (FreeCAD saves redundant sets; the prototype saw the
+  same 18 sketches with redundancies) and 4 that move (one per sketch of the
+  prototype's 4 moving ones, the stored arc centre 1e-5 mm off square under a
+  joint), now left out; 2 X/Y distances in the moved part's turned frames left
+  out, which the prototype read in the part's own frame; 1 level line in a
+  turned frame now kept as a parallel. Left out: 94 internal (B-spline helper
+  ties), 91 external, 35 overconstraining, 16 unsupported (14 point
+  symmetries, the 2 X/Y distances), 4 moving. **Nothing kept moves**: the
+  largest displacement after the final solve is 6e-8 mm (the prototype's 4
+  movers went up to 1.4e-5). 96 sketches come in fully constrained. 44
+  bindings, every one on a mapped dimension. The stored placement equals
+  FreeCAD 1.1's own for 219 sketches (the other 2 are 0.14 back-side
+  sketches FreeCAD re-attaches), and the 2D map puts every sketch point where
+  FreeCAD's frame does to 1e-11 mm. All 221 import in 0.8 s, the slowest
+  in 44 ms.
+- **Gaps met, for later slices:** a plane from an arbitrary frame (the 2
+  tangent-plane sketches; also what would keep horizontal/vertical in a frame
+  turned in its plane); symmetry about a point that isn't a line's middle (14);
+  arc length, angle of an arc, via-point tangency and angles, point on a
+  B-spline; ellipse arcs, rational and periodic B-splines (none in the
+  library); a component with a transform (ADR-0081), so a moved body's
+  sketches could stay in its frame.

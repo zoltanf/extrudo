@@ -344,7 +344,7 @@ describe('addSketch', () => {
   it('leaves the datums out when nothing kept needs them', () => {
     const i = one({
       geometry: [line(0, 0, 10, 1)],
-      // Horizontal on a slanted line: left out, and the H axis it never needed isn't drawn.
+      // An end off the horizontal axis: left out, and the axis it needed is taken out again.
       constraints: [constraint({ type: T.pointOnObject, first: 0, firstPos: 2, second: H })],
     });
     expect(sketchOutcome(i).perConstraint).toEqual(['mismatch']);

@@ -450,6 +450,15 @@ importers:
 
   packages/fcstd:
     dependencies:
+      '@extrudo/api':
+        specifier: workspace:*
+        version: link:../api
+      '@extrudo/core':
+        specifier: workspace:*
+        version: link:../core
+      '@extrudo/sketch':
+        specifier: workspace:*
+        version: link:../sketch
       fflate:
         specifier: ^0.8.3
         version: 0.8.3

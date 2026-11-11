@@ -109,7 +109,7 @@ export interface DecodedSketch {
   /** One slot per stored record, in the file's order; `undefined` where the record couldn't be read. */
   readonly geometry: readonly (FcGeometry | undefined)[];
   readonly constraints: readonly (FcConstraint | undefined)[];
-  /** Set when the sketch breaks a limit: nothing else is decoded then. */
+  /** Set when the sketch breaks a limit: no geometry is decoded then, and every constraint slot is empty. */
   readonly overLimit?: string;
   /** What couldn't be read, one line each. */
   readonly problems: readonly string[];
