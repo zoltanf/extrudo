@@ -722,8 +722,8 @@ and says that the features rebuilt before a stop stay ahead of a Remove.
   bodies left out as in S3. The import makes **282 `import`s instead of 291**;
   the 348 other final shapes come in exactly as in S3.
 - **The one that differs** is a pad in a 0.20 file whose stored tool is a
-  frustum (radius 2.225 mm down to 2.12 mm over 12 mm, half a degree), with no
-  taper property in the file: nothing to map, and the check catches it.
+  frustum (it narrows by about half a degree), with no taper property in the
+  file: nothing to map, and the check catches it.
 - Of the features outside a body's chain, 28 pads, 36 pockets and 2
   revolutions are in files from before bodies (S12's) and 1 pad, 1 pocket and
   1 revolution are in a body past its tip; the prototype's 62 of 70 pads and 52 of 67 pockets counted those
