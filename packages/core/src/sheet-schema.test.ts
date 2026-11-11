@@ -4,9 +4,13 @@ import { loadDocument, loadNotice } from './migrations';
 import { DocumentSchema, type ExtrudoDocument } from './schema';
 import {
   dimensionProblems,
+  mapSheetItemAnchors,
   projectedFrom,
   type Sheet,
   type SheetDimensionItem,
+  type SheetItem,
+  sheetItemAnchors,
+  sheetItemProblems,
   sheetItemView,
   sheetPaperSize,
 } from './sheet-schema';
@@ -228,7 +232,7 @@ describe('sheet helpers', () => {
 });
 
 describe('loading a sheet item of a kind this version does not know (ADR-0143)', () => {
-  /** A file as a newer Extrudo would write it: a balloon between two texts. */
+  /** A file as a newer Extrudo would write it: a balloon between two texts, a table. */
   function newer(): Record<string, unknown> {
     const doc = withSheets([full(), sheet('s2', 'Sheet 2')]);
     const raw = JSON.parse(JSON.stringify(doc));
@@ -240,11 +244,11 @@ describe('loading a sheet item of a kind this version does not know (ADR-0143)',
       list: 'p1',
     });
     raw.sheets[1].items.push({
-      kind: 'sticky',
+      kind: 'table',
       id: 'k1',
       at: [1, 1],
-      size: [40, 40],
-      text: 'later',
+      columns: [40],
+      rows: [['later']],
     });
     return raw;
   }
@@ -394,5 +398,135 @@ describe('dimension items (ADR-0143, S3)', () => {
 
   it('accepts an anchor whose geometry the design no longer has (it is drawn detached)', () => {
     expect(issues(on(dim({ anchors: [edge('e[gone|gone]')] })))).toEqual([]);
+  });
+});
+
+describe('notes and centre lines (ADR-0143, S4)', () => {
+  const fp = { type: 'line', at: [0, 0, 5] as [number, number, number], size: 10 };
+  const edge = (id = 'e[a|b]') => ({ ref: { kind: 'edge' as const, id, fingerprint: fp } });
+  const face = (id = 'f[c]') => ({
+    ref: {
+      kind: 'face' as const,
+      id,
+      fingerprint: { type: 'cylinder', at: [0, 0, 0] as [number, number, number] },
+    },
+  });
+  const vertex = {
+    ref: {
+      kind: 'vertex' as const,
+      id: 'v[a|b|c]',
+      fingerprint: { type: 'point', at: [1, 2, 3] as [number, number, number] },
+    },
+  };
+  const leader = (extra: Partial<Extract<SheetItem, { kind: 'leader' }>> = {}): SheetItem => ({
+    kind: 'leader',
+    id: iid('n1'),
+    view: vid('v1'),
+    anchor: edge(),
+    at: [20, 20],
+    text: '4× Ø5 through\nCountersunk',
+    ...extra,
+  });
+  const sticky = (extra: Partial<Extract<SheetItem, { kind: 'sticky' }>> = {}): SheetItem => ({
+    kind: 'sticky',
+    id: iid('k1'),
+    at: [300, 30],
+    size: [50, 30],
+    text: 'Check the fit',
+    ...extra,
+  });
+  const centre = (
+    kind: 'centreMark' | 'centreLine',
+    anchors: Extract<SheetItem, { kind: 'centreMark' }>['anchors'],
+    id = 'c1',
+  ): SheetItem => ({ kind, id: iid(id), view: vid('v1'), anchors });
+  const on = (...items: SheetItem[]) => withSheets([sheet('s1', 'A', { views: [front()], items })]);
+
+  it('reads back every kind with every option through JSON, and says which view each is in', () => {
+    const doc = on(
+      leader(),
+      leader({ id: iid('n2'), anchor: face() }),
+      leader({ id: iid('n3'), anchor: { free: [1, 2] } }),
+      leader({ id: iid('n4'), anchor: { ...edge(), at: 'centre' } }),
+      leader({ id: iid('n5'), anchor: { ...face(), silhouette: -1 } }),
+      sticky({ color: 'pink', print: true }),
+      sticky({ id: iid('k2') }),
+      centre('centreMark', [edge()]),
+      centre('centreMark', [face()], 'c2'),
+      centre('centreLine', [edge(), { ...face(), silhouette: 1 }], 'c3'),
+      centre('centreLine', [face()], 'c4'),
+    );
+    const parsed = DocumentSchema.safeParse(JSON.parse(JSON.stringify(doc)));
+    expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+    expect(parsed.data).toEqual(doc);
+    expect(sheetItemView(leader())).toBe('v1');
+    expect(sheetItemView(centre('centreLine', [face()]))).toBe('v1');
+    expect(sheetItemView(sticky())).toBeUndefined();
+  });
+
+  it("lists each kind's anchors in one place, and maps them in the same order", () => {
+    expect(sheetItemAnchors(leader())).toEqual([edge()]);
+    expect(sheetItemAnchors(centre('centreLine', [edge('e1'), edge('e2')]))).toEqual([
+      edge('e1'),
+      edge('e2'),
+    ]);
+    expect(sheetItemAnchors(sticky())).toEqual([]);
+    expect(sheetItemAnchors({ kind: 'text', id: iid('t'), at: [0, 0], text: 'x' })).toEqual([]);
+    const renamed = mapSheetItemAnchors(leader(), () => ({ free: [9, 9] }));
+    expect(renamed).toEqual({ ...leader(), anchor: { free: [9, 9] } });
+    const s = sticky();
+    expect(mapSheetItemAnchors(s, () => ({ free: [0, 0] }))).toBe(s);
+  });
+
+  it('refuses a sticky note out of range, in an unknown colour, printed as false, or blank', () => {
+    expect(issues(on(sticky({ size: [4, 30] })))).not.toEqual([]);
+    expect(issues(on(sticky({ size: [50, 1001] })))).not.toEqual([]);
+    expect(issues(on(sticky({ color: 'red' as never })))).not.toEqual([]);
+    expect(issues(on(sticky({ print: false as never })))).not.toEqual([]);
+    expect(issues(on(sticky({ text: '  ' })))).not.toEqual([]);
+    expect(issues(on(leader({ text: '' })))).not.toEqual([]);
+    // A sticky note may not name a view: it belongs to the sheet.
+    expect(issues(on({ ...sticky(), view: 'v1' } as never))).not.toEqual([]);
+  });
+
+  it("refuses a note's or a centre line's view on another sheet", () => {
+    const other = withSheets([
+      sheet('s1', 'A', { views: [front()] }),
+      sheet('s2', 'B', { items: [leader(), centre('centreMark', [edge()])] }),
+    ]);
+    expect(issues(other)).toEqual([
+      'sheets.1.items.0.view is v1, which is not a view of this sheet',
+      'sheets.1.items.1.view is v1, which is not a view of this sheet',
+    ]);
+  });
+
+  it('refuses anchors that do not fit the kind', () => {
+    const cases: [SheetItem, string][] = [
+      [leader({ anchor: { ...vertex, at: 'start' } }), 'anchor takes the start of a vertex'],
+      [leader({ anchor: { ...edge(), silhouette: 1 } }), 'anchor is an outline of an edge'],
+      [centre('centreMark', [vertex]), "anchors don't fit a centre mark"],
+      [centre('centreMark', [{ ...edge(), at: 'centre' }]), "anchors don't fit a centre mark"],
+      [centre('centreMark', [{ ...face(), silhouette: 1 }]), "anchors don't fit a centre mark"],
+      [centre('centreMark', [edge(), edge('e2')]), "anchors don't fit a centre mark"],
+      [centre('centreMark', [{ free: [0, 0] }]), "anchors don't fit a centre mark"],
+      [centre('centreLine', [edge()]), "anchors don't fit a centre line"],
+      [centre('centreLine', [face(), face('f2')]), "anchors don't fit a centre line"],
+      [centre('centreLine', [edge(), { free: [0, 0] }]), "anchors don't fit a centre line"],
+      [centre('centreLine', [edge(), vertex]), "anchors don't fit a centre line"],
+      [centre('centreLine', [{ ...vertex, at: 'end' }]), 'anchors.0 takes the end of a vertex'],
+    ];
+    for (const [item, message] of cases) {
+      expect(issues(on(item)).join('\n'), JSON.stringify(item)).toMatch(
+        new RegExp(`sheets\\.0\\.items\\.0\\.${message}`),
+      );
+    }
+    expect(issues(on(centre('centreLine', [])))).not.toEqual([]);
+    expect(sheetItemProblems(centre('centreLine', [edge(), edge('e2')]))).toEqual([]);
+    expect(sheetItemProblems(leader({ anchor: vertex }))).toEqual([]);
+  });
+
+  it('accepts anchors whose geometry the design no longer has (they are drawn detached)', () => {
+    expect(issues(on(leader({ anchor: edge('e[gone|gone]') })))).toEqual([]);
+    expect(issues(on(centre('centreMark', [edge('e[gone|gone]')])))).toEqual([]);
   });
 });

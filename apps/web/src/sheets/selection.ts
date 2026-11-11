@@ -249,7 +249,8 @@ export function moveCommands(
     const at = findSheetItem(sheets, id);
     const sheet = at && sheets[at.sheet];
     const item = at && sheet?.items[at.item];
-    if (!sheet || !item) continue;
+    // A centre mark or line has no place of its own: it sits on its geometry.
+    if (!sheet || !item || !('at' in item)) continue;
     const [x, y] = item.at;
     const view = sheetItemView(item);
     if (view === undefined) {

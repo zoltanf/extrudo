@@ -4,7 +4,7 @@ import { removeFeature, restoreVersion } from './document-commands';
 import type { BodyId, FeatureId, SheetId, SheetItemId, SheetViewId } from './ids';
 import { remintSheets } from './remint';
 import { DocumentSchema, type ExtrudoDocument } from './schema';
-import type { Sheet, SheetDimensionItem, SheetTextItem } from './sheet-schema';
+import type { Sheet, SheetDimensionItem, SheetItem, SheetTextItem } from './sheet-schema';
 import {
   addSheet,
   addSheetItem,
@@ -413,5 +413,78 @@ describe('sheets and the rest of the document', () => {
     expect(kept.sheets).toEqual(doc.sheets);
     expect(roundTrip(doc, removeSheetView({ id: vid('v1') })).sheets?.[0]?.items).toEqual([]);
     expect(roundTrip(doc, removeSheetItems({ ids: [iid('d1')] })).sheets?.[0]?.items).toEqual([]);
+  });
+
+  it("remintSheets renames a leader's and a centre line's anchors, and leaves a sticky note", () => {
+    const fingerprint = { type: 'line', at: [0, 0, 0] as [number, number, number] };
+    const ref = (id: string) => ({ kind: 'edge' as const, id, fingerprint });
+    const items: SheetItem[] = [
+      {
+        kind: 'leader',
+        id: iid('n1'),
+        view: vid('v1'),
+        anchor: { ref: ref('e[extrude:cmd.f1:side:0|f2:cap]') },
+        at: [5, 5],
+        text: 'Here',
+      },
+      {
+        kind: 'centreLine',
+        id: iid('c1'),
+        view: vid('v1'),
+        anchors: [{ ref: ref('e[extrude:cmd.f1:side:1|f2:cap]') }, { ref: ref('e[f2:a|f2:b]') }],
+      },
+      {
+        kind: 'centreMark',
+        id: iid('c2'),
+        view: vid('v1'),
+        anchors: [{ ref: { ...ref('f[extrude:cmd.f1:side:2]'), kind: 'face' } }],
+      },
+      { kind: 'sticky', id: iid('k1'), at: [1, 1], size: [30, 20], text: 'Later' },
+    ];
+    const [out] = remintSheets(
+      [sheet('s1', 'A', { views: [front()], items })],
+      [feature('cmd.f1')],
+      ['new1'] as FeatureId[],
+    );
+    expect(out?.items).toEqual([
+      { ...items[0], anchor: { ref: ref('e[extrude:new1:side:0|f2:cap]') } },
+      {
+        ...items[1],
+        anchors: [{ ref: ref('e[extrude:new1:side:1|f2:cap]') }, { ref: ref('e[f2:a|f2:b]') }],
+      },
+      { ...items[2], anchors: [{ ref: { ...ref('f[extrude:new1:side:2]'), kind: 'face' } }] },
+      items[3],
+    ]);
+  });
+
+  it('removing a view removes its notes, centre marks and lines, and keeps the sticky notes', () => {
+    const fingerprint = { type: 'line', at: [0, 0, 0] as [number, number, number] };
+    const anchor = { ref: { kind: 'edge' as const, id: 'e[box:f3:a|box:f3:b]', fingerprint } };
+    const sticky: SheetItem = {
+      kind: 'sticky',
+      id: iid('k1'),
+      at: [1, 1],
+      size: [30, 20],
+      text: 'Later',
+      print: true,
+    };
+    const items: SheetItem[] = [
+      { kind: 'leader', id: iid('n1'), view: vid('v1'), anchor, at: [5, 5], text: 'Here' },
+      { kind: 'centreMark', id: iid('c1'), view: vid('v1'), anchors: [anchor] },
+      { kind: 'centreLine', id: iid('c2'), view: vid('v2'), anchors: [anchor, anchor] },
+      { kind: 'leader', id: iid('n2'), view: vid('v4'), anchor, at: [5, 5], text: 'Kept' },
+      sticky,
+    ];
+    const views = [front(), projected('v2', 'v1', 'Right'), front('v4', 'Other')];
+    let doc = withSheets(sheet('s1', 'A', { views }));
+    for (const item of items) doc = roundTrip(doc, addSheetItem({ sheet: sid('s1'), item }));
+    doc = roundTrip(
+      doc,
+      updateSheetItem({ id: iid('k1'), changes: { color: 'blue', print: null } }),
+    );
+    expect(doc.sheets?.[0]?.items[4]).toEqual({ ...sticky, color: 'blue', print: undefined });
+    const after = roundTrip(doc, removeSheetView({ id: vid('v1') }));
+    expect(after.sheets?.[0]?.items.map((i) => i.id)).toEqual(['n2', 'k1']);
+    expect(roundTrip(doc, removeFeature({ id: 'f3' as FeatureId })).sheets).toEqual(doc.sheets);
   });
 });

@@ -4,6 +4,7 @@
  * `@extrudo/sketch/text`: load `SHEET_FONTS` there (`loadFont`) first.
  */
 
+export type { SheetItemState } from './anchored';
 export {
   layoutSheetDimension,
   measureSheetDimension,
@@ -30,6 +31,20 @@ export {
   sheetViewScale,
   VIEW_PLACEHOLDER,
 } from './layout';
+export {
+  layoutSheetCentre,
+  layoutSheetLeader,
+  layoutSheetSticky,
+  SHEET_NOTE,
+  SHEET_STICKY,
+  SHEET_STICKY_SCREEN_ONLY,
+  type SheetItemStatus,
+  type SheetNoteOptions,
+  type SheetOutput,
+  sheetItemShown,
+  sheetItemStatus,
+  sheetStickiesLeftOut,
+} from './notes';
 export { sheetsToPdf, sheetToSvg } from './output';
 export {
   LINE_SPACING,
