@@ -166,6 +166,12 @@ export interface FacadeBinding {
     bnz: number,
   ): number;
   edgeVisibility(shape: number, dx: number, dy: number, dz: number): number;
+  hlrSpans(shape: number, dx: number, dy: number, dz: number, samples: number): number;
+  hlrPolySpans(shape: number, dx: number, dy: number, dz: number, deflection: number): number;
+  hlrIntsPtr(): number;
+  hlrIntsSize(): number;
+  hlrNumbersPtr(): number;
+  hlrNumbersSize(): number;
   geometryPtr(): number;
   geometrySize(): number;
   sketchClear(): void;

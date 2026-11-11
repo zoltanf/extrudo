@@ -904,8 +904,9 @@ export class Recomputer {
         }
         const full = this.#document.getState().doc;
         const marker = full.timelineMarker;
-        // Annotations may name sketches past the marker (ADR-0126); a command can't read them.
-        const { annotations: _notes, annotationCounter: _counter, ...rest } = full;
+        // Annotations may name sketches past the marker (ADR-0126) and sheets bodies past
+        // it (ADR-0143); a command can't read either.
+        const { annotations: _notes, annotationCounter: _counter, sheets: _sheets, ...rest } = full;
         const doc: ExtrudoDocument = {
           ...rest,
           features: full.features.slice(0, marker),

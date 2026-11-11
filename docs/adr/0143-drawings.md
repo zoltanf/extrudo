@@ -1,7 +1,8 @@
 # ADR-0143: Drawings: 2D sheets made from the model
 
 - **Status:** Accepted, 2026-11-10 (the owner: the 14 decisions of the plan's §12, all as
-  proposed). **Nothing is built yet.** Each slice lands with an amendment here.
+  proposed). S1a (modes) and S0 (spikes) are done, and S1's document and its layout and
+  output (no UI yet), see the amendments at the end. Each slice lands with an amendment here.
 - **Task:** P6-24 (`docs/03-roadmap.md`); FR-DR-01 to FR-DR-08.
 - **Specification and mock-ups:** `docs/plans/drawings-2026-11-10.md` and the five
   `docs/plans/drawings-mock-*.html` pages beside it. This ADR records what was decided and
@@ -167,6 +168,50 @@ The plan's §10 has what each is done by. S0 and S1a can run side by side.
 - **Third angle, printed sticky notes and hidden lines off as defaults.** Each stays a
   setting.
 
+## Amendment (S0), 2026-11-10: what HLR costs, the spans method, our PDF writer
+
+The spikes' numbers, drawings and readers are in the plan's §13.
+
+- **HLR cost does not follow size.** OCCT's exact hidden-line removal (`Update` + `Hide`)
+  takes 7–362 ms for six axis views of B2–B6, B8, B10 and a 209-face assembly (249 ms), but
+  13.5 s on B7 (3.3–3.5 s per side view of the knurl), 5.1 s on B9 (3.8 s along the
+  thread's axis) and 1.7 s on P4-01; isometric views of the same bodies take 1–250 ms. The
+  heap top did not move. A view is one call that can't be interrupted.
+- **The facade method is our own walk of HLR's data** (`hlrSpans`, built): per entry the
+  model edge (split pieces mapped back through the outliner's `NewSOldS`), its kind (sharp,
+  smooth, seam, outline), an outline's face, the edge's parameter range, and the visible and
+  hidden spans in the edge's own 3D parameter; outlines HLR adds carry their curve. A smooth
+  edge or seam that a face turns away at is an outline that keeps its edge. HLR's status
+  intervals are used as they are: they are already 3D parameters.
+- **Rejected: `HLRBRep_HLRToShape`.** Its edge building after `Hide` takes under a
+  millisecond, so it is no faster, and its compounds carry no link to the model edges or
+  faces, so dimension anchors would need geometric matching to get a name back.
+- **Rejected: Helvetica with its advance widths** for the selectable text layer: better
+  per-letter selection boxes, but the widths are Adobe's AFM data and need a NOTICE entry;
+  open with the owner. Courier, monospaced, needs no table.
+- **`hlrPolySpans` (`HLRBRep_PolyAlgo` on the faces' triangulation) is the quick path:**
+  2.5 ms for B7's side view and 8 ms for B9's axis view, against 3.4 s and 3.8 s, with each
+  piece's source edge, but chords of the mesh with small artefacts. **For S2:** a view is
+  drawn from it at once and replaced by `hlrSpans` when that finishes; only the exact result
+  feeds dimensions and snapping. Views compute one at a time with progress, cancel acts
+  between views, and the per-direction cache (§6.2.3) is required.
+- **`writePdf` is in `@extrudo/io`** (`pdf.ts`): PDF 1.4, page size in mm, deflated
+  streams, Béziers for arcs, a `text` item that fills the caller's glyph outlines and adds
+  the string invisibly (render mode 3) in non-embedded Courier (sized by its cap height,
+  600/1000 em per glyph), WinAnsi-encoded and stretched with `Tz` to the outlines' width. A two-page A3/A4 sample opens, renders and
+  gives its text back (Ø, ±, ° included) in poppler, Ghostscript and Chromium's PDFium, and
+  passes `qpdf --check`. Characters outside WinAnsi draw (outlines) but are `?` in the
+  selectable layer; a ToUnicode map can lift that later if it matters.
+- **Kept code:** the facade methods `hlrSpans` and `hlrPolySpans` and their `Kernel`
+  wrappers (`hlrToShapeCount`, the probe of `HLRToShape`, was removed once timed), their
+  tests (`hlr-spans.test.ts`), `pdf.ts` with its tests, the PDF sample
+  (`packages/sketch/src/text/pdf-sample.test.ts`, `PDF_OUT=<file>`), and two gated tools:
+  `hlr-bench.test.ts` (`HLR_BENCH=1`, `HLR_METHODS=1`) and `hlr-views.test.ts`
+  (`HLR_PDF=<file>`, `HLR_POLY=1`), which draws views from the spans.
+- The WASM build with the walk's last fixes (`occt-f40f666098be`) passes `hlr-spans.test.ts`,
+  and views drawn from it match the polygonal ones. What S0 left unmeasured is in the plan's
+  §13.4.
+
 ## Amendment (S1a, 2026-11-10): one `EditMode` and a table per mode
 
 Built with no behaviour change, before any drawing code.
@@ -203,3 +248,153 @@ in `ModeFields` and enter it only through `enterMode`/`exitMode`; then add branc
 for what the mode does, never for which tabs, Finish tile, keymap or marking-menu mode it
 shows. A check written `mode !== 'model'` already covers the new mode; one written
 `mode === 'sketch'` does not and must stay about sketching.
+
+## Amendment (S1, the document), 2026-11-11
+
+`doc.sheets` and its commands, no UI. Files: `packages/core/src/sheet-schema.ts`
+(schemas, `sheetProblems`, helpers), `packages/core/src/sheets.ts` (commands),
+`SheetIdSchema`, `SheetViewIdSchema` and `SheetItemIdSchema` in `ids.ts`;
+`docs/file-format.md` §4.11.
+
+**Names and details that settled** (against plan §5.1):
+
+- **`from` is tagged**: `{ kind: 'base', direction, up }` or
+  `{ kind: 'projected', parent, side }`, like every other union in the document.
+  `direction` is the way the view looks, `up` the world direction that points up
+  the sheet; both any length, not zero, not parallel.
+- **Sides**: `left`, `right`, `above`, `below` and the isometric corners
+  `iso-above-left`, `iso-above-right`, `iso-below-left`, `iso-below-right`.
+  A projected view's parent may itself be projected; no cycle.
+- **Scale and style** are refused on a projected view (it takes both from its
+  parent), not only the scale.
+- **Size**: a named paper or a custom one's two sides, 10 to 10000 mm each;
+  `orientation` decides which side is across for both (`sheetPaperSize`).
+  `SHEET_PAPER_MM` holds the named sizes.
+- **IDs**: sheet, view and item IDs are unique in the whole design, not per
+  sheet, so a command names a view or an item by its ID alone. Sheet names are
+  unique case-insensitively, view names case-insensitively in their sheet.
+- **`bodies`**: at least one, each once; absent means every shown body.
+- **Title block fields**: names are a letter then up to 39 letters and digits
+  (`title`, `drawnBy`, so S5's `{field}` can name them), values up to 2000
+  characters. **Text item**: `at` is its top-left corner, `size` the letter
+  height (absent: 3.5 mm), `width` the wrap width; `text` up to 2000
+  characters, not blank, not trimmed.
+- **The rules live in one place**: `sheetProblems(sheets)` (IDs, names,
+  parents, cycles, projected-view fields, base directions, bodies) is applied by
+  `DocumentSchema` (`reportSheets`) and by every sheet command, which validates
+  the sheets it leaves and refuses with a `CommandError` naming the sheet and
+  view. So the sheet rows are not in `DocumentSchema`'s `unique` table, and a
+  command can never make a design the loader refuses.
+- **Commands**: `addSheet({ sheet, index? })` takes a whole sheet (views and
+  items included; core sets no defaults, the paper a new sheet gets is the
+  mode's choice), `updateSheet`, `updateSheetView` and `updateSheetItem` take
+  `changes` where `null` deletes an optional field and `id`, `kind`, `views`
+  and `items` are refused; `moveSheet({ id, index })`; `removeSheetView`
+  removes the views projected from it, at any depth, and every item whose
+  `view` names one of them (`sheetItemView`: a text has none);
+  `removeSheetItems({ ids })` takes items from any sheet. Labels are generic
+  ("New sheet item"); a caller may relabel a command. `sheets` is deleted with
+  the last sheet. Payloads are copied into the document.
+- **Cascades**: `restoreVersion` copies `sheets` (or deletes it);
+  `remintSheets` (`remint.ts`) renames the bodies of copied features in a view's
+  `bodies`; the documents a Script feature and a plugin command see leave
+  `sheets` out (`recompute/engine.ts`, `recomputer.ts`, beside the
+  annotations). Sheets are in no cache key.
+
+**Forward compatibility**: on load, a sheet item
+whose `kind` this version doesn't know is left out and listed in `dropped` by
+its path (`sheets.0.items.2`), the path an unknown key takes
+(`parseLeniently`), so `loadNotice` reports it; it never fails the design. An
+item with no `kind`, or a known kind that is damaged, still fails. A later
+slice adds a kind by adding its schema to `SheetItemSchema`'s union.
+
+**Bodies**: removing a feature or a body is never refused and never changes a
+sheet because a view names it. A `bodies` entry the design has no body for is
+skipped when the view is evaluated (S2); a view left with none draws nothing.
+
+**Rejected**: per-sheet IDs (a command would need the sheet too); scale and
+style inside `from.base` (structural, but further from the accepted shape: a
+rule does the same); rows in the `unique` table (the commands need the same
+rules, so they live in `sheetProblems`); a label per item kind (one more table
+per kind; callers relabel); trimming a text (spaces may be meant).
+
+## Amendment (S1, layout and output), 2026-11-11
+
+A sheet becomes one display list, written as PDF and SVG; no UI. Files:
+`packages/io/src/display.ts` (MIT), the new package `packages/sheets/` (`layout.ts`,
+`title-block.ts`, `text.ts`, `output.ts`), `measureText` in `packages/sketch/src/text`.
+
+**The display list is a layer above `writePdf`'s items, in io** (`DisplayList`,
+`DisplayPath`, `DisplayText`, `DisplayStroke`, `DisplayFill`). It keeps `PdfItem`'s paint
+model (stroke width, colour, dash, cap, join; fill and rule; a text run's string, glyph
+outlines, baseline start, cap height, advance width, angle) and differs in two things: it
+is in **sheet mm from the top-left with y down**, the document's and the screen's frame,
+and each item may carry a `key` naming what it is part of, for the screen's picking.
+`displayPdfPage` is the only place y is flipped for PDF (y → height − y, arcs' sweep and
+angles negated through io's `transformContour`); `writeDisplayPdf` and `writeDisplaySvg`
+write lists. The screen uses `displayPathData` (the path data `writeDisplaySvg` writes),
+`displayPaint` (its presentation attributes in React's spelling) and `displayTextLayer`, so
+it never derives anything of its own.
+
+**SVG text:** each run is its outlines as a `<path>` plus an invisible `<text>`
+(`fill-opacity` 0, Inter or a sans-serif, sized to the cap height, `textLength` with
+`lengthAdjust="spacingAndGlyphs"` onto the outline width), in one group after the drawing.
+Chromium printing such an SVG to PDF gives text that `pdftotext` reads back.
+
+**`@extrudo/sheets`** (GPL; `core`, `sketch`, `io`, `fonts`; no DOM): `layoutSheet(sheet,
+context)` with `context = { name?, sheets?, views? }` lays out, in order: the white paper;
+the border 10 mm in (a twentieth of the short side on a small sheet), centring marks, and
+with `zones` an even number of zones of about 50 mm, numbered left to right and lettered
+top to bottom without I and O; the title block in the lower right corner against the
+border; the views; the items. `sheetsToPdf(sheets, context)` writes one page per sheet in
+the order given, titled with `context.name`; `sheetToSvg(sheet, context)` one SVG.
+
+- **Title blocks** (`SHEET_TITLE_BLOCKS`): `simple`, 160 × 32 mm, cells `title`, `scale`,
+  `sheet`, `drawnBy`, `date`, `units`, `version` (decision 8's fields); `full`, 180 × 40 mm,
+  adds `checkedBy`, `approvedBy`, `company`, `material`, `partNumber` and `projection`. A
+  cell draws its label in capitals (1.6 mm, muted) and its value below it, shrunk to fit
+  down to 1.8 mm and then cut with an ellipsis; an empty field draws its label alone.
+  `scale` (the sheet's), `sheet` ("n / N" among `context.sheets`) and `projection` ("First
+  angle" / "Third angle") are derived and never read from `fields`. Units and version are
+  typed fields until S5's `{version}`. `sheetTitleFields(template)` lists the typed ones.
+- **Text**: Inter Regular and Bold (`SHEET_FONTS`) through `shapeText` and the new
+  `measureText` (a line's advance in cap heights, kerning included); the caller loads the
+  fonts, and layout throws if they are not loaded. A text item's first baseline is one
+  letter height below its `at`, lines are 1.6 letter heights apart, it breaks at newlines
+  and, with `width`, before a word that would end past it (a longer word breaks between
+  characters).
+- **Lines** (plan §4.2): visible and outline 0.5 mm, hidden 0.25 mm dashed 3/1.5, tangent
+  and centre 0.18 mm (centre dash-dot 8/1.5/1/1.5), border and title-block frame 0.5,
+  title-block cells and zone ticks 0.25.
+- **Views**: lines come in through `context.views`, by view ID, as `SheetViewLines`: curves
+  with a kind (`visible`, `hidden`, `outline`, `tangent`, `centre`), an optional edge name,
+  and io contours in the view's own frame (mm at 1:1, y up the sheet, origin at the view's
+  `at`), so S2 adds geometry without changing the signature. Layout scales them by the
+  view's scale (a projected view's base view's), flips y and moves them to `at`, one path
+  per kind; the base view's style `visible` (and the shaded ones, for now) leaves hidden
+  lines out, `tangentEdges` and `centreLines` false leave theirs out; `label` writes the name
+  under the lowest line, with the scale when it differs from the sheet's. A view with no
+  lines yet is a thin 60 × 40 mm frame with its name.
+- **Keys**: `paper`, `border`, `title-block`, `title-block:<field>`, `view:<id>`,
+  `item:<id>` (`SheetDisplayKey`).
+
+**Checked:** the sample (`SHEETS_OUT=<dir> pnpm vitest run packages/sheets/src/sample`:
+an A3 landscape with zones, the full block, wrapped text and two views; an A4 portrait with
+the simple block; a 150 × 100 sheet) opens in poppler (`pdfinfo`: 3 pages, A3 first, title
+set), renders as expected (`pdftoppm`, looked at each page) and gives back every string
+(`pdftotext`, Ø, ± and ° included); `rsvg-convert` draws the A3 SVG the same as the PDF.
+
+**Rejected:**
+
+- **`PdfItem` and `PdfPage` under neutral names as the display list.** One type fewer, but
+  every consumer would work in y up: the screen and SVG would flip, and so would layout
+  (sheets measure from the top-left), three flips instead of one.
+- **A display list in `@extrudo/sheets`.** The writers that read it are io's, and io must not
+  import a GPL package.
+- **Display items per view curve.** One path per view and line kind (plan §7) keeps the
+  screen's DOM small; picking a curve for a dimension (S3) uses the view's lines, not the
+  display list.
+- **A text measurer handed in through the context.** The plan routes text through the
+  text module; one function there (`measureText`) is less to wire than an interface.
+- **The ISO projection symbol in the full title block.** Words ("First angle") can't be
+  drawn the wrong way round; the symbol can come with a title-block editor.

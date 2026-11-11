@@ -10,6 +10,7 @@ import type { z } from 'zod';
 import { FORMAT_NAME, FORMAT_VERSION } from './format';
 import { newId } from './ids';
 import { DocumentSchema, type ExtrudoDocument } from './schema';
+import { isUnknownSheetItem } from './sheet-schema';
 
 export type JsonObject = { [key: string]: unknown };
 
@@ -185,7 +186,9 @@ const LENIENT_ROUNDS = 4;
  * Validates `doc` (mutated), dropping keys the schema doesn't know. The
  * schema's objects are strict, so an unknown key is an `unrecognized_keys`
  * issue with its path; when those are the only issues, the keys are removed
- * and the document is checked again. Any other issue fails. `schema` is the
+ * and the document is checked again. A sheet item of a kind this version
+ * doesn't know is removed the same way and listed by its path
+ * (`sheets.0.items.2`, ADR-0143). Any other issue fails. `schema` is the
  * document's own; tests pass an older one to read a file the way a previous
  * Extrudo would (ADR-0081: an older reader drops `components`).
  */
@@ -200,7 +203,8 @@ export function parseLeniently(
     const parsed = schema.safeParse(doc);
     if (parsed.success) return { ok: true, doc: parsed.data, dropped };
     const { issues } = parsed.error;
-    const other = issues.filter((i) => i.code !== 'unrecognized_keys');
+    const items = issues.filter((i) => isUnknownSheetItem(i, doc));
+    const other = issues.filter((i) => i.code !== 'unrecognized_keys' && !items.includes(i));
     if (other.length > 0 || round === LENIENT_ROUNDS)
       return { ok: false, issues: other.length ? other : issues };
     for (const issue of issues) {
@@ -215,6 +219,16 @@ export function parseLeniently(
         delete owner[key];
         dropped.push([...issue.path, key].join('.'));
       }
+    }
+    // A sheet item of a kind this version doesn't know goes like an unknown key
+    // (ADR-0143): after the keys, whose paths count it, and back to front, so
+    // the other items' indices stay right.
+    const at = items.map((issue) => issue.path as unknown as [string, number, string, number]);
+    at.sort((a, b) => b[1] - a[1] || b[3] - a[3]);
+    for (const [, s, , i] of at) {
+      const list = ((doc.sheets as JsonObject[])[s] as JsonObject).items as unknown[];
+      list.splice(i, 1);
+      dropped.push(`sheets.${s}.items.${i}`);
     }
   }
 }

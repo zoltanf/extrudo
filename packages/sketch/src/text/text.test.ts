@@ -3,7 +3,7 @@ import type { TextAlign, UnitLayout, UnitSegment } from '@extrudo/core';
 import { BUNDLED_FONTS } from '@extrudo/fonts';
 import opentype from 'opentype.js';
 import { describe, expect, it } from 'vitest';
-import { fontName, hasFont, loadFont, shapeText } from './index.js';
+import { fontName, hasFont, loadFont, measureText, shapeText } from './index.js';
 
 const FONTS_DIR = new URL('../../../fonts/fonts/', import.meta.url);
 
@@ -258,5 +258,25 @@ describe('shapeText', () => {
     const elapsed = performance.now() - start;
     expect(layout.missing).toEqual([]);
     expect(elapsed).toBeLessThan(100);
+  });
+});
+
+describe('measureText', () => {
+  it("is the distance right alignment moves a line: the pen's advance, kerning included", () => {
+    for (const line of ['AV', 'Hello, sheet', 'Ø12 ±0.1']) {
+      const width = measureText(INTER, line) as number;
+      const left = bbox(shape(INTER, line, 'left'));
+      const right = bbox(shape(INTER, line, 'right'));
+      expect(left.minX - right.minX).toBeCloseTo(width, 9);
+    }
+    // Kerning pulls A and V together.
+    expect(measureText(INTER, 'AV') as number).toBeLessThan(
+      (measureText(INTER, 'A') as number) + (measureText(INTER, 'V') as number),
+    );
+  });
+
+  it('is undefined for a font that is not loaded and 0 for an empty line', () => {
+    expect(measureText('no-such-font', 'H')).toBeUndefined();
+    expect(measureText(INTER, '')).toBe(0);
   });
 });

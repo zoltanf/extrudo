@@ -1709,8 +1709,10 @@ end to end, faster than in established desktop CAD.
   Acceptance per slice: the plan's "Done when", `pnpm check`, the affected e2e specs, CI
   green, and an amendment to ADR-0143. *Deps:* S1 needs S1a; S2 needs S0's answer; S0 and
   S1a can run side by side.
-  - [ ] S0 Spikes: hidden-line spans timed on B1–B10 (time, heap, correctness); `writePdf`
-    with outlined text and a selectable layer.
+  - [x] S0 Spikes: hidden-line spans timed on B1–B10 (time, heap, correctness); `writePdf`
+    with outlined text and a selectable layer. Done 2026-11-11: HLR timed (plan §13; B1 has
+    no body fixture); `hlrSpans` and `hlrPolySpans` built and checked against known views
+    and drawings; `writePdf` checked in three readers (ADR-0143's S0 amendment).
   - [x] S1a Modes: `'model' | 'sketch'` becomes an `EditMode` type and a per-mode table. No
     behaviour change; every existing test passes untouched. Done 2026-11-10: `EditMode`,
     `MODES` (`apps/web/src/shell/modes.ts`), `enterMode`/`exitMode` (ADR-0143's S1a amendment).

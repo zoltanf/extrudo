@@ -1,0 +1,6 @@
+{
+  "extends": "../../tsconfig.base.json",
+  // No DOM (ADR-0143 §7): Node's types for the tests that read the fonts.
+  "compilerOptions": { "lib": ["es2023"], "types": ["node"] },
+  "include": ["src"]
+}

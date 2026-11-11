@@ -183,6 +183,33 @@ function glyphContours(
 }
 
 /**
+ * A line's width in font units: the pen position after the last glyph, with
+ * the kerning between each pair but none after the last.
+ */
+function advance(font: Font, glyphs: readonly Glyph[]): number {
+  let width = 0;
+  for (let i = 0; i < glyphs.length; i++) {
+    width += glyphs[i]?.advanceWidth ?? 0;
+    if (i + 1 < glyphs.length) {
+      width += font.getKerningValue(glyphs[i] as Glyph, glyphs[i + 1] as Glyph);
+    }
+  }
+  return width;
+}
+
+/**
+ * The advance width of one line of text in the unit frame (cap height 1),
+ * kerning included: how far `shapeText` moves the pen over it. What sheet
+ * layout wraps and sizes text with (P6-24, ADR-0143). Undefined when the font
+ * isn't loaded.
+ */
+export function measureText(font: string, line: string): number | undefined {
+  const parsed = fonts.get(font);
+  if (!parsed) return undefined;
+  return advance(parsed, parsed.stringToGlyphs(line)) / capHeightOf(parsed);
+}
+
+/**
  * Shapes text into the unit layout, or undefined when the font isn't loaded.
  * Kerning comes from the font through `getKerningValue`; missing characters
  * are drawn as the font's .notdef and listed in `missing`.
@@ -207,15 +234,7 @@ export const shapeText: TextShaper = (font, text, align) => {
     const line = lines[k] ?? '';
     const glyphs = parsed.stringToGlyphs(line);
     const chars = [...line];
-    // Line width: the pen position after the last glyph, with the kerning
-    // between each pair but none after the last.
-    let width = 0;
-    for (let i = 0; i < glyphs.length; i++) {
-      width += glyphs[i]?.advanceWidth ?? 0;
-      if (i + 1 < glyphs.length) {
-        width += parsed.getKerningValue(glyphs[i] as Glyph, glyphs[i + 1] as Glyph);
-      }
-    }
+    const width = advance(parsed, glyphs);
     const x0 = align === 'center' ? -width / 2 : align === 'right' ? -width : 0;
     const baselineY = -k * lineHeight;
     let pen = x0;

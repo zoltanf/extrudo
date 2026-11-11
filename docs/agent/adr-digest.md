@@ -4399,7 +4399,7 @@ user parameter"; shown, such a row has `FollowsMark` (link icon, title "Follows 
 the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
 clicks the Show line when a row is hidden. No schema change.
 
-ADR-0143 (the owner, 2026-11-10; **accepted, nothing built yet**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
+ADR-0143 (the owner, 2026-11-10; **accepted; S1a modes and S0 spikes done, S1's document and layout built, its UI not**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
 made from the model. The detailed spec is `docs/plans/drawings-2026-11-10.md` (mock-ups: `docs/plans/drawings-mock-*.html`);
 each slice (S0 spikes, S1a modes, S1 sheets, S2 views, S3 dimensions, S4 notes, S5 lists, S6 outside) amends the ADR and
 adds its files and rules to this paragraph. Rules already fixed: **words:** the interface says "Drawing" (mode, tab) and
@@ -4417,7 +4417,22 @@ new facade method (flat arrays, ADR-0001), the evaluator lives in `packages/kern
 **dimensions are measured, never driving**. **Output:** one display list drives screen, PDF and SVG; `writePdf` is our own
 writer in `@extrudo/io` (MIT: no GPL import, no PDF library), text as glyph outlines of the bundled Inter; `@extrudo/sheets`
 (no DOM, Node) goes into `scripts/check-boundaries.mjs`. **Defaults:** paper white in both themes, first angle per sheet,
-hidden + tangent + centre lines on, title block "Simple", zone border off, sticky notes not printed. **S1a (modes, done, no
+hidden + tangent + centre lines on, title block "Simple", zone border off, sticky notes not printed. **S0 (plan §13):** HLR cost
+follows overlapping curved edges, not size (B7's side views about 3.4 s each, B9 along its axis 3.8 s, a 209-face
+assembly 0.25 s for six views), and one view is one uninterruptible call: views compute one at a time with progress,
+cancel acts between views, the per-direction cache is required. Views come from **`Kernel.hlrSpans`** (our own walk of
+`HLRBRep_Algo`'s data: edge index, kind, an outline's face, range, visible and hidden spans in the edge's 3D parameter),
+**never `HLRBRep_HLRToShape`** (no faster, and its edges lose the model edge's name). Rules in the walk: HLR's status
+intervals are already 3D parameters (never convert them with `Parameter3d`); split edges map back through the
+outliner's `NewSOldS`; a smooth edge or seam a face turns away at is an outline that keeps its edge. `hlrPolySpans`
+(`HLRBRep_PolyAlgo`, milliseconds) may draw a view first, but only the exact result feeds dimensions and snapping.
+`writePdf(pages)` (`packages/io/src/pdf.ts`) takes paths and `text` items that carry the caller's glyph outlines **and**
+the string: outlines filled, the string invisible (`3 Tr`) in non-embedded Courier (monospaced: no width table; Adobe's Helvetica widths would need
+a NOTICE entry), WinAnsi, stretched with `Tz` to the outline width; keep it dependency-free beyond fflate, deterministic, and keep text selectable (check readers with the
+sample: `PDF_OUT=<file> pnpm vitest run packages/sketch/src/text/pdf-sample`). Gated tools: `HLR_BENCH=1` (+
+`HLR_METHODS=1`) `pnpm vitest run packages/kernel/src/hlr-bench` re-times HLR; `HLR_PDF=<file>` (+ `HLR_POLY=1`) `pnpm
+vitest run packages/kernel/src/hlr-views` draws views from the spans to look at.
+**S1a (modes, done, no
 behaviour change):** `EditMode` (`packages/core/src/stores.ts`) is the only spelling of the mode union (`KeymapMode` and
 `MarkingMode` alias it); `MODES` in `apps/web/src/shell/modes.ts` is one row per mode (`label`, `tabs`, `defaultTab`,
 `markingSlots`, `repeatSample`, `finish`), read by `visibleTabs`/`defaultTab` (`tools.ts`), the Finish tile (`Toolbar.tsx`),
@@ -4425,7 +4440,32 @@ behaviour change):** `EditMode` (`packages/core/src/stores.ts`) is the only spel
 `perMode`); the session's `enterMode(mode, fields)`/`exitMode()` are the only way in and out (`enterSketch`/`exitSketch`
 call them). **To add a mode:** extend `EditMode`, add its `MODES` row and its `ModeFields`, enter it through
 `enterMode`; never branch on the mode for tabs, Finish, keymap or marking slots; `mode !== 'model'` covers a new mode,
-`mode === 'sketch'` stays about sketching.
+`mode === 'sketch'` stays about sketching. **S1 document (done):** `doc.sheets` (`core/src/sheet-schema.ts`: `SheetSchema`,
+`SheetViewSchema` with `from` `base`/`projected`, `SheetItemSchema` union with `text` only, `sheetProblems`,
+`sheetPaperSize`, `projectedFrom`, `sheetItemView`, `isUnknownSheetItem`; IDs `SheetId`/`SheetViewId`/`SheetItemId`)
+and commands in `core/src/sheets.ts` (`addSheet`, `updateSheet`, `removeSheet`, `moveSheet`, `addSheetView`,
+`updateSheetView`, `removeSheetView`, `addSheetItem`, `updateSheetItem`, `removeSheetItems`; `changes` with `null`
+deleting); file format §4.11. Rules a change must keep: **every sheet command ends by validating the sheets it
+leaves** (`settle`: the schema plus `sheetProblems`), and a new rule goes into `sheetProblems` so the loader and the
+commands agree; sheet, view and item IDs are **unique in the whole design**; a new item kind is one schema added to
+`SheetItemSchema`'s union, and one tied to a view names it in a field called `view` (so `sheetItemView` and the
+`removeSheetView` cascade find it); **an unknown item `kind` is dropped on load** (`parseLeniently`, listed in
+`dropped`), never fails the design; deleting a feature or body never touches or refuses on a sheet (an unknown
+`bodies` entry is skipped when drawn); `restoreVersion` copies `sheets`, `remintSheets` renames copied bodies, and
+the script and plugin-command documents leave `sheets` out (`recompute/engine.ts`, `recomputer.ts`). **S1 layout and
+output (done, no UI):** the display list is io's `DisplayList` (`packages/io/src/display.ts`: `DisplayPath`,
+`DisplayText`, sheet mm, **origin top-left, y down**); `@extrudo/sheets` (`packages/sheets/`, GPL, no DOM, Node;
+`core, sketch, io, fonts`) has `layoutSheet(sheet, { name?, sheets?, views? })`, `sheetsToPdf`, `sheetToSvg`, the title
+block templates (`title-block.ts`: `SHEET_TITLE_BLOCKS`, `sheetTitleFields`) and text (`text.ts`). Rules a change must
+keep: **the screen, the SVG and the PDF draw the same list** (the screen through `displayPathData`, `displayPaint`,
+`displayTextLayer`, never its own layout); **`displayPdfPage` is the only y flip** into `writePdf`; a view's lines come
+in through `context.views` as `SheetViewLines` (io contours in the view's frame, mm at 1:1, y up, origin at the view's
+`at`) and layout alone scales, flips and places them; derived title-block cells (`scale`, `sheet`, `projection`)
+never read `fields`; sizes are cap heights; text only through `@extrudo/sketch/text` (`shapeText`, `measureText`) in
+`SHEET_FONTS` (Inter Regular and Bold), which the caller loads; every item carries a `SheetDisplayKey` (`paper`,
+`border`, `title-block`, `title-block:<field>`, `view:<id>`, `item:<id>`); layout is pure and deterministic (golden
+`packages/sheets/src/golden/small-sheet.svg`, `UPDATE_GOLDEN=1`). Sample: `SHEETS_OUT=<dir> pnpm vitest run
+packages/sheets/src/sample` writes `sheets.pdf` and one SVG per sheet.
 
 ADR-0144 (the owner, 2026-11-11): **FreeCAD file import (`.FCStd`), with history** (P6-25; slices S1–S13 in the ADR,
 background in `docs/plans/freecad-import-2026-11-10.md`). `packages/fcstd` (`@extrudo/fcstd`, pure TS; kernel test-only)
