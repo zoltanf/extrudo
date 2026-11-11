@@ -238,26 +238,33 @@ export function sheetPartsCells(
   columns: readonly SheetPartsColumn[],
   options: SheetPartsOptions = {},
 ): string[] {
-  const k = lengthFactor(options.units ?? 'mm');
-  const decimals = options.decimals ?? 0;
-  return columns.map((column) => {
-    switch (column) {
-      case 'item':
-        return String(row.item);
-      case 'qty':
-        return String(row.qty);
-      case 'name':
-        return row.name;
-      case 'material':
-        return row.material;
-      case 'size':
-        return row.size ? row.size.map((s) => (s / k).toFixed(decimals)).join(' × ') : '';
-      case 'mass':
-        return row.volume !== undefined && options.density !== undefined && options.density > 0
-          ? grams(row.volume, options.density)
-          : '';
+  return columns.map((column) => cellText(row, column, options));
+}
+
+function cellText(
+  row: SheetPartsRowData,
+  column: SheetPartsColumn,
+  options: SheetPartsOptions,
+): string {
+  switch (column) {
+    case 'item':
+      return String(row.item);
+    case 'qty':
+      return String(row.qty);
+    case 'name':
+      return row.name;
+    case 'material':
+      return row.material;
+    case 'size': {
+      const k = lengthFactor(options.units ?? 'mm');
+      const decimals = options.decimals ?? 0;
+      return row.size ? row.size.map((s) => (s / k).toFixed(decimals)).join(' × ') : '';
     }
-  });
+    case 'mass':
+      return row.volume !== undefined && options.density !== undefined && options.density > 0
+        ? grams(row.volume, options.density)
+        : '';
+  }
 }
 
 // Layout --------------------------------------------------------------------------------

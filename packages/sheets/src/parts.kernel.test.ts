@@ -310,52 +310,56 @@ function linesOf(geometry: ViewGeometry): SheetViewLines {
   return {
     curves: geometry.curves.map((curve) => ({
       kind: curve.kind,
-      contours: curve.pieces.map((p): Contour => {
-        switch (p.type) {
-          case 'line':
-            return { start: p.a, segments: [{ type: 'line', to: p.b }], closed: false };
-          case 'polyline':
-            return {
-              start: p.points[0] as [number, number],
-              segments: p.points.slice(1).map((to) => ({ type: 'line' as const, to })),
-              closed: false,
-            };
-          case 'arc': {
-            const at = (s: number): [number, number] => [
-              p.center[0] + p.radius * Math.cos(s),
-              p.center[1] + p.radius * Math.sin(s),
-            ];
-            return {
-              start: at(p.start),
-              segments: [{ type: 'arc', center: p.center, sweep: p.end - p.start, to: at(p.end) }],
-              closed: false,
-            };
-          }
-          case 'ellipse': {
-            const [c, s] = [Math.cos(p.rotation), Math.sin(p.rotation)];
-            const at = (t: number): [number, number] => {
-              const [x, y] = [p.rx * Math.cos(t), p.ry * Math.sin(t)];
-              return [p.center[0] + x * c - y * s, p.center[1] + x * s + y * c];
-            };
-            return {
-              start: at(p.start),
-              segments: [
-                {
-                  type: 'ellipse',
-                  center: p.center,
-                  rx: p.rx,
-                  ry: p.ry,
-                  rotation: p.rotation,
-                  sweep: p.end - p.start,
-                  to: at(p.end),
-                },
-              ],
-              closed: false,
-            };
-          }
-        }
-      }),
+      contours: curve.pieces.map(pieceContour),
     })),
     bounds: geometry.bounds,
   };
+}
+
+type Piece = ViewGeometry['curves'][number]['pieces'][number];
+
+function pieceContour(p: Piece): Contour {
+  switch (p.type) {
+    case 'line':
+      return { start: p.a, segments: [{ type: 'line', to: p.b }], closed: false };
+    case 'polyline':
+      return {
+        start: p.points[0] as [number, number],
+        segments: p.points.slice(1).map((to) => ({ type: 'line' as const, to })),
+        closed: false,
+      };
+    case 'arc': {
+      const at = (s: number): [number, number] => [
+        p.center[0] + p.radius * Math.cos(s),
+        p.center[1] + p.radius * Math.sin(s),
+      ];
+      return {
+        start: at(p.start),
+        segments: [{ type: 'arc', center: p.center, sweep: p.end - p.start, to: at(p.end) }],
+        closed: false,
+      };
+    }
+    case 'ellipse': {
+      const [c, s] = [Math.cos(p.rotation), Math.sin(p.rotation)];
+      const at = (t: number): [number, number] => {
+        const [x, y] = [p.rx * Math.cos(t), p.ry * Math.sin(t)];
+        return [p.center[0] + x * c - y * s, p.center[1] + x * s + y * c];
+      };
+      return {
+        start: at(p.start),
+        segments: [
+          {
+            type: 'ellipse',
+            center: p.center,
+            rx: p.rx,
+            ry: p.ry,
+            rotation: p.rotation,
+            sweep: p.end - p.start,
+            to: at(p.end),
+          },
+        ],
+        closed: false,
+      };
+    }
+  }
 }

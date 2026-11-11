@@ -279,9 +279,7 @@ describe('parts list layout', () => {
       'MASS (G)',
     ]);
     const name = runs(out).find((t) => t.text.startsWith('A very'));
-    expect(name && name.width).toBeLessThanOrEqual(
-      SHEET_TABLE.maxText - 2 * SHEET_TABLE.padding + 1e-9,
-    );
+    expect(name?.width).toBeLessThanOrEqual(SHEET_TABLE.maxText - 2 * SHEET_TABLE.padding + 1e-9);
     expect(name?.text.endsWith('…')).toBe(true);
     expect(texts(layoutSheetPartsList(list(), undefined))).toHaveLength(6);
   });
