@@ -7,7 +7,10 @@
 //   SHEETS_OUT=/some/dir pnpm vitest run packages/sheets/src/dimensions.kernel
 //
 // also writes dimensions.pdf there: an A3 sheet with every type, one moved
-// and one detached, drawn on the views the kernel computes.
+// and one detached, drawn on the views the kernel computes; and (P6-24 S4)
+// items.pdf, the same sheet with every kind of item (leader notes, centre
+// marks and lines, a text, sticky notes: the export leaves the screen-only
+// one out), and items-screen.pdf, the screen's list of it.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -17,6 +20,7 @@ import {
   type ExtrudoDocument,
   type Feature,
   type FeatureId,
+  keepLastAnchors,
   type Parameter,
   type ParameterId,
   type PrimitiveInputOptions,
@@ -24,21 +28,24 @@ import {
   primitiveInputs,
   type Sheet,
   type SheetAnchor,
+  type SheetAnchors,
   type SheetDimensionItem,
   type SheetId,
+  type SheetItem,
   type SheetItemId,
   type SheetRefAnchor,
   type SheetViewId,
   sheetStandardFrom,
   sheetViewFrame,
 } from '@extrudo/core';
-import type { Contour } from '@extrudo/io';
+import type { Contour, DisplayPath } from '@extrudo/io';
 import { Kernel, type ViewGeometry } from '@extrudo/kernel';
 import { kernelFeatures, loadOcct, RecomputeEngine } from '@extrudo/kernel/node';
 import { loadFont } from '@extrudo/sketch/text';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { measureSheetDimension } from './dimensions';
-import type { SheetViewLines } from './layout';
+import { layoutSheet, type SheetViewLines } from './layout';
+import { layoutSheetCentre, layoutSheetLeader, sheetItemStatus } from './notes';
 import { sheetsToPdf } from './output';
 import { SHEET_FONT } from './text';
 
@@ -229,7 +236,7 @@ function dimensions(): SheetDimensionItem[] {
   ];
 }
 
-function sheetOf(items: SheetDimensionItem[]): Sheet {
+function sheetOf(items: SheetItem[]): Sheet {
   return {
     id: 's1' as SheetId,
     name: 'Plate',
@@ -326,6 +333,174 @@ describe('dimensions measured on a part the kernel builds', () => {
     }
     const pdf = sheetsToPdf([sheet], { name: 'Plate', views, anchors });
     writeFileSync(join(ENV.SHEETS_OUT, 'dimensions.pdf'), pdf);
+  });
+});
+
+/** Every kind of note and centre line, on the part as it was built. */
+function notes(): SheetItem[] {
+  const hole = circleAt(PLATE, 10, 15, 4);
+  return [
+    { kind: 'text', id: 'heading' as SheetItemId, at: [300, 40], text: 'NOTES', size: 5 },
+    {
+      kind: 'text',
+      id: 'notes' as SheetItemId,
+      at: [300, 50],
+      text: '1. Break every edge 0.5 mm.\n2. Print on its back, no supports.',
+      width: 95,
+    },
+    {
+      kind: 'leader',
+      id: 'note-edge' as SheetItemId,
+      view: FRONT,
+      anchor: { ref: edgeAt(PLATE, [30, -20, 5]) },
+      at: [42, 20],
+      text: 'Break edge\n0.5 × 45°',
+    },
+    {
+      kind: 'leader',
+      id: 'note-hole' as SheetItemId,
+      view: TOP,
+      anchor: { ref: hole },
+      at: [38, 28],
+      text: 'Ø8 through',
+    },
+    {
+      kind: 'leader',
+      id: 'note-boss' as SheetItemId,
+      view: FRONT,
+      anchor: { ref: wall(PLATE, 8) },
+      at: [-45, 38],
+      text: 'Sand smooth',
+    },
+    { kind: 'centreMark', id: 'mark-hole' as SheetItemId, view: TOP, anchors: [{ ref: hole }] },
+    {
+      kind: 'centreMark',
+      id: 'mark-boss' as SheetItemId,
+      view: TOP,
+      anchors: [{ ref: wall(PLATE, 8) }],
+    },
+    {
+      kind: 'centreLine',
+      id: 'axis-boss' as SheetItemId,
+      view: FRONT,
+      anchors: [{ ref: wall(PLATE, 8) }],
+    },
+    {
+      kind: 'centreLine',
+      id: 'axis-hole' as SheetItemId,
+      view: FRONT,
+      anchors: [{ ref: wall(PLATE, 4) }],
+    },
+    {
+      kind: 'centreLine',
+      id: 'mid-plate' as SheetItemId,
+      view: TOP,
+      anchors: [{ ref: edgeAt(PLATE, [0, -20, 10]) }, { ref: edgeAt(PLATE, [0, 20, 10]) }],
+    },
+    {
+      kind: 'sticky',
+      id: 'sticky-screen' as SheetItemId,
+      at: [300, 90],
+      size: [60, 32],
+      text: 'Check the boss fit after the first print.',
+    },
+    {
+      kind: 'sticky',
+      id: 'sticky-print' as SheetItemId,
+      at: [300, 130],
+      size: [60, 24],
+      text: 'Printed: version for the workshop.',
+      color: 'green',
+      print: true,
+    },
+  ];
+}
+
+const pathsOf = (items: ReturnType<typeof layoutSheetLeader>) =>
+  items.filter((i): i is DisplayPath => i.type === 'path');
+
+describe('notes and centre lines on the same part (P6-24 S4)', () => {
+  it('a leader follows its edge; a centre mark detaches with its hole and is back with it', {
+    timeout: 60_000,
+  }, async () => {
+    await recompute(part());
+    const items = notes();
+    const sheet = sheetOf(items);
+    const byId = (id: string) => sheet.items.find((i) => i.id === id) as SheetItem;
+    const first = engine.resolveSheet(sheet);
+    for (const item of sheet.items) {
+      expect(sheetItemStatus(sheet, item, first), item.id).toEqual({ state: 'ok' });
+    }
+    // The right edge at x = 30, z 0 to 10: the arrow lands on its top end, (160 + 2·30, 85 − 2·10).
+    const edgeNote = byId('note-edge') as Extract<SheetItem, { kind: 'leader' }>;
+    const arrowAt = (anchors: SheetAnchors) =>
+      pathsOf(layoutSheetLeader(sheet, edgeNote, anchors))[1]?.contours[0]?.start;
+    expect(arrowAt(first)).toEqual([220, 65]);
+    await recompute(part('80 mm'));
+    const longer = engine.resolveSheet(sheet);
+    expect(arrowAt(longer)?.map((x) => Math.round(x * 1e6) / 1e6)).toEqual([240, 65]);
+    // The hole's centre mark: centre (160 + 2·15, 165) in the top view, to 2·4 + 3 each way.
+    const mark = byId('mark-hole') as Extract<SheetItem, { kind: 'centreMark' }>;
+    const level = (anchors: SheetAnchors) => {
+      const [path] = pathsOf(layoutSheetCentre(sheet, mark, anchors));
+      const ends = (path?.contours ?? []).slice(0, 3).flatMap((c) => {
+        const to = c.segments[0]?.type === 'line' ? c.segments[0].to : c.start;
+        return [c.start[0], to[0]];
+      });
+      return [Math.min(...ends), Math.max(...ends)].map((x) => Math.round(x * 100) / 100);
+    };
+    expect(level(longer)).toEqual([179, 201]);
+    const doc = part('80 mm');
+    await recompute({
+      ...doc,
+      features: doc.features.filter((f) => f.id !== 'Hole'),
+      timelineMarker: doc.features.length - 1,
+    });
+    const gone = engine.resolveSheet(sheet);
+    expect(sheetItemStatus(sheet, mark, gone)).toEqual({
+      state: 'detached',
+      message: 'This centre mark lost its circle: delete it, or place it again.',
+    });
+    expect(gone[mark.id]).toEqual([
+      { status: 'detached', message: 'The feature this was drawn on is deleted.' },
+    ]);
+    expect(layoutSheetCentre(sheet, mark, gone)).toEqual([]);
+    // The app keeps the last geometry: still drawn where it was, marked.
+    const kept = keepLastAnchors(longer, gone);
+    expect(layoutSheetCentre(sheet, mark, kept).every((i) => i.state === 'detached')).toBe(true);
+    expect(level(kept)).toEqual([179, 201]);
+    // The plate's own edge stays.
+    expect(sheetItemStatus(sheet, edgeNote, gone)).toEqual({ state: 'ok' });
+    await recompute(doc);
+    const back = engine.resolveSheet(sheet);
+    expect(sheetItemStatus(sheet, mark, back)).toEqual({ state: 'ok' });
+    expect(level(back)).toEqual([179, 201]);
+  });
+
+  it('writes the sample with every kind of item', { timeout: 60_000 }, async () => {
+    await recompute(part());
+    const sheet = sheetOf([...dimensions(), ...notes()]);
+    const anchors = engine.resolveSheet(sheet);
+    const exported = layoutSheet(sheet, { anchors, output: 'export' }).items.map((i) => i.key);
+    expect(exported).toContain('item:sticky-print');
+    expect(exported).not.toContain('item:sticky-screen');
+    if (!ENV.SHEETS_OUT) return;
+    const views = new Map<SheetViewId, SheetViewLines>();
+    for (const view of sheet.views) {
+      const frame = sheetViewFrame(sheet, view.id);
+      if (!frame) throw new Error('no frame');
+      const result = engine.sheetView({ id: view.id, direction: frame.direction, up: frame.up });
+      if ('error' in result) throw new Error(result.error);
+      views.set(view.id, linesOf(result.geometry));
+    }
+    writeFileSync(
+      join(ENV.SHEETS_OUT, 'items.pdf'),
+      sheetsToPdf([sheet], { name: 'Plate', views, anchors }),
+    );
+    writeFileSync(
+      join(ENV.SHEETS_OUT, 'items-screen.pdf'),
+      sheetsToPdf([sheet], { name: 'Plate', views, anchors, output: 'screen' }),
+    );
   });
 });
 
