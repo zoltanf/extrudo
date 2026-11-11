@@ -266,8 +266,7 @@ import {
   buildCommands,
   commandShortcuts,
   DRAWING_IMPORT_UNAVAILABLE,
-  MODEL_ONLY_TOOLS,
-  modelOnlyText,
+  modelOnlyReason,
 } from './commands';
 import type { DocsPage } from './docsLinks';
 import { docsPath } from './docsLinks';
@@ -2021,9 +2020,10 @@ function Shell({
       }
       return;
     }
-    // Home's model-only tools say why they don't run in the drawing (plan §3.1).
-    if (mode === 'sheet' && MODEL_ONLY_TOOLS.has(tool)) {
-      notify('info', modelOnlyText(mode, TOOLS[tool].label));
+    // Home's model-only tools say why they don't run in a sketch or the drawing (plan §3.1).
+    const modelOnly = modelOnlyReason(mode, tool);
+    if (modelOnly) {
+      notify('info', modelOnly);
       return;
     }
     // Press Pull (P3-08) runs the tool that fits the selection; Repeat last repeats Press Pull.
