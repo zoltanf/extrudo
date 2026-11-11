@@ -2,6 +2,7 @@ import { gzipSync } from 'node:zlib';
 import { Design } from '@extrudo/api';
 import { type AttachmentId, addAttachment, type BodyId, createDocument } from '@extrudo/core';
 import type { BodyPlan, BodyStep, ImportResult } from '@extrudo/f3d';
+import type { HistoryStop } from '@extrudo/fcstd';
 import { memoryProjectStore, sha256Hex, writeArchive } from '@extrudo/storage';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { appNotifications } from '../design-system/notifications';
@@ -454,6 +455,7 @@ describe('importFcstdFile (ADR-0144 decision 9)', () => {
             problems: [],
             linkArrays: [],
             restarts: 0,
+            bodies: [],
           },
         };
       },
@@ -507,6 +509,49 @@ describe('fcstdNotices', () => {
       "Not imported: Scan; Scan 2 (a mesh, which Extrudo doesn't import from FreeCAD files yet); Fillet (its shape didn't come through unchanged); Broken (the geometry kernel couldn't read it).",
       'Of each link array only one copy came in: Bolts.',
       '1 thing in the file could not be read; shapes that depend on them may be missing. Please report it with the file: Help › Report a Bug…',
+    ]);
+  });
+
+  const body = (
+    name: string,
+    outcome: 'history' | 'shape' | 'left-out',
+    stop?: HistoryStop,
+    bodies: string[] = [],
+  ) => ({
+    object: name,
+    name,
+    features: 2,
+    mapped: [],
+    bodies,
+    sketches: [],
+    outcome,
+    ...(stop ? { stop: { object: 'F', type: 'PartDesign::Fillet', reason: stop } } : {}),
+  });
+
+  it('counts the bodies with their history and gives the commonest reasons for the rest', () => {
+    expect(
+      fcstdNotices({
+        ...base,
+        finalShapes: 2,
+        bodies: [body('Bracket', 'history'), body('Lid', 'history')],
+      }),
+    ).toEqual([
+      'Imported from the FreeCAD file: 2 of 2 shapes, with their history (sketches and features).',
+    ]);
+    const notices = fcstdNotices({
+      ...base,
+      finalShapes: 5,
+      shapes: [shape('Housing'), shape('Clip'), shape('Knob'), shape('Box')],
+      bodies: [
+        body('Bracket', 'history'),
+        body('Housing', 'shape', 'type', ['b:0']),
+        body('Clip', 'shape', 'type'),
+        body('Knob', 'shape', 'differs', ['k:0']),
+      ],
+    });
+    expect(notices).toEqual([
+      'Imported from the FreeCAD file: 5 of 5 shapes, 1 with its history and 4 as bodies without history.',
+      "Taken from the file's own shapes, without their whole history: Housing; Clip; Knob. Most often because it has a feature Extrudo doesn't rebuild from FreeCAD files yet, or a rebuilt feature didn't match the file's shape. The features rebuilt before that stay in the timeline, ahead of a Remove that takes out what they made.",
     ]);
   });
 });

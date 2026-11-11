@@ -11,7 +11,7 @@ import {
   randomUuid,
 } from '@extrudo/core';
 import type { ImportReport, ImportResult } from '@extrudo/f3d';
-import type { FcstdImportReport, LeftOutReason } from '@extrudo/fcstd';
+import type { FcstdImportReport, HistoryStop, LeftOutReason } from '@extrudo/fcstd';
 import {
   ArchiveError,
   type ProjectId,
@@ -348,15 +348,71 @@ const LEFT_OUT: Record<LeftOutReason, string> = {
   restarts: 'the geometry kernel failed too often',
 };
 
+/** Why a body's history stopped, in the app's words (after "because"). */
+const HISTORY_STOP: Record<HistoryStop, string> = {
+  type: "it has a feature Extrudo doesn't rebuild from FreeCAD files yet",
+  suppressed: 'it has a suppressed feature',
+  profile: 'a feature is made from a face or a part of a sketch',
+  sketch: "a feature's sketch couldn't be imported",
+  taper: 'a feature is tapered',
+  direction: 'a feature goes in a direction of its own',
+  'up-to': 'a feature goes up to a face or a shape',
+  axis: "a revolve turns about an axis Extrudo can't use yet",
+  value: "a feature has a value Extrudo can't read",
+  option: "a feature has a setting Extrudo can't rebuild",
+  'no-base': 'a cut comes before anything to cut',
+  chain: "its features don't follow each other",
+  limit: 'it has too many features',
+  stored: "a feature's shape can't be read from the file",
+  failed: 'a feature failed when Extrudo rebuilt it',
+  differs: "a rebuilt feature didn't match the file's shape",
+  kernel: 'the geometry kernel failed',
+  time: 'rebuilding took too long',
+  'import-time': 'the import ran out of time',
+  restarts: 'the geometry kernel failed too often',
+};
+
 /** The FreeCAD import's report as a few readable notices. */
 export function fcstdNotices(
-  report: Pick<FcstdImportReport, 'shapes' | 'leftOut' | 'finalShapes' | 'problems' | 'linkArrays'>,
+  report: Pick<
+    FcstdImportReport,
+    'shapes' | 'leftOut' | 'finalShapes' | 'problems' | 'linkArrays'
+  > &
+    Partial<Pick<FcstdImportReport, 'bodies'>>,
 ): string[] {
   if (report.finalShapes === 0)
     return ['The FreeCAD file has no shapes to import, so the design is empty.'];
+  const bodies = report.bodies ?? [];
+  const history = bodies.filter((b) => b.outcome === 'history').length;
+  const came = report.shapes.length + history;
+  const plain = report.shapes.length;
   const out = [
-    `Imported from the FreeCAD file: ${report.shapes.length} of ${report.finalShapes} shapes, as bodies without history.`,
+    history === 0
+      ? `Imported from the FreeCAD file: ${came} of ${report.finalShapes} shapes, as bodies without history.`
+      : plain === 0
+        ? `Imported from the FreeCAD file: ${came} of ${report.finalShapes} shapes, with their history (sketches and features).`
+        : `Imported from the FreeCAD file: ${came} of ${report.finalShapes} shapes, ${history} with ${history === 1 ? 'its' : 'their'} history and ${plain} as ${plain === 1 ? 'a body' : 'bodies'} without history.`,
   ];
+  const short = bodies.filter((b) => b.outcome === 'shape' && b.stop);
+  if (short.length > 0) {
+    const why = new Map<HistoryStop, number>();
+    for (const b of short) {
+      const reason = b.stop?.reason as HistoryStop;
+      why.set(reason, (why.get(reason) ?? 0) + 1);
+    }
+    const common = [...why]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 2)
+      .map(([reason]) => HISTORY_STOP[reason]);
+    const partial = short.filter((b) => b.bodies.length > 0);
+    out.push(
+      `Taken from the file's own shapes, without their whole history: ${listed(short.map((b) => b.name))}. Most often because ${common.join(', or ')}.${
+        partial.length > 0
+          ? ' The features rebuilt before that stay in the timeline, ahead of a Remove that takes out what they made.'
+          : ''
+      }`,
+    );
+  }
   const byReason = new Map<LeftOutReason, string[]>();
   for (const l of report.leftOut)
     byReason.set(l.reason, [...(byReason.get(l.reason) ?? []), l.name]);
