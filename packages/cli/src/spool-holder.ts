@@ -18,8 +18,8 @@ export interface SpoolHolder {
 
 /** Adds the two parts and their parameters (`axle`, `clearance`) to `d`. */
 export function spoolHolderModel(d: Design): SpoolHolder {
-  d.parameter('axle', '12 mm', { description: 'The axle’s diameter' });
-  d.parameter('clearance', '0.4 mm', { description: 'How much wider the bore is than the axle' });
+  d.parameter('axle', '12 mm', { comment: 'The axle’s diameter' });
+  d.parameter('clearance', '0.4 mm', { comment: 'How much wider the bore is than the axle' });
   const plate = d.box({ length: '80 mm', width: '40 mm', height: '6 mm' }, { name: 'Plate' });
   const boss = d.cylinder(
     { diameter: '26 mm', height: '16 mm', operation: 'join' },
