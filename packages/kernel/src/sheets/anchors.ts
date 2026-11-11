@@ -4,25 +4,63 @@
  * an annotation's does (exact name `ok`; related name or fingerprint
  * `moved`; else `detached`), and gives back the 3D geometry it stands for: a
  * point, a line's ends, a circle's centre, axis and radius, or a cylinder's
- * or cone's outline for the view's direction. A lost anchor is never an
- * error. Only plain data comes out of the kernel here; no shape is made.
+ * or cone's outline for the view's direction. Unlike an annotation, an anchor
+ * on geometry of a feature that is deleted or suppressed is `detached` before
+ * any search (`lostFeature`): a closest match there would be another edge,
+ * and a missing number is safer on a drawing than a wrong one. A lost anchor
+ * is never an error. Only plain data comes out of the kernel here; no shape
+ * is made.
  */
 import {
+  type Feature,
+  type GeomRef,
   type SheetAnchorGeometry,
   type SheetAnchorReport,
   type SheetRefAnchor,
   type SheetSegment3,
   type SheetSilhouetteAnchor,
   type SheetViewFrame,
+  scriptOfGenerated,
   sheetSilhouetteSide,
 } from '@extrudo/core';
 import { add, dot, length, perpendicular, scale, sub, unit } from '../features/vec';
 import { KernelError, type Vec3 } from '../kernel';
 import { fingerprintOf } from '../naming/fingerprint';
+import { featuresOfName } from '../naming/topo-id';
 import type { EvalContext } from '../recompute/types';
 
 /** What resolving an anchor needs of an evaluator's context. */
 export type SheetAnchorContext = Pick<EvalContext, 'kernel' | 'resolve' | 'describe' | 'names'>;
+
+/**
+ * An anchor's report when a feature its reference names (`featuresOfName`;
+ * a script's generated feature counts as the script) is no longer in
+ * `features`, or is suppressed: `detached`, with why. A deleted one outranks
+ * a suppressed one. `undefined` when every one is there and active: then the
+ * anchor is looked for as usual (exact name, related name, fingerprint).
+ */
+export function lostFeature(
+  ref: GeomRef,
+  features: readonly Pick<Feature, 'id' | 'name' | 'suppressed'>[],
+): SheetAnchorReport | undefined {
+  const byId = new Map<string, Pick<Feature, 'name' | 'suppressed'>>(
+    features.map((f) => [f.id, f]),
+  );
+  const ids = new Set(byId.keys());
+  let suppressed: string | undefined;
+  for (const token of featuresOfName(ref.id)) {
+    const feature = byId.get(scriptOfGenerated(token, ids) ?? token);
+    if (!feature) {
+      return { status: 'detached', message: 'The feature this was measured on is deleted.' };
+    }
+    if (feature.suppressed) suppressed ??= feature.name;
+  }
+  if (suppressed === undefined) return undefined;
+  return {
+    status: 'detached',
+    message: `${suppressed}, the feature this was measured on, is suppressed. Unsuppress it to show the dimension again.`,
+  };
+}
 
 /** A reason the geometry can't give what the anchor asks; the anchor is not lost. */
 class NoGeometry extends Error {}

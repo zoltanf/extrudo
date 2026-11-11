@@ -1,7 +1,9 @@
 // A sheet's anchors through the recompute engine (P6-24 S3, ADR-0143's S3
 // amendment): what each anchor resolves to on shapes whose sizes are known
 // (a box, a cylinder), and on B2 how a dimension follows a parameter, is
-// detached when its feature goes and is attached again when it comes back.
+// detached when its feature is deleted, suppressed or rolled back (never a
+// closest match there, the owner's rule of 2026-11-11) and is attached again
+// when it comes back.
 import {
   type BodyId,
   type ExtrudoDocument,
@@ -24,6 +26,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import b2 from '../../../../fixtures/benchmarks/b2-storage-box.extrudo?url&inline';
 import { kernelFeatures } from '../features';
 import { Kernel, type Vec3 } from '../kernel';
+import { nameRelation } from '../naming/topo-id';
 import { loadOcct } from '../occt/load';
 import { RecomputeEngine } from '../recompute/engine';
 import { testDocument, testFeature } from '../recompute/testing';
@@ -95,6 +98,8 @@ function vertexAt(body: BodyId, at: Vec3): AnchorRef {
 
 /** A reference as a sheet anchor keeps it (the engine gives a face, edge or vertex one here). */
 type AnchorRef = SheetRefAnchor['ref'];
+
+const DELETED = 'The feature this was measured on is deleted.';
 
 const front = sheetStandardFrom('front');
 const top = sheetStandardFrom('top');
@@ -181,11 +186,12 @@ describe('a box, 10 × 20 × 30 (centred on the XY plane, z up)', () => {
     ]);
   });
 
-  it('is detached before the first recompute, with the marker before the box, and for a lost name', async () => {
+  it('is detached before the first recompute, with the marker before the box, for a lost name, and on a feature the document lacks', async () => {
     engine = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
+    // On the box, but no edge has that name or anything like its fingerprint.
     const lost: AnchorRef = {
       kind: 'edge',
-      id: 'e[box:Gone:side:0|box:Gone:cap:end]',
+      id: 'e[box:Box1:side:8|box:Box1:side:9]',
       fingerprint: { type: 'line', at: [500, 500, 500], dir: [1, 0, 0], size: 3 },
     };
     const sheet = sheetWith([dim('d1', 'linear', [{ ref: lost }, { free: [0, 0] }])]);
@@ -200,20 +206,28 @@ describe('a box, 10 × 20 × 30 (centred on the XY plane, z up)', () => {
     ]);
     expect(engine.resolveSheet(both)['d1' as SheetItemId]).toEqual([{ status: 'detached' }]);
     expect(engine.resolveSheet(both)['d2' as SheetItemId]?.[0]?.status).toBe('ok');
+    // A feature the document doesn't have: detached with no search, even
+    // with the box's own edge's fingerprint.
+    const gone = { ...vertical, id: 'e[box:Gone:side:0|box:Gone:side:1]' };
+    expect(engine.resolveSheet(sheetWith([dim('d3', 'linear', [{ ref: gone }])]))).toEqual({
+      d3: [{ status: 'detached', message: DELETED }],
+    });
     await recompute({ ...doc, timelineMarker: 0 });
     expect(engine.resolveSheet(both)['d2' as SheetItemId]).toEqual([{ status: 'detached' }]);
   });
 
-  it('finds a renamed edge by its fingerprint and says it moved', async () => {
+  it('finds a renamed edge of a feature that is there by its fingerprint and says it moved', async () => {
     await recompute(doc);
     const vertical = edgeAt(body, [-5, -10, 15]);
-    const renamed = { ...vertical, id: 'e[box:Gone:side:0|box:Gone:side:1]' };
+    // Box1's, but no face of the box has these names: no related name either.
+    const renamed = { ...vertical, id: 'e[box:Box1:side:8|box:Box1:side:9]' };
     const [report] =
       (engine as RecomputeEngine).resolveSheet(
         sheetWith([dim('d1', 'linear', [{ ref: renamed }])]),
       )['d1' as SheetItemId] ?? [];
     expect(report?.status).toBe('moved');
     expect(report?.resolved?.id).toBe(vertical.id);
+    expect(nameRelation(renamed.id, vertical.id)).toBe(0);
     expect(report?.geometry?.type).toBe('line');
   });
 });
@@ -328,6 +342,10 @@ describe('B2 (the storage box): a dimension follows the model', () => {
     features: doc.features.filter((f) => f.id !== id),
     timelineMarker: doc.features.length - 1,
   });
+  const suppressing = (id: string): ExtrudoDocument => ({
+    ...doc,
+    features: doc.features.map((f) => (f.id === id ? { ...f, suppressed: true } : f)),
+  });
 
   /** The box's height edge, the pocket's floor edge and the drain's rim. */
   async function picks() {
@@ -378,7 +396,7 @@ describe('B2 (the storage box): a dimension follows the model', () => {
     ]);
     expect(resolve(sheet, 'top-r')[0]).toMatchObject({ status: 'ok', geometry: { radius: 5 } });
     await recompute(without(hole.id));
-    expect(resolve(sheet, 'top-r')).toEqual([{ status: 'detached' }]);
+    expect(resolve(sheet, 'top-r')).toEqual([{ status: 'detached', message: DELETED }]);
     // The box's own edge stays.
     expect(resolve(sheet, 'd2')[0]?.status).toBe('ok');
     await recompute({ ...doc, timelineMarker: doc.features.length - 1 });
@@ -391,7 +409,10 @@ describe('B2 (the storage box): a dimension follows the model', () => {
     });
   });
 
-  it("is moved, not detached, when a deleted pocket's edge has a close match (the naming service's fingerprint)", {
+  // Deleting the pocket left a close match by fingerprint, the box's bottom
+  // edge below the floor edge (80, not 74): before the owner's rule of
+  // 2026-11-11 the dimension took it and was only `moved`.
+  it("detaches when the pocket it was measured on is deleted, though its edge has a close match, and is ok when it's back", {
     timeout: 60_000,
   }, async () => {
     const { floor } = await picks();
@@ -399,9 +420,59 @@ describe('B2 (the storage box): a dimension follows the model', () => {
     expect(length(resolve(sheet, 'd1')[0]?.geometry)).toBeCloseTo(74, 6);
     const pocket = doc.features[3] as Feature;
     await recompute(without(pocket.id));
-    // The floor edge is gone; the box's bottom edge below it is the closest.
+    expect(resolve(sheet, 'd1')).toEqual([{ status: 'detached', message: DELETED }]);
+    await recompute(doc);
+    const [back] = resolve(sheet, 'd1');
+    expect(back).toMatchObject({ status: 'ok', resolved: floor });
+    expect(length(back?.geometry)).toBeCloseTo(74, 6);
+  });
+
+  it('detaches the same way when the pocket is suppressed, and is ok when it is unsuppressed', {
+    timeout: 60_000,
+  }, async () => {
+    const { floor, height } = await picks();
+    const sheet = sheetWith([
+      dim('d1', 'linear', [{ ref: floor }]),
+      dim('d2', 'linear', [{ ref: height }]),
+    ]);
+    const pocket = doc.features[3] as Feature;
+    await recompute(suppressing(pocket.id));
+    expect(resolve(sheet, 'd1')).toEqual([
+      {
+        status: 'detached',
+        message: `${pocket.name}, the feature this was measured on, is suppressed. Unsuppress it to show the dimension again.`,
+      },
+    ]);
+    // The box's own edge stays.
+    expect(resolve(sheet, 'd2')[0]?.status).toBe('ok');
+    await recompute(doc);
+    const [back] = resolve(sheet, 'd1');
+    expect(back).toMatchObject({ status: 'ok', resolved: floor });
+    expect(length(back?.geometry)).toBeCloseTo(74, 6);
+  });
+
+  // Every feature the anchor names still there, but the pocket now goes through the floor
+  // (`bottom` 0; the drain left out): its floor edge is gone, and the fingerprint (not a
+  // related name) finds the pocket's bottom edge at z = 0. Still `moved`,
+  // never detached: the owner's rule is about deleted and suppressed features.
+  it('is moved, not detached, when every feature is there and the fingerprint finds the edge', {
+    timeout: 60_000,
+  }, async () => {
+    const { floor } = await picks();
+    const sheet = sheetWith([dim('d1', 'linear', [{ ref: floor }])]);
+    // Without the drain, which would have no floor left to cut.
+    const through = without(hole.id);
+    await recompute({
+      ...through,
+      parameters: doc.parameters.map((p) =>
+        p.name === 'bottom' ? { ...p, expression: '0 mm' } : p,
+      ),
+    });
     const [report] = resolve(sheet, 'd1');
     expect(report?.status).toBe('moved');
-    expect(length(report?.geometry)).toBeCloseTo(80, 6);
+    expect(nameRelation(floor.id, report?.resolved?.id ?? '')).toBe(0);
+    expect(length(report?.geometry)).toBeCloseTo(74, 6);
+    const line = report?.geometry as { start: Vec3; end: Vec3 };
+    expect([line.start[2], line.end[2]]).toEqual([0, 0]);
   });
 });
