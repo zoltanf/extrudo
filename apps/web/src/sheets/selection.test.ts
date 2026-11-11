@@ -3,8 +3,10 @@ import {
   createDocument,
   createDocumentStore,
   type Sheet,
+  type SheetDimensionItem,
   type SheetId,
   type SheetItemId,
+  type SheetView,
   type SheetViewId,
 } from '@extrudo/core';
 import type { Contour, DisplayList } from '@extrudo/io';
@@ -152,6 +154,36 @@ describe('sheet targets (selection by display key, P6-24)', () => {
     moveTargets(store, ['item:t2'], 1, 0);
     expect(now().items[1]?.at).toEqual([21, 200]);
     expect(store.getState().undoLabel).toBe('Move on sheet');
+  });
+
+  it("moves a dimension in its view's frame (model mm, y up), and not again with its view", () => {
+    const store = createDocumentStore(createDocument());
+    const front = { ...(sheet.views[0] as SheetView), scale: [1, 2] as [number, number] };
+    const dimension: SheetDimensionItem = {
+      kind: 'dimension',
+      id: 'd1' as SheetItemId,
+      view: 'v2' as SheetViewId,
+      type: 'linear',
+      anchors: [{ free: [0, 0] }, { free: [20, 0] }],
+      at: [10, 8],
+    };
+    store
+      .getState()
+      .dispatch(
+        addSheet({
+          sheet: { ...sheet, views: [front, sheet.views[1] as SheetView], items: [dimension] },
+        }),
+      );
+    const now = () => store.getState().doc.sheets?.[0] as Sheet;
+    // The projected view draws at its base view's 1:2: 2 mm right on the sheet is 4 model mm,
+    // 3 mm down is 6 model mm down (y up).
+    moveTargets(store, ['item:d1'], 2, 3);
+    expect(now().items[0]?.at).toEqual([14, 2]);
+    // With its view selected too, only the view moves; the dimension follows it.
+    moveTargets(store, ['view:v2', 'item:d1'], 5, 0);
+    expect(now().views[1]?.at).toEqual([225, 85]);
+    expect(now().items[0]?.at).toEqual([14, 2]);
+    expect(targetName(now(), 'item:d1')).toBe('Dimension');
   });
 
   it('deletes items and views (with the views projected from them) as one undo step', () => {

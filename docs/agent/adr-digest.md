@@ -4509,7 +4509,8 @@ packages/sheets/src/sample` writes `sheets.pdf` and one SVG per sheet. **S1 the 
 and is one undo step with its own label, Finish Drawing none; undo in the mode is a plain undo (never `reopenSketch`);
 the screen draws `layoutSheet`'s list and nothing of its own, and moves the paper through the DOM, not React state;
 **selection is by display key** (`item:<id>`, `view:<id>`, `title-block`; session item `{ kind: 'sheet', id }`), never by
-item kind, and a multi-target move or delete is one undo step (`runAsOneStep`); `@extrudo/sheets` loads lazily only
+item kind, and a multi-target move or delete is one undo step (`runAsOneStep`); an item tied to a view moves in the
+view's frame (scaled, y flipped) and not again with its view; `@extrudo/sheets` loads lazily only
 (`SheetWorkspace`, `exportSheets`); the model's browser folders stay mounted (hidden `Activity`) in the mode; a tool
 that enters or leaves the mode or only opens a dialog is in `NOT_REPEATABLE`; a new model-only Home tool joins
 `MODEL_ONLY_TOOLS`; S2 to S5 put their tools on the Drawing tab, in `SHEET_SLOTS` and in AppShell's `run()` beside

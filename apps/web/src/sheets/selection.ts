@@ -18,6 +18,7 @@ import {
   type Sheet,
   type SheetItemId,
   type SheetViewId,
+  sheetItemView,
   updateSheetItem,
   updateSheetView,
 } from '@extrudo/core';
@@ -124,7 +125,28 @@ export const movable = (target: SheetTarget) =>
 
 const round = (n: number) => Math.round(n * 100) / 100;
 
-/** The commands that move the targets by (`dx`, `dy`) mm: each item's and view's `at`. */
+/**
+ * The scale view `id` is drawn at (model mm to sheet mm): its base view's, else the sheet's,
+ * as `@extrudo/sheets` draws it (that package loads lazily, so not imported here).
+ */
+function viewScale(sheet: Sheet, id: SheetViewId): number {
+  const seen = new Set<SheetViewId>();
+  let view = sheet.views.find((v) => v.id === id);
+  while (view && view.from.kind === 'projected' && !seen.has(view.id)) {
+    seen.add(view.id);
+    const parent: SheetViewId = view.from.parent;
+    view = sheet.views.find((v) => v.id === parent);
+  }
+  const [a, b] = (view?.from.kind === 'base' && view.scale) || sheet.scale;
+  return a / b;
+}
+
+/**
+ * The commands that move the targets by (`dx`, `dy`) sheet mm: each view's `at`, and each
+ * item's. An item tied to a view (a dimension) keeps its `at` in the view's own frame
+ * (model mm, y up), so its move is scaled and flipped; it moves with its view when that is
+ * moved too.
+ */
 export function moveCommands(
   sheets: readonly Sheet[],
   targets: readonly SheetTarget[],
@@ -132,14 +154,22 @@ export function moveCommands(
   dy: number,
 ): Command[] {
   const out: Command[] = [];
+  const views = new Set(targets.filter((t) => t.startsWith('view:')).map((t) => t.slice(5)));
   for (const target of targets) {
     if (target.startsWith('item:')) {
       const id = target.slice(5) as SheetItemId;
       const at = findSheetItem(sheets, id);
-      const item = at && sheets[at.sheet]?.items[at.item];
-      if (!item || !('at' in item)) continue;
-      const [x, y] = item.at as [number, number];
-      out.push(updateSheetItem({ id, changes: { at: [round(x + dx), round(y + dy)] } }));
+      const sheet = at && sheets[at.sheet];
+      const item = at && sheet?.items[at.item];
+      if (!sheet || !item) continue;
+      const [x, y] = item.at;
+      const view = sheetItemView(item);
+      if (view === undefined) {
+        out.push(updateSheetItem({ id, changes: { at: [round(x + dx), round(y + dy)] } }));
+      } else if (!views.has(view)) {
+        const k = viewScale(sheet, view);
+        out.push(updateSheetItem({ id, changes: { at: [round(x + dx / k), round(y - dy / k)] } }));
+      }
     } else if (target.startsWith('view:')) {
       const id = target.slice(5) as SheetViewId;
       const at = findSheetView(sheets, id);
@@ -221,5 +251,6 @@ export function targetName(sheet: Sheet | undefined, target: SheetTarget): strin
   }
   const item = sheet?.items.find((i) => i.id === target.slice(5));
   if (!item) return 'Item';
-  return item.kind === 'text' ? `Text “${item.text.split('\n')[0]?.slice(0, 40)}”` : 'Item';
+  if (item.kind === 'text') return `Text “${item.text.split('\n')[0]?.slice(0, 40)}”`;
+  return item.kind === 'dimension' ? 'Dimension' : 'Item';
 }

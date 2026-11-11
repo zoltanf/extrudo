@@ -567,7 +567,9 @@ is the lazy `sheets/SheetWorkspace.tsx` chunk; UI spec §4a describes what a per
   box under the pointer wins. In the session a target is the selection item
   `{ kind: 'sheet', id }`. Moves and deletes of several targets are one undo step
   ("Move on sheet", "Delete from sheet", `selection.ts`); the title block is neither moved
-  nor deleted there.
+  nor deleted there. An item tied to a view (S3's dimension) keeps its `at` in the view's
+  own frame, so its move is scaled by the view's scale and flipped in y, and it is not moved
+  again when its view moves with it.
 - **Export:** one dialog (mock-up 4) for Export PDF and Export This Sheet: PDF is one file
   with a page per chosen sheet, SVG a file per sheet; the format is the preference
   `export.sheets`. `@extrudo/sheets` loads lazily, never in the entry chunk.
