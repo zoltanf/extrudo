@@ -253,14 +253,7 @@ export interface SelectionItem {
    * `annotation`: a numbered note (ADR-0126 §6), by its `AnnotationId`. `sheet`: something
    * on the open sheet, by its target (`item:<id>`, `view:<id>`, `title-block`; P6-24).
    */
-  kind:
-    | GeomRefKind
-    | 'feature'
-    | 'parameter'
-    | 'constraint'
-    | 'dimension'
-    | 'annotation'
-    | 'sheet';
+  kind: GeomRefKind | 'feature' | 'parameter' | 'constraint' | 'dimension' | 'annotation' | 'sheet';
   id: string;
 }
 

@@ -7,7 +7,7 @@ order: 127
 
 # Export PDF
 
-Download the drawing’s sheets as one PDF, a page per sheet.
+Export the drawing’s sheets: one PDF with a page per sheet, or an SVG per sheet.
 
 | Where | Shortcut |
 |---|---|

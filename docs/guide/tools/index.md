@@ -230,4 +230,4 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 
 ### Output
 
-- [Export PDF](./exportSheets.md) — Download the drawing’s sheets as one PDF, a page per sheet.
+- [Export PDF](./exportSheets.md) — Export the drawing’s sheets: one PDF with a page per sheet, or an SVG per sheet.
